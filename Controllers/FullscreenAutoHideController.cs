@@ -121,59 +121,11 @@ public sealed class FullscreenAutoHideController : IDisposable
         }
     }
 
-    private bool ShouldHideForFullscreen(IntPtr hwnd, IntPtr notchHwnd)
-    {
-        IntPtr notchMonitor = FullscreenDetector.GetWindowMonitor(notchHwnd);
-
-        if (hwnd == notchHwnd)
-            return CheckFullscreenBehind(notchHwnd, notchMonitor, notchHwnd);
-
-        if (hwnd != IntPtr.Zero)
-        {
-            GetWindowThreadProcessId(hwnd, out uint fgPid);
-            GetWindowThreadProcessId(notchHwnd, out uint myPid);
-            if (fgPid == myPid)
-                return CheckFullscreenBehind(hwnd, notchMonitor, notchHwnd);
-        }
-
-        return IsForegroundWindowFullscreen(hwnd, notchMonitor, notchHwnd);
-    }
-
-    private bool CheckFullscreenBehind(IntPtr startHwnd, IntPtr notchMonitor, IntPtr notchHwnd)
-    {
-        var next = Win32Interop.GetWindow(startHwnd, GW_HWNDNEXT);
-        const int maxWalk = 24;
-        GetWindowThreadProcessId(notchHwnd, out uint myPid);
-
-        for (int i = 0; i < maxWalk && next != IntPtr.Zero; i++)
-        {
-            if (IsWindowVisible(next) && !IsIconic(next))
-            {
-                GetWindowThreadProcessId(next, out uint nextPid);
-                if (nextPid != myPid)
-                {
-                    var type = FullscreenDetector.DetectFullscreenType(next, notchHwnd, notchMonitor);
-                    if (type != FullscreenType.None)
-                        return ShouldHideForType(type);
-                }
-            }
-            next = Win32Interop.GetWindow(next, GW_HWNDNEXT);
-        }
-        return false;
-    }
-
-    private bool IsForegroundWindowFullscreen(IntPtr hwnd, IntPtr notchMonitor, IntPtr notchHwnd)
-    {
-        var type = FullscreenDetector.DetectFullscreenType(hwnd, notchHwnd, notchMonitor);
-        return ShouldHideForType(type);
-    }
-
-    private bool ShouldHideForType(FullscreenType type) => type switch
-    {
-        FullscreenType.ExclusiveFullscreen => _settings.HideOnExclusiveFullscreen,
-        FullscreenType.WindowedFullscreen => _settings.HideOnWindowedFullscreen,
-        _ => false
-    };
+    private bool ShouldHideForFullscreen(IntPtr hwnd, IntPtr notchHwnd) =>
+        FullscreenDetector.ShouldHideForFullscreen(
+            hwnd, notchHwnd,
+            _settings.HideOnExclusiveFullscreen,
+            _settings.HideOnWindowedFullscreen);
 
     public void Dispose()
     {

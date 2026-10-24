@@ -181,11 +181,74 @@ private:
                std::abs(rect.right - area.right) <= tolerance_px &&
                std::abs(rect.bottom - area.bottom) <= tolerance_px;
     }
+
+    static bool ShouldHideForType(int32_t type, bool hide_on_exclusive, bool hide_on_windowed) noexcept {
+        if (type == 1) return hide_on_exclusive;
+        if (type == 2) return hide_on_windowed;
+        return false;
+    }
+
+    static bool CheckFullscreenBehind(HWND start_hwnd, HMONITOR notch_monitor, HWND notch_hwnd, bool hide_on_exclusive, bool hide_on_windowed) noexcept {
+        HWND next = GetWindow(start_hwnd, GW_HWNDNEXT);
+        constexpr int32_t kMaxWalk = 24;
+        DWORD my_pid = 0;
+        GetWindowThreadProcessId(notch_hwnd, &my_pid);
+
+        for (int32_t i = 0; i < kMaxWalk && next != nullptr; ++i) {
+            if (IsWindowVisible(next) && !IsIconic(next)) {
+                DWORD next_pid = 0;
+                GetWindowThreadProcessId(next, &next_pid);
+                if (next_pid != my_pid) {
+                    int32_t type = DetectFullscreenType(next, notch_hwnd, notch_monitor);
+                    if (type != 0) {
+                        return ShouldHideForType(type, hide_on_exclusive, hide_on_windowed);
+                    }
+                }
+            }
+            next = GetWindow(next, GW_HWNDNEXT);
+        }
+        return false;
+    }
+
+public:
+    static bool ShouldHideForFullscreen(HWND hwnd, HWND notch_hwnd, bool hide_on_exclusive, bool hide_on_windowed) noexcept {
+        HMONITOR notch_monitor = GetWindowMonitor(notch_hwnd);
+        if (hwnd == notch_hwnd) {
+            return CheckFullscreenBehind(notch_hwnd, notch_monitor, notch_hwnd, hide_on_exclusive, hide_on_windowed);
+        }
+        if (hwnd != nullptr) {
+            DWORD fg_pid = 0;
+            DWORD my_pid = 0;
+            GetWindowThreadProcessId(hwnd, &fg_pid);
+            GetWindowThreadProcessId(notch_hwnd, &my_pid);
+            if (fg_pid == my_pid) {
+                return CheckFullscreenBehind(hwnd, notch_monitor, notch_hwnd, hide_on_exclusive, hide_on_windowed);
+            }
+        }
+        int32_t type = DetectFullscreenType(hwnd, notch_hwnd, notch_monitor);
+        return ShouldHideForType(type, hide_on_exclusive, hide_on_windowed);
+    }
 };
 
 } // namespace vnotch::services
 
 extern "C" {
+
+VN_EXPORT int32_t vn_fullscreen_should_hide_for_hwnd(
+    intptr_t hwnd,
+    intptr_t notch_hwnd,
+    uint8_t hide_on_exclusive,
+    uint8_t hide_on_windowed,
+    uint8_t* out_should_hide) noexcept
+{
+    if (!out_should_hide) return VN_ERR_INVALID_ARG;
+    *out_should_hide = vnotch::services::FullscreenDetector::ShouldHideForFullscreen(
+        reinterpret_cast<HWND>(hwnd),
+        reinterpret_cast<HWND>(notch_hwnd),
+        hide_on_exclusive != 0,
+        hide_on_windowed != 0) ? 1 : 0;
+    return VN_OK;
+}
 
 VN_EXPORT int32_t vn_fullscreen_detect_type(
     intptr_t hwnd, intptr_t notch_hwnd, intptr_t notch_monitor, int32_t* out_type) noexcept

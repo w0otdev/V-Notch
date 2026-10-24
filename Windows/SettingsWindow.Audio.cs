@@ -11,7 +11,6 @@ using System.Windows.Media;
 using System.Windows.Media.Animation;
 using System.Windows.Media.Effects;
 using System.Windows.Threading;
-using NAudio.CoreAudioApi;
 using VNotch.Controllers;
 using VNotch.Controls;
 using VNotch.Models;
@@ -41,22 +40,7 @@ public partial class SettingsWindow
         try
         {
             rawDevices = await System.Threading.Tasks.Task.Run(() =>
-            {
-                var found = new List<(string, string)>();
-                using var enumerator = new MMDeviceEnumerator();
-                foreach (var device in enumerator.EnumerateAudioEndPoints(DataFlow.Render, DeviceState.Active))
-                {
-                    try
-                    {
-                        found.Add((device.ID, device.FriendlyName));
-                    }
-                    finally
-                    {
-                        device.Dispose();
-                    }
-                }
-                return found;
-            });
+                AudioMixerService.EnumerateOutputDevices().Select(device => (device.Id, device.FriendlyName)).ToList());
         }
         catch
         {

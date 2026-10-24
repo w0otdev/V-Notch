@@ -85,7 +85,7 @@ internal sealed partial class NativeWinHttpHandler : HttpMessageHandler
                 var response = new HttpResponseMessage((HttpStatusCode)result.Status)
                 {
                     RequestMessage = request,
-                    Content = new NativeResponseContent(session, AutomaticDecompression),
+                    Content = new NativeResponseContent(session),
                 };
                 ApplyResponseHeaders(session, response, AutomaticDecompression);
                 session = null!;
@@ -150,6 +150,10 @@ internal sealed partial class NativeWinHttpHandler : HttpMessageHandler
             return;
         }
 
+        // WinHTTP hands back decoded bytes, so a wire encoding and its length no longer describe the body.
+        bool encoded = decompressed && block.Contains("\r\nContent-Encoding:", StringComparison.OrdinalIgnoreCase);
+        ((NativeResponseContent)response.Content).Encoded = encoded;
+
         foreach (string line in block.Split("\r\n", StringSplitOptions.RemoveEmptyEntries))
         {
             if (line.StartsWith("HTTP/", StringComparison.OrdinalIgnoreCase))
@@ -162,8 +166,7 @@ internal sealed partial class NativeWinHttpHandler : HttpMessageHandler
             if (colon <= 0) continue;
             string name = line[..colon].Trim();
             string value = line[(colon + 1)..].Trim();
-            // WinHTTP hands back decoded bytes, so the wire encoding and length no longer describe the body.
-            if (decompressed && (name.Equals("Content-Encoding", StringComparison.OrdinalIgnoreCase) ||
+            if (encoded && (name.Equals("Content-Encoding", StringComparison.OrdinalIgnoreCase) ||
                                  name.Equals("Content-Length", StringComparison.OrdinalIgnoreCase)))
                 continue;
             if (ContentHeaderNames.Contains(name))
@@ -235,8 +238,10 @@ internal sealed partial class NativeWinHttpHandler : HttpMessageHandler
         }
     }
 
-    private sealed class NativeResponseContent(NativeHttpSession session, bool decompressed) : HttpContent
+    private sealed class NativeResponseContent(NativeHttpSession session) : HttpContent
     {
+        internal bool Encoded { get; set; }
+
         protected override Task SerializeToStreamAsync(Stream stream, TransportContext? context) =>
             SerializeToStreamAsync(stream, context, CancellationToken.None);
 
@@ -252,7 +257,7 @@ internal sealed partial class NativeWinHttpHandler : HttpMessageHandler
         protected override bool TryComputeLength(out long length)
         {
             length = -1;
-            if (decompressed) return false;
+            if (Encoded) return false;
             return NativeGetContentLength(session.Handle, out length) == 0 && length >= 0;
         }
 

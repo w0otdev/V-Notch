@@ -11,7 +11,6 @@ using System.Windows.Media;
 using System.Windows.Media.Animation;
 using System.Windows.Media.Effects;
 using System.Windows.Threading;
-using NAudio.CoreAudioApi;
 using VNotch.Controllers;
 using VNotch.Controls;
 using VNotch.Models;

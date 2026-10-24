@@ -86,6 +86,16 @@ internal static partial class FullscreenDetector
         return cloaked != 0;
     }
 
+    internal static bool ShouldHideForFullscreen(IntPtr hwnd, IntPtr notchHwnd, bool hideOnExclusive, bool hideOnWindowed)
+    {
+        vn_fullscreen_should_hide_for_hwnd(
+            hwnd, notchHwnd,
+            hideOnExclusive ? (byte)1 : (byte)0,
+            hideOnWindowed ? (byte)1 : (byte)0,
+            out byte shouldHide);
+        return shouldHide != 0;
+    }
+
     [StructLayout(LayoutKind.Sequential, Pack = 1)]
     private struct VnRect
     {
@@ -118,4 +128,8 @@ internal static partial class FullscreenDetector
     [LibraryImport("VNotch.Native.dll")]
     private static partial int vn_fullscreen_is_window_cloaked(
         IntPtr hwnd, out byte out_cloaked);
+
+    [LibraryImport("VNotch.Native.dll")]
+    private static partial int vn_fullscreen_should_hide_for_hwnd(
+        IntPtr hwnd, IntPtr notch_hwnd, byte hide_on_exclusive, byte hide_on_windowed, out byte out_should_hide);
 }

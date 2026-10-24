@@ -290,28 +290,23 @@ public partial class SpotlightWindow : Window
         }
     }
 
-    private byte[]? _sfxPcmBytes;
-    private NAudio.Wave.WaveFormat? _sfxWaveFormat;
-    private NAudio.Wave.WaveOutEvent? _sfxWaveOut;
-    private NAudio.Wave.RawSourceWaveStream? _sfxWaveStream;
+    // The click sound is decoded, softened and played by VNotch.Native (Native/Services/SpotlightSfx.cpp).
+    [System.Runtime.InteropServices.LibraryImport("VNotch.Native.dll", StringMarshalling = System.Runtime.InteropServices.StringMarshalling.Utf16)]
+    private static partial int vn_spotlight_sfx_load(string path, int pathLength, out int hresult);
+
+    [System.Runtime.InteropServices.LibraryImport("VNotch.Native.dll")]
+    private static partial int vn_spotlight_sfx_play(float volume);
+
+    [System.Runtime.InteropServices.LibraryImport("VNotch.Native.dll")]
+    private static partial int vn_spotlight_sfx_stop();
+
+    [System.Runtime.InteropServices.LibraryImport("VNotch.Native.dll")]
+    private static partial int vn_spotlight_sfx_is_loaded(out byte loaded);
+
     private bool _sfxCleanupHooked;
     private long _lastSpotlightSfxTick;
 
-    private void DisposeSpotlightSfxOutput()
-    {
-        try
-        {
-            _sfxWaveOut?.Stop();
-            _sfxWaveOut?.Dispose();
-        }
-        catch { }
-        finally
-        {
-            _sfxWaveOut = null;
-            _sfxWaveStream?.Dispose();
-            _sfxWaveStream = null;
-        }
-    }
+    private static void DisposeSpotlightSfxOutput() => vn_spotlight_sfx_stop();
 
     private void EnsureSfxCleanupHooked()
     {
@@ -329,7 +324,7 @@ public partial class SpotlightWindow : Window
         try
         {
             EnsureSfxCleanupHooked();
-            if (_sfxPcmBytes == null)
+            if (vn_spotlight_sfx_is_loaded(out byte loaded) != 0 || loaded == 0)
             {
                 static string FindSfx(string folder)
                 {
@@ -351,60 +346,18 @@ public partial class SpotlightWindow : Window
                     dir = System.IO.Directory.GetParent(dir)?.FullName;
                 }
 
-                if (_spotlightClickUri != null)
-                {
-                    using var reader = new NAudio.Wave.MediaFoundationReader(_spotlightClickUri.LocalPath);
-                    _sfxWaveFormat = reader.WaveFormat;
-                    using var ms = new System.IO.MemoryStream();
-                    var buffer = new byte[16384];
-                    int read;
-                    while ((read = reader.Read(buffer, 0, buffer.Length)) > 0)
-                        ms.Write(buffer, 0, read);
-                    byte[] rawPcm = ms.ToArray();
-                    double lpL1 = 0, lpL2 = 0, lpR1 = 0, lpR2 = 0;
-                    int maxPostLp = 1;
-                    for (int offset = 0; offset + 3 < rawPcm.Length; offset += 4)
-                    {
-                        short l = System.Buffers.Binary.BinaryPrimitives.ReadInt16LittleEndian(rawPcm.AsSpan(offset, 2));
-                        short r = System.Buffers.Binary.BinaryPrimitives.ReadInt16LittleEndian(rawPcm.AsSpan(offset + 2, 2));
-                        lpL1 += .26 * (l - lpL1); lpL2 += .26 * (lpL1 - lpL2);
-                        lpR1 += .26 * (r - lpR1); lpR2 += .26 * (lpR1 - lpR2);
-                        int sl = (int)Math.Round(lpL2);
-                        int sr = (int)Math.Round(lpR2);
-                        maxPostLp = Math.Max(maxPostLp, Math.Max(Math.Abs(sl), Math.Abs(sr)));
-                        System.Buffers.Binary.BinaryPrimitives.WriteInt16LittleEndian(rawPcm.AsSpan(offset, 2), (short)Math.Clamp(sl, short.MinValue, short.MaxValue));
-                        System.Buffers.Binary.BinaryPrimitives.WriteInt16LittleEndian(rawPcm.AsSpan(offset + 2, 2), (short)Math.Clamp(sr, short.MinValue, short.MaxValue));
-                    }
-                    double normScale = Math.Min(2.8, 22000.0 / maxPostLp);
-                    for (int offset = 0; offset + 1 < rawPcm.Length; offset += 2)
-                    {
-                        short s = System.Buffers.Binary.BinaryPrimitives.ReadInt16LittleEndian(rawPcm.AsSpan(offset, 2));
-                        System.Buffers.Binary.BinaryPrimitives.WriteInt16LittleEndian(rawPcm.AsSpan(offset, 2), (short)Math.Clamp(Math.Round(s * normScale), -28000, 28000));
-                    }
-                    _sfxPcmBytes = rawPcm;
-                }
+                if (_spotlightClickUri == null) return;
+                string path = _spotlightClickUri.LocalPath;
+                if (vn_spotlight_sfx_load(path, path.Length, out _) != 0) return;
             }
 
-            if (_sfxPcmBytes is { Length: > 0 } pcm && _sfxWaveFormat != null)
-            {
-                DisposeSpotlightSfxOutput();
-                _sfxWaveStream = new NAudio.Wave.RawSourceWaveStream(
-                    new System.IO.MemoryStream(pcm, writable: false), _sfxWaveFormat);
-                var gain = new NAudio.Wave.VolumeWaveProvider16(_sfxWaveStream)
-                {
-                    Volume = (float)Math.Clamp(_settings.InteractionSoundVolume * 1.35, 0.0, 1.0)
-                };
-                _sfxWaveOut = new NAudio.Wave.WaveOutEvent { DesiredLatency = 50, NumberOfBuffers = 2 };
-                _sfxWaveOut.Init(gain);
-                _sfxWaveOut.Play();
-            }
+            vn_spotlight_sfx_play((float)Math.Clamp(_settings.InteractionSoundVolume * 1.35, 0.0, 1.0));
         }
         catch
         {
             // Ignore audio playback errors
         }
     }
-
     private void ScheduleFreshEntranceAfterComposition(
         Action startEntrance,
         int generation)

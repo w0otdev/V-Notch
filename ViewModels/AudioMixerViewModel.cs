@@ -55,8 +55,14 @@ public partial class AudioMixerViewModel : ObservableObject
         UpdateIcon(CurrentVolume, IsMuted);
     }
 
-    private void UpdateIcon(float volume, bool muted) => IconText = muted || volume <= 0.01f ? "\uE74F" :
-        volume < 0.33f ? "\uE993" : volume < 0.66f ? "\uE994" : "\uE995";
+    private void UpdateIcon(float volume, bool muted)
+    {
+        vn_audio_mixer_select_icon_glyph(volume, muted ? (byte)1 : (byte)0, out int codepoint);
+        IconText = ((char)codepoint).ToString();
+    }
+
+    [System.Runtime.InteropServices.LibraryImport("VNotch.Native.dll")]
+    private static partial int vn_audio_mixer_select_icon_glyph(float volume, byte muted, out int out_codepoint);
 
     public void CacheSessionVolume(uint processId, float volume)
     {

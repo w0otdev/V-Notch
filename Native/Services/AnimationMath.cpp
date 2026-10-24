@@ -123,4 +123,30 @@ VN_EXPORT int32_t __stdcall vn_progress_spring_step(
     return VN_OK;
 }
 
+VN_EXPORT int32_t __stdcall vn_animation_compute_volume_fill_width(
+    double width, double level, double* out_fill_width) noexcept
+{
+    if (!out_fill_width) return VN_ERR_INVALID_ARG;
+    if (!std::isfinite(width) || !std::isfinite(level)) {
+        *out_fill_width = 0.0;
+        return VN_OK;
+    }
+    *out_fill_width = std::max(0.0, width) * std::clamp(level, 0.0, 1.0);
+    return VN_OK;
+}
+
+VN_EXPORT int32_t __stdcall vn_animation_compute_update_pulse_rgb(
+    double elapsed_ms, uint8_t* out_r, uint8_t* out_g, uint8_t* out_b) noexcept
+{
+    if (!out_r || !out_g || !out_b) return VN_ERR_INVALID_ARG;
+    constexpr double kPeriodMs = 3000.0;
+    double e = std::isfinite(elapsed_ms) && elapsed_ms >= 0.0 ? elapsed_ms : 0.0;
+    double phase = std::fmod(e, kPeriodMs) / kPeriodMs;
+    double mix = 0.5 - (0.5 * std::cos(phase * std::numbers::pi * 2.0));
+    *out_r = static_cast<uint8_t>(std::clamp(std::lround(48.0 + ((255.0 - 48.0) * mix)), 0L, 255L));
+    *out_g = static_cast<uint8_t>(std::clamp(std::lround(209.0 + ((255.0 - 209.0) * mix)), 0L, 255L));
+    *out_b = static_cast<uint8_t>(std::clamp(std::lround(88.0 + ((255.0 - 88.0) * mix)), 0L, 255L));
+    return VN_OK;
+}
+
 } // extern "C"

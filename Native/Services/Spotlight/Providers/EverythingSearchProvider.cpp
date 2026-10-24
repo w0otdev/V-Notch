@@ -40,13 +40,13 @@ public:
                vn_equals_icase_ascii(ext, u".lnk");
     }
 
-    // SpotlightResultKind: Application=0, File=3, Folder=4
+    // SpotlightResultKind: Application=0, File=1, Folder=2
     [[nodiscard]] static constexpr int32_t ClassifyItemKind(
         bool is_folder,
         std::u16string_view ext) noexcept {
-        if (is_folder) return 4;
+        if (is_folder) return 2;
         if (IsExecutableExtension(ext)) return 0;
-        return 3;
+        return 1;
     }
 
     [[nodiscard]] static constexpr double ComputeFinalScore(

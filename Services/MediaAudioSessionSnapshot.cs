@@ -1,4 +1,4 @@
-using NAudio.CoreAudioApi;
+using System.Runtime.InteropServices;
 
 namespace VNotch.Services;
 
@@ -22,48 +22,115 @@ internal sealed class MediaAudioSessions(IReadOnlyList<MediaAudioSessionSnapshot
     public void Dispose() => dispose?.Invoke();
 }
 
-internal static class WindowsMediaAudioSessions
+// Session enumeration, peak meters and per-session volume live in Native/Services/AudioSessions.cpp.
+internal static unsafe partial class WindowsMediaAudioSessions
 {
+    private const string NativeDll = "VNotch.Native.dll";
+    private const int EFail = unchecked((int)0x80004005);
+    private const int NativeBufferTooSmall = -2;
+
+    [LibraryImport(NativeDll, EntryPoint = "vn_audio_sessions_open")]
+    internal static partial int NativeOpen(out long snapshot, out int count, out int hresult);
+
+    [LibraryImport(NativeDll, EntryPoint = "vn_audio_sessions_close")]
+    internal static partial int NativeClose(long snapshot);
+
+    [LibraryImport(NativeDll, EntryPoint = "vn_audio_session_get_info")]
+    internal static partial int NativeGetInfo(long snapshot, int index, out uint processId, out byte isSystemSounds);
+
+    [LibraryImport(NativeDll, EntryPoint = "vn_audio_session_get_string")]
+    private static partial int NativeGetString(long snapshot, int index, int kind, char* buffer, int capacity, out int length);
+
+    [LibraryImport(NativeDll, EntryPoint = "vn_audio_session_read_peak")]
+    private static partial int NativeReadPeak(long snapshot, int index, out float peak);
+
+    [LibraryImport(NativeDll, EntryPoint = "vn_audio_session_open_volume")]
+    internal static partial int NativeOpenVolume(long snapshot, int index, out long volume);
+
+    [LibraryImport(NativeDll, EntryPoint = "vn_audio_volume_get")]
+    internal static partial int NativeVolumeGet(long volume, out float scalar, out byte muted, out int hresult);
+
+    [LibraryImport(NativeDll, EntryPoint = "vn_audio_volume_set_volume")]
+    private static partial int NativeVolumeSet(long volume, float scalar, out int hresult);
+
+    [LibraryImport(NativeDll, EntryPoint = "vn_audio_volume_set_mute")]
+    private static partial int NativeVolumeSetMute(long volume, byte muted, out int hresult);
+
+    [LibraryImport(NativeDll, EntryPoint = "vn_audio_volume_close")]
+    internal static partial int NativeVolumeClose(long volume);
+
     internal static MediaAudioSessions Read()
     {
-        var enumerator = new MMDeviceEnumerator();
-        MMDevice? device = null;
-        var controls = new List<AudioSessionControl>();
+        if (NativeOpen(out long snapshot, out int count, out int hresult) != 0)
+            Marshal.ThrowExceptionForHR(hresult < 0 ? hresult : EFail);
+
         try
         {
-            device = enumerator.GetDefaultAudioEndpoint(DataFlow.Render, Role.Multimedia);
-            var snapshots = new List<MediaAudioSessionSnapshot>();
-            var sessions = device.AudioSessionManager.Sessions;
-            for (int i = 0; i < sessions.Count; i++)
+            var snapshots = new List<MediaAudioSessionSnapshot>(count);
+            for (int i = 0; i < count; i++)
             {
-                var control = sessions[i];
-                if (control == null) continue;
-                controls.Add(control);
-                snapshots.Add(new(control.GetProcessID, control.DisplayName, control.GetSessionIdentifier,
-                    control.GetSessionInstanceIdentifier, control.IsSystemSoundsSession,
-                    () => control.AudioMeterInformation.MasterPeakValue,
-                    () => new VolumeLease(control.SimpleAudioVolume)));
+                int index = i;
+                if (NativeGetInfo(snapshot, index, out uint processId, out byte isSystemSounds) != 0) continue;
+                snapshots.Add(new(processId, ReadString(snapshot, index, 0), ReadString(snapshot, index, 1),
+                    ReadString(snapshot, index, 2), isSystemSounds != 0,
+                    () => NativeReadPeak(snapshot, index, out float peak) == 0 ? peak : 0f,
+                    () => OpenVolume(snapshot, index)));
             }
-            return new MediaAudioSessions(snapshots, () =>
-            {
-                foreach (var control in controls) control.Dispose();
-                device.Dispose();
-                enumerator.Dispose();
-            });
+
+            return new MediaAudioSessions(snapshots, () => NativeClose(snapshot));
         }
         catch
         {
-            foreach (var control in controls) control.Dispose();
-            device?.Dispose();
-            enumerator.Dispose();
+            NativeClose(snapshot);
             throw;
         }
     }
 
-    private sealed class VolumeLease(SimpleAudioVolume volume) : IMediaAudioVolume
+    internal static string ReadString(long snapshot, int index, int kind)
     {
-        public float Volume { get => volume.Volume; set => volume.Volume = value; }
-        public bool Mute { get => volume.Mute; set => volume.Mute = value; }
-        public void Dispose() => volume.Dispose();
+        char* stack = stackalloc char[512];
+        int status = NativeGetString(snapshot, index, kind, stack, 512, out int length);
+        if (status == 0) return new string(stack, 0, length);
+        if (status != NativeBufferTooSmall || length <= 0 || length > 1 << 16) return string.Empty;
+        char[] heap = new char[length];
+        fixed (char* pinned = heap)
+            return NativeGetString(snapshot, index, kind, pinned, length, out int written) == 0 ? new string(pinned, 0, written) : string.Empty;
+    }
+
+    private static IMediaAudioVolume OpenVolume(long snapshot, int index)
+    {
+        if (NativeOpenVolume(snapshot, index, out long volume) != 0) throw new InvalidOperationException("The audio session has no volume control.");
+        return new VolumeLease(volume);
+    }
+
+    private sealed class VolumeLease(long handle) : IMediaAudioVolume
+    {
+        public float Volume
+        {
+            get
+            {
+                if (NativeVolumeGet(handle, out float scalar, out _, out int hr) != 0) Marshal.ThrowExceptionForHR(hr);
+                return scalar;
+            }
+            set
+            {
+                if (NativeVolumeSet(handle, value, out int hr) != 0) Marshal.ThrowExceptionForHR(hr);
+            }
+        }
+
+        public bool Mute
+        {
+            get
+            {
+                if (NativeVolumeGet(handle, out _, out byte muted, out int hr) != 0) Marshal.ThrowExceptionForHR(hr);
+                return muted != 0;
+            }
+            set
+            {
+                if (NativeVolumeSetMute(handle, value ? (byte)1 : (byte)0, out int hr) != 0) Marshal.ThrowExceptionForHR(hr);
+            }
+        }
+
+        public void Dispose() => NativeVolumeClose(handle);
     }
 }

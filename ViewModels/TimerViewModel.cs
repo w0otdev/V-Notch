@@ -1,15 +1,12 @@
-using System.Text.RegularExpressions;
+using System;
+using System.Runtime.InteropServices;
 using CommunityToolkit.Mvvm.ComponentModel;
 
 namespace VNotch.ViewModels;
 
 public partial class TimerViewModel : ObservableObject
 {
-    private static readonly TimeSpan Minimum = TimeSpan.FromMinutes(1);
     private static readonly TimeSpan Maximum = TimeSpan.FromDays(7);
-
-    [GeneratedRegex(@"(\d+(?:\.\d+)?)\s*([hmsd])", RegexOptions.IgnoreCase)]
-    private static partial Regex UnitTimeRegex();
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(Progress))]
@@ -25,8 +22,14 @@ public partial class TimerViewModel : ObservableObject
     private string _displayText = Format(TimeSpan.FromMinutes(25));
     public string DisplayText => _displayText;
 
-    public double Progress => Duration <= TimeSpan.Zero ? 0 :
-        1 - Math.Clamp(Remaining.TotalMilliseconds / Duration.TotalMilliseconds, 0, 1);
+    public double Progress
+    {
+        get
+        {
+            vn_timer_compute_progress(Duration.Ticks, Remaining.Ticks, out double progress);
+            return progress;
+        }
+    }
 
     partial void OnDurationChanged(TimeSpan value) => UpdateDisplayText();
 
@@ -69,11 +72,9 @@ public partial class TimerViewModel : ObservableObject
     public bool Adjust(int direction)
     {
         if (IsRunning || direction == 0) return false;
-        var step = Duration.TotalDays >= 1 ? TimeSpan.FromHours(1) :
-            Duration.TotalHours >= 1 ? TimeSpan.FromMinutes(5) : TimeSpan.FromMinutes(1);
-        var next = Duration + (direction > 0 ? step : -step);
-        next = TimeSpan.FromTicks(Math.Clamp(next.Ticks, Minimum.Ticks, Maximum.Ticks));
-        if (next == Duration) return false;
+        vn_timer_compute_adjust_ticks(Duration.Ticks, direction, out long nextTicks, out byte changed);
+        if (changed == 0) return false;
+        var next = TimeSpan.FromTicks(nextTicks);
         Duration = next;
         Remaining = next;
         return true;
@@ -88,90 +89,39 @@ public partial class TimerViewModel : ObservableObject
         return true;
     }
 
-    public bool TryParseCustomTime(string? input, out TimeSpan result)
+    public unsafe bool TryParseCustomTime(string? input, out TimeSpan result)
     {
         result = TimeSpan.Zero;
         if (string.IsNullOrWhiteSpace(input)) return false;
-        string s = input.Trim();
-
-        if (s.Contains(':'))
+        fixed (char* ptr = input)
         {
-            string[] parts = s.Split(':');
-            if (parts.Length == 2 && int.TryParse(parts[0], out int mins) && int.TryParse(parts[1], out int secs))
-            {
-                if (mins >= 0 && secs >= 0 && secs < 60)
-                {
-                    return TryFromSeconds((double)mins * 60 + secs, out result);
-                }
-            }
-            else if (parts.Length == 3 && int.TryParse(parts[0], out int hrs) && int.TryParse(parts[1], out int m) && int.TryParse(parts[2], out int sec))
-            {
-                if (hrs >= 0 && m >= 0 && m < 60 && sec >= 0 && sec < 60)
-                {
-                    return TryFromSeconds((double)hrs * 3600 + (double)m * 60 + sec, out result);
-                }
-            }
-
-            if (TimeSpan.TryParse(s, out TimeSpan ts) && ts > TimeSpan.Zero)
-            {
-                result = ts;
-                return true;
-            }
+            vn_timer_parse_custom_time(ptr, input.Length, out long ticks, out byte valid);
+            if (valid == 0 || ticks <= 0) return false;
+            result = TimeSpan.FromTicks(ticks);
+            return true;
         }
-
-        if (double.TryParse(s, System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out double num))
-        {
-            return TryFromSeconds(num * 60, out result);
-        }
-
-        try
-        {
-            double totalSeconds = 0;
-            var matches = UnitTimeRegex().Matches(s);
-            if (matches.Count > 0)
-            {
-                foreach (Match match in matches)
-                {
-                    double val = double.Parse(match.Groups[1].Value, System.Globalization.CultureInfo.InvariantCulture);
-                    char unit = char.ToLowerInvariant(match.Groups[2].Value[0]);
-                    switch (unit)
-                    {
-                        case 's': totalSeconds += val; break;
-                        case 'm': totalSeconds += val * 60; break;
-                        case 'h': totalSeconds += val * 3600; break;
-                        case 'd': totalSeconds += val * 86400; break;
-                    }
-                }
-                return TryFromSeconds(totalSeconds, out result);
-            }
-        }
-        catch { }
-
-        return false;
     }
 
-    // Rejects NaN, infinities, non-positive values and anything TimeSpan cannot represent.
-    private static bool TryFromSeconds(double totalSeconds, out TimeSpan result)
+    private static unsafe string Format(TimeSpan value)
     {
-        result = TimeSpan.Zero;
-        if (!double.IsFinite(totalSeconds) || totalSeconds <= 0) return false;
-        if (totalSeconds >= TimeSpan.MaxValue.TotalSeconds) return false;
-        try
-        {
-            result = TimeSpan.FromSeconds(totalSeconds);
-        }
-        catch (OverflowException)
-        {
-            result = TimeSpan.Zero;
-            return false;
-        }
-        return result > TimeSpan.Zero;
+        char* buf = stackalloc char[32];
+        vn_timer_format_remaining(value.Ticks, buf, 32, out int len);
+        return len > 0 ? new string(buf, 0, len) : "00:00";
     }
 
-    private static string Format(TimeSpan value)
-    {
-        if (value.TotalDays >= 1) return $"{(int)value.TotalDays}d {value.Hours:D2}h";
-        if (value.TotalHours >= 1) return $"{(int)value.TotalHours:D2}:{value.Minutes:D2}:{value.Seconds:D2}";
-        return $"{(int)value.TotalMinutes:D2}:{value.Seconds:D2}";
-    }
+    [LibraryImport("VNotch.Native.dll")]
+    private static unsafe partial int vn_timer_parse_custom_time(
+        char* input, int input_len, out long out_ticks, out byte out_valid);
+
+    [LibraryImport("VNotch.Native.dll")]
+    private static unsafe partial int vn_timer_format_remaining(
+        long remaining_ticks, char* out_buf, int buf_cap, out int out_len);
+
+    [LibraryImport("VNotch.Native.dll")]
+    private static partial int vn_timer_compute_adjust_ticks(
+        long current_duration_ticks, int direction, out long out_next_ticks, out byte out_changed);
+
+    [LibraryImport("VNotch.Native.dll")]
+    private static partial int vn_timer_compute_progress(
+        long duration_ticks, long remaining_ticks, out double out_progress);
 }

@@ -329,4 +329,16 @@ VN_EXPORT int32_t vn_mediaactivator_score_window(
     }
 }
 
+VN_EXPORT int32_t vn_mediaactivator_score_window_platform(
+    const char16_t* title, int32_t title_len,
+    int32_t platform,
+    int32_t* out_score) noexcept
+{
+    if (!out_score) return VN_ERR_INVALID_ARG;
+    *out_score = vnotch::services::MediaWindowActivator::ScoreWindowPlatform(
+        vnotch::make_u16_view(title, title_len),
+        static_cast<vnotch::VnMediaPlatform>(platform));
+    return VN_OK;
+}
+
 } // extern "C"

@@ -96,6 +96,12 @@ internal static partial class MediaWindowActivator
         byte isPipTitle,
         out int outScore);
 
+    [LibraryImport("VNotch.Native.dll")]
+    private static partial int vn_mediaactivator_score_window_platform(
+        ReadOnlySpan<ushort> title, int titleLen,
+        int platform,
+        out int outScore);
+
     public static bool TryActivateForMedia(MediaInfo info)
     {
         if (info.IsPictureInPicture || info.IsVideoSource)
@@ -619,6 +625,13 @@ internal static partial class MediaWindowActivator
             info.IsVideoSource ? (byte)1 : (byte)0,
             PipDetector.IsPipTitle(title ?? string.Empty) ? (byte)1 : (byte)0,
             out int score);
+        return score;
+    }
+
+    private static int ScoreWindowPlatform(string title, MediaPlatform platform)
+    {
+        ReadOnlySpan<ushort> t = MemoryMarshal.Cast<char, ushort>(title != null ? title.AsSpan() : ReadOnlySpan<char>.Empty);
+        vn_mediaactivator_score_window_platform(t, t.Length, (int)platform, out int score);
         return score;
     }
 

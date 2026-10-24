@@ -1,6 +1,5 @@
 using System;
 using System.Runtime.InteropServices;
-using NAudio.Dsp;
 
 namespace VNotch.Services;
 
@@ -26,7 +25,7 @@ internal sealed partial class VisualizerSpectrumBands
 
     [LibraryImport("VNotch.Native.dll")]
     private static unsafe partial int vn_visualizer_spectrum_compute(
-        Complex* fft,
+        SpectrumComplex* fft,
         int fftLength,
         int* starts,
         int* ends,
@@ -54,7 +53,7 @@ internal sealed partial class VisualizerSpectrumBands
         _powers = new double[fftLength / 2];
     }
 
-    internal unsafe ReadOnlySpan<double> Compute(Complex[] fft, int sampleRate)
+    internal unsafe ReadOnlySpan<double> Compute(SpectrumComplex[] fft, int sampleRate)
     {
         if (fft.Length < _fftLength) throw new ArgumentException("Incomplete FFT frame", nameof(fft));
         if (sampleRate <= 0 || _powers.Length <= 2)
@@ -64,7 +63,7 @@ internal sealed partial class VisualizerSpectrumBands
         }
         if (_sampleRate != sampleRate) UpdateRanges(sampleRate);
 
-        fixed (Complex* pFft = fft)
+        fixed (SpectrumComplex* pFft = fft)
         fixed (int* pStarts = _starts, pEnds = _ends)
         fixed (double* pPowers = _powers, pEnergies = _energies)
         {

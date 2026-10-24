@@ -1,17 +1,11 @@
 using System;
+using System.Runtime.InteropServices;
 using System.Windows;
 
 namespace VNotch.Controllers;
 
-public sealed class GestureController
+public sealed partial class GestureController
 {
-    private const double HorizontalSwipeThreshold = 40.0;
-    private const double VerticalSwipeThreshold = 35.0;
-    private const double DirectionLockRatio = 1.6;
-    private const int DoubleTapMaxMs = 350;
-    private const int SwipeCooldownMs = 400;
-    private const double DeadZone = 4.0;
-
     private bool _isTracking;
     private Point _startPoint;
     private double _accumulatedX;
@@ -38,41 +32,32 @@ public sealed class GestureController
     {
         if (!_isTracking || _gestureTriggered) return false;
 
-        double deltaX = currentPosition.X - _startPoint.X;
-        double deltaY = currentPosition.Y - _startPoint.Y;
+        double elapsedMs = (DateTime.UtcNow - _lastSwipeTime).TotalMilliseconds;
+        vn_gesture_evaluate_move(
+            _startPoint.X, _startPoint.Y,
+            currentPosition.X, currentPosition.Y,
+            elapsedMs,
+            out _accumulatedX, out _accumulatedY,
+            out int gestureKind);
 
-        _accumulatedX = deltaX;
-        _accumulatedY = deltaY;
+        if (gestureKind == 0) return false;
 
-        double absX = Math.Abs(_accumulatedX);
-        double absY = Math.Abs(_accumulatedY);
+        _gestureTriggered = true;
+        _lastSwipeTime = DateTime.UtcNow;
 
-        if (absX < DeadZone && absY < DeadZone) return false;
-
-        if ((DateTime.UtcNow - _lastSwipeTime).TotalMilliseconds < SwipeCooldownMs) return false;
-
-        if (absX >= HorizontalSwipeThreshold && absX > absY * DirectionLockRatio)
+        switch (gestureKind)
         {
-            _gestureTriggered = true;
-            _lastSwipeTime = DateTime.UtcNow;
-
-            if (_accumulatedX < 0)
+            case 1:
                 SwipeLeft?.Invoke();
-            else
+                break;
+            case 2:
                 SwipeRight?.Invoke();
-
-            return true;
+                break;
+            case 3:
+                SwipeDown?.Invoke();
+                break;
         }
-
-        if (absY >= VerticalSwipeThreshold && _accumulatedY > 0 && absY > absX * DirectionLockRatio)
-        {
-            _gestureTriggered = true;
-            _lastSwipeTime = DateTime.UtcNow;
-            SwipeDown?.Invoke();
-            return true;
-        }
-
-        return false;
+        return true;
     }
 
     public bool EndTracking(Point position)
@@ -82,11 +67,17 @@ public sealed class GestureController
 
         if (_gestureTriggered) return false;
 
-        double totalMovement = Math.Abs(position.X - _startPoint.X) + Math.Abs(position.Y - _startPoint.Y);
-        if (totalMovement < DeadZone * 2)
+        var now = DateTime.UtcNow;
+        double elapsedTapMs = (now - _lastTapTime).TotalMilliseconds;
+        vn_gesture_evaluate_end(
+            _startPoint.X, _startPoint.Y,
+            position.X, position.Y,
+            elapsedTapMs,
+            out byte isTap, out byte isDoubleTap);
+
+        if (isTap != 0)
         {
-            var now = DateTime.UtcNow;
-            if ((now - _lastTapTime).TotalMilliseconds <= DoubleTapMaxMs)
+            if (isDoubleTap != 0)
             {
                 _lastTapTime = DateTime.MinValue;
                 DoubleTap?.Invoke();
@@ -113,4 +104,25 @@ public sealed class GestureController
     public double AccumulatedX => _accumulatedX;
 
     public double AccumulatedY => _accumulatedY;
+
+    [LibraryImport("VNotch.Native.dll")]
+    private static partial int vn_gesture_evaluate_move(
+        double start_x,
+        double start_y,
+        double current_x,
+        double current_y,
+        double elapsed_since_last_swipe_ms,
+        out double out_delta_x,
+        out double out_delta_y,
+        out int out_gesture_kind);
+
+    [LibraryImport("VNotch.Native.dll")]
+    private static partial int vn_gesture_evaluate_end(
+        double start_x,
+        double start_y,
+        double end_x,
+        double end_y,
+        double elapsed_since_last_tap_ms,
+        out byte out_is_tap,
+        out byte out_is_double_tap);
 }

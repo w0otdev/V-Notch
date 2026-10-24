@@ -15,7 +15,7 @@ public interface ISpotlightController : IDisposable
     void ApplySettings(NotchSettings settings);
 }
 
-internal sealed class SpotlightController : ISpotlightController
+internal sealed partial class SpotlightController : ISpotlightController
 {
     private const string LogTag = "SPOTLIGHT-HOTKEY";
     private const int HotkeyId = 0x564E;
@@ -132,16 +132,40 @@ internal sealed class SpotlightController : ISpotlightController
         return IntPtr.Zero;
     }
 
-    internal static bool IsAltSpaceKey(uint vkCode, uint flags) =>
-        vkCode == VK_SPACE && (flags & LLKHF_ALTDOWN) != 0;
+    internal static bool IsAltSpaceKey(uint vkCode, uint flags)
+    {
+        vn_spotlight_is_alt_space_key(vkCode, flags, out byte match);
+        return match != 0;
+    }
 
-    internal static bool IsEscapeKey(uint vkCode) => vkCode == EscapeVirtualKey;
+    internal static bool IsEscapeKey(uint vkCode)
+    {
+        vn_spotlight_is_escape_key(vkCode, out byte match);
+        return match != 0;
+    }
 
     internal static bool ShouldDispatchFallbackToggle(
         bool spaceIsAlreadyDown,
         uint lastSpaceEventTime,
-        uint currentTime) =>
-        !spaceIsAlreadyDown || unchecked(currentTime - lastSpaceEventTime) > StaleFallbackKeyDownMs;
+        uint currentTime)
+    {
+        vn_spotlight_should_dispatch_fallback_toggle(
+            spaceIsAlreadyDown ? (byte)1 : (byte)0,
+            lastSpaceEventTime,
+            currentTime,
+            out byte dispatch);
+        return dispatch != 0;
+    }
+
+    [LibraryImport("VNotch.Native.dll")]
+    private static partial int vn_spotlight_is_alt_space_key(uint vk_code, uint flags, out byte out_match);
+
+    [LibraryImport("VNotch.Native.dll")]
+    private static partial int vn_spotlight_is_escape_key(uint vk_code, out byte out_match);
+
+    [LibraryImport("VNotch.Native.dll")]
+    private static partial int vn_spotlight_should_dispatch_fallback_toggle(
+        byte space_already_down, uint last_space_time, uint current_time, out byte out_dispatch);
 
     private bool EnsureKeyboardHook()
     {

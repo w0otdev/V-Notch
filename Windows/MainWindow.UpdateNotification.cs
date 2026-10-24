@@ -20,6 +20,11 @@ public partial class MainWindow
     private const string LocKeyUpdateReady = "update.readyToUpdate";
     private const string LocKeyUpdateVersion = "update.version";
     private const string LocKeyUpdateClickToInstall = "update.clickToInstall";
+    private UiScheduledTimer? _updatePulseTimer;
+    private DateTime _updatePulseStartedAtUtc;
+
+    [System.Runtime.InteropServices.LibraryImport("VNotch.Native.dll")]
+    private static partial int vn_animation_compute_update_pulse_rgb(double elapsedMs, out byte outR, out byte outG, out byte outB);
 
     private async void UpdateCheckTimer_Tick(object? sender, EventArgs e)
     {
@@ -227,6 +232,13 @@ public partial class MainWindow
         UpdateIconBrush.BeginAnimation(SolidColorBrush.ColorProperty, null);
         UpdateIconBrush.Color = Color.FromRgb(48, 209, 88);
 
+        if (_updatePulseTimer == null)
+        {
+            _updatePulseTimer = new UiScheduledTimer(DispatcherPriority.Render) { Interval = TimeSpan.FromMilliseconds(33) };
+            _updatePulseTimer.Tick += UpdatePulseTimer_Tick;
+        }
+        _updatePulseStartedAtUtc = DateTime.UtcNow;
+        _updatePulseTimer.Start();
         var pulseAnim = new ColorAnimation(Color.FromRgb(48, 209, 88), Colors.White, TimeSpan.FromMilliseconds(1500))
         {
             AutoReverse = true,
@@ -234,10 +246,32 @@ public partial class MainWindow
             EasingFunction = _easeSineInOut
         };
         Timeline.SetDesiredFrameRate(pulseAnim, VNotch.Services.AnimationConfig.TargetFps);
-        UpdateIconBrush.BeginAnimation(SolidColorBrush.ColorProperty, pulseAnim);
+        _ = pulseAnim;
     }
 
-    private void StopUpdatePulseAnimation()
+    private void UpdatePulseTimer_Tick(object? sender, EventArgs e)
+    {
+        if (UpdateIconBrush == null) return;
+        if (!_isUpdateAvailable || UpdateNotificationButton.Visibility != Visibility.Visible)
+        {
+            StopUpdatePulseAnimation();
+            return;
+        }
+        double elapsedMs = (DateTime.UtcNow - _updatePulseStartedAtUtc).TotalMilliseconds;
+        if (vn_animation_compute_update_pulse_rgb(elapsedMs, out byte r, out byte g, out byte b) == 0)
+        {
+            UpdateIconBrush.Color = Color.FromRgb(r, g, b);
+        }
+    }
+
+    private void StopUpdatePulseAnimation() => StopUpdatePulseAnimationCore();
+    private void StopUpdatePulseAnimationCore()
+    {
+        _updatePulseTimer?.Stop();
+        _updatePulseTimer?.Stop();
+        if (UpdateIconBrush != null) { UpdateIconBrush.BeginAnimation(SolidColorBrush.ColorProperty, null); UpdateIconBrush.Color = Color.FromRgb(48, 209, 88); }
+    }
+    private void UnusedUpdatePulseCleanup()
     {
         if (UpdateIconBrush != null)
         {

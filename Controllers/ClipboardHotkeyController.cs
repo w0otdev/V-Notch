@@ -1,3 +1,4 @@
+using System.Runtime.InteropServices;
 using System.Windows;
 using System.Windows.Input;
 using System.Windows.Interop;
@@ -5,7 +6,7 @@ using VNotch.Services;
 
 namespace VNotch.Controllers;
 
-internal sealed class ClipboardHotkeyController : IDisposable
+internal sealed partial class ClipboardHotkeyController : IDisposable
 {
     private const int HotkeyId = 0x564F;
     private readonly Window _host;
@@ -15,22 +16,6 @@ internal sealed class ClipboardHotkeyController : IDisposable
     private bool _disposed;
     internal string? RegistrationError { get; private set; }
 
-    /// <summary>
-    /// Hotkey combinations permanently reserved by Windows shell that RegisterHotKey will silently
-    /// fail on. Format: (modifiers_flags, vk). MOD_WIN=8, MOD_SHIFT=4, MOD_CTRL=2, MOD_ALT=1.
-    /// Checking these before calling the API lets us show a meaningful message to the user.
-    /// </summary>
-    private static readonly HashSet<(uint Mods, uint Vk)> OsReservedHotkeys =
-    [
-        // Win+V — Windows Clipboard History (Windows 10 1809+)
-        (8, 0x56),
-        // Win+Shift+S — Snipping Tool
-        (8 | 4, 0x53),
-        // Win+Tab — Task View
-        (8, 0x09),
-        // Win+PrintScreen — Screenshot to Pictures
-        (8, 0x2C),
-    ];
     internal ClipboardHotkeyController(Window host, Action toggle)
     {
         _host = host; _toggle = toggle;
@@ -54,9 +39,8 @@ internal sealed class ClipboardHotkeyController : IDisposable
         RegistrationError = null;
         if (string.IsNullOrWhiteSpace(gesture)) return;
         if (!TryParse(gesture, out uint modifiers, out uint key)) { RegistrationError = Loc.Get("clipboard.invalidHotkey"); return; }
-        // Guard against OS-reserved hotkeys before RegisterHotKey silently returns false.
-        // The 0x4000 (MOD_NOREPEAT) flag is not part of the reserved-key identity, strip it for lookup.
-        if (OsReservedHotkeys.Contains((modifiers, key)))
+        vn_hotkey_is_os_reserved(modifiers, key, out byte reserved);
+        if (reserved != 0)
         {
             RegistrationError = Loc.Get("clipboard.hotkeyOsReserved");
             return;
@@ -64,21 +48,22 @@ internal sealed class ClipboardHotkeyController : IDisposable
         if (!Win32Interop.RegisterHotKey(_source.Handle, HotkeyId, modifiers | 0x4000, key))
             RegistrationError = Loc.Get("clipboard.hotkeyConflict");
     }
-    internal static bool TryParse(string value, out uint modifiers, out uint key)
+    internal static unsafe bool TryParse(string value, out uint modifiers, out uint key)
     {
         modifiers = 0; key = 0;
-        var parts = value.Split('+', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries);
-        if (parts.Length < 2) return false;
-        foreach (string part in parts[..^1])
+        if (string.IsNullOrWhiteSpace(value)) return false;
+        fixed (char* ptr = value)
         {
-            uint flag = part.ToLowerInvariant() switch { "ctrl" or "control" => 2, "shift" => 4, "alt" => 1, "win" => 8, _ => 0 };
-            if (flag == 0 || (modifiers & flag) != 0) return false;
-            modifiers |= flag;
+            vn_hotkey_parse_modifiers(ptr, value.Length, out uint mods, out int keyStart, out int keyLen, out byte valid);
+            if (valid == 0 || keyLen <= 0) return false;
+            ReadOnlySpan<char> keyToken = value.AsSpan(keyStart, keyLen);
+            if (!Enum.TryParse<Key>(keyToken, true, out var parsed) || parsed == Key.None)
+                return false;
+            key = (uint)KeyInterop.VirtualKeyFromKey(parsed);
+            if (key == 0) return false;
+            modifiers = mods;
+            return true;
         }
-        if (!Enum.TryParse<Key>(parts[^1], true, out var parsed) || parsed == Key.None)
-            return false;
-        key = (uint)KeyInterop.VirtualKeyFromKey(parsed);
-        return key != 0 && (modifiers & (1 | 2 | 8)) != 0;
     }
     private IntPtr WndProc(IntPtr hwnd, int message, IntPtr wParam, IntPtr lParam, ref bool handled)
     {
@@ -98,4 +83,11 @@ internal sealed class ClipboardHotkeyController : IDisposable
         _source = null;
         RegistrationError = null;
     }
+
+    [LibraryImport("VNotch.Native.dll")]
+    private static unsafe partial int vn_hotkey_parse_modifiers(
+        char* text, int text_len, out uint out_modifiers, out int out_key_start, out int out_key_len, out byte out_valid);
+
+    [LibraryImport("VNotch.Native.dll")]
+    private static partial int vn_hotkey_is_os_reserved(uint modifiers, uint vk, out byte out_reserved);
 }

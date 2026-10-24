@@ -752,6 +752,7 @@
                                     <Border.Width>
                                         <MultiBinding Converter="{StaticResource VolumeFillWidth}">
                                             <Binding ElementName="VolumeIndicatorContainer" Path="ActualWidth"/>
+                                            <Binding RelativeSource="{RelativeSource Self}"/>
                                             <Binding RelativeSource="{RelativeSource Self}" Path="Tag.ScaleX"/>
                                         </MultiBinding>
                                     </Border.Width>
@@ -1863,6 +1864,7 @@
                                                             <Border.Width>
                                                                 <MultiBinding Converter="{StaticResource VolumeFillWidth}">
                                                                     <Binding ElementName="VolumeBarContainer" Path="ActualWidth"/>
+                                                                    <Binding RelativeSource="{RelativeSource Self}"/>
                                                                     <Binding RelativeSource="{RelativeSource Self}" Path="Tag.ScaleX"/>
                                                                 </MultiBinding>
                                                             </Border.Width>

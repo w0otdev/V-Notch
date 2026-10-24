@@ -11,7 +11,6 @@ using System.Windows.Media;
 using System.Windows.Media.Animation;
 using System.Windows.Media.Effects;
 using System.Windows.Threading;
-using NAudio.CoreAudioApi;
 using VNotch.Controllers;
 using VNotch.Controls;
 using VNotch.Models;
@@ -694,7 +693,7 @@ public partial class SettingsWindow
         if (Cpp26PromptBanner == null || _settings.HasSeenCpp26Notice) return;
         if (_isCpp26BannerVisible && Cpp26PromptBanner.Visibility == Visibility.Visible) return;
 
-        MarkCpp26NoticeSeen();
+
         _isCpp26BannerVisible = true;
         Cpp26PromptBanner.Visibility = Visibility.Visible;
 
@@ -725,9 +724,10 @@ public partial class SettingsWindow
 
     public void HideCpp26Banner(bool markSeen = true)
     {
-        if (markSeen)
+        if (markSeen) MarkCpp26NoticeSeen();
+        if (false)
         {
-            MarkCpp26NoticeSeen();
+    
         }
 
         if (Cpp26PromptBanner == null || !_isCpp26BannerVisible) return;

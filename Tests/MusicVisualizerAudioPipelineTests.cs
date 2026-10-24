@@ -21,7 +21,7 @@ public sealed class MusicVisualizerAudioPipelineTests
     {
         var format = WaveFormat.CreateIeeeFloatWaveFormat(44100, 2);
         byte[] pcm = Tone(frequency, .5f, 32768, 2);
-        MusicVisualizer.ProcessAudioBuffer(pcm, pcm.Length, format);
+        Process(pcm, pcm.Length, format);
         float[] first = Get<float[]>("_publishedTargets").ToArray();
         Assert.Contains(first, value => value > .05f);
         Assert.All(first, value => Assert.InRange(value, 0, 1));
@@ -31,7 +31,7 @@ public sealed class MusicVisualizerAudioPipelineTests
         Invoke("ResetAudioState");
         Assert.All(Get<float[]>("_publishedTargets"), value => Assert.Equal(0, value));
         Assert.Equal(0, Get<long>("_publishedFrameTicks"));
-        MusicVisualizer.ProcessAudioBuffer(new byte[pcm.Length], pcm.Length, format);
+        Process(new byte[pcm.Length], pcm.Length, format);
         Assert.All(Get<float[]>("_publishedTargets"), value => Assert.Equal(0, value));
     }));
 
@@ -40,12 +40,12 @@ public sealed class MusicVisualizerAudioPipelineTests
     {
         var format = WaveFormat.CreateIeeeFloatWaveFormat(44100, 2);
         byte[] pcm = Tone(1000, .5f, 8192, 2, invertRight: true);
-        MusicVisualizer.ProcessAudioBuffer(pcm, pcm.Length + 100, format);
+        Process(pcm, pcm.Length + 100, format);
         Assert.All(Get<float[]>("_publishedTargets"), value => Assert.Equal(0, value));
         int position = Get<int>("_fftInputPos");
-        MusicVisualizer.ProcessAudioBuffer(new byte[7], 7, format);
+        Process(new byte[7], 7, format);
         Assert.Equal(position, Get<int>("_fftInputPos"));
-        MusicVisualizer.ProcessAudioBuffer(pcm, -10, format);
+        Process(pcm, -10, format);
         Assert.Equal(position, Get<int>("_fftInputPos"));
     }));
 
@@ -70,12 +70,12 @@ public sealed class MusicVisualizerAudioPipelineTests
                 32 => BitConverter.GetBytes((int)(sample * 2147483648d)),
                 _ => BitConverter.GetBytes((double)sample)
             };
-            Assert.Equal(sample, (float)Invoke("ReadSampleAsFloat", bytes, 0, format)!, 5);
+            Assert.Equal(sample, (float)Invoke("ReadSampleAsFloat", bytes, 0, floating, bits)!, 5);
         }
         if (bits == 32 && floating)
         {
             var extensible = new WaveFormatExtensible(44100, 32, 1);
-            Assert.Equal(.5f, (float)Invoke("ReadSampleAsFloat", BitConverter.GetBytes(.5f), 0, extensible)!, 5);
+            Assert.Equal(.5f, (float)Invoke("ReadSampleAsFloat", BitConverter.GetBytes(.5f), 0, true, 32)!, 5);
         }
     });
 
@@ -84,7 +84,7 @@ public sealed class MusicVisualizerAudioPipelineTests
     {
         var format = WaveFormat.CreateIeeeFloatWaveFormat(44100, 1);
         byte[] pcm = Tone(1000, .4f, 8192, 1);
-        MusicVisualizer.ProcessAudioBuffer(pcm, pcm.Length, format);
+        Process(pcm, pcm.Length, format);
         var visualizer = new MusicVisualizer { TrackId = "Fixture track" };
         object?[] freshness = [false, 0d];
         float[] levels = (float[])typeof(MusicVisualizer).GetMethod("GetLatestDisplayLevels", BindingFlags.Instance | BindingFlags.NonPublic)!.Invoke(visualizer, freshness)!;
@@ -178,5 +178,13 @@ public sealed class MusicVisualizerAudioPipelineTests
         return buffer;
     }
     private static T Get<T>(string name) => (T)typeof(MusicVisualizer).GetField(name, Private)!.GetValue(null)!;
+    // The product code takes the decoded format fields; tests describe formats with NAudio types.
+    private static void Process(byte[] buffer, int bytes, WaveFormat format)
+    {
+        bool isFloat = format.Encoding == WaveFormatEncoding.IeeeFloat ||
+            (format is WaveFormatExtensible extensible && extensible.SubFormat == NAudio.Dmo.AudioMediaSubtypes.MEDIASUBTYPE_IEEE_FLOAT);
+        MusicVisualizer.ProcessAudioBuffer(buffer, bytes, format.Channels, format.BitsPerSample, isFloat);
+    }
+
     private static object? Invoke(string name, params object?[] arguments) => typeof(MusicVisualizer).GetMethod(name, Private)!.Invoke(null, arguments);
 }

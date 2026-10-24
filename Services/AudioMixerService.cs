@@ -5,8 +5,6 @@ using System.IO;
 using System.Linq;
 using System.Runtime.InteropServices;
 using System.Windows.Media;
-using NAudio.CoreAudioApi;
-using NAudio.CoreAudioApi.Interfaces;
 
 namespace VNotch.Services;
 
@@ -36,41 +34,45 @@ public enum SpatialAudioMode
 
 public sealed partial class AudioMixerService : IDisposable
 {
-    private sealed class CachedSessionVolume : IDisposable
-    {
-        public MMDeviceEnumerator Enumerator { get; }
-        public MMDevice Device { get; }
-        public AudioSessionControl Session { get; }
-        public SimpleAudioVolume SimpleVolume { get; }
-        public uint ProcessId { get; }
-        public DateTime CachedAtUtc { get; set; }
+    // Endpoint and session access lives in Native/Services/AudioDevices.cpp and AudioSessions.cpp.
+    private const string NativeAudioDll = "VNotch.Native.dll";
+    private const int RenderFlow = 0;
+    private const int CaptureFlow = 1;
+    private const int NativeBufferTooSmall = -2;
+    private const int AudioSessionExpired = 2;
 
-        public CachedSessionVolume(MMDeviceEnumerator enumerator, MMDevice device, AudioSessionControl session, SimpleAudioVolume sv, uint processId)
-        {
-            Enumerator = enumerator;
-            Device = device;
-            Session = session;
-            SimpleVolume = sv;
-            ProcessId = processId;
-            CachedAtUtc = DateTime.UtcNow;
-        }
+    [LibraryImport(NativeAudioDll)]
+    private static partial int vn_audio_session_get_state(long snapshot, int index, out int state);
 
-        public void Dispose()
-        {
-            try { SimpleVolume.Dispose(); } catch { }
-            try { Session.Dispose(); } catch { }
-            try { Device.Dispose(); } catch { }
-            try { Enumerator.Dispose(); } catch { }
-        }
-    }
+    [LibraryImport(NativeAudioDll)]
+    private static partial int vn_audio_set_session_volume(uint processId, float scalar, out int hresult);
 
-    private CachedSessionVolume? _setCache;
-    private readonly object _setCacheLock = new();
-    private const double SetCacheLifetimeMs = 3000;
+    [LibraryImport(NativeAudioDll)]
+    private static partial int vn_audio_toggle_session_mute(uint processId, out byte muted);
 
-    private MMDeviceEnumerator? _enumerator;
+    [LibraryImport(NativeAudioDll)]
+    private static partial int vn_audio_invalidate_session_cache();
+
+    [LibraryImport(NativeAudioDll)]
+    private static partial int vn_audio_devices_open(int flow, out long list, out int count, out int hresult);
+
+    [LibraryImport(NativeAudioDll)]
+    private static partial int vn_audio_devices_close(long list);
+
+    [LibraryImport(NativeAudioDll)]
+    private static unsafe partial int vn_audio_device_get_string(
+        long list, int index, int kind, char* buffer, int capacity, out int length, out byte isDefault);
+
+    [LibraryImport(NativeAudioDll)]
+    private static partial int vn_audio_capture_volume_get(out float scalar);
+
+    [LibraryImport(NativeAudioDll)]
+    private static partial int vn_audio_capture_volume_set(float scalar);
+
+    [LibraryImport(NativeAudioDll)]
+    private static partial int vn_audio_capture_invalidate();
+
     private readonly object _enumLock = new();
-
     private readonly Dictionary<uint, CachedProcessMetadata> _iconCache = new();
     private const int MaxIconCacheSize = 48;
 
@@ -174,17 +176,6 @@ public sealed partial class AudioMixerService : IDisposable
         }
     }
 
-    private MMDeviceEnumerator GetEnumeratorLocked() => _enumerator ??= new MMDeviceEnumerator();
-
-    private void DisposeEnumerator()
-    {
-        if (_enumerator != null)
-        {
-            try { _enumerator.Dispose(); }
-            catch (Exception) { /* Best-effort enumerator cleanup */ }
-            _enumerator = null;
-        }
-    }
 
     public List<AudioSessionInfo> GetSessions() => GetSessions(includeIcons: true);
 
@@ -194,39 +185,43 @@ public sealed partial class AudioMixerService : IDisposable
         var results = new List<AudioSessionInfo>();
         lock (_enumLock)
         {
+            if (WindowsMediaAudioSessions.NativeOpen(out long snapshot, out int count, out int hresult) != 0)
+            {
+                RuntimeLog.Log("AUDIOMIXER", $"GetSessions error: 0x{hresult:X8}");
+                return results;
+            }
+
             try
             {
-                var enumerator = GetEnumeratorLocked();
-                using var renderDevice = enumerator.GetDefaultAudioEndpoint(DataFlow.Render, Role.Multimedia);
-
-                var sessions = renderDevice.AudioSessionManager.Sessions;
-                if (sessions == null) return results;
-
                 var seenProcessIds = new HashSet<uint>();
-
-                for (int i = 0; i < sessions.Count; i++)
+                for (int i = 0; i < count; i++)
                 {
-                    using var session = sessions[i];
-                    if (session == null) continue;
-
                     try
                     {
-                        if (session.State == AudioSessionState.AudioSessionStateExpired)
+                        if (vn_audio_session_get_state(snapshot, i, out int state) == 0 && state == AudioSessionExpired)
+                            continue;
+                        if (WindowsMediaAudioSessions.NativeGetInfo(snapshot, i, out uint pid, out byte isSystemSounds) != 0)
                             continue;
 
-                        bool isSystem = session.IsSystemSoundsSession;
-                        uint pid = session.GetProcessID;
-
+                        bool isSystem = isSystemSounds != 0;
                         uint dedupeKey = isSystem ? 0u : pid;
                         if (!seenProcessIds.Add(dedupeKey))
                             continue;
 
+                        if (WindowsMediaAudioSessions.NativeOpenVolume(snapshot, i, out long lease) != 0)
+                            continue;
                         float volume;
                         bool muted;
-                        using (var simpleVolume = session.SimpleAudioVolume)
+                        try
                         {
-                            volume = Math.Clamp(simpleVolume.Volume, 0f, 1f);
-                            muted = simpleVolume.Mute;
+                            if (WindowsMediaAudioSessions.NativeVolumeGet(lease, out float scalar, out byte muteFlag, out _) != 0)
+                                continue;
+                            volume = Math.Clamp(scalar, 0f, 1f);
+                            muted = muteFlag != 0;
+                        }
+                        finally
+                        {
+                            WindowsMediaAudioSessions.NativeVolumeClose(lease);
                         }
 
                         string name;
@@ -242,7 +237,7 @@ public sealed partial class AudioMixerService : IDisposable
                             {
                                 // Resolve the final name in the first background snapshot.
                                 // Only shell icon extraction is deferred to the detailed pass.
-                                ResolveProcess(pid, session, out name, out var procName, out var startTime, out var exePath);
+                                ResolveProcess(pid, WindowsMediaAudioSessions.ReadString(snapshot, i, 0), out name, out var procName, out var startTime, out var exePath);
                                 cached = new CachedProcessMetadata
                                 {
                                     Name = name,
@@ -288,10 +283,9 @@ public sealed partial class AudioMixerService : IDisposable
 
                 PruneCacheExcept(seenProcessIds);
             }
-            catch (Exception ex)
+            finally
             {
-                RuntimeLog.Log("AUDIOMIXER", $"GetSessions error: {ex.Message}");
-                DisposeEnumerator();
+                WindowsMediaAudioSessions.NativeClose(snapshot);
             }
         }
 
@@ -305,7 +299,7 @@ public sealed partial class AudioMixerService : IDisposable
 #pragma warning disable S3776 // Resolves process metadata, description, and icon from executable file info
     private static void ResolveProcess(
         uint pid,
-        AudioSessionControl session,
+        string? sessionDisplayName,
         out string name,
         out string? processName,
         out DateTime? startTimeUtc,
@@ -359,7 +353,7 @@ public sealed partial class AudioMixerService : IDisposable
         {
             try
             {
-                var display = session.DisplayName;
+                var display = sessionDisplayName;
                 if (!string.IsNullOrWhiteSpace(display) && !display.StartsWith('@'))
                     name = display;
             }
@@ -374,198 +368,61 @@ public sealed partial class AudioMixerService : IDisposable
 
     public bool SetSessionVolume(uint processId, float volume)
     {
-        float target = Math.Clamp(volume, 0f, 1f);
-
-        lock (_setCacheLock)
-        {
-            if (_setCache != null && _setCache.ProcessId == processId &&
-                (DateTime.UtcNow - _setCache.CachedAtUtc).TotalMilliseconds < SetCacheLifetimeMs)
-            {
-                try
-                {
-                    _setCache.SimpleVolume.Volume = target;
-                    if (target > 0.001f && _setCache.SimpleVolume.Mute) _setCache.SimpleVolume.Mute = false;
-                    return true;
-                }
-                catch (Exception)
-                {
-                    InvalidateSetCacheLocked();
-                }
-            }
-
-            MMDeviceEnumerator? enumerator = null;
-            MMDevice? device = null;
-            try
-            {
-                enumerator = new MMDeviceEnumerator();
-                device = enumerator.GetDefaultAudioEndpoint(DataFlow.Render, Role.Multimedia);
-                var sessions = device.AudioSessionManager.Sessions;
-                if (sessions != null)
-                {
-                    for (int i = 0; i < sessions.Count; i++)
-                    {
-                        var session = sessions[i];
-                        if (session == null) continue;
-                        bool keepSession = false;
-                        try
-                        {
-                            bool match = processId == 0
-                                ? session.IsSystemSoundsSession
-                                : (!session.IsSystemSoundsSession && session.GetProcessID == processId);
-                            if (!match) continue;
-
-                            var sv = session.SimpleAudioVolume;
-                            try
-                            {
-                                sv.Volume = target;
-                                if (target > 0.001f && sv.Mute) sv.Mute = false;
-                            }
-                            catch
-                            {
-                                sv.Dispose();
-                                throw;
-                            }
-
-                            InvalidateSetCacheLocked();
-                            _setCache = new CachedSessionVolume(enumerator!, device!, session, sv, processId);
-                            enumerator = null;
-                            device = null;
-                            // Keep and dispose the session together with its volume interface.
-                            keepSession = true;
-                            return true;
-                        }
-                        catch (Exception)
-                        {
-                            // Session volume interface disconnected
-                        }
-                        finally
-                        {
-                            if (!keepSession) session.Dispose();
-                        }
-                    }
-                }
-            }
-            catch (Exception ex)
-            {
-                RuntimeLog.Log("AUDIOMIXER-SETVOL", ex.Message);
-            }
-            finally
-            {
-                device?.Dispose();
-                enumerator?.Dispose();
-            }
-
-            return false;
-        }
-    }
-
-    public bool ToggleSessionMute(uint processId)
-    {
-        InvalidateSetCache();
-        return ResolveSimpleVolume(processId, sv =>
-        {
-            sv.Mute = !sv.Mute;
-            return sv.Mute;
-        });
-    }
-
-    private static bool ResolveSimpleVolume(uint processId, Func<SimpleAudioVolume, bool> action)
-    {
-        try
-        {
-            using var enumerator = new MMDeviceEnumerator();
-            using var device = enumerator.GetDefaultAudioEndpoint(DataFlow.Render, Role.Multimedia);
-            var sessions = device.AudioSessionManager.Sessions;
-            if (sessions == null) return false;
-
-            for (int i = 0; i < sessions.Count; i++)
-            {
-                using var session = sessions[i];
-                if (session == null) continue;
-                try
-                {
-                    bool match = processId == 0
-                        ? session.IsSystemSoundsSession
-                        : (!session.IsSystemSoundsSession && session.GetProcessID == processId);
-                    if (!match) continue;
-
-                    using var sv = session.SimpleAudioVolume;
-                    return action(sv);
-                }
-                catch (Exception)
-                {
-                    // Session volume interface disconnected
-                }
-            }
-        }
-        catch (Exception ex)
-        {
-            RuntimeLog.Log("AUDIOMIXER-RESOLVE", ex.Message);
-        }
+        if (vn_audio_set_session_volume(processId, volume, out int hresult) == 0) return true;
+        RuntimeLog.Log("AUDIOMIXER-SETVOL", $"0x{hresult:X8}");
         return false;
     }
 
-    private void InvalidateSetCache()
+    public bool ToggleSessionMute(uint processId) =>
+        vn_audio_toggle_session_mute(processId, out byte muted) == 0 && muted != 0;
+
+    private static void InvalidateSetCache() => vn_audio_invalidate_session_cache();
+
+    private static unsafe List<AudioDeviceInfo> ListDevices(int flow, string logTag)
     {
-        lock (_setCacheLock)
+        var devices = new List<AudioDeviceInfo>();
+        if (vn_audio_devices_open(flow, out long list, out int count, out int hresult) != 0)
         {
-            InvalidateSetCacheLocked();
+            RuntimeLog.Log(logTag, $"0x{hresult:X8}");
+            return devices;
         }
+
+        try
+        {
+            for (int i = 0; i < count; i++)
+            {
+                string id = ReadDeviceString(list, i, 0, out byte isDefault);
+                string name = ReadDeviceString(list, i, 1, out _);
+                devices.Add(new AudioDeviceInfo { Id = id, FriendlyName = name, IsDefault = isDefault != 0 });
+            }
+        }
+        finally
+        {
+            vn_audio_devices_close(list);
+        }
+
+        return devices;
     }
 
-    private void InvalidateSetCacheLocked()
+    private static unsafe string ReadDeviceString(long list, int index, int kind, out byte isDefault)
     {
-        if (_setCache != null)
-        {
-            try { _setCache.Dispose(); }
-            catch (Exception) { /* Cached volume object already released */ }
-            _setCache = null;
-        }
+        char* stack = stackalloc char[256];
+        int status = vn_audio_device_get_string(list, index, kind, stack, 256, out int length, out isDefault);
+        if (status == 0) return new string(stack, 0, length);
+        if (status != NativeBufferTooSmall || length <= 0 || length > 1 << 15) return string.Empty;
+        char[] heap = new char[length];
+        fixed (char* pinned = heap)
+            return vn_audio_device_get_string(list, index, kind, pinned, length, out int written, out isDefault) == 0
+                ? new string(pinned, 0, written)
+                : string.Empty;
     }
+
+    /// <summary>Active render endpoints without needing a mixer instance (settings pickers).</summary>
+    public static List<AudioDeviceInfo> EnumerateOutputDevices() => ListDevices(RenderFlow, "AUDIOMIXER-DEVICES");
 
     public List<AudioDeviceInfo> GetOutputDevices()
     {
-        var devices = new List<AudioDeviceInfo>();
-        lock (_enumLock)
-        {
-            try
-            {
-                var enumerator = GetEnumeratorLocked();
-                string defaultId = "";
-                try
-                {
-                    using var def = enumerator.GetDefaultAudioEndpoint(DataFlow.Render, Role.Multimedia);
-                    defaultId = def.ID;
-                }
-                catch (Exception ex)
-                {
-                    RuntimeLog.Warn("AUDIOMIXER", $"No default render endpoint: {ex.Message}");
-                }
-
-                foreach (var device in enumerator.EnumerateAudioEndPoints(DataFlow.Render, DeviceState.Active))
-                {
-                    try
-                    {
-                        devices.Add(new AudioDeviceInfo
-                        {
-                            Id = device.ID,
-                            FriendlyName = device.FriendlyName,
-                            IsDefault = string.Equals(device.ID, defaultId, StringComparison.OrdinalIgnoreCase)
-                        });
-                    }
-                    finally
-                    {
-                        device.Dispose();
-                    }
-                }
-            }
-            catch (Exception ex)
-            {
-                RuntimeLog.Log("AUDIOMIXER-DEVICES", ex.Message);
-                DisposeEnumerator();
-            }
-        }
-        return devices;
+        lock (_enumLock) return ListDevices(RenderFlow, "AUDIOMIXER-DEVICES");
     }
 
     public bool SetDefaultOutputDevice(string deviceId)
@@ -574,139 +431,22 @@ public sealed partial class AudioMixerService : IDisposable
             return false;
 
         InvalidateSetCache();
-        lock (_enumLock)
-        {
-            DisposeEnumerator();
-        }
         return true;
     }
 
-    public float GetCaptureVolume()
-    {
-        try
-        {
-            var ev = GetCaptureEndpointVolume();
-            return ev != null ? Math.Clamp(ev.MasterVolumeLevelScalar, 0f, 1f) : 0.5f;
-        }
-        catch (Exception ex)
-        {
-            RuntimeLog.Log("AUDIOMIXER-CAPVOL", ex.Message);
-            return 0.5f;
-        }
-    }
+    public float GetCaptureVolume() =>
+        vn_audio_capture_volume_get(out float scalar) == 0 ? Math.Clamp(scalar, 0f, 1f) : 0.5f;
 
     public bool SetCaptureVolume(float volume)
     {
-        try
-        {
-            var ev = GetCaptureEndpointVolume();
-            if (ev == null) return false;
-            ev.MasterVolumeLevelScalar = Math.Clamp(volume, 0f, 1f);
-            return true;
-        }
-        catch (Exception ex)
-        {
-            RuntimeLog.Log("AUDIOMIXER-SETCAPVOL", ex.Message);
-            InvalidateCaptureCache();
-            return false;
-        }
-    }
-
-    private MMDeviceEnumerator? _captureEnumerator;
-    private MMDevice? _captureDevice;
-    private DateTime _captureCacheAtUtc = DateTime.MinValue;
-    private readonly object _captureCacheLock = new();
-
-    private AudioEndpointVolume? GetCaptureEndpointVolume()
-    {
-        lock (_captureCacheLock)
-        {
-            if (_captureDevice != null && (DateTime.UtcNow - _captureCacheAtUtc).TotalMilliseconds < SetCacheLifetimeMs)
-                return _captureDevice.AudioEndpointVolume;
-
-            InvalidateCaptureCacheLocked();
-            try
-            {
-                _captureEnumerator = new MMDeviceEnumerator();
-                _captureDevice = _captureEnumerator.GetDefaultAudioEndpoint(DataFlow.Capture, Role.Multimedia);
-                _captureCacheAtUtc = DateTime.UtcNow;
-                return _captureDevice.AudioEndpointVolume;
-            }
-            catch (Exception)
-            {
-                InvalidateCaptureCacheLocked();
-                return null;
-            }
-        }
-    }
-
-    private void InvalidateCaptureCache()
-    {
-        lock (_captureCacheLock)
-        {
-            InvalidateCaptureCacheLocked();
-        }
-    }
-
-    private void InvalidateCaptureCacheLocked()
-    {
-        if (_captureDevice != null)
-        {
-            try { _captureDevice.Dispose(); }
-            catch (Exception) { /* Capture device already disposed */ }
-            _captureDevice = null;
-        }
-        if (_captureEnumerator != null)
-        {
-            try { _captureEnumerator.Dispose(); }
-            catch (Exception) { /* Capture enumerator already disposed */ }
-            _captureEnumerator = null;
-        }
+        if (vn_audio_capture_volume_set(Math.Clamp(volume, 0f, 1f)) == 0) return true;
+        vn_audio_capture_invalidate();
+        return false;
     }
 
     public List<AudioDeviceInfo> GetInputDevices()
     {
-        var devices = new List<AudioDeviceInfo>();
-        lock (_enumLock)
-        {
-            try
-            {
-                var enumerator = GetEnumeratorLocked();
-                string defaultId = "";
-                try
-                {
-                    using var def = enumerator.GetDefaultAudioEndpoint(DataFlow.Capture, Role.Multimedia);
-                    defaultId = def.ID;
-                }
-                catch (Exception ex)
-                {
-                    RuntimeLog.Warn("AUDIOMIXER", $"No default capture endpoint: {ex.Message}");
-                }
-
-                foreach (var device in enumerator.EnumerateAudioEndPoints(DataFlow.Capture, DeviceState.Active))
-                {
-                    try
-                    {
-                        devices.Add(new AudioDeviceInfo
-                        {
-                            Id = device.ID,
-                            FriendlyName = device.FriendlyName,
-                            IsDefault = string.Equals(device.ID, defaultId, StringComparison.OrdinalIgnoreCase)
-                        });
-                    }
-                    finally
-                    {
-                        device.Dispose();
-                    }
-                }
-            }
-            catch (Exception ex)
-            {
-                RuntimeLog.Log("AUDIOMIXER-INDEVICES", ex.Message);
-                DisposeEnumerator();
-            }
-        }
-        return devices;
+        lock (_enumLock) return ListDevices(CaptureFlow, "AUDIOMIXER-INDEVICES");
     }
 
     public bool SetDefaultInputDevice(string deviceId)
@@ -714,14 +454,9 @@ public sealed partial class AudioMixerService : IDisposable
         if (!SetDefaultEndpointInternal(deviceId))
             return false;
 
-        InvalidateCaptureCache();
-        lock (_enumLock)
-        {
-            DisposeEnumerator();
-        }
+        vn_audio_capture_invalidate();
         return true;
     }
-
     private static bool SetDefaultEndpointInternal(string deviceId)
     {
         if (string.IsNullOrWhiteSpace(deviceId)) return false;
@@ -757,9 +492,7 @@ public sealed partial class AudioMixerService : IDisposable
     {
         try
         {
-            using var enumerator = new MMDeviceEnumerator();
-            using var device = enumerator.GetDefaultAudioEndpoint(DataFlow.Render, Role.Multimedia);
-            string id = device.ID;
+            string id = ListDevices(RenderFlow, "AUDIOMIXER-SPATIAL-DEVICES").FirstOrDefault(d => d.IsDefault)?.Id ?? string.Empty;
             string guid = ExtractEndpointGuid(id);
             if (string.IsNullOrEmpty(guid)) return SpatialAudioMode.Off;
 
@@ -822,7 +555,7 @@ public sealed partial class AudioMixerService : IDisposable
     private void ReleaseSessions()
     {
         InvalidateSetCache();
-        InvalidateCaptureCache();
+        vn_audio_capture_invalidate();
     }
 
     public void Dispose()
@@ -830,19 +563,9 @@ public sealed partial class AudioMixerService : IDisposable
         ReleaseSessions();
         lock (_enumLock)
         {
-            DisposeEnumerator();
             _iconCache.Clear();
         }
     }
 
-    public void ReleaseSessionCache()
-    {
-        ReleaseSessions();
-        lock (_enumLock)
-        {
-            DisposeEnumerator();
-        }
-    }
-
-
+    public void ReleaseSessionCache() => ReleaseSessions();
 }

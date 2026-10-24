@@ -9,8 +9,6 @@ using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Threading;
 using Microsoft.Win32;
-using NAudio.CoreAudioApi;
-using NAudio.CoreAudioApi.Interfaces;
 
 namespace VNotch.Services;
 
@@ -918,103 +916,36 @@ public sealed partial class PrivacyIndicatorService : IDisposable
             }
         }
     }
-    private sealed class CachedSessionMeter : IDisposable
+    // Capture sessions, meters and endpoint notifications live in Native/Services/MicrophoneProbe.cpp. This class
+    // keeps the topology-refresh schedule and decides which processes count as a consumer.
+    private sealed unsafe partial class MicrophoneFlowProbe : IDisposable
     {
-        public MMDevice Device { get; }
-        public AudioSessionControl Session { get; }
-        public uint ProcessId { get; }
+        private const string NativeDll = "VNotch.Native.dll";
 
-        public CachedSessionMeter(MMDevice device, AudioSessionControl session, uint processId)
-        {
-            Device = device;
-            Session = session;
-            ProcessId = processId;
-        }
+        [LibraryImport(NativeDll, EntryPoint = "vn_mic_probe_create")]
+        private static partial int NativeCreate(nint callback, long context, out long handle, out int hresult);
 
-        public (bool IsValid, float Peak) SamplePeak()
-        {
-            try
-            {
-                if (Session.State != AudioSessionState.AudioSessionStateActive)
-                    return (false, 0f);
+        [LibraryImport(NativeDll, EntryPoint = "vn_mic_probe_destroy")]
+        private static partial int NativeDestroy(long handle);
 
-                using (var volume = Session.SimpleAudioVolume)
-                {
-                    if (volume.Mute) return (true, 0f);
-                }
+        [LibraryImport(NativeDll, EntryPoint = "vn_mic_probe_clear")]
+        private static partial int NativeClear(long handle);
 
-                try
-                {
-                    if (Device.AudioEndpointVolume.Mute) return (true, 0f);
-                }
-                catch
-                {
-                    // Some virtual endpoints do not expose endpoint mute.
-                }
+        [LibraryImport(NativeDll, EntryPoint = "vn_mic_probe_rebuild")]
+        private static partial int NativeRebuild(long handle, out int count, out int hresult);
 
-                float sessionPeak = GetSessionPeak(Session);
-                float endpointPeak = sessionPeak > 0 ? 0 : GetEndpointPeak(Device);
-                return (true, Math.Max(sessionPeak, endpointPeak));
-            }
-            catch
-            {
-                // COM error, session invalidated, or device disconnected
-                return (false, 0f);
-            }
-        }
+        [LibraryImport(NativeDll, EntryPoint = "vn_mic_probe_get_process_id")]
+        private static partial int NativeGetProcessId(long handle, int index, out uint processId);
 
-        private static float GetSessionPeak(AudioSessionControl session)
-        {
-            try
-            {
-                return session.AudioMeterInformation.MasterPeakValue;
-            }
-            catch (Exception)
-            {
-                return 0;
-            }
-        }
+        [LibraryImport(NativeDll, EntryPoint = "vn_mic_probe_keep")]
+        private static partial int NativeKeep(long handle, uint* processIds, int count, out int remaining);
 
-        private static float GetEndpointPeak(MMDevice device)
-        {
-            try
-            {
-                return device.AudioMeterInformation.MasterPeakValue;
-            }
-            catch (Exception)
-            {
-                return 0;
-            }
-        }
+        [LibraryImport(NativeDll, EntryPoint = "vn_mic_probe_sample")]
+        private static partial int NativeSample(long handle, out byte hasActive, out float peak, out byte anyInvalid);
 
-        public void Dispose()
-        {
-            try { Session.Dispose(); } catch { }
-            try { Device.Dispose(); } catch { }
-        }
-    }
-
-    private sealed class AudioNotificationClient : IMMNotificationClient
-    {
-        private readonly Action _onInvalidated;
-
-        public AudioNotificationClient(Action onInvalidated)
-        {
-            _onInvalidated = onInvalidated;
-        }
-
-        public void OnDeviceStateChanged(string deviceId, DeviceState newState) => _onInvalidated();
-        public void OnDeviceAdded(string pwstrDeviceId) => _onInvalidated();
-        public void OnDeviceRemoved(string deviceId) => _onInvalidated();
-        public void OnDefaultDeviceChanged(DataFlow flow, Role role, string defaultDeviceId) => _onInvalidated();
-        public void OnPropertyValueChanged(string pwstrDeviceId, PropertyKey key) { }
-    }
-
-    private sealed class MicrophoneFlowProbe : IDisposable
-    {
-        private MMDeviceEnumerator? _enumerator;
-        private AudioNotificationClient? _notificationClient;
-        private readonly List<CachedSessionMeter> _cachedMeters = new();
+        private long _probeHandle;
+        private GCHandle _self;
+        private int _meterCount;
         private string[] _cachedCandidateNames = Array.Empty<string>();
         private bool _isTopologyValid;
         private long _lastRebuildTicks;
@@ -1035,24 +966,9 @@ public sealed partial class PrivacyIndicatorService : IDisposable
             {
                 EnsureTopologyLocked(candidates);
 
-                bool hasActiveSession = false;
-                float peakLevel = 0;
-
-                for (int i = _cachedMeters.Count - 1; i >= 0; i--)
-                {
-                    var meter = _cachedMeters[i];
-                    var (isValid, peak) = meter.SamplePeak();
-                    if (!isValid)
-                    {
-                        // Session expired, muted, or error -> invalidate topology to refresh
-                        _isTopologyValid = false;
-                        continue;
-                    }
-
-                    hasActiveSession = true;
-                    if (peak > peakLevel)
-                        peakLevel = peak;
-                }
+                var (hasActiveSession, peakLevel, anyInvalid) = SampleLocked();
+                // A session that expired, was muted or failed means the cached topology is stale.
+                if (anyInvalid) _isTopologyValid = false;
 
                 // If topology became invalid during sampling and we had no active session,
                 // rebuild topology immediately if rate limit allows.
@@ -1063,16 +979,9 @@ public sealed partial class PrivacyIndicatorService : IDisposable
                     if (elapsedSec >= 1.0)
                     {
                         RebuildTopologyLocked(candidates);
-                        for (int i = 0; i < _cachedMeters.Count; i++)
-                        {
-                            var (isValid, peak) = _cachedMeters[i].SamplePeak();
-                            if (isValid)
-                            {
-                                hasActiveSession = true;
-                                if (peak > peakLevel)
-                                    peakLevel = peak;
-                            }
-                        }
+                        var (rebuiltActive, rebuiltPeak, _) = SampleLocked();
+                        hasActiveSession |= rebuiltActive;
+                        if (rebuiltPeak > peakLevel) peakLevel = rebuiltPeak;
                     }
                 }
 
@@ -1085,6 +994,14 @@ public sealed partial class PrivacyIndicatorService : IDisposable
             }
         }
 
+        private (bool HasActive, float Peak, bool AnyInvalid) SampleLocked()
+        {
+            if (_probeHandle == 0 || _meterCount == 0) return (false, 0f, false);
+            return NativeSample(_probeHandle, out byte hasActive, out float peak, out byte anyInvalid) == 0
+                ? (hasActive != 0, peak, anyInvalid != 0)
+                : (false, 0f, true);
+        }
+
         private void EnsureTopologyLocked(IReadOnlyList<CapabilityUsage> candidates)
         {
             var currentNames = candidates.Select(c => c.RawName).ToArray();
@@ -1094,14 +1011,14 @@ public sealed partial class PrivacyIndicatorService : IDisposable
                 _isTopologyValid = false;
             }
 
-            if (_isTopologyValid && _cachedMeters.Count > 0)
+            if (_isTopologyValid && _meterCount > 0)
                 return;
 
             long now = Stopwatch.GetTimestamp();
             double elapsedSec = (double)(now - _lastRebuildTicks) / Stopwatch.Frequency;
 
             // If topology is invalid, or if we found 0 active sessions and at least 1s elapsed since last attempt:
-            if (!_isTopologyValid || (_cachedMeters.Count == 0 && elapsedSec >= 1.0))
+            if (!_isTopologyValid || (_meterCount == 0 && elapsedSec >= 1.0))
             {
                 RebuildTopologyLocked(candidates);
             }
@@ -1116,70 +1033,31 @@ public sealed partial class PrivacyIndicatorService : IDisposable
 
             try
             {
-                EnsureEnumeratorLocked();
-                if (_enumerator == null) return;
+                EnsureProbeLocked();
+                if (_probeHandle == 0) return;
 
-                var devices = _enumerator.EnumerateAudioEndPoints(DataFlow.Capture, DeviceState.Active);
-                foreach (var device in devices)
+                if (NativeRebuild(_probeHandle, out int count, out int hresult) != 0)
                 {
-                    bool deviceRetained = false;
-                    try
-                    {
-                        try
-                        {
-                            if (device.AudioEndpointVolume.Mute)
-                            {
-                                continue;
-                            }
-                        }
-                        catch
-                        {
-                            // Some virtual endpoints do not expose endpoint mute.
-                        }
+                    RuntimeLog.Warn("PRIVACY-MIC", $"Topology rebuild failed: 0x{hresult:X8}");
+                    InvalidateCacheLocked();
+                    DisposeProbeLocked();
+                    return;
+                }
 
-                        var sessions = device.AudioSessionManager.Sessions;
-                        if (sessions != null)
-                        {
-                            for (int i = 0; i < sessions.Count; i++)
-                            {
-                                var session = sessions[i];
-                                if (session == null) continue;
+                // Keep only sessions that belong to one of the consumers reported by the capability store.
+                var keep = new List<uint>(count);
+                for (int i = 0; i < count; i++)
+                {
+                    if (NativeGetProcessId(_probeHandle, i, out uint processId) != 0) continue;
+                    if (candidates.Any(candidate => processProbe.MatchesProcess(candidate.RawName, processId)))
+                        keep.Add(processId);
+                }
 
-                                bool sessionRetained = false;
-                                try
-                                {
-                                    if (session.State == AudioSessionState.AudioSessionStateActive)
-                                    {
-                                        uint processId = session.GetProcessID;
-                                        if (candidates.Any(candidate => processProbe.MatchesProcess(candidate.RawName, processId)))
-                                        {
-                                            using var volume = session.SimpleAudioVolume;
-                                            if (!volume.Mute)
-                                            {
-                                                _cachedMeters.Add(new CachedSessionMeter(device, session, processId));
-                                                deviceRetained = true;
-                                                sessionRetained = true;
-                                            }
-                                        }
-                                    }
-                                }
-                                finally
-                                {
-                                    if (!sessionRetained)
-                                    {
-                                        try { session.Dispose(); } catch { }
-                                    }
-                                }
-                            }
-                        }
-                    }
-                    finally
-                    {
-                        if (!deviceRetained)
-                        {
-                            try { device.Dispose(); } catch { }
-                        }
-                    }
+                uint[] keepArray = keep.ToArray();
+                fixed (uint* pinned = keepArray)
+                {
+                    NativeKeep(_probeHandle, keepArray.Length == 0 ? null : pinned, keepArray.Length, out int remaining);
+                    _meterCount = remaining;
                 }
 
                 _isTopologyValid = true;
@@ -1188,23 +1066,37 @@ public sealed partial class PrivacyIndicatorService : IDisposable
             {
                 RuntimeLog.Warn("PRIVACY-MIC", $"Topology rebuild failed: {ex.Message}");
                 InvalidateCacheLocked();
-                DisposeEnumeratorLocked();
+                DisposeProbeLocked();
             }
         }
 
-        private void EnsureEnumeratorLocked()
+        private void EnsureProbeLocked()
         {
-            if (_enumerator != null) return;
+            if (_probeHandle != 0) return;
+            _self = GCHandle.Alloc(this);
+            delegate* unmanaged[Stdcall]<long, void> callback = &OnNativeInvalidated;
+            if (NativeCreate((nint)callback, GCHandle.ToIntPtr(_self), out long handle, out int hresult) != 0)
+            {
+                RuntimeLog.Warn("PRIVACY-MIC", $"Failed to register endpoint notification callback: 0x{hresult:X8}");
+                _self.Free();
+                return;
+            }
+
+            _probeHandle = handle;
+        }
+
+        // Runs on a Core Audio thread: only flag the topology as stale.
+        [UnmanagedCallersOnly(CallConvs = [typeof(System.Runtime.CompilerServices.CallConvStdcall)])]
+        private static void OnNativeInvalidated(long context)
+        {
             try
             {
-                _enumerator = new MMDeviceEnumerator();
-                _notificationClient = new AudioNotificationClient(OnDeviceNotification);
-                _enumerator.RegisterEndpointNotificationCallback(_notificationClient);
+                if (GCHandle.FromIntPtr((IntPtr)context).Target is MicrophoneFlowProbe probe)
+                    probe.OnDeviceNotification();
             }
-            catch (Exception ex)
+            catch (Exception)
             {
-                RuntimeLog.Warn("PRIVACY-MIC", $"Failed to register endpoint notification callback: {ex.Message}");
-                DisposeEnumeratorLocked();
+                // Exceptions must not unwind into the native notification thread.
             }
         }
 
@@ -1219,11 +1111,8 @@ public sealed partial class PrivacyIndicatorService : IDisposable
         private void InvalidateCacheLocked()
         {
             _isTopologyValid = false;
-            for (int i = 0; i < _cachedMeters.Count; i++)
-            {
-                _cachedMeters[i].Dispose();
-            }
-            _cachedMeters.Clear();
+            if (_probeHandle != 0) NativeClear(_probeHandle);
+            _meterCount = 0;
         }
 
         public void Dispose()
@@ -1231,32 +1120,18 @@ public sealed partial class PrivacyIndicatorService : IDisposable
             lock (_probeLock)
             {
                 InvalidateCacheLocked();
-                DisposeEnumeratorLocked();
+                DisposeProbeLocked();
             }
         }
 
-        private void DisposeEnumeratorLocked()
+        private void DisposeProbeLocked()
         {
-            if (_enumerator == null) return;
-            try
-            {
-                if (_notificationClient != null)
-                {
-                    _enumerator.UnregisterEndpointNotificationCallback(_notificationClient);
-                }
-            }
-            catch { }
-            _notificationClient = null;
-
-            try
-            {
-                _enumerator.Dispose();
-            }
-            catch { }
-            _enumerator = null;
+            if (_probeHandle == 0) return;
+            NativeDestroy(_probeHandle);
+            _probeHandle = 0;
+            if (_self.IsAllocated) _self.Free();
         }
     }
-
     internal sealed class MicrophoneActivityGate
     {
         private readonly float _signalThreshold;

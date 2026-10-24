@@ -20,6 +20,41 @@ struct VnSettingsNormalizationParams {
     double spotify_canvas_brightness;
     double opacity;
 };
+
+struct VnLiquidGlassScalars {
+    double blur_amount;
+    double refraction;
+    double edge_bend;
+    double chromatic_aberration;
+    double edge_highlight;
+    double touch_light;
+    double specular;
+    double fresnel;
+    double distortion;
+    int32_t corner_radius;
+    double z_radius;
+    double opacity;
+    double saturation;
+    double brightness;
+    double shadow_opacity;
+    int32_t shadow_spread;
+    int32_t bevel_mode;
+    int32_t target_fps;
+    int32_t variant;
+    double power_factor;
+    double refraction_a;
+    double refraction_b;
+    double refraction_c;
+    double refraction_d;
+    double f_power;
+    double noise;
+    double glow_weight;
+    double glow_bias;
+    double glow_edge0;
+    double glow_edge1;
+    uint8_t hide_from_screen_capture;
+    uint8_t use_gpu_refraction;
+};
 #pragma pack(pop)
 
 class SettingsService final {
@@ -121,6 +156,46 @@ public:
         if (!vnotch::vn_equals_icase_ascii(imported_priority, current_priority)) return true;
         return false;
     }
+
+    static bool DoubleEquals(double a, double b, bool allow_nan_equal) noexcept {
+        if (!(std::abs(a - b) > 0.0001)) return true;
+        return allow_nan_equal && std::isnan(a) && std::isnan(b);
+    }
+
+    static bool LiquidGlassEquals(const VnLiquidGlassScalars& a, const VnLiquidGlassScalars& b) noexcept {
+        return DoubleEquals(a.blur_amount, b.blur_amount, true)
+            && DoubleEquals(a.refraction, b.refraction, true)
+            && DoubleEquals(a.edge_bend, b.edge_bend, true)
+            && DoubleEquals(a.chromatic_aberration, b.chromatic_aberration, true)
+            && DoubleEquals(a.edge_highlight, b.edge_highlight, true)
+            && DoubleEquals(a.touch_light, b.touch_light, true)
+            && DoubleEquals(a.specular, b.specular, true)
+            && DoubleEquals(a.fresnel, b.fresnel, true)
+            && DoubleEquals(a.distortion, b.distortion, true)
+            && a.corner_radius == b.corner_radius
+            && DoubleEquals(a.z_radius, b.z_radius, true)
+            && DoubleEquals(a.opacity, b.opacity, true)
+            && DoubleEquals(a.saturation, b.saturation, true)
+            && DoubleEquals(a.brightness, b.brightness, true)
+            && DoubleEquals(a.shadow_opacity, b.shadow_opacity, true)
+            && a.shadow_spread == b.shadow_spread
+            && a.bevel_mode == b.bevel_mode
+            && a.target_fps == b.target_fps
+            && a.variant == b.variant
+            && DoubleEquals(a.power_factor, b.power_factor, true)
+            && DoubleEquals(a.refraction_a, b.refraction_a, true)
+            && DoubleEquals(a.refraction_b, b.refraction_b, true)
+            && DoubleEquals(a.refraction_c, b.refraction_c, true)
+            && DoubleEquals(a.refraction_d, b.refraction_d, true)
+            && DoubleEquals(a.f_power, b.f_power, true)
+            && DoubleEquals(a.noise, b.noise, true)
+            && DoubleEquals(a.glow_weight, b.glow_weight, true)
+            && DoubleEquals(a.glow_bias, b.glow_bias, true)
+            && DoubleEquals(a.glow_edge0, b.glow_edge0, true)
+            && DoubleEquals(a.glow_edge1, b.glow_edge1, true)
+            && a.hide_from_screen_capture == b.hide_from_screen_capture
+            && a.use_gpu_refraction == b.use_gpu_refraction;
+    }
 };
 
 } // namespace vnotch::services
@@ -170,6 +245,46 @@ VN_EXPORT int32_t vn_settings_service_check_requires_restart(
     std::u16string_view cur_sv(current_priority ? current_priority : u"", static_cast<size_t>(current_priority_len));
     *out_requires_restart = vnotch::services::SettingsService::CheckRequiresRestart(
         imported_gpu, current_gpu, imp_sv, cur_sv) ? 1u : 0u;
+    return VN_OK;
+}
+
+VN_EXPORT int32_t __stdcall vn_settings_clamp_int(
+    int32_t value,
+    int32_t min_val,
+    int32_t max_val,
+    int32_t* out_value) noexcept {
+    if (!out_value || min_val > max_val) return VN_E_INVALID_ARG;
+    *out_value = std::clamp(value, min_val, max_val);
+    return VN_OK;
+}
+
+VN_EXPORT int32_t __stdcall vn_settings_clamp_double(
+    double value,
+    double min_val,
+    double max_val,
+    double fallback_if_non_finite,
+    double* out_value) noexcept {
+    if (!out_value || min_val > max_val) return VN_E_INVALID_ARG;
+    *out_value = std::isfinite(value) ? std::clamp(value, min_val, max_val) : fallback_if_non_finite;
+    return VN_OK;
+}
+
+VN_EXPORT int32_t __stdcall vn_settings_double_equals(
+    double a,
+    double b,
+    uint8_t allow_nan_equal,
+    uint8_t* out_equal) noexcept {
+    if (!out_equal) return VN_E_INVALID_ARG;
+    *out_equal = vnotch::services::SettingsService::DoubleEquals(a, b, allow_nan_equal != 0) ? 1u : 0u;
+    return VN_OK;
+}
+
+VN_EXPORT int32_t __stdcall vn_liquid_glass_config_equals(
+    const vnotch::services::VnLiquidGlassScalars* a,
+    const vnotch::services::VnLiquidGlassScalars* b,
+    uint8_t* out_equal) noexcept {
+    if (!a || !b || !out_equal) return VN_E_INVALID_ARG;
+    *out_equal = vnotch::services::SettingsService::LiquidGlassEquals(*a, *b) ? 1u : 0u;
     return VN_OK;
 }
 

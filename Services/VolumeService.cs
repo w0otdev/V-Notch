@@ -1,6 +1,4 @@
 using System.Runtime.InteropServices;
-using NAudio.CoreAudioApi;
-using NAudio.CoreAudioApi.Interfaces;
 
 namespace VNotch.Services;
 
@@ -26,11 +24,25 @@ public sealed partial class VolumeService : IVolumeService
         out float outClamped);
 
     [LibraryImport(NativeDll)]
-    private static partial int vn_volume_service_is_target_endpoint(
-        int dataFlow,
-        int role,
-        out byte outIsTarget);
+    private static partial int vn_volume_source_create(nint callback, long context, out long handle, out int hresult);
 
+    [LibraryImport(NativeDll)]
+    private static partial int vn_volume_source_destroy(long handle);
+
+    [LibraryImport(NativeDll)]
+    private static partial int vn_volume_endpoint_open(long source, out long handle, out int hresult);
+
+    [LibraryImport(NativeDll)]
+    private static partial int vn_volume_endpoint_close(long handle);
+
+    [LibraryImport(NativeDll)]
+    private static partial int vn_volume_endpoint_get(long handle, out float scalar, out byte muted, out int hresult);
+
+    [LibraryImport(NativeDll)]
+    private static partial int vn_volume_endpoint_set_volume(long handle, float scalar, out int hresult);
+
+    [LibraryImport(NativeDll)]
+    private static partial int vn_volume_endpoint_set_mute(long handle, byte muted, out int hresult);
     private const string LogCategory = "VOLUME";
     private readonly object _sync = new();
     private readonly IVolumeEndpointSource _source;
@@ -176,76 +188,87 @@ public sealed partial class VolumeService : IVolumeService
         catch (Exception ex) { RuntimeLog.Log(LogCategory, $"Endpoint cleanup error: {ex.Message}"); }
     }
 
-    private sealed class CoreAudioVolumeEndpointSource : IVolumeEndpointSource, IMMNotificationClient
+    // Core Audio calls live in Native/Services/CoreAudioVolume.cpp; this wrapper adapts them to the endpoint seam.
+    private sealed unsafe class CoreAudioVolumeEndpointSource : IVolumeEndpointSource
     {
-        private MMDeviceEnumerator? _enumerator;
+        private const int EFail = unchecked((int)0x80004005);
+        private long _source;
+        private GCHandle _self;
+
         public event Action? DefaultDeviceChanged;
 
         public IVolumeEndpoint OpenDefault()
         {
-            if (_enumerator == null)
+            if (_source == 0)
             {
-                var enumerator = new MMDeviceEnumerator();
-                try
+                _self = GCHandle.Alloc(this);
+                delegate* unmanaged[Stdcall]<long, void> callback = &OnDeviceChanged;
+                if (vn_volume_source_create((nint)callback, GCHandle.ToIntPtr(_self), out long source, out int createHr) != 0)
                 {
-                    Marshal.ThrowExceptionForHR(enumerator.RegisterEndpointNotificationCallback(this));
-                    _enumerator = enumerator;
+                    _self.Free();
+                    Marshal.ThrowExceptionForHR(createHr < 0 ? createHr : EFail);
                 }
-                catch
-                {
-                    enumerator.Dispose();
-                    throw;
-                }
+
+                _source = source;
             }
 
-            var device = _enumerator.GetDefaultAudioEndpoint(DataFlow.Render, Role.Multimedia);
-            try { return new CoreAudioVolumeEndpoint(device); }
-            catch
-            {
-                device.Dispose();
-                throw;
-            }
+            if (vn_volume_endpoint_open(_source, out long endpoint, out int openHr) != 0)
+                Marshal.ThrowExceptionForHR(openHr < 0 ? openHr : EFail);
+            return new CoreAudioVolumeEndpoint(endpoint);
         }
 
-        public void OnDefaultDeviceChanged(DataFlow flow, Role role, string defaultDeviceId)
+        // Runs on a Core Audio thread: record the change only, the service re-opens on its next call.
+        [UnmanagedCallersOnly(CallConvs = [typeof(System.Runtime.CompilerServices.CallConvStdcall)])]
+        private static void OnDeviceChanged(long context)
         {
-            bool isTarget = vn_volume_service_is_target_endpoint((int)flow, (int)role, out byte outTarget) == 0
-                ? outTarget != 0
-                : (flow == DataFlow.Render && role == Role.Multimedia);
-            if (isTarget) DefaultDeviceChanged?.Invoke();
+            try
+            {
+                if (GCHandle.FromIntPtr((IntPtr)context).Target is CoreAudioVolumeEndpointSource source)
+                    source.DefaultDeviceChanged?.Invoke();
+            }
+            catch (Exception)
+            {
+                // Exceptions must not unwind into the native notification thread.
+            }
         }
-
-        public void OnDeviceStateChanged(string deviceId, DeviceState newState) { }
-        public void OnDeviceAdded(string deviceId) { }
-        public void OnDeviceRemoved(string deviceId) { }
-        public void OnPropertyValueChanged(string deviceId, PropertyKey key) { }
 
         public void Dispose()
         {
-            if (_enumerator == null) return;
-            try { _enumerator.UnregisterEndpointNotificationCallback(this); }
-            catch (Exception ex) { RuntimeLog.Log(LogCategory, $"Notification cleanup error: {ex.Message}"); }
-            finally
-            {
-                _enumerator.Dispose();
-                _enumerator = null;
-            }
+            if (_source == 0) return;
+            vn_volume_source_destroy(_source);
+            _source = 0;
+            if (_self.IsAllocated) _self.Free();
         }
     }
 
-    private sealed class CoreAudioVolumeEndpoint : IVolumeEndpoint
+    private sealed class CoreAudioVolumeEndpoint(long handle) : IVolumeEndpoint
     {
-        private readonly MMDevice _device;
-        private readonly AudioEndpointVolume _volume;
-
-        public CoreAudioVolumeEndpoint(MMDevice device)
+        public float Volume
         {
-            _device = device;
-            _volume = device.AudioEndpointVolume;
+            get
+            {
+                if (vn_volume_endpoint_get(handle, out float scalar, out _, out int hr) != 0) Marshal.ThrowExceptionForHR(hr);
+                return scalar;
+            }
+            set
+            {
+                if (vn_volume_endpoint_set_volume(handle, value, out int hr) != 0) Marshal.ThrowExceptionForHR(hr);
+            }
         }
 
-        public float Volume { get => _volume.MasterVolumeLevelScalar; set => _volume.MasterVolumeLevelScalar = value; }
-        public bool IsMuted { get => _volume.Mute; set => _volume.Mute = value; }
-        public void Dispose() => _device.Dispose();
+        public bool IsMuted
+        {
+            get
+            {
+                if (vn_volume_endpoint_get(handle, out _, out byte muted, out int hr) != 0) Marshal.ThrowExceptionForHR(hr);
+                return muted != 0;
+            }
+            set
+            {
+                if (vn_volume_endpoint_set_mute(handle, value ? (byte)1 : (byte)0, out int hr) != 0) Marshal.ThrowExceptionForHR(hr);
+            }
+        }
+
+        public void Dispose() => vn_volume_endpoint_close(handle);
     }
 }

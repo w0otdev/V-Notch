@@ -313,6 +313,37 @@ public:
         return true;
     }
 
+    static int32_t DetectTextRegions(
+        const uint8_t* pixels, int32_t w, int32_t h, int32_t stride,
+        int32_t img_width, int32_t img_height,
+        VnCropRect* out_regions, int32_t out_cap) noexcept
+    {
+        constexpr int32_t grid_size = 8;
+        int32_t cell_w = img_width / grid_size;
+        int32_t cell_h = img_height / grid_size;
+        int32_t a_cell_w = w / grid_size;
+        int32_t a_cell_h = h / grid_size;
+
+        int32_t count = 0;
+        for (int32_t gy = 0; gy < grid_size; gy++) {
+            for (int32_t gx = 0; gx < grid_size; gx++) {
+                int32_t sx = gx * a_cell_w;
+                int32_t sy = gy * a_cell_h;
+                int32_t ex = std::min(sx + a_cell_w, w - 1);
+                int32_t ey = std::min(sy + a_cell_h, h - 1);
+
+                double edge_ratio = CalculateCellEdgeRatio(pixels, stride, w, h, sx, sy, ex, ey);
+                if (edge_ratio > 0.30) {
+                    if (out_regions && count < out_cap) {
+                        out_regions[count] = VnCropRect{gx * cell_w, gy * cell_h, cell_w, cell_h};
+                    }
+                    count++;
+                }
+            }
+        }
+        return count;
+    }
+
     static VnCropRect BuildCropRect(float center_x, float center_y, int32_t img_width, int32_t img_height, int32_t crop_size) noexcept {
         int32_t crop_x = static_cast<int32_t>(center_x - crop_size / 2.0f);
         int32_t crop_y = static_cast<int32_t>(center_y - crop_size / 2.0f);
@@ -630,6 +661,17 @@ VN_EXPORT int32_t vn_smartcrop_try_detect_text_crop_rect(
     if (!pixels || !out_rect || !out_found || w < 8 || h < 8 || stride < w * 4) return VN_ERR_INVALID_ARG;
     *out_found = vnotch::services::SmartThumbnailCropService::TryDetectTextCropRect(
         pixels, w, h, stride, img_width, img_height, crop_size, out_rect) ? 1 : 0;
+    return VN_OK;
+}
+
+VN_EXPORT int32_t vn_smartcrop_detect_text_regions(
+    const uint8_t* pixels, int32_t w, int32_t h, int32_t stride,
+    int32_t img_width, int32_t img_height,
+    vnotch::services::VnCropRect* out_regions, int32_t out_cap, int32_t* out_count) noexcept
+{
+    if (!pixels || !out_count || w < 8 || h < 8 || stride < w * 4) return VN_ERR_INVALID_ARG;
+    *out_count = vnotch::services::SmartThumbnailCropService::DetectTextRegions(
+        pixels, w, h, stride, img_width, img_height, out_regions, out_cap);
     return VN_OK;
 }
 

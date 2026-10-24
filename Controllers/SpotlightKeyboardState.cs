@@ -1,3 +1,5 @@
+using System.Runtime.InteropServices;
+using System.Threading;
 using static VNotch.Services.Win32Interop;
 
 namespace VNotch.Controllers;
@@ -5,13 +7,16 @@ namespace VNotch.Controllers;
 internal enum SpotlightKeyboardAction { None, Suppress, Toggle, Escape }
 
 /// <summary>Hook-thread key state with immutable configuration published by the UI thread.</summary>
-internal sealed class SpotlightKeyboardState
+internal sealed partial class SpotlightKeyboardState
 {
     private sealed record Configuration(bool Enabled, bool Fallback, bool Open, int EscapeSession);
     private Configuration _configuration = new(false, false, false, 0);
-    private Configuration? _observed;
-    private bool _spaceDown;
-    private bool _escapeDown;
+    private byte _hasObserved;
+    private byte _obsEnabled;
+    private byte _obsFallback;
+    private int _obsEscapeSession;
+    private byte _spaceDown;
+    private byte _escapeDown;
     private uint _lastSpaceTime;
 
     internal void Configure(bool enabled, bool fallback, bool open)
@@ -25,42 +30,42 @@ internal sealed class SpotlightKeyboardState
     internal SpotlightKeyboardAction Process(KBDLLHOOKSTRUCT key, int message)
     {
         var current = Volatile.Read(ref _configuration);
-        if (_observed?.EscapeSession != current.EscapeSession) _escapeDown = false;
-        if (_observed?.Enabled != current.Enabled || _observed?.Fallback != current.Fallback)
-        {
-            _spaceDown = false;
-            _lastSpaceTime = 0;
-        }
-        _observed = current;
-        if (!current.Enabled) return SpotlightKeyboardAction.None;
-
-        if (SpotlightController.IsEscapeKey(key.vkCode))
-        {
-            if (_escapeDown && message is WM_KEYUP or WM_SYSKEYUP)
-            {
-                _escapeDown = false;
-                return SpotlightKeyboardAction.Suppress;
-            }
-            if (current.Open && message is WM_KEYDOWN or WM_SYSKEYDOWN)
-            {
-                if (_escapeDown) return SpotlightKeyboardAction.Suppress;
-                _escapeDown = true;
-                return SpotlightKeyboardAction.Escape;
-            }
-        }
-        if (_spaceDown && key.vkCode == VK_SPACE && message is WM_KEYUP or WM_SYSKEYUP)
-        {
-            _spaceDown = false;
-            return SpotlightKeyboardAction.Suppress;
-        }
-        if (current.Fallback && SpotlightController.IsAltSpaceKey(key.vkCode, key.flags)
-            && message is WM_KEYDOWN or WM_SYSKEYDOWN)
-        {
-            bool dispatch = SpotlightController.ShouldDispatchFallbackToggle(_spaceDown, _lastSpaceTime, key.time);
-            _spaceDown = true;
-            _lastSpaceTime = key.time;
-            return dispatch ? SpotlightKeyboardAction.Toggle : SpotlightKeyboardAction.Suppress;
-        }
-        return SpotlightKeyboardAction.None;
+        vn_spotlight_kbd_process(
+            current.Enabled ? (byte)1 : (byte)0,
+            current.Fallback ? (byte)1 : (byte)0,
+            current.Open ? (byte)1 : (byte)0,
+            current.EscapeSession,
+            ref _hasObserved,
+            ref _obsEnabled,
+            ref _obsFallback,
+            ref _obsEscapeSession,
+            ref _spaceDown,
+            ref _escapeDown,
+            ref _lastSpaceTime,
+            key.vkCode,
+            key.flags,
+            key.time,
+            message,
+            out int action);
+        return (SpotlightKeyboardAction)action;
     }
+
+    [LibraryImport("VNotch.Native.dll")]
+    private static partial int vn_spotlight_kbd_process(
+        byte enabled,
+        byte fallback,
+        byte open,
+        int escape_session,
+        ref byte io_has_observed,
+        ref byte io_obs_enabled,
+        ref byte io_obs_fallback,
+        ref int io_obs_escape_session,
+        ref byte io_space_down,
+        ref byte io_escape_down,
+        ref uint io_last_space_time,
+        uint vk_code,
+        uint flags,
+        uint time,
+        int message,
+        out int out_action);
 }

@@ -1,11 +1,11 @@
 using System;
-using System.IO.Hashing;
+using System.Runtime.InteropServices;
 
 namespace VNotch.Controllers;
 
 // Worker-owned full-frame fingerprint. Every byte participates, including motion
 // between the old sampled rows. Retain the digest instead of a second bitmap.
-internal sealed class GlassFrameHistory
+internal sealed partial class GlassFrameHistory
 {
     private UInt128 _committedHash, _checkedHash;
     private int _width, _height, _checkedWidth, _checkedHeight;
@@ -44,7 +44,17 @@ internal sealed class GlassFrameHistory
         _hasCheckedFrame = false;
     }
 
-    // The runtime implementation uses SIMD where available. Hash the entire frame
-    // once, with a 128-bit digest, and commit that checked digest after rendering.
-    internal static UInt128 ComputeHash(ReadOnlySpan<byte> data) => XxHash128.HashToUInt128(data);
+    internal static unsafe UInt128 ComputeHash(ReadOnlySpan<byte> data)
+    {
+        if (data.IsEmpty) return default;
+        fixed (byte* ptr = data)
+        {
+            vn_glass_frame_hash_128(ptr, data.Length, out ulong lo, out ulong hi);
+            return new UInt128(hi, lo);
+        }
+    }
+
+    [LibraryImport("VNotch.Native.dll")]
+    private static unsafe partial int vn_glass_frame_hash_128(
+        byte* data, int length, out ulong out_lo, out ulong out_hi);
 }

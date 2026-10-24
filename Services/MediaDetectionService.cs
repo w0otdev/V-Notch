@@ -7,7 +7,6 @@ using System.Text.Json;
 using System.Text.RegularExpressions;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
-using NAudio.CoreAudioApi;
 using VNotch.Models;
 using Windows.Media.Control;
 
@@ -54,6 +53,64 @@ public sealed partial class MediaDetectionService : IMediaDetectionService, IAsy
     private static partial int vn_media_detection_evaluate_should_publish(
         in VnMediaPublishParams @params,
         out byte outShouldPublish);
+
+    [LibraryImport(NativeDll, StringMarshalling = StringMarshalling.Utf16)]
+    private static partial int vn_media_detection_build_session_instance_key(
+        nint unkPtr,
+        ReadOnlySpan<char> sourceApp,
+        int sourceAppLen,
+        Span<char> outBuf,
+        int outCap,
+        out int outLen);
+
+    [LibraryImport(NativeDll, StringMarshalling = StringMarshalling.Utf16)]
+    private static partial int vn_media_detection_extract_process_name(
+        ReadOnlySpan<char> sourceApp,
+        int sourceAppLen,
+        Span<char> outBuf,
+        int outCap,
+        out int outLen);
+
+    [LibraryImport(NativeDll, StringMarshalling = StringMarshalling.Utf16)]
+    private static partial int vn_media_detection_extract_youtube_video_id(
+        ReadOnlySpan<char> url,
+        int urlLen,
+        Span<char> outBuf,
+        int outCap,
+        out int outLen);
+
+    [LibraryImport(NativeDll, StringMarshalling = StringMarshalling.Utf16)]
+    private static partial int vn_media_detection_get_spotify_window_title(
+        Span<char> outBuf,
+        int outCap,
+        out int outLen);
+
+    [LibraryImport(NativeDll, StringMarshalling = StringMarshalling.Utf16)]
+    private static partial int vn_media_detection_parse_youtube_window_title(
+        ReadOnlySpan<char> extractedTitle,
+        int extractedTitleLen,
+        Span<char> outTrack,
+        int trackCap,
+        out int outTrackLen,
+        Span<char> outArtist,
+        int artistCap,
+        out int outArtistLen);
+
+    [LibraryImport(NativeDll, StringMarshalling = StringMarshalling.Utf16)]
+    private static partial int vn_media_detection_evaluate_spotify_secondary_correction(
+        ReadOnlySpan<char> groundTruth,
+        int groundTruthLen,
+        ReadOnlySpan<char> currentTrack,
+        int currentTrackLen,
+        ReadOnlySpan<char> currentArtist,
+        int currentArtistLen,
+        Span<char> outTrack,
+        int trackCap,
+        out int outTrackLen,
+        Span<char> outArtist,
+        int artistCap,
+        out int outArtistLen,
+        out byte outCorrected);
 
     private enum ServiceLifecycleState
     {
@@ -1115,6 +1172,8 @@ public sealed partial class MediaDetectionService : IMediaDetectionService, IAsy
                 {
 
                     windowTitles ??= GetAllWindowTitles();
+                    Span<char> trackBuf = stackalloc char[512];
+                    Span<char> artistBuf = stackalloc char[512];
 
                     foreach (var title in windowTitles)
                     {
@@ -1124,30 +1183,13 @@ public sealed partial class MediaDetectionService : IMediaDetectionService, IAsy
                             var extractedTitle = ExtractVideoTitle(title, YouTubePlatformName);
                             string trackName = extractedTitle;
                             string artistName = YouTubePlatformName;
-
-                            if (extractedTitle.Contains(" - "))
+                            if (vn_media_detection_parse_youtube_window_title(
+                                    extractedTitle.AsSpan(), extractedTitle.Length,
+                                    trackBuf, trackBuf.Length, out int tLen,
+                                    artistBuf, artistBuf.Length, out int aLen) == 0)
                             {
-                                int lastSep = extractedTitle.LastIndexOf(" - ", StringComparison.Ordinal);
-                                string firstPart = extractedTitle.Substring(0, lastSep).Trim();
-                                string secondPart = extractedTitle.Substring(lastSep + 3).Trim();
-
-                                int firstWordCount = firstPart.Split(new[] { ' ' }, StringSplitOptions.RemoveEmptyEntries).Length;
-                                int secondWordCount = secondPart.Split(new[] { ' ' }, StringSplitOptions.RemoveEmptyEntries).Length;
-
-                                bool likelyTrackFirst = (firstWordCount <= 3 && secondWordCount > firstWordCount) ||
-                                                       secondPart.StartsWith("by ", StringComparison.OrdinalIgnoreCase) ||
-                                                       secondPart.Contains(" by ", StringComparison.OrdinalIgnoreCase);
-
-                                if (likelyTrackFirst)
-                                {
-                                    trackName = firstPart;
-                                    artistName = secondPart;
-                                }
-                                else
-                                {
-                                    trackName = secondPart;
-                                    artistName = firstPart;
-                                }
+                                trackName = new string(trackBuf[..tLen]);
+                                artistName = new string(artistBuf[..aLen]);
                             }
 
                             bool isNewTrack = trackName != _lastTrackName && !_lastTrackName.Contains(trackName);
@@ -2070,29 +2112,10 @@ public sealed partial class MediaDetectionService : IMediaDetectionService, IAsy
 
     private static string GetSpotifyWindowTitle()
     {
-        try
-        {
-            var spotifyProcesses = Process.GetProcessesByName(SpotifyPlatformName);
-            try
-            {
-                return spotifyProcesses
-                    .Select(proc => proc.MainWindowTitle)
-                    .FirstOrDefault(title => !string.IsNullOrEmpty(title) &&
-                                             title != SpotifyPlatformName &&
-                                             title != "Spotify Premium" &&
-                                             title != "Spotify Free" &&
-                                             !title.EndsWith("spotify", StringComparison.OrdinalIgnoreCase)) ?? "";
-            }
-            finally
-            {
-                foreach (var process in spotifyProcesses) process.Dispose();
-            }
-        }
-        catch (Exception ex)
-        {
-            RuntimeLog.Error("MEDIA-SPOTIFY-TITLE", ex.ToString());
-            return "";
-        }
+        Span<char> buf = stackalloc char[512];
+        return vn_media_detection_get_spotify_window_title(buf, buf.Length, out int len) == 0 && len > 0
+            ? new string(buf[..len])
+            : string.Empty;
     }
 
     private static string BuildTrackIdentity(string track, string artist)
@@ -2154,17 +2177,17 @@ public sealed partial class MediaDetectionService : IMediaDetectionService, IAsy
     private static string BuildSessionInstanceKey(GlobalSystemMediaTransportControlsSession session)
     {
         string sourceApp = session.SourceAppUserModelId ?? "";
-
-        // Managed WinRT wrappers can change between GetSessions calls. Compare
-        // canonical native IUnknown identity instead of the wrapper's hash code.
         var native = ((WinRT.IWinRTObject)session).NativeObject;
-        var iid = new Guid("00000000-0000-0000-C000-000000000046");
-        System.Runtime.InteropServices.Marshal.ThrowExceptionForHR(
-            System.Runtime.InteropServices.Marshal.QueryInterface(native.ThisPtr, ref iid, out var identity));
-        try { return $"{sourceApp}|{identity.ToInt64():X}"; }
+        Span<char> buf = stackalloc char[512];
+        try
+        {
+            return vn_media_detection_build_session_instance_key(
+                native.ThisPtr, sourceApp.AsSpan(), sourceApp.Length, buf, buf.Length, out int len) == 0
+                ? new string(buf[..len])
+                : sourceApp;
+        }
         finally
         {
-            System.Runtime.InteropServices.Marshal.Release(identity);
             GC.KeepAlive(session);
         }
     }
@@ -2206,9 +2229,11 @@ public sealed partial class MediaDetectionService : IMediaDetectionService, IAsy
     private static string? ExtractProcessNameFromSourceApp(string sourceAppId)
     {
         if (string.IsNullOrWhiteSpace(sourceAppId)) return null;
-        var match = System.Text.RegularExpressions.Regex.Match(sourceAppId, @"([A-Za-z0-9_\-]+)\.exe", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
-        if (match.Success) return match.Groups[1].Value;
-        return null;
+        Span<char> buf = stackalloc char[256];
+        return vn_media_detection_extract_process_name(
+            sourceAppId.AsSpan(), sourceAppId.Length, buf, buf.Length, out int len) == 0 && len > 0
+            ? new string(buf[..len])
+            : null;
     }
 
     private void DetectPictureInPictureState(MediaInfo info)
@@ -2544,56 +2569,19 @@ public sealed partial class MediaDetectionService : IMediaDetectionService, IAsy
         if (!isStaleSMTC && !string.IsNullOrEmpty(spotifyGroundTruth) &&
             !string.IsNullOrEmpty(info.CurrentArtist))
         {
-            bool needsCorrection = false;
-            string correctedTrack = "";
-            string correctedArtist = "";
-
-            if (info.CurrentArtist.Contains(" - ", StringComparison.Ordinal))
+            Span<char> trackBuf = stackalloc char[512];
+            Span<char> artistBuf = stackalloc char[512];
+            string curTrack = info.CurrentTrack ?? string.Empty;
+            if (vn_media_detection_evaluate_spotify_secondary_correction(
+                    spotifyGroundTruth.AsSpan(), spotifyGroundTruth.Length,
+                    curTrack.AsSpan(), curTrack.Length,
+                    info.CurrentArtist.AsSpan(), info.CurrentArtist.Length,
+                    trackBuf, trackBuf.Length, out int tLen,
+                    artistBuf, artistBuf.Length, out int aLen,
+                    out byte corrected) == 0 && corrected != 0)
             {
-                string artistPrefix = info.CurrentArtist + " - ";
-                bool artistMatchesWindowTitle = spotifyGroundTruth.StartsWith(artistPrefix, StringComparison.OrdinalIgnoreCase);
-
-                if (!artistMatchesWindowTitle)
-                {
-                    int firstSep = spotifyGroundTruth.IndexOf(" - ", StringComparison.Ordinal);
-                    if (firstSep > 0)
-                    {
-                        string wtArtistFirst = spotifyGroundTruth.Substring(0, firstSep).Trim();
-                        string wtTrackFirst = spotifyGroundTruth.Substring(firstSep + 3).Trim();
-
-                        if (!wtArtistFirst.Contains(" - ", StringComparison.Ordinal) &&
-                            !string.IsNullOrEmpty(wtTrackFirst))
-                        {
-                            correctedArtist = wtArtistFirst;
-                            correctedTrack = wtTrackFirst;
-                            needsCorrection = true;
-                        }
-                    }
-                }
-            }
-
-            if (!needsCorrection && !string.IsNullOrEmpty(info.CurrentTrack))
-            {
-                string artistPrefix = info.CurrentArtist + " - ";
-                if (spotifyGroundTruth.StartsWith(artistPrefix, StringComparison.OrdinalIgnoreCase))
-                {
-                    string realTrack = spotifyGroundTruth.Substring(artistPrefix.Length).Trim();
-                    if (!string.IsNullOrEmpty(realTrack) &&
-                        !string.Equals(realTrack, info.CurrentTrack, StringComparison.OrdinalIgnoreCase) &&
-                        realTrack.Contains(info.CurrentTrack, StringComparison.OrdinalIgnoreCase) &&
-                        realTrack.Length > info.CurrentTrack.Length + 3)
-                    {
-                        correctedTrack = realTrack;
-                        correctedArtist = info.CurrentArtist;
-                        needsCorrection = true;
-                    }
-                }
-            }
-
-            if (needsCorrection)
-            {
-                info.CurrentTrack = correctedTrack;
-                info.CurrentArtist = correctedArtist;
+                info.CurrentTrack = new string(trackBuf[..tLen]);
+                info.CurrentArtist = new string(artistBuf[..aLen]);
                 isStaleSMTC = true;
             }
         }
@@ -3562,24 +3550,13 @@ public sealed partial class MediaDetectionService : IMediaDetectionService, IAsy
         try
         {
             string? url = _windowTitleScanner.TryGetBrowserUrl();
-            if (string.IsNullOrEmpty(url)) return null;
-
-            var match = System.Text.RegularExpressions.Regex.Match(url,
-                @"(?:youtube\.com/watch\?.*v=|youtu\.be/|music\.youtube\.com/watch\?.*v=)([a-zA-Z0-9_-]{11})");
-
-            if (match.Success)
-            {
-                string videoId = match.Groups[1].Value;
-                System.Diagnostics.Debug.WriteLine($"[MediaDetection] Extracted video ID from browser URL: {videoId}");
-                return videoId;
-            }
+            return ExtractYouTubeVideoIdFromUrl(url);
         }
         catch (Exception ex)
         {
             System.Diagnostics.Debug.WriteLine($"[MediaDetection] Browser URL extraction failed: {ex.Message}");
+            return null;
         }
-
-        return null;
     }
 
     private string? TryExtractVideoIdFromAnyBrowserUrl()
@@ -3587,24 +3564,22 @@ public sealed partial class MediaDetectionService : IMediaDetectionService, IAsy
         try
         {
             string? url = _windowTitleScanner.TryGetMediaUrlFromAnyBrowser();
-            if (string.IsNullOrEmpty(url)) return null;
-
-            var match = System.Text.RegularExpressions.Regex.Match(url,
-                @"(?:youtube\.com/watch\?.*v=|youtu\.be/|music\.youtube\.com/watch\?.*v=)([a-zA-Z0-9_-]{11})");
-
-            if (match.Success)
-            {
-                string videoId = match.Groups[1].Value;
-                System.Diagnostics.Debug.WriteLine($"[MediaDetection] Extracted video ID from background browser: {videoId}");
-                return videoId;
-            }
+            return ExtractYouTubeVideoIdFromUrl(url);
         }
         catch (Exception ex)
         {
             System.Diagnostics.Debug.WriteLine($"[MediaDetection] Background browser URL extraction failed: {ex.Message}");
+            return null;
         }
+    }
 
-        return null;
+    private static string? ExtractYouTubeVideoIdFromUrl(string? url)
+    {
+        if (string.IsNullOrEmpty(url)) return null;
+        Span<char> buf = stackalloc char[16];
+        return vn_media_detection_extract_youtube_video_id(url.AsSpan(), url.Length, buf, buf.Length, out int len) == 0 && len == 11
+            ? new string(buf[..len])
+            : null;
     }
 
     private string? TryExtractSoundCloudUrlFromAnyBrowser()

@@ -1,11 +1,29 @@
 using System.Linq.Expressions;
 using System.Reflection;
+using System.Runtime.InteropServices;
 using System.Text.Json.Serialization;
 
 namespace VNotch.Models;
 
-public class NotchSettings
+public partial class NotchSettings
 {
+    private const string NativeDll = "VNotch.Native.dll";
+
+    [LibraryImport(NativeDll)]
+    internal static partial int vn_settings_clamp_int(int value, int minVal, int maxVal, out int outValue);
+
+    [LibraryImport(NativeDll)]
+    internal static partial int vn_settings_clamp_double(double value, double minVal, double maxVal, double fallbackIfNonFinite, out double outValue);
+
+    [LibraryImport(NativeDll)]
+    internal static partial int vn_settings_double_equals(double a, double b, byte allowNanEqual, out byte outEqual);
+
+    private static int ClampInt(int value, int min, int max) =>
+        vn_settings_clamp_int(value, min, max, out int result) == 0 ? result : value;
+
+    private static double ClampDouble(double value, double min, double max, double fallback) =>
+        vn_settings_clamp_double(value, min, max, fallback, out double result) == 0 ? result : fallback;
+
     public const string SystemBatteryDeviceId = "";
     public const string AutoBluetoothBatteryDeviceId = "__auto_bluetooth__";
 
@@ -16,7 +34,7 @@ public class NotchSettings
     public double InteractionSoundVolume
     {
         get => _interactionSoundVolume;
-        set => _interactionSoundVolume = double.IsFinite(value) ? Math.Clamp(value, 0, 1) : .55;
+        set => _interactionSoundVolume = ClampDouble(value, 0, 1, .55);
     }
 
     public string LastRunVersion { get; set; } = "";
@@ -44,7 +62,7 @@ public class NotchSettings
     public bool ClipboardCaptureImages { get; set; } = true;
     public bool ClipboardCaptureFiles { get; set; } = true;
     private int _clipboardCaptureDelay = 250;
-    public int ClipboardCaptureDelay { get => _clipboardCaptureDelay; set => _clipboardCaptureDelay = Math.Clamp(value, 100, 2000); }
+    public int ClipboardCaptureDelay { get => _clipboardCaptureDelay; set => _clipboardCaptureDelay = ClampInt(value, 100, 2000); }
     public string ClipboardHotkey { get; set; } = "";
 
     public string TranslationModelId { get; set; } = "qwen3-4b-instruct-2507-q4km-v1";
@@ -59,31 +77,31 @@ public class NotchSettings
     public bool EnableCurrencyConversion { get; set; } = true;
     public string TranslationTargetCurrency { get; set; } = "auto";
     private int _translationModelIdleMinutes = 5;
-    public int TranslationModelIdleMinutes { get => _translationModelIdleMinutes; set => _translationModelIdleMinutes = Math.Clamp(value, 0, 60); }
+    public int TranslationModelIdleMinutes { get => _translationModelIdleMinutes; set => _translationModelIdleMinutes = ClampInt(value, 0, 60); }
     private int _translationCacheMinutes = 30;
-    public int TranslationCacheMinutes { get => _translationCacheMinutes; set => _translationCacheMinutes = Math.Clamp(value, 1, 240); }
+    public int TranslationCacheMinutes { get => _translationCacheMinutes; set => _translationCacheMinutes = ClampInt(value, 1, 240); }
     private int _translationCacheEntries = 128;
-    public int TranslationCacheEntries { get => _translationCacheEntries; set => _translationCacheEntries = Math.Clamp(value, 0, 512); }
+    public int TranslationCacheEntries { get => _translationCacheEntries; set => _translationCacheEntries = ClampInt(value, 0, 512); }
     private int _translationGpuLayers = 36;
-    public int TranslationGpuLayers { get => _translationGpuLayers; set => _translationGpuLayers = Math.Clamp(value, 0, 128); }
+    public int TranslationGpuLayers { get => _translationGpuLayers; set => _translationGpuLayers = ClampInt(value, 0, 128); }
     private int _translationThreads = 0;
-    public int TranslationThreads { get => _translationThreads; set => _translationThreads = Math.Clamp(value, 0, 64); }
+    public int TranslationThreads { get => _translationThreads; set => _translationThreads = ClampInt(value, 0, 64); }
     private int _translationBatchThreads = 0;
-    public int TranslationBatchThreads { get => _translationBatchThreads; set => _translationBatchThreads = Math.Clamp(value, 0, 64); }
+    public int TranslationBatchThreads { get => _translationBatchThreads; set => _translationBatchThreads = ClampInt(value, 0, 64); }
     private int _translationContextSize = 2048;
-    public int TranslationContextSize { get => _translationContextSize; set => _translationContextSize = Math.Clamp(value, 2048, 8192); }
+    public int TranslationContextSize { get => _translationContextSize; set => _translationContextSize = ClampInt(value, 2048, 8192); }
     private int _translationBatchSize = 512;
-    public int TranslationBatchSize { get => _translationBatchSize; set => _translationBatchSize = Math.Clamp(value, 32, 512); }
+    public int TranslationBatchSize { get => _translationBatchSize; set => _translationBatchSize = ClampInt(value, 32, 512); }
     private int _translationOutputTokens = 768;
-    public int TranslationOutputTokens { get => _translationOutputTokens; set => _translationOutputTokens = Math.Clamp(value, 128, 1024); }
+    public int TranslationOutputTokens { get => _translationOutputTokens; set => _translationOutputTokens = ClampInt(value, 128, 1024); }
     private int _translationTemperaturePercent = 20;
-    public int TranslationTemperaturePercent { get => _translationTemperaturePercent; set => _translationTemperaturePercent = Math.Clamp(value, 0, 100); }
+    public int TranslationTemperaturePercent { get => _translationTemperaturePercent; set => _translationTemperaturePercent = ClampInt(value, 0, 100); }
     private int _translationTopPPercent = 80;
-    public int TranslationTopPPercent { get => _translationTopPPercent; set => _translationTopPPercent = Math.Clamp(value, 1, 100); }
+    public int TranslationTopPPercent { get => _translationTopPPercent; set => _translationTopPPercent = ClampInt(value, 1, 100); }
     private int _translationTopK = 20;
-    public int TranslationTopK { get => _translationTopK; set => _translationTopK = Math.Clamp(value, 1, 100); }
+    public int TranslationTopK { get => _translationTopK; set => _translationTopK = ClampInt(value, 1, 100); }
     private int _translationTimeoutSeconds = 90;
-    public int TranslationTimeoutSeconds { get => _translationTimeoutSeconds; set => _translationTimeoutSeconds = Math.Clamp(value, 15, 600); }
+    public int TranslationTimeoutSeconds { get => _translationTimeoutSeconds; set => _translationTimeoutSeconds = ClampInt(value, 15, 600); }
 
 
     public string CameraDeviceId { get; set; } = "";
@@ -230,13 +248,14 @@ public class NotchSettings
 
     private static readonly Func<NotchSettings, NotchSettings, bool> _scalarValueEquals = BuildScalarValueEquals();
 
-    private static bool DoubleEquals(double d1, double d2) => !(Math.Abs(d1 - d2) > 0.0001);
+    private static bool DoubleEquals(double d1, double d2) =>
+        vn_settings_double_equals(d1, d2, 0, out byte equal) == 0 && equal != 0;
 
     private static bool NullableDoubleEquals(double? d1, double? d2)
     {
         if (d1.HasValue != d2.HasValue)
             return false;
-        return !d1.HasValue || !(Math.Abs(d1.Value - d2!.Value) > 0.0001);
+        return !d1.HasValue || DoubleEquals(d1.Value, d2!.Value);
     }
 
     private static bool OrdinalStringEquals(string? s1, string? s2) =>
@@ -324,8 +343,53 @@ public class NotchSettings
     }
 }
 
-public class LiquidGlassConfig
+public partial class LiquidGlassConfig
 {
+    private const string NativeDll = "VNotch.Native.dll";
+
+    [StructLayout(LayoutKind.Sequential, Pack = 1)]
+    private struct VnLiquidGlassScalars
+    {
+        public double BlurAmount;
+        public double Refraction;
+        public double EdgeBend;
+        public double ChromaticAberration;
+        public double EdgeHighlight;
+        public double TouchLight;
+        public double Specular;
+        public double Fresnel;
+        public double Distortion;
+        public int CornerRadius;
+        public double ZRadius;
+        public double Opacity;
+        public double Saturation;
+        public double Brightness;
+        public double ShadowOpacity;
+        public int ShadowSpread;
+        public int BevelMode;
+        public int TargetFps;
+        public int Variant;
+        public double PowerFactor;
+        public double RefractionA;
+        public double RefractionB;
+        public double RefractionC;
+        public double RefractionD;
+        public double FPower;
+        public double Noise;
+        public double GlowWeight;
+        public double GlowBias;
+        public double GlowEdge0;
+        public double GlowEdge1;
+        public byte HideFromScreenCapture;
+        public byte UseGpuRefraction;
+    }
+
+    [LibraryImport(NativeDll)]
+    private static partial int vn_liquid_glass_config_equals(
+        ref VnLiquidGlassScalars a,
+        ref VnLiquidGlassScalars b,
+        out byte outEqual);
+
     // Defaults are tuned from OverShifted/LiquidGlass Apple squircle shader architecture.
     public double BlurAmount { get; set; } = 0.3;
     public double Refraction { get; set; } = 1.0;
@@ -370,45 +434,49 @@ public class LiquidGlassConfig
 
     public LiquidGlassConfig Clone() => (LiquidGlassConfig)MemberwiseClone();
 
-    private static bool DoubleEquals(double a, double b) =>
-        !(Math.Abs(a - b) > 0.0001) || (double.IsNaN(a) && double.IsNaN(b));
+    private VnLiquidGlassScalars ToNative() => new()
+    {
+        BlurAmount = BlurAmount,
+        Refraction = Refraction,
+        EdgeBend = EdgeBend,
+        ChromaticAberration = ChromaticAberration,
+        EdgeHighlight = EdgeHighlight,
+        TouchLight = TouchLight,
+        Specular = Specular,
+        Fresnel = Fresnel,
+        Distortion = Distortion,
+        CornerRadius = CornerRadius,
+        ZRadius = ZRadius,
+        Opacity = Opacity,
+        Saturation = Saturation,
+        Brightness = Brightness,
+        ShadowOpacity = ShadowOpacity,
+        ShadowSpread = ShadowSpread,
+        BevelMode = BevelMode,
+        TargetFps = TargetFps,
+        Variant = Variant,
+        PowerFactor = PowerFactor,
+        RefractionA = RefractionA,
+        RefractionB = RefractionB,
+        RefractionC = RefractionC,
+        RefractionD = RefractionD,
+        FPower = FPower,
+        Noise = Noise,
+        GlowWeight = GlowWeight,
+        GlowBias = GlowBias,
+        GlowEdge0 = GlowEdge0,
+        GlowEdge1 = GlowEdge1,
+        HideFromScreenCapture = HideFromScreenCapture ? (byte)1 : (byte)0,
+        UseGpuRefraction = UseGpuRefraction ? (byte)1 : (byte)0,
+    };
 
     public bool ValueEquals(LiquidGlassConfig? other)
     {
         if (ReferenceEquals(this, other)) return true;
         if (other is null) return false;
 
-        return DoubleEquals(BlurAmount, other.BlurAmount)
-            && DoubleEquals(Refraction, other.Refraction)
-            && DoubleEquals(EdgeBend, other.EdgeBend)
-            && DoubleEquals(ChromaticAberration, other.ChromaticAberration)
-            && DoubleEquals(EdgeHighlight, other.EdgeHighlight)
-            && DoubleEquals(TouchLight, other.TouchLight)
-            && DoubleEquals(Specular, other.Specular)
-            && DoubleEquals(Fresnel, other.Fresnel)
-            && DoubleEquals(Distortion, other.Distortion)
-            && CornerRadius == other.CornerRadius
-            && DoubleEquals(ZRadius, other.ZRadius)
-            && DoubleEquals(Opacity, other.Opacity)
-            && DoubleEquals(Saturation, other.Saturation)
-            && DoubleEquals(Brightness, other.Brightness)
-            && DoubleEquals(ShadowOpacity, other.ShadowOpacity)
-            && ShadowSpread == other.ShadowSpread
-            && BevelMode == other.BevelMode
-            && TargetFps == other.TargetFps
-            && Variant == other.Variant
-            && DoubleEquals(PowerFactor, other.PowerFactor)
-            && DoubleEquals(RefractionA, other.RefractionA)
-            && DoubleEquals(RefractionB, other.RefractionB)
-            && DoubleEquals(RefractionC, other.RefractionC)
-            && DoubleEquals(RefractionD, other.RefractionD)
-            && DoubleEquals(FPower, other.FPower)
-            && DoubleEquals(Noise, other.Noise)
-            && DoubleEquals(GlowWeight, other.GlowWeight)
-            && DoubleEquals(GlowBias, other.GlowBias)
-            && DoubleEquals(GlowEdge0, other.GlowEdge0)
-            && DoubleEquals(GlowEdge1, other.GlowEdge1)
-            && HideFromScreenCapture == other.HideFromScreenCapture
-            && UseGpuRefraction == other.UseGpuRefraction;
+        var left = ToNative();
+        var right = other.ToNative();
+        return vn_liquid_glass_config_equals(ref left, ref right, out byte equal) == 0 && equal != 0;
     }
 }

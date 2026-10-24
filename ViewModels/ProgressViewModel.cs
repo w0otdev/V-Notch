@@ -1,3 +1,6 @@
+using System;
+using System.Runtime.InteropServices;
+using System.Threading.Tasks;
 using CommunityToolkit.Mvvm.ComponentModel;
 using VNotch.Models;
 using VNotch.Services;
@@ -135,19 +138,21 @@ public partial class ProgressViewModel : ObservableObject
             return;
         }
 
-        var display = _lastKnownPosition;
-        if (IsPlaying)
-        {
-            var elapsed = DateTime.UtcNow - _lastMediaUpdate;
-            double cap = CurrentMediaInfo.IsThrottled ? 3600 :
-                CurrentMediaInfo.Platform is MediaPlatform.YouTube or MediaPlatform.Browser ? 600 : 30;
-            var maxElapsed = TimeSpan.FromSeconds(cap);
-            if (elapsed > maxElapsed) elapsed = maxElapsed;
-            display += TimeSpan.FromTicks((long)(elapsed.Ticks * CurrentMediaInfo.PlaybackRate));
-        }
+        long elapsedTicks = (DateTime.UtcNow - _lastMediaUpdate).Ticks;
+        byte isWebOrYouTube = CurrentMediaInfo.Platform is MediaPlatform.YouTube or MediaPlatform.Browser ? (byte)1 : (byte)0;
+        vn_progress_interpolate_ticks(
+            _lastKnownPosition.Ticks,
+            _lastKnownDuration.Ticks,
+            elapsedTicks,
+            CurrentMediaInfo.PlaybackRate,
+            IsPlaying ? (byte)1 : (byte)0,
+            CurrentMediaInfo.IsThrottled ? (byte)1 : (byte)0,
+            isWebOrYouTube,
+            out long displayTicks,
+            out double ratio);
 
-        display = TimeSpan.FromTicks(Math.Clamp(display.Ticks, 0, _lastKnownDuration.Ticks));
-        Position = display.TotalSeconds / _lastKnownDuration.TotalSeconds;
+        var display = TimeSpan.FromTicks(displayTicks);
+        Position = ratio;
         CurrentTimeText = FormatCachedTime(display, ref _formattedPositionSecond, ref _formattedPosition);
         RemainingTimeText = FormatCachedTime(_lastKnownDuration, ref _formattedDurationSecond, ref _formattedDuration);
     }
@@ -184,16 +189,20 @@ public partial class ProgressViewModel : ObservableObject
     {
         if (CurrentMediaInfo?.CanSeekTimeline != true || _lastKnownDuration <= TimeSpan.Zero) return;
         var nowUtc = DateTime.UtcNow;
-        var current = _lastKnownPosition;
-        if (IsPlaying && CurrentMediaInfo != null)
-        {
-            var elapsed = nowUtc - _lastMediaUpdate;
-            double cap = CurrentMediaInfo.IsThrottled ? 3600 :
-                CurrentMediaInfo.Platform is MediaPlatform.YouTube or MediaPlatform.Browser ? 600 : 30;
-            var maxElapsed = TimeSpan.FromSeconds(cap);
-            if (elapsed > maxElapsed) elapsed = maxElapsed;
-            current += TimeSpan.FromTicks((long)(elapsed.Ticks * CurrentMediaInfo.PlaybackRate));
-        }
+        long elapsedTicks = (nowUtc - _lastMediaUpdate).Ticks;
+        byte isWebOrYouTube = CurrentMediaInfo.Platform is MediaPlatform.YouTube or MediaPlatform.Browser ? (byte)1 : (byte)0;
+        vn_progress_interpolate_ticks(
+            _lastKnownPosition.Ticks,
+            _lastKnownDuration.Ticks,
+            elapsedTicks,
+            CurrentMediaInfo.PlaybackRate,
+            IsPlaying ? (byte)1 : (byte)0,
+            CurrentMediaInfo.IsThrottled ? (byte)1 : (byte)0,
+            isWebOrYouTube,
+            out long currentTicks,
+            out _);
+
+        var current = TimeSpan.FromTicks(currentTicks);
         var target = TimeSpan.FromTicks(Math.Clamp((current + TimeSpan.FromSeconds(seconds)).Ticks, 0, _lastKnownDuration.Ticks));
         _lastKnownPosition = target;
         _lastMediaUpdate = nowUtc;
@@ -217,6 +226,26 @@ public partial class ProgressViewModel : ObservableObject
         return cachedText;
     }
 
-    private static string FormatTime(TimeSpan time) =>
-        time.TotalHours >= 1 ? time.ToString(@"h\:mm\:ss") : time.ToString(@"m\:ss");
+    private static unsafe string FormatTime(TimeSpan time)
+    {
+        char* buf = stackalloc char[32];
+        vn_progress_format_time(time.Ticks, buf, 32, out int len);
+        return len > 0 ? new string(buf, 0, len) : "0:00";
+    }
+
+    [LibraryImport("VNotch.Native.dll")]
+    private static partial int vn_progress_interpolate_ticks(
+        long last_position_ticks,
+        long duration_ticks,
+        long elapsed_ticks,
+        double playback_rate,
+        byte is_playing,
+        byte is_throttled,
+        byte is_web_or_youtube,
+        out long out_display_ticks,
+        out double out_ratio);
+
+    [LibraryImport("VNotch.Native.dll")]
+    private static unsafe partial int vn_progress_format_time(
+        long time_ticks, char* out_buf, int buf_cap, out int out_len);
 }

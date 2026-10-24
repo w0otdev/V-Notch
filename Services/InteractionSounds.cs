@@ -6,13 +6,13 @@ using System.Windows.Controls.Primitives;
 using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Media.Media3D;
-using NAudio.Wave;
 
 namespace VNotch.Services;
 
 internal enum InteractionCue { Click, ToggleOn, ToggleOff, Navigate, Select, Slider, Menu, Confirm, Delete, Transport }
 
 // One shared, asynchronous playback channel. No files, polling or audio capture.
+// Pacing rules and playback live in Native/Services/InteractionSoundPlayback.cpp.
 internal sealed partial class InteractionSoundPlayer : IDisposable
 {
     [LibraryImport("VNotch.Native.dll")]
@@ -23,28 +23,47 @@ internal sealed partial class InteractionSoundPlayer : IDisposable
         int outCap,
         out int outLen);
 
+    [StructLayout(LayoutKind.Sequential, Pack = 1)]
+    private unsafe struct VnInteractionGateState
+    {
+        public long LastPlayed;
+        public byte HasLast;
+        public fixed long LastCuePlayed[CueCount];
+        public fixed int LastVariants[CueCount];
+        public int RapidBurstCount;
+    }
+
+    [LibraryImport("VNotch.Native.dll")]
+    private static partial int vn_interaction_gate_reset(ref VnInteractionGateState state);
+
+    [LibraryImport("VNotch.Native.dll")]
+    private static partial int vn_interaction_gate_evaluate(
+        ref VnInteractionGateState state, int cue, long nowMs, byte hasOverride, uint random,
+        out byte allow, out int variant, out int burstCount);
+
+    [LibraryImport("VNotch.Native.dll")]
+    private static partial int vn_interaction_play(int cue, int variant, float volume, int burstCount);
+
+    [LibraryImport("VNotch.Native.dll")]
+    private static partial int vn_interaction_stop();
+
+    private const int CueCount = 10;
     internal const int VariantCount = 6;
-    private readonly Dictionary<(InteractionCue Cue, int Variant), byte[]> _sounds = new();
-    private WaveOutEvent? _output;
-    private RawSourceWaveStream? _source;
-    private VolumeWaveProvider16? _gain;
+    private VnInteractionGateState _gate;
     private float _volume = .55f;
     private readonly Action<InteractionCue, int>? _playOverride;
-    private readonly int[] _lastVariants = new int[Enum.GetValues<InteractionCue>().Length];
-    private readonly long[] _lastCuePlayed = new long[Enum.GetValues<InteractionCue>().Length];
     private readonly Func<long> _clock;
-    private long? _lastPlayed;
-    private int _rapidBurstCount;
     private bool _reportedPlaybackFailure;
+
     internal bool Enabled { get; set; }
+
     internal float Volume
     {
         get => _volume;
         set
         {
             _volume = float.IsFinite(value) ? Math.Clamp(value, 0, 1) : 0;
-            if (_gain != null) _gain.Volume = _volume;
-            if (_volume == 0) DisposeOutput();
+            if (_volume == 0) vn_interaction_stop();
         }
     }
 
@@ -52,66 +71,38 @@ internal sealed partial class InteractionSoundPlayer : IDisposable
     {
         _playOverride = play;
         _clock = clock ?? (() => Environment.TickCount64);
-        Array.Fill(_lastVariants, -1);
-        Array.Fill(_lastCuePlayed, long.MinValue / 2);
+        vn_interaction_gate_reset(ref _gate);
     }
 
     internal void Play(InteractionCue cue)
     {
         if (!Enabled || Volume == 0) return;
-        long now = _clock();
-        if (_lastPlayed is long last)
+        if (vn_interaction_gate_evaluate(ref _gate, (int)cue, _clock(), _playOverride != null ? (byte)1 : (byte)0,
+                (uint)Random.Shared.Next(), out byte allow, out int variant, out int burstCount) != 0 || allow == 0)
+            return;
+
+        if (_playOverride != null)
         {
-            long elapsed = now - last;
-            // Adaptive anti-spam: base 65 ms global gate, plus per-cue cooldown and burst backoff when real UI events spam.
-            if (elapsed < 65) return;
-            long cueElapsed = now - _lastCuePlayed[(int)cue];
-            int sameCueCooldown = _playOverride != null ? 65 : cue switch
-            {
-                InteractionCue.Slider => 130,
-                InteractionCue.Confirm or InteractionCue.Delete => 180,
-                InteractionCue.ToggleOn or InteractionCue.ToggleOff or InteractionCue.Navigate => 140,
-                _ => 110
-            };
-            if (cueElapsed < sameCueCooldown) return;
-            _rapidBurstCount = elapsed < 220 ? Math.Min(6, _rapidBurstCount + 1) : 0;
-            if (_playOverride == null && _rapidBurstCount >= 3 && elapsed < 65 + _rapidBurstCount * 35) return;
+            try { _playOverride(cue, variant); }
+            catch (Exception ex) when (ex is InvalidOperationException or IOException or TimeoutException) { ReportFailure(ex); }
+            return;
         }
-        _lastPlayed = now;
-        _lastCuePlayed[(int)cue] = now;
-        int previous = _lastVariants[(int)cue];
-        int variant = Random.Shared.Next(previous < 0 ? VariantCount : VariantCount - 1);
-        if (previous >= 0 && variant >= previous) variant++;
-        _lastVariants[(int)cue] = variant;
-        try
+
+        if (vn_interaction_play((int)cue, variant, Volume, burstCount) == 0)
         {
-            if (_playOverride != null) { _playOverride(cue, variant); return; }
-            if (!_sounds.TryGetValue((cue, variant), out var sound))
-            {
-                sound = CreateWave(cue, variant);
-                _sounds.Add((cue, variant), sound);
-            }
-            DisposeOutput();
-            _source = new RawSourceWaveStream(new MemoryStream(sound, 44, sound.Length - 44, writable: false), new WaveFormat(44100, 16, 1));
-            // Software gain affects only these PCM samples, never media/system volume.
-            // Duck gain slightly during rapid consecutive clicks so fast clicking never fatigues the ear.
-            float burstDuck = _rapidBurstCount > 0 ? Math.Max(.45f, 1f - _rapidBurstCount * .12f) : 1f;
-            _gain = new VolumeWaveProvider16(_source) { Volume = Volume * burstDuck };
-            _output = new WaveOutEvent { DesiredLatency = 50, NumberOfBuffers = 2 };
-            _output.Init(_gain);
-            _output.Play();
             _reportedPlaybackFailure = false;
+            return;
         }
-        catch (Exception ex) when (ex is InvalidOperationException or System.ComponentModel.Win32Exception or IOException or TimeoutException or NAudio.MmException)
-        {
-            DisposeOutput();
-            if (!_reportedPlaybackFailure)
-            {
-                _reportedPlaybackFailure = true;
-                RuntimeLog.Error("SFX", ex, "Interaction sound playback failed");
-            }
-            // Feedback must never interrupt the user's action if audio is unavailable.
-        }
+
+        // Feedback must never interrupt the user's action if audio is unavailable.
+        ReportFailure(new InvalidOperationException("Native interaction sound playback failed."));
+    }
+
+    private void ReportFailure(Exception ex)
+    {
+        if (_reportedPlaybackFailure) return;
+        _reportedPlaybackFailure = true;
+        RuntimeLog.Error("SFX", ex, "Interaction sound playback failed");
     }
 
     internal static byte[] CreateWave(InteractionCue cue, int variant = 0)
@@ -123,24 +114,8 @@ internal sealed partial class InteractionSoundPlayer : IDisposable
         return buf[..len].ToArray();
     }
 
-    public void Dispose()
-    {
-        DisposeOutput();
-        _sounds.Clear();
-    }
-
-    private void DisposeOutput()
-    {
-        try
-        {
-            _output?.Stop();
-            _output?.Dispose();
-        }
-        catch (NAudio.MmException) { /* A device can disappear during playback. */ }
-        finally { _output = null; _gain = null; _source?.Dispose(); _source = null; }
-    }
+    public void Dispose() => vn_interaction_stop();
 }
-
 internal static partial class InteractionSounds
 {
     [LibraryImport("VNotch.Native.dll", StringMarshalling = StringMarshalling.Utf16)]

@@ -53,7 +53,6 @@ internal sealed partial class SettingsEditSession
     }
     internal void EnsureCustomGlass(LiquidGlassConfig config)
     {
-        _baseline.LiquidGlassCustom ??= config.Clone();
         _applied.LiquidGlassCustom ??= config.Clone();
     }
 }

@@ -144,13 +144,21 @@ namespace vnotch::services
             {
                 val = trim_view(val.substr(1, val.size() - 2));
             }
-            if (val.size() < 6 || val.size() > 256)
+            if (val.empty() || val.size() > 256)
+            {
+                return VN_OK;
+            }
+            if (val.front() == u'$' || val.front() == u'%' ||
+                starts_with_ignore_case(val, u"process.env.") ||
+                starts_with_ignore_case(val, u"os.environ") ||
+                starts_with_ignore_case(val, u"env.") ||
+                starts_with_ignore_case(val, u"system.environment"))
             {
                 return VN_OK;
             }
             for (char16_t c : val)
             {
-                if (is_unicode_whitespace(c) || c == u'<' || c == u'>' || c == u'{' || c == u'}')
+                if (c == u'\r' || c == u'\n' || c == u'<' || c == u'>' || c == u'{' || c == u'}')
                 {
                     return VN_OK;
                 }
