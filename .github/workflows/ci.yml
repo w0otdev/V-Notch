@@ -63,15 +63,25 @@ jobs:
         run: python .github/scripts/ci_scope.py scope
 
   sast:
-    name: CodeQL security analysis
+    name: CodeQL security analysis (${{ matrix.language }})
     needs: preflight
     if: needs.preflight.outputs.windows == 'true'
-    runs-on: ubuntu-latest
-    timeout-minutes: 20
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
     permissions:
       contents: read
       security-events: write
       actions: read
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - language: csharp
+            build_mode: none
+            os: ubuntu-latest
+          - language: c-cpp
+            build_mode: manual
+            os: windows-latest
     env:
       EnableWindowsTargeting: 'true'
     steps:
@@ -83,11 +93,11 @@ jobs:
         with:
           global-json-file: global.json
 
-      # github/codeql-action@v4; build-mode none avoids a second WPF build.
+      # github/codeql-action@v4; C# uses build-mode none, C++ traces the VNotch.Native build.
       - uses: github/codeql-action/init@2892aa5e19bbd11bc0cff5427e3b750a04d9e3c2
         with:
-          languages: csharp
-          build-mode: none
+          languages: ${{ matrix.language }}
+          build-mode: ${{ matrix.build_mode }}
           queries: security-extended
           dependency-caching: true
           config: |
@@ -95,10 +105,14 @@ jobs:
               - artifacts
               - .codegraph
 
+      - name: Build native DLL for C/C++ CodeQL tracing
+        if: matrix.language == 'c-cpp'
+        run: dotnet msbuild V-Notch.csproj -t:BuildNativeDll -p:Configuration=Release
+
       - name: Analyze and upload code scanning results
         uses: github/codeql-action/analyze@2892aa5e19bbd11bc0cff5427e3b750a04d9e3c2
         with:
-          category: /language:csharp
+          category: /language:${{ matrix.language }}
           output: artifacts/codeql
 
       - name: Reject CodeQL security findings
@@ -108,7 +122,7 @@ jobs:
         if: ${{ !cancelled() }}
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
-          name: codeql-sarif
+          name: codeql-sarif-${{ matrix.language }}
           path: artifacts/codeql/*.sarif
           if-no-files-found: error
           retention-days: 7
@@ -150,6 +164,14 @@ jobs:
 
       - name: Build
         run: dotnet build V-Notch.sln --configuration Release --no-restore -warnaserror
+
+      - name: Run unit tests
+        shell: pwsh
+        run: >-
+          dotnet test Tests/VNotch.Tests.csproj --configuration Release --no-build --no-restore
+          --filter "Category!=DesktopIntegration" --blame-hang-timeout 60s
+          --results-directory artifacts/unit-test-results
+          --logger "trx;LogFileName=unit-tests.trx" --logger "console;verbosity=normal"
 
       - name: Test release security gates
         shell: pwsh

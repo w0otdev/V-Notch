@@ -26,7 +26,6 @@ using StoppedCallback = void(__stdcall*)(int64_t context, int32_t hresult);
 
 constexpr REFERENCE_TIME kBufferDuration = 1'000'000; // 100 ms
 constexpr DWORD kPollMs = 10;
-constexpr DWORD kJoinMs = 2000;
 
 #pragma pack(push, 1)
 struct VnLoopbackFormat {
@@ -45,11 +44,13 @@ struct Capture {
     VnLoopbackFormat format{};
     int32_t block_align = 0;
     HANDLE thread = nullptr;
+    DWORD thread_id = 0;
     HANDLE stop_event = nullptr;
     DataCallback on_data = nullptr;
     StoppedCallback on_stopped = nullptr;
     int64_t context = 0;
     std::atomic<bool> stopping{false};
+    std::atomic<bool> self_delete{false};
 
     Capture() noexcept { stop_event = CreateEventW(nullptr, TRUE, FALSE, nullptr); }
     Capture(const Capture&) = delete;
@@ -60,12 +61,15 @@ struct Capture {
     }
 
     void Stop() noexcept {
-        stopping = true;
+        stopping.store(true, std::memory_order_release);
         if (stop_event) SetEvent(stop_event);
         if (thread) {
-            WaitForSingleObject(thread, kJoinMs);
+            if (GetCurrentThreadId() != thread_id) {
+                WaitForSingleObject(thread, INFINITE);
+            }
             CloseHandle(thread);
             thread = nullptr;
+            thread_id = 0;
         }
         if (client.ptr) client.ptr->Stop();
     }
@@ -84,7 +88,7 @@ struct Capture {
                 hr = capture.ptr->GetBuffer(&data, &frames, &flags, nullptr, nullptr);
                 if (FAILED(hr)) break;
                 const int32_t bytes = static_cast<int32_t>(frames) * block_align;
-                if (!stopping.load() && on_data) {
+                if (!stopping.load(std::memory_order_acquire) && on_data) {
                     if (flags & AUDCLNT_BUFFERFLAGS_SILENT) {
                         if (silence.size() < static_cast<size_t>(bytes)) silence.assign(static_cast<size_t>(bytes), 0);
                         on_data(context, silence.data(), bytes);
@@ -93,18 +97,29 @@ struct Capture {
                     }
                 }
                 capture.ptr->ReleaseBuffer(frames);
+                if (stopping.load(std::memory_order_acquire)) break;
                 hr = capture.ptr->GetNextPacketSize(&packet);
             }
-            if (FAILED(hr)) {
+            if (FAILED(hr) || stopping.load(std::memory_order_acquire)) {
                 failure = hr;
                 break;
             }
         }
-        if (FAILED(failure) && !stopping.load() && on_stopped) on_stopped(context, static_cast<int32_t>(failure));
+        if (FAILED(failure) && !stopping.load(std::memory_order_acquire) && on_stopped) on_stopped(context, static_cast<int32_t>(failure));
     }
 
     static DWORD WINAPI Main(LPVOID param) noexcept {
-        static_cast<Capture*>(param)->Run();
+        auto* self = static_cast<Capture*>(param);
+        self->Run();
+        if (self->self_delete.load(std::memory_order_acquire)) {
+            if (self->client.ptr) self->client.ptr->Stop();
+            if (self->thread) {
+                CloseHandle(self->thread);
+                self->thread = nullptr;
+                self->thread_id = 0;
+            }
+            delete self;
+        }
         return 0;
     }
 };
@@ -197,7 +212,7 @@ VN_EXPORT int32_t __stdcall vn_loopback_start(
             *out_hresult = static_cast<int32_t>(hr);
             return VN_ERR_FAIL;
         }
-        capture->thread = CreateThread(nullptr, 0, lb::Capture::Main, capture.get(), 0, nullptr);
+        capture->thread = CreateThread(nullptr, 0, lb::Capture::Main, capture.get(), 0, &capture->thread_id);
         if (!capture->thread) {
             *out_hresult = static_cast<int32_t>(HRESULT_FROM_WIN32(GetLastError()));
             return VN_ERR_FAIL;
@@ -219,13 +234,21 @@ VN_EXPORT int32_t __stdcall vn_loopback_start(
     }
 }
 
-// Stops and releases the capture. Must not be called from inside the data or stopped callback.
+// Stops and releases the capture. Safe from any thread, including callbacks.
 VN_EXPORT int32_t __stdcall vn_loopback_stop(int64_t handle) noexcept {
     std::unique_ptr<lb::Capture> capture;
     {
         lb::Guard guard(&lb::g_lock);
         if (handle <= 0 || static_cast<size_t>(handle) > lb::g_captures.size()) return VN_ERR_INVALID_ARG;
         capture = std::move(lb::g_captures[static_cast<size_t>(handle) - 1]);
+    }
+    if (!capture) return VN_OK;
+    if (GetCurrentThreadId() == capture->thread_id) {
+        capture->stopping.store(true, std::memory_order_release);
+        capture->self_delete.store(true, std::memory_order_release);
+        if (capture->stop_event) SetEvent(capture->stop_event);
+        capture.release();
+        return VN_OK;
     }
     capture.reset();
     return VN_OK;

@@ -13,9 +13,19 @@ namespace vnotch::services
             std::u16string_view album,
             std::u16string_view token) noexcept
         {
-            return contains_ordinal(title, token) ||
-                   contains_ordinal(artist, token) ||
-                   contains_ordinal(album, token);
+            if (contains_ordinal(artist, token) || contains_ordinal(album, token))
+            {
+                return true;
+            }
+            if (equals_ordinal(token, u"soundcloud"))
+            {
+                return equals_ordinal(title, token) ||
+                       ends_with_ordinal(title, u"- soundcloud") ||
+                       ends_with_ordinal(title, u"\u2013 soundcloud") ||
+                       contains_ordinal(title, u"on soundcloud") ||
+                       contains_ordinal(title, u"| soundcloud");
+            }
+            return contains_ordinal(title, token);
         }
 
         static int32_t vn_media_source_classify_app_id_impl(const char16_t* app_ptr,

@@ -1,3 +1,4 @@
+using System;
 using System.Runtime.InteropServices;
 using System.Text;
 
@@ -15,15 +16,26 @@ internal static partial class SpotifyCanvasProtocol
 
     internal static unsafe byte[] BuildCanvasRequest(string trackId)
     {
-        byte[] utf8 = Encoding.UTF8.GetBytes(trackId ?? string.Empty);
-        int cap = utf8.Length + 32;
-        byte[] buf = new byte[cap];
-        fixed (byte* pIn = utf8)
-        fixed (byte* pOut = buf)
+        ReadOnlySpan<char> chars = (trackId ?? string.Empty).AsSpan();
+        int utf8Len = Encoding.UTF8.GetByteCount(chars);
+        Span<byte> utf8 = utf8Len <= 512 ? stackalloc byte[utf8Len] : new byte[utf8Len];
+        if (utf8Len > 0)
         {
-            _ = vn_spotify_canvas_build_request(pIn, utf8.Length, pOut, cap, out int outLen);
-            byte[] res = new byte[outLen];
-            Array.Copy(buf, res, outLen);
+            Encoding.UTF8.GetBytes(chars, utf8);
+        }
+
+        fixed (byte* pIn = utf8)
+        {
+            _ = vn_spotify_canvas_build_request(pIn, utf8Len, null, 0, out int outLen);
+            if (outLen <= 0)
+            {
+                return Array.Empty<byte>();
+            }
+            byte[] res = GC.AllocateUninitializedArray<byte>(outLen);
+            fixed (byte* pOut = res)
+            {
+                _ = vn_spotify_canvas_build_request(pIn, utf8Len, pOut, outLen, out _);
+            }
             return res;
         }
     }
