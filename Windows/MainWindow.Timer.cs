@@ -629,7 +629,7 @@ public partial class MainWindow
             {
                 _transitionCoordinator.CompleteTransition(transitionId.Value);
             }
-            _transitionCoordinator.ForceState(VNotch.Models.NotchView.Compact, VNotch.Controllers.NotchShapeState.Collapsed, "CountdownCompletionSettled");
+
         };
 
         if (_notchShellPresenter != null)
@@ -1047,6 +1047,7 @@ public partial class MainWindow
     {
         long restartGen = _transitionCoordinator.NextGeneration();
         _transitionCoordinator.ForceState(VNotch.Models.NotchView.Timer, VNotch.Controllers.NotchShapeState.Expanded, "CountdownRestart");
+        restartGen = _transitionCoordinator.ActiveTransitionId;
         _isAnimating = true;
         _isCountdownCompleteVisible = false;
         _isTimerView = true;
@@ -1192,6 +1193,7 @@ public partial class MainWindow
 
         long transitionId = _transitionCoordinator.NextGeneration();
         _transitionCoordinator.ForceState(VNotch.Models.NotchView.Compact, VNotch.Controllers.NotchShapeState.Collapsed, "CountdownDismiss");
+        transitionId = _transitionCoordinator.ActiveTransitionId;
         AnimateCountdownCompleteOverlayOut();
         _viewModel.Timer.Remaining = _countdownDuration;
         CountdownWidget.SetCountdownStartVisual(false);

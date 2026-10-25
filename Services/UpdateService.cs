@@ -33,8 +33,8 @@ public partial class UpdateService : IUpdateService, IDisposable
         out int outCmp);
 
     private const string LogCategory = "UPDATER";
-    private static readonly Uri GithubLatestReleaseUri = new("https://api.github.com/repos/rainaku/V-Notch/releases/latest");
-    private static readonly Uri GithubAllReleasesUri = new("https://api.github.com/repos/rainaku/V-Notch/releases");
+    private static readonly Uri GithubLatestReleaseUri = new("https://api.github.com/repos/w0otdev/V-Notch/releases/latest");
+    private static readonly Uri GithubAllReleasesUri = new("https://api.github.com/repos/w0otdev/V-Notch/releases");
     private const string UserAgent = "V-Notch-Updater";
     internal const string SetupName = "V-Notch-Setup.exe";
     internal const string SelfContainedSetupName = "V-Notch-Setup-SelfContained.exe";

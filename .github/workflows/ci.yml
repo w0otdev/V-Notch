@@ -34,10 +34,12 @@ jobs:
         shell: bash
         run: |
           tool_dir="$RUNNER_TEMP/gitleaks"
-          mkdir -p "$tool_dir" artifacts/security
-          archive="$tool_dir/gitleaks.tar.gz"
-          curl --fail --location --retry 3 --output "$archive" \
-            https://github.com/gitleaks/gitleaks/releases/download/v8.30.1/gitleaks_8.30.1_linux_x64.tar.gz
+          mkdir -p "$tool_dir" artifacts/security .cache/gitleaks
+          archive=".cache/gitleaks/gitleaks_8.30.1_linux_x64.tar.gz"
+          if [[ ! -f "$archive" ]]; then
+            curl --fail --location --retry 3 --output "$archive" \
+              https://github.com/gitleaks/gitleaks/releases/download/v8.30.1/gitleaks_8.30.1_linux_x64.tar.gz
+          fi
           printf '%s  %s\n' '551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb' "$archive" | sha256sum --check --strict
           tar -xzf "$archive" -C "$tool_dir" gitleaks
           python .github/scripts/check_secret_scanner.py "$tool_dir/gitleaks"
@@ -110,7 +112,7 @@ jobs:
         shell: pwsh
         run: |
           Remove-Item -LiteralPath Native/out/VNotch.Native.dll -Force -ErrorAction SilentlyContinue
-          dotnet msbuild V-Notch.csproj -t:BuildNativeDll -p:Configuration=Release
+          dotnet msbuild V-Notch.csproj -t:BuildNativeDll -p:Configuration=Release -p:NativeFastCompile=true -m
           if ($LASTEXITCODE -ne 0 -or -not (Test-Path -LiteralPath Native/out/VNotch.Native.dll)) {
             throw 'Failed to compile VNotch.Native.dll for CodeQL tracing.'
           }
@@ -141,6 +143,9 @@ jobs:
     timeout-minutes: 40
     env:
       NUGET_PACKAGES: ${{ github.workspace }}/.nuget/packages
+      DOTNET_SKIP_FIRST_TIME_EXPERIENCE: '1'
+      DOTNET_NOLOGO: '1'
+      DOTNET_CLI_TELEMETRY_OPTOUT: '1'
     steps:
       # actions/checkout@v4.2.2
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
@@ -159,7 +164,7 @@ jobs:
             Uninstall/packages.lock.json
 
       - name: Restore
-        run: dotnet restore V-Notch.sln --locked-mode
+        run: dotnet restore V-Notch.sln --locked-mode -nologo -v:q
 
       - name: Verify model provenance and distribution allowlist
         shell: pwsh
@@ -169,7 +174,7 @@ jobs:
         run: python Tools/validate_locales.py
 
       - name: Build
-        run: dotnet build V-Notch.sln --configuration Release --no-restore -warnaserror
+        run: dotnet build V-Notch.sln --configuration Release --no-restore -warnaserror -nologo -v:q -clp:NoSummary -m -p:SkipNativeCompile=true
 
       - name: Run unit tests
         shell: pwsh
@@ -177,27 +182,30 @@ jobs:
           dotnet test Tests/VNotch.Tests.csproj --configuration Release --no-build --no-restore
           --filter "Category!=DesktopIntegration" --blame-hang-timeout 60s
           --results-directory artifacts/unit-test-results
-          --logger "trx;LogFileName=unit-tests.trx" --logger "console;verbosity=normal"
+          --logger "trx;LogFileName=unit-tests.trx" --logger "console;verbosity=minimal"
 
-      - name: Test release security gates
-        shell: pwsh
-        run: ./Tests/ReleaseGateTests.ps1
-
-      - name: Verify updates remain compatible with the installed 1.9.3 client
-        shell: pwsh
-        run: ./Tools/Assert-UpdateCompatibility.ps1
-
-      - name: Verify beta to stable promotion with both update preferences
+      - name: Verify gates, update compatibility & package audit in parallel
         shell: pwsh
         run: |
+          $ErrorActionPreference = 'Stop'
           [xml]$project = Get-Content -LiteralPath V-Notch.csproj
           $version = [string]($project.Project.PropertyGroup.Version | Where-Object { $_ } | Select-Object -First 1)
-          ./Tools/Assert-UpdateCompatibility.ps1 -ReleaseVersion $version -InstalledVersion "$version-beta.65534.65534+build.promotion-probe"
-
-      - name: Audit packages
-        if: ${{ !cancelled() }}
-        shell: pwsh
-        run: ./Tools/Assert-PackageAudit.ps1
+          $repo = (Get-Location).Path
+          $jobs = @(
+            Start-Job -Name 'ReleaseGates' -ScriptBlock { param($r) Set-Location -LiteralPath $r; & "$r/Tests/ReleaseGateTests.ps1" } -ArgumentList $repo
+            Start-Job -Name 'Compat193' -ScriptBlock { param($r) Set-Location -LiteralPath $r; & "$r/Tools/Assert-UpdateCompatibility.ps1" } -ArgumentList $repo
+            Start-Job -Name 'CompatPromo' -ScriptBlock { param($r, $v) Set-Location -LiteralPath $r; & "$r/Tools/Assert-UpdateCompatibility.ps1" -ReleaseVersion $v -InstalledVersion "$v-beta.65534.65534+build.promotion-probe" } -ArgumentList $repo, $version
+            Start-Job -Name 'PackageAudit' -ScriptBlock { param($r) Set-Location -LiteralPath $r; & "$r/Tools/Assert-PackageAudit.ps1" } -ArgumentList $repo
+          )
+          $null = Wait-Job -Job $jobs
+          foreach ($job in $jobs) {
+            Write-Host "=== [$($job.Name)] ==="
+            Receive-Job -Job $job -ErrorAction Stop
+            if ($job.State -ne 'Completed') {
+              throw "Parallel CI check '$($job.Name)' failed with state $($job.State)."
+            }
+          }
+          Remove-Job -Job $jobs -Force
 
       - name: Retain package audit evidence
         if: ${{ !cancelled() }}

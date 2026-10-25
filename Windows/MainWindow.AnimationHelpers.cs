@@ -31,6 +31,8 @@ public partial class MainWindow
         {
             NotchScale.BeginAnimation(ScaleTransform.ScaleXProperty, null);
             NotchShadowScale.BeginAnimation(ScaleTransform.ScaleXProperty, null);
+            HoverGlow.BeginAnimation(OpacityProperty, null);
+            HoverGlow.Opacity = isHovered ? 0.35 : 0;
             NotchScale.ScaleX = NotchShadowScale.ScaleX = 1;
             return;
         }

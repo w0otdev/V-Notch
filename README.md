@@ -9,21 +9,21 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/rainaku/V-Notch/releases/latest">
-    <img src="https://img.shields.io/github/v/release/rainaku/V-Notch?style=for-the-badge&color=ffffff&labelColor=eeeeee&logo=github&logoColor=111111" alt="Latest Release">
+  <a href="https://github.com/w0otdev/V-Notch/releases/latest">
+    <img src="https://img.shields.io/github/v/release/w0otdev/V-Notch?style=for-the-badge&color=ffffff&labelColor=eeeeee&logo=github&logoColor=111111" alt="Latest Release">
   </a>
   <img src="https://img.shields.io/badge/Windows-10%20%7C%2011-ffffff?style=for-the-badge&labelColor=eeeeee&logo=windows&logoColor=111111" alt="Windows 10 / 11">
   <img src="https://img.shields.io/badge/.NET-8.0%20%7C%2010.0-ffffff?style=for-the-badge&labelColor=eeeeee&logo=dotnet&logoColor=111111" alt=".NET 8 / 10">
   <a href="LICENSE">
-    <img src="https://img.shields.io/github/license/rainaku/V-Notch?style=for-the-badge&color=ffffff&labelColor=eeeeee" alt="License">
+    <img src="https://img.shields.io/github/license/w0otdev/V-Notch?style=for-the-badge&color=ffffff&labelColor=eeeeee" alt="License">
   </a>
-  <a href="https://github.com/rainaku/V-Notch/stargazers">
-    <img src="https://img.shields.io/github/stars/rainaku/V-Notch?style=for-the-badge&color=ffffff&labelColor=eeeeee&logo=apachespark&logoColor=111111" alt="Stars">
+  <a href="https://github.com/w0otdev/V-Notch/stargazers">
+    <img src="https://img.shields.io/github/stars/w0otdev/V-Notch?style=for-the-badge&color=ffffff&labelColor=eeeeee&logo=apachespark&logoColor=111111" alt="Stars">
   </a>
 </p>
 
 <p align="center">
-  <a href="https://github.com/rainaku/V-Notch/releases/latest">Download</a> ·
+  <a href="https://github.com/w0otdev/V-Notch/releases/latest">Download</a> ·
   <a href="#usage">Usage</a> ·
   <a href="#installation">Installation</a> ·
   <a href="#privacy">Privacy</a> ·
@@ -31,13 +31,13 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/rainaku/V-Notch/releases/latest">
+  <a href="https://github.com/w0otdev/V-Notch/releases/latest">
     <img src="Assets/readme/download-framework.svg" width="240" height="64" alt="Windows · Latest release">
   </a>
 </p>
 
 <p align="center">
-  <sub><a href="https://github.com/rainaku/V-Notch/releases">All releases</a></sub>
+  <sub><a href="https://github.com/w0otdev/V-Notch/releases">All releases</a></sub>
 </p>
 
 <p align="center">
@@ -171,7 +171,7 @@ API keys are encrypted in local settings with Windows DPAPI and excluded from se
 
 V-Notch runs on 64-bit Windows 10 build 19041 or later, or Windows 11. It requires [.NET 8 Desktop Runtime](https://dotnet.microsoft.com/download/dotnet/8.0) or [.NET 10 Desktop Runtime](https://dotnet.microsoft.com/download/dotnet/10.0). The self-contained installer includes the runtime. A dedicated GPU is recommended for Liquid Glass at 60-120 FPS.
 
-1. Download `V-Notch-Setup.exe` from [Releases](https://github.com/rainaku/V-Notch/releases). Use `V-Notch-Setup-SelfContained.exe` to skip the .NET install.
+1. Download `V-Notch-Setup.exe` from [Releases](https://github.com/w0otdev/V-Notch/releases). Use `V-Notch-Setup-SelfContained.exe` to skip the .NET install.
 2. Run the installer.
 3. Launch V-Notch from the Start Menu or desktop shortcut.
 4. Optionally enable "Start with Windows" in Settings.
@@ -213,23 +213,23 @@ Privacy dots use capture reports from Windows and recording signals from Bandica
 
 Thank you to everyone who has supported V-Notch since the early releases. Your feedback and GitHub stars help keep the project going.
 
-[![Star History Chart](https://api.star-history.com/svg?repos=rainaku/v-notch&type=Date)](https://star-history.com/#rainaku/v-notch&Date)
+[![Star History Chart](https://api.star-history.com/svg?repos=w0otdev/v-notch&type=Date)](https://star-history.com/#w0otdev/v-notch&Date)
 
-## Other projects by rainaku
+## Other projects by w0otdev
 
-If you like V-Notch, check out other free and open-source Windows utilities by rainaku:
+If you like V-Notch, check out other free and open-source Windows utilities by w0otdev:
 
-- **[Vertex](https://github.com/rainaku/Vertex)** — Minimalist radial wheel file converter for Windows (built with Rust).
-- **[Scroll-V](https://github.com/rainaku/Scroll-V)** — Buttery smooth scrolling experience for all Windows applications (built with C#).
+- **[Vertex](https://github.com/w0otdev/Vertex)** — Minimalist radial wheel file converter for Windows (built with Rust).
+- **[Scroll-V](https://github.com/w0otdev/Scroll-V)** — Buttery smooth scrolling experience for all Windows applications (built with C#).
 
 ## License
 
 V-Notch uses the Apache License 2.0. See [LICENSE](LICENSE) and [THIRD_PARTY_NOTICES.md](docs/THIRD_PARTY_NOTICES.md).
 
 <p align="center">
-  Made by <a href="https://rainaku.id.vn">rainaku</a> ·
+  Made by <a href="https://w0otdev.id.vn">w0otdev</a> ·
   <a href="https://v-notch.vercel.app">Website</a> ·
-  <a href="https://github.com/rainaku/V-Notch">GitHub</a> ·
+  <a href="https://github.com/w0otdev/V-Notch">GitHub</a> ·
   <a href="https://www.facebook.com/rain.107/">Facebook</a> ·
   <a href="https://www.paypal.me/PhuocLe678">Donate</a>
 </p>

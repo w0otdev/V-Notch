@@ -162,16 +162,16 @@ public partial class SettingsWindow
 
 #pragma warning disable S1075 // External community, project and donation URLs
     private void SocialLink_Website_Click(object sender, RoutedEventArgs e) => SafeLauncher.TryOpenUrl("https://v-notch.vercel.app/");
-    private void SocialLink_GitHub_Click(object sender, RoutedEventArgs e) => SafeLauncher.TryOpenUrl("https://github.com/rainaku/V-Notch");
+    private void SocialLink_GitHub_Click(object sender, RoutedEventArgs e) => SafeLauncher.TryOpenUrl("https://github.com/w0otdev/V-Notch");
     private void SocialLink_Facebook_Click(object sender, RoutedEventArgs e) => SafeLauncher.TryOpenUrl("https://www.facebook.com/rain.107/");
     private void SocialLink_Discord_Click(object sender, RoutedEventArgs e) => SafeLauncher.TryOpenUrl("https://discord.com/users/298304189535092737");
     private void DonatePaypal_Click(object sender, RoutedEventArgs e) => SafeLauncher.TryOpenUrl("https://www.paypal.com/paypalme/PhuocLe678");
-    private void StarRepoButton_Click(object sender, RoutedEventArgs e) => SafeLauncher.TryOpenUrl("https://github.com/rainaku/V-Notch");
-    private void ProjectVertex_Click(object sender, RoutedEventArgs e) => SafeLauncher.TryOpenUrl("https://github.com/rainaku/Vertex");
-    private void ProjectScrollV_Click(object sender, RoutedEventArgs e) => SafeLauncher.TryOpenUrl("https://github.com/rainaku/Scroll-V");
-    private void ReportBug_Click(object sender, RoutedEventArgs e) => SafeLauncher.TryOpenUrl("https://github.com/rainaku/V-Notch/issues/new");
-    private void RequestFeature_Click(object sender, RoutedEventArgs e) => SafeLauncher.TryOpenUrl("https://github.com/rainaku/V-Notch/issues/new?labels=enhancement&template=feature_request.md");
-    private void Discussion_Click(object sender, RoutedEventArgs e) => SafeLauncher.TryOpenUrl("https://github.com/rainaku/V-Notch/discussions");
+    private void StarRepoButton_Click(object sender, RoutedEventArgs e) => SafeLauncher.TryOpenUrl("https://github.com/w0otdev/V-Notch");
+    private void ProjectVertex_Click(object sender, RoutedEventArgs e) => SafeLauncher.TryOpenUrl("https://github.com/w0otdev/Vertex");
+    private void ProjectScrollV_Click(object sender, RoutedEventArgs e) => SafeLauncher.TryOpenUrl("https://github.com/w0otdev/Scroll-V");
+    private void ReportBug_Click(object sender, RoutedEventArgs e) => SafeLauncher.TryOpenUrl("https://github.com/w0otdev/V-Notch/issues/new");
+    private void RequestFeature_Click(object sender, RoutedEventArgs e) => SafeLauncher.TryOpenUrl("https://github.com/w0otdev/V-Notch/issues/new?labels=enhancement&template=feature_request.md");
+    private void Discussion_Click(object sender, RoutedEventArgs e) => SafeLauncher.TryOpenUrl("https://github.com/w0otdev/V-Notch/discussions");
 #pragma warning restore S1075
     private void ClearCache_Click(object sender, RoutedEventArgs e)
 

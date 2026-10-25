@@ -62,21 +62,21 @@ class ReleaseVersionTests(unittest.TestCase):
     def test_latest_stable_api_only_accepts_published_numeric_stable_tags(self):
         payload = {"tag_name": "v2.0.0", "draft": False, "prerelease": False}
         with patch("release_version.urlopen", return_value=io.BytesIO(json.dumps(payload).encode())) as request:
-            self.assertEqual("2.0.0", latest_stable_version("rainaku/V-Notch", "fixture-token"))
-            self.assertEqual("https://api.github.com/repos/rainaku/V-Notch/releases/latest", request.call_args.args[0].full_url)
+            self.assertEqual("2.0.0", latest_stable_version("w0otdev/V-Notch", "fixture-token"))
+            self.assertEqual("https://api.github.com/repos/w0otdev/V-Notch/releases/latest", request.call_args.args[0].full_url)
         for change in ({"draft": True}, {"prerelease": True}, {"tag_name": "v2.0.1-beta.1"}, {"tag_name": "nightly"}):
             with self.subTest(change=change), patch("release_version.urlopen", return_value=io.BytesIO(json.dumps(payload | change).encode())), self.assertRaises(ValueError):
-                latest_stable_version("rainaku/V-Notch", "fixture-token")
+                latest_stable_version("w0otdev/V-Notch", "fixture-token")
 
     def test_only_api_404_means_no_stable_other_errors_fail_closed(self):
         for code in (404, 403, 429, 500):
             error = HTTPError("https://api.github.com/fixture", code, "fixture error", {}, None)
             with self.subTest(code=code), patch("release_version.urlopen", side_effect=error):
                 if code == 404:
-                    self.assertIsNone(latest_stable_version("rainaku/V-Notch", "fixture-token"))
+                    self.assertIsNone(latest_stable_version("w0otdev/V-Notch", "fixture-token"))
                 else:
                     with self.assertRaises(HTTPError):
-                        latest_stable_version("rainaku/V-Notch", "fixture-token")
+                        latest_stable_version("w0otdev/V-Notch", "fixture-token")
 
     def test_ref_sha_and_number_errors_fail_closed(self):
         for values in ({"branch": "feature"}, {"branch": "v2.0.1"}, {"sha": "short"},

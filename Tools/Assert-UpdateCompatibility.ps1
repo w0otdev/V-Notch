@@ -90,7 +90,7 @@ try {
     }
     [xml]$project = Get-Content -LiteralPath (Join-Path $repository 'V-Notch.csproj')
     $version = if ($ReleaseVersion) { $ReleaseVersion } else { [string]($project.Project.PropertyGroup.Version | Where-Object { $_ } | Select-Object -First 1) }
-    $arguments = @('run', '--project', (Join-Path $temporary 'Compatibility.csproj'), '-c', 'Release', '--', $version)
+    $arguments = @('run', '--project', (Join-Path $temporary 'Compatibility.csproj'), '-c', 'Debug', '--', $version)
     if ($AssetsDirectory) { $arguments += (Resolve-Path -LiteralPath $AssetsDirectory).Path }
     if ($Prerelease) { $arguments += '--prerelease' }
     if ($InstalledVersion) { $arguments += "--installed-version=$InstalledVersion" }

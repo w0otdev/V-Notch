@@ -149,7 +149,7 @@ public sealed class PrereleaseUpdateTests
         published_at = DateTime.UtcNow,
         assets = (signed ? new[] { UpdateService.SetupName, UpdateService.SetupName + SignedUpdateManifest.ManifestSuffix,
             UpdateService.SetupName + SignedUpdateManifest.SignatureSuffix } : new[] { UpdateService.SetupName })
-            .Select(name => new { name, browser_download_url = "https://github.com/rainaku/V-Notch/releases/download/v" + version + "/" + name })
+            .Select(name => new { name, browser_download_url = "https://github.com/w0otdev/V-Notch/releases/download/v" + version + "/" + name })
     };
 
     private static HttpResponseMessage Json(object value) => new(HttpStatusCode.OK) { Content = new StringContent(JsonSerializer.Serialize(value)) };

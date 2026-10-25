@@ -6,14 +6,14 @@
 
 .DESCRIPTION
     Runs the complete Windows CI validation suite:
-      1. Pipeline & secret scanner tests and locale validation (Python)
-      2. Model asset provenance, license & checksum assertion
-      3. NuGet dependency restore (--locked-mode)
-      4. Code formatting verification (dotnet format)
-      5. Release build with -warnaserror
-      6. Release security gates & runner regression tests
-      7. Update compatibility (1.9.3 client & beta-to-stable promotion)
-      8. Package vulnerability audit
+ *       1. Pipeline & secret scanner tests and locale validation (Python)
+ *       2. Model asset provenance, license & checksum assertion
+ *       3. NuGet dependency restore (--locked-mode)
+ *       4. Code formatting verification (dotnet format)
+ *       5. Native C++26 DLL & Release build with -warnaserror
+ *       6. Unit tests & code coverage threshold check + Release security gates
+ *       7. Update compatibility (1.9.3 client & beta-to-stable promotion)
+ *       8. Package vulnerability audit
 
 .PARAMETER Resume
     Evidence directory of a failed run. Resumes at its first unfinished step.
@@ -188,12 +188,22 @@ if ($startStep -le 2) {
 if ($startStep -le 3) {
     Write-TreeStep "3/8" "NuGet Dependency Restore"
     if (-not $SkipRestore) {
-        $restOut = Invoke-CapturedNative { & dotnet restore "$repository/V-Notch.sln" --locked-mode -nologo -v:q }
-        if ($LASTEXITCODE -ne 0) {
-            foreach ($l in @($restOut | ForEach-Object { "$_" } | Where-Object { $_.Trim() })) { Write-TreeItem $l -State "Error" }
-            throw 'Locked dependency restore failed.'
+        $assetsReady = (-not $env:VNOTCH_CI_RESUME_TEST_FIXTURE) -and
+            (Test-Path -LiteralPath (Join-Path $repository 'obj\project.assets.json')) -and
+            (Test-Path -LiteralPath (Join-Path $repository 'Tests\obj\project.assets.json')) -and
+            (Test-Path -LiteralPath (Join-Path $repository 'Uninstall\obj\project.assets.json')) -and
+            ((Get-Item -LiteralPath (Join-Path $repository 'obj\project.assets.json')).LastWriteTimeUtc -ge (Get-Item -LiteralPath (Join-Path $repository 'packages.lock.json')).LastWriteTimeUtc) -and
+            ((Get-Item -LiteralPath (Join-Path $repository 'Tests\obj\project.assets.json')).LastWriteTimeUtc -ge (Get-Item -LiteralPath (Join-Path $repository 'Tests\packages.lock.json')).LastWriteTimeUtc)
+        if ($assetsReady) {
+            Write-TreeItem "Dependencies already up-to-date with lockfiles." -State "Success"
+        } else {
+            $restOut = Invoke-CapturedNative { & dotnet restore "$repository/V-Notch.sln" --locked-mode -nologo -v:q }
+            if ($LASTEXITCODE -ne 0) {
+                foreach ($l in @($restOut | ForEach-Object { "$_" } | Where-Object { $_.Trim() })) { Write-TreeItem $l -State "Error" }
+                throw 'Locked dependency restore failed.'
+            }
+            Write-TreeItem "Dependencies restored (--locked-mode)." -State "Success"
         }
-        Write-TreeItem "Dependencies restored (--locked-mode)." -State "Success"
     } else {
         Write-TreeItem "Skipped (-SkipRestore)." -State "Warn"
     }
@@ -204,16 +214,27 @@ if ($startStep -le 3) {
 
 if ($startStep -le 4) {
     Write-TreeStep "4/8" "Code Formatting Verification"
-    if ($FixFormat) {
-        Write-TreeItem "Auto-formatting with 'dotnet format' (-FixFormat)..." -State "Info"
-        Invoke-CapturedNative { & dotnet format "$repository/V-Notch.sln" } | Out-Null
-        if ($LASTEXITCODE -ne 0) { throw 'Automatic formatting failed.' }
+    $fmtInclude = @()
+    if (-not $env:VNOTCH_CI_RESUME_TEST_FIXTURE) {
+        $changedCs = @(Invoke-CapturedNative { & git diff --name-only HEAD -- '*.cs' '*.csproj' '*.props' '*.targets' } |
+            ForEach-Object { "$_" } | Where-Object { $_.Trim() -and (Test-Path -LiteralPath (Join-Path $repository $_.Trim())) })
+        $untrackedCs = @(Invoke-CapturedNative { & git ls-files --others --exclude-standard -- '*.cs' '*.csproj' '*.props' '*.targets' } |
+            ForEach-Object { "$_" } | Where-Object { $_.Trim() -and (Test-Path -LiteralPath (Join-Path $repository $_.Trim())) })
+        $fmtInclude = @($changedCs + $untrackedCs | Select-Object -Unique)
     }
-    $fmtOut = Invoke-CapturedNative { & dotnet format "$repository/V-Notch.sln" --verify-no-changes --no-restore }
-    if ($LASTEXITCODE -ne 0) {
-        foreach ($l in @($fmtOut | ForEach-Object { "$_" } | Where-Object { $_.Trim() })) { Write-TreeItem $l -State "Error" }
-        Write-TreeItem "Run '.\scripts\f.ps1' or '.\scripts\c.ps1 -FixFormat' to fix." -State "Warn"
-        throw "Code formatting verification failed."
+    if ($env:VNOTCH_CI_RESUME_TEST_FIXTURE -or $fmtInclude.Count -gt 0) {
+        $incArgs = if ($fmtInclude.Count -gt 0) { @('--include') + $fmtInclude } else { @() }
+        if ($FixFormat) {
+            Write-TreeItem "Auto-formatting with 'dotnet format whitespace' (-FixFormat)..." -State "Info"
+            Invoke-CapturedNative { & dotnet format whitespace "$repository/V-Notch.sln" --no-restore @incArgs } | Out-Null
+            if ($LASTEXITCODE -ne 0) { throw 'Automatic formatting failed.' }
+        }
+        $fmtOut = Invoke-CapturedNative { & dotnet format whitespace "$repository/V-Notch.sln" --verify-no-changes --no-restore @incArgs }
+        if ($LASTEXITCODE -ne 0) {
+            foreach ($l in @($fmtOut | ForEach-Object { "$_" } | Where-Object { $_.Trim() })) { Write-TreeItem $l -State "Error" }
+            Write-TreeItem "Run '.\scripts\f.ps1' or '.\scripts\c.ps1 -FixFormat' to fix." -State "Warn"
+            throw "Code formatting verification failed."
+        }
     }
     Write-TreeItem "Code formatting verified." -State "Success"
 
@@ -228,7 +249,7 @@ if ($startStep -le 5) {
         New-Item -ItemType Directory -Path $testResultsDir -Force | Out-Null
     }
     $bldSw = [System.Diagnostics.Stopwatch]::StartNew()
-    $bldOut = Invoke-CapturedNative { & dotnet build "$repository/V-Notch.sln" --configuration Release --no-restore -warnaserror -nologo -v:q -clp:NoSummary }
+    $bldOut = Invoke-CapturedNative { & dotnet build "$repository/V-Notch.sln" --configuration Release --no-restore -warnaserror -nologo -v:q -clp:NoSummary -m }
     $bldSw.Stop()
     if ($LASTEXITCODE -ne 0) {
         foreach ($l in @($bldOut | ForEach-Object { "$_" } | Where-Object { $_.Trim() })) { Write-TreeItem $l -State "Error" }

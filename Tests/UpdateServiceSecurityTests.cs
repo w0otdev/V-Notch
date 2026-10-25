@@ -10,7 +10,7 @@ namespace VNotch.Tests;
 
 public sealed class UpdateServiceSecurityTests
 {
-    private const string ReleaseRoot = "https://github.com/rainaku/V-Notch/releases/download/v99.0.0/";
+    private const string ReleaseRoot = "https://github.com/w0otdev/V-Notch/releases/download/v99.0.0/";
     [Fact]
     public void SelectReleaseAssets_PrefersSelfContained_AndNeverSelectsOtherExe()
     {
@@ -67,8 +67,8 @@ public sealed class UpdateServiceSecurityTests
     [InlineData("https://attackergithubusercontent.com/setup")]
     [InlineData("https://github-production-release-asset-attacker.s3.amazonaws.com/setup")]
     [InlineData("https://example.test/setup")]
-    [InlineData("https://github.com/rainaku/V-Notch-evil/releases/download/v99.0.0/setup")]
-    [InlineData("https://raw.githubusercontent.com/rainaku/V-Notch/main/setup")]
+    [InlineData("https://github.com/w0otdev/V-Notch-evil/releases/download/v99.0.0/setup")]
+    [InlineData("https://raw.githubusercontent.com/w0otdev/V-Notch/main/setup")]
     public async Task DownloadInstaller_RejectsUnapprovedOriginWithoutMakingRequest(string url)
     {
         bool requested = false;

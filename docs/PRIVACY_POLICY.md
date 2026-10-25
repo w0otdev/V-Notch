@@ -6,8 +6,8 @@
 
 **Scope:** Current source tree as of October 24, 2026; feature availability depends on the installed build.
 
-**Developer:** rainaku  
-**Contact:** [github.com/rainaku/V-Notch/issues](https://github.com/rainaku/V-Notch/issues)  
+**Developer:** w0otdev  
+**Contact:** [github.com/w0otdev/V-Notch/issues](https://github.com/w0otdev/V-Notch/issues)  
 
 ---
 
@@ -15,7 +15,7 @@
 
 V-Notch is a free, open-source desktop application for Windows that recreates a macOS-style notch and iPhone Dynamic Island experience. It displays now-playing media, battery and Bluetooth status, a file shelf, a camera preview, system volume and audio mixer, system resource monitor (CPU, RAM, GPU), clock, calendar, timer, Spotlight search launcher, and other ambient information with smooth animations and realistic Liquid Glass optics.
 
-This Privacy Policy explains, in detail, exactly what data the application accesses, why it accesses it, where that data goes, and how long it is kept. It reflects the actual behavior of the application source code, which is publicly available for inspection at [github.com/rainaku/V-Notch](https://github.com/rainaku/V-Notch).
+This Privacy Policy explains, in detail, exactly what data the application accesses, why it accesses it, where that data goes, and how long it is kept. It reflects the actual behavior of the application source code, which is publicly available for inspection at [github.com/w0otdev/V-Notch](https://github.com/w0otdev/V-Notch).
 
 **Core principle:** V-Notch is designed to be local-first. It contains no analytics, no telemetry, no advertising, no tracking identifiers, and requires no V-Notch account. It does not operate any backend server of its own. The application documentation identifies outbound network requests to third-party services for specific opt-in or functional purposes: checking for application updates, fetching album artwork / lyrics / subtitles / Spotify Canvas for the media you are playing, and — if you explicitly enable it — showing the weather forecast. Optional Spotlight AI sends messages and conversation context to your selected AI provider and can retrieve a DeepSeek balance on request. These are described in Section 4; the list and actual requests must be checked against the shipped binary and installed web components.
 
@@ -148,7 +148,7 @@ V-Notch has no backend server and performs no analytics, telemetry, or user trac
 
 ### 4.1 Application Update Checks & Downloads — GitHub
 
-- **Endpoint:** `https://api.github.com/repos/rainaku/V-Notch/releases/latest`
+- **Endpoint:** `https://api.github.com/repos/w0otdev/V-Notch/releases/latest`
 - **Why:** To detect whether a newer release of V-Notch is available.
 - **Data sent:** Standard HTTP headers, including `User-Agent: V-Notch-Updater` and a conditional `If-None-Match` (ETag) header for caching. No media metadata, credentials, or local file contents are sent by this feature. As with any HTTPS request, the remote service sees connection information such as your IP address.
 - **Data received:** Latest version tag, release notes, installer download URL, and, when updating, the signed manifest, detached signature, and installer.
@@ -344,7 +344,7 @@ V-Notch provides a dedicated **Privacy** section in Settings with granular toggl
 
 ## 9. Security
 
-V-Notch runs with standard user privileges and does not require administrator rights for normal operation. Administrator elevation is requested only when installing an update (to run the installer). The documented sensitive stored credentials (Spotify `sp_dc` cookie, YouTube API key, and AI provider keys) are encrypted with Windows DPAPI. In-app updates from version 1.9.2 onward require the signed-manifest verification described in Section 4.1; this does not require a paid Authenticode certificate and does not authenticate a first manual download. Because the application is fully open source, anyone may audit exactly what it does at [github.com/rainaku/V-Notch](https://github.com/rainaku/V-Notch).
+V-Notch runs with standard user privileges and does not require administrator rights for normal operation. Administrator elevation is requested only when installing an update (to run the installer). The documented sensitive stored credentials (Spotify `sp_dc` cookie, YouTube API key, and AI provider keys) are encrypted with Windows DPAPI. In-app updates from version 1.9.2 onward require the signed-manifest verification described in Section 4.1; this does not require a paid Authenticode certificate and does not authenticate a first manual download. Because the application is fully open source, anyone may audit exactly what it does at [github.com/w0otdev/V-Notch](https://github.com/w0otdev/V-Notch).
 
 ---
 
@@ -376,7 +376,7 @@ We will update this effective date and describe material changes in the document
 
 ## 14. Contact
 
-For questions or rights requests, use [GitHub Issues](https://github.com/rainaku/V-Notch/issues); **do not post secrets, session cookies, passwords or sensitive personal information publicly**. For security-sensitive reports, seek a private contact method listed on the maintainer's GitHub profile if available. We do not promise a private contact method that has not been verified.
+For questions or rights requests, use [GitHub Issues](https://github.com/w0otdev/V-Notch/issues); **do not post secrets, session cookies, passwords or sensitive personal information publicly**. For security-sensitive reports, seek a private contact method listed on the maintainer's GitHub profile if available. We do not promise a private contact method that has not been verified.
 
 <!-- Publication checklist: validate network behavior, settings toggles, log paths and local deletion against the exact release binary before publication. -->
 

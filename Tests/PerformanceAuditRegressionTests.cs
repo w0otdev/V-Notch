@@ -137,7 +137,7 @@ public sealed class PerformanceAuditRegressionTests
                 Assert.Equal("\"release-one\"", request.Headers.IfNoneMatch.Single().Tag);
                 return new(HttpStatusCode.NotModified);
             }
-            const string assetRoot = "https://github.com/rainaku/V-Notch/releases/download/v99.0.0/";
+            const string assetRoot = "https://github.com/w0otdev/V-Notch/releases/download/v99.0.0/";
             var assets = new[] { "V-Notch-Setup.exe", "V-Notch-Setup.exe.manifest.json", "V-Notch-Setup.exe.manifest.sig" }
                 .Select(name => new { name, browser_download_url = assetRoot + name });
             var response = new HttpResponseMessage(HttpStatusCode.OK)

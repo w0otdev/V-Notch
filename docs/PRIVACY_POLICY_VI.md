@@ -6,8 +6,8 @@
 
 **Phạm vi:** Mã nguồn hiện tại ngày 24 tháng 10 năm 2026; tính năng khả dụng phụ thuộc bản cài đặt.
 
-**Nhà phát triển:** rainaku  
-**Liên hệ:** [github.com/rainaku/V-Notch/issues](https://github.com/rainaku/V-Notch/issues)  
+**Nhà phát triển:** w0otdev  
+**Liên hệ:** [github.com/w0otdev/V-Notch/issues](https://github.com/w0otdev/V-Notch/issues)  
 
 ---
 
@@ -15,7 +15,7 @@
 
 V-Notch là ứng dụng desktop miễn phí, mã nguồn mở dành cho Windows, tái hiện trải nghiệm notch kiểu macOS và Dynamic Island của iPhone. Ứng dụng hiển thị phương tiện đang phát, trạng thái pin và Bluetooth, khay chứa tệp tạm thời (File Shelf), xem trước camera, âm lượng hệ thống và bộ trộn âm thanh từng ứng dụng, màn hình theo dõi tài nguyên phần cứng (CPU, RAM, GPU), đồng hồ, lịch, bộ đếm giờ/bấm giờ, trình tìm kiếm và khởi chạy nhanh Spotlight, cùng các thông tin ngữ cảnh khác với hoạt ảnh mượt mà và hiệu ứng quang học kính lỏng (Liquid Glass) chân thực.
 
-Chính sách bảo mật này giải thích chi tiết: chính xác dữ liệu nào ứng dụng truy cập, tại sao truy cập, dữ liệu đó đi đâu, và được lưu giữ trong bao lâu. Nội dung phản ánh đúng hành vi thực tế của mã nguồn, vốn được công khai hoàn toàn để kiểm tra tại [github.com/rainaku/V-Notch](https://github.com/rainaku/V-Notch).
+Chính sách bảo mật này giải thích chi tiết: chính xác dữ liệu nào ứng dụng truy cập, tại sao truy cập, dữ liệu đó đi đâu, và được lưu giữ trong bao lâu. Nội dung phản ánh đúng hành vi thực tế của mã nguồn, vốn được công khai hoàn toàn để kiểm tra tại [github.com/w0otdev/V-Notch](https://github.com/w0otdev/V-Notch).
 
 **Nguyên tắc cốt lõi:** V-Notch ưu tiên xử lý cục bộ trên thiết bị của bạn. Ứng dụng không có analytics, không telemetry, không quảng cáo, không theo dõi định danh người dùng, và không yêu cầu tài khoản V-Notch. Ứng dụng không vận hành bất kỳ máy chủ backend riêng nào. Theo tài liệu hiện có, các yêu cầu mạng ra ngoài phục vụ các mục đích chức năng hoặc tùy chọn cụ thể: kiểm tra cập nhật, lấy ảnh bìa / lời bài hát / phụ đề / Spotify Canvas cho bài hát bạn đang phát, và — nếu bạn chủ động bật — hiển thị dự báo thời tiết. Spotlight AI tùy chọn gửi tin nhắn và ngữ cảnh hội thoại tới nhà cung cấp bạn chọn, đồng thời có thể tra cứu số dư DeepSeek khi bạn yêu cầu. Tất cả được mô tả chi tiết trong Mục 4.
 
@@ -152,7 +152,7 @@ V-Notch không có máy chủ backend và không thực hiện analytics, teleme
 
 ### 4.1 Kiểm tra & Tải bản cập nhật ứng dụng — GitHub
 
-- **Điểm đến:** `https://api.github.com/repos/rainaku/V-Notch/releases/latest`
+- **Điểm đến:** `https://api.github.com/repos/w0otdev/V-Notch/releases/latest`
 - **Tại sao:** Để phát hiện xem có phiên bản V-Notch mới hơn hay không.
 - **Dữ liệu gửi đi:** Header HTTP tiêu chuẩn, gồm `User-Agent: V-Notch-Updater` và header `If-None-Match` (ETag) có điều kiện để lưu cache. Tính năng này không gửi metadata media, thông tin đăng nhập hay nội dung tệp cục bộ. Như mọi yêu cầu HTTPS, dịch vụ từ xa có thể thấy thông tin kết nối như địa chỉ IP của bạn.
 - **Dữ liệu nhận về:** Tag phiên bản mới nhất, ghi chú phát hành (changelog), URL tải bộ cài; khi cập nhật còn có manifest đã ký, chữ ký tách rời và bộ cài.
@@ -347,7 +347,7 @@ V-Notch cung cấp một mục **Quyền riêng tư** riêng biệt trong Cài �
 
 ## 9. Bảo mật
 
-V-Notch hoạt động với quyền người dùng tiêu chuẩn và không yêu cầu quyền quản trị viên (Administrator) trong suốt quá trình hoạt động bình thường. Quyền quản trị viên chỉ được yêu cầu khi thực hiện cài đặt bản cập nhật mới (để chạy trình cài đặt). Các thông tin xác thực được mô tả (cookie `sp_dc` của Spotify, khóa YouTube API và khóa nhà cung cấp AI) được mã hóa bằng Windows DPAPI. Cập nhật trong ứng dụng từ phiên bản 1.9.2 trở đi bắt buộc xác minh manifest có chữ ký như mô tả tại Mục 4.1; cơ chế này không yêu cầu chứng chỉ Authenticode trả phí và không xác thực lần tải thủ công đầu tiên. Vì ứng dụng hoàn toàn là mã nguồn mở, bất kỳ ai cũng có thể tự do kiểm tra và đánh giá mã nguồn tại [github.com/rainaku/V-Notch](https://github.com/rainaku/V-Notch).
+V-Notch hoạt động với quyền người dùng tiêu chuẩn và không yêu cầu quyền quản trị viên (Administrator) trong suốt quá trình hoạt động bình thường. Quyền quản trị viên chỉ được yêu cầu khi thực hiện cài đặt bản cập nhật mới (để chạy trình cài đặt). Các thông tin xác thực được mô tả (cookie `sp_dc` của Spotify, khóa YouTube API và khóa nhà cung cấp AI) được mã hóa bằng Windows DPAPI. Cập nhật trong ứng dụng từ phiên bản 1.9.2 trở đi bắt buộc xác minh manifest có chữ ký như mô tả tại Mục 4.1; cơ chế này không yêu cầu chứng chỉ Authenticode trả phí và không xác thực lần tải thủ công đầu tiên. Vì ứng dụng hoàn toàn là mã nguồn mở, bất kỳ ai cũng có thể tự do kiểm tra và đánh giá mã nguồn tại [github.com/w0otdev/V-Notch](https://github.com/w0otdev/V-Notch).
 
 Mặc dù mã hóa DPAPI, xác minh manifest có chữ ký, và việc chạy với quyền người dùng tiêu chuẩn mang lại sự bảo vệ đáng kể, **không có phương thức lưu trữ cục bộ, mã hóa hoặc phân phối phần mềm nào có thể được đảm bảo an toàn tuyệt đối 100%.** Bạn xác nhận rằng việc sử dụng các tính năng lưu trữ, cập nhật và mạng của V-Notch là do bạn tự chịu rủi ro, phù hợp với các tuyên bố miễn trừ "NGUYÊN TRẠNG" và giới hạn trách nhiệm pháp lý trong Điều Khoản Dịch Vụ của chúng tôi.
 
@@ -392,7 +392,7 @@ Chính sách bảo mật này có thể được cập nhật định kỳ khi �
 ## 14. Liên hệ
 
 Mọi câu hỏi hoặc yêu cầu liên quan đến dữ liệu có thể gửi qua Issues. **Issues là công khai: không đăng mật khẩu, cookie phiên, token, hồ sơ cá nhân hay thông tin nhạy cảm.** Với vấn đề bảo mật, chỉ sử dụng kênh riêng tư nếu đã xác minh có công bố trên repo/hồ sơ người duy trì. Liên hệ tại:  
-[https://github.com/rainaku/V-Notch/issues](https://github.com/rainaku/V-Notch/issues)
+[https://github.com/w0otdev/V-Notch/issues](https://github.com/w0otdev/V-Notch/issues)
 
 <!-- Publication checklist: validate network behavior, settings toggles, log paths and local deletion against the exact release binary before publication. This comment is not a representation that verification has been completed. -->
 

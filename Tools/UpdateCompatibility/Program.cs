@@ -52,7 +52,9 @@ foreach (string scenario in new[] { "valid", "tampered-installer", "bad-signatur
 {
     string selectedName = bundled ? UpdateService.SelfContainedSetupName : UpdateService.SetupName;
     var names = bundled ? new[] { UpdateService.SetupName, UpdateService.SelfContainedSetupName } : new[] { UpdateService.SetupName };
-    string root = $"https://github.com/rainaku/V-Notch/releases/download/v{version}/";
+    string root = currentUpdater
+        ? $"https://github.com/w0otdev/V-Notch/releases/download/v{version}/"
+        : $"https://github.com/rainaku/V-Notch/releases/download/v{version}/";
     string json = JsonSerializer.Serialize(new
     {
         tag_name = "v" + version, prerelease, body = "compatibility fixture", published_at = DateTime.UtcNow,

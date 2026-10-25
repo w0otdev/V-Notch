@@ -89,10 +89,10 @@ public static partial class AppIntegrityService
         out byte outApplicable);
 
     private const string LogCategory = "INTEGRITY";
-    private const string OfficialRepoOwner = "rainaku";
+    private const string OfficialRepoOwner = "w0otdev";
     private const string OfficialRepoName = "V-Notch";
 #pragma warning disable S1075 // Official project repository releases URL
-    public const string OfficialReleasesUrl = "https://github.com/rainaku/V-Notch/releases";
+    public const string OfficialReleasesUrl = "https://github.com/w0otdev/V-Notch/releases";
 #pragma warning restore S1075
     private const string UserAgent = "V-Notch-Integrity-Checker";
 

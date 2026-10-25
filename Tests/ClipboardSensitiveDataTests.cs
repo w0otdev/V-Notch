@@ -64,7 +64,7 @@ public sealed class ClipboardSensitiveDataTests
     [InlineData("4111 1111 1111 1112")]
     [InlineData("0000000000000000")]
     [InlineData("https://example.com")]
-    [InlineData("https://github.com/rainaku/V-Notch")]
+    [InlineData("https://github.com/w0otdev/V-Notch")]
     [InlineData("ClipboardSensitiveDataTests")]
     [InlineData("OnPropertyChanged")]
     [InlineData("bufferSize1024")]

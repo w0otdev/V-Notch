@@ -33,9 +33,9 @@ internal static class SetupOperations
 {
     private const string AppName = "V-Notch";
     private const string AppExeName = "V-Notch.exe";
-    private const string Publisher = "rainaku";
+    private const string Publisher = "w0otdev";
 #pragma warning disable S1075 // Official project repository URL for Windows uninstall registry
-    private const string AppUrl = "https://github.com/rainaku/V-Notch";
+    private const string AppUrl = "https://github.com/w0otdev/V-Notch";
 #pragma warning restore S1075
     private const string UninstallRegistryPath = @"Software\Microsoft\Windows\CurrentVersion\Uninstall\V-Notch";
 
