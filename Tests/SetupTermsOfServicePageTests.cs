@@ -137,22 +137,7 @@ public sealed class SetupTermsOfServicePageTests
 
     private static void EnsureApplicationResources()
     {
-        if (Application.Current == null)
-        {
-            var app = new Application { ShutdownMode = ShutdownMode.OnExplicitShutdown };
-            app.Resources["SFProDisplay"] = new FontFamily("Segoe UI");
-            app.Resources["SFProText"] = new FontFamily("Segoe UI");
-            app.Resources["IconFont"] = new FontFamily("Segoe MDL2 Assets");
-        }
-        else
-        {
-            if (!Application.Current.Resources.Contains("SFProDisplay"))
-                Application.Current.Resources["SFProDisplay"] = new FontFamily("Segoe UI");
-            if (!Application.Current.Resources.Contains("SFProText"))
-                Application.Current.Resources["SFProText"] = new FontFamily("Segoe UI");
-            if (!Application.Current.Resources.Contains("IconFont"))
-                Application.Current.Resources["IconFont"] = new FontFamily("Segoe MDL2 Assets");
-        }
+        BackgroundTestWindows.EnsureApplicationResources();
     }
 
     [Fact]

@@ -539,10 +539,7 @@ public sealed class SettingsWindowControlTests
         internal Fixture(IUpdateService? updates = null)
         {
             Loc.SetLanguage("en");
-            var app = Application.Current ?? new Application { ShutdownMode = ShutdownMode.OnExplicitShutdown };
-            app.Resources["SFProDisplay"] = new FontFamily("Segoe UI");
-            app.Resources["SFProText"] = new FontFamily("Segoe UI");
-            app.Resources["IconFont"] = new FontFamily("Segoe MDL2 Assets");
+            BackgroundTestWindows.EnsureApplicationResources();
             Window = new SettingsWindow(new NotchSettings { Language = "en", AutoCheckUpdates = false, EnableWeather = false }, Service, updateService: updates);
             BackgroundTestWindows.ProtectInput(Window);
         }

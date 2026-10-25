@@ -35,9 +35,9 @@ internal static class BackgroundTestWindows
     {
         var app = Application.Current ?? new Application { ShutdownMode = ShutdownMode.OnExplicitShutdown };
         if (!app.Resources.Contains("SFProDisplay"))
-            app.Resources["SFProDisplay"] = new System.Windows.Media.FontFamily("Segoe UI");
+            app.Resources["SFProDisplay"] = VNotch.Services.AppFonts.Get("Segoe UI Emoji, Segoe UI, Arial");
         if (!app.Resources.Contains("SFProText"))
-            app.Resources["SFProText"] = new System.Windows.Media.FontFamily("Segoe UI");
+            app.Resources["SFProText"] = VNotch.Services.AppFonts.Get("Segoe UI Emoji, Segoe UI, Arial");
         if (!app.Resources.Contains("IconFont"))
             app.Resources["IconFont"] = new System.Windows.Media.FontFamily("Segoe MDL2 Assets");
     }

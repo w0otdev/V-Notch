@@ -201,15 +201,20 @@
       <_VsWherePath>$(MSBuildProgramFiles32)\Microsoft Visual Studio\Installer\vswhere.exe</_VsWherePath>
     </PropertyGroup>
     <Exec Condition="'$(VcVars64Path)' == '' And Exists('$(_VsWherePath)')" Command="&quot;$(_VsWherePath)&quot; -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -find **\vcvars64.bat" ConsoleToMSBuild="true" EchoOff="true" StandardOutputImportance="Low" IgnoreExitCode="true">
-      <Output TaskParameter="ConsoleOutput" ItemName="_VcVarsFromVsWhere" />
+      <Output TaskParameter="ConsoleOutput" PropertyName="_VcVarsFromVsWhere" />
     </Exec>
-    <ItemGroup Condition="'$(VcVars64Path)' == ''">
-      <_VcVarsCandidate Include="@(_VcVarsFromVsWhere)" Condition="Exists('%(Identity)')" />
-      <_VcVarsCandidate Include="$(MSBuildProgramFiles32)\Microsoft Visual Studio\*\*\VC\Auxiliary\Build\vcvars64.bat" />
-      <_VcVarsCandidate Include="C:\Program Files\Microsoft Visual Studio\*\*\VC\Auxiliary\Build\vcvars64.bat" />
-    </ItemGroup>
-    <PropertyGroup Condition="'$(VcVars64Path)' == ''">
-      <VcVars64Path Condition="'@(_VcVarsCandidate)' != ''">%(_VcVarsCandidate.FullPath)</VcVars64Path>
+    <PropertyGroup Condition="'$(VcVars64Path)' == '' And '$(_VcVarsFromVsWhere)' != ''">
+      <VcVars64Path>$([System.String]::Copy('$(_VcVarsFromVsWhere)').Split(';')[0].Trim())</VcVars64Path>
+    </PropertyGroup>
+    <PropertyGroup Condition="'$(VcVars64Path)' == '' Or !Exists('$(VcVars64Path)')">
+      <_VcVarsFallback1>C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Auxiliary\Build\vcvars64.bat</_VcVarsFallback1>
+      <_VcVarsFallback2>C:\Program Files\Microsoft Visual Studio\2022\Professional\VC\Auxiliary\Build\vcvars64.bat</_VcVarsFallback2>
+      <_VcVarsFallback3>C:\Program Files\Microsoft Visual Studio\2022\Community\VC\Auxiliary\Build\vcvars64.bat</_VcVarsFallback3>
+      <_VcVarsFallback4>C:\Program Files (x86)\Microsoft Visual Studio\2022\BuildTools\VC\Auxiliary\Build\vcvars64.bat</_VcVarsFallback4>
+      <VcVars64Path Condition="Exists('$(_VcVarsFallback1)')">$(_VcVarsFallback1)</VcVars64Path>
+      <VcVars64Path Condition="'$(VcVars64Path)' == '' And Exists('$(_VcVarsFallback2)')">$(_VcVarsFallback2)</VcVars64Path>
+      <VcVars64Path Condition="'$(VcVars64Path)' == '' And Exists('$(_VcVarsFallback3)')">$(_VcVarsFallback3)</VcVars64Path>
+      <VcVars64Path Condition="'$(VcVars64Path)' == '' And Exists('$(_VcVarsFallback4)')">$(_VcVarsFallback4)</VcVars64Path>
     </PropertyGroup>
     <Error Condition="'$(VcVars64Path)' == '' Or !Exists('$(VcVars64Path)')" Text="vcvars64.bat was not found. Install the Visual Studio C++ x64 build tools or pass -p:VcVars64Path=..." />
     <MakeDir Directories="$(MSBuildThisFileDirectory)Native\out;$(_VNotchNativeObjDir)" />

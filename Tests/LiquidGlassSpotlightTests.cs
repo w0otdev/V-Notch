@@ -280,14 +280,8 @@ public sealed class LiquidGlassSpotlightTests
 
     internal static Application CreateApplicationResources()
     {
-        var application = Application.Current ?? new Application { ShutdownMode = ShutdownMode.OnExplicitShutdown };
-        if (!application.Resources.Contains("SFProDisplay"))
-            application.Resources["SFProDisplay"] = new FontFamily("Segoe UI");
-        if (!application.Resources.Contains("SFProText"))
-            application.Resources["SFProText"] = new FontFamily("Segoe UI");
-        if (!application.Resources.Contains("IconFont"))
-            application.Resources["IconFont"] = new FontFamily("Segoe MDL2 Assets");
-        return application;
+        BackgroundTestWindows.EnsureApplicationResources();
+        return Application.Current!;
     }
 
     internal static NotchSettings CreateMainWindowLiquidGlassSettings() => new()

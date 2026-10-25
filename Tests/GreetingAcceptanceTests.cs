@@ -38,10 +38,10 @@ public sealed class GreetingAcceptanceTests
     });
 
     [Fact]
-    public void GreetingBlocksKeyboardInputUntilDismissed() => SharedStaTestRunner.Run(() =>
+    public void GreetingBlocksKeyboardInputUntilDismissed() => SharedStaTestRunner.RunAsync(async ct =>
     {
-        using var fixture = new MainWindowFixture("en");
-        fixture.ShowGreeting();
+        await using var fixture = new MainWindowFixture("en");
+        await fixture.ShowGreetingAsync(ct);
         var input = System.Windows.Input.InputManager.Current;
         int delivered = 0;
         System.Windows.Input.ProcessInputEventHandler observe = (_, _) => delivered++;
@@ -55,7 +55,7 @@ public sealed class GreetingAcceptanceTests
             Assert.Equal(0, delivered);
             Assert.True(fixture.Window.IsGreetingInteractionBlocked);
             Invoke(fixture.Window, "DismissGreeting");
-            PumpUntil(() => !fixture.Window.IsGreetingInteractionBlocked, TimeSpan.FromSeconds(4));
+            await WpfFrameWaiter.UntilAsync(() => !fixture.Window.IsGreetingInteractionBlocked, "greeting keyboard block cleared", ct);
         }
         finally { input.PostProcessInput -= observe; }
     });
@@ -74,15 +74,15 @@ public sealed class GreetingAcceptanceTests
     [InlineData("ja")]
     [InlineData("ar")]
     [InlineData("de")]
-    public void NewWidgetsAreHiddenAsAGroupAndTheirStateSurvivesGreeting(string language) => SharedStaTestRunner.Run(() =>
+    public void NewWidgetsAreHiddenAsAGroupAndTheirStateSurvivesGreeting(string language) => SharedStaTestRunner.RunAsync(async ct =>
     {
-        using var fixture = new MainWindowFixture(language);
+        await using var fixture = new MainWindowFixture(language);
         var window = fixture.Window;
         var newWidget = new Border { Opacity = 0.65, Visibility = Visibility.Visible };
         var disabledWidget = new Border { Visibility = Visibility.Collapsed };
         window.NotchLiveContent.Children.Add(newWidget);
         window.NotchLiveContent.Children.Add(disabledWidget);
-        fixture.ShowGreeting();
+        await fixture.ShowGreetingAsync(ct);
         Assert.Equal(Visibility.Hidden, window.NotchLiveContent.Visibility);
         Assert.Equal(Visibility.Visible, newWidget.Visibility);
         Assert.Equal(0.65, newWidget.Opacity);
@@ -96,7 +96,7 @@ public sealed class GreetingAcceptanceTests
 
         // Dismiss through the production fade + collapse callbacks.
         Invoke(window, "DismissGreeting");
-        PumpUntil(() => !GetField<bool>(window, "_isGreetingActive"), TimeSpan.FromSeconds(4));
+        await WpfFrameWaiter.UntilAsync(() => !GetField<bool>(window, "_isGreetingActive"), "greeting dismissed", ct);
         Assert.Equal(Visibility.Visible, window.NotchLiveContent.Visibility);
         Assert.Equal(Visibility.Visible, newWidget.Visibility);
         Assert.Equal(0.65, newWidget.Opacity);
@@ -107,12 +107,12 @@ public sealed class GreetingAcceptanceTests
     [Theory]
     [InlineData("vi")]
     [InlineData("en")]
-    public void GreetingAutomaticallyDismissesAndRestoresTheCompactView(string language) => SharedStaTestRunner.Run(() =>
+    public void GreetingAutomaticallyDismissesAndRestoresTheCompactView(string language) => SharedStaTestRunner.RunAsync(async ct =>
     {
-        using var fixture = new MainWindowFixture(language);
-        fixture.ShowGreeting();
+        await using var fixture = new MainWindowFixture(language);
+        await fixture.ShowGreetingAsync(ct);
         Assert.True(GetField<bool>(fixture.Window, "_isGreetingActive"));
-        PumpUntil(() => !GetField<bool>(fixture.Window, "_isGreetingActive"), TimeSpan.FromSeconds(10));
+        await WpfFrameWaiter.UntilAsync(() => !GetField<bool>(fixture.Window, "_isGreetingActive"), "greeting auto-dismissed", ct);
         Assert.Null(GetField<UiScheduledTimer?>(fixture.Window, "_greetingDismissTimer"));
         Assert.Equal(Visibility.Visible, fixture.Window.NotchLiveContent.Visibility);
         Assert.Equal(Visibility.Visible, fixture.Window.CollapsedContent.Visibility);
@@ -123,13 +123,13 @@ public sealed class GreetingAcceptanceTests
     [Theory]
     [InlineData("vi")]
     [InlineData("en")]
-    public void CloseDuringStrokesStopsDismissTimerAndAnimationCallbacks(string language) => SharedStaTestRunner.Run(() =>
+    public void CloseDuringStrokesStopsDismissTimerAndAnimationCallbacks(string language) => SharedStaTestRunner.RunAsync(async ct =>
     {
-        using var fixture = new MainWindowFixture(language);
+        await using var fixture = new MainWindowFixture(language);
         var window = fixture.Window;
-        fixture.ShowGreeting();
-        PumpUntil(() => language == "vi" ? window.ViPath10.HasAnimatedProperties : window.HelloPath2.HasAnimatedProperties,
-            TimeSpan.FromSeconds(3));
+        await fixture.ShowGreetingAsync(ct);
+        await WpfFrameWaiter.UntilAsync(() => language == "vi" ? window.ViPath10.HasAnimatedProperties : window.HelloPath2.HasAnimatedProperties,
+            "greeting strokes animating", ct);
         Invoke(window, "ScheduleGreetingDismiss", TimeSpan.FromMinutes(1));
         var timer = GetField<UiScheduledTimer>(window, "_greetingDismissTimer");
         Assert.True(timer.IsEnabled);
@@ -138,19 +138,19 @@ public sealed class GreetingAcceptanceTests
         Assert.Null(GetField<UiScheduledTimer?>(window, "_greetingDismissTimer"));
         Assert.False(GetField<bool>(window, "_isGreetingActive"));
         foreach (var path in Paths(window)) Assert.False(path.HasAnimatedProperties);
-        PumpFor(TimeSpan.FromMilliseconds(750));
+        await Task.Delay(750, ct);
         Assert.Null(GetField<UiScheduledTimer?>(window, "_greetingDismissTimer"));
     });
 
     [Fact]
-    public void CloseDuringInitialAppearCannotStartGreetingLater() => SharedStaTestRunner.Run(() =>
+    public void CloseDuringInitialAppearCannotStartGreetingLater() => SharedStaTestRunner.RunAsync(async ct =>
     {
-        using var fixture = new MainWindowFixture("vi");
+        await using var fixture = new MainWindowFixture("vi");
         fixture.Window.ShowActivated = false;
         fixture.Window.Show();
-        PumpUntil(() => GetField<bool>(fixture.Window, "_isGreetingActive"), TimeSpan.FromSeconds(3));
+        await WpfFrameWaiter.UntilAsync(() => GetField<bool>(fixture.Window, "_isGreetingActive"), "greeting active on initial appear", ct);
         fixture.Window.Close();
-        PumpFor(TimeSpan.FromMilliseconds(750));
+        await Task.Delay(750, ct);
         Assert.False(GetField<bool>(fixture.Window, "_isGreetingActive"));
         Assert.Null(GetField<UiScheduledTimer?>(fixture.Window, "_greetingDismissTimer"));
     });
@@ -256,21 +256,6 @@ public sealed class GreetingAcceptanceTests
     private static T GetField<T>(MainWindow window, string name)
         => (T)typeof(MainWindow).GetField(name, BindingFlags.NonPublic | BindingFlags.Instance)!.GetValue(window)!;
 
-    private static void PumpUntil(Func<bool> condition, TimeSpan timeout)
-    {
-        var watch = Stopwatch.StartNew();
-        while (!condition() && watch.Elapsed < timeout) PumpFor(TimeSpan.FromMilliseconds(20));
-        Assert.True(condition(), "The production animation callback did not complete within the timeout.");
-    }
-    private static void PumpFor(TimeSpan duration)
-    {
-        var frame = new DispatcherFrame();
-        var timer = new DispatcherTimer { Interval = duration };
-        timer.Tick += (_, _) => { timer.Stop(); frame.Continue = false; };
-        timer.Start();
-        Dispatcher.PushFrame(frame);
-    }
-
     internal sealed class MainWindowFixture : IDisposable, IAsyncDisposable
     {
         private readonly string _directory = System.IO.Path.Combine(System.IO.Path.GetTempPath(), "vnotch-greeting-" + Guid.NewGuid().ToString("N"));
@@ -281,10 +266,7 @@ public sealed class GreetingAcceptanceTests
             Action<IServiceCollection>? configureServices = null)
         {
             Loc.SetLanguage(language);
-            var app = Application.Current ?? new Application { ShutdownMode = ShutdownMode.OnExplicitShutdown };
-            app.Resources["SFProDisplay"] = new FontFamily("Segoe UI");
-            app.Resources["SFProText"] = new FontFamily("Segoe UI");
-            app.Resources["IconFont"] = new FontFamily("Segoe MDL2 Assets");
+            BackgroundTestWindows.EnsureApplicationResources();
             var settings = new SettingsService(System.IO.Path.Combine(_directory, "settings.json"), _ => { });
             var options = new NotchSettings
             {
@@ -310,11 +292,11 @@ public sealed class GreetingAcceptanceTests
             _provider = services.BuildServiceProvider();
             Window = _provider.GetRequiredService<MainWindow>();
         }
-        internal void ShowGreeting()
+        internal Task ShowGreetingAsync(CancellationToken ct = default)
         {
             Window.ShowActivated = false;
             Window.Show();
-            PumpUntil(() => Window.GreetingOverlay.Visibility == Visibility.Visible, TimeSpan.FromSeconds(4));
+            return WpfFrameWaiter.UntilAsync(() => Window.GreetingOverlay.Visibility == Visibility.Visible, "greeting overlay visible", ct);
         }
         public void Dispose()
         {
