@@ -25,7 +25,20 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
+if ($PSVersionTable.PSVersion.Major -ge 7) {
+    $PSNativeCommandUseErrorActionPreference = $false
+}
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+
+function Invoke-CapturedNative([scriptblock]$Command) {
+    $prev = $ErrorActionPreference
+    $ErrorActionPreference = 'Continue'
+    try {
+        & $Command 2>&1
+    } finally {
+        $ErrorActionPreference = $prev
+    }
+}
 
 $scriptDir = $PSScriptRoot
 if (-not $scriptDir) { $scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Definition }
@@ -78,7 +91,7 @@ try {
     }
 
     $sw = [System.Diagnostics.Stopwatch]::StartNew()
-    $output = & dotnet @formatArguments 2>&1
+    $output = Invoke-CapturedNative { & dotnet @formatArguments }
     $formatExitCode = $LASTEXITCODE
     $sw.Stop()
 

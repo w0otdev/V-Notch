@@ -315,6 +315,18 @@ inline std::u16string_view make_u16_view(const char16_t* ptr, int32_t len) noexc
     return std::u16string_view(ptr, static_cast<size_t>(len));
 }
 
+// Strict variant for exports: rejects a negative length and a null pointer paired with a positive length
+// instead of silently turning the bad input into an empty view. A null pointer with length 0 is an empty string.
+inline bool try_make_u16_view(const char16_t* ptr, int32_t len, std::u16string_view& out) noexcept
+{
+    if (len < 0 || (ptr == nullptr && len > 0))
+    {
+        return false;
+    }
+    out = len == 0 ? std::u16string_view{} : std::u16string_view(ptr, static_cast<size_t>(len));
+    return true;
+}
+
 inline int32_t copy_out_u16(std::u16string_view src, char16_t* out_buf, int32_t out_cap, int32_t* out_len) noexcept
 {
     if (out_len == nullptr)

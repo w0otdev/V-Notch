@@ -6,7 +6,7 @@ if ([IO.Path]::GetDirectoryName($fixtureRoot) -ne $artifactsRoot) { throw 'Unsaf
 $previousDesktopMode = [Environment]::GetEnvironmentVariable('VNOTCH_RUN_DESKTOP_TESTS', 'Process')
 
 # Run the actual prepush script in an isolated repository with stubbed dotnet commands.
-function dotnet {
+function script:dotnet {
     $global:LASTEXITCODE = 0
     if ($args[0] -eq 'test') {
         $index = [Array]::IndexOf($args, '--results-directory')
@@ -52,6 +52,7 @@ if (Test-Path -LiteralPath (Join-Path (Split-Path $PSScriptRoot -Parent) 'fail-c
     }
     Write-Output 'Prepush cleanup: six success/failure scenarios passed.'
 } finally {
+    Remove-Item -Path Function:\dotnet -ErrorAction SilentlyContinue
     [Environment]::SetEnvironmentVariable('VNOTCH_RUN_DESKTOP_TESTS', $previousDesktopMode, 'Process')
     if ([IO.Path]::GetDirectoryName($fixtureRoot) -ne $artifactsRoot) { throw 'Unsafe fixture cleanup target.' }
     if (Test-Path -LiteralPath $fixtureRoot) { Remove-Item -LiteralPath $fixtureRoot -Recurse -Force }

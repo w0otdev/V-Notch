@@ -2,12 +2,9 @@
 
 using namespace vnotch;
 
-namespace vnotch::services
+namespace vnotch::services::data_protection
 {
-    class DataProtection final
-    {
-    public:
-        static int32_t vn_dpapi_protect_bytes_impl(const uint8_t* plain_ptr,
+        static int32_t protect_bytes(const uint8_t* plain_ptr,
     int32_t plain_len,
     uint8_t* out_buf,
     int32_t out_cap,
@@ -51,7 +48,7 @@ namespace vnotch::services
     return VN_OK;
 }
 
-        static int32_t vn_dpapi_unprotect_bytes_impl(const uint8_t* enc_ptr,
+        static int32_t unprotect_bytes(const uint8_t* enc_ptr,
     int32_t enc_len,
     uint8_t* out_buf,
     int32_t out_cap,
@@ -94,9 +91,7 @@ namespace vnotch::services
     }
     return VN_OK;
 }
-
-    };
-} // namespace vnotch::services
+} // namespace vnotch::services::data_protection
 
 VN_EXPORT int32_t vn_dpapi_protect_bytes(const uint8_t* plain_ptr,
     int32_t plain_len,
@@ -104,7 +99,7 @@ VN_EXPORT int32_t vn_dpapi_protect_bytes(const uint8_t* plain_ptr,
     int32_t out_cap,
     int32_t* out_len) noexcept
 {
-    return vnotch::services::DataProtection::vn_dpapi_protect_bytes_impl(plain_ptr, plain_len, out_buf, out_cap, out_len);
+    return vnotch::services::data_protection::protect_bytes(plain_ptr, plain_len, out_buf, out_cap, out_len);
 }
 
 VN_EXPORT int32_t vn_dpapi_unprotect_bytes(const uint8_t* enc_ptr,
@@ -113,6 +108,6 @@ VN_EXPORT int32_t vn_dpapi_unprotect_bytes(const uint8_t* enc_ptr,
     int32_t out_cap,
     int32_t* out_len) noexcept
 {
-    return vnotch::services::DataProtection::vn_dpapi_unprotect_bytes_impl(enc_ptr, enc_len, out_buf, out_cap, out_len);
+    return vnotch::services::data_protection::unprotect_bytes(enc_ptr, enc_len, out_buf, out_cap, out_len);
 }
 

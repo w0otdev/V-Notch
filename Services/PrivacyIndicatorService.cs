@@ -948,6 +948,7 @@ public sealed partial class PrivacyIndicatorService : IDisposable
         private int _meterCount;
         private string[] _cachedCandidateNames = Array.Empty<string>();
         private bool _isTopologyValid;
+        private int _deviceVersion;
         private long _lastRebuildTicks;
         private readonly object _probeLock = new();
 
@@ -968,11 +969,11 @@ public sealed partial class PrivacyIndicatorService : IDisposable
 
                 var (hasActiveSession, peakLevel, anyInvalid) = SampleLocked();
                 // A session that expired, was muted or failed means the cached topology is stale.
-                if (anyInvalid) _isTopologyValid = false;
+                if (anyInvalid) Volatile.Write(ref _isTopologyValid, false);
 
                 // If topology became invalid during sampling and we had no active session,
                 // rebuild topology immediately if rate limit allows.
-                if (!_isTopologyValid && !hasActiveSession)
+                if (!Volatile.Read(ref _isTopologyValid) && !hasActiveSession)
                 {
                     long now = Stopwatch.GetTimestamp();
                     double elapsedSec = (double)(now - _lastRebuildTicks) / Stopwatch.Frequency;
@@ -1008,17 +1009,17 @@ public sealed partial class PrivacyIndicatorService : IDisposable
             if (!_cachedCandidateNames.SequenceEqual(currentNames, StringComparer.OrdinalIgnoreCase))
             {
                 _cachedCandidateNames = currentNames;
-                _isTopologyValid = false;
+                Volatile.Write(ref _isTopologyValid, false);
             }
 
-            if (_isTopologyValid && _meterCount > 0)
+            if (Volatile.Read(ref _isTopologyValid) && _meterCount > 0)
                 return;
 
             long now = Stopwatch.GetTimestamp();
             double elapsedSec = (double)(now - _lastRebuildTicks) / Stopwatch.Frequency;
 
             // If topology is invalid, or if we found 0 active sessions and at least 1s elapsed since last attempt:
-            if (!_isTopologyValid || (_meterCount == 0 && elapsedSec >= 1.0))
+            if (!Volatile.Read(ref _isTopologyValid) || (_meterCount == 0 && elapsedSec >= 1.0))
             {
                 RebuildTopologyLocked(candidates);
             }
@@ -1027,6 +1028,7 @@ public sealed partial class PrivacyIndicatorService : IDisposable
         private void RebuildTopologyLocked(IReadOnlyList<CapabilityUsage> candidates)
         {
             _lastRebuildTicks = Stopwatch.GetTimestamp();
+            int version = Volatile.Read(ref _deviceVersion);
             InvalidateCacheLocked();
 
             using var processProbe = new ConsumerProcessProbe();
@@ -1060,7 +1062,7 @@ public sealed partial class PrivacyIndicatorService : IDisposable
                     _meterCount = remaining;
                 }
 
-                _isTopologyValid = true;
+                Volatile.Write(ref _isTopologyValid, Volatile.Read(ref _deviceVersion) == version);
             }
             catch (Exception ex)
             {
@@ -1102,15 +1104,13 @@ public sealed partial class PrivacyIndicatorService : IDisposable
 
         private void OnDeviceNotification()
         {
-            lock (_probeLock)
-            {
-                _isTopologyValid = false;
-            }
+            Interlocked.Increment(ref _deviceVersion);
+            Volatile.Write(ref _isTopologyValid, false);
         }
 
         private void InvalidateCacheLocked()
         {
-            _isTopologyValid = false;
+            Volatile.Write(ref _isTopologyValid, false);
             if (_probeHandle != 0) NativeClear(_probeHandle);
             _meterCount = 0;
         }

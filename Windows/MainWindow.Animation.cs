@@ -340,6 +340,11 @@ public partial class MainWindow
 
         MediaPlayback.CancelRewindForNavigation();
 
+        if (IsCountdownCompletionVisualActive)
+        {
+            DismissCountdownCompletion();
+        }
+
         if (_isVolumeIndicatorActive)
         {
             DismissVolumeIndicatorImmediate(animateExit: true);

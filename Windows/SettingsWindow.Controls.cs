@@ -727,7 +727,7 @@ public partial class SettingsWindow
         if (markSeen) MarkCpp26NoticeSeen();
         if (false)
         {
-    
+
         }
 
         if (Cpp26PromptBanner == null || !_isCpp26BannerVisible) return;

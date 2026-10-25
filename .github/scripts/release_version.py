@@ -47,7 +47,7 @@ def release_identity(project, branch, run_number, run_attempt, run_id, sha, late
     if any(not re.fullmatch(r"[1-9][0-9]*", str(value)) for value in (run_number, run_attempt, run_id)):
         raise ValueError("Positive workflow run identifiers are required.")
 
-    prerelease = branch == "main"
+    prerelease = branch in ("main", "master")
     if prerelease:
         if int(run_number) > 65534 or int(run_attempt) > 65534:
             raise ValueError("Build identity exceeds Windows version limits; refusing to wrap or reuse a build number.")
@@ -69,7 +69,7 @@ def release_identity(project, branch, run_number, run_attempt, run_id, sha, late
     elif branch == "v" + version:
         windows_version = ".".join(str(part) for part in (parts + [0])[:4])
     else:
-        raise ValueError("Stable tag must exactly match the project version; only main publishes automatic betas.")
+        raise ValueError("Stable tag must exactly match the project version; only main/master publishes automatic betas.")
 
     return {
         "version": version,
@@ -82,7 +82,7 @@ def release_identity(project, branch, run_number, run_attempt, run_id, sha, late
 
 def main():
     branch = os.environ["RELEASE_BRANCH"]
-    stable = latest_stable_version(os.environ["GH_REPO"], os.environ["GH_TOKEN"]) if branch == "main" else None
+    stable = latest_stable_version(os.environ["GH_REPO"], os.environ["GH_TOKEN"]) if branch in ("main", "master") else None
     identity = release_identity(
         Path("V-Notch.csproj"), branch, os.environ["RELEASE_RUN_NUMBER"],
         os.environ["RELEASE_RUN_ATTEMPT"], os.environ["RELEASE_RUN_ID"], os.environ["HEAD_SHA"], stable,

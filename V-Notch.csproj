@@ -193,6 +193,8 @@
   <ItemGroup>
     <_VNotchNativeHeaders Include="$(MSBuildThisFileDirectory)Native\**\*.h" />
     <_VNotchNativeSources Include="$(MSBuildThisFileDirectory)Native\**\*.cpp" />
+    <_VNotchNativeAvx2Sources Include="$(MSBuildThisFileDirectory)Native\**\*.avx2.cpp" />
+    <_VNotchNativeBaselineSources Include="$(MSBuildThisFileDirectory)Native\**\*.cpp" Exclude="$(MSBuildThisFileDirectory)Native\**\*.avx2.cpp" />
   </ItemGroup>
   <Target Name="CompileVNotchNative" BeforeTargets="BeforeBuild" Condition="'$(SkipNativeCompile)' != 'true' And '$(DesignTimeBuild)' != 'true'" Inputs="@(_VNotchNativeSources);@(_VNotchNativeHeaders)" Outputs="$(_VNotchNativeDll)">
     <ItemGroup Condition="'$(VcVars64Path)' == ''">
@@ -203,8 +205,25 @@
       <VcVars64Path Condition="'@(_VcVarsCandidate)' != ''">%(_VcVarsCandidate.FullPath)</VcVars64Path>
     </PropertyGroup>
     <MakeDir Directories="$(MSBuildThisFileDirectory)Native\out;$(_VNotchNativeObjDir)" Condition="'$(VcVars64Path)' != '' And Exists('$(VcVars64Path)')" />
-    <Exec Condition="'$(VcVars64Path)' != '' And Exists('$(VcVars64Path)')" Command="call &quot;$(VcVars64Path)&quot; &gt;nul &amp;&amp; cl.exe /nologo /std:c++latest /O2 /Oi /Ot /GL /arch:AVX2 /MT /EHsc /LD /MP /W4 /utf-8 /I&quot;$(MSBuildThisFileDirectory)Native&quot; /Fo&quot;$(_VNotchNativeObjDir)\\&quot; @(_VNotchNativeSources -> '&quot;%(FullPath)&quot;', ' ') /link /LTCG /OPT:REF /OPT:ICF /OUT:&quot;$(_VNotchNativeDll)&quot; /IMPLIB:&quot;$(_VNotchNativeObjDir)\VNotch.Native.lib&quot;" IgnoreStandardErrorWarningFormat="true" />
+    <!--
+      Baseline x64 (SSE2) for everything except *.avx2.cpp. The AVX2 kernels are compiled with /arch:AVX2
+      and only entered after the runtime check in Native\vnotch_cpu.h, so the DLL loads and runs on CPUs
+      and VMs without AVX2. The AVX2 objects are built without /GL so the compiler keeps their instruction set.
+    -->
+    <ItemGroup>
+      <_VNotchNativeStaleObj Include="$(_VNotchNativeObjDir)\*.obj" />
+    </ItemGroup>
+    <Delete Files="@(_VNotchNativeStaleObj)" Condition="'$(VcVars64Path)' != '' And Exists('$(VcVars64Path)')" />
+    <WriteLinesToFile File="$(_VNotchNativeObjDir)\baseline.rsp" Lines="@(_VNotchNativeBaselineSources -> '&quot;%(FullPath)&quot;')" Overwrite="true" Condition="'$(VcVars64Path)' != '' And Exists('$(VcVars64Path)')" />
+    <WriteLinesToFile File="$(_VNotchNativeObjDir)\avx2.rsp" Lines="@(_VNotchNativeAvx2Sources -> '&quot;%(FullPath)&quot;')" Overwrite="true" Condition="'$(VcVars64Path)' != '' And Exists('$(VcVars64Path)')" />
+    <Exec Condition="'$(VcVars64Path)' != '' And Exists('$(VcVars64Path)')" Command="call &quot;$(VcVars64Path)&quot; &gt;nul &amp;&amp; cl.exe /nologo /c /std:c++latest /O2 /Oi /Ot /GL /MT /EHsc /MP /W4 /utf-8 /I&quot;$(MSBuildThisFileDirectory)Native&quot; /Fo&quot;$(_VNotchNativeObjDir)\\&quot; @&quot;$(_VNotchNativeObjDir)\baseline.rsp&quot; &amp;&amp; cl.exe /nologo /c /std:c++latest /O2 /Oi /Ot /arch:AVX2 /MT /EHsc /MP /W4 /utf-8 /I&quot;$(MSBuildThisFileDirectory)Native&quot; /Fo&quot;$(_VNotchNativeObjDir)\\&quot; @&quot;$(_VNotchNativeObjDir)\avx2.rsp&quot;" IgnoreStandardErrorWarningFormat="true" />
+    <ItemGroup>
+      <_VNotchNativeObj Include="$(_VNotchNativeObjDir)\*.obj" />
+    </ItemGroup>
+    <WriteLinesToFile File="$(_VNotchNativeObjDir)\link.rsp" Lines="@(_VNotchNativeObj -> '&quot;%(FullPath)&quot;')" Overwrite="true" Condition="'$(VcVars64Path)' != '' And Exists('$(VcVars64Path)')" />
+    <Exec Condition="'$(VcVars64Path)' != '' And Exists('$(VcVars64Path)')" Command="call &quot;$(VcVars64Path)&quot; &gt;nul &amp;&amp; link.exe /nologo /DLL /LTCG /OPT:REF /OPT:ICF /OUT:&quot;$(_VNotchNativeDll)&quot; /IMPLIB:&quot;$(_VNotchNativeObjDir)\VNotch.Native.lib&quot; @&quot;$(_VNotchNativeObjDir)\link.rsp&quot;" IgnoreStandardErrorWarningFormat="true" />
   </Target>
+  <Target Name="BuildNativeDll" DependsOnTargets="CompileVNotchNative" />
 
   <Target Name="SetPackageManifestVersion" BeforeTargets="Build">
     <PropertyGroup>

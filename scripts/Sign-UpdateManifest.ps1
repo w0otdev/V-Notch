@@ -1,4 +1,3 @@
-#Requires -Version 7.0
 [CmdletBinding()]
 param(
     [Parameter(Mandatory)][string]$InstallerPath,
@@ -7,6 +6,20 @@ param(
     [string]$PublicKeyPath = (Join-Path $PSScriptRoot '../Security/update-public-key.pem')
 )
 $ErrorActionPreference = 'Stop'
+if ($PSVersionTable.PSVersion.Major -lt 7) {
+    $pwsh = Get-Command pwsh.exe -ErrorAction SilentlyContinue
+    if (-not $pwsh) {
+        throw 'PowerShell 7 (pwsh) is required for Sign-UpdateManifest.ps1.'
+    }
+    $pwshArgs = @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', $PSCommandPath, '-InstallerPath', $InstallerPath, '-Version', $Version)
+    if ($PrivateKeyPath) { $pwshArgs += '-PrivateKeyPath', $PrivateKeyPath }
+    if ($PublicKeyPath) { $pwshArgs += '-PublicKeyPath', $PublicKeyPath }
+    & $pwsh.Source @pwshArgs
+    if ($LASTEXITCODE -ne 0) {
+        throw "Sign-UpdateManifest.ps1 failed with exit code $LASTEXITCODE."
+    }
+    return
+}
 $installer = Get-Item -LiteralPath $InstallerPath
 if ($installer.Name -cnotin @('V-Notch-Setup.exe', 'V-Notch-Setup-SelfContained.exe')) {
     throw 'Unexpected installer name.'

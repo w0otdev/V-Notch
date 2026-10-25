@@ -2,9 +2,9 @@ name: CI
 
 'on':
   pull_request:
-    branches: [main]
+    branches: [main, master]
   push:
-    branches: [main]
+    branches: [main, master]
     tags: ['v*']
 
 concurrency:
@@ -107,7 +107,13 @@ jobs:
 
       - name: Build native DLL for C/C++ CodeQL tracing
         if: matrix.language == 'c-cpp'
-        run: dotnet msbuild V-Notch.csproj -t:BuildNativeDll -p:Configuration=Release
+        shell: pwsh
+        run: |
+          Remove-Item -LiteralPath Native/out/VNotch.Native.dll -Force -ErrorAction SilentlyContinue
+          dotnet msbuild V-Notch.csproj -t:BuildNativeDll -p:Configuration=Release
+          if ($LASTEXITCODE -ne 0 -or -not (Test-Path -LiteralPath Native/out/VNotch.Native.dll)) {
+            throw 'Failed to compile VNotch.Native.dll for CodeQL tracing.'
+          }
 
       - name: Analyze and upload code scanning results
         uses: github/codeql-action/analyze@2892aa5e19bbd11bc0cff5427e3b750a04d9e3c2

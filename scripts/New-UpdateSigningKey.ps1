@@ -1,10 +1,22 @@
-#Requires -Version 7.0
 [CmdletBinding()]
 param(
     [Parameter(Mandatory)][string]$PrivateKeyPath,
     [string]$PublicKeyPath = (Join-Path $PSScriptRoot '../Security/update-public-key.pem')
 )
 $ErrorActionPreference = 'Stop'
+if ($PSVersionTable.PSVersion.Major -lt 7) {
+    $pwsh = Get-Command pwsh.exe -ErrorAction SilentlyContinue
+    if (-not $pwsh) {
+        throw 'PowerShell 7 (pwsh) is required for New-UpdateSigningKey.ps1.'
+    }
+    $pwshArgs = @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', $PSCommandPath, '-PrivateKeyPath', $PrivateKeyPath)
+    if ($PublicKeyPath) { $pwshArgs += '-PublicKeyPath', $PublicKeyPath }
+    & $pwsh.Source @pwshArgs
+    if ($LASTEXITCODE -ne 0) {
+        throw "New-UpdateSigningKey.ps1 failed with exit code $LASTEXITCODE."
+    }
+    return
+}
 $privatePath = [IO.Path]::GetFullPath($PrivateKeyPath)
 $publicPath = [IO.Path]::GetFullPath($PublicKeyPath)
 $repoRoot = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))

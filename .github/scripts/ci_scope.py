@@ -38,7 +38,7 @@ def needs_windows(paths):
 
 
 def scope(base, head, ref, directory=None):
-    if ref == "refs/heads/main" or ref.startswith("refs/tags/") or not re.fullmatch(r"[0-9a-f]{40}", base or "") or base == "0" * 40:
+    if ref in ("refs/heads/main", "refs/heads/master") or ref.startswith("refs/tags/") or not re.fullmatch(r"[0-9a-f]{40}", base or "") or base == "0" * 40:
         return True
     if not re.fullmatch(r"[0-9a-f]{40}", head or ""):
         raise ValueError("A complete commit SHA is required.")

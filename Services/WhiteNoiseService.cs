@@ -1,4 +1,5 @@
 using System.IO;
+using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 
 namespace VNotch.Services;
@@ -38,12 +39,20 @@ internal static partial class WhiteNoiseService
     [LibraryImport("VNotch.Native.dll")]
     private static partial int vn_noise_stop_fade(float seconds);
 
+    [LibraryImport("VNotch.Native.dll")]
+    private static unsafe partial int vn_noise_set_failure_callback(delegate* unmanaged[Stdcall]<int, int, void> callback);
+
     private static int _playingKind = -1;
+    private static int _failedKind = -1;
     private static float _volume = DefaultVolume;
     private static bool _muted;
     private static bool _syncWithTimer;
 
-    static WhiteNoiseService() => LoadPreferences();
+    static WhiteNoiseService()
+    {
+        LoadPreferences();
+        RegisterFailureCallback();
+    }
 
     internal static event Action? StateChanged;
 
@@ -94,11 +103,45 @@ internal static partial class WhiteNoiseService
     internal static void Play(int kind)
     {
         if (kind < 0 || kind >= Catalog.Count) return;
+        Volatile.Write(ref _failedKind, -1);
         if (vn_noise_play(kind, EffectiveVolume) != 0) return;
-        _playingKind = kind;
+        Volatile.Write(ref _playingKind, kind);
+        // The native worker may already have failed (for example waveOutOpen) before the line above ran.
+        if (Volatile.Read(ref _failedKind) == kind) Interlocked.CompareExchange(ref _playingKind, -1, kind);
         StateChanged?.Invoke();
     }
 
+    private static unsafe void RegisterFailureCallback()
+    {
+        try
+        {
+            vn_noise_set_failure_callback(&OnNativePlaybackFailed);
+        }
+        catch (Exception ex) when (ex is DllNotFoundException or EntryPointNotFoundException)
+        {
+            RuntimeLog.Log("WhiteNoise", $"Native playback failure callback is unavailable: {ex.Message}");
+        }
+    }
+
+    /// <summary>
+    /// Raised on the native player thread when the device could not be opened or playback broke after
+    /// vn_noise_play had already succeeded. Clears the playing state so the UI stops showing the sound as active.
+    /// </summary>
+    [UnmanagedCallersOnly(CallConvs = [typeof(CallConvStdcall)])]
+    private static void OnNativePlaybackFailed(int kind, int errorCode)
+    {
+        try
+        {
+            Volatile.Write(ref _failedKind, kind);
+            RuntimeLog.Log("WhiteNoise", $"Playback of kind {kind} stopped (native error {errorCode}).");
+            if (Interlocked.CompareExchange(ref _playingKind, -1, kind) != kind) return;
+            StateChanged?.Invoke();
+        }
+        catch (Exception)
+        {
+            // An exception must never cross the native callback boundary.
+        }
+    }
     internal static void Toggle(Sound sound)
     {
         if (_playingKind == sound.Kind) Pause();

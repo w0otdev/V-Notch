@@ -1,5 +1,6 @@
 #include "../vnotch_common.h"
 #include "../vnotch_com.h"
+#include "../vnotch_handle_registry.h"
 #include <mmdeviceapi.h>
 #include <audiopolicy.h>
 #include <endpointvolume.h>
@@ -71,14 +72,7 @@ struct Probe {
     }
 };
 
-SRWLOCK g_lock = SRWLOCK_INIT;
-std::vector<std::unique_ptr<Probe>> g_probes;
-
-Probe* Find(int64_t handle) noexcept {
-    Guard guard(&g_lock);
-    if (handle <= 0 || static_cast<size_t>(handle) > g_probes.size()) return nullptr;
-    return g_probes[static_cast<size_t>(handle) - 1].get();
-}
+vnotch::HandleRegistry<Probe> g_probes;
 
 bool EndpointMuted(IAudioEndpointVolume* volume) noexcept {
     BOOL muted = FALSE;
@@ -173,16 +167,7 @@ VN_EXPORT int32_t __stdcall vn_mic_probe_create(mp::InvalidatedCallback callback
         }
         *out_hresult = static_cast<int32_t>(hr);
         if (FAILED(hr)) return VN_ERR_FAIL;
-        mp::Guard guard(&mp::g_lock);
-        for (size_t i = 0; i < mp::g_probes.size(); ++i) {
-            if (!mp::g_probes[i]) {
-                mp::g_probes[i] = std::move(probe);
-                *out_handle = static_cast<int64_t>(i) + 1;
-                return VN_OK;
-            }
-        }
-        mp::g_probes.push_back(std::move(probe));
-        *out_handle = static_cast<int64_t>(mp::g_probes.size());
+        *out_handle = mp::g_probes.Add(std::move(probe));
         return VN_OK;
     } catch (...) {
         return VN_ERR_FAIL;
@@ -190,14 +175,14 @@ VN_EXPORT int32_t __stdcall vn_mic_probe_create(mp::InvalidatedCallback callback
 }
 
 VN_EXPORT int32_t __stdcall vn_mic_probe_destroy(int64_t handle) noexcept {
-    mp::Guard guard(&mp::g_lock);
-    if (handle <= 0 || static_cast<size_t>(handle) > mp::g_probes.size()) return VN_ERR_INVALID_ARG;
-    mp::g_probes[static_cast<size_t>(handle) - 1].reset();
+    if (handle <= 0) return VN_ERR_INVALID_ARG;
+    mp::g_probes.Remove(handle);
     return VN_OK;
 }
 
 VN_EXPORT int32_t __stdcall vn_mic_probe_clear(int64_t handle) noexcept {
-    mp::Probe* probe = mp::Find(handle);
+    auto lease = mp::g_probes.Acquire(handle);
+    mp::Probe* probe = lease.get();
     if (!probe) return VN_ERR_INVALID_ARG;
     probe->entries.clear();
     return VN_OK;
@@ -205,7 +190,8 @@ VN_EXPORT int32_t __stdcall vn_mic_probe_clear(int64_t handle) noexcept {
 
 // Rebuilds the list from every active capture endpoint: active, unmuted sessions on unmuted endpoints.
 VN_EXPORT int32_t __stdcall vn_mic_probe_rebuild(int64_t handle, int32_t* out_count, int32_t* out_hresult) noexcept {
-    mp::Probe* probe = mp::Find(handle);
+    auto lease = mp::g_probes.Acquire(handle);
+    mp::Probe* probe = lease.get();
     if (!probe || !probe->enumerator.ptr || !out_count || !out_hresult) return VN_ERR_INVALID_ARG;
     *out_count = 0;
     *out_hresult = 0;
@@ -232,7 +218,8 @@ VN_EXPORT int32_t __stdcall vn_mic_probe_rebuild(int64_t handle, int32_t* out_co
 }
 
 VN_EXPORT int32_t __stdcall vn_mic_probe_get_process_id(int64_t handle, int32_t index, uint32_t* out_process_id) noexcept {
-    mp::Probe* probe = mp::Find(handle);
+    auto lease = mp::g_probes.Acquire(handle);
+    mp::Probe* probe = lease.get();
     if (!probe || !out_process_id || index < 0 || static_cast<size_t>(index) >= probe->entries.size()) return VN_ERR_INVALID_ARG;
     *out_process_id = probe->entries[static_cast<size_t>(index)]->process_id;
     return VN_OK;
@@ -240,7 +227,8 @@ VN_EXPORT int32_t __stdcall vn_mic_probe_get_process_id(int64_t handle, int32_t 
 
 // Drops every entry whose process id is not in the list; out_count is what remains.
 VN_EXPORT int32_t __stdcall vn_mic_probe_keep(int64_t handle, const uint32_t* process_ids, int32_t count, int32_t* out_count) noexcept {
-    mp::Probe* probe = mp::Find(handle);
+    auto lease = mp::g_probes.Acquire(handle);
+    mp::Probe* probe = lease.get();
     if (!probe || !out_count || count < 0 || (count > 0 && !process_ids)) return VN_ERR_INVALID_ARG;
     const uint32_t* end = process_ids + count;
     std::erase_if(probe->entries, [&](const std::unique_ptr<mp::MeterEntry>& entry) {
@@ -254,7 +242,8 @@ VN_EXPORT int32_t __stdcall vn_mic_probe_keep(int64_t handle, const uint32_t* pr
 // topology should be rebuilt. out_peak is the highest valid peak.
 VN_EXPORT int32_t __stdcall vn_mic_probe_sample(
     int64_t handle, uint8_t* out_has_active, float* out_peak, uint8_t* out_any_invalid) noexcept {
-    mp::Probe* probe = mp::Find(handle);
+    auto lease = mp::g_probes.Acquire(handle);
+    mp::Probe* probe = lease.get();
     if (!probe || !out_has_active || !out_peak || !out_any_invalid) return VN_ERR_INVALID_ARG;
     *out_has_active = 0;
     *out_any_invalid = 0;

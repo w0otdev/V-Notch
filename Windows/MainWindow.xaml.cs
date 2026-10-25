@@ -461,6 +461,8 @@ public partial class MainWindow : Window
         {
             _hoverThumbnailDelayTimer.Stop();
 
+            if (IsCountdownCompletionVisualActive) return;
+
             if (_settings.EnableHoverExpand && !_isExpanded && !_isAnimating)
             {
                 ExpandNotch();
@@ -2294,6 +2296,7 @@ public partial class MainWindow : Window
     private void ToggleNotchFromClick(int clickCount)
     {
         if (_isDebugViewLocked) return;
+        if (IsCountdownCompletionVisualActive) return;
         if (_isExpanded)
         {
             if (_isSecondaryView)
@@ -2357,6 +2360,7 @@ public partial class MainWindow : Window
 
     private void QueueHoverExpand()
     {
+        if (IsCountdownCompletionVisualActive) return;
 
         if (_settings.EnableHoverExpand && !_isExpanded && !_isAnimating)
         {

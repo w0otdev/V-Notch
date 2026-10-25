@@ -1,11 +1,12 @@
 #include "../vnotch_common.h"
+#include "../vnotch_cpu.h"
+#include "../vnotch_simd_kernels.h"
 #include <algorithm>
 #include <array>
 #include <bit>
 #include <cmath>
 #include <cstdint>
 #include <cstring>
-#include <immintrin.h>
 #include <numbers>
 
 // Music visualizer DSP: PCM/float sample decoding, Hamming-windowed forward FFT, AGC/beat/spectral shaping,
@@ -179,27 +180,16 @@ void FftForward(VnSpectrumComplex* data, int32_t m) noexcept {
     }
 
     const float* twiddles = FftTwiddles();
+    const bool use_avx2 = vnotch::cpu::SupportsX64V3();
     float* const flat = reinterpret_cast<float*>(data);
     for (int32_t l = 0; l < m; ++l) {
         const int32_t l1 = 1 << l;
         const int32_t l2 = l1 << 1;
         const float* stage = twiddles + 2 * static_cast<size_t>(l1 - 1);
+        // The AVX2 kernel handles groups of four butterflies for every block; the scalar loop finishes the rest.
+        const int32_t k_start = use_avx2 ? vnotch::kernels::avx2::FftStageBulk(flat, stage, n, l1) : 0;
         for (int32_t block = 0; block < n; block += l2) {
-            int32_t k = 0;
-            // Four butterflies per iteration: complex multiply with moveldup/movehdup/addsub.
-            for (; k + 4 <= l1; k += 4) {
-                float* pa = flat + 2 * static_cast<size_t>(block + k);
-                float* pb = pa + 2 * static_cast<size_t>(l1);
-                const __m256 a = _mm256_loadu_ps(pa);
-                const __m256 b = _mm256_loadu_ps(pb);
-                const __m256 w = _mm256_loadu_ps(stage + 2 * static_cast<size_t>(k));
-                const __m256 t = _mm256_addsub_ps(
-                    _mm256_mul_ps(b, _mm256_moveldup_ps(w)),
-                    _mm256_mul_ps(_mm256_permute_ps(b, 0xB1), _mm256_movehdup_ps(w)));
-                _mm256_storeu_ps(pa, _mm256_add_ps(a, t));
-                _mm256_storeu_ps(pb, _mm256_sub_ps(a, t));
-            }
-            for (; k < l1; ++k) {
+            for (int32_t k = k_start; k < l1; ++k) {
                 VnSpectrumComplex& lo = data[block + k];
                 VnSpectrumComplex& hi = data[block + k + l1];
                 const float wr = stage[2 * static_cast<size_t>(k)];
@@ -477,8 +467,10 @@ VN_EXPORT int32_t __stdcall vn_visualizer_read_sample(
             double value;
             std::memcpy(&value, p, sizeof(value));
             *out_sample = static_cast<float>(value);
-        } else {
+        } else if (bits_per_sample == 32) {
             std::memcpy(out_sample, p, sizeof(float));
+        } else {
+            *out_sample = 0.0f;
         }
         return VN_OK;
     }

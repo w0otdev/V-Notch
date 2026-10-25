@@ -93,7 +93,7 @@ public partial class WhiteNoiseStrip : UserControl
         {
             Text = Loc.Get(sound.LocKey),
             FontSize = 11,
-            FontWeight = FontWeights.SemiBold,
+            FontWeight = FontWeights.Bold,
             Foreground = textBrush,
             TextTrimming = TextTrimming.CharacterEllipsis,
             HorizontalAlignment = HorizontalAlignment.Center,
@@ -206,7 +206,7 @@ public partial class WhiteNoiseStrip : UserControl
         {
             Text = Loc.Get("whitenoise.sync"),
             FontSize = 11,
-            FontWeight = FontWeights.SemiBold,
+            FontWeight = FontWeights.Bold,
             Foreground = new SolidColorBrush(TextIdleColor),
             Margin = new Thickness(7, 0, 0, 0),
             MaxWidth = 150,

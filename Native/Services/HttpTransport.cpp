@@ -1,4 +1,5 @@
 #include "../vnotch_common.h"
+#include "../vnotch_handle_registry.h"
 #include <winhttp.h>
 #include <atomic>
 #include <cstdint>
@@ -23,13 +24,38 @@ constexpr uint32_t kResolveTimeoutMs = 15000;
 
 struct Request {
     HINTERNET connect = nullptr;
-    HINTERNET request = nullptr;
+    // Cancellation is monotonic for the lifetime of the request: once set it is never cleared.
+    // state_lock makes "check cancelled, then publish the request handle" and "set cancelled, then
+    // take the published handle" atomic with respect to each other, so a cancel can never slip
+    // between the check and the publish and leave a handle that nobody closes.
+    SRWLOCK state_lock = SRWLOCK_INIT;
     std::atomic<bool> cancelled{false};
     std::atomic<HINTERNET> live_request{nullptr};
 
     Request() = default;
     Request(const Request&) = delete;
     Request& operator=(const Request&) = delete;
+
+    bool IsCancelled() const noexcept { return cancelled.load(std::memory_order_acquire); }
+
+    void Cancel() noexcept {
+        HINTERNET active = nullptr;
+        AcquireSRWLockExclusive(&state_lock);
+        cancelled.store(true, std::memory_order_release);
+        active = live_request.exchange(nullptr);
+        ReleaseSRWLockExclusive(&state_lock);
+        if (active) WinHttpCloseHandle(active);
+    }
+
+    // Publishes the request handle so Cancel can close it. Returns false and closes the handle when Cancel already ran.
+    bool PublishRequest(HINTERNET handle) noexcept {
+        AcquireSRWLockExclusive(&state_lock);
+        const bool accepted = !cancelled.load(std::memory_order_acquire);
+        if (accepted) live_request.store(handle);
+        ReleaseSRWLockExclusive(&state_lock);
+        if (!accepted) WinHttpCloseHandle(handle);
+        return accepted;
+    }
 
     void CloseHandles() noexcept {
         HINTERNET active = live_request.exchange(nullptr);
@@ -38,7 +64,6 @@ struct Request {
             WinHttpCloseHandle(connect);
             connect = nullptr;
         }
-        request = nullptr;
     }
     ~Request() { CloseHandles(); }
 };
@@ -69,22 +94,9 @@ HINTERNET Session() noexcept {
     return g_session;
 }
 
-SRWLOCK g_lock = SRWLOCK_INIT;
-std::vector<std::unique_ptr<Request>> g_requests;
-
-struct Guard {
-    SRWLOCK* lock;
-    explicit Guard(SRWLOCK* l) noexcept : lock(l) { AcquireSRWLockExclusive(lock); }
-    Guard(const Guard&) = delete;
-    Guard& operator=(const Guard&) = delete;
-    ~Guard() { ReleaseSRWLockExclusive(lock); }
-};
-
-Request* Find(int64_t handle) noexcept {
-    Guard guard(&g_lock);
-    if (handle <= 0 || static_cast<size_t>(handle) > g_requests.size()) return nullptr;
-    return g_requests[static_cast<size_t>(handle) - 1].get();
-}
+// A send or read holds a lease for its whole duration, so vn_http_destroy can never free a request that is
+// still in use: the object is destroyed when the last lease is released.
+vnotch::HandleRegistry<Request> g_requests;
 
 std::wstring ToWide(const char16_t* text, int32_t length) {
     return std::wstring(reinterpret_cast<const wchar_t*>(text), static_cast<size_t>(length));
@@ -100,17 +112,7 @@ VN_EXPORT int32_t __stdcall vn_http_create(int64_t* out_handle) noexcept {
     if (!out_handle) return VN_ERR_INVALID_ARG;
     *out_handle = 0;
     try {
-        auto request = std::make_unique<hp::Request>();
-        hp::Guard guard(&hp::g_lock);
-        for (size_t i = 0; i < hp::g_requests.size(); ++i) {
-            if (!hp::g_requests[i]) {
-                hp::g_requests[i] = std::move(request);
-                *out_handle = static_cast<int64_t>(i) + 1;
-                return VN_OK;
-            }
-        }
-        hp::g_requests.push_back(std::move(request));
-        *out_handle = static_cast<int64_t>(hp::g_requests.size());
+        *out_handle = hp::g_requests.Add(std::make_unique<hp::Request>());
         return VN_OK;
     } catch (...) {
         return VN_ERR_FAIL;
@@ -130,7 +132,8 @@ VN_EXPORT int32_t __stdcall vn_http_send(
     if (!out_status || !out_error) return VN_ERR_INVALID_ARG;
     *out_status = 0;
     *out_error = 0;
-    hp::Request* req = hp::Find(handle);
+    auto lease = hp::g_requests.Acquire(handle);
+    hp::Request* req = lease.get();
     if (!req || !method || method_length <= 0 || method_length > 16 || !url || url_length <= 0 || url_length > hp::kMaxUrlChars ||
         headers_length < 0 || headers_length > hp::kMaxHeaderChars || (headers_length > 0 && !headers) ||
         body_length < 0 || body_length > hp::kMaxBodyBytes || (body_length > 0 && !body))
@@ -159,7 +162,10 @@ VN_EXPORT int32_t __stdcall vn_http_send(
         if (target.empty()) target = L"/";
 
         req->CloseHandles();
-        req->cancelled = false;
+        if (req->IsCancelled()) {
+            *out_error = ERROR_WINHTTP_OPERATION_CANCELLED;
+            return VN_ERR_FAIL;
+        }
         req->connect = WinHttpConnect(session, host.c_str(), parts.nPort, 0);
         if (!req->connect) {
             *out_error = static_cast<int32_t>(GetLastError());
@@ -172,8 +178,10 @@ VN_EXPORT int32_t __stdcall vn_http_send(
             *out_error = static_cast<int32_t>(GetLastError());
             return VN_ERR_FAIL;
         }
-        req->request = request;
-        req->live_request.store(request);
+        if (!req->PublishRequest(request)) {
+            *out_error = ERROR_WINHTTP_OPERATION_CANCELLED;
+            return VN_ERR_FAIL;
+        }
 
         const int timeout = static_cast<int>(std::min<uint32_t>(timeout_ms, static_cast<uint32_t>(INT32_MAX)));
         WinHttpSetTimeouts(request, static_cast<int>(hp::kResolveTimeoutMs), timeout, timeout, timeout);
@@ -191,6 +199,10 @@ VN_EXPORT int32_t __stdcall vn_http_send(
         }
 
         const std::wstring header_block = headers_length > 0 ? hp::ToWide(headers, headers_length) : std::wstring();
+        if (req->IsCancelled()) {
+            *out_error = ERROR_WINHTTP_OPERATION_CANCELLED;
+            return VN_ERR_FAIL;
+        }
         const BOOL sent = WinHttpSendRequest(
             request,
             header_block.empty() ? WINHTTP_NO_ADDITIONAL_HEADERS : header_block.c_str(),
@@ -198,7 +210,7 @@ VN_EXPORT int32_t __stdcall vn_http_send(
             body_length > 0 ? const_cast<uint8_t*>(body) : WINHTTP_NO_REQUEST_DATA,
             static_cast<DWORD>(body_length), static_cast<DWORD>(body_length), 0);
         if (!sent || !WinHttpReceiveResponse(request, nullptr)) {
-            *out_error = static_cast<int32_t>(GetLastError());
+            *out_error = req->IsCancelled() ? static_cast<int32_t>(ERROR_WINHTTP_OPERATION_CANCELLED) : static_cast<int32_t>(GetLastError());
             return VN_ERR_FAIL;
         }
 
@@ -220,10 +232,12 @@ VN_EXPORT int32_t __stdcall vn_http_send(
 // Raw response header block ("HTTP/1.1 200 OK\r\nName: value\r\n..."). Two-step: BUFFER_TOO_SMALL returns the
 // required length (in characters) in out_length.
 VN_EXPORT int32_t __stdcall vn_http_get_headers(int64_t handle, char16_t* buffer, int32_t capacity, int32_t* out_length) noexcept {
-    hp::Request* req = hp::Find(handle);
-    if (!req || !req->request || !out_length || capacity < 0 || (capacity > 0 && !buffer)) return VN_ERR_INVALID_ARG;
+    auto lease = hp::g_requests.Acquire(handle);
+    hp::Request* req = lease.get();
+    HINTERNET request = req ? req->live_request.load() : nullptr;
+    if (!req || !request || !out_length || capacity < 0 || (capacity > 0 && !buffer)) return VN_ERR_INVALID_ARG;
     DWORD bytes = static_cast<DWORD>(capacity) * sizeof(char16_t);
-    if (WinHttpQueryHeaders(req->request, WINHTTP_QUERY_RAW_HEADERS_CRLF, WINHTTP_HEADER_NAME_BY_INDEX,
+    if (WinHttpQueryHeaders(request, WINHTTP_QUERY_RAW_HEADERS_CRLF, WINHTTP_HEADER_NAME_BY_INDEX,
                             capacity > 0 ? buffer : WINHTTP_NO_OUTPUT_BUFFER, &bytes, WINHTTP_NO_HEADER_INDEX)) {
         *out_length = static_cast<int32_t>(bytes / sizeof(char16_t));
         return VN_OK;
@@ -237,12 +251,14 @@ VN_EXPORT int32_t __stdcall vn_http_get_headers(int64_t handle, char16_t* buffer
 
 // Content-Length of the (possibly compressed) response, or -1 when absent.
 VN_EXPORT int32_t __stdcall vn_http_get_content_length(int64_t handle, int64_t* out_length) noexcept {
-    hp::Request* req = hp::Find(handle);
-    if (!req || !req->request || !out_length) return VN_ERR_INVALID_ARG;
+    auto lease = hp::g_requests.Acquire(handle);
+    hp::Request* req = lease.get();
+    HINTERNET request = req ? req->live_request.load() : nullptr;
+    if (!req || !request || !out_length) return VN_ERR_INVALID_ARG;
     wchar_t text[32]{};
     DWORD bytes = sizeof(text);
     *out_length = -1;
-    if (WinHttpQueryHeaders(req->request, WINHTTP_QUERY_CONTENT_LENGTH, WINHTTP_HEADER_NAME_BY_INDEX, text, &bytes,
+    if (WinHttpQueryHeaders(request, WINHTTP_QUERY_CONTENT_LENGTH, WINHTTP_HEADER_NAME_BY_INDEX, text, &bytes,
                             WINHTTP_NO_HEADER_INDEX)) {
         wchar_t* end = nullptr;
         const long long value = _wcstoi64(text, &end, 10);
@@ -253,7 +269,8 @@ VN_EXPORT int32_t __stdcall vn_http_get_content_length(int64_t handle, int64_t* 
 
 // Blocking read. out_read = 0 with VN_OK means end of body.
 VN_EXPORT int32_t __stdcall vn_http_read(int64_t handle, uint8_t* buffer, int32_t capacity, int32_t* out_read, int32_t* out_error) noexcept {
-    hp::Request* req = hp::Find(handle);
+    auto lease = hp::g_requests.Acquire(handle);
+    hp::Request* req = lease.get();
     if (!req || !buffer || capacity <= 0 || !out_read || !out_error) return VN_ERR_INVALID_ARG;
     *out_read = 0;
     *out_error = 0;
@@ -272,20 +289,24 @@ VN_EXPORT int32_t __stdcall vn_http_read(int64_t handle, uint8_t* buffer, int32_
 }
 
 // Aborts blocked sends and reads. Safe from any thread; the handle must still be destroyed afterwards.
+// Cancelling is permanent: a send that has not published its request handle yet fails instead of starting.
 VN_EXPORT int32_t __stdcall vn_http_cancel(int64_t handle) noexcept {
-    hp::Request* req = hp::Find(handle);
+    auto lease = hp::g_requests.Acquire(handle);
+    hp::Request* req = lease.get();
     if (!req) return VN_ERR_INVALID_ARG;
-    req->cancelled = true;
-    HINTERNET active = req->live_request.exchange(nullptr);
-    if (active) WinHttpCloseHandle(active);
+    req->Cancel();
     return VN_OK;
 }
 
-// Releases the request. The caller must not have a send or read in flight.
+// Releases the request. A send or read still in flight is aborted first and keeps the object alive until it
+// returns, so destroy never frees memory that another thread is using.
 VN_EXPORT int32_t __stdcall vn_http_destroy(int64_t handle) noexcept {
-    hp::Guard guard(&hp::g_lock);
-    if (handle <= 0 || static_cast<size_t>(handle) > hp::g_requests.size()) return VN_ERR_INVALID_ARG;
-    hp::g_requests[static_cast<size_t>(handle) - 1].reset();
+    if (handle <= 0) return VN_ERR_INVALID_ARG;
+    {
+        auto lease = hp::g_requests.Acquire(handle);
+        if (lease) lease->Cancel();
+    }
+    hp::g_requests.Remove(handle);
     return VN_OK;
 }
 

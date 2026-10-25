@@ -26,6 +26,8 @@ class PipelineChecks(unittest.TestCase):
     def test_tags_and_new_branches_require_windows(self):
         self.assertTrue(scope("a" * 40, "b" * 40, "refs/tags/v2.0.0"))
         self.assertTrue(scope("0" * 40, "b" * 40, "refs/heads/main"))
+        self.assertTrue(scope("0" * 40, "b" * 40, "refs/heads/master"))
+        self.assertTrue(scope("a" * 40, "b" * 40, "refs/heads/master"))
 
     def test_actual_git_diff_cannot_hide_source_deletion_as_a_docs_rename(self):
         with tempfile.TemporaryDirectory(prefix="vnotch-scope-test-") as temporary:

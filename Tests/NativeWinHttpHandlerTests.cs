@@ -2,6 +2,7 @@ using System.IO;
 using System.IO.Compression;
 using System.Net;
 using System.Net.Http;
+using System.Runtime.InteropServices;
 using System.Text;
 using VNotch.Services;
 using Xunit;
@@ -14,6 +15,7 @@ public sealed class NativeWinHttpHandlerTests : IDisposable
     private readonly string _prefix;
     private readonly Task _loop;
     private readonly CancellationTokenSource _stop = new();
+    private int _requestsSeen;
 
     public NativeWinHttpHandlerTests()
     {
@@ -44,8 +46,9 @@ public sealed class NativeWinHttpHandlerTests : IDisposable
         }
     }
 
-    private static void Handle(HttpListenerContext context)
+    private void Handle(HttpListenerContext context)
     {
+        Interlocked.Increment(ref _requestsSeen);
         var request = context.Request;
         var response = context.Response;
         try
@@ -53,16 +56,16 @@ public sealed class NativeWinHttpHandlerTests : IDisposable
             switch (request.Url!.AbsolutePath)
             {
                 case "/echo":
-                {
-                    using var reader = new StreamReader(request.InputStream, Encoding.UTF8);
-                    string body = reader.ReadToEnd();
-                    response.Headers["X-Seen-Agent"] = request.UserAgent ?? "";
-                    response.Headers["X-Seen-Custom"] = request.Headers["X-Custom"] ?? "";
-                    response.ContentType = "text/plain";
-                    byte[] bytes = Encoding.UTF8.GetBytes($"{request.HttpMethod}|{body}");
-                    response.OutputStream.Write(bytes, 0, bytes.Length);
-                    break;
-                }
+                    {
+                        using var reader = new StreamReader(request.InputStream, Encoding.UTF8);
+                        string body = reader.ReadToEnd();
+                        response.Headers["X-Seen-Agent"] = request.UserAgent ?? "";
+                        response.Headers["X-Seen-Custom"] = request.Headers["X-Custom"] ?? "";
+                        response.ContentType = "text/plain";
+                        byte[] bytes = Encoding.UTF8.GetBytes($"{request.HttpMethod}|{body}");
+                        response.OutputStream.Write(bytes, 0, bytes.Length);
+                        break;
+                    }
                 case "/redirect":
                     response.StatusCode = 302;
                     response.RedirectLocation = "/echo";
@@ -71,23 +74,26 @@ public sealed class NativeWinHttpHandlerTests : IDisposable
                     response.StatusCode = 404;
                     break;
                 case "/gzip":
-                {
-                    response.AddHeader("Content-Encoding", "gzip");
-                    using var gzip = new GZipStream(response.OutputStream, CompressionLevel.Fastest);
-                    byte[] bytes = Encoding.UTF8.GetBytes(new string('a', 5000));
-                    gzip.Write(bytes, 0, bytes.Length);
-                    break;
-                }
+                    {
+                        response.AddHeader("Content-Encoding", "gzip");
+                        using var gzip = new GZipStream(response.OutputStream, CompressionLevel.Fastest);
+                        byte[] bytes = Encoding.UTF8.GetBytes(new string('a', 5000));
+                        gzip.Write(bytes, 0, bytes.Length);
+                        break;
+                    }
                 case "/large":
-                {
-                    byte[] chunk = new byte[64 * 1024];
-                    Array.Fill(chunk, (byte)7);
-                    response.ContentLength64 = chunk.Length * 20L;
-                    for (int i = 0; i < 20; i++) response.OutputStream.Write(chunk, 0, chunk.Length);
-                    break;
-                }
+                    {
+                        byte[] chunk = new byte[64 * 1024];
+                        Array.Fill(chunk, (byte)7);
+                        response.ContentLength64 = chunk.Length * 20L;
+                        for (int i = 0; i < 20; i++) response.OutputStream.Write(chunk, 0, chunk.Length);
+                        break;
+                    }
                 case "/slow":
                     Thread.Sleep(5000);
+                    break;
+                case "/hang":
+                    _stop.Token.WaitHandle.WaitOne(10_000);
                     break;
             }
         }
@@ -174,6 +180,111 @@ public sealed class NativeWinHttpHandlerTests : IDisposable
         var started = System.Diagnostics.Stopwatch.StartNew();
         await Assert.ThrowsAnyAsync<OperationCanceledException>(() => client.GetAsync(_prefix + "slow", cts.Token));
         Assert.True(started.Elapsed < TimeSpan.FromSeconds(4), "cancellation must not wait for the server");
+    }
+
+    private static class Native
+    {
+        private const string Dll = "VNotch.Native.dll";
+        internal const int OperationCancelled = 12017;
+
+        [DllImport(Dll, EntryPoint = "vn_http_create")]
+        internal static extern int Create(out long handle);
+
+        [DllImport(Dll, EntryPoint = "vn_http_send", CharSet = CharSet.Unicode)]
+        internal static extern int Send(
+            long handle, string method, int methodLength, string url, int urlLength, string headers, int headersLength,
+            IntPtr body, int bodyLength, uint timeoutMs, uint flags, out int status, out int error);
+
+        [DllImport(Dll, EntryPoint = "vn_http_cancel")]
+        internal static extern int Cancel(long handle);
+
+        [DllImport(Dll, EntryPoint = "vn_http_destroy")]
+        internal static extern int Destroy(long handle);
+
+        internal static int Get(long handle, string url, uint timeoutMs, out int status, out int error) =>
+            Send(handle, "GET", 3, url, url.Length, string.Empty, 0, IntPtr.Zero, 0, timeoutMs, 0, out status, out error);
+    }
+
+    [Fact]
+    public void CancelBeforeSendFailsFastWithoutContactingTheServer()
+    {
+        Assert.Equal(0, Native.Create(out long handle));
+        try
+        {
+            Assert.Equal(0, Native.Cancel(handle));
+            int seenBefore = Volatile.Read(ref _requestsSeen);
+            var started = System.Diagnostics.Stopwatch.StartNew();
+
+            int result = Native.Get(handle, _prefix + "slow", 20_000, out int status, out int error);
+
+            Assert.NotEqual(0, result);
+            Assert.Equal(0, status);
+            Assert.Equal(Native.OperationCancelled, error);
+            Assert.True(started.Elapsed < TimeSpan.FromSeconds(2), "a cancelled request must not wait for the server");
+            Thread.Sleep(150);
+            Assert.Equal(seenBefore, Volatile.Read(ref _requestsSeen));
+        }
+        finally
+        {
+            Native.Destroy(handle);
+        }
+    }
+
+    [Fact]
+    public void CancelStaysCancelledForEverySubsequentSend()
+    {
+        Assert.Equal(0, Native.Create(out long handle));
+        try
+        {
+            Native.Cancel(handle);
+            for (int i = 0; i < 3; i++)
+            {
+                Assert.NotEqual(0, Native.Get(handle, _prefix + "echo", 5_000, out int status, out int error));
+                Assert.Equal(0, status);
+                Assert.Equal(Native.OperationCancelled, error);
+            }
+        }
+        finally
+        {
+            Native.Destroy(handle);
+        }
+    }
+
+    [Fact]
+    public async Task CancelRacingWithSendNeverLeavesTheSendBlocked()
+    {
+        // The server never answers /hang, so a send that missed its cancel would block for the 20 s native timeout.
+        for (int iteration = 0; iteration < 60; iteration++)
+        {
+            Assert.Equal(0, Native.Create(out long handle));
+            try
+            {
+                var send = Task.Run(() => Native.Get(handle, _prefix + "hang", 20_000, out _, out _));
+                Thread.SpinWait(iteration * 400);
+                Native.Cancel(handle);
+
+                int status = await send.WaitAsync(TimeSpan.FromSeconds(5));
+                Assert.NotEqual(0, status);
+            }
+            finally
+            {
+                Native.Destroy(handle);
+            }
+        }
+    }
+
+    [Fact]
+    public async Task TokenCancelledBeforeTheCallNeverReachesTheServer()
+    {
+        using var client = NewClient();
+        using var cts = new CancellationTokenSource();
+        cts.Cancel();
+        int seenBefore = Volatile.Read(ref _requestsSeen);
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => client.GetAsync(_prefix + "slow", cts.Token));
+
+        await Task.Delay(150);
+        Assert.Equal(seenBefore, Volatile.Read(ref _requestsSeen));
     }
 
     [Fact]

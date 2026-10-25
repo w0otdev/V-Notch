@@ -2601,7 +2601,7 @@
                                 <UniformGrid x:Name="ClockViewWeekHeader"
                                              Grid.Row="1"
                                              Columns="7"
-                                             Margin="0,2,0,3"/>
+                                             Margin="0,2,0,7"/>
 
                                 <UniformGrid x:Name="ClockViewDayGrid"
                                              Grid.Row="2"
@@ -2648,86 +2648,120 @@
                                 CornerRadius="{Binding CornerRadius, ElementName=NotchBorder}"
                                 ClipToBounds="True"
                                 Opacity="0"/>
-                        <Grid Margin="16,0,16,0" VerticalAlignment="Center">
-                            <Grid VerticalAlignment="Center">
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="*"/>
-                                    <ColumnDefinition Width="Auto"/>
-                                    <ColumnDefinition Width="Auto"/>
-                                </Grid.ColumnDefinitions>
+                        <Grid x:Name="CountdownCompleteContent"
+                              HorizontalAlignment="Stretch"
+                              VerticalAlignment="Center"
+                              Margin="14,0,10,0">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
 
-                                <TextBlock x:Name="CountdownCompleteText"
-                                           Grid.Column="0"
-                                           Text="00:00"
-                                           FontSize="36"
-                                           FontWeight="ExtraBold"
-                                           Foreground="#FFFF9B3D"
-                                           HorizontalAlignment="Left"
-                                           VerticalAlignment="Center"
-                                           Margin="4,0,12,0"
-                                           Padding="0"
-                                           Opacity="0"
-                                           FontFamily="{StaticResource MainSystemFont}"
-                                           Typography.NumeralAlignment="Tabular"
-                                           Typography.NumeralStyle="Lining">
-                                    <TextBlock.RenderTransform>
-                                        <TranslateTransform x:Name="CountdownCompleteTextTranslate" Y="-14"/>
-                                    </TextBlock.RenderTransform>
-                                </TextBlock>
+                            <TextBlock x:Name="CountdownCompleteText"
+                                       Grid.Column="0"
+                                       Text="00:00"
+                                       FontSize="15"
+                                       FontWeight="Bold"
+                                       Foreground="#FFFF9B3D"
+                                       HorizontalAlignment="Left"
+                                       VerticalAlignment="Center"
+                                       Margin="0,0,8,0"
+                                       Padding="0"
+                                       Opacity="0"
+                                       RenderTransformOrigin="0.0,0.5"
+                                       FontFamily="{StaticResource MainSystemFont}"
+                                       Typography.NumeralAlignment="Tabular"
+                                       Typography.NumeralStyle="Lining">
+                                <TextBlock.RenderTransform>
+                                    <TransformGroup>
+                                        <ScaleTransform x:Name="CountdownCompleteTextScale" ScaleX="0.82" ScaleY="0.82"/>
+                                        <TranslateTransform x:Name="CountdownCompleteTextTranslate" Y="-10"/>
+                                    </TransformGroup>
+                                </TextBlock.RenderTransform>
+                            </TextBlock>
 
-                                <Grid x:Name="CountdownRestartHost"
-                                      Grid.Column="1"
-                                      Opacity="0"
-                                      Margin="0,0,12,0">
-                                    <Grid.RenderTransform>
-                                        <TranslateTransform x:Name="CountdownRestartTranslate" Y="-14"/>
-                                    </Grid.RenderTransform>
-                                    <ctrl:ActionBorder x:Name="CountdownRestartBtn"
-                                            Width="58"
-                                            Height="58"
-                                            Background="#5A3518"
-                                            CornerRadius="29"
-                                            Cursor="Hand"
-                                            MouseEnter="TimerControlButton_MouseEnter"
-                                            MouseLeave="TimerControlButton_MouseLeave"
-                                            Click="CountdownRestart_Click">
-                                        <Path Data="M17.65,6.35C16.2,4.9 14.21,4 12,4C7.58,4 4,7.58 4,12C4,16.42 7.58,20 12,20C15.73,20 18.84,17.45 19.73,14H17.65C16.83,16.33 14.61,18 12,18C8.69,18 6,15.31 6,12C6,8.69 8.69,6 12,6C13.66,6 15.14,6.69 16.22,7.78L13,11H21V3L17.65,6.35Z"
-                                              Fill="#FFFF9B3D"
-                                              Stretch="Uniform"
-                                              Width="33"
-                                              Height="33"
-                                              HorizontalAlignment="Center"
-                                              VerticalAlignment="Center"/>
-                                    </ctrl:ActionBorder>
-                                </Grid>
+                            <Grid x:Name="CountdownRestartHost"
+                                  Grid.Column="1"
+                                  HorizontalAlignment="Right"
+                                  VerticalAlignment="Center"
+                                  Opacity="0"
+                                  Margin="0,0,2,0"
+                                  RenderTransformOrigin="0.5,0.5">
+                                <Grid.RenderTransform>
+                                    <TransformGroup>
+                                        <ScaleTransform x:Name="CountdownRestartRevealScale" ScaleX="0.68" ScaleY="0.68"/>
+                                        <TranslateTransform x:Name="CountdownRestartTranslate" Y="-10"/>
+                                    </TransformGroup>
+                                </Grid.RenderTransform>
+                                <ctrl:ActionBorder x:Name="CountdownRestartBtn"
+                                        Width="24"
+                                        Height="24"
+                                        Background="Transparent"
+                                        BorderThickness="0"
+                                        CornerRadius="0"
+                                        Cursor="Hand"
+                                        RenderTransformOrigin="0.5,0.5"
+                                        MouseEnter="CountdownRestartButton_MouseEnter"
+                                        MouseLeave="CountdownRestartButton_MouseLeave"
+                                        PreviewMouseLeftButtonDown="CountdownActionBtn_PreviewMouseLeftButtonDown"
+                                        PreviewMouseLeftButtonUp="CountdownActionBtn_PreviewMouseLeftButtonUp"
+                                        Click="CountdownRestart_Click">
+                                    <Border.RenderTransform>
+                                        <TransformGroup>
+                                            <ScaleTransform x:Name="CountdownRestartBtnScale" ScaleX="1" ScaleY="1"/>
+                                            <RotateTransform x:Name="CountdownRestartBtnRotate" Angle="0"/>
+                                        </TransformGroup>
+                                    </Border.RenderTransform>
+                                    <Viewbox Width="15" Height="15" Stretch="Uniform"
+                                             HorizontalAlignment="Center" VerticalAlignment="Center">
+                                        <Canvas Width="512" Height="512">
+                                            <Path Data="{StaticResource TrayRestartIconGeometry}"
+                                                  Fill="#FFFF9B3D"/>
+                                        </Canvas>
+                                    </Viewbox>
+                                </ctrl:ActionBorder>
+                            </Grid>
 
-                                <Grid x:Name="CountdownDismissHost"
-                                      Grid.Column="2"
-                                      Opacity="0">
-                                    <Grid.RenderTransform>
-                                        <TranslateTransform x:Name="CountdownDismissTranslate" Y="-14"/>
-                                    </Grid.RenderTransform>
-                                    <ctrl:ActionBorder x:Name="CountdownDismissBtn"
-                                            Width="58"
-                                            Height="58"
-                                            Background="#303030"
-                                            CornerRadius="29"
-                                            Cursor="Hand"
-                                            MouseEnter="TimerControlButton_MouseEnter"
-                                            MouseLeave="TimerControlButton_MouseLeave"
-                                            Click="CountdownDismiss_Click">
-                                        <Path Data="M6,6 L18,18 M18,6 L6,18"
-                                              Stroke="{x:Static svc:UiPalette.IconBrush}"
-                                              StrokeThickness="2.9"
-                                              StrokeStartLineCap="Round"
-                                              StrokeEndLineCap="Round"
-                                              Stretch="Uniform"
-                                              Width="31"
-                                              Height="31"
-                                              HorizontalAlignment="Center"
-                                              VerticalAlignment="Center"/>
-                                    </ctrl:ActionBorder>
-                                </Grid>
+                            <Grid x:Name="CountdownDismissHost"
+                                  Grid.Column="2"
+                                  HorizontalAlignment="Right"
+                                  VerticalAlignment="Center"
+                                  Opacity="0"
+                                  RenderTransformOrigin="0.5,0.5">
+                                <Grid.RenderTransform>
+                                    <TransformGroup>
+                                        <ScaleTransform x:Name="CountdownDismissRevealScale" ScaleX="0.68" ScaleY="0.68"/>
+                                        <TranslateTransform x:Name="CountdownDismissTranslate" Y="-10"/>
+                                    </TransformGroup>
+                                </Grid.RenderTransform>
+                                <ctrl:ActionBorder x:Name="CountdownDismissBtn"
+                                        Width="24"
+                                        Height="24"
+                                        Background="Transparent"
+                                        BorderThickness="0"
+                                        CornerRadius="0"
+                                        Cursor="Hand"
+                                        RenderTransformOrigin="0.5,0.5"
+                                        MouseEnter="CountdownDismissButton_MouseEnter"
+                                        MouseLeave="CountdownDismissButton_MouseLeave"
+                                        PreviewMouseLeftButtonDown="CountdownActionBtn_PreviewMouseLeftButtonDown"
+                                        PreviewMouseLeftButtonUp="CountdownActionBtn_PreviewMouseLeftButtonUp"
+                                        Click="CountdownDismiss_Click">
+                                    <Border.RenderTransform>
+                                        <TransformGroup>
+                                            <ScaleTransform x:Name="CountdownDismissBtnScale" ScaleX="1" ScaleY="1"/>
+                                            <RotateTransform x:Name="CountdownDismissBtnRotate" Angle="0"/>
+                                        </TransformGroup>
+                                    </Border.RenderTransform>
+                                    <Viewbox Width="14" Height="14" Stretch="Uniform"
+                                             HorizontalAlignment="Center" VerticalAlignment="Center">
+                                        <Canvas Width="512" Height="512">
+                                            <Path Data="F1 M 298.4,256 L 419.6,134.8 C 431.3,123.1 431.3,104.1 419.6,92.4 C 407.9,80.7 388.9,80.7 377.2,92.4 L 256,213.6 L 134.8,92.4 C 123.1,80.7 104.1,80.7 92.4,92.4 C 80.7,104.1 80.7,123.1 92.4,134.8 L 213.6,256 L 92.4,377.2 C 80.7,388.9 80.7,407.9 92.4,419.6 C 104.1,431.3 123.1,431.3 134.8,419.6 L 256,298.4 L 377.2,419.6 C 388.9,431.3 407.9,431.3 419.6,419.6 C 431.3,407.9 431.3,388.9 419.6,377.2 Z"
+                                                  Fill="{x:Static svc:UiPalette.IconBrush}"/>
+                                        </Canvas>
+                                    </Viewbox>
+                                </ctrl:ActionBorder>
                             </Grid>
                         </Grid>
                     </Grid>

@@ -37,9 +37,10 @@ VN_EXPORT int32_t vn_media_source_cache_matches_source(
     const char16_t* expected_source,
     int32_t expected_len,
     uint8_t* out_matches) noexcept {
-    if (!out_matches || cached_len < 0 || expected_len < 0) return VN_E_INVALID_ARG;
-    std::u16string_view cached_sv(cached_source ? cached_source : u"", static_cast<size_t>(cached_len));
-    std::u16string_view expected_sv(expected_source ? expected_source : u"", static_cast<size_t>(expected_len));
+    std::u16string_view cached_sv;
+    std::u16string_view expected_sv;
+    if (!out_matches || !vnotch::try_make_u16_view(cached_source, cached_len, cached_sv) ||
+        !vnotch::try_make_u16_view(expected_source, expected_len, expected_sv)) return VN_E_INVALID_ARG;
     *out_matches = vnotch::services::MediaSourceCache::MatchesExpectedSource(cached_sv, expected_sv) ? 1u : 0u;
     return VN_OK;
 }
