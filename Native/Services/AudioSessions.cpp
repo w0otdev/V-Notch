@@ -1,5 +1,6 @@
 #include "../vnotch_common.h"
 #include "../vnotch_com.h"
+#include "../vnotch_handle_registry.h"
 #include <mmdeviceapi.h>
 #include <audiopolicy.h>
 #include <endpointvolume.h>
@@ -43,35 +44,10 @@ struct VolumeLease {
     ComPtr<ISimpleAudioVolume> volume;
 };
 
-SRWLOCK g_lock = SRWLOCK_INIT;
-std::vector<std::unique_ptr<Snapshot>> g_snapshots;
-std::vector<std::unique_ptr<VolumeLease>> g_leases;
+// Exports hold a registry lease while they use an object, so closing a handle on another thread cannot free it mid-call.
+vnotch::HandleRegistry<Snapshot> g_snapshots;
+vnotch::HandleRegistry<VolumeLease> g_leases;
 
-template <typename T>
-T* Find(std::vector<std::unique_ptr<T>>& list, int64_t handle) noexcept {
-    Guard guard(&g_lock);
-    if (handle <= 0 || static_cast<size_t>(handle) > list.size()) return nullptr;
-    return list[static_cast<size_t>(handle) - 1].get();
-}
-
-template <typename T>
-int64_t Add(std::vector<std::unique_ptr<T>>& list, std::unique_ptr<T> item) {
-    Guard guard(&g_lock);
-    for (size_t i = 0; i < list.size(); ++i) {
-        if (!list[i]) {
-            list[i] = std::move(item);
-            return static_cast<int64_t>(i) + 1;
-        }
-    }
-    list.push_back(std::move(item));
-    return static_cast<int64_t>(list.size());
-}
-
-template <typename T>
-void Remove(std::vector<std::unique_ptr<T>>& list, int64_t handle) noexcept {
-    Guard guard(&g_lock);
-    if (handle > 0 && static_cast<size_t>(handle) <= list.size()) list[static_cast<size_t>(handle) - 1].reset();
-}
 
 std::wstring TakeString(LPWSTR text) {
     std::wstring result = text ? std::wstring(text) : std::wstring();
@@ -162,7 +138,7 @@ VN_EXPORT int32_t __stdcall vn_audio_sessions_open(int64_t* out_snapshot, int32_
             return VN_ERR_FAIL;
         }
         *out_count = static_cast<int32_t>(snapshot->sessions.size());
-        *out_snapshot = as::Add(as::g_snapshots, std::move(snapshot));
+        *out_snapshot = as::g_snapshots.Add(std::move(snapshot));
         return VN_OK;
     } catch (...) {
         return VN_ERR_FAIL;
@@ -171,7 +147,8 @@ VN_EXPORT int32_t __stdcall vn_audio_sessions_open(int64_t* out_snapshot, int32_
 
 // AudioSessionState of the session: 0 inactive, 1 active, 2 expired.
 VN_EXPORT int32_t __stdcall vn_audio_session_get_state(int64_t snapshot, int32_t index, int32_t* out_state) noexcept {
-    as::Snapshot* list = as::Find(as::g_snapshots, snapshot);
+    auto snapshot_lease = as::g_snapshots.Acquire(snapshot);
+    as::Snapshot* list = snapshot_lease.get();
     if (!list || !out_state || index < 0 || static_cast<size_t>(index) >= list->sessions.size()) return VN_ERR_INVALID_ARG;
     *out_state = list->sessions[static_cast<size_t>(index)]->state;
     return VN_OK;
@@ -255,13 +232,14 @@ VN_EXPORT int32_t __stdcall vn_audio_invalidate_session_cache() noexcept {
 }
 VN_EXPORT int32_t __stdcall vn_audio_sessions_close(int64_t snapshot) noexcept {
     if (snapshot <= 0) return VN_ERR_INVALID_ARG;
-    as::Remove(as::g_snapshots, snapshot);
+    as::g_snapshots.Remove(snapshot);
     return VN_OK;
 }
 
 VN_EXPORT int32_t __stdcall vn_audio_session_get_info(
     int64_t snapshot, int32_t index, uint32_t* out_process_id, uint8_t* out_is_system_sounds) noexcept {
-    as::Snapshot* list = as::Find(as::g_snapshots, snapshot);
+    auto snapshot_lease = as::g_snapshots.Acquire(snapshot);
+    as::Snapshot* list = snapshot_lease.get();
     if (!list || !out_process_id || !out_is_system_sounds || index < 0 || static_cast<size_t>(index) >= list->sessions.size())
         return VN_ERR_INVALID_ARG;
     const as::Session& session = *list->sessions[static_cast<size_t>(index)];
@@ -274,7 +252,8 @@ VN_EXPORT int32_t __stdcall vn_audio_session_get_info(
 // returns the required length in out_length.
 VN_EXPORT int32_t __stdcall vn_audio_session_get_string(
     int64_t snapshot, int32_t index, int32_t kind, char16_t* buffer, int32_t capacity, int32_t* out_length) noexcept {
-    as::Snapshot* list = as::Find(as::g_snapshots, snapshot);
+    auto snapshot_lease = as::g_snapshots.Acquire(snapshot);
+    as::Snapshot* list = snapshot_lease.get();
     if (!list || !out_length || capacity < 0 || (capacity > 0 && !buffer) || index < 0 ||
         static_cast<size_t>(index) >= list->sessions.size() || kind < 0 || kind > 2)
         return VN_ERR_INVALID_ARG;
@@ -289,7 +268,8 @@ VN_EXPORT int32_t __stdcall vn_audio_session_get_string(
 }
 
 VN_EXPORT int32_t __stdcall vn_audio_session_read_peak(int64_t snapshot, int32_t index, float* out_peak) noexcept {
-    as::Snapshot* list = as::Find(as::g_snapshots, snapshot);
+    auto snapshot_lease = as::g_snapshots.Acquire(snapshot);
+    as::Snapshot* list = snapshot_lease.get();
     if (!list || !out_peak || index < 0 || static_cast<size_t>(index) >= list->sessions.size()) return VN_ERR_INVALID_ARG;
     const as::Session& session = *list->sessions[static_cast<size_t>(index)];
     *out_peak = 0.0f;
@@ -299,7 +279,8 @@ VN_EXPORT int32_t __stdcall vn_audio_session_read_peak(int64_t snapshot, int32_t
 
 // Independent ISimpleAudioVolume reference for a session; release with vn_audio_volume_close.
 VN_EXPORT int32_t __stdcall vn_audio_session_open_volume(int64_t snapshot, int32_t index, int64_t* out_volume) noexcept {
-    as::Snapshot* list = as::Find(as::g_snapshots, snapshot);
+    auto snapshot_lease = as::g_snapshots.Acquire(snapshot);
+    as::Snapshot* list = snapshot_lease.get();
     if (!list || !out_volume || index < 0 || static_cast<size_t>(index) >= list->sessions.size()) return VN_ERR_INVALID_ARG;
     *out_volume = 0;
     const as::Session& session = *list->sessions[static_cast<size_t>(index)];
@@ -308,7 +289,7 @@ VN_EXPORT int32_t __stdcall vn_audio_session_open_volume(int64_t snapshot, int32
         auto lease = std::make_unique<as::VolumeLease>();
         lease->volume.ptr = session.volume.ptr;
         lease->volume.ptr->AddRef();
-        *out_volume = as::Add(as::g_leases, std::move(lease));
+        *out_volume = as::g_leases.Add(std::move(lease));
         return VN_OK;
     } catch (...) {
         return VN_ERR_FAIL;
@@ -316,7 +297,8 @@ VN_EXPORT int32_t __stdcall vn_audio_session_open_volume(int64_t snapshot, int32
 }
 
 VN_EXPORT int32_t __stdcall vn_audio_volume_get(int64_t volume, float* out_scalar, uint8_t* out_muted, int32_t* out_hresult) noexcept {
-    as::VolumeLease* lease = as::Find(as::g_leases, volume);
+    auto volume_lease = as::g_leases.Acquire(volume);
+    as::VolumeLease* lease = volume_lease.get();
     if (!lease || !lease->volume.ptr || !out_scalar || !out_muted || !out_hresult) return VN_ERR_INVALID_ARG;
     BOOL muted = FALSE;
     HRESULT hr = lease->volume.ptr->GetMasterVolume(out_scalar);
@@ -327,7 +309,8 @@ VN_EXPORT int32_t __stdcall vn_audio_volume_get(int64_t volume, float* out_scala
 }
 
 VN_EXPORT int32_t __stdcall vn_audio_volume_set_volume(int64_t volume, float scalar, int32_t* out_hresult) noexcept {
-    as::VolumeLease* lease = as::Find(as::g_leases, volume);
+    auto volume_lease = as::g_leases.Acquire(volume);
+    as::VolumeLease* lease = volume_lease.get();
     if (!lease || !lease->volume.ptr || !out_hresult) return VN_ERR_INVALID_ARG;
     const HRESULT hr = lease->volume.ptr->SetMasterVolume(scalar, nullptr);
     *out_hresult = static_cast<int32_t>(hr);
@@ -335,7 +318,8 @@ VN_EXPORT int32_t __stdcall vn_audio_volume_set_volume(int64_t volume, float sca
 }
 
 VN_EXPORT int32_t __stdcall vn_audio_volume_set_mute(int64_t volume, uint8_t muted, int32_t* out_hresult) noexcept {
-    as::VolumeLease* lease = as::Find(as::g_leases, volume);
+    auto volume_lease = as::g_leases.Acquire(volume);
+    as::VolumeLease* lease = volume_lease.get();
     if (!lease || !lease->volume.ptr || !out_hresult) return VN_ERR_INVALID_ARG;
     const HRESULT hr = lease->volume.ptr->SetMute(muted != 0, nullptr);
     *out_hresult = static_cast<int32_t>(hr);
@@ -344,7 +328,7 @@ VN_EXPORT int32_t __stdcall vn_audio_volume_set_mute(int64_t volume, uint8_t mut
 
 VN_EXPORT int32_t __stdcall vn_audio_volume_close(int64_t volume) noexcept {
     if (volume <= 0) return VN_ERR_INVALID_ARG;
-    as::Remove(as::g_leases, volume);
+    as::g_leases.Remove(volume);
     return VN_OK;
 }
 

@@ -1,15 +1,17 @@
 <UserControl x:Class="VNotch.Controls.WhiteNoiseStrip"
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
-             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:fonts="clr-namespace:VNotch.Services"
+             FontFamily="{DynamicResource WhiteNoiseFont}" FontWeight="Bold">
+    <UserControl.Resources>
+        <fonts:AppFont x:Key="WhiteNoiseFont" Fallbacks="Nirmala UI, Segoe UI" />
+    </UserControl.Resources>
     <StackPanel>
         <UniformGrid x:Name="ChipHost" Rows="1"/>
         <Grid x:Name="ControlRow" Height="26" Margin="2,8,2,0">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="Auto"/>
-                <ColumnDefinition Width="Auto"/>
-                <ColumnDefinition Width="Auto"/>
-                <ColumnDefinition Width="Auto"/>
-                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="*" MinWidth="60"/>
                 <ColumnDefinition Width="Auto"/>
             </Grid.ColumnDefinitions>
             <Grid x:Name="VolumeBar" Grid.Column="1" Height="26" Margin="6,0,14,0" Cursor="Hand" Background="Transparent"

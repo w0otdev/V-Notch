@@ -47,6 +47,9 @@ param(
 
 Set-ExecutionPolicy -ExecutionPolicy Bypass -Scope Process -Force
 $ErrorActionPreference = 'Stop'
+if ($PSVersionTable.PSVersion.Major -ge 7) {
+    $PSNativeCommandUseErrorActionPreference = $false
+}
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 $env:GIT_TERMINAL_PROMPT = '0'
 $env:GCM_INTERACTIVE = 'never'
@@ -120,6 +123,16 @@ New-Item -ItemType Directory -Path $uiReviewDir -Force | Out-Null
 $env:VNOTCH_QA_ARTIFACT_DIR = $uiReviewDir
 $env:VNOTCH_RUN_DESKTOP_TESTS = if ($IncludeDesktopIntegration) { '1' } else { '0' }
 
+function Invoke-CapturedNative([scriptblock]$Command) {
+    $prev = $ErrorActionPreference
+    $ErrorActionPreference = 'Continue'
+    try {
+        & $Command 2>&1
+    } finally {
+        $ErrorActionPreference = $prev
+    }
+}
+
 function Save-Checkpoint([int]$nextStep) {
     @{ Repository = $repository; Options = $options; NextStep = $nextStep; TestResultsDirectory = $testResultsDir } |
         ConvertTo-Json | Set-Content -LiteralPath (Join-Path $runDirectory 'checkpoint.json') -Encoding utf8
@@ -142,14 +155,14 @@ if ($startStep -le 1) {
     Write-TreeStep "1/8" "Pipeline Scripts & Locales (Python)"
     $python = Get-Command python -ErrorAction SilentlyContinue
     if ($python) {
-        $pyOut1 = & python -m unittest discover -s "$repository/.github/scripts" -p "test_*.py" 2>&1
+        $pyOut1 = Invoke-CapturedNative { & python -m unittest discover -s "$repository/.github/scripts" -p "test_*.py" }
         if ($LASTEXITCODE -ne 0) {
             foreach ($l in @($pyOut1 | ForEach-Object { "$_" } | Where-Object { $_.Trim() })) { Write-TreeItem $l -State "Error" }
             throw "Pipeline tests failed."
         }
         Write-TreeItem "Pipeline unit tests passed." -State "Success"
 
-        $pyOut2 = & python "$repository/Tools/validate_locales.py" 2>&1
+        $pyOut2 = Invoke-CapturedNative { & python "$repository/Tools/validate_locales.py" }
         if ($LASTEXITCODE -ne 0) {
             foreach ($l in @($pyOut2 | ForEach-Object { "$_" } | Where-Object { $_.Trim() })) { Write-TreeItem $l -State "Error" }
             throw "Locale validation failed."
@@ -165,7 +178,7 @@ if ($startStep -le 1) {
 
 if ($startStep -le 2) {
     Write-TreeStep "2/8" "Model Asset Provenance & License"
-    $modelOut = & "$repository/Tools/Assert-ModelAssets.ps1" 2>&1
+    $modelOut = & "$repository/Tools/Assert-ModelAssets.ps1" *>&1
     Write-TreeItem "Verified YOLOX model checksum & Apache-2.0 license." -State "Success"
 
     Save-Checkpoint 3
@@ -175,7 +188,7 @@ if ($startStep -le 2) {
 if ($startStep -le 3) {
     Write-TreeStep "3/8" "NuGet Dependency Restore"
     if (-not $SkipRestore) {
-        $restOut = & dotnet restore "$repository/V-Notch.sln" --locked-mode -nologo -v:q 2>&1
+        $restOut = Invoke-CapturedNative { & dotnet restore "$repository/V-Notch.sln" --locked-mode -nologo -v:q }
         if ($LASTEXITCODE -ne 0) {
             foreach ($l in @($restOut | ForEach-Object { "$_" } | Where-Object { $_.Trim() })) { Write-TreeItem $l -State "Error" }
             throw 'Locked dependency restore failed.'
@@ -193,10 +206,10 @@ if ($startStep -le 4) {
     Write-TreeStep "4/8" "Code Formatting Verification"
     if ($FixFormat) {
         Write-TreeItem "Auto-formatting with 'dotnet format' (-FixFormat)..." -State "Info"
-        & dotnet format "$repository/V-Notch.sln" | Out-Null
+        Invoke-CapturedNative { & dotnet format "$repository/V-Notch.sln" } | Out-Null
         if ($LASTEXITCODE -ne 0) { throw 'Automatic formatting failed.' }
     }
-    $fmtOut = & dotnet format "$repository/V-Notch.sln" --verify-no-changes --no-restore 2>&1
+    $fmtOut = Invoke-CapturedNative { & dotnet format "$repository/V-Notch.sln" --verify-no-changes --no-restore }
     if ($LASTEXITCODE -ne 0) {
         foreach ($l in @($fmtOut | ForEach-Object { "$_" } | Where-Object { $_.Trim() })) { Write-TreeItem $l -State "Error" }
         Write-TreeItem "Run '.\scripts\f.ps1' or '.\scripts\c.ps1 -FixFormat' to fix." -State "Warn"
@@ -215,7 +228,7 @@ if ($startStep -le 5) {
         New-Item -ItemType Directory -Path $testResultsDir -Force | Out-Null
     }
     $bldSw = [System.Diagnostics.Stopwatch]::StartNew()
-    $bldOut = & dotnet build "$repository/V-Notch.sln" --configuration Release --no-restore -warnaserror -nologo -v:q -clp:NoSummary 2>&1
+    $bldOut = Invoke-CapturedNative { & dotnet build "$repository/V-Notch.sln" --configuration Release --no-restore -warnaserror -nologo -v:q -clp:NoSummary }
     $bldSw.Stop()
     if ($LASTEXITCODE -ne 0) {
         foreach ($l in @($bldOut | ForEach-Object { "$_" } | Where-Object { $_.Trim() })) { Write-TreeItem $l -State "Error" }
@@ -229,9 +242,9 @@ if ($startStep -le 5) {
 
 if ($startStep -le 6) {
     Write-TreeStep "6/8" "Release Security Gates"
-    $gateOut = & "$repository/Tests/ReleaseGateTests.ps1" 2>&1
-    $cleanOut = & "$repository/Tests/PrepushCleanupTests.ps1" 2>&1
-    $resOut = & "$repository/Tests/LocalCiResumeTests.ps1" 2>&1
+    $gateOut = & "$repository/Tests/ReleaseGateTests.ps1" *>&1
+    $cleanOut = & "$repository/Tests/PrepushCleanupTests.ps1" *>&1
+    $resOut = & "$repository/Tests/LocalCiResumeTests.ps1" *>&1
     Write-TreeItem "Coverage boundaries, XML safety, signing & runner regression gates passed." -State "Success"
 
     Save-Checkpoint 7
@@ -240,7 +253,7 @@ if ($startStep -le 6) {
 
 if ($startStep -le 7) {
     Write-TreeStep "7/8" "Update Compatibility & Promotion"
-    $updOut1 = & "$repository/Tools/Assert-UpdateCompatibility.ps1" 2>&1
+    $updOut1 = & "$repository/Tools/Assert-UpdateCompatibility.ps1" *>&1
     $projectPath = Join-Path $repository 'V-Notch.csproj'
     if (Test-Path -LiteralPath $projectPath) {
         [xml]$project = Get-Content -LiteralPath $projectPath
@@ -248,7 +261,7 @@ if ($startStep -le 7) {
     } else {
         $version = '1.9.4'
     }
-    $updOut2 = & "$repository/Tools/Assert-UpdateCompatibility.ps1" -ReleaseVersion $version -InstalledVersion "$version-beta.65534.65534+build.promotion-probe" 2>&1
+    $updOut2 = & "$repository/Tools/Assert-UpdateCompatibility.ps1" -ReleaseVersion $version -InstalledVersion "$version-beta.65534.65534+build.promotion-probe" *>&1
     Write-TreeItem "Verified 1.9.3 client & beta-to-stable v$version promotion." -State "Success"
 
     Save-Checkpoint 8
@@ -257,7 +270,7 @@ if ($startStep -le 7) {
 
 if ($startStep -le 8) {
     Write-TreeStep "8/8" "NuGet Package Vulnerability Audit"
-    $audOut = & "$repository/Tools/Assert-PackageAudit.ps1" -Solution "$repository/V-Notch.sln" -OutputPath "$runDirectory/package-audit.json" 2>&1
+    $audOut = & "$repository/Tools/Assert-PackageAudit.ps1" -Solution "$repository/V-Notch.sln" -OutputPath "$runDirectory/package-audit.json" *>&1
     Write-TreeItem "0 known vulnerable packages found." -State "Success"
 
     Save-Checkpoint 9

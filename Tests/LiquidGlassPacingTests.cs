@@ -481,7 +481,7 @@ public sealed class LiquidGlassPacingTests
             {
                 if (remainingMs <= 1.0) return;
 
-                
+
                 if (SetWaitableTimerRelative(timer, remainingMs))
                 {
                     uint timeout = (uint)Math.Ceiling(remainingMs) + 100;

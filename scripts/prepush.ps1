@@ -7,8 +7,21 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
+if ($PSVersionTable.PSVersion.Major -ge 7) {
+    $PSNativeCommandUseErrorActionPreference = $false
+}
 Set-ExecutionPolicy -ExecutionPolicy Bypass -Scope Process -Force
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+
+function Invoke-CapturedNative([scriptblock]$Command) {
+    $prev = $ErrorActionPreference
+    $ErrorActionPreference = 'Continue'
+    try {
+        & $Command 2>&1
+    } finally {
+        $ErrorActionPreference = $prev
+    }
+}
 $env:GIT_TERMINAL_PROMPT = "0"
 $env:GCM_INTERACTIVE = "never"
 $env:Path = ($env:Path -split ";" | Where-Object { $_ -ne "C:\Program Files\Git\mingw64\bin" }) -join ";"
@@ -63,7 +76,7 @@ Write-Host $modeText -ForegroundColor Green
 Write-TreeSpacer
 
 Write-TreeStep "1/5" "Restore Solution Dependencies"
-$restOut = & dotnet restore "$repository/V-Notch.sln" -nologo -v:q 2>&1
+$restOut = Invoke-CapturedNative { & dotnet restore "$repository/V-Notch.sln" -nologo -v:q }
 if ($LASTEXITCODE -ne 0) {
     foreach ($l in @($restOut | ForEach-Object { "$_" } | Where-Object { $_.Trim() })) { Write-TreeItem $l -State "Error" }
     Write-TreeItem "Restore failed." -State "Error"
@@ -76,10 +89,10 @@ Write-TreeSpacer
 Write-TreeStep "2/5" "Verify Code Formatting"
 if ($FixFormat) {
     Write-TreeItem "Auto-formatting code first (-FixFormat)..." -State "Info"
-    & dotnet format "$repository/V-Notch.sln" | Out-Null
+    Invoke-CapturedNative { & dotnet format "$repository/V-Notch.sln" } | Out-Null
 }
 
-$fmtOut = & dotnet format "$repository/V-Notch.sln" --verify-no-changes --no-restore 2>&1
+$fmtOut = Invoke-CapturedNative { & dotnet format "$repository/V-Notch.sln" --verify-no-changes --no-restore }
 if ($LASTEXITCODE -ne 0) {
     foreach ($l in @($fmtOut | ForEach-Object { "$_" } | Where-Object { $_.Trim() })) { Write-TreeItem $l -State "Error" }
     Write-TreeItem "Code format verification failed! Run '.\scripts\f.ps1'." -State "Warn"
@@ -91,7 +104,7 @@ Write-TreeItem "Formatting check passed." -State "Success"
 Write-TreeSpacer
 Write-TreeStep "3/5" "Build Solution (Release + WarnAsError)"
 $bldSw = [System.Diagnostics.Stopwatch]::StartNew()
-$bldOut = & dotnet build "$repository/V-Notch.sln" --configuration Release --no-restore -warnaserror -nologo -v:q -clp:NoSummary 2>&1
+$bldOut = Invoke-CapturedNative { & dotnet build "$repository/V-Notch.sln" --configuration Release --no-restore -warnaserror -nologo -v:q -clp:NoSummary }
 $bldSw.Stop()
 if ($LASTEXITCODE -ne 0) {
     foreach ($l in @($bldOut | ForEach-Object { "$_" } | Where-Object { $_.Trim() })) { Write-TreeItem $l -State "Error" }
@@ -108,13 +121,13 @@ try {
     $tstSw = [System.Diagnostics.Stopwatch]::StartNew()
     if (-not $IncludeDesktopIntegration) {
         Write-TreeItem "Mode: Headless (Category!=DesktopIntegration)" -State "Info"
-        $tstOut = & dotnet test "$repository/Tests/VNotch.Tests.csproj" --configuration Release --no-build --no-restore --filter "Category!=DesktopIntegration" --settings "$repository/Tests/CI.runsettings" --collect "Code Coverage" --results-directory $coverageResults -nologo -v:q 2>&1
+        $tstOut = Invoke-CapturedNative { & dotnet test "$repository/Tests/VNotch.Tests.csproj" --configuration Release --no-build --no-restore --filter "Category!=DesktopIntegration" --settings "$repository/Tests/CI.runsettings" --collect "Code Coverage" --results-directory $coverageResults -nologo -v:q }
     } else {
         Write-TreeItem "Mode: Full suite including DesktopIntegration" -State "Info"
         $previousDesktopTestMode = [Environment]::GetEnvironmentVariable('VNOTCH_RUN_DESKTOP_TESTS', 'Process')
         try {
             $env:VNOTCH_RUN_DESKTOP_TESTS = '1'
-            $tstOut = & dotnet test "$repository/Tests/VNotch.Tests.csproj" --configuration Release --no-build --no-restore --settings "$repository/Tests/CI.runsettings" --collect "Code Coverage" --results-directory $coverageResults -nologo -v:q 2>&1
+            $tstOut = Invoke-CapturedNative { & dotnet test "$repository/Tests/VNotch.Tests.csproj" --configuration Release --no-build --no-restore --settings "$repository/Tests/CI.runsettings" --collect "Code Coverage" --results-directory $coverageResults -nologo -v:q }
         } finally {
             [Environment]::SetEnvironmentVariable('VNOTCH_RUN_DESKTOP_TESTS', $previousDesktopTestMode, 'Process')
         }
@@ -127,7 +140,7 @@ try {
     Write-TreeItem ("Tests passed in {0:N1}s." -f $tstSw.Elapsed.TotalSeconds) -State "Success"
 
     # Use the same assembly scope and threshold as c.ps1 and GitHub Actions.
-    $covOut = & "$repository/Tools/Assert-Coverage.ps1" -ResultsDirectory $coverageResults 2>&1
+    $covOut = & "$repository/Tools/Assert-Coverage.ps1" -ResultsDirectory $coverageResults *>&1
     foreach ($l in @($covOut | ForEach-Object { "$_" } | Where-Object { $_.Trim() })) {
         Write-TreeItem $l.Trim() -State "Success"
     }
@@ -144,7 +157,7 @@ try {
 
 Write-TreeSpacer
 Write-TreeStep "5/5" "Audit NuGet Packages"
-$audOut = & dotnet list "$repository/V-Notch.sln" package --vulnerable --include-transitive 2>&1
+$audOut = Invoke-CapturedNative { & dotnet list "$repository/V-Notch.sln" package --vulnerable --include-transitive }
 if ($LASTEXITCODE -ne 0) {
     foreach ($l in @($audOut | ForEach-Object { "$_" } | Where-Object { $_.Trim() })) { Write-TreeItem $l -State "Error" }
     Write-TreeItem "Vulnerable packages detected." -State "Error"

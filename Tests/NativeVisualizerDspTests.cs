@@ -88,6 +88,7 @@ public sealed class NativeVisualizerDspTests
     {
         Assert.Equal(0f, VisualizerDsp.ReadSample(new byte[3], 0, false, 32));
         Assert.Equal(0f, VisualizerDsp.ReadSample(new byte[8], 0, false, 12));
+        Assert.Equal(0f, VisualizerDsp.ReadSample(new byte[2], 0, true, 16));
         Assert.Equal(0f, VisualizerDsp.ReadSample(new byte[4], -1, true, 32));
     }
 }

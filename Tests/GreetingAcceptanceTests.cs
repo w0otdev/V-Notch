@@ -295,7 +295,9 @@ public sealed class GreetingAcceptanceTests
                 EnableHelloGreeting = greeting,
                 EnableSpotlight = false,
                 EnableWeather = false,
-                AutoCheckUpdates = false
+                AutoCheckUpdates = false,
+                HideOnExclusiveFullscreen = false,
+                HideOnWindowedFullscreen = false
             };
             configureSettings?.Invoke(options);
             settings.Save(options);

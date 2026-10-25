@@ -1,5 +1,18 @@
 $ErrorActionPreference = "Stop"
+if ($PSVersionTable.PSVersion.Major -ge 7) {
+    $PSNativeCommandUseErrorActionPreference = $false
+}
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+
+function Invoke-CapturedNative([scriptblock]$Command) {
+    $prev = $ErrorActionPreference
+    $ErrorActionPreference = 'Continue'
+    try {
+        & $Command 2>&1
+    } finally {
+        $ErrorActionPreference = $prev
+    }
+}
 
 $scriptDir = $PSScriptRoot
 if (-not $scriptDir) { $scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Definition }
@@ -37,7 +50,7 @@ Write-Host "  $gVert     $gArrow " -ForegroundColor DarkCyan -NoNewline
 Write-Host "Output : Shaders\LiquidGlassRefraction.ps" -ForegroundColor Gray
 
 $sw = [System.Diagnostics.Stopwatch]::StartNew()
-$compileOut = & dotnet run --project $projectPath -- $sourcePath $outputPath 2>&1
+$compileOut = Invoke-CapturedNative { & dotnet run --project $projectPath -- $sourcePath $outputPath }
 $exitCode = $LASTEXITCODE
 $sw.Stop()
 

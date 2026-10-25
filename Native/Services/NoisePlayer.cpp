@@ -224,14 +224,41 @@ void FillBuffer(std::vector<int16_t>& out, Voice& left, Voice& right, int32_t ki
     silent = gain <= 0.0f && targetGain <= 0.0f;
 }
 
-void PlayerThread() noexcept {
-    try {
-        HANDLE event = CreateEventW(nullptr, FALSE, FALSE, nullptr);
-        if (!event) {
-            std::lock_guard lock(g.mutex);
-            g.running = false;
-            return;
+using NoiseFailureCallback = void(__stdcall*)(int32_t kind, int32_t error_code);
+std::atomic<NoiseFailureCallback> g_failure_callback{nullptr};
+
+// Owns every native resource of one playback session. The destructor releases them in the order waveOut
+// requires: stop and return queued buffers, unprepare only the headers that were prepared, close the
+// device, close the event. Members are declared so the PCM storage outlives the device cleanup.
+struct WaveSession {
+    HANDLE event = nullptr;
+    HWAVEOUT device = nullptr;
+    std::array<std::vector<int16_t>, kBufferCount> pcm;
+    std::array<WAVEHDR, kBufferCount> headers{};
+    int32_t prepared = 0;
+
+    WaveSession() = default;
+    WaveSession(const WaveSession&) = delete;
+    WaveSession& operator=(const WaveSession&) = delete;
+
+    ~WaveSession() {
+        if (device) {
+            waveOutReset(device);
+            for (int32_t i = prepared; i-- > 0;) waveOutUnprepareHeader(device, &headers[static_cast<size_t>(i)], sizeof(WAVEHDR));
+            waveOutClose(device);
         }
+        if (event) CloseHandle(event);
+    }
+};
+
+// Plays until the sound has faded out and nobody wants it any more. Returns 0 for a normal end, otherwise the
+// Win32 or MMSYSERR code of the failure. Every resource is released by WaveSession on every exit path.
+int32_t RunPlayer() noexcept {
+    try {
+        WaveSession session;
+        session.event = CreateEventW(nullptr, FALSE, FALSE, nullptr);
+        if (!session.event) return static_cast<int32_t>(GetLastError());
+
         WAVEFORMATEX fmt{};
         fmt.wFormatTag = WAVE_FORMAT_PCM;
         fmt.nChannels = 2;
@@ -239,24 +266,22 @@ void PlayerThread() noexcept {
         fmt.wBitsPerSample = 16;
         fmt.nBlockAlign = 4;
         fmt.nAvgBytesPerSec = kSampleRate * 4;
-        HWAVEOUT device = nullptr;
-        if (waveOutOpen(&device, WAVE_MAPPER, &fmt, reinterpret_cast<DWORD_PTR>(event), 0, CALLBACK_EVENT) != MMSYSERR_NOERROR) {
-            CloseHandle(event);
-            std::lock_guard lock(g.mutex);
-            g.running = false;
-            g.wantOn = false;
-            return;
-        }
+        HWAVEOUT opened = nullptr;
+        const MMRESULT openResult = waveOutOpen(&opened, WAVE_MAPPER, &fmt, reinterpret_cast<DWORD_PTR>(session.event), 0, CALLBACK_EVENT);
+        if (openResult != MMSYSERR_NOERROR) return static_cast<int32_t>(openResult);
+        session.device = opened;
         SetThreadPriority(GetCurrentThread(), THREAD_PRIORITY_ABOVE_NORMAL);
 
-        std::array<std::vector<int16_t>, kBufferCount> pcm;
-        std::array<WAVEHDR, kBufferCount> headers{};
         for (int32_t i = 0; i < kBufferCount; ++i) {
-            pcm[i].assign(static_cast<size_t>(kFramesPerBuffer) * 2, 0);
-            headers[i].lpData = reinterpret_cast<LPSTR>(pcm[i].data());
-            headers[i].dwBufferLength = static_cast<DWORD>(pcm[i].size() * sizeof(int16_t));
-            waveOutPrepareHeader(device, &headers[i], sizeof(WAVEHDR));
-            headers[i].dwFlags |= WHDR_DONE;
+            const size_t index = static_cast<size_t>(i);
+            session.pcm[index].assign(static_cast<size_t>(kFramesPerBuffer) * 2, 0);
+            WAVEHDR& header = session.headers[index];
+            header.lpData = reinterpret_cast<LPSTR>(session.pcm[index].data());
+            header.dwBufferLength = static_cast<DWORD>(session.pcm[index].size() * sizeof(int16_t));
+            const MMRESULT prepareResult = waveOutPrepareHeader(session.device, &header, sizeof(WAVEHDR));
+            if (prepareResult != MMSYSERR_NOERROR) return static_cast<int32_t>(prepareResult);
+            ++session.prepared;
+            header.dwFlags |= WHDR_DONE;
         }
 
         Voice left, right;
@@ -270,12 +295,14 @@ void PlayerThread() noexcept {
         int32_t silentBuffers = 0;
 
         for (;;) {
-            WaitForSingleObject(event, 100);
+            WaitForSingleObject(session.event, 100);
             for (int32_t i = 0; i < kBufferCount; ++i) {
-                if (!(headers[i].dwFlags & WHDR_DONE)) continue;
+                const size_t index = static_cast<size_t>(i);
+                if (!(session.headers[index].dwFlags & WHDR_DONE)) continue;
                 bool silent = false;
-                FillBuffer(pcm[i], left, right, kind, norm, gain, volume, silent);
-                waveOutWrite(device, &headers[i], sizeof(WAVEHDR));
+                FillBuffer(session.pcm[index], left, right, kind, norm, gain, volume, silent);
+                const MMRESULT writeResult = waveOutWrite(session.device, &session.headers[index], sizeof(WAVEHDR));
+                if (writeResult != MMSYSERR_NOERROR) return static_cast<int32_t>(writeResult);
                 if (!silent) {
                     silentBuffers = 0;
                     continue;
@@ -296,21 +323,30 @@ void PlayerThread() noexcept {
             std::lock_guard lock(g.mutex);
             if (g.wantOn.load()) continue;
             g.running = false;
-            break;
+            return 0;
         }
-
-        waveOutReset(device);
-        for (auto& header : headers) waveOutUnprepareHeader(device, &header, sizeof(WAVEHDR));
-        waveOutClose(device);
-        CloseHandle(event);
-        g.currentKind = -1;
     } catch (...) {
-        std::lock_guard lock(g.mutex);
-        g.running = false;
-        g.wantOn = false;
+        return static_cast<int32_t>(ERROR_OUTOFMEMORY);
     }
 }
 
+void PlayerThread() noexcept {
+    const int32_t error = RunPlayer();
+    g.currentKind = -1;
+    if (error == 0) return;
+
+    // The play call already returned success, so tell the managed side that the sound is not playing.
+    int32_t failedKind = -1;
+    try {
+        std::lock_guard lock(g.mutex);
+        g.running = false;
+        g.wantOn = false;
+        failedKind = g.wantKind.load();
+    } catch (...) {
+        g.wantOn = false;
+    }
+    if (const NoiseFailureCallback callback = g_failure_callback.load()) callback(failedKind, error);
+}
 }  // namespace
 
 VN_EXPORT int32_t __stdcall vn_noise_play(int32_t kind, float volume) noexcept {
@@ -329,6 +365,13 @@ VN_EXPORT int32_t __stdcall vn_noise_play(int32_t kind, float volume) noexcept {
     } catch (...) {
         return VN_ERR_FAIL;
     }
+}
+
+// Registers a callback (any thread) raised when playback could not start or broke after vn_noise_play returned VN_OK.
+// It receives the requested kind and the Win32/MMSYSERR code. Pass null to remove it.
+VN_EXPORT int32_t __stdcall vn_noise_set_failure_callback(NoiseFailureCallback callback) noexcept {
+    g_failure_callback.store(callback);
+    return VN_OK;
 }
 
 VN_EXPORT int32_t __stdcall vn_noise_set_volume(float volume) noexcept {

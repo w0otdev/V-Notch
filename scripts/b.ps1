@@ -20,7 +20,20 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
+if ($PSVersionTable.PSVersion.Major -ge 7) {
+    $PSNativeCommandUseErrorActionPreference = $false
+}
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+
+function Invoke-CapturedNative([scriptblock]$Command) {
+    $prev = $ErrorActionPreference
+    $ErrorActionPreference = 'Continue'
+    try {
+        & $Command 2>&1
+    } finally {
+        $ErrorActionPreference = $prev
+    }
+}
 
 $scriptDir = $PSScriptRoot
 if (-not $scriptDir) { $scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Definition }
@@ -137,10 +150,10 @@ Write-TreeStep "2/4" "Publish V-Notch & Uninstaller"
 $pubSw = [System.Diagnostics.Stopwatch]::StartNew()
 if ($SelfContained) {
     # Self-contained: bundles the .NET runtime, runs without installing .NET 8.
-    $pubOut = & dotnet publish .\V-Notch.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -p:DebugType=none -p:DebugSymbols=false -nologo -v:q -o $publishDir @restoreArguments @versionArguments 2>&1
+    $pubOut = Invoke-CapturedNative { & dotnet publish .\V-Notch.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -p:DebugType=none -p:DebugSymbols=false -nologo -v:q -o $publishDir @restoreArguments @versionArguments }
 } else {
     # Framework-dependent single file - requires .NET 8 runtime.
-    $pubOut = & dotnet publish .\V-Notch.csproj -c Release -r win-x64 --self-contained false -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -p:DebugType=none -p:DebugSymbols=false -nologo -v:q -o $publishDir @restoreArguments @versionArguments 2>&1
+    $pubOut = Invoke-CapturedNative { & dotnet publish .\V-Notch.csproj -c Release -r win-x64 --self-contained false -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -p:DebugType=none -p:DebugSymbols=false -nologo -v:q -o $publishDir @restoreArguments @versionArguments }
 }
 if ($LASTEXITCODE -ne 0) {
     foreach ($l in @($pubOut | ForEach-Object { "$_" } | Where-Object { $_.Trim() })) {
@@ -165,7 +178,7 @@ Write-TreeItem ("Published V-Notch.exe & VNotch.Native.dll (v$exeVersion) in {0:
 
 # Step 2b: Publish the standalone uninstaller into the same release folder so it
 # ships next to V-Notch.exe and ends up in the install directory.
-$uninstOut = & dotnet publish .\Uninstall\Uninstall.csproj -c Release -r win-x64 --self-contained $SelfContained -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -p:DebugType=none -p:DebugSymbols=false -nologo -v:q -o $publishDir @restoreArguments @versionArguments 2>&1
+$uninstOut = Invoke-CapturedNative { & dotnet publish .\Uninstall\Uninstall.csproj -c Release -r win-x64 --self-contained $SelfContained -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -p:DebugType=none -p:DebugSymbols=false -nologo -v:q -o $publishDir @restoreArguments @versionArguments }
 if ($LASTEXITCODE -ne 0) {
     foreach ($l in @($uninstOut | ForEach-Object { "$_" } | Where-Object { $_.Trim() })) {
         Write-TreeItem $l.Trim() -State "Error"
@@ -176,7 +189,7 @@ if ($LASTEXITCODE -ne 0) {
 }
 Write-TreeItem "Published standalone uninstaller (uninstall.exe)." -State "Success"
 
-$modelCheckOut = & ./Tools/Assert-ModelAssets.ps1 -RootDirectory $publishDir 2>&1
+$modelCheckOut = & ./Tools/Assert-ModelAssets.ps1 -RootDirectory $publishDir *>&1
 Write-TreeItem "Verified bundled ONNX model provenance & license." -State "Success"
 
 if ($CertificateThumbprint) {
@@ -223,9 +236,9 @@ if (-not (Test-Path "installers")) {
 
 # Read the UTF-8 source explicitly; ANSI decoding turns the copyright sign into mojibake.
 if ($SelfContained) {
-    $nsisOut = & $NsisPath "/V2" "/INPUTCHARSET" "UTF8" "/DSELF_CONTAINED" "/DAPP_VERSION_FULL=$installerVersion" "/DAPP_VERSION=$ReleaseVersion" "V-Notch-Setup.nsi" 2>&1
+    $nsisOut = Invoke-CapturedNative { & $NsisPath "/V2" "/INPUTCHARSET" "UTF8" "/DSELF_CONTAINED" "/DAPP_VERSION_FULL=$installerVersion" "/DAPP_VERSION=$ReleaseVersion" "V-Notch-Setup.nsi" }
 } else {
-    $nsisOut = & $NsisPath "/V2" "/INPUTCHARSET" "UTF8" "/DAPP_VERSION_FULL=$installerVersion" "/DAPP_VERSION=$ReleaseVersion" "V-Notch-Setup.nsi" 2>&1
+    $nsisOut = Invoke-CapturedNative { & $NsisPath "/V2" "/INPUTCHARSET" "UTF8" "/DAPP_VERSION_FULL=$installerVersion" "/DAPP_VERSION=$ReleaseVersion" "V-Notch-Setup.nsi" }
 }
 if ($LASTEXITCODE -ne 0) {
     foreach ($l in @($nsisOut | ForEach-Object { "$_" } | Where-Object { $_.Trim() })) {

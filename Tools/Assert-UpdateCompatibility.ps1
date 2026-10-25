@@ -1,7 +1,22 @@
-#Requires -Version 7.0
 [CmdletBinding()]
 param([string]$AssetsDirectory, [string]$ReleaseVersion, [switch]$Prerelease, [string]$InstalledVersion)
 $ErrorActionPreference = 'Stop'
+if ($PSVersionTable.PSVersion.Major -lt 7) {
+    $pwsh = Get-Command pwsh.exe -ErrorAction SilentlyContinue
+    if (-not $pwsh) {
+        throw 'PowerShell 7 (pwsh) is required for Assert-UpdateCompatibility.ps1.'
+    }
+    $pwshArgs = @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', $PSCommandPath)
+    if ($AssetsDirectory) { $pwshArgs += '-AssetsDirectory', $AssetsDirectory }
+    if ($ReleaseVersion) { $pwshArgs += '-ReleaseVersion', $ReleaseVersion }
+    if ($Prerelease) { $pwshArgs += '-Prerelease' }
+    if ($InstalledVersion) { $pwshArgs += '-InstalledVersion', $InstalledVersion }
+    & $pwsh.Source @pwshArgs
+    if ($LASTEXITCODE -ne 0) {
+        throw "Assert-UpdateCompatibility.ps1 failed with exit code $LASTEXITCODE."
+    }
+    return
+}
 $useCurrentUpdater = $Prerelease -or [bool]$InstalledVersion
 if ($InstalledVersion -and $InstalledVersion -cnotmatch '^[0-9]+\.[0-9]+\.[0-9]+(?:\.[0-9]+)?(?:-[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?$') {
     throw 'Invalid installed release version for the compatibility probe.'
@@ -35,6 +50,11 @@ try {
     }
     if ($useCurrentUpdater) {
         Copy-Item -LiteralPath (Join-Path $repository 'Services/AppVersion.cs') -Destination $temporary
+        Copy-Item -LiteralPath (Join-Path $repository 'Services/NativeWinHttpHandler.cs') -Destination $temporary
+        Copy-Item -LiteralPath (Join-Path $repository 'Services/Win32Interop.cs') -Destination $temporary
+        Copy-Item -LiteralPath (Join-Path $repository 'Services/Win32Interop.Process.cs') -Destination $temporary
+        Copy-Item -LiteralPath (Join-Path $repository 'Services/WindowAnimationPolicy.cs') -Destination $temporary
+        Copy-Item -LiteralPath (Join-Path $repository 'Native/out/VNotch.Native.dll') -Destination $temporary
     }
     [IO.File]::WriteAllText((Join-Path $temporary 'update-public-key.pem'), $legacyPem)
     Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'UpdateCompatibility/Program.cs') -Destination $temporary
@@ -45,10 +65,14 @@ try {
     <OutputType>Exe</OutputType><UseWPF>true</UseWPF>
     <TargetFramework>net8.0-windows10.0.19041.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings><Nullable>enable</Nullable>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <AssemblyVersion>1.9.3.0</AssemblyVersion>
     <Version>1.9.3</Version>
   </PropertyGroup>
-  <ItemGroup><EmbeddedResource Include="update-public-key.pem" LogicalName="VNotch.UpdatePublicKey.pem" /></ItemGroup>
+  <ItemGroup>
+    <EmbeddedResource Include="update-public-key.pem" LogicalName="VNotch.UpdatePublicKey.pem" />
+    <Content Include="VNotch.Native.dll" Condition="Exists('VNotch.Native.dll')" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
 </Project>
 '@ | Set-Content -LiteralPath (Join-Path $temporary 'Compatibility.csproj')
     if ($InstalledVersion) {

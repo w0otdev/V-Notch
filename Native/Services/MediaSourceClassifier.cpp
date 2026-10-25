@@ -2,11 +2,8 @@
 
 using namespace vnotch;
 
-namespace vnotch::services
+namespace vnotch::services::media_source
 {
-    class MediaSourceClassifier final
-    {
-    public:
         static inline bool matches_metadata_token(
             std::u16string_view title,
             std::u16string_view artist,
@@ -28,7 +25,7 @@ namespace vnotch::services
             return contains_ordinal(title, token);
         }
 
-        static int32_t vn_media_source_classify_app_id_impl(const char16_t* app_ptr,
+        static int32_t classify_app_id(const char16_t* app_ptr,
     int32_t app_len,
     int32_t* out_platform,
     uint8_t* out_is_spotify_playing,
@@ -100,10 +97,11 @@ namespace vnotch::services
     return VN_OK;
 }
 
-        static int32_t vn_media_source_detect_from_metadata_impl(const char16_t* title_ptr, int32_t title_len,
+        // Allocates (lowercase copies), so it may throw std::bad_alloc. The export below converts that into VN_ERR_FAIL.
+        static int32_t detect_from_metadata(const char16_t* title_ptr, int32_t title_len,
     const char16_t* artist_ptr, int32_t artist_len,
     const char16_t* album_ptr, int32_t album_len,
-    int32_t* out_platform) noexcept
+    int32_t* out_platform)
         {
     if (out_platform == nullptr)
     {
@@ -176,14 +174,15 @@ namespace vnotch::services
     return VN_OK;
 }
 
-        static int32_t vn_media_source_detect_from_window_title_impl(const char16_t* win_title_ptr, int32_t win_title_len,
+        // Allocates, so it may throw std::bad_alloc. The export below converts that into VN_ERR_FAIL.
+        static int32_t detect_from_window_title(const char16_t* win_title_ptr, int32_t win_title_len,
     const char16_t* track_lower_ptr, int32_t track_lower_len,
     const char16_t* track_norm_ptr, int32_t track_norm_len,
     uint8_t has_track,
     const char16_t* cur_track_ptr, int32_t cur_track_len,
     int32_t* out_platform,
     uint8_t* out_matched,
-    char16_t* out_better_track_buf, int32_t out_better_track_cap, int32_t* out_better_track_len) noexcept
+    char16_t* out_better_track_buf, int32_t out_better_track_cap, int32_t* out_better_track_len)
         {
     if (out_platform == nullptr || out_matched == nullptr || out_better_track_len == nullptr)
     {
@@ -270,9 +269,10 @@ namespace vnotch::services
     return VN_OK;
 }
 
-        static int32_t vn_media_source_is_junk_title_impl(const char16_t* title_ptr, int32_t title_len,
+        // Allocates, so it may throw std::bad_alloc. The export below converts that into VN_ERR_FAIL.
+        static int32_t is_junk_title(const char16_t* title_ptr, int32_t title_len,
     const char16_t* artist_ptr, int32_t artist_len,
-    uint8_t* out_is_junk) noexcept
+    uint8_t* out_is_junk)
         {
     if (out_is_junk == nullptr)
     {
@@ -328,9 +328,7 @@ namespace vnotch::services
     *out_is_junk = 0u;
     return VN_OK;
 }
-
-    };
-} // namespace vnotch::services
+} // namespace vnotch::services::media_source
 
 VN_EXPORT int32_t vn_media_source_classify_app_id(const char16_t* app_ptr,
     int32_t app_len,
@@ -338,7 +336,7 @@ VN_EXPORT int32_t vn_media_source_classify_app_id(const char16_t* app_ptr,
     uint8_t* out_is_spotify_playing,
     uint8_t* out_set_running) noexcept
 {
-    return vnotch::services::MediaSourceClassifier::vn_media_source_classify_app_id_impl(app_ptr, app_len, out_platform, out_is_spotify_playing, out_set_running);
+    return vnotch::services::media_source::classify_app_id(app_ptr, app_len, out_platform, out_is_spotify_playing, out_set_running);
 }
 
 VN_EXPORT int32_t vn_media_source_detect_from_metadata(const char16_t* title_ptr, int32_t title_len,
@@ -346,7 +344,18 @@ VN_EXPORT int32_t vn_media_source_detect_from_metadata(const char16_t* title_ptr
     const char16_t* album_ptr, int32_t album_len,
     int32_t* out_platform) noexcept
 {
-    return vnotch::services::MediaSourceClassifier::vn_media_source_detect_from_metadata_impl(title_ptr, title_len, artist_ptr, artist_len, album_ptr, album_len, out_platform);
+    if (out_platform != nullptr)
+    {
+        *out_platform = static_cast<int32_t>(VnMediaPlatform::Unknown);
+    }
+    try
+    {
+        return vnotch::services::media_source::detect_from_metadata(title_ptr, title_len, artist_ptr, artist_len, album_ptr, album_len, out_platform);
+    }
+    catch (...)
+    {
+        return VN_ERR_FAIL;
+    }
 }
 
 VN_EXPORT int32_t vn_media_source_detect_from_window_title(const char16_t* win_title_ptr, int32_t win_title_len,
@@ -358,13 +367,47 @@ VN_EXPORT int32_t vn_media_source_detect_from_window_title(const char16_t* win_t
     uint8_t* out_matched,
     char16_t* out_better_track_buf, int32_t out_better_track_cap, int32_t* out_better_track_len) noexcept
 {
-    return vnotch::services::MediaSourceClassifier::vn_media_source_detect_from_window_title_impl(win_title_ptr, win_title_len, track_lower_ptr, track_lower_len, track_norm_ptr, track_norm_len, has_track, cur_track_ptr, cur_track_len, out_platform, out_matched, out_better_track_buf, out_better_track_cap, out_better_track_len);
+    const auto reset_outputs = [&]() noexcept
+    {
+        if (out_platform != nullptr)
+        {
+            *out_platform = static_cast<int32_t>(VnMediaPlatform::Unknown);
+        }
+        if (out_matched != nullptr)
+        {
+            *out_matched = 0u;
+        }
+        if (out_better_track_len != nullptr)
+        {
+            *out_better_track_len = 0;
+        }
+    };
+    reset_outputs();
+    try
+    {
+        return vnotch::services::media_source::detect_from_window_title(win_title_ptr, win_title_len, track_lower_ptr, track_lower_len, track_norm_ptr, track_norm_len, has_track, cur_track_ptr, cur_track_len, out_platform, out_matched, out_better_track_buf, out_better_track_cap, out_better_track_len);
+    }
+    catch (...)
+    {
+        reset_outputs();
+        return VN_ERR_FAIL;
+    }
 }
 
 VN_EXPORT int32_t vn_media_source_is_junk_title(const char16_t* title_ptr, int32_t title_len,
     const char16_t* artist_ptr, int32_t artist_len,
     uint8_t* out_is_junk) noexcept
 {
-    return vnotch::services::MediaSourceClassifier::vn_media_source_is_junk_title_impl(title_ptr, title_len, artist_ptr, artist_len, out_is_junk);
+    if (out_is_junk != nullptr)
+    {
+        *out_is_junk = 0u;
+    }
+    try
+    {
+        return vnotch::services::media_source::is_junk_title(title_ptr, title_len, artist_ptr, artist_len, out_is_junk);
+    }
+    catch (...)
+    {
+        return VN_ERR_FAIL;
+    }
 }
-

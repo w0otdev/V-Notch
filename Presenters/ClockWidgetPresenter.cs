@@ -341,10 +341,12 @@ public sealed class ClockWidgetPresenter : IDisposable
     #region Clock View (analog clock + month calendar)
 
     private const double _clockViewWidth = 600;
-    private const double _clockViewHeight = 346;
+    private const double _clockViewHeight = 376;
 
     private static double ClockViewContentWidth => _clockViewWidth - 40.0;
     private static double ClockViewContentHeight => _clockViewHeight - 48.0;
+
+    private const double ClockViewDayRowHeight = 27.0;
 
     private bool _clockViewCalendarBuilt;
     private DateTime _clockViewRenderedDate = DateTime.MinValue;
@@ -417,7 +419,8 @@ public sealed class ClockWidgetPresenter : IDisposable
             _clockViewDayTexts[i] = dayText;
             _clockViewDayCircles[i] = circle;
 
-            var cell = new Grid();
+            // Row height above the 22 px circle leaves visible air between the date rows.
+            var cell = new Grid { Height = ClockViewDayRowHeight };
             cell.Children.Add(circle);
             _refs.ClockViewDayGrid.Children.Add(cell);
         }

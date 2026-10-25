@@ -155,8 +155,8 @@ VN_EXPORT int32_t vn_file_icon_provider_classify_extension(
     const char16_t* ext,
     int32_t ext_len,
     vnotch::services::VnFileIconExtensionFlags* out_flags) noexcept {
-    if (!out_flags || ext_len < 0) return VN_E_INVALID_ARG;
-    std::u16string_view sv(ext ? ext : u"", static_cast<size_t>(ext_len));
+    std::u16string_view sv;
+    if (!out_flags || !vnotch::try_make_u16_view(ext, ext_len, sv)) return VN_E_INVALID_ARG;
     vnotch::services::FileIconProvider::ClassifyExtension(sv, *out_flags);
     return VN_OK;
 }
@@ -168,8 +168,8 @@ VN_EXPORT int32_t vn_file_icon_provider_parse_msc_icon_xml(
     int32_t* out_file_start,
     int32_t* out_file_len,
     uint8_t* out_matched) noexcept {
-    if (!out_index || !out_file_start || !out_file_len || !out_matched || xml_len < 0) return VN_E_INVALID_ARG;
-    std::u16string_view sv(xml ? xml : u"", static_cast<size_t>(xml_len));
+    std::u16string_view sv;
+    if (!out_index || !out_file_start || !out_file_len || !out_matched || !vnotch::try_make_u16_view(xml, xml_len, sv)) return VN_E_INVALID_ARG;
     *out_matched = vnotch::services::FileIconProvider::TryParseMscIconXml(
         sv, *out_index, *out_file_start, *out_file_len) ? 1u : 0u;
     return VN_OK;

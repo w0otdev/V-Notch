@@ -1,5 +1,6 @@
 #include "../vnotch_common.h"
 #include "../vnotch_com.h"
+#include "../vnotch_handle_registry.h"
 #include <objbase.h>
 #include <mmdeviceapi.h>
 #include <endpointvolume.h>
@@ -64,35 +65,10 @@ struct Endpoint {
     ComPtr<IAudioEndpointVolume> volume;
 };
 
-SRWLOCK g_lock = SRWLOCK_INIT;
-std::vector<std::unique_ptr<Source>> g_sources;
-std::vector<std::unique_ptr<Endpoint>> g_endpoints;
+// Exports hold a lease while they use an object, so closing a handle on another thread cannot free it mid-call.
+vnotch::HandleRegistry<Source> g_sources;
+vnotch::HandleRegistry<Endpoint> g_endpoints;
 
-template <typename T>
-T* Find(std::vector<std::unique_ptr<T>>& list, int64_t handle) noexcept {
-    Guard guard(&g_lock);
-    if (handle <= 0 || static_cast<size_t>(handle) > list.size()) return nullptr;
-    return list[static_cast<size_t>(handle) - 1].get();
-}
-
-template <typename T>
-int64_t Add(std::vector<std::unique_ptr<T>>& list, std::unique_ptr<T> item) {
-    Guard guard(&g_lock);
-    for (size_t i = 0; i < list.size(); ++i) {
-        if (!list[i]) {
-            list[i] = std::move(item);
-            return static_cast<int64_t>(i) + 1;
-        }
-    }
-    list.push_back(std::move(item));
-    return static_cast<int64_t>(list.size());
-}
-
-template <typename T>
-void Remove(std::vector<std::unique_ptr<T>>& list, int64_t handle) noexcept {
-    Guard guard(&g_lock);
-    if (handle > 0 && static_cast<size_t>(handle) <= list.size()) list[static_cast<size_t>(handle) - 1].reset();
-}
 
 } // namespace vnotch::services::coreaudio
 
@@ -118,7 +94,7 @@ VN_EXPORT int32_t __stdcall vn_volume_source_create(ca::DeviceChangedCallback ca
         }
         *out_hresult = static_cast<int32_t>(hr);
         if (FAILED(hr)) return VN_ERR_FAIL;
-        *out_handle = ca::Add(ca::g_sources, std::move(source));
+        *out_handle = ca::g_sources.Add(std::move(source));
         return VN_OK;
     } catch (...) {
         return VN_ERR_FAIL;
@@ -127,7 +103,7 @@ VN_EXPORT int32_t __stdcall vn_volume_source_create(ca::DeviceChangedCallback ca
 
 VN_EXPORT int32_t __stdcall vn_volume_source_destroy(int64_t handle) noexcept {
     if (handle <= 0) return VN_ERR_INVALID_ARG;
-    ca::Remove(ca::g_sources, handle);
+    ca::g_sources.Remove(handle);
     return VN_OK;
 }
 
@@ -136,7 +112,8 @@ VN_EXPORT int32_t __stdcall vn_volume_endpoint_open(int64_t source_handle, int64
     if (!out_handle || !out_hresult) return VN_ERR_INVALID_ARG;
     *out_handle = 0;
     *out_hresult = 0;
-    ca::Source* source = ca::Find(ca::g_sources, source_handle);
+    auto source_lease = ca::g_sources.Acquire(source_handle);
+    ca::Source* source = source_lease.get();
     if (!source || !source->enumerator.ptr) return VN_ERR_INVALID_ARG;
     try {
         auto endpoint = std::make_unique<ca::Endpoint>();
@@ -146,7 +123,7 @@ VN_EXPORT int32_t __stdcall vn_volume_endpoint_open(int64_t source_handle, int64
                                                 reinterpret_cast<void**>(endpoint->volume.Put()));
         *out_hresult = static_cast<int32_t>(hr);
         if (FAILED(hr)) return VN_ERR_FAIL;
-        *out_handle = ca::Add(ca::g_endpoints, std::move(endpoint));
+        *out_handle = ca::g_endpoints.Add(std::move(endpoint));
         return VN_OK;
     } catch (...) {
         return VN_ERR_FAIL;
@@ -155,12 +132,13 @@ VN_EXPORT int32_t __stdcall vn_volume_endpoint_open(int64_t source_handle, int64
 
 VN_EXPORT int32_t __stdcall vn_volume_endpoint_close(int64_t handle) noexcept {
     if (handle <= 0) return VN_ERR_INVALID_ARG;
-    ca::Remove(ca::g_endpoints, handle);
+    ca::g_endpoints.Remove(handle);
     return VN_OK;
 }
 
 VN_EXPORT int32_t __stdcall vn_volume_endpoint_get(int64_t handle, float* out_scalar, uint8_t* out_muted, int32_t* out_hresult) noexcept {
-    ca::Endpoint* endpoint = ca::Find(ca::g_endpoints, handle);
+    auto lease = ca::g_endpoints.Acquire(handle);
+    ca::Endpoint* endpoint = lease.get();
     if (!endpoint || !endpoint->volume.ptr || !out_scalar || !out_muted || !out_hresult) return VN_ERR_INVALID_ARG;
     BOOL muted = FALSE;
     HRESULT hr = endpoint->volume.ptr->GetMasterVolumeLevelScalar(out_scalar);
@@ -171,7 +149,8 @@ VN_EXPORT int32_t __stdcall vn_volume_endpoint_get(int64_t handle, float* out_sc
 }
 
 VN_EXPORT int32_t __stdcall vn_volume_endpoint_set_volume(int64_t handle, float scalar, int32_t* out_hresult) noexcept {
-    ca::Endpoint* endpoint = ca::Find(ca::g_endpoints, handle);
+    auto lease = ca::g_endpoints.Acquire(handle);
+    ca::Endpoint* endpoint = lease.get();
     if (!endpoint || !endpoint->volume.ptr || !out_hresult) return VN_ERR_INVALID_ARG;
     const HRESULT hr = endpoint->volume.ptr->SetMasterVolumeLevelScalar(scalar, nullptr);
     *out_hresult = static_cast<int32_t>(hr);
@@ -179,7 +158,8 @@ VN_EXPORT int32_t __stdcall vn_volume_endpoint_set_volume(int64_t handle, float 
 }
 
 VN_EXPORT int32_t __stdcall vn_volume_endpoint_set_mute(int64_t handle, uint8_t muted, int32_t* out_hresult) noexcept {
-    ca::Endpoint* endpoint = ca::Find(ca::g_endpoints, handle);
+    auto lease = ca::g_endpoints.Acquire(handle);
+    ca::Endpoint* endpoint = lease.get();
     if (!endpoint || !endpoint->volume.ptr || !out_hresult) return VN_ERR_INVALID_ARG;
     const HRESULT hr = endpoint->volume.ptr->SetMute(muted != 0, nullptr);
     *out_hresult = static_cast<int32_t>(hr);

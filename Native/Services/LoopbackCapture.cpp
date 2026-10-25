@@ -1,5 +1,6 @@
 #include "../vnotch_common.h"
 #include "../vnotch_com.h"
+#include "../vnotch_handle_registry.h"
 #include <mmdeviceapi.h>
 #include <audioclient.h>
 #include <ks.h>
@@ -49,6 +50,7 @@ struct Capture {
     DataCallback on_data = nullptr;
     StoppedCallback on_stopped = nullptr;
     int64_t context = 0;
+    SRWLOCK stop_lock = SRWLOCK_INIT;
     std::atomic<bool> stopping{false};
     std::atomic<bool> self_delete{false};
 
@@ -63,22 +65,37 @@ struct Capture {
     void Stop() noexcept {
         stopping.store(true, std::memory_order_release);
         if (stop_event) SetEvent(stop_event);
+        if (GetCurrentThreadId() == thread_id) return;
+        Guard guard(&stop_lock);
         if (thread) {
-            if (GetCurrentThreadId() != thread_id) {
-                WaitForSingleObject(thread, INFINITE);
-            }
+            WaitForSingleObject(thread, INFINITE);
             CloseHandle(thread);
             thread = nullptr;
-            thread_id = 0;
         }
         if (client.ptr) client.ptr->Stop();
     }
 
+    // Grows the zero filled buffer used for AUDCLNT_BUFFERFLAGS_SILENT packets. False when the allocation fails.
+    static bool EnsureSilence(std::vector<uint8_t>& silence, size_t bytes) noexcept {
+        if (silence.size() >= bytes) return true;
+        try {
+            silence.assign(bytes, 0);
+            return true;
+        } catch (...) {
+            return false;
+        }
+    }
+
     void Run() noexcept {
         EnsureMta();
+        // Sized for a full endpoint buffer up front so the capture loop normally never allocates.
         std::vector<uint8_t> silence;
         HRESULT failure = S_OK;
-        while (WaitForSingleObject(stop_event, kPollMs) == WAIT_TIMEOUT) {
+        UINT32 buffer_frames = 0;
+        if (SUCCEEDED(client.ptr->GetBufferSize(&buffer_frames)) &&
+            !EnsureSilence(silence, static_cast<size_t>(buffer_frames) * static_cast<size_t>(block_align))) {
+            failure = E_OUTOFMEMORY;
+        }        while (SUCCEEDED(failure) && WaitForSingleObject(stop_event, kPollMs) == WAIT_TIMEOUT) {
             UINT32 packet = 0;
             HRESULT hr = capture.ptr->GetNextPacketSize(&packet);
             while (SUCCEEDED(hr) && packet > 0) {
@@ -90,7 +107,12 @@ struct Capture {
                 const int32_t bytes = static_cast<int32_t>(frames) * block_align;
                 if (!stopping.load(std::memory_order_acquire) && on_data) {
                     if (flags & AUDCLNT_BUFFERFLAGS_SILENT) {
-                        if (silence.size() < static_cast<size_t>(bytes)) silence.assign(static_cast<size_t>(bytes), 0);
+                        if (!EnsureSilence(silence, static_cast<size_t>(bytes))) {
+                            // Give the packet back and stop with an error instead of terminating the process.
+                            capture.ptr->ReleaseBuffer(frames);
+                            hr = E_OUTOFMEMORY;
+                            break;
+                        }
                         on_data(context, silence.data(), bytes);
                     } else {
                         on_data(context, data, bytes);
@@ -124,14 +146,8 @@ struct Capture {
     }
 };
 
-SRWLOCK g_lock = SRWLOCK_INIT;
-std::vector<std::unique_ptr<Capture>> g_captures;
-
-Capture* Find(int64_t handle) noexcept {
-    Guard guard(&g_lock);
-    if (handle <= 0 || static_cast<size_t>(handle) > g_captures.size()) return nullptr;
-    return g_captures[static_cast<size_t>(handle) - 1].get();
-}
+// Exports that read a capture hold a lease, so a concurrent vn_loopback_stop cannot free it underneath them.
+vnotch::HandleRegistry<Capture> g_captures;
 
 // Selected endpoint when it is active, otherwise the default render endpoint.
 HRESULT ResolveDevice(IMMDeviceEnumerator* enumerator, const std::wstring& requested, ComPtr<IMMDevice>& out) {
@@ -218,16 +234,7 @@ VN_EXPORT int32_t __stdcall vn_loopback_start(
             return VN_ERR_FAIL;
         }
 
-        lb::Guard guard(&lb::g_lock);
-        for (size_t i = 0; i < lb::g_captures.size(); ++i) {
-            if (!lb::g_captures[i]) {
-                lb::g_captures[i] = std::move(capture);
-                *out_handle = static_cast<int64_t>(i) + 1;
-                return VN_OK;
-            }
-        }
-        lb::g_captures.push_back(std::move(capture));
-        *out_handle = static_cast<int64_t>(lb::g_captures.size());
+        *out_handle = lb::g_captures.Add(std::move(capture));
         return VN_OK;
     } catch (...) {
         return VN_ERR_FAIL;
@@ -236,17 +243,23 @@ VN_EXPORT int32_t __stdcall vn_loopback_start(
 
 // Stops and releases the capture. Safe from any thread, including callbacks.
 VN_EXPORT int32_t __stdcall vn_loopback_stop(int64_t handle) noexcept {
-    std::unique_ptr<lb::Capture> capture;
+    if (handle <= 0) return VN_ERR_INVALID_ARG;
     {
-        lb::Guard guard(&lb::g_lock);
-        if (handle <= 0 || static_cast<size_t>(handle) > lb::g_captures.size()) return VN_ERR_INVALID_ARG;
-        capture = std::move(lb::g_captures[static_cast<size_t>(handle) - 1]);
+        // Stop and join the worker while holding a lease so no callback is still in flight when this returns,
+        // even if another export holds a concurrent read lease on the capture.
+        auto lease = lb::g_captures.Acquire(handle);
+        if (!lease) return VN_OK;  // already stopped
+        if (GetCurrentThreadId() != lease->thread_id) {
+            lease->Stop();
+        } else {
+            lease->stopping.store(true, std::memory_order_release);
+            if (lease->stop_event) SetEvent(lease->stop_event);
+        }
     }
-    if (!capture) return VN_OK;
+    std::unique_ptr<lb::Capture> capture;
+    if (!lb::g_captures.Remove(handle, &capture) || !capture) return VN_OK;
     if (GetCurrentThreadId() == capture->thread_id) {
-        capture->stopping.store(true, std::memory_order_release);
         capture->self_delete.store(true, std::memory_order_release);
-        if (capture->stop_event) SetEvent(capture->stop_event);
         capture.release();
         return VN_OK;
     }
@@ -257,7 +270,8 @@ VN_EXPORT int32_t __stdcall vn_loopback_stop(int64_t handle) noexcept {
 // Endpoint id and whether that endpoint is still active. Two-step: BUFFER_TOO_SMALL returns the length.
 VN_EXPORT int32_t __stdcall vn_loopback_get_device(
     int64_t handle, char16_t* buffer, int32_t capacity, int32_t* out_length, uint8_t* out_active) noexcept {
-    lb::Capture* capture = lb::Find(handle);
+    auto lease = lb::g_captures.Acquire(handle);
+    lb::Capture* capture = lease.get();
     if (!capture || !out_length || !out_active || capacity < 0 || (capacity > 0 && !buffer)) return VN_ERR_INVALID_ARG;
     DWORD state = 0;
     *out_active = (capture->device.ptr && SUCCEEDED(capture->device.ptr->GetState(&state)) && state == DEVICE_STATE_ACTIVE) ? 1 : 0;

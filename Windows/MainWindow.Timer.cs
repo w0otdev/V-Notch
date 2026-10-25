@@ -25,8 +25,9 @@ public partial class MainWindow
         set => _localTimerView = value;
     }
     private const double _timerViewHeight = 176;
-    private const double _countdownCompleteWidthInset = 28;
-    private double CountdownCompleteViewWidth => Math.Max(_collapsedWidth, _expandedWidth - _countdownCompleteWidthInset);
+
+    private double CountdownCompleteViewWidth => _collapsedWidth;
+    private double CountdownCompleteViewHeight => _collapsedHeight;
 
     private CountdownController CountdownController => CountdownWidget.Controller;
     private TimeSpan _countdownDuration => _viewModel.Timer.Duration;
@@ -553,7 +554,7 @@ public partial class MainWindow
     {
         _isCountdownCompleteVisible = true;
         SuppressCompactMediaChromeForCountdownCompletion(animate: true);
-        AnimateCornerRadius(_cornerRadiusExpanded, TimeSpan.FromMilliseconds(360));
+        AnimateCornerRadius(_cornerRadiusCollapsed, TimeSpan.FromMilliseconds(360));
 
         AnimateCountdownCompletionToClockView(transitionId);
     }
@@ -607,6 +608,7 @@ public partial class MainWindow
         double currentHeight = NotchBorder.ActualHeight > 0 ? NotchBorder.ActualHeight : NotchBorder.Height;
         if (double.IsNaN(currentHeight) || currentHeight <= 0) currentHeight = _collapsedHeight;
         double targetWidth = CountdownCompleteViewWidth;
+        double targetHeight = CountdownCompleteViewHeight;
 
         Action onCompletedAction = () =>
         {
@@ -617,7 +619,7 @@ public partial class MainWindow
             NotchBorder.BeginAnimation(WidthProperty, null);
             NotchBorder.BeginAnimation(HeightProperty, null);
             NotchBorder.Width = targetWidth;
-            NotchBorder.Height = _timerViewHeight;
+            NotchBorder.Height = targetHeight;
             RestoreExpandedWindowSize();
             ShowCompletionOverlayContent();
 
@@ -642,8 +644,8 @@ public partial class MainWindow
                 TargetView: VNotch.Models.NotchView.Timer,
                 TargetShape: VNotch.Controllers.NotchShapeState.Expanded,
                 TargetWidth: targetWidth,
-                TargetHeight: _timerViewHeight,
-                TargetCornerRadius: _cornerRadiusExpanded,
+                TargetHeight: targetHeight,
+                TargetCornerRadius: _cornerRadiusCollapsed,
                 Motion: motion
             );
 
@@ -663,7 +665,7 @@ public partial class MainWindow
             NotchBorder.Height = currentHeight;
 
             var widthAnim = MakeAnim(currentWidth, targetWidth, resizeDuration, _easeExpOut6);
-            var heightAnim = MakeAnim(currentHeight, _timerViewHeight, resizeDuration, _easeExpOut6);
+            var heightAnim = MakeAnim(currentHeight, targetHeight, resizeDuration, _easeExpOut6);
             Timeline.SetDesiredFrameRate(widthAnim, VNotch.Services.AnimationConfig.TargetFps);
             Timeline.SetDesiredFrameRate(heightAnim, VNotch.Services.AnimationConfig.TargetFps);
 
@@ -798,9 +800,10 @@ public partial class MainWindow
         CountdownCompleteSurface.BeginAnimation(OpacityProperty, null);
         CountdownCompleteSurface.Opacity = 0;
 
-        PrepareCountdownCompleteElement(CountdownCompleteText, CountdownCompleteTextTranslate);
-        PrepareCountdownCompleteElement(CountdownRestartHost, CountdownRestartTranslate);
-        PrepareCountdownCompleteElement(CountdownDismissHost, CountdownDismissTranslate);
+        ResetCountdownCompleteActionButtonsVisual();
+        PrepareCountdownCompleteElement(CountdownCompleteText, CountdownCompleteTextTranslate, CountdownCompleteTextScale, 0.82);
+        PrepareCountdownCompleteElement(CountdownRestartHost, CountdownRestartTranslate, CountdownRestartRevealScale, 0.68);
+        PrepareCountdownCompleteElement(CountdownDismissHost, CountdownDismissTranslate, CountdownDismissRevealScale, 0.68);
 
         var surfaceFade = new DoubleAnimation(0, 1, new Duration(TimeSpan.FromMilliseconds(180)))
         {
@@ -809,35 +812,73 @@ public partial class MainWindow
         Timeline.SetDesiredFrameRate(surfaceFade, VNotch.Services.AnimationConfig.TargetFps);
         CountdownCompleteSurface.BeginAnimation(OpacityProperty, surfaceFade);
 
-        AnimateCountdownCompleteElement(CountdownCompleteText, CountdownCompleteTextTranslate, TimeSpan.Zero,
+        AnimateCountdownCompleteElement(
+            CountdownCompleteText,
+            CountdownCompleteTextTranslate,
+            CountdownCompleteTextScale,
+            fromScale: 0.82,
+            TimeSpan.Zero,
             (_, _) => StartCountdownCompleteTextFlash());
-        AnimateCountdownCompleteElement(CountdownRestartHost, CountdownRestartTranslate, TimeSpan.FromMilliseconds(45));
-        AnimateCountdownCompleteElement(CountdownDismissHost, CountdownDismissTranslate, TimeSpan.FromMilliseconds(80));
+        AnimateCountdownCompleteElement(
+            CountdownRestartHost,
+            CountdownRestartTranslate,
+            CountdownRestartRevealScale,
+            fromScale: 0.68,
+            TimeSpan.FromMilliseconds(55));
+        AnimateCountdownCompleteElement(
+            CountdownDismissHost,
+            CountdownDismissTranslate,
+            CountdownDismissRevealScale,
+            fromScale: 0.68,
+            TimeSpan.FromMilliseconds(105));
     }
 
-    private static void PrepareCountdownCompleteElement(FrameworkElement element, TranslateTransform translate)
+    private static void PrepareCountdownCompleteElement(
+        FrameworkElement element,
+        TranslateTransform translate,
+        ScaleTransform scale,
+        double initialScale)
     {
         element.BeginAnimation(OpacityProperty, null);
         translate.BeginAnimation(TranslateTransform.YProperty, null);
+        scale.BeginAnimation(ScaleTransform.ScaleXProperty, null);
+        scale.BeginAnimation(ScaleTransform.ScaleYProperty, null);
         element.Opacity = 0;
-        translate.Y = -14;
+        translate.Y = -10;
+        scale.ScaleX = initialScale;
+        scale.ScaleY = initialScale;
     }
 
     private void AnimateCountdownCompleteElement(
         FrameworkElement element,
         TranslateTransform translate,
+        ScaleTransform scale,
+        double fromScale,
         TimeSpan beginTime,
         EventHandler? completed = null)
     {
-        var duration = new Duration(TimeSpan.FromMilliseconds(340));
+        int fps = VNotch.Services.AnimationConfig.TargetFps;
+        var duration = new Duration(TimeSpan.FromMilliseconds(360));
+        var scaleDuration = new Duration(TimeSpan.FromMilliseconds(420));
+
         var opacityAnim = new DoubleAnimation(0, 1, duration)
         {
             EasingFunction = _easeQuadOut,
             BeginTime = beginTime
         };
-        var translateAnim = new DoubleAnimation(-14, 0, duration)
+        var translateAnim = new DoubleAnimation(-10, 0, duration)
         {
             EasingFunction = _easeExpOut6,
+            BeginTime = beginTime
+        };
+        var scaleAnimX = new DoubleAnimation(fromScale, 1.0, scaleDuration)
+        {
+            EasingFunction = _easeSoftSpring,
+            BeginTime = beginTime
+        };
+        var scaleAnimY = new DoubleAnimation(fromScale, 1.0, scaleDuration)
+        {
+            EasingFunction = _easeSoftSpring,
             BeginTime = beginTime
         };
 
@@ -846,10 +887,15 @@ public partial class MainWindow
             opacityAnim.Completed += completed;
         }
 
-        Timeline.SetDesiredFrameRate(opacityAnim, VNotch.Services.AnimationConfig.TargetFps);
-        Timeline.SetDesiredFrameRate(translateAnim, VNotch.Services.AnimationConfig.TargetFps);
+        Timeline.SetDesiredFrameRate(opacityAnim, fps);
+        Timeline.SetDesiredFrameRate(translateAnim, fps);
+        Timeline.SetDesiredFrameRate(scaleAnimX, fps);
+        Timeline.SetDesiredFrameRate(scaleAnimY, fps);
+
         element.BeginAnimation(OpacityProperty, opacityAnim);
         translate.BeginAnimation(TranslateTransform.YProperty, translateAnim);
+        scale.BeginAnimation(ScaleTransform.ScaleXProperty, scaleAnimX);
+        scale.BeginAnimation(ScaleTransform.ScaleYProperty, scaleAnimY);
     }
 
     private void StartCountdownCompleteTextFlash()
@@ -871,6 +917,97 @@ public partial class MainWindow
     private void CountdownCompleteOverlay_MouseLeave(object sender, MouseEventArgs e)
     {
         AnimateCountdownCompleteHover(false);
+    }
+
+    private void CountdownRestartButton_MouseEnter(object sender, MouseEventArgs e)
+    {
+        AnimateCountdownActionButton(CountdownRestartBtnScale, CountdownRestartBtnRotate, 1.18, -32.0, 280);
+    }
+
+    private void CountdownRestartButton_MouseLeave(object sender, MouseEventArgs e)
+    {
+        AnimateCountdownActionButton(CountdownRestartBtnScale, CountdownRestartBtnRotate, 1.0, 0.0, 260);
+    }
+
+    private void CountdownDismissButton_MouseEnter(object sender, MouseEventArgs e)
+    {
+        AnimateCountdownActionButton(CountdownDismissBtnScale, CountdownDismissBtnRotate, 1.18, 90.0, 280);
+    }
+
+    private void CountdownDismissButton_MouseLeave(object sender, MouseEventArgs e)
+    {
+        AnimateCountdownActionButton(CountdownDismissBtnScale, CountdownDismissBtnRotate, 1.0, 0.0, 260);
+    }
+
+    private void CountdownActionBtn_PreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
+    {
+        if (ReferenceEquals(sender, CountdownRestartBtn))
+        {
+            AnimateCountdownActionButton(CountdownRestartBtnScale, CountdownRestartBtnRotate, 0.88, -64.0, 110);
+        }
+        else if (ReferenceEquals(sender, CountdownDismissBtn))
+        {
+            AnimateCountdownActionButton(CountdownDismissBtnScale, CountdownDismissBtnRotate, 0.88, 90.0, 110);
+        }
+    }
+
+    private void CountdownActionBtn_PreviewMouseLeftButtonUp(object sender, MouseButtonEventArgs e)
+    {
+        if (ReferenceEquals(sender, CountdownRestartBtn))
+        {
+            AnimateCountdownActionButton(CountdownRestartBtnScale, CountdownRestartBtnRotate, 1.12, -180.0, 240);
+        }
+        else if (ReferenceEquals(sender, CountdownDismissBtn))
+        {
+            AnimateCountdownActionButton(CountdownDismissBtnScale, CountdownDismissBtnRotate, 1.12, 90.0, 200);
+        }
+    }
+
+    private static void AnimateCountdownActionButton(
+        ScaleTransform scale,
+        RotateTransform rotate,
+        double targetScale,
+        double targetAngle,
+        int durationMs)
+    {
+        int fps = VNotch.Services.AnimationConfig.TargetFps;
+        var scaleDur = new Duration(TimeSpan.FromMilliseconds(durationMs));
+        var rotateDur = new Duration(TimeSpan.FromMilliseconds(durationMs + 60));
+
+        var scaleAnim = MakeAnim(scale.ScaleX, targetScale, scaleDur, _easeSoftSpring, fps);
+        var rotateAnim = MakeAnim(rotate.Angle, targetAngle, rotateDur, _easeExpOut6, fps);
+
+        scale.BeginAnimation(ScaleTransform.ScaleXProperty, scaleAnim);
+        scale.BeginAnimation(ScaleTransform.ScaleYProperty, scaleAnim);
+        rotate.BeginAnimation(RotateTransform.AngleProperty, rotateAnim);
+    }
+
+    private void ResetCountdownCompleteActionButtonsVisual()
+    {
+        if (CountdownRestartBtnScale != null)
+        {
+            CountdownRestartBtnScale.BeginAnimation(ScaleTransform.ScaleXProperty, null);
+            CountdownRestartBtnScale.BeginAnimation(ScaleTransform.ScaleYProperty, null);
+            CountdownRestartBtnScale.ScaleX = 1.0;
+            CountdownRestartBtnScale.ScaleY = 1.0;
+        }
+        if (CountdownRestartBtnRotate != null)
+        {
+            CountdownRestartBtnRotate.BeginAnimation(RotateTransform.AngleProperty, null);
+            CountdownRestartBtnRotate.Angle = 0.0;
+        }
+        if (CountdownDismissBtnScale != null)
+        {
+            CountdownDismissBtnScale.BeginAnimation(ScaleTransform.ScaleXProperty, null);
+            CountdownDismissBtnScale.BeginAnimation(ScaleTransform.ScaleYProperty, null);
+            CountdownDismissBtnScale.ScaleX = 1.0;
+            CountdownDismissBtnScale.ScaleY = 1.0;
+        }
+        if (CountdownDismissBtnRotate != null)
+        {
+            CountdownDismissBtnRotate.BeginAnimation(RotateTransform.AngleProperty, null);
+            CountdownDismissBtnRotate.Angle = 0.0;
+        }
     }
 
     private void AnimateCountdownCompleteHover(bool isHovered)
@@ -1308,14 +1445,21 @@ public partial class MainWindow
     {
         _isCountdownCompleteVisible = false;
         AnimateCountdownCompleteHover(false);
+        ResetCountdownCompleteActionButtonsVisual();
 
         CountdownCompleteText.BeginAnimation(OpacityProperty, null);
         CountdownCompleteText.Opacity = 1;
         CountdownCompleteTextTranslate.BeginAnimation(TranslateTransform.YProperty, null);
+        CountdownCompleteTextScale?.BeginAnimation(ScaleTransform.ScaleXProperty, null);
+        CountdownCompleteTextScale?.BeginAnimation(ScaleTransform.ScaleYProperty, null);
         CountdownRestartHost.BeginAnimation(OpacityProperty, null);
         CountdownRestartTranslate.BeginAnimation(TranslateTransform.YProperty, null);
+        CountdownRestartRevealScale?.BeginAnimation(ScaleTransform.ScaleXProperty, null);
+        CountdownRestartRevealScale?.BeginAnimation(ScaleTransform.ScaleYProperty, null);
         CountdownDismissHost.BeginAnimation(OpacityProperty, null);
         CountdownDismissTranslate.BeginAnimation(TranslateTransform.YProperty, null);
+        CountdownDismissRevealScale?.BeginAnimation(ScaleTransform.ScaleXProperty, null);
+        CountdownDismissRevealScale?.BeginAnimation(ScaleTransform.ScaleYProperty, null);
         CountdownCompleteSurface.BeginAnimation(OpacityProperty, null);
         CountdownCompleteSurface.Opacity = 0;
 

@@ -134,7 +134,8 @@ public:
     uint64_t frame_counter = 0;
 
     // ---- filters ----
-    void AddFilter(HWND hwnd) noexcept {
+    // The filter helpers allocate and may throw std::bad_alloc. Exports and the pump thread catch at their boundary.
+    void AddFilter(HWND hwnd) {
         if (!hwnd) return;
         {
             ScopedLock guard(&filter_lock);
@@ -159,7 +160,7 @@ public:
         SetEvent(request);
     }
 
-    void ApplyFiltersIfDirty() noexcept {
+    void ApplyFiltersIfDirtyOrThrow() {
         if (!filter_dirty.load() || !mag) return;
         std::vector<HWND> list;
         int32_t version = 0;
@@ -182,6 +183,16 @@ public:
             applied_filter_version = version;
         } else {
             // Keep the last texture until exclusion works; capturing the glass itself causes recursive feedback.
+            applied_filter_version = -1;
+            filter_dirty = true;
+        }
+    }
+
+    // Pump thread entry point: an allocation failure keeps the last texture and retries on the next request.
+    void ApplyFiltersIfDirty() noexcept {
+        try {
+            ApplyFiltersIfDirtyOrThrow();
+        } catch (...) {
             applied_filter_version = -1;
             filter_dirty = true;
         }
@@ -415,7 +426,8 @@ public:
         return 0;
     }
 
-    bool Start(HWND exclude) noexcept {
+    // May throw std::bad_alloc before the pump thread exists; vn_magcap_initialize reports that as VN_ERR_FAIL.
+    bool Start(HWND exclude) {
         if (exclude) AddFilterNoSignal(exclude);
         filter_dirty = true;
         running = true;
@@ -429,7 +441,7 @@ public:
         return ready.load();
     }
 
-    void AddFilterNoSignal(HWND hwnd) noexcept {
+    void AddFilterNoSignal(HWND hwnd) {
         ScopedLock guard(&filter_lock);
         if (std::find(filters.begin(), filters.end(), hwnd) == filters.end()) filters.push_back(hwnd);
     }
@@ -492,7 +504,14 @@ VN_EXPORT int32_t __stdcall vn_magcap_create(int32_t* out_handle) noexcept {
 VN_EXPORT int32_t __stdcall vn_magcap_initialize(int32_t handle, int64_t exclude_hwnd, uint8_t* out_ready, int32_t* out_stage) noexcept {
     mc::Source* source = mc::Find(handle);
     if (!source || !out_ready || !out_stage) return VN_ERR_INVALID_ARG;
-    *out_ready = source->Start(mc::ToHwnd(exclude_hwnd)) ? 1 : 0;
+    *out_ready = 0;
+    *out_stage = source->init_stage.load();
+    try {
+        *out_ready = source->Start(mc::ToHwnd(exclude_hwnd)) ? 1 : 0;
+    } catch (...) {
+        *out_ready = 0;
+        return VN_ERR_FAIL;
+    }
     *out_stage = source->init_stage.load();
     return VN_OK;
 }
@@ -540,7 +559,11 @@ VN_EXPORT int32_t __stdcall vn_magcap_get_state(int32_t handle, uint8_t* out_rea
 VN_EXPORT int32_t __stdcall vn_magcap_add_exclude(int32_t handle, int64_t hwnd) noexcept {
     mc::Source* source = mc::Find(handle);
     if (!source) return VN_ERR_INVALID_ARG;
-    source->AddFilter(mc::ToHwnd(hwnd));
+    try {
+        source->AddFilter(mc::ToHwnd(hwnd));
+    } catch (...) {
+        return VN_ERR_FAIL;
+    }
     return VN_OK;
 }
 

@@ -237,31 +237,29 @@ public class MorphingSettingsIcon : FrameworkElement
         }
         else
         {
-            var stream = new StreamGeometry { FillRule = FillRule.Nonzero };
-            using (var ctx = stream.Open())
+            var shape = _morphGeometry;
+            for (int i = 0; i < shape.Figures.Count; i++)
             {
-                int count = _morphGeometry.Figures.Count;
-                for (int i = 0; i < count; i++)
+                var source = i < _from.Length ? _from[i] : null;
+                var destination = i < _to.Length ? _to[i] : null;
+                var center = _collapseCenters[i];
+                var figure = shape.Figures[i];
+                var points = _framePoints[i];
+                for (int j = 0; j < Samples; j++)
                 {
-                    var source = i < _from.Length ? _from[i] : null;
-                    var destination = i < _to.Length ? _to[i] : null;
-                    var center = _collapseCenters[i];
-                    var points = _framePoints[i];
-                    Point startPoint = default;
-                    for (int j = 0; j < Samples; j++)
-                    {
-                        var a = source?[j] ?? center;
-                        var b = destination?[j] ?? center;
-                        Point point = a + (b - a) * progress;
-                        if (j == 0) startPoint = point;
-                        else points[j - 1] = point;
-                    }
-                    ctx.BeginFigure(startPoint, isFilled: true, isClosed: true);
-                    ctx.PolyLineTo(points, isStroked: false, isSmoothJoin: false);
+                    var a = source?[j] ?? center;
+                    var b = destination?[j] ?? center;
+                    Point point = a + (b - a) * progress;
+                    if (j == 0) figure.StartPoint = point;
+                    else points[j - 1] = point;
                 }
+                // Publish all points together. Mutating a live PointCollection
+                // individually propagates 95 Freezable notifications per contour.
+                var collection = new PointCollection(points);
+                collection.Freeze();
+                ((PolyLineSegment)figure.Segments[0]).Points = collection;
             }
-            stream.Freeze();
-            _display = stream;
+            _display = shape;
         }
         // RenderSize is authoritative even before the deferred SizeChanged callback.
         // Keep the normalized 56-unit geometry inside the current layout slot.

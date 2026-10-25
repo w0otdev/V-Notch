@@ -20,12 +20,13 @@ class ReleaseVersionTests(unittest.TestCase):
         return release_identity(self.project, branch, number, attempt, run_id, sha, latest_stable)
 
     def test_beta_is_next_patch_and_all_assets_share_identity(self):
-        result = self.identity()
-        self.assertEqual("2.0.1-beta.184.1", result["version"])
-        self.assertEqual("v" + result["version"], result["tag"])
-        self.assertEqual("2.0.184.1", result["windows_version"])
-        self.assertTrue(result["informational_version"].startswith(result["version"] + "+build.1234567890.1.sha."))
-        self.assertEqual("true", result["prerelease"])
+        for branch in ("main", "master"):
+            result = self.identity(branch=branch)
+            self.assertEqual("2.0.1-beta.184.1", result["version"])
+            self.assertEqual("v" + result["version"], result["tag"])
+            self.assertEqual("2.0.184.1", result["windows_version"])
+            self.assertTrue(result["informational_version"].startswith(result["version"] + "+build.1234567890.1.sha."))
+            self.assertEqual("true", result["prerelease"])
 
     def test_new_pushes_and_reruns_never_reuse_beta_identity(self):
         identities = [self.identity(number=str(number), attempt=str(attempt)) for number in (184, 185) for attempt in (1, 2)]
