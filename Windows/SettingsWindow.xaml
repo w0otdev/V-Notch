@@ -2577,7 +2577,7 @@
                                                            Style="{StaticResource SettingTitleText}"
                                                            TextWrapping="Wrap"/>
                                                 <TextBlock x:Name="StarRepoDescription"
-                                                           Text="Giving a star on GitHub is completely free, but it is a huge motivation for rainaku to keep maintaining and developing this project."
+                                                           Text="Giving a star on GitHub is completely free, but it is a huge motivation for w0otdev to keep maintaining and developing this project."
                                                            Style="{StaticResource SettingHintText}"
                                                            LineHeight="17"
                                                            Margin="0,4,0,0"
@@ -2678,10 +2678,10 @@
                                         <!-- Divider between Donation and Other Projects -->
                                         <Border Height="1" Background="#14FFFFFF" Margin="0,10,0,12"/>
 
-                                        <!-- Other Projects by rainaku Section -->
+                                        <!-- Other Projects by w0otdev Section -->
                                         <StackPanel Margin="0">
                                             <TextBlock x:Name="OtherProjectsHeader"
-                                                       Text="Other projects by rainaku"
+                                                       Text="Other projects by w0otdev"
                                                        Style="{StaticResource SettingTitleText}"
                                                        Margin="2,0,0,2"/>
                                             <TextBlock x:Name="OtherProjectsSubtext"

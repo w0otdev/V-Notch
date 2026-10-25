@@ -73,9 +73,18 @@ try {
     Write-Host $modeLabel -ForegroundColor $modeColor
     Write-Host "  $gVert" -ForegroundColor DarkCyan
 
-    $formatArguments = @('format', (Join-Path $repository 'V-Notch.sln'))
+    $formatArguments = @('format', 'whitespace', (Join-Path $repository 'V-Notch.sln'))
     if ($Check) { $formatArguments += '--verify-no-changes' }
-    if ($NoRestore) { $formatArguments += '--no-restore' }
+    if ($NoRestore -or (Test-Path -LiteralPath (Join-Path $repository 'obj\project.assets.json'))) {
+        $formatArguments += '--no-restore'
+    }
+    if ($Include.Count -eq 0) {
+        $changed = @(Invoke-CapturedNative { & git diff --name-only HEAD -- '*.cs' '*.csproj' '*.props' '*.targets' } |
+            ForEach-Object { "$_" } | Where-Object { $_.Trim() -and (Test-Path -LiteralPath (Join-Path $repository $_.Trim())) })
+        $untracked = @(Invoke-CapturedNative { & git ls-files --others --exclude-standard -- '*.cs' '*.csproj' '*.props' '*.targets' } |
+            ForEach-Object { "$_" } | Where-Object { $_.Trim() -and (Test-Path -LiteralPath (Join-Path $repository $_.Trim())) })
+        $Include = @($changed + $untracked | Select-Object -Unique)
+    }
     if ($Include.Count -gt 0) {
         $formatArguments += '--include'
         $formatArguments += $Include

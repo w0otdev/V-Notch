@@ -65,7 +65,7 @@ public sealed class SecurityAuditTests
     }
 
     [Theory]
-    [InlineData("https://github.com/rainaku/V-Notch")]
+    [InlineData("https://github.com/w0otdev/V-Notch")]
     [InlineData("http://localhost:5000/api")]
     [InlineData("mailto:support@vnotch.com")]
     [InlineData("ms-settings:batterysaver")]
@@ -196,9 +196,9 @@ public sealed class SecurityAuditTests
         var update = new UpdateInfo
         {
             Version = "2.0.0",
-            DownloadUrl = "http://github.com/rainaku/V-Notch/releases/download/v2.0.0/V-Notch-Setup.exe",
-            ManifestUrl = "https://github.com/rainaku/V-Notch/releases/download/v2.0.0/update-manifest.json",
-            ManifestSignatureUrl = "https://github.com/rainaku/V-Notch/releases/download/v2.0.0/update-manifest.json.sig",
+            DownloadUrl = "http://github.com/w0otdev/V-Notch/releases/download/v2.0.0/V-Notch-Setup.exe",
+            ManifestUrl = "https://github.com/w0otdev/V-Notch/releases/download/v2.0.0/update-manifest.json",
+            ManifestSignatureUrl = "https://github.com/w0otdev/V-Notch/releases/download/v2.0.0/update-manifest.json.sig",
             InstallerName = "V-Notch-Setup.exe"
         };
 
@@ -212,9 +212,9 @@ public sealed class SecurityAuditTests
         var update = new UpdateInfo
         {
             Version = "2.0.0",
-            DownloadUrl = "https://github.com/rainaku/V-Notch/releases/download/v2.0.0/V-Notch-Setup.exe",
-            ManifestUrl = "https://github.com/rainaku/V-Notch/releases/download/v2.0.0/update-manifest.json",
-            ManifestSignatureUrl = "https://github.com/rainaku/V-Notch/releases/download/v2.0.0/update-manifest.json.sig",
+            DownloadUrl = "https://github.com/w0otdev/V-Notch/releases/download/v2.0.0/V-Notch-Setup.exe",
+            ManifestUrl = "https://github.com/w0otdev/V-Notch/releases/download/v2.0.0/update-manifest.json",
+            ManifestSignatureUrl = "https://github.com/w0otdev/V-Notch/releases/download/v2.0.0/update-manifest.json.sig",
             InstallerName = "V-Notch-Setup.exe"
         };
 

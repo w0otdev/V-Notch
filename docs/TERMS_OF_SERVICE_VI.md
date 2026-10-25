@@ -1,8 +1,8 @@
 # V-Notch — Điều khoản sử dụng
 
 **Ngày hiệu lực:** 3 tháng 10 năm 2026
-**Người duy trì:** rainaku  
-**Dự án:** https://github.com/rainaku/V-Notch  
+**Người duy trì:** w0otdev  
+**Dự án:** https://github.com/w0otdev/V-Notch  
 **Phạm vi:** bản ứng dụng Windows chính thức và tài liệu đi kèm, luôn tuân theo các giấy phép mã nguồn mở có hiệu lực riêng. Phiên bản ứng dụng được mô tả là 2.1; phải đối chiếu với bản nhị phân thực tế phát hành.
 
 > **Lưu ý:** V-Notch là dự án mã nguồn mở, miễn phí và độc lập, không phải dịch vụ lưu trữ trả phí. Văn bản này không sửa đổi Apache-2.0 hoặc giấy phép bên thứ ba; không tước quyền luật định bắt buộc; không cấp quyền đối với nội dung của người khác; không chứng minh bất kỳ nền tảng nào đã cho phép tích hợp. Không điều khoản nào bảo đảm ngăn được kiện tụng.
@@ -15,7 +15,7 @@
 
 Mã nguồn gốc thuộc quyền cấp phép của dự án được xác định theo Apache License 2.0; xem [LICENSE](../LICENSE). Bạn được sử dụng, sửa đổi, fork, phân phối lại và bán bản sao phần mã được cấp phép hợp lệ theo Apache-2.0, dạng nguồn hoặc nhị phân, nếu đáp ứng điều kiện giấy phép. Theo Điều 4, bên phân phối phải cung cấp giấy phép, đánh dấu nổi bật tệp đã sửa đổi, giữ các thông báo pháp lý liên quan trong dạng nguồn và chuyển tiếp ghi nhận trong NOTICE nếu có. Apache-2.0 **không** bắt buộc giữ nguyên tất cả ghi công trên giao diện hay một tên sản phẩm nhất định. Điều khoản này không cấm việc phân phối đã được giấy phép cho phép và không tự động hủy quyền tác giả đã cấp. Thành phần, model và tài sản bên thứ ba chịu giấy phép riêng; xem [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
 
-Điều 6 Apache-2.0 không cấp quyền sử dụng thương hiệu chung, ngoại trừ sử dụng hợp lý, thông thường để mô tả nguồn gốc và sao chép các thông báo bắt buộc. Nhà phát triển không tự nhận đã đăng ký nhãn hiệu khi không có chứng cứ. Không mạo danh rainaku, tác giả gốc hay bản dựng chính thức; bản sửa đổi phải phân biệt rõ với bản phát hành chính thức. Không cấm việc nhắc tên nhằm mô tả nguồn gốc hoặc việc sử dụng được pháp luật cho phép. Tranh chấp tên gọi phụ thuộc quyền thực có và pháp luật áp dụng, không chỉ vào tuyên bố tại đây.
+Điều 6 Apache-2.0 không cấp quyền sử dụng thương hiệu chung, ngoại trừ sử dụng hợp lý, thông thường để mô tả nguồn gốc và sao chép các thông báo bắt buộc. Nhà phát triển không tự nhận đã đăng ký nhãn hiệu khi không có chứng cứ. Không mạo danh w0otdev, tác giả gốc hay bản dựng chính thức; bản sửa đổi phải phân biệt rõ với bản phát hành chính thức. Không cấm việc nhắc tên nhằm mô tả nguồn gốc hoặc việc sử dụng được pháp luật cho phép. Tranh chấp tên gọi phụ thuộc quyền thực có và pháp luật áp dụng, không chỉ vào tuyên bố tại đây.
 
 Dự án không nhận bản quyền đối với phần mềm độc lập, nhãn hiệu nền tảng, ảnh album, lời bài hát, video, phông chữ, biểu tượng hoặc trọng số model thuộc người khác. Chỉ ghi copyright cho phần thực sự có quyền.
 
@@ -57,7 +57,7 @@ Khóa API bạn nhập trong cài đặt V-Notch (bao gồm YouTube Data API, Op
 
 ### 4.2 Miễn trừ trách nhiệm về AI
 
-**Bản đóng gói không chính thức và lộ tài khoản:** Trong phạm vi pháp luật cho phép và tuân theo các ngoại lệ tại Mục 8–9, rainaku và những người đóng góp không chịu trách nhiệm đối với việc tài khoản, mật khẩu, cookie phiên, token hoặc khóa API của bạn bị lộ, đánh cắp hay sử dụng trái phép, hoặc thiệt hại phát sinh, do mã hay thay đổi được bên thứ ba đưa vào bản đóng gói/phân phối không do rainaku phát hành hoặc xác nhận chính thức. Bản đóng gói sử dụng tên, logo hoặc mã nguồn V-Notch không vì vậy mà trở thành bản chính thức. Hãy đối chiếu nguồn phát hành tại [kho chính thức của rainaku](https://github.com/rainaku/V-Notch) và [trang Releases](https://github.com/rainaku/V-Notch/releases). Điều khoản này không mặc nhiên quy mọi sự cố tài khoản cho người dùng hoặc bên đóng gói, không miễn trách nhiệm cho hành vi độc lập của rainaku/người đóng góp mà pháp luật quy định phải chịu trách nhiệm, và không hạn chế quyền sửa đổi, phân phối hợp pháp theo giấy phép mã nguồn mở.
+**Bản đóng gói không chính thức và lộ tài khoản:** Trong phạm vi pháp luật cho phép và tuân theo các ngoại lệ tại Mục 8–9, w0otdev và những người đóng góp không chịu trách nhiệm đối với việc tài khoản, mật khẩu, cookie phiên, token hoặc khóa API của bạn bị lộ, đánh cắp hay sử dụng trái phép, hoặc thiệt hại phát sinh, do mã hay thay đổi được bên thứ ba đưa vào bản đóng gói/phân phối không do w0otdev phát hành hoặc xác nhận chính thức. Bản đóng gói sử dụng tên, logo hoặc mã nguồn V-Notch không vì vậy mà trở thành bản chính thức. Hãy đối chiếu nguồn phát hành tại [kho chính thức của w0otdev](https://github.com/w0otdev/V-Notch) và [trang Releases](https://github.com/w0otdev/V-Notch/releases). Điều khoản này không mặc nhiên quy mọi sự cố tài khoản cho người dùng hoặc bên đóng gói, không miễn trách nhiệm cho hành vi độc lập của w0otdev/người đóng góp mà pháp luật quy định phải chịu trách nhiệm, và không hạn chế quyền sửa đổi, phân phối hợp pháp theo giấy phép mã nguồn mở.
 
 Các thông báo này áp dụng cho cả bản thử nghiệm và bản chính thức, luôn tuân theo các quyền bắt buộc được bảo lưu tại Mục 8–9.
 
@@ -91,7 +91,7 @@ Nếu bên thứ ba khiếu nại do bạn cố ý mạo danh bản chính thứ
 
 ## 10. Khiếu nại bản quyền, tài sản và bảo mật
 
-Nhà phát triển không lưu trữ tệp do người dùng đặt trong File Shelf. Với mã hoặc tài sản **thực sự nằm trong** kho/bản phát hành chính thức mà bạn cho là vi phạm, hãy cung cấp tác phẩm được bảo hộ, tư cách chủ thể quyền/đại diện, đường dẫn cụ thể hoặc số bản phát hành, nội dung bị khiếu nại, giải thích và kênh phản hồi an toàn. Dùng [GitHub Issues](https://github.com/rainaku/V-Notch/issues) khi thông báo không chứa dữ liệu nhạy cảm, hoặc quy trình báo cáo bản quyền của GitHub khi phù hợp. Không công khai mật khẩu, token, tài liệu riêng tư hoặc chi tiết khai thác lỗ hổng. Dự án sẽ xem xét khiếu nại có căn cứ và cân nhắc xóa, thay thế, ghi công, làm rõ hoặc biện pháp phù hợp; không hứa trước kết quả hay tự nhận được miễn trừ pháp lý đặc biệt. Đối với lỗ hổng, tìm kênh riêng tư đã được xác minh trên kho/hồ sơ nhà phát triển nếu có; nếu chưa có, không công khai chi tiết khai thác.
+Nhà phát triển không lưu trữ tệp do người dùng đặt trong File Shelf. Với mã hoặc tài sản **thực sự nằm trong** kho/bản phát hành chính thức mà bạn cho là vi phạm, hãy cung cấp tác phẩm được bảo hộ, tư cách chủ thể quyền/đại diện, đường dẫn cụ thể hoặc số bản phát hành, nội dung bị khiếu nại, giải thích và kênh phản hồi an toàn. Dùng [GitHub Issues](https://github.com/w0otdev/V-Notch/issues) khi thông báo không chứa dữ liệu nhạy cảm, hoặc quy trình báo cáo bản quyền của GitHub khi phù hợp. Không công khai mật khẩu, token, tài liệu riêng tư hoặc chi tiết khai thác lỗ hổng. Dự án sẽ xem xét khiếu nại có căn cứ và cân nhắc xóa, thay thế, ghi công, làm rõ hoặc biện pháp phù hợp; không hứa trước kết quả hay tự nhận được miễn trừ pháp lý đặc biệt. Đối với lỗ hổng, tìm kênh riêng tư đã được xác minh trên kho/hồ sơ nhà phát triển nếu có; nếu chưa có, không công khai chi tiết khai thác.
 
 ## 11. Quyền riêng tư
 
@@ -111,6 +111,6 @@ Nếu một phần vô hiệu, chỉ phần đó không áp dụng trong giới 
 
 ## 15. Liên hệ và lịch sử
 
-Kho chính thức: https://github.com/rainaku/V-Notch  
-Liên hệ chung: https://github.com/rainaku/V-Notch/issues (công khai; không đăng thông tin bí mật).  
+Kho chính thức: https://github.com/w0otdev/V-Notch  
+Liên hệ chung: https://github.com/w0otdev/V-Notch/issues (công khai; không đăng thông tin bí mật).  
 Có hiệu lực từ 03/10/2026. Xem bản cũ trong lịch sử repo. Đây là dự thảo công bố của dự án, không phải bằng chứng luật sư đã duyệt hoặc bản nhị phân đã được kiểm toán.

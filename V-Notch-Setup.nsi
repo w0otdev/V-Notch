@@ -4,10 +4,10 @@
 ; Framework-dependent: checks/installs .NET 8 Desktop Runtime
 
 !define APP_NAME "V-Notch"
-!define APP_PUBLISHER "rainaku"
+!define APP_PUBLISHER "w0otdev"
 !define APP_EXE "V-Notch.exe"
 !define APP_BUILD_DIR "release"
-!define APP_URL "https://github.com/rainaku/V-Notch"
+!define APP_URL "https://github.com/w0otdev/V-Notch"
 
 ; Match the application's net8.0 target. Digest comes from Microsoft's 8.0 release metadata.
 !define DOTNET_VERSION "8.0"

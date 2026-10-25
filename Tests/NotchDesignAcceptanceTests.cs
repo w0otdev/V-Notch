@@ -92,13 +92,17 @@ public sealed class NotchDesignAcceptanceTests
     public void ReducedMotionHoverKeepsTheNotchStillAndShowsLightFeedback() => SharedStaTestRunner.Run(() =>
     {
         bool previous = AnimationConfig.ReduceMotion;
-        using var fixture = new GreetingAcceptanceTests.MainWindowFixture("en", greeting: false);
+        using var fixture = new GreetingAcceptanceTests.MainWindowFixture("en", greeting: false,
+            options => { options.EnableLocalOnlyMode = true; options.DisableMouseLeaveAutoClose = true; },
+            services => services.AddSingleton<IMediaDetectionService>(new Fakes.FakeMediaDetectionService()));
         try
         {
+            fixture.Window.SetDebugViewLock(true);
             fixture.Window.ShowActivated = false;
             fixture.Window.Show();
             PumpUntil(() => Field<bool>(fixture.Window, "_isStartupLayoutReady"));
             Field<IMediaDetectionService>(fixture.Window, "_mediaService").Stop();
+            Field<UiScheduledTimer>(fixture.Window, "_updateTimer").Stop();
             PumpUntil(() => !IsAnimating(fixture.Window));
             AnimationConfig.SetReduceMotion(true);
             Invoke(fixture.Window, "AnimateNotchHover", true);

@@ -447,10 +447,6 @@ public sealed class ClipboardHistoryController : IDisposable, IAsyncDisposable
             catch (OperationCanceledException) { }
         }
     }
-    /// <summary>
-    /// Locks the Personal Vault when the system suspends (lid close / Modern Standby / hibernate).
-    /// Windows fires <see cref="Microsoft.Win32.PowerModes.Suspend"/> instead of SessionLock in these cases.
-    /// </summary>
     private async void PowerModeChanged(object sender, PowerModeChangedEventArgs e)
     {
         if (!_disposed && e.Mode == PowerModes.Suspend)

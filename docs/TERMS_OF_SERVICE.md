@@ -1,8 +1,8 @@
 # V-Notch — Terms of Use
 
 **Effective date:** October 3, 2026
-**Maintainer:** rainaku  
-**Project:** https://github.com/rainaku/V-Notch  
+**Maintainer:** w0otdev  
+**Project:** https://github.com/w0otdev/V-Notch  
 **Applies to:** official Windows desktop releases and related project materials, subject to the overriding open-source licenses below. The currently described application version is 2.1; confirm the version of the actual released binary.
 
 > **Important:** V-Notch is an independent, free and open-source project, not a paid hosted service. This document does not amend Apache-2.0 or third-party licenses, deprive users of mandatory statutory rights, grant rights to third-party content, or establish an authorization from any media service. No clause guarantees protection against a legal claim.
@@ -15,7 +15,7 @@ These Terms describe the maintainer's official distribution channels, ancillary 
 
 The project identifies its own original code as licensed under Apache License 2.0; see [LICENSE](../LICENSE). You may use, modify, fork, redistribute and sell copies of material to which that license validly applies, in source or object form, subject to its conditions. Under Apache-2.0 §4, distributors must provide the license, mark modified files prominently, retain applicable source-form legal notices and reproduce applicable NOTICE attributions where a NOTICE file exists. They are **not** required by Apache-2.0 to retain every original user-interface credit or use a particular product name. This Terms document does not prohibit otherwise licensed redistribution or automatically revoke granted copyright rights. Third-party code, models and assets are subject to their own licenses; see [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
 
-Apache-2.0 §6 does not grant a general trademark license, except reasonable and customary use to describe origin and reproduce required notices. The maintainer claims no trademark registration not actually held. Do not falsely claim to be rainaku, the original author, an authorized official build or endorsed by the maintainer; distinguish modified builds from the maintainer's official releases. Descriptive references and legally permitted uses are not prohibited. Branding disputes depend on applicable law and actual rights, not a declaration in this document.
+Apache-2.0 §6 does not grant a general trademark license, except reasonable and customary use to describe origin and reproduce required notices. The maintainer claims no trademark registration not actually held. Do not falsely claim to be w0otdev, the original author, an authorized official build or endorsed by the maintainer; distinguish modified builds from the maintainer's official releases. Descriptive references and legally permitted uses are not prohibited. Branding disputes depend on applicable law and actual rights, not a declaration in this document.
 
 The project does not claim copyright ownership in independently owned software, platform trademarks, album art, lyrics, videos, fonts, icons or model weights. Copyright notices identify only material for which the named person actually holds rights.
 
@@ -57,7 +57,7 @@ API keys entered into V-Notch settings (including YouTube Data API, OpenAI, Goog
 
 ### 4.2 AI disclaimers
 
-**Unofficial packages and account exposure:** To the extent permitted by applicable law and subject to the exceptions in Sections 8–9, rainaku and contributors are not responsible for exposure, theft or unauthorized use of your account, passwords, session cookies, tokens or API keys, or resulting losses, caused by code or modifications introduced by third parties into packages/distributions that rainaku has not officially released or confirmed. Use of the V-Notch name, logo or source code does not make a package official. Verify release sources against [rainaku's official repository](https://github.com/rainaku/V-Notch) and [Releases page](https://github.com/rainaku/V-Notch/releases). This provision does not automatically attribute every account incident to the user or packager, excuse independently actionable conduct by rainaku/contributors, or restrict lawful modification and redistribution under the open-source license.
+**Unofficial packages and account exposure:** To the extent permitted by applicable law and subject to the exceptions in Sections 8–9, w0otdev and contributors are not responsible for exposure, theft or unauthorized use of your account, passwords, session cookies, tokens or API keys, or resulting losses, caused by code or modifications introduced by third parties into packages/distributions that w0otdev has not officially released or confirmed. Use of the V-Notch name, logo or source code does not make a package official. Verify release sources against [w0otdev's official repository](https://github.com/w0otdev/V-Notch) and [Releases page](https://github.com/w0otdev/V-Notch/releases). This provision does not automatically attribute every account incident to the user or packager, excuse independently actionable conduct by w0otdev/contributors, or restrict lawful modification and redistribution under the open-source license.
 
 These notices apply to both pre-release and official releases, subject to the mandatory protections in Sections 8–9.
 
@@ -91,7 +91,7 @@ For a third-party claim caused by your intentional unlawful impersonation of the
 
 ## 10. Copyright, asset and security complaints
 
-The developer does not host File Shelf user files. For allegedly infringing code or assets **actually included** in the official repository or releases, provide the work claimed, ownership/authority, exact repository path or release, the allegedly infringing content, an explanation and a safe private reply channel. Use [GitHub Issues](https://github.com/rainaku/V-Notch/issues) for non-sensitive notices and GitHub's copyright reporting process when appropriate. Do not publish passwords, tokens, private documents or exploit details in a public issue. We will review substantiated reports and consider removal, replacement, attribution, clarification or other appropriate measures; no automatic promise of a particular outcome or statutory safe harbor is made. For vulnerabilities, use a verified private channel if one is published on the repository or maintainer profile; absent one, do not post exploit details publicly.
+The developer does not host File Shelf user files. For allegedly infringing code or assets **actually included** in the official repository or releases, provide the work claimed, ownership/authority, exact repository path or release, the allegedly infringing content, an explanation and a safe private reply channel. Use [GitHub Issues](https://github.com/w0otdev/V-Notch/issues) for non-sensitive notices and GitHub's copyright reporting process when appropriate. Do not publish passwords, tokens, private documents or exploit details in a public issue. We will review substantiated reports and consider removal, replacement, attribution, clarification or other appropriate measures; no automatic promise of a particular outcome or statutory safe harbor is made. For vulnerabilities, use a verified private channel if one is published on the repository or maintainer profile; absent one, do not post exploit details publicly.
 
 ## 11. Privacy
 
@@ -111,6 +111,6 @@ If a provision is unenforceable, only the affected part is disregarded to the ex
 
 ## 15. Contact and document history
 
-Official repository: https://github.com/rainaku/V-Notch  
-General contact: https://github.com/rainaku/V-Notch/issues (public; do not share secrets).  
+Official repository: https://github.com/w0otdev/V-Notch  
+General contact: https://github.com/w0otdev/V-Notch/issues (public; do not share secrets).  
 Effective October 3, 2026. Review earlier versions using repository history. This document is a project publication draft, not a representation of legal counsel's approval or audited binary behavior.

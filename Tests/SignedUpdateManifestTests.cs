@@ -12,7 +12,7 @@ namespace VNotch.Tests;
 
 public sealed class SignedUpdateManifestTests
 {
-    private const string ReleaseRoot = "https://github.com/rainaku/V-Notch/releases/download/v99.0.0/";
+    private const string ReleaseRoot = "https://github.com/w0otdev/V-Notch/releases/download/v99.0.0/";
     private static readonly byte[] Installer = Encoding.UTF8.GetBytes("test installer bytes; never executed");
     private static SignedUpdateManifest Manifest => new(1, "99.0.0", UpdateService.SetupName,
         Installer.Length, Convert.ToHexString(SHA256.HashData(Installer)));

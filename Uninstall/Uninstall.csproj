@@ -17,10 +17,10 @@
     <PublishSingleFile>true</PublishSingleFile>
     <SelfContained>false</SelfContained>
 
-    <Authors>rainaku</Authors>
+    <Authors>w0otdev</Authors>
     <Company>V-Notch</Company>
     <Product>V-Notch Uninstaller</Product>
-    <Copyright>Copyright © 2026 rainaku</Copyright>
+    <Copyright>Copyright © 2026 w0otdev</Copyright>
     <Description>Completely removes V-Notch and all of its data from this computer.</Description>
     <ApplicationIcon>..\Services\icons\logo.ico</ApplicationIcon>
   </PropertyGroup>

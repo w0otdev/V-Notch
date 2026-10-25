@@ -120,7 +120,7 @@ public sealed class SetupOperationsIntegrationTests
                 path => Registry.CurrentUser.CreateSubKey(registryRoot + (path.Contains(@"\Uninstall\", StringComparison.Ordinal) ? @"\uninstall" : @"\app")));
             using var key = Registry.CurrentUser.OpenSubKey(registryRoot + @"\uninstall");
             Assert.Equal("V-Notch", key!.GetValue("DisplayName"));
-            Assert.Equal("rainaku", key.GetValue("Publisher"));
+            Assert.Equal("w0otdev", key.GetValue("Publisher"));
             Assert.Equal(fixture.Root, key.GetValue("InstallLocation"));
             Assert.Equal(executable, key.GetValue("DisplayIcon"));
             Assert.Equal(dedicated ? $"\"{uninstaller}\"" : $"\"{executable}\" --uninstall", key.GetValue("UninstallString"));

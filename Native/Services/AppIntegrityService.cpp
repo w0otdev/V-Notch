@@ -8,11 +8,13 @@ class AppIntegrityService final
 public:
     static bool IsOfficialRepositoryPath(std::u16string_view path) noexcept
     {
-        if (vnotch::equals_icase_ascii(path, u"/rainaku/V-Notch"))
+        if (vnotch::equals_icase_ascii(path, u"/w0otdev/V-Notch") ||
+            vnotch::equals_icase_ascii(path, u"/rainaku/V-Notch"))
         {
             return true;
         }
-        return vnotch::starts_with_icase_ascii(path, u"/rainaku/V-Notch/");
+        return vnotch::starts_with_icase_ascii(path, u"/w0otdev/V-Notch/") ||
+               vnotch::starts_with_icase_ascii(path, u"/rainaku/V-Notch/");
     }
 
     static bool IsReleaseAssetHost(std::u16string_view host) noexcept
@@ -41,7 +43,8 @@ public:
         {
             return false;
         }
-        return vnotch::starts_with_icase_ascii(abs_path, u"/rainaku/V-Notch/releases/download/");
+        return vnotch::starts_with_icase_ascii(abs_path, u"/w0otdev/V-Notch/releases/download/") ||
+               vnotch::starts_with_icase_ascii(abs_path, u"/rainaku/V-Notch/releases/download/");
     }
 
     static bool IsTrustedReleaseRedirect(

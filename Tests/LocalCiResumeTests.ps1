@@ -15,6 +15,7 @@ try {
     $global:CiResumeCalls = [Collections.Generic.List[string]]::new()
     $global:CiResumeFailFormat = $true
     $global:CiResumeFailBuild = $false
+    $env:VNOTCH_CI_RESUME_TEST_FIXTURE = '1'
     function global:python {
         $global:CiResumeCalls.Add('python')
         $global:LASTEXITCODE = 0
@@ -62,6 +63,7 @@ try {
     Remove-Item -LiteralPath 'Function:\python' -Force -ErrorAction SilentlyContinue
     Remove-Item -LiteralPath 'Function:\dotnet' -Force -ErrorAction SilentlyContinue
     Remove-Variable -Name CiResumeCalls, CiResumeFailFormat, CiResumeFailBuild -Scope Global -ErrorAction SilentlyContinue
+    [Environment]::SetEnvironmentVariable('VNOTCH_CI_RESUME_TEST_FIXTURE', $null, 'Process')
     $global:LASTEXITCODE = 0
     $resolved = [IO.Path]::GetFullPath($fixture)
     $tempRoot = [IO.Path]::GetFullPath([IO.Path]::GetTempPath())

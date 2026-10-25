@@ -146,7 +146,7 @@ public sealed class NotchNavigationIntegrationTests
         await StartAsync(window, ct);
         var coordinator = Field<NotchTransitionCoordinator>(window, "_transitionCoordinator");
         coordinator.NotifyCountdownCompleted();
-        await WpfFrameWaiter.UntilAsync(() => !IsAnimating(window), "countdown completion", ct);
+        await WpfFrameWaiter.UntilAsync(() => !coordinator.IsTransitionActive && !IsAnimating(window), "countdown completion", ct);
         Assert.Equal(NotchView.Timer, coordinator.CurrentView);
 
         window.SetDebugViewLock(false);
@@ -202,6 +202,7 @@ public sealed class NotchNavigationIntegrationTests
         window.Show();
         await WpfFrameWaiter.UntilAsync(() => Field<bool>(window, "_isStartupLayoutReady") && !IsAnimating(window), "startup", ct);
         Field<IMediaDetectionService>(window, "_mediaService").Stop();
+        Field<UiScheduledTimer>(window, "_updateTimer").Stop();
     }
 
     private static T Field<T>(MainWindow window, string name) => (T)typeof(MainWindow).GetField(name, Private)!.GetValue(window)!;

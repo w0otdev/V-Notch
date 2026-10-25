@@ -37,13 +37,13 @@
     <Version>2.2.0</Version>
     <AssemblyVersion>2.2.0</AssemblyVersion>
     <FileVersion>2.2.0</FileVersion>
-    <Authors>rainaku</Authors>
+    <Authors>w0otdev</Authors>
     <Company>V-Notch</Company>
     <Product>V-Notch</Product>
-    <Copyright>Copyright © 2026 rainaku</Copyright>
+    <Copyright>Copyright © 2026 w0otdev</Copyright>
     <PackageId>V-Notch</PackageId>
-    <PackageProjectUrl>https://github.com/rainaku/V-Notch</PackageProjectUrl>
-    <RepositoryUrl>https://github.com/rainaku/V-Notch</RepositoryUrl>
+    <PackageProjectUrl>https://github.com/w0otdev/V-Notch</PackageProjectUrl>
+    <RepositoryUrl>https://github.com/w0otdev/V-Notch</RepositoryUrl>
     <RepositoryType>git</RepositoryType>
     <Description>A desktop status and media companion for Windows</Description>
     <ApplicationIcon>Services\icons\logo.ico</ApplicationIcon>
@@ -197,14 +197,22 @@
     <_VNotchNativeBaselineSources Include="$(MSBuildThisFileDirectory)Native\**\*.cpp" Exclude="$(MSBuildThisFileDirectory)Native\**\*.avx2.cpp" />
   </ItemGroup>
   <Target Name="CompileVNotchNative" BeforeTargets="BeforeBuild" Condition="'$(SkipNativeCompile)' != 'true' And '$(DesignTimeBuild)' != 'true'" Inputs="@(_VNotchNativeSources);@(_VNotchNativeHeaders)" Outputs="$(_VNotchNativeDll)">
+    <PropertyGroup Condition="'$(VcVars64Path)' == ''">
+      <_VsWherePath>$(MSBuildProgramFiles32)\Microsoft Visual Studio\Installer\vswhere.exe</_VsWherePath>
+    </PropertyGroup>
+    <Exec Condition="'$(VcVars64Path)' == '' And Exists('$(_VsWherePath)')" Command="&quot;$(_VsWherePath)&quot; -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -find **\vcvars64.bat" ConsoleToMSBuild="true" EchoOff="true" StandardOutputImportance="Low" IgnoreExitCode="true">
+      <Output TaskParameter="ConsoleOutput" ItemName="_VcVarsFromVsWhere" />
+    </Exec>
     <ItemGroup Condition="'$(VcVars64Path)' == ''">
-      <_VcVarsCandidate Include="$(MSBuildProgramFiles32)\Microsoft Visual Studio\2022\*\VC\Auxiliary\Build\vcvars64.bat" />
-      <_VcVarsCandidate Include="C:\Program Files\Microsoft Visual Studio\2022\*\VC\Auxiliary\Build\vcvars64.bat" />
+      <_VcVarsCandidate Include="@(_VcVarsFromVsWhere)" Condition="Exists('%(Identity)')" />
+      <_VcVarsCandidate Include="$(MSBuildProgramFiles32)\Microsoft Visual Studio\*\*\VC\Auxiliary\Build\vcvars64.bat" />
+      <_VcVarsCandidate Include="C:\Program Files\Microsoft Visual Studio\*\*\VC\Auxiliary\Build\vcvars64.bat" />
     </ItemGroup>
     <PropertyGroup Condition="'$(VcVars64Path)' == ''">
       <VcVars64Path Condition="'@(_VcVarsCandidate)' != ''">%(_VcVarsCandidate.FullPath)</VcVars64Path>
     </PropertyGroup>
-    <MakeDir Directories="$(MSBuildThisFileDirectory)Native\out;$(_VNotchNativeObjDir)" Condition="'$(VcVars64Path)' != '' And Exists('$(VcVars64Path)')" />
+    <Error Condition="'$(VcVars64Path)' == '' Or !Exists('$(VcVars64Path)')" Text="vcvars64.bat was not found. Install the Visual Studio C++ x64 build tools or pass -p:VcVars64Path=..." />
+    <MakeDir Directories="$(MSBuildThisFileDirectory)Native\out;$(_VNotchNativeObjDir)" />
     <!--
       Baseline x64 (SSE2) for everything except *.avx2.cpp. The AVX2 kernels are compiled with /arch:AVX2
       and only entered after the runtime check in Native\vnotch_cpu.h, so the DLL loads and runs on CPUs
@@ -214,14 +222,20 @@
       <_VNotchNativeStaleObj Include="$(_VNotchNativeObjDir)\*.obj" />
     </ItemGroup>
     <Delete Files="@(_VNotchNativeStaleObj)" Condition="'$(VcVars64Path)' != '' And Exists('$(VcVars64Path)')" />
-    <WriteLinesToFile File="$(_VNotchNativeObjDir)\baseline.rsp" Lines="@(_VNotchNativeBaselineSources -> '&quot;%(FullPath)&quot;')" Overwrite="true" Condition="'$(VcVars64Path)' != '' And Exists('$(VcVars64Path)')" />
-    <WriteLinesToFile File="$(_VNotchNativeObjDir)\avx2.rsp" Lines="@(_VNotchNativeAvx2Sources -> '&quot;%(FullPath)&quot;')" Overwrite="true" Condition="'$(VcVars64Path)' != '' And Exists('$(VcVars64Path)')" />
-    <Exec Condition="'$(VcVars64Path)' != '' And Exists('$(VcVars64Path)')" Command="call &quot;$(VcVars64Path)&quot; &gt;nul &amp;&amp; cl.exe /nologo /c /std:c++latest /O2 /Oi /Ot /GL /MT /EHsc /MP /W4 /utf-8 /I&quot;$(MSBuildThisFileDirectory)Native&quot; /Fo&quot;$(_VNotchNativeObjDir)\\&quot; @&quot;$(_VNotchNativeObjDir)\baseline.rsp&quot; &amp;&amp; cl.exe /nologo /c /std:c++latest /O2 /Oi /Ot /arch:AVX2 /MT /EHsc /MP /W4 /utf-8 /I&quot;$(MSBuildThisFileDirectory)Native&quot; /Fo&quot;$(_VNotchNativeObjDir)\\&quot; @&quot;$(_VNotchNativeObjDir)\avx2.rsp&quot;" IgnoreStandardErrorWarningFormat="true" />
+    <WriteLinesToFile File="$(_VNotchNativeObjDir)\baseline.rsp" Lines="@(_VNotchNativeBaselineSources -> '&quot;%(FullPath)&quot;')" Overwrite="true" />
+    <WriteLinesToFile File="$(_VNotchNativeObjDir)\avx2.rsp" Lines="@(_VNotchNativeAvx2Sources -> '&quot;%(FullPath)&quot;')" Overwrite="true" />
+    <PropertyGroup>
+      <_NativeBaselineOptFlags Condition="'$(NativeFastCompile)' == 'true'">/O2 /Oi /Ot</_NativeBaselineOptFlags>
+      <_NativeBaselineOptFlags Condition="'$(NativeFastCompile)' != 'true'">/O2 /Oi /Ot /GL</_NativeBaselineOptFlags>
+      <_NativeLinkOptFlags Condition="'$(NativeFastCompile)' == 'true'">/OPT:REF /OPT:ICF</_NativeLinkOptFlags>
+      <_NativeLinkOptFlags Condition="'$(NativeFastCompile)' != 'true'">/LTCG /OPT:REF /OPT:ICF</_NativeLinkOptFlags>
+    </PropertyGroup>
+    <Exec Command="call &quot;$(VcVars64Path)&quot; &gt;nul &amp;&amp; cl.exe /nologo /c /std:c++latest $(_NativeBaselineOptFlags) /MT /EHsc /MP /W4 /utf-8 /I&quot;$(MSBuildThisFileDirectory)Native&quot; /Fo&quot;$(_VNotchNativeObjDir)\\&quot; @&quot;$(_VNotchNativeObjDir)\baseline.rsp&quot; &amp;&amp; cl.exe /nologo /c /std:c++latest /O2 /Oi /Ot /arch:AVX2 /MT /EHsc /MP /W4 /utf-8 /I&quot;$(MSBuildThisFileDirectory)Native&quot; /Fo&quot;$(_VNotchNativeObjDir)\\&quot; @&quot;$(_VNotchNativeObjDir)\avx2.rsp&quot;" IgnoreStandardErrorWarningFormat="true" />
     <ItemGroup>
       <_VNotchNativeObj Include="$(_VNotchNativeObjDir)\*.obj" />
     </ItemGroup>
-    <WriteLinesToFile File="$(_VNotchNativeObjDir)\link.rsp" Lines="@(_VNotchNativeObj -> '&quot;%(FullPath)&quot;')" Overwrite="true" Condition="'$(VcVars64Path)' != '' And Exists('$(VcVars64Path)')" />
-    <Exec Condition="'$(VcVars64Path)' != '' And Exists('$(VcVars64Path)')" Command="call &quot;$(VcVars64Path)&quot; &gt;nul &amp;&amp; link.exe /nologo /DLL /LTCG /OPT:REF /OPT:ICF /OUT:&quot;$(_VNotchNativeDll)&quot; /IMPLIB:&quot;$(_VNotchNativeObjDir)\VNotch.Native.lib&quot; @&quot;$(_VNotchNativeObjDir)\link.rsp&quot;" IgnoreStandardErrorWarningFormat="true" />
+    <WriteLinesToFile File="$(_VNotchNativeObjDir)\link.rsp" Lines="@(_VNotchNativeObj -> '&quot;%(FullPath)&quot;')" Overwrite="true" />
+    <Exec Command="call &quot;$(VcVars64Path)&quot; &gt;nul &amp;&amp; link.exe /nologo /DLL $(_NativeLinkOptFlags) /OUT:&quot;$(_VNotchNativeDll)&quot; /IMPLIB:&quot;$(_VNotchNativeObjDir)\VNotch.Native.lib&quot; @&quot;$(_VNotchNativeObjDir)\link.rsp&quot;" IgnoreStandardErrorWarningFormat="true" />
   </Target>
   <Target Name="BuildNativeDll" DependsOnTargets="CompileVNotchNative" />
 
