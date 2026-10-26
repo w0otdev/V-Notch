@@ -26,11 +26,12 @@ public partial class HoverDetectionService : IDisposable
     private readonly TimeSpan _leaveDelay = TimeSpan.FromMilliseconds(400);
     private bool _pendingEnter;
     private bool _pendingLeave;
+    private int _lastPolledX = int.MinValue;
+    private int _lastPolledY = int.MinValue;
 
     public event EventHandler? HoverEnter;
     public event EventHandler? HoverLeave;
     public event EventHandler<Point>? MousePositionChanged;
-
 
     [LibraryImport("VNotch.Native.dll")]
     private static partial int vn_hover_is_in_top_edge_reveal_zone(
@@ -43,7 +44,6 @@ public partial class HoverDetectionService : IDisposable
         double notchLeft, double notchTop, double notchWidth, double notchHeight,
         double px, double py,
         out double outDist);
-
 
     public bool IsHovering => _isHovering;
 
@@ -80,12 +80,16 @@ public partial class HoverDetectionService : IDisposable
             width + _hoverZoneMargin * 2,
             height + _hoverZoneMargin
         );
+        _lastPolledX = int.MinValue;
+        _lastPolledY = int.MinValue;
     }
 
     public void Start()
     {
         if (!_disposed && !_pollTimer.IsEnabled)
         {
+            _lastPolledX = int.MinValue;
+            _lastPolledY = int.MinValue;
             _pollTimer.Start();
             PollTimer_Tick(this, EventArgs.Empty);
         }
@@ -97,12 +101,19 @@ public partial class HoverDetectionService : IDisposable
         _hoverDelayTimer.Stop();
         _pendingEnter = false;
         _pendingLeave = false;
+        _lastPolledX = int.MinValue;
+        _lastPolledY = int.MinValue;
     }
 
     private void PollTimer_Tick(object? sender, EventArgs e)
     {
         if (!Win32Interop.GetCursorPos(out Win32Interop.POINT point)) return;
 
+        if (!_pendingEnter && !_pendingLeave && point.X == _lastPolledX && point.Y == _lastPolledY)
+            return;
+
+        _lastPolledX = point.X;
+        _lastPolledY = point.Y;
         ProcessMousePosition(new Point(point.X, point.Y), Stopwatch.GetTimestamp());
     }
 
@@ -110,12 +121,17 @@ public partial class HoverDetectionService : IDisposable
     {
         if (_inputWindow == null || !_inputWindow.IsLoaded || !_pollTimer.IsEnabled) return;
 
-        ProcessMousePosition(_inputWindow.PointToScreen(e.GetPosition(_inputWindow)), Stopwatch.GetTimestamp());
+        Point screenPt = _inputWindow.PointToScreen(e.GetPosition(_inputWindow));
+        _lastPolledX = (int)screenPt.X;
+        _lastPolledY = (int)screenPt.Y;
+        ProcessMousePosition(screenPt, Stopwatch.GetTimestamp());
     }
 
     private void HoverDelayTimer_Tick(object? sender, EventArgs e)
     {
         _hoverDelayTimer.Stop();
+        _lastPolledX = int.MinValue;
+        _lastPolledY = int.MinValue;
         // Recheck at the deadline even if the cursor stopped moving.
         PollTimer_Tick(sender, e);
     }
@@ -223,6 +239,8 @@ public partial class HoverDetectionService : IDisposable
         _isHovering = false;
         _pendingEnter = false;
         _pendingLeave = false;
+        _lastPolledX = int.MinValue;
+        _lastPolledY = int.MinValue;
         _hoverDelayTimer.Stop();
     }
 

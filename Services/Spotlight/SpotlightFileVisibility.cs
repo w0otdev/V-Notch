@@ -2,8 +2,8 @@ using System;
 using System.Collections.Frozen;
 using System.Collections.Generic;
 using System.IO;
-using System.Linq;
 using System.Runtime.InteropServices;
+using System.Text;
 using VNotch.Models;
 
 namespace VNotch.Services.Spotlight;
@@ -37,16 +37,7 @@ internal static partial class SpotlightFileVisibility
         byte isUnderHiddenRoot,
         out byte outResult);
 
-    internal static IReadOnlyList<string> HiddenRoots { get; } = Array.AsReadOnly(new[]
-    {
-        Environment.GetFolderPath(Environment.SpecialFolder.Windows),
-        Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles),
-        Environment.GetFolderPath(Environment.SpecialFolder.ProgramFilesX86),
-        Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData),
-        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-        Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData)
-    }.Where(path => !string.IsNullOrWhiteSpace(path))
-        .Select(Path.TrimEndingDirectorySeparator).Distinct(StringComparer.OrdinalIgnoreCase).ToArray());
+    internal static IReadOnlyList<string> HiddenRoots { get; } = BuildHiddenRoots();
 
     internal static FrozenSet<string> HiddenDirectories { get; } = new[]
     {
@@ -61,13 +52,70 @@ internal static partial class SpotlightFileVisibility
         ".tmp", ".temp", ".cache", ".etl", ".manifest"
     }.ToFrozenSet(StringComparer.OrdinalIgnoreCase);
 
-    private static readonly string EverythingExclusionSuffix = " "
-        + string.Join(" ", HiddenRoots.Select(root => "!\"" + root + "\\\"")) + " "
-        + string.Join(" ", HiddenDirectories.Select(folder => "!\"\\" + folder + "\\\"")) + " "
-        + string.Join(" ", HiddenExtensions.Select(extension => "!*" + extension));
+    private static readonly string EverythingExclusionSuffix = BuildEverythingExclusionSuffix();
 
-    private static readonly string WindowsExclusionScope = string.Concat(HiddenRoots.Select(root =>
-        " AND NOT SCOPE='file:" + root.Replace('\\', '/').Replace("'", "''") + "/'"));
+    private static readonly string WindowsExclusionScope = BuildWindowsExclusionScope();
+
+    private static IReadOnlyList<string> BuildHiddenRoots()
+    {
+        string[] candidates =
+        {
+            Environment.GetFolderPath(Environment.SpecialFolder.Windows),
+            Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles),
+            Environment.GetFolderPath(Environment.SpecialFolder.ProgramFilesX86),
+            Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData),
+            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+            Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData)
+        };
+
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var roots = new List<string>(candidates.Length);
+        for (int i = 0; i < candidates.Length; i++)
+        {
+            string path = candidates[i];
+            if (string.IsNullOrWhiteSpace(path)) continue;
+            string trimmed = Path.TrimEndingDirectorySeparator(path);
+            if (seen.Add(trimmed))
+            {
+                roots.Add(trimmed);
+            }
+        }
+
+        return Array.AsReadOnly(roots.ToArray());
+    }
+
+    private static string BuildEverythingExclusionSuffix()
+    {
+        var sb = new StringBuilder(512);
+        for (int i = 0; i < HiddenRoots.Count; i++)
+        {
+            sb.Append(" !\"").Append(HiddenRoots[i]).Append("\\\"");
+        }
+
+        foreach (string folder in HiddenDirectories)
+        {
+            sb.Append(" !\"\\").Append(folder).Append("\\\"");
+        }
+
+        foreach (string extension in HiddenExtensions)
+        {
+            sb.Append(" !*").Append(extension);
+        }
+
+        return sb.ToString();
+    }
+
+    private static string BuildWindowsExclusionScope()
+    {
+        var sb = new StringBuilder(256);
+        for (int i = 0; i < HiddenRoots.Count; i++)
+        {
+            string escaped = HiddenRoots[i].Replace('\\', '/').Replace("'", "''");
+            sb.Append(" AND NOT SCOPE='file:").Append(escaped).Append("/'");
+        }
+
+        return sb.ToString();
+    }
 
     internal static bool IsExplicitPath(string query)
     {
@@ -94,7 +142,7 @@ internal static partial class SpotlightFileVisibility
     {
         string rawTarget = item.Target ?? string.Empty;
         if (LocalPathPolicy.IsUncPath(rawTarget)) return false;
-        string normalizedPath = rawTarget.Replace('/', '\\');
+        string normalizedPath = rawTarget.IndexOf('/') >= 0 ? rawTarget.Replace('/', '\\') : rawTarget;
         bool underHiddenRoot = false;
         for (int i = 0; i < HiddenRoots.Count; i++)
         {

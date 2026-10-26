@@ -215,3 +215,14 @@ struct VnJsonBoundaryState
 };
 
 #pragma pack(pop)
+
+VN_EXPORT int32_t __stdcall vn_visualizer_mix_frames_to_mono(
+    const uint8_t* buffer,
+    int32_t length,
+    int32_t bytes_recorded,
+    int32_t channel_count,
+    int32_t bits_per_sample,
+    uint8_t is_float,
+    float* out_mono,
+    int32_t mono_cap,
+    int32_t* out_frames_written) noexcept;

@@ -174,8 +174,7 @@ public sealed partial class MediaSessionVolumeService : IDisposable
             if (sessions == null || sessions.Count == 0)
                 return false;
 
-            var candidateProcessNames = GetProcessNameCandidates(sourceAppId);
-            var candidateProcessIds = GetCachedProcessIdsForSourceApp(sourceAppId, candidateProcessNames);
+            var candidateProcessIds = GetCachedProcessIdsForSourceApp(sourceAppId);
             var targetSession = FindBestMatchingSession(sessions, sourceAppId, candidateProcessIds);
 
             if (targetSession == null)
@@ -274,7 +273,7 @@ public sealed partial class MediaSessionVolumeService : IDisposable
         return candidates;
     }
 
-    private HashSet<uint> GetCachedProcessIdsForSourceApp(string sourceAppId, IEnumerable<string> processNames)
+    private HashSet<uint> GetCachedProcessIdsForSourceApp(string sourceAppId)
     {
         bool canUseCache =
             string.Equals(sourceAppId, _cachedProcessSourceAppId, StringComparison.OrdinalIgnoreCase) &&
@@ -284,7 +283,7 @@ public sealed partial class MediaSessionVolumeService : IDisposable
             return _cachedProcessIds;
 
         _cachedProcessSourceAppId = sourceAppId;
-        _cachedProcessIds = _getProcessIds(processNames);
+        _cachedProcessIds = _getProcessIds(GetProcessNameCandidates(sourceAppId));
         _cachedProcessIdsAtUtc = _utcNow();
         return _cachedProcessIds;
     }

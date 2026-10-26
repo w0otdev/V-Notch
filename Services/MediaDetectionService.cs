@@ -524,7 +524,7 @@ public sealed partial class MediaDetectionService : IMediaDetectionService, IAsy
                 _currentSession.TimelinePropertiesChanged += OnTimelineChanged;
                 _currentSession.PlaybackInfoChanged += OnPlaybackChanged;
                 _currentSession.MediaPropertiesChanged += OnMediaPropertiesChanged;
-                RuntimeLog.Debug(MediaSessionLogTag, () => $"Subscribed to session: {_currentSession.SourceAppUserModelId}");
+                RuntimeLog.Debug(MediaSessionLogTag, $"Subscribed to session: {_currentSession.SourceAppUserModelId}");
             }
         }
         catch (Exception ex)
@@ -676,7 +676,7 @@ public sealed partial class MediaDetectionService : IMediaDetectionService, IAsy
 
         if (oldMode != _currentMode)
         {
-            RuntimeLog.Debug("MEDIA-MODE", () => $"Detection mode: {oldMode} -> {_currentMode} (Playing={info.IsAnyMediaPlaying}, Track='{info.CurrentTrack}', Throttled={info.IsThrottled})");
+            RuntimeLog.Debug("MEDIA-MODE", $"Detection mode: {oldMode} -> {_currentMode} (Playing={info.IsAnyMediaPlaying}, Track='{info.CurrentTrack}', Throttled={info.IsThrottled})");
         }
     }
 
@@ -875,9 +875,8 @@ public sealed partial class MediaDetectionService : IMediaDetectionService, IAsy
 
         if (previousGapStartUtc == DateTime.MinValue)
         {
-            RuntimeLog.Debug("MEDIA-SESSION-GAP", () =>
-                $"Holding transient session gap for source='{_lastSource}' " +
-                $"lastTrack='{_lastTrackName}'");
+            RuntimeLog.Debug("MEDIA-SESSION-GAP",
+                $"Holding transient session gap for source='{_lastSource}' lastTrack='{_lastTrackName}'");
         }
 
         UpdateDetectionMode(info, isSessionGapRecovery: true);
@@ -999,9 +998,8 @@ public sealed partial class MediaDetectionService : IMediaDetectionService, IAsy
             double thumbAspect = (double)info.Thumbnail.PixelWidth / info.Thumbnail.PixelHeight;
             if (thumbAspect > 1.3)
             {
-                RuntimeLog.Debug("MEDIA-THUMB-STALE", () =>
-                    $"Suppressing stale wide SMTC thumb on new track publish: " +
-                    $"track='{info.CurrentTrack}' thumb={info.Thumbnail.PixelWidth}x{info.Thumbnail.PixelHeight} aspect={thumbAspect:F2}");
+                RuntimeLog.Debug("MEDIA-THUMB-STALE",
+                    $"Suppressing stale wide SMTC thumb on new track publish: track='{info.CurrentTrack}' thumb={info.Thumbnail.PixelWidth}x{info.Thumbnail.PixelHeight} aspect={thumbAspect:F2}");
                 info.Thumbnail = null;
             }
         }
@@ -1027,10 +1025,8 @@ public sealed partial class MediaDetectionService : IMediaDetectionService, IAsy
                 RuntimeLog.Info("MEDIA", "No media playback active (Idle).");
             }
 
-            RuntimeLog.Debug("MEDIA-EVENT", () =>
-                $"Firing MediaChanged: Source={info.MediaSource}, App={info.SourceAppId}, Track='{info.CurrentTrack}', Artist='{info.CurrentArtist}', " +
-                $"Pos={info.Position.TotalSeconds:F3}s, Dur={info.Duration.TotalSeconds:F3}s, IsPlaying={info.IsPlaying}, " +
-                $"Rate={info.PlaybackRate:F3}, LastUpdated={info.LastUpdated:O}");
+            RuntimeLog.Debug("MEDIA-EVENT",
+                $"Firing MediaChanged: Source={info.MediaSource}, App={info.SourceAppId}, Track='{info.CurrentTrack}', Artist='{info.CurrentArtist}', Pos={info.Position.TotalSeconds:F3}s, Dur={info.Duration.TotalSeconds:F3}s, IsPlaying={info.IsPlaying}, Rate={info.PlaybackRate:F3}, LastUpdated={info.LastUpdated:O}");
 
             if (dispatcher.CheckAccess())
             {
@@ -1297,7 +1293,7 @@ public sealed partial class MediaDetectionService : IMediaDetectionService, IAsy
             }
             catch (Exception ex)
             {
-                RuntimeLog.Debug("MEDIA-URL", () => $"URL scan ignored: {ex.Message}");
+                RuntimeLog.Debug("MEDIA-URL", $"URL scan ignored: {ex.Message}");
             }
         }
 
@@ -1345,10 +1341,8 @@ public sealed partial class MediaDetectionService : IMediaDetectionService, IAsy
             if (isNearSquare || isTopicChannel)
             {
                 needsFetch = false;
-                RuntimeLog.Debug(MediaThumbCropLogTag, () =>
-                    $"path=initial-smtc track='{info.CurrentTrack}' artist='{info.CurrentArtist}' source='{info.MediaSource}' " +
-                    $"thumb={info.Thumbnail.PixelWidth}x{info.Thumbnail.PixelHeight} aspect={thumbAspect:F2} " +
-                    $"isNearSquare={isNearSquare} isTopicChannel={isTopicChannel}");
+                RuntimeLog.Debug(MediaThumbCropLogTag,
+                    $"path=initial-smtc track='{info.CurrentTrack}' artist='{info.CurrentArtist}' source='{info.MediaSource}' thumb={info.Thumbnail.PixelWidth}x{info.Thumbnail.PixelHeight} aspect={thumbAspect:F2} isNearSquare={isNearSquare} isTopicChannel={isTopicChannel}");
                 string thumbnailSource = isPotentialSoundCloud && !isPotentialYouTube
                     ? SoundCloudPlatformName
                     : info.MediaSource ?? YouTubePlatformName;
@@ -1563,7 +1557,7 @@ public sealed partial class MediaDetectionService : IMediaDetectionService, IAsy
 
                     if (!videoMatchesTrack)
                     {
-                        RuntimeLog.Debug("META-YOUTUBE-API", () =>
+                        RuntimeLog.Debug("META-YOUTUBE-API",
                             $"video-mismatch: api-title='{urlResult.Title}' smtc-track='{trackDuringFetch}' videoId={videoId} -> discarding stale videoId");
                         if (!await ApplyIfCurrentAsync(() =>
                             {
@@ -1615,7 +1609,7 @@ public sealed partial class MediaDetectionService : IMediaDetectionService, IAsy
                 }
                 else
                 {
-                    RuntimeLog.Debug("META-YOUTUBE-API", () =>
+                    RuntimeLog.Debug("META-YOUTUBE-API",
                         $"validation-failed: oEmbed returned null for videoId={videoId} track='{trackDuringFetch}' -> discarding unvalidated videoId");
                     videoId = null;
                 }
@@ -1714,7 +1708,7 @@ public sealed partial class MediaDetectionService : IMediaDetectionService, IAsy
                             return;
                         }
 
-                        RuntimeLog.Debug("MEDIA-YOUTUBE-FETCH", () =>
+                        RuntimeLog.Debug("MEDIA-YOUTUBE-FETCH",
                             $"title-search-resolved track='{trackDuringFetch}' artist='{artistDuringFetch}' videoId={videoId}");
                     }
                 }
@@ -1803,9 +1797,8 @@ public sealed partial class MediaDetectionService : IMediaDetectionService, IAsy
                         {
                             bool isYtFetchTopicChannel = !string.IsNullOrEmpty(info.CurrentArtist) &&
                                                          info.CurrentArtist.EndsWith(" - Topic", StringComparison.OrdinalIgnoreCase);
-                            RuntimeLog.Debug(MediaThumbCropLogTag, () =>
-                                $"path=youtube-fetch track='{info.CurrentTrack}' artist='{info.CurrentArtist}' " +
-                                $"thumb={frameBitmap.PixelWidth}x{frameBitmap.PixelHeight} isTopicChannel={isYtFetchTopicChannel}");
+                            RuntimeLog.Debug(MediaThumbCropLogTag,
+                                $"path=youtube-fetch track='{info.CurrentTrack}' artist='{info.CurrentArtist}' thumb={frameBitmap.PixelWidth}x{frameBitmap.PixelHeight} isTopicChannel={isYtFetchTopicChannel}");
                             frameBitmap = CropToSquare(frameBitmap, YouTubePlatformName, forceCenterCrop: isYtFetchTopicChannel) ?? frameBitmap;
                             _timelineSimulator.RecoveredThumbnail = frameBitmap;
                             CachedThumbnail = frameBitmap;
@@ -1937,7 +1930,7 @@ public sealed partial class MediaDetectionService : IMediaDetectionService, IAsy
                                     if (!string.IsNullOrWhiteSpace(searchResult.ThumbnailUrl))
                                         preferredThumbnailUrl = searchResult.ThumbnailUrl;
 
-                                    RuntimeLog.Debug("MEDIA-YOUTUBE-FETCH", () =>
+                                    RuntimeLog.Debug("MEDIA-YOUTUBE-FETCH",
                                         $"title-search-after-poll track='{trackDuringFetch}' artist='{artistDuringFetch}' videoId={videoId}");
                                 }
                             }
@@ -2041,9 +2034,8 @@ public sealed partial class MediaDetectionService : IMediaDetectionService, IAsy
 
             if (info.Platform == MediaPlatform.YouTube || IsLikelyYouTube(info))
             {
-                RuntimeLog.Debug(MediaThumbCropLogTag, () =>
-                    $"soundcloud-fetch suppressed: track resolved as YouTube " +
-                    $"track='{trackDuringFetch}' cachedSource='{_cachedThumbnailSource}'");
+                RuntimeLog.Debug(MediaThumbCropLogTag,
+                    $"soundcloud-fetch suppressed: track resolved as YouTube track='{trackDuringFetch}' cachedSource='{_cachedThumbnailSource}'");
                 return;
             }
 
@@ -2427,10 +2419,8 @@ public sealed partial class MediaDetectionService : IMediaDetectionService, IAsy
         if (decision.ShouldHold &&
             previousTransitionStartUtc == DateTime.MinValue)
         {
-            RuntimeLog.Debug("MEDIA-AD-TRANSITION", () =>
-                $"Quarantining browser ad candidate track='{info.CurrentTrack}' " +
-                $"artist='{info.CurrentArtist}' duration={info.Duration.TotalSeconds:F1}s " +
-                $"session='{info.SessionInstanceKey}'");
+            RuntimeLog.Debug("MEDIA-AD-TRANSITION",
+                $"Quarantining browser ad candidate track='{info.CurrentTrack}' artist='{info.CurrentArtist}' duration={info.Duration.TotalSeconds:F1}s session='{info.SessionInstanceKey}'");
         }
 
         return decision;
@@ -2464,7 +2454,7 @@ public sealed partial class MediaDetectionService : IMediaDetectionService, IAsy
         if (decision.ShouldHold &&
             previousTransitionStartUtc == DateTime.MinValue)
         {
-            RuntimeLog.Debug("MEDIA-AD-TRANSITION", () =>
+            RuntimeLog.Debug("MEDIA-AD-TRANSITION",
                 $"Quarantining junk browser metadata for session='{info.SessionInstanceKey}'");
         }
 
@@ -2618,7 +2608,7 @@ public sealed partial class MediaDetectionService : IMediaDetectionService, IAsy
             Interlocked.Increment(ref _soundCloudFetchGeneration);
             Interlocked.Exchange(ref _soundCloudFetchInFlight, 0);
             Interlocked.Increment(ref _thumbnailFetchGeneration);
-            RuntimeLog.Debug("MEDIA-THUMB-INVALIDATE", () =>
+            RuntimeLog.Debug("MEDIA-THUMB-INVALIDATE",
                 $"Track changed: old='{_lastThumbTrackIdentity}' new='{currentTrackOnlyIdentityForThumb}' — cleared all thumbnail state");
         }
         _lastThumbTrackIdentity = currentTrackOnlyIdentityForThumb;
@@ -2907,10 +2897,8 @@ public sealed partial class MediaDetectionService : IMediaDetectionService, IAsy
 
                 if (thumbDecision == ThumbnailHeuristics.SmtcThumbnailDecision.Reject)
                 {
-                    RuntimeLog.Debug("MEDIA-THUMB-STALE", () =>
-                        $"Rejecting stale SMTC thumbnail on track change: " +
-                        $"track='{info.CurrentTrack}' source='{info.MediaSource}' " +
-                        $"thumb={newBitmap.PixelWidth}x{newBitmap.PixelHeight} aspect={(double)newBitmap.PixelWidth / newBitmap.PixelHeight:F2}");
+                    RuntimeLog.Debug("MEDIA-THUMB-STALE",
+                        $"Rejecting stale SMTC thumbnail on track change: track='{info.CurrentTrack}' source='{info.MediaSource}' thumb={newBitmap.PixelWidth}x{newBitmap.PixelHeight} aspect={(double)newBitmap.PixelWidth / newBitmap.PixelHeight:F2}");
                     info.Thumbnail = null;
                 }
                 else if (thumbDecision == ThumbnailHeuristics.SmtcThumbnailDecision.Accept)
@@ -2926,10 +2914,8 @@ public sealed partial class MediaDetectionService : IMediaDetectionService, IAsy
                     }
                     bool isSmtcTopicChannel = !string.IsNullOrEmpty(info.CurrentArtist) &&
                                               info.CurrentArtist.EndsWith(" - Topic", StringComparison.OrdinalIgnoreCase);
-                    RuntimeLog.Debug(MediaThumbCropLogTag, () =>
-                        $"path=smtc-update track='{info.CurrentTrack}' artist='{info.CurrentArtist}' source='{info.MediaSource}' " +
-                        $"thumb={newBitmap.PixelWidth}x{newBitmap.PixelHeight} aspect={(double)newBitmap.PixelWidth / newBitmap.PixelHeight:F2} " +
-                        $"isSmtcTopicChannel={isSmtcTopicChannel}");
+                    RuntimeLog.Debug(MediaThumbCropLogTag,
+                        $"path=smtc-update track='{info.CurrentTrack}' artist='{info.CurrentArtist}' source='{info.MediaSource}' thumb={newBitmap.PixelWidth}x{newBitmap.PixelHeight} aspect={(double)newBitmap.PixelWidth / newBitmap.PixelHeight:F2} isSmtcTopicChannel={isSmtcTopicChannel}");
                     newBitmap = CropToSquare(newBitmap, info.MediaSource, forceCenterCrop: isSmtcTopicChannel) ?? newBitmap;
                     CachedThumbnail = newBitmap;
                     if (info.Platform == MediaPlatform.SoundCloud)
@@ -3463,7 +3449,7 @@ public sealed partial class MediaDetectionService : IMediaDetectionService, IAsy
 
                             if (currentTimelineAge - timelineAge > 3.0)
                             {
-                                RuntimeLog.Debug(MediaSessionLogTag, () => $"Switching session: fresh timeline New={timelineAge:F1}s vs Current={currentTimelineAge:F1}s");
+                                RuntimeLog.Debug(MediaSessionLogTag, $"Switching session: fresh timeline New={timelineAge:F1}s vs Current={currentTimelineAge:F1}s");
                                 hasFreshTimeline = true;
                             }
                         }
@@ -3908,7 +3894,7 @@ public sealed partial class MediaDetectionService : IMediaDetectionService, IAsy
     private async Task ReleaseWorkerResourcesAsync(Task workers, CancellationTokenSource? cts, bool isDisposing)
     {
         try { await workers.ConfigureAwait(false); }
-        catch (Exception ex) { RuntimeLog.Debug(MediaStopLogTag, () => $"Worker exited: {ex.Message}"); }
+        catch (Exception ex) { RuntimeLog.Debug(MediaStopLogTag, $"Worker exited: {ex.Message}"); }
         finally
         {
             cts?.Dispose();

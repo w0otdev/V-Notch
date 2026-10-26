@@ -17,7 +17,7 @@ public sealed class IdleAutoHideController : IDisposable
     private readonly Action _onRevealed;
 
     private readonly UiScheduledTimer _timer;
-    private DateTime _idleSinceUtc = DateTime.MinValue;
+    private long _idleSinceTick;
     private bool _disposed;
 
     public IdleAutoHideController(
@@ -56,14 +56,14 @@ public sealed class IdleAutoHideController : IDisposable
 
         if (settings.EnableIdleAutoHide)
         {
-            _idleSinceUtc = DateTime.MinValue;
+            _idleSinceTick = 0;
             if (!_timer.IsEnabled)
                 _timer.Start();
         }
         else
         {
             _timer.Stop();
-            _idleSinceUtc = DateTime.MinValue;
+            _idleSinceTick = 0;
 
             if (IsHiddenByIdle)
             {
@@ -89,7 +89,7 @@ public sealed class IdleAutoHideController : IDisposable
 
         if (!idle)
         {
-            _idleSinceUtc = DateTime.MinValue;
+            _idleSinceTick = 0;
             if (IsHiddenByIdle)
                 Wake();
             return;
@@ -97,13 +97,14 @@ public sealed class IdleAutoHideController : IDisposable
 
         if (IsHiddenByIdle) return;
 
-        if (_idleSinceUtc == DateTime.MinValue)
+        long nowTick = Environment.TickCount64;
+        if (_idleSinceTick == 0)
         {
-            _idleSinceUtc = DateTime.UtcNow;
+            _idleSinceTick = nowTick;
             return;
         }
 
-        if ((DateTime.UtcNow - _idleSinceUtc).TotalMilliseconds >= settings.IdleAutoHideDelay)
+        if ((nowTick - _idleSinceTick) >= settings.IdleAutoHideDelay)
         {
             HideForIdle();
         }
@@ -125,7 +126,7 @@ public sealed class IdleAutoHideController : IDisposable
     {
         if (!_getSettings().EnableIdleAutoHide) return;
 
-        _idleSinceUtc = DateTime.MinValue;
+        _idleSinceTick = 0;
 
         if (!IsHiddenByIdle) return;
 

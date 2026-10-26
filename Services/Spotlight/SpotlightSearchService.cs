@@ -27,44 +27,107 @@ internal sealed partial class SpotlightSearchService
 
     private const int MaxQueryLength = 256;
     private const int MaxResults = 50;
-    private readonly IReadOnlyList<ISpotlightProvider> _providers;
+    private static readonly Comparison<SpotlightSearchItem> s_mergeComparison = CompareMergedItems;
+
+    private readonly ISpotlightProvider[] _providers;
+    private readonly ISpotlightProvider[] _instantProviders;
+    private readonly ISpotlightProvider[] _deferredProviders;
+    private readonly WindowsSearchProvider? _windowsSearchProvider;
+    private readonly EverythingSearchProvider? _everythingSearchProvider;
+    private readonly AppSearchProvider[] _appSearchProviders;
+    private readonly SystemFileSearchProvider[] _systemFileSearchProviders;
     private readonly SpotlightUsageStore? _usage;
 
     public bool IsWindowsSearchAvailable =>
-        (_providers.OfType<WindowsSearchProvider>().FirstOrDefault()?.IsAvailable ?? false) ||
-        (_providers.OfType<EverythingSearchProvider>().FirstOrDefault()?.IsAvailable ?? false);
+        (_windowsSearchProvider?.IsAvailable ?? false) ||
+        (_everythingSearchProvider?.IsAvailable ?? false);
 
     public SpotlightSearchService(
         IEnumerable<ISpotlightProvider> providers,
         SpotlightUsageStore? usage = null)
     {
-        _providers = providers.ToArray();
+        _providers = providers as ISpotlightProvider[] ?? new List<ISpotlightProvider>(providers).ToArray();
         _usage = usage;
-        foreach (var provider in _providers.OfType<EverythingSearchProvider>())
-            provider.IsExcluded = path => _usage?.Preferences.IsExcluded(path) == true;
-        foreach (var provider in _providers.OfType<WindowsSearchProvider>())
-            provider.IsExcluded = path => _usage?.Preferences.IsExcluded(path) == true;
+
+        var instantList = new List<ISpotlightProvider>(_providers.Length);
+        var deferredList = new List<ISpotlightProvider>(_providers.Length);
+        var appProviders = new List<AppSearchProvider>(2);
+        var sysFileProviders = new List<SystemFileSearchProvider>(2);
+        Func<string, bool>? isExcludedDelegate = _usage != null
+            ? path => _usage.Preferences.IsExcluded(path)
+            : null;
+
+        for (int i = 0; i < _providers.Length; i++)
+        {
+            var provider = _providers[i];
+            if (provider.IsInstant)
+                instantList.Add(provider);
+            else
+                deferredList.Add(provider);
+
+            if (provider is EverythingSearchProvider everything)
+            {
+                _everythingSearchProvider ??= everything;
+                if (isExcludedDelegate != null)
+                    everything.IsExcluded = isExcludedDelegate;
+            }
+            else if (provider is WindowsSearchProvider windows)
+            {
+                _windowsSearchProvider ??= windows;
+                if (isExcludedDelegate != null)
+                    windows.IsExcluded = isExcludedDelegate;
+            }
+            else if (provider is AppSearchProvider appProvider)
+            {
+                appProviders.Add(appProvider);
+            }
+            else if (provider is SystemFileSearchProvider sysFileProvider)
+            {
+                sysFileProviders.Add(sysFileProvider);
+            }
+        }
+
+        _instantProviders = instantList.ToArray();
+        _deferredProviders = deferredList.ToArray();
+        _appSearchProviders = appProviders.ToArray();
+        _systemFileSearchProviders = sysFileProviders.ToArray();
     }
 
-    internal Task WarmupAsync() =>
-        Task.WhenAll(
-            _providers.OfType<AppSearchProvider>().Select(provider => provider.WarmupAsync())
-                .Concat(_providers.OfType<SystemFileSearchProvider>().Select(provider => provider.WarmupAsync())));
+    internal Task WarmupAsync()
+    {
+        int total = _appSearchProviders.Length + _systemFileSearchProviders.Length;
+        if (total == 0) return Task.CompletedTask;
+
+        var tasks = new Task[total];
+        int idx = 0;
+        for (int i = 0; i < _appSearchProviders.Length; i++)
+            tasks[idx++] = _appSearchProviders[i].WarmupAsync();
+        for (int i = 0; i < _systemFileSearchProviders.Length; i++)
+            tasks[idx++] = _systemFileSearchProviders[i].WarmupAsync();
+
+        return Task.WhenAll(tasks);
+    }
 
     internal Task<IReadOnlyList<SpotlightSearchItem>> SearchInstantAsync(
         string query,
         int limit,
         CancellationToken cancellationToken) =>
-        SearchGroupAsync(provider => provider.IsInstant, query, limit, cancellationToken);
+        SearchProvidersCoreAsync(_instantProviders, query, limit, cancellationToken);
 
     internal Task<IReadOnlyList<SpotlightSearchItem>> SearchDeferredAsync(
         string query,
         int limit,
         CancellationToken cancellationToken) =>
-        SearchGroupAsync(provider => !provider.IsInstant, query, limit, cancellationToken);
+        SearchProvidersCoreAsync(_deferredProviders, query, limit, cancellationToken);
 
-    private async Task<IReadOnlyList<SpotlightSearchItem>> SearchGroupAsync(
-        Func<ISpotlightProvider, bool> selector,
+    public Task<IReadOnlyList<SpotlightSearchItem>> SearchAsync(
+        string query,
+        int limit,
+        CancellationToken cancellationToken) =>
+        SearchProvidersCoreAsync(_providers, query, limit, cancellationToken);
+
+    private async Task<IReadOnlyList<SpotlightSearchItem>> SearchProvidersCoreAsync(
+        ISpotlightProvider[] selectedProviders,
         string query,
         int limit,
         CancellationToken cancellationToken)
@@ -72,71 +135,99 @@ internal sealed partial class SpotlightSearchService
         if (!TryNormalizeInput(query, limit, out query, out limit))
             return Array.Empty<SpotlightSearchItem>();
 
-        var results = await Task.WhenAll(_providers.Where(selector).Select(provider =>
-            SearchProviderAsync(provider, query, MaxResults, cancellationToken))).ConfigureAwait(false);
+        var tasks = new Task<IReadOnlyList<SpotlightSearchItem>>[selectedProviders.Length];
+        for (int i = 0; i < selectedProviders.Length; i++)
+        {
+            tasks[i] = SearchProviderAsync(selectedProviders[i], query, MaxResults, cancellationToken);
+        }
+
+        var results = await Task.WhenAll(tasks).ConfigureAwait(false);
         cancellationToken.ThrowIfCancellationRequested();
-        return Merge(results.Select(items => ApplyUsageBoost(items, query))
-            .Append(_usage?.Preferences.Search(query) ?? Array.Empty<SpotlightSearchItem>())
-            .Append(ApplyUsageBoost(_usage?.GetRememberedItems(query) ?? Array.Empty<SpotlightSearchItem>(), query)), limit);
+
+        string normalizedForUsage = _usage != null ? SettingsSearchMatcher.Normalize(query) : string.Empty;
+        var groups = new IReadOnlyList<SpotlightSearchItem>[results.Length + 2];
+        for (int i = 0; i < results.Length; i++)
+        {
+            groups[i] = ApplyUsageBoost(results[i], normalizedForUsage);
+        }
+
+        groups[results.Length] = _usage?.Preferences.Search(query) ?? Array.Empty<SpotlightSearchItem>();
+        groups[results.Length + 1] = ApplyUsageBoost(
+            _usage?.GetRememberedItems(query) ?? Array.Empty<SpotlightSearchItem>(),
+            normalizedForUsage);
+
+        return Merge(groups, limit);
     }
 
     private IReadOnlyList<SpotlightSearchItem> ApplyUsageBoost(
-        IReadOnlyList<SpotlightSearchItem> results, string query)
+        IReadOnlyList<SpotlightSearchItem> results, string normalizedQuery)
     {
-        if (_usage == null) return results;
-        return results
-            .Where(item => !_usage.Preferences.IsExcluded(item.Target))
-            .Select(item =>
+        if (_usage == null || results.Count == 0) return results;
+
+        var prefs = _usage.Preferences;
+        var output = new List<SpotlightSearchItem>(results.Count);
+        for (int i = 0; i < results.Count; i++)
+        {
+            var item = results[i];
+            if (prefs.IsExcluded(item.Target))
+                continue;
+
+            bool pinned = prefs.IsPinned(item.Target);
+            double usageBoost = _usage.GetBoostNormalized(item.Id, normalizedQuery);
+            _ = vn_spotlight_search_compute_boosted_score(
+                item.Score, usageBoost, pinned ? (byte)1 : (byte)0, out double boosted);
+            output.Add(item with
             {
-                bool pinned = _usage.Preferences.IsPinned(item.Target);
-                _ = vn_spotlight_search_compute_boosted_score(
-                    item.Score, _usage.GetBoost(item.Id, query), pinned ? (byte)1 : (byte)0, out double boosted);
-                return item with
-                {
-                    IsPinned = pinned,
-                    Score = boosted
-                };
-            })
-            .ToArray();
-    }
+                IsPinned = pinned,
+                Score = boosted
+            });
+        }
 
-    public async Task<IReadOnlyList<SpotlightSearchItem>> SearchAsync(
-        string query,
-        int limit,
-        CancellationToken cancellationToken)
-    {
-        if (!TryNormalizeInput(query, limit, out query, out limit))
-            return Array.Empty<SpotlightSearchItem>();
-
-        var providerTasks = _providers.Select(provider =>
-            SearchProviderAsync(provider, query, MaxResults, cancellationToken));
-        var providerResults = await Task.WhenAll(providerTasks).ConfigureAwait(false);
-        cancellationToken.ThrowIfCancellationRequested();
-
-        return Merge(providerResults.Select(items => ApplyUsageBoost(items, query))
-            .Append(_usage?.Preferences.Search(query) ?? Array.Empty<SpotlightSearchItem>())
-            .Append(ApplyUsageBoost(_usage?.GetRememberedItems(query) ?? Array.Empty<SpotlightSearchItem>(), query)), limit);
+        return output;
     }
 
     internal static IReadOnlyList<SpotlightSearchItem> Merge(
         IEnumerable<IReadOnlyList<SpotlightSearchItem>> providerResults,
         int limit)
     {
+        if (limit <= 0) return Array.Empty<SpotlightSearchItem>();
+
         var bestByTarget = new Dictionary<string, SpotlightSearchItem>(StringComparer.OrdinalIgnoreCase);
         foreach (var group in providerResults)
-            foreach (var item in group)
+        {
+            int count = group.Count;
+            for (int i = 0; i < count; i++)
             {
+                var item = group[i];
                 if (!bestByTarget.TryGetValue(item.Target, out var best) || item.Score > best.Score)
                     bestByTarget[item.Target] = item;
             }
-        var results = bestByTarget.Values
-            .OrderByDescending(item => item.Score)
-            .ThenBy(item => item.Title, StringComparer.CurrentCultureIgnoreCase)
-            .ThenBy(item => item.Id, StringComparer.Ordinal)
-            .Take(limit)
-            .ToArray();
+        }
 
-        return results;
+        if (bestByTarget.Count == 0)
+            return Array.Empty<SpotlightSearchItem>();
+
+        var buffer = new SpotlightSearchItem[bestByTarget.Count];
+        bestByTarget.Values.CopyTo(buffer, 0);
+        Array.Sort(buffer, s_mergeComparison);
+
+        if (buffer.Length <= limit)
+            return buffer;
+
+        var trimmed = new SpotlightSearchItem[limit];
+        Array.Copy(buffer, 0, trimmed, 0, limit);
+        return trimmed;
+    }
+
+    private static int CompareMergedItems(SpotlightSearchItem a, SpotlightSearchItem b)
+    {
+        int scoreCmp = b.Score.CompareTo(a.Score);
+        if (scoreCmp != 0) return scoreCmp;
+
+        int titleCmp = StringComparer.CurrentCultureIgnoreCase.Compare(a.Title, b.Title);
+        if (titleCmp != 0) return titleCmp;
+
+        return StringComparer.Ordinal.Compare(a.Id, b.Id);
     }
 
     private static bool TryNormalizeInput(
@@ -154,7 +245,9 @@ internal sealed partial class SpotlightSearchService
         _ = vn_spotlight_search_try_normalize_input(
             query.AsSpan(), query.Length, limit,
             out byte valid, out int start, out int len, out normalizedLimit);
-        normalizedQuery = len > 0 ? query.Substring(start, len) : string.Empty;
+        normalizedQuery = len > 0
+            ? (start == 0 && len == query.Length ? query : query.Substring(start, len))
+            : string.Empty;
         return valid != 0;
     }
 

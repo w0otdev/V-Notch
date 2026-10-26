@@ -36,6 +36,7 @@ internal sealed partial class SpotlightPreferences
     private readonly object _gate = new();
     private readonly string _path;
     private State? _state;
+    private volatile string[]? _excludedFoldersSnapshot;
     private string? _pendingSave;
     private bool _saving;
 
@@ -77,28 +78,58 @@ internal sealed partial class SpotlightPreferences
                 app.Alias ??= "";
                 if (app.Pinned && ++pinnedCount > MaxPinnedApps) app.Pinned = false;
             }
-            _state.ExcludedFolders = _state.ExcludedFolders.Where(folder => !string.IsNullOrWhiteSpace(folder))
-                .Select(folder =>
+
+            var cleanedFolders = new List<string>(_state.ExcludedFolders.Count);
+            var seenFolders = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            for (int i = 0; i < _state.ExcludedFolders.Count; i++)
+            {
+                string folder = _state.ExcludedFolders[i];
+                if (string.IsNullOrWhiteSpace(folder)) continue;
+                try
                 {
-                    try { return NormalizeFolder(folder); }
-                    catch (Exception) { return null; }
-                })
-                .Where(folder => folder != null)
-                .Select(folder => folder!)
-                .Distinct(StringComparer.OrdinalIgnoreCase)
-                .ToList();
+                    string normalized = NormalizeFolder(folder);
+                    if (seenFolders.Add(normalized))
+                        cleanedFolders.Add(normalized);
+                }
+                catch (Exception)
+                {
+                }
+            }
+
+            _state.ExcludedFolders = cleanedFolders;
+            _excludedFoldersSnapshot = cleanedFolders.Count == 0 ? Array.Empty<string>() : cleanedFolders.ToArray();
             return _state;
         }
     }
 
     public bool IsPinned(string target)
     {
-        lock (_gate) return Data.Apps.Any(a => a.Pinned && a.Target.Equals(target, StringComparison.OrdinalIgnoreCase));
+        lock (_gate)
+        {
+            var apps = Data.Apps;
+            for (int i = 0; i < apps.Count; i++)
+            {
+                var a = apps[i];
+                if (a.Pinned && a.Target.Equals(target, StringComparison.OrdinalIgnoreCase))
+                    return true;
+            }
+            return false;
+        }
     }
 
     public string GetAlias(string target)
     {
-        lock (_gate) return Data.Apps.FirstOrDefault(a => a.Target.Equals(target, StringComparison.OrdinalIgnoreCase))?.Alias ?? "";
+        lock (_gate)
+        {
+            var apps = Data.Apps;
+            for (int i = 0; i < apps.Count; i++)
+            {
+                var a = apps[i];
+                if (a.Target.Equals(target, StringComparison.OrdinalIgnoreCase))
+                    return a.Alias;
+            }
+            return "";
+        }
     }
 
     public bool SetApp(SpotlightSearchItem item, bool pinned, string alias)
@@ -106,19 +137,35 @@ internal sealed partial class SpotlightPreferences
         if (item.Kind != SpotlightResultKind.Application) return false;
         lock (_gate)
         {
-            bool alreadyPinned = Data.Apps.Any(a => a.Pinned && a.Target.Equals(item.Target, StringComparison.OrdinalIgnoreCase));
-            if (pinned && !alreadyPinned && Data.Apps.Count(a => a.Pinned) >= MaxPinnedApps) return false;
-            Data.Apps.RemoveAll(a => a.Target.Equals(item.Target, StringComparison.OrdinalIgnoreCase));
+            var apps = Data.Apps;
+            bool alreadyPinned = false;
+            int pinnedCount = 0;
+            for (int i = 0; i < apps.Count; i++)
+            {
+                var a = apps[i];
+                if (a.Pinned)
+                {
+                    pinnedCount++;
+                    if (a.Target.Equals(item.Target, StringComparison.OrdinalIgnoreCase))
+                        alreadyPinned = true;
+                }
+            }
+
+            if (pinned && !alreadyPinned && pinnedCount >= MaxPinnedApps) return false;
+            apps.RemoveAll(a => a.Target.Equals(item.Target, StringComparison.OrdinalIgnoreCase));
             if (pinned || !string.IsNullOrWhiteSpace(alias))
-                Data.Apps.Add(new AppPreference
+            {
+                string trimmedAlias = alias.Trim();
+                apps.Add(new AppPreference
                 {
                     Id = item.Id,
                     Title = item.Title,
                     Target = item.Target,
                     IconPath = item.IconPath,
                     Pinned = pinned,
-                    Alias = alias.Trim()[..Math.Min(alias.Trim().Length, 80)]
+                    Alias = trimmedAlias.Length > 80 ? trimmedAlias[..80] : trimmedAlias
                 });
+            }
             Save();
             return true;
         }
@@ -132,11 +179,20 @@ internal sealed partial class SpotlightPreferences
     public void SetExcludedFolders(IEnumerable<string> folders)
     {
         // Validate the whole edit before changing state; offline drives are valid.
-        var normalized = folders.Where(p => !string.IsNullOrWhiteSpace(p)).Select(NormalizeFolder)
-            .Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+        var normalized = new List<string>();
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (string p in folders)
+        {
+            if (string.IsNullOrWhiteSpace(p)) continue;
+            string norm = NormalizeFolder(p);
+            if (seen.Add(norm))
+                normalized.Add(norm);
+        }
+
         lock (_gate)
         {
             Data.ExcludedFolders = normalized;
+            _excludedFoldersSnapshot = normalized.Count == 0 ? Array.Empty<string>() : normalized.ToArray();
             Save();
         }
     }
@@ -151,22 +207,35 @@ internal sealed partial class SpotlightPreferences
         return Path.TrimEndingDirectorySeparator(Path.GetFullPath(folder));
     }
 
+    private string[] GetExcludedFoldersSnapshot()
+    {
+        var snapshot = _excludedFoldersSnapshot;
+        if (snapshot != null) return snapshot;
+        lock (_gate)
+        {
+            _ = Data;
+            return _excludedFoldersSnapshot ?? Array.Empty<string>();
+        }
+    }
+
     public bool IsExcluded(string target)
     {
+        string[] folders = GetExcludedFoldersSnapshot();
+        if (folders.Length == 0) return false;
         if (!Path.IsPathFullyQualified(target)) return false;
+
         string path;
         try { path = Path.TrimEndingDirectorySeparator(Path.GetFullPath(target)); }
         catch (Exception) { return false; }
-        lock (_gate)
+
+        ReadOnlySpan<char> pathSpan = path.AsSpan();
+        for (int i = 0; i < folders.Length; i++)
         {
-            ReadOnlySpan<char> pathSpan = path.AsSpan();
-            foreach (string folder in Data.ExcludedFolders)
-            {
-                if (vn_spotlight_prefs_is_path_under_folder(pathSpan, pathSpan.Length, folder.AsSpan(), folder.Length, out byte isUnder) == 0 && isUnder != 0)
-                    return true;
-            }
-            return false;
+            string folder = folders[i];
+            if (vn_spotlight_prefs_is_path_under_folder(pathSpan, pathSpan.Length, folder.AsSpan(), folder.Length, out byte isUnder) == 0 && isUnder != 0)
+                return true;
         }
+        return false;
     }
 
     public SpotlightSearchItem Decorate(SpotlightSearchItem item) => item with { IsPinned = IsPinned(item.Target) };
@@ -174,12 +243,22 @@ internal sealed partial class SpotlightPreferences
     public IReadOnlyList<SpotlightSearchItem> Search(string query)
     {
         AppPreference[] apps;
-        lock (_gate) apps = Data.Apps.ToArray();
-        string normalized = SettingsSearchMatcher.Normalize(query);
-        return apps.Select(app =>
+        lock (_gate)
         {
+            var list = Data.Apps;
+            if (list.Count == 0) return Array.Empty<SpotlightSearchItem>();
+            apps = list.ToArray();
+        }
+
+        string normalized = SettingsSearchMatcher.Normalize(query);
+        string appKindLabel = Loc.Get("spotlight.kind.application");
+        var results = new List<SpotlightSearchItem>(apps.Length);
+
+        for (int i = 0; i < apps.Length; i++)
+        {
+            var app = apps[i];
             var item = new SpotlightSearchItem(app.Id, SpotlightResultKind.Application, app.Title,
-                Loc.Get("spotlight.kind.application"), app.Target, app.IconPath)
+                appKindLabel, app.Target, app.IconPath)
             { IsPinned = app.Pinned };
             string alias = SettingsSearchMatcher.Normalize(app.Alias);
             double baseScore = normalized.Length == 0 ? 0 : SpotlightRanker.Score(item, query);
@@ -189,8 +268,14 @@ internal sealed partial class SpotlightPreferences
                 alias.AsSpan(), alias.Length,
                 app.Pinned ? (byte)1 : (byte)0,
                 out double finalScore);
-            return item with { Score = finalScore };
-        }).Where(item => item.Score > 0 && !IsExcluded(item.Target) && SpotlightLauncher.IsValidTarget(item)).ToArray();
+
+            if (finalScore > 0 && !IsExcluded(item.Target) && SpotlightLauncher.IsValidTarget(item))
+            {
+                results.Add(item with { Score = finalScore });
+            }
+        }
+
+        return results.Count == 0 ? Array.Empty<SpotlightSearchItem>() : results;
     }
 
     private void Save()

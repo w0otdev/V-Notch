@@ -1,4 +1,5 @@
 using System;
+using System.Buffers;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Windows;
@@ -847,18 +848,24 @@ namespace VNotch.Controls
                 int framesRecorded = Math.Clamp(bytesRecorded, 0, buffer.Length) / bytesPerFrame;
                 if (framesRecorded <= 0) return;
 
-                for (int frame = 0; frame < framesRecorded; frame++)
+                float[]? rented = null;
+                Span<float> monoSpan = framesRecorded <= 1024
+                    ? stackalloc float[framesRecorded]
+                    : (rented = ArrayPool<float>.Shared.Rent(framesRecorded)).AsSpan(0, framesRecorded);
+
+                try
                 {
-                    int frameOffset = frame * bytesPerFrame;
-                    double mixed = 0;
-
-                    for (int ch = 0; ch < channels; ch++)
+                    int written = VNotch.Services.VisualizerDsp.MixFramesToMono(
+                        buffer, bytesRecorded, channelCount, bitsPerSample, isFloatLike, monoSpan);
+                    for (int frame = 0; frame < written; frame++)
                     {
-                        int sampleOffset = frameOffset + (ch * bytesPerSample);
-                        mixed += ReadSampleAsFloat(buffer, sampleOffset, isFloatLike, bitsPerSample);
+                        PushSample(monoSpan[frame]);
                     }
-
-                    PushSample((float)(mixed / channels));
+                }
+                finally
+                {
+                    if (rented != null)
+                        ArrayPool<float>.Shared.Return(rented);
                 }
 
                 lock (_outputLock)
