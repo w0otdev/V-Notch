@@ -1,6 +1,5 @@
 using System;
 using System.Collections.Generic;
-using System.Linq;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
@@ -19,14 +18,52 @@ public partial class MainWindow
     private Point _navDragStartPoint;
     private bool _isNavDragging = false;
     private bool _hasCapturedNavMouse = false;
-    private DateTime _navMouseDownTime = DateTime.MinValue;
+    private long _navMouseDownTick;
     private const double NavTabSlotWidth = 26.0; // 22 width + 4 margin
-    private static readonly TimeSpan HoldToDragThreshold = TimeSpan.FromMilliseconds(160);
+    private const long HoldToDragThresholdMs = 160;
 
     private bool _isEndingNavDrag = false;
     private int _dragInitialSlot = -1;
     private int _dragTargetSlot = -1;
     private readonly Dictionary<FrameworkElement, double> _neighborTargetOffsets = new();
+    private readonly List<FrameworkElement> _visibleNavChildrenBuffer = new(8);
+
+    private static TranslateTransform? FindTranslateTransform(TransformGroup group)
+    {
+        var children = group.Children;
+        for (int i = 0; i < children.Count; i++)
+        {
+            if (children[i] is TranslateTransform tt)
+                return tt;
+        }
+        return null;
+    }
+
+    private static ScaleTransform? FindScaleTransform(TransformGroup group)
+    {
+        var children = group.Children;
+        for (int i = 0; i < children.Count; i++)
+        {
+            if (children[i] is ScaleTransform st)
+                return st;
+        }
+        return null;
+    }
+
+    private List<FrameworkElement> CollectVisibleNavChildren()
+    {
+        _visibleNavChildrenBuffer.Clear();
+        if (NavTabsStackPanel == null) return _visibleNavChildrenBuffer;
+
+        var children = NavTabsStackPanel.Children;
+        int count = children.Count;
+        for (int i = 0; i < count; i++)
+        {
+            if (children[i] is FrameworkElement fe && fe.Visibility == Visibility.Visible)
+                _visibleNavChildrenBuffer.Add(fe);
+        }
+        return _visibleNavChildrenBuffer;
+    }
 
     #region Hold-to-Drag Reordering Handlers
 
@@ -36,7 +73,7 @@ public partial class MainWindow
         {
             _navDragItem = fe;
             _navDragStartPoint = e.GetPosition(NavTabsStackPanel);
-            _navMouseDownTime = DateTime.UtcNow;
+            _navMouseDownTick = Environment.TickCount64;
             _isNavDragging = false;
             _hasCapturedNavMouse = false;
             _dragInitialSlot = -1;
@@ -56,7 +93,7 @@ public partial class MainWindow
         if (!_isNavDragging)
         {
             bool movedPastThreshold = Math.Abs(deltaX) > 4;
-            bool heldPastThreshold = (DateTime.UtcNow - _navMouseDownTime) >= HoldToDragThreshold && Math.Abs(deltaX) > 2;
+            bool heldPastThreshold = (Environment.TickCount64 - _navMouseDownTick) >= HoldToDragThresholdMs && Math.Abs(deltaX) > 2;
 
             if (movedPastThreshold || heldPastThreshold)
             {
@@ -70,10 +107,7 @@ public partial class MainWindow
 
                 if (NavTabsStackPanel != null)
                 {
-                    var visibleChildren = NavTabsStackPanel.Children
-                        .OfType<FrameworkElement>()
-                        .Where(c => c.Visibility == Visibility.Visible)
-                        .ToList();
+                    var visibleChildren = CollectVisibleNavChildren();
                     _dragInitialSlot = visibleChildren.IndexOf(_navDragItem);
                     _dragTargetSlot = _dragInitialSlot;
                 }
@@ -87,7 +121,7 @@ public partial class MainWindow
             // Live horizontal displacement tracking cursor directly
             if (_navDragItem.RenderTransform is TransformGroup group)
             {
-                var translate = group.Children.OfType<TranslateTransform>().FirstOrDefault();
+                var translate = FindTranslateTransform(group);
                 if (translate != null)
                 {
                     translate.X = deltaX;
@@ -102,11 +136,7 @@ public partial class MainWindow
     {
         if (_navDragItem == null || NavTabsStackPanel == null) return;
 
-        var visibleChildren = NavTabsStackPanel.Children
-            .OfType<FrameworkElement>()
-            .Where(c => c.Visibility == Visibility.Visible)
-            .ToList();
-
+        var visibleChildren = CollectVisibleNavChildren();
         int totalSlots = visibleChildren.Count;
         if (totalSlots <= 1) return;
 
@@ -119,7 +149,7 @@ public partial class MainWindow
         double currentTranslateX = 0.0;
         if (_navDragItem.RenderTransform is TransformGroup group)
         {
-            var translate = group.Children.OfType<TranslateTransform>().FirstOrDefault();
+            var translate = FindTranslateTransform(group);
             if (translate != null)
             {
                 currentTranslateX = translate.X;
@@ -174,7 +204,7 @@ public partial class MainWindow
     private void AnimateElementToX(FrameworkElement element, double targetX)
     {
         if (element.RenderTransform is not TransformGroup group) return;
-        var translate = group.Children.OfType<TranslateTransform>().FirstOrDefault();
+        var translate = FindTranslateTransform(group);
         if (translate == null) return;
 
         if (_neighborTargetOffsets.TryGetValue(element, out double currentTarget) &&
@@ -297,10 +327,7 @@ public partial class MainWindow
             return;
         }
 
-        var visibleChildren = NavTabsStackPanel.Children
-            .OfType<FrameworkElement>()
-            .Where(c => c.Visibility == Visibility.Visible)
-            .ToList();
+        var visibleChildren = CollectVisibleNavChildren();
 
         if (_dragInitialSlot < visibleChildren.Count && _dragTargetSlot < visibleChildren.Count)
         {
@@ -325,8 +352,8 @@ public partial class MainWindow
     {
         if (item?.RenderTransform is not TransformGroup group) return;
 
-        var scale = group.Children.OfType<ScaleTransform>().FirstOrDefault();
-        var translate = group.Children.OfType<TranslateTransform>().FirstOrDefault();
+        var scale = FindScaleTransform(group);
+        var translate = FindTranslateTransform(group);
         var shadow = item.Effect as DropShadowEffect;
 
         if (lifted)
@@ -397,8 +424,8 @@ public partial class MainWindow
             return;
         }
 
-        var scale = group.Children.OfType<ScaleTransform>().FirstOrDefault();
-        var translate = group.Children.OfType<TranslateTransform>().FirstOrDefault();
+        var scale = FindScaleTransform(group);
+        var translate = FindTranslateTransform(group);
         var shadow = item.Effect as DropShadowEffect;
 
         const int settleDurationMs = 220;
@@ -487,13 +514,16 @@ public partial class MainWindow
     {
         if (NavTabsStackPanel == null) return;
 
-        foreach (var child in NavTabsStackPanel.Children.OfType<FrameworkElement>())
+        var children = NavTabsStackPanel.Children;
+        int count = children.Count;
+        for (int i = 0; i < count; i++)
         {
-            if (child == excludeItem) continue;
+            if (children[i] is not FrameworkElement child || child == excludeItem)
+                continue;
 
             if (child.RenderTransform is TransformGroup group)
             {
-                var translate = group.Children.OfType<TranslateTransform>().FirstOrDefault();
+                var translate = FindTranslateTransform(group);
                 if (translate != null)
                 {
                     translate.BeginAnimation(TranslateTransform.XProperty, null);
@@ -502,7 +532,7 @@ public partial class MainWindow
                     translate.Y = 0;
                 }
 
-                var scale = group.Children.OfType<ScaleTransform>().FirstOrDefault();
+                var scale = FindScaleTransform(group);
                 if (scale != null)
                 {
                     scale.BeginAnimation(ScaleTransform.ScaleXProperty, null);
@@ -531,11 +561,15 @@ public partial class MainWindow
     {
         if (NavTabsStackPanel == null) return;
 
-        var orderedTags = NavTabsStackPanel.Children
-            .OfType<FrameworkElement>()
-            .Select(f => f.Tag?.ToString())
-            .Where(t => !string.IsNullOrEmpty(t))
-            .ToList();
+        var children = NavTabsStackPanel.Children;
+        var orderedTags = new List<string>(children.Count);
+        for (int i = 0; i < children.Count; i++)
+        {
+            if (children[i] is FrameworkElement fe && fe.Tag is string tag && !string.IsNullOrEmpty(tag))
+            {
+                orderedTags.Add(tag);
+            }
+        }
 
         if (orderedTags.Count > 0)
         {
@@ -556,43 +590,56 @@ public partial class MainWindow
     {
         if (NavTabsStackPanel == null) return;
 
+        var children = NavTabsStackPanel.Children;
+        int childCount = children.Count;
+
         // Build mapping of Tag -> UIElement
-        var elementsByTag = new Dictionary<string, FrameworkElement>(StringComparer.OrdinalIgnoreCase);
-        foreach (UIElement child in NavTabsStackPanel.Children)
+        var elementsByTag = new Dictionary<string, FrameworkElement>(childCount, StringComparer.OrdinalIgnoreCase);
+        var currentChildrenTags = new List<string>(childCount);
+        for (int i = 0; i < childCount; i++)
         {
-            if (child is FrameworkElement fe && fe.Tag is string tag)
+            if (children[i] is FrameworkElement fe && fe.Tag is string tag && !string.IsNullOrEmpty(tag))
             {
                 elementsByTag[tag] = fe;
+                currentChildrenTags.Add(tag);
             }
         }
 
         // Determine configured order
-        var orderTokens = (_settings.NavTabOrder ?? "Media,Secondary,Timer,AudioMixer,Camera")
-            .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
-            .Distinct(StringComparer.OrdinalIgnoreCase)
-            .ToList();
+        var rawTokens = (_settings.NavTabOrder ?? "Media,Secondary,Timer,AudioMixer,Camera")
+            .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        var orderTokens = new List<string>(elementsByTag.Count);
+        var seenTokens = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        for (int i = 0; i < rawTokens.Length; i++)
+        {
+            string tok = rawTokens[i];
+            if (seenTokens.Add(tok))
+                orderTokens.Add(tok);
+        }
 
         // Ensure all known elements are included
-        foreach (var key in elementsByTag.Keys.Where(key => !orderTokens.Contains(key, StringComparer.OrdinalIgnoreCase)))
+        foreach (var key in elementsByTag.Keys)
         {
-            orderTokens.Add(key);
+            if (seenTokens.Add(key))
+                orderTokens.Add(key);
         }
 
         // Reorder children in NavTabsStackPanel only if the order actually changed
-        var currentChildrenTags = NavTabsStackPanel.Children
-            .OfType<FrameworkElement>()
-            .Select(f => f.Tag?.ToString())
-            .Where(t => !string.IsNullOrEmpty(t))
-            .ToList();
-
-        if (!currentChildrenTags.SequenceEqual(orderTokens, StringComparer.OrdinalIgnoreCase))
+        bool sameOrder = currentChildrenTags.Count == orderTokens.Count;
+        for (int i = 0; sameOrder && i < currentChildrenTags.Count; i++)
         {
-            NavTabsStackPanel.Children.Clear();
-            foreach (var token in orderTokens)
+            if (!string.Equals(currentChildrenTags[i], orderTokens[i], StringComparison.OrdinalIgnoreCase))
+                sameOrder = false;
+        }
+
+        if (!sameOrder)
+        {
+            children.Clear();
+            for (int i = 0; i < orderTokens.Count; i++)
             {
-                if (elementsByTag.TryGetValue(token, out var element))
+                if (elementsByTag.TryGetValue(orderTokens[i], out var element))
                 {
-                    NavTabsStackPanel.Children.Add(element);
+                    children.Add(element);
                 }
             }
         }
@@ -608,9 +655,9 @@ public partial class MainWindow
         if (_settings.HideCamera) visibleTokens.Remove("Camera");
         else visibleTokens.Add("Camera");
 
-        foreach (UIElement child in NavTabsStackPanel.Children)
+        for (int i = 0; i < children.Count; i++)
         {
-            if (child is FrameworkElement fe && fe.Tag is string tag)
+            if (children[i] is FrameworkElement fe && fe.Tag is string tag)
             {
                 fe.Visibility = visibleTokens.Contains(tag) ? Visibility.Visible : Visibility.Collapsed;
             }
@@ -630,16 +677,20 @@ public partial class MainWindow
 
     public List<NotchView> GetActiveTabSequence()
     {
-        var sequence = new List<NotchView>();
+        var sequence = new List<NotchView>(5);
         if (NavTabsStackPanel == null)
         {
             sequence.Add(NotchView.Media);
             return sequence;
         }
 
-        foreach (UIElement child in NavTabsStackPanel.Children)
+        var children = NavTabsStackPanel.Children;
+        for (int i = 0; i < children.Count; i++)
         {
-            if (child is FrameworkElement fe && fe.Visibility == Visibility.Visible && fe.Tag is string tagStr && Enum.TryParse<NotchView>(tagStr, true, out var view))
+            if (children[i] is FrameworkElement fe &&
+                fe.Visibility == Visibility.Visible &&
+                fe.Tag is string tagStr &&
+                Enum.TryParse<NotchView>(tagStr, true, out var view))
             {
                 sequence.Add(view);
             }

@@ -8,8 +8,8 @@ namespace VNotch.Controllers;
 
 public sealed class FullscreenAutoHideController : IDisposable
 {
-    private static readonly TimeSpan FullscreenStateCooldown = TimeSpan.FromMilliseconds(180);
-    private static readonly TimeSpan ThrottleInterval = TimeSpan.FromMilliseconds(50);
+    private const long FullscreenStateCooldownMs = 180;
+    private const long ThrottleIntervalMs = 50;
     private const int PollIntervalMs = 300;
 
     private readonly Func<IntPtr> _getNotchHwnd;
@@ -17,8 +17,8 @@ public sealed class FullscreenAutoHideController : IDisposable
     private NotchSettings _settings;
     private readonly UiScheduledTimer _pollTimer;
 
-    private DateTime _lastCheckUtc = DateTime.MinValue;
-    private DateTime _lastStateChangeUtc = DateTime.MinValue;
+    private long _lastCheckTick;
+    private long _lastStateChangeTick;
     private bool _isHiddenByFullscreen;
     private bool _disposed;
 
@@ -80,18 +80,18 @@ public sealed class FullscreenAutoHideController : IDisposable
             if (_isHiddenByFullscreen)
             {
                 _isHiddenByFullscreen = false;
-                _lastStateChangeUtc = DateTime.UtcNow;
+                _lastStateChangeTick = Environment.TickCount64;
                 HideStateChanged?.Invoke(false);
                 return true;
             }
             return false;
         }
 
-        var now = DateTime.UtcNow;
-        if (!force && (now - _lastCheckUtc) < ThrottleInterval)
+        long nowTick = Environment.TickCount64;
+        if (!force && _lastCheckTick != 0 && (nowTick - _lastCheckTick) < ThrottleIntervalMs)
             return false;
 
-        _lastCheckUtc = now;
+        _lastCheckTick = nowTick;
 
         var targetHwnd = foregroundHwnd == IntPtr.Zero ? GetForegroundWindow() : foregroundHwnd;
         bool shouldHide = ShouldHideForFullscreen(targetHwnd, notchHwnd);
@@ -99,14 +99,14 @@ public sealed class FullscreenAutoHideController : IDisposable
         if (shouldHide == _isHiddenByFullscreen)
             return false;
 
-        if (!force && shouldHide && (now - _lastStateChangeUtc) < FullscreenStateCooldown)
+        if (!force && shouldHide && _lastStateChangeTick != 0 && (nowTick - _lastStateChangeTick) < FullscreenStateCooldownMs)
         {
             RecheckNeeded?.Invoke();
             return false;
         }
 
         _isHiddenByFullscreen = shouldHide;
-        _lastStateChangeUtc = now;
+        _lastStateChangeTick = nowTick;
         HideStateChanged?.Invoke(shouldHide);
         return true;
     }
@@ -116,7 +116,7 @@ public sealed class FullscreenAutoHideController : IDisposable
         if (_isHiddenByFullscreen)
         {
             _isHiddenByFullscreen = false;
-            _lastStateChangeUtc = DateTime.UtcNow;
+            _lastStateChangeTick = Environment.TickCount64;
             HideStateChanged?.Invoke(false);
         }
     }

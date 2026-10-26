@@ -54,13 +54,19 @@ internal static partial class ServicePrewarmer
     private static void RunBackgroundWarmups(IServiceProvider provider)
     {
         var settings = WarmupSettings(provider);
-        WarmupSpotlight(provider, settings);
+        Task? spotlightTask = WarmupSpotlight(provider, settings);
         WarmupBattery(provider);
         WarmupVolume(provider);
         WarmupWindowTitleScanner(provider);
 
         RuntimeLog.Log(LogCategory, "background warmup complete");
         SmartThumbnailCropService.TryMinimizeNativeHeap(trimWorkingSet: true);
+        if (spotlightTask is { IsCompleted: false })
+        {
+            _ = spotlightTask.ContinueWith(
+                static _ => SmartThumbnailCropService.TryMinimizeNativeHeap(trimWorkingSet: true),
+                TaskScheduler.Default);
+        }
     }
 
     private static NotchSettings? WarmupSettings(IServiceProvider provider)
@@ -87,7 +93,7 @@ internal static partial class ServicePrewarmer
         }
     }
 
-    private static void WarmupSpotlight(IServiceProvider provider, NotchSettings? settings)
+    private static Task? WarmupSpotlight(IServiceProvider provider, NotchSettings? settings)
     {
         // Skip Start Menu and apps indexing if Spotlight is disabled to avoid
         // unnecessary launch overhead.
@@ -99,7 +105,7 @@ internal static partial class ServicePrewarmer
         {
             try
             {
-                _ = provider.GetService<SpotlightSearchService>()?.WarmupAsync();
+                return provider.GetService<SpotlightSearchService>()?.WarmupAsync();
             }
             catch (Exception ex)
             {
@@ -110,6 +116,7 @@ internal static partial class ServicePrewarmer
         {
             RuntimeLog.Log(LogCategory, "Spotlight disabled; app index warmup skipped");
         }
+        return null;
     }
 
     private static void WarmupBattery(IServiceProvider provider)
@@ -154,5 +161,4 @@ internal static partial class ServicePrewarmer
             RuntimeLog.Error(LogCategory, ex, "WindowTitleScanner warmup failed");
         }
     }
-
 }

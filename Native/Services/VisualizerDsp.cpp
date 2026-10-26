@@ -450,6 +450,43 @@ double GetAudioReactiveRhythmAt(uint32_t hash, double t, double energy) noexcept
     return std::clamp(0.5 + value, 0.0, 1.0);
 }
 
+inline float DecodeSampleAt(const uint8_t* p, uint8_t is_float, int32_t bits_per_sample) noexcept {
+    if (is_float != 0) {
+        if (bits_per_sample == 64) {
+            double value;
+            std::memcpy(&value, p, sizeof(value));
+            return static_cast<float>(value);
+        }
+        if (bits_per_sample == 32) {
+            float value;
+            std::memcpy(&value, p, sizeof(value));
+            return value;
+        }
+        return 0.0f;
+    }
+    switch (bits_per_sample) {
+        case 8:
+            return (static_cast<int32_t>(p[0]) - 128) / 128.0f;
+        case 16: {
+            int16_t value;
+            std::memcpy(&value, p, sizeof(value));
+            return value / 32768.0f;
+        }
+        case 24: {
+            int32_t value = p[0] | (p[1] << 8) | (p[2] << 16);
+            if (value & 0x800000) value |= static_cast<int32_t>(0xFF000000u);
+            return value / 8388608.0f;
+        }
+        case 32: {
+            int32_t value;
+            std::memcpy(&value, p, sizeof(value));
+            return value / 2147483648.0f;
+        }
+        default:
+            return 0.0f;
+    }
+}
+
 } // namespace vnotch::services::visualizer
 
 namespace vz = vnotch::services::visualizer;
@@ -461,45 +498,48 @@ VN_EXPORT int32_t __stdcall vn_visualizer_read_sample(
     if (!buffer || !out_sample || length < 0 || offset < 0) return VN_ERR_INVALID_ARG;
     const int32_t width = bits_per_sample / 8;
     if (width <= 0 || offset > length - width) return VN_ERR_INVALID_ARG;
-    const uint8_t* p = buffer + offset;
-    if (is_float != 0) {
-        if (bits_per_sample == 64) {
-            double value;
-            std::memcpy(&value, p, sizeof(value));
-            *out_sample = static_cast<float>(value);
-        } else if (bits_per_sample == 32) {
-            std::memcpy(out_sample, p, sizeof(float));
-        } else {
-            *out_sample = 0.0f;
+    *out_sample = vz::DecodeSampleAt(buffer + offset, is_float, bits_per_sample);
+    return VN_OK;
+}
+
+VN_EXPORT int32_t __stdcall vn_visualizer_mix_frames_to_mono(
+    const uint8_t* buffer,
+    int32_t length,
+    int32_t bytes_recorded,
+    int32_t channel_count,
+    int32_t bits_per_sample,
+    uint8_t is_float,
+    float* out_mono,
+    int32_t mono_cap,
+    int32_t* out_frames_written) noexcept {
+    if (!buffer || !out_mono || !out_frames_written || length < 0 || mono_cap < 0) return VN_ERR_INVALID_ARG;
+    *out_frames_written = 0;
+
+    int32_t bytes_per_sample = bits_per_sample / 8;
+    if (bytes_per_sample <= 0) bytes_per_sample = (is_float != 0) ? 4 : 2;
+    const int32_t channels = std::max<int32_t>(1, channel_count);
+    const int32_t bytes_per_frame = bytes_per_sample * channels;
+    if (bytes_per_frame <= 0) return VN_OK;
+
+    const int32_t clamped_bytes = std::clamp<int32_t>(bytes_recorded, 0, length);
+    const int32_t total_frames = clamped_bytes / bytes_per_frame;
+    if (total_frames <= 0) return VN_OK;
+    if (total_frames > mono_cap) return VN_ERR_BUFFER_TOO_SMALL;
+
+    const int32_t sample_width = bits_per_sample / 8;
+    for (int32_t frame = 0; frame < total_frames; ++frame) {
+        const int32_t frame_offset = frame * bytes_per_frame;
+        double mixed = 0.0;
+        for (int32_t ch = 0; ch < channels; ++ch) {
+            const int32_t sample_offset = frame_offset + (ch * bytes_per_sample);
+            if (sample_width > 0 && sample_offset >= 0 && sample_offset <= length - sample_width) {
+                mixed += static_cast<double>(vz::DecodeSampleAt(buffer + sample_offset, is_float, bits_per_sample));
+            }
         }
-        return VN_OK;
+        out_mono[frame] = static_cast<float>(mixed / channels);
     }
-    switch (bits_per_sample) {
-        case 8:
-            *out_sample = (static_cast<int32_t>(p[0]) - 128) / 128.0f;
-            break;
-        case 16: {
-            int16_t value;
-            std::memcpy(&value, p, sizeof(value));
-            *out_sample = value / 32768.0f;
-            break;
-        }
-        case 24: {
-            int32_t value = p[0] | (p[1] << 8) | (p[2] << 16);
-            if (value & 0x800000) value |= static_cast<int32_t>(0xFF000000u);
-            *out_sample = value / 8388608.0f;
-            break;
-        }
-        case 32: {
-            int32_t value;
-            std::memcpy(&value, p, sizeof(value));
-            *out_sample = value / 2147483648.0f;
-            break;
-        }
-        default:
-            *out_sample = 0.0f;
-            break;
-    }
+
+    *out_frames_written = total_frames;
     return VN_OK;
 }
 

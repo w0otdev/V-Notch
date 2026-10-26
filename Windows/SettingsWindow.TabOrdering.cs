@@ -1,7 +1,6 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
-using System.Linq;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
@@ -34,6 +33,53 @@ public partial class SettingsWindow
     private readonly Dictionary<FrameworkElement, double> _settingsNavNeighborOffsets = new();
     private bool _isSyncingCameraVisibility = false;
 
+    private static TranslateTransform? FindSettingsRowTranslateTransform(TransformGroup group)
+    {
+        var children = group.Children;
+        for (int i = 0; i < children.Count; i++)
+        {
+            if (children[i] is TranslateTransform translate)
+                return translate;
+        }
+        return null;
+    }
+
+    private static ScaleTransform? FindSettingsRowScaleTransform(TransformGroup group)
+    {
+        var children = group.Children;
+        for (int i = 0; i < children.Count; i++)
+        {
+            if (children[i] is ScaleTransform scale)
+                return scale;
+        }
+        return null;
+    }
+
+    private static List<string> ParseUniqueTabTokens(string? rawOrder)
+    {
+        string[] parts = (rawOrder ?? DefaultNavTabs)
+            .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        var orderTokens = new List<string>(parts.Length + 5);
+        for (int i = 0; i < parts.Length; i++)
+        {
+            string part = parts[i];
+            bool exists = false;
+            for (int j = 0; j < orderTokens.Count; j++)
+            {
+                if (string.Equals(orderTokens[j], part, StringComparison.OrdinalIgnoreCase))
+                {
+                    exists = true;
+                    break;
+                }
+            }
+            if (!exists)
+            {
+                orderTokens.Add(part);
+            }
+        }
+        return orderTokens;
+    }
+
     private void PopulateNavTabsSettings()
     {
         if (NavTabsSettingsContainer == null) return;
@@ -49,12 +95,24 @@ public partial class SettingsWindow
             ["Camera"] = (Loc.Get("nav.camera"), "F0 M28,4 L25,4 L24,2 C23.411,0.837 23.104,0 22,0 L10,0 C8.896,0 8.53,0.954 8,2 L7,4 L4,4 C1.791,4 0,5.791 0,8 L0,24 C0,26.209 1.791,28 4,28 L28,28 C30.209,28 32,26.209 32,24 L32,8 C32,5.791 30.209,4 28,4 Z M16,24 C11.582,24 8,20.418 8,16 C8,11.582 11.582,8 16,8 C20.418,8 24,11.582 24,16 C24,20.418 20.418,24 16,24 Z M16,10 C12.687,10 10,12.687 10,16 C10,19.313 12.687,22 16,22 C19.313,22 22,19.313 22,16 C22,12.687 19.313,10 16,10 L16,10 Z")
         };
 
-        var orderTokens = (_settings.NavTabOrder ?? DefaultNavTabs)
-            .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
-            .Distinct(StringComparer.OrdinalIgnoreCase)
-            .ToList();
+        var orderTokens = ParseUniqueTabTokens(_settings.NavTabOrder);
 
-        orderTokens.AddRange(tabMetadata.Keys.Where(key => !orderTokens.Contains(key, StringComparer.OrdinalIgnoreCase)));
+        foreach (string key in tabMetadata.Keys)
+        {
+            bool exists = false;
+            for (int i = 0; i < orderTokens.Count; i++)
+            {
+                if (string.Equals(orderTokens[i], key, StringComparison.OrdinalIgnoreCase))
+                {
+                    exists = true;
+                    break;
+                }
+            }
+            if (!exists)
+            {
+                orderTokens.Add(key);
+            }
+        }
 
         var visibleTokens = new HashSet<string>(
             (_settings.VisibleNavTabs ?? DefaultNavTabs)
@@ -208,7 +266,7 @@ public partial class SettingsWindow
         _settingsNavNeighborOffsets.Clear();
         if (rowBorder.RenderTransform is TransformGroup group)
         {
-            var translate = group.Children.OfType<TranslateTransform>().FirstOrDefault();
+            var translate = FindSettingsRowTranslateTransform(group);
             translate?.BeginAnimation(TranslateTransform.YProperty, null);
             translate?.BeginAnimation(TranslateTransform.XProperty, null);
         }
@@ -235,7 +293,7 @@ public partial class SettingsWindow
             // Directly track vertical displacement
             if (_settingsNavDragRow.RenderTransform is TransformGroup group)
             {
-                var translate = group.Children.OfType<TranslateTransform>().FirstOrDefault();
+                var translate = FindSettingsRowTranslateTransform(group);
                 if (translate != null)
                 {
                     translate.Y = deltaY;
@@ -272,7 +330,7 @@ public partial class SettingsWindow
 
         if (_settingsNavDragRow.RenderTransform is TransformGroup group)
         {
-            var scale = group.Children.OfType<ScaleTransform>().FirstOrDefault();
+            var scale = FindSettingsRowScaleTransform(group);
             if (scale != null)
             {
                 var animScale = new DoubleAnimation
@@ -300,7 +358,7 @@ public partial class SettingsWindow
         double currentTranslateY = 0.0;
         if (_settingsNavDragRow.RenderTransform is TransformGroup group)
         {
-            var translate = group.Children.OfType<TranslateTransform>().FirstOrDefault();
+            var translate = FindSettingsRowTranslateTransform(group);
             if (translate != null)
             {
                 currentTranslateY = translate.Y;
@@ -359,7 +417,7 @@ public partial class SettingsWindow
     private void AnimateSettingsRowToY(FrameworkElement element, double targetY)
     {
         if (element.RenderTransform is not TransformGroup group) return;
-        var translate = group.Children.OfType<TranslateTransform>().FirstOrDefault();
+        var translate = FindSettingsRowTranslateTransform(group);
         if (translate == null) return;
 
         if (_settingsNavNeighborOffsets.TryGetValue(element, out double currentTarget) &&
@@ -443,10 +501,7 @@ public partial class SettingsWindow
             return;
         }
 
-        var orderTokens = (_settings.NavTabOrder ?? DefaultNavTabs)
-            .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
-            .Distinct(StringComparer.OrdinalIgnoreCase)
-            .ToList();
+        var orderTokens = ParseUniqueTabTokens(_settings.NavTabOrder);
 
         if (_settingsNavInitialSlot < orderTokens.Count && _settingsNavTargetSlot < orderTokens.Count)
         {
@@ -481,8 +536,8 @@ public partial class SettingsWindow
             return;
         }
 
-        var scale = group.Children.OfType<ScaleTransform>().FirstOrDefault();
-        var translate = group.Children.OfType<TranslateTransform>().FirstOrDefault();
+        var scale = FindSettingsRowScaleTransform(group);
+        var translate = FindSettingsRowTranslateTransform(group);
 
         if (scale != null)
         {
@@ -524,18 +579,21 @@ public partial class SettingsWindow
     {
         if (NavTabsSettingsContainer == null) return;
 
-        foreach (var child in NavTabsSettingsContainer.Children.OfType<FrameworkElement>())
+        var children = NavTabsSettingsContainer.Children;
+        for (int i = 0; i < children.Count; i++)
         {
+            if (children[i] is not FrameworkElement child) continue;
+
             if (child.RenderTransform is TransformGroup group)
             {
-                var translate = group.Children.OfType<TranslateTransform>().FirstOrDefault();
+                var translate = FindSettingsRowTranslateTransform(group);
                 if (translate != null)
                 {
                     translate.BeginAnimation(TranslateTransform.YProperty, null);
                     translate.Y = 0;
                 }
 
-                var scale = group.Children.OfType<ScaleTransform>().FirstOrDefault();
+                var scale = FindSettingsRowScaleTransform(group);
                 if (scale != null)
                 {
                     scale.BeginAnimation(ScaleTransform.ScaleXProperty, null);

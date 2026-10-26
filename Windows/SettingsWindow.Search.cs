@@ -1,7 +1,6 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
-using System.Linq;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
@@ -27,6 +26,18 @@ public partial class SettingsWindow
     private UiScheduledTimer? _searchDebounce;
     private bool _isSearchMode;
     private readonly List<SearchRowEntry> _searchRows = new();
+    private readonly List<(SearchRowEntry Row, int Score, int Order)> _scoredSearchMatchesBuffer = new(64);
+    private readonly List<SearchRowEntry> _restoreRowsBuffer = new(64);
+
+    private static readonly Comparison<(SearchRowEntry Row, int Score, int Order)> s_scoredMatchComparison =
+        static (a, b) =>
+        {
+            int cmp = b.Score.CompareTo(a.Score);
+            return cmp != 0 ? cmp : a.Order.CompareTo(b.Order);
+        };
+
+    private static readonly Comparison<SearchRowEntry> s_restoreOrderComparison =
+        static (a, b) => a.OriginalIndex.CompareTo(b.OriginalIndex);
 
     private void SettingsSearchBox_TextChanged(object sender, System.Windows.Controls.TextChangedEventArgs e)
     {
@@ -88,26 +99,36 @@ public partial class SettingsWindow
         bool enteredSearchMode = EnterSearchMode();
         SearchResultsStack.Children.Clear();
 
-        var matches = _searchRows
-            .Select(row => (Row: row, Score: GetSearchRowScore(row, normalizedQuery, allowFuzzy: false)))
-            .Where(match => match.Score > 0)
-            .OrderByDescending(match => match.Score)
-            .Select(match => match.Row)
-            .ToList();
-
-        // Approximate spelling is a fallback, never extra noise beside direct matches.
-        if (matches.Count == 0)
+        _scoredSearchMatchesBuffer.Clear();
+        for (int i = 0; i < _searchRows.Count; i++)
         {
-            matches = _searchRows
-                .Select(row => (Row: row, Score: GetSearchRowScore(row, normalizedQuery, allowFuzzy: true)))
-                .Where(match => match.Score > 0)
-                .OrderByDescending(match => match.Score)
-                .Select(match => match.Row)
-                .ToList();
+            var row = _searchRows[i];
+            int score = GetSearchRowScore(row, normalizedQuery, allowFuzzy: false);
+            if (score > 0)
+            {
+                _scoredSearchMatchesBuffer.Add((row, score, i));
+            }
         }
 
-        foreach (var match in matches)
+        // Approximate spelling is a fallback, never extra noise beside direct matches.
+        if (_scoredSearchMatchesBuffer.Count == 0)
         {
+            for (int i = 0; i < _searchRows.Count; i++)
+            {
+                var row = _searchRows[i];
+                int score = GetSearchRowScore(row, normalizedQuery, allowFuzzy: true);
+                if (score > 0)
+                {
+                    _scoredSearchMatchesBuffer.Add((row, score, i));
+                }
+            }
+        }
+
+        _scoredSearchMatchesBuffer.Sort(s_scoredMatchComparison);
+
+        for (int i = 0; i < _scoredSearchMatchesBuffer.Count; i++)
+        {
+            var match = _scoredSearchMatchesBuffer[i].Row;
             match.OriginalVisibility = match.Row.Visibility;
 
             if (match.Row.Parent is StackPanel currentParent)
@@ -120,7 +141,7 @@ public partial class SettingsWindow
         }
 
         bool wasShowingEmptyState = SearchingEmptyState.Visibility == Visibility.Visible;
-        bool showEmptyState = matches.Count == 0;
+        bool showEmptyState = _scoredSearchMatchesBuffer.Count == 0;
         SearchingEmptyQuery.Text = showEmptyState ? $"“{query}”" : string.Empty;
         SearchingEmptyState.Visibility = showEmptyState ? Visibility.Visible : Visibility.Collapsed;
         SettingsScrollViewer.ScrollToTop();
@@ -143,7 +164,7 @@ public partial class SettingsWindow
         // Category names can qualify a query, but must not generate typo matches for
         // every setting in that category. Prefer matches within the setting itself.
         int categoryScore = SettingsSearchMatcher.GetNormalizedMatchScore(
-            row.NormalizedSectionText + " " + row.NormalizedSearchText, query, allowFuzzy: false);
+            row.NormalizedCombinedText, query, allowFuzzy: false);
         return Math.Max(contentScore > 0 ? contentScore * 10 + 1 : 0, categoryScore * 10);
     }
 
@@ -222,12 +243,18 @@ public partial class SettingsWindow
         if (_searchRows.Count > 0) return;
 
         var rowStyle = FindResource("SettingRowBorder") as Style;
+        var rowBorders = new List<Border>(32);
         foreach (var kvp in _navPanels)
         {
             if (kvp.Key == NavSectionSearching) continue;
 
-            foreach (var row in FindVisualChildren<Border>(kvp.Value))
+            rowBorders.Clear();
+            CollectVisualBorders(kvp.Value, rowBorders);
+            string sectionText = BuildSectionSearchText(kvp.Key);
+
+            for (int i = 0; i < rowBorders.Count; i++)
             {
+                var row = rowBorders[i];
                 if (row.Style != rowStyle || row.Parent is not StackPanel parent)
                 {
                     continue;
@@ -240,15 +267,24 @@ public partial class SettingsWindow
                     parent.Children.IndexOf(row),
                     row.Visibility,
                     BuildSearchText(row),
-                    BuildSectionSearchText(kvp.Key)));
+                    sectionText));
             }
         }
     }
 
     private void RestoreSearchRows()
     {
-        foreach (var row in _searchRows.OrderBy(r => r.OriginalIndex))
+        _restoreRowsBuffer.Clear();
+        for (int i = 0; i < _searchRows.Count; i++)
         {
+            _restoreRowsBuffer.Add(_searchRows[i]);
+        }
+
+        _restoreRowsBuffer.Sort(s_restoreOrderComparison);
+
+        for (int i = 0; i < _restoreRowsBuffer.Count; i++)
+        {
+            var row = _restoreRowsBuffer[i];
             if (row.Row.Parent is StackPanel currentParent)
             {
                 currentParent.Children.Remove(row.Row);
@@ -290,10 +326,18 @@ public partial class SettingsWindow
 
     private void RefreshSearchRows()
     {
-        foreach (var row in _searchRows)
+        var sectionTextCache = new Dictionary<string, string>(StringComparer.Ordinal);
+        for (int i = 0; i < _searchRows.Count; i++)
         {
+            var row = _searchRows[i];
             row.OriginalVisibility = row.Row.Visibility;
-            row.UpdateSearchText(BuildSearchText(row.Row), BuildSectionSearchText(row.Section));
+            if (!sectionTextCache.TryGetValue(row.Section, out string? sectionText))
+            {
+                sectionText = BuildSectionSearchText(row.Section);
+                sectionTextCache[row.Section] = sectionText;
+            }
+
+            row.UpdateSearchText(BuildSearchText(row.Row), sectionText);
         }
     }
 
@@ -389,6 +433,21 @@ public partial class SettingsWindow
         }
     }
 
+    private static void CollectVisualBorders(DependencyObject parent, List<Border> results)
+    {
+        int childCount = VisualTreeHelper.GetChildrenCount(parent);
+        for (int i = 0; i < childCount; i++)
+        {
+            var child = VisualTreeHelper.GetChild(parent, i);
+            if (child is Border border)
+            {
+                results.Add(border);
+            }
+
+            CollectVisualBorders(child, results);
+        }
+    }
+
     private static IEnumerable<T> FindVisualChildren<T>(DependencyObject parent) where T : DependencyObject
     {
         int childCount = VisualTreeHelper.GetChildrenCount(parent);
@@ -433,11 +492,13 @@ public partial class SettingsWindow
         public Visibility OriginalVisibility { get; set; }
         public string NormalizedSearchText { get; private set; } = string.Empty;
         public string NormalizedSectionText { get; private set; } = string.Empty;
+        public string NormalizedCombinedText { get; private set; } = string.Empty;
 
         public void UpdateSearchText(string searchText, string sectionText)
         {
             NormalizedSearchText = SettingsSearchMatcher.Normalize(searchText);
             NormalizedSectionText = SettingsSearchMatcher.Normalize(sectionText);
+            NormalizedCombinedText = string.Concat(NormalizedSectionText, " ", NormalizedSearchText);
         }
     }
 

@@ -36,6 +36,18 @@ internal static unsafe partial class VisualizerDsp
     private static partial int vn_visualizer_read_sample(byte* buffer, int length, int offset, byte isFloat, int bitsPerSample, out float sample);
 
     [LibraryImport(NativeDll)]
+    private static partial int vn_visualizer_mix_frames_to_mono(
+        byte* buffer,
+        int length,
+        int bytesRecorded,
+        int channelCount,
+        int bitsPerSample,
+        byte isFloat,
+        float* outMono,
+        int monoCap,
+        out int outFramesWritten);
+
+    [LibraryImport(NativeDll)]
     private static partial int vn_visualizer_windowed_fft(float* samples, int length, SpectrumComplex* output);
 
     [LibraryImport(NativeDll)]
@@ -95,6 +107,33 @@ internal static unsafe partial class VisualizerDsp
             return vn_visualizer_read_sample(pinned, buffer.Length, offset, isFloat ? (byte)1 : (byte)0, bitsPerSample, out float sample) == 0
                 ? sample
                 : 0f;
+    }
+
+    internal static int MixFramesToMono(
+        byte[] buffer,
+        int bytesRecorded,
+        int channelCount,
+        int bitsPerSample,
+        bool isFloat,
+        Span<float> outMono)
+    {
+        if (buffer.Length == 0 || outMono.IsEmpty) return 0;
+        fixed (byte* pBuf = buffer)
+        fixed (float* pMono = outMono)
+        {
+            return vn_visualizer_mix_frames_to_mono(
+                pBuf,
+                buffer.Length,
+                bytesRecorded,
+                channelCount,
+                bitsPerSample,
+                isFloat ? (byte)1 : (byte)0,
+                pMono,
+                outMono.Length,
+                out int written) == 0
+                ? written
+                : 0;
+        }
     }
 
     /// <summary>Windows <paramref name="samples"/> and writes the forward FFT (scaled by 1/N) into <paramref name="output"/>.</summary>

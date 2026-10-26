@@ -22,6 +22,13 @@ internal sealed partial class SpotlightUsageStore
         ReadOnlySpan<char> commonStartMenuPtr, int commonStartMenuLen,
         out byte outAllowed);
 
+    private static readonly string s_startMenuPath = Environment.GetFolderPath(Environment.SpecialFolder.StartMenu);
+    private static readonly string s_commonStartMenuPath = Environment.GetFolderPath(Environment.SpecialFolder.CommonStartMenu);
+    private static readonly Comparison<KeyValuePair<string, UsageEntry>> s_recentDescComparison =
+        static (a, b) => b.Value.LastLaunchedUtc.CompareTo(a.Value.LastLaunchedUtc);
+    private static readonly Comparison<KeyValuePair<string, UsageEntry>> s_oldestAscComparison =
+        static (a, b) => a.Value.LastLaunchedUtc.CompareTo(b.Value.LastLaunchedUtc);
+
     public SpotlightPreferences Preferences { get; }
     private volatile bool _enabled = true;
     public bool Enabled { get => _enabled; set => _enabled = value; }
@@ -76,12 +83,12 @@ internal sealed partial class SpotlightUsageStore
             var entries = LoadEntries();
             entries.TryGetValue(item.Id, out UsageEntry? existing);
             string normalizedQuery = SettingsSearchMatcher.Normalize(query);
-            var queries = new List<string>(existing?.Queries ?? new());
+            var queries = existing?.Queries != null ? new List<string>(existing.Queries) : new List<string>();
             if (normalizedQuery.Length > 0)
             {
                 foreach (var entry in entries.Values) entry.Queries?.Remove(normalizedQuery);
                 queries.Remove(normalizedQuery);
-                queries.Insert(0, normalizedQuery[..Math.Min(256, normalizedQuery.Length)]);
+                queries.Insert(0, normalizedQuery.Length > 256 ? normalizedQuery[..256] : normalizedQuery);
                 if (queries.Count > 20) queries.RemoveRange(20, queries.Count - 20);
             }
             entries[item.Id] = new UsageEntry
@@ -98,13 +105,16 @@ internal sealed partial class SpotlightUsageStore
 
             if (entries.Count > MaxEntries)
             {
-                foreach (string stale in entries
-                             .OrderBy(pair => pair.Value.LastLaunchedUtc)
-                             .Take(entries.Count - MaxEntries)
-                             .Select(pair => pair.Key)
-                             .ToArray())
+                var allPairs = new KeyValuePair<string, UsageEntry>[entries.Count];
+                int idx = 0;
+                foreach (var pair in entries)
+                    allPairs[idx++] = pair;
+
+                Array.Sort(allPairs, s_oldestAscComparison);
+                int toRemove = entries.Count - MaxEntries;
+                for (int i = 0; i < toRemove; i++)
                 {
-                    entries.Remove(stale);
+                    entries.Remove(allPairs[i].Key);
                 }
             }
 
@@ -151,12 +161,18 @@ internal sealed partial class SpotlightUsageStore
     public double GetBoost(string id, string query = "")
     {
         if (!Enabled) return 0;
+        return GetBoostNormalized(id, SettingsSearchMatcher.Normalize(query));
+    }
+
+    internal double GetBoostNormalized(string id, string normalizedQuery)
+    {
+        if (!Enabled) return 0;
         UsageEntry? entry;
         bool remembered;
         lock (_gate)
         {
             LoadEntries().TryGetValue(id, out entry);
-            remembered = entry?.Queries?.Contains(SettingsSearchMatcher.Normalize(query)) == true;
+            remembered = entry?.Queries != null && normalizedQuery.Length > 0 && entry.Queries.Contains(normalizedQuery);
         }
         if (entry == null) return 0;
 
@@ -173,41 +189,77 @@ internal sealed partial class SpotlightUsageStore
     {
         if (!Enabled || string.IsNullOrWhiteSpace(query)) return Array.Empty<SpotlightSearchItem>();
         string normalized = SettingsSearchMatcher.Normalize(query);
-        KeyValuePair<string, UsageEntry>[] entries;
-        lock (_gate) entries = LoadEntries().Where(pair => pair.Value.Queries?.Contains(normalized) == true).ToArray();
-        return entries.Select(pair =>
+        if (normalized.Length == 0) return Array.Empty<SpotlightSearchItem>();
+
+        List<KeyValuePair<string, UsageEntry>>? matched = null;
+        lock (_gate)
         {
+            var entries = LoadEntries();
+            foreach (var pair in entries)
+            {
+                if (pair.Value.Queries?.Contains(normalized) == true)
+                {
+                    matched ??= new List<KeyValuePair<string, UsageEntry>>(4);
+                    matched.Add(pair);
+                }
+            }
+        }
+
+        if (matched == null || matched.Count == 0)
+            return Array.Empty<SpotlightSearchItem>();
+
+        var output = new List<SpotlightSearchItem>(matched.Count);
+        for (int i = 0; i < matched.Count; i++)
+        {
+            var pair = matched[i];
             var item = new SpotlightSearchItem(pair.Key, pair.Value.Kind, pair.Value.Title,
                 pair.Value.Subtitle, pair.Value.Target, pair.Value.IconPath);
-            return item with { Score = Math.Max(1500, SpotlightRanker.Score(item, query)) };
-        }).Where(SpotlightLauncher.IsValidTarget)
-            .Where(item => ShouldShowHistoryItem(item, query)).ToArray();
+            item = item with { Score = Math.Max(1500, SpotlightRanker.Score(item, query)) };
+            if (SpotlightLauncher.IsValidTarget(item) && ShouldShowHistoryItem(item, query))
+            {
+                output.Add(item);
+            }
+        }
+
+        return output.Count == 0 ? Array.Empty<SpotlightSearchItem>() : output;
     }
 
     public IReadOnlyList<SpotlightSearchItem> GetRecentItems(int limit)
     {
         if (!Enabled || limit <= 0) return Array.Empty<SpotlightSearchItem>();
 
-        List<KeyValuePair<string, UsageEntry>> snapshot;
+        KeyValuePair<string, UsageEntry>[] snapshot;
         lock (_gate)
         {
-            snapshot = LoadEntries().ToList();
+            var entries = LoadEntries();
+            if (entries.Count == 0) return Array.Empty<SpotlightSearchItem>();
+            snapshot = new KeyValuePair<string, UsageEntry>[entries.Count];
+            int idx = 0;
+            foreach (var pair in entries)
+                snapshot[idx++] = pair;
         }
 
-        return snapshot
-            .OrderByDescending(pair => pair.Value.LastLaunchedUtc)
-            .Select(pair => new SpotlightSearchItem(
+        Array.Sort(snapshot, s_recentDescComparison);
+
+        var output = new List<SpotlightSearchItem>(Math.Min(limit, snapshot.Length));
+        for (int i = 0; i < snapshot.Length && output.Count < limit; i++)
+        {
+            var pair = snapshot[i];
+            var item = new SpotlightSearchItem(
                 pair.Key, pair.Value.Kind, pair.Value.Title, pair.Value.Subtitle,
                 pair.Value.Target, pair.Value.IconPath)
             {
                 IsRecent = true
-            })
-            .Where(SpotlightLauncher.IsValidTarget)
-            .Where(item => !Preferences.IsExcluded(item.Target))
-            .Where(item => ShouldShowHistoryItem(item, string.Empty))
-            .Take(limit)
-            .Select(SpotlightSearchService.LoadIcon)
-            .ToArray();
+            };
+
+            if (!SpotlightLauncher.IsValidTarget(item)) continue;
+            if (Preferences.IsExcluded(item.Target)) continue;
+            if (!ShouldShowHistoryItem(item, string.Empty)) continue;
+
+            output.Add(SpotlightSearchService.LoadIcon(item));
+        }
+
+        return output.Count == 0 ? Array.Empty<SpotlightSearchItem>() : output;
     }
 
     private bool ShouldShowHistoryItem(SpotlightSearchItem item, string query)
@@ -217,18 +269,16 @@ internal sealed partial class SpotlightUsageStore
         // it came from a temporary/download cache. Discovery filters apply to
         // unsolicited results, not to that deliberate choice.
         if (item.Kind == SpotlightResultKind.File
-            && !SpotlightFileVisibility.HiddenExtensions.Contains(Path.GetExtension(item.Target), StringComparer.OrdinalIgnoreCase))
+            && !SpotlightFileVisibility.HiddenExtensions.Contains(Path.GetExtension(item.Target)))
             return true;
         if (SpotlightSystemCatalog.IsKnownTarget(item) || Preferences.IsPinned(item.Target)
             || !string.IsNullOrWhiteSpace(Preferences.GetAlias(item.Target))) return true;
         if (item.Kind == SpotlightResultKind.Application)
         {
-            string startMenu = Environment.GetFolderPath(Environment.SpecialFolder.StartMenu);
-            string commonStartMenu = Environment.GetFolderPath(Environment.SpecialFolder.CommonStartMenu);
             if (vn_spotlight_usage_is_allowed_app_history_target(
                 item.Target.AsSpan(), item.Target.Length,
-                startMenu.AsSpan(), startMenu.Length,
-                commonStartMenu.AsSpan(), commonStartMenu.Length,
+                s_startMenuPath.AsSpan(), s_startMenuPath.Length,
+                s_commonStartMenuPath.AsSpan(), s_commonStartMenuPath.Length,
                 out byte allowed) == 0 && allowed != 0)
             {
                 return true;
