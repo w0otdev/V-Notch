@@ -17,7 +17,9 @@ public:
                 break;
             }
         }
-        return std::min(64, line_end);
+        int32_t len = std::min(64, line_end);
+        if (len > 0 && (content[static_cast<size_t>(len - 1)] & 0xFC00) == 0xD800) --len;
+        return len;
     }
 };
 

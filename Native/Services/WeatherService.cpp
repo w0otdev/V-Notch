@@ -86,7 +86,8 @@ public:
 
     static int32_t RoundTemperature(double value) noexcept
     {
-        return static_cast<int32_t>(std::round(value));
+        if (!std::isfinite(value)) return 0;
+        return static_cast<int32_t>(std::clamp(std::round(value), -1000.0, 1000.0));
     }
 };
 

@@ -53,6 +53,8 @@ public class MediaInfo
     public TimeSpan Duration { get; set; } = TimeSpan.Zero;
     public DateTimeOffset LastUpdated { get; set; } = DateTimeOffset.Now;
     public bool IsIndeterminate { get; set; }
+    // Browser timelines can briefly have no duration while the next track loads.
+    public bool IsTimelinePending { get; set; }
     public bool IsSeekEnabled { get; set; }
     public bool IsThrottled { get; set; }
     public bool IsThumbnailOnlyUpdate { get; set; }

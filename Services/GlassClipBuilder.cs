@@ -1,10 +1,20 @@
+using System.Runtime.InteropServices;
 using System.Windows;
 using System.Windows.Media;
 
 namespace VNotch.Services;
 
-internal static class GlassClipBuilder
+internal static partial class GlassClipBuilder
 {
+    private const string NativeDll = "VNotch.Native.dll";
+
+    [LibraryImport(NativeDll, EntryPoint = "vn_glass_compute_squircle_lut")]
+    private static unsafe partial int NativeComputeSquircleLut(
+        double power,
+        int segments,
+        double* outPowCos,
+        double* outPowSin);
+
     // The shell, hover glow and material host request the same silhouette in
     // one layout pass. Share the frozen resource without retaining old frames.
     [ThreadStatic] private static StreamGeometry? _lastClip;
@@ -12,44 +22,25 @@ internal static class GlassClipBuilder
     [ThreadStatic] private static CornerRadius _lastClipRadius;
     [ThreadStatic] private static double _lastClipPower;
     private const int CornerSegments = 64;
-    private static readonly double[] _unitCos = CreateUnitTrig(useSin: false);
-    private static readonly double[] _unitSin = CreateUnitTrig(useSin: true);
 
     private static double _cachedPower = double.NaN;
-    private static double[] _cachedPowCos = System.Array.Empty<double>();
-    private static double[] _cachedPowSin = System.Array.Empty<double>();
+    private static readonly double[] _cachedPowCos = new double[CornerSegments];
+    private static readonly double[] _cachedPowSin = new double[CornerSegments];
     private static readonly object _lutLock = new();
 
-    private static double[] CreateUnitTrig(bool useSin)
-    {
-        var table = new double[CornerSegments];
-        for (int i = 1; i < CornerSegments; i++)
-        {
-            double angle = Math.PI / 2 * i / CornerSegments;
-            table[i] = useSin ? Math.Sin(angle) : Math.Cos(angle);
-        }
-        return table;
-    }
-
-    private static (double[] PowCos, double[] PowSin) GetUnitCurve(double power)
+    private static unsafe (double[] PowCos, double[] PowSin) GetUnitCurve(double power)
     {
         lock (_lutLock)
         {
-            if (Math.Abs(power - _cachedPower) < 1e-6 && _cachedPowCos.Length == CornerSegments)
+            if (Math.Abs(power - _cachedPower) < 1e-6)
                 return (_cachedPowCos, _cachedPowSin);
 
-            double exp = 2.0 / power;
-            var powCos = new double[CornerSegments];
-            var powSin = new double[CornerSegments];
-            for (int i = 1; i < CornerSegments; i++)
+            fixed (double* cosPtr = _cachedPowCos, sinPtr = _cachedPowSin)
             {
-                powCos[i] = Math.Pow(_unitCos[i], exp);
-                powSin[i] = Math.Pow(_unitSin[i], exp);
+                NativeComputeSquircleLut(power, CornerSegments, cosPtr, sinPtr);
             }
             _cachedPower = power;
-            _cachedPowCos = powCos;
-            _cachedPowSin = powSin;
-            return (powCos, powSin);
+            return (_cachedPowCos, _cachedPowSin);
         }
     }
 

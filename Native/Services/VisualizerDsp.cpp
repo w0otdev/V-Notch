@@ -213,6 +213,7 @@ void FftForward(VnSpectrumComplex* data, int32_t m) noexcept {
 }
 
 double NormalizeAmplitude(double amplitude) noexcept {
+    if (!std::isfinite(amplitude) || amplitude <= 1e-9) return 0.0;
     const double db = 20.0 * std::log10(std::max(amplitude, 1e-9));
     const double normalized = std::clamp((db - kMinDb) / (kMaxDb - kMinDb), 0.0, 1.0);
     return std::pow(normalized, kCompressionPower);
@@ -435,6 +436,8 @@ double GetAudioReactiveFloor(int32_t index, uint32_t hash, double t, double ener
 }
 
 double GetAudioReactiveRhythmAt(uint32_t hash, double t, double energy) noexcept {
+    if (!std::isfinite(t)) t = 0.0;
+    if (!std::isfinite(energy)) energy = 0.0;
     const double phase = (hash % 1000u) / 1000.0 * std::numbers::pi * 2.0;
     const double base_freq = 0.20 + (hash % 18u) / 200.0;
     const double speed = 0.28 + (energy * 0.16);
@@ -455,12 +458,12 @@ inline float DecodeSampleAt(const uint8_t* p, uint8_t is_float, int32_t bits_per
         if (bits_per_sample == 64) {
             double value;
             std::memcpy(&value, p, sizeof(value));
-            return static_cast<float>(value);
+            return std::isfinite(value) ? static_cast<float>(value) : 0.0f;
         }
         if (bits_per_sample == 32) {
             float value;
             std::memcpy(&value, p, sizeof(value));
-            return value;
+            return std::isfinite(value) ? value : 0.0f;
         }
         return 0.0f;
     }
@@ -515,6 +518,7 @@ VN_EXPORT int32_t __stdcall vn_visualizer_mix_frames_to_mono(
     if (!buffer || !out_mono || !out_frames_written || length < 0 || mono_cap < 0) return VN_ERR_INVALID_ARG;
     *out_frames_written = 0;
 
+    if (channel_count <= 0 || channel_count > 64 || bits_per_sample <= 0 || bits_per_sample > 64) return VN_ERR_INVALID_ARG;
     int32_t bytes_per_sample = bits_per_sample / 8;
     if (bytes_per_sample <= 0) bytes_per_sample = (is_float != 0) ? 4 : 2;
     const int32_t channels = std::max<int32_t>(1, channel_count);

@@ -181,8 +181,9 @@ public partial class UpdateService : IUpdateService, IDisposable
         finally
         {
             _checkLock.Release();
-            try { UpdateCheckCompleted?.Invoke(this, result != null ? Clone(result) : null); }
-            catch (Exception ex) { RuntimeLog.Error(LogCategory, ex, "UpdateCheckCompleted handler threw"); }
+            var handlers = UpdateCheckCompleted?.GetInvocationList();
+            if (handlers != null) { var arg = result != null ? Clone(result) : null; foreach (var d in handlers) { try { ((EventHandler<UpdateInfo?>)d)(this, arg); } catch (Exception ex) { RuntimeLog.Error(LogCategory, ex, "UpdateCheckCompleted handler threw"); } } }
+
         }
     }
 

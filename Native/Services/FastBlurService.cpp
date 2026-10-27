@@ -20,7 +20,7 @@ namespace vnotch::services
 
     public:
         // 2 * radius + 1 must stay far below 2^24 so the fixed-point reciprocal and the running sums cannot overflow.
-        static constexpr int32_t kMaxRadius = 1 << 20;
+        static constexpr int32_t kMaxRadius = 256;
 
         static constexpr uint32_t GetWindowReciprocal(int32_t window) noexcept
         {

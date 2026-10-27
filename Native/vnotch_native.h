@@ -147,11 +147,6 @@ struct VnTimelineClassifierState
     uint8_t was_playing;
 };
 
-struct VnShelfViewportRange
-{
-    int32_t start_index;
-    int32_t end_index_exclusive;
-};
 
 struct VnSystemPowerStatus
 {
@@ -162,6 +157,7 @@ struct VnSystemPowerStatus
     int32_t battery_life_time;
     int32_t battery_full_life_time;
 };
+
 
 struct VnSystemBatteryState
 {
@@ -214,6 +210,44 @@ struct VnJsonBoundaryState
     int32_t depth;
 };
 
+struct VnGlassMapParams
+{
+    int32_t out_w;
+    int32_t out_h;
+    int32_t src_w;
+    int32_t src_h;
+    int32_t margin;
+    int32_t notch_w;
+    int32_t notch_h;
+    int32_t notch_off_x;
+    int32_t notch_off_y;
+    int32_t capture_shift_x;
+    int32_t capture_shift_y;
+    double out_scale;
+    double top_corner_radius;
+    double bottom_corner_radius;
+    double edge_bend;
+    double chromatic_aberration;
+    double distortion;
+    double f_power;
+    double refraction_a;
+    double refraction_b;
+    double refraction_c;
+    double refraction_d;
+};
+
+struct VnGlassBackdropOpticsOut
+{
+    uint8_t red;
+    uint8_t green;
+    uint8_t blue;
+    uint8_t reserved;
+    double light_x;
+    double light_y;
+    double contrast;
+    int32_t outside_rgb;
+};
+
 #pragma pack(pop)
 
 VN_EXPORT int32_t __stdcall vn_visualizer_mix_frames_to_mono(
@@ -226,3 +260,70 @@ VN_EXPORT int32_t __stdcall vn_visualizer_mix_frames_to_mono(
     float* out_mono,
     int32_t mono_cap,
     int32_t* out_frames_written) noexcept;
+
+VN_EXPORT int32_t __stdcall vn_soundcloud_find_next_anchor_href(
+    const char16_t* html_ptr,
+    int32_t html_len,
+    int32_t start_pos,
+    int32_t* out_href_start,
+    int32_t* out_href_len,
+    int32_t* out_next_pos,
+    uint8_t* out_found) noexcept;
+
+VN_EXPORT int32_t __stdcall vn_glass_build_refraction_lut(
+    double f_power,
+    double refraction_a,
+    double refraction_b,
+    double refraction_c,
+    double refraction_d,
+    double* out_lut,
+    int32_t lut_len) noexcept;
+
+VN_EXPORT int32_t __stdcall vn_glass_build_refraction_rows(
+    const VnGlassMapParams* params,
+    const double* lut,
+    int32_t lut_len,
+    int32_t y_start,
+    int32_t y_end,
+    int32_t* out_map) noexcept;
+
+VN_EXPORT int32_t __stdcall vn_glass_refract_gather(
+    const uint8_t* src,
+    uint8_t* dst,
+    const int32_t* refract_map,
+    int32_t src_stride,
+    int32_t start_pixel,
+    int32_t end_pixel,
+    uint8_t adjust_color,
+    float sat_factor,
+    float bright_add) noexcept;
+
+VN_EXPORT int32_t __stdcall vn_glass_analyze_backdrop_samples(
+    const int32_t* rgb_samples,
+    int32_t sample_len,
+    int32_t columns,
+    int32_t rows,
+    VnGlassBackdropOpticsOut* out_optics) noexcept;
+
+VN_EXPORT int32_t __stdcall vn_glass_sample_backdrop_optics(
+    const uint8_t* dib_bits,
+    int32_t src_w,
+    int32_t src_h,
+    int32_t sample_x,
+    int32_t sample_y,
+    int32_t sample_w,
+    int32_t sample_h,
+    VnGlassBackdropOpticsOut* out_optics) noexcept;
+
+VN_EXPORT int32_t __stdcall vn_glass_gaussian_box_radii(
+    double sigma,
+    int32_t passes,
+    int32_t* out_radii,
+    int32_t radii_cap,
+    int32_t* out_written) noexcept;
+
+VN_EXPORT int32_t __stdcall vn_glass_compute_squircle_lut(
+    double power,
+    int32_t segments,
+    double* out_pow_cos,
+    double* out_pow_sin) noexcept;

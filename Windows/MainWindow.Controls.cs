@@ -330,7 +330,7 @@ public partial class MainWindow
             _volumeBaselinePending = true;
             int version = ++_volumeBaselineVersion;
 
-            System.Threading.ThreadPool.QueueUserWorkItem(_ =>
+            _mediaVolumeWrites.Post("volume", () =>
             {
                 bool ok = _mediaService.TryGetCurrentSessionVolume(out float vol, out bool _);
                 Dispatcher.BeginInvoke(() =>
@@ -361,7 +361,7 @@ public partial class MainWindow
         ShowVolumeIndicator(newVolume);
 
         float volumeToSet = newVolume;
-        System.Threading.ThreadPool.QueueUserWorkItem(_ =>
+        _mediaVolumeWrites.Post("volume", () =>
         {
             _mediaService.TrySetCurrentSessionVolume(volumeToSet);
         });
@@ -619,7 +619,7 @@ public partial class MainWindow
         SetVolumeFill(VolumeIndicatorScale, newVolume);
 
         float volumeToSet = newVolume;
-        System.Threading.ThreadPool.QueueUserWorkItem(_ =>
+        _mediaVolumeWrites.Post("volume", () =>
         {
             _mediaService.TrySetCurrentSessionVolume(volumeToSet);
         });
@@ -718,7 +718,7 @@ public partial class MainWindow
         UpdateVolumeIcon(newVolume, false);
 
         float volumeToSet = newVolume;
-        System.Threading.ThreadPool.QueueUserWorkItem(_ =>
+        _mediaVolumeWrites.Post("volume", () =>
         {
             _mediaService.TrySetCurrentSessionVolume(volumeToSet);
         });

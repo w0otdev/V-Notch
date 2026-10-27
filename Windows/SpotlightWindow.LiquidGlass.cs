@@ -125,6 +125,7 @@ public partial class SpotlightWindow
             if (!sysTrans)
             {
                 Shell.Background = (Brush)FindResource("ShellBrush");
+                CompositionTarget.Rendering -= OnLiquidGlassFrameUpdate;
                 GlassMaterialClipHost.Visibility = Visibility.Collapsed;
                 GlassBackdropHost.Visibility = Visibility.Collapsed;
                 GlassBackdropHost.Background = null;
@@ -168,13 +169,15 @@ public partial class SpotlightWindow
                 GetGlassCaptureRegion,
                 activeFps: Math.Clamp(targetFps, 30, LiquidGlassController.MaxTargetFps),
                 logTag: "SPOTLIGHT",
-                maxRegionWidth: (int)Math.Ceiling(800 * GetGlassDpiScale()),
+                maxRegionWidth: (int)Math.Ceiling(1000 * GetGlassDpiScale()),
                 maxRegionHeight: (int)Math.Ceiling(700 * GetGlassDpiScale()));
 
             UpdateGlassCaptureExtent();
 
             _liquidGlass.HideFromScreenCapture = _settings.LiquidGlass?.HideFromScreenCapture ?? false;
-            _liquidGlass.SetAnimating(_entranceActive || _isClosing);
+            bool isAnimating = _entranceActive || _isClosing || _preparingGlassEntrance;
+            _liquidGlass.SetAnimating(isAnimating);
+            _liquidGlass.SetIdle(!isAnimating);
 
             if (IsSpotlightOpen)
                 ConfigureGpuRefraction();
@@ -192,6 +195,7 @@ public partial class SpotlightWindow
             CompositionTarget.Rendering -= OnLiquidGlassFrameUpdate;
 
             Shell.Background = (Brush)FindResource("ShellBrush");
+            CompositionTarget.Rendering -= OnLiquidGlassFrameUpdate;
             GlassMaterialClipHost.Visibility = Visibility.Collapsed;
             GlassBackdropHost.Visibility = Visibility.Collapsed;
             GlassBackdropHost.Background = null;
@@ -346,6 +350,11 @@ public partial class SpotlightWindow
         RuntimeLog.Log("LIQUIDGLASS", $"Spotlight GPU render failed; switched to CPU fallback: {ex.Message}");
         DetachGpuRefraction();
         _liquidGlass?.SetGpuMode(false, null);
+        if (IsSpotlightOpen)
+        {
+            CompositionTarget.Rendering -= OnLiquidGlassFrameUpdate;
+            CompositionTarget.Rendering += OnLiquidGlassFrameUpdate;
+        }
         ApplyLiquidGlassConfig();
     }
 
@@ -374,6 +383,12 @@ public partial class SpotlightWindow
     private void ApplyGpuGeometry(LiquidGlassController.GpuGeometry g)
     {
         _lastGpuGeometry = g;
+        if (_liquidGlass != null)
+        {
+            if (_liquidGlass.HasPresentedFrame && Shell.Background != Brushes.Transparent)
+                Shell.Background = Brushes.Transparent;
+            UpdateDynamicFresnel(_liquidGlass.CurrentBackdropOptics);
+        }
         UpdateShaderGeometryPerFrame();
     }
 
@@ -625,7 +640,7 @@ public partial class SpotlightWindow
         if (_liquidGlass == null) return;
         _lastAppliedDpiScale = -1;
         _lastPushedCaptureRegion = null;
-        if (_liquidGlass.MaxRegionWidth < Math.Ceiling(800 * newDpi.DpiScaleX) ||
+        if (_liquidGlass.MaxRegionWidth < Math.Ceiling(1000 * newDpi.DpiScaleX) ||
             _liquidGlass.MaxRegionHeight < Math.Ceiling(700 * newDpi.DpiScaleY))
         {
             _liquidGlass.Stop();
@@ -743,10 +758,11 @@ public partial class SpotlightWindow
     {
         if (_liquidGlass == null) return;
 
-        // Use stationary envelope only during window morphs; at rest capture/upload
-        // visible shell and refraction margins with fixed D3D surface.
-        _liquidGlass.CaptureFullSurface =
-            _entranceActive || _isClosing || _preparingGlassEntrance;
+        // Spotlight binds the full D3D surface without cropping and can morph to
+        // wide expanded notch states on exit; keep the full surface envelope ready.
+        bool isAnimating = _entranceActive || _isClosing || _preparingGlassEntrance;
+        _liquidGlass.CaptureFullSurface = true;
+        _liquidGlass.SetIdle(!isAnimating);
     }
 
     private void GlassMaterialClipHost_LayoutUpdated(object? sender, EventArgs e)

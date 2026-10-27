@@ -260,7 +260,7 @@ internal static class SetupOperations
         StopOtherRunningInstancesAsync().GetAwaiter().GetResult();
         RemoveStartupRegistration();
         RemoveUninstallRegistration();
-        RemoveShortcuts();
+        try { RemoveShortcuts(); } catch (Exception ex) { Debug.WriteLine($"[Setup] Could not remove shortcuts: {ex.Message}"); }
         RemoveAppData();
 
         InstallDirectoryCleanup.Schedule(installDirectory);
@@ -542,6 +542,7 @@ internal static class SetupOperations
             shortcut.IconLocation = targetPath;
             shortcut.Description = AppName;
             shortcut.Save();
+            System.Runtime.InteropServices.Marshal.FinalReleaseComObject(shortcut);
         }
         finally
         {

@@ -49,11 +49,6 @@
         "resolved": "3.1.5",
         "contentHash": "tKi7dSTwP4m5m9eXPM2Ime4Kn7xNf4x4zT9sdLO/G4hZVnQCRiMTWoSZqI/pYTVeI27oPPqHBKYI/DjJ9GsYgA=="
       },
-      "AngleSharp": {
-        "type": "Transitive",
-        "resolved": "1.8.2",
-        "contentHash": "iRlkfBIhi+gTgTxBlYNT4PlmaiVEy7+qX3BmprAK4cYE1UjfSNFI4mEDyxC1qgtAKYg5rjGYgL3tJlzGF+Ukdg=="
-      },
       "CommunityToolkit.HighPerformance": {
         "type": "Transitive",
         "resolved": "8.4.2",
@@ -68,11 +63,6 @@
         "type": "Transitive",
         "resolved": "2.0.1",
         "contentHash": "dtxmeZXzV2GzSm91aZ3hqzgoeVoARSkDPVCYfhVUNyyKBWYxMgNC0EcLiSYxD4Uc4alq/2qb3SmV8DgAENLRLQ=="
-      },
-      "JsonExtensions": {
-        "type": "Transitive",
-        "resolved": "1.2.0",
-        "contentHash": "ujtrK6m5BQVQLEteLfl54upN7Z59c1ZqEKmU3OlYriqnV74dIgIlNM2vkcgn2AuZEItQDNORD/2H1biI/asOdg=="
       },
       "LanguageDetection.Ai": {
         "type": "Transitive",
@@ -450,19 +440,9 @@
           "xunit.extensibility.core": "[2.9.3]"
         }
       },
-      "YoutubeExplode": {
-        "type": "Transitive",
-        "resolved": "6.6.0",
-        "contentHash": "DCFAmPvADs/ZB3pB24kLFzVY/1o6iECqJ7IL9LKi4zkSZLgcXDwFbOJe3vd2K3FBw36Xa3O/QMv10zelT7hjfA==",
-        "dependencies": {
-          "AngleSharp": "1.4.0",
-          "JsonExtensions": "1.2.0"
-        }
-      },
       "v-notch": {
         "type": "Project",
         "dependencies": {
-          "AngleSharp": "[1.8.2, )",
           "CommunityToolkit.Mvvm": "[8.4.0, )",
           "Hardcodet.NotifyIcon.Wpf": "[2.0.1, )",
           "LLamaSharp": "[0.27.0, )",
@@ -475,8 +455,7 @@
           "Microsoft.Web.WebView2": "[1.0.4078.44, )",
           "System.Data.OleDb": "[8.0.1, )",
           "Vortice.DXGI": "[3.8.3, )",
-          "Vortice.Direct3D9": "[3.8.3, )",
-          "YoutubeExplode": "[6.6.0, )"
+          "Vortice.Direct3D9": "[3.8.3, )"
         }
       }
     },

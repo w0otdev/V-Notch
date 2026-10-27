@@ -127,7 +127,7 @@ public partial class ProgressViewModel : ObservableObject
         if (IsIndeterminate)
         {
             CurrentTimeText = "";
-            RemainingTimeText = "LIVE";
+            RemainingTimeText = CurrentMediaInfo.IsTimelinePending ? "--:--" : "LIVE";
             Position = 0;
             return;
         }

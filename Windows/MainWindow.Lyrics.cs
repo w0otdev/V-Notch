@@ -658,6 +658,7 @@ public partial class MainWindow
 
         if (hasActiveLyrics && !AnimationConfig.ReduceMotion)
         {
+            int lineVersion = ++_lyricsLineTransitionVersion;
             var lyricEase = new CubicEase { EasingMode = EasingMode.EaseIn };
             var lyricDur = new Duration(TimeSpan.FromMilliseconds(220));
 
@@ -671,6 +672,7 @@ public partial class MainWindow
                 Timeline.SetDesiredFrameRate(slideOutA, AnimationConfig.TargetFps);
                 fadeOutA.Completed += (s, e) =>
                 {
+                    if (lineVersion != _lyricsLineTransitionVersion || !_isLyricsPlaceholderActive) return;
                     LyricTextA.BeginAnimation(OpacityProperty, null);
                     LyricTextA.Opacity = 0;
                     LyricTextA.Text = "";
@@ -689,6 +691,7 @@ public partial class MainWindow
                 Timeline.SetDesiredFrameRate(slideOutB, AnimationConfig.TargetFps);
                 fadeOutB.Completed += (s, e) =>
                 {
+                    if (lineVersion != _lyricsLineTransitionVersion || !_isLyricsPlaceholderActive) return;
                     LyricTextB.BeginAnimation(OpacityProperty, null);
                     LyricTextB.Opacity = 0;
                     LyricTextB.Text = "";

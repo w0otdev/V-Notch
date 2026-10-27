@@ -57,6 +57,26 @@ Chính sách này dùng các thuật ngữ sau:
 | **Cử chỉ chuột** | Di chuyển/nhấp chuột trên vùng notch | Không | Không |
 | **Cắt ảnh bìa thông minh** | Nhận diện đối tượng YOLO11n trên thiết bị (ONNX Runtime) | Không | Không (chạy 100% cục bộ) |
 
+### Tổng quan dịch vụ mạng và lưu trữ
+
+| Dịch vụ | Mục đích |
+| --- | --- |
+| GitHub Releases API | Kiểm tra cập nhật |
+| LRCLIB / lrc mux | Lời bài hát đồng bộ |
+| YouTube / SoundCloud | Ảnh thu nhỏ và phụ đề công khai |
+| Spotify Web Services | Canvas thử nghiệm, mặc định tắt; yêu cầu chủ động bật; phiên được mã hóa bằng Windows DPAPI |
+| Open-Meteo / ipwho.is | Thời tiết tùy chọn |
+| OpenAI / Google Gemini / Anthropic Claude / DeepSeek | Tin nhắn và ngữ cảnh hội thoại AI tùy chọn; làm mới số dư DeepSeek khi có yêu cầu |
+
+Cài đặt và một số bộ nhớ đệm cục bộ được lưu tại `%APPDATA%\V-Notch\`. Lịch sử trò chuyện AI đã mã hóa được lưu riêng tại `%LOCALAPPDATA%\V-Notch\spotlight-chats.enc` (đường dẫn cũ `%LOCALAPPDATA%\VNotch\spotlight-chats.enc`). Các bộ nhớ đệm thành phần và tệp tạm khác được mô tả tại Mục 5. Tìm kiếm Spotlight cục bộ không tải truy vấn lên mạng; Spotlight AI chỉ gửi nội dung bạn chủ động gửi tới nhà cung cấp đã chọn.
+
+**Phương tiện bên thứ ba:** Canvas sử dụng các endpoint không chính thức của Spotify và yêu cầu xác nhận trước khi đăng nhập hoặc gửi yêu cầu. Spotify có thể hạn chế quyền truy cập; việc bật tính năng không đồng nghĩa với sự cấp phép từ nền tảng. Phụ đề YouTube phải được truy cập và sử dụng theo điều khoản của YouTube và luật hiện hành. Việc sử dụng hợp lý được đánh giá theo từng trường hợp. Hãy đọc [lưu ý về nền tảng bên ngoài](TERMS_OF_SERVICE_VI.md#4-nền-tảng-và-nội-dung-bên-ngoài) trước khi bật các tính năng này.
+
+> [!NOTE]
+> **An toàn khóa API:** Thông tin xác thực API do người dùng cung cấp (OpenAI, Gemini, Claude, DeepSeek, YouTube) được mã hóa cục bộ bằng Windows DPAPI. V-Notch không duy trì máy chủ trung gian. Nhóm phát triển không chịu trách nhiệm về chi phí phát sinh từ bên thứ ba, việc cạn hạn mức, hoặc thông tin xác thực bị lộ từ môi trường người dùng hay các bản dựng thử nghiệm trước phát hành. Vui lòng thiết lập giới hạn chi tiêu trên tài khoản nhà cung cấp của bạn.
+
+Chấm chỉ báo quyền riêng tư sử dụng báo cáo thu hình từ Windows cùng tín hiệu ghi hình từ Bandicam, OBS Studio và FFmpeg. Xem [phạm vi phát hiện ghi hình và các giới hạn](../RECORDING_DETECTION.md).
+
 ---
 
 ## 3. Dữ liệu được truy cập trên thiết bị của bạn
@@ -329,6 +349,8 @@ V-Notch **không được thiết kế để**:
 ---
 
 ## 8. Quyền kiểm soát riêng tư & Chế độ ngoại tuyến
+
+Mục **Cài đặt → Quyền riêng tư** cho phép kiểm soát độc lập các tính năng AI trực tuyến, phụ đề, Spotify Canvas/đăng nhập, thời tiết và lịch sử trò chuyện AI, bên cạnh các tùy chọn ảnh bìa, lời bài hát, kiểm tra trình duyệt và ghi nhật ký. Chế độ hoàn toàn ngoại tuyến (Strict Local-Only Mode) ghi đè các quyền trực tuyến, hủy các yêu cầu do ứng dụng quản lý (bao gồm cả phản hồi đang truyền phát), chặn các yêu cầu AI, tra cứu số dư và cập nhật thủ công, đồng thời chặn các liên kết trực tuyến mở từ trong ứng dụng. Khi tắt chế độ ngoại tuyến, các lựa chọn riêng lẻ của bạn sẽ được khôi phục. Việc tắt lưu lịch sử AI sẽ bắt đầu một phiên làm việc chỉ lưu trên bộ nhớ RAM (xóa hội thoại/bản nháp đang mở trong bộ nhớ để tránh ghi lại về sau); các cuộc trò chuyện đã lưu trước đó vẫn còn trên ổ đĩa và có thể truy cập hoặc xóa lại khi bật lại lịch sử. Tùy chọn này không kiểm soát việc lưu trữ phía nhà cung cấp. Chế độ ngoại tuyến là chính sách cấp ứng dụng, không phải tường lửa Windows; chế độ này không thể điều phối các ứng dụng khác hoặc đảm bảo không có lưu lượng nền phát sinh từ runtime bên thứ ba.
 
 V-Notch cung cấp một mục **Quyền riêng tư** riêng biệt trong Cài đặt với các nút bật/tắt chi tiết giúp bạn chủ động cấu hình quyền riêng tư và hạn chế các kết nối mạng:
 

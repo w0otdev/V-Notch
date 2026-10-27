@@ -157,6 +157,7 @@ internal static unsafe partial class VisualizerDsp
         ref VisualizerDspState state,
         float[] targets)
     {
+        if (targets == null || targets.Length < 5) return;
         fixed (double* pEnergies = energies)
         fixed (float* pTargets = targets)
             _ = vn_visualizer_compute_display_targets(pEnergies, energies.Length, rmsNormalized, ref state, pTargets);
@@ -164,7 +165,8 @@ internal static unsafe partial class VisualizerDsp
 
     internal static void ComputeHashes(string sid, uint[] noAudioHash, uint[] floorHash)
     {
-        ReadOnlySpan<char> span = sid.AsSpan();
+        if (noAudioHash == null || noAudioHash.Length < 5 || floorHash == null || floorHash.Length < 5) return;
+        ReadOnlySpan<char> span = (sid ?? string.Empty).AsSpan();
         fixed (uint* pNoAudio = noAudioHash, pFloor = floorHash)
             _ = vn_visualizer_compute_hashes(span, span.Length, pNoAudio, pFloor);
     }
@@ -184,6 +186,11 @@ internal static unsafe partial class VisualizerDsp
         ref double currentOpacity,
         double[] currentHeights)
     {
+        if (levels == null || levels.Length < 5 ||
+            noAudioHash == null || noAudioHash.Length < 5 ||
+            floorHash == null || floorHash.Length < 5 ||
+            currentHeights == null || currentHeights.Length < 5)
+            return true;
         fixed (float* pLevels = levels)
         fixed (uint* pNoAudio = noAudioHash, pFloor = floorHash)
         fixed (double* pHeights = currentHeights)
@@ -211,6 +218,11 @@ internal static unsafe partial class VisualizerDsp
         double[] sortedHeights,
         double[] drawHeights)
     {
+        if (currentHeights == null || currentHeights.Length < 5 ||
+            smoothedHeights == null || smoothedHeights.Length < 5 ||
+            sortedHeights == null || sortedHeights.Length < 5 ||
+            drawHeights == null || drawHeights.Length < 5)
+            return;
         fixed (double* pCurrent = currentHeights, pSmoothed = smoothedHeights, pSorted = sortedHeights, pDraw = drawHeights)
             _ = vn_visualizer_prepare_draw_heights(lastDtMs, pCurrent, pSmoothed, pSorted, pDraw);
     }

@@ -779,7 +779,9 @@ public sealed partial class SmartThumbnailCropService : IDisposable
         {
             double scale = Math.Min(1, 640.0 / Math.Max(width, height));
             var resized = new TransformedBitmap(source, new ScaleTransform(scale, scale));
+            resized.Freeze();
             var gray = new FormatConvertedBitmap(resized, PixelFormats.Gray8, null, 0);
+            gray.Freeze();
             int length = gray.PixelWidth * gray.PixelHeight;
             byte[] pixels = ArrayPool<byte>.Shared.Rent(length);
             try

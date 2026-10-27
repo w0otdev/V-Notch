@@ -1,19 +1,19 @@
 <#
 .SYNOPSIS
     Full CI Verification Script for V-Notch.
-    Runs the Windows validation and pipeline checks locally before pushing.
-    Hosted Gitleaks history scanning and CodeQL analysis still run in GitHub Actions.
+    Mirrors .github/workflows/ci.yml locally before pushing.
+    Hosted CodeQL analysis runs in GitHub Actions (check_sarif.py and BuildNativeDll are verified locally).
 
 .DESCRIPTION
-    Runs the complete Windows CI validation suite:
- *       1. Pipeline & secret scanner tests and locale validation (Python)
+    Runs the complete Windows CI validation suite matching .github/workflows/ci.yml:
+ *       1. Pipeline gates, Gitleaks 8.30.1 secret scan, CI scope & locale validation (Python + Gitleaks)
  *       2. Model asset provenance, license & checksum assertion
  *       3. NuGet dependency restore (--locked-mode)
- *       4. Code formatting verification (dotnet format)
- *       5. Native C++26 DLL & Release build with -warnaserror
- *       6. Unit tests & code coverage threshold check + Release security gates
+ *       4. Native C++26 DLL & Release build with -warnaserror
+ *       5. Unit tests (--blame-hang-timeout 60s)
+ *       6. Release security gates & runner regression tests
  *       7. Update compatibility (1.9.3 client & beta-to-stable promotion)
- *       8. Package vulnerability audit
+ *       8. NuGet package vulnerability audit
 
 .PARAMETER Resume
     Evidence directory of a failed run. Resumes at its first unfinished step.
@@ -21,19 +21,19 @@
     If a fix changes compiled code, rebuild Release before resuming the test step.
 
 .PARAMETER FixFormat
-    Automatically formats code with 'dotnet format' before verifying.
+    Optionally formats changed C#/MSBuild files with 'dotnet format whitespace' before building.
 
 .PARAMETER SkipRestore
     Skips the 'dotnet restore' step to save time if dependencies are unchanged.
 
 .PARAMETER Fast
-    Runs validation without code coverage collection or its threshold check.
+    Retained for CLI/checkpoint option compatibility.
 
 .PARAMETER IncludeDesktopIntegration
-    Includes tests that require visible desktop windows, in addition to the CI suite.
+    Includes tests that require visible desktop windows, in addition to the headless CI suite.
 
 .PARAMETER MinimumCoverage
-    Minimum code coverage percentage required (default: 70).
+    Minimum code coverage percentage option retained for CLI/checkpoint compatibility (default: 70).
 #>
 [CmdletBinding()]
 param(
@@ -61,6 +61,14 @@ if (-not $scriptDir) { $scriptDir = Split-Path -Parent $MyInvocation.MyCommand.D
 $repository = Split-Path $scriptDir -Parent
 $previousQaDirectory = [Environment]::GetEnvironmentVariable('VNOTCH_QA_ARTIFACT_DIR', 'Process')
 $previousDesktopMode = [Environment]::GetEnvironmentVariable('VNOTCH_RUN_DESKTOP_TESTS', 'Process')
+$previousWinTarget   = [Environment]::GetEnvironmentVariable('EnableWindowsTargeting', 'Process')
+$previousSkipFirst   = [Environment]::GetEnvironmentVariable('DOTNET_SKIP_FIRST_TIME_EXPERIENCE', 'Process')
+$previousNoLogo      = [Environment]::GetEnvironmentVariable('DOTNET_NOLOGO', 'Process')
+$previousTelemetry   = [Environment]::GetEnvironmentVariable('DOTNET_CLI_TELEMETRY_OPTOUT', 'Process')
+$env:EnableWindowsTargeting = 'true'
+$env:DOTNET_SKIP_FIRST_TIME_EXPERIENCE = '1'
+$env:DOTNET_NOLOGO = '1'
+$env:DOTNET_CLI_TELEMETRY_OPTOUT = '1'
 
 $gTopLeft = [char]0x256D
 $gBotLeft = [char]0x2570
@@ -133,6 +141,25 @@ function Invoke-CapturedNative([scriptblock]$Command) {
     }
 }
 
+function Invoke-StepScript([scriptblock]$Command) {
+    $global:LASTEXITCODE = 0
+    $out = [Collections.Generic.List[string]]::new()
+    try {
+        & $Command *>&1 | ForEach-Object {
+            $line = "$_".Trim()
+            if ($line) { $out.Add($line) }
+        }
+        if ($LASTEXITCODE -ne 0) {
+            foreach ($l in $out) { Write-TreeItem $l -State "Error" }
+            throw "Check failed with exit code $LASTEXITCODE."
+        }
+    } catch {
+        foreach ($l in $out) { Write-TreeItem $l -State "Error" }
+        Write-TreeItem $_.Exception.Message -State "Error"
+        throw
+    }
+}
+
 function Save-Checkpoint([int]$nextStep) {
     @{ Repository = $repository; Options = $options; NextStep = $nextStep; TestResultsDirectory = $testResultsDir } |
         ConvertTo-Json | Set-Content -LiteralPath (Join-Path $runDirectory 'checkpoint.json') -Encoding utf8
@@ -152,7 +179,7 @@ Write-Host "$gArrow Evidence : $relRunDir" -ForegroundColor DarkGray
 Write-TreeSpacer
 
 if ($startStep -le 1) {
-    Write-TreeStep "1/8" "Pipeline Scripts & Locales (Python)"
+    Write-TreeStep "1/8" "Pipeline, Secret Scanner & Locales (Python + Gitleaks)"
     $python = Get-Command python -ErrorAction SilentlyContinue
     if ($python) {
         $pyOut1 = Invoke-CapturedNative { & python -m unittest discover -s "$repository/.github/scripts" -p "test_*.py" }
@@ -161,6 +188,64 @@ if ($startStep -le 1) {
             throw "Pipeline tests failed."
         }
         Write-TreeItem "Pipeline unit tests passed." -State "Success"
+
+        if (-not $env:VNOTCH_CI_RESUME_TEST_FIXTURE) {
+            $gitleaksCache = Join-Path $repository '.cache\gitleaks'
+            $gitleaksZip = Join-Path $gitleaksCache 'gitleaks_8.30.1_windows_x64.zip'
+            $gitleaksExe = Join-Path $gitleaksCache 'gitleaks.exe'
+            $expectedGitleaksSha = 'd29144deff3a68aa93ced33dddf84b7fdc26070add4aa0f4513094c8332afc4e'
+            if (-not (Test-Path -LiteralPath $gitleaksExe)) {
+                New-Item -ItemType Directory -Path $gitleaksCache -Force | Out-Null
+                if (-not (Test-Path -LiteralPath $gitleaksZip)) {
+                    Invoke-WebRequest -Uri 'https://github.com/gitleaks/gitleaks/releases/download/v8.30.1/gitleaks_8.30.1_windows_x64.zip' -OutFile $gitleaksZip -UseBasicParsing
+                }
+                $actualGitleaksSha = (Get-FileHash -LiteralPath $gitleaksZip -Algorithm SHA256).Hash.ToLowerInvariant()
+                if ($actualGitleaksSha -ne $expectedGitleaksSha) {
+                    Remove-Item -LiteralPath $gitleaksZip -Force -ErrorAction SilentlyContinue
+                    throw 'Gitleaks 8.30.1 archive SHA-256 verification failed.'
+                }
+                Expand-Archive -LiteralPath $gitleaksZip -DestinationPath $gitleaksCache -Force
+            }
+            $scanGateOut = Invoke-CapturedNative { & python "$repository/.github/scripts/check_secret_scanner.py" $gitleaksExe }
+            if ($LASTEXITCODE -ne 0) {
+                foreach ($l in @($scanGateOut | ForEach-Object { "$_" } | Where-Object { $_.Trim() })) { Write-TreeItem $l -State "Error" }
+                throw "Secret scanner gate failed."
+            }
+            $sarifPath = Join-Path $runDirectory 'gitleaks.sarif'
+            $glOut = Invoke-CapturedNative {
+                & $gitleaksExe git $repository --log-opts=--all --config "$repository/.gitleaks.toml" `
+                    --gitleaks-ignore-path "$repository/.gitleaksignore" --redact=100 --no-banner `
+                    --report-format sarif --report-path $sarifPath
+            }
+            if ($LASTEXITCODE -ne 0) {
+                foreach ($l in @($glOut | ForEach-Object { "$_" } | Where-Object { $_.Trim() })) { Write-TreeItem $l -State "Error" }
+                throw "Gitleaks history secret scan failed."
+            }
+            Write-TreeItem "Secret scanner & Gitleaks 8.30.1 history scan passed." -State "Success"
+
+            $scopeOutput = Join-Path $runDirectory 'ci-scope.txt'
+            $prevGhOut = [Environment]::GetEnvironmentVariable('GITHUB_OUTPUT', 'Process')
+            $prevBaseSha = [Environment]::GetEnvironmentVariable('BASE_SHA', 'Process')
+            $prevHeadSha = [Environment]::GetEnvironmentVariable('HEAD_SHA', 'Process')
+            $prevGitRef = [Environment]::GetEnvironmentVariable('GIT_REF', 'Process')
+            try {
+                $env:GITHUB_OUTPUT = $scopeOutput
+                $env:BASE_SHA = ('0' * 40)
+                $env:HEAD_SHA = [string](& git -C $repository rev-parse HEAD 2>$null).Trim()
+                $env:GIT_REF = [string](& git -C $repository symbolic-ref HEAD 2>$null).Trim()
+                if (-not $env:GIT_REF) { $env:GIT_REF = 'refs/heads/main' }
+                $scopeOut = Invoke-CapturedNative { & python "$repository/.github/scripts/ci_scope.py" scope }
+                if ($LASTEXITCODE -ne 0) {
+                    foreach ($l in @($scopeOut | ForEach-Object { "$_" } | Where-Object { $_.Trim() })) { Write-TreeItem $l -State "Error" }
+                    throw "CI scope verification failed."
+                }
+            } finally {
+                [Environment]::SetEnvironmentVariable('GITHUB_OUTPUT', $prevGhOut, 'Process')
+                [Environment]::SetEnvironmentVariable('BASE_SHA', $prevBaseSha, 'Process')
+                [Environment]::SetEnvironmentVariable('HEAD_SHA', $prevHeadSha, 'Process')
+                [Environment]::SetEnvironmentVariable('GIT_REF', $prevGitRef, 'Process')
+            }
+        }
 
         $pyOut2 = Invoke-CapturedNative { & python "$repository/Tools/validate_locales.py" }
         if ($LASTEXITCODE -ne 0) {
@@ -178,7 +263,7 @@ if ($startStep -le 1) {
 
 if ($startStep -le 2) {
     Write-TreeStep "2/8" "Model Asset Provenance & License"
-    $modelOut = & "$repository/Tools/Assert-ModelAssets.ps1" *>&1
+    Invoke-StepScript { & "$repository/Tools/Assert-ModelAssets.ps1" } | Out-Null
     Write-TreeItem "Verified YOLOX model checksum & Apache-2.0 license." -State "Success"
 
     Save-Checkpoint 3
@@ -193,7 +278,8 @@ if ($startStep -le 3) {
             (Test-Path -LiteralPath (Join-Path $repository 'Tests\obj\project.assets.json')) -and
             (Test-Path -LiteralPath (Join-Path $repository 'Uninstall\obj\project.assets.json')) -and
             ((Get-Item -LiteralPath (Join-Path $repository 'obj\project.assets.json')).LastWriteTimeUtc -ge (Get-Item -LiteralPath (Join-Path $repository 'packages.lock.json')).LastWriteTimeUtc) -and
-            ((Get-Item -LiteralPath (Join-Path $repository 'Tests\obj\project.assets.json')).LastWriteTimeUtc -ge (Get-Item -LiteralPath (Join-Path $repository 'Tests\packages.lock.json')).LastWriteTimeUtc)
+            ((Get-Item -LiteralPath (Join-Path $repository 'Tests\obj\project.assets.json')).LastWriteTimeUtc -ge (Get-Item -LiteralPath (Join-Path $repository 'Tests\packages.lock.json')).LastWriteTimeUtc) -and
+            ((Get-Item -LiteralPath (Join-Path $repository 'Uninstall\obj\project.assets.json')).LastWriteTimeUtc -ge (Get-Item -LiteralPath (Join-Path $repository 'Uninstall\packages.lock.json')).LastWriteTimeUtc)
         if ($assetsReady) {
             Write-TreeItem "Dependencies already up-to-date with lockfiles." -State "Success"
         } else {
@@ -213,49 +299,57 @@ if ($startStep -le 3) {
 }
 
 if ($startStep -le 4) {
-    Write-TreeStep "4/8" "Code Formatting Verification"
-    $fmtInclude = @()
-    if (-not $env:VNOTCH_CI_RESUME_TEST_FIXTURE) {
-        $changedCs = @(Invoke-CapturedNative { & git diff --name-only HEAD -- '*.cs' '*.csproj' '*.props' '*.targets' } |
-            ForEach-Object { "$_" } | Where-Object { $_.Trim() -and (Test-Path -LiteralPath (Join-Path $repository $_.Trim())) })
-        $untrackedCs = @(Invoke-CapturedNative { & git ls-files --others --exclude-standard -- '*.cs' '*.csproj' '*.props' '*.targets' } |
-            ForEach-Object { "$_" } | Where-Object { $_.Trim() -and (Test-Path -LiteralPath (Join-Path $repository $_.Trim())) })
-        $fmtInclude = @($changedCs + $untrackedCs | Select-Object -Unique)
+    Write-TreeStep "4/8" "Native C++26 DLL & Release Build (-warnaserror)"
+    if ($FixFormat) {
+        Write-TreeItem "Auto-formatting with 'dotnet format whitespace' (-FixFormat)..." -State "Info"
+        Invoke-CapturedNative { & dotnet format whitespace "$repository/V-Notch.sln" --no-restore } | Out-Null
+        if ($LASTEXITCODE -ne 0) { throw 'Automatic formatting failed.' }
     }
-    if ($env:VNOTCH_CI_RESUME_TEST_FIXTURE -or $fmtInclude.Count -gt 0) {
-        $incArgs = if ($fmtInclude.Count -gt 0) { @('--include') + $fmtInclude } else { @() }
-        if ($FixFormat) {
-            Write-TreeItem "Auto-formatting with 'dotnet format whitespace' (-FixFormat)..." -State "Info"
-            Invoke-CapturedNative { & dotnet format whitespace "$repository/V-Notch.sln" --no-restore @incArgs } | Out-Null
-            if ($LASTEXITCODE -ne 0) { throw 'Automatic formatting failed.' }
-        }
-        $fmtOut = Invoke-CapturedNative { & dotnet format whitespace "$repository/V-Notch.sln" --verify-no-changes --no-restore @incArgs }
-        if ($LASTEXITCODE -ne 0) {
-            foreach ($l in @($fmtOut | ForEach-Object { "$_" } | Where-Object { $_.Trim() })) { Write-TreeItem $l -State "Error" }
-            Write-TreeItem "Run '.\scripts\f.ps1' or '.\scripts\c.ps1 -FixFormat' to fix." -State "Warn"
-            throw "Code formatting verification failed."
-        }
+    $bldSw = [System.Diagnostics.Stopwatch]::StartNew()
+    $bldOut = Invoke-CapturedNative { & dotnet build "$repository/V-Notch.sln" --configuration Release --no-restore -warnaserror -nologo -v:q -clp:NoSummary -m -p:NativeFastCompile=true }
+    $bldSw.Stop()
+    if ($LASTEXITCODE -ne 0) {
+        foreach ($l in @($bldOut | ForEach-Object { "$_" } | Where-Object { $_.Trim() })) { Write-TreeItem $l -State "Error" }
+        throw "Build failed with warnings or errors."
     }
-    Write-TreeItem "Code formatting verified." -State "Success"
+    if (-not $env:VNOTCH_CI_RESUME_TEST_FIXTURE -and -not (Test-Path -LiteralPath (Join-Path $repository 'Native\out\VNotch.Native.dll'))) {
+        Write-TreeItem "Native/out/VNotch.Native.dll was not found after build." -State "Error"
+        throw "Failed to compile VNotch.Native.dll."
+    }
+    Write-TreeItem ("Release build succeeded (0 warnings, 0 errors) in {0:N1}s." -f $bldSw.Elapsed.TotalSeconds) -State "Success"
 
     Save-Checkpoint 5
     Write-TreeSpacer
 }
 
 if ($startStep -le 5) {
-    Write-TreeStep "5/8" "Release Build (-warnaserror)"
-    if ($Resume -and $startStep -eq 5) {
+    Write-TreeStep "5/8" "Unit Tests"
+    if ($Resume -and $startStep -le 5) {
         $testResultsDir = Join-Path $runDirectory ('test-results-' + [guid]::NewGuid().ToString('N'))
         New-Item -ItemType Directory -Path $testResultsDir -Force | Out-Null
+        Save-Checkpoint 5
     }
-    $bldSw = [System.Diagnostics.Stopwatch]::StartNew()
-    $bldOut = Invoke-CapturedNative { & dotnet build "$repository/V-Notch.sln" --configuration Release --no-restore -warnaserror -nologo -v:q -clp:NoSummary -m }
-    $bldSw.Stop()
+    $testArgs = @(
+        'test', "$repository/Tests/VNotch.Tests.csproj",
+        '--configuration', 'Release', '--no-build', '--no-restore'
+    )
+    if (-not $IncludeDesktopIntegration) {
+        $testArgs += @('--filter', 'Category!=DesktopIntegration')
+    }
+    $testArgs += @(
+        '--blame-hang-timeout', '60s',
+        '--results-directory', $testResultsDir,
+        '--logger', 'trx;LogFileName=unit-tests.trx',
+        '--logger', 'console;verbosity=minimal'
+    )
+    $tstSw = [System.Diagnostics.Stopwatch]::StartNew()
+    $tstOut = Invoke-CapturedNative { & dotnet @testArgs }
+    $tstSw.Stop()
     if ($LASTEXITCODE -ne 0) {
-        foreach ($l in @($bldOut | ForEach-Object { "$_" } | Where-Object { $_.Trim() })) { Write-TreeItem $l -State "Error" }
-        throw "Build failed with warnings or errors."
+        foreach ($l in @($tstOut | ForEach-Object { "$_" } | Where-Object { $_.Trim() })) { Write-TreeItem $l -State "Error" }
+        throw "Test run failed."
     }
-    Write-TreeItem ("Release build succeeded (0 warnings, 0 errors) in {0:N1}s." -f $bldSw.Elapsed.TotalSeconds) -State "Success"
+    Write-TreeItem ("Unit tests passed in {0:N1}s." -f $tstSw.Elapsed.TotalSeconds) -State "Success"
 
     Save-Checkpoint 6
     Write-TreeSpacer
@@ -263,9 +357,9 @@ if ($startStep -le 5) {
 
 if ($startStep -le 6) {
     Write-TreeStep "6/8" "Release Security Gates"
-    $gateOut = & "$repository/Tests/ReleaseGateTests.ps1" *>&1
-    $cleanOut = & "$repository/Tests/PrepushCleanupTests.ps1" *>&1
-    $resOut = & "$repository/Tests/LocalCiResumeTests.ps1" *>&1
+    Invoke-StepScript { & "$repository/Tests/ReleaseGateTests.ps1" } | Out-Null
+    Invoke-StepScript { & "$repository/Tests/PrepushCleanupTests.ps1" } | Out-Null
+    Invoke-StepScript { & "$repository/Tests/LocalCiResumeTests.ps1" } | Out-Null
     Write-TreeItem "Coverage boundaries, XML safety, signing & runner regression gates passed." -State "Success"
 
     Save-Checkpoint 7
@@ -274,7 +368,7 @@ if ($startStep -le 6) {
 
 if ($startStep -le 7) {
     Write-TreeStep "7/8" "Update Compatibility & Promotion"
-    $updOut1 = & "$repository/Tools/Assert-UpdateCompatibility.ps1" *>&1
+    Invoke-StepScript { & "$repository/Tools/Assert-UpdateCompatibility.ps1" } | Out-Null
     $projectPath = Join-Path $repository 'V-Notch.csproj'
     if (Test-Path -LiteralPath $projectPath) {
         [xml]$project = Get-Content -LiteralPath $projectPath
@@ -282,7 +376,7 @@ if ($startStep -le 7) {
     } else {
         $version = '1.9.4'
     }
-    $updOut2 = & "$repository/Tools/Assert-UpdateCompatibility.ps1" -ReleaseVersion $version -InstalledVersion "$version-beta.65534.65534+build.promotion-probe" *>&1
+    Invoke-StepScript { & "$repository/Tools/Assert-UpdateCompatibility.ps1" -ReleaseVersion $version -InstalledVersion "$version-beta.65534.65534+build.promotion-probe" } | Out-Null
     Write-TreeItem "Verified 1.9.3 client & beta-to-stable v$version promotion." -State "Success"
 
     Save-Checkpoint 8
@@ -291,7 +385,7 @@ if ($startStep -le 7) {
 
 if ($startStep -le 8) {
     Write-TreeStep "8/8" "NuGet Package Vulnerability Audit"
-    $audOut = & "$repository/Tools/Assert-PackageAudit.ps1" -Solution "$repository/V-Notch.sln" -OutputPath "$runDirectory/package-audit.json" *>&1
+    Invoke-StepScript { & "$repository/Tools/Assert-PackageAudit.ps1" -Solution "$repository/V-Notch.sln" -OutputPath "$runDirectory/package-audit.json" } | Out-Null
     Write-TreeItem "0 known vulnerable packages found." -State "Success"
 
     Save-Checkpoint 9
@@ -308,5 +402,9 @@ Write-Host ""
 } finally {
     [Environment]::SetEnvironmentVariable('VNOTCH_QA_ARTIFACT_DIR', $previousQaDirectory, 'Process')
     [Environment]::SetEnvironmentVariable('VNOTCH_RUN_DESKTOP_TESTS', $previousDesktopMode, 'Process')
+    [Environment]::SetEnvironmentVariable('EnableWindowsTargeting', $previousWinTarget, 'Process')
+    [Environment]::SetEnvironmentVariable('DOTNET_SKIP_FIRST_TIME_EXPERIENCE', $previousSkipFirst, 'Process')
+    [Environment]::SetEnvironmentVariable('DOTNET_NOLOGO', $previousNoLogo, 'Process')
+    [Environment]::SetEnvironmentVariable('DOTNET_CLI_TELEMETRY_OPTOUT', $previousTelemetry, 'Process')
     Pop-Location
 }

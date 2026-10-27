@@ -509,6 +509,7 @@ public sealed partial class MediaMetadataLookupService : IMediaMetadataLookupSer
     {
         if (string.IsNullOrWhiteSpace(videoId))
             return null;
+        lock (_videoCacheLock) { if (_failedLookups.TryGetValue(videoId, out var failedUntil) && failedUntil > DateTime.UtcNow) return null; }
 
         string? apiKey = _apiKey();
         if (TryGetCachedVideo(videoId, apiKey, out var cached) && cached != null)
@@ -535,7 +536,10 @@ public sealed partial class MediaMetadataLookupService : IMediaMetadataLookupSer
 
         var oembed = await ValidateVideoIdWithOEmbedAsync(videoId, ct);
         if (oembed == null)
+        {
+            lock (_videoCacheLock) { if (_failedLookups.Count >= FailedLookupsMaxEntries) _failedLookups.Clear(); _failedLookups[videoId] = DateTime.UtcNow.AddMinutes(15); }
             return null;
+        }
 
         if (!string.IsNullOrEmpty(apiKey))
         {
@@ -713,6 +717,8 @@ public sealed partial class MediaMetadataLookupService : IMediaMetadataLookupSer
 
     private static readonly object _videoCacheLock = new();
     private static readonly Dictionary<string, (YouTubeLookupResult Result, DateTime ExpiresUtc)> _videoCache = new(StringComparer.Ordinal);
+    private static readonly Dictionary<string, DateTime> _failedLookups = new(StringComparer.Ordinal);
+    private const int FailedLookupsMaxEntries = 500;
     private static readonly TimeSpan _videoCacheTtl = TimeSpan.FromHours(6);
     private const int VideoCacheMaxEntries = 256;
 

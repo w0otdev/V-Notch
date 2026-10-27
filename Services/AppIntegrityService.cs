@@ -304,11 +304,14 @@ public static partial class AppIntegrityService
                 var resp = await client.SendAsync(req, cancellationToken).ConfigureAwait(false);
                 if (resp.IsSuccessStatusCode)
                 {
+                    response?.Dispose();
                     response = resp;
                     break;
                 }
-                if (response == null || resp.StatusCode != HttpStatusCode.NotFound)
+                if (response != null && resp.StatusCode == HttpStatusCode.NotFound) resp.Dispose();
+                else if (response == null || resp.StatusCode != HttpStatusCode.NotFound)
                 {
+                    response?.Dispose();
                     response = resp;
                 }
             }
@@ -316,15 +319,18 @@ public static partial class AppIntegrityService
             if (response == null || response.StatusCode == HttpStatusCode.NotFound)
             {
                 // Version does not exist on GitHub Releases (unreleased version or private fork)
+                response?.Dispose();
                 return IntegrityCheckStatus.ReleaseNotFound;
             }
 
             if (!response.IsSuccessStatusCode)
             {
+                response?.Dispose();
                 return IntegrityCheckStatus.NetworkError;
             }
 
             var content = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
+            response.Dispose(); response = null;
             using var doc = JsonDocument.Parse(content);
             if (!doc.RootElement.TryGetProperty("assets", out var assets) || assets.GetArrayLength() == 0)
             {
@@ -345,7 +351,7 @@ public static partial class AppIntegrityService
                 }
 
                 var downloadUrl = asset.GetProperty("browser_download_url").GetString();
-                if (!string.IsNullOrEmpty(downloadUrl))
+                if (!string.IsNullOrEmpty(downloadUrl) && Uri.TryCreate(downloadUrl, UriKind.Absolute, out var assetUri) && assetUri.Scheme == Uri.UriSchemeHttps && (customClient != null || IsOfficialReleaseUrl(assetUri)))
                 {
                     foundAnyChecksumAsset = true;
                     try
@@ -375,6 +381,7 @@ public static partial class AppIntegrityService
 
             if (!readAnyChecksumAsset)
             {
+                response?.Dispose();
                 return IntegrityCheckStatus.NetworkError;
             }
 
@@ -474,10 +481,7 @@ public static partial class AppIntegrityService
     {
         try
         {
-            Process.Start(new ProcessStartInfo(OfficialReleasesUrl)
-            {
-                UseShellExecute = true
-            });
+            SafeLauncher.TryOpenUrl(OfficialReleasesUrl);
         }
         catch (Exception ex)
         {

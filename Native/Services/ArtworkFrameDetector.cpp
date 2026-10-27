@@ -21,6 +21,7 @@ namespace vnotch::services
 
         static double EdgeSupport(const uint8_t* pixels, int32_t w, int32_t position, bool row, int32_t direction, int32_t start, int32_t end) noexcept
         {
+            if (end <= start) return 0.0;
             int32_t supported = 0;
             for (int32_t p = start; p < end; ++p)
             {
@@ -272,9 +273,11 @@ VN_EXPORT int32_t vn_artwork_frame_detect_white(
     if (!pixels || w <= 0 || h <= 0 || !out_x || !out_y || !out_w || !out_h || !out_found)
         return VN_ERR_INVALID_ARG;
     *out_x = *out_y = *out_w = *out_h = 0;
-    *out_found = vnotch::services::ArtworkFrameDetector::DetectWhiteFrameCore(
-        pixels, w, h, width, height, *out_x, *out_y, *out_w, *out_h) ? 1u : 0u;
-    return VN_OK;
+    try {
+        *out_found = vnotch::services::ArtworkFrameDetector::DetectWhiteFrameCore(
+            pixels, w, h, width, height, *out_x, *out_y, *out_w, *out_h) ? 1u : 0u;
+        return VN_OK;
+    } catch (...) { return VN_ERR_FAIL; }
 }
 
 VN_EXPORT int32_t vn_artwork_frame_detect_dark_textured(
@@ -292,9 +295,11 @@ VN_EXPORT int32_t vn_artwork_frame_detect_dark_textured(
     if (!pixels || w <= 0 || h <= 0 || !out_x || !out_y || !out_w || !out_h || !out_found)
         return VN_ERR_INVALID_ARG;
     *out_x = *out_y = *out_w = *out_h = 0;
-    *out_found = vnotch::services::ArtworkFrameDetector::DetectDarkTexturedFrameCore(
-        pixels, w, h, width, height, *out_x, *out_y, *out_w, *out_h) ? 1u : 0u;
-    return VN_OK;
+    try {
+        *out_found = vnotch::services::ArtworkFrameDetector::DetectDarkTexturedFrameCore(
+            pixels, w, h, width, height, *out_x, *out_y, *out_w, *out_h) ? 1u : 0u;
+        return VN_OK;
+    } catch (...) { return VN_ERR_FAIL; }
 }
 
 VN_EXPORT int32_t vn_artwork_frame_detect_any(
@@ -312,10 +317,12 @@ VN_EXPORT int32_t vn_artwork_frame_detect_any(
     if (!pixels || w <= 0 || h <= 0 || !out_x || !out_y || !out_w || !out_h || !out_found)
         return VN_ERR_INVALID_ARG;
     *out_x = *out_y = *out_w = *out_h = 0;
-    bool ok = vnotch::services::ArtworkFrameDetector::DetectWhiteFrameCore(
-                  pixels, w, h, width, height, *out_x, *out_y, *out_w, *out_h) ||
-              vnotch::services::ArtworkFrameDetector::DetectDarkTexturedFrameCore(
-                  pixels, w, h, width, height, *out_x, *out_y, *out_w, *out_h);
-    *out_found = ok ? 1u : 0u;
-    return VN_OK;
+    try {
+        bool ok = vnotch::services::ArtworkFrameDetector::DetectWhiteFrameCore(
+                      pixels, w, h, width, height, *out_x, *out_y, *out_w, *out_h) ||
+                  vnotch::services::ArtworkFrameDetector::DetectDarkTexturedFrameCore(
+                      pixels, w, h, width, height, *out_x, *out_y, *out_w, *out_h);
+        *out_found = ok ? 1u : 0u;
+        return VN_OK;
+    } catch (...) { return VN_ERR_FAIL; }
 }

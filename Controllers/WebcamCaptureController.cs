@@ -26,6 +26,7 @@ public sealed class WebcamCaptureController : IDisposable
     private bool _stopping;
 
     private int _fadeToken;
+    private int _startToken;
 
     private long _lastFrameTimestamp;
     private static readonly long FrameIntervalTicks = Stopwatch.Frequency / 30;
@@ -115,6 +116,7 @@ public sealed class WebcamCaptureController : IDisposable
     public async Task<string?> StartAsync(string? deviceId, Func<bool> isContextValid)
     {
         int startToken;
+        int fadeToken;
         lock (_lifecycleLock)
         {
             if (_isActive && _frameReader != null) return null;
@@ -123,14 +125,15 @@ public sealed class WebcamCaptureController : IDisposable
             _starting = true;
             _isActive = true;
             _lastFrameTimestamp = 0;
-            startToken = ++_fadeToken;
+            startToken = ++_startToken;
+            fadeToken = ++_fadeToken;
         }
 
         bool StillValid()
         {
             lock (_lifecycleLock)
             {
-                if (startToken != _fadeToken || !_isActive)
+                if (startToken != _startToken || fadeToken != _fadeToken || !_isActive)
                     return false;
             }
 
@@ -336,7 +339,7 @@ public sealed class WebcamCaptureController : IDisposable
             {
                 // Stop followed by Start may already have handed lifecycle
                 // ownership to a newer operation.
-                if (startToken == _fadeToken)
+                if (startToken == _startToken)
                 {
                     _starting = false;
                 }
@@ -384,6 +387,7 @@ public sealed class WebcamCaptureController : IDisposable
             if (_stopping) return false;
 
             _stopping = true;
+            _starting = false;
             _isActive = false;
             fadeToken = ++_fadeToken;
 

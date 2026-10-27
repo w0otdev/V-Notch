@@ -40,13 +40,15 @@ internal static partial class MediaHeuristics
     {
         string t = track ?? string.Empty;
         string a = artist ?? string.Empty;
-        int cap = t.Length + a.Length + 8;
+        int cap = (t.Length + a.Length) * 4 + 16;
         char[] buf = new char[cap];
         fixed (char* pT = t)
         fixed (char* pA = a)
         fixed (char* pOut = buf)
         {
-            _ = vn_media_heuristics_build_track_identity(pT, t.Length, pA, a.Length, pOut, cap, out int len);
+            int rc = vn_media_heuristics_build_track_identity(pT, t.Length, pA, a.Length, pOut, cap, out int len);
+            if (rc == -2 && len > cap) { char[] larger = new char[len]; fixed (char* pL = larger) rc = vn_media_heuristics_build_track_identity(pT, t.Length, pA, a.Length, pL, len, out len); return rc == 0 && len > 0 ? new string(larger, 0, len) : "|"; }
+            if (rc != 0) len = 0;
             return len > 0 ? new string(buf, 0, len) : "|";
         }
     }
@@ -61,7 +63,9 @@ internal static partial class MediaHeuristics
         fixed (char* pA = a)
         fixed (char* pOut = buf)
         {
-            _ = vn_media_heuristics_build_source_override_key(pK, k.Length, pA, a.Length, pOut, cap, out int len);
+            int rc = vn_media_heuristics_build_source_override_key(pK, k.Length, pA, a.Length, pOut, cap, out int len);
+            if (rc == -2 && len > cap) { char[] larger = new char[len]; fixed (char* pL = larger) rc = vn_media_heuristics_build_source_override_key(pK, k.Length, pA, a.Length, pL, len, out len); return rc == 0 && len > 0 ? new string(larger, 0, len) : string.Empty; }
+            if (rc != 0) len = 0;
             return len > 0 ? new string(buf, 0, len) : string.Empty;
         }
     }
@@ -111,7 +115,9 @@ internal static partial class MediaHeuristics
         fixed (char* pIn = s)
         fixed (char* pOut = buf)
         {
-            _ = vn_media_heuristics_normalize_track_for_comparison(pIn, s.Length, pOut, cap, out int len);
+            int rc = vn_media_heuristics_normalize_track_for_comparison(pIn, s.Length, pOut, cap, out int len);
+            if (rc == -2 && len > cap) { char[] larger = new char[len]; fixed (char* pL = larger) rc = vn_media_heuristics_normalize_track_for_comparison(pIn, s.Length, pL, len, out len); return rc == 0 && len > 0 ? new string(larger, 0, len) : string.Empty; }
+            if (rc != 0) len = 0;
             return len > 0 ? new string(buf, 0, len) : string.Empty;
         }
     }
@@ -124,7 +130,9 @@ internal static partial class MediaHeuristics
         fixed (char* pIn = s)
         fixed (char* pOut = buf)
         {
-            _ = vn_media_heuristics_extract_core_track_name(pIn, s.Length, pOut, cap, out int len);
+            int rc = vn_media_heuristics_extract_core_track_name(pIn, s.Length, pOut, cap, out int len);
+            if (rc == -2 && len > cap) { char[] larger = new char[len]; fixed (char* pL = larger) rc = vn_media_heuristics_extract_core_track_name(pIn, s.Length, pL, len, out len); return rc == 0 && len > 0 ? new string(larger, 0, len) : string.Empty; }
+            if (rc != 0) len = 0;
             return len > 0 ? new string(buf, 0, len) : string.Empty;
         }
     }

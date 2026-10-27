@@ -15,6 +15,14 @@ internal static partial class GlassBoxBlur
     private static unsafe partial int vn_glass_box_blur_vertical(
         byte* src, byte* dst, int w, int h, int radius, int x0, int x1);
 
+    internal static unsafe void Horizontal(IntPtr src, byte[] dst, int w, int radius, int y0, int y1)
+    {
+        fixed (byte* destination = dst)
+        {
+            _ = vn_glass_box_blur_horizontal((byte*)src, destination, w, radius, y0, y1);
+        }
+    }
+
     internal static unsafe void Horizontal(byte[] src, byte[] dst, int w, int radius, int y0, int y1)
     {
         fixed (byte* source = src, destination = dst)

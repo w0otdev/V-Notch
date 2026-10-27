@@ -79,6 +79,8 @@ public:
     static std::vector<VnDetection> ApplyNms(std::span<const VnDetection> detections) {
         std::vector<VnDetection> sorted(detections.begin(), detections.end());
         std::stable_sort(sorted.begin(), sorted.end(), [](const VnDetection& a, const VnDetection& b) {
+            if (!std::isfinite(a.confidence)) return false;
+            if (!std::isfinite(b.confidence)) return true;
             return a.confidence > b.confidence;
         });
 
@@ -345,6 +347,10 @@ public:
     }
 
     static VnCropRect BuildCropRect(float center_x, float center_y, int32_t img_width, int32_t img_height, int32_t crop_size) noexcept {
+        const int32_t max_side = std::max(1, std::min(img_width, img_height));
+        crop_size = std::clamp(crop_size, 1, max_side);
+        if (!std::isfinite(center_x)) center_x = img_width / 2.0f;
+        if (!std::isfinite(center_y)) center_y = img_height / 2.0f;
         int32_t crop_x = static_cast<int32_t>(center_x - crop_size / 2.0f);
         int32_t crop_y = static_cast<int32_t>(center_y - crop_size / 2.0f);
         crop_x = std::max(0, std::min(crop_x, img_width - crop_size));
@@ -424,6 +430,7 @@ private:
     }
 
     static float GetCenterWeight(const VnDetection& d, int32_t img_width, int32_t img_height) noexcept {
+        if (img_width <= 0 || img_height <= 0) return 0.0f;
         float obj_center_x = (d.x1 + d.x2) / 2.0f;
         float obj_center_y = (d.y1 + d.y2) / 2.0f;
         float img_center_x = img_width / 2.0f;
@@ -604,7 +611,7 @@ VN_EXPORT int32_t vn_smartcrop_get_portrait_crop_rect(
     const vnotch::services::VnDetection* face, int32_t width, int32_t height,
     vnotch::services::VnCropRect* out_rect) noexcept
 {
-    if (!face || !out_rect) return VN_ERR_INVALID_ARG;
+    if (!face || !out_rect || width <= 0 || height <= 0) return VN_ERR_INVALID_ARG;
     *out_rect = vnotch::services::SmartThumbnailCropService::GetPortraitCropRect(*face, width, height);
     return VN_OK;
 }
@@ -613,7 +620,7 @@ VN_EXPORT int32_t vn_smartcrop_get_single_person_crop_rect(
     const vnotch::services::VnDetection* person, int32_t img_width, int32_t img_height, int32_t target_size,
     vnotch::services::VnCropRect* out_rect) noexcept
 {
-    if (!person || !out_rect) return VN_ERR_INVALID_ARG;
+    if (!person || !out_rect || img_width <= 0 || img_height <= 0) return VN_ERR_INVALID_ARG;
     *out_rect = vnotch::services::SmartThumbnailCropService::GetSinglePersonCropRect(*person, img_width, img_height, target_size);
     return VN_OK;
 }
@@ -623,7 +630,7 @@ VN_EXPORT int32_t vn_smartcrop_get_group_person_crop_rect(
     int32_t img_width, int32_t img_height, int32_t target_size,
     vnotch::services::VnCropRect* out_rect) noexcept
 {
-    if (!persons || count <= 0 || !out_rect) return VN_ERR_INVALID_ARG;
+    if (!persons || count <= 0 || !out_rect || img_width <= 0 || img_height <= 0) return VN_ERR_INVALID_ARG;
     *out_rect = vnotch::services::SmartThumbnailCropService::GetGroupPersonCropRect(
         std::span<const vnotch::services::VnDetection>(persons, static_cast<size_t>(count)),
         img_width, img_height, target_size);
@@ -635,7 +642,7 @@ VN_EXPORT int32_t vn_smartcrop_get_best_object_crop_rect(
     int32_t img_width, int32_t img_height, int32_t target_size,
     vnotch::services::VnCropRect* out_rect) noexcept
 {
-    if (!objects || count <= 0 || !out_rect) return VN_ERR_INVALID_ARG;
+    if (!objects || count <= 0 || !out_rect || img_width <= 0 || img_height <= 0) return VN_ERR_INVALID_ARG;
     *out_rect = vnotch::services::SmartThumbnailCropService::GetBestObjectCropRect(
         std::span<const vnotch::services::VnDetection>(objects, static_cast<size_t>(count)),
         img_width, img_height, target_size);
@@ -647,7 +654,7 @@ VN_EXPORT int32_t vn_smartcrop_compute_saliency_crop_rect(
     int32_t img_width, int32_t img_height, int32_t target_size,
     vnotch::services::VnCropRect* out_rect) noexcept
 {
-    if (!pixels || !out_rect || w < 4 || h < 4 || stride < w * 4) return VN_ERR_INVALID_ARG;
+    if (!pixels || !out_rect || w < 4 || h < 4 || stride < w * 4 || img_width <= 0 || img_height <= 0) return VN_ERR_INVALID_ARG;
     *out_rect = vnotch::services::SmartThumbnailCropService::ComputeSaliencyCropRect(
         pixels, w, h, stride, img_width, img_height, target_size);
     return VN_OK;
@@ -658,7 +665,7 @@ VN_EXPORT int32_t vn_smartcrop_try_detect_text_crop_rect(
     int32_t img_width, int32_t img_height, int32_t crop_size,
     vnotch::services::VnCropRect* out_rect, uint8_t* out_found) noexcept
 {
-    if (!pixels || !out_rect || !out_found || w < 8 || h < 8 || stride < w * 4) return VN_ERR_INVALID_ARG;
+    if (!pixels || !out_rect || !out_found || w < 8 || h < 8 || stride < w * 4 || img_width <= 0 || img_height <= 0) return VN_ERR_INVALID_ARG;
     *out_found = vnotch::services::SmartThumbnailCropService::TryDetectTextCropRect(
         pixels, w, h, stride, img_width, img_height, crop_size, out_rect) ? 1 : 0;
     return VN_OK;
@@ -669,7 +676,7 @@ VN_EXPORT int32_t vn_smartcrop_detect_text_regions(
     int32_t img_width, int32_t img_height,
     vnotch::services::VnCropRect* out_regions, int32_t out_cap, int32_t* out_count) noexcept
 {
-    if (!pixels || !out_count || w < 8 || h < 8 || stride < w * 4) return VN_ERR_INVALID_ARG;
+    if (!pixels || !out_count || w < 8 || h < 8 || stride < w * 4 || img_width <= 0 || img_height <= 0) return VN_ERR_INVALID_ARG;
     *out_count = vnotch::services::SmartThumbnailCropService::DetectTextRegions(
         pixels, w, h, stride, img_width, img_height, out_regions, out_cap);
     return VN_OK;

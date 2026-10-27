@@ -1240,16 +1240,19 @@ public partial class ClipboardTray : UserControl, IDisposable
             ApprovalText.Text = string.Format(Loc.GetCulture(), Loc.Get("clipboard.largeFile"), pending.Size / (1024d * 1024), names);
         }
     }
+    private int _importProgressVersion;
+
     private void OnImportProgress(double progress)
     {
         if (_disposed) return;
-        Dispatcher.InvokeAsync(() =>
+        Dispatcher.InvokeAsync(async () =>
         {
             if (_disposed) return;
+            int version = ++_importProgressVersion;
             if (progress > 0 && progress < 1.0)
             {
                 ImportProgressBar.Value = progress * 100;
-                if (ImportProgressBar.Visibility != Visibility.Visible)
+                if (ImportProgressBar.Visibility != Visibility.Visible || ImportProgressBar.Opacity < 0.99)
                 {
                     ImportProgressBar.Visibility = Visibility.Visible;
                     AnimateLayer(ImportProgressBar, true, 0);
@@ -1259,10 +1262,11 @@ public partial class ClipboardTray : UserControl, IDisposable
             {
                 ImportProgressBar.Value = 100;
                 AnimateLayer(ImportProgressBar, false, 0);
-                _ = Task.Delay(250).ContinueWith(_ => Dispatcher.InvokeAsync(() =>
+                await Task.Delay(250);
+                if (!_disposed && version == _importProgressVersion)
                 {
-                    if (!_disposed) ImportProgressBar.Visibility = Visibility.Collapsed;
-                }));
+                    ImportProgressBar.Visibility = Visibility.Collapsed;
+                }
             }
         });
     }

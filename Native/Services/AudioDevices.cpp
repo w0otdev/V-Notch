@@ -1,4 +1,5 @@
 #include "../vnotch_common.h"
+#include "../vnotch_handle_registry.h"
 #include "../vnotch_com.h"
 #include <mmdeviceapi.h>
 #include <endpointvolume.h>
@@ -35,8 +36,7 @@ struct DeviceList {
     std::vector<DeviceEntry> devices;
 };
 
-SRWLOCK g_lock = SRWLOCK_INIT;
-std::vector<std::unique_ptr<DeviceList>> g_lists;
+vnotch::HandleRegistry<DeviceList> g_lists;
 
 constexpr ULONGLONG kCaptureCacheLifetimeMs = 3000;
 SRWLOCK g_capture_lock = SRWLOCK_INIT;
@@ -133,16 +133,7 @@ VN_EXPORT int32_t __stdcall vn_audio_devices_open(int32_t flow, int64_t* out_lis
         }
         *out_count = static_cast<int32_t>(list->devices.size());
 
-        ad::Guard guard(&ad::g_lock);
-        for (size_t i = 0; i < ad::g_lists.size(); ++i) {
-            if (!ad::g_lists[i]) {
-                ad::g_lists[i] = std::move(list);
-                *out_list = static_cast<int64_t>(i) + 1;
-                return VN_OK;
-            }
-        }
-        ad::g_lists.push_back(std::move(list));
-        *out_list = static_cast<int64_t>(ad::g_lists.size());
+        *out_list = ad::g_lists.Add(std::move(list));
         return VN_OK;
     } catch (...) {
         return VN_ERR_FAIL;
@@ -150,9 +141,7 @@ VN_EXPORT int32_t __stdcall vn_audio_devices_open(int32_t flow, int64_t* out_lis
 }
 
 VN_EXPORT int32_t __stdcall vn_audio_devices_close(int64_t list) noexcept {
-    ad::Guard guard(&ad::g_lock);
-    if (list <= 0 || static_cast<size_t>(list) > ad::g_lists.size()) return VN_ERR_INVALID_ARG;
-    ad::g_lists[static_cast<size_t>(list) - 1].reset();
+    if (!ad::g_lists.Remove(list)) return VN_ERR_INVALID_ARG;
     return VN_OK;
 }
 
@@ -160,9 +149,9 @@ VN_EXPORT int32_t __stdcall vn_audio_devices_close(int64_t list) noexcept {
 VN_EXPORT int32_t __stdcall vn_audio_device_get_string(
     int64_t list, int32_t index, int32_t kind, char16_t* buffer, int32_t capacity, int32_t* out_length, uint8_t* out_is_default) noexcept {
     if (!out_length || !out_is_default || capacity < 0 || (capacity > 0 && !buffer) || (kind != 0 && kind != 1)) return VN_ERR_INVALID_ARG;
-    ad::Guard guard(&ad::g_lock);
-    if (list <= 0 || static_cast<size_t>(list) > ad::g_lists.size() || !ad::g_lists[static_cast<size_t>(list) - 1]) return VN_ERR_INVALID_ARG;
-    const auto& devices = ad::g_lists[static_cast<size_t>(list) - 1]->devices;
+    auto lease = ad::g_lists.Acquire(list);
+    if (!lease) return VN_ERR_INVALID_ARG;
+    const auto& devices = lease->devices;
     if (index < 0 || static_cast<size_t>(index) >= devices.size()) return VN_ERR_INVALID_ARG;
     const ad::DeviceEntry& entry = devices[static_cast<size_t>(index)];
     *out_is_default = entry.is_default ? 1 : 0;

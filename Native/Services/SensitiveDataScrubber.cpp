@@ -205,7 +205,7 @@ inline bool is_scrub_session_field(std::u16string_view key) noexcept
     return false;
 }
 
-inline bool try_read_scrub_field(std::u16string_view input, int32_t delimiter, ScrubberSecretStart& start) noexcept
+inline bool try_read_scrub_field(std::u16string_view input, int32_t delimiter, int32_t cursor, ScrubberSecretStart& start) noexcept
 {
     start = { 0, ScrubberSecretKind::Token, -1 };
     char16_t delim_ch = input[static_cast<size_t>(delimiter)];
@@ -214,19 +214,19 @@ inline bool try_read_scrub_field(std::u16string_view input, int32_t delimiter, S
         return false;
     }
     int32_t end = delimiter;
-    while (end > 0 && is_unicode_whitespace(input[static_cast<size_t>(end - 1)]))
+    while (end > cursor && is_unicode_whitespace(input[static_cast<size_t>(end - 1)]))
     {
         --end;
     }
     char16_t quote = 0;
-    if (end > 0 && (input[static_cast<size_t>(end - 1)] == u'"' || input[static_cast<size_t>(end - 1)] == u'\''))
+    if (end > cursor && (input[static_cast<size_t>(end - 1)] == u'"' || input[static_cast<size_t>(end - 1)] == u'\''))
     {
         quote = input[static_cast<size_t>(--end)];
     }
     int32_t key_start = end;
     if (quote != 0)
     {
-        while (key_start > 0)
+        while (key_start > cursor)
         {
             --key_start;
             if (input[static_cast<size_t>(key_start)] == quote && !is_scrub_escaped_quote(input, key_start))
@@ -242,7 +242,7 @@ inline bool try_read_scrub_field(std::u16string_view input, int32_t delimiter, S
     }
     else
     {
-        while (key_start > 0 && is_scrub_field_char(input[static_cast<size_t>(key_start - 1)]))
+        while (key_start > cursor && is_scrub_field_char(input[static_cast<size_t>(key_start - 1)]))
         {
             --key_start;
         }
@@ -466,7 +466,7 @@ inline bool try_read_scrub_standalone_token(std::u16string_view input, int32_t i
     std::u16string_view text = input.substr(static_cast<size_t>(index));
     int32_t value = 0;
     char16_t ch = input[static_cast<size_t>(index)];
-    if (ch == u'-' && index >= 2 && equals_ordinal(input.substr(static_cast<size_t>(index - 2), 2), u"sk") &&
+    if (ch == u'-' && index - 2 >= cursor && equals_ordinal(input.substr(static_cast<size_t>(index - 2), 2), u"sk") &&
         is_scrub_word_start(input, index - 2) && has_scrub_token_alphabet(text.substr(1), 8, false))
     {
         value = index - 2;
@@ -475,7 +475,7 @@ inline bool try_read_scrub_standalone_token(std::u16string_view input, int32_t i
     {
         value = index + 4;
     }
-    else if (ch == u':' && index >= 3 && equals_ordinal(input.substr(static_cast<size_t>(index - 3), 3), u"enc") &&
+    else if (ch == u':' && index - 3 >= cursor && equals_ordinal(input.substr(static_cast<size_t>(index - 3), 3), u"enc") &&
              has_scrub_token_alphabet(text.substr(1), 16, true))
     {
         value = index + 1;
@@ -528,6 +528,7 @@ inline int32_t scrub_append_redacted(std::u16string_view input, std::u16string& 
             ++value;
         }
     }
+    if (value < cursor) value = cursor;
     output.append(input.substr(static_cast<size_t>(cursor), static_cast<size_t>(value - cursor)));
     if (start.value_end >= value)
     {
@@ -608,54 +609,61 @@ VN_EXPORT int32_t vn_sensitive_data_scrub(
         return VN_OK;
     }
 
-    std::u16string output;
-    bool changed = false;
-    int32_t cursor = 0;
-    int32_t index = 0;
-    int32_t len = static_cast<int32_t>(input.size());
-
-    while (index < len)
+    try
     {
-        int32_t next_trigger = -1;
-        for (int32_t i = index; i < len; ++i)
+        std::u16string output;
+        bool changed = false;
+        int32_t cursor = 0;
+        int32_t index = 0;
+        int32_t len = static_cast<int32_t>(input.size());
+
+        while (index < len)
         {
-            if (is_scrub_trigger(input[static_cast<size_t>(i)]))
+            int32_t next_trigger = -1;
+            for (int32_t i = index; i < len; ++i)
             {
-                next_trigger = i;
+                if (is_scrub_trigger(input[static_cast<size_t>(i)]))
+                {
+                    next_trigger = i;
+                    break;
+                }
+            }
+            if (next_trigger < 0)
+            {
                 break;
             }
-        }
-        if (next_trigger < 0)
-        {
-            break;
-        }
-        index = next_trigger;
-        ScrubberSecretStart start{};
-        if (try_read_scrub_field(input, index, start) ||
-            try_read_scrub_authentication(input, index, start) ||
-            try_read_scrub_standalone_token(input, index, cursor, start))
-        {
-            if (!changed)
+            index = next_trigger;
+            ScrubberSecretStart start{};
+            if (try_read_scrub_field(input, index, cursor, start) ||
+                try_read_scrub_authentication(input, index, start) ||
+                try_read_scrub_standalone_token(input, index, cursor, start))
             {
-                changed = true;
-                output.reserve(std::min<size_t>(input.size(), 1024));
+                if (!changed)
+                {
+                    changed = true;
+                    output.reserve(std::min<size_t>(input.size(), 1024));
+                }
+                cursor = scrub_append_redacted(input, output, cursor, start);
+                index = cursor;
             }
-            cursor = scrub_append_redacted(input, output, cursor, start);
-            index = cursor;
+            else
+            {
+                ++index;
+            }
         }
-        else
+
+        if (!changed)
         {
-            ++index;
+            return VN_OK;
         }
-    }
 
-    if (!changed)
+        output.append(input.substr(static_cast<size_t>(cursor)));
+        *out_changed = 1u;
+        return copy_u16_out(output, out_buf, out_cap, out_len);
+    }
+    catch (...)
     {
-        return VN_OK;
+        return VN_ERR_FAIL;
     }
-
-    output.append(input.substr(static_cast<size_t>(cursor)));
-    *out_changed = 1u;
-    return copy_u16_out(output, out_buf, out_cap, out_len);
 }
 

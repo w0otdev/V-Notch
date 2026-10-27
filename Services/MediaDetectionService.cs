@@ -79,6 +79,8 @@ public sealed partial class MediaDetectionService : IMediaDetectionService, IAsy
         int outCap,
         out int outLen);
 
+
+
     [LibraryImport(NativeDll, StringMarshalling = StringMarshalling.Utf16)]
     private static partial int vn_media_detection_get_spotify_window_title(
         Span<char> outBuf,
@@ -374,6 +376,7 @@ public sealed partial class MediaDetectionService : IMediaDetectionService, IAsy
                 return;
             }
 
+            _restartRequested = false;
             _state = ServiceLifecycleState.Starting;
             int generation = unchecked(++_lifecycleGeneration);
 
@@ -807,7 +810,7 @@ public sealed partial class MediaDetectionService : IMediaDetectionService, IAsy
             if (!await TryPublishMediaChangeAsync(info, currentSignature, isNewTrackForThumbnail, forceRefresh))
                 return;
 
-            StartThumbnailFetchIfNeeded(info, isNewTrackForThumbnail);
+            StartThumbnailFetchIfNeeded(info.Clone(), isNewTrackForThumbnail);
         }
         finally
         {
@@ -894,6 +897,7 @@ public sealed partial class MediaDetectionService : IMediaDetectionService, IAsy
         bool playbackChanged = info.IsPlaying != _lastIsPlaying;
         bool timelineChanged = _lastPublishedInfo != null &&
             (info.IsTimelineIndeterminate != _lastPublishedInfo.IsTimelineIndeterminate ||
+             info.IsTimelinePending != _lastPublishedInfo.IsTimelinePending ||
              (info.HasTimeline && info.Duration != _lastPublishedInfo.Duration));
         bool sourceChanged = info.MediaSource != _lastSource;
         bool seekCapabilityChanged = info.IsSeekEnabled != _lastSeekEnabled;
@@ -1030,7 +1034,7 @@ public sealed partial class MediaDetectionService : IMediaDetectionService, IAsy
 
             if (dispatcher.CheckAccess())
             {
-                if (AcceptsMediaUpdate(info)) MediaChanged?.Invoke(this, info);
+                if (AcceptsMediaUpdate(info)) MediaChanged?.Invoke(this, info.Clone());
                 return;
             }
 
@@ -1041,7 +1045,7 @@ public sealed partial class MediaDetectionService : IMediaDetectionService, IAsy
                 {
                     if (!_disposed && AcceptsMediaUpdate(info))
                     {
-                        MediaChanged?.Invoke(this, info);
+                        MediaChanged?.Invoke(this, info.Clone());
                     }
                 }, System.Windows.Threading.DispatcherPriority.Normal, ct);
             }
@@ -1205,6 +1209,7 @@ public sealed partial class MediaDetectionService : IMediaDetectionService, IAsy
 
                                 info.Position = TimeSpan.FromSeconds(1.5);
                                 info.LastUpdated = DateTimeOffset.Now;
+                                ApplyTimelineAvailability(info, true, true, false, TimeSpan.Zero, DateTime.UtcNow);
                                 foundRecovery = true;
                                 break;
                             }
@@ -1233,6 +1238,7 @@ public sealed partial class MediaDetectionService : IMediaDetectionService, IAsy
                                 var timeOnTrack = DateTime.UtcNow - _lastMetadataChangeTime;
                                 info.Position = timeOnTrack;
                                 info.LastUpdated = DateTimeOffset.Now;
+                                ApplyTimelineAvailability(info, true, false, false, info.Duration, DateTime.UtcNow);
                                 foundRecovery = true;
                                 break;
                             }
@@ -1373,9 +1379,9 @@ public sealed partial class MediaDetectionService : IMediaDetectionService, IAsy
 
             _lastYouTubeThumbnailAttemptTimeUtc = DateTime.UtcNow;
             _thumbCts?.Cancel();
-            _thumbCts?.Dispose();
-            _thumbCts = new CancellationTokenSource();
-            var token = _thumbCts.Token;
+            var cts = new CancellationTokenSource();
+            _thumbCts = cts;
+            var token = cts.Token;
             int fetchGeneration = Interlocked.Increment(ref _youTubeFetchGeneration);
             _youTubeFetchIdentity = youTubeTrackIdentity;
             Interlocked.Exchange(ref _youTubeFetchInFlight, 1);
@@ -1397,7 +1403,7 @@ public sealed partial class MediaDetectionService : IMediaDetectionService, IAsy
             _ = Task.Run(() => FetchYouTubeThumbnailAsync(
                 info, token, shouldForceThumbFetch, trackDuringFetch, artistDuringFetch,
                 sourceAppDuringFetch, sessionKeyDuringFetch, generationAtStart,
-                fetchGeneration, needsBetterThumb), token);
+                fetchGeneration, needsBetterThumb, cts));
         }
         else if (isPotentialSoundCloud && !isPotentialYouTube && !string.IsNullOrEmpty(info.CurrentTrack))
         {
@@ -1431,9 +1437,9 @@ public sealed partial class MediaDetectionService : IMediaDetectionService, IAsy
                 _lastSoundCloudArtworkAttemptTimeUtc = DateTime.UtcNow;
                 _lastSoundCloudArtworkIdentity = soundCloudTrackIdentity;
                 _thumbCts?.Cancel();
-                _thumbCts?.Dispose();
-                _thumbCts = new CancellationTokenSource();
-                var token = _thumbCts.Token;
+                var cts = new CancellationTokenSource();
+                _thumbCts = cts;
+                var token = cts.Token;
                 int fetchGeneration = Interlocked.Increment(ref _soundCloudFetchGeneration);
                 _soundCloudFetchIdentity = soundCloudTrackIdentity;
                 Interlocked.Exchange(ref _soundCloudFetchInFlight, 1);
@@ -1450,14 +1456,13 @@ public sealed partial class MediaDetectionService : IMediaDetectionService, IAsy
 
                 bool requireStrongMatch = info.Platform != MediaPlatform.SoundCloud;
 
-                _ = Task.Run(() => FetchSoundCloudThumbnailAsync(info, token, trackDuringFetch, artistDuringFetch, sourceAppDuringFetch, sessionKeyDuringFetch, thumbGenAtStart, fetchGeneration, requireStrongMatch), token);
+                _ = Task.Run(() => FetchSoundCloudThumbnailAsync(info, token, trackDuringFetch, artistDuringFetch, sourceAppDuringFetch, sessionKeyDuringFetch, thumbGenAtStart, fetchGeneration, requireStrongMatch, cts));
             }
         }
         else
         {
 
             _thumbCts?.Cancel();
-            _thumbCts?.Dispose();
             _thumbCts = null;
             Interlocked.Increment(ref _youTubeFetchGeneration);
             _youTubeFetchIdentity = "";
@@ -1479,17 +1484,22 @@ public sealed partial class MediaDetectionService : IMediaDetectionService, IAsy
         string sessionKeyDuringFetch,
         int generationAtStart,
         int fetchGeneration,
-        bool needsBetterThumb)
+        bool needsBetterThumb,
+        CancellationTokenSource? ownedCts = null)
     {
         try
         {
             // Accept the artist this lookup resolved as well as the original SMTC
             // artist, while retaining the track, session and generation checks.
+            int lifecycleGenAtStart = Volatile.Read(ref _lifecycleGeneration);
             bool IsCurrentFetch() =>
+                !_disposed &&
+                _state is not (ServiceLifecycleState.Stopping or ServiceLifecycleState.Disposed) &&
+                lifecycleGenAtStart == Volatile.Read(ref _lifecycleGeneration) &&
                 !token.IsCancellationRequested &&
                 info.Platform != MediaPlatform.SoundCloud &&
                 _lastPublishedInfo?.Platform != MediaPlatform.SoundCloud &&
-                (_lastPublishedInfo == null || _lastPublishedInfo.IsTimelineIndeterminate == info.IsTimelineIndeterminate) &&
+                (_lastPublishedInfo == null || _lastPublishedInfo.IsIndeterminate == info.IsIndeterminate) &&
                 generationAtStart == Volatile.Read(ref _thumbnailFetchGeneration) &&
                 fetchGeneration == Volatile.Read(ref _youTubeFetchGeneration) &&
                 (IsStillSamePublishedTrack(
@@ -1521,6 +1531,18 @@ public sealed partial class MediaDetectionService : IMediaDetectionService, IAsy
             string? preferredThumbnailUrl = null;
             int retryCount = 0;
             bool titleSearchAttempted = false;
+            bool timelineRecovered = false;
+
+            void RecoverDuration(TimeSpan duration)
+            {
+                if (info.IsIndeterminate || !MediaTimelinePolicy.HasFiniteDuration(duration))
+                    return;
+
+                _timelineSimulator.RecoveredDuration = duration;
+                info.Duration = duration;
+                info.IsTimelinePending = false;
+                timelineRecovered = true;
+            }
 
             if (string.IsNullOrEmpty(videoId))
             {
@@ -1590,11 +1612,7 @@ public sealed partial class MediaDetectionService : IMediaDetectionService, IAsy
                                 _lastSourceConfirmedTime = DateTime.UtcNow;
                             }
 
-                            if (info.HasTimeline && MediaTimelinePolicy.HasFiniteDuration(urlResult.Duration))
-                            {
-                                _timelineSimulator.RecoveredDuration = urlResult.Duration;
-                                info.Duration = urlResult.Duration;
-                            }
+                            RecoverDuration(urlResult.Duration);
 
                             if (urlResult.Source == YouTubeLookupSource.DataApi &&
                                 !string.IsNullOrWhiteSpace(urlResult.ThumbnailUrl))
@@ -1646,11 +1664,7 @@ public sealed partial class MediaDetectionService : IMediaDetectionService, IAsy
                                 _lastSourceConfirmedTime = DateTime.UtcNow;
                             }
 
-                            if (info.HasTimeline && MediaTimelinePolicy.HasFiniteDuration(result.Duration))
-                            {
-                                _timelineSimulator.RecoveredDuration = result.Duration;
-                                info.Duration = result.Duration;
-                            }
+                            RecoverDuration(result.Duration);
 
                             if (result.Source == YouTubeLookupSource.DataApi &&
                                 !string.IsNullOrWhiteSpace(result.ThumbnailUrl))
@@ -1693,11 +1707,7 @@ public sealed partial class MediaDetectionService : IMediaDetectionService, IAsy
                                 _lastSourceConfirmedTime = DateTime.UtcNow;
                             }
 
-                            if (info.HasTimeline && MediaTimelinePolicy.HasFiniteDuration(searchResult.Duration))
-                            {
-                                _timelineSimulator.RecoveredDuration = searchResult.Duration;
-                                info.Duration = searchResult.Duration;
-                            }
+                            RecoverDuration(searchResult.Duration);
 
                             if (!string.IsNullOrWhiteSpace(searchResult.ThumbnailUrl))
                             {
@@ -1715,15 +1725,13 @@ public sealed partial class MediaDetectionService : IMediaDetectionService, IAsy
 
                 if (!string.IsNullOrEmpty(videoId) && !token.IsCancellationRequested)
                 {
-                    if (!IsCurrentFetch())
+                    if (!await ApplyIfCurrentAsync(() => { info.YouTubeVideoId = videoId; }))
                         return;
 
-                    info.YouTubeVideoId = videoId;
-
-                    if (!string.IsNullOrEmpty(_stableArtist) &&
+                    if (timelineRecovered || (!string.IsNullOrEmpty(_stableArtist) &&
                         _stableArtist != YouTubePlatformName &&
                         (IsStillSamePublishedTrack(trackDuringFetch, artistDuringFetch, sourceAppDuringFetch, sessionKeyDuringFetch) ||
-                         IsStillSamePublishedTrack(trackDuringFetch, info.CurrentArtist, sourceAppDuringFetch, sessionKeyDuringFetch)))
+                         IsStillSamePublishedTrack(trackDuringFetch, info.CurrentArtist, sourceAppDuringFetch, sessionKeyDuringFetch))))
                     {
                         var dispatcher = System.Windows.Application.Current?.Dispatcher;
                         if (dispatcher != null)
@@ -1732,8 +1740,12 @@ public sealed partial class MediaDetectionService : IMediaDetectionService, IAsy
                             {
                                 if (IsCurrentFetch())
                                 {
-                                    _lastTrackSignature = info.GetSignature();
-                                    MediaChanged?.Invoke(this, info);
+                                    var snapshot = info.Clone();
+                                    string sig = snapshot.GetSignature();
+                                    _lastTrackSignature = sig;
+                                    _lastPublishedSignature = sig;
+                                    _lastPublishedInfo = snapshot.Clone();
+                                    MediaChanged?.Invoke(this, snapshot);
                                 }
                             });
                         }
@@ -1800,10 +1812,16 @@ public sealed partial class MediaDetectionService : IMediaDetectionService, IAsy
                             RuntimeLog.Debug(MediaThumbCropLogTag,
                                 $"path=youtube-fetch track='{info.CurrentTrack}' artist='{info.CurrentArtist}' thumb={frameBitmap.PixelWidth}x{frameBitmap.PixelHeight} isTopicChannel={isYtFetchTopicChannel}");
                             frameBitmap = CropToSquare(frameBitmap, YouTubePlatformName, forceCenterCrop: isYtFetchTopicChannel) ?? frameBitmap;
-                            _timelineSimulator.RecoveredThumbnail = frameBitmap;
-                            CachedThumbnail = frameBitmap;
-                            _cachedThumbnailSource = MediaPlatform.YouTube.ToDisplayString();
-                            info.Thumbnail = frameBitmap;
+                            if (!await ApplyIfCurrentAsync(() =>
+                            {
+                                _timelineSimulator.RecoveredThumbnail = frameBitmap;
+                                CachedThumbnail = frameBitmap;
+                                _cachedThumbnailSource = MediaPlatform.YouTube.ToDisplayString();
+                                info.Thumbnail = frameBitmap;
+                            }))
+                            {
+                                return;
+                            }
 
                             var dispatcher = System.Windows.Application.Current?.Dispatcher;
                             if (dispatcher != null)
@@ -1814,7 +1832,10 @@ public sealed partial class MediaDetectionService : IMediaDetectionService, IAsy
                                     {
                                         var thumbnailUpdate = info.Clone();
                                         thumbnailUpdate.IsThumbnailOnlyUpdate = true;
-                                        _lastTrackSignature = thumbnailUpdate.GetSignature();
+                                        string sig = thumbnailUpdate.GetSignature();
+                                        _lastTrackSignature = sig;
+                                        _lastPublishedSignature = sig;
+                                        _lastPublishedInfo = thumbnailUpdate.Clone();
                                         MediaChanged?.Invoke(this, thumbnailUpdate);
                                     }
                                 });
@@ -1868,22 +1889,24 @@ public sealed partial class MediaDetectionService : IMediaDetectionService, IAsy
                             }
 
                             videoId = polledId;
-                            info.MediaSource = MediaPlatform.YouTube.ToDisplayString();
-                            info.IsYouTubeRunning = true;
-                            SetSessionSourceOverride(info, MediaPlatform.YouTube.ToDisplayString());
-                            _sourceCache.SetBoth(trackDuringFetch, BuildTrackIdentity(trackDuringFetch, artistDuringFetch), MediaPlatform.YouTube.ToDisplayString());
-                            _sourceCache.Save();
+                            if (!await ApplyIfCurrentAsync(() =>
+                            {
+                                info.MediaSource = MediaPlatform.YouTube.ToDisplayString();
+                                info.IsYouTubeRunning = true;
+                                SetSessionSourceOverride(info, MediaPlatform.YouTube.ToDisplayString());
+                                _sourceCache.SetBoth(trackDuringFetch, BuildTrackIdentity(trackDuringFetch, artistDuringFetch), MediaPlatform.YouTube.ToDisplayString());
+                                _sourceCache.Save();
 
-                            if (!string.IsNullOrEmpty(pollResult.Author) && pollResult.Author != YouTubePlatformName)
+                                if (!string.IsNullOrEmpty(pollResult.Author) && pollResult.Author != YouTubePlatformName)
+                                {
+                                    info.CurrentArtist = pollResult.Author;
+                                    _stableArtist = pollResult.Author;
+                                    _lastSourceConfirmedTime = DateTime.UtcNow;
+                                }
+                                RecoverDuration(pollResult.Duration);
+                            }))
                             {
-                                info.CurrentArtist = pollResult.Author;
-                                _stableArtist = pollResult.Author;
-                                _lastSourceConfirmedTime = DateTime.UtcNow;
-                            }
-                            if (info.HasTimeline && MediaTimelinePolicy.HasFiniteDuration(pollResult.Duration))
-                            {
-                                _timelineSimulator.RecoveredDuration = pollResult.Duration;
-                                info.Duration = pollResult.Duration;
+                                return;
                             }
                             if (pollResult.Source == YouTubeLookupSource.DataApi &&
                                 !string.IsNullOrWhiteSpace(pollResult.ThumbnailUrl))
@@ -1909,23 +1932,25 @@ public sealed partial class MediaDetectionService : IMediaDetectionService, IAsy
                                 if (searchResult != null && !string.IsNullOrEmpty(searchResult.Id))
                                 {
                                     videoId = searchResult.Id;
-                                    MediaSourceClassifier.SetPlatformRunning(info, MediaPlatform.YouTube);
-                                    SetSessionSourceOverride(info, MediaPlatform.YouTube.ToDisplayString());
-                                    _sourceCache.SetBoth(trackDuringFetch, BuildTrackIdentity(trackDuringFetch, artistDuringFetch), MediaPlatform.YouTube.ToDisplayString());
-                                    _sourceCache.Save();
-                                    CacheVideoIdForTrack(BuildTrackIdentity(trackDuringFetch, artistDuringFetch), videoId);
-                                    CacheVideoIdForTrack(trackDuringFetch, videoId);
+                                    if (!await ApplyIfCurrentAsync(() =>
+                                    {
+                                        MediaSourceClassifier.SetPlatformRunning(info, MediaPlatform.YouTube);
+                                        SetSessionSourceOverride(info, MediaPlatform.YouTube.ToDisplayString());
+                                        _sourceCache.SetBoth(trackDuringFetch, BuildTrackIdentity(trackDuringFetch, artistDuringFetch), MediaPlatform.YouTube.ToDisplayString());
+                                        _sourceCache.Save();
+                                        CacheVideoIdForTrack(BuildTrackIdentity(trackDuringFetch, artistDuringFetch), videoId);
+                                        CacheVideoIdForTrack(trackDuringFetch, videoId);
 
-                                    if (!string.IsNullOrEmpty(searchResult.Author) && searchResult.Author != YouTubePlatformName)
+                                        if (!string.IsNullOrEmpty(searchResult.Author) && searchResult.Author != YouTubePlatformName)
+                                        {
+                                            info.CurrentArtist = searchResult.Author;
+                                            _stableArtist = searchResult.Author;
+                                            _lastSourceConfirmedTime = DateTime.UtcNow;
+                                        }
+                                        RecoverDuration(searchResult.Duration);
+                                    }))
                                     {
-                                        info.CurrentArtist = searchResult.Author;
-                                        _stableArtist = searchResult.Author;
-                                        _lastSourceConfirmedTime = DateTime.UtcNow;
-                                    }
-                                    if (info.HasTimeline && MediaTimelinePolicy.HasFiniteDuration(searchResult.Duration))
-                                    {
-                                        _timelineSimulator.RecoveredDuration = searchResult.Duration;
-                                        info.Duration = searchResult.Duration;
+                                        return;
                                     }
                                     if (!string.IsNullOrWhiteSpace(searchResult.ThumbnailUrl))
                                         preferredThumbnailUrl = searchResult.ThumbnailUrl;
@@ -1975,13 +2000,21 @@ public sealed partial class MediaDetectionService : IMediaDetectionService, IAsy
             {
                 Interlocked.Exchange(ref _youTubeFetchInFlight, 0);
             }
+            if (ownedCts != null && !ReferenceEquals(_thumbCts, ownedCts))
+            {
+                ownedCts.Dispose();
+            }
         }
     }
 
 #pragma warning disable S107, S3776
-    private async Task FetchSoundCloudThumbnailAsync(MediaInfo info, CancellationToken token, string trackDuringFetch, string artistDuringFetch, string sourceAppDuringFetch, string sessionKeyDuringFetch, int thumbGenAtStart, int fetchGeneration, bool requireStrongMatch)
+    private async Task FetchSoundCloudThumbnailAsync(MediaInfo info, CancellationToken token, string trackDuringFetch, string artistDuringFetch, string sourceAppDuringFetch, string sessionKeyDuringFetch, int thumbGenAtStart, int fetchGeneration, bool requireStrongMatch, CancellationTokenSource? ownedCts = null)
     {
+        int lifecycleGenAtStart = Volatile.Read(ref _lifecycleGeneration);
         bool IsCurrentSoundCloudFetch() =>
+            !_disposed &&
+            _state is not (ServiceLifecycleState.Stopping or ServiceLifecycleState.Disposed) &&
+            lifecycleGenAtStart == Volatile.Read(ref _lifecycleGeneration) &&
             !token.IsCancellationRequested &&
             fetchGeneration == Volatile.Read(ref _soundCloudFetchGeneration) &&
             Volatile.Read(ref _thumbnailFetchGeneration) == thumbGenAtStart &&
@@ -2083,7 +2116,10 @@ public sealed partial class MediaDetectionService : IMediaDetectionService, IAsy
                     {
                         var thumbnailUpdate = info.Clone();
                         thumbnailUpdate.IsThumbnailOnlyUpdate = true;
-                        _lastTrackSignature = thumbnailUpdate.GetSignature();
+                        string sig = thumbnailUpdate.GetSignature();
+                        _lastTrackSignature = sig;
+                        _lastPublishedSignature = sig;
+                        _lastPublishedInfo = thumbnailUpdate.Clone();
                         MediaChanged?.Invoke(this, thumbnailUpdate);
                     }
                 });
@@ -2099,6 +2135,10 @@ public sealed partial class MediaDetectionService : IMediaDetectionService, IAsy
             if (fetchGeneration == Volatile.Read(ref _soundCloudFetchGeneration))
             {
                 Interlocked.Exchange(ref _soundCloudFetchInFlight, 0);
+            }
+            if (ownedCts != null && !ReferenceEquals(_thumbCts, ownedCts))
+            {
+                ownedCts.Dispose();
             }
         }
     }
@@ -2174,10 +2214,16 @@ public sealed partial class MediaDetectionService : IMediaDetectionService, IAsy
         Span<char> buf = stackalloc char[512];
         try
         {
-            return vn_media_detection_build_session_instance_key(
-                native.ThisPtr, sourceApp.AsSpan(), sourceApp.Length, buf, buf.Length, out int len) == 0
-                ? new string(buf[..len])
-                : sourceApp;
+            int rc = vn_media_detection_build_session_instance_key(
+                native.ThisPtr, sourceApp.AsSpan(), sourceApp.Length, buf, buf.Length, out int len);
+            if (rc == -2 && len > buf.Length)
+            {
+                char[] heapBuf = new char[len];
+                rc = vn_media_detection_build_session_instance_key(
+                    native.ThisPtr, sourceApp.AsSpan(), sourceApp.Length, heapBuf, heapBuf.Length, out len);
+                return rc == 0 && len > 0 ? new string(heapBuf, 0, len) : sourceApp;
+            }
+            return rc == 0 && len > 0 ? new string(buf[..len]) : sourceApp;
         }
         finally
         {
@@ -2941,6 +2987,11 @@ public sealed partial class MediaDetectionService : IMediaDetectionService, IAsy
 
     private async Task ApplyTimelinePropertiesAsync(MediaInfo info, GlobalSystemMediaTransportControlsSession? session, bool forceRefresh)
     {
+        bool isNewTrack = !string.IsNullOrEmpty(info.CurrentTrack) &&
+            !string.IsNullOrEmpty(_lastTrackName) && info.CurrentTrack != _lastTrackName;
+        bool isBrowserTimelineTrack = IsBrowserSourceApp(info.SourceAppId) ||
+            info.Platform is MediaPlatform.YouTube or MediaPlatform.SoundCloud or MediaPlatform.Browser;
+
         try
         {
             var timeline = session?.GetTimelineProperties();
@@ -2957,15 +3008,6 @@ public sealed partial class MediaDetectionService : IMediaDetectionService, IAsy
                     await Task.Delay(120, _bgCts?.Token ?? CancellationToken.None);
                     timeline = session?.GetTimelineProperties() ?? timeline;
                 }
-
-                bool isNewTrack = !string.IsNullOrEmpty(info.CurrentTrack) &&
-                    !string.IsNullOrEmpty(_lastTrackName) &&
-                    info.CurrentTrack != _lastTrackName;
-
-                bool isBrowserTimelineTrack = IsBrowserSourceApp(info.SourceAppId) ||
-                                              info.Platform == MediaPlatform.YouTube ||
-                                              info.Platform == MediaPlatform.SoundCloud ||
-                                              info.Platform == MediaPlatform.Browser;
 
                 TimeSpan duration = timeline.EndTime - timeline.StartTime;
                 if (duration <= TimeSpan.Zero) duration = timeline.MaxSeekTime;
@@ -3002,18 +3044,60 @@ public sealed partial class MediaDetectionService : IMediaDetectionService, IAsy
                 info.Duration = solved.Duration;
                 info.LastUpdated = solved.LastUpdatedUtc;
                 info.IsIndeterminate = solved.IsIndeterminate;
+                ApplyTimelineAvailability(info, isBrowserTimelineTrack, isNewTrack, isLiveTimeline, duration, DateTime.UtcNow);
             }
             else
             {
                 _timelineClassifier.Reset();
                 info.IsIndeterminate = true;
+                ApplyTimelineAvailability(info, isBrowserTimelineTrack, isNewTrack, false, TimeSpan.Zero, DateTime.UtcNow);
             }
         }
         catch
         {
             _timelineClassifier.Reset();
             info.IsIndeterminate = true;
+            ApplyTimelineAvailability(info, isBrowserTimelineTrack, isNewTrack, false, TimeSpan.Zero, DateTime.UtcNow);
         }
+    }
+
+    internal void ApplyTimelineAvailability(MediaInfo info, bool isBrowserTimelineTrack, bool isNewTrack,
+        bool isLiveTimeline, TimeSpan reportedDuration, DateTime nowUtc)
+    {
+        info.IsTimelinePending = false;
+        if (!isBrowserTimelineTrack || reportedDuration > TimeSpan.Zero || isLiveTimeline)
+            return;
+
+        // Browsers clear their timeline while loading another video. A zero
+        // duration supplies no evidence that the new video is a live broadcast.
+        info.IsIndeterminate = false;
+        if (_lastPublishedInfo is { } previous &&
+            (info.SourceAppId != previous.SourceAppId || info.SessionInstanceKey != previous.SessionInstanceKey))
+        {
+            _lastMetadataChangeTime = nowUtc;
+        }
+
+        if (_lastPublishedInfo is { } last &&
+            !string.IsNullOrEmpty(info.CurrentTrack) &&
+            info.CurrentTrack == last.CurrentTrack &&
+            info.SourceAppId == last.SourceAppId &&
+            info.SessionInstanceKey == last.SessionInstanceKey)
+        {
+            if (last.IsIndeterminate)
+            {
+                info.IsIndeterminate = true;
+                return;
+            }
+
+            if (last.HasTimeline)
+            {
+                info.Duration = last.Duration;
+                return;
+            }
+        }
+
+        info.IsTimelinePending = isNewTrack || _lastTrackSignature == "" ||
+            (nowUtc - _lastMetadataChangeTime).TotalSeconds < 4.0;
     }
 
 #pragma warning disable S3776
@@ -3513,8 +3597,7 @@ public sealed partial class MediaDetectionService : IMediaDetectionService, IAsy
     private Task<string?> TryGetSoundCloudArtworkUrlAsync(string title, string artist = "", bool requireStrongMatch = false, CancellationToken ct = default)
         => _metadataLookup.TryGetSoundCloudArtworkUrlAsync(title, artist, requireStrongMatch, ct);
 
-    private Task<string?> TryGetSoundCloudArtworkFromUrlAsync(string soundCloudUrl, CancellationToken ct = default)
-        => _metadataLookup.TryGetSoundCloudArtworkFromUrlAsync(soundCloudUrl, ct);
+
 
     private Task<string?> TryGetSoundCloudArtworkFromUrlAsync(string soundCloudUrl, string expectedTitle, string expectedArtist, CancellationToken ct = default)
         => _metadataLookup.TryGetSoundCloudArtworkFromUrlAsync(soundCloudUrl, expectedTitle, expectedArtist, ct);
@@ -3870,10 +3953,12 @@ public sealed partial class MediaDetectionService : IMediaDetectionService, IAsy
         _workerResourceReleaseTask = ReleaseWorkerResourcesAsync(allTasks, ctsToCancel, isDisposing);
 
         // 5. Complete the channel or drain it for a later restart.
+        _sessionState.Clear();
+        _thumbCts?.Cancel();
         if (isDisposing)
         {
-            if (_thumbCts != null) await _thumbCts.CancelAsync().ConfigureAwait(false);
             _thumbCts?.Dispose();
+            _thumbCts = null;
             _changes.Complete();
         }
         else

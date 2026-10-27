@@ -57,21 +57,24 @@ VN_EXPORT int32_t __stdcall vn_audio_set_default_endpoint(
         !out_console_hr || !out_multimedia_hr || !out_communications_hr)
         return VN_ERR_INVALID_ARG;
     *out_console_hr = *out_multimedia_hr = *out_communications_hr = static_cast<int32_t>(E_FAIL);
-
-    std::wstring id(reinterpret_cast<const wchar_t*>(device_id), static_cast<size_t>(device_id_length));
-    audio::ComScope com;
-    audio::IPolicyConfig* policy = nullptr;
-    const HRESULT created = CoCreateInstance(audio::kPolicyConfigClient, nullptr, CLSCTX_ALL, audio::kPolicyConfigIid,
-                                             reinterpret_cast<void**>(&policy));
-    if (FAILED(created) || policy == nullptr) {
-        *out_console_hr = *out_multimedia_hr = *out_communications_hr = static_cast<int32_t>(created);
+    try {
+        std::wstring id(reinterpret_cast<const wchar_t*>(device_id), static_cast<size_t>(device_id_length));
+        audio::ComScope com;
+        audio::IPolicyConfig* policy = nullptr;
+        const HRESULT created = CoCreateInstance(audio::kPolicyConfigClient, nullptr, CLSCTX_ALL, audio::kPolicyConfigIid,
+                                                 reinterpret_cast<void**>(&policy));
+        if (FAILED(created) || policy == nullptr) {
+            *out_console_hr = *out_multimedia_hr = *out_communications_hr = static_cast<int32_t>(created);
+            return VN_ERR_FAIL;
+        }
+        *out_console_hr = static_cast<int32_t>(policy->SetDefaultEndpoint(id.c_str(), eConsole));
+        *out_multimedia_hr = static_cast<int32_t>(policy->SetDefaultEndpoint(id.c_str(), eMultimedia));
+        *out_communications_hr = static_cast<int32_t>(policy->SetDefaultEndpoint(id.c_str(), eCommunications));
+        policy->Release();
+        return SUCCEEDED(static_cast<HRESULT>(*out_multimedia_hr)) ? VN_OK : VN_ERR_FAIL;
+    } catch (...) {
         return VN_ERR_FAIL;
     }
-    *out_console_hr = static_cast<int32_t>(policy->SetDefaultEndpoint(id.c_str(), eConsole));
-    *out_multimedia_hr = static_cast<int32_t>(policy->SetDefaultEndpoint(id.c_str(), eMultimedia));
-    *out_communications_hr = static_cast<int32_t>(policy->SetDefaultEndpoint(id.c_str(), eCommunications));
-    policy->Release();
-    return *out_multimedia_hr >= 0 ? VN_OK : VN_ERR_FAIL;
 }
 
 } // extern "C"

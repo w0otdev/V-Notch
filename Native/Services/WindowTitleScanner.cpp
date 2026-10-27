@@ -88,7 +88,7 @@ public:
 
     static bool IsWhiteSpaceOnly(std::u16string_view s) noexcept {
         for (char16_t ch : s) {
-            if (!std::iswspace(static_cast<wint_t>(ch))) return false;
+            if (!vnotch::is_unicode_whitespace(ch)) return false;
         }
         return true;
     }
@@ -115,9 +115,9 @@ public:
 
     static std::u16string NormalizeUrl(std::u16string_view s) {
         size_t start = 0;
-        while (start < s.size() && std::iswspace(static_cast<wint_t>(s[start]))) start++;
+        while (start < s.size() && vnotch::is_unicode_whitespace(s[start])) start++;
         size_t end = s.size();
-        while (end > start && std::iswspace(static_cast<wint_t>(s[end - 1]))) end--;
+        while (end > start && vnotch::is_unicode_whitespace(s[end - 1])) end--;
 
         std::u16string_view trimmed = s.substr(start, end - start);
         bool has_dot = trimmed.find(u'.') != std::u16string_view::npos;

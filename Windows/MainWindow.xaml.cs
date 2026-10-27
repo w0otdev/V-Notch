@@ -711,9 +711,13 @@ public partial class MainWindow : Window
         StopChargingNotificationDismissTimer();
         StopClipboardRevertTimer();
         MediaPlayback.Dispose();
+        System.Windows.Input.InputManager.Current.PreProcessInput -= BlockGreetingInput;
         _lyricsTimer?.Dispose();
         _volumeSyncTimer?.Dispose();
         _lyricsService?.Dispose();
+        _youtubeSubtitleService?.Dispose();
+        _mediaBackgroundRecoveryTimer?.Dispose();
+        _mediaBackgroundRecoveryTimer = null;
         DisposeSpotifyCanvasLifecycle();
         _notchManager?.Dispose();
         _zOrderManager?.Dispose();
@@ -973,6 +977,7 @@ public partial class MainWindow : Window
 
     private bool _fullscreenSlideVisible = true;
     private bool _isFullscreenSlideAnimating = false;
+    private int _fullscreenSlideGeneration;
 
     private void ApplyNotchVisibilityState()
     {
@@ -983,6 +988,7 @@ public partial class MainWindow : Window
 
         if (shouldBeVisible == _fullscreenSlideVisible && !_isFullscreenSlideAnimating) return;
 
+        int gen = ++_fullscreenSlideGeneration;
         _fullscreenSlideVisible = shouldBeVisible;
         _isFullscreenSlideAnimating = true;
 
@@ -1007,6 +1013,7 @@ public partial class MainWindow : Window
             AnimateNotchFade(toOpacity: 1, durationMs: 300, easeOut: true);
             AnimateNotchSlide(toY: 0, durationMs: 350, easeOut: true, onComplete: () =>
             {
+                if (gen != _fullscreenSlideGeneration) return;
                 _isFullscreenSlideAnimating = false;
             });
         }
@@ -1015,6 +1022,7 @@ public partial class MainWindow : Window
             AnimateNotchFade(toOpacity: 0, durationMs: 220, easeOut: false);
             AnimateNotchSlide(toY: -slideDistance, durationMs: 250, easeOut: false, onComplete: () =>
             {
+                if (gen != _fullscreenSlideGeneration) return;
                 _isFullscreenSlideAnimating = false;
                 if (!_fullscreenSlideVisible)
                 {
@@ -1247,6 +1255,7 @@ public partial class MainWindow : Window
         HoverGlow.Opacity = 0;
 
         // This guard is acquired before Spotlight calls Show(). Showing or
+        SyncLiquidGlassAfterSpotlightHandoff();
         _hoverCollapseTimer.Stop();
         _hoverThumbnailDelayTimer.Stop();
     }
@@ -1312,6 +1321,7 @@ public partial class MainWindow : Window
         _spotlightMorphOwnsNotchVisibility = false;
         CompleteSpotlightReturnScaleHandoff();
         _transitionCoordinator.CompleteSpotlightHandoff(_activeSpotlightSessionId, restorePreviousView: true);
+        SyncLiquidGlassAfterSpotlightHandoff();
     }
 
     internal void BeginSpotlightReturnHandoff(TimeSpan duration)
@@ -1347,6 +1357,7 @@ public partial class MainWindow : Window
         NotchScale.ScaleX = NotchScale.ScaleY = 1;
         NotchShadowScale.ScaleX = NotchShadowScale.ScaleY = 1;
         _spotlightReturnHandoffActive = true;
+        SyncLiquidGlassAfterSpotlightHandoff();
 
         _liquidGlass?.ForceRefresh();
         if (AnimationConfig.ReduceMotion || duration <= TimeSpan.Zero)

@@ -823,6 +823,7 @@ public partial class MainWindow
         if (_liquidGlass != null) _liquidGlass.CaptureFullSurface = motion;
         // We no longer pause presentation during hover, DXGI handles it smoothly.
         SetGlassRegionPush(motion && _liquidGlass != null && IsLiquidGlassEnabled);
+        if ((motion || _glassInitialFramePending) && _liquidGlass != null && IsLiquidGlassEnabled) { CompositionTarget.Rendering -= OnLiquidGlassFrameUpdate; CompositionTarget.Rendering += OnLiquidGlassFrameUpdate; }
     }
 
     private void SetGlassRegionPush(bool enabled)
@@ -1091,16 +1092,30 @@ public partial class MainWindow
     private double _lastDynamicTopCornerR = -1;
     private double _lastDynamicBottomCornerR = -1;
 
+    internal void SyncLiquidGlassAfterSpotlightHandoff()
+    {
+        if (_liquidGlass == null || !IsLiquidGlassEnabled) return;
+        _hasCachedFrameMetrics = false;
+        UpdateNotchClip();
+        UpdateShaderGeometryPerFrame();
+        UpdateDynamicGlassParams();
+        CompositionTarget.Rendering -= OnLiquidGlassFrameUpdate;
+        CompositionTarget.Rendering += OnLiquidGlassFrameUpdate;
+        _liquidGlass.ForceRefresh();
+    }
+
     private void OnLiquidGlassFrameUpdate(object? sender, EventArgs e)
     {
         if (_liquidGlass == null || !IsLiquidGlassEnabled) return;
 
+        bool initialFrameJustArrived = false;
         if (_liquidGlass.HasPresentedFrame)
         {
             _glassGpuRetrySeconds = 5;
             if (_glassInitialFramePending)
             {
                 _glassInitialFramePending = false;
+                initialFrameJustArrived = true;
                 GlassBackdropHost.BeginAnimation(OpacityProperty, null);
                 GlassBackdropHost.Opacity = _glassConfiguredOpacity;
             }
@@ -1109,7 +1124,11 @@ public partial class MainWindow
         // When idle and not animating, skip redundant per-frame recalculations and DependencyProperty updates
         if (!_isAnimating && !_glassRegionPushActive && !_glassInitialFramePending)
         {
-            return;
+            CompositionTarget.Rendering -= OnLiquidGlassFrameUpdate;
+            if (!initialFrameJustArrived)
+            {
+                return;
+            }
         }
 
         _hasCachedFrameMetrics = false;

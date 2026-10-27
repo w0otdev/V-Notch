@@ -3,7 +3,7 @@ using System.Runtime.InteropServices;
 namespace VNotch.Services;
 
 /// <summary>Serializes blocking device writes, retaining only the latest pending value per control.</summary>
-internal sealed partial class CoalescingActionQueue
+internal sealed partial class CoalescingActionQueue : IDisposable
 {
     private const string NativeDll = "VNotch.Native.dll";
 
@@ -18,11 +18,23 @@ internal sealed partial class CoalescingActionQueue
     private readonly Dictionary<string, Action> _pending = new();
     private readonly Queue<string> _keys = new();
     private bool _running;
+    private bool _disposed;
+
+    public void Dispose()
+    {
+        lock (_gate)
+        {
+            _disposed = true;
+            _pending.Clear();
+            _keys.Clear();
+        }
+    }
 
     public void Post(string key, Action action)
     {
         lock (_gate)
         {
+            if (_disposed) return;
             NativeEvaluatePost(
                 _pending.ContainsKey(key) ? (byte)1 : (byte)0,
                 _running ? (byte)1 : (byte)0,
@@ -43,7 +55,7 @@ internal sealed partial class CoalescingActionQueue
             Action action;
             lock (_gate)
             {
-                if (_pending.Count == 0)
+                if (_disposed || _pending.Count == 0)
                 {
                     _running = false;
                     return;

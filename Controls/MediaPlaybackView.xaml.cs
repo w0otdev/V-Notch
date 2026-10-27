@@ -933,7 +933,7 @@ public partial class MediaPlaybackView : UserControl, IDisposable
             if (frame.ShowIndeterminate)
             {
                 CurrentTimeText.Text = "";
-                RemainingTimeText.Text = "LIVE";
+                RemainingTimeText.Text = _currentMediaInfo.IsTimelinePending ? "--:--" : "LIVE";
             }
             else
             {
@@ -1552,7 +1552,7 @@ public partial class MediaPlaybackView : UserControl, IDisposable
 
         catchUpAnim.Completed += (s, e) =>
         {
-            if (_trackChangeSequence != seqAtStart) return;
+            if (_trackChangeSequence != seqAtStart || (!_isCatchUpAnimating && !_isRewindAnimating)) return;
 
             _isCatchUpAnimating = false;
             ProgressBarScale.BeginAnimation(ScaleTransform.ScaleXProperty, null);
@@ -1611,7 +1611,7 @@ public partial class MediaPlaybackView : UserControl, IDisposable
 
         anim.Completed += (s, e) =>
         {
-            if (_trackChangeSequence != seqAtStart) return;
+            if (_trackChangeSequence != seqAtStart || (!_isCatchUpAnimating && !_isRewindAnimating)) return;
 
             ProgressBarScale.BeginAnimation(ScaleTransform.ScaleXProperty, null);
             ProgressBarScale.ScaleX = 0;
@@ -1730,7 +1730,7 @@ public partial class MediaPlaybackView : UserControl, IDisposable
 
         anim.Completed += (s, e) =>
         {
-            if (_trackChangeSequence != seqAtStart) return;
+            if (_trackChangeSequence != seqAtStart || (!_isCatchUpAnimating && !_isRewindAnimating)) return;
 
             RuntimeLog.Log(ProgressSeekLogTag, $"animate completed -> {targetRatio:F4}");
             ProgressBarScale.BeginAnimation(ScaleTransform.ScaleXProperty, null);

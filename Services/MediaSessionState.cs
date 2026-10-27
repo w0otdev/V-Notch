@@ -31,11 +31,14 @@ public sealed partial class MediaSessionState
 
     private readonly Dictionary<string, SessionEntry> _sessions = new();
     private readonly Dictionary<string, string> _sourceOverrides = new();
+    internal int SessionCount => _sessions.Count;
+    internal int SourceOverrideCount => _sourceOverrides.Count;
 
     public SessionEntry GetOrCreate(string sessionKey)
     {
         if (!_sessions.TryGetValue(sessionKey, out var entry))
         {
+            if (_sessions.Count >= 256) { foreach (var k in _sessions.Keys) { _sessions.Remove(k); break; } }
             entry = new SessionEntry();
             _sessions[sessionKey] = entry;
         }
@@ -133,7 +136,7 @@ public sealed partial class MediaSessionState
     public void SetSourceOverride(string key, string source)
     {
         if (!string.IsNullOrEmpty(key))
-            _sourceOverrides[key] = source;
+        { if (!_sourceOverrides.ContainsKey(key) && _sourceOverrides.Count >= 256) { foreach (var k in _sourceOverrides.Keys) { _sourceOverrides.Remove(k); break; } } _sourceOverrides[key] = source; }
     }
 
     public bool TryGetSourceOverride(string key, out string source)

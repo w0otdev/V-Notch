@@ -47,6 +47,7 @@ internal static partial class WhiteNoiseService
     private static float _volume = DefaultVolume;
     private static bool _muted;
     private static bool _syncWithTimer;
+    private static readonly CoalescingActionQueue SaveQueue = new();
 
     static WhiteNoiseService()
     {
@@ -66,7 +67,7 @@ internal static partial class WhiteNoiseService
             _volume = Math.Clamp(value, 0f, 1f);
             if (_muted && _volume > 0f) _muted = false;
             ApplyVolume();
-            SavePreferences();
+            SaveQueue.Post("prefs", SavePreferences);
             StateChanged?.Invoke();
         }
     }
@@ -91,7 +92,7 @@ internal static partial class WhiteNoiseService
         {
             if (_syncWithTimer == value) return;
             _syncWithTimer = value;
-            SavePreferences();
+            SaveQueue.Post("prefs", SavePreferences);
             StateChanged?.Invoke();
         }
     }

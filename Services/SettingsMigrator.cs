@@ -205,7 +205,8 @@ public static partial class SettingsMigrator
         bool versionSupported = vn_settings_migrator_is_supported_version(startVersion, CurrentVersion, out byte outSupported) == 0
             ? outSupported != 0
             : (startVersion >= 0 && startVersion <= CurrentVersion);
-        if (!versionSupported)
+        if (startVersion > CurrentVersion) { RuntimeLog.Warn("SettingsMigrator", $"Settings schema version {startVersion} is newer than supported version {CurrentVersion}; loading forward-compatible fields without overwriting."); }
+        else if (!versionSupported)
             throw new JsonException(
                 $"Unsupported settings version: {startVersion}");
 
@@ -269,7 +270,7 @@ public static partial class SettingsMigrator
             migrated = true;
         }
 
-        if (startVersion != CurrentVersion)
+        if (startVersion < CurrentVersion)
         {
             migrated = true;
         }

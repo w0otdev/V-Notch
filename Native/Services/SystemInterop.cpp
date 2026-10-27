@@ -51,11 +51,14 @@ bool ImagePathEquals(HANDLE process, std::u16string_view expected) noexcept {
         return OrdinalEqualsIgnoreCase(std::u16string_view(reinterpret_cast<const char16_t*>(stack_buffer), length), expected);
     if (GetLastError() != ERROR_INSUFFICIENT_BUFFER) return false;
 
-    std::vector<wchar_t> heap_buffer;
-    heap_buffer.resize(kMaxPathChars);
-    length = static_cast<DWORD>(heap_buffer.size());
-    if (!QueryFullProcessImageNameW(process, 0, heap_buffer.data(), &length)) return false;
-    return OrdinalEqualsIgnoreCase(std::u16string_view(reinterpret_cast<const char16_t*>(heap_buffer.data()), length), expected);
+    try {
+        std::vector<wchar_t> heap_buffer(kMaxPathChars);
+        length = static_cast<DWORD>(heap_buffer.size());
+        if (!QueryFullProcessImageNameW(process, 0, heap_buffer.data(), &length)) return false;
+        return OrdinalEqualsIgnoreCase(std::u16string_view(reinterpret_cast<const char16_t*>(heap_buffer.data()), length), expected);
+    } catch (...) {
+        return false;
+    }
 }
 
 } // namespace vnotch::services::sysinterop
@@ -133,12 +136,16 @@ VN_EXPORT int32_t __stdcall vn_process_app_user_model_id_equals(
     if (GetApplicationUserModelId(process, &length, nullptr) != ERROR_INSUFFICIENT_BUFFER ||
         length == 0 || length > sys::kMaxPathChars)
         return VN_OK;
-    std::vector<wchar_t> id(length);
-    if (GetApplicationUserModelId(process, &length, id.data()) != ERROR_SUCCESS || length == 0) return VN_OK;
-    *out_equal = sys::OrdinalEqualsIgnoreCase(
-        std::u16string_view(reinterpret_cast<const char16_t*>(id.data()), length - 1),
-        std::u16string_view(expected, static_cast<size_t>(expected_length))) ? 1 : 0;
-    return VN_OK;
+    try {
+        std::vector<wchar_t> id(length);
+        if (GetApplicationUserModelId(process, &length, id.data()) != ERROR_SUCCESS || length == 0) return VN_OK;
+        *out_equal = sys::OrdinalEqualsIgnoreCase(
+            std::u16string_view(reinterpret_cast<const char16_t*>(id.data()), length - 1),
+            std::u16string_view(expected, static_cast<size_t>(expected_length))) ? 1 : 0;
+        return VN_OK;
+    } catch (...) {
+        return VN_ERR_FAIL;
+    }
 }
 
 // ---------------------------------------------------------------- registry / files / trust
@@ -157,17 +164,22 @@ VN_EXPORT int32_t __stdcall vn_registry_notify_change(
 VN_EXPORT int32_t __stdcall vn_file_create_delete_on_close(
     const char16_t* path, int32_t path_length, int64_t* out_handle, int32_t* out_last_error) noexcept {
     if (!path || path_length <= 0 || path_length >= 32768 || !out_handle) return VN_ERR_INVALID_ARG;
-    std::wstring wide(reinterpret_cast<const wchar_t*>(path), static_cast<size_t>(path_length));
-    SetLastError(0);
-    HANDLE handle = CreateFileW(wide.c_str(), GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
-                                nullptr, CREATE_NEW, FILE_FLAG_DELETE_ON_CLOSE | FILE_ATTRIBUTE_TEMPORARY, nullptr);
-    if (handle == INVALID_HANDLE_VALUE) {
-        *out_handle = 0;
-        if (out_last_error) *out_last_error = static_cast<int32_t>(GetLastError());
+    *out_handle = 0;
+    if (out_last_error) *out_last_error = 0;
+    try {
+        std::wstring wide(reinterpret_cast<const wchar_t*>(path), static_cast<size_t>(path_length));
+        SetLastError(0);
+        HANDLE handle = CreateFileW(wide.c_str(), GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
+                                    nullptr, CREATE_NEW, FILE_FLAG_DELETE_ON_CLOSE | FILE_ATTRIBUTE_TEMPORARY, nullptr);
+        if (handle == INVALID_HANDLE_VALUE) {
+            if (out_last_error) *out_last_error = static_cast<int32_t>(GetLastError());
+            return VN_ERR_FAIL;
+        }
+        *out_handle = static_cast<int64_t>(reinterpret_cast<intptr_t>(handle));
+        return VN_OK;
+    } catch (...) {
         return VN_ERR_FAIL;
     }
-    *out_handle = static_cast<int64_t>(reinterpret_cast<intptr_t>(handle));
-    return VN_OK;
 }
 
 // WinVerifyTrust(WINTRUST_ACTION_GENERIC_VERIFY_V2) for a file, no UI and no revocation check.
@@ -175,20 +187,24 @@ VN_EXPORT int32_t __stdcall vn_update_verify_authenticode(
     const char16_t* path, int32_t path_length, uint8_t* out_trusted) noexcept {
     if (!path || path_length <= 0 || path_length >= 32768 || !out_trusted) return VN_ERR_INVALID_ARG;
     *out_trusted = 0;
-    std::wstring wide(reinterpret_cast<const wchar_t*>(path), static_cast<size_t>(path_length));
-    WINTRUST_FILE_INFO file{};
-    file.cbStruct = sizeof(file);
-    file.pcwszFilePath = wide.c_str();
-    WINTRUST_DATA data{};
-    data.cbStruct = sizeof(data);
-    data.dwUIChoice = WTD_UI_NONE;
-    data.fdwRevocationChecks = WTD_REVOKE_NONE;
-    data.dwUnionChoice = WTD_CHOICE_FILE;
-    data.pFile = &file;
-    data.dwStateAction = WTD_STATEACTION_IGNORE;
-    GUID action = WINTRUST_ACTION_GENERIC_VERIFY_V2;
-    *out_trusted = WinVerifyTrust(nullptr, &action, &data) == 0 ? 1 : 0;
-    return VN_OK;
+    try {
+        std::wstring wide(reinterpret_cast<const wchar_t*>(path), static_cast<size_t>(path_length));
+        WINTRUST_FILE_INFO file{};
+        file.cbStruct = sizeof(file);
+        file.pcwszFilePath = wide.c_str();
+        WINTRUST_DATA data{};
+        data.cbStruct = sizeof(data);
+        data.dwUIChoice = WTD_UI_NONE;
+        data.fdwRevocationChecks = WTD_REVOKE_NONE;
+        data.dwUnionChoice = WTD_CHOICE_FILE;
+        data.pFile = &file;
+        data.dwStateAction = WTD_STATEACTION_IGNORE;
+        GUID action = WINTRUST_ACTION_GENERIC_VERIFY_V2;
+        *out_trusted = WinVerifyTrust(nullptr, &action, &data) == 0 ? 1 : 0;
+        return VN_OK;
+    } catch (...) {
+        return VN_ERR_FAIL;
+    }
 }
 
 // ---------------------------------------------------------------- window messaging
@@ -207,6 +223,7 @@ VN_EXPORT int32_t __stdcall vn_win32_send_message_timeout(
     int64_t hwnd, uint32_t message, int64_t wparam, int64_t lparam, uint32_t flags, uint32_t timeout_ms,
     int64_t* out_result, int32_t* out_last_error) noexcept {
     if (!out_result) return VN_ERR_INVALID_ARG;
+    if (out_last_error) *out_last_error = 0;
     DWORD_PTR result = 0;
     SetLastError(0);
     const LRESULT sent = SendMessageTimeoutW(

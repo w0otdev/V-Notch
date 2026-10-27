@@ -413,7 +413,9 @@ internal static partial class SpotifyTrackMatcher
         ReadOnlySpan<char> span = value.AsSpan();
         int cap = span.Length * 2 + 16;
         Span<char> buf = cap <= 512 ? stackalloc char[cap] : new char[cap];
-        vn_spotify_normalize_for_match(span, span.Length, buf, buf.Length, out int len);
+        int rc = vn_spotify_normalize_for_match(span, span.Length, buf, buf.Length, out int len);
+        if (rc == -2 && len > buf.Length) { char[] larger = new char[len]; rc = vn_spotify_normalize_for_match(span, span.Length, larger, larger.Length, out len); return rc == 0 && len > 0 ? new string(larger, 0, len) : ""; }
+        if (rc != 0) len = 0;
         return len > 0 ? new string(buf[..len]) : "";
     }
 

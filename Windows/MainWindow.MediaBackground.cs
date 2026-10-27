@@ -22,6 +22,7 @@ public partial class MainWindow
     private bool _isFadingTrack = false;
     private int _mediaBackgroundAnimationVersion = 0;
     private int _mediaBackgroundRecoveryVersion = 0;
+    private UiScheduledTimer? _mediaBackgroundRecoveryTimer;
     private DateTime _lastMediaBackgroundFadeStartUtc = DateTime.MinValue;
     private BitmapSource? _lastBackgroundThumbnail;
 
@@ -461,15 +462,21 @@ public partial class MainWindow
             EnsureMediaBackgroundVisible(recoveryVersion);
         }));
 
+        _mediaBackgroundRecoveryTimer?.Stop();
+        _mediaBackgroundRecoveryTimer?.Dispose();
         var recoveryTimer = new UiScheduledTimer
         {
             Interval = TimeSpan.FromMilliseconds(180)
         };
+        _mediaBackgroundRecoveryTimer = recoveryTimer;
 
         recoveryTimer.Tick += (s, e) =>
         {
             recoveryTimer.Stop();
             recoveryTimer.Dispose();
+            if (ReferenceEquals(_mediaBackgroundRecoveryTimer, recoveryTimer))
+                _mediaBackgroundRecoveryTimer = null;
+            if (_cleanedUp) return;
             EnsureMediaBackgroundVisible(recoveryVersion);
         };
 

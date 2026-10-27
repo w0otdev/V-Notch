@@ -96,6 +96,8 @@ internal static partial class MediaWindowActivator
         byte isPipTitle,
         out int outScore);
 
+
+
     [LibraryImport("VNotch.Native.dll")]
     private static partial int vn_mediaactivator_score_window_platform(
         ReadOnlySpan<ushort> title, int titleLen,
@@ -182,10 +184,14 @@ internal static partial class MediaWindowActivator
     {
         if (string.IsNullOrWhiteSpace(sourceAppId)) return false;
         GetWindowThreadProcessId(hwnd, out uint processId);
+        if (processId == 0) return false;
+        string? resolvedName = ProcessNameResolver.TryGetName(processId);
+        if (!string.IsNullOrEmpty(resolvedName) && !IsBrowserProcess(resolvedName) && !IsChromiumWindow(hwnd))
+            return false;
         try
         {
             using var process = Process.GetProcessById((int)processId);
-            string processName = process.ProcessName;
+            string processName = !string.IsNullOrEmpty(resolvedName) ? resolvedName : process.ProcessName;
             if (!IsBrowserProcess(processName) && !IsChromiumWindow(hwnd)) return false;
 
             if (Regex.IsMatch(sourceAppId, @"(?:^|[\\/.!_\-])" + Regex.Escape(processName) +
@@ -213,6 +219,7 @@ internal static partial class MediaWindowActivator
 
     internal static bool TryGoBackInMediaTab(MediaInfo info)
     {
+        if (!WindowTitleScanner.IsBrowserUrlInspectionAllowed()) return false;
         string track = NormalizeMediaTitle(info.CurrentTrack, info.MediaSource);
         if (track.Length < 3) return false;
 
@@ -332,6 +339,7 @@ internal static partial class MediaWindowActivator
 
     public static bool TryActivateExactBrowserTab(MediaInfo info, ISet<string> processNames)
     {
+        if (!WindowTitleScanner.IsBrowserUrlInspectionAllowed()) return false;
         IntPtr bestHwnd = IntPtr.Zero;
         AutomationElement? bestTabItem = null;
         int bestScore = 0;
@@ -627,6 +635,8 @@ internal static partial class MediaWindowActivator
             out int score);
         return score;
     }
+
+
 
     private static int ScoreWindowPlatform(string title, MediaPlatform platform)
     {

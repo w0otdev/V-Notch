@@ -53,7 +53,7 @@ internal static class Program
             }
         }
 
-        var installDirectory = ResolveInstallDirectory();
+        string? installDirectory = null;
         var errors = new List<string>();
 
         TrySilently(StopRunningInstances, errors, Loc.Get("uninstall.action.stopApp"));
@@ -63,7 +63,7 @@ internal static class Program
         TrySilently(RemoveAppData, errors, Loc.Get("uninstall.action.removeData"));
 
         // Hand final deletion to a helper that waits for this process to exit.
-        TrySilently(() => ScheduleInstallDirRemoval(installDirectory), errors,
+        TrySilently(() => { installDirectory = ResolveInstallDirectory(); ScheduleInstallDirRemoval(installDirectory); }, errors,
             Loc.Get("uninstall.action.removeInstallFolder"));
 
         if (!silent)

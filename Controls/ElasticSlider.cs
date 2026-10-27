@@ -109,7 +109,7 @@ public class ElasticSlider : Slider
         {
             _rootScale = new ScaleTransform(1, 1);
             _rootBorder.RenderTransform = _rootScale;
-            _rootBorder.RenderTransformOrigin = new Point(0.5, 0.5);
+            if (!_isDragging) _rootBorder.RenderTransformOrigin = new Point(0.5, 0.5);
             _rootBorder.SizeChanged += OnRootBorderSizeChanged;
         }
 
@@ -240,7 +240,7 @@ public class ElasticSlider : Slider
         double x = leftPad + fraction * usableWidth;
         double targetLeft = x - _indicator.Width / 2;
         double currentLeft = Canvas.GetLeft(_indicator);
-        if (double.IsNaN(currentLeft) || double.IsInfinity(currentLeft))
+        if (_isDragging || double.IsNaN(currentLeft) || double.IsInfinity(currentLeft))
         {
             _indicator.BeginAnimation(Canvas.LeftProperty, null);
             Canvas.SetLeft(_indicator, targetLeft);
@@ -316,7 +316,7 @@ public class ElasticSlider : Slider
         double currentWidth = !double.IsNaN(_fillBorder.Width) && _fillBorder.ActualWidth <= 0
             ? _fillBorder.Width
             : _fillBorder.ActualWidth;
-        if (double.IsNaN(currentWidth) || double.IsInfinity(currentWidth))
+        if (_isDragging || double.IsNaN(currentWidth) || double.IsInfinity(currentWidth))
         {
             _fillBorder.BeginAnimation(WidthProperty, null);
             _fillBorder.Width = targetWidth;
@@ -343,7 +343,7 @@ public class ElasticSlider : Slider
         double currentWidth = !double.IsNaN(_fillBorder.Width) && _fillBorder.ActualWidth <= 0
             ? _fillBorder.Width
             : _fillBorder.ActualWidth;
-        if (double.IsNaN(currentWidth) || double.IsInfinity(currentWidth))
+        if (_isDragging || double.IsNaN(currentWidth) || double.IsInfinity(currentWidth))
         {
             _fillBorder.BeginAnimation(WidthProperty, null);
             _fillBorder.Width = targetWidth;
@@ -488,7 +488,7 @@ public class ElasticSlider : Slider
                 _rootScale.ScaleY = 1.0;
             }
             if (_rootBorder != null)
-                _rootBorder.RenderTransformOrigin = new Point(0.5, 0.5);
+                if (!_isDragging) _rootBorder.RenderTransformOrigin = new Point(0.5, 0.5);
         }
 
         double rawValue = Minimum + fraction * (Maximum - Minimum);
@@ -572,7 +572,7 @@ public class ElasticSlider : Slider
         Timeline.SetDesiredFrameRate(ay, VNotch.Services.AnimationConfig.TargetFps);
         ax.Completed += (_, _) =>
         {
-            _rootBorder.RenderTransformOrigin = new Point(0.5, 0.5);
+            if (!_isDragging) _rootBorder.RenderTransformOrigin = new Point(0.5, 0.5);
         };
         _rootScale.BeginAnimation(ScaleTransform.ScaleXProperty, ax);
         _rootScale.BeginAnimation(ScaleTransform.ScaleYProperty, ay);

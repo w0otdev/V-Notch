@@ -105,6 +105,17 @@ public sealed class ProgressEnginePreviousTrackTests
         Assert.Equal(120, frame.Position.TotalSeconds, 1);
     }
 
+    [Fact]
+    public void SinglePauseSnapshotTransitionsToPausedWithoutSubsequentSnapshots()
+    {
+        var engine = CreatePlayingEngine(TimeSpan.FromSeconds(45));
+        engine.OnMediaSnapshot(Snapshot(TimeSpan.FromSeconds(45), sequence: 2) with { IsPlaying = false });
+
+        var frame = engine.GetUiFrame();
+        Assert.Equal(ProgressState.Paused, frame.State);
+        Assert.False(engine.RequiresPositionUpdates);
+    }
+
     private static ProgressEngine CreatePlayingEngine(TimeSpan position)
     {
         var engine = new ProgressEngine();

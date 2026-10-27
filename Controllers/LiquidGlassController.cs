@@ -5,6 +5,7 @@ using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
@@ -19,8 +20,105 @@ using static VNotch.Services.Win32Interop;
 
 namespace VNotch.Controllers;
 
-public sealed class LiquidGlassController : IDisposable
+public sealed partial class LiquidGlassController : IDisposable
 {
+    [StructLayout(LayoutKind.Sequential, Pack = 1)]
+    private struct VnGlassMapParams
+    {
+        public int OutW;
+        public int OutH;
+        public int SrcW;
+        public int SrcH;
+        public int Margin;
+        public int NotchW;
+        public int NotchH;
+        public int NotchOffX;
+        public int NotchOffY;
+        public int CaptureShiftX;
+        public int CaptureShiftY;
+        public double OutScale;
+        public double TopCornerRadius;
+        public double BottomCornerRadius;
+        public double EdgeBend;
+        public double ChromaticAberration;
+        public double Distortion;
+        public double FPower;
+        public double RefractionA;
+        public double RefractionB;
+        public double RefractionC;
+        public double RefractionD;
+    }
+
+    [StructLayout(LayoutKind.Sequential, Pack = 1)]
+    private struct VnGlassBackdropOpticsOut
+    {
+        public byte Red;
+        public byte Green;
+        public byte Blue;
+        public byte Reserved;
+        public double LightX;
+        public double LightY;
+        public double Contrast;
+        public int OutsideRgb;
+    }
+
+    [LibraryImport("VNotch.Native.dll", EntryPoint = "vn_glass_build_refraction_lut")]
+    private static unsafe partial int NativeBuildRefractionLut(
+        double fPower,
+        double refractionA,
+        double refractionB,
+        double refractionC,
+        double refractionD,
+        double* outLut,
+        int lutLen);
+
+    [LibraryImport("VNotch.Native.dll", EntryPoint = "vn_glass_build_refraction_rows")]
+    private static unsafe partial int NativeBuildRefractionRows(
+        in VnGlassMapParams mapParams,
+        double* lut,
+        int lutLen,
+        int yStart,
+        int yEnd,
+        int* outMap);
+
+    [LibraryImport("VNotch.Native.dll", EntryPoint = "vn_glass_refract_gather")]
+    private static unsafe partial int NativeRefractGather(
+        byte* src,
+        byte* dst,
+        int* refractMap,
+        int srcStride,
+        int startPixel,
+        int endPixel,
+        byte adjustColor,
+        float satFactor,
+        float brightAdd);
+
+    [LibraryImport("VNotch.Native.dll", EntryPoint = "vn_glass_analyze_backdrop_samples")]
+    private static unsafe partial int NativeAnalyzeBackdropSamples(
+        int* rgbSamples,
+        int sampleLen,
+        int columns,
+        int rows,
+        out VnGlassBackdropOpticsOut outOptics);
+
+    [LibraryImport("VNotch.Native.dll", EntryPoint = "vn_glass_sample_backdrop_optics")]
+    private static unsafe partial int NativeSampleBackdropOptics(
+        byte* dibBits,
+        int srcW,
+        int srcH,
+        int sampleX,
+        int sampleY,
+        int sampleW,
+        int sampleH,
+        out VnGlassBackdropOpticsOut outOptics);
+
+    [LibraryImport("VNotch.Native.dll", EntryPoint = "vn_glass_gaussian_box_radii")]
+    private static unsafe partial int NativeGaussianBoxRadii(
+        double sigma,
+        int passes,
+        int* outRadii,
+        int radiiCap,
+        out int outWritten);
     public const int MaxTargetFps = 1000;
 
     public readonly record struct CaptureRegion(int X, int Y, int Width, int Height,
@@ -131,12 +229,7 @@ public sealed class LiquidGlassController : IDisposable
     private IntPtr _oldBmp;
     private int _dibW, _dibH;
 
-    private int[] _idxR = Array.Empty<int>();
-    private int[] _auxR = Array.Empty<int>();
-    private int[] _idxG = Array.Empty<int>();
-    private int[] _auxG = Array.Empty<int>();
-    private int[] _idxB = Array.Empty<int>();
-    private int[] _auxB = Array.Empty<int>();
+    private int[] _refractMap = Array.Empty<int>();
 
     private int _outW, _outH;
     private int _srcW, _srcH;
@@ -933,7 +1026,7 @@ public sealed class LiquidGlassController : IDisposable
         _frameHistory.Clear();
         ReleaseGdiResources();
         _outBuffer = Array.Empty<byte>();
-        _idxR = _auxR = _idxG = _auxG = _idxB = _auxB = Array.Empty<int>();
+        _refractMap = Array.Empty<int>();
         _outW = _outH = _srcW = _srcH = _margin = 0;
         ReleaseRenderTimerPeriod();
         DisposeWaitableTimer();
@@ -973,19 +1066,13 @@ public sealed class LiquidGlassController : IDisposable
                 }
                 return false;
             }
+            if (!_hideFromCapture && IsCaptureOverlayActive()) { _exactBitBltCapture = false; SetWindowDisplayAffinitySafe(WDA_NONE); WaitForIdleOrEvent((int)Math.Max(15, frameIntervalMs)); return true; }
             if (!_exactBitBltCapture)
             {
                 _exactBitBltCapture = SetWindowDisplayAffinitySafe(WDA_EXCLUDEFROMCAPTURE);
             }
             if (_mag == null) RequestMagnifierFallback();
             return false;
-        }
-        if (IsCaptureOverlayActive())
-        {
-            _exactBitBltCapture = false;
-            SetWindowDisplayAffinitySafe(WDA_NONE);
-            WaitForIdleOrEvent((int)Math.Max(15, frameIntervalMs));
-            return true;
         }
 
         if (!_exactBitBltCapture)
@@ -1281,7 +1368,7 @@ public sealed class LiquidGlassController : IDisposable
     {
         long targetTicks = Stopwatch.GetTimestamp() + StopwatchTicksFromMilliseconds(Math.Max(0.1, milliseconds));
 
-        if (_exactBitBltCapture && CaptureHotkeyRequested(Environment.TickCount64))
+        if (!_hideFromCapture && _exactBitBltCapture && CaptureHotkeyRequested(Environment.TickCount64))
         {
             _exactBitBltCapture = false;
             SetWindowDisplayAffinitySafe(WDA_NONE);
@@ -1346,7 +1433,7 @@ public sealed class LiquidGlassController : IDisposable
                     return false;
                 }
 
-                if (_exactBitBltCapture && CaptureHotkeyRequested(Environment.TickCount64))
+                if (!_hideFromCapture && _exactBitBltCapture && CaptureHotkeyRequested(Environment.TickCount64))
                 {
                     _exactBitBltCapture = false;
                     SetWindowDisplayAffinitySafe(WDA_NONE);
@@ -1367,7 +1454,7 @@ public sealed class LiquidGlassController : IDisposable
             return false;
         }
 
-        if (_exactBitBltCapture && CaptureHotkeyRequested(Environment.TickCount64))
+        if (!_hideFromCapture && _exactBitBltCapture && CaptureHotkeyRequested(Environment.TickCount64))
         {
             _exactBitBltCapture = false;
             SetWindowDisplayAffinitySafe(WDA_NONE);
@@ -2138,25 +2225,10 @@ public sealed class LiquidGlassController : IDisposable
         if (_dibBits == IntPtr.Zero || srcW <= 0 || srcH <= 0 || sampleW <= 0 || sampleH <= 0)
             return;
 
-        const int columns = 8;
-        const int rows = 8;
-        Span<int> samples = stackalloc int[columns * rows];
-        byte* src = (byte*)_dibBits;
-        int stride = srcW * 4;
+        if (NativeSampleBackdropOptics(
+            (byte*)_dibBits, srcW, srcH, sampleX, sampleY, sampleW, sampleH, out var optics) != 0)
+            return;
 
-        for (int gy = 0; gy < rows; gy++)
-        {
-            int y = Math.Clamp(sampleY + (sampleH - 1) * gy / (rows - 1), 0, srcH - 1);
-            byte* row = src + (long)y * stride;
-            for (int gx = 0; gx < columns; gx++)
-            {
-                int x = Math.Clamp(sampleX + (sampleW - 1) * gx / (columns - 1), 0, srcW - 1);
-                byte* p = row + x * 4;
-                samples[gy * columns + gx] = (p[2] << 16) | (p[1] << 8) | p[0];
-            }
-        }
-
-        BackdropOptics optics = AnalyzeBackdropSamples(samples, columns, rows);
         Volatile.Write(ref _averageBackgroundColorRgb,
             (optics.Red << 16) | (optics.Green << 8) | optics.Blue);
         Volatile.Write(ref _backgroundLightX1000, (int)Math.Round(optics.LightX * 1000.0));
@@ -2164,81 +2236,23 @@ public sealed class LiquidGlassController : IDisposable
         Volatile.Write(ref _backgroundContrast1000, (int)Math.Round(optics.Contrast * 1000.0));
         AverageBackgroundBrightnessInt = (int)Math.Round(
             0.299 * optics.Red + 0.587 * optics.Green + 0.114 * optics.Blue);
-
-        int outsideX = Math.Clamp(sampleX + sampleW / 2, 0, srcW - 1);
-        int belowY = sampleY + sampleH + 16;
-        int outsideY = belowY < srcH
-            ? belowY
-            : Math.Clamp(sampleY - 16, 0, srcH - 1);
-        byte* outside = src + (long)outsideY * stride + outsideX * 4;
-        Volatile.Write(ref _outsideBackdropColorRgb,
-            (outside[2] << 16) | (outside[1] << 8) | outside[0]);
+        Volatile.Write(ref _outsideBackdropColorRgb, optics.OutsideRgb);
     }
 
-    internal static BackdropOptics AnalyzeBackdropSamples(
+    internal static unsafe BackdropOptics AnalyzeBackdropSamples(
         ReadOnlySpan<int> rgbSamples, int columns, int rows)
     {
         int count = columns * rows;
         if (columns <= 0 || rows <= 0 || rgbSamples.Length < count)
             return new BackdropOptics(128, 128, 128, 0, 0, 0);
 
-        Span<double> luminance = count <= 256
-            ? stackalloc double[count]
-            : new double[count];
-        double sumR = 0, sumG = 0, sumB = 0, sumL = 0;
-        double minL = 255, maxL = 0;
-
-        for (int i = 0; i < count; i++)
+        fixed (int* samplePtr = rgbSamples)
         {
-            int rgb = rgbSamples[i];
-            int r = (rgb >> 16) & 0xFF;
-            int g = (rgb >> 8) & 0xFF;
-            int b = rgb & 0xFF;
-            double l = 0.299 * r + 0.587 * g + 0.114 * b;
-            luminance[i] = l;
-            sumR += r; sumG += g; sumB += b; sumL += l;
-            minL = Math.Min(minL, l);
-            maxL = Math.Max(maxL, l);
+            if (NativeAnalyzeBackdropSamples(samplePtr, rgbSamples.Length, columns, rows, out var optics) != 0)
+                return new BackdropOptics(128, 128, 128, 0, 0, 0);
+            return new BackdropOptics(
+                optics.Red, optics.Green, optics.Blue, optics.LightX, optics.LightY, optics.Contrast);
         }
-
-        double meanL = sumL / count;
-        (double lightX, double lightY, double contrast) = ComputeDirectionalLighting(luminance, columns, rows, meanL, minL, maxL);
-
-        return new BackdropOptics(
-            (byte)Math.Clamp((int)Math.Round(sumR / count), 0, 255),
-            (byte)Math.Clamp((int)Math.Round(sumG / count), 0, 255),
-            (byte)Math.Clamp((int)Math.Round(sumB / count), 0, 255),
-            lightX,
-            lightY,
-            contrast);
-    }
-
-    private static (double LightX, double LightY, double Contrast) ComputeDirectionalLighting(
-        ReadOnlySpan<double> luminance, int columns, int rows, double meanL, double minL, double maxL)
-    {
-        double weightedX = 0, weightedY = 0, totalWeight = 0;
-        for (int y = 0; y < rows; y++)
-        {
-            double ny = rows == 1 ? 0 : y * 2.0 / (rows - 1) - 1.0;
-            for (int x = 0; x < columns; x++)
-            {
-                double highlight = Math.Max(luminance[y * columns + x] - meanL, 0.0);
-                double weight = highlight * highlight;
-                if (weight <= 1e-6) continue;
-
-                double nx = columns == 1 ? 0 : x * 2.0 / (columns - 1) - 1.0;
-                weightedX += nx * weight;
-                weightedY += ny * weight;
-                totalWeight += weight;
-            }
-        }
-
-        double contrast = Math.Clamp((maxL - minL) / 255.0, 0.0, 1.0);
-        double directionalStrength = Math.Clamp(contrast * 2.2, 0.0, 1.0);
-        double lightX = totalWeight > 1e-6 ? weightedX / totalWeight * directionalStrength : 0.0;
-        double lightY = totalWeight > 1e-6 ? weightedY / totalWeight * directionalStrength : 0.0;
-
-        return (Math.Clamp(lightX, -1.0, 1.0), Math.Clamp(lightY, -1.0, 1.0), contrast);
     }
 
     private bool EnsureGdiResources(int srcW, int srcH, IntPtr screenDc)
@@ -2284,32 +2298,6 @@ public sealed class LiquidGlassController : IDisposable
         MaxDegreeOfParallelism = Math.Max(1, Math.Min(Environment.ProcessorCount - 1, 8))
     };
 
-    private readonly record struct ColorAdjustment(bool Adjust, float SatFactor, float BrightAdd);
-
-    private readonly unsafe struct GatherChannelMap
-    {
-        public readonly int* Idx;
-        public readonly int* Aux;
-        public GatherChannelMap(int* idx, int* aux) { Idx = idx; Aux = aux; }
-    }
-
-    private readonly unsafe struct GatherBuffers
-    {
-        public readonly byte* Src;
-        public readonly byte* Dst;
-        public readonly GatherChannelMap R;
-        public readonly GatherChannelMap G;
-        public readonly GatherChannelMap B;
-        public GatherBuffers(byte* src, byte* dst, GatherChannelMap r, GatherChannelMap g, GatherChannelMap b)
-        {
-            Src = src;
-            Dst = dst;
-            R = r;
-            G = g;
-            B = b;
-        }
-    }
-
     private unsafe void Refract(GlassParams p, byte[]? sourceOverride)
     {
         if (sourceOverride == null)
@@ -2329,131 +2317,48 @@ public sealed class LiquidGlassController : IDisposable
 
         double sat = p.Saturation;
         double bright = p.Brightness;
-        bool adjust = Math.Abs(sat) > 1e-3 || Math.Abs(bright) > 1e-3;
+        byte adjust = (Math.Abs(sat) > 1e-3 || Math.Abs(bright) > 1e-3) ? (byte)1 : (byte)0;
         float satFactor = (float)(1.0 + sat);
         float brightAdd = (float)(bright * 255.0);
-        var colorAdj = new ColorAdjustment(adjust, satFactor, brightAdd);
 
         fixed (byte* dst = _outBuffer)
-        fixed (int* ir = _idxR, ar = _auxR, ig = _idxG, ag = _auxG, ib = _idxB, ab = _auxB)
+        fixed (int* mapPtr = _refractMap)
         {
             if (count >= ParallelPixelThreshold)
             {
-                IntPtr srcP = (IntPtr)src, dstP = (IntPtr)dst;
-                IntPtr irP = (IntPtr)ir, arP = (IntPtr)ar, igP = (IntPtr)ig, agP = (IntPtr)ag, ibP = (IntPtr)ib, abP = (IntPtr)ab;
+                int chunks = Math.Max(1, ParallelOpts.MaxDegreeOfParallelism);
+                int chunkPixels = (count + chunks - 1) / chunks;
+                IntPtr srcP = (IntPtr)src, dstP = (IntPtr)dst, mapP = (IntPtr)mapPtr;
                 int st = stride;
 
-                Parallel.ForEach(Partitioner.Create(0, count), ParallelOpts, range =>
+                Parallel.For(0, chunks, ParallelOpts, chunk =>
                 {
-                    var mapR = new GatherChannelMap((int*)irP, (int*)arP);
-                    var mapG = new GatherChannelMap((int*)igP, (int*)agP);
-                    var mapB = new GatherChannelMap((int*)ibP, (int*)abP);
-                    var threadBuffers = new GatherBuffers((byte*)srcP, (byte*)dstP, mapR, mapG, mapB);
-                    Gather(threadBuffers, st, range.Item1, range.Item2, colorAdj);
+                    int start = chunk * chunkPixels;
+                    int end = Math.Min(count, start + chunkPixels);
+                    if (start < end)
+                    {
+                        NativeRefractGather(
+                            (byte*)srcP, (byte*)dstP, (int*)mapP, st, start, end,
+                            adjust, satFactor, brightAdd);
+                    }
                 });
             }
             else
             {
-                var mapR = new GatherChannelMap(ir, ar);
-                var mapG = new GatherChannelMap(ig, ag);
-                var mapB = new GatherChannelMap(ib, ab);
-                var buffers = new GatherBuffers(src, dst, mapR, mapG, mapB);
-                Gather(buffers, stride, 0, count, colorAdj);
+                NativeRefractGather(
+                    src, dst, mapPtr, stride, 0, count,
+                    adjust, satFactor, brightAdd);
             }
         }
     }
 
-    private static unsafe void Gather(GatherBuffers buffers, int stride, int start, int end, ColorAdjustment color)
-    {
-        byte* src = buffers.Src;
-        byte* dst = buffers.Dst;
-        int* idxR = buffers.R.Idx, auxR = buffers.R.Aux;
-        int* idxG = buffers.G.Idx, auxG = buffers.G.Aux;
-        int* idxB = buffers.B.Idx, auxB = buffers.B.Aux;
-
-        if (!color.Adjust)
-        {
-            for (int i = start; i < end; i++)
-            {
-                int o = i << 2;
-                dst[o + 0] = (byte)Bilerp(src, idxB[i], auxB[i], stride, 0);
-                dst[o + 1] = (byte)Bilerp(src, idxG[i], auxG[i], stride, 1);
-                dst[o + 2] = (byte)Bilerp(src, idxR[i], auxR[i], stride, 2);
-                dst[o + 3] = 255;
-            }
-            return;
-        }
-
-        float satFactor = color.SatFactor;
-        float oneMinusSat = 1.0f - satFactor;
-        float brightAdd = color.BrightAdd;
-
-        for (int i = start; i < end; i++)
-        {
-            int o = i << 2;
-            int b = Bilerp(src, idxB[i], auxB[i], stride, 0);
-            int g = Bilerp(src, idxG[i], auxG[i], stride, 1);
-            int r = Bilerp(src, idxR[i], auxR[i], stride, 2);
-
-            float lum = ((77 * r + 150 * g + 29 * b) * (1.0f / 256.0f)) * oneMinusSat + brightAdd;
-            dst[o + 0] = ClampByte(lum + b * satFactor);
-            dst[o + 1] = ClampByte(lum + g * satFactor);
-            dst[o + 2] = ClampByte(lum + r * satFactor);
-            dst[o + 3] = 255;
-        }
-    }
-
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static unsafe int Bilerp(byte* src, int idx, int aux, int stride, int chan)
-    {
-        int stepX = (aux & 1) != 0 ? 4 : 0;
-        int stepY = (aux & 2) != 0 ? stride : 0;
-        int wx = (aux >> 2) & 0x1FF;
-        int wy = (aux >> 12) & 0x1FF;
-
-        int bas = idx + chan;
-        int p00 = src[bas];
-        int p10 = src[bas + stepX];
-        int p01 = src[bas + stepY];
-        int p11 = src[bas + stepX + stepY];
-
-        int top = p00 * (256 - wx) + p10 * wx;
-        int bot = p01 * (256 - wx) + p11 * wx;
-        return (top * (256 - wy) + bot * wy) >> 16;
-    }
-
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static byte ClampByte(float v)
-    {
-        if (v <= 0f) return 0;
-        if (v >= 255f) return 255;
-        return (byte)(v + 0.5f);
-    }
-
-    internal static int[] GaussianBoxRadii(double sigma, int passes = 3)
+    internal static unsafe int[] GaussianBoxRadii(double sigma, int passes = 3)
     {
         int count = Math.Max(1, passes);
         var radii = new int[count];
-        if (sigma <= 0.0) return radii;
-
-        double idealWidth = Math.Sqrt((12.0 * sigma * sigma / count) + 1.0);
-        int lowerWidth = (int)Math.Floor(idealWidth);
-        if ((lowerWidth & 1) == 0) lowerWidth--;
-        lowerWidth = Math.Max(1, lowerWidth);
-        int upperWidth = lowerWidth + 2;
-
-        double numerator = 12.0 * sigma * sigma
-            - count * lowerWidth * lowerWidth
-            - 4.0 * count * lowerWidth
-            - 3.0 * count;
-        int lowerCount = (int)Math.Round(
-            numerator / (-4.0 * lowerWidth - 4.0));
-        lowerCount = Math.Clamp(lowerCount, 0, count);
-
-        for (int i = 0; i < count; i++)
+        fixed (int* radiiPtr = radii)
         {
-            int width = i < lowerCount ? lowerWidth : upperWidth;
-            radii[i] = (width - 1) / 2;
+            NativeGaussianBoxRadii(sigma, count, radiiPtr, count, out _);
         }
         return radii;
     }
@@ -2466,38 +2371,54 @@ public sealed class LiquidGlassController : IDisposable
         if (_sourceBlurTmp.Length < bytes)
             _sourceBlurTmp = new byte[_sourceBlurBuffer.Length];
 
-        fixed (byte* dst = _sourceBlurBuffer)
-        {
-            Buffer.MemoryCopy((void*)_dibBits, dst, _sourceBlurBuffer.Length, bytes);
-        }
-
         byte[] a = _sourceBlurBuffer, b = _sourceBlurTmp;
         int maximumRadius = Math.Max(1, Math.Min(w, h) / 2);
+        const int rowStripe = 16;
+        const int colStripe = 64;
+        int rowStripes = (h + rowStripe - 1) / rowStripe;
+        int colStripes = (w + colStripe - 1) / colStripe;
+        bool blurred = false;
+
         for (int pass = 0; pass < passRadii.Length; pass++)
         {
             int r = Math.Clamp(passRadii[pass], 0, maximumRadius);
             if (r < 1) continue;
-            ParallelRange(h, (y0, y1) => GlassBoxBlur.Horizontal(a, b, w, r, y0, y1));
-            // Keep stripe boundaries cache-line/SIMD aligned. Tiny default
-            // partitions force scalar tails and make workers share cache lines.
-            const int stripeWidth = 64;
-            int stripes = (w + stripeWidth - 1) / stripeWidth;
-            if (w >= stripeWidth)
-                Parallel.For(0, stripes, ParallelOpts, stripe => GlassBoxBlur.Vertical(
-                    b, a, w, h, r, stripe * stripeWidth, Math.Min(w, (stripe + 1) * stripeWidth)));
+
+            if (!blurred)
+            {
+                IntPtr srcBits = _dibBits;
+                if (h >= 64)
+                    Parallel.For(0, rowStripes, ParallelOpts, stripe => GlassBoxBlur.Horizontal(
+                        srcBits, b, w, r, stripe * rowStripe, Math.Min(h, (stripe + 1) * rowStripe)));
+                else
+                    GlassBoxBlur.Horizontal(srcBits, b, w, r, 0, h);
+                blurred = true;
+            }
+            else
+            {
+                if (h >= 64)
+                    Parallel.For(0, rowStripes, ParallelOpts, stripe => GlassBoxBlur.Horizontal(
+                        a, b, w, r, stripe * rowStripe, Math.Min(h, (stripe + 1) * rowStripe)));
+                else
+                    GlassBoxBlur.Horizontal(a, b, w, r, 0, h);
+            }
+
+            if (w >= colStripe)
+                Parallel.For(0, colStripes, ParallelOpts, stripe => GlassBoxBlur.Vertical(
+                    b, a, w, h, r, stripe * colStripe, Math.Min(w, (stripe + 1) * colStripe)));
             else
                 GlassBoxBlur.Vertical(b, a, w, h, r, 0, w);
         }
 
-        return a;
-    }
+        if (!blurred)
+        {
+            fixed (byte* dst = a)
+            {
+                Buffer.MemoryCopy((void*)_dibBits, dst, a.Length, bytes);
+            }
+        }
 
-    private static void ParallelRange(int length, Action<int, int> body)
-    {
-        if (length >= 64)
-            Parallel.ForEach(Partitioner.Create(0, length), ParallelOpts, range => body(range.Item1, range.Item2));
-        else
-            body(0, length);
+        return a;
     }
 
     internal readonly record struct MapDimensions(
@@ -2508,16 +2429,10 @@ public sealed class LiquidGlassController : IDisposable
         int NotchOffX, int NotchOffY,
         int CaptureShiftX, int CaptureShiftY);
 
-    private readonly record struct MapGeometry(
-        double HalfX, double HalfY, double Cx, double Cy, double MinHalf,
-        double TopR, double BottomR, double UChroma, double Distort, double VerticalBalance);
-
-    private readonly record struct SampleBounds(int SrcW, int MaxX, int MaxY);
-
     private const int RefractionLutSize = 512;
     private readonly double[] _refractLut = new double[RefractionLutSize];
 
-    private bool EnsureMaps(GlassParams p, MapDimensions d)
+    private unsafe bool EnsureMaps(GlassParams p, MapDimensions d)
     {
         p.TopCornerRadius = Math.Round(p.TopCornerRadius * 2.0) / 2.0;
         p.BottomCornerRadius = Math.Round(p.BottomCornerRadius * 2.0) / 2.0;
@@ -2528,36 +2443,60 @@ public sealed class LiquidGlassController : IDisposable
         UpdateMapCacheState(p, d);
         EnsureMapBuffers(d.OutW, d.OutH);
 
-        var geom = CreateMapGeometry(p, d);
-        var bounds = new SampleBounds(d.SrcW, d.SrcW - 1, d.SrcH - 1);
-
-        double fPow = Math.Max(p.FPower, 0.1);
-        double invLutMax = 1.0 / (RefractionLutSize - 1);
-        for (int i = 0; i < RefractionLutSize; i++)
+        var nativeParams = new VnGlassMapParams
         {
-            double distNorm = i * invLutMax;
-            double fVal = ExponentialRefract(distNorm, p.RefractionA, p.RefractionB, p.RefractionC, p.RefractionD);
-            _refractLut[i] = Math.Pow(Math.Max(fVal, 0.0001), fPow);
-        }
+            OutW = d.OutW,
+            OutH = d.OutH,
+            SrcW = d.SrcW,
+            SrcH = d.SrcH,
+            Margin = d.Margin,
+            NotchW = d.NotchW,
+            NotchH = d.NotchH,
+            NotchOffX = d.NotchOffX,
+            NotchOffY = d.NotchOffY,
+            CaptureShiftX = d.CaptureShiftX,
+            CaptureShiftY = d.CaptureShiftY,
+            OutScale = _outScale,
+            TopCornerRadius = p.TopCornerRadius,
+            BottomCornerRadius = p.BottomCornerRadius,
+            EdgeBend = p.EdgeBend,
+            ChromaticAberration = p.ChromaticAberration,
+            Distortion = p.Distortion,
+            FPower = p.FPower,
+            RefractionA = p.RefractionA,
+            RefractionB = p.RefractionB,
+            RefractionC = p.RefractionC,
+            RefractionD = p.RefractionD
+        };
 
-        void BuildRows(int y0, int y1)
+        fixed (double* lutPtr = _refractLut)
+        fixed (int* mapPtr = _refractMap)
         {
-            for (int y = y0; y < y1; y++)
+            NativeBuildRefractionLut(
+                p.FPower, p.RefractionA, p.RefractionB, p.RefractionC, p.RefractionD,
+                lutPtr, RefractionLutSize);
+
+            if (d.OutH >= 64)
             {
-                double ly = y - geom.Cy;
-                double baseY = y + d.Margin - d.CaptureShiftY;
-                int rowOffset = y * d.OutW;
-                for (int x = 0; x < d.OutW; x++)
+                const int stripeRows = 16;
+                int stripes = (d.OutH + stripeRows - 1) / stripeRows;
+                IntPtr lutAddr = (IntPtr)lutPtr;
+                IntPtr mapAddr = (IntPtr)mapPtr;
+                int outH = d.OutH;
+                Parallel.For(0, stripes, ParallelOpts, stripe =>
                 {
-                    ComputeRefractionSample(x, rowOffset + x, ly, baseY, in p, in d, in geom, in bounds);
-                }
+                    int y0 = stripe * stripeRows;
+                    int y1 = Math.Min(outH, y0 + stripeRows);
+                    NativeBuildRefractionRows(
+                        in nativeParams, (double*)lutAddr, RefractionLutSize, y0, y1, (int*)mapAddr);
+                });
+            }
+            else
+            {
+                NativeBuildRefractionRows(
+                    in nativeParams, lutPtr, RefractionLutSize, 0, d.OutH, mapPtr);
             }
         }
-
-        if (d.OutH >= 64)
-            Parallel.ForEach(Partitioner.Create(0, d.OutH), ParallelOpts, range => BuildRows(range.Item1, range.Item2));
-        else
-            BuildRows(0, d.OutH);
 
         return true;
     }
@@ -2568,7 +2507,7 @@ public sealed class LiquidGlassController : IDisposable
             && _outW == d.OutW && _outH == d.OutH
             && _srcW == d.SrcW && _srcH == d.SrcH
             && _margin == d.Margin
-            && _idxR.Length >= d.OutW * d.OutH
+            && _refractMap.Length >= d.OutW * d.OutH * 6
             && _mapNotchW == d.NotchW && _mapNotchH == d.NotchH
             && _mapNotchOffX == d.NotchOffX && _mapNotchOffY == d.NotchOffY
             && _mapCaptureShiftX == d.CaptureShiftX && _mapCaptureShiftY == d.CaptureShiftY
@@ -2594,12 +2533,11 @@ public sealed class LiquidGlassController : IDisposable
         {
             _outBuffer = new byte[checked(GrowPixelBufferCapacity(_outBuffer.Length / 4, n) * 4)];
         }
-        if (_idxR.Length < n)
+        int mapInts = checked(n * 6);
+        if (_refractMap.Length < mapInts)
         {
-            int capacity = GrowPixelBufferCapacity(_idxR.Length, n);
-            _idxR = new int[capacity]; _auxR = new int[capacity];
-            _idxG = new int[capacity]; _auxG = new int[capacity];
-            _idxB = new int[capacity]; _auxB = new int[capacity];
+            int capacity = checked(GrowPixelBufferCapacity(_refractMap.Length / 6, n) * 6);
+            _refractMap = new int[capacity];
         }
     }
 
@@ -2612,148 +2550,11 @@ public sealed class LiquidGlassController : IDisposable
         return Math.Max(required, checked(current + slack));
     }
 
-    private MapGeometry CreateMapGeometry(GlassParams p, MapDimensions d)
-    {
-        double halfX = d.NotchW * 0.5;
-        double halfY = d.NotchH * 0.5;
-        double cx = d.NotchOffX + (d.NotchW - 1) * 0.5;
-        double cy = d.NotchOffY + (d.NotchH - 1) * 0.5;
-        double minHalf = Math.Min(halfX, halfY);
-
-        double topR = Math.Clamp(p.TopCornerRadius * _outScale, 0.0, minHalf);
-        double bottomR = Math.Clamp(p.BottomCornerRadius * _outScale, 0.0, minHalf);
-        double uChroma = Math.Clamp(p.ChromaticAberration, 0.0, 2.0);
-        double distort = Math.Clamp(p.Distortion, 0.0, 2.0);
-        double aspect = Math.Clamp(d.NotchH / Math.Max((double)d.NotchW, 1.0) * 2.5, 0.0, 1.0);
-        double verticalBalance = 0.68 + 0.32 * aspect;
-
-        return new MapGeometry(halfX, halfY, cx, cy, minHalf, topR, bottomR, uChroma, distort, verticalBalance);
-    }
-
-#pragma warning disable S107 // High performance raster math requires individual inputs
-    [MethodImpl(MethodImplOptions.AggressiveInlining | MethodImplOptions.AggressiveOptimization)]
-    private void ComputeRefractionSample(
-        int x, int idx, double ly, double baseY,
-        in GlassParams p, in MapDimensions d, in MapGeometry geom, in SampleBounds bounds)
-#pragma warning restore S107
-    {
-        double lx = x - geom.Cx;
-        double baseX = x + d.Margin - d.CaptureShiftX;
-
-        double inside = -RoundedRectSdf(lx, ly, geom.HalfX, geom.HalfY, geom.TopR, geom.BottomR);
-        if (inside <= 0.0)
-        {
-            SetSample(baseX, baseY, bounds, _idxG, _auxG, idx);
-            SetSample(baseX, baseY, bounds, _idxR, _auxR, idx);
-            SetSample(baseX, baseY, bounds, _idxB, _auxB, idx);
-            return;
-        }
-
-        double pxNorm = lx / Math.Max(geom.HalfX, 1.0);
-        double pyNorm = ly / Math.Max(geom.HalfY, 1.0);
-        double distNorm = Math.Clamp(inside / Math.Max(geom.MinHalf, 1.0), 0.0, 1.0);
-
-        double lutPos = distNorm * (RefractionLutSize - 1);
-        int lutIdx = (int)lutPos;
-        double refractFactor = lutIdx >= RefractionLutSize - 1
-            ? _refractLut[RefractionLutSize - 1]
-            : _refractLut[lutIdx] + (_refractLut[lutIdx + 1] - _refractLut[lutIdx]) * (lutPos - lutIdx);
-
-        double bend = Math.Max(p.EdgeBend, 0.1);
-        double dispX = (pxNorm * refractFactor - pxNorm) * geom.HalfX * bend;
-        double dispY = (pyNorm * refractFactor - pyNorm) * geom.HalfY * bend;
-
-        if (geom.Distort > 0.0)
-        {
-            double noiseX = ValueNoise(lx * 0.045, ly * 0.045) * 2.0 - 1.0;
-            double noiseY = ValueNoise(lx * 0.045 + 19.7, ly * 0.045 + 43.1) * 2.0 - 1.0;
-            dispX += noiseX * geom.Distort * 2.25 * (1.0 - distNorm);
-            dispY += noiseY * geom.VerticalBalance * geom.Distort * 2.25 * (1.0 - distNorm);
-        }
-
-        double caS = Math.Min(geom.UChroma * (1.0 - distNorm) * 3.0, 8.0);
-        double dispLen = Math.Sqrt(dispX * dispX + dispY * dispY);
-        double caDirX = dispLen > 1e-6 ? dispX / dispLen : 0.0;
-        double caDirY = dispLen > 1e-6 ? dispY / dispLen : 0.0;
-        double caX = caDirX * caS;
-        double caY = caDirY * geom.VerticalBalance * caS;
-
-        baseX += dispX;
-        baseY += dispY;
-
-        SetSample(baseX, baseY, bounds, _idxG, _auxG, idx);
-        SetSample(baseX + caX, baseY + caY, bounds, _idxR, _auxR, idx);
-        SetSample(baseX - caX, baseY - caY, bounds, _idxB, _auxB, idx);
-    }
-
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static double RoundedRectSdf(double px, double py, double bx, double by,
-        double topRadius, double bottomRadius)
-    {
-        double r = py < 0.0 ? topRadius : bottomRadius;
-        double qx = Math.Abs(px) - (bx - r);
-        double qy = (py < 0.0 ? -py : py) - (by - r);
-        if (qx > 0.0 && qy > 0.0) return Math.Sqrt(qx * qx + qy * qy) - r;
-        if (qx > 0.0) return qx - r;
-        if (qy > 0.0) return qy - r;
-        return Math.Max(qx - r, qy - r);
-    }
-
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static double Smoother01(double x)
     {
         double t = Math.Clamp(x, 0.0, 1.0);
         return t * t * t * (t * (t * 6.0 - 15.0) + 10.0);
-    }
-
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static double Hash(int ix, int iy)
-    {
-        uint h = (uint)(ix * 374761393 + iy * 668265263);
-        h = (h ^ (h >> 13)) * 1274126177u;
-        return ((h ^ (h >> 16)) & 0xFFFFFFu) * (1.0 / 16777216.0);
-    }
-
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static double ValueNoise(double px, double py)
-    {
-        double floorX = Math.Floor(px), floorY = Math.Floor(py);
-        int ix = (int)floorX, iy = (int)floorY;
-        double fx = Smoother01(px - floorX), fy = Smoother01(py - floorY);
-        double h00 = Hash(ix, iy);
-        double h10 = Hash(ix + 1, iy);
-        double h01 = Hash(ix, iy + 1);
-        double h11 = Hash(ix + 1, iy + 1);
-        double top = h00 + (h10 - h00) * fx;
-        double bottom = h01 + (h11 - h01) * fx;
-        return top + (bottom - top) * fy;
-    }
-
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static void SetSample(double sx, double sy, in SampleBounds bounds,
-        int[] idxArr, int[] auxArr, int i)
-    {
-        int ix = (int)Math.Floor(sx);
-        int iy = (int)Math.Floor(sy);
-        double fx = sx - ix;
-        double fy = sy - iy;
-
-        int flags = 0;
-        if (ix < 0) { ix = 0; fx = 0; }
-        else if (ix >= bounds.MaxX) { ix = bounds.MaxX; fx = 0; }
-        else flags |= 1; // has right neighbour
-
-        if (iy < 0) { iy = 0; fy = 0; }
-        else if (iy >= bounds.MaxY) { iy = bounds.MaxY; fy = 0; }
-        else flags |= 2; // has bottom neighbour
-
-        int wx = (int)Math.Round(fx * 256.0);
-        if (wx < 0) wx = 0; else if (wx > 256) wx = 256;
-        int wy = (int)Math.Round(fy * 256.0);
-        if (wy < 0) wy = 0; else if (wy > 256) wy = 256;
-
-        idxArr[i] = (iy * bounds.SrcW + ix) << 2;
-        auxArr[i] = flags | (wx << 2) | (wy << 12);
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]

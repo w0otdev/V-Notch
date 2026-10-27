@@ -112,8 +112,7 @@ public sealed class SpotifyCanvasPresenter : ISpotifyCanvasPresenter
             else
             {
                 _activeVideo.Pause();
-                _loopTimer.Stop();
-                _crossfadeTimer.Stop();
+                StopLoopMonitoring();
                 if (_standbyVideo != null && _standbyVideo.Source != null)
                 {
                     _standbyVideo.Pause();
@@ -253,6 +252,7 @@ public sealed class SpotifyCanvasPresenter : ISpotifyCanvasPresenter
         _isMediaOpen = false;
         StopLoopMonitoring();
 
+        ++_sourceVersion;
         ++_fadeGeneration;
         _fadeInProgress = false;
         _refs.Background.BeginAnimation(UIElement.OpacityProperty, null);
@@ -287,6 +287,7 @@ public sealed class SpotifyCanvasPresenter : ISpotifyCanvasPresenter
         _isMediaOpen = false;
         StopLoopMonitoring();
 
+        ++_sourceVersion;
         ++_fadeGeneration;
         _fadeInProgress = false;
         _currentUri = null;
@@ -306,6 +307,7 @@ public sealed class SpotifyCanvasPresenter : ISpotifyCanvasPresenter
     {
         try
         {
+            video.BeginAnimation(UIElement.OpacityProperty, null);
             video.Stop();
             video.Close();
             video.Source = null;

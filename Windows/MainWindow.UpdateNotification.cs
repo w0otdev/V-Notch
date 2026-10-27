@@ -239,14 +239,6 @@ public partial class MainWindow
         }
         _updatePulseStartedAtUtc = DateTime.UtcNow;
         _updatePulseTimer.Start();
-        var pulseAnim = new ColorAnimation(Color.FromRgb(48, 209, 88), Colors.White, TimeSpan.FromMilliseconds(1500))
-        {
-            AutoReverse = true,
-            RepeatBehavior = RepeatBehavior.Forever,
-            EasingFunction = _easeSineInOut
-        };
-        Timeline.SetDesiredFrameRate(pulseAnim, VNotch.Services.AnimationConfig.TargetFps);
-        _ = pulseAnim;
     }
 
     private void UpdatePulseTimer_Tick(object? sender, EventArgs e)
@@ -268,16 +260,7 @@ public partial class MainWindow
     private void StopUpdatePulseAnimationCore()
     {
         _updatePulseTimer?.Stop();
-        _updatePulseTimer?.Stop();
         if (UpdateIconBrush != null) { UpdateIconBrush.BeginAnimation(SolidColorBrush.ColorProperty, null); UpdateIconBrush.Color = Color.FromRgb(48, 209, 88); }
-    }
-    private void UnusedUpdatePulseCleanup()
-    {
-        if (UpdateIconBrush != null)
-        {
-            UpdateIconBrush.BeginAnimation(SolidColorBrush.ColorProperty, null);
-            UpdateIconBrush.Color = Color.FromRgb(48, 209, 88);
-        }
     }
 
     private async void UpdateNotification_Click(object sender, MouseButtonEventArgs e)

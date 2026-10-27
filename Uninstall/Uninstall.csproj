@@ -28,6 +28,7 @@
   <ItemGroup>
     <Compile Include="..\Services\LocalizationService.cs" Link="Services\LocalizationService.cs" />
     <Compile Include="..\Services\InstallDirectoryCleanup.cs" Link="Services\InstallDirectoryCleanup.cs" />
+    <EmbeddedResource Include="..\Locales\*.json" LogicalName="VNotch.Locales.%(Filename)%(Extension)" />
   </ItemGroup>
 
 </Project>

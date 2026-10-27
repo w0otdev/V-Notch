@@ -65,8 +65,6 @@
     <PackageReference Include="System.Data.OleDb" Version="8.0.1" />
     <PackageReference Include="Vortice.Direct3D9" Version="3.8.3" />
     <PackageReference Include="Vortice.DXGI" Version="3.8.3" />
-    <PackageReference Include="AngleSharp" Version="1.8.2" />
-    <PackageReference Include="YoutubeExplode" Version="6.6.0" />
   </ItemGroup>
 
   <ItemGroup>

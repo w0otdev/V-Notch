@@ -482,13 +482,13 @@ VN_EXPORT int32_t vn_soundcloud_extract_track_url(const char16_t* text_ptr, int3
     char16_t* out_buf, int32_t out_cap, int32_t* out_len,
     uint8_t* out_found) noexcept
 {
-    return vnotch::services::SoundCloudMatching::vn_soundcloud_extract_track_url_impl(text_ptr, text_len, out_buf, out_cap, out_len, out_found);
+    try { return vnotch::services::SoundCloudMatching::vn_soundcloud_extract_track_url_impl(text_ptr, text_len, out_buf, out_cap, out_len, out_found); } catch (...) { return VN_ERR_FAIL; }
 }
 
 VN_EXPORT int32_t vn_soundcloud_sanitize_search_text(const char16_t* val_ptr, int32_t val_len,
     char16_t* out_buf, int32_t out_cap, int32_t* out_len) noexcept
 {
-    return vnotch::services::SoundCloudMatching::vn_soundcloud_sanitize_search_text_impl(val_ptr, val_len, out_buf, out_cap, out_len);
+    try { return vnotch::services::SoundCloudMatching::vn_soundcloud_sanitize_search_text_impl(val_ptr, val_len, out_buf, out_cap, out_len); } catch (...) { return VN_ERR_FAIL; }
 }
 
 VN_EXPORT int32_t vn_soundcloud_score_candidate(const char16_t* user_ptr, int32_t user_len,
@@ -497,7 +497,7 @@ VN_EXPORT int32_t vn_soundcloud_score_candidate(const char16_t* user_ptr, int32_
     const char16_t* norm_artist_ptr, int32_t norm_artist_len,
     int32_t* out_score) noexcept
 {
-    return vnotch::services::SoundCloudMatching::vn_soundcloud_score_candidate_impl(user_ptr, user_len, slug_ptr, slug_len, norm_title_ptr, norm_title_len, norm_artist_ptr, norm_artist_len, out_score);
+    try { return vnotch::services::SoundCloudMatching::vn_soundcloud_score_candidate_impl(user_ptr, user_len, slug_ptr, slug_len, norm_title_ptr, norm_title_len, norm_artist_ptr, norm_artist_len, out_score); } catch (...) { return VN_ERR_FAIL; }
 }
 
 VN_EXPORT int32_t vn_soundcloud_is_oembed_match(const char16_t* exp_title_ptr, int32_t exp_title_len,
@@ -508,12 +508,107 @@ VN_EXPORT int32_t vn_soundcloud_is_oembed_match(const char16_t* exp_title_ptr, i
     uint8_t strict_mode,
     uint8_t* out_match) noexcept
 {
-    return vnotch::services::SoundCloudMatching::vn_soundcloud_is_oembed_match_impl(exp_title_ptr, exp_title_len, exp_artist_ptr, exp_artist_len, cand_title_ptr, cand_title_len, cand_author_ptr, cand_author_len, cand_score, strict_mode, out_match);
+    try { return vnotch::services::SoundCloudMatching::vn_soundcloud_is_oembed_match_impl(exp_title_ptr, exp_title_len, exp_artist_ptr, exp_artist_len, cand_title_ptr, cand_title_len, cand_author_ptr, cand_author_len, cand_score, strict_mode, out_match); } catch (...) { return VN_ERR_FAIL; }
 }
 
 VN_EXPORT int32_t vn_soundcloud_normalize_artwork_url(const char16_t* url_ptr, int32_t url_len,
     char16_t* out_buf, int32_t out_cap, int32_t* out_len) noexcept
 {
-    return vnotch::services::SoundCloudMatching::vn_soundcloud_normalize_artwork_url_impl(url_ptr, url_len, out_buf, out_cap, out_len);
+    try { return vnotch::services::SoundCloudMatching::vn_soundcloud_normalize_artwork_url_impl(url_ptr, url_len, out_buf, out_cap, out_len); } catch (...) { return VN_ERR_FAIL; }
+}
+
+VN_EXPORT int32_t vn_soundcloud_find_next_anchor_href(
+    const char16_t* html_ptr,
+    int32_t html_len,
+    int32_t start_pos,
+    int32_t* out_href_start,
+    int32_t* out_href_len,
+    int32_t* out_next_pos,
+    uint8_t* out_found) noexcept
+{
+    if (!out_href_start || !out_href_len || !out_next_pos || !out_found) return VN_ERR_INVALID_ARG;
+    *out_href_start = 0;
+    *out_href_len = 0;
+    *out_next_pos = html_len > 0 ? html_len : 0;
+    *out_found = 0u;
+    if (!html_ptr || html_len <= 0 || start_pos >= html_len) return VN_OK;
+
+    std::u16string_view html = vnotch::make_u16_view(html_ptr, html_len);
+    size_t i = static_cast<size_t>(start_pos < 0 ? 0 : start_pos);
+    while (i < html.size())
+    {
+        if (html[i] != u'<') { ++i; continue; }
+        std::u16string_view rem = html.substr(i);
+        if (vnotch::starts_with_ordinal(rem, u"<!--"))
+        {
+            size_t end_c = rem.find(u"-->", 4);
+            i = (end_c == std::u16string_view::npos) ? html.size() : (i + end_c + 3);
+            continue;
+        }
+        if (vnotch::starts_with_ignore_case(rem, u"<script") || vnotch::starts_with_ignore_case(rem, u"<style"))
+        {
+            std::u16string_view close_tag = vnotch::starts_with_ignore_case(rem, u"<script") ? u"</script" : u"</style";
+            i += 6;
+            while (i < html.size() && !vnotch::starts_with_ignore_case(html.substr(i), close_tag)) ++i;
+            while (i < html.size() && html[i] != u'>') ++i;
+            if (i < html.size()) ++i;
+            continue;
+        }
+        if (rem.size() >= 3 && (rem[1] == u'a' || rem[1] == u'A') && vnotch::is_unicode_whitespace(rem[2]))
+        {
+            size_t p = i + 2;
+            int32_t found_start = -1;
+            int32_t found_len = 0;
+            while (p < html.size() && html[p] != u'>')
+            {
+                while (p < html.size() && (vnotch::is_unicode_whitespace(html[p]) || html[p] == u'/')) ++p;
+                if (p >= html.size() || html[p] == u'>') break;
+                size_t name_start = p;
+                while (p < html.size() && !vnotch::is_unicode_whitespace(html[p]) && html[p] != u'=' && html[p] != u'>' && html[p] != u'/') ++p;
+                std::u16string_view attr_name = html.substr(name_start, p - name_start);
+                while (p < html.size() && vnotch::is_unicode_whitespace(html[p])) ++p;
+                if (p < html.size() && html[p] == u'=')
+                {
+                    ++p;
+                    while (p < html.size() && vnotch::is_unicode_whitespace(html[p])) ++p;
+                    size_t val_start = p;
+                    size_t val_end = p;
+                    if (p < html.size() && (html[p] == u'"' || html[p] == u'\''))
+                    {
+                        char16_t quote = html[p++];
+                        val_start = p;
+                        while (p < html.size() && html[p] != quote) ++p;
+                        val_end = p;
+                        if (p < html.size()) ++p;
+                    }
+                    else
+                    {
+                        val_start = p;
+                        while (p < html.size() && !vnotch::is_unicode_whitespace(html[p]) && html[p] != u'>') ++p;
+                        val_end = p;
+                    }
+                    if (vnotch::equals_ignore_case(attr_name, u"href") && found_start < 0)
+                    {
+                        found_start = static_cast<int32_t>(val_start);
+                        found_len = static_cast<int32_t>(val_end - val_start);
+                    }
+                }
+            }
+            if (p < html.size() && html[p] == u'>') ++p;
+            i = p;
+            if (found_start >= 0)
+            {
+                *out_href_start = found_start;
+                *out_href_len = found_len;
+                *out_next_pos = static_cast<int32_t>(i);
+                *out_found = 1u;
+                return VN_OK;
+            }
+            continue;
+        }
+        ++i;
+    }
+    *out_next_pos = static_cast<int32_t>(html.size());
+    return VN_OK;
 }
 

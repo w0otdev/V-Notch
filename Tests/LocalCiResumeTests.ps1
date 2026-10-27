@@ -13,8 +13,8 @@ try {
         Set-Content -LiteralPath (Join-Path $fixture $script) -Value '# Fixture: success.'
     }
     $global:CiResumeCalls = [Collections.Generic.List[string]]::new()
-    $global:CiResumeFailFormat = $true
-    $global:CiResumeFailBuild = $false
+    $global:CiResumeFailBuild = $true
+    $global:CiResumeFailTest = $false
     $env:VNOTCH_CI_RESUME_TEST_FIXTURE = '1'
     function global:python {
         $global:CiResumeCalls.Add('python')
@@ -22,13 +22,13 @@ try {
     }
     function global:dotnet {
         $global:CiResumeCalls.Add([string]$args[0])
-        $global:LASTEXITCODE = if (($args[0] -eq 'format' -and $global:CiResumeFailFormat) -or
-            ($args[0] -eq 'build' -and $global:CiResumeFailBuild)) { 1 } else { 0 }
+        $global:LASTEXITCODE = if (($args[0] -eq 'build' -and $global:CiResumeFailBuild) -or
+            ($args[0] -eq 'test' -and $global:CiResumeFailTest)) { 1 } else { 0 }
     }
     $runner = Join-Path $fixture 'scripts/c.ps1'
     $failed = $false
-    try { & $runner *> $null } catch { $failed = $_.Exception.Message -eq 'Code formatting verification failed.' }
-    if (-not $failed) { throw 'The fixture must fail at formatting.' }
+    try { & $runner *> $null } catch { $failed = $_.Exception.Message -eq 'Build failed with warnings or errors.' }
+    if (-not $failed) { throw 'The fixture must fail at build.' }
     $run = @(Get-ChildItem -LiteralPath (Join-Path $fixture 'artifacts') -Directory)[0].FullName
     $state = Get-Content -LiteralPath (Join-Path $run 'checkpoint.json') -Raw | ConvertFrom-Json
     if ($state.NextStep -ne 4) { throw 'Failure must preserve the first unfinished step.' }
@@ -36,23 +36,23 @@ try {
     $rejected = $false
     try { & $runner -Resume $run -Fast *> $null } catch { $rejected = $_.Exception.Message -like 'Resume requires*' }
     if (-not $rejected -or $global:CiResumeCalls.Count -ne $callsBefore) { throw 'Changed validation options must be rejected before running checks.' }
-    $global:CiResumeFailFormat = $false
-    $global:CiResumeFailBuild = $true
+    $global:CiResumeFailBuild = $false
+    $global:CiResumeFailTest = $true
     $failed = $false
-    try { & $runner -Resume $run *> $null } catch { $failed = $_.Exception.Message -eq 'Build failed with warnings or errors.' }
-    if (-not $failed) { throw 'The second attempt must fail at build.' }
+    try { & $runner -Resume $run *> $null } catch { $failed = $_.Exception.Message -eq 'Test run failed.' }
+    if (-not $failed) { throw 'The second attempt must fail at tests.' }
     $state = Get-Content -LiteralPath (Join-Path $run 'checkpoint.json') -Raw | ConvertFrom-Json
-    if ($state.NextStep -ne 5) { throw 'Build failure must preserve step 5.' }
+    if ($state.NextStep -ne 5) { throw 'Test failure must preserve step 5.' }
     $failedResults = $state.TestResultsDirectory
     Set-Content -LiteralPath (Join-Path $failedResults 'failure-evidence.txt') -Value 'Keep this evidence.'
-    $global:CiResumeFailBuild = $false
+    $global:CiResumeFailTest = $false
     & $runner -Resume $run *> $null
     $state = Get-Content -LiteralPath (Join-Path $run 'checkpoint.json') -Raw | ConvertFrom-Json
     if ($state.NextStep -ne 9) { throw 'Successful resume must finish every remaining stage.' }
     if ($state.TestResultsDirectory -eq $failedResults -or -not (Test-Path (Join-Path $failedResults 'failure-evidence.txt'))) {
         throw 'Retry must isolate new evidence directory and preserve failed evidence.'
     }
-    if (($global:CiResumeCalls -join ',') -ne 'python,python,restore,format,format,build,build') {
+    if (($global:CiResumeCalls -join ',') -ne 'python,python,restore,build,build,test,test') {
         throw "Resume repeated or omitted checks: $($global:CiResumeCalls -join ',')"
     }
     $callsBefore = $global:CiResumeCalls.Count
@@ -62,7 +62,7 @@ try {
 } finally {
     Remove-Item -LiteralPath 'Function:\python' -Force -ErrorAction SilentlyContinue
     Remove-Item -LiteralPath 'Function:\dotnet' -Force -ErrorAction SilentlyContinue
-    Remove-Variable -Name CiResumeCalls, CiResumeFailFormat, CiResumeFailBuild -Scope Global -ErrorAction SilentlyContinue
+    Remove-Variable -Name CiResumeCalls, CiResumeFailBuild, CiResumeFailTest -Scope Global -ErrorAction SilentlyContinue
     [Environment]::SetEnvironmentVariable('VNOTCH_CI_RESUME_TEST_FIXTURE', $null, 'Process')
     $global:LASTEXITCODE = 0
     $resolved = [IO.Path]::GetFullPath($fixture)

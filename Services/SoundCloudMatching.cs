@@ -1,7 +1,7 @@
 using System;
 using System.Collections.Generic;
+using System.Net;
 using System.Runtime.InteropServices;
-using AngleSharp.Html.Parser;
 
 namespace VNotch.Services;
 
@@ -68,6 +68,16 @@ internal static partial class SoundCloudMatching
         int outCap,
         out int outLen);
 
+    [LibraryImport(NativeDll, StringMarshalling = StringMarshalling.Utf16)]
+    private static partial int vn_soundcloud_find_next_anchor_href(
+        ReadOnlySpan<char> htmlPtr,
+        int htmlLen,
+        int startPos,
+        out int outHrefStart,
+        out int outHrefLen,
+        out int outNextPos,
+        out byte outFound);
+
     public static bool IsValidTrackCandidate(string user, string slug)
     {
         if (string.IsNullOrWhiteSpace(user) || string.IsNullOrWhiteSpace(slug))
@@ -114,11 +124,16 @@ internal static partial class SoundCloudMatching
         var scoreMap = new Dictionary<string, (int Score, int FirstIndex)>(StringComparer.OrdinalIgnoreCase);
         int orderIndex = 0;
 
-        using var document = new HtmlParser().ParseDocument(html);
         var origin = new Uri("https://soundcloud.com/");
-        foreach (var link in document.QuerySelectorAll("a[href]"))
+        ReadOnlySpan<char> htmlSpan = html.AsSpan();
+        int pos = 0;
+        while (pos < htmlSpan.Length &&
+               vn_soundcloud_find_next_anchor_href(htmlSpan, htmlSpan.Length, pos, out int hrefStart, out int hrefLen, out int nextPos, out byte found) == 0 &&
+               found != 0)
         {
-            string? href = link.GetAttribute("href");
+            pos = nextPos > pos ? nextPos : pos + 1;
+            if (hrefLen <= 0) continue;
+            string href = WebUtility.HtmlDecode(html.Substring(hrefStart, hrefLen));
             if (string.IsNullOrWhiteSpace(href) || !Uri.TryCreate(origin, href, out var uri) ||
                 (uri.Scheme != Uri.UriSchemeHttps && uri.Scheme != Uri.UriSchemeHttp) ||
                 (uri.Host != "soundcloud.com" && uri.Host != "www.soundcloud.com" && uri.Host != "m.soundcloud.com"))

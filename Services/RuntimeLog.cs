@@ -468,6 +468,7 @@ public static partial class RuntimeLog
             finally
             {
                 CompletePendingFlushes();
+                _queueSignal.Dispose();
             }
         }
 

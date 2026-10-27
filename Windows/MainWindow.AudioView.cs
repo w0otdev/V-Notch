@@ -416,6 +416,7 @@ public partial class MainWindow
             aFadeIn.Completed += (s, e) =>
             {
                 if (activeGen != _viewTransitionGeneration) return;
+                // activeGen checked above.
                 _isAnimating = false;
                 _isScrollSessionLocked = false;
                 NotchBorder.IsHitTestVisible = true;
@@ -465,6 +466,7 @@ public partial class MainWindow
             fadeIn.Completed += (s, e) =>
             {
                 if (activeGen != _viewTransitionGeneration) return;
+                // activeGen checked above.
                 _isAnimating = false;
                 _isScrollSessionLocked = false;
                 NotchBorder.IsHitTestVisible = true;
@@ -530,6 +532,7 @@ public partial class MainWindow
 
         notchAnim.Completed += (_, _) =>
         {
+            if (generation != _audioNotchHeightGeneration) return;
             _isAnimating = false;
             if (generation != _audioNotchHeightGeneration || !_isAudioView)
                 return;

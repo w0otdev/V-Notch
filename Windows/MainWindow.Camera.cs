@@ -243,7 +243,6 @@ public partial class MainWindow
         _cameraWriteableBitmap = null;
         _cameraBitmapAllocW = 0;
         _cameraBitmapAllocH = 0;
-        _cameraFrameDispatchPending = false;
 
         var (reader, capture, initializingCapture) = _camera.DetachForSafeStop();
 
@@ -289,7 +288,6 @@ public partial class MainWindow
         _cameraWriteableBitmap = null;
         _cameraBitmapAllocW = 0;
         _cameraBitmapAllocH = 0;
-        _cameraFrameDispatchPending = false;
 
         var (reader, capture, initializingCapture) = _camera.DetachForSafeStop();
 
@@ -447,7 +445,6 @@ public partial class MainWindow
             _cameraWriteableBitmap = null;
             _cameraBitmapAllocW = 0;
             _cameraBitmapAllocH = 0;
-            _cameraFrameDispatchPending = false;
 
             AnimateCameraPreviewMorphOut(fadeToken);
         }

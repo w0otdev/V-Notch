@@ -491,8 +491,9 @@ public sealed partial class GpuMonitorService : IDisposable, IAsyncDisposable
                 try
                 {
                     var counter = new PerformanceCounter("GPU Engine", "Utilization Percentage", inst, true);
-                    counter.NextValue();
-                    counters.Add(new GpuCounterItem(counter, isCurrentProcess));
+                    try { counter.NextValue(); counters.Add(new GpuCounterItem(counter, isCurrentProcess)); } catch { counter.Dispose(); throw; }
+                    // Sampled inside inner try above.
+                    // Added inside inner try above.
                 }
                 catch (Exception)
                 {

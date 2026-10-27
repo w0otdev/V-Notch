@@ -248,6 +248,7 @@ namespace VNotch.Controls
             {
                 if (feedbackChanged || !copiedFeedbackSettled)
                     RefreshDrawingFrame();
+                if (copiedFeedbackSettled) StopRendering();
                 if (_state != VisualizerState.Playing)
                 {
                     StopRendering();

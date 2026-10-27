@@ -60,16 +60,7 @@ public sealed partial class PrivacyIndicatorService : IDisposable
     private static readonly Func<CapabilityUsage, bool> s_notIgnoredMicRule =
         static usage => !IsIgnoredMicrophoneConsumer(usage.RawName);
 
-    private static readonly string[] IgnoredMicrophoneProcessSuffixes =
-    {
-        "service", "services", "svc", "daemon"
-    };
 
-    private static readonly HashSet<string> IgnoredMicrophoneProcessNames =
-        new(StringComparer.OrdinalIgnoreCase)
-        {
-            "audiodg", "svchost", "system", "registry", "elgato.wavelink"
-        };
 
     private static readonly Lazy<IReadOnlySet<string>> ServiceExecutablePaths =
         new(LoadServiceExecutablePaths);
@@ -349,9 +340,9 @@ public sealed partial class PrivacyIndicatorService : IDisposable
             {
                 if (_disposed || !_started || generation != _currentGeneration)
                     return;
-
-                ApplyScanResult(result);
             }
+
+            ApplyScanResult(result);
         }
 
         if (_dispatcher.CheckAccess())
@@ -397,11 +388,12 @@ public sealed partial class PrivacyIndicatorService : IDisposable
 
     private void StartMicrophoneFlowWorkerLocked()
     {
-        if (_micFlowTask != null && _micFlowCts != null && !_micFlowCts.IsCancellationRequested)
+        if (_micFlowTask is { IsCompleted: false } && _micFlowCts is { IsCancellationRequested: false })
             return;
 
         if (_disposed || !_started) return;
 
+        try { _micFlowCts?.Dispose(); } catch (ObjectDisposedException) { }
         _micFlowGeneration++;
         int generation = _micFlowGeneration;
         _micFlowCts = new CancellationTokenSource();
@@ -571,10 +563,7 @@ public sealed partial class PrivacyIndicatorService : IDisposable
         return true;
     }
 
-    private void AdaptInterval()
-    {
-        // Poll intervals are dynamically resolved per worker cycle (1s when active, 2s when idle).
-    }
+
 
     private sealed record PrivacyScanResult(
         IReadOnlyList<CapabilityUsage> MicrophoneCandidates,
@@ -1237,7 +1226,7 @@ public sealed partial class PrivacyIndicatorService : IDisposable
     {
         private readonly float _signalThreshold;
         private readonly TimeSpan _holdDuration;
-        private DateTime _lastSignalUtc = DateTime.MinValue;
+        private long _lastSignalUtcTicks = DateTime.MinValue.Ticks;
 
         public MicrophoneActivityGate(float signalThreshold, TimeSpan holdDuration)
         {
@@ -1251,7 +1240,7 @@ public sealed partial class PrivacyIndicatorService : IDisposable
             float peakLevel,
             DateTime utcNow)
         {
-            long lastTicks = _lastSignalUtc.Ticks;
+            long lastTicks = Interlocked.Read(ref _lastSignalUtcTicks);
             if (vn_privacy_indicator_evaluate_mic_gate(
                     hasCandidate ? (byte)1 : (byte)0,
                     hasActiveSession ? (byte)1 : (byte)0,
@@ -1262,7 +1251,7 @@ public sealed partial class PrivacyIndicatorService : IDisposable
                     ref lastTicks,
                     out byte active) == 0)
             {
-                _lastSignalUtc = new DateTime(lastTicks, DateTimeKind.Utc);
+                Interlocked.Exchange(ref _lastSignalUtcTicks, lastTicks);
                 return active != 0;
             }
 
@@ -1273,15 +1262,18 @@ public sealed partial class PrivacyIndicatorService : IDisposable
             }
 
             if (float.IsFinite(peakLevel) && peakLevel >= _signalThreshold)
-                _lastSignalUtc = utcNow;
+            {
+                lastTicks = utcNow.Ticks;
+                Interlocked.Exchange(ref _lastSignalUtcTicks, lastTicks);
+            }
 
-            if (_lastSignalUtc == DateTime.MinValue || utcNow < _lastSignalUtc)
+            if (lastTicks == DateTime.MinValue.Ticks || utcNow.Ticks < lastTicks)
                 return false;
 
-            return utcNow - _lastSignalUtc <= _holdDuration;
+            return (utcNow.Ticks - lastTicks) <= _holdDuration.Ticks;
         }
 
-        public void Reset() => _lastSignalUtc = DateTime.MinValue;
+        public void Reset() => Interlocked.Exchange(ref _lastSignalUtcTicks, DateTime.MinValue.Ticks);
     }
 
     private static string NormalizeAppName(string raw)

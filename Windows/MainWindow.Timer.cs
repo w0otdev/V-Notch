@@ -169,6 +169,7 @@ public partial class MainWindow
             _isAnimating = false;
             _isScrollSessionLocked = false;
             NotchBorder.IsHitTestVisible = true;
+            if (!_isTimerView) return;
             TimerContent.Opacity = 1;
             TimerContent.BeginAnimation(OpacityProperty, null);
             TimerContent.RenderTransform = null;
@@ -386,6 +387,7 @@ public partial class MainWindow
         timerFadeOut.Completed += (s, ev) =>
         {
             if (generation != _viewTransitionGeneration) return;
+            if (_isTimerView) return;
             TimerContent.Visibility = Visibility.Collapsed;
             TimerContent.RenderTransform = null;
             TimerContent.BeginAnimation(OpacityProperty, null);
@@ -1141,6 +1143,7 @@ public partial class MainWindow
             _isScrollSessionLocked = false;
             NotchBorder.IsHitTestVisible = true;
             TimerContent.BeginAnimation(OpacityProperty, null);
+            if (!_isTimerView) return;
             TimerContent.Opacity = 1;
             TimerContent.RenderTransform = null;
 
@@ -1221,6 +1224,7 @@ public partial class MainWindow
             _isScrollSessionLocked = false;
             NotchBorder.IsHitTestVisible = true;
 
+            if (_isTimerView) return;
             TimerContent.BeginAnimation(OpacityProperty, null);
             TimerContent.Visibility = Visibility.Collapsed;
             TimerContent.Opacity = 0;

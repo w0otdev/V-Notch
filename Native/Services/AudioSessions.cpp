@@ -178,18 +178,29 @@ VN_EXPORT int32_t __stdcall vn_audio_set_session_volume(uint32_t process_id, flo
             *out_hresult = static_cast<int32_t>(hr);
             return VN_ERR_FAIL;
         }
+        bool updated_any = false;
+        int matched_count = 0;
+        ISimpleAudioVolume* last_vol = nullptr;
         for (auto& session : snapshot->sessions) {
-            if (!as::Matches(*session, process_id) || !session->volume.ptr) continue;
-            hr = session->volume.ptr->SetMasterVolume(target, nullptr);
+            if (session->state == AudioSessionStateExpired || !as::Matches(*session, process_id) || !session->volume.ptr) continue;
+            ++matched_count;
+            HRESULT s_hr = session->volume.ptr->SetMasterVolume(target, nullptr);
             BOOL muted = FALSE;
-            if (SUCCEEDED(hr) && target > 0.001f && SUCCEEDED(session->volume.ptr->GetMute(&muted)) && muted)
-                hr = session->volume.ptr->SetMute(FALSE, nullptr);
-            if (FAILED(hr)) continue;
+            if (SUCCEEDED(s_hr) && target > 0.001f && SUCCEEDED(session->volume.ptr->GetMute(&muted)) && muted)
+                s_hr = session->volume.ptr->SetMute(FALSE, nullptr);
+            if (FAILED(s_hr)) continue;
+            updated_any = true;
+            if (session->state == AudioSessionStateActive || !last_vol)
+                last_vol = session->volume.ptr;
+        }
+        if (updated_any) {
             as::InvalidateSetCacheLocked();
-            as::g_set_volume.ptr = session->volume.ptr;
-            as::g_set_volume.ptr->AddRef();
-            as::g_set_pid = process_id;
-            as::g_set_tick = now;
+            if (matched_count == 1 && last_vol) {
+                as::g_set_volume.ptr = last_vol;
+                as::g_set_volume.ptr->AddRef();
+                as::g_set_pid = process_id;
+                as::g_set_tick = now;
+            }
             return VN_OK;
         }
         *out_hresult = static_cast<int32_t>(E_NOTFOUND);
@@ -211,12 +222,28 @@ VN_EXPORT int32_t __stdcall vn_audio_toggle_session_mute(uint32_t process_id, ui
         HRESULT hr = S_OK;
         auto snapshot = as::BuildSnapshot(hr);
         if (!snapshot) return VN_ERR_FAIL;
+        BOOL target_mute = FALSE;
+        bool target_determined = false;
         for (auto& session : snapshot->sessions) {
-            if (!as::Matches(*session, process_id) || !session->volume.ptr) continue;
-            BOOL muted = FALSE;
-            if (FAILED(session->volume.ptr->GetMute(&muted))) continue;
-            if (FAILED(session->volume.ptr->SetMute(!muted, nullptr))) continue;
-            *out_muted = muted ? 0 : 1;
+            if (session->state == AudioSessionStateExpired || !as::Matches(*session, process_id) || !session->volume.ptr) continue;
+            if (!target_determined || session->state == AudioSessionStateActive) {
+                BOOL muted = FALSE;
+                if (SUCCEEDED(session->volume.ptr->GetMute(&muted))) {
+                    target_mute = !muted;
+                    target_determined = true;
+                    if (session->state == AudioSessionStateActive) break;
+                }
+            }
+        }
+        if (!target_determined) return VN_ERR_FAIL;
+        bool updated_any = false;
+        for (auto& session : snapshot->sessions) {
+            if (session->state == AudioSessionStateExpired || !as::Matches(*session, process_id) || !session->volume.ptr) continue;
+            if (SUCCEEDED(session->volume.ptr->SetMute(target_mute, nullptr)))
+                updated_any = true;
+        }
+        if (updated_any) {
+            *out_muted = target_mute ? 1 : 0;
             return VN_OK;
         }
         return VN_ERR_FAIL;

@@ -138,7 +138,6 @@ struct Capture {
             if (self->thread) {
                 CloseHandle(self->thread);
                 self->thread = nullptr;
-                self->thread_id = 0;
             }
             delete self;
         }
@@ -192,6 +191,7 @@ VN_EXPORT int32_t __stdcall vn_loopback_start(
     try {
         lb::EnsureMta();
         auto capture = std::make_unique<lb::Capture>();
+        if (!capture->stop_event) return VN_ERR_FAIL;
         lb::ComPtr<IMMDeviceEnumerator> enumerator;
         HRESULT hr = CoCreateInstance(__uuidof(MMDeviceEnumerator), nullptr, CLSCTX_ALL, IID_PPV_ARGS(enumerator.Put()));
         if (SUCCEEDED(hr))
@@ -252,13 +252,14 @@ VN_EXPORT int32_t __stdcall vn_loopback_stop(int64_t handle) noexcept {
         if (GetCurrentThreadId() != lease->thread_id) {
             lease->Stop();
         } else {
+            lease->self_delete.store(true, std::memory_order_release);
             lease->stopping.store(true, std::memory_order_release);
             if (lease->stop_event) SetEvent(lease->stop_event);
         }
     }
     std::unique_ptr<lb::Capture> capture;
     if (!lb::g_captures.Remove(handle, &capture) || !capture) return VN_OK;
-    if (GetCurrentThreadId() == capture->thread_id) {
+    if (capture->self_delete.load(std::memory_order_acquire) || GetCurrentThreadId() == capture->thread_id) {
         capture->self_delete.store(true, std::memory_order_release);
         capture.release();
         return VN_OK;

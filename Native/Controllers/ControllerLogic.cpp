@@ -5,6 +5,7 @@
 #include <cstdint>
 #include <cstdio>
 #include <cstring>
+#include <immintrin.h>
 #include <limits>
 #include <string_view>
 
@@ -144,6 +145,168 @@ constexpr uint64_t Avalanche64(uint64_t x) noexcept
     return x;
 }
 
+inline double Smoother01(double x) noexcept
+{
+    const double t = std::clamp(x, 0.0, 1.0);
+    return t * t * t * (t * (t * 6.0 - 15.0) + 10.0);
+}
+
+inline double RoundedRectSdf(
+    double px, double py, double bx, double by, double top_radius, double bottom_radius) noexcept
+{
+    const double r = py < 0.0 ? top_radius : bottom_radius;
+    const double qx = std::abs(px) - (bx - r);
+    const double qy = (py < 0.0 ? -py : py) - (by - r);
+    if (qx > 0.0 && qy > 0.0) return std::sqrt(qx * qx + qy * qy) - r;
+    if (qx > 0.0) return qx - r;
+    if (qy > 0.0) return qy - r;
+    return std::max(qx - r, qy - r);
+}
+
+inline double GlassHash(int32_t ix, int32_t iy) noexcept
+{
+    uint32_t h = static_cast<uint32_t>(ix * 374761393 + iy * 668265263);
+    h = (h ^ (h >> 13)) * 1274126177u;
+    return static_cast<double>((h ^ (h >> 16)) & 0xFFFFFFu) * (1.0 / 16777216.0);
+}
+
+inline double ValueNoise(double px, double py) noexcept
+{
+    const double floor_x = std::floor(px);
+    const double floor_y = std::floor(py);
+    const int32_t ix = static_cast<int32_t>(floor_x);
+    const int32_t iy = static_cast<int32_t>(floor_y);
+    const double fx = Smoother01(px - floor_x);
+    const double fy = Smoother01(py - floor_y);
+    const double h00 = GlassHash(ix, iy);
+    const double h10 = GlassHash(ix + 1, iy);
+    const double h01 = GlassHash(ix, iy + 1);
+    const double h11 = GlassHash(ix + 1, iy + 1);
+    const double top = h00 + (h10 - h00) * fx;
+    const double bottom = h01 + (h11 - h01) * fx;
+    return top + (bottom - top) * fy;
+}
+
+inline void PackSampleCoord(
+    double sx,
+    double sy,
+    int32_t src_w,
+    int32_t max_x,
+    int32_t max_y,
+    int32_t* out_idx,
+    int32_t* out_aux) noexcept
+{
+    int32_t ix = static_cast<int32_t>(std::floor(sx));
+    int32_t iy = static_cast<int32_t>(std::floor(sy));
+    const double fx = sx - ix;
+    const double fy = sy - iy;
+
+    int32_t wx;
+    if (ix < 0)
+    {
+        ix = 0;
+        wx = 0;
+    }
+    else if (ix >= max_x)
+    {
+        if (max_x > 0)
+        {
+            ix = max_x - 1;
+            wx = 256;
+        }
+        else
+        {
+            ix = 0;
+            wx = 0;
+        }
+    }
+    else
+    {
+        wx = std::clamp(static_cast<int32_t>(std::nearbyint(fx * 256.0)), 0, 256);
+    }
+
+    int32_t wy;
+    if (iy < 0)
+    {
+        iy = 0;
+        wy = 0;
+    }
+    else if (iy >= max_y)
+    {
+        if (max_y > 0)
+        {
+            iy = max_y - 1;
+            wy = 256;
+        }
+        else
+        {
+            iy = 0;
+            wy = 0;
+        }
+    }
+    else
+    {
+        wy = std::clamp(static_cast<int32_t>(std::nearbyint(fy * 256.0)), 0, 256);
+    }
+
+    const int32_t flags = (max_x > 0 ? 1 : 0) | (max_y > 0 ? 2 : 0);
+    *out_idx = (iy * src_w + ix) << 2;
+    *out_aux = flags | (wx << 2) | (wy << 12);
+}
+
+inline int32_t BilerpChannelFast(
+    const uint8_t* src,
+    int32_t idx,
+    int32_t aux,
+    int32_t stride,
+    int32_t chan) noexcept
+{
+    const int32_t wx = (aux >> 2) & 0x1FF;
+    const int32_t wy = (aux >> 12) & 0x1FF;
+    const uint8_t* p0 = src + idx + chan;
+    const uint8_t* p1 = p0 + stride;
+    const int32_t p00 = p0[0];
+    const int32_t p10 = p0[4];
+    const int32_t p01 = p1[0];
+    const int32_t p11 = p1[4];
+    const int32_t top = (p00 << 8) + (p10 - p00) * wx;
+    const int32_t bot = (p01 << 8) + (p11 - p01) * wx;
+    return ((top << 8) + (bot - top) * wy) >> 16;
+}
+
+inline int32_t BilerpChannel(
+    const uint8_t* src,
+    int32_t idx,
+    int32_t aux,
+    int32_t stride,
+    int32_t chan) noexcept
+{
+    if ((aux & 3) == 3)
+    {
+        return BilerpChannelFast(src, idx, aux, stride, chan);
+    }
+    const int32_t step_x = (aux & 1) != 0 ? 4 : 0;
+    const int32_t step_y = (aux & 2) != 0 ? stride : 0;
+    const int32_t wx = (aux >> 2) & 0x1FF;
+    const int32_t wy = (aux >> 12) & 0x1FF;
+
+    const int32_t bas = idx + chan;
+    const int32_t p00 = src[bas];
+    const int32_t p10 = src[bas + step_x];
+    const int32_t p01 = src[bas + step_y];
+    const int32_t p11 = src[bas + step_x + step_y];
+
+    const int32_t top = p00 * (256 - wx) + p10 * wx;
+    const int32_t bot = p01 * (256 - wx) + p11 * wx;
+    return (top * (256 - wy) + bot * wy) >> 16;
+}
+
+inline uint8_t ClampByteFloat(float v) noexcept
+{
+    const float clamped = std::min(std::max(v, 0.0f), 255.0f);
+    return static_cast<uint8_t>(static_cast<int32_t>(clamped + 0.5f));
+}
+
 } // namespace
 
 } // namespace vnotch::controllers
@@ -170,29 +333,588 @@ VN_EXPORT int32_t __stdcall vn_glass_frame_hash_128(
 
     constexpr uint64_t kPrimeLo = 0x9E3779B185EBCA87ULL;
     constexpr uint64_t kPrimeHi = 0xC2B2AE3D27D4EB4FULL;
+    constexpr uint64_t kIdxPrime = 0x165667B19E3779F9ULL;
+
     uint64_t lo = 0xCBF29CE484222325ULL ^ static_cast<uint64_t>(length);
     uint64_t hi = 0x84222325CBF29CE4ULL ^ (static_cast<uint64_t>(length) * kPrimeLo);
 
-    int32_t words = length >> 3;
-    const uint64_t* word_ptr = reinterpret_cast<const uint64_t*>(data);
-    for (int32_t i = 0; i < words; ++i)
+    int32_t offset = 0;
+    if (length >= 64)
     {
-        uint64_t w = word_ptr[i];
-        uint64_t idx_mix = static_cast<uint64_t>(i + 1) * 0x165667B19E3779F9ULL;
-        lo = vnotch::controllers::Avalanche64(lo ^ (w + idx_mix)) * kPrimeLo;
-        hi = vnotch::controllers::Avalanche64(hi ^ ((w ^ idx_mix) * kPrimeLo)) * kPrimeHi;
+        __m256i acc_lo0 = _mm256_set_epi64x(
+            static_cast<int64_t>(lo ^ (kPrimeLo * 1ULL)),
+            static_cast<int64_t>(lo ^ (kPrimeLo * 3ULL)),
+            static_cast<int64_t>(lo ^ (kPrimeLo * 5ULL)),
+            static_cast<int64_t>(lo ^ (kPrimeLo * 7ULL)));
+        __m256i acc_hi0 = _mm256_set_epi64x(
+            static_cast<int64_t>(hi ^ (kPrimeHi * 1ULL)),
+            static_cast<int64_t>(hi ^ (kPrimeHi * 3ULL)),
+            static_cast<int64_t>(hi ^ (kPrimeHi * 5ULL)),
+            static_cast<int64_t>(hi ^ (kPrimeHi * 7ULL)));
+        __m256i acc_lo1 = _mm256_xor_si256(acc_lo0, _mm256_set1_epi64x(static_cast<int64_t>(kIdxPrime)));
+        __m256i acc_hi1 = _mm256_xor_si256(acc_hi0, _mm256_set1_epi64x(static_cast<int64_t>(kPrimeLo)));
+
+        const __m256i mult_lo = _mm256_set1_epi32(static_cast<int32_t>(0x85EBCA87u));
+        const __m256i mult_hi = _mm256_set1_epi32(static_cast<int32_t>(0xC2B2AE3Du));
+        __m256i idx_vec = _mm256_set_epi64x(4, 3, 2, 1);
+        const __m256i idx_step = _mm256_set1_epi64x(static_cast<int64_t>(kIdxPrime));
+
+        const int32_t limit64 = length - 63;
+        for (; offset < limit64; offset += 64)
+        {
+            const __m256i v0 = _mm256_loadu_si256(reinterpret_cast<const __m256i*>(data + offset));
+            const __m256i v1 = _mm256_loadu_si256(reinterpret_cast<const __m256i*>(data + offset + 32));
+
+            const __m256i x0 = _mm256_xor_si256(v0, idx_vec);
+            idx_vec = _mm256_add_epi64(idx_vec, idx_step);
+            const __m256i x1 = _mm256_xor_si256(v1, idx_vec);
+            idx_vec = _mm256_add_epi64(idx_vec, idx_step);
+
+            const __m256i p0_lo = _mm256_mul_epu32(x0, mult_lo);
+            const __m256i p0_hi = _mm256_mul_epu32(_mm256_srli_epi64(x0, 32), mult_hi);
+            const __m256i p1_lo = _mm256_mul_epu32(x1, mult_lo);
+            const __m256i p1_hi = _mm256_mul_epu32(_mm256_srli_epi64(x1, 32), mult_hi);
+
+            acc_lo0 = _mm256_xor_si256(acc_lo0, _mm256_add_epi64(v0, p0_hi));
+            acc_lo0 = _mm256_add_epi64(
+                _mm256_xor_si256(_mm256_slli_epi64(acc_lo0, 31), _mm256_srli_epi64(acc_lo0, 33)),
+                p0_lo);
+
+            acc_hi0 = _mm256_xor_si256(acc_hi0, _mm256_add_epi64(x0, p0_lo));
+            acc_hi0 = _mm256_add_epi64(
+                _mm256_xor_si256(_mm256_slli_epi64(acc_hi0, 27), _mm256_srli_epi64(acc_hi0, 37)),
+                p0_hi);
+
+            acc_lo1 = _mm256_xor_si256(acc_lo1, _mm256_add_epi64(v1, p1_hi));
+            acc_lo1 = _mm256_add_epi64(
+                _mm256_xor_si256(_mm256_slli_epi64(acc_lo1, 31), _mm256_srli_epi64(acc_lo1, 33)),
+                p1_lo);
+
+            acc_hi1 = _mm256_xor_si256(acc_hi1, _mm256_add_epi64(x1, p1_lo));
+            acc_hi1 = _mm256_add_epi64(
+                _mm256_xor_si256(_mm256_slli_epi64(acc_hi1, 27), _mm256_srli_epi64(acc_hi1, 37)),
+                p1_hi);
+        }
+
+        alignas(32) uint64_t lanes_lo0[4];
+        alignas(32) uint64_t lanes_lo1[4];
+        alignas(32) uint64_t lanes_hi0[4];
+        alignas(32) uint64_t lanes_hi1[4];
+        _mm256_store_si256(reinterpret_cast<__m256i*>(lanes_lo0), acc_lo0);
+        _mm256_store_si256(reinterpret_cast<__m256i*>(lanes_lo1), acc_lo1);
+        _mm256_store_si256(reinterpret_cast<__m256i*>(lanes_hi0), acc_hi0);
+        _mm256_store_si256(reinterpret_cast<__m256i*>(lanes_hi1), acc_hi1);
+
+        lo = vnotch::controllers::Avalanche64(lanes_lo0[0] ^ lanes_lo1[1]) ^
+             vnotch::controllers::Avalanche64(lanes_lo0[2] ^ lanes_lo1[3]) ^
+             vnotch::controllers::Avalanche64(lanes_lo1[0] ^ lanes_lo0[1]) ^
+             vnotch::controllers::Avalanche64(lanes_lo1[2] ^ lanes_lo0[3]);
+        hi = vnotch::controllers::Avalanche64(lanes_hi0[0] ^ lanes_hi1[1]) ^
+             vnotch::controllers::Avalanche64(lanes_hi0[2] ^ lanes_hi1[3]) ^
+             vnotch::controllers::Avalanche64(lanes_hi1[0] ^ lanes_hi0[1]) ^
+             vnotch::controllers::Avalanche64(lanes_hi1[2] ^ lanes_hi0[3]);
     }
 
-    for (int32_t i = words << 3; i < length; ++i)
+    for (; offset + 8 <= length; offset += 8)
     {
-        uint64_t b = static_cast<uint64_t>(data[i]) + 1ULL;
-        uint64_t pos = static_cast<uint64_t>(i + 1) * 0x27D4EB2F165667C5ULL;
+        uint64_t w = 0;
+        std::memcpy(&w, data + offset, sizeof(w));
+        uint64_t idx_mix = static_cast<uint64_t>((offset >> 3) + 1) * kIdxPrime;
+        lo = _rotl64(lo ^ (w + idx_mix), 31) * kPrimeLo;
+        hi = _rotl64(hi ^ (w ^ idx_mix), 27) * kPrimeHi;
+    }
+
+    for (; offset < length; ++offset)
+    {
+        uint64_t b = static_cast<uint64_t>(data[offset]) + 1ULL;
+        uint64_t pos = static_cast<uint64_t>(offset + 1) * 0x27D4EB2F165667C5ULL;
         lo = vnotch::controllers::Avalanche64(lo ^ (b * pos)) * kPrimeLo;
         hi = vnotch::controllers::Avalanche64(hi ^ ((b << 8) ^ pos)) * kPrimeHi;
     }
 
     *out_lo = vnotch::controllers::Avalanche64(lo ^ hi);
     *out_hi = vnotch::controllers::Avalanche64(hi ^ (lo * kPrimeLo));
+    return VN_OK;
+}
+
+VN_EXPORT int32_t __stdcall vn_glass_build_refraction_lut(
+    double f_power,
+    double refraction_a,
+    double refraction_b,
+    double refraction_c,
+    double refraction_d,
+    double* out_lut,
+    int32_t lut_len) noexcept
+{
+    if (!out_lut || lut_len <= 1)
+    {
+        return VN_ERR_INVALID_ARG;
+    }
+    const double f_pow = std::max(f_power, 0.1);
+    const double inv_lut_max = 1.0 / static_cast<double>(lut_len - 1);
+    const double base_val = std::max(refraction_c * 2.718281828459045, 0.0001);
+    for (int32_t i = 0; i < lut_len; ++i)
+    {
+        const double dist_norm = static_cast<double>(i) * inv_lut_max;
+        const double exponent = -refraction_d * dist_norm - refraction_a;
+        const double f_val = 1.0 - refraction_b * std::pow(base_val, exponent);
+        out_lut[i] = std::pow(std::max(f_val, 0.0001), f_pow);
+    }
+    return VN_OK;
+}
+
+VN_EXPORT int32_t __stdcall vn_glass_build_refraction_rows(
+    const VnGlassMapParams* params,
+    const double* lut,
+    int32_t lut_len,
+    int32_t y_start,
+    int32_t y_end,
+    int32_t* out_map) noexcept
+{
+    if (!params || !lut || !out_map || lut_len <= 1 || params->out_w <= 0 || params->out_h <= 0 ||
+        params->src_w <= 0 || params->src_h <= 0)
+    {
+        return VN_ERR_INVALID_ARG;
+    }
+
+    const int32_t y0 = std::clamp(y_start, 0, params->out_h);
+    const int32_t y1 = std::clamp(y_end, y0, params->out_h);
+    const int32_t out_w = params->out_w;
+    const int32_t src_w = params->src_w;
+    const int32_t max_x = params->src_w - 1;
+    const int32_t max_y = params->src_h - 1;
+
+    const double half_x = params->notch_w * 0.5;
+    const double half_y = params->notch_h * 0.5;
+    const double cx = params->notch_off_x + (params->notch_w - 1) * 0.5;
+    const double cy = params->notch_off_y + (params->notch_h - 1) * 0.5;
+    const double min_half = std::min(half_x, half_y);
+
+    const double top_r = std::clamp(params->top_corner_radius * params->out_scale, 0.0, min_half);
+    const double bottom_r = std::clamp(params->bottom_corner_radius * params->out_scale, 0.0, min_half);
+    const double u_chroma = std::clamp(params->chromatic_aberration, 0.0, 2.0);
+    const double distort = std::clamp(params->distortion, 0.0, 2.0);
+    const double aspect = std::clamp(
+        static_cast<double>(params->notch_h) / std::max(static_cast<double>(params->notch_w), 1.0) * 2.5,
+        0.0,
+        1.0);
+    const double vertical_balance = 0.68 + 0.32 * aspect;
+    const double bend = std::max(params->edge_bend, 0.1);
+    const double inv_half_x = 1.0 / std::max(half_x, 1.0);
+    const double inv_half_y = 1.0 / std::max(half_y, 1.0);
+    const double inv_min_half = 1.0 / std::max(min_half, 1.0);
+    const double lut_scale = static_cast<double>(lut_len - 1);
+    const int32_t lut_max_idx = lut_len - 1;
+
+    for (int32_t y = y0; y < y1; ++y)
+    {
+        const double ly = static_cast<double>(y) - cy;
+        const double row_base_y = static_cast<double>(y + params->margin - params->capture_shift_y);
+        int32_t* dst_row = out_map + static_cast<size_t>(y) * static_cast<size_t>(out_w) * 6;
+
+        for (int32_t x = 0; x < out_w; ++x)
+        {
+            const double lx = static_cast<double>(x) - cx;
+            double base_x = static_cast<double>(x + params->margin - params->capture_shift_x);
+            double base_y = row_base_y;
+            int32_t* cell = dst_row + static_cast<size_t>(x) * 6;
+
+            const double inside = -vnotch::controllers::RoundedRectSdf(lx, ly, half_x, half_y, top_r, bottom_r);
+            if (inside <= 0.0)
+            {
+                int32_t s_idx = 0, s_aux = 0;
+                vnotch::controllers::PackSampleCoord(base_x, base_y, src_w, max_x, max_y, &s_idx, &s_aux);
+                cell[0] = s_idx; cell[1] = s_aux;
+                cell[2] = s_idx; cell[3] = s_aux;
+                cell[4] = s_idx; cell[5] = s_aux;
+                continue;
+            }
+
+            const double px_norm = lx * inv_half_x;
+            const double py_norm = ly * inv_half_y;
+            const double dist_norm = std::clamp(inside * inv_min_half, 0.0, 1.0);
+            const double one_minus_dist = 1.0 - dist_norm;
+
+            const double lut_pos = dist_norm * lut_scale;
+            const int32_t lut_idx = static_cast<int32_t>(lut_pos);
+            const double refract_factor = (lut_idx >= lut_max_idx)
+                ? lut[lut_max_idx]
+                : (lut[lut_idx] + (lut[lut_idx + 1] - lut[lut_idx]) * (lut_pos - static_cast<double>(lut_idx)));
+
+            double disp_x = (px_norm * refract_factor - px_norm) * half_x * bend;
+            double disp_y = (py_norm * refract_factor - py_norm) * half_y * bend;
+
+            if (distort > 0.0 && one_minus_dist > 0.0)
+            {
+                const double noise_x = vnotch::controllers::ValueNoise(lx * 0.045, ly * 0.045) * 2.0 - 1.0;
+                const double noise_y = vnotch::controllers::ValueNoise(lx * 0.045 + 19.7, ly * 0.045 + 43.1) * 2.0 - 1.0;
+                const double distort_scale = distort * 2.25 * one_minus_dist;
+                disp_x += noise_x * distort_scale;
+                disp_y += noise_y * vertical_balance * distort_scale;
+            }
+
+            base_x += disp_x;
+            base_y += disp_y;
+
+            const double ca_s = std::min(u_chroma * one_minus_dist * 3.0, 8.0);
+            if (ca_s <= 0.0)
+            {
+                int32_t s_idx = 0, s_aux = 0;
+                vnotch::controllers::PackSampleCoord(base_x, base_y, src_w, max_x, max_y, &s_idx, &s_aux);
+                cell[0] = s_idx; cell[1] = s_aux;
+                cell[2] = s_idx; cell[3] = s_aux;
+                cell[4] = s_idx; cell[5] = s_aux;
+                continue;
+            }
+
+            const double disp_len = std::sqrt(disp_x * disp_x + disp_y * disp_y);
+            const double ca_dir_x = disp_len > 1e-6 ? disp_x / disp_len : 0.0;
+            const double ca_dir_y = disp_len > 1e-6 ? disp_y / disp_len : 0.0;
+            const double ca_x = ca_dir_x * ca_s;
+            const double ca_y = ca_dir_y * vertical_balance * ca_s;
+
+            vnotch::controllers::PackSampleCoord(base_x - ca_x, base_y - ca_y, src_w, max_x, max_y, &cell[0], &cell[1]);
+            vnotch::controllers::PackSampleCoord(base_x, base_y, src_w, max_x, max_y, &cell[2], &cell[3]);
+            vnotch::controllers::PackSampleCoord(base_x + ca_x, base_y + ca_y, src_w, max_x, max_y, &cell[4], &cell[5]);
+        }
+    }
+
+    return VN_OK;
+}
+
+VN_EXPORT int32_t __stdcall vn_glass_refract_gather(
+    const uint8_t* src,
+    uint8_t* dst,
+    const int32_t* refract_map,
+    int32_t src_stride,
+    int32_t start_pixel,
+    int32_t end_pixel,
+    uint8_t adjust_color,
+    float sat_factor,
+    float bright_add) noexcept
+{
+    if (!src || !dst || !refract_map || src_stride <= 0 || start_pixel < 0 || end_pixel < start_pixel)
+    {
+        return VN_ERR_INVALID_ARG;
+    }
+
+    if (adjust_color == 0)
+    {
+        for (int32_t i = start_pixel; i < end_pixel; ++i)
+        {
+            const int32_t* m = refract_map + static_cast<size_t>(i) * 6;
+            const int32_t idx_b = m[0];
+            const int32_t aux_b = m[1];
+            const int32_t idx_r = m[4];
+            const int32_t aux_r = m[5];
+            uint8_t* out_px = dst + (static_cast<size_t>(i) << 2);
+
+            if (idx_b == idx_r && aux_b == aux_r)
+            {
+                if ((aux_b >> 2) == 0)
+                {
+                    const uint8_t* p00 = src + idx_b;
+                    out_px[0] = p00[0];
+                    out_px[1] = p00[1];
+                    out_px[2] = p00[2];
+                    out_px[3] = 255;
+                    continue;
+                }
+
+                const int32_t step_x = (aux_b & 1) != 0 ? 4 : 0;
+                const int32_t step_y = (aux_b & 2) != 0 ? src_stride : 0;
+                const int32_t wx = (aux_b >> 2) & 0x1FF;
+                const int32_t wy = (aux_b >> 12) & 0x1FF;
+                const int32_t inv_wx = 256 - wx;
+                const int32_t inv_wy = 256 - wy;
+
+                const uint8_t* p00 = src + idx_b;
+                const uint8_t* p10 = p00 + step_x;
+                const uint8_t* p01 = p00 + step_y;
+                const uint8_t* p11 = p01 + step_x;
+
+                out_px[0] = static_cast<uint8_t>(((p00[0] * inv_wx + p10[0] * wx) * inv_wy + (p01[0] * inv_wx + p11[0] * wx) * wy) >> 16);
+                out_px[1] = static_cast<uint8_t>(((p00[1] * inv_wx + p10[1] * wx) * inv_wy + (p01[1] * inv_wx + p11[1] * wx) * wy) >> 16);
+                out_px[2] = static_cast<uint8_t>(((p00[2] * inv_wx + p10[2] * wx) * inv_wy + (p01[2] * inv_wx + p11[2] * wx) * wy) >> 16);
+                out_px[3] = 255;
+            }
+            else
+            {
+                out_px[0] = static_cast<uint8_t>(vnotch::controllers::BilerpChannel(src, idx_b, aux_b, src_stride, 0));
+                out_px[1] = static_cast<uint8_t>(vnotch::controllers::BilerpChannel(src, m[2], m[3], src_stride, 1));
+                out_px[2] = static_cast<uint8_t>(vnotch::controllers::BilerpChannel(src, idx_r, aux_r, src_stride, 2));
+                out_px[3] = 255;
+            }
+        }
+        return VN_OK;
+    }
+
+    const float one_minus_sat = 1.0f - sat_factor;
+    for (int32_t i = start_pixel; i < end_pixel; ++i)
+    {
+        const int32_t* m = refract_map + static_cast<size_t>(i) * 6;
+        const int32_t idx_b = m[0];
+        const int32_t aux_b = m[1];
+        const int32_t idx_r = m[4];
+        const int32_t aux_r = m[5];
+
+        int32_t b, g, r;
+        if (idx_b == idx_r && aux_b == aux_r)
+        {
+            if ((aux_b >> 2) == 0)
+            {
+                const uint8_t* p00 = src + idx_b;
+                b = p00[0];
+                g = p00[1];
+                r = p00[2];
+            }
+            else
+            {
+                const int32_t step_x = (aux_b & 1) != 0 ? 4 : 0;
+                const int32_t step_y = (aux_b & 2) != 0 ? src_stride : 0;
+                const int32_t wx = (aux_b >> 2) & 0x1FF;
+                const int32_t wy = (aux_b >> 12) & 0x1FF;
+                const int32_t inv_wx = 256 - wx;
+                const int32_t inv_wy = 256 - wy;
+
+                const uint8_t* p00 = src + idx_b;
+                const uint8_t* p10 = p00 + step_x;
+                const uint8_t* p01 = p00 + step_y;
+                const uint8_t* p11 = p01 + step_x;
+
+                b = ((p00[0] * inv_wx + p10[0] * wx) * inv_wy + (p01[0] * inv_wx + p11[0] * wx) * wy) >> 16;
+                g = ((p00[1] * inv_wx + p10[1] * wx) * inv_wy + (p01[1] * inv_wx + p11[1] * wx) * wy) >> 16;
+                r = ((p00[2] * inv_wx + p10[2] * wx) * inv_wy + (p01[2] * inv_wx + p11[2] * wx) * wy) >> 16;
+            }
+        }
+        else
+        {
+            b = vnotch::controllers::BilerpChannel(src, idx_b, aux_b, src_stride, 0);
+            g = vnotch::controllers::BilerpChannel(src, m[2], m[3], src_stride, 1);
+            r = vnotch::controllers::BilerpChannel(src, idx_r, aux_r, src_stride, 2);
+        }
+
+        const float lum = (static_cast<float>(77 * r + 150 * g + 29 * b) * (1.0f / 256.0f)) * one_minus_sat + bright_add;
+        uint8_t* out_px = dst + (static_cast<size_t>(i) << 2);
+        out_px[0] = vnotch::controllers::ClampByteFloat(lum + static_cast<float>(b) * sat_factor);
+        out_px[1] = vnotch::controllers::ClampByteFloat(lum + static_cast<float>(g) * sat_factor);
+        out_px[2] = vnotch::controllers::ClampByteFloat(lum + static_cast<float>(r) * sat_factor);
+        out_px[3] = 255;
+    }
+
+    return VN_OK;
+}
+
+VN_EXPORT int32_t __stdcall vn_glass_analyze_backdrop_samples(
+    const int32_t* rgb_samples,
+    int32_t sample_len,
+    int32_t columns,
+    int32_t rows,
+    VnGlassBackdropOpticsOut* out_optics) noexcept
+{
+    if (!out_optics)
+    {
+        return VN_ERR_INVALID_ARG;
+    }
+
+    const int32_t count = columns * rows;
+    if (!rgb_samples || columns <= 0 || rows <= 0 || sample_len < count || count > 4096)
+    {
+        *out_optics = VnGlassBackdropOpticsOut{128, 128, 128, 0, 0.0, 0.0, 0.0, 0};
+        return VN_OK;
+    }
+
+    double stack_lum[256];
+    std::vector<double> heap_lum;
+    double* luminance = stack_lum;
+    if (count > 256)
+    {
+        try
+        {
+            heap_lum.resize(static_cast<size_t>(count));
+            luminance = heap_lum.data();
+        }
+        catch (...)
+        {
+            *out_optics = VnGlassBackdropOpticsOut{128, 128, 128, 0, 0.0, 0.0, 0.0, 0};
+            return VN_ERR_FAIL;
+        }
+    }
+
+    double sum_r = 0.0, sum_g = 0.0, sum_b = 0.0, sum_l = 0.0;
+    double min_l = 255.0, max_l = 0.0;
+    for (int32_t i = 0; i < count; ++i)
+    {
+        const int32_t rgb = rgb_samples[i];
+        const int32_t r = (rgb >> 16) & 0xFF;
+        const int32_t g = (rgb >> 8) & 0xFF;
+        const int32_t b = rgb & 0xFF;
+        const double l = 0.299 * r + 0.587 * g + 0.114 * b;
+        luminance[i] = l;
+        sum_r += r;
+        sum_g += g;
+        sum_b += b;
+        sum_l += l;
+        min_l = std::min(min_l, l);
+        max_l = std::max(max_l, l);
+    }
+
+    const double mean_l = sum_l / count;
+    double weighted_x = 0.0, weighted_y = 0.0, total_weight = 0.0;
+    for (int32_t y = 0; y < rows; ++y)
+    {
+        const double ny = rows == 1 ? 0.0 : (y * 2.0 / (rows - 1) - 1.0);
+        for (int32_t x = 0; x < columns; ++x)
+        {
+            const double highlight = std::max(luminance[y * columns + x] - mean_l, 0.0);
+            const double weight = highlight * highlight;
+            if (weight <= 1e-6) continue;
+            const double nx = columns == 1 ? 0.0 : (x * 2.0 / (columns - 1) - 1.0);
+            weighted_x += nx * weight;
+            weighted_y += ny * weight;
+            total_weight += weight;
+        }
+    }
+
+    const double contrast = std::clamp((max_l - min_l) / 255.0, 0.0, 1.0);
+    const double directional_strength = std::clamp(contrast * 2.2, 0.0, 1.0);
+    const double light_x = total_weight > 1e-6 ? weighted_x / total_weight * directional_strength : 0.0;
+    const double light_y = total_weight > 1e-6 ? weighted_y / total_weight * directional_strength : 0.0;
+
+    out_optics->red = static_cast<uint8_t>(std::clamp(static_cast<int32_t>(std::nearbyint(sum_r / count)), 0, 255));
+    out_optics->green = static_cast<uint8_t>(std::clamp(static_cast<int32_t>(std::nearbyint(sum_g / count)), 0, 255));
+    out_optics->blue = static_cast<uint8_t>(std::clamp(static_cast<int32_t>(std::nearbyint(sum_b / count)), 0, 255));
+    out_optics->reserved = 0;
+    out_optics->light_x = std::clamp(light_x, -1.0, 1.0);
+    out_optics->light_y = std::clamp(light_y, -1.0, 1.0);
+    out_optics->contrast = contrast;
+    out_optics->outside_rgb = 0;
+    return VN_OK;
+}
+
+VN_EXPORT int32_t __stdcall vn_glass_sample_backdrop_optics(
+    const uint8_t* dib_bits,
+    int32_t src_w,
+    int32_t src_h,
+    int32_t sample_x,
+    int32_t sample_y,
+    int32_t sample_w,
+    int32_t sample_h,
+    VnGlassBackdropOpticsOut* out_optics) noexcept
+{
+    if (!dib_bits || !out_optics || src_w <= 0 || src_h <= 0 || sample_w <= 0 || sample_h <= 0)
+    {
+        return VN_ERR_INVALID_ARG;
+    }
+
+    constexpr int32_t kColumns = 8;
+    constexpr int32_t kRows = 8;
+    int32_t samples[kColumns * kRows];
+    const int32_t stride = src_w * 4;
+
+    for (int32_t gy = 0; gy < kRows; ++gy)
+    {
+        const int32_t y = std::clamp(sample_y + (sample_h - 1) * gy / (kRows - 1), 0, src_h - 1);
+        const uint8_t* row = dib_bits + static_cast<int64_t>(y) * stride;
+        for (int32_t gx = 0; gx < kColumns; ++gx)
+        {
+            const int32_t x = std::clamp(sample_x + (sample_w - 1) * gx / (kColumns - 1), 0, src_w - 1);
+            const uint8_t* p = row + x * 4;
+            samples[gy * kColumns + gx] = (static_cast<int32_t>(p[2]) << 16) |
+                                          (static_cast<int32_t>(p[1]) << 8) |
+                                          static_cast<int32_t>(p[0]);
+        }
+    }
+
+    vn_glass_analyze_backdrop_samples(samples, kColumns * kRows, kColumns, kRows, out_optics);
+
+    const int32_t outside_x = std::clamp(sample_x + sample_w / 2, 0, src_w - 1);
+    const int32_t below_y = sample_y + sample_h + 16;
+    const int32_t outside_y = below_y < src_h ? below_y : std::clamp(sample_y - 16, 0, src_h - 1);
+    const uint8_t* outside = dib_bits + static_cast<int64_t>(outside_y) * stride + outside_x * 4;
+    out_optics->outside_rgb = (static_cast<int32_t>(outside[2]) << 16) |
+                              (static_cast<int32_t>(outside[1]) << 8) |
+                              static_cast<int32_t>(outside[0]);
+    return VN_OK;
+}
+
+VN_EXPORT int32_t __stdcall vn_glass_gaussian_box_radii(
+    double sigma,
+    int32_t passes,
+    int32_t* out_radii,
+    int32_t radii_cap,
+    int32_t* out_written) noexcept
+{
+    if (!out_radii || !out_written || radii_cap <= 0)
+    {
+        return VN_ERR_INVALID_ARG;
+    }
+
+    const int32_t count = std::max(1, passes);
+    if (radii_cap < count)
+    {
+        *out_written = 0;
+        return VN_ERR_BUFFER_TOO_SMALL;
+    }
+
+    *out_written = count;
+    if (sigma <= 0.0)
+    {
+        for (int32_t i = 0; i < count; ++i)
+        {
+            out_radii[i] = 0;
+        }
+        return VN_OK;
+    }
+
+    const double ideal_width = std::sqrt((12.0 * sigma * sigma / count) + 1.0);
+    int32_t lower_width = static_cast<int32_t>(std::floor(ideal_width));
+    if ((lower_width & 1) == 0)
+    {
+        --lower_width;
+    }
+    lower_width = std::max(1, lower_width);
+    const int32_t upper_width = lower_width + 2;
+
+    const double numerator = 12.0 * sigma * sigma
+        - static_cast<double>(count) * lower_width * lower_width
+        - 4.0 * count * lower_width
+        - 3.0 * count;
+    int32_t lower_count = static_cast<int32_t>(std::nearbyint(
+        numerator / (-4.0 * lower_width - 4.0)));
+    lower_count = std::clamp(lower_count, 0, count);
+
+    for (int32_t i = 0; i < count; ++i)
+    {
+        const int32_t width = i < lower_count ? lower_width : upper_width;
+        out_radii[i] = (width - 1) / 2;
+    }
+    return VN_OK;
+}
+
+VN_EXPORT int32_t __stdcall vn_glass_compute_squircle_lut(
+    double power,
+    int32_t segments,
+    double* out_pow_cos,
+    double* out_pow_sin) noexcept
+{
+    if (!out_pow_cos || !out_pow_sin || segments <= 1)
+    {
+        return VN_ERR_INVALID_ARG;
+    }
+
+    const double safe_power = (std::isfinite(power) && power > 0.1) ? power : 2.0;
+    const double exp_val = 2.0 / safe_power;
+    constexpr double kHalfPi = 1.57079632679489661923;
+
+    out_pow_cos[0] = 0.0;
+    out_pow_sin[0] = 0.0;
+    for (int32_t i = 1; i < segments; ++i)
+    {
+        const double angle = kHalfPi * static_cast<double>(i) / static_cast<double>(segments);
+        out_pow_cos[i] = std::pow(std::cos(angle), exp_val);
+        out_pow_sin[i] = std::pow(std::sin(angle), exp_val);
+    }
     return VN_OK;
 }
 
@@ -213,8 +935,9 @@ VN_EXPORT int32_t __stdcall vn_calendar_center_index_from_strip_x(
     if (!out_center_idx) return VN_ERR_INVALID_ARG;
     constexpr int32_t kTotalDays = 11;
     constexpr double kCellWidth = 30.0;
-    int32_t center_idx = static_cast<int32_t>(std::nearbyint((30.0 - strip_x) / kCellWidth));
-    *out_center_idx = std::clamp(center_idx, 0, kTotalDays - 1);
+    if (!std::isfinite(strip_x)) strip_x = 0.0;
+    double raw = std::clamp(std::nearbyint((30.0 - strip_x) / kCellWidth), 0.0, static_cast<double>(kTotalDays - 1));
+    *out_center_idx = static_cast<int32_t>(raw);
     return VN_OK;
 }
 
@@ -254,10 +977,11 @@ VN_EXPORT int32_t __stdcall vn_calendar_compute_scroll_step(
     }
 
     constexpr int32_t kTotalDays = 11;
+    if (!std::isfinite(accumulator)) accumulator = 0.0;
     double acc = accumulator + static_cast<double>(delta);
     int32_t direction = acc > 0.0 ? -1 : 1;
     double abs_acc = std::abs(acc);
-    int32_t step_count = static_cast<int32_t>(abs_acc / 120.0);
+    int32_t step_count = static_cast<int32_t>(std::clamp(abs_acc / 120.0, 0.0, 1000.0));
     if (step_count == 0 && abs_acc >= 72.0)
     {
         step_count = 1;
@@ -798,7 +1522,7 @@ VN_EXPORT int32_t __stdcall vn_timer_format_remaining(
     constexpr int64_t kTicksPerHour = 60LL * kTicksPerMinute;
     constexpr int64_t kTicksPerDay = 24LL * kTicksPerHour;
 
-    int64_t ticks = std::max<int64_t>(0LL, remaining_ticks);
+    int64_t ticks = std::clamp<int64_t>(remaining_ticks, 0LL, 99999LL * kTicksPerHour);
     int32_t written = 0;
 
     if (ticks >= kTicksPerDay)
@@ -848,11 +1572,12 @@ VN_EXPORT int32_t __stdcall vn_timer_compute_adjust_ticks(
     constexpr int64_t kMinimumTicks = kTicksPerMinute;
     constexpr int64_t kMaximumTicks = 7LL * kTicksPerDay;
 
-    int64_t step = (current_duration_ticks >= kTicksPerDay)
+    int64_t clamped_current = std::clamp<int64_t>(current_duration_ticks, 0LL, kMaximumTicks);
+    int64_t step = (clamped_current >= kTicksPerDay)
         ? kTicksPerHour
-        : ((current_duration_ticks >= kTicksPerHour) ? (5LL * kTicksPerMinute) : kTicksPerMinute);
+        : ((clamped_current >= kTicksPerHour) ? (5LL * kTicksPerMinute) : kTicksPerMinute);
 
-    int64_t next = current_duration_ticks + (direction > 0 ? step : -step);
+    int64_t next = clamped_current + (direction > 0 ? step : -step);
     next = std::clamp(next, kMinimumTicks, kMaximumTicks);
     *out_next_ticks = next;
     *out_changed = (next != current_duration_ticks) ? 1 : 0;
@@ -911,7 +1636,8 @@ VN_EXPORT int32_t __stdcall vn_progress_interpolate_ticks(
         int64_t clamped_elapsed = std::min(elapsed_ticks, max_elapsed);
         if (clamped_elapsed > 0)
         {
-            display += static_cast<int64_t>(static_cast<double>(clamped_elapsed) * playback_rate);
+            const double rate = (std::isfinite(playback_rate) && playback_rate >= 0.0) ? std::min(playback_rate, 16.0) : 1.0;
+            display += static_cast<int64_t>(static_cast<double>(clamped_elapsed) * rate);
         }
     }
 
@@ -936,7 +1662,7 @@ VN_EXPORT int32_t __stdcall vn_progress_format_time(
     constexpr int64_t kTicksPerMinute = 60LL * kTicksPerSecond;
     constexpr int64_t kTicksPerHour = 60LL * kTicksPerMinute;
 
-    int64_t ticks = std::max<int64_t>(0LL, time_ticks);
+    int64_t ticks = std::clamp<int64_t>(time_ticks, 0LL, 99999LL * kTicksPerHour);
     int32_t written = 0;
 
     if (ticks >= kTicksPerHour)

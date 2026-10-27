@@ -72,7 +72,7 @@ internal sealed partial class ClipboardVault : IDisposable
             var config = IsConfigured
                 ? JsonSerializer.Deserialize<Configuration>(File.ReadAllText(_configurationPath)) ?? throw new CryptographicException("Invalid Personal configuration.")
                 : new Configuration(1, RandomNumberGenerator.GetBytes(32), CreateProtectedPepper(), []);
-            if (config.Version != 1 || config.Salt is not { Length: 32 } || string.IsNullOrWhiteSpace(config.Pepper)) throw new CryptographicException();
+            if (config.Version != 1 || config.Salt is not { Length: 32 } || (IsConfigured && config.Verification is not { Length: >= 28 }) || string.IsNullOrWhiteSpace(config.Pepper)) throw new CryptographicException();
             byte[] pepper = DecodePepper(config.Pepper);
             byte[]? password = null;
             try
@@ -177,12 +177,12 @@ internal sealed partial class ClipboardVault : IDisposable
     {
         var config = JsonSerializer.Deserialize<Configuration>(json)
             ?? throw new CryptographicException("Invalid portable configuration.");
-        if (config.Version != 1 || config.Salt is not { Length: 32 } || string.IsNullOrWhiteSpace(config.Pepper))
+        if (config.Version != 1 || config.Salt is not { Length: 32 } || config.Verification is not { Length: >= 28 } || string.IsNullOrWhiteSpace(config.Pepper))
             throw new CryptographicException("Portable configuration is malformed.");
         // Validate that the pepper field is decodable before writing anything.
-        byte[] test = DecodePepper(config.Pepper);
-        CryptographicOperations.ZeroMemory(test);
-        AtomicWrite(_configurationPath, System.Text.Encoding.UTF8.GetBytes(json));
+        byte[] rawPepper = DecodePepper(config.Pepper);
+        try { var reprotected = config with { Pepper = "enc:" + Convert.ToBase64String(ProtectedData.Protect(rawPepper, null, DataProtectionScope.CurrentUser)) }; AtomicWrite(_configurationPath, JsonSerializer.SerializeToUtf8Bytes(reprotected)); } finally { CryptographicOperations.ZeroMemory(rawPepper); }
+        Lock();
     }
 
     internal byte[] Seal(ReadOnlySpan<byte> data) => Encrypt(data, Key);

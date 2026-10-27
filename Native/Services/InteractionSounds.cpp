@@ -104,7 +104,7 @@ public:
         double v_time = 1.0 + (static_cast<double>(variant) - 2.5) * 0.010;
         std::span<const int16_t> k2(kSplReleaseKernel);
 
-        std::vector<double> float_buf(static_cast<size_t>(samples), 0.0);
+        double float_buf[4096]{};
 
         switch (cue)
         {

@@ -330,6 +330,7 @@ public partial class MainWindow
         _desktopTransparentFramesObserved = 0;
 
         // Wait for composition frame and commit transparent frame before altering z-order
+        if (_desktopTransparentFrameHandler != null) CompositionTarget.Rendering -= _desktopTransparentFrameHandler;
         _desktopTransparentFrameHandler = (_, _) =>
         {
             // Wait for subsequent composition callback to guarantee transparent frame

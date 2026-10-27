@@ -24,8 +24,12 @@ inline int64_t FromHandle(const void* handle) noexcept {
 
 bool CopyPath(const char16_t* path, int32_t length, std::wstring& out) noexcept {
     if (!path || length <= 0 || length >= kMaxPathChars) return false;
-    out.assign(reinterpret_cast<const wchar_t*>(path), static_cast<size_t>(length));
-    return true;
+    try {
+        out.assign(reinterpret_cast<const wchar_t*>(path), static_cast<size_t>(length));
+        return true;
+    } catch (...) {
+        return false;
+    }
 }
 
 // Joins the COM apartment of the calling thread when it has none; mode conflicts are harmless here.
@@ -55,6 +59,7 @@ VN_EXPORT int32_t __stdcall vn_shell_get_file_info_icon(
     *out_icon = 0;
     std::wstring wide;
     if (!icons::CopyPath(path, path_length, wide)) return VN_ERR_INVALID_ARG;
+    icons::ComScope com;
     SHFILEINFOW info{};
     const DWORD_PTR result = SHGetFileInfoW(wide.c_str(), file_attributes, &info, sizeof(info), SHGFI_ICON | flags);
     *out_icon = icons::FromHandle(info.hIcon);
@@ -68,6 +73,7 @@ VN_EXPORT int32_t __stdcall vn_shell_get_base_icon(
     *out_icon = 0;
     std::wstring wide;
     if (!icons::CopyPath(path, path_length, wide)) return VN_ERR_INVALID_ARG;
+    icons::ComScope com;
     SHFILEINFOW info{};
     const DWORD_PTR image_list = SHGetFileInfoW(
         wide.c_str(), 0, &info, sizeof(info), SHGFI_SYSICONINDEX | (small_icon != 0 ? SHGFI_SMALLICON : SHGFI_LARGEICON));

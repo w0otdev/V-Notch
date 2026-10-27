@@ -372,10 +372,13 @@ public partial class CountdownView : UserControl, IDisposable
 
     // Swap digits with animated text field carousel in edit mode with orange
     // border accent while typing.
+    private int _editTransitionVersion;
+
     private void StartTimerEditing()
     {
         if (_isEditingTimer) return;
         _isEditingTimer = true;
+        int version = ++_editTransitionVersion;
 
         // Temporarily lift WS_EX_NOACTIVATE style so window can receive keyboard
         // focus and text input.
@@ -390,7 +393,8 @@ public partial class CountdownView : UserControl, IDisposable
         var digitsFade = MakeAnim(CountdownDisplay.Opacity > 0 ? CountdownDisplay.Opacity : 1.0, 0.0, durOut, _easeQuadIn, null);
         digitsFade.Completed += (_, _) =>
         {
-            if (_isEditingTimer) CountdownDisplay.Visibility = Visibility.Collapsed;
+            if (_isEditingTimer && version == _editTransitionVersion)
+                CountdownDisplay.Visibility = Visibility.Collapsed;
         };
         var digitsRise = MakeAnim(CountdownDisplayTranslate.Y, -11.0, durOut, _easeQuadIn, null);
         var digitsShrinkX = MakeAnim(1.0, 0.94, durOut, _easeQuadIn, null);
@@ -428,6 +432,7 @@ public partial class CountdownView : UserControl, IDisposable
     {
         if (!_isEditingTimer) return;
         _isEditingTimer = false;
+        int version = ++_editTransitionVersion;
 
         KeyboardInputRequested?.Invoke(false);
 
@@ -438,7 +443,8 @@ public partial class CountdownView : UserControl, IDisposable
         var inputFade = MakeAnim(CountdownInput.Opacity > 0 ? CountdownInput.Opacity : 1.0, 0.0, durOut, _easeQuadIn, null);
         inputFade.Completed += (_, _) =>
         {
-            if (!_isEditingTimer) CountdownInput.Visibility = Visibility.Collapsed;
+            if (!_isEditingTimer && version == _editTransitionVersion)
+                CountdownInput.Visibility = Visibility.Collapsed;
         };
         var inputDrop = MakeAnim(0.0, 12.0, durOut, _easeQuadIn, null);
         var inputShrinkX = MakeAnim(1.0, 0.97, durOut, _easeQuadIn, null);
@@ -471,8 +477,9 @@ public partial class CountdownView : UserControl, IDisposable
     // Instant teardown for view switches: no animations, just a clean idle state.
     private void CancelTimerEditingInstant()
     {
-        if (!_isEditingTimer) return;
+        if (!_isEditingTimer && CountdownInput.Visibility != Visibility.Visible) return;
         _isEditingTimer = false;
+        ++_editTransitionVersion;
 
         KeyboardInputRequested?.Invoke(false);
 

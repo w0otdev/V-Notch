@@ -474,8 +474,11 @@ public partial class MainWindow
         w.ApplyModeTransitionFrame(width, height, topRadius, bottomRadius, marginTop, earOpacity);
     }
 
+    private int _modeTransitionGeneration;
+
     private void AnimateModeTransition(int fps)
     {
+        int gen = ++_modeTransitionGeneration;
         bool toIsland = _settings.EnableDynamicIslandMode;
 
         _mtNotchW = _settings.Width;
@@ -513,6 +516,7 @@ public partial class MainWindow
         Timeline.SetDesiredFrameRate(anim, fps);
         anim.Completed += (s, e) =>
         {
+            if (gen != _modeTransitionGeneration) return;
             this.BeginAnimation(ModeTransitionTProperty, null);
             FinalizeModeTransition(toIsland);
         };

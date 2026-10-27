@@ -34,6 +34,12 @@ namespace VNotch.Services
         public static IDisposable Protect(string path)
             => throw new InvalidOperationException("Installer execution is forbidden in the compatibility probe.");
     }
+
+    internal static class SafeLauncher
+    {
+        public static bool TryOpenUrl(string? url)
+            => throw new InvalidOperationException("URL launching is forbidden in the compatibility probe.");
+    }
 }
 
 namespace VNotch

@@ -361,8 +361,8 @@ public sealed partial class ClipboardHistoryStore : IDisposable, IAsyncDisposabl
                 {
                     IsSensitive = duplicateSensitive,
                     Title = duplicateSensitive ? ClipboardSensitiveData.Mask : duplicate.Title,
-                    FileCount = files.Count,
-                    PrimaryExtension = files.Count == 1 && !files[0].IsDirectory ? Path.GetExtension(files[0].Name).ToLowerInvariant() : "",
+                    FileCount = duplicate.FileCount,
+                    PrimaryExtension = duplicate.PrimaryExtension,
                     CopiedUtc = capture.CopiedUtc,
                     Kind = kind == ClipboardKind.Color ? kind : duplicate.Kind,
                     Preview = duplicateSensitive ? ClipboardSensitiveData.Mask : kind == ClipboardKind.Color ? preview : duplicate.Preview,
@@ -631,7 +631,7 @@ public sealed partial class ClipboardHistoryStore : IDisposable, IAsyncDisposabl
         {
             string path = Path.GetFullPath(Path.Combine(destination, entry.FullName));
             if (!path.StartsWith(root, StringComparison.OrdinalIgnoreCase)) throw new IOException("Invalid archive path.");
-            if (entry.FullName.EndsWith('/')) Directory.CreateDirectory(path);
+            if (string.IsNullOrEmpty(entry.Name) || entry.FullName.EndsWith('/') || entry.FullName.EndsWith('\\')) Directory.CreateDirectory(path);
             else
             {
                 Directory.CreateDirectory(Path.GetDirectoryName(path)!);

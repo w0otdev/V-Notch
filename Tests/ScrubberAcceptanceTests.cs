@@ -89,4 +89,12 @@ public sealed class ScrubberAcceptanceTests
         Assert.Contains("request=42", result);
         Assert.True(timer.Elapsed < TimeSpan.FromSeconds(3), $"Linear scan took {timer.Elapsed}.");
     }
+
+    [Fact]
+    public void QuotedPrefixBeforeTokenOrFieldDelimiterDoesNotUnderflowOrOverRedact()
+    {
+        Assert.Equal("token=\"[REDACTED]\"-1234567890", SensitiveDataScrubber.Scrub("token=\"sk\"-1234567890"));
+        Assert.Equal("token=\"[REDACTED]\":1234567890123456", SensitiveDataScrubber.Scrub("token=\"enc\":1234567890123456"));
+        Assert.Equal("token=\"[REDACTED]\":keep_this_value", SensitiveDataScrubber.Scrub("token=\"password\":keep_this_value"));
+    }
 }

@@ -189,6 +189,22 @@ struct PlayerState {
     std::atomic<int32_t> currentKind{-1};
     std::atomic<float> wantVolume{0.3f};
     std::atomic<float> fadeOutSeconds{0.25f};
+
+    ~PlayerState() noexcept {
+        fadeOutSeconds.store(0.05f, std::memory_order_relaxed);
+        wantOn.store(false, std::memory_order_release);
+        std::thread toJoin;
+        {
+            std::lock_guard<std::mutex> lock(mutex);
+            if (thread.joinable()) toJoin = std::move(thread);
+        }
+        if (toJoin.joinable()) {
+            if (toJoin.get_id() == std::this_thread::get_id())
+                toJoin.detach();
+            else
+                toJoin.join();
+        }
+    }
 };
 
 PlayerState g;
@@ -371,7 +387,17 @@ VN_EXPORT int32_t __stdcall vn_noise_set_volume(float volume) noexcept {
 }
 
 VN_EXPORT int32_t __stdcall vn_noise_stop() noexcept {
-    g.wantOn = false;
+    g.wantOn.store(false, std::memory_order_release);
+    std::thread toJoin;
+    {
+        std::lock_guard lock(g.mutex);
+        if (g.thread.joinable() && g.thread.get_id() != std::this_thread::get_id()) {
+            toJoin = std::move(g.thread);
+        }
+    }
+    if (toJoin.joinable()) {
+        toJoin.join();
+    }
     return VN_OK;
 }
 

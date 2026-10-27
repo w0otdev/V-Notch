@@ -1972,6 +1972,12 @@ public partial class SpotlightWindow : Window
             if (generation != _animationGeneration || _isClosing || !IsSpotlightOpen) return;
 
             AnimateGlassReadability(true);
+            if (IsLiquidGlassEnabled)
+            {
+                CompositionTarget.Rendering -= OnLiquidGlassFrameUpdate;
+                CompositionTarget.Rendering += OnLiquidGlassFrameUpdate;
+            }
+            _liquidGlass?.SetIdle(false);
             _liquidGlass?.SetAnimating(true);
             Shell.Visibility = Visibility.Visible;
             if (morphsFromNotch)
@@ -2162,7 +2168,11 @@ public partial class SpotlightWindow : Window
             // The temporary opening fallback must never travel back to the
             // notch as an opaque panel if the first glass frame was delayed.
             Shell.Background = Brushes.Transparent;
+            CompositionTarget.Rendering -= OnLiquidGlassFrameUpdate;
+            CompositionTarget.Rendering += OnLiquidGlassFrameUpdate;
         }
+        UpdateGlassCaptureExtent();
+        _liquidGlass?.SetIdle(false);
         _liquidGlass?.SetAnimating(true);
         if (AnimationConfig.ReduceMotion)
         {
@@ -2351,6 +2361,7 @@ public partial class SpotlightWindow : Window
         Shell.RenderTransformOrigin = new Point(0.5, 0.5);
         RestoreShadow(animate: false);
         _liquidGlass?.SetAnimating(false);
+        _liquidGlass?.SetIdle(true);
         UpdateGlassClip();
 
         // Results that arrived mid-morph waited for the shell to land. A
@@ -2374,7 +2385,6 @@ public partial class SpotlightWindow : Window
         Shell.Opacity = 0;
         NotchMorphSnapshot.Opacity = 0;
         ClearMorphAnimations();
-        ReleaseMorphSession();
         _liquidGlass?.ClearLiveRegion();
         RetainGlassForReopen();
         CompositionTarget.Rendering -= OnLiquidGlassFrameUpdate;
@@ -2390,6 +2400,7 @@ public partial class SpotlightWindow : Window
         _isClosing = false;
         ResetMorphVisuals();
         ParkWindow();
+        ReleaseMorphSession();
     }
 
     private void ResetMorphVisuals()

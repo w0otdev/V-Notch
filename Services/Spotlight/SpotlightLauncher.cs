@@ -113,7 +113,7 @@ internal sealed partial class SpotlightLauncher
             {
                 UseShellExecute = false
             };
-            startInfo.ArgumentList.Add($"/select,{item.Target}");
+            startInfo.Arguments = $"/select,\"{item.Target.Replace("\"", "")}\"";
             using var process = Process.Start(startInfo);
             return process != null;
         }

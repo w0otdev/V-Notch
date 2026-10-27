@@ -769,7 +769,7 @@ public partial class SettingsWindow
     {
         try
         {
-            var exePath = System.Diagnostics.Process.GetCurrentProcess().MainModule?.FileName;
+            var exePath = Environment.ProcessPath;
             if (string.IsNullOrEmpty(exePath)) return;
 
             using var key = Microsoft.Win32.Registry.CurrentUser.CreateSubKey(@"Software\Microsoft\DirectX\UserGpuPreferences");

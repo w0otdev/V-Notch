@@ -18,12 +18,7 @@ internal sealed partial class LyricsService : IDisposable
 {
     private const string NativeDll = "VNotch.Native.dll";
 
-    [LibraryImport(NativeDll, StringMarshalling = StringMarshalling.Utf16)]
-    private static partial int vn_lyrics_try_parse_timestamp(
-        ReadOnlySpan<char> ts,
-        int tsLen,
-        out long outTicks,
-        out byte outOk);
+
 
     [LibraryImport(NativeDll, StringMarshalling = StringMarshalling.Utf16)]
     private static partial int vn_lyrics_try_parse_lrc_line(
@@ -62,9 +57,8 @@ internal sealed partial class LyricsService : IDisposable
         out int outLength);
 
     private const string LogTag = "LYRICS";
-    private static readonly string[] GenericPlatformNames = { "YouTube", "Browser", "Google Chrome", "Microsoft Edge" };
     private static readonly string[] Dashes = { " - ", " – ", " — ", " // " };
-    private static readonly string[] ArtistSeparators = { " feat.", " ft.", " featuring", " & ", "; ", " / ", " with " };
+    private const int MaxLyricsResponseBytes = 512 * 1024;
 
     [GeneratedRegex(@"[\(\[][^\)\]]*[\)\]]")]
     private static partial Regex BracketedExtrasRegex();
@@ -308,15 +302,15 @@ internal sealed partial class LyricsService : IDisposable
 
         RuntimeLog.Log(LogTag, $"Fetching (exact): {trackName} - {artistName} ({durationSeconds}s)");
 
-        using var response = await _lrclibClient.GetAsync(url, token);
+        using var response = await _lrclibClient.GetAsync(url, HttpCompletionOption.ResponseHeadersRead, token);
         if (!response.IsSuccessStatusCode)
         {
             RuntimeLog.Log(LogTag, $"Exact HTTP {(int)response.StatusCode} for '{trackName}'");
             return null;
         }
 
-        using var stream = await response.Content.ReadAsStreamAsync(token);
-        using var doc = await JsonDocument.ParseAsync(stream, cancellationToken: token);
+        using var doc = await ReadBoundedJsonAsync(response.Content, token);
+        if (doc == null) return null;
         var lines = ExtractSyncedLines(doc.RootElement);
         if (lines is { Count: > 0 })
             RuntimeLog.Log(LogTag, $"Got {lines.Count} synced lines (exact) for '{trackName}'");
@@ -330,15 +324,15 @@ internal sealed partial class LyricsService : IDisposable
 
         RuntimeLog.Log(LogTag, $"Fetching (search): {trackName} - {artistName}");
 
-        using var response = await _lrclibClient.GetAsync(url, token);
+        using var response = await _lrclibClient.GetAsync(url, HttpCompletionOption.ResponseHeadersRead, token);
         if (!response.IsSuccessStatusCode)
         {
             RuntimeLog.Log(LogTag, $"Search HTTP {(int)response.StatusCode} for '{trackName}'");
             return null;
         }
 
-        using var stream = await response.Content.ReadAsStreamAsync(token);
-        using var doc = await JsonDocument.ParseAsync(stream, cancellationToken: token);
+        using var doc = await ReadBoundedJsonAsync(response.Content, token);
+        if (doc == null) return null;
         if (doc.RootElement.ValueKind != JsonValueKind.Array)
             return null;
 
@@ -470,15 +464,15 @@ internal sealed partial class LyricsService : IDisposable
 
         RuntimeLog.Log(LogTag, $"Fetching (lrc mux): {trackName} - {artistName}");
 
-        using var response = await _lrcMuxClient.GetAsync(url, token);
+        using var response = await _lrcMuxClient.GetAsync(url, HttpCompletionOption.ResponseHeadersRead, token);
         if (!response.IsSuccessStatusCode)
         {
             RuntimeLog.Log(LogTag, $"lrc mux HTTP {(int)response.StatusCode} for '{trackName}'");
             return null;
         }
 
-        using var stream = await response.Content.ReadAsStreamAsync(token);
-        using var doc = await JsonDocument.ParseAsync(stream, cancellationToken: token);
+        using var doc = await ReadBoundedJsonAsync(response.Content, token);
+        if (doc == null) return null;
         var result = ParseLrcMuxResult(doc.RootElement);
         if (result is { Lines.Count: > 0 })
             RuntimeLog.Log(LogTag, $"Got {result.Lines.Count} synced lines from {result.Provider} for '{trackName}'");
@@ -623,15 +617,24 @@ internal sealed partial class LyricsService : IDisposable
         return lines;
     }
 
-    private static bool TryParseTimestamp(ReadOnlySpan<char> ts, out TimeSpan result)
+    private static async Task<JsonDocument?> ReadBoundedJsonAsync(HttpContent content, CancellationToken token)
     {
-        if (vn_lyrics_try_parse_timestamp(ts, ts.Length, out long ticks, out byte ok) == 0 && ok != 0)
+        if (content.Headers.ContentLength is > MaxLyricsResponseBytes)
+            return null;
+        await using var stream = await content.ReadAsStreamAsync(token);
+        using var ms = new System.IO.MemoryStream();
+        byte[] buf = new byte[8192];
+        int total = 0;
+        while (true)
         {
-            result = TimeSpan.FromTicks(ticks);
-            return true;
+            int read = await stream.ReadAsync(buf, token);
+            if (read <= 0) break;
+            total += read;
+            if (total > MaxLyricsResponseBytes) return null;
+            ms.Write(buf, 0, read);
         }
-        result = TimeSpan.Zero;
-        return false;
+        ms.Position = 0;
+        return await JsonDocument.ParseAsync(ms, cancellationToken: token);
     }
 
     public void Dispose()

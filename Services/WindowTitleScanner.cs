@@ -285,8 +285,8 @@ public sealed partial class WindowTitleScanner : IWindowTitleScanner, IDisposabl
     private bool _cachedPipActive;
     private IntPtr _cachedPipHwnd;
     private string _cachedPipTitle = string.Empty;
+    private string? _cachedPipWindowProcessName;
     private DateTime _lastPipCheckTime = DateTime.MinValue;
-    private string? _lastPipProcessName;
 
     public void InvalidateUrlCaches()
     {
@@ -302,8 +302,8 @@ public sealed partial class WindowTitleScanner : IWindowTitleScanner, IDisposabl
             _cachedPipActive = false;
             _cachedPipHwnd = IntPtr.Zero;
             _cachedPipTitle = string.Empty;
+            _cachedPipWindowProcessName = null;
             _lastPipCheckTime = DateTime.MinValue;
-            _lastPipProcessName = null;
         }
     }
 
@@ -311,8 +311,7 @@ public sealed partial class WindowTitleScanner : IWindowTitleScanner, IDisposabl
     {
         lock (_cacheLock)
         {
-            CheckPipCache(processName);
-            return _cachedPipActive;
+            return TryGetPipWindowCore(out _, out _, processName);
         }
     }
 
@@ -320,25 +319,48 @@ public sealed partial class WindowTitleScanner : IWindowTitleScanner, IDisposabl
     {
         lock (_cacheLock)
         {
-            CheckPipCache(processName);
+            return TryGetPipWindowCore(out pipHwnd, out pipTitle, processName);
+        }
+    }
+
+    private bool TryGetPipWindowCore(out IntPtr pipHwnd, out string pipTitle, string? processName)
+    {
+        int ttlMs = _cachedPipActive ? 400 : 700;
+        if ((DateTime.UtcNow - _lastPipCheckTime).TotalMilliseconds >= ttlMs)
+        {
+            _cachedPipActive = PipDetector.TryFindPipWindow(out _cachedPipHwnd, out _cachedPipTitle, null);
+            _cachedPipWindowProcessName = null;
+            if (_cachedPipActive && _cachedPipHwnd != IntPtr.Zero)
+            {
+                GetWindowThreadProcessId(_cachedPipHwnd, out uint pipPid);
+                if (pipPid != 0)
+                    _cachedPipWindowProcessName = ProcessNameResolver.TryGetName(pipPid);
+            }
+            _lastPipCheckTime = DateTime.UtcNow;
+        }
+
+        if (string.IsNullOrEmpty(processName))
+        {
             pipHwnd = _cachedPipHwnd;
             pipTitle = _cachedPipTitle;
             return _cachedPipActive;
         }
-    }
 
-    private void CheckPipCache(string? processName)
-    {
-        int ttlMs = _cachedPipActive ? 400 : 700;
-        if ((DateTime.UtcNow - _lastPipCheckTime).TotalMilliseconds < ttlMs &&
-            string.Equals(processName, _lastPipProcessName, StringComparison.OrdinalIgnoreCase))
+        if (!_cachedPipActive)
         {
-            return;
+            pipHwnd = IntPtr.Zero;
+            pipTitle = string.Empty;
+            return false;
         }
 
-        _cachedPipActive = PipDetector.TryFindPipWindow(out _cachedPipHwnd, out _cachedPipTitle, processName);
-        _lastPipCheckTime = DateTime.UtcNow;
-        _lastPipProcessName = processName;
+        if (string.Equals(_cachedPipWindowProcessName, processName, StringComparison.OrdinalIgnoreCase))
+        {
+            pipHwnd = _cachedPipHwnd;
+            pipTitle = _cachedPipTitle;
+            return true;
+        }
+
+        return PipDetector.TryFindPipWindow(out pipHwnd, out pipTitle, processName);
     }
 
     public bool IsSpotifyWebPlayerOpen()

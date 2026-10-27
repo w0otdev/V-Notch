@@ -53,14 +53,14 @@ public:
         int64_t now_utc_ticks) noexcept {
         if (detection_mode == 1) return true; // AwaitingMetadata
         if (detection_mode == 0 && last_event_ticks > 0) {
-            const double elapsed_sec = static_cast<double>(now_utc_ticks - last_event_ticks) / kTicksPerSecond;
+            const double elapsed_sec = (static_cast<double>(now_utc_ticks) - static_cast<double>(last_event_ticks)) / kTicksPerSecond;
             if (elapsed_sec > 10.0) return true;
         }
         return false;
     }
 
     static bool EvaluateShouldPublish(const VnMediaPublishParams& p) noexcept {
-        const double pos_diff_sec = std::abs(static_cast<double>(p.position_ticks - p.last_position_ticks) / kTicksPerSecond);
+        const double pos_diff_sec = std::abs((static_cast<double>(p.position_ticks) - static_cast<double>(p.last_position_ticks)) / kTicksPerSecond);
         const bool is_throttled = p.is_throttled != 0;
         const bool significant_jump = pos_diff_sec >= (is_throttled ? 5.0 : 1.5);
         const bool in_startup_sync = p.now_utc_ticks <= p.startup_sync_until_utc_ticks;
@@ -269,6 +269,8 @@ public:
     }
 };
 
+
+
 struct SpotifySearchContext {
     char16_t* out_buf;
     int32_t out_cap;
@@ -376,13 +378,6 @@ VN_EXPORT int32_t __stdcall vn_media_detection_build_session_instance_key(
     const auto addr = static_cast<uint64_t>(reinterpret_cast<uintptr_t>(identity));
     identity->Release();
 
-    int32_t pos = 0;
-    const int32_t copy_app = std::min(source_app_len, out_cap - 1);
-    if (source_app && copy_app > 0) {
-        for (int32_t i = 0; i < copy_app; ++i) out_buf[pos++] = source_app[i];
-    }
-    if (pos < out_cap) out_buf[pos++] = u'|';
-
     char16_t hex[16]{};
     int32_t hex_len = 0;
     uint64_t val = addr;
@@ -395,10 +390,19 @@ VN_EXPORT int32_t __stdcall vn_media_detection_build_session_instance_key(
             val >>= 4;
         }
     }
-    for (int32_t i = hex_len - 1; i >= 0 && pos < out_cap; --i) {
+
+    const int32_t required = source_app_len + 1 + hex_len;
+    *out_len = required;
+    if (out_cap < required) return VN_ERR_BUFFER_TOO_SMALL;
+
+    int32_t pos = 0;
+    if (source_app && source_app_len > 0) {
+        for (int32_t i = 0; i < source_app_len; ++i) out_buf[pos++] = source_app[i];
+    }
+    out_buf[pos++] = u'|';
+    for (int32_t i = hex_len - 1; i >= 0; --i) {
         out_buf[pos++] = hex[i];
     }
-    *out_len = pos;
     return VN_OK;
 }
 
@@ -426,15 +430,21 @@ VN_EXPORT int32_t __stdcall vn_media_detection_extract_youtube_video_id(
     return VN_OK;
 }
 
+
+
 VN_EXPORT int32_t __stdcall vn_media_detection_get_spotify_window_title(
     char16_t* out_buf,
     int32_t out_cap,
     int32_t* out_len) noexcept {
     if (!out_buf || out_cap <= 0 || !out_len) return VN_ERR_INVALID_ARG;
-    vnotch::services::SpotifySearchContext ctx{ out_buf, out_cap, 0 };
-    EnumWindows(vnotch::services::EnumSpotifyWindowsProc, reinterpret_cast<LPARAM>(&ctx));
-    *out_len = ctx.out_len;
-    return VN_OK;
+    try {
+        vnotch::services::SpotifySearchContext ctx{ out_buf, out_cap, 0 };
+        EnumWindows(vnotch::services::EnumSpotifyWindowsProc, reinterpret_cast<LPARAM>(&ctx));
+        *out_len = ctx.out_len;
+        return VN_OK;
+    } catch (...) {
+        return VN_ERR_FAIL;
+    }
 }
 
 VN_EXPORT int32_t __stdcall vn_media_detection_parse_youtube_window_title(

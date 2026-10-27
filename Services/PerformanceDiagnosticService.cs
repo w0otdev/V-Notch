@@ -54,7 +54,7 @@ public sealed partial class PerformanceDiagnosticService
 
     private static readonly uint MemCountersCb = (uint)Marshal.SizeOf<Win32Interop.PROCESS_MEMORY_COUNTERS_EX>();
     private static readonly uint MemStatusCb = (uint)Marshal.SizeOf<Win32Interop.MEMORYSTATUSEX_METRICS>();
-    private readonly Process _currentProcess = Process.GetCurrentProcess();
+
     private readonly IntPtr _currentProcessHandle = Win32Interop.GetCurrentProcess();
     private readonly int _processorCount;
     private readonly Queue<DiagnosticLogEntry> _diagnosticLogs = new(200);
@@ -372,7 +372,10 @@ public sealed partial class PerformanceDiagnosticService
         {
             try
             {
-                _cachedThreadCount = _currentProcess.Threads.Count;
+                using var proc = Process.GetCurrentProcess();
+                var threads = proc.Threads;
+                _cachedThreadCount = threads.Count;
+                foreach (ProcessThread pt in threads) pt.Dispose();
             }
             catch (Exception)
             {

@@ -46,11 +46,13 @@ public partial class WhiteNoiseStrip : UserControl
         VolumeBar.ToolTip = Loc.Get("whitenoise.volume");
         VolumeBar.SizeChanged += (_, _) => UpdateVolumeFill(false);
         WhiteNoiseService.StateChanged += Refresh;
-        Unloaded += (_, _) => WhiteNoiseService.StateChanged -= Refresh;
+        Unloaded += (_, _) => { WhiteNoiseService.StateChanged -= Refresh; Loc.LanguageChanged -= Refresh; };
         Loaded += (_, _) =>
         {
             WhiteNoiseService.StateChanged -= Refresh;
             WhiteNoiseService.StateChanged += Refresh;
+            Loc.LanguageChanged -= Refresh;
+            Loc.LanguageChanged += Refresh;
             Refresh();
         };
         Refresh();
@@ -270,6 +272,7 @@ public partial class WhiteNoiseStrip : UserControl
         foreach (var sound in WhiteNoiseService.Catalog)
         {
             var chip = _chips[sound.Kind];
+            chip.Label.Text = Loc.Get(sound.LocKey);
             bool playing = WhiteNoiseService.PlayingKind == sound.Kind;
             AnimateColor(chip.Fill, playing ? ChipActiveColor : ChipIdleColor);
             AnimateColor(chip.Text, playing ? TextActiveColor : TextIdleColor);

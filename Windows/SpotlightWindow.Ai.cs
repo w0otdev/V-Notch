@@ -275,7 +275,8 @@ public partial class SpotlightWindow
             }
             else
             {
-                var doc = VNotch.Controls.AiMarkdown.RenderWords(receivedText, revealedLength + 1,
+                int step = Math.Max(1, receivedText.Length / 120);
+                var doc = VNotch.Controls.AiMarkdown.RenderWords(receivedText, revealedLength + step,
                     out int shown, out revealCaughtUp, Math.Min(240, revealTimer.Interval.TotalMilliseconds));
                 if (shown == revealedLength) return;
                 revealedLength = shown;

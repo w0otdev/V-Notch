@@ -61,7 +61,14 @@ private:
     }
 };
 
+struct ProbeLockGuard {
+    SRWLOCK* lock;
+    explicit ProbeLockGuard(SRWLOCK* l) noexcept : lock(l) { AcquireSRWLockExclusive(lock); }
+    ~ProbeLockGuard() { ReleaseSRWLockExclusive(lock); }
+};
+
 struct Probe {
+    SRWLOCK lock = SRWLOCK_INIT;
     ComPtr<IMMDeviceEnumerator> enumerator;
     NotificationClient client;
     bool registered = false;
@@ -184,6 +191,7 @@ VN_EXPORT int32_t __stdcall vn_mic_probe_clear(int64_t handle) noexcept {
     auto lease = mp::g_probes.Acquire(handle);
     mp::Probe* probe = lease.get();
     if (!probe) return VN_ERR_INVALID_ARG;
+    mp::ProbeLockGuard guard(&probe->lock);
     probe->entries.clear();
     return VN_OK;
 }
@@ -195,6 +203,7 @@ VN_EXPORT int32_t __stdcall vn_mic_probe_rebuild(int64_t handle, int32_t* out_co
     if (!probe || !probe->enumerator.ptr || !out_count || !out_hresult) return VN_ERR_INVALID_ARG;
     *out_count = 0;
     *out_hresult = 0;
+    mp::ProbeLockGuard guard(&probe->lock);
     try {
         probe->entries.clear();
         mp::ComPtr<IMMDeviceCollection> devices;
@@ -220,7 +229,9 @@ VN_EXPORT int32_t __stdcall vn_mic_probe_rebuild(int64_t handle, int32_t* out_co
 VN_EXPORT int32_t __stdcall vn_mic_probe_get_process_id(int64_t handle, int32_t index, uint32_t* out_process_id) noexcept {
     auto lease = mp::g_probes.Acquire(handle);
     mp::Probe* probe = lease.get();
-    if (!probe || !out_process_id || index < 0 || static_cast<size_t>(index) >= probe->entries.size()) return VN_ERR_INVALID_ARG;
+    if (!probe || !out_process_id || index < 0) return VN_ERR_INVALID_ARG;
+    mp::ProbeLockGuard guard(&probe->lock);
+    if (static_cast<size_t>(index) >= probe->entries.size()) return VN_ERR_INVALID_ARG;
     *out_process_id = probe->entries[static_cast<size_t>(index)]->process_id;
     return VN_OK;
 }
@@ -230,6 +241,7 @@ VN_EXPORT int32_t __stdcall vn_mic_probe_keep(int64_t handle, const uint32_t* pr
     auto lease = mp::g_probes.Acquire(handle);
     mp::Probe* probe = lease.get();
     if (!probe || !out_count || count < 0 || (count > 0 && !process_ids)) return VN_ERR_INVALID_ARG;
+    mp::ProbeLockGuard guard(&probe->lock);
     const uint32_t* end = process_ids + count;
     std::erase_if(probe->entries, [&](const std::unique_ptr<mp::MeterEntry>& entry) {
         return std::find(process_ids, end, static_cast<uint32_t>(entry->process_id)) == end;
@@ -245,6 +257,7 @@ VN_EXPORT int32_t __stdcall vn_mic_probe_sample(
     auto lease = mp::g_probes.Acquire(handle);
     mp::Probe* probe = lease.get();
     if (!probe || !out_has_active || !out_peak || !out_any_invalid) return VN_ERR_INVALID_ARG;
+    mp::ProbeLockGuard guard(&probe->lock);
     *out_has_active = 0;
     *out_any_invalid = 0;
     float highest = 0.0f;

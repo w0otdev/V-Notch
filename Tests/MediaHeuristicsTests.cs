@@ -176,5 +176,32 @@ public class MediaHeuristicsTests
         Assert.False(MediaHeuristics.SpotifyTitleContainsTrack(title, track));
     }
 
+    [Fact]
+    public void KoreanHangul_ExpandingNfkdInputs_DoNotThrowAcrossWrapperHelpers()
+    {
+        string artist = "방탄소년단";
+        string title = "봄날 (Spring Day)";
+        Assert.NotEmpty(MediaHeuristics.BuildTrackIdentity(title, artist));
+        Assert.NotEmpty(MediaHeuristics.BuildSourceOverrideKey(title, artist));
+        Assert.NotEmpty(MediaHeuristics.NormalizeTrackForComparison(title));
+        Assert.NotEmpty(MediaHeuristics.ExtractCoreTrackName(title));
+        Assert.NotEmpty(VNotch.Services.PlatformDetector.NormalizeForLooseMatch(artist));
+        Assert.NotEmpty(VNotch.Services.SpotifyTrackMatcher.NormalizeForMatch(title));
+        Assert.NotEmpty(VNotch.Services.SettingsSearchMatcher.Normalize(artist));
+    }
+
+    [Fact]
+    public void MediaSessionState_CapsSessionsAndOverridesAtMaxCapacity()
+    {
+        var state = new VNotch.Services.MediaSessionState();
+        for (int i = 0; i < 300; i++)
+        {
+            state.GetOrCreate($"session-{i}");
+            state.SetSourceOverride($"key-{i}", "YouTube");
+        }
+        Assert.True(state.SessionCount <= 256);
+        Assert.True(state.SourceOverrideCount <= 256);
+    }
+
     #endregion
 }

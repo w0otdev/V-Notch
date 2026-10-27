@@ -39,6 +39,7 @@ public sealed partial class AudioMixerService : IDisposable
     private const int RenderFlow = 0;
     private const int CaptureFlow = 1;
     private const int NativeBufferTooSmall = -2;
+    private const int AudioSessionActive = 1;
     private const int AudioSessionExpired = 2;
 
     [LibraryImport(NativeAudioDll)]
@@ -194,6 +195,7 @@ public sealed partial class AudioMixerService : IDisposable
             try
             {
                 var seenProcessIds = new HashSet<uint>();
+                var indexAndStateByPid = new Dictionary<uint, (int ResultIndex, int State)>();
                 for (int i = 0; i < count; i++)
                 {
                     try
@@ -206,7 +208,28 @@ public sealed partial class AudioMixerService : IDisposable
                         bool isSystem = isSystemSounds != 0;
                         uint dedupeKey = isSystem ? 0u : pid;
                         if (!seenProcessIds.Add(dedupeKey))
+                        {
+                            if (state == AudioSessionActive &&
+                                indexAndStateByPid.TryGetValue(dedupeKey, out var existing) &&
+                                existing.State != AudioSessionActive &&
+                                WindowsMediaAudioSessions.NativeOpenVolume(snapshot, i, out long activeLease) == 0)
+                            {
+                                try
+                                {
+                                    if (WindowsMediaAudioSessions.NativeVolumeGet(activeLease, out float activeScalar, out byte activeMuteFlag, out _) == 0)
+                                    {
+                                        results[existing.ResultIndex].Volume = Math.Clamp(activeScalar, 0f, 1f);
+                                        results[existing.ResultIndex].IsMuted = activeMuteFlag != 0;
+                                        indexAndStateByPid[dedupeKey] = (existing.ResultIndex, state);
+                                    }
+                                }
+                                finally
+                                {
+                                    WindowsMediaAudioSessions.NativeVolumeClose(activeLease);
+                                }
+                            }
                             continue;
+                        }
 
                         if (WindowsMediaAudioSessions.NativeOpenVolume(snapshot, i, out long lease) != 0)
                             continue;
@@ -265,6 +288,7 @@ public sealed partial class AudioMixerService : IDisposable
                         if (string.IsNullOrWhiteSpace(name))
                             continue;
 
+                        indexAndStateByPid[dedupeKey] = (results.Count, state);
                         results.Add(new AudioSessionInfo
                         {
                             ProcessId = dedupeKey,

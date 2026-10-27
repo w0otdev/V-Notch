@@ -55,6 +55,26 @@ This policy uses the following terms:
 | **Gestures & mouse input** | Mouse movement/clicks over the notch | No | No |
 | **Smart artwork crop** | On-device YOLO11n object detection (ONNX Runtime) | No | No (runs 100% locally) |
 
+### Service & Storage Overview
+
+| Service | Purpose |
+| --- | --- |
+| GitHub Releases API | Update checks |
+| LRCLIB / lrc mux | Synced lyrics |
+| YouTube / SoundCloud | Public thumbnails and captions |
+| Spotify Web Services | Experimental Canvas, off by default; explicit opt-in; session encrypted with Windows DPAPI |
+| Open-Meteo / ipwho.is | Optional weather |
+| OpenAI / Google Gemini / Anthropic Claude / DeepSeek | Optional AI messages and conversation context; DeepSeek balance refresh on request |
+
+Settings and several local caches are stored at `%APPDATA%\V-Notch\`. Encrypted AI chat history is stored separately at `%LOCALAPPDATA%\V-Notch\spotlight-chats.enc` (legacy path `%LOCALAPPDATA%\VNotch\spotlight-chats.enc`). Other component caches and temporary files are described in Section 5. Local Spotlight Search does not upload queries; Spotlight AI sends the content you submit to your selected provider.
+
+**Third-party media:** Canvas uses unofficial Spotify endpoints and requires acknowledgement before sign-in or requests. Spotify may restrict access; opt-in does not grant platform permission. YouTube captions must be accessed and used according to YouTube's terms and applicable law. Fair use is assessed case by case. Read the [external-platform notices](TERMS_OF_SERVICE.md#4-external-platforms-and-content) before enabling these features.
+
+> [!NOTE]
+> **API Key Safety:** User-provided API credentials (OpenAI, Gemini, Claude, DeepSeek, YouTube) are encrypted locally with Windows DPAPI. V-Notch maintains no intermediary servers. Maintainers assume no liability for third-party billing, quota exhaustion, or credentials leaked from user environments or pre-release testing builds. Please configure spending caps on your provider accounts.
+
+Privacy dots use capture reports from Windows and recording signals from Bandicam, OBS Studio, and FFmpeg. See [recording detection coverage and limitations](../RECORDING_DETECTION.md).
+
 ---
 
 ## 3. Data Accessed on Your Device
@@ -325,7 +345,7 @@ V-Notch does **not**:
 
 ## 8. Privacy & Local-Only Controls
 
-Privacy includes independent controls for online AI, subtitles, Spotify Canvas/sign-in and weather, alongside existing artwork, lyrics, browser inspection and logging controls. Offline mode overrides the online choices without erasing them. Turning **Save AI chat history** off stops loading and saving V-Notch AI history. Changing this option clears the active in-memory conversation/draft to prevent later persistence; previously saved files are preserved. Re-enable it to access and delete saved conversations. It does not control provider retention.
+Privacy in **Settings → Privacy** controls online AI, subtitles, Spotify Canvas/sign-in, weather, and AI chat history independently, alongside artwork, lyrics, browser inspection, and logging controls. Strict Local-Only Mode overrides online permissions, cancels app-managed requests (including streamed responses), blocks manual AI, balance, and update requests, and blocks online links opened through the app. Turning offline mode off restores your individual choices. Disabling **Save AI chat history** stops loading and saving V-Notch AI history and starts an in-memory session (clearing the active in-memory conversation or draft to prevent later persistence); previously saved chats remain on disk and can be accessed or deleted again by re-enabling history. It does not control provider retention. Offline mode is an application policy, not a Windows firewall; it cannot govern other apps or guarantee that third-party runtime background traffic is absent.
 
 V-Notch provides a dedicated **Privacy** section in Settings with granular toggles to customize your privacy posture and enforce strict offline execution:
 

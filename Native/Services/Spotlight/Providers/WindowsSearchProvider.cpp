@@ -35,7 +35,10 @@ namespace vnotch::services
             continue;
         filtered.push_back(c);
         if (filtered.size() == 256)
+        {
+            if ((filtered.back() & 0xFC00) == 0xD800) filtered.pop_back();
             break;
+        }
     }
 
     std::u16string_view trimmed = vnotch::trim(filtered);
@@ -88,18 +91,18 @@ namespace vnotch::services
 VN_EXPORT int32_t vn_windows_search_sanitize_query(const char16_t* query_ptr, int32_t query_len,
     char16_t* out_buf, int32_t out_cap, int32_t* out_len) noexcept
 {
-    return vnotch::services::WindowsSearchProvider::vn_windows_search_sanitize_query_impl(query_ptr, query_len, out_buf, out_cap, out_len);
+    try { return vnotch::services::WindowsSearchProvider::vn_windows_search_sanitize_query_impl(query_ptr, query_len, out_buf, out_cap, out_len); } catch (...) { return VN_ERR_FAIL; }
 }
 
 VN_EXPORT int32_t vn_windows_search_escape_like_pattern(const char16_t* query_ptr, int32_t query_len,
     char16_t* out_buf, int32_t out_cap, int32_t* out_len) noexcept
 {
-    return vnotch::services::WindowsSearchProvider::vn_windows_search_escape_like_pattern_impl(query_ptr, query_len, out_buf, out_cap, out_len);
+    try { return vnotch::services::WindowsSearchProvider::vn_windows_search_escape_like_pattern_impl(query_ptr, query_len, out_buf, out_cap, out_len); } catch (...) { return VN_ERR_FAIL; }
 }
 
 VN_EXPORT int32_t vn_windows_search_build_name_predicate(const char16_t* sanitized_ptr, int32_t sanitized_len,
     char16_t* out_buf, int32_t out_cap, int32_t* out_len) noexcept
 {
-    return vnotch::services::WindowsSearchProvider::vn_windows_search_build_name_predicate_impl(sanitized_ptr, sanitized_len, out_buf, out_cap, out_len);
+    try { return vnotch::services::WindowsSearchProvider::vn_windows_search_build_name_predicate_impl(sanitized_ptr, sanitized_len, out_buf, out_cap, out_len); } catch (...) { return VN_ERR_FAIL; }
 }
 

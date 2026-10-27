@@ -308,8 +308,8 @@ public sealed class ClipboardHistoryController : IDisposable, IAsyncDisposable
                 SetTextFormats(data, content);
             }
             var current = Store.GetEntry(entry.Id) ?? throw new InvalidOperationException("Clipboard item is unavailable.");
-            await WriteClipboardAsync(data, entry.IsPersonal || current.IsPersonal);
-            _clipboardExportPaths = exported;
+            await WriteClipboardAsync(data, entry.IsPersonal || current.IsPersonal, exported);
+            // _clipboardExportPaths is set inside WriteClipboardAsync under _clipboardWriteGate.
             written = true;
         }
         finally { if (!written && exported.Length > 0) await Store.ReleasePersonalExportsAsync(exported); }
@@ -358,14 +358,14 @@ public sealed class ClipboardHistoryController : IDisposable, IAsyncDisposable
         try
         {
             var selection = await CreateSelectionDataAsync(entries, paths);
-            await WriteClipboardAsync(selection.Data, selection.Personal);
-            _clipboardExportPaths = paths.ToArray();
+            await WriteClipboardAsync(selection.Data, selection.Personal, paths.ToArray());
+            // _clipboardExportPaths is set inside WriteClipboardAsync under _clipboardWriteGate.
             written = true;
         }
         finally { if (!written) await Store.ReleasePersonalExportsAsync(paths); }
     }
 
-    private async Task WriteClipboardAsync(DataObject data, bool personal)
+    private async Task WriteClipboardAsync(DataObject data, bool personal, string[]? newExports = null)
     {
         if (personal) data.SetData("ExcludeClipboardContentFromMonitorProcessing", new MemoryStream([1, 0, 0, 0]));
         await _clipboardWriteGate.WaitAsync();
@@ -378,7 +378,7 @@ public sealed class ClipboardHistoryController : IDisposable, IAsyncDisposable
                 System.Windows.Clipboard.SetDataObject(data, true);
                 _ownSequence = GetClipboardSequenceNumber();
                 _personalClipboardSequence = personal ? _ownSequence : 0;
-                _clipboardExportPaths = [];
+                _clipboardExportPaths = newExports ?? [];
                 if (previousExports.Length > 0) _ = ReleaseClipboardExportsAsync(previousExports);
             }, () =>
             {

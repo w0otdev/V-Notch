@@ -958,7 +958,8 @@ public partial class SettingsWindow : Window
             };
             fadeOut.Completed += (_, _) =>
             {
-                element.Visibility = Visibility.Collapsed;
+                if (!element.IsEnabled)
+                    element.Visibility = Visibility.Collapsed;
             };
             Timeline.SetDesiredFrameRate(fadeOut, AnimationConfig.TargetFps);
             element.BeginAnimation(OpacityProperty, fadeOut);

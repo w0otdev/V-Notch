@@ -106,6 +106,8 @@ public:
     }
 
     static double GetAdaptiveBlurOpacity(double luminance, double brightness_boost) noexcept {
+        if (!std::isfinite(luminance)) luminance = 0.0;
+        if (!std::isfinite(brightness_boost)) brightness_boost = 1.0;
         brightness_boost = std::clamp(brightness_boost, 0.5, 2.5);
         double base_opacity;
         if (luminance <= 0.72) {
@@ -119,19 +121,22 @@ public:
     }
 
     static double GetAdaptiveBlurImageOpacity(double luminance) noexcept {
+        if (!std::isfinite(luminance)) luminance = 0.0;
         if (luminance <= 0.70) return 0.90;
         double t = std::clamp((luminance - 0.70) / 0.30, 0.0, 1.0);
         return 0.90 - t * 0.15;
     }
 
     static double ComputeBrightnessDim(std::span<const uint8_t> pixels, int32_t pixel_count) noexcept {
-        if (pixel_count <= 0) return 0.0;
+        int32_t buf_len = static_cast<int32_t>(pixels.size());
+        const int32_t count = std::min(pixel_count, buf_len / 4);
+        if (count <= 0) return 0.0;
 
         double total_luminance = 0.0;
         int32_t bright_pixel_count = 0;
-        int32_t buf_len = static_cast<int32_t>(pixels.size());
+        const int32_t limit = count * 4;
 
-        for (int32_t i = 0; i + 3 < buf_len; i += 4) {
+        for (int32_t i = 0; i + 3 < limit; i += 4) {
             double r = pixels[i + 2] / 255.0;
             double g = pixels[i + 1] / 255.0;
             double b = pixels[i] / 255.0;
@@ -142,8 +147,8 @@ public:
             if (lum > 0.75) bright_pixel_count++;
         }
 
-        double avg_luminance = total_luminance / pixel_count;
-        double bright_ratio = static_cast<double>(bright_pixel_count) / pixel_count;
+        double avg_luminance = total_luminance / count;
+        double bright_ratio = static_cast<double>(bright_pixel_count) / count;
 
         double lum_contrib = avg_luminance > 0.55
             ? std::clamp((avg_luminance - 0.55) / 0.45, 0.0, 1.0) * 0.45
@@ -324,6 +329,13 @@ public:
     }
 
     static void HslToColor(double h, double s, double l, uint8_t* out_r, uint8_t* out_g, uint8_t* out_b) noexcept {
+        if (!std::isfinite(h) || !std::isfinite(s) || !std::isfinite(l)) {
+            *out_r = *out_g = *out_b = 0;
+            return;
+        }
+        h = h - std::floor(h);
+        s = std::clamp(s, 0.0, 1.0);
+        l = std::clamp(l, 0.0, 1.0);
         double r, g, b;
         if (s == 0.0) {
             r = g = b = l;

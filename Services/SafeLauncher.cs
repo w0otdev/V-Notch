@@ -86,7 +86,7 @@ public static partial class SafeLauncher
                 UseShellExecute = true
             };
             using var process = Process.Start(psi);
-            return process != null;
+            return psi.UseShellExecute || process != null;
         }
         catch (Exception ex)
         {

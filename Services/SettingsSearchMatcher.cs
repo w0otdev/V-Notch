@@ -25,7 +25,9 @@ internal static partial class SettingsSearchMatcher
         fixed (char* pIn = input)
         fixed (char* pOut = buf)
         {
-            _ = vn_settings_search_normalize(pIn, input.Length, pOut, cap, out int outLen);
+            int rc = vn_settings_search_normalize(pIn, input.Length, pOut, cap, out int outLen);
+            if (rc == -2 && outLen > cap) { char[] larger = new char[outLen]; fixed (char* pL = larger) rc = vn_settings_search_normalize(pIn, input.Length, pL, outLen, out outLen); return rc == 0 && outLen > 0 ? new string(larger, 0, outLen) : string.Empty; }
+            if (rc != 0) outLen = 0;
             return outLen > 0 ? new string(buf, 0, outLen) : string.Empty;
         }
     }

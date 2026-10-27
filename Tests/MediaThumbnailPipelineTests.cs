@@ -119,6 +119,7 @@ public sealed class MediaThumbnailPipelineTests
         using var fixture = new Fixture();
         var info = fixture.Track("Browser");
         info.Duration = live ? TimeSpan.Zero : TimeSpan.FromSeconds(120);
+        info.IsIndeterminate = live;
         fixture.PublishIdentity(info);
         var result = Result(info.CurrentTrack);
         fixture.Metadata.UrlResult = result;
@@ -143,6 +144,220 @@ public sealed class MediaThumbnailPipelineTests
         Assert.Contains(fixture.Updates, update => update.IsThumbnailOnlyUpdate && update.YouTubeVideoId == "abcdefghijk");
         Assert.True(fixture.Cache.HasSource(info.CurrentTrack, "", "YouTube"));
         Assert.Equal(0, Field<int>(fixture.Service, "_youTubeFetchInFlight"));
+    });
+
+    [Theory]
+    [InlineData("background", true)]
+    [InlineData("foreground", true)]
+    [InlineData("cache", true)]
+    [InlineData("lookup", true)]
+    [InlineData("search", true)]
+    [InlineData("lookup", false)]
+    [InlineData("lookup-empty-author", true)]
+    [InlineData("poll", true)]
+    public void YouTubeDiscoveryRecoversMissingDurationBeforePublishingArtwork(string discovery, bool pending) => SharedStaTestRunner.RunAsync(async ct =>
+    {
+        using var fixture = new Fixture();
+        var info = fixture.Track("Browser");
+        info.IsTimelinePending = pending;
+        fixture.PublishIdentity(info);
+        Set(fixture.Service, "_lastPublishedInfo", info.Clone());
+        var result = discovery == "lookup-empty-author"
+            ? new YouTubeLookupResult { Id = "abcdefghijk", Title = info.CurrentTrack, Duration = TimeSpan.FromSeconds(123) }
+            : Result(info.CurrentTrack);
+        fixture.Metadata.UrlResult = result;
+        if (discovery == "background") fixture.Scanner.AnyUrl = "https://youtu.be/abcdefghijk";
+        if (discovery == "foreground") fixture.Scanner.CurrentUrl = "https://music.youtube.com/watch?v=abcdefghijk";
+        if (discovery == "cache") Invoke(fixture.Service, "CacheVideoIdForTrack", info.CurrentTrack, "abcdefghijk");
+        if (discovery is "lookup" or "lookup-empty-author") fixture.Metadata.TrackResult = result;
+        if (discovery == "search") fixture.Metadata.SearchResult = result;
+        if (discovery == "poll") fixture.Scanner.OnInvalidated = () => fixture.Scanner.AnyUrl = "https://youtu.be/abcdefghijk";
+        fixture.Artwork.Image = Bitmap(640, 360);
+
+        await FetchYouTube(fixture.Service, info, ct);
+
+        Assert.Equal(result.Duration, info.Duration);
+        Assert.False(info.IsTimelinePending);
+        Assert.False(info.IsTimelineIndeterminate);
+        Assert.Equal(result.Duration, Field<MediaTimelineSimulator>(fixture.Service, "_timelineSimulator").RecoveredDuration);
+        Assert.Contains(fixture.Updates, update => !update.IsThumbnailOnlyUpdate && update.Duration == result.Duration && !update.IsTimelineIndeterminate);
+        Assert.Contains(fixture.Updates, update => update.IsThumbnailOnlyUpdate && update.HasThumbnail);
+    });
+
+    [Fact]
+    public void NewBrowserTrackWithMissingDurationWaitsForItsTimeline() => SharedStaTestRunner.Run(() =>
+    {
+        using var fixture = new Fixture();
+        var now = DateTime.UtcNow;
+        Set(fixture.Service, "_lastTrackSignature", "previous track");
+        Set(fixture.Service, "_lastMetadataChangeTime", now.AddSeconds(-10));
+        var info = fixture.Track("YouTube");
+        info.IsIndeterminate = true; // The solver cannot distinguish a missing duration from live.
+
+        fixture.Service.ApplyTimelineAvailability(info, true, true, false, TimeSpan.Zero, now);
+
+        Assert.True(info.IsTimelinePending);
+        Assert.False(info.IsIndeterminate);
+        Assert.True(info.IsTimelineIndeterminate);
+        Assert.False(info.HasTimeline);
+    });
+
+    [Fact]
+    public void BrowserWithoutDurationFallsBackToLiveAfterMetadataSettles() => SharedStaTestRunner.Run(() =>
+    {
+        using var fixture = new Fixture();
+        var now = DateTime.UtcNow;
+        Set(fixture.Service, "_lastTrackSignature", "current track");
+        Set(fixture.Service, "_lastMetadataChangeTime", now.AddSeconds(-3));
+        var info = fixture.Track("YouTube");
+        info.IsIndeterminate = true;
+        fixture.Service.ApplyTimelineAvailability(info, true, false, false, TimeSpan.Zero, now);
+        Assert.True(info.IsTimelinePending);
+        Assert.True(info.IsTimelineIndeterminate);
+
+        info.IsIndeterminate = true;
+        fixture.Service.ApplyTimelineAvailability(info, true, false, false, TimeSpan.Zero, now.AddSeconds(2));
+
+        Assert.False(info.IsTimelinePending);
+        Assert.False(info.IsIndeterminate);
+        Assert.True(info.IsTimelineIndeterminate);
+    });
+
+    [Fact]
+    public void RepeatedMissingBrowserTimelineRetainsTheCurrentVideosDuration() => SharedStaTestRunner.Run(() =>
+    {
+        using var fixture = new Fixture();
+        var last = fixture.Track("YouTube");
+        last.Duration = TimeSpan.FromSeconds(123);
+        Set(fixture.Service, "_lastPublishedInfo", last.Clone());
+        var info = last.Clone();
+        info.Duration = TimeSpan.Zero;
+        info.IsIndeterminate = true;
+
+        fixture.Service.ApplyTimelineAvailability(info, true, false, false, TimeSpan.Zero, DateTime.UtcNow);
+
+        Assert.Equal(last.Duration, info.Duration);
+        Assert.False(info.IsTimelinePending);
+        Assert.False(info.IsTimelineIndeterminate);
+        Assert.True(info.HasTimeline);
+    });
+
+    [Theory]
+    [InlineData("track")]
+    [InlineData("source")]
+    [InlineData("session")]
+    public void MissingBrowserDurationCannotBorrowAnotherVideosTimeline(string changed) => SharedStaTestRunner.Run(() =>
+    {
+        using var fixture = new Fixture();
+        var last = fixture.Track("YouTube");
+        last.Duration = TimeSpan.FromSeconds(123);
+        Set(fixture.Service, "_lastPublishedInfo", last.Clone());
+        var info = last.Clone();
+        info.Duration = TimeSpan.Zero;
+        info.IsIndeterminate = true;
+        if (changed == "track") info.CurrentTrack = "Next video";
+        if (changed == "source") info.SourceAppId = "msedge";
+        if (changed == "session") info.SessionInstanceKey = "other-tab";
+        var now = DateTime.UtcNow;
+        Set(fixture.Service, "_lastTrackSignature", "previous track");
+        Set(fixture.Service, "_lastMetadataChangeTime", now.AddSeconds(-10));
+
+        fixture.Service.ApplyTimelineAvailability(info, true, changed == "track", false, TimeSpan.Zero, now);
+
+        Assert.Equal(TimeSpan.Zero, info.Duration);
+        Assert.True(info.IsTimelinePending);
+        Assert.True(info.IsTimelineIndeterminate);
+
+        if (changed != "track")
+        {
+            Set(fixture.Service, "_lastPublishedInfo", info.Clone());
+            info.IsIndeterminate = true;
+            fixture.Service.ApplyTimelineAvailability(info, true, false, false, TimeSpan.Zero, now.AddSeconds(1));
+            Assert.True(info.IsTimelinePending);
+            Assert.Equal(TimeSpan.Zero, info.Duration);
+        }
+    });
+
+    [Theory]
+    [InlineData(true, 0)]
+    [InlineData(false, 3456000)]
+    public void ConfirmedLiveTimelineCannotReuseCachedVodDuration(bool classifiedLive, double reportedDuration) => SharedStaTestRunner.Run(() =>
+    {
+        using var fixture = new Fixture();
+        var last = fixture.Track("YouTube");
+        last.Duration = TimeSpan.FromSeconds(123);
+        Set(fixture.Service, "_lastPublishedInfo", last.Clone());
+        var info = last.Clone();
+        info.Duration = TimeSpan.Zero;
+        info.IsIndeterminate = true;
+
+        fixture.Service.ApplyTimelineAvailability(info, true, false, classifiedLive, TimeSpan.FromSeconds(reportedDuration), DateTime.UtcNow);
+
+        Assert.Equal(TimeSpan.Zero, info.Duration);
+        Assert.False(info.IsTimelinePending);
+        Assert.True(info.IsIndeterminate);
+        Assert.True(info.IsTimelineIndeterminate);
+    });
+
+    [Fact]
+    public void ConfirmedLiveSurvivesAMissingTimelineWithoutAcceptingVodMetadata() => SharedStaTestRunner.RunAsync(async ct =>
+    {
+        using var fixture = new Fixture();
+        var last = fixture.Track("YouTube");
+        last.Duration = TimeSpan.FromHours(2);
+        last.IsIndeterminate = true;
+        fixture.PublishIdentity(last);
+        Set(fixture.Service, "_lastPublishedInfo", last.Clone());
+        var info = last.Clone();
+        info.Duration = TimeSpan.Zero;
+        fixture.Service.ApplyTimelineAvailability(info, true, false, false, TimeSpan.Zero, DateTime.UtcNow);
+        Assert.False(info.IsTimelinePending);
+        Assert.True(info.IsIndeterminate);
+        fixture.Metadata.TrackResult = Result(info.CurrentTrack);
+        fixture.Artwork.Image = Bitmap(640, 360);
+
+        await FetchYouTube(fixture.Service, info, ct);
+
+        Assert.Equal(TimeSpan.Zero, info.Duration);
+        Assert.True(info.IsTimelineIndeterminate);
+        Assert.Equal(TimeSpan.Zero, Field<MediaTimelineSimulator>(fixture.Service, "_timelineSimulator").RecoveredDuration);
+        Assert.True(info.HasThumbnail);
+    });
+
+    [Fact]
+    public void MissingBrowserTimelineDuringTransitionIsPending() => SharedStaTestRunner.RunAsync(async () =>
+    {
+        using var fixture = new Fixture();
+        var info = fixture.Track("YouTube");
+
+        await (Task)Invoke(fixture.Service, "ApplyTimelinePropertiesAsync", info, null, false)!;
+
+        Assert.True(info.IsTimelinePending);
+        Assert.False(info.IsIndeterminate);
+        Assert.True(info.IsTimelineIndeterminate);
+    });
+
+    [Fact]
+    public void WindowTitleRecoveryWaitsForTheNewVideosDuration() => SharedStaTestRunner.Run(() =>
+    {
+        using var fixture = new Fixture();
+        var info = fixture.Track("Browser");
+        info.CurrentTrack = "Previous video";
+        info.Duration = TimeSpan.FromMinutes(2);
+        info.IsPlaying = true;
+        Set(fixture.Service, "_lastTrackName", info.CurrentTrack);
+        Set(fixture.Service, "_lastMetadataChangeTime", DateTime.UtcNow.AddMinutes(-1));
+        int scans = 0;
+        fixture.Scanner.Titles = () => ++scans == 1
+            ? new List<string> { "Previous video - YouTube - Google Chrome" }
+            : new List<string> { "Next video - YouTube - Google Chrome" };
+
+        Invoke(fixture.Service, "ApplyVideoTimelineRecovery", info, null);
+
+        Assert.Equal("Next video", info.CurrentTrack);
+        Assert.Equal(TimeSpan.Zero, info.Duration);
+        Assert.True(info.IsTimelinePending);
+        Assert.False(info.IsIndeterminate);
     });
 
     [Theory]
@@ -210,6 +425,7 @@ public sealed class MediaThumbnailPipelineTests
         {
             var live = info.Clone();
             live.Duration = TimeSpan.Zero;
+            live.IsIndeterminate = true;
             Set(fixture.Service, "_lastPublishedInfo", live);
         }
         if (invalidation == "source")
@@ -495,6 +711,25 @@ public sealed class MediaThumbnailPipelineTests
     });
 
     [Fact]
+    public void PendingTimelineExpiryPublishesWithoutOtherMediaChanges() => SharedStaTestRunner.RunAsync(async () =>
+    {
+        using var fixture = new Fixture();
+        var loading = fixture.Track("YouTube");
+        loading.IsTimelinePending = true;
+        Set(fixture.Service, "_bgCts", new CancellationTokenSource());
+        await (Task<bool>)Invoke(fixture.Service, "TryPublishMediaChangeAsync", loading, loading.GetSignature(), false, true)!;
+        Assert.Single(fixture.Updates);
+
+        var settled = loading.Clone();
+        settled.IsTimelinePending = false;
+        await (Task<bool>)Invoke(fixture.Service, "TryPublishMediaChangeAsync", settled, settled.GetSignature(), false, false)!;
+
+        Assert.Equal(2, fixture.Updates.Count);
+        Assert.False(fixture.Updates.Last().IsTimelinePending);
+        Assert.True(fixture.Updates.Last().IsTimelineIndeterminate);
+    });
+
+    [Fact]
     public void TimelineModeChangesPublishWithoutPositionOrMetadataChanges() => SharedStaTestRunner.RunAsync(async () =>
     {
         using var fixture = new Fixture();
@@ -535,8 +770,8 @@ public sealed class MediaThumbnailPipelineTests
     });
 
     private static YouTubeLookupResult Result(string title, string id = "abcdefghijk") => new() { Id = id, Title = title, Author = "Fixture artist - Topic", Duration = TimeSpan.FromSeconds(123), Source = YouTubeLookupSource.DataApi, ThumbnailUrl = "https://fixture.invalid/preferred.jpg" };
-    private static Task FetchYouTube(MediaDetectionService service, MediaInfo info, CancellationToken ct) => (Task)Invoke(service, "FetchYouTubeThumbnailAsync", info, ct, false, info.CurrentTrack, info.CurrentArtist, info.SourceAppId, info.SessionInstanceKey, 0, 0, true)!;
-    private static Task FetchSoundCloud(MediaDetectionService service, MediaInfo info, CancellationToken ct) => (Task)Invoke(service, "FetchSoundCloudThumbnailAsync", info, ct, info.CurrentTrack, info.CurrentArtist, info.SourceAppId, info.SessionInstanceKey, 0, 0, true)!;
+    private static Task FetchYouTube(MediaDetectionService service, MediaInfo info, CancellationToken ct) => (Task)Invoke(service, "FetchYouTubeThumbnailAsync", info, ct, false, info.CurrentTrack, info.CurrentArtist, info.SourceAppId, info.SessionInstanceKey, 0, 0, true, null)!;
+    private static Task FetchSoundCloud(MediaDetectionService service, MediaInfo info, CancellationToken ct) => (Task)Invoke(service, "FetchSoundCloudThumbnailAsync", info, ct, info.CurrentTrack, info.CurrentArtist, info.SourceAppId, info.SessionInstanceKey, 0, 0, true, null)!;
     private static T Field<T>(MediaDetectionService service, string name) => (T)typeof(MediaDetectionService).GetField(name, Private)!.GetValue(service)!;
     private static void Set(MediaDetectionService service, string name, object value) => typeof(MediaDetectionService).GetField(name, Private)!.SetValue(service, value);
     private static object? Invoke(MediaDetectionService service, string name, params object?[] args) => typeof(MediaDetectionService).GetMethod(name, Private)!.Invoke(service, args);
@@ -577,6 +812,8 @@ public sealed class MediaThumbnailPipelineTests
             _ = System.Windows.Application.Current ?? new System.Windows.Application { ShutdownMode = System.Windows.ShutdownMode.OnExplicitShutdown };
             Cache = new MediaSourceCache(Path.Combine(_directory, "sources.json"));
             Service = new MediaDetectionService(Metadata, Artwork, Scanner, null, Cache);
+            var stateField = typeof(MediaDetectionService).GetField("_state", Private)!;
+            stateField.SetValue(Service, Enum.Parse(stateField.FieldType, "Running"));
             Service.MediaChanged += (_, update) => Updates.Add(update.Clone());
             Set(Service, "_youTubeFetchInFlight", 1);
             Set(Service, "_soundCloudFetchInFlight", 1);
@@ -629,7 +866,8 @@ public sealed class MediaThumbnailPipelineTests
         public string? CurrentUrl, AnyUrl;
         public int Invalidations;
         public Action? OnInvalidated;
-        public List<string> GetAllWindowTitles(bool isThrottled) => new();
+        public Func<List<string>>? Titles;
+        public List<string> GetAllWindowTitles(bool isThrottled) => Titles?.Invoke() ?? new();
         public string? TryGetBrowserUrl() => CurrentUrl;
         public string? TryGetMediaUrlFromAnyBrowser() => AnyUrl;
         public bool IsSpotifyWebPlayerOpen() => false;

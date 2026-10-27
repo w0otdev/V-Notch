@@ -224,7 +224,9 @@ internal sealed partial class WindowsSearchProvider : ISpotlightProvider
         ReadOnlySpan<char> span = (sanitizedQuery ?? string.Empty).AsSpan();
         int cap = span.Length * 4 + 128;
         Span<char> buf = cap <= 1024 ? stackalloc char[cap] : new char[cap];
-        vn_windows_search_build_name_predicate(span, span.Length, buf, buf.Length, out int len);
+        int rc = vn_windows_search_build_name_predicate(span, span.Length, buf, buf.Length, out int len);
+        if (rc == -2 && len > buf.Length) { char[] larger = new char[len]; rc = vn_windows_search_build_name_predicate(span, span.Length, larger, larger.Length, out len); return rc == 0 && len > 0 ? new string(larger, 0, len) : string.Empty; }
+        if (rc != 0) len = 0;
         return len > 0 ? new string(buf[..len]) : string.Empty;
     }
 
@@ -233,7 +235,9 @@ internal sealed partial class WindowsSearchProvider : ISpotlightProvider
         ReadOnlySpan<char> span = (sanitizedQuery ?? string.Empty).AsSpan();
         int cap = span.Length * 3 + 16;
         Span<char> buf = cap <= 1024 ? stackalloc char[cap] : new char[cap];
-        vn_windows_search_escape_like_pattern(span, span.Length, buf, buf.Length, out int len);
+        int rc = vn_windows_search_escape_like_pattern(span, span.Length, buf, buf.Length, out int len);
+        if (rc == -2 && len > buf.Length) { char[] larger = new char[len]; rc = vn_windows_search_escape_like_pattern(span, span.Length, larger, larger.Length, out len); return rc == 0 && len > 0 ? new string(larger, 0, len) : string.Empty; }
+        if (rc != 0) len = 0;
         return len > 0 ? new string(buf[..len]) : string.Empty;
     }
 
@@ -242,7 +246,8 @@ internal sealed partial class WindowsSearchProvider : ISpotlightProvider
         if (string.IsNullOrEmpty(query)) return string.Empty;
         ReadOnlySpan<char> span = query.AsSpan();
         Span<char> buf = stackalloc char[260];
-        vn_windows_search_sanitize_query(span, span.Length, buf, buf.Length, out int len);
+        int rc = vn_windows_search_sanitize_query(span, span.Length, buf, buf.Length, out int len);
+        if (rc != 0) len = 0;
         return len > 0 ? new string(buf[..len]) : string.Empty;
     }
 }

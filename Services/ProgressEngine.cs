@@ -213,6 +213,7 @@ public partial class ProgressEngine
         DateTime snapshotTsUtc,
         DateTime nowUtc)
     {
+        if (!RuntimeLog.IsEnabled(LogLevel.Debug)) return;
         TimeSpan snapshotAge = nowUtc - snapshotTsUtc;
         TimeSpan currentPredictedForLog = _baseTimeUtc != DateTime.MinValue ? PredictPosition(nowUtc) : TimeSpan.FromSeconds(-1);
         RuntimeLog.Log("PROGRESS-ENGINE-SNAP",
@@ -640,7 +641,7 @@ public partial class ProgressEngine
         get
         {
             lock (_lock)
-                return !_isIndeterminate && (_state == ProgressState.Playing || _state == ProgressState.Seeking);
+                return !_isIndeterminate && ((_isPlaying && _state == ProgressState.Playing) || _state == ProgressState.Seeking);
         }
     }
 
@@ -649,6 +650,12 @@ public partial class ProgressEngine
         lock (_lock)
         {
             DateTime nowUtc = DateTime.UtcNow;
+            if (_pendingPauseConfirmation && (nowUtc - _pendingPauseStartedUtc) >= PauseConfirmationWindow)
+            {
+                _pendingPauseConfirmation = false;
+                _state = ProgressState.Paused;
+            }
+
             if (_state == ProgressState.Seeking &&
                 !_isPlaying &&
                 nowUtc >= _seekDebounceEndUtc &&
@@ -662,7 +669,7 @@ public partial class ProgressEngine
             bool durationChanged = _durationJustChanged;
             _durationJustChanged = false;
 
-            ProgressState uiState = _state == ProgressState.Seeking && !_isPlaying
+            ProgressState uiState = (_state == ProgressState.Seeking || _state == ProgressState.Playing) && !_isPlaying
                 ? ProgressState.Paused
                 : _state;
 

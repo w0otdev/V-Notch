@@ -22,29 +22,5 @@ public static class TaskExtensions
 #endif
         }
     }
-
-    public static async void SafeFireAndForget(this Task task, Action<Exception> onError)
-    {
-        try
-        {
-            await task.ConfigureAwait(false);
-        }
-        catch (OperationCanceledException)
-        {
-            // Expected when the underlying task is cancelled; swallow safely.
-        }
-        catch (Exception ex)
-        {
-            try
-            {
-                onError(ex);
-            }
-            catch (Exception callbackEx)
-            {
-                RuntimeLog.Error("FIRE-FORGET-CALLBACK", callbackEx, "Exception in fire-and-forget error callback");
-                CrashReporter.LogCrash("FireAndForget.Callback", callbackEx, "Exception in fire-and-forget error callback", isTerminating: false);
-            }
-        }
-    }
 #pragma warning restore S3168
 }

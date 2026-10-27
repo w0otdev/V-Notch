@@ -24,16 +24,15 @@ public static partial class SensitiveDataScrubber
 
         ReadOnlySpan<char> span = input.AsSpan();
         int cap = Math.Max(128, span.Length + 64);
-        char[]? rented = null;
-        Span<char> buf = cap <= 1024 ? stackalloc char[cap] : (rented = new char[cap]);
+        Span<char> buf = cap <= 1024 ? stackalloc char[cap] : new char[cap];
         int rc = vn_sensitive_data_scrub(span, span.Length, buf, buf.Length, out int outLen, out byte changed);
         if (rc == VN_ERR_BUFFER_TOO_SMALL && outLen > buf.Length)
         {
             buf = new char[outLen];
-            vn_sensitive_data_scrub(span, span.Length, buf, buf.Length, out outLen, out changed);
+            rc = vn_sensitive_data_scrub(span, span.Length, buf, buf.Length, out outLen, out changed);
         }
 
-        if (changed == 0)
+        if (rc != 0 || changed == 0)
             return input;
 
         return outLen > 0 ? new string(buf[..outLen]) : string.Empty;

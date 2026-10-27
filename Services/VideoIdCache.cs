@@ -50,7 +50,7 @@ internal sealed partial class VideoIdCache
                 {
                     string oldest = _order.Dequeue();
                     if (_cache.Remove(oldest))
-                        break;
+                    { /* continue while count >= capacity */ }
                 }
                 _order.Enqueue(trackIdentity);
             }
@@ -139,8 +139,8 @@ internal sealed partial class VideoIdCache
             while (vn_video_id_cache_should_evict_oldest(_mismatch.Count, MismatchCapacity, _mismatchOrder.Count, out byte evict) == 0 && evict != 0)
             {
                 string oldest = _mismatchOrder.Dequeue();
-                if (_mismatch.Remove(oldest))
-                    break;
+                _mismatch.Remove(oldest);
+
             }
             if (_mismatch.Add(videoId))
             {

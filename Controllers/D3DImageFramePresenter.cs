@@ -443,6 +443,21 @@ internal sealed class D3DImageFramePresenter : IDisposable
     internal void BeginSession(int generation)
     {
         SuspendPresentation();
+        if (_dispatcher.CheckAccess())
+        {
+            CompositionTarget.Rendering -= OnRendering;
+            CompositionTarget.Rendering += OnRendering;
+        }
+        else
+        {
+            _dispatcher.BeginInvoke(DispatcherPriority.Send, (Action)(() =>
+            {
+                if (_disposed || _failed) return;
+                CompositionTarget.Rendering -= OnRendering;
+                CompositionTarget.Rendering += OnRendering;
+            }));
+        }
+
         lock (_surfaceSync)
         {
             _sessionGeneration = generation;
@@ -457,6 +472,11 @@ internal sealed class D3DImageFramePresenter : IDisposable
     {
         _retryTimer.Stop();
         Interlocked.Exchange(ref _retryScheduled, 0);
+        if (_dispatcher.CheckAccess())
+            CompositionTarget.Rendering -= OnRendering;
+        else
+            _dispatcher.BeginInvoke(DispatcherPriority.Send, (Action)(() => CompositionTarget.Rendering -= OnRendering));
+
         lock (_surfaceSync)
         {
             _acceptingFrames = false;
@@ -473,7 +493,12 @@ internal sealed class D3DImageFramePresenter : IDisposable
     {
         _retryTimer.Stop();
         Interlocked.Exchange(ref _retryScheduled, 0);
-        if (_pendingFrame && !_disposed && !_failed) PresentPendingFrame();
+        if (_disposed || _failed) return;
+        lock (_surfaceSync)
+        {
+            if (_attachedSurface == null) AttachBackBuffer();
+        }
+        if (_pendingFrame) PresentPendingFrame();
     }
 
     private void OnRendering(object? sender, EventArgs e)
@@ -513,20 +538,21 @@ internal sealed class D3DImageFramePresenter : IDisposable
 
     internal void AttachBackBuffer()
     {
-        if (_attachedSurface == null || !_image.IsFrontBufferAvailable)
+        var surface = _attachedSurface ?? _renderSurface;
+        if (surface == null || !_image.IsFrontBufferAvailable)
             return;
 
         // Balance the WPF lock count on timeout here as well as during presentation.
         bool imageWritable = _image.TryLock(new Duration(TimeSpan.FromMilliseconds(5)));
         try
         {
-            if (!imageWritable) return;
+            if (!imageWritable) { _attachedSurface = null; ScheduleRetry(); return; }
             _image.SetBackBuffer(
                 D3DResourceType.IDirect3DSurface9,
-                _attachedSurface.NativePointer,
+                surface.NativePointer,
                 enableSoftwareFallback: true);
             // WPF discards its copy of the surface across a front-buffer loss,
-            // so the next present must refresh the full envelope once.
+            _attachedSurface = surface;
             _lastDirtyWidth = _surfaceWidth;
             _lastDirtyHeight = _surfaceHeight;
         }

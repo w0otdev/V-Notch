@@ -168,12 +168,14 @@ public static partial class PlatformDetector
         if (string.IsNullOrWhiteSpace(value))
             return string.Empty;
 
-        int cap = value.Length + 8;
+        int cap = value.Length * 4 + 16;
         char[] buf = new char[cap];
         fixed (char* pIn = value)
         fixed (char* pOut = buf)
         {
-            _ = vn_platform_normalize_for_loose_match(pIn, value.Length, pOut, cap, out int outLen);
+            int rc = vn_platform_normalize_for_loose_match(pIn, value.Length, pOut, cap, out int outLen);
+            if (rc == -2 && outLen > cap) { char[] larger = new char[outLen]; fixed (char* pL = larger) rc = vn_platform_normalize_for_loose_match(pIn, value.Length, pL, outLen, out outLen); return rc == 0 && outLen > 0 ? new string(larger, 0, outLen) : string.Empty; }
+            if (rc != 0) outLen = 0;
             return outLen > 0 ? new string(buf, 0, outLen) : string.Empty;
         }
     }

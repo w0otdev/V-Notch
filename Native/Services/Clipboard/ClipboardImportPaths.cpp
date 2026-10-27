@@ -42,7 +42,8 @@ namespace vnotch::services
     *out_win32_error = 0;
 
     std::u16string_view sv = make_u16_view(path_ptr, path_len);
-    std::wstring wpath(reinterpret_cast<const wchar_t*>(sv.data()), sv.size());
+    std::wstring wpath;
+    try { wpath.assign(reinterpret_cast<const wchar_t*>(sv.data()), sv.size()); } catch (...) { return VN_ERR_FAIL; }
 
     HANDLE h = CreateFileW(
         wpath.c_str(),

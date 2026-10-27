@@ -58,12 +58,14 @@ struct Request {
     }
 
     void CloseHandles() noexcept {
-        HINTERNET active = live_request.exchange(nullptr);
+        HINTERNET active = nullptr;
+        HINTERNET conn = nullptr;
+        AcquireSRWLockExclusive(&state_lock);
+        active = live_request.exchange(nullptr);
+        conn = std::exchange(connect, nullptr);
+        ReleaseSRWLockExclusive(&state_lock);
         if (active) WinHttpCloseHandle(active);
-        if (connect) {
-            WinHttpCloseHandle(connect);
-            connect = nullptr;
-        }
+        if (conn) WinHttpCloseHandle(conn);
     }
     ~Request() { CloseHandles(); }
 };
@@ -166,13 +168,16 @@ VN_EXPORT int32_t __stdcall vn_http_send(
             *out_error = ERROR_WINHTTP_OPERATION_CANCELLED;
             return VN_ERR_FAIL;
         }
-        req->connect = WinHttpConnect(session, host.c_str(), parts.nPort, 0);
-        if (!req->connect) {
+        HINTERNET conn = WinHttpConnect(session, host.c_str(), parts.nPort, 0);
+        if (!conn) {
             *out_error = static_cast<int32_t>(GetLastError());
             return VN_ERR_FAIL;
         }
+        AcquireSRWLockExclusive(&req->state_lock);
+        req->connect = conn;
+        ReleaseSRWLockExclusive(&req->state_lock);
         const std::wstring verb = hp::ToWide(method, method_length);
-        HINTERNET request = WinHttpOpenRequest(req->connect, verb.c_str(), target.c_str(), nullptr, WINHTTP_NO_REFERER,
+        HINTERNET request = WinHttpOpenRequest(conn, verb.c_str(), target.c_str(), nullptr, WINHTTP_NO_REFERER,
                                                WINHTTP_DEFAULT_ACCEPT_TYPES, secure ? WINHTTP_FLAG_SECURE : 0);
         if (!request) {
             *out_error = static_cast<int32_t>(GetLastError());

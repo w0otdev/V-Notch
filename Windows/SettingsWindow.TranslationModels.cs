@@ -105,7 +105,7 @@ public partial class SettingsWindow
     }
 
     private void TranslationModelDetails_Click(object sender, RoutedEventArgs e) =>
-        System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo("https://huggingface.co/" + _translationStore.Profile.Repository) { UseShellExecute = true });
+        SafeLauncher.TryOpenUrl("https://huggingface.co/" + _translationStore.Profile.Repository);
 
     private async void TranslationCustomImport_Click(object sender, RoutedEventArgs e)
     {

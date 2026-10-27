@@ -191,19 +191,7 @@ public:
 
 extern "C" {
 
-VN_EXPORT int32_t vn_lyrics_try_parse_timestamp(
-    const char16_t* ts,
-    int32_t ts_len,
-    int64_t* out_ticks,
-    uint8_t* out_ok) noexcept {
-    if (!out_ticks || !out_ok || (!ts && ts_len > 0) || ts_len < 0) return VN_E_INVALID_ARG;
-    const std::u16string_view sv(ts ? ts : u"", static_cast<size_t>(ts_len));
-    int64_t ticks = 0;
-    const bool ok = vnotch::services::LyricsService::TryParseTimestamp(sv, ticks);
-    *out_ticks = ticks;
-    *out_ok = ok ? 1 : 0;
-    return VN_OK;
-}
+
 
 VN_EXPORT int32_t vn_lyrics_try_parse_lrc_line(
     const char16_t* raw_line,

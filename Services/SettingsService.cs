@@ -83,6 +83,8 @@ public sealed partial class SettingsService : ISettingsService, IAsyncDisposable
     });
 
     private readonly Task _worker;
+    private readonly object _inProcessSaveGate = new();
+    private bool _lastSaveSucceeded;
     private int _disposeSignaled;
     private volatile bool _disposed;
 
@@ -99,7 +101,7 @@ public sealed partial class SettingsService : ISettingsService, IAsyncDisposable
                     {
                         try
                         {
-                            ExecuteSave(op.Snapshot, op.KeepExistingBackup);
+                            lock (_inProcessSaveGate) { ExecuteSave(op.Snapshot, op.KeepExistingBackup); if (!_lastSaveSucceeded) throw new TimeoutException("Timed out waiting for the settings lock."); }
                             op.Tcs.TrySetResult();
                         }
                         catch (Exception ex)
@@ -230,8 +232,9 @@ public sealed partial class SettingsService : ISettingsService, IAsyncDisposable
                     $"Migrated/normalized settings to version {SettingsMigrator.CurrentVersion}");
                 try
                 {
-                    Save(settings, keepExistingBackup: !migrated);
-                    if (migrated)
+                    bool savedOk; lock (_inProcessSaveGate) { Save(settings, keepExistingBackup: !migrated); savedOk = _lastSaveSucceeded; }
+                    if (!savedOk) migrationSaved = false;
+                    if (migrated && savedOk)
                         RemovePlaintextKeySettingsFiles();
                 }
                 catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
@@ -309,7 +312,7 @@ public sealed partial class SettingsService : ISettingsService, IAsyncDisposable
         ThrowIfDisposed();
         // Loading/migrating a file is a synchronous operation. Interactive callers
         // use SaveAsync; the legacy API writes directly instead of blocking its worker.
-        ExecuteSave(settings.Clone(), keepExistingBackup);
+        lock (_inProcessSaveGate) { ExecuteSave(settings.Clone(), keepExistingBackup); }
     }
 
     public async ValueTask DisposeAsync()
@@ -362,7 +365,7 @@ public sealed partial class SettingsService : ISettingsService, IAsyncDisposable
     private void ExecuteSave(NotchSettings settings, bool keepExistingBackup)
     {
         // Serialize the replace and backup transaction across service instances/processes.
-        using var mutex = new Mutex(false, _mutexName);
+        _lastSaveSucceeded = false; using var mutex = new Mutex(false, _mutexName);
         bool acquired;
         try { acquired = mutex.WaitOne(SaveMutexTimeout); }
         catch (AbandonedMutexException) { acquired = true; /* The previous writer exited; this thread owns the mutex. */ }
@@ -373,7 +376,7 @@ public sealed partial class SettingsService : ISettingsService, IAsyncDisposable
             return;
         }
 
-        try { ExecuteSaveCore(settings, keepExistingBackup); }
+        try { ExecuteSaveCore(settings, keepExistingBackup); _lastSaveSucceeded = true; }
         finally { mutex.ReleaseMutex(); }
     }
 
@@ -465,6 +468,7 @@ public sealed partial class SettingsService : ISettingsService, IAsyncDisposable
         {
             try
             {
+                if (string.Equals(Path.GetFullPath(path), Path.GetFullPath(_settingsPath), StringComparison.OrdinalIgnoreCase)) continue;
                 using var document = JsonDocument.Parse(File.ReadAllText(path));
                 bool hasPlaintextKey = new[]
                 {

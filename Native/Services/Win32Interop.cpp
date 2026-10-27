@@ -155,10 +155,9 @@ bool ClassNameContains(HWND hwnd, std::u16string_view needle) noexcept {
     wchar_t name[256];
     const int length = GetClassNameW(hwnd, name, static_cast<int>(std::size(name)));
     if (length <= 0) return false;
-    const std::u16string lowered = to_lower_string(
-        std::u16string_view(reinterpret_cast<const char16_t*>(name), static_cast<size_t>(length)));
-    const std::u16string needle_lowered = to_lower_string(needle);
-    return lowered.find(needle_lowered) != std::u16string::npos;
+    return contains_ignore_case(
+        std::u16string_view(reinterpret_cast<const char16_t*>(name), static_cast<size_t>(length)),
+        needle);
 }
 
 BOOL CALLBACK CollectLargeWindowProc(HWND hwnd, LPARAM param) noexcept {
@@ -336,6 +335,7 @@ VN_EXPORT int32_t __stdcall vn_win32_send_extended_key_tap(uint8_t vk) noexcept 
 // Returns Win32 error code in out_last_error when the call fails.
 VN_EXPORT int32_t __stdcall vn_win32_register_hotkey(
     int64_t hwnd, int32_t id, uint32_t modifiers, uint32_t vk, int32_t* out_last_error) noexcept {
+    if (out_last_error) *out_last_error = 0;
     SetLastError(0);
     if (RegisterHotKey(w32::ToHwnd(hwnd), id, modifiers, vk)) return VN_OK;
     if (out_last_error) *out_last_error = static_cast<int32_t>(GetLastError());
@@ -348,6 +348,7 @@ VN_EXPORT int32_t __stdcall vn_win32_unregister_hotkey(int64_t hwnd, int32_t id)
 
 VN_EXPORT int32_t __stdcall vn_win32_set_window_display_affinity(
     int64_t hwnd, uint32_t affinity, int32_t* out_last_error) noexcept {
+    if (out_last_error) *out_last_error = 0;
     SetLastError(0);
     if (SetWindowDisplayAffinity(w32::ToHwnd(hwnd), affinity)) return VN_OK;
     if (out_last_error) *out_last_error = static_cast<int32_t>(GetLastError());
@@ -400,6 +401,7 @@ VN_EXPORT int32_t __stdcall vn_win32_is_iconic(int64_t hwnd, uint8_t* out_iconic
 }
 
 VN_EXPORT int32_t __stdcall vn_win32_add_clipboard_format_listener(int64_t hwnd, int32_t* out_last_error) noexcept {
+    if (out_last_error) *out_last_error = 0;
     SetLastError(0);
     if (AddClipboardFormatListener(w32::ToHwnd(hwnd))) return VN_OK;
     if (out_last_error) *out_last_error = static_cast<int32_t>(GetLastError());
@@ -569,6 +571,7 @@ VN_EXPORT int32_t __stdcall vn_win32_keyboard_hook_install(
     svc::KeyboardHookCallback callback, int64_t context, int32_t* out_slot, int32_t* out_last_error) noexcept {
     if (!callback || !out_slot) return VN_ERR_INVALID_ARG;
     *out_slot = -1;
+    if (out_last_error) *out_last_error = ERROR_OUT_OF_STRUCTURES;
     int32_t result = VN_ERR_FAIL;
     AcquireSRWLockExclusive(&svc::win32::g_hook_lock);
     for (int32_t i = 0; i < svc::win32::kHookSlots; ++i) {
@@ -584,6 +587,7 @@ VN_EXPORT int32_t __stdcall vn_win32_keyboard_hook_install(
             break;
         }
         slot.hook.store(hook, std::memory_order_release);
+        if (out_last_error) *out_last_error = 0;
         *out_slot = i;
         result = VN_OK;
         break;
@@ -801,6 +805,7 @@ VN_EXPORT int32_t __stdcall vn_win32_get_clipboard_owner(int64_t* out_hwnd) noex
 }
 
 VN_EXPORT int32_t __stdcall vn_win32_lock_workstation(int32_t* out_last_error) noexcept {
+    if (out_last_error) *out_last_error = 0;
     SetLastError(0);
     if (LockWorkStation()) return VN_OK;
     if (out_last_error) *out_last_error = static_cast<int32_t>(GetLastError());
@@ -826,12 +831,17 @@ VN_EXPORT int32_t __stdcall vn_win32_create_hard_link(
     if (!destination || !existing || destination_length <= 0 || existing_length <= 0 ||
         destination_length >= 32768 || existing_length >= 32768)
         return VN_ERR_INVALID_ARG;
-    std::wstring dest(reinterpret_cast<const wchar_t*>(destination), static_cast<size_t>(destination_length));
-    std::wstring src(reinterpret_cast<const wchar_t*>(existing), static_cast<size_t>(existing_length));
-    SetLastError(0);
-    if (CreateHardLinkW(dest.c_str(), src.c_str(), nullptr)) return VN_OK;
-    if (out_last_error) *out_last_error = static_cast<int32_t>(GetLastError());
-    return VN_ERR_FAIL;
+    if (out_last_error) *out_last_error = 0;
+    try {
+        std::wstring dest(reinterpret_cast<const wchar_t*>(destination), static_cast<size_t>(destination_length));
+        std::wstring src(reinterpret_cast<const wchar_t*>(existing), static_cast<size_t>(existing_length));
+        SetLastError(0);
+        if (CreateHardLinkW(dest.c_str(), src.c_str(), nullptr)) return VN_OK;
+        if (out_last_error) *out_last_error = static_cast<int32_t>(GetLastError());
+        return VN_ERR_FAIL;
+    } catch (...) {
+        return VN_ERR_FAIL;
+    }
 }
 // ---------------------------------------------------------------- selection helpers and input
 
@@ -880,21 +890,27 @@ VN_EXPORT int32_t __stdcall vn_win32_enum_child_windows(
 VN_EXPORT int32_t __stdcall vn_win32_send_unicode_text(
     const char16_t* text, int32_t length, int32_t* out_sent, int32_t* out_expected) noexcept {
     if (!text || length <= 0 || length > 65536 || !out_sent || !out_expected) return VN_ERR_INVALID_ARG;
-    std::vector<INPUT> inputs;
-    inputs.reserve(static_cast<size_t>(length) * 2);
-    for (int32_t i = 0; i < length; ++i) {
-        INPUT down{};
-        down.type = INPUT_KEYBOARD;
-        down.ki.wScan = text[i];
-        down.ki.dwFlags = KEYEVENTF_UNICODE;
-        INPUT up = down;
-        up.ki.dwFlags = KEYEVENTF_UNICODE | KEYEVENTF_KEYUP;
-        inputs.push_back(down);
-        inputs.push_back(up);
+    *out_sent = 0;
+    *out_expected = 0;
+    try {
+        std::vector<INPUT> inputs;
+        inputs.reserve(static_cast<size_t>(length) * 2);
+        for (int32_t i = 0; i < length; ++i) {
+            INPUT down{};
+            down.type = INPUT_KEYBOARD;
+            down.ki.wScan = text[i];
+            down.ki.dwFlags = KEYEVENTF_UNICODE;
+            INPUT up = down;
+            up.ki.dwFlags = KEYEVENTF_UNICODE | KEYEVENTF_KEYUP;
+            inputs.push_back(down);
+            inputs.push_back(up);
+        }
+        *out_expected = static_cast<int32_t>(inputs.size());
+        *out_sent = static_cast<int32_t>(SendInput(static_cast<UINT>(inputs.size()), inputs.data(), sizeof(INPUT)));
+        return *out_sent == *out_expected ? VN_OK : VN_ERR_FAIL;
+    } catch (...) {
+        return VN_ERR_FAIL;
     }
-    *out_expected = static_cast<int32_t>(inputs.size());
-    *out_sent = static_cast<int32_t>(SendInput(static_cast<UINT>(inputs.size()), inputs.data(), sizeof(INPUT)));
-    return *out_sent == *out_expected ? VN_OK : VN_ERR_FAIL;
 }
 // ---------------------------------------------------------------- kernel32 / psapi metrics
 

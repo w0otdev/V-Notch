@@ -409,6 +409,7 @@ public partial class App : Application
     protected override void OnExit(ExitEventArgs e)
     {
         InteractionSounds.Shutdown();
+        try { WhiteNoiseService.Pause(); } catch { }
         try
         {
             if (!_servicesDisposed && Services is IDisposable disposable)
@@ -431,8 +432,7 @@ public partial class App : Application
     {
         try
         {
-            var exePath = Environment.ProcessPath
-                ?? System.Diagnostics.Process.GetCurrentProcess().MainModule?.FileName;
+            var exePath = Environment.ProcessPath;
 
             if (!string.IsNullOrEmpty(exePath))
             {

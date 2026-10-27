@@ -28,6 +28,7 @@ public sealed class CalendarPresenter : IDisposable
     private DateTime _lastCalendarScrollTimeUtc = DateTime.MinValue;
     private DateTime _lastCalendarUpdate = DateTime.MinValue;
     private bool _isMonthAnimating;
+    private string _targetMonthText = string.Empty;
     private string _pendingMonthText = string.Empty;
 
     private static readonly CubicEase _easeCubicIn = CreateFrozenCubicEase(EasingMode.EaseIn);
@@ -162,7 +163,8 @@ public sealed class CalendarPresenter : IDisposable
         var highlightedDate = _lastCalendarUpdate.AddDays(centerIdx - 5);
         string newMonth = highlightedDate.ToString("MMM", culture);
 
-        if (_refs.MonthText.Text != newMonth)
+        string currentTargetMonth = _isMonthAnimating ? _targetMonthText : _refs.MonthText.Text;
+        if (currentTargetMonth != newMonth)
         {
             AnimateMonthTextChange(newMonth);
         }
@@ -182,6 +184,7 @@ public sealed class CalendarPresenter : IDisposable
     private void AnimateMonthTextChange(string newMonth)
     {
         if (_disposed) return;
+        _targetMonthText = newMonth;
         if (_isMonthAnimating)
         {
             _pendingMonthText = newMonth;

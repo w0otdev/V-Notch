@@ -100,6 +100,7 @@ public partial class AudioMixerView : UserControl, IDisposable
         _disposed = true;
         StopPolling();
         _pollTimer.Dispose();
+        _audioWrites.Dispose();
         ++_audioPopulateToken;
         ++_audioLoadingTransitionVersion;
         ++_audioStaggerGeneration;
@@ -883,6 +884,8 @@ public partial class AudioMixerView : UserControl, IDisposable
             double target = rows.DesiredSize.Height;
 
             newFit = MeasureAudioFitHeight();
+            if (AudioScrollViewer != null)
+                AudioScrollViewer.Height = Math.Max(0, newFit - _audioViewChrome);
 
             rows.Height = currentHeight;
             rows.Opacity = rowsOpacity;
@@ -931,6 +934,8 @@ public partial class AudioMixerView : UserControl, IDisposable
                 rows.Height = double.NaN;
                 rows.BeginAnimation(OpacityProperty, null);
                 rows.Opacity = 1;
+                if (AudioScrollViewer != null)
+                    AudioScrollViewer.Height = Math.Max(0, newFit - _audioViewChrome);
             };
             rows.BeginAnimation(HeightProperty, hAnim, HandoffBehavior.SnapshotAndReplace);
             rows.BeginAnimation(OpacityProperty, oAnim, HandoffBehavior.SnapshotAndReplace);

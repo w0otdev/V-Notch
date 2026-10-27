@@ -43,50 +43,57 @@ public sealed partial class BluetoothMonitorService : IDisposable
 
     public void Start()
     {
-        if (_disposed || _watcher != null) return;
-
-        try
+        lock (_deviceChangeLock)
         {
-            string aqsFilter = "System.Devices.Aep.ProtocolId:=\"{e0cbf06c-cd8b-4647-bb8a-263b43f0f974}\"" +
-                               " AND System.Devices.Aep.IsConnected:=System.StructuredQueryType.Boolean#True";
+            if (_disposed || _watcher != null) return;
 
-            string[] requestedProperties = new[]
+            try
             {
-                "System.ItemNameDisplay",
-                "System.Devices.Aep.DeviceAddress",
-                "System.Devices.Aep.IsConnected",
-                "System.Devices.Aep.Category"
-            };
+                string aqsFilter = "System.Devices.Aep.ProtocolId:=\"{e0cbf06c-cd8b-4647-bb8a-263b43f0f974}\"" +
+                                   " AND System.Devices.Aep.IsConnected:=System.StructuredQueryType.Boolean#True";
 
-            _isInitialEnumerationComplete = false;
-            _knownDevices.Clear();
+                string[] requestedProperties = new[]
+                {
+                    "System.ItemNameDisplay",
+                    "System.Devices.Aep.DeviceAddress",
+                    "System.Devices.Aep.IsConnected",
+                    "System.Devices.Aep.Category"
+                };
 
-            _watcher = DeviceInformation.CreateWatcher(
-                aqsFilter,
-                requestedProperties,
-                DeviceInformationKind.AssociationEndpoint);
+                _isInitialEnumerationComplete = false;
+                _knownDevices.Clear();
 
-            _watcher.Added += Watcher_Added;
-            _watcher.Updated += Watcher_Updated;
-            _watcher.Removed += Watcher_Removed;
-            _watcher.EnumerationCompleted += Watcher_EnumerationCompleted;
-            _watcher.Stopped += Watcher_Stopped;
+                _watcher = DeviceInformation.CreateWatcher(
+                    aqsFilter,
+                    requestedProperties,
+                    DeviceInformationKind.AssociationEndpoint);
 
-            _watcher.Start();
-            RuntimeLog.Log(LogTag, "DeviceWatcher started");
-        }
-        catch (Exception ex)
-        {
-            RuntimeLog.Error(LogTag, ex, "Failed to start DeviceWatcher");
+                _watcher.Added += Watcher_Added;
+                _watcher.Updated += Watcher_Updated;
+                _watcher.Removed += Watcher_Removed;
+                _watcher.EnumerationCompleted += Watcher_EnumerationCompleted;
+                _watcher.Stopped += Watcher_Stopped;
+
+                _watcher.Start();
+                RuntimeLog.Log(LogTag, "DeviceWatcher started");
+            }
+            catch (Exception ex)
+            {
+                RuntimeLog.Error(LogTag, ex, "Failed to start DeviceWatcher");
+            }
         }
     }
 
     public void Stop()
     {
-        var watcher = _watcher;
-        if (watcher == null) return;
-        _watcher = null;
-        _isInitialEnumerationComplete = false;
+        DeviceWatcher? watcher;
+        lock (_deviceChangeLock)
+        {
+            watcher = _watcher;
+            if (watcher == null) return;
+            _watcher = null;
+            _isInitialEnumerationComplete = false;
+        }
 
         try
         {

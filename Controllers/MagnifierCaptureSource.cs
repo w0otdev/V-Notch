@@ -196,6 +196,7 @@ public sealed partial class MagnifierCaptureSource : IDisposable
     private int _disposed;
     private readonly object _providerLock = new();
     private readonly List<Func<IntPtr>> _dynamicExcludeProviders = new();
+    private readonly List<IntPtr> _dynamicExcludeLastHwnds = new();
 
     public MagnifierCaptureSource()
     {
@@ -215,6 +216,14 @@ public sealed partial class MagnifierCaptureSource : IDisposable
     public void RemoveExcludeHwnd(IntPtr hwnd)
     {
         if (hwnd == IntPtr.Zero || _handle <= 0) return;
+        lock (_providerLock)
+        {
+            for (int i = 0; i < _dynamicExcludeLastHwnds.Count; i++)
+            {
+                if (_dynamicExcludeLastHwnds[i] == hwnd)
+                    _dynamicExcludeLastHwnds[i] = IntPtr.Zero;
+            }
+        }
         NativeRemoveExclude(_handle, hwnd);
     }
 
@@ -224,7 +233,10 @@ public sealed partial class MagnifierCaptureSource : IDisposable
         lock (_providerLock)
         {
             if (!_dynamicExcludeProviders.Contains(provider))
+            {
                 _dynamicExcludeProviders.Add(provider);
+                _dynamicExcludeLastHwnds.Add(IntPtr.Zero);
+            }
         }
     }
 
@@ -233,7 +245,12 @@ public sealed partial class MagnifierCaptureSource : IDisposable
         if (provider == null) return;
         lock (_providerLock)
         {
-            _dynamicExcludeProviders.Remove(provider);
+            int idx = _dynamicExcludeProviders.IndexOf(provider);
+            if (idx >= 0)
+            {
+                _dynamicExcludeProviders.RemoveAt(idx);
+                _dynamicExcludeLastHwnds.RemoveAt(idx);
+            }
         }
     }
 
@@ -247,7 +264,11 @@ public sealed partial class MagnifierCaptureSource : IDisposable
                 IntPtr hwnd;
                 try { hwnd = _dynamicExcludeProviders[i](); }
                 catch { continue; }
-                if (hwnd != IntPtr.Zero) NativeAddExclude(_handle, hwnd);
+                if (hwnd != IntPtr.Zero && hwnd != _dynamicExcludeLastHwnds[i])
+                {
+                    _dynamicExcludeLastHwnds[i] = hwnd;
+                    NativeAddExclude(_handle, hwnd);
+                }
             }
         }
     }

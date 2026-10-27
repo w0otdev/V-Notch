@@ -54,6 +54,7 @@ public abstract partial class NotchModuleBase : INotchModule
 
     private UiScheduledTimer? _timer;
     private VnModuleLifecycle _state;
+    private int _ticking;
 
     public abstract string ModuleName { get; }
 
@@ -136,13 +137,14 @@ public abstract partial class NotchModuleBase : INotchModule
         TickSafe();
     }
 
-    private void TimerOnTick(object? sender, EventArgs e) => TickSafe();
+    private void TimerOnTick(object? sender, EventArgs e) => Tick();
 
     private void TickSafe()
     {
         try
         {
-            OnTick();
+            if (System.Threading.Interlocked.CompareExchange(ref _ticking, 1, 0) != 0) return;
+            try { OnTick(); } finally { System.Threading.Interlocked.Exchange(ref _ticking, 0); }
         }
         catch (Exception ex)
         {

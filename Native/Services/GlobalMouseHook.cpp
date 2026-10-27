@@ -83,6 +83,7 @@ extern "C"
 // Registers (or removes) raw mouse input for the window. Input is delivered even when unfocused.
 VN_EXPORT int32_t __stdcall vn_input_register_raw_mouse(int64_t hwnd, uint8_t remove, int32_t* out_last_error) noexcept
 {
+    if (out_last_error != nullptr) *out_last_error = 0;
     RAWINPUTDEVICE device{};
     device.usUsagePage = 1;
     device.usUsage = 2;
@@ -110,6 +111,8 @@ VN_EXPORT int32_t __stdcall vn_input_read_left_click(
         return VN_ERR_INVALID_ARG;
     }
     *out_left_down = 0;
+    *out_x = 0;
+    *out_y = 0;
     alignas(8) uint8_t buffer[64];
     UINT size = sizeof(buffer);
     const UINT read = GetRawInputData(
