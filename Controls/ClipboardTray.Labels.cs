@@ -17,7 +17,11 @@ public partial class ClipboardTray
     {
         if (_controller == null) return;
         var labels = _controller.Store.GetLabels();
-        string[] desired = [.. CategoryKinds.Take(8).Select(kind => kind.ToString()), .. labels.Select(label => label.Id), "Personal", "Archive"];
+        var ids = labels.Select(label => label.Id).ToList();
+        int importantIndex = ids.IndexOf("Important");
+        if (importantIndex >= 0) ids.Insert(importantIndex, "Personal");
+        else ids.Add("Personal");
+        string[] desired = [.. CategoryKinds.Take(8).Select(kind => kind.ToString()), .. ids, "Archive"];
         if (_categoryItems.Select(item => item.Name).SequenceEqual(desired))
             return;
         var existing = _categoryItems.ToDictionary(item => item.Name);

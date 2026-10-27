@@ -109,7 +109,7 @@ public sealed class ClipboardTrayRegressionTests
             var imageCategory = Assert.Single(categories.Items.Cast<ClipboardCategoryViewModel>(), category => category.Name == "Images");
             Assert.Equal(42, imageCategory.Count);
             var imageButton = buttons.Single(button => Equals(button.Tag, "Images"));
-            Assert.Equal(Color.FromRgb(245, 245, 247), ((SolidColorBrush)imageButton.Background).Color);
+            Assert.Equal(Colors.White, ((SolidColorBrush)imageButton.Background).Color);
             Assert.Equal(Color.FromRgb(22, 22, 25), ((SolidColorBrush)imageButton.Foreground).Color);
             Invoke(tray, "Category_Wheel", tray, new MouseWheelEventArgs(Mouse.PrimaryDevice, Environment.TickCount, -120)
             { RoutedEvent = UIElement.PreviewMouseWheelEvent });
@@ -282,17 +282,19 @@ public sealed class ClipboardTrayRegressionTests
                 return GeometryDrawings(drawing).Single();
             }
             var first = Draw(); var second = Draw();
-            Assert.Same(first.Pen, second.Pen);
-            Assert.True(first.Pen.IsFrozen);
+            Assert.Same(first.Brush, second.Brush);
+            Assert.Null(first.Pen);
+            Assert.True(first.Brush.IsFrozen);
+            Assert.True(first.Geometry.IsFrozen);
             Assert.Same(first.Geometry, second.Geometry);
             foreach (var kind in Enum.GetValues<TrayIconKind>()) { icon.Kind = kind; Assert.NotNull(Draw().Geometry); }
             Assert.Throws<ArgumentException>(() => icon.Kind = (TrayIconKind)999);
             var mutable = new SolidColorBrush(Colors.Red);
             icon.Kind = TrayIconKind.Text; icon.Foreground = mutable;
-            var mutablePen = Draw().Pen;
+            var mutableBrush = Draw().Brush;
             mutable.Color = Colors.Blue;
-            Assert.Same(mutablePen, Draw().Pen);
-            Assert.Equal(Colors.Blue, ((SolidColorBrush)Draw().Pen.Brush).Color);
+            Assert.Same(mutableBrush, Draw().Brush);
+            Assert.Equal(Colors.Blue, ((SolidColorBrush)Draw().Brush).Color);
             Assert.False(mutable.IsFrozen);
         }
         finally { window.Close(); }

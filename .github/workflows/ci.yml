@@ -185,6 +185,7 @@ jobs:
           --logger "trx;LogFileName=unit-tests.trx" --logger "console;verbosity=minimal"
 
       - name: Verify gates, update compatibility & package audit in parallel
+        id: gates
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
@@ -208,7 +209,7 @@ jobs:
           Remove-Job -Job $jobs -Force
 
       - name: Retain package audit evidence
-        if: ${{ !cancelled() }}
+        if: ${{ !cancelled() && steps.gates.outcome != 'skipped' }}
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: package-audit

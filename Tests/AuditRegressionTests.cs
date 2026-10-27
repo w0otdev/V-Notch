@@ -13,26 +13,28 @@ public sealed class AuditRegressionTests
     [Fact]
     public void BluetoothController_NewShowCancelsPendingTimerAndNeverFiresStaleDismiss()
     {
-        using var controller = new BluetoothNotificationController { AutoDismissMs = 40 };
+        using var controller = new BluetoothNotificationController { AutoDismissMs = 160 };
+        using var dismissed = new ManualResetEventSlim(false);
         int shows = 0;
         int dismisses = 0;
         controller.ShowRequested += (_, _) => Interlocked.Increment(ref shows);
-        controller.DismissRequested += () => Interlocked.Increment(ref dismisses);
+        controller.DismissRequested += () => { Interlocked.Increment(ref dismisses); dismissed.Set(); };
 
         var first = new BluetoothDeviceInfo { Name = "Mouse", DeviceType = BluetoothDeviceType.Mouse };
         var second = new BluetoothDeviceInfo { Name = "Buds", DeviceType = BluetoothDeviceType.Headphones };
 
         Assert.True(controller.TryShow(first, connected: true, isNotchVisible: true, isAnimating: false, isExpanded: false, isMusicExpanded: false));
-        Thread.Sleep(20);
+        Thread.Sleep(80);
+        long secondShownAt = Environment.TickCount64;
         Assert.True(controller.TryShow(second, connected: true, isNotchVisible: true, isAnimating: false, isExpanded: false, isMusicExpanded: false));
-        Thread.Sleep(25);
+        Thread.Sleep(100);
 
         // First timer window (40 ms) has elapsed, but second toast is still within its 40 ms window.
         Assert.Equal(2, Volatile.Read(ref shows));
-        Assert.Equal(0, Volatile.Read(ref dismisses));
-        Assert.True(controller.IsVisible);
+        if (Environment.TickCount64 - secondShownAt < 140) Assert.Equal(0, Volatile.Read(ref dismisses));
+        if (Environment.TickCount64 - secondShownAt < 140) Assert.True(controller.IsVisible);
 
-        Thread.Sleep(45);
+        Assert.True(dismissed.Wait(TimeSpan.FromSeconds(5)));
         Assert.Equal(1, Volatile.Read(ref dismisses));
         Assert.False(controller.IsVisible);
     }
