@@ -1,4 +1,13 @@
 {
+  "clipboard.addLabel": "添加标签",
+  "clipboard.selectAll": "选择所有显示的项目",
+  "clipboard.deleteSelected": "删除所选的 {0} 个项目",
+  "clipboard.labelHint": "使用任意标签名称。右键单击标签以更改顺序。",
+  "clipboard.createLabel": "创建标签",
+  "clipboard.labelName": "标签名称",
+  "clipboard.invalidLabel": "请输入 1–64 个字符的唯一名称。",
+  "clipboard.moveLabelLeft": "将标签向左移动",
+  "clipboard.moveLabelRight": "将标签向右移动",
   "settings.interactionSoundVolume": "音效音量",
   "settings.interactionSoundVolume.hint": "仅调整交互音效。松开滑块试听；0% 为静音。",
   "settings.interactionSounds": "交互音效",

@@ -4,12 +4,12 @@ using VNotch.Services;
 
 namespace VNotch.ViewModels;
 
-public sealed partial class ClipboardCategoryViewModel(TrayIconKind iconKind) : ObservableObject
+public sealed partial class ClipboardCategoryViewModel(TrayIconKind iconKind, string? name = null, string? customLabel = null) : ObservableObject
 {
     public TrayIconKind IconKind { get; } = iconKind;
-    public string Name => IconKind.ToString();
+    public string Name { get; } = name ?? iconKind.ToString();
     public bool IsPersonal => IconKind == TrayIconKind.Personal;
-    public string Label => Loc.Get("clipboard.category." + Name.ToLowerInvariant());
+    public string Label => customLabel ?? Loc.Get("clipboard.category." + Name.ToLowerInvariant());
     public bool IsLightSelection => IsSelected && IconKind is TrayIconKind.All or TrayIconKind.Pin or TrayIconKind.Personal;
     public bool IsAccentSelection => IsSelected && !IsLightSelection;
     public TrayIconKind LockIconKind => IsUnlocked ? TrayIconKind.Unlock : TrayIconKind.Lock;

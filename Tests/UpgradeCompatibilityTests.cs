@@ -14,6 +14,72 @@ public sealed class UpgradeCompatibilityTests : IDisposable
     public UpgradeCompatibilityTests() => Directory.CreateDirectory(_directory);
 
     [Fact]
+    public void UpdateInstallerExplicitlyRequestsTheUpdateFlow()
+    {
+        var startInfo = UpdateService.CreateInstallerStartInfo(Path.Combine(_directory, "V-Notch-Setup.exe"), _directory);
+        Assert.Equal("--update", startInfo.Arguments);
+        Assert.Equal(_directory, startInfo.WorkingDirectory);
+        Assert.True(startInfo.UseShellExecute);
+    }
+
+    [Fact]
+    public void LockedMigrationKeepsPreferencesAndRetriesAfterTheFileIsReleased()
+    {
+        string path = Path.Combine(_directory, "settings.json");
+        File.WriteAllText(path, JsonSerializer.Serialize(new NotchSettings
+        {
+            SettingsVersion = 13,
+            Language = "vi",
+            Width = 270,
+            EnableSpotlight = false
+        }));
+        var original = File.ReadAllBytes(path);
+        using var service = new SettingsService(path, _ => { });
+        using (var locked = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read))
+        {
+            var loaded = service.Load();
+            Assert.Equal("vi", loaded.Language);
+            Assert.Equal(270, loaded.Width);
+            Assert.False(loaded.EnableSpotlight);
+            Assert.Equal(original, File.ReadAllBytes(path));
+        }
+
+        var retried = service.Load();
+        Assert.Equal("vi", retried.Language);
+        Assert.Equal(270, retried.Width);
+        Assert.False(retried.EnableSpotlight);
+        var stored = JsonSerializer.Deserialize<NotchSettings>(File.ReadAllText(path))!;
+        Assert.Equal(SettingsMigrator.CurrentVersion, stored.SettingsVersion);
+        Assert.Equal("vi", stored.Language);
+    }
+
+    [Fact]
+    public async Task UpgradeCopiesTheNewPayloadWithoutReplacingSavedPreferences()
+    {
+        string source = Directory.CreateDirectory(Path.Combine(_directory, "payload")).FullName;
+        string installed = Directory.CreateDirectory(Path.Combine(_directory, "installed")).FullName;
+        string path = Path.Combine(_directory, "settings.json");
+        File.WriteAllText(Path.Combine(source, "V-Notch.exe"), "new app payload");
+        File.WriteAllText(Path.Combine(installed, "V-Notch.exe"), "old app payload");
+        using (var previous = new SettingsService(path))
+        {
+            previous.Save(new NotchSettings { Language = "vi", Width = 270, EnableSpotlight = false });
+        }
+        byte[] original = File.ReadAllBytes(path);
+        await SetupOperations.InstallAsync(new(source, installed, false, "en"), _ => { },
+            new(() => Task.CompletedTask, (_, _) => { }, (_, _) => { }, (_, _) => { },
+                language => SetupOperations.InitializeSettingsFile(path, language)));
+
+        Assert.Equal("new app payload", File.ReadAllText(Path.Combine(installed, "V-Notch.exe")));
+        Assert.Equal(original, File.ReadAllBytes(path));
+        using var updated = new SettingsService(path);
+        var loaded = updated.Load();
+        Assert.Equal("vi", loaded.Language);
+        Assert.Equal(270, loaded.Width);
+        Assert.False(loaded.EnableSpotlight);
+    }
+
+    [Fact]
     public void SetupPreserves193SettingsThenApplicationMigratesWithConsentRequired()
     {
         var path = Path.Combine(_directory, "settings.json");

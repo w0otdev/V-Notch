@@ -70,11 +70,7 @@ public partial class ClipboardTray
                 await _controller.Store.EmptyTrayAsync(ids);
                 return;
             }
-            foreach (var id in ids)
-            {
-                if (_disposed) return;
-                if (_controller.Store.GetEntry(id) != null) await _controller.Store.DeleteAsync(id);
-            }
+            await _controller.Store.DeleteManyAsync(ids);
         }
         finally
         {
@@ -111,6 +107,11 @@ public partial class ClipboardTray
     }
     private void Tray_PreviewKeyDown(object sender, KeyEventArgs e)
     {
+        if (LabelEditorPanel.Visibility == Visibility.Visible)
+        {
+            if (e.Key == Key.Escape) { CloseLabelEditor(); e.Handled = true; }
+            return;
+        }
         if (e.Key == Key.A && Keyboard.Modifiers == ModifierKeys.Control && SelectAllTrayItems(e.OriginalSource as DependencyObject))
         { e.Handled = true; return; }
         if (e.Key is Key.Escape or Key.Left or Key.Right or Key.Up or Key.Down or Key.Home or Key.End or Key.Space)

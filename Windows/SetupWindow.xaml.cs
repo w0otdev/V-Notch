@@ -56,6 +56,8 @@ public partial class SetupWindow : Window
 
     private int _currentPageIndex = 0;
     private readonly Func<UIElement>[] _pageFactories;
+    private readonly bool _updateRequested;
+    private readonly Func<SetupInstallOptions, Action<SetupProgressInfo>, Task> _install;
     private readonly IntroductionPage _introductionPage;
     private readonly DirectoryPage _directoryPage;
     private readonly StartupOptionsPage _startupOptionsPage;
@@ -77,8 +79,16 @@ public partial class SetupWindow : Window
 
     private static bool ShowWindow(IntPtr hWnd, int nCmdShow) => Win32Interop.ShowWindow(hWnd, nCmdShow);
 
-    public SetupWindow(string? sourceDirectory = null, string initialLanguage = "en")
+    public SetupWindow(string? sourceDirectory = null, string initialLanguage = "en", bool updateRequested = false)
+        : this(sourceDirectory, initialLanguage, updateRequested, SetupOperations.InstallAsync)
     {
+    }
+
+    internal SetupWindow(string? sourceDirectory, string initialLanguage, bool updateRequested,
+        Func<SetupInstallOptions, Action<SetupProgressInfo>, Task> install)
+    {
+        _updateRequested = updateRequested;
+        _install = install;
         Loc.SetLanguage(initialLanguage);
         InitializeComponent();
         AnimationPrimitives.ApplyFpsToTree(this);
@@ -174,11 +184,33 @@ public partial class SetupWindow : Window
         storyboard.Begin();
         ForceWindowToFront();
 
+        InitializeFirstPage();
+    }
+
+    private void InitializeFirstPage()
+    {
         IconContainer.Visibility = Visibility.Collapsed;
         HeadlineText.Visibility = Visibility.Collapsed;
         BodyText.Visibility = Visibility.Collapsed;
         _isWelcomePage = false;
         _currentPageIndex = 0;
+
+        // In-app updates already have an install path, language and startup
+        // preference. A missing installation still receives the full setup.
+        if (_updateRequested && File.Exists(IOPath.Combine(_directoryPage.InstallPath, "V-Notch.exe")) &&
+            ValidateInstallDirectory())
+        {
+            _currentPageIndex = _pageFactories.Length - 2;
+            _installProgressPage.RefreshLocalization();
+            ConfigurePageScrolling(_installProgressPage);
+            ContentPresenter.Content = _installProgressPage;
+            ContentPresenter.Visibility = Visibility.Visible;
+            ContentPresenter.Opacity = 1;
+            UpdateStepIndicators(_currentPageIndex);
+            UpdateNavigationButtons(_currentPageIndex);
+            _ = BeginInstallationAsync();
+            return;
+        }
 
         _languagePage.RefreshLocalization();
         ConfigurePageScrolling(_languagePage);
@@ -1048,7 +1080,7 @@ public partial class SetupWindow : Window
                 _startupOptionsPage.StartWithWindows,
                 _languagePage.SelectedLanguage);
 
-            await SetupOperations.InstallAsync(installOptions, progress =>
+            await _install(installOptions, progress =>
             {
                 Dispatcher.Invoke(() =>
                 {

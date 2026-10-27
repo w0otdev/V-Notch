@@ -153,6 +153,7 @@ public partial class ClipboardTray
 
     public void BeginExit()
     {
+        CloseLabelEditor();
         CancelPendingPersonalDrop(); ResolveDeleteConfirmation(false, immediately: true); ClearStatus(immediately: true);
         CancelCardPositionAnimation();
         _trayLeaving = true;

@@ -257,7 +257,9 @@ public partial class App : Application
                 RuntimeLog.Warn("INTEGRITY", $"Setup checksum check skipped: {ex.Message}");
             }
 
-            var setupWindow = new SetupWindow(setupSource);
+            var setupWindow = new SetupWindow(setupSource,
+                Services.GetRequiredService<ISettingsService>().Load().Language,
+                updateRequested: e.Args.Contains("--update"));
             setupWindow.ShowDialog();
             Shutdown(setupWindow.ResultExitCode);
             return true;

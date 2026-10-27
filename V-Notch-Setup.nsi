@@ -25,6 +25,9 @@
 
 !include "LogicLib.nsh"
 !include "x64.nsh"
+!include "FileFunc.nsh"
+
+Var UpdateArguments
 
 ; ── Version Info (critical for AV trust) ───────────────────
 VIProductVersion "${APP_VERSION_FULL}"
@@ -66,7 +69,15 @@ Section "Install"
 
     ; Launch the WPF setup experience from the staged payload. The WPF setup is
     ; responsible for closing running instances and copying files into $INSTDIR.
-    ExecWait '"$PLUGINSDIR\payload\${APP_EXE}" --setup --setup-source "$PLUGINSDIR\payload" --installer-path "$EXEPATH"' $0
+    ; Forward only the explicit update switch, never arbitrary bootstrapper arguments.
+    StrCpy $UpdateArguments ""
+    ${GetParameters} $R0
+    ClearErrors
+    ${GetOptions} $R0 "--update" $R1
+    ${Unless} ${Errors}
+        StrCpy $UpdateArguments "--update"
+    ${EndUnless}
+    ExecWait '"$PLUGINSDIR\payload\${APP_EXE}" --setup --setup-source "$PLUGINSDIR\payload" --installer-path "$EXEPATH" $UpdateArguments' $0
     SetErrorLevel $0
 SectionEnd
 

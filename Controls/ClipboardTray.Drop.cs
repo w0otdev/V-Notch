@@ -83,7 +83,7 @@ public partial class ClipboardTray
     {
         if (entries.Length == 0 && files.Length == 0) return false;
         if (files.Any(path => !ClipboardImportPaths.IsLocal(path))) return false;
-        if (category is "All" or "Pin" or "Personal" or "Archive" || ClipboardClassifier.GroupNames.Contains(category))
+        if (category is "All" or "Pin" or "Personal" or "Archive" || ClipboardClassifier.GroupNames.Contains(category) || ClipboardLabel.IsCustomId(category))
             return true;
         if (category is not ("Images" or "Files" or "Text" or "Code" or "Links" or "Colors")) return false;
         // Type tabs filter content; dropping must never relabel an incompatible item.

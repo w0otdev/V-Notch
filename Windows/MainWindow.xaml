@@ -2564,16 +2564,31 @@
                                                   ShowDate="False"
                                                   VerticalAlignment="Center"
                                                   HorizontalAlignment="Center"/>
-                                <ctrl:DigitalClock x:Name="ClockViewDigitalClock"
-                                                   Width="150" Height="150"
-                                                   VerticalAlignment="Center"
-                                                   HorizontalAlignment="Center"
-                                                   Visibility="Collapsed"/>
-                                <ctrl:WordClock x:Name="ClockViewWordClock"
-                                                Width="150" Height="150"
-                                                VerticalAlignment="Center"
-                                                HorizontalAlignment="Center"
-                                                Visibility="Collapsed"/>
+                                <Viewbox MaxWidth="150" MaxHeight="150"
+                                         Stretch="Uniform" StretchDirection="DownOnly"
+                                         VerticalAlignment="Center" HorizontalAlignment="Center">
+                                    <ctrl:DigitalClock x:Name="ClockViewDigitalClock"
+                                                       FontFamily="{StaticResource MainSystemFont}"
+                                                       FontSize="50" FontWeight="Heavy"
+                                                       Foreground="{x:Static svc:UiPalette.PrimaryBrush}"
+                                                       TextWrapping="NoWrap"
+                                                       Visibility="Collapsed"
+                                                       TextOptions.TextRenderingMode="Grayscale"
+                                                       TextOptions.TextHintingMode="Animated"/>
+                                </Viewbox>
+                                <Viewbox MaxWidth="150" MaxHeight="150"
+                                         Stretch="Uniform" StretchDirection="DownOnly"
+                                         VerticalAlignment="Center" HorizontalAlignment="Center">
+                                    <ctrl:WordClock x:Name="ClockViewWordClock"
+                                                    FontFamily="{StaticResource MainSystemFont}"
+                                                    FontSize="30" FontWeight="Bold"
+                                                    LineHeight="34" LineStackingStrategy="BlockLineHeight"
+                                                    Foreground="{x:Static svc:UiPalette.PrimaryBrush}"
+                                                    TextAlignment="Center" TextWrapping="NoWrap"
+                                                    Visibility="Collapsed"
+                                                    TextOptions.TextRenderingMode="Grayscale"
+                                                    TextOptions.TextHintingMode="Animated"/>
+                                </Viewbox>
                             </Grid>
 
                             <Grid Grid.Column="2" VerticalAlignment="Center">

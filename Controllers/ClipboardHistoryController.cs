@@ -425,7 +425,7 @@ public sealed class ClipboardHistoryController : IDisposable, IAsyncDisposable
         if (entry.IsPersonal) await Store.MovePersonalAsync(entry.Id, false);
         if (category == "Pin") await Store.UpdateAsync(entry.Id, pinned: true);
         else if (category == "Archive") await Store.UpdateAsync(entry.Id, archived: true);
-        else if (ClipboardClassifier.GroupNames.Contains(category))
+        else if (Store.IsLabel(category))
             await Store.UpdateAsync(entry.Id, groups: entry.Groups.Append(category).Distinct().ToArray(), archived: false);
         else if (category == "All") await Store.UpdateAsync(entry.Id, archived: false);
     }

@@ -1,10 +1,12 @@
 using System.Reflection;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Media;
 using System.Windows.Media.Animation;
 using System.Windows.Media.Imaging;
 using Microsoft.Extensions.DependencyInjection;
 using VNotch.Controllers;
+using VNotch.Models;
 using VNotch.Services;
 using VNotch.Tests.Fakes;
 using Xunit;
@@ -47,8 +49,8 @@ public sealed class MainWindowCameraPresentationTests
         Assert.Equal(4, first.PixelWidth);
         Assert.Equal(firstPixels, CopyPixels(first));
         await WpfFrameWaiter.UntilAsync(() => window.CameraOverlay.Visibility == Visibility.Collapsed, "camera preview appeared", ct);
-        await WpfFrameWaiter.UntilAsync(() => window.CameraPreviewImage.Opacity == 0.8, "camera preview morph settled", ct);
-        Assert.Equal(0.8, window.CameraPreviewImage.Opacity, 5);
+        await WpfFrameWaiter.UntilAsync(() => window.CameraPreviewImage.Opacity == 1, "camera preview morph settled", ct);
+        Assert.Equal(1, window.CameraPreviewImage.Opacity, 5);
         Assert.Equal(0, window.CameraPreviewBlur.Radius);
         Invoke(window, "OnCameraFrameAvailable", Pixels(2, 2, 42), 2, 2, camera.FadeToken);
         await WpfFrameWaiter.UntilAsync(() => !Field<bool>(window, "_cameraFrameDispatchPending"), "smaller camera frame", ct);
@@ -161,10 +163,10 @@ public sealed class MainWindowCameraPresentationTests
         Invoke(window, "PrimeCameraPreviewMorphIn");
         Assert.Null(Field<Storyboard?>(window, "_cameraPreviewExitStoryboard"));
         Invoke(window, "OnCameraFrameAvailable", Pixels(4, 3, 42), 4, 3, camera.FadeToken);
-        await WpfFrameWaiter.UntilAsync(() => window.CameraPreviewImage.Opacity == 0.8, "restarted preview appeared", ct);
+        await WpfFrameWaiter.UntilAsync(() => window.CameraPreviewImage.Opacity == 1, "restarted preview appeared", ct);
         await Task.Delay(100, ct);
         Assert.NotNull(window.CameraPreviewImage.Source);
-        Assert.Equal(0.8, window.CameraPreviewImage.Opacity);
+        Assert.Equal(1, window.CameraPreviewImage.Opacity);
         Assert.Equal(1, window.CameraPreviewScale.ScaleX);
     });
 
@@ -184,6 +186,62 @@ public sealed class MainWindowCameraPresentationTests
             Assert.Equal(1, window.CameraOverlay.Opacity);
         }
         finally { AnimationConfig.SetReduceMotion(previous); }
+    });
+
+    [Theory]
+    [InlineData(0.1)]
+    [InlineData(0.5)]
+    [InlineData(1.0)]
+    public void PreviewRemainsOpaqueWhenAppearanceOpacityChanges(double opacity) => SharedStaTestRunner.RunAsync(async ct =>
+    {
+        await using var fixture = CreateFixture(false);
+        var window = fixture.Window;
+        var settings = Field<NotchSettings>(window, "_settings");
+        Invoke(window, "SetDesktopRevealOpacityImmediate", 1d);
+        settings.Opacity = opacity;
+        Invoke(window, "ApplyAppearanceOpacity");
+        Assert.Null(window.NotchBackground.OpacityMask);
+        Assert.Null(window.SecondaryContent.OpacityMask);
+        Assert.Null(window.NotchShadowWrapper.OpacityMask);
+        // The test harness coerces every Window's effective opacity to zero.
+        Assert.Equal(opacity, window.ReadLocalValue(UIElement.OpacityProperty));
+
+        Set(window, "_isCameraView", true);
+        var camera = Field<WebcamCaptureController>(window, "_camera");
+        typeof(WebcamCaptureController).GetField("_isActive", Private)!.SetValue(camera, true);
+        window.CameraContent.Visibility = Visibility.Visible;
+        window.CameraContent.Opacity = 1;
+        Invoke(window, "PrimeCameraPreviewMorphIn");
+        Invoke(window, "OnCameraFrameAvailable", Pixels(4, 3, 255), 4, 3, camera.FadeToken);
+        await WpfFrameWaiter.UntilAsync(() => window.CameraPreviewImage.Opacity == 1, "opaque camera preview", ct);
+        Assert.Equal(1d, window.ReadLocalValue(UIElement.OpacityProperty));
+        Assert.Equal(opacity, Assert.IsAssignableFrom<Brush>(window.NotchBackground.OpacityMask).Opacity);
+        Assert.Equal(opacity, Assert.IsAssignableFrom<Brush>(window.SecondaryContent.OpacityMask).Opacity);
+        Assert.Equal(opacity, Assert.IsAssignableFrom<Brush>(window.NotchShadowWrapper.OpacityMask).Opacity);
+
+        // Every ancestor participates in the final pixel alpha, so a local
+        // image opacity of 1 alone is insufficient to prevent this regression.
+        for (DependencyObject? ancestor = window.CameraPreviewImage; ancestor != null; ancestor = VisualTreeHelper.GetParent(ancestor))
+        {
+            if (ancestor is UIElement element && ancestor is not Window)
+            {
+                Assert.Equal(1, element.Opacity);
+                Assert.Null(element.OpacityMask);
+            }
+        }
+
+        settings.Opacity = 0.35;
+        Invoke(window, "ApplyAppearanceOpacity");
+        Assert.Equal(1d, window.ReadLocalValue(UIElement.OpacityProperty));
+        Assert.Equal(1, window.CameraPreviewImage.Opacity);
+        Assert.Equal(0.35, Assert.IsAssignableFrom<Brush>(window.NotchBackground.OpacityMask).Opacity);
+        Assert.Null(window.CameraContent.OpacityMask);
+        await (Task)Invoke(window, "StopCameraPreview")!;
+        await WpfFrameWaiter.UntilAsync(() => window.CameraPreviewImage.Source == null, "camera opacity restored on stop", ct);
+        Assert.Equal(0.35, window.ReadLocalValue(UIElement.OpacityProperty));
+        Assert.Null(window.NotchBackground.OpacityMask);
+        Assert.Null(window.SecondaryContent.OpacityMask);
+        Assert.Null(window.NotchShadowWrapper.OpacityMask);
     });
 
     private static byte[] Pixels(int width, int height, byte value) => Enumerable.Repeat(value, width * height * 4).ToArray();

@@ -1,4 +1,13 @@
 {
+  "clipboard.addLabel": "Thêm nhãn",
+  "clipboard.selectAll": "Chọn tất cả mục đang hiển thị",
+  "clipboard.deleteSelected": "Xóa {0} mục đã chọn",
+  "clipboard.labelHint": "Đặt tên nhãn tùy ý. Nhấp chuột phải vào nhãn để đổi thứ tự.",
+  "clipboard.createLabel": "Tạo nhãn",
+  "clipboard.labelName": "Tên nhãn",
+  "clipboard.invalidLabel": "Dùng tên duy nhất có từ 1–64 ký tự.",
+  "clipboard.moveLabelLeft": "Di chuyển nhãn sang trái",
+  "clipboard.moveLabelRight": "Di chuyển nhãn sang phải",
   "settings.interactionSoundVolume": "Âm lượng SFX",
   "settings.interactionSoundVolume.hint": "Chỉ chỉnh âm thanh tương tác. Thả thanh trượt để nghe thử; 0% là tắt tiếng.",
   "settings.interactionSounds": "Âm thanh tương tác",

@@ -1889,7 +1889,7 @@ public partial class MainWindow : Window
 
         if (oldSettings == null || Math.Abs(oldSettings.Opacity - _settings.Opacity) > 0.001)
         {
-            this.Opacity = _settings.Opacity;
+            ApplyAppearanceOpacity();
         }
 
         if (oldSettings == null || oldSettings.BrightenDarkLyricsBackground != _settings.BrightenDarkLyricsBackground)

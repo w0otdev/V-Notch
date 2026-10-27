@@ -1,4 +1,13 @@
 {
+  "clipboard.addLabel": "Tambah label",
+  "clipboard.selectAll": "Pilih semua item yang terlihat",
+  "clipboard.deleteSelected": "Hapus {0} item terpilih",
+  "clipboard.labelHint": "Gunakan nama apa saja. Klik kanan label untuk mengubah urutannya.",
+  "clipboard.createLabel": "Buat label",
+  "clipboard.labelName": "Nama label",
+  "clipboard.invalidLabel": "Gunakan nama unik dengan 1–64 karakter.",
+  "clipboard.moveLabelLeft": "Pindahkan label ke kiri",
+  "clipboard.moveLabelRight": "Pindahkan label ke kanan",
   "settings.interactionSoundVolume": "Volume efek suara",
   "settings.interactionSoundVolume.hint": "Hanya mengatur suara interaksi. Lepaskan untuk mendengar pratinjau; 0% senyap.",
   "settings.interactionSounds": "Suara interaksi",

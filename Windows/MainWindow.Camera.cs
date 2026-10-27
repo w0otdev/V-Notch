@@ -45,6 +45,42 @@ public partial class MainWindow
         _camera.FrameAvailable += OnCameraFrameAvailable;
     }
 
+    private readonly System.Collections.Generic.Dictionary<UIElement, Brush?> _cameraAppearanceMasks = new();
+
+    private void ApplyAppearanceOpacity()
+    {
+        foreach (var (element, originalMask) in _cameraAppearanceMasks)
+            element.OpacityMask = originalMask;
+        _cameraAppearanceMasks.Clear();
+
+        // Preserve whole-window compositing outside preview playback. The held
+        // exit frame stays opaque until its visual teardown clears the source.
+        bool hasPreview = CameraPreviewImage.Source != null;
+        Opacity = hasPreview ? 1 : _settings.Opacity;
+        if (!hasPreview) return;
+
+        var mask = new SolidColorBrush(Colors.White) { Opacity = _settings.Opacity };
+        mask.Freeze();
+        // Apply the mask to sibling branches along the preview's ancestor path.
+        // This preserves their animations and descendant masks without dimming
+        // any ancestor of the camera or changing its layout and transitions.
+        for (DependencyObject branch = CameraContent; branch != NotchContainer;)
+        {
+            var parent = VisualTreeHelper.GetParent(branch);
+            if (parent == null) break;
+            if (parent is Panel panel)
+            {
+                foreach (UIElement sibling in panel.Children)
+                {
+                    if (ReferenceEquals(sibling, branch)) continue;
+                    _cameraAppearanceMasks.Add(sibling, sibling.OpacityMask);
+                    sibling.OpacityMask = mask;
+                }
+            }
+            branch = parent;
+        }
+    }
+
     private void PrimeCameraPreviewMorphIn()
     {
         CancelCameraPreviewMorphOut();
@@ -74,7 +110,7 @@ public partial class MainWindow
         var morphDuration = new Duration(TimeSpan.FromMilliseconds(380));
         var overlayDuration = new Duration(TimeSpan.FromMilliseconds(320));
 
-        var previewFadeIn = MakeAnim(CameraPreviewImage.Opacity, 0.8, morphDuration, _easeExpOut6, null);
+        var previewFadeIn = MakeAnim(CameraPreviewImage.Opacity, 1.0, morphDuration, _easeExpOut6, null);
         var scaleXIn = MakeAnim(CameraPreviewScale.ScaleX, 1.0, morphDuration, _easeExpOut6, null);
         var scaleYIn = MakeAnim(CameraPreviewScale.ScaleY, 1.0, morphDuration, _easeExpOut6, null);
         var blurClear = MakeAnim(CameraPreviewBlur.Radius, 0.0, morphDuration, _easeExpOut6, null);
@@ -232,6 +268,7 @@ public partial class MainWindow
 
         CameraPreviewImage.Opacity = 0;
         CameraPreviewImage.Source = null;
+        ApplyAppearanceOpacity();
         CameraPreviewScale.ScaleX = 1.06;
         CameraPreviewScale.ScaleY = 1.06;
         CameraPreviewBlur.Radius = _settings.EnableBlurEffects ? 16.0 : 0.0;
@@ -264,6 +301,7 @@ public partial class MainWindow
 
         CameraPreviewImage.Opacity = 0;
         CameraPreviewImage.Source = null;
+        ApplyAppearanceOpacity();
         CameraPreviewScale.ScaleX = 1.06;
         CameraPreviewScale.ScaleY = 1.06;
         CameraPreviewBlur.Radius = _settings.EnableBlurEffects ? 16.0 : 0.0;
@@ -308,6 +346,7 @@ public partial class MainWindow
                         _cameraBitmapAllocH = wbmp.PixelHeight;
                         _cameraWriteableBitmap = wbmp;
                         CameraPreviewImage.Source = wbmp;
+                        ApplyAppearanceOpacity();
                     }
 
                     wbmp.WritePixels(new Int32Rect(0, 0, w, h), buffer, w * 4, 0);
@@ -387,6 +426,7 @@ public partial class MainWindow
         CameraPreviewBlur.Radius = _settings.EnableBlurEffects ? 16.0 : 0.0;
         CameraOverlay.Opacity = 1;
         CameraPreviewImage.Source = null;
+        ApplyAppearanceOpacity();
         _cameraWriteableBitmap = null;
     }
 

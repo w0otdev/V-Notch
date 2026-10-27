@@ -168,15 +168,21 @@ public class DataProtectionSettingsTests : IDisposable
         var original = JsonSerializer.Serialize(new
         {
             SettingsVersion = SettingsMigrator.CurrentVersion,
-            YouTubeApiKey = key
+            YouTubeApiKey = key,
+            Language = "vi",
+            Width = 270
         });
         File.WriteAllText(path, original);
         File.Copy(path, legacyBackup);
 
         using (var lockStream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read))
         {
-            var settings = new SettingsService(path, _ => { }).Load();
+            using var service = new SettingsService(path, _ => { });
+            var settings = service.Load();
             Assert.Equal(SettingsMigrator.CurrentVersion, settings.SettingsVersion);
+            Assert.Equal("vi", settings.Language);
+            Assert.Equal(270, settings.Width);
+            Assert.Equal(key, settings.YouTubeApiKey);
         }
 
         Assert.True(File.Exists(path));

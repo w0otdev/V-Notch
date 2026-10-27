@@ -221,19 +221,30 @@ public sealed partial class SettingsService : ISettingsService, IAsyncDisposable
         {
             var (settings, migrated) = SettingsMigrator.Migrate(raw);
             bool normalized = NormalizeSettings(settings);
+            bool migrationSaved = true;
 
             if (migrated || normalized)
             {
                 RuntimeLog.Log(
                     LogCategoryLoad,
                     $"Migrated/normalized settings to version {SettingsMigrator.CurrentVersion}");
-                Save(settings, keepExistingBackup: !migrated);
-                if (migrated)
-                    RemovePlaintextKeySettingsFiles();
+                try
+                {
+                    Save(settings, keepExistingBackup: !migrated);
+                    if (migrated)
+                        RemovePlaintextKeySettingsFiles();
+                }
+                catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+                {
+                    // A locked/read-only file must not discard settings that were
+                    // successfully loaded. Retry the migration on the next Load.
+                    migrationSaved = false;
+                    RuntimeLog.Error(LogCategoryLoad, ex, "Could not persist migrated settings; keeping the loaded preferences and the existing file.");
+                }
             }
 
             WindowTitleScanner.UpdateInspectionAllowed(settings.EnableBrowserUrlInspection);
-            cacheable = true;
+            cacheable = migrationSaved;
             return settings;
         }
         catch (JsonException ex)

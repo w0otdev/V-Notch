@@ -1,4 +1,13 @@
 {
+  "clipboard.addLabel": "Add label",
+  "clipboard.selectAll": "Select all visible items",
+  "clipboard.deleteSelected": "Delete {0} selected items",
+  "clipboard.labelHint": "Use any label name. Right-click a label to change its order.",
+  "clipboard.createLabel": "Create label",
+  "clipboard.labelName": "Label name",
+  "clipboard.invalidLabel": "Use a unique name with 1–64 characters.",
+  "clipboard.moveLabelLeft": "Move label left",
+  "clipboard.moveLabelRight": "Move label right",
   "settings.interactionSoundVolume": "SFX volume",
   "settings.interactionSoundVolume.hint": "Adjust interaction sounds only. Release to preview; 0% is silent.",
   "settings.interactionSounds": "Interaction sounds",

@@ -84,6 +84,7 @@ public sealed partial class ClipboardHistoryStore : IDisposable, IAsyncDisposabl
     public Task InitializeAsync() => Run(() =>
     {
         if (_initialized) return true;
+        LoadLabels();
         Directory.CreateDirectory(Path.Combine(_root, "items"));
         Directory.CreateDirectory(Path.Combine(_root, "personal"));
         LockPersonalCore();
@@ -421,6 +422,7 @@ public sealed partial class ClipboardHistoryStore : IDisposable, IAsyncDisposabl
         }
 
         var tokens = query.Split(' ', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        var labelNames = tokens.Length == 0 ? null : _labels.ToDictionary(label => label.Id, label => label.Name, StringComparer.OrdinalIgnoreCase);
         var result = new List<ClipboardEntry>(_entries.Count);
         foreach (var pair in _entries)
         {
@@ -435,7 +437,7 @@ public sealed partial class ClipboardHistoryStore : IDisposable, IAsyncDisposabl
                 bool matches = true;
                 for (int t = 0; t < tokens.Length; t++)
                 {
-                    if (!EntryMatchesToken(entry, tokens[t], ref fullText, cancellation))
+                    if (!EntryMatchesToken(entry, tokens[t], labelNames!, ref fullText, cancellation))
                     {
                         matches = false;
                         break;
@@ -451,7 +453,7 @@ public sealed partial class ClipboardHistoryStore : IDisposable, IAsyncDisposabl
         return result;
     });
 
-    private bool EntryMatchesToken(ClipboardEntry entry, string token, ref string? fullText, CancellationToken cancellation)
+    private bool EntryMatchesToken(ClipboardEntry entry, string token, IReadOnlyDictionary<string, string> labelNames, ref string? fullText, CancellationToken cancellation)
     {
         if (token.StartsWith('@'))
             return MatchesCategory(entry, token[1..], includeArchived: true);
@@ -472,6 +474,8 @@ public sealed partial class ClipboardHistoryStore : IDisposable, IAsyncDisposabl
         for (int i = 0; i < groups.Length; i++)
         {
             if (groups[i].Contains(token, StringComparison.OrdinalIgnoreCase))
+                return true;
+            if (labelNames.TryGetValue(groups[i], out var labelName) && labelName.Contains(token, StringComparison.OrdinalIgnoreCase))
                 return true;
         }
 
@@ -670,7 +674,7 @@ public sealed partial class ClipboardHistoryStore : IDisposable, IAsyncDisposabl
             for (int i = 0; i < groups.Length; i++)
             {
                 string g = groups[i];
-                if (ClipboardClassifier.GroupNames.Contains(g, StringComparer.OrdinalIgnoreCase) && seen.Add(g))
+                if (IsLabel(g) && seen.Add(g))
                     filtered.Add(g);
             }
             updatedGroups = filtered.Count == 0 ? Array.Empty<string>() : filtered.ToArray();
@@ -858,6 +862,28 @@ public sealed partial class ClipboardHistoryStore : IDisposable, IAsyncDisposabl
         Changed?.Invoke();
         return true;
     });
+
+    /// <summary>Deletes a selection in one queued operation and publishes one refresh.</summary>
+    public Task DeleteManyAsync(IReadOnlyCollection<Guid> ids)
+    {
+        var selectedIds = ids.Distinct().ToArray();
+        return Run(() =>
+        {
+            bool changed = false;
+            try
+            {
+                foreach (var id in selectedIds)
+                {
+                    if (!_entries.TryGetValue(id, out var entry) || entry.IsPersonal && !IsPersonalUnlocked) continue;
+                    Directory.Delete(EntryDirectory(entry), true);
+                    RemoveEntry(id);
+                    changed = true;
+                }
+                return true;
+            }
+            finally { if (changed) Changed?.Invoke(); }
+        });
+    }
 
     /// <summary>Deletes only the confirmed items, rechecking protection in the serialized work queue.</summary>
     public Task EmptyTrayAsync(IReadOnlyCollection<Guid> ids)

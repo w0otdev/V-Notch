@@ -1,4 +1,13 @@
 {
+  "clipboard.addLabel": "Label toevoegen",
+  "clipboard.selectAll": "Alle zichtbare items selecteren",
+  "clipboard.deleteSelected": "{0} geselecteerde items verwijderen",
+  "clipboard.labelHint": "Kies een naam. Klik met de rechtermuisknop op een label om de volgorde te wijzigen.",
+  "clipboard.createLabel": "Label maken",
+  "clipboard.labelName": "Labelnaam",
+  "clipboard.invalidLabel": "Gebruik een unieke naam van 1–64 tekens.",
+  "clipboard.moveLabelLeft": "Label naar links verplaatsen",
+  "clipboard.moveLabelRight": "Label naar rechts verplaatsen",
   "settings.interactionSoundVolume": "Volume van geluidseffecten",
   "settings.interactionSoundVolume.hint": "Pas alleen interactiegeluiden aan. Laat los om te luisteren; 0% is stil.",
   "settings.interactionSounds": "Interactiegeluiden",

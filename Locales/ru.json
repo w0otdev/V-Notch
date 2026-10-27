@@ -1,4 +1,13 @@
 {
+  "clipboard.addLabel": "Добавить метку",
+  "clipboard.selectAll": "Выбрать все видимые элементы",
+  "clipboard.deleteSelected": "Удалить выбранные элементы: {0}",
+  "clipboard.labelHint": "Задайте любое имя. Щёлкните метку правой кнопкой, чтобы изменить порядок.",
+  "clipboard.createLabel": "Создать метку",
+  "clipboard.labelName": "Название метки",
+  "clipboard.invalidLabel": "Введите уникальное имя длиной 1–64 символа.",
+  "clipboard.moveLabelLeft": "Переместить метку влево",
+  "clipboard.moveLabelRight": "Переместить метку вправо",
   "settings.interactionSoundVolume": "Громкость эффектов",
   "settings.interactionSoundVolume.hint": "Настраивает только звуки взаимодействия. Отпустите для прослушивания; 0% — без звука.",
   "settings.interactionSounds": "Звуки взаимодействия",

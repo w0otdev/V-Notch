@@ -1,4 +1,13 @@
 {
+  "clipboard.addLabel": "Etiket ekle",
+  "clipboard.selectAll": "Görünen tüm öğeleri seç",
+  "clipboard.deleteSelected": "Seçilen {0} öğeyi sil",
+  "clipboard.labelHint": "İstediğiniz adı kullanın. Sırasını değiştirmek için etikete sağ tıklayın.",
+  "clipboard.createLabel": "Etiket oluştur",
+  "clipboard.labelName": "Etiket adı",
+  "clipboard.invalidLabel": "1–64 karakterden oluşan benzersiz bir ad kullanın.",
+  "clipboard.moveLabelLeft": "Etiketi sola taşı",
+  "clipboard.moveLabelRight": "Etiketi sağa taşı",
   "settings.interactionSoundVolume": "Ses efekti düzeyi",
   "settings.interactionSoundVolume.hint": "Yalnızca etkileşim seslerini ayarlar. Önizleme için bırakın; %0 sessizdir.",
   "settings.interactionSounds": "Etkileşim sesleri",

@@ -36,8 +36,7 @@ public partial class ClipboardTray : UserControl, IDisposable
         TrayIconKind.Email, TrayIconKind.Shopping, TrayIconKind.Receipts, TrayIconKind.Personal,
         TrayIconKind.Important, TrayIconKind.Archive
     ];
-    private static readonly string[] Categories = CategoryKinds.Select(kind => kind.ToString()).ToArray();
-    private readonly ClipboardCategoryViewModel[] _categoryItems = CategoryKinds.Select(kind => new ClipboardCategoryViewModel(kind)).ToArray();
+    private ClipboardCategoryViewModel[] _categoryItems = CategoryKinds.Select(kind => new ClipboardCategoryViewModel(kind)).ToArray();
     private readonly ClipboardCardCollection _cards = [];
     private readonly UiScheduledTimer _searchTimer;
     private readonly UiScheduledTimer _ageTimer;
@@ -157,6 +156,7 @@ public partial class ClipboardTray : UserControl, IDisposable
             }
             else
             {
+                CloseLabelEditor();
                 StopEntranceWork();
                 StopCategoryScrolling();
                 CancelCardPositionAnimation();
@@ -177,10 +177,12 @@ public partial class ClipboardTray : UserControl, IDisposable
         controller.StatusChanged += StatusChanged;
         controller.PersonalLocked += HidePrivateContent;
         controller.ImportProgress += OnImportProgress;
+        RebuildCategories();
         QueueRefresh();
     }
     public void ApplyLocalization()
     {
+        LocalizeLabelActions();
         SearchHint.Text = Loc.Get("clipboard.search");
         EmptyText.Text = string.IsNullOrWhiteSpace(SearchBox.Text) ? Loc.Get("clipboard.empty") : Loc.Get("clipboard.noResults", SearchBox.Text);
         EmptyDropHint.Text = Loc.Get("clipboard.dropHint");
@@ -407,6 +409,7 @@ public partial class ClipboardTray : UserControl, IDisposable
 
     private void RebuildCategories()
     {
+        SynchronizeLabels();
         foreach (var category in _categoryItems)
         {
             category.Count = _categoryCounts.GetValueOrDefault(category.Name);
@@ -417,8 +420,9 @@ public partial class ClipboardTray : UserControl, IDisposable
     }
     private void Category_Click(object sender, RoutedEventArgs e)
     { if (sender is Button { DataContext: ClipboardCategoryViewModel category }) SelectCategory(category.Name); }
-    private static string CategoryLabel(string name)
+    private string CategoryLabel(string name)
     {
+        if (ClipboardLabel.IsCustomId(name)) return _controller?.Store.GetLabels().FirstOrDefault(label => label.Id == name)?.Name ?? name;
         string key = "clipboard.category." + name.ToLowerInvariant();
         return Loc.Get(key);
     }
@@ -449,7 +453,7 @@ public partial class ClipboardTray : UserControl, IDisposable
         foreach (var menu in _openMenus.ToArray()) menu.IsOpen = false;
         Cards.SelectedItems.Clear();
         _selection.Reset();
-        _resultsDirection = Array.IndexOf(Categories, category) >= Array.IndexOf(Categories, _category) ? 1 : -1;
+        _resultsDirection = Array.FindIndex(_categoryItems, item => item.Name == category) >= Array.FindIndex(_categoryItems, item => item.Name == _category) ? 1 : -1;
         _category = category;
         _animateResults = true;
         if (personalTransition)
@@ -1013,8 +1017,9 @@ public partial class ClipboardTray : UserControl, IDisposable
             Header = Loc.Get("clipboard.groups"),
             Icon = new TrayIcon { Kind = TrayIconKind.Shopping, Width = 14, Height = 14 }
         };
-        foreach (string group in ClipboardClassifier.GroupNames)
+        foreach (var label in _controller.Store.GetLabels())
         {
+            string group = label.Id;
             var groupKind = Enum.TryParse<TrayIconKind>(group, out var parsedKind) ? parsedKind : TrayIconKind.Files;
             var item = new MenuItem
             {

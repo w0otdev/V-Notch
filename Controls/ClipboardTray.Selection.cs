@@ -77,7 +77,7 @@ public partial class ClipboardTray
     private void Selection_Down(object sender, MouseButtonEventArgs e)
     {
         if (Cards.Visibility != Visibility.Visible || LockPanel.IsVisible || DetailPanel.IsVisible ||
-            ApprovalPanel.IsVisible || DeleteConfirmationPanel.IsVisible) return;
+            ApprovalPanel.IsVisible || DeleteConfirmationPanel.IsVisible || LabelEditorPanel.IsVisible) return;
         if (IsSelectionControl(e.OriginalSource as DependencyObject)) return;
         if (ItemsControl.ContainerFromElement(Cards, e.OriginalSource as DependencyObject) is ListBoxItem item &&
             (Keyboard.Modifiers & ModifierKeys.Alt) == 0)

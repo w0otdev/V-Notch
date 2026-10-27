@@ -64,8 +64,9 @@ public partial class ClipboardTray
         _groupEntryId = card.Entry.Id;
         _selectedGroups.Clear();
         _selectedGroups.UnionWith(entry.Groups);
-        _groupChoices = ClipboardClassifier.GroupNames.Select(group =>
-            new ClipboardGroupChoiceViewModel(group, _selectedGroups.Contains(group), GroupChoiceChanged)).ToArray();
+        _groupChoices = _controller.Store.GetLabels().Select(label =>
+            new ClipboardGroupChoiceViewModel(label.Id, _selectedGroups.Contains(label.Id), GroupChoiceChanged,
+                label.IsCustom ? label.Name : null)).ToArray();
         GroupChoices.ItemsSource = _groupChoices;
         DetailPanel.Visibility = Visibility.Visible;
     }

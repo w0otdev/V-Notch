@@ -12,6 +12,57 @@ public sealed class SetupWizardNavigationTests
     private const BindingFlags Private = BindingFlags.Instance | BindingFlags.Static | BindingFlags.NonPublic;
 
     [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void UpdateSkipsFirstRunPagesOnlyForAnExistingInstallation(bool installed) => SharedStaTestRunner.RunAsync(async ct =>
+    {
+        LiquidGlassSpotlightTests.CreateApplicationResources();
+        string directory = System.IO.Directory.CreateTempSubdirectory("vnotch-update-navigation-").FullName;
+        if (installed) System.IO.File.WriteAllText(System.IO.Path.Combine(directory, "V-Notch.exe"), "fixture executable");
+        var completion = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        SetupInstallOptions? captured = null;
+        var window = new SetupWindow("fixture source", "vi", true, (options, _) =>
+        {
+            captured = options;
+            return completion.Task;
+        });
+        try
+        {
+            Field<DirectoryPage>(window, "_directoryPage").InstallPath = directory;
+            bool startup = Field<StartupOptionsPage>(window, "_startupOptionsPage").StartWithWindows;
+            Invoke(window, "InitializeFirstPage");
+            Assert.Equal("vi", Loc.CurrentLanguage);
+            if (installed)
+            {
+                Assert.IsType<InstallProgressPage>(window.ContentPresenter.Content);
+                Assert.Equal(6, Field<int>(window, "_currentPageIndex"));
+                Assert.NotNull(captured);
+                Assert.Equal(directory, captured.InstallDirectory);
+                Assert.Equal("vi", captured.Language);
+                Assert.Equal(startup, captured.StartWithWindows);
+                Assert.Equal(Visibility.Collapsed, window.BackButton.Visibility);
+                completion.SetResult();
+                await WpfFrameWaiter.UntilAsync(() => Field<bool>(window, "_installationSucceeded"), "update installation", ct);
+                await Settled(window, ct);
+                Assert.IsType<FinishPage>(window.ContentPresenter.Content);
+            }
+            else
+            {
+                Assert.IsType<LanguagePage>(window.ContentPresenter.Content);
+                Assert.Equal(0, Field<int>(window, "_currentPageIndex"));
+                Assert.Null(captured);
+            }
+        }
+        finally
+        {
+            completion.TrySetResult();
+            window.Close();
+            Loc.SetLanguage("en");
+            System.IO.Directory.Delete(directory, true);
+        }
+    });
+
+    [Theory]
     [InlineData("en")]
     public void WizardNavigatesPreparationStepsAndCanResumeAfterCancellation(string language) => SharedStaTestRunner.RunAsync(async ct =>
     {

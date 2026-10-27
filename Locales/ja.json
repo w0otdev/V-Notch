@@ -1,4 +1,13 @@
 {
+  "clipboard.addLabel": "ラベルを追加",
+  "clipboard.selectAll": "表示中のすべての項目を選択",
+  "clipboard.deleteSelected": "選択した {0} 件を削除",
+  "clipboard.labelHint": "好きな名前を付けられます。ラベルを右クリックすると順序を変更できます。",
+  "clipboard.createLabel": "ラベルを作成",
+  "clipboard.labelName": "ラベル名",
+  "clipboard.invalidLabel": "1～64文字の重複しない名前を入力してください。",
+  "clipboard.moveLabelLeft": "ラベルを左に移動",
+  "clipboard.moveLabelRight": "ラベルを右に移動",
   "settings.interactionSoundVolume": "効果音の音量",
   "settings.interactionSoundVolume.hint": "操作音のみを調整します。離すと試聴できます。0%で消音します。",
   "settings.interactionSounds": "操作音",

@@ -1,4 +1,13 @@
 {
+  "clipboard.addLabel": "Adicionar etiqueta",
+  "clipboard.selectAll": "Selecionar todos os itens visíveis",
+  "clipboard.deleteSelected": "Excluir {0} itens selecionados",
+  "clipboard.labelHint": "Use qualquer nome. Clique com o botão direito na etiqueta para alterar a ordem.",
+  "clipboard.createLabel": "Criar etiqueta",
+  "clipboard.labelName": "Nome da etiqueta",
+  "clipboard.invalidLabel": "Use um nome exclusivo com 1–64 caracteres.",
+  "clipboard.moveLabelLeft": "Mover etiqueta para a esquerda",
+  "clipboard.moveLabelRight": "Mover etiqueta para a direita",
   "settings.interactionSoundVolume": "Volume dos efeitos",
   "settings.interactionSoundVolume.hint": "Ajusta apenas os sons de interação. Solte para ouvir; 0% silencia.",
   "settings.interactionSounds": "Sons de interação",

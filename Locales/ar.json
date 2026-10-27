@@ -1,4 +1,13 @@
 {
+  "clipboard.addLabel": "إضافة تسمية",
+  "clipboard.selectAll": "تحديد كل العناصر الظاهرة",
+  "clipboard.deleteSelected": "حذف {0} من العناصر المحددة",
+  "clipboard.labelHint": "استخدم أي اسم. انقر بزر الفأرة الأيمن على التسمية لتغيير ترتيبها.",
+  "clipboard.createLabel": "إنشاء تسمية",
+  "clipboard.labelName": "اسم التسمية",
+  "clipboard.invalidLabel": "استخدم اسماً فريداً من 1 إلى 64 حرفاً.",
+  "clipboard.moveLabelLeft": "نقل التسمية إلى اليسار",
+  "clipboard.moveLabelRight": "نقل التسمية إلى اليمين",
   "settings.interactionSoundVolume": "مستوى صوت المؤثرات",
   "settings.interactionSoundVolume.hint": "ضبط أصوات التفاعل فقط. حرّر شريط التمرير للمعاينة؛ 0% يعني كتم الصوت.",
   "settings.interactionSounds": "أصوات التفاعل",

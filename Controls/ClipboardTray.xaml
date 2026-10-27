@@ -474,7 +474,9 @@
       Focusable="False" Opened="Submenu_Opened" Closed="Submenu_Closed">
       <Grid Margin="10,8,10,12">
        <Border x:Name="SubmenuSurface" Style="{StaticResource TrayMenuSurface}" MinWidth="190">
-        <StackPanel IsItemsHost="True" KeyboardNavigation.DirectionalNavigation="Cycle"/>
+        <ScrollViewer MaxHeight="420" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" CanContentScroll="True">
+         <StackPanel IsItemsHost="True" KeyboardNavigation.DirectionalNavigation="Cycle"/>
+        </ScrollViewer>
        </Border>
       </Grid>
      </Popup>
@@ -586,6 +588,13 @@
     </Border>
 
    <StackPanel Grid.Column="2" Orientation="Horizontal" Margin="8,0,0,0">
+    <Button x:Name="AddLabelButton" Style="{StaticResource HeaderIconButton}" Click="AddLabel_Click" VerticalAlignment="Center" Content="+" FontSize="21"/>
+    <Button x:Name="SelectAllButton" Style="{StaticResource HeaderIconButton}" Click="SelectAll_Click" VerticalAlignment="Center">
+     <local:TrayIcon Kind="All" Width="13.5" Height="13.5"/>
+    </Button>
+    <Button x:Name="DeleteSelectedButton" Visibility="Collapsed" Style="{StaticResource HeaderIconButton}" Click="DeleteSelected_Click" VerticalAlignment="Center">
+     <local:TrayIcon Kind="Delete" Width="13.5" Height="13.5" Foreground="{StaticResource TrayDestructive}"/>
+    </Button>
     <Button x:Name="EmptyTrayButton" Style="{StaticResource HeaderIconButton}" Click="EmptyTray_Click" VerticalAlignment="Center">
      <local:TrayIcon Kind="Delete" Width="13.5" Height="13.5" Foreground="{StaticResource TrayDestructive}"/>
     </Button>
@@ -615,7 +624,8 @@
     <ItemsControl x:Name="CategoryPanel" LayoutUpdated="CategoryPanel_LayoutUpdated">
      <ItemsControl.ItemsPanel><ItemsPanelTemplate><StackPanel Orientation="Horizontal"/></ItemsPanelTemplate></ItemsControl.ItemsPanel>
      <ItemsControl.ItemTemplate><DataTemplate DataType="{x:Type vm:ClipboardCategoryViewModel}">
-      <Button Style="{StaticResource CategoryButton}">
+      <Button Style="{StaticResource CategoryButton}" ContextMenuOpening="Category_ContextMenuOpening">
+       <Button.ContextMenu><ContextMenu/></Button.ContextMenu>
        <StackPanel Orientation="Horizontal">
         <local:TrayIcon Kind="{Binding IconKind}" Width="13" Height="13" Margin="0,0,6,0" VerticalAlignment="Center"/>
         <TextBlock Text="{Binding Label}" FontSize="12" FontWeight="Bold" FontFamily="{StaticResource SFProDisplay}" VerticalAlignment="Center"/>
@@ -665,7 +675,7 @@
    <local:ClipboardCardListBox x:Name="Cards" Background="Transparent" BorderThickness="0" Padding="0" ScrollViewer.HorizontalScrollBarVisibility="Hidden" SnapsToDevicePixels="False" UseLayoutRounding="False" TextOptions.TextRenderingMode="Grayscale"
     ScrollViewer.VerticalScrollBarVisibility="Disabled" ScrollViewer.CanContentScroll="True" VirtualizingPanel.IsVirtualizing="True"
     VirtualizingPanel.VirtualizationMode="Recycling" VirtualizingPanel.ScrollUnit="Pixel" VirtualizingPanel.CacheLength="0.5" VirtualizingPanel.CacheLengthUnit="Page" TextOptions.TextFormattingMode="Display" RenderOptions.ClearTypeHint="Auto" PreviewMouseWheel="Cards_Wheel"
-    ScrollViewer.ScrollChanged="TrayScroll_Changed" SizeChanged="TrayScroll_SizeChanged" PreviewKeyDown="Cards_KeyDown" SelectionMode="Extended" Margin="8,7,8,12">
+    ScrollViewer.ScrollChanged="TrayScroll_Changed" SizeChanged="TrayScroll_SizeChanged" PreviewKeyDown="Cards_KeyDown" SelectionChanged="Cards_SelectionChanged" SelectionMode="Extended" Margin="8,7,8,12">
     
     <ListBox.ItemsPanel><ItemsPanelTemplate><VirtualizingStackPanel Orientation="Horizontal"/></ItemsPanelTemplate></ListBox.ItemsPanel>
     <ListBox.ItemContainerStyle><Style TargetType="ListBoxItem">
@@ -1127,13 +1137,15 @@
         </Style.Triggers>
        </Style>
       </Grid.Style>
-      <ItemsControl x:Name="GroupChoices" Visibility="Collapsed" VerticalAlignment="Center" HorizontalAlignment="Center" MaxWidth="450">
+      <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+       <ItemsControl x:Name="GroupChoices" Visibility="Collapsed" VerticalAlignment="Center" HorizontalAlignment="Center" MaxWidth="450">
        <ItemsControl.ItemsPanel><ItemsPanelTemplate><WrapPanel/></ItemsPanelTemplate></ItemsControl.ItemsPanel>
        <ItemsControl.ItemTemplate><DataTemplate DataType="{x:Type vm:ClipboardGroupChoiceViewModel}">
         <CheckBox Style="{StaticResource TrayGroupChoice}" Checked="GroupChoice_Motion" Unchecked="GroupChoice_Motion" Content="{Binding Label}" Tag="{Binding ActiveName}" IsChecked="{Binding IsSelected, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
          Foreground="White" Margin="10" FontWeight="SemiBold" AutomationProperties.Name="{Binding Label}"/>
        </DataTemplate></ItemsControl.ItemTemplate>
-      </ItemsControl>
+       </ItemsControl>
+      </ScrollViewer>
       <Image x:Name="DetailImage" Visibility="Collapsed" Stretch="Uniform"/>
       <ScrollViewer x:Name="DetailTextScroll" VerticalScrollBarVisibility="Auto">
        <TextBox x:Name="DetailText" IsReadOnly="True" TextWrapping="Wrap" Background="Transparent" Foreground="#F0F0F5" BorderThickness="0" FontSize="13" FontFamily="{StaticResource SFProDisplay}" FontWeight="Bold"/>
@@ -1225,6 +1237,22 @@
     <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,14,0,0">
      <Button x:Name="CancelDeleteButton" Style="{StaticResource TrayButton}" Click="CancelDelete_Click" Margin="0,0,10,0" Padding="14,6"/>
      <Button x:Name="ConfirmDeleteButton" Style="{StaticResource TrayButton}" Background="{StaticResource TrayDestructive}" Foreground="White" Click="ConfirmDelete_Click" Padding="14,6"/>
+    </StackPanel>
+   </StackPanel>
+  </Border>
+ </Grid>
+ <Grid x:Name="LabelEditorPanel" Visibility="Collapsed" Panel.ZIndex="110" Background="#B0000000"
+       KeyboardNavigation.TabNavigation="Cycle" KeyboardNavigation.DirectionalNavigation="Cycle">
+  <Border HorizontalAlignment="Center" VerticalAlignment="Center" MaxWidth="420" Margin="16" Padding="18,16"
+          Background="#FF101016" BorderBrush="#40FFFFFF" BorderThickness="1" CornerRadius="{StaticResource TrayRadiusLarge}">
+   <StackPanel>
+    <TextBlock x:Name="LabelEditorTitle" FontSize="15" FontWeight="Bold" Foreground="White"/>
+    <TextBlock x:Name="LabelEditorHint" Margin="0,6,0,10" FontSize="12" TextWrapping="Wrap" Foreground="{StaticResource TrayMutedForeground}"/>
+    <TextBox x:Name="LabelNameBox" MaxLength="64" Padding="8,6" Background="#18FFFFFF" Foreground="White" CaretBrush="White" BorderBrush="#40FFFFFF" KeyDown="LabelName_KeyDown"/>
+    <TextBlock x:Name="LabelEditorError" Margin="0,5,0,0" FontSize="12" TextWrapping="Wrap" Foreground="{StaticResource TrayDestructive}" AutomationProperties.LiveSetting="Polite"/>
+    <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,12,0,0">
+     <Button x:Name="CancelLabelButton" Style="{StaticResource TrayButton}" Click="CancelLabel_Click" Margin="0,0,8,0"/>
+     <Button x:Name="SaveLabelButton" Style="{StaticResource TrayButton}" Click="SaveLabel_Click" Background="{StaticResource TrayAccent}" Foreground="{StaticResource TrayOnAccent}"/>
     </StackPanel>
    </StackPanel>
   </Border>

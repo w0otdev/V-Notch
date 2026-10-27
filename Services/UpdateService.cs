@@ -309,7 +309,7 @@ public partial class UpdateService : IUpdateService, IDisposable
             await DownloadAndVerifyInstallerAsync(updateInfo, installerPath, progress, cancellationToken);
 
             cancellationToken.ThrowIfCancellationRequested();
-            using var process = Process.Start(new ProcessStartInfo { FileName = installerPath, UseShellExecute = true, WorkingDirectory = directory });
+            using var process = Process.Start(CreateInstallerStartInfo(installerPath, directory));
             if (process == null) throw new InvalidOperationException("Could not start verified installer.");
             installerStarted = true;
             RuntimeLog.Log(LogCategory, $"Starting verified installer {updateInfo.InstallerName}.");
@@ -324,6 +324,14 @@ public partial class UpdateService : IUpdateService, IDisposable
             cleanupLease?.Dispose();
         }
     }
+
+    internal static ProcessStartInfo CreateInstallerStartInfo(string installerPath, string directory) => new()
+    {
+        FileName = installerPath,
+        Arguments = "--update",
+        UseShellExecute = true,
+        WorkingDirectory = directory
+    };
 
     internal async Task DownloadAndVerifyInstallerAsync(UpdateInfo update, string path, IProgress<double>? progress, CancellationToken token)
     {
