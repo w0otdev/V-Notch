@@ -124,7 +124,7 @@ public sealed class SetupOperationsIntegrationTests
             Assert.Equal(fixture.Root, key.GetValue("InstallLocation"));
             Assert.Equal(executable, key.GetValue("DisplayIcon"));
             Assert.Equal(dedicated ? $"\"{uninstaller}\"" : $"\"{executable}\" --uninstall", key.GetValue("UninstallString"));
-            Assert.Equal(dedicated ? $"\"{uninstaller}\" /S" : $"\"{executable}\" --uninstall", key.GetValue("QuietUninstallString"));
+            Assert.Equal(dedicated ? $"\"{uninstaller}\" /S" : $"\"{executable}\" --uninstall --quiet", key.GetValue("QuietUninstallString"));
             using var app = Registry.CurrentUser.OpenSubKey(registryRoot + @"\app");
             Assert.Equal(fixture.Root, app!.GetValue("InstallDir"));
             SetupOperations.ConfigureStartup(executable, true, () => Registry.CurrentUser.CreateSubKey(registryRoot + @"\run"));

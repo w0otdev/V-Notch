@@ -381,14 +381,6 @@ public partial class SettingsWindow : Window
 
     private static string GetAppVersion() => AppVersion.Current;
 
-    private static string FormatVersion(Version v)
-    {
-        if (v.Revision > 0)
-            return $"{v.Major}.{v.Minor}.{v.Build}.{v.Revision}";
-        if (v.Build > 0)
-            return $"{v.Major}.{v.Minor}.{v.Build}";
-        return $"{v.Major}.{v.Minor}";
-    }
     private void ApplyTooltips()
     {
         // Header tooltips

@@ -48,38 +48,17 @@ namespace vnotch::services
         
             static std::u16string_view get_file_name(std::u16string_view path) noexcept
             {
-                for (size_t i = path.size(); i > 0; --i)
-                {
-                    char16_t c = path[i - 1];
-                    if (c == u'\\' || c == u'/' || c == u':')
-                        return path.substr(i);
-                }
-                return path;
+                return vnotch::get_file_name(path);
             }
         
             static std::u16string_view get_extension(std::u16string_view path) noexcept
             {
-                for (size_t i = path.size(); i > 0; --i)
-                {
-                    char16_t c = path[i - 1];
-                    if (c == u'.')
-                    {
-                        if (i != path.size())
-                            return path.substr(i - 1);
-                        return {};
-                    }
-                    if (c == u'\\' || c == u'/' || c == u':')
-                        break;
-                }
-                return {};
+                return vnotch::get_extension(path);
             }
         
             static std::u16string_view get_file_name_without_extension(std::u16string_view path) noexcept
             {
-                std::u16string_view name = get_file_name(path);
-                size_t last_dot = name.rfind(u'.');
-                if (last_dot == std::u16string_view::npos) return name;
-                return name.substr(0, last_dot);
+                return vnotch::get_stem(path);
             }
         
             static bool is_file_name_query_impl(std::u16string_view query) noexcept

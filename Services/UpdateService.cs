@@ -242,12 +242,11 @@ public partial class UpdateService : IUpdateService, IDisposable
 
     private UpdateInfo ReadRelease(JsonElement release)
     {
-        var (installer, checksum) = SelectReleaseAssets(release);
+        var (installer, _) = SelectReleaseAssets(release);
         var info = new UpdateInfo
         {
             Version = release.GetProperty("tag_name").GetString()?.TrimStart('v', 'V') ?? string.Empty,
             DownloadUrl = installer?.Url ?? string.Empty,
-            ChecksumUrl = checksum?.Url ?? string.Empty,
             ManifestUrl = FindAssetUrl(release, installer?.Name + SignedUpdateManifest.ManifestSuffix),
             ManifestSignatureUrl = FindAssetUrl(release, installer?.Name + SignedUpdateManifest.SignatureSuffix),
             InstallerName = installer?.Name ?? string.Empty,
@@ -466,14 +465,15 @@ public partial class UpdateService : IUpdateService, IDisposable
     private static string FindAssetUrl(JsonElement release, string name)
     {
         if (!release.TryGetProperty("assets", out var assets)) return "";
-        foreach (var asset in assets.EnumerateArray().Where(a => a.GetProperty("name").GetString() == name))
+        foreach (var asset in assets.EnumerateArray().Where(a => string.Equals(a.GetProperty("name").GetString(), name, StringComparison.OrdinalIgnoreCase)))
         {
             return asset.GetProperty("browser_download_url").GetString() ?? "";
         }
         return "";
     }
     internal static bool IsApprovedUpdate(UpdateInfo update) =>
-        (update.InstallerName is SetupName or SelfContainedSetupName) &&
+        (string.Equals(update.InstallerName, SetupName, StringComparison.OrdinalIgnoreCase) ||
+         string.Equals(update.InstallerName, SelfContainedSetupName, StringComparison.OrdinalIgnoreCase)) &&
         IsTrustedUpdateUrl(update.DownloadUrl) &&
         IsTrustedUpdateUrl(update.ManifestUrl) &&
         IsTrustedUpdateUrl(update.ManifestSignatureUrl);
@@ -550,5 +550,5 @@ public partial class UpdateService : IUpdateService, IDisposable
         finally { System.Buffers.ArrayPool<byte>.Shared.Return(buffer); }
     }
 
-    private static UpdateInfo Clone(UpdateInfo source) => new() { Version = source.Version, DownloadUrl = source.DownloadUrl, ChecksumUrl = source.ChecksumUrl, ManifestUrl = source.ManifestUrl, ManifestSignatureUrl = source.ManifestSignatureUrl, InstallerName = source.InstallerName, ReleaseNotes = source.ReleaseNotes, PublishedAt = source.PublishedAt, IsNewerVersion = source.IsNewerVersion, IsPrerelease = source.IsPrerelease };
+    private static UpdateInfo Clone(UpdateInfo source) => new() { Version = source.Version, DownloadUrl = source.DownloadUrl, ManifestUrl = source.ManifestUrl, ManifestSignatureUrl = source.ManifestSignatureUrl, InstallerName = source.InstallerName, ReleaseNotes = source.ReleaseNotes, PublishedAt = source.PublishedAt, IsNewerVersion = source.IsNewerVersion, IsPrerelease = source.IsPrerelease };
 }

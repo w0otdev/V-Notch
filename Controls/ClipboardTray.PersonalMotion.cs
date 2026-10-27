@@ -18,12 +18,13 @@ public partial class ClipboardTray
         if (selected == null || CategoryPanel.ItemContainerGenerator.ContainerFromItem(selected) is not ContentPresenter presenter ||
             VisualTreeHelper.GetChildrenCount(presenter) == 0 || VisualTreeHelper.GetChild(presenter, 0) is not Button button ||
             button.ActualWidth <= 0) return;
-        var bounds = new Rect(button.TranslatePoint(new Point(), CategoryPanel), button.RenderSize);
+        var pos = button.TranslatePoint(new Point(), CategoryPanel);
+        var bounds = new Rect(pos, button.RenderSize);
+        TrayMotion.SetBackground(CategorySelection, button.Background);
+        CategorySelection.Opacity = 1;
         if (bounds == _categorySelectionBounds) return;
         bool animate = !_categorySelectionBounds.IsEmpty && !AnimationConfig.ReduceMotion && !_trayLeaving;
         _categorySelectionBounds = bounds;
-        TrayMotion.SetBackground(CategorySelection, button.Background);
-        CategorySelection.Opacity = 1;
         double renderedWidth = CategorySelection.Width * CategorySelectionScale.ScaleX;
         CategorySelection.Width = bounds.Width;
         CategorySelectionScale.BeginAnimation(ScaleTransform.ScaleXProperty, null);

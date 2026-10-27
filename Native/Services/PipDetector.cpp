@@ -207,30 +207,9 @@ private:
     }
 
     static std::u16string TryGetProcessNameLower(DWORD pid) {
-        if (pid == 0) return {};
-        HANDLE raw_process = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, FALSE, pid);
-        if (raw_process == nullptr) return {};
-
-        struct HandleGuard {
-            HANDLE h;
-            ~HandleGuard() noexcept {
-                if (h != nullptr && h != INVALID_HANDLE_VALUE) {
-                    CloseHandle(h);
-                }
-            }
-        } guard{raw_process};
-
-        wchar_t buf[1024];
-        DWORD size = 1024;
-        bool ok = QueryFullProcessImageNameW(guard.h, 0, buf, &size) != FALSE;
-        if (!ok || size == 0) return {};
-
-        std::u16string_view full(reinterpret_cast<const char16_t*>(buf), size);
-        size_t last_sep = full.find_last_of(u"\\/:");
-        std::u16string_view file_name = (last_sep == std::u16string_view::npos) ? full : full.substr(last_sep + 1);
-        size_t last_dot = file_name.find_last_of(u'.');
-        std::u16string_view stem = (last_dot == std::u16string_view::npos) ? file_name : file_name.substr(0, last_dot);
-        return ToLower(stem);
+        std::u16string full;
+        if (!vnotch::try_get_process_image_path(pid, &full) || full.empty()) return {};
+        return ToLower(vnotch::get_stem(full));
     }
 
     static std::u16string GetWindowTitle(HWND hwnd) {

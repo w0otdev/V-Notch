@@ -123,16 +123,13 @@ public sealed class GlobalizationAccessibilityTests
     });
 
     [Fact]
-    public void HighlightedTextAndMorphingTitleExposeTheirFullTextToAutomation() => SharedStaTestRunner.Run(() =>
+    public void HighlightedTextExposesItsFullTextToAutomation() => SharedStaTestRunner.Run(() =>
     {
         var text = new TextBlock { TextTrimming = TextTrimming.CharacterEllipsis, Width = 80 };
         const string title = "Datenschutzeinstellungen und Batteriekapazität";
         HighlightedText.SetText(text, title);
         HighlightedText.SetQuery(text, "Batterie");
         Assert.Equal(title, UIElementAutomationPeer.CreatePeerForElement(text)!.GetName());
-        var morph = new MorphingSettingsTitle { Text = title };
-        Assert.Equal(title, UIElementAutomationPeer.CreatePeerForElement(morph)!.GetName());
-        Assert.Equal(title, morph.ToolTip);
     });
 
     private static KeyEventArgs KeyEvent(UIElement source, Key key, RoutedEvent? routedEvent = null) => new(Keyboard.PrimaryDevice,

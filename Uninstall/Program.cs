@@ -250,6 +250,7 @@ internal static class Program
 
         // Leftover update installer in the temp folder.
         DeleteFileIfExists(Path.Combine(Path.GetTempPath(), "V-Notch-Setup.exe"));
+        DeleteDirectoryIfExists(Path.Combine(Path.GetTempPath(), AppName));
     }
 
     private static void ScheduleInstallDirRemoval(string installDirectory)

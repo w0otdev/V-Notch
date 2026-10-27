@@ -207,7 +207,7 @@ internal static class SetupOperations
         });
     }
 
-    public static void RunUninstallFlow()
+    public static void RunUninstallFlow(bool silent = false)
     {
         var installDirectory = InstallDirectoryCleanup.ValidateDirectory(AppContext.BaseDirectory);
         var driveRoot = Path.GetPathRoot(installDirectory);
@@ -216,41 +216,52 @@ internal static class SetupOperations
 
         if (string.IsNullOrWhiteSpace(installDirectory) || isDriveRoot || !File.Exists(Path.Combine(installDirectory, AppExeName)))
         {
-            MessageBox.Show(
-                "Invalid installation directory for uninstall.",
-                Loc.Get("setup.uninstall.title"),
-                MessageBoxButton.OK,
-                MessageBoxImage.Error);
+            if (!silent)
+            {
+                MessageBox.Show(
+                    "Invalid installation directory for uninstall.",
+                    Loc.Get("setup.uninstall.title"),
+                    MessageBoxButton.OK,
+                    MessageBoxImage.Error);
+            }
             Application.Current.Shutdown(1);
             return;
         }
 
-        var confirmation = MessageBox.Show(
-            Loc.Get("setup.uninstall.confirm"),
-            Loc.Get("setup.uninstall.title"),
-            MessageBoxButton.YesNo,
-            MessageBoxImage.Question);
-
-        if (confirmation != MessageBoxResult.Yes)
+        if (!silent)
         {
-            Application.Current.Shutdown(1);
-            return;
+            var confirmation = MessageBox.Show(
+                Loc.Get("setup.uninstall.confirm"),
+                Loc.Get("setup.uninstall.title"),
+                MessageBoxButton.YesNo,
+                MessageBoxImage.Question);
+
+            if (confirmation != MessageBoxResult.Yes)
+            {
+                Application.Current.Shutdown(1);
+                return;
+            }
         }
 
         if (RequiresAdministratorForInstallPath(installDirectory) && !IsRunningAsAdministrator())
         {
-            MessageBox.Show(
-                Loc.Get("setup.uninstall.adminRequired"),
-                Loc.Get("setup.windowTitle"),
-                MessageBoxButton.OK,
-                MessageBoxImage.Information);
+            if (!silent)
+            {
+                MessageBox.Show(
+                    Loc.Get("setup.uninstall.adminRequired"),
+                    Loc.Get("setup.windowTitle"),
+                    MessageBoxButton.OK,
+                    MessageBoxImage.Information);
+            }
             Application.Current.Shutdown(1);
             return;
         }
 
+        StopOtherRunningInstancesAsync().GetAwaiter().GetResult();
         RemoveStartupRegistration();
         RemoveUninstallRegistration();
         RemoveShortcuts();
+        RemoveAppData();
 
         InstallDirectoryCleanup.Schedule(installDirectory);
 
@@ -393,7 +404,7 @@ internal static class SetupOperations
         else
         {
             uninstallKey.SetValue("UninstallString", $"\"{installedExePath}\" --uninstall");
-            uninstallKey.SetValue("QuietUninstallString", $"\"{installedExePath}\" --uninstall");
+            uninstallKey.SetValue("QuietUninstallString", $"\"{installedExePath}\" --uninstall --quiet");
         }
 
         using var appKey = openKey($@"Software\{AppName}");
@@ -478,6 +489,39 @@ internal static class SetupOperations
         if (Directory.Exists(startMenuDirectory))
         {
             Directory.Delete(startMenuDirectory, recursive: true);
+        }
+    }
+
+    private static void RemoveAppData()
+    {
+        string[] directories =
+        [
+            Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), AppName),
+            Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), AppName),
+            Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "VNotch"),
+            Path.Combine(Path.GetTempPath(), AppName)
+        ];
+
+        foreach (var dir in directories)
+        {
+            try
+            {
+                if (Directory.Exists(dir)) Directory.Delete(dir, recursive: true);
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                Debug.WriteLine($"[Setup] Could not remove directory '{dir}': {ex.Message}");
+            }
+        }
+
+        var legacyTempSetup = Path.Combine(Path.GetTempPath(), "V-Notch-Setup.exe");
+        try
+        {
+            if (File.Exists(legacyTempSetup)) File.Delete(legacyTempSetup);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            Debug.WriteLine($"[Setup] Could not remove temp installer '{legacyTempSetup}': {ex.Message}");
         }
     }
 

@@ -18,56 +18,9 @@ class ProcessNameResolver final {
 public:
     static bool TryGetNameAndExecutable(uint32_t process_id, std::u16string* out_name, std::u16string* out_exec) {
         out_name->clear();
-        out_exec->clear();
-        if (process_id == 0) return false;
-
-        HANDLE raw_process = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, FALSE, process_id);
-        if (raw_process == nullptr) return false;
-
-        struct HandleGuard {
-            HANDLE h;
-            ~HandleGuard() noexcept {
-                if (h != nullptr && h != INVALID_HANDLE_VALUE) {
-                    CloseHandle(h);
-                }
-            }
-        } guard{raw_process};
-
-        wchar_t stack_buf[1024];
-        DWORD size = 1024;
-        if (QueryFullProcessImageNameW(guard.h, 0, stack_buf, &size)) {
-            ExtractNameAndExec(std::u16string_view(reinterpret_cast<const char16_t*>(stack_buf), size), out_name, out_exec);
-            return true;
-        }
-
-        if (GetLastError() != ERROR_INSUFFICIENT_BUFFER) {
-            return false;
-        }
-
-        std::vector<wchar_t> heap_buf(32768);
-        size = 32768;
-        bool ok = QueryFullProcessImageNameW(guard.h, 0, heap_buf.data(), &size) != FALSE;
-        if (!ok) return false;
-
-        ExtractNameAndExec(std::u16string_view(reinterpret_cast<const char16_t*>(heap_buf.data()), size), out_name, out_exec);
+        if (!vnotch::try_get_process_image_path(process_id, out_exec)) return false;
+        *out_name = std::u16string(vnotch::get_stem(*out_exec));
         return true;
-    }
-
-private:
-    static void ExtractNameAndExec(std::u16string_view full_path, std::u16string* out_name, std::u16string* out_exec) {
-        *out_exec = std::u16string(full_path);
-
-        size_t last_sep = full_path.find_last_of(u"\\/:");
-        std::u16string_view file_name = (last_sep == std::u16string_view::npos)
-            ? full_path
-            : full_path.substr(last_sep + 1);
-
-        size_t last_dot = file_name.find_last_of(u'.');
-        std::u16string_view stem = (last_dot == std::u16string_view::npos)
-            ? file_name
-            : file_name.substr(0, last_dot);
-
-        *out_name = std::u16string(stem);
     }
 };
 

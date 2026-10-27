@@ -192,15 +192,18 @@ internal static partial class WhiteNoiseService
 
     private static void SavePreferences()
     {
+        string path = PreferencesPath;
+        string tempPath = path + ".tmp";
         try
         {
-            string path = PreferencesPath;
             Directory.CreateDirectory(Path.GetDirectoryName(path)!);
-            File.WriteAllText(path, string.Create(System.Globalization.CultureInfo.InvariantCulture,
+            File.WriteAllText(tempPath, string.Create(System.Globalization.CultureInfo.InvariantCulture,
                 $"sync={(_syncWithTimer ? 1 : 0)}\nvolume={_volume:0.###}\n"));
+            File.Move(tempPath, path, overwrite: true);
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
+            try { if (File.Exists(tempPath)) File.Delete(tempPath); } catch (IOException) { }
         }
     }
 }

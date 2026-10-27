@@ -57,7 +57,7 @@ public partial class ClipboardTray : UserControl, IDisposable
     private IReadOnlyDictionary<string, int> _categoryCounts = new Dictionary<string, int>();
     private long _menuInteractionUntil;
     private bool _deleteConfirmationOpen;
-    public bool IsContextMenuOpen => _deleteConfirmationOpen || _openMenus.Count != 0 || Environment.TickCount64 < _menuInteractionUntil;
+    public bool IsContextMenuOpen => _deleteConfirmationOpen || _labelEditorOpen || _openMenus.Count != 0 || Environment.TickCount64 < _menuInteractionUntil;
 
     public bool ContainsMenuPoint(Point screenPoint)
     {
@@ -88,6 +88,11 @@ public partial class ClipboardTray : UserControl, IDisposable
 
     public bool TryDismissOverlay()
     {
+        if (_labelEditorOpen || LabelEditorPanel.Visibility == Visibility.Visible)
+        {
+            CloseLabelEditor();
+            return true;
+        }
         if (_deleteConfirmationOpen || DeleteConfirmationPanel.Visibility == Visibility.Visible)
         {
             ResolveDeleteConfirmation(false);
@@ -156,7 +161,7 @@ public partial class ClipboardTray : UserControl, IDisposable
             }
             else
             {
-                CloseLabelEditor();
+                CloseLabelEditor(immediately: true);
                 StopEntranceWork();
                 StopCategoryScrolling();
                 CancelCardPositionAnimation();
@@ -1474,6 +1479,8 @@ public partial class ClipboardTray : UserControl, IDisposable
         StopCategoryScrolling();
         CancelCardPositionAnimation();
         CancelThumbnailLoads();
+        _menuAnimationTargets.Clear();
+        _edgeFadeStates.Clear();
         _realizedCardElements.Clear();
         _completedContentLoads.Clear();
         _arrivingCards.Clear();

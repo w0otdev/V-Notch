@@ -150,7 +150,11 @@ public partial class App : Application
             await RuntimeLog.InitializeNewSessionAsync("vnotch-debug.log");
             RuntimeLog.Log("SYSTEM", $"Application startup. Log file: {RuntimeLog.LogPath}");
             Services.GetRequiredService<AppFileCleanupService>().Start();
-            CheckAndShowPostUpdateReleasePage(loadedSettings, earlySettings);
+            if (loadedSettings.LastRunVersion != AppVersion.Current)
+            {
+                loadedSettings.LastRunVersion = AppVersion.Current;
+                earlySettings.SaveAsync(loadedSettings).SafeFireAndForget("POST-UPDATE-SAVE");
+            }
             ServicePrewarmer.Prewarm(Services).SafeFireAndForget("PREWARM");
 
             _ = AppIntegrityService.StartBackgroundCheckAsync();
@@ -267,7 +271,13 @@ public partial class App : Application
 
         if (e.Args.Contains("--uninstall"))
         {
-            SetupOperations.RunUninstallFlow();
+            bool silent = e.Args.Any(a =>
+                a.Equals("/S", StringComparison.OrdinalIgnoreCase) ||
+                a.Equals("/silent", StringComparison.OrdinalIgnoreCase) ||
+                a.Equals("--silent", StringComparison.OrdinalIgnoreCase) ||
+                a.Equals("/quiet", StringComparison.OrdinalIgnoreCase) ||
+                a.Equals("--quiet", StringComparison.OrdinalIgnoreCase));
+            SetupOperations.RunUninstallFlow(silent);
             return true;
         }
 
@@ -396,13 +406,6 @@ public partial class App : Application
         args.SetObserved();
     }
 
-    private static string FormatVersion(Version v)
-    {
-        return v.Revision > 0
-            ? $"{v.Major}.{v.Minor}.{v.Build}.{v.Revision}"
-            : $"{v.Major}.{v.Minor}.{v.Build}";
-    }
-
     protected override void OnExit(ExitEventArgs e)
     {
         InteractionSounds.Shutdown();
@@ -458,30 +461,6 @@ public partial class App : Application
         return ex is RecoverableAnimationException
             or RecoverableMediaException
             or System.Runtime.InteropServices.COMException;
-    }
-
-    private static void CheckAndShowPostUpdateReleasePage(VNotch.Models.NotchSettings settings, ISettingsService settingsService)
-    {
-        try
-        {
-            var currentVersionStr = AppVersion.Current;
-            bool needSave = false;
-
-            if (settings.LastRunVersion != currentVersionStr)
-            {
-                settings.LastRunVersion = currentVersionStr;
-                needSave = true;
-            }
-
-            if (needSave)
-            {
-                settingsService.SaveAsync(settings).SafeFireAndForget("POST-UPDATE-SAVE");
-            }
-        }
-        catch (System.Exception ex)
-        {
-            RuntimeLog.Error("POST-UPDATE", ex, "Failed to check/show post-update release page");
-        }
     }
 
     private static string? TryGetArgumentValue(string[] args, string argumentName)

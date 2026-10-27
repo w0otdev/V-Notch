@@ -937,4 +937,85 @@ inline std::u16string normalize_search(std::u16string_view input)
     return settings_search_normalize_impl(input);
 }
 
+constexpr std::u16string_view get_file_name(std::u16string_view path) noexcept
+{
+    for (size_t i = path.size(); i > 0; --i)
+    {
+        char16_t c = path[i - 1];
+        if (c == u'\\' || c == u'/' || c == u':')
+        {
+            return path.substr(i);
+        }
+    }
+    return path;
+}
+
+constexpr std::u16string_view get_extension(std::u16string_view path) noexcept
+{
+    for (size_t i = path.size(); i > 0; --i)
+    {
+        char16_t c = path[i - 1];
+        if (c == u'.')
+        {
+            return (i != path.size()) ? path.substr(i - 1) : std::u16string_view{};
+        }
+        if (c == u'\\' || c == u'/' || c == u':')
+        {
+            break;
+        }
+    }
+    return {};
+}
+
+constexpr std::u16string_view get_stem(std::u16string_view path) noexcept
+{
+    std::u16string_view name = get_file_name(path);
+    size_t last_dot = name.rfind(u'.');
+    return (last_dot == std::u16string_view::npos) ? name : name.substr(0, last_dot);
+}
+
+inline bool try_get_process_image_path(uint32_t process_id, std::u16string* out_path)
+{
+    out_path->clear();
+    if (process_id == 0) return false;
+
+    HANDLE raw_process = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, FALSE, process_id);
+    if (raw_process == nullptr) return false;
+
+    struct HandleGuard
+    {
+        HANDLE h;
+        ~HandleGuard() noexcept
+        {
+            if (h != nullptr && h != INVALID_HANDLE_VALUE)
+            {
+                CloseHandle(h);
+            }
+        }
+    } guard{raw_process};
+
+    wchar_t stack_buf[1024];
+    DWORD size = 1024;
+    if (QueryFullProcessImageNameW(guard.h, 0, stack_buf, &size))
+    {
+        out_path->assign(reinterpret_cast<const char16_t*>(stack_buf), size);
+        return true;
+    }
+
+    if (GetLastError() != ERROR_INSUFFICIENT_BUFFER)
+    {
+        return false;
+    }
+
+    std::vector<wchar_t> heap_buf(32768);
+    size = 32768;
+    if (!QueryFullProcessImageNameW(guard.h, 0, heap_buf.data(), &size))
+    {
+        return false;
+    }
+
+    out_path->assign(reinterpret_cast<const char16_t*>(heap_buf.data()), size);
+    return true;
+}
+
 } // namespace vnotch

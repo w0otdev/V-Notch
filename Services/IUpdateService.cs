@@ -17,7 +17,6 @@ public class UpdateInfo
 {
     public string Version { get; set; } = string.Empty;
     public string DownloadUrl { get; set; } = string.Empty;
-    public string ChecksumUrl { get; set; } = string.Empty;
     public string ManifestUrl { get; set; } = string.Empty;
     public string ManifestSignatureUrl { get; set; } = string.Empty;
     public string InstallerName { get; set; } = string.Empty;

@@ -11,27 +11,12 @@ class SystemFileSearchProvider final
 
     static std::u16string_view GetFileName(std::u16string_view path) noexcept
     {
-        for (size_t i = path.size(); i > 0; --i)
-        {
-            char16_t c = path[i - 1];
-            if (c == u'\\' || c == u'/' || c == u':')
-            {
-                return path.substr(i);
-            }
-        }
-        return path;
+        return vnotch::get_file_name(path);
     }
 
     static std::u16string_view GetStem(std::u16string_view name) noexcept
     {
-        for (size_t i = name.size(); i > 0; --i)
-        {
-            if (name[i - 1] == u'.')
-            {
-                return name.substr(0, i - 1);
-            }
-        }
-        return name;
+        return vnotch::get_stem(name);
     }
 
 public:

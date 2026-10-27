@@ -160,14 +160,24 @@ public partial class MediaSourceCache
         lock (_lock)
         {
             if (!_isDirty) return;
+            string tempPath = _cachePath + ".tmp";
             try
             {
-                var json = JsonSerializer.Serialize(_cache);
-                File.WriteAllText(_cachePath, json);
+                // Serialize from least-recently to most-recently used so Load() restores exact LRU order.
+                var ordered = new List<KeyValuePair<string, string>>(_lru.Count);
+                for (var node = _lru.Last; node != null; node = node.Previous)
+                {
+                    if (_cache.TryGetValue(node.Value, out var val))
+                        ordered.Add(new KeyValuePair<string, string>(node.Value, val));
+                }
+                var json = JsonSerializer.Serialize(new Dictionary<string, string>(ordered, StringComparer.Ordinal));
+                File.WriteAllText(tempPath, json);
+                File.Move(tempPath, _cachePath, overwrite: true);
                 _isDirty = false;
             }
             catch (Exception ex)
             {
+                try { if (File.Exists(tempPath)) File.Delete(tempPath); } catch (IOException) { }
                 RuntimeLog.Warn("MEDIA-SOURCE-CACHE", $"Failed to save cache to '{_cachePath}': {ex.Message}");
             }
         }
@@ -202,8 +212,12 @@ public partial class MediaSourceCache
     {
         if (_nodes.TryGetValue(key, out var node))
         {
-            _lru.Remove(node);
-            _lru.AddFirst(node);
+            if (!ReferenceEquals(_lru.First, node))
+            {
+                _lru.Remove(node);
+                _lru.AddFirst(node);
+                _isDirty = true;
+            }
         }
         else
         {

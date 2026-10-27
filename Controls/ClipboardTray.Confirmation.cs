@@ -107,7 +107,7 @@ public partial class ClipboardTray
     }
     private void Tray_PreviewKeyDown(object sender, KeyEventArgs e)
     {
-        if (LabelEditorPanel.Visibility == Visibility.Visible)
+        if (_labelEditorOpen || LabelEditorPanel.Visibility == Visibility.Visible)
         {
             if (e.Key == Key.Escape) { CloseLabelEditor(); e.Handled = true; }
             return;

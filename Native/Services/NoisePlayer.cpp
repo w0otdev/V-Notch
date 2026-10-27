@@ -28,6 +28,12 @@ inline float OnePoleCoef(float cutoffHz) noexcept {
     return 1.0f - std::exp(-2.0f * kPi * cutoffHz / static_cast<float>(kSampleRate));
 }
 
+template <int32_t CutoffMilliHz>
+inline float Coef() noexcept {
+    static const float c = OnePoleCoef(static_cast<float>(CutoffMilliHz) * 0.001f);
+    return c;
+}
+
 inline float SoftLimit(float x) noexcept {
     // Smooth, symmetric, never exceeds +/-1 and stays linear for small signals.
     return x / (1.0f + std::fabs(x));
@@ -70,8 +76,8 @@ struct Voice {
     }
 
     // Smoothed random walk in [-1, 1] changing at roughly `rateHz`.
-    float Wander(float& state, float rateHz) noexcept {
-        state += OnePoleCoef(rateHz) * (White() * 2.2f - state);
+    float Wander(float& state, float coef) noexcept {
+        state += coef * (White() * 2.2f - state);
         return std::clamp(state, -1.0f, 1.0f);
     }
 
@@ -80,12 +86,12 @@ struct Voice {
         switch (kind) {
         case Kind::White: {
             // Gentle top roll-off keeps the hiss full but not piercing.
-            lp1 += OnePoleCoef(6500.0f) * (w - lp1);
-            lp2 += OnePoleCoef(6500.0f) * (lp1 - lp2);
+            lp1 += Coef<6500000>() * (w - lp1);
+            lp2 += Coef<6500000>() * (lp1 - lp2);
             return lp2 * 0.35f;
         }
         case Kind::Pink: {
-            lp1 += OnePoleCoef(5500.0f) * (Pink(w) - lp1);
+            lp1 += Coef<5500000>() * (Pink(w) - lp1);
             return lp1 * 1.2f;
         }
         case Kind::Brown:
@@ -93,8 +99,8 @@ struct Voice {
             return brown * 0.42f;
         case Kind::Fan: {
             // Low, round air flow with a faint motor hum and blade flutter.
-            lp1 += OnePoleCoef(900.0f) * (Pink(w) * 1.6f - lp1);
-            lp2 += OnePoleCoef(260.0f) * (lp1 - lp2);
+            lp1 += Coef<900000>() * (Pink(w) * 1.6f - lp1);
+            lp2 += Coef<260000>() * (lp1 - lp2);
             humPhase += 2.0f * kPi * 96.0f / static_cast<float>(kSampleRate);
             if (humPhase > 2.0f * kPi) humPhase -= 2.0f * kPi;
             bladePhase += 2.0f * kPi * 27.0f / static_cast<float>(kSampleRate);
@@ -107,56 +113,56 @@ struct Voice {
             // Dense, steady shower: a pink-ish band bed, a faint distant rumble and a thick
             // layer of tiny droplet bursts. No isolated taps, which sound artificial.
             const float pk = Pink(w);
-            hp1 += OnePoleCoef(350.0f) * (pk - hp1);
-            lp1 += OnePoleCoef(5000.0f) * ((pk - hp1) - lp1);
-            lp2 += OnePoleCoef(5000.0f) * (lp1 - lp2);
+            hp1 += Coef<350000>() * (pk - hp1);
+            lp1 += Coef<5000000>() * ((pk - hp1) - lp1);
+            lp2 += Coef<5000000>() * (lp1 - lp2);
             brown = 0.998f * brown + 0.04f * w;
-            const float roll = 0.85f + 0.15f * Wander(slowA, 0.3f);
+            const float roll = 0.85f + 0.15f * Wander(slowA, Coef<300>());
             if (Uniform() < 0.012f) dropEnv = 0.25f + 0.75f * Uniform();
             dropEnv *= 0.994f;
             const float x = White() * dropEnv;
-            d1 += OnePoleCoef(3800.0f) * (x - d1);
-            d2 += OnePoleCoef(1200.0f) * (d1 - d2);
+            d1 += Coef<3800000>() * (x - d1);
+            d2 += Coef<1200000>() * (d1 - d2);
             const float drops = (d1 - d2) * 1.1f;
             return (lp2 * 1.25f + drops * 0.55f + brown * 0.12f) * roll;
         }
         case Kind::Ocean: {
             brown = 0.998f * brown + 0.04f * w;
-            lp1 += OnePoleCoef(700.0f) * (brown * 1.2f - lp1);
-            lfoPhase += lfoRate * (1.0f + 0.35f * Wander(slowA, 0.07f));
+            lp1 += Coef<700000>() * (brown * 1.2f - lp1);
+            lfoPhase += lfoRate * (1.0f + 0.35f * Wander(slowA, Coef<70>()));
             if (lfoPhase > 2.0f * kPi) lfoPhase -= 2.0f * kPi;
             const float swell = 0.5f + 0.5f * std::sin(lfoPhase);
             const float env = 0.25f + 0.75f * swell * swell;
-            lp2 += OnePoleCoef(3500.0f) * (w - lp2);
+            lp2 += Coef<3500000>() * (w - lp2);
             const float hiss = (w - lp2) * 0.06f * swell * swell * swell;
             return (lp1 * 0.6f + hiss) * env * 1.4f;
         }
         case Kind::Wind: {
-            const float g = Wander(slowA, 0.35f);
+            const float g = Wander(slowA, Coef<350>());
             const float fc = 450.0f + 350.0f * g;
             const float f = 2.0f * std::sin(kPi * fc / static_cast<float>(kSampleRate));
             const float q = 0.45f;
             svfLow += f * svfBand;
             const float high = w * 0.35f - svfLow - q * svfBand;
             svfBand += f * high;
-            const float gain = 0.65f + 0.35f * Wander(slowB, 0.2f);
+            const float gain = 0.65f + 0.35f * Wander(slowB, Coef<200>());
             return svfBand * gain * 0.85f;
         }
         case Kind::Stream: {
             // Mid-range water body with bubbling resonances; nothing above ~3 kHz.
-            lp1 += OnePoleCoef(1500.0f) * (w - lp1);
-            hp1 += OnePoleCoef(250.0f) * (lp1 - hp1);
+            lp1 += Coef<1500000>() * (w - lp1);
+            hp1 += Coef<250000>() * (lp1 - hp1);
             const float body = lp1 - hp1;
-            const float g = Wander(slowA, 12.0f);
+            const float g = Wander(slowA, Coef<12000>());
             const float fc = 750.0f + 500.0f * g;
             const float f = 2.0f * std::sin(kPi * fc / static_cast<float>(kSampleRate));
             const float q = 0.25f;
             svfLow += f * svfBand;
             const float high = w * 0.25f - svfLow - q * svfBand;
             svfBand += f * high;
-            const float bubble = Wander(slowB, 8.0f);
+            const float bubble = Wander(slowB, Coef<8000>());
             const float gate = 0.35f + 0.65f * std::max(0.0f, bubble);
-            lp2 += OnePoleCoef(3000.0f) * ((body * 0.9f + svfBand * 0.7f * gate) - lp2);
+            lp2 += Coef<3000000>() * ((body * 0.9f + svfBand * 0.7f * gate) - lp2);
             return lp2;
         }
         default:
@@ -165,29 +171,14 @@ struct Voice {
     }
 };
 
-// Per-kind loudness so every sound plays at the same perceived level. Brighter kinds sit a
-// little lower because hiss reads louder than rumble at equal RMS.
-constexpr std::array<float, kKindCount> kLoudnessWeight = {0.8f, 0.9f, 1.0f, 1.0f, 0.85f, 1.0f, 1.0f, 0.9f};
-constexpr float kTargetRms = 0.15f;
+// Precomputed 12-second RMS normalization gains (seed 77, target RMS 0.15 * kLoudnessWeight).
+constexpr std::array<float, kKindCount> kNormGain = {
+    1.173383f, 0.647081f, 0.993035f, 0.500040f,
+    1.055131f, 0.622996f, 4.949397f, 1.020860f
+};
 
-float NormalizationGain(int32_t kind) noexcept {
-    static std::array<float, kKindCount> cache{};
-    if (kind < 0 || kind >= kKindCount) return 1.0f;
-    float& cached = cache[static_cast<size_t>(kind)];
-    if (cached > 0.0f) return cached;
-    Voice probe;
-    probe.Seed(77);
-    const int32_t warmup = kSampleRate / 2;
-    const int32_t total = kSampleRate * 12;
-    double sum = 0.0;
-    for (int32_t i = 0; i < total; ++i) {
-        const float s = probe.Next(kind);
-        if (i >= warmup) sum += static_cast<double>(s) * s;
-    }
-    const double rms = std::sqrt(sum / static_cast<double>(total - warmup));
-    const float gain = rms > 1e-6 ? static_cast<float>(kTargetRms * kLoudnessWeight[static_cast<size_t>(kind)] / rms) : 1.0f;
-    cached = std::clamp(gain, 0.1f, 12.0f);
-    return cached;
+constexpr float NormalizationGain(int32_t kind) noexcept {
+    return (kind >= 0 && kind < kKindCount) ? kNormGain[static_cast<size_t>(kind)] : 1.0f;
 }
 struct PlayerState {
     std::mutex mutex;

@@ -268,6 +268,9 @@ public partial class MainWindow
 
     private async void OnGestureSwipeLeft()
     {
+        if ((DateTime.UtcNow - _lastMediaActionTime).TotalMilliseconds < 500) return;
+        _lastMediaActionTime = DateTime.UtcNow;
+
         await Dispatcher.InvokeAsync(() =>
         {
             PlayGestureSwipeFeedback(isLeft: true);
@@ -277,9 +280,6 @@ public partial class MainWindow
 
         try
         {
-            if ((DateTime.UtcNow - _lastMediaActionTime).TotalMilliseconds < 500) return;
-            _lastMediaActionTime = DateTime.UtcNow;
-
             await _mediaService.NextTrackAsync();
         }
         catch (Exception ex)
@@ -290,6 +290,9 @@ public partial class MainWindow
 
     private async void OnGestureSwipeRight()
     {
+        if ((DateTime.UtcNow - _lastMediaActionTime).TotalMilliseconds < 500) return;
+        _lastMediaActionTime = DateTime.UtcNow;
+
         await Dispatcher.InvokeAsync(() =>
         {
             PlayGestureSwipeFeedback(isLeft: false);
@@ -298,9 +301,6 @@ public partial class MainWindow
 
         try
         {
-            if ((DateTime.UtcNow - _lastMediaActionTime).TotalMilliseconds < 500) return;
-            _lastMediaActionTime = DateTime.UtcNow;
-
             PrepareForPreviousTrackRequest();
             await _mediaService.PreviousTrackAsync();
         }

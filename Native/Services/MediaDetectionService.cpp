@@ -283,17 +283,10 @@ BOOL CALLBACK EnumSpotifyWindowsProc(HWND hwnd, LPARAM lparam) noexcept {
 
     DWORD pid = 0;
     GetWindowThreadProcessId(hwnd, &pid);
-    if (pid == 0) return TRUE;
+    std::u16string exe_path;
+    if (!vnotch::try_get_process_image_path(pid, &exe_path) || exe_path.size() < 11) return TRUE;
 
-    HANDLE proc = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, FALSE, pid);
-    if (!proc) return TRUE;
-    wchar_t exe_path[MAX_PATH]{};
-    DWORD path_len = MAX_PATH;
-    const BOOL ok = QueryFullProcessImageNameW(proc, 0, exe_path, &path_len);
-    CloseHandle(proc);
-    if (!ok || path_len < 11) return TRUE;
-
-    std::u16string_view path_sv(reinterpret_cast<const char16_t*>(exe_path), static_cast<size_t>(path_len));
+    std::u16string_view path_sv(exe_path);
     if (!vnotch::ends_with_ignore_case(path_sv, u"\\spotify.exe") &&
         !vnotch::equals_ignore_case(path_sv, u"spotify.exe")) {
         return TRUE;
@@ -324,14 +317,13 @@ bool WaitWinRtAsync(TAsyncOp* op, DWORD timeout_ms = 3000) noexcept {
         return false;
     }
     ABI::Windows::Foundation::AsyncStatus status = ABI::Windows::Foundation::AsyncStatus::Started;
-    DWORD waited = 0;
+    const ULONGLONG deadline = GetTickCount64() + timeout_ms;
     while (SUCCEEDED(info.ptr->get_Status(&status)) && status == ABI::Windows::Foundation::AsyncStatus::Started) {
-        if (waited >= timeout_ms) {
+        if (GetTickCount64() >= deadline) {
             info.ptr->Cancel();
             return false;
         }
         Sleep(1);
-        waited += 1;
     }
     return status == ABI::Windows::Foundation::AsyncStatus::Completed;
 }

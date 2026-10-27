@@ -97,9 +97,8 @@ public sealed class BluetoothNotificationController : IDisposable
 
             StopDismissTimerLocked();
             _isVisible = false;
+            DismissRequested?.Invoke();
         }
-
-        DismissRequested?.Invoke();
     }
 
     public static Geometry GetIconGeometry(BluetoothDeviceType deviceType)
@@ -143,9 +142,8 @@ public sealed class BluetoothNotificationController : IDisposable
                 ++_dismissGeneration;
                 _isVisible = false;
                 timer.Dispose();
+                DismissRequested?.Invoke();
             }
-
-            DismissRequested?.Invoke();
         };
         timer.Start();
     }

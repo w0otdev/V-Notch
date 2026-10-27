@@ -130,12 +130,17 @@ public partial class SettingsWindow
                 scale.BeginAnimation(ScaleTransform.ScaleXProperty, Motion(size, 0.9, 180));
                 scale.BeginAnimation(ScaleTransform.ScaleYProperty, Motion(size, 0.9, 180));
             }
+            string tempPath = SeenTraySettingsPath + ".tmp";
             try
             {
                 Directory.CreateDirectory(Path.GetDirectoryName(SeenTraySettingsPath)!);
-                File.WriteAllLines(SeenTraySettingsPath, _seenTraySettings);
+                File.WriteAllLines(tempPath, _seenTraySettings);
+                File.Move(tempPath, SeenTraySettingsPath, overwrite: true);
             }
-            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                try { if (File.Exists(tempPath)) File.Delete(tempPath); } catch (IOException) { }
+            }
         }
         target.MouseEnter += (_, _) => Dismiss();
         target.GotKeyboardFocus += (_, _) => Dismiss();

@@ -104,7 +104,11 @@ public partial class ClipboardTray
     private void CardActionGlass_SizeChanged(object sender, SizeChangedEventArgs e)
     {
         if (sender is FrameworkElement element)
-            element.Clip = new RectangleGeometry(new Rect(e.NewSize), 5, 5);
+        {
+            var clip = new RectangleGeometry(new Rect(e.NewSize), 6, 6);
+            clip.Freeze();
+            element.Clip = clip;
+        }
     }
 
     private void CardPreview_TargetUpdated(object sender, DataTransferEventArgs e)

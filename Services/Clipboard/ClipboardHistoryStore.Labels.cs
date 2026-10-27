@@ -75,4 +75,19 @@ public sealed partial class ClipboardHistoryStore
         SaveLabels(labels.ToArray());
         return true;
     });
+
+    /// <summary>Commits a drag to its final catalog position in one queued write.</summary>
+    public Task ReorderLabelAsync(string id, int destinationIndex) => Run(() =>
+    {
+        var labels = _labels.ToList();
+        int sourceIndex = labels.FindIndex(label => label.Id == id);
+        if (sourceIndex < 0) return false;
+        int targetIndex = Math.Clamp(destinationIndex, 0, labels.Count - 1);
+        if (sourceIndex == targetIndex) return false;
+        var label = labels[sourceIndex];
+        labels.RemoveAt(sourceIndex);
+        labels.Insert(targetIndex, label);
+        SaveLabels(labels.ToArray());
+        return true;
+    });
 }

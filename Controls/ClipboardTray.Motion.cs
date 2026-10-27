@@ -34,7 +34,7 @@ public partial class ClipboardTray
 
     private void InitializeComponentMotion()
     {
-        foreach (var panel in new FrameworkElement[] { LockPanel, ApprovalPanel, DetailPanel, EmptyText, EmptyDropSilhouette, StatusPanel, DeleteConfirmationPanel })
+        foreach (var panel in new FrameworkElement[] { LockPanel, ApprovalPanel, DetailPanel, EmptyText, EmptyDropSilhouette, StatusPanel, DeleteConfirmationPanel, LabelEditorPanel })
             panel.IsVisibleChanged += (_, _) =>
             {
                 if (panel.IsVisible && !_disposed && !_trayLeaving) AnimateLayer(panel, true, 0, true);
@@ -145,7 +145,7 @@ public partial class ClipboardTray
             AnimateLayer(Cards, true, 60, !reversing, 360, 10);
         }
 
-        foreach (var panel in new FrameworkElement[] { LockPanel, ApprovalPanel, DetailPanel, EmptyText, EmptyDropSilhouette, StatusPanel, DeleteConfirmationPanel })
+        foreach (var panel in new FrameworkElement[] { LockPanel, ApprovalPanel, DetailPanel, EmptyText, EmptyDropSilhouette, StatusPanel, DeleteConfirmationPanel, LabelEditorPanel })
             if (panel.IsVisible) AnimateLayer(panel, true, 60, !reversing, 360, 10);
         if (LockPanel.IsVisible) QueuePasscodeFocus();
         if (_trayDropBorderVisible) AnimateTrayDropBorder(true, !reversing);
@@ -153,7 +153,7 @@ public partial class ClipboardTray
 
     public void BeginExit()
     {
-        CloseLabelEditor();
+        CloseLabelEditor(immediately: true);
         CancelPendingPersonalDrop(); ResolveDeleteConfirmation(false, immediately: true); ClearStatus(immediately: true);
         CancelCardPositionAnimation();
         _trayLeaving = true;

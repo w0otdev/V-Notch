@@ -132,6 +132,15 @@ public partial class ClipboardTray
         stop.BeginAnimation(GradientStop.ColorProperty, anim);
     }
 
+    private void EdgeFadeElement_Unloaded(object sender, RoutedEventArgs e)
+    {
+        if (sender is FrameworkElement element)
+        {
+            element.Unloaded -= EdgeFadeElement_Unloaded;
+            _edgeFadeStates.Remove(element);
+        }
+    }
+
     private void TrayScroll_Changed(object sender, ScrollChangedEventArgs e)
     {
         if (sender is FrameworkElement element) UpdateEdgeFade(element);
@@ -153,6 +162,7 @@ public partial class ClipboardTray
         var state = (left, right, element.ActualWidth);
         bool hadState = _edgeFadeStates.TryGetValue(element, out var previous);
         if (hadState && previous == state) return;
+        if (!hadState) element.Unloaded += EdgeFadeElement_Unloaded;
         _edgeFadeStates[element] = state;
         if (ReferenceEquals(element, Cards))
         {

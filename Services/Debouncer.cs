@@ -1,20 +1,10 @@
 using System;
-using System.Runtime.InteropServices;
 using System.Windows.Threading;
 
 namespace VNotch.Services;
 
-public sealed partial class Debouncer : IDisposable
+public sealed class Debouncer : IDisposable
 {
-    internal const string NativeDll = "VNotch.Native.dll";
-
-    [LibraryImport(NativeDll)]
-    internal static partial int vn_debouncer_should_execute_throttle_immediately(
-        long nowUtcTicks,
-        long lastExecutionUtcTicks,
-        long intervalTicks,
-        out byte outImmediate);
-
     private readonly UiScheduledTimer _timer;
     private readonly Dispatcher _dispatcher;
     private Action? _pendingAction;
@@ -81,64 +71,5 @@ public sealed partial class Debouncer : IDisposable
             _timer.Tick -= OnTick;
             _pendingAction = null;
         });
-    }
-}
-
-public sealed class Throttler : IDisposable
-{
-    private readonly UiScheduledTimer _timer;
-    private Action? _pendingAction;
-    private DateTime _lastExecutionUtc = DateTime.MinValue;
-    private readonly TimeSpan _interval;
-
-    public Throttler(TimeSpan interval, DispatcherPriority priority = DispatcherPriority.Normal)
-    {
-        _interval = interval;
-        _timer = new UiScheduledTimer(priority)
-        {
-            Interval = interval
-        };
-        _timer.Tick += (s, e) =>
-        {
-            _timer.Stop();
-            if (_pendingAction != null)
-            {
-                _lastExecutionUtc = DateTime.UtcNow;
-                var action = _pendingAction;
-                _pendingAction = null;
-                action.Invoke();
-            }
-        };
-    }
-    public void Throttle(Action action)
-    {
-        var now = DateTime.UtcNow;
-        bool immediate = Debouncer.vn_debouncer_should_execute_throttle_immediately(now.Ticks, _lastExecutionUtc.Ticks, _interval.Ticks, out byte outImm) == 0
-            ? outImm != 0
-            : (now - _lastExecutionUtc) >= _interval;
-        if (immediate)
-        {
-            _lastExecutionUtc = now;
-            _timer.Stop();
-            _pendingAction = null;
-            action.Invoke();
-        }
-        else
-        {
-            _pendingAction = action;
-            if (!_timer.IsEnabled)
-                _timer.Start();
-        }
-    }
-    public void Cancel()
-    {
-        _timer.Stop();
-        _pendingAction = null;
-    }
-
-    public void Dispose()
-    {
-        _timer.Stop();
-        _pendingAction = null;
     }
 }
