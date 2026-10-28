@@ -64,6 +64,8 @@ public partial class WeatherModule : NotchModuleBase
 
     public event EventHandler<WeatherUpdateEventArgs>? WeatherUpdated;
 
+    public void RetryNow() => _ = RefreshAsync();
+
     public void RefreshLocalization()
     {
         WeatherUpdated?.Invoke(this, new WeatherUpdateEventArgs { Weather = _lastWeather });

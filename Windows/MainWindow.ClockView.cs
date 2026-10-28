@@ -121,6 +121,11 @@ public partial class MainWindow : IClockWidgetHost
 
     void IClockWidgetHost.SwitchToTimerView() => SwitchToTimerView();
     void IClockWidgetHost.CollapseNotch() => CollapseNotch();
+    void IClockWidgetHost.OpenWeatherSettings()
+    {
+        OpenAppSettings();
+        _activeSettingsWindow?.NavigateToSection(!_settings.EnableWeather ? "System" : "Privacy");
+    }
 
     IntPtr IClockWidgetHost.Hwnd => _hwnd;
     int IClockWidgetHost.FixedX => _fixedX;

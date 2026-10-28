@@ -29,6 +29,7 @@ public interface IClockWidgetHost
 
     void SwitchToTimerView();
     void CollapseNotch();
+    void OpenWeatherSettings() { }
 
     IntPtr Hwnd { get; }
     int FixedX { get; }
@@ -237,7 +238,10 @@ public sealed class ClockWidgetPresenter : IDisposable
             }
             else
             {
-                _host.CollapseNotch();
+                if (IsWeatherWidgetMode && (!_host.Settings.EnableWeather || _host.Settings.EnableLocalOnlyMode || !_host.Settings.AllowOnlineWeather))
+                    _host.OpenWeatherSettings();
+                else if (!IsWeatherWidgetMode || _refs.WeatherWidgetContent is not VNotch.Controls.WeatherWidget weatherWidget || !weatherWidget.RetryIfUnavailable())
+                    _host.CollapseNotch();
             }
         }
     }

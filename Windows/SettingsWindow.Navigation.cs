@@ -119,7 +119,7 @@ public partial class SettingsWindow
         }
     }
 
-    private void NavigateToSection(string section)
+    internal void NavigateToSection(string section)
     {
         if (section == _activeNav) return;
 

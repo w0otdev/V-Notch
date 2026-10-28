@@ -199,7 +199,8 @@ VN_EXPORT int32_t __stdcall vn_http_send(
         if ((flags & hp::kFlagAllowRedirect) == 0) disabled |= WINHTTP_DISABLE_REDIRECTS;
         if (disabled != 0) WinHttpSetOption(request, WINHTTP_OPTION_DISABLE_FEATURE, &disabled, sizeof(disabled));
         if ((flags & hp::kFlagDecompress) != 0) {
-            DWORD decompression = WINHTTP_DECOMPRESSION_FLAG_ALL;
+            // Open-Meteo sends zlib-wrapped deflate when deflate is advertised, which WinHTTP's deflate decoder rejects with E_ABORT.
+            DWORD decompression = WINHTTP_DECOMPRESSION_FLAG_GZIP;
             WinHttpSetOption(request, WINHTTP_OPTION_DECOMPRESSION, &decompression, sizeof(decompression));
         }
 

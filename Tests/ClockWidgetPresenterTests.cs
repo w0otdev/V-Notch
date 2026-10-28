@@ -28,7 +28,10 @@ public sealed class ClockWidgetPresenterTests
         public Brush WhiteBrush => Brushes.White;
 
         public void SwitchToTimerView() { }
-        public void CollapseNotch() { }
+        public int CollapsedCount { get; private set; }
+        public int OpenedWeatherSettingsCount { get; private set; }
+        public void CollapseNotch() => CollapsedCount++;
+        public void OpenWeatherSettings() => OpenedWeatherSettingsCount++;
 
         public IntPtr Hwnd => IntPtr.Zero;
         public int FixedX => 0;
@@ -218,6 +221,49 @@ public sealed class ClockWidgetPresenterTests
             presenter.ResizeHostWindowHeight(268);
             Assert.Equal(458, window.Height);
             Assert.Equal(expectedPixelHeight, host.WindowHeight);
+        });
+    }
+
+    [Theory]
+    [InlineData(false, 1, 0)]
+    [InlineData(true, 0, 1)]
+    public void TapOnWeatherWidget_OpensWeatherSettingsWhenDisabled_OrCollapsesWhenEnabled(bool enableWeather, int expectedSettingsOpens, int expectedCollapses)
+    {
+        RunSta(() =>
+        {
+            var host = new FakeClockHost();
+            host.Settings.ExpandedWidget = "weather";
+            host.Settings.EnableWeather = enableWeather;
+            host.Settings.EnableLocalOnlyMode = false;
+            host.Settings.AllowOnlineWeather = true;
+
+            var window = new Window();
+            host.Window = window;
+            var calendarWidget = new Border();
+            var refs = new ClockWidgetViewRefs
+            {
+                ClockWidget = new Grid(),
+                CalendarStripContainer = new Grid(),
+                CalendarWidget = calendarWidget,
+                NotchBorder = new Border(),
+                Window = window
+            };
+
+            using var presenter = new ClockWidgetPresenter(host, refs);
+            var down = new System.Windows.Input.MouseButtonEventArgs(System.Windows.Input.Mouse.PrimaryDevice, 0, System.Windows.Input.MouseButton.Left)
+            {
+                RoutedEvent = UIElement.MouseLeftButtonDownEvent
+            };
+            var up = new System.Windows.Input.MouseButtonEventArgs(System.Windows.Input.Mouse.PrimaryDevice, 1, System.Windows.Input.MouseButton.Left)
+            {
+                RoutedEvent = UIElement.MouseLeftButtonUpEvent
+            };
+
+            presenter.OnCalendarWidgetMouseLeftButtonDown(down);
+            presenter.OnCalendarWidgetMouseLeftButtonUp(up);
+
+            Assert.Equal(expectedSettingsOpens, host.OpenedWeatherSettingsCount);
+            Assert.Equal(expectedCollapses, host.CollapsedCount);
         });
     }
 

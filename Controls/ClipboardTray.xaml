@@ -389,7 +389,7 @@
    <Setter Property="Margin" Value="0,0,6,0"/>
    <Setter Property="Padding" Value="12,5"/>
    <Setter Property="Background" Value="Transparent"/>
-   <Setter Property="Foreground" Value="#ADADB5"/>
+   <Setter Property="Foreground" Value="{x:Static svc:UiPalette.IconBrush}"/>
    <Setter Property="Tag" Value="{Binding Name}"/>
    <Setter Property="AllowDrop" Value="True"/>
    <Setter Property="Cursor" Value="Hand"/>
@@ -418,13 +418,9 @@
     </ControlTemplate.Triggers>
    </ControlTemplate></Setter.Value></Setter>
    <Style.Triggers>
-    <DataTrigger Binding="{Binding IsLightSelection}" Value="True">
-     <Setter Property="Background" Value="#FFFFFF"/>
-     <Setter Property="Foreground" Value="#161619"/>
-    </DataTrigger>
-    <DataTrigger Binding="{Binding IsAccentSelection}" Value="True">
-     <Setter Property="Background" Value="#FFFFFF"/>
-     <Setter Property="Foreground" Value="#161619"/>
+    <DataTrigger Binding="{Binding IsSelected}" Value="True">
+     <Setter Property="Background" Value="#18FFFFFF"/>
+     <Setter Property="Foreground" Value="{x:Static svc:UiPalette.PrimaryBrush}"/>
     </DataTrigger>
    </Style.Triggers>
   </Style>

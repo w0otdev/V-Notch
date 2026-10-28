@@ -43,6 +43,14 @@ public partial class WeatherWidget : UserControl, IDisposable
             ShowLoading();
     }
 
+    public bool RetryIfUnavailable()
+    {
+        if (_disposed || !_enabled || _hasWeatherData || _module == null) return false;
+        ShowLoading();
+        _module.RetryNow();
+        return true;
+    }
+
     private void OnWeatherUpdated(object? sender, WeatherUpdateEventArgs e)
     {
         if (_disposed || Dispatcher.HasShutdownStarted) return;
