@@ -163,18 +163,25 @@ public sealed class SetupTermsOfServicePageTests
     {
         RunOnStaThread(() =>
         {
-            Loc.SetLanguage("vi");
-            Assert.Equal("vi", Loc.CurrentLanguage);
+            try
+            {
+                Loc.SetLanguage("vi");
+                Assert.Equal("vi", Loc.CurrentLanguage);
 
-            EnsureApplicationResources();
-            var window = new SetupWindow();
+                EnsureApplicationResources();
+                var window = new SetupWindow();
 
-            Assert.Equal("en", Loc.CurrentLanguage);
-            Assert.Equal("01  Language", window.Step1Text.Text);
-            Assert.Equal("03  Terms", window.Step3Text.Text);
-            Assert.Equal("Setup Assistant", window.SetupAssistantText.Text);
-            Assert.Equal("Cancel", window.CancelButton.Content);
-            Assert.Equal("Continue", window.NextButton.Content);
+                Assert.Equal("en", Loc.CurrentLanguage);
+                Assert.Equal("01  Language", window.Step1Text.Text);
+                Assert.Equal("03  Terms", window.Step3Text.Text);
+                Assert.Equal("Setup Assistant", window.SetupAssistantText.Text);
+                Assert.Equal("Cancel", window.CancelButton.Content);
+                Assert.Equal("Continue", window.NextButton.Content);
+            }
+            finally
+            {
+                Loc.SetLanguage("en");
+            }
         });
     }
 

@@ -421,6 +421,7 @@ public sealed class ClipboardCategoryReorderTests
 
     private static void RunWithTray(Func<ClipboardTray, ClipboardHistoryStore, string, Task> body) => SharedStaTestRunner.RunAsync(async () =>
     {
+        Loc.SetLanguage("en");
         string root = Directory.CreateTempSubdirectory("vnotch-category-reorder-").FullName;
         try
         {

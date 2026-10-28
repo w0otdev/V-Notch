@@ -6,8 +6,8 @@
  xmlns:primitives="clr-namespace:System.Windows.Controls.Primitives;assembly=PresentationFramework"
  xmlns:svc="clr-namespace:VNotch.Services"
  Focusable="False" Background="Transparent" Foreground="White" PreviewKeyDown="Tray_PreviewKeyDown"
- UseLayoutRounding="True" SnapsToDevicePixels="True" TextOptions.TextFormattingMode="Display"
- TextOptions.TextRenderingMode="Grayscale" TextOptions.TextHintingMode="Animated"
+ UseLayoutRounding="True" SnapsToDevicePixels="True" TextOptions.TextFormattingMode="Ideal"
+ TextOptions.TextRenderingMode="ClearType" TextOptions.TextHintingMode="Fixed"
  RenderOptions.BitmapScalingMode="HighQuality" RenderOptions.ClearTypeHint="Enabled"
  FontFamily="{StaticResource SFProDisplay}" FontWeight="Bold">
  <UserControl.Resources>
@@ -735,7 +735,7 @@
         do not propagate pixel-snapping guidelines or force ClearType into them. -->
    <local:ClipboardCardListBox x:Name="Cards" Background="Transparent" BorderThickness="0" Padding="0" ScrollViewer.HorizontalScrollBarVisibility="Hidden" SnapsToDevicePixels="False" UseLayoutRounding="False" TextOptions.TextRenderingMode="Grayscale"
     ScrollViewer.VerticalScrollBarVisibility="Disabled" ScrollViewer.CanContentScroll="True" VirtualizingPanel.IsVirtualizing="True"
-    VirtualizingPanel.VirtualizationMode="Recycling" VirtualizingPanel.ScrollUnit="Pixel" VirtualizingPanel.CacheLength="0.5" VirtualizingPanel.CacheLengthUnit="Page" TextOptions.TextFormattingMode="Ideal" RenderOptions.ClearTypeHint="Auto" PreviewMouseWheel="Cards_Wheel"
+    VirtualizingPanel.VirtualizationMode="Recycling" VirtualizingPanel.ScrollUnit="Pixel" VirtualizingPanel.CacheLength="0.5" VirtualizingPanel.CacheLengthUnit="Page" TextOptions.TextFormattingMode="Display" RenderOptions.ClearTypeHint="Auto" PreviewMouseWheel="Cards_Wheel"
     ScrollViewer.ScrollChanged="TrayScroll_Changed" SizeChanged="TrayScroll_SizeChanged" PreviewKeyDown="Cards_KeyDown" SelectionChanged="Cards_SelectionChanged" SelectionMode="Extended" Margin="8,7,8,12">
     
     <ListBox.ItemsPanel><ItemsPanelTemplate><VirtualizingStackPanel Orientation="Horizontal"/></ItemsPanelTemplate></ListBox.ItemsPanel>
