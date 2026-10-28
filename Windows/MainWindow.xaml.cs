@@ -461,7 +461,7 @@ public partial class MainWindow : Window
         {
             _hoverThumbnailDelayTimer.Stop();
 
-            if (IsCountdownCompletionVisualActive) return;
+            if (IsCountdownCompletionVisualActive || _isVolumeIndicatorActive) return;
 
             if (_settings.EnableHoverExpand && !_isExpanded && !_isAnimating)
             {
@@ -1893,6 +1893,7 @@ public partial class MainWindow : Window
 
     private void SetCompactThumbnailHover(bool isHovered)
     {
+        if (isHovered && _isVolumeIndicatorActive) return;
         if (_isCompactThumbnailHovered == isHovered) return;
 
         _isCompactThumbnailHovered = isHovered;

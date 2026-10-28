@@ -19,6 +19,9 @@
         Opacity="0"
         FontFamily="{DynamicResource SFProDisplay}"
         FontWeight="Bold"
+        TextOptions.TextFormattingMode="Ideal"
+        TextOptions.TextRenderingMode="Grayscale"
+        TextOptions.TextHintingMode="Animated"
         PreviewKeyDown="Window_PreviewKeyDown"
         Deactivated="Window_Deactivated"
         AutomationProperties.Name="V-Notch Spotlight">

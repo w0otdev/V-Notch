@@ -21,7 +21,7 @@ public partial class MainWindow
 
     private void AnimateNotchHover(bool isHovered)
     {
-        if (_isExpanded || _isAnimating || _isGreetingActive || _spotlightMorphSessionActive || _spotlightMorphOwnsNotchVisibility) return;
+        if (_isExpanded || _isAnimating || _isGreetingActive || _isVolumeIndicatorActive || _spotlightMorphSessionActive || _spotlightMorphOwnsNotchVisibility) return;
 
         if (!isHovered && _isGestureActive) return;
 
@@ -52,7 +52,7 @@ public partial class MainWindow
 
     private void AnimateThumbnailHover(bool isHovered)
     {
-        if (_isExpanded || _isAnimating || _isGreetingActive) return;
+        if (_isExpanded || _isAnimating || _isGreetingActive || _isVolumeIndicatorActive) return;
 
         if (!isHovered && _isGestureActive) return;
 
@@ -687,7 +687,7 @@ public partial class MainWindow
 
         // While hovered the pill rests at the hover scale, not 1.0 — ending the
         // bounce there would leave it visibly shrunken until the next hover cycle.
-        double restX = !_isGreetingActive && NotchWrapper.IsMouseOver ? NotchHoverScaleX : 1.0;
+        double restX = !_isGreetingActive && !_isVolumeIndicatorActive && NotchWrapper.IsMouseOver ? NotchHoverScaleX : 1.0;
 
         var bounceX = new DoubleAnimationUsingKeyFrames();
         bounceX.KeyFrames.Add(new EasingDoubleKeyFrame(restX + 0.12, KeyTime.FromTimeSpan(durPeak), _easeQuadOut));

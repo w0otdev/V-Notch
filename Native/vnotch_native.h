@@ -400,3 +400,85 @@ VN_EXPORT int32_t __stdcall vn_ui_compute_progressive_blur_cascade(
     VnProgressiveBlurStep* out_steps,
     int32_t out_cap,
     int32_t* out_written) noexcept;
+
+
+#pragma pack(push, 1)
+
+struct VnVolumeHudLayoutOut
+{
+    int32_t percentage;
+    int32_t active_ticks;
+    int32_t highlight_start_tick;
+    int32_t icon_codepoint;
+    double label_offset_x;
+};
+
+#pragma pack(pop)
+
+VN_EXPORT int32_t __stdcall vn_animation_compute_volume_hud_state(
+    double volume,
+    uint8_t muted,
+    int32_t tick_count,
+    double track_width,
+    double label_width,
+    double min_left_x,
+    VnVolumeHudLayoutOut* out_layout,
+    uint8_t* out_tick_states,
+    int32_t tick_cap) noexcept;
+
+#pragma pack(push, 1)
+
+struct VnVolumeHudOverscrollOut
+{
+    double scale_x;
+    double scale_y;
+    double translate_x;
+    double origin_x;
+};
+
+struct VnVolumeHudTransitionParamsOut
+{
+    double hud_from_scale_x;
+    double hud_from_scale_y;
+    double hud_to_scale_x;
+    double hud_to_scale_y;
+    double hud_from_translate_y;
+    double hud_to_translate_y;
+    double hud_from_blur;
+    double hud_to_blur;
+    double media_to_scale;
+    double media_to_blur;
+    double target_width;
+    double target_height;
+    double target_corner_radius;
+    int32_t morph_duration_ms;
+    int32_t fade_duration_ms;
+};
+
+#pragma pack(pop)
+
+VN_EXPORT int32_t __stdcall vn_animation_compute_volume_hud_palette(
+    int32_t tick_count,
+    int32_t active_ticks,
+    int32_t highlight_start_tick,
+    uint8_t media_r,
+    uint8_t media_g,
+    uint8_t media_b,
+    uint8_t has_media_tint,
+    uint32_t* out_argb,
+    double* out_scale_y,
+    int32_t tick_cap) noexcept;
+
+VN_EXPORT int32_t __stdcall vn_animation_compute_volume_overscroll_spring(
+    double current_volume,
+    double step_delta,
+    VnVolumeHudOverscrollOut* out_overscroll) noexcept;
+
+VN_EXPORT int32_t __stdcall vn_animation_compute_volume_hud_transition(
+    uint8_t entering,
+    uint8_t island_mode,
+    uint8_t enable_blur,
+    double collapsed_width,
+    double collapsed_height,
+    double collapsed_radius,
+    VnVolumeHudTransitionParamsOut* out_params) noexcept;

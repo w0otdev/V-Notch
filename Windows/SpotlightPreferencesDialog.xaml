@@ -6,7 +6,7 @@
         Background="Transparent" ResizeMode="NoResize" ShowInTaskbar="False" Topmost="True"
         WindowStartupLocation="CenterOwner" Loaded="Window_Loaded"
         FontFamily="{fonts:AppFont Fallbacks='Nirmala UI, Segoe UI'}"
-        Foreground="#F2F2F2" UseLayoutRounding="True" TextOptions.TextFormattingMode="Display">
+        Foreground="#F2F2F2" UseLayoutRounding="True" TextOptions.TextFormattingMode="Ideal" TextOptions.TextRenderingMode="Grayscale" TextOptions.TextHintingMode="Animated">
     <Window.Resources>
         <Style x:Key="DialogButton" TargetType="Button">
             <Setter Property="MinHeight" Value="42"/>

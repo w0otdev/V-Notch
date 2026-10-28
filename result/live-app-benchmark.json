@@ -1,40 +1,40 @@
 {
-  "ProcessId": 11904,
+  "ProcessId": 9020,
   "ProcessName": "V-Notch",
-  "ProcessStartTimeUtc": "2026-10-28T03:03:21.3458307Z",
+  "ProcessStartTimeUtc": "2026-10-28T07:21:24.9565001Z",
   "LogicalProcessors": 16,
-  "WarmupSeconds": 2,
-  "RequestedDurationSeconds": 10,
-  "ActualDurationSeconds": 10.3793025,
+  "WarmupSeconds": 1,
+  "RequestedDurationSeconds": 4,
+  "ActualDurationSeconds": 4.4038583,
   "SampleIntervalSeconds": 1,
   "GpuCounterStatus": "Per-engine samples captured; do not sum as overall GPU percent",
   "ExitReason": null,
   "Scope": "External process CPU/private bytes/working set and optional per-engine GPU counters; no FPS, managed heap, or display frame tracing",
   "Summary": {
-    "SampleCount": 5,
+    "SampleCount": 2,
     "CpuPercentOfMachine": {
-      "Mean": 0.7534939899232604,
-      "P95": 0.9606403662495961,
-      "Max": 0.9606403662495961
+      "Mean": 6.5855802266006265,
+      "P95": 7.943947313047914,
+      "Max": 7.943947313047914
     },
     "CpuPercentOfOneCore": {
-      "Mean": 12.055903838772167,
-      "P95": 15.370245859993538,
-      "Max": 15.370245859993538
+      "Mean": 105.36928362561002,
+      "P95": 127.10315700876663,
+      "Max": 127.10315700876663
     },
     "WorkingSetBytes": {
-      "Mean": 217867878.4,
-      "P95": 217870336.0,
-      "Max": 217870336.0
+      "Mean": 93450240.0,
+      "P95": 117055488.0,
+      "Max": 117055488.0
     },
     "PrivateBytes": {
-      "Mean": 602711654.4,
-      "P95": 602714112.0,
-      "Max": 602714112.0
+      "Mean": 201302016.0,
+      "P95": 202321920.0,
+      "Max": 202321920.0
     },
     "GpuEngines": [
       {
-        "Instance": "pid_11904_luid_0x00000000_0x000104d6_phys_0_eng_0_engtype_3d",
+        "Instance": "pid_9020_luid_0x00000000_0x000104d6_phys_0_eng_0_engtype_3d",
         "UtilizationPercent": {
           "Mean": 0.0,
           "P95": 0.0,
@@ -42,7 +42,7 @@
         }
       },
       {
-        "Instance": "pid_11904_luid_0x00000000_0x000104d6_phys_0_eng_1_engtype_high priority compute",
+        "Instance": "pid_9020_luid_0x00000000_0x000104d6_phys_0_eng_1_engtype_high priority compute",
         "UtilizationPercent": {
           "Mean": 0.0,
           "P95": 0.0,
@@ -50,7 +50,7 @@
         }
       },
       {
-        "Instance": "pid_11904_luid_0x00000000_0x000104d6_phys_0_eng_2_engtype_compute 0",
+        "Instance": "pid_9020_luid_0x00000000_0x000104d6_phys_0_eng_2_engtype_compute 0",
         "UtilizationPercent": {
           "Mean": 0.0,
           "P95": 0.0,
@@ -58,7 +58,7 @@
         }
       },
       {
-        "Instance": "pid_11904_luid_0x00000000_0x000104d6_phys_0_eng_3_engtype_compute 1",
+        "Instance": "pid_9020_luid_0x00000000_0x000104d6_phys_0_eng_3_engtype_compute 1",
         "UtilizationPercent": {
           "Mean": 0.0,
           "P95": 0.0,
@@ -66,7 +66,7 @@
         }
       },
       {
-        "Instance": "pid_11904_luid_0x00000000_0x000104d6_phys_0_eng_4_engtype_video jpeg",
+        "Instance": "pid_9020_luid_0x00000000_0x000104d6_phys_0_eng_4_engtype_video jpeg",
         "UtilizationPercent": {
           "Mean": 0.0,
           "P95": 0.0,
@@ -74,7 +74,7 @@
         }
       },
       {
-        "Instance": "pid_11904_luid_0x00000000_0x000104d6_phys_0_eng_5_engtype_video decode 1",
+        "Instance": "pid_9020_luid_0x00000000_0x000104d6_phys_0_eng_5_engtype_video decode 1",
         "UtilizationPercent": {
           "Mean": 0.0,
           "P95": 0.0,
@@ -82,7 +82,7 @@
         }
       },
       {
-        "Instance": "pid_11904_luid_0x00000000_0x000104d6_phys_0_eng_6_engtype_video codec 0",
+        "Instance": "pid_9020_luid_0x00000000_0x000104d6_phys_0_eng_6_engtype_video codec 0",
         "UtilizationPercent": {
           "Mean": 0.0,
           "P95": 0.0,
@@ -90,7 +90,7 @@
         }
       },
       {
-        "Instance": "pid_11904_luid_0x00000000_0x000104d6_phys_0_eng_7_engtype_copy",
+        "Instance": "pid_9020_luid_0x00000000_0x000104d6_phys_0_eng_7_engtype_copy",
         "UtilizationPercent": {
           "Mean": 0.0,
           "P95": 0.0,
@@ -98,7 +98,7 @@
         }
       },
       {
-        "Instance": "pid_11904_luid_0x00000000_0x000104d6_phys_0_eng_8_engtype_timer 0",
+        "Instance": "pid_9020_luid_0x00000000_0x000104d6_phys_0_eng_8_engtype_timer 0",
         "UtilizationPercent": {
           "Mean": 0.0,
           "P95": 0.0,
@@ -106,7 +106,7 @@
         }
       },
       {
-        "Instance": "pid_11904_luid_0x00000000_0x000104d6_phys_0_eng_9_engtype_security 1",
+        "Instance": "pid_9020_luid_0x00000000_0x000104d6_phys_0_eng_9_engtype_security 1",
         "UtilizationPercent": {
           "Mean": 0.0,
           "P95": 0.0,
@@ -114,23 +114,15 @@
         }
       },
       {
-        "Instance": "pid_11904_luid_0x00000000_0x0001257a_phys_0_eng_0_engtype_3d",
+        "Instance": "pid_9020_luid_0x00000000_0x0001257a_phys_0_eng_0_engtype_3d",
         "UtilizationPercent": {
-          "Mean": 0.0035840262250964442,
-          "P95": 0.009483035797262278,
-          "Max": 0.009483035797262278
+          "Mean": 0.7457209915609733,
+          "P95": 1.4914419831219465,
+          "Max": 1.4914419831219465
         }
       },
       {
-        "Instance": "pid_11904_luid_0x00000000_0x0001257a_phys_0_eng_1_engtype_legacyoverlay",
-        "UtilizationPercent": {
-          "Mean": 0.0,
-          "P95": 0.0,
-          "Max": 0.0
-        }
-      },
-      {
-        "Instance": "pid_11904_luid_0x00000000_0x0001257a_phys_0_eng_10_engtype_copy",
+        "Instance": "pid_9020_luid_0x00000000_0x0001257a_phys_0_eng_1_engtype_legacyoverlay",
         "UtilizationPercent": {
           "Mean": 0.0,
           "P95": 0.0,
@@ -138,7 +130,7 @@
         }
       },
       {
-        "Instance": "pid_11904_luid_0x00000000_0x0001257a_phys_0_eng_11_engtype_copy",
+        "Instance": "pid_9020_luid_0x00000000_0x0001257a_phys_0_eng_10_engtype_copy",
         "UtilizationPercent": {
           "Mean": 0.0,
           "P95": 0.0,
@@ -146,7 +138,7 @@
         }
       },
       {
-        "Instance": "pid_11904_luid_0x00000000_0x0001257a_phys_0_eng_12_engtype_copy",
+        "Instance": "pid_9020_luid_0x00000000_0x0001257a_phys_0_eng_11_engtype_copy",
         "UtilizationPercent": {
           "Mean": 0.0,
           "P95": 0.0,
@@ -154,7 +146,7 @@
         }
       },
       {
-        "Instance": "pid_11904_luid_0x00000000_0x0001257a_phys_0_eng_13_engtype_security_1",
+        "Instance": "pid_9020_luid_0x00000000_0x0001257a_phys_0_eng_12_engtype_copy",
         "UtilizationPercent": {
           "Mean": 0.0,
           "P95": 0.0,
@@ -162,7 +154,7 @@
         }
       },
       {
-        "Instance": "pid_11904_luid_0x00000000_0x0001257a_phys_0_eng_2_engtype_videodecode",
+        "Instance": "pid_9020_luid_0x00000000_0x0001257a_phys_0_eng_13_engtype_security_1",
         "UtilizationPercent": {
           "Mean": 0.0,
           "P95": 0.0,
@@ -170,7 +162,7 @@
         }
       },
       {
-        "Instance": "pid_11904_luid_0x00000000_0x0001257a_phys_0_eng_3_engtype_copy",
+        "Instance": "pid_9020_luid_0x00000000_0x0001257a_phys_0_eng_2_engtype_videodecode",
         "UtilizationPercent": {
           "Mean": 0.0,
           "P95": 0.0,
@@ -178,7 +170,7 @@
         }
       },
       {
-        "Instance": "pid_11904_luid_0x00000000_0x0001257a_phys_0_eng_4_engtype_copy",
+        "Instance": "pid_9020_luid_0x00000000_0x0001257a_phys_0_eng_3_engtype_copy",
         "UtilizationPercent": {
           "Mean": 0.0,
           "P95": 0.0,
@@ -186,7 +178,7 @@
         }
       },
       {
-        "Instance": "pid_11904_luid_0x00000000_0x0001257a_phys_0_eng_5_engtype_security",
+        "Instance": "pid_9020_luid_0x00000000_0x0001257a_phys_0_eng_4_engtype_copy",
         "UtilizationPercent": {
           "Mean": 0.0,
           "P95": 0.0,
@@ -194,7 +186,7 @@
         }
       },
       {
-        "Instance": "pid_11904_luid_0x00000000_0x0001257a_phys_0_eng_6_engtype_videoencode",
+        "Instance": "pid_9020_luid_0x00000000_0x0001257a_phys_0_eng_5_engtype_security",
         "UtilizationPercent": {
           "Mean": 0.0,
           "P95": 0.0,
@@ -202,7 +194,7 @@
         }
       },
       {
-        "Instance": "pid_11904_luid_0x00000000_0x0001257a_phys_0_eng_7_engtype_ofa_0",
+        "Instance": "pid_9020_luid_0x00000000_0x0001257a_phys_0_eng_6_engtype_videoencode",
         "UtilizationPercent": {
           "Mean": 0.0,
           "P95": 0.0,
@@ -210,7 +202,7 @@
         }
       },
       {
-        "Instance": "pid_11904_luid_0x00000000_0x0001257a_phys_0_eng_8_engtype_vr",
+        "Instance": "pid_9020_luid_0x00000000_0x0001257a_phys_0_eng_7_engtype_ofa_0",
         "UtilizationPercent": {
           "Mean": 0.0,
           "P95": 0.0,
@@ -218,7 +210,15 @@
         }
       },
       {
-        "Instance": "pid_11904_luid_0x00000000_0x0001257a_phys_0_eng_9_engtype_copy",
+        "Instance": "pid_9020_luid_0x00000000_0x0001257a_phys_0_eng_8_engtype_vr",
+        "UtilizationPercent": {
+          "Mean": 0.0,
+          "P95": 0.0,
+          "Max": 0.0
+        }
+      },
+      {
+        "Instance": "pid_9020_luid_0x00000000_0x0001257a_phys_0_eng_9_engtype_copy",
         "UtilizationPercent": {
           "Mean": 0.0,
           "P95": 0.0,
@@ -229,660 +229,264 @@
   },
   "Samples": [
     {
-      "TimestampUtc": "2026-10-28T04:35:53.2503827Z",
-      "ElapsedSeconds": 2.2495648999999998,
-      "CpuPercentOfMachine": 0.7814011056093559,
-      "CpuPercentOfOneCore": 12.502417689749695,
-      "WorkingSetBytes": 217870336,
-      "PrivateBytes": 602714112,
-      "HandleCount": 1431,
-      "ThreadCount": 40,
+      "TimestampUtc": "2026-10-28T07:21:30.3548022Z",
+      "ElapsedSeconds": 2.3111149,
+      "CpuPercentOfMachine": 7.943947313047914,
+      "CpuPercentOfOneCore": 127.10315700876663,
+      "WorkingSetBytes": 69844992,
+      "PrivateBytes": 200282112,
+      "HandleCount": 1405,
+      "ThreadCount": 45,
       "GpuEngineSamples": [
         {
-          "Instance": "pid_11904_luid_0x00000000_0x000104d6_phys_0_eng_0_engtype_3d",
+          "Instance": "pid_9020_luid_0x00000000_0x000104d6_phys_0_eng_0_engtype_3d",
           "UtilizationPercent": 0.0,
           "Status": 0
         },
         {
-          "Instance": "pid_11904_luid_0x00000000_0x000104d6_phys_0_eng_1_engtype_high priority compute",
+          "Instance": "pid_9020_luid_0x00000000_0x000104d6_phys_0_eng_1_engtype_high priority compute",
           "UtilizationPercent": 0.0,
           "Status": 0
         },
         {
-          "Instance": "pid_11904_luid_0x00000000_0x000104d6_phys_0_eng_2_engtype_compute 0",
+          "Instance": "pid_9020_luid_0x00000000_0x000104d6_phys_0_eng_2_engtype_compute 0",
           "UtilizationPercent": 0.0,
           "Status": 0
         },
         {
-          "Instance": "pid_11904_luid_0x00000000_0x000104d6_phys_0_eng_3_engtype_compute 1",
+          "Instance": "pid_9020_luid_0x00000000_0x000104d6_phys_0_eng_3_engtype_compute 1",
           "UtilizationPercent": 0.0,
           "Status": 0
         },
         {
-          "Instance": "pid_11904_luid_0x00000000_0x000104d6_phys_0_eng_4_engtype_video jpeg",
+          "Instance": "pid_9020_luid_0x00000000_0x000104d6_phys_0_eng_4_engtype_video jpeg",
           "UtilizationPercent": 0.0,
           "Status": 0
         },
         {
-          "Instance": "pid_11904_luid_0x00000000_0x000104d6_phys_0_eng_5_engtype_video decode 1",
+          "Instance": "pid_9020_luid_0x00000000_0x000104d6_phys_0_eng_5_engtype_video decode 1",
           "UtilizationPercent": 0.0,
           "Status": 0
         },
         {
-          "Instance": "pid_11904_luid_0x00000000_0x000104d6_phys_0_eng_6_engtype_video codec 0",
+          "Instance": "pid_9020_luid_0x00000000_0x000104d6_phys_0_eng_6_engtype_video codec 0",
           "UtilizationPercent": 0.0,
           "Status": 0
         },
         {
-          "Instance": "pid_11904_luid_0x00000000_0x000104d6_phys_0_eng_7_engtype_copy",
+          "Instance": "pid_9020_luid_0x00000000_0x000104d6_phys_0_eng_7_engtype_copy",
           "UtilizationPercent": 0.0,
           "Status": 0
         },
         {
-          "Instance": "pid_11904_luid_0x00000000_0x000104d6_phys_0_eng_8_engtype_timer 0",
+          "Instance": "pid_9020_luid_0x00000000_0x000104d6_phys_0_eng_8_engtype_timer 0",
           "UtilizationPercent": 0.0,
           "Status": 0
         },
         {
-          "Instance": "pid_11904_luid_0x00000000_0x000104d6_phys_0_eng_9_engtype_security 1",
+          "Instance": "pid_9020_luid_0x00000000_0x000104d6_phys_0_eng_9_engtype_security 1",
           "UtilizationPercent": 0.0,
           "Status": 0
         },
         {
-          "Instance": "pid_11904_luid_0x00000000_0x0001257a_phys_0_eng_0_engtype_3d",
+          "Instance": "pid_9020_luid_0x00000000_0x0001257a_phys_0_eng_0_engtype_3d",
+          "UtilizationPercent": 1.4914419831219465,
+          "Status": 0
+        },
+        {
+          "Instance": "pid_9020_luid_0x00000000_0x0001257a_phys_0_eng_10_engtype_copy",
           "UtilizationPercent": 0.0,
           "Status": 0
         },
         {
-          "Instance": "pid_11904_luid_0x00000000_0x0001257a_phys_0_eng_10_engtype_copy",
+          "Instance": "pid_9020_luid_0x00000000_0x0001257a_phys_0_eng_11_engtype_copy",
           "UtilizationPercent": 0.0,
           "Status": 0
         },
         {
-          "Instance": "pid_11904_luid_0x00000000_0x0001257a_phys_0_eng_11_engtype_copy",
+          "Instance": "pid_9020_luid_0x00000000_0x0001257a_phys_0_eng_12_engtype_copy",
           "UtilizationPercent": 0.0,
           "Status": 0
         },
         {
-          "Instance": "pid_11904_luid_0x00000000_0x0001257a_phys_0_eng_12_engtype_copy",
+          "Instance": "pid_9020_luid_0x00000000_0x0001257a_phys_0_eng_13_engtype_security_1",
           "UtilizationPercent": 0.0,
           "Status": 0
         },
         {
-          "Instance": "pid_11904_luid_0x00000000_0x0001257a_phys_0_eng_13_engtype_security_1",
+          "Instance": "pid_9020_luid_0x00000000_0x0001257a_phys_0_eng_1_engtype_legacyoverlay",
           "UtilizationPercent": 0.0,
           "Status": 0
         },
         {
-          "Instance": "pid_11904_luid_0x00000000_0x0001257a_phys_0_eng_1_engtype_legacyoverlay",
+          "Instance": "pid_9020_luid_0x00000000_0x0001257a_phys_0_eng_2_engtype_videodecode",
           "UtilizationPercent": 0.0,
           "Status": 0
         },
         {
-          "Instance": "pid_11904_luid_0x00000000_0x0001257a_phys_0_eng_2_engtype_videodecode",
+          "Instance": "pid_9020_luid_0x00000000_0x0001257a_phys_0_eng_3_engtype_copy",
           "UtilizationPercent": 0.0,
           "Status": 0
         },
         {
-          "Instance": "pid_11904_luid_0x00000000_0x0001257a_phys_0_eng_3_engtype_copy",
+          "Instance": "pid_9020_luid_0x00000000_0x0001257a_phys_0_eng_4_engtype_copy",
           "UtilizationPercent": 0.0,
           "Status": 0
         },
         {
-          "Instance": "pid_11904_luid_0x00000000_0x0001257a_phys_0_eng_4_engtype_copy",
+          "Instance": "pid_9020_luid_0x00000000_0x0001257a_phys_0_eng_5_engtype_security",
           "UtilizationPercent": 0.0,
           "Status": 0
         },
         {
-          "Instance": "pid_11904_luid_0x00000000_0x0001257a_phys_0_eng_5_engtype_security",
+          "Instance": "pid_9020_luid_0x00000000_0x0001257a_phys_0_eng_6_engtype_videoencode",
           "UtilizationPercent": 0.0,
           "Status": 0
         },
         {
-          "Instance": "pid_11904_luid_0x00000000_0x0001257a_phys_0_eng_6_engtype_videoencode",
+          "Instance": "pid_9020_luid_0x00000000_0x0001257a_phys_0_eng_7_engtype_ofa_0",
           "UtilizationPercent": 0.0,
           "Status": 0
         },
         {
-          "Instance": "pid_11904_luid_0x00000000_0x0001257a_phys_0_eng_7_engtype_ofa_0",
+          "Instance": "pid_9020_luid_0x00000000_0x0001257a_phys_0_eng_8_engtype_vr",
           "UtilizationPercent": 0.0,
           "Status": 0
         },
         {
-          "Instance": "pid_11904_luid_0x00000000_0x0001257a_phys_0_eng_8_engtype_vr",
-          "UtilizationPercent": 0.0,
-          "Status": 0
-        },
-        {
-          "Instance": "pid_11904_luid_0x00000000_0x0001257a_phys_0_eng_9_engtype_copy",
+          "Instance": "pid_9020_luid_0x00000000_0x0001257a_phys_0_eng_9_engtype_copy",
           "UtilizationPercent": 0.0,
           "Status": 0
         }
       ]
     },
     {
-      "TimestampUtc": "2026-10-28T04:35:55.2803281Z",
-      "ElapsedSeconds": 4.2815905999999995,
-      "CpuPercentOfMachine": 0.8650542657998862,
-      "CpuPercentOfOneCore": 13.84086825279818,
-      "WorkingSetBytes": 217870336,
-      "PrivateBytes": 602714112,
-      "HandleCount": 1431,
-      "ThreadCount": 40,
+      "TimestampUtc": "2026-10-28T07:21:32.4077007Z",
+      "ElapsedSeconds": 4.366165499999999,
+      "CpuPercentOfMachine": 5.227213140153339,
+      "CpuPercentOfOneCore": 83.63541024245342,
+      "WorkingSetBytes": 117055488,
+      "PrivateBytes": 202321920,
+      "HandleCount": 1405,
+      "ThreadCount": 45,
       "GpuEngineSamples": [
         {
-          "Instance": "pid_11904_luid_0x00000000_0x000104d6_phys_0_eng_0_engtype_3d",
+          "Instance": "pid_9020_luid_0x00000000_0x000104d6_phys_0_eng_0_engtype_3d",
           "UtilizationPercent": 0.0,
           "Status": 0
         },
         {
-          "Instance": "pid_11904_luid_0x00000000_0x000104d6_phys_0_eng_1_engtype_high priority compute",
+          "Instance": "pid_9020_luid_0x00000000_0x000104d6_phys_0_eng_1_engtype_high priority compute",
           "UtilizationPercent": 0.0,
           "Status": 0
         },
         {
-          "Instance": "pid_11904_luid_0x00000000_0x000104d6_phys_0_eng_2_engtype_compute 0",
+          "Instance": "pid_9020_luid_0x00000000_0x000104d6_phys_0_eng_2_engtype_compute 0",
           "UtilizationPercent": 0.0,
           "Status": 0
         },
         {
-          "Instance": "pid_11904_luid_0x00000000_0x000104d6_phys_0_eng_3_engtype_compute 1",
+          "Instance": "pid_9020_luid_0x00000000_0x000104d6_phys_0_eng_3_engtype_compute 1",
           "UtilizationPercent": 0.0,
           "Status": 0
         },
         {
-          "Instance": "pid_11904_luid_0x00000000_0x000104d6_phys_0_eng_4_engtype_video jpeg",
+          "Instance": "pid_9020_luid_0x00000000_0x000104d6_phys_0_eng_4_engtype_video jpeg",
           "UtilizationPercent": 0.0,
           "Status": 0
         },
         {
-          "Instance": "pid_11904_luid_0x00000000_0x000104d6_phys_0_eng_5_engtype_video decode 1",
+          "Instance": "pid_9020_luid_0x00000000_0x000104d6_phys_0_eng_5_engtype_video decode 1",
           "UtilizationPercent": 0.0,
           "Status": 0
         },
         {
-          "Instance": "pid_11904_luid_0x00000000_0x000104d6_phys_0_eng_6_engtype_video codec 0",
+          "Instance": "pid_9020_luid_0x00000000_0x000104d6_phys_0_eng_6_engtype_video codec 0",
           "UtilizationPercent": 0.0,
           "Status": 0
         },
         {
-          "Instance": "pid_11904_luid_0x00000000_0x000104d6_phys_0_eng_7_engtype_copy",
+          "Instance": "pid_9020_luid_0x00000000_0x000104d6_phys_0_eng_7_engtype_copy",
           "UtilizationPercent": 0.0,
           "Status": 0
         },
         {
-          "Instance": "pid_11904_luid_0x00000000_0x000104d6_phys_0_eng_8_engtype_timer 0",
+          "Instance": "pid_9020_luid_0x00000000_0x000104d6_phys_0_eng_8_engtype_timer 0",
           "UtilizationPercent": 0.0,
           "Status": 0
         },
         {
-          "Instance": "pid_11904_luid_0x00000000_0x000104d6_phys_0_eng_9_engtype_security 1",
+          "Instance": "pid_9020_luid_0x00000000_0x000104d6_phys_0_eng_9_engtype_security 1",
           "UtilizationPercent": 0.0,
           "Status": 0
         },
         {
-          "Instance": "pid_11904_luid_0x00000000_0x0001257a_phys_0_eng_0_engtype_3d",
+          "Instance": "pid_9020_luid_0x00000000_0x0001257a_phys_0_eng_0_engtype_3d",
           "UtilizationPercent": 0.0,
           "Status": 0
         },
         {
-          "Instance": "pid_11904_luid_0x00000000_0x0001257a_phys_0_eng_10_engtype_copy",
+          "Instance": "pid_9020_luid_0x00000000_0x0001257a_phys_0_eng_10_engtype_copy",
           "UtilizationPercent": 0.0,
           "Status": 0
         },
         {
-          "Instance": "pid_11904_luid_0x00000000_0x0001257a_phys_0_eng_11_engtype_copy",
+          "Instance": "pid_9020_luid_0x00000000_0x0001257a_phys_0_eng_11_engtype_copy",
           "UtilizationPercent": 0.0,
           "Status": 0
         },
         {
-          "Instance": "pid_11904_luid_0x00000000_0x0001257a_phys_0_eng_12_engtype_copy",
+          "Instance": "pid_9020_luid_0x00000000_0x0001257a_phys_0_eng_12_engtype_copy",
           "UtilizationPercent": 0.0,
           "Status": 0
         },
         {
-          "Instance": "pid_11904_luid_0x00000000_0x0001257a_phys_0_eng_13_engtype_security_1",
+          "Instance": "pid_9020_luid_0x00000000_0x0001257a_phys_0_eng_13_engtype_security_1",
           "UtilizationPercent": 0.0,
           "Status": 0
         },
         {
-          "Instance": "pid_11904_luid_0x00000000_0x0001257a_phys_0_eng_1_engtype_legacyoverlay",
+          "Instance": "pid_9020_luid_0x00000000_0x0001257a_phys_0_eng_1_engtype_legacyoverlay",
           "UtilizationPercent": 0.0,
           "Status": 0
         },
         {
-          "Instance": "pid_11904_luid_0x00000000_0x0001257a_phys_0_eng_2_engtype_videodecode",
+          "Instance": "pid_9020_luid_0x00000000_0x0001257a_phys_0_eng_2_engtype_videodecode",
           "UtilizationPercent": 0.0,
           "Status": 0
         },
         {
-          "Instance": "pid_11904_luid_0x00000000_0x0001257a_phys_0_eng_3_engtype_copy",
+          "Instance": "pid_9020_luid_0x00000000_0x0001257a_phys_0_eng_3_engtype_copy",
           "UtilizationPercent": 0.0,
           "Status": 0
         },
         {
-          "Instance": "pid_11904_luid_0x00000000_0x0001257a_phys_0_eng_4_engtype_copy",
+          "Instance": "pid_9020_luid_0x00000000_0x0001257a_phys_0_eng_4_engtype_copy",
           "UtilizationPercent": 0.0,
           "Status": 0
         },
         {
-          "Instance": "pid_11904_luid_0x00000000_0x0001257a_phys_0_eng_5_engtype_security",
+          "Instance": "pid_9020_luid_0x00000000_0x0001257a_phys_0_eng_5_engtype_security",
           "UtilizationPercent": 0.0,
           "Status": 0
         },
         {
-          "Instance": "pid_11904_luid_0x00000000_0x0001257a_phys_0_eng_6_engtype_videoencode",
+          "Instance": "pid_9020_luid_0x00000000_0x0001257a_phys_0_eng_6_engtype_videoencode",
           "UtilizationPercent": 0.0,
           "Status": 0
         },
         {
-          "Instance": "pid_11904_luid_0x00000000_0x0001257a_phys_0_eng_7_engtype_ofa_0",
+          "Instance": "pid_9020_luid_0x00000000_0x0001257a_phys_0_eng_7_engtype_ofa_0",
           "UtilizationPercent": 0.0,
           "Status": 0
         },
         {
-          "Instance": "pid_11904_luid_0x00000000_0x0001257a_phys_0_eng_8_engtype_vr",
+          "Instance": "pid_9020_luid_0x00000000_0x0001257a_phys_0_eng_8_engtype_vr",
           "UtilizationPercent": 0.0,
           "Status": 0
         },
         {
-          "Instance": "pid_11904_luid_0x00000000_0x0001257a_phys_0_eng_9_engtype_copy",
-          "UtilizationPercent": 0.0,
-          "Status": 0
-        }
-      ]
-    },
-    {
-      "TimestampUtc": "2026-10-28T04:35:57.3134817Z",
-      "ElapsedSeconds": 6.314739599999999,
-      "CpuPercentOfMachine": 0.9606403662495961,
-      "CpuPercentOfOneCore": 15.370245859993538,
-      "WorkingSetBytes": 217866240,
-      "PrivateBytes": 602710016,
-      "HandleCount": 1431,
-      "ThreadCount": 40,
-      "GpuEngineSamples": [
-        {
-          "Instance": "pid_11904_luid_0x00000000_0x000104d6_phys_0_eng_0_engtype_3d",
-          "UtilizationPercent": 0.0,
-          "Status": 0
-        },
-        {
-          "Instance": "pid_11904_luid_0x00000000_0x000104d6_phys_0_eng_1_engtype_high priority compute",
-          "UtilizationPercent": 0.0,
-          "Status": 0
-        },
-        {
-          "Instance": "pid_11904_luid_0x00000000_0x000104d6_phys_0_eng_2_engtype_compute 0",
-          "UtilizationPercent": 0.0,
-          "Status": 0
-        },
-        {
-          "Instance": "pid_11904_luid_0x00000000_0x000104d6_phys_0_eng_3_engtype_compute 1",
-          "UtilizationPercent": 0.0,
-          "Status": 0
-        },
-        {
-          "Instance": "pid_11904_luid_0x00000000_0x000104d6_phys_0_eng_4_engtype_video jpeg",
-          "UtilizationPercent": 0.0,
-          "Status": 0
-        },
-        {
-          "Instance": "pid_11904_luid_0x00000000_0x000104d6_phys_0_eng_5_engtype_video decode 1",
-          "UtilizationPercent": 0.0,
-          "Status": 0
-        },
-        {
-          "Instance": "pid_11904_luid_0x00000000_0x000104d6_phys_0_eng_6_engtype_video codec 0",
-          "UtilizationPercent": 0.0,
-          "Status": 0
-        },
-        {
-          "Instance": "pid_11904_luid_0x00000000_0x000104d6_phys_0_eng_7_engtype_copy",
-          "UtilizationPercent": 0.0,
-          "Status": 0
-        },
-        {
-          "Instance": "pid_11904_luid_0x00000000_0x000104d6_phys_0_eng_8_engtype_timer 0",
-          "UtilizationPercent": 0.0,
-          "Status": 0
-        },
-        {
-          "Instance": "pid_11904_luid_0x00000000_0x000104d6_phys_0_eng_9_engtype_security 1",
-          "UtilizationPercent": 0.0,
-          "Status": 0
-        },
-        {
-          "Instance": "pid_11904_luid_0x00000000_0x0001257a_phys_0_eng_0_engtype_3d",
-          "UtilizationPercent": 0.0,
-          "Status": 0
-        },
-        {
-          "Instance": "pid_11904_luid_0x00000000_0x0001257a_phys_0_eng_10_engtype_copy",
-          "UtilizationPercent": 0.0,
-          "Status": 0
-        },
-        {
-          "Instance": "pid_11904_luid_0x00000000_0x0001257a_phys_0_eng_11_engtype_copy",
-          "UtilizationPercent": 0.0,
-          "Status": 0
-        },
-        {
-          "Instance": "pid_11904_luid_0x00000000_0x0001257a_phys_0_eng_12_engtype_copy",
-          "UtilizationPercent": 0.0,
-          "Status": 0
-        },
-        {
-          "Instance": "pid_11904_luid_0x00000000_0x0001257a_phys_0_eng_13_engtype_security_1",
-          "UtilizationPercent": 0.0,
-          "Status": 0
-        },
-        {
-          "Instance": "pid_11904_luid_0x00000000_0x0001257a_phys_0_eng_1_engtype_legacyoverlay",
-          "UtilizationPercent": 0.0,
-          "Status": 0
-        },
-        {
-          "Instance": "pid_11904_luid_0x00000000_0x0001257a_phys_0_eng_2_engtype_videodecode",
-          "UtilizationPercent": 0.0,
-          "Status": 0
-        },
-        {
-          "Instance": "pid_11904_luid_0x00000000_0x0001257a_phys_0_eng_3_engtype_copy",
-          "UtilizationPercent": 0.0,
-          "Status": 0
-        },
-        {
-          "Instance": "pid_11904_luid_0x00000000_0x0001257a_phys_0_eng_4_engtype_copy",
-          "UtilizationPercent": 0.0,
-          "Status": 0
-        },
-        {
-          "Instance": "pid_11904_luid_0x00000000_0x0001257a_phys_0_eng_5_engtype_security",
-          "UtilizationPercent": 0.0,
-          "Status": 0
-        },
-        {
-          "Instance": "pid_11904_luid_0x00000000_0x0001257a_phys_0_eng_6_engtype_videoencode",
-          "UtilizationPercent": 0.0,
-          "Status": 0
-        },
-        {
-          "Instance": "pid_11904_luid_0x00000000_0x0001257a_phys_0_eng_7_engtype_ofa_0",
-          "UtilizationPercent": 0.0,
-          "Status": 0
-        },
-        {
-          "Instance": "pid_11904_luid_0x00000000_0x0001257a_phys_0_eng_8_engtype_vr",
-          "UtilizationPercent": 0.0,
-          "Status": 0
-        },
-        {
-          "Instance": "pid_11904_luid_0x00000000_0x0001257a_phys_0_eng_9_engtype_copy",
-          "UtilizationPercent": 0.0,
-          "Status": 0
-        }
-      ]
-    },
-    {
-      "TimestampUtc": "2026-10-28T04:35:59.3315455Z",
-      "ElapsedSeconds": 8.3327999,
-      "CpuPercentOfMachine": 0.7742583311311361,
-      "CpuPercentOfOneCore": 12.388133298098177,
-      "WorkingSetBytes": 217866240,
-      "PrivateBytes": 602710016,
-      "HandleCount": 1431,
-      "ThreadCount": 40,
-      "GpuEngineSamples": [
-        {
-          "Instance": "pid_11904_luid_0x00000000_0x000104d6_phys_0_eng_0_engtype_3d",
-          "UtilizationPercent": 0.0,
-          "Status": 0
-        },
-        {
-          "Instance": "pid_11904_luid_0x00000000_0x000104d6_phys_0_eng_1_engtype_high priority compute",
-          "UtilizationPercent": 0.0,
-          "Status": 0
-        },
-        {
-          "Instance": "pid_11904_luid_0x00000000_0x000104d6_phys_0_eng_2_engtype_compute 0",
-          "UtilizationPercent": 0.0,
-          "Status": 0
-        },
-        {
-          "Instance": "pid_11904_luid_0x00000000_0x000104d6_phys_0_eng_3_engtype_compute 1",
-          "UtilizationPercent": 0.0,
-          "Status": 0
-        },
-        {
-          "Instance": "pid_11904_luid_0x00000000_0x000104d6_phys_0_eng_4_engtype_video jpeg",
-          "UtilizationPercent": 0.0,
-          "Status": 0
-        },
-        {
-          "Instance": "pid_11904_luid_0x00000000_0x000104d6_phys_0_eng_5_engtype_video decode 1",
-          "UtilizationPercent": 0.0,
-          "Status": 0
-        },
-        {
-          "Instance": "pid_11904_luid_0x00000000_0x000104d6_phys_0_eng_6_engtype_video codec 0",
-          "UtilizationPercent": 0.0,
-          "Status": 0
-        },
-        {
-          "Instance": "pid_11904_luid_0x00000000_0x000104d6_phys_0_eng_7_engtype_copy",
-          "UtilizationPercent": 0.0,
-          "Status": 0
-        },
-        {
-          "Instance": "pid_11904_luid_0x00000000_0x000104d6_phys_0_eng_8_engtype_timer 0",
-          "UtilizationPercent": 0.0,
-          "Status": 0
-        },
-        {
-          "Instance": "pid_11904_luid_0x00000000_0x000104d6_phys_0_eng_9_engtype_security 1",
-          "UtilizationPercent": 0.0,
-          "Status": 0
-        },
-        {
-          "Instance": "pid_11904_luid_0x00000000_0x0001257a_phys_0_eng_0_engtype_3d",
-          "UtilizationPercent": 0.008437095328219943,
-          "Status": 0
-        },
-        {
-          "Instance": "pid_11904_luid_0x00000000_0x0001257a_phys_0_eng_10_engtype_copy",
-          "UtilizationPercent": 0.0,
-          "Status": 0
-        },
-        {
-          "Instance": "pid_11904_luid_0x00000000_0x0001257a_phys_0_eng_11_engtype_copy",
-          "UtilizationPercent": 0.0,
-          "Status": 0
-        },
-        {
-          "Instance": "pid_11904_luid_0x00000000_0x0001257a_phys_0_eng_12_engtype_copy",
-          "UtilizationPercent": 0.0,
-          "Status": 0
-        },
-        {
-          "Instance": "pid_11904_luid_0x00000000_0x0001257a_phys_0_eng_13_engtype_security_1",
-          "UtilizationPercent": 0.0,
-          "Status": 0
-        },
-        {
-          "Instance": "pid_11904_luid_0x00000000_0x0001257a_phys_0_eng_1_engtype_legacyoverlay",
-          "UtilizationPercent": 0.0,
-          "Status": 0
-        },
-        {
-          "Instance": "pid_11904_luid_0x00000000_0x0001257a_phys_0_eng_2_engtype_videodecode",
-          "UtilizationPercent": 0.0,
-          "Status": 0
-        },
-        {
-          "Instance": "pid_11904_luid_0x00000000_0x0001257a_phys_0_eng_3_engtype_copy",
-          "UtilizationPercent": 0.0,
-          "Status": 0
-        },
-        {
-          "Instance": "pid_11904_luid_0x00000000_0x0001257a_phys_0_eng_4_engtype_copy",
-          "UtilizationPercent": 0.0,
-          "Status": 0
-        },
-        {
-          "Instance": "pid_11904_luid_0x00000000_0x0001257a_phys_0_eng_5_engtype_security",
-          "UtilizationPercent": 0.0,
-          "Status": 0
-        },
-        {
-          "Instance": "pid_11904_luid_0x00000000_0x0001257a_phys_0_eng_6_engtype_videoencode",
-          "UtilizationPercent": 0.0,
-          "Status": 0
-        },
-        {
-          "Instance": "pid_11904_luid_0x00000000_0x0001257a_phys_0_eng_7_engtype_ofa_0",
-          "UtilizationPercent": 0.0,
-          "Status": 0
-        },
-        {
-          "Instance": "pid_11904_luid_0x00000000_0x0001257a_phys_0_eng_8_engtype_vr",
-          "UtilizationPercent": 0.0,
-          "Status": 0
-        },
-        {
-          "Instance": "pid_11904_luid_0x00000000_0x0001257a_phys_0_eng_9_engtype_copy",
-          "UtilizationPercent": 0.0,
-          "Status": 0
-        }
-      ]
-    },
-    {
-      "TimestampUtc": "2026-10-28T04:36:01.3548976Z",
-      "ElapsedSeconds": 10.3561562,
-      "CpuPercentOfMachine": 0.3861158808263281,
-      "CpuPercentOfOneCore": 6.177854093221249,
-      "WorkingSetBytes": 217866240,
-      "PrivateBytes": 602710016,
-      "HandleCount": 1431,
-      "ThreadCount": 40,
-      "GpuEngineSamples": [
-        {
-          "Instance": "pid_11904_luid_0x00000000_0x000104d6_phys_0_eng_0_engtype_3d",
-          "UtilizationPercent": 0.0,
-          "Status": 0
-        },
-        {
-          "Instance": "pid_11904_luid_0x00000000_0x000104d6_phys_0_eng_1_engtype_high priority compute",
-          "UtilizationPercent": 0.0,
-          "Status": 0
-        },
-        {
-          "Instance": "pid_11904_luid_0x00000000_0x000104d6_phys_0_eng_2_engtype_compute 0",
-          "UtilizationPercent": 0.0,
-          "Status": 0
-        },
-        {
-          "Instance": "pid_11904_luid_0x00000000_0x000104d6_phys_0_eng_3_engtype_compute 1",
-          "UtilizationPercent": 0.0,
-          "Status": 0
-        },
-        {
-          "Instance": "pid_11904_luid_0x00000000_0x000104d6_phys_0_eng_4_engtype_video jpeg",
-          "UtilizationPercent": 0.0,
-          "Status": 0
-        },
-        {
-          "Instance": "pid_11904_luid_0x00000000_0x000104d6_phys_0_eng_5_engtype_video decode 1",
-          "UtilizationPercent": 0.0,
-          "Status": 0
-        },
-        {
-          "Instance": "pid_11904_luid_0x00000000_0x000104d6_phys_0_eng_6_engtype_video codec 0",
-          "UtilizationPercent": 0.0,
-          "Status": 0
-        },
-        {
-          "Instance": "pid_11904_luid_0x00000000_0x000104d6_phys_0_eng_7_engtype_copy",
-          "UtilizationPercent": 0.0,
-          "Status": 0
-        },
-        {
-          "Instance": "pid_11904_luid_0x00000000_0x000104d6_phys_0_eng_8_engtype_timer 0",
-          "UtilizationPercent": 0.0,
-          "Status": 0
-        },
-        {
-          "Instance": "pid_11904_luid_0x00000000_0x000104d6_phys_0_eng_9_engtype_security 1",
-          "UtilizationPercent": 0.0,
-          "Status": 0
-        },
-        {
-          "Instance": "pid_11904_luid_0x00000000_0x0001257a_phys_0_eng_0_engtype_3d",
-          "UtilizationPercent": 0.009483035797262278,
-          "Status": 0
-        },
-        {
-          "Instance": "pid_11904_luid_0x00000000_0x0001257a_phys_0_eng_10_engtype_copy",
-          "UtilizationPercent": 0.0,
-          "Status": 0
-        },
-        {
-          "Instance": "pid_11904_luid_0x00000000_0x0001257a_phys_0_eng_11_engtype_copy",
-          "UtilizationPercent": 0.0,
-          "Status": 0
-        },
-        {
-          "Instance": "pid_11904_luid_0x00000000_0x0001257a_phys_0_eng_12_engtype_copy",
-          "UtilizationPercent": 0.0,
-          "Status": 0
-        },
-        {
-          "Instance": "pid_11904_luid_0x00000000_0x0001257a_phys_0_eng_13_engtype_security_1",
-          "UtilizationPercent": 0.0,
-          "Status": 0
-        },
-        {
-          "Instance": "pid_11904_luid_0x00000000_0x0001257a_phys_0_eng_1_engtype_legacyoverlay",
-          "UtilizationPercent": 0.0,
-          "Status": 0
-        },
-        {
-          "Instance": "pid_11904_luid_0x00000000_0x0001257a_phys_0_eng_2_engtype_videodecode",
-          "UtilizationPercent": 0.0,
-          "Status": 0
-        },
-        {
-          "Instance": "pid_11904_luid_0x00000000_0x0001257a_phys_0_eng_3_engtype_copy",
-          "UtilizationPercent": 0.0,
-          "Status": 0
-        },
-        {
-          "Instance": "pid_11904_luid_0x00000000_0x0001257a_phys_0_eng_4_engtype_copy",
-          "UtilizationPercent": 0.0,
-          "Status": 0
-        },
-        {
-          "Instance": "pid_11904_luid_0x00000000_0x0001257a_phys_0_eng_5_engtype_security",
-          "UtilizationPercent": 0.0,
-          "Status": 0
-        },
-        {
-          "Instance": "pid_11904_luid_0x00000000_0x0001257a_phys_0_eng_6_engtype_videoencode",
-          "UtilizationPercent": 0.0,
-          "Status": 0
-        },
-        {
-          "Instance": "pid_11904_luid_0x00000000_0x0001257a_phys_0_eng_7_engtype_ofa_0",
-          "UtilizationPercent": 0.0,
-          "Status": 0
-        },
-        {
-          "Instance": "pid_11904_luid_0x00000000_0x0001257a_phys_0_eng_8_engtype_vr",
-          "UtilizationPercent": 0.0,
-          "Status": 0
-        },
-        {
-          "Instance": "pid_11904_luid_0x00000000_0x0001257a_phys_0_eng_9_engtype_copy",
+          "Instance": "pid_9020_luid_0x00000000_0x0001257a_phys_0_eng_9_engtype_copy",
           "UtilizationPercent": 0.0,
           "Status": 0
         }

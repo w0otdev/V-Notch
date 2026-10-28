@@ -13,7 +13,10 @@
         MinWidth="500"
         WindowStartupLocation="CenterOwner"
         ShowInTaskbar="False"
-        FontFamily="{fonts:AppFont Fallbacks='Nirmala UI, Segoe UI'}">
+        FontFamily="{fonts:AppFont Fallbacks='Nirmala UI, Segoe UI'}"
+        TextOptions.TextFormattingMode="Ideal"
+        TextOptions.TextRenderingMode="Grayscale"
+        TextOptions.TextHintingMode="Animated">
     
     <Window.Resources>
         <LinearGradientBrush x:Key="WindowGlow" StartPoint="0,0" EndPoint="1,1">

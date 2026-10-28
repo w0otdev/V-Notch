@@ -11,7 +11,10 @@
         WindowStartupLocation="CenterScreen"
         AllowsTransparency="True"
         Background="Transparent"
-        TextElement.FontFamily="{StaticResource SFProText}">
+        TextElement.FontFamily="{StaticResource SFProText}"
+        TextOptions.TextFormattingMode="Ideal"
+        TextOptions.TextRenderingMode="Grayscale"
+        TextOptions.TextHintingMode="Animated">
     <Grid>
         <Border CornerRadius="14"
                 Background="#F0050505"

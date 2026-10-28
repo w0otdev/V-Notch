@@ -227,26 +227,9 @@ public partial class MainWindow
         VolumeBarGradientStart.BeginAnimation(GradientStop.ColorProperty, volStartAnim);
         System.Windows.Media.Animation.Timeline.SetDesiredFrameRate(volEndAnim, VNotch.Services.AnimationConfig.TargetFps);
         VolumeBarGradientEnd.BeginAnimation(GradientStop.ColorProperty, volEndAnim);
+        SetVolumeHudMediaTint(vibrantTargetColor, true);
 
-        if (VolumeIndicatorFill != null)
-        {
-            var volIndStartAnim = new ColorAnimation
-            {
-                To = vibrantTargetColor,
-                Duration = TimeSpan.FromMilliseconds(420),
-                EasingFunction = _easeQuadOut
-            };
-            var volIndEndAnim = new ColorAnimation
-            {
-                To = progressDarkColor,
-                Duration = TimeSpan.FromMilliseconds(420),
-                EasingFunction = _easeQuadOut
-            };
-            System.Windows.Media.Animation.Timeline.SetDesiredFrameRate(volIndStartAnim, VNotch.Services.AnimationConfig.TargetFps);
-            VolumeIndicatorGradientStart.BeginAnimation(GradientStop.ColorProperty, volIndStartAnim);
-            System.Windows.Media.Animation.Timeline.SetDesiredFrameRate(volIndEndAnim, VNotch.Services.AnimationConfig.TargetFps);
-            VolumeIndicatorGradientEnd.BeginAnimation(GradientStop.ColorProperty, volIndEndAnim);
-        }
+
 
         void EnsureUnfrozenFill(System.Windows.Shapes.Shape shape)
         {
@@ -381,14 +364,8 @@ public partial class MainWindow
         };
         System.Windows.Media.Animation.Timeline.SetDesiredFrameRate(defaultVolEndAnim, VNotch.Services.AnimationConfig.TargetFps);
         VolumeBarGradientEnd.BeginAnimation(GradientStop.ColorProperty, defaultVolEndAnim);
-        var defaultVolIndEndAnim = new ColorAnimation
-        {
-            To = UiPalette.SecondaryColor,
-            Duration = TimeSpan.FromMilliseconds(400)
-        };
-        VolumeIndicatorGradientStart.BeginAnimation(GradientStop.ColorProperty, defaultColorAnim);
-        System.Windows.Media.Animation.Timeline.SetDesiredFrameRate(defaultVolIndEndAnim, VNotch.Services.AnimationConfig.TargetFps);
-        VolumeIndicatorGradientEnd.BeginAnimation(GradientStop.ColorProperty, defaultVolIndEndAnim);
+        SetVolumeHudMediaTint(Colors.White, false);
+
 
         void ResetUnfrozenFill(System.Windows.Shapes.Shape shape)
         {

@@ -108,7 +108,7 @@ internal sealed partial class InteractionSoundPlayer : IDisposable
     internal static byte[] CreateWave(InteractionCue cue, int variant = 0)
     {
         if (variant < 0 || variant >= VariantCount) throw new ArgumentOutOfRangeException(nameof(variant));
-        Span<byte> buf = stackalloc byte[8192];
+        Span<byte> buf = stackalloc byte[16384];
         if (vn_interaction_sounds_create_wave((int)cue, variant, buf, buf.Length, out int len) != 0 || len <= 44)
             throw new InvalidOperationException("Failed to synthesize interaction wave.");
         return buf[..len].ToArray();
@@ -184,7 +184,7 @@ internal static partial class InteractionSounds
         for (var node = e.OriginalSource as DependencyObject; node != null && node is not Window; node = Parent(node))
         {
             // Standard controls have semantic events; editable content stays quiet.
-            if (node is ButtonBase or Slider or TextBoxBase or PasswordBox or Thumb) return;
+            if (node is ButtonBase or MenuItem or Slider or TextBoxBase or PasswordBox or Thumb) return;
             // ComboBoxItem and TabItem fire OnSelection when their selection actually changes; only ListBoxItem needs direct pointer sound.
             if (node is ListBoxItem) { if (e.ChangedButton == MouseButton.Left) Player.Play(InteractionCue.Select); return; }
             if (node is ComboBoxItem or TabItem or Selector) return;

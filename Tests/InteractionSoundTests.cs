@@ -71,7 +71,7 @@ public sealed class InteractionSoundTests
         Assert.Equal("WAVE", Encoding.ASCII.GetString(wave, 8, 4));
         Assert.Equal(44100, BitConverter.ToInt32(wave, 24));
         Assert.Equal(wave.Length - 44, BitConverter.ToInt32(wave, 40));
-        Assert.InRange((wave.Length - 44) / 88200.0, .015, .045);
+        Assert.InRange((wave.Length - 44) / 88200.0, .015, .105);
         Assert.Equal(0, BitConverter.ToInt16(wave, 44));
         Assert.Equal(0, BitConverter.ToInt16(wave, wave.Length - 2));
         Assert.Contains(wave.Skip(44), value => value != 0);
