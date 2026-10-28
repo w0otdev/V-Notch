@@ -9,6 +9,10 @@ public partial class MainWindow
         _coreModulesStarted = true;
         _batteryModule.Start();
         _bluetoothModule.Start();
+        if (_settings.EnableWeather && !_weatherModule.IsRunning)
+        {
+            _weatherModule.Start();
+        }
         ApplyPrivacyIndicatorSettings();
     }
 
@@ -28,7 +32,7 @@ public partial class MainWindow
             return;
         }
 
-        if (IsWeatherWidgetMode && _settings.EnableWeather && !_weatherModule.IsRunning)
+        if (_settings.EnableWeather && !_weatherModule.IsRunning)
         {
             _weatherModule.Start();
         }

@@ -128,6 +128,45 @@ public sealed class WebcamFramePipelineTests
         Assert.Same(allocated, scratch);
     }
 
+    [Fact]
+    public async Task RepeatedStopAndRestartCyclesKeepSingleTokenAndAwaitPendingTeardown()
+    {
+        Assert.Null(typeof(WebcamCaptureController).GetField("_startToken", Private));
+        using var controller = new WebcamCaptureController();
+        for (int cycle = 0; cycle < 3; cycle++)
+        {
+            var tcs = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            typeof(WebcamCaptureController).GetField("_teardownLock", BindingFlags.Static | BindingFlags.NonPublic)!
+                .GetValue(null);
+            typeof(WebcamCaptureController).GetField("_teardownTask", BindingFlags.Static | BindingFlags.NonPublic)!
+                .SetValue(null, tcs.Task);
+
+            bool contextCheckedAfterTeardown = false;
+            Task<string?> startTask = controller.StartAsync(null, () =>
+            {
+                contextCheckedAfterTeardown = tcs.Task.IsCompleted;
+                return false;
+            });
+
+            tcs.SetResult();
+            Assert.Null(await startTask);
+            Assert.True(contextCheckedAfterTeardown);
+            Assert.False(controller.IsStarting);
+
+            if (cycle % 2 == 0)
+            {
+                Assert.True(controller.TryBeginGracefulStop(out int fadeToken, out var r, out var c));
+                await WebcamCaptureController.DisposeResourcesAsync(r, c);
+                controller.EndGracefulStop(fadeToken);
+            }
+            else
+            {
+                controller.DetachForSafeStop();
+            }
+            Assert.False(controller.IsStopping);
+        }
+    }
+
     private static int Activate(WebcamCaptureController controller)
     {
         int token = controller.NextFadeToken();

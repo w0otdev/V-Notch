@@ -26,7 +26,8 @@ public sealed class WebcamCaptureController : IDisposable
     private bool _stopping;
 
     private int _fadeToken;
-    private int _startToken;
+    private static readonly object _teardownLock = new();
+    private static Task _teardownTask = Task.CompletedTask;
 
     private long _lastFrameTimestamp;
     private static readonly long FrameIntervalTicks = Stopwatch.Frequency / 30;
@@ -115,7 +116,7 @@ public sealed class WebcamCaptureController : IDisposable
 #pragma warning disable S3776 // Asynchronous UWP MediaCapture pipeline initialization involves multi-stage validation and cancellation checks
     public async Task<string?> StartAsync(string? deviceId, Func<bool> isContextValid)
     {
-        int startToken;
+
         int fadeToken;
         lock (_lifecycleLock)
         {
@@ -125,7 +126,7 @@ public sealed class WebcamCaptureController : IDisposable
             _starting = true;
             _isActive = true;
             _lastFrameTimestamp = 0;
-            startToken = ++_startToken;
+
             fadeToken = ++_fadeToken;
         }
 
@@ -133,7 +134,7 @@ public sealed class WebcamCaptureController : IDisposable
         {
             lock (_lifecycleLock)
             {
-                if (startToken != _startToken || fadeToken != _fadeToken || !_isActive)
+                if (fadeToken != _fadeToken || !_isActive)
                     return false;
             }
 
@@ -147,6 +148,13 @@ public sealed class WebcamCaptureController : IDisposable
                 MediaCapture? capture = null;
                 try
                 {
+                    Task priorTeardown;
+                    lock (_teardownLock)
+                        priorTeardown = _teardownTask;
+                    await priorTeardown.ConfigureAwait(false);
+                    if (!StillValid())
+                        return ((MediaCapture?)null, (MediaFrameReader?)null, (string?)null);
+
                     var groups = await MediaFrameSourceGroup.FindAllAsync();
                     MediaFrameSourceGroup? group = null;
 
@@ -166,7 +174,7 @@ public sealed class WebcamCaptureController : IDisposable
                     bool ownsStart;
                     lock (_lifecycleLock)
                     {
-                        ownsStart = startToken == _fadeToken && _isActive;
+                        ownsStart = fadeToken == _fadeToken && _isActive;
                         if (ownsStart)
                         {
                             _initializingMediaCapture = capture;
@@ -286,7 +294,7 @@ public sealed class WebcamCaptureController : IDisposable
             {
                 lock (_lifecycleLock)
                 {
-                    if (startToken == _fadeToken)
+                    if (fadeToken == _fadeToken)
                     {
                         _isActive = false;
                     }
@@ -298,7 +306,7 @@ public sealed class WebcamCaptureController : IDisposable
             bool accepted;
             lock (_lifecycleLock)
             {
-                accepted = startToken == _fadeToken && _isActive;
+                accepted = fadeToken == _fadeToken && _isActive;
                 if (accepted)
                 {
                     _mediaCapture = mediaCapture;
@@ -339,7 +347,7 @@ public sealed class WebcamCaptureController : IDisposable
             {
                 // Stop followed by Start may already have handed lifecycle
                 // ownership to a newer operation.
-                if (startToken == _startToken)
+                if (fadeToken == _fadeToken)
                 {
                     _starting = false;
                 }
@@ -418,7 +426,17 @@ public sealed class WebcamCaptureController : IDisposable
 
     public static Task DisposeResourcesAsync(MediaFrameReader? reader, MediaCapture? capture)
     {
-        return Task.Run(async () =>
+        if (reader == null && capture == null) return Task.CompletedTask;
+        Task prior;
+        lock (_teardownLock)
+            prior = _teardownTask = RunTeardownAsync(_teardownTask, reader, capture);
+        return prior;
+    }
+
+    private static async Task RunTeardownAsync(Task prior, MediaFrameReader? reader, MediaCapture? capture)
+    {
+        await prior.ConfigureAwait(false);
+        await Task.Run(async () =>
         {
             if (reader != null)
             {
