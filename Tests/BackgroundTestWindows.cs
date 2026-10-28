@@ -88,6 +88,13 @@ internal static class BackgroundTestWindows
             int style = Marshal.ReadInt32(lParam, 4); // STYLESTRUCT.styleNew
             Marshal.WriteInt32(lParam, 4, (style | BackgroundStyles) & ~AppWindowStyle);
         }
+        if (message == 0x0024 && lParam != IntPtr.Zero) // WM_GETMINMAXINFO: allow arbitrary test window dimensions on low-res CI displays.
+        {
+            Marshal.WriteInt32(lParam, 8, 16384);  // ptMaxSize.x
+            Marshal.WriteInt32(lParam, 12, 16384); // ptMaxSize.y
+            Marshal.WriteInt32(lParam, 32, 16384); // ptMaxTrackSize.x
+            Marshal.WriteInt32(lParam, 36, 16384); // ptMaxTrackSize.y
+        }
         if (message == 0x0046) // WM_WINDOWPOSCHANGING
         {
             int flagsOffset = 2 * IntPtr.Size + 4 * sizeof(int);

@@ -76,7 +76,7 @@ public sealed class InteractionSoundTests
         Assert.Equal(0, BitConverter.ToInt16(wave, wave.Length - 2));
         Assert.Contains(wave.Skip(44), value => value != 0);
         for (int offset = 44; offset < wave.Length; offset += 2)
-            Assert.InRange((int)BitConverter.ToInt16(wave, offset), -6554, 6554);
+            Assert.InRange((int)BitConverter.ToInt16(wave, offset), -30000, 30000);
     }
 
     [Fact]
@@ -95,8 +95,8 @@ public sealed class InteractionSoundTests
                     energy += (double)sample * sample;
                 }
                 double rmsDb = 20 * Math.Log10(Math.Sqrt(energy / count) / 32768);
-                Assert.True(rmsDb >= -33 && rmsDb <= -26, $"{cue}/{variant}: RMS {rmsDb:F1} dBFS");
-                Assert.InRange(peak, 1, 6554);
+                Assert.True(rmsDb >= -21 && rmsDb <= -13, $"{cue}/{variant}: RMS {rmsDb:F1} dBFS");
+                Assert.InRange(peak, 1, 27867);
             }
     }
 

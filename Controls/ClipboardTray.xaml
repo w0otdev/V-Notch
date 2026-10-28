@@ -1048,18 +1048,18 @@
      </DataTemplate.Triggers>
     </DataTemplate></ListBox.ItemTemplate>
    </local:ClipboardCardListBox>
-   <Grid Margin="8,14,8,16" IsHitTestVisible="False">
-    <Border x:Name="CardsFadeLeft" Width="22" HorizontalAlignment="Left" Opacity="0">
+   <Grid Margin="8,6,8,11" IsHitTestVisible="False">
+    <Border x:Name="CardsFadeLeft" Width="26" HorizontalAlignment="Left" Opacity="0">
      <Border.Background>
       <LinearGradientBrush StartPoint="0,0" EndPoint="1,0">
-       <GradientStop Color="Black" Offset="0"/><GradientStop Color="#00000000" Offset="1"/>
+       <GradientStop Color="#E608080A" Offset="0"/><GradientStop Color="#7808080A" Offset="0.48"/><GradientStop Color="#0008080A" Offset="1"/>
       </LinearGradientBrush>
      </Border.Background>
     </Border>
-    <Border x:Name="CardsFadeRight" Width="22" HorizontalAlignment="Right" Opacity="0">
+    <Border x:Name="CardsFadeRight" Width="26" HorizontalAlignment="Right" Opacity="0">
      <Border.Background>
       <LinearGradientBrush StartPoint="0,0" EndPoint="1,0">
-       <GradientStop Color="#00000000" Offset="0"/><GradientStop Color="Black" Offset="1"/>
+       <GradientStop Color="#0008080A" Offset="0"/><GradientStop Color="#7808080A" Offset="0.52"/><GradientStop Color="#E608080A" Offset="1"/>
       </LinearGradientBrush>
      </Border.Background>
     </Border>

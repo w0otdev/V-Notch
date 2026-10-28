@@ -8,9 +8,12 @@ Set-ExecutionPolicy -ExecutionPolicy Bypass -Scope Process -Force
 $ErrorActionPreference = "Continue"
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 
-# Suppress background console window popups from Git / tools
+# Suppress background console window popups & dotnet startup overhead
 $env:GIT_TERMINAL_PROMPT = "0"
 $env:GCM_INTERACTIVE = "never"
+$env:DOTNET_NOLOGO = "1"
+$env:DOTNET_CLI_TELEMETRY_OPTOUT = "1"
+$env:DOTNET_SKIP_FIRST_TIME_EXPERIENCE = "1"
 $env:Path = ($env:Path -split ";" | Where-Object { $_ -ne "C:\Program Files\Git\mingw64\bin" }) -join ";"
 
 # --- Configuration ---------------------------------------------------------
@@ -125,7 +128,6 @@ if ($running.Count -gt 0) {
         Write-Host "  $gBotLeft$lineRule`n" -ForegroundColor DarkCyan
         exit 1
     }
-    Start-Sleep -Milliseconds 250
     Write-TreeItem "Terminated cleanly." -State Success
 } else {
     Write-TreeItem "No active V-Notch process." -State Success
@@ -166,13 +168,16 @@ if ($Clean) {
 
 # --- 3. Build ---------------------------------------------------------------
 Write-TreeSpacer
-$restoreReady = Test-Path (Join-Path $repoRoot "obj\project.assets.json")
+$assetsPath   = Join-Path $repoRoot "obj\project.assets.json"
+$lockFilePath = Join-Path $repoRoot "packages.lock.json"
+$restoreReady = (Test-Path -LiteralPath $assetsPath) -and (-not (Test-Path -LiteralPath $lockFilePath) -or (Get-Item -LiteralPath $assetsPath).LastWriteTimeUtc -ge (Get-Item -LiteralPath $lockFilePath).LastWriteTimeUtc)
 $useNoRestore = (-not $Clean -and $restoreReady)
 $buildModeTag = if ($Clean) { "Full Rebuild" } elseif ($useNoRestore) { "Incremental --no-restore" } else { "Incremental + Restore" }
 
 Write-TreeStep (Next-StepTag) "Compile ($buildModeTag)"
 
-$buildArgs = @("build", $csprojPath, "-nologo", "-v:q", "-clp:NoSummary")
+# shortcut: skips /GL & /LTCG on dev builds, use scripts/b.ps1 or scripts/c.ps1 for LTCG verification
+$buildArgs = @("build", $csprojPath, "-nologo", "-v:q", "-clp:NoSummary", "-m", "-p:NativeFastCompile=true", "-p:RunAnalyzers=false")
 if ($useNoRestore) {
     $buildArgs += "--no-restore"
 }

@@ -206,14 +206,10 @@ public partial class MainWindow
             if (result.HasThumbnail && info.Thumbnail != null)
             {
                 DynamicIslandColorExtractor.PreloadDynamicIslandPaletteAsync(info.Thumbnail).SafeFireAndForget("PRELOAD-PALETTE");
+                AnimateLyricsBlurImageSwitch(info.Thumbnail);
                 if (_isExpanded && (LyricsBlurBackground?.Visibility == Visibility.Visible || ShouldShowMediaBlurBackground))
                 {
-                    AnimateLyricsBlurImageSwitch(info.Thumbnail);
                     FadeInLyricsBlurBackgroundIfActive();
-                }
-                else if (LyricsBlurImage != null)
-                {
-                    LyricsBlurImage.Source = LyricsBackgroundBrightness.Apply(info.Thumbnail, _settings.BrightenDarkLyricsBackground);
                 }
 
                 switch (result.ThumbnailAction)
@@ -254,6 +250,23 @@ public partial class MainWindow
             }
             else if (result.IsNewTrack)
             {
+                if (!_isExpanded)
+                {
+                    ClearBlurredBackgroundSources();
+                    _lastBackgroundThumbnail = null;
+                    _suppressNextBlurDissolve = true;
+                    if (LyricsBlurImage != null)
+                    {
+                        LyricsBlurImage.BeginAnimation(OpacityProperty, null);
+                        LyricsBlurImage.Source = null;
+                    }
+                    if (LyricsBlurImageNext != null)
+                    {
+                        LyricsBlurImageNext.BeginAnimation(OpacityProperty, null);
+                        LyricsBlurImageNext.Opacity = 0.0;
+                        LyricsBlurImageNext.Source = null;
+                    }
+                }
                 if (info.Platform is MediaPlatform.SoundCloud or MediaPlatform.Browser)
                 {
                     // Keep the displayed cover only as the outgoing visual layer while

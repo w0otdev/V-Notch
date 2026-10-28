@@ -188,17 +188,28 @@ public partial class SettingsWindow
         int version,
         Action onExitCompleted)
     {
+        ResetProgressiveBlurElements(isMenuList: false);
+
         int fps = VNotch.Services.AnimationConfig.TargetFps;
         var exitEase = SectionExitEase;
-        var exitDur = TimeSpan.FromMilliseconds(130);
+        var exitDur = TimeSpan.FromMilliseconds(170);
 
         var fadeOut = new DoubleAnimation(oldCard.Opacity, 0, exitDur) { EasingFunction = exitEase };
         var slideOut = new DoubleAnimation(oldTranslate.Y, -14 * direction, exitDur) { EasingFunction = exitEase };
         Timeline.SetDesiredFrameRate(fadeOut, fps);
         Timeline.SetDesiredFrameRate(slideOut, fps);
 
+        var exitBlur = new BlurEffect { Radius = 0, RenderingBias = RenderingBias.Performance };
+        oldCard.Effect = exitBlur;
+        var blurOut = new DoubleAnimation(0, 8, exitDur) { EasingFunction = exitEase };
+        Timeline.SetDesiredFrameRate(blurOut, fps);
+
         fadeOut.Completed += (_, _) =>
         {
+            if (ReferenceEquals(oldCard.Effect, exitBlur))
+            {
+                oldCard.Effect = null;
+            }
             if (!string.Equals(previous, _activeNav, StringComparison.Ordinal))
             {
                 oldCard.BeginAnimation(OpacityProperty, null);
@@ -214,6 +225,7 @@ public partial class SettingsWindow
 
         oldCard.BeginAnimation(OpacityProperty, fadeOut);
         oldTranslate.BeginAnimation(TranslateTransform.YProperty, slideOut);
+        exitBlur.BeginAnimation(BlurEffect.RadiusProperty, blurOut);
     }
 
     private (FrameworkElement? Card, TranslateTransform? Translate) GetSectionCardParts(string section)
@@ -281,10 +293,20 @@ public partial class SettingsWindow
 
         if (VNotch.Services.AnimationConfig.ReduceMotion)
         {
+            ResetProgressiveBlurElements(isMenuList: false);
             card.BeginAnimation(OpacityProperty, null);
             card.Opacity = 1;
+            card.Effect = null;
             translate.BeginAnimation(TranslateTransform.YProperty, null);
             translate.Y = 0;
+            if (section == NavSectionSystem && BackupCard != null && BackupCardTranslate != null)
+            {
+                BackupCard.BeginAnimation(OpacityProperty, null);
+                BackupCard.Opacity = 1;
+                BackupCard.Effect = null;
+                BackupCardTranslate.BeginAnimation(TranslateTransform.YProperty, null);
+                BackupCardTranslate.Y = 0;
+            }
             return;
         }
 
@@ -295,41 +317,121 @@ public partial class SettingsWindow
 
         // entranceDirection=true → slide from above (-14px) to match top-down open cascade
         // Normal nav switching uses ±direction * 14
-        double fromY = entranceDirection ? -14 : 14 * direction;
+        int cascadeDir = entranceDirection ? -1 : (direction == 0 ? 1 : direction);
+        double fromY = entranceDirection ? -14 : 14 * cascadeDir;
+        int baseDelayMs = entranceDirection ? 200 : 0;
+
+        card.Effect = null;
         card.Opacity = 0;
         translate.Y = fromY;
 
-        var fade = new DoubleAnimation(0, 1, TimeSpan.FromMilliseconds(300)) { EasingFunction = ease };
-        var slide = new DoubleAnimation(fromY, 0, TimeSpan.FromMilliseconds(420)) { EasingFunction = ease };
+        var fade = new DoubleAnimation(0, 1, TimeSpan.FromMilliseconds(380))
+        {
+            BeginTime = TimeSpan.FromMilliseconds(baseDelayMs),
+            EasingFunction = ease
+        };
+        var slide = new DoubleAnimation(fromY, 0, TimeSpan.FromMilliseconds(520))
+        {
+            BeginTime = TimeSpan.FromMilliseconds(baseDelayMs),
+            EasingFunction = ease
+        };
         Timeline.SetDesiredFrameRate(fade, fps);
         Timeline.SetDesiredFrameRate(slide, fps);
 
         card.BeginAnimation(OpacityProperty, fade);
         translate.BeginAnimation(TranslateTransform.YProperty, slide);
 
+        var cascadeItems = CollectPanelProgressiveBlurTargets(card);
         if (section == NavSectionSystem && BackupCard != null && BackupCardTranslate != null)
         {
-            if (VNotch.Services.AnimationConfig.ReduceMotion)
+            BackupCard.Effect = null;
+            BackupCard.Opacity = 0;
+            BackupCardTranslate.Y = fromY;
+
+            var backupDelay = TimeSpan.FromMilliseconds(baseDelayMs + 60);
+            var backupFade = new DoubleAnimation(0, 1, TimeSpan.FromMilliseconds(380)) { EasingFunction = ease, BeginTime = backupDelay };
+            var backupSlide = new DoubleAnimation(fromY, 0, TimeSpan.FromMilliseconds(520)) { EasingFunction = ease, BeginTime = backupDelay };
+
+            Timeline.SetDesiredFrameRate(backupFade, fps);
+            Timeline.SetDesiredFrameRate(backupSlide, fps);
+
+            BackupCard.BeginAnimation(OpacityProperty, backupFade);
+            BackupCardTranslate.BeginAnimation(TranslateTransform.YProperty, backupSlide);
+
+            var backupTargets = CollectPanelProgressiveBlurTargets(BackupCard);
+            for (int i = 0; i < backupTargets.Count; i++)
             {
-                BackupCard.BeginAnimation(OpacityProperty, null);
-                BackupCard.Opacity = 1;
-                BackupCardTranslate.BeginAnimation(TranslateTransform.YProperty, null);
-                BackupCardTranslate.Y = 0;
+                cascadeItems.Add(backupTargets[i]);
             }
-            else
+        }
+
+        ApplyProgressiveBlurCascade(cascadeItems, baseDelayMs, cascadeDir, isMenuList: false, fps);
+    }
+
+    private static List<UIElement> CollectPanelProgressiveBlurTargets(FrameworkElement card)
+    {
+        const int MaxBlurredChildren = 24;
+        var targets = new List<UIElement>(MaxBlurredChildren);
+
+        if (card is Decorator { Child: Panel innerPanel })
+        {
+            CollectPanelChildrenRecursive(innerPanel, targets, MaxBlurredChildren);
+        }
+
+        if (targets.Count == 0)
+        {
+            targets.Add(card);
+        }
+
+        return targets;
+    }
+
+    private static void CollectPanelChildrenRecursive(Panel panel, List<UIElement> targets, int maxCount)
+    {
+        int count = panel.Children.Count;
+        for (int i = 0; i < count; i++)
+        {
+            if (panel.Children[i] is not UIElement child || child.Visibility != Visibility.Visible)
             {
-                BackupCard.Opacity = 0;
-                BackupCardTranslate.Y = fromY;
-
-                var backupFade = new DoubleAnimation(0, 1, TimeSpan.FromMilliseconds(300)) { EasingFunction = ease, BeginTime = TimeSpan.FromMilliseconds(40) };
-                var backupSlide = new DoubleAnimation(fromY, 0, TimeSpan.FromMilliseconds(420)) { EasingFunction = ease, BeginTime = TimeSpan.FromMilliseconds(40) };
-
-                Timeline.SetDesiredFrameRate(backupFade, fps);
-                Timeline.SetDesiredFrameRate(backupSlide, fps);
-
-                BackupCard.BeginAnimation(OpacityProperty, backupFade);
-                BackupCardTranslate.BeginAnimation(TranslateTransform.YProperty, backupSlide);
+                continue;
             }
+
+            if (child is StackPanel nestedStack && nestedStack.Children.Count > 0)
+            {
+                if (!nestedStack.IsEnabled || nestedStack.Opacity < 0.99)
+                {
+                    AddOrResetCascadeTarget(nestedStack, targets, maxCount);
+                }
+                else
+                {
+                    CollectPanelChildrenRecursive(nestedStack, targets, maxCount);
+                }
+                continue;
+            }
+
+            if (count <= 2 &&
+                child is Border { Child: StackPanel borderStack } &&
+                borderStack.Children.Count >= 4)
+            {
+                CollectPanelChildrenRecursive(borderStack, targets, maxCount);
+                continue;
+            }
+
+            AddOrResetCascadeTarget(child, targets, maxCount);
+        }
+    }
+
+    private static void AddOrResetCascadeTarget(UIElement element, List<UIElement> targets, int maxCount)
+    {
+        if (targets.Count < maxCount)
+        {
+            targets.Add(element);
+        }
+        else
+        {
+            element.BeginAnimation(OpacityProperty, null);
+            element.Opacity = ResolveElementRestingOpacity(element);
+            element.Effect = null;
         }
     }
 

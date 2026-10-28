@@ -192,13 +192,8 @@
   </ItemGroup>
   <Target Name="CompileVNotchNative" BeforeTargets="BeforeBuild" Condition="'$(SkipNativeCompile)' != 'true' And '$(DesignTimeBuild)' != 'true'" Inputs="@(_VNotchNativeSources);@(_VNotchNativeHeaders)" Outputs="$(_VNotchNativeDll)">
     <PropertyGroup Condition="'$(VcVars64Path)' == ''">
-      <_VsWherePath>$(MSBuildProgramFiles32)\Microsoft Visual Studio\Installer\vswhere.exe</_VsWherePath>
-    </PropertyGroup>
-    <Exec Condition="'$(VcVars64Path)' == '' And Exists('$(_VsWherePath)')" Command="&quot;$(_VsWherePath)&quot; -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -find **\vcvars64.bat" ConsoleToMSBuild="true" EchoOff="true" StandardOutputImportance="Low" IgnoreExitCode="true">
-      <Output TaskParameter="ConsoleOutput" PropertyName="_VcVarsFromVsWhere" />
-    </Exec>
-    <PropertyGroup Condition="'$(VcVars64Path)' == '' And '$(_VcVarsFromVsWhere)' != ''">
-      <VcVars64Path>$([System.String]::Copy('$(_VcVarsFromVsWhere)').Split(';')[0].Trim())</VcVars64Path>
+      <_VcVarsCacheFile>$(_VNotchNativeObjDir)\vcvars64.cache</_VcVarsCacheFile>
+      <VcVars64Path Condition="Exists('$(_VcVarsCacheFile)')">$([System.IO.File]::ReadAllText('$(_VcVarsCacheFile)').Trim())</VcVars64Path>
     </PropertyGroup>
     <PropertyGroup Condition="'$(VcVars64Path)' == '' Or !Exists('$(VcVars64Path)')">
       <_VcVarsFallback1>C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Auxiliary\Build\vcvars64.bat</_VcVarsFallback1>
@@ -209,9 +204,17 @@
       <VcVars64Path Condition="'$(VcVars64Path)' == '' And Exists('$(_VcVarsFallback2)')">$(_VcVarsFallback2)</VcVars64Path>
       <VcVars64Path Condition="'$(VcVars64Path)' == '' And Exists('$(_VcVarsFallback3)')">$(_VcVarsFallback3)</VcVars64Path>
       <VcVars64Path Condition="'$(VcVars64Path)' == '' And Exists('$(_VcVarsFallback4)')">$(_VcVarsFallback4)</VcVars64Path>
+      <_VsWherePath>$(MSBuildProgramFiles32)\Microsoft Visual Studio\Installer\vswhere.exe</_VsWherePath>
+    </PropertyGroup>
+    <Exec Condition="('$(VcVars64Path)' == '' Or !Exists('$(VcVars64Path)')) And Exists('$(_VsWherePath)')" Command="&quot;$(_VsWherePath)&quot; -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -find **\vcvars64.bat" ConsoleToMSBuild="true" EchoOff="true" StandardOutputImportance="Low" IgnoreExitCode="true">
+      <Output TaskParameter="ConsoleOutput" PropertyName="_VcVarsFromVsWhere" />
+    </Exec>
+    <PropertyGroup Condition="('$(VcVars64Path)' == '' Or !Exists('$(VcVars64Path)')) And '$(_VcVarsFromVsWhere)' != ''">
+      <VcVars64Path>$([System.String]::Copy('$(_VcVarsFromVsWhere)').Split(';')[0].Trim())</VcVars64Path>
     </PropertyGroup>
     <Error Condition="'$(VcVars64Path)' == '' Or !Exists('$(VcVars64Path)')" Text="vcvars64.bat was not found. Install the Visual Studio C++ x64 build tools or pass -p:VcVars64Path=..." />
     <MakeDir Directories="$(MSBuildThisFileDirectory)Native\out;$(_VNotchNativeObjDir)" />
+    <WriteLinesToFile Condition="'$(_VcVarsCacheFile)' != '' And !Exists('$(_VcVarsCacheFile)')" File="$(_VcVarsCacheFile)" Lines="$(VcVars64Path)" Overwrite="true" />
     <!--
       Baseline x64 (SSE2) for everything except *.avx2.cpp. The AVX2 kernels are compiled with /arch:AVX2
       and only entered after the runtime check in Native\vnotch_cpu.h, so the DLL loads and runs on CPUs
@@ -238,7 +241,7 @@
   </Target>
   <Target Name="BuildNativeDll" DependsOnTargets="CompileVNotchNative" />
 
-  <Target Name="SetPackageManifestVersion" BeforeTargets="Build">
+  <Target Name="SetPackageManifestVersion" BeforeTargets="Build" Inputs="Package.appxmanifest" Outputs="$(OutDir)Package.appxmanifest">
     <PropertyGroup>
       <PackageManifestVersion Condition="'$(PackageManifestVersion)' == ''">$(Version).0</PackageManifestVersion>
     </PropertyGroup>

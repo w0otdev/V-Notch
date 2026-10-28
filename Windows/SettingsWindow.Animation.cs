@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Runtime.InteropServices;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
@@ -24,6 +25,33 @@ public partial class SettingsWindow
 {
     #region Entrance Animation
 
+    [StructLayout(LayoutKind.Sequential, Pack = 1)]
+    internal struct VnProgressiveBlurStep
+    {
+        public int DelayMs;
+        public int FadeDurationMs;
+        public int BlurDurationMs;
+        public int SlideDurationMs;
+        public double StartBlurRadius;
+        public double StartOpacity;
+        public double StartTranslateY;
+    }
+
+    [LibraryImport("VNotch.Native.dll")]
+    private static unsafe partial int vn_ui_compute_progressive_blur_cascade(
+        int itemCount,
+        int baseDelayMs,
+        int direction,
+        byte isMenuList,
+        VnProgressiveBlurStep* outSteps,
+        int outCap,
+        out int outWritten);
+
+    private readonly List<(UIElement Element, double TargetOpacity)> _activeBlurredElements = new();
+    private readonly List<(UIElement Element, double TargetOpacity)> _activeMenuBlurredElements = new();
+    private int _progressiveContentBlurVersion;
+    private int _progressiveMenuBlurVersion;
+
     private static readonly ExponentialEase EntranceEaseOut = CreateFrozenExponentialEase(6);
     private static readonly ExponentialEase EntranceEaseOutStrong = CreateFrozenExponentialEase(7);
 
@@ -41,7 +69,7 @@ public partial class SettingsWindow
         var itemEase = EntranceEaseOut;
         int fps = Math.Min(60, VNotch.Services.AnimationConfig.TargetFps);
 
-        var totalDur = TimeSpan.FromMilliseconds(520);
+        var totalDur = TimeSpan.FromMilliseconds(640);
 
         double notchLeft = 0, notchTop = 0, notchW = 230, notchH = 32, notchRadius = 8;
         if (Owner is MainWindow mainWindow)
@@ -191,12 +219,13 @@ public partial class SettingsWindow
         AnimateSocialIcon(SocialFacebook, SocialFacebookTranslate, socialDelay + 80);
         AnimateSocialIcon(SocialDiscord, SocialDiscordTranslate, socialDelay + 120);
 
-        AnimateEntranceItem(NavPanel, NavPanelTranslate, contentDelay + 60);
+        AnimateEntranceItem(NavPanel, NavPanelTranslate, contentDelay + 40, applyBlur: false);
+        AnimateSidebarMenuProgressiveBlur(contentDelay + 55, fps);
 
         // Pass entranceDirection so the card slides in from above on first open
         AnimateActivePanel(_activeNav, entranceDirection: true);
 
-        AnimateEntranceItem(FooterBar, FooterTranslate, contentDelay + 120);
+        AnimateEntranceItem(FooterBar, FooterTranslate, contentDelay + 120, applyBlur: true);
 
         void AnimateSocialIcon(UIElement element, TranslateTransform translate, int delayMs)
         {
@@ -212,18 +241,216 @@ public partial class SettingsWindow
             translate.BeginAnimation(TranslateTransform.YProperty, slide);
         }
 
-        void AnimateEntranceItem(UIElement element, TranslateTransform translate, int delayMs)
+        void AnimateEntranceItem(UIElement element, TranslateTransform translate, int delayMs, bool applyBlur = true)
         {
             element.Opacity = 0;
             translate.Y = -10;
-            var fade = CreateAnimation(0, 1, 320, itemEase);
+            var fade = CreateAnimation(0, 1, 440, itemEase);
             fade.BeginTime = TimeSpan.FromMilliseconds(delayMs);
             element.BeginAnimation(OpacityProperty, fade);
 
             // Slide in from above (-10px → 0) to match the top-down cascade direction
-            var slide = CreateAnimation(-10, 0, 360, itemEase);
+            var slide = CreateAnimation(-10, 0, 500, itemEase);
             slide.BeginTime = TimeSpan.FromMilliseconds(delayMs);
             translate.BeginAnimation(TranslateTransform.YProperty, slide);
+
+            if (applyBlur && !VNotch.Services.AnimationConfig.ReduceMotion)
+            {
+                var blur = new BlurEffect { Radius = 14, RenderingBias = RenderingBias.Performance };
+                element.Effect = blur;
+                var blurAnim = CreateAnimation(14, 0, 540, itemEase);
+                blurAnim.BeginTime = TimeSpan.FromMilliseconds(delayMs);
+                blurAnim.Completed += (_, _) =>
+                {
+                    if (ReferenceEquals(element.Effect, blur))
+                    {
+                        element.Effect = null;
+                    }
+                };
+                blur.BeginAnimation(BlurEffect.RadiusProperty, blurAnim);
+            }
+        }
+    }
+
+    private void AnimateSidebarMenuProgressiveBlur(int baseDelayMs, int fps)
+    {
+        var menuItems = new List<UIElement>(_navOrder.Length);
+        foreach (string key in _navOrder)
+        {
+            if (_navButtons.TryGetValue(key, out var btn) && btn.Visibility == Visibility.Visible)
+            {
+                menuItems.Add(btn);
+            }
+        }
+
+        ApplyProgressiveBlurCascade(menuItems, baseDelayMs, direction: -1, isMenuList: true, fps);
+    }
+
+    internal static TranslateTransform EnsureElementTranslateTransform(UIElement element)
+    {
+        if (element.RenderTransform is TranslateTransform tt && !tt.IsFrozen)
+        {
+            return tt;
+        }
+
+        if (element.RenderTransform is TransformGroup group && !group.IsFrozen)
+        {
+            for (int i = 0; i < group.Children.Count; i++)
+            {
+                if (group.Children[i] is TranslateTransform childTt && !childTt.IsFrozen)
+                {
+                    return childTt;
+                }
+            }
+
+            var added = new TranslateTransform(0, 0);
+            group.Children.Add(added);
+            return added;
+        }
+
+        var created = new TranslateTransform(0, 0);
+        element.RenderTransform = created;
+        return created;
+    }
+
+    internal void ResetProgressiveBlurElements(bool isMenuList)
+    {
+        var list = isMenuList ? _activeMenuBlurredElements : _activeBlurredElements;
+        for (int i = 0; i < list.Count; i++)
+        {
+            var (el, targetOpacity) = list[i];
+            el.BeginAnimation(OpacityProperty, null);
+            el.Opacity = targetOpacity;
+            if (el.Effect is BlurEffect blur && !blur.IsFrozen)
+            {
+                blur.BeginAnimation(BlurEffect.RadiusProperty, null);
+            }
+            el.Effect = null;
+            var tt = EnsureElementTranslateTransform(el);
+            tt.BeginAnimation(TranslateTransform.YProperty, null);
+            tt.Y = 0;
+        }
+        list.Clear();
+    }
+
+    internal static double ResolveElementRestingOpacity(UIElement el)
+    {
+        double current = el.Opacity;
+        if (current > 0.05 && current < 0.99)
+        {
+            return current;
+        }
+        return !el.IsEnabled ? 0.4 : 1.0;
+    }
+
+    internal unsafe void ApplyProgressiveBlurCascade(
+        IReadOnlyList<UIElement> items,
+        int baseDelayMs,
+        int direction,
+        bool isMenuList,
+        int fps)
+    {
+        ResetProgressiveBlurElements(isMenuList);
+        if (items.Count == 0) return;
+
+        if (VNotch.Services.AnimationConfig.ReduceMotion)
+        {
+            for (int i = 0; i < items.Count; i++)
+            {
+                double rest = ResolveElementRestingOpacity(items[i]);
+                items[i].BeginAnimation(OpacityProperty, null);
+                items[i].Opacity = rest;
+                items[i].Effect = null;
+            }
+            return;
+        }
+
+        const int MaxCascadeItems = 32;
+        int count = Math.Min(items.Count, MaxCascadeItems);
+        VnProgressiveBlurStep* steps = stackalloc VnProgressiveBlurStep[MaxCascadeItems];
+        if (vn_ui_compute_progressive_blur_cascade(
+                count,
+                baseDelayMs,
+                direction,
+                isMenuList ? (byte)1 : (byte)0,
+                steps,
+                MaxCascadeItems,
+                out int written) != 0 || written <= 0)
+        {
+            return;
+        }
+
+        int version = isMenuList ? ++_progressiveMenuBlurVersion : ++_progressiveContentBlurVersion;
+        var trackedList = isMenuList ? _activeMenuBlurredElements : _activeBlurredElements;
+        var ease = EntranceEaseOut;
+
+        for (int i = 0; i < written; i++)
+        {
+            UIElement el = items[i];
+            VnProgressiveBlurStep step = steps[i];
+            double targetOpacity = ResolveElementRestingOpacity(el);
+            trackedList.Add((el, targetOpacity));
+
+            var translate = EnsureElementTranslateTransform(el);
+            el.BeginAnimation(OpacityProperty, null);
+            translate.BeginAnimation(TranslateTransform.YProperty, null);
+            el.Opacity = step.StartOpacity;
+            translate.Y = step.StartTranslateY;
+
+            var blur = new BlurEffect
+            {
+                Radius = step.StartBlurRadius,
+                RenderingBias = RenderingBias.Performance
+            };
+            el.Effect = blur;
+
+            var delay = TimeSpan.FromMilliseconds(step.DelayMs);
+            var fadeAnim = new DoubleAnimation(step.StartOpacity, targetOpacity, TimeSpan.FromMilliseconds(step.FadeDurationMs))
+            {
+                BeginTime = delay,
+                EasingFunction = ease
+            };
+            var slideAnim = new DoubleAnimation(step.StartTranslateY, 0.0, TimeSpan.FromMilliseconds(step.SlideDurationMs))
+            {
+                BeginTime = delay,
+                EasingFunction = ease
+            };
+            var blurAnim = new DoubleAnimation(step.StartBlurRadius, 0.0, TimeSpan.FromMilliseconds(step.BlurDurationMs))
+            {
+                BeginTime = delay,
+                EasingFunction = ease
+            };
+
+            Timeline.SetDesiredFrameRate(fadeAnim, fps);
+            Timeline.SetDesiredFrameRate(slideAnim, fps);
+            Timeline.SetDesiredFrameRate(blurAnim, fps);
+
+            blurAnim.Completed += (_, _) =>
+            {
+                int currentVer = isMenuList ? _progressiveMenuBlurVersion : _progressiveContentBlurVersion;
+                if (version != currentVer) return;
+
+                el.BeginAnimation(OpacityProperty, null);
+                el.Opacity = targetOpacity;
+                translate.BeginAnimation(TranslateTransform.YProperty, null);
+                translate.Y = 0.0;
+                if (ReferenceEquals(el.Effect, blur))
+                {
+                    el.Effect = null;
+                }
+            };
+
+            el.BeginAnimation(OpacityProperty, fadeAnim);
+            translate.BeginAnimation(TranslateTransform.YProperty, slideAnim);
+            blur.BeginAnimation(BlurEffect.RadiusProperty, blurAnim);
+        }
+
+        for (int i = written; i < items.Count; i++)
+        {
+            double rest = ResolveElementRestingOpacity(items[i]);
+            items[i].BeginAnimation(OpacityProperty, null);
+            items[i].Opacity = rest;
+            items[i].Effect = null;
         }
     }
 

@@ -178,7 +178,7 @@ internal static partial class InteractionSounds
 
     private static void OnPointerDown(object sender, MouseButtonEventArgs e)
     {
-        if (!CanPlay(sender) || e.ChangedButton != MouseButton.Left) return;
+        if (!CanPlay(sender) || (e.ChangedButton != MouseButton.Left && e.ChangedButton != MouseButton.Right)) return;
         bool customAction = false;
         var cue = InteractionCue.Click;
         for (var node = e.OriginalSource as DependencyObject; node != null && node is not Window; node = Parent(node))
@@ -186,12 +186,12 @@ internal static partial class InteractionSounds
             // Standard controls have semantic events; editable content stays quiet.
             if (node is ButtonBase or Slider or TextBoxBase or PasswordBox or Thumb) return;
             // ComboBoxItem and TabItem fire OnSelection when their selection actually changes; only ListBoxItem needs direct pointer sound.
-            if (node is ListBoxItem) { Player.Play(InteractionCue.Select); return; }
+            if (node is ListBoxItem) { if (e.ChangedButton == MouseButton.Left) Player.Play(InteractionCue.Select); return; }
             if (node is ComboBoxItem or TabItem or Selector) return;
             if (node is FrameworkElement { IsEnabled: false }) return;
             if (node is FrameworkElement element)
             {
-                if (element.Cursor == Cursors.Hand) customAction = true;
+                if (element.Cursor == Cursors.Hand && (e.ChangedButton == MouseButton.Left || element.Name == "SettingsButton")) customAction = true;
                 if (cue == InteractionCue.Click) cue = ClassifyAction(element);
             }
         }
@@ -211,7 +211,7 @@ internal static partial class InteractionSounds
 
     private static void OnPointerUp(object sender, MouseButtonEventArgs e)
     {
-        if (!CanPlay(sender) || e.ChangedButton != MouseButton.Left) return;
+        if (!CanPlay(sender) || (e.ChangedButton != MouseButton.Left && e.ChangedButton != MouseButton.Right)) return;
         for (var node = e.OriginalSource as DependencyObject; node != null; node = Parent(node))
         {
             if (node is Thumb) return;

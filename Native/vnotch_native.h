@@ -248,6 +248,17 @@ struct VnGlassBackdropOpticsOut
     int32_t outside_rgb;
 };
 
+struct VnProgressiveBlurStep
+{
+    int32_t delay_ms;
+    int32_t fade_duration_ms;
+    int32_t blur_duration_ms;
+    int32_t slide_duration_ms;
+    double start_blur_radius;
+    double start_opacity;
+    double start_translate_y;
+};
+
 #pragma pack(pop)
 
 VN_EXPORT int32_t __stdcall vn_visualizer_mix_frames_to_mono(
@@ -380,3 +391,12 @@ VN_EXPORT int32_t __stdcall vn_ui_smooth_scroll_step(
     double* out_next_offset,
     double* out_next_velocity,
     uint8_t* out_settled) noexcept;
+
+VN_EXPORT int32_t __stdcall vn_ui_compute_progressive_blur_cascade(
+    int32_t item_count,
+    int32_t base_delay_ms,
+    int32_t direction,
+    uint8_t is_menu_list,
+    VnProgressiveBlurStep* out_steps,
+    int32_t out_cap,
+    int32_t* out_written) noexcept;

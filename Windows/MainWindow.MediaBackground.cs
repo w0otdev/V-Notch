@@ -78,9 +78,17 @@ public partial class MainWindow
         _lastDominantColor = dominantColor;
         _lastBackgroundThumbnail = info.Thumbnail;
 
-        if (!suppressBackdrop && _isExpanded)
+        if (!suppressBackdrop)
+        {
+            if (isNewTrack && !_isExpanded)
+            {
+                ClearBlurredBackgroundSources();
+                _suppressNextBlurDissolve = true;
+            }
             UpdateBlurredBackgroundAsync(info.Thumbnail, allowInterimThumbnail: forceRefresh || isNewTrack).SafeFireAndForget("MEDIA-BG-BLUR");
-        else
+        }
+
+        if (suppressBackdrop || !_isExpanded)
             HideMediaBackgroundOverlay();
 
         double brightnessDimOpacity = suppressBackdrop ? 0 : DynamicIslandColorExtractor.GetBrightnessDimOverlay(info.Thumbnail);
@@ -443,6 +451,12 @@ public partial class MainWindow
         if (!_settings.ShowMediaArtBackground) return;
         if (!_settings.EnableBlurEffects) return;
 
+        if (_currentMediaInfo.Thumbnail != null && !ReferenceEquals(_currentMediaInfo.Thumbnail, _lastBlurThumbnailRef))
+        {
+            ClearBlurredBackgroundSources();
+            _suppressNextBlurDissolve = true;
+        }
+
         MediaBackground.BeginAnimation(OpacityProperty, null);
         MediaBackground2.BeginAnimation(OpacityProperty, null);
         MediaBackground.Visibility = Visibility.Visible;
@@ -545,7 +559,7 @@ public partial class MainWindow
     {
         try
         {
-            if (!_isExpanded || IsLiquidGlassEnabled || !_settings.ShowMediaArtBackground || !_settings.EnableBlurEffects)
+            if (_cleanedUp || IsLiquidGlassEnabled || !_settings.ShowMediaArtBackground || !_settings.EnableBlurEffects)
             {
                 return;
             }
@@ -674,7 +688,7 @@ public partial class MainWindow
 
         RuntimeLog.Log(BlurCrossfadeLogTag, $"RESULT taskVer={req.Version} blurSize={blurredImage.PixelWidth}x{blurredImage.PixelHeight} suppress={_suppressNextBlurDissolve} frontNull={MediaBackgroundImage.Source == null} backNull={MediaBackgroundImageBack.Source == null}");
 
-        if (_suppressNextBlurDissolve || (MediaBackgroundImage.Source == null && MediaBackgroundImageBack.Source == null))
+        if (_suppressNextBlurDissolve || !_isExpanded || (MediaBackgroundImage.Source == null && MediaBackgroundImageBack.Source == null))
         {
             _suppressNextBlurDissolve = false;
             _pendingBlurResult = null;
@@ -691,11 +705,34 @@ public partial class MainWindow
     private bool CanProcessBlurRequest(BlurRequest req)
     {
         if (req.Version != _blurTaskVersion) return false;
-        if (_isExpanded && !_cleanedUp && !IsLiquidGlassEnabled &&
+        if (!_cleanedUp && !IsLiquidGlassEnabled &&
             _settings.ShowMediaArtBackground && _settings.EnableBlurEffects) return true;
         // Allow the same artwork to be requested again on the next expansion.
         _lastBlurThumbnailRef = null;
         return false;
+    }
+
+    private void ClearBlurredBackgroundSources()
+    {
+        ++_blurCrossfadeVersion;
+        _pendingBlurResult = null;
+        _blurDissolveDebounce?.Stop();
+        _lastBlurThumbnailRef = null;
+
+        MediaBackgroundImage.BeginAnimation(OpacityProperty, null);
+        MediaBackgroundImage2.BeginAnimation(OpacityProperty, null);
+        MediaBackgroundImageBack.BeginAnimation(OpacityProperty, null);
+        MediaBackgroundImageBack2.BeginAnimation(OpacityProperty, null);
+
+        _blurBackIsActive = false;
+        MediaBackgroundImage.Source = null;
+        MediaBackgroundImage2.Source = null;
+        MediaBackgroundImage.Opacity = 0.0;
+        MediaBackgroundImage2.Opacity = 0.0;
+        MediaBackgroundImageBack.Source = null;
+        MediaBackgroundImageBack2.Source = null;
+        MediaBackgroundImageBack.Opacity = 0.0;
+        MediaBackgroundImageBack2.Opacity = 0.0;
     }
 
     private void ApplyBlurredBackgroundImmediate(BitmapSource blurred)

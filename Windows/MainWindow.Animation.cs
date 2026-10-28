@@ -733,11 +733,19 @@ public partial class MainWindow
         }
         if (LyricsBlurBackground == null) return;
 
+        bool wasCollapsed = LyricsBlurBackground.Visibility != Visibility.Visible;
+
         if (LyricsBlurImage != null)
         {
-            if (LyricsBlurImage.Source == null && _currentMediaInfo?.Thumbnail != null)
+            if ((wasCollapsed || LyricsBlurImage.Source == null) && _currentMediaInfo?.Thumbnail != null)
             {
                 LyricsBlurImage.Source = LyricsBackgroundBrightness.Apply(_currentMediaInfo.Thumbnail, _settings.BrightenDarkLyricsBackground);
+                if (wasCollapsed && LyricsBlurImageNext != null)
+                {
+                    LyricsBlurImageNext.BeginAnimation(OpacityProperty, null);
+                    LyricsBlurImageNext.Opacity = 0.0;
+                    LyricsBlurImageNext.Source = null;
+                }
             }
             if (LyricsBlurImageNext == null || LyricsBlurImageNext.Opacity <= 0.01)
             {
@@ -745,8 +753,6 @@ public partial class MainWindow
                 LyricsBlurImage.Opacity = 1.0;
             }
         }
-
-        bool wasCollapsed = LyricsBlurBackground.Visibility != Visibility.Visible;
         double currentOpacity = wasCollapsed ? 0 : LyricsBlurBackground.Opacity;
 
         if (!force && !wasCollapsed && (currentOpacity >= 0.52 || _isLyricsBlurFadeInProgress))

@@ -157,8 +157,9 @@ public partial class ClipboardTray
     {
         var scroll = element as ScrollViewer ?? FindScrollViewer(element);
         if (scroll == null || element.ActualWidth <= 0) return;
-        bool left = scroll.HorizontalOffset > 0.5;
-        bool right = scroll.HorizontalOffset < scroll.ScrollableWidth - 0.5;
+        double threshold = ReferenceEquals(element, Cards) ? 6.0 : 0.5;
+        bool left = scroll.HorizontalOffset > threshold;
+        bool right = scroll.HorizontalOffset < scroll.ScrollableWidth - threshold;
         var state = (left, right, element.ActualWidth);
         bool hadState = _edgeFadeStates.TryGetValue(element, out var previous);
         if (hadState && previous == state) return;
