@@ -57,6 +57,38 @@
    <Setter Property="TextOptions.TextFormattingMode" Value="Ideal"/>
    <Setter Property="TextOptions.TextRenderingMode" Value="ClearType"/>
   </Style>
+  <Style x:Key="TrayDialogInput" TargetType="TextBox" BasedOn="{StaticResource {x:Type TextBox}}">
+   <Setter Property="FontSize" Value="12.5"/>
+   <Setter Property="Foreground" Value="{x:Static svc:UiPalette.PrimaryBrush}"/>
+   <Setter Property="CaretBrush" Value="{x:Static svc:UiPalette.PrimaryBrush}"/>
+   <Setter Property="SelectionBrush" Value="#40FFFFFF"/>
+   <Setter Property="SelectionOpacity" Value="1"/>
+   <Setter Property="Background" Value="#12FFFFFF"/>
+   <Setter Property="BorderBrush" Value="#20FFFFFF"/>
+   <Setter Property="BorderThickness" Value="1"/>
+   <Setter Property="Padding" Value="12,9"/>
+   <Setter Property="MinHeight" Value="38"/>
+   <Setter Property="VerticalContentAlignment" Value="Center"/>
+   <Setter Property="FocusVisualStyle" Value="{x:Null}"/>
+   <Setter Property="Template"><Setter.Value><ControlTemplate TargetType="TextBox">
+    <Border x:Name="InputSurface" Background="{TemplateBinding Background}"
+            local:TrayMotion.BorderBrush="{Binding BorderBrush, RelativeSource={RelativeSource TemplatedParent}}"
+            BorderThickness="{TemplateBinding BorderThickness}" CornerRadius="{StaticResource TrayRadiusMedium}"
+            SnapsToDevicePixels="True">
+     <ScrollViewer x:Name="PART_ContentHost" Focusable="False"
+                   HorizontalScrollBarVisibility="Hidden" VerticalScrollBarVisibility="Hidden"
+                   VerticalAlignment="{TemplateBinding VerticalContentAlignment}"/>
+    </Border>
+    <ControlTemplate.Triggers>
+     <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="InputSurface" Property="local:TrayMotion.BorderBrush" Value="#40FFFFFF"/></Trigger>
+     <Trigger Property="IsKeyboardFocusWithin" Value="True">
+      <Setter TargetName="InputSurface" Property="local:TrayMotion.BorderBrush" Value="#90FFFFFF"/>
+      <Setter TargetName="InputSurface" Property="Background" Value="#18FFFFFF"/>
+     </Trigger>
+     <Trigger Property="IsEnabled" Value="False"><Setter TargetName="InputSurface" Property="Opacity" Value="0.4"/></Trigger>
+    </ControlTemplate.Triggers>
+   </ControlTemplate></Setter.Value></Setter>
+  </Style>
   <Style TargetType="PasswordBox">
    <Setter Property="FontFamily" Value="{StaticResource SFProDisplay}"/>
    <Setter Property="FontWeight" Value="Bold"/>
@@ -395,6 +427,9 @@
    <Setter Property="Cursor" Value="Hand"/>
    <Setter Property="Focusable" Value="True"/>
    <Setter Property="AutomationProperties.Name" Value="{Binding Label}"/>
+   <Setter Property="AutomationProperties.HelpText" Value="{Binding ReorderHint}"/>
+   <Setter Property="ToolTip" Value="{Binding ReorderHint}"/>
+   <EventSetter Event="PreviewKeyDown" Handler="CategoryReorder_KeyDown"/>
    <EventSetter Event="Click" Handler="Category_Click"/>
    <EventSetter Event="DragEnter" Handler="Category_DragEnter"/><EventSetter Event="DragOver" Handler="Category_DragOver"/>
    <EventSetter Event="DragLeave" Handler="Category_DragLeave"/><EventSetter Event="Drop" Handler="Category_Drop"/>
@@ -657,6 +692,33 @@
    </Border>
   </ScrollViewer>
 
+  <Canvas x:Name="CategoryReorderOverlay" Grid.Row="1" Margin="12,3,12,5" ClipToBounds="False"
+          IsHitTestVisible="False" Visibility="Collapsed" Panel.ZIndex="10">
+   <Border x:Name="CategoryReorderMarker" Background="#08FFFFFF" BorderBrush="#38FFFFFF" BorderThickness="1" CornerRadius="13">
+    <Border.RenderTransform><TranslateTransform x:Name="CategoryReorderGapOffset"/></Border.RenderTransform>
+   </Border>
+   <Border x:Name="CategoryReorderGhost" Background="#29292D" BorderBrush="#60FFFFFF" BorderThickness="1"
+           CornerRadius="13" Padding="12,5" RenderTransformOrigin="0.5,0.5" TextElement.Foreground="{x:Static svc:UiPalette.PrimaryBrush}">
+    <Border.RenderTransform><ScaleTransform x:Name="CategoryReorderGhostScale"/></Border.RenderTransform>
+    <Border.Effect><DropShadowEffect BlurRadius="12" ShadowDepth="3" Opacity="0.4" Color="Black"/></Border.Effect>
+    <StackPanel Orientation="Horizontal">
+     <local:TrayIcon Kind="{Binding IconKind}" Width="13" Height="13" Margin="0,0,6,0" VerticalAlignment="Center" Foreground="{x:Static svc:UiPalette.PrimaryBrush}"/>
+     <TextBlock Text="{Binding Label}" FontSize="12" VerticalAlignment="Center"/>
+     <TextBlock Text="{Binding CountLabel}" FontSize="11" Margin="5,0,0,0" VerticalAlignment="Center" Opacity="0.75">
+      <TextBlock.Style><Style TargetType="TextBlock"><Style.Triggers>
+       <DataTrigger Binding="{Binding IsPersonal}" Value="True"><Setter Property="Visibility" Value="Collapsed"/></DataTrigger>
+      </Style.Triggers></Style></TextBlock.Style>
+     </TextBlock>
+     <local:TrayIcon Kind="{Binding LockIconKind}" Width="10" Height="10" Margin="5,0,0,0" VerticalAlignment="Center" Foreground="{x:Static svc:UiPalette.PrimaryBrush}">
+      <local:TrayIcon.Style><Style TargetType="local:TrayIcon">
+       <Setter Property="Visibility" Value="Collapsed"/>
+       <Style.Triggers><DataTrigger Binding="{Binding IsPersonal}" Value="True"><Setter Property="Visibility" Value="Visible"/></DataTrigger></Style.Triggers>
+      </Style></local:TrayIcon.Style>
+     </local:TrayIcon>
+    </StackPanel>
+   </Border>
+  </Canvas>
+
   <!-- Import Progress Indicator -->
   <ProgressBar x:Name="ImportProgressBar" Grid.Row="1" Height="2.5" VerticalAlignment="Bottom" Margin="14,0,14,0"
                Background="Transparent" BorderThickness="0" Foreground="{StaticResource TrayAccent}"
@@ -695,18 +757,6 @@
        <Border CornerRadius="{StaticResource TrayRadiusLarge}" Background="{Binding CardBrush}" IsHitTestVisible="False"/>
        <!-- Card Visual Content (Blurred when copied) -->
        <Grid x:Name="CardContentGrid" local:TrayMotion.BlurRadius="{Binding IsCopied, Converter={StaticResource BoolBlur}}">
-        <!-- Layer 1: Ambient Curved-Glass Specular Gradient Sheen -->
-        <Border x:Name="CardSheen" CornerRadius="{StaticResource TrayRadiusLarge}" IsHitTestVisible="False">
-         <Border.Background>
-          <LinearGradientBrush StartPoint="0,0" EndPoint="0,1">
-           <GradientStop Color="#1AFFFFFF" Offset="0"/>
-           <GradientStop Color="#06FFFFFF" Offset="0.32"/>
-           <GradientStop Color="#00FFFFFF" Offset="0.65"/>
-           <GradientStop Color="#10000000" Offset="1"/>
-          </LinearGradientBrush>
-         </Border.Background>
-        </Border>
-
         <!-- Layer 2: Image Thumbnail -->
         <!-- Edge-to-edge artwork; the footer vignette keeps metadata readable. -->
         <Image Source="{Binding Image, NotifyOnTargetUpdated=True}" TargetUpdated="CardPreview_TargetUpdated" Stretch="UniformToFill" RenderOptions.BitmapScalingMode="HighQuality" HorizontalAlignment="Stretch" VerticalAlignment="Stretch"/>
@@ -739,9 +789,9 @@
         <Rectangle x:Name="BaseRim" RadiusX="16" RadiusY="16" Margin="0" StrokeThickness="1.2" IsHitTestVisible="False" Panel.ZIndex="2">
          <Rectangle.Stroke>
           <LinearGradientBrush StartPoint="0,0" EndPoint="0,1">
-           <GradientStop Color="#32FFFFFF" Offset="0"/>
-           <GradientStop Color="#14FFFFFF" Offset="0.45"/>
-           <GradientStop Color="#0AFFFFFF" Offset="1"/>
+           <GradientStop Color="#66FFFFFF" Offset="0"/>
+           <GradientStop Color="#50FFFFFF" Offset="0.45"/>
+           <GradientStop Color="#50FFFFFF" Offset="1"/>
           </LinearGradientBrush>
          </Rectangle.Stroke>
         </Rectangle>
@@ -789,18 +839,18 @@
           <Grid x:Name="FileHeroIcon" Width="24" Height="24" VerticalAlignment="Center" Margin="0,0,7,0">
            <Image Source="{Binding FilePreviewIcon}" Stretch="Uniform" RenderOptions.BitmapScalingMode="HighQuality"/>
           </Grid>
-          <Border CornerRadius="4" Background="{Binding FileAccentBrush}" Padding="6,1.5" VerticalAlignment="Center">
-           <TextBlock Text="{Binding FileTypeTag}" FontSize="10" FontWeight="Bold" FontFamily="{StaticResource SFProDisplay}" Foreground="White"/>
+          <Border CornerRadius="4" Background="{Binding FileBadgeBackgroundBrush}" Padding="6,1.5" VerticalAlignment="Center">
+           <TextBlock x:Name="FileTypeTagText" Text="{Binding FileTypeTag}" FontSize="10" FontWeight="Bold" FontFamily="{StaticResource SFProDisplay}" Foreground="{x:Static svc:UiPalette.PrimaryBrush}"/>
           </Border>
           </StackPanel>
-          <TextBlock x:Name="FileHeroName" Grid.Row="1" Text="{Binding Title}" ToolTip="{Binding Title}" FontFamily="{StaticResource SFProDisplay}" FontSize="11" LineHeight="14" Foreground="#F5F5FA" TextWrapping="Wrap" TextTrimming="CharacterEllipsis" TextAlignment="Center" VerticalAlignment="Center" MaxHeight="28" Margin="0,4,0,0"/>
+          <TextBlock x:Name="FileHeroName" Grid.Row="1" Text="{Binding Title}" ToolTip="{Binding Title}" FontFamily="{StaticResource SFProDisplay}" FontSize="11" LineHeight="14" Foreground="{x:Static svc:UiPalette.PrimaryBrush}" TextWrapping="Wrap" TextTrimming="CharacterEllipsis" TextAlignment="Center" VerticalAlignment="Center" MaxHeight="28" Margin="0,4,0,0"/>
          </Grid>
         </Border>
 
         <!-- Layer 6: Text Preview Container with Dust Particle Overlay for Passwords -->
         <Grid x:Name="CardPreviewViewport" Margin="14,13,14,48" VerticalAlignment="Top" MaxHeight="96" ClipToBounds="True">
          <Grid HorizontalAlignment="Left" VerticalAlignment="Top" Width="{Binding MaskedPreviewWidth}" Height="{Binding MaskedPreviewHeight}">
-         <TextBlock x:Name="CardPreviewText" Text="{Binding DisplayPreview}" Opacity="{Binding MaskedTextOpacity}" FontFamily="{StaticResource SFProDisplay}" FontSize="14" FontWeight="SemiBold" LineHeight="19" LineStackingStrategy="BlockLineHeight" MaxHeight="95" TextWrapping="Wrap" TextTrimming="CharacterEllipsis" Foreground="#F5F5FA">
+         <TextBlock x:Name="CardPreviewText" Text="{Binding DisplayPreview}" Opacity="{Binding MaskedTextOpacity}" FontFamily="{StaticResource SFProDisplay}" FontSize="14" FontWeight="SemiBold" LineHeight="19" LineStackingStrategy="BlockLineHeight" MaxHeight="95" TextWrapping="Wrap" TextTrimming="CharacterEllipsis" Foreground="{x:Static svc:UiPalette.PrimaryBrush}">
           <TextBlock.Effect>
            <BlurEffect Radius="{Binding BlurRadius}" RenderingBias="Performance"/>
           </TextBlock.Effect>
@@ -815,13 +865,13 @@
          </Grid>
         </Grid>
 
-        <!-- Layer 7: Seamless Frosted Vignette Footer -->
-        <Border VerticalAlignment="Bottom" Height="48" CornerRadius="0,0,16,16">
+        <!-- Darken the glyph band early enough to protect metadata on bright previews. -->
+        <Border x:Name="CardFooter" VerticalAlignment="Bottom" Height="48" CornerRadius="0,0,16,16">
          <Border.Background>
           <LinearGradientBrush StartPoint="0,0" EndPoint="0,1">
-           <GradientStop Color="#0009090D" Offset="0"/>
-           <GradientStop Color="#B009090D" Offset="0.5"/>
-           <GradientStop Color="#F009090D" Offset="1"/>
+           <GradientStop Color="#00000000" Offset="0"/>
+           <GradientStop Color="#E6000000" Offset="0.35"/>
+           <GradientStop Color="#F5000000" Offset="1"/>
           </LinearGradientBrush>
          </Border.Background>
          <Grid Margin="13,14,13,8">
@@ -833,21 +883,21 @@
           
           <Image Width="20" Height="20" Source="{Binding DisplaySourceIcon}" Stretch="Uniform" RenderOptions.BitmapScalingMode="HighQuality" ToolTip="{Binding Source}"/>
 
-          <TextBlock Grid.Column="1" Text="{Binding FooterSource}" ToolTip="{Binding Age}" FontFamily="{StaticResource SFProDisplay}" FontSize="11.5" FontWeight="SemiBold" Foreground="#DEDEE5" Margin="5,0,6,0" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
-          <TextBlock Grid.Column="2" Text="{Binding Size}" FontSize="10.5" FontFamily="{StaticResource SFProDisplay}" FontWeight="Medium" Foreground="#A8A8B2" VerticalAlignment="Center"/>
+          <TextBlock x:Name="CardFooterSource" Grid.Column="1" Text="{Binding FooterSource}" ToolTip="{Binding Age}" FontFamily="{StaticResource SFProDisplay}" FontSize="11.5" FontWeight="SemiBold" Foreground="{x:Static svc:UiPalette.PrimaryBrush}" Margin="5,0,6,0" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
+          <TextBlock x:Name="CardFooterSize" Grid.Column="2" Text="{Binding Size}" FontSize="10.5" FontFamily="{StaticResource SFProDisplay}" FontWeight="Medium" Foreground="{x:Static svc:UiPalette.SecondaryBrush}" VerticalAlignment="Center"/>
          </Grid>
         </Border>
        </Grid>
 
         <!-- Layer 5: Card Actions (Pin & More) in Top Right -->
-        <Border x:Name="CardActions" HorizontalAlignment="Right" VerticalAlignment="Top" Margin="7" Panel.ZIndex="4" Background="#E618181E" BorderBrush="#26FFFFFF" BorderThickness="1" CornerRadius="7" Padding="2" local:TrayMotion.Opacity="0" IsHitTestVisible="False">
+        <Border x:Name="CardActions" HorizontalAlignment="Right" VerticalAlignment="Top" Margin="7" Panel.ZIndex="4" Background="#E6181818" BorderBrush="#26FFFFFF" BorderThickness="1" CornerRadius="7" Padding="2" local:TrayMotion.Opacity="0" IsHitTestVisible="False">
         <Grid>
          <Border CornerRadius="6" ClipToBounds="True" SizeChanged="CardActionGlass_SizeChanged" IsHitTestVisible="False">
           <local:CardActionBackdrop Source="{Binding ElementName=CardContentGrid}">
            <local:CardActionBackdrop.Effect><BlurEffect Radius="10" RenderingBias="Performance"/></local:CardActionBackdrop.Effect>
           </local:CardActionBackdrop>
          </Border>
-         <Border Background="#A618181E" CornerRadius="6" IsHitTestVisible="False"/>
+         <Border Background="#A6181818" CornerRadius="6" IsHitTestVisible="False"/>
         <StackPanel Orientation="Horizontal">
          <Button Tag="pin" Style="{StaticResource PinActionButton}" ToolTip="{Binding PinLabel}" Click="CardAction_Click">
           <local:TrayIcon Kind="Pin" Width="14.5" Height="14.5" VerticalAlignment="Center" HorizontalAlignment="Center"/>
@@ -866,7 +916,7 @@
 
        <!-- Center Copied Feedback Notification with spring pop & smooth scale-fade dismiss -->
        <Border x:Name="CopiedBadge" HorizontalAlignment="Center" VerticalAlignment="Center"
-               Padding="14,8"
+               Padding="14,8" Background="#E6000000" BorderBrush="#40FFFFFF" BorderThickness="1" CornerRadius="{StaticResource TrayRadiusMedium}"
                Opacity="0" IsHitTestVisible="False" Panel.ZIndex="10"
                RenderTransformOrigin="0.5,0.5">
         <Border.RenderTransform>
@@ -896,8 +946,7 @@
        <Setter TargetName="CardActions" Property="IsHitTestVisible" Value="True"/>
       </DataTrigger>
       <DataTrigger Binding="{Binding Entry.Kind}" Value="Color">
-       <Setter TargetName="CardSheen" Property="Visibility" Value="Collapsed"/>
-       <Setter TargetName="CardPreviewText" Property="Background" Value="#CC101014"/>
+       <Setter TargetName="CardPreviewText" Property="Background" Value="#D9000000"/>
        <Setter TargetName="CardPreviewText" Property="Padding" Value="6,3"/>
        <Setter TargetName="CardPreviewText" Property="HorizontalAlignment" Value="Left"/>
       </DataTrigger>
@@ -1245,7 +1294,7 @@
        KeyboardNavigation.TabNavigation="Cycle" KeyboardNavigation.DirectionalNavigation="Cycle"
        PreviewMouseLeftButtonDown="LabelEditorBackdrop_MouseDown">
   <Border x:Name="LabelEditorBorder" HorizontalAlignment="Center" VerticalAlignment="Center" MaxWidth="420" Margin="16" Padding="18,16"
-          Background="#FF101016" BorderBrush="#40FFFFFF" BorderThickness="1" CornerRadius="{StaticResource TrayRadiusLarge}"
+          Style="{StaticResource TrayMenuSurface}" CornerRadius="{StaticResource TrayRadiusLarge}"
           RenderTransformOrigin="0.5,0.5">
    <Border.RenderTransform>
     <TransformGroup>
@@ -1253,18 +1302,19 @@
      <TranslateTransform Y="0"/>
     </TransformGroup>
    </Border.RenderTransform>
-   <Border.Effect>
-    <DropShadowEffect BlurRadius="32" ShadowDepth="6" Direction="270" Color="Black" Opacity="0.75" RenderingBias="Performance"/>
-   </Border.Effect>
    <StackPanel>
-    <TextBlock x:Name="LabelEditorTitle" FontSize="15" FontWeight="Bold" Foreground="White"/>
-    <TextBlock x:Name="LabelEditorHint" Margin="0,6,0,10" FontSize="12" TextWrapping="Wrap" Foreground="{StaticResource TrayMutedForeground}"/>
-    <TextBox x:Name="LabelNameBox" MaxLength="64" Padding="8,6" Background="#18FFFFFF" Foreground="White" CaretBrush="White" BorderBrush="#40FFFFFF" KeyDown="LabelName_KeyDown"/>
-    <TextBlock x:Name="LabelEditorError" Margin="0,5,0,0" FontSize="12" TextWrapping="Wrap" Foreground="{StaticResource TrayDestructive}" AutomationProperties.LiveSetting="Polite"/>
-    <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,12,0,0">
-     <Button x:Name="CancelLabelButton" Style="{StaticResource TrayButton}" Click="CancelLabel_Click" Margin="0,0,8,0"/>
-     <Button x:Name="SaveLabelButton" Style="{StaticResource TrayButton}" Click="SaveLabel_Click" Background="{StaticResource TrayAccent}" Foreground="{StaticResource TrayOnAccent}"/>
-    </StackPanel>
+    <TextBlock x:Name="LabelEditorTitle" FontSize="15" FontWeight="Bold" Foreground="{x:Static svc:UiPalette.PrimaryBrush}"/>
+    <TextBlock x:Name="LabelEditorHint" Margin="0,6,0,14" FontSize="12" LineHeight="17" TextWrapping="Wrap" Foreground="{x:Static svc:UiPalette.SecondaryBrush}"/>
+    <TextBox x:Name="LabelNameBox" Style="{StaticResource TrayDialogInput}" MaxLength="64" KeyDown="LabelName_KeyDown"/>
+    <TextBlock x:Name="LabelEditorError" Margin="0,8,0,0" FontSize="12" LineHeight="17" TextWrapping="Wrap" Foreground="{StaticResource TrayDestructive}" AutomationProperties.LiveSetting="Polite">
+     <TextBlock.Style><Style TargetType="TextBlock" BasedOn="{StaticResource {x:Type TextBlock}}"><Style.Triggers>
+      <Trigger Property="Text" Value=""><Setter Property="Visibility" Value="Collapsed"/></Trigger>
+     </Style.Triggers></Style></TextBlock.Style>
+    </TextBlock>
+    <WrapPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,14,0,0">
+     <Button x:Name="CancelLabelButton" Style="{StaticResource TrayButton}" Click="CancelLabel_Click" Margin="0,0,8,0" Padding="14,7" Background="Transparent" Foreground="{x:Static svc:UiPalette.SecondaryBrush}"/>
+     <Button x:Name="SaveLabelButton" Style="{StaticResource TrayButton}" Click="SaveLabel_Click" Padding="14,7" Background="{StaticResource TrayAccent}" Foreground="{x:Static svc:UiPalette.PrimaryBrush}"/>
+    </WrapPanel>
    </StackPanel>
   </Border>
  </Grid>

@@ -297,6 +297,13 @@ public partial class MainWindow
             }
             ThumbnailBorder.BeginAnimation(OpacityProperty, null);
             ThumbnailBorder.Opacity = 1;
+            if (ThumbnailScale != null)
+            {
+                ThumbnailScale.BeginAnimation(ScaleTransform.ScaleXProperty, null);
+                ThumbnailScale.BeginAnimation(ScaleTransform.ScaleYProperty, null);
+                ThumbnailScale.ScaleX = 1;
+                ThumbnailScale.ScaleY = 1;
+            }
         }
 
         ResetAnimationThumbnailOverlay(clearSource: false);
@@ -953,11 +960,31 @@ public partial class MainWindow
         {
             HideMediaBackground();
             SuspendSpotifyCanvasLifecycle();
-            // The media artwork has no destination in auxiliary views. Do not let
-            // its centered layout travel across the much wider clipboard surface.
-            ResetAnimationThumbnailOverlay();
-            ThumbnailBorder.BeginAnimation(OpacityProperty, null);
-            ThumbnailBorder.Opacity = 0;
+            if (_isThumbnailExpandAnimating && fromView == VNotch.Models.NotchView.Media)
+            {
+                HandoffAnimationThumbnailToExpanded();
+            }
+            else
+            {
+                ResetAnimationThumbnailOverlay();
+            }
+
+            if (fromView == VNotch.Models.NotchView.Media && !AnimationConfig.ReduceMotion)
+            {
+                PlayThumbnailViewHideAnimation();
+            }
+            else
+            {
+                if (ThumbnailScale != null)
+                {
+                    ThumbnailScale.BeginAnimation(ScaleTransform.ScaleXProperty, null);
+                    ThumbnailScale.BeginAnimation(ScaleTransform.ScaleYProperty, null);
+                    ThumbnailScale.ScaleX = 1;
+                    ThumbnailScale.ScaleY = 1;
+                }
+                ThumbnailBorder.BeginAnimation(OpacityProperty, null);
+                ThumbnailBorder.Opacity = 0;
+            }
         }
 
 
@@ -1083,7 +1110,8 @@ public partial class MainWindow
         var fadeInAnim = MakeAnim(0d, 1d, _dur400, _easePowerOut3);
         var glowAnim = MakeAnim(0.15, _dur200);
 
-        if (morphMediaArtwork && _isMusicCompactMode && CompactThumbnail.Source != null && !suppressCompactThumbnailMotion)
+        bool useThumbnailOverlayMorph = morphMediaArtwork && _isMusicCompactMode && CompactThumbnail.Source != null && !suppressCompactThumbnailMotion;
+        if (useThumbnailOverlayMorph)
         {
             AnimateThumbnailExpandOverlay(compactThumbnailRestOffset);
         }
@@ -1203,7 +1231,7 @@ public partial class MainWindow
 
             ExpandedContentBlur.Radius = 0;
             expandedTranslate.BeginAnimation(TranslateTransform.YProperty, springSlide);
-            PlayMediaContentReveal(TimeSpan.FromMilliseconds(25));
+            PlayMediaContentReveal(TimeSpan.FromMilliseconds(25), animateThumbnail: !useThumbnailOverlayMorph);
         }
 
         HoverGlow.BeginAnimation(OpacityProperty, glowAnim);
@@ -1212,9 +1240,73 @@ public partial class MainWindow
     private int _mediaContentRevealGeneration;
     private int _cameraContentRevealGeneration;
 
+    private void PlayThumbnailViewHideAnimation()
+    {
+        if (ThumbnailBorder == null) return;
+
+        int gen = ++_mediaContentRevealGeneration;
+        int fps = AnimationConfig.TargetFps;
+
+        double currentOpacity = ThumbnailBorder.Opacity > 0.01 ? ThumbnailBorder.Opacity : 1.0;
+        ThumbnailBorder.BeginAnimation(OpacityProperty, null);
+        ThumbnailBorder.Opacity = currentOpacity;
+
+        double currentScaleX = ThumbnailScale?.ScaleX ?? 1.0;
+        double currentScaleY = ThumbnailScale?.ScaleY ?? 1.0;
+        if (ThumbnailScale != null)
+        {
+            ThumbnailScale.BeginAnimation(ScaleTransform.ScaleXProperty, null);
+            ThumbnailScale.BeginAnimation(ScaleTransform.ScaleYProperty, null);
+            ThumbnailScale.ScaleX = currentScaleX;
+            ThumbnailScale.ScaleY = currentScaleY;
+        }
+
+        var dur = new Duration(TimeSpan.FromMilliseconds(160));
+        var fadeOut = MakeAnim(currentOpacity, 0.0, dur, _easeQuadOut);
+        Timeline.SetDesiredFrameRate(fadeOut, fps);
+
+        fadeOut.Completed += (_, _) =>
+        {
+            if (gen != _mediaContentRevealGeneration) return;
+            ThumbnailBorder.BeginAnimation(OpacityProperty, null);
+            ThumbnailBorder.Opacity = 0;
+            if (ThumbnailScale != null)
+            {
+                ThumbnailScale.BeginAnimation(ScaleTransform.ScaleXProperty, null);
+                ThumbnailScale.BeginAnimation(ScaleTransform.ScaleYProperty, null);
+                ThumbnailScale.ScaleX = 1.0;
+                ThumbnailScale.ScaleY = 1.0;
+            }
+        };
+
+        ThumbnailBorder.BeginAnimation(OpacityProperty, fadeOut);
+        if (ThumbnailScale != null)
+        {
+            var scaleXOut = MakeAnim(currentScaleX, 0.82, dur, _easePowerOut3);
+            var scaleYOut = MakeAnim(currentScaleY, 0.82, dur, _easePowerOut3);
+            Timeline.SetDesiredFrameRate(scaleXOut, fps);
+            Timeline.SetDesiredFrameRate(scaleYOut, fps);
+            ThumbnailScale.BeginAnimation(ScaleTransform.ScaleXProperty, scaleXOut);
+            ThumbnailScale.BeginAnimation(ScaleTransform.ScaleYProperty, scaleYOut);
+        }
+    }
+
     private void ResetMediaContentReveal()
     {
         _mediaContentRevealGeneration++;
+
+        if (ThumbnailBorder != null && !_isThumbnailExpandAnimating)
+        {
+            ThumbnailBorder.BeginAnimation(OpacityProperty, null);
+            ThumbnailBorder.Opacity = 1;
+        }
+        if (ThumbnailScale != null)
+        {
+            ThumbnailScale.BeginAnimation(ScaleTransform.ScaleXProperty, null);
+            ThumbnailScale.BeginAnimation(ScaleTransform.ScaleYProperty, null);
+            ThumbnailScale.ScaleX = 1;
+            ThumbnailScale.ScaleY = 1;
+        }
 
         if (MediaPlayback != null)
         {
@@ -1256,7 +1348,7 @@ public partial class MainWindow
         }
     }
 
-    private void PlayMediaContentReveal(TimeSpan baseDelay)
+    private void PlayMediaContentReveal(TimeSpan baseDelay, bool animateThumbnail = true)
     {
         if (AnimationConfig.ReduceMotion)
         {
@@ -1266,6 +1358,63 @@ public partial class MainWindow
 
         int gen = ++_mediaContentRevealGeneration;
         int fps = AnimationConfig.TargetFps;
+
+        if (animateThumbnail && ThumbnailBorder != null)
+        {
+            SynchronizeMediaPinForTransition();
+            if (!_showingEmptyThumbnail && CompactThumbnail?.Source != null && ThumbnailImage != null)
+            {
+                ThumbnailImage.Source = CompactThumbnail.Source;
+                ThumbnailImage.Visibility = Visibility.Visible;
+                ThumbnailFallback.Visibility = Visibility.Collapsed;
+            }
+            else if (ThumbnailImage != null && ThumbnailImage.Source == null)
+            {
+                ThumbnailImage.Visibility = Visibility.Collapsed;
+                ThumbnailFallback.Visibility = Visibility.Visible;
+            }
+
+            ThumbnailBorder.BeginAnimation(OpacityProperty, null);
+            ThumbnailBorder.Opacity = 0;
+            if (ThumbnailScale != null)
+            {
+                ThumbnailScale.BeginAnimation(ScaleTransform.ScaleXProperty, null);
+                ThumbnailScale.BeginAnimation(ScaleTransform.ScaleYProperty, null);
+                ThumbnailScale.ScaleX = 0.84;
+                ThumbnailScale.ScaleY = 0.84;
+            }
+
+            var thumbFadeDur = new Duration(TimeSpan.FromMilliseconds(280));
+            var thumbScaleDur = new Duration(TimeSpan.FromMilliseconds(360));
+            var thumbFade = MakeAnim(0, 1, thumbFadeDur, _easeAppleOut, baseDelay);
+            Timeline.SetDesiredFrameRate(thumbFade, fps);
+
+            thumbFade.Completed += (_, _) =>
+            {
+                if (gen != _mediaContentRevealGeneration) return;
+                ThumbnailBorder.BeginAnimation(OpacityProperty, null);
+                ThumbnailBorder.Opacity = 1;
+            };
+            ThumbnailBorder.BeginAnimation(OpacityProperty, thumbFade);
+
+            if (ThumbnailScale != null)
+            {
+                var thumbScaleX = MakeAnim(0.84, 1.0, thumbScaleDur, _easeExpOut6, baseDelay);
+                var thumbScaleY = MakeAnim(0.84, 1.0, thumbScaleDur, _easeExpOut6, baseDelay);
+                Timeline.SetDesiredFrameRate(thumbScaleX, fps);
+                Timeline.SetDesiredFrameRate(thumbScaleY, fps);
+                thumbScaleX.Completed += (_, _) =>
+                {
+                    if (gen != _mediaContentRevealGeneration) return;
+                    ThumbnailScale.BeginAnimation(ScaleTransform.ScaleXProperty, null);
+                    ThumbnailScale.BeginAnimation(ScaleTransform.ScaleYProperty, null);
+                    ThumbnailScale.ScaleX = 1.0;
+                    ThumbnailScale.ScaleY = 1.0;
+                };
+                ThumbnailScale.BeginAnimation(ScaleTransform.ScaleXProperty, thumbScaleX);
+                ThumbnailScale.BeginAnimation(ScaleTransform.ScaleYProperty, thumbScaleY);
+            }
+        }
 
         if (MediaPlayback != null)
         {
@@ -1538,6 +1687,7 @@ public partial class MainWindow
 
     private void AnimateThumbnailCollapseOverlay()
     {
+        _mediaContentRevealGeneration++;
         SynchronizeMediaPinForTransition();
         if (CompactThumbnailBorder != null)
         {
@@ -1547,7 +1697,11 @@ public partial class MainWindow
             CompactThumbnailBorder.Opacity = 0;
             CompactThumbnailBorder.Visibility = Visibility.Hidden;
         }
-        if (ThumbnailBorder != null) ThumbnailBorder.Opacity = 0;
+        if (ThumbnailBorder != null)
+        {
+            ThumbnailBorder.BeginAnimation(OpacityProperty, null);
+            ThumbnailBorder.Opacity = 0;
+        }
 
         if (!_cachedThumbnailExpandTarget.HasValue &&
             TryComputeThumbnailExpandTarget(out var measuredTarget))

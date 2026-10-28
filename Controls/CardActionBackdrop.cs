@@ -17,6 +17,8 @@ public sealed class CardActionBackdrop : FrameworkElement
     }
 
     private Rect _sample;
+    private VisualBrush? _brush;
+    private FrameworkElement? _brushSource;
 
     public CardActionBackdrop()
     {
@@ -38,10 +40,11 @@ public sealed class CardActionBackdrop : FrameworkElement
 
     private void OnLayoutUpdated(object? sender, System.EventArgs e)
     {
-        if (Source == null || !IsVisible || !Source.IsVisible) return;
+        var source = Source;
+        if (source == null || !IsVisible || !source.IsVisible || RenderSize.Width <= 0 || RenderSize.Height <= 0) return;
         var thisSource = PresentationSource.FromVisual(this);
-        if (thisSource == null || thisSource != PresentationSource.FromVisual(Source)) return;
-        var sample = new Rect(TranslatePoint(default, Source), RenderSize);
+        if (thisSource == null || thisSource != PresentationSource.FromVisual(source)) return;
+        var sample = new Rect(TranslatePoint(default, source), RenderSize);
         if (sample == _sample) return;
         _sample = sample;
         InvalidateVisual();
@@ -49,13 +52,18 @@ public sealed class CardActionBackdrop : FrameworkElement
 
     protected override void OnRender(DrawingContext dc)
     {
-        if (Source == null || _sample.IsEmpty || _sample.Width <= 0 || _sample.Height <= 0) return;
-        var brush = new VisualBrush(Source)
+        var source = Source;
+        if (source == null || _sample.IsEmpty || _sample.Width <= 0 || _sample.Height <= 0) return;
+        if (_brush == null || !ReferenceEquals(_brushSource, source))
         {
-            ViewboxUnits = BrushMappingMode.Absolute,
-            Viewbox = _sample,
-            Stretch = Stretch.Fill
-        };
-        dc.DrawRectangle(brush, null, new Rect(RenderSize));
+            _brushSource = source;
+            _brush = new VisualBrush(source)
+            {
+                ViewboxUnits = BrushMappingMode.Absolute,
+                Stretch = Stretch.Fill
+            };
+        }
+        _brush.Viewbox = _sample;
+        dc.DrawRectangle(_brush, null, new Rect(RenderSize));
     }
 }

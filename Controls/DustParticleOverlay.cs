@@ -97,7 +97,7 @@ public sealed class DustParticleOverlay : FrameworkElement
         return lut;
     }
 
-    private readonly DustParticle[] _particles = new DustParticle[MaxParticles];
+    private DustParticle[] _particles = [];
     private int _activeCount;
     private uint _rngState;
     private int _r2SequenceIndex;
@@ -258,6 +258,8 @@ public sealed class DustParticleOverlay : FrameworkElement
         // Telegram micro-grain density across both short PINs and long multi-line secrets
         int targetCount = (int)Math.Round((w * h) / 22.0);
         _activeCount = Math.Clamp(targetCount, MinParticles, MaxParticles);
+        if (_particles.Length == 0)
+            _particles = new DustParticle[MaxParticles];
 
         Span<DustParticle> span = _particles.AsSpan(0, _activeCount);
         for (int i = 0; i < span.Length; i++)

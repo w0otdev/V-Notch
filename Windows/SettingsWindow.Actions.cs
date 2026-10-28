@@ -476,6 +476,7 @@ public partial class SettingsWindow
 
         squishX.Completed += (s, e) =>
         {
+            StopSmoothScroll();
             // Blank and hide the layered window before destroying it
             Opacity = 0;
             Hide();

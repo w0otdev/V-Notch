@@ -1,3 +1,4 @@
+using System.Runtime.InteropServices;
 using System.Windows.Media;
 using CommunityToolkit.Mvvm.ComponentModel;
 using VNotch.Controls;
@@ -7,11 +8,26 @@ namespace VNotch.ViewModels;
 
 public sealed partial class ClipboardCardViewModel : ObservableObject
 {
+    private const string NativeDll = "VNotch.Native.dll";
+
+    [LibraryImport(NativeDll)]
+    private static partial int vn_clipboard_card_compute_age_bucket(
+        long nowUtcTicks,
+        long copiedUtcTicks,
+        out int outBucket,
+        out int outValue);
+
     private static readonly FontFamily SharedContentFont = new(VNotch.Services.AppFonts.Location + "#SF Pro Display, Segoe UI");
     private static readonly Brush SharedCardBrush = CreateSurfaceBrush();
     private Brush? _cardBrush;
     private bool? _isMasked;
     private string _age = "";
+    private int _ageBucket = -1;
+    private int _ageValue = -1;
+    private string? _fileExtension;
+    private string? _fileTypeTag;
+    private string? _size;
+    internal int SlotIndex { get; set; } = -1;
     public ClipboardEntry Entry { get; private set; }
 
     public void UpdateEntry(ClipboardEntry entry)
@@ -34,6 +50,11 @@ public sealed partial class ClipboardCardViewModel : ObservableObject
         _isMasked = isMasked ?? GetCachedMasking(entry);
         Entry = entry;
         _cardBrush = null;
+        _fileExtension = null;
+        _fileTypeTag = null;
+        _size = null;
+        _ageBucket = -1;
+        _ageValue = -1;
         RefreshAge(DateTime.UtcNow);
         OnPropertyChanged(string.Empty);
     }
@@ -153,39 +174,43 @@ public sealed partial class ClipboardCardViewModel : ObservableObject
     internal ImageSource? PreferredFileIcon => TrayAppIcons.FindFile(FileExtension);
     public ImageSource DisplaySourceIcon => PreferredSourceIcon ?? SourceIcon ?? TrayAppIcons.ForContent(Entry.Kind);
     public ImageSource FilePreviewIcon => PreferredFileIcon ?? FileIcon ?? TrayAppIcons.Get(TrayAppIconKind.Document);
-    public string Size => Entry.ByteSize < 1024 ? Services.Loc.Get("clipboard.bytes", Entry.ByteSize) : Entry.ByteSize < 1024 * 1024
+    public string Size => _size ??= Entry.ByteSize < 1024 ? Services.Loc.Get("clipboard.bytes", Entry.ByteSize) : Entry.ByteSize < 1024 * 1024
         ? (Entry.ByteSize / 1024d).ToString("0.#", Services.Loc.GetCulture()) + " KB"
         : (Entry.ByteSize / (1024d * 1024)).ToString("0.#", Services.Loc.GetCulture()) + " MB";
     public string Age => _age;
 
     internal void RefreshAge(DateTime nowUtc)
     {
-        var age = nowUtc - Entry.CopiedUtc;
-        string label = age.TotalMinutes < 1 ? Services.Loc.Get("clipboard.justNow")
-            : age.TotalHours < 1 ? Services.Loc.Get("clipboard.minutesAgo", (int)age.TotalMinutes)
-            : age.TotalDays < 1 ? Services.Loc.Get("clipboard.hoursAgo", (int)age.TotalHours)
-            : Services.Loc.Get("clipboard.daysAgo", (int)age.TotalDays);
+        _ = vn_clipboard_card_compute_age_bucket(nowUtc.Ticks, Entry.CopiedUtc.Ticks, out int bucket, out int value);
+        if (bucket == _ageBucket && value == _ageValue && _age.Length != 0) return;
+        _ageBucket = bucket;
+        _ageValue = value;
+        string label = bucket switch
+        {
+            0 => Services.Loc.Get("clipboard.justNow"),
+            1 => Services.Loc.Get("clipboard.minutesAgo", value),
+            2 => Services.Loc.Get("clipboard.hoursAgo", value),
+            _ => Services.Loc.Get("clipboard.daysAgo", value)
+        };
         SetProperty(ref _age, label, nameof(Age));
     }
-    public string FileExtension
+    public string FileExtension => _fileExtension ??= ComputeFileExtension();
+
+    private string ComputeFileExtension()
     {
-        get
-        {
-            if (Entry.Kind != ClipboardKind.File && Entry.Kind != ClipboardKind.Code) return string.Empty;
-            return Entry.FileCount == 1 ? Entry.PrimaryExtension.ToLowerInvariant() : string.Empty;
-        }
+        if (Entry.Kind != ClipboardKind.File && Entry.Kind != ClipboardKind.Code) return string.Empty;
+        return Entry.FileCount == 1 ? Entry.PrimaryExtension.ToLowerInvariant() : string.Empty;
     }
 
-    public string FileTypeTag
+    public string FileTypeTag => _fileTypeTag ??= ComputeFileTypeTag();
+
+    private string ComputeFileTypeTag()
     {
-        get
-        {
-            if (Entry.FileCount > 1) return Services.Loc.Get("clipboard.fileCount", Entry.FileCount);
-            string ext = FileExtension;
-            if (string.IsNullOrEmpty(ext)) return Entry.Kind == ClipboardKind.Code ? "CODE" : "FILE";
-            string clean = ext.TrimStart('.');
-            return clean.Length > 5 ? clean[..5].ToUpperInvariant() : clean.ToUpperInvariant();
-        }
+        if (Entry.FileCount > 1) return Services.Loc.Get("clipboard.fileCount", Entry.FileCount);
+        string ext = FileExtension;
+        if (string.IsNullOrEmpty(ext)) return Entry.Kind == ClipboardKind.Code ? "CODE" : "FILE";
+        string clean = ext.TrimStart('.');
+        return clean.Length > 5 ? clean[..5].ToUpperInvariant() : clean.ToUpperInvariant();
     }
 
     private static readonly Brush AccentCodeBrush = CreateFrozenBrush(Color.FromRgb(0x64, 0xD2, 0xFF));
@@ -287,6 +312,10 @@ public sealed partial class ClipboardCardViewModel : ObservableObject
 
     public void ApplyLocalization()
     {
+        _size = null;
+        _fileTypeTag = null;
+        _ageBucket = -1;
+        _ageValue = -1;
         RefreshAge(DateTime.UtcNow);
         foreach (string property in new[] { nameof(MoreLabel), nameof(DetailsLabel), nameof(PinLabel), nameof(GroupsLabel),
             nameof(PersonalLabel), nameof(ArchiveLabel), nameof(DeleteLabel), nameof(CopiedLabel), nameof(Title), nameof(Source), nameof(FooterSource), nameof(Size), nameof(FileTypeTag) })
@@ -326,7 +355,17 @@ public sealed partial class ClipboardCardViewModel : ObservableObject
 
     private static Brush CreateSurfaceBrush()
     {
-        var brush = new SolidColorBrush(ClipboardTrayTokens.SurfaceElevated);
+        var brush = new LinearGradientBrush
+        {
+            StartPoint = new System.Windows.Point(0, 0),
+            EndPoint = new System.Windows.Point(0, 1),
+            GradientStops =
+            {
+                new GradientStop(ClipboardTrayTokens.CardTop, 0),
+                new GradientStop(ClipboardTrayTokens.CardMiddle, 0.55),
+                new GradientStop(ClipboardTrayTokens.CardBottom, 1)
+            }
+        };
         brush.Freeze();
         return brush;
     }

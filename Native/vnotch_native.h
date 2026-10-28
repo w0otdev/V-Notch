@@ -327,3 +327,56 @@ VN_EXPORT int32_t __stdcall vn_glass_compute_squircle_lut(
     int32_t segments,
     double* out_pow_cos,
     double* out_pow_sin) noexcept;
+
+#pragma pack(push, 1)
+
+struct VnClipboardEntryCategoryMeta {
+    uint8_t is_personal;
+    uint8_t is_archived;
+    uint8_t is_pinned;
+    uint8_t kind;
+};
+
+struct VnClipboardCategoryCountsOut {
+    int32_t all_count;
+    int32_t archive_count;
+    int32_t pin_count;
+    int32_t text_count;
+    int32_t code_count;
+    int32_t links_count;
+    int32_t images_count;
+    int32_t colors_count;
+    int32_t files_count;
+};
+
+#pragma pack(pop)
+
+VN_EXPORT int32_t __stdcall vn_clipboard_store_accumulate_category_counts(
+    const VnClipboardEntryCategoryMeta* entries,
+    int32_t entry_count,
+    VnClipboardCategoryCountsOut* out_counts) noexcept;
+
+VN_EXPORT int32_t __stdcall vn_clipboard_tray_compute_reconcile_diff(
+    const int32_t* desired_to_existing_index,
+    int32_t desired_count,
+    uint8_t* out_existing_survivor_mask,
+    int32_t existing_count,
+    int32_t* out_changes) noexcept;
+
+VN_EXPORT int32_t __stdcall vn_clipboard_card_compute_age_bucket(
+    int64_t now_utc_ticks,
+    int64_t copied_utc_ticks,
+    int32_t* out_bucket,
+    int32_t* out_value) noexcept;
+
+VN_EXPORT int32_t __stdcall vn_ui_smooth_scroll_step(
+    double current_offset,
+    double target_offset,
+    double velocity,
+    double max_scroll,
+    double friction,
+    double min_velocity,
+    double dt_seconds,
+    double* out_next_offset,
+    double* out_next_velocity,
+    uint8_t* out_settled) noexcept;

@@ -462,12 +462,12 @@ public partial class MainWindow
     private void HideLyricsSearchState(bool immediate = false)
     {
         _isLyricsSearchVisible = false;
-        ++_lyricsSearchTransitionVersion;
+        int transitionVersion = ++_lyricsSearchTransitionVersion;
         TranslateTransform searchTranslate = GetLyricsSearchTransform();
 
         void FinishHide()
         {
-            if (_isLyricsSearchVisible)
+            if (_isLyricsSearchVisible || transitionVersion != _lyricsSearchTransitionVersion)
                 return;
 
             StopLyricsSearchShimmer();

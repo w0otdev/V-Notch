@@ -13,6 +13,7 @@ public partial class ClipboardTray
 
     private void CategoryPanel_LayoutUpdated(object? sender, EventArgs e)
     {
+        if (_categoryReordering) { CategorySelection.Opacity = 0; return; }
         if (_disposed || !IsVisible || !CategoryPanel.IsArrangeValid) return;
         var selected = _categoryItems.FirstOrDefault(item => item.IsSelected);
         if (selected == null || CategoryPanel.ItemContainerGenerator.ContainerFromItem(selected) is not ContentPresenter presenter ||

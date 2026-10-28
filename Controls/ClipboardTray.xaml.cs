@@ -1,6 +1,8 @@
+using System.Buffers;
 using System.Collections.Concurrent;
 using System.Collections.ObjectModel;
 using System.IO;
+using System.Runtime.InteropServices;
 using System.Security;
 using System.Windows;
 using System.Windows.Controls;
@@ -20,6 +22,16 @@ namespace VNotch.Controls;
 
 public partial class ClipboardTray : UserControl, IDisposable
 {
+    private const string NativeDll = "VNotch.Native.dll";
+
+    [LibraryImport(NativeDll)]
+    private static partial int vn_clipboard_tray_compute_reconcile_diff(
+        ReadOnlySpan<int> desiredToExistingIndex,
+        int desiredCount,
+        Span<byte> outExistingSurvivorMask,
+        int existingCount,
+        out int outChanges);
+
     public static readonly DependencyProperty NavigationWidthProperty = DependencyProperty.Register(
         nameof(NavigationWidth), typeof(double), typeof(ClipboardTray), new PropertyMetadata(0d),
         value => value is double width && double.IsFinite(width) && width >= 0);
@@ -88,6 +100,8 @@ public partial class ClipboardTray : UserControl, IDisposable
 
     public bool TryDismissOverlay()
     {
+        if (_categoryReorderSource != null)
+        { CancelCategoryReorderAnimated(); return true; }
         if (_labelEditorOpen || LabelEditorPanel.Visibility == Visibility.Visible)
         {
             CloseLabelEditor();
@@ -226,12 +240,18 @@ public partial class ClipboardTray : UserControl, IDisposable
         foreach (var choice in _groupChoices) choice.ApplyLocalization();
         RebuildCategories();
     }
-    private void StoreChanged() => Dispatcher.BeginInvoke(DispatcherPriority.Background, (Action)(() =>
+    private int _storeRefreshQueued;
+    private void StoreChanged()
     {
-        if (_disposed) return;
-        _queryDirty = true;
-        if (IsVisible || _cards.Count == 0) QueueRefresh();
-    }));
+        if (_disposed || Interlocked.Exchange(ref _storeRefreshQueued, 1) != 0) return;
+        Dispatcher.BeginInvoke(DispatcherPriority.Background, (Action)(() =>
+        {
+            Interlocked.Exchange(ref _storeRefreshQueued, 0);
+            if (_disposed) return;
+            _queryDirty = true;
+            if (IsVisible || _cards.Count == 0) QueueRefresh();
+        }));
+    }
     private void Search_Changed(object sender, TextChangedEventArgs e)
     {
         _pendingSelectAll = null;
@@ -293,7 +313,7 @@ public partial class ClipboardTray : UserControl, IDisposable
         try
         {
             var entries = await _controller.Store.SearchAsync(SearchBox.Text, _category, cancellation);
-            var counts = await Task.Run(_controller.Store.GetCategoryCounts, cancellation);
+            var counts = _controller.Store.GetCategoryCounts();
             // Regex construction and matching belong to the query worker, not
             // the first WPF binding/layout pass during the tray reveal.
             var masking = await PrepareCardMaskingAsync(entries, cancellation);
@@ -304,7 +324,7 @@ public partial class ClipboardTray : UserControl, IDisposable
             _categoryCounts = counts;
             bool wasEmpty = _cards.Count == 0;
             if (_animateResults) FindScrollViewer(Cards)?.ScrollToHorizontalOffset(0);
-            if (!entries.SequenceEqual(_cards.Select(card => card.Entry)))
+            if (!AreEntriesIdentical(entries))
             {
                 var positions = CaptureCardPositions();
                 ReconcilePreparedCards(entries, masking);
@@ -333,6 +353,16 @@ public partial class ClipboardTray : UserControl, IDisposable
         { StatusChanged(Loc.Get("clipboard.error")); }
     }
 
+    private bool AreEntriesIdentical(IReadOnlyList<ClipboardEntry> entries)
+    {
+        if (entries.Count != _cards.Count) return false;
+        for (int i = 0; i < entries.Count; i++)
+        {
+            if (entries[i] != _cards[i].Entry) return false;
+        }
+        return true;
+    }
+
     private void ReconcileCards(IReadOnlyList<ClipboardEntry> entries)
         => ReconcilePreparedCards(entries, null);
 
@@ -340,21 +370,27 @@ public partial class ClipboardTray : UserControl, IDisposable
     {
         // Reuse results for unchanged text/source metadata. Copy only values to
         // the worker; view models and WPF bindings remain on the dispatcher.
-        var existing = _cards.ToDictionary(card => card.Entry.Id);
+        var existing = _cards.ById;
         var masking = new Dictionary<Guid, bool>(entries.Count);
-        var pending = new List<ClipboardEntry>();
-        foreach (var entry in entries)
+        List<ClipboardEntry>? pending = null;
+        for (int i = 0; i < entries.Count; i++)
         {
+            var entry = entries[i];
             cancellation.ThrowIfCancellationRequested();
             if (existing.TryGetValue(entry.Id, out var card) && card.GetCachedMasking(entry) is bool masked)
                 masking[entry.Id] = masked;
-            else pending.Add(entry);
+            else
+            {
+                pending ??= new List<ClipboardEntry>();
+                pending.Add(entry);
+            }
         }
-        if (pending.Count == 0) return Task.FromResult(masking);
+        if (pending == null || pending.Count == 0) return Task.FromResult(masking);
         return Task.Run(() =>
         {
-            foreach (var entry in pending)
+            for (int i = 0; i < pending.Count; i++)
             {
+                var entry = pending[i];
                 cancellation.ThrowIfCancellationRequested();
                 masking[entry.Id] = entry.IsSensitive || ClipboardSensitiveData.IsSensitive(entry.Preview, entry.SourceApp, entry.SourceExecutable);
             }
@@ -365,51 +401,120 @@ public partial class ClipboardTray : UserControl, IDisposable
     private void ReconcilePreparedCards(IReadOnlyList<ClipboardEntry> entries, IReadOnlyDictionary<Guid, bool>? masking)
     {
         bool? MaskFor(ClipboardEntry entry) => masking != null && masking.TryGetValue(entry.Id, out bool masked) ? masked : null;
-        var desired = entries.Select(entry => entry.Id).ToHashSet();
-        _arrivingCards.RemoveWhere(id => !desired.Contains(id));
-        var existing = _cards.ToDictionary(card => card.Entry.Id);
-        // Count relative reorderings rather than shifted indices: inserting
-        // one recent file should retain the existing containers and their motion.
-        int changes = _cards.Count(card => !desired.Contains(card.Entry.Id));
-        var survivingOrder = _cards.Where(card => desired.Contains(card.Entry.Id)).Select(card => card.Entry.Id).ToArray();
-        int survivorIndex = 0;
-        foreach (var entry in entries)
+        var existingById = _cards.ById;
+        int desiredCount = entries.Count;
+        int existingCount = _cards.Count;
+
+        int[]? rentedIndices = desiredCount > 1024 ? ArrayPool<int>.Shared.Rent(desiredCount) : null;
+        byte[]? rentedMask = existingCount > 1024 ? ArrayPool<byte>.Shared.Rent(existingCount) : null;
+        Span<int> desiredToExistingIndex = rentedIndices != null
+            ? rentedIndices.AsSpan(0, desiredCount)
+            : stackalloc int[desiredCount];
+        Span<byte> existingSurvivorMask = rentedMask != null
+            ? rentedMask.AsSpan(0, existingCount)
+            : stackalloc byte[existingCount];
+
+        try
         {
-            if (!existing.ContainsKey(entry.Id)) changes++;
-            else if (survivingOrder[survivorIndex++] != entry.Id) changes++;
-        }
-        if (changes > 32)
-        {
-            var selected = Cards.SelectedItems.Cast<ClipboardCardViewModel>().Where(card => desired.Contains(card.Entry.Id)).ToArray();
-            var scroll = FindScrollViewer(Cards);
-            double offset = scroll?.HorizontalOffset ?? 0;
-            var replacement = new ClipboardCardViewModel[entries.Count];
-            for (int i = 0; i < entries.Count; i++)
+            for (int i = 0; i < desiredCount; i++)
             {
-                var entry = entries[i];
-                if (!existing.TryGetValue(entry.Id, out var card)) card = new ClipboardCardViewModel(entry, MaskFor(entry));
-                else card.UpdatePreparedEntry(entry, MaskFor(entry));
-                replacement[i] = card;
+                desiredToExistingIndex[i] = existingById.TryGetValue(entries[i].Id, out var existingCard)
+                    ? existingCard.SlotIndex
+                    : -1;
             }
-            _cards.ReplaceAll(replacement);
-            Cards.ApplySelection(selected);
-            scroll?.ScrollToHorizontalOffset(offset);
-            return;
-        }
-        for (int i = _cards.Count - 1; i >= 0; i--)
-            if (!desired.Contains(_cards[i].Entry.Id)) _cards.RemoveAt(i);
-        for (int index = 0; index < entries.Count; index++)
-        {
-            var entry = entries[index];
-            if (!existing.TryGetValue(entry.Id, out var card))
+
+            _ = vn_clipboard_tray_compute_reconcile_diff(
+                desiredToExistingIndex,
+                desiredCount,
+                existingSurvivorMask,
+                existingCount,
+                out int changes);
+
+            if (_arrivingCards.Count > 0)
             {
-                _cards.Insert(index, new ClipboardCardViewModel(entry, MaskFor(entry)));
-                continue;
+                _arrivingCards.RemoveWhere(id => !ContainsEntryId(entries, id));
             }
-            int oldIndex = index < _cards.Count && ReferenceEquals(_cards[index], card) ? index : _cards.IndexOf(card);
-            if (oldIndex != index) _cards.Move(oldIndex, index);
-            card.UpdatePreparedEntry(entry, MaskFor(entry));
+
+            if (changes > 32)
+            {
+                ClipboardCardViewModel[] selected;
+                if (Cards.SelectedItems.Count == 0)
+                {
+                    selected = [];
+                }
+                else
+                {
+                    var survivingSelected = new List<ClipboardCardViewModel>(Cards.SelectedItems.Count);
+                    foreach (var obj in Cards.SelectedItems)
+                    {
+                        if (obj is ClipboardCardViewModel selCard &&
+                            selCard.SlotIndex >= 0 &&
+                            selCard.SlotIndex < existingCount &&
+                            existingSurvivorMask[selCard.SlotIndex] != 0)
+                        {
+                            survivingSelected.Add(selCard);
+                        }
+                    }
+                    selected = survivingSelected.Count == 0 ? [] : survivingSelected.ToArray();
+                }
+
+                var scroll = FindScrollViewer(Cards);
+                double offset = scroll?.HorizontalOffset ?? 0;
+                var replacement = new ClipboardCardViewModel[desiredCount];
+                for (int i = 0; i < desiredCount; i++)
+                {
+                    var entry = entries[i];
+                    int oldIdx = desiredToExistingIndex[i];
+                    if (oldIdx >= 0 && oldIdx < existingCount)
+                    {
+                        var card = _cards[oldIdx];
+                        card.UpdatePreparedEntry(entry, MaskFor(entry));
+                        replacement[i] = card;
+                    }
+                    else
+                    {
+                        replacement[i] = new ClipboardCardViewModel(entry, MaskFor(entry));
+                    }
+                }
+                _cards.ReplaceAll(replacement);
+                Cards.ApplySelection(selected);
+                scroll?.ScrollToHorizontalOffset(offset);
+                return;
+            }
+
+            for (int i = existingCount - 1; i >= 0; i--)
+            {
+                if (existingSurvivorMask[i] == 0)
+                    _cards.RemoveAt(i);
+            }
+
+            for (int index = 0; index < desiredCount; index++)
+            {
+                var entry = entries[index];
+                if (!existingById.TryGetValue(entry.Id, out var card))
+                {
+                    _cards.Insert(index, new ClipboardCardViewModel(entry, MaskFor(entry)));
+                    continue;
+                }
+                int oldIndex = card.SlotIndex;
+                if (oldIndex != index) _cards.Move(oldIndex, index);
+                card.UpdatePreparedEntry(entry, MaskFor(entry));
+            }
         }
+        finally
+        {
+            if (rentedIndices != null) ArrayPool<int>.Shared.Return(rentedIndices);
+            if (rentedMask != null) ArrayPool<byte>.Shared.Return(rentedMask);
+        }
+    }
+
+    private static bool ContainsEntryId(IReadOnlyList<ClipboardEntry> entries, Guid id)
+    {
+        for (int i = 0; i < entries.Count; i++)
+        {
+            if (entries[i].Id == id) return true;
+        }
+        return false;
     }
 
     private void RebuildCategories()
@@ -987,17 +1092,9 @@ public partial class ClipboardTray : UserControl, IDisposable
         if (selection.Length > 1)
         {
             AddMenu(menu, "clipboard.copy", CopySelectionAsync);
-            AddMenu(menu, "clipboard.pin", async () =>
-            {
-                foreach (var item in selection)
-                    await _controller.Store.UpdateAsync(item.Entry.Id, pinned: true);
-            });
+            AddMenu(menu, "clipboard.pin", () => _controller.Store.UpdateManyAsync(selection.Select(i => i.Entry.Id).ToArray(), pinned: true));
             menu.Items.Add(new Separator());
-            AddMenu(menu, "clipboard.archive", async () =>
-            {
-                foreach (var item in selection)
-                    await _controller.Store.UpdateAsync(item.Entry.Id, archived: true);
-            });
+            AddMenu(menu, "clipboard.archive", () => _controller.Store.UpdateManyAsync(selection.Select(i => i.Entry.Id).ToArray(), archived: true));
             AddMenu(menu, "clipboard.delete", () => ConfirmDeleteAsync(selection));
             return;
         }

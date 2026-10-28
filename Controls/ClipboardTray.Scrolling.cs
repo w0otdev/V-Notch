@@ -77,8 +77,10 @@ public partial class ClipboardTray
         CategoryScroll.PreviewMouseLeftButtonDown += Category_PointerDown;
         CategoryScroll.PreviewMouseMove += Category_PointerMove;
         CategoryScroll.PreviewMouseLeftButtonUp += Category_PointerUp;
-        CategoryScroll.LostMouseCapture += (_, _) =>
+        CategoryScroll.LostMouseCapture += (_, e) =>
         {
+            if (e.OriginalSource == CategoryScroll && _categoryReordering && Mouse.Captured != CategoryScroll)
+                CancelCategoryReorder();
             if (_categoryDragging && Mouse.Captured != CategoryScroll) EndCategoryDrag();
         };
         CategoryScroll.IsVisibleChanged += (_, _) =>
@@ -89,6 +91,7 @@ public partial class ClipboardTray
 
     private void Category_Wheel(object sender, MouseWheelEventArgs e)
     {
+        if (_categoryReordering) { e.Handled = true; return; }
         e.Handled = true;
         if (_disposed || !IsLoaded || !IsVisible || _categoryPress != null) return;
         if (!_categoryScrollActive) _categoryScrollTarget = CategoryScroll.HorizontalOffset;
@@ -145,14 +148,29 @@ public partial class ClipboardTray
 
     private void Category_PointerDown(object sender, MouseButtonEventArgs e)
     {
+        if (e.ChangedButton != MouseButton.Left || _categoryReordering) return;
         StopCategoryScrollFrames();
         _categoryPress = e.GetPosition(CategoryScroll);
         _categoryPressOffset = CategoryScroll.HorizontalOffset;
+        if (ItemsControl.ContainerFromElement(CategoryPanel, e.OriginalSource as DependencyObject) is ContentPresenter presenter &&
+            VisualTreeHelper.GetChildrenCount(presenter) > 0 && VisualTreeHelper.GetChild(presenter, 0) is Button button)
+            CategoryReorder_Press(button, _categoryPress.Value);
         // Let a normal click reach the button. Capture only after drag intent.
     }
 
     private void Category_PointerMove(object sender, MouseEventArgs e)
     {
+        if (_categoryReorderSource != null)
+        {
+            if (e.LeftButton != MouseButtonState.Pressed) { CancelCategoryReorder(); return; }
+            var point = e.GetPosition(CategoryScroll);
+            if (_categoryReordering || TryBeginCategoryReorder(point))
+            {
+                UpdateCategoryReorder(point);
+                e.Handled = true;
+            }
+            return;
+        }
         if (_categoryPress is not Point start) return;
         if (e.LeftButton != MouseButtonState.Pressed) { EndCategoryDrag(); return; }
         double distance = e.GetPosition(CategoryScroll).X - start.X;
@@ -176,6 +194,17 @@ public partial class ClipboardTray
 
     private void Category_PointerUp(object sender, MouseButtonEventArgs e)
     {
+        if (_categoryReorderSource != null)
+        {
+            if (_categoryReordering)
+            {
+                e.Handled = true;
+                _ = SafeAsync(() => CompleteCategoryReorderAsync(e.GetPosition(CategoryScroll)));
+            }
+            else CancelCategoryReorder();
+            EndCategoryDrag();
+            return;
+        }
         bool dragged = _categoryDragging;
         EndCategoryDrag();
         if (dragged) e.Handled = true;
@@ -291,6 +320,7 @@ public partial class ClipboardTray
 
     private void StopCategoryScrolling()
     {
+        CancelCategoryReorder();
         _categoryDropTimer.Stop();
         StopCategoryScrollFrames();
         StopCardsScrollFrames();

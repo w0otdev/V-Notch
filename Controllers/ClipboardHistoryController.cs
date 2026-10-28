@@ -254,8 +254,8 @@ public sealed class ClipboardHistoryController : IDisposable, IAsyncDisposable
             var result = await Store.ImportAsync(capture, approved, progress);
             Dispatch(() => ImportProgress?.Invoke(1.0));
             IReadOnlyList<ClipboardEntry> entries = result.Entries.Count != 0 ? result.Entries : result.Entry != null ? [result.Entry] : [];
-            if (capture.TargetCategory is string category)
-                foreach (var entry in entries) await AssignCategoryAsync(entry, category);
+            if (capture.TargetCategory is string category && entries.Count > 0)
+                await AssignCategoryManyAsync(entries, category);
             if (result.NeedsApproval) Dispatch(() => ApprovalRequired?.Invoke(capture, result.ByteSize));
             if ((notifyDrop || capture.SeparateFiles) && entries.Count != 0)
                 Dispatch(() => DropImported?.Invoke());
@@ -428,6 +428,33 @@ public sealed class ClipboardHistoryController : IDisposable, IAsyncDisposable
         else if (Store.IsLabel(category))
             await Store.UpdateAsync(entry.Id, groups: entry.Groups.Append(category).Distinct().ToArray(), archived: false);
         else if (category == "All") await Store.UpdateAsync(entry.Id, archived: false);
+    }
+
+    public async Task AssignCategoryManyAsync(IReadOnlyList<ClipboardEntry> entries, string category)
+    {
+        if (entries.Count == 0) return;
+        if (entries.Count == 1)
+        {
+            await AssignCategoryAsync(entries[0], category);
+            return;
+        }
+        if (category == "Personal")
+        {
+            for (int i = 0; i < entries.Count; i++)
+                await Store.MovePersonalAsync(entries[i].Id, true);
+            return;
+        }
+        var ids = new Guid[entries.Count];
+        for (int i = 0; i < entries.Count; i++)
+        {
+            if (entries[i].IsPersonal)
+                await Store.MovePersonalAsync(entries[i].Id, false);
+            ids[i] = entries[i].Id;
+        }
+        if (category == "Pin") await Store.UpdateManyAsync(ids, pinned: true);
+        else if (category == "Archive") await Store.UpdateManyAsync(ids, archived: true);
+        else if (Store.IsLabel(category)) await Store.UpdateManyAsync(ids, archived: false, addGroup: category);
+        else if (category == "All") await Store.UpdateManyAsync(ids, archived: false);
     }
 
     public async Task LockPersonalAsync()

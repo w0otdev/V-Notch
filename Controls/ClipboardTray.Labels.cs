@@ -16,17 +16,21 @@ public partial class ClipboardTray
     private void SynchronizeLabels()
     {
         if (_controller == null) return;
-        var labels = _controller.Store.GetLabels();
-        var ids = labels.Select(label => label.Id).ToList();
-        int importantIndex = ids.IndexOf("Important");
-        if (importantIndex >= 0) ids.Insert(importantIndex, "Personal");
-        else ids.Add("Personal");
-        string[] desired = [.. CategoryKinds.Take(8).Select(kind => kind.ToString()), .. ids, "Archive"];
+        var desired = _controller.Store.GetCategoryOrder().ToList();
+        if (_optimisticCategoryOrder != null)
+        {
+            var known = desired.ToHashSet(StringComparer.Ordinal);
+            var preview = _optimisticCategoryOrder.ToHashSet(StringComparer.Ordinal);
+            desired = _optimisticCategoryOrder.Where(known.Contains)
+                .Concat(desired.Where(id => !preview.Contains(id))).ToList();
+        }
         if (_categoryItems.Select(item => item.Name).SequenceEqual(desired))
             return;
+        CancelCategoryReorder();
         var existing = _categoryItems.ToDictionary(item => item.Name);
+        var labels = _controller.Store.GetLabels().ToDictionary(label => label.Id);
         _categoryItems = desired.Select(name => existing.TryGetValue(name, out var category) ? category :
-            ClipboardLabel.IsCustomId(name) ? new ClipboardCategoryViewModel(TrayIconKind.Shopping, name, labels.First(label => label.Id == name).Name) :
+            ClipboardLabel.IsCustomId(name) ? new ClipboardCategoryViewModel(TrayIconKind.Shopping, name, labels[name].Name) :
             new ClipboardCategoryViewModel(Enum.Parse<TrayIconKind>(name))).ToArray();
         CategoryPanel.ItemsSource = _categoryItems;
     }

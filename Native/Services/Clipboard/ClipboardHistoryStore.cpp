@@ -65,11 +65,140 @@ public:
         const int32_t code = hresult & 0xFFFF;
         return code == 32 || code == 33;
     }
+
+    static constexpr void AccumulateCategoryCounts(
+        const VnClipboardEntryCategoryMeta* entries,
+        int32_t count,
+        VnClipboardCategoryCountsOut& out) noexcept {
+        out = {};
+        for (int32_t i = 0; i < count; ++i) {
+            const auto& e = entries[i];
+            if (e.is_personal != 0) continue;
+            if (e.is_archived != 0) {
+                ++out.archive_count;
+            } else {
+                ++out.all_count;
+            }
+            if (e.is_pinned != 0) ++out.pin_count;
+            if (e.is_archived != 0) continue;
+            switch (e.kind) {
+                case 0: ++out.text_count; break;
+                case 1: ++out.code_count; break;
+                case 2: ++out.links_count; break;
+                case 3: ++out.images_count; break;
+                case 4: ++out.colors_count; break;
+                case 5: ++out.files_count; break;
+                default: break;
+            }
+        }
+    }
+
+    [[nodiscard]] static constexpr int32_t ComputeReconcileDiff(
+        const int32_t* desired_to_existing_index,
+        int32_t desired_count,
+        uint8_t* out_existing_survivor_mask,
+        int32_t existing_count) noexcept {
+        for (int32_t m = 0; m < existing_count; ++m) {
+            out_existing_survivor_mask[m] = 0;
+        }
+        int32_t surviving_count = 0;
+        int32_t added_count = 0;
+        for (int32_t i = 0; i < desired_count; ++i) {
+            const int32_t old_idx = desired_to_existing_index[i];
+            if (old_idx >= 0 && old_idx < existing_count) {
+                if (out_existing_survivor_mask[old_idx] == 0) {
+                    out_existing_survivor_mask[old_idx] = 1;
+                    ++surviving_count;
+                }
+            } else {
+                ++added_count;
+            }
+        }
+        const int32_t removed_count = existing_count - surviving_count;
+        int32_t changes = removed_count + added_count;
+        int32_t m_cursor = 0;
+        for (int32_t i = 0; i < desired_count; ++i) {
+            const int32_t old_idx = desired_to_existing_index[i];
+            if (old_idx < 0 || old_idx >= existing_count) continue;
+            while (m_cursor < existing_count && out_existing_survivor_mask[m_cursor] == 0) {
+                ++m_cursor;
+            }
+            if (m_cursor != old_idx) {
+                ++changes;
+            }
+            ++m_cursor;
+        }
+        return changes;
+    }
+
+    static constexpr void ComputeAgeBucket(
+        int64_t now_utc_ticks,
+        int64_t copied_utc_ticks,
+        int32_t& out_bucket,
+        int32_t& out_value) noexcept {
+        constexpr int64_t kTicksPerMinute = 600'000'000LL;
+        constexpr int64_t kTicksPerHour = 36'000'000'000LL;
+        constexpr int64_t kTicksPerDay = 864'000'000'000LL;
+        const int64_t delta = now_utc_ticks - copied_utc_ticks;
+        if (delta < kTicksPerMinute) {
+            out_bucket = 0;
+            out_value = 0;
+            return;
+        }
+        if (delta < kTicksPerHour) {
+            out_bucket = 1;
+            out_value = static_cast<int32_t>(delta / kTicksPerMinute);
+            return;
+        }
+        if (delta < kTicksPerDay) {
+            out_bucket = 2;
+            out_value = static_cast<int32_t>(delta / kTicksPerHour);
+            return;
+        }
+        out_bucket = 3;
+        out_value = static_cast<int32_t>(delta / kTicksPerDay);
+    }
 };
 
 } // namespace vnotch::services::clipboard
 
 extern "C" {
+
+VN_EXPORT int32_t __stdcall vn_clipboard_store_accumulate_category_counts(
+    const VnClipboardEntryCategoryMeta* entries,
+    int32_t entry_count,
+    VnClipboardCategoryCountsOut* out_counts) noexcept {
+    if (!out_counts || entry_count < 0 || (entry_count > 0 && !entries)) return VN_E_INVALID_ARG;
+    vnotch::services::clipboard::ClipboardHistoryStore::AccumulateCategoryCounts(entries, entry_count, *out_counts);
+    return VN_OK;
+}
+
+VN_EXPORT int32_t __stdcall vn_clipboard_tray_compute_reconcile_diff(
+    const int32_t* desired_to_existing_index,
+    int32_t desired_count,
+    uint8_t* out_existing_survivor_mask,
+    int32_t existing_count,
+    int32_t* out_changes) noexcept {
+    if (!out_changes || desired_count < 0 || existing_count < 0 ||
+        (desired_count > 0 && !desired_to_existing_index) ||
+        (existing_count > 0 && !out_existing_survivor_mask)) {
+        return VN_E_INVALID_ARG;
+    }
+    *out_changes = vnotch::services::clipboard::ClipboardHistoryStore::ComputeReconcileDiff(
+        desired_to_existing_index, desired_count, out_existing_survivor_mask, existing_count);
+    return VN_OK;
+}
+
+VN_EXPORT int32_t __stdcall vn_clipboard_card_compute_age_bucket(
+    int64_t now_utc_ticks,
+    int64_t copied_utc_ticks,
+    int32_t* out_bucket,
+    int32_t* out_value) noexcept {
+    if (!out_bucket || !out_value) return VN_E_INVALID_ARG;
+    vnotch::services::clipboard::ClipboardHistoryStore::ComputeAgeBucket(
+        now_utc_ticks, copied_utc_ticks, *out_bucket, *out_value);
+    return VN_OK;
+}
 
 VN_EXPORT int32_t vn_clipboard_store_matches_category_core(
     uint8_t is_personal,

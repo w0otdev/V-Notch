@@ -429,11 +429,16 @@ public partial class SpotlightWindow
         AiActivityDot.Opacity = 0.45;
     }
 
+    private int _aiGlowVersion;
+
     private void UpdateAiAmbientGlow(bool active)
     {
         if (AiGlowBorder == null) return;
+        int version = ++_aiGlowVersion;
         if (AnimationConfig.ReduceMotion)
         {
+            AiGlowBorder.BeginAnimation(OpacityProperty, null);
+            AiGlowEffect.BeginAnimation(DropShadowEffect.BlurRadiusProperty, null);
             AiGlowBorder.Visibility = active ? Visibility.Visible : Visibility.Collapsed;
             AiGlowBorder.Opacity = active ? 0.5 : 0;
             return;
@@ -442,7 +447,7 @@ public partial class SpotlightWindow
         if (active)
         {
             AiGlowBorder.Visibility = Visibility.Visible;
-            var fadeIn = new DoubleAnimation(0, 0.5, TimeSpan.FromMilliseconds(380))
+            var fadeIn = new DoubleAnimation(AiGlowBorder.Opacity, 0.5, TimeSpan.FromMilliseconds(380))
             {
                 EasingFunction = new QuarticEase { EasingMode = EasingMode.EaseOut }
             };
@@ -468,11 +473,11 @@ public partial class SpotlightWindow
             Timeline.SetDesiredFrameRate(fadeOut, AnimationConfig.TargetFps);
             fadeOut.Completed += (_, _) =>
             {
-                if (!_aiMode)
-                {
-                    AiGlowBorder.Visibility = Visibility.Collapsed;
-                    AiGlowEffect.BeginAnimation(DropShadowEffect.BlurRadiusProperty, null);
-                }
+                if (version != _aiGlowVersion || _aiMode) return;
+                AiGlowBorder.BeginAnimation(OpacityProperty, null);
+                AiGlowBorder.Opacity = 0;
+                AiGlowBorder.Visibility = Visibility.Collapsed;
+                AiGlowEffect.BeginAnimation(DropShadowEffect.BlurRadiusProperty, null);
             };
             AiGlowBorder.BeginAnimation(OpacityProperty, fadeOut);
         }

@@ -8,8 +8,23 @@ namespace VNotch.Controls;
 
 internal static class ButtonFeedback
 {
+    private static readonly DependencyProperty TransitionVersionProperty = DependencyProperty.RegisterAttached(
+        "TransitionVersion", typeof(int), typeof(ButtonFeedback), new PropertyMetadata(0));
+
+    private static int NextTransitionVersion(DependencyObject target)
+    {
+        int next = ((int)target.GetValue(TransitionVersionProperty)) + 1;
+        target.SetValue(TransitionVersionProperty, next);
+        return next;
+    }
+
+    private static bool IsTransitionVersionCurrent(DependencyObject target, int version)
+        => (int)target.GetValue(TransitionVersionProperty) == version;
+
     internal static void AnimateIconSwitch(Canvas fromIcon, Canvas toIcon, TimeSpan duration, EasingFunctionBase easing)
     {
+        int fromVersion = NextTransitionVersion(fromIcon);
+        _ = NextTransitionVersion(toIcon);
 
         var fromTransform = fromIcon.RenderTransform as ScaleTransform ?? new ScaleTransform(1, 1);
         fromIcon.RenderTransform = fromTransform;
@@ -44,6 +59,7 @@ internal static class ButtonFeedback
 
         fadeOut.Completed += (s, e) =>
         {
+            if (!IsTransitionVersionCurrent(capturedFromIcon, fromVersion)) return;
 
             capturedFromTransform.ScaleX = 1;
             capturedFromTransform.ScaleY = 1;
@@ -99,6 +115,7 @@ internal static class ButtonFeedback
     internal static void PlayNextSkipAnimation(System.Windows.Shapes.Path arrow0, System.Windows.Shapes.Path arrow1)
     {
         const double slideDistance = 220;
+        int version = NextTransitionVersion(arrow1);
 
         var arrow1Transform = arrow1.RenderTransform as TranslateTransform ?? new TranslateTransform();
         arrow1.RenderTransform = arrow1Transform;
@@ -114,6 +131,8 @@ internal static class ButtonFeedback
 
         fadeOut1.Completed += (s, e) =>
         {
+            if (!IsTransitionVersionCurrent(arrow1, version)) return;
+
             arrow1Transform.X = 0;
             arrow1.Opacity = 1;
             arrow0Transform.X = 0;
@@ -138,6 +157,7 @@ internal static class ButtonFeedback
     internal static void PlayPrevSkipAnimation(System.Windows.Shapes.Path arrow0, System.Windows.Shapes.Path arrow2)
     {
         const double slideDistance = 220;
+        int version = NextTransitionVersion(arrow2);
 
         var arrow2Transform = arrow2.RenderTransform as TranslateTransform ?? new TranslateTransform();
         arrow2.RenderTransform = arrow2Transform;
@@ -153,6 +173,8 @@ internal static class ButtonFeedback
 
         fadeOut2.Completed += (s, e) =>
         {
+            if (!IsTransitionVersionCurrent(arrow2, version)) return;
+
             arrow2Transform.X = 0;
             arrow2.Opacity = 1;
             arrow0Transform.X = 0;

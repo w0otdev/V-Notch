@@ -1128,9 +1128,12 @@ public partial class MainWindow
 
     #region Picture-in-Picture Indicator
 
+    private int _pipBadgeAnimationVersion;
+
     private void UpdatePictureInPictureBadge(bool isPip, bool animate = true)
     {
         if (ThumbnailPipBadge == null) return;
+        int version = ++_pipBadgeAnimationVersion;
 
         if (isPip)
         {
@@ -1165,8 +1168,11 @@ public partial class MainWindow
                     };
                     anim.Completed += (s, e) =>
                     {
+                        if (version != _pipBadgeAnimationVersion) return;
                         if (!(_currentMediaInfo?.IsPictureInPicture ?? false))
                         {
+                            ThumbnailPipBadge.BeginAnimation(OpacityProperty, null);
+                            ThumbnailPipBadge.Opacity = 0.0;
                             ThumbnailPipBadge.Visibility = Visibility.Collapsed;
                         }
                     };

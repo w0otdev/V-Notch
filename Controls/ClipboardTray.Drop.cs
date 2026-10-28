@@ -169,7 +169,7 @@ public partial class ClipboardTray
         bool completed = false;
         await SafeAsync(async () =>
         {
-            foreach (var entry in entries) await _controller.AssignCategoryAsync(entry, category);
+            if (entries.Length > 0) await _controller.AssignCategoryManyAsync(entries, category);
             if (files.Length > 0) await _controller.ImportAsync(new ClipboardCapture { FilePaths = files, TargetCategory = category }, notifyDrop: true);
             completed = true;
         });

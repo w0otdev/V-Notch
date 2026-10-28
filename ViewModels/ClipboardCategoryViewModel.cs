@@ -10,6 +10,7 @@ public sealed partial class ClipboardCategoryViewModel(TrayIconKind iconKind, st
     public string Name { get; } = name ?? iconKind.ToString();
     public bool IsPersonal => IconKind == TrayIconKind.Personal;
     public string Label => customLabel ?? Loc.Get("clipboard.category." + Name.ToLowerInvariant());
+    public string ReorderHint => Loc.Get("clipboard.reorderLabel");
     public bool IsLightSelection => IsSelected && IconKind is TrayIconKind.All or TrayIconKind.Pin or TrayIconKind.Personal;
     public bool IsAccentSelection => IsSelected && !IsLightSelection;
     public TrayIconKind LockIconKind => IsUnlocked ? TrayIconKind.Unlock : TrayIconKind.Lock;
@@ -31,6 +32,7 @@ public sealed partial class ClipboardCategoryViewModel(TrayIconKind iconKind, st
     public void ApplyLocalization()
     {
         OnPropertyChanged(nameof(Label));
+        OnPropertyChanged(nameof(ReorderHint));
         OnPropertyChanged(nameof(CountLabel));
     }
 }

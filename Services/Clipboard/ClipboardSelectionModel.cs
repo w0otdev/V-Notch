@@ -58,6 +58,28 @@ internal sealed class ClipboardSelectionModel<T> where T : class
     internal IReadOnlySet<T> Select(IList<T> items, IEnumerable<T> selected, T item,
         bool control, bool shift, bool anyModifier)
     {
+        if (!shift && !control)
+        {
+            bool alreadySelected = false;
+            int selectedCount = 0;
+            foreach (var current in selected)
+            {
+                selectedCount++;
+                if (!alreadySelected && EqualityComparer<T>.Default.Equals(current, item))
+                    alreadySelected = true;
+                if (alreadySelected && selectedCount > 1)
+                    break;
+            }
+            Modified = anyModifier || selectedCount > 1;
+            if (!alreadySelected)
+            {
+                _targets.Clear();
+                _targets.Add(item);
+                Anchor = item;
+                return _targets;
+            }
+        }
+
         _targets.Clear();
         _targets.UnionWith(selected);
         Modified = anyModifier || _targets.Count > 1;

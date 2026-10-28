@@ -153,6 +153,7 @@ public partial class ClipboardTray
 
     public void BeginExit()
     {
+        CancelCategoryReorder();
         CloseLabelEditor(immediately: true);
         CancelPendingPersonalDrop(); ResolveDeleteConfirmation(false, immediately: true); ClearStatus(immediately: true);
         CancelCardPositionAnimation();
@@ -403,24 +404,43 @@ public partial class ClipboardTray
         _capturedCardLayouts = null;
     }
 
+    private void RecordArrivingCards(IReadOnlyList<VNotch.Models.ClipboardEntry> entries)
+    {
+        var existing = _cards.ById;
+        Span<Guid> arriving = stackalloc Guid[33];
+        int arrivingCount = 0;
+        for (int i = 0; i < entries.Count; i++)
+        {
+            var id = entries[i].Id;
+            if (!existing.ContainsKey(id))
+            {
+                arriving[arrivingCount++] = id;
+                if (arrivingCount > 32) break;
+            }
+        }
+        if (arrivingCount <= 32)
+        {
+            for (int i = 0; i < arrivingCount; i++)
+                _arrivingCards.Add(arriving[i]);
+        }
+    }
+
     private async Task AnimateCollectionChangesAsync(IReadOnlyList<VNotch.Models.ClipboardEntry> entries, CancellationToken cancellation)
     {
         if (_animateResults || _trayLeaving || AnimationConfig.ReduceMotion) return;
-        var desired = entries.Select(entry => entry.Id).ToHashSet();
-        var existing = _cards.Select(card => card.Entry.Id).ToHashSet();
         // Large replacements and later viewport arrivals already have a content
         // entrance. Keep the extra insertion animation for small live updates.
-        var arriving = entries.Where(entry => !existing.Contains(entry.Id)).Take(33).ToArray();
-        if (arriving.Length <= 32)
-            foreach (var entry in arriving) _arrivingCards.Add(entry.Id);
-        var removing = new List<(ListBoxItem Item, Guid EntryId)>();
+        RecordArrivingCards(entries);
+
+        List<(ListBoxItem Item, Guid EntryId)>? removing = null;
         foreach (var item in _selectionContainers)
         {
-            if (!item.IsVisible || item.DataContext is not VNotch.ViewModels.ClipboardCardViewModel card || desired.Contains(card.Entry.Id)) continue;
+            if (!item.IsVisible || item.DataContext is not VNotch.ViewModels.ClipboardCardViewModel card || ContainsEntryId(entries, card.Entry.Id)) continue;
             AnimateCardLifecycle(item, entering: false);
+            removing ??= new List<(ListBoxItem Item, Guid EntryId)>();
             removing.Add((item, card.Entry.Id));
         }
-        if (removing.Count > 0)
+        if (removing is { Count: > 0 })
         {
             try
             {

@@ -236,6 +236,7 @@ public partial class WhiteNoiseStrip : UserControl
     {
         if (ReferenceEquals(path.Tag, spec)) return;
         path.Tag = spec;
+        var scale = (ScaleTransform)path.RenderTransform;
         void Apply()
         {
             path.Data = Geometry.Parse(spec.Data);
@@ -245,14 +246,18 @@ public partial class WhiteNoiseStrip : UserControl
         }
         if (!Animated || !IsLoaded || _firstRefresh)
         {
+            scale.BeginAnimation(ScaleTransform.ScaleXProperty, null);
+            scale.BeginAnimation(ScaleTransform.ScaleYProperty, null);
+            scale.ScaleX = 1;
+            scale.ScaleY = 1;
             Apply();
             return;
         }
         // Shrink, swap the glyph, then pop back so play/pause and mute changes feel physical.
-        var scale = (ScaleTransform)path.RenderTransform;
         var down = new DoubleAnimation(0.6, TimeSpan.FromMilliseconds(70)) { EasingFunction = Ease };
         down.Completed += (_, _) =>
         {
+            if (!ReferenceEquals(path.Tag, spec)) return;
             Apply();
             var up = new DoubleAnimation(1, TimeSpan.FromMilliseconds(140)) { EasingFunction = new BackEase { EasingMode = EasingMode.EaseOut, Amplitude = 0.4 } };
             scale.BeginAnimation(ScaleTransform.ScaleXProperty, up);

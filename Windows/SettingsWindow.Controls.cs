@@ -666,6 +666,10 @@ public partial class SettingsWindow
         {
             if (!_isRestartBannerVisible)
             {
+                RestartPromptBanner.BeginAnimation(OpacityProperty, null);
+                RestartPromptTranslate.BeginAnimation(TranslateTransform.YProperty, null);
+                RestartPromptBanner.Opacity = 0;
+                RestartPromptTranslate.Y = 20;
                 RestartPromptBanner.Visibility = Visibility.Collapsed;
             }
         };
@@ -746,6 +750,10 @@ public partial class SettingsWindow
         {
             if (!_isCpp26BannerVisible)
             {
+                Cpp26PromptBanner.BeginAnimation(OpacityProperty, null);
+                Cpp26PromptTranslate.BeginAnimation(TranslateTransform.YProperty, null);
+                Cpp26PromptBanner.Opacity = 0;
+                Cpp26PromptTranslate.Y = 20;
                 Cpp26PromptBanner.Visibility = Visibility.Collapsed;
             }
         };

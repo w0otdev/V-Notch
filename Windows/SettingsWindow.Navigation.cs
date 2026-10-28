@@ -156,8 +156,7 @@ public partial class SettingsWindow
             if (_navPanels.TryGetValue(section, out var newPanel))
                 newPanel.Visibility = Visibility.Visible;
 
-            _scrollTarget = 0;
-            _scrollVelocity = 0;
+            StopSmoothScroll();
             SettingsScrollViewer.ScrollToTop();
             AnimateActivePanel(section, direction);
         }
@@ -168,7 +167,7 @@ public partial class SettingsWindow
             return;
         }
 
-        AnimateSectionExit(oldCard, oldTranslate, oldPanel, previous, direction, RevealIncoming);
+        AnimateSectionExit(oldCard, oldTranslate, oldPanel, previous, direction, version, RevealIncoming);
     }
 
     private static readonly CubicEase SectionExitEase = CreateFrozenSectionExitEase();
@@ -186,6 +185,7 @@ public partial class SettingsWindow
         UIElement? oldPanel,
         string previous,
         int direction,
+        int version,
         Action onExitCompleted)
     {
         int fps = VNotch.Services.AnimationConfig.TargetFps;
@@ -199,13 +199,17 @@ public partial class SettingsWindow
 
         fadeOut.Completed += (_, _) =>
         {
-            oldCard.BeginAnimation(OpacityProperty, null);
-            oldCard.Opacity = 0;
-            oldTranslate.BeginAnimation(TranslateTransform.YProperty, null);
-            oldTranslate.Y = 12;
-            if (oldPanel != null && !string.Equals(previous, _activeNav, StringComparison.Ordinal))
-                oldPanel.Visibility = Visibility.Collapsed;
-            onExitCompleted();
+            if (!string.Equals(previous, _activeNav, StringComparison.Ordinal))
+            {
+                oldCard.BeginAnimation(OpacityProperty, null);
+                oldCard.Opacity = 0;
+                oldTranslate.BeginAnimation(TranslateTransform.YProperty, null);
+                oldTranslate.Y = 12;
+                if (oldPanel != null)
+                    oldPanel.Visibility = Visibility.Collapsed;
+            }
+            if (version == _navTransitionVersion)
+                onExitCompleted();
         };
 
         oldCard.BeginAnimation(OpacityProperty, fadeOut);

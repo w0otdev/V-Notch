@@ -28,7 +28,7 @@ public partial class ClipboardTray
         _copyOnRelease = false;
         Cards.Focus();
         // Select data items, including those with no realized container or thumbnail.
-        Cards.ApplySelection(_cards);
+        Cards.SelectAll();
         _pendingSelectAll = _controller != null && _queryDirty ? (_category, SearchBox.Text) : null;
         if (_pendingSelectAll != null) QueueRefresh();
         return true;
@@ -39,7 +39,7 @@ public partial class ClipboardTray
         if (_pendingSelectAll is not { } scope) return;
         _pendingSelectAll = null;
         if (scope.Category == _category && scope.Query == SearchBox.Text)
-            Cards.ApplySelection(_cards);
+            Cards.SelectAll();
     }
     private Point? _selectionStart;
     private Point? _pendingLassoStart;
@@ -51,6 +51,10 @@ public partial class ClipboardTray
     private bool _selectionHasMoved;
     private double _selectionStartOffset;
     private long _selectionFrameTime;
+    private int _lastLassoFirst = -2;
+    private int _lastLassoLast = -2;
+    private bool _lastLassoHitsRow;
+    private bool _lassoTargetsApplied;
 
     private void InitializeSelection()
     {
@@ -124,6 +128,10 @@ public partial class ClipboardTray
         _selectionHasMoved = false;
         _selectionBoundsDirty = true;
         _selectionUpdatePending = true;
+        _lastLassoFirst = -2;
+        _lastLassoLast = -2;
+        _lastLassoHitsRow = false;
+        _lassoTargetsApplied = false;
         SelectionSurface.Cursor = Cursors.Cross;
         if (!Mouse.Capture(SelectionSurface)) { EndSelection(); return; }
         CompositionTarget.Rendering += Selection_Rendering;
@@ -211,30 +219,54 @@ public partial class ClipboardTray
         bool swept = rectangle.Width >= SystemParameters.MinimumHorizontalDragDistance ||
             rectangle.Height >= SystemParameters.MinimumVerticalDragDistance;
         Rect row = CardsViewport.TransformToAncestor(SelectionSurface).TransformBounds(new Rect(CardsViewport.RenderSize));
-        _selection.ResetLassoTargets();
+        bool foundContainer = false;
+        bool rangeChanged = true;
         // Cards use a uniform horizontal slot. Infer content geometry from a
         // realized container so recycled/offscreen cards stay selected, and can
         // be deselected again when the user shrinks the lasso back across them.
         foreach (var container in _selectionContainers)
         {
             if (container.DataContext is not ClipboardCardViewModel card || !container.IsVisible || container.ActualWidth <= 0) continue;
-            int index = _cards.IndexOf(card);
+            int index = card.SlotIndex;
+            if (index < 0 || index >= _cards.Count || !ReferenceEquals(_cards[index], card))
+                index = _cards.IndexOf(card);
             if (index < 0 || !SelectionSurface.IsAncestorOf(container)) continue;
+            foundContainer = true;
             double pitch = container.ActualWidth + container.Margin.Left + container.Margin.Right;
             var origin = container.TranslatePoint(new Point(), SelectionSurface);
             double firstX = origin.X + offset - index * pitch;
             int first = Math.Max(0, (int)Math.Ceiling((rectangle.Left - firstX - container.ActualWidth) / pitch));
             int last = Math.Min(_cards.Count - 1, (int)Math.Floor((rectangle.Right - firstX) / pitch));
-            if (swept && rectangle.Bottom >= row.Top && rectangle.Top <= row.Bottom)
+            bool hitsRow = swept && rectangle.Bottom >= row.Top && rectangle.Top <= row.Bottom;
+            if (hitsRow)
             {
                 // A horizontal sweep through the top/bottom gutter targets the
                 // whole row. Expand its visible band so the selected area agrees
                 // with the card highlights even when the pointer never enters a card.
                 if (rectangle.Bottom < origin.Y || rectangle.Top > origin.Y + container.ActualHeight)
                     rectangle.Union(new Rect(rectangle.Left, origin.Y, rectangle.Width, container.ActualHeight));
-                _selection.IncludeRange(_cards, first, last);
+            }
+            int normFirst = hitsRow && first <= last ? first : -1;
+            int normLast = hitsRow && first <= last ? last : -2;
+            if (_lassoTargetsApplied && hitsRow == _lastLassoHitsRow && normFirst == _lastLassoFirst && normLast == _lastLassoLast)
+            {
+                rangeChanged = false;
+            }
+            else
+            {
+                _lastLassoHitsRow = hitsRow;
+                _lastLassoFirst = normFirst;
+                _lastLassoLast = normLast;
+                _lassoTargetsApplied = true;
+                _selection.ResetLassoTargets();
+                if (hitsRow) _selection.IncludeRange(_cards, first, last);
             }
             break;
+        }
+        if (!foundContainer)
+        {
+            _selection.ResetLassoTargets();
+            _lassoTargetsApplied = true;
         }
         var visible = rectangle;
         visible.Offset(-offset, 0);
@@ -244,8 +276,11 @@ public partial class ClipboardTray
         SelectionRectangle.Width = visible.IsEmpty ? 0 : visible.Width;
         SelectionRectangle.Height = visible.IsEmpty ? 0 : visible.Height;
         SelectionRectangle.Visibility = swept ? Visibility.Visible : Visibility.Collapsed;
-        if (!_selection.Targets.SetEquals(Cards.SelectedItems.Cast<ClipboardCardViewModel>()))
+        if (rangeChanged && (_selection.Targets.Count != Cards.SelectedItems.Count ||
+            !_selection.Targets.SetEquals(Cards.SelectedItems.Cast<ClipboardCardViewModel>())))
+        {
             Cards.ApplySelection(_selection.Targets);
+        }
     }
 
     private void RegisterSelectionContainer(ListBoxItem container)
@@ -267,10 +302,11 @@ public partial class ClipboardTray
     private void Selection_ContainerChanged(object sender, DependencyPropertyChangedEventArgs e)
     {
         _selectionBoundsDirty = true;
+        _lassoTargetsApplied = false;
     }
 
-    private void Selection_LayoutChanged(object sender, SizeChangedEventArgs e) => _selectionBoundsDirty = true;
-    private void Selection_ScrollChanged(object sender, ScrollChangedEventArgs e) => _selectionBoundsDirty = true;
+    private void Selection_LayoutChanged(object sender, SizeChangedEventArgs e) { _selectionBoundsDirty = true; _lassoTargetsApplied = false; }
+    private void Selection_ScrollChanged(object sender, ScrollChangedEventArgs e) { _selectionBoundsDirty = true; _lassoTargetsApplied = false; }
 
     private void ClearSelectionContainers()
     {
@@ -299,7 +335,29 @@ public partial class ClipboardTray
         Cards.Focus();
     }
 
-    private ClipboardCardViewModel[] SelectedCards() => _cards.Where(card => Cards.SelectedItems.Contains(card)).ToArray();
+    private ClipboardCardViewModel[] SelectedCards()
+    {
+        int selCount = Cards.SelectedItems.Count;
+        if (selCount == 0) return [];
+        if (selCount == 1 && Cards.SelectedItems[0] is ClipboardCardViewModel single) return [single];
+        if (selCount >= _cards.Count) return _cards.ToArray();
+
+        var selectedSet = new HashSet<ClipboardCardViewModel>(selCount);
+        foreach (var obj in Cards.SelectedItems)
+        {
+            if (obj is ClipboardCardViewModel vm)
+                selectedSet.Add(vm);
+        }
+        var result = new ClipboardCardViewModel[selectedSet.Count];
+        int writeIdx = 0;
+        for (int i = 0; i < _cards.Count && writeIdx < result.Length; i++)
+        {
+            var card = _cards[i];
+            if (selectedSet.Contains(card))
+                result[writeIdx++] = card;
+        }
+        return writeIdx == result.Length ? result : result[..writeIdx];
+    }
 
     private async Task CopySelectionAsync()
     {

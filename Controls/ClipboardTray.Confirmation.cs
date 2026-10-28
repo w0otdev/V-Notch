@@ -107,6 +107,8 @@ public partial class ClipboardTray
     }
     private void Tray_PreviewKeyDown(object sender, KeyEventArgs e)
     {
+        if (e.Key == Key.Escape && _categoryReorderSource != null)
+        { CancelCategoryReorderAnimated(); e.Handled = true; return; }
         if (_labelEditorOpen || LabelEditorPanel.Visibility == Visibility.Visible)
         {
             if (e.Key == Key.Escape) { CloseLabelEditor(); e.Handled = true; }
