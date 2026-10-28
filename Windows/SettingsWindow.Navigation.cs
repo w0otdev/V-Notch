@@ -409,9 +409,8 @@ public partial class SettingsWindow
                 continue;
             }
 
-            if (count <= 2 &&
-                child is Border { Child: StackPanel borderStack } &&
-                borderStack.Children.Count >= 4)
+            if (child is Border { Child: StackPanel borderStack } &&
+                borderStack.Children.Count >= 6)
             {
                 CollectPanelChildrenRecursive(borderStack, targets, maxCount);
                 continue;

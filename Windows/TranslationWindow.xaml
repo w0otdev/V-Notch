@@ -6,7 +6,7 @@
         Title="Live translation" WindowStyle="None" ResizeMode="NoResize"
         AllowsTransparency="True" Background="Transparent" ShowInTaskbar="False"
         ShowActivated="False" Topmost="True" SizeToContent="Height" Width="132" UseLayoutRounding="True" SnapsToDevicePixels="True"
-        FontFamily="{fonts:AppFont Fallbacks='Segoe UI Emoji, Nirmala UI, Segoe UI'}" FontWeight="Bold" Foreground="#F2F2F2" PreviewKeyDown="Window_KeyDown">
+        FontFamily="{fonts:AppFont Fallbacks='Segoe UI Emoji, Nirmala UI, Segoe UI'}" FontWeight="Bold" Foreground="#F2F2F2" TextOptions.TextFormattingMode="Ideal" TextOptions.TextRenderingMode="Grayscale" TextOptions.TextHintingMode="Animated" PreviewKeyDown="Window_KeyDown">
     <Window.Resources>
         <ResourceDictionary>
             <ResourceDictionary.MergedDictionaries>

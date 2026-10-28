@@ -15,9 +15,9 @@
         PreviewKeyDown="Window_PreviewKeyDown"
         UseLayoutRounding="True"
         SnapsToDevicePixels="True"
-        TextOptions.TextFormattingMode="Display"
-        TextOptions.TextRenderingMode="ClearType"
-        TextOptions.TextHintingMode="Fixed"
+        TextOptions.TextFormattingMode="Ideal"
+        TextOptions.TextRenderingMode="Grayscale"
+        TextOptions.TextHintingMode="Animated"
         RenderOptions.ClearTypeHint="Enabled"
         RenderOptions.BitmapScalingMode="HighQuality"
         xmlns:ctrl="clr-namespace:VNotch.Controls"
@@ -97,8 +97,8 @@
             <Setter Property="FontWeight" Value="Bold"/>
             <Setter Property="FontFamily" Value="{StaticResource MainSystemFont}"/>
             <Setter Property="TextOptions.TextFormattingMode" Value="Ideal"/>
-            <Setter Property="TextOptions.TextRenderingMode" Value="ClearType"/>
-            <Setter Property="TextOptions.TextHintingMode" Value="Fixed"/>
+            <Setter Property="TextOptions.TextRenderingMode" Value="Grayscale"/>
+            <Setter Property="TextOptions.TextHintingMode" Value="Animated"/>
             <Setter Property="UseLayoutRounding" Value="True"/>
             <Setter Property="SnapsToDevicePixels" Value="True"/>
         </Style>
@@ -109,8 +109,8 @@
             <Setter Property="FontWeight" Value="Bold"/>
             <Setter Property="FontFamily" Value="{StaticResource MainSystemFont}"/>
             <Setter Property="TextOptions.TextFormattingMode" Value="Ideal"/>
-            <Setter Property="TextOptions.TextRenderingMode" Value="ClearType"/>
-            <Setter Property="TextOptions.TextHintingMode" Value="Fixed"/>
+            <Setter Property="TextOptions.TextRenderingMode" Value="Grayscale"/>
+            <Setter Property="TextOptions.TextHintingMode" Value="Animated"/>
             <Setter Property="UseLayoutRounding" Value="True"/>
             <Setter Property="SnapsToDevicePixels" Value="True"/>
         </Style>
@@ -121,8 +121,8 @@
             <Setter Property="FontWeight" Value="Bold"/>
             <Setter Property="FontFamily" Value="{StaticResource MainSystemFont}"/>
             <Setter Property="TextOptions.TextFormattingMode" Value="Ideal"/>
-            <Setter Property="TextOptions.TextRenderingMode" Value="ClearType"/>
-            <Setter Property="TextOptions.TextHintingMode" Value="Fixed"/>
+            <Setter Property="TextOptions.TextRenderingMode" Value="Grayscale"/>
+            <Setter Property="TextOptions.TextHintingMode" Value="Animated"/>
             <Setter Property="UseLayoutRounding" Value="True"/>
             <Setter Property="SnapsToDevicePixels" Value="True"/>
         </Style>
@@ -720,10 +720,10 @@
                         <!-- Add live widgets inside this group; startup greetings hide the group. -->
                         <Grid x:Name="NotchLiveContent">
                         <Border x:Name="VolumeIndicatorContainer"
-                                VerticalAlignment="Center"
+                                VerticalAlignment="Stretch"
                                 HorizontalAlignment="Stretch"
-                                Height="14"
-                                Margin="16,0,16,0"
+                                Height="40"
+                                Margin="14,6,14,6"
                                 Opacity="0"
                                 Visibility="Collapsed"
                                 IsHitTestVisible="True"
@@ -731,39 +731,151 @@
                                 CornerRadius="1.5"
                                 Panel.ZIndex="90"
                                 Cursor="Hand"
+                                RenderTransformOrigin="0.5,0.5"
+                                SizeChanged="VolumeIndicatorContainer_SizeChanged"
                                 MouseLeftButtonDown="VolumeIndicator_MouseDown"
                                 MouseMove="VolumeIndicator_MouseMove"
                                 MouseLeftButtonUp="VolumeIndicator_MouseUp">
-                            <Border Background="#33FFFFFF"
-                                    CornerRadius="3"
-                                    Height="6"
-                                    VerticalAlignment="Center">
-                                <Border x:Name="VolumeIndicatorFill"
-                                        HorizontalAlignment="Left"
-                                        CornerRadius="3"
-                                        Height="6"
-                                        RenderTransformOrigin="0,0.5">
-                                    <Border.Resources>
-                                        <ctrl:VolumeFillWidthConverter x:Key="VolumeFillWidth"/>
-                                    </Border.Resources>
-                                    <Border.Tag>
-                                        <ScaleTransform x:Name="VolumeIndicatorScale" ScaleX="0"/>
-                                    </Border.Tag>
-                                    <Border.Width>
-                                        <MultiBinding Converter="{StaticResource VolumeFillWidth}">
-                                            <Binding ElementName="VolumeIndicatorContainer" Path="ActualWidth"/>
-                                            <Binding RelativeSource="{RelativeSource Self}"/>
-                                            <Binding RelativeSource="{RelativeSource Self}" Path="Tag.ScaleX"/>
-                                        </MultiBinding>
-                                    </Border.Width>
-                                    <Border.Background>
-                                        <LinearGradientBrush x:Name="VolumeIndicatorGradient" StartPoint="0,0" EndPoint="1,0">
-                                            <GradientStop x:Name="VolumeIndicatorGradientStart" Color="White" Offset="0"/>
-                                            <GradientStop x:Name="VolumeIndicatorGradientEnd" Color="#CCCCCC" Offset="1"/>
-                                        </LinearGradientBrush>
-                                    </Border.Background>
-                                </Border>
-                            </Border>
+                            <Border.RenderTransform>
+                                <TransformGroup>
+                                    <ScaleTransform x:Name="VolumeIndicatorContentScale" ScaleX="1" ScaleY="1"/>
+                                    <TranslateTransform x:Name="VolumeIndicatorContentTranslate" X="0" Y="0"/>
+                                </TransformGroup>
+                            </Border.RenderTransform>
+                            <Grid VerticalAlignment="Center">
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="20"/>
+                                    <RowDefinition Height="14"/>
+                                </Grid.RowDefinitions>
+                                <Grid Grid.Row="0" ClipToBounds="False">
+                                    <Viewbox Width="17" Height="17" Stretch="Uniform"
+                                             HorizontalAlignment="Left"
+                                             VerticalAlignment="Center"
+                                             SnapsToDevicePixels="False"
+                                             UseLayoutRounding="False"
+                                             RenderTransformOrigin="0.5,0.5">
+                                        <Viewbox.RenderTransform>
+                                            <ScaleTransform x:Name="VolumeIndicatorIconScale" ScaleX="1" ScaleY="1"/>
+                                        </Viewbox.RenderTransform>
+                                        <Viewbox.Effect>
+                                            <DropShadowEffect x:Name="VolumeIndicatorIconGlow"
+                                                              Color="#FFFFFFFF"
+                                                              BlurRadius="6"
+                                                              ShadowDepth="0"
+                                                              Opacity="0.52"
+                                                              RenderingBias="Performance"/>
+                                        </Viewbox.Effect>
+                                        <Canvas Width="24" Height="24">
+                                            <Path x:Name="VolumeIndicatorSpeakerCone"
+                                                  Data="M 3.6,8.8 H 6.6 Q 7.3,8.8 7.8,8.3 L 11.7,4.9 C 12.6,4.1 13.8,4.7 13.8,5.9 V 18.1 C 13.8,19.3 12.6,19.9 11.7,19.1 L 7.8,15.7 Q 7.3,15.2 6.6,15.2 H 3.6 C 2.6,15.2 2.0,14.6 2.0,13.6 V 10.4 C 2.0,9.4 2.6,8.8 3.6,8.8 Z"
+                                                  Fill="#FAFFFFFF"
+                                                  Stroke="#FAFFFFFF"
+                                                  StrokeThickness="1.15"
+                                                  StrokeLineJoin="Round"
+                                                  StrokeStartLineCap="Round"
+                                                  StrokeEndLineCap="Round"/>
+                                            <Path x:Name="VolumeIndicatorWave1"
+                                                  Data="M 16.3,9.5 A 3.8,3.8 0 0 1 16.3,14.5"
+                                                  Stroke="#FAFFFFFF"
+                                                  StrokeThickness="2.1"
+                                                  StrokeStartLineCap="Round"
+                                                  StrokeEndLineCap="Round"
+                                                  StrokeLineJoin="Round"/>
+                                            <Path x:Name="VolumeIndicatorWave2"
+                                                  Data="M 19.1,7.0 A 6.8,6.8 0 0 1 19.1,17.0"
+                                                  Stroke="#FAFFFFFF"
+                                                  StrokeThickness="2.1"
+                                                  StrokeStartLineCap="Round"
+                                                  StrokeEndLineCap="Round"
+                                                  StrokeLineJoin="Round"/>
+                                            <Path x:Name="VolumeIndicatorMuteSlashGap"
+                                                  Data="M 2.8,3.6 L 20.6,20.4"
+                                                  Stroke="#FF050505"
+                                                  StrokeThickness="4.4"
+                                                  StrokeStartLineCap="Round"
+                                                  StrokeEndLineCap="Round"
+                                                  StrokeLineJoin="Round"
+                                                  Visibility="Collapsed"/>
+                                            <Path x:Name="VolumeIndicatorMuteSlash"
+                                                  Data="M 2.8,3.6 L 20.6,20.4"
+                                                  Stroke="#FAFFFFFF"
+                                                  StrokeThickness="2.2"
+                                                  StrokeStartLineCap="Round"
+                                                  StrokeEndLineCap="Round"
+                                                  StrokeLineJoin="Round"
+                                                  Visibility="Collapsed"/>
+                                        </Canvas>
+                                    </Viewbox>
+                                    <TextBlock x:Name="VolumeIndicatorIcon"
+                                               Text="&#xE995;"
+                                               FontFamily="{StaticResource IconFont}"
+                                               Visibility="Collapsed"
+                                               IsHitTestVisible="False"/>
+                                    <TextBlock x:Name="VolumeIndicatorPercentText"
+                                               Text="0%"
+                                               Foreground="#FAFFFFFF"
+                                               FontFamily="{StaticResource MainSystemFont}"
+                                               FontSize="12"
+                                               FontWeight="Bold"
+                                               Typography.NumeralAlignment="Tabular"
+                                               Typography.NumeralStyle="Lining"
+                                               TextOptions.TextFormattingMode="Ideal"
+                                               TextOptions.TextRenderingMode="Grayscale"
+                                               TextOptions.TextHintingMode="Animated"
+                                               UseLayoutRounding="False"
+                                               SnapsToDevicePixels="False"
+                                               HorizontalAlignment="Left"
+                                               VerticalAlignment="Center"
+                                               Margin="0,1,0,0"
+                                               RenderTransformOrigin="0.5,0.5">
+                                        <TextBlock.RenderTransform>
+                                            <TransformGroup>
+                                                <ScaleTransform x:Name="VolumeIndicatorPercentScale" ScaleX="1" ScaleY="1"/>
+                                                <TranslateTransform x:Name="VolumeIndicatorPercentTranslate" X="30"/>
+                                            </TransformGroup>
+                                        </TextBlock.RenderTransform>
+                                    </TextBlock>
+                                </Grid>
+                                <Grid Grid.Row="1" Margin="0,3,0,0" VerticalAlignment="Center">
+                                    <UniformGrid x:Name="VolumeIndicatorTicksHost"
+                                                 Rows="1"
+                                                 Columns="40"
+                                                 Height="10"
+                                                 VerticalAlignment="Center"
+                                                 HorizontalAlignment="Stretch">
+                                        <UniformGrid.Effect>
+                                            <DropShadowEffect x:Name="VolumeIndicatorTicksGlow"
+                                                              Color="#FFFFFFFF"
+                                                              BlurRadius="8"
+                                                              ShadowDepth="0"
+                                                              Opacity="0.65"
+                                                              RenderingBias="Performance"/>
+                                        </UniformGrid.Effect>
+                                    </UniformGrid>
+                                    <Border x:Name="VolumeIndicatorFill"
+                                            HorizontalAlignment="Left"
+                                            CornerRadius="3"
+                                            Height="6"
+                                            Opacity="0"
+                                            IsHitTestVisible="False"
+                                            Background="#FFFFFFFF"
+                                            RenderTransformOrigin="0,0.5">
+                                        <Border.Resources>
+                                            <ctrl:VolumeFillWidthConverter x:Key="VolumeFillWidth"/>
+                                        </Border.Resources>
+                                        <Border.Tag>
+                                            <ScaleTransform x:Name="VolumeIndicatorScale" ScaleX="0"/>
+                                        </Border.Tag>
+                                        <Border.Width>
+                                            <MultiBinding Converter="{StaticResource VolumeFillWidth}">
+                                                <Binding ElementName="VolumeIndicatorContainer" Path="ActualWidth"/>
+                                                <Binding RelativeSource="{RelativeSource Self}"/>
+                                                <Binding RelativeSource="{RelativeSource Self}" Path="Tag.ScaleX"/>
+                                            </MultiBinding>
+                                        </Border.Width>
+                                    </Border>
+                                </Grid>
+                            </Grid>
                         </Border>
 
                         <Border x:Name="AnimationThumbnailBorder"
@@ -1135,8 +1247,8 @@
                                        FontWeight="SemiBold"
                                        FontFamily="{StaticResource MainSystemFont}"
                                        TextOptions.TextFormattingMode="Ideal"
-                                       TextOptions.TextRenderingMode="ClearType"
-                                       TextOptions.TextHintingMode="Fixed"
+                                       TextOptions.TextRenderingMode="Grayscale"
+                                                       TextOptions.TextHintingMode="Animated"
                                        UseLayoutRounding="True"
                                        SnapsToDevicePixels="True"
                                        VerticalAlignment="Center"/>
@@ -1151,8 +1263,8 @@
                                            FontWeight="Bold"
                                            FontFamily="{StaticResource MainSystemFont}"
                                            TextOptions.TextFormattingMode="Ideal"
-                                           TextOptions.TextRenderingMode="ClearType"
-                                           TextOptions.TextHintingMode="Fixed"
+                                           TextOptions.TextRenderingMode="Grayscale"
+                                                       TextOptions.TextHintingMode="Animated"
                                            UseLayoutRounding="True"
                                            SnapsToDevicePixels="True"
                                            VerticalAlignment="Center"
@@ -1165,8 +1277,8 @@
                                            FontWeight="Medium"
                                            FontFamily="{StaticResource MainSystemFont}"
                                            TextOptions.TextFormattingMode="Ideal"
-                                           TextOptions.TextRenderingMode="ClearType"
-                                           TextOptions.TextHintingMode="Fixed"
+                                           TextOptions.TextRenderingMode="Grayscale"
+                                                       TextOptions.TextHintingMode="Animated"
                                            UseLayoutRounding="True"
                                            SnapsToDevicePixels="True"
                                            VerticalAlignment="Center"
@@ -1364,8 +1476,8 @@
                                    FontWeight="SemiBold"
                                    FontFamily="{StaticResource MainSystemFont}"
                                    TextOptions.TextFormattingMode="Ideal"
-                                   TextOptions.TextRenderingMode="ClearType"
-                                   TextOptions.TextHintingMode="Fixed"
+                                   TextOptions.TextRenderingMode="Grayscale"
+                                                       TextOptions.TextHintingMode="Animated"
                                    UseLayoutRounding="True"
                                    SnapsToDevicePixels="True"
                                    VerticalAlignment="Center"

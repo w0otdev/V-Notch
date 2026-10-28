@@ -218,6 +218,74 @@ public sealed class MainWindowVolumeInteractionTests
         await WpfFrameWaiter.UntilAsync(() => Math.Abs(window.VolumeIconScale.ScaleX - 1) < .0001, "volume icon resting scale", ct);
     });
 
+    [Fact]
+    public void VolumeIndicatorHudUpdatesSegmentedTicksIconAndPercentageLabel() => SharedStaTestRunner.RunAsync(async ct =>
+    {
+        await using var fixture = Create(new FakeMediaDetectionService());
+        var window = fixture.Window;
+        window.SetDebugViewState("CompactMusicPill");
+        double collapsedHeight = Get<double>(window, "_collapsedHeight");
+
+        Invoke(window, "SetVolumeHudMediaTint", Color.FromRgb(0x3A, 0x96, 0xFF), true);
+        Invoke(window, "ShowVolumeIndicator", .81f);
+        Assert.Equal("81%", window.VolumeIndicatorPercentText.Text);
+        Assert.Equal("", window.VolumeIndicatorIcon.Text);
+        Assert.Equal(Visibility.Collapsed, window.VolumeIndicatorMuteSlash.Visibility);
+        Assert.Equal(40, window.VolumeIndicatorTicksHost.Children.Count);
+
+        var brushes = Get<SolidColorBrush[]>(window, "_volumeHudTickBrushes");
+        int litCount = brushes.Count(b => b.Color.A >= 0xF0);
+        Assert.Equal(32, litCount);
+        Assert.NotEqual(brushes[0].Color, brushes[31].Color);
+
+        // Hover while volume HUD is active must not stretch NotchScale
+        Invoke(window, "AnimateNotchHover", true);
+        Assert.Equal(1.0, window.NotchScale.ScaleX, 4);
+
+        // Overscroll above 100% and below 0% triggers spring transform without throwing
+        Set(window, "_currentVolume", 1.0f);
+        Invoke(window, "ApplyVolumeStep", 120);
+        Assert.Equal("100%", window.VolumeIndicatorPercentText.Text);
+
+        Invoke(window, "ShowVolumeIndicator", 0f);
+        Assert.Equal("0%", window.VolumeIndicatorPercentText.Text);
+        Assert.Equal("", window.VolumeIndicatorIcon.Text);
+        Assert.Equal(Visibility.Visible, window.VolumeIndicatorMuteSlash.Visibility);
+        Assert.Equal(0.0, window.VolumeIndicatorWave1.Opacity, 4);
+        Assert.Equal(0.0, window.VolumeIndicatorWave2.Opacity, 4);
+        Assert.Null(window.VolumeIndicatorPercentText.Effect);
+        Assert.Equal(TextFormattingMode.Ideal, TextOptions.GetTextFormattingMode(window));
+        Assert.Equal(PenLineCap.Round, window.VolumeIndicatorMuteSlash.StrokeStartLineCap);
+        Assert.Equal(PenLineJoin.Round, window.VolumeIndicatorSpeakerCone.StrokeLineJoin);
+        Assert.Equal(0, brushes.Count(b => b.Color.A >= 0xF0));
+
+        Set(window, "_currentVolume", 0f);
+        Invoke(window, "ApplyVolumeStep", -120);
+        Assert.Equal("0%", window.VolumeIndicatorPercentText.Text);
+
+        Invoke(window, "DismissVolumeIndicatorImmediate", true, false);
+        Assert.Equal(collapsedHeight, window.NotchBorder.Height, 3);
+        Assert.Null(window.VolumeIndicatorContainer.Effect);
+
+        // Verify full entrance + exit morph & transient blur cleanup
+        Invoke(window, "ShowVolumeIndicator", .65f);
+        await WpfFrameWaiter.UntilAsync(
+            () => Math.Abs(window.VolumeIndicatorContainer.Opacity - 1.0) < 0.01 && window.VolumeIndicatorContainer.Effect == null,
+            "volume HUD entrance morph + blur cleanup",
+            ct);
+        Assert.Equal(1.0, window.VolumeIndicatorContentScale.ScaleX, 2);
+        Assert.Equal(1.0, window.VolumeIndicatorContentScale.ScaleY, 2);
+
+        Invoke(window, "HideVolumeIndicator");
+        await WpfFrameWaiter.UntilAsync(
+            () => window.VolumeIndicatorContainer.Visibility == Visibility.Collapsed && !Get<bool>(window, "_isVolumeIndicatorExiting"),
+            "volume HUD exit morph + blur cleanup",
+            ct);
+        Assert.Null(window.VolumeIndicatorContainer.Effect);
+        Assert.Equal(1.0, window.CompactThumbnailScale.ScaleX, 2);
+        ct.ThrowIfCancellationRequested();
+    });
+
     private static GreetingAcceptanceTests.MainWindowFixture Create(FakeMediaDetectionService media) => new("en", false, settings => { settings.EnableLocalOnlyMode = true; settings.DisableMouseLeaveAutoClose = true; }, services => services.AddSingleton<IMediaDetectionService>(media));
     private static bool Wheel(MainWindow window, int raw, out int result)
     {
@@ -228,6 +296,6 @@ public sealed class MainWindowVolumeInteractionTests
     }
     private static MouseButtonEventArgs Click() => new(Mouse.PrimaryDevice, Environment.TickCount, MouseButton.Left) { RoutedEvent = UIElement.MouseLeftButtonDownEvent };
     private static object? Invoke(MainWindow window, string name, params object?[] arguments) => typeof(MainWindow).GetMethod(name, Private)!.Invoke(window, arguments);
-    private static T Get<T>(MainWindow window, string name) => (T)typeof(MainWindow).GetField(name, Private)!.GetValue(window)!;
+    private static T Get<T>(MainWindow window, string name) => (T)(typeof(MainWindow).GetField(name, Private)?.GetValue(window) ?? typeof(MainWindow).GetProperty(name, Private)!.GetValue(window))!;
     private static void Set(MainWindow window, string name, object value) => typeof(MainWindow).GetField(name, Private)!.SetValue(window, value);
 }

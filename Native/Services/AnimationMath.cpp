@@ -149,4 +149,211 @@ VN_EXPORT int32_t __stdcall vn_animation_compute_update_pulse_rgb(
     return VN_OK;
 }
 
+VN_EXPORT int32_t __stdcall vn_animation_compute_volume_hud_state(
+    double volume,
+    uint8_t muted,
+    int32_t tick_count,
+    double track_width,
+    double label_width,
+    double min_left_x,
+    VnVolumeHudLayoutOut* out_layout,
+    uint8_t* out_tick_states,
+    int32_t tick_cap) noexcept
+{
+    if (!out_layout || !out_tick_states || tick_count <= 0) return VN_ERR_INVALID_ARG;
+    if (tick_cap < tick_count) return VN_ERR_BUFFER_TOO_SMALL;
+
+    double clamped_vol = std::isfinite(volume) ? std::clamp(volume, 0.0, 1.0) : 0.0;
+    double effective_vol = (muted != 0) ? 0.0 : clamped_vol;
+
+    int32_t pct = static_cast<int32_t>(std::clamp(std::lround(effective_vol * 100.0), 0L, 100L));
+    int32_t active = static_cast<int32_t>(std::clamp(std::lround(effective_vol * static_cast<double>(tick_count)), 0L, static_cast<long>(tick_count)));
+    if (effective_vol > 0.005 && active == 0) active = 1;
+
+    constexpr int32_t kHighlightSpan = 5;
+    int32_t highlight_start = std::max(0, active - kHighlightSpan);
+
+    int32_t codepoint = 0xE74F;
+    if (muted == 0 && effective_vol > 0.01) {
+        if (effective_vol < 0.33) codepoint = 0xE993;
+        else if (effective_vol < 0.66) codepoint = 0xE994;
+        else codepoint = 0xE995;
+    }
+
+    double safe_track = (std::isfinite(track_width) && track_width > 0.0) ? track_width : 160.0;
+    double safe_label = (std::isfinite(label_width) && label_width > 0.0) ? label_width : 28.0;
+    double safe_min_x = (std::isfinite(min_left_x) && min_left_x >= 0.0) ? min_left_x : 30.0;
+
+    double edge_ratio = static_cast<double>(active) / static_cast<double>(tick_count);
+    double raw_x = (edge_ratio * safe_track) - safe_label;
+    double max_x = std::max(safe_min_x, safe_track - safe_label);
+    double clamped_x = std::clamp(raw_x, safe_min_x, max_x);
+
+    out_layout->percentage = pct;
+    out_layout->active_ticks = active;
+    out_layout->highlight_start_tick = highlight_start;
+    out_layout->icon_codepoint = codepoint;
+    out_layout->label_offset_x = clamped_x;
+
+    for (int32_t i = 0; i < tick_count; ++i) {
+        if (i >= active) {
+            out_tick_states[i] = 0;
+        } else if (i >= highlight_start) {
+            out_tick_states[i] = 2;
+        } else {
+            out_tick_states[i] = 1;
+        }
+    }
+
+    return VN_OK;
+}
+
+VN_EXPORT int32_t __stdcall vn_animation_compute_volume_hud_palette(
+    int32_t tick_count,
+    int32_t active_ticks,
+    int32_t highlight_start_tick,
+    uint8_t media_r,
+    uint8_t media_g,
+    uint8_t media_b,
+    uint8_t has_media_tint,
+    uint32_t* out_argb,
+    double* out_scale_y,
+    int32_t tick_cap) noexcept
+{
+    if (!out_argb || !out_scale_y || tick_count <= 0) return VN_ERR_INVALID_ARG;
+    if (tick_cap < tick_count) return VN_ERR_BUFFER_TOO_SMALL;
+
+    int32_t clamped_active = std::clamp(active_ticks, 0, tick_count);
+    (void)highlight_start_tick;
+
+    // Exact match with MediaPlayback.ProgressBarGradient:
+    // Start (left) = vibrantTargetColor (or White when no media tint)
+    // End (right)  = progressDarkColor  (vibrantTargetColor * 0.65, or SecondaryColor 0xCC when no media tint)
+    double start_r = has_media_tint ? static_cast<double>(media_r) : 255.0;
+    double start_g = has_media_tint ? static_cast<double>(media_g) : 255.0;
+    double start_b = has_media_tint ? static_cast<double>(media_b) : 255.0;
+
+    double end_r = has_media_tint ? (start_r * 0.65) : 204.0;
+    double end_g = has_media_tint ? (start_g * 0.65) : 204.0;
+    double end_b = has_media_tint ? (start_b * 0.65) : 204.0;
+
+    int32_t denom = std::max(1, clamped_active - 1);
+
+    for (int32_t i = 0; i < tick_count; ++i) {
+        if (i >= clamped_active) {
+            out_argb[i] = 0x38FFFFFFu;
+            out_scale_y[i] = 0.86;
+            continue;
+        }
+
+        double t = (clamped_active <= 1) ? 0.0 : (static_cast<double>(i) / static_cast<double>(denom));
+        double r = start_r + (end_r - start_r) * t;
+        double g = start_g + (end_g - start_g) * t;
+        double b = start_b + (end_b - start_b) * t;
+
+        uint32_t ur = static_cast<uint32_t>(std::clamp(std::lround(r), 0L, 255L));
+        uint32_t ug = static_cast<uint32_t>(std::clamp(std::lround(g), 0L, 255L));
+        uint32_t ub = static_cast<uint32_t>(std::clamp(std::lround(b), 0L, 255L));
+        out_argb[i] = (0xFFu << 24) | (ur << 16) | (ug << 8) | ub;
+
+        int32_t dist_from_edge = (clamped_active - 1) - i;
+        if (dist_from_edge == 0) out_scale_y[i] = 1.18;
+        else if (dist_from_edge == 1) out_scale_y[i] = 1.12;
+        else if (dist_from_edge == 2) out_scale_y[i] = 1.06;
+        else out_scale_y[i] = 1.0;
+    }
+
+    return VN_OK;
+}
+
+VN_EXPORT int32_t __stdcall vn_animation_compute_volume_overscroll_spring(
+    double current_volume,
+    double step_delta,
+    VnVolumeHudOverscrollOut* out_overscroll) noexcept
+{
+    if (!out_overscroll) return VN_ERR_INVALID_ARG;
+    double vol = std::isfinite(current_volume) ? std::clamp(current_volume, 0.0, 1.0) : 0.0;
+    double delta = std::isfinite(step_delta) ? step_delta : 0.0;
+
+    double raw = vol + delta;
+    if (raw > 1.0001) {
+        double intensity = std::clamp((raw - 1.0) / 0.15, 0.35, 1.0);
+        out_overscroll->scale_x = 1.0 + 0.055 * intensity;
+        out_overscroll->scale_y = 1.0 - 0.035 * intensity;
+        out_overscroll->translate_x = 4.5 * intensity;
+        out_overscroll->origin_x = 0.0;
+    } else if (raw < -0.0001) {
+        double intensity = std::clamp((-raw) / 0.15, 0.35, 1.0);
+        out_overscroll->scale_x = 1.0 - 0.045 * intensity;
+        out_overscroll->scale_y = 1.0 + 0.030 * intensity;
+        out_overscroll->translate_x = -4.5 * intensity;
+        out_overscroll->origin_x = 1.0;
+    } else {
+        out_overscroll->scale_x = 1.0;
+        out_overscroll->scale_y = 1.0;
+        out_overscroll->translate_x = 0.0;
+        out_overscroll->origin_x = 0.5;
+    }
+    return VN_OK;
+}
+
+VN_EXPORT int32_t __stdcall vn_animation_compute_volume_hud_transition(
+    uint8_t entering,
+    uint8_t island_mode,
+    uint8_t enable_blur,
+    double collapsed_width,
+    double collapsed_height,
+    double collapsed_radius,
+    VnVolumeHudTransitionParamsOut* out_params) noexcept
+{
+    if (!out_params) return VN_ERR_INVALID_ARG;
+
+    double base_w = (std::isfinite(collapsed_width) && collapsed_width > 0.0) ? collapsed_width : 196.0;
+    double base_h = (std::isfinite(collapsed_height) && collapsed_height > 0.0) ? collapsed_height : 32.0;
+    double base_r = (std::isfinite(collapsed_radius) && collapsed_radius >= 0.0) ? collapsed_radius : 14.0;
+
+    constexpr double kExtraWidth = 44.0;
+    constexpr double kExtraHeight = 20.0;
+
+    if (entering != 0) {
+        double target_w = base_w + kExtraWidth;
+        double target_h = base_h + kExtraHeight;
+        double target_r = (island_mode != 0) ? (target_h * 0.5) : std::max(base_r, 18.0);
+
+        out_params->hud_from_scale_x = 0.86;
+        out_params->hud_from_scale_y = 0.78;
+        out_params->hud_to_scale_x = 1.0;
+        out_params->hud_to_scale_y = 1.0;
+        out_params->hud_from_translate_y = -6.0;
+        out_params->hud_to_translate_y = 0.0;
+        out_params->hud_from_blur = (enable_blur != 0) ? 10.0 : 0.0;
+        out_params->hud_to_blur = 0.0;
+        out_params->media_to_scale = 0.76;
+        out_params->media_to_blur = (enable_blur != 0) ? 7.0 : 0.0;
+        out_params->target_width = target_w;
+        out_params->target_height = target_h;
+        out_params->target_corner_radius = target_r;
+        out_params->morph_duration_ms = 350;
+        out_params->fade_duration_ms = 240;
+    } else {
+        out_params->hud_from_scale_x = 1.0;
+        out_params->hud_from_scale_y = 1.0;
+        out_params->hud_to_scale_x = 0.88;
+        out_params->hud_to_scale_y = 0.76;
+        out_params->hud_from_translate_y = 0.0;
+        out_params->hud_to_translate_y = -5.5;
+        out_params->hud_from_blur = 0.0;
+        out_params->hud_to_blur = (enable_blur != 0) ? 9.0 : 0.0;
+        out_params->media_to_scale = 1.0;
+        out_params->media_to_blur = 0.0;
+        out_params->target_width = base_w;
+        out_params->target_height = base_h;
+        out_params->target_corner_radius = base_r;
+        out_params->morph_duration_ms = 340;
+        out_params->fade_duration_ms = 220;
+    }
+
+    return VN_OK;
+}
+
 } // extern "C"

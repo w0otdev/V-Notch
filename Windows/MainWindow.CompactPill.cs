@@ -72,7 +72,17 @@ public partial class MainWindow
             !_compactPillArbiter.CanRestoreMedia(_compactPillArbiter.Revision)) return;
         EnforceCompactPresentationOwner();
         AnimateCompactWidth(_collapsedWidth, _dur350, _easeExpOut6, 0);
+        NotchBorder.BeginAnimation(HeightProperty, null);
+        NotchBorder.Height = _collapsedHeight;
         CompactThumbnailBorder.BeginAnimation(OpacityProperty, null);
+        CompactThumbnailScale.BeginAnimation(ScaleTransform.ScaleXProperty, null);
+        CompactThumbnailScale.BeginAnimation(ScaleTransform.ScaleYProperty, null);
+        CompactThumbnailScale.ScaleX = CompactThumbnailScale.ScaleY = 1.0;
+        if (MusicCompactContentBlur != null)
+        {
+            MusicCompactContentBlur.BeginAnimation(System.Windows.Media.Effects.BlurEffect.RadiusProperty, null);
+            MusicCompactContentBlur.Radius = 0;
+        }
         CompactThumbnailBorder.Opacity = 1;
         CompactThumbnailBorder.Visibility = Visibility.Visible;
         ShowMusicVisualizer();
@@ -163,6 +173,7 @@ public partial class MainWindow
         };
 
         NotchBorder.BeginAnimation(WidthProperty, anim, HandoffBehavior.SnapshotAndReplace);
+        BeginGlassHoverMotion(anim);
     }
 
     private bool IsCompactSlotStale(int token) => !_compactPillArbiter.IsTokenCurrent(token);

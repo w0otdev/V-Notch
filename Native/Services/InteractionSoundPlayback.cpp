@@ -4,13 +4,13 @@
 #include <array>
 #include <cmath>
 #include <cstdint>
-#include <vector>
+#include <cstring>
 
 #pragma comment(lib, "winmm.lib")
 
-// Interaction sound pacing and playback. The gate keeps the same anti-spam rules as before (global gate,
-// per-cue cooldown, burst back-off, no immediate repeat of a variant); playback gain is applied to the PCM
-// samples only, never to the system or media volume.
+// Interaction sound pacing and low-latency waveOut playback. All 60 cue/variant waveforms are synthesized once
+// into a static PCM table, and a persistent HWAVEOUT stream with pre-prepared WAVEHDR slots submits buffers
+// directly without PlaySoundW thread/header marshalling overhead or cold-start clipping.
 
 extern "C" int32_t vn_interaction_sounds_create_wave(int32_t cue, int32_t variant, uint8_t* out_buf, int32_t out_cap, int32_t* out_len);
 
@@ -19,12 +19,16 @@ namespace vnotch::services::interaction {
 constexpr int32_t kCueCount = 10;
 constexpr int32_t kVariantCount = 6;
 constexpr int32_t kWaveHeaderBytes = 44;
-constexpr int32_t kWaveCapacity = 8192;
+constexpr int32_t kWaveCapacity = 16384;
+constexpr int32_t kMaxSamples = (kWaveCapacity - kWaveHeaderBytes) / 2;
+constexpr int32_t kSampleRate = 44100;
+constexpr int32_t kVoiceSlots = 4;
+
 constexpr int64_t kGlobalGateMs = 65;
-constexpr int64_t kBurstWindowMs = 220;
+constexpr int64_t kBurstWindowMs = 120;
 constexpr int32_t kBurstMax = 6;
-constexpr int32_t kBurstSuppressFrom = 3;
-constexpr int64_t kBurstStepMs = 35;
+constexpr int32_t kBurstSuppressFrom = 4;
+constexpr int64_t kBurstStepMs = 20;
 constexpr int64_t kNeverPlayed = INT64_MIN / 2;
 
 enum Cue : int32_t { kClick, kToggleOn, kToggleOff, kNavigate, kSelect, kSlider, kMenu, kConfirm, kDelete, kTransport };
@@ -42,19 +46,78 @@ struct VnInteractionGateState {
 constexpr int64_t SameCueCooldownMs(int32_t cue, bool has_override) noexcept {
     if (has_override) return kGlobalGateMs;
     switch (cue) {
-        case kSlider: return 130;
+        case kSlider: return 95;
         case kConfirm:
-        case kDelete: return 180;
+        case kDelete: return 140;
         case kToggleOn:
         case kToggleOff:
-        case kNavigate: return 140;
-        default: return 110;
+        case kNavigate: return 105;
+        default: return 85;
     }
 }
 
+struct CachedWave {
+    int16_t samples[kMaxSamples];
+    int32_t sample_count;
+};
+
+INIT_ONCE g_cache_once = INIT_ONCE_STATIC_INIT;
+CachedWave g_wave_cache[kCueCount][kVariantCount]{};
+
+BOOL CALLBACK InitWaveCache(PINIT_ONCE, PVOID, PVOID*) noexcept {
+    uint8_t raw[kWaveCapacity];
+    for (int32_t c = 0; c < kCueCount; ++c) {
+        for (int32_t v = 0; v < kVariantCount; ++v) {
+            int32_t len = 0;
+            if (vn_interaction_sounds_create_wave(c, v, raw, kWaveCapacity, &len) == VN_OK && len > kWaveHeaderBytes) {
+                const int32_t count = std::min(kMaxSamples, (len - kWaveHeaderBytes) / 2);
+                std::memcpy(g_wave_cache[c][v].samples, raw + kWaveHeaderBytes, static_cast<size_t>(count) * sizeof(int16_t));
+                g_wave_cache[c][v].sample_count = count;
+            }
+        }
+    }
+    return TRUE;
+}
+
+struct VoiceSlot {
+    WAVEHDR header{};
+    int16_t pcm[kMaxSamples]{};
+    bool prepared = false;
+};
+
 SRWLOCK g_play_lock = SRWLOCK_INIT;
-std::array<std::vector<uint8_t>, 2> g_buffers;
-int g_next_buffer = 0;
+HWAVEOUT g_wave_out = nullptr;
+std::array<VoiceSlot, kVoiceSlots> g_slots{};
+uint32_t g_next_slot = 0;
+
+bool EnsureWaveOutLocked() noexcept {
+    if (g_wave_out != nullptr) return true;
+    WAVEFORMATEX fmt{};
+    fmt.wFormatTag = WAVE_FORMAT_PCM;
+    fmt.nChannels = 1;
+    fmt.nSamplesPerSec = kSampleRate;
+    fmt.wBitsPerSample = 16;
+    fmt.nBlockAlign = 2;
+    fmt.nAvgBytesPerSec = kSampleRate * 2;
+    if (waveOutOpen(&g_wave_out, WAVE_MAPPER, &fmt, 0, 0, CALLBACK_NULL) != MMSYSERR_NOERROR) {
+        g_wave_out = nullptr;
+        return false;
+    }
+    return true;
+}
+
+void ResetAndCloseLocked() noexcept {
+    if (!g_wave_out) return;
+    waveOutReset(g_wave_out);
+    for (auto& slot : g_slots) {
+        if (slot.prepared) {
+            waveOutUnprepareHeader(g_wave_out, &slot.header, sizeof(WAVEHDR));
+            slot.prepared = false;
+        }
+    }
+    waveOutClose(g_wave_out);
+    g_wave_out = nullptr;
+}
 
 } // namespace vnotch::services::interaction
 
@@ -71,8 +134,6 @@ VN_EXPORT int32_t __stdcall vn_interaction_gate_reset(ia::VnInteractionGateState
     return VN_OK;
 }
 
-// Decides whether a cue may play now. random supplies the entropy for the variant pick. When allowed, the
-// state records the play. out_burst_count feeds the playback ducking.
 VN_EXPORT int32_t __stdcall vn_interaction_gate_evaluate(
     ia::VnInteractionGateState* state, int32_t cue, int64_t now_ms, uint8_t has_override, uint32_t random,
     uint8_t* out_allow, int32_t* out_variant, int32_t* out_burst_count) noexcept {
@@ -106,39 +167,74 @@ VN_EXPORT int32_t __stdcall vn_interaction_gate_evaluate(
     return VN_OK;
 }
 
-// Plays cue/variant asynchronously, replacing any sound still playing. volume is 0..1; ducking follows burst_count.
 VN_EXPORT int32_t __stdcall vn_interaction_play(int32_t cue, int32_t variant, float volume, int32_t burst_count) noexcept {
     if (cue < 0 || cue >= ia::kCueCount || variant < 0 || variant >= ia::kVariantCount || !std::isfinite(volume)) return VN_ERR_INVALID_ARG;
-    uint8_t wave[ia::kWaveCapacity];
-    int32_t length = 0;
-    if (vn_interaction_sounds_create_wave(cue, variant, wave, static_cast<int32_t>(sizeof(wave)), &length) != VN_OK ||
-        length <= ia::kWaveHeaderBytes || length > ia::kWaveCapacity)
-        return VN_ERR_FAIL;
 
-    const float duck = burst_count > 0 ? std::max(0.45f, 1.0f - static_cast<float>(burst_count) * 0.12f) : 1.0f;
+    InitOnceExecuteOnce(&ia::g_cache_once, ia::InitWaveCache, nullptr, nullptr);
+    const ia::CachedWave& cached = ia::g_wave_cache[cue][variant];
+    if (cached.sample_count <= 0) return VN_ERR_FAIL;
+
+    const float duck = burst_count > 0 ? std::max(0.82f, 1.0f - static_cast<float>(burst_count) * 0.035f) : 1.0f;
     const float gain = std::clamp(volume, 0.0f, 1.0f) * duck;
-    auto* samples = reinterpret_cast<int16_t*>(wave + ia::kWaveHeaderBytes);
-    const int32_t sample_count = (length - ia::kWaveHeaderBytes) / static_cast<int32_t>(sizeof(int16_t));
-    for (int32_t i = 0; i < sample_count; ++i)
-        samples[i] = static_cast<int16_t>(std::clamp(std::lrintf(static_cast<float>(samples[i]) * gain), -32768L, 32767L));
 
-    try {
-        AcquireSRWLockExclusive(&ia::g_play_lock);
-        std::vector<uint8_t>& buffer = ia::g_buffers[static_cast<size_t>(ia::g_next_buffer)];
-        ia::g_next_buffer ^= 1;
-        buffer.assign(wave, wave + length);
-        // SND_MEMORY|SND_ASYNC reads the image while playing, so the buffer stays alive until the next play.
-        const BOOL started = PlaySoundW(reinterpret_cast<LPCWSTR>(buffer.data()), nullptr, SND_MEMORY | SND_ASYNC | SND_NODEFAULT);
-        ReleaseSRWLockExclusive(&ia::g_play_lock);
-        return started ? VN_OK : VN_ERR_FAIL;
-    } catch (...) {
+    AcquireSRWLockExclusive(&ia::g_play_lock);
+    if (!ia::EnsureWaveOutLocked()) {
         ReleaseSRWLockExclusive(&ia::g_play_lock);
         return VN_ERR_FAIL;
     }
+
+    ia::VoiceSlot* chosen = nullptr;
+    for (uint32_t attempt = 0; attempt < ia::kVoiceSlots; ++attempt) {
+        ia::VoiceSlot& candidate = ia::g_slots[(ia::g_next_slot + attempt) % ia::kVoiceSlots];
+        if (!candidate.prepared || (candidate.header.dwFlags & WHDR_DONE) != 0) {
+            chosen = &candidate;
+            ia::g_next_slot = (ia::g_next_slot + attempt + 1) % ia::kVoiceSlots;
+            break;
+        }
+    }
+
+    if (!chosen) {
+        waveOutReset(ia::g_wave_out);
+        chosen = &ia::g_slots[ia::g_next_slot % ia::kVoiceSlots];
+        ia::g_next_slot = (ia::g_next_slot + 1) % ia::kVoiceSlots;
+    }
+
+    if (chosen->prepared) {
+        waveOutUnprepareHeader(ia::g_wave_out, &chosen->header, sizeof(WAVEHDR));
+        chosen->prepared = false;
+    }
+
+    const int32_t count = cached.sample_count;
+    for (int32_t i = 0; i < count; ++i) {
+        chosen->pcm[i] = static_cast<int16_t>(std::clamp(std::lrintf(static_cast<float>(cached.samples[i]) * gain), -32768L, 32767L));
+    }
+
+    chosen->header = {};
+    chosen->header.lpData = reinterpret_cast<LPSTR>(chosen->pcm);
+    chosen->header.dwBufferLength = static_cast<DWORD>(count * sizeof(int16_t));
+
+    MMRESULT mm = waveOutPrepareHeader(ia::g_wave_out, &chosen->header, sizeof(WAVEHDR));
+    if (mm == MMSYSERR_NOERROR) {
+        chosen->prepared = true;
+        mm = waveOutWrite(ia::g_wave_out, &chosen->header, sizeof(WAVEHDR));
+    }
+
+    if (mm != MMSYSERR_NOERROR) {
+        ia::ResetAndCloseLocked();
+        ReleaseSRWLockExclusive(&ia::g_play_lock);
+        return VN_ERR_FAIL;
+    }
+
+    ReleaseSRWLockExclusive(&ia::g_play_lock);
+    return VN_OK;
 }
 
 VN_EXPORT int32_t __stdcall vn_interaction_stop() noexcept {
-    PlaySoundW(nullptr, nullptr, 0);
+    AcquireSRWLockExclusive(&ia::g_play_lock);
+    if (ia::g_wave_out != nullptr) {
+        waveOutReset(ia::g_wave_out);
+    }
+    ReleaseSRWLockExclusive(&ia::g_play_lock);
     return VN_OK;
 }
 
