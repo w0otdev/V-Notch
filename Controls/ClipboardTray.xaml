@@ -6,7 +6,7 @@
  xmlns:primitives="clr-namespace:System.Windows.Controls.Primitives;assembly=PresentationFramework"
  xmlns:svc="clr-namespace:VNotch.Services"
  Focusable="False" Background="Transparent" Foreground="White" PreviewKeyDown="Tray_PreviewKeyDown"
- UseLayoutRounding="True" SnapsToDevicePixels="True" TextOptions.TextFormattingMode="Ideal"
+ UseLayoutRounding="True" SnapsToDevicePixels="True" TextOptions.TextFormattingMode="Display"
  TextOptions.TextRenderingMode="Grayscale" TextOptions.TextHintingMode="Animated"
  RenderOptions.BitmapScalingMode="HighQuality" RenderOptions.ClearTypeHint="Enabled"
  FontFamily="{StaticResource SFProDisplay}" FontWeight="Bold">
