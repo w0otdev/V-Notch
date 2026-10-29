@@ -153,7 +153,8 @@ public sealed class MainWindowGlassPresentationTests
             Assert.Equal(Visibility.Visible, window.GlassGrainOverlay.Visibility);
             if (gpu)
             {
-                Assert.Equal(7, Assert.IsType<BlurEffect>(window.GlassBackdropHost.Effect).Radius);
+                Assert.Null(window.GlassBackdropHost.Effect);
+                Assert.Equal(7, Field<LiquidGlassRefractionEffect>(window, "_glassRefractionEffect").BlurRadius);
                 Assert.Equal(0, window.GlassFresnelBorder.Opacity);
             }
             else
@@ -189,6 +190,7 @@ public sealed class MainWindowGlassPresentationTests
             Assert.Equal(Visibility.Collapsed, window.GlassGrainOverlay.Visibility);
             Assert.Equal(0, shadow.Opacity);
             Assert.Equal(60, shadow.BlurRadius);
+            if (gpu) Assert.Equal(0, Field<LiquidGlassRefractionEffect>(window, "_glassRefractionEffect").BlurRadius);
             Assert.Null(window.GlassBackdropHost.Effect);
             settings.NotchStyle = "default";
             Invoke(window, "ApplyLiquidGlassSkin");
@@ -267,5 +269,5 @@ public sealed class MainWindowGlassPresentationTests
         configureServices: services => services.AddSingleton<IMediaDetectionService>(new FakeMediaDetectionService()));
     private static T Field<T>(MainWindow window, string name) => (T)typeof(MainWindow).GetField(name, Private)!.GetValue(window)!;
     private static void Set(MainWindow window, string name, object value) => typeof(MainWindow).GetField(name, Private)!.SetValue(window, value);
-    private static object? Invoke(MainWindow window, string name, params object?[] args) => typeof(MainWindow).GetMethod(name, Private)!.Invoke(window, args);
+    private static void Invoke(MainWindow window, string name, params object?[] args) => typeof(MainWindow).GetMethod(name, Private)!.Invoke(window, args);
 }

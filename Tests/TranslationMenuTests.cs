@@ -161,7 +161,7 @@ public sealed class TranslationMenuTests
             combo.IsDropDownOpen = true;
             combo.IsDropDownOpen = false;
             combo.IsDropDownOpen = true;
-            var popup = Assert.IsType<Popup>(combo.Template.FindName("PART_Popup", combo));
+            Assert.IsType<Popup>(combo.Template.FindName("PART_Popup", combo));
             var surface = Assert.IsType<Border>(combo.Template.FindName("DropdownBorder", combo));
             await WpfFrameWaiter.UntilAsync(() => surface.IsVisible && surface.Opacity >= .99 && Math.Abs(surface.RenderTransform.Value.M11 - 1) < .001, "language menu settles after reopen", ct);
             var scroll = Assert.IsType<ScrollViewer>(surface.Child);

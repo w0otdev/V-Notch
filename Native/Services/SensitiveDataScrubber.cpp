@@ -86,7 +86,7 @@ inline bool is_scrub_escaped_quote(std::u16string_view input, int32_t index) noe
     return (backslashes & 1) != 0;
 }
 
-inline bool try_decode_scrub_field_name(std::u16string_view key, char16_t tail[32], int32_t& out_length) noexcept
+inline bool try_decode_scrub_field_name(std::u16string_view key, char16_t tail[33], int32_t& out_length) noexcept
 {
     char16_t ring[32]{};
     out_length = 0;
@@ -249,7 +249,7 @@ inline bool try_read_scrub_field(std::u16string_view input, int32_t delimiter, i
     }
 
     std::u16string_view key = input.substr(static_cast<size_t>(key_start), static_cast<size_t>(end - key_start));
-    char16_t decoded[32]{};
+    char16_t decoded[33]{};
     bool complete_name = true;
     if (quote == u'"' && key.find(u'\\') != std::u16string_view::npos)
     {
@@ -259,7 +259,8 @@ inline bool try_read_scrub_field(std::u16string_view input, int32_t delimiter, i
             return false;
         }
         complete_name = (dec_len <= 32);
-        key = std::u16string_view(decoded, static_cast<size_t>(std::min<int32_t>(dec_len, 32)));
+        const int32_t clamped = std::clamp<int32_t>(dec_len, 0, 32);
+        key = std::u16string_view(decoded, static_cast<size_t>(clamped));
     }
 
     bool password = is_scrub_password_field(key);

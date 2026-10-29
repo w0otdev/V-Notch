@@ -45,10 +45,14 @@ internal static partial class TranslationLanguages
         "ilo" => "Ilocano",
         _ => CultureInfo.GetCultureInfo(code).EnglishName
     };
-    internal static readonly Language[] All = Codes.Select(code => new Language(code, Name(code))).OrderBy(x => x.Name, StringComparer.CurrentCultureIgnoreCase).ToArray();
+    internal static readonly Language[] All = Codes.Select(code => new Language(code, FormatName(code))).OrderBy(x => x.Name, StringComparer.CurrentCultureIgnoreCase).ToArray();
     internal static bool IsSupported(string? code) => code != null && SupportedCodes.Contains(code);
-    internal static string Normalize(string? code, bool source = false) => IsSupported(code) ? code! : source ? "auto" : "vi";
-    private static string Name(string code)
+    internal static string Normalize(string? code, bool source = false)
+    {
+        if (IsSupported(code)) return code!;
+        return source ? "auto" : "vi";
+    }
+    private static string FormatName(string code)
     {
         try { var culture = CultureInfo.GetCultureInfo(code); return $"{culture.NativeName} ({code})"; }
         catch (CultureNotFoundException) { return code; }

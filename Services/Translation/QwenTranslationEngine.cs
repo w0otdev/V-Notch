@@ -46,7 +46,7 @@ internal sealed partial class QwenTranslationEngine : ILocalTranslationEngine
 
     private TranslationOptions _options = new();
     private int MaxOutputTokens => _options.OutputTokens;
-    private TranslationOptions _requestedOptions = new();
+    private TranslationOptions _requestedOptions;
     public void Configure(TranslationOptions options) => Volatile.Write(ref _requestedOptions, options);
     private void ApplyOptionsUnderGate()
     {
@@ -86,6 +86,7 @@ internal sealed partial class QwenTranslationEngine : ILocalTranslationEngine
         ws ::= [ \t\n\r]*
         """, "root");
     private static bool _nativeConfigured;
+    private static void MarkNativeConfigured() => _nativeConfigured = true;
     private static readonly JsonSerializerOptions InputJson = new() { Encoder = JavaScriptEncoder.Create(UnicodeRanges.All) };
     private static readonly IReadOnlyList<string> SpecialistStopSequences = Array.AsReadOnly(new[]
     { "<end_of_turn>", "<|endoftext|>", "<|extra_1|>" });
@@ -206,7 +207,7 @@ internal sealed partial class QwenTranslationEngine : ILocalTranslationEngine
                 string library = TranslationNativeRuntime.Load();
                 NativeLibraryConfig.All.WithCuda(false).WithVulkan(true).WithAutoFallback(true).WithLogCallback((_, _) => { });
                 NativeLibraryConfig.LLama.WithLibrary(library);
-                _nativeConfigured = true;
+                MarkNativeConfigured();
             }
         }
         try { _weights = await LLamaWeights.LoadFromFileAsync(Parameters(), ct).ConfigureAwait(false); }
@@ -236,13 +237,10 @@ internal sealed partial class QwenTranslationEngine : ILocalTranslationEngine
     private static bool TryLoadDependency(string dependency)
     {
         string systemPath = Path.Combine(Environment.SystemDirectory, dependency);
-        if (File.Exists(systemPath))
+        if (File.Exists(systemPath) && NativeLibrary.TryLoad(systemPath, out var handle))
         {
-            if (NativeLibrary.TryLoad(systemPath, out var handle))
-            {
-                NativeLibrary.Free(handle);
-                return true;
-            }
+            NativeLibrary.Free(handle);
+            return true;
         }
         if (NativeLibrary.TryLoad(dependency, typeof(QwenTranslationEngine).Assembly, DllImportSearchPath.System32, out var h1))
         {
@@ -417,7 +415,7 @@ internal sealed partial class QwenTranslationEngine : ILocalTranslationEngine
                 root.EnumerateObject().Count() == 1)
             { translation = text.GetString()!.Trim(); return true; }
         }
-        catch (JsonException) { }
+        catch (JsonException) { /* Non-JSON output is handled by the caller. */ }
         return false;
     }
 

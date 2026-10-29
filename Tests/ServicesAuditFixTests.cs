@@ -53,7 +53,7 @@ public class ServicesAuditFixTests
         }
         finally
         {
-            try { Directory.Delete(dir, recursive: true); } catch (IOException) { }
+            try { Directory.Delete(dir, recursive: true); } catch (IOException) { /* cleanup best-effort */ }
         }
     }
 
@@ -79,7 +79,7 @@ public class ServicesAuditFixTests
         }
         finally
         {
-            try { Directory.Delete(dir, recursive: true); } catch (IOException) { }
+            try { Directory.Delete(dir, recursive: true); } catch (IOException) { /* cleanup best-effort */ }
         }
     }
 

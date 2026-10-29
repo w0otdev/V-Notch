@@ -88,10 +88,10 @@ public sealed class SmartCropInferenceAndFramingTests
     public void TextAnalysisDistinguishesFlatArtworkFromDenseContrastingEdges(bool edges) => SharedStaTestRunner.Run(() =>
     {
         var image = Image(256, 128, edges);
-        var method = typeof(SmartThumbnailCropService).GetMethod("DetectTextRegions", BindingFlags.Static | BindingFlags.NonPublic)!;
-        var regions = (System.Collections.ICollection)method.Invoke(null, [image, 256, 128])!;
-        if (edges) Assert.True(regions.Count >= 2);
-        else Assert.Empty(regions.Cast<object>());
+        var method = typeof(SmartThumbnailCropService).GetMethod("TryDetectTextCropRect", BindingFlags.Static | BindingFlags.NonPublic)!;
+        var crop = (Int32Rect?)method.Invoke(null, [image, 256, 128, 128]);
+        Assert.Equal(edges, crop.HasValue);
+        if (crop.HasValue) AssertCrop(crop.Value, 256, 128);
     });
 
     [Theory]
@@ -141,5 +141,5 @@ public sealed class SmartCropInferenceAndFramingTests
         Assert.InRange(crop.Y, 0, height - crop.Height);
     }
     private static T Get<T>(SmartThumbnailCropService service, string name) => (T)typeof(SmartThumbnailCropService).GetField(name, Private)!.GetValue(service)!;
-    private static object? Invoke(SmartThumbnailCropService service, string name, params object?[] arguments) => typeof(SmartThumbnailCropService).GetMethod(name, Private)!.Invoke(service, arguments);
+    private static object? Invoke(SmartThumbnailCropService service, string name, params object?[] arguments) => typeof(SmartThumbnailCropService).GetMethod(name, Private | BindingFlags.Static)!.Invoke(service, arguments);
 }

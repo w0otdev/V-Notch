@@ -423,7 +423,6 @@ public sealed class ClipboardTrayInteractionTests
         using var tray = new ClipboardTray();
         var window = new BackgroundWindow { Content = tray, Width = 780, Height = 300 };
         var slots = Field<SemaphoreSlim>(tray, "_thumbnailSlots");
-        bool held = false;
         try
         {
             await store.InitializeAsync();
@@ -433,17 +432,15 @@ public sealed class ClipboardTrayInteractionTests
             var second = new ClipboardCardViewModel(secondEntry);
             await slots.WaitAsync();
             await slots.WaitAsync();
-            held = true;
             tray.Attach(controller);
             Field<UiScheduledTimer>(tray, "_searchTimer").Stop();
             SetField(tray, "_queryDirty", false);
             Field<ObservableCollection<ClipboardCardViewModel>>(tray, "_cards").Add(first);
             window.Show();
             await Dispatcher.Yield(DispatcherPriority.ApplicationIdle);
-            var border = Descendants(tray).OfType<Border>().First(element => element.Width == 210 && ReferenceEquals(element.DataContext, first));
+            var border = Descendants(tray).OfType<Border>().First(element => Math.Abs(element.Width - 210) < 0.1 && ReferenceEquals(element.DataContext, first));
             border.DataContext = second;
             slots.Release(2);
-            held = false;
             var watch = Stopwatch.StartNew();
             while (second.Image == null && watch.Elapsed < TimeSpan.FromSeconds(5)) await Task.Delay(10);
             Assert.NotNull(second.Image);
@@ -452,7 +449,7 @@ public sealed class ClipboardTrayInteractionTests
         }
         finally
         {
-            if (held) slots.Release(2);
+            if (slots.CurrentCount == 0) slots.Release(2);
             window.Close();
             tray.Dispose();
             controller.Dispose();
@@ -554,7 +551,7 @@ public sealed class ClipboardTrayInteractionTests
             Assert.Equal(0.0, dot3.Opacity);
 
             // Clearing resets dots immediately
-            Invoke(tray, "ResetPinDots", true);
+            Invoke(tray, "ResetPinDots");
             Assert.Equal(0.0, dot0.Opacity);
             Assert.Equal(0.0, dot3.Opacity);
         }

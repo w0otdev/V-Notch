@@ -10,7 +10,7 @@ using VNotch.ViewModels;
 
 namespace VNotch.Controls;
 
-public partial class ClipboardTray
+public sealed partial class ClipboardTray
 {
     private sealed record ThumbnailLoad(ClipboardCardViewModel Card, CancellationTokenSource Cancellation)
     {
@@ -180,8 +180,8 @@ public partial class ClipboardTray
             }, cancellation);
             if (IsCurrent()) card.Image = image;
         }
-        catch (Exception ex) when (ex is OperationCanceledException or ObjectDisposedException) { }
-        catch (Exception ex) when (IsContentError(ex)) { }
+        catch (Exception ex) when (ex is OperationCanceledException or ObjectDisposedException) { /* Intentionally ignored. */ }
+        catch (Exception ex) when (IsContentError(ex)) { /* Intentionally ignored. */ }
         finally
         {
             if (IsCurrent()) _completedContentLoads[element] = card;
@@ -191,7 +191,7 @@ public partial class ClipboardTray
             if (acquired)
             {
                 try { _thumbnailSlots.Release(); }
-                catch (ObjectDisposedException) { }
+                catch (ObjectDisposedException) { /* Intentionally ignored. */ }
             }
             load.Cancellation.Dispose();
         }
@@ -203,7 +203,7 @@ public partial class ClipboardTray
         if (_thumbnailLoads.Remove(element, out var load))
         {
             try { load.Cancellation.Cancel(); }
-            catch (ObjectDisposedException) { }
+            catch (ObjectDisposedException) { /* Intentionally ignored. */ }
         }
         // The task owns disposal until its worker has released the slot and wiped private bytes.
     }

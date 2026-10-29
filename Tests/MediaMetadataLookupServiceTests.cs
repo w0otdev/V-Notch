@@ -275,7 +275,7 @@ public sealed class MediaMetadataLookupServiceTests
         Assert.Null(await service.TrySearchYouTubeByTitleAsync("Test song"));
         Assert.Null(await service.TryGetSoundCloudArtworkUrlAsync("Test song"));
         using var cancelled = new CancellationTokenSource();
-        cancelled.Cancel();
+        await cancelled.CancelAsync();
         Assert.Null(await service.TrySearchYouTubeByTitleAsync("Test song", ct: cancelled.Token));
     }
 

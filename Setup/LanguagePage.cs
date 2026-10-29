@@ -14,9 +14,9 @@ public class LanguagePage : UserControl, ISetupAnimatedPage
     private readonly TextBlock _description;
     private readonly ScrollViewer _languageListScrollViewer;
     private readonly Dictionary<string, Border> _cards = new();
-    private string _selectedLanguage = "en";
+    private string _selectedLanguage;
 
-    private class LanguageMetadata
+    private sealed class LanguageMetadata
     {
         public string Flag { get; set; } = "";
         public string Name { get; set; } = "";
@@ -311,13 +311,13 @@ public class LanguagePage : UserControl, ISetupAnimatedPage
         if (animate)
         {
             var borderAnim = new ColorAnimation(
-                ((SolidColorBrush)targetBorder).Color,
+                targetBorder.Color,
                 TimeSpan.FromMilliseconds(200))
             {
                 EasingFunction = new QuadraticEase { EasingMode = EasingMode.EaseOut }
             };
             var bgAnim = new ColorAnimation(
-                ((SolidColorBrush)targetBg).Color,
+                targetBg.Color,
                 TimeSpan.FromMilliseconds(200))
             {
                 EasingFunction = new QuadraticEase { EasingMode = EasingMode.EaseOut }

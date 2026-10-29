@@ -248,7 +248,7 @@ public sealed class LiveTranslationTests
         using var cancellation = new CancellationTokenSource();
         var first = service.TranslateAsync("cancel", "en", "vi", cancellation.Token);
         await entered.Task.WaitAsync(TimeSpan.FromSeconds(3));
-        cancellation.Cancel();
+        await cancellation.CancelAsync();
         await Assert.ThrowsAnyAsync<OperationCanceledException>(() => first);
         Assert.Equal("next", (await service.TranslateAsync("next", "en", "vi", default)).Text);
     }
@@ -264,7 +264,7 @@ public sealed class LiveTranslationTests
         await entered.Task;
         using var token = new CancellationTokenSource();
         var queued = service.TranslateAsync("queued", "en", "vi", token.Token);
-        token.Cancel();
+        await token.CancelAsync();
         await Assert.ThrowsAnyAsync<OperationCanceledException>(() => queued);
         Assert.Equal(1, engine.Calls);
         release.SetResult("first");
@@ -331,8 +331,8 @@ public sealed class LiveTranslationTests
     private sealed class FakeEngine(Func<string, string, string, CancellationToken, Task<string>> translate) : ILocalTranslationEngine
     {
         internal int Calls;
-        public Task<string> TranslateAsync(string text, string source, string target, CancellationToken token)
-        { Interlocked.Increment(ref Calls); return translate(text, source, target, token); }
+        public Task<string> TranslateAsync(string text, string sourceLanguage, string targetLanguage, CancellationToken cancellationToken)
+        { Interlocked.Increment(ref Calls); return translate(text, sourceLanguage, targetLanguage, cancellationToken); }
         public void ReleaseIdleResources() { }
         public void Dispose() { }
     }

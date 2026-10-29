@@ -63,18 +63,18 @@ public sealed class ServiceOptimizationTests
     [InlineData(257)]
     public void BlurKernelsAllocateNothingAfterPoolWarmup(int width)
     {
-        byte[] source = new byte[width * 31 * 4], target = new byte[source.Length];
-        Array.Fill(source, (byte)255);
-        for (int i = 0; i < 10; i++) { FastBlurService.BoxBlurHorizontal(source, target, width, 31, 20); FastBlurService.BoxBlurVertical(target, source, width, 31, 20); }
+        byte[] input = new byte[width * 31 * 4], scratch = new byte[input.Length];
+        Array.Fill(input, (byte)255);
+        for (int i = 0; i < 10; i++) { FastBlurService.BoxBlurHorizontal(input, scratch, width, 31, 20); FastBlurService.BoxBlurVertical(scratch, input, width, 31, 20); }
         long before = GC.GetAllocatedBytesForCurrentThread();
         for (int i = 0; i < 10; i++)
         {
-            FastBlurService.BoxBlurHorizontal(source, target, width, 31, 20);
-            FastBlurService.BoxBlurVertical(target, source, width, 31, 20);
+            FastBlurService.BoxBlurHorizontal(input, scratch, width, 31, 20);
+            FastBlurService.BoxBlurVertical(scratch, input, width, 31, 20);
         }
         long allocated = GC.GetAllocatedBytesForCurrentThread() - before;
         Assert.Equal(0, allocated);
-        Assert.All(source, value => Assert.Equal(255, value));
+        Assert.All(input, value => Assert.Equal(255, value));
     }
 
     [Theory]
@@ -261,23 +261,23 @@ public sealed class ServiceOptimizationTests
     private sealed class ChunkedStream(byte[] bytes) : MemoryStream(bytes)
     {
         public override bool CanSeek => false;
-        public override ValueTask<int> ReadAsync(Memory<byte> buffer, CancellationToken token = default) => base.ReadAsync(buffer[..Math.Min(3, buffer.Length)], token);
+        public override ValueTask<int> ReadAsync(Memory<byte> buffer, CancellationToken cancellationToken = default) => base.ReadAsync(buffer[..Math.Min(3, buffer.Length)], cancellationToken);
     }
 
     private sealed class SlowStream : MemoryStream
     {
         public override bool CanSeek => false;
-        public override async ValueTask<int> ReadAsync(Memory<byte> buffer, CancellationToken token = default)
+        public override async ValueTask<int> ReadAsync(Memory<byte> buffer, CancellationToken cancellationToken = default)
         {
             var tcs = new TaskCompletionSource<int>(TaskCreationOptions.RunContinuationsAsynchronously);
-            await using var reg = token.Register(() => tcs.TrySetCanceled(token));
+            await using var reg = cancellationToken.Register(() => tcs.TrySetCanceled(cancellationToken));
             return await tcs.Task;
         }
     }
 
     private sealed class SlowHandler : HttpMessageHandler
     {
-        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken token) =>
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken) =>
             Task.FromResult(new HttpResponseMessage { Content = new StreamContent(new SlowStream()) });
     }
 }

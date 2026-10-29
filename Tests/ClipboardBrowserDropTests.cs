@@ -37,7 +37,7 @@ public sealed class ClipboardBrowserDropTests
             using var connection = await listener.AcceptTcpClientAsync(timeout.Token);
             await using var stream = connection.GetStream();
             using var reader = new StreamReader(stream, leaveOpen: true);
-            while (await reader.ReadLineAsync(timeout.Token) is { Length: > 0 }) { }
+            while (await reader.ReadLineAsync(timeout.Token) is { Length: > 0 }) { /* drain headers */ }
             byte[] header = System.Text.Encoding.ASCII.GetBytes($"HTTP/1.1 200 OK\r\nContent-Type: image/png\r\nContent-Length: {png.Length}\r\nConnection: close\r\n\r\n");
             await stream.WriteAsync(header, timeout.Token);
             await stream.WriteAsync(png, timeout.Token);
@@ -97,7 +97,7 @@ public sealed class ClipboardBrowserDropTests
         Assert.Equal(ClipboardKind.Image, direct.Kind);
         Assert.NotNull(direct.Capture.ImagePng);
         var html = new DataObject();
-        html.SetData(DataFormats.Html, "<img src=\"data:image/png;base64," + Convert.ToBase64String(direct.Capture.ImagePng!) + "\">");
+        html.SetData(DataFormats.Html, "<img src=\"data:image/png;base64," + Convert.ToBase64String(direct.Capture.ImagePng) + "\">");
         var capture = await ClipboardDropReader.ResolveAsync(ClipboardDropReader.Read(html)!);
         using var stream = new MemoryStream(capture.ImagePng!);
         var decoder = BitmapDecoder.Create(stream, BitmapCreateOptions.None, BitmapCacheOption.OnLoad);

@@ -48,9 +48,9 @@ public class MediaDetectionServiceLifecycleTests
             service.Dispose();
             Assert.True(elapsed.ElapsedMilliseconds < 200, "Dispose blocked the dispatcher.");
             Assert.True(service.IsDisposed);
-            var shutdown = service.DisposeAsync().AsTask();
+            var shutdown = BeginDispose(service);
             Assert.False(shutdown.IsCompleted);
-            Assert.Same(shutdown, service.DisposeAsync().AsTask());
+            Assert.Same(shutdown, BeginDispose(service));
             release.TrySetResult();
             await shutdown.WaitAsync(TimeSpan.FromSeconds(5));
             await init;
@@ -63,6 +63,8 @@ public class MediaDetectionServiceLifecycleTests
             await service.DisposeAsync();
         }
     });
+
+    private static Task BeginDispose(MediaDetectionService service) => service.DisposeAsync().AsTask();
 
     [Theory]
     [InlineData(false)]
@@ -125,7 +127,7 @@ public class MediaDetectionServiceLifecycleTests
             var pending = update(forceRefresh, cts.Token);
             var observation = Task.Delay(650);
             Assert.Same(observation, await Task.WhenAny(pending, observation));
-            cts.Cancel();
+            await cts.CancelAsync();
             await Assert.ThrowsAnyAsync<OperationCanceledException>(() => pending);
         }
         finally { updateLock.Release(); }
@@ -226,7 +228,7 @@ public class MediaDetectionServiceLifecycleTests
         Assert.NotNull(initTask);
 
         // Dispose while initialization is still awaiting RequestAsync
-        service.Dispose();
+        ((IDisposable)service).Dispose();
 
         Assert.True(service.IsDisposed);
 
@@ -254,7 +256,7 @@ public class MediaDetectionServiceLifecycleTests
         await service.StopAsync();
         Assert.False(reconnect.IsWaiting);
         service.Start();
-        await service.InitTask!;
+        await service.InitTask;
         reconnect.Start();
         Assert.True(reconnect.IsWaiting);
         await service.DisposeAsync();

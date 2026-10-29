@@ -22,3 +22,12 @@ indent_size = 2
 
 [*.{md,svg}]
 trim_trailing_whitespace = false
+
+# Architectural rules aligned with C++26 Native-First & Zero-LINQ guidelines
+[*.cs]
+dotnet_diagnostic.S6640.severity = none
+dotnet_diagnostic.S3267.severity = none
+dotnet_diagnostic.S4200.severity = none
+
+[Tests/**/*.cs]
+dotnet_diagnostic.CA1707.severity = none

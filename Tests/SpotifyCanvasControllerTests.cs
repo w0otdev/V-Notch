@@ -14,8 +14,6 @@ namespace VNotch.Tests;
 
 public sealed class SpotifyCanvasControllerTests
 {
-    private const string CanvasTestUrl = "https://canvaz.scdn.co/upload/video/test.mp4";
-
     private static NotchSettings OptedInSettings() => new()
     {
         EnableSpotifyCanvas = true,
@@ -42,10 +40,10 @@ public sealed class SpotifyCanvasControllerTests
         public Uri? CurrentSource { get; set; }
         public long CurrentSourceVersion { get; set; }
 
-        public event EventHandler? MediaOpened;
-        public event EventHandler? MediaEnded;
-        public event EventHandler<string?>? MediaFailed;
-        public event EventHandler? Unloaded;
+        public event EventHandler? MediaOpened { add { /* no-op */ } remove { /* no-op */ } }
+        public event EventHandler? MediaEnded { add { /* no-op */ } remove { /* no-op */ } }
+        public event EventHandler<string?>? MediaFailed { add { /* no-op */ } remove { /* no-op */ } }
+        public event EventHandler? Unloaded { add { /* no-op */ } remove { /* no-op */ } }
 
         public void SetPlaybackState(bool isPlaying) => SetPlaybackStateCalls.Add(isPlaying);
 
@@ -82,11 +80,6 @@ public sealed class SpotifyCanvasControllerTests
         public void HideBlurFallback() => HideBlurFallbackCount++;
         public void RestoreBlurFallback() => RestoreBlurFallbackCount++;
         public void Dispose() => DisposeCount++;
-
-        public void TriggerMediaOpened() => MediaOpened?.Invoke(this, EventArgs.Empty);
-        public void TriggerMediaEnded() => MediaEnded?.Invoke(this, EventArgs.Empty);
-        public void TriggerMediaFailed(string error) => MediaFailed?.Invoke(this, error);
-        public void TriggerUnloaded() => Unloaded?.Invoke(this, EventArgs.Empty);
     }
 
     private static SpotifyCanvasService CreateStubService(Func<HttpRequestMessage, HttpResponseMessage> handlerFunc)

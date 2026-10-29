@@ -169,7 +169,7 @@ public partial class SettingsWindow
                     finally { _isSyncingCameraVisibility = false; }
                 }
                 _settings.VisibleNavTabs = string.Join(",", visibleTokens);
-                _settingsAppService.ApplyAsync(_settings).SafeFireAndForget("SETTINGS-NAVTABS");
+                _settingsAppService.ApplyAsync(_settings, _translationDownload?.Token ?? CancellationToken.None).SafeFireAndForget("SETTINGS-NAVTABS");
                 (Application.Current.MainWindow as MainWindow)?.ApplyNavTabOrderAndVisibility();
             };
             check.Unchecked += (s, e) =>
@@ -182,7 +182,7 @@ public partial class SettingsWindow
                     finally { _isSyncingCameraVisibility = false; }
                 }
                 _settings.VisibleNavTabs = string.Join(",", visibleTokens);
-                _settingsAppService.ApplyAsync(_settings).SafeFireAndForget("SETTINGS-NAVTABS");
+                _settingsAppService.ApplyAsync(_settings, _translationDownload?.Token ?? CancellationToken.None).SafeFireAndForget("SETTINGS-NAVTABS");
                 (Application.Current.MainWindow as MainWindow)?.ApplyNavTabOrderAndVisibility();
             };
             leftStack.Children.Add(check);
@@ -510,7 +510,7 @@ public partial class SettingsWindow
             orderTokens.Insert(_settingsNavTargetSlot, movedToken);
 
             _settings.NavTabOrder = string.Join(",", orderTokens);
-            _settingsAppService.ApplyAsync(_settings).SafeFireAndForget("SETTINGS-NAVORDER");
+            _settingsAppService.ApplyAsync(_settings, _translationDownload?.Token ?? CancellationToken.None).SafeFireAndForget("SETTINGS-NAVORDER");
             (Application.Current.MainWindow as MainWindow)?.ApplyNavTabOrderAndVisibility();
         }
 

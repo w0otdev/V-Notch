@@ -196,7 +196,7 @@ public sealed class SpotlightUsageStoreTests : IDisposable
         Assert.Equal(1, maxActiveWriters);
         Assert.Equal([1, 2], persistedCounts);
 
-        using JsonDocument persisted = JsonDocument.Parse(File.ReadAllText(_path));
+        using JsonDocument persisted = JsonDocument.Parse(await File.ReadAllTextAsync(_path));
         Assert.Equal(
             2,
             persisted.RootElement.GetProperty("app:one").GetProperty("Count").GetInt32());

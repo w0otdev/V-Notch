@@ -17,7 +17,7 @@ public partial class SpotlightWindow
         if (item?.Kind == SpotlightResultKind.Application)
         {
             AddMenuItem(menu, Loc.Get(preferences.IsPinned(item.Target) ? "spotlight.unpin" : "spotlight.pin"),
-                () => TogglePinnedApplication(item));
+                () => _ = TogglePinnedApplication(item));
             AddMenuItem(menu, Loc.Get("spotlight.alias"), () => EditSpotlightPreferences(item));
         }
         if (item?.Kind is SpotlightResultKind.File or SpotlightResultKind.Folder)
@@ -27,7 +27,7 @@ public partial class SpotlightWindow
                 string? folder = item.Kind == SpotlightResultKind.Folder ? item.Target : Path.GetDirectoryName(item.Target);
                 if (string.IsNullOrEmpty(folder)) return;
                 preferences.SetExcludedFolders(preferences.GetExcludedFolders().Append(folder));
-                RefreshPersonalizedResults();
+                _ = RefreshPersonalizedResults();
             });
         }
         AddMenuItem(menu, Loc.Get("spotlight.excludedFolders"), () => EditSpotlightPreferences(null));
@@ -37,7 +37,7 @@ public partial class SpotlightWindow
 
     private long _pinFeedbackVersion;
 
-    private async void TogglePinnedApplication(SpotlightSearchItem item)
+    private async Task TogglePinnedApplication(SpotlightSearchItem item)
     {
         try
         {
@@ -59,9 +59,9 @@ public partial class SpotlightWindow
             long version = ++_pinFeedbackVersion;
             int session = _animationGeneration;
             string query = SearchBox.Text;
-            if (!AnimationConfig.ReduceMotion) await Task.Delay(pinned ? 240 : 160);
+            if (!AnimationConfig.ReduceMotion) await Task.Delay(pinned ? 240 : 160, CancellationToken.None);
             if (version != _pinFeedbackVersion || session != _animationGeneration || query != SearchBox.Text) return;
-            RefreshPersonalizedResults();
+            await RefreshPersonalizedResults();
         }
         catch (Exception ex)
         {
@@ -69,7 +69,7 @@ public partial class SpotlightWindow
         }
     }
 
-    private async void RefreshPersonalizedResults()
+    private async Task RefreshPersonalizedResults()
     {
         try
         {
@@ -102,7 +102,7 @@ public partial class SpotlightWindow
         try
         {
             var dialog = new Windows.SpotlightPreferencesDialog(preferences, item) { Owner = this };
-            if (dialog.ShowDialog() == true) RefreshPersonalizedResults();
+            if (dialog.ShowDialog() == true) _ = RefreshPersonalizedResults();
         }
         finally
         {

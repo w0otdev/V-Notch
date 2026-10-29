@@ -25,10 +25,6 @@ public partial class SpotlightWindow : Window
     private const double ExpandedCornerRadius = 14;
     private const double NotchShadowBlurRadius = 20;
     private const double NotchShadowDepth = 4;
-    private const double NotchShadowOpacity = 0.6;
-    private const double SpotlightShadowBlurRadius = 24;
-    private const double SpotlightShadowDepth = 5;
-    private const double SpotlightShadowOpacity = 0.48;
     private const int PageJump = 4;
     private const double StaleResultsOpacity = 0.55;
     private static readonly TimeSpan MorphDuration = TimeSpan.FromMilliseconds(560);
@@ -157,13 +153,10 @@ public partial class SpotlightWindow : Window
                 {
                     SetResultsDimmed(false);
                     // The search finished empty; a queued Enter must never fire, but shake to notify
-                    if (_viewModel.Results.Count == 0)
+                    if (_viewModel.Results.Count == 0 && _pendingLaunchQuery != null)
                     {
-                        if (_pendingLaunchQuery != null)
-                        {
-                            _pendingLaunchQuery = null;
-                            PlayShake();
-                        }
+                        _pendingLaunchQuery = null;
+                        PlayShake();
                     }
                 }
                 RefreshStatus();
@@ -943,8 +936,8 @@ public partial class SpotlightWindow : Window
             if (TryCopyToClipboard(selected.Target)) HideSpotlight();
             return;
         }
-
         string launchQuery = SearchBox.Text;
+
         int launchGeneration = ++_launchGeneration;
         int sessionGeneration = _animationGeneration;
         _launchInFlight = true;
@@ -1051,7 +1044,6 @@ public partial class SpotlightWindow : Window
         }
         if (_launchInFlight || !SpotlightLauncher.CanReveal(selected)) return;
 
-        string launchQuery = SearchBox.Text;
         int launchGeneration = ++_launchGeneration;
         int sessionGeneration = _animationGeneration;
         _launchInFlight = true;
@@ -1864,7 +1856,7 @@ public partial class SpotlightWindow : Window
             ShellTopCornerRadius = ExpandedCornerRadius;
             ShellContent.Opacity = 1;
             ContentTranslate.Y = 0;
-            RestoreShadow(animate: false);
+            RestoreShadow();
             // Commit the final no-motion frame before handing source visibility
             return () => SetNotchMorphActive(true);
         }
@@ -1904,17 +1896,14 @@ public partial class SpotlightWindow : Window
         Shell.VerticalAlignment = VerticalAlignment.Top;
         if (morphsFromNotch)
         {
-            SetMorphShadow(NotchShadowBlurRadius, NotchShadowDepth, NotchShadowOpacity);
+            SetMorphShadow();
             SolidColorBrush border = EnsureShellBorderBrush();
             border.BeginAnimation(Brush.OpacityProperty, null);
             border.Opacity = 0;
         }
         else
         {
-            SetMorphShadow(
-                SpotlightShadowBlurRadius,
-                SpotlightShadowDepth,
-                opacity: 0);
+            SetMorphShadow();
         }
 
         // Seed bases from the first rendered frame. WPF does not apply a new
@@ -1982,15 +1971,11 @@ public partial class SpotlightWindow : Window
             Shell.Visibility = Visibility.Visible;
             if (morphsFromNotch)
             {
-                AnimateMorphShadow(
-                    SpotlightShadowBlurRadius,
-                    SpotlightShadowDepth,
-                    SpotlightShadowOpacity,
-                    MorphDuration);
+                AnimateMorphShadow();
             }
             else
             {
-                RestoreShadow(animate: true);
+                RestoreShadow();
             }
 
             expandWidth.Completed += (_, _) =>
@@ -2056,11 +2041,7 @@ public partial class SpotlightWindow : Window
         Shell.HorizontalAlignment = HorizontalAlignment.Center;
         Shell.VerticalAlignment = VerticalAlignment.Top;
         ResetNotchMorphSnapshot();
-        AnimateMorphShadow(
-            SpotlightShadowBlurRadius,
-            SpotlightShadowDepth,
-            SpotlightShadowOpacity,
-            MorphDuration);
+        AnimateMorphShadow();
 
         // Keep the exact interrupted presentation as the base until the first
         Left = current.Left;
@@ -2204,11 +2185,7 @@ public partial class SpotlightWindow : Window
         Shell.Margin = MorphShellMargin;
         Shell.HorizontalAlignment = HorizontalAlignment.Center;
         Shell.VerticalAlignment = VerticalAlignment.Top;
-        AnimateMorphShadow(
-            NotchShadowBlurRadius,
-            NotchShadowDepth,
-            NotchShadowOpacity,
-            MorphDuration);
+        AnimateMorphShadow();
 
         double targetWidth = Math.Max(1, notch.Width);
         double targetHeight = Math.Max(1, notch.Height);
@@ -2359,7 +2336,7 @@ public partial class SpotlightWindow : Window
         // Top-aligned auto-height: the shell hugs its content inside the
         Shell.VerticalAlignment = VerticalAlignment.Top;
         Shell.RenderTransformOrigin = new Point(0.5, 0.5);
-        RestoreShadow(animate: false);
+        RestoreShadow();
         _liquidGlass?.SetAnimating(false);
         _liquidGlass?.SetIdle(true);
         UpdateGlassClip();
@@ -2508,7 +2485,7 @@ public partial class SpotlightWindow : Window
         ShellContent.Opacity = snapshot.ContentOpacity;
         ContentTranslate.Y = snapshot.ContentTranslateY;
         EnsureContentBlurEffect().Radius = snapshot.ContentBlurRadius;
-        SetMorphShadow(snapshot.ShadowBlurRadius, snapshot.ShadowDepth, snapshot.ShadowOpacity);
+        SetMorphShadow();
         return snapshot;
     }
 
@@ -2632,25 +2609,14 @@ public partial class SpotlightWindow : Window
         ShellRightEar.BeginAnimation(OpacityProperty, anim);
     }
 
-    private void RestoreShadow(bool animate)
+    private void RestoreShadow()
     {
         Shell.Effect = null;
     }
 
-    private void SetMorphShadow(double blurRadius, double shadowDepth, double opacity)
-    {
-        // No shell shadow, including when a morph snapshot is restored.
-        Shell.Effect = null;
-    }
+    private void SetMorphShadow() => RestoreShadow();
 
-    private void AnimateMorphShadow(
-        double targetBlurRadius,
-        double targetShadowDepth,
-        double targetOpacity,
-        TimeSpan duration)
-    {
-        Shell.Effect = null;
-    }
+    private void AnimateMorphShadow() => RestoreShadow();
 
     private DoubleAnimation CreateAnimation(
         double from,

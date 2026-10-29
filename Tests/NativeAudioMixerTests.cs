@@ -44,7 +44,7 @@ public sealed class NativeAudioMixerTests(ITestOutputHelper output)
         mixer.ReleaseSessionCache();
         mixer.ReleaseSessionCache();
         mixer.Dispose();
-        mixer.Dispose();
+        Assert.Null(Record.Exception(mixer.Dispose));
     }
 
     [Fact]

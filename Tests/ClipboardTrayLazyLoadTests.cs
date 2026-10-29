@@ -36,7 +36,7 @@ public sealed class ClipboardTrayLazyLoadTests
             tray.Attach(controller);
             Field<UiScheduledTimer>(tray, "_searchTimer").Stop();
             SetField(tray, "_queryDirty", false);
-            Invoke(tray, "ReconcileCards", (object)new[] { entry });
+            Invoke(tray, "ReconcilePreparedCards", (object)new[] { entry }, null);
             window.Show();
             await WpfFrameWaiter.UntilAsync(() => Field<IDictionary>(tray, "_completedContentLoads").Count == 1, "failed decode remembered");
             var element = Field<HashSet<FrameworkElement>>(tray, "_realizedCardElements").Single();
@@ -79,7 +79,7 @@ public sealed class ClipboardTrayLazyLoadTests
             tray.Attach(controller);
             Field<UiScheduledTimer>(tray, "_searchTimer").Stop();
             SetField(tray, "_queryDirty", false);
-            Invoke(tray, "ReconcileCards", (object)new[] { entry });
+            Invoke(tray, "ReconcilePreparedCards", (object)new[] { entry }, null);
             tray.BeginEntrance();
             window.Show();
             await Dispatcher.Yield(DispatcherPriority.ApplicationIdle);
@@ -112,7 +112,7 @@ public sealed class ClipboardTrayLazyLoadTests
     {
         using var tray = new ClipboardTray();
         var entries = Enumerable.Range(0, 5000).Select(i => new ClipboardEntry { Title = $"File {i}", Kind = ClipboardKind.File }).ToArray();
-        Invoke(tray, "ReconcileCards", (object)entries);
+        Invoke(tray, "ReconcilePreparedCards", (object)entries, null);
         var window = new BackgroundWindow { Content = tray, Width = 780, Height = 300 };
         try
         {
@@ -131,7 +131,7 @@ public sealed class ClipboardTrayLazyLoadTests
             // A pending request selects the completed result set, not just the old page.
             typeof(ClipboardTray).GetField("_pendingSelectAll", BindingFlags.Instance | BindingFlags.NonPublic)!
                 .SetValue(tray, ("All", ""));
-            Invoke(tray, "ReconcileCards", (object)entries.Concat(new[] { new ClipboardEntry { Kind = ClipboardKind.File } }).ToArray());
+            Invoke(tray, "ReconcilePreparedCards", (object)entries.Concat(new[] { new ClipboardEntry { Kind = ClipboardKind.File } }).ToArray(), null);
             Invoke(tray, "CompletePendingSelectAll");
             Assert.Equal(5001, list.SelectedItems.Count);
             list.UnselectAll();
@@ -151,7 +151,7 @@ public sealed class ClipboardTrayLazyLoadTests
         var entries = Enumerable.Range(0, 5000).Select(i => new ClipboardEntry { Title = $"File {i}", Kind = ClipboardKind.File }).ToArray();
         var notifications = new List<NotifyCollectionChangedAction>();
         cards.CollectionChanged += (_, e) => notifications.Add(e.Action);
-        Invoke(tray, "ReconcileCards", (object)entries);
+        Invoke(tray, "ReconcilePreparedCards", (object)entries, null);
         Assert.Equal(new[] { NotifyCollectionChangedAction.Reset }, notifications);
         Assert.Equal(5000, cards.Count);
         Assert.Same(cards[0].CardBrush, cards[^1].CardBrush);
@@ -170,7 +170,7 @@ public sealed class ClipboardTrayLazyLoadTests
             Assert.True(offset > 0);
             Assert.InRange(Field<HashSet<ListBoxItem>>(tray, "_selectionContainers").Count, 1, 30);
             notifications.Clear();
-            Invoke(tray, "ReconcileCards", (object)entries.Reverse().ToArray());
+            Invoke(tray, "ReconcilePreparedCards", (object)entries.Reverse().ToArray(), null);
             await Dispatcher.Yield(DispatcherPriority.ApplicationIdle);
             Assert.Equal(new[] { NotifyCollectionChangedAction.Reset }, notifications);
             Assert.True(selected.ToHashSet().SetEquals(list.SelectedItems.Cast<ClipboardCardViewModel>()));
@@ -180,11 +180,11 @@ public sealed class ClipboardTrayLazyLoadTests
             // A large rotation has just one descending index boundary, but
             // moving each item individually would still be quadratic.
             var rotated = cards.Skip(2500).Concat(cards.Take(2500)).Select(card => card.Entry).ToArray();
-            Invoke(tray, "ReconcileCards", (object)rotated);
+            Invoke(tray, "ReconcilePreparedCards", (object)rotated, null);
             Assert.Equal(new[] { NotifyCollectionChangedAction.Reset }, notifications);
             // A normal live insertion still retains the small-change path.
             notifications.Clear();
-            Invoke(tray, "ReconcileCards", (object)new[] { new ClipboardEntry() }.Concat(rotated).ToArray());
+            Invoke(tray, "ReconcilePreparedCards", (object)new[] { new ClipboardEntry() }.Concat(rotated).ToArray(), null);
             Assert.Equal(new[] { NotifyCollectionChangedAction.Add }, notifications);
             Assert.Equal(5001, cards.Count);
         }
@@ -200,7 +200,6 @@ public sealed class ClipboardTrayLazyLoadTests
         using var tray = new ClipboardTray();
         var slots = Field<SemaphoreSlim>(tray, "_thumbnailSlots");
         var window = new BackgroundWindow { Content = tray, Width = 780, Height = 300 };
-        bool held = false;
         try
         {
             await store.InitializeAsync();
@@ -211,10 +210,9 @@ public sealed class ClipboardTrayLazyLoadTests
             tray.Attach(controller);
             Field<UiScheduledTimer>(tray, "_searchTimer").Stop();
             SetField(tray, "_queryDirty", false);
-            Invoke(tray, "ReconcileCards", entries);
+            Invoke(tray, "ReconcilePreparedCards", entries, null);
             await slots.WaitAsync();
             await slots.WaitAsync();
-            held = true;
             window.Show();
             await Dispatcher.Yield(DispatcherPriority.ApplicationIdle);
             var cards = Field<ObservableCollection<ClipboardCardViewModel>>(tray, "_cards");
@@ -225,7 +223,6 @@ public sealed class ClipboardTrayLazyLoadTests
             Assert.InRange(Field<IDictionary>(tray, "_thumbnailLoads").Count, 1, 5);
             Assert.All(cards, card => Assert.Null(card.Image));
             slots.Release(2);
-            held = false;
             await WpfFrameWaiter.UntilAsync(() => visible.All(card => card.Image != null), "visible previews load");
             Assert.All(cards.Except(visible), card => Assert.Null(card.Image));
             var firstImage = visible[0].Image;
@@ -246,7 +243,7 @@ public sealed class ClipboardTrayLazyLoadTests
         }
         finally
         {
-            if (held) slots.Release(2);
+            if (slots.CurrentCount == 0) slots.Release(2);
             window.Close();
             tray.Dispose();
             controller.Dispose();
@@ -273,11 +270,11 @@ public sealed class ClipboardTrayLazyLoadTests
         {
             window.Show();
             await Dispatcher.Yield(DispatcherPriority.ApplicationIdle);
-            var border = Descendants(tray).OfType<Border>().First(b => b.Width == 210 && ReferenceEquals(b.DataContext, card));
+            var border = Descendants(tray).OfType<Border>().First(b => Math.Abs(b.Width - 210) < 0.1 && ReferenceEquals(b.DataContext, card));
             var list = (ListBox)tray.FindName("Cards");
             var container = (ListBoxItem)list.ItemContainerGenerator.ContainerFromItem(card);
             var visual = (Grid)border.Child;
-            await WpfFrameWaiter.UntilAsync(() => visual.Opacity == 1, "card entrance settles");
+            await WpfFrameWaiter.UntilAsync(() => Math.Abs(visual.Opacity - 1) < 1e-6, "card entrance settles");
             container.RenderTransform = new TranslateTransform(-5000, 0);
             container.UpdateLayout();
             Assert.False((bool)Invoke(tray, "IsCardInViewport", border)!);
@@ -297,7 +294,7 @@ public sealed class ClipboardTrayLazyLoadTests
                 Invoke(tray, "RefreshCardViewport", border);
                 await WpfFrameWaiter.NextAsync();
                 Assert.InRange(visual.Opacity, opacity - .1, 1);
-                await WpfFrameWaiter.UntilAsync(() => visual.Opacity == 1, "reversed entrance settles");
+                await WpfFrameWaiter.UntilAsync(() => Math.Abs(visual.Opacity - 1) < 1e-6, "reversed entrance settles");
                 Assert.Same(image, card.Image);
                 container.RenderTransform = new TranslateTransform(-5000, 0);
                 container.UpdateLayout();
@@ -363,7 +360,7 @@ public sealed class ClipboardTrayLazyLoadTests
             Invoke(tray, "UpdateEmptyMessage", true, "First query");
             Invoke(tray, "UpdateEmptyMessage", false, "First query");
             Invoke(tray, "UpdateEmptyMessage", true, "Latest query");
-            await WpfFrameWaiter.UntilAsync(() => empty.Opacity == 1 && clear.Opacity == 1, "search transitions settle");
+            await WpfFrameWaiter.UntilAsync(() => Math.Abs(empty.Opacity - 1) < 1e-6 && Math.Abs(clear.Opacity - 1) < 1e-6, "search transitions settle");
             Assert.Equal(Visibility.Visible, clear.Visibility);
             Assert.True(clear.IsHitTestVisible);
             Assert.Equal(Visibility.Visible, empty.Visibility);

@@ -10,7 +10,7 @@ using System.Windows;
 namespace VNotch.Services;
 
 #pragma warning disable S1075 // Public GitHub Releases API endpoints
-public partial class UpdateService : IUpdateService, IDisposable
+public sealed partial class UpdateService : IUpdateService, IDisposable
 {
     [LibraryImport("VNotch.Native.dll", StringMarshalling = StringMarshalling.Utf16)]
     private static partial int vn_update_service_try_parse_release_version(
@@ -224,7 +224,7 @@ public partial class UpdateService : IUpdateService, IDisposable
             File.Move(temp, _cachePath, overwrite: true);
         }
         catch (Exception ex) { RuntimeLog.Warn(LogCategory, $"Update cache was not saved: {ex.Message}"); }
-        finally { try { if (File.Exists(temp)) File.Delete(temp); } catch (IOException) { } }
+        finally { try { if (File.Exists(temp)) File.Delete(temp); } catch (IOException) { /* Ignore temp delete failure */ } }
     }
 
     private UpdateInfo? SelectLatestRelease(JsonElement releases, UpdateInfo? latest)
@@ -466,9 +466,10 @@ public partial class UpdateService : IUpdateService, IDisposable
     private static string FindAssetUrl(JsonElement release, string name)
     {
         if (!release.TryGetProperty("assets", out var assets)) return "";
-        foreach (var asset in assets.EnumerateArray().Where(a => string.Equals(a.GetProperty("name").GetString(), name, StringComparison.OrdinalIgnoreCase)))
+        foreach (var asset in assets.EnumerateArray())
         {
-            return asset.GetProperty("browser_download_url").GetString() ?? "";
+            if (string.Equals(asset.GetProperty("name").GetString(), name, StringComparison.OrdinalIgnoreCase))
+                return asset.GetProperty("browser_download_url").GetString() ?? "";
         }
         return "";
     }
@@ -544,7 +545,7 @@ public partial class UpdateService : IUpdateService, IDisposable
                 if (read == 0) break;
                 totalRead += read;
                 if (totalRead > maxBytes) return null;
-                memory.Write(buffer, 0, read);
+                await memory.WriteAsync(buffer.AsMemory(0, read), token).ConfigureAwait(false);
             }
             return totalRead == 0 ? null : JsonDocument.Parse(memory.GetBuffer().AsMemory(0, totalRead));
         }

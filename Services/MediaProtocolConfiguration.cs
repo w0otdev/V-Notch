@@ -102,13 +102,6 @@ internal sealed partial record MediaProtocolConfiguration(
             ValidateHosts(data.PipedInstances), ValidateHosts(data.InvidiousInstances));
     }
 
-    private static bool IsHash(string? value)
-    {
-        if (value == null) return false;
-        ReadOnlySpan<char> span = value.AsSpan();
-        return vn_media_protocol_is_hash(span, span.Length, out byte valid) == 0 && valid != 0;
-    }
-
     private static IReadOnlyList<string> ValidateHosts(string[]? hosts)
     {
         if (hosts == null || hosts.Length > 16 || hosts.Any(host =>
@@ -120,7 +113,7 @@ internal sealed partial record MediaProtocolConfiguration(
         return Array.AsReadOnly(hosts.Distinct(StringComparer.OrdinalIgnoreCase).ToArray());
     }
 
-    private sealed class ProtocolDocument
+    internal sealed class ProtocolDocument
     {
         public int SchemaVersion { get; set; }
         public string? SpotifyTotpVersion { get; set; }

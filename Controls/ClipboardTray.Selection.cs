@@ -9,7 +9,7 @@ using VNotch.ViewModels;
 
 namespace VNotch.Controls;
 
-public partial class ClipboardTray
+public sealed partial class ClipboardTray
 {
     private (string Category, string Query)? _pendingSelectAll;
 
@@ -189,8 +189,9 @@ public partial class ClipboardTray
     {
         if (width <= 0) return 0;
         double edge = Math.Min(48, width / 2);
-        double strength = x < edge ? -Math.Clamp((edge - x) / edge, 0, 1)
-            : x > width - edge ? Math.Clamp((x - width + edge) / edge, 0, 1) : 0;
+        double rightStrength = x > width - edge ? Math.Clamp((x - width + edge) / edge, 0, 1) : 0;
+        double strength = x < edge ? -Math.Clamp((edge - x) / edge, 0, 1) : rightStrength;
+
         return 720 * strength * Math.Abs(strength);
     }
 
@@ -238,13 +239,13 @@ public partial class ClipboardTray
             int first = Math.Max(0, (int)Math.Ceiling((rectangle.Left - firstX - container.ActualWidth) / pitch));
             int last = Math.Min(_cards.Count - 1, (int)Math.Floor((rectangle.Right - firstX) / pitch));
             bool hitsRow = swept && rectangle.Bottom >= row.Top && rectangle.Top <= row.Bottom;
-            if (hitsRow)
+            if (hitsRow && (rectangle.Bottom < origin.Y || rectangle.Top > origin.Y + container.ActualHeight))
             {
                 // A horizontal sweep through the top/bottom gutter targets the
                 // whole row. Expand its visible band so the selected area agrees
                 // with the card highlights even when the pointer never enters a card.
-                if (rectangle.Bottom < origin.Y || rectangle.Top > origin.Y + container.ActualHeight)
-                    rectangle.Union(new Rect(rectangle.Left, origin.Y, rectangle.Width, container.ActualHeight));
+                rectangle.Union(new Rect(rectangle.Left, origin.Y, rectangle.Width, container.ActualHeight));
+
             }
             int normFirst = hitsRow && first <= last ? first : -1;
             int normLast = hitsRow && first <= last ? last : -2;

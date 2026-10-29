@@ -7,7 +7,7 @@ using VNotch.Services;
 
 namespace VNotch.Controls;
 
-public partial class ClipboardTray
+public sealed partial class ClipboardTray
 {
     private readonly UiScheduledTimer _categoryDropTimer = new() { Interval = TimeSpan.FromMilliseconds(30) };
     private double _categoryDropSpeed;
@@ -29,7 +29,8 @@ public partial class ClipboardTray
     {
         if (width <= 0 || x < 0 || x > width) return 0;
         double edge = Math.Min(40, width / 2);
-        return x < edge ? -12 * (1 - x / edge) : x > width - edge ? 12 * (1 - (width - x) / edge) : 0;
+        if (x < edge) return -12 * (1 - x / edge);
+        return x > width - edge ? 12 * (1 - (width - x) / edge) : 0;
     }
 
     private void CategoryDrop_Tick(object? sender, EventArgs e)

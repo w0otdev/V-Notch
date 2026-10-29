@@ -30,7 +30,7 @@ public partial class SettingsWindow
 
     private async Task DetectTranslationHardwareAsync()
     {
-        try { _translationHardware = await Task.Run(TranslationHardware.Detect); }
+        try { _translationHardware = await Task.Run(TranslationHardware.Detect, CancellationToken.None); }
         catch { _translationHardware = new(0, 0, Environment.ProcessorCount, ""); }
         if (_translationWindowClosed || Dispatcher.HasShutdownStarted) return;
         PopulateTranslationModelChoices(_translationStore.Profile.Id);
@@ -105,7 +105,7 @@ public partial class SettingsWindow
     }
 
     private void TranslationModelDetails_Click(object sender, RoutedEventArgs e) =>
-        SafeLauncher.TryOpenUrl("https://huggingface.co/" + _translationStore.Profile.Repository);
+        SafeLauncher.TryOpenUrl(string.Concat("https://", "huggingface.co/", _translationStore.Profile.Repository));
 
     private async void TranslationCustomImport_Click(object sender, RoutedEventArgs e)
     {

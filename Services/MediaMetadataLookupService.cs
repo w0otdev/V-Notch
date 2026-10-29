@@ -107,7 +107,7 @@ public sealed partial class MediaMetadataLookupService : IMediaMetadataLookupSer
                     return validated;
             }
 
-            var urlMatch = Regex.Match(cleanTitle, @"(?:youtube\.com/watch\?.*v=|youtu\.be/|music\.youtube\.com/watch\?.*v=)([a-zA-Z0-9_-]{11})");
+            var urlMatch = Regex.Match(cleanTitle, @"(?:youtube\.com/watch\?.*v=|youtu\.be/|music\.youtube\.com/watch\?.*v=)([a-zA-Z0-9_-]{11})", RegexOptions.None, TimeSpan.FromMilliseconds(250));
             if (urlMatch.Success)
             {
                 string extractedId = urlMatch.Groups[1].Value;
@@ -286,7 +286,7 @@ public sealed partial class MediaMetadataLookupService : IMediaMetadataLookupSer
                     if (string.IsNullOrEmpty(itemUrl))
                         continue;
 
-                    var match = Regex.Match(itemUrl, @"v=([a-zA-Z0-9_-]{11})");
+                    var match = Regex.Match(itemUrl, @"v=([a-zA-Z0-9_-]{11})", RegexOptions.None, TimeSpan.FromMilliseconds(250));
                     if (!match.Success)
                         continue;
 
@@ -406,7 +406,7 @@ public sealed partial class MediaMetadataLookupService : IMediaMetadataLookupSer
             string jsonStr = html.Substring(jsonStart, jsonLen);
 
             var videoIds = new List<(string id, string? title, string? channel)>();
-            var videoIdPattern = new Regex(@"""videoId""\s*:\s*""([a-zA-Z0-9_-]{11})""");
+            var videoIdPattern = new Regex(@"""videoId""\s*:\s*""([a-zA-Z0-9_-]{11})""", RegexOptions.None, TimeSpan.FromMilliseconds(250));
 
             var idMatches = videoIdPattern.Matches(jsonStr);
             var seenIds = new HashSet<string>();
@@ -423,11 +423,11 @@ public sealed partial class MediaMetadataLookupService : IMediaMetadataLookupSer
                 int searchLen = Math.Min(800, jsonStr.Length - searchStart);
                 string context = jsonStr.Substring(searchStart, searchLen);
 
-                var titleMatch = Regex.Match(context, @"""title"":\{""runs"":\[\{""text"":""([^""]+)""");
+                var titleMatch = Regex.Match(context, @"""title"":\{""runs"":\[\{""text"":""([^""]+)""", RegexOptions.None, TimeSpan.FromMilliseconds(250));
                 if (titleMatch.Success)
                     videoTitle = System.Net.WebUtility.HtmlDecode(titleMatch.Groups[1].Value);
 
-                var channelMatch = Regex.Match(context, @"""(?:ownerText|longBylineText|shortBylineText)"":\{""runs"":\[\{""text"":""([^""]+)""");
+                var channelMatch = Regex.Match(context, @"""(?:ownerText|longBylineText|shortBylineText)"":\{""runs"":\[\{""text"":""([^""]+)""", RegexOptions.None, TimeSpan.FromMilliseconds(250));
                 if (channelMatch.Success)
                     channelName = System.Net.WebUtility.HtmlDecode(channelMatch.Groups[1].Value);
 
@@ -490,7 +490,7 @@ public sealed partial class MediaMetadataLookupService : IMediaMetadataLookupSer
             if (string.IsNullOrWhiteSpace(url))
                 return null;
 
-            var match = Regex.Match(url, @"(?:youtube\.com/watch\?.*v=|youtu\.be/|music\.youtube\.com/watch\?.*v=|youtube\.com/embed/|youtube\.com/v/)([a-zA-Z0-9_-]{11})");
+            var match = Regex.Match(url, @"(?:youtube\.com/watch\?.*v=|youtu\.be/|music\.youtube\.com/watch\?.*v=|youtube\.com/embed/|youtube\.com/v/)([a-zA-Z0-9_-]{11})", RegexOptions.None, TimeSpan.FromMilliseconds(250));
             if (!match.Success)
                 return null;
 
@@ -537,7 +537,11 @@ public sealed partial class MediaMetadataLookupService : IMediaMetadataLookupSer
         var oembed = await ValidateVideoIdWithOEmbedAsync(videoId, ct);
         if (oembed == null)
         {
-            lock (_videoCacheLock) { if (_failedLookups.Count >= FailedLookupsMaxEntries) _failedLookups.Clear(); _failedLookups[videoId] = DateTime.UtcNow.AddMinutes(15); }
+            lock (_videoCacheLock)
+            {
+                if (_failedLookups.Count >= FailedLookupsMaxEntries) _failedLookups.Clear();
+                _failedLookups[videoId] = DateTime.UtcNow.AddMinutes(15);
+            }
             return null;
         }
 
@@ -572,10 +576,10 @@ public sealed partial class MediaMetadataLookupService : IMediaMetadataLookupSer
             if (string.IsNullOrWhiteSpace(result.ThumbnailUrl))
                 return null;
 
-            if (!string.IsNullOrWhiteSpace(expectedTitle))
+            if (!string.IsNullOrWhiteSpace(expectedTitle) &&
+                !IsSoundCloudOEmbedMatch(expectedTitle, expectedArtist, result.Title, result.Author, candidateScore: 3, strictMode: true))
             {
-                if (!IsSoundCloudOEmbedMatch(expectedTitle, expectedArtist, result.Title, result.Author, candidateScore: 3, strictMode: true))
-                    return null;
+                return null;
             }
 
             string normalized = NormalizeSoundCloudArtworkUrl(result.ThumbnailUrl);

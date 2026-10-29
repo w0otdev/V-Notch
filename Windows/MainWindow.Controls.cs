@@ -310,9 +310,9 @@ public partial class MainWindow
     private const int VolumeHudTickCount = 40;
     private const double VolumeHudExtraWidth = 44.0;
     private const double VolumeHudExtraHeight = 20.0;
-    private static readonly SolidColorBrush _volumeTickInactiveBrush = FreezeBrush(Color.FromArgb(0x48, 0xFF, 0xFF, 0xFF));
-    private static readonly SolidColorBrush _volumeTickActiveBrush = FreezeBrush(Color.FromArgb(0xFA, 0xFF, 0xFF, 0xFF));
-    private static readonly SolidColorBrush _volumeTickHighlightBrush = FreezeBrush(Color.FromArgb(0xFF, 0xFF, 0xF7, 0xBF));
+
+
+
     private Border[]? _volumeHudTickBorders;
     private SolidColorBrush[]? _volumeHudTickBrushes;
     private ScaleTransform[]? _volumeHudTickScales;
@@ -321,13 +321,6 @@ public partial class MainWindow
     private int _lastVolumeHudActiveTicks = -1;
     private BlurEffect? _volumeIndicatorTransitionBlur;
     private int _volumeIndicatorTransitionVersion;
-
-    private static SolidColorBrush FreezeBrush(Color color)
-    {
-        var brush = new SolidColorBrush(color);
-        brush.Freeze();
-        return brush;
-    }
 
     [StructLayout(LayoutKind.Sequential, Pack = 1)]
     private struct VnVolumeHudLayoutOut
@@ -482,9 +475,16 @@ public partial class MainWindow
                 VolumeIndicatorMuteSlash.Stroke = new SolidColorBrush(accentColor);
         }
         if (VolumeIndicatorWave1 != null)
-            VolumeIndicatorWave1.Opacity = isMuted ? 0.0 : (hasWave1 ? 1.0 : 0.22);
+        {
+            double wave1Opacity = hasWave1 ? 1.0 : 0.22;
+            VolumeIndicatorWave1.Opacity = isMuted ? 0.0 : wave1Opacity;
+        }
         if (VolumeIndicatorWave2 != null)
-            VolumeIndicatorWave2.Opacity = isMuted ? 0.0 : (hasWave2 ? 1.0 : (iconCodepoint == 0xE994 ? 0.32 : 0.15));
+        {
+            double wave2Base = iconCodepoint == 0xE994 ? 0.32 : 0.15;
+            double wave2Opacity = hasWave2 ? 1.0 : wave2Base;
+            VolumeIndicatorWave2.Opacity = isMuted ? 0.0 : wave2Opacity;
+        }
 
         if (VolumeIndicatorSpeakerCone.Fill is SolidColorBrush coneBrush && !coneBrush.IsFrozen)
             coneBrush.Color = accentColor;
@@ -574,9 +574,8 @@ public partial class MainWindow
                     VolumeIndicatorPercentScale.BeginAnimation(ScaleTransform.ScaleYProperty, pop);
                 }
             }
-            double measuredLabelW = VolumeIndicatorPercentText.ActualWidth > 0
-                ? VolumeIndicatorPercentText.ActualWidth
-                : (VolumeIndicatorPercentText.DesiredSize.Width > 0 ? VolumeIndicatorPercentText.DesiredSize.Width : approxLabelWidth);
+            double desiredLabelW = VolumeIndicatorPercentText.DesiredSize.Width > 0 ? VolumeIndicatorPercentText.DesiredSize.Width : approxLabelWidth;
+            double measuredLabelW = VolumeIndicatorPercentText.ActualWidth > 0 ? VolumeIndicatorPercentText.ActualWidth : desiredLabelW;
 
             if (Math.Abs(measuredLabelW - approxLabelWidth) > 0.5)
             {
@@ -621,13 +620,14 @@ public partial class MainWindow
             bool activeChanged = _lastVolumeHudActiveTicks != layout.ActiveTicks;
             _lastVolumeHudActiveTicks = layout.ActiveTicks;
 
+            Color fallbackAccent = _hasVolumeHudMediaTint ? _volumeHudMediaColor : Color.FromArgb(0xE8, 0xFF, 0xFF, 0xFF);
             Color startAccent = layout.ActiveTicks > 0
                 ? Color.FromArgb(
                     (byte)(tickArgb[0] >> 24),
                     (byte)(tickArgb[0] >> 16),
                     (byte)(tickArgb[0] >> 8),
                     (byte)tickArgb[0])
-                : (_hasVolumeHudMediaTint ? _volumeHudMediaColor : Color.FromArgb(0xE8, 0xFF, 0xFF, 0xFF));
+                : fallbackAccent;
             UpdateSolidSpeakerIconState(layout.IconCodepoint, startAccent, animate && activeChanged);
 
             for (int i = 0; i < VolumeHudTickCount; i++)
@@ -874,7 +874,8 @@ public partial class MainWindow
             var morphDur = new Duration(TimeSpan.FromMilliseconds(trans.MorphDurationMs));
             var fadeDur = new Duration(TimeSpan.FromMilliseconds(trans.FadeDurationMs));
 
-            double fromHeight = NotchBorder.ActualHeight > 0 ? NotchBorder.ActualHeight : (double.IsFinite(NotchBorder.Height) && NotchBorder.Height > 0 ? NotchBorder.Height : _collapsedHeight);
+            double fallbackFromHeight = double.IsFinite(NotchBorder.Height) && NotchBorder.Height > 0 ? NotchBorder.Height : _collapsedHeight;
+            double fromHeight = NotchBorder.ActualHeight > 0 ? NotchBorder.ActualHeight : fallbackFromHeight;
             if (_isCompactThumbnailHovered)
             {
                 _isCompactThumbnailHovered = false;
@@ -1078,7 +1079,8 @@ public partial class MainWindow
         var fadeDur = new Duration(TimeSpan.FromMilliseconds(trans.FadeDurationMs));
 
         AnimateCompactWidth(trans.TargetWidth, morphDur, _easeExpOut6, 0);
-        double fromHeight = NotchBorder.ActualHeight > 0 ? NotchBorder.ActualHeight : (double.IsFinite(NotchBorder.Height) && NotchBorder.Height > 0 ? NotchBorder.Height : _collapsedHeight + VolumeHudExtraHeight);
+        double fallbackFromHeight = double.IsFinite(NotchBorder.Height) && NotchBorder.Height > 0 ? NotchBorder.Height : _collapsedHeight + VolumeHudExtraHeight;
+        double fromHeight = NotchBorder.ActualHeight > 0 ? NotchBorder.ActualHeight : fallbackFromHeight;
         NotchBorder.BeginAnimation(HeightProperty, null);
         NotchBorder.Height = trans.TargetHeight;
         var heightAnim = MakeAnim(fromHeight, trans.TargetHeight, morphDur, _easeExpOut6, VNotch.Services.AnimationConfig.TargetFps);
@@ -1346,7 +1348,7 @@ public partial class MainWindow
                 if (_volumeReadInFlight)
                     _pendingMuteRefreshVersion = _volumeInteractionVersion;
                 else
-                    SyncVolumeFromActiveSession();
+                    _ = SyncVolumeFromActiveSession();
             }));
         });
     }
@@ -1426,7 +1428,7 @@ public partial class MainWindow
     private int? _pendingMuteRefreshVersion;
     private int _volumeInteractionVersion;
 
-    private async void SyncVolumeFromActiveSession()
+    private async Task SyncVolumeFromActiveSession()
     {
         if (_isDraggingVolume || _volumeReadInFlight) return;
 
@@ -1458,7 +1460,7 @@ public partial class MainWindow
             int? pendingVersion = _pendingMuteRefreshVersion;
             _pendingMuteRefreshVersion = null;
             if (pendingVersion == _volumeInteractionVersion)
-                SyncVolumeFromActiveSession();
+                _ = SyncVolumeFromActiveSession();
         }
     }
 

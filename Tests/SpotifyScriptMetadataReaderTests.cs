@@ -63,7 +63,7 @@ public sealed class SpotifyScriptMetadataReaderTests
     {
         using var stream = new ScriptStream(0, "", Limit);
         using var cts = new CancellationTokenSource();
-        cts.Cancel();
+        await cts.CancelAsync();
         await Assert.ThrowsAnyAsync<OperationCanceledException>(() => SpotifyScriptMetadataReader.ReadHashAsync(
             stream, SpotifyScriptMetadataReader.CanvasPattern, Limit, cts.Token));
         Assert.Equal(0, stream.BytesRead);

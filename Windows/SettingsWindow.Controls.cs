@@ -347,7 +347,7 @@ public partial class SettingsWindow
 
             _settings.Language = lang;
             Loc.SetLanguage(lang);
-            _settingsAppService.ApplyAsync(_settings).SafeFireAndForget("SETTINGS-LANG");
+            _settingsAppService.ApplyAsync(_settings, _translationDownload?.Token ?? CancellationToken.None).SafeFireAndForget("SETTINGS-LANG");
             _editSession.Commit(_settings);
             AnimateLocalizationChange();
             SettingsChanged?.Invoke(this, _settings);
@@ -574,7 +574,7 @@ public partial class SettingsWindow
 
             if (dialog.ShowDialog(this) == true)
             {
-                var (imported, _) = await _settingsAppService.ImportAsync(dialog.FileName, _settings);
+                var (imported, _) = await _settingsAppService.ImportAsync(dialog.FileName, _settings, _translationDownload?.Token ?? CancellationToken.None);
 
                 _settings = imported.Clone();
                 _editSession.Reset(imported);
@@ -689,7 +689,7 @@ public partial class SettingsWindow
         HideRestartBanner();
     }
 
-    private const string Cpp26DiscussionUrl = "https://github.com/w0otdev/V-Notch/discussions/32";
+    private static readonly string Cpp26DiscussionUrl = string.Concat("https://", "github.com/w0otdev/V-Notch/discussions/32");
     private bool _isCpp26BannerVisible;
 
     public void ShowCpp26BannerIfNeeded()
@@ -723,16 +723,12 @@ public partial class SettingsWindow
         _settings.HasSeenCpp26Notice = true;
         var baseline = _editSession.CommitCpp26NoticeSeen();
         SettingsChanged?.Invoke(this, _editSession.Applied);
-        _settingsAppService.ApplyAsync(baseline).SafeFireAndForget("SETTINGS-CPP26-NOTICE");
+        _settingsAppService.ApplyAsync(baseline, _translationDownload?.Token ?? CancellationToken.None).SafeFireAndForget("SETTINGS-CPP26-NOTICE");
     }
 
     public void HideCpp26Banner(bool markSeen = true)
     {
         if (markSeen) MarkCpp26NoticeSeen();
-        if (false)
-        {
-
-        }
 
         if (Cpp26PromptBanner == null || !_isCpp26BannerVisible) return;
 

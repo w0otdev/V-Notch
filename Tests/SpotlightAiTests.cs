@@ -107,7 +107,7 @@ public sealed class SpotlightAiTests
             new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent(body) })));
         var ex = await Assert.ThrowsAsync<SpotlightAiException>(async () =>
         {
-            await foreach (var _ in new SpotlightAiService(client).StreamAsync(Settings("OpenAI"), [new("user", "private prompt")], default)) { }
+            await foreach (var _ in new SpotlightAiService(client).StreamAsync(Settings("OpenAI"), [new("user", "private prompt")], default)) { /* consume stream */ }
         });
         Assert.Equal(key, ex.Message);
         Assert.DoesNotContain("secret", ex.ToString() + ex.Diagnostic);
@@ -121,7 +121,7 @@ public sealed class SpotlightAiTests
         using var cts = new CancellationTokenSource();
         using var client = new HttpClient(new Handler(async (_, token) =>
         {
-            cts.Cancel();
+            await cts.CancelAsync();
             await Task.Delay(Timeout.Infinite, token);
             return new HttpResponseMessage(HttpStatusCode.OK);
         }));

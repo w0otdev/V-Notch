@@ -99,7 +99,7 @@ public partial class TranslationWindow : Window
         ConfigureLanguages(source, target);
         RefreshLocalization();
         ResultText.CommandBindings.Add(new CommandBinding(ApplicationCommands.Copy,
-            (_, e) => { CopyText(_result?.Currency != null ? OutputText : ResultText.SelectedText.Length > 0 ? ResultText.SelectedText : ResultText.Text); e.Handled = true; },
+            (_, e) => { string selectedOrFull = ResultText.SelectedText.Length > 0 ? ResultText.SelectedText : ResultText.Text; CopyText(_result?.Currency != null ? OutputText : selectedOrFull); e.Handled = true; },
             (_, e) => { e.CanExecute = _result != null; e.Handled = true; }));
     }
 
@@ -352,7 +352,8 @@ public partial class TranslationWindow : Window
     private void ButtonMotion(object sender, MouseEventArgs e)
     {
         if (sender is not Button button || button.Template.FindName("Surface", button) is not Border surface) return;
-        double opacity = !button.IsEnabled ? 0.4 : button.IsMouseOver ? 0.85 : 1;
+        double enabledOpacity = button.IsMouseOver ? 0.85 : 1;
+        double opacity = !button.IsEnabled ? 0.4 : enabledOpacity;
         bool pressed = e.RoutedEvent == PreviewMouseLeftButtonDownEvent;
         var scale = surface.RenderTransform as ScaleTransform ?? new ScaleTransform(1, 1);
         surface.RenderTransform = scale;
@@ -577,7 +578,8 @@ public partial class TranslationWindow : Window
         TranslateButton.IsEnabled = true;
         CancelButton.Visibility = Visibility.Collapsed;
         LanguageSummary.Text = $"{LanguageName(result.SourceLanguage)} → {LanguageName(result.TargetLanguage)}";
-        StatusText.Text = !result.WeekdaysPreserved ? Loc.Get("translation.checkDates") : result.LiteralsPreserved ? "" : Loc.Get("translation.checkFacts");
+        string literalStatus = result.LiteralsPreserved ? "" : Loc.Get("translation.checkFacts");
+        StatusText.Text = !result.WeekdaysPreserved ? Loc.Get("translation.checkDates") : literalStatus;
         if (result.Currency is { } conversion)
         {
             ConfigureCurrencies(true, conversion.Price.Currency, conversion.Target);

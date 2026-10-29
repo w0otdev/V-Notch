@@ -57,7 +57,7 @@ public sealed class TranslationMeaningIntegrityTests
     private sealed class LiteralEngine(string output) : ILocalTranslationEngine
     {
         internal int Calls;
-        public Task<string> TranslateAsync(string text, string source, string target, CancellationToken ct)
+        public Task<string> TranslateAsync(string text, string sourceLanguage, string targetLanguage, CancellationToken cancellationToken)
         { Calls++; return Task.FromResult(output); }
         public void ReleaseIdleResources() { }
         public void Dispose() { }
@@ -134,7 +134,7 @@ public sealed class TranslationMeaningIntegrityTests
     private sealed class WrongMeaningEngine : ILocalTranslationEngine
     {
         internal int Calls;
-        public Task<string> TranslateAsync(string text, string sourceLanguage, string targetLanguage, CancellationToken ct)
+        public Task<string> TranslateAsync(string text, string sourceLanguage, string targetLanguage, CancellationToken cancellationToken)
         { Calls++; return Task.FromResult("Are you following this tournament?"); }
         public void ReleaseIdleResources() { }
         public void Dispose() { }

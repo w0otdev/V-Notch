@@ -285,11 +285,11 @@ public sealed class LiquidGlassDesktopIntegrationTests
         int physicalX = controller.LastPresentedCaptureOriginX + (int)(effect.OffX + effect.NotchW / 2);
         int physicalY = controller.LastPresentedCaptureOriginY + (int)(effect.OffY + effect.NotchH / 2);
         var panel = new Canvas();
-        var marker = new Border { Width = 4, Height = 4, Background = Brushes.Red };
+        var marker = new Border { Width = 48, Height = 48, Background = Brushes.Red };
         var bgOrigin = background.PointToScreen(new Point());
         double dpi = VisualTreeHelper.GetDpi(background).DpiScaleX;
-        Canvas.SetLeft(marker, (physicalX - bgOrigin.X) / dpi - 1);
-        Canvas.SetTop(marker, (physicalY - bgOrigin.Y) / dpi - 1);
+        Canvas.SetLeft(marker, (physicalX - bgOrigin.X) / dpi - 24);
+        Canvas.SetTop(marker, (physicalY - bgOrigin.Y) / dpi - 24);
         panel.Children.Add(marker);
         background.Content = panel;
         await WpfFrameWaiter.UntilAsync(() => ReadCenterPixel(window)[2] > 220, "glass presentation or transition completion", cancellationToken);

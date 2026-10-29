@@ -8,8 +8,10 @@ public static partial class InputMonitorService
 {
     private const int WM_INPUT = 0x00FF;
 
+#pragma warning disable S101 // Win32 POINT struct name
     [StructLayout(LayoutKind.Sequential)]
     public struct POINT
+#pragma warning restore S101
     {
         public int x;
         public int y;
@@ -72,10 +74,10 @@ public static partial class InputMonitorService
 
     private static IntPtr OnWindowMessage(IntPtr hwnd, int message, IntPtr wParam, IntPtr lParam, ref bool handled)
     {
-        if (message == WM_INPUT && _source != null)
+        if (message == WM_INPUT && _source != null &&
+            vn_input_read_left_click(lParam, out byte leftDown, out int x, out int y) == 0 && leftDown != 0)
         {
-            if (vn_input_read_left_click(lParam, out byte leftDown, out int x, out int y) == 0 && leftDown != 0)
-                MouseActionTriggered?.Invoke(null, new POINT { x = x, y = y });
+            MouseActionTriggered?.Invoke(null, new POINT { x = x, y = y });
         }
         // Let WPF/DefWindowProc perform WM_INPUT cleanup.
         return IntPtr.Zero;

@@ -191,7 +191,8 @@ internal sealed partial class TranslationModelStore
     {
         var rootUri = new Uri($"https://huggingface.co/{Profile.Repository}/resolve/{Profile.Revision}/{asset.RemotePath}");
         var uri = rootUri;
-        for (int hop = 0; hop < 5; hop++)
+        int hop = 0;
+        while (hop < 5)
         {
             using var request = new HttpRequestMessage(HttpMethod.Get, uri);
             if (offset > 0) request.Headers.Range = new RangeHeaderValue(offset, null);
@@ -207,6 +208,7 @@ internal sealed partial class TranslationModelStore
                 response.Dispose();
                 if (!IsAllowedDownloadUri(next)) throw new TranslationException("translation.downloadFailed");
                 uri = next;
+                hop++;
                 continue;
             }
             if (response.StatusCode == HttpStatusCode.RequestedRangeNotSatisfiable && offset > 0)
@@ -215,7 +217,7 @@ internal sealed partial class TranslationModelStore
                 File.Delete(partialPath);
                 offset = 0;
                 uri = rootUri;
-                hop = -1;
+                hop = 0;
                 continue;
             }
             try { response.EnsureSuccessStatusCode(); return response; }
@@ -291,18 +293,21 @@ internal sealed partial class TranslationModelStore
         string temporary = destination + ".install.part";
         try
         {
-            {
-                await using var input = new FileStream(source, FileMode.Open, FileAccess.Read, FileShare.Read, 131072, true);
-                await using var output = new FileStream(temporary, FileMode.Create, FileAccess.Write, FileShare.None, 131072, true);
-                await input.CopyToAsync(output, ct).ConfigureAwait(false);
-            }
+            await CopyFileAsync(source, temporary, ct).ConfigureAwait(false);
             await VerifyAssetAsync(temporary, asset, ct).ConfigureAwait(false);
             File.Move(temporary, destination, true);
         }
         finally
         {
             try { File.Delete(temporary); }
-            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { /* Best-effort cleanup of temporary install file. */ }
         }
+    }
+
+    private static async Task CopyFileAsync(string source, string destination, CancellationToken ct)
+    {
+        await using var input = new FileStream(source, FileMode.Open, FileAccess.Read, FileShare.Read, 131072, true);
+        await using var output = new FileStream(destination, FileMode.Create, FileAccess.Write, FileShare.None, 131072, true);
+        await input.CopyToAsync(output, ct).ConfigureAwait(false);
     }
 }

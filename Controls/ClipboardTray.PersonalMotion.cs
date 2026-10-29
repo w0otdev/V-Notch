@@ -7,7 +7,7 @@ using VNotch.Services;
 
 namespace VNotch.Controls;
 
-public partial class ClipboardTray
+public sealed partial class ClipboardTray
 {
     private Rect _categorySelectionBounds = Rect.Empty;
 

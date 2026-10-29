@@ -13,7 +13,7 @@ using VNotch.ViewModels;
 
 namespace VNotch.Controls;
 
-public partial class AudioMixerView : UserControl, IDisposable
+public sealed partial class AudioMixerView : UserControl, IDisposable
 {
     private AudioMixerViewModel _viewModel = null!;
     private Func<AudioMixerService>? _getMixer;

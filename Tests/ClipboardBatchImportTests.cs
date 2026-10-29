@@ -21,9 +21,9 @@ public sealed class ClipboardBatchImportTests
             string first = Path.Combine(root, "Hop_dong, Final.docx");
             string locked = Path.Combine(root, "locked.txt");
             string last = Path.Combine(root, new string('x', 130) + ".pdf");
-            File.WriteAllText(first, "first");
-            File.WriteAllText(locked, "locked");
-            File.WriteAllText(last, "last");
+            await File.WriteAllTextAsync(first, "first");
+            await File.WriteAllTextAsync(locked, "locked");
+            await File.WriteAllTextAsync(last, "last");
             using var store = new ClipboardHistoryStore(Path.Combine(root, "history"));
             await store.InitializeAsync();
             if (personal)

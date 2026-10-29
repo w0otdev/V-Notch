@@ -45,7 +45,7 @@ internal sealed class SpotlightChatStore
             {
                 var chats = JsonSerializer.Deserialize<List<SpotlightSavedChat>>(DataProtection.Unprotect(File.ReadAllText(_path)))
                     ?? throw new JsonException("Chat history must contain a list.");
-                if (chats.Any(chat => chat == null || chat.Messages == null || chat.Messages.Any(message => message == null)))
+                if (chats.Any(chat => chat == null || chat.Messages == null || chat.Messages.Contains(null!)))
                     throw new JsonException("Invalid chat history.");
                 _canSave = true;
                 return chats;
@@ -91,7 +91,7 @@ internal sealed class SpotlightChatStore
             catch
             {
                 try { File.Delete(tempPath); }
-                catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { }
+                catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { /* Best-effort cleanup of temporary chat file. */ }
                 RuntimeLog.Warn("SPOTLIGHT-CHAT", "Could not save chat history.");
                 return false;
             }

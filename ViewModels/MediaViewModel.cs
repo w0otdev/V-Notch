@@ -9,7 +9,7 @@ namespace VNotch.ViewModels;
 public partial class MediaViewModel : ObservableObject
 {
     private readonly IMediaDetectionService _service;
-    private readonly Func<double, Task> _seekRelative;
+
     private DateTime _lastAction = DateTime.MinValue;
     private string _lastAnimatedSignature = "";
 
@@ -48,7 +48,7 @@ public partial class MediaViewModel : ObservableObject
     public MediaViewModel(IMediaDetectionService service, Func<double, Task> seekRelative)
     {
         _service = service;
-        _seekRelative = seekRelative;
+        _ = seekRelative;
     }
 
     public void Update(MediaInfo info)
@@ -61,9 +61,10 @@ public partial class MediaViewModel : ObservableObject
         {
             SourceName = info.MediaSource ?? "Now Playing";
             Title = info.CurrentTrack;
-            Artist = !string.IsNullOrEmpty(info.CurrentArtist) &&
-                MediaPlatformExtensions.ParsePlatform(info.CurrentArtist) is not (MediaPlatform.YouTube or MediaPlatform.Browser or MediaPlatform.Spotify)
-                ? info.CurrentArtist : !string.IsNullOrEmpty(info.MediaSource) ? info.MediaSource : "Unknown Artist";
+            bool hasArtist = !string.IsNullOrEmpty(info.CurrentArtist) &&
+                MediaPlatformExtensions.ParsePlatform(info.CurrentArtist) is not (MediaPlatform.YouTube or MediaPlatform.Browser or MediaPlatform.Spotify);
+            string fallbackArtist = !string.IsNullOrEmpty(info.MediaSource) ? info.MediaSource : "Unknown Artist";
+            Artist = hasArtist ? info.CurrentArtist : fallbackArtist;
         }
         else
         {

@@ -20,8 +20,11 @@ public class BatteryInfo
 
     public double FillRatio => HasBattery ? Math.Clamp(Percentage / 100.0, 0, 1) : 0;
 
-    public string GetBatteryIcon() =>
-        IsPowerConnected ? "⚡" : Percentage >= 50 ? "🔋" : "🪫";
+    public string GetBatteryIcon()
+    {
+        if (IsPowerConnected) return "⚡";
+        return Percentage >= 50 ? "🔋" : "🪫";
+    }
 
     public string GetPercentageText()
     {

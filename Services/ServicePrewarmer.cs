@@ -54,14 +54,14 @@ internal static partial class ServicePrewarmer
     private static void RunBackgroundWarmups(IServiceProvider provider)
     {
         var settings = WarmupSettings(provider);
-        Task? spotlightTask = WarmupSpotlight(provider, settings);
+        Task spotlightTask = WarmupSpotlight(provider, settings);
         WarmupBattery(provider);
         WarmupVolume(provider);
         WarmupWindowTitleScanner(provider);
 
         RuntimeLog.Log(LogCategory, "background warmup complete");
         SmartThumbnailCropService.TryMinimizeNativeHeap(trimWorkingSet: true);
-        if (spotlightTask is { IsCompleted: false })
+        if (!spotlightTask.IsCompleted)
         {
             _ = spotlightTask.ContinueWith(
                 static _ => SmartThumbnailCropService.TryMinimizeNativeHeap(trimWorkingSet: true),
@@ -93,7 +93,7 @@ internal static partial class ServicePrewarmer
         }
     }
 
-    private static Task? WarmupSpotlight(IServiceProvider provider, NotchSettings? settings)
+    private static Task WarmupSpotlight(IServiceProvider provider, NotchSettings? settings)
     {
         // Skip Start Menu and apps indexing if Spotlight is disabled to avoid
         // unnecessary launch overhead.
@@ -105,7 +105,7 @@ internal static partial class ServicePrewarmer
         {
             try
             {
-                return provider.GetService<SpotlightSearchService>()?.WarmupAsync();
+                return provider.GetService<SpotlightSearchService>()?.WarmupAsync() ?? Task.CompletedTask;
             }
             catch (Exception ex)
             {
@@ -116,7 +116,7 @@ internal static partial class ServicePrewarmer
         {
             RuntimeLog.Log(LogCategory, "Spotlight disabled; app index warmup skipped");
         }
-        return null;
+        return Task.CompletedTask;
     }
 
     private static void WarmupBattery(IServiceProvider provider)

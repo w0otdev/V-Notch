@@ -27,7 +27,7 @@ public class TermsOfServicePage : UserControl, ISetupAnimatedPage
     private string _currentLoadedLanguage = string.Empty;
 
     private static readonly FontFamily SFProBold = SetupFonts.SFProDisplayFont;
-    private static readonly FontFamily SFProText = SFProBold;
+
 
     private static readonly SolidColorBrush BrushWhite = Freeze(new SolidColorBrush(VNotch.Services.UiPalette.PrimaryColor));
     private static readonly SolidColorBrush BrushDimWhite = Freeze(new SolidColorBrush(Color.FromRgb(173, 173, 173)));
@@ -501,7 +501,7 @@ public class TermsOfServicePage : UserControl, ISetupAnimatedPage
             }
 
             // Numbered item: e.g. "1. " or "2. "
-            var numMatch = Regex.Match(line, @"^(\d+)\.\s+(.*)$");
+            var numMatch = Regex.Match(line, @"^(\d+)\.\s+(.*)$", RegexOptions.None, TimeSpan.FromSeconds(1));
             if (numMatch.Success)
             {
                 FlushParagraph();
@@ -552,7 +552,7 @@ public class TermsOfServicePage : UserControl, ISetupAnimatedPage
     private static void AddFormattedInlines(TextBlock textBlock, string text)
     {
         // Keep emphasis and links readable without exposing Markdown syntax.
-        var parts = Regex.Split(text, @"(\*\*.*?\*\*|\[[^\]]+\]\([^)]+\)|`[^`]+`)");
+        var parts = Regex.Split(text, @"(\*\*.*?\*\*|\[[^\]]+\]\([^)]+\)|`[^`]+`)", RegexOptions.None, TimeSpan.FromSeconds(1));
         foreach (var part in parts)
         {
             if (string.IsNullOrEmpty(part)) continue;
@@ -566,7 +566,7 @@ public class TermsOfServicePage : UserControl, ISetupAnimatedPage
                     Foreground = BrushWhite
                 });
             }
-            else if (Regex.Match(part, @"^\[([^\]]+)\]\(([^)]+)\)$") is { Success: true } linkMatch)
+            else if (Regex.Match(part, @"^\[([^\]]+)\]\(([^)]+)\)$", RegexOptions.None, TimeSpan.FromSeconds(1)) is { Success: true } linkMatch)
             {
                 string label = linkMatch.Groups[1].Value;
                 if (Uri.TryCreate(linkMatch.Groups[2].Value, UriKind.Absolute, out var uri) &&
@@ -590,7 +590,7 @@ public class TermsOfServicePage : UserControl, ISetupAnimatedPage
                     textBlock.Inlines.Add(new Run(label) { FontWeight = FontWeights.Bold });
                 }
             }
-            else if (part.StartsWith("`") && part.EndsWith("`") && part.Length > 2)
+            else if (part.StartsWith('`') && part.EndsWith('`') && part.Length > 2)
             {
                 textBlock.Inlines.Add(new Run(part.Substring(1, part.Length - 2))
                 {

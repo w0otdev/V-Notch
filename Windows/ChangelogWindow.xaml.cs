@@ -437,7 +437,7 @@ public partial class ChangelogWindow : Window
         textBlock.Inlines.Clear();
         var pattern = @"(\*\*.*?\*\*)|(?<!\w)(\*.*?\*)(?!\w)|(`.*?`)|(\[.*?\]\(.*?\))";
 
-        var matches = Regex.Matches(text, pattern);
+        var matches = Regex.Matches(text, pattern, RegexOptions.None, TimeSpan.FromSeconds(1));
         int lastIndex = 0;
 
         foreach (Match match in matches)
@@ -468,7 +468,7 @@ public partial class ChangelogWindow : Window
             }
             else if (value.StartsWith('['))
             {
-                var linkMatch = Regex.Match(value, @"\[(.*?)\]\((.*?)\)");
+                var linkMatch = Regex.Match(value, @"\[(.*?)\]\((.*?)\)", RegexOptions.None, TimeSpan.FromSeconds(1));
                 if (linkMatch.Success)
                 {
                     string linkTarget = linkMatch.Groups[2].Value;
@@ -514,7 +514,7 @@ public partial class ChangelogWindow : Window
     {
         try
         {
-            var cleanVersion = Regex.Replace(versionString, @"[^\d\.]", "");
+            var cleanVersion = Regex.Replace(versionString, @"[^\d\.]", "", RegexOptions.None, TimeSpan.FromSeconds(1));
             return Version.Parse(cleanVersion);
         }
         catch (Exception)

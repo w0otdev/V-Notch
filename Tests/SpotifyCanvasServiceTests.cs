@@ -625,7 +625,7 @@ public sealed class SpotifyCanvasServiceTests
     {
         public int Requests { get; private set; }
 
-        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken token)
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
         {
             Requests++;
             return Task.FromResult(reply(request));

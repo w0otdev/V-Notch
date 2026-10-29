@@ -42,7 +42,7 @@ internal sealed partial class EverythingSearchProvider : ISpotlightProvider, IDi
     private const string EverythingIpcWindowClass = "EVERYTHING_TASKBAR_NOTIFICATION";
     private const int CopyDataQueryW = 2;
     private const int WmCopyData = 0x004A;
-    private const uint MatchPath = 0x00000004;
+
     private const int QueryHeaderBytes = 20;
     // EVERYTHING_IPC_LISTW header: totfolders, totfiles, totitems, numfolders,
     // numfiles, numitems, offset — 7 DWORDs before the item array.

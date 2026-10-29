@@ -49,11 +49,11 @@ public sealed class SettingsUpdatePresenterTests
         public int CheckCount { get; private set; }
         public TaskCompletionSource<UpdateInfo?> Result { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
         public string CurrentVersion => "1.0";
-        public event EventHandler<UpdateInfo?>? UpdateCheckCompleted { add { } remove { } }
+        public event EventHandler<UpdateInfo?>? UpdateCheckCompleted { add { /* no-op */ } remove { /* no-op */ } }
         public UpdateInfo? LatestUpdateInfo => null;
         public Task<UpdateInfo?> CheckForUpdatesAsync(bool includePrereleases = false) { CheckCount++; return Result.Task; }
         public Task<IReadOnlyList<UpdateInfo>> GetAllReleasesAsync() => Task.FromResult<IReadOnlyList<UpdateInfo>>([]);
-        public Task<bool> DownloadAndInstallUpdateAsync(UpdateInfo info, IProgress<double>? progress = null, CancellationToken cancellationToken = default)
+        public Task<bool> DownloadAndInstallUpdateAsync(UpdateInfo updateInfo, IProgress<double>? progress = null, CancellationToken cancellationToken = default)
             => Task.FromResult(false);
     }
 
@@ -85,7 +85,7 @@ public sealed class SettingsUpdatePresenterTests
         public List<bool> Channels { get; } = [];
         public List<TaskCompletionSource<UpdateInfo?>> Requests { get; } = [];
         public string CurrentVersion => "1.0";
-        public event EventHandler<UpdateInfo?>? UpdateCheckCompleted { add { } remove { } }
+        public event EventHandler<UpdateInfo?>? UpdateCheckCompleted { add { /* no-op */ } remove { /* no-op */ } }
         public UpdateInfo? LatestUpdateInfo => null;
         public Task<UpdateInfo?> CheckForUpdatesAsync(bool includePrereleases = false)
         {
@@ -95,7 +95,7 @@ public sealed class SettingsUpdatePresenterTests
             return request.Task;
         }
         public Task<IReadOnlyList<UpdateInfo>> GetAllReleasesAsync() => Task.FromResult<IReadOnlyList<UpdateInfo>>([]);
-        public Task<bool> DownloadAndInstallUpdateAsync(UpdateInfo info, IProgress<double>? progress = null, CancellationToken cancellationToken = default) => Task.FromResult(false);
+        public Task<bool> DownloadAndInstallUpdateAsync(UpdateInfo updateInfo, IProgress<double>? progress = null, CancellationToken cancellationToken = default) => Task.FromResult(false);
     }
 
     [Theory]

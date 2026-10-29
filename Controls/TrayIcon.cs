@@ -54,9 +54,9 @@ public sealed class TrayIcon : Control
         if (RenderSize.Width <= 0 || RenderSize.Height <= 0) return;
         // WPF can render before delivering the deferred SizeChanged notification.
         double scale = Math.Min(RenderSize.Width, RenderSize.Height) / 16;
-        if (_viewport == null || _viewport.Matrix.M11 != scale ||
-            _viewport.Matrix.OffsetX != (RenderSize.Width - 16 * scale) / 2 ||
-            _viewport.Matrix.OffsetY != (RenderSize.Height - 16 * scale) / 2)
+        if (_viewport == null || Math.Abs(_viewport.Matrix.M11 - scale) > 1e-6 ||
+            Math.Abs(_viewport.Matrix.OffsetX - (RenderSize.Width - 16 * scale) / 2) > 1e-6 ||
+            Math.Abs(_viewport.Matrix.OffsetY - (RenderSize.Height - 16 * scale) / 2) > 1e-6)
             UpdateViewport();
         drawingContext.PushTransform(_viewport);
         if (FilledSymbols.TryGetValue(Kind, out var filled))

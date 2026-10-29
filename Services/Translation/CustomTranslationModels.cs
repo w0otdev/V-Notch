@@ -42,7 +42,8 @@ internal sealed partial class CustomTranslationModels
     private readonly object _sync = new();
     private readonly Func<string, string, bool> _tryCreateLink;
     private readonly Dictionary<string, TranslationModelProfile> _profiles = new();
-    internal TranslationModelProfile[] Profiles { get { lock (_sync) return _profiles.Values.ToArray(); } }
+    private TranslationModelProfile[] _profilesSnapshot = [];
+    internal TranslationModelProfile[] Profiles { get { lock (_sync) return _profilesSnapshot; } }
     private sealed record Manifest(string Name, long Size, string Hash, TranslationPromptKind PromptKind, string? ModelPath = null);
 
     internal CustomTranslationModels(string root, Func<string, string, bool>? tryCreateLink = null)
@@ -67,8 +68,9 @@ internal sealed partial class CustomTranslationModels
                     (manifest.ModelPath != null && (!Path.IsPathFullyQualified(manifest.ModelPath) ||
                         !Path.GetExtension(manifest.ModelPath).Equals(".gguf", StringComparison.OrdinalIgnoreCase)))) continue;
                 _profiles[id] = Profile(id, manifest);
+                _profilesSnapshot = [.. _profiles.Values];
             }
-            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or JsonException) { }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or JsonException) { /* Ignore unreadable or invalid custom model manifests. */ }
         }
     }
 
@@ -87,7 +89,7 @@ internal sealed partial class CustomTranslationModels
     private static bool TryCreateHardLink(string destination, string source) =>
         Win32Interop.CreateHardLink(destination, source);
 
-    internal void Forget(string id) { lock (_sync) _profiles.Remove(id); }
+    internal void Forget(string id) { lock (_sync) { _profiles.Remove(id); _profilesSnapshot = [.. _profiles.Values]; } }
 
     internal async Task<TranslationModelProfile> ImportAsync(string source, TranslationPromptKind kind,
         CancellationToken ct, IProgress<double>? progress = null)
@@ -146,7 +148,7 @@ internal sealed partial class CustomTranslationModels
             ct.ThrowIfCancellationRequested();
             File.Move(Path.Combine(directory, "custom.json.part"), Path.Combine(directory, "custom.json"));
             var profile = Profile(id, manifest);
-            lock (_sync) _profiles[id] = profile;
+            lock (_sync) { _profiles[id] = profile; _profilesSnapshot = [.. _profiles.Values]; }
             committed = true;
             return profile;
         }
@@ -156,8 +158,8 @@ internal sealed partial class CustomTranslationModels
             {
                 // Only the freshly generated app-owned directory is eligible for cleanup.
                 foreach (string name in new[] { "model.gguf", "verified.txt", "custom.json.part", "custom.json" })
-                    try { File.Delete(Path.Combine(directory, name)); } catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { }
-                try { Directory.Delete(directory); } catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { }
+                    try { File.Delete(Path.Combine(directory, name)); } catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { /* Best-effort cleanup of staging file. */ }
+                try { Directory.Delete(directory); } catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { /* Best-effort cleanup of staging directory. */ }
             }
         }
     }

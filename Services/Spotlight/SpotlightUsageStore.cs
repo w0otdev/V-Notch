@@ -35,8 +35,6 @@ internal sealed partial class SpotlightUsageStore
 
     private const string LogTag = "SPOTLIGHT-USAGE";
     private const int MaxEntries = 100;
-    private const double CountBoostCap = 90;
-    private const double CountBoostFactor = 22;
 
     private readonly object _gate = new();
     private readonly string _path;
@@ -273,16 +271,14 @@ internal sealed partial class SpotlightUsageStore
             return true;
         if (SpotlightSystemCatalog.IsKnownTarget(item) || Preferences.IsPinned(item.Target)
             || !string.IsNullOrWhiteSpace(Preferences.GetAlias(item.Target))) return true;
-        if (item.Kind == SpotlightResultKind.Application)
-        {
-            if (vn_spotlight_usage_is_allowed_app_history_target(
+        if (item.Kind == SpotlightResultKind.Application
+            && vn_spotlight_usage_is_allowed_app_history_target(
                 item.Target.AsSpan(), item.Target.Length,
                 s_startMenuPath.AsSpan(), s_startMenuPath.Length,
                 s_commonStartMenuPath.AsSpan(), s_commonStartMenuPath.Length,
                 out byte allowed) == 0 && allowed != 0)
-            {
-                return true;
-            }
+        {
+            return true;
         }
         return SpotlightFileVisibility.ShouldInclude(item, query);
     }

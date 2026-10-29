@@ -49,7 +49,7 @@ public sealed class MainWindowCameraPresentationTests
         Assert.Equal(4, first.PixelWidth);
         Assert.Equal(firstPixels, CopyPixels(first));
         await WpfFrameWaiter.UntilAsync(() => window.CameraOverlay.Visibility == Visibility.Collapsed, "camera preview appeared", ct);
-        await WpfFrameWaiter.UntilAsync(() => window.CameraPreviewImage.Opacity == 1, "camera preview morph settled", ct);
+        await WpfFrameWaiter.UntilAsync(() => Math.Abs(window.CameraPreviewImage.Opacity - 1) < 1e-6, "camera preview morph settled", ct);
         Assert.Equal(1, window.CameraPreviewImage.Opacity, 5);
         Assert.Equal(0, window.CameraPreviewBlur.Radius);
         Invoke(window, "OnCameraFrameAvailable", Pixels(2, 2, 42), 2, 2, camera.FadeToken);
@@ -163,7 +163,7 @@ public sealed class MainWindowCameraPresentationTests
         Invoke(window, "PrimeCameraPreviewMorphIn");
         Assert.Null(Field<Storyboard?>(window, "_cameraPreviewExitStoryboard"));
         Invoke(window, "OnCameraFrameAvailable", Pixels(4, 3, 42), 4, 3, camera.FadeToken);
-        await WpfFrameWaiter.UntilAsync(() => window.CameraPreviewImage.Opacity == 1, "restarted preview appeared", ct);
+        await WpfFrameWaiter.UntilAsync(() => Math.Abs(window.CameraPreviewImage.Opacity - 1) < 1e-6, "restarted preview appeared", ct);
         await Task.Delay(100, ct);
         Assert.NotNull(window.CameraPreviewImage.Source);
         Assert.Equal(1, window.CameraPreviewImage.Opacity);
@@ -213,7 +213,7 @@ public sealed class MainWindowCameraPresentationTests
         window.CameraContent.Opacity = 1;
         Invoke(window, "PrimeCameraPreviewMorphIn");
         Invoke(window, "OnCameraFrameAvailable", Pixels(4, 3, 255), 4, 3, camera.FadeToken);
-        await WpfFrameWaiter.UntilAsync(() => window.CameraPreviewImage.Opacity == 1, "opaque camera preview", ct);
+        await WpfFrameWaiter.UntilAsync(() => Math.Abs(window.CameraPreviewImage.Opacity - 1) < 1e-6, "opaque camera preview", ct);
         Assert.Equal(1d, window.ReadLocalValue(UIElement.OpacityProperty));
         Assert.Equal(opacity, Assert.IsAssignableFrom<Brush>(window.NotchBackground.OpacityMask).Opacity);
         Assert.Equal(opacity, Assert.IsAssignableFrom<Brush>(window.SecondaryContent.OpacityMask).Opacity);

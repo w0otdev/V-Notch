@@ -323,7 +323,7 @@ public:
                                            RECT, RECT, HRGN) noexcept;
 
     void Pump() noexcept {
-        CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
+        (void)CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
         t_current = this;
         const MagApi& api = Api();
         if (!api.Complete() || !api.initialize()) {

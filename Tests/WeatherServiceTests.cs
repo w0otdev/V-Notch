@@ -67,7 +67,7 @@ public sealed class WeatherServiceTests
 
         Assert.NotNull(weather);
         Assert.Equal(2, handler.Requests);
-        Assert.Equal("Hanoi", weather!.City);
+        Assert.Equal("Hanoi", weather.City);
         Assert.Equal(31, weather.Temperature);
         Assert.Equal(35, weather.High);
         Assert.Equal(28, weather.Low);
@@ -183,7 +183,7 @@ public sealed class WeatherServiceTests
     {
         public int Requests { get; private set; }
         public Uri? LastUri { get; private set; }
-        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken token)
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
         {
             Requests++;
             LastUri = request.RequestUri;

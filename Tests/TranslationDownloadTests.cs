@@ -36,7 +36,7 @@ public sealed class TranslationDownloadTests
         await started.Task.WaitAsync(TimeSpan.FromSeconds(3));
         Assert.Contains(states.States, state => state.Stage == TranslationDownloadStage.Connecting);
         Assert.False(download.IsCompleted);
-        cancellation.Cancel();
+        await cancellation.CancelAsync();
         await Assert.ThrowsAnyAsync<OperationCanceledException>(() => download);
         Assert.False(fixture.Store.IsInstalled);
     }
@@ -73,9 +73,9 @@ public sealed class TranslationDownloadTests
         Assert.Equal(DownloadFixture.Payload, await File.ReadAllBytesAsync(fixture.Final));
         Assert.False(File.Exists(fixture.Partial));
         Assert.Contains(states.States, state => state.Stage == TranslationDownloadStage.Connecting && state.DownloadedBytes == existing);
-        Assert.Contains(states.States, state => state.Stage == TranslationDownloadStage.Downloading && state.Percent == 100 && state.BytesPerSecond > 0);
+        Assert.Contains(states.States, state => state.Stage == TranslationDownloadStage.Downloading && Math.Abs(state.Percent - 100) < 1e-6 && state.BytesPerSecond > 0);
         Assert.True(states.States.FindIndex(s => s.Stage == TranslationDownloadStage.Verifying) < states.States.FindIndex(s => s.Stage == TranslationDownloadStage.Completed));
-        Assert.Equal(TranslationDownloadStage.Completed, states.States.Last().Stage);
+        Assert.Equal(TranslationDownloadStage.Completed, states.States[^1].Stage);
     }
 
     [Fact]
@@ -170,7 +170,7 @@ public sealed class TranslationDownloadTests
 
     private sealed class Handler(Func<HttpRequestMessage, CancellationToken, Task<HttpResponseMessage>> send) : HttpMessageHandler
     {
-        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken token) => send(request, token);
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken) => send(request, cancellationToken);
     }
 
     private sealed class StalledStream : MemoryStream

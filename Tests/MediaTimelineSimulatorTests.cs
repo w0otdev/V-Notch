@@ -42,12 +42,12 @@ public class MediaTimelineSimulatorTests
     }
 
     [Fact]
-    public void UpdateObservedPosition_SameValue_DoesNotUpdateTime()
+    public async Task UpdateObservedPosition_SameValue_DoesNotUpdateTime()
     {
         _sim.UpdateObservedPosition(TimeSpan.FromSeconds(5));
         var firstTime = _sim.LastPositionChangeTime;
 
-        Thread.Sleep(10);
+        await Task.Delay(10);
         _sim.UpdateObservedPosition(TimeSpan.FromSeconds(5));
 
         Assert.Equal(firstTime, _sim.LastPositionChangeTime);

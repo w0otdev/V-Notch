@@ -45,7 +45,8 @@ public partial class MediaSourceCache
 
     public MediaSourceCache(int capacity = DefaultCapacity)
     {
-        _capacity = vn_media_source_cache_resolve_capacity(capacity, DefaultCapacity, out int resolved) == 0 ? resolved : (capacity > 0 ? capacity : DefaultCapacity);
+        int fallbackCap = capacity > 0 ? capacity : DefaultCapacity;
+        _capacity = vn_media_source_cache_resolve_capacity(capacity, DefaultCapacity, out int resolved) == 0 ? resolved : fallbackCap;
         var appData = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
         var dir = Path.Combine(appData, "V-Notch");
         if (!Directory.Exists(dir)) Directory.CreateDirectory(dir);
@@ -54,7 +55,8 @@ public partial class MediaSourceCache
 
     public MediaSourceCache(string cachePath, int capacity = DefaultCapacity)
     {
-        _capacity = vn_media_source_cache_resolve_capacity(capacity, DefaultCapacity, out int resolved) == 0 ? resolved : (capacity > 0 ? capacity : DefaultCapacity);
+        int fallbackCap = capacity > 0 ? capacity : DefaultCapacity;
+        _capacity = vn_media_source_cache_resolve_capacity(capacity, DefaultCapacity, out int resolved) == 0 ? resolved : fallbackCap;
         _cachePath = cachePath;
         var dir = Path.GetDirectoryName(cachePath);
         if (!string.IsNullOrEmpty(dir) && !Directory.Exists(dir))
@@ -177,7 +179,7 @@ public partial class MediaSourceCache
             }
             catch (Exception ex)
             {
-                try { if (File.Exists(tempPath)) File.Delete(tempPath); } catch (IOException) { }
+                try { if (File.Exists(tempPath)) File.Delete(tempPath); } catch (IOException) { /* Ignore temp delete error */ }
                 RuntimeLog.Warn("MEDIA-SOURCE-CACHE", $"Failed to save cache to '{_cachePath}': {ex.Message}");
             }
         }

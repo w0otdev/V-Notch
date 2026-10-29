@@ -39,8 +39,11 @@ public sealed class ClipboardTrayMenuRegressionTests
             var list = (ListBox)tray.FindName("Cards");
             ListBoxItem? realized = null;
             await WpfFrameWaiter.UntilAsync(() =>
-                (realized = list.ItemContainerGenerator.ContainerFromItem(card) as ListBoxItem) is { ActualWidth: > 0, ActualHeight: > 0 }
-                && Descendants(realized).OfType<Button>().Any(b => Equals(b.Tag, "more")), "card container realized");
+            {
+                realized = list.ItemContainerGenerator.ContainerFromItem(card) as ListBoxItem;
+                return realized is { ActualWidth: > 0, ActualHeight: > 0 }
+                    && Descendants(realized).OfType<Button>().Any(b => Equals(b.Tag, "more"));
+            }, "card container realized");
             var item = realized!;
             var button = Descendants(item).OfType<Button>().Single(b => Equals(b.Tag, "more"));
             byte[] Render()
@@ -232,7 +235,7 @@ public sealed class ClipboardTrayMenuRegressionTests
                 previousOpacity = surface.Opacity;
                 if (frame == 1) animate.Invoke(null, [surface, null, false, false]);
             }
-            await WpfFrameWaiter.UntilAsync(() => surface.RenderTransform.Value.M11 == 1 && surface.Opacity == 1, "menu entrance settles");
+            await WpfFrameWaiter.UntilAsync(() => Math.Abs(surface.RenderTransform.Value.M11 - 1) < 1e-6 && Math.Abs(surface.Opacity - 1) < 1e-6, "menu entrance settles");
             Assert.Equal(1, surface.RenderTransform.Value.M11, 3);
             Assert.Equal(1, surface.Opacity, 3);
         }

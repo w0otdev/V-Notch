@@ -102,6 +102,7 @@ public sealed partial class ClipboardHistoryStore : IDisposable, IAsyncDisposabl
     public bool AutoDeleteSensitive { get; set; }
     public event Action? Changed;
     public bool IsPersonalUnlocked => _personalUnlocked;
+    private void EnsurePersonalUnlocked() { if (!IsPersonalUnlocked) throw new InvalidOperationException("Personal is locked."); }
     public bool HasPersonalPasscode => _vault.IsConfigured;
 
     public ClipboardHistoryStore(string? root = null)
@@ -360,7 +361,7 @@ public sealed partial class ClipboardHistoryStore : IDisposable, IAsyncDisposabl
                         return hashing.BytesWritten;
                     }
                     storedPath = Path.Combine(staging, stored + (personal ? ".enc" : ""));
-                    if (personal) _vault.WriteEncryptedFile(storedPath, WriteCopy);
+                    if (personal) _vault.WriteEncryptedFile(storedPath, s => WriteCopy(s));
                     else
                     {
                         using var output = new FileStream(storedPath, FileMode.CreateNew, FileAccess.Write, FileShare.None);
@@ -457,6 +458,7 @@ public sealed partial class ClipboardHistoryStore : IDisposable, IAsyncDisposabl
             {
                 if (duplicate.IsPersonal && !IsPersonalUnlocked) return new ClipboardImportResult(null);
                 bool duplicateSensitive = sensitive || duplicate.IsSensitive;
+                string duplicatePreview = kind == ClipboardKind.Color ? preview : duplicate.Preview;
                 var updated = duplicate with
                 {
                     IsSensitive = duplicateSensitive,
@@ -465,7 +467,7 @@ public sealed partial class ClipboardHistoryStore : IDisposable, IAsyncDisposabl
                     PrimaryExtension = duplicate.PrimaryExtension,
                     CopiedUtc = capture.CopiedUtc,
                     Kind = kind == ClipboardKind.Color ? kind : duplicate.Kind,
-                    Preview = duplicateSensitive ? ClipboardSensitiveData.Mask : kind == ClipboardKind.Color ? preview : duplicate.Preview,
+                    Preview = duplicateSensitive ? ClipboardSensitiveData.Mask : duplicatePreview,
                     MaskedPreview = duplicateSensitive ? ClipboardSensitiveData.Mask : "",
                     SensitivityVersion = ClipboardSensitiveData.DetectorVersion,
                     SourceApp = capture.SourceApp.Length == 0 ? duplicate.SourceApp : capture.SourceApp,
@@ -476,13 +478,14 @@ public sealed partial class ClipboardHistoryStore : IDisposable, IAsyncDisposabl
                 if (!batchChild) Changed?.Invoke();
                 return new ClipboardImportResult(updated, ImportedCount: files.Count, FailedCount: failedCount);
             }
+            string displayTitle = title.Length > 120 ? title[..120] : title;
             var entry = new ClipboardEntry
             {
                 IsSensitive = sensitive,
                 SensitivityVersion = ClipboardSensitiveData.DetectorVersion,
                 Id = id,
                 Kind = kind,
-                Title = sensitive ? ClipboardSensitiveData.Mask : title.Length > 120 ? title[..120] : title,
+                Title = sensitive ? ClipboardSensitiveData.Mask : displayTitle,
                 Preview = sensitive ? ClipboardSensitiveData.Mask : preview,
                 MaskedPreview = sensitive ? ClipboardSensitiveData.CreateLayoutMask(preview) : "",
                 FileCount = files.Count,
@@ -498,7 +501,7 @@ public sealed partial class ClipboardHistoryStore : IDisposable, IAsyncDisposabl
             var content = new ClipboardContent { Entry = entry, Text = capture.Text, Html = capture.Html, Rtf = capture.Rtf, Files = files.ToArray() };
             if (personal)
             {
-                if (!IsPersonalUnlocked) throw new InvalidOperationException("Personal is locked.");
+                EnsurePersonalUnlocked();
             }
             WriteDocument(Path.Combine(staging, "content.json"), content, personal);
             WriteDocument(Path.Combine(staging, "entry.json"), entry, personal);
@@ -563,8 +566,8 @@ public sealed partial class ClipboardHistoryStore : IDisposable, IAsyncDisposabl
 
         if (!entry.IsSensitive)
         {
-            if (entry.Title.Contains(token, StringComparison.OrdinalIgnoreCase) ||
-                entry.Preview.Contains(token, StringComparison.OrdinalIgnoreCase))
+            if (entry.Title.Contains(token, StringComparison.OrdinalIgnoreCase)) return true;
+            if (entry.Preview.Contains(token, StringComparison.OrdinalIgnoreCase))
             {
                 return true;
             }
@@ -717,7 +720,7 @@ public sealed partial class ClipboardHistoryStore : IDisposable, IAsyncDisposabl
             }
             if (personalExport != null)
             {
-                if (!IsPersonalUnlocked) throw new InvalidOperationException("Personal is locked.");
+                EnsurePersonalUnlocked();
                 _personalExports.Add(export, personalExport);
             }
             return paths.ToArray();
@@ -1367,10 +1370,10 @@ public sealed partial class ClipboardHistoryStore : IDisposable, IAsyncDisposabl
         foreach (var pair in _entries)
         {
             var e = pair.Value;
-            if (e.Kind == ClipboardKind.Image && !e.IsPersonal && Math.Abs((capture.CopiedUtc - e.CopiedUtc).TotalSeconds) < 2.0)
+            if (e.Kind == ClipboardKind.Image && !e.IsPersonal && Math.Abs((capture.CopiedUtc - e.CopiedUtc).TotalSeconds) < 2.0 && (recent == null || e.CopiedUtc > recent.CopiedUtc))
             {
-                if (recent == null || e.CopiedUtc > recent.CopiedUtc)
-                    recent = e;
+
+                recent = e;
             }
         }
 
@@ -1599,7 +1602,8 @@ public sealed partial class ClipboardHistoryStore : IDisposable, IAsyncDisposabl
             _disposed = true;
             _personalUnlocked = false;
             var pending = _pending;
-            return new ValueTask(_disposeTask = DisposeCoreAsync(pending));
+            _disposeTask = DisposeCoreAsync(pending);
+            return new ValueTask(_disposeTask);
         }
     }
 

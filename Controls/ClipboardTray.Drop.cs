@@ -8,7 +8,7 @@ using VNotch.Services.Clipboard;
 
 namespace VNotch.Controls;
 
-public partial class ClipboardTray
+public sealed partial class ClipboardTray
 {
     private ClipboardEntry[] _pendingPersonalDrop = [];
     private string[] _pendingPersonalFiles = [];

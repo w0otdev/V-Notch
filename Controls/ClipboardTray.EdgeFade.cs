@@ -6,7 +6,7 @@ using VNotch.Services;
 
 namespace VNotch.Controls;
 
-public partial class ClipboardTray
+public sealed partial class ClipboardTray
 {
     private readonly Dictionary<FrameworkElement, (bool Left, bool Right, double Width)> _edgeFadeStates = [];
     private bool _searchFadeLeftActive;

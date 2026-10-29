@@ -88,7 +88,7 @@ public sealed class SecurityAuditTests
     [InlineData("   ")]
     public void SafeLauncher_BlocksUnsafeSchemes(string url)
     {
-        bool isSafe = SafeLauncher.IsSafeUrl(url, out var uri);
+        bool isSafe = SafeLauncher.IsSafeUrl(url, out _);
         Assert.False(isSafe);
     }
 

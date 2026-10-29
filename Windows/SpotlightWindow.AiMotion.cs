@@ -153,7 +153,7 @@ public partial class SpotlightWindow
                     msgCopyBtn.RenderTransform.BeginAnimation(ScaleTransform.ScaleXProperty, pop);
                     msgCopyBtn.RenderTransform.BeginAnimation(ScaleTransform.ScaleYProperty, pop);
                 }
-                await Task.Delay(1800);
+                await Task.Delay(1800, CancellationToken.None);
                 msgCopyBtn.Content = copyPath;
             }
         };
@@ -293,9 +293,8 @@ public partial class SpotlightWindow
                     ContentRegion.ClipToBounds = false;
                 }
             }
-            FrameworkElement destination = AiHistoryPanel.Visibility == Visibility.Visible
-                ? AiHistoryPanel
-                : AiWelcome.Visibility == Visibility.Visible ? AiWelcome : AiTranscriptScroll;
+            FrameworkElement mainDestination = AiWelcome.Visibility == Visibility.Visible ? AiWelcome : AiTranscriptScroll;
+            FrameworkElement destination = AiHistoryPanel.Visibility == Visibility.Visible ? AiHistoryPanel : mainDestination;
             if (ReferenceEquals(destination, AiWelcome)) AnimateAiFade(destination);
             else AnimateAiPageReveal(destination);
         }
@@ -484,9 +483,9 @@ public partial class SpotlightWindow
     }
 
 
-    private Geometry GetLookupIconGeometry() => AiMagnifierGeometry;
+    private static Geometry GetLookupIconGeometry() => AiMagnifierGeometry;
 
-    private Geometry GetChatIconGeometry() => AiChatGeometry;
+    private static Geometry GetChatIconGeometry() => AiChatGeometry;
 
     private void SyncSearchIconState(bool animate = false)
     {

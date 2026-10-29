@@ -84,7 +84,7 @@ I hope you understand [😣](https://static.xx.fbcdn.net/images/emoji.php/v9/t8f
 
     private sealed class Engine(string output) : ILocalTranslationEngine
     {
-        public Task<string> TranslateAsync(string text, string source, string target, CancellationToken ct) => Task.FromResult(output);
+        public Task<string> TranslateAsync(string text, string sourceLanguage, string targetLanguage, CancellationToken cancellationToken) => Task.FromResult(output);
         public void ReleaseIdleResources() { }
         public void Dispose() { }
     }

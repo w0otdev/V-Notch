@@ -61,22 +61,6 @@ public partial class MainWindow
         ClipboardDropBadgeScale.BeginAnimation(ScaleTransform.ScaleYProperty, animY);
     }
 
-    private static void AnimateDropValue(Animatable target, DependencyProperty property,
-        double value, int duration, double? from = null, int delay = 0)
-    {
-        double current = from ?? (double)target.GetValue(property);
-        target.BeginAnimation(property, null);
-        target.SetValue(property, value);
-        var animation = new DoubleAnimation(current, value,
-            TimeSpan.FromMilliseconds(AnimationConfig.ReduceMotion ? 80 : duration))
-        {
-            BeginTime = TimeSpan.FromMilliseconds(delay),
-            FillBehavior = FillBehavior.Stop,
-            EasingFunction = TrayMotion.EaseOut
-        };
-        Timeline.SetDesiredFrameRate(animation, AnimationConfig.TargetFps);
-        target.BeginAnimation(property, animation);
-    }
 
     private static void AnimateDropValue(FrameworkElement target, DependencyProperty property,
         double value, int duration, double? from = null, int delay = 0)

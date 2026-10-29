@@ -122,7 +122,7 @@ public sealed partial class WeatherService : IWeatherService, IDisposable
                 if (read == 0) break;
                 totalRead += read;
                 if (totalRead > maxBytes) return null;
-                memory.Write(buffer, 0, read);
+                await memory.WriteAsync(buffer.AsMemory(0, read), token).ConfigureAwait(false);
             }
 
             // This is MemoryStream-owned storage, NOT a rented array. The document

@@ -156,7 +156,7 @@ public sealed class CurrencyConversionTests
         using var f = new Fixture();
         await f.Service.ConvertAsync(new(1m, "USD"), "VND", default);
         using var cancel = new CancellationTokenSource();
-        cancel.Cancel();
+        await cancel.CancelAsync();
         await Assert.ThrowsAnyAsync<OperationCanceledException>(() => f.Service.ConvertAsync(new(1m, "USD"), "VND", cancel.Token));
         Assert.Equal(1, f.Calls);
     }
@@ -188,7 +188,7 @@ public sealed class CurrencyConversionTests
         using var cancellation = new CancellationTokenSource();
         var pending = service.ConvertAsync(new(1m, "USD"), "VND", cancellation.Token);
         await started.Task.WaitAsync(TimeSpan.FromSeconds(3));
-        cancellation.Cancel();
+        await cancellation.CancelAsync();
         await Assert.ThrowsAnyAsync<OperationCanceledException>(() => pending);
         privacy.Apply(new NotchSettings { EnableLocalOnlyMode = true });
         await Assert.ThrowsAsync<TranslationException>(() => service.ConvertAsync(new(1m, "USD"), "VND", default).WaitAsync(TimeSpan.FromSeconds(3)));
@@ -196,10 +196,10 @@ public sealed class CurrencyConversionTests
 
     private sealed class BlockingHandler(TaskCompletionSource started) : HttpMessageHandler
     {
-        protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken token)
+        protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
         {
             started.TrySetResult();
-            await Task.Delay(Timeout.Infinite, token);
+            await Task.Delay(Timeout.Infinite, cancellationToken);
             throw new InvalidOperationException();
         }
     }
@@ -229,6 +229,6 @@ public sealed class CurrencyConversionTests
 
     private sealed class Handler(Func<HttpRequestMessage, HttpResponseMessage> send) : HttpMessageHandler
     {
-        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken token) => Task.FromResult(send(request));
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken) => Task.FromResult(send(request));
     }
 }

@@ -12,7 +12,7 @@ internal static class TranslationNativeRuntime
 
     internal static string Load()
     {
-        if (_library != null) return _library;
+        if (_handle != IntPtr.Zero && _library != null) return _library;
         foreach (string path in Candidates(AppContext.BaseDirectory, Avx.IsSupported, Avx2.IsSupported, Avx512F.IsSupported))
         {
             if (!File.Exists(path)) continue;

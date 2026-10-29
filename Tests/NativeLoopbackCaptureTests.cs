@@ -8,7 +8,7 @@ public sealed class NativeLoopbackCaptureTests(ITestOutputHelper output)
 {
     // Read-only: the default render endpoint is tapped in loopback mode and released again.
     [Fact]
-    public void DefaultEndpointStartsReportsItsFormatAndStopsCleanly()
+    public async Task DefaultEndpointStartsReportsItsFormatAndStopsCleanly()
     {
         int packets = 0;
         var capture = NativeLoopbackCapture.Start(string.Empty, (_, bytes) => Interlocked.Add(ref packets, bytes > 0 ? 1 : 0), () => { }, out int hresult);
@@ -27,11 +27,11 @@ public sealed class NativeLoopbackCaptureTests(ITestOutputHelper output)
             Assert.False(string.IsNullOrWhiteSpace(capture.DeviceId));
             Assert.True(capture.IsDeviceActive());
             Assert.Equal(capture.DeviceId, NativeLoopbackCapture.ResolveDeviceId(string.Empty));
-            Thread.Sleep(150);
+            await Task.Delay(150);
         }
 
         int seen = Volatile.Read(ref packets);
-        Thread.Sleep(100);
+        await Task.Delay(100);
         Assert.Equal(seen, Volatile.Read(ref packets)); // No callbacks after dispose.
     }
 

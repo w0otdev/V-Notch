@@ -159,6 +159,9 @@ public sealed class EverythingSearchIpcTests
             Marshal.Copy(bytes, 0, buffer + offset, bytes.Length);
             return offset + bytes.Length;
         }
+        [DllImport("user32.dll", CharSet = CharSet.Unicode)]
+        private static extern IntPtr SendMessageW(IntPtr hwnd, int message, IntPtr sender, IntPtr data);
+
         public void Dispose()
         {
             _window?.RemoveHook(Receive);
@@ -169,6 +172,4 @@ public sealed class EverythingSearchIpcTests
 
     [StructLayout(LayoutKind.Sequential)]
     private struct CopyData { public IntPtr Id; public int Bytes; public IntPtr Buffer; }
-    [DllImport("user32.dll", CharSet = CharSet.Unicode)]
-    private static extern IntPtr SendMessageW(IntPtr hwnd, int message, IntPtr sender, IntPtr data);
 }

@@ -326,11 +326,35 @@ internal static unsafe partial class Win32Interop
         NativeCreateHighResolutionTimer(out long handle) == 0 ? new SafeWaitHandle((IntPtr)handle, ownsHandle: true) : null;
 
     /// <summary>Arms the timer to fire once after <paramref name="milliseconds"/>.</summary>
-    public static bool SetWaitableTimerRelative(SafeWaitHandle timer, double milliseconds) =>
-        NativeSetWaitableTimer(timer.DangerousGetHandle(), -Math.Max(1L, (long)(milliseconds * 10_000.0))) == 0;
+#pragma warning disable S3869 // Handle lifetime is pinned via DangerousAddRef/DangerousRelease
+    public static bool SetWaitableTimerRelative(SafeWaitHandle timer, double milliseconds)
+    {
+        bool refAdded = false;
+        try
+        {
+            timer.DangerousAddRef(ref refAdded);
+            return NativeSetWaitableTimer(timer.DangerousGetHandle(), -Math.Max(1L, (long)(milliseconds * 10_000.0))) == 0;
+        }
+        finally
+        {
+            if (refAdded) timer.DangerousRelease();
+        }
+    }
 
-    public static bool CancelWaitableTimer(SafeWaitHandle timer) =>
-        NativeCancelWaitableTimer(timer.DangerousGetHandle()) == 0;
+    public static bool CancelWaitableTimer(SafeWaitHandle timer)
+    {
+        bool refAdded = false;
+        try
+        {
+            timer.DangerousAddRef(ref refAdded);
+            return NativeCancelWaitableTimer(timer.DangerousGetHandle()) == 0;
+        }
+        finally
+        {
+            if (refAdded) timer.DangerousRelease();
+        }
+    }
+#pragma warning restore S3869
 
     /// <summary>Waits on two handles; returns 0 or 1 for the signaled one, <see cref="WAIT_TIMEOUT"/>, or -1 on failure.</summary>
     public static int WaitForAnyOfTwo(IntPtr first, IntPtr second, uint timeoutMs) =>

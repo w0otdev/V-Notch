@@ -35,7 +35,7 @@ public sealed class ClockPageRenderingTests
         // A visibility-only check misses black text on the dark clock background.
         slot.Children.Remove(viewbox);
         var surface = new Border { Width = 170, Height = 170, Background = Brushes.Black, Child = viewbox };
-        var time = new DateTime(2026, 10, 27, 23, 59, 0);
+        var time = new DateTime(2026, 10, 27, 23, 59, 0, DateTimeKind.Local);
         clock.Text = style == "digital" ? time.ToString("HH:mm") : WordClock.FormatLocalizedTime(time);
         surface.Measure(new Size(170, 170));
         surface.Arrange(new Rect(0, 0, 170, 170));

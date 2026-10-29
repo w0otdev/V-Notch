@@ -105,7 +105,7 @@ public sealed class MainWindowLyricsPresentationTests
         Invoke(window, "HideLyricsWidget");
         Assert.Equal(Visibility.Collapsed, window.LyricsBlurBackground.Visibility);
         Invoke(window, "FadeInLyricsBlurBackgroundIfActive", true);
-        await WpfFrameWaiter.UntilAsync(() => window.CalendarWidget.Opacity == 1, "returning widget", ct);
+        await WpfFrameWaiter.UntilAsync(() => Math.Abs(window.CalendarWidget.Opacity - 1) < 1e-6, "returning widget", ct);
         Assert.Equal(Visibility.Collapsed, window.LyricsBlurBackground.Visibility);
         Assert.Equal(0, window.LyricsBlurBackground.Opacity);
         Assert.False(Field<bool>(window, "_isLyricsBlurFadeInProgress"));
@@ -152,7 +152,7 @@ public sealed class MainWindowLyricsPresentationTests
             Invoke(window, "ShowLyricsSearchState", false);
             Assert.Equal(Loc.Get("lyrics.searching"), window.LyricsSearchText.Text);
             Invoke(window, "ApplySyncedLines", lines, media, " Test provider ");
-            await WpfFrameWaiter.UntilAsync(() => window.LyricsPlaceholderPanel.Opacity == 1, "lyrics intro placeholder", ct);
+            await WpfFrameWaiter.UntilAsync(() => Math.Abs(window.LyricsPlaceholderPanel.Opacity - 1) < 1e-6, "lyrics intro placeholder", ct);
             Assert.Equal("Test song", window.LyricsPlaceholderTitle.Text);
             Assert.Equal(artist == "YouTube" ? "" : artist, window.LyricsPlaceholderArtist.Text);
             Assert.Contains("Test provider", window.LyricsPlaceholderProvider.Text);
@@ -163,8 +163,8 @@ public sealed class MainWindowLyricsPresentationTests
                 media.Position = TimeSpan.FromSeconds(seconds);
                 Invoke(window, "UpdateLyricsDisplay");
                 await WpfFrameWaiter.UntilAsync(() =>
-                    (window.LyricTextA.Text == expected && window.LyricTextA.Opacity == 1 ||
-                     window.LyricTextB.Text == expected && window.LyricTextB.Opacity == 1) &&
+                    (window.LyricTextA.Text == expected && Math.Abs(window.LyricTextA.Opacity - 1) < 1e-6 ||
+                     window.LyricTextB.Text == expected && Math.Abs(window.LyricTextB.Opacity - 1) < 1e-6) &&
                     window.AnimatedLyricsLayer.OpacityMask == null, "the selected lyric line", ct);
                 Assert.Equal(Visibility.Collapsed, window.LyricsPlaceholderPanel.Visibility);
                 Assert.Equal(Visibility.Visible, window.LyricsWidget.Visibility);
@@ -173,7 +173,7 @@ public sealed class MainWindowLyricsPresentationTests
 
             media.Position = TimeSpan.Zero;
             Invoke(window, "UpdateLyricsDisplay");
-            await WpfFrameWaiter.UntilAsync(() => window.LyricsPlaceholderPanel.Opacity == 1, "intro after backward seek", ct);
+            await WpfFrameWaiter.UntilAsync(() => Math.Abs(window.LyricsPlaceholderPanel.Opacity - 1) < 1e-6, "intro after backward seek", ct);
             Assert.Equal(-1, Field<int>(window, "_currentLyricIndex"));
             Invoke(window, "UpdateLyricsDisplay");
             Invoke(window, "ApplySyncedLines", null, media, null);
@@ -204,22 +204,22 @@ public sealed class MainWindowLyricsPresentationTests
             Assert.Equal(Loc.Get("lyrics.searching"), window.LyricsSearchText.Text);
             Invoke(window, "HideLyricsSearchState", false);
             Invoke(window, "ShowLyricsSearchState", true);
-            await WpfFrameWaiter.UntilAsync(() => window.LyricsSearchPanel.Opacity == 1, "reopened lyrics search", ct);
+            await WpfFrameWaiter.UntilAsync(() => Math.Abs(window.LyricsSearchPanel.Opacity - 1) < 1e-6, "reopened lyrics search", ct);
             Assert.Equal(Visibility.Visible, window.LyricsSearchPanel.Visibility);
             Invoke(window, "AnimateLyricLine", "Old line", true, false);
             Invoke(window, "AnimateLyricLine", "Latest line", false, false);
             await WpfFrameWaiter.UntilAsync(() =>
-                (window.LyricTextA.Text == "Latest line" && window.LyricTextA.Opacity == 1 ||
-                 window.LyricTextB.Text == "Latest line" && window.LyricTextB.Opacity == 1) &&
+                (window.LyricTextA.Text == "Latest line" && Math.Abs(window.LyricTextA.Opacity - 1) < 1e-6 ||
+                 window.LyricTextB.Text == "Latest line" && Math.Abs(window.LyricTextB.Opacity - 1) < 1e-6) &&
                 window.AnimatedLyricsLayer.OpacityMask == null, "latest lyric transition", ct);
             Assert.Equal(Visibility.Collapsed, window.LyricsSearchPanel.Visibility);
             Invoke(window, "ShowLyricsPlaceholder", "Instrumental", "Artist", "", false);
-            await WpfFrameWaiter.UntilAsync(() => window.LyricsPlaceholderPanel.Opacity == 1, "instrumental placeholder", ct);
+            await WpfFrameWaiter.UntilAsync(() => Math.Abs(window.LyricsPlaceholderPanel.Opacity - 1) < 1e-6, "instrumental placeholder", ct);
             Assert.Equal(Visibility.Collapsed, window.LyricsPlaceholderProvider.Visibility);
             Invoke(window, "ShowLyricsPlaceholder", "Instrumental", "Artist", "", false);
             Invoke(window, "HideLyricsPlaceholder", false);
             Invoke(window, "ShowLyricsPlaceholder", "New song", "New artist", "Provider", true);
-            await WpfFrameWaiter.UntilAsync(() => window.LyricsPlaceholderPanel.Opacity == 1, "replaced placeholder", ct);
+            await WpfFrameWaiter.UntilAsync(() => Math.Abs(window.LyricsPlaceholderPanel.Opacity - 1) < 1e-6, "replaced placeholder", ct);
             Assert.Equal("New song", window.LyricsPlaceholderTitle.Text);
             Assert.Equal("New artist", window.LyricsPlaceholderArtist.Text);
             Invoke(window, "HideLyricsPlaceholder", true);

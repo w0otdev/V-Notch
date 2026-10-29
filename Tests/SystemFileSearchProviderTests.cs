@@ -61,7 +61,7 @@ public sealed class SystemFileSearchProviderTests : IDisposable
     {
         string secondRoot = Path.Combine(_directory, "x86");
         Directory.CreateDirectory(secondRoot);
-        File.WriteAllText(Path.Combine(secondRoot, "ncpa.cpl"), string.Empty);
+        await File.WriteAllTextAsync(Path.Combine(secondRoot, "ncpa.cpl"), string.Empty);
         var provider = new SystemFileSearchProvider([_directory, secondRoot]);
 
         SpotlightSearchItem result = Assert.Single(

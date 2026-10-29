@@ -23,12 +23,13 @@ internal static partial class BandicamRecordingProbe
                 {
                     if (RecordingFileOwnership.IsFileOwnedBy(path, process)) return true;
                 }
-                catch (InvalidOperationException) { }
-                catch (System.ComponentModel.Win32Exception) { }
+                catch (InvalidOperationException) { /* Process exited */ }
+                catch (System.ComponentModel.Win32Exception) { /* Access denied */ }
             }
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or System.Security.SecurityException)
         {
+            // Ignore inaccessible directory.
         }
         finally
         {

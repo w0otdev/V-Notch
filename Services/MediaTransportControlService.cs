@@ -269,9 +269,10 @@ public sealed partial class MediaTransportControlService
                 {
                     var current = timeline.Position;
                     var target = current + TimeSpan.FromSeconds(seconds);
+                    long maxTicks = timeline.EndTime > TimeSpan.Zero ? timeline.EndTime.Ticks : long.MaxValue;
                     long clampedTicks = vn_media_transport_clamp_seek_target(target.Ticks, timeline.EndTime.Ticks, out long outClamped) == 0
                         ? outClamped
-                        : Math.Clamp(target.Ticks, 0L, timeline.EndTime > TimeSpan.Zero ? timeline.EndTime.Ticks : long.MaxValue);
+                        : Math.Clamp(target.Ticks, 0L, maxTicks);
 
                     await session.TryChangePlaybackPositionAsync(clampedTicks);
                 }
@@ -293,9 +294,10 @@ public sealed partial class MediaTransportControlService
                 var timeline = session.GetTimelineProperties();
                 if (timeline != null)
                 {
+                    long maxTicks = timeline.EndTime > TimeSpan.Zero ? timeline.EndTime.Ticks : long.MaxValue;
                     long clampedTicks = vn_media_transport_clamp_seek_target(position.Ticks, timeline.EndTime.Ticks, out long outClamped) == 0
                         ? outClamped
-                        : Math.Clamp(position.Ticks, 0L, timeline.EndTime > TimeSpan.Zero ? timeline.EndTime.Ticks : long.MaxValue);
+                        : Math.Clamp(position.Ticks, 0L, maxTicks);
 
                     await session.TryChangePlaybackPositionAsync(clampedTicks);
                 }

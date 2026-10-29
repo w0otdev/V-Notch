@@ -8,7 +8,7 @@ using VNotch.ViewModels;
 
 namespace VNotch.Controls;
 
-public partial class ClipboardTray
+public sealed partial class ClipboardTray
 {
     private sealed class CardViewportState(ClipboardCardViewModel card, FrameworkElement presentation)
     {

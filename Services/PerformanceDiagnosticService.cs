@@ -241,9 +241,6 @@ public sealed partial class PerformanceDiagnosticService
         };
     }
 
-    private static ulong SafeDelta(ulong current, ulong previous) =>
-        current > previous ? current - previous : 0;
-
     private double SampleProcessCpu(long nowTicks)
     {
         try
@@ -327,8 +324,8 @@ public sealed partial class PerformanceDiagnosticService
         {
             if (Win32Interop.GetProcessMemoryInfo(_currentProcessHandle, out var memCounters, MemCountersCb))
             {
-                procWorkingSet = (ulong)memCounters.WorkingSetSize;
-                procPrivateBytes = (ulong)memCounters.PrivateUsage;
+                procWorkingSet = memCounters.WorkingSetSize;
+                procPrivateBytes = memCounters.PrivateUsage;
             }
         }
         catch (Exception)

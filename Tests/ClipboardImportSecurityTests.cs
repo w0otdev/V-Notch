@@ -47,13 +47,14 @@ public sealed class ClipboardImportSecurityTests
     public async Task LowDiskSpaceRejectsAnApprovedCopyBeforeCreatingStaging()
     {
         using var fixture = new Fixture();
-        string source = Path.Combine(fixture.Root, "file.txt"); File.WriteAllText(source, "bytes");
+        string source = Path.Combine(fixture.Root, "file.txt");
+        await File.WriteAllTextAsync(source, "bytes");
         using var store = new ClipboardHistoryStore(fixture.History, () => 0);
         await store.InitializeAsync();
         await Assert.ThrowsAsync<IOException>(() => store.ImportAsync(new ClipboardCapture { FilePaths = [source] }, true));
         Assert.Empty(store.Snapshot());
         Assert.False(Directory.Exists(Path.Combine(fixture.History, "staging")));
-        Assert.Equal("bytes", File.ReadAllText(source));
+        Assert.Equal("bytes", await File.ReadAllTextAsync(source));
     }
 
     [Fact]
@@ -61,8 +62,8 @@ public sealed class ClipboardImportSecurityTests
     {
         using var fixture = new Fixture();
         string source = Path.Combine(fixture.Root, "folder"); Directory.CreateDirectory(source);
-        for (int i = 0; i < 600; i++) File.WriteAllText(Path.Combine(source, i + ".txt"), i.ToString());
-        var modified = new DateTime(2024, 1, 2, 3, 4, 6);
+        for (int i = 0; i < 600; i++) await File.WriteAllTextAsync(Path.Combine(source, i + ".txt"), i.ToString());
+        var modified = new DateTime(2024, 1, 2, 3, 4, 6, DateTimeKind.Local);
         File.SetLastWriteTime(Path.Combine(source, "599.txt"), modified);
         using var store = new ClipboardHistoryStore(fixture.History);
         await store.InitializeAsync();
@@ -71,7 +72,7 @@ public sealed class ClipboardImportSecurityTests
         Assert.Equal(first.Id, second.Id);
         string export = Assert.Single(await store.ExportFilesAsync(first.Id));
         Assert.Equal(600, Directory.GetFiles(export).Length);
-        Assert.Equal("599", File.ReadAllText(Path.Combine(export, "599.txt")));
+        Assert.Equal("599", await File.ReadAllTextAsync(Path.Combine(export, "599.txt")));
         Assert.Equal(modified, File.GetLastWriteTime(Path.Combine(export, "599.txt")));
     }
 
@@ -79,12 +80,12 @@ public sealed class ClipboardImportSecurityTests
     public async Task ImportingAParentFolderExcludesHistoryAndItsGrowingStagingArea()
     {
         using var fixture = new Fixture();
-        File.WriteAllText(Path.Combine(fixture.Root, "file.txt"), "source");
+        await File.WriteAllTextAsync(Path.Combine(fixture.Root, "file.txt"), "source");
         using var store = new ClipboardHistoryStore(fixture.History);
         await store.InitializeAsync();
         var entry = (await store.ImportAsync(new ClipboardCapture { FilePaths = [fixture.Root] })).Entry!;
         string export = Assert.Single(await store.ExportFilesAsync(entry.Id));
-        Assert.Equal("source", File.ReadAllText(Path.Combine(export, "file.txt")));
+        Assert.Equal("source", await File.ReadAllTextAsync(Path.Combine(export, "file.txt")));
         Assert.False(Directory.Exists(Path.Combine(export, "history")));
     }
 
@@ -113,7 +114,7 @@ public sealed class ClipboardImportSecurityTests
         string source = Path.Combine(fixture.Root, directory ? "folder" : "secret.txt");
         if (directory) Directory.CreateDirectory(source);
         string sourceFile = directory ? Path.Combine(source, "secret.txt") : source;
-        File.WriteAllText(sourceFile, "private bytes");
+        await File.WriteAllTextAsync(sourceFile, "private bytes");
         using var store = new ClipboardHistoryStore(fixture.History);
         await store.InitializeAsync();
         var entry = (await store.ImportAsync(new ClipboardCapture { FilePaths = [source] })).Entry!;
@@ -127,7 +128,7 @@ public sealed class ClipboardImportSecurityTests
             Assert.Throws<IOException>(() => File.OpenRead(file));
             await store.ReleasePersonalExportsAsync([export]);
             using var reader = new StreamReader(external, leaveOpen: true);
-            Assert.Equal("private bytes", reader.ReadToEnd());
+            Assert.Equal("private bytes", await reader.ReadToEndAsync());
         }
         Assert.False(File.Exists(file));
         await store.LockPersonalAsync();
@@ -138,7 +139,8 @@ public sealed class ClipboardImportSecurityTests
     public async Task PersonalImportsPublishOnlyEncryptedRecordsAndRejectALockedVault()
     {
         using var fixture = new Fixture();
-        string source = Path.Combine(fixture.Root, "secret.txt"); File.WriteAllText(source, "private bytes");
+        string source = Path.Combine(fixture.Root, "secret.txt");
+        await File.WriteAllTextAsync(source, "private bytes");
         using var store = new ClipboardHistoryStore(fixture.History);
         await store.InitializeAsync();
         var capture = new ClipboardCapture { FilePaths = [source], TargetCategory = "Personal" };
@@ -161,7 +163,10 @@ public sealed class ClipboardImportSecurityTests
     }
     private static SecureString Pin()
     {
-        var pin = new SecureString(); foreach (char c in "123456") pin.AppendChar(c); pin.MakeReadOnly(); return pin;
+        var pin = new SecureString();
+        foreach (char c in "123456") pin.AppendChar(c);
+        pin.MakeReadOnly();
+        return pin;
     }
     private sealed class Fixture : IDisposable
     {

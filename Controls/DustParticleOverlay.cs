@@ -106,7 +106,7 @@ public sealed class DustParticleOverlay : FrameworkElement
     private bool _isReforming;
     private long _transitionStartMs;
     private long _lastStepMs;
-    private double _dissolveProgress;
+
     private double _reformProgress = 1.0;
 
     public DustParticleOverlay()
@@ -143,7 +143,7 @@ public sealed class DustParticleOverlay : FrameworkElement
     {
         _isDissolving = false;
         _isReforming = false;
-        _dissolveProgress = 0.0;
+
         _reformProgress = 1.0;
         _particlesInitialized = false;
         if (IsActive)
@@ -290,11 +290,17 @@ public sealed class DustParticleOverlay : FrameworkElement
 
         // 3-tier Telegram size distribution: 62% micro specks, 28% medium motes, 10% crisp highlights
         float sizeRoll = NextFloat();
-        float radius = sizeRoll < 0.62f
-            ? 0.62f + NextFloat() * 0.24f
-            : sizeRoll < 0.90f
-                ? 0.88f + NextFloat() * 0.24f
-                : 1.14f + NextFloat() * 0.22f;
+        float radius;
+        if (sizeRoll < 0.62f)
+            radius = 0.62f + NextFloat() * 0.24f;
+        else if (sizeRoll < 0.90f)
+            radius = 0.88f + NextFloat() * 0.24f;
+        else
+            radius = 1.14f + NextFloat() * 0.22f;
+
+
+
+
 
         // Isotropic drift velocity (Telegram spoiler particles drift continuously across bounds)
         float angle = NextFloat() * MathF.Tau;
@@ -401,7 +407,7 @@ public sealed class DustParticleOverlay : FrameworkElement
         if (_isDissolving)
         {
             double progress = Math.Clamp((nowMs - _transitionStartMs) / DissolveDurationMs, 0.0, 1.0);
-            _dissolveProgress = progress;
+
 
             // Ease-out drag & quadratic alpha decay during shockwave burst
             float drag = MathF.Exp(-4.8f * dt);
@@ -535,7 +541,7 @@ public sealed class DustParticleOverlay : FrameworkElement
     public void Reform()
     {
         _isDissolving = false;
-        _dissolveProgress = 0.0;
+
         _isReforming = true;
         _reformProgress = 0.0;
         _transitionStartMs = Environment.TickCount64;
@@ -648,9 +654,9 @@ public sealed class DustParticleOverlay : FrameworkElement
         base.OnPreviewMouseLeftButtonDown(e);
     }
 
-    protected override void OnRender(DrawingContext dc)
+    protected override void OnRender(DrawingContext drawingContext)
     {
-        base.OnRender(dc);
+        base.OnRender(drawingContext);
         if (!IsActive || (IsDissolved && !_isDissolving) || ActualWidth <= 0 || ActualHeight <= 0) return;
 
         if (!_particlesInitialized)
@@ -662,7 +668,7 @@ public sealed class DustParticleOverlay : FrameworkElement
         // fine dust motes still triggers Dissolve reliably.
         if (!_isDissolving)
         {
-            dc.DrawRectangle(Brushes.Transparent, null, new Rect(0, 0, ActualWidth, ActualHeight));
+            drawingContext.DrawRectangle(Brushes.Transparent, null, new Rect(0, 0, ActualWidth, ActualHeight));
         }
 
         // Render particles using pre-frozen Alpha/Tint LUT brushes (zero PushOpacity/Pop calls, zero heap allocations).
@@ -677,7 +683,7 @@ public sealed class DustParticleOverlay : FrameworkElement
             if (alphaBucket >= AlphaLevels) alphaBucket = AlphaLevels - 1;
 
             Brush brush = BrushLut[p.TintIndex * AlphaLevels + alphaBucket];
-            dc.DrawEllipse(brush, null, new Point(p.X, p.Y), p.Radius, p.Radius);
+            drawingContext.DrawEllipse(brush, null, new Point(p.X, p.Y), p.Radius, p.Radius);
         }
     }
 

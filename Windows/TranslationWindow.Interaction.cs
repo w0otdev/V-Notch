@@ -91,7 +91,7 @@ public partial class TranslationWindow
     private void UpdatePopupLimits()
     {
         var hwnd = new WindowInteropHelper(this).Handle;
-        if (hwnd == IntPtr.Zero || !Win32Interop.GetWindowRect(hwnd, out var rect)) return;
+        if (hwnd == IntPtr.Zero || !Win32Interop.GetWindowRect(hwnd, out _)) return;
         var screen = System.Windows.Forms.Screen.FromHandle(hwnd);
         var work = screen.WorkingArea;
         _workArea = new Rect(work.X, work.Y, work.Width, work.Height);

@@ -80,10 +80,13 @@ public static partial class RuntimeLog
 
     public static string LogPath => _logPath;
 
-    public static bool IsEnabled(LogLevel level) =>
-        vn_runtime_log_is_level_enabled(_initialized ? (byte)1 : (byte)0, (int)level, Volatile.Read(ref _minimumLevel), out byte enabled) == 0
+    public static bool IsEnabled(LogLevel level)
+    {
+        byte init = _initialized ? (byte)1 : (byte)0;
+        return vn_runtime_log_is_level_enabled(init, (int)level, Volatile.Read(ref _minimumLevel), out byte enabled) == 0
             ? enabled != 0
             : (_initialized && level >= (LogLevel)Volatile.Read(ref _minimumLevel));
+    }
 
     public static async Task InitializeNewSessionAsync(string? fileName = null)
     {
@@ -152,6 +155,12 @@ public static partial class RuntimeLog
         if (message.Enabled) WriteEntry(LogLevel.Debug, category, message.GetText());
     }
 
+    public static void Debug(string category, Func<string> messageFactory)
+    {
+        if (IsEnabled(LogLevel.Debug)) WriteEntry(LogLevel.Debug, category, messageFactory());
+    }
+
+
     [InterpolatedStringHandler]
     public ref struct DebugMessageHandler
     {
@@ -184,11 +193,6 @@ public static partial class RuntimeLog
         public void AppendFormatted<T>(T value, string? format) => _builder.AppendFormatted(value, format);
         public void AppendFormatted<T>(T value, int alignment, string? format = null) => _builder.AppendFormatted(value, alignment, format);
         internal string GetText() => _builder.ToStringAndClear();
-    }
-
-    public static void Debug(string category, Func<string> messageFactory)
-    {
-        if (IsEnabled(LogLevel.Debug)) WriteEntry(LogLevel.Debug, category, messageFactory());
     }
 
     public static void Log(string category, string message) => WriteEntry(LogLevel.Info, category, message);
@@ -351,8 +355,9 @@ public static partial class RuntimeLog
         {
             if (!File.Exists(path)) return true;
             var info = new FileInfo(path);
+            byte forceFlag = forceSessionRotation ? (byte)1 : (byte)0;
             bool shouldRotate = vn_runtime_log_should_rotate(
-                forceSessionRotation ? (byte)1 : (byte)0,
+                forceFlag,
                 info.Length,
                 incomingBytes,
                 MaxLogSizeBytes,
@@ -405,9 +410,10 @@ public static partial class RuntimeLog
             }
 
             int count = Interlocked.Increment(ref _queuedCount);
+            int fallbackCap = level >= LogLevel.Warn ? CriticalQueueCapacity : NormalQueueCapacity;
             int capacity = vn_runtime_log_resolve_queue_capacity((int)level, NormalQueueCapacity, CriticalQueueCapacity, out int outCap) == 0
                 ? outCap
-                : (level >= LogLevel.Warn ? CriticalQueueCapacity : NormalQueueCapacity);
+                : fallbackCap;
             if (count > capacity)
             {
                 Interlocked.Decrement(ref _queuedCount);

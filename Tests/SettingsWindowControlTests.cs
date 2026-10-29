@@ -425,7 +425,7 @@ public sealed class SettingsWindowControlTests
             }
             string[] destinations = panels.Keys.Where(key => key != Field<string>(window, "_activeNav")).Take(3).ToArray();
             foreach (string destination in destinations) Invoke(window, "NavigateToSection", destination);
-            string latest = destinations.Last();
+            string latest = destinations[^1];
             await WpfFrameWaiter.UntilAsync(() => panels[latest].Visibility == Visibility.Visible && panels.Values.Count(panel => panel.Visibility == Visibility.Visible) == 1, "latest settings section wins", ct);
             Invoke(window, "NavigateToSection", latest);
             Assert.Equal(latest, Field<string>(window, "_activeNav"));
@@ -443,7 +443,7 @@ public sealed class SettingsWindowControlTests
         Invoke(window, "PlayEntranceAnimation");
         Assert.True(window.ShellScale.ScaleX < 1);
         Assert.Equal(new Point(0.5, 0), window.MainShell.RenderTransformOrigin);
-        await WpfFrameWaiter.UntilAsync(() => window.ShellScale.ScaleX == 1 && window.ShellScale.ScaleY == 1 && window.FooterTranslate.Y == 0, "settings entrance shell and footer", ct);
+        await WpfFrameWaiter.UntilAsync(() => Math.Abs(window.ShellScale.ScaleX - 1) < 1e-6 && Math.Abs(window.ShellScale.ScaleY - 1) < 1e-6 && Math.Abs(window.FooterTranslate.Y) < 1e-6, "settings entrance shell and footer", ct);
         Assert.Equal(80, window.Left);
         Assert.Equal(60, window.Top);
         Assert.Equal(1, window.SettingsHeader.Opacity);
@@ -571,7 +571,7 @@ public sealed class SettingsWindowControlTests
         public bool IncludePrereleases { get; private set; }
         public string CurrentVersion => "1.0.0";
         public UpdateInfo? LatestUpdateInfo => null;
-        public event EventHandler<UpdateInfo?>? UpdateCheckCompleted { add { } remove { } }
+        public event EventHandler<UpdateInfo?>? UpdateCheckCompleted { add { /* no-op */ } remove { /* no-op */ } }
         public Task<UpdateInfo?> CheckForUpdatesAsync(bool includePrereleases = false)
         {
             IncludePrereleases = includePrereleases;
@@ -719,7 +719,7 @@ public sealed class SettingsWindowControlTests
         var snapshot = window.ReadSettingsFromUi();
         Assert.Equal("liquidglass", snapshot.NotchStyle);
         Assert.Equal(preset, snapshot.LiquidGlassPreset);
-        Assert.Equal(blur, snapshot.LiquidGlass!.BlurAmount, 5);
+        Assert.Equal(blur, snapshot.LiquidGlass.BlurAmount, 5);
         Assert.Equal(120, snapshot.LiquidGlass.TargetFps);
         Assert.False(snapshot.LiquidGlass.UseGpuRefraction);
         foreach (string language in new[] { "vi", "ja", "en" })
@@ -728,7 +728,7 @@ public sealed class SettingsWindowControlTests
             Invoke(window, "ApplyLiquidGlassLocalization");
             Assert.Equal(9, window.GlassPresetCombo.Items.Count);
             Assert.Equal(preset, ((ComboBoxItem)window.GlassPresetCombo.SelectedItem).Tag);
-            Assert.Equal(blur, window.ReadSettingsFromUi().LiquidGlass!.BlurAmount, 5);
+            Assert.Equal(blur, window.ReadSettingsFromUi().LiquidGlass.BlurAmount, 5);
         }
         window.GlassPresetCombo.SelectedItem = window.GlassPresetCombo.Items.Cast<ComboBoxItem>().Single(item => (string)item.Tag == "custom");
         Assert.Equal(40, window.GlassBlurSlider.Value);
@@ -804,7 +804,7 @@ public sealed class SettingsWindowControlTests
             check.IsChecked = false;
             Assert.DoesNotContain((string)restored.Tag, fixture.Service.Applied!.VisibleNavTabs.Split(','));
             check.IsChecked = true;
-            Assert.Contains((string)restored.Tag, fixture.Service.Applied!.VisibleNavTabs.Split(','));
+            Assert.Contains((string)restored.Tag, fixture.Service.Applied.VisibleNavTabs.Split(','));
             Assert.Null(restored.Effect);
             Assert.Equal(0, Panel.GetZIndex(restored));
         }

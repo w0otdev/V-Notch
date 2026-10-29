@@ -103,8 +103,9 @@ internal static unsafe partial class VisualizerDsp
     /// <summary>Decodes one PCM or float sample; unsupported widths and out-of-range reads give 0.</summary>
     internal static float ReadSample(byte[] buffer, int offset, bool isFloat, int bitsPerSample)
     {
+        byte floatFlag = isFloat ? (byte)1 : (byte)0;
         fixed (byte* pinned = buffer)
-            return vn_visualizer_read_sample(pinned, buffer.Length, offset, isFloat ? (byte)1 : (byte)0, bitsPerSample, out float sample) == 0
+            return vn_visualizer_read_sample(pinned, buffer.Length, offset, floatFlag, bitsPerSample, out float sample) == 0
                 ? sample
                 : 0f;
     }
@@ -118,6 +119,7 @@ internal static unsafe partial class VisualizerDsp
         Span<float> outMono)
     {
         if (buffer.Length == 0 || outMono.IsEmpty) return 0;
+        byte floatFlag = isFloat ? (byte)1 : (byte)0;
         fixed (byte* pBuf = buffer)
         fixed (float* pMono = outMono)
         {
@@ -127,7 +129,7 @@ internal static unsafe partial class VisualizerDsp
                 bytesRecorded,
                 channelCount,
                 bitsPerSample,
-                isFloat ? (byte)1 : (byte)0,
+                floatFlag,
                 pMono,
                 outMono.Length,
                 out int written) == 0

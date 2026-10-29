@@ -46,7 +46,7 @@ public sealed class TranslationTextRevealTests
             Assert.True(partialPixels > 0);
             Assert.Equal(text, window.ResultText.Text);
             Assert.True(window.CopyButton.IsEnabled);
-            await WpfFrameWaiter.UntilAsync(() => target.Opacity == 1 && target.OpacityMask == null, "character reveal completes", ct);
+            await WpfFrameWaiter.UntilAsync(() => Math.Abs(target.Opacity - 1) < 1e-6 && target.OpacityMask == null, "character reveal completes", ct);
             Assert.Equal(size, target.RenderSize);
             Assert.Equal(text, window.ResultText.Text);
             Assert.True(CountVisiblePixels(window) > partialPixels);
@@ -92,7 +92,7 @@ public sealed class TranslationTextRevealTests
                 case "reduced": AnimationConfig.SetReduceMotion(true); break;
                 case "scroll":
                     window.ResultScroll.ScrollToVerticalOffset(100);
-                    await WpfFrameWaiter.UntilAsync(() => target.Opacity == 1 && target.OpacityMask == null, "scroll reveals complete text", ct);
+                    await WpfFrameWaiter.UntilAsync(() => Math.Abs(target.Opacity - 1) < 1e-6 && target.OpacityMask == null, "scroll reveals complete text", ct);
                     break;
                 case "replace": window.ShowResult(new("Intermediate result", "en", "fr", true)); break;
             }
@@ -105,7 +105,7 @@ public sealed class TranslationTextRevealTests
             window.ConfigureFormatting(false);
             window.ShowResult(new("Newest result", "en", "fr", true));
             if (action == "dismiss") return;
-            await WpfFrameWaiter.UntilAsync(() => window.ResultText.Text == "Newest result" && window.ResultText.Opacity == 1 && window.ResultText.OpacityMask == null, "new character reveal completes", ct);
+            await WpfFrameWaiter.UntilAsync(() => window.ResultText.Text == "Newest result" && Math.Abs(window.ResultText.Opacity - 1) < 1e-6 && window.ResultText.OpacityMask == null, "new character reveal completes", ct);
         }
         finally { window.Close(); AnimationConfig.SetReduceMotion(previous); }
     });
@@ -116,7 +116,7 @@ public sealed class TranslationTextRevealTests
         if (target.OpacityMask is not DrawingBrush { Drawing: DrawingGroup drawing }) return false;
         var opacities = drawing.Children.OfType<GeometryDrawing>().Skip(1)
             .Select(d => d.Brush?.Opacity ?? 0).ToArray();
-        return opacities.Any(o => o == 1) && opacities.Any(o => o is > 0 and < 1) && opacities.Any(o => o == 0);
+        return opacities.Any(o => Math.Abs(o - 1) < 1e-6) && opacities.Any(o => o is > 0 and < 1) && opacities.Any(o => Math.Abs(o) < 1e-6);
     }
 
     private static int CountVisiblePixels(TranslationWindow window)

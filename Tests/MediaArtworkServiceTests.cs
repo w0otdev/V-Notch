@@ -12,7 +12,7 @@ using Xunit;
 
 namespace VNotch.Tests;
 
-public class MediaArtworkServiceTests : IDisposable
+public sealed class MediaArtworkServiceTests : IDisposable
 {
     private sealed class MockHttpMessageHandler : HttpMessageHandler
     {

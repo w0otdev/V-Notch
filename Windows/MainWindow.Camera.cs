@@ -402,7 +402,7 @@ public partial class MainWindow
         }
 
         var storyboard = WithFps(((Storyboard)FindResource("CameraPreviewExit")).Clone());
-        foreach (DoubleAnimation animation in storyboard.Children)
+        foreach (DoubleAnimation animation in storyboard.Children.OfType<DoubleAnimation>())
             if (Storyboard.GetTargetName(animation) == nameof(CameraPreviewBlur))
                 animation.To = _settings.EnableBlurEffects ? 16.0 : 0.0;
         storyboard.Completed += (_, _) =>

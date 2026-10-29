@@ -77,11 +77,9 @@ internal static partial class SpotifyScriptMetadataReader
 
     private static unsafe string? FindHash(char[] window, int length, Regex pattern)
     {
-        string? op = ReferenceEquals(pattern, FindTracksPattern)
-            ? "findTracks"
-            : ReferenceEquals(pattern, CanvasPattern)
-                ? "canvas"
-                : null;
+        string? op = null;
+        if (ReferenceEquals(pattern, FindTracksPattern)) op = "findTracks";
+        else if (ReferenceEquals(pattern, CanvasPattern)) op = "canvas";
 
         if (op != null)
         {
@@ -97,8 +95,10 @@ internal static partial class SpotifyScriptMetadataReader
         }
 
         var characters = window.AsSpan(0, length);
-        foreach (var match in pattern.EnumerateMatches(characters))
+        var enumerator = pattern.EnumerateMatches(characters);
+        if (enumerator.MoveNext())
         {
+            var match = enumerator.Current;
             return pattern.Match(characters.Slice(match.Index, match.Length).ToString()).Groups["hash"].Value;
         }
         return null;

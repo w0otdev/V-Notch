@@ -22,7 +22,7 @@ internal static partial class SpotlightSystemCatalog
         out byte outUseFallback);
 
     internal sealed record Entry(string Key, SpotlightResultKind Kind, string Target,
-        string Glyph, string Keywords, bool RequiresConfirmation = false)
+        string Glyph, string Keywords, bool Confirm = false)
     {
         public SpotlightSearchItem CreateItem()
         {
@@ -101,7 +101,7 @@ internal static partial class SpotlightSystemCatalog
     internal static bool IsKnownTarget(SpotlightSearchItem item) => Find(item.Target)?.Kind == item.Kind;
 
     internal static bool RequiresConfirmation(SpotlightSearchItem item) =>
-        Find(item.Target) is { } entry && entry.Kind == item.Kind && entry.RequiresConfirmation;
+        Find(item.Target) is { } entry && entry.Kind == item.Kind && entry.Confirm;
 
     private static Entry Tool(string key, string file, string keywords, bool windowsRoot = false) =>
         new(key, SpotlightResultKind.Application, Path.Combine(windowsRoot

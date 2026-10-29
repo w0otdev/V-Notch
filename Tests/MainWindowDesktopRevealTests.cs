@@ -22,7 +22,7 @@ public sealed class MainWindowDesktopRevealTests
     {
         await using var fixture = CreateFixture();
         var window = fixture.Window;
-        window.Opacity = target == 1 ? 0 : 1;
+        window.Opacity = target > 0.5 ? 0 : 1;
         int completed = 0;
         Invoke(window, "AnimateDesktopRevealOpacity", target, 80, new Action(() => completed++));
         await WpfFrameWaiter.UntilAsync(() => completed == 1, "desktop reveal opacity completion", ct);
@@ -107,9 +107,39 @@ public sealed class MainWindowDesktopRevealTests
         Invoke(window, "DetachDesktopTransparentFrameHandler");
     });
 
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public void ForegroundChangesRecheckDesktopDemotionWithoutMouseMovement(bool stayBehind) => SharedStaTestRunner.RunAsync(async ct =>
+    {
+        await using var fixture = CreateFixture();
+        var window = fixture.Window;
+        var hwnd = new System.Windows.Interop.WindowInteropHelper(window).EnsureHandle();
+        Field<NotchShellState>(window, "_shellState").Hwnd = hwnd;
+        Field<NotchSettings>(window, "_settings").StayBehindWindows = stayBehind;
+        Set(window, "_startupHoldUntilUtc", DateTime.MinValue);
+        Set(window, "_isDesktopEdgePromoted", true);
+        Set(window, "_desktopPointerInHoverZone", false);
+
+        // The startup hold blocks demotion. Expiring it and changing
+        // foreground must recheck even though no mouse event has arrived.
+        Set(window, "_startupHoldUntilUtc", DateTime.UtcNow.AddMinutes(1));
+        Invoke(window, "OnForegroundWindowChanged", hwnd);
+        Assert.False(Field<UiScheduledTimer?>(window, "_desktopDemotionDelayTimer")?.IsEnabled == true);
+        Set(window, "_startupHoldUntilUtc", DateTime.MinValue);
+        Invoke(window, "OnForegroundWindowChanged", hwnd);
+
+        if (stayBehind)
+        {
+            Assert.True(Field<UiScheduledTimer>(window, "_desktopDemotionDelayTimer").IsEnabled);
+            await WpfFrameWaiter.UntilAsync(() => !Field<bool>(window, "_isDesktopEdgePromoted"), "idle notch returns behind apps after focus changes", ct);
+        }
+        else Assert.False(Field<UiScheduledTimer?>(window, "_desktopDemotionDelayTimer")?.IsEnabled == true);
+    });
+
     private static GreetingAcceptanceTests.MainWindowFixture CreateFixture() => new("en", greeting: false,
         configureServices: services => services.AddSingleton<VNotch.Services.IMediaDetectionService>(new FakeMediaDetectionService()));
     private static T Field<T>(MainWindow window, string name) => (T)typeof(MainWindow).GetField(name, Private)!.GetValue(window)!;
     private static void Set(MainWindow window, string name, object value) => typeof(MainWindow).GetField(name, Private)!.SetValue(window, value);
-    private static object? Invoke(MainWindow window, string name, params object?[] args) => typeof(MainWindow).GetMethod(name, Private)!.Invoke(window, args);
+    private static void Invoke(MainWindow window, string name, params object?[] args) => typeof(MainWindow).GetMethod(name, Private)!.Invoke(window, args);
 }

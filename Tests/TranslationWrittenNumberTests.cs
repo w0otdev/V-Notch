@@ -129,7 +129,7 @@ public sealed class TranslationWrittenNumberTests
     private sealed class Engine(string output) : ILocalTranslationEngine
     {
         internal int Calls;
-        public Task<string> TranslateAsync(string text, string source, string target, CancellationToken ct)
+        public Task<string> TranslateAsync(string text, string sourceLanguage, string targetLanguage, CancellationToken cancellationToken)
         { Calls++; return Task.FromResult(output); }
         public void ReleaseIdleResources() { }
         public void Dispose() { }

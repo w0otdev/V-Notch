@@ -50,6 +50,7 @@ internal sealed partial class ObsRecordingProbe
                 catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or
                     System.ComponentModel.Win32Exception or InvalidOperationException or System.Security.SecurityException)
                 {
+                    // Ignore inaccessible process or log file.
                 }
             }
         }
@@ -81,7 +82,7 @@ internal sealed partial class ObsRecordingProbe
                 if (_position > 0)
                 {
                     stream.Position = _position;
-                    while (stream.Position < length && stream.ReadByte() != '\n') { }
+                    while (stream.Position < length && stream.ReadByte() != '\n') { /* Advance to next line */ }
                     _position = stream.Position;
                 }
             }

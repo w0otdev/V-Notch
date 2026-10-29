@@ -42,7 +42,7 @@ public sealed class ClipboardTrayRegressionTests
             var container = list.ItemContainerGenerator.ContainerFromItem(original);
             int replacements = 0;
             cards.CollectionChanged += (_, e) => { if (e.Action == System.Collections.Specialized.NotifyCollectionChangedAction.Replace) replacements++; };
-            Invoke(tray, "ReconcileCards", (object)new[] { original.Entry with { Title = "after", IsPinned = true } });
+            Invoke(tray, "ReconcilePreparedCards", (object)new[] { original.Entry with { Title = "after", IsPinned = true } }, null);
             await Dispatcher.Yield(DispatcherPriority.ApplicationIdle);
             Assert.Same(original, Assert.Single(cards));
             Assert.Same(original, list.SelectedItem);
@@ -244,7 +244,7 @@ public sealed class ClipboardTrayRegressionTests
             SetField(tray, "_animateResults", false);
             var positions = (Dictionary<Guid, double>)Invoke(tray, "CaptureCardPositions")!;
             Assert.Equal(2, positions.Count);
-            Invoke(tray, "ReconcileCards", (object)new[] { second.Entry, first.Entry });
+            Invoke(tray, "ReconcilePreparedCards", (object)new[] { second.Entry, first.Entry }, null);
             var list = (ListBox)tray.FindName("Cards");
             var panel = Descendants(list).OfType<VirtualizingStackPanel>().Single();
             Assert.False(panel.IsMeasureValid);
@@ -421,7 +421,8 @@ public sealed class ClipboardTrayRegressionTests
             await store.InitializeAsync();
             byte[] png = TestImage();
             var entry = (await store.ImportAsync(new ClipboardCapture { ImagePng = png })).Entry!;
-            using var cancellation = new CancellationTokenSource(); cancellation.Cancel();
+            using var cancellation = new CancellationTokenSource();
+            await cancellation.CancelAsync();
             await Assert.ThrowsAnyAsync<OperationCanceledException>(() => store.GetImageAsync(entry.Id, cancellation.Token));
             Assert.Equal(png, await store.GetImageAsync(entry.Id));
         }

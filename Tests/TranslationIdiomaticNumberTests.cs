@@ -10,15 +10,15 @@ public sealed class TranslationIdiomaticNumberTests
     [InlineData("Vọc vạch 1 tý.")]
     [InlineData("Thử nghiệm 1 chút.")]
     [InlineData("1 TÍ thôi.")]
-    public void NonQuantitativeOneCanBecomeALittle(string source)
+    public void NonQuantitativeOneCanBecomeALittle(string original)
     {
-        const string translated = "Experiment a little.";
-        var protectedText = TranslationTextIntegrity.Protect(source);
-        Assert.Equal(source, protectedText.Text);
+        const string english = "Experiment a little.";
+        var protectedText = TranslationTextIntegrity.Protect(original);
+        Assert.Equal(original, protectedText.Text);
         Assert.Empty(protectedText.Literals);
-        Assert.Equal(translated, protectedText.Restore(translated));
-        Assert.True(TranslationTextIntegrity.Verify(source, translated));
-        Assert.True(TranslationTextIntegrity.Verify(translated, source));
+        Assert.Equal(english, protectedText.Restore(english));
+        Assert.True(TranslationTextIntegrity.Verify(original, english));
+        Assert.True(TranslationTextIntegrity.Verify(english, original));
     }
 
     [Theory]

@@ -82,9 +82,13 @@ public sealed class YoloxCropTests
     private static DenseTensor<float> Prediction(int index, float objectness, int classId, float probability, float width, float height)
     {
         var output = new DenseTensor<float>(new[] { 1, 3549, 85 });
-        output[0, index, 0] = output[0, index, 1] = .5f;
-        output[0, index, 2] = width; output[0, index, 3] = height;
-        output[0, index, 4] = objectness; output[0, index, 5 + classId] = probability;
+        var row = output.Buffer.Span.Slice(index * 85, 85);
+        row[0] = .5f;
+        row[1] = .5f;
+        row[2] = width;
+        row[3] = height;
+        row[4] = objectness;
+        row[5 + classId] = probability;
         return output;
     }
 }

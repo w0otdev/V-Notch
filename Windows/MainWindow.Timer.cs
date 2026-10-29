@@ -18,13 +18,13 @@ namespace VNotch;
 
 public partial class MainWindow
 {
-    private bool _localTimerView;
+
     private bool _isTimerView
     {
-        get => _localTimerView;
-        set => _localTimerView = value;
+        get;
+        set;
     }
-    private const double _timerViewHeight = 176;
+
 
     private double CountdownCompleteViewWidth => _collapsedWidth;
     private double CountdownCompleteViewHeight => _collapsedHeight;
@@ -256,8 +256,9 @@ public partial class MainWindow
         headerTranslate.BeginAnimation(TranslateTransform.YProperty, headerDrop);
 
         // Active clock widget springs to full size on top of the header drop.
-        FrameworkElement activeClock = ClockViewDigitalClock.Visibility == Visibility.Visible ? ClockViewDigitalClock :
-            ClockViewWordClock.Visibility == Visibility.Visible ? ClockViewWordClock : ClockViewClock;
+        FrameworkElement fallbackClock = ClockViewWordClock.Visibility == Visibility.Visible ? ClockViewWordClock : ClockViewClock;
+        FrameworkElement activeClock = ClockViewDigitalClock.Visibility == Visibility.Visible ? ClockViewDigitalClock : fallbackClock;
+
         var clockScale = activeClock.RenderTransform as ScaleTransform ?? new ScaleTransform(0.86, 0.86);
         clockScale.BeginAnimation(ScaleTransform.ScaleXProperty, null);
         clockScale.BeginAnimation(ScaleTransform.ScaleYProperty, null);
@@ -1047,9 +1048,9 @@ public partial class MainWindow
 
     private void AnimateCountdownRestartToTimerView()
     {
-        long restartGen = _transitionCoordinator.NextGeneration();
+        _transitionCoordinator.NextGeneration();
         _transitionCoordinator.ForceState(VNotch.Models.NotchView.Timer, VNotch.Controllers.NotchShapeState.Expanded, "CountdownRestart");
-        restartGen = _transitionCoordinator.ActiveTransitionId;
+        long restartGen = _transitionCoordinator.ActiveTransitionId;
         _isAnimating = true;
         _isCountdownCompleteVisible = false;
         _isTimerView = true;
@@ -1194,9 +1195,9 @@ public partial class MainWindow
         e.Handled = true;
         if (_isAnimating) return;
 
-        long transitionId = _transitionCoordinator.NextGeneration();
+        _transitionCoordinator.NextGeneration();
         _transitionCoordinator.ForceState(VNotch.Models.NotchView.Compact, VNotch.Controllers.NotchShapeState.Collapsed, "CountdownDismiss");
-        transitionId = _transitionCoordinator.ActiveTransitionId;
+        long transitionId = _transitionCoordinator.ActiveTransitionId;
         AnimateCountdownCompleteOverlayOut();
         _viewModel.Timer.Remaining = _countdownDuration;
         CountdownWidget.SetCountdownStartVisual(false);

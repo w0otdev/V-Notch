@@ -169,7 +169,7 @@ internal static partial class ClipboardSensitiveData
                     && header.RootElement.TryGetProperty("alg", out var algorithm) && algorithm.ValueKind == JsonValueKind.String
                     && !string.IsNullOrEmpty(algorithm.GetString()) && Decode(parts[2]).Length > 0) return true;
             }
-            catch (Exception ex) when (ex is FormatException or JsonException) { }
+            catch (Exception ex) when (ex is FormatException or JsonException) { /* Non-JWT candidate token; continue scanning. */ }
         }
         return false;
     }

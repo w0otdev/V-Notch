@@ -70,8 +70,8 @@ public sealed class SubjectAwareBlurOptimizationTests
             {
                 float dx = (x - cx) / rx;
                 float distance = MathF.Sqrt(dx * dx + dy * dy);
-                float u = (distance - 1f) / 0.4f;
-                float weight = distance <= 1f ? 1f : distance >= 1f + 0.4f ? 0f : 1f - u * u * (3f - 2f * u);
+                float u = Math.Clamp((distance - 1f) / 0.4f, 0f, 1f);
+                float weight = 1f - u * u * (3f - 2f * u);
                 int p = (y * width + x) * 4;
                 for (int c = 0; c < 3; c++)
                     background[p + c] = (byte)(background[p + c] + (subjectLayer[p + c] - background[p + c]) * weight);

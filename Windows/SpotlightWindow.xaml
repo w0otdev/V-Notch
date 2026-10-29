@@ -33,7 +33,7 @@
         <SolidColorBrush x:Key="PrimaryTextBrush" Color="#F4FFFFFF"/>
         <SolidColorBrush x:Key="TitleTextBrush" Color="#EDFFFFFF"/>
         <SolidColorBrush x:Key="SecondaryTextBrush" Color="#8AFFFFFF"/>
-        <SolidColorBrush x:Key="TertiaryTextBrush" Color="#5EFFFFFF"/>
+        <SolidColorBrush x:Key="TertiaryTextBrush" Color="#8AFFFFFF"/>
         <SolidColorBrush x:Key="AccentBrush" Color="#F2F2F2"/>
         <!-- Fully opaque OLED black to match the notch; any translucency lets
              the window behind bleed through the search field. -->
@@ -610,7 +610,7 @@
                                Margin="1,2,0,0"
                                VerticalAlignment="Center"
                                IsHitTestVisible="False"
-                               Visibility="Collapsed"><Run x:Name="AutocompleteTypedRun" Foreground="Transparent"/><Run x:Name="AutocompleteSuffixRun" Foreground="#48FFFFFF"/></TextBlock>
+                               Visibility="Collapsed"><Run x:Name="AutocompleteTypedRun" Foreground="Transparent"/><Run x:Name="AutocompleteSuffixRun" Foreground="#78FFFFFF"/></TextBlock>
                     <TextBox x:Name="SearchBox" ContextMenuOpening="SearchBox_ContextMenuOpening"
                              Text="{Binding Query, UpdateSourceTrigger=PropertyChanged}"
                              TextChanged="SearchBox_TextChanged"
@@ -662,7 +662,7 @@
                                FontFamily="{StaticResource SFProDisplay}"
                                FontSize="20"
                                FontWeight="Bold"
-                               Foreground="#44FFFFFF"
+                               Foreground="#85FFFFFF"
                                Margin="7,0,0,0"
                                IsHitTestVisible="False"
                                VerticalAlignment="Center"/>
@@ -676,7 +676,7 @@
                     <TextBlock x:Name="EscBadgeText"
                                Text="TAB · AI"
                                FontFamily="{StaticResource SFProDisplay}"
-                               FontSize="9.5"
+                               FontSize="11"
                                FontWeight="Bold"
                                Foreground="#D0D0D8"/>
                 </Border>
@@ -966,7 +966,7 @@
                                                        FontFamily="{StaticResource SFProDisplay}"
                                                        FontSize="10"
                                                        FontWeight="Bold"
-                                                       Foreground="#86FFFFFF"/>
+                                                       Foreground="#99FFFFFF"/>
                                         </Border>
                                     </Grid>
                                     <DataTemplate.Triggers>
@@ -1014,7 +1014,7 @@
                                            FontFamily="{StaticResource IconFont}"
                                            FontSize="24"
                                            FontWeight="Normal"
-                                           Foreground="#66FFFFFF"
+                                           Foreground="#8AFFFFFF"
                                            HorizontalAlignment="Center"/>
                                 <TextBlock x:Name="StatusTitle"
                                            FontFamily="{StaticResource SFProDisplay}"

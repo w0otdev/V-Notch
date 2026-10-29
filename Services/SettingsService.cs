@@ -583,21 +583,18 @@ public sealed partial class SettingsService : ISettingsService, IAsyncDisposable
             Opacity = settings.Opacity
         };
 
-        if (vn_settings_service_normalize_numeric(ref normParams, out byte numericChanged) == 0)
+        if (vn_settings_service_normalize_numeric(ref normParams, out byte numericChanged) == 0 && numericChanged != 0)
         {
-            if (numericChanged != 0)
-            {
-                settings.Width = normParams.Width;
-                settings.Height = normParams.Height;
-                settings.CornerRadius = normParams.CornerRadius;
-                settings.DynamicIslandWidth = normParams.DynamicIslandWidth;
-                settings.DynamicIslandHeight = normParams.DynamicIslandHeight;
-                settings.NotificationDuration = normParams.NotificationDuration;
-                settings.AnimationFps = normParams.AnimationFps;
-                settings.SpotifyCanvasBrightness = normParams.SpotifyCanvasBrightness;
-                settings.Opacity = normParams.Opacity;
-                changed = true;
-            }
+            settings.Width = normParams.Width;
+            settings.Height = normParams.Height;
+            settings.CornerRadius = normParams.CornerRadius;
+            settings.DynamicIslandWidth = normParams.DynamicIslandWidth;
+            settings.DynamicIslandHeight = normParams.DynamicIslandHeight;
+            settings.NotificationDuration = normParams.NotificationDuration;
+            settings.AnimationFps = normParams.AnimationFps;
+            settings.SpotifyCanvasBrightness = normParams.SpotifyCanvasBrightness;
+            settings.Opacity = normParams.Opacity;
+            changed = true;
         }
 
         string normalizedPriority = ProcessPriorityPolicy.Normalize(settings.ProcessPriority);
@@ -752,8 +749,8 @@ public sealed partial class SettingsService : ISettingsService, IAsyncDisposable
         ReadOnlySpan<char> curPri = current.ProcessPriority is not null ? current.ProcessPriority.AsSpan() : ReadOnlySpan<char>.Empty;
 
         if (vn_settings_service_check_requires_restart(
-                (int)imported.GpuPreference,
-                (int)current.GpuPreference,
+                imported.GpuPreference,
+                current.GpuPreference,
                 impPri,
                 impPri.Length,
                 curPri,

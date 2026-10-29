@@ -30,10 +30,10 @@ public sealed class LifetimeAuditRegressionTests
     [InlineData("1.8.0.1", "1.8.0", 1)]
     [InlineData("1.8.0-999999999999999999999", "1.8.0-99999999999999999999", 1)]
     [InlineData("invalid", "1.8.0", 0)]
-    public void ReleaseVersionOrdering(string left, string right, int expected)
+    public void ReleaseVersionOrdering(string first, string second, int expected)
     {
-        Assert.Equal(expected, Math.Sign(UpdateService.CompareVersions(left, right)));
-        Assert.Equal(-expected, Math.Sign(UpdateService.CompareVersions(right, left)));
+        Assert.Equal(expected, Math.Sign(UpdateService.CompareVersions(first, second)));
+        Assert.Equal(-expected, Math.Sign(UpdateService.CompareVersions(second, first)));
     }
 
     [Fact]
@@ -87,7 +87,7 @@ public sealed class LifetimeAuditRegressionTests
             await using var second = new SettingsService(path);
             await Task.WhenAll(Enumerable.Range(0, 40).Select(i =>
                 (i % 2 == 0 ? first : second).SaveAsync(new NotchSettings { Width = 200 + i })));
-            using var saved = JsonDocument.Parse(File.ReadAllText(path));
+            using var saved = JsonDocument.Parse(await File.ReadAllTextAsync(path));
             Assert.InRange(saved.RootElement.GetProperty("Width").GetDouble(), 200, 239);
             Assert.Empty(Directory.GetFiles(root, "*.tmp"));
         }

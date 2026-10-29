@@ -18,8 +18,8 @@ public sealed class SetupOperationsIntegrationTests
         string source = Directory.CreateDirectory(Path.Combine(fixture.Root, "source")).FullName;
         string install = Path.Combine(fixture.Root, "installed");
         Directory.CreateDirectory(Path.Combine(source, "Assets"));
-        File.WriteAllText(Path.Combine(source, "V-Notch.exe"), "fixture executable");
-        File.WriteAllText(Path.Combine(source, "Assets", "fixture.txt"), "fixture asset");
+        await File.WriteAllTextAsync(Path.Combine(source, "V-Notch.exe"), "fixture executable");
+        await File.WriteAllTextAsync(Path.Combine(source, "Assets", "fixture.txt"), "fixture asset");
         var calls = new List<string>();
         var progress = new List<SetupProgressInfo>();
         string installedExe = Path.Combine(install, "V-Notch.exe");
@@ -30,8 +30,8 @@ public sealed class SetupOperationsIntegrationTests
             (exe, folder) => { Assert.Equal(installedExe, exe); Assert.Equal(install, folder); calls.Add("uninstall"); },
             language => { Assert.Equal("vi", language); calls.Add("settings"); });
         await SetupOperations.InstallAsync(new(source, install, startup, "vi"), progress.Add, callbacks);
-        Assert.Equal("fixture executable", File.ReadAllText(installedExe));
-        Assert.Equal("fixture asset", File.ReadAllText(Path.Combine(install, "Assets", "fixture.txt")));
+        Assert.Equal("fixture executable", await File.ReadAllTextAsync(installedExe));
+        Assert.Equal("fixture asset", await File.ReadAllTextAsync(Path.Combine(install, "Assets", "fixture.txt")));
         Assert.Equal(new[] { "stop", "shortcuts", "startup", "uninstall", "settings" }, calls);
         Assert.Equal(8, progress.Count);
         Assert.All(progress.Take(2), item => Assert.True(item.IsIndeterminate));

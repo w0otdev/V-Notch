@@ -83,7 +83,7 @@ public sealed class TranslationSameLanguageTests
         using var engine = new Engine();
         using var service = new LocalTranslationService(engine);
         using var cancellation = new CancellationTokenSource();
-        cancellation.Cancel();
+        await cancellation.CancelAsync();
         await Assert.ThrowsAnyAsync<OperationCanceledException>(() => service.TranslateAsync(ScreenshotText, "auto", "vi", cancellation.Token));
     }
 
@@ -126,9 +126,9 @@ public sealed class TranslationSameLanguageTests
     {
         internal int Preparations, Fits, Calls;
         internal string? Output;
-        public Task PrepareAsync(CancellationToken ct) { Preparations++; return Task.CompletedTask; }
-        public Task<string> FitInputAsync(string text, CancellationToken ct) { Fits++; return Task.FromResult(text); }
-        public Task<string> TranslateAsync(string text, string source, string target, CancellationToken ct) { Calls++; return Task.FromResult(Output ?? text); }
+        public Task PrepareAsync(CancellationToken cancellationToken) { Preparations++; return Task.CompletedTask; }
+        public Task<string> FitInputAsync(string text, CancellationToken cancellationToken) { Fits++; return Task.FromResult(text); }
+        public Task<string> TranslateAsync(string text, string sourceLanguage, string targetLanguage, CancellationToken cancellationToken) { Calls++; return Task.FromResult(Output ?? text); }
         public void ReleaseIdleResources() { }
         public void Dispose() { }
     }

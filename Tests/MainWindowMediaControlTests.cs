@@ -69,7 +69,7 @@ public sealed class MainWindowMediaControlTests
         Assert.Equal(expected, Field<float>(window, "_currentVolume"), 4);
         Assert.True(Field<bool>(window, "_isVolumeIndicatorActive"));
         Assert.Equal(Visibility.Visible, window.VolumeIndicatorContainer.Visibility);
-        await WpfFrameWaiter.UntilAsync(() => window.VolumeIndicatorContainer.Opacity == 1,
+        await WpfFrameWaiter.UntilAsync(() => Math.Abs(window.VolumeIndicatorContainer.Opacity - 1) < 1e-6,
             "compact volume indicator", ct);
         Invoke(window, "HideVolumeIndicator");
         await WpfFrameWaiter.UntilAsync(() => window.VolumeIndicatorContainer.Visibility == Visibility.Collapsed,

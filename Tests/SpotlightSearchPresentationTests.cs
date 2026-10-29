@@ -99,7 +99,7 @@ public sealed class SpotlightSearchPresentationTests
             Invoke(window, "SetResultsDimmed", true, false);
             Assert.Equal(0.55, window.ResultsList.Opacity);
             Invoke(window, "SetResultsDimmed", false, true);
-            await WpfFrameWaiter.UntilAsync(() => window.ResultsList.Opacity == 1, "search rows restored", ct);
+            await WpfFrameWaiter.UntilAsync(() => Math.Abs(window.ResultsList.Opacity - 1) < 1e-6, "search rows restored", ct);
             window.SearchBox.Text = "fixture old";
             window.SearchBox.Text = "replacement";
             await WpfFrameWaiter.UntilAsync(() => vm.Query == "replacement" && !vm.IsSearching && vm.Results.Count == 8 && vm.Results[0].Title.StartsWith("replacement"), "latest query wins", ct);
@@ -189,7 +189,7 @@ public sealed class SpotlightSearchPresentationTests
 
     private static NotchSettings Settings() => new() { EnableLocalOnlyMode = true, NotchStyle = "default" };
     private static T Field<T>(SpotlightWindow window, string name) => (T)typeof(SpotlightWindow).GetField(name, Private)!.GetValue(window)!;
-    private static object? Invoke(SpotlightWindow window, string name, params object?[] args) => typeof(SpotlightWindow).GetMethod(name, Private)!.Invoke(window, args);
+    private static void Invoke(SpotlightWindow window, string name, params object?[] args) => typeof(SpotlightWindow).GetMethod(name, Private)!.Invoke(window, args);
     private sealed class ResultsProvider : ISpotlightProvider
     {
         public bool IsAvailable => true;

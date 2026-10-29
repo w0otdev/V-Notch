@@ -7,7 +7,7 @@ using VNotch.Services;
 
 namespace VNotch.Controls;
 
-public partial class ClipboardTray
+public sealed partial class ClipboardTray
 {
     // Shared duration scale: input, state changes, and entrance travel.
     private const int MotionFast = 120;
@@ -130,7 +130,7 @@ public partial class ClipboardTray
             }
             _ = SafeAsync(async () =>
             {
-                await Task.Delay(800);
+                await Task.Delay(800, _contentLifetime.Token);
                 if (_entranceStaggerVersion == version)
                 {
                     _entranceStaggerVersion = 0;
@@ -225,7 +225,9 @@ public partial class ClipboardTray
         element.Opacity = targetOpacity;
         var translate = new TranslateTransform(0, targetY);
         element.RenderTransform = translate;
-        int duration = AnimationConfig.ReduceMotion ? 80 : customDuration > 0 ? customDuration : (entering ? MotionEntrance : MotionStandard);
+        int defaultDuration = entering ? MotionEntrance : MotionStandard;
+        int fullDuration = customDuration > 0 ? customDuration : defaultDuration;
+        int duration = AnimationConfig.ReduceMotion ? 80 : fullDuration;
         var fade = CreateLayerAnimation(opacity, targetOpacity, AnimationConfig.ReduceMotion ? 0 : delay, duration);
         if (personalLock)
             foreach (var frame in fade.KeyFrames.OfType<EasingDoubleKeyFrame>()) frame.EasingFunction = TrayMotion.EaseOut;
@@ -237,7 +239,7 @@ public partial class ClipboardTray
         }
         if (x != 0)
             translate.BeginAnimation(TranslateTransform.XProperty, CreateLayerAnimation(x, 0, delay, duration), HandoffBehavior.SnapshotAndReplace);
-        if (y != targetY)
+        if (Math.Abs(y - targetY) > 1e-6)
             translate.BeginAnimation(TranslateTransform.YProperty, CreateLayerAnimation(y, targetY, delay, duration), HandoffBehavior.SnapshotAndReplace);
     }
 
@@ -253,21 +255,6 @@ public partial class ClipboardTray
         return animation;
     }
 
-    private static void SetCategoryBackground(Button button, Brush target)
-    {
-        if (target is not SolidColorBrush destination) { button.Background = target; return; }
-        Color current = (button.Background as SolidColorBrush)?.Color ?? destination.Color;
-        var brush = new SolidColorBrush(destination.Color);
-        button.Background = brush;
-        if (AnimationConfig.ReduceMotion || current == destination.Color) return;
-        var animation = new ColorAnimation(current, destination.Color, TimeSpan.FromMilliseconds(MotionStandard))
-        {
-            EasingFunction = TrayEase,
-            FillBehavior = FillBehavior.Stop
-        };
-        Timeline.SetDesiredFrameRate(animation, AnimationConfig.TargetFps);
-        brush.BeginAnimation(SolidColorBrush.ColorProperty, animation);
-    }
 
     private static void AnimateValue(Animatable target, DependencyProperty property, double value, int milliseconds)
     {
@@ -311,17 +298,45 @@ public partial class ClipboardTray
     {
         if (sender is not Button button) return;
         if (AnimationConfig.ReduceMotion) value = 1;
-        if (button.RenderTransform is not ScaleTransform scale)
+        ScaleTransform scale;
+        if (button.RenderTransform is ScaleTransform single)
         {
+            scale = single.IsFrozen ? single.CloneCurrentValue() : single;
+            if (!ReferenceEquals(scale, single)) button.RenderTransform = scale;
+        }
+        else if (button.RenderTransform is TransformGroup group)
+        {
+            if (group.IsFrozen) button.RenderTransform = group = group.CloneCurrentValue();
+            scale = group.Children.OfType<ScaleTransform>().FirstOrDefault() ?? new ScaleTransform(1, 1);
+            if (!group.Children.Contains(scale)) group.Children.Insert(0, scale);
+            else if (scale.IsFrozen)
+            {
+                int index = group.Children.IndexOf(scale);
+                group.Children[index] = scale = scale.CloneCurrentValue();
+            }
+        }
+        else
+        {
+            // Header/clear buttons can still be translating in from their entrance.
+            var existing = button.RenderTransform;
             scale = new ScaleTransform(1, 1);
-            button.RenderTransform = scale;
+            var transforms = new TransformGroup { Children = { scale } };
+            if (existing != null && !ReferenceEquals(existing, Transform.Identity)) transforms.Children.Add(existing);
+            button.RenderTransform = transforms;
             button.RenderTransformOrigin = new Point(0.5, 0.5);
+        }
+        if (!button.IsLoaded || !button.IsVisible || !button.IsEnabled || !SystemParameters.ClientAreaAnimation)
+        {
+            scale.BeginAnimation(ScaleTransform.ScaleXProperty, null);
+            scale.BeginAnimation(ScaleTransform.ScaleYProperty, null);
+            scale.ScaleX = scale.ScaleY = 1;
+            return;
         }
         AnimateValue(scale, ScaleTransform.ScaleXProperty, value, duration);
         AnimateValue(scale, ScaleTransform.ScaleYProperty, value, duration);
     }
 
-    private int _resultsDirection = 1;
+
     private readonly HashSet<Guid> _arrivingCards = [];
     private Dictionary<Guid, double>? _pendingCardPositions;
     private Dictionary<Guid, (double X, Transform Motion)>? _capturedCardLayouts;
@@ -466,7 +481,8 @@ public partial class ClipboardTray
         var rendered = element.RenderTransform.Value;
         double opacity = fresh ? 0 : element.Opacity;
         double targetOpacity = entering ? 1 : 0;
-        int duration = AnimationConfig.ReduceMotion ? 80 : entering ? 260 : 160;
+        int activeDuration = entering ? 260 : 160;
+        int duration = AnimationConfig.ReduceMotion ? 80 : activeDuration;
         element.BeginAnimation(OpacityProperty, null);
         element.Opacity = targetOpacity;
         var fade = new DoubleAnimation(opacity, targetOpacity, TimeSpan.FromMilliseconds(duration))
@@ -494,7 +510,7 @@ public partial class ClipboardTray
     private static void AnimateCardValue(Animatable target, DependencyProperty property, double from, double to, int duration)
     {
         target.SetValue(property, to);
-        if (AnimationConfig.ReduceMotion || from == to)
+        if (AnimationConfig.ReduceMotion || Math.Abs(from - to) < 1e-6)
         {
             target.BeginAnimation(property, null);
             return;
@@ -556,7 +572,8 @@ public partial class ClipboardTray
             .OrderBy(item =>
             {
                 int idx = Cards.ItemContainerGenerator.IndexFromContainer(item);
-                return idx >= 0 ? idx : (item.DataContext is VNotch.ViewModels.ClipboardCardViewModel card ? _cards.IndexOf(card) : int.MaxValue);
+                if (idx >= 0) return idx;
+                return item.DataContext is VNotch.ViewModels.ClipboardCardViewModel card ? _cards.IndexOf(card) : int.MaxValue;
             }))
         {
             if (_entranceAnimatedContainers.Add(item))
@@ -639,7 +656,7 @@ public partial class ClipboardTray
         }
         _ = SafeAsync(async () =>
         {
-            await Task.Delay(750);
+            await Task.Delay(750, _contentLifetime.Token);
             if (_entranceStaggerVersion == version)
             {
                 _entranceStaggerVersion = 0;
@@ -700,7 +717,7 @@ public partial class ClipboardTray
         TrayDropBorder.Opacity = targetOpacity;
         if (entering) TrayDropBorder.Visibility = Visibility.Visible;
 
-        if (fromOpacity == targetOpacity)
+        if (Math.Abs(fromOpacity - targetOpacity) < 1e-6)
         {
             if (collapseOnExit) TrayDropBorder.Visibility = Visibility.Collapsed;
             return;

@@ -31,7 +31,7 @@ public sealed class MainWindowCountdownCompletionTests
         Assert.True(timer.IsRunning);
         Assert.True(Get<bool>(window, "_isAnimating"));
         await WpfFrameWaiter.UntilAsync(() => !Get<bool>(window, "_isAnimating") && window.CountdownCompleteOverlay.Visibility == Visibility.Collapsed, "countdown restart transition", ct);
-        await WpfFrameWaiter.UntilAsync(() => window.TimerContent.Opacity == 1 && window.NavIconsPanel.Opacity == 1, "countdown restart content entrance", ct);
+        await WpfFrameWaiter.UntilAsync(() => Math.Abs(window.TimerContent.Opacity - 1) < 1e-6 && Math.Abs(window.NavIconsPanel.Opacity - 1) < 1e-6, "countdown restart content entrance", ct);
         Assert.Equal(Visibility.Visible, window.TimerContent.Visibility);
         Assert.Equal(1, window.TimerContent.Opacity);
         Assert.Equal(Visibility.Visible, window.NavIconsPanel.Visibility);
@@ -61,7 +61,7 @@ public sealed class MainWindowCountdownCompletionTests
         Assert.True(args.Handled);
         await WpfFrameWaiter.UntilAsync(() => !Get<bool>(window, "_isAnimating") && window.CountdownCompleteOverlay.Visibility == Visibility.Collapsed, "countdown dismiss transition", ct);
         FrameworkElement content = music ? window.MusicCompactContent : window.CollapsedContent;
-        await WpfFrameWaiter.UntilAsync(() => content.Opacity == 1 && content.RenderTransform == null, "restored compact content", ct);
+        await WpfFrameWaiter.UntilAsync(() => Math.Abs(content.Opacity - 1) < 1e-6 && content.RenderTransform == null, "restored compact content", ct);
         Assert.Equal(Visibility.Visible, content.Visibility);
         Assert.Equal(Visibility.Collapsed, window.TimerContent.Visibility);
         Assert.False(Get<bool>(window, "_isCountdownCompleteVisible"));
@@ -76,11 +76,11 @@ public sealed class MainWindowCountdownCompletionTests
         if (music) window.SetDebugViewState("CompactMusicPill");
         Get<NotchTransitionCoordinator>(window, "_transitionCoordinator").NotifyCountdownCompleted();
         await WpfFrameWaiter.UntilAsync(() => Get<bool>(window, "_isCountdownCompleteVisible") && !Get<bool>(window, "_isAnimating") && window.CountdownCompleteOverlay.Visibility == Visibility.Visible, "countdown completion presentation", ct);
-        await WpfFrameWaiter.UntilAsync(() => window.CountdownRestartHost.Opacity == 1 && window.CountdownDismissHost.Opacity == 1, "countdown completion controls", ct);
+        await WpfFrameWaiter.UntilAsync(() => Math.Abs(window.CountdownRestartHost.Opacity - 1) < 1e-6 && Math.Abs(window.CountdownDismissHost.Opacity - 1) < 1e-6, "countdown completion controls", ct);
     }
     private static GreetingAcceptanceTests.MainWindowFixture Create() => new("en", false, settings => { settings.EnableLocalOnlyMode = true; settings.DisableMouseLeaveAutoClose = true; }, services => services.AddSingleton<IMediaDetectionService>(new FakeMediaDetectionService()));
     private static MouseButtonEventArgs Click() => new(Mouse.PrimaryDevice, Environment.TickCount, MouseButton.Left) { RoutedEvent = UIElement.MouseLeftButtonDownEvent };
-    private static object? Invoke(MainWindow window, string name, params object?[] arguments) => typeof(MainWindow).GetMethod(name, Private)!.Invoke(window, arguments);
+    private static void Invoke(MainWindow window, string name, params object?[] arguments) => typeof(MainWindow).GetMethod(name, Private)!.Invoke(window, arguments);
     private static T Get<T>(MainWindow window, string name)
     {
         var field = typeof(MainWindow).GetField(name, Private);

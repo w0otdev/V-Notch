@@ -88,7 +88,7 @@ public sealed class SettingsSearchMatcherTests
             XElement? panel = document.Descendants(presentation + "StackPanel")
                 .SingleOrDefault(element => (string?)element.Attribute(xaml + "Name") == panelName);
             Assert.NotNull(panel);
-            Assert.Contains(panel!.Descendants(presentation + "Border"), border =>
+            Assert.Contains(panel.Descendants(presentation + "Border"), border =>
                 (string?)border.Attribute("Style") == "{StaticResource SettingRowBorder}"
                 && border.Parent?.Name == presentation + "StackPanel");
         }
@@ -105,7 +105,7 @@ public sealed class SettingsSearchMatcherTests
         XElement? privacyNav = document.Descendants(presentation + "Border")
             .SingleOrDefault(element => (string?)element.Attribute(xaml + "Name") == "NavPrivacy");
         Assert.NotNull(privacyNav);
-        Assert.Equal("Privacy", (string?)privacyNav!.Attribute("Tag"));
+        Assert.Equal("Privacy", (string?)privacyNav.Attribute("Tag"));
 
         XElement? privacyPanel = document.Descendants(presentation + "StackPanel")
             .SingleOrDefault(element => (string?)element.Attribute(xaml + "Name") == "PanelPrivacy");
@@ -123,7 +123,7 @@ public sealed class SettingsSearchMatcherTests
         XElement? spotlightNav = document.Descendants(presentation + "Border")
             .SingleOrDefault(element => (string?)element.Attribute(xaml + "Name") == "NavSpotlight");
         Assert.NotNull(spotlightNav);
-        Assert.Equal("Spotlight", (string?)spotlightNav!.Attribute("Tag"));
+        Assert.Equal("Spotlight", (string?)spotlightNav.Attribute("Tag"));
 
         XElement? spotlightPanel = document.Descendants(presentation + "StackPanel")
             .SingleOrDefault(element => (string?)element.Attribute(xaml + "Name") == "PanelSpotlight");
@@ -132,9 +132,9 @@ public sealed class SettingsSearchMatcherTests
         Assert.NotNull(spotlightPanel);
         Assert.NotNull(systemPanel);
 
-        Assert.Contains(spotlightPanel!.Descendants(presentation + "CheckBox"),
+        Assert.Contains(spotlightPanel.Descendants(presentation + "CheckBox"),
             element => (string?)element.Attribute(xaml + "Name") == "EnableSpotlightCheck");
-        Assert.DoesNotContain(systemPanel!.Descendants(presentation + "CheckBox"),
+        Assert.DoesNotContain(systemPanel.Descendants(presentation + "CheckBox"),
             element => (string?)element.Attribute(xaml + "Name") == "EnableSpotlightCheck");
     }
 

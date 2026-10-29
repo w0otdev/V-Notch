@@ -104,8 +104,8 @@ public sealed class YouTubeSubtitleHttpTests
         Assert.NotNull(await service.FetchSubtitlesAsync(Video));
         Assert.Equal(3, playerCalls);
         Assert.Equal(1, watchCalls);
-        if (keyFound) Assert.Contains("fixture-new-key", keys.Last());
-        else Assert.Equal(keys[0], keys.Last());
+        if (keyFound) Assert.Contains("fixture-new-key", keys[^1]);
+        else Assert.Equal(keys[0], keys[^1]);
         Assert.Equal(0, fallbacks);
     }
 
@@ -199,8 +199,12 @@ public sealed class YouTubeSubtitleHttpTests
         using var client = Client((request, _) =>
         {
             if (request.Method == HttpMethod.Post)
-                return failure == "player error" ? Task.FromException<HttpResponseMessage>(new HttpRequestException())
-                    : Task.FromResult(Response(failure == "player status" ? "no" : "{}", failure == "player status" ? HttpStatusCode.Forbidden : HttpStatusCode.OK));
+            {
+                if (failure == "player error")
+                    return Task.FromException<HttpResponseMessage>(new HttpRequestException());
+                bool isStatusFailure = failure == "player status";
+                return Task.FromResult(Response(isStatusFailure ? "no" : "{}", isStatusFailure ? HttpStatusCode.Forbidden : HttpStatusCode.OK));
+            }
             return failure == "watch error" ? Task.FromException<HttpResponseMessage>(new HttpRequestException())
                 : Task.FromResult(Response("no", HttpStatusCode.NotFound));
         });

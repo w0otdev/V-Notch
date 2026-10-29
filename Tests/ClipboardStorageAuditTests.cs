@@ -20,7 +20,7 @@ public sealed class ClipboardStorageAuditTests
         var entry = (await store.ImportAsync(new ClipboardCapture { Text = "first" })).Entry!;
         Task failure = store.GetContentAsync(Guid.NewGuid());
         using var canceled = new CancellationTokenSource();
-        canceled.Cancel();
+        await canceled.CancelAsync();
         Task cancellation = store.GetImageAsync(entry.Id, canceled.Token);
         Task<ClipboardImportResult> following = store.ImportAsync(new ClipboardCapture { Text = "following" });
         using var pin = Pin();
@@ -53,7 +53,7 @@ public sealed class ClipboardStorageAuditTests
         string file = directory ? Path.Combine(source, "nested", "source.enc") : source;
         Directory.CreateDirectory(Path.GetDirectoryName(file)!);
         if (directory) Directory.CreateDirectory(Path.Combine(source, "empty"));
-        File.WriteAllText(file, secret);
+        await File.WriteAllTextAsync(file, secret);
         Guid id;
         using (var store = new ClipboardHistoryStore(fixture.History))
         {
@@ -77,7 +77,7 @@ public sealed class ClipboardStorageAuditTests
         if (directory) Assert.True(Directory.Exists(Path.Combine(exported, "empty")));
         await reopened.MovePersonalAsync(id, false);
         string publicExport = Assert.Single(await reopened.ExportFilesAsync(id));
-        Assert.Equal(secret, File.ReadAllText(directory ? Path.Combine(publicExport, "nested", "source.enc") : publicExport));
+        Assert.Equal(secret, await File.ReadAllTextAsync(directory ? Path.Combine(publicExport, "nested", "source.enc") : publicExport));
     }
 
     [Theory]
@@ -88,7 +88,7 @@ public sealed class ClipboardStorageAuditTests
         using var fixture = new Fixture();
         byte[] png = Convert.FromBase64String("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=");
         string source = Path.Combine(fixture.Root, "secret.png");
-        File.WriteAllBytes(source, png);
+        await File.WriteAllBytesAsync(source, png);
         using var store = new ClipboardHistoryStore(fixture.History);
         await store.InitializeAsync();
         using var pin = Pin(); Assert.True(await store.UnlockPersonalAsync(pin, true));
@@ -108,7 +108,8 @@ public sealed class ClipboardStorageAuditTests
     {
         using var fixture = new Fixture();
         string first = Path.Combine(fixture.Root, "first.txt"), second = Path.Combine(fixture.Root, "second.txt");
-        File.WriteAllText(first, "first source"); File.WriteAllText(second, "second source");
+        await File.WriteAllTextAsync(first, "first source");
+        await File.WriteAllTextAsync(second, "second source");
         FileStream? blocked = null;
         bool blockCopy = false;
         using var store = new ClipboardHistoryStore(fixture.History, () =>
@@ -124,9 +125,13 @@ public sealed class ClipboardStorageAuditTests
         {
             await Assert.ThrowsAsync<IOException>(() => store.ImportAsync(new ClipboardCapture { FilePaths = [first, second], TargetCategory = "Personal" }));
         }
-        finally { blocked?.Dispose(); blockCopy = false; }
-        Assert.Equal("first source", File.ReadAllText(first));
-        Assert.Equal("second source", File.ReadAllText(second));
+        finally
+        {
+            if (blocked != null) await blocked.DisposeAsync();
+            blockCopy = false;
+        }
+        Assert.Equal("first source", await File.ReadAllTextAsync(first));
+        Assert.Equal("second source", await File.ReadAllTextAsync(second));
         Assert.Equal(previous.Id, Assert.Single(store.Snapshot(true)).Id);
         Assert.Equal("saved private note", (await store.GetContentAsync(previous.Id)).Text);
         Assert.Empty(Directory.GetFileSystemEntries(Path.Combine(fixture.History, "staging")));
@@ -244,7 +249,7 @@ public sealed class ClipboardStorageAuditTests
     {
         using var fixture = new Fixture();
         string source = Path.Combine(fixture.Root, "folder"); Directory.CreateDirectory(source);
-        File.WriteAllText(Path.Combine(source, "original.txt"), "source remains intact");
+        await File.WriteAllTextAsync(Path.Combine(source, "original.txt"), "source remains intact");
         using var store = new ClipboardHistoryStore(fixture.History);
         await store.InitializeAsync();
         using var pin = Pin(); if (personal) Assert.True(await store.UnlockPersonalAsync(pin, true));
@@ -252,8 +257,8 @@ public sealed class ClipboardStorageAuditTests
         using var malicious = new MemoryStream();
         using (var zip = new ZipArchive(malicious, ZipArchiveMode.Create, leaveOpen: true))
         {
-            using (var good = new StreamWriter(zip.CreateEntry("valid.txt").Open())) good.Write("partial export");
-            using (var bad = new StreamWriter(zip.CreateEntry(archivePath).Open())) bad.Write("escaped content");
+            await using (var good = new StreamWriter(zip.CreateEntry("valid.txt").Open())) await good.WriteAsync("partial export");
+            await using (var bad = new StreamWriter(zip.CreateEntry(archivePath).Open())) await bad.WriteAsync("escaped content");
         }
         string directory = Path.Combine(fixture.History, personal ? "personal" : "items", entry.Id.ToString("N"));
         string attachment = Path.Combine(directory, "0.zip" + (personal ? ".enc" : ""));
@@ -261,13 +266,14 @@ public sealed class ClipboardStorageAuditTests
         {
             using var vault = new ClipboardVault(fixture.History); Assert.True(vault.Unlock(pin, false));
             using var output = new MemoryStream(); malicious.Position = 0;
-            vault.TransformFile(malicious, output, true); File.WriteAllBytes(attachment, output.ToArray());
+            vault.TransformFile(malicious, output, true);
+            await File.WriteAllBytesAsync(attachment, output.ToArray());
         }
-        else File.WriteAllBytes(attachment, malicious.ToArray());
+        else await File.WriteAllBytesAsync(attachment, malicious.ToArray());
         await Assert.ThrowsAsync<IOException>(() => store.ExportFilesAsync(entry.Id));
         Assert.Empty(Directory.GetFiles(Path.Combine(fixture.History, "exports"), "*", SearchOption.AllDirectories));
         Assert.NotNull(store.GetEntry(entry.Id));
-        Assert.Equal("source remains intact", File.ReadAllText(Path.Combine(source, "original.txt")));
+        Assert.Equal("source remains intact", await File.ReadAllTextAsync(Path.Combine(source, "original.txt")));
         Assert.NotNull((await store.ImportAsync(new ClipboardCapture { Text = "queue after rejected ZIP" })).Entry);
     }
 
@@ -286,7 +292,10 @@ public sealed class ClipboardStorageAuditTests
     }
     private static SecureString Pin()
     {
-        var pin = new SecureString(); foreach (char c in "123456") pin.AppendChar(c); pin.MakeReadOnly(); return pin;
+        var pin = new SecureString();
+        foreach (char c in "123456") pin.AppendChar(c);
+        pin.MakeReadOnly();
+        return pin;
     }
     private sealed class Fixture : IDisposable
     {

@@ -48,10 +48,11 @@ public sealed class PrivacyIndicatorServiceTests
             {
                 LocationInUse = (flags & 8) != 0
             };
-            string expected = state.ScreenRecordingActive ? "#FFFF3B30"
-                : state.MicrophoneInUse ? "#FFFF9500"
-                : state.CameraInUse ? "#FF30D158"
-                : state.LocationInUse ? "#FF00AEEF" : "#00FFFFFF";
+            string expected = "#00FFFFFF";
+            if (state.ScreenRecordingActive) expected = "#FFFF3B30";
+            else if (state.MicrophoneInUse) expected = "#FFFF9500";
+            else if (state.CameraInUse) expected = "#FF30D158";
+            else if (state.LocationInUse) expected = "#FF00AEEF";
             Assert.Equal(expected, MainWindow.GetPrivacyDotColor(state).ToString());
             Assert.Equal(flags != 0, state.AnyInUse);
         }
@@ -211,9 +212,9 @@ public sealed class PrivacyIndicatorServiceTests
         service.Dispose();
 
         // Double dispose should not throw
-        service.Dispose();
+        Assert.Null(Record.Exception(service.Dispose));
 
         // Start after dispose should be a no-op
-        service.Start();
+        Assert.Null(Record.Exception(service.Start));
     }
 }

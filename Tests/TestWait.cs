@@ -71,7 +71,7 @@ internal static class TestWait
 
     /// <summary>Rounds like xunit's <c>Assert.Equal(double, double, int precision)</c>.</summary>
     internal static bool Near(double expected, double actual, int precision = 3)
-        => Math.Round(expected, precision) == Math.Round(actual, precision);
+        => Math.Abs(Math.Round(expected, precision) - Math.Round(actual, precision)) < 1e-9;
 
     /// <summary>
     /// Expires the transport throttle in <see cref="MediaViewModel"/> so the next

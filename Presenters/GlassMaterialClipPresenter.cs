@@ -39,7 +39,7 @@ internal sealed class GlassMaterialClipPresenter
     {
         if (clipHost.Visibility != Visibility.Visible) return;
         var size = new Size(clipHost.ActualWidth, clipHost.ActualHeight);
-        if (size == _lastSize && radius == _lastRadius && PowerFactor == _lastPowerFactor && clipHost.Clip != null) return;
+        if (size == _lastSize && radius == _lastRadius && Math.Abs(PowerFactor - _lastPowerFactor) < 1e-6 && clipHost.Clip != null) return;
         var geometry = GlassClipBuilder.CreateClip(size, radius, PowerFactor);
         if (geometry == null) return;
         clipHost.Clip = geometry;

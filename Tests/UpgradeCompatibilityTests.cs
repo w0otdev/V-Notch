@@ -59,19 +59,19 @@ public sealed class UpgradeCompatibilityTests : IDisposable
         string source = Directory.CreateDirectory(Path.Combine(_directory, "payload")).FullName;
         string installed = Directory.CreateDirectory(Path.Combine(_directory, "installed")).FullName;
         string path = Path.Combine(_directory, "settings.json");
-        File.WriteAllText(Path.Combine(source, "V-Notch.exe"), "new app payload");
-        File.WriteAllText(Path.Combine(installed, "V-Notch.exe"), "old app payload");
-        using (var previous = new SettingsService(path))
+        await File.WriteAllTextAsync(Path.Combine(source, "V-Notch.exe"), "new app payload");
+        await File.WriteAllTextAsync(Path.Combine(installed, "V-Notch.exe"), "old app payload");
+        await using (var previous = new SettingsService(path))
         {
-            previous.Save(new NotchSettings { Language = "vi", Width = 270, EnableSpotlight = false });
+            await previous.SaveAsync(new NotchSettings { Language = "vi", Width = 270, EnableSpotlight = false });
         }
-        byte[] original = File.ReadAllBytes(path);
+        byte[] original = await File.ReadAllBytesAsync(path);
         await SetupOperations.InstallAsync(new(source, installed, false, "en"), _ => { },
             new(() => Task.CompletedTask, (_, _) => { }, (_, _) => { }, (_, _) => { },
                 language => SetupOperations.InitializeSettingsFile(path, language)));
 
-        Assert.Equal("new app payload", File.ReadAllText(Path.Combine(installed, "V-Notch.exe")));
-        Assert.Equal(original, File.ReadAllBytes(path));
+        Assert.Equal("new app payload", await File.ReadAllTextAsync(Path.Combine(installed, "V-Notch.exe")));
+        Assert.Equal(original, await File.ReadAllBytesAsync(path));
         using var updated = new SettingsService(path);
         var loaded = updated.Load();
         Assert.Equal("vi", loaded.Language);

@@ -100,8 +100,9 @@ public sealed class ClipboardCrashRegressionTests
         await store.InitializeAsync();
         string[] files = Enumerable.Range(0, 3).Select(i => Path.Combine(fixture.Root, $"{i}.png")).ToArray();
         byte[] corrupt = [137, 80, 78, 71, 0];
-        File.WriteAllBytes(files[0], corrupt);
-        File.WriteAllBytes(files[1], Png); File.WriteAllBytes(files[2], Png);
+        await File.WriteAllBytesAsync(files[0], corrupt);
+        await File.WriteAllBytesAsync(files[1], Png);
+        await File.WriteAllBytesAsync(files[2], Png);
         var batch = new ClipboardCapture { FilePaths = files, SourceApp = "SnippingTool" };
         var single = new ClipboardCapture { ImagePng = Png, SourceApp = "SnippingTool" };
         var first = (await store.ImportAsync(batchFirst ? batch : single)).Entry!;
@@ -119,9 +120,9 @@ public sealed class ClipboardCrashRegressionTests
         await store.MovePersonalAsync(entry.Id, false);
         var exported = await store.ExportFilesAsync(entry.Id);
         Assert.Equal(3, exported.Length);
-        Assert.Equal(corrupt, File.ReadAllBytes(exported[0]));
-        Assert.Equal(Png, File.ReadAllBytes(exported[1]));
-        Assert.Equal(Png, File.ReadAllBytes(exported[2]));
+        Assert.Equal(corrupt, await File.ReadAllBytesAsync(exported[0]));
+        Assert.Equal(Png, await File.ReadAllBytesAsync(exported[1]));
+        Assert.Equal(Png, await File.ReadAllBytesAsync(exported[2]));
     }
 
     [Fact]
@@ -131,7 +132,7 @@ public sealed class ClipboardCrashRegressionTests
         using var store = new ClipboardHistoryStore(fixture.History);
         await store.InitializeAsync();
         string[] files = Enumerable.Range(0, 3).Select(i => Path.Combine(fixture.Root, $"broken-{i}.png")).ToArray();
-        foreach (string file in files) File.WriteAllText(file, "broken image");
+        foreach (string file in files) await File.WriteAllTextAsync(file, "broken image");
         var entry = (await store.ImportAsync(new ClipboardCapture { FilePaths = files })).Entry!;
         Assert.Equal(ClipboardKind.File, entry.Kind);
         Assert.Null(await store.GetImageAsync(entry.Id));
@@ -228,7 +229,7 @@ public sealed class ClipboardCrashRegressionTests
         using var store = new ClipboardHistoryStore(fixture.History);
         await store.InitializeAsync();
         string source = Path.Combine(fixture.Root, "attachment.txt");
-        File.WriteAllText(source, "preserved attachment");
+        await File.WriteAllTextAsync(source, "preserved attachment");
         var entry = (await store.ImportAsync(new ClipboardCapture { Text = "preserved text", FilePaths = [source] })).Entry!;
         using var pin = Pin("123456");
         Assert.True(await store.UnlockPersonalAsync(pin, create: true));
@@ -237,14 +238,15 @@ public sealed class ClipboardCrashRegressionTests
         string destination = Path.Combine(fixture.History, startPersonal ? "items" : "personal", entry.Id.ToString("N"));
         Directory.CreateDirectory(destination);
         string remnant = Path.Combine(destination, "stale.bin");
-        File.WriteAllText(remnant, "previous incomplete move");
-        using (var reader = blockDelete ? new FileStream(Path.Combine(original, startPersonal ? "0.bin.enc" : "0.bin"), FileMode.Open, FileAccess.Read, FileShare.Read) : null)
+        await File.WriteAllTextAsync(remnant, "previous incomplete move");
+        string originalAttachment = Path.Combine(original, startPersonal ? "0.bin.enc" : "0.bin");
+        using (var reader = blockDelete ? new FileStream(originalAttachment, FileMode.Open, FileAccess.Read, FileShare.Read) : null)
         {
             if (blockDelete)
             {
                 await Assert.ThrowsAsync<IOException>(() => store.MovePersonalAsync(entry.Id, !startPersonal));
                 Assert.Equal(startPersonal, store.GetEntry(entry.Id)!.IsPersonal);
-                Assert.Equal("previous incomplete move", File.ReadAllText(remnant));
+                Assert.Equal("previous incomplete move", await File.ReadAllTextAsync(remnant));
                 Assert.True(Directory.Exists(original));
             }
             else
@@ -258,7 +260,7 @@ public sealed class ClipboardCrashRegressionTests
         Assert.Equal("preserved text", (await store.GetContentAsync(entry.Id)).Text);
         if (blockDelete) await store.MovePersonalAsync(entry.Id, !startPersonal);
         await store.MovePersonalAsync(entry.Id, false);
-        Assert.Equal("preserved attachment", File.ReadAllText(Assert.Single(await store.ExportFilesAsync(entry.Id))));
+        Assert.Equal("preserved attachment", await File.ReadAllTextAsync(Assert.Single(await store.ExportFilesAsync(entry.Id))));
         Assert.Empty(Directory.GetDirectories(Path.Combine(fixture.History, "staging")));
     }
 

@@ -56,6 +56,7 @@ public sealed partial class SmartThumbnailCropService : IDisposable
         }
         catch
         {
+            // Best-effort CRT heap compaction.
         }
 
         if (!trimWorkingSet)
@@ -68,12 +69,15 @@ public sealed partial class SmartThumbnailCropService : IDisposable
 
         try
         {
+#pragma warning disable S1215 // Intentional non-blocking gen2 trim after heavy ONNX inference idle timeout
             GC.Collect(2, GCCollectionMode.Optimized, blocking: false, compacting: false);
+#pragma warning restore S1215
             _ = _heapmin();
             _ = K32EmptyWorkingSet(GetCurrentProcess());
         }
         catch
         {
+            // Best-effort working-set trim.
         }
     }
     private DateTime _lastUsedUtc;
@@ -666,53 +670,7 @@ public sealed partial class SmartThumbnailCropService : IDisposable
         }
     }
 
-    private static List<Int32Rect> DetectTextRegions(BitmapSource source, int imgWidth, int imgHeight)
-    {
-        var list = new List<Int32Rect>();
-        try
-        {
-            const int analysisSize = 128;
-            double scaleX = (double)analysisSize / imgWidth;
-            double scaleY = (double)analysisSize / imgHeight;
-            var scaled = new TransformedBitmap(source, new ScaleTransform(scaleX, scaleY));
-            scaled.Freeze();
-
-            int w = scaled.PixelWidth;
-            int h = scaled.PixelHeight;
-            if (w < 8 || h < 8) return list;
-
-            int stride = w * 4;
-            byte[] pixels = ArrayPool<byte>.Shared.Rent(h * stride);
-            try
-            {
-                BitmapSource scaledSource = scaled;
-                if (scaled.Format != PixelFormats.Bgra32)
-                {
-                    var converted = new FormatConvertedBitmap(scaled, PixelFormats.Bgra32, null, 0);
-                    converted.Freeze();
-                    scaledSource = converted;
-                }
-                scaledSource.CopyPixels(pixels, stride, 0);
-
-                Span<VnCropRect> regions = stackalloc VnCropRect[64];
-                if (vn_smartcrop_detect_text_regions(pixels.AsSpan(0, h * stride), w, h, stride, imgWidth, imgHeight, regions, regions.Length, out int count) == 0)
-                {
-                    int limit = Math.Min(count, regions.Length);
-                    for (int i = 0; i < limit; i++) list.Add(regions[i].ToRect());
-                }
-            }
-            finally
-            {
-                ArrayPool<byte>.Shared.Return(pixels);
-            }
-        }
-        catch
-        {
-        }
-        return list;
-    }
-
-    private Int32Rect GetHybridCropRect(IReadOnlyList<Detection> detections, BitmapSource source, int imgWidth, int imgHeight, int targetSize)
+    private static Int32Rect GetHybridCropRect(IReadOnlyList<Detection> detections, BitmapSource source, int imgWidth, int imgHeight, int targetSize)
     {
         int maxCropSize = Math.Min(imgWidth, imgHeight);
         int cropSize = Math.Min(targetSize, maxCropSize);

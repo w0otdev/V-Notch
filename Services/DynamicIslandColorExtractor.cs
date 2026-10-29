@@ -77,6 +77,7 @@ internal static partial class DynamicIslandColorExtractor
         }
         catch (InvalidOperationException)
         {
+            // Bitmap cannot be frozen on current thread.
         }
         return bitmap.IsFrozen;
     }

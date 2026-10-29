@@ -189,17 +189,16 @@ public partial class MainWindow
             return;
 
 
-        double homeTarget = 0.45;
-        double clipboardTarget = 0.45;
-        double timerTarget = 0.45;
-        double audioTarget = 0.45;
-
-        var target = _navigationVisualTarget ?? (_isCameraView ? NotchView.Camera : _isAudioView ? NotchView.AudioMixer :
-            _isTimerView ? NotchView.Timer : _isSecondaryView ? NotchView.Secondary : NotchView.Media);
-        homeTarget = target == NotchView.Media ? 1 : 0.45;
-        clipboardTarget = target == NotchView.Secondary ? 1 : 0.45;
-        timerTarget = target == NotchView.Timer ? 1 : 0.45;
-        audioTarget = target == NotchView.AudioMixer ? 1 : 0.45;
+        NotchView fallbackView = NotchView.Media;
+        if (_isCameraView) fallbackView = NotchView.Camera;
+        else if (_isAudioView) fallbackView = NotchView.AudioMixer;
+        else if (_isTimerView) fallbackView = NotchView.Timer;
+        else if (_isSecondaryView) fallbackView = NotchView.Secondary;
+        var target = _navigationVisualTarget ?? fallbackView;
+        double homeTarget = target == NotchView.Media ? 1 : 0.45;
+        double clipboardTarget = target == NotchView.Secondary ? 1 : 0.45;
+        double timerTarget = target == NotchView.Timer ? 1 : 0.45;
+        double audioTarget = target == NotchView.AudioMixer ? 1 : 0.45;
         if (_navDragItem != CameraIconButton) AnimateNavIconOpacity(CameraIconButton, target == NotchView.Camera ? 1 : 0.45, animate);
 
         // Only update opacity on items not currently being dragged by the user

@@ -58,7 +58,8 @@ public sealed class UpdateServiceSecurityTests
     public async Task DownloadInstaller_HonorsCancellation()
     {
         var service = CreateService(_ => new HttpResponseMessage(HttpStatusCode.OK) { Content = new StreamContent(new BlockingStream()) });
-        using var cts = new CancellationTokenSource(); cts.Cancel();
+        using var cts = new CancellationTokenSource();
+        await cts.CancelAsync();
         await using var temp = new TempFile();
         await Assert.ThrowsAnyAsync<OperationCanceledException>(() => service.DownloadInstallerAsync(ReleaseRoot + "setup", temp.Path, null, cts.Token));
     }
@@ -177,9 +178,9 @@ public sealed class UpdateServiceSecurityTests
         new(new HttpClient(new StubHandler(reply)), new UpdateSecurityPolicy(), _ => (true, string.Empty));
 
     private sealed class StubHandler(Func<HttpRequestMessage, HttpResponseMessage> reply) : HttpMessageHandler
-    { protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken token) => Task.FromResult(reply(request)); }
+    { protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken) => Task.FromResult(reply(request)); }
     private sealed class BlockingStream : MemoryStream
-    { public override ValueTask<int> ReadAsync(Memory<byte> buffer, CancellationToken token = default) => ValueTask.FromCanceled<int>(token); }
+    { public override ValueTask<int> ReadAsync(Memory<byte> buffer, CancellationToken cancellationToken = default) => ValueTask.FromCanceled<int>(cancellationToken); }
     private sealed class StreamOnlyContent(string json) : HttpContent
     {
         protected override Task<Stream> CreateContentReadStreamAsync() =>
@@ -189,5 +190,12 @@ public sealed class UpdateServiceSecurityTests
         protected override bool TryComputeLength(out long length) { length = 0; return false; }
     }
     private sealed class TempFile : IAsyncDisposable
-    { public string Path { get; } = System.IO.Path.Combine(System.IO.Path.GetTempPath(), Guid.NewGuid().ToString("N")); public ValueTask DisposeAsync() { if (File.Exists(Path)) File.Delete(Path); return ValueTask.CompletedTask; } }
+    {
+        public string Path { get; } = System.IO.Path.Combine(System.IO.Path.GetTempPath(), Guid.NewGuid().ToString("N"));
+        public ValueTask DisposeAsync()
+        {
+            if (File.Exists(Path)) File.Delete(Path);
+            return ValueTask.CompletedTask;
+        }
+    }
 }

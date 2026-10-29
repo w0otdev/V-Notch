@@ -188,6 +188,7 @@ internal static partial class WhiteNoiseService
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
+            // Ignore unreadable preferences file.
         }
     }
 
@@ -204,7 +205,7 @@ internal static partial class WhiteNoiseService
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
-            try { if (File.Exists(tempPath)) File.Delete(tempPath); } catch (IOException) { }
+            try { if (File.Exists(tempPath)) File.Delete(tempPath); } catch (IOException) { /* Ignore temp delete error */ }
         }
     }
 }

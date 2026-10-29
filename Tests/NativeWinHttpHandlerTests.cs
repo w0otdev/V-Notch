@@ -23,7 +23,7 @@ public sealed class NativeWinHttpHandlerTests : IDisposable
         _prefix = $"http://127.0.0.1:{port}/";
         _listener.Prefixes.Add(_prefix);
         _listener.Start();
-        _loop = Task.Run(Serve);
+        _loop = Task.Run(Serve, _stop.Token);
     }
 
     private static int GetFreePort()
@@ -42,7 +42,7 @@ public sealed class NativeWinHttpHandlerTests : IDisposable
             HttpListenerContext context;
             try { context = await _listener.GetContextAsync().ConfigureAwait(false); }
             catch (Exception) { return; }
-            _ = Task.Run(() => Handle(context));
+            _ = Task.Run(() => Handle(context), _stop.Token);
         }
     }
 
@@ -103,7 +103,7 @@ public sealed class NativeWinHttpHandlerTests : IDisposable
         }
         finally
         {
-            try { response.Close(); } catch (Exception) { }
+            try { response.Close(); } catch (Exception) { /* ignored */ }
         }
     }
 
@@ -117,26 +117,26 @@ public sealed class NativeWinHttpHandlerTests : IDisposable
         client.DefaultRequestHeaders.UserAgent.ParseAdd("VNotchTest/1.0");
         client.DefaultRequestHeaders.Add("X-Custom", "alpha");
 
-        using var get = await client.GetAsync(_prefix + "echo");
+        using var get = await client.GetAsync(_prefix + "echo", _stop.Token);
         Assert.Equal(HttpStatusCode.OK, get.StatusCode);
-        Assert.Equal("GET|", await get.Content.ReadAsStringAsync());
+        Assert.Equal("GET|", await get.Content.ReadAsStringAsync(_stop.Token));
         Assert.Equal("text/plain", get.Content.Headers.ContentType?.MediaType);
         Assert.Contains("VNotchTest/1.0", get.Headers.GetValues("X-Seen-Agent").Single());
         Assert.Equal("alpha", get.Headers.GetValues("X-Seen-Custom").Single());
 
-        using var post = await client.PostAsync(_prefix + "echo", new StringContent("héllo", Encoding.UTF8, "text/plain"));
-        Assert.Equal("POST|héllo", await post.Content.ReadAsStringAsync());
+        using var post = await client.PostAsync(_prefix + "echo", new StringContent("héllo", Encoding.UTF8, "text/plain"), _stop.Token);
+        Assert.Equal("POST|héllo", await post.Content.ReadAsStringAsync(_stop.Token));
     }
 
     [Fact]
     public async Task RedirectsFollowOrSurfaceAccordingToPolicy()
     {
         using var following = NewClient(redirect: true);
-        using var followed = await following.GetAsync(_prefix + "redirect");
+        using var followed = await following.GetAsync(_prefix + "redirect", _stop.Token);
         Assert.Equal(HttpStatusCode.OK, followed.StatusCode);
 
         using var manual = NewClient(redirect: false);
-        using var surfaced = await manual.GetAsync(_prefix + "redirect");
+        using var surfaced = await manual.GetAsync(_prefix + "redirect", _stop.Token);
         Assert.Equal(HttpStatusCode.Found, surfaced.StatusCode);
         Assert.Equal("/echo", surfaced.Headers.Location?.OriginalString);
     }
@@ -145,7 +145,7 @@ public sealed class NativeWinHttpHandlerTests : IDisposable
     public async Task ErrorStatusIsReportedAndEnsureSuccessThrows()
     {
         using var client = NewClient();
-        using var response = await client.GetAsync(_prefix + "missing");
+        using var response = await client.GetAsync(_prefix + "missing", _stop.Token);
         Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
         Assert.Throws<HttpRequestException>(() => response.EnsureSuccessStatusCode());
     }
@@ -154,21 +154,21 @@ public sealed class NativeWinHttpHandlerTests : IDisposable
     public async Task GzipBodiesAreDecodedByTheTransport()
     {
         using var client = NewClient();
-        using var response = await client.GetAsync(_prefix + "gzip");
-        Assert.Equal(new string('a', 5000), await response.Content.ReadAsStringAsync());
+        using var response = await client.GetAsync(_prefix + "gzip", _stop.Token);
+        Assert.Equal(new string('a', 5000), await response.Content.ReadAsStringAsync(_stop.Token));
     }
 
     [Fact]
     public async Task LargeBodiesStreamWithoutBufferingTheWholeResponse()
     {
         using var client = NewClient();
-        using var response = await client.GetAsync(_prefix + "large", HttpCompletionOption.ResponseHeadersRead);
+        using var response = await client.GetAsync(_prefix + "large", HttpCompletionOption.ResponseHeadersRead, _stop.Token);
         Assert.Equal(64 * 1024 * 20L, response.Content.Headers.ContentLength);
-        await using var stream = await response.Content.ReadAsStreamAsync();
+        await using var stream = await response.Content.ReadAsStreamAsync(_stop.Token);
         byte[] buffer = new byte[10_000];
         long total = 0;
         int read;
-        while ((read = await stream.ReadAsync(buffer)) > 0) total += read;
+        while ((read = await stream.ReadAsync(buffer, _stop.Token)) > 0) total += read;
         Assert.Equal(64 * 1024 * 20L, total);
     }
 
@@ -206,7 +206,7 @@ public sealed class NativeWinHttpHandlerTests : IDisposable
     }
 
     [Fact]
-    public void CancelBeforeSendFailsFastWithoutContactingTheServer()
+    public async Task CancelBeforeSendFailsFastWithoutContactingTheServer()
     {
         Assert.Equal(0, Native.Create(out long handle));
         try
@@ -221,7 +221,7 @@ public sealed class NativeWinHttpHandlerTests : IDisposable
             Assert.Equal(0, status);
             Assert.Equal(Native.OperationCancelled, error);
             Assert.True(started.Elapsed < TimeSpan.FromSeconds(2), "a cancelled request must not wait for the server");
-            Thread.Sleep(150);
+            await Task.Delay(150, _stop.Token);
             Assert.Equal(seenBefore, Volatile.Read(ref _requestsSeen));
         }
         finally
@@ -259,11 +259,11 @@ public sealed class NativeWinHttpHandlerTests : IDisposable
             Assert.Equal(0, Native.Create(out long handle));
             try
             {
-                var send = Task.Run(() => Native.Get(handle, _prefix + "hang", 20_000, out _, out _));
+                var send = Task.Run(() => Native.Get(handle, _prefix + "hang", 20_000, out _, out _), _stop.Token);
                 Thread.SpinWait(iteration * 400);
                 Native.Cancel(handle);
 
-                int status = await send.WaitAsync(TimeSpan.FromSeconds(5));
+                int status = await send.WaitAsync(TimeSpan.FromSeconds(5), _stop.Token);
                 Assert.NotEqual(0, status);
             }
             finally
@@ -278,12 +278,12 @@ public sealed class NativeWinHttpHandlerTests : IDisposable
     {
         using var client = NewClient();
         using var cts = new CancellationTokenSource();
-        cts.Cancel();
+        await cts.CancelAsync();
         int seenBefore = Volatile.Read(ref _requestsSeen);
 
         await Assert.ThrowsAnyAsync<OperationCanceledException>(() => client.GetAsync(_prefix + "slow", cts.Token));
 
-        await Task.Delay(150);
+        await Task.Delay(150, _stop.Token);
         Assert.Equal(seenBefore, Volatile.Read(ref _requestsSeen));
     }
 
@@ -291,14 +291,14 @@ public sealed class NativeWinHttpHandlerTests : IDisposable
     public async Task UnreachableHostsRaiseHttpRequestException()
     {
         using var client = NewClient();
-        await Assert.ThrowsAsync<HttpRequestException>(() => client.GetAsync($"http://127.0.0.1:{GetFreePort()}/"));
+        await Assert.ThrowsAsync<HttpRequestException>(() => client.GetAsync($"http://127.0.0.1:{GetFreePort()}/", _stop.Token));
     }
 
     public void Dispose()
     {
         _stop.Cancel();
         _listener.Close();
-        try { _loop.Wait(1000); } catch (Exception) { }
+        try { _loop.Wait(1000, CancellationToken.None); } catch (Exception) { /* ignored */ }
         _stop.Dispose();
     }
 }

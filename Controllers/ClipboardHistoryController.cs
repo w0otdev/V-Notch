@@ -87,7 +87,7 @@ public sealed class ClipboardHistoryController : IDisposable, IAsyncDisposable
                 }
             }
         }
-        catch (ObjectDisposedException) { }
+        catch (ObjectDisposedException) { /* Intentionally ignored. */ }
         catch (Exception ex) { RuntimeLog.Error("CLIPBOARD", ex.GetType().Name); Report("clipboard.error"); }
     }
 
@@ -149,7 +149,7 @@ public sealed class ClipboardHistoryController : IDisposable, IAsyncDisposable
 
     private async Task CaptureAsync(uint sequence)
     {
-        for (int retry = 0; ; retry++)
+        for (int retry = 0; retry <= ClipboardRetry.RetryCount; retry++)
         {
             if (_disposed || IsPaused || _isWritingClipboard || sequence == _ownSequence || GetClipboardSequenceNumber() != sequence) return;
             try
@@ -253,7 +253,8 @@ public sealed class ClipboardHistoryController : IDisposable, IAsyncDisposable
             var progress = new Progress<double>(p => Dispatch(() => ImportProgress?.Invoke(p)));
             var result = await Store.ImportAsync(capture, approved, progress);
             Dispatch(() => ImportProgress?.Invoke(1.0));
-            IReadOnlyList<ClipboardEntry> entries = result.Entries.Count != 0 ? result.Entries : result.Entry != null ? [result.Entry] : [];
+            IReadOnlyList<ClipboardEntry> singleOrEmpty = result.Entry != null ? [result.Entry] : [];
+            IReadOnlyList<ClipboardEntry> entries = result.Entries.Count != 0 ? result.Entries : singleOrEmpty;
             if (capture.TargetCategory is string category && entries.Count > 0)
                 await AssignCategoryManyAsync(entries, category);
             if (result.NeedsApproval) Dispatch(() => ApprovalRequired?.Invoke(capture, result.ByteSize));
@@ -471,7 +472,7 @@ public sealed class ClipboardHistoryController : IDisposable, IAsyncDisposable
         if (!_disposed && e.Reason is SessionSwitchReason.SessionLock or SessionSwitchReason.SessionLogoff)
         {
             try { await _dispatcher.InvokeAsync(LockPersonalAsync).Task.Unwrap(); }
-            catch (OperationCanceledException) { }
+            catch (OperationCanceledException) { /* Intentionally ignored. */ }
         }
     }
     private async void PowerModeChanged(object sender, PowerModeChangedEventArgs e)
@@ -479,7 +480,7 @@ public sealed class ClipboardHistoryController : IDisposable, IAsyncDisposable
         if (!_disposed && e.Mode == PowerModes.Suspend)
         {
             try { await _dispatcher.InvokeAsync(LockPersonalAsync).Task.Unwrap(); }
-            catch (OperationCanceledException) { }
+            catch (OperationCanceledException) { /* Intentionally ignored. */ }
         }
     }
     private DateTime _nextHistoryPruneUtc = DateTime.UtcNow.AddHours(1);
@@ -531,7 +532,7 @@ public sealed class ClipboardHistoryController : IDisposable, IAsyncDisposable
     private async Task ReleaseClipboardExportsAsync(string[] paths)
     {
         try { await Store.ReleasePersonalExportsAsync(paths); }
-        catch (ObjectDisposedException) { }
+        catch (ObjectDisposedException) { /* Intentionally ignored. */ }
     }
     private void ClearPersonalClipboard()
     {
@@ -561,7 +562,8 @@ public sealed class ClipboardHistoryController : IDisposable, IAsyncDisposable
                 _debounceTimer.Stop();
                 _debounceTimer.Tick -= DebounceTick;
                 _captures.Writer.TryComplete();
-                return new ValueTask(_disposeTask = DrainAsync());
+                _disposeTask = DrainAsync();
+                return new ValueTask(_disposeTask);
             }
             return new ValueTask(_dispatcher.InvokeAsync(() => DisposeAsync().AsTask()).Task.Unwrap());
         }
@@ -575,7 +577,8 @@ public sealed class ClipboardHistoryController : IDisposable, IAsyncDisposable
         _debounceTimer.Stop();
         _debounceTimer.Tick -= DebounceTick;
         _captures.Writer.TryComplete();
-        return new ValueTask(_disposeTask = DrainAsync());
+        _disposeTask = DrainAsync();
+        return new ValueTask(_disposeTask);
     }
 
     private async Task DrainAsync()

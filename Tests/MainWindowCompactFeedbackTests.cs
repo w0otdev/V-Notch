@@ -36,7 +36,7 @@ public sealed class MainWindowCompactFeedbackTests
         Assert.Equal(percent / 100d, window.ChargingBatteryFillScale.ScaleX);
         Assert.Equal(Visibility.Collapsed, window.CollapsedContent.Visibility);
         Assert.Equal(pluggedIn ? Color.FromRgb(0x30, 0xD1, 0x58) : Color.FromRgb(0xFF, 0x95, 0), ((SolidColorBrush)window.ChargingPercentText.Foreground).Color);
-        await WpfFrameWaiter.UntilAsync(() => window.ChargingNotification.Opacity == 1 && window.ChargingIconScale.ScaleX == 1, "charging glance entrance", ct);
+        await WpfFrameWaiter.UntilAsync(() => Math.Abs(window.ChargingNotification.Opacity - 1) < 1e-6 && Math.Abs(window.ChargingIconScale.ScaleX - 1) < 1e-6, "charging glance entrance", ct);
         var timer = Field<UiScheduledTimer>(window, "_chargingNotificationDismissTimer");
         timer.Interval = TimeSpan.FromMilliseconds(1);
         await WpfFrameWaiter.UntilAsync(() => !Field<bool>(window, "_isChargingNotificationVisible"), "charging glance automatic dismissal", ct);
@@ -84,7 +84,7 @@ public sealed class MainWindowCompactFeedbackTests
         await using var fixture = CreateFixture();
         var window = fixture.Window;
         Invoke(window, "HandleBatteryUpdate", new BatteryInfo { Percentage = percentage, IsPluggedIn = true });
-        await WpfFrameWaiter.UntilAsync(() => window.ChargingBolt.Opacity == 1, "plugged-in battery bolt", ct);
+        await WpfFrameWaiter.UntilAsync(() => Math.Abs(window.ChargingBolt.Opacity - 1) < 1e-6, "plugged-in battery bolt", ct);
         Assert.False(Field<bool>(window, "_chargingPulseWanted"));
         var fillColor = ((SolidColorBrush)window.BatteryFill.Background).Color;
         Assert.Equal(((byte)0x30, (byte)0xD1, (byte)0x58), (fillColor.R, fillColor.G, fillColor.B));
@@ -116,7 +116,7 @@ public sealed class MainWindowCompactFeedbackTests
         Assert.True(Field<bool>(window, "_isClipboardPeekActive"));
         Assert.Equal(Loc.Get("clipboard.copied").TrimStart('✓', ' '), window.ClipboardCopiedText.Text);
         Assert.Equal(Visibility.Visible, window.MusicViz.Visibility);
-        await WpfFrameWaiter.UntilAsync(() => window.CompactThumbnailBorder.Visibility == Visibility.Collapsed && window.ClipboardCopiedText.Opacity == 1, "copy feedback entrance", ct);
+        await WpfFrameWaiter.UntilAsync(() => window.CompactThumbnailBorder.Visibility == Visibility.Collapsed && Math.Abs(window.ClipboardCopiedText.Opacity - 1) < 1e-6, "copy feedback entrance", ct);
         var timer = Field<UiScheduledTimer>(window, "_clipboardRevertTimer");
         if (cancel)
         {
@@ -128,7 +128,7 @@ public sealed class MainWindowCompactFeedbackTests
         else
         {
             timer.Interval = TimeSpan.FromMilliseconds(1);
-            await WpfFrameWaiter.UntilAsync(() => !Field<bool>(window, "_isClipboardPeekActive") && window.ClipboardCopiedText.Visibility == Visibility.Collapsed && window.CompactThumbnailBorder.Opacity == 1, "copy feedback automatic revert", ct);
+            await WpfFrameWaiter.UntilAsync(() => !Field<bool>(window, "_isClipboardPeekActive") && window.ClipboardCopiedText.Visibility == Visibility.Collapsed && Math.Abs(window.CompactThumbnailBorder.Opacity - 1) < 1e-6, "copy feedback automatic revert", ct);
             Assert.Equal(Visibility.Visible, window.CompactThumbnailBorder.Visibility);
             Assert.Equal(1, window.CompactThumbnailScale.ScaleX);
             Assert.Null(Field<UiScheduledTimer?>(window, "_clipboardRevertTimer"));
@@ -143,7 +143,7 @@ public sealed class MainWindowCompactFeedbackTests
         Invoke(fixture.Window, "PlayClipboardPeek");
         Assert.False(Field<bool>(fixture.Window, "_isClipboardPeekActive"));
         await WpfFrameWaiter.UntilAsync(() => fixture.Window.NotchScale.ScaleX > 1, "copy bounce peak", ct);
-        await WpfFrameWaiter.UntilAsync(() => fixture.Window.NotchScale.ScaleX == 1 && fixture.Window.NotchScale.ScaleY == 1, "copy bounce returns to rest", ct);
+        await WpfFrameWaiter.UntilAsync(() => Math.Abs(fixture.Window.NotchScale.ScaleX - 1) < 1e-6 && Math.Abs(fixture.Window.NotchScale.ScaleY - 1) < 1e-6, "copy bounce returns to rest", ct);
     });
 
     private static GreetingAcceptanceTests.MainWindowFixture CreateFixture()

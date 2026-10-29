@@ -177,5 +177,5 @@ public sealed class SpotifyCanvasPresenterTests
     }
     private static Uri Source() => new(System.IO.Path.Combine(AppContext.BaseDirectory, "Fixtures", "canvas-test.mp4"));
     private static T Field<T>(SpotifyCanvasPresenter presenter, string name) => (T)typeof(SpotifyCanvasPresenter).GetField(name, Private)!.GetValue(presenter)!;
-    private static object? Invoke(SpotifyCanvasPresenter presenter, string name, params object?[] args) => typeof(SpotifyCanvasPresenter).GetMethod(name, Private)!.Invoke(presenter, args);
+    private static void Invoke(SpotifyCanvasPresenter presenter, string name, params object?[] args) => typeof(SpotifyCanvasPresenter).GetMethod(name, Private)!.Invoke(presenter, args);
 }

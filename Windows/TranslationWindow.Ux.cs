@@ -13,9 +13,17 @@ public partial class TranslationWindow
     internal event Action<string?, string?>? CurrenciesChanged;
     internal bool CanReplaceResult => _selection?.CanReplace == true && _result != null && !_inputTruncated &&
         (_result.Currency != null || (_result.LiteralsPreserved && _result.WeekdaysPreserved));
-    internal string OutputText => _result?.Currency is { } conversion && CurrencyNumberOnlyCheck.IsChecked != false
-        ? conversion.Amount.ToString(TranslationCurrencies.DecimalPlaces(conversion.Target) == 0 ? "0" : "0." + new string('#', TranslationCurrencies.DecimalPlaces(conversion.Target)), CultureInfo.InvariantCulture)
-        : ResultText.Text;
+    internal string OutputText
+    {
+        get
+        {
+            if (_result?.Currency is not { } conversion || CurrencyNumberOnlyCheck.IsChecked == false)
+                return ResultText.Text;
+            int decimals = TranslationCurrencies.DecimalPlaces(conversion.Target);
+            string format = decimals == 0 ? "0" : "0." + new string('#', decimals);
+            return conversion.Amount.ToString(format, CultureInfo.InvariantCulture);
+        }
+    }
 
     private void ResetSelectionUx()
     {
@@ -64,8 +72,8 @@ public partial class TranslationWindow
 
     private void UpdateReplacementHint()
     {
-        string key = _inputTruncated ? "translation.replaceTruncated" : _selection?.CanReplace != true
-            ? "translation.replaceReadOnly" : "translation.replaceUnavailable";
+        string fallbackKey = _selection?.CanReplace != true ? "translation.replaceReadOnly" : "translation.replaceUnavailable";
+        string key = _inputTruncated ? "translation.replaceTruncated" : fallbackKey;
         ReplaceButton.ToolTip = ReplaceButton.IsEnabled ? null : Loc.Get(key);
         System.Windows.Automation.AutomationProperties.SetHelpText(ReplaceButton, ReplaceButton.ToolTip as string ?? "");
     }

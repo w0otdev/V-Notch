@@ -209,9 +209,11 @@ internal static class Program
         }
         catch (UnauthorizedAccessException)
         {
+            // Ignore HKLM keys when running without elevation.
         }
         catch (System.Security.SecurityException)
         {
+            // Ignore HKLM keys when running without elevation.
         }
     }
 
@@ -296,7 +298,7 @@ internal static class Program
     // A just-killed V-Notch can hold file handles for a moment after exit.
     private static void RetryDelete(Action delete, string path)
     {
-        for (int attempt = 1; ; attempt++)
+        for (int attempt = 1; attempt <= DeleteAttempts; attempt++)
         {
             try
             {

@@ -148,7 +148,7 @@ internal sealed partial class LyricsService : IDisposable
         {
             result = await FetchUncachedLyricsAsync(operation.Key, operation.Cancellation.Token).ConfigureAwait(false);
         }
-        catch (OperationCanceledException) { }
+        catch (OperationCanceledException) { /* Canceled */ }
         catch (Exception ex)
         {
             RuntimeLog.Log(LogTag, $"Error: {ex.Message}");
@@ -405,10 +405,10 @@ internal sealed partial class LyricsService : IDisposable
     {
         if (string.IsNullOrWhiteSpace(text)) return "";
         string decomposed = BracketedExtrasRegex().Replace(text, "").Normalize(NormalizationForm.FormD);
-        char[]? rented = null;
-        Span<char> buffer = decomposed.Length <= 512
+        char[]? rented = decomposed.Length <= 512 ? null : ArrayPool<char>.Shared.Rent(decomposed.Length);
+        Span<char> buffer = rented is null
             ? stackalloc char[decomposed.Length]
-            : (rented = ArrayPool<char>.Shared.Rent(decomposed.Length)).AsSpan(0, decomposed.Length);
+            : rented.AsSpan(0, decomposed.Length);
         try
         {
             int length = 0;
@@ -575,10 +575,10 @@ internal sealed partial class LyricsService : IDisposable
 
         // Remove YouTube visualizer/MV suffix patterns
         // Runtime regex preserves CurrentCulture casing (notably Turkish/Azeri I).
-        s = Regex.Replace(s, VideoSuffixPattern, "", RegexOptions.IgnoreCase);
+        s = Regex.Replace(s, VideoSuffixPattern, "", RegexOptions.IgnoreCase, TimeSpan.FromMilliseconds(250));
 
         // Strip standard remaster/live suffixes
-        s = Regex.Replace(s, RecordingSuffixPattern, "", RegexOptions.IgnoreCase);
+        s = Regex.Replace(s, RecordingSuffixPattern, "", RegexOptions.IgnoreCase, TimeSpan.FromMilliseconds(250));
 
         s = s.Trim();
         return s.Length == 0 ? title.Trim() : s;
@@ -631,7 +631,7 @@ internal sealed partial class LyricsService : IDisposable
             if (read <= 0) break;
             total += read;
             if (total > MaxLyricsResponseBytes) return null;
-            ms.Write(buf, 0, read);
+            await ms.WriteAsync(buf.AsMemory(0, read), token).ConfigureAwait(false);
         }
         ms.Position = 0;
         return await JsonDocument.ParseAsync(ms, cancellationToken: token);

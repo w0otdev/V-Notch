@@ -219,6 +219,14 @@ public partial class MainWindow
             _desktopDemotionDelayTimer.Start();
     }
 
+    private void ScheduleDesktopLayerDemotionIfIdle()
+    {
+        // Focus and settings can change while the cursor stays still. The hover
+        // service skips unchanged positions, so these transitions must recheck too.
+        if (_settings.StayBehindWindows && _isDesktopEdgePromoted && !IsDesktopNotchInteractionActive())
+            ScheduleDesktopLayerDemotion();
+    }
+
     private void CancelScheduledDesktopDemotion()
     {
         _desktopDemotionDelayTimer?.Stop();

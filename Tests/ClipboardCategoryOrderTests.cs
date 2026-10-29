@@ -83,7 +83,7 @@ public sealed class ClipboardCategoryOrderTests
         await store.ReorderCategoryAsync("All", null);
         Assert.Equal(1, notifications);
         Assert.Equal(store.GetCategoryOrder(), JsonSerializer.Deserialize<string[]>(
-            File.ReadAllBytes(Path.Combine(fixture.Root, "category-order.json"))));
+            await File.ReadAllBytesAsync(Path.Combine(fixture.Root, "category-order.json"))));
     }
 
     [Fact]
@@ -91,7 +91,7 @@ public sealed class ClipboardCategoryOrderTests
     {
         using var fixture = new Fixture();
         Directory.CreateDirectory(fixture.Root);
-        File.WriteAllText(Path.Combine(fixture.Root, "category-order.json"),
+        await File.WriteAllTextAsync(Path.Combine(fixture.Root, "category-order.json"),
             "[\"files\",\"Files\",null,\"unknown\",\"label:00000000000000000000000000000000\",\"All\"]");
         using var store = new ClipboardHistoryStore(fixture.Root);
         await store.InitializeAsync();
@@ -109,12 +109,12 @@ public sealed class ClipboardCategoryOrderTests
         using var fixture = new Fixture();
         Directory.CreateDirectory(fixture.Root);
         string path = Path.Combine(fixture.Root, "category-order.json");
-        File.WriteAllText(path, "{ malformed");
+        await File.WriteAllTextAsync(path, "{ malformed");
         using var store = new ClipboardHistoryStore(fixture.Root);
         await store.InitializeAsync();
         Assert.Equal("All", store.GetCategoryOrder()[0]);
         Assert.Equal(16, store.GetCategoryOrder().Count);
-        Assert.Equal("{ malformed", File.ReadAllText(path));
+        Assert.Equal("{ malformed", await File.ReadAllTextAsync(path));
     }
 
     [Fact]

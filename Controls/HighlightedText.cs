@@ -33,10 +33,10 @@ public static class HighlightedText
             return;
         }
 
-        bool[]? rented = null;
+        bool[]? rented = text.Length > 512 ? ArrayPool<bool>.Shared.Rent(text.Length) : null;
         Span<bool> mask = text.Length <= 512
             ? stackalloc bool[text.Length]
-            : (rented = ArrayPool<bool>.Shared.Rent(text.Length)).AsSpan(0, text.Length);
+            : rented!.AsSpan(0, text.Length);
         try
         {
             if (!FillMatchMask(text, query, mask))

@@ -8,7 +8,7 @@ internal sealed class TranslationShiftShortcut : IDisposable
 {
     private readonly Win32Interop.LowLevelKeyboardHook _hook;
     private readonly ShiftTapDetector _detector = new();
-    private readonly Thread _thread;
+
     private Dispatcher? _dispatcher;
     private volatile bool _disposed;
     internal TranslationShiftShortcut(Action requested, Func<IntPtr, bool>? isBlocked = null)
@@ -30,9 +30,9 @@ internal sealed class TranslationShiftShortcut : IDisposable
             // Never swallow: the native thunk forwards to the next hook in the chain.
             return false;
         });
-        _thread = new Thread(Watch) { IsBackground = true, Name = "VNotch translation shortcut" };
-        _thread.SetApartmentState(ApartmentState.STA);
-        _thread.Start();
+        var thread = new Thread(Watch) { IsBackground = true, Name = "VNotch translation shortcut" };
+        thread.SetApartmentState(ApartmentState.STA);
+        thread.Start();
     }
     private static bool IsDown(int key) => (Win32Interop.GetAsyncKeyState(key) & 0x8000) != 0;
     private void Watch()

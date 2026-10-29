@@ -6,8 +6,12 @@ namespace VNotch.Controllers;
 internal readonly record struct GlassDirtyRows(int Top, int Bottom)
 {
     internal bool IsEmpty => Bottom <= Top;
-    internal GlassDirtyRows Union(GlassDirtyRows other) => IsEmpty ? other : other.IsEmpty ? this :
+    internal GlassDirtyRows Union(GlassDirtyRows other)
+    {
+        if (IsEmpty) return other;
+        return other.IsEmpty ? this :
         new(Math.Min(Top, other.Top), Math.Max(Bottom, other.Bottom));
+    }
 }
 
 internal static partial class GlassUploadDelta

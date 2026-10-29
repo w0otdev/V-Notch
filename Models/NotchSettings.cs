@@ -265,9 +265,11 @@ public partial class NotchSettings
     {
         var left = Expression.Parameter(typeof(NotchSettings), "left");
         var right = Expression.Parameter(typeof(NotchSettings), "right");
+#pragma warning disable S3011
         var doubleEqualsMethod = typeof(NotchSettings).GetMethod(nameof(DoubleEquals), BindingFlags.NonPublic | BindingFlags.Static)!;
         var nullableDoubleEqualsMethod = typeof(NotchSettings).GetMethod(nameof(NullableDoubleEquals), BindingFlags.NonPublic | BindingFlags.Static)!;
         var stringEqualsMethod = typeof(NotchSettings).GetMethod(nameof(OrdinalStringEquals), BindingFlags.NonPublic | BindingFlags.Static)!;
+#pragma warning restore S3011
 
         Expression? combined = null;
         for (int i = 0; i < _cloneableProperties.Length; i++)

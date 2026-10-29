@@ -7,7 +7,7 @@ using VNotch.ViewModels;
 
 namespace VNotch.Controls;
 
-public partial class ClipboardTray
+public sealed partial class ClipboardTray
 {
     private Guid? _groupEntryId;
     private readonly HashSet<string> _selectedGroups = new(StringComparer.OrdinalIgnoreCase);

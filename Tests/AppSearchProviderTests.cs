@@ -40,7 +40,7 @@ public sealed class AppSearchProviderTests
         Assert.Empty(await provider.SearchAsync("zzfixture-unknown-app-123456789", 3, default));
         Assert.Empty(await provider.SearchAsync(query, 0, default));
         using var cancelled = new CancellationTokenSource();
-        cancelled.Cancel();
+        await cancelled.CancelAsync();
         await Assert.ThrowsAnyAsync<OperationCanceledException>(() => provider.SearchAsync(query, 1, cancelled.Token));
     }
 

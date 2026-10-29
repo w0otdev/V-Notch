@@ -7,7 +7,7 @@ using VNotch.ViewModels;
 
 namespace VNotch.Controls;
 
-public partial class ClipboardTray
+public sealed partial class ClipboardTray
 {
     private TaskCompletionSource<bool>? _deleteDecision;
     private int _deleteConfirmationCount;

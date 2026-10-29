@@ -48,7 +48,8 @@ internal sealed partial class MediaPinReconnectWindow : IDisposable
             lock (_gate)
             {
                 long elapsedTicks = _waiting ? _clock.GetElapsedTime(_started).Ticks : 0L;
-                return vn_media_pin_reconnect_has_expired(_waiting ? (byte)1 : (byte)0, elapsedTicks, GracePeriod.Ticks, out byte expired) == 0
+                byte waitingFlag = _waiting ? (byte)1 : (byte)0;
+                return vn_media_pin_reconnect_has_expired(waitingFlag, elapsedTicks, GracePeriod.Ticks, out byte expired) == 0
                     ? expired != 0
                     : (_waiting && _clock.GetElapsedTime(_started) >= GracePeriod);
             }

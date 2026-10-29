@@ -71,9 +71,9 @@ internal static partial class FileIconProvider
 
     public static void ClearCache() => _iconCache.Clear();
 
-    private static bool DeleteObject(IntPtr handle) => Win32Interop.DeleteObject(handle);
+    private static void DeleteObject(IntPtr handle) => _ = Win32Interop.DeleteObject(handle);
 
-    private static bool DestroyIcon(IntPtr handle) => Win32Interop.DestroyIcon(handle);
+    private static void DestroyIcon(IntPtr handle) => _ = Win32Interop.DestroyIcon(handle);
 
     private const uint SHGFI_LARGEICON = Win32Interop.SHGFI_LARGEICON;
     private const uint SHGFI_SMALLICON = Win32Interop.SHGFI_SMALLICON;

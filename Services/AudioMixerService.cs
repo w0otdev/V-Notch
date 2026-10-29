@@ -1,3 +1,4 @@
+#pragma warning disable S2325 // Public service methods are invoked on the injected AudioMixerService instance
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
@@ -154,10 +155,10 @@ public sealed partial class AudioMixerService : IDisposable
                     }
                 }
             }
-            else if (!string.IsNullOrWhiteSpace(cached.ProcessName))
+            else if (!string.IsNullOrWhiteSpace(cached.ProcessName) &&
+                     !string.Equals(proc.ProcessName, cached.ProcessName, StringComparison.OrdinalIgnoreCase))
             {
-                if (!string.Equals(proc.ProcessName, cached.ProcessName, StringComparison.OrdinalIgnoreCase))
-                    return false;
+                return false;
             }
             cached.LastValidatedTicks = now;
             return true;
@@ -576,7 +577,7 @@ public sealed partial class AudioMixerService : IDisposable
         return "";
     }
 
-    private void ReleaseSessions()
+    private static void ReleaseSessions()
     {
         InvalidateSetCache();
         vn_audio_capture_invalidate();

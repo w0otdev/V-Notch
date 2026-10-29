@@ -201,7 +201,7 @@ public sealed class NotchNavigationIntegrationTests
         window.ShowActivated = false;
         window.Show();
         await WpfFrameWaiter.UntilAsync(() => Field<bool>(window, "_isStartupLayoutReady") && !IsAnimating(window), "startup", ct);
-        Field<IMediaDetectionService>(window, "_mediaService").Stop();
+        await Field<IMediaDetectionService>(window, "_mediaService").StopAsync();
         Field<UiScheduledTimer>(window, "_updateTimer").Stop();
     }
 

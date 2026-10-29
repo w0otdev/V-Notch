@@ -179,7 +179,10 @@ public sealed class NotchShellPresenter : IDisposable
         !_disposed && version == _animationVersion && sessionId == _activeSessionId &&
         (_refs.IsSessionCurrent?.Invoke(sessionId) ?? true);
 
-    private static double ReadExtent(double effective, double actual, double fallback) =>
-        double.IsFinite(effective) && effective >= 0 ? effective :
-        double.IsFinite(actual) && actual > 0 ? actual : fallback;
+    private static double ReadExtent(double effective, double actual, double fallback)
+    {
+        if (double.IsFinite(effective) && effective >= 0) return effective;
+        return double.IsFinite(actual) && actual > 0 ? actual : fallback;
+    }
+
 }

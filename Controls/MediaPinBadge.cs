@@ -70,9 +70,9 @@ public sealed class MediaPinBadge : FrameworkElement
         Reveal = _pinned ? 1 : 0;
     }
 
-    protected override void OnRender(DrawingContext dc)
+    protected override void OnRender(DrawingContext drawingContext)
     {
-        base.OnRender(dc);
+        base.OnRender(drawingContext);
         double reveal = Math.Clamp(Reveal, 0, 1);
         double edge = Math.Min(ActualWidth, ActualHeight);
         if (reveal <= 0 || edge < 12) return;
@@ -92,11 +92,11 @@ public sealed class MediaPinBadge : FrameworkElement
         matrix.Translate(center.X, center.Y);
         _pinTransform.Matrix = matrix;
 
-        dc.PushOpacity(reveal);
-        dc.PushTransform(_pinTransform);
-        dc.DrawGeometry(Brushes.White, null, Pin);
-        dc.Pop();
-        dc.Pop();
+        drawingContext.PushOpacity(reveal);
+        drawingContext.PushTransform(_pinTransform);
+        drawingContext.DrawGeometry(Brushes.White, null, Pin);
+        drawingContext.Pop();
+        drawingContext.Pop();
     }
 
     private static CubicEase CreateRevealEase()

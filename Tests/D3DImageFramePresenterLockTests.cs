@@ -86,7 +86,7 @@ public sealed class D3DImageFramePresenterLockTests
     {
         public ImageSource ImageSource { get; } = new WriteableBitmap(8, 8, 96, 96, PixelFormats.Bgra32, null);
         public bool IsFrontBufferAvailable => true;
-        public event DependencyPropertyChangedEventHandler IsFrontBufferAvailableChanged { add { } remove { } }
+        public event DependencyPropertyChangedEventHandler IsFrontBufferAvailableChanged { add { /* no-op */ } remove { /* no-op */ } }
         public bool Writable { get; set; } = true;
         public int LockCount { get; private set; }
         public int Writes { get; private set; }

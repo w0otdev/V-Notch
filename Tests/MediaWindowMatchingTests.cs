@@ -75,25 +75,25 @@ public sealed class MediaWindowMatchingTests
     }
 
     [Theory]
-    [InlineData("YouTube", "youtube")]
-    [InlineData("Twitch", "twitch")]
-    [InlineData("Discord", "vesktop")]
-    [InlineData("SoundCloud", "soundcloud")]
-    [InlineData("Spotify", "spotify")]
-    [InlineData("TIDAL", "tidal")]
-    [InlineData("Deezer", "deezer")]
-    [InlineData("Bandcamp", "bandcamp")]
-    [InlineData("Netflix", "netflix")]
-    [InlineData("Bilibili", "哔哩哔哩")]
-    [InlineData("Vimeo", "vimeo")]
-    [InlineData("Instagram", "instagram")]
-    [InlineData("Twitter", " / x")]
-    public void PlatformLabelsHelpMatchTabsWithoutOverridingExactTrackMatches(string source, string label)
+    [InlineData("YouTube", "youtube", 170)]
+    [InlineData("Twitch", "twitch", 170)]
+    [InlineData("Discord", "vesktop", 90)]
+    [InlineData("SoundCloud", "soundcloud", 170)]
+    [InlineData("Spotify", "spotify", 80)]
+    [InlineData("TIDAL", "tidal", 170)]
+    [InlineData("Deezer", "deezer", 170)]
+    [InlineData("Bandcamp", "bandcamp", 170)]
+    [InlineData("Netflix", "netflix", 170)]
+    [InlineData("Bilibili", "哔哩哔哩", 90)]
+    [InlineData("Vimeo", "vimeo", 170)]
+    [InlineData("Instagram", "instagram", 170)]
+    [InlineData("Twitter", " / x", 90)]
+    public void PlatformLabelsHelpMatchTabsWithoutOverridingExactTrackMatches(string source, string label, int windowScore)
     {
         var info = new MediaInfo { MediaSource = source };
         Assert.Equal(50, Invoke<int>("ScoreTabItem", label, "", info));
         Assert.Equal(0, Invoke<int>("ScoreTabItem", "unrelated tab", "", info));
-        if (source != "Spotify") Assert.Equal(90, Invoke<int>("ScoreWindowPlatform", label, info.Platform));
+        Assert.Equal(windowScore, Invoke<int>("ScoreWindow", label, "native", info));
     }
 
     [Fact]

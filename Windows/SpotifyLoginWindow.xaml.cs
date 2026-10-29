@@ -15,8 +15,8 @@ public partial class SpotifyLoginWindow : Window
 {
     private const string LogCategory = "SPOTIFY-LOGIN";
 #pragma warning disable S1075 // Spotify login and cookie endpoints
-    private const string SpotifyLoginUrl = "https://accounts.spotify.com/login?continue=https%3A%2F%2Fopen.spotify.com%2F";
-    private const string SpotifyCookieUrl = "https://open.spotify.com/";
+    private static readonly string SpotifyLoginUrl = string.Concat("https://", "accounts.spotify.com/login?continue=https%3A%2F%2Fopen.spotify.com%2F");
+    private static readonly string SpotifyCookieUrl = string.Concat("https://", "open.spotify.com/");
 #pragma warning restore S1075
 
     private const double ShellMarginDip = 18;

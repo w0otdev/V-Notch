@@ -14,16 +14,16 @@ namespace VNotch;
 
 public partial class MainWindow
 {
-    private bool _localAudioView;
+
     private bool _isAudioView
     {
-        get => _localAudioView;
-        set => _localAudioView = value;
+        get;
+        set;
     }
     private const double _audioViewWidth = 720;
 
     private const double _audioViewMaxHeight = 378;
-    private const double _audioViewMinHeight = 150;
+
     private const double _audioViewChrome = 66;
     private double _audioViewHeight => AudioContent.PreferredShellHeight;
     private int _audioNotchHeightGeneration;

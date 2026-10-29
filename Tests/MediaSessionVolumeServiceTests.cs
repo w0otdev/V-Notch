@@ -218,11 +218,24 @@ public sealed class MediaSessionVolumeServiceTests
         internal bool FailWrites;
         internal bool FailDisposal;
         internal int Disposals;
+        internal void RecordDisposal()
+        {
+            Disposals++;
+            if (FailDisposal) throw new InvalidOperationException("Already disconnected");
+        }
     }
     private sealed class VolumeLease(VolumeState state) : IMediaAudioVolume
     {
-        public float Volume { get => state.FailReads ? throw new InvalidOperationException("Disconnected") : state.Value; set { if (state.FailWrites) throw new InvalidOperationException("Disconnected"); state.Value = value; } }
+        public float Volume
+        {
+            get => state.FailReads ? throw new InvalidOperationException("Disconnected") : state.Value;
+            set
+            {
+                if (state.FailWrites) throw new InvalidOperationException("Disconnected");
+                state.Value = value;
+            }
+        }
         public bool Mute { get => state.Muted; set => state.Muted = value; }
-        public void Dispose() { state.Disposals++; if (state.FailDisposal) throw new InvalidOperationException("Already disconnected"); }
+        public void Dispose() => state.RecordDisposal();
     }
 }

@@ -42,7 +42,7 @@ public sealed class MediaTransportControlServiceTests
     [InlineData(false, true, 100, false, 0, 1, true)]
     public async Task NextFallsBackFromSkipToTimelineEndBeforeSendingAKey(bool enabled, bool skipResult, int end, bool seekResult, int skips, int seeks, bool key)
     {
-        var session = new Session { Controls = new(enabled, true), NextResult = skipResult, Timeline = Timeline(0, end, 5), SeekResult = seekResult };
+        var session = new Session { Controls = new(enabled, true), NextResult = skipResult, Timeline = CreateTimeline(0, end, 5), SeekResult = seekResult };
         var keys = new List<byte>();
         await Create(session, keys).NextTrackAsync();
         Assert.Equal(skips, session.NextCalls);
@@ -67,7 +67,7 @@ public sealed class MediaTransportControlServiceTests
     public async Task PreviousRestartsOnceThenDoubleClickSkipsAndAChangedSessionRestartsIndependently()
     {
         DateTime now = new(2026, 1, 1, 0, 0, 0, DateTimeKind.Utc);
-        var first = new Session { Timeline = Timeline(10, 100, 20), SourceAppUserModelId = "fixture.exe" };
+        var first = new Session { Timeline = CreateTimeline(10, 100, 20), SourceAppUserModelId = "fixture.exe" };
         Session current = first;
         var keys = new List<byte>();
         var service = new MediaTransportControlService(() => current, keys.Add, _ => false, _ => false, () => now);
@@ -77,7 +77,7 @@ public sealed class MediaTransportControlServiceTests
         now = now.AddSeconds(1);
         await service.PreviousTrackAsync();
         Assert.Equal(1, first.PreviousCalls);
-        current = new Session { Timeline = Timeline(0, 100, 20), SourceAppUserModelId = "other.exe" };
+        current = new Session { Timeline = CreateTimeline(0, 100, 20), SourceAppUserModelId = "other.exe" };
         await service.PreviousTrackAsync();
         Assert.Equal(0, Assert.Single(current.Seeks));
         Assert.Empty(keys);
@@ -91,7 +91,7 @@ public sealed class MediaTransportControlServiceTests
     [InlineData(-10, 5, 0)]
     public async Task PreviousUsesTheReportedPositionRelativeToTheTimelineStart(double start, double position, int expectedSkips)
     {
-        var session = new Session { Timeline = Timeline(start, 100, position) };
+        var session = new Session { Timeline = CreateTimeline(start, 100, position) };
         var keys = new List<byte>();
         await Create(session, keys).PreviousTrackAsync();
         Assert.Equal(expectedSkips, session.PreviousCalls);
@@ -102,7 +102,7 @@ public sealed class MediaTransportControlServiceTests
     [Fact]
     public async Task FailedRestartTriesTheTimelineEdgeBeforeSkippingPrevious()
     {
-        var session = new Session { Timeline = Timeline(10, 100, 40), SeekResults = new Queue<bool>([false, true]) };
+        var session = new Session { Timeline = CreateTimeline(10, 100, 40), SeekResults = new Queue<bool>([false, true]) };
         var keys = new List<byte>();
         await Create(session, keys).PreviousTrackAsync();
         Assert.Equal(new[] { TimeSpan.FromSeconds(10).Ticks, TimeSpan.FromSeconds(10).Ticks }, session.Seeks);
@@ -115,7 +115,7 @@ public sealed class MediaTransportControlServiceTests
     [InlineData(false)]
     public async Task BrowserPreviousUsesTheMatchedTabAndDoesNotBroadcastAKeyWhenBackIsUnavailable(bool navigated)
     {
-        var session = new Session { Controls = new(false, false), Timeline = Timeline(0, 100, 1), Title = "Fixture video" };
+        var session = new Session { Controls = new(false, false), Timeline = CreateTimeline(0, 100, 1), Title = "Fixture video" };
         var keys = new List<byte>();
         MediaInfo? requested = null;
         var service = new MediaTransportControlService(() => session, keys.Add, _ => true, info => { requested = info; return navigated; });
@@ -154,7 +154,7 @@ public sealed class MediaTransportControlServiceTests
     [InlineData("direct", -20, -20)]
     public async Task SeekModesRespectTheirTimelineAndForwardExactTicks(string mode, double seconds, double expected)
     {
-        var session = new Session { Timeline = Timeline(0, 50, 40) };
+        var session = new Session { Timeline = CreateTimeline(0, 50, 40) };
         var keys = new List<byte>();
         var service = Create(session, keys);
         if (mode == "relative") await service.SeekRelativeAsync(seconds);
@@ -173,7 +173,7 @@ public sealed class MediaTransportControlServiceTests
     [InlineData("direct")]
     public async Task CommandFailuresAreContainedAndOnlyTransportCommandsSendFallbackKeys(string command)
     {
-        var session = new Session { ThrowCommands = true, Timeline = Timeline(0, 10, 1) };
+        var session = new Session { ThrowCommands = true, Timeline = CreateTimeline(0, 10, 1) };
         var keys = new List<byte>();
         await Execute(Create(session, keys), command);
         if (command is "play" or "next" or "previous") Assert.Single(keys);
@@ -181,7 +181,7 @@ public sealed class MediaTransportControlServiceTests
     }
 
     private static MediaTransportControlService Create(Session session, List<byte> keys) => new(() => session, keys.Add, _ => false, _ => false);
-    private static MediaTransportTimeline Timeline(double start, double end, double position) => new(TimeSpan.FromSeconds(start), TimeSpan.FromSeconds(end), TimeSpan.FromSeconds(position));
+    private static MediaTransportTimeline CreateTimeline(double start, double end, double position) => new(TimeSpan.FromSeconds(start), TimeSpan.FromSeconds(end), TimeSpan.FromSeconds(position));
     private static Task Execute(MediaTransportControlService service, string command) => command switch
     {
         "play" => service.PlayPauseAsync(),
@@ -197,7 +197,7 @@ public sealed class MediaTransportControlServiceTests
         public object Identity => this;
         public string SourceAppUserModelId { get; set; } = "fixture.exe";
         internal MediaTransportControls? Controls { get; set; } = new(true, true);
-        internal MediaTransportTimeline? Timeline { get; set; } = MediaTransportControlServiceTests.Timeline(0, 100, 0);
+        internal MediaTransportTimeline? Timeline { get; set; } = CreateTimeline(0, 100, 0);
         internal bool ToggleResult { get; init; } = true;
         internal bool NextResult { get; init; } = true;
         internal bool SeekResult { get; init; } = true;

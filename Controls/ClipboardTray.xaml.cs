@@ -20,7 +20,7 @@ using VNotch.ViewModels;
 
 namespace VNotch.Controls;
 
-public partial class ClipboardTray : UserControl, IDisposable
+public sealed partial class ClipboardTray : UserControl, IDisposable
 {
     private const string NativeDll = "VNotch.Native.dll";
 
@@ -114,7 +114,7 @@ public partial class ClipboardTray : UserControl, IDisposable
         }
         if (DetailPanel.Visibility == Visibility.Visible)
         {
-            DismissDetails();
+            _ = SafeAsync(DismissDetailsAsync);
             return true;
         }
         if (ApprovalPanel.Visibility == Visibility.Visible)
@@ -274,7 +274,7 @@ public partial class ClipboardTray : UserControl, IDisposable
         var cts = Interlocked.Exchange(ref _searchCancellation, null);
         if (cts == null) return;
         try { cts.Cancel(); }
-        catch (ObjectDisposedException) { }
+        catch (ObjectDisposedException) { /* Intentionally ignored. */ }
         finally { cts.Dispose(); }
     }
     private void QueueRefresh()
@@ -347,8 +347,8 @@ public partial class ClipboardTray : UserControl, IDisposable
             _queryDirty = false;
             CompletePendingSelectAll();
         }
-        catch (OperationCanceledException) { }
-        catch (ObjectDisposedException) { }
+        catch (OperationCanceledException) { /* Intentionally ignored. */ }
+        catch (ObjectDisposedException) { /* Intentionally ignored. */ }
         catch (Exception ex) when (ex is IOException or System.Security.Cryptography.CryptographicException or System.Text.Json.JsonException)
         { StatusChanged(Loc.Get("clipboard.error")); }
     }
@@ -363,8 +363,8 @@ public partial class ClipboardTray : UserControl, IDisposable
         return true;
     }
 
-    private void ReconcileCards(IReadOnlyList<ClipboardEntry> entries)
-        => ReconcilePreparedCards(entries, null);
+
+
 
     private Task<Dictionary<Guid, bool>> PrepareCardMaskingAsync(IReadOnlyList<ClipboardEntry> entries, CancellationToken cancellation)
     {
@@ -563,7 +563,7 @@ public partial class ClipboardTray : UserControl, IDisposable
         foreach (var menu in _openMenus.ToArray()) menu.IsOpen = false;
         Cards.SelectedItems.Clear();
         _selection.Reset();
-        _resultsDirection = Array.FindIndex(_categoryItems, item => item.Name == category) >= Array.FindIndex(_categoryItems, item => item.Name == _category) ? 1 : -1;
+
         _category = category;
         _animateResults = true;
         if (personalTransition)
@@ -639,7 +639,7 @@ public partial class ClipboardTray : UserControl, IDisposable
         ClearPendingPin();
         _moveToPersonal = null;
         PasscodeBox.Clear();
-        ResetPinDots(immediately: true);
+        ResetPinDots();
         _pressedCard = null;
         _dragStart = null;
         _copyOnRelease = false;
@@ -745,7 +745,8 @@ public partial class ClipboardTray : UserControl, IDisposable
     private void UpdatePinStep()
     {
         bool create = _controller?.Store.HasPersonalPasscode != true;
-        LockHint.Text = Loc.Get(!create ? "clipboard.enterPin" : _newPin == null ? "clipboard.createStep" : "clipboard.confirmStep");
+        string createStepKey = _newPin == null ? "clipboard.createStep" : "clipboard.confirmStep";
+        LockHint.Text = Loc.Get(!create ? "clipboard.enterPin" : createStepKey);
         PinBackButton.Visibility = create && _newPin != null ? Visibility.Visible : Visibility.Collapsed;
     }
     private void PinBack_Click(object sender, RoutedEventArgs e)
@@ -874,7 +875,7 @@ public partial class ClipboardTray : UserControl, IDisposable
         st.BeginAnimation(ScaleTransform.ScaleYProperty, scaleAnim);
     }
 
-    private void ResetPinDots(bool immediately = true)
+    private void ResetPinDots()
     {
         _pinDots ??= [PinDot0, PinDot1, PinDot2, PinDot3, PinDot4, PinDot5];
         _previousPinLength = 0;
@@ -935,7 +936,7 @@ public partial class ClipboardTray : UserControl, IDisposable
         if (e.LeftButton != MouseButtonState.Pressed || _dragStart is not Point start || _pressedCard == null || _controller == null || sender is not FrameworkElement element) return;
         var current = e.GetPosition(this);
         if (Math.Abs(current.X - start.X) < SystemParameters.MinimumHorizontalDragDistance && Math.Abs(current.Y - start.Y) < SystemParameters.MinimumVerticalDragDistance) return;
-        var card = _pressedCard;
+
         _dragStart = null;
         _pressedCard = null;
         _copyOnRelease = false;
@@ -950,7 +951,7 @@ public partial class ClipboardTray : UserControl, IDisposable
             await _controller.CopyAsync(card.Entry);
             int copyVersion = card.NextCopyVersion();
             card.IsCopied = true;
-            await Task.Delay(1600);
+            await Task.Delay(1600, _contentLifetime.Token);
             if (card.IsCopyVersionCurrent(copyVersion))
                 card.IsCopied = false;
         }
@@ -1230,12 +1231,18 @@ public partial class ClipboardTray : UserControl, IDisposable
         DetailTextScroll.Visibility = Visibility.Visible;
         bool isSensitive = card.Entry.IsSensitive || (content != null && (ClipboardSensitiveData.IsSensitive(content.Text, card.Entry.SourceApp, card.Entry.SourceExecutable) || ClipboardSensitiveData.IsSensitive(content.Html, card.Entry.SourceApp, card.Entry.SourceExecutable) || ClipboardSensitiveData.IsSensitive(content.Rtf, card.Entry.SourceApp, card.Entry.SourceExecutable)));
         if (isSensitive && !card.IsMasked) card.UpdatePreparedEntry(card.Entry, true);
-        string text = isSensitive && !card.IsRevealed ? ClipboardSensitiveData.Mask : content == null ? "" : content.Text.Length != 0 ? content.Text : string.Join(Environment.NewLine, content.Files.Select(file => file.Name));
+        string text;
+        if (isSensitive && !card.IsRevealed)
+            text = ClipboardSensitiveData.Mask;
+        else if (content == null)
+            text = "";
+        else
+            text = content.Text.Length != 0 ? content.Text : string.Join(Environment.NewLine, content.Files.Select(file => file.Name));
         const int detailPreviewLimit = 16_000;
         DetailText.Text = text.Length > detailPreviewLimit ? text[..detailPreviewLimit] + "\n…" : text;
         if (card.Entry.Kind == ClipboardKind.Image)
         {
-            byte[]? bytes = await _controller.Store.GetImageAsync(card.Entry.Id);
+            byte[]? bytes = await _controller.Store.GetImageAsync(card.Entry.Id, _contentLifetime.Token);
             try
             {
                 if (bytes == null) return;
@@ -1250,7 +1257,7 @@ public partial class ClipboardTray : UserControl, IDisposable
                     bitmap.EndInit();
                     bitmap.Freeze();
                     return bitmap;
-                });
+                }, _contentLifetime.Token);
                 if (_disposed || !IsVisible || version != _refreshVersion || detailVersion != _detailDismissVersion || card.Entry.IsPersonal && !_controller.Store.IsPersonalUnlocked) return;
                 DetailImage.Source = image;
                 DetailImage.Visibility = Visibility.Visible;
@@ -1274,7 +1281,7 @@ public partial class ClipboardTray : UserControl, IDisposable
     }
     private void AddMenu(ItemsControl menu, string key, Func<Task> action)
     {
-        TrayIconKind icon = key.Split('.').Last() switch
+        TrayIconKind icon = key.Split('.')[^1] switch
         {
             "copy" => TrayIconKind.Copy,
             "pin" or "unpin" => TrayIconKind.Pin,
@@ -1304,7 +1311,7 @@ public partial class ClipboardTray : UserControl, IDisposable
     private async Task SafeAsync(Func<Task> action)
     {
         try { await action(); }
-        catch (OperationCanceledException) { }
+        catch (OperationCanceledException) { /* Intentionally ignored. */ }
         catch (Exception ex)
         {
             RuntimeLog.Error("CLIPBOARD", ex.GetType().Name);
@@ -1342,7 +1349,7 @@ public partial class ClipboardTray : UserControl, IDisposable
     private void OnImportProgress(double progress)
     {
         if (_disposed) return;
-        Dispatcher.InvokeAsync(async () =>
+        Dispatcher.InvokeAsync(() => SafeAsync(async () =>
         {
             if (_disposed) return;
             int version = ++_importProgressVersion;
@@ -1359,13 +1366,13 @@ public partial class ClipboardTray : UserControl, IDisposable
             {
                 ImportProgressBar.Value = 100;
                 AnimateLayer(ImportProgressBar, false, 0);
-                await Task.Delay(250);
+                await Task.Delay(250, _contentLifetime.Token);
                 if (!_disposed && version == _importProgressVersion)
                 {
                     ImportProgressBar.Visibility = Visibility.Collapsed;
                 }
             }
-        });
+        }));
     }
     private async void Approve_Click(object sender, RoutedEventArgs e)
     {
@@ -1384,7 +1391,7 @@ public partial class ClipboardTray : UserControl, IDisposable
         _approvals.TryDequeue(out _);
         ShowApproval();
     }
-    private void CloseDetail_Click(object sender, RoutedEventArgs e) => DismissDetails();
+    private void CloseDetail_Click(object sender, RoutedEventArgs e) => _ = SafeAsync(DismissDetailsAsync);
     private async void RevealDetail_Click(object sender, RoutedEventArgs e)
     {
         if (_detailCard is not { } card || _controller == null) return;
@@ -1413,11 +1420,11 @@ public partial class ClipboardTray : UserControl, IDisposable
     }
 
     private int _detailDismissVersion;
-    private async void DismissDetails()
+    private async Task DismissDetailsAsync()
     {
         int version = ++_detailDismissVersion;
         AnimateLayer(DetailPanel, false, 0);
-        if (!AnimationConfig.ReduceMotion) await Task.Delay(MotionStandard);
+        if (!AnimationConfig.ReduceMotion) await Task.Delay(MotionStandard, _contentLifetime.Token);
         if (version == _detailDismissVersion && !_disposed) CloseDetails();
     }
 
@@ -1533,7 +1540,7 @@ public partial class ClipboardTray : UserControl, IDisposable
         StopEntranceWork();
         _entranceWorkTimer?.Dispose();
         try { _contentLifetime.Cancel(); }
-        catch (ObjectDisposedException) { }
+        catch (ObjectDisposedException) { /* Intentionally ignored. */ }
         _contentLifetime.Dispose();
         _statusTimer.Stop();
         _statusTimer.Tick -= StatusTimer_Tick;

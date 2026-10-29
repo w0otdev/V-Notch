@@ -325,8 +325,9 @@ public sealed partial class MagnifierCaptureSource : IDisposable
     }
 
     // Signals the pump thread to exit and waits briefly. Returns true when the thread is gone.
-    private bool StopPumpThread() =>
-        _handle <= 0 || (NativeStop(_handle, out byte exited) == 0 && exited != 0);
+    private void StopPumpThread() =>
+        _ = _handle <= 0 || (NativeStop(_handle, out byte exited) == 0 && exited != 0);
+
 
     public void Dispose()
     {

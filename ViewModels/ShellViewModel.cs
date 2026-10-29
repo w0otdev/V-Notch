@@ -6,7 +6,7 @@ using VNotch.Services;
 
 namespace VNotch.ViewModels;
 
-public partial class ShellViewModel : ObservableObject, IDisposable
+public sealed partial class ShellViewModel : ObservableObject, IDisposable
 {
     private readonly IMediaDetectionService _mediaService;
     private readonly IDispatcherService _dispatcher;

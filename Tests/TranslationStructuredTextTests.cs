@@ -153,7 +153,7 @@ public sealed class TranslationStructuredTextTests
     private sealed class Engine(Func<string, string> translate) : ILocalTranslationEngine
     {
         internal List<string> Inputs = new();
-        public Task<string> TranslateAsync(string text, string source, string target, CancellationToken ct)
+        public Task<string> TranslateAsync(string text, string sourceLanguage, string targetLanguage, CancellationToken cancellationToken)
         { Inputs.Add(text); return Task.FromResult(translate(text)); }
         public void ReleaseIdleResources() { }
         public void Dispose() { }

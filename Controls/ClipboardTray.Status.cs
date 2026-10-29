@@ -4,7 +4,7 @@ using VNotch.Services;
 
 namespace VNotch.Controls;
 
-public partial class ClipboardTray
+public sealed partial class ClipboardTray
 {
     private readonly UiScheduledTimer _statusTimer = new() { Interval = TimeSpan.FromSeconds(2) };
 

@@ -502,7 +502,7 @@ internal sealed partial class YouTubeSubtitleService : IDisposable
             if (!resp.IsSuccessStatusCode) return null;
 
             string html = await resp.Content.ReadAsStringAsync(token);
-            var m = Regex.Match(html, "\"INNERTUBE_API_KEY\":\\s*\"([a-zA-Z0-9_-]+)\"");
+            var m = Regex.Match(html, "\"INNERTUBE_API_KEY\":\\s*\"([a-zA-Z0-9_-]+)\"", RegexOptions.None, TimeSpan.FromMilliseconds(250));
             if (m.Success && m.Groups.Count > 1)
             {
                 return m.Groups[1].Value;
@@ -704,7 +704,7 @@ internal sealed partial class YouTubeSubtitleService : IDisposable
             var pElements = doc.Descendants("p").Concat(doc.Descendants("text"));
             foreach (var p in pElements)
             {
-                string text = System.Net.WebUtility.HtmlDecode(System.Text.RegularExpressions.Regex.Replace(p.Value, @"<[^>]*>", "")).Trim();
+                string text = System.Net.WebUtility.HtmlDecode(System.Text.RegularExpressions.Regex.Replace(p.Value, @"<[^>]*>", "", System.Text.RegularExpressions.RegexOptions.None, TimeSpan.FromMilliseconds(250))).Trim();
                 if (string.IsNullOrWhiteSpace(text)) continue;
 
                 var tAttr = p.Attribute("t");

@@ -55,7 +55,7 @@ public sealed class MainWindowProgressPresentationTests
         var window = fixture.Window;
         Prepare(window, 30 - backward, playing, browser);
         Field<ProgressEngine>(window, "_progressEngine").GetUiFrame();
-        Set(window, "_progressDisplayRatio", .3);
+        window.MediaPlayback.DisplayRatio = .3;
         Set(window, "_suppressExternalSeekDetectionUntil", DateTime.Now.AddSeconds(10));
         Set(window, "_allowProgressBackwardRenderUntil", userSeek ? DateTime.Now.AddSeconds(10) : DateTime.MinValue);
         Set(window, "_blockBackwardAfterSeekUntil", postSeek ? DateTime.Now.AddSeconds(10) : DateTime.MinValue);
@@ -219,7 +219,7 @@ public sealed class MainWindowProgressPresentationTests
         var window = fixture.Window;
         Prepare(window, reported, true, false);
         Field<ProgressEngine>(window, "_progressEngine").GetUiFrame();
-        Set(window, "_progressDisplayRatio", displayed / 100);
+        window.MediaPlayback.DisplayRatio = displayed / 100;
         window.MediaPlayback.ProgressBarScale.ScaleX = displayed / 100;
         Invoke(window, "RenderProgressBar");
         Assert.Equal(animate, Field<bool>(window, "_isRewindAnimating"));

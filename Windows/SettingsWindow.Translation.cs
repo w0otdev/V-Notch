@@ -157,13 +157,13 @@ public partial class SettingsWindow
     {
         if (TranslationReadyHint == null) return;
         bool enabled = EnableTranslationCheck.IsChecked == true;
-        TranslationReadyHint.Text = Loc.Get(!enabled ? "translation.readyEnableHint" :
-            AutoTranslationCheck.IsChecked == true ? "translation.readyAutoHint" : "translation.readyManualHint");
+        string readyKey = AutoTranslationCheck.IsChecked == true ? "translation.readyAutoHint" : "translation.readyManualHint";
+        TranslationReadyHint.Text = Loc.Get(!enabled ? "translation.readyEnableHint" : readyKey);
     }
 
     private async void TranslationDownload_Click(object sender, RoutedEventArgs e)
     {
-        if (_translationDownload != null) { _translationDownload.Cancel(); return; }
+        if (_translationDownload != null) { await _translationDownload.CancelAsync(); return; }
         if (!NetworkPrivacy.Current.IsAllowed(NetworkFeature.TranslationModels))
         { TranslationModelStatus.Text = Loc.Get("translation.downloadBlocked"); return; }
         await RunTranslationModelActionAsync(ct =>

@@ -121,7 +121,7 @@ public sealed class ClipboardTrayActionMotionTests
             await TestWait.UntilStableAsync(() => TestWait.Near(1, actions.Opacity), "action pill fades in on hover");
 
             more.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
-            menu = Descendants(container).OfType<Border>().Single(border => border.Width == 210).ContextMenu;
+            menu = Descendants(container).OfType<Border>().Single(border => Math.Abs(border.Width - 210) < 0.1).ContextMenu;
             Assert.NotNull(menu);
             Assert.True(menu.IsOpen);
             // Popup Opened arrives later; the click must already hold the pill.
@@ -194,9 +194,12 @@ public sealed class ClipboardTrayActionMotionTests
     {
         ListBoxItem? container = null;
         await WpfFrameWaiter.UntilAsync(() =>
-            (container = list.ItemContainerGenerator.ContainerFromItem(card) as ListBoxItem) is { ActualWidth: > 0 }
-            && Descendants(container).OfType<Button>().Count(button => button.Tag is "pin" or "more") == 2
-            && Descendants(container).OfType<Border>().Any(border => border.Name == "CardActions"), "card container realized");
+        {
+            container = list.ItemContainerGenerator.ContainerFromItem(card) as ListBoxItem;
+            return container is { ActualWidth: > 0 }
+                && Descendants(container).OfType<Button>().Count(button => button.Tag is "pin" or "more") == 2
+                && Descendants(container).OfType<Border>().Any(border => border.Name == "CardActions");
+        }, "card container realized");
         var actions = Descendants(container!).OfType<Border>().Single(border => border.Name == "CardActions");
         await TestWait.UntilStableAsync(() => TestWait.Near(TrayMotion.GetOpacity(actions), actions.Opacity), "action pill settles");
         return container!;

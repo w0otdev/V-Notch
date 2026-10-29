@@ -38,7 +38,7 @@ public sealed class SpotlightAiPresentationTests
         window.SearchBox.Text = "Explain this";
         await (Task)Invoke(window, "SendAiAsync")!;
         Assert.NotNull(requestBody);
-        using var json = JsonDocument.Parse(requestBody!);
+        using var json = JsonDocument.Parse(requestBody);
         Assert.Equal("Explain this", json.RootElement.GetProperty("messages")[0].GetProperty("content").GetString());
         var history = Field<List<SpotlightAiMessage>>(window, "_aiHistory");
         Assert.Equal(2, history.Count);

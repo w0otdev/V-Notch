@@ -34,7 +34,7 @@ public sealed class ClipboardCategoryReorderTests
             string[] original = store.GetCategoryOrder().ToArray();
             int writes = 0;
             store.Changed += CountWrite;
-            void CountWrite() => writes++;
+            void CountWrite() { writes += 1; }
             try
             {
                 StageDrag(tray, "All");
@@ -97,7 +97,7 @@ public sealed class ClipboardCategoryReorderTests
         string[] original = store.GetCategoryOrder().ToArray();
         int writes = 0;
         store.Changed += CountWrite;
-        void CountWrite() => writes++;
+        void CountWrite() { writes += 1; }
         try
         {
             StageDrag(tray, "Personal");

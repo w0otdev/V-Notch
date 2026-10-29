@@ -79,7 +79,7 @@ public partial class SettingsWindow
         // Persist only this external command; keep other unsaved edits cancellable.
         var baseline = _editSession.Baseline;
         baseline.InvisibleMode = enabled;
-        await _settingsAppService.ApplyAsync(baseline);
+        await _settingsAppService.ApplyAsync(baseline, _translationDownload?.Token ?? CancellationToken.None);
         _editSession.CommitInvisibleMode(enabled);
     }
 }

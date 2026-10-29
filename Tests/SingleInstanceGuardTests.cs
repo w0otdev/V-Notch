@@ -149,6 +149,6 @@ public class SingleInstanceGuardTests
         guard.TryAcquire();
         guard.Dispose();
         // Second dispose should be safe
-        guard.Dispose();
+        Assert.Null(Record.Exception(guard.Dispose));
     }
 }

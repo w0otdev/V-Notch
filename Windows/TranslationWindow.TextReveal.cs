@@ -120,7 +120,7 @@ public partial class TranslationWindow
         {
             double progress = Math.Clamp((elapsed - i * _resultRevealInterval) / CharacterFadeMilliseconds, 0, 1);
             brushes[i].Opacity = 1 - (1 - progress) * (1 - progress);
-            if (progress == 1) _resultRevealCompleted = i + 1;
+            if (Math.Abs(progress - 1) < 1e-6) _resultRevealCompleted = i + 1;
         }
     }
 

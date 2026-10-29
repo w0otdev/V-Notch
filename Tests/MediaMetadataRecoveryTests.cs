@@ -265,7 +265,7 @@ public sealed class MediaMetadataRecoveryTests
         public string? TryGetMediaUrlFromAnyBrowser() => null;
         public bool IsSpotifyWebPlayerOpen() => true;
         public bool IsPipActive(string? processName = null) => false;
-        public bool TryGetPipWindow(out IntPtr hwnd, out string title, string? processName = null) { hwnd = IntPtr.Zero; title = ""; return false; }
+        public bool TryGetPipWindow(out IntPtr pipHwnd, out string pipTitle, string? processName = null) { pipHwnd = IntPtr.Zero; pipTitle = ""; return false; }
         public void InvalidateUrlCaches() { }
     }
 }

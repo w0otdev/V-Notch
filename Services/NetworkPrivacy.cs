@@ -66,7 +66,7 @@ internal sealed partial class NetworkPrivacy
         // Never invoke third-party cancellation callbacks under the policy lock.
         foreach (var source in revoked)
         {
-            try { source.Cancel(); } catch (AggregateException) { }
+            try { source.Cancel(); } catch (AggregateException) { /* Ignore cancellation callback exception */ }
             source.Dispose();
         }
     }
@@ -111,20 +111,24 @@ internal sealed partial class NetworkPrivacy
             foreach (var header in inner.Headers) Headers.TryAddWithoutValidation(header.Key, header.Value);
         }
         protected override bool TryComputeLength(out long length) { length = 0; return false; }
-        protected override Task SerializeToStreamAsync(Stream stream, TransportContext? context) => CopyAsync(stream, default);
-        protected override Task SerializeToStreamAsync(Stream stream, TransportContext? context, CancellationToken token) => CopyAsync(stream, token);
+        protected override Task SerializeToStreamAsync(Stream stream, TransportContext? context) => CopyAsync(stream, _permission);
+        protected override Task SerializeToStreamAsync(Stream stream, TransportContext? context, CancellationToken cancellationToken) => CopyAsync(stream, cancellationToken);
         private async Task CopyAsync(Stream stream, CancellationToken token)
         {
             using var linked = CancellationTokenSource.CreateLinkedTokenSource(token, _permission);
             await _inner.CopyToAsync(stream, linked.Token).ConfigureAwait(false);
         }
-        protected override Task<Stream> CreateContentReadStreamAsync() => CreateContentReadStreamAsync(default);
-        protected override async Task<Stream> CreateContentReadStreamAsync(CancellationToken token)
+        protected override Task<Stream> CreateContentReadStreamAsync() => CreateContentReadStreamAsync(_permission);
+        protected override async Task<Stream> CreateContentReadStreamAsync(CancellationToken cancellationToken)
         {
-            using var linked = CancellationTokenSource.CreateLinkedTokenSource(token, _permission);
+            using var linked = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, _permission);
             return new PrivacyStream(await _inner.ReadAsStreamAsync(linked.Token).ConfigureAwait(false), _permission);
         }
-        protected override void Dispose(bool disposing) { if (disposing) _inner.Dispose(); base.Dispose(disposing); }
+        protected override void Dispose(bool disposing)
+        {
+            if (disposing) _inner.Dispose();
+            base.Dispose(disposing);
+        }
     }
 
     private sealed class PrivacyStream(Stream inner, CancellationToken permission) : Stream
@@ -135,16 +139,20 @@ internal sealed partial class NetworkPrivacy
         public override long Length => throw new NotSupportedException();
         public override long Position { get => throw new NotSupportedException(); set => throw new NotSupportedException(); }
         public override int Read(byte[] buffer, int offset, int count) { permission.ThrowIfCancellationRequested(); return inner.Read(buffer, offset, count); }
-        public override async ValueTask<int> ReadAsync(Memory<byte> buffer, CancellationToken token = default)
+        public override async ValueTask<int> ReadAsync(Memory<byte> buffer, CancellationToken cancellationToken = default)
         {
-            using var linked = CancellationTokenSource.CreateLinkedTokenSource(token, permission);
+            using var linked = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, permission);
             return await inner.ReadAsync(buffer, linked.Token).ConfigureAwait(false);
         }
-        public override Task<int> ReadAsync(byte[] buffer, int offset, int count, CancellationToken token) => ReadAsync(buffer.AsMemory(offset, count), token).AsTask();
+        public override Task<int> ReadAsync(byte[] buffer, int offset, int count, CancellationToken cancellationToken) => ReadAsync(buffer.AsMemory(offset, count), cancellationToken).AsTask();
         public override void Flush() => throw new NotSupportedException();
         public override long Seek(long offset, SeekOrigin origin) => throw new NotSupportedException();
         public override void SetLength(long value) => throw new NotSupportedException();
         public override void Write(byte[] buffer, int offset, int count) => throw new NotSupportedException();
-        protected override void Dispose(bool disposing) { if (disposing) inner.Dispose(); base.Dispose(disposing); }
+        protected override void Dispose(bool disposing)
+        {
+            if (disposing) inner.Dispose();
+            base.Dispose(disposing);
+        }
     }
 }

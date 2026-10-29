@@ -21,7 +21,7 @@ float u_noise            : register(c14); // film noise grain (0.05..0.15)
 float u_glowWeight       : register(c15); // directional specular glow weight (0.30)
 float u_glowBias         : register(c16); // glow bias (0.0)
 float u_glowEdge0        : register(c17); // glow edge start (0.06)
-float u_glowEdge1        : register(c18); // glow edge end (0.0)
+float blurRadius         : register(c18); // single-pass backdrop Gaussian blur radius in pixels (0..28)
 
 // Material & Optical Appearance
 float u_chroma           : register(c19); // chromatic aberration amount
@@ -179,6 +179,29 @@ float3 sampleSource(float2 sourcePixel, float2 rcpSourceSize)
     return tex2D(input, uv).rgb;
 }
 
+// Hardware-bilinear 9-tap Gaussian blur inside the single refraction pass.
+// Eliminates a separate full-surface WPF BlurEffect render target pass.
+float3 sampleBlurredSource(float2 sourcePixel, float2 rcpSourceSize, float radius)
+{
+    float3 center = sampleSource(sourcePixel, rcpSourceSize);
+    if (radius < 0.5)
+        return center;
+
+    float2 d1 = float2(radius * 0.75, radius * 0.75);
+    float2 d2 = float2(radius * 1.50, 0.0);
+
+    float3 sum = center * 0.20;
+    sum += sampleSource(sourcePixel + float2( d1.x,  d1.y), rcpSourceSize) * 0.12;
+    sum += sampleSource(sourcePixel + float2(-d1.x,  d1.y), rcpSourceSize) * 0.12;
+    sum += sampleSource(sourcePixel + float2( d1.x, -d1.y), rcpSourceSize) * 0.12;
+    sum += sampleSource(sourcePixel + float2(-d1.x, -d1.y), rcpSourceSize) * 0.12;
+    sum += sampleSource(sourcePixel + float2( d2.x,  0.0),  rcpSourceSize) * 0.08;
+    sum += sampleSource(sourcePixel + float2(-d2.x,  0.0),  rcpSourceSize) * 0.08;
+    sum += sampleSource(sourcePixel + float2( 0.0,   d2.x), rcpSourceSize) * 0.08;
+    sum += sampleSource(sourcePixel + float2( 0.0,  -d2.x), rcpSourceSize) * 0.08;
+    return sum;
+}
+
 float4 main(float2 uv : TEXCOORD) : COLOR
 {
     float2 sourceSize = max(float2(srcW, srcH), float2(1.0, 1.0));
@@ -291,6 +314,7 @@ float4 main(float2 uv : TEXCOORD) : COLOR
     float dispMag = length(displacement);
     float chromaAmount = max(u_chroma, 0.0) * (1.0 - distNorm) * saturate(dispMag * 0.5) * 2.0;
 
+    float activeBlur = clamp(blurRadius, 0.0, 28.0);
     if (chromaAmount > 0.001)
     {
         float2 chromaOffset = safeNormalize(displacement) * chromaAmount * 1.5;

@@ -52,7 +52,7 @@ public partial class SpotlightWindow
                 AiCopyButton.RenderTransform.BeginAnimation(System.Windows.Media.ScaleTransform.ScaleXProperty, pop);
                 AiCopyButton.RenderTransform.BeginAnimation(System.Windows.Media.ScaleTransform.ScaleYProperty, pop);
             }
-            await System.Threading.Tasks.Task.Delay(1800);
+            await System.Threading.Tasks.Task.Delay(1800, CancellationToken.None);
             if (version == _aiCopyFeedbackVersion)
             {
                 AiCopyButton.Content = _aiCopyOriginalContent;

@@ -85,8 +85,8 @@ internal sealed partial class TranslationSelectionService : IDisposable
                 Interlocked.CompareExchange(ref _manualRequestVersion, version + 1, version) == version)
                 ManualSelectionUnavailable?.Invoke(foreground, version + 1);
         }
-        catch (OperationCanceledException) { }
-        catch (InvalidOperationException) { }
+        catch (OperationCanceledException) { /* Manual selection request was superseded or canceled. */ }
+        catch (InvalidOperationException) { /* Dispatcher shut down before manual capture completed. */ }
     }
 
     internal static async Task CaptureManualAsync(Func<bool> isCurrent, Func<TranslationSelection?> capture,
@@ -159,7 +159,7 @@ internal sealed partial class TranslationSelectionService : IDisposable
             }, DispatcherPriority.Send);
             Dispatcher.Run();
         }
-        catch (Exception ex) when (ex is InvalidOperationException or COMException or ElementNotAvailableException) { }
+        catch (Exception ex) when (ex is InvalidOperationException or COMException or ElementNotAvailableException) { /* Selection worker shutting down or UIA provider unavailable. */ }
         finally
         {
             _ready.TrySetCanceled();
@@ -207,7 +207,7 @@ internal sealed partial class TranslationSelectionService : IDisposable
                 _root = AutomationElement.FromHandle(window);
                 _watchedWindow = window;
                 try { Automation.AddAutomationEventHandler(TextPattern.TextSelectionChangedEvent, _root, TreeScope.Subtree, _selectionChanged); }
-                catch (Exception ex) when (ex is InvalidOperationException or COMException or ElementNotAvailableException) { }
+                catch (Exception ex) when (ex is InvalidOperationException or COMException or ElementNotAvailableException) { /* Selection worker shutting down or UIA provider unavailable. */ }
             }
             var result = SelectionTextReader.Read(window, _eventElement, manual, out bool protectedInput, _element, _root);
             if (Win32Interop.GetForegroundWindow() != window) return;
@@ -331,7 +331,7 @@ internal sealed partial class TranslationSelectionService : IDisposable
     private void DetachSelection()
     {
         if (_root != null)
-            try { Automation.RemoveAutomationEventHandler(TextPattern.TextSelectionChangedEvent, _root, _selectionChanged); } catch (Exception) { }
+            try { Automation.RemoveAutomationEventHandler(TextPattern.TextSelectionChangedEvent, _root, _selectionChanged); } catch (Exception) { /* Window or UIA element may have closed before handler removal. */ }
         _root = null; _eventElement = null; _watchedWindow = IntPtr.Zero;
     }
 

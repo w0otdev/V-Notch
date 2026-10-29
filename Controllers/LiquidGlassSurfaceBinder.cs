@@ -7,11 +7,7 @@ using VNotch.Services;
 
 namespace VNotch.Controllers;
 
-/// <summary>
-/// Shared CPU optical-rim and dynamic Fresnel presentation for liquid-glass surfaces.
-/// MainWindow and SpotlightWindow own their XAML elements and pass them in here; any
-/// window-specific visibility gating stays in the window partials.
-/// </summary>
+
 internal sealed class LiquidGlassSurfaceBinder
 {
     private readonly Border _depthRim;
@@ -76,14 +72,14 @@ internal sealed class LiquidGlassSurfaceBinder
     /// <summary>GPU mode: the shader draws the optics, so only the outer rim keeps an opacity.</summary>
     public void ApplyGpuRimOpacities(double edgeHighlight)
     {
-        _depthRim.Opacity = 0;
-        _coolRim.Opacity = 0;
-        _warmRim.Opacity = 0;
-        _fresnelBloom.Opacity = 0;
-        _fresnel.Opacity = 0;
-        _innerFresnel.Opacity = 0;
-        _specular.Opacity = 0;
-        _rim.Opacity = Math.Clamp(edgeHighlight * 0.50, 0.0, 0.65);
+        GlassVisualUpdates.SetDouble(_depthRim, UIElement.OpacityProperty, 0);
+        GlassVisualUpdates.SetDouble(_coolRim, UIElement.OpacityProperty, 0);
+        GlassVisualUpdates.SetDouble(_warmRim, UIElement.OpacityProperty, 0);
+        GlassVisualUpdates.SetDouble(_fresnelBloom, UIElement.OpacityProperty, 0);
+        GlassVisualUpdates.SetDouble(_fresnel, UIElement.OpacityProperty, 0);
+        GlassVisualUpdates.SetDouble(_innerFresnel, UIElement.OpacityProperty, 0);
+        GlassVisualUpdates.SetDouble(_specular, UIElement.OpacityProperty, 0);
+        GlassVisualUpdates.SetDouble(_rim, UIElement.OpacityProperty, Math.Clamp(edgeHighlight * 0.50, 0.0, 0.65));
     }
 
     /// <summary>CPU mode: derives every rim layer opacity from the configured optics levels.</summary>
@@ -98,17 +94,17 @@ internal sealed class LiquidGlassSurfaceBinder
         _activeFresnelLevel = fres;
 
         // A square-root response preserves a delicate rim at low slider values
-        _rim.Opacity = Math.Sqrt(edge) * 0.82;
-        _depthRim.Opacity = Math.Clamp(edge * 0.34 + fres * 0.24, 0, 0.46);
+        GlassVisualUpdates.SetDouble(_rim, UIElement.OpacityProperty, Math.Sqrt(edge) * 0.82);
+        GlassVisualUpdates.SetDouble(_depthRim, UIElement.OpacityProperty, Math.Clamp(edge * 0.34 + fres * 0.24, 0, 0.46));
         double fresnelEnergy = Math.Sqrt(fres);
-        _fresnelBloom.Opacity = fresnelEnergy * 0.30;
-        _fresnel.Opacity = fresnelEnergy * 0.94;
-        _innerFresnel.Opacity = fresnelEnergy * 0.64;
-        _specular.Opacity = spec * 0.92;
+        GlassVisualUpdates.SetDouble(_fresnelBloom, UIElement.OpacityProperty, fresnelEnergy * 0.30);
+        GlassVisualUpdates.SetDouble(_fresnel, UIElement.OpacityProperty, fresnelEnergy * 0.94);
+        GlassVisualUpdates.SetDouble(_innerFresnel, UIElement.OpacityProperty, fresnelEnergy * 0.64);
+        GlassVisualUpdates.SetDouble(_specular, UIElement.OpacityProperty, spec * 0.92);
 
         double spectralOpacity = Math.Clamp(spectral * 0.30 + edge * 0.10, 0, 0.52);
-        _coolRim.Opacity = spectralOpacity;
-        _warmRim.Opacity = spectralOpacity * 0.76;
+        GlassVisualUpdates.SetDouble(_coolRim, UIElement.OpacityProperty, spectralOpacity);
+        GlassVisualUpdates.SetDouble(_warmRim, UIElement.OpacityProperty, spectralOpacity * 0.76);
     }
 
     public void EnsureDynamicFresnelBrush()
@@ -214,31 +210,26 @@ internal sealed class LiquidGlassSurfaceBinder
     }
 
     /// <summary>
-    /// Applies the GPU-mode backdrop blur to <paramref name="host"/>, reusing the
-    /// caller-owned <paramref name="blur"/> instance across calls.
+    /// Applies the GPU-mode backdrop blur inside <paramref name="refractionEffect"/>
+    /// and clears any legacy <see cref="BlurEffect"/> on <paramref name="host"/> so
+    /// WPF renders the glass in a single shader pass without an extra render target.
     /// </summary>
-    public static void ApplyGpuBlur(UIElement? host, ref BlurEffect? blur, double blurAmount, bool useGpuRefraction)
+    public static void ApplyGpuBlur(
+        UIElement? host,
+        ref BlurEffect? blur,
+        double blurAmount,
+        bool useGpuRefraction,
+        LiquidGlassRefractionEffect? refractionEffect = null)
     {
-        if (!useGpuRefraction || host == null) return;
+        if (host?.Effect != null)
+            host.Effect = null;
+        blur = null;
+
+        if (!useGpuRefraction || refractionEffect == null) return;
 
         double radius = Math.Clamp(blurAmount, 0, 1) * 14.0;
-        if (radius < 0.5)
-        {
-            host.Effect = null;
-            blur = null;
-            return;
-        }
-
-        if (blur == null)
-        {
-            blur = new BlurEffect
-            {
-                KernelType = KernelType.Gaussian,
-                RenderingBias = RenderingBias.Performance
-            };
-            host.Effect = blur;
-        }
-        blur.Radius = radius;
+        if (radius < 0.5) radius = 0.0;
+        GlassVisualUpdates.SetDouble(refractionEffect, LiquidGlassRefractionEffect.BlurRadiusProperty, radius);
     }
 
     public static Color BuildContentFresnelTint(byte red, byte green, byte blue)

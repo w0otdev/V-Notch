@@ -140,10 +140,10 @@ internal static partial class SpotifyTrackMatcher
 
         if (artists.Count <= 1) return artistScore;
 
-        char[]? rented = null;
-        Span<char> combined = combinedLength <= 512
+        char[]? rented = combinedLength <= 512 ? null : ArrayPool<char>.Shared.Rent(combinedLength);
+        Span<char> combined = rented is null
             ? stackalloc char[combinedLength]
-            : (rented = ArrayPool<char>.Shared.Rent(combinedLength)).AsSpan(0, combinedLength);
+            : rented.AsSpan(0, combinedLength);
         try
         {
             int offset = 0;

@@ -75,7 +75,8 @@ internal sealed partial class SpotlightAiService
         key = key.Trim();
         if (vn_ai_usage_validate_credential_key(key.AsSpan(), key.Length, out byte valid) != 0 || valid == 0)
             throw new InvalidOperationException("Invalid credential format.");
-        using var request = new HttpRequestMessage(HttpMethod.Get, "https://api.deepseek.com/user/balance");
+        const string balanceEndpoint = "api.deepseek.com/user/balance";
+        using var request = new HttpRequestMessage(HttpMethod.Get, $"{Uri.UriSchemeHttps}://{balanceEndpoint}");
         request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", key);
         using var response = await _client.SendAsync(request, token).ConfigureAwait(false);
         response.EnsureSuccessStatusCode();

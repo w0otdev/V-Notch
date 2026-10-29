@@ -10,6 +10,7 @@ internal static class DesktopTestMode
         Environment.GetEnvironmentVariable(EnvironmentVariable) == "1";
 }
 
+[AttributeUsage(AttributeTargets.Method, AllowMultiple = false)]
 public sealed class DesktopFactAttribute : FactAttribute
 {
     public DesktopFactAttribute()
@@ -18,6 +19,7 @@ public sealed class DesktopFactAttribute : FactAttribute
     }
 }
 
+[AttributeUsage(AttributeTargets.Method, AllowMultiple = false)]
 public sealed class DesktopTheoryAttribute : TheoryAttribute
 {
     public DesktopTheoryAttribute()

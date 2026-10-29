@@ -151,7 +151,7 @@ public sealed class TranslationCacheTests
         Assert.Equal("translation.currencyAmbiguous", Assert.Throws<TranslationException>(() =>
             service.TryGetCachedResult("EUR 80 USD", "en", "vi", default)).MessageKey);
         using var cancellation = new CancellationTokenSource();
-        cancellation.Cancel();
+        await cancellation.CancelAsync();
         Assert.ThrowsAny<OperationCanceledException>(() => service.TryGetCachedResult("cached", "en", "vi", cancellation.Token));
         Assert.Equal(1, engine.Calls);
     }
@@ -197,7 +197,7 @@ public sealed class TranslationCacheTests
         {
             await service.TranslateAsync("cached", "en", "vi", default);
             using var cancellation = new CancellationTokenSource();
-            cancellation.Cancel();
+            await cancellation.CancelAsync();
             await Assert.ThrowsAnyAsync<OperationCanceledException>(() =>
                 service.TranslateAsync("cached", "en", "vi", cancellation.Token));
             service.Dispose();
@@ -213,8 +213,8 @@ public sealed class TranslationCacheTests
         internal int Calls;
         internal TranslationOptions? Options;
         public void Configure(TranslationOptions options) => Options = options;
-        public Task<string> TranslateAsync(string text, string source, string target, CancellationToken ct)
-        { Interlocked.Increment(ref Calls); return translate(text, ct); }
+        public Task<string> TranslateAsync(string text, string sourceLanguage, string targetLanguage, CancellationToken cancellationToken)
+        { Interlocked.Increment(ref Calls); return translate(text, cancellationToken); }
         public void ReleaseIdleResources() { }
         public void Dispose() { }
     }
