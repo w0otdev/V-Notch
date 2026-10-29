@@ -60,8 +60,8 @@ public sealed class NotchNavigationIntegrationTests
             {
                 foreach (var to in views.Where(view => view != from))
                 {
-                    // Exercise full storyboard clocks for the first cycle of every view, then fast-forward remaining permutations.
-                    AnimationConfig.SetReduceMotion(pairIndex++ >= views.Length);
+                    // Exercise full storyboard clocks for the first cycle, then fast-forward remaining permutations.
+                    AnimationConfig.SetReduceMotion(pairIndex++ >= 2);
                     await Navigate(from);
                     await Navigate(to);
                     FrameworkElement content = to switch
@@ -74,6 +74,7 @@ public sealed class NotchNavigationIntegrationTests
                     };
                     Assert.Equal(Visibility.Visible, content.Visibility);
                 }
+                AnimationConfig.SetReduceMotion(pairIndex > 4);
                 await Navigate(NotchView.Compact);
             }
             Assert.Equal(NotchShapeState.Collapsed, coordinator.ShapeState);

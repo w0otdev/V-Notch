@@ -36,16 +36,14 @@ public sealed class LocalizationTests
     [Fact]
     public void FormatPlaceholdersMatchAcrossLanguages()
     {
-        foreach (var key in Loc.GetKeys("en"))
+        Loc.SetLanguage("en");
+        var englishKeys = Loc.GetKeys("en").ToArray();
+        var expectedByKey = englishKeys.ToDictionary(key => key, key => GetPlaceholderIndexes(Loc.Get(key)), StringComparer.Ordinal);
+        foreach (var language in Languages.Skip(1))
         {
-            Loc.SetLanguage("en");
-            var expected = GetPlaceholderIndexes(Loc.Get(key));
-
-            foreach (var language in Languages.Skip(1))
-            {
-                Loc.SetLanguage(language);
-                Assert.Equal(expected, GetPlaceholderIndexes(Loc.Get(key)));
-            }
+            Loc.SetLanguage(language);
+            foreach (var key in englishKeys)
+                Assert.Equal(expectedByKey[key], GetPlaceholderIndexes(Loc.Get(key)));
         }
 
         Loc.SetLanguage("en");
@@ -160,11 +158,11 @@ public sealed class LocalizationTests
         };
         var untranslated = new List<string>();
 
-        foreach (var key in Loc.GetKeys("en"))
+        Loc.SetLanguage("en");
+        var englishValues = Loc.GetKeys("en").ToDictionary(key => key, Loc.Get, StringComparer.Ordinal);
+        Loc.SetLanguage("hi");
+        foreach (var (key, english) in englishValues)
         {
-            Loc.SetLanguage("en");
-            string english = Loc.Get(key);
-            Loc.SetLanguage("hi");
             string hindi = Loc.Get(key);
 
             if (!string.IsNullOrWhiteSpace(english) &&

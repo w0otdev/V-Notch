@@ -163,6 +163,7 @@ public sealed class MainWindowClipboardDismissalTests
     private static void WithOpenTray(Func<MainWindow, NotchTransitionCoordinator, CancellationToken, Task> test)
         => SharedStaTestRunner.RunAsync(async ct =>
         {
+            bool prevReduced = AnimationConfig.ReduceMotion;
             await using var fixture = new GreetingAcceptanceTests.MainWindowFixture("en", greeting: false,
                 settings =>
                 {
@@ -173,18 +174,24 @@ public sealed class MainWindowClipboardDismissalTests
                 },
                 services => services.AddSingleton<IMediaDetectionService>(new Fakes.FakeMediaDetectionService()));
             var window = fixture.Window;
-            window.SetDebugViewLock(true);
-            window.ShowActivated = false;
-            window.Show();
-            await WpfFrameWaiter.UntilAsync(() => Field<bool>(window, "_isStartupLayoutReady") && !IsAnimating(window), "startup", ct);
-            Field<IMediaDetectionService>(window, "_mediaService").Stop();
-            window.SetDebugViewState("SecondaryShelf");
-            await WpfFrameWaiter.UntilAsync(() => !IsAnimating(window), "file tray expansion", ct);
-            window.SetDebugViewLock(false);
-            SetField(window, "_suppressOutsideClickUntilUtc", DateTime.MinValue);
-            var coordinator = Field<NotchTransitionCoordinator>(window, "_transitionCoordinator");
-            Assert.Equal(NotchView.Secondary, coordinator.CurrentView);
-            await test(window, coordinator, ct);
+            try
+            {
+                AnimationConfig.SetReduceMotion(true);
+                window.SetDebugViewLock(true);
+                window.ShowActivated = false;
+                window.Show();
+                await WpfFrameWaiter.UntilAsync(() => Field<bool>(window, "_isStartupLayoutReady") && !IsAnimating(window), "startup", ct);
+                Field<IMediaDetectionService>(window, "_mediaService").Stop();
+                window.SetDebugViewState("SecondaryShelf");
+                await WpfFrameWaiter.UntilAsync(() => !IsAnimating(window), "file tray expansion", ct);
+                window.SetDebugViewLock(false);
+                SetField(window, "_suppressOutsideClickUntilUtc", DateTime.MinValue);
+                AnimationConfig.SetReduceMotion(prevReduced);
+                var coordinator = Field<NotchTransitionCoordinator>(window, "_transitionCoordinator");
+                Assert.Equal(NotchView.Secondary, coordinator.CurrentView);
+                await test(window, coordinator, ct);
+            }
+            finally { AnimationConfig.SetReduceMotion(prevReduced); }
         });
 
     private static InputMonitorService.POINT MousePoint(Point point) => new() { x = (int)point.X, y = (int)point.Y };

@@ -179,10 +179,8 @@ jobs:
       - name: Run unit tests
         shell: pwsh
         run: >-
-          dotnet test Tests/VNotch.Tests.csproj --configuration Release --no-build --no-restore
-          --filter "Category!=DesktopIntegration" --blame-hang-timeout 60s
-          --results-directory artifacts/unit-test-results
-          --logger "trx;LogFileName=unit-tests.trx" --logger "console;verbosity=minimal"
+          ./scripts/t.ps1 -All -NoBuild -Configuration Release -Shards 4
+          -BlameHangTimeoutSeconds 60 -ResultsDirectory artifacts/unit-test-results
 
       - name: Verify gates, update compatibility & package audit in parallel
         id: gates
