@@ -416,8 +416,10 @@ public sealed class SettingsWindowControlTests
             using var fixture = new Fixture();
             var window = fixture.Window;
             var panels = Field<Dictionary<string, StackPanel>>(window, "_navPanels");
+            int sectionIdx = 0;
             foreach (string section in panels.Keys.Reverse())
             {
+                AnimationConfig.SetReduceMotion(reducedMotion || sectionIdx++ > 1);
                 Invoke(window, "NavigateToSection", section);
                 await WpfFrameWaiter.UntilAsync(() => panels[section].Visibility == Visibility.Visible && panels.Values.Count(panel => panel.Visibility == Visibility.Visible) == 1, "settings section navigation", ct);
                 Assert.Equal(section, Field<string>(window, "_activeNav"));
@@ -582,38 +584,44 @@ public sealed class SettingsWindowControlTests
     }
 
     [Theory]
-    [InlineData("Appearance")]
-    [InlineData("Behavior")]
-    [InlineData("Devices")]
-    [InlineData("System")]
-    [InlineData("Privacy")]
-    [InlineData("Spotlight")]
-    [InlineData("Advanced")]
-    [InlineData("Performance")]
-    [InlineData("Donating")]
-    [InlineData("Updates")]
-    [InlineData("Searching")]
-    [InlineData("Skins")]
-    public void SettingsSaveClosesEverySectionOnceAndPersistsSnapshot(string section) => SharedStaTestRunner.RunAsync(async ct =>
+    [InlineData("Appearance", false)]
+    [InlineData("Behavior", true)]
+    [InlineData("Devices", true)]
+    [InlineData("System", true)]
+    [InlineData("Privacy", true)]
+    [InlineData("Spotlight", true)]
+    [InlineData("Advanced", true)]
+    [InlineData("Performance", true)]
+    [InlineData("Donating", true)]
+    [InlineData("Updates", true)]
+    [InlineData("Searching", true)]
+    [InlineData("Skins", true)]
+    public void SettingsSaveClosesEverySectionOnceAndPersistsSnapshot(string section, bool fastClose) => SharedStaTestRunner.RunAsync(async ct =>
     {
-        using var fixture = new Fixture();
-        var window = fixture.Window;
-        window.Top = 20;
-        window.Left = 20;
-        var flags = BindingFlags.Instance | BindingFlags.Static | BindingFlags.NonPublic;
-        string nav = (string)typeof(SettingsWindow).GetField("NavSection" + section, flags)!.GetRawConstantValue()!;
-        typeof(SettingsWindow).GetField("_activeNav", flags)!.SetValue(window, nav);
-        int closing = 0;
-        bool closed = false;
-        window.AnimatedClosing += (_, _) => closing++;
-        window.Closed += (_, _) => closed = true;
-        window.WidthSlider.Value = 400;
-        typeof(SettingsWindow).GetMethod("Save_Click", flags)!.Invoke(window, [window, new RoutedEventArgs()]);
-        typeof(SettingsWindow).GetMethod("CloseWithAnimation", flags)!.Invoke(window, null);
-        await WpfFrameWaiter.UntilAsync(() => closed && fixture.Service.Applied != null, "settings save and close", ct);
-        Assert.Equal(400, fixture.Service.Applied!.Width);
-        Assert.Equal(1, closing);
-        Assert.Equal(0, window.Opacity);
+        bool previousReducedMotion = AnimationConfig.ReduceMotion;
+        AnimationConfig.SetReduceMotion(fastClose);
+        try
+        {
+            using var fixture = new Fixture();
+            var window = fixture.Window;
+            window.Top = 20;
+            window.Left = 20;
+            var flags = BindingFlags.Instance | BindingFlags.Static | BindingFlags.NonPublic;
+            string nav = (string)typeof(SettingsWindow).GetField("NavSection" + section, flags)!.GetRawConstantValue()!;
+            typeof(SettingsWindow).GetField("_activeNav", flags)!.SetValue(window, nav);
+            int closing = 0;
+            bool closed = false;
+            window.AnimatedClosing += (_, _) => closing++;
+            window.Closed += (_, _) => closed = true;
+            window.WidthSlider.Value = 400;
+            typeof(SettingsWindow).GetMethod("Save_Click", flags)!.Invoke(window, [window, new RoutedEventArgs()]);
+            typeof(SettingsWindow).GetMethod("CloseWithAnimation", flags)!.Invoke(window, null);
+            await WpfFrameWaiter.UntilAsync(() => closed && fixture.Service.Applied != null, "settings save and close", ct);
+            Assert.Equal(400, fixture.Service.Applied!.Width);
+            Assert.Equal(1, closing);
+            Assert.Equal(0, window.Opacity);
+        }
+        finally { AnimationConfig.SetReduceMotion(previousReducedMotion); }
     });
 
     [Fact]

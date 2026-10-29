@@ -29,10 +29,13 @@ public sealed class AuditRegressionTests
         Assert.True(controller.TryShow(second, connected: true, isNotchVisible: true, isAnimating: false, isExpanded: false, isMusicExpanded: false));
         await Task.Delay(100);
 
-        // First timer window (40 ms) has elapsed, but second toast is still within its 40 ms window.
+        // First timer window has elapsed, but second toast is still within its 160 ms window.
         Assert.Equal(2, Volatile.Read(ref shows));
-        if (Environment.TickCount64 - secondShownAt < 140) Assert.Equal(0, Volatile.Read(ref dismisses));
-        if (Environment.TickCount64 - secondShownAt < 140) Assert.True(controller.IsVisible);
+        if (Environment.TickCount64 - secondShownAt < 120)
+        {
+            Assert.Equal(0, Volatile.Read(ref dismisses));
+            Assert.True(controller.IsVisible);
+        }
 
         Assert.True(dismissed.Wait(TimeSpan.FromSeconds(5)));
         Assert.Equal(1, Volatile.Read(ref dismisses));

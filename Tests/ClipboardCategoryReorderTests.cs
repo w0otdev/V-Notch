@@ -172,6 +172,7 @@ public sealed class ClipboardCategoryReorderTests
     {
         var window = Window.GetWindow(tray)!;
         window.Width = 680;
+        tray.Width = 680;
         tray.UpdateLayout();
         string[] original = store.GetCategoryOrder().ToArray();
         Assert.True(Scroll(tray).ScrollableWidth > 0);
@@ -214,6 +215,7 @@ public sealed class ClipboardCategoryReorderTests
     public void QueuedWritesKeepOptimisticMovesAndDoNotStealLaterFocusOrScroll() => RunWithTray(async (tray, store, _) =>
     {
         Window.GetWindow(tray)!.Width = 680;
+        tray.Width = 680;
         tray.UpdateLayout();
         string[] original = store.GetCategoryOrder().ToArray();
         using var entered = new ManualResetEventSlim();
@@ -380,6 +382,7 @@ public sealed class ClipboardCategoryReorderTests
             var label = await store.AddLabelAsync(new string('W', labelLength));
             await (Task)Invoke(tray, "RefreshAsync")!;
             Window.GetWindow(tray)!.Width = 680;
+            tray.Width = 680;
             tray.UpdateLayout();
             Scroll(tray).ScrollToHorizontalOffset(Scroll(tray).ScrollableWidth);
             tray.UpdateLayout();
@@ -431,6 +434,8 @@ public sealed class ClipboardCategoryReorderTests
             using var tray = new ClipboardTray();
             tray.Attach(controller);
             var window = new BackgroundWindow { Content = tray, Width = 2400, Height = 340 };
+            tray.Width = 2400;
+            tray.Height = 340;
             try
             {
                 window.Show();
