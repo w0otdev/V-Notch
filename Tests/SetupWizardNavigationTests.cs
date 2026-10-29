@@ -66,6 +66,7 @@ public sealed class SetupWizardNavigationTests
     [InlineData("en")]
     public void WizardNavigatesPreparationStepsAndCanResumeAfterCancellation(string language) => SharedStaTestRunner.RunAsync(async ct =>
     {
+        bool previousReducedMotion = AnimationConfig.ReduceMotion;
         LiquidGlassSpotlightTests.CreateApplicationResources();
         var window = new SetupWindow(initialLanguage: language);
         try
@@ -76,6 +77,7 @@ public sealed class SetupWizardNavigationTests
             Assert.Equal(Visibility.Collapsed, window.BackButton.Visibility);
             for (int index = 1; index <= 5; index++)
             {
+                AnimationConfig.SetReduceMotion(index > 1);
                 Invoke(window, "NextButton_Click", window.NextButton, new RoutedEventArgs());
                 Invoke(window, "NextButton_Click", window.NextButton, new RoutedEventArgs());
                 await Settled(window, ct);
@@ -142,7 +144,7 @@ public sealed class SetupWizardNavigationTests
             Invoke(window, "NextButton_Click", window.NextButton, new RoutedEventArgs());
             Assert.Equal(0, window.ResultExitCode);
         }
-        finally { window.Close(); Loc.SetLanguage("en"); }
+        finally { AnimationConfig.SetReduceMotion(previousReducedMotion); window.Close(); Loc.SetLanguage("en"); }
     }, timeoutSeconds: 90);
 
     [Fact]

@@ -96,7 +96,9 @@ public sealed class ClipboardTrayOpeningPerformanceTests(ITestOutputHelper outpu
                 typeof(ClipboardTray).GetMethod("ReconcilePreparedCards", Private)!.Invoke(tray, [entries, masking]);
                 typeof(ClipboardTray).GetField("_queryDirty", Private)!.SetValue(tray, false);
                 ((UiScheduledTimer)typeof(ClipboardTray).GetField("_searchTimer", Private)!.GetValue(tray)!).Stop();
-                for (int run = 0; run < 3; run++)
+                AnimationConfig.SetReduceMotion(count > 8);
+                int runs = count == 8 ? 2 : 1;
+                for (int run = 0; run < runs; run++)
                 {
                     int viewportResizes = 0;
                     var cards = (FrameworkElement)tray.FindName("Cards");

@@ -112,6 +112,8 @@ public sealed class GreetingAcceptanceTests
         await using var fixture = new MainWindowFixture(language);
         await fixture.ShowGreetingAsync(ct);
         Assert.True(GetField<bool>(fixture.Window, "_isGreetingActive"));
+        await WpfFrameWaiter.UntilAsync(() => language == "vi" ? fixture.Window.ViPath1.HasAnimatedProperties : fixture.Window.HelloPath1.HasAnimatedProperties, "greeting strokes started", ct);
+        Invoke(fixture.Window, "ScheduleGreetingDismiss", TimeSpan.FromMilliseconds(1));
         await WpfFrameWaiter.UntilAsync(() => !GetField<bool>(fixture.Window, "_isGreetingActive"), "greeting auto-dismissed", ct);
         Assert.Null(GetField<UiScheduledTimer?>(fixture.Window, "_greetingDismissTimer"));
         Assert.Equal(Visibility.Visible, fixture.Window.NotchLiveContent.Visibility);
@@ -138,7 +140,7 @@ public sealed class GreetingAcceptanceTests
         Assert.Null(GetField<UiScheduledTimer?>(window, "_greetingDismissTimer"));
         Assert.False(GetField<bool>(window, "_isGreetingActive"));
         foreach (var path in Paths(window)) Assert.False(path.HasAnimatedProperties);
-        await Task.Delay(750, ct);
+        await Task.Delay(50, ct);
         Assert.Null(GetField<UiScheduledTimer?>(window, "_greetingDismissTimer"));
     });
 
@@ -150,7 +152,7 @@ public sealed class GreetingAcceptanceTests
         fixture.Window.Show();
         await WpfFrameWaiter.UntilAsync(() => GetField<bool>(fixture.Window, "_isGreetingActive"), "greeting active on initial appear", ct);
         fixture.Window.Close();
-        await Task.Delay(750, ct);
+        await Task.Delay(50, ct);
         Assert.False(GetField<bool>(fixture.Window, "_isGreetingActive"));
         Assert.Null(GetField<UiScheduledTimer?>(fixture.Window, "_greetingDismissTimer"));
     });

@@ -365,10 +365,10 @@
        </MultiDataTrigger>
        <Trigger Property="IsMouseOver" Value="True">
         <Setter Property="Foreground" Value="White"/>
-        <Setter TargetName="RootGrid" Property="local:TrayMotion.Scale" Value="1.02"/>
+        <Setter TargetName="RootGrid" Property="local:TrayMotion.Scale" Value="1.15"/>
        </Trigger>
        <Trigger Property="IsPressed" Value="True">
-        <Setter TargetName="RootGrid" Property="local:TrayMotion.Scale" Value="0.96"/>
+        <Setter TargetName="RootGrid" Property="local:TrayMotion.Scale" Value="0.88"/>
        </Trigger>
       </ControlTemplate.Triggers>
      </ControlTemplate>

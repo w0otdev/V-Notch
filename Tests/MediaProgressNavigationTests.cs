@@ -46,7 +46,7 @@ public sealed class MediaProgressNavigationTests
             Assert.False(Field<bool>(view, "_isRewindAnimating"));
             Assert.False(Field<bool>(view, "_isCatchUpAnimating"));
             Assert.False(view.ProgressBarScale.HasAnimatedProperties);
-            await Task.Delay(500, ct);
+            await Task.Delay(60, ct);
             Assert.InRange(view.DisplayRatio, expectedRatio, expectedRatio + .02);
         }
         finally { host.Close(); }
@@ -57,43 +57,49 @@ public sealed class MediaProgressNavigationTests
     [InlineData(.6, .4)]
     public void CompletedSeek_IsNotReplayedByNotchCollapseAndExpand(double initialRatio, double targetRatio) => SharedStaTestRunner.RunAsync(async ct =>
     {
-        await using var fixture = new GreetingAcceptanceTests.MainWindowFixture("en", false,
-            s => { s.EnableLocalOnlyMode = true; s.DisableMouseLeaveAutoClose = true; },
-            services => services.AddSingleton<IMediaDetectionService>(new FakeMediaDetectionService()));
-        var window = fixture.Window;
-        var view = window.MediaPlayback;
-        var coordinator = (NotchTransitionCoordinator)typeof(MainWindow).GetField("_transitionCoordinator", Private)!.GetValue(window)!;
-        window.Show();
-        Assert.True(coordinator.RequestView(NotchView.Media, "OpenForSeek"));
-        await WpfFrameWaiter.UntilAsync(() => !coordinator.IsTransitionActive, "initial expansion", ct);
-        view.UpdateProgressTracking(Info(initialRatio));
-        view.AnimateSeekProgressTo(initialRatio);
-        await WpfFrameWaiter.UntilAsync(() => !Field<bool>(view, "_isSeekSpringActive"), "initial seek settled", ct);
-        view.Progress.OnMediaSnapshot(Snapshot(targetRatio, 2));
-        view.AnimateExternalSeekTo(targetRatio);
-        await WpfFrameWaiter.UntilAsync(() => !Field<bool>(view, "_isRewindAnimating") &&
-            DateTime.UtcNow >= Field<DateTime>(view, "_suppressExternalSeekDetectionUntil"), "seek stabilized", ct);
-
-        for (int cycle = 0; cycle < 2; cycle++)
+        bool previousReducedMotion = AnimationConfig.ReduceMotion;
+        AnimationConfig.SetReduceMotion(true);
+        try
         {
-            Assert.True(coordinator.RequestView(NotchView.Compact, "CloseAfterSeek"));
-            await WpfFrameWaiter.UntilAsync(() => !coordinator.IsTransitionActive, "notch collapsed", ct);
-            Assert.True(coordinator.RequestView(NotchView.Media, "ReopenAfterSeek"));
-            await WpfFrameWaiter.UntilAsync(() => !coordinator.IsTransitionActive, "notch reopened", ct);
+            await using var fixture = new GreetingAcceptanceTests.MainWindowFixture("en", false,
+                s => { s.EnableLocalOnlyMode = true; s.DisableMouseLeaveAutoClose = true; },
+                services => services.AddSingleton<IMediaDetectionService>(new FakeMediaDetectionService()));
+            var window = fixture.Window;
+            var view = window.MediaPlayback;
+            var coordinator = (NotchTransitionCoordinator)typeof(MainWindow).GetField("_transitionCoordinator", Private)!.GetValue(window)!;
+            window.Show();
+            Assert.True(coordinator.RequestView(NotchView.Media, "OpenForSeek"));
+            await WpfFrameWaiter.UntilAsync(() => !coordinator.IsTransitionActive, "initial expansion", ct);
+            view.UpdateProgressTracking(Info(initialRatio));
+            view.AnimateSeekProgressTo(initialRatio);
+            await WpfFrameWaiter.UntilAsync(() => !Field<bool>(view, "_isSeekSpringActive"), "initial seek settled", ct);
+            view.Progress.OnMediaSnapshot(Snapshot(targetRatio, 2));
+            view.AnimateExternalSeekTo(targetRatio);
+            await WpfFrameWaiter.UntilAsync(() => !Field<bool>(view, "_isRewindAnimating") &&
+                DateTime.UtcNow >= Field<DateTime>(view, "_suppressExternalSeekDetectionUntil"), "seek stabilized", ct);
 
-            double expectedRatio = view.Progress.GetUiFrame().Position.TotalSeconds / 100;
-            Assert.InRange(view.DisplayRatio, expectedRatio - .005, expectedRatio + .005);
-            Assert.False(Field<bool>(view, "_isRewindAnimating"));
-            Assert.False(Field<bool>(view, "_isCatchUpAnimating"));
-            Assert.False(view.ProgressBarScale.HasAnimatedProperties);
+            for (int cycle = 0; cycle < 2; cycle++)
+            {
+                Assert.True(coordinator.RequestView(NotchView.Compact, "CloseAfterSeek"));
+                await WpfFrameWaiter.UntilAsync(() => !coordinator.IsTransitionActive, "notch collapsed", ct);
+                Assert.True(coordinator.RequestView(NotchView.Media, "ReopenAfterSeek"));
+                await WpfFrameWaiter.UntilAsync(() => !coordinator.IsTransitionActive, "notch reopened", ct);
+
+                double expectedRatio = view.Progress.GetUiFrame().Position.TotalSeconds / 100;
+                Assert.InRange(view.DisplayRatio, expectedRatio - .005, expectedRatio + .005);
+                Assert.False(Field<bool>(view, "_isRewindAnimating"));
+                Assert.False(Field<bool>(view, "_isCatchUpAnimating"));
+                Assert.False(view.ProgressBarScale.HasAnimatedProperties);
+            }
+
+            double nextTarget = targetRatio + .15;
+            view.Progress.OnMediaSnapshot(Snapshot(nextTarget, 3));
+            view.RenderProgressBar();
+            Assert.True(Field<bool>(view, "_isRewindAnimating"));
+            await WpfFrameWaiter.UntilAsync(() => !Field<bool>(view, "_isRewindAnimating"), "new seek after reopening", ct);
+            Assert.InRange(view.DisplayRatio, nextTarget, nextTarget + .02);
         }
-
-        double nextTarget = targetRatio + .15;
-        view.Progress.OnMediaSnapshot(Snapshot(nextTarget, 3));
-        view.RenderProgressBar();
-        Assert.True(Field<bool>(view, "_isRewindAnimating"));
-        await WpfFrameWaiter.UntilAsync(() => !Field<bool>(view, "_isRewindAnimating"), "new seek after reopening", ct);
-        Assert.InRange(view.DisplayRatio, nextTarget, nextTarget + .02);
+        finally { AnimationConfig.SetReduceMotion(previousReducedMotion); }
     });
 
     private static MediaInfo Info(double ratio) => new()

@@ -321,7 +321,11 @@ public sealed partial class AppFileCleanupService : IDisposable, IAsyncDisposabl
     public async ValueTask DisposeAsync()
     {
         Dispose();
-        if (_worker != null) await _worker.ConfigureAwait(false);
+        if (_worker != null)
+        {
+            try { await _worker.ConfigureAwait(false); }
+            catch (OperationCanceledException) when (_stop.IsCancellationRequested) { }
+        }
         _stop.Dispose();
         // Synchronous WPF shutdown only signals cancellation; it never blocks the UI on disk I/O.
         GC.SuppressFinalize(this);
