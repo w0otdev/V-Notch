@@ -193,8 +193,9 @@ try {
         'Tests\artifacts',
         'Tests\.artifacts',
         '.github\scripts\__pycache__',
-        'Tools\ReportBenchmark\Measurements',
-        'Tools\StressRunner\Measurements'
+        'Native\out',
+        'result',
+        'changes'
     )
 
     if ($Deep) {
@@ -249,7 +250,6 @@ try {
         'Shaders',
         'ViewModels',
         'Windows',
-        'changes',
         'scripts'
     )
     $targetDirNames = @('bin', 'bin-test', 'bin_test', 'obj', 'TestResults', 'BenchmarkDotNet.Artifacts', '__pycache__', '.pytest_cache')

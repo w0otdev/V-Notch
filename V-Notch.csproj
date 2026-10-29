@@ -76,7 +76,6 @@
 
   <ItemGroup>
     <InternalsVisibleTo Include="VNotch.Tests" />
-    <InternalsVisibleTo Include="VNotch.Benchmarks" />
     <InternalsVisibleTo Include="VNotch.TranslationBench" />
     <EmbeddedResource Include="Security\update-public-key.pem" LogicalName="VNotch.UpdatePublicKey.pem" />
     <EmbeddedResource Include="Assets\MediaProtocols.json" LogicalName="VNotch.MediaProtocols.json" />

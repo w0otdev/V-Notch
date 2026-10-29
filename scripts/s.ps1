@@ -54,6 +54,14 @@ $compileOut = Invoke-CapturedNative { & dotnet run --project $projectPath -- $so
 $exitCode = $LASTEXITCODE
 $sw.Stop()
 
+$shaderToolDir = Split-Path -Parent $projectPath
+foreach ($sub in @('bin', 'obj')) {
+    $subPath = Join-Path $shaderToolDir $sub
+    if (Test-Path -LiteralPath $subPath) {
+        Remove-Item -LiteralPath $subPath -Recurse -Force -ErrorAction SilentlyContinue
+    }
+}
+
 foreach ($line in @($compileOut | ForEach-Object { "$_" } | Where-Object { $_.Trim().Length -gt 0 })) {
     Write-Host "  $gVert     " -ForegroundColor DarkCyan -NoNewline
     Write-Host $line.Trim() -ForegroundColor DarkGray

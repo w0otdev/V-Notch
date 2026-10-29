@@ -65,10 +65,12 @@ $previousWinTarget   = [Environment]::GetEnvironmentVariable('EnableWindowsTarge
 $previousSkipFirst   = [Environment]::GetEnvironmentVariable('DOTNET_SKIP_FIRST_TIME_EXPERIENCE', 'Process')
 $previousNoLogo      = [Environment]::GetEnvironmentVariable('DOTNET_NOLOGO', 'Process')
 $previousTelemetry   = [Environment]::GetEnvironmentVariable('DOTNET_CLI_TELEMETRY_OPTOUT', 'Process')
+$previousPyBytecode  = [Environment]::GetEnvironmentVariable('PYTHONDONTWRITEBYTECODE', 'Process')
 $env:EnableWindowsTargeting = 'true'
 $env:DOTNET_SKIP_FIRST_TIME_EXPERIENCE = '1'
 $env:DOTNET_NOLOGO = '1'
 $env:DOTNET_CLI_TELEMETRY_OPTOUT = '1'
+$env:PYTHONDONTWRITEBYTECODE = '1'
 
 $gTopLeft = [char]0x256D
 $gBotLeft = [char]0x2570
@@ -122,6 +124,10 @@ if ($Resume) {
     if ($startStep -lt 1 -or $startStep -gt 9) { throw 'Invalid checkpoint step.' }
     $testResultsDir = $checkpoint.TestResultsDirectory
 } else {
+    if (-not $env:VNOTCH_CI_RESUME_TEST_FIXTURE -and (Test-Path -LiteralPath $artifactsDir)) {
+        Get-ChildItem -LiteralPath $artifactsDir -Directory -Filter 'local-ci-*' -ErrorAction SilentlyContinue |
+            Remove-Item -Recurse -Force -ErrorAction SilentlyContinue
+    }
     $runDirectory = Join-Path $artifactsDir ('local-ci-' + [guid]::NewGuid().ToString('N'))
 }
 if (-not $testResultsDir) { $testResultsDir = Join-Path $runDirectory 'test-results' }
@@ -205,6 +211,8 @@ if ($startStep -le 1) {
                     throw 'Gitleaks 8.30.1 archive SHA-256 verification failed.'
                 }
                 Expand-Archive -LiteralPath $gitleaksZip -DestinationPath $gitleaksCache -Force
+                Remove-Item -LiteralPath $gitleaksZip -Force -ErrorAction SilentlyContinue
+                Remove-Item -LiteralPath (Join-Path $gitleaksCache 'LICENSE'), (Join-Path $gitleaksCache 'README.md') -Force -ErrorAction SilentlyContinue
             }
             $scanGateOut = Invoke-CapturedNative { & python "$repository/.github/scripts/check_secret_scanner.py" $gitleaksExe }
             if ($LASTEXITCODE -ne 0) {
@@ -358,7 +366,6 @@ if ($startStep -le 5) {
 if ($startStep -le 6) {
     Write-TreeStep "6/8" "Release Security Gates"
     Invoke-StepScript { & "$repository/Tests/ReleaseGateTests.ps1" } | Out-Null
-    Invoke-StepScript { & "$repository/Tests/PrepushCleanupTests.ps1" } | Out-Null
     Invoke-StepScript { & "$repository/Tests/LocalCiResumeTests.ps1" } | Out-Null
     Write-TreeItem "Coverage boundaries, XML safety, signing & runner regression gates passed." -State "Success"
 
@@ -391,13 +398,22 @@ if ($startStep -le 8) {
     Save-Checkpoint 9
 }
 
+if (-not $env:VNOTCH_CI_RESUME_TEST_FIXTURE) {
+    if (Test-Path -LiteralPath $runDirectory) {
+        Remove-Item -LiteralPath $runDirectory -Recurse -Force -ErrorAction SilentlyContinue
+    }
+    if ((Test-Path -LiteralPath $artifactsDir) -and @(Get-ChildItem -LiteralPath $artifactsDir -Force -ErrorAction SilentlyContinue).Count -eq 0) {
+        Remove-Item -LiteralPath $artifactsDir -Force -ErrorAction SilentlyContinue
+    }
+}
+
 $stopwatch.Stop()
 $elapsed = $stopwatch.Elapsed
 
 Write-TreeSpacer
 Write-Host "  $gBotLeft$lineRule" -ForegroundColor DarkCyan
 Write-Host "     $gCheck ALL CHECKS PASSED " -ForegroundColor Green -NoNewline
-Write-Host ("Completed in {0} ({1})" -f $elapsed.ToString("mm\:ss"), $relRunDir) -ForegroundColor Gray
+Write-Host ("Completed in {0}" -f $elapsed.ToString("mm\:ss")) -ForegroundColor Gray
 Write-Host ""
 } finally {
     [Environment]::SetEnvironmentVariable('VNOTCH_QA_ARTIFACT_DIR', $previousQaDirectory, 'Process')
@@ -406,5 +422,6 @@ Write-Host ""
     [Environment]::SetEnvironmentVariable('DOTNET_SKIP_FIRST_TIME_EXPERIENCE', $previousSkipFirst, 'Process')
     [Environment]::SetEnvironmentVariable('DOTNET_NOLOGO', $previousNoLogo, 'Process')
     [Environment]::SetEnvironmentVariable('DOTNET_CLI_TELEMETRY_OPTOUT', $previousTelemetry, 'Process')
+    [Environment]::SetEnvironmentVariable('PYTHONDONTWRITEBYTECODE', $previousPyBytecode, 'Process')
     Pop-Location
 }

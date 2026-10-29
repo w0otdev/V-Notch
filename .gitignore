@@ -35,12 +35,10 @@ TestResults/
 BenchmarkDotNet.Artifacts/
 /Tools/*Benchmark/Results/
 /Tools/*Benchmark/results.json
+/result/
 /Tools/*/results.txt
-/Tools/TranslationBench/Results/
 /results.json
 # Local benchmark/stress measurements (keep the runners and source baselines)
-/Tools/ReportBenchmark/Measurements/
-/Tools/StressRunner/Measurements/
 # Python tooling caches and local environments
 __pycache__/
 *.py[cod]
@@ -49,6 +47,7 @@ __pycache__/
 venv/
 # Local crash-reporting state
 /.sentry-native/
+/scripts/.sentry-native/
 *.v2
 *.vsidx
 build-release.ps1
@@ -99,14 +98,9 @@ update_settings.ps1
 !/Tools/Assert-PackageAudit.ps1
 !/Tools/Assert-UpdateCompatibility.ps1
 !/Tools/validate_locales.py
-!/Tools/ReportBenchmark/
-!/Tools/RenderPerformanceBenchmark/
-!/Tools/VNotch.Benchmarks/
-!/Tools/StressRunner/
 !/Tools/TestSupport/
-!/Tools/SystemMonitorLifetimeProbe/
 !/Tools/UpdateCompatibility/
-!/Tools/TranslationBench/
+!/Tools/ShaderCompiler/
 /changes
 build-installer.ps1
 .test-output/ai-errors/Locales/ar.json
