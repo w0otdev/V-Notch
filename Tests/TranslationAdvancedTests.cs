@@ -69,7 +69,7 @@ public sealed class TranslationAdvancedTests
         internal int Calls;
         internal TranslationOptions? Options;
         public void Configure(TranslationOptions options) => Options = options;
-        public Task<string> TranslateAsync(string text, string source, string target, CancellationToken ct)
+        public Task<string> TranslateAsync(string text, string sourceLanguage, string targetLanguage, CancellationToken cancellationToken)
         { Calls++; return Task.FromResult(text); }
         public void ReleaseIdleResources() { }
         public void Dispose() { }

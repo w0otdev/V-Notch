@@ -77,14 +77,14 @@ public sealed class ClipboardHistoryTests
         using var fixture = new Fixture();
         string source = Path.Combine(fixture.Root, "source");
         Directory.CreateDirectory(Path.Combine(source, "empty"));
-        File.WriteAllText(Path.Combine(source, "note.txt"), "original bytes");
+        await File.WriteAllTextAsync(Path.Combine(source, "note.txt"), "original bytes");
         using var store = fixture.Store();
         await store.InitializeAsync();
         var entry = (await store.ImportAsync(new ClipboardCapture { FilePaths = [source] })).Entry!;
         Directory.Delete(source, true);
         var exported = Assert.Single(await store.ExportFilesAsync(entry.Id));
         Assert.True(Directory.Exists(Path.Combine(exported, "empty")));
-        Assert.Equal("original bytes", File.ReadAllText(Path.Combine(exported, "note.txt")));
+        Assert.Equal("original bytes", await File.ReadAllTextAsync(Path.Combine(exported, "note.txt")));
     }
 
     [Fact]
@@ -104,7 +104,7 @@ public sealed class ClipboardHistoryTests
         Assert.Empty(Directory.GetDirectories(Path.Combine(fixture.HistoryRoot, "items")));
         var approved = await store.ImportAsync(capture, approved: true);
         Assert.NotNull(approved.Entry);
-        Assert.Equal(2, (await store.GetContentAsync(approved.Entry!.Id)).Files.Length);
+        Assert.Equal(2, (await store.GetContentAsync(approved.Entry.Id)).Files.Length);
     }
 
     [Fact]
@@ -133,7 +133,7 @@ public sealed class ClipboardHistoryTests
         using var fixture = new Fixture();
         string source = Path.Combine(fixture.Root, "secret.txt");
         const string secret = "highly confidential note 98342";
-        File.WriteAllText(source, secret);
+        await File.WriteAllTextAsync(source, secret);
         Guid id;
         using (var store = fixture.Store())
         {
@@ -149,7 +149,7 @@ public sealed class ClipboardHistoryTests
             foreach (string path in Directory.GetFiles(Path.Combine(fixture.HistoryRoot, "personal"), "*", SearchOption.AllDirectories))
             {
                 Assert.EndsWith(".enc", path);
-                Assert.DoesNotContain(secret, Encoding.UTF8.GetString(File.ReadAllBytes(path)));
+                Assert.DoesNotContain(secret, Encoding.UTF8.GetString(await File.ReadAllBytesAsync(path)));
             }
             string export = Assert.Single(await store.ExportFilesAsync(id));
             Assert.Equal(secret, Encoding.UTF8.GetString(ReadProtectedExport(export)));
@@ -166,7 +166,7 @@ public sealed class ClipboardHistoryTests
         Assert.Equal(secret, (await reopened.GetContentAsync(id)).Text);
         await reopened.MovePersonalAsync(id, false);
         Assert.Single(reopened.Snapshot());
-        Assert.Equal(secret, File.ReadAllText(Assert.Single(await reopened.ExportFilesAsync(id))));
+        Assert.Equal(secret, await File.ReadAllTextAsync(Assert.Single(await reopened.ExportFilesAsync(id))));
     }
 
     [Fact]
@@ -191,7 +191,9 @@ public sealed class ClipboardHistoryTests
             await intact.InitializeAsync();
             Assert.True(await UnlockAsync(intact, "123456"));
             string content = Path.Combine(fixture.HistoryRoot, "personal", id.ToString("N"), "content.json.enc");
-            byte[] bytes = File.ReadAllBytes(content); bytes[^1] ^= 1; File.WriteAllBytes(content, bytes);
+            byte[] bytes = await File.ReadAllBytesAsync(content);
+            bytes[^1] ^= 1;
+            await File.WriteAllBytesAsync(content, bytes);
             await Assert.ThrowsAsync<AuthenticationTagMismatchException>(() => intact.GetContentAsync(id));
         }
         await reopened.ResetPersonalAsync();
@@ -215,10 +217,10 @@ public sealed class ClipboardHistoryTests
         await store.MovePersonalAsync(picture.Id, false);
         Assert.Equal(image, await store.GetImageAsync(picture.Id));
         string source = Path.Combine(fixture.Root, "chunks.bin");
-        File.WriteAllBytes(source, RandomNumberGenerator.GetBytes(2 * 1024 * 1024 + 79));
+        await File.WriteAllBytesAsync(source, RandomNumberGenerator.GetBytes(2 * 1024 * 1024 + 79));
         var file = (await store.ImportAsync(new ClipboardCapture { FilePaths = [source] })).Entry!;
         await store.MovePersonalAsync(file.Id, true);
-        Assert.Equal(File.ReadAllBytes(source), ReadProtectedExport(Assert.Single(await store.ExportFilesAsync(file.Id))));
+        Assert.Equal(await File.ReadAllBytesAsync(source), ReadProtectedExport(Assert.Single(await store.ExportFilesAsync(file.Id))));
         string encrypted = Path.Combine(fixture.HistoryRoot, "personal", file.Id.ToString("N"), "0.bin.enc");
         using (var stream = new FileStream(encrypted, FileMode.Open, FileAccess.Write)) stream.SetLength(stream.Length - 1);
         await Assert.ThrowsAsync<CryptographicException>(() => store.ExportFilesAsync(file.Id));
@@ -387,7 +389,7 @@ public sealed class ClipboardHistoryTests
         Assert.NotNull(firstResult.Entry);
 
         string tempScreenshot = Path.Combine(fixture.Root, $"{{{Guid.NewGuid():D}}}.png");
-        File.WriteAllBytes(tempScreenshot, png);
+        await File.WriteAllBytesAsync(tempScreenshot, png);
 
         var secondCapture = new ClipboardCapture
         {

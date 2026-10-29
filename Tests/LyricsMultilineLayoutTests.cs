@@ -37,7 +37,10 @@ public sealed class LyricsMultilineLayoutTests
                     element.Attributes().Where(a => a.Name.LocalName is "VerticalAlignment" or "Height" or "Margin" or "Grid.Row" or "Grid.RowSpan"));
                 if (isLyrics || isCalendar || isGreeting)
                 {
-                    result.SetAttributeValue(x + "Name", isLyrics ? "Lyrics" : isCalendar ? "Calendar" : "Greeting");
+                    string elementName = "Greeting";
+                    if (isLyrics) elementName = "Lyrics";
+                    else if (isCalendar) elementName = "Calendar";
+                    result.SetAttributeValue(x + "Name", elementName);
                     if (!isLyrics) result.SetAttributeValue("Height", isCalendar ? "80" : "16");
                     if (isGreeting && !showGreeting) result.SetAttributeValue("Visibility", "Collapsed");
                 }

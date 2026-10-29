@@ -1,3 +1,4 @@
+using System.Text;
 using System;
 using System.Collections.Generic;
 using System.Globalization;
@@ -54,8 +55,9 @@ internal static partial class TranslationTextIntegrity
 
     internal static ProtectedText Protect(string text, bool protectNumbers = true)
     {
-        string prefix = "__VNT_LITERAL";
-        while (text.Contains(prefix, StringComparison.Ordinal)) prefix += "X";
+        var prefixBuilder = new StringBuilder("__VNT_LITERAL");
+        while (text.Contains(prefixBuilder.ToString(), StringComparison.Ordinal)) prefixBuilder.Append('X');
+        string prefix = prefixBuilder.ToString();
         var literals = new Dictionary<string, string>();
         string masked = Facts().Replace(text, match =>
         {

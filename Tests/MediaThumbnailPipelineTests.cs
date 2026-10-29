@@ -388,9 +388,14 @@ public sealed class MediaThumbnailPipelineTests
         fixture.Metadata.TrackResult = Result(info.CurrentTrack);
         var small = Bitmap(128, 72);
         var final = Bitmap(320, 180);
-        fixture.Artwork.Download = url => Task.FromResult(url.EndsWith("mqdefault.jpg", StringComparison.Ordinal) ? final : url.EndsWith("hqdefault.jpg", StringComparison.Ordinal) ? null : small);
+        fixture.Artwork.Download = url =>
+        {
+            if (url.EndsWith("mqdefault.jpg", StringComparison.Ordinal)) return Task.FromResult<BitmapImage?>(final);
+            if (url.EndsWith("hqdefault.jpg", StringComparison.Ordinal)) return Task.FromResult<BitmapImage?>(null);
+            return Task.FromResult<BitmapImage?>(small);
+        };
         await FetchYouTube(fixture.Service, info, ct);
-        Assert.Equal(new[] { "preferred.jpg", "maxresdefault.jpg", "sddefault.jpg", "hqdefault.jpg", "mqdefault.jpg" }, fixture.Artwork.Downloads.Select(url => url.Split('/').Last()));
+        Assert.Equal(new[] { "preferred.jpg", "maxresdefault.jpg", "sddefault.jpg", "hqdefault.jpg", "mqdefault.jpg" }, fixture.Artwork.Downloads.Select(url => url.Split('/')[^1]));
         Assert.Same(final, info.Thumbnail);
         Assert.Single(fixture.Updates.Where(update => update.IsThumbnailOnlyUpdate));
     });
@@ -627,8 +632,18 @@ public sealed class MediaThumbnailPipelineTests
         if (reason == "thumbnail-generation") Set(fixture.Service, "_thumbnailFetchGeneration", 1);
         if (reason == "track") Set(fixture.Service, "_lastPublishedTrackIdentity", "different track");
         if (reason == "cancel") request.Cancel();
-        if (reason == "error") pending.SetException(new IOException("fixture image failure"));
-        else pending.SetResult(reason == "missing" ? null : reason == "placeholder" ? Bitmap(100, 100) : Bitmap(640, 360));
+        if (reason == "error")
+        {
+            pending.SetException(new IOException("fixture image failure"));
+        }
+        else if (reason == "missing")
+        {
+            pending.SetResult(null);
+        }
+        else
+        {
+            pending.SetResult(reason == "placeholder" ? Bitmap(100, 100) : Bitmap(640, 360));
+        }
         await fetch;
         Assert.Null(info.Thumbnail);
         Assert.Null(fixture.Service.CachedThumbnail);
@@ -705,7 +720,7 @@ public sealed class MediaThumbnailPipelineTests
         info.Thumbnail = Bitmap(300, 300);
         await (Task<bool>)Invoke(fixture.Service, "TryPublishMediaChangeAsync", info, info.GetSignature(), false, false)!;
         Assert.Equal(2, fixture.Updates.Count);
-        Assert.Same(info.Thumbnail, fixture.Updates.Last().Thumbnail);
+        Assert.Same(info.Thumbnail, fixture.Updates[^1].Thumbnail);
         await (Task<bool>)Invoke(fixture.Service, "TryPublishMediaChangeAsync", info, info.GetSignature(), false, false)!;
         Assert.Equal(2, fixture.Updates.Count);
     });
@@ -725,8 +740,8 @@ public sealed class MediaThumbnailPipelineTests
         await (Task<bool>)Invoke(fixture.Service, "TryPublishMediaChangeAsync", settled, settled.GetSignature(), false, false)!;
 
         Assert.Equal(2, fixture.Updates.Count);
-        Assert.False(fixture.Updates.Last().IsTimelinePending);
-        Assert.True(fixture.Updates.Last().IsTimelineIndeterminate);
+        Assert.False(fixture.Updates[^1].IsTimelinePending);
+        Assert.True(fixture.Updates[^1].IsTimelineIndeterminate);
     });
 
     [Fact]
@@ -743,7 +758,7 @@ public sealed class MediaThumbnailPipelineTests
         live.IsIndeterminate = true;
         await (Task<bool>)Invoke(fixture.Service, "TryPublishMediaChangeAsync", live, live.GetSignature(), false, false)!;
         Assert.Equal(2, fixture.Updates.Count);
-        Assert.True(fixture.Updates.Last().IsTimelineIndeterminate);
+        Assert.True(fixture.Updates[^1].IsTimelineIndeterminate);
 
         live.Duration += TimeSpan.FromSeconds(1);
         await (Task<bool>)Invoke(fixture.Service, "TryPublishMediaChangeAsync", live, live.GetSignature(), false, false)!;
@@ -753,7 +768,7 @@ public sealed class MediaThumbnailPipelineTests
         replay.IsIndeterminate = false;
         await (Task<bool>)Invoke(fixture.Service, "TryPublishMediaChangeAsync", replay, replay.GetSignature(), false, false)!;
         Assert.Equal(3, fixture.Updates.Count);
-        Assert.True(fixture.Updates.Last().HasTimeline);
+        Assert.True(fixture.Updates[^1].HasTimeline);
     });
 
     [Fact]
@@ -844,7 +859,7 @@ public sealed class MediaThumbnailPipelineTests
         public Task<YouTubeLookupResult?> TryGetYouTubeVideoInfoFromUrlAsync(string url, CancellationToken ct = default) => Task.FromResult(UrlResult);
         public Task<YouTubeLookupResult?> TryGetYouTubeVideoIdWithInfoAsync(string title, string artist = "", CancellationToken ct = default) { Interlocked.Increment(ref TrackCalls); return Lookup?.Invoke(title, artist, ct) ?? Task.FromResult(TrackResult); }
         public Task<YouTubeLookupResult?> TrySearchYouTubeByTitleAsync(string title, string artist = "", CancellationToken ct = default) { SearchCalls++; return Task.FromResult(SearchResult); }
-        public Task<string?> TryGetSoundCloudArtworkFromUrlAsync(string url, CancellationToken ct = default) => Task.FromResult(SoundCloudUrl);
+        public Task<string?> TryGetSoundCloudArtworkFromUrlAsync(string soundCloudUrl, CancellationToken ct = default) => Task.FromResult(SoundCloudUrl);
         public Task<string?> TryGetSoundCloudArtworkUrlAsync(string title, string artist = "", bool requireStrongMatch = false, CancellationToken ct = default) { SoundCloudSearchCalls++; Assert.True(requireStrongMatch); return Task.FromResult(SoundCloudSearch); }
     }
 
@@ -872,7 +887,7 @@ public sealed class MediaThumbnailPipelineTests
         public string? TryGetMediaUrlFromAnyBrowser() => AnyUrl;
         public bool IsSpotifyWebPlayerOpen() => false;
         public bool IsPipActive(string? processName = null) => false;
-        public bool TryGetPipWindow(out IntPtr hwnd, out string title, string? processName = null) { hwnd = IntPtr.Zero; title = ""; return false; }
+        public bool TryGetPipWindow(out IntPtr pipHwnd, out string pipTitle, string? processName = null) { pipHwnd = IntPtr.Zero; pipTitle = ""; return false; }
         public void InvalidateUrlCaches() { Invalidations++; OnInvalidated?.Invoke(); }
     }
 }

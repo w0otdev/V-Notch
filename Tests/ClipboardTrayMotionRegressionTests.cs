@@ -160,7 +160,7 @@ public sealed class ClipboardTrayMotionRegressionTests
         Assert.Equal(1, container.Opacity);
 
         var positions = (Dictionary<Guid, double>)Invoke(tray, "CaptureCardPositions")!;
-        Invoke(tray, "ReconcileCards", (object)remaining);
+        Invoke(tray, "ReconcilePreparedCards", (object)remaining, null);
         Invoke(tray, "AnimateCardPositions", positions);
         await Dispatcher.Yield(DispatcherPriority.ApplicationIdle);
 
@@ -195,7 +195,7 @@ public sealed class ClipboardTrayMotionRegressionTests
         // Let the rendered position advance between the snapshot and the layout pass.
         await Task.Delay(40);
         var entries = cards.Select(card => card.Entry with { IsPinned = true }).ToArray();
-        Invoke(tray, "ReconcileCards", (object)entries);
+        Invoke(tray, "ReconcilePreparedCards", (object)entries, null);
         Invoke(tray, "AnimateCardPositions", positions);
         list.InvalidateArrange();
         await Dispatcher.Yield(DispatcherPriority.ApplicationIdle);
@@ -214,7 +214,7 @@ public sealed class ClipboardTrayMotionRegressionTests
         await NextRenderFrame();
         var positions = (Dictionary<Guid, double>)Invoke(tray, "CaptureCardPositions")!;
         var reordered = new[] { cards[2].Entry, cards[0].Entry, cards[1].Entry };
-        Invoke(tray, "ReconcileCards", (object)reordered);
+        Invoke(tray, "ReconcilePreparedCards", (object)reordered, null);
         Invoke(tray, "AnimateCardPositions", positions);
         // LayoutUpdated can arrive before the items host has arranged its new slots.
         Invoke(tray, "ApplyCardPositionsAfterLayout", null, EventArgs.Empty);

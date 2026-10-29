@@ -4,7 +4,7 @@ using Xunit;
 
 namespace VNotch.Tests;
 
-public class MediaSourceCacheTests : IDisposable
+public sealed class MediaSourceCacheTests : IDisposable
 {
     private readonly string _tempPath;
     private readonly MediaSourceCache _cache;

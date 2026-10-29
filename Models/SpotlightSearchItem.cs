@@ -99,7 +99,12 @@ public sealed record SpotlightSearchItem(
         }
     }
 
-    public string SectionTitle => IsPinned ? Loc.Get("spotlight.section.pinned") : IsRecent
+    public string SectionTitle
+    {
+        get
+        {
+            if (IsPinned) return Loc.Get("spotlight.section.pinned");
+            return IsRecent
         ? Loc.Get("spotlight.section.recents")
         : Loc.Get(Kind switch
         {
@@ -109,6 +114,8 @@ public sealed record SpotlightSearchItem(
             SpotlightResultKind.SystemAction => "spotlight.system.actions",
             _ => "spotlight.section.files"
         });
+        }
+    }
 
     public Geometry? SolidIcon => Services.Spotlight.SpotlightSolidIcons.Get(this);
 

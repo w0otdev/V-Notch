@@ -11,7 +11,7 @@ namespace VNotch.Tests;
 public sealed class AuditRegressionTests
 {
     [Fact]
-    public void BluetoothController_NewShowCancelsPendingTimerAndNeverFiresStaleDismiss()
+    public async Task BluetoothController_NewShowCancelsPendingTimerAndNeverFiresStaleDismiss()
     {
         using var controller = new BluetoothNotificationController { AutoDismissMs = 160 };
         using var dismissed = new ManualResetEventSlim(false);
@@ -24,10 +24,10 @@ public sealed class AuditRegressionTests
         var second = new BluetoothDeviceInfo { Name = "Buds", DeviceType = BluetoothDeviceType.Headphones };
 
         Assert.True(controller.TryShow(first, connected: true, isNotchVisible: true, isAnimating: false, isExpanded: false, isMusicExpanded: false));
-        Thread.Sleep(80);
+        await Task.Delay(80);
         long secondShownAt = Environment.TickCount64;
         Assert.True(controller.TryShow(second, connected: true, isNotchVisible: true, isAnimating: false, isExpanded: false, isMusicExpanded: false));
-        Thread.Sleep(100);
+        await Task.Delay(100);
 
         // First timer window (40 ms) has elapsed, but second toast is still within its 40 ms window.
         Assert.Equal(2, Volatile.Read(ref shows));

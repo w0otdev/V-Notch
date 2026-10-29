@@ -152,6 +152,7 @@ public sealed partial class ZOrderManager : IDisposable
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
+            // Expected when cancellation is requested.
         }
     }
 

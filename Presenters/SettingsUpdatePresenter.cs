@@ -49,8 +49,9 @@ public sealed class SettingsUpdatePresenter : IDisposable
                     if (_refs == null || !_canUseNetwork() || _lifetime.IsCancellationRequested) return;
                     if (includePrereleases != _includePrereleases()) continue;
                     _availableUpdate = update;
-                    _refs.Status.Text = update == null ? Loc.Get("settings.checkUpdate") :
-                        update.IsNewerVersion ? Loc.Get("settings.updateAvailable", update.Version) : Loc.Get("settings.upToDate");
+                    string updateText = update?.IsNewerVersion == true ? Loc.Get("settings.updateAvailable", update.Version) : Loc.Get("settings.upToDate");
+                    _refs.Status.Text = update == null ? Loc.Get("settings.checkUpdate") : updateText;
+
                     _refs.Download.Visibility = update?.IsNewerVersion == true ? Visibility.Visible : Visibility.Collapsed;
                     try { UpdateDetected?.Invoke(this, update); }
                     catch (Exception ex) { RuntimeLog.Error("SETTINGS", ex, "UpdateDetected handler threw"); }
@@ -125,7 +126,7 @@ public sealed class SettingsUpdatePresenter : IDisposable
             MessageBox.Show(_refs.Owner, Loc.Get("error.updateFailed"), Loc.Get("error.updateFailedTitle"),
                 MessageBoxButton.OK, MessageBoxImage.Warning);
         }
-        catch (OperationCanceledException) when (_lifetime.IsCancellationRequested) { }
+        catch (OperationCanceledException) when (_lifetime.IsCancellationRequested) { /* Intentionally ignored. */ }
         catch (Exception ex)
         {
             RuntimeLog.Error("SETTINGS", ex, "Update download failed");

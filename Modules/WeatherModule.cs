@@ -132,10 +132,11 @@ public partial class WeatherModule : NotchModuleBase
         }
         catch (ObjectDisposedException)
         {
+            // Intentionally ignored.
         }
         finally
         {
-            try { cts?.Dispose(); } catch (ObjectDisposedException) { }
+            try { cts?.Dispose(); } catch (ObjectDisposedException) { /* Intentionally ignored. */ }
         }
     }
 
@@ -210,7 +211,7 @@ public partial class WeatherModule : NotchModuleBase
             {
                 _isFetching = false;
             }
-            try { requestCts.Dispose(); } catch (ObjectDisposedException) { }
+            try { requestCts.Dispose(); } catch (ObjectDisposedException) { /* Intentionally ignored. */ }
         }
     }
 

@@ -40,7 +40,7 @@ public partial class SettingsWindow
         try
         {
             rawDevices = await System.Threading.Tasks.Task.Run(() =>
-                AudioMixerService.EnumerateOutputDevices().Select(device => (device.Id, device.FriendlyName)).ToList());
+                AudioMixerService.EnumerateOutputDevices().Select(device => (device.Id, device.FriendlyName)).ToList(), CancellationToken.None);
         }
         catch
         {

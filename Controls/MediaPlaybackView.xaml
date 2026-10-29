@@ -28,7 +28,7 @@
             <Setter Property="UseLayoutRounding" Value="True"/>
             <Setter Property="SnapsToDevicePixels" Value="True"/>
         </Style>
-<Style x:Key="ProgressTimeText" TargetType="TextBlock" BasedOn="{StaticResource SubtitleText}">
+<Style x:Key="ProgressTimeText" TargetType="TextBlock" BasedOn="{StaticResource SubtitleText}"><Setter Property="Foreground" Value="#B3FFFFFF"/>
             <Setter Property="FontSize" Value="10.5"/>
             <Setter Property="FontWeight" Value="ExtraBold"/>
             <Setter Property="Typography.NumeralAlignment" Value="Tabular"/>
@@ -62,7 +62,7 @@ c1.513-0.625,3.253-0.275,4.407,0.885l17.862,17.951c2.088,2.098,2.088,5.488,0,7.5
 
                                         <StackPanel Grid.Row="0" MaxWidth="340" RenderOptions.ClearTypeHint="Enabled" Margin="0,0,0,0">
                                             <StackPanel.OpacityMask>
-                                                <LinearGradientBrush x:Name="TextFadeBrush" MappingMode="Absolute" StartPoint="0,0" EndPoint="340,0">
+                                                <LinearGradientBrush x:Name="TextFadeBrush" MappingMode="RelativeToBoundingBox" StartPoint="0,0" EndPoint="1,0">
                                                     <GradientStop Color="Black" Offset="0"/>
                                                     <GradientStop Color="Black" Offset="0.8"/>
                                                     <GradientStop Color="Transparent" Offset="1"/>
@@ -184,7 +184,7 @@ c1.513-0.625,3.253-0.275,4.407,0.885l17.862,17.951c2.088,2.098,2.088,5.488,0,7.5
                                                 <ColumnDefinition Width="*"/>
                                             </Grid.ColumnDefinitions>
 
-                                                <ctrl:ActionBorder x:Name="PrevButton"
+                                                <ctrl:ActionBorder x:Name="PrevButton" AutomationProperties.Name="Previous Track"
                                                         Grid.Column="0"
                                                         Background="Transparent"
                                                         Cursor="Hand"
@@ -219,7 +219,7 @@ c1.513-0.625,3.253-0.275,4.407,0.885l17.862,17.951c2.088,2.098,2.088,5.488,0,7.5
                                                     </Viewbox>
                                                 </ctrl:ActionBorder>
 
-                                                <ctrl:ActionBorder x:Name="PlayPauseButton"
+                                                <ctrl:ActionBorder x:Name="PlayPauseButton" AutomationProperties.Name="Play or Pause"
                                                         Grid.Column="1"
                                                         Background="Transparent"
                                                         Cursor="Hand"
@@ -265,7 +265,7 @@ c1.513-0.625,3.253-0.275,4.407,0.885l17.862,17.951c2.088,2.098,2.088,5.488,0,7.5
                                                     </Viewbox>
                                                 </ctrl:ActionBorder>
 
-                                                <ctrl:ActionBorder x:Name="NextButton"
+                                                <ctrl:ActionBorder x:Name="NextButton" AutomationProperties.Name="Next Track"
                                                         Grid.Column="2"
                                                         Background="Transparent"
                                                         CornerRadius="8"

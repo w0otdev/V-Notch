@@ -20,7 +20,7 @@ inline INIT_ONCE g_mta_once = INIT_ONCE_STATIC_INIT;
 inline BOOL CALLBACK KeepMtaAlive(PINIT_ONCE, PVOID, PVOID*) noexcept {
     // Threads without their own COM initialization then count as implicit MTA members.
     CO_MTA_USAGE_COOKIE cookie = nullptr;
-    CoIncrementMTAUsage(&cookie);
+    (void)CoIncrementMTAUsage(&cookie);
     return TRUE;
 }
 

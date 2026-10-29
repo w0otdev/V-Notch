@@ -75,9 +75,9 @@ public partial class SetupWindow : Window
     private bool _hasForcedForeground;
     public int ResultExitCode { get; private set; } = 1;
 
-    private static bool SetForegroundWindow(IntPtr hWnd) => Win32Interop.SetForegroundWindow(hWnd);
+    private static void SetForegroundWindow(IntPtr hWnd) => _ = Win32Interop.SetForegroundWindow(hWnd);
 
-    private static bool ShowWindow(IntPtr hWnd, int nCmdShow) => Win32Interop.ShowWindow(hWnd, nCmdShow);
+    private static void ShowWindow(IntPtr hWnd, int nCmdShow) => _ = Win32Interop.ShowWindow(hWnd, nCmdShow);
 
     public SetupWindow(string? sourceDirectory = null, string initialLanguage = "en", bool updateRequested = false)
         : this(sourceDirectory, initialLanguage, updateRequested, SetupOperations.InstallAsync)
@@ -843,7 +843,7 @@ public partial class SetupWindow : Window
         HideAndResetElement(BodyText);
     }
 
-    private void HideAndResetElement(UIElement element)
+    private static void HideAndResetElement(UIElement element)
     {
         StopAnimations(element);
         var transform = EnsureTranslateTransform(element);
@@ -852,7 +852,7 @@ public partial class SetupWindow : Window
         element.Visibility = Visibility.Collapsed;
     }
 
-    private void ResetElementForEntry(UIElement element, double offsetY)
+    private static void ResetElementForEntry(UIElement element, double offsetY)
     {
         StopAnimations(element);
         var transform = EnsureTranslateTransform(element);
@@ -881,7 +881,7 @@ public partial class SetupWindow : Window
         return newTransform;
     }
 
-    private void StopAnimations(UIElement element)
+    private static void StopAnimations(UIElement element)
     {
         element.BeginAnimation(OpacityProperty, null);
         EnsureTranslateTransform(element).BeginAnimation(TranslateTransform.YProperty, null);

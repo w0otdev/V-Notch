@@ -48,6 +48,7 @@ public partial class MainWindow
                 _activeSettingsWindow = null;
             }
             PlayNotchReturnBounce();
+            ScheduleDesktopLayerDemotionIfIdle();
             if (_updateService?.LatestUpdateInfo is { IsNewerVersion: true } update)
             {
                 SetAvailableUpdate(update);
@@ -251,8 +252,9 @@ public partial class MainWindow
         if (oldSettings == null || oldSettings.StayBehindWindows != _settings.StayBehindWindows)
         {
             ResetDesktopEdgePromotionIfDisabled();
+            ScheduleDesktopLayerDemotionIfIdle();
 
-            // Reconfigure immediately so changing this option does not require an app
+            // Reconfigure immediately so changing this option does not require a restart.
             if (_hwnd != IntPtr.Zero)
                 ConfigureOverlayWindow();
         }

@@ -193,24 +193,12 @@ internal static class AnimationPrimitives
 #pragma warning disable S1871 // Trigger types share identical EnterActions/ExitActions patterns without a common WPF interface
             switch (trigger)
             {
-                case Trigger t:
-                    ApplyFpsToActions(t.EnterActions);
-                    ApplyFpsToActions(t.ExitActions);
-                    break;
-                case MultiTrigger t:
-                    ApplyFpsToActions(t.EnterActions);
-                    ApplyFpsToActions(t.ExitActions);
-                    break;
-                case DataTrigger t:
-                    ApplyFpsToActions(t.EnterActions);
-                    ApplyFpsToActions(t.ExitActions);
-                    break;
-                case MultiDataTrigger t:
-                    ApplyFpsToActions(t.EnterActions);
-                    ApplyFpsToActions(t.ExitActions);
-                    break;
                 case EventTrigger t:
                     ApplyFpsToActions(t.Actions);
+                    break;
+                case TriggerBase t:
+                    ApplyFpsToActions(t.EnterActions);
+                    ApplyFpsToActions(t.ExitActions);
                     break;
             }
 #pragma warning restore S1871

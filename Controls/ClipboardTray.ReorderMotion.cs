@@ -7,7 +7,7 @@ using VNotch.ViewModels;
 
 namespace VNotch.Controls;
 
-public partial class ClipboardTray
+public sealed partial class ClipboardTray
 {
     private sealed record CategoryPreview(Transform Original, TranslateTransform Offset, int Index);
     private readonly Dictionary<Button, CategoryPreview> _categoryReorderPreviews = [];
@@ -64,11 +64,15 @@ public partial class ClipboardTray
             Array.FindIndex(_categoryItems, category => category.Name == _categoryReorderBeforeId);
         if (_categoryReorderBeforeId != null && destination > sourceIndex) destination--;
         double span = sourceButton.ActualWidth + sourceButton.Margin.Left + sourceButton.Margin.Right;
-        foreach (var (button, preview) in _categoryReorderPreviews)
+        foreach (var (_, preview) in _categoryReorderPreviews)
         {
             int index = preview.Index;
-            double shift = sourceIndex < destination && index > sourceIndex && index <= destination ? -span :
-                sourceIndex > destination && index >= destination && index < sourceIndex ? span : 0;
+            double shift = 0;
+            if (sourceIndex < destination && index > sourceIndex && index <= destination)
+                shift = -span;
+            else if (sourceIndex > destination && index >= destination && index < sourceIndex)
+                shift = span;
+
             AnimateCategoryReorderValue(preview.Offset, TranslateTransform.XProperty, shift, 170);
         }
 
@@ -154,7 +158,7 @@ public partial class ClipboardTray
         double previous = (double)target.GetValue(property);
         double destination = target is Animatable animatable ? (double)animatable.GetAnimationBaseValue(property) :
             (double)((UIElement)target).GetAnimationBaseValue(property);
-        if (destination == value && duration > 0 && !AnimationConfig.ReduceMotion) return;
+        if (Math.Abs(destination - value) < 1e-6 && duration > 0 && !AnimationConfig.ReduceMotion) return;
         DoubleAnimation? animation = duration <= 0 || AnimationConfig.ReduceMotion ? null :
             new DoubleAnimation(previous, value, TimeSpan.FromMilliseconds(duration))
             { EasingFunction = TrayMotion.EaseOut, FillBehavior = FillBehavior.Stop };

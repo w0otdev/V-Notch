@@ -14,7 +14,7 @@ using static VNotch.Services.AnimationPrimitives;
 
 namespace VNotch.Controls;
 
-public partial class MediaPlaybackView : UserControl, IDisposable
+public sealed partial class MediaPlaybackView : UserControl, IDisposable
 {
     private MediaViewModel? _viewModel;
     private IMediaDetectionService _mediaService = null!;
@@ -23,8 +23,8 @@ public partial class MediaPlaybackView : UserControl, IDisposable
     public bool IsMusicExpanded { get; set; }
     public bool EnableBlurEffects { get; set; }
     internal ProgressEngine Progress => _progressEngine;
-    internal double DisplayRatio { get => _progressDisplayRatio; set => _progressDisplayRatio = value; }
-    internal int LastDisplayedSecond { get => _lastDisplayedSecond; set => _lastDisplayedSecond = value; }
+    internal double DisplayRatio { get; set; }
+    internal int LastDisplayedSecond { get; set; } = -1;
     public event Action<bool>? BufferingChanged;
 
     public MediaPlaybackView()
@@ -82,7 +82,7 @@ public partial class MediaPlaybackView : UserControl, IDisposable
         StopRewindTextAnimation();
         ProgressBarScale.BeginAnimation(ScaleTransform.ScaleXProperty, null);
         ProgressBarScale.ScaleX = 0;
-        _progressDisplayRatio = 0;
+        DisplayRatio = 0;
     }
 
     private DateTime _lastPrevRewindClickTime = DateTime.MinValue;
@@ -106,7 +106,7 @@ public partial class MediaPlaybackView : UserControl, IDisposable
 
                 AnimateSeekProgressTo(0);
                 CurrentTimeText.Text = FormatTime(TimeSpan.Zero);
-                _lastDisplayedSecond = 0;
+                LastDisplayedSecond = 0;
                 UpdateProgressTimerState();
 
                 RuntimeLog.Log("PROGRESS-PREV-PREP", $"Rewound UI to 0 (was at {frame.Position.TotalSeconds:F1}s)");
@@ -455,13 +455,13 @@ public partial class MediaPlaybackView : UserControl, IDisposable
 
     private bool _isDraggingProgress = false;
     private bool _isProgressBarExpanded = false;
-    private int _lastDisplayedSecond = -1;
+
     private TimeSpan _dragSeekPosition = TimeSpan.Zero;
 
     private readonly ProgressEngine _progressEngine = new ProgressEngine();
     private long _progressSnapshotSequence = 0;
 
-    private double _progressDisplayRatio = 0;
+
     private double _progressTargetRatio = 0;
     private double _progressSpringTargetRatio = 0;
     private double _progressVelocity = 0;
@@ -479,7 +479,7 @@ public partial class MediaPlaybackView : UserControl, IDisposable
     private ProgressSpringRenderer Spring => _springRenderer ??= new ProgressSpringRenderer(
         applyRatio: r =>
         {
-            _progressDisplayRatio = r;
+            DisplayRatio = r;
             ProgressBarScale.ScaleX = r;
         },
         shouldRender: () => !_isDraggingProgress,
@@ -505,7 +505,7 @@ public partial class MediaPlaybackView : UserControl, IDisposable
 
     private void StartSpringRenderLoop()
     {
-        Spring.DisplayRatio = _progressDisplayRatio;
+        Spring.DisplayRatio = DisplayRatio;
         Spring.TargetRatio = _progressTargetRatio;
         Spring.SpringTargetRatio = _progressSpringTargetRatio;
         Spring.Velocity = _progressVelocity;
@@ -521,7 +521,7 @@ public partial class MediaPlaybackView : UserControl, IDisposable
         Spring.Stop();
         // A completed spring can predate a later seek or normal playback.
         // Stopping an idle renderer must not restore its old display position.
-        if (wasActive) _progressDisplayRatio = Spring.DisplayRatio;
+        if (wasActive) DisplayRatio = Spring.DisplayRatio;
         _progressVelocity = Spring.Velocity;
         _springSettleFrames = Spring.SettleFrames;
         _isSeekSpringActive = Spring.IsActive;
@@ -628,15 +628,15 @@ public partial class MediaPlaybackView : UserControl, IDisposable
                 _progressVelocity = 0;
                 _springSettleFrames = 0;
                 _isSeekSpringActive = false;
-                _lastRenderTime = DateTime.MinValue;
-                _lastDisplayedSecond = -1;
+
+                LastDisplayedSecond = -1;
                 _progressSnapshotSequence = 0;
                 _lastProgressTimelineUpdated = DateTimeOffset.MinValue;
                 _lastProgressIsPlaying = false;
                 StopSpringRenderLoop();
 
                 double fromRatio = visibleRatio;
-                _progressDisplayRatio = fromRatio;
+                DisplayRatio = fromRatio;
                 _progressTargetRatio = 0;
                 _progressSpringTargetRatio = 0;
                 _lastRenderedRatio = 0;
@@ -647,7 +647,7 @@ public partial class MediaPlaybackView : UserControl, IDisposable
                     if (info.IsPlaying && info.Position > TimeSpan.Zero && info.HasTimeline)
                     {
                         double initialRatio = Math.Clamp(info.Position.TotalSeconds / info.Duration.TotalSeconds, 0, 1);
-                        _progressDisplayRatio = initialRatio;
+                        DisplayRatio = initialRatio;
                         _progressTargetRatio = initialRatio;
                         _progressSpringTargetRatio = initialRatio;
                         _lastRenderedRatio = initialRatio;
@@ -659,7 +659,7 @@ public partial class MediaPlaybackView : UserControl, IDisposable
                     }
                     else
                     {
-                        _progressDisplayRatio = 0;
+                        DisplayRatio = 0;
                         ProgressBarScale.ScaleX = 0;
                         CurrentTimeText.Text = "0:00";
                     }
@@ -670,7 +670,7 @@ public partial class MediaPlaybackView : UserControl, IDisposable
                 }
                 else
                 {
-                    _progressDisplayRatio = 0;
+                    DisplayRatio = 0;
                     ProgressBarScale.ScaleX = 0;
                     CurrentTimeText.Text = "0:00";
                 }
@@ -777,7 +777,7 @@ public partial class MediaPlaybackView : UserControl, IDisposable
             _lastProgressTimelineUpdated = DateTimeOffset.MinValue;
 
             double fromRatio = Math.Clamp(ProgressBarScale.ScaleX, 0, 1);
-            if (fromRatio <= 0.005) fromRatio = Math.Clamp(_progressDisplayRatio, 0, 1);
+            if (fromRatio <= 0.005) fromRatio = Math.Clamp(DisplayRatio, 0, 1);
 
             if (fromRatio > 0.005 && IsVisible)
             {
@@ -790,12 +790,12 @@ public partial class MediaPlaybackView : UserControl, IDisposable
                     _progressVelocity = 0;
                     _springSettleFrames = 0;
                     _isSeekSpringActive = false;
-                    _lastRenderTime = DateTime.MinValue;
-                    _lastDisplayedSecond = -1;
+
+                    LastDisplayedSecond = -1;
                     _progressSnapshotSequence = 0;
                     StopSpringRenderLoop();
 
-                    _progressDisplayRatio = fromRatio;
+                    DisplayRatio = fromRatio;
                     _progressTargetRatio = 0;
                     _progressSpringTargetRatio = 0;
                     _lastRenderedRatio = 0;
@@ -861,22 +861,22 @@ public partial class MediaPlaybackView : UserControl, IDisposable
         ProgressBarMainScale.ScaleY = 1;
         ProgressBarScale.BeginAnimation(ScaleTransform.ScaleXProperty, null);
         ProgressBarScale.ScaleX = 0;
-        _progressDisplayRatio = 0;
+        DisplayRatio = 0;
         _progressTargetRatio = 0;
         _progressSpringTargetRatio = 0;
         _progressVelocity = 0;
         _springSettleFrames = 0;
         _isSeekSpringActive = false;
         _blockBackwardAfterSeekUntil = DateTime.MinValue;
-        _lastRenderTime = DateTime.MinValue;
-        _lastDisplayedSecond = -1;
+
+        LastDisplayedSecond = -1;
         CurrentTimeText.Text = "0:00";
         RemainingTimeText.Text = "0:00";
         IndeterminateProgress.BeginAnimation(OpacityProperty, null);
         IndeterminateProgress.Visibility = Visibility.Collapsed;
     }
 
-    private DateTime _lastRenderTime = DateTime.MinValue;
+
     private double _lastRenderedRatio = 0;
     private DateTime _lastProgressMovementUtc = DateTime.UtcNow;
     private double _lastProgressMovementRatio = -1;
@@ -911,15 +911,15 @@ public partial class MediaPlaybackView : UserControl, IDisposable
             RemainingTimeText.Text = "0:00";
             ProgressBarScale.BeginAnimation(ScaleTransform.ScaleXProperty, null);
             ProgressBarScale.ScaleX = 0;
-            _progressDisplayRatio = 0;
+            DisplayRatio = 0;
             _progressTargetRatio = 0;
             _progressSpringTargetRatio = 0;
             _progressVelocity = 0;
             _springSettleFrames = 0;
             _isSeekSpringActive = false;
             StopSpringRenderLoop();
-            _lastRenderTime = DateTime.MinValue;
-            _lastDisplayedSecond = -1;
+
+            LastDisplayedSecond = -1;
             return;
         }
 
@@ -943,14 +943,14 @@ public partial class MediaPlaybackView : UserControl, IDisposable
             StopSpringRenderLoop();
             ProgressBarScale.BeginAnimation(ScaleTransform.ScaleXProperty, null);
             ProgressBarScale.ScaleX = 0;
-            _progressDisplayRatio = 0;
+            DisplayRatio = 0;
             _progressTargetRatio = 0;
             _progressSpringTargetRatio = 0;
             _progressVelocity = 0;
             _springSettleFrames = 0;
             _isSeekSpringActive = false;
-            _lastRenderTime = DateTime.MinValue;
-            _lastDisplayedSecond = -1;
+
+            LastDisplayedSecond = -1;
             UpdateProgressTimerState();
             return;
         }
@@ -970,7 +970,7 @@ public partial class MediaPlaybackView : UserControl, IDisposable
                 StopCatchUpAnimation();
 
                 _progressTargetRatio = engineRatio;
-                _progressSpringTargetRatio = _progressDisplayRatio;
+                _progressSpringTargetRatio = DisplayRatio;
                 _progressVelocity = 0;
                 _springSettleFrames = 0;
                 _isSeekSpringActive = true;
@@ -997,32 +997,32 @@ public partial class MediaPlaybackView : UserControl, IDisposable
             _progressVelocity = 0;
             StopSpringRenderLoop();
 
-            _progressDisplayRatio = engineRatio;
+            DisplayRatio = engineRatio;
             _progressTargetRatio = engineRatio;
             _progressSpringTargetRatio = engineRatio;
             ProgressBarScale.ScaleX = engineRatio;
-            _lastRenderTime = renderNow;
+
         }
         else if (_isSeekSpringActive)
         {
             if (!Spring.IsActive)
             {
                 _isSeekSpringActive = false;
-                _progressDisplayRatio = Spring.DisplayRatio;
+                DisplayRatio = Spring.DisplayRatio;
                 _progressVelocity = 0;
                 _springSettleFrames = 0;
                 UpdateProgressTimerState();
-                RuntimeLog.Debug("PROGRESS-SPRING", () => $"settled at ratio={_progressDisplayRatio:F4} engineRatio={engineRatio:F4}");
+                RuntimeLog.Debug("PROGRESS-SPRING", () => $"settled at ratio={DisplayRatio:F4} engineRatio={engineRatio:F4}");
 
                 if (_isClickSeekPending)
                 {
-                    _progressDisplayRatio = _progressTargetRatio;
+                    DisplayRatio = _progressTargetRatio;
                     ProgressBarScale.ScaleX = _progressTargetRatio;
                     CurrentTimeText.Text = FormatTime(_dragSeekPosition);
                     return;
                 }
 
-                _progressDisplayRatio = engineRatio;
+                DisplayRatio = engineRatio;
                 ProgressBarScale.ScaleX = engineRatio;
                 _suppressExternalSeekDetectionUntil = renderNow.AddSeconds(1.5);
             }
@@ -1043,11 +1043,11 @@ public partial class MediaPlaybackView : UserControl, IDisposable
                 }
                 else if (frame.Duration.TotalSeconds > 0)
                 {
-                    var pos = TimeSpan.FromSeconds(_progressDisplayRatio * frame.Duration.TotalSeconds);
+                    var pos = TimeSpan.FromSeconds(DisplayRatio * frame.Duration.TotalSeconds);
                     int sec = (int)pos.TotalSeconds;
-                    if (sec != _lastDisplayedSecond)
+                    if (sec != LastDisplayedSecond)
                     {
-                        _lastDisplayedSecond = sec;
+                        LastDisplayedSecond = sec;
                         CurrentTimeText.Text = FormatTime(pos);
                         RemainingTimeText.Text = FormatDuration(frame.Duration);
                     }
@@ -1064,12 +1064,12 @@ public partial class MediaPlaybackView : UserControl, IDisposable
 
         if (!_isSeekSpringActive)
         {
-            DateTime now = renderNow;
-            _lastRenderTime = now;
+
+
 
             bool isRealtimeProgressing = frame.State == ProgressState.Playing || frame.State == ProgressState.Seeking;
             double rawTargetRatio = engineRatio;
-            double rawRatioDiff = Math.Abs(rawTargetRatio - _progressDisplayRatio);
+            double rawRatioDiff = Math.Abs(rawTargetRatio - DisplayRatio);
             double rawDiffSeconds = rawRatioDiff * frame.Duration.TotalSeconds;
 
             if (!_isDraggingProgress &&
@@ -1078,31 +1078,31 @@ public partial class MediaPlaybackView : UserControl, IDisposable
                 !_isClickSeekPending &&
                 !_isSeekSpringActive &&
                 frame.Duration.TotalSeconds > 0 &&
-                _progressDisplayRatio > 0.005 &&
+                DisplayRatio > 0.005 &&
                 renderNow >= _suppressExternalSeekDetectionUntil)
             {
                 bool playing = frame.State == ProgressState.Playing ||
                                frame.State == ProgressState.Seeking;
-                bool forwardJump = rawTargetRatio > _progressDisplayRatio &&
+                bool forwardJump = rawTargetRatio > DisplayRatio &&
                                    rawDiffSeconds >= 1.2;
-                bool backwardJump = rawTargetRatio < _progressDisplayRatio &&
+                bool backwardJump = rawTargetRatio < DisplayRatio &&
                                     rawDiffSeconds >= 0.6;
 
-                bool isLikelyTrackSkip = _progressDisplayRatio > 0.92 &&
+                bool isLikelyTrackSkip = DisplayRatio > 0.92 &&
                                          rawTargetRatio < 0.05;
 
                 bool isFalseZeroReport = rawTargetRatio < 0.001 &&
-                                         _progressDisplayRatio > 0.05 &&
+                                         DisplayRatio > 0.05 &&
                                          playing;
 
                 bool isSuspiciousBackward = backwardJump && playing &&
                                             rawDiffSeconds > 30.0 &&
-                                            _progressDisplayRatio > 0.10;
+                                            DisplayRatio > 0.10;
 
                 if (rawDiffSeconds >= 0.6)
                 {
                     RuntimeLog.Log(ProgressSeekLogTag,
-                        $"check from={_progressDisplayRatio:F4} to={rawTargetRatio:F4} " +
+                        $"check from={DisplayRatio:F4} to={rawTargetRatio:F4} " +
                         $"diffSec={rawDiffSeconds:F2} state={frame.State} playing={playing} " +
                         $"forward={forwardJump} backward={backwardJump} likelySkip={isLikelyTrackSkip} " +
                         $"falseZero={isFalseZeroReport} suspiciousBack={isSuspiciousBackward}");
@@ -1112,13 +1112,13 @@ public partial class MediaPlaybackView : UserControl, IDisposable
                 {
                     AnimateExternalSeekTo(rawTargetRatio);
                     _suppressExternalSeekDetectionUntil = renderNow.AddMilliseconds(800);
-                    _lastRenderTime = now;
+
                     return;
                 }
 
                 if (isFalseZeroReport || isSuspiciousBackward)
                 {
-                    _lastRenderTime = now;
+
                     return;
                 }
             }
@@ -1126,14 +1126,14 @@ public partial class MediaPlaybackView : UserControl, IDisposable
             if (rawDiffSeconds >= SOURCE_SMOOTH_SECONDS)
             {
                 RuntimeLog.Debug("PROGRESS-RENDER-JUMP", () =>
-                    $"*** LARGE-RENDER-SNAP: display={_progressDisplayRatio:F4} -> target={rawTargetRatio:F4} " +
-                    $"diffSec={rawDiffSeconds:F2}s direction={(rawTargetRatio < _progressDisplayRatio ? "BACKWARD" : "forward")} " +
+                    $"*** LARGE-RENDER-SNAP: display={DisplayRatio:F4} -> target={rawTargetRatio:F4} " +
+                    $"diffSec={rawDiffSeconds:F2}s direction={(rawTargetRatio < DisplayRatio ? "BACKWARD" : "forward")} " +
                     $"state={frame.State} pos={frame.Position.TotalSeconds:F2}s dur={frame.Duration.TotalSeconds:F1}s");
-                _progressDisplayRatio = rawTargetRatio;
+                DisplayRatio = rawTargetRatio;
                 _progressTargetRatio = rawTargetRatio;
                 _progressSpringTargetRatio = rawTargetRatio;
                 _progressVelocity = 0;
-                ProgressBarScale.ScaleX = _progressDisplayRatio;
+                ProgressBarScale.ScaleX = DisplayRatio;
             }
             else
             {
@@ -1153,18 +1153,18 @@ public partial class MediaPlaybackView : UserControl, IDisposable
                 bool isUserSeekWindow = frame.State == ProgressState.Seeking || renderNow < _allowProgressBackwardRenderUntil;
                 bool isPostSeekStabilization = renderNow < _blockBackwardAfterSeekUntil;
 
-                if (_progressTargetRatio < _progressDisplayRatio)
+                if (_progressTargetRatio < DisplayRatio)
                 {
-                    double backwardSeconds = (_progressDisplayRatio - _progressTargetRatio) * frame.Duration.TotalSeconds;
+                    double backwardSeconds = (DisplayRatio - _progressTargetRatio) * frame.Duration.TotalSeconds;
 
                     if (isUserSeekWindow)
                     {
                         RuntimeLog.Debug(ProgressRenderBackwardLogTag, () =>
-                            $"allowed (user-seek): display={_progressDisplayRatio:F4} target={_progressTargetRatio:F4} backSec={backwardSeconds:F2}s");
+                            $"allowed (user-seek): display={DisplayRatio:F4} target={_progressTargetRatio:F4} backSec={backwardSeconds:F2}s");
                     }
                     else if (isPostSeekStabilization)
                     {
-                        _progressTargetRatio = _progressDisplayRatio;
+                        _progressTargetRatio = DisplayRatio;
                     }
                     else if (isRealtimeProgressing)
                     {
@@ -1175,14 +1175,14 @@ public partial class MediaPlaybackView : UserControl, IDisposable
                         if (backwardSeconds > allowedBackward)
                         {
                             RuntimeLog.Debug(ProgressRenderBackwardLogTag, () =>
-                                $"BLOCKED (playback): display={_progressDisplayRatio:F4} target={_progressTargetRatio:F4} " +
+                                $"BLOCKED (playback): display={DisplayRatio:F4} target={_progressTargetRatio:F4} " +
                                 $"backSec={backwardSeconds:F2}s > allowed={allowedBackward:F2}s isBrowser={isBrowserSourceForBackward}");
-                            _progressTargetRatio = _progressDisplayRatio;
+                            _progressTargetRatio = DisplayRatio;
                         }
                         else
                         {
                             RuntimeLog.Debug(ProgressRenderBackwardLogTag, () =>
-                                $"allowed (small): display={_progressDisplayRatio:F4} target={_progressTargetRatio:F4} " +
+                                $"allowed (small): display={DisplayRatio:F4} target={_progressTargetRatio:F4} " +
                                 $"backSec={backwardSeconds:F2}s <= allowed={allowedBackward:F2}s");
                         }
                     }
@@ -1190,32 +1190,32 @@ public partial class MediaPlaybackView : UserControl, IDisposable
                     {
                         double maxBackwardStepSeconds = 0.22;
                         double maxBackwardRatioStep = maxBackwardStepSeconds / frame.Duration.TotalSeconds;
-                        double cappedTarget = Math.Max(_progressTargetRatio, _progressDisplayRatio - maxBackwardRatioStep);
+                        double cappedTarget = Math.Max(_progressTargetRatio, DisplayRatio - maxBackwardRatioStep);
                         RuntimeLog.Debug(ProgressRenderBackwardLogTag, () =>
-                            $"capped (paused): display={_progressDisplayRatio:F4} target={_progressTargetRatio:F4} " +
+                            $"capped (paused): display={DisplayRatio:F4} target={_progressTargetRatio:F4} " +
                             $"backSec={backwardSeconds:F2}s capped={cappedTarget:F4}");
                         _progressTargetRatio = cappedTarget;
                     }
                 }
 
-                _progressDisplayRatio = _progressTargetRatio;
+                DisplayRatio = _progressTargetRatio;
             }
 
-            _progressDisplayRatio = Math.Clamp(_progressDisplayRatio, 0, 1);
-            ProgressBarScale.ScaleX = _progressDisplayRatio;
+            DisplayRatio = Math.Clamp(DisplayRatio, 0, 1);
+            ProgressBarScale.ScaleX = DisplayRatio;
         }
 
         if (!_isDraggingProgress && frame.Duration.TotalSeconds > 0 && frame.State == ProgressState.Playing)
         {
-            if (_lastProgressMovementRatio < 0 || Math.Abs(_progressDisplayRatio - _lastProgressMovementRatio) > 0.0015)
+            if (_lastProgressMovementRatio < 0 || Math.Abs(DisplayRatio - _lastProgressMovementRatio) > 0.0015)
             {
-                _lastProgressMovementRatio = _progressDisplayRatio;
+                _lastProgressMovementRatio = DisplayRatio;
                 _lastProgressMovementUtc = renderNow;
             }
             else
             {
                 var stuckFor = renderNow - _lastProgressMovementUtc;
-                var visualDrift = Math.Abs(engineRatio - _progressDisplayRatio);
+                var visualDrift = Math.Abs(engineRatio - DisplayRatio);
                 if (stuckFor.TotalMilliseconds > 900 && visualDrift > 0.02)
                 {
                     _lastProgressMovementUtc = renderNow;
@@ -1224,9 +1224,9 @@ public partial class MediaPlaybackView : UserControl, IDisposable
         }
 
         int currentSecond = (int)frame.Position.TotalSeconds;
-        if (currentSecond != _lastDisplayedSecond)
+        if (currentSecond != LastDisplayedSecond)
         {
-            _lastDisplayedSecond = currentSecond;
+            LastDisplayedSecond = currentSecond;
             CurrentTimeText.Text = FormatTime(frame.Position);
             RemainingTimeText.Text = FormatDuration(frame.Duration);
         }
@@ -1279,7 +1279,7 @@ public partial class MediaPlaybackView : UserControl, IDisposable
         _progressTargetRatio = ratio;
         if (!_isSeekSpringActive)
         {
-            _progressSpringTargetRatio = _progressDisplayRatio;
+            _progressSpringTargetRatio = DisplayRatio;
             _progressVelocity = 0;
         }
         _springSettleFrames = 0;
@@ -1378,7 +1378,7 @@ public partial class MediaPlaybackView : UserControl, IDisposable
         ratio = Math.Clamp(ratio, 0, 1);
 
         ProgressBarScale.BeginAnimation(ScaleTransform.ScaleXProperty, null);
-        _progressDisplayRatio = ratio;
+        DisplayRatio = ratio;
         _progressTargetRatio = ratio;
         _progressSpringTargetRatio = ratio;
         _progressVelocity = 0;
@@ -1397,7 +1397,7 @@ public partial class MediaPlaybackView : UserControl, IDisposable
         _progressTargetRatio = targetRatio;
         if (!_isSeekSpringActive)
         {
-            _progressSpringTargetRatio = _progressDisplayRatio;
+            _progressSpringTargetRatio = DisplayRatio;
             _progressVelocity = 0;
         }
         _springSettleFrames = 0;
@@ -1446,7 +1446,7 @@ public partial class MediaPlaybackView : UserControl, IDisposable
             targetRatio = Math.Clamp(targetRatio, 0, 1);
             AnimateSeekProgressTo(targetRatio);
             CurrentTimeText.Text = FormatTime(newPos);
-            _lastDisplayedSecond = (int)newPos.TotalSeconds;
+            LastDisplayedSecond = (int)newPos.TotalSeconds;
 
             await _mediaService.SeekAsync(newPos);
 
@@ -1513,14 +1513,14 @@ public partial class MediaPlaybackView : UserControl, IDisposable
             return;
         }
 
-        double fromRatio = Math.Clamp(_progressDisplayRatio, 0, 1);
+        double fromRatio = Math.Clamp(DisplayRatio, 0, 1);
 
         if (Math.Abs(fromRatio - targetRatio) < 0.005)
         {
             _isCatchUpAnimating = false;
             ProgressBarScale.BeginAnimation(ScaleTransform.ScaleXProperty, null);
             ProgressBarScale.ScaleX = targetRatio;
-            _progressDisplayRatio = targetRatio;
+            DisplayRatio = targetRatio;
             _progressTargetRatio = targetRatio;
             _progressSpringTargetRatio = targetRatio;
             _lastRenderedRatio = targetRatio;
@@ -1557,7 +1557,7 @@ public partial class MediaPlaybackView : UserControl, IDisposable
             _isCatchUpAnimating = false;
             ProgressBarScale.BeginAnimation(ScaleTransform.ScaleXProperty, null);
             ProgressBarScale.ScaleX = targetRatio;
-            _progressDisplayRatio = targetRatio;
+            DisplayRatio = targetRatio;
             _lastRenderedRatio = targetRatio;
             UpdateProgressTimerState();
         };
@@ -1615,11 +1615,11 @@ public partial class MediaPlaybackView : UserControl, IDisposable
 
             ProgressBarScale.BeginAnimation(ScaleTransform.ScaleXProperty, null);
             ProgressBarScale.ScaleX = 0;
-            _progressDisplayRatio = 0;
+            DisplayRatio = 0;
             _progressTargetRatio = 0;
             _progressSpringTargetRatio = 0;
             _lastRenderedRatio = 0;
-            _lastDisplayedSecond = 0;
+            LastDisplayedSecond = 0;
             _isSeekSpringActive = false;
             _isClickSeekPending = false;
             _progressVelocity = 0;
@@ -1629,13 +1629,13 @@ public partial class MediaPlaybackView : UserControl, IDisposable
             RemainingTimeText.Text = newDuration > TimeSpan.Zero ? FormatDuration(newDuration) : "0:00";
             StopRewindTextAnimation();
             _isRewindAnimating = false;
-            _lastRenderTime = DateTime.UtcNow;
+
             UpdateProgressTimerState();
         };
 
         _progressTargetRatio = 0;
         _progressSpringTargetRatio = 0;
-        _progressDisplayRatio = 0;
+        DisplayRatio = 0;
 
         ProgressBarScale.BeginAnimation(ScaleTransform.ScaleXProperty, null);
         ProgressBarScale.ScaleX = fromRatio;
@@ -1685,7 +1685,7 @@ public partial class MediaPlaybackView : UserControl, IDisposable
     internal void AnimateExternalSeekTo(double targetRatio)
     {
         targetRatio = Math.Clamp(targetRatio, 0, 1);
-        double fromRatio = Math.Clamp(_progressDisplayRatio, 0, 1);
+        double fromRatio = Math.Clamp(DisplayRatio, 0, 1);
         double delta = Math.Abs(fromRatio - targetRatio);
 
         StopRewindTextAnimation();
@@ -1695,7 +1695,7 @@ public partial class MediaPlaybackView : UserControl, IDisposable
             RuntimeLog.Log(ProgressSeekLogTag, $"animate skipped (delta={delta:F4})");
             ProgressBarScale.BeginAnimation(ScaleTransform.ScaleXProperty, null);
             ProgressBarScale.ScaleX = targetRatio;
-            _progressDisplayRatio = targetRatio;
+            DisplayRatio = targetRatio;
             _progressTargetRatio = targetRatio;
             _progressSpringTargetRatio = targetRatio;
             _progressVelocity = 0;
@@ -1735,15 +1735,15 @@ public partial class MediaPlaybackView : UserControl, IDisposable
             RuntimeLog.Log(ProgressSeekLogTag, $"animate completed -> {targetRatio:F4}");
             ProgressBarScale.BeginAnimation(ScaleTransform.ScaleXProperty, null);
             ProgressBarScale.ScaleX = targetRatio;
-            _progressDisplayRatio = targetRatio;
+            DisplayRatio = targetRatio;
             _progressTargetRatio = targetRatio;
             _progressSpringTargetRatio = targetRatio;
             _lastRenderedRatio = targetRatio;
-            _lastDisplayedSecond = (int)GetPositionForRatio(targetRatio).TotalSeconds;
+            LastDisplayedSecond = (int)GetPositionForRatio(targetRatio).TotalSeconds;
             CurrentTimeText.Text = FormatTime(GetPositionForRatio(targetRatio));
             StopRewindTextAnimation();
             _isRewindAnimating = false;
-            _lastRenderTime = DateTime.UtcNow;
+
             _blockBackwardAfterSeekUntil = DateTime.UtcNow.AddSeconds(3.5);
             UpdateProgressTimerState();
         };

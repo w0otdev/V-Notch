@@ -7,7 +7,7 @@ using VNotch.ViewModels;
 
 namespace VNotch.Controls;
 
-public partial class ClipboardTray
+public sealed partial class ClipboardTray
 {
     private Button? _categoryReorderSource;
     private Point _categoryReorderStart;
@@ -35,7 +35,7 @@ public partial class ClipboardTray
 
     private bool TryBeginCategoryReorder(Point point)
     {
-        if (_categoryReorderSource is not { } source) return false;
+        if (_categoryReorderSource == null) return false;
         if (Math.Abs(point.X - _categoryReorderStart.X) < SystemParameters.MinimumHorizontalDragDistance &&
             Math.Abs(point.Y - _categoryReorderStart.Y) < SystemParameters.MinimumVerticalDragDistance) return false;
         if (!Mouse.Capture(CategoryScroll, CaptureMode.Element)) { CancelCategoryReorder(); return false; }
@@ -207,8 +207,9 @@ public partial class ClipboardTray
         int index = Array.FindIndex(_categoryItems, item => item.Name == category.Name);
         int destination = index + (key == Key.Left ? -1 : 1);
         if (index < 0 || destination < 0 || destination >= _categoryItems.Length) return;
-        string? beforeId = key == Key.Left ? _categoryItems[destination].Name :
-            destination + 1 < _categoryItems.Length ? _categoryItems[destination + 1].Name : null;
+        string? rightTargetId = destination + 1 < _categoryItems.Length ? _categoryItems[destination + 1].Name : null;
+        string? beforeId = key == Key.Left ? _categoryItems[destination].Name : rightTargetId;
+
         CancelCategoryReorder();
         await SafeAsync(() => CommitCategoryReorderAsync(category.Name, beforeId));
     }

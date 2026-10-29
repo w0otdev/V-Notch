@@ -122,7 +122,6 @@ public partial class ProgressEngine
 
     private static readonly TimeSpan IgnoreCorrectionThreshold = TimeSpan.FromMilliseconds(60);
     private static readonly TimeSpan SmoothCorrectionThreshold = TimeSpan.FromSeconds(2);
-    private static readonly TimeSpan SmoothBackwardCap = TimeSpan.FromMilliseconds(400);
 
     private static readonly TimeSpan DurationChangeSeekWindow = TimeSpan.FromMilliseconds(650);
     private static readonly TimeSpan UserSeekDebounceDuration = TimeSpan.FromMilliseconds(2500);
@@ -507,7 +506,7 @@ public partial class ProgressEngine
 
         if (absDiffSeconds < SmoothCorrectionThreshold.TotalSeconds)
         {
-            ApplySmoothCorrection(diff, observedPos, predictedNow, nowUtc);
+            ApplySmoothCorrection(diff, predictedNow, nowUtc);
             return;
         }
 
@@ -526,7 +525,7 @@ public partial class ProgressEngine
         _pendingPauseStartedUtc = DateTime.MinValue;
     }
 
-    private void ApplySmoothCorrection(TimeSpan diff, TimeSpan observedPos, TimeSpan predictedNow, DateTime nowUtc)
+    private void ApplySmoothCorrection(TimeSpan diff, TimeSpan predictedNow, DateTime nowUtc)
     {
         vn_progress_engine_smooth_correction(
             diff.Ticks,

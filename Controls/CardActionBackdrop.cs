@@ -50,7 +50,7 @@ public sealed class CardActionBackdrop : FrameworkElement
         InvalidateVisual();
     }
 
-    protected override void OnRender(DrawingContext dc)
+    protected override void OnRender(DrawingContext drawingContext)
     {
         var source = Source;
         if (source == null || _sample.IsEmpty || _sample.Width <= 0 || _sample.Height <= 0) return;
@@ -64,6 +64,6 @@ public sealed class CardActionBackdrop : FrameworkElement
             };
         }
         _brush.Viewbox = _sample;
-        dc.DrawRectangle(_brush, null, new Rect(RenderSize));
+        drawingContext.DrawRectangle(_brush, null, new Rect(RenderSize));
     }
 }

@@ -234,12 +234,12 @@ public sealed class TranslationUxTests
     {
         internal int Fits, Calls;
         internal bool LimitTokens;
-        public Task<string> FitInputAsync(string text, CancellationToken ct)
+        public Task<string> FitInputAsync(string text, CancellationToken cancellationToken)
         {
             Fits++;
             return Task.FromResult(LimitTokens ? TranslationInput.FitTokens(text, value => value.EnumerateRunes().Count(), 512) : text);
         }
-        public Task<string> TranslateAsync(string text, string source, string target, CancellationToken ct) { Calls++; return Task.FromResult(text); }
+        public Task<string> TranslateAsync(string text, string sourceLanguage, string targetLanguage, CancellationToken cancellationToken) { Calls++; return Task.FromResult(text); }
         public void ReleaseIdleResources() { }
         public void Dispose() { }
     }

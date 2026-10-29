@@ -31,6 +31,7 @@ internal sealed partial class FfmpegRecordingProbe
                 catch (Exception ex) when (ex is COMException or InvalidOperationException or
                     System.ComponentModel.Win32Exception or UnauthorizedAccessException)
                 {
+                    // Ignore inaccessible process during WMI/process scan.
                 }
             }
         }
@@ -70,7 +71,7 @@ internal sealed partial class FfmpegRecordingProbe
     {
         if (value == null || !Marshal.IsComObject(value)) return;
         try { Marshal.FinalReleaseComObject(value); }
-        catch (InvalidComObjectException) { }
+        catch (InvalidComObjectException) { /* Already released */ }
     }
 
     internal static unsafe bool IsScreenCaptureCommand(string? command)

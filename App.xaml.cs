@@ -312,7 +312,7 @@ public partial class App : Application
         System.Threading.Tasks.TaskScheduler.UnobservedTaskException += OnUnobservedTaskException;
     }
 
-    private async void OnDispatcherUnhandledException(object? sender, System.Windows.Threading.DispatcherUnhandledExceptionEventArgs args)
+    private static async void OnDispatcherUnhandledException(object? sender, System.Windows.Threading.DispatcherUnhandledExceptionEventArgs args)
     {
         // MessageBox.Show runs a nested dispatcher loop; guard against recursive
         // error dialogs from queued UI callbacks while a fatal dialog is open.
@@ -409,7 +409,7 @@ public partial class App : Application
     protected override void OnExit(ExitEventArgs e)
     {
         InteractionSounds.Shutdown();
-        try { WhiteNoiseService.Pause(); } catch { }
+        try { WhiteNoiseService.Pause(); } catch { /* Best-effort pause during shutdown. */ }
         try
         {
             if (!_servicesDisposed && Services is IDisposable disposable)

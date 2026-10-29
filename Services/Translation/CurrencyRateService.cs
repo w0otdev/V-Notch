@@ -127,7 +127,7 @@ internal sealed partial class CurrencyRateService
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
-            try { File.Delete(temporary); } catch (Exception cleanupEx) when (cleanupEx is IOException or UnauthorizedAccessException) { }
+            try { File.Delete(temporary); } catch (Exception cleanupEx) when (cleanupEx is IOException or UnauthorizedAccessException) { /* Best-effort cleanup of temporary rate cache file. */ }
         }
     }
 }

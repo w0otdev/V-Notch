@@ -88,7 +88,7 @@ public sealed class ClipboardFixRegressionTests
             await store.UpdateAsync(entry.Id, archived: true);
             entry = store.GetEntry(entry.Id)! with { CopiedUtc = DateTime.UtcNow.AddDays(-60) };
         }
-        File.WriteAllText(fixture.ItemPath(entry.Id, "entry.json"), JsonSerializer.Serialize(entry));
+        await File.WriteAllTextAsync(fixture.ItemPath(entry.Id, "entry.json"), JsonSerializer.Serialize(entry));
         using var reopened = fixture.Store();
         await reopened.InitializeAsync();
         Assert.Equal(entry.Id, Assert.Single(await reopened.SearchAsync("", "Archive")).Id);

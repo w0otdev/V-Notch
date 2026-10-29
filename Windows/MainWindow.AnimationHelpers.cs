@@ -272,20 +272,10 @@ public partial class MainWindow
         to.BeginAnimation(OpacityProperty, fadeIn);
     }
 
-    private void AnimateButtonScale(ScaleTransform scaleTransform, double targetScale)
-    {
-        var animX = new DoubleAnimation(scaleTransform.ScaleX, targetScale, _dur150) { EasingFunction = _easeQuadOut };
-        var animY = new DoubleAnimation(scaleTransform.ScaleY, targetScale, _dur150) { EasingFunction = _easeQuadOut };
 
-        System.Windows.Media.Animation.Timeline.SetDesiredFrameRate(animX, VNotch.Services.AnimationConfig.TargetFps);
-        scaleTransform.BeginAnimation(ScaleTransform.ScaleXProperty, animX);
-        System.Windows.Media.Animation.Timeline.SetDesiredFrameRate(animY, VNotch.Services.AnimationConfig.TargetFps);
-        scaleTransform.BeginAnimation(ScaleTransform.ScaleYProperty, animY);
-    }
+    private static void AnimateIconSwitch(Canvas fromIcon, Canvas toIcon, TimeSpan duration, EasingFunctionBase easing) => Controls.ButtonFeedback.AnimateIconSwitch(fromIcon, toIcon, duration, easing);
 
-    private void AnimateIconSwitch(Canvas fromIcon, Canvas toIcon, TimeSpan duration, EasingFunctionBase easing) => Controls.ButtonFeedback.AnimateIconSwitch(fromIcon, toIcon, duration, easing);
-
-    private void PlayButtonPressAnimation(Border button) => Controls.ButtonFeedback.PlayButtonPressAnimation(button);
+    private static void PlayButtonPressAnimation(Border button) => Controls.ButtonFeedback.PlayButtonPressAnimation(button);
 
     private void PlayGentleButtonPressAnimation(Border button)
     {
@@ -319,14 +309,14 @@ public partial class MainWindow
         PlayNextSkipAnimation(MediaPlayback.NextArrow0, MediaPlayback.NextArrow1);
     }
 
-    private void PlayNextSkipAnimation(System.Windows.Shapes.Path arrow0, System.Windows.Shapes.Path arrow1) => Controls.ButtonFeedback.PlayNextSkipAnimation(arrow0, arrow1);
+    private static void PlayNextSkipAnimation(System.Windows.Shapes.Path arrow0, System.Windows.Shapes.Path arrow1) => Controls.ButtonFeedback.PlayNextSkipAnimation(arrow0, arrow1);
 
     private void PlayPrevSkipAnimation()
     {
         PlayPrevSkipAnimation(MediaPlayback.PrevArrow0, MediaPlayback.PrevArrow2);
     }
 
-    private void PlayPrevSkipAnimation(System.Windows.Shapes.Path arrow0, System.Windows.Shapes.Path arrow2) => Controls.ButtonFeedback.PlayPrevSkipAnimation(arrow0, arrow2);
+    private static void PlayPrevSkipAnimation(System.Windows.Shapes.Path arrow0, System.Windows.Shapes.Path arrow2) => Controls.ButtonFeedback.PlayPrevSkipAnimation(arrow0, arrow2);
 
     private void PlayAppearAnimation()
     {
@@ -705,11 +695,6 @@ public partial class MainWindow
         NotchShadowScale.BeginAnimation(ScaleTransform.ScaleYProperty, bounceY);
     }
 
-    private void AnimateProgressBarHover(bool isHovered)
-    {
-        MediaPlayback.EnableBlurEffects = _settings.EnableBlurEffects;
-        MediaPlayback.AnimateProgressBarHover(isHovered);
-    }
 
     #endregion
 
@@ -734,10 +719,12 @@ public partial class MainWindow
         SettingsRotate.BeginAnimation(RotateTransform.AngleProperty, null);
 
         bool showBatterySection = show && _settings.ShowBatteryIndicator;
-        var activeTargetView = _navigationVisualTarget ?? (_isCameraView ? VNotch.Models.NotchView.Camera :
-            _isAudioView ? VNotch.Models.NotchView.AudioMixer :
-            _isTimerView ? VNotch.Models.NotchView.Timer :
-            _isSecondaryView ? VNotch.Models.NotchView.Secondary : VNotch.Models.NotchView.Media);
+        VNotch.Models.NotchView fallbackView = VNotch.Models.NotchView.Media;
+        if (_isCameraView) fallbackView = VNotch.Models.NotchView.Camera;
+        else if (_isAudioView) fallbackView = VNotch.Models.NotchView.AudioMixer;
+        else if (_isTimerView) fallbackView = VNotch.Models.NotchView.Timer;
+        else if (_isSecondaryView) fallbackView = VNotch.Models.NotchView.Secondary;
+        var activeTargetView = _navigationVisualTarget ?? fallbackView;
         bool showNavIconsBg = activeTargetView is VNotch.Models.NotchView.Secondary
             or VNotch.Models.NotchView.Timer
             or VNotch.Models.NotchView.AudioMixer;

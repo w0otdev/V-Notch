@@ -194,7 +194,7 @@ public sealed class AppFileCleanupTests : IDisposable
         var service = new AppFileCleanupService();
         service.Start(); service.Start();
         await service.DisposeAsync().AsTask().WaitAsync(TimeSpan.FromSeconds(2));
-        service.Dispose();
+        ((IDisposable)service).Dispose();
         Assert.Throws<ObjectDisposedException>(service.Start);
     }
 

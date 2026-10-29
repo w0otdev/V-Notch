@@ -10,7 +10,9 @@ public sealed partial class ClipboardCategoryViewModel(TrayIconKind iconKind, st
     public string Name { get; } = name ?? iconKind.ToString();
     public bool IsPersonal => IconKind == TrayIconKind.Personal;
     public string Label => customLabel ?? Loc.Get("clipboard.category." + Name.ToLowerInvariant());
+#pragma warning disable S2325
     public string ReorderHint => Loc.Get("clipboard.reorderLabel");
+#pragma warning restore S2325
     public bool IsLightSelection => IsSelected && IconKind is TrayIconKind.All or TrayIconKind.Pin or TrayIconKind.Personal;
     public bool IsAccentSelection => IsSelected && !IsLightSelection;
     public TrayIconKind LockIconKind => IsUnlocked ? TrayIconKind.Unlock : TrayIconKind.Lock;

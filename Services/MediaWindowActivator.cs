@@ -96,22 +96,11 @@ internal static partial class MediaWindowActivator
         byte isPipTitle,
         out int outScore);
 
-
-
-    [LibraryImport("VNotch.Native.dll")]
-    private static partial int vn_mediaactivator_score_window_platform(
-        ReadOnlySpan<ushort> title, int titleLen,
-        int platform,
-        out int outScore);
-
     public static bool TryActivateForMedia(MediaInfo info)
     {
-        if (info.IsPictureInPicture || info.IsVideoSource)
+        if ((info.IsPictureInPicture || info.IsVideoSource) && TryActivatePipWindow(info))
         {
-            if (TryActivatePipWindow(info))
-            {
-                return true;
-            }
+            return true;
         }
 
         bool preferBrowserTabMatch = info.IsVideoSource || info.Platform == MediaPlatform.SoundCloud;
@@ -195,7 +184,7 @@ internal static partial class MediaWindowActivator
             if (!IsBrowserProcess(processName) && !IsChromiumWindow(hwnd)) return false;
 
             if (Regex.IsMatch(sourceAppId, @"(?:^|[\\/.!_\-])" + Regex.Escape(processName) +
-                @"(?:$|[\\/.!_\-])", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant))
+                @"(?:$|[\\/.!_\-])", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant, TimeSpan.FromMilliseconds(250)))
                 return true;
 
             return ProcessAppUserModelIdEquals(process.Handle, sourceAppId);
@@ -382,7 +371,7 @@ internal static partial class MediaWindowActivator
         string? targetProc = null;
         if (!string.IsNullOrEmpty(info.SourceAppId))
         {
-            var match = Regex.Match(info.SourceAppId, @"([A-Za-z0-9_\-]+)\.exe", RegexOptions.IgnoreCase);
+            var match = Regex.Match(info.SourceAppId, @"([A-Za-z0-9_\-]+)\.exe", RegexOptions.IgnoreCase, TimeSpan.FromMilliseconds(250));
             if (match.Success) targetProc = match.Groups[1].Value;
         }
 
@@ -507,7 +496,7 @@ internal static partial class MediaWindowActivator
 
     private static void ExtractProcessesFromSourceAppId(string sourceAppId, ISet<string> candidates)
     {
-        foreach (Match match in Regex.Matches(sourceAppId, @"([A-Za-z0-9_\-]+)\.exe", RegexOptions.IgnoreCase))
+        foreach (Match match in Regex.Matches(sourceAppId, @"([A-Za-z0-9_\-]+)\.exe", RegexOptions.IgnoreCase, TimeSpan.FromMilliseconds(250)))
         {
             string name = match.Groups[1].Value.Trim();
             if (!string.IsNullOrWhiteSpace(name))
@@ -633,15 +622,6 @@ internal static partial class MediaWindowActivator
             info.IsVideoSource ? (byte)1 : (byte)0,
             PipDetector.IsPipTitle(title ?? string.Empty) ? (byte)1 : (byte)0,
             out int score);
-        return score;
-    }
-
-
-
-    private static int ScoreWindowPlatform(string title, MediaPlatform platform)
-    {
-        ReadOnlySpan<ushort> t = MemoryMarshal.Cast<char, ushort>(title != null ? title.AsSpan() : ReadOnlySpan<char>.Empty);
-        vn_mediaactivator_score_window_platform(t, t.Length, (int)platform, out int score);
         return score;
     }
 

@@ -50,7 +50,7 @@ internal static partial class GlassClipBuilder
         double h = size.Height;
         if (!double.IsFinite(w) || !double.IsFinite(h) || w <= 0 || h <= 0) return null;
         double power = double.IsFinite(powerFactor) ? Math.Max(1.05, powerFactor) : 2;
-        if (_lastClip != null && size == _lastClipSize && radius == _lastClipRadius && power == _lastClipPower)
+        if (_lastClip != null && size == _lastClipSize && radius == _lastClipRadius && Math.Abs(power - _lastClipPower) < 1e-6)
             return _lastClip;
 
         // Keep the notch silhouette inside its bounds during animated resizing.

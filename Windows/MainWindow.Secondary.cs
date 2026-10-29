@@ -38,8 +38,8 @@ public partial class MainWindow
             return view;
         }
     }
-    private bool _localSecondaryView;
-    private bool _isSecondaryView { get => _localSecondaryView; set => _localSecondaryView = value; }
+    private bool _isSecondaryView { get; set; }
+
     private bool _isCameraView;
     private DateTime _lastViewSwitchUtc = DateTime.MinValue;
     private static readonly TimeSpan ViewSwitchCooldown = TimeSpan.FromMilliseconds(600);

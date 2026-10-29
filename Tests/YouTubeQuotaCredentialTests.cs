@@ -15,10 +15,14 @@ public sealed class YouTubeQuotaCredentialTests
         string oldKey = NewKey(), replacementKey = NewKey(), currentKey = oldKey;
         string videoId = NewVideoId();
         const string title = "Replacement credential song";
-        using var keyHandler = new Handler((request, _) => Task.FromResult(
-            ApiKey(request) == oldKey ? QuotaExceeded() : request.RequestUri!.AbsolutePath.EndsWith("/search")
+        using var keyHandler = new Handler((request, _) =>
+        {
+            if (ApiKey(request) == oldKey) return Task.FromResult(QuotaExceeded());
+            var response = request.RequestUri!.AbsolutePath.EndsWith("/search")
                 ? Json(new { items = new[] { new { id = new { videoId }, snippet = new { title } } } })
-                : VideoMetadata(title)));
+                : VideoMetadata(title);
+            return Task.FromResult(response);
+        });
         using var fallbackHandler = new Handler((_, _) => Task.FromResult(new HttpResponseMessage(HttpStatusCode.NotFound)));
         using var keyClient = new HttpClient(keyHandler);
         using var fallbackClient = new HttpClient(fallbackHandler);

@@ -8,7 +8,7 @@ using VNotch.Services;
 
 namespace VNotch.Controls;
 
-public partial class WeatherWidget : UserControl, IDisposable
+public sealed partial class WeatherWidget : UserControl, IDisposable
 {
     private WeatherModule? _module;
     private bool _enabled;

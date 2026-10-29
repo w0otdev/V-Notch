@@ -52,9 +52,9 @@ public sealed class TranslationShiftShortcutTests
     {
         using var shortcut = new TranslationShiftShortcut(() => { });
         var field = typeof(TranslationShiftShortcut).GetField("_dispatcher", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!;
-        var thread = (Thread)typeof(TranslationShiftShortcut).GetField("_thread", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!.GetValue(shortcut)!;
         Assert.True(SpinWait.SpinUntil(() => field.GetValue(shortcut) != null, 3000));
         var dispatcher = (System.Windows.Threading.Dispatcher)field.GetValue(shortcut)!;
+        var thread = dispatcher.Thread;
         Assert.NotEqual(Environment.CurrentManagedThreadId, dispatcher.Thread.ManagedThreadId);
         Assert.True(await dispatcher.InvokeAsync(() => true).Task.WaitAsync(TimeSpan.FromSeconds(3)));
         shortcut.Dispose();

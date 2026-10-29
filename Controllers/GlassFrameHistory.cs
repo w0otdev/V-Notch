@@ -10,7 +10,9 @@ internal sealed partial class GlassFrameHistory
     private UInt128 _committedHash, _checkedHash;
     private int _width, _height, _checkedWidth, _checkedHeight;
     private bool _hasFrame, _hasCheckedFrame;
+#pragma warning disable S2325
     internal int RetainedPixelBytes => 0;
+#pragma warning restore S2325
 
     internal void Clear()
     {

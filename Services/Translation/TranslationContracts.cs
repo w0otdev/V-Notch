@@ -28,7 +28,7 @@ internal interface ILocalTranslationEngine : IDisposable
     void ReleaseIdleResources();
 }
 
-internal sealed class TranslationException(string messageKey) : Exception(messageKey)
+public sealed class TranslationException(string messageKey) : Exception(messageKey)
 {
     internal string MessageKey { get; } = messageKey;
 }

@@ -9,7 +9,7 @@ using VNotch.Services;
 
 namespace VNotch.Controls;
 
-public partial class ClipboardTray
+public sealed partial class ClipboardTray
 {
     private readonly Dictionary<FrameworkElement, object> _pendingMenuEntrances = [];
     private readonly Dictionary<ContextMenu, FrameworkElement> _menuAnimationTargets = [];
@@ -67,7 +67,10 @@ public partial class ClipboardTray
         double opacity = fresh ? 0 : surface.Opacity;
         var rendered = surface.RenderTransform.Value;
         bool isAnchored = target != null;
-        double scaleFrom = fresh ? (isAnchored ? (submenu ? 0.88 : 0.80) : (submenu ? 0.98 : 0.96)) : rendered.M11;
+        double anchoredScale = submenu ? 0.88 : 0.80;
+        double unanchoredScale = submenu ? 0.98 : 0.96;
+        double freshScale = isAnchored ? anchoredScale : unanchoredScale;
+        double scaleFrom = fresh ? freshScale : rendered.M11;
         surface.BeginAnimation(OpacityProperty, null);
         surface.Opacity = 1;
         surface.RenderTransform = Transform.Identity;
@@ -75,7 +78,9 @@ public partial class ClipboardTray
         if (target == null && MenuKeyboardInput) return;
 
         bool reduced = AnimationConfig.ReduceMotion;
-        int duration = reduced ? 80 : isAnchored ? 260 : (submenu ? MotionStandard : 200);
+        int unanchoredDuration = submenu ? MotionStandard : 200;
+        int activeDuration = isAnchored ? 260 : unanchoredDuration;
+        int duration = reduced ? 80 : activeDuration;
         if (!reduced)
         {
             Point anchor = fresh ? MenuAnchor(surface, target) : surface.RenderTransformOrigin;
@@ -86,8 +91,12 @@ public partial class ClipboardTray
             surface.RenderTransform = new TransformGroup { Children = { scale, slide } };
 
             // Travel towards the settled position from the trigger-facing edge with authentic Apple spring physics
-            double fromX = fresh ? (isAnchored ? (anchor.X <= 0.5 ? -14 : 14) : (anchor.X - 0.5) * 8) : rendered.OffsetX;
-            double fromY = fresh ? (isAnchored ? (anchor.Y <= 0.5 ? -10 : 10) : (anchor.Y - 0.5) * 8) : rendered.OffsetY;
+            double anchoredX = anchor.X <= 0.5 ? -14 : 14;
+            double freshX = isAnchored ? anchoredX : (anchor.X - 0.5) * 8;
+            double fromX = fresh ? freshX : rendered.OffsetX;
+            double anchoredY = anchor.Y <= 0.5 ? -10 : 10;
+            double freshY = isAnchored ? anchoredY : (anchor.Y - 0.5) * 8;
+            double fromY = fresh ? freshY : rendered.OffsetY;
 
             var ease = isAnchored ? (IEasingFunction)AppleSpring : TrayMotion.EaseOut;
             scale.BeginAnimation(ScaleTransform.ScaleXProperty, MenuAnimation(scaleFrom, 1, duration, ease));
@@ -97,7 +106,9 @@ public partial class ClipboardTray
         }
 
         var opacityEase = isAnchored ? (IEasingFunction)new CubicEase { EasingMode = EasingMode.EaseOut } : TrayMotion.EaseOut;
-        surface.BeginAnimation(OpacityProperty, MenuAnimation(opacity, 1, reduced ? 80 : isAnchored ? 150 : Math.Min(duration, MotionFast), opacityEase), HandoffBehavior.SnapshotAndReplace);
+        int activeOpacityDuration = isAnchored ? 150 : Math.Min(duration, MotionFast);
+        int opacityDuration = reduced ? 80 : activeOpacityDuration;
+        surface.BeginAnimation(OpacityProperty, MenuAnimation(opacity, 1, opacityDuration, opacityEase), HandoffBehavior.SnapshotAndReplace);
     }
 
     private static Point MenuAnchor(FrameworkElement surface, FrameworkElement? target)

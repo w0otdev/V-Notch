@@ -77,15 +77,20 @@ internal static partial class ClipboardDropReader
             return new(capture with { ImagePng = Decode(bytes.ToArray()) });
         }
         string? image = null;
-        if (ReadText(data, "DownloadURL") is string download)
+        if (ReadText(data, "DownloadURL") is string download && vn_clipboard_drop_extract_download_url_image(download.AsSpan(), download.Length, out byte found, out int startIdx) == 0 && found != 0)
         {
-            if (vn_clipboard_drop_extract_download_url_image(download.AsSpan(), download.Length, out byte found, out int startIdx) == 0 && found != 0)
-                image = download[startIdx..];
+
+            image = download[startIdx..];
         }
         if (image == null && (string.IsNullOrWhiteSpace(text) || Uri.TryCreate(text.Trim(), UriKind.Absolute, out _)))
         {
             var match = ImageSourcePattern().Match(html);
-            if (match.Success) image = WebUtility.HtmlDecode(match.Groups[1].Success ? match.Groups[1].Value : match.Groups[2].Success ? match.Groups[2].Value : match.Groups[3].Value);
+            if (match.Success)
+            {
+                string rawImage = match.Groups[1].Success ? match.Groups[1].Value : match.Groups[3].Value;
+                if (match.Groups[2].Success) rawImage = match.Groups[2].Value;
+                image = WebUtility.HtmlDecode(rawImage);
+            }
         }
         if (image != null)
         {
@@ -135,7 +140,7 @@ internal static partial class ClipboardDropReader
             while ((read = await input.ReadAsync(buffer, cancellation)) > 0)
             {
                 if (output.Length + read > MaxImageBytes) throw new InvalidDataException("Image is too large.");
-                output.Write(buffer, 0, read);
+                await output.WriteAsync(buffer.AsMemory(0, read), cancellation);
             }
             bytes = output.ToArray();
         }

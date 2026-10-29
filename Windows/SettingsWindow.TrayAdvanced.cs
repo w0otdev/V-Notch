@@ -46,7 +46,7 @@ public partial class SettingsWindow
             if (File.Exists(SeenTraySettingsPath))
                 _seenTraySettings.UnionWith(File.ReadAllLines(SeenTraySettingsPath));
         }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { /* Intentionally ignored. */ }
         AddTrayBadge(TrayTextBadgeHost, "capture-text-v1", TrayTextRow);
         AddTrayBadge(TrayImagesBadgeHost, "capture-images-v1", TrayImagesRow);
         AddTrayBadge(TrayFilesBadgeHost, "capture-files-v1", TrayFilesRow);
@@ -139,7 +139,7 @@ public partial class SettingsWindow
             }
             catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
             {
-                try { if (File.Exists(tempPath)) File.Delete(tempPath); } catch (IOException) { }
+                try { if (File.Exists(tempPath)) File.Delete(tempPath); } catch (IOException) { /* Intentionally ignored. */ }
             }
         }
         target.MouseEnter += (_, _) => Dismiss();

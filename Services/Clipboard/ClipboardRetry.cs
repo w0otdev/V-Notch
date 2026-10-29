@@ -18,7 +18,7 @@ internal static partial class ClipboardRetry
     internal static async Task RunAsync(Action operation, Action validate, Func<int, Task>? delay = null)
     {
         delay ??= milliseconds => Task.Delay(milliseconds);
-        for (int retry = 0; ; retry++)
+        for (int retry = 0; retry <= RetryCount; retry++)
         {
             validate();
             try { operation(); return; }

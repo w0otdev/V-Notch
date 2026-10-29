@@ -284,7 +284,7 @@ public sealed class LocalizationTests
     {
         Loc.SetLanguage(language);
 
-        string actual = WordClock.FormatLocalizedTime(new DateTime(2026, 7, 18, hour, minute, 0));
+        string actual = WordClock.FormatLocalizedTime(new DateTime(2026, 7, 18, hour, minute, 0, DateTimeKind.Local));
 
         Assert.Equal(expected, actual);
         Loc.SetLanguage("en");
@@ -301,10 +301,8 @@ public sealed class LocalizationTests
         string language, int hour, int minute, string expected)
     {
         Loc.SetLanguage(language);
-
-        string actual = WordClock.FormatLocalizedTime(new DateTime(2026, 7, 18, hour, minute, 0));
-
-        Assert.Equal(expected, actual);
+        var sampleTime = new DateTime(2026, 7, 18, hour, minute, 0, DateTimeKind.Local);
+        Assert.Equal(expected, WordClock.FormatLocalizedTime(sampleTime));
         Loc.SetLanguage("en");
     }
 

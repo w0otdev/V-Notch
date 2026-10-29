@@ -91,7 +91,7 @@ public sealed class MainWindowAudioMixerTests
             window.AudioContent.ShowLoading(false);
             await WpfFrameWaiter.UntilAsync(() => window.AudioContent.AudioLoadingPanel.Visibility == Visibility.Collapsed,
                 "mixer loading panel dismissal", ct);
-            await WpfFrameWaiter.UntilAsync(() => window.AudioContent.AudioRoot.Opacity == 1 && window.AudioContent.AudioRootTranslate.Y == 0,
+            await WpfFrameWaiter.UntilAsync(() => Math.Abs(window.AudioContent.AudioRoot.Opacity - 1) < 1e-6 && Math.Abs(window.AudioContent.AudioRootTranslate.Y) < 1e-6,
                 "mixer content reveal", ct);
             window.AudioContent.ShowLoading(false);
             Assert.Equal(1, window.AudioContent.AudioRoot.Opacity);

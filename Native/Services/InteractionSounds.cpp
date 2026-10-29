@@ -291,7 +291,8 @@ public:
         double v_time = 1.0 + (static_cast<double>(variant) - 2.5) * 0.010;
         std::span<const int16_t> k2(kSplReleaseKernel);
 
-        double float_buf[6144]{};
+        thread_local double float_buf[6144];
+        std::memset(float_buf, 0, sizeof(float_buf));
 
         switch (cue)
         {

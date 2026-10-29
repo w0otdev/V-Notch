@@ -52,7 +52,7 @@ public sealed partial class AppFileCleanupService : IDisposable, IAsyncDisposabl
         lock (_gate)
         {
             ObjectDisposedException.ThrowIf(_disposed, this);
-            _worker ??= Task.Run(RunAsync);
+            _worker ??= Task.Run(RunAsync, _stop.Token);
         }
     }
 
@@ -75,7 +75,7 @@ public sealed partial class AppFileCleanupService : IDisposable, IAsyncDisposabl
                 await Task.Delay(Interval, _stop.Token).ConfigureAwait(false);
             }
         }
-        catch (OperationCanceledException) when (_stop.IsCancellationRequested) { }
+        catch (OperationCanceledException) when (_stop.IsCancellationRequested) { /* Expected on stop */ }
     }
 
     // Acquire before creating the path; retain until its producer and consumers finish.
@@ -179,7 +179,7 @@ public sealed partial class AppFileCleanupService : IDisposable, IAsyncDisposabl
                     if (snapshot != null) candidates.Add(snapshot);
                 }
             }
-            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { /* Ignore locked/inaccessible entry */ }
 
             long total = candidates.Sum(candidate => candidate.Bytes);
             long minAgeTicks = (policy.MinimumAge ?? policy.Retention).Ticks;
@@ -200,13 +200,13 @@ public sealed partial class AppFileCleanupService : IDisposable, IAsyncDisposabl
                     try
                     {
                         // An exclusive open detects files still held by external consumers.
-                        using (new FileStream(file.FullName, FileMode.Open, FileAccess.Read, FileShare.None)) { }
+                        using (new FileStream(file.FullName, FileMode.Open, FileAccess.Read, FileShare.None)) { /* Probe exclusive lock */ }
                         File.Delete(file.FullName);
                         deleted++;
                         reclaimed += file.Length;
                         total -= file.Length;
                     }
-                    catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { }
+                    catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { /* Ignore locked/inaccessible entry */ }
                 }
                 foreach (string dir in candidate.Directories.AsEnumerable().Reverse())
                 {
@@ -216,7 +216,7 @@ public sealed partial class AppFileCleanupService : IDisposable, IAsyncDisposabl
                         // Non-recursive deletion cannot follow links or remove new/locked contents.
                         if (IsSafePath(root, dir)) Directory.Delete(dir, recursive: false);
                     }
-                    catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { }
+                    catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { /* Ignore locked/inaccessible entry */ }
                 }
             }
         }
@@ -314,6 +314,7 @@ public sealed partial class AppFileCleanupService : IDisposable, IAsyncDisposabl
             if (_disposed) return;
             _disposed = true;
             _stop.Cancel();
+            if (_worker is null || _worker.IsCompleted) _stop.Dispose();
         }
     }
 
@@ -321,6 +322,7 @@ public sealed partial class AppFileCleanupService : IDisposable, IAsyncDisposabl
     {
         Dispose();
         if (_worker != null) await _worker.ConfigureAwait(false);
+        _stop.Dispose();
         // Synchronous WPF shutdown only signals cancellation; it never blocks the UI on disk I/O.
         GC.SuppressFinalize(this);
     }

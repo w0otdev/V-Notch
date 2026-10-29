@@ -176,7 +176,9 @@ public sealed class AiStopButton : Button
         if (!IsLoaded || !IsVisible) return;
         bool hover = IsEnabled && IsMouseOver && !AreAnyTouchesOver && Stylus.CurrentStylusDevice == null;
         bool pressed = IsEnabled && IsPressed;
-        double scale = AnimationConfig.ReduceMotion ? 1 : pressed ? 0.97 : hover ? 1.03 : 1;
+        double hoverScale = hover ? 1.03 : 1;
+        double activeScale = pressed ? 0.97 : hoverScale;
+        double scale = AnimationConfig.ReduceMotion ? 1 : activeScale;
         Retarget(_bodyScale, ScaleTransform.ScaleXProperty, scale, 160, animate);
         Retarget(_bodyScale, ScaleTransform.ScaleYProperty, scale, 160, animate);
         Retarget(_hoverOverlay, OpacityProperty, hover && !pressed ? 1 : 0, 160, animate);

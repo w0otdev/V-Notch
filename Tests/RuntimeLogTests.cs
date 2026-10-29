@@ -18,7 +18,7 @@ public sealed class RuntimeLogTests
         {
             RuntimeLog.MinimumLevel = LogLevel.Info;
             await RuntimeLog.InitializeNewSessionAsync(path);
-            File.WriteAllText(path, new string('x', limit - 100));
+            await File.WriteAllTextAsync(path, new string('x', limit - 100));
             RuntimeLog.Info("SIZE-TEST", new string('y', 200));
             await RuntimeLog.FlushAsync().WaitAsync(TimeSpan.FromSeconds(5));
             Assert.True(File.Exists(path + ".old"));
@@ -31,7 +31,7 @@ public sealed class RuntimeLogTests
             Assert.True(new FileInfo(path).Length <= limit);
             Assert.Contains("[truncated]", await ReadSharedTextAsync(path));
 
-            File.WriteAllText(path, new string('x', limit - 100));
+            await File.WriteAllTextAsync(path, new string('x', limit - 100));
             using (var lockedBackup = new FileStream(path + ".old", FileMode.Open, FileAccess.Read, FileShare.None))
             {
                 RuntimeLog.Info("LOCKED-BACKUP", new string('a', 200));

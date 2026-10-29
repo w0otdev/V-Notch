@@ -36,7 +36,7 @@ public sealed class MainWindowUpdateNotificationTests
         Invoke(window, "UpdatePulseTimer_Tick", null, EventArgs.Empty);
         Assert.InRange(window.UpdateIconBrush.Color.R, 250, 255);
         Invoke(window, "UpdateNotification_MouseEnter", window, new MouseEventArgs(Mouse.PrimaryDevice, 0));
-        await WpfFrameWaiter.UntilAsync(() => window.UpdateInlineTooltip.Opacity == 1, "update tooltip shown", ct);
+        await WpfFrameWaiter.UntilAsync(() => Math.Abs(window.UpdateInlineTooltip.Opacity - 1) < 1e-6, "update tooltip shown", ct);
         Assert.True(Field<bool>(window, "_isUpdateTooltipOpen"));
         Assert.Contains("9.5.1", window.UpdateInlineStatusText.Text);
         Assert.NotNull(window.UpdateNotificationButton.CacheMode);

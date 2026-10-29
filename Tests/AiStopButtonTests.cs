@@ -35,7 +35,7 @@ public sealed class AiStopButtonTests
                 var body = (Grid)button.Template.FindName("ButtonContent", button);
                 var scale = Assert.IsType<ScaleTransform>(surface.RenderTransform);
                 Assert.False(scale.IsFrozen);
-                await WpfFrameWaiter.UntilAsync(() => surface.Opacity == 1 && scale.ScaleX == 1,
+                await WpfFrameWaiter.UntilAsync(() => Math.Abs(surface.Opacity - 1) < 1e-6 && Math.Abs(scale.ScaleX - 1) < 1e-6,
                     "Stop button reveal completes", ct);
                 SetRequestActive(window, null);
                 Assert.False(button.IsEnabled);
@@ -100,7 +100,7 @@ public sealed class AiStopButtonTests
             await WpfFrameWaiter.UntilAsync(() => button.IsLoaded && button.IsVisible, "Stop button is presented", ct);
             await WpfFrameWaiter.NextAsync(ct);
             var surface = (Grid)button.Template.FindName("RevealSurface", button);
-            await WpfFrameWaiter.UntilAsync(() => surface.Opacity == 1, "Stop button shown", ct);
+            await WpfFrameWaiter.UntilAsync(() => Math.Abs(surface.Opacity - 1) < 1e-6, "Stop button shown", ct);
 
             SetRequestActive(window, null);
             Assert.Equal(Visibility.Visible, button.Visibility);
@@ -108,7 +108,7 @@ public sealed class AiStopButtonTests
             Assert.False(button.IsHitTestVisible);
             SetRequestActive(window, request);
             await WpfFrameWaiter.NextAsync(ct);
-            await WpfFrameWaiter.UntilAsync(() => surface.Opacity == 1, "Stop button exit reversed", ct);
+            await WpfFrameWaiter.UntilAsync(() => Math.Abs(surface.Opacity - 1) < 1e-6, "Stop button exit reversed", ct);
             Assert.Equal(Visibility.Visible, button.Visibility);
             Assert.True(button.IsEnabled);
             var glow = (FrameworkElement)button.Template.FindName("BreathingGlow", button);

@@ -17,7 +17,6 @@ public partial class MainWindow
     private const string ThumbAnimLogTag = "THUMB-ANIM";
     private readonly MediaUpdateQueue _mediaUpdates;
 
-    private string _lastAnimatedTrackSignature = "";
     private ImageSource? _pendingFlipThumbnail;
     private int _thumbnailSwitchGeneration = 0;
     private int _compactThumbnailAnimationGeneration = 0;
@@ -139,7 +138,6 @@ public partial class MainWindow
             ResetEmptyThumbnailAnimation();
         }
 
-        _lastAnimatedTrackSignature = _mediaDisplayController.LastAnimatedTrackSignature;
         _thumbnailShownForCurrentTrack = _mediaDisplayController.ThumbnailShownForCurrentTrack;
 
         string renderedSource = result.RenderedSource;
@@ -756,14 +754,10 @@ public partial class MainWindow
         {
             if (shouldBeCompact)
             {
-                if (info?.Thumbnail != null && _mediaDisplayController.ShouldAnimateCompactThumbnail(info))
+                if (info?.Thumbnail != null && !_isClipboardPeekActive && _mediaDisplayController.ShouldAnimateCompactThumbnail(info))
                 {
-                    _lastAnimatedTrackSignature = _mediaDisplayController.LastAnimatedTrackSignature;
-                    if (!_isClipboardPeekActive)
-                    {
-                        AnimateThumbnailSwitchOnly(info.Thumbnail);
-                        PlayTrackChangeBounce();
-                    }
+                    AnimateThumbnailSwitchOnly(info.Thumbnail);
+                    PlayTrackChangeBounce();
                 }
 
                 if (info != null && !_isClipboardPeekActive)

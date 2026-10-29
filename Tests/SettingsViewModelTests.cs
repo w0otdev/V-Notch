@@ -53,7 +53,6 @@ public sealed class SettingsViewModelTests
     [Fact]
     public async Task ApplyAsync_WhenSaveFails_DoesNotUpdateValueOrDerived_AndDoesNotRaiseApplied()
     {
-        var initialSettings = new NotchSettings { Width = 300, Height = 40, CornerRadius = 15 };
         var failingService = new ThrowingSettingsService(new IOException("Disk write failed"));
         var vm = new SettingsViewModel(failingService);
 

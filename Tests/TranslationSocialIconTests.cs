@@ -59,8 +59,8 @@ public sealed class TranslationSocialIconTests
 
     private sealed class UnavailableEngine : ILocalTranslationEngine
     {
-        public Task<string> FitInputAsync(string text, CancellationToken ct) => throw new InvalidOperationException("Must not load model");
-        public Task<string> TranslateAsync(string text, string source, string target, CancellationToken ct) => throw new InvalidOperationException("Must not infer");
+        public Task<string> FitInputAsync(string text, CancellationToken cancellationToken) => throw new InvalidOperationException("Must not load model");
+        public Task<string> TranslateAsync(string text, string sourceLanguage, string targetLanguage, CancellationToken cancellationToken) => throw new InvalidOperationException("Must not infer");
         public void ReleaseIdleResources() { }
         public void Dispose() { }
     }

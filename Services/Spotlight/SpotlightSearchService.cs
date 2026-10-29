@@ -25,7 +25,7 @@ internal sealed partial class SpotlightSearchService
         byte isPinned,
         out double outScore);
 
-    private const int MaxQueryLength = 256;
+
     private const int MaxResults = 50;
     private static readonly Comparison<SpotlightSearchItem> s_mergeComparison = CompareMergedItems;
 
@@ -245,9 +245,9 @@ internal sealed partial class SpotlightSearchService
         _ = vn_spotlight_search_try_normalize_input(
             query.AsSpan(), query.Length, limit,
             out byte valid, out int start, out int len, out normalizedLimit);
-        normalizedQuery = len > 0
-            ? (start == 0 && len == query.Length ? query : query.Substring(start, len))
-            : string.Empty;
+        if (len <= 0) normalizedQuery = string.Empty;
+        else normalizedQuery = start == 0 && len == query.Length ? query : query.Substring(start, len);
+
         return valid != 0;
     }
 

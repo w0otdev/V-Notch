@@ -943,7 +943,7 @@
                                     HorizontalAlignment="Left" VerticalAlignment="Top"
                                     Margin="14,3,0,0"
                                     Background="Transparent">
-                            <ctrl:ActionBorder x:Name="HomeIconButton"
+                            <ctrl:ActionBorder x:Name="HomeIconButton" AutomationProperties.Name="Home"
                                     Tag="Media"
                                     Width="22" Height="22"
                                     Background="Transparent"
@@ -971,7 +971,7 @@
                                           Fill="{x:Static svc:UiPalette.PrimaryBrush}"/>
                                 </Viewbox>
                             </ctrl:ActionBorder>
-                            <ctrl:ActionBorder x:Name="ClipboardIconButton"
+                            <ctrl:ActionBorder x:Name="ClipboardIconButton" AutomationProperties.Name="Clipboard"
                                     Tag="Secondary"
                                     Width="22" Height="22"
                                     Background="Transparent"
@@ -999,7 +999,7 @@
                                           Fill="{x:Static svc:UiPalette.PrimaryBrush}"/>
                                 </Viewbox>
                             </ctrl:ActionBorder>
-                            <ctrl:ActionBorder x:Name="TimerIconButton"
+                            <ctrl:ActionBorder x:Name="TimerIconButton" AutomationProperties.Name="Timer"
                                     Tag="Timer"
                                     Width="22" Height="22"
                                     Background="Transparent"
@@ -1027,7 +1027,7 @@
                                           Fill="{x:Static svc:UiPalette.PrimaryBrush}"/>
                                 </Viewbox>
                             </ctrl:ActionBorder>
-                            <ctrl:ActionBorder x:Name="AudioIconButton"
+                            <ctrl:ActionBorder x:Name="AudioIconButton" AutomationProperties.Name="Audio Mixer"
                                     Tag="AudioMixer"
                                     Width="22" Height="22"
                                     Background="Transparent"
@@ -1055,7 +1055,7 @@
                                           Fill="{x:Static svc:UiPalette.PrimaryBrush}"/>
                                 </Viewbox>
                             </ctrl:ActionBorder>
-                            <ctrl:ActionBorder x:Name="CameraIconButton"
+                            <ctrl:ActionBorder x:Name="CameraIconButton" AutomationProperties.Name="Camera"
                                     Tag="Camera"
                                     Width="22" Height="22"
                                     Background="Transparent"
@@ -1524,7 +1524,7 @@
                                 <ColumnDefinition Width="Auto"/>
                             </Grid.ColumnDefinitions>
 
-                            <ctrl:ActionBorder x:Name="BatterySection" Grid.Column="0"
+                            <ctrl:ActionBorder x:Name="BatterySection" Grid.Column="0" AutomationProperties.Name="Battery"
                                     Cursor="Hand"
                                     Background="Transparent"
                                     Click="Battery_Click"
@@ -1617,7 +1617,7 @@
                                 </StackPanel>
                             </ctrl:ActionBorder>
 
-                            <ctrl:ActionBorder x:Name="UpdateNotificationButton" Grid.Column="1"
+                            <ctrl:ActionBorder x:Name="UpdateNotificationButton" Grid.Column="1" AutomationProperties.Name="Update Available"
                                     Width="20" Height="20"
                                     Background="Transparent"
                                     Cursor="Hand"
@@ -1650,7 +1650,7 @@
                                 </Viewbox>
                             </ctrl:ActionBorder>
 
-                            <ctrl:ActionBorder x:Name="SettingsButton" Grid.Column="2"
+                            <ctrl:ActionBorder x:Name="SettingsButton" Grid.Column="2" AutomationProperties.Name="Settings"
                                     Width="24" Height="24"
                                     CornerRadius="12"
                                     Background="Transparent"
@@ -2636,9 +2636,9 @@
                                     <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center" Margin="10">
                                         <Path Data="M12 9v4m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 17c-.77 1.333.192 3 1.732 3z"
                                               Stroke="{x:Static svc:UiPalette.IconBrush}" StrokeThickness="1.5" Width="18" Height="18" Stretch="Uniform" HorizontalAlignment="Center"/>
-                                        <TextBlock Text="Cannot detect camera device" x:Name="CameraErrorText" Style="{StaticResource SmallText}" FontSize="9"
+                                        <TextBlock Text="Cannot detect camera device" x:Name="CameraErrorText" Style="{StaticResource SmallText}" FontSize="11"
                                                    Foreground="{x:Static svc:UiPalette.PrimaryBrush}" HorizontalAlignment="Center" Margin="0,4,0,0" TextWrapping="Wrap" TextAlignment="Center"/>
-                                        <TextBlock Text="click to try again" x:Name="CameraRetryText" Style="{StaticResource SmallText}" FontSize="8"
+                                        <TextBlock Text="click to try again" x:Name="CameraRetryText" Style="{StaticResource SmallText}" FontSize="10.5"
                                                    Foreground="#99FFFFFF" HorizontalAlignment="Center" FontStyle="Italic"/>
                                     </StackPanel>
                                 </Border>

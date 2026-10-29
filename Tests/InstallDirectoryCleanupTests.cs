@@ -58,8 +58,8 @@ public sealed class InstallDirectoryCleanupTests
         Directory.CreateDirectory(directory);
         string marker = Path.Combine(directory, "V-Notch.exe");
         string sentinel = Path.Combine(parent, "keep.txt");
-        File.WriteAllText(marker, "test marker; never executed");
-        File.WriteAllText(sentinel, "must survive cleanup");
+        await File.WriteAllTextAsync(marker, "test marker; never executed");
+        await File.WriteAllTextAsync(sentinel, "must survive cleanup");
         string releaseName = $"Local\\VNotchOwnerRelease-{Guid.NewGuid():N}";
         string readyName = $"Local\\VNotchOwnerReady-{Guid.NewGuid():N}";
         using var release = new EventWaitHandle(false, EventResetMode.ManualReset, releaseName);
@@ -90,7 +90,7 @@ public sealed class InstallDirectoryCleanupTests
             await helper.WaitForExitAsync(timeout.Token);
             Assert.Equal(0, helper.ExitCode);
             Assert.False(Directory.Exists(directory));
-            Assert.Equal("must survive cleanup", File.ReadAllText(sentinel));
+            Assert.Equal("must survive cleanup", await File.ReadAllTextAsync(sentinel));
         }
         finally
         {

@@ -78,7 +78,7 @@ public sealed class WeatherModuleTests
         module.Start();
 
         Assert.NotNull(update);
-        Assert.Null(update!.Weather);
+        Assert.Null(update.Weather);
     }
 
     [Fact]

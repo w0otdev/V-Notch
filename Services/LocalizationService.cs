@@ -355,8 +355,9 @@ public static partial class Loc
                     ReadOnlySpan<char> propSpan = prop.Name.AsSpan();
                     ReadOnlySpan<char> textSpan = text is not null ? text.AsSpan() : ReadOnlySpan<char>.Empty;
                     bool keyExists = dict.ContainsKey(prop.Name);
+                    byte existsFlag = keyExists ? (byte)1 : (byte)0;
                     bool shouldStore = vn_localization_should_store_entry(
-                        propSpan, propSpan.Length, textSpan, textSpan.Length, keyExists ? (byte)1 : (byte)0, out byte outStore) == 0
+                        propSpan, propSpan.Length, textSpan, textSpan.Length, existsFlag, out byte outStore) == 0
                         ? outStore != 0
                         : (text != prop.Name && (!string.IsNullOrWhiteSpace(text) || !keyExists));
                     if (shouldStore)

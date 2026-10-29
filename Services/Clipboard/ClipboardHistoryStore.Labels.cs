@@ -51,7 +51,9 @@ public sealed partial class ClipboardHistoryStore
         Changed?.Invoke();
     }
 
-    public Task<ClipboardLabel> AddLabelAsync(string name) => Run(() =>
+    public Task<ClipboardLabel> AddLabelAsync(string name) => Run(() => AddLabelCore(name));
+
+    private ClipboardLabel AddLabelCore(string name)
     {
         name = name.Trim();
         if (name.Length is 0 or > 64 || name.Any(char.IsControl)) throw new ArgumentException("A label must contain 1–64 characters.", nameof(name));
@@ -60,7 +62,7 @@ public sealed partial class ClipboardHistoryStore
         var label = new ClipboardLabel("label:" + Guid.NewGuid().ToString("N"), name);
         SaveLabels([.. _labels, label]);
         return label;
-    });
+    }
 
     public Task MoveLabelAsync(string id, int offset) => Run(() =>
     {

@@ -99,26 +99,26 @@ public sealed class PerformanceAuditRegressionTests
     [Fact]
     public void FrameDigestDetectsEveryByteWithoutRetainingPixels()
     {
-        const int width = 13, height = 9;
-        byte[] bytes = new byte[width * height * 4];
+        const int w = 13, h = 9;
+        byte[] bytes = new byte[w * h * 4];
         new Random(42).NextBytes(bytes);
         IntPtr pointer = Marshal.AllocHGlobal(bytes.Length);
         try
         {
             Marshal.Copy(bytes, 0, pointer, bytes.Length);
             var history = new GlassFrameHistory();
-            history.Commit(pointer, width, height);
-            Assert.True(history.IsUnchanged(pointer, width, height));
+            history.Commit(pointer, w, h);
+            Assert.True(history.IsUnchanged(pointer, w, h));
             for (int i = 0; i < bytes.Length; i++)
             {
                 Marshal.WriteByte(pointer, i, (byte)(Marshal.ReadByte(pointer, i) ^ 1));
-                Assert.False(history.IsUnchanged(pointer, width, height));
+                Assert.False(history.IsUnchanged(pointer, w, h));
                 history.CommitCheckedFrame();
             }
-            Assert.False(history.IsUnchanged(pointer, height, width));
+            Assert.False(history.IsUnchanged(pointer, h, w));
             Assert.Equal(0, history.RetainedPixelBytes);
             history.Clear();
-            Assert.False(history.IsUnchanged(pointer, width, height));
+            Assert.False(history.IsUnchanged(pointer, w, h));
         }
         finally { Marshal.FreeHGlobal(pointer); }
     }

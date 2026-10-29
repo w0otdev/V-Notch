@@ -148,7 +148,7 @@ public sealed class PrivacySettingsTests
         var deserialized = JsonSerializer.Deserialize<NotchSettings>(json);
 
         Assert.NotNull(deserialized);
-        Assert.True(deserialized!.EnableLocalOnlyMode);
+        Assert.True(deserialized.EnableLocalOnlyMode);
         Assert.False(deserialized.AutoCheckUpdates);
         Assert.False(deserialized.EnableOnlineArtworkLookup);
         Assert.False(deserialized.EnableOnlineLyrics);
@@ -170,7 +170,7 @@ public sealed class PrivacySettingsTests
             foreach (var tag in navTags)
             {
                 var border = new System.Windows.Controls.Border { Tag = tag };
-                bool isInteractive = (bool)method!.Invoke(null, new object[] { border })!;
+                bool isInteractive = (bool)method.Invoke(null, new object[] { border })!;
                 Assert.True(isInteractive, $"Tag '{tag}' should be recognized as an interactive element.");
             }
         });

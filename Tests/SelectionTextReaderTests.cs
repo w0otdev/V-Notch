@@ -93,7 +93,7 @@ public sealed class SelectionTextReaderTests
         box.Select(7, 9);
         var selection = NativeSelectionReader.Read(form.Handle);
         Assert.NotNull(selection);
-        Assert.Equal("container", selection!.Text);
+        Assert.Equal("container", selection.Text);
     });
 
     [Fact]
@@ -122,7 +122,7 @@ public sealed class SelectionTextReaderTests
             var result = SelectionTextReader.Read(hwnd, null, manual: true, out bool protectedInput, rootElement: root, allowOwnProcess: true);
             Assert.False(protectedInput);
             Assert.NotNull(result);
-            Assert.Contains("Tiếng Việt", result!.Text);
+            Assert.Contains("Tiếng Việt", result.Text);
         }
         finally { window.Close(); }
     });
@@ -146,7 +146,7 @@ public sealed class SelectionTextReaderTests
             var result = SelectionTextReader.Read(hwnd, null, manual: true, out bool protectedInput, rootElement: root, allowOwnProcess: true);
             Assert.False(protectedInput);
             Assert.NotNull(result);
-            Assert.Equal("public", result!.Text);
+            Assert.Equal("public", result.Text);
         }
         finally { window.Close(); }
     });
@@ -195,7 +195,7 @@ public sealed class SelectionTextReaderTests
             var result = SelectionTextReader.Read(hwnd, listElement, manual: true, out bool protectedInput, rootElement: root, allowOwnProcess: true);
             Assert.False(protectedInput);
             Assert.NotNull(result);
-            Assert.Equal("Item two Tiếng Việt", result!.Text);
+            Assert.Equal("Item two Tiếng Việt", result.Text);
         }
         finally { window.Close(); }
     });
@@ -226,7 +226,7 @@ public sealed class SelectionTextReaderTests
             var treeResult = SelectionTextReader.Read(hwnd, treeElement, manual: true, out bool protectedInput, rootElement: root, allowOwnProcess: true);
             Assert.False(protectedInput);
             Assert.NotNull(treeResult);
-            Assert.Equal("Selected Tiếng Việt node", treeResult!.Text);
+            Assert.Equal("Selected Tiếng Việt node", treeResult.Text);
 
             var textElement = root.FindFirst(
                 System.Windows.Automation.TreeScope.Subtree,
@@ -234,7 +234,7 @@ public sealed class SelectionTextReaderTests
             var textResult = SelectionTextReader.Read(hwnd, textElement, manual: true, out protectedInput, rootElement: root, allowOwnProcess: true);
             Assert.False(protectedInput);
             Assert.NotNull(textResult);
-            Assert.Equal("Static status message", textResult!.Text);
+            Assert.Equal("Static status message", textResult.Text);
         }
         finally { window.Close(); }
     });

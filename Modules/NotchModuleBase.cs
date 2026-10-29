@@ -10,7 +10,9 @@ namespace VNotch.Modules;
 /// Module host. The initialize/start/stop/tick/dispose transition rules are the native lifecycle
 /// state machine (Native/Modules/ModuleLifecycle.cpp); this class wires the UI timer and hooks.
 /// </summary>
+#pragma warning disable S3881
 public abstract partial class NotchModuleBase : INotchModule
+#pragma warning restore S3881
 {
     private const string LifecycleDll = "VNotch.Native.dll";
 
@@ -107,7 +109,7 @@ public abstract partial class NotchModuleBase : INotchModule
         catch (Exception ex)
         {
             NativeFailStart(ref _state);
-            try { OnStop(); } catch { }
+            try { OnStop(); } catch { /* Best-effort cleanup after failed start. */ }
             RuntimeLog.Log($"MODULE-{ModuleName}", $"Start failed: {ex}");
         }
     }

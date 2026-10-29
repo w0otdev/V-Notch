@@ -115,7 +115,7 @@ public class SettingsWindowDecouplingTests
                 window.ApplyPreview(snapshot);
                 Assert.True(received!.EnableInteractionSounds);
                 typeof(SettingsWindow).GetMethod("RevertLivePreviewIfNeeded", BindingFlags.Instance | BindingFlags.NonPublic)!.Invoke(window, null);
-                Assert.False(received!.EnableInteractionSounds);
+                Assert.False(received.EnableInteractionSounds);
                 Assert.Equal(.35, received.InteractionSoundVolume);
             }
             finally { window.Close(); }

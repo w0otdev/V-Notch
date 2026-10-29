@@ -207,11 +207,11 @@ internal static partial class SelectionTextReader
         if (bounds.IsEmpty)
         {
             var controlBounds = Safely(() => element.Current.BoundingRectangle);
-            bounds = manual || !ValidBounds(controlBounds)
+            bounds = manual || !ValidBounds(controlBounds) || controlBounds.Contains(cursor.Location)
                 ? cursor
-                : controlBounds.Contains(cursor.Location)
-                    ? cursor
-                    : new Rect(controlBounds.Right, controlBounds.Bottom, 1, 1);
+                : new Rect(controlBounds.Right, controlBounds.Bottom, 1, 1);
+
+
         }
         if (bounds.IsEmpty) return null;
         bool editable = Safely(() => element.Current.IsEnabled) &&
@@ -247,7 +247,7 @@ internal static partial class SelectionTextReader
                     if (joinedItems != null)
                     {
                         var itemBounds = Safely(() => selectedItems[0].Current.BoundingRectangle);
-                        var resolvedBounds = ValidBounds(itemBounds) && itemBounds.Contains(cursor.Location) ? cursor : ValidBounds(itemBounds) ? itemBounds : cursor;
+                        var resolvedBounds = ValidBounds(itemBounds) && !itemBounds.Contains(cursor.Location) ? itemBounds : cursor;
                         return new(TranslationInput.Prefix(joinedItems, TranslationInput.MaxCharacters), resolvedBounds, selectedItems[0], null, false)
                         { InputTruncated = joinedItems.Length > TranslationInput.MaxCharacters };
                     }
@@ -272,7 +272,7 @@ internal static partial class SelectionTextReader
             if (text != null)
             {
                 var controlBounds = Safely(() => element.Current.BoundingRectangle);
-                var bounds = ValidBounds(controlBounds) && controlBounds.Contains(cursor.Location) ? cursor : ValidBounds(controlBounds) ? controlBounds : cursor;
+                var bounds = ValidBounds(controlBounds) && !controlBounds.Contains(cursor.Location) ? controlBounds : cursor;
                 return new(TranslationInput.Prefix(text, TranslationInput.MaxCharacters), bounds, element, null, false)
                 { InputTruncated = text.Length > TranslationInput.MaxCharacters };
             }

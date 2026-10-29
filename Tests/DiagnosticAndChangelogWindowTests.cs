@@ -187,9 +187,9 @@ public sealed class DiagnosticAndChangelogWindowTests
         LiquidGlassSpotlightTests.CreateApplicationResources();
         using var fixture = new ChangelogFixture(installed,
         [
-            new() { Version = "2.0.0", PublishedAt = new DateTime(2026, 1, 2), ReleaseNotes = "# Main\n## Group\n### Detail\n\n- **Fixed** with *care* and `code`\n* More\nPlain [safe](https://example.com) and [blocked](file:///C:/private.txt) end" },
-            new() { Version = "1.0.0", PublishedAt = new DateTime(2025, 1, 2), ReleaseNotes = "" },
-            new() { Version = "bad-version", PublishedAt = new DateTime(2024, 1, 2), ReleaseNotes = "Old" }
+            new() { Version = "2.0.0", PublishedAt = new DateTime(2026, 1, 2, 0, 0, 0, DateTimeKind.Utc), ReleaseNotes = "# Main\n## Group\n### Detail\n\n- **Fixed** with *care* and `code`\n* More\nPlain [safe](https://example.com) and [blocked](file:///C:/private.txt) end" },
+            new() { Version = "1.0.0", PublishedAt = new DateTime(2025, 1, 2, 0, 0, 0, DateTimeKind.Utc), ReleaseNotes = "" },
+            new() { Version = "bad-version", PublishedAt = new DateTime(2024, 1, 2, 0, 0, 0, DateTimeKind.Utc), ReleaseNotes = "Old" }
         ]);
         var window = fixture.Window;
         await (Task)Invoke(window, "LoadChangelog")!;
@@ -211,7 +211,7 @@ public sealed class DiagnosticAndChangelogWindowTests
         buttons.Single(button => Equals(button.Tag, "1.0.0")).RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
         Assert.Contains(Descendants<TextBlock>(window.ChangelogContent), text => text.Text == Loc.Get("changelog.noNotes"));
         Invoke(window, "PlayEntranceAnimation");
-        await WpfFrameWaiter.UntilAsync(() => window.MainShell.Opacity == 1, "changelog entrance", ct);
+        await WpfFrameWaiter.UntilAsync(() => Math.Abs(window.MainShell.Opacity - 1) < 1e-6, "changelog entrance", ct);
         bool closed = false;
         window.Closed += (_, _) => closed = true;
         Invoke(window, "CloseButton_Click", window, new RoutedEventArgs());
@@ -248,7 +248,7 @@ public sealed class DiagnosticAndChangelogWindowTests
         private readonly IReadOnlyList<UpdateInfo> _releases;
         private readonly bool _fail;
         public string CurrentVersion { get; }
-        public event EventHandler<UpdateInfo?>? UpdateCheckCompleted { add { } remove { } }
+        public event EventHandler<UpdateInfo?>? UpdateCheckCompleted { add { /* no-op */ } remove { /* no-op */ } }
         public UpdateInfo? LatestUpdateInfo => null;
         internal ChangelogWindow Window { get; }
         internal ChangelogFixture(string installed, IReadOnlyList<UpdateInfo> releases, bool fail = false)

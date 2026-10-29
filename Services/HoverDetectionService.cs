@@ -6,7 +6,7 @@ using System.Windows.Threading;
 
 namespace VNotch.Services;
 
-public partial class HoverDetectionService : IDisposable
+public sealed partial class HoverDetectionService : IDisposable
 {
     private const int OutsideWindowIntervalMs = 125;
 

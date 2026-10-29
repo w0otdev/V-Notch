@@ -79,7 +79,7 @@ public sealed class SettingsApplicationServiceTests
         var appService = new SettingsApplicationService(fakeService, fakeStartup);
 
         using var cts = new CancellationTokenSource();
-        cts.Cancel();
+        await cts.CancelAsync();
 
         await Assert.ThrowsAnyAsync<OperationCanceledException>(() =>
             appService.ApplyAsync(new NotchSettings { AutoStart = true }, cts.Token));

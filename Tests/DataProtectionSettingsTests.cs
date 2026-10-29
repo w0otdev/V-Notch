@@ -15,7 +15,7 @@ public sealed class DataProtectionOverrideCollection { }
 
 // Failure injection changes a process-wide delegate used by settings tests.
 [Collection("DataProtection overrides")]
-public class DataProtectionSettingsTests : IDisposable
+public sealed class DataProtectionSettingsTests : IDisposable
 {
     private readonly Func<byte[], byte[]> _originalProtectBytes = DataProtection.ProtectBytes;
     private readonly string _directory = Path.Combine(Path.GetTempPath(), "VNotchTests", Guid.NewGuid().ToString("N"));
@@ -112,14 +112,14 @@ public class DataProtectionSettingsTests : IDisposable
     }
 
     [Fact]
-    public void Save_RetainsAtMostTenBackups()
+    public async Task Save_RetainsAtMostTenBackups()
     {
         var path = Path.Combine(_directory, "settings.json");
         var service = new SettingsService(path, _ => { });
         for (var width = 100; width < 112; width++)
         {
-            service.Save(new NotchSettings { Width = width });
-            Thread.Sleep(2);
+            await service.SaveAsync(new NotchSettings { Width = width });
+            await Task.Delay(2);
         }
 
         Assert.Equal(10, Directory.GetFiles(_directory, "settings.bak-*.json").Length);

@@ -30,7 +30,7 @@ internal sealed class MediaChangeQueue
         {
             while (true)
             {
-                while (_wakeups.Reader.TryRead(out _)) { }
+                while (_wakeups.Reader.TryRead(out _)) { /* Drain queued wakeups */ }
                 var changes = (ChangeTypes)Interlocked.Exchange(ref _pendingChanges, 0);
                 if (changes == ChangeTypes.None)
                     break;
@@ -45,7 +45,7 @@ internal sealed class MediaChangeQueue
 
     public void Clear()
     {
-        while (_wakeups.Reader.TryRead(out _)) { }
+        while (_wakeups.Reader.TryRead(out _)) { /* Drain queued wakeups */ }
         Interlocked.Exchange(ref _pendingChanges, 0);
     }
 

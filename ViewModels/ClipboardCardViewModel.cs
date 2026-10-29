@@ -92,11 +92,17 @@ public sealed partial class ClipboardCardViewModel : ObservableObject
 
     public bool IsMasked => _isMasked ??= Entry.IsSensitive || Services.Clipboard.ClipboardSensitiveData.IsSensitive(Entry.Preview, Entry.SourceApp, Entry.SourceExecutable);
 
-    public string Preview => IsMasked && !IsRevealed
-        ? Services.Clipboard.ClipboardSensitiveData.Mask
-        : !string.IsNullOrEmpty(_revealedText)
-            ? _revealedText
-            : Entry.Kind == ClipboardKind.Image ? "" : Entry.Preview;
+    public string Preview
+    {
+        get
+        {
+            if (IsMasked && !IsRevealed) return Services.Clipboard.ClipboardSensitiveData.Mask;
+            if (!string.IsNullOrEmpty(_revealedText)) return _revealedText;
+            return Entry.Kind == ClipboardKind.Image ? "" : Entry.Preview;
+        }
+    }
+
+
 
     public string DisplayPreview => Preview;
 
@@ -166,17 +172,28 @@ public sealed partial class ClipboardCardViewModel : ObservableObject
         IsRevealed = false;
     }
 
-    public string Title => IsMasked && !IsRevealed ? Services.Clipboard.ClipboardSensitiveData.Mask : Entry.Kind == ClipboardKind.Image && Entry.Title is "Image" or "Screenshot"
-        ? Services.Loc.Get(Entry.Title == "Image" ? "clipboard.image" : "clipboard.screenshot") : !string.IsNullOrEmpty(_revealedText) ? _revealedText : Entry.Title;
+    public string Title
+    {
+        get
+        {
+            if (IsMasked && !IsRevealed) return Services.Clipboard.ClipboardSensitiveData.Mask;
+            if (Entry.Kind == ClipboardKind.Image && Entry.Title is "Image" or "Screenshot")
+                return Services.Loc.Get(Entry.Title == "Image" ? "clipboard.image" : "clipboard.screenshot");
+            return !string.IsNullOrEmpty(_revealedText) ? _revealedText : Entry.Title;
+        }
+    }
     public string Source => string.IsNullOrEmpty(Entry.SourceApp) ? Services.Loc.Get("clipboard.source") : Entry.SourceApp;
     public string FooterSource => Entry.IsPersonal ? Services.Loc.Get("clipboard.category.personal") : Source;
     internal ImageSource? PreferredSourceIcon => TrayAppIcons.FindSource(Entry.SourceApp, Entry.SourceExecutable);
     internal ImageSource? PreferredFileIcon => TrayAppIcons.FindFile(FileExtension);
     public ImageSource DisplaySourceIcon => PreferredSourceIcon ?? SourceIcon ?? TrayAppIcons.ForContent(Entry.Kind);
     public ImageSource FilePreviewIcon => PreferredFileIcon ?? FileIcon ?? TrayAppIcons.Get(TrayAppIconKind.Document);
-    public string Size => _size ??= Entry.ByteSize < 1024 ? Services.Loc.Get("clipboard.bytes", Entry.ByteSize) : Entry.ByteSize < 1024 * 1024
-        ? (Entry.ByteSize / 1024d).ToString("0.#", Services.Loc.GetCulture()) + " KB"
-        : (Entry.ByteSize / (1024d * 1024)).ToString("0.#", Services.Loc.GetCulture()) + " MB";
+    public string Size => _size ??= FormatSize(Entry.ByteSize); private static string FormatSize(long bytes)
+    {
+        if (bytes < 1024) return Services.Loc.Get("clipboard.bytes", bytes);
+        if (bytes < 1024 * 1024) return (bytes / 1024d).ToString("0.#", Services.Loc.GetCulture()) + " KB";
+        return (bytes / (1024d * 1024)).ToString("0.#", Services.Loc.GetCulture()) + " MB";
+    }
     public string Age => _age;
 
     internal void RefreshAge(DateTime nowUtc)
@@ -302,6 +319,7 @@ public sealed partial class ClipboardCardViewModel : ObservableObject
         ClipboardKind.Code => TrayIconKind.Code,
         _ => TrayIconKind.Text
     };
+#pragma warning disable S2325
     public string MoreLabel => Services.Loc.Get("clipboard.more");
     public string DetailsLabel => Services.Loc.Get("clipboard.details");
     public string PinLabel => Services.Loc.Get(Entry.IsPinned ? "clipboard.unpin" : "clipboard.pin");
@@ -331,6 +349,7 @@ public sealed partial class ClipboardCardViewModel : ObservableObject
     [NotifyPropertyChangedFor(nameof(FilePreviewIcon))]
     private ImageSource? _fileIcon;
     public string CopiedLabel => Services.Loc.Get("clipboard.copied");
+#pragma warning restore S2325
     [ObservableProperty] private bool _isCopied;
     [ObservableProperty] private bool _isMenuOpen;
     public ClipboardCardViewModel(ClipboardEntry entry)

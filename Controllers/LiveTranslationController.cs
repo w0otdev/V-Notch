@@ -123,12 +123,12 @@ internal sealed class LiveTranslationController : IDisposable
         _idleCleanup = Task.Run(() =>
         {
             try { service.ReleaseIdleResources(); }
-            catch (ObjectDisposedException) { }
+            catch (ObjectDisposedException) { /* Intentionally ignored. */ }
             catch (Exception)
             {
                 RuntimeLog.Error("TRANSLATION", "Idle cleanup failed; exception payload omitted for privacy.");
             }
-        });
+        }, CancellationToken.None);
     }
 
     internal Task PrepareModelAsync()
@@ -335,20 +335,17 @@ internal sealed class LiveTranslationController : IDisposable
                 ? choice : TranslationCurrencies.ForLanguage(target));
             window.ConfigureCurrencies(_settings.EnableCurrencyConversion && (hasPrice || unresolvedPrice), hasPrice ? price.Currency : null, currency);
             if (_settings.EnableCurrencyConversion && unresolvedPrice && !hasPrice) throw new TranslationException("translation.currencyChooseSource");
-            if (_settings.EnableCurrencyConversion && hasPrice)
+            if (_settings.EnableCurrencyConversion && hasPrice && currency != null)
             {
-                if (currency != null)
+                convertingCurrency = true;
+                try
                 {
-                    convertingCurrency = true;
-                    try
-                    {
-                        var converted = await Task.Run(() => _currencyRates.ConvertAsync(price, currency, token), token).WaitAsync(token);
-                        string amount = converted.Amount.ToString("N" + TranslationCurrencies.DecimalPlaces(currency), Loc.GetCulture());
-                        result = new TranslationResult((converted.Rate == null ? "" : "≈ ") + amount + " " + currency, source, target, false) { Currency = converted };
-                    }
-                    catch (TranslationException ex) when (ex.MessageKey == "translation.currencyUnavailable") { }
-                    finally { convertingCurrency = false; }
+                    var converted = await Task.Run(() => _currencyRates.ConvertAsync(price, currency, token), token).WaitAsync(token);
+                    string amount = converted.Amount.ToString("N" + TranslationCurrencies.DecimalPlaces(currency), Loc.GetCulture());
+                    result = new TranslationResult((converted.Rate == null ? "" : "≈ ") + amount + " " + currency, source, target, false) { Currency = converted };
                 }
+                catch (TranslationException ex) when (ex.MessageKey == "translation.currencyUnavailable") { /* Fall back to text translation. */ }
+                finally { convertingCurrency = false; }
             }
             // A cache hit needs neither language-profile initialization nor model work.
             if (result == null && store.IsInstalled)
@@ -411,7 +408,7 @@ internal sealed class LiveTranslationController : IDisposable
     private void CancelRequest()
     {
         _requestVersion++;
-        try { _request?.Cancel(); } catch (ObjectDisposedException) { }
+        try { _request?.Cancel(); } catch (ObjectDisposedException) { /* Intentionally ignored. */ }
         _request = null;
     }
 

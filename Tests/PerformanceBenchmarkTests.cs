@@ -77,6 +77,7 @@ public sealed class PerformanceBenchmarkTests
                 }
                 catch
                 {
+                    // Ignore teardown race during benchmark
                 }
                 finally
                 {
@@ -160,8 +161,8 @@ public sealed class PerformanceBenchmarkTests
 
                 _output.WriteLine("================================================================================");
                 _output.WriteLine($"BENCHMARK 2: Low-Level Mouse Hook Dispatch ({iterations:N0} events)");
-                _output.WriteLine($"  - Legacy (Marshal.PtrToStructure): {swMarshal.ElapsedMilliseconds} ms ({(double)swMarshal.Elapsed.TotalNanoseconds / iterations:F1} ns/event)");
-                _output.WriteLine($"  - Optimized (Unsafe pointer deref): {swUnsafe.ElapsedMilliseconds} ms ({(double)swUnsafe.Elapsed.TotalNanoseconds / iterations:F1} ns/event)");
+                _output.WriteLine($"  - Legacy (Marshal.PtrToStructure): {swMarshal.ElapsedMilliseconds} ms ({swMarshal.Elapsed.TotalNanoseconds / iterations:F1} ns/event)");
+                _output.WriteLine($"  - Optimized (Unsafe pointer deref): {swUnsafe.ElapsedMilliseconds} ms ({swUnsafe.Elapsed.TotalNanoseconds / iterations:F1} ns/event)");
                 if (swUnsafe.ElapsedMilliseconds > 0)
                 {
                     _output.WriteLine($"  -> SPEEDUP: {(double)swMarshal.ElapsedMilliseconds / swUnsafe.ElapsedMilliseconds:F1}x faster");

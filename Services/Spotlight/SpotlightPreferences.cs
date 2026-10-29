@@ -93,6 +93,7 @@ internal sealed partial class SpotlightPreferences
                 }
                 catch (Exception)
                 {
+                    // Skip malformed excluded folder entries when loading preferences.
                 }
             }
 
@@ -305,7 +306,7 @@ internal sealed partial class SpotlightPreferences
                 finally
                 {
                     try { File.Delete(temp); }
-                    catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { }
+                    catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { /* Best-effort cleanup of temporary preferences file. */ }
                 }
             }
         });

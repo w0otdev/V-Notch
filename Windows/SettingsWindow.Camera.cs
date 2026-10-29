@@ -41,7 +41,7 @@ public partial class SettingsWindow
                     list.Add(new CameraDeviceItem { Id = "", Name = Loc.Get("settings.camera.none") });
                 }
                 return list;
-            });
+            }, CancellationToken.None);
 
             if (_isClosing || Dispatcher.HasShutdownStarted) return;
 

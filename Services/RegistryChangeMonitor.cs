@@ -23,9 +23,26 @@ internal sealed class RegistryChangeMonitor(RegistryKey hive, string path, Func<
             if (_key == null)
                 _key = hive.OpenSubKey(path, RegistryKeyPermissionCheck.ReadSubTree, RegistryRights.Notify);
             // Rearm before reading the registry so changes during a scan are not lost.
-            if (_key != null && Win32Interop.RegistryNotifyChange(_key.Handle.DangerousGetHandle(), true,
-                    0x10000000 | 0x1 | 0x4 | 0x8, _changed.SafeWaitHandle.DangerousGetHandle()))
-                return true;
+            if (_key != null)
+            {
+                bool keyRef = false;
+                bool waitRef = false;
+                try
+                {
+                    _key.Handle.DangerousAddRef(ref keyRef);
+                    _changed.SafeWaitHandle.DangerousAddRef(ref waitRef);
+#pragma warning disable S3869 // Handles are ref-counted via DangerousAddRef above
+                    if (Win32Interop.RegistryNotifyChange(_key.Handle.DangerousGetHandle(), true,
+                            0x10000000 | 0x1 | 0x4 | 0x8, _changed.SafeWaitHandle.DangerousGetHandle()))
+#pragma warning restore S3869
+                        return true;
+                }
+                finally
+                {
+                    if (waitRef) _changed.SafeWaitHandle.DangerousRelease();
+                    if (keyRef) _key.Handle.DangerousRelease();
+                }
+            }
         }
         catch (Exception)
         {

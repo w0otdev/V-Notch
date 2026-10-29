@@ -365,10 +365,10 @@
        </MultiDataTrigger>
        <Trigger Property="IsMouseOver" Value="True">
         <Setter Property="Foreground" Value="White"/>
-        <Setter TargetName="RootGrid" Property="local:TrayMotion.Scale" Value="1.15"/>
+        <Setter TargetName="RootGrid" Property="local:TrayMotion.Scale" Value="1.02"/>
        </Trigger>
        <Trigger Property="IsPressed" Value="True">
-        <Setter TargetName="RootGrid" Property="local:TrayMotion.Scale" Value="0.88"/>
+        <Setter TargetName="RootGrid" Property="local:TrayMotion.Scale" Value="0.96"/>
        </Trigger>
       </ControlTemplate.Triggers>
      </ControlTemplate>
@@ -589,11 +589,11 @@
     <Border x:Name="SearchSurface" Grid.Column="1" Height="34" MaxWidth="340" HorizontalAlignment="Stretch" Margin="8,0,0,0"
      Background="#12FFFFFF" BorderBrush="#20FFFFFF" BorderThickness="1" CornerRadius="17">
      <Grid>
-      <local:TrayIcon Kind="Search" Width="13" Height="13" Margin="13,0,0,0" HorizontalAlignment="Left" VerticalAlignment="Center" Foreground="#70FFFFFF"/>
+      <local:TrayIcon Kind="Search" Width="13" Height="13" Margin="13,0,0,0" HorizontalAlignment="Left" VerticalAlignment="Center" Foreground="#8AFFFFFF"/>
       <Grid x:Name="SearchTextSurface" Margin="34,0,34,0">
-       <TextBox x:Name="SearchBox" Background="Transparent" BorderThickness="0" Foreground="White" CaretBrush="White" FontSize="12.5"
+       <TextBox x:Name="SearchBox" AutomationProperties.Name="Search clipboard" Background="Transparent" BorderThickness="0" Foreground="White" CaretBrush="White" FontSize="12.5"
         FontFamily="{StaticResource SFProDisplay}" FontWeight="Bold" VerticalContentAlignment="Center" TextChanged="Search_Changed"/>
-       <TextBlock x:Name="SearchHint" IsHitTestVisible="False" VerticalAlignment="Center" FontSize="12.5" FontFamily="{StaticResource SFProDisplay}" FontWeight="Bold" Foreground="#50FFFFFF"/>
+       <TextBlock x:Name="SearchHint" IsHitTestVisible="False" VerticalAlignment="Center" FontSize="12.5" FontFamily="{StaticResource SFProDisplay}" FontWeight="Bold" Foreground="#8AFFFFFF"/>
        <!-- Left Edge Black Fade -->
        <Border x:Name="SearchFadeLeft" Width="20" HorizontalAlignment="Left" IsHitTestVisible="False" Opacity="0">
         <Border.Background>
@@ -613,7 +613,7 @@
         </Border.Background>
        </Border>
       </Grid>
-      <Button x:Name="ClearSearchButton" Style="{StaticResource HeaderIconButton}" Visibility="Collapsed" HorizontalAlignment="Right" VerticalAlignment="Center"
+      <Button x:Name="ClearSearchButton" AutomationProperties.Name="Clear search" Style="{StaticResource HeaderIconButton}" Visibility="Collapsed" HorizontalAlignment="Right" VerticalAlignment="Center"
        Margin="2,0,4,0" Click="ClearSearch_Click">
        <Path Data="F0 M 3.05,1.65 L 7.0,5.6 L 10.95,1.65 A 1.0,1.0 0 0 1 12.35,3.05 L 8.4,7.0 L 12.35,10.95 A 1.0,1.0 0 0 1 10.95,12.35 L 7.0,8.4 L 3.05,12.35 A 1.0,1.0 0 0 1 1.65,10.95 L 5.6,7.0 L 1.65,3.05 A 1.0,1.0 0 0 1 3.05,1.65 Z" Fill="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" Width="14" Height="14" Stretch="Uniform" IsHitTestVisible="False"/>
       </Button>
@@ -840,7 +840,7 @@
            <Image Source="{Binding FilePreviewIcon}" Stretch="Uniform" RenderOptions.BitmapScalingMode="HighQuality"/>
           </Grid>
           <Border CornerRadius="4" Background="{Binding FileBadgeBackgroundBrush}" Padding="6,1.5" VerticalAlignment="Center">
-           <TextBlock x:Name="FileTypeTagText" Text="{Binding FileTypeTag}" FontSize="10" FontWeight="Bold" FontFamily="{StaticResource SFProDisplay}" Foreground="{x:Static svc:UiPalette.PrimaryBrush}"/>
+           <TextBlock x:Name="FileTypeTagText" Text="{Binding FileTypeTag}" FontSize="11" FontWeight="Bold" FontFamily="{StaticResource SFProDisplay}" Foreground="{x:Static svc:UiPalette.PrimaryBrush}"/>
           </Border>
           </StackPanel>
           <TextBlock x:Name="FileHeroName" Grid.Row="1" Text="{Binding Title}" ToolTip="{Binding Title}" FontFamily="{StaticResource SFProDisplay}" FontSize="11" LineHeight="14" Foreground="{x:Static svc:UiPalette.PrimaryBrush}" TextWrapping="Wrap" TextTrimming="CharacterEllipsis" TextAlignment="Center" VerticalAlignment="Center" MaxHeight="28" Margin="0,4,0,0"/>
@@ -884,7 +884,7 @@
           <Image Width="20" Height="20" Source="{Binding DisplaySourceIcon}" Stretch="Uniform" RenderOptions.BitmapScalingMode="HighQuality" ToolTip="{Binding Source}"/>
 
           <TextBlock x:Name="CardFooterSource" Grid.Column="1" Text="{Binding FooterSource}" ToolTip="{Binding Age}" FontFamily="{StaticResource SFProDisplay}" FontSize="11.5" FontWeight="SemiBold" Foreground="{x:Static svc:UiPalette.PrimaryBrush}" Margin="5,0,6,0" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
-          <TextBlock x:Name="CardFooterSize" Grid.Column="2" Text="{Binding Size}" FontSize="10.5" FontFamily="{StaticResource SFProDisplay}" FontWeight="Medium" Foreground="{x:Static svc:UiPalette.SecondaryBrush}" VerticalAlignment="Center"/>
+          <TextBlock x:Name="CardFooterSize" Grid.Column="2" Text="{Binding Size}" FontSize="11" FontFamily="{StaticResource SFProDisplay}" FontWeight="Medium" Foreground="{x:Static svc:UiPalette.SecondaryBrush}" VerticalAlignment="Center"><TextBlock.Style><Style TargetType="TextBlock"><Style.Triggers><DataTrigger Binding="{Binding Size}" Value="0 bytes"><Setter Property="Visibility" Value="Collapsed"/></DataTrigger></Style.Triggers></Style></TextBlock.Style></TextBlock>
          </Grid>
         </Border>
        </Grid>
@@ -894,7 +894,7 @@
         <Grid>
          <Border CornerRadius="6" ClipToBounds="True" SizeChanged="CardActionGlass_SizeChanged" IsHitTestVisible="False">
           <local:CardActionBackdrop Source="{Binding ElementName=CardContentGrid}">
-           <local:CardActionBackdrop.Effect><BlurEffect Radius="10" RenderingBias="Performance"/></local:CardActionBackdrop.Effect>
+           <local:CardActionBackdrop.Effect><BlurEffect Radius="0" RenderingBias="Performance"/></local:CardActionBackdrop.Effect>
           </local:CardActionBackdrop>
          </Border>
          <Border Background="#A6181818" CornerRadius="6" IsHitTestVisible="False"/>
@@ -1164,7 +1164,7 @@
        <DataTrigger Binding="{Binding Visibility, ElementName=ResetConfirmationPanel}" Value="Visible">
         <Setter Property="Background" Value="#FF111113"/>
         <Setter Property="BorderBrush" Value="#30FFFFFF"/>
-        <Setter Property="Padding" Value="18,10"/>
+        <Setter Property="Padding" Value="18,6"/>
         <Setter Property="MaxWidth" Value="500"/>
         <Setter Property="HorizontalAlignment" Value="Center"/>
         <Setter Property="VerticalAlignment" Value="Center"/>
@@ -1208,11 +1208,11 @@
         <RowDefinition Height="Auto"/>
        </Grid.RowDefinitions>
        <TextBlock x:Name="ResetConfirmationTitle" FontSize="16" FontWeight="Bold" FontFamily="{StaticResource SFProDisplay}" Foreground="White" TextWrapping="Wrap"/>
-       <TextBlock x:Name="ResetConfirmationHint" Grid.Row="1" TextWrapping="Wrap" FontSize="12.5" LineHeight="17" FontFamily="{StaticResource SFProDisplay}" FontWeight="Bold" Foreground="{StaticResource TrayMutedForeground}" Margin="0,4,0,8"/>
-       <Border Grid.Row="2" CornerRadius="{StaticResource TrayRadiusSmall}" Background="#12FFFFFF" BorderBrush="#25FFFFFF" BorderThickness="1" Height="32" Margin="0,0,0,8">
+       <TextBlock x:Name="ResetConfirmationHint" Grid.Row="1" TextWrapping="Wrap" FontSize="12.5" LineHeight="16" FontFamily="{StaticResource SFProDisplay}" FontWeight="Bold" Foreground="{StaticResource TrayMutedForeground}" Margin="0,2,0,6"/>
+       <Border Grid.Row="2" CornerRadius="{StaticResource TrayRadiusSmall}" Background="#12FFFFFF" BorderBrush="#25FFFFFF" BorderThickness="1" Height="30" Margin="0,0,0,6">
         <Grid Margin="12,0">
          <TextBox x:Name="ResetConfirmationBox" MaxLength="6" TextChanged="ResetConfirmation_Changed" Background="Transparent" BorderThickness="0" Foreground="White" CaretBrush="White" FontSize="12.5" FontFamily="{StaticResource SFProDisplay}" FontWeight="Bold" VerticalContentAlignment="Center"/>
-         <TextBlock Text="DELETE" IsHitTestVisible="False" VerticalAlignment="Center" FontSize="12.5" FontFamily="{StaticResource SFProDisplay}" FontWeight="Bold" Foreground="#40FFFFFF">
+         <TextBlock Text="DELETE" IsHitTestVisible="False" VerticalAlignment="Center" FontSize="12.5" FontFamily="{StaticResource SFProDisplay}" FontWeight="Bold" Foreground="#8AFFFFFF">
           <TextBlock.Style>
            <Style TargetType="TextBlock">
             <Setter Property="Visibility" Value="Collapsed"/>
@@ -1226,13 +1226,13 @@
          </TextBlock>
         </Grid>
        </Border>
-       <Grid Grid.Row="3" Margin="0,2,0,4">
+       <Grid Grid.Row="3" Margin="0">
         <Grid.ColumnDefinitions>
          <ColumnDefinition Width="1*"/>
          <ColumnDefinition Width="3*"/>
         </Grid.ColumnDefinitions>
-        <Button x:Name="ResetCloseButton" Style="{StaticResource TrayButton}" MinWidth="80" MinHeight="36" Margin="0,0,5,0" Click="CloseDetail_Click"/>
-        <Button x:Name="ResetPersonalButton" Grid.Column="1" Style="{StaticResource ResetDestructiveButtonStyle}" Visibility="Collapsed" IsEnabled="False" MinHeight="36" Margin="5,0,0,0" Padding="12,5" Click="ResetPersonal_Click">
+        <Button x:Name="ResetCloseButton" Style="{StaticResource TrayButton}" MinWidth="80" MinHeight="32" Margin="0,0,5,0" Click="CloseDetail_Click"/>
+        <Button x:Name="ResetPersonalButton" Grid.Column="1" Style="{StaticResource ResetDestructiveButtonStyle}" Visibility="Collapsed" IsEnabled="False" MinHeight="32" Margin="5,0,0,0" Padding="12,4" Click="ResetPersonal_Click">
          <TextBlock x:Name="ResetPersonalLabel" TextWrapping="Wrap" TextAlignment="Center" FontSize="12.5" FontFamily="{StaticResource SFProDisplay}" FontWeight="Bold"/>
         </Button>
        </Grid>

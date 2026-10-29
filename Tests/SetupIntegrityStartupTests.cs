@@ -36,14 +36,14 @@ public sealed class SetupIntegrityStartupTests
             SharedStaTestRunner.Run(() => dispatcherResponded = true);
             Assert.True(dispatcherResponded);
 
-            timeout.Cancel();
+            await timeout.CancelAsync();
             await Assert.ThrowsAnyAsync<OperationCanceledException>(
                 () => check.WaitAsync(TimeSpan.FromSeconds(5)));
             Assert.True(handler.RequestWasCancelled);
         }
         finally
         {
-            timeout.Cancel();
+            await timeout.CancelAsync();
             File.Delete(file);
         }
     }

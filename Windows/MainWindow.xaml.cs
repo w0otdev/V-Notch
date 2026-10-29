@@ -780,9 +780,9 @@ public partial class MainWindow : Window
         if (_cleanedUp || snapshot != _transitionCoordinator.Snapshot) return;
         if (snapshot.TargetView == VNotch.Models.NotchView.Compact) ResetClipboardDropFeedback();
         _isCameraView = snapshot.CurrentView == VNotch.Models.NotchView.Camera;
-        _localAudioView = snapshot.CurrentView == VNotch.Models.NotchView.AudioMixer;
-        _localSecondaryView = snapshot.CurrentView == VNotch.Models.NotchView.Secondary;
-        _localTimerView = snapshot.CurrentView == VNotch.Models.NotchView.Timer;
+        _isAudioView = snapshot.CurrentView == VNotch.Models.NotchView.AudioMixer;
+        _isSecondaryView = snapshot.CurrentView == VNotch.Models.NotchView.Secondary;
+        _isTimerView = snapshot.CurrentView == VNotch.Models.NotchView.Timer;
         UpdateGlassMotionState();
         SyncPrivacyDotVisibilityForCurrentView();
         UpdateSpotifyCanvasPresentationContext();
@@ -1152,6 +1152,8 @@ public partial class MainWindow : Window
         ScheduleFullscreenRecheck();
 
         if (!IsEffectivelyNotchVisible) return;
+
+        ScheduleDesktopLayerDemotionIfIdle();
 
         var processName = TryGetProcessName(hwnd);
         if (IsMyDockFinder(processName))
@@ -1962,7 +1964,8 @@ public partial class MainWindow : Window
         try
         {
 #pragma warning disable S4036 // URI scheme is launched via Windows shell protocol
-            System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo("ms-settings:batterysaver") { UseShellExecute = true });
+            string explorerPath = System.IO.Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Windows), "explorer.exe");
+            System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(explorerPath, "ms-settings:batterysaver") { UseShellExecute = false });
 #pragma warning restore S4036
         }
         catch (Exception ex)
@@ -2085,7 +2088,7 @@ public partial class MainWindow : Window
 
     private void UpdateTimer_Tick(object? sender, EventArgs e)
     {
-        if (_isMusicExpanded) SyncVolumeFromActiveSession();
+        if (_isMusicExpanded) _ = SyncVolumeFromActiveSession();
         EnsureTopmost();
     }
 
@@ -2276,6 +2279,7 @@ public partial class MainWindow : Window
         }
         catch (InvalidOperationException)
         {
+            // Intentionally ignored.
         }
         return new Point(0.5, 1.0);
     }

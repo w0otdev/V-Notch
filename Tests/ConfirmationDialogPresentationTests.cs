@@ -49,7 +49,7 @@ public sealed class ConfirmationDialogPresentationTests
             }
             if (danger) Assert.Same(dialog.FindResource("DangerButton"), dialog.ConfirmButton.Style);
             dialog.Show();
-            await WpfFrameWaiter.UntilAsync(() => dialog.DialogCard.Opacity == 1 && dialog.CardScale.ScaleX == 1 && dialog.CardTranslate.Y == 0, "confirmation dialog entrance", ct);
+            await WpfFrameWaiter.UntilAsync(() => Math.Abs(dialog.DialogCard.Opacity - 1) < 1e-6 && Math.Abs(dialog.CardScale.ScaleX - 1) < 1e-6 && Math.Abs(dialog.CardTranslate.Y) < 1e-6, "confirmation dialog entrance", ct);
             Invoke(dialog, "CancelButton_Click", dialog, new RoutedEventArgs());
             await WpfFrameWaiter.UntilAsync(() => !dialog.IsVisible, "confirmation dialog dismissal", ct);
             Assert.False(dialog.Confirmed);
@@ -75,7 +75,7 @@ public sealed class ConfirmationDialogPresentationTests
             Assert.Equal(Loc.Get("dialog.confirm.title"), dialog.TitleText.Text);
             Assert.Equal(Loc.Get("dialog.confirm"), dialog.ConfirmButton.Content);
             dialog.Show();
-            await WpfFrameWaiter.UntilAsync(() => dialog.DialogCard.Opacity == 1, "confirmation ready", ct);
+            await WpfFrameWaiter.UntilAsync(() => Math.Abs(dialog.DialogCard.Opacity - 1) < 1e-6, "confirmation ready", ct);
             if (action is "enter" or "escape")
             {
                 var args = new KeyEventArgs(Keyboard.PrimaryDevice, PresentationSource.FromVisual(dialog)!, Environment.TickCount, action == "enter" ? Key.Enter : Key.Escape) { RoutedEvent = Keyboard.KeyDownEvent };

@@ -101,6 +101,7 @@ public sealed class LiquidGlassRefractionEffect : ShaderEffect
         UpdateShaderValue(GlowBiasProperty);
         UpdateShaderValue(GlowEdge0Property);
         UpdateShaderValue(GlowEdge1Property);
+        UpdateShaderValue(BlurRadiusProperty);
         UpdateShaderValue(ChromaProperty);
         UpdateShaderValue(SatFactorProperty);
         UpdateShaderValue(BrightAddProperty);
@@ -149,7 +150,9 @@ public sealed class LiquidGlassRefractionEffect : ShaderEffect
     public static readonly DependencyProperty GlowWeightProperty = Reg("GlowWeight", 15, 0.30);
     public static readonly DependencyProperty GlowBiasProperty = Reg("GlowBias", 16, 0.0);
     public static readonly DependencyProperty GlowEdge0Property = Reg("GlowEdge0", 17, 0.06);
-    public static readonly DependencyProperty GlowEdge1Property = Reg("GlowEdge1", 18, 0.0);
+    public static readonly DependencyProperty GlowEdge1Property =
+        DependencyProperty.Register("GlowEdge1", typeof(double), typeof(LiquidGlassRefractionEffect), new UIPropertyMetadata(0.0));
+    public static readonly DependencyProperty BlurRadiusProperty = Reg("BlurRadius", 18, 0.0);
 
     public static readonly DependencyProperty ChromaProperty = Reg("Chroma", 19, 0.35);
     public static readonly DependencyProperty SatFactorProperty = Reg("SatFactor", 20, 1.0);
@@ -186,6 +189,7 @@ public sealed class LiquidGlassRefractionEffect : ShaderEffect
     public double GlowBias { get => (double)GetValue(GlowBiasProperty); set => SetValue(GlowBiasProperty, value); }
     public double GlowEdge0 { get => (double)GetValue(GlowEdge0Property); set => SetValue(GlowEdge0Property, value); }
     public double GlowEdge1 { get => (double)GetValue(GlowEdge1Property); set => SetValue(GlowEdge1Property, value); }
+    public double BlurRadius { get => (double)GetValue(BlurRadiusProperty); set => SetValue(BlurRadiusProperty, value); }
 
     public double Chroma { get => (double)GetValue(ChromaProperty); set => SetValue(ChromaProperty, value); }
     public double SatFactor { get => (double)GetValue(SatFactorProperty); set => SetValue(SatFactorProperty, value); }

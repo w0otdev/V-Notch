@@ -47,6 +47,10 @@ internal static class BackgroundTestDesktop
     {
         public DesktopHandle() : base(ownsHandle: true) { }
         protected override bool ReleaseHandle() => CloseDesktop(handle);
+
+        [DllImport("user32.dll", SetLastError = true)]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        private static extern bool CloseDesktop(IntPtr desktop);
     }
 
     [DllImport("user32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
@@ -56,8 +60,4 @@ internal static class BackgroundTestDesktop
     [DllImport("user32.dll", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]
     private static extern bool SetThreadDesktop(DesktopHandle desktop);
-
-    [DllImport("user32.dll", SetLastError = true)]
-    [return: MarshalAs(UnmanagedType.Bool)]
-    private static extern bool CloseDesktop(IntPtr desktop);
 }

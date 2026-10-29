@@ -77,7 +77,7 @@ public sealed class SettingsServiceAsyncTests : IDisposable
             await saveTask;
 
             Assert.True(File.Exists(tempFile));
-            var raw = File.ReadAllText(tempFile);
+            var raw = await File.ReadAllTextAsync(tempFile);
             Assert.Contains("777", raw);
 
             await Assert.ThrowsAsync<ObjectDisposedException>(() => service.SaveAsync(new NotchSettings { Width = 888 }));
@@ -130,7 +130,7 @@ public sealed class SettingsServiceAsyncTests : IDisposable
             await service.DisposeAsync();
 
             Assert.True(File.Exists(tempFile));
-            var raw = File.ReadAllText(tempFile);
+            var raw = await File.ReadAllTextAsync(tempFile);
             Assert.NotNull(raw);
         }
         finally

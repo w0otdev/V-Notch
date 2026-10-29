@@ -20,7 +20,7 @@ public sealed class CalculatorProviderTests
         Assert.True(CalculatorProvider.TryEvaluate(query, out SpotlightSearchItem? item));
 
         Assert.NotNull(item);
-        Assert.Equal(SpotlightResultKind.Calculation, item!.Kind);
+        Assert.Equal(SpotlightResultKind.Calculation, item.Kind);
         Assert.Equal(expected, double.Parse(item.Title, NumberStyles.Float, CultureInfo.CurrentCulture));
         Assert.Equal(item.Title, item.Target);
         Assert.Equal(CalculatorProvider.ResultScore, item.Score);

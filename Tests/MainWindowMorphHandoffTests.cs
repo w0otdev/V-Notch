@@ -44,7 +44,7 @@ public sealed class MainWindowMorphHandoffTests
             if (!reducedMotion && milliseconds > 0)
             {
                 Assert.IsType<BlurEffect>(window.SpotlightReturnContentHost.Effect);
-                await WpfFrameWaiter.UntilAsync(() => ((BlurEffect)window.SpotlightReturnContentHost.Effect).Radius == 0 && window.SpotlightReturnContentHost.Opacity == 1, "Spotlight return content sharpening", ct);
+                await WpfFrameWaiter.UntilAsync(() => Math.Abs(((BlurEffect)window.SpotlightReturnContentHost.Effect).Radius) < 1e-6 && Math.Abs(window.SpotlightReturnContentHost.Opacity - 1) < 1e-6, "Spotlight return content sharpening", ct);
             }
             window.SetSpotlightMorphActive(false);
             window.SetSpotlightMorphSessionActive(false);
@@ -129,5 +129,5 @@ public sealed class MainWindowMorphHandoffTests
 
     private static GreetingAcceptanceTests.MainWindowFixture Create() => new("en", false, settings => { settings.EnableLocalOnlyMode = true; settings.DisableMouseLeaveAutoClose = true; }, services => services.AddSingleton<IMediaDetectionService>(new FakeMediaDetectionService()));
     private static T Get<T>(MainWindow window, string name) => (T)typeof(MainWindow).GetField(name, Private)!.GetValue(window)!;
-    private static object? Invoke(MainWindow window, string name, params object?[] arguments) => typeof(MainWindow).GetMethod(name, Private)!.Invoke(window, arguments);
+    private static void Invoke(MainWindow window, string name, params object?[] arguments) => typeof(MainWindow).GetMethod(name, Private)!.Invoke(window, arguments);
 }

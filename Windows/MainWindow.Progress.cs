@@ -18,17 +18,9 @@ public partial class MainWindow
     private DateTime _suppressOutsideClickUntilUtc = DateTime.MinValue;
     private DateTime _suppressHoverCollapseUntilUtc = DateTime.MinValue;
     private ProgressEngine _progressEngine => MediaPlayback.Progress;
-    private double _progressDisplayRatio { get => MediaPlayback.DisplayRatio; set => MediaPlayback.DisplayRatio = value; }
-    private int _lastDisplayedSecond { get => MediaPlayback.LastDisplayedSecond; set => MediaPlayback.LastDisplayedSecond = value; }
-    private void StopSpringRenderLoop() => MediaPlayback.StopSpringRenderLoop();
-    private void StopCatchUpAnimation() => MediaPlayback.StopCatchUpAnimation();
-    private void StopRewindTextAnimation() => MediaPlayback.StopRewindTextAnimation();
     private void StartProgressCatchUpAnimation() => MediaPlayback.StartProgressCatchUpAnimation();
     private void RenderProgressBar() => MediaPlayback.RenderProgressBar();
-    private void ResetProgressUI() => MediaPlayback.ResetProgressUI();
     private void UpdateProgressTracking(MediaInfo info) => MediaPlayback.UpdateProgressTracking(info);
-    private void AnimateSeekProgressTo(double ratio) => MediaPlayback.AnimateSeekProgressTo(ratio);
-    private Task SeekToPosition(TimeSpan position) => MediaPlayback.SeekToPosition(position);
 
     private void LyricsTimer_Tick(object? sender, EventArgs e)
     {
@@ -152,25 +144,11 @@ public partial class MainWindow
         return IsScreenPointInsideNotchVisual(new InputMonitorService.POINT { x = cursorPt.X, y = cursorPt.Y });
     }
 
-    private bool IsCursorInsideWindow()
-    {
-        if (_hwnd == IntPtr.Zero) return false;
-        if (!GetCursorPos(out var cursorPt)) return false;
-        if (!GetWindowRect(_hwnd, out var rc)) return false;
-        return cursorPt.X >= rc.Left && cursorPt.X <= rc.Right &&
-               cursorPt.Y >= rc.Top && cursorPt.Y <= rc.Bottom;
-    }
 
     private void UpdateProgressTimerState()
     {
         bool isExpanded = _isExpanded || _isMusicExpanded;
 
-        bool hasTimeline = _currentMediaInfo != null &&
-            (_currentMediaInfo.HasTimeline ||
-             _currentMediaInfo.IsIndeterminate ||
-             _currentMediaInfo.Duration.TotalSeconds > 0 ||
-             _currentMediaInfo.IsAnyMediaPlaying);
-        bool shouldRunProgress = isExpanded && hasTimeline;
         bool shouldRunLyrics = _isExpanded && !_isMusicExpanded;
         bool shouldRunVolumeSync = _isExpanded && _isMusicExpanded;
 

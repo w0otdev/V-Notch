@@ -47,7 +47,9 @@ internal sealed partial class InteractionSoundPlayer : IDisposable
     [LibraryImport("VNotch.Native.dll")]
     private static partial int vn_interaction_stop();
 
+#pragma warning disable S1144 // Used in fixed-size struct attribute
     private const int CueCount = 10;
+#pragma warning restore S1144
     internal const int VariantCount = 6;
     private VnInteractionGateState _gate;
     private float _volume = .55f;
@@ -161,9 +163,9 @@ internal static partial class InteractionSounds
     {
         if (!CanPlay(sender) || e.OriginalSource is not ButtonBase { IsEnabled: true } button) return;
         var cue = ClassifyAction(button);
-        Player.Play(cue == InteractionCue.Click && button is ToggleButton toggle
-            ? toggle.IsChecked == true ? InteractionCue.ToggleOn : InteractionCue.ToggleOff
-            : cue);
+        if (cue == InteractionCue.Click && button is ToggleButton toggle)
+            cue = toggle.IsChecked == true ? InteractionCue.ToggleOn : InteractionCue.ToggleOff;
+        Player.Play(cue);
     }
 
     private static void OnMenuClick(object sender, RoutedEventArgs e)
@@ -171,8 +173,12 @@ internal static partial class InteractionSounds
         if (ReferenceEquals(sender, e.OriginalSource) && sender is MenuItem { IsEnabled: true, HasItems: false } menu)
         {
             var cue = ClassifyAction(menu);
-            Player.Play(menu.IsCheckable ? menu.IsChecked ? InteractionCue.ToggleOn : InteractionCue.ToggleOff
-                : cue == InteractionCue.Click ? InteractionCue.Menu : cue);
+            InteractionCue resolvedCue;
+            if (menu.IsCheckable)
+                resolvedCue = menu.IsChecked ? InteractionCue.ToggleOn : InteractionCue.ToggleOff;
+            else
+                resolvedCue = cue == InteractionCue.Click ? InteractionCue.Menu : cue;
+            Player.Play(resolvedCue);
         }
     }
 
@@ -186,7 +192,11 @@ internal static partial class InteractionSounds
             // Standard controls have semantic events; editable content stays quiet.
             if (node is ButtonBase or MenuItem or Slider or TextBoxBase or PasswordBox or Thumb) return;
             // ComboBoxItem and TabItem fire OnSelection when their selection actually changes; only ListBoxItem needs direct pointer sound.
-            if (node is ListBoxItem) { if (e.ChangedButton == MouseButton.Left) Player.Play(InteractionCue.Select); return; }
+            if (node is ListBoxItem)
+            {
+                if (e.ChangedButton == MouseButton.Left) Player.Play(InteractionCue.Select);
+                return;
+            }
             if (node is ComboBoxItem or TabItem or Selector) return;
             if (node is FrameworkElement { IsEnabled: false }) return;
             if (node is FrameworkElement element)

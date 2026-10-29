@@ -255,10 +255,13 @@ public static partial class SettingsMigrator
         settings.SettingsVersion = CurrentVersion;
 
         bool hasAccepted = SpotifyCanvasConsent.HasAccepted(settings);
+        byte acceptedFlag = hasAccepted ? (byte)1 : (byte)0;
+        byte enableFlag = settings.EnableSpotifyCanvas ? (byte)1 : (byte)0;
+        byte onlineFlag = settings.AllowOnlineCanvas ? (byte)1 : (byte)0;
         bool shouldRevoke = vn_settings_migrator_should_revoke_canvas_consent(
-            hasAccepted ? (byte)1 : (byte)0,
-            settings.EnableSpotifyCanvas ? (byte)1 : (byte)0,
-            settings.AllowOnlineCanvas ? (byte)1 : (byte)0,
+            acceptedFlag,
+            enableFlag,
+            onlineFlag,
             settings.SpotifyCanvasConsentVersion,
             out byte outRevoke) == 0
             ? outRevoke != 0

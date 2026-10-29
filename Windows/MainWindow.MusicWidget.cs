@@ -216,7 +216,6 @@ public partial class MainWindow
 
     private void MediaWidgetContainer_SizeChanged(object sender, SizeChangedEventArgs e) => MediaPlayback.RefreshMediaMarquee();
 
-    private double GetVisibleMediaTextWidth(double fallbackWidth) => MediaPlayback.GetVisibleMediaTextWidth(fallbackWidth);
 
     #endregion
 }

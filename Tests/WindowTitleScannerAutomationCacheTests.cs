@@ -99,7 +99,7 @@ public sealed class WindowTitleScannerAutomationCacheTests
             IntPtr hwnd = new WindowInteropHelper(window).Handle;
             var snapshot = Task.Run(() => WindowTitleScanner.FindCachedTabs(AutomationElement.FromHandle(hwnd)));
             PumpUntilComplete(snapshot);
-            tab = Assert.Single(snapshot.GetAwaiter().GetResult().Cast<AutomationElement>());
+            tab = Assert.Single(snapshot.GetAwaiter().GetResult());
         }
         finally { window.Close(); }
         Assert.Equal("https://open.spotify.com/track/child", WindowTitleScanner.TryReadTabUrl(tab));

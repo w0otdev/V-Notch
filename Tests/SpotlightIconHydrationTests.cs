@@ -24,7 +24,7 @@ public sealed class SpotlightIconHydrationTests : IDisposable
 
     public void Dispose()
     {
-        try { Directory.Delete(_tempDir, recursive: true); } catch { }
+        try { Directory.Delete(_tempDir, recursive: true); } catch { /* cleanup best-effort */ }
     }
 
     [Fact]

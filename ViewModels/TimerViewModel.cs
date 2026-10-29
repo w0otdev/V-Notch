@@ -89,7 +89,9 @@ public partial class TimerViewModel : ObservableObject
         return true;
     }
 
+#pragma warning disable S2325
     public unsafe bool TryParseCustomTime(string? input, out TimeSpan result)
+#pragma warning restore S2325
     {
         result = TimeSpan.Zero;
         if (string.IsNullOrWhiteSpace(input)) return false;

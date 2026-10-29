@@ -9,7 +9,7 @@ using VNotch.Services.Spotlight;
 
 namespace VNotch.ViewModels;
 
-internal partial class SpotlightViewModel : ObservableObject, IDisposable
+internal sealed partial class SpotlightViewModel : ObservableObject, IDisposable
 {
     private const int ResultLimit = 10;
 
@@ -80,7 +80,7 @@ internal partial class SpotlightViewModel : ObservableObject, IDisposable
                 Publish(pinned.Take(ResultLimit).ToArray(), markNoResults: false);
                 StartIconHydration(Results.ToArray(), generation, cancellationToken);
             }
-            catch (OperationCanceledException) { }
+            catch (OperationCanceledException) { /* Expected when query changes. */ }
             return;
         }
 
@@ -105,6 +105,7 @@ internal partial class SpotlightViewModel : ObservableObject, IDisposable
         }
         catch (OperationCanceledException)
         {
+            // Expected when query is superseded.
         }
         catch (Exception ex)
         {
@@ -163,12 +164,10 @@ internal partial class SpotlightViewModel : ObservableObject, IDisposable
         try
         {
             ApplyDiff(ordered);
+            var fallbackResult = Results.Count == 0 ? null : Results[Math.Clamp(selectedIndex, 0, Results.Count - 1)];
             SelectedResult = selectedId == null
                 ? Results.FirstOrDefault()
-                : Results.FirstOrDefault(result => result.Id == selectedId)
-                  ?? (Results.Count == 0
-                      ? null
-                      : Results[Math.Clamp(selectedIndex, 0, Results.Count - 1)]);
+                : Results.FirstOrDefault(result => result.Id == selectedId) ?? fallbackResult;
         }
         finally { _publishingSelection = false; }
         if (markNoResults) HasNoResults = Results.Count == 0;

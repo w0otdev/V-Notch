@@ -36,7 +36,6 @@ public static partial class CrashReporter
     private static readonly DateTime _processStartTime = DateTime.UtcNow;
     private static string _crashLogPath = string.Empty;
     private static volatile bool _initialized;
-    private const long MaxCrashLogSizeBytes = 2 * 1024 * 1024; // 2 MB
     public const string CrashLogFileName = "vnotch-crash.log";
 
     public static string CrashLogPath

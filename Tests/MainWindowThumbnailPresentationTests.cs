@@ -147,7 +147,7 @@ public sealed class MainWindowThumbnailPresentationTests
         window.CompactThumbnail.Source = Bitmap("white-mat-artwork.png");
         window.CompactThumbnailBorder.Visibility = Visibility.Visible;
         Invoke(window, "PlayThumbnailRevealAnimation");
-        await WpfFrameWaiter.UntilAsync(() => window.CompactThumbnailScale.ScaleX == 1 && window.CompactThumbnailBorder.Opacity == 1, "compact thumbnail reveal", ct);
+        await WpfFrameWaiter.UntilAsync(() => Math.Abs(window.CompactThumbnailScale.ScaleX - 1) < 1e-6 && Math.Abs(window.CompactThumbnailBorder.Opacity - 1) < 1e-6, "compact thumbnail reveal", ct);
         int exits = 0;
         Invoke(window, "PlayCompactThumbnailExitAnimation", (Action)(() => exits++));
         await WpfFrameWaiter.UntilAsync(() => exits == 1, "compact thumbnail exit", ct);
@@ -155,7 +155,7 @@ public sealed class MainWindowThumbnailPresentationTests
         window.CompactThumbnailBorder.Visibility = Visibility.Visible;
         Invoke(window, "PlayCompactThumbnailExitAnimation", (Action)(() => exits++));
         Invoke(window, "PlayThumbnailRevealAnimation");
-        await WpfFrameWaiter.UntilAsync(() => window.CompactThumbnailScale.ScaleX == 1 && window.CompactThumbnailBorder.Opacity == 1, "compact reveal supersedes exit", ct);
+        await WpfFrameWaiter.UntilAsync(() => Math.Abs(window.CompactThumbnailScale.ScaleX - 1) < 1e-6 && Math.Abs(window.CompactThumbnailBorder.Opacity - 1) < 1e-6, "compact reveal supersedes exit", ct);
         Assert.Equal(1, exits);
         Assert.Equal(Visibility.Visible, window.CompactThumbnailBorder.Visibility);
     });
@@ -176,5 +176,5 @@ public sealed class MainWindowThumbnailPresentationTests
     private static T Field<T>(MainWindow window, string name) => (T)typeof(MainWindow).GetField(name, Private)!.GetValue(window)!;
     private static T Property<T>(MainWindow window, string name) => (T)typeof(MainWindow).GetProperty(name, Private)!.GetValue(window)!;
     private static void Set(MainWindow window, string name, object value) => typeof(MainWindow).GetField(name, Private)!.SetValue(window, value);
-    private static object? Invoke(MainWindow window, string name, params object?[] args) => ReflectionInvoker.InvokeWithDefaults(window, typeof(MainWindow).GetMethod(name, Private)!, args);
+    private static void Invoke(MainWindow window, string name, params object?[] args) => ReflectionInvoker.InvokeWithDefaults(window, typeof(MainWindow).GetMethod(name, Private)!, args);
 }

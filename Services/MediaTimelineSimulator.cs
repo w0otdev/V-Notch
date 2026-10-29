@@ -100,11 +100,8 @@ public partial class MediaTimelineSimulator
 
     private void ApplyRecoveredMetadata(MediaInfo info, bool atEndStuck)
     {
-        if (atEndStuck)
-        {
-            if (MediaTimelinePolicy.HasFiniteDuration(RecoveredDuration))
-                info.Duration = RecoveredDuration;
-        }
+        if (atEndStuck && MediaTimelinePolicy.HasFiniteDuration(RecoveredDuration))
+            info.Duration = RecoveredDuration;
         if (info.Thumbnail == null && RecoveredThumbnail != null)
             info.Thumbnail = RecoveredThumbnail;
     }

@@ -19,8 +19,8 @@ internal sealed partial class SpotlightController : ISpotlightController
 {
     private const string LogTag = "SPOTLIGHT-HOTKEY";
     private const int HotkeyId = 0x564E;
-    private const uint EscapeVirtualKey = 0x1B;
-    private const uint StaleFallbackKeyDownMs = 500;
+
+
     private readonly Func<SpotlightWindow> _windowFactory;
     private SpotlightWindow? _window;
     private Window? _host;

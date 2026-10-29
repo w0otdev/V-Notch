@@ -22,7 +22,7 @@ public sealed class ClipboardTrayLoadTests
         using var tray = new ClipboardTray();
         var entries = Enumerable.Range(0, 20_000).Select(index => new ClipboardEntry
         { Title = $"Project document {index}.pdf", Kind = ClipboardKind.File }).ToArray();
-        Invoke(tray, "ReconcileCards", (object)entries);
+        Invoke(tray, "ReconcilePreparedCards", (object)entries, null);
         var window = new BackgroundWindow { Content = tray, Width = 780, Height = 300 };
         try
         {
@@ -38,7 +38,7 @@ public sealed class ClipboardTrayLoadTests
             Assert.Empty(Field<System.Collections.IDictionary>(tray, "_thumbnailLoads"));
 
             var latest = entries.Append(new ClipboardEntry { Kind = ClipboardKind.File, Title = "New arrival.pdf" }).ToArray();
-            Invoke(tray, "ReconcileCards", (object)latest);
+            Invoke(tray, "ReconcilePreparedCards", (object)latest, null);
             SetField(tray, "_pendingSelectAll", ("All", ""));
             Invoke(tray, "CompletePendingSelectAll");
             Assert.Equal(latest.Length, list.SelectedItems.Count);

@@ -84,7 +84,7 @@ public sealed class MainWindowVolumeInteractionTests
         await WpfFrameWaiter.UntilAsync(() => media.LastSessionVolume.HasValue, "session volume wheel write", ct);
         Assert.Equal(available ? .75f : .35f, media.LastSessionVolume!.Value, 4);
         Assert.True(Get<bool>(window, "_isVolumeIndicatorActive"));
-        await WpfFrameWaiter.UntilAsync(() => window.VolumeIndicatorContainer.Opacity == 1, "volume indicator entrance", ct);
+        await WpfFrameWaiter.UntilAsync(() => Math.Abs(window.VolumeIndicatorContainer.Opacity - 1) < 1e-6, "volume indicator entrance", ct);
         Invoke(window, "DismissVolumeIndicatorImmediate", true, true);
         Assert.True(Get<bool>(window, "_isVolumeIndicatorExiting"));
         Assert.False(window.VolumeIndicatorContainer.IsHitTestVisible);
@@ -131,7 +131,7 @@ public sealed class MainWindowVolumeInteractionTests
     {
         var started = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         using var release = new ManualResetEventSlim();
-        var media = new FakeMediaDetectionService { ReadSessionVolume = () => { started.TrySetResult(); if (!release.Wait(TimeSpan.FromSeconds(5))) throw new TimeoutException(); return (true, .9f, false); } };
+        var media = new FakeMediaDetectionService { ReadSessionVolume = () => { started.TrySetResult(); if (!release.Wait(TimeSpan.FromSeconds(5))) { throw new TimeoutException(); } return (true, .9f, false); } };
         await using var fixture = Create(media);
         var window = fixture.Window;
         try
@@ -164,7 +164,7 @@ public sealed class MainWindowVolumeInteractionTests
             Invoke(window, "VolumeIcon_MouseDown", window, args);
             Assert.True(args.Handled);
         }
-        await WpfFrameWaiter.UntilAsync(() => media.SessionMuteToggleCount == 3 && (!accepted || Get<float>(window, "_currentVolume") == .4f), "serialized session mute clicks", ct);
+        await WpfFrameWaiter.UntilAsync(() => media.SessionMuteToggleCount == 3 && (!accepted || Math.Abs(Get<float>(window, "_currentVolume") - .4f) < 1e-4f), "serialized session mute clicks", ct);
         Assert.True(Get<int>(window, "_volumeInteractionVersion") >= version + 3);
         await WpfFrameWaiter.UntilAsync(() => !Get<bool>(window, "_volumeReadInFlight"), "mute refresh completion", ct);
     });

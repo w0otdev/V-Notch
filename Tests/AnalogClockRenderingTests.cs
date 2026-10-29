@@ -24,7 +24,7 @@ public sealed class AnalogClockRenderingTests
             var current = new AnalogClock();
             var oldVisual = new DrawingVisual();
             var newVisual = new DrawingVisual();
-            var time = new DateTime(2026, 9, 19, 23, 59, 59, 900);
+            var time = new DateTime(2026, 9, 19, 23, 59, 59, 900, DateTimeKind.Local);
             Assert.True(current.UpdateFrame(time));
             foreach (bool showDate in new[] { true, false, true })
                 foreach (double size in new[] { 92.0, 117.5, 184.0, 92.0 })

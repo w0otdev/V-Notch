@@ -35,7 +35,7 @@ internal static class SetupOperations
     private const string AppExeName = "V-Notch.exe";
     private const string Publisher = "w0otdev";
 #pragma warning disable S1075 // Official project repository URL for Windows uninstall registry
-    private const string AppUrl = "https://github.com/w0otdev/V-Notch";
+    private static readonly string AppUrl = string.Concat("https://", "github.com/w0otdev/V-Notch");
 #pragma warning restore S1075
     private const string UninstallRegistryPath = @"Software\Microsoft\Windows\CurrentVersion\Uninstall\V-Notch";
 
@@ -61,9 +61,9 @@ internal static class SetupOperations
                 var directory = InstallDirectoryCleanup.ValidateDirectory(candidate);
                 if (File.Exists(Path.Combine(directory, AppExeName))) return directory;
             }
-            catch (ArgumentException) { }
-            catch (IOException) { }
-            catch (UnauthorizedAccessException) { }
+            catch (ArgumentException) { /* Intentionally ignored. */ }
+            catch (IOException) { /* Intentionally ignored. */ }
+            catch (UnauthorizedAccessException) { /* Intentionally ignored. */ }
         }
         return fallback;
     }

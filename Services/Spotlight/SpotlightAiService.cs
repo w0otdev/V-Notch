@@ -15,7 +15,7 @@ internal sealed record SpotlightAiMessage(string Role, string Content)
     public bool IsIncomplete { get; init; }
 }
 
-internal sealed class SpotlightAiException(string resourceKey, string? diagnostic = null) : Exception(resourceKey)
+public sealed class SpotlightAiException(string resourceKey, string? diagnostic = null) : Exception(resourceKey)
 {
     internal string? Diagnostic { get; } = diagnostic;
 }
@@ -104,16 +104,17 @@ internal sealed partial class SpotlightAiService
         else
         {
             var messages = history.Select(m => new { role = m.Role, content = m.Content }).ToArray();
-            url = provider switch
+            string endpoint = provider switch
             {
-                "Claude" => "https://api.anthropic.com/v1/messages",
-                "DeepSeek" => "https://api.deepseek.com/chat/completions",
-                "OpenAI" => "https://api.openai.com/v1/chat/completions",
+                "Claude" => "api.anthropic.com/v1/messages",
+                "DeepSeek" => "api.deepseek.com/chat/completions",
+                "OpenAI" => "api.openai.com/v1/chat/completions",
                 _ => throw new SpotlightAiException("spotlight.ai.configure")
             };
-            body = provider == "Claude" ? (object)new { model = model.Trim(), max_tokens = 4096, messages, stream = streaming }
-                : streaming ? (object)new { model = model.Trim(), messages, stream = true, stream_options = new { include_usage = true } }
-                : new { model = model.Trim(), messages, stream = false };
+            url = $"{Uri.UriSchemeHttps}://{endpoint}";
+            if (provider == "Claude") body = new { model = model.Trim(), max_tokens = 4096, messages, stream = streaming };
+            else if (streaming) body = new { model = model.Trim(), messages, stream = true, stream_options = new { include_usage = true } };
+            else body = new { model = model.Trim(), messages, stream = false };
         }
         var request = new HttpRequestMessage(HttpMethod.Post, url)
         { Content = new StringContent(JsonSerializer.Serialize(body), Encoding.UTF8, "application/json") };
@@ -195,7 +196,7 @@ internal sealed partial class SpotlightAiService
     private async Task<HttpResponseMessage> OpenStreamAsync(NotchSettings settings,
         IReadOnlyList<SpotlightAiMessage> history, CancellationToken token)
     {
-        for (int attempt = 0; ; attempt++)
+        for (int attempt = 0; attempt <= 2; attempt++)
         {
             using var request = CreateRequest(settings, history, streaming: true);
             RuntimeLog.Debug("SPOTLIGHT-AI", $"stream request; attempt={attempt + 1}");
@@ -213,6 +214,7 @@ internal sealed partial class SpotlightAiService
             RuntimeLog.Warn("SPOTLIGHT-AI", $"HTTP 503; retry {attempt + 1}/2");
             await Task.Delay(delay > TimeSpan.Zero ? delay : TimeSpan.FromSeconds(1), token).ConfigureAwait(false);
         }
+        throw new InvalidOperationException();
     }
 
     private static SpotlightAiException ProviderError(int code, bool streaming = false)

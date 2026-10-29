@@ -343,20 +343,14 @@ public sealed class LiquidGlassPacingTests
 
                 using var idleWake = new AutoResetEvent(false);
                 SafeWaitHandle? timer = null;
-                IntPtr[]? handles = null;
+                WaitHandle[]? handles = null;
 
                 if (isOptimized)
                 {
                     timer = CreateHighResolutionTimer();
                     if (timer != null && !timer.IsInvalid)
                     {
-#pragma warning disable S3869 // Benchmark mirrors Win32 WaitForMultipleObjects handle array in LiquidGlassController
-                        handles = new IntPtr[2]
-                        {
-                            idleWake.SafeWaitHandle.DangerousGetHandle(),
-                            timer.DangerousGetHandle()
-                        };
-#pragma warning restore S3869
+                        handles = [idleWake, new ManualResetEvent(false) { SafeWaitHandle = timer }];
                     }
                 }
 
@@ -467,7 +461,7 @@ public sealed class LiquidGlassPacingTests
         }
     }
 
-    private static void ExecuteOptimizedSleep(double milliseconds, bool animating, SafeWaitHandle timer, IntPtr[] handles, AutoResetEvent idleWake)
+    private static void ExecuteOptimizedSleep(double milliseconds, bool animating, SafeWaitHandle timer, WaitHandle[] handles, AutoResetEvent idleWake)
     {
         long targetTicks = Stopwatch.GetTimestamp() + (long)Math.Round(Math.Max(0.1, milliseconds) * Stopwatch.Frequency / 1000.0);
         while (true)
@@ -484,8 +478,8 @@ public sealed class LiquidGlassPacingTests
 
                 if (SetWaitableTimerRelative(timer, remainingMs))
                 {
-                    uint timeout = (uint)Math.Ceiling(remainingMs) + 100;
-                    WaitForAnyOfTwo(handles[0], handles[1], timeout);
+                    int timeout = (int)Math.Ceiling(remainingMs) + 100;
+                    WaitHandle.WaitAny(handles, timeout);
                 }
                 else
                 {
@@ -500,9 +494,9 @@ public sealed class LiquidGlassPacingTests
                     double waitMs = remainingMs - 0.15;
                     if (SetWaitableTimerRelative(timer, waitMs))
                     {
-                        uint timeout = (uint)Math.Ceiling(waitMs) + 100;
-                        int waitResult = WaitForAnyOfTwo(handles[0], handles[1], timeout);
-                        if (waitResult == WAIT_OBJECT_0) return;
+                        int timeout = (int)Math.Ceiling(waitMs) + 100;
+                        int waitResult = WaitHandle.WaitAny(handles, timeout);
+                        if (waitResult == 0) return;
                     }
                     else
                     {

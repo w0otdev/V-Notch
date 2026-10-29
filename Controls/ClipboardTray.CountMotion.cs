@@ -7,7 +7,7 @@ using VNotch.Services;
 
 namespace VNotch.Controls;
 
-public partial class ClipboardTray
+public sealed partial class ClipboardTray
 {
     private void CategoryCount_TargetUpdated(object sender, DataTransferEventArgs e)
     {

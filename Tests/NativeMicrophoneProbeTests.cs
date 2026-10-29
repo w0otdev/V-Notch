@@ -24,7 +24,7 @@ public sealed partial class NativeMicrophoneProbeTests
     private static partial int Sample(long handle, out byte hasActive, out float peak, out byte anyInvalid);
 
     [UnmanagedCallersOnly(CallConvs = [typeof(System.Runtime.CompilerServices.CallConvStdcall)])]
-    private static void Ignore(long context) { }
+    private static void Ignore(long context) { /* no-op callback */ }
 
     // Read-only: capture endpoints and sessions are listed and metered, never modified.
     [Fact]

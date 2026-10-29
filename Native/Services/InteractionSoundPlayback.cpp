@@ -65,7 +65,7 @@ INIT_ONCE g_cache_once = INIT_ONCE_STATIC_INIT;
 CachedWave g_wave_cache[kCueCount][kVariantCount]{};
 
 BOOL CALLBACK InitWaveCache(PINIT_ONCE, PVOID, PVOID*) noexcept {
-    uint8_t raw[kWaveCapacity];
+    static uint8_t raw[kWaveCapacity];
     for (int32_t c = 0; c < kCueCount; ++c) {
         for (int32_t v = 0; v < kVariantCount; ++v) {
             int32_t len = 0;

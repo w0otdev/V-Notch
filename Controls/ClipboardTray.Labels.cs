@@ -9,7 +9,7 @@ using VNotch.ViewModels;
 
 namespace VNotch.Controls;
 
-public partial class ClipboardTray
+public sealed partial class ClipboardTray
 {
     private int _labelEditorVersion;
     private bool _labelEditorOpen;
@@ -29,9 +29,15 @@ public partial class ClipboardTray
         CancelCategoryReorder();
         var existing = _categoryItems.ToDictionary(item => item.Name);
         var labels = _controller.Store.GetLabels().ToDictionary(label => label.Id);
-        _categoryItems = desired.Select(name => existing.TryGetValue(name, out var category) ? category :
-            ClipboardLabel.IsCustomId(name) ? new ClipboardCategoryViewModel(TrayIconKind.Shopping, name, labels[name].Name) :
-            new ClipboardCategoryViewModel(Enum.Parse<TrayIconKind>(name))).ToArray();
+        _categoryItems = desired.Select(name =>
+        {
+            if (existing.TryGetValue(name, out var category)) return category;
+            return ClipboardLabel.IsCustomId(name)
+                ? new ClipboardCategoryViewModel(TrayIconKind.Shopping, name, labels[name].Name)
+                : new ClipboardCategoryViewModel(Enum.Parse<TrayIconKind>(name));
+        }).ToArray();
+
+
         CategoryPanel.ItemsSource = _categoryItems;
     }
 

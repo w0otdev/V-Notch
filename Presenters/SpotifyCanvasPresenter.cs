@@ -12,7 +12,7 @@ public sealed class SpotifyCanvasPresenter : ISpotifyCanvasPresenter
     private const string LogTag = "SPOTIFY-CANVAS-PRESENTER";
 
     private readonly SpotifyCanvasViewRefs _refs;
-    private readonly Dispatcher _dispatcher;
+
     private readonly UiScheduledTimer _loopTimer;
     private readonly UiScheduledTimer _crossfadeTimer;
 
@@ -47,18 +47,18 @@ public sealed class SpotifyCanvasPresenter : ISpotifyCanvasPresenter
     public SpotifyCanvasPresenter(SpotifyCanvasViewRefs refs, Dispatcher dispatcher)
     {
         _refs = refs ?? throw new ArgumentNullException(nameof(refs));
-        _dispatcher = dispatcher ?? throw new ArgumentNullException(nameof(dispatcher));
+        ArgumentNullException.ThrowIfNull(dispatcher);
 
         _activeVideo = _refs.Video;
         _standbyVideo = _refs.VideoAlt;
 
-        _loopTimer = new UiScheduledTimer(DispatcherPriority.Normal, _dispatcher)
+        _loopTimer = new UiScheduledTimer(DispatcherPriority.Normal, dispatcher)
         {
             Interval = TimeSpan.FromMilliseconds(30)
         };
         _loopTimer.Tick += OnLoopTimerTick;
 
-        _crossfadeTimer = new UiScheduledTimer(DispatcherPriority.Render, _dispatcher)
+        _crossfadeTimer = new UiScheduledTimer(DispatcherPriority.Render, dispatcher)
         {
             Interval = TimeSpan.FromMilliseconds(150)
         };
@@ -729,7 +729,7 @@ public sealed class SpotifyCanvasPresenter : ISpotifyCanvasPresenter
                 _standbyVideo.Close();
                 _standbyVideo.Source = null;
             }
-            catch { }
+            catch { /* Ignore MediaElement close errors during disposal. */ }
         }
     }
 

@@ -71,13 +71,13 @@ public sealed class TranslationStartupTests
 
     private sealed class UnavailableCurrencyHandler : System.Net.Http.HttpMessageHandler
     {
-        protected override Task<System.Net.Http.HttpResponseMessage> SendAsync(System.Net.Http.HttpRequestMessage request, CancellationToken ct)
+        protected override Task<System.Net.Http.HttpResponseMessage> SendAsync(System.Net.Http.HttpRequestMessage request, CancellationToken cancellationToken)
             => throw new System.Net.Http.HttpRequestException("offline");
     }
 
     private sealed class CurrencyHandler(string target) : System.Net.Http.HttpMessageHandler
     {
-        protected override Task<System.Net.Http.HttpResponseMessage> SendAsync(System.Net.Http.HttpRequestMessage request, CancellationToken ct)
+        protected override Task<System.Net.Http.HttpResponseMessage> SendAsync(System.Net.Http.HttpRequestMessage request, CancellationToken cancellationToken)
         {
             Assert.Equal("https://api.frankfurter.dev/v2/rate/USD/" + target, request.RequestUri!.AbsoluteUri);
             return Task.FromResult(new System.Net.Http.HttpResponseMessage(System.Net.HttpStatusCode.OK)
@@ -92,7 +92,7 @@ public sealed class TranslationStartupTests
     {
         string userModelDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "VNotch", "translation-models", "translategemma-4b");
         if (!Directory.Exists(userModelDir)) return;
-        var profile = TranslationModelCatalog.Find("translategemma-4b")!;
+        var profile = TranslationModelCatalog.Find("translategemma-4b");
         var store = new TranslationModelStore(userModelDir, profile: profile);
         using var engine = new QwenTranslationEngine(store);
         using var service = new LocalTranslationService(engine);
@@ -394,7 +394,7 @@ public sealed class TranslationStartupTests
         await engine.Preparing.Task.WaitAsync(TimeSpan.FromSeconds(3));
         using var cancellation = new CancellationTokenSource();
         var waiting = service.TranslateAsync("hello", "en", "fr", cancellation.Token);
-        cancellation.Cancel();
+        await cancellation.CancelAsync();
         await Assert.ThrowsAnyAsync<OperationCanceledException>(() => waiting);
         Assert.Equal(0, engine.Calls);
         Assert.False(preparation.IsCompleted);
@@ -422,7 +422,7 @@ public sealed class TranslationStartupTests
         using var fixture = new ModelFixture();
         await fixture.Store.VerifyAsync(default);
         using var cancellation = new CancellationTokenSource();
-        cancellation.Cancel();
+        await cancellation.CancelAsync();
         await Assert.ThrowsAnyAsync<OperationCanceledException>(() => fixture.Store.VerifyAsync(cancellation.Token));
     }
 
@@ -461,12 +461,12 @@ public sealed class TranslationStartupTests
         internal TaskCompletionSource Started = new(TaskCreationOptions.RunContinuationsAsynchronously);
         internal bool FirstCancelled;
         private int _calls;
-        protected override async Task<System.Net.Http.HttpResponseMessage> SendAsync(System.Net.Http.HttpRequestMessage request, CancellationToken token)
+        protected override async Task<System.Net.Http.HttpResponseMessage> SendAsync(System.Net.Http.HttpRequestMessage request, CancellationToken cancellationToken)
         {
             if (Interlocked.Increment(ref _calls) == 1)
             {
                 Started.TrySetResult();
-                try { await Task.Delay(Timeout.Infinite, token); }
+                try { await Task.Delay(Timeout.Infinite, cancellationToken); }
                 catch (OperationCanceledException) { FirstCancelled = true; throw; }
             }
             var parts = request.RequestUri!.AbsolutePath.Split('/');
@@ -491,24 +491,24 @@ public sealed class TranslationStartupTests
         internal string LastSource = "";
         internal TaskCompletionSource Preparing = new(TaskCreationOptions.RunContinuationsAsynchronously);
         internal TaskCompletionSource Prepared = new(TaskCreationOptions.RunContinuationsAsynchronously);
-        public async Task PrepareAsync(CancellationToken ct)
+        public async Task PrepareAsync(CancellationToken cancellationToken)
         {
             PreparationThread = Environment.CurrentManagedThreadId;
             Preparing.TrySetResult();
-            if (BlockPreparation) await Prepared.Task.WaitAsync(ct);
+            if (BlockPreparation) await Prepared.Task.WaitAsync(cancellationToken);
         }
-        public async Task<string> TranslateAsync(string text, string source, string target, CancellationToken ct)
+        public async Task<string> TranslateAsync(string text, string sourceLanguage, string targetLanguage, CancellationToken cancellationToken)
         {
             OnTranslate?.Invoke();
             Calls++;
-            LastSource = source;
+            LastSource = sourceLanguage;
             Translating.TrySetResult();
             if (BlockFirstTranslation && Calls == 1)
             {
-                try { await Task.Delay(Timeout.Infinite, ct); }
+                try { await Task.Delay(Timeout.Infinite, cancellationToken); }
                 catch (OperationCanceledException) { FirstCancelled = true; Cancelled.TrySetResult(); throw; }
             }
-            return Echo ? text : target + " result";
+            return Echo ? text : targetLanguage + " result";
         }
         public void ReleaseIdleResources() { }
         public void Dispose() { }

@@ -124,7 +124,9 @@ internal static partial class SoundCloudMatching
         var scoreMap = new Dictionary<string, (int Score, int FirstIndex)>(StringComparer.OrdinalIgnoreCase);
         int orderIndex = 0;
 
+#pragma warning disable S1075 // Canonical SoundCloud origin URI
         var origin = new Uri("https://soundcloud.com/");
+#pragma warning restore S1075
         ReadOnlySpan<char> htmlSpan = html.AsSpan();
         int pos = 0;
         while (pos < htmlSpan.Length &&

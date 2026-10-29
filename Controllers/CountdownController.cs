@@ -207,6 +207,7 @@ public sealed class CountdownController : IDisposable
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
+            // Expected when countdown ticker stops.
         }
     }
 

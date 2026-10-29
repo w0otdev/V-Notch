@@ -29,12 +29,18 @@ internal static unsafe partial class Win32Interop
         NativeShellGetFileInfoIcon(path, path.Length, fileAttributes, flags, out long icon) == 0 ? (IntPtr)icon : IntPtr.Zero;
 
     /// <summary>System image list icon without the shortcut overlay, or zero.</summary>
-    internal static IntPtr GetShellBaseIcon(string path, bool smallIcon) =>
-        NativeShellGetBaseIcon(path, path.Length, smallIcon ? (byte)1 : (byte)0, out long icon) == 0 ? (IntPtr)icon : IntPtr.Zero;
+    internal static IntPtr GetShellBaseIcon(string path, bool smallIcon)
+    {
+        byte smallFlag = smallIcon ? (byte)1 : (byte)0;
+        return NativeShellGetBaseIcon(path, path.Length, smallFlag, out long icon) == 0 ? (IntPtr)icon : IntPtr.Zero;
+    }
 
     /// <summary>Icon <paramref name="index"/> embedded in a file, or zero.</summary>
-    internal static IntPtr ExtractShellIcon(string path, int index, bool smallIcon) =>
-        NativeShellExtractIcon(path, path.Length, index, smallIcon ? (byte)1 : (byte)0, out long icon) == 0 ? (IntPtr)icon : IntPtr.Zero;
+    internal static IntPtr ExtractShellIcon(string path, int index, bool smallIcon)
+    {
+        byte smallFlag = smallIcon ? (byte)1 : (byte)0;
+        return NativeShellExtractIcon(path, path.Length, index, smallFlag, out long icon) == 0 ? (IntPtr)icon : IntPtr.Zero;
+    }
 
     /// <summary>Shell thumbnail HBITMAP of the requested square size, or zero.</summary>
     internal static IntPtr GetShellThumbnailBitmap(string path, int size, uint flags) =>

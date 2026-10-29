@@ -108,7 +108,7 @@ public sealed class SpotifyQueryMetadataProviderTests
         using var cts = new CancellationTokenSource();
         Task<string?> pending = metadata.RefreshAsync(SpotifyQuery.FindTracks, metadata.FindTracksHash, cts.Token);
         await started.Task.WaitAsync(TimeSpan.FromSeconds(5));
-        cts.Cancel();
+        await cts.CancelAsync();
         await Assert.ThrowsAnyAsync<OperationCanceledException>(() => pending);
 
         Assert.Equal(CatalogHash, await metadata.RefreshAsync(SpotifyQuery.FindTracks, metadata.FindTracksHash, CancellationToken.None));

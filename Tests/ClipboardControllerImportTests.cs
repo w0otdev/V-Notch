@@ -30,7 +30,7 @@ public sealed class ClipboardControllerImportTests
             var data = new DataObject();
             data.SetText("controller import fixture");
             await controller.ImportDropAsync(data, category);
-            await WpfFrameWaiter.UntilAsync(() => drops == 1 && progress == 1, "drop notification", ct);
+            await WpfFrameWaiter.UntilAsync(() => drops == 1 && Math.Abs(progress - 1) < 1e-6, "drop notification", ct);
             var entry = Assert.Single(await controller.Store.SearchAsync("", category));
             Assert.Equal("controller import fixture", (await controller.Store.GetContentAsync(entry.Id)).Text);
             await controller.AssignCategoryAsync(entry, "All");

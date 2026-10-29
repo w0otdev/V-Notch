@@ -38,7 +38,7 @@ public partial class SettingsWindow
             NavPanel.Opacity = 1;
             Show();
             UpdateLayout();
-            Dispatcher.Invoke(static () => { }, DispatcherPriority.Render);
+            Dispatcher.Invoke(static () => { }, DispatcherPriority.Render, CancellationToken.None);
             Hide();
         }
         finally

@@ -57,7 +57,7 @@ public sealed class CustomTranslationModelTests : IDisposable
         string imported = Path.Combine(Models, profile.Id, "model.gguf");
         using (var stream = new FileStream(source, FileMode.Open, FileAccess.Write))
         { stream.Position = 100; stream.WriteByte(42); }
-        Assert.Equal(42, File.ReadAllBytes(imported)[100]);
+        Assert.Equal(42, (await File.ReadAllBytesAsync(imported))[100]);
         File.Delete(source);
         Assert.True(File.Exists(imported));
     }

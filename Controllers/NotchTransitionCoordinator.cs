@@ -64,7 +64,7 @@ public sealed class TransitionRequestEventArgs : EventArgs
 /// Quản lý tập trung toàn bộ trạng thái điều hướng notch, phiên chuyển cảnh và quyền hiển thị.
 /// Nguồn chân lý duy nhất cho Navigation State theo Workstream A (implement.md).
 /// </summary>
-public sealed class NotchTransitionCoordinator
+public sealed class NotchTransitionCoordinator : IDisposable
 {
     private const string LogTag = "NOTCH-COORDINATOR";
 
@@ -194,9 +194,10 @@ public sealed class NotchTransitionCoordinator
             bool isCountdownCompletion = string.Equals(reason, "CountdownCompletion", StringComparison.OrdinalIgnoreCase);
 
             // Quy tắc: Yêu cầu lại đúng đích đang mở và không trong chuyển cảnh
+            var expandedShape = isMusic ? NotchShapeState.MusicExpanded : NotchShapeState.Expanded;
             var stableShape = target == NotchView.Compact
                 ? NotchShapeState.Collapsed
-                : isMusic ? NotchShapeState.MusicExpanded : NotchShapeState.Expanded;
+                : expandedShape;
             if (target == _currentView && stableShape == _stableShape && !_isTransitionActive && !isCountdownCompletion)
             {
                 RuntimeLog.Debug(LogTag, () => $"RequestView({target}) ignored: already in target view ({reason})");
@@ -223,9 +224,11 @@ public sealed class NotchTransitionCoordinator
             }
             else
             {
-                targetShape = isMusic ? NotchShapeState.MusicExpanding
-                    : target == _currentView && _stableShape == NotchShapeState.MusicExpanded
-                        ? NotchShapeState.MusicCollapsing : NotchShapeState.Expanding;
+                var nonMusicShape = target == _currentView && _stableShape == NotchShapeState.MusicExpanded
+                    ? NotchShapeState.MusicCollapsing : NotchShapeState.Expanding;
+                targetShape = isMusic ? NotchShapeState.MusicExpanding : nonMusicShape;
+
+
             }
 
             var fromShape = _shapeState;

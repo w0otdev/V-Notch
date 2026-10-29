@@ -194,7 +194,7 @@ public class ShellViewModelProgressTests
         await _vm.SeekToPosition(TimeSpan.FromSeconds(50));
         Assert.Equal("0:50", _vm.CurrentTimeText);
 
-        Thread.Sleep(2600);
+        await Task.Delay(2600);
 
         _media.RaiseMediaChanged(Timeline("Spotify", 100, positionSeconds: 10, playing: false,
             lastUpdated: DateTimeOffset.Now));

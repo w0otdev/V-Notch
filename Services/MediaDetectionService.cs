@@ -1403,7 +1403,7 @@ public sealed partial class MediaDetectionService : IMediaDetectionService, IAsy
             _ = Task.Run(() => FetchYouTubeThumbnailAsync(
                 info, token, shouldForceThumbFetch, trackDuringFetch, artistDuringFetch,
                 sourceAppDuringFetch, sessionKeyDuringFetch, generationAtStart,
-                fetchGeneration, needsBetterThumb, cts));
+                fetchGeneration, needsBetterThumb, cts), token);
         }
         else if (isPotentialSoundCloud && !isPotentialYouTube && !string.IsNullOrEmpty(info.CurrentTrack))
         {
@@ -1456,7 +1456,7 @@ public sealed partial class MediaDetectionService : IMediaDetectionService, IAsy
 
                 bool requireStrongMatch = info.Platform != MediaPlatform.SoundCloud;
 
-                _ = Task.Run(() => FetchSoundCloudThumbnailAsync(info, token, trackDuringFetch, artistDuringFetch, sourceAppDuringFetch, sessionKeyDuringFetch, thumbGenAtStart, fetchGeneration, requireStrongMatch, cts));
+                _ = Task.Run(() => FetchSoundCloudThumbnailAsync(info, token, trackDuringFetch, artistDuringFetch, sourceAppDuringFetch, sessionKeyDuringFetch, thumbGenAtStart, fetchGeneration, requireStrongMatch, cts), token);
             }
         }
         else
@@ -2912,13 +2912,13 @@ public sealed partial class MediaDetectionService : IMediaDetectionService, IAsy
                 if (newBitmap == null || generation != Volatile.Read(ref _thumbnailFetchGeneration)) return;
                 var fingerprint = ArtworkFingerprint.Create(newBitmap);
                 if ((refreshSessionArtwork || (isYouTubeLikeSource && trackChangedForThisPass)) &&
-                    _lastSessionArtworkFingerprint is { } previous && previous.Equals(fingerprint))
+                    _lastSessionArtworkFingerprint is { } previous && previous.Equals(fingerprint) &&
+                    (_sessionArtworkGeneration != generation || CachedThumbnail != null))
                 {
                     // Browsers can publish the new title before replacing the old artwork.
                     // Keep reading subsequent snapshots; never attach that old image to this track.
                     // A verified network lookup can still supply a legitimately shared album cover.
-                    if (_sessionArtworkGeneration != generation || CachedThumbnail != null)
-                        return;
+                    return;
                 }
                 bool isSoundCloudSource = info.Platform == MediaPlatform.SoundCloud;
                 bool hasVerifiedSoundCloudThumb = MediaPlatformExtensions.ParsePlatform(_cachedThumbnailSource) == MediaPlatform.SoundCloud;
@@ -3722,13 +3722,10 @@ public sealed partial class MediaDetectionService : IMediaDetectionService, IAsy
             try
             {
                 var titles = GetAllWindowTitles();
-                if (titles != null && titles.Count > 0)
+                if (titles != null && titles.Count > 0 &&
+                    PlatformDetector.HasReliableWindowMatch(titles, info.CurrentTrack, YouTubeLowerPlatformName))
                 {
-                    if (PlatformDetector.HasReliableWindowMatch(titles, info.CurrentTrack, YouTubeLowerPlatformName))
-                    {
-                        return true;
-                    }
-
+                    return true;
                 }
             }
             catch
@@ -3954,7 +3951,7 @@ public sealed partial class MediaDetectionService : IMediaDetectionService, IAsy
 
         // 5. Complete the channel or drain it for a later restart.
         _sessionState.Clear();
-        _thumbCts?.Cancel();
+        if (_thumbCts != null) await _thumbCts.CancelAsync().ConfigureAwait(false);
         if (isDisposing)
         {
             _thumbCts?.Dispose();

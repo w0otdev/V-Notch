@@ -10,7 +10,7 @@ using static VNotch.Services.AnimationPrimitives;
 
 namespace VNotch.Controls;
 
-public partial class CountdownView : UserControl, IDisposable
+public sealed partial class CountdownView : UserControl, IDisposable
 {
     private VNotch.ViewModels.TimerViewModel _viewModel = null!;
     private CountdownController? _controller;
@@ -98,7 +98,7 @@ public partial class CountdownView : UserControl, IDisposable
         KeyboardInputRequested = null;
     }
 
-    private TimeSpan _countdownDuration => _viewModel.Duration;
+
     private bool _isCountdownRunning => CountdownController.IsRunning;
 
     private static readonly Color _countdownBorderIdleColor = Color.FromArgb(0x22, 0xFF, 0xFF, 0xFF);
@@ -146,7 +146,7 @@ public partial class CountdownView : UserControl, IDisposable
 
     private static void PlayButtonPressAnimation(Border button) => ButtonFeedback.PlayButtonPressAnimation(button);
 
-    private void PlayTimerButtonPress(Border button)
+    private static void PlayTimerButtonPress(Border button)
     {
         PlayButtonPressAnimation(button);
     }

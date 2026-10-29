@@ -131,12 +131,14 @@ public static class TrayAppIcons
         }))
     };
 
+    private const string TrayIconAssetPrefix = "pack://application:,,,/V-Notch;component/Assets/TrayIcons/";
+
     private static BitmapImage Load(string name)
     {
         var image = new BitmapImage();
         image.BeginInit();
         image.CacheOption = BitmapCacheOption.OnLoad;
-        image.UriSource = new Uri("pack://application:,,,/V-Notch;component/Assets/TrayIcons/" + name);
+        image.UriSource = new Uri(string.Concat(TrayIconAssetPrefix, name));
         image.EndInit();
         image.Freeze();
         return image;

@@ -240,8 +240,8 @@ namespace VNotch.Controls
             for (int i = 0; i < BarCount; i++)
                 drawSettled &= Math.Abs(_smoothedHeights[i] - _currentHeights[i]) <= MinHeightChangeThreshold;
             bool opacityChanged = Math.Abs(oldOpacity - _currentOpacity) > 0.0001;
-            bool copiedFeedbackSettled = _copiedFeedback && _iconMix == 1 && _checkMix == 1 &&
-                _playMix == (IsPlaying ? 1 : 0);
+            bool copiedFeedbackSettled = _copiedFeedback && Math.Abs(_iconMix - 1) < 1e-6 && Math.Abs(_checkMix - 1) < 1e-6 &&
+                Math.Abs(_playMix - (IsPlaying ? 1 : 0)) < 1e-6;
 
             if (copiedFeedbackSettled ||
                 (isSettled && drawSettled && !opacityChanged && !feedbackActive && _state == VisualizerState.Paused))
@@ -257,9 +257,9 @@ namespace VNotch.Controls
                 return;
             }
 
-            if (!isSettled || !drawSettled || opacityChanged || feedbackChanged)
+            if ((!isSettled || !drawSettled || opacityChanged || feedbackChanged) && (feedbackChanged || NeedsDrawingUpdate()))
             {
-                if (feedbackChanged || NeedsDrawingUpdate()) RefreshDrawingFrame();
+                RefreshDrawingFrame();
             }
         }
 
@@ -278,7 +278,8 @@ namespace VNotch.Controls
             double target = _copiedFeedback || now < _feedbackUntil ? 1 : 0;
             // Keep the outgoing check shape while it returns to the bars;
             // do not pass through the play/pause silhouette on the way out.
-            double checkTarget = _copiedFeedback ? 1 : (target > 0 ? 0 : _checkMix);
+            double inactiveCheckTarget = target > 0 ? 0 : _checkMix;
+            double checkTarget = _copiedFeedback ? 1 : inactiveCheckTarget;
             StepSpring(ref _checkMix, ref _checkVelocity, checkTarget, dt);
             StepSpring(ref _iconMix, ref _iconVelocity, target, dt);
             StepSpring(ref _playMix, ref _playVelocity, IsPlaying ? 1 : 0, dt);
@@ -579,11 +580,11 @@ namespace VNotch.Controls
         // Keep the current drawing until its exact bounds, opacity or color differ.
         internal bool NeedsDrawingUpdate()
         {
-            if (!_hasRenderedBars || _iconMix != 0 || _renderedOpacity != _currentOpacity ||
-                _renderedWidth != ActualWidth || _renderedHeight != ActualHeight || ActiveBrush == null)
+            if (!_hasRenderedBars || Math.Abs(_iconMix) > 1e-6 || Math.Abs(_renderedOpacity - _currentOpacity) > 1e-6 ||
+                Math.Abs(_renderedWidth - ActualWidth) > 1e-6 || Math.Abs(_renderedHeight - ActualHeight) > 1e-6 || ActiveBrush == null)
                 return true;
             DpiScale dpi = _cachedDpi ??= VisualTreeHelper.GetDpi(this);
-            if (dpi.DpiScaleX != _renderedDpi.DpiScaleX || dpi.DpiScaleY != _renderedDpi.DpiScaleY ||
+            if (Math.Abs(dpi.DpiScaleX - _renderedDpi.DpiScaleX) > 1e-6 || Math.Abs(dpi.DpiScaleY - _renderedDpi.DpiScaleY) > 1e-6 ||
                 (ActiveBrush is SolidColorBrush brush ? brush.Color : Colors.White) != _renderedBaseColor)
                 return true;
             double barWidth = ActualWidth * BarWidthRatio;
@@ -659,11 +660,14 @@ namespace VNotch.Controls
                 if (geometry.Rect != bounds)
                 {
                     if (!_boxedBarBounds.TryGetValue(bounds, out var boxedBounds))
-                        _boxedBarBounds.Add(bounds, boxedBounds = bounds);
+                    {
+                        boxedBounds = bounds;
+                        _boxedBarBounds.Add(bounds, boxedBounds);
+                    }
                     geometry.SetValue(RectangleGeometry.RectProperty, boxedBounds);
                 }
-                if (geometry.RadiusX != radius) geometry.RadiusX = radius;
-                if (geometry.RadiusY != radius) geometry.RadiusY = radius;
+                if (Math.Abs(geometry.RadiusX - radius) > 1e-6) geometry.RadiusX = radius;
+                if (Math.Abs(geometry.RadiusY - radius) > 1e-6) geometry.RadiusY = radius;
                 if (brushChanged) ((GeometryDrawing)_barsDrawing.Children[i]).Brush = gradientBrush;
             }
             _hasRenderedBars = morphOpacity == 0;
@@ -762,7 +766,7 @@ namespace VNotch.Controls
         }
 
         // Routes native capture callbacks to the static analysis, ignoring a capture that was already replaced.
-        private sealed class NativeCaptureReceiver
+        private sealed partial class NativeCaptureReceiver
         {
             internal VNotch.Services.NativeLoopbackCapture? Capture;
 
@@ -797,25 +801,29 @@ namespace VNotch.Controls
             }
         }
 
-        private static void OnCaptureStopped(VNotch.Services.NativeLoopbackCapture? sender)
+        private sealed partial class NativeCaptureReceiver
         {
-            VNotch.Services.NativeLoopbackCapture? stopped = null;
-            lock (_lockObj)
+            private static void OnCaptureStopped(VNotch.Services.NativeLoopbackCapture? sender)
             {
-                if (sender != null && ReferenceEquals(_capture, sender))
+                VNotch.Services.NativeLoopbackCapture? stopped = null;
+                lock (_lockObj)
                 {
-                    stopped = _capture;
-                    _capture = null;
-                    ResetAudioState();
+                    if (sender != null && ReferenceEquals(_capture, sender))
+                    {
+                        stopped = _capture;
+                        _capture = null;
+                        ResetAudioState();
+                    }
                 }
+                // Release the native capture after its thread leaves the callback, outside the shared lock.
+                if (stopped != null)
+                    System.Threading.ThreadPool.QueueUserWorkItem(_ =>
+                    {
+                        try { stopped.Dispose(); }
+                        catch (Exception ex) { Debug.WriteLine(ex.Message); }
+                    });
             }
-            // Release the native capture after its thread leaves the callback, outside the shared lock.
-            if (stopped != null)
-                System.Threading.ThreadPool.QueueUserWorkItem(_ =>
-                {
-                    try { stopped.Dispose(); }
-                    catch (Exception ex) { Debug.WriteLine(ex.Message); }
-                });
+
         }
 
         private static void ResetAudioState()
@@ -849,10 +857,10 @@ namespace VNotch.Controls
                 int framesRecorded = Math.Clamp(bytesRecorded, 0, buffer.Length) / bytesPerFrame;
                 if (framesRecorded <= 0) return;
 
-                float[]? rented = null;
+                float[]? rented = framesRecorded > 1024 ? ArrayPool<float>.Shared.Rent(framesRecorded) : null;
                 Span<float> monoSpan = framesRecorded <= 1024
                     ? stackalloc float[framesRecorded]
-                    : (rented = ArrayPool<float>.Shared.Rent(framesRecorded)).AsSpan(0, framesRecorded);
+                    : rented!.AsSpan(0, framesRecorded);
 
                 try
                 {
@@ -912,8 +920,8 @@ namespace VNotch.Controls
             }
         }
 
-        private static float ReadSampleAsFloat(byte[] buffer, int offset, bool isFloatLike, int bitsPerSample) =>
-            VNotch.Services.VisualizerDsp.ReadSample(buffer, offset, isFloatLike, bitsPerSample);
+
+
 
         private float[] GetLatestDisplayLevels(out bool hasFreshAudio, out double beatAccent)
         {

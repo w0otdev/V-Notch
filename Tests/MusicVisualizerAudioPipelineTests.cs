@@ -58,7 +58,7 @@ public sealed class MusicVisualizerAudioPipelineTests
     [InlineData(64, true)]
     public void SampleDecodingPreservesPolarityAndHalfScaleAcrossPcmAndFloatFormats(int bits, bool floating) => SharedStaTestRunner.Run(() =>
     {
-        WaveFormat format = WaveFormat.CreateCustomFormat(floating ? WaveFormatEncoding.IeeeFloat : WaveFormatEncoding.Pcm, 44100, 1, 44100 * bits / 8, bits / 8, bits);
+        _ = WaveFormat.CreateCustomFormat(floating ? WaveFormatEncoding.IeeeFloat : WaveFormatEncoding.Pcm, 44100, 1, 44100 * bits / 8, bits / 8, bits);
         foreach (float sample in new[] { -.5f, 0f, .5f })
         {
             byte[] bytes = bits switch
@@ -70,12 +70,12 @@ public sealed class MusicVisualizerAudioPipelineTests
                 32 => BitConverter.GetBytes((int)(sample * 2147483648d)),
                 _ => BitConverter.GetBytes((double)sample)
             };
-            Assert.Equal(sample, (float)Invoke("ReadSampleAsFloat", bytes, 0, floating, bits)!, 5);
+            Assert.Equal(sample, VNotch.Services.VisualizerDsp.ReadSample(bytes, 0, floating, bits), 5);
         }
         if (bits == 32 && floating)
         {
-            var extensible = new WaveFormatExtensible(44100, 32, 1);
-            Assert.Equal(.5f, (float)Invoke("ReadSampleAsFloat", BitConverter.GetBytes(.5f), 0, true, 32)!, 5);
+            _ = new WaveFormatExtensible(44100, 32, 1);
+            Assert.Equal(.5f, VNotch.Services.VisualizerDsp.ReadSample(BitConverter.GetBytes(.5f), 0, true, 32), 5);
         }
     });
 
@@ -117,7 +117,7 @@ public sealed class MusicVisualizerAudioPipelineTests
             host.Show();
             await WpfFrameWaiter.UntilAsync(() => visualizer.IsLoaded, "visualizer host loaded", ct);
             visualizer.SetCopiedFeedback(true);
-            await WpfFrameWaiter.UntilAsync(() => (double)typeof(MusicVisualizer).GetField("_checkMix", instance)!.GetValue(visualizer)! == 1, "copied visualizer morph", ct);
+            await WpfFrameWaiter.UntilAsync(() => Math.Abs((double)typeof(MusicVisualizer).GetField("_checkMix", instance)!.GetValue(visualizer)! - 1) < 1e-6, "copied visualizer morph", ct);
             Assert.True((bool)typeof(MusicVisualizer).GetField("_copiedFeedback", instance)!.GetValue(visualizer)!);
             await WpfFrameWaiter.UntilAsync(() => !(bool)typeof(MusicVisualizer).GetField("_isRenderingActive", instance)!.GetValue(visualizer)!, "settled copied feedback releases rendering", ct);
             visualizer.SetCopiedFeedback(false);

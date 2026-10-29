@@ -211,7 +211,7 @@ public partial class SpotlightWindow
                 GlassDarkOverlay.Visibility = Visibility.Collapsed;
                 GlassDarkOverlay.Opacity = 0;
             }
-            RestoreShadow(animate: false);
+            RestoreShadow();
         }
     }
 
@@ -392,8 +392,12 @@ public partial class SpotlightWindow
         UpdateShaderGeometryPerFrame();
     }
 
-    private void ApplyGpuBlur(double blurAmount) =>
-        LiquidGlassSurfaceBinder.ApplyGpuBlur(GlassBackdropHost, ref _glassHostBlur, blurAmount, UseGpuRefraction);
+    private void ApplyGpuBlur(double blurAmount)
+    {
+        if (UseGpuRefraction)
+            _glassRefractionEffect ??= new LiquidGlassRefractionEffect();
+        LiquidGlassSurfaceBinder.ApplyGpuBlur(GlassBackdropHost, ref _glassHostBlur, blurAmount, UseGpuRefraction, _glassRefractionEffect);
+    }
 
     private LiquidGlassSurfaceBinder? _glassSurface;
 
@@ -552,10 +556,10 @@ public partial class SpotlightWindow
     {
         try
         {
-            if (GlassBackdropHost != null && PresentationSource.FromVisual(GlassBackdropHost) != null)
+            if (GlassBackdropHost != null &&
+                (_glassScreenGeometry ??= new(this)).TryGetPosition(GlassBackdropHost, out var pt))
             {
-                if ((_glassScreenGeometry ??= new(this)).TryGetPosition(GlassBackdropHost, out var pt))
-                    return (pt.X, pt.Y);
+                return (pt.X, pt.Y);
             }
         }
         catch
@@ -688,7 +692,7 @@ public partial class SpotlightWindow
             UpdateShaderGeometryPerFrame(dpiScale, exactW, exactH, screenLeft, screenTop);
         }
 
-        if (updateDynamicFresnel)
+        if (updateDynamicFresnel && !UseGpuRefraction)
         {
             UpdateDynamicFresnel(_liquidGlass.CurrentBackdropOptics);
         }
@@ -761,7 +765,7 @@ public partial class SpotlightWindow
         // Spotlight binds the full D3D surface without cropping and can morph to
         // wide expanded notch states on exit; keep the full surface envelope ready.
         bool isAnimating = _entranceActive || _isClosing || _preparingGlassEntrance;
-        _liquidGlass.CaptureFullSurface = true;
+        _liquidGlass.CaptureFullSurface = isAnimating;
         _liquidGlass.SetIdle(!isAnimating);
     }
 

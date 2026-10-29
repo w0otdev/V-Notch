@@ -23,7 +23,7 @@ public sealed class NotchContentViewRefs
 
 public sealed class NotchContentTransitionPresenter : IDisposable
 {
-    private const string LogTag = "NOTCH-CONTENT-PRESENTER";
+
 
     private readonly NotchContentViewRefs _refs;
     private long _activeSessionId;

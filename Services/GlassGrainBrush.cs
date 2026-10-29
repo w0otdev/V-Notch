@@ -36,7 +36,8 @@ public static class GlassGrainBrush
         for (int i = 0; i < pixels.Length; i++)
         {
             // Triangular zero-mean micro-grain distribution (avoids harsh binary clumping)
-            double t = rng.NextDouble() - rng.NextDouble();
+            double u1 = rng.NextDouble();
+            double t = u1 - rng.NextDouble();
             byte alpha = (byte)(Math.Abs(t) * 55.0);
             // Premultiplied Pbgra32: white highlight grain uses (a, a, a, a), dark shadow grain uses (a, 0, 0, 0)
             pixels[i] = t >= 0

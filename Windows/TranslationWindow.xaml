@@ -71,9 +71,9 @@
         <Border.RenderTransform><TranslateTransform x:Name="PopupOffset"/></Border.RenderTransform>
         <Grid>
             <Grid x:Name="SelectionChip">
-                <Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition Width="24"/></Grid.ColumnDefinitions>
+                <Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition Width="28"/></Grid.ColumnDefinitions>
                 <Button x:Name="OpenButton" Style="{StaticResource ActionButton}" Background="Transparent" Padding="0,2" Click="Open_Click"/>
-                <Button Grid.Column="1" Style="{StaticResource CloseActionButton}" Padding="0" Click="Close_Click"><Path Style="{StaticResource BoldIcon}" Data="M 2,2 L 12,12 M 12,2 L 2,12" Width="12" Height="12" Margin="0"/></Button>
+                <Button Grid.Column="1" Style="{StaticResource CloseActionButton}" Width="28" Height="28" Padding="6" AutomationProperties.Name="Close" Click="Close_Click"><Path Style="{StaticResource BoldIcon}" Data="M 2,2 L 12,12 M 12,2 L 2,12" Width="12" Height="12" Margin="0"/></Button>
             </Grid>
             <Grid x:Name="TranslationPanel" Visibility="Collapsed">
                 <Grid.RowDefinitions>
@@ -83,7 +83,7 @@
                 <DockPanel x:Name="TranslationDragHandle" Margin="0,0,0,14" Background="Transparent" Cursor="SizeAll"
                            MouseLeftButtonDown="PopupDragStarted" MouseMove="PopupDragMoved"
                            MouseLeftButtonUp="PopupDragEnded" LostMouseCapture="PopupDragCaptureLost">
-                    <Button x:Name="CloseButton" DockPanel.Dock="Right" Style="{StaticResource CloseActionButton}" Padding="7" Click="Close_Click"><Path Style="{StaticResource BoldIcon}" Data="M 2,2 L 12,12 M 12,2 L 2,12" Width="12" Height="12" Margin="0"/></Button>
+                    <Button x:Name="CloseButton" DockPanel.Dock="Right" Style="{StaticResource CloseActionButton}" Padding="7" AutomationProperties.Name="Close" Click="Close_Click"><Path Style="{StaticResource BoldIcon}" Data="M 2,2 L 12,12 M 12,2 L 2,12" Width="12" Height="12" Margin="0"/></Button>
                     <TextBlock x:Name="LanguageSummary" Foreground="#8C959E" FontSize="13" TextWrapping="Wrap" VerticalAlignment="Center"/>
                 </DockPanel>
                 <StackPanel Grid.Row="1" Margin="0,0,0,14">
@@ -156,7 +156,7 @@
                 </Grid>
                 <WrapPanel x:Name="TranslationActions" Grid.Row="5" Margin="0,12,0,0">
                     <Button x:Name="ManageModelButton" Style="{StaticResource ActionButton}" Background="#244F73" Margin="0,0,8,8" Click="ManageModel_Click" Visibility="Collapsed"/>
-                    <Button x:Name="ReplaceButton" Style="{StaticResource ActionButton}" Margin="0,0,8,8" Click="Replace_Click" IsEnabled="False" ToolTipService.ShowOnDisabled="True"><StackPanel Orientation="Horizontal"><Path Style="{StaticResource BoldIcon}" Data="M 2,4 L 14,4 M 11,1 L 14,4 L 11,7 M 14,12 L 2,12 M 5,9 L 2,12 L 5,15"/><TextBlock x:Name="ReplaceLabel" VerticalAlignment="Center"/></StackPanel></Button>
+                    <Button x:Name="ReplaceButton" Style="{StaticResource ActionButton}" Margin="0,0,8,8" Click="Replace_Click" IsEnabled="False" ToolTip="Replace selected text in editable field" ToolTipService.ShowOnDisabled="True"><StackPanel Orientation="Horizontal"><Path Style="{StaticResource BoldIcon}" Data="M 2,4 L 14,4 M 11,1 L 14,4 L 11,7 M 14,12 L 2,12 M 5,9 L 2,12 L 5,15"/><TextBlock x:Name="ReplaceLabel" VerticalAlignment="Center"/></StackPanel></Button>
                     <Button x:Name="CopyButton" Style="{StaticResource ActionButton}" Margin="0,0,8,8" Click="Copy_Click" IsEnabled="False"><StackPanel Orientation="Horizontal"><Path Style="{StaticResource BoldIcon}" Fill="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" Data="M 5,5 L 14,5 L 14,15 L 5,15 Z M 2,11 L 2,2 L 11,2"/><TextBlock x:Name="CopyLabel" VerticalAlignment="Center"/></StackPanel></Button>
                     <Button x:Name="TranslateButton" Style="{StaticResource ActionButton}" Margin="0,0,0,8" Click="Translate_Click"><StackPanel Orientation="Horizontal"><Path Style="{StaticResource BoldIcon}" Data="M 1,3 L 9,3 M 5,1 L 5,3 M 7,3 C 7,8 4,10 1,11 M 3,6 L 8,11 M 9,15 L 12,7 L 15,15 M 10,12 L 14,12"/><TextBlock x:Name="TranslateLabel" VerticalAlignment="Center"/></StackPanel></Button>
                     <Button x:Name="CancelButton" Style="{StaticResource ActionButton}" Margin="0,0,0,8" Visibility="Collapsed" Click="Cancel_Click"><StackPanel Orientation="Horizontal"><Path Style="{StaticResource BoldIcon}" Fill="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" Data="M 4,4 L 12,4 L 12,12 L 4,12 Z"/><TextBlock x:Name="CancelLabel" VerticalAlignment="Center"/></StackPanel></Button>

@@ -197,7 +197,7 @@ public sealed partial class PrivacyIndicatorService : IDisposable
     private async Task CleanupAfterWorkersAsync(Task[] workers)
     {
         try { await Task.WhenAll(workers).ConfigureAwait(false); }
-        catch (OperationCanceledException) { }
+        catch (OperationCanceledException) { /* Expected on shutdown */ }
         catch (Exception ex) { RuntimeLog.Error("PRIVACY", ex, "Privacy worker failed during shutdown"); }
         finally
         {
@@ -229,8 +229,17 @@ public sealed partial class PrivacyIndicatorService : IDisposable
                         break;
 
                     DateTime utcNow = DateTime.UtcNow;
-                    bool registryChanged = _registryChanged?.Invoke() ??
-                        (userChanges!.ConsumeChange() | machineChanges!.ConsumeChange());
+                    bool registryChanged;
+                    if (_registryChanged != null)
+                    {
+                        registryChanged = _registryChanged();
+                    }
+                    else
+                    {
+                        bool userChanged = userChanges!.ConsumeChange();
+                        bool machineChanged = machineChanges!.ConsumeChange();
+                        registryChanged = userChanged || machineChanged;
+                    }
                     var capabilities = capabilityCache.GetSnapshot(registryChanged, Environment.TickCount64);
                     // Process exits and recording-duration thresholds still need reconciliation.
                     result = ExecuteBackgroundScan(utcNow, capabilities);
@@ -393,7 +402,7 @@ public sealed partial class PrivacyIndicatorService : IDisposable
 
         if (_disposed || !_started) return;
 
-        try { _micFlowCts?.Dispose(); } catch (ObjectDisposedException) { }
+        try { _micFlowCts?.Dispose(); } catch (ObjectDisposedException) { /* Already disposed */ }
         _micFlowGeneration++;
         int generation = _micFlowGeneration;
         _micFlowCts = new CancellationTokenSource();
@@ -996,7 +1005,6 @@ public sealed partial class PrivacyIndicatorService : IDisposable
     // keeps the topology-refresh schedule and decides which processes count as a consumer.
     private sealed unsafe partial class MicrophoneFlowProbe : IDisposable
     {
-        private const string NativeDll = "VNotch.Native.dll";
 
         [LibraryImport(NativeDll, EntryPoint = "vn_mic_probe_create")]
         private static partial int NativeCreate(nint callback, long context, out long handle, out int hresult);

@@ -19,12 +19,9 @@ public class MediaMetadataRecoveryPolicyTests
     [Fact]
     public void SelectDetectionMode_ActivePausedSessionWithoutTitle_AwaitsMetadata()
     {
-        var mode = MediaMetadataRecoveryPolicy.SelectDetectionMode(
-            isAnyMediaPlaying: true,
-            currentTrack: "",
-            isThrottled: false);
-
-        Assert.Equal(DetectionMode.AwaitingMetadata, mode);
+        Assert.Equal(
+            DetectionMode.AwaitingMetadata,
+            MediaMetadataRecoveryPolicy.SelectDetectionMode(isAnyMediaPlaying: true, currentTrack: string.Empty, isThrottled: false));
     }
 
     [Fact]

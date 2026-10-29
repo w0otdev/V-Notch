@@ -15,7 +15,7 @@ namespace VNotch.Tests;
 [Collection("Localization")]
 public sealed class MainWindowAnimationHelperTests
 {
-    private const BindingFlags Private = BindingFlags.Instance | BindingFlags.NonPublic;
+    private const BindingFlags Private = BindingFlags.Instance | BindingFlags.Static | BindingFlags.NonPublic;
 
     [Theory]
     [InlineData(true)]
@@ -89,7 +89,7 @@ public sealed class MainWindowAnimationHelperTests
         Set(window, "_currentMediaInfo", new MediaInfo { CurrentTrack = new string('W', 120), CurrentArtist = "Fixture artist" });
         Set(window, "_isCompactThumbnailHovered", true);
         Invoke(window, "AnimateThumbnailHover", true);
-        await WpfFrameWaiter.UntilAsync(() => window.CompactThumbnailScale.ScaleX == (island ? 1.28 : 1.5), "compact artwork hover geometry", ct);
+        await WpfFrameWaiter.UntilAsync(() => Math.Abs(window.CompactThumbnailScale.ScaleX - (island ? 1.28 : 1.5)) < 1e-6, "compact artwork hover geometry", ct);
         Assert.Equal(Visibility.Visible, window.CompactHoverInfo.Visibility);
         Assert.NotNull(window.CompactHoverInfo.OpacityMask);
         Assert.True(window.CompactTitleMarqueeTranslate.HasAnimatedProperties);
@@ -100,7 +100,7 @@ public sealed class MainWindowAnimationHelperTests
         Assert.False(window.CompactTitleMarqueeTranslate.HasAnimatedProperties);
         Set(window, "_isCompactThumbnailHovered", false);
         Invoke(window, "AnimateThumbnailHover", false);
-        await WpfFrameWaiter.UntilAsync(() => window.CompactHoverInfo.Visibility == Visibility.Collapsed && window.CompactThumbnailScale.ScaleX == 1, "compact artwork hover exit", ct);
+        await WpfFrameWaiter.UntilAsync(() => window.CompactHoverInfo.Visibility == Visibility.Collapsed && Math.Abs(window.CompactThumbnailScale.ScaleX - 1) < 1e-6, "compact artwork hover exit", ct);
         Assert.Equal(Field<double>(window, "_collapsedWidth"), window.NotchBorder.Width);
         Invoke(window, "ApplyCompactTitleContainerWidth", double.NaN);
         Assert.True(double.IsFinite(window.CompactTitleScrollContainer.Width));
@@ -116,10 +116,12 @@ public sealed class MainWindowAnimationHelperTests
         Invoke(fixture.Window, method, button);
         var transform = Assert.IsType<ScaleTransform>(button.RenderTransform);
         await WpfFrameWaiter.UntilAsync(() => transform.ScaleX < 0.99, "button press squish", ct);
-        await WpfFrameWaiter.UntilAsync(() => transform.ScaleX == 1 && transform.ScaleY == 1, "button press restored", ct);
+        await WpfFrameWaiter.UntilAsync(() => Math.Abs(transform.ScaleX - 1) < 1e-6 && Math.Abs(transform.ScaleY - 1) < 1e-6, "button press restored", ct);
         Assert.Equal(new Point(0.5, 0.5), button.RenderTransformOrigin);
-        Invoke(fixture.Window, "AnimateButtonScale", transform, 1.1d);
-        await WpfFrameWaiter.UntilAsync(() => transform.ScaleX == 1.1 && transform.ScaleY == 1.1, "button hover scale", ct);
+        Invoke(fixture.Window, "MediaButton_MouseEnter", button, new System.Windows.Input.MouseEventArgs(System.Windows.Input.Mouse.PrimaryDevice, 0));
+        await WpfFrameWaiter.UntilAsync(() => Math.Abs(transform.ScaleX - 1.18) < 1e-6 && Math.Abs(transform.ScaleY - 1.18) < 1e-6, "button hover scale", ct);
+        Invoke(fixture.Window, "MediaButton_MouseLeave", button, new System.Windows.Input.MouseEventArgs(System.Windows.Input.Mouse.PrimaryDevice, 0));
+        await WpfFrameWaiter.UntilAsync(() => Math.Abs(transform.ScaleX - 1) < 1e-6 && Math.Abs(transform.ScaleY - 1) < 1e-6, "button hover restored", ct);
     });
 
     [Fact]
@@ -129,13 +131,13 @@ public sealed class MainWindowAnimationHelperTests
         var from = new Canvas();
         var to = new Canvas { Visibility = Visibility.Collapsed };
         Invoke(fixture.Window, "AnimateIconSwitch", from, to, TimeSpan.FromMilliseconds(100), new CubicEase());
-        await WpfFrameWaiter.UntilAsync(() => from.Visibility == Visibility.Collapsed && to.Opacity == 1, "playback icon switched", ct);
+        await WpfFrameWaiter.UntilAsync(() => from.Visibility == Visibility.Collapsed && Math.Abs(to.Opacity - 1) < 1e-6, "playback icon switched", ct);
         Assert.Equal(Visibility.Visible, to.Visibility);
         Assert.Equal(1, ((ScaleTransform)from.RenderTransform).ScaleX);
         Assert.Equal(1, ((ScaleTransform)to.RenderTransform).ScaleY);
         Assert.False(from.HasAnimatedProperties);
         Invoke(fixture.Window, "AnimateIconSwitch", to, from, TimeSpan.FromMilliseconds(100), new CubicEase());
-        await WpfFrameWaiter.UntilAsync(() => to.Visibility == Visibility.Collapsed && from.Opacity == 1, "playback icon switch reversed", ct);
+        await WpfFrameWaiter.UntilAsync(() => to.Visibility == Visibility.Collapsed && Math.Abs(from.Opacity - 1) < 1e-6, "playback icon switch reversed", ct);
     });
 
     [Theory]
@@ -146,8 +148,9 @@ public sealed class MainWindowAnimationHelperTests
         await using var fixture = CreateFixture();
         var window = fixture.Window;
         Field<NotchSettings>(window, "_settings").EnableBlurEffects = blur;
+        window.MediaPlayback.EnableBlurEffects = blur;
         Invoke(window, "AnimateProgressBarHover", true);
-        await WpfFrameWaiter.UntilAsync(() => window.MediaPlayback.ProgressBarBg.Height == 10 && Math.Abs(window.MediaPlayback.ProgressBarMainScale.ScaleX - 1.04) < 0.000001 && Math.Abs(window.MediaPlayback.MediaControls.Opacity - 0.45) < 0.000001, "progress hover targets", ct);
+        await WpfFrameWaiter.UntilAsync(() => Math.Abs(window.MediaPlayback.ProgressBarBg.Height - 10) < 1e-6 && Math.Abs(window.MediaPlayback.ProgressBarMainScale.ScaleX - 1.04) < 0.000001 && Math.Abs(window.MediaPlayback.MediaControls.Opacity - 0.45) < 0.000001, "progress hover targets", ct);
         Assert.Equal(5, window.MediaPlayback.ProgressBarClip.RadiusX);
         var labels = Assert.IsType<TransformGroup>(window.MediaPlayback.CurrentTimeText.RenderTransform);
         Assert.Equal(1.22, ((ScaleTransform)labels.Children[0]).ScaleX);
@@ -155,11 +158,12 @@ public sealed class MainWindowAnimationHelperTests
         if (blur) Assert.Equal(4, Assert.IsType<System.Windows.Media.Effects.BlurEffect>(window.MediaPlayback.MediaControls.Effect).Radius);
         else Assert.Null(window.MediaPlayback.MediaControls.Effect);
         Invoke(window, "AnimateProgressBarHover", false);
-        await WpfFrameWaiter.UntilAsync(() => window.MediaPlayback.ProgressBarBg.Height == 4 && window.MediaPlayback.ProgressBarMainScale.ScaleX == 1 && window.MediaPlayback.MediaControls.Opacity == 1, "progress hover restored", ct);
+        await WpfFrameWaiter.UntilAsync(() => Math.Abs(window.MediaPlayback.ProgressBarBg.Height - 4) < 1e-6 && Math.Abs(window.MediaPlayback.ProgressBarMainScale.ScaleX - 1) < 1e-6 && Math.Abs(window.MediaPlayback.MediaControls.Opacity - 1) < 1e-6, "progress hover restored", ct);
         Assert.Equal(2, window.MediaPlayback.ProgressBarClip.RadiusY);
         Assert.Equal(1, ((ScaleTransform)labels.Children[0]).ScaleY);
         Assert.Equal(0, ((TranslateTransform)labels.Children[1]).Y);
         Field<NotchSettings>(window, "_settings").EnableBlurEffects = false;
+        window.MediaPlayback.EnableBlurEffects = false;
         Invoke(window, "AnimateProgressBarHover", true);
         Assert.Null(window.MediaPlayback.MediaControls.Effect);
     });
@@ -178,14 +182,14 @@ public sealed class MainWindowAnimationHelperTests
         settings.ShowBatteryIndicator = battery;
         Set(window, "_isUpdateAvailable", true);
         Invoke(window, "AnimateStatusBarReveal", true);
-        await WpfFrameWaiter.UntilAsync(() => window.SettingsRotate.Angle == 45 && window.SettingsScale.ScaleX == 1, "status icons revealed", ct);
+        await WpfFrameWaiter.UntilAsync(() => Math.Abs(window.SettingsRotate.Angle - 45) < 1e-6 && Math.Abs(window.SettingsScale.ScaleX - 1) < 1e-6, "status icons revealed", ct);
         Assert.Equal(battery ? Visibility.Visible : Visibility.Collapsed, window.BatterySection.Visibility);
         Assert.Equal(battery, window.BatterySection.IsHitTestVisible);
         Assert.Equal(island ? 5 : 0, window.NavIconsTranslate.Y);
         Assert.Equal(1, window.UpdateNotificationButton.Opacity);
         Assert.True(window.UpdateNotificationButton.IsHitTestVisible);
         Invoke(window, "AnimateStatusBarReveal", false);
-        await WpfFrameWaiter.UntilAsync(() => window.SettingsButton.Opacity == 0 && window.NavIconsPanel.Opacity == 0 && window.SettingsRotate.Angle == 20 && window.UpdateNotificationButton.Opacity == 0, "status icons hidden", ct);
+        await WpfFrameWaiter.UntilAsync(() => Math.Abs(window.SettingsButton.Opacity) < 1e-6 && Math.Abs(window.NavIconsPanel.Opacity) < 1e-6 && Math.Abs(window.SettingsRotate.Angle - 20) < 1e-6 && Math.Abs(window.UpdateNotificationButton.Opacity) < 1e-6, "status icons hidden", ct);
         Assert.False(window.UpdateNotificationButton.IsHitTestVisible);
         Assert.Equal(0, window.UpdateNotificationButton.Opacity);
         Assert.Equal(-6, window.SettingsTranslate.Y);
@@ -200,7 +204,7 @@ public sealed class MainWindowAnimationHelperTests
         var window = fixture.Window;
         if (eject) window.PlaySettingsEjectAnimation(); else window.PlaySettingsAbsorbAnimation();
         await WpfFrameWaiter.UntilAsync(() => window.NotchBorder.Width > 302, "settings feedback opens pill", ct);
-        await WpfFrameWaiter.UntilAsync(() => window.NotchBorder.Width == 300 && window.NotchBorder.Height == 40 && window.NotchScale.ScaleY == 1, "settings feedback restores pill", ct);
+        await WpfFrameWaiter.UntilAsync(() => Math.Abs(window.NotchBorder.Width - 300) < 1e-6 && Math.Abs(window.NotchBorder.Height - 40) < 1e-6 && Math.Abs(window.NotchScale.ScaleY - 1) < 1e-6, "settings feedback restores pill", ct);
         Assert.Equal(1, window.NotchShadowScale.ScaleY);
         Assert.Equal(window.NotchBorder.CornerRadius, window.NotchBorderShadow.CornerRadius);
     });
@@ -228,5 +232,11 @@ public sealed class MainWindowAnimationHelperTests
         else if (typeof(MainWindow).GetField(name, Private) is { } field) field.SetValue(window, value);
         else typeof(MainWindow).GetProperty(name, Private)!.SetValue(window, value);
     }
-    private static object? Invoke(MainWindow window, string name, params object?[] args) => typeof(MainWindow).GetMethods(Private).Single(method => method.Name == name && method.GetParameters().Length == args.Length).Invoke(window, args);
+    private static void Invoke(MainWindow window, string name, params object?[] args)
+    {
+        var mediaMethod = typeof(Controls.MediaPlaybackView).GetMethods(Private)
+            .SingleOrDefault(method => method.Name == name && method.GetParameters().Length == args.Length);
+        if (mediaMethod != null) mediaMethod.Invoke(window.MediaPlayback, args);
+        else typeof(MainWindow).GetMethods(Private).Single(method => method.Name == name && method.GetParameters().Length == args.Length).Invoke(window, args);
+    }
 }

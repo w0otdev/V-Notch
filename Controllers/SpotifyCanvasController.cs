@@ -48,6 +48,7 @@ public sealed class SpotifyCanvasController : IDisposable
     public bool IsSurfaceVisible => _isSurfaceVisible;
     public bool IsLookupCompleted => _lookupCompleted;
     public bool HasPendingFetch => _fetchCts != null;
+    internal Task? InFlightTask => _inFlightTask;
 
     public SpotifyCanvasController(
         SpotifyCanvasService service,
@@ -345,6 +346,7 @@ public sealed class SpotifyCanvasController : IDisposable
         }
         catch (ObjectDisposedException)
         {
+            // Intentionally ignored.
         }
     }
 

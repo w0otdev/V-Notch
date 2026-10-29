@@ -37,7 +37,7 @@ public sealed class MainWindowModulePresentationTests
         }
         Set(window, "_isMusicCompactMode", true);
         Invoke(window, "UpdatePrivacyDotPosition", true);
-        await WpfFrameWaiter.UntilAsync(() => window.PrivacyIndicatorPanel.Margin.Right == 34, "privacy dot follows compact music", ct);
+        await WpfFrameWaiter.UntilAsync(() => Math.Abs(window.PrivacyIndicatorPanel.Margin.Right - 34) < 1e-6, "privacy dot follows compact music", ct);
         Set(window, "_isVolumeIndicatorActive", true);
         Invoke(window, "SyncPrivacyDotVisibilityForCurrentView");
         Assert.Equal(Visibility.Collapsed, window.PrivacyIndicatorPanel.Visibility);
@@ -120,7 +120,7 @@ public sealed class MainWindowModulePresentationTests
             Assert.Equal(Visibility.Visible, widget.WeatherWidgetSkeleton.Visibility);
             var weather = new WeatherInfo { City = "Bangkok", Temperature = 31, High = 35, Low = 26, WeatherCode = 3, IsDay = true };
             widget.Present(weather);
-            await WpfFrameWaiter.UntilAsync(() => widget.WeatherActualContent.Opacity == 1 && widget.WeatherWidgetTranslate.Y == 0, "weather content revealed", ct);
+            await WpfFrameWaiter.UntilAsync(() => Math.Abs(widget.WeatherActualContent.Opacity - 1) < 1e-6 && Math.Abs(widget.WeatherWidgetTranslate.Y) < 1e-6, "weather content revealed", ct);
             Assert.Equal("Bangkok", widget.WeatherLocationText.Text);
             Assert.Equal("31°", widget.WeatherTempText.Text);
             Assert.Equal(WeatherConditionFormatter.Format(3), widget.WeatherConditionText.Text);
@@ -159,5 +159,5 @@ public sealed class MainWindowModulePresentationTests
         configureServices: services => services.AddSingleton<IMediaDetectionService>(new FakeMediaDetectionService()));
     private static T Field<T>(MainWindow window, string name) => (T)typeof(MainWindow).GetField(name, Private)!.GetValue(window)!;
     private static void Set(MainWindow window, string name, object value) => typeof(MainWindow).GetField(name, Private)!.SetValue(window, value);
-    private static object? Invoke(MainWindow window, string name, params object?[] args) => typeof(MainWindow).GetMethod(name, Private)!.Invoke(window, args);
+    private static void Invoke(MainWindow window, string name, params object?[] args) => typeof(MainWindow).GetMethod(name, Private)!.Invoke(window, args);
 }

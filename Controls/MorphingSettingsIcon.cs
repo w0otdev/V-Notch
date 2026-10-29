@@ -264,8 +264,8 @@ public class MorphingSettingsIcon : FrameworkElement
         // RenderSize is authoritative even before the deferred SizeChanged callback.
         // Keep the normalized 56-unit geometry inside the current layout slot.
         if (!IsTextGeometry &&
-            (_renderTransform.Value.M11 != RenderSize.Width / 56 ||
-             _renderTransform.Value.M22 != RenderSize.Height / 56))
+            (Math.Abs(_renderTransform.Value.M11 - RenderSize.Width / 56) > 1e-6 ||
+             Math.Abs(_renderTransform.Value.M22 - RenderSize.Height / 56) > 1e-6))
         {
             var transform = new ScaleTransform(RenderSize.Width / 56, RenderSize.Height / 56);
             transform.Freeze();

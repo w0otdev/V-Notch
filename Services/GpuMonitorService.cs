@@ -304,7 +304,7 @@ public sealed partial class GpuMonitorService : IDisposable, IAsyncDisposable
             uint cb = (uint)Marshal.SizeOf<Win32Interop.PROCESS_MEMORY_COUNTERS_EX>();
             if (Win32Interop.GetProcessMemoryInfo(_currentProcessHandle, out var memCounters, cb))
             {
-                return (ulong)memCounters.WorkingSetSize;
+                return memCounters.WorkingSetSize;
             }
         }
         catch (Exception)

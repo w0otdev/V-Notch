@@ -209,8 +209,8 @@ public partial class MainWindow
     {
         if (_cachedCompactThumbnailOffset.HasValue &&
             _cachedCompactIslandMode == _settings.EnableDynamicIslandMode &&
-            _cachedCompactHeight == GetCollapsedHeight() &&
-            _cachedCompactDpi == GetGlassDpiScale())
+            Math.Abs(_cachedCompactHeight - GetCollapsedHeight()) < 1e-6 &&
+            Math.Abs(_cachedCompactDpi - GetGlassDpiScale()) < 1e-6)
             return _cachedCompactThumbnailOffset.Value;
         return MusicCompactContent.Visibility != Visibility.Collapsed && MusicCompactContent.IsArrangeValid &&
             TryComputeCompactThumbnailRestOffset(out var measuredOffset) ? measuredOffset : (0, 0);
@@ -917,12 +917,7 @@ public partial class MainWindow
             _cachedThumbnailExpandTarget = updatedTarget;
         }
 
-        if (effectiveTarget != VNotch.Models.NotchView.Media)
-        {
-            HandoffAnimationThumbnailToExpanded();
-            FinalizeCompactThumbnailStateAfterExpand(suppressCompactThumbnailMotion);
-        }
-        else if (_isThumbnailExpandAnimating)
+        if (effectiveTarget == VNotch.Models.NotchView.Media && _isThumbnailExpandAnimating)
         {
             _pendingThumbnailHandoff = () =>
             {
@@ -1868,7 +1863,6 @@ public partial class MainWindow
 
     private void OnCollapseCompleted(
         int generation,
-        bool wasTimer,
         bool wasAudio,
         FrameworkElement contentToShow,
         bool suppressCompactThumbnailMotion,
@@ -2079,10 +2073,7 @@ public partial class MainWindow
         MediaBackground.BeginAnimation(OpacityProperty, fadeOutBlurAnim);
         MediaBackground2.BeginAnimation(OpacityProperty, fadeOutBlurAnim);
 
-        FrameworkElement contentToShow;
-        {
-            contentToShow = _isMusicCompactMode ? MusicCompactContent : CollapsedContent;
-        }
+        FrameworkElement contentToShow = _isMusicCompactMode ? MusicCompactContent : CollapsedContent;
         FrameworkElement contentToHide = _isMusicCompactMode ? CollapsedContent : MusicCompactContent;
 
         contentToHide.BeginAnimation(OpacityProperty, null);
@@ -2161,7 +2152,7 @@ public partial class MainWindow
             {
                 if (result.Status == VNotch.Models.TransitionExecutionStatus.Completed)
                 {
-                    OnCollapseCompleted(generation, wasTimer, wasAudio, contentToShow, suppressCompactThumbnailMotion, animateCompactThumbnailRevealOnCollapse);
+                    OnCollapseCompleted(generation, wasAudio, contentToShow, suppressCompactThumbnailMotion, animateCompactThumbnailRevealOnCollapse);
                 }
             });
         }
@@ -2174,7 +2165,7 @@ public partial class MainWindow
 
             var widthAnim = MakeAnim(currentWidth, _collapsedWidth, _dur500, _easeExpOut6, animFps);
             var heightAnim = MakeAnim(currentHeight, _collapsedHeight, _dur500, _easeExpOut6, animFps);
-            heightAnim.Completed += (s, e) => OnCollapseCompleted(generation, wasTimer, wasAudio, contentToShow, suppressCompactThumbnailMotion, animateCompactThumbnailRevealOnCollapse);
+            heightAnim.Completed += (s, e) => OnCollapseCompleted(generation, wasAudio, contentToShow, suppressCompactThumbnailMotion, animateCompactThumbnailRevealOnCollapse);
 
             NotchBorder.BeginAnimation(WidthProperty, widthAnim);
             NotchBorder.BeginAnimation(HeightProperty, heightAnim);
@@ -2204,10 +2195,8 @@ public partial class MainWindow
         expandedTranslate.BeginAnimation(TranslateTransform.YProperty, slideOutAnim);
         ExpandedContentBlur.Radius = 0;
 
-        {
-            contentToShow.Visibility = Visibility.Visible;
-            contentToShow.BeginAnimation(OpacityProperty, fadeInAnim);
-        }
+        contentToShow.Visibility = Visibility.Visible;
+        contentToShow.BeginAnimation(OpacityProperty, fadeInAnim);
         showScale.BeginAnimation(ScaleTransform.ScaleXProperty, springShow);
         showScale.BeginAnimation(ScaleTransform.ScaleYProperty, springShow);
 

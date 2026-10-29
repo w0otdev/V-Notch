@@ -80,8 +80,8 @@ internal static partial class TranslationDateIntegrity
             0, initial, initial.Length, out int count);
         if (count <= 0) return new(text, values, text, source, target);
 
-        VnWeekdaySpan[]? rented = null;
-        Span<VnWeekdaySpan> spans = status == 0 ? initial[..count] : (rented = new VnWeekdaySpan[count]);
+
+        Span<VnWeekdaySpan> spans = status == 0 ? initial[..count] : new VnWeekdaySpan[count];
         if (status != 0)
         {
             vn_translation_date_extract_weekdays(
@@ -91,8 +91,10 @@ internal static partial class TranslationDateIntegrity
             spans = spans[..count];
         }
 
-        string original = text, prefix = "__VNT_WEEKDAY";
-        while (text.Contains(prefix, StringComparison.Ordinal)) prefix += "X";
+        string original = text;
+        var prefixBuilder = new StringBuilder("__VNT_WEEKDAY");
+        while (text.Contains(prefixBuilder.ToString(), StringComparison.Ordinal)) prefixBuilder.Append('X');
+        string prefix = prefixBuilder.ToString();
 
         var culture = CultureInfo.GetCultureInfo(target).DateTimeFormat;
         Span<VnWeekdaySpan> dayBuf = stackalloc VnWeekdaySpan[32];

@@ -62,9 +62,13 @@ public sealed partial class UpdateSecurityPolicy
             AllowedCertificateThumbprints.Count,
             out int outState) == 0
             ? outState
-            : (AllowedPublisherNames.Count == 0 && AllowedCertificateThumbprints.Count == 0
-                ? 0
-                : (AllowedPublisherNames.Count == 0 || AllowedCertificateThumbprints.Count == 0 ? 1 : 2));
+            : ResolveFallbackPolicyState();
+
+        int ResolveFallbackPolicyState()
+        {
+            if (AllowedPublisherNames.Count == 0 && AllowedCertificateThumbprints.Count == 0) return 0;
+            return AllowedPublisherNames.Count == 0 || AllowedCertificateThumbprints.Count == 0 ? 1 : 2;
+        }
 
         if (state == 0)
         {

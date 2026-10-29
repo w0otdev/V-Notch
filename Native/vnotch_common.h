@@ -200,7 +200,7 @@ inline int32_t index_of_ignore_case(std::u16string_view haystack, std::u16string
     }
     // Fold the needle once (stack buffer for short needles) and reject on the first character before comparing the rest.
     constexpr size_t kFoldedCapacity = 64;
-    char16_t folded[kFoldedCapacity];
+    char16_t folded[kFoldedCapacity]{};
     const bool use_folded = needle.size() <= kFoldedCapacity;
     if (use_folded)
     {
@@ -246,7 +246,7 @@ inline int32_t last_index_of_ignore_case(std::u16string_view haystack, std::u16s
         return -1;
     }
     constexpr size_t kFoldedCapacity = 64;
-    char16_t folded[kFoldedCapacity];
+    char16_t folded[kFoldedCapacity]{};
     const bool use_folded = needle.size() <= kFoldedCapacity;
     if (use_folded)
     {
