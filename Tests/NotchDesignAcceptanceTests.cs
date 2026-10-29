@@ -59,13 +59,13 @@ public sealed class NotchDesignAcceptanceTests
         };
         typeof(ShellViewModel).GetMethod("ApplyMediaUpdate", BindingFlags.Instance | BindingFlags.NonPublic)!
             .Invoke(window.DataContext, new object?[] { info });
-        PumpFor(TimeSpan.FromMilliseconds(800));
+        PumpFor(TimeSpan.FromMilliseconds(120));
         Assert.Equal(info.CurrentTrack, ((ShellViewModel)window.DataContext).Media.Title);
         Assert.Equal(info.CurrentTrack, Field<MediaInfo>(window, "_currentMediaInfo").CurrentTrack);
         Invoke(window, "ExpandNotch", null, NotchView.Media, NotchView.Compact);
         CaptureTransitionIfRequested(window, language, 144);
         PumpUntil(() => !IsAnimating(window));
-        PumpFor(TimeSpan.FromMilliseconds(650));
+        PumpUntil(() => Math.Max(window.MediaPlayback.TrackTitleLayer.Opacity, window.MediaPlayback.TrackTitleNextLayer.Opacity) > .99);
         Assert.Equal(Visibility.Visible, window.ExpandedContent.Visibility);
         var title = window.MediaPlayback.TrackTitleLayer.Opacity > window.MediaPlayback.TrackTitleNextLayer.Opacity ? window.MediaPlayback.TrackTitle : window.MediaPlayback.TrackTitleNext;
         Assert.Equal(info.CurrentTrack, title.Text);
@@ -77,14 +77,15 @@ public sealed class NotchDesignAcceptanceTests
         Assert.Equal(Colors.White, navInk.Color);
         foreach (int dpi in dpis) SaveFrame(window, language, dpi, "artwork");
         Invoke(window, "HideMediaBackground");
-        PumpFor(TimeSpan.FromMilliseconds(550));
+        PumpUntil(() => Assert.IsType<SolidColorBrush>(window.MediaPlayback.CurrentTimeText.Foreground).Color == UiPalette.SecondaryColor
+            && ((LinearGradientBrush)window.Resources["TrackTitleGradient"]).GradientStops[0].Color == UiPalette.PrimaryColor);
         AssertMediaInk(window, hasArtwork: false);
         foreach (int dpi in dpis) SaveFrame(window, language, dpi, "black");
         window.SetDebugViewLock(false);
         Invoke(window, "CollapseNotch", new object?[] { null });
         PumpUntil(() => !IsAnimating(window) && ((ShellViewModel)window.DataContext).CurrentView == NotchView.Compact);
         Invoke(window, "AnimateNotchHover", true);
-        PumpFor(TimeSpan.FromMilliseconds(550));
+        PumpFor(TimeSpan.FromMilliseconds(120));
         foreach (int dpi in dpis) SaveFrame(window, language, dpi, "hover");
     });
 

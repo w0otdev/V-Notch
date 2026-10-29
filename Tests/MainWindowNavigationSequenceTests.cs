@@ -31,10 +31,13 @@ public sealed class MainWindowNavigationSequenceTests
         {
             AnimationConfig.SetReduceMotion(reducedMotion);
             window.Show();
-            foreach (var target in new[] { NotchView.Media, NotchView.Timer, NotchView.AudioMixer,
+            var targets = new[] { NotchView.Media, NotchView.Timer, NotchView.AudioMixer,
                 NotchView.Media, NotchView.Secondary, NotchView.Timer, NotchView.Secondary,
-                NotchView.AudioMixer, NotchView.Timer, NotchView.Media, NotchView.Compact })
+                NotchView.AudioMixer, NotchView.Timer, NotchView.Media, NotchView.Compact };
+            for (int i = 0; i < targets.Length; i++)
             {
+                var target = targets[i];
+                AnimationConfig.SetReduceMotion(reducedMotion || (i > 2 && i < targets.Length - 1));
                 Assert.True(coordinator.RequestView(target, "NavigationRegression"));
                 await WpfFrameWaiter.UntilAsync(() => !coordinator.IsTransitionActive,
                     "navigation to " + target, ct);

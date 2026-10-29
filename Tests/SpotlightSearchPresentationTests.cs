@@ -179,6 +179,8 @@ public sealed class SpotlightSearchPresentationTests
         Invoke(window, "ShowSpotlightMessage", "replacement failure");
         Assert.False(timer.IsEnabled);
         Assert.Equal("replacement failure", window.FailureText.Text);
+        var activeTimer = Field<UiScheduledTimer>(window, "_failureTimer");
+        activeTimer.Interval = TimeSpan.FromMilliseconds(10);
         await WpfFrameWaiter.UntilAsync(() => window.FailureBar.Visibility == Visibility.Collapsed, "failure message expired", ct);
         Assert.Null(Field<UiScheduledTimer?>(window, "_failureTimer"));
         Invoke(window, "ShowSpotlightMessage", "cancelled failure");
