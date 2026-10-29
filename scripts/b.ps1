@@ -316,6 +316,17 @@ if ($foundKey -or $env:VNOTCH_UPDATE_SIGNING_KEY_PEM) {
     }
 }
 
+if ($env:GITHUB_ACTIONS -ne 'true') {
+    foreach ($tempDir in @($publishDir, 'Uninstall\bin', 'Uninstall\obj')) {
+        $fullTemp = [IO.Path]::GetFullPath((Join-Path $repoRoot $tempDir))
+        if ($fullTemp.StartsWith($repoRoot + [IO.Path]::DirectorySeparatorChar, [StringComparison]::OrdinalIgnoreCase) -and
+            (Test-Path -LiteralPath $fullTemp)) {
+            Remove-Item -LiteralPath $fullTemp -Recurse -Force -ErrorAction SilentlyContinue
+        }
+    }
+    Write-TreeItem "Cleaned intermediate '$publishDir' & Uninstall build directories." -State "Success"
+}
+
 $totalSw.Stop()
 Write-TreeSpacer
 Write-Host "  $gBotLeft$lineRule" -ForegroundColor DarkCyan
