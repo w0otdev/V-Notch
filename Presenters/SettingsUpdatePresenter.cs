@@ -95,19 +95,23 @@ public sealed class SettingsUpdatePresenter : IDisposable
         _refs.Status.Text = Loc.Get("update.preparing");
         _refs.Download.IsEnabled = false;
         _refs.Check.IsEnabled = false;
+        using var downloadLifetime = CancellationTokenSource.CreateLinkedTokenSource(_lifetime.Token);
         try
         {
             var dialog = new UpdateDownloadWindow();
             if (_refs.Owner.IsLoaded)
             {
                 dialog.Owner = _refs.Owner;
+                dialog.WindowStartupLocation = WindowStartupLocation.CenterOwner;
+                dialog.Topmost = _refs.Owner.Topmost;
             }
+            dialog.Closed += (_, _) => downloadLifetime.Cancel();
             _progressWindow = dialog;
             _progressWindow.SetIndeterminate(Loc.Get("update.preparing"));
             _progressWindow.Show();
             var progress = new Progress<double>(p =>
             {
-                if (_refs == null || _progressWindow == null) return;
+                if (_refs == null || _progressWindow != dialog || downloadLifetime.IsCancellationRequested) return;
                 if (p < 0)
                 {
                     _progressWindow.SetIndeterminate(Loc.Get("update.downloading"));
@@ -120,13 +124,15 @@ public sealed class SettingsUpdatePresenter : IDisposable
                     _progressWindow.SetProgress(p);
                 }
             });
-            bool success = await _service.DownloadAndInstallUpdateAsync(update, progress, _lifetime.Token);
-            if (_refs == null || success) return;
+            bool success = await _service.DownloadAndInstallUpdateAsync(update, progress, downloadLifetime.Token);
+            if (_refs == null || success || downloadLifetime.IsCancellationRequested) return;
             _refs.Status.Text = Loc.Get("settings.updateAvailable", update.Version);
+            // An owned topmost progress window must not cover the error dialog.
+            CloseProgressWindow();
             MessageBox.Show(_refs.Owner, Loc.Get("error.updateFailed"), Loc.Get("error.updateFailedTitle"),
                 MessageBoxButton.OK, MessageBoxImage.Warning);
         }
-        catch (OperationCanceledException) when (_lifetime.IsCancellationRequested) { /* Intentionally ignored. */ }
+        catch (OperationCanceledException) when (downloadLifetime.IsCancellationRequested) { /* Intentionally ignored. */ }
         catch (Exception ex)
         {
             RuntimeLog.Error("SETTINGS", ex, "Update download failed");
@@ -134,15 +140,24 @@ public sealed class SettingsUpdatePresenter : IDisposable
         }
         finally
         {
-            _progressWindow?.Close();
-            _progressWindow = null;
+            bool canceled = downloadLifetime.IsCancellationRequested;
+            CloseProgressWindow();
             _downloading = false;
             if (_refs != null)
             {
-                _refs.Download.IsEnabled = true;
-                _refs.Check.IsEnabled = true;
+                _refs.Download.IsEnabled = _canUseNetwork();
+                _refs.Check.IsEnabled = _canUseNetwork();
+                if (canceled && !_lifetime.IsCancellationRequested)
+                    _refs.Status.Text = Loc.Get("settings.updateAvailable", update.Version);
             }
         }
+    }
+
+    private void CloseProgressWindow()
+    {
+        var dialog = _progressWindow;
+        _progressWindow = null;
+        dialog?.Close();
     }
 
     public void ShowChangelog()

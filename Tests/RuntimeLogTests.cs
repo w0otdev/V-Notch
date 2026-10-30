@@ -34,9 +34,13 @@ public sealed class RuntimeLogTests
             await File.WriteAllTextAsync(path, new string('x', limit - 100));
             using (var lockedBackup = new FileStream(path + ".old", FileMode.Open, FileAccess.Read, FileShare.None))
             {
+                RuntimeLog.Info("OTHER-SERVICE", "background entry.");
+                await RuntimeLog.FlushAsync().WaitAsync(TimeSpan.FromSeconds(5));
+                long lengthBeforeOverflow = new FileInfo(path).Length;
+                Assert.True(lengthBeforeOverflow <= limit);
                 RuntimeLog.Info("LOCKED-BACKUP", new string('a', 200));
                 await RuntimeLog.FlushAsync().WaitAsync(TimeSpan.FromSeconds(5));
-                Assert.Equal(limit - 100, new FileInfo(path).Length);
+                Assert.Equal(lengthBeforeOverflow, new FileInfo(path).Length);
             }
             RuntimeLog.Info("AFTER-UNLOCK", new string('b', 200));
             await RuntimeLog.FlushAsync().WaitAsync(TimeSpan.FromSeconds(5));

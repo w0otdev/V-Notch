@@ -348,7 +348,13 @@ public sealed partial class UpdateService : IUpdateService, IDisposable
         }
     }
 
-    public async Task<bool> DownloadAndInstallUpdateAsync(UpdateInfo updateInfo, IProgress<double>? progress = null, CancellationToken cancellationToken = default)
+    // ShellExecute, trust verification and temporary-file cleanup can block even
+    // when the HTTP operations complete synchronously. Keep the whole pipeline
+    // off the dispatcher for both Settings and the notch update notification.
+    public Task<bool> DownloadAndInstallUpdateAsync(UpdateInfo updateInfo, IProgress<double>? progress = null, CancellationToken cancellationToken = default)
+        => Task.Run(() => DownloadAndInstallUpdateCoreAsync(updateInfo, progress, cancellationToken));
+
+    private async Task<bool> DownloadAndInstallUpdateCoreAsync(UpdateInfo updateInfo, IProgress<double>? progress, CancellationToken cancellationToken)
     {
         string? directory = null;
         string? installerPath = null;
@@ -356,6 +362,7 @@ public sealed partial class UpdateService : IUpdateService, IDisposable
         var installerStarted = false;
         try
         {
+            cancellationToken.ThrowIfCancellationRequested();
             if (!IsApprovedUpdate(updateInfo)) throw new InvalidOperationException("Update does not reference an approved installer and signed manifest.");
             var safeInstallerName = Path.GetFileName(updateInfo.InstallerName);
             if (!string.Equals(safeInstallerName, updateInfo.InstallerName, StringComparison.Ordinal) ||

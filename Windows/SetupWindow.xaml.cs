@@ -238,6 +238,11 @@ public partial class SetupWindow : Window
         MainBorder.CornerRadius = new CornerRadius(ActualWidth < 580 ? 18 : 24);
     }
 
+    private void SidebarScrollViewer_SizeChanged(object sender, SizeChangedEventArgs e)
+    {
+        if (IsLoaded) UpdateStepIndicators(_currentPageIndex);
+    }
+
     private void CloseButton_Click(object sender, RoutedEventArgs e)
     {
         if (_isInstalling)
@@ -942,6 +947,8 @@ public partial class SetupWindow : Window
                 steps[i].FontWeight = FontWeights.Bold;
             }
         }
+        if (currentStep >= 0 && currentStep < steps.Length)
+            steps[currentStep].BringIntoView();
     }
 
     public void AutoAdvanceToFinish()
@@ -1643,6 +1650,8 @@ public class InstallProgressPage : UserControl, ISetupAnimatedPage
             Text = Loc.Get("setup.install.headline"),
             FontSize = 28,
             FontWeight = FontWeights.Bold,
+            TextWrapping = TextWrapping.Wrap,
+            TextAlignment = TextAlignment.Left,
             Foreground = VNotch.Services.UiPalette.PrimaryBrush,
             FontFamily = SetupFonts.SFProDisplayFont,
             Margin = new Thickness(0, 0, 0, 12)
@@ -1659,8 +1668,10 @@ public class InstallProgressPage : UserControl, ISetupAnimatedPage
             LineHeight = 21,
             Foreground = new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromArgb(204, 255, 255, 255)),
             FontFamily = SetupFonts.SFProDisplayFont,
-            MaxWidth = 430,
-            Margin = new Thickness(0, 0, 0, 32)
+            HorizontalAlignment = HorizontalAlignment.Stretch,
+            TextAlignment = TextAlignment.Left,
+            MinHeight = 42,
+            Margin = new Thickness(0, 0, 0, 20)
         };
         Grid.SetRow(_status, 1);
         grid.Children.Add(_status);

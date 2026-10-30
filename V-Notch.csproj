@@ -33,7 +33,13 @@
     <RetainVMGarbageCollection>false</RetainVMGarbageCollection>
     <DebugType>portable</DebugType>
     <DebugSymbols>true</DebugSymbols>
-    <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
+    <!-- Native libraries are already deployed beside the app. Avoid extracting
+         another per-version copy, and share runtime DLLs with the uninstaller. -->
+    <IncludeNativeLibrariesForSelfExtract>false</IncludeNativeLibrariesForSelfExtract>
+    <!-- Reduce the installed single-file executable without trimming WPF,
+         reflection, COM interop or CPU/GPU translation backends. -->
+    <EnableCompressionInSingleFile Condition="'$(Configuration)' == 'Release' And '$(SelfContained)' == 'true'">true</EnableCompressionInSingleFile>
+    <PublishReferencesDocumentationFiles>false</PublishReferencesDocumentationFiles>
     <Version>2.2.0</Version>
     <AssemblyVersion>2.2.0</AssemblyVersion>
     <FileVersion>2.2.0</FileVersion>
