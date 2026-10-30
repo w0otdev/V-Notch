@@ -55,7 +55,7 @@ public class LanguagePage : UserControl, ISetupAnimatedPage
             if (!UriParser.IsKnownScheme("pack"))
                 _ = System.IO.Packaging.PackUriHelper.UriSchemePack;
 
-            var uri = new Uri($"pack://application:,,,/Assets/Flags/flag_{langCode}.png", UriKind.Absolute);
+            var uri = new Uri($"pack://application:,,,/V-Notch;component/Assets/Flags/flag_{langCode}.png", UriKind.Absolute);
             var bmp = new System.Windows.Media.Imaging.BitmapImage();
             bmp.BeginInit();
             bmp.UriSource = uri;
