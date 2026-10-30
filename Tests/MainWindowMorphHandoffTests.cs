@@ -115,6 +115,7 @@ public sealed class MainWindowMorphHandoffTests
         window.PlayNotchReturnBounce();
         await WpfFrameWaiter.UntilAsync(() => Math.Abs(window.NotchScale.ScaleX - 1) < .00001 && window.NotchScale.HasAnimatedProperties, "notch return bounce", ct);
         var mouse = new MouseEventArgs(Mouse.PrimaryDevice, Environment.TickCount);
+        Invoke(window, "AnimateStatusBarReveal", true);
         Invoke(window, "SettingsButton_MouseEnter", window, mouse);
         Invoke(window, "AnimateBatteryHover", true);
         await WpfFrameWaiter.UntilAsync(() => Math.Abs(window.SettingsRotate.Angle - 132) < .00001 && Math.Abs(window.BatterySectionScale.ScaleX - 1.1) < .00001, "settings and battery hover", ct);

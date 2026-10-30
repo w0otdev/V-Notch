@@ -702,6 +702,9 @@ public partial class MainWindow
 
     private void AnimateStatusBarReveal(bool show)
     {
+        SettingsButton.IsHitTestVisible = show;
+        SettingsButton.Focusable = show;
+        if (!show) HideSharedSettingsButton();
         var dur = TimeSpan.FromMilliseconds(show ? 340 : 220);
         var easing = _easeExpOut5;
         var settingsEase = _easeBackOut022;
@@ -729,9 +732,11 @@ public partial class MainWindow
             or VNotch.Models.NotchView.Timer
             or VNotch.Models.NotchView.AudioMixer;
         double iconTargetY = _settings.EnableDynamicIslandMode ? 5 : 0;
+        double settingsTargetY = activeTargetView == VNotch.Models.NotchView.Secondary ? 0 : iconTargetY;
 
         if (show)
         {
+            PlaceSharedSettingsButton(activeTargetView);
             BatterySection.Visibility = showBatterySection ? Visibility.Visible : Visibility.Collapsed;
             BatterySection.IsHitTestVisible = showBatterySection;
             NavIconsPanel.Visibility = Visibility.Visible;
@@ -773,7 +778,7 @@ public partial class MainWindow
 
         var settingsTranslateAnim = new DoubleAnimation
         {
-            To = show ? iconTargetY : -6,
+            To = show ? settingsTargetY : -6,
             Duration = dur,
             EasingFunction = settingsEase,
             BeginTime = settingsDelay

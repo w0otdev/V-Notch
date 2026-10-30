@@ -236,21 +236,112 @@ public class SettingsWindowDecouplingTests
         });
     }
 
+    [Fact]
+    public void SavingKeepsTheWindowOpenUntilPersistenceCompletesAndCoalescesRepeatedClicks() => SharedStaTestRunner.RunAsync(async ct =>
+    {
+        EnsureApplicationResources();
+        var complete = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var service = new FakeSettingsAppService { CompleteApply = () => complete.Task };
+        var window = new SettingsWindow(new NotchSettings(), service) { Left = 0, Top = 0 };
+        try
+        {
+            var pending = window.ApplyAndCloseAsync(ex => throw new Xunit.Sdk.XunitException(ex.ToString()));
+            Assert.False(pending.IsCompleted);
+            Assert.False((bool)typeof(SettingsWindow).GetField("_isClosing", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(window)!);
+            Assert.False(await window.ApplyAndCloseAsync());
+            Assert.Equal(1, service.ApplyCount);
+            complete.SetResult();
+            Assert.True(await pending);
+            Assert.True((bool)typeof(SettingsWindow).GetField("_isClosing", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(window)!);
+        }
+        finally { complete.TrySetResult(); window.Close(); }
+        ct.ThrowIfCancellationRequested();
+    });
+
+    [Fact]
+    public void ApplyButtonSavesWithoutClosingAndCancelKeepsTheAppliedBaseline() => SharedStaTestRunner.RunAsync(async ct =>
+    {
+        EnsureApplicationResources();
+        var complete = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var service = new FakeSettingsAppService { CompleteApply = () => complete.Task };
+        var window = new SettingsWindow(new NotchSettings(), service) { Left = 0, Top = 0 };
+        try
+        {
+            window.WidthSlider.Value = 320;
+            window.ApplyButton.RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Primitives.ButtonBase.ClickEvent));
+            Assert.Equal(1, service.ApplyCount);
+            window.ApplyButton.RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Primitives.ButtonBase.ClickEvent));
+            Assert.Equal(1, service.ApplyCount);
+            complete.SetResult();
+            await WpfFrameWaiter.UntilAsync(() => !(bool)typeof(SettingsWindow).GetField("_isSaving", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(window)!,
+                "Apply finishes saving", ct);
+            Assert.Equal(320, service.AppliedSettings!.Width);
+            Assert.False((bool)typeof(SettingsWindow).GetField("_isClosing", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(window)!);
+            window.WidthSlider.Value = 400;
+            window.ApplyPreview(window.ReadSettingsFromUi());
+            NotchSettings? reverted = null;
+            window.SettingsChanged += (_, settings) => reverted = settings;
+            typeof(SettingsWindow).GetMethod("RevertLivePreviewIfNeeded", BindingFlags.Instance | BindingFlags.NonPublic)!.Invoke(window, null);
+            Assert.Equal(320, reverted!.Width);
+        }
+        finally { complete.TrySetResult(); window.Close(); }
+    });
+
+    [Fact]
+    public void SaveButtonStillSavesAndCloses() => SharedStaTestRunner.Run(() =>
+    {
+        EnsureApplicationResources();
+        var service = new FakeSettingsAppService();
+        var window = new SettingsWindow(new NotchSettings(), service) { Left = 0, Top = 0 };
+        try
+        {
+            window.WidthSlider.Value = 360;
+            window.SaveButton.RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Primitives.ButtonBase.ClickEvent));
+            Assert.Equal(360, service.AppliedSettings!.Width);
+            Assert.True((bool)typeof(SettingsWindow).GetField("_isClosing", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(window)!);
+        }
+        finally { window.Close(); }
+    });
+
+    [Fact]
+    public void FailedSaveKeepsTheWindowOpenAndAllowsRetry() => SharedStaTestRunner.RunAsync(async ct =>
+    {
+        EnsureApplicationResources();
+        bool fail = true;
+        var failure = new System.IO.IOException("Fixture disk full");
+        var service = new FakeSettingsAppService { CompleteApply = () => fail ? Task.FromException(failure) : Task.CompletedTask };
+        var window = new SettingsWindow(new NotchSettings(), service) { Left = 0, Top = 0 };
+        try
+        {
+            Exception? reported = null;
+            Assert.False(await window.ApplyAndCloseAsync(ex => reported = ex));
+            Assert.Same(failure, reported);
+            Assert.False((bool)typeof(SettingsWindow).GetField("_isClosing", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(window)!);
+            Assert.Null(service.AppliedSettings);
+            fail = false;
+            Assert.True(await window.ApplyAndCloseAsync(ex => throw new Xunit.Sdk.XunitException(ex.ToString())));
+            Assert.Equal(2, service.ApplyCount);
+        }
+        finally { window.Close(); }
+        ct.ThrowIfCancellationRequested();
+    });
+
     private sealed class FakeSettingsAppService : ISettingsApplicationService
     {
         public NotchSettings? ExportedSettings { get; private set; }
         public NotchSettings? AppliedSettings { get; private set; }
         public int ExportCount { get; private set; }
         public int ApplyCount { get; private set; }
+        public Func<Task>? CompleteApply { get; init; }
 
         public NotchSettings Load() => new();
 
-        public Task ApplyAsync(NotchSettings settings, CancellationToken ct = default)
+        public async Task ApplyAsync(NotchSettings settings, CancellationToken ct = default)
         {
             ApplyCount++;
+            if (CompleteApply != null) await CompleteApply();
             AppliedSettings = settings;
             SettingsApplied?.Invoke(this, settings);
-            return Task.CompletedTask;
         }
 
         public Task<(NotchSettings Settings, bool RequiresRestart)> ImportAsync(string filePath, NotchSettings? currentSettings = null, CancellationToken ct = default)

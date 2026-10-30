@@ -97,8 +97,15 @@ public partial class ChangelogWindow : Window
                 });
             }
 
-            // Sort by version (descending)
-            _changelogEntries = _changelogEntries.OrderByDescending(e => ParseVersion(e.Version)).ToList();
+            // Sort by version (descending, including pre-release versions)
+            _changelogEntries.Sort((a, b) =>
+            {
+                bool aValid = UpdateService.TryParseReleaseVersion(a.Version, out _, out _);
+                bool bValid = UpdateService.TryParseReleaseVersion(b.Version, out _, out _);
+                if (aValid && bValid) return UpdateService.CompareVersions(b.Version, a.Version);
+                if (aValid != bValid) return aValid ? -1 : 1;
+                return ParseVersion(b.Version).CompareTo(ParseVersion(a.Version));
+            });
 
             // Populate version list
             PopulateVersionList();

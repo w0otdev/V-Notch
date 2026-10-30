@@ -1048,5 +1048,11 @@
   "whitenoise.volume": "Volume",
   "whitenoise.mute": "Silenzia",
   "whitenoise.sync": "Sincronizza con il timer",
-  "whitenoise.syncTip": "Sfuma e si ferma quando il timer termina"
+  "whitenoise.syncTip": "Sfuma e si ferma quando il timer termina",
+  "settings.glass.ultimateGpu": "Modalità GPU Ultimate (GPU 0)",
+  "settings.glass.ultimateGpu.hint": "Esegue Liquid Glass sulla GPU dedicata ad alte prestazioni (GPU 0). L'attività della GPU è limitata al valore di FPS target indicato sotto.",
+  "settings.glass.ultimateGpu.warning": "Avviso: La modalità GPU dedicata consuma più energia. Imposta gli FPS target in modo che la GPU lavori solo fino al limite scelto.",
+  "settings.glass.ultimateGpu.title": "Attivare la modalità GPU Ultimate?",
+  "settings.glass.ultimateGpu.confirm": "Questa opzione assegna la GPU dedicata (GPU 0) a Liquid Glass per una maggiore fluidità, aumentando il consumo energetico sui portatili. Il rendering resta limitato agli FPS target per evitare sovraccarichi della GPU.",
+  "tooltip.ultimateGpu": "Usa la GPU 0 ad alte prestazioni per Liquid Glass con limite di FPS"
 }

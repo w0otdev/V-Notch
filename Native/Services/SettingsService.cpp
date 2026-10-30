@@ -54,6 +54,7 @@ struct VnLiquidGlassScalars {
     double glow_edge1;
     uint8_t hide_from_screen_capture;
     uint8_t use_gpu_refraction;
+    uint8_t use_ultimate_gpu;
 };
 #pragma pack(pop)
 
@@ -194,7 +195,8 @@ public:
             && DoubleEquals(a.glow_edge0, b.glow_edge0, true)
             && DoubleEquals(a.glow_edge1, b.glow_edge1, true)
             && a.hide_from_screen_capture == b.hide_from_screen_capture
-            && a.use_gpu_refraction == b.use_gpu_refraction;
+            && a.use_gpu_refraction == b.use_gpu_refraction
+            && a.use_ultimate_gpu == b.use_ultimate_gpu;
     }
 };
 

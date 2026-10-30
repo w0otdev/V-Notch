@@ -18,9 +18,11 @@ public sealed class NotchNavigationIntegrationTests
     private const BindingFlags Private = BindingFlags.Instance | BindingFlags.NonPublic;
 
     [Theory]
-    [InlineData(false)]
-    [InlineData(true)]
-    public void EveryExpandedViewCanNavigateToEveryOtherViewAndCollapse(bool blurEnabled) => SharedStaTestRunner.RunAsync(async ct =>
+    [InlineData(false, false)]
+    [InlineData(false, true)]
+    [InlineData(true, false)]
+    [InlineData(true, true)]
+    public void EveryExpandedViewCanNavigateToEveryOtherViewAndCollapse(bool blurEnabled, bool island) => SharedStaTestRunner.RunAsync(async ct =>
     {
         bool previousReducedMotion = AnimationConfig.ReduceMotion;
         await using var fixture = new GreetingAcceptanceTests.MainWindowFixture("en", greeting: false,
@@ -29,6 +31,7 @@ public sealed class NotchNavigationIntegrationTests
                 settings.EnableLocalOnlyMode = true;
                 settings.DisableMouseLeaveAutoClose = true;
                 settings.EnableBlurEffects = blurEnabled;
+                settings.EnableDynamicIslandMode = island;
             },
             services => services.AddSingleton<IMediaDetectionService>(new Fakes.FakeMediaDetectionService()));
         var window = fixture.Window;
@@ -39,7 +42,9 @@ public sealed class NotchNavigationIntegrationTests
         {
             await StartAsync(window, ct);
             var coordinator = Field<NotchTransitionCoordinator>(window, "_transitionCoordinator");
+            Assert.False(window.SettingsButton.IsHitTestVisible);
             var views = new[] { NotchView.Media, NotchView.Secondary, NotchView.Timer, NotchView.AudioMixer, NotchView.Camera };
+            bool capturedHeader = false;
             async Task Navigate(NotchView view)
             {
                 if (coordinator.CurrentView != view)
@@ -54,6 +59,65 @@ public sealed class NotchNavigationIntegrationTests
                 Assert.Equal(view, ((ShellViewModel)window.DataContext).CurrentView);
                 Assert.Equal(view != NotchView.Compact, Property<bool>(window, "_isExpanded"));
                 Assert.True(window.NotchBorder.IsHitTestVisible);
+                if (view != NotchView.Compact)
+                {
+                    await WpfFrameWaiter.UntilAsync(() => window.SettingsButton.Opacity > 0.99
+                        && Math.Abs(window.SettingsRotate.Angle - 45) < 1e-6,
+                        "shared Settings button revealed", ct);
+                    window.UpdateLayout();
+                    Assert.True(window.SettingsButton.IsVisible);
+                    Assert.True(window.SettingsButton.IsHitTestVisible);
+                    var bounds = window.SettingsButton.TransformToAncestor(window.NotchContent)
+                        .TransformBounds(new Rect(window.SettingsButton.RenderSize));
+                    Assert.True(bounds.Right <= window.NotchContent.ActualWidth + 1 && bounds.Left >= 0,
+                        $"Settings button must stay inside the {view} view.");
+                    var hit = window.NotchContent.InputHitTest(new Point(bounds.Left + bounds.Width / 2, bounds.Top + bounds.Height / 2)) as DependencyObject;
+                    while (hit != null && !ReferenceEquals(hit, window.SettingsButton)) hit = VisualTreeHelper.GetParent(hit);
+                    Assert.Same(window.SettingsButton, hit);
+                    if (view == NotchView.Secondary)
+                    {
+                        var tray = window.ClipboardTrayView;
+                        Assert.Same(window.SettingsButton, tray.SettingsButtonHost.Content);
+                        var settingsBounds = window.SettingsButton.TransformToAncestor(tray)
+                            .TransformBounds(new Rect(window.SettingsButton.RenderSize));
+                        var trashBounds = tray.EmptyTrayButton.TransformToAncestor(tray)
+                            .TransformBounds(new Rect(tray.EmptyTrayButton.RenderSize));
+                        Assert.Equal(trashBounds.Top + trashBounds.Height / 2,
+                            settingsBounds.Top + settingsBounds.Height / 2, precision: 2);
+                        Assert.Equal(32, settingsBounds.Left + settingsBounds.Width / 2
+                            - trashBounds.Left - trashBounds.Width / 2, precision: 2);
+                        Assert.True(settingsBounds.Left >= trashBounds.Right + 2,
+                            $"Toolbar hit areas overlap: trash={trashBounds}, settings={settingsBounds}");
+                        if (!capturedHeader && Environment.GetEnvironmentVariable("VNOTCH_SETTINGS_ICON_PREVIEW_DIR") is { Length: > 0 } previewDirectory)
+                        {
+                            System.IO.Directory.CreateDirectory(previewDirectory);
+                            var drawing = new DrawingVisual();
+                            using (var context = drawing.RenderOpen())
+                                context.DrawRectangle(new VisualBrush(tray)
+                                {
+                                    ViewboxUnits = BrushMappingMode.Absolute,
+                                    Viewbox = new Rect(0, 0, tray.ActualWidth, 34)
+                                }, null, new Rect(0, 0, tray.ActualWidth, 34));
+                            var bitmap = new System.Windows.Media.Imaging.RenderTargetBitmap(
+                                (int)Math.Ceiling(tray.ActualWidth * 1.25), 43, 120, 120, PixelFormats.Pbgra32);
+                            bitmap.Render(drawing);
+                            var encoder = new System.Windows.Media.Imaging.PngBitmapEncoder();
+                            encoder.Frames.Add(System.Windows.Media.Imaging.BitmapFrame.Create(bitmap));
+                            using var file = System.IO.File.Create(System.IO.Path.Combine(previewDirectory, $"tray-header-{island}-{blurEnabled}.png"));
+                            encoder.Save(file);
+                            capturedHeader = true;
+                        }
+                    }
+                }
+                else
+                {
+                    // A late MouseLeave must not resurrect the shared icon.
+                    typeof(MainWindow).GetMethod("SettingsButton_MouseLeave", Private)!.Invoke(window,
+                        [window, new MouseEventArgs(Mouse.PrimaryDevice, Environment.TickCount)]);
+                    Assert.False(window.SettingsButton.IsHitTestVisible);
+                    Assert.Equal(Visibility.Collapsed, window.SettingsButton.Visibility);
+                    Assert.Equal(0, window.SettingsButton.Opacity);
+                }
             }
             int pairIndex = 0;
             foreach (var from in views)
@@ -84,6 +148,87 @@ public sealed class NotchNavigationIntegrationTests
             AnimationConfig.SetReduceMotion(previousReducedMotion);
         }
     }, timeoutSeconds: 90);
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void TraySearchAndActionsShareTheNavigationBaseline(bool island) => SharedStaTestRunner.RunAsync(async ct =>
+    {
+        await using var fixture = new GreetingAcceptanceTests.MainWindowFixture("en", greeting: false,
+            settings =>
+            {
+                settings.EnableLocalOnlyMode = true;
+                settings.DisableMouseLeaveAutoClose = true;
+                settings.EnableDynamicIslandMode = island;
+            }, services => services.AddSingleton<IMediaDetectionService>(new Fakes.FakeMediaDetectionService()));
+        var window = fixture.Window;
+        await StartAsync(window, ct);
+        var coordinator = Field<NotchTransitionCoordinator>(window, "_transitionCoordinator");
+        Assert.True(coordinator.RequestView(NotchView.Secondary, "HeaderAlignment"));
+        await WpfFrameWaiter.UntilAsync(() => !coordinator.IsTransitionActive && !IsAnimating(window)
+            && Math.Abs(window.SettingsRotate.Angle - 45) < 1e-6, "tray header settled", ct);
+        window.UpdateLayout();
+        double CenterY(FrameworkElement element)
+        {
+            var bounds = element.TransformToAncestor(window.NotchContent).TransformBounds(new Rect(element.RenderSize));
+            return bounds.Top + bounds.Height / 2;
+        }
+        double navigationCenter = CenterY(window.HomeIconButton);
+        var tray = window.ClipboardTrayView;
+        foreach (var element in new FrameworkElement[] { tray.SearchSurface, tray.AddLabelButton,
+            tray.SelectAllButton, tray.EmptyTrayButton, window.SettingsButton })
+        {
+            double difference = CenterY(element) - navigationCenter;
+            Assert.True(Math.Abs(difference) <= 0.5,
+                $"{element.Name} is offset from navigation by {difference:F2} DIPs (island={island}).");
+        }
+    });
+
+    [Theory]
+    [InlineData(false, false)]
+    [InlineData(false, true)]
+    [InlineData(true, false)]
+    [InlineData(true, true)]
+    public void BatteryChargingAndSettingsShareTheNavigationBaseline(bool island, bool update) => SharedStaTestRunner.RunAsync(async ct =>
+    {
+        await using var fixture = new GreetingAcceptanceTests.MainWindowFixture("en", greeting: false,
+            settings =>
+            {
+                settings.EnableLocalOnlyMode = true;
+                settings.DisableMouseLeaveAutoClose = true;
+                settings.ShowBatteryIndicator = true;
+                settings.EnableDynamicIslandMode = island;
+            }, services => services.AddSingleton<IMediaDetectionService>(new Fakes.FakeMediaDetectionService()));
+        var window = fixture.Window;
+        await StartAsync(window, ct);
+        typeof(MainWindow).GetField("_isUpdateAvailable", Private)!.SetValue(window, update);
+        var coordinator = Field<NotchTransitionCoordinator>(window, "_transitionCoordinator");
+        Assert.True(coordinator.RequestView(NotchView.Media, "StatusAlignment"));
+        await WpfFrameWaiter.UntilAsync(() => !coordinator.IsTransitionActive && !IsAnimating(window)
+            && Math.Abs(window.SettingsRotate.Angle - 45) < 1e-6, "status header settled", ct);
+        window.BatteryPercent.Text = "100%";
+        window.ChargingBolt.Visibility = Visibility.Visible;
+        window.UpdateLayout();
+        Rect Bounds(FrameworkElement element) => element.TransformToAncestor(window.NotchContent)
+            .TransformBounds(new Rect(element.RenderSize));
+        var nav = Bounds(window.HomeIconButton);
+        double center = nav.Top + nav.Height / 2;
+        foreach (var element in new FrameworkElement[] { window.BatteryIcon, window.ChargingBolt, window.SettingsButton })
+        {
+            var bounds = Bounds(element);
+            double difference = bounds.Top + bounds.Height / 2 - center;
+            Assert.True(Math.Abs(difference) <= 0.5,
+                $"{element.Name} is offset from navigation by {difference:F2} DIPs (island={island}, update={update}).");
+        }
+        if (update)
+        {
+            var bounds = Bounds(window.UpdateNotificationButton);
+            Assert.InRange(Math.Abs(bounds.Top + bounds.Height / 2 - center), 0, 0.5);
+            Assert.True(bounds.Left >= Bounds(window.BatteryIcon).Right + 4);
+            Assert.True(Bounds(window.SettingsButton).Left >= bounds.Right + 4);
+        }
+        else Assert.True(Bounds(window.SettingsButton).Left >= Bounds(window.BatteryIcon).Right + 4);
+    });
 
     [Fact]
     public void InterruptedAnimationsSettleInTheLatestViewAcrossAllConsumers() => SharedStaTestRunner.RunAsync(async ct =>

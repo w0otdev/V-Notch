@@ -42,6 +42,7 @@ struct Snapshot {
 
 struct VolumeLease {
     ComPtr<ISimpleAudioVolume> volume;
+    ComPtr<IAudioSessionControl2> control;
 };
 
 // Exports hold a registry lease while they use an object, so closing a handle on another thread cannot free it mid-call.
@@ -63,24 +64,14 @@ namespace as = vnotch::services::audiosessions;
 
 namespace vnotch::services::audiosessions {
 
-// Lists the sessions of the default render/multimedia endpoint; hr receives the failing HRESULT.
-std::unique_ptr<Snapshot> BuildSnapshot(HRESULT& hr) {
-    EnsureMta();
-    ComPtr<IMMDeviceEnumerator> enumerator;
-    ComPtr<IMMDevice> device;
+void AppendEndpointSessions(IMMDevice* device, Snapshot& snapshot, HRESULT& hr) {
     ComPtr<IAudioSessionManager2> manager;
     ComPtr<IAudioSessionEnumerator> sessions;
-    hr = CoCreateInstance(__uuidof(MMDeviceEnumerator), nullptr, CLSCTX_ALL, IID_PPV_ARGS(enumerator.Put()));
-    if (SUCCEEDED(hr)) hr = enumerator.ptr->GetDefaultAudioEndpoint(eRender, eMultimedia, device.Put());
-    if (SUCCEEDED(hr))
-        hr = device.ptr->Activate(__uuidof(IAudioSessionManager2), CLSCTX_ALL, nullptr, reinterpret_cast<void**>(manager.Put()));
+    hr = device->Activate(__uuidof(IAudioSessionManager2), CLSCTX_ALL, nullptr, reinterpret_cast<void**>(manager.Put()));
     if (SUCCEEDED(hr)) hr = manager.ptr->GetSessionEnumerator(sessions.Put());
     int count = 0;
     if (SUCCEEDED(hr)) hr = sessions.ptr->GetCount(&count);
-    if (FAILED(hr)) return nullptr;
-
-    auto snapshot = std::make_unique<Snapshot>();
-    snapshot->sessions.reserve(static_cast<size_t>(count));
+    if (FAILED(hr)) return;
     for (int i = 0; i < count; ++i) {
         ComPtr<IAudioSessionControl> basic;
         if (FAILED(sessions.ptr->GetSession(i, basic.Put())) || !basic.ptr) continue;
@@ -98,7 +89,35 @@ std::unique_ptr<Snapshot> BuildSnapshot(HRESULT& hr) {
         if (SUCCEEDED(session->control.ptr->GetSessionIdentifier(&text))) session->identifier = TakeString(text);
         text = nullptr;
         if (SUCCEEDED(session->control.ptr->GetSessionInstanceIdentifier(&text))) session->instance_identifier = TakeString(text);
-        snapshot->sessions.push_back(std::move(session));
+        snapshot.sessions.push_back(std::move(session));
+    }
+}
+
+// Media may be routed to a non-default output in Windows Volume Mixer.
+// Keep the default-only API for the mixer, but let media controls search all active outputs.
+std::unique_ptr<Snapshot> BuildSnapshot(HRESULT& hr, bool all_endpoints = false) {
+    EnsureMta();
+    ComPtr<IMMDeviceEnumerator> enumerator;
+    hr = CoCreateInstance(__uuidof(MMDeviceEnumerator), nullptr, CLSCTX_ALL, IID_PPV_ARGS(enumerator.Put()));
+    if (FAILED(hr)) return nullptr;
+    auto snapshot = std::make_unique<Snapshot>();
+    if (!all_endpoints) {
+        ComPtr<IMMDevice> device;
+        hr = enumerator.ptr->GetDefaultAudioEndpoint(eRender, eMultimedia, device.Put());
+        if (SUCCEEDED(hr)) AppendEndpointSessions(device.ptr, *snapshot, hr);
+        if (FAILED(hr)) return nullptr;
+    } else {
+        ComPtr<IMMDeviceCollection> devices;
+        hr = enumerator.ptr->EnumAudioEndpoints(eRender, DEVICE_STATE_ACTIVE, devices.Put());
+        UINT count = 0;
+        if (SUCCEEDED(hr)) hr = devices.ptr->GetCount(&count);
+        if (FAILED(hr)) return nullptr;
+        for (UINT i = 0; i < count; ++i) {
+            ComPtr<IMMDevice> device;
+            HRESULT endpoint_hr = devices.ptr->Item(i, device.Put());
+            if (SUCCEEDED(endpoint_hr)) AppendEndpointSessions(device.ptr, *snapshot, endpoint_hr);
+            // An endpoint can disappear during enumeration; other outputs are still usable.
+        }
     }
     return snapshot;
 }
@@ -143,6 +162,22 @@ VN_EXPORT int32_t __stdcall vn_audio_sessions_open(int64_t* out_snapshot, int32_
     } catch (...) {
         return VN_ERR_FAIL;
     }
+}
+
+VN_EXPORT int32_t __stdcall vn_audio_sessions_open_all(int64_t* out_snapshot, int32_t* out_count, int32_t* out_hresult) noexcept {
+    if (!out_snapshot || !out_count || !out_hresult) return VN_ERR_INVALID_ARG;
+    *out_snapshot = 0;
+    *out_count = 0;
+    *out_hresult = static_cast<int32_t>(E_FAIL);
+    try {
+        HRESULT hr = S_OK;
+        auto snapshot = as::BuildSnapshot(hr, true);
+        *out_hresult = static_cast<int32_t>(hr);
+        if (!snapshot) return VN_ERR_FAIL;
+        *out_count = static_cast<int32_t>(snapshot->sessions.size());
+        *out_snapshot = as::g_snapshots.Add(std::move(snapshot));
+        return VN_OK;
+    } catch (...) { return VN_ERR_FAIL; }
 }
 
 // AudioSessionState of the session: 0 inactive, 1 active, 2 expired.
@@ -316,11 +351,23 @@ VN_EXPORT int32_t __stdcall vn_audio_session_open_volume(int64_t snapshot, int32
         auto lease = std::make_unique<as::VolumeLease>();
         lease->volume.ptr = session.volume.ptr;
         lease->volume.ptr->AddRef();
+        lease->control.ptr = session.control.ptr;
+        lease->control.ptr->AddRef();
         *out_volume = as::g_leases.Add(std::move(lease));
         return VN_OK;
     } catch (...) {
         return VN_ERR_FAIL;
     }
+}
+
+VN_EXPORT int32_t __stdcall vn_audio_volume_get_state(int64_t volume, int32_t* out_state) noexcept {
+    auto volume_lease = as::g_leases.Acquire(volume);
+    as::VolumeLease* lease = volume_lease.get();
+    if (!lease || !out_state) return VN_ERR_INVALID_ARG;
+    AudioSessionState state = AudioSessionStateExpired;
+    if (!lease->control.ptr || FAILED(lease->control.ptr->GetState(&state))) return VN_ERR_FAIL;
+    *out_state = static_cast<int32_t>(state);
+    return VN_OK;
 }
 
 VN_EXPORT int32_t __stdcall vn_audio_volume_get(int64_t volume, float* out_scalar, uint8_t* out_muted, int32_t* out_hresult) noexcept {

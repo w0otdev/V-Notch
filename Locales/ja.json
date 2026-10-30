@@ -1048,5 +1048,11 @@
   "whitenoise.volume": "音量",
   "whitenoise.mute": "ミュート",
   "whitenoise.sync": "タイマーと連動",
-  "whitenoise.syncTip": "タイマー終了時にフェードアウトして停止します"
+  "whitenoise.syncTip": "タイマー終了時にフェードアウトして停止します",
+  "settings.glass.ultimateGpu": "アルティメット GPU モード (GPU 0)",
+  "settings.glass.ultimateGpu.hint": "高性能なディスクリート GPU (GPU 0) で Liquid Glass を描画します。GPU の稼働は下の目標 FPS 上限に合わせて制限されます。",
+  "settings.glass.ultimateGpu.warning": "警告: 専用 GPU モードは消費電力が増加します。選択したフレーム上限までしか GPU が稼働しないよう目標 FPS を調整してください。",
+  "settings.glass.ultimateGpu.title": "アルティメット GPU モードを有効にしますか？",
+  "settings.glass.ultimateGpu.confirm": "Liquid Glass に専用 GPU (GPU 0) を割り当てて滑らかに描画します。ノート PC ではバッテリー消費が増えますが、GPU 負荷を抑えるためフレームレートは目標 FPS の設定値に制限されます。",
+  "tooltip.ultimateGpu": "目標 FPS の制限内で Liquid Glass に高性能な GPU 0 を使用する"
 }

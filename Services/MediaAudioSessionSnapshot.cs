@@ -6,12 +6,13 @@ internal interface IMediaAudioVolume : IDisposable
 {
     float Volume { get; set; }
     bool Mute { get; set; }
+    bool IsActive => true;
 }
 
 internal sealed record MediaAudioSessionSnapshot(
     uint GetProcessID, string? DisplayName, string? GetSessionIdentifier,
     string? GetSessionInstanceIdentifier, bool IsSystemSoundsSession,
-    Func<float> ReadPeak, Func<IMediaAudioVolume> OpenVolume)
+    Func<float> ReadPeak, Func<IMediaAudioVolume> OpenVolume, int State = 1)
 {
     internal IMediaAudioVolume SimpleAudioVolume => OpenVolume();
 }
@@ -31,6 +32,12 @@ internal static unsafe partial class WindowsMediaAudioSessions
 
     [LibraryImport(NativeDll, EntryPoint = "vn_audio_sessions_open")]
     internal static partial int NativeOpen(out long snapshot, out int count, out int hresult);
+
+    [LibraryImport(NativeDll, EntryPoint = "vn_audio_sessions_open_all")]
+    private static partial int NativeOpenAll(out long snapshot, out int count, out int hresult);
+
+    [LibraryImport(NativeDll, EntryPoint = "vn_audio_session_get_state")]
+    private static partial int NativeGetState(long snapshot, int index, out int state);
 
     [LibraryImport(NativeDll, EntryPoint = "vn_audio_sessions_close")]
     internal static partial int NativeClose(long snapshot);
@@ -59,9 +66,19 @@ internal static unsafe partial class WindowsMediaAudioSessions
     [LibraryImport(NativeDll, EntryPoint = "vn_audio_volume_close")]
     internal static partial int NativeVolumeClose(long volume);
 
-    internal static MediaAudioSessions Read()
+    [LibraryImport(NativeDll, EntryPoint = "vn_audio_volume_get_state")]
+    private static partial int NativeVolumeGetState(long volume, out int state);
+
+    internal static MediaAudioSessions Read() => Read(false);
+
+    internal static MediaAudioSessions ReadAllEndpoints() => Read(true);
+
+    private static MediaAudioSessions Read(bool allEndpoints)
     {
-        if (NativeOpen(out long snapshot, out int count, out int hresult) != 0)
+        long snapshot;
+        int count, hresult;
+        int status = allEndpoints ? NativeOpenAll(out snapshot, out count, out hresult) : NativeOpen(out snapshot, out count, out hresult);
+        if (status != 0)
             Marshal.ThrowExceptionForHR(hresult < 0 ? hresult : EFail);
 
         try
@@ -71,10 +88,11 @@ internal static unsafe partial class WindowsMediaAudioSessions
             {
                 int index = i;
                 if (NativeGetInfo(snapshot, index, out uint processId, out byte isSystemSounds) != 0) continue;
+                if (NativeGetState(snapshot, index, out int state) != 0) continue;
                 snapshots.Add(new(processId, ReadString(snapshot, index, 0), ReadString(snapshot, index, 1),
                     ReadString(snapshot, index, 2), isSystemSounds != 0,
                     () => NativeReadPeak(snapshot, index, out float peak) == 0 ? peak : 0f,
-                    () => OpenVolume(snapshot, index)));
+                    () => OpenVolume(snapshot, index), state));
             }
 
             return new MediaAudioSessions(snapshots, () => NativeClose(snapshot));
@@ -105,6 +123,8 @@ internal static unsafe partial class WindowsMediaAudioSessions
 
     private sealed class VolumeLease(long handle) : IMediaAudioVolume
     {
+        public bool IsActive => NativeVolumeGetState(handle, out int state) == 0 && state == 1;
+
         public float Volume
         {
             get

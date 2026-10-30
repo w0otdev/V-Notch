@@ -579,15 +579,16 @@
    </Grid.RowDefinitions>
 
    <!-- Row 0: Top Header (NavTabs Clearance + Flagship Search Capsule & Toolbar) -->
-   <Grid Grid.Row="0" Margin="12,0,12,0">
+   <Grid Grid.Row="0" Margin="12,0,12,0" Height="28" VerticalAlignment="Top">
+    <Grid.RenderTransform><TranslateTransform x:Name="HeaderTranslate"/></Grid.RenderTransform>
     <Grid.ColumnDefinitions>
      <ColumnDefinition Width="{Binding NavigationWidth, RelativeSource={RelativeSource AncestorType={x:Type local:ClipboardTray}}}"/>
      <ColumnDefinition Width="*"/>
      <ColumnDefinition Width="Auto"/>
     </Grid.ColumnDefinitions>
     
-    <Border x:Name="SearchSurface" Grid.Column="1" Height="34" MaxWidth="340" HorizontalAlignment="Stretch" Margin="8,0,0,0"
-     Background="#12FFFFFF" BorderBrush="#20FFFFFF" BorderThickness="1" CornerRadius="17">
+    <Border x:Name="SearchSurface" Grid.Column="1" Height="28" MaxWidth="340" HorizontalAlignment="Stretch" Margin="8,0,0,0"
+     Background="#12FFFFFF" BorderBrush="#20FFFFFF" BorderThickness="1" CornerRadius="14">
      <Grid>
       <local:TrayIcon Kind="Search" Width="13" Height="13" Margin="13,0,0,0" HorizontalAlignment="Left" VerticalAlignment="Center" Foreground="#8AFFFFFF"/>
       <Grid x:Name="SearchTextSurface" Margin="34,0,34,0">
@@ -633,7 +634,9 @@
     <Button x:Name="EmptyTrayButton" Style="{StaticResource HeaderIconButton}" Click="EmptyTray_Click" VerticalAlignment="Center">
      <local:TrayIcon Kind="Delete" Width="16" Height="16" Foreground="{StaticResource TrayDestructive}"/>
     </Button>
-   <Border x:Name="ToolbarSurface" Visibility="Collapsed" Background="#12FFFFFF" BorderBrush="#20FFFFFF" BorderThickness="1" CornerRadius="17" Height="34" Padding="3,0">
+    <ContentControl x:Name="SettingsButtonHost" Width="32" Height="28" Visibility="Collapsed"
+                    HorizontalContentAlignment="Center" VerticalContentAlignment="Center"/>
+   <Border x:Name="ToolbarSurface" Visibility="Collapsed" Background="#12FFFFFF" BorderBrush="#20FFFFFF" BorderThickness="1" CornerRadius="14" Height="28" Padding="3,0">
     <StackPanel Orientation="Horizontal">
      <Button x:Name="KeyboardButton" Style="{StaticResource HeaderIconButton}" Click="Keyboard_Click">
       <local:TrayIcon Kind="Keyboard" Width="13.5" Height="13.5"/>

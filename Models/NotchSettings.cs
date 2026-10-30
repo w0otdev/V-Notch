@@ -384,6 +384,7 @@ public partial class LiquidGlassConfig
         public double GlowEdge1;
         public byte HideFromScreenCapture;
         public byte UseGpuRefraction;
+        public byte UseUltimateGpu;
     }
 
     [LibraryImport(NativeDll)]
@@ -434,6 +435,9 @@ public partial class LiquidGlassConfig
     // their serialized value, including an explicit false from the old opt-in UI.
     public bool UseGpuRefraction { get; set; } = true;
 
+    // Dedicated high-performance GPU (GPU 0 / dGPU) mode for Liquid Glass, paced strictly to TargetFps.
+    public bool UseUltimateGpu { get; set; } = false;
+
     public LiquidGlassConfig Clone() => (LiquidGlassConfig)MemberwiseClone();
 
     private VnLiquidGlassScalars ToNative() => new()
@@ -470,6 +474,7 @@ public partial class LiquidGlassConfig
         GlowEdge1 = GlowEdge1,
         HideFromScreenCapture = HideFromScreenCapture ? (byte)1 : (byte)0,
         UseGpuRefraction = UseGpuRefraction ? (byte)1 : (byte)0,
+        UseUltimateGpu = UseUltimateGpu ? (byte)1 : (byte)0,
     };
 
     public bool ValueEquals(LiquidGlassConfig? other)

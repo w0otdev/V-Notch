@@ -1048,5 +1048,11 @@
   "whitenoise.volume": "Głośność",
   "whitenoise.mute": "Wycisz",
   "whitenoise.sync": "Synchronizuj z timerem",
-  "whitenoise.syncTip": "Wycisza i zatrzymuje po zakończeniu timera"
+  "whitenoise.syncTip": "Wycisza i zatrzymuje po zakończeniu timera",
+  "settings.glass.ultimateGpu": "Tryb Ultimate GPU (GPU 0)",
+  "settings.glass.ultimateGpu.hint": "Uruchamia Liquid Glass na dedykowanej karcie graficznej o wysokiej wydajności (GPU 0). Praca GPU jest ściśle ograniczona do docelowego limitu FPS poniżej.",
+  "settings.glass.ultimateGpu.warning": "Ostrzeżenie: Tryb dedykowanego GPU zużywa więcej energii. Ustaw docelowe FPS tak, aby karta pracowała tylko do wybranego limitu klatek.",
+  "settings.glass.ultimateGpu.title": "Włączyć tryb Ultimate GPU?",
+  "settings.glass.ultimateGpu.confirm": "Ta opcja przypisuje dedykowaną kartę graficzną (GPU 0) do Liquid Glass dla lepszej płynności, co zwiększa zużycie baterii na laptopach. Renderowanie jest ograniczone do ustawionego limitu FPS, aby uniknąć przeciążenia GPU.",
+  "tooltip.ultimateGpu": "Użyj wydajnego GPU 0 dla Liquid Glass z limitem docelowych FPS"
 }

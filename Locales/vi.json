@@ -1048,5 +1048,11 @@
   "whitenoise.volume": "Âm lượng",
   "whitenoise.mute": "Tắt tiếng",
   "whitenoise.sync": "Theo timer",
-  "whitenoise.syncTip": "Tự mờ dần và dừng khi timer kết thúc"
+  "whitenoise.syncTip": "Tự mờ dần và dừng khi timer kết thúc",
+  "settings.glass.ultimateGpu": "Chế độ GPU tối đa (GPU 0 / Ultimate)",
+  "settings.glass.ultimateGpu.hint": "Chạy riêng Liquid Glass trên GPU rời hiệu năng cao (GPU 0). Mức hoạt động của GPU được giới hạn sát theo thanh Target FPS bên dưới.",
+  "settings.glass.ultimateGpu.warning": "Cảnh báo: Chế độ GPU 0 tiêu thụ nhiều điện năng hơn. Hãy đặt giới hạn Target FPS phù hợp để GPU chỉ hoạt động đúng tới mức FPS đó và tránh tải cao.",
+  "settings.glass.ultimateGpu.title": "Bật chế độ Ultimate GPU (GPU 0)?",
+  "settings.glass.ultimateGpu.confirm": "Tùy chọn này dùng riêng GPU hiệu năng cao (GPU 0) cho Liquid Glass để đạt độ mượt tốt nhất, nhưng sẽ tốn pin hơn trên laptop. Hoạt động của GPU sẽ được khóa chặt theo mức Target FPS bạn chọn để tránh chạy quá tải 99%.",
+  "tooltip.ultimateGpu": "Sử dụng GPU 0 hiệu năng cao cho Liquid Glass theo giới hạn Target FPS"
 }

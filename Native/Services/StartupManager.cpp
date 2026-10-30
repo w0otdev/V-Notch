@@ -25,20 +25,25 @@ public:
         return status == ERROR_SUCCESS;
     }
 
-    static int32_t SetAutoStart(bool enable, std::u16string_view exe_path) noexcept {
+    static int32_t SetAutoStart(bool enable, std::u16string_view exe_path) {
+        std::wstring quoted;
+        if (enable) {
+            quoted.reserve(exe_path.size() + 3);
+            quoted.push_back(L'"');
+            quoted.append(reinterpret_cast<const wchar_t*>(exe_path.data()), exe_path.size());
+            quoted.push_back(L'"');
+        }
         HKEY hkey = nullptr;
-        LSTATUS open_status = ::RegOpenKeyExW(HKEY_CURRENT_USER, kRegistryKeyPath, 0, KEY_SET_VALUE, &hkey);
+        LSTATUS open_status = enable
+            ? ::RegCreateKeyExW(HKEY_CURRENT_USER, kRegistryKeyPath, 0, nullptr, 0, KEY_SET_VALUE, nullptr, &hkey, nullptr)
+            : ::RegOpenKeyExW(HKEY_CURRENT_USER, kRegistryKeyPath, 0, KEY_SET_VALUE, &hkey);
+        if (!enable && open_status == ERROR_FILE_NOT_FOUND) return ERROR_SUCCESS;
         if (open_status != ERROR_SUCCESS) {
             return static_cast<int32_t>(open_status);
         }
 
         LSTATUS status = ERROR_SUCCESS;
         if (enable) {
-            std::wstring quoted;
-            quoted.reserve(exe_path.size() + 3);
-            quoted.push_back(L'"');
-            quoted.append(reinterpret_cast<const wchar_t*>(exe_path.data()), exe_path.size());
-            quoted.push_back(L'"');
             DWORD byte_len = static_cast<DWORD>((quoted.size() + 1) * sizeof(wchar_t));
             status = ::RegSetValueExW(
                 hkey, kAppName, 0, REG_SZ,
@@ -67,9 +72,15 @@ VN_EXPORT int32_t vn_startup_set_enabled(
     uint8_t enable, const char16_t* exe_path, int32_t exe_path_len, int32_t* out_win32_error) noexcept
 {
     if (!out_win32_error) return VN_ERR_INVALID_ARG;
-    *out_win32_error = vnotch::services::StartupManager::SetAutoStart(
-        enable != 0, vnotch::make_u16_view(exe_path, exe_path_len));
-    return VN_OK;
+    *out_win32_error = ERROR_INVALID_PARAMETER;
+    if (enable > 1 || exe_path_len < 0 || (exe_path_len > 0 && !exe_path)) return VN_ERR_INVALID_ARG;
+    auto path = vnotch::make_u16_view(exe_path, exe_path_len);
+    if (enable && (vnotch::trim_u16(path).empty() || path.find(u'"') != path.npos || path.find(u'\0') != path.npos))
+        return VN_ERR_INVALID_ARG;
+    try {
+        *out_win32_error = vnotch::services::StartupManager::SetAutoStart(enable != 0, path);
+        return *out_win32_error == ERROR_SUCCESS ? VN_OK : VN_ERR_FAIL;
+    } catch (...) { *out_win32_error = ERROR_NOT_ENOUGH_MEMORY; return VN_ERR_FAIL; }
 }
 
 } // extern "C"

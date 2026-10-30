@@ -15,7 +15,9 @@ public partial class MainWindow
     private LiquidGlassRefractionEffect? _glassRefractionEffect;
     private LiquidGlassInteractionController? _glassInteractionController;
     private bool _gpuRefractionConfigured;
+    private bool _gpuUltimateConfigured;
     private bool _gpuRefractionFailed;
+    private long _lastGlassFrameUpdateTick;
     private UiScheduledTimer? _glassGpuRetryTimer;
     private int _glassGpuRetrySeconds = 5;
     private bool _glassRendererRebuildQueued;
@@ -284,7 +286,9 @@ public partial class MainWindow
         }
 
         // Settings live preview calls ApplyLiquidGlassSkin repeatedly. Reattaching
+        bool useUltimateGpu = _settings.LiquidGlass?.UseUltimateGpu ?? false;
         if (_gpuRefractionConfigured &&
+            _gpuUltimateConfigured == useUltimateGpu &&
             ReferenceEquals(GlassBackdropImage.Effect, _glassRefractionEffect))
             return;
 
@@ -295,15 +299,16 @@ public partial class MainWindow
 
             _glassInteractionController ??= new LiquidGlassInteractionController(NotchContainer, NotchBorder, _glassRefractionEffect);
 
-            if (!_liquidGlass.SetGpuMode(true, ApplyGpuGeometry, OnGpuRefractionFailure))
+            if (!_liquidGlass.SetGpuMode(true, ApplyGpuGeometry, OnGpuRefractionFailure, ultimateGpu: useUltimateGpu))
             {
                 OnGpuRefractionFailure(new InvalidOperationException("GPU presenter unavailable."));
                 return;
             }
 
             VNotch.Services.RuntimeLog.Log("LIQUIDGLASS",
-                $"GPU refraction enabled; target={Math.Clamp(_settings.LiquidGlass?.TargetFps ?? 60, 30, LiquidGlassController.MaxTargetFps)} FPS");
+                $"GPU refraction enabled; target={Math.Clamp(_settings.LiquidGlass?.TargetFps ?? 60, 30, LiquidGlassController.MaxTargetFps)} FPS; ultimateGpu={useUltimateGpu}");
             _gpuRefractionConfigured = true;
+            _gpuUltimateConfigured = useUltimateGpu;
             _glassGpuRetryTimer?.Stop();
         }
         catch (Exception ex)
@@ -1147,6 +1152,11 @@ public partial class MainWindow
             {
                 return;
             }
+        }
+
+        if (_liquidGlass.ShouldThrottleFrameUpdate(ref _lastGlassFrameUpdateTick, force: initialFrameJustArrived))
+        {
+            return;
         }
 
         _hasCachedFrameMetrics = false;

@@ -36,6 +36,8 @@ public sealed class MainWindowCountdownCompletionTests
         Assert.Equal(1, window.TimerContent.Opacity);
         Assert.Equal(Visibility.Visible, window.NavIconsPanel.Visibility);
         Assert.Equal(1, window.NavIconsPanel.Opacity);
+        Assert.Equal(Visibility.Visible, window.SettingsButton.Visibility);
+        Assert.True(window.SettingsButton.IsHitTestVisible);
         Assert.Null(window.TimerContent.RenderTransform);
         Assert.True(window.NotchBorder.IsHitTestVisible);
         Assert.False(Get<bool>(window, "_isScrollSessionLocked"));
@@ -76,6 +78,8 @@ public sealed class MainWindowCountdownCompletionTests
         if (music) window.SetDebugViewState("CompactMusicPill");
         Get<NotchTransitionCoordinator>(window, "_transitionCoordinator").NotifyCountdownCompleted();
         await WpfFrameWaiter.UntilAsync(() => Get<bool>(window, "_isCountdownCompleteVisible") && !Get<bool>(window, "_isAnimating") && window.CountdownCompleteOverlay.Visibility == Visibility.Visible, "countdown completion presentation", ct);
+        Assert.Equal(Visibility.Collapsed, window.SettingsButton.Visibility);
+        Assert.False(window.SettingsButton.IsHitTestVisible);
         await WpfFrameWaiter.UntilAsync(() => Math.Abs(window.CountdownRestartHost.Opacity - 1) < 1e-6 && Math.Abs(window.CountdownDismissHost.Opacity - 1) < 1e-6, "countdown completion controls", ct);
     }
     private static GreetingAcceptanceTests.MainWindowFixture Create() => new("en", false, settings => { settings.EnableLocalOnlyMode = true; settings.DisableMouseLeaveAutoClose = true; }, services => services.AddSingleton<IMediaDetectionService>(new FakeMediaDetectionService()));

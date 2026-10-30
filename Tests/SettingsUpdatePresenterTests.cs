@@ -51,7 +51,7 @@ public sealed class SettingsUpdatePresenterTests
         public string CurrentVersion => "1.0";
         public event EventHandler<UpdateInfo?>? UpdateCheckCompleted { add { /* no-op */ } remove { /* no-op */ } }
         public UpdateInfo? LatestUpdateInfo => null;
-        public Task<UpdateInfo?> CheckForUpdatesAsync(bool includePrereleases = false) { CheckCount++; return Result.Task; }
+        public Task<UpdateInfo?> CheckForUpdatesAsync(bool includePrereleases = false, bool forceRefresh = false) { CheckCount++; return Result.Task; }
         public Task<IReadOnlyList<UpdateInfo>> GetAllReleasesAsync() => Task.FromResult<IReadOnlyList<UpdateInfo>>([]);
         public Task<bool> DownloadAndInstallUpdateAsync(UpdateInfo updateInfo, IProgress<double>? progress = null, CancellationToken cancellationToken = default)
             => Task.FromResult(false);
@@ -87,7 +87,7 @@ public sealed class SettingsUpdatePresenterTests
         public string CurrentVersion => "1.0";
         public event EventHandler<UpdateInfo?>? UpdateCheckCompleted { add { /* no-op */ } remove { /* no-op */ } }
         public UpdateInfo? LatestUpdateInfo => null;
-        public Task<UpdateInfo?> CheckForUpdatesAsync(bool includePrereleases = false)
+        public Task<UpdateInfo?> CheckForUpdatesAsync(bool includePrereleases = false, bool forceRefresh = false)
         {
             Channels.Add(includePrereleases);
             var request = new TaskCompletionSource<UpdateInfo?>(TaskCreationOptions.RunContinuationsAsynchronously);

@@ -26,6 +26,25 @@ public sealed class GlassReliabilityTests
     public void CaptureCadenceRespectsBothUserCapAndMonitor(int configured, int monitor, int expected) =>
         Assert.Equal(1000.0 / expected, LiquidGlassController.ComputeCaptureIntervalMs(configured, monitor), 6);
 
+    [Theory]
+    [InlineData(60, 60, true, 60)]
+    [InlineData(144, 60, true, 144)]
+    [InlineData(240, 120, true, 240)]
+    [InlineData(45, 240, true, 45)]
+    public void UltimateGpuModePacesStrictlyToConfiguredTargetFps(int configured, int monitor, bool ultimateGpu, int expected) =>
+        Assert.Equal(1000.0 / expected, LiquidGlassController.ComputeCaptureIntervalMs(configured, monitor, ultimateGpu), 6);
+
+    [Fact]
+    public void ShouldThrottleFrameUpdateEnforcesTargetFpsCadence() => SharedStaTestRunner.Run(() =>
+    {
+        var controller = new LiquidGlassController(new Image(), () => IntPtr.Zero, () => null, activeFps: 60);
+        long lastTick = 0;
+        Assert.False(controller.ShouldThrottleFrameUpdate(ref lastTick));
+        Assert.NotEqual(0, lastTick);
+        Assert.True(controller.ShouldThrottleFrameUpdate(ref lastTick));
+        Assert.False(controller.ShouldThrottleFrameUpdate(ref lastTick, force: true));
+    });
+
     [Fact]
     public void ChangingFpsAfterDisplayDetectionHonorsExplicitSixty() => SharedStaTestRunner.Run(() =>
     {

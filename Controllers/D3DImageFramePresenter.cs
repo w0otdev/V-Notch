@@ -1,5 +1,7 @@
 using System;
 using System.Diagnostics;
+using System.Runtime.InteropServices;
+using System.Threading;
 using System.Windows;
 using System.Windows.Interop;
 using System.Windows.Media;
@@ -10,8 +12,24 @@ using Vortice.Mathematics;
 
 namespace VNotch.Controllers;
 
-internal sealed class D3DImageFramePresenter : IDisposable
+internal sealed partial class D3DImageFramePresenter : IDisposable
 {
+    [LibraryImport("VNotch.Native.dll", EntryPoint = "vn_glass_score_d3d9_adapter", StringMarshalling = StringMarshalling.Utf16)]
+    private static partial int NativeScoreD3D9Adapter(
+        ReadOnlySpan<char> description,
+        int descLen,
+        uint vendorId,
+        out long outScore);
+
+    [LibraryImport("VNotch.Native.dll", EntryPoint = "vn_glass_should_submit_frame")]
+    private static partial int NativeShouldSubmitFrame(
+        long nowTicks,
+        long lastSubmitTicks,
+        long stopwatchFreq,
+        double activeIntervalMs,
+        byte forcePresent,
+        out byte outShouldSubmit);
+
     private readonly Dispatcher _dispatcher;
     private readonly object _surfaceSync = new();
     private readonly ID3DFrameTarget _image;
@@ -42,6 +60,20 @@ internal sealed class D3DImageFramePresenter : IDisposable
     private long _submittedFrames;
     private long _queueTicks;
     private long _lastUploadTicks;
+    private long _lastSubmitTicks;
+    private double _frameIntervalMs = 1000.0 / 60.0;
+    private bool _pendingForcePresent;
+    private readonly bool _ultimateGpuMode;
+    private readonly uint _adapterIndex;
+
+    internal bool IsUltimateGpuMode => _ultimateGpuMode;
+    internal uint AdapterIndex => _adapterIndex;
+
+    internal void SetFrameIntervalMs(double intervalMs)
+    {
+        if (double.IsFinite(intervalMs) && intervalMs > 0.0)
+            Volatile.Write(ref _frameIntervalMs, intervalMs);
+    }
 
     internal (long Bytes, long Frames, double MeanQueueMs) TakeStatistics()
     {
@@ -69,7 +101,8 @@ internal sealed class D3DImageFramePresenter : IDisposable
         IntPtr windowHandle,
         int surfaceWidth,
         int surfaceHeight,
-        ID3DFrameTarget? frameTarget = null)
+        ID3DFrameTarget? frameTarget = null,
+        bool ultimateGpuMode = false)
     {
         _image = frameTarget ?? new D3DFrameTarget();
         _dispatcher = dispatcher ?? throw new ArgumentNullException(nameof(dispatcher));
@@ -84,6 +117,7 @@ internal sealed class D3DImageFramePresenter : IDisposable
 
         _surfaceWidth = surfaceWidth;
         _surfaceHeight = surfaceHeight;
+        _ultimateGpuMode = ultimateGpuMode;
         _presentAction = PresentPendingFrame;
         // CompositionTarget.Rendering already retries at the display cadence.
         // This fallback yields to input and allows one frame interval between attempts.
@@ -111,14 +145,40 @@ internal sealed class D3DImageFramePresenter : IDisposable
                 PresentationInterval = PresentInterval.Immediate
             };
 
-            _device = _direct3D.CreateDeviceEx(
-                0,
-                DeviceType.Hardware,
-                windowHandle,
+            uint preferredAdapter = ultimateGpuMode ? SelectBestHardwareAdapter(_direct3D) : 0u;
+            const CreateFlags deviceFlags =
                 CreateFlags.Multithreaded |
                 CreateFlags.FpuPreserve |
-                CreateFlags.HardwareVertexProcessing,
-                present);
+                CreateFlags.HardwareVertexProcessing;
+
+            if (preferredAdapter != 0u)
+            {
+                try
+                {
+                    _device = _direct3D.CreateDeviceEx(
+                        preferredAdapter,
+                        DeviceType.Hardware,
+                        windowHandle,
+                        deviceFlags,
+                        present);
+                    _adapterIndex = preferredAdapter;
+                }
+                catch
+                {
+                    _device = null;
+                }
+            }
+
+            if (_device == null)
+            {
+                _device = _direct3D.CreateDeviceEx(
+                    0,
+                    DeviceType.Hardware,
+                    windowHandle,
+                    deviceFlags,
+                    present);
+                _adapterIndex = 0u;
+            }
         }
         catch
         {
@@ -130,6 +190,42 @@ internal sealed class D3DImageFramePresenter : IDisposable
 
         _image.IsFrontBufferAvailableChanged += OnFrontBufferAvailableChanged;
         CompositionTarget.Rendering += OnRendering;
+    }
+
+    internal static uint SelectBestHardwareAdapter(IDirect3D9Ex direct3D)
+    {
+        try
+        {
+            uint count = (uint)direct3D.AdapterCount;
+            if (count <= 1) return 0u;
+
+            uint bestAdapter = 0u;
+            long bestScore = long.MinValue;
+            for (uint i = 0; i < count; i++)
+            {
+                try
+                {
+                    AdapterIdentifier id = direct3D.GetAdapterIdentifier(i);
+                    string desc = id.Description ?? string.Empty;
+                    uint vendorId = (uint)id.VendorId;
+                    if (NativeScoreD3D9Adapter(desc.AsSpan(), desc.Length, vendorId, out long score) == 0 &&
+                        score > bestScore)
+                    {
+                        bestScore = score;
+                        bestAdapter = i;
+                    }
+                }
+                catch
+                {
+                    // Ignore adapters whose identifiers cannot be queried.
+                }
+            }
+            return bestAdapter;
+        }
+        catch
+        {
+            return 0u;
+        }
     }
 
 #pragma warning disable S107 // High performance D3D presentation pipeline requires individual frame parameters
@@ -199,6 +295,7 @@ internal sealed class D3DImageFramePresenter : IDisposable
                 _frameHeight = height;
                 _uploadTag = tag;
                 _lastUploadTicks = Stopwatch.GetTimestamp();
+                if (forcePresent) _pendingForcePresent = true;
 
                 // Consume newest complete capture directly to prevent dispatcher queues
                 // from growing behind the live desktop when the UI thread is busy.
@@ -394,10 +491,13 @@ internal sealed class D3DImageFramePresenter : IDisposable
                     _lastDirtyHeight = frameHeight;
 
                     _pendingFrame = false;
+                    _pendingForcePresent = false;
                     _pendingDirtyRows = default;
                     _presentedTag = _uploadTag;
                     presented = true;
-                    Interlocked.Add(ref _queueTicks, Stopwatch.GetTimestamp() - _lastUploadTicks);
+                    long submitNow = Stopwatch.GetTimestamp();
+                    Volatile.Write(ref _lastSubmitTicks, submitNow);
+                    Interlocked.Add(ref _queueTicks, submitNow - _lastUploadTicks);
                     Interlocked.Increment(ref _submittedFrames);
                 }
                 finally
@@ -481,8 +581,10 @@ internal sealed class D3DImageFramePresenter : IDisposable
         {
             _acceptingFrames = false;
             _pendingFrame = false;
+            _pendingForcePresent = false;
             _pendingDirtyRows = default;
             _presentQueued = false;
+            Volatile.Write(ref _lastSubmitTicks, 0);
             // Keep allocations, but require a fresh capture before displaying
             // anything from the next Spotlight session.
             _frameWidth = _frameHeight = 0;
@@ -505,8 +607,20 @@ internal sealed class D3DImageFramePresenter : IDisposable
     {
         // Consume at composition boundary so capture presenter does not stall
         // when queued dispatcher callbacks run while WPF owns the buffer.
-        if (!_disposed && !_failed && Volatile.Read(ref _pendingFrame))
-            PresentPendingFrame();
+        if (_disposed || _failed || !Volatile.Read(ref _pendingFrame))
+            return;
+
+        long nowTicks = Stopwatch.GetTimestamp();
+        long lastSubmit = Volatile.Read(ref _lastSubmitTicks);
+        double intervalMs = Volatile.Read(ref _frameIntervalMs);
+        byte forceFlag = _pendingForcePresent ? (byte)1 : (byte)0;
+        if (NativeShouldSubmitFrame(nowTicks, lastSubmit, Stopwatch.Frequency, intervalMs, forceFlag, out byte shouldSubmit) == 0 &&
+            shouldSubmit == 0)
+        {
+            return;
+        }
+
+        PresentPendingFrame();
     }
 
     private void OnFrontBufferAvailableChanged(object sender, DependencyPropertyChangedEventArgs e)

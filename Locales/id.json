@@ -1048,5 +1048,11 @@
   "whitenoise.volume": "Volume",
   "whitenoise.mute": "Bisukan",
   "whitenoise.sync": "Sinkron dengan timer",
-  "whitenoise.syncTip": "Memudar lalu berhenti saat timer selesai"
+  "whitenoise.syncTip": "Memudar lalu berhenti saat timer selesai",
+  "settings.glass.ultimateGpu": "Mode GPU Ultimate (GPU 0)",
+  "settings.glass.ultimateGpu.hint": "Jalankan Liquid Glass pada GPU diskrit berperforma tinggi (GPU 0). Aktivitas GPU dibatasi sesuai batas Target FPS di bawah.",
+  "settings.glass.ultimateGpu.warning": "Peringatan: Mode GPU khusus menggunakan lebih banyak daya. Atur Target FPS agar GPU hanya bekerja hingga batas frame yang dipilih.",
+  "settings.glass.ultimateGpu.title": "Aktifkan mode GPU Ultimate?",
+  "settings.glass.ultimateGpu.confirm": "Opsi ini menetapkan GPU diskrit (GPU 0) untuk Liquid Glass agar pembiasan lebih mulus, namun meningkatkan konsumsi baterai pada laptop. Rendering tetap dibatasi sesuai Target FPS untuk mencegah beban GPU berlebih.",
+  "tooltip.ultimateGpu": "Gunakan GPU 0 berperforma tinggi untuk Liquid Glass sesuai batas Target FPS"
 }

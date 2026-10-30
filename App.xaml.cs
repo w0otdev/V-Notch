@@ -139,6 +139,7 @@ public partial class App : Application
             }
 
             ApplyProcessPriority(loadedSettings.ProcessPriority);
+            SettingsWindow.ApplyGpuPreference(SettingsWindow.GetEffectiveGpuPreference(loadedSettings));
             InteractionSounds.Initialize(loadedSettings.EnableInteractionSounds, loadedSettings.InteractionSoundVolume);
 
             var mainWindow = Services.GetRequiredService<MainWindow>();

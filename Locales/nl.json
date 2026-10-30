@@ -1048,5 +1048,11 @@
   "whitenoise.volume": "Volume",
   "whitenoise.mute": "Dempen",
   "whitenoise.sync": "Synchroniseren met timer",
-  "whitenoise.syncTip": "Vervaagt en stopt wanneer de timer afloopt"
+  "whitenoise.syncTip": "Vervaagt en stopt wanneer de timer afloopt",
+  "settings.glass.ultimateGpu": "Ultimate GPU-modus (GPU 0)",
+  "settings.glass.ultimateGpu.hint": "Voer Liquid Glass uit op de krachtige losse videokaart (GPU 0). De GPU-activiteit wordt strikt begrensd op de ingestelde doel-FPS hieronder.",
+  "settings.glass.ultimateGpu.warning": "Waarschuwing: De losse GPU-modus verbruikt meer stroom. Stel de doel-FPS zorgvuldig in zodat de GPU alleen tot de gekozen limiet werkt.",
+  "settings.glass.ultimateGpu.title": "Ultimate GPU-modus inschakelen?",
+  "settings.glass.ultimateGpu.confirm": "Deze optie wijst je losse videokaart (GPU 0) toe aan Liquid Glass voor vloeiendere breking, wat op laptops meer batterij verbruikt. De weergave blijft begrensd op je doel-FPS om overbelasting van de GPU te voorkomen.",
+  "tooltip.ultimateGpu": "Gebruik krachtige GPU 0 voor Liquid Glass begrensd op doel-FPS"
 }

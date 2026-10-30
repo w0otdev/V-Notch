@@ -1085,6 +1085,7 @@ public partial class MainWindow
         CountdownWidget.RefreshProgress();
         CountdownWidget.SetCountdownStartVisual(true);
         UpdateTimerNavIconsState();
+        AnimateStatusBarReveal(true);
 
         NavIconsPanel.BeginAnimation(OpacityProperty, null);
         NavIconsPanel.Visibility = Visibility.Visible;

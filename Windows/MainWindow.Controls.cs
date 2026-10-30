@@ -761,7 +761,14 @@ public partial class MainWindow
                     _volumeBaselinePending = false;
                     if (_isExpanded || _isAnimating ||
                         DateTime.UtcNow < _suppressCompactVolumeWheelUntilUtc) return;
-                    if (ok) _currentVolume = vol;
+                    if (!ok)
+                    {
+                        _volumeSynced = false;
+                        ResetCompactVolumeWheelIntent();
+                        RuntimeLog.Log(MediaCtrlLogTag, "No audio session found for wheel volume control.");
+                        return;
+                    }
+                    _currentVolume = vol;
                     _volumeSynced = true;
                     ApplyVolumeStep(delta);
                 });
@@ -787,11 +794,7 @@ public partial class MainWindow
             PlayVolumeOverscrollSpring(priorVolume, step);
         }
 
-        float volumeToSet = newVolume;
-        _mediaVolumeWrites.Post("volume", () =>
-        {
-            _mediaService.TrySetCurrentSessionVolume(volumeToSet);
-        });
+        QueueSessionVolumeWrite(newVolume, (float)priorVolume);
 
         if (_isExpanded)
         {
@@ -799,6 +802,27 @@ public partial class MainWindow
             UpdateVolumeIcon(newVolume, false);
         }
     }
+
+    private void QueueSessionVolumeWrite(float volume, float fallbackVolume)
+    {
+        int version = _volumeInteractionVersion;
+        _mediaVolumeWrites.Post("volume", () =>
+        {
+            if (_mediaService.TrySetCurrentSessionVolume(volume)) return;
+            Dispatcher.BeginInvoke(() =>
+            {
+                if (version != _volumeInteractionVersion) return;
+                _currentVolume = fallbackVolume;
+                SetVolumeFill(VolumeBarScale, fallbackVolume);
+                UpdateVolumeIcon(fallbackVolume, false);
+                DismissVolumeIndicatorImmediate(restoreMedia: true);
+                RuntimeLog.Log(MediaCtrlLogTag, "Session volume write failed; refreshing audio state.");
+                _pendingMuteRefreshVersion = version;
+                _ = SyncVolumeFromActiveSession();
+            });
+        });
+    }
+
     private void ShowVolumeIndicator(float volume)
     {
         if (VolumeIndicatorContainer == null || VolumeIndicatorFill == null) return;
@@ -1315,14 +1339,11 @@ public partial class MainWindow
             PlayVolumeOverscrollSpring(Math.Clamp(rawRatio, 0.0, 1.0), rawRatio > 1.0 ? (rawRatio - 1.0) : rawRatio);
         }
         float newVolume = (float)Math.Clamp(rawRatio, 0.0, 1.0);
+        float priorVolume = _currentVolume;
         _currentVolume = newVolume;
         SetVolumeFill(VolumeIndicatorScale, newVolume, animate: true);
 
-        float volumeToSet = newVolume;
-        _mediaVolumeWrites.Post("volume", () =>
-        {
-            _mediaService.TrySetCurrentSessionVolume(volumeToSet);
-        });
+        QueueSessionVolumeWrite(newVolume, priorVolume);
 
         if (_isExpanded)
         {
@@ -1413,15 +1434,12 @@ public partial class MainWindow
         var pos = e.GetPosition(VolumeBarContainer);
         float newVolume = (float)Math.Clamp(pos.X / volumeBarWidth, 0.0, 1.0);
 
+        float priorVolume = _currentVolume;
         _currentVolume = newVolume;
         SetVolumeFill(VolumeBarScale, newVolume);
         UpdateVolumeIcon(newVolume, false);
 
-        float volumeToSet = newVolume;
-        _mediaVolumeWrites.Post("volume", () =>
-        {
-            _mediaService.TrySetCurrentSessionVolume(volumeToSet);
-        });
+        QueueSessionVolumeWrite(newVolume, priorVolume);
     }
 
     private bool _volumeReadInFlight;

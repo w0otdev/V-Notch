@@ -1048,5 +1048,11 @@
   "whitenoise.volume": "볼륨",
   "whitenoise.mute": "음소거",
   "whitenoise.sync": "타이머와 동기화",
-  "whitenoise.syncTip": "타이머가 끝나면 서서히 줄어들며 멈춥니다"
+  "whitenoise.syncTip": "타이머가 끝나면 서서히 줄어들며 멈춥니다",
+  "settings.glass.ultimateGpu": "얼티밋 GPU 모드 (GPU 0)",
+  "settings.glass.ultimateGpu.hint": "고성능 외장 그래픽 (GPU 0)에서 리퀴드 글래스를 실행합니다. GPU 작동 속도는 아래 목표 FPS 설정에 맞춰 제한됩니다.",
+  "settings.glass.ultimateGpu.warning": "경고: 외장 GPU 모드는 더 많은 전력을 소모합니다. 선택한 프레임 한도까지만 GPU가 작동하도록 목표 FPS를 조절하세요.",
+  "settings.glass.ultimateGpu.title": "얼티밋 GPU 모드를 활성화할까요?",
+  "settings.glass.ultimateGpu.confirm": "리퀴드 글래스에 고성능 GPU (GPU 0)를 할당하여 굴절 성능을 높입니다. 노트북에서는 배터리 소모가 늘어날 수 있으며, 과부하를 막기 위해 설정한 목표 FPS까지만 렌더링합니다.",
+  "tooltip.ultimateGpu": "목표 FPS 한도에 맞춰 리퀴드 글래스에 고성능 GPU 0 사용"
 }

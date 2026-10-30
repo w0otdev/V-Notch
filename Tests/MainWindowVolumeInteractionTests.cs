@@ -81,8 +81,17 @@ public sealed class MainWindowVolumeInteractionTests
         window.SetDebugViewState("CompactMusicPill");
         Set(window, "_currentVolume", .3f);
         Invoke(window, "AdjustVolumeByScroll", 120);
+        if (!available)
+        {
+            await WpfFrameWaiter.UntilAsync(() => !Get<bool>(window, "_volumeBaselinePending"), "unavailable volume baseline", ct);
+            Assert.Null(media.LastSessionVolume);
+            Assert.False(Get<bool>(window, "_isVolumeIndicatorActive"));
+            Assert.False(Get<bool>(window, "_volumeSynced"));
+            Assert.Equal(.3f, Get<float>(window, "_currentVolume"));
+            return;
+        }
         await WpfFrameWaiter.UntilAsync(() => media.LastSessionVolume.HasValue, "session volume wheel write", ct);
-        Assert.Equal(available ? .75f : .35f, media.LastSessionVolume!.Value, 4);
+        Assert.Equal(.75f, media.LastSessionVolume!.Value, 4);
         Assert.True(Get<bool>(window, "_isVolumeIndicatorActive"));
         await WpfFrameWaiter.UntilAsync(() => Math.Abs(window.VolumeIndicatorContainer.Opacity - 1) < 1e-6, "volume indicator entrance", ct);
         Invoke(window, "DismissVolumeIndicatorImmediate", true, true);
@@ -91,6 +100,24 @@ public sealed class MainWindowVolumeInteractionTests
         await WpfFrameWaiter.UntilAsync(() => !Get<bool>(window, "_isVolumeIndicatorExiting"), "volume indicator exit", ct);
         Assert.Equal(Visibility.Collapsed, window.VolumeIndicatorContainer.Visibility);
         Assert.True(window.VolumeIndicatorContainer.IsHitTestVisible);
+    });
+
+    [Fact]
+    public void FailedWheelWriteRestoresActualVolumeAndDismissesTheHud() => SharedStaTestRunner.RunAsync(async ct =>
+    {
+        var media = new FakeMediaDetectionService
+        {
+            ReadSessionVolume = () => (true, .7f, false),
+            WriteSessionVolume = _ => false
+        };
+        await using var fixture = Create(media);
+        var window = fixture.Window;
+        window.SetDebugViewState("CompactMusicPill");
+        Invoke(window, "AdjustVolumeByScroll", 120);
+        await WpfFrameWaiter.UntilAsync(() => media.LastSessionVolume.HasValue &&
+            !Get<bool>(window, "_isVolumeIndicatorActive") && !Get<bool>(window, "_volumeReadInFlight"), "failed volume write recovery", ct);
+        Assert.Equal(.7f, Get<float>(window, "_currentVolume"), 4);
+        Assert.False(Get<bool>(window, "_volumeSynced"));
     });
 
     [Fact]

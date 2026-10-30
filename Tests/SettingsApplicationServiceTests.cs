@@ -89,6 +89,17 @@ public sealed class SettingsApplicationServiceTests
     }
 
     [Fact]
+    public async Task FailedStartupRegistrationDoesNotPublishSettingsAsApplied()
+    {
+        var startup = new FakeStartupManager { SetFailure = new System.ComponentModel.Win32Exception(5) };
+        var service = new SettingsApplicationService(new FakeSettingsService(), startup);
+        bool published = false;
+        service.SettingsApplied += (_, _) => published = true;
+        await Assert.ThrowsAsync<System.ComponentModel.Win32Exception>(() => service.ApplyAsync(new NotchSettings { AutoStart = true }));
+        Assert.False(published);
+    }
+
+    [Fact]
     public async Task ImportAsync_ImportsFromFile_AppliesSettings_AndReturnsResult()
     {
         var importedSettings = new NotchSettings { Width = 620, AutoStart = true };
@@ -136,12 +147,14 @@ public sealed class SettingsApplicationServiceTests
     {
         public bool AutoStartEnabled { get; set; }
         public bool SetAutoStartCalled { get; private set; }
+        public Exception? SetFailure { get; init; }
 
         public bool IsAutoStartEnabled() => AutoStartEnabled;
 
         public void SetAutoStart(bool enable)
         {
             SetAutoStartCalled = true;
+            if (SetFailure != null) throw SetFailure;
             AutoStartEnabled = enable;
         }
     }

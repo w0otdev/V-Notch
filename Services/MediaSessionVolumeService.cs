@@ -1,6 +1,5 @@
 using System;
 using System.Collections.Generic;
-using System.Diagnostics;
 using System.Runtime.InteropServices;
 
 namespace VNotch.Services;
@@ -16,14 +15,19 @@ public sealed partial class MediaSessionVolumeService : IDisposable
         out byte outMatches);
 
     [LibraryImport("VNotch.Native.dll")]
-    private static partial int vn_media_session_volume_compute_base_score(
+    private static partial int vn_media_session_volume_compute_score(
         byte matchedByProcess,
         byte matchedByMetadata,
         byte sourceMatchesLast,
         uint processId,
         uint lastProcessId,
         byte sessionIdMatchesLast,
+        int state,
         out double outScore);
+
+    [LibraryImport("VNotch.Native.dll", StringMarshalling = StringMarshalling.Utf16)]
+    private static partial int vn_media_session_volume_get_process_ids(
+        ReadOnlySpan<char> source, int sourceLength, Span<uint> processIds, int capacity, out int count);
 
     [LibraryImport("VNotch.Native.dll", StringMarshalling = StringMarshalling.Utf16)]
     private static partial int vn_media_session_volume_extract_candidates(
@@ -34,13 +38,13 @@ public sealed partial class MediaSessionVolumeService : IDisposable
         out int outLen);
 
     private readonly Func<MediaAudioSessions> _getAudioSessions;
-    private readonly Func<IEnumerable<string>, HashSet<uint>> _getProcessIds;
+    private readonly Func<string, HashSet<uint>> _getProcessIds;
     private readonly Func<DateTime> _utcNow;
 
-    public MediaSessionVolumeService() : this(WindowsMediaAudioSessions.Read, GetProcessIds, () => DateTime.UtcNow) { }
+    public MediaSessionVolumeService() : this(WindowsMediaAudioSessions.ReadAllEndpoints, GetProcessIds, () => DateTime.UtcNow) { }
 
     internal MediaSessionVolumeService(Func<MediaAudioSessions> getAudioSessions,
-        Func<IEnumerable<string>, HashSet<uint>> getProcessIds, Func<DateTime> utcNow)
+        Func<string, HashSet<uint>> getProcessIds, Func<DateTime> utcNow)
     {
         _getAudioSessions = getAudioSessions;
         _getProcessIds = getProcessIds;
@@ -84,6 +88,12 @@ public sealed partial class MediaSessionVolumeService : IDisposable
 
         lock (_volumeCacheLock)
         {
+            if (_cachedSimpleVolume != null && !_cachedSimpleVolume.IsActive)
+            {
+                // Browser audio helpers can restart while the old COM volume still accepts writes.
+                InvalidateVolumeSessionCacheLocked();
+                _cachedProcessIdsAtUtc = DateTime.MinValue;
+            }
             if (_cachedSimpleVolume != null &&
                 string.Equals(sourceAppId, _cachedVolumeSourceAppId, StringComparison.OrdinalIgnoreCase) &&
                 (_utcNow() - _cachedVolumeSessionAtUtc).TotalMilliseconds < SessionCacheLifetimeMs)
@@ -200,7 +210,7 @@ public sealed partial class MediaSessionVolumeService : IDisposable
         for (int i = 0; i < sessions.Count; i++)
         {
             var session = sessions[i];
-            if (session == null || session.IsSystemSoundsSession)
+            if (session == null || session.IsSystemSoundsSession || session.State == 2)
                 continue;
 
             double score = CalculateSessionScore(session, sourceAppId, candidateProcessIds);
@@ -224,13 +234,14 @@ public sealed partial class MediaSessionVolumeService : IDisposable
 
         bool sourceMatchesLast = string.Equals(sourceAppId, _lastMatchedSourceAppId, StringComparison.OrdinalIgnoreCase);
         bool sessionIdMatchesLast = string.Equals(session.GetSessionIdentifier, _lastMatchedSessionId, StringComparison.OrdinalIgnoreCase);
-        vn_media_session_volume_compute_base_score(
+        vn_media_session_volume_compute_score(
             matchedByProcess ? (byte)1 : (byte)0,
             matchedByMetadata ? (byte)1 : (byte)0,
             sourceMatchesLast ? (byte)1 : (byte)0,
             processId,
             _lastMatchedProcessId,
             sessionIdMatchesLast ? (byte)1 : (byte)0,
+            session.State,
             out double score);
 
         try
@@ -283,49 +294,22 @@ public sealed partial class MediaSessionVolumeService : IDisposable
             return _cachedProcessIds;
 
         _cachedProcessSourceAppId = sourceAppId;
-        _cachedProcessIds = _getProcessIds(GetProcessNameCandidates(sourceAppId));
+        _cachedProcessIds = _getProcessIds(sourceAppId);
         _cachedProcessIdsAtUtc = _utcNow();
         return _cachedProcessIds;
     }
 
-    internal static HashSet<uint> GetProcessIds(IEnumerable<string> processNames)
+    internal static HashSet<uint> GetProcessIds(string sourceAppId)
     {
-        var processIds = new HashSet<uint>();
-
-        foreach (string processName in processNames)
+        Span<uint> processIds = stackalloc uint[256];
+        int status = vn_media_session_volume_get_process_ids(sourceAppId, sourceAppId.Length, processIds, processIds.Length, out int count);
+        if (status == -2 && count > processIds.Length)
         {
-            if (string.IsNullOrWhiteSpace(processName))
-                continue;
-
-            Process[] processes;
-            try
-            {
-                processes = Process.GetProcessesByName(processName);
-            }
-            catch (Exception ex)
-            {
-                RuntimeLog.Log("VOLUME-PID", ex.Message);
-                continue;
-            }
-
-            foreach (var process in processes)
-            {
-                try
-                {
-                    processIds.Add((uint)process.Id);
-                }
-                catch
-                {
-                    // Process may have exited before PID inspection
-                }
-                finally
-                {
-                    process.Dispose();
-                }
-            }
+            uint[] larger = new uint[count];
+            status = vn_media_session_volume_get_process_ids(sourceAppId, sourceAppId.Length, larger, larger.Length, out count);
+            return status == 0 ? new HashSet<uint>(larger.AsSpan(0, count).ToArray()) : [];
         }
-
-        return processIds;
+        return status == 0 ? new HashSet<uint>(processIds[..count].ToArray()) : [];
     }
 
     private static bool SessionMatchesSourceAppId(MediaAudioSessionSnapshot session, string sourceAppId)
