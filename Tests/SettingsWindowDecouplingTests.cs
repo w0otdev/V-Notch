@@ -259,6 +259,54 @@ public class SettingsWindowDecouplingTests
     });
 
     [Fact]
+    public void FeatureSwitchesDimAndDisableTheirChildrenWithoutChangingValues() => SharedStaTestRunner.RunAsync(async ct =>
+    {
+        EnsureApplicationResources();
+        var window = new SettingsWindow(new NotchSettings { EnableLiveTranslation = false, EnableSpotlight = false }, new FakeSettingsAppService());
+        try
+        {
+            BackgroundTestWindows.ProtectInput(window);
+            window.Show();
+            await WpfFrameWaiter.UntilAsync(() => window.TranslationOptions.Opacity == 0.45,
+                "disabled feature group loaded", ct);
+            Assert.False(window.TranslationOptions.IsEnabled);
+            Assert.Equal(0.45, window.TranslationOptions.Opacity);
+            Assert.Equal(1, window.CurrencyOptions.Opacity); // The parent supplies dimming once.
+            Assert.False(window.TranslationSourceCombo.IsEnabled);
+            Assert.False(window.TranslationTargetCombo.IsEnabled);
+            Assert.False(window.SpotlightOptions.IsEnabled);
+            Assert.Equal(0.45, window.SpotlightOptions.Opacity);
+            Assert.False(window.SpotlightAiProviderCombo.IsEnabled);
+            Assert.True(window.EnableTranslationCheck.IsEnabled);
+            Assert.True(window.EnableSpotlightCheck.IsEnabled);
+            var language = window.TranslationTargetCombo.SelectedValue;
+            window.EnableTranslationCheck.IsChecked = true;
+            window.EnableSpotlightCheck.IsChecked = true;
+            await WpfFrameWaiter.NextAsync(ct);
+            Assert.True(window.TranslationOptions.IsEnabled);
+            Assert.Equal(1, window.TranslationOptions.Opacity);
+            Assert.True(window.TranslationTargetCombo.IsEnabled);
+            Assert.True(window.SpotlightAiProviderCombo.IsEnabled);
+            Assert.Equal(language, window.TranslationTargetCombo.SelectedValue);
+            window.CurrencyConversionCheck.IsChecked = false;
+            await WpfFrameWaiter.NextAsync(ct);
+            Assert.False(window.TranslationCurrencyCombo.IsEnabled);
+            Assert.Equal(0.45, window.CurrencyOptions.Opacity);
+            window.CurrencyConversionCheck.IsChecked = true;
+            await WpfFrameWaiter.NextAsync(ct);
+            Assert.True(window.TranslationCurrencyCombo.IsEnabled);
+            Assert.Equal(1, window.CurrencyOptions.Opacity);
+            window.TrayTextCheck.IsChecked = window.TrayImagesCheck.IsChecked = window.TrayFilesCheck.IsChecked = false;
+            Assert.False(window.TrayDelaySlider.IsEnabled);
+            Assert.Equal(0.4, window.TrayDelayRow.Opacity);
+            window.TrayFilesCheck.IsChecked = true;
+            Assert.True(window.TrayDelaySlider.IsEnabled);
+            Assert.Equal(1, window.TrayDelayRow.Opacity);
+        }
+        finally { window.Close(); }
+    });
+
+    [Fact]
     public void ApplyButtonSavesWithoutClosingAndCancelKeepsTheAppliedBaseline() => SharedStaTestRunner.RunAsync(async ct =>
     {
         EnsureApplicationResources();

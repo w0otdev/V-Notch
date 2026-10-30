@@ -233,6 +233,13 @@ jobs:
           IS_PRERELEASE: ${{ needs.verify-validation.outputs.prerelease }}
         run: ./Tools/Assert-UpdateCompatibility.ps1 -AssetsDirectory signed-assets -ReleaseVersion $env:RELEASE_VERSION -Prerelease:($env:IS_PRERELEASE -eq 'true')
 
+      - name: Verify installed 2.2.0 clients can receive future official updates
+        if: needs.verify-validation.outputs.prerelease == 'false'
+        shell: pwsh
+        env:
+          RELEASE_VERSION: ${{ needs.verify-validation.outputs.version }}
+        run: ./Tools/Assert-ForwardUpdateCompatibility.ps1 -AssetsDirectory signed-assets -ReleaseVersion $env:RELEASE_VERSION
+
       - name: Verify beta clients can upgrade to the signed stable release
         if: needs.verify-validation.outputs.prerelease == 'false'
         shell: pwsh

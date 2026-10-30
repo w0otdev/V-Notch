@@ -31,6 +31,7 @@
 #pragma comment(lib, "normaliz.lib")
 
 #define VN_EXPORT extern "C" __declspec(dllexport)
+VN_EXPORT int32_t __stdcall vn_update_parse_atom(const uint8_t*, int32_t, char16_t*, int32_t, int32_t*) noexcept;
 
 constexpr int32_t VN_OK = 0;
 constexpr int32_t VN_ERR_INVALID_ARG = -1;

@@ -1,5 +1,5 @@
 [CmdletBinding()]
-param([string]$AssetsDirectory, [string]$ReleaseVersion, [switch]$Prerelease, [string]$InstalledVersion)
+param([string]$AssetsDirectory, [string]$ReleaseVersion, [switch]$Prerelease, [string]$InstalledVersion, [string]$ClientRef)
 $ErrorActionPreference = 'Stop'
 if ($PSVersionTable.PSVersion.Major -lt 7) {
     $pwsh = Get-Command pwsh.exe -ErrorAction SilentlyContinue
@@ -11,6 +11,7 @@ if ($PSVersionTable.PSVersion.Major -lt 7) {
     if ($ReleaseVersion) { $pwshArgs += '-ReleaseVersion', $ReleaseVersion }
     if ($Prerelease) { $pwshArgs += '-Prerelease' }
     if ($InstalledVersion) { $pwshArgs += '-InstalledVersion', $InstalledVersion }
+    if ($ClientRef) { $pwshArgs += '-ClientRef', $ClientRef }
     & $pwsh.Source @pwshArgs
     if ($LASTEXITCODE -ne 0) {
         throw "Assert-UpdateCompatibility.ps1 failed with exit code $LASTEXITCODE."
@@ -24,6 +25,13 @@ if ($InstalledVersion -and $InstalledVersion -cnotmatch '^[0-9]+\.[0-9]+\.[0-9]+
 $repository = Split-Path $PSScriptRoot -Parent
 # Immutable source of the public 1.9.3 client, rather than today's updater.
 $legacyCommit = 'daddcb4e711adb71c215ba7b13f77b511c6a7804'
+if ($ClientRef) {
+    $resolvedClient = & git rev-parse --verify "${ClientRef}^{commit}"
+    if ($LASTEXITCODE -ne 0) { throw 'Installed updater source ref could not be resolved.' }
+    if (-not $InstalledVersion) { throw '-InstalledVersion is required with -ClientRef.' }
+    $legacyCommit = $resolvedClient
+    $useCurrentUpdater = $false
+}
 $temporary = Join-Path ([IO.Path]::GetTempPath()) ('vnotch-updater-193-' + [guid]::NewGuid().ToString('N'))
 New-Item -ItemType Directory -Path $temporary | Out-Null
 function Read-Legacy([string]$Path) {
@@ -47,6 +55,28 @@ try {
     foreach ($name in 'UpdateService', 'IUpdateService', 'SignedUpdateManifest', 'UpdateSecurityPolicy', 'AppIntegrityService') {
         $source = if ($useCurrentUpdater) { [IO.File]::ReadAllText((Join-Path $repository "Services/$name.cs")) } else { Read-Legacy "Services/$name.cs" }
         [IO.File]::WriteAllText((Join-Path $temporary "$name.cs"), $source)
+    }
+    if ($ClientRef) {
+        [IO.File]::WriteAllText((Join-Path $temporary 'AppVersion.cs'), (Read-Legacy 'Services/AppVersion.cs'))
+        $null = & git -C $repository cat-file -e "${legacyCommit}:Services/NativeWinHttpHandler.cs" 2>$null
+        if ($LASTEXITCODE -eq 0) {
+            foreach ($dependency in 'NativeWinHttpHandler', 'Win32Interop', 'Win32Interop.Process', 'WindowAnimationPolicy') {
+                [IO.File]::WriteAllText((Join-Path $temporary "$dependency.cs"), (Read-Legacy "Services/$dependency.cs"))
+            }
+            # Preserve binary bytes and the installed client's native trust policy.
+            $start = [Diagnostics.ProcessStartInfo]::new('git')
+            $start.UseShellExecute = $false
+            $start.CreateNoWindow = $true
+            $start.RedirectStandardOutput = $true
+            $start.ArgumentList.Add('-C'); $start.ArgumentList.Add($repository)
+            $start.ArgumentList.Add('show'); $start.ArgumentList.Add("${legacyCommit}:Native/out/VNotch.Native.dll")
+            $process = [Diagnostics.Process]::Start($start)
+            $file = [IO.File]::Create((Join-Path $temporary 'VNotch.Native.dll'))
+            try { $process.StandardOutput.BaseStream.CopyTo($file) } finally { $file.Dispose() }
+            $process.WaitForExit()
+            if ($process.ExitCode -ne 0) { throw 'The installed client native library is required.' }
+            $process.Dispose()
+        }
     }
     if ($useCurrentUpdater) {
         Copy-Item -LiteralPath (Join-Path $repository 'Services/AppVersion.cs') -Destination $temporary
@@ -94,6 +124,7 @@ try {
     if ($AssetsDirectory) { $arguments += (Resolve-Path -LiteralPath $AssetsDirectory).Path }
     if ($Prerelease) { $arguments += '--prerelease' }
     if ($InstalledVersion) { $arguments += "--installed-version=$InstalledVersion" }
+    if ($ClientRef) { $arguments += "--client-ref=$ClientRef" }
     & dotnet @arguments
     if ($LASTEXITCODE -ne 0) { throw 'The update compatibility check failed.' }
 } finally {

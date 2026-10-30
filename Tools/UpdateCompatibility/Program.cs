@@ -20,6 +20,8 @@ if (installedArgument != null)
         throw new InvalidDataException("Probe assembly must carry the high Windows build version.");
 }
 string clientName = currentUpdater ? $"current updater ({installedVersion})" : "1.9.3";
+string? sourceArgument = args.FirstOrDefault(arg => arg.StartsWith("--client-ref=", StringComparison.Ordinal));
+if (sourceArgument != null) clientName = $"installed updater source {sourceArgument.Split('=', 2)[1]} ({installedVersion})";
 string? assetsDirectory = args.Skip(1).FirstOrDefault(arg => !arg.StartsWith("--", StringComparison.Ordinal));
 using var testKey = ECDsa.Create(ECCurve.NamedCurves.nistP256);
 string publicKey = assetsDirectory == null ? testKey.ExportSubjectPublicKeyInfoPem() : SignedUpdateManifest.ReadPinnedPublicKey();
@@ -97,10 +99,10 @@ foreach (string scenario in new[] { "valid", "tampered-installer", "bad-signatur
     var updater = new UpdateService(client, new UpdateSecurityPolicy(), manifestPublicKey: publicKey);
     if (updater.CurrentVersion != installedVersion) throw new InvalidDataException("Probe assembly must have the requested installed release version.");
     var update = currentUpdater
-        ? await (Task<UpdateInfo?>)typeof(UpdateService).GetMethod(nameof(UpdateService.CheckForUpdatesAsync), [typeof(bool)])!.Invoke(updater, [includePrereleases])!
+        ? await CheckInstalledAsync(updater, includePrereleases)
         : await updater.CheckForUpdatesAsync();
     if (update is not { IsNewerVersion: true } || update.InstallerName != selectedName || update.Version != version)
-        throw new InvalidDataException($"The {clientName} client did not offer the expected newer installer.");
+        throw new InvalidDataException($"The {clientName} client did not offer the expected newer installer. Asset URL: {update?.DownloadUrl ?? "<none>"}. Check the installed client's trusted origin and release metadata.");
     string destination = Path.Combine(AppContext.BaseDirectory, "download-" + Guid.NewGuid().ToString("N"));
     try
     {
@@ -119,9 +121,11 @@ foreach (string scenario in new[] { "valid", "tampered-installer", "bad-signatur
         if (installedArgument != null && !prerelease && scenario == "valid")
         {
             var core = Version.Parse(installedVersion.Split('-')[0]);
-            if (core.Build > 0)
+            string? olderVersion = core.Build > 0 ? $"{core.Major}.{core.Minor}.{core.Build - 1}"
+                : core.Minor > 0 ? $"{core.Major}.{core.Minor - 1}.999"
+                : core.Major > 0 ? $"{core.Major - 1}.999.999" : null;
+            if (olderVersion != null)
             {
-                string olderVersion = $"{core.Major}.{core.Minor}.{core.Build - 1}";
                 var older = JsonSerializer.Deserialize<Dictionary<string, JsonElement>>(json)!;
                 older["tag_name"] = JsonSerializer.SerializeToElement("v" + olderVersion);
                 string olderJson = JsonSerializer.Serialize(older);
@@ -129,8 +133,7 @@ foreach (string scenario in new[] { "valid", "tampered-installer", "bad-signatur
                     ? new(HttpStatusCode.OK) { Content = new StringContent(request.RequestUri.AbsolutePath.EndsWith("/latest") ? olderJson : "[" + olderJson + "]") }
                     : throw new InvalidOperationException("An older stable release must not download any assets.")));
                 var olderUpdater = new UpdateService(olderClient, new UpdateSecurityPolicy(), manifestPublicKey: publicKey);
-                var olderUpdate = await (Task<UpdateInfo?>)typeof(UpdateService).GetMethod(nameof(UpdateService.CheckForUpdatesAsync), [typeof(bool)])!
-                    .Invoke(olderUpdater, [includePrereleases])!;
+                var olderUpdate = await CheckInstalledAsync(olderUpdater, includePrereleases);
                 if (olderUpdate is { IsNewerVersion: true })
                     throw new InvalidDataException("An older stable release was offered as a beta upgrade.");
                 Console.WriteLine($"PASS {clientName} rejects downgrade to {olderVersion}: beta opt-in={includePrereleases}");
@@ -142,6 +145,16 @@ foreach (string scenario in new[] { "valid", "tampered-installer", "bad-signatur
 Console.WriteLine(assetsDirectory == null
     ? $"Protocol checks passed for the {clientName}; pinned production key unchanged. Payloads were synthetic and never executed."
     : $"Both release installers verified by the {clientName} with the pinned production key. Nothing was executed.");
+
+static Task<UpdateInfo?> CheckInstalledAsync(UpdateService updater, bool includePrereleases)
+{
+    var method = typeof(UpdateService).GetMethod(nameof(UpdateService.CheckForUpdatesAsync), [typeof(bool), typeof(bool)])
+        ?? typeof(UpdateService).GetMethod(nameof(UpdateService.CheckForUpdatesAsync), [typeof(bool)])
+        ?? throw new MissingMethodException("Updater probe requires CheckForUpdatesAsync(bool) or CheckForUpdatesAsync(bool, bool).");
+    object?[] arguments = method.GetParameters().Length == 1 ? [includePrereleases] : [includePrereleases, true];
+    return method.Invoke(updater, arguments) as Task<UpdateInfo?>
+        ?? throw new InvalidOperationException("Updater probe expected a non-null Task<UpdateInfo?> result.");
+}
 
 sealed class Handler(Func<HttpRequestMessage, HttpResponseMessage> reply) : HttpMessageHandler
 {

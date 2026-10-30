@@ -67,6 +67,11 @@ public partial class ChangelogWindow : Window
 
             // Try to get all releases
             var allReleases = await _updateService.GetAllReleasesAsync();
+            if (allReleases.Count == 0)
+            {
+                ShowError(Loc.Get("changelog.loadFailed"));
+                return;
+            }
             var currentVersion = _updateService.CurrentVersion;
 
             bool currentFound = false;
