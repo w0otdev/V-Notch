@@ -122,6 +122,7 @@ public sealed class SettingsWindowControlTests
     public void ModelInstallationErrorsExplainTheActualFailureCategory(string category, string key) => SharedStaTestRunner.RunAsync(async _ =>
     {
         using var fixture = new Fixture();
+        fixture.Window.EnableTranslationCheck.IsChecked = true;
         Exception error = category switch
         {
             "http" => new System.Net.Http.HttpRequestException("message must not be shown", null, System.Net.HttpStatusCode.Forbidden),
@@ -144,6 +145,7 @@ public sealed class SettingsWindowControlTests
         using var fixture = new Fixture();
         var window = fixture.Window;
         var card = window.TranslationProgressCard;
+        window.EnableTranslationCheck.IsChecked = true;
         var parent = (Panel)card.Parent;
         int index = parent.Children.IndexOf(card);
         parent.Children.Remove(card);

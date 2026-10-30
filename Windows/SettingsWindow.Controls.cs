@@ -293,6 +293,7 @@ public partial class SettingsWindow
 
     private void UpdateLyricsDependentControls(bool lyricsEnabled, bool animate = false)
     {
+        AnimateDependentElement(BrightenDarkLyricsBackgroundCheck, lyricsEnabled, 0.45, animate);
         AnimateDependentElement(DarkOverlayLabel, lyricsEnabled, 0.45, animate);
         AnimateDependentElement(DarkOverlayHint, lyricsEnabled, 0.45, animate);
         AnimateDependentElement(BlurDarkOverlaySlider, lyricsEnabled, 0.45, animate);

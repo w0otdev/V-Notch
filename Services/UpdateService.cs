@@ -35,6 +35,10 @@ public sealed partial class UpdateService : IUpdateService, IDisposable
     private const string LogCategory = "UPDATER";
     private static readonly Uri GithubLatestReleaseUri = new("https://api.github.com/repos/w0otdev/V-Notch/releases/latest");
     private static readonly Uri GithubAllReleasesUri = new("https://api.github.com/repos/w0otdev/V-Notch/releases");
+    private static readonly Uri GithubReleaseFeedUri = new("https://github.com/w0otdev/V-Notch/releases.atom");
+
+    [LibraryImport("VNotch.Native.dll", EntryPoint = "vn_update_parse_atom", StringMarshalling = StringMarshalling.Utf16)]
+    private static partial int ParseReleaseFeed(ReadOnlySpan<byte> data, int size, Span<char> output, int capacity, out int written);
     private const string UserAgent = "V-Notch-Updater";
     internal const string SetupName = "V-Notch-Setup.exe";
     internal const string SelfContainedSetupName = "V-Notch-Setup-SelfContained.exe";
@@ -294,7 +298,7 @@ public sealed partial class UpdateService : IUpdateService, IDisposable
                     retryAt = DateTimeOffset.FromUnixTimeSeconds(epoch).UtcDateTime;
                 _retryAfterUtc = now + TimeSpan.FromSeconds(Math.Clamp((retryAt - now).TotalSeconds, 60, 86400));
                 RuntimeLog.Warn(LogCategory, $"GetAllReleases API rate limited; next check after {_retryAfterUtc:O}");
-                return _cachedAllReleases != null ? _cachedAllReleases.Select(Clone).ToList() : Array.Empty<UpdateInfo>();
+                return await GetReleaseFeedFallbackAsync().ConfigureAwait(false);
             }
             response.EnsureSuccessStatusCode();
 
@@ -313,6 +317,33 @@ public sealed partial class UpdateService : IUpdateService, IDisposable
         catch (Exception ex)
         {
             RuntimeLog.Error(LogCategory, ex, "Get all releases failed");
+            return await GetReleaseFeedFallbackAsync().ConfigureAwait(false);
+        }
+    }
+
+    private async Task<IReadOnlyList<UpdateInfo>> GetReleaseFeedFallbackAsync()
+    {
+        try
+        {
+            using var request = new HttpRequestMessage(HttpMethod.Get, GithubReleaseFeedUri);
+            using var response = await SendHttpsAsync(request, CancellationToken.None).ConfigureAwait(false);
+            response.EnsureSuccessStatusCode();
+            await response.Content.LoadIntoBufferAsync(MaxReleaseResponseBytes).ConfigureAwait(false);
+            byte[] feed = await response.Content.ReadAsByteArrayAsync().ConfigureAwait(false);
+            var buffer = new char[MaxReleaseResponseBytes];
+            if (ParseReleaseFeed(feed, feed.Length, buffer, buffer.Length, out int written) != 0)
+                throw new InvalidDataException("Invalid release feed.");
+            using var json = JsonDocument.Parse(new string(buffer, 0, written));
+            var releases = new List<UpdateInfo>();
+            foreach (var release in json.RootElement.EnumerateArray()) releases.Add(ReadRelease(release));
+            if (releases.Count == 0) throw new InvalidDataException("Empty release feed.");
+            _cachedAllReleases = releases;
+            _lastAllReleasesCheckUtc = DateTime.UtcNow;
+            return releases.Select(Clone).ToList();
+        }
+        catch (Exception ex)
+        {
+            RuntimeLog.Error(LogCategory, ex, "Release feed fallback failed");
             return _cachedAllReleases != null ? _cachedAllReleases.Select(Clone).ToList() : Array.Empty<UpdateInfo>();
         }
     }

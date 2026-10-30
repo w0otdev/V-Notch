@@ -1660,9 +1660,9 @@ public partial class SpotlightWindow : Window
             ContentRegion.Child.Measure(new Size(width, double.PositiveInfinity));
             double target = ContentRegion.Child.DesiredSize.Height + inset.Top + inset.Bottom + padding.Top + padding.Bottom;
             if (!double.IsFinite(target)) return;
-            // Pending providers may prevent shrinking, never growth: instant
-            // results and waiting messages must both fit before search finishes.
-            if (searchPending && target <= oldHeight + 1) return;
+            // Keep partial results steady, but size a waiting message to its
+            // own content instead of retaining an empty results viewport.
+            if (searchPending && StatusPanel.Visibility != Visibility.Visible && target <= oldHeight + 1) return;
             if ((!_searchHeightHeld || searchPending) && Math.Abs(target - _contentHeightTarget) < 1) return;
             _searchHeightHeld = searchPending;
             if (AnimationConfig.ReduceMotion || Math.Abs(target - oldHeight) < 1)

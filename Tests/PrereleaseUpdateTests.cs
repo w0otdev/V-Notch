@@ -12,6 +12,48 @@ namespace VNotch.Tests;
 public sealed class PrereleaseUpdateTests
 {
     [Theory]
+    [InlineData("<feed><entry>")]
+    [InlineData("<!DOCTYPE feed [<!ENTITY example SYSTEM 'https://example.invalid/entity'>]><feed>&example;</feed>")]
+    public async Task InvalidOrExternalEntityFeedCannotSupplyReleaseHistory(string feed)
+    {
+        using var client = new HttpClient(new Handler(request => request.RequestUri!.Host == "api.github.com"
+            ? new(HttpStatusCode.Forbidden)
+            : new(HttpStatusCode.OK) { Content = new StringContent(feed) }));
+        using var service = new UpdateService(client, new UpdateSecurityPolicy());
+        Assert.Empty(await service.GetAllReleasesAsync());
+    }
+
+    [Fact]
+    public async Task ReleaseHistoryFallsBackToPublicFeedWhenApiIsRateLimited()
+    {
+        int requests = 0;
+        using var client = new HttpClient(new Handler(request =>
+        {
+            requests++;
+            if (request.RequestUri!.Host == "api.github.com") return new(HttpStatusCode.Forbidden);
+            Assert.Equal("/w0otdev/V-Notch/releases.atom", request.RequestUri.AbsolutePath);
+            return new(HttpStatusCode.OK) { Content = new StringContent("""
+                <feed xmlns="http://www.w3.org/2005/Atom"><entry>
+                <id>tag:github.com,2008:Repository/123/v2.2.0-beta.298.1</id>
+                <updated>2026-10-29T12:26:49Z</updated>
+                <content type="html">&lt;p&gt;Recent &amp;amp; safe release&lt;/p&gt;</content>
+                </entry><entry><id>tag:github.com,2008:Repository/123/v2.1.0</id>
+                <updated>2026-09-01T00:00:00Z</updated><content type="html">Stable</content></entry></feed>
+                """) };
+        }));
+        using var service = new UpdateService(client, new UpdateSecurityPolicy());
+        var releases = await service.GetAllReleasesAsync();
+        Assert.Equal(2, releases.Count);
+        Assert.Equal("2.2.0-beta.298.1", releases[0].Version);
+        Assert.True(releases[0].IsPrerelease);
+        Assert.Contains("Recent", releases[0].ReleaseNotes);
+        Assert.False(releases[0].IsNewerVersion); // History cannot authorize an installer.
+        Assert.Empty(releases[0].DownloadUrl);
+        Assert.Equal(2, (await service.GetAllReleasesAsync()).Count);
+        Assert.Equal(2, requests);
+    }
+
+    [Theory]
     [InlineData("99.1.0-beta.10", "99.0.0", "99.1.0-beta.10", true)]
     [InlineData("99.0.0-beta.10", "99.0.0", "99.0.0", false)]
     [InlineData("99.0.0-beta.10", "99.1.0", "99.1.0", false)]

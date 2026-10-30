@@ -193,6 +193,7 @@ jobs:
           $jobs = @(
             Start-Job -Name 'ReleaseGates' -ScriptBlock { param($r) Set-Location -LiteralPath $r; & "$r/Tests/ReleaseGateTests.ps1" } -ArgumentList $repo
             Start-Job -Name 'Compat193' -ScriptBlock { param($r) Set-Location -LiteralPath $r; & "$r/Tools/Assert-UpdateCompatibility.ps1" } -ArgumentList $repo
+            Start-Job -Name 'Compat220Forward' -ScriptBlock { param($r) Set-Location -LiteralPath $r; & "$r/Tools/Assert-ForwardUpdateCompatibility.ps1" } -ArgumentList $repo
             Start-Job -Name 'CompatPromo' -ScriptBlock { param($r, $v) Set-Location -LiteralPath $r; & "$r/Tools/Assert-UpdateCompatibility.ps1" -ReleaseVersion $v -InstalledVersion "$v-beta.65534.65534+build.promotion-probe" } -ArgumentList $repo, $version
             Start-Job -Name 'PackageAudit' -ScriptBlock { param($r) Set-Location -LiteralPath $r; & "$r/Tools/Assert-PackageAudit.ps1" } -ArgumentList $repo
           )

@@ -63,6 +63,7 @@ public partial class MainWindow
 
     private void BringSettingsToFront(SettingsWindow window)
     {
+        _transitionCoordinator.RequestCollapse("OpenSettings");
         if (window.WindowState == WindowState.Minimized) window.WindowState = WindowState.Normal;
         window.Topmost = Topmost;
         window.Activate();

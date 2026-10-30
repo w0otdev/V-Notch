@@ -20,6 +20,7 @@ public partial class SettingsWindow
         TrayImagesCheck.IsChecked = settings.ClipboardCaptureImages;
         TrayFilesCheck.IsChecked = settings.ClipboardCaptureFiles;
         TrayDelaySlider.Value = settings.ClipboardCaptureDelay;
+        UpdateTrayCaptureControls();
     }
 
     private void LocalizeTrayAdvanced()
@@ -36,7 +37,17 @@ public partial class SettingsWindow
         TrayDelaySlider.Description = Loc.Get("settings.trayCaptureDelay.hint");
     }
 
-    private void TrayAdvanced_Changed(object sender, RoutedEventArgs e) => PushLivePreview();
+    private void TrayAdvanced_Changed(object sender, RoutedEventArgs e)
+    {
+        UpdateTrayCaptureControls();
+        PushLivePreview();
+    }
+
+    private void UpdateTrayCaptureControls()
+    {
+        AnimateDependentElement(TrayDelayRow, TrayTextCheck.IsChecked == true
+            || TrayImagesCheck.IsChecked == true || TrayFilesCheck.IsChecked == true);
+    }
     private void TrayDelay_Changed(object sender, RoutedPropertyChangedEventArgs<double> e) => PushLivePreview();
 
     private void InitializeTrayBadges()

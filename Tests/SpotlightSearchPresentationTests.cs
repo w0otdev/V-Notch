@@ -239,7 +239,6 @@ public sealed class SpotlightSearchPresentationTests
             await WpfFrameWaiter.UntilAsync(() => vm.Results.Count == initialCount && !vm.IsSearching
                 && !window.ContentRegion.ClipToBounds, "initial results sized", ct);
             window.UpdateLayout();
-            double initialHeight = window.ContentRegion.ActualHeight;
             double width = window.Shell.ActualWidth;
             var previousRequest = provider.Request;
             window.SearchBox.Text = "cursor";
@@ -261,7 +260,10 @@ public sealed class SpotlightSearchPresentationTests
                 .TransformBounds(new Rect(window.StatusHint.RenderSize));
             Assert.True(shellHintBounds.Bottom + window.StatusPanel.Margin.Bottom <= window.Shell.ActualHeight + 1,
                 "The shell must also contain the full searching message.");
-            Assert.True(window.ContentRegion.ActualHeight >= initialHeight - 1, "Pending search must not shrink the previous results area.");
+            window.ContentRegion.Child.Measure(new Size(window.ContentRegion.ActualWidth, double.PositiveInfinity));
+            double naturalHeight = window.ContentRegion.Child.DesiredSize.Height + window.ContentRegion.BorderThickness.Top
+                + window.ContentRegion.BorderThickness.Bottom;
+            Assert.InRange(window.ContentRegion.ActualHeight, naturalHeight - 1, naturalHeight + 1);
             Assert.Equal(width, window.Shell.ActualWidth, precision: 3);
             Assert.True(vm.IsSearching);
             provider.Request!.SetResult([new SpotlightSearchItem(

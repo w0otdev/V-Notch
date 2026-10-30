@@ -7,7 +7,7 @@ try {
         New-Item -ItemType Directory -Path (Join-Path $fixture $directory) -Force | Out-Null
     }
     Copy-Item -LiteralPath (Join-Path $repository 'scripts/c.ps1') -Destination (Join-Path $fixture 'scripts/c.ps1')
-    foreach ($script in @('Tools/Assert-ModelAssets.ps1', 'Tools/Assert-UpdateCompatibility.ps1',
+    foreach ($script in @('Tools/Assert-ModelAssets.ps1', 'Tools/Assert-UpdateCompatibility.ps1', 'Tools/Assert-ForwardUpdateCompatibility.ps1',
             'Tools/Assert-PackageAudit.ps1', 'Tools/Assert-Coverage.ps1', 'Tests/ReleaseGateTests.ps1',
             'Tests/LocalCiResumeTests.ps1')) {
         Set-Content -LiteralPath (Join-Path $fixture $script) -Value '# Fixture: success.'

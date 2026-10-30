@@ -26,6 +26,18 @@
             <ResourceDictionary.MergedDictionaries>
                 <ResourceDictionary Source="/V-Notch;component/Controls/SettingsComboBoxStyles.xaml"/>
             </ResourceDictionary.MergedDictionaries>
+            <Style x:Key="DisabledFeatureGroup" TargetType="StackPanel">
+                <Setter Property="Opacity" Value="1"/>
+                <Style.Triggers>
+                    <MultiDataTrigger>
+                        <MultiDataTrigger.Conditions>
+                            <Condition Binding="{Binding IsEnabled, RelativeSource={RelativeSource Self}}" Value="False"/>
+                            <Condition Binding="{Binding IsEnabled, RelativeSource={RelativeSource AncestorType=StackPanel}}" Value="True"/>
+                        </MultiDataTrigger.Conditions>
+                        <Setter Property="Opacity" Value="0.45"/>
+                    </MultiDataTrigger>
+                </Style.Triggers>
+            </Style>
         <fonts:AppFont x:Key="SettingsFont" Fallbacks="Nirmala UI, Segoe UI" />
         <sys:Double x:Key="SettingsLabelFontSize">14</sys:Double>
         <sys:Double x:Key="SettingsHintFontSize">12</sys:Double>
@@ -1818,7 +1830,8 @@
                                                            AutomationProperties.LiveSetting="Polite"/>
                                             </StackPanel>
                                         </Border>
-                                        <Border Style="{StaticResource SettingRowBorder}">
+                                        <StackPanel x:Name="SpotlightOptions" Style="{StaticResource DisabledFeatureGroup}" IsEnabled="{Binding IsChecked, ElementName=EnableSpotlightCheck}">
+<Border Style="{StaticResource SettingRowBorder}">
                                             <StackPanel>
                                                 <TextBlock x:Name="SpotlightDefaultModeLabel" Style="{StaticResource SettingTitleText}"/>
                                                 <ComboBox x:Name="SpotlightDefaultModeCombo" MinHeight="40" Margin="0,8,0,0" SelectionChanged="SpotlightDefaultMode_Changed">
@@ -1847,6 +1860,7 @@
                                         <Border Style="{StaticResource SettingRowBorder}">
                                             <controls:ElasticSlider x:Name="SpotlightAiSpeedSlider" Minimum="2" Maximum="30" Value="9" TickFrequency="1" IsSnapToTickEnabled="True" Margin="0,4,0,4" ValueChanged="SpotlightAiSpeed_Changed"/>
                                         </Border>
+                                    </StackPanel>
                                     </StackPanel>
                                 </Border>
                             </StackPanel>
@@ -1881,7 +1895,8 @@
                                             </StackPanel>
                                         </Border>
 
-                                        <!-- 2. Source & Target Languages -->
+                                        <StackPanel x:Name="TranslationOptions" Style="{StaticResource DisabledFeatureGroup}" IsEnabled="{Binding IsChecked, ElementName=EnableTranslationCheck}">
+<!-- 2. Source & Target Languages -->
                                         <Border Style="{StaticResource SettingRowBorder}" BorderBrush="{StaticResource CardBorder}" BorderThickness="0,1,0,0" Padding="0,16">
                                             <StackPanel>
                                                 <Grid>
@@ -2016,9 +2031,11 @@
                                         <Border Style="{StaticResource SettingRowBorder}" BorderBrush="{StaticResource CardBorder}" BorderThickness="0,1,0,0" Padding="0,16">
                                             <StackPanel>
                                                 <CheckBox x:Name="CurrencyConversionCheck" Checked="TranslationSetting_Changed" Unchecked="TranslationSetting_Changed"/>
+                                                <StackPanel x:Name="CurrencyOptions" Style="{StaticResource DisabledFeatureGroup}" IsEnabled="{Binding IsChecked, ElementName=CurrencyConversionCheck}">
                                                 <TextBlock x:Name="TranslationCurrencyLabel" Style="{StaticResource SettingTitleText}" Margin="0,12,0,0"/>
                                                 <ComboBox x:Name="TranslationCurrencyCombo" DisplayMemberPath="Name" SelectedValuePath="Code" SelectionChanged="TranslationCurrency_Changed" MinHeight="36" Margin="0,8,0,0"/>
                                                 <TextBlock x:Name="TranslationCurrencyHint" Style="{StaticResource SettingHintText}" TextWrapping="Wrap" Margin="0,6,0,0"/>
+                                                </StackPanel>
                                             </StackPanel>
                                         </Border>
 
@@ -2044,6 +2061,7 @@
                                                 </Expander>
                                             </StackPanel>
                                         </Border>
+                                    </StackPanel>
                                     </StackPanel>
                                 </Border>
                             </StackPanel>

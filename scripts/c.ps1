@@ -384,6 +384,7 @@ if ($startStep -le 7) {
         $version = '1.9.4'
     }
     Invoke-StepScript { & "$repository/Tools/Assert-UpdateCompatibility.ps1" -ReleaseVersion $version -InstalledVersion "$version-beta.65534.65534+build.promotion-probe" } | Out-Null
+    Invoke-StepScript { & "$repository/Tools/Assert-ForwardUpdateCompatibility.ps1" } | Out-Null
     Write-TreeItem "Verified 1.9.3 client & beta-to-stable v$version promotion." -State "Success"
 
     Save-Checkpoint 8
