@@ -1,5 +1,5 @@
 [CmdletBinding()]
-param([string]$AssetsDirectory, [string]$ReleaseVersion, [switch]$Prerelease, [string]$InstalledVersion, [string]$ClientRef)
+param([string]$AssetsDirectory, [string[]]$ReleaseVersion, [switch]$Prerelease, [string]$InstalledVersion, [string]$ClientRef)
 $ErrorActionPreference = 'Stop'
 if ($PSVersionTable.PSVersion.Major -lt 7) {
     $pwsh = Get-Command pwsh.exe -ErrorAction SilentlyContinue
@@ -8,7 +8,7 @@ if ($PSVersionTable.PSVersion.Major -lt 7) {
     }
     $pwshArgs = @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', $PSCommandPath)
     if ($AssetsDirectory) { $pwshArgs += '-AssetsDirectory', $AssetsDirectory }
-    if ($ReleaseVersion) { $pwshArgs += '-ReleaseVersion', $ReleaseVersion }
+    if ($ReleaseVersion) { $pwshArgs += '-ReleaseVersion'; $pwshArgs += $ReleaseVersion }
     if ($Prerelease) { $pwshArgs += '-Prerelease' }
     if ($InstalledVersion) { $pwshArgs += '-InstalledVersion', $InstalledVersion }
     if ($ClientRef) { $pwshArgs += '-ClientRef', $ClientRef }
@@ -26,7 +26,7 @@ $repository = Split-Path $PSScriptRoot -Parent
 # Immutable source of the public 1.9.3 client, rather than today's updater.
 $legacyCommit = 'daddcb4e711adb71c215ba7b13f77b511c6a7804'
 if ($ClientRef) {
-    $resolvedClient = & git rev-parse --verify "${ClientRef}^{commit}"
+    $resolvedClient = & git -C $repository rev-parse --verify "${ClientRef}^{commit}"
     if ($LASTEXITCODE -ne 0) { throw 'Installed updater source ref could not be resolved.' }
     if (-not $InstalledVersion) { throw '-InstalledVersion is required with -ClientRef.' }
     $legacyCommit = $resolvedClient
@@ -64,15 +64,22 @@ try {
                 [IO.File]::WriteAllText((Join-Path $temporary "$dependency.cs"), (Read-Legacy "Services/$dependency.cs"))
             }
             # Preserve binary bytes and the installed client's native trust policy.
-            $start = [Diagnostics.ProcessStartInfo]::new('git')
+            # Redirect stdin/stderr as well so git.exe never inherits Start-Job's
+            # pwsh -ServerMode IPC pipe and deadlocks Wait-Job in CI.
+            $start = [Diagnostics.ProcessStartInfo]::new((Get-Command git).Source)
             $start.UseShellExecute = $false
             $start.CreateNoWindow = $true
+            $start.RedirectStandardInput = $true
             $start.RedirectStandardOutput = $true
+            $start.RedirectStandardError = $true
             $start.ArgumentList.Add('-C'); $start.ArgumentList.Add($repository)
+            $start.ArgumentList.Add('--no-pager')
             $start.ArgumentList.Add('show'); $start.ArgumentList.Add("${legacyCommit}:Native/out/VNotch.Native.dll")
             $process = [Diagnostics.Process]::Start($start)
+            $process.StandardInput.Close()
             $file = [IO.File]::Create((Join-Path $temporary 'VNotch.Native.dll'))
             try { $process.StandardOutput.BaseStream.CopyTo($file) } finally { $file.Dispose() }
+            $null = $process.StandardError.ReadToEnd()
             $process.WaitForExit()
             if ($process.ExitCode -ne 0) { throw 'The installed client native library is required.' }
             $process.Dispose()
@@ -119,14 +126,24 @@ try {
         $probe.Save((Join-Path $temporary 'Compatibility.csproj'))
     }
     [xml]$project = Get-Content -LiteralPath (Join-Path $repository 'V-Notch.csproj')
-    $version = if ($ReleaseVersion) { $ReleaseVersion } else { [string]($project.Project.PropertyGroup.Version | Where-Object { $_ } | Select-Object -First 1) }
-    $arguments = @('run', '--project', (Join-Path $temporary 'Compatibility.csproj'), '-c', 'Debug', '--', $version)
-    if ($AssetsDirectory) { $arguments += (Resolve-Path -LiteralPath $AssetsDirectory).Path }
-    if ($Prerelease) { $arguments += '--prerelease' }
-    if ($InstalledVersion) { $arguments += "--installed-version=$InstalledVersion" }
-    if ($ClientRef) { $arguments += "--client-ref=$ClientRef" }
-    & dotnet @arguments
-    if ($LASTEXITCODE -ne 0) { throw 'The update compatibility check failed.' }
+    $versions = if ($ReleaseVersion -and $ReleaseVersion.Count -gt 0) {
+        @($ReleaseVersion | Where-Object { $_ })
+    } else {
+        @([string]($project.Project.PropertyGroup.Version | Where-Object { $_ } | Select-Object -First 1))
+    }
+    $probeProject = Join-Path $temporary 'Compatibility.csproj'
+    & dotnet build $probeProject -c Debug -nologo -v:q
+    if ($LASTEXITCODE -ne 0) { throw 'The update compatibility probe build failed.' }
+    $probeDll = Join-Path $temporary 'bin/Debug/net8.0-windows10.0.19041.0/Compatibility.dll'
+    foreach ($version in $versions) {
+        $arguments = @('exec', $probeDll, $version)
+        if ($AssetsDirectory) { $arguments += (Resolve-Path -LiteralPath $AssetsDirectory).Path }
+        if ($Prerelease) { $arguments += '--prerelease' }
+        if ($InstalledVersion) { $arguments += "--installed-version=$InstalledVersion" }
+        if ($ClientRef) { $arguments += "--client-ref=$ClientRef" }
+        & dotnet @arguments
+        if ($LASTEXITCODE -ne 0) { throw 'The update compatibility check failed.' }
+    }
 } finally {
     $resolved = [IO.Path]::GetFullPath($temporary)
     if ([IO.Path]::GetFileName($resolved) -notlike 'vnotch-updater-193-*' -or

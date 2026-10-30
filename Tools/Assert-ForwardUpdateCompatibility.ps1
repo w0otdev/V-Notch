@@ -17,9 +17,7 @@ if ($LASTEXITCODE -eq 0) {
 
 # Discovery, signed manifests, both installer variants, channel selection and
 # rejection of tampered installers/signatures. Synthetic payloads are never run.
-foreach ($target in '2.2.1', '2.3.0', '3.0.0') {
-    & $probe -InstalledVersion '2.2.0' -ReleaseVersion $target @baseline
-}
+& $probe -InstalledVersion '2.2.0' -ReleaseVersion @('2.2.1', '2.3.0', '3.0.0') @baseline
 
 if ($AssetsDirectory) {
     if (-not $ReleaseVersion) { throw '-ReleaseVersion is required with -AssetsDirectory.' }

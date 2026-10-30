@@ -103,7 +103,13 @@
   </ItemGroup>
   <Target Name="KeepTranslationNativeLibrariesBesideExecutable" BeforeTargets="AssignTargetPaths">
     <ItemGroup>
+      <Content Remove="@(Content)" Condition="$([System.String]::Copy('%(Content.Identity)').Contains('LLamaSharpRuntimes')) And '%(Filename)%(Extension)' == 'mtmd.dll'" />
       <Content Update="@(Content)" Condition="$([System.String]::Copy('%(Content.Identity)').Contains('LLamaSharpRuntimes'))" CopyToPublishDirectory="PreserveNewest" ExcludeFromSingleFile="true" />
+    </ItemGroup>
+  </Target>
+  <Target Name="PruneUnusedPublishPayload" AfterTargets="ComputeFilesToPublish" BeforeTargets="_HandleFileConflictsForPublish;_ComputeFilesToBundle">
+    <ItemGroup>
+      <ResolvedFileToPublish Remove="@(ResolvedFileToPublish)" Condition="'%(Filename)%(Extension)' == 'mtmd.dll' Or '%(Extension)' == '.lib' Or '%(RelativePath)' == 'runtimes\win-x64\native\WebView2Loader.dll'" />
     </ItemGroup>
   </Target>
 
@@ -111,7 +117,7 @@
     <None Update="Models\yolox_nano.onnx" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" ExcludeFromSingleFile="true" />
     <None Update="Models\YOLOX-LICENSE.txt" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" ExcludeFromSingleFile="true" />
     <None Update="Models\model-provenance.json" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" ExcludeFromSingleFile="true" />
-    <None Include="Package.appxmanifest" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="Package.appxmanifest" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="Never" />
   </ItemGroup>
 
   <ItemGroup>
@@ -232,12 +238,12 @@
     <WriteLinesToFile File="$(_VNotchNativeObjDir)\baseline.rsp" Lines="@(_VNotchNativeBaselineSources -> '&quot;%(FullPath)&quot;')" Overwrite="true" />
     <WriteLinesToFile File="$(_VNotchNativeObjDir)\avx2.rsp" Lines="@(_VNotchNativeAvx2Sources -> '&quot;%(FullPath)&quot;')" Overwrite="true" />
     <PropertyGroup>
-      <_NativeBaselineOptFlags Condition="'$(NativeFastCompile)' == 'true'">/O2 /Oi /Ot</_NativeBaselineOptFlags>
-      <_NativeBaselineOptFlags Condition="'$(NativeFastCompile)' != 'true'">/O2 /Oi /Ot /GL</_NativeBaselineOptFlags>
+      <_NativeBaselineOptFlags Condition="'$(NativeFastCompile)' == 'true'">/O2 /Oi /Ot /Gy /Gw</_NativeBaselineOptFlags>
+      <_NativeBaselineOptFlags Condition="'$(NativeFastCompile)' != 'true'">/O2 /Oi /Ot /Gy /Gw /GL</_NativeBaselineOptFlags>
       <_NativeLinkOptFlags Condition="'$(NativeFastCompile)' == 'true'">/OPT:REF /OPT:ICF</_NativeLinkOptFlags>
       <_NativeLinkOptFlags Condition="'$(NativeFastCompile)' != 'true'">/LTCG /OPT:REF /OPT:ICF</_NativeLinkOptFlags>
     </PropertyGroup>
-    <Exec Command="call &quot;$(VcVars64Path)&quot; &gt;nul &amp;&amp; cl.exe /nologo /c /std:c++latest $(_NativeBaselineOptFlags) /MT /EHsc /MP /W4 /utf-8 /I&quot;$(MSBuildThisFileDirectory)Native&quot; /Fo&quot;$(_VNotchNativeObjDir)\\&quot; @&quot;$(_VNotchNativeObjDir)\baseline.rsp&quot; &amp;&amp; cl.exe /nologo /c /std:c++latest /O2 /Oi /Ot /arch:AVX2 /MT /EHsc /MP /W4 /utf-8 /I&quot;$(MSBuildThisFileDirectory)Native&quot; /Fo&quot;$(_VNotchNativeObjDir)\\&quot; @&quot;$(_VNotchNativeObjDir)\avx2.rsp&quot;" IgnoreStandardErrorWarningFormat="true" />
+    <Exec Command="call &quot;$(VcVars64Path)&quot; &gt;nul &amp;&amp; cl.exe /nologo /c /std:c++latest $(_NativeBaselineOptFlags) /MT /EHsc /MP /W4 /utf-8 /I&quot;$(MSBuildThisFileDirectory)Native&quot; /Fo&quot;$(_VNotchNativeObjDir)\\&quot; @&quot;$(_VNotchNativeObjDir)\baseline.rsp&quot; &amp;&amp; cl.exe /nologo /c /std:c++latest /O2 /Oi /Ot /Gy /Gw /arch:AVX2 /MT /EHsc /MP /W4 /utf-8 /I&quot;$(MSBuildThisFileDirectory)Native&quot; /Fo&quot;$(_VNotchNativeObjDir)\\&quot; @&quot;$(_VNotchNativeObjDir)\avx2.rsp&quot;" IgnoreStandardErrorWarningFormat="true" />
     <ItemGroup>
       <_VNotchNativeObj Include="$(_VNotchNativeObjDir)\*.obj" />
     </ItemGroup>
