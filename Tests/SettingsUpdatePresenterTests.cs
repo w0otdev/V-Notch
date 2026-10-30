@@ -98,6 +98,55 @@ public sealed class SettingsUpdatePresenterTests
         public Task<bool> DownloadAndInstallUpdateAsync(UpdateInfo updateInfo, IProgress<double>? progress = null, CancellationToken cancellationToken = default) => Task.FromResult(false);
     }
 
+    [Fact]
+    public void ClosingUpdateProgressKeepsSettingsVisibleAndAllowsRetry() => SharedStaTestRunner.RunAsync(async () =>
+    {
+        var owner = new Window { Width = 400, Height = 300 };
+        BackgroundTestWindows.ProtectInput(owner);
+        owner.Show();
+        try
+        {
+            var service = new PendingDownloadService();
+            var refs = new SettingsUpdateViewRefs(owner, new TextBlock(), new Button(), new Button());
+            using var presenter = new SettingsUpdatePresenter(service, refs, () => true);
+            await presenter.CheckForUpdatesAsync();
+            Task download = presenter.DownloadUpdateAsync();
+            var dialog = Assert.Single(owner.OwnedWindows.Cast<Window>().OfType<UpdateDownloadWindow>());
+            Assert.True(owner.IsVisible);
+            Assert.True(dialog.IsVisible);
+            Assert.Equal(WindowStartupLocation.CenterOwner, dialog.WindowStartupLocation);
+            Assert.False(refs.Download.IsEnabled);
+            dialog.Close();
+            await download.WaitAsync(TimeSpan.FromSeconds(5));
+            Assert.True(owner.IsVisible);
+            Assert.Empty(owner.OwnedWindows.Cast<Window>());
+            Assert.True(refs.Download.IsEnabled);
+            Assert.True(refs.Check.IsEnabled);
+            string status = refs.Status.Text;
+            service.Progress!.Report(100);
+            await System.Windows.Threading.Dispatcher.Yield();
+            Assert.Equal(status, refs.Status.Text);
+        }
+        finally { owner.Close(); }
+    });
+
+    private sealed class PendingDownloadService : IUpdateService
+    {
+        public IProgress<double>? Progress { get; private set; }
+        public string CurrentVersion => "2.2.0";
+        public UpdateInfo? LatestUpdateInfo => null;
+        public event EventHandler<UpdateInfo?>? UpdateCheckCompleted { add { } remove { } }
+        public Task<UpdateInfo?> CheckForUpdatesAsync(bool includePrereleases = false, bool forceRefresh = false)
+            => Task.FromResult<UpdateInfo?>(new() { Version = "2.2.1", IsNewerVersion = true });
+        public Task<IReadOnlyList<UpdateInfo>> GetAllReleasesAsync() => Task.FromResult<IReadOnlyList<UpdateInfo>>([]);
+        public async Task<bool> DownloadAndInstallUpdateAsync(UpdateInfo updateInfo, IProgress<double>? progress = null, CancellationToken cancellationToken = default)
+        {
+            Progress = progress;
+            await Task.Delay(Timeout.Infinite, cancellationToken);
+            return false;
+        }
+    }
+
     [Theory]
     [InlineData(false)]
     [InlineData(true)]

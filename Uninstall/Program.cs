@@ -5,7 +5,6 @@ using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Text.Json;
-using System.Windows.Forms;
 using Microsoft.Win32;
 using VNotch.Services;
 
@@ -35,19 +34,15 @@ internal static class Program
             a.Equals("/quiet", StringComparison.OrdinalIgnoreCase) ||
             a.Equals("--quiet", StringComparison.OrdinalIgnoreCase));
 
-        Application.EnableVisualStyles();
         InitializeLanguage();
 
         if (!silent)
         {
-            var confirm = MessageBox.Show(
+            bool confirmed = SetupDialogs.ConfirmUninstall(
                 Loc.Get("uninstall.confirmMessage"),
-                Loc.Get("uninstall.title"),
-                MessageBoxButtons.YesNo,
-                MessageBoxIcon.Warning,
-                MessageBoxDefaultButton.Button2);
+                Loc.Get("uninstall.title"));
 
-            if (confirm != DialogResult.Yes)
+            if (!confirmed)
             {
                 return 1;
             }
@@ -70,19 +65,17 @@ internal static class Program
         {
             if (errors.Count == 0)
             {
-                MessageBox.Show(
+                SetupDialogs.ShowUninstallResult(
                     Loc.Get("uninstall.successMessage"),
                     Loc.Get("uninstall.successTitle"),
-                    MessageBoxButtons.OK,
-                    MessageBoxIcon.Information);
+                    hasErrors: false);
             }
             else
             {
-                MessageBox.Show(
+                SetupDialogs.ShowUninstallResult(
                     Loc.Get("uninstall.warningMessage", string.Join("\n  - ", errors)),
                     Loc.Get("uninstall.warningTitle"),
-                    MessageBoxButtons.OK,
-                    MessageBoxIcon.Warning);
+                    hasErrors: true);
             }
         }
 

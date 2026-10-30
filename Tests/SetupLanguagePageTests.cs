@@ -9,6 +9,33 @@ namespace VNotch.Tests;
 public sealed class SetupLanguagePageTests
 {
     [Fact]
+    public void EveryLanguageFlagLoadsFromTheProductAssembly() => RunOnStaThread(() =>
+    {
+        BackgroundTestWindows.EnsureApplicationResources();
+        var page = new LanguagePage();
+        page.Measure(new Size(400, 400));
+        page.Arrange(new Rect(0, 0, 400, 400));
+        page.UpdateLayout();
+        var images = Descendants(page).OfType<System.Windows.Controls.Image>().ToArray();
+        Assert.Equal(17, images.Length);
+        Assert.All(images, image =>
+        {
+            var bitmap = Assert.IsAssignableFrom<System.Windows.Media.Imaging.BitmapSource>(image.Source);
+            Assert.True(bitmap.PixelWidth > 1 && bitmap.PixelHeight > 1, "A language flag must not use the empty fallback image.");
+        });
+    });
+
+    private static IEnumerable<DependencyObject> Descendants(DependencyObject parent)
+    {
+        for (int i = 0; i < VisualTreeHelper.GetChildrenCount(parent); i++)
+        {
+            var child = VisualTreeHelper.GetChild(parent, i);
+            yield return child;
+            foreach (var descendant in Descendants(child)) yield return descendant;
+        }
+    }
+
+    [Fact]
     public void HindiRemainsReachableWhenTheSetupContentAreaIsShort()
     {
         RunOnStaThread(() =>

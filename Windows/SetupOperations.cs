@@ -271,7 +271,6 @@ internal static class SetupOperations
     private static async Task StopOtherRunningInstancesAsync()
     {
         var currentProcessId = Environment.ProcessId;
-        bool killedAny = false;
 
         foreach (var runningProcess in Process.GetProcessesByName(Path.GetFileNameWithoutExtension(AppExeName)))
         {
@@ -283,9 +282,7 @@ internal static class SetupOperations
                     continue;
                 }
 
-                process.Kill(entireProcessTree: true);
-                await process.WaitForExitAsync().WaitAsync(TimeSpan.FromSeconds(8)).ConfigureAwait(false);
-                killedAny = true;
+                await StopRunningInstanceAsync(process).ConfigureAwait(false);
             }
             catch (Exception ex)
             {
@@ -293,11 +290,14 @@ internal static class SetupOperations
                 Debug.WriteLine($"[Setup] Failed to terminate process {process.Id}: {ex.Message}");
             }
         }
+    }
 
-        if (killedAny)
-        {
-            await Task.Delay(1500).ConfigureAwait(false);
-        }
+    internal static async Task StopRunningInstanceAsync(Process process)
+    {
+        // The installer/wizard can be a descendant of the installed app during
+        // auto-update. Killing the tree also kills the setup performing this call.
+        process.Kill(entireProcessTree: false);
+        await process.WaitForExitAsync().WaitAsync(TimeSpan.FromSeconds(8)).ConfigureAwait(false);
     }
 
     internal static void CopyFileWithRetry(string sourceFile, string destinationFile, int maxRetries = 5,

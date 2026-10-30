@@ -12,6 +12,41 @@ public sealed class SetupWizardNavigationTests
     private const BindingFlags Private = BindingFlags.Instance | BindingFlags.Static | BindingFlags.NonPublic;
 
     [Theory]
+    [InlineData("en")]
+    [InlineData("vi")]
+    [InlineData("de")]
+    public void MinimumSizeKeepsActionsAndTheCurrentStepVisible(string language) => SharedStaTestRunner.RunAsync(async ct =>
+    {
+        LiquidGlassSpotlightTests.CreateApplicationResources();
+        var window = new SetupWindow("visual fixture", language, false, (_, _) => Task.CompletedTask)
+        { Width = 520, Height = 420 };
+        BackgroundTestWindows.ProtectInput(window);
+        try
+        {
+            window.Show();
+            await ShowPage(window, 2, false, ct);
+            window.UpdateLayout();
+            Assert.False(window.NextButton.IsEnabled);
+            var surface = Assert.IsType<Border>(window.NextButton.Template.FindName("border", window.NextButton));
+            Assert.True(surface.Opacity < .6, "A locked Continue button must look disabled.");
+            foreach (var button in new[] { window.CancelButton, window.BackButton, window.NextButton })
+            {
+                var position = button.TranslatePoint(new Point(), window);
+                Assert.InRange(position.X, 0, window.ActualWidth - button.ActualWidth + 1);
+                Assert.InRange(position.Y, 0, window.ActualHeight - button.ActualHeight + 1);
+            }
+            await ShowPage(window, 7, false, ct);
+            await WpfFrameWaiter.UntilAsync(() =>
+            {
+                var position = window.Step8Text.TranslatePoint(new Point(), window.SidebarScrollViewer);
+                return position.Y >= -1 && position.Y + window.Step8Text.ActualHeight <= window.SidebarScrollViewer.ActualHeight + 1;
+            }, "current setup step visible in the short sidebar", ct);
+            Assert.True(window.SidebarScrollViewer.ScrollableHeight > 0);
+        }
+        finally { window.Close(); Loc.SetLanguage("en"); }
+    });
+
+    [Theory]
     [InlineData(false)]
     [InlineData(true)]
     public void UpdateSkipsFirstRunPagesOnlyForAnExistingInstallation(bool installed) => SharedStaTestRunner.RunAsync(async ct =>
