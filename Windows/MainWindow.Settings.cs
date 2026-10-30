@@ -20,7 +20,7 @@ public partial class MainWindow
             if (showTranslation) activeSettings.NavigateToTranslation();
             if (activeSettings.WindowState == WindowState.Minimized)
                 activeSettings.WindowState = WindowState.Normal;
-            activeSettings.Activate();
+            BringSettingsToFront(activeSettings);
             return;
         }
 
@@ -55,7 +55,24 @@ public partial class MainWindow
             }
         };
 
+        settingsWindow.Owner = this;
+        settingsWindow.ShowActivated = true;
         settingsWindow.Show();
+        BringSettingsToFront(settingsWindow);
+    }
+
+    private void BringSettingsToFront(SettingsWindow window)
+    {
+        if (window.WindowState == WindowState.Minimized) window.WindowState = WindowState.Normal;
+        window.Topmost = Topmost;
+        window.Activate();
+        window.Focus();
+        window.Dispatcher.BeginInvoke(DispatcherPriority.Input, new Action(() =>
+        {
+            if (!window.IsVisible) return;
+            window.Activate();
+            window.Focus();
+        }));
     }
 
     private void OnSettingsWindowSettingsChanged(SettingsWindow settingsWindow, NotchSettings newSettings)

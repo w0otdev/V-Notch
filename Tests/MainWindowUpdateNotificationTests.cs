@@ -194,7 +194,7 @@ public sealed class MainWindowUpdateNotificationTests
         public event EventHandler<UpdateInfo?>? UpdateCheckCompleted;
         public UpdateInfo? LatestUpdateInfo => null;
         public void RaiseUpdateCheckCompleted(UpdateInfo? info) => UpdateCheckCompleted?.Invoke(this, info);
-        public Task<UpdateInfo?> CheckForUpdatesAsync(bool includePrereleases = false)
+        public Task<UpdateInfo?> CheckForUpdatesAsync(bool includePrereleases = false, bool forceRefresh = false)
         {
             Channels.Add(includePrereleases);
             var request = new TaskCompletionSource<UpdateInfo?>(TaskCreationOptions.RunContinuationsAsynchronously);

@@ -7,6 +7,93 @@ namespace VNotch.Tests;
 public sealed class MediaSessionVolumeServiceTests
 {
     [Theory]
+    [InlineData("Chrome.Profile.1", "chrome")]
+    [InlineData("MSEdge.Dev", "msedge")]
+    [InlineData("Brave.Browser", "brave")]
+    [InlineData("Firefox.Profile", "firefox")]
+    [InlineData("Opera GXStable", "opera")]
+    [InlineData("Vivaldi.Profile", "vivaldi")]
+    [InlineData("Chromium.Profile", "chromium")]
+    [InlineData("CocCoc", "browser")]
+    [InlineData("Arc", "arc")]
+    [InlineData("Sidekick", "sidekick")]
+    [InlineData("Zen", "zen")]
+    [InlineData("Floorp", "floorp")]
+    [InlineData("LibreWolf", "librewolf")]
+    [InlineData("Waterfox", "waterfox")]
+    [InlineData("MullvadBrowser", "mullvadbrowser")]
+    [InlineData("Thorium", "thorium")]
+    [InlineData("custom-browser", "custom-browser")]
+    public void BrowserAppIdsResolveTheirAudioExecutableWhenProcessIdsAreUnavailable(string source, string executable)
+    {
+        var state = new VolumeState { Value = .65f };
+        var unrelated = new VolumeState { Value = .9f };
+        var fixture = new Fixture(Session(unrelated, 20, @"C:\apps\unrelated.exe"),
+            Session(state, 21, $@"{{endpoint}}.\\Device\\HarddiskVolume3\Browsers\{executable}.exe%b{{session}}"))
+        { ProcessIds = [] };
+        using var service = fixture.Service;
+        Assert.True(service.TryGetVolume(source, out float volume, out _));
+        Assert.Equal(.65f, volume);
+        Assert.True(service.TrySetVolume(source, .4f));
+        Assert.Equal(.4f, state.Value);
+        Assert.Equal(.9f, unrelated.Value);
+    }
+
+    [Fact]
+    public void PlaybackMovingToAnotherSessionBypassesTheInactiveCachedVolumeImmediately()
+    {
+        var old = new VolumeState { Value = .3f };
+        var current = new VolumeState { Value = .6f };
+        var fixture = new Fixture(Session(old));
+        using var service = fixture.Service;
+        const string source = "fixture.opaque.identity";
+        Assert.True(service.TrySetVolume(source, .4f));
+        old.Active = false;
+        fixture.ProcessIds = [22];
+        fixture.Sessions = [Session(old) with { State = 0 }, Session(current, process: 22, identifier: "new-session")];
+        Assert.True(service.TrySetVolume(source, .7f));
+        Assert.Equal(.7f, current.Value);
+        Assert.Equal(.4f, old.Value);
+        Assert.Equal(1, old.Disposals);
+    }
+
+    [Fact]
+    public void ActiveSessionOutranksStickyInactiveSessionEvenWhenMutedAndExpiredSessionsAreIgnored()
+    {
+        var old = new VolumeState { Value = .3f };
+        var current = new VolumeState { Value = 0, Muted = true };
+        var fixture = new Fixture(Session(old));
+        using var service = fixture.Service;
+        Assert.True(service.TryGetVolume("fixture.exe", out _, out _));
+        fixture.Sessions = [Session(old) with { State = 0 }, Session(current, identifier: "new-session")];
+        Assert.True(service.TryGetVolume("fixture.exe", out float volume, out bool muted));
+        Assert.Equal(0, volume);
+        Assert.True(muted);
+        fixture.Sessions = [Session(old) with { State = 2 }];
+        Assert.False(service.TryGetVolume("fixture.exe", out _, out _));
+        Assert.False(service.TrySetVolume("fixture.exe", .8f));
+    }
+
+    [Fact]
+    public void NativeProcessLookupResolvesAnUnlistedExecutableAndRejectsAnUnknownSource()
+    {
+        using var process = System.Diagnostics.Process.GetCurrentProcess();
+        Assert.Contains((uint)process.Id, MediaSessionVolumeService.GetProcessIds(process.ProcessName + ".exe"));
+        Assert.Empty(MediaSessionVolumeService.GetProcessIds("VNotch.NonexistentBrowser.7594D76B"));
+    }
+
+    [Theory]
+    [InlineData("Chrome", "chrome_proxy.exe")]
+    [InlineData("Chrome", "notchrome.exe")]
+    [InlineData("edge", "knowledge.exe")]
+    public void BrowserNamesCannotMatchAnUnrelatedExecutableBySubstring(string source, string executable)
+    {
+        var fixture = new Fixture(Session(new VolumeState(), identifier: @"C:\apps\" + executable)) { ProcessIds = [] };
+        using var service = fixture.Service;
+        Assert.False(service.TrySetVolume(source, .4f));
+    }
+
+    [Theory]
     [InlineData(-1, 0)]
     [InlineData(0.4, 0.4)]
     [InlineData(2, 1)]
@@ -96,7 +183,7 @@ public sealed class MediaSessionVolumeServiceTests
     {
         var state = new VolumeState { Value = 0.8f };
         var session = new MediaAudioSessionSnapshot(0, match == "display" ? "fixture.exe" : "",
-            match == "identifier" ? "fixture.exe" : "", match == "instance" ? "prefix-fixture.exe-instance" : "", false,
+            match == "identifier" ? "fixture.exe" : "", match == "instance" ? "prefix|fixture.exe|instance" : "", false,
             () => 0, () => new VolumeLease(state));
         var fixture = new Fixture(session) { ProcessIds = [] };
         Assert.True(fixture.Service.TryGetVolume("fixture.exe", out float volume, out _));
@@ -192,7 +279,7 @@ public sealed class MediaSessionVolumeServiceTests
     {
         internal DateTime Now { get; set; } = new(2026, 1, 1, 0, 0, 0, DateTimeKind.Utc);
         internal IReadOnlyList<MediaAudioSessionSnapshot> Sessions { get; set; }
-        internal HashSet<uint> ProcessIds { get; init; } = [11];
+        internal HashSet<uint> ProcessIds { get; set; } = [11];
         internal bool FailEnumeration { get; set; }
         internal int Enumerations { get; private set; }
         internal int ProcessLookups { get; private set; }
@@ -212,6 +299,7 @@ public sealed class MediaSessionVolumeServiceTests
 
     private sealed class VolumeState
     {
+        internal bool Active = true;
         internal float Value;
         internal bool Muted;
         internal bool FailReads;
@@ -226,6 +314,7 @@ public sealed class MediaSessionVolumeServiceTests
     }
     private sealed class VolumeLease(VolumeState state) : IMediaAudioVolume
     {
+        public bool IsActive => state.Active;
         public float Volume
         {
             get => state.FailReads ? throw new InvalidOperationException("Disconnected") : state.Value;

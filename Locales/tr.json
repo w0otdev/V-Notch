@@ -1048,5 +1048,11 @@
   "whitenoise.volume": "Ses düzeyi",
   "whitenoise.mute": "Sessiz",
   "whitenoise.sync": "Zamanlayıcıyla eşitle",
-  "whitenoise.syncTip": "Zamanlayıcı bitince kısılıp durur"
+  "whitenoise.syncTip": "Zamanlayıcı bitince kısılıp durur",
+  "settings.glass.ultimateGpu": "Ultimate GPU modu (GPU 0)",
+  "settings.glass.ultimateGpu.hint": "Liquid Glass efektini yüksek performanslı harici ekran kartında (GPU 0) çalıştırır. GPU kullanımı aşağıdaki Hedef FPS sınırına göre dizginlenir.",
+  "settings.glass.ultimateGpu.warning": "Uyarı: Harici GPU modu daha fazla güç tüketir. GPU'nun yalnızca seçtiğiniz kare sınırına kadar çalışması için Hedef FPS değerini dikkatli ayarlayın.",
+  "settings.glass.ultimateGpu.title": "Ultimate GPU modu etkinleştirilsin mi?",
+  "settings.glass.ultimateGpu.confirm": "Bu seçenek daha akıcı kırılma için harici ekran kartınızı (GPU 0) Liquid Glass'a atar ve dizüstü bilgisayarlarda pil tüketimini artırır. Aşırı yükü önlemek için kare hızı Hedef FPS ayarınızla sınırlandırılır.",
+  "tooltip.ultimateGpu": "Liquid Glass için Hedef FPS sınırıyla yüksek performanslı GPU 0 kullan"
 }

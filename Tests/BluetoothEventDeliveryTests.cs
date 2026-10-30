@@ -45,4 +45,28 @@ public sealed class BluetoothEventDeliveryTests
 
     private static void CompleteEnumeration(BluetoothMonitorService service) =>
         typeof(BluetoothMonitorService).GetField("_isInitialEnumerationComplete", BindingFlags.Instance | BindingFlags.NonPublic)!.SetValue(service, true);
+
+    [Fact]
+    public void StoppingSuppressesNotificationsAlreadyQueuedByAWorker() => SharedStaTestRunner.RunAsync(async () =>
+    {
+        using var service = new BluetoothMonitorService();
+        CompleteEnumeration(service);
+        int received = 0;
+        service.DeviceConnected += (_, _) => received++;
+        Task.Run(() => service.AddDevice(new() { Id = "A", Name = "Headphones" })).GetAwaiter().GetResult();
+        service.Stop();
+        await Dispatcher.CurrentDispatcher.InvokeAsync(() => { }, DispatcherPriority.ApplicationIdle);
+        Assert.Equal(0, received);
+    });
+
+    [Fact]
+    public void AStaleEnumerationCallbackCannotReactivateAStoppedMonitor() => SharedStaTestRunner.Run(() =>
+    {
+        using var service = new BluetoothMonitorService();
+        CompleteEnumeration(service);
+        service.Stop();
+        typeof(BluetoothMonitorService).GetMethod("Watcher_EnumerationCompleted", BindingFlags.Instance | BindingFlags.NonPublic)!
+            .Invoke(service, [null, new object()]);
+        Assert.False((bool)typeof(BluetoothMonitorService).GetField("_isInitialEnumerationComplete", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(service)!);
+    });
 }

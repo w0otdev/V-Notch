@@ -80,6 +80,7 @@ public sealed partial class BluetoothMonitorService : IDisposable
             catch (Exception ex)
             {
                 RuntimeLog.Error(LogTag, ex, "Failed to start DeviceWatcher");
+                Stop();
             }
         }
     }
@@ -90,9 +91,10 @@ public sealed partial class BluetoothMonitorService : IDisposable
         lock (_deviceChangeLock)
         {
             watcher = _watcher;
-            if (watcher == null) return;
             _watcher = null;
             _isInitialEnumerationComplete = false;
+            _knownDevices.Clear();
+            if (watcher == null) return;
         }
 
         try
@@ -113,19 +115,16 @@ public sealed partial class BluetoothMonitorService : IDisposable
         {
             RuntimeLog.Error(LogTag, ex, "Failed to stop DeviceWatcher");
         }
-        finally
-        {
-            _knownDevices.Clear();
-        }
     }
 
     private void Watcher_Added(DeviceWatcher sender, DeviceInformation device)
     {
-        if (_disposed) return;
-        var info = CreateDeviceInfo(device);
-        if (info == null) return;
-
-        AddDevice(info);
+        lock (_deviceChangeLock)
+        {
+            if (_disposed || !ReferenceEquals(sender, _watcher)) return;
+            var info = CreateDeviceInfo(device);
+            if (info != null) AddDevice(info);
+        }
     }
 
     internal void AddDevice(BluetoothDeviceInfo info)
@@ -141,34 +140,41 @@ public sealed partial class BluetoothMonitorService : IDisposable
 
     private void Watcher_Updated(DeviceWatcher sender, DeviceInformationUpdate update)
     {
-        if (_disposed) return;
-        if (update.Properties.TryGetValue("System.Devices.Aep.IsConnected", out var connectedObj)
-            && connectedObj is bool isConnected)
+        lock (_deviceChangeLock)
         {
-            if (!isConnected)
+            if (_disposed || !ReferenceEquals(sender, _watcher)) return;
+            if (update.Properties.TryGetValue("System.Devices.Aep.IsConnected", out var connectedObj)
+                && connectedObj is bool isConnected)
             {
-                RemoveDevice(update.Id);
-            }
-            else if (!_knownDevices.ContainsKey(update.Id))
-            {
-                string deviceName = update.Properties.TryGetValue("System.ItemNameDisplay", out var nameObj)
-                    && nameObj is string displayName && !string.IsNullOrWhiteSpace(displayName)
-                    ? displayName
-                    : ExtractNameFromId(update.Id);
-                var info = new BluetoothDeviceInfo
+                if (!isConnected)
                 {
-                    Id = update.Id,
-                    Name = deviceName,
-                    DeviceType = DetectDeviceType(deviceName)
-                };
-                AddDevice(info);
+                    RemoveDevice(update.Id);
+                }
+                else if (!_knownDevices.ContainsKey(update.Id))
+                {
+                    string deviceName = update.Properties.TryGetValue("System.ItemNameDisplay", out var nameObj)
+                        && nameObj is string displayName && !string.IsNullOrWhiteSpace(displayName)
+                        ? displayName
+                        : ExtractNameFromId(update.Id);
+                    var info = new BluetoothDeviceInfo
+                    {
+                        Id = update.Id,
+                        Name = deviceName,
+                        DeviceType = DetectDeviceType(deviceName)
+                    };
+                    AddDevice(info);
+                }
             }
         }
     }
 
     private void Watcher_Removed(DeviceWatcher sender, DeviceInformationUpdate update)
     {
-        RemoveDevice(update.Id);
+        lock (_deviceChangeLock)
+        {
+            if (_disposed || !ReferenceEquals(sender, _watcher)) return;
+            RemoveDevice(update.Id);
+        }
     }
 
     internal void RemoveDevice(string id)
@@ -188,9 +194,10 @@ public sealed partial class BluetoothMonitorService : IDisposable
     private void PublishDeviceChange(BluetoothDeviceInfo info, bool connected)
     {
         if (_dispatcher.HasShutdownStarted || _dispatcher.HasShutdownFinished) return;
+        var watcher = _watcher;
         _dispatcher.BeginInvoke(() =>
         {
-            if (_disposed) return;
+            if (_disposed || !_isInitialEnumerationComplete || !ReferenceEquals(watcher, _watcher)) return;
             if (connected) DeviceConnected?.Invoke(this, info);
             else DeviceDisconnected?.Invoke(this, info);
         });
@@ -198,8 +205,12 @@ public sealed partial class BluetoothMonitorService : IDisposable
 
     private void Watcher_EnumerationCompleted(DeviceWatcher sender, object args)
     {
-        _isInitialEnumerationComplete = true;
-        RuntimeLog.Log(LogTag, $"Initial enumeration complete. {_knownDevices.Count} device(s) connected.");
+        lock (_deviceChangeLock)
+        {
+            if (_disposed || sender == null || !ReferenceEquals(sender, _watcher)) return;
+            _isInitialEnumerationComplete = true;
+            RuntimeLog.Log(LogTag, $"Initial enumeration complete. {_knownDevices.Count} device(s) connected.");
+        }
     }
 
     private static void Watcher_Stopped(DeviceWatcher sender, object args)

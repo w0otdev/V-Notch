@@ -333,6 +333,26 @@ VN_EXPORT int32_t __stdcall vn_glass_gaussian_box_radii(
     int32_t radii_cap,
     int32_t* out_written) noexcept;
 
+VN_EXPORT int32_t __stdcall vn_glass_compute_capture_interval_ms(
+    int32_t configured_fps,
+    int32_t display_refresh_hz,
+    uint8_t ultimate_gpu,
+    double* out_interval_ms) noexcept;
+
+VN_EXPORT int32_t __stdcall vn_glass_should_submit_frame(
+    int64_t now_ticks,
+    int64_t last_submit_ticks,
+    int64_t stopwatch_freq,
+    double active_interval_ms,
+    uint8_t force_present,
+    uint8_t* out_should_submit) noexcept;
+
+VN_EXPORT int32_t __stdcall vn_glass_score_d3d9_adapter(
+    const char16_t* description,
+    int32_t desc_len,
+    uint32_t vendor_id,
+    int64_t* out_score) noexcept;
+
 VN_EXPORT int32_t __stdcall vn_glass_compute_squircle_lut(
     double power,
     int32_t segments,
@@ -456,6 +476,22 @@ struct VnVolumeHudTransitionParamsOut
 };
 
 #pragma pack(pop)
+
+VN_EXPORT int32_t __stdcall vn_audio_sessions_open_all(int64_t* snapshot, int32_t* count, int32_t* hresult) noexcept;
+VN_EXPORT int32_t __stdcall vn_local_file_search_create(int64_t* handle) noexcept;
+VN_EXPORT int32_t __stdcall vn_local_file_search_cancel(int64_t handle) noexcept;
+VN_EXPORT int32_t __stdcall vn_local_file_search_close(int64_t handle) noexcept;
+VN_EXPORT int32_t __stdcall vn_local_file_search_run(int64_t handle,
+    const char16_t* query, int32_t query_length, const char16_t* roots, int32_t roots_length,
+    const char16_t* hidden, int32_t hidden_length, int32_t limit, int32_t budget_ms, int32_t* count) noexcept;
+VN_EXPORT int32_t __stdcall vn_local_file_search_get_result(int64_t handle, int32_t index,
+    char16_t* path, int32_t capacity, int32_t* length, int32_t* kind, double* score) noexcept;
+VN_EXPORT int32_t __stdcall vn_audio_volume_get_state(int64_t volume, int32_t* state) noexcept;
+VN_EXPORT int32_t __stdcall vn_media_session_volume_get_process_ids(
+    const char16_t* source, int32_t source_length, uint32_t* process_ids, int32_t capacity, int32_t* count) noexcept;
+VN_EXPORT int32_t __stdcall vn_media_session_volume_compute_score(
+    uint8_t process_match, uint8_t metadata_match, uint8_t same_source, uint32_t pid, uint32_t last_pid,
+    uint8_t same_session, int32_t state, double* score) noexcept;
 
 VN_EXPORT int32_t __stdcall vn_animation_compute_volume_hud_palette(
     int32_t tick_count,

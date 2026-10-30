@@ -1048,5 +1048,11 @@
   "whitenoise.volume": "音量",
   "whitenoise.mute": "静音",
   "whitenoise.sync": "与计时器同步",
-  "whitenoise.syncTip": "计时器结束时渐弱并停止"
+  "whitenoise.syncTip": "计时器结束时渐弱并停止",
+  "settings.glass.ultimateGpu": "终极 GPU 模式 (GPU 0)",
+  "settings.glass.ultimateGpu.hint": "在高性能独立显卡 (GPU 0) 上运行液态玻璃。GPU 负载将严格限制在下方设置的目标帧率以内。",
+  "settings.glass.ultimateGpu.warning": "警告：独立显卡模式会增加功耗。请合理设置目标帧率，让 GPU 仅在所选帧率上限内工作。",
+  "settings.glass.ultimateGpu.title": "启用终极 GPU 模式？",
+  "settings.glass.ultimateGpu.confirm": "此选项会将高性能独立显卡 (GPU 0) 分配给液态玻璃以获得更流畅的折射效果，但会增加笔记本电脑耗电。渲染帧率将严格锁定在您设置的目标帧率上限，防止 GPU 满载运行。",
+  "tooltip.ultimateGpu": "为液态玻璃启用高性能 GPU 0 并按目标帧率限速"
 }

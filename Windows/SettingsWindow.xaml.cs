@@ -442,6 +442,7 @@ public partial class SettingsWindow : Window
         TooltipHelper.SetLocalizedTooltip(EnableSpotlightCheck, "settings.enableSpotlight.hint");
         TooltipHelper.SetLocalizedTooltip(EnableWeatherCheck, "tooltip.enableWeather");
         TooltipHelper.SetLocalizedTooltip(GpuRefractionCheck, "tooltip.gpuRefraction");
+        if (UltimateGpuCheck != null) TooltipHelper.SetLocalizedTooltip(UltimateGpuCheck, "tooltip.ultimateGpu");
         TooltipHelper.SetLocalizedTooltip(EnableSpotifyCanvasCheck, "tooltip.spotifyCanvas");
         TooltipHelper.SetLocalizedTooltip(LocalOnlyModeCheck, "tooltip.privacy.localOnly");
         TooltipHelper.SetLocalizedTooltip(AutoCheckUpdatesCheck, "tooltip.privacy.autoUpdates");
@@ -1133,6 +1134,9 @@ public partial class SettingsWindow : Window
 
         GpuRefractionCheck.Content = Loc.Get("settings.gpuRefraction");
         GpuRefractionHint.Text = Loc.Get("settings.gpuRefraction.hint");
+        if (UltimateGpuCheck != null) UltimateGpuCheck.Content = Loc.Get("settings.glass.ultimateGpu");
+        if (UltimateGpuHint != null) UltimateGpuHint.Text = Loc.Get("settings.glass.ultimateGpu.hint");
+        if (UltimateGpuWarning != null) UltimateGpuWarning.Text = Loc.Get("settings.glass.ultimateGpu.warning");
 
         ApplyGpuAndProcessLocalization();
         ApplyBackupSectionLocalization();
@@ -1189,7 +1193,7 @@ public partial class SettingsWindow : Window
     }
 
     private void CheckUpdate_Click(object sender, RoutedEventArgs e)
-        => _updatePresenter.CheckForUpdatesAsync().SafeFireAndForget("SETTINGS-UPDATE-CHECK");
+        => _updatePresenter.CheckForUpdatesAsync(forceRefresh: true).SafeFireAndForget("SETTINGS-UPDATE-CHECK");
 
     private void DownloadUpdate_Click(object sender, RoutedEventArgs e)
         => _updatePresenter.DownloadUpdateAsync().SafeFireAndForget("SETTINGS-UPDATE-DOWNLOAD");

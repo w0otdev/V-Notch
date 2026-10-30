@@ -34,6 +34,7 @@ public static class ServiceConfigurator
         services.AddSingleton<ISpotlightProvider, AppSearchProvider>();
         services.AddSingleton<ISpotlightProvider, SystemCommandProvider>();
         services.AddSingleton<ISpotlightProvider, SystemFileSearchProvider>();
+        services.AddSingleton<ISpotlightProvider, LocalFileSearchProvider>();
         services.AddSingleton<ISpotlightProvider, EverythingSearchProvider>();
         services.AddSingleton<ISpotlightProvider, WindowsSearchProvider>();
         services.AddSingleton<ISpotlightProvider, CalculatorProvider>();

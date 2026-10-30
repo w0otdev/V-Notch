@@ -574,7 +574,7 @@ public sealed class SettingsWindowControlTests
         public string CurrentVersion => "1.0.0";
         public UpdateInfo? LatestUpdateInfo => null;
         public event EventHandler<UpdateInfo?>? UpdateCheckCompleted { add { /* no-op */ } remove { /* no-op */ } }
-        public Task<UpdateInfo?> CheckForUpdatesAsync(bool includePrereleases = false)
+        public Task<UpdateInfo?> CheckForUpdatesAsync(bool includePrereleases = false, bool forceRefresh = false)
         {
             IncludePrereleases = includePrereleases;
             return Task.FromResult<UpdateInfo?>(null);
@@ -722,6 +722,7 @@ public sealed class SettingsWindowControlTests
         window.GlassBlurSlider.Value = 40;
         window.GlassRefractionSlider.Value = 70;
         window.GlassFpsSlider.Value = 120;
+        window.UltimateGpuCheck.IsChecked = true;
         window.GpuRefractionCheck.IsChecked = false;
         window.GlassPresetCombo.SelectedItem = window.GlassPresetCombo.Items.Cast<ComboBoxItem>().Single(item => (string)item.Tag == preset);
         var snapshot = window.ReadSettingsFromUi();
@@ -730,6 +731,8 @@ public sealed class SettingsWindowControlTests
         Assert.Equal(blur, snapshot.LiquidGlass.BlurAmount, 5);
         Assert.Equal(120, snapshot.LiquidGlass.TargetFps);
         Assert.False(snapshot.LiquidGlass.UseGpuRefraction);
+        Assert.True(snapshot.LiquidGlass.UseUltimateGpu);
+        Assert.Equal(Visibility.Visible, window.UltimateGpuWarning.Visibility);
         foreach (string language in new[] { "vi", "ja", "en" })
         {
             Loc.SetLanguage(language);

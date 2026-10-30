@@ -38,6 +38,34 @@ public sealed class PrereleaseUpdateTests
     }
 
     [Fact]
+    public async Task ManualForceRefreshBypassesMinRefreshIntervalAndUpdatesToNewestBeta()
+    {
+        string currentBeta = "99.1.0-beta.288.1";
+        int requests = 0;
+        using var client = new HttpClient(new Handler(request =>
+        {
+            requests++;
+            if (requests > 1 && request.Headers.IfNoneMatch.Any(tag => tag.Tag == "\"beta-288\""))
+            {
+                var updated = Json(new[] { Release("99.1.0-beta.298.1", prerelease: true), Release("99.1.0-beta.288.1", prerelease: true) });
+                updated.Headers.ETag = new("\"beta-298\"");
+                return updated;
+            }
+            var initial = Json(new[] { Release(currentBeta, prerelease: true) });
+            initial.Headers.ETag = new("\"beta-288\"");
+            return initial;
+        }));
+        using var service = new UpdateService(client, new UpdateSecurityPolicy());
+        Assert.Equal("99.1.0-beta.288.1", (await service.CheckForUpdatesAsync(includePrereleases: true))!.Version);
+        Assert.Equal("99.1.0-beta.288.1", (await service.CheckForUpdatesAsync(includePrereleases: true, forceRefresh: false))!.Version);
+        Assert.Equal(1, requests);
+        var forced = await service.CheckForUpdatesAsync(includePrereleases: true, forceRefresh: true);
+        Assert.Equal("99.1.0-beta.298.1", forced!.Version);
+        Assert.True(forced.IsNewerVersion);
+        Assert.Equal(2, requests);
+    }
+
+    [Fact]
     public async Task SwitchingChannelsClearsCacheAndEtagAndNeverReturnsBetaOnStableFailure()
     {
         var paths = new List<string>();

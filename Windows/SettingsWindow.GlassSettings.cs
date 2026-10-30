@@ -345,6 +345,14 @@ public partial class SettingsWindow
             ApplyGlassConfigToSliders(c);
             if (GpuRefractionCheck != null)
                 GpuRefractionCheck.IsChecked = c.UseGpuRefraction;
+            if (UltimateGpuCheck != null)
+            {
+                UltimateGpuCheck.IsChecked = c.UseUltimateGpu;
+                UltimateGpuCheck.IsEnabled = c.UseGpuRefraction;
+                UltimateGpuCheck.Opacity = c.UseGpuRefraction ? 1.0 : 0.4;
+            }
+            if (UltimateGpuWarning != null)
+                UltimateGpuWarning.Visibility = c.UseUltimateGpu ? Visibility.Visible : Visibility.Collapsed;
 
             // The user's tuned values live in their own persistent slot. If it's
             _settings.LiquidGlassCustom ??= c.Clone();
@@ -407,6 +415,7 @@ public partial class SettingsWindow
         else c.Variant = _customGlassSnapshot?.Variant ?? c.Variant;
 
         c.UseGpuRefraction = GpuRefractionCheck?.IsChecked ?? false;
+        c.UseUltimateGpu = UltimateGpuCheck?.IsChecked ?? false;
 
         // Persist which preset is active and the user's custom slot. A built-in
         target.LiquidGlassPreset = activePreset;
@@ -439,9 +448,11 @@ public partial class SettingsWindow
         {
             var currentFps = (int)Math.Round(GlassFpsSlider.Value);
             var currentGpu = GpuRefractionCheck.IsChecked ?? false;
+            var currentUltimateGpu = UltimateGpuCheck?.IsChecked ?? false;
             _settings.LiquidGlass = preset.Clone();
             _settings.LiquidGlass.TargetFps = currentFps;
             _settings.LiquidGlass.UseGpuRefraction = currentGpu;
+            _settings.LiquidGlass.UseUltimateGpu = currentUltimateGpu;
             ApplyGlassConfigToSliders(_settings.LiquidGlass);
         }
 
@@ -453,6 +464,12 @@ public partial class SettingsWindow
         UpdateLiquidGlassAvailability(animate: true);
 
         if (_isLoadingSettings) return;
+        string requestedStyle =
+            (SkinCombo.SelectedItem as System.Windows.Controls.ComboBoxItem)?.Tag as string ?? "default";
+        _settings.NotchStyle = string.Equals(requestedStyle, SkinLiquidGlass, StringComparison.OrdinalIgnoreCase)
+            ? SkinLiquidGlass
+            : "default";
+        ApplyEffectiveGpuPreference();
         PushLivePreview();
     }
 
@@ -515,10 +532,61 @@ public partial class SettingsWindow
     private void GpuRefractionCheck_Changed(object sender, RoutedEventArgs e)
     {
         if (_isLoadingSettings) return;
+        bool gpuEnabled = GpuRefractionCheck?.IsChecked ?? false;
         if (_settings.LiquidGlass != null && GpuRefractionCheck != null)
         {
-            _settings.LiquidGlass.UseGpuRefraction = GpuRefractionCheck.IsChecked ?? false;
+            _settings.LiquidGlass.UseGpuRefraction = gpuEnabled;
         }
+        if (UltimateGpuCheck != null)
+        {
+            UltimateGpuCheck.IsEnabled = gpuEnabled;
+            UltimateGpuCheck.Opacity = gpuEnabled ? 1.0 : 0.4;
+        }
+        ApplyEffectiveGpuPreference();
+        PushLivePreview();
+    }
+
+    private void UltimateGpuCheck_Changed(object sender, RoutedEventArgs e)
+    {
+        if (_isLoadingSettings) return;
+        bool enabled = UltimateGpuCheck?.IsChecked ?? false;
+        if (enabled && IsLoaded)
+        {
+            bool confirmed = VNotch.Windows.ConfirmationDialog.Show(
+                this,
+                Loc.Get("settings.glass.ultimateGpu.confirm"),
+                Loc.Get("settings.glass.ultimateGpu.title"),
+                Loc.Get("dialog.confirm"),
+                Loc.Get("dialog.cancel"),
+                VNotch.Windows.ConfirmationDialog.DialogIcon.Warning,
+                VNotch.Windows.ConfirmationDialog.DialogStyle.Normal);
+
+            if (!confirmed)
+            {
+                bool prev = _isLoadingSettings;
+                _isLoadingSettings = true;
+                try
+                {
+                    if (UltimateGpuCheck != null)
+                        UltimateGpuCheck.IsChecked = false;
+                }
+                finally
+                {
+                    _isLoadingSettings = prev;
+                }
+                return;
+            }
+        }
+
+        if (_settings.LiquidGlass != null)
+        {
+            _settings.LiquidGlass.UseUltimateGpu = enabled;
+        }
+        if (UltimateGpuWarning != null)
+        {
+            UltimateGpuWarning.Visibility = enabled ? Visibility.Visible : Visibility.Collapsed;
+        }
+        ApplyEffectiveGpuPreference();
         PushLivePreview();
     }
 

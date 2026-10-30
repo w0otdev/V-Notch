@@ -119,6 +119,23 @@ public sealed partial class LiquidGlassController : IDisposable
         int* outRadii,
         int radiiCap,
         out int outWritten);
+
+    [LibraryImport("VNotch.Native.dll", EntryPoint = "vn_glass_compute_capture_interval_ms")]
+    private static partial int NativeComputeCaptureIntervalMs(
+        int configuredFps,
+        int displayRefreshHz,
+        byte ultimateGpu,
+        out double outIntervalMs);
+
+    [LibraryImport("VNotch.Native.dll", EntryPoint = "vn_glass_should_submit_frame")]
+    private static partial int NativeShouldSubmitFrame(
+        long nowTicks,
+        long lastSubmitTicks,
+        long stopwatchFreq,
+        double activeIntervalMs,
+        byte forcePresent,
+        out byte outShouldSubmit);
+
     public const int MaxTargetFps = 1000;
 
     public readonly record struct CaptureRegion(int X, int Y, int Width, int Height,
@@ -274,6 +291,41 @@ public sealed partial class LiquidGlassController : IDisposable
     private bool _fgProbeResult;
 
     private volatile bool _gpuMode;
+    private volatile bool _ultimateGpuMode;
+    public bool UseUltimateGpu
+    {
+        get => _ultimateGpuMode;
+        set
+        {
+            if (_ultimateGpuMode == value) return;
+            _ultimateGpuMode = value;
+            double nextInterval = ComputeCaptureIntervalMs(Volatile.Read(ref _configuredFps), Volatile.Read(ref _displayRefreshHz), value);
+            Volatile.Write(ref _activeIntervalMs, nextInterval);
+            if (_gpuMode)
+            {
+                DisposeGpuPresenter();
+                if (TryEnableGpuPresenter(out Exception? error))
+                    ForceRefresh();
+                else
+                    OnD3DPresenterFailed(error ?? new InvalidOperationException("GPU presenter reinit failed."));
+            }
+        }
+    }
+    public double ActiveIntervalMs => Volatile.Read(ref _activeIntervalMs);
+
+    public bool ShouldThrottleFrameUpdate(ref long lastTick, bool force = false)
+    {
+        long now = Stopwatch.GetTimestamp();
+        double intervalMs = Volatile.Read(ref _activeIntervalMs);
+        byte forceFlag = force ? (byte)1 : (byte)0;
+        if (NativeShouldSubmitFrame(now, lastTick, Stopwatch.Frequency, intervalMs, forceFlag, out byte shouldSubmit) == 0 &&
+            shouldSubmit == 0)
+        {
+            return true;
+        }
+        lastTick = now;
+        return false;
+    }
     private int _averageBackgroundBrightnessInt = 128;
     public int AverageBackgroundBrightnessInt
     {
@@ -358,10 +410,14 @@ public sealed partial class LiquidGlassController : IDisposable
     private double _lastPresentedSubX, _lastPresentedSubY;
     private double _lastPresentedSaturation, _lastPresentedBrightness;
 
-    public bool SetGpuMode(bool enabled, Action<GpuGeometry>? onGeometry, Action<Exception>? onFailure = null)
+    public bool SetGpuMode(bool enabled, Action<GpuGeometry>? onGeometry, Action<Exception>? onFailure = null, bool ultimateGpu = false)
     {
         _onGpuGeometry = onGeometry;
         _onGpuFailure = onFailure;
+        bool adapterModeChanged = _ultimateGpuMode != ultimateGpu;
+        _ultimateGpuMode = ultimateGpu;
+        double nextInterval = ComputeCaptureIntervalMs(Volatile.Read(ref _configuredFps), Volatile.Read(ref _displayRefreshHz), ultimateGpu);
+        Volatile.Write(ref _activeIntervalMs, nextInterval);
         if (!enabled)
         {
             _gpuMode = false;
@@ -371,6 +427,9 @@ public sealed partial class LiquidGlassController : IDisposable
             _mapsDirty = true;
             return true;
         }
+
+        if (adapterModeChanged && _d3dPresenter != null)
+            DisposeGpuPresenter();
 
         Interlocked.Exchange(ref _gpuFailureSignaled, 0);
         ResetGpuGeometryTracking();
@@ -382,6 +441,7 @@ public sealed partial class LiquidGlassController : IDisposable
             return false;
         }
 
+        _d3dPresenter?.SetFrameIntervalMs(nextInterval);
         _gpuMode = true;
         _mapsDirty = true;
         return true;
@@ -419,7 +479,9 @@ public sealed partial class LiquidGlassController : IDisposable
                 _dispatcher,
                 hwnd,
                 _maxRegionW + GpuSamplingMarginLimit * 2,
-                _maxRegionH + GpuSamplingMarginLimit * 2);
+                _maxRegionH + GpuSamplingMarginLimit * 2,
+                ultimateGpuMode: _ultimateGpuMode);
+            _d3dPresenter.SetFrameIntervalMs(Volatile.Read(ref _activeIntervalMs));
             _d3dPresenter.FramePresented += OnD3DFramePresented;
             _d3dPresenter.RefreshRequested += ForceRefresh;
             _d3dPresenter.Failed += OnD3DPresenterFailed;
@@ -617,11 +679,15 @@ public sealed partial class LiquidGlassController : IDisposable
         int target = activeFps <= 0 ? AnimationConfig.TargetFps : activeFps;
         int active = Math.Clamp(target, AnimationConfig.MinFps, MaxTargetFps);
         Volatile.Write(ref _configuredFps, active);
-        Volatile.Write(ref _activeIntervalMs, ComputeCaptureIntervalMs(active, Volatile.Read(ref _displayRefreshHz)));
+        double intervalMs = ComputeCaptureIntervalMs(active, Volatile.Read(ref _displayRefreshHz), _ultimateGpuMode);
+        Volatile.Write(ref _activeIntervalMs, intervalMs);
+        _d3dPresenter?.SetFrameIntervalMs(intervalMs);
     }
 
-    internal static double ComputeCaptureIntervalMs(int configuredFps, int displayRefreshHz) =>
-        1000.0 / (displayRefreshHz > 0 ? Math.Min(configuredFps, displayRefreshHz) : configuredFps);
+    internal static double ComputeCaptureIntervalMs(int configuredFps, int displayRefreshHz, bool ultimateGpu = false) =>
+        NativeComputeCaptureIntervalMs(configuredFps, displayRefreshHz, ultimateGpu ? (byte)1 : (byte)0, out double intervalMs) == 0 && intervalMs > 0.0
+            ? intervalMs
+            : 1000.0 / (displayRefreshHz > 0 && !ultimateGpu ? Math.Min(configuredFps, displayRefreshHz) : Math.Max(1, configuredFps));
 
     private void RefreshDisplayCadence()
     {
@@ -632,8 +698,10 @@ public sealed partial class LiquidGlassController : IDisposable
         int hz = detected ?? 0;
         if (hz == _displayRefreshHz) return;
         Volatile.Write(ref _displayRefreshHz, hz);
-        Volatile.Write(ref _activeIntervalMs, ComputeCaptureIntervalMs(Volatile.Read(ref _configuredFps), hz));
-        RuntimeLog.Log(LogCategory, $"[{_logTag}] Display: {hz} Hz; capture limit: {Volatile.Read(ref _configuredFps)} FPS");
+        double intervalMs = ComputeCaptureIntervalMs(Volatile.Read(ref _configuredFps), hz, _ultimateGpuMode);
+        Volatile.Write(ref _activeIntervalMs, intervalMs);
+        _d3dPresenter?.SetFrameIntervalMs(intervalMs);
+        RuntimeLog.Log(LogCategory, $"[{_logTag}] Display: {hz} Hz; capture limit: {Volatile.Read(ref _configuredFps)} FPS (ultimateGpu={_ultimateGpuMode})");
     }
 
     internal static double ChooseLockedFrameIntervalMs(double configuredIntervalMs) =>
@@ -1031,9 +1099,9 @@ public sealed partial class LiquidGlassController : IDisposable
         if (generation == Volatile.Read(ref _renderGeneration))
         {
             _hasUploadedGpuFrame = false;
-        _lastGpuBlurredW = 0;
-        _lastGpuBlurredH = 0;
-        _lastGpuBlurredSigma = 0;
+            _lastGpuBlurredW = 0;
+            _lastGpuBlurredH = 0;
+            _lastGpuBlurredSigma = 0;
             _hasPresentedCpuFrame = false;
             _cachedRegion = null;
             _lastRegionFetchMs = double.NegativeInfinity;
@@ -1424,8 +1492,8 @@ public sealed partial class LiquidGlassController : IDisposable
                     continue;
                 }
 
-                // Final slice (<= 0.35 ms): spin briefly until deadline reached.
-                Thread.SpinWait(8);
+                // Final slice (<= 0.35 ms): yield to OS scheduler instead of busy spinning GPU/CPU threads.
+                Thread.Yield();
             }
         }
     }

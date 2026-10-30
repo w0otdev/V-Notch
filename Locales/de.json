@@ -1048,5 +1048,11 @@
   "whitenoise.volume": "Lautstärke",
   "whitenoise.mute": "Stumm",
   "whitenoise.sync": "Mit Timer koppeln",
-  "whitenoise.syncTip": "Blendet aus und stoppt, wenn der Timer endet"
+  "whitenoise.syncTip": "Blendet aus und stoppt, wenn der Timer endet",
+  "settings.glass.ultimateGpu": "Ultimate-GPU-Modus (GPU 0)",
+  "settings.glass.ultimateGpu.hint": "Führt Liquid Glass auf der dedizierten Hochleistungs-GPU (GPU 0) aus. Die GPU-Auslastung wird strikt auf das unten gewählte FPS-Limit begrenzt.",
+  "settings.glass.ultimateGpu.warning": "Warnung: Der dedizierte GPU-Modus benötigt mehr Strom. Stellen Sie die Ziel-FPS passend ein, damit die GPU nur bis zu diesem Limit arbeitet.",
+  "settings.glass.ultimateGpu.title": "Ultimate-GPU-Modus aktivieren?",
+  "settings.glass.ultimateGpu.confirm": "Diese Option weist Liquid Glass Ihre dedizierte GPU (GPU 0) für flüssigere Brechungseffekte zu, was auf Laptops den Akkuverbrauch erhöht. Die Bildrate bleibt auf Ihre Ziel-FPS begrenzt, um hohe GPU-Last zu vermeiden.",
+  "tooltip.ultimateGpu": "Hochleistungs-GPU 0 für Liquid Glass mit FPS-Begrenzung verwenden"
 }

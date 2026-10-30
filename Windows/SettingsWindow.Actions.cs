@@ -141,6 +141,7 @@ public partial class SettingsWindow
             };
             PopulateClockPageStyleCombo();
             PopulateNavTabsSettings();
+            ApplyEffectiveGpuPreference();
         }
         catch (Exception ex)
         {
@@ -156,6 +157,7 @@ public partial class SettingsWindow
     private void RevertLivePreviewIfNeeded()
     {
         var baseline = _editSession.Revert();
+        ApplyGpuPreference(GetEffectiveGpuPreference(baseline));
         InteractionSounds.Configure(baseline.EnableInteractionSounds, baseline.InteractionSoundVolume);
         SettingsChanged?.Invoke(this, baseline);
     }
@@ -308,13 +310,43 @@ public partial class SettingsWindow
         return count;
     }
 
-    private void Apply_Click(object sender, RoutedEventArgs e)
+    private async void Apply_Click(object sender, RoutedEventArgs e)
     {
-        ApplySettingsFromUi(persist: true);
-        CloseWithAnimation();
+        await ApplyWithoutClosingAsync();
     }
 
-    private void Save_Click(object sender, RoutedEventArgs e) => Apply_Click(sender, e);
+    private bool _isSaving;
+
+    internal Task<bool> ApplyAndCloseAsync(Action<Exception>? showError = null) =>
+        ApplySettingsAsync(closeAfterSave: true, showError);
+
+    internal Task<bool> ApplyWithoutClosingAsync(Action<Exception>? showError = null) =>
+        ApplySettingsAsync(closeAfterSave: false, showError);
+
+    private async Task<bool> ApplySettingsAsync(bool closeAfterSave, Action<Exception>? showError)
+    {
+        if (_isClosing || _isSaving) return false;
+        _isSaving = true;
+        try
+        {
+            var snapshot = ReadSettingsFromUi();
+            ApplyPreview(snapshot);
+            await SaveAsync(snapshot);
+            if (closeAfterSave) CloseWithAnimation();
+            return true;
+        }
+        catch (Exception ex)
+        {
+            RuntimeLog.Error("SETTINGS-APPLY", ex, "Settings were not fully applied.");
+            if (showError != null) showError(ex);
+            else MessageBox.Show(this, Loc.Get("error.settingsSave", ex.Message),
+                Loc.Get("error.settingsNotSavedTitle"), MessageBoxButton.OK, MessageBoxImage.Error);
+            return false;
+        }
+        finally { _isSaving = false; }
+    }
+
+    private async void Save_Click(object sender, RoutedEventArgs e) => await ApplyAndCloseAsync();
     private void CloseWithAnimation()
     {
         if (_isClosing) return;

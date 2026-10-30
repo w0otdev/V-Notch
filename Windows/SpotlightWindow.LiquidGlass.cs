@@ -17,7 +17,9 @@ public partial class SpotlightWindow
     private LiquidGlassInteractionController? _glassInteractionController;
     private BlurEffect? _glassHostBlur;
     private bool _gpuRefractionConfigured;
+    private bool _gpuUltimateConfigured;
     private bool _gpuRefractionFailed;
+    private long _lastGlassFrameUpdateTick;
     private NotchSettings _settings = new();
     private double _lastAppliedDpiScale = 1.0;
     private LiquidGlassController.GpuGeometry? _lastGpuGeometry;
@@ -311,7 +313,9 @@ public partial class SpotlightWindow
             return;
         }
 
+        bool useUltimateGpu = _settings.LiquidGlass?.UseUltimateGpu ?? false;
         if (_gpuRefractionConfigured &&
+            _gpuUltimateConfigured == useUltimateGpu &&
             ReferenceEquals(GlassBackdropImage.Effect, _glassRefractionEffect))
             return;
 
@@ -322,7 +326,7 @@ public partial class SpotlightWindow
 
             _glassInteractionController ??= new LiquidGlassInteractionController(Shell, Shell, _glassRefractionEffect);
 
-            if (!_liquidGlass.SetGpuMode(true, ApplyGpuGeometry, OnGpuRefractionFailure))
+            if (!_liquidGlass.SetGpuMode(true, ApplyGpuGeometry, OnGpuRefractionFailure, ultimateGpu: useUltimateGpu))
             {
                 _gpuRefractionFailed = true;
                 DetachGpuRefraction();
@@ -332,8 +336,9 @@ public partial class SpotlightWindow
             }
 
             RuntimeLog.Log("LIQUIDGLASS",
-                $"Spotlight GPU refraction enabled; target={Math.Clamp(_settings.LiquidGlass?.TargetFps ?? 60, 30, LiquidGlassController.MaxTargetFps)} FPS");
+                $"Spotlight GPU refraction enabled; target={Math.Clamp(_settings.LiquidGlass?.TargetFps ?? 60, 30, LiquidGlassController.MaxTargetFps)} FPS; ultimateGpu={useUltimateGpu}");
             _gpuRefractionConfigured = true;
+            _gpuUltimateConfigured = useUltimateGpu;
         }
         catch (Exception ex)
         {
@@ -687,6 +692,8 @@ public partial class SpotlightWindow
 
         if (isAnimating || regionChanged)
         {
+            if (!regionChanged && _liquidGlass.ShouldThrottleFrameUpdate(ref _lastGlassFrameUpdateTick))
+                return;
             _lastPushedCaptureRegion = region;
             _liquidGlass.SetLiveRegion(region);
             UpdateShaderGeometryPerFrame(dpiScale, exactW, exactH, screenLeft, screenTop);

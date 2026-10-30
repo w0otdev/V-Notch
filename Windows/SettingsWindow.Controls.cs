@@ -507,12 +507,7 @@ public partial class SettingsWindow
         if (GpuPreferenceCombo.SelectedItem is System.Windows.Controls.ComboBoxItem item && item.Tag is string tag && int.TryParse(tag, out int val))
         {
             _settings.GpuPreference = val;
-            ApplyGpuPreference(val);
-
-            if (_settings.GpuPreference != _editSession.Baseline.GpuPreference)
-            {
-                ShowRestartBanner();
-            }
+            ApplyEffectiveGpuPreference();
         }
     }
 
@@ -769,7 +764,30 @@ public partial class SettingsWindow
         HideCpp26Banner(markSeen: true);
     }
 
-    private static void ApplyGpuPreference(int preference)
+    internal static int GetEffectiveGpuPreference(NotchSettings settings)
+    {
+        if (string.Equals(settings.NotchStyle, SkinLiquidGlass, StringComparison.OrdinalIgnoreCase) &&
+            settings.LiquidGlass is { UseGpuRefraction: true, UseUltimateGpu: true })
+        {
+            return 2;
+        }
+
+        return settings.GpuPreference;
+    }
+
+    private void ApplyEffectiveGpuPreference()
+    {
+        int effective = GetEffectiveGpuPreference(_settings);
+        ApplyGpuPreference(effective);
+
+        int baselineEffective = GetEffectiveGpuPreference(_editSession.Baseline);
+        if (effective != baselineEffective)
+        {
+            ShowRestartBanner();
+        }
+    }
+
+    internal static void ApplyGpuPreference(int preference)
     {
         try
         {

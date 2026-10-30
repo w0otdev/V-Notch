@@ -1711,4 +1711,103 @@ VN_EXPORT int32_t __stdcall vn_audio_mixer_select_icon_glyph(
     return VN_OK;
 }
 
+VN_EXPORT int32_t __stdcall vn_glass_compute_capture_interval_ms(
+    int32_t configured_fps,
+    int32_t display_refresh_hz,
+    uint8_t ultimate_gpu,
+    double* out_interval_ms) noexcept
+{
+    if (!out_interval_ms)
+    {
+        return VN_ERR_INVALID_ARG;
+    }
+
+    const int32_t clamped_fps = std::clamp(configured_fps, 1, 1000);
+    int32_t effective_fps = clamped_fps;
+    if (display_refresh_hz > 0 && ultimate_gpu == 0)
+    {
+        effective_fps = std::min(clamped_fps, display_refresh_hz);
+    }
+    effective_fps = std::max(1, effective_fps);
+    *out_interval_ms = 1000.0 / static_cast<double>(effective_fps);
+    return VN_OK;
+}
+
+VN_EXPORT int32_t __stdcall vn_glass_should_submit_frame(
+    int64_t now_ticks,
+    int64_t last_submit_ticks,
+    int64_t stopwatch_freq,
+    double active_interval_ms,
+    uint8_t force_present,
+    uint8_t* out_should_submit) noexcept
+{
+    if (!out_should_submit)
+    {
+        return VN_ERR_INVALID_ARG;
+    }
+    if (force_present != 0 || last_submit_ticks <= 0 || stopwatch_freq <= 0 || active_interval_ms <= 0.0)
+    {
+        *out_should_submit = 1u;
+        return VN_OK;
+    }
+
+    const int64_t elapsed_ticks = now_ticks - last_submit_ticks;
+    if (elapsed_ticks <= 0)
+    {
+        *out_should_submit = 0u;
+        return VN_OK;
+    }
+
+    const double elapsed_ms = static_cast<double>(elapsed_ticks) * 1000.0 / static_cast<double>(stopwatch_freq);
+    // Allow a 6% timing tolerance for compositor VBlank alignment without letting frames spin unthrottled.
+    *out_should_submit = (elapsed_ms + 0.25 >= active_interval_ms * 0.94) ? 1u : 0u;
+    return VN_OK;
+}
+
+VN_EXPORT int32_t __stdcall vn_glass_score_d3d9_adapter(
+    const char16_t* description,
+    int32_t desc_len,
+    uint32_t vendor_id,
+    int64_t* out_score) noexcept
+{
+    if (!out_score || desc_len < 0 || (!description && desc_len > 0))
+    {
+        return VN_ERR_INVALID_ARG;
+    }
+
+    const std::u16string_view sv(description ? description : u"", static_cast<size_t>(desc_len));
+    if (vnotch::vn_contains_icase_ascii(sv, u"Microsoft Basic") ||
+        vnotch::vn_contains_icase_ascii(sv, u"WARP"))
+    {
+        *out_score = -1000;
+        return VN_OK;
+    }
+
+    int64_t score = 100;
+    // NVIDIA (0x10DE) or discrete Radeon / Arc markers
+    if (vendor_id == 0x10DEu ||
+        vnotch::vn_contains_icase_ascii(sv, u"NVIDIA") ||
+        vnotch::vn_contains_icase_ascii(sv, u"GeForce") ||
+        vnotch::vn_contains_icase_ascii(sv, u"RTX") ||
+        vnotch::vn_contains_icase_ascii(sv, u"GTX") ||
+        vnotch::vn_contains_icase_ascii(sv, u"Quadro"))
+    {
+        score += 100000;
+    }
+    else if (vnotch::vn_contains_icase_ascii(sv, u"Radeon RX") ||
+             vnotch::vn_contains_icase_ascii(sv, u"Radeon Pro") ||
+             vnotch::vn_contains_icase_ascii(sv, u"Intel(R) Arc"))
+    {
+        score += 90000;
+    }
+    else if (vendor_id == 0x1002u || vendor_id == 0x1022u)
+    {
+        // AMD APU / integrated Radeon vs Intel UHD
+        score += 1000;
+    }
+
+    *out_score = score;
+    return VN_OK;
+}
+
 } // extern "C"

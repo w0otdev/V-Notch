@@ -35,7 +35,6 @@ public partial class SpotlightWindow : Window
     private readonly SpotlightLauncher _launcher;
     private bool _allowClose;
     private bool _isClosing;
-    private bool _statusPulseActive;
     private int _animationGeneration;
     private bool _launchInFlight;
     private string? _pendingLaunchQuery;
@@ -114,6 +113,8 @@ public partial class SpotlightWindow : Window
         RefreshLocalization();
         ApplyLiquidGlassSkin();
         SyncSearchIconState(animate: false);
+        SearchActivity.IsVisibleChanged += (_, _) => RefreshSearchActivityMotion();
+        AnimationConfig.ReduceMotionChanged += OnSearchMotionPreferenceChanged;
 
         // Activation from the global hotkey can land after ShowSpotlight has
         Activated += (_, _) =>
@@ -562,6 +563,8 @@ public partial class SpotlightWindow : Window
 
     protected override void OnClosed(EventArgs e)
     {
+        AnimationConfig.ReduceMotionChanged -= OnSearchMotionPreferenceChanged;
+        SetSearchActivity(false);
         ClearLaunchFailure();
         CancelSearchingGrace();
         _glassResourceExpiry?.Dispose();
@@ -659,6 +662,7 @@ public partial class SpotlightWindow : Window
         ClearLaunchFailure();
 
         CancelSearchDebounce();
+        _searchInputPending = !string.IsNullOrEmpty(SearchBox.Text);
         // Invalidate the old query immediately, not after the new debounce.
         _viewModel.CancelPendingSearch();
 
@@ -667,6 +671,7 @@ public partial class SpotlightWindow : Window
         if (string.IsNullOrEmpty(currentText))
         {
             _searchDebounceCts = null;
+            _searchInputPending = false;
             await _viewModel.SearchAsync(currentText);
             ScheduleStatusRefresh();
             return;
@@ -685,6 +690,7 @@ public partial class SpotlightWindow : Window
             if (token.IsCancellationRequested || _isClosing || _allowClose ||
                 !ReferenceEquals(_searchDebounceCts, cts)) return;
 
+            _searchInputPending = false;
             await _viewModel.SearchAsync(currentText);
             if (!token.IsCancellationRequested && !_isClosing && !_allowClose)
                 ScheduleStatusRefresh();
@@ -702,6 +708,7 @@ public partial class SpotlightWindow : Window
 
     private void CancelSearchDebounce()
     {
+        _searchInputPending = false;
         var pending = _searchDebounceCts;
         _searchDebounceCts = null;
         pending?.Cancel(); // The owning handler disposes it in finally.
@@ -1366,9 +1373,12 @@ public partial class SpotlightWindow : Window
         int resultCount = _viewModel.Results.Count;
         bool hasQuery = !string.IsNullOrWhiteSpace(SearchBox.Text);
         bool hasResults = resultCount > 0;
+        // Cancellation precedes the input debounce. Keep the existing loading
+        // presentation alive until the replacement query starts.
+        bool searchPending = _viewModel.IsSearching || _searchInputPending;
 
         // "Searching\u2026" only earns its panel after a grace period; fast queries
-        bool searchingEligible = hasQuery && !hasResults && _viewModel.IsSearching;
+        bool searchingEligible = hasQuery && !hasResults && searchPending;
         UpdateSearchingGrace(searchingEligible);
         bool showSearching = searchingEligible && _searchingPanelArmed;
         // Preserve an existing empty/unavailable message through a short search.
@@ -1376,9 +1386,9 @@ public partial class SpotlightWindow : Window
         bool retainStatus = searchingEligible && !showSearching
             && StatusPanel.Visibility == Visibility.Visible;
         bool showStatus = retainStatus || showSearching
-                          || (hasQuery && !hasResults && !_viewModel.IsSearching
+                          || (hasQuery && !hasResults && !searchPending
                               && (_viewModel.IsWindowsSearchUnavailable || _viewModel.HasNoResults));
-        bool isSearchingInFlight = hasQuery && _viewModel.IsSearching && _contentShown;
+        bool isSearchingInFlight = hasQuery && searchPending && _contentShown;
         bool showContent = hasResults || showStatus || isSearchingInFlight;
 
         // Children first: the reveal/resize animations below measure the
@@ -1387,7 +1397,7 @@ public partial class SpotlightWindow : Window
         if (showStatus && !retainStatus)
         {
             string status;
-            if (_viewModel.IsSearching)
+            if (showSearching)
             {
                 status = "searching";
             }
@@ -1402,16 +1412,12 @@ public partial class SpotlightWindow : Window
 
             bool isWarning = status == "unavailable";
             StatusWarningIcon.Visibility = isWarning ? Visibility.Visible : Visibility.Collapsed;
-            StatusGlyph.Visibility = isWarning ? Visibility.Collapsed : Visibility.Visible;
-            StatusGlyph.Text = status switch
-            {
-                "searching" => "\uE895",
-                _ => "\uE721"
-            };
+            StatusGlyph.Visibility = isWarning || showSearching ? Visibility.Collapsed : Visibility.Visible;
+            StatusGlyph.Text = "\uE721";
             StatusTitle.Text = Loc.Get($"spotlight.{status}");
             StatusHint.Text = Loc.Get($"spotlight.{status}.hint");
         }
-        SetStatusPulse(showSearching);
+        SetSearchActivity(showSearching || (retainStatus && _searchActivityActive));
 
         bool contentWasShown = _contentShown;
         SetContentShown(showContent);
@@ -1637,13 +1643,14 @@ public partial class SpotlightWindow : Window
 
     private void ScheduleContentResize()
     {
-        if (_contentResizeQueued || _viewModel.IsSearching || _entranceActive) return;
+        if (_contentResizeQueued || _entranceActive) return;
         _contentResizeQueued = true;
         int generation = _contentSizeGeneration;
         Dispatcher.BeginInvoke(DispatcherPriority.Loaded, () =>
         {
             _contentResizeQueued = false;
-            if (generation != _contentSizeGeneration || !_contentShown || _viewModel.IsSearching || _entranceActive) return;
+            if (generation != _contentSizeGeneration || !_contentShown || _entranceActive) return;
+            bool searchPending = _viewModel.IsSearching || _searchInputPending;
             // Measure the child without releasing the visible border to Auto:
             // UpdateLayout on the border would snap it before animating back.
             double oldHeight = ContentRegion.ActualHeight;
@@ -1653,15 +1660,18 @@ public partial class SpotlightWindow : Window
             ContentRegion.Child.Measure(new Size(width, double.PositiveInfinity));
             double target = ContentRegion.Child.DesiredSize.Height + inset.Top + inset.Bottom + padding.Top + padding.Bottom;
             if (!double.IsFinite(target)) return;
-            if (!_searchHeightHeld && Math.Abs(target - _contentHeightTarget) < 1) return;
-            _searchHeightHeld = false;
+            // Pending providers may prevent shrinking, never growth: instant
+            // results and waiting messages must both fit before search finishes.
+            if (searchPending && target <= oldHeight + 1) return;
+            if ((!_searchHeightHeld || searchPending) && Math.Abs(target - _contentHeightTarget) < 1) return;
+            _searchHeightHeld = searchPending;
             if (AnimationConfig.ReduceMotion || Math.Abs(target - oldHeight) < 1)
             {
                 ++_contentHeightAnimationVersion;
                 _contentHeightTarget = target;
                 ContentRegion.BeginAnimation(HeightProperty, null);
-                ContentRegion.Height = double.NaN;
-                ContentRegion.ClipToBounds = false;
+                ContentRegion.Height = searchPending ? target : double.NaN;
+                ContentRegion.ClipToBounds = searchPending;
                 return;
             }
             BeginContentHeightAnimation(oldHeight, target, generation);
@@ -1671,6 +1681,8 @@ public partial class SpotlightWindow : Window
     private void BeginContentHeightAnimation(double from, double to, int generation)
     {
         long version = ++_contentHeightAnimationVersion;
+        // A new query must not cancel a reveal and freeze its intermediate frame.
+        _searchHeightHeld = !_aiMode && (_viewModel.IsSearching || _searchInputPending);
         _contentHeightTarget = to;
         ContentRegion.ClipToBounds = true;
         // The lower edge leads; text stays at its natural size as it is revealed.
@@ -1679,10 +1691,13 @@ public partial class SpotlightWindow : Window
         resize.Completed += (_, _) =>
         {
             if (generation != _contentSizeGeneration || version != _contentHeightAnimationVersion) return;
-            // Back to auto-size so later content changes are never clamped.
+            // Keep the fully revealed height until deferred providers finish;
+            // releasing to Auto earlier can shrink to a partial result batch.
+            bool holdHeight = !_aiMode && (_viewModel.IsSearching || _searchInputPending);
+            _searchHeightHeld = holdHeight;
             ContentRegion.BeginAnimation(HeightProperty, null);
-            ContentRegion.Height = double.NaN;
-            ContentRegion.ClipToBounds = false;
+            ContentRegion.Height = holdHeight ? to : double.NaN;
+            ContentRegion.ClipToBounds = holdHeight;
         };
         ContentRegion.BeginAnimation(HeightProperty, resize);
     }
@@ -1789,29 +1804,6 @@ public partial class SpotlightWindow : Window
         var fade = CreateAnimation(0, 1, TimeSpan.FromMilliseconds(180),
             CreateContentResizeEase());
         ContentRegion.BeginAnimation(OpacityProperty, fade);
-    }
-
-    private void SetStatusPulse(bool active)
-    {
-        if (_statusPulseActive == active) return;
-        _statusPulseActive = active;
-
-        if (active && !AnimationConfig.ReduceMotion)
-        {
-            var pulse = new DoubleAnimation(1, 0.4, TimeSpan.FromMilliseconds(620))
-            {
-                AutoReverse = true,
-                RepeatBehavior = RepeatBehavior.Forever,
-                EasingFunction = new SineEase { EasingMode = EasingMode.EaseInOut }
-            };
-            Timeline.SetDesiredFrameRate(pulse, 30);
-            StatusGlyph.BeginAnimation(OpacityProperty, pulse);
-        }
-        else
-        {
-            StatusGlyph.BeginAnimation(OpacityProperty, null);
-            StatusGlyph.Opacity = 1;
-        }
     }
 
     private (double Left, double Top) GetSpotlightTarget()

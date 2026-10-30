@@ -1355,6 +1355,25 @@
                                                 </StackPanel>
                                             </Border>
                                             <Border Style="{StaticResource SettingRowBorder}">
+                                                <StackPanel>
+                                                    <CheckBox x:Name="UltimateGpuCheck"
+                                                              Content="Ultimate GPU mode (GPU 0)"
+                                                              Checked="UltimateGpuCheck_Changed"
+                                                              Unchecked="UltimateGpuCheck_Changed"/>
+                                                    <TextBlock x:Name="UltimateGpuHint"
+                                                               Text="Assign the primary high-performance GPU (GPU 0) to Liquid Glass. GPU activity is capped to your Target FPS slider."
+                                                               Style="{StaticResource SettingHintText}"/>
+                                                    <TextBlock x:Name="UltimateGpuWarning"
+                                                               Text="Warning: Dedicated GPU mode draws more power. Set Target FPS carefully so the GPU only runs up to your chosen frame limit."
+                                                               Foreground="#E0A330"
+                                                               FontSize="11.5"
+                                                               FontWeight="Bold"
+                                                               TextWrapping="Wrap"
+                                                               Margin="0,4,0,0"
+                                                               Visibility="Collapsed"/>
+                                                </StackPanel>
+                                            </Border>
+                                            <Border Style="{StaticResource SettingRowBorder}">
                                                 <controls:ElasticSlider x:Name="GlassBlurSlider" Label="Blur Amount" Unit="%"
                                                         Minimum="0" Maximum="100" Value="15" TickFrequency="5" IsSnapToTickEnabled="True"
                                                         ValueChanged="GlassConfigSlider_Changed"/>

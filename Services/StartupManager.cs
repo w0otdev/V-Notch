@@ -20,23 +20,18 @@ public static partial class StartupManager
 
     public static void SetAutoStart(bool enable)
     {
-        try
-        {
-            string exePath = enable
-                ? (Environment.ProcessPath ?? Path.Combine(AppContext.BaseDirectory, "V-Notch.exe"))
-                : string.Empty;
-            ReadOnlySpan<ushort> pathSpan = MemoryMarshal.Cast<char, ushort>(exePath.AsSpan());
-            if (vn_startup_set_enabled(enable ? (byte)1 : (byte)0, pathSpan, pathSpan.Length, out int win32Err) == 0 &&
-                win32Err != 0 && win32Err != 2)
-            {
-                throw new Win32Exception(win32Err);
-            }
-        }
-        catch (Exception ex)
-        {
-            System.Windows.MessageBox.Show(Loc.Get("error.startupChange", ex.Message),
-                Loc.Get("error.title"), System.Windows.MessageBoxButton.OK, System.Windows.MessageBoxImage.Error);
-        }
+        string exePath = enable
+            ? (Environment.ProcessPath ?? Path.Combine(AppContext.BaseDirectory, "V-Notch.exe"))
+            : string.Empty;
+        ReadOnlySpan<ushort> pathSpan = MemoryMarshal.Cast<char, ushort>(exePath.AsSpan());
+        int status = vn_startup_set_enabled(enable ? (byte)1 : (byte)0, pathSpan, pathSpan.Length, out int win32Err);
+        EnsureChangeSucceeded(status, win32Err);
+    }
+
+    internal static void EnsureChangeSucceeded(int status, int win32Error)
+    {
+        if (win32Error != 0) throw new Win32Exception(win32Error);
+        if (status != 0) throw new InvalidOperationException($"Startup settings failed (native status {status}).");
     }
 }
 

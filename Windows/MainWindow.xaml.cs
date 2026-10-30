@@ -230,6 +230,11 @@ public partial class MainWindow : Window
         VNotch.Services.Clipboard.ClipboardHistoryStore? clipboardHistoryStore = null)
     {
         InitializeComponent();
+        SettingsButton.AddHandler(Mouse.PreviewMouseDownEvent, new MouseButtonEventHandler((sender, e) =>
+        {
+            if (e.ChangedButton == MouseButton.Left)
+                Settings_Click(sender, e);
+        }), handledEventsToo: true);
         InitializeShellCornerRadiusSync();
         MusicCompactContent.Loaded += (_, _) => MusicCompactContent.LayoutUpdated += CacheCompactThumbnailRestOffset;
         MusicCompactContent.Unloaded += (_, _) => MusicCompactContent.LayoutUpdated -= CacheCompactThumbnailRestOffset;
@@ -778,6 +783,9 @@ public partial class MainWindow : Window
     private void ApplyCoordinatorSnapshot(VNotch.Controllers.NotchTransitionSnapshot snapshot)
     {
         if (_cleanedUp || snapshot != _transitionCoordinator.Snapshot) return;
+        if (snapshot.TargetView == VNotch.Models.NotchView.Compact
+            || snapshot.ShapeState is VNotch.Controllers.NotchShapeState.Collapsed or VNotch.Controllers.NotchShapeState.Hidden)
+            HideSharedSettingsButton();
         if (snapshot.TargetView == VNotch.Models.NotchView.Compact) ResetClipboardDropFeedback();
         _isCameraView = snapshot.CurrentView == VNotch.Models.NotchView.Camera;
         _isAudioView = snapshot.CurrentView == VNotch.Models.NotchView.AudioMixer;
@@ -2029,6 +2037,8 @@ public partial class MainWindow : Window
 
     private void AnimateSettingsHover(bool isEnter)
     {
+        // MouseLeave can arrive after collapse has hidden the shared header.
+        if (!SettingsButton.IsHitTestVisible || SettingsButton.Visibility != Visibility.Visible) return;
         int fps = VNotch.Services.AnimationConfig.TargetFps;
         var dur = TimeSpan.FromMilliseconds(isEnter ? 360 : 300);
         var scaleDur = new Duration(dur);

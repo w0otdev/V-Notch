@@ -15,13 +15,16 @@ internal sealed class SpotlightWindowFixture : IDisposable
     internal SpotlightWindow Window { get; }
 
     internal SpotlightWindowFixture(NotchSettings settings, SpotlightAiService? aiService = null, bool saveChatHistory = false,
-        ISpotlightProvider? searchProvider = null)
+        ISpotlightProvider? searchProvider = null, ISpotlightProvider? deferredSearchProvider = null)
     {
         LiquidGlassSpotlightTests.CreateApplicationResources();
         DirectoryPath = Directory.CreateTempSubdirectory("vnotch-test-lg-").FullName;
         UsagePath = Path.Combine(DirectoryPath, "usage.json");
         Usage = new SpotlightUsageStore(UsagePath, () => DateTime.UtcNow);
-        var viewModel = new SpotlightViewModel(new SpotlightSearchService([searchProvider ?? new EmptyProvider()]), Usage);
+        ISpotlightProvider[] providers = deferredSearchProvider == null
+            ? [searchProvider ?? new EmptyProvider()]
+            : [searchProvider ?? new EmptyProvider(), deferredSearchProvider];
+        var viewModel = new SpotlightViewModel(new SpotlightSearchService(providers), Usage);
         try
         {
             var isolatedSettings = settings.Clone();

@@ -141,13 +141,23 @@ public sealed class SpotlightSearchPresentationTests
             Assert.Equal("pending fixture", Field<string?>(window, "_pendingLaunchQuery"));
             await WpfFrameWaiter.UntilAsync(() => window.StatusPanel.Visibility == Visibility.Visible, "searching panel after grace", ct);
             Assert.Equal(Loc.Get("spotlight.searching"), window.StatusTitle.Text);
-            Assert.Equal(!reducedMotion, window.StatusGlyph.HasAnimatedProperties);
+            Assert.Equal(Visibility.Visible, window.SearchActivity.Visibility);
+            Assert.Equal(Visibility.Collapsed, window.StatusGlyph.Visibility);
+            Assert.Equal(!reducedMotion, window.SearchActivityRotation.HasAnimatedProperties);
+            if (!reducedMotion)
+            {
+                double angle = window.SearchActivityRotation.Angle;
+                await WpfFrameWaiter.UntilAsync(() => Math.Abs(window.SearchActivityRotation.Angle - angle) > 2,
+                    "search spinner advances across rendered frames", ct);
+            }
             provider.Request!.SetResult(Array.Empty<SpotlightSearchItem>());
             await WpfFrameWaiter.UntilAsync(() => !vm.IsSearching, "empty search finished", ct);
             Assert.Null(Field<string?>(window, "_pendingLaunchQuery"));
             Assert.Equal(Loc.Get("spotlight.unavailable"), window.StatusTitle.Text);
             Assert.Equal(Visibility.Visible, window.StatusWarningIcon.Visibility);
             Assert.False(window.StatusGlyph.HasAnimatedProperties);
+            Assert.False(window.SearchActivityRotation.HasAnimatedProperties);
+            Assert.Equal(Visibility.Collapsed, window.SearchActivity.Visibility);
             vm.IsWindowsSearchUnavailable = false;
             vm.HasNoResults = true;
             Invoke(window, "RefreshStatus");
@@ -156,6 +166,184 @@ public sealed class SpotlightSearchPresentationTests
             Invoke(window, "PlayShake");
             if (!reducedMotion)
                 await WpfFrameWaiter.UntilAsync(() => !window.ShellShake.HasAnimatedProperties, "empty search shake settled", ct);
+        }
+        finally { AnimationConfig.SetReduceMotion(previous); }
+    });
+
+    [Theory]
+    [InlineData(1, 1, false)]
+    [InlineData(1, 1, true)]
+    [InlineData(8, 8, false)]
+    [InlineData(8, 8, true)]
+    [InlineData(1, 8, false)]
+    [InlineData(1, 8, true)]
+    [InlineData(8, 1, false)]
+    [InlineData(8, 1, true)]
+    public void InstantResultsCanFinishGrowingWhileDeferredSearchIsPending(int initialCount, int count, bool reducedMotion) => SharedStaTestRunner.RunAsync(async ct =>
+    {
+        bool previous = AnimationConfig.ReduceMotion;
+        AnimationConfig.SetReduceMotion(reducedMotion);
+        try
+        {
+            var deferred = new PendingProvider();
+            using var fixture = new SpotlightWindowFixture(Settings(), searchProvider: new InstantResultsProvider(initialCount, count),
+                deferredSearchProvider: deferred);
+            var window = fixture.Window;
+            var vm = Field<SpotlightViewModel>(window, "_viewModel");
+            window.ShowSpotlight();
+            await WpfFrameWaiter.UntilAsync(() => !Field<bool>(window, "_entranceActive"), "instant results entrance", ct);
+            window.SearchBox.Text = "ba";
+            await WpfFrameWaiter.UntilAsync(() => vm.Results.Count == initialCount, "first instant results published", ct);
+            await WpfFrameWaiter.NextAsync(ct);
+            window.SearchBox.Text = "back";
+            await WpfFrameWaiter.UntilAsync(() => vm.Results.Count == count && vm.Results[0].Title.StartsWith("back")
+                && deferred.Request != null, "replacement instant results published", ct);
+            var elapsed = System.Diagnostics.Stopwatch.StartNew();
+            await WpfFrameWaiter.UntilAsync(() => elapsed.ElapsedMilliseconds >= 600, "instant results resize settled", ct);
+            window.UpdateLayout();
+            var row = Assert.IsAssignableFrom<FrameworkElement>(window.ResultsList.ItemContainerGenerator.ContainerFromIndex(0));
+            var bounds = row.TransformToAncestor(window.ContentRegion).TransformBounds(new Rect(row.RenderSize));
+            Assert.True(bounds.Bottom <= window.ContentRegion.ActualHeight + 1,
+                $"First result clipped while deferred search is pending: row bottom={bounds.Bottom}, region={window.ContentRegion.ActualHeight}");
+            Assert.True(window.ContentRegion.ActualHeight + 1 >= window.ResultsList.DesiredSize.Height,
+                "The viewport must grow to fit the published results before deferred search finishes.");
+            Assert.True(vm.IsSearching);
+            deferred.Request!.SetResult(Array.Empty<SpotlightSearchItem>());
+            await WpfFrameWaiter.UntilAsync(() => !vm.IsSearching && !window.ContentRegion.ClipToBounds,
+                "deferred search completed", ct);
+        }
+        finally { AnimationConfig.SetReduceMotion(previous); }
+    });
+
+    [Theory]
+    [InlineData(1, false)]
+    [InlineData(1, true)]
+    [InlineData(8, false)]
+    [InlineData(8, true)]
+    public void SearchingAfterResultsKeepsTheWholeStatusInsideTheShell(int initialCount, bool reducedMotion) => SharedStaTestRunner.RunAsync(async ct =>
+    {
+        bool previous = AnimationConfig.ReduceMotion;
+        AnimationConfig.SetReduceMotion(reducedMotion);
+        try
+        {
+            var provider = new PendingProvider();
+            using var fixture = new SpotlightWindowFixture(Settings(), searchProvider: provider);
+            var window = fixture.Window;
+            var vm = Field<SpotlightViewModel>(window, "_viewModel");
+            window.ShowSpotlight();
+            await WpfFrameWaiter.UntilAsync(() => !Field<bool>(window, "_entranceActive"), "search entrance", ct);
+            window.SearchBox.Text = "initial";
+            await WpfFrameWaiter.UntilAsync(() => provider.Request != null, "initial provider request", ct);
+            provider.Request!.SetResult(Enumerable.Range(0, initialCount).Select(i => new SpotlightSearchItem(
+                $"initial-{i}", SpotlightResultKind.Application, $"Initial {i}", "fixture", $"C:\\missing-{i}.exe")).ToArray());
+            await WpfFrameWaiter.UntilAsync(() => vm.Results.Count == initialCount && !vm.IsSearching
+                && !window.ContentRegion.ClipToBounds, "initial results sized", ct);
+            window.UpdateLayout();
+            double initialHeight = window.ContentRegion.ActualHeight;
+            double width = window.Shell.ActualWidth;
+            var previousRequest = provider.Request;
+            window.SearchBox.Text = "cursor";
+            await WpfFrameWaiter.UntilAsync(() => provider.Request != previousRequest
+                && window.SearchActivity.Visibility == Visibility.Visible, "replacement searching status", ct);
+            previousRequest = provider.Request;
+            window.SearchBox.Text = "cursor editor";
+            await WpfFrameWaiter.UntilAsync(() => provider.Request != previousRequest,
+                "typing continues during searching resize", ct);
+            // Sample after the resize duration while the provider remains pending.
+            var elapsed = System.Diagnostics.Stopwatch.StartNew();
+            await WpfFrameWaiter.UntilAsync(() => elapsed.ElapsedMilliseconds >= 500, "search status layout settled", ct);
+            window.UpdateLayout();
+            var hintBounds = window.StatusHint.TransformToAncestor(window.ContentRegion)
+                .TransformBounds(new Rect(window.StatusHint.RenderSize));
+            Assert.True(hintBounds.Bottom + window.StatusPanel.Margin.Bottom <= window.ContentRegion.ActualHeight + 1,
+                $"Searching content clipped: hint bottom={hintBounds.Bottom}, margin={window.StatusPanel.Margin.Bottom}, region={window.ContentRegion.ActualHeight}");
+            var shellHintBounds = window.StatusHint.TransformToAncestor(window.Shell)
+                .TransformBounds(new Rect(window.StatusHint.RenderSize));
+            Assert.True(shellHintBounds.Bottom + window.StatusPanel.Margin.Bottom <= window.Shell.ActualHeight + 1,
+                "The shell must also contain the full searching message.");
+            Assert.True(window.ContentRegion.ActualHeight >= initialHeight - 1, "Pending search must not shrink the previous results area.");
+            Assert.Equal(width, window.Shell.ActualWidth, precision: 3);
+            Assert.True(vm.IsSearching);
+            provider.Request!.SetResult([new SpotlightSearchItem(
+                "replacement", SpotlightResultKind.Application, "Cursor", "fixture", "C:\\missing-cursor.exe")]);
+            await WpfFrameWaiter.UntilAsync(() => vm.Results.Count == 1 && !vm.IsSearching
+                && !window.ContentRegion.ClipToBounds, "replacement results sized", ct);
+            Assert.True(double.IsNaN(window.ContentRegion.Height));
+            Assert.Equal(Visibility.Collapsed, window.StatusPanel.Visibility);
+        }
+        finally { AnimationConfig.SetReduceMotion(previous); }
+    });
+
+    [Fact]
+    public void SearchActivitySurvivesTypingAndHonorsMotionChangesAndDismissal() => SharedStaTestRunner.RunAsync(async ct =>
+    {
+        bool previous = AnimationConfig.ReduceMotion;
+        AnimationConfig.SetReduceMotion(false);
+        try
+        {
+            var provider = new PendingProvider();
+            using var fixture = new SpotlightWindowFixture(Settings(), searchProvider: provider);
+            var window = fixture.Window;
+            window.ShowSpotlight();
+            await WpfFrameWaiter.UntilAsync(() => !Field<bool>(window, "_entranceActive"), "search entrance", ct);
+            window.SearchBox.Text = "curs";
+            await WpfFrameWaiter.UntilAsync(() => window.SearchActivityRotation.Angle > 20,
+                "loading indicator rotating", ct);
+            if (Environment.GetEnvironmentVariable("VNOTCH_SEARCH_MOTION_PREVIEW") is { Length: > 0 } previewPath)
+            {
+                await WpfFrameWaiter.UntilAsync(() => window.StatusPanel.Opacity > 0.99,
+                    "loading presentation settled", ct);
+                window.UpdateLayout();
+                var bitmap = new System.Windows.Media.Imaging.RenderTargetBitmap(
+                    (int)Math.Ceiling(window.Shell.ActualWidth), (int)Math.Ceiling(window.Shell.ActualHeight),
+                    96, 96, PixelFormats.Pbgra32);
+                var drawing = new DrawingVisual();
+                using (var context = drawing.RenderOpen())
+                    context.DrawRectangle(new VisualBrush(window.Shell), null,
+                        new Rect(0, 0, window.Shell.ActualWidth, window.Shell.ActualHeight));
+                bitmap.Render(drawing);
+                var encoder = new System.Windows.Media.Imaging.PngBitmapEncoder();
+                encoder.Frames.Add(System.Windows.Media.Imaging.BitmapFrame.Create(bitmap));
+                using var file = System.IO.File.Create(previewPath);
+                encoder.Save(file);
+            }
+            var oldRequest = provider.Request;
+            double angle = window.SearchActivityRotation.Angle;
+            window.SearchBox.Text = "cursor";
+            window.SearchBox.Text = "cursor editor";
+            Assert.Equal(Visibility.Visible, window.SearchActivity.Visibility);
+            Assert.Equal(angle, window.SearchActivityRotation.Angle);
+            Assert.Equal(Loc.Get("spotlight.searching"), window.StatusTitle.Text);
+            await WpfFrameWaiter.UntilAsync(() => provider.Request != oldRequest,
+                "replacement query started", ct);
+            AnimationConfig.SetReduceMotion(true);
+            Assert.False(window.SearchActivityRotation.HasAnimatedProperties);
+            Assert.Equal(0, window.SearchActivityRotation.Angle);
+            Assert.Equal(1, window.StatusPanel.Opacity);
+            Assert.Equal(Visibility.Visible, window.SearchActivity.Visibility);
+            AnimationConfig.SetReduceMotion(false);
+            await WpfFrameWaiter.UntilAsync(() => window.SearchActivityRotation.Angle > 20,
+                "motion preference resumes spinner", ct);
+            provider.Request!.SetResult([new SpotlightSearchItem(
+                "cursor-result", SpotlightResultKind.Application, "Cursor", "fixture", "C:\\missing-cursor.exe")]);
+            var vm = Field<SpotlightViewModel>(window, "_viewModel");
+            await WpfFrameWaiter.UntilAsync(() => vm.Results.Count == 1 && !vm.IsSearching,
+                "search results replace loading", ct);
+            Assert.Equal(Visibility.Collapsed, window.SearchActivity.Visibility);
+            Assert.False(window.SearchActivityRotation.HasAnimatedProperties);
+            window.SearchBox.Text = "pending again";
+            await WpfFrameWaiter.UntilAsync(() => window.SearchActivityRotation.Angle > 20,
+                "another pending search", ct);
+            window.DismissFromGlobalShortcut();
+            await WpfFrameWaiter.UntilAsync(() => !window.IsSpotlightOpen && !Field<bool>(window, "_isClosing"),
+                "pending search dismissed", ct);
+            Assert.False(window.SearchActivityRotation.HasAnimatedProperties);
+            Assert.False(window.StatusPanel.HasAnimatedProperties);
+            window.ShowSpotlight();
+            window.SearchBox.Text = "";
+            await WpfFrameWaiter.UntilAsync(() => !Field<bool>(window, "_entranceActive"), "reopened empty search", ct);
+            Assert.Equal(Visibility.Collapsed, window.SearchActivity.Visibility);
+            Assert.False(window.SearchActivityRotation.HasAnimatedProperties);
         }
         finally { AnimationConfig.SetReduceMotion(previous); }
     });
@@ -199,6 +387,16 @@ public sealed class SpotlightSearchPresentationTests
             Task.FromResult<IReadOnlyList<SpotlightSearchItem>>(Enumerable.Range(0, 8)
                 .Select(i => new SpotlightSearchItem($"{query}-{i}", SpotlightResultKind.File, $"{query} result {i}", "fixture", $"C:\\missing-{query}-{i}.txt") { Score = 100 - i }).ToArray());
     }
+    private sealed class InstantResultsProvider(int initialCount, int count) : ISpotlightProvider
+    {
+        public bool IsAvailable => true;
+        public bool IsInstant => true;
+        public Task<IReadOnlyList<SpotlightSearchItem>> SearchAsync(string query, int limit, CancellationToken cancellationToken) =>
+            Task.FromResult<IReadOnlyList<SpotlightSearchItem>>(Enumerable.Range(0, query == "ba" ? initialCount : count)
+                .Select(i => new SpotlightSearchItem($"{query}-{i}", SpotlightResultKind.Application,
+                    $"{query} result {i}", "fixture", $"C:\\missing-{i}.exe") { Score = 100 - i }).ToArray());
+    }
+
     private sealed class PendingProvider : ISpotlightProvider
     {
         public bool IsAvailable => true;

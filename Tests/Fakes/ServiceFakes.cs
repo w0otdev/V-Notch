@@ -39,6 +39,7 @@ public sealed class FakeMediaDetectionService : IMediaDetectionService
     public int PreviousTrackCount { get; private set; }
     public Func<(bool Success, float Volume, bool Muted)>? ReadSessionVolume { get; set; }
     public float? LastSessionVolume { get; private set; }
+    public Func<float, bool>? WriteSessionVolume { get; set; }
     public bool SessionMuteToggleSucceeded { get; set; }
     public int SessionMuteToggleCount { get; private set; }
 
@@ -79,7 +80,7 @@ public sealed class FakeMediaDetectionService : IMediaDetectionService
         return false;
     }
 
-    public bool TrySetCurrentSessionVolume(float volume) { LastSessionVolume = volume; return ReadSessionVolume != null; }
+    public bool TrySetCurrentSessionVolume(float volume) { LastSessionVolume = volume; return WriteSessionVolume?.Invoke(volume) ?? true; }
     public bool TryToggleCurrentSessionMute() { SessionMuteToggleCount++; return SessionMuteToggleSucceeded; }
     public void InvalidateVolumeSessionCache() { }
 

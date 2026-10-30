@@ -1048,5 +1048,11 @@
   "whitenoise.volume": "Volume",
   "whitenoise.mute": "Mute",
   "whitenoise.sync": "Sync with timer",
-  "whitenoise.syncTip": "Fade out and stop when the timer ends"
+  "whitenoise.syncTip": "Fade out and stop when the timer ends",
+  "settings.glass.ultimateGpu": "Ultimate GPU mode (GPU 0)",
+  "settings.glass.ultimateGpu.hint": "Run Liquid Glass on your high-performance discrete GPU (GPU 0). GPU activity is strictly paced to the Target FPS limit below.",
+  "settings.glass.ultimateGpu.warning": "Warning: Dedicated GPU mode draws more power. Set Target FPS carefully so the GPU only runs up to your chosen frame limit.",
+  "settings.glass.ultimateGpu.title": "Enable Ultimate GPU mode?",
+  "settings.glass.ultimateGpu.confirm": "This assigns your discrete GPU (GPU 0) to Liquid Glass for smoother refraction. It increases power usage on laptops. Frame rendering stays capped to your Target FPS setting so the GPU never runs unconstrained.",
+  "tooltip.ultimateGpu": "Use high-performance GPU 0 for Liquid Glass paced to Target FPS"
 }

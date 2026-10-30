@@ -31,7 +31,7 @@ public sealed class SettingsUpdatePresenter : IDisposable
         _includePrereleases = includePrereleases ?? (() => false);
     }
 
-    public async Task CheckForUpdatesAsync()
+    public async Task CheckForUpdatesAsync(bool forceRefresh = false)
     {
         if (_refs == null || _checking || _downloading || !_canUseNetwork()) return;
         _checking = true;
@@ -45,7 +45,7 @@ public sealed class SettingsUpdatePresenter : IDisposable
                 _refs.Download.Visibility = Visibility.Collapsed;
                 try
                 {
-                    var update = await _service.CheckForUpdatesAsync(includePrereleases);
+                    var update = await _service.CheckForUpdatesAsync(includePrereleases, forceRefresh);
                     if (_refs == null || !_canUseNetwork() || _lifetime.IsCancellationRequested) return;
                     if (includePrereleases != _includePrereleases()) continue;
                     _availableUpdate = update;

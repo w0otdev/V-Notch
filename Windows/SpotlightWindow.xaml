@@ -1000,6 +1000,29 @@
                               Visibility="Collapsed"
                               AutomationProperties.LiveSetting="Polite">
                             <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center">
+                                <Grid x:Name="SearchActivity"
+                                      Width="24" Height="24"
+                                      Margin="0,0,0,10"
+                                      Visibility="Collapsed"
+                                      HorizontalAlignment="Center"
+                                      IsHitTestVisible="False">
+                                    <Ellipse Width="20" Height="20"
+                                             Stroke="#18FFFFFF" StrokeThickness="1.8"/>
+                                    <Path Data="M12,2 A10,10 0 1 1 2,12"
+                                          StrokeThickness="1.8"
+                                          StrokeStartLineCap="Round" StrokeEndLineCap="Round"
+                                          RenderTransformOrigin="0.5,0.5">
+                                        <Path.Stroke>
+                                            <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
+                                                <GradientStop Color="#20FFFFFF" Offset="0"/>
+                                                <GradientStop Color="#E8FFFFFF" Offset="1"/>
+                                            </LinearGradientBrush>
+                                        </Path.Stroke>
+                                        <Path.RenderTransform>
+                                            <RotateTransform x:Name="SearchActivityRotation"/>
+                                        </Path.RenderTransform>
+                                    </Path>
+                                </Grid>
                                 <Path x:Name="StatusWarningIcon"
                                       Width="26" Height="24"
                                       Margin="0,0,0,10"

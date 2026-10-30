@@ -48,6 +48,8 @@ public sealed partial class UpdateService : IUpdateService, IDisposable
     private readonly SemaphoreSlim _checkLock = new(1, 1);
     private string? _latestReleaseEtag;
     private UpdateInfo? _cachedLatestRelease;
+    private IReadOnlyList<UpdateInfo>? _cachedAllReleases;
+    private DateTime _lastAllReleasesCheckUtc = DateTime.MinValue;
     private DateTime _lastCheckUtc = DateTime.MinValue;
     private DateTime _retryAfterUtc = DateTime.MinValue;
     private readonly string? _cachePath;
@@ -91,7 +93,7 @@ public sealed partial class UpdateService : IUpdateService, IDisposable
 
     private static string GetAppVersion() => AppVersion.Current;
 
-    public async Task<UpdateInfo?> CheckForUpdatesAsync(bool includePrereleases = false)
+    public async Task<UpdateInfo?> CheckForUpdatesAsync(bool includePrereleases = false, bool forceRefresh = false)
     {
         if (_disposed) return null;
         UpdateInfo? result = null;
@@ -107,7 +109,7 @@ public sealed partial class UpdateService : IUpdateService, IDisposable
             }
             var now = DateTime.UtcNow;
             var currentCached = Volatile.Read(ref _cachedLatestRelease);
-            if (now < _retryAfterUtc || now - _lastCheckUtc < MinRefreshInterval)
+            if (!forceRefresh && (now < _retryAfterUtc || now - _lastCheckUtc < MinRefreshInterval))
             {
                 result = currentCached != null ? Clone(currentCached) : null;
                 return result;
@@ -115,11 +117,12 @@ public sealed partial class UpdateService : IUpdateService, IDisposable
             using var request = new HttpRequestMessage(HttpMethod.Get, includePrereleases
                 ? new Uri(GithubAllReleasesUri + "?per_page=100&page=1") : GithubLatestReleaseUri);
             request.Headers.TryAddWithoutValidation("Accept", "application/vnd.github+json");
-            if (!includePrereleases && !string.IsNullOrWhiteSpace(_latestReleaseEtag)) request.Headers.TryAddWithoutValidation("If-None-Match", _latestReleaseEtag);
+            if (!string.IsNullOrWhiteSpace(_latestReleaseEtag)) request.Headers.TryAddWithoutValidation("If-None-Match", _latestReleaseEtag);
             using var response = await SendHttpsAsync(request, CancellationToken.None).ConfigureAwait(false);
             if (response.StatusCode == HttpStatusCode.NotModified && currentCached != null)
             {
                 _lastCheckUtc = now;
+                _retryAfterUtc = DateTime.MinValue;
                 await SaveCheckCacheAsync().ConfigureAwait(false);
                 result = Clone(currentCached);
                 return result;
@@ -143,6 +146,14 @@ public sealed partial class UpdateService : IUpdateService, IDisposable
             UpdateInfo? info;
             if (includePrereleases)
             {
+                var firstPageReleases = new List<UpdateInfo>();
+                foreach (var release in jsonDoc.RootElement.EnumerateArray())
+                {
+                    if (!IsDraft(release)) firstPageReleases.Add(ReadRelease(release));
+                }
+                _cachedAllReleases = firstPageReleases;
+                _lastAllReleasesCheckUtc = now;
+
                 info = SelectLatestRelease(jsonDoc.RootElement, null);
                 int count = jsonDoc.RootElement.GetArrayLength();
                 for (int page = 2; count == 100 && page <= MaxReleasePages; page++)
@@ -165,7 +176,8 @@ public sealed partial class UpdateService : IUpdateService, IDisposable
             }
             if (info != null && !IsApprovedUpdate(info)) RuntimeLog.Warn(LogCategory, "Latest release is missing signed update assets; update is unavailable.");
             _lastCheckUtc = now;
-            _latestReleaseEtag = info != null && !includePrereleases ? response.Headers.ETag?.ToString() : null;
+            _retryAfterUtc = DateTime.MinValue;
+            _latestReleaseEtag = info != null ? response.Headers.ETag?.ToString() : null;
             Volatile.Write(ref _cachedLatestRelease, info);
             await SaveCheckCacheAsync().ConfigureAwait(false);
             result = info != null ? Clone(info) : null;
@@ -262,11 +274,28 @@ public sealed partial class UpdateService : IUpdateService, IDisposable
 
     public async Task<IReadOnlyList<UpdateInfo>> GetAllReleasesAsync()
     {
+        if (_disposed) return Array.Empty<UpdateInfo>();
+        var now = DateTime.UtcNow;
+        if (_cachedAllReleases != null && (now < _retryAfterUtc || now - _lastAllReleasesCheckUtc < MinRefreshInterval))
+        {
+            return _cachedAllReleases.Select(Clone).ToList();
+        }
         try
         {
             using var request = new HttpRequestMessage(HttpMethod.Get, GithubAllReleasesUri);
             request.Headers.TryAddWithoutValidation("Accept", "application/vnd.github+json");
             using var response = await SendHttpsAsync(request, CancellationToken.None).ConfigureAwait(false);
+            if (response.StatusCode is HttpStatusCode.TooManyRequests or HttpStatusCode.Forbidden)
+            {
+                var retryAt = response.Headers.RetryAfter?.Date?.UtcDateTime ??
+                    now + (response.Headers.RetryAfter?.Delta ?? TimeSpan.FromHours(1));
+                if (response.Headers.TryGetValues("X-RateLimit-Reset", out var resets) &&
+                    long.TryParse(resets.FirstOrDefault(), out long epoch) && epoch is > 0 and < 253402300800)
+                    retryAt = DateTimeOffset.FromUnixTimeSeconds(epoch).UtcDateTime;
+                _retryAfterUtc = now + TimeSpan.FromSeconds(Math.Clamp((retryAt - now).TotalSeconds, 60, 86400));
+                RuntimeLog.Warn(LogCategory, $"GetAllReleases API rate limited; next check after {_retryAfterUtc:O}");
+                return _cachedAllReleases != null ? _cachedAllReleases.Select(Clone).ToList() : Array.Empty<UpdateInfo>();
+            }
             response.EnsureSuccessStatusCode();
 
             using var jsonDoc = await ReadLimitedJsonAsync(response, MaxReleaseResponseBytes, CancellationToken.None).ConfigureAwait(false);
@@ -277,12 +306,14 @@ public sealed partial class UpdateService : IUpdateService, IDisposable
             {
                 if (!IsDraft(release)) releases.Add(ReadRelease(release));
             }
-            return releases;
+            _cachedAllReleases = releases;
+            _lastAllReleasesCheckUtc = now;
+            return releases.Select(Clone).ToList();
         }
         catch (Exception ex)
         {
             RuntimeLog.Error(LogCategory, ex, "Get all releases failed");
-            return Array.Empty<UpdateInfo>();
+            return _cachedAllReleases != null ? _cachedAllReleases.Select(Clone).ToList() : Array.Empty<UpdateInfo>();
         }
     }
 

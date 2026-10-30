@@ -24,6 +24,9 @@ public partial class MainWindow
             _clipboardTrayView = view;
             view.SetBinding(VNotch.Controls.ClipboardTray.NavigationWidthProperty,
                 new System.Windows.Data.Binding(nameof(ActualWidth)) { Source = NavTabsStackPanel });
+            System.Windows.Data.BindingOperations.SetBinding(view.HeaderTranslate,
+                System.Windows.Media.TranslateTransform.YProperty,
+                new System.Windows.Data.Binding(nameof(System.Windows.Media.TranslateTransform.Y)) { Source = NavIconsTranslate });
             view.IsVisibleChanged += (_, _) => ApplyGlassContentShadow(IsLiquidGlassEnabled);
             ClipboardTrayHost.Content = view;
             RegisterName(nameof(ClipboardTrayView), view);

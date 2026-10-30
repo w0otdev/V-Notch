@@ -34,13 +34,15 @@ internal sealed partial class SpotlightSearchService
     private readonly ISpotlightProvider[] _deferredProviders;
     private readonly WindowsSearchProvider? _windowsSearchProvider;
     private readonly EverythingSearchProvider? _everythingSearchProvider;
+    private readonly LocalFileSearchProvider? _localFileSearchProvider;
     private readonly AppSearchProvider[] _appSearchProviders;
     private readonly SystemFileSearchProvider[] _systemFileSearchProviders;
     private readonly SpotlightUsageStore? _usage;
 
     public bool IsWindowsSearchAvailable =>
         (_windowsSearchProvider?.IsAvailable ?? false) ||
-        (_everythingSearchProvider?.IsAvailable ?? false);
+        (_everythingSearchProvider?.IsAvailable ?? false) ||
+        (_localFileSearchProvider?.IsAvailable ?? false);
 
     public SpotlightSearchService(
         IEnumerable<ISpotlightProvider> providers,
@@ -84,6 +86,12 @@ internal sealed partial class SpotlightSearchService
             else if (provider is SystemFileSearchProvider sysFileProvider)
             {
                 sysFileProviders.Add(sysFileProvider);
+            }
+            else if (provider is LocalFileSearchProvider localFiles)
+            {
+                _localFileSearchProvider = localFiles;
+                localFiles.IsExcluded = isExcludedDelegate;
+                localFiles.ExcludedFolders = _usage != null ? () => _usage.Preferences.GetExcludedFolders() : null;
             }
         }
 

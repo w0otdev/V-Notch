@@ -1048,5 +1048,11 @@
   "whitenoise.volume": "Громкость",
   "whitenoise.mute": "Без звука",
   "whitenoise.sync": "Синхронизация с таймером",
-  "whitenoise.syncTip": "Плавно затихает и останавливается, когда таймер заканчивается"
+  "whitenoise.syncTip": "Плавно затихает и останавливается, когда таймер заканчивается",
+  "settings.glass.ultimateGpu": "Режим Ultimate GPU (GPU 0)",
+  "settings.glass.ultimateGpu.hint": "Запускать Liquid Glass на высокопроизводительной видеокарте (GPU 0). Нагрузка на GPU строго ограничена выбранным лимитом FPS.",
+  "settings.glass.ultimateGpu.warning": "Внимание: режим дискретной видеокарты потребляет больше энергии. Задайте целевой FPS, чтобы ограничить частоту работы GPU.",
+  "settings.glass.ultimateGpu.title": "Включить режим Ultimate GPU?",
+  "settings.glass.ultimateGpu.confirm": "Эта опция назначает дискретную видеокарту (GPU 0) для Liquid Glass ради максимальной плавности, что повышает расход заряда на ноутбуках. Частота кадров строго ограничена параметром целевого FPS без лишней нагрузки на GPU.",
+  "tooltip.ultimateGpu": "Использовать производительную GPU 0 для Liquid Glass с лимитом FPS"
 }

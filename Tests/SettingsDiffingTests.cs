@@ -52,6 +52,10 @@ public sealed class SettingsDiffingTests
         b.Refraction = a.Refraction;
         b.UseGpuRefraction = !a.UseGpuRefraction;
         Assert.False(a.ValueEquals(b));
+
+        b.UseGpuRefraction = a.UseGpuRefraction;
+        b.UseUltimateGpu = !a.UseUltimateGpu;
+        Assert.False(a.ValueEquals(b));
     }
 
     [Fact]
