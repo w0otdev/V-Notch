@@ -124,6 +124,36 @@ public sealed class SignedUpdateManifestTests
     }
 
     [Fact]
+    public void UpdateDownloadDoesNotBlockTheDispatcherBeforeItsFirstAwait() => SharedStaTestRunner.RunAsync(async () =>
+    {
+        int uiThread = Environment.CurrentManagedThreadId;
+        int requestThread = 0;
+        using var releaseRequest = new ManualResetEventSlim();
+        var entered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        using var client = new HttpClient(new Handler(_ =>
+        {
+            requestThread = Environment.CurrentManagedThreadId;
+            entered.TrySetResult();
+            releaseRequest.Wait(TimeSpan.FromSeconds(2));
+            return new HttpResponseMessage(HttpStatusCode.ServiceUnavailable);
+        }));
+        using var service = new UpdateService(client, new UpdateSecurityPolicy());
+        Task<bool> download = service.DownloadAndInstallUpdateAsync(Update());
+        try
+        {
+            await entered.Task.WaitAsync(TimeSpan.FromSeconds(5));
+            Assert.NotEqual(uiThread, requestThread);
+            Assert.False(download.IsCompleted);
+            await System.Windows.Threading.Dispatcher.Yield();
+        }
+        finally
+        {
+            releaseRequest.Set();
+            Assert.False(await download);
+        }
+    });
+
+    [Fact]
     public async Task LegacyRelease_IsNotOffered_NewReleasePreservesManifestUrlsInCache()
     {
         foreach (bool signed in new[] { false, true })

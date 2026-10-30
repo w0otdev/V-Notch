@@ -18,6 +18,30 @@ function Write-Coverage([int]$Covered, [int]$Valid = 100, [string]$Package = 'V-
 }
 
 try {
+    # Local-only ignored scripts disappear on CI checkout even though invoking
+    # them directly succeeds. Validate the literal entrypoints used by CI/release
+    # workflows and the local CI runner before doing the expensive checks.
+    $sources = @(Get-ChildItem -LiteralPath (Join-Path $repository '.github/workflows') -File |
+        Where-Object Extension -in '.yml', '.yaml' | ForEach-Object FullName)
+    $sources += Join-Path $repository 'scripts/c.ps1'
+    $entrypoints = @(foreach ($source in $sources) {
+        [regex]::Matches((Get-Content -LiteralPath $source -Raw), '(?:Tools|Tests|scripts)/[A-Za-z0-9_.-]+\.ps1') |
+            ForEach-Object Value
+    }) | Sort-Object -Unique
+    if ($entrypoints.Count -eq 0) { throw 'No CI script entrypoints found.' }
+    foreach ($entrypoint in $entrypoints) {
+        if (-not (Test-Path -LiteralPath (Join-Path $repository $entrypoint) -PathType Leaf)) {
+            throw "CI entrypoint is missing from the repository: $entrypoint"
+        }
+        $ignoreStatus = & {
+            $PSNativeCommandUseErrorActionPreference = $false
+            & git -C $repository check-ignore --no-index --quiet -- $entrypoint
+            $LASTEXITCODE
+        }
+        if ($ignoreStatus -eq 0) { throw "CI entrypoint is ignored by Git and will be missing from a fresh checkout: $entrypoint" }
+        if ($ignoreStatus -ne 1) { throw "Could not verify Git ignore rules for CI entrypoint: $entrypoint" }
+    }
+
     # Exercise the build script's actual argument initialization against MSBuild,
     # without publishing or touching the existing release output.
     $buildAst = [Management.Automation.Language.Parser]::ParseFile(

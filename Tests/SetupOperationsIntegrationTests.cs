@@ -1,4 +1,5 @@
 using System.IO;
+using System.Diagnostics;
 using System.Runtime.InteropServices;
 using Microsoft.Win32;
 using VNotch.Services;
@@ -9,6 +10,47 @@ namespace VNotch.Tests;
 [Collection("Localization")]
 public sealed class SetupOperationsIntegrationTests
 {
+    [Fact]
+    public async Task StoppingTheOldAppPreservesItsSetupChildProcess()
+    {
+        using var fixture = new Fixture();
+        string childPidPath = Path.Combine(fixture.Root, "child.pid");
+        string scriptPath = Path.Combine(fixture.Root, "parent.ps1");
+        // A real process tree reproduces an updater launching the setup wizard.
+        File.WriteAllText(scriptPath, """
+            param($PidPath)
+            $child = Start-Process -FilePath $PSHOME\powershell.exe -ArgumentList '-NoProfile','-Command','Start-Sleep -Seconds 60' -WindowStyle Hidden -PassThru
+            [IO.File]::WriteAllText("$PidPath.tmp", [string]$child.Id)
+            [IO.File]::Move("$PidPath.tmp", $PidPath)
+            Start-Sleep -Seconds 60
+            """);
+        var start = new ProcessStartInfo(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.System),
+            "WindowsPowerShell", "v1.0", "powershell.exe")) { UseShellExecute = false, CreateNoWindow = true };
+        foreach (string argument in new[] { "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", scriptPath, childPidPath })
+            start.ArgumentList.Add(argument);
+        using var parent = Process.Start(start)!;
+        Process? child = null;
+        try
+        {
+            using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(15));
+            while (!File.Exists(childPidPath)) await Task.Delay(25, timeout.Token);
+            child = Process.GetProcessById(int.Parse(await File.ReadAllTextAsync(childPidPath, timeout.Token)));
+            await SetupOperations.StopRunningInstanceAsync(parent);
+            Assert.True(parent.HasExited);
+            Assert.False(child.HasExited, "Stopping the installed app must not terminate the setup it launched.");
+        }
+        finally
+        {
+            if (!parent.HasExited) parent.Kill(entireProcessTree: true);
+            if (child != null)
+            {
+                if (!child.HasExited) { child.Kill(); await child.WaitForExitAsync(); }
+                child.Dispose();
+            }
+            await parent.WaitForExitAsync();
+        }
+    }
+
     [Theory]
     [InlineData(false)]
     [InlineData(true)]

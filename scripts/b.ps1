@@ -150,10 +150,10 @@ Write-TreeStep "2/4" "Publish V-Notch & Uninstaller"
 $pubSw = [System.Diagnostics.Stopwatch]::StartNew()
 if ($SelfContained) {
     # Self-contained: bundles the .NET runtime, runs without installing .NET 8.
-    $pubOut = Invoke-CapturedNative { & dotnet publish .\V-Notch.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -p:DebugType=none -p:DebugSymbols=false -nologo -v:q -o $publishDir @restoreArguments @versionArguments }
+    $pubOut = Invoke-CapturedNative { & dotnet publish .\V-Notch.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=false -p:DebugType=none -p:DebugSymbols=false -nologo -v:q -o $publishDir @restoreArguments @versionArguments }
 } else {
     # Framework-dependent single file - requires .NET 8 runtime.
-    $pubOut = Invoke-CapturedNative { & dotnet publish .\V-Notch.csproj -c Release -r win-x64 --self-contained false -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -p:DebugType=none -p:DebugSymbols=false -nologo -v:q -o $publishDir @restoreArguments @versionArguments }
+    $pubOut = Invoke-CapturedNative { & dotnet publish .\V-Notch.csproj -c Release -r win-x64 --self-contained false -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=false -p:DebugType=none -p:DebugSymbols=false -nologo -v:q -o $publishDir @restoreArguments @versionArguments }
 }
 if ($LASTEXITCODE -ne 0) {
     foreach ($l in @($pubOut | ForEach-Object { "$_" } | Where-Object { $_.Trim() })) {
@@ -178,7 +178,7 @@ Write-TreeItem ("Published V-Notch.exe & VNotch.Native.dll (v$exeVersion) in {0:
 
 # Step 2b: Publish the standalone uninstaller into the same release folder so it
 # ships next to V-Notch.exe and ends up in the install directory.
-$uninstOut = Invoke-CapturedNative { & dotnet publish .\Uninstall\Uninstall.csproj -c Release -r win-x64 --self-contained $SelfContained -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -p:DebugType=none -p:DebugSymbols=false -nologo -v:q -o $publishDir @restoreArguments @versionArguments }
+$uninstOut = Invoke-CapturedNative { & dotnet publish .\Uninstall\Uninstall.csproj -c Release -r win-x64 --self-contained $SelfContained -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=false -p:DebugType=none -p:DebugSymbols=false -nologo -v:q -o $publishDir @restoreArguments @versionArguments }
 if ($LASTEXITCODE -ne 0) {
     foreach ($l in @($uninstOut | ForEach-Object { "$_" } | Where-Object { $_.Trim() })) {
         Write-TreeItem $l.Trim() -State "Error"

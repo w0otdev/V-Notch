@@ -28,6 +28,7 @@
 !include "FileFunc.nsh"
 
 Var UpdateArguments
+Var WizardRunning
 
 ; ── Version Info (critical for AV trust) ───────────────────
 VIProductVersion "${APP_VERSION_FULL}"
@@ -46,13 +47,28 @@ OutFile "installers\V-Notch-Setup.exe"
 InstallDir "$LOCALAPPDATA\Programs\${APP_NAME}"
 RequestExecutionLevel user
 SetCompressor /SOLID lzma
+!ifdef SELF_CONTAINED
+    ; The app and small uninstaller share compressed .NET runtime blocks.
+    ; A larger window lets the solid compressor reuse them across both bundles.
+    SetCompressorDictSize 64
+!endif
 
-; Hide the NSIS window — the WPF setup wizard is the real UI
-SilentInstall silent
+; Keep extraction visible: a large payload can take several seconds before the
+; WPF wizard starts, especially during updates or on slower disks/AV scanners.
+SilentInstall normal
+Page instfiles
 ShowInstDetails nevershow
 AutoCloseWindow true
 
 Icon "Services\icons\logo.ico"
+
+Function .onUserAbort
+    ; Extraction/runtime failures must remain dismissible. Protect staging only
+    ; while the WPF wizard is actually using it; that wizard owns cancellation.
+    ${If} $WizardRunning == 1
+        Abort
+    ${EndIf}
+FunctionEnd
 
 Section "Install"
     ; Extract the real app payload to a temp staging folder first. During auto-update,
@@ -60,7 +76,11 @@ Section "Install"
     ; $INSTDIR here can make the silent bootstrapper fail before the WPF setup opens.
     InitPluginsDir
     SetOutPath "$PLUGINSDIR\payload"
-    File /r "${APP_BUILD_DIR}\*"
+    ; Keep the shared single-file host/runtime within the compression window:
+    ; the small uninstaller comes before the larger application bundle.
+    File "${APP_BUILD_DIR}\uninstall.exe"
+    File "${APP_BUILD_DIR}\${APP_EXE}"
+    File /r /x "uninstall.exe" /x "${APP_EXE}" "${APP_BUILD_DIR}\*"
 
     ; Check and install .NET 8 Desktop Runtime if needed
     !ifndef SELF_CONTAINED
@@ -77,7 +97,12 @@ Section "Install"
     ${Unless} ${Errors}
         StrCpy $UpdateArguments "--update"
     ${EndUnless}
+    StrCpy $WizardRunning 1
+    GetDlgItem $2 $HWNDPARENT 2
+    EnableWindow $2 0
     ExecWait '"$PLUGINSDIR\payload\${APP_EXE}" --setup --setup-source "$PLUGINSDIR\payload" --installer-path "$EXEPATH" $UpdateArguments' $0
+    StrCpy $WizardRunning 0
+    EnableWindow $2 1
     SetErrorLevel $0
 SectionEnd
 
@@ -85,6 +110,7 @@ SectionEnd
 ; Users can remove old Inno installations through Windows Settings.
 
 ; ── .NET 8 Desktop Runtime Detection & Installation ────────
+!ifndef SELF_CONTAINED
 Function CheckAndInstallDotNet
     ; Check actual Desktop Runtime folders. This catches repaired installs even if
     ; registry metadata is incomplete.
@@ -179,3 +205,4 @@ Function CheckAndInstallDotNet
         SetRegView Default
     ${EndIf}
 FunctionEnd
+!endif
