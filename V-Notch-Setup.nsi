@@ -47,11 +47,7 @@ OutFile "installers\V-Notch-Setup.exe"
 InstallDir "$LOCALAPPDATA\Programs\${APP_NAME}"
 RequestExecutionLevel user
 SetCompressor /SOLID lzma
-!ifdef SELF_CONTAINED
-    ; The app and small uninstaller share compressed .NET runtime blocks.
-    ; A larger window lets the solid compressor reuse them across both bundles.
-    SetCompressorDictSize 64
-!endif
+SetCompressorDictSize 64
 
 ; Keep extraction visible: a large payload can take several seconds before the
 ; WPF wizard starts, especially during updates or on slower disks/AV scanners.
