@@ -193,18 +193,24 @@ internal sealed partial class LyricsService : IDisposable
     private async Task<LyricsResult?> FetchUncachedLyricsAsync(FetchKey key, CancellationToken token)
     {
         var candidates = GenerateSearchCandidates(key.Track, key.Artist);
-        foreach (var (candTrack, candArtist) in candidates)
+        try
         {
-            token.ThrowIfCancellationRequested();
-            if (!string.IsNullOrEmpty(candArtist))
+            foreach (var (candTrack, candArtist) in candidates)
             {
-                var exact = await TryGetExactAsync(candTrack, candArtist, key.DurationSeconds, token).ConfigureAwait(false);
-                if (exact is { Count: > 0 }) return new LyricsResult(exact, "LRCLIB");
-            }
+                token.ThrowIfCancellationRequested();
+                if (!string.IsNullOrEmpty(candArtist))
+                {
+                    var exact = await TryGetExactAsync(candTrack, candArtist, key.DurationSeconds, token).ConfigureAwait(false);
+                    if (exact is { Count: > 0 }) return new LyricsResult(exact, "LRCLIB");
+                }
 
-            var searched = await TrySearchAsync(candTrack, candArtist, key.DurationSeconds, token).ConfigureAwait(false);
-            if (searched is { Count: > 0 }) return new LyricsResult(searched, "LRCLIB");
+                var searched = await TrySearchAsync(candTrack, candArtist, key.DurationSeconds, token).ConfigureAwait(false);
+                if (searched is { Count: > 0 }) return new LyricsResult(searched, "LRCLIB");
+            }
         }
+        catch (Exception ex) when (!token.IsCancellationRequested &&
+            ex is HttpRequestException or OperationCanceledException or System.IO.IOException or JsonException or InvalidOperationException or KeyNotFoundException)
+        { RuntimeLog.Warn(LogTag, "LRCLIB unavailable; trying the fallback provider."); }
 
         foreach (var (candTrack, candArtist) in candidates)
         {
@@ -297,6 +303,9 @@ internal sealed partial class LyricsService : IDisposable
 
     private async Task<List<LyricLine>?> TryGetExactAsync(string trackName, string artistName, int durationSeconds, CancellationToken token)
     {
+        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(token);
+        timeout.CancelAfter(_lrclibClient.Timeout);
+        token = timeout.Token;
         string url = $"/api/get?track_name={Uri.EscapeDataString(trackName)}" +
                      $"&artist_name={Uri.EscapeDataString(artistName)}&duration={durationSeconds}";
 
@@ -319,6 +328,9 @@ internal sealed partial class LyricsService : IDisposable
 
     private async Task<List<LyricLine>?> TrySearchAsync(string trackName, string artistName, int durationSeconds, CancellationToken token)
     {
+        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(token);
+        timeout.CancelAfter(_lrclibClient.Timeout);
+        token = timeout.Token;
         string url = $"/api/search?track_name={Uri.EscapeDataString(trackName)}" +
                      $"&artist_name={Uri.EscapeDataString(artistName)}";
 
@@ -457,6 +469,9 @@ internal sealed partial class LyricsService : IDisposable
         int durationSeconds,
         CancellationToken token)
     {
+        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(token);
+        timeout.CancelAfter(_lrcMuxClient.Timeout);
+        token = timeout.Token;
         string url = $"/get?title={Uri.EscapeDataString(trackName)}" +
                      $"&artist={Uri.EscapeDataString(artistName)}" +
                      $"&duration={durationSeconds}" +

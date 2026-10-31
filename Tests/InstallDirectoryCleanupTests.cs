@@ -50,8 +50,10 @@ public sealed class InstallDirectoryCleanupTests
         }
     }
 
-    [Fact]
-    public async Task Cleanup_WaitsForOwnerAndDeletesOnlyItsTarget()
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task Cleanup_WaitsForOwnerAndPreservesUnownedFiles(bool personalFile)
     {
         string parent = Directory.CreateTempSubdirectory("vnotch-cleanup-integration-").FullName;
         string directory = Path.Combine(parent, "V-Notch & %literal% ^ ! ' ế");
@@ -59,6 +61,11 @@ public sealed class InstallDirectoryCleanupTests
         string marker = Path.Combine(directory, "V-Notch.exe");
         string sentinel = Path.Combine(parent, "keep.txt");
         await File.WriteAllTextAsync(marker, "test marker; never executed");
+        string manifest = Path.Combine(directory, InstallDirectoryCleanup.ManifestFileName);
+        string personal = Path.Combine(directory, "personal.txt");
+        await File.WriteAllTextAsync(manifest, System.Text.Json.JsonSerializer.Serialize(
+            new InstallDirectoryCleanup.InstallManifest(2, [new("V-Notch.exe", InstallDirectoryCleanup.HashFile(marker))])));
+        if (personalFile) await File.WriteAllTextAsync(personal, "must survive inside the installation folder");
         await File.WriteAllTextAsync(sentinel, "must survive cleanup");
         string releaseName = $"Local\\VNotchOwnerRelease-{Guid.NewGuid():N}";
         string readyName = $"Local\\VNotchOwnerReady-{Guid.NewGuid():N}";
@@ -77,7 +84,12 @@ public sealed class InstallDirectoryCleanupTests
         ownerStart.Environment["VNOTCH_OWNER_RELEASE"] = releaseName;
         ownerStart.Environment["VNOTCH_OWNER_READY"] = readyName;
         using var owner = Process.Start(ownerStart)!;
-        using var helper = Process.Start(InstallDirectoryCleanup.CreateStartInfo(directory, owner.Id))!;
+        var helperStart = InstallDirectoryCleanup.CreateStartInfo(directory, owner.Id);
+        helperStart.RedirectStandardError = true;
+        helperStart.RedirectStandardOutput = true;
+        using var helper = Process.Start(helperStart)!;
+        Task<string> helperErrors = helper.StandardError.ReadToEndAsync();
+        Task<string> helperOutput = helper.StandardOutput.ReadToEndAsync();
         using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(90));
         try
         {
@@ -88,8 +100,11 @@ public sealed class InstallDirectoryCleanupTests
             Assert.True(File.Exists(marker));
             release.Set();
             await helper.WaitForExitAsync(timeout.Token);
-            Assert.Equal(0, helper.ExitCode);
-            Assert.False(Directory.Exists(directory));
+            await helperOutput;
+            Assert.True(helper.ExitCode == 0, $"Cleanup exited {helper.ExitCode}: {await helperErrors}");
+            Assert.Equal(personalFile, Directory.Exists(directory));
+            Assert.False(File.Exists(marker));
+            if (personalFile) Assert.Equal("must survive inside the installation folder", await File.ReadAllTextAsync(personal));
             Assert.Equal("must survive cleanup", await File.ReadAllTextAsync(sentinel));
         }
         finally
@@ -99,6 +114,8 @@ public sealed class InstallDirectoryCleanupTests
             if (!helper.HasExited) helper.Kill();
             // Only exact paths created by this test; never recursively delete the parent.
             if (File.Exists(marker)) File.Delete(marker);
+            if (File.Exists(manifest)) File.Delete(manifest);
+            if (File.Exists(personal)) File.Delete(personal);
             if (Directory.Exists(directory)) Directory.Delete(directory);
             File.Delete(sentinel);
             Directory.Delete(parent);

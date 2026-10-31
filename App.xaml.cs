@@ -263,8 +263,7 @@ public partial class App : Application
             }
 
             var setupWindow = new SetupWindow(setupSource,
-                Services.GetRequiredService<ISettingsService>().Load().Language,
-                updateRequested: e.Args.Contains("--update"));
+                Services.GetRequiredService<ISettingsService>().Load().Language);
             setupWindow.ShowDialog();
             Shutdown(setupWindow.ResultExitCode);
             return true;

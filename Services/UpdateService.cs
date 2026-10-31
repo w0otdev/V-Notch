@@ -564,7 +564,7 @@ public sealed partial class UpdateService : IUpdateService, IDisposable
         return Convert.ToHexString(await SHA256.HashDataAsync(file, token).ConfigureAwait(false));
     }
     private static HttpClient CreateHttpClient() => new(NetworkPrivacy.Handler(NetworkFeature.Updates, new NativeWinHttpHandler { AllowAutoRedirect = false })) { Timeout = TimeSpan.FromMinutes(10) };
-    private static void DeleteDirectory(string directory) { try { if (Directory.Exists(directory)) Directory.Delete(directory, true); } catch (Exception ex) { RuntimeLog.Warn(LogCategory, $"Could not remove temporary update files: {ex.Message}"); } }
+    private static void DeleteDirectory(string directory) { try { SafeFileDeletion.DeleteDirectory(directory); } catch (Exception ex) { RuntimeLog.Warn(LogCategory, $"Could not remove temporary update files: {ex.Message}"); } }
 
     internal static int CompareVersions(string left, string right)
     {

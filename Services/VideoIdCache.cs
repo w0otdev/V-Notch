@@ -1,29 +1,11 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Runtime.InteropServices;
 
 namespace VNotch.Services;
 
-internal sealed partial class VideoIdCache
+internal sealed class VideoIdCache
 {
-    private const string NativeDll = "VNotch.Native.dll";
-
-    [LibraryImport(NativeDll)]
-    private static partial int vn_video_id_cache_should_evict_oldest(
-        int currentCount,
-        int capacity,
-        int orderCount,
-        out byte outEvict);
-
-    [LibraryImport(NativeDll, StringMarshalling = StringMarshalling.Utf16)]
-    private static partial int vn_video_id_cache_should_evict_entry(
-        ReadOnlySpan<char> cachedVideoId,
-        int cachedLen,
-        ReadOnlySpan<char> staleVideoId,
-        int staleLen,
-        out byte outEvict);
-
     private const int Capacity = 50;
     private const int MismatchCapacity = Capacity * 2;
 
@@ -46,7 +28,7 @@ internal sealed partial class VideoIdCache
         {
             if (!_cache.ContainsKey(trackIdentity))
             {
-                while (vn_video_id_cache_should_evict_oldest(_cache.Count, Capacity, _order.Count, out byte evict) == 0 && evict != 0)
+                while (_cache.Count >= Capacity && _order.Count > 0)
                 {
                     string oldest = _order.Dequeue();
                     if (_cache.Remove(oldest))
@@ -105,19 +87,16 @@ internal sealed partial class VideoIdCache
         lock (_lock)
         {
             string trackIdentity = MediaHeuristics.BuildTrackIdentity(track, "");
-            ReadOnlySpan<char> staleSpan = staleVideoId.AsSpan();
             if (_cache.TryGetValue(track, out var v1))
             {
-                ReadOnlySpan<char> v1Span = v1.AsSpan();
-                if (vn_video_id_cache_should_evict_entry(v1Span, v1Span.Length, staleSpan, staleSpan.Length, out byte evict1) == 0 && evict1 != 0)
+                if (string.Equals(v1, staleVideoId, StringComparison.Ordinal))
                 {
                     _cache.Remove(track);
                 }
             }
             if (_cache.TryGetValue(trackIdentity, out var v2))
             {
-                ReadOnlySpan<char> v2Span = v2.AsSpan();
-                if (vn_video_id_cache_should_evict_entry(v2Span, v2Span.Length, staleSpan, staleSpan.Length, out byte evict2) == 0 && evict2 != 0)
+                if (string.Equals(v2, staleVideoId, StringComparison.Ordinal))
                 {
                     _cache.Remove(trackIdentity);
                 }
@@ -136,7 +115,7 @@ internal sealed partial class VideoIdCache
         lock (_mismatch)
         {
             if (_mismatch.Contains(videoId)) return;
-            while (vn_video_id_cache_should_evict_oldest(_mismatch.Count, MismatchCapacity, _mismatchOrder.Count, out byte evict) == 0 && evict != 0)
+            while (_mismatch.Count >= MismatchCapacity && _mismatchOrder.Count > 0)
             {
                 string oldest = _mismatchOrder.Dequeue();
                 _mismatch.Remove(oldest);

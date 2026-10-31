@@ -199,8 +199,7 @@ public partial class SettingsWindow
             var baseDir = AppContext.BaseDirectory;
 
             int deletedCount = DeleteCacheDirectories(appData)
-                             + DeleteExplicitCacheFiles(appData, baseDir)
-                             + DeleteCorruptSettingsFiles(appData);
+                             + DeleteExplicitCacheFiles(appData, baseDir);
 
             ClearCacheHint.Text = deletedCount > 0
                 ? Loc.Get("settings.clearCache.done", deletedCount)
@@ -212,7 +211,7 @@ public partial class SettingsWindow
         }
     }
 
-    private static int DeleteCacheDirectories(string appData)
+    internal static int DeleteCacheDirectories(string appData)
     {
         int count = 0;
         var cacheDirs = new[]
@@ -230,12 +229,18 @@ public partial class SettingsWindow
             {
                 if (!Directory.Exists(dir)) continue;
 
-                var files = Directory.GetFiles(dir, "*", SearchOption.AllDirectories);
+                SafeFileDeletion.ValidatePath(dir);
+                var files = Directory.EnumerateFiles(dir, "*", new EnumerationOptions
+                {
+                    RecurseSubdirectories = true,
+                    AttributesToSkip = FileAttributes.ReparsePoint,
+                    IgnoreInaccessible = true
+                });
                 foreach (var f in files)
                 {
                     try
                     {
-                        File.Delete(f);
+                        SafeFileDeletion.DeleteFile(f);
                         count++;
                     }
                     catch (Exception)
@@ -268,7 +273,7 @@ public partial class SettingsWindow
             {
                 if (File.Exists(file))
                 {
-                    File.Delete(file);
+                    SafeFileDeletion.DeleteFile(file);
                     count++;
                 }
             }
@@ -276,35 +281,6 @@ public partial class SettingsWindow
             {
                 // In-use or locked file is safely ignored
             }
-        }
-
-        return count;
-    }
-
-    private static int DeleteCorruptSettingsFiles(string appData)
-    {
-        int count = 0;
-        try
-        {
-            if (Directory.Exists(appData))
-            {
-                foreach (var corrupt in Directory.GetFiles(appData, "settings.corrupt-*.json"))
-                {
-                    try
-                    {
-                        File.Delete(corrupt);
-                        count++;
-                    }
-                    catch (Exception)
-                    {
-                        // Locked corrupt settings backup is safely ignored
-                    }
-                }
-            }
-        }
-        catch (Exception ex)
-        {
-            VNotch.Services.RuntimeLog.Warn(LogCategory, $"Failed to enumerate corrupt backups: {ex.Message}");
         }
 
         return count;

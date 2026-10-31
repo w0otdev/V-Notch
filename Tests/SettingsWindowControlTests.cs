@@ -670,7 +670,7 @@ public sealed class SettingsWindowControlTests
     });
 
     [Fact]
-    public void CacheCleanupDeletesOnlyKnownCacheAndCorruptBackupFiles() => SharedStaTestRunner.Run(() =>
+    public void CacheCleanupDeletesOnlyKnownCacheAndPreservesRecoveryFiles() => SharedStaTestRunner.Run(() =>
     {
         string directory = System.IO.Directory.CreateTempSubdirectory("vnotch-cache-cleanup-test-").FullName;
         try
@@ -691,11 +691,10 @@ public sealed class SettingsWindowControlTests
             var flags = BindingFlags.Static | BindingFlags.NonPublic;
             Assert.Equal(5, typeof(SettingsWindow).GetMethod("DeleteCacheDirectories", flags)!.Invoke(null, [appData]));
             Assert.Equal(2, typeof(SettingsWindow).GetMethod("DeleteExplicitCacheFiles", flags)!.Invoke(null, [appData, binary]));
-            Assert.Equal(1, typeof(SettingsWindow).GetMethod("DeleteCorruptSettingsFiles", flags)!.Invoke(null, [appData]));
+            Assert.True(System.IO.File.Exists(System.IO.Path.Combine(appData, "settings.corrupt-test.json")));
             Assert.True(System.IO.File.Exists(System.IO.Path.Combine(appData, "settings.json")));
             Assert.True(System.IO.File.Exists(System.IO.Path.Combine(appData, "keep.txt")));
             Assert.Equal(0, typeof(SettingsWindow).GetMethod("DeleteCacheDirectories", flags)!.Invoke(null, [appData]));
-            Assert.Equal(0, typeof(SettingsWindow).GetMethod("DeleteCorruptSettingsFiles", flags)!.Invoke(null, [System.IO.Path.Combine(directory, "missing")]));
         }
         finally
         {
