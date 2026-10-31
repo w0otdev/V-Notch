@@ -40,9 +40,9 @@
          reflection, COM interop or CPU/GPU translation backends. -->
     <EnableCompressionInSingleFile Condition="'$(Configuration)' == 'Release' And '$(SelfContained)' == 'true'">true</EnableCompressionInSingleFile>
     <PublishReferencesDocumentationFiles>false</PublishReferencesDocumentationFiles>
-    <Version>2.2.0</Version>
-    <AssemblyVersion>2.2.0</AssemblyVersion>
-    <FileVersion>2.2.0</FileVersion>
+    <Version>2.2.1</Version>
+    <AssemblyVersion>2.2.1</AssemblyVersion>
+    <FileVersion>2.2.1</FileVersion>
     <Authors>w0otdev</Authors>
     <Company>V-Notch</Company>
     <Product>V-Notch</Product>
@@ -252,7 +252,7 @@
   </Target>
   <Target Name="BuildNativeDll" DependsOnTargets="CompileVNotchNative" />
 
-  <Target Name="SetPackageManifestVersion" BeforeTargets="Build" Inputs="Package.appxmanifest" Outputs="$(OutDir)Package.appxmanifest">
+  <Target Name="SetPackageManifestVersion" BeforeTargets="Build">
     <PropertyGroup>
       <PackageManifestVersion Condition="'$(PackageManifestVersion)' == ''">$(Version).0</PackageManifestVersion>
     </PropertyGroup>

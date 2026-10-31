@@ -147,19 +147,19 @@ public sealed class UpdateServiceSecurityTests
     [Fact]
     public async Task ReleaseEndpointsParseStreamsWithoutBufferingContentAsAString()
     {
-        const string release = "{\"tag_name\":\"v99.0.0\",\"body\":\"notes\",\"published_at\":\"2026-10-04T00:00:00Z\",\"assets\":[]}";
-        var service = CreateService(request => new(HttpStatusCode.OK)
+        const string feed = "<feed xmlns=\"http://www.w3.org/2005/Atom\"><entry><id>tag:github.com,2008:Repository/123/v1.0.0</id><updated>2026-10-04T00:00:00Z</updated><content>notes</content></entry></feed>";
+        var service = CreateService(_ => new(HttpStatusCode.OK)
         {
-            Content = new StreamOnlyContent(request.RequestUri!.AbsolutePath.EndsWith("/latest") ? release : "[" + release + "]")
+            Content = new StreamOnlyContent(feed)
         });
-        Assert.Equal("99.0.0", (await service.CheckForUpdatesAsync())?.Version);
-        Assert.Equal("99.0.0", Assert.Single(await service.GetAllReleasesAsync()).Version);
+        Assert.Equal("1.0.0", (await service.CheckForUpdatesAsync())?.Version);
+        Assert.Equal("1.0.0", Assert.Single(await service.GetAllReleasesAsync()).Version);
     }
 
     [Fact]
     public async Task CheckForUpdates_InvalidReleaseJson_ReturnsNull()
     {
-        var service = CreateService(_ => new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent("not json") });
+        var service = CreateService(_ => new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent("not xml") });
         Assert.Null(await service.CheckForUpdatesAsync());
     }
 

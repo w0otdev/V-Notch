@@ -26,6 +26,7 @@
   <a href="https://github.com/w0otdev/V-Notch/releases/latest">Download</a> ·
   <a href="#usage">Usage</a> ·
   <a href="#installation">Installation</a> ·
+  <a href="CHANGELOG.md">Changelog</a> ·
   <a href="#privacy">Privacy</a> ·
   <a href="https://v-notch.vercel.app">Website</a>
 </p>
@@ -41,7 +42,7 @@
 </p>
 
 <p align="center">
-  V-Notch adds media controls, synced lyrics, system stats, privacy indicators, and a Spotlight launcher to the top of your screen. Use it as a compact pill or expand it into a floating Dynamic Island. It works with MyDockFinder.
+  V-Notch adds media controls, synced lyrics, ambient white noise, clipboard history, live translation, system stats, privacy indicators, and a Spotlight launcher to the top of your screen. Use it as a compact pill or expand it into a floating Dynamic Island. It works with MyDockFinder.
 </p>
 
 <p align="center">
@@ -189,7 +190,7 @@ Open the Actions tab, select Release Installer, and click Run workflow. Choose `
 
 V-Notch does not collect telemetry or analytics, or track you. Network requests, local storage paths, third-party media notices, API key handling, and recording detection details are documented in the Privacy Policy and Terms of Service.
 
-[Privacy Policy](docs/PRIVACY_POLICY.md) · [Tiếng Việt](docs/PRIVACY_POLICY_VI.md) · [Terms of Service](docs/TERMS_OF_SERVICE.md) · [Tiếng Việt](docs/TERMS_OF_SERVICE_VI.md) · [Recording Detection](RECORDING_DETECTION.md)
+[Privacy Policy](docs/PRIVACY_POLICY.md) · [Tiếng Việt](docs/PRIVACY_POLICY_VI.md) · [Terms of Service](docs/TERMS_OF_SERVICE.md) · [Tiếng Việt](docs/TERMS_OF_SERVICE_VI.md) · [Third-Party Notices](docs/THIRD_PARTY_NOTICES.md)
 
 ## Star history
 
@@ -201,8 +202,8 @@ Thank you to everyone who has supported V-Notch since the early releases. Your f
 
 If you like V-Notch, check out other free and open-source Windows utilities by w0otdev:
 
-- **[Vertex](https://github.com/w0otdev/Vertex)** — Minimalist radial wheel file converter for Windows (built with Rust).
-- **[Scroll-V](https://github.com/w0otdev/Scroll-V)** — Buttery smooth scrolling experience for all Windows applications (built with C#).
+- **[Vertex](https://github.com/w0otdev/Vertex)**: Minimalist radial wheel file converter for Windows (built with Rust).
+- **[Scroll-V](https://github.com/w0otdev/Scroll-V)**: Smooth scrolling utility for Windows applications (built with C#).
 
 ## License
 

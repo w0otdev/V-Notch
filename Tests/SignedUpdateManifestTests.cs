@@ -156,33 +156,43 @@ public sealed class SignedUpdateManifestTests
     [Fact]
     public async Task LegacyRelease_IsNotOffered_NewReleasePreservesManifestUrlsInCache()
     {
+        using var key = ECDsa.Create(ECCurve.NamedCurves.nistP256);
+        byte[] payload = JsonSerializer.SerializeToUtf8Bytes(Manifest);
+        byte[] signature = Sign(key, payload);
         foreach (bool signed in new[] { false, true })
         {
-            var names = new List<string> { UpdateService.SetupName, UpdateService.SetupName + ".sha256" };
-            if (signed) names.AddRange([UpdateService.SetupName + SignedUpdateManifest.ManifestSuffix,
-                UpdateService.SetupName + SignedUpdateManifest.SignatureSuffix]);
-            string json = JsonSerializer.Serialize(new
+            const string feed = "<feed xmlns=\"http://www.w3.org/2005/Atom\"><entry><id>tag:github.com,2008:Repository/123/v99.0.0</id><updated>2026-10-31T00:00:00Z</updated><content>notes</content></entry></feed>";
+            using var client = new HttpClient(new Handler(request =>
             {
-                tag_name = "v99.0.0",
-                body = "notes",
-                published_at = DateTime.UtcNow,
-                assets = names.Select(name => new { name, browser_download_url = ReleaseRoot + name })
-            });
-            using var client = new HttpClient(new Handler(request => new(HttpStatusCode.OK)
-            {
-                Content = new StringContent(request.RequestUri!.AbsolutePath.EndsWith("/latest") ? json : "[" + json + "]")
+                string url = request.RequestUri!.AbsoluteUri;
+                if (url.EndsWith("/releases.atom"))
+                    return new(HttpStatusCode.OK) { Content = new StringContent(feed) };
+                if (!signed) return new(HttpStatusCode.NotFound);
+                if (url == ReleaseRoot + UpdateService.SetupName + SignedUpdateManifest.ManifestSuffix)
+                    return new(HttpStatusCode.OK) { Content = new ByteArrayContent(payload) };
+                if (url == ReleaseRoot + UpdateService.SetupName + SignedUpdateManifest.SignatureSuffix)
+                    return new(HttpStatusCode.OK) { Content = new ByteArrayContent(signature) };
+                return new(HttpStatusCode.NotFound);
             }));
-            var service = new UpdateService(client, new UpdateSecurityPolicy());
+            using var service = new UpdateService(client, new UpdateSecurityPolicy(), manifestPublicKey: key.ExportSubjectPublicKeyInfoPem());
             var first = await service.CheckForUpdatesAsync();
             var cached = await service.CheckForUpdatesAsync();
-            Assert.NotNull(first);
-            Assert.NotNull(cached);
-            Assert.Equal(signed, first.IsNewerVersion);
-            Assert.Equal(first.ManifestUrl, cached.ManifestUrl);
-            Assert.Equal(first.ManifestSignatureUrl, cached.ManifestSignatureUrl);
+            if (!signed)
+            {
+                Assert.Null(first);
+                Assert.Null(cached);
+            }
+            else
+            {
+                Assert.NotNull(first);
+                Assert.NotNull(cached);
+                Assert.True(first.IsNewerVersion);
+                Assert.Equal(first.ManifestUrl, cached.ManifestUrl);
+                Assert.Equal(first.ManifestSignatureUrl, cached.ManifestSignatureUrl);
+            }
             var listed = Assert.Single(await service.GetAllReleasesAsync());
-            Assert.Equal(signed, listed.IsNewerVersion);
-            Assert.Equal(first.ManifestUrl, listed.ManifestUrl);
+            Assert.False(listed.IsNewerVersion);
+            Assert.Empty(listed.ManifestUrl);
         }
     }
 

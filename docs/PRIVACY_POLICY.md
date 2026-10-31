@@ -1,10 +1,10 @@
-# Privacy Policy — V-Notch
+# Privacy Policy - V-Notch
 
-**Effective date:** October 24, 2026
+**Effective date:** October 31, 2026
 
-**Previous published version:** October 9, 2026
+**Previous published version:** October 24, 2026
 
-**Scope:** Current source tree as of October 24, 2026; feature availability depends on the installed build.
+**Scope:** Current source tree as of October 31, 2026 (v2.2.1); feature availability depends on the installed build.
 
 **Developer:** w0otdev  
 **Contact:** [github.com/w0otdev/V-Notch/issues](https://github.com/w0otdev/V-Notch/issues)  
@@ -35,13 +35,13 @@ This policy uses the following terms:
 | **Now-playing media** | Track title, artist, album, artwork, playback position, play state (Windows SMTC) | No (except artwork/lyrics/captions lookup — see §4) | No (transient in memory) |
 | **Album artwork lookup** | Track title + artist sent as a search query | Yes — YouTube/Google, SoundCloud, Piped/Invidious | Yes: source mapping may be stored locally (§5.3); image retention depends on component cache |
 | **Synced lyrics** | Track title + artist + duration sent as a query | Yes — lrclib.net, and api.lrcmux.dev as a fallback aggregator | No (transient in memory) |
-| **YouTube subtitles / captions** | Video ID + caption track requests (YoutubeExplode) | Yes — YouTube | No (transient in memory) |
+| **YouTube subtitles / captions** | Video ID + public caption track requests | Yes - YouTube | No (transient in memory) |
 | **Spotify Canvas (opt-in)** | Spotify web session (`sp_dc`), track title + artist | Yes — Spotify, Musixmatch (fallback) | Session encrypted locally with Windows DPAPI |
 | **Weather (opt-in)** | Approximate IP-based location (`ipwho.is`) or manual city name | Yes — `ipwho.is`, Open-Meteo | No (transient in memory) |
-| **Update check & download** | Standard HTTP headers only | Yes — GitHub Releases API | Version info in memory; installer in temp directory on update |
+| **Update check & download** | Standard HTTP headers only | Yes - GitHub Releases API & Atom feed | Version info in memory; installer in temp directory on update |
 | **Spotlight AI (opt-in)** | Submitted messages, recent context, API key, selected model | Yes — selected AI provider (§4.8) | Keys and chat history encrypted locally (§5.6) |
 | **Live translation (opt-in)** | Selected text exposed by UI Automation; clipboard text only on an explicit command | No text upload; optional model download contacts Hugging Face | Model/configuration only; translation cache stays in RAM |
-| **Spotlight search & launcher** | Local app names, local file metadata (Windows Search / Everything), math expressions | No | Recent launch frequency stored locally (max 100 entries, see §5) |
+| **Spotlight search & launcher** | Local app names, local file metadata (native indexer / Windows Search / Everything), math expressions | No | Recent launch frequency stored locally (max 100 entries, see §5) |
 | **Liquid Glass backdrop capture** | Screen pixels directly under the notch area (DXGI / Magnification API) | No | No (processed per-frame on GPU/CPU and discarded immediately) |
 | **System hardware monitor** | CPU usage, RAM usage, GPU utilization (Windows performance counters / DXGI) | No | No (transient in memory) |
 | **Camera preview (opt-in)** | Live camera frames | No | No (never recorded, captured, or saved) |
@@ -51,9 +51,9 @@ This policy uses the following terms:
 | **Bluetooth & battery status** | Connected device name, type, battery level, state | No | No (transient in memory) |
 | **Clipboard history, indicator & peek** | Copied text, HTML/RTF, images, files/folders and source-app metadata | No automatic upload by Clipboard history | Yes — local history at `%LOCALAPPDATA%\V-Notch\Clipboard\` (§3.10, §5.7) |
 | **Privacy indicators** | Whether microphone, camera, or screen recording is active | No | No (transient in memory) |
-| **Clock, Calendar, Timer** | Local system time, countdown timers, stopwatch | No | Timer presets in settings |
+| **Clock, Calendar, Timer & White Noise** | Local system time, countdown timers, stopwatch, synthesized ambient audio | No | Timer presets in settings |
 | **Gestures & mouse input** | Mouse movement/clicks over the notch | No | No |
-| **Smart artwork crop** | On-device YOLO11n object detection (ONNX Runtime) | No | No (runs 100% locally) |
+| **Smart artwork crop** | On-device YOLOX-Nano object detection (ONNX Runtime) | No | No (runs 100% locally) |
 
 ### Service & Storage Overview
 
@@ -73,7 +73,7 @@ Settings and several local caches are stored at `%APPDATA%\V-Notch\`. Encrypted 
 > [!NOTE]
 > **API Key Safety:** User-provided API credentials (OpenAI, Gemini, Claude, DeepSeek, YouTube) are encrypted locally with Windows DPAPI. V-Notch maintains no intermediary servers. Maintainers assume no liability for third-party billing, quota exhaustion, or credentials leaked from user environments or pre-release testing builds. Please configure spending caps on your provider accounts.
 
-Privacy dots use capture reports from Windows and recording signals from Bandicam, OBS Studio, and FFmpeg. See [recording detection coverage and limitations](../RECORDING_DETECTION.md).
+Privacy dots use capture reports from Windows and local recording signals from Bandicam, OBS Studio, and FFmpeg. They provide a status cue and do not detect every capture method.
 
 ---
 
@@ -101,8 +101,8 @@ This inspection happens entirely on your device. The titles and URLs are used tr
 V-Notch features a built-in Spotlight search launcher that lets you find applications, search files, and calculate math expressions:
 
 - **Application search** — Indexes local Start Menu shortcuts and installed Windows apps.
-- **File search** — Queries your local Windows Search Index (via OLE DB) or local voidtools Everything instance (via Everything IPC local socket).
-- **Inline Calculator** — Evaluates arithmetic and algebraic math expressions on-device using MathNet.Numerics.
+- **File search**: Queries the built-in local file indexer, your local Windows Search Index (via OLE DB), or a local voidtools Everything instance (via Everything IPC local socket).
+- **Inline Calculator**: Evaluates arithmetic and algebraic math expressions on-device through the native C++ evaluator.
 - **Launch Ranking** — To provide quick access to frequent apps, V-Notch maintains a local ranking file (`%APPDATA%\V-Notch\spotlight-usage.json`) storing the last launched item ID, launch count, and timestamp (capped at 100 entries).
 
 **Spotlight Search processes app/file queries and calculations locally.** The separate AI mode sends messages you explicitly submit and conversation context as described in §4.8.
@@ -128,7 +128,7 @@ When you drag files onto the File Shelf, V-Notch records each file's path and ba
 
 ### 3.8 System Audio Volume & Audio Mixer
 
-V-Notch uses the Windows Core Audio API (via NAudio) to read the current system volume, monitor individual app audio sessions, and adjust them when you use the notch's volume control or audio mixer. No audio is recorded, intercepted, or captured; only numeric volume levels and session identities of active audio endpoints are read and set.
+V-Notch uses the Windows Core Audio API directly in native code to read the current system volume, monitor individual app audio sessions, and adjust them when you use the notch's volume control or audio mixer. No audio is recorded, intercepted, or captured; only numeric volume levels and session identities of active audio endpoints are read and set.
 
 ### 3.9 Bluetooth Device Status & Battery Levels
 
@@ -148,9 +148,9 @@ Pause capture in the Clipboard tray or disable individual text/image/file captur
 
 Mirroring iOS/macOS behavior, V-Notch can display a small colored dot when your microphone, camera, or screen recording is in use by *any* application. This is a status reflection only — it indicates that a sensor is active, processes that status transiently in memory, and stores or transmits nothing.
 
-### 3.12 Ambient Widgets (Clock, Calendar, Timer & Stopwatch)
+### 3.12 Ambient Widgets (Clock, Calendar, Timer, Stopwatch & White Noise)
 
-V-Notch includes ambient widgets for clock, date, world time, interactive calendar, and a countdown timer / stopwatch. All calculations and timers run entirely locally on your device.
+V-Notch includes ambient widgets for clock, date, world time, interactive calendar, a countdown timer / stopwatch, and an ambient white noise generator. All calculations, timers, and audio synthesis run locally on your device.
 
 ### 3.13 Gestures & Mouse Input
 
@@ -158,7 +158,7 @@ To support swipe and double-tap gestures on the notch (next/previous track, open
 
 ### 3.14 On-Device Smart Thumbnail Cropping (ONNX)
 
-If enabled, V-Notch uses a bundled YOLO11n object-detection model running locally through ONNX Runtime to intelligently crop wide artwork (centering on a face or subject). **All image analysis runs entirely on your device. No image, model input, or detection result is sent anywhere.** This feature requires no network connection.
+If enabled, V-Notch uses a bundled YOLOX-Nano object-detection model running locally through ONNX Runtime to crop wide artwork around a face or subject. **All image analysis runs on your device. No image, model input, or detection result is sent anywhere.** This feature requires no network connection.
 
 ---
 
@@ -168,14 +168,14 @@ V-Notch has no backend server and performs no analytics, telemetry, or user trac
 
 ### 4.1 Application Update Checks & Downloads — GitHub
 
-- **Endpoint:** `https://api.github.com/repos/w0otdev/V-Notch/releases/latest`
+- **Endpoints:** `https://api.github.com/repos/w0otdev/V-Notch/releases/latest`, `https://api.github.com/repos/w0otdev/V-Notch/releases` (when checking pre-releases or release notes), and `https://github.com/w0otdev/V-Notch/releases.atom` (fallback when the REST API is rate-limited).
 - **Why:** To detect whether a newer release of V-Notch is available.
 - **Data sent:** Standard HTTP headers, including `User-Agent: V-Notch-Updater` and a conditional `If-None-Match` (ETag) header for caching. No media metadata, credentials, or local file contents are sent by this feature. As with any HTTPS request, the remote service sees connection information such as your IP address.
 - **Data received:** Latest version tag, release notes, installer download URL, and, when updating, the signed manifest, detached signature, and installer.
 - **Frequency:** Throttled to at most once per 45 seconds; responses are cached in memory and revalidated with ETags.
 - **Security & Integrity:** Starting with version 1.9.2, in-app updates require HTTPS and an ECDSA P-256/SHA-256 signed manifest, verified locally using a public key embedded in the application. The signed version, installer name, size, and SHA-256 hash must match before the installer runs. Missing or invalid signatures and downgrades are rejected. Authenticode is optional unless an additional certificate allowlist is configured; Windows may still show an unknown-publisher or SmartScreen warning. Older clients use their existing verification for the first upgrade to this version.
 - **Verification data:** The manifest and detached signature are downloaded from the same GitHub release assets as the installer and processed in memory. Signature verification does not contact a new service or upload local files, credentials, or device identifiers. Standard connection information, including your IP address and HTTP headers, is visible to GitHub and its download infrastructure.
-- **Your control:** Downloading and installing an update happens **only** when you explicitly choose to. If you start an update, the installer (`V-Notch-Setup.exe`) is downloaded from GitHub Releases to your temporary folder and executed.
+- **Your control:** Downloading and installing an update happens **only** when you explicitly choose to. If you start an update, the matching installer (`V-Notch-Setup.exe` or `V-Notch-Setup-SelfContained.exe`) is downloaded from GitHub Releases to your temporary folder and executed.
 
 ### 4.2 Album Artwork Lookup
 
@@ -204,9 +204,9 @@ V-Notch tries two independent lyrics providers, in order, and stops as soon as o
 
 **Data received (both):** Synced lyric lines, used transiently in memory for display and never written to disk. Music selections and connection IP addresses may be personal data in context and may be observable by the recipient providers.
 
-### 4.4 YouTube Subtitles & Captions — YoutubeExplode
+### 4.4 YouTube Subtitles & Captions
 
-- **Endpoint:** Public YouTube video caption endpoints via YoutubeExplode library.
+- **Endpoint:** Public YouTube video caption endpoints.
 - **Why:** To fetch timed closed captions/subtitles when playing YouTube videos and subtitles are enabled.
 - **Data sent:** YouTube video ID and standard HTTP headers. No Spotify/V-Notch account credential is intended to be sent in this call; the recipient sees connection metadata such as IP address.
 - **Data received:** Timed caption text, used transiently in memory for display.
@@ -286,7 +286,7 @@ Located in the application's program folder, this log records technical applicat
 
 ### 5.5 Optional ONNX Model
 
-If present, the smart-crop model file (`yolo11n.onnx`) is stored locally alongside the app and is used purely for on-device image analysis.
+If present, the smart-crop model file (`yolox_nano.onnx`) is stored locally alongside the app and is used purely for on-device image analysis.
 
 To remove application-managed local data, disconnect Spotify within Settings where available, close V-Notch, and remove `%APPDATA%\V-Notch\`, `%LOCALAPPDATA%\V-Notch\`, any remaining legacy `%LOCALAPPDATA%\VNotch\`, and the installation directory. The local roots include Clipboard history, AI history/recovery copies and translation models. Also check Windows temporary files, WebView/browser caches, backups, and any files submitted to GitHub; removal of these is not guaranteed by deleting the app directory. Deleting these folders permanently discards preferences and saved history.
 

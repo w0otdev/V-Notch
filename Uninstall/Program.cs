@@ -51,14 +51,25 @@ internal static class Program
         string? installDirectory = null;
         var errors = new List<string>();
 
-        TrySilently(StopRunningInstances, errors, Loc.Get("uninstall.action.stopApp"));
+        TrySilently(() =>
+        {
+            installDirectory = ResolveInstallDirectory();
+            InstallDirectoryCleanup.CreateStartInfo(installDirectory, Environment.ProcessId);
+        }, errors, Loc.Get("uninstall.action.removeInstallFolder"));
+        if (errors.Count == 0) TrySilently(StopRunningInstances, errors, Loc.Get("uninstall.action.stopApp"));
+        if (errors.Count > 0)
+        {
+            if (!silent) SetupDialogs.ShowUninstallResult(
+                Loc.Get("uninstall.warningMessage", string.Join("\n  - ", errors)), Loc.Get("uninstall.warningTitle"), hasErrors: true);
+            return 2;
+        }
         TrySilently(RemoveStartupEntry, errors, Loc.Get("uninstall.action.removeStartup"));
         TrySilently(RemoveRegistryKeys, errors, Loc.Get("uninstall.action.removeRegistry"));
         TrySilently(RemoveShortcuts, errors, Loc.Get("uninstall.action.removeShortcuts"));
-        TrySilently(RemoveAppData, errors, Loc.Get("uninstall.action.removeData"));
+        TrySilently(() => RemoveAppData(installDirectory!), errors, Loc.Get("uninstall.action.removeData"));
 
         // Hand final deletion to a helper that waits for this process to exit.
-        TrySilently(() => { installDirectory = ResolveInstallDirectory(); ScheduleInstallDirRemoval(installDirectory); }, errors,
+        TrySilently(() => ScheduleInstallDirRemoval(installDirectory!), errors,
             Loc.Get("uninstall.action.removeInstallFolder"));
 
         if (!silent)
@@ -144,7 +155,7 @@ internal static class Program
 
                 try
                 {
-                    process.Kill(entireProcessTree: true);
+                    AppProcessShutdown.StopAsync(process).GetAwaiter().GetResult();
                 }
                 catch (InvalidOperationException)
                 {
@@ -155,6 +166,11 @@ internal static class Program
                 {
                     // Access denied or the process is already terminating; the wait below decides.
                     Debug.WriteLine($"[Uninstall] Could not kill process {process.Id}: {ex.Message}");
+                }
+                catch (TimeoutException)
+                {
+                    stillRunning.Add(process.Id);
+                    continue;
                 }
 
                 try
@@ -168,6 +184,7 @@ internal static class Program
                 catch (Exception ex) when (ex is InvalidOperationException or Win32Exception)
                 {
                     Debug.WriteLine($"[Uninstall] Could not wait for process {process.Id}: {ex.Message}");
+                    stillRunning.Add(process.Id);
                 }
             }
         }
@@ -221,31 +238,28 @@ internal static class Program
             Environment.GetFolderPath(Environment.SpecialFolder.Programs),
             AppName);
 
-        if (Directory.Exists(startMenuDirectory))
-        {
-            Directory.Delete(startMenuDirectory, recursive: true);
-        }
+        SafeFileDeletion.DeleteShortcutDirectory(startMenuDirectory);
     }
 
-    private static void RemoveAppData()
+    private static void RemoveAppData(string installDirectory)
     {
         var appDataFolder = Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
             AppName);
-        DeleteDirectoryIfExists(appDataFolder);
+        if (!SafeFileDeletion.PathsOverlap(appDataFolder, installDirectory)) DeleteDirectoryIfExists(appDataFolder);
 
         var localAppDataFolder = Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
             AppName);
-        DeleteDirectoryIfExists(localAppDataFolder);
+        if (!SafeFileDeletion.PathsOverlap(localAppDataFolder, installDirectory)) DeleteDirectoryIfExists(localAppDataFolder);
 
         // Builds before the app-data migration stored chats/models under this name.
-        DeleteDirectoryIfExists(Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "VNotch"));
+        string legacyData = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "VNotch");
+        if (!SafeFileDeletion.PathsOverlap(legacyData, installDirectory)) DeleteDirectoryIfExists(legacyData);
 
         // Leftover update installer in the temp folder.
         DeleteFileIfExists(Path.Combine(Path.GetTempPath(), "V-Notch-Setup.exe"));
-        DeleteDirectoryIfExists(Path.Combine(Path.GetTempPath(), AppName));
+        // Temp/V-Notch can contain recovery copies and user files; never wipe the shared root.
     }
 
     private static void ScheduleInstallDirRemoval(string installDirectory)
@@ -272,7 +286,7 @@ internal static class Program
         {
             if (File.Exists(path))
             {
-                File.Delete(path);
+                SafeFileDeletion.DeleteFile(path);
             }
         }, path);
     }
@@ -283,7 +297,7 @@ internal static class Program
         {
             if (Directory.Exists(path))
             {
-                Directory.Delete(path, recursive: true);
+                SafeFileDeletion.DeleteDirectory(path);
             }
         }, path);
     }

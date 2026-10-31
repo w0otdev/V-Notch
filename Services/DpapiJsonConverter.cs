@@ -24,7 +24,7 @@ public sealed class DpapiJsonConverter : JsonConverter<string>
             catch (Exception ex)
             {
                 RuntimeLog.Warn("DPAPI-CONVERTER", $"Failed to decrypt stored value: {ex.Message}");
-                return "";
+                throw new System.Security.Cryptography.CryptographicException("A stored credential could not be decrypted. Existing settings must be preserved.", ex);
             }
         }
 

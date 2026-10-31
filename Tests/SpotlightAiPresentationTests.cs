@@ -55,6 +55,7 @@ public sealed class SpotlightAiPresentationTests
         Assert.Equal(Visibility.Collapsed, window.AiStopButton.Visibility);
         await WpfFrameWaiter.UntilAsync(() => window.AiUsageRow.Visibility == Visibility.Visible, "stream usage published", ct);
         var store = new SpotlightChatStore(System.IO.Path.Combine(fixture.DirectoryPath, "chats.enc"));
+        await window.FlushPersistenceAsync();
         Assert.Equal(history, store.Load().Single().Messages);
         string originalId = Field<string>(window, "_chatId");
         Invoke(window, "CreateNewAiChat");
@@ -305,6 +306,7 @@ public sealed class SpotlightAiPresentationTests
             Descendants<RichTextBox>(window.AiTranscript).Single().Document.ContentStart,
             Descendants<RichTextBox>(window.AiTranscript).Single().Document.ContentEnd).Text);
         Assert.Null(Field<object?>(window, "_aiRequest"));
+        await window.FlushPersistenceAsync();
         Assert.Equal(history, new SpotlightChatStore(System.IO.Path.Combine(fixture.DirectoryPath, "chats.enc")).Load().Single().Messages);
     });
 

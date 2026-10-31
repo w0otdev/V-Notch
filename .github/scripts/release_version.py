@@ -4,6 +4,7 @@ import json
 import os
 from pathlib import Path
 import re
+import sys
 from urllib.error import HTTPError
 from urllib.request import Request, urlopen
 import xml.etree.ElementTree as ET
@@ -80,6 +81,21 @@ def release_identity(project, branch, run_number, run_attempt, run_id, sha, late
     }
 
 
+def changelog_notes(changelog, version):
+    core = version.split("-", 1)[0]
+    numeric_version(core)
+    text = Path(changelog).read_text(encoding="utf-8")
+    match = re.search(r"(?ms)^## \[" + re.escape(core) + r"\][^\n]*\n(.*?)(?=^## |\Z)", text)
+    if match is None:
+        if "-" in version:
+            return ""  # A future beta may not have a release entry yet.
+        raise ValueError(f"Missing changelog entry for stable release {core}.")
+    notes = match.group(1).strip()
+    if not notes:
+        raise ValueError(f"Empty changelog entry for release {core}.")
+    return notes + "\n"
+
+
 def main():
     branch = os.environ["RELEASE_BRANCH"]
     stable = latest_stable_version(os.environ["GH_REPO"], os.environ["GH_TOKEN"]) if branch in ("main", "master") else None
@@ -94,4 +110,7 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    if len(sys.argv) == 3 and sys.argv[1] == "--notes":
+        print(changelog_notes("CHANGELOG.md", sys.argv[2]), end="")
+    else:
+        main()

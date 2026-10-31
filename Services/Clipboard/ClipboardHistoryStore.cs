@@ -76,8 +76,6 @@ public sealed partial class ClipboardHistoryStore : IDisposable, IAsyncDisposabl
 
     private static readonly Comparison<ClipboardEntry> s_copiedUtcDescComparison =
         static (a, b) => b.CopiedUtc.CompareTo(a.CopiedUtc);
-    private static readonly Comparison<string> s_pathLengthDescComparison =
-        static (a, b) => b.Length.CompareTo(a.Length);
 
     public const long ApprovalThreshold = 50L * 1024 * 1024;
     public const int MaxImportItems = 512;
@@ -99,6 +97,7 @@ public sealed partial class ClipboardHistoryStore : IDisposable, IAsyncDisposabl
     private bool _initialized;
     private readonly Func<long> _availableSpace;
     private readonly Dictionary<string, ClipboardPersonalExport> _personalExports = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, IDisposable> _exportLeases = new(StringComparer.OrdinalIgnoreCase);
     public bool AutoDeleteSensitive { get; set; }
     public event Action? Changed;
     public bool IsPersonalUnlocked => _personalUnlocked;
@@ -114,6 +113,21 @@ public sealed partial class ClipboardHistoryStore : IDisposable, IAsyncDisposabl
     }
 
     internal ClipboardHistoryStore(string root, Func<long> availableSpace) : this(root) => _availableSpace = availableSpace;
+
+    internal Task KeepClipboardExportsAsync(IEnumerable<string> paths) => Run(() =>
+    {
+        string publicRoot = Path.Combine(_root, "exports", "public");
+        foreach (string path in paths)
+        {
+            string? directory;
+            try { directory = Path.GetDirectoryName(Path.GetFullPath(path)); }
+            catch (Exception ex) when (ex is ArgumentException or NotSupportedException) { continue; }
+            if (directory != null && string.Equals(Path.GetDirectoryName(directory), publicRoot, StringComparison.OrdinalIgnoreCase) &&
+                Guid.TryParseExact(Path.GetFileName(directory), "N", out _) && Directory.Exists(directory) && !_exportLeases.ContainsKey(directory))
+                _exportLeases.Add(directory, AppFileCleanupService.Protect(directory));
+        }
+        return true;
+    });
 
     public Task InitializeAsync() => Run(() =>
     {
@@ -347,10 +361,11 @@ public sealed partial class ClipboardHistoryStore : IDisposable, IAsyncDisposabl
                     string name = ClipboardImportPaths.DisplayName(path);
                     bool directory = (ClipboardImportPaths.ValidateEntry(path) & FileAttributes.Directory) != 0;
                     string stored = $"{files.Count}." + (directory ? "zip" : "bin");
-                    AppendUtf8String(fileHash, name, includeLengthPrefix: false);
+                    AppendUtf8String(fileHash, (directory ? "directory:" : "file:") + name, includeLengthPrefix: true);
+                    using var attachmentHash = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
                     long WriteCopy(Stream output)
                     {
-                        using var hashing = new ClipboardHashingStream(output, fileHash);
+                        using var hashing = new ClipboardHashingStream(output, attachmentHash);
                         if (directory) copiedSize = checked(copiedSize + CopyDirectory(path, hashing, ref copiedItems));
                         else
                         {
@@ -368,6 +383,7 @@ public sealed partial class ClipboardHistoryStore : IDisposable, IAsyncDisposabl
                         WriteCopy(output);
                     }
                     File.SetAttributes(storedPath, FileAttributes.Normal);
+                    fileHash.AppendData(attachmentHash.GetHashAndReset());
                     files.Add(new ClipboardFile(name, stored, directory));
                     successfulPaths.Add(path);
                 }
@@ -376,7 +392,7 @@ public sealed partial class ClipboardHistoryStore : IDisposable, IAsyncDisposabl
                     RuntimeLog.Warn("CLIPBOARD", $"Could not copy file '{path}': {ex.Message}");
                     failedCount++;
                     copiedSize = previousSize;
-                    if (storedPath != null) File.Delete(storedPath);
+                    if (storedPath != null) SafeFileDeletion.DeleteFile(storedPath);
                 }
                 progress?.Report((double)(i + 1) / capture.FilePaths.Length);
             }
@@ -432,22 +448,25 @@ public sealed partial class ClipboardHistoryStore : IDisposable, IAsyncDisposabl
             if (kind == ClipboardKind.Color && ClipboardClassifier.TryExtractHexColor(capture.Text, out string hex))
                 preview = hex;
             // A failed copy may already have fed bytes into the streaming hash.
-            // Replay only committed attachments, preserving the existing fingerprint format.
+            // Replay only committed attachments using the framed v2 format.
             if (failedCount > 0)
             {
                 fileHash.GetHashAndReset();
                 AppendCaptureFingerprint(fileHash, capture);
                 foreach (var file in files)
                 {
-                    AppendUtf8String(fileHash, file.Name, includeLengthPrefix: false);
+                    AppendUtf8String(fileHash, (file.IsDirectory ? "directory:" : "file:") + file.Name, includeLengthPrefix: true);
                     using var input = File.OpenRead(Path.Combine(staging, file.StoredName + (personal ? ".enc" : "")));
-                    using var hashing = new ClipboardHashingStream(Stream.Null, fileHash);
+                    using var attachmentHash = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
+                    using var hashing = new ClipboardHashingStream(Stream.Null, attachmentHash);
                     if (personal) _vault.TransformFile(input, hashing, encrypt: false);
                     else input.CopyTo(hashing);
+                    fileHash.AppendData(attachmentHash.GetHashAndReset());
                 }
             }
+            // shortcut: legacy attachment hashes stay unchanged, rehash stored files if cross-version deduplication is required.
             string fingerprint = files.Count == 0 ? Fingerprint(capture)
-                : Convert.ToHexString(fileHash.GetHashAndReset());
+                : "files-v2:" + Convert.ToHexString(fileHash.GetHashAndReset());
             // Deduplicate against unlocked Personal too, without publishing its contents.
             var duplicate = FindDuplicate(fingerprint, personal);
             if (duplicate == null && kind == ClipboardKind.Image && !personal)
@@ -702,7 +721,7 @@ public sealed partial class ClipboardHistoryStore : IDisposable, IAsyncDisposabl
                     { using var input = File.OpenRead(source); _vault.TransformFile(input, output, false); });
                 }
                 else File.Copy(source, materialized);
-                if (file.IsDirectory && personalExport == null) { ZipFile.ExtractToDirectory(materialized, destination); File.Delete(materialized); }
+                if (file.IsDirectory && personalExport == null) { ZipFile.ExtractToDirectory(materialized, destination); SafeFileDeletion.DeleteFile(materialized); }
                 paths.Add(destination);
             }
             if (entry.Kind == ClipboardKind.Image && content.Files.Length == 0)
@@ -723,6 +742,7 @@ public sealed partial class ClipboardHistoryStore : IDisposable, IAsyncDisposabl
                 EnsurePersonalUnlocked();
                 _personalExports.Add(export, personalExport);
             }
+            _exportLeases.Add(export, AppFileCleanupService.Protect(export));
             return paths.ToArray();
         }
         catch { personalExport?.Dispose(); TryDeleteDirectory(export); throw; }
@@ -753,7 +773,7 @@ public sealed partial class ClipboardHistoryStore : IDisposable, IAsyncDisposabl
             roots.Add(Path.GetDirectoryName(p));
 
         var toRelease = new List<string>();
-        foreach (string key in _personalExports.Keys)
+        foreach (string key in _exportLeases.Keys)
         {
             if (roots.Contains(key))
                 toRelease.Add(key);
@@ -765,8 +785,10 @@ public sealed partial class ClipboardHistoryStore : IDisposable, IAsyncDisposabl
 
     private void ReleasePersonalExport(string root)
     {
-        if (_personalExports.Remove(root, out var lease)) lease.Dispose();
-        TryDeleteDirectory(root);
+        bool personal = _personalExports.Remove(root, out var lease);
+        lease?.Dispose();
+        if (_exportLeases.Remove(root, out var cleanupLease)) cleanupLease.Dispose();
+        if (personal) TryDeleteDirectory(root);
     }
 
     public Task UpdateAsync(Guid id, bool? pinned = null, string[]? groups = null, bool? archived = null) => Run(() =>
@@ -895,12 +917,12 @@ public sealed partial class ClipboardHistoryStore : IDisposable, IAsyncDisposabl
                 if (hadDestination) Directory.Move(previous, destination);
                 throw;
             }
-            try { Directory.Delete(EntryDirectory(entry), true); }
+            try { SafeFileDeletion.DeleteDirectory(EntryDirectory(entry)); }
             catch
             {
                 // Keep the encrypted copy until rollback restores every missing source file.
                 RestoreSourceAfterFailedMove(entry, moved, content);
-                Directory.Delete(destination, true);
+                SafeFileDeletion.DeleteDirectory(destination);
                 if (hadDestination) Directory.Move(previous, destination);
                 throw;
             }
@@ -909,7 +931,7 @@ public sealed partial class ClipboardHistoryStore : IDisposable, IAsyncDisposabl
             Changed?.Invoke();
             return true;
         }
-        finally { if (Directory.Exists(staging)) Directory.Delete(staging, true); }
+        finally { if (Directory.Exists(staging)) SafeFileDeletion.DeleteDirectory(staging); }
     });
 
     private void RestoreSourceAfterFailedMove(ClipboardEntry original, ClipboardEntry moved, ClipboardContent content)
@@ -953,8 +975,13 @@ public sealed partial class ClipboardHistoryStore : IDisposable, IAsyncDisposabl
                 foreach (string directory in Directory.EnumerateDirectories(Path.Combine(_root, "personal")))
                 {
                     if (!Guid.TryParseExact(Path.GetFileName(directory), "N", out var id)) continue;
-                    var entry = ReadDocument<ClipboardEntry>(Path.Combine(directory, "entry.json"), true);
-                    if (entry.Id == id && entry.IsPersonal) loaded.Add(RestoreFileMetadata(entry));
+                    try
+                    {
+                        var entry = ReadDocument<ClipboardEntry>(Path.Combine(directory, "entry.json"), true);
+                        if (entry.Id == id && entry.IsPersonal) loaded.Add(RestoreFileMetadata(entry));
+                    }
+                    catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or JsonException or CryptographicException)
+                    { RuntimeLog.Warn("CLIPBOARD", "An unreadable Personal item was preserved; other items remain available."); }
                 }
                 RemovePersonalEntriesCore();
                 for (int i = 0; i < loaded.Count; i++) PutEntry(loaded[i]);
@@ -978,7 +1005,7 @@ public sealed partial class ClipboardHistoryStore : IDisposable, IAsyncDisposabl
     {
         LockPersonalCore();
         string directory = Path.Combine(_root, "personal");
-        if (Directory.Exists(directory)) Directory.Delete(directory, true);
+        SafeFileDeletion.DeleteDirectory(directory);
         _vault.Reset();
         Directory.CreateDirectory(directory);
         Changed?.Invoke();
@@ -1022,7 +1049,7 @@ public sealed partial class ClipboardHistoryStore : IDisposable, IAsyncDisposabl
     public Task DeleteAsync(Guid id) => Run(() =>
     {
         var entry = Find(id);
-        Directory.Delete(EntryDirectory(entry), true);
+        SafeFileDeletion.DeleteDirectory(EntryDirectory(entry));
         RemoveEntry(id);
         Changed?.Invoke();
         return true;
@@ -1040,7 +1067,7 @@ public sealed partial class ClipboardHistoryStore : IDisposable, IAsyncDisposabl
                 foreach (var id in selectedIds)
                 {
                     if (!_entries.TryGetValue(id, out var entry) || entry.IsPersonal && !IsPersonalUnlocked) continue;
-                    Directory.Delete(EntryDirectory(entry), true);
+                    SafeFileDeletion.DeleteDirectory(EntryDirectory(entry));
                     RemoveEntry(id);
                     changed = true;
                 }
@@ -1073,7 +1100,7 @@ public sealed partial class ClipboardHistoryStore : IDisposable, IAsyncDisposabl
                 {
                     Guid id = confirmedIds[i];
                     if (!_entries.TryGetValue(id, out var entry) || entry.IsPinned || entry.IsPersonal || entry.IsArchived) continue;
-                    Directory.Delete(EntryDirectory(entry), true);
+                    SafeFileDeletion.DeleteDirectory(EntryDirectory(entry));
                     RemoveEntry(id);
                     changed = true;
                 }
@@ -1129,7 +1156,7 @@ public sealed partial class ClipboardHistoryStore : IDisposable, IAsyncDisposabl
             bool personalDeleted = TryDeleteDirectory(Path.Combine(_root, "personal", id.ToString("N")));
             if (publicDeleted && personalDeleted)
             {
-                File.Delete(marker);
+                SafeFileDeletion.DeleteFile(marker);
                 RemoveEntry(id);
                 changed = true;
             }
@@ -1141,13 +1168,22 @@ public sealed partial class ClipboardHistoryStore : IDisposable, IAsyncDisposabl
     {
         string root = Path.Combine(_root, "exports");
         if (!Directory.Exists(root)) return;
-        string[] dirs = Directory.GetDirectories(root, "*", SearchOption.AllDirectories);
-        if (dirs.Length == 0) return;
-        Array.Sort(dirs, s_pathLengthDescComparison);
+        SafeFileDeletion.ValidatePath(root);
+        string[] dirs = new[] { "public", "personal" }
+            .Select(category => Path.Combine(root, category)).Where(Directory.Exists)
+            .SelectMany(category =>
+            {
+                SafeFileDeletion.ValidatePath(category);
+                return Directory.GetDirectories(category);
+            })
+            .Where(directory => Guid.TryParseExact(Path.GetFileName(directory), "N", out _)).ToArray();
         DateTime cutoff = DateTime.UtcNow.AddHours(-1);
         for (int i = 0; i < dirs.Length; i++)
         {
             string directory = dirs[i];
+            if (_exportLeases.Keys.Any(active => directory.Equals(active, StringComparison.OrdinalIgnoreCase) ||
+                active.StartsWith(directory + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase) ||
+                directory.StartsWith(active + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase))) continue;
             if (Directory.GetLastWriteTimeUtc(directory) < cutoff)
                 TryDeleteDirectory(directory);
         }
@@ -1157,7 +1193,7 @@ public sealed partial class ClipboardHistoryStore : IDisposable, IAsyncDisposabl
     {
         try
         {
-            if (Directory.Exists(path)) Directory.Delete(path, true);
+            SafeFileDeletion.DeleteDirectory(path);
             return true;
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
@@ -1349,7 +1385,7 @@ public sealed partial class ClipboardHistoryStore : IDisposable, IAsyncDisposabl
         }
         catch (Exception ex) when (ex is IOException or NotSupportedException or InvalidOperationException or ArgumentException)
         {
-            File.Delete(Path.Combine(directory, "image.png" + (personal ? ".enc" : "")));
+            SafeFileDeletion.DeleteFile(Path.Combine(directory, "image.png" + (personal ? ".enc" : "")));
             return false;
         }
         finally { if (decrypted != null) CryptographicOperations.ZeroMemory(decrypted.GetBuffer()); }
@@ -1613,5 +1649,7 @@ public sealed partial class ClipboardHistoryStore : IDisposable, IAsyncDisposabl
         LockPersonalCore();
         _searchText.Clear();
         _vault.Dispose();
+        foreach (var lease in _exportLeases.Values) lease.Dispose();
+        _exportLeases.Clear();
     }
 }

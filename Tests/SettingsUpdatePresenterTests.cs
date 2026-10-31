@@ -44,6 +44,19 @@ public sealed class SettingsUpdatePresenterTests
         Assert.Equal(0, service.CheckCount);
     });
 
+    [Fact]
+    public void ANewerPublishedVersionNeverShowsUpToDateWhenUpdateAssetsAreUnavailable() => SharedStaTestRunner.RunAsync(async () =>
+    {
+        var service = new PendingUpdateService();
+        var refs = new SettingsUpdateViewRefs(new Window(), new TextBlock(), new Button(), new Button());
+        using var presenter = new SettingsUpdatePresenter(service, refs, () => true);
+        var check = presenter.CheckForUpdatesAsync();
+        service.Result.SetResult(new() { Version = "99.0.0", IsNewerVersion = false });
+        await check;
+        Assert.Equal(Loc.Get("settings.updateAvailable", "99.0.0"), refs.Status.Text);
+        Assert.Equal(Visibility.Collapsed, refs.Download.Visibility);
+    });
+
     private sealed class PendingUpdateService : IUpdateService
     {
         public int CheckCount { get; private set; }

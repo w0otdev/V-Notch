@@ -44,7 +44,8 @@ public sealed class PerformanceAuditRegressionTests
         using var folder = new TempFolder();
         string path = Path.Combine(folder.Path, "settings.json");
         await File.WriteAllTextAsync(path, JsonSerializer.Serialize(new NotchSettings { SettingsVersion = SettingsMigrator.CurrentVersion }));
-        for (int i = 0; i < 24; i++) await File.WriteAllTextAsync(Path.Combine(folder.Path, $"settings.bak-{i:D3}.json"), "{}");
+        for (int i = 0; i < 24; i++) await File.WriteAllTextAsync(Path.Combine(folder.Path,
+            $"settings.bak-{new DateTime(2026, 1, 1).AddMilliseconds(i):yyyyMMdd-HHmmss-fff}.json"), "{}");
         await using var service = new SettingsService(path, _ => { });
         _ = service.Load();
         Assert.InRange(Directory.GetFiles(folder.Path, "settings.bak-*.json").Length, 1, 10);
@@ -137,26 +138,23 @@ public sealed class PerformanceAuditRegressionTests
                 Assert.Equal("\"release-one\"", request.Headers.IfNoneMatch.Single().Tag);
                 return new(HttpStatusCode.NotModified);
             }
-            const string assetRoot = "https://github.com/w0otdev/V-Notch/releases/download/v99.0.0/";
-            var assets = new[] { "V-Notch-Setup.exe", "V-Notch-Setup.exe.manifest.json", "V-Notch-Setup.exe.manifest.sig" }
-                .Select(name => new { name, browser_download_url = assetRoot + name });
             var response = new HttpResponseMessage(HttpStatusCode.OK)
             {
-                Content = new StringContent(JsonSerializer.Serialize(new { tag_name = "v99.0.0", body = "notes", published_at = "2026-10-04T00:00:00Z", assets }))
+                Content = new StringContent("<feed xmlns=\"http://www.w3.org/2005/Atom\"><entry><id>tag:github.com,2008:Repository/123/v1.0.0</id><updated>2026-10-04T00:00:00Z</updated><content>notes</content></entry></feed>")
             };
             response.Headers.ETag = new EntityTagHeaderValue("\"release-one\"");
             return response;
         }));
         using (var first = new UpdateService(client, new UpdateSecurityPolicy(), cachePath: path))
-            Assert.Equal("99.0.0", (await first.CheckForUpdatesAsync())?.Version);
+            Assert.Equal("1.0.0", (await first.CheckForUpdatesAsync())?.Version);
         using (var restarted = new UpdateService(client, new UpdateSecurityPolicy(), cachePath: path))
-            Assert.Equal("99.0.0", (await restarted.CheckForUpdatesAsync())?.Version);
+            Assert.Equal("1.0.0", (await restarted.CheckForUpdatesAsync())?.Version);
         Assert.Equal(1, requests);
         var cache = System.Text.Json.Nodes.JsonNode.Parse(await File.ReadAllTextAsync(path))!;
         cache["LastCheckUtc"] = DateTime.UtcNow.AddHours(-2);
         await File.WriteAllTextAsync(path, cache.ToJsonString());
         using var expired = new UpdateService(client, new UpdateSecurityPolicy(), cachePath: path);
-        Assert.Equal("99.0.0", (await expired.CheckForUpdatesAsync())?.Version);
+        Assert.Equal("1.0.0", (await expired.CheckForUpdatesAsync())?.Version);
         Assert.Equal(2, requests);
     }
 
@@ -165,10 +163,15 @@ public sealed class PerformanceAuditRegressionTests
     {
         using var folder = new TempFolder();
         string path = Path.Combine(folder.Path, "update-cache.json");
-        int requests = 0;
-        using var client = new HttpClient(new Handler(_ =>
+        int apiRequests = 0, feedRequests = 0;
+        using var client = new HttpClient(new Handler(request =>
         {
-            requests++;
+            if (request.RequestUri!.Host == "api.github.com") apiRequests++;
+            else
+            {
+                Assert.Equal("/w0otdev/V-Notch/releases.atom", request.RequestUri.AbsolutePath);
+                feedRequests++;
+            }
             var response = new HttpResponseMessage(HttpStatusCode.Forbidden);
             response.Headers.TryAddWithoutValidation("X-RateLimit-Reset", DateTimeOffset.UtcNow.AddMinutes(15).ToUnixTimeSeconds().ToString());
             return response;
@@ -178,7 +181,8 @@ public sealed class PerformanceAuditRegressionTests
         using var restarted = new UpdateService(client, new UpdateSecurityPolicy(), cachePath: path);
         Assert.Null(await restarted.CheckForUpdatesAsync());
         Assert.Null(await restarted.CheckForUpdatesAsync(includePrereleases: true));
-        Assert.Equal(1, requests);
+        Assert.Equal(0, apiRequests);
+        Assert.Equal(1, feedRequests);
     }
 
     [Fact]

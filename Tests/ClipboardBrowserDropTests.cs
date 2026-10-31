@@ -28,7 +28,7 @@ public sealed class ClipboardBrowserDropTests
     {
         var data = new DataObject();
         data.SetData(DataFormats.Bitmap, BitmapSource.Create(1, 1, 96, 96, PixelFormats.Bgra32, null, new byte[] { 0, 0, 255, 255 }, 4));
-        byte[] png = ClipboardDropReader.Read(data)!.Capture.ImagePng!;
+        byte[] png = (await ClipboardDropReader.ResolveAsync(ClipboardDropReader.Read(data)!)).ImagePng!;
         using var listener = new System.Net.Sockets.TcpListener(System.Net.IPAddress.Loopback, 0);
         listener.Start();
         using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
@@ -45,7 +45,7 @@ public sealed class ClipboardBrowserDropTests
         var address = new Uri($"http://127.0.0.1:{((System.Net.IPEndPoint)listener.LocalEndpoint).Port}/image");
         var privacy = new NetworkPrivacy();
         privacy.Apply(new NotchSettings { EnableLocalOnlyMode = false, EnableOnlineArtworkLookup = true });
-        using var client = ClipboardDropReader.CreateClient(privacy: privacy);
+        using var client = ClipboardDropReader.CreateClient(new System.Net.Http.SocketsHttpHandler { AllowAutoRedirect = false }, privacy);
         var capture = await ClipboardDropReader.ResolveAsync(new(new ClipboardCapture(), address), timeout.Token, client);
         await serve;
         Assert.Equal(ClipboardKind.Image, ClipboardClassifier.Detect(capture));
@@ -95,9 +95,10 @@ public sealed class ClipboardBrowserDropTests
         data.SetData(DataFormats.Bitmap, bitmap);
         var direct = ClipboardDropReader.Read(data)!;
         Assert.Equal(ClipboardKind.Image, direct.Kind);
-        Assert.NotNull(direct.Capture.ImagePng);
+        Assert.NotNull(direct.Bitmap);
+        var directCapture = await ClipboardDropReader.ResolveAsync(direct);
         var html = new DataObject();
-        html.SetData(DataFormats.Html, "<img src=\"data:image/png;base64," + Convert.ToBase64String(direct.Capture.ImagePng) + "\">");
+        html.SetData(DataFormats.Html, "<img src=\"data:image/png;base64," + Convert.ToBase64String(directCapture.ImagePng!) + "\">");
         var capture = await ClipboardDropReader.ResolveAsync(ClipboardDropReader.Read(html)!);
         using var stream = new MemoryStream(capture.ImagePng!);
         var decoder = BitmapDecoder.Create(stream, BitmapCreateOptions.None, BitmapCacheOption.OnLoad);

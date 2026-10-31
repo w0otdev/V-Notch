@@ -142,6 +142,7 @@ internal sealed partial class SpotlightAiService
         using var reader = new StreamReader(stream);
         var data = new StringBuilder();
         bool received = false;
+        bool completed = false;
         int total = 0;
         while (true)
         {
@@ -152,13 +153,16 @@ internal sealed partial class SpotlightAiService
                 {
                     string payload = data.ToString();
                     data.Clear();
-                    if (payload == "[DONE]") break;
+                    if (payload == "[DONE]") { completed = true; break; }
                     JsonDocument json;
                     try { json = JsonDocument.Parse(payload); }
                     catch (JsonException) { throw new SpotlightAiException("spotlight.ai.emptyError"); }
                     using (json)
                     {
                         var root = json.RootElement;
+                        if (settings.SpotlightAiProvider == "Gemini" &&
+                            root.TryGetProperty("candidates", out var finishedCandidates) && finishedCandidates.ValueKind == JsonValueKind.Array)
+                            completed |= finishedCandidates.EnumerateArray().Any(c => c.TryGetProperty("finishReason", out var reason) && reason.GetString() == "STOP");
                         usage = usage.Read(root, settings.SpotlightAiProvider);
                         onUsage?.Invoke(usage);
                         if (root.TryGetProperty("error", out var error))
@@ -178,7 +182,7 @@ internal sealed partial class SpotlightAiService
                             yield return delta;
                         }
                         if (settings.SpotlightAiProvider == "Claude" &&
-                            root.TryGetProperty("type", out var eventType) && eventType.GetString() == "message_stop") break;
+                            root.TryGetProperty("type", out var eventType) && eventType.GetString() == "message_stop") { completed = true; break; }
                     }
                 }
                 if (line == null) break;
@@ -191,6 +195,7 @@ internal sealed partial class SpotlightAiService
             }
         }
         if (!received) throw new SpotlightAiException("spotlight.ai.emptyError");
+        if (!completed) throw new SpotlightAiException("spotlight.ai.networkError");
     }
 
     private async Task<HttpResponseMessage> OpenStreamAsync(NotchSettings settings,

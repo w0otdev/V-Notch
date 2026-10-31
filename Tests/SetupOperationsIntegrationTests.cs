@@ -11,6 +11,45 @@ namespace VNotch.Tests;
 public sealed class SetupOperationsIntegrationTests
 {
     [Fact]
+    public async Task HiddenAppGetsTimeToFlushBeforeInstallerOrUninstallerStopsIt()
+    {
+        using var fixture = new Fixture();
+        string ready = Path.Combine(fixture.Root, "ready.txt");
+        string flushed = Path.Combine(fixture.Root, "flushed.txt");
+        string script = Path.Combine(fixture.Root, "hidden-app.ps1");
+        File.WriteAllText(script, """
+            Add-Type -AssemblyName System.Windows.Forms
+            $form = New-Object System.Windows.Forms.Form
+            $null = $form.Handle
+            $form.Add_FormClosed({
+                [IO.File]::WriteAllText($env:VNOTCH_FLUSHED, 'pending user data saved')
+                [System.Windows.Forms.Application]::ExitThread()
+            })
+            [IO.File]::WriteAllText($env:VNOTCH_READY, 'ready')
+            [System.Windows.Forms.Application]::Run()
+            """);
+        var start = new ProcessStartInfo(Path.Combine(Environment.SystemDirectory, "WindowsPowerShell", "v1.0", "powershell.exe"))
+        { UseShellExecute = false, CreateNoWindow = true, WindowStyle = ProcessWindowStyle.Hidden };
+        foreach (string argument in new[] { "-NoProfile", "-NonInteractive", "-STA", "-File", script }) start.ArgumentList.Add(argument);
+        start.Environment["VNOTCH_READY"] = ready;
+        start.Environment["VNOTCH_FLUSHED"] = flushed;
+        using var process = Process.Start(start)!;
+        try
+        {
+            using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(20));
+            while (!File.Exists(ready)) await Task.Delay(25, timeout.Token);
+            Assert.Equal(IntPtr.Zero, process.MainWindowHandle);
+            await AppProcessShutdown.StopAsync(process);
+            Assert.Equal("pending user data saved", File.ReadAllText(flushed));
+        }
+        finally
+        {
+            if (!process.HasExited) process.Kill();
+            await process.WaitForExitAsync();
+        }
+    }
+
+    [Fact]
     public async Task StoppingTheOldAppPreservesItsSetupChildProcess()
     {
         using var fixture = new Fixture();
@@ -20,12 +59,17 @@ public sealed class SetupOperationsIntegrationTests
         File.WriteAllText(scriptPath, """
             param($PidPath)
             $child = Start-Process -FilePath $PSHOME\powershell.exe -ArgumentList '-NoProfile','-Command','Start-Sleep -Seconds 60' -WindowStyle Hidden -PassThru
+            Add-Type -AssemblyName System.Windows.Forms
+            $form = New-Object System.Windows.Forms.Form
+            $null = $form.Handle
+            $form.Add_FormClosed({ [System.Windows.Forms.Application]::ExitThread() })
             [IO.File]::WriteAllText("$PidPath.tmp", [string]$child.Id)
             [IO.File]::Move("$PidPath.tmp", $PidPath)
-            Start-Sleep -Seconds 60
+            [System.Windows.Forms.Application]::Run()
             """);
         var start = new ProcessStartInfo(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.System),
-            "WindowsPowerShell", "v1.0", "powershell.exe")) { UseShellExecute = false, CreateNoWindow = true };
+            "WindowsPowerShell", "v1.0", "powershell.exe"))
+        { UseShellExecute = false, CreateNoWindow = true };
         foreach (string argument in new[] { "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", scriptPath, childPidPath })
             start.ArgumentList.Add(argument);
         using var parent = Process.Start(start)!;
@@ -48,6 +92,25 @@ public sealed class SetupOperationsIntegrationTests
                 child.Dispose();
             }
             await parent.WaitForExitAsync();
+        }
+    }
+
+    [Fact]
+    public async Task UnresponsiveAppIsNeverForceKilledBySetup()
+    {
+        var start = new ProcessStartInfo(Path.Combine(Environment.SystemDirectory, "WindowsPowerShell", "v1.0", "powershell.exe"))
+        { UseShellExecute = false, CreateNoWindow = true, WindowStyle = ProcessWindowStyle.Hidden };
+        foreach (string argument in new[] { "-NoProfile", "-NonInteractive", "-Command", "Start-Sleep -Seconds 60" }) start.ArgumentList.Add(argument);
+        using var process = Process.Start(start)!;
+        try
+        {
+            await Assert.ThrowsAsync<TimeoutException>(() => AppProcessShutdown.StopAsync(process));
+            Assert.False(process.HasExited);
+        }
+        finally
+        {
+            if (!process.HasExited) process.Kill();
+            await process.WaitForExitAsync();
         }
     }
 

@@ -1039,16 +1039,17 @@ public partial class SettingsWindow : Window
         {
             var appDataPath = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
             string usagePath = System.IO.Path.Combine(appDataPath, "V-Notch", "spotlight-usage.json");
-            if (File.Exists(usagePath))
-            {
-                File.Delete(usagePath);
-            }
+            var usage = App.Services?.GetService(typeof(VNotch.Services.Spotlight.SpotlightUsageStore)) as VNotch.Services.Spotlight.SpotlightUsageStore
+                ?? new VNotch.Services.Spotlight.SpotlightUsageStore(usagePath, () => DateTime.UtcNow);
+            usage.ClearHistory();
+            (App.Services?.GetService(typeof(VNotch.ViewModels.SpotlightViewModel)) as VNotch.ViewModels.SpotlightViewModel)?.Reset();
 
             AnimateButtonSuccessFeedback(ClearSpotlightHistoryButton, Loc.Get("settings.privacy.cleared"), "settings.privacy.clearSpotlight");
         }
         catch (Exception ex)
         {
             RuntimeLog.Error("PRIVACY-CLEAR", ex.Message);
+            MessageBox.Show(this, ex.Message, Title, MessageBoxButton.OK, MessageBoxImage.Error);
         }
     }
 

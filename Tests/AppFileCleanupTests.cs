@@ -37,6 +37,7 @@ public sealed class AppFileCleanupTests : IDisposable
         [
             Create(Path.Combine(temp, "other-app", "data.tmp")),
             Create(Path.Combine(temp, "V-Notch", "user-folder", "important.txt")),
+            Create(Path.Combine(temp, "V-Notch", Guid.NewGuid().ToString("N") + ".recovery", "original-user-file.txt")),
             Create(Path.Combine(roaming, "V-Notch", "settings.json")),
             Create(Path.Combine(roaming, "V-Notch", "settings.bak-20261009.json")),
             Create(Path.Combine(roaming, "V-Notch", "settings.json.tmp")),

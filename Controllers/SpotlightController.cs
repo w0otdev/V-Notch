@@ -15,7 +15,7 @@ public interface ISpotlightController : IDisposable
     void ApplySettings(NotchSettings settings);
 }
 
-internal sealed partial class SpotlightController : ISpotlightController
+internal sealed partial class SpotlightController : ISpotlightController, IAsyncDisposable
 {
     private const string LogTag = "SPOTLIGHT-HOTKEY";
     private const int HotkeyId = 0x564E;
@@ -305,8 +305,22 @@ internal sealed partial class SpotlightController : ISpotlightController
 
     public void Dispose()
     {
+        var window = _window;
+        DisposeCore();
+        window?.FlushPersistenceAsync().GetAwaiter().GetResult();
+    }
+
+    private void DisposeCore()
+    {
         if (_disposed) return;
         _disposed = true;
         DetachHost();
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        var window = _window;
+        DisposeCore();
+        if (window != null) await window.FlushPersistenceAsync().ConfigureAwait(false);
     }
 }

@@ -65,6 +65,7 @@ foreach (string scenario in new[] { "valid", "tampered-installer", "bad-signatur
     });
     // A beta published more recently must not hide the final release of the same core.
     string releaseList = "[" + json + "]";
+    string atomFeed = $"<feed xmlns=\"http://www.w3.org/2005/Atom\"><entry><id>tag:github.com,2008:Repository/123/v{version}</id><updated>2026-10-31T00:00:00Z</updated><content>compatibility fixture</content></entry></feed>";
     if (installedArgument != null && !prerelease)
     {
         using var prior = JsonDocument.Parse(json);
@@ -73,22 +74,29 @@ foreach (string scenario in new[] { "valid", "tampered-installer", "bad-signatur
         beta["prerelease"] = JsonSerializer.SerializeToElement(true);
         beta["published_at"] = JsonSerializer.SerializeToElement(DateTime.UtcNow.AddDays(1));
         releaseList = "[" + JsonSerializer.Serialize(beta) + "," + json + "]";
+        atomFeed = $"<feed xmlns=\"http://www.w3.org/2005/Atom\"><entry><id>tag:github.com,2008:Repository/123/v{installedVersion}</id><updated>2026-11-01T00:00:00Z</updated><content>beta fixture</content></entry><entry><id>tag:github.com,2008:Repository/123/v{version}</id><updated>2026-10-31T00:00:00Z</updated><content>compatibility fixture</content></entry></feed>";
     }
     bool installerRequested = false;
+    bool injectDownloadFault = false;
     using var client = new HttpClient(new Handler(request =>
     {
         if (request.RequestUri!.Host == "api.github.com")
             return new(HttpStatusCode.OK) { Content = new StringContent(request.RequestUri.AbsolutePath.EndsWith("/latest") ? json : releaseList) };
+        if (request.RequestUri.AbsolutePath.EndsWith("/releases.atom", StringComparison.Ordinal))
+            return new(HttpStatusCode.OK) { Content = new StringContent(atomFeed) };
         string name = request.RequestUri.Segments[^1];
         if (name == selectedName + SignedUpdateManifest.ManifestSuffix)
             return new(HttpStatusCode.OK) { Content = new ByteArrayContent(manifests[selectedName]) };
         if (name == selectedName + SignedUpdateManifest.SignatureSuffix)
         {
-            if (scenario == "missing-signature") return new(HttpStatusCode.NotFound);
+            if (injectDownloadFault && scenario == "missing-signature") return new(HttpStatusCode.NotFound);
             var signature = signatures[selectedName].ToArray();
-            if (scenario == "bad-signature") signature[0] ^= 1;
+            if (injectDownloadFault && scenario == "bad-signature") signature[0] ^= 1;
             return new(HttpStatusCode.OK) { Content = new ByteArrayContent(signature) };
         }
+        if (name.EndsWith(SignedUpdateManifest.ManifestSuffix, StringComparison.Ordinal) ||
+            name.EndsWith(SignedUpdateManifest.SignatureSuffix, StringComparison.Ordinal))
+            return new(HttpStatusCode.NotFound);
         if (name != selectedName) throw new InvalidDataException($"Unexpected asset requested by the {clientName}.");
         installerRequested = true;
         var installer = installers[selectedName].ToArray();
@@ -106,6 +114,7 @@ foreach (string scenario in new[] { "valid", "tampered-installer", "bad-signatur
     string destination = Path.Combine(AppContext.BaseDirectory, "download-" + Guid.NewGuid().ToString("N"));
     try
     {
+        injectDownloadFault = true;
         bool rejected = false;
         try { await updater.DownloadAndVerifyInstallerAsync(update, destination, null, default); }
         catch (InvalidDataException) { rejected = true; }
@@ -129,9 +138,13 @@ foreach (string scenario in new[] { "valid", "tampered-installer", "bad-signatur
                 var older = JsonSerializer.Deserialize<Dictionary<string, JsonElement>>(json)!;
                 older["tag_name"] = JsonSerializer.SerializeToElement("v" + olderVersion);
                 string olderJson = JsonSerializer.Serialize(older);
-                using var olderClient = new HttpClient(new Handler(request => request.RequestUri!.Host == "api.github.com"
-                    ? new(HttpStatusCode.OK) { Content = new StringContent(request.RequestUri.AbsolutePath.EndsWith("/latest") ? olderJson : "[" + olderJson + "]") }
-                    : throw new InvalidOperationException("An older stable release must not download any assets.")));
+                string olderAtom = $"<feed xmlns=\"http://www.w3.org/2005/Atom\"><entry><id>tag:github.com,2008:Repository/123/v{olderVersion}</id><updated>2026-10-31T00:00:00Z</updated><content>older</content></entry></feed>";
+                using var olderClient = new HttpClient(new Handler(request =>
+                    request.RequestUri!.Host == "api.github.com"
+                        ? new(HttpStatusCode.OK) { Content = new StringContent(request.RequestUri.AbsolutePath.EndsWith("/latest") ? olderJson : "[" + olderJson + "]") }
+                        : request.RequestUri.AbsolutePath.EndsWith("/releases.atom", StringComparison.Ordinal)
+                            ? new(HttpStatusCode.OK) { Content = new StringContent(olderAtom) }
+                            : throw new InvalidOperationException("An older stable release must not download any assets.")));
                 var olderUpdater = new UpdateService(olderClient, new UpdateSecurityPolicy(), manifestPublicKey: publicKey);
                 var olderUpdate = await CheckInstalledAsync(olderUpdater, includePrereleases);
                 if (olderUpdate is { IsNewerVersion: true })
