@@ -56,7 +56,7 @@ public partial class SetupWindow : Window
 
     private int _currentPageIndex = 0;
     private readonly Func<UIElement>[] _pageFactories;
-    private readonly bool _updateRequested;
+    private readonly bool _isUpgrade;
     private readonly Func<SetupInstallOptions, Action<SetupProgressInfo>, Task> _install;
     private readonly IntroductionPage _introductionPage;
     private readonly DirectoryPage _directoryPage;
@@ -79,15 +79,14 @@ public partial class SetupWindow : Window
 
     private static void ShowWindow(IntPtr hWnd, int nCmdShow) => _ = Win32Interop.ShowWindow(hWnd, nCmdShow);
 
-    public SetupWindow(string? sourceDirectory = null, string initialLanguage = "en", bool updateRequested = false)
-        : this(sourceDirectory, initialLanguage, updateRequested, SetupOperations.InstallAsync)
+    public SetupWindow(string? sourceDirectory = null, string initialLanguage = "en")
+        : this(sourceDirectory, initialLanguage, SetupOperations.InstallAsync)
     {
     }
 
-    internal SetupWindow(string? sourceDirectory, string initialLanguage, bool updateRequested,
-        Func<SetupInstallOptions, Action<SetupProgressInfo>, Task> install)
+    internal SetupWindow(string? sourceDirectory, string initialLanguage,
+        Func<SetupInstallOptions, Action<SetupProgressInfo>, Task> install, string? installDirectory = null)
     {
-        _updateRequested = updateRequested;
         _install = install;
         Loc.SetLanguage(initialLanguage);
         InitializeComponent();
@@ -97,7 +96,8 @@ public partial class SetupWindow : Window
         _introductionPage = new IntroductionPage();
         _languagePage = new LanguagePage(initialLanguage);
         _termsPage = new TermsOfServicePage();
-        var installDirectory = SetupOperations.GetDefaultInstallDirectory();
+        installDirectory ??= SetupOperations.GetDefaultInstallDirectory();
+        _isUpgrade = File.Exists(IOPath.Combine(installDirectory, "V-Notch.exe"));
         _directoryPage = new DirectoryPage(installDirectory);
         _startupOptionsPage = new StartupOptionsPage(SetupOperations.GetInitialStartupPreference(installDirectory));
         _installProgressPage = new InstallProgressPage();
@@ -158,14 +158,24 @@ public partial class SetupWindow : Window
         TooltipHelper.SetLocalizedTooltip(CloseSetupButton, "tooltip.close");
         HeadlineText.Text = Loc.Get("setup.welcome.headline");
 
-        Step1Text.Text = Loc.Get("setup.step.language");
-        Step2Text.Text = Loc.Get("setup.step.welcome");
-        Step3Text.Text = Loc.Get("setup.step.terms");
-        Step4Text.Text = Loc.Get("setup.step.about");
-        Step5Text.Text = Loc.Get("setup.step.location");
-        Step6Text.Text = Loc.Get("setup.step.startup");
-        Step7Text.Text = Loc.Get("setup.step.install");
-        Step8Text.Text = Loc.Get("setup.step.finish");
+        var steps = new[]
+        {
+            (Step1Text, "language"), (Step2Text, "welcome"), (Step3Text, "terms"),
+            (Step4Text, "about"), (Step5Text, "location"), (Step6Text, "startup"),
+            (Step7Text, "install"), (Step8Text, "finish")
+        };
+        int visibleStep = 0;
+        for (int i = 0; i < steps.Length; i++)
+        {
+            var (element, key) = steps[i];
+            bool visible = !_isUpgrade || i is 2 or 6 or 7;
+            element.Visibility = visible ? Visibility.Visible : Visibility.Collapsed;
+            if (visible) visibleStep++;
+            string label = Loc.Get("setup.step." + key);
+            element.Text = visible && _isUpgrade && label.Length >= 2 && char.IsAsciiDigit(label[0]) && char.IsAsciiDigit(label[1])
+                ? visibleStep.ToString("D2", System.Globalization.CultureInfo.InvariantCulture) + label[2..]
+                : label;
+        }
 
         if (!_isShowingCancelSetupPage)
         {
@@ -193,32 +203,17 @@ public partial class SetupWindow : Window
         HeadlineText.Visibility = Visibility.Collapsed;
         BodyText.Visibility = Visibility.Collapsed;
         _isWelcomePage = false;
-        _currentPageIndex = 0;
-
-        // In-app updates already have an install path, language and startup
-        // preference. A missing installation still receives the full setup.
-        if (_updateRequested && File.Exists(IOPath.Combine(_directoryPage.InstallPath, "V-Notch.exe")) &&
-            ValidateInstallDirectory())
-        {
-            _currentPageIndex = _pageFactories.Length - 2;
-            _installProgressPage.RefreshLocalization();
-            ConfigurePageScrolling(_installProgressPage);
-            ContentPresenter.Content = _installProgressPage;
-            ContentPresenter.Visibility = Visibility.Visible;
-            ContentPresenter.Opacity = 1;
-            UpdateStepIndicators(_currentPageIndex);
-            UpdateNavigationButtons(_currentPageIndex);
-            _ = BeginInstallationAsync();
-            return;
-        }
+        _currentPageIndex = _isUpgrade ? 2 : 0;
 
         _languagePage.RefreshLocalization();
-        ConfigurePageScrolling(_languagePage);
-        ContentPresenter.Content = _languagePage;
+        _termsPage.RefreshLocalization();
+        var firstPage = _pageFactories[_currentPageIndex]();
+        ConfigurePageScrolling(firstPage);
+        ContentPresenter.Content = firstPage;
         ContentPresenter.Visibility = Visibility.Visible;
         ContentPresenter.Opacity = 1;
-        UpdateStepIndicators(0);
-        UpdateNavigationButtons(0);
+        UpdateStepIndicators(_currentPageIndex);
+        UpdateNavigationButtons(_currentPageIndex);
     }
 
     protected override void OnContentRendered(EventArgs e)
@@ -286,7 +281,7 @@ public partial class SetupWindow : Window
 
         if (_currentPageIndex > 0)
         {
-            ShowPage(_currentPageIndex - 1, NavigationDirection.Backward);
+            ShowPage(_isUpgrade && _currentPageIndex == 6 ? 2 : _currentPageIndex - 1, NavigationDirection.Backward);
         }
     }
 
@@ -310,7 +305,7 @@ public partial class SetupWindow : Window
 
         if (_currentPageIndex < _pageFactories.Length - 1)
         {
-            ShowPage(_currentPageIndex + 1, NavigationDirection.Forward);
+            ShowPage(_isUpgrade && _currentPageIndex == 2 ? 6 : _currentPageIndex + 1, NavigationDirection.Forward);
         }
         else
         {
@@ -335,6 +330,8 @@ public partial class SetupWindow : Window
         {
             return;
         }
+
+        if (_isUpgrade && index is not (2 or 6 or 7)) return;
 
         if (_isTransitioning)
         {
@@ -435,7 +432,7 @@ public partial class SetupWindow : Window
             return;
         }
 
-        var showBack = index > 0 && index < _pageFactories.Length - 1;
+        var showBack = index > 0 && index < _pageFactories.Length - 1 && (!_isUpgrade || index != 2);
         var showCancel = index < _pageFactories.Length - 1;
         var showNext = true;
 
@@ -1017,7 +1014,7 @@ public partial class SetupWindow : Window
 
         if (currentPage is TermsOfServicePage termsPage)
         {
-            return termsPage.CanContinue;
+            return termsPage.CanContinue && (!_isUpgrade || ValidateInstallDirectory());
         }
 
         if (currentPage is DirectoryPage)
@@ -1043,7 +1040,7 @@ public partial class SetupWindow : Window
 
         try
         {
-            _directoryPage.InstallPath = IOPath.GetFullPath(installPath);
+            _directoryPage.InstallPath = InstallDirectoryCleanup.ValidateInstallDirectory(installPath);
 
             if (SetupOperations.RequiresAdministratorForInstallPath(_directoryPage.InstallPath) &&
                 !SetupOperations.IsRunningAsAdministrator())

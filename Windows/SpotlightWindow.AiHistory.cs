@@ -48,8 +48,15 @@ public partial class SpotlightWindow
         entry.Model = _aiConversationModel;
         if (_aiMode) entry.Draft = SearchBox.Text;
         entry.UpdatedUtc = DateTime.UtcNow;
-        if (!_chatStore.Save(_savedChats)) SetAiStatus("spotlight.ai.saveError");
+        PersistAiHistoryAsync().SafeFireAndForget("SPOTLIGHT-CHAT");
     }
+
+    private async Task PersistAiHistoryAsync()
+    {
+        if (!await _chatStore.SaveAsync(_savedChats) && !_allowClose) SetAiStatus("spotlight.ai.saveError");
+    }
+
+    internal Task FlushPersistenceAsync() => _chatStore.FlushAsync();
 
     private async void AiHistory_Click(object sender, RoutedEventArgs e)
     {
@@ -172,7 +179,7 @@ public partial class SpotlightWindow
                     card.ClipToBounds = true;
                     _savedChats.Remove(chat);
                     if (chat.Id == _chatId) { _aiHistory.Clear(); _chatId = Guid.NewGuid().ToString("N"); SearchBox.Clear(); RenderAiHistory(); }
-                    if (!_chatStore.Save(_savedChats)) SetAiStatus("spotlight.ai.saveError");
+                    await PersistAiHistoryAsync();
 
                     if (!AnimationConfig.ReduceMotion)
                     {

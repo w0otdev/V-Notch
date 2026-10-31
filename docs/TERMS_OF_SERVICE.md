@@ -1,9 +1,9 @@
-# V-Notch — Terms of Use
+# V-Notch - Terms of Use
 
-**Effective date:** October 3, 2026
+**Effective date:** October 31, 2026
 **Maintainer:** w0otdev  
 **Project:** https://github.com/w0otdev/V-Notch  
-**Applies to:** official Windows desktop releases and related project materials, subject to the overriding open-source licenses below. The currently described application version is 2.1; confirm the version of the actual released binary.
+**Applies to:** official Windows desktop releases and related project materials, subject to the overriding open-source licenses below. The currently described application version is 2.2.1; confirm the version of the actual released binary.
 
 > **Important:** V-Notch is an independent, free and open-source project, not a paid hosted service. This document does not amend Apache-2.0 or third-party licenses, deprive users of mandatory statutory rights, grant rights to third-party content, or establish an authorization from any media service. No clause guarantees protection against a legal claim.
 
@@ -33,7 +33,7 @@ Optional media artwork, lyrics, subtitles, weather and updates may connect direc
 
 Canvas is **experimental and disabled by default**. Enabling it requires an explicit acknowledgement of the in-app notice before sign-in or Canvas requests are allowed. Upgrading from settings that predate this notice or importing settings requires a new acknowledgement. Turning Canvas off revokes that acknowledgement and cancels app-managed Canvas requests; it does not revoke the Spotify account session. Disconnect separately to remove the locally stored cookie. Read [Spotify's User Guidelines](https://www.spotify.com/us/legal/user-guidelines/); acknowledgement does not authorize scraping or guarantee continued account access.
 
-**YouTube captions and Fair Use:** Caption retrieval uses YoutubeExplode, an independent library, rather than an authorization from YouTube. Its software license does not grant access rights to YouTube or rights to caption content. YouTube's [Terms of Service](https://www.youtube.com/static?template=terms) restrict automated access except for their stated exceptions, including prior written permission. Use captions only when the method of access and the use of content are permitted. Under U.S. law, fair use is evaluated case by case using the applicable factors; other jurisdictions may provide different exceptions. Personal, educational or noncommercial use is not automatically fair use. This notice grants no license, platform permission or immunity from claims. See the [U.S. Copyright Office Fair Use Index](https://www.copyright.gov/fair-use/).
+**YouTube captions and Fair Use:** Caption retrieval uses direct public YouTube caption requests without an authorization from YouTube. The software license does not grant access rights to YouTube or rights to caption content. YouTube's [Terms of Service](https://www.youtube.com/static?template=terms) restrict automated access except for their stated exceptions, including prior written permission. Use captions only when the method of access and the use of content are permitted. Under U.S. law, fair use is evaluated case by case using the applicable factors; other jurisdictions may provide different exceptions. Personal, educational or noncommercial use is not automatically fair use. This notice grants no license, platform permission or immunity from claims. See the [U.S. Copyright Office Fair Use Index](https://www.copyright.gov/fair-use/).
 
 **Media and retrieved assets:** Playback metadata, lyrics, subtitles, thumbnails and Canvas remain subject to their respective owners' rights. A display integration does not grant permission to download, copy, redistribute, modify, commercially exploit or publicly perform third-party material beyond applicable permissions or law. Content owners can submit a detailed claim about material actually hosted or bundled by the project under §10.
 
@@ -113,4 +113,4 @@ If a provision is unenforceable, only the affected part is disregarded to the ex
 
 Official repository: https://github.com/w0otdev/V-Notch  
 General contact: https://github.com/w0otdev/V-Notch/issues (public; do not share secrets).  
-Effective October 3, 2026. Review earlier versions using repository history. This document is a project publication draft, not a representation of legal counsel's approval or audited binary behavior.
+Effective October 31, 2026. Review earlier versions using repository history. This document is a project publication draft, not a representation of legal counsel's approval or audited binary behavior.

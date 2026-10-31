@@ -18,8 +18,9 @@ public sealed class SetupWizardNavigationTests
     public void MinimumSizeKeepsActionsAndTheCurrentStepVisible(string language) => SharedStaTestRunner.RunAsync(async ct =>
     {
         LiquidGlassSpotlightTests.CreateApplicationResources();
-        var window = new SetupWindow("visual fixture", language, false, (_, _) => Task.CompletedTask)
-        { Width = 520, Height = 420 };
+        var window = FreshWindow(language);
+        window.Width = 520;
+        window.Height = 420;
         BackgroundTestWindows.ProtectInput(window);
         try
         {
@@ -49,28 +50,55 @@ public sealed class SetupWizardNavigationTests
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
-    public void UpdateSkipsFirstRunPagesOnlyForAnExistingInstallation(bool installed) => SharedStaTestRunner.RunAsync(async ct =>
+    public void ExistingInstallationRequiresOnlyPolicyBeforeUpdating(bool installed) => SharedStaTestRunner.RunAsync(async ct =>
     {
         LiquidGlassSpotlightTests.CreateApplicationResources();
         string directory = System.IO.Directory.CreateTempSubdirectory("vnotch-update-navigation-").FullName;
         if (installed) System.IO.File.WriteAllText(System.IO.Path.Combine(directory, "V-Notch.exe"), "fixture executable");
         var completion = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         SetupInstallOptions? captured = null;
-        var window = new SetupWindow("fixture source", "vi", true, (options, _) =>
+        var window = new SetupWindow("fixture source", "vi", (options, _) =>
         {
             captured = options;
             return completion.Task;
-        });
+        }, directory);
         try
         {
-            Field<DirectoryPage>(window, "_directoryPage").InstallPath = directory;
             bool startup = Field<StartupOptionsPage>(window, "_startupOptionsPage").StartWithWindows;
             Invoke(window, "InitializeFirstPage");
             Assert.Equal("vi", Loc.CurrentLanguage);
             if (installed)
             {
+                var terms = Assert.IsType<TermsOfServicePage>(window.ContentPresenter.Content);
+                Assert.Equal(2, Field<int>(window, "_currentPageIndex"));
+                Assert.Null(captured);
+                Assert.False(window.NextButton.IsEnabled);
+                Assert.Equal(Visibility.Collapsed, window.BackButton.Visibility);
+                foreach (int skipped in new[] { 0, 1, 3, 4, 5 })
+                {
+                    Invoke(window, "ShowPage", skipped, Direction(false));
+                    Assert.Equal(2, Field<int>(window, "_currentPageIndex"));
+                }
+                foreach (var skipped in new[] { window.Step1Text, window.Step2Text, window.Step4Text, window.Step5Text, window.Step6Text })
+                    Assert.Equal(Visibility.Collapsed, skipped.Visibility);
+                Assert.StartsWith("01", window.Step3Text.Text);
+                Assert.StartsWith("02", window.Step7Text.Text);
+                Assert.StartsWith("03", window.Step8Text.Text);
+                Invoke(window, "NextButton_Click", window.NextButton, new RoutedEventArgs());
+                Invoke(window, "BackButton_Click", window.BackButton, new RoutedEventArgs());
+                Assert.Equal(2, Field<int>(window, "_currentPageIndex"));
+                Assert.Null(captured);
+                Invoke(window, "CancelButton_Click", window.CancelButton, new RoutedEventArgs());
+                await Settled(window, ct);
+                Invoke(window, "BackButton_Click", window.BackButton, new RoutedEventArgs());
+                await Settled(window, ct);
+                Assert.Same(terms, window.ContentPresenter.Content);
+                Assert.False(window.NextButton.IsEnabled);
+                AcceptPolicy(terms);
+                Assert.True(window.NextButton.IsEnabled);
+                Invoke(window, "NextButton_Click", window.NextButton, new RoutedEventArgs());
+                await Settled(window, ct);
                 Assert.IsType<InstallProgressPage>(window.ContentPresenter.Content);
-                Assert.Equal(6, Field<int>(window, "_currentPageIndex"));
                 Assert.NotNull(captured);
                 Assert.Equal(directory, captured.InstallDirectory);
                 Assert.Equal("vi", captured.Language);
@@ -97,13 +125,56 @@ public sealed class SetupWizardNavigationTests
         }
     });
 
+    [Fact]
+    public void FailedUpgradeReturnsToPolicyAndCanRetryWithoutShowingFirstRunSteps() => SharedStaTestRunner.RunAsync(async ct =>
+    {
+        LiquidGlassSpotlightTests.CreateApplicationResources();
+        string directory = System.IO.Directory.CreateTempSubdirectory("vnotch-update-retry-").FullName;
+        System.IO.File.WriteAllText(System.IO.Path.Combine(directory, "V-Notch.exe"), "fixture executable");
+        int attempts = 0;
+        var window = new SetupWindow("fixture source", "en", (options, _) =>
+        {
+            Assert.Equal(directory, options.InstallDirectory);
+            return ++attempts == 1 ? Task.FromException(new System.IO.IOException("Fixture install failure")) : Task.CompletedTask;
+        }, directory);
+        try
+        {
+            Invoke(window, "InitializeFirstPage");
+            var terms = Assert.IsType<TermsOfServicePage>(window.ContentPresenter.Content);
+            AcceptPolicy(terms);
+            Invoke(window, "NextButton_Click", window.NextButton, new RoutedEventArgs());
+            await Settled(window, ct);
+            Assert.Equal(1, attempts);
+            Assert.IsType<InstallProgressPage>(window.ContentPresenter.Content);
+            Assert.Equal(Visibility.Visible, window.BackButton.Visibility);
+            Invoke(window, "BackButton_Click", window.BackButton, new RoutedEventArgs());
+            await Settled(window, ct);
+            Assert.Same(terms, window.ContentPresenter.Content);
+            Assert.Equal(Visibility.Collapsed, window.BackButton.Visibility);
+            terms.AgreeCheckBox.IsChecked = false;
+            Invoke(window, "NextButton_Click", window.NextButton, new RoutedEventArgs());
+            Assert.Equal(1, attempts);
+            terms.AgreeCheckBox.IsChecked = true;
+            Invoke(window, "NextButton_Click", window.NextButton, new RoutedEventArgs());
+            await WpfFrameWaiter.UntilAsync(() => window.ContentPresenter.Content is FinishPage && !Field<bool>(window, "_isTransitioning"), "upgrade retry finishes", ct);
+            Assert.Equal(2, attempts);
+        }
+        finally
+        {
+            window.Close();
+            Loc.SetLanguage("en");
+            System.IO.File.Delete(System.IO.Path.Combine(directory, "V-Notch.exe"));
+            System.IO.Directory.Delete(directory);
+        }
+    });
+
     [Theory]
     [InlineData("en")]
     public void WizardNavigatesPreparationStepsAndCanResumeAfterCancellation(string language) => SharedStaTestRunner.RunAsync(async ct =>
     {
         bool previousReducedMotion = AnimationConfig.ReduceMotion;
         LiquidGlassSpotlightTests.CreateApplicationResources();
-        var window = new SetupWindow(initialLanguage: language);
+        var window = FreshWindow(language);
         try
         {
             await ShowPage(window, 0, false, ct);
@@ -186,7 +257,7 @@ public sealed class SetupWizardNavigationTests
     public void ChangingLanguageRefreshesAllStepsAndCancelLabels() => SharedStaTestRunner.RunAsync(async ct =>
     {
         LiquidGlassSpotlightTests.CreateApplicationResources();
-        var window = new SetupWindow();
+        var window = FreshWindow();
         try
         {
             await ShowPage(window, 0, false, ct);
@@ -211,6 +282,18 @@ public sealed class SetupWizardNavigationTests
     {
         Invoke(window, "ShowPage", index, Direction(backward));
         await Settled(window, ct);
+    }
+    private static SetupWindow FreshWindow(string language = "en") => new("fixture source", language, (_, _) => Task.CompletedTask,
+        System.IO.Path.Combine(System.IO.Path.GetTempPath(), "vnotch-fresh-navigation-" + Guid.NewGuid().ToString("N")));
+    private static void AcceptPolicy(TermsOfServicePage terms)
+    {
+        terms.Measure(new Size(500, 300));
+        terms.Arrange(new Rect(0, 0, 500, 300));
+        terms.UpdateLayout();
+        terms.TermsScrollViewer.ScrollToEnd();
+        terms.UpdateLayout();
+        terms.CheckIfScrolledToBottom();
+        terms.AgreeCheckBox.IsChecked = true;
     }
     private static Task Settled(SetupWindow window, CancellationToken ct) => WpfFrameWaiter.UntilAsync(
         () => !Field<bool>(window, "_isTransitioning"), "setup navigation transition", ct);

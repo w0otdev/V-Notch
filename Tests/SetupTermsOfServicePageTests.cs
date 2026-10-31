@@ -146,7 +146,7 @@ public sealed class SetupTermsOfServicePageTests
         RunOnStaThread(() =>
         {
             EnsureApplicationResources();
-            var window = new SetupWindow();
+            var window = FreshWindow();
             Assert.Equal("01  Language", window.Step1Text.Text);
             Assert.Equal("02  Welcome", window.Step2Text.Text);
             Assert.Equal("03  Terms", window.Step3Text.Text);
@@ -169,7 +169,7 @@ public sealed class SetupTermsOfServicePageTests
                 Assert.Equal("vi", Loc.CurrentLanguage);
 
                 EnsureApplicationResources();
-                var window = new SetupWindow();
+                var window = FreshWindow();
 
                 Assert.Equal("en", Loc.CurrentLanguage);
                 Assert.Equal("01  Language", window.Step1Text.Text);
@@ -191,7 +191,7 @@ public sealed class SetupTermsOfServicePageTests
         RunOnStaThread(() =>
         {
             EnsureApplicationResources();
-            var window = new SetupWindow();
+            var window = FreshWindow();
 
             Assert.Equal(FontWeights.Bold, window.SetupAssistantText.FontWeight);
             Assert.Equal(FontWeights.Bold, window.SetupTaglineText.FontWeight);
@@ -209,5 +209,8 @@ public sealed class SetupTermsOfServicePageTests
     }
 
     // Keep Application on the same dispatcher as MainWindow/tray integration tests.
+    private static SetupWindow FreshWindow() => new(null, "en", (_, _) => System.Threading.Tasks.Task.CompletedTask,
+        System.IO.Path.Combine(System.IO.Path.GetTempPath(), "vnotch-fresh-policy-" + Guid.NewGuid().ToString("N")));
+
     private static void RunOnStaThread(Action action) => SharedStaTestRunner.Run(action);
 }

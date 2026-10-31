@@ -44,7 +44,8 @@ public sealed class PerformanceAuditRegressionTests
         using var folder = new TempFolder();
         string path = Path.Combine(folder.Path, "settings.json");
         await File.WriteAllTextAsync(path, JsonSerializer.Serialize(new NotchSettings { SettingsVersion = SettingsMigrator.CurrentVersion }));
-        for (int i = 0; i < 24; i++) await File.WriteAllTextAsync(Path.Combine(folder.Path, $"settings.bak-{i:D3}.json"), "{}");
+        for (int i = 0; i < 24; i++) await File.WriteAllTextAsync(Path.Combine(folder.Path,
+            $"settings.bak-{new DateTime(2026, 1, 1).AddMilliseconds(i):yyyyMMdd-HHmmss-fff}.json"), "{}");
         await using var service = new SettingsService(path, _ => { });
         _ = service.Load();
         Assert.InRange(Directory.GetFiles(folder.Path, "settings.bak-*.json").Length, 1, 10);

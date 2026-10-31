@@ -39,6 +39,7 @@ internal sealed partial class SpotlightPreferences
     private volatile string[]? _excludedFoldersSnapshot;
     private string? _pendingSave;
     private bool _saving;
+    private Task _saveTask = Task.CompletedTask;
 
     internal SpotlightPreferences(string path) => _path = path;
 
@@ -284,7 +285,7 @@ internal sealed partial class SpotlightPreferences
         _pendingSave = JsonSerializer.Serialize(Data);
         if (_saving) return;
         _saving = true;
-        _ = Task.Run(() =>
+        _saveTask = Task.Run(() =>
         {
             while (true)
             {
@@ -311,4 +312,6 @@ internal sealed partial class SpotlightPreferences
             }
         });
     }
+
+    internal Task FlushAsync() { lock (_gate) return _saveTask; }
 }

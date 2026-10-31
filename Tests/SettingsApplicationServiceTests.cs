@@ -35,10 +35,10 @@ public sealed class SettingsApplicationServiceTests
 
         await appService.ApplyAsync(settings);
 
-        Assert.Same(settings, fakeService.LastSaved);
+        Assert.True(settings.ValueEquals(fakeService.LastSaved));
         Assert.True(fakeStartup.AutoStartEnabled);
         Assert.Same(appService, eventSender);
-        Assert.Same(settings, eventArgs);
+        Assert.True(settings.ValueEquals(eventArgs));
     }
 
     [Fact]
@@ -67,7 +67,8 @@ public sealed class SettingsApplicationServiceTests
         var settings = new NotchSettings { AutoStart = true };
         await Assert.ThrowsAsync<IOException>(() => appService.ApplyAsync(settings));
 
-        Assert.False(fakeStartup.SetAutoStartCalled);
+        Assert.True(fakeStartup.SetAutoStartCalled);
+        Assert.False(fakeStartup.AutoStartEnabled);
         Assert.False(eventFired);
     }
 
@@ -92,11 +93,13 @@ public sealed class SettingsApplicationServiceTests
     public async Task FailedStartupRegistrationDoesNotPublishSettingsAsApplied()
     {
         var startup = new FakeStartupManager { SetFailure = new System.ComponentModel.Win32Exception(5) };
-        var service = new SettingsApplicationService(new FakeSettingsService(), startup);
+        var settings = new FakeSettingsService();
+        var service = new SettingsApplicationService(settings, startup);
         bool published = false;
         service.SettingsApplied += (_, _) => published = true;
         await Assert.ThrowsAsync<System.ComponentModel.Win32Exception>(() => service.ApplyAsync(new NotchSettings { AutoStart = true }));
         Assert.False(published);
+        Assert.Null(settings.LastSaved);
     }
 
     [Fact]
@@ -114,9 +117,9 @@ public sealed class SettingsApplicationServiceTests
 
         Assert.Same(importedSettings, result.Settings);
         Assert.True(result.RequiresRestart);
-        Assert.Same(importedSettings, fakeService.LastSaved);
+        Assert.True(importedSettings.ValueEquals(fakeService.LastSaved));
         Assert.True(fakeStartup.AutoStartEnabled);
-        Assert.Same(importedSettings, eventArgs);
+        Assert.True(importedSettings.ValueEquals(eventArgs));
     }
 
     [Fact]

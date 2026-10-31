@@ -1,6 +1,7 @@
 using System.IO;
 using System.Net;
 using System.Net.Http;
+using System.Net.Sockets;
 using System.Runtime.InteropServices;
 using System.Text.RegularExpressions;
 using System.Windows;
@@ -34,17 +35,73 @@ internal static partial class ClipboardDropReader
         int outCap,
         out int outLen);
 
-    internal sealed record Payload(ClipboardCapture Capture, Uri? ImageUrl = null)
+    internal sealed record Payload(ClipboardCapture Capture, Uri? ImageUrl = null, BitmapSource? Bitmap = null)
     {
-        internal ClipboardKind Kind => ImageUrl != null ? ClipboardKind.Image : ClipboardClassifier.Detect(Capture);
+        internal ClipboardKind Kind => ImageUrl != null || Bitmap != null ? ClipboardKind.Image : ClipboardClassifier.Detect(Capture);
     }
     private const int MaxImageBytes = 20 * 1024 * 1024;
     private static readonly HttpClient Client = CreateClient();
 
     internal static HttpClient CreateClient(HttpMessageHandler? transport = null, NetworkPrivacy? privacy = null) =>
         new(new NetworkPrivacy.PrivacyHandler(privacy ?? NetworkPrivacy.Current, NetworkFeature.Artwork,
-            transport ?? new NativeWinHttpHandler()))
+            transport ?? CreateImageTransport()))
         { Timeout = TimeSpan.FromSeconds(20) };
+
+    private static SocketsHttpHandler CreateImageTransport() => new()
+    {
+        AllowAutoRedirect = false,
+        UseCookies = false,
+        // A proxy would resolve the destination again, bypassing the checked address.
+        UseProxy = false,
+        ConnectCallback = async (context, token) =>
+        {
+            var addresses = await Dns.GetHostAddressesAsync(context.DnsEndPoint.Host, token).ConfigureAwait(false);
+            if (addresses.Length == 0 || addresses.Any(address => !IsPublicAddress(address)))
+                throw new HttpRequestException("Image downloads require a public Internet address.");
+            SocketException? failure = null;
+            foreach (var address in addresses)
+            {
+                var socket = new Socket(address.AddressFamily, SocketType.Stream, ProtocolType.Tcp);
+                try
+                {
+                    await socket.ConnectAsync(new IPEndPoint(address, context.DnsEndPoint.Port), token).ConfigureAwait(false);
+                    return new NetworkStream(socket, ownsSocket: true);
+                }
+                catch (SocketException ex) { socket.Dispose(); failure = ex; }
+                catch { socket.Dispose(); throw; }
+            }
+            throw new HttpRequestException("Could not connect to the image host.", failure);
+        }
+    };
+
+    internal static bool IsPublicAddress(IPAddress address)
+    {
+        if (address.IsIPv4MappedToIPv6) address = address.MapToIPv4();
+        byte[] b = address.GetAddressBytes();
+        if (b.Length == 4)
+            return b[0] != 0 && b[0] != 10 && b[0] != 127 && b[0] < 224 &&
+                !(b[0] == 100 && b[1] is >= 64 and <= 127) &&
+                !(b[0] == 169 && b[1] == 254) && !(b[0] == 172 && b[1] is >= 16 and <= 31) &&
+                !(b[0] == 192 && (b[1] == 168 || b[1] == 0)) && !(b[0] == 198 && b[1] is 18 or 19);
+        return (b[0] & 0xe0) == 0x20 && !(b[0] == 0x20 && b[1] == 2) &&
+            !(b[0] == 0x20 && b[1] == 1 && b[2] == 0 && b[3] == 0);
+    }
+
+    private static async Task<HttpResponseMessage> DownloadAsync(Uri uri, HttpClient client, CancellationToken token)
+    {
+        for (int hop = 0; hop <= 5; hop++)
+        {
+            if (uri.Scheme is not ("http" or "https") || uri.UserInfo.Length != 0)
+                throw new InvalidDataException("Unsupported image URL.");
+            var response = await client.GetAsync(uri, HttpCompletionOption.ResponseHeadersRead, token).ConfigureAwait(false);
+            if ((int)response.StatusCode is not (301 or 302 or 303 or 307 or 308)) return response;
+            Uri? location = response.Headers.Location;
+            response.Dispose();
+            if (location == null) throw new InvalidDataException("Invalid image redirect.");
+            uri = location.IsAbsoluteUri ? location : new Uri(uri, location);
+        }
+        throw new InvalidDataException("Too many image redirects.");
+    }
 
     internal static bool Supports(IDataObject data)
     {
@@ -69,12 +126,17 @@ internal static partial class ClipboardDropReader
         string html = ReadText(data, DataFormats.Html) ?? "";
         var capture = new ClipboardCapture { Text = text, Html = html };
         if (data.GetData(DataFormats.Bitmap) is BitmapSource bitmap)
-            return new(capture with { ImagePng = Encode(bitmap) });
+        {
+            if ((long)bitmap.PixelWidth * bitmap.PixelHeight > 32_000_000) throw new InvalidDataException("Image is too large.");
+            var snapshot = bitmap.Clone();
+            snapshot.Freeze();
+            return new(capture, Bitmap: snapshot);
+        }
         if (data.GetData("PNG") is Stream png)
         {
             using var bytes = new MemoryStream();
             CopyBounded(png, bytes);
-            return new(capture with { ImagePng = Decode(bytes.ToArray()) });
+            return new(capture with { ImagePng = bytes.ToArray() });
         }
         string? image = null;
         if (ReadText(data, "DownloadURL") is string download && vn_clipboard_drop_extract_download_url_image(download.AsSpan(), download.Length, out byte found, out int startIdx) == 0 && found != 0)
@@ -115,10 +177,15 @@ internal static partial class ClipboardDropReader
     internal static async Task<ClipboardCapture> ResolveAsync(Payload payload, CancellationToken cancellation = default,
         HttpClient? client = null)
     {
-        if (payload.ImageUrl is not { } uri) return payload.Capture;
         using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellation);
         timeout.CancelAfter(TimeSpan.FromSeconds(20));
         cancellation = timeout.Token;
+        if (payload.Bitmap is { } bitmap)
+            return payload.Capture with { ImagePng = await Task.Run(() => Encode(bitmap), cancellation).ConfigureAwait(false) };
+        if (payload.ImageUrl is not { } uri)
+            return payload.Capture.ImagePng is { } png
+                ? payload.Capture with { ImagePng = await Task.Run(() => Decode(png), cancellation).ConfigureAwait(false) }
+                : payload.Capture;
         byte[] bytes;
         if (uri.Scheme == "data")
         {
@@ -129,8 +196,7 @@ internal static partial class ClipboardDropReader
         }
         else
         {
-            if (uri.Scheme is not ("http" or "https") || (client == null && (uri.IsLoopback || (System.Net.IPAddress.TryParse(uri.DnsSafeHost, out var ip) && (System.Net.IPAddress.IsLoopback(ip) || ip.IsIPv6LinkLocal || ip.IsIPv6SiteLocal || (ip.GetAddressBytes() is { Length: 4 } b && (b[0] == 10 || b[0] == 127 || b[0] == 0 || (b[0] == 172 && b[1] >= 16 && b[1] <= 31) || (b[0] == 192 && b[1] == 168) || (b[0] == 169 && b[1] == 254)))))))) throw new InvalidDataException("Unsupported image URL.");
-            using var response = await (client ?? Client).GetAsync(uri, HttpCompletionOption.ResponseHeadersRead, cancellation);
+            using var response = await DownloadAsync(uri, client ?? Client, cancellation).ConfigureAwait(false);
             response.EnsureSuccessStatusCode();
             if (response.Content.Headers.ContentLength > MaxImageBytes) throw new InvalidDataException("Image is too large.");
             await using var input = await response.Content.ReadAsStreamAsync(cancellation);

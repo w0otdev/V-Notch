@@ -41,14 +41,33 @@ internal static class SetupOperations
 
     public static string GetDefaultInstallDirectory()
     {
-        using var uninstallKey = Registry.CurrentUser.OpenSubKey(UninstallRegistryPath);
-        using var appKey = Registry.CurrentUser.OpenSubKey($@"Software\{AppName}");
+        var candidates = new List<string?>();
+        foreach (var hive in new[] { RegistryHive.CurrentUser, RegistryHive.LocalMachine })
+            foreach (var view in new[] { RegistryView.Registry64, RegistryView.Registry32 })
+            {
+                try
+                {
+                    using var root = RegistryKey.OpenBaseKey(hive, view);
+                    candidates.AddRange(ReadInstallDirectories(root));
+                }
+                catch (UnauthorizedAccessException) { /* Try the other registration locations. */ }
+                catch (System.Security.SecurityException) { /* Try the other registration locations. */ }
+            }
         return SelectInstallDirectory(
-            [uninstallKey?.GetValue("InstallLocation") as string, appKey?.GetValue("InstallDir") as string],
+            candidates,
             Path.Combine(
                 Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
                 "Programs",
                 AppName));
+    }
+
+    internal static string?[] ReadInstallDirectories(RegistryKey root)
+    {
+        using var uninstallKey = root.OpenSubKey(UninstallRegistryPath);
+        using var appKey = root.OpenSubKey($@"Software\{AppName}");
+        using var legacyKey = root.OpenSubKey(@"Software\Microsoft\Windows\CurrentVersion\Uninstall\{B2567AF4-8BAE-46D2-B83E-56539C82F888}_is1");
+        return [uninstallKey?.GetValue("InstallLocation") as string, appKey?.GetValue("InstallDir") as string,
+            legacyKey?.GetValue("InstallLocation") as string, legacyKey?.GetValue("Inno Setup: App Path") as string];
     }
 
     internal static string SelectInstallDirectory(IEnumerable<string?> candidates, string fallback)
@@ -129,12 +148,14 @@ internal static class SetupOperations
             StopOtherRunningInstancesAsync, CreateShortcuts, ConfigureStartup, RegisterUninstall, SaveInitialSettings));
 
     internal static async Task InstallAsync(SetupInstallOptions options, Action<SetupProgressInfo> reportProgress,
-        SetupInstallCallbacks callbacks)
+        SetupInstallCallbacks callbacks, string? recoveryRoot = null)
     {
         await Task.Run(async () =>
         {
             var sourceDirectory = Path.GetFullPath(options.SourceDirectory);
-            var installDirectory = Path.GetFullPath(options.InstallDirectory);
+            var installDirectory = InstallDirectoryCleanup.ValidateInstallDirectory(options.InstallDirectory);
+            if (SafeFileDeletion.PathsOverlap(sourceDirectory, installDirectory))
+                throw new ArgumentException("The installation payload and destination must be separate folders.");
             var sourceExePath = Path.Combine(sourceDirectory, AppExeName);
             if (!Directory.Exists(sourceDirectory))
             {
@@ -146,50 +167,152 @@ internal static class SetupOperations
                 throw new FileNotFoundException(Loc.Get("setup.install.sourceExeMissing", AppExeName), sourceExePath);
             }
 
-            reportProgress(new SetupProgressInfo(VNotch.Services.Loc.Get("setup.install.closingRunning"), IsIndeterminate: true));
-            await callbacks.StopRunningInstances().ConfigureAwait(false);
-
-            reportProgress(new SetupProgressInfo(VNotch.Services.Loc.Get("setup.install.preparingFolder"), IsIndeterminate: true));
-            Directory.CreateDirectory(installDirectory);
-
-            var files = Directory.GetFiles(sourceDirectory, "*", SearchOption.AllDirectories);
-            if (files.Length == 0)
+            SafeFileDeletion.ValidatePath(sourceDirectory);
+            var files = EnumeratePayloadFiles(sourceDirectory).Where(file =>
+                !Path.GetRelativePath(sourceDirectory, file).Equals(InstallDirectoryCleanup.ManifestFileName, StringComparison.OrdinalIgnoreCase)).ToArray();
+            var previousFiles = InstallDirectoryCleanup.ReadManifest(installDirectory)
+                .ToDictionary(file => file.Path, StringComparer.OrdinalIgnoreCase);
+            string backup = Path.Combine(recoveryRoot ?? Path.Combine(Path.GetTempPath(), "V-Notch"), Guid.NewGuid().ToString("N") + ".recovery");
+            SafeFileDeletion.ValidatePath(backup);
+            using var backupLease = AppFileCleanupService.Protect(backup);
+            Directory.CreateDirectory(backup);
+            var originals = new Dictionary<string, string?>();
+            var unownedBackups = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            bool committed = false;
+            bool recoveryFailed = false;
+            try
             {
-                throw new InvalidOperationException(Loc.Get("setup.install.payloadEmpty"));
-            }
+                reportProgress(new SetupProgressInfo(VNotch.Services.Loc.Get("setup.install.closingRunning"), IsIndeterminate: true));
+                await callbacks.StopRunningInstances().ConfigureAwait(false);
 
-            for (int i = 0; i < files.Length; i++)
-            {
-                var sourceFile = files[i];
-                var relativePath = Path.GetRelativePath(sourceDirectory, sourceFile);
-                var destinationFile = Path.Combine(installDirectory, relativePath);
-                var destinationFolder = Path.GetDirectoryName(destinationFile);
+                reportProgress(new SetupProgressInfo(VNotch.Services.Loc.Get("setup.install.preparingFolder"), IsIndeterminate: true));
+                Directory.CreateDirectory(installDirectory);
 
-                if (!string.IsNullOrEmpty(destinationFolder))
+                if (files.Length == 0)
                 {
-                    Directory.CreateDirectory(destinationFolder);
+                    throw new InvalidOperationException(Loc.Get("setup.install.payloadEmpty"));
                 }
 
-                CopyFileWithRetry(sourceFile, destinationFile);
-                reportProgress(new SetupProgressInfo(
-                    VNotch.Services.Loc.Get("setup.install.installingFile", relativePath),
-                    i + 1,
-                    files.Length));
+                for (int i = 0; i < files.Length; i++)
+                {
+                    var sourceFile = files[i];
+                    var relativePath = Path.GetRelativePath(sourceDirectory, sourceFile);
+                    var destinationFile = Path.Combine(installDirectory, relativePath);
+                    var destinationFolder = Path.GetDirectoryName(destinationFile);
+                    if (!string.IsNullOrEmpty(destinationFolder)) InstallDirectoryCleanup.ValidateDirectory(destinationFolder);
+                    if (Path.Exists(destinationFile) && (File.GetAttributes(destinationFile) & FileAttributes.ReparsePoint) != 0)
+                        throw new IOException("Installation cannot replace file links.");
+                    if (File.Exists(destinationFile))
+                    {
+                        string saved = Path.Combine(backup, originals.Count.ToString(System.Globalization.CultureInfo.InvariantCulture));
+                        File.Copy(destinationFile, saved);
+                        originals.Add(destinationFile, saved);
+                        if (!previousFiles.TryGetValue(relativePath, out var previous) ||
+                            !InstallDirectoryCleanup.HashFile(saved).Equals(previous.Sha256, StringComparison.OrdinalIgnoreCase))
+                            unownedBackups.Add(saved);
+                    }
+                    else originals.Add(destinationFile, null);
+                    File.WriteAllText(Path.Combine(backup, "restore-map.json"), System.Text.Json.JsonSerializer.Serialize(originals));
+                    if (!string.IsNullOrEmpty(destinationFolder))
+                    {
+                        Directory.CreateDirectory(destinationFolder);
+                    }
+
+                    CopyFileWithRetry(sourceFile, destinationFile);
+                    reportProgress(new SetupProgressInfo(
+                        VNotch.Services.Loc.Get("setup.install.installingFile", relativePath),
+                        i + 1,
+                        files.Length));
+                }
+
+                string manifest = Path.Combine(installDirectory, InstallDirectoryCleanup.ManifestFileName);
+                if (!originals.ContainsKey(manifest))
+                {
+                    string? saved = File.Exists(manifest) ? Path.Combine(backup, "manifest") : null;
+                    if (saved != null) File.Copy(manifest, saved);
+                    originals.Add(manifest, saved);
+                }
+                File.WriteAllText(Path.Combine(backup, "restore-map.json"), System.Text.Json.JsonSerializer.Serialize(originals));
+                var ownedFiles = files.Select(file => Path.GetRelativePath(sourceDirectory, file))
+                    .Select(path => new InstallDirectoryCleanup.InstalledFile(path, InstallDirectoryCleanup.HashFile(Path.Combine(installDirectory, path))))
+                    .ToDictionary(file => file.Path, StringComparer.OrdinalIgnoreCase);
+                foreach (var previous in previousFiles.Values)
+                {
+                    string path = Path.Combine(installDirectory, previous.Path);
+                    if (!ownedFiles.ContainsKey(previous.Path) && File.Exists(path) &&
+                        InstallDirectoryCleanup.HashFile(path).Equals(previous.Sha256, StringComparison.OrdinalIgnoreCase))
+                        ownedFiles.Add(previous.Path, previous);
+                }
+                File.WriteAllText(manifest, System.Text.Json.JsonSerializer.Serialize(new InstallDirectoryCleanup.InstallManifest(2, ownedFiles.Values.ToArray())));
+                committed = true;
+
+                var installedExePath = Path.Combine(installDirectory, AppExeName);
+                reportProgress(new SetupProgressInfo(VNotch.Services.Loc.Get("setup.install.creatingShortcuts"), files.Length, files.Length));
+                callbacks.CreateShortcuts(installedExePath, installDirectory);
+
+                reportProgress(new SetupProgressInfo(VNotch.Services.Loc.Get("setup.install.savingStartup"), files.Length, files.Length));
+                callbacks.ConfigureStartup(installedExePath, options.StartWithWindows);
+
+                reportProgress(new SetupProgressInfo(VNotch.Services.Loc.Get("setup.install.registeringUninstall"), files.Length, files.Length));
+                callbacks.RegisterUninstall(installedExePath, installDirectory);
+
+                reportProgress(new SetupProgressInfo(VNotch.Services.Loc.Get("setup.install.savingPreferences"), files.Length, files.Length));
+                callbacks.SaveSettings(options.Language);
             }
-
-            var installedExePath = Path.Combine(installDirectory, AppExeName);
-            reportProgress(new SetupProgressInfo(VNotch.Services.Loc.Get("setup.install.creatingShortcuts"), files.Length, files.Length));
-            callbacks.CreateShortcuts(installedExePath, installDirectory);
-
-            reportProgress(new SetupProgressInfo(VNotch.Services.Loc.Get("setup.install.savingStartup"), files.Length, files.Length));
-            callbacks.ConfigureStartup(installedExePath, options.StartWithWindows);
-
-            reportProgress(new SetupProgressInfo(VNotch.Services.Loc.Get("setup.install.registeringUninstall"), files.Length, files.Length));
-            callbacks.RegisterUninstall(installedExePath, installDirectory);
-
-            reportProgress(new SetupProgressInfo(VNotch.Services.Loc.Get("setup.install.savingPreferences"), files.Length, files.Length));
-            callbacks.SaveSettings(options.Language);
+            catch (Exception installError) when (!committed)
+            {
+                var failures = new List<Exception> { installError };
+                foreach (var original in originals.Reverse())
+                {
+                    try
+                    {
+                        if (original.Value == null) File.Delete(original.Key);
+                        else
+                        {
+                            if (File.Exists(original.Key)) File.SetAttributes(original.Key, FileAttributes.Normal);
+                            File.Copy(original.Value, original.Key, true);
+                        }
+                    }
+                    catch (Exception restoreError) { failures.Add(restoreError); }
+                }
+                if (failures.Count > 1)
+                {
+                    recoveryFailed = true;
+                    throw new AggregateException($"Installation rollback failed. Recovery copies remain at {backup}.", failures);
+                }
+                throw;
+            }
+            finally
+            {
+                if (!recoveryFailed)
+                {
+                    try
+                    {
+                        if (committed && unownedBackups.Count > 0)
+                        {
+                            foreach (string saved in originals.Values.OfType<string>())
+                                if (!unownedBackups.Contains(saved)) SafeFileDeletion.DeleteFile(saved);
+                            File.WriteAllText(Path.Combine(backup, "restore-map.json"), System.Text.Json.JsonSerializer.Serialize(
+                                originals.Where(pair => pair.Value != null && unownedBackups.Contains(pair.Value)).ToDictionary(pair => pair.Key, pair => pair.Value)));
+                            RuntimeLog.Warn("SETUP", $"Replaced unverified files were preserved at {backup}.");
+                        }
+                        else SafeFileDeletion.DeleteDirectory(backup);
+                    }
+                    catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { RuntimeLog.Warn("SETUP", "Installation recovery folder cleanup deferred."); }
+                }
+            }
         });
+    }
+
+    private static IEnumerable<string> EnumeratePayloadFiles(string directory)
+    {
+        foreach (string entry in Directory.EnumerateFileSystemEntries(directory))
+        {
+            SafeFileDeletion.ValidatePath(entry);
+            if (Directory.Exists(entry))
+                foreach (string file in EnumeratePayloadFiles(entry)) yield return file;
+            else yield return entry;
+        }
     }
 
     public static void LaunchInstalledApp(string installDirectory)
@@ -257,11 +380,12 @@ internal static class SetupOperations
             return;
         }
 
+        InstallDirectoryCleanup.CreateStartInfo(installDirectory, Environment.ProcessId);
         StopOtherRunningInstancesAsync().GetAwaiter().GetResult();
         RemoveStartupRegistration();
         RemoveUninstallRegistration();
         try { RemoveShortcuts(); } catch (Exception ex) { Debug.WriteLine($"[Setup] Could not remove shortcuts: {ex.Message}"); }
-        RemoveAppData();
+        RemoveAppData(installDirectory);
 
         InstallDirectoryCleanup.Schedule(installDirectory);
 
@@ -284,21 +408,14 @@ internal static class SetupOperations
 
                 await StopRunningInstanceAsync(process).ConfigureAwait(false);
             }
-            catch (Exception ex)
+            catch (InvalidOperationException) when (process.HasExited)
             {
-                // Process may have already exited or access denied; continue terminating any remaining instances.
-                Debug.WriteLine($"[Setup] Failed to terminate process {process.Id}: {ex.Message}");
+                // The process exited between enumeration and shutdown.
             }
         }
     }
 
-    internal static async Task StopRunningInstanceAsync(Process process)
-    {
-        // The installer/wizard can be a descendant of the installed app during
-        // auto-update. Killing the tree also kills the setup performing this call.
-        process.Kill(entireProcessTree: false);
-        await process.WaitForExitAsync().WaitAsync(TimeSpan.FromSeconds(8)).ConfigureAwait(false);
-    }
+    internal static Task StopRunningInstanceAsync(Process process) => AppProcessShutdown.StopAsync(process);
 
     internal static void CopyFileWithRetry(string sourceFile, string destinationFile, int maxRetries = 5,
         Action<int>? delay = null)
@@ -474,39 +591,30 @@ internal static class SetupOperations
             $"{AppName}.lnk");
         if (File.Exists(desktopShortcutPath))
         {
-            File.Delete(desktopShortcutPath);
+            SafeFileDeletion.DeleteFile(desktopShortcutPath);
         }
 
         var startMenuDirectory = Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.Programs),
             AppName);
-        var startMenuShortcutPath = Path.Combine(startMenuDirectory, $"{AppName}.lnk");
-        if (File.Exists(startMenuShortcutPath))
-        {
-            File.Delete(startMenuShortcutPath);
-        }
-
-        if (Directory.Exists(startMenuDirectory))
-        {
-            Directory.Delete(startMenuDirectory, recursive: true);
-        }
+        SafeFileDeletion.DeleteShortcutDirectory(startMenuDirectory);
     }
 
-    private static void RemoveAppData()
+    private static void RemoveAppData(string installDirectory)
     {
         string[] directories =
         [
             Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), AppName),
             Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), AppName),
-            Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "VNotch"),
-            Path.Combine(Path.GetTempPath(), AppName)
+            Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "VNotch")
         ];
 
         foreach (var dir in directories)
         {
+            if (SafeFileDeletion.PathsOverlap(dir, installDirectory)) continue;
             try
             {
-                if (Directory.Exists(dir)) Directory.Delete(dir, recursive: true);
+                SafeFileDeletion.DeleteDirectory(dir);
             }
             catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
             {
@@ -514,10 +622,12 @@ internal static class SetupOperations
             }
         }
 
+        // Temp/V-Notch can contain recovery copies and user files; never wipe the shared root.
+
         var legacyTempSetup = Path.Combine(Path.GetTempPath(), "V-Notch-Setup.exe");
         try
         {
-            if (File.Exists(legacyTempSetup)) File.Delete(legacyTempSetup);
+            SafeFileDeletion.DeleteFile(legacyTempSetup);
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {

@@ -17,8 +17,10 @@ namespace VNotch.Controllers;
 public sealed class ClipboardHistoryController : IDisposable, IAsyncDisposable
 {
     private readonly Dispatcher _dispatcher;
-    private readonly Channel<Task<ClipboardCapture>> _captures = Channel.CreateUnbounded<Task<ClipboardCapture>>(
-        new UnboundedChannelOptions { SingleReader = true, SingleWriter = true });
+    internal const int MaxPendingCaptures = 8;
+    private readonly SemaphoreSlim _captureSlots = new(MaxPendingCaptures, MaxPendingCaptures);
+    private readonly Channel<Task<ClipboardCapture>> _captures = Channel.CreateBounded<Task<ClipboardCapture>>(
+        new BoundedChannelOptions(MaxPendingCaptures) { SingleReader = true, SingleWriter = true });
     private readonly Task _consumer;
     private readonly UiScheduledTimer _retentionTimer;
     private readonly UiScheduledTimer _debounceTimer;
@@ -60,6 +62,15 @@ public sealed class ClipboardHistoryController : IDisposable, IAsyncDisposable
     {
         _dispatcher = dispatcher;
         Store = store ?? new ClipboardHistoryStore();
+        try
+        {
+            if (Thread.CurrentThread.GetApartmentState() == ApartmentState.STA && System.Windows.Clipboard.ContainsFileDropList())
+            {
+                _clipboardExportPaths = System.Windows.Clipboard.GetFileDropList().Cast<string>().ToArray();
+                _ownSequence = GetClipboardSequenceNumber();
+            }
+        }
+        catch (ExternalException) { /* An unavailable clipboard can be retried on its next update. */ }
         _consumer = ConsumeAsync();
         _retentionTimer = new UiScheduledTimer(DispatcherPriority.Background, dispatcher) { Interval = TimeSpan.FromHours(1) };
         _retentionTimer.Tick += RetentionTick;
@@ -74,6 +85,7 @@ public sealed class ClipboardHistoryController : IDisposable, IAsyncDisposable
     {
         try
         {
+            await Store.KeepClipboardExportsAsync(_clipboardExportPaths).ConfigureAwait(false);
             try { await Store.InitializeAsync().ConfigureAwait(false); }
             catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
             { Report("clipboard.saveError"); }
@@ -85,6 +97,7 @@ public sealed class ClipboardHistoryController : IDisposable, IAsyncDisposable
                     RuntimeLog.Error("CLIPBOARD", ex.GetType().Name);
                     Report("clipboard.saveError");
                 }
+                finally { _captureSlots.Release(); }
             }
         }
         catch (ObjectDisposedException) { /* Intentionally ignored. */ }
@@ -149,63 +162,70 @@ public sealed class ClipboardHistoryController : IDisposable, IAsyncDisposable
 
     private async Task CaptureAsync(uint sequence)
     {
-        for (int retry = 0; retry <= ClipboardRetry.RetryCount; retry++)
+        if (!_captureSlots.Wait(0)) { Report("clipboard.saveError"); return; }
+        bool queued = false;
+        try
         {
-            if (_disposed || IsPaused || _isWritingClipboard || sequence == _ownSequence || GetClipboardSequenceNumber() != sequence) return;
-            try
+            for (int retry = 0; retry <= ClipboardRetry.RetryCount; retry++)
             {
-                var data = System.Windows.Clipboard.GetDataObject();
-                if (data == null || ShouldIgnoreClipboardData(data)) return;
-                string text = (data.GetDataPresent(DataFormats.UnicodeText) ? data.GetData(DataFormats.UnicodeText) as string : null)
-                    ?? (data.GetDataPresent(DataFormats.Text) ? data.GetData(DataFormats.Text) as string : null)
-                    ?? "";
-                string[] paths = data.GetDataPresent(DataFormats.FileDrop)
-                    ? data.GetData(DataFormats.FileDrop) as string[] ?? []
-                    : [];
-                bool isScreenshotTempFile = paths.Length == 1 && IsTemporaryScreenshotPath(paths[0]);
-                BitmapSource? image = (paths.Length == 0 || isScreenshotTempFile) && data.GetDataPresent(DataFormats.Bitmap)
-                    ? data.GetData(DataFormats.Bitmap) as BitmapSource
-                    : null;
-                if (isScreenshotTempFile && image != null)
+                if (_disposed || IsPaused || _isWritingClipboard || sequence == _ownSequence || GetClipboardSequenceNumber() != sequence) return;
+                try
                 {
-                    paths = [];
+                    var data = System.Windows.Clipboard.GetDataObject();
+                    if (data == null || ShouldIgnoreClipboardData(data)) return;
+                    string text = (data.GetDataPresent(DataFormats.UnicodeText) ? data.GetData(DataFormats.UnicodeText) as string : null)
+                        ?? (data.GetDataPresent(DataFormats.Text) ? data.GetData(DataFormats.Text) as string : null)
+                        ?? "";
+                    string[] paths = data.GetDataPresent(DataFormats.FileDrop)
+                        ? data.GetData(DataFormats.FileDrop) as string[] ?? []
+                        : [];
+                    bool isScreenshotTempFile = paths.Length == 1 && IsTemporaryScreenshotPath(paths[0]);
+                    BitmapSource? image = (paths.Length == 0 || isScreenshotTempFile) && data.GetDataPresent(DataFormats.Bitmap)
+                        ? data.GetData(DataFormats.Bitmap) as BitmapSource
+                        : null;
+                    if (isScreenshotTempFile && image != null)
+                    {
+                        paths = [];
+                    }
+                    // Filter the original payload type; disabled file/image captures must not
+                    // fall through into an incidental text representation of the same copy.
+                    if (paths.Length > 0 && !_captureFiles || image != null && !_captureImages) return;
+                    if (!_captureText) text = "";
+                    if (image != null)
+                    {
+                        if ((long)image.PixelWidth * image.PixelHeight > 32_000_000) { Report("clipboard.readError"); return; }
+                        image = image.Clone();
+                        image.Freeze();
+                    }
+                    var source = ClipboardSource();
+                    var capture = new ClipboardCapture
+                    {
+                        Text = text,
+                        Html = _captureText && data.GetDataPresent(DataFormats.Html) ? data.GetData(DataFormats.Html) as string ?? "" : "",
+                        Rtf = _captureText && data.GetDataPresent(DataFormats.Rtf) ? data.GetData(DataFormats.Rtf) as string ?? "" : "",
+                        FilePaths = paths,
+                        SourceApp = source.Name,
+                        SourceExecutable = source.Executable
+                    };
+                    if (GetClipboardSequenceNumber() != sequence) return;
+                    if (paths.Length != 0 || image != null || text.Length != 0 || capture.Html.Length != 0 || capture.Rtf.Length != 0)
+                        queued = _captures.Writer.TryWrite(image == null ? Task.FromResult(capture) : EncodeImageAsync(capture, image));
+                    return;
                 }
-                // Filter the original payload type; disabled file/image captures must not
-                // fall through into an incidental text representation of the same copy.
-                if (paths.Length > 0 && !_captureFiles || image != null && !_captureImages) return;
-                if (!_captureText) text = "";
-                if (image != null)
+                catch (ExternalException) when (retry < ClipboardRetry.RetryCount)
                 {
-                    image = image.Clone();
-                    image.Freeze();
+                    await Task.Delay(ClipboardRetry.DelayMilliseconds(retry));
                 }
-                var source = ClipboardSource();
-                var capture = new ClipboardCapture
+                catch (Exception ex)
                 {
-                    Text = text,
-                    Html = _captureText && data.GetDataPresent(DataFormats.Html) ? data.GetData(DataFormats.Html) as string ?? "" : "",
-                    Rtf = _captureText && data.GetDataPresent(DataFormats.Rtf) ? data.GetData(DataFormats.Rtf) as string ?? "" : "",
-                    FilePaths = paths,
-                    SourceApp = source.Name,
-                    SourceExecutable = source.Executable
-                };
-                if (GetClipboardSequenceNumber() != sequence) return;
-                if (paths.Length != 0 || image != null || text.Length != 0 || capture.Html.Length != 0 || capture.Rtf.Length != 0)
-                    _captures.Writer.TryWrite(image == null ? Task.FromResult(capture) : EncodeImageAsync(capture, image));
-                return;
-            }
-            catch (ExternalException) when (retry < ClipboardRetry.RetryCount)
-            {
-                await Task.Delay(ClipboardRetry.DelayMilliseconds(retry));
-            }
-            catch (Exception ex)
-            {
-                // Passive monitoring must not interrupt the user with a copy error.
-                // A later clipboard update starts a fresh capture automatically.
-                RuntimeLog.Error("CLIPBOARD", ex.GetType().Name);
-                return;
+                    // Passive monitoring must not interrupt the user with a copy error.
+                    // A later clipboard update starts a fresh capture automatically.
+                    RuntimeLog.Error("CLIPBOARD", ex.GetType().Name);
+                    return;
+                }
             }
         }
+        finally { if (!queued) _captureSlots.Release(); }
     }
 
     private static Task<ClipboardCapture> EncodeImageAsync(ClipboardCapture capture, BitmapSource image) => Task.Run(() =>
@@ -536,6 +556,7 @@ public sealed class ClipboardHistoryController : IDisposable, IAsyncDisposable
     }
     private void ClearPersonalClipboard()
     {
+        if (_personalClipboardSequence == 0) return;
         if (_personalClipboardSequence != 0 && GetClipboardSequenceNumber() == _personalClipboardSequence)
         {
             try { System.Windows.Clipboard.Clear(); }

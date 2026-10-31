@@ -61,7 +61,10 @@ public sealed class DataProtectionSettingsTests : IDisposable
         Assert.NotNull(stored);
         Assert.StartsWith("enc:", stored);
         Assert.DoesNotContain(key, File.ReadAllText(path));
-        Assert.False(File.Exists(legacyBackup));
+        using var backup = JsonDocument.Parse(File.ReadAllText(legacyBackup));
+        string protectedKey = backup.RootElement.GetProperty(nameof(NotchSettings.YouTubeApiKey)).GetString()!;
+        Assert.StartsWith("enc:", protectedKey);
+        Assert.Equal(key, DataProtection.Unprotect(protectedKey));
     }
 
     [Fact]

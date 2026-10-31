@@ -54,7 +54,8 @@ internal sealed class SpotlightWindowFixture : IDisposable
         {
             // The usage worker has no dispatcher dependency. Drain it before
             // removing its files so a late save cannot recreate the directory.
-            Usage.WaitForPendingSavesAsync().GetAwaiter().GetResult();
+            Window.FlushPersistenceAsync().GetAwaiter().GetResult();
+            Usage.Dispose();
             DeleteDirectory();
         }
     }
