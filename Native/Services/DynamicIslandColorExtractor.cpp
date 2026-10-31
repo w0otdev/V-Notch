@@ -168,7 +168,7 @@ public:
 
     static void ExtractAdvancedPalette(const uint8_t* pixels, int32_t width, int32_t height, int32_t stride, VnPaletteResult* out_res) noexcept {
         *out_res = VnPaletteResult{30, 30, 30, 255, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 255, 255, 255, 255};
-        if (!pixels || width <= 4 || height <= 4 || stride < width * 4) {
+        if (!pixels || width <= 4 || height <= 4 || width > 16384 || height > 16384 || static_cast<int64_t>(stride) < static_cast<int64_t>(width) * 4LL) {
             return;
         }
 
@@ -188,7 +188,7 @@ public:
 
         for (int32_t y = 0; y < height; y++) {
             for (int32_t x = 0; x < width; x++) {
-                int32_t i = y * stride + x * 4;
+                int64_t i = static_cast<int64_t>(y) * stride + static_cast<int64_t>(x) * 4LL;
                 uint8_t a = pixels[i + 3];
                 if (a < 80) continue;
 

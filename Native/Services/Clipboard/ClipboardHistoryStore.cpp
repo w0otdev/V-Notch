@@ -158,6 +158,30 @@ public:
         out_bucket = 3;
         out_value = static_cast<int32_t>(delta / kTicksPerDay);
     }
+
+    [[nodiscard]] static bool ValidateArchiveExtractStep(
+        int32_t entry_index,
+        int32_t max_entries,
+        int64_t declared_length,
+        int64_t accumulated_bytes,
+        int64_t max_total_bytes,
+        std::u16string_view root_prefix,
+        std::u16string_view resolved_path) noexcept {
+        if (entry_index < 0 || max_entries <= 0 || entry_index >= max_entries) {
+            return false;
+        }
+        if (declared_length < 0 || accumulated_bytes < 0 || max_total_bytes <= 0 ||
+            accumulated_bytes > max_total_bytes || declared_length > max_total_bytes - accumulated_bytes) {
+            return false;
+        }
+        if (root_prefix.empty() || resolved_path.size() <= root_prefix.size()) {
+            return false;
+        }
+        for (char16_t ch : resolved_path) {
+            if (ch == u'\0') return false;
+        }
+        return vnotch::starts_with_ignore_case(resolved_path, root_prefix);
+    }
 };
 
 } // namespace vnotch::services::clipboard
@@ -241,6 +265,29 @@ VN_EXPORT int32_t vn_clipboard_store_is_sharing_violation_hresult(
     uint8_t* out_is_sharing_violation) noexcept {
     if (!out_is_sharing_violation) return VN_E_INVALID_ARG;
     *out_is_sharing_violation = vnotch::services::clipboard::ClipboardHistoryStore::IsSharingViolationHResult(hresult) ? 1 : 0;
+    return VN_OK;
+}
+
+VN_EXPORT int32_t __stdcall vn_clipboard_store_validate_archive_extract_step(
+    int32_t entry_index,
+    int32_t max_entries,
+    int64_t declared_length,
+    int64_t accumulated_bytes,
+    int64_t max_total_bytes,
+    const char16_t* root_prefix,
+    int32_t root_prefix_len,
+    const char16_t* resolved_path,
+    int32_t resolved_path_len,
+    uint8_t* out_is_valid) noexcept {
+    if (!out_is_valid ||
+        (!root_prefix && root_prefix_len > 0) || root_prefix_len < 0 ||
+        (!resolved_path && resolved_path_len > 0) || resolved_path_len < 0) {
+        return VN_E_INVALID_ARG;
+    }
+    const std::u16string_view root_sv(root_prefix ? root_prefix : u"", static_cast<size_t>(root_prefix_len));
+    const std::u16string_view path_sv(resolved_path ? resolved_path : u"", static_cast<size_t>(resolved_path_len));
+    *out_is_valid = vnotch::services::clipboard::ClipboardHistoryStore::ValidateArchiveExtractStep(
+        entry_index, max_entries, declared_length, accumulated_bytes, max_total_bytes, root_sv, path_sv) ? 1 : 0;
     return VN_OK;
 }
 

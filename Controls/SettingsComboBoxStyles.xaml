@@ -1,5 +1,5 @@
 <ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
-        <sys:Double x:Key="ComboChevronThickness" xmlns:sys="clr-namespace:System;assembly=System.Runtime">1.7</sys:Double>
+        <sys:Double x:Key="ComboChevronThickness" xmlns:sys="clr-namespace:System;assembly=System.Runtime">1.6</sys:Double>
         <CubicEase x:Key="ComboInteractiveEaseOut" EasingMode="EaseOut"/>
 
         <Style TargetType="ComboBoxItem">
@@ -12,34 +12,26 @@
             <Setter Property="Template">
                 <Setter.Value>
                     <ControlTemplate TargetType="ComboBoxItem">
-                        <Border x:Name="ItemBorder"
-                                Background="{TemplateBinding Background}"
-                                BorderBrush="Transparent"
-                                BorderThickness="1"
-                                CornerRadius="8"
-                                Margin="4,2"
-                                Padding="{TemplateBinding Padding}"
-                                RenderTransformOrigin="0.5,0.5">
-                            <Border.RenderTransform>
-                                <ScaleTransform ScaleX="1" ScaleY="1"/>
-                            </Border.RenderTransform>
-                            <ContentPresenter VerticalAlignment="Center"/>
-                        </Border>
+                        <Grid Margin="4,2">
+                            <Border x:Name="ItemBorder"
+                                    Background="{TemplateBinding Background}"
+                                    CornerRadius="8"/>
+                            <Border x:Name="ItemHoverOverlay"
+                                    Background="#18FFFFFF"
+                                    CornerRadius="8"
+                                    Opacity="0"
+                                    IsHitTestVisible="False"/>
+                            <ContentPresenter Margin="{TemplateBinding Padding}" VerticalAlignment="Center"/>
+                        </Grid>
                         <ControlTemplate.Triggers>
                             <Trigger Property="IsMouseOver" Value="True">
-                                <Setter TargetName="ItemBorder" Property="Background" Value="#22FFFFFF"/>
-                                <Setter TargetName="ItemBorder" Property="BorderBrush" Value="#2CFFFFFF"/>
                                 <Setter Property="Foreground" Value="#FFFFFF"/>
                                 <Trigger.EnterActions>
                                     <BeginStoryboard>
                                         <Storyboard>
-                                            <DoubleAnimation Storyboard.TargetName="ItemBorder"
-                                                             Storyboard.TargetProperty="(UIElement.RenderTransform).(ScaleTransform.ScaleX)"
-                                                             To="1.012" Duration="0:0:0.14"
-                                                             EasingFunction="{StaticResource ComboInteractiveEaseOut}"/>
-                                            <DoubleAnimation Storyboard.TargetName="ItemBorder"
-                                                             Storyboard.TargetProperty="(UIElement.RenderTransform).(ScaleTransform.ScaleY)"
-                                                             To="1.012" Duration="0:0:0.14"
+                                            <DoubleAnimation Storyboard.TargetName="ItemHoverOverlay"
+                                                             Storyboard.TargetProperty="Opacity"
+                                                             To="1" Duration="0:0:0.15"
                                                              EasingFunction="{StaticResource ComboInteractiveEaseOut}"/>
                                         </Storyboard>
                                     </BeginStoryboard>
@@ -47,21 +39,16 @@
                                 <Trigger.ExitActions>
                                     <BeginStoryboard>
                                         <Storyboard>
-                                            <DoubleAnimation Storyboard.TargetName="ItemBorder"
-                                                             Storyboard.TargetProperty="(UIElement.RenderTransform).(ScaleTransform.ScaleX)"
-                                                             To="1" Duration="0:0:0.16"
-                                                             EasingFunction="{StaticResource ComboInteractiveEaseOut}"/>
-                                            <DoubleAnimation Storyboard.TargetName="ItemBorder"
-                                                             Storyboard.TargetProperty="(UIElement.RenderTransform).(ScaleTransform.ScaleY)"
-                                                             To="1" Duration="0:0:0.16"
+                                            <DoubleAnimation Storyboard.TargetName="ItemHoverOverlay"
+                                                             Storyboard.TargetProperty="Opacity"
+                                                             To="0" Duration="0:0:0.18"
                                                              EasingFunction="{StaticResource ComboInteractiveEaseOut}"/>
                                         </Storyboard>
                                     </BeginStoryboard>
                                 </Trigger.ExitActions>
                             </Trigger>
                             <Trigger Property="IsSelected" Value="True">
-                                <Setter TargetName="ItemBorder" Property="Background" Value="#30FFFFFF"/>
-                                <Setter TargetName="ItemBorder" Property="BorderBrush" Value="#48FFFFFF"/>
+                                <Setter TargetName="ItemBorder" Property="Background" Value="#24FFFFFF"/>
                                 <Setter Property="Foreground" Value="#FFFFFF"/>
                             </Trigger>
                         </ControlTemplate.Triggers>
@@ -73,9 +60,9 @@
         <Style TargetType="ComboBox">
             <Setter Property="Height" Value="44"/>
             <Setter Property="Margin" Value="0,8,0,0"/>
-            <Setter Property="Background" Value="#18FFFFFF"/>
+            <Setter Property="Background" Value="{DynamicResource SurfaceBrush}"/>
             <Setter Property="Foreground" Value="{DynamicResource SettingsTextBrush}"/>
-            <Setter Property="BorderBrush" Value="#32FFFFFF"/>
+            <Setter Property="BorderBrush" Value="#2A2A2A"/>
             <Setter Property="BorderThickness" Value="1"/>
             <Setter Property="FontWeight" Value="Bold"/>
             <Setter Property="FontFamily" Value="{DynamicResource SettingsFont}"/>
@@ -90,17 +77,23 @@
                                           ClickMode="Press">
                                 <ToggleButton.Template>
                                     <ControlTemplate TargetType="ToggleButton">
-                                        <Border x:Name="ComboBorder"
-                                                Background="#18FFFFFF"
-                                                BorderBrush="#32FFFFFF"
-                                                BorderThickness="{Binding BorderThickness, RelativeSource={RelativeSource AncestorType=ComboBox}}"
-                                                CornerRadius="12"
-                                                Padding="14,0"
-                                                RenderTransformOrigin="0.5,0.5">
-                                            <Border.RenderTransform>
-                                                <ScaleTransform ScaleX="1" ScaleY="1"/>
-                                            </Border.RenderTransform>
-                                            <Grid>
+                                        <Grid RenderTransformOrigin="0.5,0.5">
+                                            <Grid.RenderTransform>
+                                                <ScaleTransform x:Name="ComboScale" ScaleX="1" ScaleY="1"/>
+                                            </Grid.RenderTransform>
+                                            <Border x:Name="ComboBorder"
+                                                    Background="{DynamicResource SurfaceBrush}"
+                                                    BorderBrush="#2A2A2A"
+                                                    BorderThickness="{Binding BorderThickness, RelativeSource={RelativeSource AncestorType=ComboBox}}"
+                                                    CornerRadius="12"/>
+                                            <Border x:Name="ComboHoverOverlay"
+                                                    Background="#0CFFFFFF"
+                                                    BorderBrush="#36FFFFFF"
+                                                    BorderThickness="1"
+                                                    CornerRadius="12"
+                                                    Opacity="0"
+                                                    IsHitTestVisible="False"/>
+                                            <Grid Margin="14,0">
                                                 <ContentPresenter x:Name="SelectedContent"
                                                                   Content="{Binding SelectionBoxItem, RelativeSource={RelativeSource AncestorType=ComboBox}}"
                                                                   ContentTemplate="{Binding SelectionBoxItemTemplate, RelativeSource={RelativeSource AncestorType=ComboBox}}"
@@ -108,7 +101,7 @@
                                                                   HorizontalAlignment="Left"
                                                                   TextElement.Foreground="{DynamicResource SettingsTextBrush}"/>
                                                 <Path x:Name="ChevronPath"
-                                                      Data="M 0 0 L 4.5 4.5 L 9 0"
+                                                      Data="M 0 0 L 4 4 L 8 0"
                                                       Stroke="#C8D1DD"
                                                       StrokeThickness="{DynamicResource ComboChevronThickness}"
                                                       StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round"
@@ -120,25 +113,16 @@
                                                     </Path.RenderTransform>
                                                 </Path>
                                             </Grid>
-                                        </Border>
+                                        </Grid>
                                         <ControlTemplate.Triggers>
                                             <Trigger Property="IsMouseOver" Value="True">
-                                                <Setter TargetName="ComboBorder" Property="BorderBrush" Value="#58FFFFFF"/>
-                                                <Setter TargetName="ComboBorder" Property="Background" Value="#22FFFFFF"/>
                                                 <Setter TargetName="ChevronPath" Property="Stroke" Value="#FFFFFF"/>
-                                                <Setter TargetName="SelectedContent" Property="TextElement.Foreground" Value="#FFFFFF"/>
-                                            </Trigger>
-                                            <Trigger Property="IsPressed" Value="True">
                                                 <Trigger.EnterActions>
                                                     <BeginStoryboard>
                                                         <Storyboard>
-                                                            <DoubleAnimation Storyboard.TargetName="ComboBorder"
-                                                                             Storyboard.TargetProperty="(UIElement.RenderTransform).(ScaleTransform.ScaleX)"
-                                                                             To="0.985" Duration="0:0:0.09"
-                                                                             EasingFunction="{StaticResource ComboInteractiveEaseOut}"/>
-                                                            <DoubleAnimation Storyboard.TargetName="ComboBorder"
-                                                                             Storyboard.TargetProperty="(UIElement.RenderTransform).(ScaleTransform.ScaleY)"
-                                                                             To="0.985" Duration="0:0:0.09"
+                                                            <DoubleAnimation Storyboard.TargetName="ComboHoverOverlay"
+                                                                             Storyboard.TargetProperty="Opacity"
+                                                                             To="1" Duration="0:0:0.16"
                                                                              EasingFunction="{StaticResource ComboInteractiveEaseOut}"/>
                                                         </Storyboard>
                                                     </BeginStoryboard>
@@ -146,12 +130,38 @@
                                                 <Trigger.ExitActions>
                                                     <BeginStoryboard>
                                                         <Storyboard>
-                                                            <DoubleAnimation Storyboard.TargetName="ComboBorder"
-                                                                             Storyboard.TargetProperty="(UIElement.RenderTransform).(ScaleTransform.ScaleX)"
+                                                            <DoubleAnimation Storyboard.TargetName="ComboHoverOverlay"
+                                                                             Storyboard.TargetProperty="Opacity"
+                                                                             To="0" Duration="0:0:0.20"
+                                                                             EasingFunction="{StaticResource ComboInteractiveEaseOut}"/>
+                                                        </Storyboard>
+                                                    </BeginStoryboard>
+                                                </Trigger.ExitActions>
+                                            </Trigger>
+                                            <Trigger Property="IsPressed" Value="True">
+                                                <Trigger.EnterActions>
+                                                    <BeginStoryboard>
+                                                        <Storyboard>
+                                                            <DoubleAnimation Storyboard.TargetName="ComboScale"
+                                                                             Storyboard.TargetProperty="ScaleX"
+                                                                             To="0.988" Duration="0:0:0.09"
+                                                                             EasingFunction="{StaticResource ComboInteractiveEaseOut}"/>
+                                                            <DoubleAnimation Storyboard.TargetName="ComboScale"
+                                                                             Storyboard.TargetProperty="ScaleY"
+                                                                             To="0.988" Duration="0:0:0.09"
+                                                                             EasingFunction="{StaticResource ComboInteractiveEaseOut}"/>
+                                                        </Storyboard>
+                                                    </BeginStoryboard>
+                                                </Trigger.EnterActions>
+                                                <Trigger.ExitActions>
+                                                    <BeginStoryboard>
+                                                        <Storyboard>
+                                                            <DoubleAnimation Storyboard.TargetName="ComboScale"
+                                                                             Storyboard.TargetProperty="ScaleX"
                                                                              To="1" Duration="0:0:0.16"
                                                                              EasingFunction="{StaticResource ComboInteractiveEaseOut}"/>
-                                                            <DoubleAnimation Storyboard.TargetName="ComboBorder"
-                                                                             Storyboard.TargetProperty="(UIElement.RenderTransform).(ScaleTransform.ScaleY)"
+                                                            <DoubleAnimation Storyboard.TargetName="ComboScale"
+                                                                             Storyboard.TargetProperty="ScaleY"
                                                                              To="1" Duration="0:0:0.16"
                                                                              EasingFunction="{StaticResource ComboInteractiveEaseOut}"/>
                                                         </Storyboard>
@@ -159,16 +169,14 @@
                                                 </Trigger.ExitActions>
                                             </Trigger>
                                             <Trigger Property="IsChecked" Value="True">
-                                                <Setter TargetName="ComboBorder" Property="Background" Value="#28FFFFFF"/>
-                                                <Setter TargetName="ComboBorder" Property="BorderBrush" Value="#82FFFFFF"/>
+                                                <Setter TargetName="ComboBorder" Property="BorderBrush" Value="#54FFFFFF"/>
                                                 <Setter TargetName="ChevronPath" Property="Stroke" Value="#FFFFFF"/>
-                                                <Setter TargetName="SelectedContent" Property="TextElement.Foreground" Value="#FFFFFF"/>
                                                 <Trigger.EnterActions>
                                                     <BeginStoryboard>
                                                         <Storyboard>
                                                             <DoubleAnimation Storyboard.TargetName="ChevronPath"
                                                                              Storyboard.TargetProperty="(UIElement.RenderTransform).(RotateTransform.Angle)"
-                                                                             To="180" Duration="0:0:0.20"
+                                                                             To="180" Duration="0:0:0.18"
                                                                              EasingFunction="{StaticResource ComboInteractiveEaseOut}"/>
                                                         </Storyboard>
                                                     </BeginStoryboard>
@@ -196,12 +204,12 @@
                                    PopupAnimation="Fade"
                                    StaysOpen="False">
                                 <Border x:Name="DropdownBorder"
-                                        Background="#121216"
-                                        BorderBrush="#38FFFFFF"
+                                        Background="#0F0F12"
+                                        BorderBrush="#2CFFFFFF"
                                         BorderThickness="1"
                                         CornerRadius="12"
-                                        Margin="0,5,0,0"
-                                        Padding="2,4"
+                                        Margin="0,4,0,0"
+                                        Padding="0,4"
                                         MinWidth="{TemplateBinding ActualWidth}"
                                         RenderTransformOrigin="0.5,0"
                                         Effect="{x:Null}">
@@ -237,12 +245,7 @@
                                     <Thumb>
                                         <Thumb.Template>
                                             <ControlTemplate TargetType="Thumb">
-                                                <Border x:Name="ScrollThumbBorder" Background="#5AFFFFFF" CornerRadius="4" Margin="2,0"/>
-                                                <ControlTemplate.Triggers>
-                                                    <Trigger Property="IsMouseOver" Value="True">
-                                                        <Setter TargetName="ScrollThumbBorder" Property="Background" Value="#88FFFFFF"/>
-                                                    </Trigger>
-                                                </ControlTemplate.Triggers>
+                                                <Border x:Name="ScrollThumbBorder" Background="#505050" CornerRadius="4" Margin="2,0"/>
                                             </ControlTemplate>
                                         </Thumb.Template>
                                     </Thumb>

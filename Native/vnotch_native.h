@@ -279,6 +279,38 @@ struct VnSettingsSwitchMotionOut
 };
 #endif
 
+#ifndef VN_NAV_TAB_MOTION_DEFINED
+#define VN_NAV_TAB_MOTION_DEFINED
+struct VnNavTabMotionOut
+{
+    double target_y;
+    double target_height;
+    double peak_scale_y;
+    double dip_scale_x;
+    double rebound_scale_y;
+    double rebound_scale_x;
+    double content_shift_x;
+    int32_t peak_time_ms;
+    int32_t rebound_time_ms;
+    int32_t duration_ms;
+};
+#endif
+
+#ifndef VN_QUICK_ACTIONS_SLIDE_MOTION_DEFINED
+#define VN_QUICK_ACTIONS_SLIDE_MOTION_DEFINED
+struct VnQuickActionsSlideMotionOut
+{
+    double results_from_x;
+    double results_to_x;
+    double actions_from_x;
+    double actions_to_x;
+    double item_slide_x;
+    int32_t exit_duration_ms;
+    int32_t enter_duration_ms;
+    int32_t stagger_step_ms;
+};
+#endif
+
 #pragma pack(pop)
 
 VN_EXPORT int32_t __stdcall vn_visualizer_mix_frames_to_mono(
@@ -572,6 +604,26 @@ VN_EXPORT int32_t __stdcall vn_animation_compute_settings_switch_motion(
     uint8_t is_pressed,
     uint8_t reduced_motion,
     VnSettingsSwitchMotionOut* out_motion) noexcept;
+
+VN_EXPORT int32_t __stdcall vn_animation_compute_nav_tab_motion(
+    double current_y,
+    double target_y,
+    double item_height,
+    uint8_t reduced_motion,
+    VnNavTabMotionOut* out_motion) noexcept;
+
+VN_EXPORT int32_t __stdcall vn_animation_compute_elastic_slider_overscroll(
+    double overflow_px,
+    double usable_width,
+    uint8_t reduced_motion,
+    double* out_scale_x,
+    double* out_scale_y) noexcept;
+
+VN_EXPORT int32_t __stdcall vn_animation_compute_spotlight_quick_actions_motion(
+    uint8_t entering,
+    double viewport_width,
+    uint8_t reduced_motion,
+    VnQuickActionsSlideMotionOut* out_motion) noexcept;
 
 VN_EXPORT int32_t vn_settings_search_score_row(
     const char16_t* norm_title_ptr,

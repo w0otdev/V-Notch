@@ -17,8 +17,8 @@ public partial class SpotlightWindow
         if (item?.Kind == SpotlightResultKind.Application)
         {
             AddMenuItem(menu, Loc.Get(preferences.IsPinned(item.Target) ? "spotlight.unpin" : "spotlight.pin"),
-                () => _ = TogglePinnedApplication(item));
-            AddMenuItem(menu, Loc.Get("spotlight.alias"), () => EditSpotlightPreferences(item));
+                () => _ = TogglePinnedApplication(item), QuickActionPinGeometry);
+            AddMenuItem(menu, Loc.Get("spotlight.alias"), () => EditSpotlightPreferences(item), QuickActionAliasGeometry);
         }
         if (item?.Kind is SpotlightResultKind.File or SpotlightResultKind.Folder)
         {
@@ -28,9 +28,9 @@ public partial class SpotlightWindow
                 if (string.IsNullOrEmpty(folder)) return;
                 preferences.SetExcludedFolders(preferences.GetExcludedFolders().Append(folder));
                 _ = RefreshPersonalizedResults();
-            });
+            }, QuickActionExcludeFolderGeometry);
         }
-        AddMenuItem(menu, Loc.Get("spotlight.excludedFolders"), () => EditSpotlightPreferences(null));
+        AddMenuItem(menu, Loc.Get("spotlight.excludedFolders"), () => EditSpotlightPreferences(null), QuickActionExcludeFolderGeometry);
         menu.Opened += (_, _) => _resultMenuOpen = true;
         menu.Closed += (_, _) => _resultMenuOpen = false;
     }

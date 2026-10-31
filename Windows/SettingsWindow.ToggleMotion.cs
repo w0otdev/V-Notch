@@ -210,16 +210,14 @@ public partial class SettingsWindow
         double curY = capScale.ScaleY;
         var scaleXAnim = new DoubleAnimationUsingKeyFrames { FillBehavior = FillBehavior.Stop };
         scaleXAnim.KeyFrames.Add(new EasingDoubleKeyFrame(curX, KeyTime.FromTimeSpan(TimeSpan.Zero)));
-        scaleXAnim.KeyFrames.Add(new EasingDoubleKeyFrame(motion.PeakScaleX, KeyTime.FromTimeSpan(TimeSpan.FromMilliseconds(motion.PeakTimeMs)), _switchEaseOut));
-        scaleXAnim.KeyFrames.Add(new EasingDoubleKeyFrame(motion.ReboundScaleX, KeyTime.FromTimeSpan(TimeSpan.FromMilliseconds(motion.ReboundTimeMs)), _switchEaseInOut));
-        scaleXAnim.KeyFrames.Add(new EasingDoubleKeyFrame(1.0, KeyTime.FromTimeSpan(TimeSpan.FromMilliseconds(motion.DurationMs)), AnimationPrimitives._easeAppleOut));
+        scaleXAnim.KeyFrames.Add(new EasingDoubleKeyFrame(1.08, KeyTime.FromTimeSpan(TimeSpan.FromMilliseconds(75)), _switchEaseOut));
+        scaleXAnim.KeyFrames.Add(new EasingDoubleKeyFrame(1.0, KeyTime.FromTimeSpan(TimeSpan.FromMilliseconds(190)), AnimationPrimitives._easeAppleOut));
         Timeline.SetDesiredFrameRate(scaleXAnim, AnimationConfig.TargetFps);
 
         var scaleYAnim = new DoubleAnimationUsingKeyFrames { FillBehavior = FillBehavior.Stop };
         scaleYAnim.KeyFrames.Add(new EasingDoubleKeyFrame(curY, KeyTime.FromTimeSpan(TimeSpan.Zero)));
-        scaleYAnim.KeyFrames.Add(new EasingDoubleKeyFrame(motion.DipScaleY, KeyTime.FromTimeSpan(TimeSpan.FromMilliseconds(motion.PeakTimeMs)), _switchEaseOut));
-        scaleYAnim.KeyFrames.Add(new EasingDoubleKeyFrame(motion.ReboundScaleY, KeyTime.FromTimeSpan(TimeSpan.FromMilliseconds(motion.ReboundTimeMs)), _switchEaseInOut));
-        scaleYAnim.KeyFrames.Add(new EasingDoubleKeyFrame(1.0, KeyTime.FromTimeSpan(TimeSpan.FromMilliseconds(motion.DurationMs)), AnimationPrimitives._easeAppleOut));
+        scaleYAnim.KeyFrames.Add(new EasingDoubleKeyFrame(0.96, KeyTime.FromTimeSpan(TimeSpan.FromMilliseconds(75)), _switchEaseOut));
+        scaleYAnim.KeyFrames.Add(new EasingDoubleKeyFrame(1.0, KeyTime.FromTimeSpan(TimeSpan.FromMilliseconds(190)), AnimationPrimitives._easeAppleOut));
         Timeline.SetDesiredFrameRate(scaleYAnim, AnimationConfig.TargetFps);
 
         capScale.BeginAnimation(ScaleTransform.ScaleXProperty, scaleXAnim, HandoffBehavior.SnapshotAndReplace);
@@ -228,7 +226,7 @@ public partial class SettingsWindow
         capScale.ScaleY = 1.0;
     }
 
-    private static void AnimateSettingsSwitchValue(Animatable target, DependencyProperty property, double value, bool animate, int durationMs = 220)
+    private static void AnimateSettingsSwitchValue(Animatable target, DependencyProperty property, double value, bool animate, int durationMs = 190)
     {
         // Capture the presented value before replacing a clock so rapid toggles reverse smoothly.
         double current = (double)target.GetValue(property);
@@ -239,9 +237,9 @@ public partial class SettingsWindow
             return;
         }
 
-        var animation = AnimationPrimitives.WithFps(new DoubleAnimation(current, value, TimeSpan.FromMilliseconds(durationMs))
+        var animation = AnimationPrimitives.WithFps(new DoubleAnimation(value, TimeSpan.FromMilliseconds(durationMs))
         {
-            EasingFunction = AnimationPrimitives._easeMoveSpring,
+            EasingFunction = AnimationPrimitives._easeAppleOut,
             FillBehavior = FillBehavior.Stop
         });
         target.BeginAnimation(property, animation, HandoffBehavior.SnapshotAndReplace);

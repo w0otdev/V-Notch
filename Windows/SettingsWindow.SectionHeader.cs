@@ -42,7 +42,7 @@ public partial class SettingsWindow
 
         var duration = System.TimeSpan.FromMilliseconds(280);
         var fade = new DoubleAnimation(0, 1, duration);
-        var slide = new DoubleAnimation(6, 0, duration)
+        var slide = new DoubleAnimation(7 * (_lastNavDirection >= 0 ? 1 : -1), 0, duration)
         {
             EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut }
         };

@@ -20,7 +20,7 @@ public:
         int32_t* out_bottom) noexcept
     {
         if (source == nullptr || destination == nullptr || out_top == nullptr || out_bottom == nullptr ||
-            row_bytes < 0 || height < 0)
+            row_bytes < 0 || height < 0 || source_stride < row_bytes || destination_stride < row_bytes)
         {
             return VN_ERR_INVALID_ARG;
         }

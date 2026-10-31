@@ -8,7 +8,7 @@ namespace vnotch::services
 class AppVersion final
 {
 public:
-    static std::u16string StripInformationalPrefixAndMetadata(std::u16string_view info_version)
+    static std::u16string_view StripInformationalPrefixAndMetadata(std::u16string_view info_version) noexcept
     {
         size_t plus_pos = info_version.find(u'+');
         std::u16string_view core = (plus_pos == std::u16string_view::npos)
@@ -18,19 +18,22 @@ public:
         {
             core.remove_prefix(1);
         }
-        return std::u16string(core);
+        return core;
     }
 
-    static std::u16string FormatAssemblyVersion(
+    static size_t FormatAssemblyVersion(
         uint8_t has_version,
         int32_t major,
         int32_t minor,
         int32_t build,
-        int32_t revision)
+        int32_t revision,
+        char16_t (&out)[64]) noexcept
     {
         if (!has_version)
         {
-            return u"0.0.0";
+            constexpr std::u16string_view kDefault = u"0.0.0";
+            for (size_t i = 0; i < kDefault.size(); ++i) out[i] = kDefault[i];
+            return kDefault.size();
         }
         int32_t clamped_build = std::max(0, build);
         char buf[64]{};
@@ -43,16 +46,16 @@ public:
         {
             n = std::snprintf(buf, sizeof(buf), "%d.%d.%d", major, minor, clamped_build);
         }
-        std::u16string out;
-        if (n > 0)
+        if (n <= 0)
         {
-            out.resize(static_cast<size_t>(n));
-            for (int i = 0; i < n; ++i)
-            {
-                out[static_cast<size_t>(i)] = static_cast<char16_t>(static_cast<unsigned char>(buf[i]));
-            }
+            return 0;
         }
-        return out;
+        const int clamped_n = std::min<int>(n, static_cast<int>(sizeof(buf) - 1));
+        for (int i = 0; i < clamped_n; ++i)
+        {
+            out[static_cast<size_t>(i)] = static_cast<char16_t>(static_cast<unsigned char>(buf[i]));
+        }
+        return static_cast<size_t>(clamped_n);
     }
 };
 
@@ -68,7 +71,7 @@ VN_EXPORT int32_t vn_app_version_strip_informational(
     int32_t out_cap,
     int32_t* out_len) noexcept
 {
-    std::u16string res = vnotch::services::AppVersion::StripInformationalPrefixAndMetadata(
+    std::u16string_view res = vnotch::services::AppVersion::StripInformationalPrefixAndMetadata(
         vnotch::make_u16_view(info_ptr, info_len));
     return vnotch::copy_out_u16(res, out_buf, out_cap, out_len);
 }
@@ -83,9 +86,10 @@ VN_EXPORT int32_t vn_app_version_format_assembly(
     int32_t out_cap,
     int32_t* out_len) noexcept
 {
-    std::u16string res = vnotch::services::AppVersion::FormatAssemblyVersion(
-        has_version, major, minor, build, revision);
-    return vnotch::copy_out_u16(res, out_buf, out_cap, out_len);
+    char16_t res[64]{};
+    size_t len = vnotch::services::AppVersion::FormatAssemblyVersion(
+        has_version, major, minor, build, revision, res);
+    return vnotch::copy_out_u16(std::u16string_view(res, len), out_buf, out_cap, out_len);
 }
 
 } // extern "C"

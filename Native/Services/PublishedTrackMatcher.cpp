@@ -15,7 +15,7 @@ namespace vnotch::services
     const char16_t* exp_artist_ptr, int32_t exp_artist_len,
     const char16_t* exp_app_id_ptr, int32_t exp_app_id_len,
     const char16_t* exp_session_key_ptr, int32_t exp_session_key_len,
-    uint8_t* out_same) noexcept
+    uint8_t* out_same)
         {
     if (out_same == nullptr)
     {
@@ -59,7 +59,7 @@ namespace vnotch::services
 
         static int32_t vn_published_track_is_new_for_thumbnail_impl(const char16_t* last_track_only_ptr, int32_t last_track_only_len,
     const char16_t* cur_track_ptr, int32_t cur_track_len,
-    uint8_t* out_is_new) noexcept
+    uint8_t* out_is_new)
         {
     if (out_is_new == nullptr)
     {
@@ -90,13 +90,15 @@ VN_EXPORT int32_t vn_published_track_is_same_track(const char16_t* last_track_id
     const char16_t* exp_session_key_ptr, int32_t exp_session_key_len,
     uint8_t* out_same) noexcept
 {
-    return vnotch::services::PublishedTrackMatcher::vn_published_track_is_same_track_impl(last_track_id_ptr, last_track_id_len, last_track_only_ptr, last_track_only_len, last_app_id_ptr, last_app_id_len, last_session_key_ptr, last_session_key_len, exp_track_ptr, exp_track_len, exp_artist_ptr, exp_artist_len, exp_app_id_ptr, exp_app_id_len, exp_session_key_ptr, exp_session_key_len, out_same);
+    try { return vnotch::services::PublishedTrackMatcher::vn_published_track_is_same_track_impl(last_track_id_ptr, last_track_id_len, last_track_only_ptr, last_track_only_len, last_app_id_ptr, last_app_id_len, last_session_key_ptr, last_session_key_len, exp_track_ptr, exp_track_len, exp_artist_ptr, exp_artist_len, exp_app_id_ptr, exp_app_id_len, exp_session_key_ptr, exp_session_key_len, out_same);
+ } catch (...) { return VN_ERR_FAIL; }
 }
 
 VN_EXPORT int32_t vn_published_track_is_new_for_thumbnail(const char16_t* last_track_only_ptr, int32_t last_track_only_len,
     const char16_t* cur_track_ptr, int32_t cur_track_len,
     uint8_t* out_is_new) noexcept
 {
-    return vnotch::services::PublishedTrackMatcher::vn_published_track_is_new_for_thumbnail_impl(last_track_only_ptr, last_track_only_len, cur_track_ptr, cur_track_len, out_is_new);
+    try { return vnotch::services::PublishedTrackMatcher::vn_published_track_is_new_for_thumbnail_impl(last_track_only_ptr, last_track_only_len, cur_track_ptr, cur_track_len, out_is_new);
+ } catch (...) { return VN_ERR_FAIL; }
 }
 

@@ -188,7 +188,7 @@ namespace vnotch::services
     const char16_t* target_ptr, int32_t target_len,
     int32_t kind,
     const char16_t* query_ptr, int32_t query_len,
-    double* out_score) noexcept
+    double* out_score)
         {
     if (!out_score) return VN_ERR_INVALID_ARG;
     *out_score = 0.0;
@@ -254,6 +254,7 @@ VN_EXPORT int32_t vn_spotlight_ranker_score(const char16_t* display_title_ptr, i
     const char16_t* query_ptr, int32_t query_len,
     double* out_score) noexcept
 {
-    return vnotch::services::SpotlightRanker::vn_spotlight_ranker_score_impl(display_title_ptr, display_title_len, raw_title_ptr, raw_title_len, subtitle_ptr, subtitle_len, display_subtitle_ptr, display_subtitle_len, target_ptr, target_len, kind, query_ptr, query_len, out_score);
+    try { return vnotch::services::SpotlightRanker::vn_spotlight_ranker_score_impl(display_title_ptr, display_title_len, raw_title_ptr, raw_title_len, subtitle_ptr, subtitle_len, display_subtitle_ptr, display_subtitle_len, target_ptr, target_len, kind, query_ptr, query_len, out_score);
+ } catch (...) { return VN_ERR_FAIL; }
 }
 

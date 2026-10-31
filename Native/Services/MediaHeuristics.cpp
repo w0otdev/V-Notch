@@ -13,7 +13,7 @@ namespace vnotch::services
     int32_t artist_len,
     char16_t* out_buf,
     int32_t out_cap,
-    int32_t* out_len) noexcept
+    int32_t* out_len)
         {
     std::u16string id = build_track_identity_impl(
         make_u16_view(track_ptr, track_len),
@@ -27,7 +27,7 @@ namespace vnotch::services
     int32_t app_id_len,
     char16_t* out_buf,
     int32_t out_cap,
-    int32_t* out_len) noexcept
+    int32_t* out_len)
         {
     std::u16string_view session_key = make_u16_view(session_key_ptr, session_key_len);
     if (!is_null_or_whitespace(session_key))
@@ -46,7 +46,7 @@ namespace vnotch::services
     int32_t track_len,
     const char16_t* title_ptr,
     int32_t title_len,
-    uint8_t* out_compatible) noexcept
+    uint8_t* out_compatible)
         {
     if (out_compatible == nullptr)
     {
@@ -68,7 +68,7 @@ namespace vnotch::services
 
         static int32_t vn_media_heuristics_is_ignored_source_app_impl(const char16_t* app_id_ptr,
     int32_t app_id_len,
-    uint8_t* out_ignored) noexcept
+    uint8_t* out_ignored)
         {
     if (out_ignored == nullptr)
     {
@@ -87,7 +87,7 @@ namespace vnotch::services
 
         static int32_t vn_media_heuristics_is_likely_soundcloud_placeholder_url_impl(const char16_t* url_ptr,
     int32_t url_len,
-    uint8_t* out_is_placeholder) noexcept
+    uint8_t* out_is_placeholder)
         {
     if (out_is_placeholder == nullptr)
     {
@@ -116,7 +116,7 @@ namespace vnotch::services
     int32_t text_len,
     char16_t* out_buf,
     int32_t out_cap,
-    int32_t* out_len) noexcept
+    int32_t* out_len)
         {
     std::u16string res = normalize_track_for_comparison_impl(make_u16_view(text_ptr, text_len));
     return copy_out_u16(res, out_buf, out_cap, out_len);
@@ -126,7 +126,7 @@ namespace vnotch::services
     int32_t track_len,
     char16_t* out_buf,
     int32_t out_cap,
-    int32_t* out_len) noexcept
+    int32_t* out_len)
         {
     std::u16string res = extract_core_track_name_impl(make_u16_view(track_ptr, track_len));
     return copy_out_u16(res, out_buf, out_cap, out_len);
@@ -136,7 +136,7 @@ namespace vnotch::services
     int32_t title_len,
     const char16_t* track_ptr,
     int32_t track_len,
-    uint8_t* out_contains) noexcept
+    uint8_t* out_contains)
         {
     if (out_contains == nullptr)
     {
@@ -182,7 +182,8 @@ VN_EXPORT int32_t vn_media_heuristics_build_track_identity(const char16_t* track
     int32_t out_cap,
     int32_t* out_len) noexcept
 {
-    return vnotch::services::MediaHeuristics::vn_media_heuristics_build_track_identity_impl(track_ptr, track_len, artist_ptr, artist_len, out_buf, out_cap, out_len);
+    try { return vnotch::services::MediaHeuristics::vn_media_heuristics_build_track_identity_impl(track_ptr, track_len, artist_ptr, artist_len, out_buf, out_cap, out_len);
+ } catch (...) { return VN_ERR_FAIL; }
 }
 
 VN_EXPORT int32_t vn_media_heuristics_build_source_override_key(const char16_t* session_key_ptr,
@@ -193,7 +194,8 @@ VN_EXPORT int32_t vn_media_heuristics_build_source_override_key(const char16_t* 
     int32_t out_cap,
     int32_t* out_len) noexcept
 {
-    return vnotch::services::MediaHeuristics::vn_media_heuristics_build_source_override_key_impl(session_key_ptr, session_key_len, app_id_ptr, app_id_len, out_buf, out_cap, out_len);
+    try { return vnotch::services::MediaHeuristics::vn_media_heuristics_build_source_override_key_impl(session_key_ptr, session_key_len, app_id_ptr, app_id_len, out_buf, out_cap, out_len);
+ } catch (...) { return VN_ERR_FAIL; }
 }
 
 VN_EXPORT int32_t vn_media_heuristics_is_track_compatible_with_window_title(const char16_t* track_ptr,
@@ -202,21 +204,24 @@ VN_EXPORT int32_t vn_media_heuristics_is_track_compatible_with_window_title(cons
     int32_t title_len,
     uint8_t* out_compatible) noexcept
 {
-    return vnotch::services::MediaHeuristics::vn_media_heuristics_is_track_compatible_with_window_title_impl(track_ptr, track_len, title_ptr, title_len, out_compatible);
+    try { return vnotch::services::MediaHeuristics::vn_media_heuristics_is_track_compatible_with_window_title_impl(track_ptr, track_len, title_ptr, title_len, out_compatible);
+ } catch (...) { return VN_ERR_FAIL; }
 }
 
 VN_EXPORT int32_t vn_media_heuristics_is_ignored_source_app(const char16_t* app_id_ptr,
     int32_t app_id_len,
     uint8_t* out_ignored) noexcept
 {
-    return vnotch::services::MediaHeuristics::vn_media_heuristics_is_ignored_source_app_impl(app_id_ptr, app_id_len, out_ignored);
+    try { return vnotch::services::MediaHeuristics::vn_media_heuristics_is_ignored_source_app_impl(app_id_ptr, app_id_len, out_ignored);
+ } catch (...) { return VN_ERR_FAIL; }
 }
 
 VN_EXPORT int32_t vn_media_heuristics_is_likely_soundcloud_placeholder_url(const char16_t* url_ptr,
     int32_t url_len,
     uint8_t* out_is_placeholder) noexcept
 {
-    return vnotch::services::MediaHeuristics::vn_media_heuristics_is_likely_soundcloud_placeholder_url_impl(url_ptr, url_len, out_is_placeholder);
+    try { return vnotch::services::MediaHeuristics::vn_media_heuristics_is_likely_soundcloud_placeholder_url_impl(url_ptr, url_len, out_is_placeholder);
+ } catch (...) { return VN_ERR_FAIL; }
 }
 
 VN_EXPORT int32_t vn_media_heuristics_normalize_track_for_comparison(const char16_t* text_ptr,
@@ -225,7 +230,8 @@ VN_EXPORT int32_t vn_media_heuristics_normalize_track_for_comparison(const char1
     int32_t out_cap,
     int32_t* out_len) noexcept
 {
-    return vnotch::services::MediaHeuristics::vn_media_heuristics_normalize_track_for_comparison_impl(text_ptr, text_len, out_buf, out_cap, out_len);
+    try { return vnotch::services::MediaHeuristics::vn_media_heuristics_normalize_track_for_comparison_impl(text_ptr, text_len, out_buf, out_cap, out_len);
+ } catch (...) { return VN_ERR_FAIL; }
 }
 
 VN_EXPORT int32_t vn_media_heuristics_extract_core_track_name(const char16_t* track_ptr,
@@ -234,7 +240,8 @@ VN_EXPORT int32_t vn_media_heuristics_extract_core_track_name(const char16_t* tr
     int32_t out_cap,
     int32_t* out_len) noexcept
 {
-    return vnotch::services::MediaHeuristics::vn_media_heuristics_extract_core_track_name_impl(track_ptr, track_len, out_buf, out_cap, out_len);
+    try { return vnotch::services::MediaHeuristics::vn_media_heuristics_extract_core_track_name_impl(track_ptr, track_len, out_buf, out_cap, out_len);
+ } catch (...) { return VN_ERR_FAIL; }
 }
 
 VN_EXPORT int32_t vn_media_heuristics_spotify_title_contains_track(const char16_t* title_ptr,
@@ -243,6 +250,7 @@ VN_EXPORT int32_t vn_media_heuristics_spotify_title_contains_track(const char16_
     int32_t track_len,
     uint8_t* out_contains) noexcept
 {
-    return vnotch::services::MediaHeuristics::vn_media_heuristics_spotify_title_contains_track_impl(title_ptr, title_len, track_ptr, track_len, out_contains);
+    try { return vnotch::services::MediaHeuristics::vn_media_heuristics_spotify_title_contains_track_impl(title_ptr, title_len, track_ptr, track_len, out_contains);
+ } catch (...) { return VN_ERR_FAIL; }
 }
 

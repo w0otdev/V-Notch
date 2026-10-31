@@ -123,12 +123,20 @@ VN_EXPORT int32_t vn_system_command_provider_score_entry(
     {
         return VN_ERR_INVALID_ARG;
     }
-    *out_score = vnotch::services::SystemCommandProvider::ScoreEntry(
-        vnotch::make_u16_view(keywords_ptr, keywords_len),
-        vnotch::make_u16_view(title_ptr, title_len),
-        vnotch::make_u16_view(file_name_ptr, file_name_len),
-        vnotch::make_u16_view(norm_query_ptr, norm_query_len));
-    return VN_OK;
+    try
+    {
+        *out_score = vnotch::services::SystemCommandProvider::ScoreEntry(
+            vnotch::make_u16_view(keywords_ptr, keywords_len),
+            vnotch::make_u16_view(title_ptr, title_len),
+            vnotch::make_u16_view(file_name_ptr, file_name_len),
+            vnotch::make_u16_view(norm_query_ptr, norm_query_len));
+        return VN_OK;
+    }
+    catch (...)
+    {
+        *out_score = 0.0;
+        return VN_ERR_FAIL;
+    }
 }
 
 } // extern "C"

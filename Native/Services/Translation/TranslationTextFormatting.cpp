@@ -77,7 +77,7 @@ namespace vnotch::services
             }
 
         static int32_t vn_translation_format_text_impl(const char16_t* text_ptr, int32_t text_len,
-    char16_t* out_buf, int32_t out_cap, int32_t* out_len) noexcept
+    char16_t* out_buf, int32_t out_cap, int32_t* out_len)
         {
     if (!out_len) return VN_ERR_INVALID_ARG;
     std::u16string_view text = vnotch::make_view(text_ptr, text_len);
@@ -177,6 +177,7 @@ namespace vnotch::services
 VN_EXPORT int32_t vn_translation_format_text(const char16_t* text_ptr, int32_t text_len,
     char16_t* out_buf, int32_t out_cap, int32_t* out_len) noexcept
 {
-    return vnotch::services::TranslationTextFormatting::vn_translation_format_text_impl(text_ptr, text_len, out_buf, out_cap, out_len);
+    try { return vnotch::services::TranslationTextFormatting::vn_translation_format_text_impl(text_ptr, text_len, out_buf, out_cap, out_len);
+ } catch (...) { return VN_ERR_FAIL; }
 }
 

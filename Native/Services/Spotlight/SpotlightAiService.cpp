@@ -1,4 +1,5 @@
 #include "vnotch_common.h"
+#include <algorithm>
 #include <cstdio>
 
 namespace vnotch::services
@@ -28,7 +29,8 @@ public:
         int32_t code,
         bool streaming,
         std::u16string_view& out_key,
-        std::u16string& out_diag)
+        char16_t (&diag_buf)[64],
+        std::u16string_view& out_diag) noexcept
     {
         if (code == 401) out_key = u"spotlight.ai.authError";
         else if (code == 403) out_key = u"spotlight.ai.permissionError";
@@ -43,13 +45,14 @@ public:
 
         if (code > 0)
         {
-            char buf[32];
+            char buf[32]{};
             int n = std::snprintf(buf, sizeof(buf), "%s %d", streaming ? "API" : "HTTP", static_cast<int>(code));
-            out_diag.clear();
-            for (int i = 0; i < n; ++i)
+            const int clamped_n = (n > 0) ? std::min<int>(n, static_cast<int>(sizeof(buf) - 1)) : 0;
+            for (int i = 0; i < clamped_n; ++i)
             {
-                out_diag.push_back(static_cast<char16_t>(buf[i]));
+                diag_buf[i] = static_cast<char16_t>(static_cast<unsigned char>(buf[i]));
             }
+            out_diag = std::u16string_view(diag_buf, static_cast<size_t>(clamped_n));
         }
         else
         {
@@ -61,7 +64,8 @@ public:
         std::u16string_view label,
         int32_t code,
         std::u16string_view& out_key,
-        std::u16string& out_diag)
+        char16_t (&diag_buf)[64],
+        std::u16string_view& out_diag) noexcept
     {
         if (label == u"insufficient_quota")
         {
@@ -89,7 +93,7 @@ public:
             else if (label == u"DEADLINE_EXCEEDED") resolved_code = 504;
             else if (label == u"api_error" || label == u"INTERNAL") resolved_code = 500;
         }
-        ResolveProviderError(resolved_code, true, out_key, out_diag);
+        ResolveProviderError(resolved_code, true, out_key, diag_buf, out_diag);
     }
 };
 
@@ -120,8 +124,9 @@ VN_EXPORT int32_t vn_spotlight_ai_resolve_provider_error(
     int32_t* out_diag_len) noexcept
 {
     std::u16string_view key;
-    std::u16string diag;
-    vnotch::services::SpotlightAiService::ResolveProviderError(code, streaming != 0u, key, diag);
+    char16_t diag_storage[64]{};
+    std::u16string_view diag;
+    vnotch::services::SpotlightAiService::ResolveProviderError(code, streaming != 0u, key, diag_storage, diag);
     int32_t rc1 = vnotch::copy_out_u16(key, out_key_buf, key_cap, out_key_len);
     if (rc1 != VN_OK) return rc1;
     return vnotch::copy_out_u16(diag, out_diag_buf, diag_cap, out_diag_len);
@@ -139,11 +144,13 @@ VN_EXPORT int32_t vn_spotlight_ai_resolve_stream_error(
     int32_t* out_diag_len) noexcept
 {
     std::u16string_view key;
-    std::u16string diag;
+    char16_t diag_storage[64]{};
+    std::u16string_view diag;
     vnotch::services::SpotlightAiService::ResolveStreamError(
         vnotch::make_u16_view(label_ptr, label_len),
         code,
         key,
+        diag_storage,
         diag);
     int32_t rc1 = vnotch::copy_out_u16(key, out_key_buf, key_cap, out_key_len);
     if (rc1 != VN_OK) return rc1;

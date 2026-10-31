@@ -97,6 +97,62 @@ public sealed class SpotlightPersonalizationAndMorphTests
         await Task.CompletedTask;
     });
 
+    [Fact]
+    public void RightArrowAtEndOfQueryOpensQuickActionsMenuAndKeyboardNavigatesItems() => WithFixture(async (fixture, ct) =>
+    {
+        var window = fixture.Window;
+        window.ShowSpotlight();
+        await WpfFrameWaiter.UntilAsync(() => !Field<bool>(window, "_entranceActive"), "quick actions entrance", ct);
+        var vm = (SpotlightViewModel)window.DataContext;
+        window.SearchBox.Text = "pow";
+        Invoke(window, "CancelSearchDebounce");
+        var item1 = ApplicationItem(fixture, "app1");
+        for (int i = 0; i < 9; i++)
+            vm.Results.Add(i == 0 ? item1 : ApplicationItem(fixture, $"app{i + 1}"));
+        vm.SelectedResult = item1;
+        await WpfFrameWaiter.UntilAsync(() => window.ContentRegion.ActualHeight > 320 && !window.ContentRegion.ClipToBounds, "initial results expanded", ct);
+        double resultsHeight = window.ContentRegion.ActualHeight;
+        window.SearchBox.CaretIndex = 2; // middle of text
+
+        var source = PresentationSource.FromVisual(window)!;
+        var midRight = new System.Windows.Input.KeyEventArgs(System.Windows.Input.Keyboard.PrimaryDevice, source, Environment.TickCount, System.Windows.Input.Key.Right) { RoutedEvent = UIElement.PreviewKeyDownEvent };
+        Invoke(window, "Window_PreviewKeyDown", window, midRight);
+        Assert.False(midRight.Handled);
+        Assert.Null(Field<ContextMenu?>(window, "_activeResultMenu"));
+
+        window.SearchBox.CaretIndex = 3; // end of text
+        var endRight = new System.Windows.Input.KeyEventArgs(System.Windows.Input.Keyboard.PrimaryDevice, source, Environment.TickCount, System.Windows.Input.Key.Right) { RoutedEvent = UIElement.PreviewKeyDownEvent };
+        Invoke(window, "Window_PreviewKeyDown", window, endRight);
+        Assert.True(endRight.Handled);
+        var menu = Field<ContextMenu?>(window, "_activeResultMenu");
+        Assert.NotNull(menu);
+        Assert.Equal(Visibility.Visible, window.QuickActionsPanel.Visibility);
+        Assert.True(window.QuickActionsItems.Children.Count >= 3);
+        Assert.Equal("Selected", ((MenuItem)menu!.Items[0]).Tag);
+
+        var rightIcons = Field<List<System.Windows.Shapes.Path>>(window, "_quickActionRightIcons");
+        Assert.Equal(window.QuickActionsItems.Children.Count, rightIcons.Count);
+        Assert.All(rightIcons, icon => Assert.False(icon.Data.Bounds.IsEmpty));
+
+        await WpfFrameWaiter.UntilAsync(() => window.ContentRegion.ActualHeight < resultsHeight - 20, "quick actions height contracted", ct);
+        double contractedHeight = window.ContentRegion.ActualHeight;
+
+        var downKey = new System.Windows.Input.KeyEventArgs(System.Windows.Input.Keyboard.PrimaryDevice, source, Environment.TickCount, System.Windows.Input.Key.Down) { RoutedEvent = UIElement.PreviewKeyDownEvent };
+        Invoke(window, "Window_PreviewKeyDown", window, downKey);
+        Assert.True(downKey.Handled);
+        Assert.Same(item1, vm.SelectedResult); // ResultsList selection unchanged while menu is open
+        Assert.Null(((MenuItem)menu.Items[0]).Tag);
+        Assert.Equal("Selected", ((MenuItem)menu.Items[1]).Tag);
+
+        var leftKey = new System.Windows.Input.KeyEventArgs(System.Windows.Input.Keyboard.PrimaryDevice, source, Environment.TickCount, System.Windows.Input.Key.Left) { RoutedEvent = UIElement.PreviewKeyDownEvent };
+        Invoke(window, "Window_PreviewKeyDown", window, leftKey);
+        Assert.True(leftKey.Handled);
+        Assert.Null(Field<ContextMenu?>(window, "_activeResultMenu"));
+        Assert.True(window.ContentRegion.HasAnimatedProperties);
+        await WpfFrameWaiter.UntilAsync(() => window.ContentRegion.ActualHeight > contractedHeight + 20, "results height re-expanded", ct);
+        Assert.True(window.IsSpotlightOpen);
+    });
+
     [Theory]
     [InlineData(false)]
     [InlineData(true)]

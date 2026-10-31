@@ -44,6 +44,10 @@ public:
             }
         }
         std::u16string_view trimmed = vnotch::trim_u16(temp);
+        if (trimmed.empty())
+        {
+            return false;
+        }
         out_cleaned.assign(trimmed.data(), trimmed.size());
         return true;
     }
@@ -105,17 +109,25 @@ VN_EXPORT int32_t vn_weather_service_clean_city(
     {
         return VN_ERR_INVALID_ARG;
     }
-    std::u16string cleaned;
-    bool ok = vnotch::services::WeatherService::CleanCity(
-        vnotch::make_u16_view(city_ptr, city_len),
-        cleaned);
-    *out_has_value = ok ? 1u : 0u;
-    if (!ok)
+    try
     {
-        if (out_len) *out_len = 0;
-        return VN_OK;
+        std::u16string cleaned;
+        bool ok = vnotch::services::WeatherService::CleanCity(
+            vnotch::make_u16_view(city_ptr, city_len),
+            cleaned);
+        *out_has_value = ok ? 1u : 0u;
+        if (!ok)
+        {
+            if (out_len) *out_len = 0;
+            return VN_OK;
+        }
+        return vnotch::copy_out_u16(cleaned, out_buf, out_cap, out_len);
     }
-    return vnotch::copy_out_u16(cleaned, out_buf, out_cap, out_len);
+    catch (...)
+    {
+        *out_has_value = 0u;
+        return VN_ERR_FAIL;
+    }
 }
 
 VN_EXPORT int32_t vn_weather_service_describe_code(
