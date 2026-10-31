@@ -7,6 +7,8 @@ namespace ShaderCompiler;
 
 public static class Program
 {
+    private const uint D3DCOMPILE_OPTIMIZATION_LEVEL3 = 0x8000;
+
     [DllImport("d3dcompiler_47.dll", CallingConvention = CallingConvention.Winapi)]
     private static extern int D3DCompile(
         byte[] srcData,
@@ -52,7 +54,7 @@ public static class Program
         }
 
         byte[] src = File.ReadAllBytes(hlslPath);
-        int hr = D3DCompile(src, (IntPtr)src.Length, Path.GetFileName(hlslPath), IntPtr.Zero, IntPtr.Zero, "main", "ps_3_0", 0, 0, out IntPtr codePtr, out IntPtr errPtr);
+        int hr = D3DCompile(src, (IntPtr)src.Length, Path.GetFileName(hlslPath), IntPtr.Zero, IntPtr.Zero, "main", "ps_3_0", D3DCOMPILE_OPTIMIZATION_LEVEL3, 0, out IntPtr codePtr, out IntPtr errPtr);
         byte[] bytes;
         try
         {

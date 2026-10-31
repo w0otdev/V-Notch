@@ -189,7 +189,49 @@ internal sealed partial class D3DImageFramePresenter : IDisposable
         }
 
         _image.IsFrontBufferAvailableChanged += OnFrontBufferAvailableChanged;
+        // State-driven: CompositionTarget.Rendering is hooked only while a frame is pending
+        // (see RequestRenderingHook), so an idle presenter adds zero per-vsync UI ticks.
+    }
+
+    // 0 = unhooked, 1 = hook requested or active. Handler add/remove runs on the dispatcher only.
+    private int _renderingHookState;
+
+    private void RequestRenderingHook()
+    {
+        if (_disposed || _failed || Interlocked.CompareExchange(ref _renderingHookState, 1, 0) != 0)
+            return;
+        if (_dispatcher.CheckAccess())
+        {
+            HookRendering();
+            return;
+        }
+        try { _dispatcher.BeginInvoke(DispatcherPriority.Send, (Action)HookRendering); }
+        catch (Exception) { Volatile.Write(ref _renderingHookState, 0); } // dispatcher shut down
+    }
+
+    private void HookRendering()
+    {
+        CompositionTarget.Rendering -= OnRendering;
+        if (_disposed || _failed)
+        {
+            Volatile.Write(ref _renderingHookState, 0);
+            return;
+        }
         CompositionTarget.Rendering += OnRendering;
+    }
+
+    private void DropRenderingHook()
+    {
+        Volatile.Write(ref _renderingHookState, 0);
+        CompositionTarget.Rendering -= OnRendering;
+    }
+
+    private void UnhookRendering()
+    {
+        DropRenderingHook();
+        // A frame uploaded between the pending check and the unhook must not wait for the next upload.
+        if (!_disposed && !_failed && Volatile.Read(ref _pendingFrame))
+            RequestRenderingHook();
     }
 
     internal static uint SelectBestHardwareAdapter(IDirect3D9Ex direct3D)
@@ -308,6 +350,8 @@ internal sealed partial class D3DImageFramePresenter : IDisposable
                 }
             }
 
+            if (uploaded)
+                RequestRenderingHook();
             if (shouldSchedule)
                 SchedulePresent();
 
@@ -543,20 +587,6 @@ internal sealed partial class D3DImageFramePresenter : IDisposable
     internal void BeginSession(int generation)
     {
         SuspendPresentation();
-        if (_dispatcher.CheckAccess())
-        {
-            CompositionTarget.Rendering -= OnRendering;
-            CompositionTarget.Rendering += OnRendering;
-        }
-        else
-        {
-            _dispatcher.BeginInvoke(DispatcherPriority.Send, (Action)(() =>
-            {
-                if (_disposed || _failed) return;
-                CompositionTarget.Rendering -= OnRendering;
-                CompositionTarget.Rendering += OnRendering;
-            }));
-        }
 
         lock (_surfaceSync)
         {
@@ -573,9 +603,9 @@ internal sealed partial class D3DImageFramePresenter : IDisposable
         _retryTimer.Stop();
         Interlocked.Exchange(ref _retryScheduled, 0);
         if (_dispatcher.CheckAccess())
-            CompositionTarget.Rendering -= OnRendering;
+            DropRenderingHook();
         else
-            _dispatcher.BeginInvoke(DispatcherPriority.Send, (Action)(() => CompositionTarget.Rendering -= OnRendering));
+            _dispatcher.BeginInvoke(DispatcherPriority.Send, (Action)DropRenderingHook);
 
         lock (_surfaceSync)
         {
@@ -608,7 +638,10 @@ internal sealed partial class D3DImageFramePresenter : IDisposable
         // Consume at composition boundary so capture presenter does not stall
         // when queued dispatcher callbacks run while WPF owns the buffer.
         if (_disposed || _failed || !Volatile.Read(ref _pendingFrame))
+        {
+            UnhookRendering();
             return;
+        }
 
         long nowTicks = Stopwatch.GetTimestamp();
         long lastSubmit = Volatile.Read(ref _lastSubmitTicks);
@@ -767,7 +800,7 @@ internal sealed partial class D3DImageFramePresenter : IDisposable
         _disposed = true;
         _retryTimer.Stop();
         _retryTimer.Tick -= OnRetryTick;
-        CompositionTarget.Rendering -= OnRendering;
+        DropRenderingHook();
         _image.IsFrontBufferAvailableChanged -= OnFrontBufferAvailableChanged;
 
         lock (_surfaceSync)

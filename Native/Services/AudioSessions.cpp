@@ -231,8 +231,7 @@ VN_EXPORT int32_t __stdcall vn_audio_set_session_volume(uint32_t process_id, flo
         if (updated_any) {
             as::InvalidateSetCacheLocked();
             if (matched_count == 1 && last_vol) {
-                as::g_set_volume.ptr = last_vol;
-                as::g_set_volume.ptr->AddRef();
+                as::g_set_volume.Assign(last_vol);
                 as::g_set_pid = process_id;
                 as::g_set_tick = now;
             }

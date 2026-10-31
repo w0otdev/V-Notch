@@ -44,10 +44,6 @@ public:
             }
         }
         std::u16string_view trimmed = vnotch::trim_u16(temp);
-        if (trimmed.empty())
-        {
-            return false;
-        }
         out_cleaned.assign(trimmed.data(), trimmed.size());
         return true;
     }
