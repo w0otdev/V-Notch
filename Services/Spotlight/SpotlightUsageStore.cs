@@ -221,7 +221,7 @@ internal sealed partial class SpotlightUsageStore : IAsyncDisposable, IDisposabl
             var item = new SpotlightSearchItem(pair.Key, pair.Value.Kind, pair.Value.Title,
                 pair.Value.Subtitle, pair.Value.Target, pair.Value.IconPath);
             item = item with { Score = Math.Max(1500, SpotlightRanker.Score(item, query)) };
-            if (SpotlightLauncher.IsValidTarget(item) && ShouldShowHistoryItem(item, query))
+            if (!Preferences.IsExcluded(item.Target) && SpotlightLauncher.IsValidTarget(item) && ShouldShowHistoryItem(item, query))
             {
                 output.Add(item);
             }
@@ -230,7 +230,7 @@ internal sealed partial class SpotlightUsageStore : IAsyncDisposable, IDisposabl
         return output.Count == 0 ? Array.Empty<SpotlightSearchItem>() : output;
     }
 
-    public IReadOnlyList<SpotlightSearchItem> GetRecentItems(int limit)
+    public IReadOnlyList<SpotlightSearchItem> GetRecentItems(int limit, bool loadIconsSynchronously = false)
     {
         if (!Enabled || limit <= 0) return Array.Empty<SpotlightSearchItem>();
 
@@ -258,11 +258,11 @@ internal sealed partial class SpotlightUsageStore : IAsyncDisposable, IDisposabl
                 IsRecent = true
             };
 
-            if (!SpotlightLauncher.IsValidTarget(item)) continue;
-            if (Preferences.IsExcluded(item.Target)) continue;
+            if (Preferences.IsExcluded(item.Target) || !SpotlightLauncher.IsValidTarget(item)) continue;
+
             if (!ShouldShowHistoryItem(item, string.Empty)) continue;
 
-            output.Add(SpotlightSearchService.LoadIcon(item));
+            output.Add(loadIconsSynchronously ? SpotlightSearchService.LoadIcon(item) : item);
         }
 
         return output.Count == 0 ? Array.Empty<SpotlightSearchItem>() : output;
@@ -315,7 +315,6 @@ internal sealed partial class SpotlightUsageStore : IAsyncDisposable, IDisposabl
         while (true)
         {
             long version;
-            int entryCount;
             string json = string.Empty;
             Exception? serializationError = null;
 
@@ -323,20 +322,16 @@ internal sealed partial class SpotlightUsageStore : IAsyncDisposable, IDisposabl
             {
                 version = _changeVersion;
                 var entries = LoadEntries();
-                entryCount = entries.Count;
-                if (entryCount > 0)
+                try
                 {
-                    try
-                    {
-                        json = JsonSerializer.Serialize(entries);
-                    }
-                    catch (Exception ex)
-                    {
-                        // Clear this while holding the same gate RecordLaunch uses,
-                        // so a later launch cannot miss scheduling a replacement.
-                        _saveWorkerRunning = false;
-                        serializationError = ex;
-                    }
+                    json = JsonSerializer.Serialize(entries);
+                }
+                catch (Exception ex)
+                {
+                    // Clear this while holding the same gate RecordLaunch uses,
+                    // so a later launch cannot miss scheduling a replacement.
+                    _saveWorkerRunning = false;
+                    serializationError = ex;
                 }
             }
 
@@ -349,19 +344,16 @@ internal sealed partial class SpotlightUsageStore : IAsyncDisposable, IDisposabl
                 return;
             }
 
-            if (entryCount > 0)
+            try
             {
-                try
-                {
-                    if (_persistSnapshot == PersistSnapshot)
-                        PersistSnapshotVersioned(json, version);
-                    else
-                        _persistSnapshot(json);
-                }
-                catch (Exception ex)
-                {
-                    RuntimeLog.Error(LogTag, ex, $"Failed to write {_path}");
-                }
+                if (_persistSnapshot == PersistSnapshot)
+                    PersistSnapshotVersioned(json, version);
+                else
+                    _persistSnapshot(json);
+            }
+            catch (Exception ex)
+            {
+                RuntimeLog.Error(LogTag, ex, $"Failed to write {_path}");
             }
 
             lock (_gate)
@@ -390,7 +382,7 @@ internal sealed partial class SpotlightUsageStore : IAsyncDisposable, IDisposabl
             File.WriteAllText(tempPath, json);
             lock (_gate)
             {
-                if (_changeVersion != version || _entries is { Count: 0 }) return;
+                if (_changeVersion != version) return;
                 File.Move(tempPath, _path, overwrite: true);
             }
         }

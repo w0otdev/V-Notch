@@ -12,6 +12,76 @@ public sealed class ClipboardBatchImportTests
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
+    public async Task ExportFilesHandlesThreeWayFilenameAndZipCollisionsWithoutThrowing(bool personal)
+    {
+        string root = Path.Combine(Path.GetTempPath(), "vnotch-batch-collision-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(root);
+        try
+        {
+            string f1 = Path.Combine(root, "1-doc.txt");
+            string sub1 = Path.Combine(root, "sub1");
+            string sub2 = Path.Combine(root, "sub2");
+            Directory.CreateDirectory(sub1);
+            Directory.CreateDirectory(sub2);
+            string f2 = Path.Combine(sub1, "doc.txt");
+            string f3 = Path.Combine(sub2, "doc.txt");
+
+            await File.WriteAllTextAsync(f1, "content-1-doc");
+            await File.WriteAllTextAsync(f2, "content-sub1-doc");
+            await File.WriteAllTextAsync(f3, "content-sub2-doc");
+
+            using var store = new ClipboardHistoryStore(Path.Combine(root, "history"));
+            await store.InitializeAsync();
+            using var pin = new System.Security.SecureString();
+            foreach (char c in "123456") pin.AppendChar(c);
+            pin.MakeReadOnly();
+            Assert.True(await store.UnlockPersonalAsync(pin, create: true));
+
+            var entry = (await store.ImportAsync(new ClipboardCapture
+            {
+                FilePaths = [f1, f2, f3],
+                TargetCategory = personal ? "Personal" : null
+            })).Entry!;
+            string[] exported = await store.ExportFilesAsync(entry.Id);
+
+            static async Task<string> ReadExportedTextAsync(string path)
+            {
+                await using var fs = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read | FileShare.Delete);
+                using var sr = new StreamReader(fs);
+                return await sr.ReadToEndAsync();
+            }
+
+            Assert.Equal(3, exported.Length);
+            Assert.Equal(3, exported.Distinct(StringComparer.OrdinalIgnoreCase).Count());
+            Assert.Equal("content-1-doc", await ReadExportedTextAsync(exported[0]));
+            Assert.Equal("content-sub1-doc", await ReadExportedTextAsync(exported[1]));
+            Assert.Equal("content-sub2-doc", await ReadExportedTextAsync(exported[2]));
+
+            string zipFile = Path.Combine(root, "bundle.zip");
+            string folderWithSameStem = Path.Combine(sub1, "bundle");
+            Directory.CreateDirectory(folderWithSameStem);
+            await File.WriteAllTextAsync(zipFile, "raw-zip-file");
+            await File.WriteAllTextAsync(Path.Combine(folderWithSameStem, "nested.txt"), "inside-folder");
+
+            var zipCollisionEntry = (await store.ImportAsync(new ClipboardCapture
+            {
+                FilePaths = [zipFile, folderWithSameStem],
+                TargetCategory = personal ? "Personal" : null
+            })).Entry!;
+            string[] zipExported = await store.ExportFilesAsync(zipCollisionEntry.Id);
+            Assert.Equal(2, zipExported.Length);
+            Assert.True(File.Exists(zipExported[0]));
+            Assert.True(Directory.Exists(zipExported[1]));
+        }
+        finally
+        {
+            if (Directory.Exists(root)) Directory.Delete(root, true);
+        }
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
     public async Task LockedFileDoesNotDiscardNeighborsOrContaminateDeduplication(bool personal)
     {
         string root = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N"));

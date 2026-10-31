@@ -35,6 +35,8 @@ public static partial class CrashReporter
     private static readonly UTF8Encoding _utf8WithoutBom = new(encoderShouldEmitUTF8Identifier: false);
     private static readonly DateTime _processStartTime = DateTime.UtcNow;
     private static string _crashLogPath = string.Empty;
+    private static string _secondaryCrashLogPath = string.Empty;
+    private static string _fallbackCrashLogPath = string.Empty;
     private static volatile bool _initialized;
     public const string CrashLogFileName = "vnotch-crash.log";
 
@@ -49,6 +51,32 @@ public static partial class CrashReporter
             return _crashLogPath;
         }
         internal set => _crashLogPath = value;
+    }
+
+    internal static string SecondaryCrashLogPath
+    {
+        get
+        {
+            if (string.IsNullOrEmpty(_secondaryCrashLogPath))
+            {
+                _secondaryCrashLogPath = Path.Combine(AppContext.BaseDirectory, CrashLogFileName);
+            }
+            return _secondaryCrashLogPath;
+        }
+        set => _secondaryCrashLogPath = value;
+    }
+
+    internal static string FallbackCrashLogPath
+    {
+        get
+        {
+            if (string.IsNullOrEmpty(_fallbackCrashLogPath))
+            {
+                _fallbackCrashLogPath = Path.Combine(Path.GetTempPath(), CrashLogFileName);
+            }
+            return _fallbackCrashLogPath;
+        }
+        set => _fallbackCrashLogPath = value;
     }
 
     public static void Initialize()
@@ -138,7 +166,8 @@ public static partial class CrashReporter
         sb.AppendLine($"OS            : {RuntimeInformation.OSDescription} ({RuntimeInformation.OSArchitecture})");
         sb.AppendLine($"Process Arch  : {RuntimeInformation.ProcessArchitecture}");
         sb.AppendLine($".NET Runtime  : {RuntimeInformation.FrameworkDescription}");
-        sb.AppendLine($"Machine / User: {Environment.MachineName} / [REDACTED]");
+        sb.AppendLine("Machine / User: [REDACTED] / [REDACTED]");
+        sb.AppendLine("User: [REDACTED] (Machine: [REDACTED])");
         sb.AppendLine($"Processors    : {Environment.ProcessorCount} logical cores");
 
         // Memory usage
@@ -284,27 +313,7 @@ public static partial class CrashReporter
             // Ignore console writing failures
         }
 
-        lock (_crashLock)
-        {
-            // Primary path: %APPDATA%\V-Notch\vnotch-crash.log
-            string primaryPath = CrashLogPath;
-            bool written = TryAppendToFile(primaryPath, report);
-
-            // Secondary path: AppContext.BaseDirectory\vnotch-crash.log (if different from primary)
-            string appDir = AppContext.BaseDirectory;
-            string secondaryPath = Path.Combine(appDir, CrashLogFileName);
-            if (!string.Equals(primaryPath, secondaryPath, StringComparison.OrdinalIgnoreCase))
-            {
-                TryAppendToFile(secondaryPath, report);
-            }
-
-            // If primary failed, write to temp directory as guaranteed fallback
-            if (!written)
-            {
-                string tempFallback = Path.Combine(Path.GetTempPath(), CrashLogFileName);
-                TryAppendToFile(tempFallback, report);
-            }
-        }
+        TryWriteReport(report);
 
         // Also forward to RuntimeLog if it is initialized and source didn't originate from RuntimeLog
         try
@@ -324,6 +333,66 @@ public static partial class CrashReporter
         catch
         {
             // Ignore secondary logging failures
+        }
+    }
+
+    internal static void TryWriteReport(string report)
+    {
+        if (!RuntimeLog.IsDiskCaptureEnabled) return;
+
+        lock (_crashLock)
+        {
+            // Only write crash logs to the user-restricted AppData location.
+            string primaryPath = CrashLogPath;
+            if (!string.IsNullOrWhiteSpace(primaryPath))
+            {
+                TryAppendToFile(primaryPath, report);
+            }
+        }
+    }
+
+    internal static string[] GetAllCandidateCrashLogPaths() =>
+    [
+        CrashLogPath,
+        ResolvePrimaryCrashLogPath(),
+        SecondaryCrashLogPath,
+        Path.Combine(AppContext.BaseDirectory, CrashLogFileName),
+        FallbackCrashLogPath,
+        Path.Combine(Path.GetTempPath(), CrashLogFileName)
+    ];
+
+    internal static void DeleteCrashLogs()
+    {
+        lock (_crashLock)
+        {
+            TryDeleteLogAndBackup(CrashLogPath);
+            TryDeleteLogAndBackup(ResolvePrimaryCrashLogPath());
+            TryDeleteLogAndBackup(SecondaryCrashLogPath);
+            TryDeleteLogAndBackup(Path.Combine(AppContext.BaseDirectory, CrashLogFileName));
+            TryDeleteLogAndBackup(FallbackCrashLogPath);
+            TryDeleteLogAndBackup(Path.Combine(Path.GetTempPath(), CrashLogFileName));
+        }
+    }
+
+    private static void TryDeleteLogAndBackup(string? filePath)
+    {
+        if (string.IsNullOrWhiteSpace(filePath)) return;
+        TryDeleteFile(filePath);
+        TryDeleteFile(filePath + ".old");
+    }
+
+    private static void TryDeleteFile(string path)
+    {
+        try
+        {
+            if (File.Exists(path))
+            {
+                File.Delete(path);
+            }
+        }
+        catch
+        {
+            // Ignore file deletion errors (e.g. file locked by another process)
         }
     }
 
@@ -384,20 +453,18 @@ public static partial class CrashReporter
                 var folder = Path.Combine(appData, "V-Notch");
                 return Path.Combine(folder, CrashLogFileName);
             }
+
+            if (!string.IsNullOrEmpty(AppPaths.RoamingAppDataRoot))
+            {
+                return Path.Combine(AppPaths.RoamingAppDataRoot, CrashLogFileName);
+            }
         }
         catch
         {
-            // Fallback
+            // Never fall back to shared %TEMP% or application install directory.
         }
 
-        try
-        {
-            return Path.Combine(AppContext.BaseDirectory, CrashLogFileName);
-        }
-        catch
-        {
-            return Path.Combine(Path.GetTempPath(), CrashLogFileName);
-        }
+        return string.Empty;
     }
 
     private static string FormatDuration(TimeSpan duration)

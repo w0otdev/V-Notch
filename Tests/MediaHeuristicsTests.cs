@@ -18,6 +18,20 @@ public class MediaHeuristicsTests
         Assert.Equal(expected, MediaHeuristics.BuildTrackIdentity(track, artist));
     }
 
+    [Fact]
+    public void BuildTrackIdentity_ShortAndLongInputs_MatchExpectedOutput()
+    {
+        string shortTrack = new string('T', 20);
+        string shortArtist = new string('A', 20);
+        Assert.Equal($"{new string('t', 20)}|{new string('a', 20)}",
+            MediaHeuristics.BuildTrackIdentity(shortTrack, shortArtist));
+
+        string longTrack = new string('T', 1000);
+        string longArtist = new string('A', 1000);
+        Assert.Equal($"{new string('t', 1000)}|{new string('a', 1000)}",
+            MediaHeuristics.BuildTrackIdentity(longTrack, longArtist));
+    }
+
     #endregion
 
     #region BuildSourceOverrideKey
@@ -39,6 +53,19 @@ public class MediaHeuristicsTests
     public void BuildSourceOverrideKey_NonBrowserApp_NoSession_ReturnsAppId()
     {
         Assert.Equal("Spotify.exe", MediaHeuristics.BuildSourceOverrideKey("", "Spotify.exe"));
+    }
+
+    [Fact]
+    public void BuildSourceOverrideKey_ShortAndLongInputs_MatchExpectedOutput()
+    {
+        string shortSession = "sess-" + new string('x', 32);
+        string longSession = "sess-" + new string('x', 1000);
+
+        Assert.Equal(shortSession, MediaHeuristics.BuildSourceOverrideKey(shortSession, "Chrome"));
+        Assert.Equal(longSession, MediaHeuristics.BuildSourceOverrideKey(longSession, "Chrome"));
+
+        string longAppId = new string('p', 1000) + ".exe";
+        Assert.Equal(longAppId, MediaHeuristics.BuildSourceOverrideKey("", longAppId));
     }
 
     #endregion
@@ -129,6 +156,18 @@ public class MediaHeuristicsTests
         Assert.Equal(expected, MediaHeuristics.NormalizeTrackForComparison(input));
     }
 
+    [Fact]
+    public void NormalizeTrackForComparison_ShortAndLongInputs_MatchExpectedOutput()
+    {
+        string shortPrefix = new string('S', 30);
+        Assert.Equal($"{shortPrefix} - Remix",
+            MediaHeuristics.NormalizeTrackForComparison($"{shortPrefix} (Remix)"));
+
+        string longPrefix = new string('L', 1000);
+        Assert.Equal($"{longPrefix} - Remix",
+            MediaHeuristics.NormalizeTrackForComparison($"{longPrefix} (Remix)"));
+    }
+
     #endregion
 
     #region ExtractCoreTrackName
@@ -141,6 +180,18 @@ public class MediaHeuristicsTests
     public void ExtractCoreTrackName_StripsTrailingBracketedSegment(string input, string expected)
     {
         Assert.Equal(expected, MediaHeuristics.ExtractCoreTrackName(input));
+    }
+
+    [Fact]
+    public void ExtractCoreTrackName_ShortAndLongInputs_MatchExpectedOutput()
+    {
+        string shortCore = new string('C', 30);
+        Assert.Equal(shortCore,
+            MediaHeuristics.ExtractCoreTrackName($"{shortCore} (Remastered 2011)"));
+
+        string longCore = new string('C', 1000);
+        Assert.Equal(longCore,
+            MediaHeuristics.ExtractCoreTrackName($"{longCore} (Remastered 2011)"));
     }
 
     #endregion

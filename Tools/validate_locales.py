@@ -3,11 +3,18 @@ import re
 import sys
 from pathlib import Path
 
-def validate_locale(lang_code):
-    with open('Locales/en.json', encoding='utf-8-sig') as f:
+LOCALES_DIR = Path(__file__).resolve().parent.parent / 'Locales'
+EN_PATH = LOCALES_DIR / 'en.json'
+
+
+def validate_locale(lang_code, locales_dir=LOCALES_DIR):
+    en_path = locales_dir / 'en.json'
+    if not en_path.is_file():
+        return False, f"Baseline locale file not found: {en_path}"
+    with open(en_path, encoding='utf-8-sig') as f:
         en = json.load(f)
 
-    path = f'Locales/{lang_code}.json'
+    path = locales_dir / f'{lang_code}.json'
     try:
         with open(path, encoding='utf-8-sig') as f:
             target = json.load(f)
@@ -45,10 +52,24 @@ def validate_locale(lang_code):
     return True, f"{lang_code} passed all checks ({len(target_keys)} keys)"
 
 if __name__ == '__main__':
-    langs = sys.argv[1:] if len(sys.argv) > 1 else sorted(p.stem for p in Path('Locales').glob('*.json'))
+    locales_dir = Path(__file__).resolve().parent.parent / 'Locales'
+    en_path = locales_dir / 'en.json'
+    if not en_path.is_file():
+        print(f"Baseline locale file not found: {en_path}", file=sys.stderr)
+        sys.exit(1)
+
+    langs = (
+        sys.argv[1:]
+        if len(sys.argv) > 1
+        else [p.stem for p in sorted(locales_dir.glob('*.json')) if p.stem != 'en']
+    )
+    if not langs:
+        print("No locale files found to validate.", file=sys.stderr)
+        sys.exit(1)
+
     all_ok = True
     for l in langs:
-        ok, msg = validate_locale(l)
+        ok, msg = validate_locale(l, locales_dir)
         print(f"[{'OK' if ok else 'FAIL'}] {l}: {msg}")
         if not ok:
             all_ok = False

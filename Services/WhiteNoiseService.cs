@@ -1,6 +1,7 @@
 using System.IO;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
+using System.Threading;
 
 namespace VNotch.Services;
 
@@ -26,6 +27,7 @@ internal static partial class WhiteNoiseService
 
     internal const float DefaultVolume = 0.3f;
     private const float TimerEndFadeSeconds = 3f;
+    private const int NoneKind = -1;
 
     [LibraryImport("VNotch.Native.dll")]
     private static partial int vn_noise_play(int kind, float volume);
@@ -42,8 +44,8 @@ internal static partial class WhiteNoiseService
     [LibraryImport("VNotch.Native.dll")]
     private static unsafe partial int vn_noise_set_failure_callback(delegate* unmanaged[Stdcall]<int, int, void> callback);
 
-    private static int _playingKind = -1;
-    private static int _failedKind = -1;
+    private static int _playingKind = NoneKind;
+    private static int _failedKind = NoneKind;
     private static float _volume = DefaultVolume;
     private static bool _muted;
     private static bool _syncWithTimer;
@@ -57,7 +59,16 @@ internal static partial class WhiteNoiseService
 
     internal static event Action? StateChanged;
 
-    internal static int PlayingKind => _playingKind;
+    internal static Action<Action>? CallbackMarshaler { get; set; }
+
+    internal static int PlayingKind => Volatile.Read(ref _playingKind);
+
+    internal static bool IsPlaying => Volatile.Read(ref _playingKind) >= 0;
+
+    internal static Sound? CurrentKind =>
+        Volatile.Read(ref _playingKind) is int kind and >= 0 && kind < Catalog.Count
+            ? Catalog[kind]
+            : null;
 
     internal static float Volume
     {
@@ -101,14 +112,31 @@ internal static partial class WhiteNoiseService
 
     private static void ApplyVolume() => vn_noise_set_volume(EffectiveVolume);
 
+    private static void MarshalToUi(Action action)
+    {
+        if (CallbackMarshaler is { } marshaler)
+        {
+            marshaler(action);
+            return;
+        }
+
+        if (System.Windows.Application.Current?.Dispatcher is { } dispatcher && !dispatcher.CheckAccess())
+        {
+            _ = dispatcher.BeginInvoke(action);
+            return;
+        }
+
+        action();
+    }
+
     internal static void Play(int kind)
     {
         if (kind < 0 || kind >= Catalog.Count) return;
-        Volatile.Write(ref _failedKind, -1);
+        Volatile.Write(ref _failedKind, NoneKind);
         if (vn_noise_play(kind, EffectiveVolume) != 0) return;
         Volatile.Write(ref _playingKind, kind);
         // The native worker may already have failed (for example waveOutOpen) before the line above ran.
-        if (Volatile.Read(ref _failedKind) == kind) Interlocked.CompareExchange(ref _playingKind, -1, kind);
+        if (Volatile.Read(ref _failedKind) == kind) Interlocked.CompareExchange(ref _playingKind, NoneKind, kind);
         StateChanged?.Invoke();
     }
 
@@ -133,36 +161,53 @@ internal static partial class WhiteNoiseService
     {
         try
         {
-            Volatile.Write(ref _failedKind, kind);
-            RuntimeLog.Log("WhiteNoise", $"Playback of kind {kind} stopped (native error {errorCode}).");
-            if (Interlocked.CompareExchange(ref _playingKind, -1, kind) != kind) return;
-            StateChanged?.Invoke();
+            HandleNativePlaybackFailed(kind, errorCode);
         }
         catch (Exception)
         {
             // An exception must never cross the native callback boundary.
         }
     }
+
+    internal static void HandleNativePlaybackFailed(int kind, int errorCode = -1)
+    {
+        Volatile.Write(ref _failedKind, kind);
+        RuntimeLog.Log("WhiteNoise", $"Playback of kind {kind} stopped (native error {errorCode}).");
+        if (Interlocked.CompareExchange(ref _playingKind, NoneKind, kind) != kind) return;
+        MarshalToUi(() => StateChanged?.Invoke());
+    }
+
+    internal static void HandleNativePlaybackFailed()
+    {
+        int previous = Interlocked.Exchange(ref _playingKind, NoneKind);
+        if (previous >= 0)
+        {
+            Volatile.Write(ref _failedKind, previous);
+            RuntimeLog.Log("WhiteNoise", $"Playback of kind {previous} stopped (native error -1).");
+        }
+        MarshalToUi(() => StateChanged?.Invoke());
+    }
+
+    internal static void SetPlayingKindForTest(int kind) => Volatile.Write(ref _playingKind, kind);
+
     internal static void Toggle(Sound sound)
     {
-        if (_playingKind == sound.Kind) Pause();
+        if (Volatile.Read(ref _playingKind) == sound.Kind) Pause();
         else Play(sound.Kind);
     }
 
     internal static void Pause()
     {
-        if (_playingKind < 0) return;
+        if (Interlocked.Exchange(ref _playingKind, NoneKind) < 0) return;
         vn_noise_stop();
-        _playingKind = -1;
         StateChanged?.Invoke();
     }
 
     /// <summary>Called when the countdown finishes. Fades noise out if sync is enabled.</summary>
     internal static void OnTimerCompleted()
     {
-        if (!_syncWithTimer || _playingKind < 0) return;
+        if (!_syncWithTimer || Interlocked.Exchange(ref _playingKind, NoneKind) < 0) return;
         vn_noise_stop_fade(TimerEndFadeSeconds);
-        _playingKind = -1;
         StateChanged?.Invoke();
     }
 

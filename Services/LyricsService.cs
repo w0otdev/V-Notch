@@ -2,11 +2,9 @@
 using System;
 using System.Buffers;
 using System.Collections.Generic;
-using System.Globalization;
 using System.Linq;
 using System.Net.Http;
 using System.Runtime.InteropServices;
-using System.Text;
 using System.Text.Json;
 using System.Text.RegularExpressions;
 using System.Threading;
@@ -17,8 +15,6 @@ namespace VNotch.Services;
 internal sealed partial class LyricsService : IDisposable
 {
     private const string NativeDll = "VNotch.Native.dll";
-
-
 
     [LibraryImport(NativeDll, StringMarshalling = StringMarshalling.Utf16)]
     private static partial int vn_lyrics_try_parse_lrc_line(
@@ -56,18 +52,29 @@ internal sealed partial class LyricsService : IDisposable
         out int outStart,
         out int outLength);
 
+    [LibraryImport(NativeDll, StringMarshalling = StringMarshalling.Utf16)]
+    private static partial int vn_lyrics_normalize_for_matching(
+        ReadOnlySpan<char> text_ptr,
+        int text_len,
+        Span<char> out_buf,
+        int out_cap,
+        out int out_written);
+
     private const string LogTag = "LYRICS";
     private static readonly string[] Dashes = { " - ", " – ", " — ", " // " };
     private const int MaxLyricsResponseBytes = 512 * 1024;
-
-    [GeneratedRegex(@"[\(\[][^\)\]]*[\)\]]")]
-    private static partial Regex BracketedExtrasRegex();
 
     [GeneratedRegex(@"\s*[\(\[][^\)\]]*[\)\]]")]
     private static partial Regex TitleExtrasRegex();
 
     private const string VideoSuffixPattern = @"\s*\|\s*(?:Official|OFFICIAL|MV|mv|Music Video|Visualizer|Lyric Video|Audio|Track\s*No\.\d+).*";
     private const string RecordingSuffixPattern = @"\s*-\s*(?:Remaster(?:ed)?|Live|Acoustic|Radio Edit|Bonus Track|Single Version|Instrumental|Deluxe|Mono|Stereo).*";
+
+    [GeneratedRegex(VideoSuffixPattern, RegexOptions.IgnoreCase)]
+    private static partial Regex VideoSuffixRegex();
+
+    [GeneratedRegex(RecordingSuffixPattern, RegexOptions.IgnoreCase)]
+    private static partial Regex RecordingSuffixRegex();
 
     private static readonly HttpClient _lrclibHttp = new(NetworkPrivacy.Handler(NetworkFeature.Lyrics))
     {
@@ -162,7 +169,21 @@ internal sealed partial class LyricsService : IDisposable
             else if (result is { Lines.Count: > 0 })
             {
                 if (_cache.Count >= _cacheCapacity && !_cache.ContainsKey(operation.Key))
-                    _cache.Remove(_cache.MinBy(static entry => entry.Value.LastAccess).Key);
+                {
+                    FetchKey oldestKey = default;
+                    long oldestAccess = long.MaxValue;
+                    bool hasOldest = false;
+                    foreach (var kv in _cache)
+                    {
+                        if (!hasOldest || kv.Value.LastAccess < oldestAccess)
+                        {
+                            oldestKey = kv.Key;
+                            oldestAccess = kv.Value.LastAccess;
+                            hasOldest = true;
+                        }
+                    }
+                    if (hasOldest) _cache.Remove(oldestKey);
+                }
                 _cache[operation.Key] = (result, ++_cacheAccess);
             }
 
@@ -257,8 +278,8 @@ internal sealed partial class LyricsService : IDisposable
         // 3. Decompose pipe '|' (common in YouTube music video titles: "Artist | Title" or "Artist - Nick | Title")
         DecomposePipes(cTrack, AddCandidate);
 
-        // 4. Decompose standard dashes " - ", " – ", " — "
-        DecomposeDashes(cTrack, AddCandidate);
+        // 4. Decompose standard dashes " - ", " – ", " — " on raw track before suffix stripping
+        DecomposeDashes(trackName, AddCandidate);
 
         // 5. Track name only if artist is empty or generic
         if (!string.IsNullOrEmpty(cTrack))
@@ -287,16 +308,18 @@ internal sealed partial class LyricsService : IDisposable
         }
     }
 
-    private static void DecomposeDashes(string cTrack, Action<string, string> addCandidate)
+    private static void DecomposeDashes(string rawTrack, Action<string, string> addCandidate)
     {
         foreach (var dash in Dashes)
         {
-            if (!cTrack.Contains(dash)) continue;
-            var parts = cTrack.Split(dash, 2, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
-            if (parts.Length == 2)
+            int idx = rawTrack.IndexOf(dash, StringComparison.Ordinal);
+            if (idx <= 0) continue;
+            string left = CleanTitle(rawTrack[..idx]);
+            string right = CleanTitle(rawTrack[(idx + dash.Length)..]);
+            if (!string.IsNullOrWhiteSpace(left) && !string.IsNullOrWhiteSpace(right))
             {
-                addCandidate(parts[1], parts[0]);
-                addCandidate(parts[0], parts[1]);
+                addCandidate(right, left);
+                addCandidate(left, right);
             }
         }
     }
@@ -416,46 +439,22 @@ internal sealed partial class LyricsService : IDisposable
     internal static string NormalizeForMatching(string text)
     {
         if (string.IsNullOrWhiteSpace(text)) return "";
-        string decomposed = BracketedExtrasRegex().Replace(text, "").Normalize(NormalizationForm.FormD);
-        char[]? rented = decomposed.Length <= 512 ? null : ArrayPool<char>.Shared.Rent(decomposed.Length);
-        Span<char> buffer = rented is null
-            ? stackalloc char[decomposed.Length]
-            : rented.AsSpan(0, decomposed.Length);
+        int cap = Math.Max(text.Length, 64);
+        char[]? rented = cap <= 512 ? null : ArrayPool<char>.Shared.Rent(cap);
+        Span<char> buffer = rented is null ? stackalloc char[cap] : rented.AsSpan(0, cap);
         try
         {
-            int length = 0;
-            bool needsRecomposition = false;
-            foreach (char original in decomposed)
+            int status = vn_lyrics_normalize_for_matching(text.AsSpan(), text.Length, buffer, buffer.Length, out int written);
+            if (status == -2 && written > buffer.Length)
             {
-                if (original > 127 && CharUnicodeInfo.GetUnicodeCategory(original) == UnicodeCategory.NonSpacingMark)
-                    continue;
-                char c = original is 'đ' or 'Đ' ? 'd' : original;
-                buffer[length++] = c;
-                needsRecomposition |= c > 127;
+                if (rented != null) ArrayPool<char>.Shared.Return(rented);
+                rented = ArrayPool<char>.Shared.Rent(written);
+                buffer = rented.AsSpan(0, written);
+                status = vn_lyrics_normalize_for_matching(text.AsSpan(), text.Length, buffer, buffer.Length, out written);
             }
-
-            // Preserve NFC behavior for non-ASCII text; Latin titles can stay in the buffer.
-            ReadOnlySpan<char> characters = buffer[..length];
-            if (needsRecomposition)
-                characters = new string(characters).Normalize(NormalizationForm.FormC);
-
-            int written = 0;
-            bool pendingSpace = false;
-            foreach (char original in characters)
-            {
-                char c = original is >= 'A' and <= 'Z' ? (char)(original + ('a' - 'A')) : original;
-                if (c is >= 'a' and <= 'z' or >= '0' and <= '9')
-                {
-                    if (pendingSpace) buffer[written++] = ' ';
-                    buffer[written++] = c;
-                    pendingSpace = false;
-                }
-                else
-                {
-                    pendingSpace = written > 0;
-                }
-            }
-            return new string(buffer[..written]);
+            return status == 0 && written > 0 && written <= buffer.Length
+                ? new string(buffer[..written])
+                : "";
         }
         finally
         {
@@ -588,12 +587,22 @@ internal sealed partial class LyricsService : IDisposable
         // Drop bracketed/parenthesised extras like (Official Music Video), (Lyric Video), [MV], etc.
         string s = TitleExtrasRegex().Replace(title, "");
 
-        // Remove YouTube visualizer/MV suffix patterns
-        // Runtime regex preserves CurrentCulture casing (notably Turkish/Azeri I).
-        s = Regex.Replace(s, VideoSuffixPattern, "", RegexOptions.IgnoreCase, TimeSpan.FromMilliseconds(250));
+        bool useRuntimeCultureRegex = s.AsSpan().ContainsAnyExceptInRange('\0', '\u007F') ||
+            System.Globalization.CultureInfo.CurrentCulture.TwoLetterISOLanguageName is "tr" or "az";
 
-        // Strip standard remaster/live suffixes
-        s = Regex.Replace(s, RecordingSuffixPattern, "", RegexOptions.IgnoreCase, TimeSpan.FromMilliseconds(250));
+        if (useRuntimeCultureRegex)
+        {
+            s = Regex.Replace(s, VideoSuffixPattern, "", RegexOptions.IgnoreCase, TimeSpan.FromMilliseconds(250));
+            s = Regex.Replace(s, RecordingSuffixPattern, "", RegexOptions.IgnoreCase, TimeSpan.FromMilliseconds(250));
+        }
+        else
+        {
+            // Remove YouTube visualizer/MV suffix patterns
+            s = VideoSuffixRegex().Replace(s, "");
+
+            // Strip standard remaster/live suffixes
+            s = RecordingSuffixRegex().Replace(s, "");
+        }
 
         s = s.Trim();
         return s.Length == 0 ? title.Trim() : s;

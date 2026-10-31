@@ -14,9 +14,6 @@ public partial class SpotlightWindow
     private void AiTranscript_ScrollChanged(object sender, ScrollChangedEventArgs e)
     {
         if (AiTopEdge == null || AiBottomEdge == null) return;
-        double fraction = Math.Min(1, 22 / Math.Max(1, AiTranscriptScroll.ActualHeight));
-        AiTopEdgeBrush.Viewbox = new Rect(0, 0, 1, fraction);
-        AiBottomEdgeBrush.Viewbox = new Rect(0, 1 - fraction, 1, fraction);
         SetAiEdge(AiTopEdge, AiTranscriptScroll.VerticalOffset > 1, ref _aiTopEdgeVisible);
         SetAiEdge(AiBottomEdge,
             AiTranscriptScroll.ScrollableHeight - AiTranscriptScroll.VerticalOffset > 1,

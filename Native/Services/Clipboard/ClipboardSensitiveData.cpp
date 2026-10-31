@@ -61,6 +61,216 @@ namespace vnotch::services
         {
             return (c >= u'0' && c <= u'9') || (c >= u'a' && c <= u'f') || (c >= u'A' && c <= u'F');
         }
+
+        static inline int32_t hex_value(char16_t c) noexcept
+        {
+            if (c >= u'0' && c <= u'9') return c - u'0';
+            if (c >= u'a' && c <= u'f') return 10 + (c - u'a');
+            if (c >= u'A' && c <= u'F') return 10 + (c - u'A');
+            return -1;
+        }
+
+        static inline bool is_label_sep(char16_t c) noexcept
+        {
+            return c == u'_' || c == u'-' || c == u' ';
+        }
+
+        static inline bool is_label_prefix_char(char16_t c) noexcept
+        {
+            return (c >= u'a' && c <= u'z') || (c >= u'A' && c <= u'Z') ||
+                   (c >= u'0' && c <= u'9') || c == u'_' || c == u'.' || c == u'-';
+        }
+
+        static inline bool matches_compound_word(std::u16string_view text, std::u16string_view first, std::u16string_view second) noexcept
+        {
+            if (!starts_with_ignore_case(text, first))
+            {
+                return false;
+            }
+            std::u16string_view rem = text.substr(first.size());
+            if (!rem.empty() && is_label_sep(rem.front()))
+            {
+                rem.remove_prefix(1);
+            }
+            return equals_ignore_case(rem, second);
+        }
+
+        static inline bool is_secret_suffix(std::u16string_view rem) noexcept
+        {
+            if (rem.empty())
+            {
+                return true;
+            }
+            if (is_label_sep(rem.front()))
+            {
+                rem.remove_prefix(1);
+            }
+            if (starts_with_ignore_case(rem, u"access"))
+            {
+                rem.remove_prefix(6);
+                if (rem.empty())
+                {
+                    return true;
+                }
+                if (is_label_sep(rem.front()))
+                {
+                    rem.remove_prefix(1);
+                }
+            }
+            static constexpr std::u16string_view SECRET_SUFFIXES[] = {
+                u"key", u"token", u"value", u"id", u"code", u"string", u"hash"
+            };
+            for (std::u16string_view suf : SECRET_SUFFIXES)
+            {
+                if (equals_ignore_case(rem, suf))
+                {
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        static inline bool is_sensitive_label_tail(std::u16string_view tail) noexcept
+        {
+            static constexpr std::u16string_view EXACT_LABELS[] = {
+                u"password", u"passwd", u"pwd", u"passphrase", u"passcode", u"pass", u"pin",
+                u"apikey", u"token", u"otp", u"totp", u"2fa"
+            };
+            for (std::u16string_view exact : EXACT_LABELS)
+            {
+                if (equals_ignore_case(tail, exact))
+                {
+                    return true;
+                }
+            }
+            if (starts_with_ignore_case(tail, u"secret") && is_secret_suffix(tail.substr(6)))
+            {
+                return true;
+            }
+            return matches_compound_word(tail, u"private", u"key") ||
+                   matches_compound_word(tail, u"secret", u"key") ||
+                   matches_compound_word(tail, u"access", u"key") ||
+                   matches_compound_word(tail, u"api", u"key") ||
+                   matches_compound_word(tail, u"access", u"token") ||
+                   matches_compound_word(tail, u"refresh", u"token") ||
+                   matches_compound_word(tail, u"session", u"token") ||
+                   matches_compound_word(tail, u"auth", u"token") ||
+                   matches_compound_word(tail, u"id", u"token") ||
+                   matches_compound_word(tail, u"client", u"secret") ||
+                   matches_compound_word(tail, u"verification", u"code");
+        }
+
+        static bool is_sensitive_credential_label(std::u16string_view raw_label) noexcept
+        {
+            std::u16string_view label = trim_view(raw_label);
+            if (label.size() >= 2 &&
+                ((label.front() == u'"' && label.back() == u'"') ||
+                 (label.front() == u'\'' && label.back() == u'\'')))
+            {
+                label = trim_view(label.substr(1, label.size() - 2));
+            }
+            if (label.empty())
+            {
+                return false;
+            }
+            if (is_sensitive_label_tail(label))
+            {
+                return true;
+            }
+            for (size_t i = 0; i < label.size(); ++i)
+            {
+                char16_t c = label[i];
+                if (is_label_sep(c))
+                {
+                    if (i + 1 < label.size() && is_sensitive_label_tail(label.substr(i + 1)))
+                    {
+                        return true;
+                    }
+                }
+                else if (!is_label_prefix_char(c))
+                {
+                    return false;
+                }
+            }
+            return false;
+        }
+
+        static bool TryDecodeHexPayload(std::u16string_view text, char16_t* out_wide, int32_t out_cap, int32_t* out_len) noexcept
+        {
+            if (out_wide == nullptr || out_cap <= 0 || out_len == nullptr)
+            {
+                return false;
+            }
+            *out_len = 0;
+            std::u16string_view trimmed = trim_view(text);
+            if (trimmed.size() < 32)
+            {
+                return false;
+            }
+
+            std::u16string_view hex_span{};
+            size_t i = 0;
+            while (i < trimmed.size())
+            {
+                if (i + 2 < trimmed.size() && trimmed[i] == u'0' && (trimmed[i + 1] == u'x' || trimmed[i + 1] == u'X') && is_ascii_hex(trimmed[i + 2]))
+                {
+                    i += 2;
+                }
+                if (!is_ascii_hex(trimmed[i]))
+                {
+                    ++i;
+                    continue;
+                }
+                size_t start = i;
+                while (i < trimmed.size() && is_ascii_hex(trimmed[i]))
+                {
+                    ++i;
+                }
+                size_t run_len = i - start;
+                if (run_len >= 32)
+                {
+                    hex_span = trimmed.substr(start, run_len & ~static_cast<size_t>(1));
+                    break;
+                }
+            }
+            if (hex_span.size() < 32)
+            {
+                return false;
+            }
+            uint8_t decoded_utf8[8192];
+            wchar_t decoded_wide[8192];
+            size_t decoded_len = std::min<size_t>(hex_span.size() / 2, 8192);
+            if (decoded_len < 16)
+            {
+                return false;
+            }
+            for (size_t idx = 0; idx < decoded_len; ++idx)
+            {
+                int32_t hi = hex_value(hex_span[idx * 2]);
+                int32_t lo = hex_value(hex_span[idx * 2 + 1]);
+                if (hi < 0 || lo < 0)
+                {
+                    return false;
+                }
+                uint8_t b = static_cast<uint8_t>((hi << 4) | lo);
+                decoded_utf8[idx] = (b == 0u) ? static_cast<uint8_t>(' ') : b;
+            }
+            int wide_len = MultiByteToWideChar(
+                CP_UTF8,
+                0,
+                reinterpret_cast<const char*>(decoded_utf8),
+                static_cast<int>(decoded_len),
+                decoded_wide,
+                8192);
+            if (wide_len <= 0)
+            {
+                return false;
+            }
+            int32_t copy_len = std::min<int32_t>(wide_len, out_cap);
+            std::memcpy(out_wide, decoded_wide, static_cast<size_t>(copy_len) * sizeof(char16_t));
+            *out_len = copy_len;
+            return true;
+        }
         
         static inline int32_t classify_char_for_entropy(char16_t c, int32_t& lower, int32_t& upper, int32_t& digits, int32_t& symbols, bool& strong_sym) noexcept
         {
@@ -304,6 +514,21 @@ namespace vnotch::services
     }
 
     size_t eq_pos = text.find(u'=');
+    if (eq_pos != std::u16string_view::npos && eq_pos > 0 && eq_pos + 1 < text.size() &&
+        !contains_ordinal(text, u"=>") && !contains_ordinal(text, u"==") && !contains_ordinal(text, u"!="))
+    {
+        std::u16string_view lhs = text.substr(0, eq_pos);
+        std::u16string_view rhs = text.substr(eq_pos + 1);
+        uint8_t is_cred = 0u;
+        if (is_sensitive_credential_label(lhs) &&
+            vn_clipboard_sensitive_is_credential_value_impl(rhs.data(), static_cast<int32_t>(rhs.size()), &is_cred) == VN_OK &&
+            is_cred != 0u)
+        {
+            *out_reason = 3; // CredentialLabel
+            *out_confidence = 3; // High
+            return VN_OK;
+        }
+    }
     if (contains_ordinal(text, u"=>") ||
         contains_ordinal(text, u"==") ||
         contains_ordinal(text, u"!=") ||
@@ -390,19 +615,40 @@ VN_EXPORT int32_t vn_clipboard_sensitive_is_from_password_manager(const char16_t
     const char16_t* exe_ptr, int32_t exe_len,
     uint8_t* out_is_pm) noexcept
 {
-    return vnotch::services::ClipboardSensitiveData::vn_clipboard_sensitive_is_from_password_manager_impl(app_ptr, app_len, exe_ptr, exe_len, out_is_pm);
+    try
+    {
+        return vnotch::services::ClipboardSensitiveData::vn_clipboard_sensitive_is_from_password_manager_impl(app_ptr, app_len, exe_ptr, exe_len, out_is_pm);
+    }
+    catch (...)
+    {
+        return VN_ERR_FAIL;
+    }
 }
 
 VN_EXPORT int32_t vn_clipboard_sensitive_is_credential_value(const char16_t* val_ptr, int32_t val_len,
     uint8_t* out_is_cred) noexcept
 {
-    return vnotch::services::ClipboardSensitiveData::vn_clipboard_sensitive_is_credential_value_impl(val_ptr, val_len, out_is_cred);
+    try
+    {
+        return vnotch::services::ClipboardSensitiveData::vn_clipboard_sensitive_is_credential_value_impl(val_ptr, val_len, out_is_cred);
+    }
+    catch (...)
+    {
+        return VN_ERR_FAIL;
+    }
 }
 
 VN_EXPORT int32_t vn_clipboard_sensitive_luhn_check(const char16_t* match_ptr, int32_t match_len,
     uint8_t* out_valid) noexcept
 {
-    return vnotch::services::ClipboardSensitiveData::vn_clipboard_sensitive_luhn_check_impl(match_ptr, match_len, out_valid);
+    try
+    {
+        return vnotch::services::ClipboardSensitiveData::vn_clipboard_sensitive_luhn_check_impl(match_ptr, match_len, out_valid);
+    }
+    catch (...)
+    {
+        return VN_ERR_FAIL;
+    }
 }
 
 VN_EXPORT int32_t vn_clipboard_sensitive_analyze_standalone(const char16_t* text_ptr, int32_t text_len,
@@ -411,6 +657,35 @@ VN_EXPORT int32_t vn_clipboard_sensitive_analyze_standalone(const char16_t* text
     int32_t* out_reason,
     int32_t* out_confidence) noexcept
 {
-    return vnotch::services::ClipboardSensitiveData::vn_clipboard_sensitive_analyze_standalone_impl(text_ptr, text_len, is_guid_or_email_or_version, is_identifier, out_reason, out_confidence);
+    try
+    {
+        return vnotch::services::ClipboardSensitiveData::vn_clipboard_sensitive_analyze_standalone_impl(text_ptr, text_len, is_guid_or_email_or_version, is_identifier, out_reason, out_confidence);
+    }
+    catch (...)
+    {
+        return VN_ERR_FAIL;
+    }
 }
+
+VN_EXPORT int32_t vn_clipboard_sensitive_try_decode_hex_payload(const char16_t* text_ptr, int32_t text_len,
+    char16_t* out_wide, int32_t out_cap,
+    int32_t* out_len, uint8_t* out_decoded) noexcept
+{
+    try
+    {
+        if (out_wide == nullptr || out_cap <= 0 || out_len == nullptr || out_decoded == nullptr)
+        {
+            return VN_ERR_INVALID_ARG;
+        }
+        *out_len = 0;
+        *out_decoded = vnotch::services::ClipboardSensitiveData::TryDecodeHexPayload(
+            vnotch::make_u16_view(text_ptr, text_len), out_wide, out_cap, out_len) ? 1u : 0u;
+        return VN_OK;
+    }
+    catch (...)
+    {
+        return VN_ERR_FAIL;
+    }
+}
+
 

@@ -19,6 +19,7 @@ public partial class SpotlightPreferencesDialog : Window
         InitializeComponent();
         _preferences = preferences;
         _item = item;
+        DialogBadgeText.Text = Loc.Get("settings.nav.spotlight").ToUpper(Loc.GetCulture());
         Title = Loc.Get(item == null ? "spotlight.excludedFolders" : "spotlight.alias").TrimEnd('…', '.');
         Heading.Text = Title;
         Hint.Text = Loc.Get(item == null ? "spotlight.excludedFoldersHint" : "spotlight.aliasHint");

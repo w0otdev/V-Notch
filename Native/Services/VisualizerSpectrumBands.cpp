@@ -1,4 +1,5 @@
 #include "vnotch_common.h"
+#include <algorithm>
 #include <cmath>
 #include <cstdint>
 
@@ -38,17 +39,18 @@ public:
 
         int32_t last_bin = 0;
         int32_t maximum = powers_length - 1;
+        double max_bin = static_cast<double>(maximum);
         double inv_sr = static_cast<double>(fft_length) / static_cast<double>(sample_rate);
         for (int32_t band = 0; band < kBandCount; ++band)
         {
-            int32_t start = static_cast<int32_t>(std::nearbyint(static_cast<double>(kBandFrom[band]) * inv_sr));
-            int32_t end = static_cast<int32_t>(std::nearbyint(static_cast<double>(kBandTo[band]) * inv_sr));
+            double start = std::nearbyint(static_cast<double>(kBandFrom[band]) * inv_sr);
+            double end = std::nearbyint(static_cast<double>(kBandTo[band]) * inv_sr);
             if (end < start)
             {
                 std::swap(start, end);
             }
-            int32_t clamped_start = std::clamp(start, 1, maximum);
-            int32_t clamped_end = std::clamp(end, clamped_start, maximum);
+            int32_t clamped_start = static_cast<int32_t>(std::clamp(start, 1.0, max_bin));
+            int32_t clamped_end = static_cast<int32_t>(std::clamp(end, static_cast<double>(clamped_start), max_bin));
             out_starts[band] = clamped_start;
             out_ends[band] = clamped_end;
             last_bin = std::max(last_bin, clamped_end);
@@ -68,9 +70,21 @@ public:
         double* out_energies) noexcept
     {
         if (fft == nullptr || starts == nullptr || ends == nullptr ||
-            powers_scratch == nullptr || out_energies == nullptr || fft_length < 4)
+            powers_scratch == nullptr || out_energies == nullptr ||
+            fft_length < 4 || last_bin < 1 || last_bin >= fft_length ||
+            !std::isfinite(power_scale) || power_scale < 0.0)
         {
             return VN_ERR_INVALID_ARG;
+        }
+
+        for (int32_t band = 0; band < kBandCount; ++band)
+        {
+            int32_t s = starts[band];
+            int32_t e = ends[band];
+            if (s < 1 || e < s || e > last_bin)
+            {
+                return VN_ERR_INVALID_ARG;
+            }
         }
 
         for (int32_t i = 1; i <= last_bin; ++i)

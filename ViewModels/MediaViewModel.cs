@@ -17,13 +17,13 @@ public partial class MediaViewModel : ObservableObject
     private bool _isPlaying = true;
 
     [ObservableProperty]
-    private string _title = "No media playing";
+    private string _title = Loc.Get("media.noMedia");
 
     [ObservableProperty]
-    private string _artist = "Artist name";
+    private string _artist = Loc.Get("media.unknownArtist");
 
     [ObservableProperty]
-    private string _sourceName = "Now Playing";
+    private string _sourceName = Loc.Get("media.nowPlaying");
 
     [ObservableProperty]
     private string _sourceIcon = "";
@@ -59,18 +59,18 @@ public partial class MediaViewModel : ObservableObject
         SourceIcon = hasTrack ? info.MediaSource ?? "" : "";
         if (hasTrack)
         {
-            SourceName = info.MediaSource ?? "Now Playing";
+            SourceName = !string.IsNullOrEmpty(info.MediaSource) ? info.MediaSource : Loc.Get("media.nowPlaying");
             Title = info.CurrentTrack;
             bool hasArtist = !string.IsNullOrEmpty(info.CurrentArtist) &&
                 MediaPlatformExtensions.ParsePlatform(info.CurrentArtist) is not (MediaPlatform.YouTube or MediaPlatform.Browser or MediaPlatform.Spotify);
-            string fallbackArtist = !string.IsNullOrEmpty(info.MediaSource) ? info.MediaSource : "Unknown Artist";
+            string fallbackArtist = !string.IsNullOrEmpty(info.MediaSource) ? info.MediaSource : Loc.Get("media.unknownArtist");
             Artist = hasArtist ? info.CurrentArtist : fallbackArtist;
         }
         else
         {
-            Title = "No media playing";
-            Artist = "Artist name";
-            SourceName = "Now Playing";
+            Title = Loc.Get("media.noMedia");
+            Artist = Loc.Get("media.unknownArtist");
+            SourceName = Loc.Get("media.nowPlaying");
         }
 
         string signature = info.GetSignature();

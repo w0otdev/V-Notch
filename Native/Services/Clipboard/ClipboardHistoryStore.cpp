@@ -159,6 +159,44 @@ public:
         out_value = static_cast<int32_t>(delta / kTicksPerDay);
     }
 
+    [[nodiscard]] static constexpr bool IsReservedDosDeviceName(std::u16string_view stem) noexcept {
+        if (stem.size() == 3) {
+            return vn_equals_icase_ascii(stem, u"CON") ||
+                   vn_equals_icase_ascii(stem, u"PRN") ||
+                   vn_equals_icase_ascii(stem, u"AUX") ||
+                   vn_equals_icase_ascii(stem, u"NUL");
+        }
+        if (stem.size() == 4) {
+            const std::u16string_view prefix = stem.substr(0, 3);
+            if (vn_equals_icase_ascii(prefix, u"COM") || vn_equals_icase_ascii(prefix, u"LPT")) {
+                const char16_t d = stem[3];
+                return (d >= u'0' && d <= u'9') || d == u'\u00B9' || d == u'\u00B2' || d == u'\u00B3';
+            }
+        }
+        if (stem.size() == 6) {
+            return vn_equals_icase_ascii(stem, u"CONIN$");
+        }
+        if (stem.size() == 7) {
+            return vn_equals_icase_ascii(stem, u"CONOUT$");
+        }
+        return false;
+    }
+
+    [[nodiscard]] static constexpr bool IsValidRelativeSegment(std::u16string_view seg) noexcept {
+        while (!seg.empty() && (seg.back() == u' ' || seg.back() == u'.')) {
+            seg.remove_suffix(1);
+        }
+        if (seg.empty()) {
+            return false;
+        }
+        const size_t dot_pos = seg.find(u'.');
+        std::u16string_view stem = (dot_pos == std::u16string_view::npos) ? seg : seg.substr(0, dot_pos);
+        while (!stem.empty() && (stem.back() == u' ' || stem.back() == u'.')) {
+            stem.remove_suffix(1);
+        }
+        return !IsReservedDosDeviceName(stem);
+    }
+
     [[nodiscard]] static bool ValidateArchiveExtractStep(
         int32_t entry_index,
         int32_t max_entries,
@@ -177,10 +215,58 @@ public:
         if (root_prefix.empty() || resolved_path.size() <= root_prefix.size()) {
             return false;
         }
+        for (char16_t ch : root_prefix) {
+            if (ch == u'\0') return false;
+        }
+        if (root_prefix.find(u':') != std::u16string_view::npos) {
+            const char16_t c0 = root_prefix[0];
+            const bool valid_drive = ((c0 >= u'A' && c0 <= u'Z') || (c0 >= u'a' && c0 <= u'z')) &&
+                                     root_prefix.size() >= 3 && root_prefix[1] == u':' &&
+                                     (root_prefix[2] == u'\\' || root_prefix[2] == u'/') &&
+                                     root_prefix.substr(2).find(u':') == std::u16string_view::npos;
+            if (!valid_drive) {
+                return false;
+            }
+        }
         for (char16_t ch : resolved_path) {
             if (ch == u'\0') return false;
         }
-        return vnotch::starts_with_ignore_case(resolved_path, root_prefix);
+        if (!vnotch::starts_with_ignore_case(resolved_path, root_prefix)) {
+            return false;
+        }
+        std::u16string_view rel = resolved_path.substr(root_prefix.size());
+        const bool root_has_sep = (root_prefix.back() == u'\\' || root_prefix.back() == u'/');
+        if (!root_has_sep) {
+            if (rel.empty() || (rel.front() != u'\\' && rel.front() != u'/')) {
+                return false;
+            }
+            rel.remove_prefix(1);
+        }
+        if (!rel.empty() && (rel.back() == u'\\' || rel.back() == u'/')) {
+            rel.remove_suffix(1);
+        }
+        if (rel.empty() || rel.front() == u'\\' || rel.front() == u'/' ||
+            rel.back() == u'\\' || rel.back() == u'/') {
+            return false;
+        }
+        for (char16_t ch : rel) {
+            if (ch < 32 || ch == u':' || ch == u'<' || ch == u'>' ||
+                ch == u'"' || ch == u'|' || ch == u'?' || ch == u'*') {
+                return false;
+            }
+        }
+        size_t start = 0;
+        while (start < rel.size()) {
+            size_t end = start;
+            while (end < rel.size() && rel[end] != u'\\' && rel[end] != u'/') {
+                ++end;
+            }
+            if (!IsValidRelativeSegment(rel.substr(start, end - start))) {
+                return false;
+            }
+            start = end + 1;
+        }
+        return true;
     }
 };
 
@@ -192,9 +278,13 @@ VN_EXPORT int32_t __stdcall vn_clipboard_store_accumulate_category_counts(
     const VnClipboardEntryCategoryMeta* entries,
     int32_t entry_count,
     VnClipboardCategoryCountsOut* out_counts) noexcept {
-    if (!out_counts || entry_count < 0 || (entry_count > 0 && !entries)) return VN_E_INVALID_ARG;
-    vnotch::services::clipboard::ClipboardHistoryStore::AccumulateCategoryCounts(entries, entry_count, *out_counts);
-    return VN_OK;
+    try {
+        if (!out_counts || entry_count < 0 || (entry_count > 0 && !entries)) return VN_E_INVALID_ARG;
+        vnotch::services::clipboard::ClipboardHistoryStore::AccumulateCategoryCounts(entries, entry_count, *out_counts);
+        return VN_OK;
+    } catch (...) {
+        return VN_ERR_FAIL;
+    }
 }
 
 VN_EXPORT int32_t __stdcall vn_clipboard_tray_compute_reconcile_diff(
@@ -203,14 +293,18 @@ VN_EXPORT int32_t __stdcall vn_clipboard_tray_compute_reconcile_diff(
     uint8_t* out_existing_survivor_mask,
     int32_t existing_count,
     int32_t* out_changes) noexcept {
-    if (!out_changes || desired_count < 0 || existing_count < 0 ||
-        (desired_count > 0 && !desired_to_existing_index) ||
-        (existing_count > 0 && !out_existing_survivor_mask)) {
-        return VN_E_INVALID_ARG;
+    try {
+        if (!out_changes || desired_count < 0 || existing_count < 0 ||
+            (desired_count > 0 && !desired_to_existing_index) ||
+            (existing_count > 0 && !out_existing_survivor_mask)) {
+            return VN_E_INVALID_ARG;
+        }
+        *out_changes = vnotch::services::clipboard::ClipboardHistoryStore::ComputeReconcileDiff(
+            desired_to_existing_index, desired_count, out_existing_survivor_mask, existing_count);
+        return VN_OK;
+    } catch (...) {
+        return VN_ERR_FAIL;
     }
-    *out_changes = vnotch::services::clipboard::ClipboardHistoryStore::ComputeReconcileDiff(
-        desired_to_existing_index, desired_count, out_existing_survivor_mask, existing_count);
-    return VN_OK;
 }
 
 VN_EXPORT int32_t __stdcall vn_clipboard_card_compute_age_bucket(
@@ -218,10 +312,14 @@ VN_EXPORT int32_t __stdcall vn_clipboard_card_compute_age_bucket(
     int64_t copied_utc_ticks,
     int32_t* out_bucket,
     int32_t* out_value) noexcept {
-    if (!out_bucket || !out_value) return VN_E_INVALID_ARG;
-    vnotch::services::clipboard::ClipboardHistoryStore::ComputeAgeBucket(
-        now_utc_ticks, copied_utc_ticks, *out_bucket, *out_value);
-    return VN_OK;
+    try {
+        if (!out_bucket || !out_value) return VN_E_INVALID_ARG;
+        vnotch::services::clipboard::ClipboardHistoryStore::ComputeAgeBucket(
+            now_utc_ticks, copied_utc_ticks, *out_bucket, *out_value);
+        return VN_OK;
+    } catch (...) {
+        return VN_ERR_FAIL;
+    }
 }
 
 VN_EXPORT int32_t vn_clipboard_store_matches_category_core(
@@ -233,39 +331,55 @@ VN_EXPORT int32_t vn_clipboard_store_matches_category_core(
     const char16_t* category,
     int32_t category_len,
     int32_t* out_result) noexcept {
-    if (!out_result || (!category && category_len > 0) || category_len < 0) return VN_E_INVALID_ARG;
-    const std::u16string_view cat(category ? category : u"", static_cast<size_t>(category_len));
-    *out_result = vnotch::services::clipboard::ClipboardHistoryStore::MatchesCategoryCore(
-        is_personal != 0, is_archived != 0, is_pinned != 0, kind, include_archived != 0, cat);
-    return VN_OK;
+    try {
+        if (!out_result || (!category && category_len > 0) || category_len < 0) return VN_E_INVALID_ARG;
+        const std::u16string_view cat(category ? category : u"", static_cast<size_t>(category_len));
+        *out_result = vnotch::services::clipboard::ClipboardHistoryStore::MatchesCategoryCore(
+            is_personal != 0, is_archived != 0, is_pinned != 0, kind, include_archived != 0, cat);
+        return VN_OK;
+    } catch (...) {
+        return VN_ERR_FAIL;
+    }
 }
 
 VN_EXPORT int32_t vn_clipboard_store_is_screenshot_file_name(
     const char16_t* name,
     int32_t name_len,
     uint8_t* out_is_screenshot) noexcept {
-    if (!out_is_screenshot || (!name && name_len > 0) || name_len < 0) return VN_E_INVALID_ARG;
-    const std::u16string_view sv(name ? name : u"", static_cast<size_t>(name_len));
-    *out_is_screenshot = vnotch::services::clipboard::ClipboardHistoryStore::IsScreenshotFileName(sv) ? 1 : 0;
-    return VN_OK;
+    try {
+        if (!out_is_screenshot || (!name && name_len > 0) || name_len < 0) return VN_E_INVALID_ARG;
+        const std::u16string_view sv(name ? name : u"", static_cast<size_t>(name_len));
+        *out_is_screenshot = vnotch::services::clipboard::ClipboardHistoryStore::IsScreenshotFileName(sv) ? 1 : 0;
+        return VN_OK;
+    } catch (...) {
+        return VN_ERR_FAIL;
+    }
 }
 
 VN_EXPORT int32_t vn_clipboard_store_is_screenshot_source_app(
     const char16_t* source_app,
     int32_t source_app_len,
     uint8_t* out_is_screenshot_app) noexcept {
-    if (!out_is_screenshot_app || (!source_app && source_app_len > 0) || source_app_len < 0) return VN_E_INVALID_ARG;
-    const std::u16string_view sv(source_app ? source_app : u"", static_cast<size_t>(source_app_len));
-    *out_is_screenshot_app = vnotch::services::clipboard::ClipboardHistoryStore::IsScreenshotSourceApp(sv) ? 1 : 0;
-    return VN_OK;
+    try {
+        if (!out_is_screenshot_app || (!source_app && source_app_len > 0) || source_app_len < 0) return VN_E_INVALID_ARG;
+        const std::u16string_view sv(source_app ? source_app : u"", static_cast<size_t>(source_app_len));
+        *out_is_screenshot_app = vnotch::services::clipboard::ClipboardHistoryStore::IsScreenshotSourceApp(sv) ? 1 : 0;
+        return VN_OK;
+    } catch (...) {
+        return VN_ERR_FAIL;
+    }
 }
 
 VN_EXPORT int32_t vn_clipboard_store_is_sharing_violation_hresult(
     int32_t hresult,
     uint8_t* out_is_sharing_violation) noexcept {
-    if (!out_is_sharing_violation) return VN_E_INVALID_ARG;
-    *out_is_sharing_violation = vnotch::services::clipboard::ClipboardHistoryStore::IsSharingViolationHResult(hresult) ? 1 : 0;
-    return VN_OK;
+    try {
+        if (!out_is_sharing_violation) return VN_E_INVALID_ARG;
+        *out_is_sharing_violation = vnotch::services::clipboard::ClipboardHistoryStore::IsSharingViolationHResult(hresult) ? 1 : 0;
+        return VN_OK;
+    } catch (...) {
+        return VN_ERR_FAIL;
+    }
 }
 
 VN_EXPORT int32_t __stdcall vn_clipboard_store_validate_archive_extract_step(
@@ -279,16 +393,20 @@ VN_EXPORT int32_t __stdcall vn_clipboard_store_validate_archive_extract_step(
     const char16_t* resolved_path,
     int32_t resolved_path_len,
     uint8_t* out_is_valid) noexcept {
-    if (!out_is_valid ||
-        (!root_prefix && root_prefix_len > 0) || root_prefix_len < 0 ||
-        (!resolved_path && resolved_path_len > 0) || resolved_path_len < 0) {
-        return VN_E_INVALID_ARG;
+    try {
+        if (!out_is_valid ||
+            (!root_prefix && root_prefix_len > 0) || root_prefix_len < 0 ||
+            (!resolved_path && resolved_path_len > 0) || resolved_path_len < 0) {
+            return VN_E_INVALID_ARG;
+        }
+        const std::u16string_view root_sv(root_prefix ? root_prefix : u"", static_cast<size_t>(root_prefix_len));
+        const std::u16string_view path_sv(resolved_path ? resolved_path : u"", static_cast<size_t>(resolved_path_len));
+        *out_is_valid = vnotch::services::clipboard::ClipboardHistoryStore::ValidateArchiveExtractStep(
+            entry_index, max_entries, declared_length, accumulated_bytes, max_total_bytes, root_sv, path_sv) ? 1 : 0;
+        return VN_OK;
+    } catch (...) {
+        return VN_ERR_FAIL;
     }
-    const std::u16string_view root_sv(root_prefix ? root_prefix : u"", static_cast<size_t>(root_prefix_len));
-    const std::u16string_view path_sv(resolved_path ? resolved_path : u"", static_cast<size_t>(resolved_path_len));
-    *out_is_valid = vnotch::services::clipboard::ClipboardHistoryStore::ValidateArchiveExtractStep(
-        entry_index, max_entries, declared_length, accumulated_bytes, max_total_bytes, root_sv, path_sv) ? 1 : 0;
-    return VN_OK;
 }
 
 } // extern "C"

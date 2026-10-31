@@ -71,7 +71,7 @@ public partial class SpotlightWindow
         try
         {
             using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
-            string result = await _aiService.GetBalanceAsync(key, timeout.Token);
+            string result = await _aiService.GetBalanceAsync(_settings, timeout.Token);
             _balanceIdentity = identity;
             _balanceText = result;
             _balanceUpdated = DateTimeOffset.Now;

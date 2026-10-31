@@ -32,21 +32,6 @@ public static partial class PipDetector
         }
     }
 
-    public static unsafe bool IsPipWindow(IntPtr hWnd, string? targetProcessName = null, string? currentTrack = null)
-    {
-        if (hWnd == IntPtr.Zero)
-            return false;
-
-        string proc = targetProcessName ?? string.Empty;
-        string track = currentTrack ?? string.Empty;
-        fixed (char* pProc = proc)
-        fixed (char* pTrack = track)
-        {
-            vn_pip_is_pip_window(hWnd, pProc, proc.Length, pTrack, track.Length, out byte isPip);
-            return isPip != 0;
-        }
-    }
-
     public static unsafe bool TryFindPipWindow(
         out IntPtr pipHwnd,
         out string pipTitle,
@@ -115,13 +100,6 @@ public static partial class PipDetector
     [LibraryImport("VNotch.Native.dll")]
     private static unsafe partial int vn_pip_is_known_browser_process(
         char* proc_ptr, int proc_len, out byte out_is_browser);
-
-    [LibraryImport("VNotch.Native.dll")]
-    private static unsafe partial int vn_pip_is_pip_window(
-        IntPtr hwnd,
-        char* target_proc_ptr, int target_proc_len,
-        char* current_track_ptr, int current_track_len,
-        out byte out_is_pip);
 
     [LibraryImport("VNotch.Native.dll")]
     private static unsafe partial int vn_pip_try_find_pip_window(

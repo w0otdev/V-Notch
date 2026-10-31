@@ -1,10 +1,13 @@
 #include "../vnotch_common.h"
 #include "../vnotch_handle_registry.h"
 #include <winhttp.h>
+#include <algorithm>
 #include <atomic>
+#include <cerrno>
 #include <cstdint>
 #include <memory>
 #include <string>
+#include <utility>
 #include <vector>
 
 #pragma comment(lib, "winhttp.lib")
@@ -40,20 +43,34 @@ struct Request {
 
     void Cancel() noexcept {
         HINTERNET active = nullptr;
+        HINTERNET conn = nullptr;
         AcquireSRWLockExclusive(&state_lock);
         cancelled.store(true, std::memory_order_release);
-        active = live_request.exchange(nullptr);
+        active = live_request.exchange(nullptr, std::memory_order_acq_rel);
+        conn = std::exchange(connect, nullptr);
         ReleaseSRWLockExclusive(&state_lock);
         if (active) WinHttpCloseHandle(active);
+        if (conn) WinHttpCloseHandle(conn);
     }
 
-    // Publishes the request handle so Cancel can close it. Returns false and closes the handle when Cancel already ran.
-    bool PublishRequest(HINTERNET handle) noexcept {
+    // Publishes connect + request handles atomically so Cancel or a concurrent Send can close them.
+    // Displaced handles from any prior Send and rejected handles after Cancel are closed outside state_lock.
+    bool PublishHandles(HINTERNET new_conn, HINTERNET new_req) noexcept {
+        HINTERNET old_req = nullptr;
+        HINTERNET old_conn = nullptr;
         AcquireSRWLockExclusive(&state_lock);
         const bool accepted = !cancelled.load(std::memory_order_acquire);
-        if (accepted) live_request.store(handle);
+        if (accepted) {
+            old_req = live_request.exchange(new_req, std::memory_order_acq_rel);
+            old_conn = std::exchange(connect, new_conn);
+        }
         ReleaseSRWLockExclusive(&state_lock);
-        if (!accepted) WinHttpCloseHandle(handle);
+        if (old_req) WinHttpCloseHandle(old_req);
+        if (old_conn) WinHttpCloseHandle(old_conn);
+        if (!accepted) {
+            WinHttpCloseHandle(new_req);
+            WinHttpCloseHandle(new_conn);
+        }
         return accepted;
     }
 
@@ -61,7 +78,7 @@ struct Request {
         HINTERNET active = nullptr;
         HINTERNET conn = nullptr;
         AcquireSRWLockExclusive(&state_lock);
-        active = live_request.exchange(nullptr);
+        active = live_request.exchange(nullptr, std::memory_order_acq_rel);
         conn = std::exchange(connect, nullptr);
         ReleaseSRWLockExclusive(&state_lock);
         if (active) WinHttpCloseHandle(active);
@@ -162,6 +179,8 @@ VN_EXPORT int32_t __stdcall vn_http_send(
         std::wstring target(parts.lpszUrlPath, parts.dwUrlPathLength);
         target.append(parts.lpszExtraInfo, parts.dwExtraInfoLength);
         if (target.empty()) target = L"/";
+        const std::wstring verb = hp::ToWide(method, method_length);
+        const std::wstring header_block = headers_length > 0 ? hp::ToWide(headers, headers_length) : std::wstring();
 
         req->CloseHandles();
         if (req->IsCancelled()) {
@@ -173,17 +192,14 @@ VN_EXPORT int32_t __stdcall vn_http_send(
             *out_error = static_cast<int32_t>(GetLastError());
             return VN_ERR_FAIL;
         }
-        AcquireSRWLockExclusive(&req->state_lock);
-        req->connect = conn;
-        ReleaseSRWLockExclusive(&req->state_lock);
-        const std::wstring verb = hp::ToWide(method, method_length);
         HINTERNET request = WinHttpOpenRequest(conn, verb.c_str(), target.c_str(), nullptr, WINHTTP_NO_REFERER,
                                                WINHTTP_DEFAULT_ACCEPT_TYPES, secure ? WINHTTP_FLAG_SECURE : 0);
         if (!request) {
             *out_error = static_cast<int32_t>(GetLastError());
+            WinHttpCloseHandle(conn);
             return VN_ERR_FAIL;
         }
-        if (!req->PublishRequest(request)) {
+        if (!req->PublishHandles(conn, request)) {
             *out_error = ERROR_WINHTTP_OPERATION_CANCELLED;
             return VN_ERR_FAIL;
         }
@@ -204,7 +220,6 @@ VN_EXPORT int32_t __stdcall vn_http_send(
             WinHttpSetOption(request, WINHTTP_OPTION_DECOMPRESSION, &decompression, sizeof(decompression));
         }
 
-        const std::wstring header_block = headers_length > 0 ? hp::ToWide(headers, headers_length) : std::wstring();
         if (req->IsCancelled()) {
             *out_error = ERROR_WINHTTP_OPERATION_CANCELLED;
             return VN_ERR_FAIL;
@@ -224,7 +239,7 @@ VN_EXPORT int32_t __stdcall vn_http_send(
         DWORD size = sizeof(status);
         if (!WinHttpQueryHeaders(request, WINHTTP_QUERY_STATUS_CODE | WINHTTP_QUERY_FLAG_NUMBER, WINHTTP_HEADER_NAME_BY_INDEX,
                                  &status, &size, WINHTTP_NO_HEADER_INDEX)) {
-            *out_error = static_cast<int32_t>(GetLastError());
+            *out_error = req->IsCancelled() ? static_cast<int32_t>(ERROR_WINHTTP_OPERATION_CANCELLED) : static_cast<int32_t>(GetLastError());
             return VN_ERR_FAIL;
         }
         *out_status = static_cast<int32_t>(status);
@@ -238,10 +253,13 @@ VN_EXPORT int32_t __stdcall vn_http_send(
 // Raw response header block ("HTTP/1.1 200 OK\r\nName: value\r\n..."). Two-step: BUFFER_TOO_SMALL returns the
 // required length (in characters) in out_length.
 VN_EXPORT int32_t __stdcall vn_http_get_headers(int64_t handle, char16_t* buffer, int32_t capacity, int32_t* out_length) noexcept {
+    if (!out_length) return VN_ERR_INVALID_ARG;
+    *out_length = 0;
     auto lease = hp::g_requests.Acquire(handle);
     hp::Request* req = lease.get();
-    HINTERNET request = req ? req->live_request.load() : nullptr;
-    if (!req || !request || !out_length || capacity < 0 || (capacity > 0 && !buffer)) return VN_ERR_INVALID_ARG;
+    HINTERNET request = req ? req->live_request.load(std::memory_order_acquire) : nullptr;
+    if (!req || !request || capacity < 0 || capacity > hp::kMaxHeaderChars || (capacity > 0 && !buffer))
+        return VN_ERR_INVALID_ARG;
     DWORD bytes = static_cast<DWORD>(capacity) * sizeof(char16_t);
     if (WinHttpQueryHeaders(request, WINHTTP_QUERY_RAW_HEADERS_CRLF, WINHTTP_HEADER_NAME_BY_INDEX,
                             capacity > 0 ? buffer : WINHTTP_NO_OUTPUT_BUFFER, &bytes, WINHTTP_NO_HEADER_INDEX)) {
@@ -257,37 +275,40 @@ VN_EXPORT int32_t __stdcall vn_http_get_headers(int64_t handle, char16_t* buffer
 
 // Content-Length of the (possibly compressed) response, or -1 when absent.
 VN_EXPORT int32_t __stdcall vn_http_get_content_length(int64_t handle, int64_t* out_length) noexcept {
+    if (!out_length) return VN_ERR_INVALID_ARG;
+    *out_length = -1;
     auto lease = hp::g_requests.Acquire(handle);
     hp::Request* req = lease.get();
-    HINTERNET request = req ? req->live_request.load() : nullptr;
-    if (!req || !request || !out_length) return VN_ERR_INVALID_ARG;
+    HINTERNET request = req ? req->live_request.load(std::memory_order_acquire) : nullptr;
+    if (!req || !request) return VN_ERR_INVALID_ARG;
     wchar_t text[32]{};
     DWORD bytes = sizeof(text);
-    *out_length = -1;
     if (WinHttpQueryHeaders(request, WINHTTP_QUERY_CONTENT_LENGTH, WINHTTP_HEADER_NAME_BY_INDEX, text, &bytes,
                             WINHTTP_NO_HEADER_INDEX)) {
         wchar_t* end = nullptr;
+        errno = 0;
         const long long value = _wcstoi64(text, &end, 10);
-        if (end != text && value >= 0) *out_length = value;
+        if (errno == 0 && end != text && value >= 0) *out_length = value;
     }
     return VN_OK;
 }
 
 // Blocking read. out_read = 0 with VN_OK means end of body.
 VN_EXPORT int32_t __stdcall vn_http_read(int64_t handle, uint8_t* buffer, int32_t capacity, int32_t* out_read, int32_t* out_error) noexcept {
-    auto lease = hp::g_requests.Acquire(handle);
-    hp::Request* req = lease.get();
-    if (!req || !buffer || capacity <= 0 || !out_read || !out_error) return VN_ERR_INVALID_ARG;
+    if (!out_read || !out_error) return VN_ERR_INVALID_ARG;
     *out_read = 0;
     *out_error = 0;
-    HINTERNET request = req->live_request.load();
+    auto lease = hp::g_requests.Acquire(handle);
+    hp::Request* req = lease.get();
+    if (!req || !buffer || capacity <= 0) return VN_ERR_INVALID_ARG;
+    HINTERNET request = req->live_request.load(std::memory_order_acquire);
     if (!request) {
         *out_error = ERROR_WINHTTP_OPERATION_CANCELLED;
         return VN_ERR_FAIL;
     }
     DWORD read = 0;
     if (!WinHttpReadData(request, buffer, static_cast<DWORD>(capacity), &read)) {
-        *out_error = static_cast<int32_t>(GetLastError());
+        *out_error = req->IsCancelled() ? static_cast<int32_t>(ERROR_WINHTTP_OPERATION_CANCELLED) : static_cast<int32_t>(GetLastError());
         return VN_ERR_FAIL;
     }
     *out_read = static_cast<int32_t>(read);

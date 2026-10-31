@@ -3,6 +3,7 @@ using System.Net.Http;
 using System.Net.Http.Headers;
 using System.Runtime.InteropServices;
 using System.Text.Json;
+using VNotch.Models;
 
 namespace VNotch.Services.Spotlight;
 
@@ -70,7 +71,22 @@ internal sealed partial class SpotlightAiService
         int keyLen,
         out byte outValid);
 
-    internal async Task<string> GetBalanceAsync(string key, CancellationToken token)
+    internal Task<string> GetBalanceAsync(NotchSettings settings, CancellationToken token = default)
+    {
+        ArgumentNullException.ThrowIfNull(settings);
+        EnsurePrivacy(settings);
+        return GetBalanceCoreAsync(Configuration(settings, "DeepSeek").Key, token);
+    }
+
+    internal Task<string> GetBalanceAsync(string key, CancellationToken token = default)
+    {
+        ArgumentNullException.ThrowIfNull(key);
+        if (!NetworkPrivacy.Current.IsAllowed(NetworkFeature.Ai))
+            throw new SpotlightAiException("spotlight.ai.privacyBlocked");
+        return GetBalanceCoreAsync(key, token);
+    }
+
+    private async Task<string> GetBalanceCoreAsync(string key, CancellationToken token)
     {
         key = key.Trim();
         if (vn_ai_usage_validate_credential_key(key.AsSpan(), key.Length, out byte valid) != 0 || valid == 0)

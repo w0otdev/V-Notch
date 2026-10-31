@@ -135,6 +135,26 @@ public sealed class SetupTermsOfServicePageTests
         });
     }
 
+    [Fact]
+    public void FallbackTermsMarkdown_AlignsWithApache20AndPermitsForks()
+    {
+        string englishFallback = TermsOfServicePage.GetFallbackTermsMarkdown(isVietnamese: false);
+        string vietnameseFallback = TermsOfServicePage.GetFallbackTermsMarkdown(isVietnamese: true);
+
+        Assert.Contains("Apache License 2.0", englishFallback);
+        Assert.Contains("use, modify, fork, redistribute, and sell copies", englishFallback);
+        Assert.Contains("forks are not required to keep a specific product name", englishFallback);
+        Assert.DoesNotContain("prohibition of redistribution under your own name", englishFallback, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("—", englishFallback);
+        Assert.DoesNotContain("–", englishFallback);
+
+        Assert.Contains("Apache License 2.0", vietnameseFallback);
+        Assert.Contains("fork, phân phối lại", vietnameseFallback);
+        Assert.DoesNotContain("không tái phân phối dưới tên riêng", vietnameseFallback, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("—", vietnameseFallback);
+        Assert.DoesNotContain("–", vietnameseFallback);
+    }
+
     private static void EnsureApplicationResources()
     {
         BackgroundTestWindows.EnsureApplicationResources();

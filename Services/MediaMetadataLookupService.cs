@@ -38,6 +38,22 @@ public sealed partial class MediaMetadataLookupService : IMediaMetadataLookupSer
         out int outLen,
         out byte outFound);
 
+    [LibraryImport(NativeDll, StringMarshalling = StringMarshalling.Utf16)]
+    private static partial int vn_yt_next_scrape_candidate(
+        ReadOnlySpan<char> json,
+        int jsonLen,
+        int startPos,
+        out int outNextPos,
+        Span<char> outVideoId,
+        int videoIdCap,
+        out int outVideoIdLen,
+        Span<char> outTitle,
+        int titleCap,
+        out int outTitleLen,
+        Span<char> outChannel,
+        int channelCap,
+        out int outChannelLen);
+
     private const string YouTubeTitleSearchLogTag = "META-YOUTUBE-TITLE-SEARCH";
     private const string YouTubeApiLogTag = "META-YOUTUBE-API";
     private const string ItemsPropertyName = "items";
@@ -95,6 +111,7 @@ public sealed partial class MediaMetadataLookupService : IMediaMetadataLookupSer
 
         try
         {
+            ct.ThrowIfCancellationRequested();
             if (string.IsNullOrWhiteSpace(title))
                 return null;
 
@@ -116,6 +133,10 @@ public sealed partial class MediaMetadataLookupService : IMediaMetadataLookupSer
                     return validated;
             }
 
+        }
+        catch (OperationCanceledException)
+        {
+            return null;
         }
         catch (Exception ex)
         {
@@ -400,44 +421,8 @@ public sealed partial class MediaMetadataLookupService : IMediaMetadataLookupSer
                 return null;
 
             string html = await response.Content.ReadAsStringAsync(timeoutCts.Token);
-            if (vn_media_metadata_extract_yt_initial_data_slice(html.AsSpan(), html.Length, out int jsonStart, out int jsonLen, out byte foundSlice) != 0 || foundSlice == 0)
-                return null;
-
-            string jsonStr = html.Substring(jsonStart, jsonLen);
-
-            var videoIds = new List<(string id, string? title, string? channel)>();
-            var videoIdPattern = new Regex(@"""videoId""\s*:\s*""([a-zA-Z0-9_-]{11})""", RegexOptions.None, TimeSpan.FromMilliseconds(250));
-
-            var idMatches = videoIdPattern.Matches(jsonStr);
-            var seenIds = new HashSet<string>();
-
-            foreach (Match idMatch in idMatches)
-            {
-                string videoId = idMatch.Groups[1].Value;
-                if (!seenIds.Add(videoId))
-                    continue;
-
-                string? videoTitle = null;
-                string? channelName = null;
-                int searchStart = idMatch.Index;
-                int searchLen = Math.Min(800, jsonStr.Length - searchStart);
-                string context = jsonStr.Substring(searchStart, searchLen);
-
-                var titleMatch = Regex.Match(context, @"""title"":\{""runs"":\[\{""text"":""([^""]+)""", RegexOptions.None, TimeSpan.FromMilliseconds(250));
-                if (titleMatch.Success)
-                    videoTitle = System.Net.WebUtility.HtmlDecode(titleMatch.Groups[1].Value);
-
-                var channelMatch = Regex.Match(context, @"""(?:ownerText|longBylineText|shortBylineText)"":\{""runs"":\[\{""text"":""([^""]+)""", RegexOptions.None, TimeSpan.FromMilliseconds(250));
-                if (channelMatch.Success)
-                    channelName = System.Net.WebUtility.HtmlDecode(channelMatch.Groups[1].Value);
-
-                videoIds.Add((videoId, videoTitle, channelName));
-
-                if (videoIds.Count >= 5)
-                    break;
-            }
-
-            if (videoIds.Count == 0)
+            var videoIds = ExtractYouTubeScrapeCandidates(html);
+            if (videoIds == null || videoIds.Count == 0)
                 return null;
 
             foreach (var (videoId, videoTitle, channelName) in videoIds)
@@ -480,6 +465,55 @@ public sealed partial class MediaMetadataLookupService : IMediaMetadataLookupSer
         return null;
     }
 
+    private static List<(string id, string? title, string? channel)>? ExtractYouTubeScrapeCandidates(string html)
+    {
+        if (vn_media_metadata_extract_yt_initial_data_slice(html.AsSpan(), html.Length, out int jsonStart, out int jsonLen, out byte foundSlice) != 0 || foundSlice == 0)
+            return null;
+
+        var videoIds = new List<(string id, string? title, string? channel)>(5);
+        var seenIds = new HashSet<string>(StringComparer.Ordinal);
+        ReadOnlySpan<char> jsonSpan = html.AsSpan(jsonStart, jsonLen);
+        Span<char> idBuf = stackalloc char[16];
+        Span<char> titleBuf = stackalloc char[512];
+        Span<char> channelBuf = stackalloc char[256];
+
+        int scanPos = 0;
+        while (scanPos < jsonLen && videoIds.Count < 5)
+        {
+            if (vn_yt_next_scrape_candidate(
+                    jsonSpan,
+                    jsonLen,
+                    scanPos,
+                    out int nextPos,
+                    idBuf,
+                    idBuf.Length,
+                    out int idLen,
+                    titleBuf,
+                    titleBuf.Length,
+                    out int titleLen,
+                    channelBuf,
+                    channelBuf.Length,
+                    out int channelLen) != 0 || idLen <= 0)
+            {
+                break;
+            }
+
+            scanPos = nextPos > scanPos ? nextPos : scanPos + 1;
+            if (titleLen <= 0)
+                continue;
+
+            string videoId = new string(idBuf[..idLen]);
+            if (!seenIds.Add(videoId))
+                continue;
+
+            string videoTitle = new string(titleBuf[..titleLen]);
+            string? channelName = channelLen > 0 ? new string(channelBuf[..channelLen]) : null;
+            videoIds.Add((videoId, videoTitle, channelName));
+        }
+
+        return videoIds;
+    }
+
     public async Task<YouTubeLookupResult?> TryGetYouTubeVideoInfoFromUrlAsync(string url, CancellationToken ct = default)
     {
         if (!_artworkAllowed())
@@ -487,6 +521,7 @@ public sealed partial class MediaMetadataLookupService : IMediaMetadataLookupSer
 
         try
         {
+            ct.ThrowIfCancellationRequested();
             if (string.IsNullOrWhiteSpace(url))
                 return null;
 
@@ -496,6 +531,10 @@ public sealed partial class MediaMetadataLookupService : IMediaMetadataLookupSer
 
             string videoId = match.Groups[1].Value;
             return await ResolveVideoIdAsync(videoId, ct);
+        }
+        catch (OperationCanceledException)
+        {
+            return null;
         }
         catch (Exception ex)
         {
@@ -507,7 +546,7 @@ public sealed partial class MediaMetadataLookupService : IMediaMetadataLookupSer
 
     private async Task<YouTubeLookupResult?> ResolveVideoIdAsync(string videoId, CancellationToken ct)
     {
-        if (string.IsNullOrWhiteSpace(videoId))
+        if (string.IsNullOrWhiteSpace(videoId) || ct.IsCancellationRequested)
             return null;
         lock (_videoCacheLock) { if (_failedLookups.TryGetValue(videoId, out var failedUntil) && failedUntil > DateTime.UtcNow) return null; }
 
@@ -527,6 +566,8 @@ public sealed partial class MediaMetadataLookupService : IMediaMetadataLookupSer
                 CacheVideo(videoId, apiResult, apiKey);
                 return apiResult;
             }
+            if (ct.IsCancellationRequested)
+                return null;
             RuntimeLog.Log(YouTubeApiLogTag, $"data-api-miss videoId={videoId} -> falling back to oEmbed");
         }
         else
@@ -537,17 +578,15 @@ public sealed partial class MediaMetadataLookupService : IMediaMetadataLookupSer
         var oembed = await ValidateVideoIdWithOEmbedAsync(videoId, ct);
         if (oembed == null)
         {
-            lock (_videoCacheLock)
+            if (!ct.IsCancellationRequested)
             {
-                if (_failedLookups.Count >= FailedLookupsMaxEntries) _failedLookups.Clear();
-                _failedLookups[videoId] = DateTime.UtcNow.AddMinutes(15);
+                lock (_videoCacheLock)
+                {
+                    if (_failedLookups.Count >= FailedLookupsMaxEntries) _failedLookups.Clear();
+                    _failedLookups[videoId] = DateTime.UtcNow.AddMinutes(15);
+                }
             }
             return null;
-        }
-
-        if (!string.IsNullOrEmpty(apiKey))
-        {
-            oembed = await EnrichWithDurationAsync(oembed, apiKey, ct) ?? oembed;
         }
 
         CacheVideo(videoId, oembed, apiKey);
@@ -568,6 +607,7 @@ public sealed partial class MediaMetadataLookupService : IMediaMetadataLookupSer
 
         try
         {
+            ct.ThrowIfCancellationRequested();
             var trackUrl = ExtractSoundCloudTrackUrl(soundCloudUrl);
             if (string.IsNullOrEmpty(trackUrl))
                 return null;
@@ -585,6 +625,10 @@ public sealed partial class MediaMetadataLookupService : IMediaMetadataLookupSer
             string normalized = NormalizeSoundCloudArtworkUrl(result.ThumbnailUrl);
             if (!IsLikelySoundCloudPlaceholderArtworkUrl(normalized))
                 return normalized;
+        }
+        catch (OperationCanceledException)
+        {
+            return null;
         }
         catch (Exception ex)
         {
@@ -760,64 +804,6 @@ public sealed partial class MediaMetadataLookupService : IMediaMetadataLookupSer
                 }
             }
             _videoCache[VideoCacheKey(videoId, apiKey)] = (result, DateTime.UtcNow.Add(_videoCacheTtl));
-        }
-    }
-
-    private async Task<YouTubeLookupResult?> EnrichWithDurationAsync(YouTubeLookupResult result, string apiKey, CancellationToken ct)
-    {
-        if (QuotaCooldown.IsActive(apiKey)) return result;
-        try
-        {
-            if (string.IsNullOrEmpty(result.Id))
-                return result;
-
-            string url = $"https://www.googleapis.com/youtube/v3/videos?part=contentDetails&id={result.Id}&fields=items/contentDetails/duration";
-
-            using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
-            timeoutCts.CancelAfter(2000);
-
-            using var request = CreateYouTubeApiRequest(url, apiKey);
-            using var response = await _keyClient.SendAsync(request, timeoutCts.Token);
-            string json = await response.Content.ReadAsStringAsync(timeoutCts.Token);
-            if (!response.IsSuccessStatusCode)
-            {
-                if (LooksLikeQuotaExceeded(json)) QuotaCooldown.Trip(apiKey);
-                return result;
-            }
-            if (string.IsNullOrWhiteSpace(json))
-                return result;
-
-            using var doc = JsonDocument.Parse(json);
-            var root = doc.RootElement;
-
-            if (!root.TryGetProperty(ItemsPropertyName, out var items) || items.GetArrayLength() == 0)
-                return result;
-
-            var firstItem = items[0];
-            if (firstItem.TryGetProperty("contentDetails", out var details) &&
-                details.TryGetProperty(DurationPropertyName, out var durationEl))
-            {
-                string? isoDuration = durationEl.GetString();
-                if (!string.IsNullOrEmpty(isoDuration))
-                {
-                    var duration = ParseIso8601Duration(isoDuration);
-                    return new YouTubeLookupResult
-                    {
-                        Id = result.Id,
-                        Title = result.Title,
-                        Author = result.Author,
-                        Duration = duration,
-                        ThumbnailUrl = result.ThumbnailUrl,
-                        Source = result.Source,
-                    };
-                }
-            }
-
-            return result;
-        }
-        catch
-        {
-            return result;
         }
     }
 

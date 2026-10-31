@@ -365,15 +365,18 @@ public sealed class SettingsWindowControlTests
     {
         using var fixture = new Fixture();
         var window = fixture.Window;
+        NotchSettings? previewed = null;
+        window.SettingsChanged += (_, s) => previewed = s;
         window.WidgetCombo.SelectedIndex = 2;
         foreach (string language in new[] { "vi", "ja", "en" })
         {
             window.LanguageCombo.SelectedItem = window.LanguageCombo.Items.Cast<ComboBoxItem>().Single(item => (string)item.Tag == language);
-            await WpfFrameWaiter.UntilAsync(() => window.WidthLabel.Text == Loc.Get("settings.width"), "localized width label", ct);
+            await WpfFrameWaiter.UntilAsync(() => window.WidthLabel.Text == Loc.Get("settings.width") && previewed?.Language == language, "localized width label", ct);
             Assert.Equal(language, window.ReadSettingsFromUi().Language);
             Assert.Equal("wordclock", window.ReadSettingsFromUi().ExpandedWidget);
             Assert.Equal(Loc.Get("settings.windowTitle"), window.Title);
-            Assert.Equal(language, fixture.Service.Applied!.Language);
+            Assert.Equal(language, previewed!.Language);
+            Assert.Null(fixture.Service.Applied);
         }
     });
 
@@ -792,6 +795,8 @@ public sealed class SettingsWindowControlTests
     {
         using var fixture = new Fixture();
         var window = fixture.Window;
+        NotchSettings? previewed = null;
+        window.SettingsChanged += (_, s) => previewed = s;
         var rows = window.NavTabsSettingsContainer.Children.OfType<Border>().ToList();
         var expected = rows.Select(row => row.Tag.ToString()!).ToList();
         string moved = expected[from];
@@ -808,19 +813,22 @@ public sealed class SettingsWindowControlTests
         Assert.Equal(to, Field<int>(window, "_settingsNavTargetSlot"));
         Invoke(window, "UpdateSettingsNavNeighborDisplacements");
         Invoke(window, "EndSettingsNavRowDrag");
-        await WpfFrameWaiter.UntilAsync(() => fixture.Service.Applied?.NavTabOrder == string.Join(',', expected), "settings tab order persisted", ct);
+        await WpfFrameWaiter.UntilAsync(() => previewed?.NavTabOrder == string.Join(',', expected), "settings tab order previewed", ct);
         Assert.Equal(expected, window.NavTabsSettingsContainer.Children.OfType<Border>().Select(child => child.Tag.ToString()!));
         foreach (var restored in window.NavTabsSettingsContainer.Children.OfType<Border>().ToList())
         {
             var check = ((StackPanel)((Grid)restored.Child).Children[0]).Children.OfType<CheckBox>().Single();
             if ((string)restored.Tag == "Media") { Assert.False(check.IsEnabled); Assert.True(check.IsChecked); continue; }
             check.IsChecked = false;
-            Assert.DoesNotContain((string)restored.Tag, fixture.Service.Applied!.VisibleNavTabs.Split(','));
+            Assert.DoesNotContain((string)restored.Tag, previewed!.VisibleNavTabs.Split(','));
             check.IsChecked = true;
-            Assert.Contains((string)restored.Tag, fixture.Service.Applied.VisibleNavTabs.Split(','));
+            Assert.Contains((string)restored.Tag, previewed.VisibleNavTabs.Split(','));
             Assert.Null(restored.Effect);
             Assert.Equal(0, Panel.GetZIndex(restored));
         }
+        Assert.Null(fixture.Service.Applied);
+        await window.ApplyWithoutClosingAsync();
+        Assert.Equal(string.Join(',', expected), fixture.Service.Applied!.NavTabOrder);
     });
 
     [Theory]

@@ -54,7 +54,7 @@ public sealed class SettingsUpdatePresenterTests
         service.Result.SetResult(new() { Version = "99.0.0", IsNewerVersion = false });
         await check;
         Assert.Equal(Loc.Get("settings.updateAvailable", "99.0.0"), refs.Status.Text);
-        Assert.Equal(Visibility.Collapsed, refs.Download.Visibility);
+        Assert.Equal(Visibility.Visible, refs.Download.Visibility);
     });
 
     private sealed class PendingUpdateService : IUpdateService

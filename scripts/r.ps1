@@ -23,7 +23,7 @@ $csprojPath    = Join-Path $repoRoot "V-Notch.csproj"
 $objPath       = Join-Path $repoRoot "obj\Debug\net8.0-windows10.0.19041.0\win-x64"
 $nativeObjPath = Join-Path $repoRoot "obj\native"
 $binPath       = Join-Path $repoRoot "bin\Debug\net8.0-windows10.0.19041.0\win-x64"
-$exePath       = Join-Path $binPath "V-Notch.exe"
+$exePath       = [IO.Path]::GetFullPath((Join-Path $binPath "V-Notch.exe"))
 $nativeDllPath = Join-Path $binPath "VNotch.Native.dll"
 
 $version = "dev"
@@ -109,7 +109,7 @@ function Wait-VNotchExit {
     param([int]$TimeoutMs = 7000)
     $deadline = (Get-Date).AddMilliseconds($TimeoutMs)
     while ((Get-Date) -lt $deadline) {
-        $alive = Get-Process -Name $processName -ErrorAction SilentlyContinue
+        $alive = Get-Process -Name $processName -ErrorAction SilentlyContinue | Where-Object { $_.Path -eq $exePath }
         if (-not $alive) { return $true }
         Start-Sleep -Milliseconds 150
     }
@@ -117,7 +117,7 @@ function Wait-VNotchExit {
 }
 
 Write-TreeStep (Next-StepTag) "Process Check"
-$running = @(Get-Process -Name $processName -ErrorAction SilentlyContinue)
+$running = @(Get-Process -Name $processName -ErrorAction SilentlyContinue | Where-Object { $_.Path -eq $exePath })
 if ($running.Count -gt 0) {
     $pids = ($running | Select-Object -ExpandProperty Id) -join ", "
     Write-TreeItem "Stopping $($running.Count) running instance(s) (PID: $pids)..." -State Info
@@ -294,6 +294,7 @@ public static class VNotchDesktopLauncher
 Write-TreeSpacer
 Write-TreeStep (Next-StepTag) "Launch Application"
 $sessionSw = [System.Diagnostics.Stopwatch]::StartNew()
+$procId = $null
 try {
     if (Test-Path $exePath) {
         $relExe = $exePath.Substring($repoRoot.Length + 1)
@@ -325,7 +326,9 @@ try {
 }
 finally {
     $sessionSw.Stop()
-    Get-Process -Name $processName -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
+    if ($procId) {
+        Stop-Process -Id $procId -Force -ErrorAction SilentlyContinue
+    }
     Write-Host "     " -NoNewline
     Write-Host "$gCheck STOPPED " -ForegroundColor DarkGray -NoNewline
     Write-Host ("Session ended cleanly ({0:mm\:ss})." -f $sessionSw.Elapsed) -ForegroundColor DarkGray

@@ -61,6 +61,50 @@ public sealed class ClipboardPrivacyFilterTests
     });
 
     [Fact]
+    public async Task SensitiveExpiryMarkersAreDeletedOnRemoveAndNeverCreatedForPersonalItems()
+    {
+        string root = Path.Combine(Path.GetTempPath(), "vnotch-privacy-expiry-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(root);
+        try
+        {
+            using var store = new VNotch.Services.Clipboard.ClipboardHistoryStore(root);
+            await store.InitializeAsync();
+
+            string expiryDir = Path.Combine(root, "sensitive-expiry");
+            var publicSensitive = (await store.ImportAsync(new VNotch.Models.ClipboardCapture
+            {
+                Text = "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.publictoken"
+            })).Entry!;
+            Assert.True(publicSensitive.IsSensitive);
+            Assert.True(File.Exists(Path.Combine(expiryDir, publicSensitive.Id.ToString("N"))));
+
+            await store.DeleteAsync(publicSensitive.Id);
+            Assert.False(File.Exists(Path.Combine(expiryDir, publicSensitive.Id.ToString("N"))));
+
+            using var pin = new System.Security.SecureString();
+            foreach (char c in "123456") pin.AppendChar(c);
+            pin.MakeReadOnly();
+            Assert.True(await store.UnlockPersonalAsync(pin, create: true));
+
+            var personalSensitive = (await store.ImportAsync(new VNotch.Models.ClipboardCapture
+            {
+                Text = "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.personaltoken",
+                TargetCategory = "Personal"
+            })).Entry!;
+            Assert.True(personalSensitive.IsPersonal);
+            Assert.True(personalSensitive.IsSensitive);
+            Assert.False(File.Exists(Path.Combine(expiryDir, personalSensitive.Id.ToString("N"))));
+
+            await store.ResetPersonalAsync();
+            Assert.False(Directory.Exists(expiryDir));
+        }
+        finally
+        {
+            if (Directory.Exists(root)) Directory.Delete(root, true);
+        }
+    }
+
+    [Fact]
     public void MalformedHistoryMarkersAreIgnored() => SharedStaTestRunner.Run(() =>
     {
         foreach (object value in new object[] { new byte[3], new MemoryStream([0, 0]), "invalid" })

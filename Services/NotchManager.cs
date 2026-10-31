@@ -36,14 +36,16 @@ public sealed partial class NotchManager : INotchManager
         out VnNotchGeometryOut outGeom);
 
     private NotchSettings _settings;
-    private readonly HoverDetectionService _hoverService;
+    private readonly HoverDetectionService? _hoverService;
 
     private Screen? _currentScreen;
     private Rect _safeArea;
     private bool _disposed;
 
+    internal int GeometryComputeCount { get; private set; }
+
     public NotchTransitionCoordinator TransitionCoordinator { get; }
-    public HoverDetectionService HoverService => _hoverService;
+    public HoverDetectionService HoverService => _hoverService!;
     public Rect SafeArea => _safeArea;
 
     public event EventHandler<Rect>? SafeAreaChanged;
@@ -53,9 +55,17 @@ public sealed partial class NotchManager : INotchManager
     {
         _settings = settings;
         TransitionCoordinator = transitionCoordinator;
-        _hoverService = new HoverDetectionService(settings.HoverZoneMargin, window);
+        if (window != null)
+        {
+            _hoverService = new HoverDetectionService(settings.HoverZoneMargin, window);
+            _hoverService.Start();
+        }
+    }
 
-        _hoverService.Start();
+    internal NotchManager(NotchSettings settings, NotchTransitionCoordinator? transitionCoordinator = null)
+    {
+        _settings = settings;
+        TransitionCoordinator = transitionCoordinator!;
     }
 
     public void UpdateSettings(NotchSettings settings)
@@ -69,34 +79,23 @@ public sealed partial class NotchManager : INotchManager
     public void UpdatePosition()
     {
         _currentScreen = GetTargetScreen();
-        var workingArea = _currentScreen.Bounds;
 
         AnimationConfig.Refresh(_currentScreen.DeviceName);
 
-        double scale = MonitorSelection.GetScale(_currentScreen);
-        NativeComputeGeometry(
-            workingArea.Left,
-            workingArea.Top,
-            workingArea.Width,
-            _settings.Width,
-            _settings.Height,
-            scale,
-            4.0,
-            out var geom);
-        _hoverService.UpdateNotchBounds(geom.NotchLeft, geom.NotchTop, geom.NotchWidth, geom.NotchHeight);
+        ComputeGeometry(_currentScreen, out var geom);
+        _hoverService?.UpdateNotchBounds(geom.NotchLeft, geom.NotchTop, geom.NotchWidth, geom.NotchHeight);
 
-        UpdateSafeArea();
+        ApplySafeArea(in geom);
 
         PositionUpdated?.Invoke(this, EventArgs.Empty);
     }
 
-    private void UpdateSafeArea()
+    private void ComputeGeometry(Screen screen, out VnNotchGeometryOut geom)
     {
-        if (_currentScreen == null) return;
-
-        var workingArea = _currentScreen.Bounds;
-        double scale = MonitorSelection.GetScale(_currentScreen);
-        NativeComputeGeometry(
+        GeometryComputeCount++;
+        var workingArea = screen.Bounds;
+        double scale = MonitorSelection.GetScale(screen);
+        _ = NativeComputeGeometry(
             workingArea.Left,
             workingArea.Top,
             workingArea.Width,
@@ -104,8 +103,11 @@ public sealed partial class NotchManager : INotchManager
             _settings.Height,
             scale,
             4.0,
-            out var geom);
+            out geom);
+    }
 
+    private void ApplySafeArea(in VnNotchGeometryOut geom)
+    {
         _safeArea = new Rect(
             geom.SafeLeft,
             geom.SafeTop,
@@ -114,6 +116,14 @@ public sealed partial class NotchManager : INotchManager
         );
 
         SafeAreaChanged?.Invoke(this, _safeArea);
+    }
+
+    private void UpdateSafeArea()
+    {
+        if (_currentScreen == null) return;
+
+        ComputeGeometry(_currentScreen, out var geom);
+        ApplySafeArea(in geom);
     }
 
     private Screen GetTargetScreen()
@@ -147,13 +157,13 @@ public sealed partial class NotchManager : INotchManager
 
     public void Hide()
     {
-        _hoverService.Stop();
+        _hoverService?.Stop();
         TransitionCoordinator.SetEffectivelyVisible(false, "NotchManager.Hide");
     }
 
     public void Show()
     {
-        _hoverService.Start();
+        _hoverService?.Start();
         TransitionCoordinator.SetEffectivelyVisible(true, "NotchManager.Show");
     }
 
@@ -163,7 +173,7 @@ public sealed partial class NotchManager : INotchManager
     {
         if (!_disposed)
         {
-            _hoverService.Dispose();
+            _hoverService?.Dispose();
             _disposed = true;
         }
     }

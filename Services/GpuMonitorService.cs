@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.Runtime.InteropServices;
 using System.Threading;
+using System.Threading.Tasks;
 using VNotch.Models;
 using Vortice.DXGI;
 
@@ -56,6 +57,7 @@ public sealed partial class GpuMonitorService : IDisposable, IAsyncDisposable
     private ulong _dedicatedVramBytes;
     private bool _gpuInfoInitialized = false;
     private readonly object _gpuInfoLock = new();
+    private readonly object _fastMetricsLock = new();
 
     private readonly IntPtr _currentProcessHandle = Win32Interop.GetCurrentProcess();
     private readonly int _currentPid = Environment.ProcessId;
@@ -232,12 +234,23 @@ public sealed partial class GpuMonitorService : IDisposable, IAsyncDisposable
         }
     }
 
-    public PerformanceDebugSnapshot SampleFastMetrics(double fps, int hz, double netDown = 0, double netUp = 0)
+    public Task<PerformanceDebugSnapshot> GetMetricsAsync(double fps = 0, int hz = 0, double netDown = 0, double netUp = 0)
     {
-        long nowTicks = Stopwatch.GetTimestamp();
-        double procCpu = SampleProcessCpu(nowTicks);
+        return Task.FromResult(SampleFastMetrics(fps, hz, netDown, netUp));
+    }
+
+    public PerformanceDebugSnapshot SampleFastMetrics(double fps = 0, int hz = 0, double netDown = 0, double netUp = 0)
+    {
+        double procCpu;
+        double globalCpu;
+        lock (_fastMetricsLock)
+        {
+            long nowTicks = Stopwatch.GetTimestamp();
+            procCpu = SampleProcessCpu(nowTicks);
+            globalCpu = SampleGlobalCpu();
+        }
+
         ulong procRam = SampleProcessRam();
-        double globalCpu = SampleGlobalCpu();
         var (globalRamUsed, globalRamTotal, globalRamPercent) = SampleGlobalRam();
         var (gpuName, vram) = GetGpuInfo();
 
@@ -270,10 +283,18 @@ public sealed partial class GpuMonitorService : IDisposable, IAsyncDisposable
             }
 
             ulong procTotalTime = procKernel.ToUInt64() + procUser.ToUInt64();
-            _smoothedProcCpu = ComputeProcessCpuDelta(procTotalTime, nowTicks);
+            if (_lastProcTicks > 0 && nowTicks > _lastProcTicks && procTotalTime >= _lastProcTime)
+            {
+                double rawCpu = ComputeProcessCpuDelta(procTotalTime, nowTicks);
+                if (double.IsFinite(rawCpu))
+                {
+                    _smoothedProcCpu = Math.Clamp(rawCpu, 0.0, 100.0);
+                }
+            }
 
             _lastProcTime = procTotalTime;
             _lastProcTicks = nowTicks;
+            _smoothedProcCpu = double.IsFinite(_smoothedProcCpu) ? Math.Clamp(_smoothedProcCpu, 0.0, 100.0) : 0.0;
             return _smoothedProcCpu < 0.05 ? 0.0 : _smoothedProcCpu;
         }
         catch (Exception)
@@ -327,11 +348,16 @@ public sealed partial class GpuMonitorService : IDisposable, IAsyncDisposable
             ulong kernel = sysKernel.ToUInt64();
             ulong user = sysUser.ToUInt64();
 
-            _smoothedGlobalCpu = ComputeGlobalCpuDelta(idle, kernel, user);
+            double rawCpu = ComputeGlobalCpuDelta(idle, kernel, user);
+            if (double.IsFinite(rawCpu))
+            {
+                _smoothedGlobalCpu = Math.Clamp(rawCpu, 0.0, 100.0);
+            }
 
             _lastSysIdle = idle;
             _lastSysKernel = kernel;
             _lastSysUser = user;
+            _smoothedGlobalCpu = double.IsFinite(_smoothedGlobalCpu) ? Math.Clamp(_smoothedGlobalCpu, 0.0, 100.0) : 0.0;
             return _smoothedGlobalCpu;
         }
         catch (Exception)
@@ -543,7 +569,6 @@ public sealed partial class GpuMonitorService : IDisposable, IAsyncDisposable
         Dispose();
         Thread? worker;
         lock (_samplerLock) worker = _gpuSamplerThread;
-        if (worker != null) await System.Threading.Tasks.Task.Run(() => worker.Join()).ConfigureAwait(false);
+        if (worker != null) await Task.Run(() => worker.Join()).ConfigureAwait(false);
     }
 }
-

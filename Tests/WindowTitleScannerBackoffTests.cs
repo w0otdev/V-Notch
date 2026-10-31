@@ -36,4 +36,50 @@ public sealed class WindowTitleScannerBackoffTests
         scanner.GetAllWindowTitles(isThrottled: false);
         Assert.NotEqual(originalTimestamp, timestamp.GetValue(scanner));
     }
+
+    [Fact]
+    public void PipLookupForNonOwnerProcess_CachesResultWithinTtlAndResetsOnInvalidate()
+    {
+        using var scanner = new WindowTitleScanner();
+        int globalScans = 0;
+        int spotifyScans = 0;
+
+        scanner.PipWindowFinder = (out IntPtr hwnd, out string title, string? processName) =>
+        {
+            if (processName == null)
+            {
+                globalScans++;
+                hwnd = (IntPtr)0x1234;
+                title = "Picture in picture";
+                return true;
+            }
+
+            if (string.Equals(processName, "spotify", StringComparison.OrdinalIgnoreCase))
+            {
+                spotifyScans++;
+            }
+
+            hwnd = IntPtr.Zero;
+            title = string.Empty;
+            return false;
+        };
+
+        const BindingFlags flags = BindingFlags.Instance | BindingFlags.NonPublic;
+        Assert.False(scanner.IsPipActive("spotify"));
+        typeof(WindowTitleScanner).GetField("_cachedPipWindowProcessName", flags)!.SetValue(scanner, "chrome");
+
+        Assert.False(scanner.IsPipActive("spotify"));
+        Assert.False(scanner.IsPipActive("SPOTIFY"));
+        Assert.False(scanner.TryGetPipWindow(out IntPtr pipHwnd, out string pipTitle, "spotify"));
+        Assert.Equal(IntPtr.Zero, pipHwnd);
+        Assert.Equal(string.Empty, pipTitle);
+
+        Assert.Equal(1, globalScans);
+        Assert.Equal(1, spotifyScans);
+
+        scanner.InvalidateUrlCaches();
+        Assert.False(scanner.IsPipActive("spotify"));
+        Assert.Equal(2, globalScans);
+        Assert.Equal(2, spotifyScans);
+    }
 }

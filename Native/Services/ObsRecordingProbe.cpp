@@ -41,9 +41,9 @@ public:
         size_t newline = 0;
         while ((newline = remaining.find(u'\n')) != std::u16string_view::npos) {
             std::u16string_view line = remaining.substr(0, newline);
-            Apply(line, u": ==== Recording Start ===", u": ==== Recording Stop ===", &rec);
-            Apply(line, u": ==== Streaming Start ===", u": ==== Streaming Stop ===", &str);
-            Apply(line, u": ==== Replay Buffer Start ===", u": ==== Replay Buffer Stop ===", &rep);
+            Apply(line, u"==== Recording Start ===", u"==== Recording Stop ===", &rec);
+            Apply(line, u"==== Streaming Start ===", u"==== Streaming Stop ===", &str);
+            Apply(line, u"==== Replay Buffer Start ===", u"==== Replay Buffer Stop ===", &rep);
             remaining.remove_prefix(newline + 1);
         }
 

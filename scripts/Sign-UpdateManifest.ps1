@@ -31,7 +31,7 @@ if ($Version -cnotmatch $versionPattern -or -not [Version]::TryParse($Matches['c
     throw 'Invalid release version.'
 }
 if ($installer.Length -le 0 -or $installer.Length -gt 500MB) { throw 'Invalid installer size.' }
-$privatePem = if ($PrivateKeyPath) { [IO.File]::ReadAllText([IO.Path]::GetFullPath($PrivateKeyPath)) } else { $env:VNOTCH_UPDATE_SIGNING_KEY_PEM }
+$privatePem = if ($PrivateKeyPath) { [IO.File]::ReadAllText([IO.Path]::GetFullPath($PrivateKeyPath)) } elseif ($env:VNOTCH_UPDATE_SIGNING_KEY_PEM) { $env:VNOTCH_UPDATE_SIGNING_KEY_PEM } else { $env:VNOTCH_UPDATE_SIGNING_PRIVATE_KEY_PEM }
 if ([string]::IsNullOrWhiteSpace($privatePem)) { throw 'VNOTCH_UPDATE_SIGNING_KEY_PEM is required. Unsigned releases are not published.' }
 $key = [Security.Cryptography.ECDsa]::Create()
 $verifier = [Security.Cryptography.ECDsa]::Create()
@@ -51,7 +51,7 @@ try {
     [IO.File]::WriteAllBytes($installer.FullName + '.manifest.json', $bytes)
     [IO.File]::WriteAllBytes($installer.FullName + '.manifest.sig', $signature)
     # Keep the original asset contract for clients released before signed manifests.
-    [IO.File]::WriteAllText($installer.FullName + '.sha256', "$hash  $($installer.Name)")
+    [IO.File]::WriteAllText($installer.FullName + '.sha256', "$hash  $($installer.Name)`n")
     Write-Host "Signed update manifest for $($installer.Name) ($Version)."
 } finally {
     $privatePem = $null

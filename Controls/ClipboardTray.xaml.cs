@@ -563,7 +563,11 @@ public sealed partial class ClipboardTray : UserControl, IDisposable
             CancelPendingPersonalDrop();
             _moveToPersonal = null;
         }
-        if (_category != category) ResolveDeleteConfirmation(false);
+        if (_category != category)
+        {
+            ResolveDeleteConfirmation(false);
+            CloseLabelEditor();
+        }
         if (_category == category) return;
         bool leavingPersonal = _category == "Personal";
         bool personalTransition = leavingPersonal || category == "Personal";
@@ -639,6 +643,7 @@ public sealed partial class ClipboardTray : UserControl, IDisposable
         _approvals.Clear();
         ApprovalPanel.Visibility = Visibility.Collapsed;
         ResolveDeleteConfirmation(false, immediately: true);
+        CloseLabelEditor(immediately: true);
         ClearStatus(immediately: true);
         _selection.Reset();
         foreach (var menu in _openMenus.ToArray()) menu.IsOpen = false;
@@ -998,6 +1003,7 @@ public sealed partial class ClipboardTray : UserControl, IDisposable
 
     private void OpenCardMenu(FrameworkElement card, ContextMenu menu, Button trigger)
     {
+        if (_labelEditorOpen) CloseLabelEditor(immediately: true);
         foreach (var other in _openMenus.ToArray())
             if (!ReferenceEquals(other, menu)) other.IsOpen = false;
         _menuAnimationTargets[menu] = trigger;

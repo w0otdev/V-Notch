@@ -190,7 +190,10 @@ public sealed partial class WindowTitleScanner : IWindowTitleScanner, IDisposabl
 
     internal Func<string?> BrowserUrlExtractor { get; set; } = ExtractBrowserUrlCore;
     internal Func<string?> AnyBrowserMediaUrlExtractor { get; set; } = ExtractMediaUrlFromAllBrowserWindows;
+    internal delegate bool PipWindowFinderDelegate(out IntPtr pipHwnd, out string pipTitle, string? processName);
+
     internal Func<bool> SpotifyWebPlayerDetector { get; set; } = DetectSpotifyWebPlayer;
+    internal PipWindowFinderDelegate PipWindowFinder { get; set; } = static (out IntPtr hwnd, out string title, string? proc) => PipDetector.TryFindPipWindow(out hwnd, out title, proc);
 
     internal bool IsWorkerStarted => _workerThread != null;
     internal bool IsWorkerAlive => _workerThread?.IsAlive == true;
@@ -288,6 +291,12 @@ public sealed partial class WindowTitleScanner : IWindowTitleScanner, IDisposabl
     private string? _cachedPipWindowProcessName;
     private DateTime _lastPipCheckTime = DateTime.MinValue;
 
+    private string? _cachedProcessPipQueryName;
+    private bool _cachedProcessPipActive;
+    private IntPtr _cachedProcessPipHwnd;
+    private string _cachedProcessPipTitle = string.Empty;
+    private DateTime _lastProcessPipCheckTime = DateTime.MinValue;
+
     public void InvalidateUrlCaches()
     {
         lock (_cacheLock)
@@ -304,6 +313,11 @@ public sealed partial class WindowTitleScanner : IWindowTitleScanner, IDisposabl
             _cachedPipTitle = string.Empty;
             _cachedPipWindowProcessName = null;
             _lastPipCheckTime = DateTime.MinValue;
+            _cachedProcessPipQueryName = null;
+            _cachedProcessPipActive = false;
+            _cachedProcessPipHwnd = IntPtr.Zero;
+            _cachedProcessPipTitle = string.Empty;
+            _lastProcessPipCheckTime = DateTime.MinValue;
         }
     }
 
@@ -328,7 +342,8 @@ public sealed partial class WindowTitleScanner : IWindowTitleScanner, IDisposabl
         int ttlMs = _cachedPipActive ? 400 : 700;
         if ((DateTime.UtcNow - _lastPipCheckTime).TotalMilliseconds >= ttlMs)
         {
-            _cachedPipActive = PipDetector.TryFindPipWindow(out _cachedPipHwnd, out _cachedPipTitle, null);
+            _cachedPipActive = PipWindowFinder(out _cachedPipHwnd, out _cachedPipTitle, null);
+            _cachedPipTitle ??= string.Empty;
             _cachedPipWindowProcessName = null;
             if (_cachedPipActive && _cachedPipHwnd != IntPtr.Zero)
             {
@@ -360,7 +375,19 @@ public sealed partial class WindowTitleScanner : IWindowTitleScanner, IDisposabl
             return true;
         }
 
-        return PipDetector.TryFindPipWindow(out pipHwnd, out pipTitle, processName);
+        int processTtlMs = _cachedProcessPipActive ? 400 : 700;
+        if (!string.Equals(_cachedProcessPipQueryName, processName, StringComparison.OrdinalIgnoreCase) ||
+            (DateTime.UtcNow - _lastProcessPipCheckTime).TotalMilliseconds >= processTtlMs)
+        {
+            _cachedProcessPipQueryName = processName;
+            _cachedProcessPipActive = PipWindowFinder(out _cachedProcessPipHwnd, out _cachedProcessPipTitle, processName);
+            _cachedProcessPipTitle ??= string.Empty;
+            _lastProcessPipCheckTime = DateTime.UtcNow;
+        }
+
+        pipHwnd = _cachedProcessPipHwnd;
+        pipTitle = _cachedProcessPipTitle;
+        return _cachedProcessPipActive;
     }
 
     public bool IsSpotifyWebPlayerOpen()
@@ -593,7 +620,129 @@ public sealed partial class WindowTitleScanner : IWindowTitleScanner, IDisposabl
         return vn_wtscanner_is_browser_process(MemoryMarshal.Cast<char, ushort>(sp), sp.Length, out byte isBrowser) == 0 && isBrowser != 0;
     }
 
-    private static string? ExtractUrlFromWindowHandle(IntPtr hwnd, string processName)
+    private const int DefaultUiaTimeoutMs = 450;
+    private static readonly object UiaStaLock = new();
+    private static readonly SemaphoreSlim UiaSlot = new(1, 1);
+    private static readonly AutoResetEvent UiaWorkAvailable = new(false);
+    private static Thread? _uiaStaThread;
+    private static Action? _uiaCurrentWork;
+    private static int _uiaInFlight;
+    private static int _activeUiaStaThreads;
+
+    internal static int ActiveUiaStaThreadCount => Volatile.Read(ref _activeUiaStaThreads);
+
+    internal static T? RunWithTimeout<T>(Func<T> func, int timeoutMs = DefaultUiaTimeoutMs)
+    {
+        ArgumentNullException.ThrowIfNull(func);
+        if (timeoutMs < 0)
+            return default;
+
+        if (!UiaSlot.Wait(0) && !UiaSlot.Wait(Math.Min(timeoutMs, 15)))
+            return default;
+
+        if (Interlocked.CompareExchange(ref _uiaInFlight, 1, 0) != 0)
+        {
+            UiaSlot.Release();
+            return default;
+        }
+
+        object callSync = new();
+        T? result = default;
+        bool completed = false;
+
+        try
+        {
+            lock (UiaStaLock)
+            {
+                _uiaCurrentWork = () =>
+                {
+                    T? value = default;
+                    try
+                    {
+                        value = func();
+                    }
+                    catch (Exception ex)
+                    {
+                        RuntimeLog.Debug("UIA-SCANNER", () => $"UIA STA work failed: {ex.Message}");
+                    }
+                    finally
+                    {
+                        Interlocked.Exchange(ref _uiaInFlight, 0);
+                        UiaSlot.Release();
+                        lock (callSync)
+                        {
+                            result = value;
+                            completed = true;
+                            Monitor.Pulse(callSync);
+                        }
+                    }
+                };
+
+                EnsureUiaStaThreadLocked();
+                UiaWorkAvailable.Set();
+            }
+
+            lock (callSync)
+            {
+                if (!completed)
+                {
+                    Monitor.Wait(callSync, timeoutMs);
+                }
+
+                return completed ? result : default;
+            }
+        }
+        catch
+        {
+            Interlocked.Exchange(ref _uiaInFlight, 0);
+            UiaSlot.Release();
+            throw;
+        }
+    }
+
+    private static void EnsureUiaStaThreadLocked()
+    {
+        if (_uiaStaThread is { IsAlive: true })
+            return;
+
+        Interlocked.Increment(ref _activeUiaStaThreads);
+        var thread = new Thread(UiaStaWorkerLoop)
+        {
+            IsBackground = true,
+            Name = "VNotch-UIA-STA"
+        };
+        thread.SetApartmentState(ApartmentState.STA);
+        _uiaStaThread = thread;
+        thread.Start();
+    }
+
+    private static void UiaStaWorkerLoop()
+    {
+        try
+        {
+            while (true)
+            {
+                UiaWorkAvailable.WaitOne();
+                Action? work;
+                lock (UiaStaLock)
+                {
+                    work = _uiaCurrentWork;
+                    _uiaCurrentWork = null;
+                }
+
+                work?.Invoke();
+            }
+        }
+        finally
+        {
+            Interlocked.Decrement(ref _activeUiaStaThreads);
+        }
+    }
+
+    private static string? ExtractUrlFromWindowHandle(IntPtr hwnd, string processName) =>
+        RunWithTimeout(() => ExtractUrlFromWindowHandleCore(hwnd, processName));
+
+    private static string? ExtractUrlFromWindowHandleCore(IntPtr hwnd, string processName)
     {
         try
         {
@@ -851,7 +1000,10 @@ public sealed partial class WindowTitleScanner : IWindowTitleScanner, IDisposabl
         return found;
     }
 
-    private static bool WindowHasSpotifyWebPlayer(IntPtr hwnd, string processName)
+    private static bool WindowHasSpotifyWebPlayer(IntPtr hwnd, string processName) =>
+        RunWithTimeout(() => WindowHasSpotifyWebPlayerCore(hwnd, processName));
+
+    private static bool WindowHasSpotifyWebPlayerCore(IntPtr hwnd, string processName)
     {
         try
         {

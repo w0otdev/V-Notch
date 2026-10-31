@@ -1,3 +1,4 @@
+using System.Buffers;
 using System.IO;
 using System.Net.Http;
 using System.Net.Http.Headers;
@@ -15,7 +16,7 @@ internal sealed record SpotlightAiMessage(string Role, string Content)
     public bool IsIncomplete { get; init; }
 }
 
-public sealed class SpotlightAiException(string resourceKey, string? diagnostic = null) : Exception(resourceKey)
+public sealed class SpotlightAiException(string resourceKey, string? diagnostic = null) : InvalidOperationException(resourceKey)
 {
     internal string? Diagnostic { get; } = diagnostic;
 }
@@ -55,6 +56,8 @@ internal sealed partial class SpotlightAiService
     { Timeout = TimeSpan.FromSeconds(90), MaxResponseContentBufferSize = 2 * 1024 * 1024 };
     private readonly HttpClient _client;
     internal SpotlightAiService(HttpClient? client = null) => _client = client ?? SharedClient;
+    internal const int MaxStreamResponseChars = 1024 * 1024;
+    internal TimeSpan StreamReadIdleTimeout { get; init; } = TimeSpan.FromSeconds(30);
     internal static readonly string[] Providers = ["OpenAI", "Gemini", "Claude", "DeepSeek"];
 
     internal static bool IsConfigured(NotchSettings settings)
@@ -141,19 +144,21 @@ internal sealed partial class SpotlightAiService
         using var stream = await response.Content.ReadAsStreamAsync(token).ConfigureAwait(false);
         using var reader = new StreamReader(stream);
         var data = new StringBuilder();
+        var lineBuilder = new StringBuilder();
         bool received = false;
         bool completed = false;
         int total = 0;
-        while (true)
+        int totalResponseChars = 0;
+
+        string? ProcessLine(string? line)
         {
-            string? line = await reader.ReadLineAsync(token).ConfigureAwait(false);
             if (line == null || line.Length == 0)
             {
                 if (data.Length > 0)
                 {
                     string payload = data.ToString();
                     data.Clear();
-                    if (payload == "[DONE]") { completed = true; break; }
+                    if (payload == "[DONE]") { completed = true; return null; }
                     JsonDocument json;
                     try { json = JsonDocument.Parse(payload); }
                     catch (JsonException) { throw new SpotlightAiException("spotlight.ai.emptyError"); }
@@ -174,25 +179,111 @@ internal sealed partial class SpotlightAiService
                             candidates[0].TryGetProperty("content", out var content) && content.TryGetProperty("parts", out var parts) && parts.ValueKind == JsonValueKind.Array)
                             onGeminiParts?.Invoke(parts.EnumerateArray().Select(part => part.Clone()).ToArray());
                         string delta = ReadDelta(root, settings.SpotlightAiProvider);
+                        string? yielded = null;
                         if (delta.Length > 0)
                         {
                             total += delta.Length;
                             if (total > 200000) throw new SpotlightAiException("spotlight.ai.tooLong");
                             received = true;
-                            yield return delta;
+                            yielded = delta;
                         }
                         if (settings.SpotlightAiProvider == "Claude" &&
-                            root.TryGetProperty("type", out var eventType) && eventType.GetString() == "message_stop") { completed = true; break; }
+                            root.TryGetProperty("type", out var eventType) && eventType.GetString() == "message_stop")
+                        {
+                            completed = true;
+                        }
+                        return yielded;
                     }
                 }
-                if (line == null) break;
             }
             else if (line.StartsWith("data:", StringComparison.Ordinal))
             {
                 if (data.Length > 0) data.Append('\n');
                 data.Append(line.AsSpan(5).TrimStart());
-                if (data.Length > 1024 * 1024) throw new SpotlightAiException("spotlight.ai.tooLong");
+                if (data.Length > MaxStreamResponseChars) throw new SpotlightAiException("spotlight.ai.tooLong");
             }
+            return null;
+        }
+
+        char[] rentedBuffer = ArrayPool<char>.Shared.Rent(4096);
+        try
+        {
+            while (!completed)
+            {
+                int charsRead;
+                using (var readCts = CancellationTokenSource.CreateLinkedTokenSource(token))
+                {
+                    readCts.CancelAfter(StreamReadIdleTimeout);
+                    try
+                    {
+                        charsRead = await reader.ReadAsync(rentedBuffer.AsMemory(), readCts.Token).AsTask().WaitAsync(readCts.Token).ConfigureAwait(false);
+                    }
+                    catch (OperationCanceledException) when (!token.IsCancellationRequested)
+                    {
+                        throw new TimeoutException("AI stream stalled waiting for data.");
+                    }
+                }
+
+                int offset = 0;
+                while (offset < charsRead && !completed)
+                {
+                    int remainingLen = charsRead - offset;
+                    int newlinePos = Array.IndexOf(rentedBuffer, '\n', offset, remainingLen);
+                    int sliceLen = newlinePos >= 0 ? (newlinePos - offset) : remainingLen;
+
+                    if (lineBuilder.Length + sliceLen > MaxStreamResponseChars ||
+                        totalResponseChars + lineBuilder.Length + sliceLen > MaxStreamResponseChars)
+                    {
+                        throw new InvalidOperationException("AI stream response exceeded maximum allowed size.");
+                    }
+
+                    lineBuilder.Append(rentedBuffer, offset, sliceLen);
+                    if (newlinePos < 0)
+                    {
+                        break;
+                    }
+
+                    offset += sliceLen + 1;
+                    if (lineBuilder.Length > 0 && lineBuilder[^1] == '\r')
+                    {
+                        lineBuilder.Length--;
+                    }
+                    totalResponseChars += lineBuilder.Length;
+                    string line = lineBuilder.ToString();
+                    lineBuilder.Clear();
+                    if (ProcessLine(line) is { } delta)
+                    {
+                        yield return delta;
+                    }
+                }
+
+                if (charsRead == 0)
+                {
+                    if (lineBuilder.Length > 0 && !completed)
+                    {
+                        if (lineBuilder[^1] == '\r')
+                        {
+                            lineBuilder.Length--;
+                        }
+                        totalResponseChars += lineBuilder.Length;
+                        string lastLine = lineBuilder.ToString();
+                        lineBuilder.Clear();
+                        if (ProcessLine(lastLine) is { } delta)
+                        {
+                            yield return delta;
+                        }
+                    }
+                    if (!completed && ProcessLine(null) is { } finalDelta)
+                    {
+                        yield return finalDelta;
+                    }
+                    break;
+                }
+            }
+        }
+        finally
+        {
+            ArrayPool<char>.Shared.Return(rentedBuffer);
         }
         if (!received) throw new SpotlightAiException("spotlight.ai.emptyError");
         if (!completed) throw new SpotlightAiException("spotlight.ai.networkError");
@@ -302,7 +393,7 @@ internal sealed partial class SpotlightAiService
             if (string.IsNullOrWhiteSpace(text)) throw new SpotlightAiException("spotlight.ai.emptyError");
             return text;
         }
-        catch (Exception ex) when (ex is JsonException or KeyNotFoundException or InvalidOperationException or IndexOutOfRangeException)
+        catch (Exception ex) when (ex is not SpotlightAiException and (JsonException or KeyNotFoundException or InvalidOperationException or IndexOutOfRangeException))
         { throw new SpotlightAiException("spotlight.ai.emptyError"); }
     }
 

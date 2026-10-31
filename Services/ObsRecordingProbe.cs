@@ -1,4 +1,5 @@
 using System;
+using System.Buffers;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
@@ -64,10 +65,12 @@ internal sealed partial class ObsRecordingProbe
 
     internal sealed class LogState
     {
+        private readonly Decoder _decoder = Encoding.UTF8.GetDecoder();
         private long _position;
         private string _partialLine = "";
         private bool _recording, _streaming, _replay;
         internal bool Active => _recording || _streaming || _replay;
+        internal string PartialLine => _partialLine;
 
         internal void Read(string path)
         {
@@ -78,6 +81,7 @@ internal sealed partial class ObsRecordingProbe
             {
                 _recording = _streaming = _replay = false;
                 _partialLine = "";
+                _decoder.Reset();
                 _position = Math.Max(0, length - maxRead);
                 if (_position > 0)
                 {
@@ -88,14 +92,33 @@ internal sealed partial class ObsRecordingProbe
             }
             if (length == _position) return;
             stream.Position = _position;
-            var bytes = new byte[(int)(length - _position)];
-            int read = 0, count;
-            while (read < bytes.Length && (count = stream.Read(bytes, read, bytes.Length - read)) > 0) read += count;
-            _position += read;
-            Feed(Encoding.UTF8.GetString(bytes, 0, read));
+            int toRead = (int)(length - _position);
+            byte[] bytes = ArrayPool<byte>.Shared.Rent(toRead);
+            char[] chars = ArrayPool<char>.Shared.Rent(Encoding.UTF8.GetMaxCharCount(toRead) + 4);
+            try
+            {
+                int read = 0, count;
+                while (read < toRead && (count = stream.Read(bytes, read, toRead - read)) > 0) read += count;
+                _position += read;
+                if (read > 0)
+                {
+                    int charCount = _decoder.GetChars(bytes, 0, read, chars, 0, flush: false);
+                    if (charCount > 0)
+                    {
+                        Feed(chars.AsSpan(0, charCount));
+                    }
+                }
+            }
+            finally
+            {
+                ArrayPool<char>.Shared.Return(chars);
+                ArrayPool<byte>.Shared.Return(bytes);
+            }
         }
 
-        internal unsafe void Feed(string text)
+        internal void Feed(string text) => Feed(text.AsSpan());
+
+        internal unsafe void Feed(ReadOnlySpan<char> text)
         {
             if (text.Length == 0) return;
 

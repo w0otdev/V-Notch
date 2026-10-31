@@ -221,6 +221,48 @@ public sealed class PrivacySettingsTests
         });
     }
 
+    [Fact]
+    public void PrivacyPolicies_DiscloseCrashLogAndAllOutboundEndpoints()
+    {
+        string repoRoot = FindRepoRoot();
+        string enPolicy = File.ReadAllText(Path.Combine(repoRoot, "docs", "PRIVACY_POLICY.md"));
+        string viPolicy = File.ReadAllText(Path.Combine(repoRoot, "docs", "PRIVACY_POLICY_VI.md"));
+
+        string[] requiredDisclosures =
+        {
+            "vnotch-crash.log",
+            "vnotch-debug.log",
+            "RuntimeLog.ClearLogAsync",
+            "V-Notch-Integrity-Checker",
+            "huggingface.co",
+            "m.soundcloud.com",
+            "/youtube/v3/videos",
+            "com.google.android.youtube",
+            "api.frankfurter.dev"
+        };
+
+        foreach (string token in requiredDisclosures)
+        {
+            Assert.Contains(token, enPolicy, StringComparison.Ordinal);
+            Assert.Contains(token, viPolicy, StringComparison.Ordinal);
+        }
+    }
+
+    private static string FindRepoRoot()
+    {
+        var dir = new DirectoryInfo(AppContext.BaseDirectory);
+        while (dir != null)
+        {
+            if (File.Exists(Path.Combine(dir.FullName, "docs", "PRIVACY_POLICY.md")))
+            {
+                return dir.FullName;
+            }
+            dir = dir.Parent;
+        }
+
+        throw new DirectoryNotFoundException("Could not locate repository root containing docs/PRIVACY_POLICY.md.");
+    }
+
     private static void RunSta(Action action)
     {
         Exception? failure = null;

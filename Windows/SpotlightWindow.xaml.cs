@@ -830,7 +830,7 @@ public partial class SpotlightWindow : Window
         if (HandleResultMenuKey(e)) return;
         if (HandleAiKey(e)) return;
         // Navigation keys must be intercepted on the tunnel: the search box's
-        if (e.Key == Key.Down || (e.Key == Key.Tab && Keyboard.Modifiers == ModifierKeys.None))
+        if (e.Key == Key.Down)
         {
             MoveSelection(1);
             e.Handled = true;

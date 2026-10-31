@@ -83,7 +83,7 @@ public partial class SettingsWindow
             RenderTransform = scale,
             Child = new TextBlock
             {
-                Text = "NEW",
+                Text = Loc.Get("common.new"),
                 FontSize = 9,
                 FontWeight = FontWeights.Bold,
                 Foreground = new SolidColorBrush(Color.FromRgb(21, 48, 34))

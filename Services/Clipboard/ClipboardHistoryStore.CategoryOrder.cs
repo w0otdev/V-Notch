@@ -56,10 +56,15 @@ public sealed partial class ClipboardHistoryStore
         order.Insert(target, id);
         if (order.SequenceEqual(current)) return false;
         var saved = order.ToArray();
+        SaveCategoryOrder(saved);
+        return true;
+    });
+
+    private void SaveCategoryOrder(string[] saved)
+    {
         Directory.CreateDirectory(_root);
         ClipboardVault.AtomicWrite(Path.Combine(_root, "category-order.json"), JsonSerializer.SerializeToUtf8Bytes(saved));
         Volatile.Write(ref _categoryOrder, saved);
         Changed?.Invoke();
-        return true;
-    });
+    }
 }

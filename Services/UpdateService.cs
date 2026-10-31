@@ -357,10 +357,16 @@ public sealed partial class UpdateService : IUpdateService, IDisposable
     public Task<bool> DownloadAndInstallUpdateAsync(UpdateInfo updateInfo, IProgress<double>? progress = null, CancellationToken cancellationToken = default)
         => Task.Run(() => DownloadAndInstallUpdateCoreAsync(updateInfo, progress, cancellationToken));
 
-    private async Task<bool> DownloadAndInstallUpdateCoreAsync(UpdateInfo updateInfo, IProgress<double>? progress, CancellationToken cancellationToken)
+    internal async Task<bool> DownloadAndInstallUpdateCoreAsync(
+        UpdateInfo updateInfo,
+        IProgress<double>? progress = null,
+        CancellationToken cancellationToken = default,
+        Action<string>? installerLauncher = null,
+        string? expectedSha256Override = null)
     {
         string? directory = null;
         string? installerPath = null;
+        FileStream? installerLock = null;
         IDisposable? cleanupLease = null;
         var installerStarted = false;
         try
@@ -378,21 +384,32 @@ public sealed partial class UpdateService : IUpdateService, IDisposable
             cleanupLease = AppFileCleanupService.Protect(directory);
             Directory.CreateDirectory(directory);
             installerPath = Path.Combine(directory, safeInstallerName);
-            await DownloadAndVerifyInstallerAsync(updateInfo, installerPath, progress, cancellationToken);
+            installerLock = await DownloadAndVerifyInstallerWithLockAsync(updateInfo, installerPath, progress, cancellationToken, expectedSha256Override).ConfigureAwait(false);
 
             cancellationToken.ThrowIfCancellationRequested();
-            using var process = Process.Start(CreateInstallerStartInfo(installerPath, directory));
-            if (process == null) throw new InvalidOperationException("Could not start verified installer.");
+            if (installerLauncher != null)
+            {
+                installerLauncher(installerPath);
+            }
+            else
+            {
+                using var process = Process.Start(CreateInstallerStartInfo(installerPath, directory));
+                if (process == null) throw new InvalidOperationException("Could not start verified installer.");
+            }
             installerStarted = true;
             RuntimeLog.Log(LogCategory, $"Starting verified installer {updateInfo.InstallerName}.");
-            await App.RequestShutdownAsync();
+            if (installerLauncher == null)
+            {
+                await App.RequestShutdownAsync();
+            }
             return true;
         }
         catch (OperationCanceledException) { RuntimeLog.Warn(LogCategory, "Update download canceled; current application remains open."); return false; }
         catch (Exception ex) { RuntimeLog.Error(LogCategory, ex, "Update download/verification failed; current application remains open"); return false; }
         finally
         {
-            if (directory != null && !installerStarted) DeleteDirectory(directory);
+            installerLock?.Dispose();
+            if (directory != null && (!installerStarted || installerLauncher != null)) DeleteDirectory(directory);
             cleanupLease?.Dispose();
         }
     }
@@ -407,14 +424,47 @@ public sealed partial class UpdateService : IUpdateService, IDisposable
 
     internal async Task DownloadAndVerifyInstallerAsync(UpdateInfo update, string path, IProgress<double>? progress, CancellationToken token)
     {
+        await using var _ = await DownloadAndVerifyInstallerWithLockAsync(update, path, progress, token).ConfigureAwait(false);
+    }
+
+    internal async Task<FileStream> DownloadAndVerifyInstallerWithLockAsync(
+        UpdateInfo update,
+        string path,
+        IProgress<double>? progress,
+        CancellationToken token,
+        string? expectedSha256Override = null)
+    {
         if (!IsApprovedUpdate(update)) throw new InvalidDataException("Signed update assets are required.");
-        var manifest = await DownloadVerifiedManifestAsync(update, token).ConfigureAwait(false);
-        await DownloadInstallerAsync(update.DownloadUrl, path, progress, token, manifest.Size).ConfigureAwait(false);
-        var actualHash = await ComputeSha256Async(path, token).ConfigureAwait(false);
-        if (!HashesMatch(manifest.Sha256, actualHash))
-            throw new InvalidDataException("Installer SHA-256 does not match the signed manifest.");
-        var signature = _signatureValidator(path);
-        if (!signature.IsValid) throw new InvalidDataException(signature.Reason);
+        string expectedSha256;
+        long? expectedSize = null;
+        if (!string.IsNullOrEmpty(expectedSha256Override))
+        {
+            expectedSha256 = expectedSha256Override;
+        }
+        else
+        {
+            var manifest = await DownloadVerifiedManifestAsync(update, token).ConfigureAwait(false);
+            expectedSha256 = manifest.Sha256;
+            expectedSize = manifest.Size;
+        }
+
+        await DownloadInstallerAsync(update.DownloadUrl, path, progress, token, expectedSize).ConfigureAwait(false);
+        var readLockStream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read,
+            bufferSize: 81920, options: FileOptions.Asynchronous | FileOptions.SequentialScan);
+        try
+        {
+            var actualHash = await ComputeSha256Async(readLockStream, token).ConfigureAwait(false);
+            if (!HashesMatch(expectedSha256, actualHash))
+                throw new InvalidDataException("Installer SHA-256 does not match the signed manifest.");
+            var signature = _signatureValidator(path);
+            if (!signature.IsValid) throw new InvalidDataException(signature.Reason);
+            return readLockStream;
+        }
+        catch
+        {
+            await readLockStream.DisposeAsync().ConfigureAwait(false);
+            throw;
+        }
     }
 
     internal async Task DownloadInstallerAsync(string url, string path, IProgress<double>? progress, CancellationToken token, long? expectedSize = null)
@@ -442,6 +492,7 @@ public sealed partial class UpdateService : IUpdateService, IDisposable
         }
         if (expectedSize.HasValue && received != expectedSize.Value)
             throw new InvalidDataException("Installer is truncated.");
+        await output.FlushAsync(token).ConfigureAwait(false);
         progress?.Report(100);
     }
 
@@ -564,7 +615,13 @@ public sealed partial class UpdateService : IUpdateService, IDisposable
     {
         await using var file = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read,
             bufferSize: 81920, options: FileOptions.Asynchronous | FileOptions.SequentialScan);
-        return Convert.ToHexString(await SHA256.HashDataAsync(file, token).ConfigureAwait(false));
+        return await ComputeSha256Async(file, token).ConfigureAwait(false);
+    }
+    internal static async Task<string> ComputeSha256Async(Stream stream, CancellationToken token)
+    {
+        ArgumentNullException.ThrowIfNull(stream);
+        if (stream.CanSeek) stream.Position = 0;
+        return Convert.ToHexString(await SHA256.HashDataAsync(stream, token).ConfigureAwait(false));
     }
     private static HttpClient CreateHttpClient() => new(NetworkPrivacy.Handler(NetworkFeature.Updates, new NativeWinHttpHandler { AllowAutoRedirect = false })) { Timeout = TimeSpan.FromMinutes(10) };
     private static void DeleteDirectory(string directory) { try { SafeFileDeletion.DeleteDirectory(directory); } catch (Exception ex) { RuntimeLog.Warn(LogCategory, $"Could not remove temporary update files: {ex.Message}"); } }
