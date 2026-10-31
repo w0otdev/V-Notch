@@ -1,7 +1,7 @@
 [CmdletBinding()]
 param(
     [Parameter(Mandatory)][string]$ResultsDirectory,
-    [ValidateRange(0, 100)][decimal]$MinimumPercent = 70,
+    [Alias('MinimumLinePercent')][ValidateRange(0, 100)][decimal]$MinimumPercent = 70,
     [ValidateNotNullOrEmpty()][string]$AssemblyName = 'V-Notch'
 )
 

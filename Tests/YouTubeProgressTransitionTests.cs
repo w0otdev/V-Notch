@@ -1,7 +1,9 @@
+using System.Reflection;
 using System.Windows;
 using System.Windows.Input;
 using VNotch.Controls;
 using VNotch.Models;
+using VNotch.Services;
 using VNotch.Tests.Fakes;
 using VNotch.ViewModels;
 using Xunit;
@@ -75,6 +77,137 @@ public sealed class YouTubeProgressTransitionTests
         Assert.Equal("0:01", model.CurrentTimeText);
         Assert.True(model.HasTimeline);
         Assert.True(model.IsSeekEnabled);
+    }
+
+    [Fact]
+    public void TimelineSimulator_PositionZeroAndAfterReset_IsNotImmediatelyStuck()
+    {
+        var simulator = new MediaTimelineSimulator();
+
+        Assert.False(simulator.IsPositionStuck(TimeSpan.FromSeconds(1.5)));
+
+        simulator.UpdateObservedPosition(TimeSpan.Zero);
+        Assert.NotEqual(DateTime.MinValue, simulator.LastPositionChangeTime);
+        Assert.False(simulator.IsPositionStuck(TimeSpan.FromSeconds(1.5)));
+
+        simulator.UpdateObservedPosition(TimeSpan.FromSeconds(25));
+        simulator.Reset();
+
+        Assert.Equal(TimeSpan.Zero, simulator.LastObservedPosition);
+        Assert.Equal(DateTime.MinValue, simulator.LastPositionChangeTime);
+        Assert.False(simulator.IsPositionStuck(TimeSpan.FromSeconds(1.5)));
+
+        simulator.UpdateObservedPosition(TimeSpan.Zero);
+        Assert.NotEqual(DateTime.MinValue, simulator.LastPositionChangeTime);
+        Assert.False(simulator.IsPositionStuck(TimeSpan.FromSeconds(1.5)));
+    }
+
+    [Fact]
+    public void WindowTitleRecovery_SwitchingToNewTrack_PreservesThrottledStateAfterBookkeeping()
+    {
+        using var service = new MediaDetectionService(null!, null!, null!);
+        SeedStuckTimelineState(service, lastTrackName: "Previous Video", stuckAt: TimeSpan.FromSeconds(10));
+
+        var info = new MediaInfo
+        {
+            CurrentTrack = "",
+            MediaSource = "YouTube",
+            IsPlaying = true,
+            IsAnyMediaPlaying = true,
+            Position = TimeSpan.FromSeconds(10),
+            Duration = TimeSpan.FromSeconds(100)
+        };
+
+        InvokeVideoTimelineRecovery(service, info, ["Next Video - YouTube"]);
+        InvokeTrackNameChangeBookkeeping(service, info);
+        info.IsThrottled = GetTimelineSimulator(service).IsThrottled;
+
+        Assert.Equal("Next Video", info.CurrentTrack);
+        Assert.True(GetTimelineSimulator(service).IsThrottled);
+        Assert.True(info.IsThrottled);
+    }
+
+    [Fact]
+    public void WindowTitleRecovery_SubstringTitleAndBlankWindowTitle_ResetsRecoveredDurationOnlyForValidNewTrack()
+    {
+        using var service = new MediaDetectionService(null!, null!, null!);
+        SeedStuckTimelineState(service, lastTrackName: "Song (Live)", stuckAt: TimeSpan.FromSeconds(10));
+        var simulator = GetTimelineSimulator(service);
+        simulator.RecoveredDuration = TimeSpan.FromMinutes(5);
+
+        var blankInfo = new MediaInfo
+        {
+            CurrentTrack = "",
+            MediaSource = "YouTube",
+            IsPlaying = true,
+            IsAnyMediaPlaying = true,
+            Position = TimeSpan.FromSeconds(10),
+            Duration = TimeSpan.FromSeconds(100)
+        };
+
+        InvokeVideoTimelineRecovery(service, blankInfo, ["   - YouTube"]);
+
+        Assert.Equal("", blankInfo.CurrentTrack);
+        Assert.Equal(TimeSpan.FromMinutes(5), simulator.RecoveredDuration);
+
+        var nextInfo = new MediaInfo
+        {
+            CurrentTrack = "",
+            MediaSource = "YouTube",
+            IsPlaying = true,
+            IsAnyMediaPlaying = true,
+            Position = TimeSpan.FromSeconds(10),
+            Duration = TimeSpan.FromSeconds(100)
+        };
+
+        InvokeVideoTimelineRecovery(service, nextInfo, ["Song - YouTube"]);
+
+        Assert.Equal("Song", nextInfo.CurrentTrack);
+        Assert.Equal(TimeSpan.Zero, simulator.RecoveredDuration);
+        Assert.Equal(TimeSpan.Zero, nextInfo.Duration);
+        Assert.True(nextInfo.IsThrottled);
+    }
+
+    private static MediaTimelineSimulator GetTimelineSimulator(MediaDetectionService service) =>
+        (MediaTimelineSimulator)typeof(MediaDetectionService)
+            .GetField("_timelineSimulator", BindingFlags.Instance | BindingFlags.NonPublic)!
+            .GetValue(service)!;
+
+    private static void SeedStuckTimelineState(MediaDetectionService service, string lastTrackName, TimeSpan stuckAt)
+    {
+        var staleUtc = DateTime.UtcNow - TimeSpan.FromSeconds(5);
+        var serviceType = typeof(MediaDetectionService);
+        serviceType.GetField("_lastTrackName", BindingFlags.Instance | BindingFlags.NonPublic)!
+            .SetValue(service, lastTrackName);
+        serviceType.GetField("_lastMetadataChangeTime", BindingFlags.Instance | BindingFlags.NonPublic)!
+            .SetValue(service, staleUtc);
+
+        var simulator = GetTimelineSimulator(service);
+        simulator.UpdateObservedPosition(stuckAt);
+        typeof(MediaTimelineSimulator)
+            .GetField("_lastPositionChangeTime", BindingFlags.Instance | BindingFlags.NonPublic)!
+            .SetValue(simulator, staleUtc);
+    }
+
+    private static void InvokeVideoTimelineRecovery(MediaDetectionService service, MediaInfo info, List<string> windowTitles)
+    {
+        var method = typeof(MediaDetectionService).GetMethod(
+            "ApplyVideoTimelineRecovery",
+            BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public)!;
+        object?[] args = [info, windowTitles];
+        method.Invoke(service, args);
+    }
+
+    private static void InvokeTrackNameChangeBookkeeping(MediaDetectionService service, MediaInfo info)
+    {
+        var method = typeof(MediaDetectionService).GetMethod(
+            "TrackNameChangeBookkeeping",
+            BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public)!;
+        var parameters = method.GetParameters();
+        object?[] args = parameters.Length == 1
+            ? [info]
+            : [info, parameters[1].Name?.Contains("reset", StringComparison.OrdinalIgnoreCase) != true];
+        method.Invoke(service, args);
     }
 
     private static MediaInfo Track(string title, double durationSeconds, bool playing) => new()

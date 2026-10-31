@@ -17,9 +17,31 @@ class PipelineChecks(unittest.TestCase):
     def test_known_docs_can_skip_windows(self):
         self.assertFalse(needs_windows(["README.md", "docs/setup.md"]))
         self.assertFalse(needs_windows(["README.md", "docs\\setup.md"]))
+        self.assertFalse(needs_windows(["README.md", "docs/BROWSER_VOLUME_COMPATIBILITY.md"]))
 
     def test_packaged_docs_and_unknown_changes_require_windows(self):
-        for paths in ([], ["TERMS_OF_SERVICE.md"], ["THIRD_PARTY_NOTICES.md"], ["docs/TERMS_OF_SERVICE.md"], ["docs/THIRD_PARTY_NOTICES.md"], ["docs/licenses/Hardcodet.NotifyIcon.Wpf-MIT.txt"], ["docs\\TERMS_OF_SERVICE.md"], ["docs\\THIRD_PARTY_NOTICES.md"], ["docs\\licenses\\Hardcodet.NotifyIcon.Wpf-MIT.txt"], ["README.md", "Services\\SpotifyJson.cs"], ["README.md", "Native\\Services\\Url.cpp"], ["README.md", "V-Notch.csproj"], [".gitleaks.toml"]):
+        for paths in (
+            [],
+            ["CHANGELOG.md"],
+            ["PRIVACY_POLICY.md"],
+            ["PRIVACY_POLICY_VI.md"],
+            ["TERMS_OF_SERVICE.md"],
+            ["THIRD_PARTY_NOTICES.md"],
+            ["docs/PRIVACY_POLICY.md"],
+            ["docs/PRIVACY_POLICY_VI.md"],
+            ["docs/TERMS_OF_SERVICE.md"],
+            ["docs/THIRD_PARTY_NOTICES.md"],
+            ["docs/licenses/Hardcodet.NotifyIcon.Wpf-MIT.txt"],
+            ["docs\\PRIVACY_POLICY.md"],
+            ["docs\\PRIVACY_POLICY_VI.md"],
+            ["docs\\TERMS_OF_SERVICE.md"],
+            ["docs\\THIRD_PARTY_NOTICES.md"],
+            ["docs\\licenses\\Hardcodet.NotifyIcon.Wpf-MIT.txt"],
+            ["README.md", "Services\\SpotifyJson.cs"],
+            ["README.md", "Native\\Services\\Url.cpp"],
+            ["README.md", "V-Notch.csproj"],
+            [".gitleaks.toml"],
+        ):
             with self.subTest(paths=paths):
                 self.assertTrue(needs_windows(paths))
 

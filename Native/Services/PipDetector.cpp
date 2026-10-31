@@ -158,14 +158,18 @@ public:
         } ctx{target_process_name, current_track, nullptr, {}};
 
         EnumWindows([](HWND hwnd, LPARAM lparam) -> BOOL {
-            auto* c = reinterpret_cast<SearchCtx*>(lparam);
-            std::u16string title;
-            if (PipDetector::IsPipWindow(hwnd, c->target_process_name, c->current_track, &title)) {
-                c->found_hwnd = hwnd;
-                c->found_title = std::move(title);
+            try {
+                auto* c = reinterpret_cast<SearchCtx*>(lparam);
+                std::u16string title;
+                if (PipDetector::IsPipWindow(hwnd, c->target_process_name, c->current_track, &title)) {
+                    c->found_hwnd = hwnd;
+                    c->found_title = std::move(title);
+                    return FALSE;
+                }
+                return TRUE;
+            } catch (...) {
                 return FALSE;
             }
-            return TRUE;
         }, reinterpret_cast<LPARAM>(&ctx));
 
         *out_hwnd = ctx.found_hwnd;

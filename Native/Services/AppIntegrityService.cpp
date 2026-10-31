@@ -6,8 +6,17 @@ namespace vnotch::services
 class AppIntegrityService final
 {
 public:
+    static constexpr bool HasEmbeddedNull(std::u16string_view sv) noexcept
+    {
+        return sv.find(u'\0') != std::u16string_view::npos;
+    }
+
     static bool IsOfficialRepositoryPath(std::u16string_view path) noexcept
     {
+        if (HasEmbeddedNull(path))
+        {
+            return false;
+        }
         if (vnotch::equals_icase_ascii(path, u"/w0otdev/V-Notch") ||
             vnotch::equals_icase_ascii(path, u"/rainaku/V-Notch"))
         {
@@ -19,6 +28,10 @@ public:
 
     static bool IsReleaseAssetHost(std::u16string_view host) noexcept
     {
+        if (HasEmbeddedNull(host))
+        {
+            return false;
+        }
         return vnotch::equals_icase_ascii(host, u"objects.githubusercontent.com") ||
                vnotch::equals_icase_ascii(host, u"release-assets.githubusercontent.com");
     }
@@ -31,7 +44,8 @@ public:
         std::u16string_view host,
         std::u16string_view abs_path) noexcept
     {
-        if (!is_absolute || port != 443 || !user_info.empty())
+        if (!is_absolute || port != 443 || !user_info.empty() ||
+            HasEmbeddedNull(scheme) || HasEmbeddedNull(host) || HasEmbeddedNull(abs_path))
         {
             return false;
         }
@@ -55,6 +69,11 @@ public:
         std::u16string_view host,
         std::u16string_view abs_path) noexcept
     {
+        if (HasEmbeddedNull(scheme) || HasEmbeddedNull(user_info) ||
+            HasEmbeddedNull(host) || HasEmbeddedNull(abs_path))
+        {
+            return false;
+        }
         if (IsOfficialReleaseUrl(is_absolute, scheme, port, user_info, host, abs_path))
         {
             return true;
@@ -74,7 +93,9 @@ public:
         std::u16string_view host,
         std::u16string_view abs_path) noexcept
     {
-        if (!is_absolute || port != 443 || !user_info.empty() || !vnotch::equals_icase_ascii(scheme, u"https"))
+        if (!is_absolute || port != 443 || !user_info.empty() ||
+            HasEmbeddedNull(scheme) || HasEmbeddedNull(host) || HasEmbeddedNull(abs_path) ||
+            !vnotch::equals_icase_ascii(scheme, u"https"))
         {
             return false;
         }
@@ -90,7 +111,7 @@ public:
 
     static bool IsApplicableChecksumAsset(std::u16string_view asset_name, bool is_installer) noexcept
     {
-        if (vnotch::trim_u16(asset_name).empty())
+        if (HasEmbeddedNull(asset_name) || vnotch::trim_u16(asset_name).empty())
         {
             return false;
         }
@@ -149,14 +170,30 @@ public:
             if (vnotch::starts_with_icase_ascii(trimmed, u"HostUrl="))
             {
                 std::u16string_view val = vnotch::trim_u16(trimmed.substr(8));
-                out_host_start = static_cast<int32_t>(val.data() - content.data());
-                out_host_len = static_cast<int32_t>(val.size());
+                if (!HasEmbeddedNull(val))
+                {
+                    out_host_start = static_cast<int32_t>(val.data() - content.data());
+                    out_host_len = static_cast<int32_t>(val.size());
+                }
+                else
+                {
+                    out_host_start = -1;
+                    out_host_len = 0;
+                }
             }
             else if (vnotch::starts_with_icase_ascii(trimmed, u"ReferrerUrl="))
             {
                 std::u16string_view val = vnotch::trim_u16(trimmed.substr(12));
-                out_ref_start = static_cast<int32_t>(val.data() - content.data());
-                out_ref_len = static_cast<int32_t>(val.size());
+                if (!HasEmbeddedNull(val))
+                {
+                    out_ref_start = static_cast<int32_t>(val.data() - content.data());
+                    out_ref_len = static_cast<int32_t>(val.size());
+                }
+                else
+                {
+                    out_ref_start = -1;
+                    out_ref_len = 0;
+                }
             }
 
             pos = line_end;
@@ -168,7 +205,7 @@ public:
 
 } // namespace vnotch::services
 
-VN_EXPORT int32_t vn_app_integrity_parse_zone_identifier(
+VN_EXPORT int32_t __stdcall vn_app_integrity_parse_zone_identifier(
     const char16_t* content_ptr,
     int32_t content_len,
     int32_t* out_host_start,
@@ -180,13 +217,22 @@ VN_EXPORT int32_t vn_app_integrity_parse_zone_identifier(
     {
         return VN_ERR_INVALID_ARG;
     }
+    *out_host_start = -1;
+    *out_host_len = 0;
+    *out_ref_start = -1;
+    *out_ref_len = 0;
+    std::u16string_view content_view;
+    if (!vnotch::try_make_u16_view(content_ptr, content_len, content_view))
+    {
+        return VN_ERR_INVALID_ARG;
+    }
     vnotch::services::AppIntegrityService::ParseZoneIdentifier(
-        vnotch::make_u16_view(content_ptr, content_len),
+        content_view,
         *out_host_start, *out_host_len, *out_ref_start, *out_ref_len);
     return VN_OK;
 }
 
-VN_EXPORT int32_t vn_app_integrity_is_trusted_download_uri(
+VN_EXPORT int32_t __stdcall vn_app_integrity_is_trusted_download_uri(
     uint8_t is_absolute,
     const char16_t* scheme_ptr,
     int32_t scheme_len,
@@ -203,17 +249,21 @@ VN_EXPORT int32_t vn_app_integrity_is_trusted_download_uri(
     {
         return VN_ERR_INVALID_ARG;
     }
+    *out_trusted = 0u;
+    std::u16string_view scheme, user_info, host, abs_path;
+    if (!vnotch::try_make_u16_view(scheme_ptr, scheme_len, scheme) ||
+        !vnotch::try_make_u16_view(user_info_ptr, user_info_len, user_info) ||
+        !vnotch::try_make_u16_view(host_ptr, host_len, host) ||
+        !vnotch::try_make_u16_view(abs_path_ptr, abs_path_len, abs_path))
+    {
+        return VN_ERR_INVALID_ARG;
+    }
     *out_trusted = vnotch::services::AppIntegrityService::IsTrustedDownloadUri(
-        is_absolute != 0u,
-        vnotch::make_u16_view(scheme_ptr, scheme_len),
-        port,
-        vnotch::make_u16_view(user_info_ptr, user_info_len),
-        vnotch::make_u16_view(host_ptr, host_len),
-        vnotch::make_u16_view(abs_path_ptr, abs_path_len)) ? 1u : 0u;
+        is_absolute != 0u, scheme, port, user_info, host, abs_path) ? 1u : 0u;
     return VN_OK;
 }
 
-VN_EXPORT int32_t vn_app_integrity_is_official_release_url(
+VN_EXPORT int32_t __stdcall vn_app_integrity_is_official_release_url(
     uint8_t is_absolute,
     const char16_t* scheme_ptr,
     int32_t scheme_len,
@@ -230,17 +280,21 @@ VN_EXPORT int32_t vn_app_integrity_is_official_release_url(
     {
         return VN_ERR_INVALID_ARG;
     }
+    *out_official = 0u;
+    std::u16string_view scheme, user_info, host, abs_path;
+    if (!vnotch::try_make_u16_view(scheme_ptr, scheme_len, scheme) ||
+        !vnotch::try_make_u16_view(user_info_ptr, user_info_len, user_info) ||
+        !vnotch::try_make_u16_view(host_ptr, host_len, host) ||
+        !vnotch::try_make_u16_view(abs_path_ptr, abs_path_len, abs_path))
+    {
+        return VN_ERR_INVALID_ARG;
+    }
     *out_official = vnotch::services::AppIntegrityService::IsOfficialReleaseUrl(
-        is_absolute != 0u,
-        vnotch::make_u16_view(scheme_ptr, scheme_len),
-        port,
-        vnotch::make_u16_view(user_info_ptr, user_info_len),
-        vnotch::make_u16_view(host_ptr, host_len),
-        vnotch::make_u16_view(abs_path_ptr, abs_path_len)) ? 1u : 0u;
+        is_absolute != 0u, scheme, port, user_info, host, abs_path) ? 1u : 0u;
     return VN_OK;
 }
 
-VN_EXPORT int32_t vn_app_integrity_is_release_asset_host(
+VN_EXPORT int32_t __stdcall vn_app_integrity_is_release_asset_host(
     const char16_t* host_ptr,
     int32_t host_len,
     uint8_t* out_asset_host) noexcept
@@ -249,12 +303,17 @@ VN_EXPORT int32_t vn_app_integrity_is_release_asset_host(
     {
         return VN_ERR_INVALID_ARG;
     }
-    *out_asset_host = vnotch::services::AppIntegrityService::IsReleaseAssetHost(
-        vnotch::make_u16_view(host_ptr, host_len)) ? 1u : 0u;
+    *out_asset_host = 0u;
+    std::u16string_view host;
+    if (!vnotch::try_make_u16_view(host_ptr, host_len, host))
+    {
+        return VN_ERR_INVALID_ARG;
+    }
+    *out_asset_host = vnotch::services::AppIntegrityService::IsReleaseAssetHost(host) ? 1u : 0u;
     return VN_OK;
 }
 
-VN_EXPORT int32_t vn_app_integrity_is_trusted_release_redirect(
+VN_EXPORT int32_t __stdcall vn_app_integrity_is_trusted_release_redirect(
     uint8_t is_absolute,
     const char16_t* scheme_ptr,
     int32_t scheme_len,
@@ -271,17 +330,21 @@ VN_EXPORT int32_t vn_app_integrity_is_trusted_release_redirect(
     {
         return VN_ERR_INVALID_ARG;
     }
+    *out_trusted = 0u;
+    std::u16string_view scheme, user_info, host, abs_path;
+    if (!vnotch::try_make_u16_view(scheme_ptr, scheme_len, scheme) ||
+        !vnotch::try_make_u16_view(user_info_ptr, user_info_len, user_info) ||
+        !vnotch::try_make_u16_view(host_ptr, host_len, host) ||
+        !vnotch::try_make_u16_view(abs_path_ptr, abs_path_len, abs_path))
+    {
+        return VN_ERR_INVALID_ARG;
+    }
     *out_trusted = vnotch::services::AppIntegrityService::IsTrustedReleaseRedirect(
-        is_absolute != 0u,
-        vnotch::make_u16_view(scheme_ptr, scheme_len),
-        port,
-        vnotch::make_u16_view(user_info_ptr, user_info_len),
-        vnotch::make_u16_view(host_ptr, host_len),
-        vnotch::make_u16_view(abs_path_ptr, abs_path_len)) ? 1u : 0u;
+        is_absolute != 0u, scheme, port, user_info, host, abs_path) ? 1u : 0u;
     return VN_OK;
 }
 
-VN_EXPORT int32_t vn_app_integrity_is_applicable_checksum_asset(
+VN_EXPORT int32_t __stdcall vn_app_integrity_is_applicable_checksum_asset(
     const char16_t* asset_name_ptr,
     int32_t asset_name_len,
     uint8_t is_installer,
@@ -291,8 +354,13 @@ VN_EXPORT int32_t vn_app_integrity_is_applicable_checksum_asset(
     {
         return VN_ERR_INVALID_ARG;
     }
+    *out_applicable = 0u;
+    std::u16string_view asset_name;
+    if (!vnotch::try_make_u16_view(asset_name_ptr, asset_name_len, asset_name))
+    {
+        return VN_ERR_INVALID_ARG;
+    }
     *out_applicable = vnotch::services::AppIntegrityService::IsApplicableChecksumAsset(
-        vnotch::make_u16_view(asset_name_ptr, asset_name_len),
-        is_installer != 0u) ? 1u : 0u;
+        asset_name, is_installer != 0u) ? 1u : 0u;
     return VN_OK;
 }

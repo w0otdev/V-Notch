@@ -4,7 +4,7 @@
 
 **Bản công bố trước:** 24 tháng 10 năm 2026
 
-**Phạm vi:** Mã nguồn hiện tại ngày 31 tháng 10 năm 2026 (v2.2.1); tính năng khả dụng phụ thuộc bản cài đặt.
+**Phạm vi:** Mã nguồn hiện tại ngày 31 tháng 10 năm 2026 (v2.2.2); tính năng khả dụng phụ thuộc bản cài đặt.
 
 **Nhà phát triển:** w0otdev  
 **Liên hệ:** [github.com/w0otdev/V-Notch/issues](https://github.com/w0otdev/V-Notch/issues)  
@@ -13,20 +13,20 @@
 
 ## 1. Giới thiệu
 
-V-Notch là ứng dụng desktop miễn phí, mã nguồn mở dành cho Windows, tái hiện trải nghiệm notch kiểu macOS và Dynamic Island của iPhone. Ứng dụng hiển thị phương tiện đang phát, trạng thái pin và Bluetooth, khay chứa tệp tạm thời (File Shelf), xem trước camera, âm lượng hệ thống và bộ trộn âm thanh từng ứng dụng, màn hình theo dõi tài nguyên phần cứng (CPU, RAM, GPU), đồng hồ, lịch, bộ đếm giờ/bấm giờ, trình tìm kiếm và khởi chạy nhanh Spotlight, cùng các thông tin ngữ cảnh khác với hoạt ảnh mượt mà và hiệu ứng quang học kính lỏng (Liquid Glass) chân thực.
+V-Notch là ứng dụng desktop miễn phí, mã nguồn mở dành cho Windows, tái hiện trải nghiệm notch kiểu macOS và Dynamic Island của iPhone. Ứng dụng hiển thị phương tiện đang phát, trạng thái pin và Bluetooth, khay chứa tệp tạm thời (File Shelf), xem trước camera, âm lượng hệ thống và bộ trộn âm thanh từng ứng dụng, màn hình theo dõi tài nguyên phần cứng (CPU, RAM, GPU), đồng hồ, lịch, bộ đếm giờ/bấm giờ, trình tìm kiếm và khởi chạy nhanh Spotlight, cùng các thông tin ngữ cảnh khác với hoạt ảnh mượt mà và hiệu ứng quang học kính lỏng (Liquid Glass).
 
-Chính sách bảo mật này giải thích chi tiết: chính xác dữ liệu nào ứng dụng truy cập, tại sao truy cập, dữ liệu đó đi đâu, và được lưu giữ trong bao lâu. Nội dung phản ánh đúng hành vi thực tế của mã nguồn, vốn được công khai hoàn toàn để kiểm tra tại [github.com/w0otdev/V-Notch](https://github.com/w0otdev/V-Notch).
+Chính sách bảo mật này giải thích chi tiết dữ liệu nào ứng dụng truy cập, tại sao truy cập, dữ liệu đó đi đâu, và được lưu giữ trong bao lâu. Nội dung phản ánh hành vi thực tế của mã nguồn được công khai tại [github.com/w0otdev/V-Notch](https://github.com/w0otdev/V-Notch).
 
-**Nguyên tắc cốt lõi:** V-Notch ưu tiên xử lý cục bộ trên thiết bị của bạn. Ứng dụng không có analytics, không telemetry, không quảng cáo, không theo dõi định danh người dùng, và không yêu cầu tài khoản V-Notch. Ứng dụng không vận hành bất kỳ máy chủ backend riêng nào. Theo tài liệu hiện có, các yêu cầu mạng ra ngoài phục vụ các mục đích chức năng hoặc tùy chọn cụ thể: kiểm tra cập nhật, lấy ảnh bìa / lời bài hát / phụ đề / Spotify Canvas cho bài hát bạn đang phát, và — nếu bạn chủ động bật — hiển thị dự báo thời tiết. Spotlight AI tùy chọn gửi tin nhắn và ngữ cảnh hội thoại tới nhà cung cấp bạn chọn, đồng thời có thể tra cứu số dư DeepSeek khi bạn yêu cầu. Tất cả được mô tả chi tiết trong Mục 4.
+**Nguyên tắc cốt lõi:** V-Notch ưu tiên xử lý cục bộ trên thiết bị của bạn. Ứng dụng không có analytics, không telemetry, không quảng cáo, không theo dõi định danh người dùng, và không yêu cầu tài khoản V-Notch. Ứng dụng không vận hành bất kỳ máy chủ backend riêng nào. Các yêu cầu mạng ra ngoài chỉ phục vụ các mục đích chức năng hoặc tùy chọn cụ thể: kiểm tra cập nhật và xác minh mã băm bản phát hành, lấy ảnh bìa, lời bài hát, phụ đề hoặc Spotify Canvas cho bài hát bạn đang phát, quy đổi tỷ giá tiền tệ trong máy tính Spotlight, tải mô hình dịch cục bộ tùy chọn từ Hugging Face, và (nếu bạn chủ động bật) hiển thị dự báo thời tiết. Spotlight AI tùy chọn gửi tin nhắn và ngữ cảnh hội thoại tới nhà cung cấp bạn chọn, đồng thời có thể tra cứu số dư DeepSeek khi bạn yêu cầu. Tất cả kết nối mạng được mô tả chi tiết trong Mục 4.
 
 Chính sách bảo mật này cần được đọc cùng với [Điều Khoản Dịch Vụ](TERMS_OF_SERVICE_VI.md) của chúng tôi, văn bản điều chỉnh việc sử dụng ứng dụng nói chung, bao gồm các tuyên bố miễn trừ trách nhiệm, giới hạn trách nhiệm pháp lý, và luật áp dụng cùng quy trình giải quyết tranh chấp áp dụng cho cả hai văn bản này.
 
 Tài liệu này mô tả hoạt động của chính ứng dụng, không cam kết rằng trang web độc lập, thành phần hệ điều hành, WebView, CDN hoặc các bản dựng do người khác sửa đổi không xử lý dữ liệu. Cần đối chiếu tính năng và hành vi với bản cài đặt thực tế.
 
 Chính sách này dùng các thuật ngữ sau:
-- **"Cục bộ"** — dữ liệu ở lại trên máy của bạn và không được V-Notch chủ đích gửi tới nhà cung cấp ngoài, trừ ngoại lệ nêu rõ.
-- **"Tạm thời"** — dữ liệu chỉ giữ trong bộ nhớ (RAM/VRAM) trong khi cần để hiển thị hoặc xử lý, sau đó bị loại bỏ ngay lập tức; không bao giờ ghi xuống đĩa.
-- **"Tùy chọn (opt-in)"** — tính năng ở trạng thái tắt và không hoạt động cho đến khi bạn chủ động bật hoặc kích hoạt nó.
+- **"Cục bộ"**: dữ liệu ở lại trên máy của bạn và không được V-Notch chủ đích gửi tới nhà cung cấp ngoài, trừ ngoại lệ nêu rõ.
+- **"Tạm thời"**: dữ liệu chỉ giữ trong bộ nhớ (RAM/VRAM) trong khi cần để hiển thị hoặc xử lý, sau đó bị loại bỏ ngay lập tức; không bao giờ ghi xuống đĩa.
+- **"Tùy chọn (opt-in)"**: tính năng ở trạng thái tắt và không hoạt động cho đến khi bạn chủ động bật hoặc kích hoạt nó.
 
 ---
 
@@ -34,24 +34,25 @@ Chính sách này dùng các thuật ngữ sau:
 
 | Khả năng | Truy cập gì | Rời khỏi thiết bị? | Lưu trữ trên đĩa? |
 |---|---|---|---|
-| **Phương tiện đang phát** | Tên bài, nghệ sĩ, album, ảnh bìa, vị trí phát, trạng thái (Windows SMTC) | Không (trừ tra cứu ảnh bìa/lời/phụ đề — xem §4) | Không (tạm thời trong bộ nhớ) |
-| **Tra cứu ảnh bìa album** | Tên bài + nghệ sĩ gửi đi như một truy vấn tìm kiếm | Có — YouTube/Google, SoundCloud, Piped/Invidious | Có: ánh xạ nguồn có thể lưu cục bộ (§5.3); ảnh có thể được cache bởi thành phần hiển thị |
-| **Lời bài hát đồng bộ** | Tên bài + nghệ sĩ + thời lượng gửi đi như truy vấn | Có — lrclib.net, và api.lrcmux.dev làm nguồn tổng hợp dự phòng | Không (tạm thời trong bộ nhớ) |
-| **Phụ đề YouTube / Captions** | Video ID + yêu cầu track phụ đề công khai | Có - YouTube | Không (tạm thời trong bộ nhớ) |
-| **Spotify Canvas (tùy chọn)** | Phiên Spotify web (`sp_dc`), tên bài + nghệ sĩ | Có — Spotify, Musixmatch (dự phòng) | Phiên được mã hóa cục bộ bằng Windows DPAPI |
-| **Thời tiết (opt-in)** | Vị trí gần đúng dựa trên IP (`ipwho.is`) hoặc tên thành phố thủ công | Có — `ipwho.is`, Open-Meteo | Không (tạm thời trong bộ nhớ) |
-| **Kiểm tra & tải cập nhật** | Chỉ header HTTP tiêu chuẩn | Có - GitHub Releases API & Atom feed | Thông tin phiên bản trong bộ nhớ; bộ cài tải vào thư mục tạm khi cập nhật |
-| **Spotlight AI (tùy chọn)** | Tin nhắn gửi, ngữ cảnh gần đây, khóa API, model | Có — nhà cung cấp AI được chọn (§4.8) | Khóa và lịch sử chat mã hóa cục bộ (§5.6) |
-| **Dịch trực tiếp (tùy chọn)** | Văn bản được chọn qua UI Automation; clipboard chỉ khi bạn yêu cầu | Không gửi văn bản; tải model tùy chọn kết nối Hugging Face | Chỉ model/cấu hình; cache bản dịch nằm trong RAM |
-| **Tìm kiếm & Launcher Spotlight** | Tên ứng dụng cục bộ, metadata tệp cục bộ (bộ lập chỉ mục tích hợp / Windows Search / Everything), biểu thức toán | Không | Lịch sử tần suất khởi chạy lưu cục bộ (tối đa 100 mục, xem §5) |
+| **Phương tiện đang phát** | Tên bài, nghệ sĩ, album, ảnh bìa, vị trí phát, trạng thái (Windows SMTC) | Không (trừ tra cứu ảnh bìa/lời/phụ đề, xem §4) | Không (tạm thời trong bộ nhớ) |
+| **Tra cứu ảnh bìa album** | Tên bài + nghệ sĩ gửi đi như một truy vấn tìm kiếm | Có: YouTube/Google (`/results`, `/oembed`, `/youtube/v3/search`, `/youtube/v3/videos`), SoundCloud (`soundcloud.com`, `m.soundcloud.com`), Piped/Invidious | Có: ánh xạ nguồn có thể lưu cục bộ (§5.3); ảnh có thể được cache bởi thành phần hiển thị |
+| **Lời bài hát đồng bộ** | Tên bài + nghệ sĩ + thời lượng gửi đi như truy vấn | Có: lrclib.net, và api.lrcmux.dev làm nguồn tổng hợp dự phòng | Không (tạm thời trong bộ nhớ) |
+| **Phụ đề YouTube / Captions** | Video ID + yêu cầu track phụ đề qua Android Innertube player (`com.google.android.youtube`) | Có: YouTube (`youtube.com/youtubei/v1/player`, `youtube.com/api/timedtext`) | Không (tạm thời trong bộ nhớ) |
+| **Spotify Canvas (tùy chọn)** | Phiên Spotify web (`sp_dc`), tên bài + nghệ sĩ | Có: Spotify, Musixmatch (dự phòng) | Phiên được mã hóa cục bộ bằng Windows DPAPI |
+| **Thời tiết (opt-in)** | Vị trí gần đúng dựa trên IP (`ipwho.is`) hoặc tên thành phố thủ công | Có: `ipwho.is`, Open-Meteo | Không (tạm thời trong bộ nhớ) |
+| **Kiểm tra, tải cập nhật & xác minh toàn vẹn** | Header HTTP tiêu chuẩn (`V-Notch-Updater`, `V-Notch-Integrity-Checker`) | Có: GitHub Releases API, Atom feed & máy chủ asset bản phát hành | Thông tin phiên bản trong bộ nhớ; bộ cài tải vào thư mục tạm khi cập nhật |
+| **Spotlight AI (tùy chọn)** | Tin nhắn gửi, ngữ cảnh gần đây, khóa API, model | Có: nhà cung cấp AI được chọn (§4.8) | Khóa và lịch sử chat mã hóa cục bộ (§5.6) |
+| **Dịch trực tiếp (tùy chọn)** | Văn bản được chọn qua UI Automation; clipboard chỉ khi bạn yêu cầu | Không gửi văn bản; tải model GGUF tùy chọn kết nối `huggingface.co` (`*.huggingface.co`, `*.hf.co`) | Chỉ model/cấu hình (xác minh SHA-256 cục bộ); cache bản dịch nằm trong RAM |
+| **Tìm kiếm & Launcher Spotlight** | Tên ứng dụng cục bộ, metadata tệp cục bộ (bộ lập chỉ mục tích hợp / Windows Search / Everything), biểu thức toán & tiền tệ | Không với tìm kiếm/toán cục bộ; quy đổi tiền tệ truy vấn `api.frankfurter.dev` khi trực tuyến (§4.6) | Lịch sử tần suất khởi chạy lưu cục bộ (tối đa 100 mục, xem §5) |
 | **Chụp nền hiệu ứng Liquid Glass** | Pixel màn hình ngay dưới vùng notch (DXGI / Magnification API) | Không | Không (xử lý theo từng frame trên GPU/CPU và giải phóng ngay) |
 | **Giám sát phần cứng hệ thống** | Tỷ lệ dùng CPU, mức RAM, tải GPU (Windows performance counters / DXGI) | Không | Không (tạm thời trong bộ nhớ) |
 | **Xem trước camera (opt-in)** | Khung hình camera trực tiếp | Không | Không (không bao giờ ghi lại, chụp hay lưu) |
 | **File Shelf** | Đường dẫn tệp + metadata tệp cơ bản (tên, kích thước, loại) | Không | Đường dẫn lưu cục bộ trong cài đặt (xem §5) |
 | **Âm lượng & Audio Mixer** | Đọc/điều chỉnh âm lượng tổng và từng ứng dụng (Core Audio) | Không | Không |
-| **Phát hiện nguồn phát** | Tiêu đề cửa sổ đang hiển thị; URL trình duyệt (UI Automation) | Không | Có thể: ánh xạ tiêu đề media/nguồn trong cache (§5.3); nhật ký chẩn đoán nếu bật (§5.4) |
+| **Phát hiện nguồn phát** | Tiêu đề cửa sổ đang hiển thị; URL trình duyệt (UI Automation) | Không | Có thể: ánh xạ tiêu đề media/nguồn trong cache (§5.3); nhật ký chẩn đoán và lỗi nếu bật (§5.4) |
+| **Nhật ký chẩn đoán & báo cáo lỗi** | Sự kiện kỹ thuật, lỗi, chi tiết ngoại lệ chưa xử lý (chỉ khi `EnableDiagnosticLogging` đang bật) | Không | Có: `vnotch-debug.log` và `vnotch-crash.log` (kèm bản xoay vòng `.old`, xem §5.4) |
 | **Bluetooth & trạng thái pin** | Tên thiết bị, loại, mức pin phụ kiện, trạng thái kết nối | Không | Không (tạm thời trong bộ nhớ) |
-| **Lịch sử, Chỉ báo & Xem trước Clipboard** | Văn bản, HTML/RTF, ảnh, tệp/thư mục đã sao chép và metadata ứng dụng nguồn | Lịch sử Clipboard không tự động tải nội dung lên | Có — tại `%LOCALAPPDATA%\V-Notch\Clipboard\` (§3.10, §5.7) |
+| **Lịch sử, Chỉ báo & Xem trước Clipboard** | Văn bản, HTML/RTF, ảnh, tệp/thư mục đã sao chép và metadata ứng dụng nguồn | Lịch sử Clipboard không tự động tải nội dung lên | Có: tại `%LOCALAPPDATA%\V-Notch\Clipboard\` (§3.10, §5.7) |
 | **Chỉ báo quyền riêng tư** | Micro, camera, hoặc quay màn hình có đang hoạt động không | Không | Không (tạm thời trong bộ nhớ) |
 | **Đồng hồ, Lịch, Hẹn giờ & Tiếng ồn trắng** | Giờ hệ thống, bộ đếm ngược, bấm giờ, âm thanh nền tổng hợp | Không | Cấu hình hẹn giờ lưu trong cài đặt |
 | **Cử chỉ chuột** | Di chuyển/nhấp chuột trên vùng notch | Không | Không |
@@ -61,14 +62,16 @@ Chính sách này dùng các thuật ngữ sau:
 
 | Dịch vụ | Mục đích |
 | --- | --- |
-| GitHub Releases API | Kiểm tra cập nhật |
+| GitHub Releases API & Máy chủ Asset (`api.github.com`, `github.com`, `objects.githubusercontent.com`, `release-assets.githubusercontent.com`) | Kiểm tra cập nhật (`V-Notch-Updater`) và xác minh tính toàn vẹn mã băm tệp nhị phân bản phát hành ở chế độ nền (`V-Notch-Integrity-Checker`) |
 | LRCLIB / lrc mux | Lời bài hát đồng bộ |
-| YouTube / SoundCloud | Ảnh thu nhỏ và phụ đề công khai |
+| YouTube / SoundCloud (`youtube.com`, `googleapis.com`, `soundcloud.com`, `m.soundcloud.com`) | Ảnh thu nhỏ, metadata video (`/youtube/v3/search`, `/youtube/v3/videos`), oEmbed/tìm kiếm SoundCloud, và phụ đề công khai (`com.google.android.youtube`) |
 | Spotify Web Services | Canvas thử nghiệm, mặc định tắt; yêu cầu chủ động bật; phiên được mã hóa bằng Windows DPAPI |
 | Open-Meteo / ipwho.is | Thời tiết tùy chọn |
+| Hugging Face (`huggingface.co`, `*.huggingface.co`, `*.hf.co`) | Tải mô hình dịch cục bộ GGUF theo yêu cầu kèm xác minh SHA-256 cục bộ |
+| Frankfurter API (`api.frankfurter.dev`) | Tra cứu tỷ giá quy đổi tiền tệ trực tiếp trong máy tính Spotlight |
 | OpenAI / Google Gemini / Anthropic Claude / DeepSeek | Tin nhắn và ngữ cảnh hội thoại AI tùy chọn; làm mới số dư DeepSeek khi có yêu cầu |
 
-Cài đặt và một số bộ nhớ đệm cục bộ được lưu tại `%APPDATA%\V-Notch\`. Lịch sử trò chuyện AI đã mã hóa được lưu riêng tại `%LOCALAPPDATA%\V-Notch\spotlight-chats.enc` (đường dẫn cũ `%LOCALAPPDATA%\VNotch\spotlight-chats.enc`). Các bộ nhớ đệm thành phần và tệp tạm khác được mô tả tại Mục 5. Tìm kiếm Spotlight cục bộ không tải truy vấn lên mạng; Spotlight AI chỉ gửi nội dung bạn chủ động gửi tới nhà cung cấp đã chọn.
+Cài đặt và một số bộ nhớ đệm cục bộ được lưu tại `%APPDATA%\V-Notch\`. Khi tính năng ghi nhật ký chẩn đoán (`EnableDiagnosticLogging`) được bật, nhật ký chẩn đoán (`vnotch-debug.log`) và báo cáo sự cố cục bộ (`vnotch-crash.log`, kèm các bản xoay vòng `.old`) có thể được ghi tại `%APPDATA%\V-Notch\`, `AppContext.BaseDirectory`, hoặc `%TEMP%\` (xem Mục 5.4). Lịch sử trò chuyện AI đã mã hóa được lưu riêng tại `%LOCALAPPDATA%\V-Notch\spotlight-chats.enc` (đường dẫn cũ `%LOCALAPPDATA%\VNotch\spotlight-chats.enc`). Các bộ nhớ đệm thành phần và tệp tạm khác được mô tả tại Mục 5. Tìm kiếm Spotlight cục bộ không tải truy vấn lên mạng; Spotlight AI chỉ gửi nội dung bạn chủ động gửi tới nhà cung cấp đã chọn.
 
 **Phương tiện bên thứ ba:** Canvas sử dụng các endpoint không chính thức của Spotify và yêu cầu xác nhận trước khi đăng nhập hoặc gửi yêu cầu. Spotify có thể hạn chế quyền truy cập; việc bật tính năng không đồng nghĩa với sự cấp phép từ nền tảng. Phụ đề YouTube phải được truy cập và sử dụng theo điều khoản của YouTube và luật hiện hành. Việc sử dụng hợp lý được đánh giá theo từng trường hợp. Hãy đọc [lưu ý về nền tảng bên ngoài](TERMS_OF_SERVICE_VI.md#4-nền-tảng-và-nội-dung-bên-ngoài) trước khi bật các tính năng này.
 
@@ -83,33 +86,33 @@ Chấm chỉ báo quyền riêng tư sử dụng báo cáo thu hình từ Window
 
 ### 3.1 Phương tiện đang phát (Windows Media Session)
 
-V-Notch dùng API System Media Transport Controls (SMTC) của Windows để đọc metadata về phương tiện đang phát trên hệ thống — ví dụ từ Spotify, trình phát web YouTube/SoundCloud, Apple Music, Tidal, hoặc bất kỳ tab trình duyệt nào. Metadata bao gồm tên bài, nghệ sĩ, tên album, ảnh bìa nhúng, vị trí phát, thời lượng, và trạng thái phát/tạm dừng.
+V-Notch dùng API System Media Transport Controls (SMTC) của Windows để đọc metadata về phương tiện đang phát trên hệ thống, ví dụ từ Spotify, trình phát web YouTube/SoundCloud, Apple Music, Tidal, hoặc bất kỳ tab trình duyệt nào. Metadata bao gồm tên bài, nghệ sĩ, tên album, ảnh bìa nhúng, vị trí phát, thời lượng, và trạng thái phát/tạm dừng.
 
-Dữ liệu này được đọc liên tục khi đang phát, dùng để hiển thị notch theo thời gian thực, và chỉ giữ trong bộ nhớ. Nó không bao giờ được ghi xuống đĩa. Tên bài và nghệ sĩ có thể được gửi tới các dịch vụ bên thứ ba để tra cứu ảnh bìa, lời bài hát, hoặc phụ đề — xem Mục 4.
+Dữ liệu này được đọc liên tục khi đang phát, dùng để hiển thị notch theo thời gian thực, và chỉ giữ trong bộ nhớ. Nó không bao giờ được ghi xuống đĩa. Tên bài và nghệ sĩ có thể được gửi tới các dịch vụ bên thứ ba để tra cứu ảnh bìa, lời bài hát, hoặc phụ đề (xem Mục 4).
 
 ### 3.2 Phát hiện nguồn phát (Tiêu đề cửa sổ & URL trình duyệt)
 
 Để xác định *nơi* media đang phát (ví dụ phân biệt tab YouTube với tab SoundCloud) và lấy đúng ảnh bìa cùng lời bài hát, V-Notch thực hiện hai kiểu kiểm tra cục bộ:
 
-- **Quét tiêu đề cửa sổ** — Liệt kê tiêu đề của các cửa sổ cấp cao đang hiển thị và chỉ giữ lại những tiêu đề chứa một trong các từ khóa nền tảng cố định: `spotify`, `youtube`, `soundcloud`, `instagram`, `twitter` / `x`, `apple music`, `apple`, `music`, `twitch`, `discord`, `vesktop`, `netflix`, `tidal`, `deezer`, `bandcamp`, `bilibili`, `vimeo`, `crunchyroll`. Các từ khóa nền tảng mạng xã hội và phát trực tuyến mở rộng dùng để hỗ trợ phát hiện việc phát video/âm thanh bên trong các tab hoặc ứng dụng đó — chúng chỉ được so khớp với văn bản tiêu đề cửa sổ, hoàn toàn không đọc nội dung trang. Các tiêu đề cửa sổ không khớp sẽ bị loại bỏ ngay lập tức và không bao giờ được giữ lại.
-- **Đọc URL trình duyệt** — Với các trình duyệt được hỗ trợ (Chrome, Edge, Firefox, Brave, Opera, Vivaldi, Zen, Arc, Thorium, Floorp, Waterfox, và các trình duyệt nền Chromium/Gecko khác), ứng dụng dùng API trợ năng UI Automation của Windows để đọc thanh địa chỉ và các tab đang mở nhằm tìm một URL media. Chỉ những URL là liên kết media mới được xử lý.
+- **Quét tiêu đề cửa sổ**: Liệt kê tiêu đề của các cửa sổ cấp cao đang hiển thị và chỉ giữ lại những tiêu đề chứa một trong các từ khóa nền tảng cố định: `spotify`, `youtube`, `soundcloud`, `instagram`, `twitter` / `x`, `apple music`, `apple`, `music`, `twitch`, `discord`, `vesktop`, `netflix`, `tidal`, `deezer`, `bandcamp`, `bilibili`, `vimeo`, `crunchyroll`. Các từ khóa nền tảng mạng xã hội và phát trực tuyến mở rộng dùng để hỗ trợ phát hiện việc phát video/âm thanh bên trong các tab hoặc ứng dụng đó; chúng chỉ được so khớp với văn bản tiêu đề cửa sổ, không đọc nội dung trang. Các tiêu đề cửa sổ không khớp sẽ bị loại bỏ ngay lập tức và không bao giờ được giữ lại.
+- **Đọc URL trình duyệt**: Với các trình duyệt được hỗ trợ (Chrome, Edge, Firefox, Brave, Opera, Vivaldi, Zen, Arc, Thorium, Floorp, Waterfox, và các trình duyệt nền Chromium/Gecko khác), ứng dụng dùng API trợ năng UI Automation của Windows để đọc thanh địa chỉ và các tab đang mở nhằm tìm một URL media. Chỉ những URL là liên kết media mới được xử lý.
 
 Việc đọc URL trình duyệt bị chặn cho đến khi cài đặt đã nạp cho phép. Bộ quét đọc quyền từ bộ nhớ, không đọc lại hay theo dõi tệp cài đặt. Tắt **Đọc URL trình duyệt để nhận diện phương tiện** ngăn trả về URL đã cache hoặc kết quả từ lần quét trước đang chạy. Lệnh gọi trợ năng đã bắt đầu có thể hoàn tất, nhưng không có lần đọc mới bắt đầu khi quyền đang tắt. Công tắc này điều khiển việc đọc trợ năng trình duyệt; quét tiêu đề cửa sổ là hoạt động riêng.
 
-Việc kiểm tra này diễn ra hoàn toàn trên thiết bị của bạn. Các tiêu đề và URL được dùng tạm thời để phục vụ phát hiện media và tra cứu ảnh bìa, chỉ được cache ngắn trong bộ nhớ và tệp cache nguồn cục bộ, có thể xuất hiện trong nhật ký chẩn đoán cục bộ khi người dùng bật ghi log (§5.4); ứng dụng không được thiết kế để tải lên tiêu đề cửa sổ thô hoặc URL đầy đủ. (Một giá trị suy ra — tên bài/nghệ sĩ — có thể được gửi đi để tra cứu ảnh bìa như mô tả ở Mục 4.)
+Việc kiểm tra này diễn ra hoàn toàn trên thiết bị của bạn. Các tiêu đề và URL được dùng tạm thời để phục vụ phát hiện media và tra cứu ảnh bìa, chỉ được cache ngắn trong bộ nhớ và tệp cache nguồn cục bộ, có thể xuất hiện trong nhật ký chẩn đoán cục bộ khi người dùng bật ghi log (§5.4); ứng dụng không được thiết kế để tải lên tiêu đề cửa sổ thô hoặc URL đầy đủ. Một giá trị suy ra (tên bài và nghệ sĩ) có thể được gửi đi để tra cứu ảnh bìa như mô tả ở Mục 4.
 
-**Lưu ý về tiêu đề cửa sổ nhạy cảm:** Vì tính năng này kiểm tra văn bản tiêu đề của các cửa sổ đang hiển thị có chứa một trong các từ khóa khớp, nó có thể vô tình đọc phải một tiêu đề cửa sổ tiết lộ ngữ cảnh không liên quan đến việc phát media — ví dụ: tiêu đề tab trình duyệt hoặc cửa sổ ứng dụng vô tình chứa tên nền tảng khớp (như "Discord" hoặc "Instagram") đi kèm với văn bản riêng tư khác. Các tiêu đề không khớp bị loại bỏ ngay lập tức, và các tiêu đề khớp chỉ được dùng tạm thời như mô tả ở trên và không bao giờ được truyền đi dưới dạng văn bản thô. Công tắc **Đọc URL trình duyệt để nhận diện phương tiện** không tắt việc quét tiêu đề này.
+**Lưu ý về tiêu đề cửa sổ nhạy cảm:** Vì tính năng này kiểm tra văn bản tiêu đề của các cửa sổ đang hiển thị có chứa một trong các từ khóa khớp, nó có thể vô tình đọc phải một tiêu đề cửa sổ tiết lộ ngữ cảnh không liên quan đến việc phát media (ví dụ: tiêu đề tab trình duyệt hoặc cửa sổ ứng dụng chứa tên nền tảng khớp như "Discord" hoặc "Instagram" đi kèm với văn bản riêng tư khác). Các tiêu đề không khớp bị loại bỏ ngay lập tức, và các tiêu đề khớp chỉ được dùng tạm thời như mô tả ở trên và không bao giờ được truyền đi dưới dạng văn bản thô. Công tắc **Đọc URL trình duyệt để nhận diện phương tiện** không tắt việc quét tiêu đề này.
 
 ### 3.3 Tìm kiếm Spotlight & Trình khởi chạy nhanh (`Alt + Space`)
 
-V-Notch tích hợp trình tìm kiếm Spotlight cho phép bạn tìm ứng dụng, tìm kiếm tệp và tính toán biểu thức toán học nhanh chóng:
+V-Notch tích hợp trình tìm kiếm Spotlight cho phép bạn tìm ứng dụng, tìm kiếm tệp và tính toán biểu thức toán học hoặc quy đổi tiền tệ:
 
-- **Tìm kiếm ứng dụng** — Lập chỉ mục các phím tắt Start Menu và các ứng dụng Windows đã cài đặt.
+- **Tìm kiếm ứng dụng**: Lập chỉ mục các phím tắt Start Menu và các ứng dụng Windows đã cài đặt.
 - **Tìm kiếm tệp**: Truy vấn bộ lập chỉ mục tệp cục bộ tích hợp, chỉ mục Windows Search Index cục bộ (qua OLE DB) hoặc instance Everything của voidtools đang chạy trên máy (qua Everything IPC socket cục bộ).
-- **Máy tính số học tích hợp**: Tính toán các biểu thức số học và đại số trực tiếp trên máy bằng bộ tính toán C++ gốc.
-- **Bảng xếp hạng tần suất khởi chạy** — Để hiển thị nhanh các mục bạn hay mở, V-Notch lưu một tệp xếp hạng cục bộ (`%APPDATA%\V-Notch\spotlight-usage.json`) chứa ID mục, tên, số lần mở và thời gian gần nhất (giới hạn tối đa 100 mục).
+- **Máy tính số học & Quy đổi tiền tệ**: Tính toán các biểu thức số học và đại số trực tiếp trên máy bằng bộ tính toán C++ gốc. Khi bạn nhập biểu thức quy đổi tiền tệ (ví dụ `100 USD to VND`) và kết nối mạng được cho phép, V-Notch truy vấn `api.frankfurter.dev` (`https://api.frankfurter.dev/v2/rate/...`) để lấy tỷ giá hối đoái hiện tại (xem §4.6).
+- **Bảng xếp hạng tần suất khởi chạy**: Để hiển thị nhanh các mục bạn hay mở, V-Notch lưu một tệp xếp hạng cục bộ (`%APPDATA%\V-Notch\spotlight-usage.json`) chứa ID mục, tên, số lần mở và thời gian gần nhất (giới hạn tối đa 100 mục).
 
-**Spotlight Search xử lý truy vấn ứng dụng/tệp và phép tính cục bộ.** Chế độ AI riêng biệt gửi tin nhắn bạn chủ động gửi và ngữ cảnh hội thoại như mô tả tại §4.8.
+**Spotlight Search xử lý truy vấn ứng dụng/tệp và phép tính toán học cục bộ.** Chế độ AI riêng biệt gửi tin nhắn bạn chủ động gửi và ngữ cảnh hội thoại như mô tả tại §4.8.
 
 ### 3.4 Hiệu ứng Liquid Glass & Chụp nền màn hình
 
@@ -124,7 +127,7 @@ Module System Monitor đọc các thông số hiệu năng phần cứng theo th
 
 ### 3.6 Xem trước Camera (Tùy chọn)
 
-V-Notch có thể hiển thị xem trước camera trực tiếp, nhưng chỉ khi bạn chủ động mở tính năng đó. Trong khi hoạt động, các khung hình camera được xử lý cục bộ để hiển thị trên màn hình. **Không có khung hình nào được ghi lại, lưu trữ, chụp ảnh, hoặc truyền đi.** Khi bạn đóng xem trước, camera được giải phóng ngay lập tức. Khi xem trước camera của chính V-Notch đang bật, ứng dụng tự ẩn chấm báo "camera đang dùng" của mình để tránh hiển thị dư thừa.
+V-Notch có thể hiển thị xem trước camera trực tiếp, chỉ khi bạn chủ động mở tính năng đó. Trong khi hoạt động, các khung hình camera được xử lý cục bộ để hiển thị trên màn hình. **Không có khung hình nào được ghi lại, lưu trữ, chụp ảnh, hoặc truyền đi.** Khi bạn đóng xem trước, camera được giải phóng ngay lập tức. Khi xem trước camera của chính V-Notch đang bật, ứng dụng tự ẩn chấm báo "camera đang dùng" của mình để tránh hiển thị dư thừa.
 
 ### 3.7 File Shelf (Tùy chọn)
 
@@ -150,7 +153,7 @@ Tạm dừng thu thập trong khay Clipboard hoặc tắt từng loại văn b�
 
 ### 3.11 Chỉ báo quyền riêng tư (Mic / Camera / Quay màn hình)
 
-Mô phỏng hành vi của iOS/macOS, V-Notch có thể hiển thị một chấm màu nhỏ khi micro, camera, hoặc tính năng quay màn hình của bạn đang được *bất kỳ* ứng dụng nào trên hệ thống sử dụng. Đây chỉ là phản ánh trạng thái cảm biến — xử lý tạm thời trong bộ nhớ và không lưu hay truyền tải bất kỳ thông tin nào.
+Mô phỏng hành vi của iOS/macOS, V-Notch có thể hiển thị một chấm màu nhỏ khi micro, camera, hoặc tính năng quay màn hình của bạn đang được *bất kỳ* ứng dụng nào trên hệ thống sử dụng. Đây chỉ là phản ánh trạng thái cảm biến: xử lý tạm thời trong bộ nhớ và không lưu hay truyền tải bất kỳ thông tin nào.
 
 ### 3.12 Tiện ích môi trường (Đồng hồ, Lịch, Hẹn giờ, Bấm giờ & Tiếng ồn trắng)
 
@@ -170,50 +173,53 @@ Nếu được bật, V-Notch dùng mô hình nhận diện đối tượng YOLO
 
 V-Notch không có máy chủ backend và không thực hiện analytics, telemetry hay theo dõi người dùng. Ứng dụng chỉ thực hiện yêu cầu ra ngoài tới các dịch vụ bên thứ ba công khai sau đây, và **chỉ** cho các mục đích chức năng được mô tả. Không có định danh thiết bị hay mã theo dõi nào được đính kèm; tính năng Spotify Canvas tùy chọn chỉ dùng phiên Spotify của bạn như mô tả tại Mục 4.5.
 
-### 4.1 Kiểm tra & Tải bản cập nhật ứng dụng — GitHub
+### 4.1 Kiểm tra, Tải bản cập nhật & Xác minh tính toàn vẹn bản phát hành (GitHub)
 
-- **Điểm đến:** `https://api.github.com/repos/w0otdev/V-Notch/releases/latest`, `https://api.github.com/repos/w0otdev/V-Notch/releases` (khi kiểm tra bản thử nghiệm hoặc ghi chú phát hành) và `https://github.com/w0otdev/V-Notch/releases.atom` (dự phòng khi REST API bị giới hạn tốc độ).
-- **Tại sao:** Để phát hiện xem có phiên bản V-Notch mới hơn hay không.
-- **Dữ liệu gửi đi:** Header HTTP tiêu chuẩn, gồm `User-Agent: V-Notch-Updater` và header `If-None-Match` (ETag) có điều kiện để lưu cache. Tính năng này không gửi metadata media, thông tin đăng nhập hay nội dung tệp cục bộ. Như mọi yêu cầu HTTPS, dịch vụ từ xa có thể thấy thông tin kết nối như địa chỉ IP của bạn.
-- **Dữ liệu nhận về:** Tag phiên bản mới nhất, ghi chú phát hành (changelog), URL tải bộ cài; khi cập nhật còn có manifest đã ký, chữ ký tách rời và bộ cài.
-- **Tần suất:** Giới hạn tối đa một lần mỗi 45 giây; phản hồi được cache trong bộ nhớ và xác thực lại bằng ETag.
+- **Điểm đến:** `https://api.github.com/repos/w0otdev/V-Notch/releases/latest`, `https://api.github.com/repos/w0otdev/V-Notch/releases` (khi kiểm tra bản thử nghiệm hoặc ghi chú phát hành), `https://github.com/w0otdev/V-Notch/releases.atom` (dự phòng khi REST API bị giới hạn tốc độ), và `https://api.github.com/repos/w0otdev/V-Notch/releases/tags/v{version}` (để xác minh mã băm tệp nhị phân của bản phát hành).
+- **Tại sao:** Để phát hiện phiên bản V-Notch mới hơn và đối chiếu mã băm tệp nhị phân cục bộ với các tệp `.sha256` đã công bố trên bản phát hành.
+- **Dữ liệu gửi đi (kiểm tra cập nhật):** Header HTTP tiêu chuẩn, gồm `User-Agent: V-Notch-Updater` và header `If-None-Match` (ETag) có điều kiện để lưu cache. Tính năng này không gửi metadata media, thông tin đăng nhập hay nội dung tệp cục bộ. Như mọi yêu cầu HTTPS, dịch vụ từ xa có thể thấy thông tin kết nối như địa chỉ IP của bạn.
+- **Kiểm tra tính toàn vẹn bản phát hành ở chế độ nền (`AppIntegrityService`):** Khi `AutoCheckUpdates` được bật và `EnableLocalOnlyMode` đang tắt, V-Notch thực hiện truy vấn xác minh tính toàn vẹn bản phát hành ở chế độ nền tới `https://api.github.com/repos/w0otdev/V-Notch/releases/tags/v{version}` với `User-Agent: V-Notch-Integrity-Checker` nhằm đối chiếu mã băm tệp nhị phân cục bộ với các asset `.sha256` đã công bố trên `github.com`, `objects.githubusercontent.com`, và `release-assets.githubusercontent.com`. Khi `AutoCheckUpdates` bị tắt hoặc `EnableLocalOnlyMode` được bật, kiểm tra nền này không chạy.
+- **Dữ liệu nhận về:** Tag phiên bản mới nhất, ghi chú phát hành (changelog), URL tải bộ cài, mã băm asset `.sha256`; khi cập nhật còn có manifest đã ký, chữ ký tách rời và bộ cài.
+- **Tần suất:** Kiểm tra cập nhật được giới hạn tối đa một lần mỗi 45 giây; phản hồi được cache trong bộ nhớ và xác thực lại bằng ETag.
 - **Bảo mật & Tính toàn vẹn:** Từ phiên bản 1.9.2, cập nhật trong ứng dụng bắt buộc dùng HTTPS và manifest có chữ ký ECDSA P-256/SHA-256, được xác minh cục bộ bằng khóa công khai nhúng trong ứng dụng. Phiên bản, tên bộ cài, kích thước và mã băm SHA-256 đã ký phải khớp trước khi chạy bộ cài. Chữ ký thiếu hoặc không hợp lệ và việc hạ phiên bản đều bị từ chối. Authenticode là tùy chọn trừ khi có cấu hình thêm allowlist chứng chỉ; Windows vẫn có thể hiện cảnh báo nhà phát hành không xác định hoặc SmartScreen. Ứng dụng bản cũ dùng cơ chế xác minh cũ cho lần nâng cấp đầu tiên lên phiên bản này.
-- **Dữ liệu xác minh:** Manifest và chữ ký tách rời được tải từ cùng các asset GitHub release với bộ cài và xử lý trong bộ nhớ. Việc xác minh chữ ký không liên hệ dịch vụ mới hay tải lên tệp cục bộ, thông tin đăng nhập hoặc mã định danh thiết bị. GitHub và hạ tầng tải xuống có thể thấy thông tin kết nối tiêu chuẩn, gồm địa chỉ IP và header HTTP của bạn.
-- **Quyền kiểm soát của bạn:** Việc tải và cài đặt bản cập nhật chỉ xảy ra **khi** bạn chủ động chọn thực hiện. Khi bạn bắt đầu cập nhật, bộ cài tương ứng (`V-Notch-Setup.exe` hoặc `V-Notch-Setup-SelfContained.exe`) được tải từ GitHub Releases về thư mục tạm của bạn và khởi chạy.
+- **Dữ liệu xác minh:** Manifest, chữ ký tách rời và các tệp mã băm `.sha256` được tải từ các asset GitHub release (`github.com`, `objects.githubusercontent.com`, `release-assets.githubusercontent.com`) và xử lý trong bộ nhớ. Việc xác minh chữ ký và mã băm không liên hệ dịch vụ mới hay tải lên tệp cục bộ, thông tin đăng nhập hoặc mã định danh thiết bị. GitHub và hạ tầng tải xuống có thể thấy thông tin kết nối tiêu chuẩn, gồm địa chỉ IP và header HTTP của bạn.
+- **Quyền kiểm soát của bạn:** Việc tải và cài đặt bản cập nhật chỉ xảy ra **khi** bạn chủ động chọn thực hiện. Khi bạn bắt đầu cập nhật, bộ cài tương ứng (`V-Notch-Setup.exe` hoặc `V-Notch-Setup-SelfContained.exe`) được tải từ GitHub Releases về thư mục tạm của bạn và khởi chạy. Tắt `AutoCheckUpdates` hoặc bật `EnableLocalOnlyMode` sẽ vô hiệu hóa cả việc kiểm tra cập nhật nền (`V-Notch-Updater`) và kiểm tra tính toàn vẹn bản phát hành nền (`V-Notch-Integrity-Checker`).
 
-### 4.2 Tra cứu ảnh bìa album
+### 4.2 Tra cứu ảnh bìa album & Metadata phương tiện
 
-Khi SMTC không cung cấp ảnh bìa nhúng (thường gặp khi nghe nhạc trên trình duyệt web), V-Notch cố gắng tìm ảnh bìa tương ứng. Tên bài và nghệ sĩ được dùng làm từ khóa tìm kiếm. Tùy nguồn phát, ứng dụng có thể liên hệ:
+Khi SMTC không cung cấp ảnh bìa nhúng hoặc thiếu metadata đầy đủ (thường gặp khi nghe nhạc trên trình duyệt web), V-Notch tìm ảnh bìa và thông tin bài hát tương ứng. Tên bài và nghệ sĩ được dùng làm từ khóa tìm kiếm. Tùy nguồn phát, ứng dụng có thể liên hệ:
 
-**YouTube / Google:**
-- `https://www.youtube.com/results?...` — quét trang tìm kiếm công khai để tìm video tương ứng.
-- `https://www.youtube.com/oembed?...` — xác thực video và lấy tiêu đề/thumbnail.
-- `https://i.ytimg.com/...` — tải ảnh thumbnail.
-- `https://www.googleapis.com/youtube/v3/search` — YouTube Data API chính thức, chỉ dùng **nếu** bạn tự cung cấp khóa API cá nhân của bạn. Ứng dụng không đi kèm khóa API có sẵn.
+#### 4.2.1 Metadata & Ảnh bìa YouTube / Google (§4.3.1)
+- `https://www.youtube.com/results?...`: quét trang tìm kiếm công khai để tìm video tương ứng.
+- `https://www.youtube.com/oembed?...`: xác thực video và lấy tiêu đề cùng URL ảnh thu nhỏ.
+- `https://i.ytimg.com/...`: tải ảnh thumbnail.
+- `https://www.googleapis.com/youtube/v3/search` và `https://www.googleapis.com/youtube/v3/videos`: các endpoint tìm kiếm và chi tiết video của YouTube Data API v3 chính thức, chỉ dùng **nếu** bạn tự cung cấp khóa YouTube Data API v3 cá nhân trong Cài đặt. Ứng dụng không đi kèm khóa API có sẵn.
 
-**Piped / Invidious (các front-end YouTube thân thiện quyền riêng tư, dùng làm dự phòng):**
+#### 4.2.2 Metadata & Ảnh bìa SoundCloud (§4.3.2)
+- `https://soundcloud.com/oembed`: endpoint oEmbed của SoundCloud trên `soundcloud.com`, dùng để lấy tiêu đề, tác giả và URL ảnh bìa cho bài hát SoundCloud.
+- `https://m.soundcloud.com/search/sounds?q=...` và `https://soundcloud.com/search/sounds?q=...`: tra cứu trang tìm kiếm HTML trên `m.soundcloud.com` và `soundcloud.com` để tìm URL bài hát và ảnh bìa (`i1.sndcdn.com`, `*.sndcdn.com`) khi chỉ có tên bài hát và nghệ sĩ.
+
+#### 4.2.3 Piped / Invidious (Các front-end YouTube thân thiện quyền riêng tư, dùng làm dự phòng)
 - Các instance công khai như `pipedapi.kavin.rocks`, `pipedapi.adminforge.de`, `vid.puffyan.us`, `invidious.fdn.fr` và tương tự. Đây là các dịch vụ cộng đồng, chỉ được liên hệ nếu tra cứu chính không thành công.
 
-**SoundCloud:**
-- Endpoint oEmbed của SoundCloud, để lấy URL ảnh bìa cho bài hát SoundCloud.
+**Dữ liệu gửi đi:** Tên bài và nghệ sĩ (như một truy vấn tìm kiếm thông thường), hoặc URL/ID video đã phân giải, cùng các header HTTP trình duyệt tiêu chuẩn. **Bên nhận có thể thấy địa chỉ IP kết nối; truy vấn bài hát có thể phản ánh sở thích nghe nhạc.** Ảnh tải về được lưu trong bộ nhớ để hiển thị và không được ghi xuống đĩa.
 
-**Dữ liệu gửi đi:** Tên bài và nghệ sĩ (như một truy vấn tìm kiếm thông thường) cùng các header HTTP trình duyệt tiêu chuẩn. **Không bao gồm bất kỳ thông tin nhận dạng người dùng nào.** Ảnh tải về được lưu trong bộ nhớ để hiển thị và không được ghi xuống đĩa.
-
-### 4.3 Lời bài hát đồng bộ — LRCLIB và lrc mux
+### 4.3 Lời bài hát đồng bộ (LRCLIB và lrc mux)
 
 V-Notch thử nghiệm hai nhà cung cấp lời bài hát độc lập theo thứ tự và dừng lại ngay khi một trong hai trả về kết quả:
 
-- **LRCLIB** — `https://lrclib.net/api/get?...` (khớp chính xác) và endpoint tìm kiếm (khớp mờ). **Dữ liệu gửi đi:** tên bài, tên nghệ sĩ, và thời lượng bài hát làm tham số truy vấn, kèm `User-Agent` nhận diện V-Notch.
-- **lrc mux** — `https://api.lrcmux.dev/get?...`, dùng làm nguồn tổng hợp dự phòng khi LRCLIB không có kết quả khớp. **Dữ liệu gửi đi:** tên bài, tên nghệ sĩ, và thời lượng bài hát làm tham số truy vấn, kèm `User-Agent` nhận diện V-Notch. lrc mux là dịch vụ tổng hợp lời bài hát của bên thứ ba với các nguồn thượng nguồn riêng; V-Notch không kiểm soát nhà cung cấp thượng nguồn mà dịch vụ này truy vấn nội bộ.
+- **LRCLIB**: `https://lrclib.net/api/get?...` (khớp chính xác) và endpoint tìm kiếm (khớp mờ). **Dữ liệu gửi đi:** tên bài, tên nghệ sĩ, và thời lượng bài hát làm tham số truy vấn, kèm `User-Agent` nhận diện V-Notch.
+- **lrc mux**: `https://api.lrcmux.dev/get?...`, dùng làm nguồn tổng hợp dự phòng khi LRCLIB không có kết quả khớp. **Dữ liệu gửi đi:** tên bài, tên nghệ sĩ, và thời lượng bài hát làm tham số truy vấn, kèm `User-Agent` nhận diện V-Notch. lrc mux là dịch vụ tổng hợp lời bài hát của bên thứ ba với các nguồn thượng nguồn riêng; V-Notch không kiểm soát nhà cung cấp thượng nguồn mà dịch vụ này truy vấn nội bộ.
 
 **Dữ liệu nhận về (cả hai):** Các dòng lời bài hát đã đồng bộ thời gian, chỉ dùng tạm thời trong bộ nhớ để hiển thị và không bao giờ ghi xuống đĩa. Bên nhận thấy IP kết nối; truy vấn nghe nhạc có thể là dữ liệu cá nhân tùy ngữ cảnh.
 
-### 4.4 Phụ đề & Captions YouTube
+### 4.4 Phụ đề & Captions YouTube (Innertube) và Xác minh tính toàn vẹn bản phát hành
 
-- **Điểm đến:** Các endpoint phụ đề video công khai của YouTube.
+- **Điểm đến (Phụ đề YouTube / Innertube, §4.2.2):** `https://www.youtube.com/youtubei/v1/player` và các endpoint phụ đề theo thời gian công khai của YouTube (`https://www.youtube.com/api/timedtext?...`).
 - **Tại sao:** Để lấy phụ đề/captions theo thời gian thực khi bạn nghe nhạc hoặc xem video trên YouTube và đã bật tính năng phụ đề YouTube.
-- **Dữ liệu gửi đi:** ID video YouTube và header HTTP tiêu chuẩn. Không gửi tài khoản người dùng hay dữ liệu định danh cá nhân.
+- **Dữ liệu gửi đi:** Các yêu cầu tới `https://www.youtube.com/youtubei/v1/player` gửi ID video YouTube kèm ngữ cảnh client YouTube Android (`ANDROID` phiên bản client `20.10.38`) và `User-Agent: com.google.android.youtube/20.10.38 (Linux; U; Android 14)` để lấy danh sách track phụ đề khả dụng. Không có thông tin đăng nhập hay cookie tài khoản người dùng nào được gửi trong lệnh gọi này; bên nhận thấy ID video, header client `com.google.android.youtube` và metadata kết nối như địa chỉ IP của bạn.
 - **Dữ liệu nhận về:** Văn bản phụ đề theo thời gian, chỉ dùng tạm thời trong bộ nhớ để hiển thị.
+- **Xác minh tính toàn vẹn bản phát hành (`AppIntegrityService`):** Như trình bày tại §4.1, khi `AutoCheckUpdates` được bật và `EnableLocalOnlyMode` đang tắt, V-Notch cũng thực hiện truy vấn xác minh tính toàn vẹn bản phát hành ở chế độ nền tới `https://api.github.com/repos/w0otdev/V-Notch/releases/tags/v{version}` với `User-Agent: V-Notch-Integrity-Checker` để đối chiếu mã băm tệp nhị phân cục bộ với các asset `.sha256` đã công bố trên `github.com`, `objects.githubusercontent.com`, và `release-assets.githubusercontent.com`. Khi `AutoCheckUpdates` bị tắt hoặc `EnableLocalOnlyMode` được bật, kiểm tra nền này không chạy.
 
 ### 4.5 Spotify Canvas (Thử nghiệm, chủ động bật)
 
@@ -225,13 +231,18 @@ Khi Canvas được bật, phiên được gửi đến Spotify (`open.spotify.c
 
 Bạn có thể ngắt kết nối Spotify bất kỳ lúc nào trong Cài đặt. Thao tác này sẽ xóa vĩnh viễn phiên đã lưu khỏi V-Notch. Nếu xác thực thất bại hoặc bài hát không có Canvas, ứng dụng tự động chuyển về hình nền lời bài hát thông thường.
 
-### 4.6 Thời tiết (Tùy chọn)
+### 4.6 Tải mô hình dịch cục bộ & Quy đổi tỷ giá tiền tệ trực tiếp
+
+- **Tải mô hình dịch cục bộ (`huggingface.co`):** Khi bạn chủ động chọn tải mô hình dịch cục bộ định dạng GGUF trong Cài đặt, V-Notch tải trọng số mô hình qua HTTPS từ Hugging Face (`huggingface.co`, `*.huggingface.co`, `*.hf.co` tại `https://huggingface.co/{repo}/resolve/{rev}/{path}`). Phiên bản kho lưu trữ (revision), kích thước byte dự kiến và mã băm SHA-256 đều được cố định sẵn trong ứng dụng; V-Notch xác minh mã băm SHA-256 cục bộ trước khi cài đặt mô hình vào `%LOCALAPPDATA%\V-Notch\translation-models\<model-id>\`. Hugging Face nhận địa chỉ IP và các header HTTP tiêu chuẩn của bạn, không bao giờ nhận văn bản bạn chọn hay nội dung clipboard. Sau khi tải xong, toàn bộ quá trình nhận diện ngôn ngữ và suy luận dịch thuật chạy hoàn toàn ngoại tuyến trên thiết bị của bạn.
+- **Tra cứu tỷ giá hối đoái trực tiếp (`api.frankfurter.dev`):** Khi bạn dùng tính năng quy đổi tiền tệ trong máy tính Spotlight hoặc công cụ dịch (ví dụ `100 USD to EUR`) và truy cập mạng được cho phép, V-Notch truy vấn tỷ giá hiện tại từ `https://api.frankfurter.dev/v2/rate/{from}/{to}` (`api.frankfurter.dev`). Chỉ mã tiền tệ ISO gồm ba chữ cái và các header HTTP tiêu chuẩn được gửi đi; số tiền cụ thể được nhân tính toán cục bộ trên máy của bạn. Bật chế độ hoàn toàn ngoại tuyến (`EnableLocalOnlyMode`) sẽ chặn cả việc tải mô hình từ Hugging Face lẫn tra cứu tỷ giá qua `api.frankfurter.dev`.
+
+### 4.7 Thời tiết (Tùy chọn)
 
 Khi bạn bật widget thời tiết, V-Notch chỉ thực hiện các yêu cầu mạng **sau khi** bạn đã chủ động bật tính năng này. Widget thời tiết **tắt theo mặc định**; không có yêu cầu liên quan đến thời tiết nào được thực hiện khi cài đặt mới cho đến khi bạn bật nó.
 
-- **Định vị dựa trên IP (mặc định):** `https://ipwho.is/` — Vị trí gần đúng (vĩ độ, kinh độ, thành phố) của bạn được xác định từ địa chỉ IP. Đây **không phải** vị trí GPS chính xác; nó là ước lượng địa lý thô dựa trên khu vực đăng ký của dải IP. Chỉ kết nối HTTPS được sử dụng.
+- **Định vị dựa trên IP (mặc định):** `https://ipwho.is/`: Vị trí gần đúng (vĩ độ, kinh độ, thành phố) của bạn được xác định từ địa chỉ IP. Đây là ước lượng địa lý thô dựa trên khu vực đăng ký của dải IP, không phải vị trí GPS chính xác. Chỉ kết nối HTTPS được sử dụng.
 - **Nhập thành phố thủ công (tùy chọn):** Nếu bạn nhập tên thành phố thủ công, `https://geocoding-api.open-meteo.com/v1/search` được dùng để phân giải tên thành tọa độ. Khi có thành phố thủ công, hoàn toàn không có tra cứu IP nào được thực hiện.
-- **Dự báo thời tiết:** `https://api.open-meteo.com/v1/forecast` — Tọa độ vĩ độ/kinh độ (từ IP hoặc nhập tay) được gửi tới Open-Meteo để lấy nhiệt độ hiện tại, mã thời tiết, nhiệt độ cao/thấp trong ngày và múi giờ.
+- **Dự báo thời tiết:** `https://api.open-meteo.com/v1/forecast`: Tọa độ vĩ độ/kinh độ (từ IP hoặc nhập tay) được gửi tới Open-Meteo để lấy nhiệt độ hiện tại, mã thời tiết, nhiệt độ cao/thấp trong ngày và múi giờ.
 - **Tần suất:** Mỗi 15 phút khi widget thời tiết đang hoạt động. Các yêu cầu lập tức dừng lại khi bạn tắt tính năng.
 
 Cả hai dịch vụ trên đều là bên thứ ba độc lập với chính sách bảo mật riêng:
@@ -239,10 +250,6 @@ Cả hai dịch vụ trên đều là bên thứ ba độc lập với chính s�
 - [open-meteo.com/privacy](https://open-meteo.com/privacy)
 
 **Dữ liệu gửi đi:** Địa chỉ IP của bạn (tới ipwho.is), hoặc tên thành phố (tới Open-Meteo geocoding), và tọa độ vĩ độ/kinh độ (tới Open-Meteo forecast). Không có dữ liệu cá nhân nào khác được gửi.
-
-### 4.7 Các bên thứ ba
-
-Các dịch vụ nêu trên (Spotify, GitHub, Google/YouTube, các instance Piped/Invidious, SoundCloud, LRCLIB, ipwho.is, và Open-Meteo) là các bên thứ ba độc lập với chính sách bảo mật riêng của họ. Khi V-Notch liên hệ với họ, địa chỉ IP của bạn tất yếu sẽ hiển thị với dịch vụ đó, như với mọi yêu cầu web thông thường. V-Notch không kiểm soát hoạt động độc lập của các dịch vụ này; trách nhiệm pháp lý của từng bên phụ thuộc pháp luật và hoàn cảnh thực tế. Nếu muốn tránh các tra cứu này, bạn có thể tắt các tính năng ảnh bìa/lời bài hát/phụ đề/Canvas/thời tiết và kiểm tra cập nhật, không gửi tin nhắn AI hoặc làm mới số dư (§4.8), hoặc chặn truy cập mạng của ứng dụng qua tường lửa.
 
 ---
 
@@ -253,7 +260,7 @@ Với OpenAI, Gemini, Claude và DeepSeek, khi bạn gửi tin nhắn AI, V-Notc
 | Nhà cung cấp | Địa chỉ API | Mục đích |
 | --- | --- | --- |
 | OpenAI | `api.openai.com/v1/chat/completions` | Phản hồi AI |
-| Google Gemini | `generativelanguage.googleapis.com/v1beta/models/…` | Phản hồi AI |
+| Google Gemini | `generativelanguage.googleapis.com/v1beta/models/...` | Phản hồi AI |
 | Anthropic Claude | `api.anthropic.com/v1/messages` | Phản hồi AI |
 | DeepSeek | `api.deepseek.com/chat/completions` | Phản hồi AI |
 | DeepSeek | `api.deepseek.com/user/balance` | Tra cứu số dư khi bạn yêu cầu làm mới |
@@ -263,6 +270,10 @@ Mở Spotlight, chọn AI làm chế độ mặc định hoặc nhập chữ mà
 Nhà cung cấp được chọn nhận nội dung gửi, thông tin xác thực, địa chỉ IP và metadata HTTP thông thường. Việc lưu giữ, huấn luyện, xử lý quốc tế và các quyền kiểm soát tài khoản phụ thuộc chính sách hiện hành, gói dịch vụ hoặc cài đặt tài khoản của họ. Mã hóa cục bộ không ngăn nhà cung cấp xử lý nội dung đã gửi. Trước khi gửi thông tin nhạy cảm, hãy xem [chính sách OpenAI](https://openai.com/policies/), [điều khoản Gemini API](https://ai.google.dev/gemini-api/terms), [điều khoản thương mại Anthropic](https://www.anthropic.com/legal/commercial-terms) và [chính sách quyền riêng tư DeepSeek](https://platform.deepseek.com/downloads/DeepSeek%20Privacy%20Policy.html).
 
 Thanh usage giữ số liệu do nhà cung cấp trả về trong bộ nhớ: token của yêu cầu gần nhất, quota tốc độ tại thời điểm phản hồi từ header OpenAI/Claude được hỗ trợ và số dư DeepSeek khi bạn yêu cầu tra cứu. Đây không phải tổng sử dụng tài khoản hay ngân sách tháng. Thông tin không có được ẩn; phản hồi bị ngắt có thể thiếu số liệu. Các số liệu này không được lưu vào lịch sử chat. Chế độ ngoại tuyến và tùy chọn Cho phép AI trực tuyến chặn cả tin nhắn AI chủ động và làm mới số dư.
+
+### 4.9 Các bên thứ ba
+
+Các dịch vụ nêu trên (Spotify, GitHub, Google/YouTube, các instance Piped/Invidious, SoundCloud, LRCLIB, lrc mux, Hugging Face, Frankfurter API, ipwho.is, Open-Meteo, và nhà cung cấp AI bạn chọn) là các bên thứ ba độc lập với chính sách bảo mật riêng của họ. Khi V-Notch liên hệ với họ, địa chỉ IP của bạn sẽ hiển thị với dịch vụ đó, như với mọi yêu cầu web thông thường. V-Notch không kiểm soát hoạt động độc lập của các dịch vụ này; trách nhiệm pháp lý của từng bên phụ thuộc pháp luật và hoàn cảnh thực tế. Nếu muốn tránh các tra cứu này, bạn có thể tắt các tính năng ảnh bìa/lời bài hát/phụ đề/Canvas/thời tiết và kiểm tra cập nhật, tránh tải mô hình, quy đổi tiền tệ, gửi tin nhắn AI hoặc làm mới số dư (§4.8), hoặc bật Chế độ hoàn toàn ngoại tuyến (`EnableLocalOnlyMode`).
 
 ## 5. Lưu trữ dữ liệu cục bộ
 
@@ -284,9 +295,17 @@ Lưu danh sách các ứng dụng và mục bạn đã mở từ Spotlight (ID, 
 
 Lưu ánh xạ theo cơ chế LRU (tối đa 500 mục) giữa tên bài hát đã phát và nguồn media tương ứng (ví dụ YouTube/SoundCloud) để tránh phải tìm kiếm trực tuyến lặp lại cho các bài hát bạn thường xuyên nghe.
 
-### 5.4 Nhật ký chẩn đoán (`vnotch-debug.log`)
+### 5.4 Nhật ký chẩn đoán và báo cáo lỗi (`vnotch-debug.log` và `vnotch-crash.log`)
 
-Nằm trong thư mục chương trình của ứng dụng, nhật ký này ghi lại các sự kiện kỹ thuật và lỗi phát sinh để hỗ trợ chẩn đoán sự cố. Do tính chất ghi log, tệp này có thể vô tình chứa tên/nghệ sĩ của các bài hát bạn đã nghe, truy vấn tìm lời bài hát, và tiêu đề cửa sổ đã khớp (ví dụ tiêu đề tab trình duyệt) — đây chính là các thông tin đã được mô tả tại Mục 3 và 4, được ghi cục bộ phục vụ gỡ lỗi. Nhật ký tự động xoay vòng khi đạt kích thước khoảng 5 MB. **Nhật ký này không được V-Notch chủ đích gửi tới nhà cung cấp ngoài, trừ ngoại lệ nêu rõ** — nó hoàn toàn nằm trên máy của bạn, không tải lên cùng báo cáo lỗi hay yêu cầu cập nhật, và bạn có thể xóa bất kỳ lúc nào.
+Cả nhật ký chẩn đoán (`vnotch-debug.log`, tự động xoay vòng sang `vnotch-debug.log.old` khi đạt khoảng 5 MB) và báo cáo sự cố cục bộ (`vnotch-crash.log`, xoay vòng sang `vnotch-crash.log.old` khi đạt khoảng 1 MB) đều **chỉ** được ghi xuống đĩa khi người dùng bật tính năng ghi nhật ký chẩn đoán (`EnableDiagnosticLogging`). Khi `EnableDiagnosticLogging` tắt, không tệp nào trong hai tệp này được ghi.
+
+- **Các đường dẫn lưu trữ khả dĩ:** Tùy thuộc quyền ghi thư mục và giai đoạn khởi động, V-Notch phân giải đường dẫn tệp nhật ký tại ba vị trí cục bộ:
+  1. `%APPDATA%\V-Notch\vnotch-debug.log` và `%APPDATA%\V-Notch\vnotch-crash.log`
+  2. `AppContext.BaseDirectory\vnotch-debug.log` và `AppContext.BaseDirectory\vnotch-crash.log` (thư mục chương trình của ứng dụng)
+  3. `%TEMP%\vnotch-debug.log` và `%TEMP%\vnotch-crash.log` (cùng các bản sao lưu xoay vòng `.old` tương ứng)
+- **Nội dung `vnotch-debug.log`:** Ghi lại các sự kiện kỹ thuật và lỗi phát sinh để hỗ trợ chẩn đoán sự cố. Do tính chất ghi log, tệp này có thể vô tình chứa tên/nghệ sĩ của các bài hát bạn đã nghe, truy vấn tìm lời bài hát, và tiêu đề cửa sổ đã khớp (ví dụ tiêu đề tab trình duyệt).
+- **Nội dung `vnotch-crash.log`:** Chỉ được ghi khi xảy ra ngoại lệ chưa được xử lý (unhandled exception) trong lúc `EnableDiagnosticLogging` đang bật. Mỗi bản ghi lỗi bao gồm mốc thời gian UTC, ID tiến trình (process ID), ID và tên luồng (thread name), phiên bản hệ điều hành và CLR, tên máy (`MachineName`), nguồn phát sinh lỗi, loại ngoại lệ, thông điệp lỗi, ngăn xếp lệnh gọi (stack trace), các ngoại lệ bên trong (inner exceptions), và các mục `Exception.Data` đã được làm sạch (các khóa nhạy cảm như token, key, secret, password, authorization, cookie, session đều bị che thành `[REDACTED]` và giá trị dài bị cắt ngắn).
+- **Lưu giữ cục bộ & xóa nhật ký:** **V-Notch không bao giờ tự động gửi `vnotch-debug.log` hay `vnotch-crash.log` qua mạng.** Khi bạn nhấn nút **Xóa nhật ký (Clear log)** trong Cài đặt (`RuntimeLog.ClearLogAsync`), ứng dụng sẽ xóa cả `vnotch-debug.log` và `vnotch-crash.log` (bao gồm cả các tệp sao lưu `.old`) trên tất cả các vị trí lưu trữ (`%APPDATA%\V-Notch\`, `AppContext.BaseDirectory`, và `%TEMP%\`).
 
 ### 5.5 Mô hình ONNX tùy chọn
 
@@ -319,14 +338,14 @@ Xóa từng mục trong khay Clipboard; thao tác đặt lại Personal xóa kho
 V-Notch **không được thiết kế để**:
 - bán dữ liệu cá nhân hoặc chia sẻ dữ liệu để quảng cáo hành vi; việc truyền dữ liệu chức năng cho nhà cung cấp độc lập được mô tả tại Mục 4;
 - chạy các công cụ analytics, telemetry, theo dõi hành vi, hay tạo dấu vân tay thiết bị (fingerprinting);
-- tự động gửi báo cáo sự cố hoặc số liệu thống kê sử dụng;
+- tự động gửi báo cáo sự cố hoặc số liệu thống kê sử dụng qua mạng (báo cáo lỗi cục bộ `vnotch-crash.log` chỉ được ghi trên đĩa khi `EnableDiagnosticLogging` đang bật và không bao giờ được tải lên, xem §5.4);
 - ghi âm thanh, quay video, hoặc chụp ảnh lưu trữ nội dung màn hình;
 - đọc, tải lên, hay sao lưu nội dung bên trong các tệp tin của bạn;
 - truy cập tọa độ GPS chính xác của thiết bị;
 - tạo tài khoản, hồ sơ cá nhân, hay mã định danh quảng cáo;
 - tự động tải nội dung lịch sử Clipboard lên (lưu trữ cục bộ được mô tả tại §5.7);
-- gửi từ khóa Spotlight Search hay dữ liệu chỉ mục tệp qua mạng; tin nhắn AI bạn chủ động gửi thuộc tính năng riêng (§4.8);
-- bán, cho thuê, hoặc "chia sẻ" (theo định nghĩa của CCPA/CPRA và các luật tương tự) bất kỳ thông tin cá nhân nào — trong phạm vi xác minh được đối với ứng dụng chính thức; dữ liệu bạn tự gửi tới GitHub được xử lý theo chính sách của GitHub.
+- gửi từ khóa Spotlight Search, dữ liệu chỉ mục tệp hay văn bản dịch cục bộ qua mạng; tin nhắn AI bạn chủ động gửi (§4.8), việc tải mô hình từ Hugging Face (§4.6) và tra cứu tỷ giá tiền tệ trực tiếp (§4.6) là các tính năng riêng biệt;
+- bán, cho thuê, hoặc "chia sẻ" (theo định nghĩa của CCPA/CPRA và các luật tương tự) bất kỳ thông tin cá nhân nào trong phạm vi xác minh được đối với ứng dụng chính thức; dữ liệu bạn tự gửi tới GitHub được xử lý theo chính sách của GitHub.
 
 ---
 
@@ -338,10 +357,10 @@ V-Notch **không được thiết kế để**:
 | **Audio Endpoint (Core Audio)** | Đọc & điều chỉnh mức âm lượng tổng và âm lượng từng ứng dụng | Có (tính năng cốt lõi) |
 | **DirectX 11 / DXGI / Magnification** | Lấy mẫu nền màn hình cục bộ cho khúc xạ quang học Liquid Glass | Tùy chọn (hiệu ứng hình ảnh) |
 | **Windows Search / Everything IPC** | Tìm kiếm tệp tin và ứng dụng cục bộ trong Spotlight (`Alt + Space`) | Tùy chọn |
-| **Truy cập Internet** | Kiểm tra cập nhật, tra cứu ảnh bìa & lời bài hát, dự báo thời tiết | Tùy chọn |
+| **Truy cập Internet** | Kiểm tra cập nhật & tính toàn vẹn, tra cứu ảnh bìa/metadata & lời bài hát, phụ đề, quy đổi tiền tệ, tải model, dự báo thời tiết | Tùy chọn |
 | **Camera (DirectShow / MediaFoundation)** | Xem trước camera trực tiếp ngay trong notch | Opt-in (tùy chọn bật) |
 | **Hệ thống tệp (File System)** | Khay chứa tệp tạm thời File Shelf (kéo và thả) | Opt-in (tùy chọn dùng) |
-| **UI Automation** | Phát hiện URL phát nhạc trong các trình duyệt web được hỗ trợ | Phục vụ phát hiện media |
+| **UI Automation** | Phát hiện URL phát nhạc trong trình duyệt được hỗ trợ; đọc văn bản được chọn cho tính năng dịch trực tiếp | Phục vụ phát hiện media & dịch tùy chọn |
 | **Bluetooth (Liệt kê thiết bị)** | Thông báo kết nối/ngắt kết nối thiết bị & mức pin phụ kiện | Tùy chọn |
 | **Trình lắng nghe Clipboard** | Lịch sử Clipboard cục bộ, hoạt ảnh "Copied" & huy hiệu xem trước | Tùy chọn |
 | **Windows Performance Counters** | Đo thông số phần cứng thời gian thực (CPU, RAM, GPU) | Tùy chọn |
@@ -350,20 +369,20 @@ V-Notch **không được thiết kế để**:
 
 ## 8. Quyền kiểm soát riêng tư & Chế độ ngoại tuyến
 
-Mục **Cài đặt → Quyền riêng tư** cho phép kiểm soát độc lập các tính năng AI trực tuyến, phụ đề, Spotify Canvas/đăng nhập, thời tiết và lịch sử trò chuyện AI, bên cạnh các tùy chọn ảnh bìa, lời bài hát, kiểm tra trình duyệt và ghi nhật ký. Chế độ hoàn toàn ngoại tuyến (Strict Local-Only Mode) ghi đè các quyền trực tuyến, hủy các yêu cầu do ứng dụng quản lý (bao gồm cả phản hồi đang truyền phát), chặn các yêu cầu AI, tra cứu số dư và cập nhật thủ công, đồng thời chặn các liên kết trực tuyến mở từ trong ứng dụng. Khi tắt chế độ ngoại tuyến, các lựa chọn riêng lẻ của bạn sẽ được khôi phục. Việc tắt lưu lịch sử AI sẽ bắt đầu một phiên làm việc chỉ lưu trên bộ nhớ RAM (xóa hội thoại/bản nháp đang mở trong bộ nhớ để tránh ghi lại về sau); các cuộc trò chuyện đã lưu trước đó vẫn còn trên ổ đĩa và có thể truy cập hoặc xóa lại khi bật lại lịch sử. Tùy chọn này không kiểm soát việc lưu trữ phía nhà cung cấp. Chế độ ngoại tuyến là chính sách cấp ứng dụng, không phải tường lửa Windows; chế độ này không thể điều phối các ứng dụng khác hoặc đảm bảo không có lưu lượng nền phát sinh từ runtime bên thứ ba.
+Mục **Cài đặt -> Quyền riêng tư** cho phép kiểm soát độc lập các tính năng AI trực tuyến, phụ đề, Spotify Canvas/đăng nhập, thời tiết và lịch sử trò chuyện AI, bên cạnh các tùy chọn ảnh bìa, lời bài hát, kiểm tra trình duyệt và ghi nhật ký. Chế độ hoàn toàn ngoại tuyến (Strict Local-Only Mode) ghi đè các quyền trực tuyến, hủy các yêu cầu do ứng dụng quản lý (bao gồm cả phản hồi đang truyền phát), chặn các yêu cầu AI, tra cứu số dư và cập nhật thủ công, đồng thời chặn các liên kết trực tuyến mở từ trong ứng dụng. Khi tắt chế độ ngoại tuyến, các lựa chọn riêng lẻ của bạn sẽ được khôi phục. Việc tắt lưu lịch sử AI sẽ bắt đầu một phiên làm việc chỉ lưu trên bộ nhớ RAM (xóa hội thoại/bản nháp đang mở trong bộ nhớ để tránh ghi lại về sau); các cuộc trò chuyện đã lưu trước đó vẫn còn trên ổ đĩa và có thể truy cập hoặc xóa lại khi bật lại lịch sử. Tùy chọn này không kiểm soát việc lưu trữ phía nhà cung cấp. Chế độ ngoại tuyến là chính sách cấp ứng dụng, không phải tường lửa Windows; chế độ này không thể điều phối các ứng dụng khác hoặc đảm bảo không có lưu lượng nền phát sinh từ runtime bên thứ ba.
 
 V-Notch cung cấp một mục **Quyền riêng tư** riêng biệt trong Cài đặt với các nút bật/tắt chi tiết giúp bạn chủ động cấu hình quyền riêng tư và hạn chế các kết nối mạng:
 
 - **Spotlight AI:** Xóa hội thoại trong lịch sử AI và xóa khóa trong cài đặt Spotlight. Các thao tác này riêng biệt với xóa lịch sử khởi chạy. Dữ liệu phía nhà cung cấp và thu hồi khóa cần công cụ của nhà cung cấp (§5.6).
-- **Chế độ hoàn toàn ngoại tuyến (Strict Local-Only Mode):** Chặn HTTP do ứng dụng quản lý, gồm cập nhật thủ công/tự động, kiểm tra tính toàn vẹn trực tuyến, ảnh bìa/metadata, lời bài hát, phụ đề, Canvas, thời tiết, tin nhắn AI và số dư. Chặn mở và đóng cửa sổ đăng nhập Spotify đang mở. Chặn mở liên kết trực tuyến qua ứng dụng. Yêu cầu và việc đọc phản hồi đang chạy nhận tín hiệu hủy khi thu hồi quyền. Không thể thu hồi dữ liệu đã gửi. Tính năng cục bộ và lựa chọn riêng vẫn được giữ. Đây là kiểm soát cấp ứng dụng, không phải tường lửa hệ điều hành: không bảo đảm chặn lưu lượng của Windows, ứng dụng khác hay kết nối nền tự phát của runtime/WebView; cần kiểm tra bản phát hành bằng công cụ theo dõi mạng.
-- **Tự động kiểm tra bản cập nhật mới:** Bật/tắt kiểm tra định kỳ bản phát hành mới trên GitHub Releases ở chế độ nền.
+- **Chế độ hoàn toàn ngoại tuyến (`EnableLocalOnlyMode`):** Chặn các yêu cầu HTTP do ứng dụng quản lý, gồm cập nhật thủ công/tự động (`V-Notch-Updater`), kiểm tra tính toàn vẹn bản phát hành ở chế độ nền (`V-Notch-Integrity-Checker`), ảnh bìa/metadata, lời bài hát, phụ đề, Canvas, thời tiết, tải mô hình từ Hugging Face, tra cứu tỷ giá qua Frankfurter, tin nhắn AI và làm mới số dư. Chặn mở và đóng cửa sổ đăng nhập Spotify đang mở. Chặn mở liên kết trực tuyến qua ứng dụng. Yêu cầu và việc đọc phản hồi đang chạy nhận tín hiệu hủy khi thu hồi quyền. Không thể thu hồi dữ liệu đã gửi. Tính năng cục bộ và lựa chọn riêng vẫn được giữ. Đây là kiểm soát cấp ứng dụng, không phải tường lửa hệ điều hành: không bảo đảm chặn lưu lượng của Windows, ứng dụng khác hay kết nối nền tự phát của runtime/WebView; cần kiểm tra bản phát hành bằng công cụ theo dõi mạng.
+- **Tự động kiểm tra bản cập nhật mới (`AutoCheckUpdates`):** Bật/tắt kiểm tra định kỳ bản phát hành mới (`V-Notch-Updater`) và xác minh tính toàn vẹn mã băm tệp nhị phân (`V-Notch-Integrity-Checker`) trên GitHub Releases ở chế độ nền.
 - **Tìm kiếm ảnh bìa album trực tuyến:** Bật/tắt tra cứu ảnh bìa từ YouTube, SoundCloud, Piped khi trình phát không có ảnh bìa nhúng.
 - **Tìm kiếm lời bài hát đồng bộ trực tuyến:** Bật/tắt tải lời bài hát đồng bộ từ LRCLIB và lrc mux cho bài hát đang phát.
 - **Chấm thông báo quyền riêng tư:** Bật/tắt chấm màu cảnh báo sử dụng cảm biến phần cứng (Mic, Camera, Quay màn hình) trên notch nhỏ gọn.
 - **Đọc URL trình duyệt để nhận diện phương tiện:** Bật/tắt Windows UI Automation quét thanh địa chỉ trình duyệt để nhận diện nguồn phát chính xác.
-- **Ghi nhật ký chẩn đoán ra ổ đĩa:** Bật/tắt ghi thông điệp gỡ lỗi vào tệp `vnotch-debug.log` trên ổ đĩa cục bộ.
+- **Ghi nhật ký chẩn đoán ra ổ đĩa (`EnableDiagnosticLogging`):** Bật/tắt việc ghi thông điệp gỡ lỗi vào tệp `vnotch-debug.log` và báo cáo lỗi chưa xử lý vào tệp `vnotch-crash.log` (kèm các bản xoay vòng `.old`) trên ổ đĩa cục bộ.
 - **Lịch sử khởi chạy tìm kiếm Spotlight:** Bật/tắt lưu tần suất mở ứng dụng trong `spotlight-usage.json`.
-- **Công cụ xóa dữ liệu:** Các nút một chạm để xóa sạch ngay lập tức lịch sử tìm kiếm Spotlight (`spotlight-usage.json`) và dọn dẹp tệp nhật ký chẩn đoán (`vnotch-debug.log`).
+- **Công cụ xóa dữ liệu:** Các nút một chạm để xóa sạch ngay lập tức lịch sử tìm kiếm Spotlight (`spotlight-usage.json`) và dọn dẹp toàn bộ tệp nhật ký chẩn đoán cùng báo cáo lỗi (`RuntimeLog.ClearLogAsync`, xóa cả `vnotch-debug.log`, `vnotch-crash.log` và các bản sao lưu `.old` tại `%APPDATA%\V-Notch\`, `AppContext.BaseDirectory`, và `%TEMP%\`).
 
 ---
 
@@ -388,7 +407,7 @@ Vì V-Notch không có hệ thống tài khoản, ứng dụng **không có cơ 
 Vì V-Notch ưu tiên xử lý cục bộ và không yêu cầu tài khoản V-Notch, một số quyền có thể được thực hiện với dữ liệu cục bộ trên thiết bị. Điều này **không thay thế** các nghĩa vụ và quyền theo luật áp dụng, bao gồm GDPR/CCPA/CPRA hoặc Luật Bảo vệ dữ liệu cá nhân Việt Nam khi có áp dụng:
 
 - Để **xem dữ liệu nào đang được lưu**, hãy xem Mục 5 (Lưu trữ dữ liệu cục bộ) và Mục 2 (Bảng tổng quan).
-- Để **xóa dữ liệu cục bộ cụ thể**, dùng các công cụ xóa một chạm tại Mục 8 (lịch sử Spotlight, nhật ký chẩn đoán) hoặc chỉnh sửa/xóa từng mục trong `settings.json`.
+- Để **xóa dữ liệu cục bộ cụ thể**, dùng các công cụ xóa một chạm tại Mục 8 (lịch sử Spotlight, nhật ký chẩn đoán và báo cáo lỗi) hoặc chỉnh sửa/xóa từng mục trong `settings.json`.
 - Để **xóa dữ liệu cục bộ do ứng dụng quản lý**, hãy ngắt kết nối Spotify trong Cài đặt (nếu có), thoát V-Notch, rồi xóa `%APPDATA%\V-Notch\`, `%LOCALAPPDATA%\V-Notch\`, thư mục cũ `%LOCALAPPDATA%\VNotch\` nếu còn và thư mục cài đặt. Bao gồm cả lịch sử chat cách ly và các bản giữ lại do xung đột di chuyển dữ liệu (Mục 5). Cần kiểm tra riêng thư mục tạm Windows, cache WebView/trình duyệt, bản sao lưu và dữ liệu đã đăng trên GitHub; thao tác này không bảo đảm xóa các bản sao bên ngoài. Thao tác xóa sẽ làm mất cấu hình.
 
 Đối với phần dữ liệu giới hạn rời khỏi thiết bị của bạn để thực hiện một tính năng bạn đã bật (mô tả tại Mục 4), vai trò pháp lý của nhà phát triển và nhà cung cấp phải được xác định theo thực tế xử lý và luật áp dụng, không thể mặc nhiên kết luận mọi bên thứ ba là bên kiểm soát độc lập. Để thực hiện quyền đối với dữ liệu do các dịch vụ đó nắm giữ (ví dụ: một truy vấn tìm kiếm được cache bởi một instance front-end YouTube, hoặc một tra cứu dựa trên IP do `ipwho.is` thực hiện), vui lòng liên hệ trực tiếp với dịch vụ đó qua các liên kết tại Mục 4 ở trên.
@@ -422,13 +441,13 @@ Mọi câu hỏi hoặc yêu cầu liên quan đến dữ liệu có thể gửi
 
 Có công tắc riêng cho AI trực tuyến, phụ đề, Spotify Canvas/đăng nhập và thời tiết. Ngoại tuyến ưu tiên chặn mà không xóa lựa chọn riêng. Tắt **Lưu lịch sử chat AI** sẽ ngừng đọc/ghi lịch sử V-Notch. Đổi tùy chọn xóa hội thoại/bản nháp đang ở bộ nhớ để tránh lưu lại về sau; tệp lịch sử cũ được giữ. Bật lại để truy cập và xóa hội thoại đã lưu. Tùy chọn không kiểm soát lưu trữ riêng của nhà cung cấp.
 
-### Dịch trực tiếp — bổ sung ngày 09/10/2026
+### Dịch trực tiếp (bổ sung ngày 09/10/2026)
 
 Dịch trực tiếp và Auto mặc định tắt. Khi bật và đã cài model, tính năng đọc vùng chọn của app đang ở phía trước qua Windows UI Automation sau khoảng nghỉ 300 ms. Bỏ qua ô mật khẩu; không chụp màn hình, OCR, chặn Enter toàn hệ thống hay theo dõi clipboard liên tục. Với app không cung cấp vùng chọn, phím tắt Shift hai lần có thể dùng fallback Copy mô tả bên dưới; **Dịch văn bản trong clipboard** vẫn có trong Settings. **Thay thế** kiểm tra lại vùng chọn còn đúng trước khi ghi vào ô chỉnh sửa; không gửi tin nhắn chat.
 
 Nhận diện ngôn ngữ và dịch dùng model đã cài riêng và được chọn trong Settings. Văn bản gốc/bản dịch không gửi đến API AI, ghi vào nhật ký hay lưu thành lịch sử dịch. Mặc định cache tối đa 128 kết quả trong RAM trong 30 phút; model được giải phóng sau 5 phút không dịch. Cài đặt nâng cao cho phép thay đổi giới hạn, tắt cache hoặc giữ model trong RAM. Chuyển model xóa cache dịch. Đóng popup xóa văn bản đang hiển thị. Bộ nhớ hoán đổi, crash dump của hệ điều hành và lưu trữ của app khác nằm ngoài kiểm soát của tính năng.
 
-Model không nằm trong bộ cài. Chỉ khi bấm **Tải model**, app mới kết nối HTTPS đến Hugging Face và các miền phân phối tệp của họ. Nhà cung cấp nhận IP và metadata yêu cầu mạng thông thường, không nhận vùng văn bản bạn chọn. Phiên bản, kích thước và SHA-256 của tệp được cố định. Chế độ chỉ nội bộ chặn tải; vẫn có thể nhập tệp offline. Model và phần tải dở lưu tại `%LOCALAPPDATA%\V-Notch\translation-models\<model-id>\`. **Xóa model** xóa các tệp model/phần tải dở đã biết.
+Model không nằm trong bộ cài. Chỉ khi bấm **Tải model**, app mới kết nối HTTPS đến Hugging Face (`huggingface.co`, `*.huggingface.co`, `*.hf.co` tại `https://huggingface.co/{repo}/resolve/{rev}/{path}`). Nhà cung cấp nhận IP và metadata yêu cầu mạng thông thường, không nhận vùng văn bản bạn chọn. Phiên bản, kích thước và SHA-256 của tệp được cố định và xác minh cục bộ (§4.6). Chế độ chỉ nội bộ chặn tải; vẫn có thể nhập tệp offline. Model và phần tải dở lưu tại `%LOCALAPPDATA%\V-Notch\translation-models\<model-id>\`. **Xóa model** xóa các tệp model/phần tải dở đã biết.
 
 **Copy** ghi bản dịch được yêu cầu vào clipboard Windows, kèm các cờ loại trừ khỏi theo dõi, lịch sử và đồng bộ cloud. Lịch sử Clipboard của V-Notch tôn trọng các cờ này; app khác có thể bỏ qua chúng và đọc/lưu văn bản. Lựa chọn ngôn ngữ và trạng thái bật/Auto được lưu cùng cấu hình thông thường.
 

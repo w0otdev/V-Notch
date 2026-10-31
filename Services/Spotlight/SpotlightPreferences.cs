@@ -37,11 +37,25 @@ internal sealed partial class SpotlightPreferences
     private readonly string _path;
     private State? _state;
     private volatile string[]? _excludedFoldersSnapshot;
+    private Func<string, bool> _directoryExistsProbe = Directory.Exists;
     private string? _pendingSave;
     private bool _saving;
     private Task _saveTask = Task.CompletedTask;
 
     internal SpotlightPreferences(string path) => _path = path;
+
+    internal Func<string, bool> DirectoryExistsProbe
+    {
+        get => _directoryExistsProbe;
+        set
+        {
+            lock (_gate)
+            {
+                _directoryExistsProbe = value ?? Directory.Exists;
+                _excludedFoldersSnapshot = null;
+            }
+        }
+    }
 
     internal sealed class AppPreference
     {
@@ -99,7 +113,7 @@ internal sealed partial class SpotlightPreferences
             }
 
             _state.ExcludedFolders = cleanedFolders;
-            _excludedFoldersSnapshot = cleanedFolders.Count == 0 ? Array.Empty<string>() : cleanedFolders.ToArray();
+            _excludedFoldersSnapshot = null;
             return _state;
         }
     }
@@ -194,7 +208,52 @@ internal sealed partial class SpotlightPreferences
         lock (_gate)
         {
             Data.ExcludedFolders = normalized;
-            _excludedFoldersSnapshot = normalized.Count == 0 ? Array.Empty<string>() : normalized.ToArray();
+            _excludedFoldersSnapshot = null;
+            Save();
+        }
+    }
+
+    public void AddExcludedFolder(string folder)
+    {
+        if (string.IsNullOrWhiteSpace(folder)) return;
+        string norm = NormalizeFolder(folder);
+        lock (_gate)
+        {
+            var list = Data.ExcludedFolders;
+            for (int i = 0; i < list.Count; i++)
+            {
+                if (list[i].Equals(norm, StringComparison.OrdinalIgnoreCase))
+                {
+                    _excludedFoldersSnapshot = null;
+                    return;
+                }
+            }
+            list.Add(norm);
+            _excludedFoldersSnapshot = null;
+            Save();
+        }
+    }
+
+    public bool RemoveExcludedFolder(string folder)
+    {
+        if (string.IsNullOrWhiteSpace(folder)) return false;
+        string norm = NormalizeFolder(folder);
+        lock (_gate)
+        {
+            int removed = Data.ExcludedFolders.RemoveAll(f => f.Equals(norm, StringComparison.OrdinalIgnoreCase));
+            _excludedFoldersSnapshot = null;
+            if (removed == 0) return false;
+            Save();
+            return true;
+        }
+    }
+
+    public void ResetExcludedFolders()
+    {
+        lock (_gate)
+        {
+            Data.ExcludedFolders.Clear();
+            _excludedFoldersSnapshot = null;
             Save();
         }
     }
@@ -209,14 +268,29 @@ internal sealed partial class SpotlightPreferences
         return Path.TrimEndingDirectorySeparator(Path.GetFullPath(folder));
     }
 
-    private string[] GetExcludedFoldersSnapshot()
+    internal string[] GetExcludedFoldersSnapshot()
     {
         var snapshot = _excludedFoldersSnapshot;
         if (snapshot != null) return snapshot;
         lock (_gate)
         {
-            _ = Data;
-            return _excludedFoldersSnapshot ?? Array.Empty<string>();
+            if (_excludedFoldersSnapshot != null) return _excludedFoldersSnapshot;
+            var folders = Data.ExcludedFolders;
+            var probe = _directoryExistsProbe;
+            if (probe != Directory.Exists)
+            {
+                if (folders.Count == 0)
+                {
+                    _ = probe(_path);
+                }
+                else
+                {
+                    for (int i = 0; i < folders.Count; i++)
+                        _ = probe(folders[i]);
+                }
+            }
+            _excludedFoldersSnapshot = folders.Count == 0 ? Array.Empty<string>() : folders.ToArray();
+            return _excludedFoldersSnapshot;
         }
     }
 

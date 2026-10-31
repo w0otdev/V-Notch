@@ -3,7 +3,7 @@
 **Ngày hiệu lực:** 31 tháng 10 năm 2026
 **Người duy trì:** w0otdev  
 **Dự án:** https://github.com/w0otdev/V-Notch  
-**Phạm vi:** bản ứng dụng Windows chính thức và tài liệu đi kèm, luôn tuân theo các giấy phép mã nguồn mở có hiệu lực riêng. Phiên bản ứng dụng được mô tả là 2.2.1; phải đối chiếu với bản nhị phân thực tế phát hành.
+**Phạm vi:** bản ứng dụng Windows chính thức và tài liệu đi kèm, luôn tuân theo các giấy phép mã nguồn mở có hiệu lực riêng. Phiên bản ứng dụng được mô tả là 2.2.2; phải đối chiếu với bản nhị phân thực tế phát hành.
 
 > **Lưu ý:** V-Notch là dự án mã nguồn mở, miễn phí và độc lập, không phải dịch vụ lưu trữ trả phí. Văn bản này không sửa đổi Apache-2.0 hoặc giấy phép bên thứ ba; không tước quyền luật định bắt buộc; không cấp quyền đối với nội dung của người khác; không chứng minh bất kỳ nền tảng nào đã cho phép tích hợp. Không điều khoản nào bảo đảm ngăn được kiện tụng.
 

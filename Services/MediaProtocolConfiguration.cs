@@ -13,12 +13,6 @@ internal sealed partial record MediaProtocolConfiguration(
     IReadOnlyList<string> PipedInstances, IReadOnlyList<string> InvidiousInstances)
 {
     [LibraryImport("VNotch.Native.dll", StringMarshalling = StringMarshalling.Utf16)]
-    private static partial int vn_media_protocol_is_hash(
-        ReadOnlySpan<char> ptr,
-        int len,
-        out byte outValid);
-
-    [LibraryImport("VNotch.Native.dll", StringMarshalling = StringMarshalling.Utf16)]
     private static partial int vn_media_protocol_validate_scalars(
         int schemaVersion,
         ReadOnlySpan<char> totpVerPtr, int totpVerLen,

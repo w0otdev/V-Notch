@@ -72,6 +72,9 @@ VN_EXPORT int32_t vn_selection_text_reader_sanitize(
     }
     const std::u16string_view sv(part ? part : u"", static_cast<size_t>(part_len));
     *out_len = vnotch::services::translation::SelectionTextReader::SanitizeToBuffer(sv, out_buf, out_cap);
+    if (*out_len > 0 && (!out_buf || out_cap < *out_len)) {
+        return VN_ERR_BUFFER_TOO_SMALL;
+    }
     return VN_OK;
 }
 

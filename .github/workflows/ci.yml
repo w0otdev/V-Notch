@@ -179,8 +179,14 @@ jobs:
       - name: Run unit tests
         shell: pwsh
         run: >-
-          ./scripts/t.ps1 -All -NoBuild -Configuration Release -Shards 4
-          -BlameHangTimeoutSeconds 60 -ResultsDirectory artifacts/unit-test-results
+          dotnet test Tests/VNotch.Tests.csproj --configuration Release --no-build --no-restore
+          --filter "Category!=DesktopIntegration" --blame-hang-timeout 60s
+          --collect:"XPlat Code Coverage" --results-directory TestResults/Coverage
+          --logger "trx;LogFileName=unit-tests.trx" --logger "console;verbosity=minimal"
+
+      - name: Assert code coverage
+        shell: pwsh
+        run: pwsh -NoProfile -File Tools/Assert-Coverage.ps1 -ResultsDirectory TestResults/Coverage -MinimumLinePercent 70
 
       - name: Verify gates, update compatibility & package audit in parallel
         id: gates

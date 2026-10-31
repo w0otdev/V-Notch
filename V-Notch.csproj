@@ -40,9 +40,9 @@
          reflection, COM interop or CPU/GPU translation backends. -->
     <EnableCompressionInSingleFile Condition="'$(Configuration)' == 'Release' And '$(SelfContained)' == 'true'">true</EnableCompressionInSingleFile>
     <PublishReferencesDocumentationFiles>false</PublishReferencesDocumentationFiles>
-    <Version>2.2.1</Version>
-    <AssemblyVersion>2.2.1</AssemblyVersion>
-    <FileVersion>2.2.1</FileVersion>
+    <Version>2.2.2</Version>
+    <AssemblyVersion>2.2.2</AssemblyVersion>
+    <FileVersion>2.2.2</FileVersion>
     <Authors>w0otdev</Authors>
     <Company>V-Notch</Company>
     <Product>V-Notch</Product>
@@ -167,7 +167,7 @@
     <_WindowsKitsRoot Condition="'$(_WindowsKitsRoot)' == '' And '$(WindowsSdkDir)' != ''">$(WindowsSdkDir)</_WindowsKitsRoot>
     <_WindowsKitsRoot Condition="'$(_WindowsKitsRoot)' == '' And '$(MSBuildProgramFiles32)' != ''">$(MSBuildProgramFiles32)\Windows Kits\10\</_WindowsKitsRoot>
   </PropertyGroup>
-  <Target Name="CompileLiquidGlassShader" BeforeTargets="BeforeBuild" Condition="'$(SkipShaderCompile)' != 'true' And '$(DesignTimeBuild)' != 'true'" Inputs="$(_LiquidGlassShaderSource)" Outputs="$(_LiquidGlassShaderOutput)">
+  <Target Name="CompileLiquidGlassShader" BeforeTargets="BeforeBuild" Condition="'$(SkipShaderCompile)' != 'true' And '$(DesignTimeBuild)' != 'true' And !$(MSBuildProjectName.EndsWith('_wpftmp'))" Inputs="$(_LiquidGlassShaderSource)" Outputs="$(_LiquidGlassShaderOutput)">
     <ItemGroup Condition="'$(FxcPath)' == ''">
       <!-- Versioned SDK folders enumerate in name order, so the last match is the newest SDK. -->
       <_FxcCandidate Include="$(WindowsSdkVerBinPath)x64\fxc.exe" Condition="'$(WindowsSdkVerBinPath)' != '' And Exists('$(WindowsSdkVerBinPath)x64\fxc.exe')" />
@@ -201,7 +201,7 @@
     <_VNotchNativeAvx2Sources Include="$(MSBuildThisFileDirectory)Native\**\*.avx2.cpp" />
     <_VNotchNativeBaselineSources Include="$(MSBuildThisFileDirectory)Native\**\*.cpp" Exclude="$(MSBuildThisFileDirectory)Native\**\*.avx2.cpp" />
   </ItemGroup>
-  <Target Name="CompileVNotchNative" BeforeTargets="BeforeBuild" Condition="'$(SkipNativeCompile)' != 'true' And '$(DesignTimeBuild)' != 'true'" Inputs="@(_VNotchNativeSources);@(_VNotchNativeHeaders)" Outputs="$(_VNotchNativeDll)">
+  <Target Name="CompileVNotchNative" BeforeTargets="BeforeBuild" Condition="'$(SkipNativeCompile)' != 'true' And '$(DesignTimeBuild)' != 'true' And !$(MSBuildProjectName.EndsWith('_wpftmp'))" Inputs="@(_VNotchNativeSources);@(_VNotchNativeHeaders)" Outputs="$(_VNotchNativeDll)">
     <PropertyGroup Condition="'$(VcVars64Path)' == ''">
       <_VcVarsCacheFile>$(_VNotchNativeObjDir)\vcvars64.cache</_VcVarsCacheFile>
       <VcVars64Path Condition="Exists('$(_VcVarsCacheFile)')">$([System.IO.File]::ReadAllText('$(_VcVarsCacheFile)').Trim())</VcVars64Path>

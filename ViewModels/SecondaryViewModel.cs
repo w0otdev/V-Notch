@@ -44,7 +44,8 @@ public partial class SecondaryViewModel : ObservableObject
     public void UpdateCalendar(DateTime? value = null)
     {
         var now = value ?? DateTime.Now;
-        CalendarMonth = now.ToString("MMM");
-        CalendarDay = now.Day.ToString();
+        var culture = Loc.GetCulture();
+        CalendarMonth = now.ToString("MMM", culture).ToUpper(culture);
+        CalendarDay = now.Day.ToString(culture);
     }
 }

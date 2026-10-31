@@ -43,6 +43,42 @@ bool OrdinalEqualsIgnoreCase(std::u16string_view a, std::u16string_view b) noexc
                                 reinterpret_cast<const wchar_t*>(b.data()), static_cast<int>(b.size()), TRUE) == CSTR_EQUAL;
 }
 
+constexpr bool HasEmbeddedNull(std::u16string_view view) noexcept {
+    return view.find(u'\0') != std::u16string_view::npos;
+}
+
+constexpr bool HasEmbeddedNull(std::wstring_view view) noexcept {
+    return view.find(L'\0') != std::wstring_view::npos;
+}
+
+bool TryCopyNullTerminated(
+    const char16_t* ptr,
+    int32_t length,
+    size_t max_chars,
+    wchar_t (&stack_buf)[kStackPathChars],
+    std::wstring& heap_buf,
+    const wchar_t*& out_cstr) noexcept {
+    out_cstr = nullptr;
+    if (!ptr || length <= 0 || static_cast<size_t>(length) >= max_chars) return false;
+    std::wstring_view view(reinterpret_cast<const wchar_t*>(ptr), static_cast<size_t>(length));
+    if (HasEmbeddedNull(view)) return false;
+
+    if (view.size() < kStackPathChars) {
+        std::memcpy(stack_buf, view.data(), view.size() * sizeof(wchar_t));
+        stack_buf[view.size()] = L'\0';
+        out_cstr = stack_buf;
+        return true;
+    }
+
+    try {
+        heap_buf.assign(view.data(), view.size());
+        out_cstr = heap_buf.c_str();
+        return true;
+    } catch (...) {
+        return false;
+    }
+}
+
 // Image path of the process, compared with expected. Falls back to a MAX_PATH-extended buffer on demand.
 bool ImagePathEquals(HANDLE process, std::u16string_view expected) noexcept {
     wchar_t stack_buffer[kStackPathChars];
@@ -97,11 +133,13 @@ VN_EXPORT int32_t __stdcall vn_process_snapshot(
 
 VN_EXPORT int32_t __stdcall vn_process_image_path_equals(
     uint32_t process_id, const char16_t* expected, int32_t expected_length, uint8_t* out_equal) noexcept {
+    if (out_equal) *out_equal = 0;
     if (!expected || expected_length < 0 || !out_equal) return VN_ERR_INVALID_ARG;
-    *out_equal = 0;
+    std::u16string_view expected_view(expected, static_cast<size_t>(expected_length));
+    if (sys::HasEmbeddedNull(expected_view)) return VN_ERR_INVALID_ARG;
     sys::ProcessHandle process(process_id);
     if (!process) return VN_ERR_FAIL;
-    *out_equal = sys::ImagePathEquals(process.handle, std::u16string_view(expected, static_cast<size_t>(expected_length))) ? 1 : 0;
+    *out_equal = sys::ImagePathEquals(process.handle, expected_view) ? 1 : 0;
     return VN_OK;
 }
 
@@ -109,8 +147,8 @@ VN_EXPORT int32_t __stdcall vn_process_image_path_equals(
 // VN_ERR_BUFFER_TOO_SMALL = out_length holds the required size (including the terminator).
 VN_EXPORT int32_t __stdcall vn_process_package_family_name(
     uint32_t process_id, char16_t* buffer, int32_t capacity, int32_t* out_length) noexcept {
+    if (out_length) *out_length = 0;
     if (!buffer || capacity <= 0 || !out_length) return VN_ERR_INVALID_ARG;
-    *out_length = 0;
     sys::ProcessHandle process(process_id);
     if (!process) return VN_ERR_FAIL;
     UINT32 length = static_cast<UINT32>(capacity);
@@ -129,19 +167,29 @@ VN_EXPORT int32_t __stdcall vn_process_package_family_name(
 // Compares the process application user model id (case-insensitive) with expected.
 VN_EXPORT int32_t __stdcall vn_process_app_user_model_id_equals(
     int64_t process_handle, const char16_t* expected, int32_t expected_length, uint8_t* out_equal) noexcept {
+    if (out_equal) *out_equal = 0;
     if (!expected || expected_length < 0 || !out_equal) return VN_ERR_INVALID_ARG;
-    *out_equal = 0;
+    std::u16string_view expected_view(expected, static_cast<size_t>(expected_length));
+    if (sys::HasEmbeddedNull(expected_view)) return VN_ERR_INVALID_ARG;
     HANDLE process = reinterpret_cast<HANDLE>(static_cast<intptr_t>(process_handle));
     UINT32 length = 0;
     if (GetApplicationUserModelId(process, &length, nullptr) != ERROR_INSUFFICIENT_BUFFER ||
         length == 0 || length > sys::kMaxPathChars)
         return VN_OK;
+    if (length <= sys::kStackPathChars) {
+        wchar_t stack_id[sys::kStackPathChars];
+        if (GetApplicationUserModelId(process, &length, stack_id) != ERROR_SUCCESS || length == 0) return VN_OK;
+        *out_equal = sys::OrdinalEqualsIgnoreCase(
+            std::u16string_view(reinterpret_cast<const char16_t*>(stack_id), length - 1),
+            expected_view) ? 1 : 0;
+        return VN_OK;
+    }
     try {
         std::vector<wchar_t> id(length);
         if (GetApplicationUserModelId(process, &length, id.data()) != ERROR_SUCCESS || length == 0) return VN_OK;
         *out_equal = sys::OrdinalEqualsIgnoreCase(
             std::u16string_view(reinterpret_cast<const char16_t*>(id.data()), length - 1),
-            std::u16string_view(expected, static_cast<size_t>(expected_length))) ? 1 : 0;
+            expected_view) ? 1 : 0;
         return VN_OK;
     } catch (...) {
         return VN_ERR_FAIL;
@@ -163,57 +211,68 @@ VN_EXPORT int32_t __stdcall vn_registry_notify_change(
 // CREATE_NEW read handle that deletes the file when the last handle closes. Caller owns the handle.
 VN_EXPORT int32_t __stdcall vn_file_create_delete_on_close(
     const char16_t* path, int32_t path_length, int64_t* out_handle, int32_t* out_last_error) noexcept {
-    if (!path || path_length <= 0 || path_length >= 32768 || !out_handle) return VN_ERR_INVALID_ARG;
-    *out_handle = 0;
+    if (out_handle) *out_handle = 0;
     if (out_last_error) *out_last_error = 0;
-    try {
-        std::wstring wide(reinterpret_cast<const wchar_t*>(path), static_cast<size_t>(path_length));
-        SetLastError(0);
-        HANDLE handle = CreateFileW(wide.c_str(), GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
-                                    nullptr, CREATE_NEW, FILE_FLAG_DELETE_ON_CLOSE | FILE_ATTRIBUTE_TEMPORARY, nullptr);
-        if (handle == INVALID_HANDLE_VALUE) {
-            if (out_last_error) *out_last_error = static_cast<int32_t>(GetLastError());
-            return VN_ERR_FAIL;
-        }
-        *out_handle = static_cast<int64_t>(reinterpret_cast<intptr_t>(handle));
-        return VN_OK;
-    } catch (...) {
+    if (!path || path_length <= 0 || path_length >= static_cast<int32_t>(sys::kMaxPathChars) || !out_handle) return VN_ERR_INVALID_ARG;
+    std::wstring_view path_view(reinterpret_cast<const wchar_t*>(path), static_cast<size_t>(path_length));
+    if (sys::HasEmbeddedNull(path_view)) return VN_ERR_INVALID_ARG;
+
+    wchar_t stack_path[sys::kStackPathChars];
+    std::wstring heap_path;
+    const wchar_t* c_path = nullptr;
+    if (!sys::TryCopyNullTerminated(path, path_length, sys::kMaxPathChars, stack_path, heap_path, c_path))
+        return VN_ERR_FAIL;
+
+    SetLastError(0);
+    HANDLE handle = CreateFileW(c_path, GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
+                                nullptr, CREATE_NEW, FILE_FLAG_DELETE_ON_CLOSE | FILE_ATTRIBUTE_TEMPORARY, nullptr);
+    if (handle == INVALID_HANDLE_VALUE) {
+        if (out_last_error) *out_last_error = static_cast<int32_t>(GetLastError());
         return VN_ERR_FAIL;
     }
+    *out_handle = static_cast<int64_t>(reinterpret_cast<intptr_t>(handle));
+    return VN_OK;
 }
 
 // WinVerifyTrust(WINTRUST_ACTION_GENERIC_VERIFY_V2) for a file, no UI and no revocation check.
 VN_EXPORT int32_t __stdcall vn_update_verify_authenticode(
     const char16_t* path, int32_t path_length, uint8_t* out_trusted) noexcept {
-    if (!path || path_length <= 0 || path_length >= 32768 || !out_trusted) return VN_ERR_INVALID_ARG;
-    *out_trusted = 0;
-    try {
-        std::wstring wide(reinterpret_cast<const wchar_t*>(path), static_cast<size_t>(path_length));
-        WINTRUST_FILE_INFO file{};
-        file.cbStruct = sizeof(file);
-        file.pcwszFilePath = wide.c_str();
-        WINTRUST_DATA data{};
-        data.cbStruct = sizeof(data);
-        data.dwUIChoice = WTD_UI_NONE;
-        data.fdwRevocationChecks = WTD_REVOKE_NONE;
-        data.dwUnionChoice = WTD_CHOICE_FILE;
-        data.pFile = &file;
-        data.dwStateAction = WTD_STATEACTION_IGNORE;
-        GUID action = WINTRUST_ACTION_GENERIC_VERIFY_V2;
-        *out_trusted = WinVerifyTrust(nullptr, &action, &data) == 0 ? 1 : 0;
-        return VN_OK;
-    } catch (...) {
+    if (out_trusted) *out_trusted = 0;
+    if (!path || path_length <= 0 || path_length >= static_cast<int32_t>(sys::kMaxPathChars) || !out_trusted) return VN_ERR_INVALID_ARG;
+    std::wstring_view path_view(reinterpret_cast<const wchar_t*>(path), static_cast<size_t>(path_length));
+    if (sys::HasEmbeddedNull(path_view)) return VN_ERR_INVALID_ARG;
+
+    wchar_t stack_path[sys::kStackPathChars];
+    std::wstring heap_path;
+    const wchar_t* c_path = nullptr;
+    if (!sys::TryCopyNullTerminated(path, path_length, sys::kMaxPathChars, stack_path, heap_path, c_path))
         return VN_ERR_FAIL;
-    }
+
+    WINTRUST_FILE_INFO file{};
+    file.cbStruct = sizeof(file);
+    file.pcwszFilePath = c_path;
+    WINTRUST_DATA data{};
+    data.cbStruct = sizeof(data);
+    data.dwUIChoice = WTD_UI_NONE;
+    data.fdwRevocationChecks = WTD_REVOKE_NONE;
+    data.dwUnionChoice = WTD_CHOICE_FILE;
+    data.pFile = &file;
+    data.dwStateAction = WTD_STATEACTION_IGNORE;
+    GUID action = WINTRUST_ACTION_GENERIC_VERIFY_V2;
+    *out_trusted = WinVerifyTrust(nullptr, &action, &data) == 0 ? 1 : 0;
+    return VN_OK;
 }
 
 // ---------------------------------------------------------------- window messaging
 
 VN_EXPORT int32_t __stdcall vn_win32_find_window(
     const char16_t* class_name, int32_t class_length, int64_t* out_hwnd) noexcept {
+    if (out_hwnd) *out_hwnd = 0;
     if (!class_name || class_length <= 0 || class_length >= 256 || !out_hwnd) return VN_ERR_INVALID_ARG;
+    std::wstring_view class_view(reinterpret_cast<const wchar_t*>(class_name), static_cast<size_t>(class_length));
+    if (sys::HasEmbeddedNull(class_view)) return VN_ERR_INVALID_ARG;
     wchar_t name[256]{};
-    std::copy_n(reinterpret_cast<const wchar_t*>(class_name), class_length, name);
+    std::copy_n(class_view.data(), class_view.size(), name);
     *out_hwnd = static_cast<int64_t>(reinterpret_cast<intptr_t>(FindWindowW(name, nullptr)));
     return VN_OK;
 }

@@ -90,13 +90,24 @@ public sealed class TranslationStartupTests
     [Fact]
     public async Task ConsecutiveSpecialistInferencesDoNotDisposeContextHandle()
     {
-        string userModelDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "VNotch", "translation-models", "translategemma-4b");
-        if (!Directory.Exists(userModelDir)) return;
         var profile = TranslationModelCatalog.Find("translategemma-4b");
-        var store = new TranslationModelStore(userModelDir, profile: profile);
-        using var engine = new QwenTranslationEngine(store);
+        var store = new TranslationModelStore(profile: profile);
+        Assert.Equal(TranslationPromptKind.TranslateGemma, profile.PromptKind);
+        Assert.Equal(
+            Path.GetFullPath(Path.Combine(VNotch.Services.AppPaths.LocalAppDataRoot, "translation-models", "translategemma-4b")),
+            store.Root);
+        Assert.StartsWith(VNotch.Services.AppPaths.LocalAppDataRoot, store.Root, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain(
+            VNotch.Services.AppPaths.LegacyLocalAppDataRoot + Path.DirectorySeparatorChar,
+            store.Root,
+            StringComparison.OrdinalIgnoreCase);
+
+        using var engine = new PreparedEngine { Echo = true, Profile = profile };
         using var service = new LocalTranslationService(engine);
-        service.Configure(new TranslationOptions { GpuLayers = 36, ContextSize = 2048 });
+        var options = new TranslationOptions { GpuLayers = 36, ContextSize = 2048 };
+        service.Configure(options);
+        Assert.False(QwenTranslationEngine.RequiresNewContext(options, options));
+
         string[] samples =
         [
             "*(Lưu ý: Hiện có một tiến trình V-Notch.exe bản cũ đang chạy nền trên máy, bạn hãy tắt và build/chạy lại app để áp dụng code mới).*",
@@ -111,6 +122,11 @@ public sealed class TranslationStartupTests
             Assert.False(string.IsNullOrWhiteSpace(res.Text));
             Assert.True(res.LiteralsPreserved);
         }
+
+        Assert.True(engine.Calls >= 3);
+        Assert.Equal(1, engine.ContextHandlesCreated);
+        Assert.Equal(0, engine.ContextHandlesDisposed);
+        Assert.False(engine.Disposed);
     }
 
     [Fact]
@@ -480,6 +496,11 @@ public sealed class TranslationStartupTests
     private sealed class PreparedEngine : ILocalTranslationEngine
     {
         internal bool Echo;
+        internal TranslationModelProfile? Profile;
+        internal TranslationOptions Options = new();
+        internal int ContextHandlesCreated;
+        internal int ContextHandlesDisposed;
+        internal bool Disposed;
         internal bool BlockPreparation;
         internal int PreparationThread;
         internal Action? OnTranslate;
@@ -491,6 +512,15 @@ public sealed class TranslationStartupTests
         internal string LastSource = "";
         internal TaskCompletionSource Preparing = new(TaskCreationOptions.RunContinuationsAsynchronously);
         internal TaskCompletionSource Prepared = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public void Configure(TranslationOptions options)
+        {
+            if (ContextHandlesCreated > 0 && (Options.GpuLayers != options.GpuLayers || QwenTranslationEngine.RequiresNewContext(Options, options)))
+            {
+                ContextHandlesDisposed++;
+                ContextHandlesCreated++;
+            }
+            Options = options;
+        }
         public async Task PrepareAsync(CancellationToken cancellationToken)
         {
             PreparationThread = Environment.CurrentManagedThreadId;
@@ -499,6 +529,8 @@ public sealed class TranslationStartupTests
         }
         public async Task<string> TranslateAsync(string text, string sourceLanguage, string targetLanguage, CancellationToken cancellationToken)
         {
+            ObjectDisposedException.ThrowIf(Disposed, this);
+            if (ContextHandlesCreated == 0) ContextHandlesCreated = 1;
             OnTranslate?.Invoke();
             Calls++;
             LastSource = sourceLanguage;
@@ -508,10 +540,16 @@ public sealed class TranslationStartupTests
                 try { await Task.Delay(Timeout.Infinite, cancellationToken); }
                 catch (OperationCanceledException) { FirstCancelled = true; Cancelled.TrySetResult(); throw; }
             }
+            if (Profile is { PromptKind: not TranslationPromptKind.General })
+            {
+                string prompt = TranslationModelPrompts.Build(Profile, text, sourceLanguage, targetLanguage, Options.EnableHumanizer);
+                Assert.False(string.IsNullOrWhiteSpace(prompt));
+                return QwenTranslationEngine.TrimStopSequence((Echo ? text : targetLanguage + " result") + "<end_of_turn>");
+            }
             return Echo ? text : targetLanguage + " result";
         }
         public void ReleaseIdleResources() { }
-        public void Dispose() { }
+        public void Dispose() => Disposed = true;
     }
 
     private sealed class ModelFixture : IDisposable

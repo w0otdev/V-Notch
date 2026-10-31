@@ -67,13 +67,44 @@ public static partial class RuntimeLog
         (int)LogLevel.Info;
 #endif
 
+    private static int _diskCaptureEnabled = 1;
     private const long MaxLogSizeBytes = 5 * 1024 * 1024;
     private static readonly TimeSpan DefaultShutdownTimeout = TimeSpan.FromSeconds(2);
 
     public static LogLevel MinimumLevel
     {
         get => (LogLevel)Volatile.Read(ref _minimumLevel);
-        set => Volatile.Write(ref _minimumLevel, (int)value);
+        set
+        {
+            Volatile.Write(ref _minimumLevel, (int)value);
+            Volatile.Write(ref _diskCaptureEnabled, value != LogLevel.None ? 1 : 0);
+        }
+    }
+
+    public static bool IsDiskCaptureEnabled
+    {
+        get => Volatile.Read(ref _diskCaptureEnabled) != 0 && MinimumLevel != LogLevel.None;
+        set => SetDiskCaptureEnabled(value);
+    }
+
+    public static void SetDiskCaptureEnabled(bool enabled)
+    {
+        Volatile.Write(ref _diskCaptureEnabled, enabled ? 1 : 0);
+        if (!enabled)
+        {
+            Volatile.Write(ref _minimumLevel, (int)LogLevel.None);
+        }
+        else if ((LogLevel)Volatile.Read(ref _minimumLevel) == LogLevel.None)
+        {
+            Volatile.Write(
+                ref _minimumLevel,
+#if DEBUG
+                (int)LogLevel.Debug
+#else
+                (int)LogLevel.Info
+#endif
+            );
+        }
     }
 
     public static event Action<LogLevel, string, string>? EntryWritten;
@@ -82,6 +113,7 @@ public static partial class RuntimeLog
 
     public static bool IsEnabled(LogLevel level)
     {
+        if (!IsDiskCaptureEnabled) return false;
         byte init = _initialized ? (byte)1 : (byte)0;
         return vn_runtime_log_is_level_enabled(init, (int)level, Volatile.Read(ref _minimumLevel), out byte enabled) == 0
             ? enabled != 0
@@ -210,7 +242,7 @@ public static partial class RuntimeLog
     {
         WriteEntry(LogLevel.Error, category, message);
         ReadOnlySpan<char> catSpan = category is not null ? category.AsSpan() : ReadOnlySpan<char>.Empty;
-        if (vn_runtime_log_should_forward_crash(_initialized ? (byte)1 : (byte)0, catSpan, catSpan.Length, out byte forward) == 0 && forward != 0)
+        if (IsDiskCaptureEnabled && vn_runtime_log_should_forward_crash(_initialized ? (byte)1 : (byte)0, catSpan, catSpan.Length, out byte forward) == 0 && forward != 0)
         {
             CrashReporter.LogCrash($"RuntimeLog.{category}", message);
         }
@@ -224,7 +256,7 @@ public static partial class RuntimeLog
         WriteEntry(LogLevel.Error, category, $"{msg}{Environment.NewLine}{ex}");
 
         ReadOnlySpan<char> catSpan = category is not null ? category.AsSpan() : ReadOnlySpan<char>.Empty;
-        if (vn_runtime_log_should_forward_crash(_initialized ? (byte)1 : (byte)0, catSpan, catSpan.Length, out byte forward) == 0 && forward != 0)
+        if (IsDiskCaptureEnabled && vn_runtime_log_should_forward_crash(_initialized ? (byte)1 : (byte)0, catSpan, catSpan.Length, out byte forward) == 0 && forward != 0)
         {
             CrashReporter.LogCrash($"RuntimeLog.{category}", ex, context);
         }
@@ -308,7 +340,8 @@ public static partial class RuntimeLog
             }
 
         }
-        if (restart) await InitializeNewSessionCoreAsync(null).ConfigureAwait(false);
+        CrashReporter.DeleteCrashLogs();
+        if (restart && IsDiskCaptureEnabled) await InitializeNewSessionCoreAsync(null).ConfigureAwait(false);
     }
 
     private static string LevelLabel(LogLevel level) => level switch
@@ -379,7 +412,7 @@ public static partial class RuntimeLog
         }
     }
 
-    private sealed class AsyncLogWriter
+    internal sealed class AsyncLogWriter : IDisposable
     {
         private const int NormalQueueCapacity = 4096;
         private const int CriticalQueueCapacity = 8192;
@@ -402,21 +435,19 @@ public static partial class RuntimeLog
 
         public Task Completion { get; }
 
-        public bool TryEnqueue(string line, LogLevel level)
+        public bool TryEnqueue(string line, LogLevel level = LogLevel.Info)
         {
             if (Volatile.Read(ref _stopRequested) != 0)
             {
                 return false;
             }
 
-            int count = Interlocked.Increment(ref _queuedCount);
             int fallbackCap = level >= LogLevel.Warn ? CriticalQueueCapacity : NormalQueueCapacity;
             int capacity = vn_runtime_log_resolve_queue_capacity((int)level, NormalQueueCapacity, CriticalQueueCapacity, out int outCap) == 0
                 ? outCap
                 : fallbackCap;
-            if (count > capacity)
+            if (Volatile.Read(ref _queuedCount) >= capacity)
             {
-                Interlocked.Decrement(ref _queuedCount);
                 Interlocked.Increment(ref _droppedCount);
                 return false;
             }
@@ -424,15 +455,27 @@ public static partial class RuntimeLog
             if (line.Length > MaxBatchCharacters)
                 line = line[..MaxBatchCharacters] + " [truncated]" + Environment.NewLine;
             _queue.Enqueue(new QueueItem(line, null));
+            int count = Interlocked.Increment(ref _queuedCount);
             SignalIfQueueWasEmpty(count);
             return true;
         }
 
         public Task EnqueueFlush()
         {
+            if (Volatile.Read(ref _stopRequested) != 0)
+            {
+                return Task.CompletedTask;
+            }
+
             var completion = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-            int count = Interlocked.Increment(ref _queuedCount);
             _queue.Enqueue(new QueueItem(null, completion));
+            int count = Interlocked.Increment(ref _queuedCount);
+            if (Volatile.Read(ref _stopRequested) != 0)
+            {
+                CompletePendingFlushes();
+                return completion.Task;
+            }
+
             SignalIfQueueWasEmpty(count);
             return completion.Task;
         }
@@ -443,13 +486,15 @@ public static partial class RuntimeLog
             SignalWriter();
         }
 
+        public void Dispose() => RequestStop();
+
         private async Task WriteLoopAsync()
         {
             try
             {
                 while (true)
                 {
-                    if (Volatile.Read(ref _queuedCount) == 0)
+                    if (_queue.IsEmpty)
                     {
                         if (Volatile.Read(ref _stopRequested) != 0)
                         {
@@ -465,6 +510,11 @@ public static partial class RuntimeLog
                     }
 
                     await WriteNextBatchAsync().ConfigureAwait(false);
+
+                    if (Volatile.Read(ref _stopRequested) != 0 && _queue.IsEmpty)
+                    {
+                        break;
+                    }
                 }
             }
             catch
@@ -546,9 +596,16 @@ public static partial class RuntimeLog
 
         private void SignalIfQueueWasEmpty(int queueCount)
         {
-            if (queueCount == 1)
+            try
             {
-                SignalWriter();
+                if (queueCount <= 1 || _queueSignal.CurrentCount == 0)
+                {
+                    SignalWriter();
+                }
+            }
+            catch (ObjectDisposedException)
+            {
+                // Writer loop has already exited and disposed the signal.
             }
         }
 
@@ -558,9 +615,9 @@ public static partial class RuntimeLog
             {
                 _queueSignal.Release();
             }
-            catch (SemaphoreFullException)
+            catch (Exception ex) when (ex is SemaphoreFullException or ObjectDisposedException)
             {
-                // Semaphore is already signaled (capacity reached); safe to ignore
+                // Semaphore is already signaled or disposed during shutdown; safe to ignore
             }
         }
 

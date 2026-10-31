@@ -85,7 +85,7 @@ public sealed partial class PerformanceDiagnosticService
     // Dispatcher latency
     private double _lastDispatcherLatencyMs;
     private long _lastDispatcherPingTicks;
-    private bool _dispatcherPingPending;
+    private int _dispatcherPingPending;
 
     // Thread count cache
     private long _lastThreadCountTicks;
@@ -104,6 +104,28 @@ public sealed partial class PerformanceDiagnosticService
     private string _currentHealthSummary = "Performance Nominal";
     private DateTime _lastHealthAlertTime = DateTime.MinValue;
     private readonly long _serviceStartTicks = Stopwatch.GetTimestamp();
+
+    public PerformanceHealthLevel CurrentHealthLevel
+    {
+        get
+        {
+            lock (_lock)
+            {
+                return _currentHealthLevel;
+            }
+        }
+    }
+
+    public string CurrentHealthSummary
+    {
+        get
+        {
+            lock (_lock)
+            {
+                return _currentHealthSummary;
+            }
+        }
+    }
 
     private PerformanceDiagnosticService()
         : this(subscribeToRuntimeLog: true)
@@ -157,88 +179,109 @@ public sealed partial class PerformanceDiagnosticService
 
     public void PingDispatcher(Dispatcher dispatcher)
     {
-        if (_dispatcherPingPending || dispatcher == null) return;
-        _dispatcherPingPending = true;
-        _lastDispatcherPingTicks = Stopwatch.GetTimestamp();
+        if (dispatcher == null || Interlocked.CompareExchange(ref _dispatcherPingPending, 1, 0) != 0) return;
+        Interlocked.Exchange(ref _lastDispatcherPingTicks, Stopwatch.GetTimestamp());
 
-        dispatcher.BeginInvoke(DispatcherPriority.Normal, new Action(() =>
+        try
         {
-            long now = Stopwatch.GetTimestamp();
-            _lastDispatcherLatencyMs = (double)(now - _lastDispatcherPingTicks) / Stopwatch.Frequency * 1000.0;
-            _dispatcherPingPending = false;
-        }));
+            dispatcher.BeginInvoke(DispatcherPriority.Normal, new Action(() =>
+            {
+                try
+                {
+                    long now = Stopwatch.GetTimestamp();
+                    long startTicks = Interlocked.Read(ref _lastDispatcherPingTicks);
+                    double latencyMs = Math.Max(0.0, (double)(now - startTicks) / Stopwatch.Frequency * 1000.0);
+                    Volatile.Write(ref _lastDispatcherLatencyMs, latencyMs);
+                }
+                finally
+                {
+                    Interlocked.Exchange(ref _dispatcherPingPending, 0);
+                }
+            }));
+        }
+        catch (Exception)
+        {
+            Interlocked.Exchange(ref _dispatcherPingPending, 0);
+        }
     }
 
+    internal void MeasureDispatcherLag(Dispatcher dispatcher) => PingDispatcher(dispatcher);
+
     public PerformanceDebugSnapshot SampleSnapshot(
-        double fps,
-        int hz,
-        double frameTimeMs,
-        double netDown,
-        double netUp)
+        double fps = 0,
+        int hz = 0,
+        double frameTimeMs = 0,
+        double netDown = 0,
+        double netUp = 0)
     {
-        long nowTicks = Stopwatch.GetTimestamp();
-        DateTime now = DateTime.Now;
-
-        double procCpu = SampleProcessCpu(nowTicks);
-        double globalCpu = SampleGlobalCpu();
-
-        SampleProcessMemory(out ulong procWorkingSet, out ulong procPrivateBytes);
-        SampleManagedMemory(nowTicks, out long managedHeapBytes, out int gen0, out int gen1, out int gen2);
-        SampleThreadAndHandleCounts(nowTicks, out int threadCount, out int handleCount);
-        SampleGlobalMemory(out ulong globalRamUsed, out ulong globalRamTotal, out ulong globalRamAvail, out double globalRamPercent);
-
         var (gpuName, vram) = GpuMonitorService.Instance.GetGpuInfo();
         var (procGpu, globalGpu) = GpuMonitorService.Instance.GetGpuUsage();
 
-        var metrics = new AnomalyMetrics
+        lock (_lock)
         {
-            Fps = fps,
-            Hz = hz,
-            FrameTimeMs = frameTimeMs,
-            DispatcherLatencyMs = _lastDispatcherLatencyMs,
-            ProcCpu = procCpu,
-            GlobalCpu = globalCpu,
-            ThreadCount = threadCount,
-            ProcWorkingSet = procWorkingSet,
-            ProcPrivateBytes = procPrivateBytes,
-            ManagedHeapBytes = managedHeapBytes,
-            Gen2 = gen2,
-            GlobalRamPercent = globalRamPercent,
-            GlobalRamAvail = globalRamAvail
-        };
+            long nowTicks = Stopwatch.GetTimestamp();
+            DateTime now = DateTime.Now;
 
-        DetectAnomalies(in metrics, now);
+            double procCpu = SampleProcessCpu(nowTicks);
+            double globalCpu = SampleGlobalCpu();
 
-        return new PerformanceDebugSnapshot
-        {
-            Fps = fps,
-            RefreshRateHz = hz,
-            FrameTimeMs = frameTimeMs,
-            DispatcherLatencyMs = _lastDispatcherLatencyMs,
-            GpuName = gpuName,
-            DedicatedVramBytes = vram,
-            ProcessCpuPercent = procCpu,
-            ProcessThreadCount = threadCount,
-            ProcessHandleCount = handleCount,
-            ProcessWorkingSetBytes = procWorkingSet,
-            ProcessPrivateBytes = procPrivateBytes,
-            ManagedHeapBytes = managedHeapBytes,
-            AllocBytesPerSec = _smoothedAllocBytesPerSec,
-            GcGen0Count = gen0,
-            GcGen1Count = gen1,
-            GcGen2Count = gen2,
-            ProcessGpuPercent = procGpu,
-            GlobalCpuPercent = globalCpu,
-            GlobalRamUsedBytes = globalRamUsed,
-            GlobalRamTotalBytes = globalRamTotal,
-            GlobalRamAvailBytes = globalRamAvail,
-            GlobalRamPercent = globalRamPercent,
-            GlobalGpuPercent = globalGpu,
-            NetDownBytesPerSec = netDown,
-            NetUpBytesPerSec = netUp,
-            HealthLevel = _currentHealthLevel,
-            HealthStatusSummary = _currentHealthSummary
-        };
+            SampleProcessMemory(out ulong procWorkingSet, out ulong procPrivateBytes);
+            SampleManagedMemory(nowTicks, out long managedHeapBytes, out int gen0, out int gen1, out int gen2);
+            SampleThreadAndHandleCounts(nowTicks, out int threadCount, out int handleCount);
+            SampleGlobalMemory(out ulong globalRamUsed, out ulong globalRamTotal, out ulong globalRamAvail, out double globalRamPercent);
+
+            double dispatcherLatencyMs = Volatile.Read(ref _lastDispatcherLatencyMs);
+
+            var metrics = new AnomalyMetrics
+            {
+                Fps = fps,
+                Hz = hz,
+                FrameTimeMs = frameTimeMs,
+                DispatcherLatencyMs = dispatcherLatencyMs,
+                ProcCpu = procCpu,
+                GlobalCpu = globalCpu,
+                ThreadCount = threadCount,
+                ProcWorkingSet = procWorkingSet,
+                ProcPrivateBytes = procPrivateBytes,
+                ManagedHeapBytes = managedHeapBytes,
+                Gen2 = gen2,
+                GlobalRamPercent = globalRamPercent,
+                GlobalRamAvail = globalRamAvail
+            };
+
+            DetectAnomalies(in metrics, now);
+
+            return new PerformanceDebugSnapshot
+            {
+                Fps = fps,
+                RefreshRateHz = hz,
+                FrameTimeMs = frameTimeMs,
+                DispatcherLatencyMs = dispatcherLatencyMs,
+                GpuName = gpuName,
+                DedicatedVramBytes = vram,
+                ProcessCpuPercent = procCpu,
+                ProcessThreadCount = threadCount,
+                ProcessHandleCount = handleCount,
+                ProcessWorkingSetBytes = procWorkingSet,
+                ProcessPrivateBytes = procPrivateBytes,
+                ManagedHeapBytes = managedHeapBytes,
+                AllocBytesPerSec = _smoothedAllocBytesPerSec,
+                GcGen0Count = gen0,
+                GcGen1Count = gen1,
+                GcGen2Count = gen2,
+                ProcessGpuPercent = procGpu,
+                GlobalCpuPercent = globalCpu,
+                GlobalRamUsedBytes = globalRamUsed,
+                GlobalRamTotalBytes = globalRamTotal,
+                GlobalRamAvailBytes = globalRamAvail,
+                GlobalRamPercent = globalRamPercent,
+                GlobalGpuPercent = globalGpu,
+                NetDownBytesPerSec = netDown,
+                NetUpBytesPerSec = netUp,
+                HealthLevel = _currentHealthLevel,
+                HealthStatusSummary = _currentHealthSummary
+            };
+        }
     }
 
     private double SampleProcessCpu(long nowTicks)
@@ -251,7 +294,7 @@ public sealed partial class PerformanceDiagnosticService
             }
 
             ulong procTotalTime = procKernel.ToUInt64() + procUser.ToUInt64();
-            if (_lastProcTicks > 0)
+            if (_lastProcTicks > 0 && nowTicks > _lastProcTicks && procTotalTime >= _lastProcTime)
             {
                 _ = vn_perf_diag_compute_process_cpu(
                     procTotalTime,
@@ -261,11 +304,16 @@ public sealed partial class PerformanceDiagnosticService
                     Stopwatch.Frequency,
                     _processorCount,
                     _smoothedProcCpu,
-                    out _smoothedProcCpu);
+                    out double rawProcCpu);
+                if (double.IsFinite(rawProcCpu))
+                {
+                    _smoothedProcCpu = Math.Clamp(rawProcCpu, 0.0, 100.0);
+                }
             }
 
             _lastProcTime = procTotalTime;
             _lastProcTicks = nowTicks;
+            _smoothedProcCpu = double.IsFinite(_smoothedProcCpu) ? Math.Clamp(_smoothedProcCpu, 0.0, 100.0) : 0.0;
             return _smoothedProcCpu < 0.05 ? 0.0 : _smoothedProcCpu;
         }
         catch (Exception)
@@ -299,14 +347,19 @@ public sealed partial class PerformanceDiagnosticService
                     _lastSysUser,
                     _hasGlobalCpuMeasurement ? (byte)1 : (byte)0,
                     _smoothedGlobalCpu,
-                    out _smoothedGlobalCpu,
+                    out double rawGlobalCpu,
                     out byte hasMeas);
                 _hasGlobalCpuMeasurement = hasMeas != 0;
+                if (double.IsFinite(rawGlobalCpu))
+                {
+                    _smoothedGlobalCpu = Math.Clamp(rawGlobalCpu, 0.0, 100.0);
+                }
             }
 
             _lastSysIdle = idle;
             _lastSysKernel = kernel;
             _lastSysUser = user;
+            _smoothedGlobalCpu = double.IsFinite(_smoothedGlobalCpu) ? Math.Clamp(_smoothedGlobalCpu, 0.0, 100.0) : 0.0;
             return _smoothedGlobalCpu;
         }
         catch (Exception)
@@ -353,7 +406,10 @@ public sealed partial class PerformanceDiagnosticService
             out double smoothedAlloc,
             out byte updated) == 0 && updated != 0)
         {
-            _smoothedAllocBytesPerSec = smoothedAlloc;
+            if (double.IsFinite(smoothedAlloc) && smoothedAlloc >= 0.0)
+            {
+                _smoothedAllocBytesPerSec = smoothedAlloc;
+            }
             _lastAllocatedBytes = currentTotalAlloc;
             _lastAllocSampleTicks = nowTicks;
         }

@@ -12,6 +12,7 @@ public partial class UpdateDownloadWindow : Window
         Language = System.Windows.Markup.XmlLanguage.GetLanguage(Loc.GetCulture().IetfLanguageTag);
         Title = Loc.Get("update.installingTitle");
         TitleText.Text = Loc.Get("update.installingTitle");
+        StatusText.Text = Loc.Get("update.preparingDownload");
     }
 
     public void SetStatus(string text)

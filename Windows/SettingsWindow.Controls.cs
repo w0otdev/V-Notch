@@ -331,12 +331,14 @@ public partial class SettingsWindow
     {
         bool enabled = HoverExpandCheck.IsChecked ?? false;
         AnimateDependentElement(HoverDelaySlider, enabled, 0.4, animate: true);
+        if (!_isLoadingSettings) PushLivePreview();
     }
 
     private void IdleAutoHideCheck_Changed(object sender, RoutedEventArgs e)
     {
         bool enabled = IdleAutoHideCheck.IsChecked ?? false;
         AnimateDependentElement(IdleAutoHideDelaySlider, enabled, 0.4, animate: true);
+        if (!_isLoadingSettings) PushLivePreview();
     }
 
     private void LanguageCombo_SelectionChanged(object sender, System.Windows.Controls.SelectionChangedEventArgs e)
@@ -348,10 +350,8 @@ public partial class SettingsWindow
 
             _settings.Language = lang;
             Loc.SetLanguage(lang);
-            _settingsAppService.ApplyAsync(_settings, _translationDownload?.Token ?? CancellationToken.None).SafeFireAndForget("SETTINGS-LANG");
-            _editSession.Commit(_settings);
             AnimateLocalizationChange();
-            SettingsChanged?.Invoke(this, _settings);
+            ApplyPreview(ReadSettingsFromUi());
         }
     }
 
@@ -444,7 +444,7 @@ public partial class SettingsWindow
         _settings.NavTabOrder = DefaultNavTabs;
         _settings.VisibleNavTabs = DefaultNavTabs;
         PopulateNavTabsSettings();
-        ApplySettingsFromUi(persist: true);
+        ApplySettingsFromUi(persist: false);
     }
 
 
@@ -464,11 +464,17 @@ public partial class SettingsWindow
         AnimateDependentElement(ManualCityTextBox, enabled, 0.45, animate);
     }
 
+    private void ManualCityTextBox_TextChanged(object sender, TextChangedEventArgs e)
+    {
+        if (!_isLoadingSettings) PushLivePreview();
+    }
+
     private void YouTubeApiCheck_Changed(object sender, RoutedEventArgs e)
     {
         if (_isLoadingSettings) return;
         bool enabled = YouTubeApiCheck.IsChecked ?? false;
         AnimateCollapsibleRow(YouTubeApiKeyRow, enabled, animate: true);
+        PushLivePreview();
     }
 
     private void YouTubeApiKeyPasswordBox_PasswordChanged(object sender, RoutedEventArgs e)
@@ -477,6 +483,7 @@ public partial class SettingsWindow
         if (YouTubeApiKeyTextBox.Visibility == Visibility.Collapsed)
             YouTubeApiKeyTextBox.Text = YouTubeApiKeyPasswordBox.Password;
         UpdateYouTubeApiKeyStatus();
+        PushLivePreview();
     }
 
     private void YouTubeApiKeyTextBox_TextChanged(object sender, System.Windows.Controls.TextChangedEventArgs e)
@@ -485,6 +492,7 @@ public partial class SettingsWindow
         if (YouTubeApiKeyTextBox.Visibility == Visibility.Visible)
             YouTubeApiKeyPasswordBox.Password = YouTubeApiKeyTextBox.Text;
         UpdateYouTubeApiKeyStatus();
+        PushLivePreview();
     }
 
     private void ProcessPriorityCombo_SelectionChanged(object sender, System.Windows.Controls.SelectionChangedEventArgs e)
@@ -571,14 +579,7 @@ public partial class SettingsWindow
             if (dialog.ShowDialog(this) == true)
             {
                 var (imported, _) = await _settingsAppService.ImportAsync(dialog.FileName, _settings, _translationDownload?.Token ?? CancellationToken.None);
-
-                _settings = imported.Clone();
-                _editSession.Reset(imported);
-
-                LoadSettings();
-                _editSession.Preview(ReadSettingsFromUi());
-                _settings = _editSession.Applied;
-                SettingsChanged?.Invoke(this, _settings);
+                await ApplyImportedSettingsAsync(imported, _translationDownload?.Token ?? CancellationToken.None);
 
                 if (BackupStatusText != null)
                 {

@@ -12,6 +12,8 @@ public partial class SpotlightWindow
     private readonly SpotlightChatStore _chatStore;
     private List<SpotlightSavedChat> _savedChats = new();
     private string _chatId = Guid.NewGuid().ToString("N");
+    internal readonly VisualBrush AiTopEdgeBrush = new();
+    internal readonly VisualBrush AiBottomEdgeBrush = new();
 
     private void LoadAiHistory()
     {
@@ -71,6 +73,7 @@ public partial class SpotlightWindow
         AiWelcome.Visibility = Visibility.Collapsed;
         AiHistoryPanel.Visibility = showHistory ? Visibility.Visible : Visibility.Collapsed;
         AiTranscriptScroll.Visibility = showHistory ? Visibility.Collapsed : Visibility.Visible;
+        UpdateAiScrollEdges();
 
         if (showHistory)
         {
@@ -287,6 +290,34 @@ public partial class SpotlightWindow
     {
         AiHistoryPanel.Visibility = Visibility.Collapsed;
         AiTranscriptScroll.Visibility = Visibility.Visible;
+        UpdateAiScrollEdges();
+    }
+
+    internal void ToggleAiHistoryPanel() => ToggleAiHistoryPage();
+
+    internal void ShowAiHistoryPanel()
+    {
+        if (AiHistoryPanel.Visibility != Visibility.Visible) ToggleAiHistoryPage();
+        else UpdateAiScrollEdges();
+    }
+
+    internal void HideAiHistoryPanel() => CloseAiHistory();
+
+    internal void UpdateAiScrollEdges()
+    {
+        if (AiTopEdge == null || AiBottomEdge == null) return;
+        if (AiHistoryPanel.Visibility == Visibility.Visible)
+        {
+            AiTopEdge.Visibility = Visibility.Collapsed;
+            AiBottomEdge.Visibility = Visibility.Collapsed;
+            return;
+        }
+        AiTopEdge.Visibility = Visibility.Visible;
+        AiBottomEdge.Visibility = Visibility.Visible;
+        SetAiEdge(AiTopEdge, AiTranscriptScroll.VerticalOffset > 1, ref _aiTopEdgeVisible);
+        SetAiEdge(AiBottomEdge,
+            AiTranscriptScroll.ScrollableHeight - AiTranscriptScroll.VerticalOffset > 1,
+            ref _aiBottomEdgeVisible);
     }
     private void UpdateAiWelcome()
     {

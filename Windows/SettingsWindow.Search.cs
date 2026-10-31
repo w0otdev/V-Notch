@@ -455,26 +455,23 @@ public partial class SettingsWindow
         }
     }
 
-    private static void AddLanguageSearchTerms(ISet<string> parts)
+    internal static void AddLanguageSearchTerms(ISet<string> parts)
     {
         foreach (var (code, nativeName) in Loc.GetAvailableLanguages())
         {
             parts.Add(code);
             parts.Add(nativeName);
 
-            string cultureName = code switch
+            try
             {
-                "vi" => "vi-VN",
-                "es" => "es-ES",
-                "fr" => "fr-FR",
-                "de" => "de-DE",
-                "ja" => "ja-JP",
-                "hi" => "hi-IN",
-                _ => "en-US"
-            };
-            var culture = System.Globalization.CultureInfo.GetCultureInfo(cultureName);
-            parts.Add(culture.EnglishName);
-            parts.Add(culture.NativeName);
+                var culture = System.Globalization.CultureInfo.GetCultureInfo(code);
+                parts.Add(culture.EnglishName);
+                parts.Add(culture.NativeName);
+            }
+            catch (System.Globalization.CultureNotFoundException)
+            {
+                // Ignore invalid culture codes if any
+            }
         }
     }
 

@@ -16,6 +16,9 @@ public static partial class Loc
 {
     private const string NativeDll = "VNotch.Native.dll";
 
+    internal const long MaxExternalLocaleFileBytes = 2 * 1024 * 1024;
+    private static readonly JsonDocumentOptions LocaleJsonOptions = new() { MaxDepth = 8 };
+
     [LibraryImport(NativeDll, StringMarshalling = StringMarshalling.Utf16)]
     private static partial int vn_localization_resolve_default_culture(
         ReadOnlySpan<char> lang,
@@ -177,6 +180,20 @@ public static partial class Loc
             : new List<string> { text };
     }
 
+    internal static bool IsValidExternalLocaleFile(string filePath)
+    {
+        if (string.IsNullOrWhiteSpace(filePath)) return false;
+        try
+        {
+            var info = new FileInfo(filePath);
+            return info.Exists && info.Length > 0 && info.Length <= MaxExternalLocaleFileBytes;
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
     // Registers every available locale and its metadata. Strings are not kept: each file is parsed once here
     // only to validate it and read the _metadata block.
     private static void DiscoverLocales()
@@ -207,30 +224,36 @@ public static partial class Loc
 
         foreach (var dir in candidateDirectories)
         {
-            if (!Directory.Exists(dir)) continue;
+            DiscoverExternalDirectory(dir);
+        }
+    }
 
-            try
+    internal static void DiscoverExternalDirectory(string dir)
+    {
+        if (!Directory.Exists(dir)) return;
+
+        try
+        {
+            foreach (string file in Directory.EnumerateFiles(dir, "*.json", SearchOption.TopDirectoryOnly))
             {
-                foreach (string file in Directory.EnumerateFiles(dir, "*.json", SearchOption.TopDirectoryOnly))
-                {
-                    string code = Path.GetFileNameWithoutExtension(file);
-                    if (string.IsNullOrWhiteSpace(code)) continue;
+                string code = Path.GetFileNameWithoutExtension(file);
+                if (string.IsNullOrWhiteSpace(code)) continue;
+                if (!IsValidExternalLocaleFile(file)) continue;
 
-                    try
-                    {
-                        using var stream = File.OpenRead(file);
-                        RegisterSource(code, new LocaleSource(null, file), stream);
-                    }
-                    catch
-                    {
-                        // Ignore corrupted community files and keep fallback
-                    }
+                try
+                {
+                    using var stream = File.OpenRead(file);
+                    RegisterSource(code, new LocaleSource(null, file), stream);
+                }
+                catch
+                {
+                    // Ignore corrupted community files and keep fallback
                 }
             }
-            catch
-            {
-                // Ignore directory enumeration failures
-            }
+        }
+        catch
+        {
+            // Ignore directory enumeration failures
         }
     }
 
@@ -238,7 +261,7 @@ public static partial class Loc
     {
         try
         {
-            using var doc = JsonDocument.Parse(stream);
+            using var doc = JsonDocument.Parse(stream, LocaleJsonOptions);
             var root = doc.RootElement;
             if (root.ValueKind != JsonValueKind.Object) return;
 
@@ -296,6 +319,7 @@ public static partial class Loc
     private static Dictionary<string, string> LoadLocaleStrings(string code)
     {
         var dict = new Dictionary<string, string>(StringComparer.Ordinal);
+        ApplyBuiltInDefaults(code, dict);
         if (!_sources.TryGetValue(code, out var sources)) return dict;
 
         var assembly = typeof(Loc).Assembly;
@@ -305,7 +329,9 @@ public static partial class Loc
             {
                 using Stream? stream = source.ResourceName is not null
                     ? assembly.GetManifestResourceStream(source.ResourceName)
-                    : File.OpenRead(source.FilePath!);
+                    : (source.FilePath is not null && IsValidExternalLocaleFile(source.FilePath)
+                        ? File.OpenRead(source.FilePath)
+                        : null);
                 if (stream != null)
                 {
                     LoadLocaleFromStream(dict, stream);
@@ -343,7 +369,7 @@ public static partial class Loc
     {
         try
         {
-            using var doc = JsonDocument.Parse(stream);
+            using var doc = JsonDocument.Parse(stream, LocaleJsonOptions);
             var root = doc.RootElement;
             if (root.ValueKind != JsonValueKind.Object) return;
 
@@ -424,4 +450,96 @@ public static partial class Loc
 
         return lookup;
     }
+
+    private static void ApplyBuiltInDefaults(string code, Dictionary<string, string> dict)
+    {
+        switch (code.ToLowerInvariant())
+        {
+            case "vi":
+                SeedBuiltInDefaults(dict, "MỚI", "Đóng", "Thư mục cài đặt không hợp lệ để gỡ cài đặt.", "Tiến trình tải mô hình", "Đang chuẩn bị tải xuống...", "Đang phát", "Không có nhạc đang phát", "Nghệ sĩ không xác định", "Phương tiện", "Hẹn giờ", "Âm thanh");
+                break;
+            case "es":
+                SeedBuiltInDefaults(dict, "NUEVO", "Cerrar", "Directorio de instalación no válido para desinstalar.", "Progreso de descarga del modelo", "Preparando descarga...", "Reproduciendo ahora", "No hay multimedia en reproducción", "Artista desconocido", "Multimedia", "Temporizador", "Audio");
+                break;
+            case "fr":
+                SeedBuiltInDefaults(dict, "NOUVEAU", "Fermer", "Répertoire d'installation non valide pour la désinstallation.", "Progression du téléchargement du modèle", "Préparation du téléchargement...", "Lecture en cours", "Aucun média en cours de lecture", "Artiste inconnu", "Médias", "Minuteur", "Audio");
+                break;
+            case "de":
+                SeedBuiltInDefaults(dict, "NEU", "Schließen", "Ungültiges Installationsverzeichnis für die Deinstallation.", "Fortschritt beim Modell-Download", "Download wird vorbereitet...", "Aktuelle Wiedergabe", "Keine Medienwiedergabe", "Unbekannter Künstler", "Medien", "Timer", "Audio");
+                break;
+            case "ja":
+                SeedBuiltInDefaults(dict, "新着", "閉じる", "アンインストール用のインストール先フォルダーが無効です。", "モデルのダウンロード進行状況", "ダウンロードを準備しています...", "再生中", "再生中のメディアはありません", "不明なアーティスト", "メディア", "タイマー", "オーディオ");
+                break;
+            case "zh":
+                SeedBuiltInDefaults(dict, "新", "关闭", "用于卸载的安装目录无效。", "模型下载进度", "正在准备下载...", "正在播放", "当前无媒体播放", "未知艺术家", "媒体", "计时器", "音频");
+                break;
+            case "ko":
+                SeedBuiltInDefaults(dict, "신규", "닫기", "제거할 설치 디렉터리가 올바르지 않습니다.", "모델 다운로드 진행률", "다운로드 준비 중...", "지금 재생 중", "재생 중인 미디어 없음", "알 수 없는 아티스트", "미디어", "타이머", "오디오");
+                break;
+            case "pt":
+                SeedBuiltInDefaults(dict, "NOVO", "Fechar", "Diretório de instalação inválido para desinstalação.", "Progresso do download do modelo", "Preparando download...", "Reproduzindo agora", "Nenhuma mídia em reprodução", "Artista desconhecido", "Mídia", "Temporizador", "Áudio");
+                break;
+            case "ru":
+                SeedBuiltInDefaults(dict, "НОВОЕ", "Закрыть", "Недопустимый каталог установки для удаления.", "Ход загрузки модели", "Подготовка к загрузке...", "Сейчас играет", "Нет воспроизводимого медиа", "Неизвестный исполнитель", "Медиа", "Таймер", "Аудио");
+                break;
+            case "ar":
+                SeedBuiltInDefaults(dict, "جديد", "إغلاق", "مسار التثبيت غير صالح لإلغاء التثبيت.", "تقدم تنزيل النموذج", "جاري تحضير التنزيل...", "قيد التشغيل الآن", "لا توجد وسائط قيد التشغيل", "فنان غير معروف", "الوسائط", "المؤقت", "الصوت");
+                break;
+            case "hi":
+                SeedBuiltInDefaults(dict, "नया", "बंद करें", "अनइंस्टॉल के लिए अमान्य इंस्टॉलेशन निर्देशिका।", "मॉडल डाउनलोड प्रगति", "डाउनलोड की तैयारी हो रही है...", "अभी चल रहा है", "कोई मीडिया नहीं चल रहा है", "अज्ञात कलाकार", "मीडिया", "टाइमर", "ऑडियो");
+                break;
+            case "it":
+                SeedBuiltInDefaults(dict, "NUOVO", "Chiudi", "Directory di installazione non valida per la disinstallazione.", "Avanzamento download del modello", "Preparazione del download...", "In riproduzione", "Nessun contenuto in riproduzione", "Artista sconosciuto", "Multimedia", "Timer", "Audio");
+                break;
+            case "tr":
+                SeedBuiltInDefaults(dict, "YENİ", "Kapat", "Kaldırma işlemi için geçersiz kurulum dizini.", "Model indirme ilerlemesi", "İndirme hazırlanıyor...", "Şimdi Oynatılıyor", "Oynatılan medya yok", "Bilinmeyen Sanatçı", "Medya", "Zamanlayıcı", "Ses");
+                break;
+            case "pl":
+                SeedBuiltInDefaults(dict, "NOWOŚĆ", "Zamknij", "Nieprawidłowy katalog instalacyjny do odinstalowania.", "Postęp pobierania modelu", "Przygotowywanie pobierania...", "Teraz odtwarzane", "Brak odtwarzanych multimediów", "Nieznany wykonawca", "Multimedia", "Minutnik", "Dźwięk");
+                break;
+            case "nl":
+                SeedBuiltInDefaults(dict, "NIEUW", "Sluiten", "Ongeldige installatiemap voor verwijderen.", "Voortgang modeldownload", "Download voorbereiden...", "Nu afspelend", "Geen media wordt afgespeeld", "Onbekende artiest", "Media", "Timer", "Audio");
+                break;
+            case "id":
+                SeedBuiltInDefaults(dict, "BARU", "Tutup", "Direktori instalasi tidak valid untuk pencopotan.", "Progres unduhan model", "Menyiapkan unduhan...", "Sedang Diputar", "Tidak ada media yang diputar", "Artis Tidak Dikenal", "Media", "Pengatur Waktu", "Audio");
+                break;
+            default:
+                SeedBuiltInDefaults(dict, "NEW", "Close", "Invalid installation directory for uninstall.", "Model download progress", "Preparing download...", "Now Playing", "No media playing", "Unknown Artist", "Media", "Timer", "Audio");
+                break;
+        }
+    }
+
+    private static void SeedBuiltInDefaults(
+        Dictionary<string, string> dict,
+        string commonNew,
+        string commonClose,
+        string uninstallInvalidDir,
+        string modelDownloadProgress,
+        string preparingDownload,
+        string nowPlaying,
+        string noMedia,
+        string unknownArtist,
+        string navMedia,
+        string navTimer,
+        string navAudio)
+    {
+        dict["common.new"] = commonNew;
+        dict["common.close"] = commonClose;
+        dict["setup.uninstall.invalidDir"] = uninstallInvalidDir;
+        dict["settings.translation.modelDownloadProgress"] = modelDownloadProgress;
+        dict["update.preparingDownload"] = preparingDownload;
+        dict["media.nowPlaying"] = nowPlaying;
+        dict["media.noMedia"] = noMedia;
+        dict["media.unknownArtist"] = unknownArtist;
+        dict["nav.media"] = navMedia;
+        dict["nav.timer"] = navTimer;
+        dict["nav.audio"] = navAudio;
+    }
+}
+
+internal static class LocalizationService
+{
+    internal const long MaxExternalLocaleFileBytes = Loc.MaxExternalLocaleFileBytes;
+    internal static bool IsValidExternalLocaleFile(string filePath) => Loc.IsValidExternalLocaleFile(filePath);
+    internal static void DiscoverExternalDirectory(string dir) => Loc.DiscoverExternalDirectory(dir);
 }

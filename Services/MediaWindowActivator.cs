@@ -169,22 +169,46 @@ internal static partial class MediaWindowActivator
         return vn_mediaactivator_is_chromium_window(hwnd, out byte isChrom) == 0 && isChrom != 0;
     }
 
-    private static bool IsMediaBrowserWindow(IntPtr hwnd, string sourceAppId)
+    internal static bool IsMediaBrowserWindow(IntPtr hwnd, string sourceAppId)
     {
         if (string.IsNullOrWhiteSpace(sourceAppId)) return false;
         GetWindowThreadProcessId(hwnd, out uint processId);
         if (processId == 0) return false;
-        string? resolvedName = ProcessNameResolver.TryGetName(processId);
-        if (!string.IsNullOrEmpty(resolvedName) && !IsBrowserProcess(resolvedName) && !IsChromiumWindow(hwnd))
-            return false;
+        return IsMediaBrowserWindowCore(
+            hwnd,
+            sourceAppId,
+            processId,
+            ProcessNameResolver.TryGetName,
+            IsChromiumWindow,
+            static pid => Process.GetProcessById((int)pid));
+    }
+
+    internal static bool IsMediaBrowserWindowCore(
+        IntPtr hwnd,
+        string sourceAppId,
+        uint processId,
+        Func<uint, string?> resolveProcessName,
+        Func<IntPtr, bool> isChromiumWindow,
+        Func<uint, Process> getProcessById)
+    {
+        if (string.IsNullOrWhiteSpace(sourceAppId) || processId == 0) return false;
+        string? resolvedName = resolveProcessName(processId);
+        if (!string.IsNullOrEmpty(resolvedName))
+        {
+            if (!IsBrowserProcess(resolvedName) && !isChromiumWindow(hwnd))
+                return false;
+
+            if (SourceAppIdMatchesProcessName(sourceAppId, resolvedName))
+                return true;
+        }
+
         try
         {
-            using var process = Process.GetProcessById((int)processId);
+            using var process = getProcessById(processId);
             string processName = !string.IsNullOrEmpty(resolvedName) ? resolvedName : process.ProcessName;
-            if (!IsBrowserProcess(processName) && !IsChromiumWindow(hwnd)) return false;
+            if (!IsBrowserProcess(processName) && !isChromiumWindow(hwnd)) return false;
 
-            if (Regex.IsMatch(sourceAppId, @"(?:^|[\\/.!_\-])" + Regex.Escape(processName) +
-                @"(?:$|[\\/.!_\-])", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant, TimeSpan.FromMilliseconds(250)))
+            if (string.IsNullOrEmpty(resolvedName) && SourceAppIdMatchesProcessName(sourceAppId, processName))
                 return true;
 
             return ProcessAppUserModelIdEquals(process.Handle, sourceAppId);
@@ -194,6 +218,10 @@ internal static partial class MediaWindowActivator
             return false;
         }
     }
+
+    private static bool SourceAppIdMatchesProcessName(string sourceAppId, string processName) =>
+        Regex.IsMatch(sourceAppId, @"(?:^|\b|[\\/.!_\-])" + Regex.Escape(processName) +
+            @"(?:$|\b|[\\/.!_\-])", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant, TimeSpan.FromMilliseconds(250));
 
     internal static bool IsBrowserMediaSession(string sourceAppId)
     {

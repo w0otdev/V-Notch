@@ -161,12 +161,6 @@ public sealed partial class SmartThumbnailCropService : IDisposable
         int imgWidth, int imgHeight, int cropSize,
         out VnCropRect outRect, out byte outFound);
 
-    [LibraryImport("VNotch.Native.dll")]
-    private static partial int vn_smartcrop_detect_text_regions(
-        ReadOnlySpan<byte> pixels, int w, int h, int stride,
-        int imgWidth, int imgHeight,
-        Span<VnCropRect> outRegions, int outCap, out int outCount);
-
     public bool TryInitialize()
     {
         if (_disposed) return false;
@@ -259,6 +253,34 @@ public sealed partial class SmartThumbnailCropService : IDisposable
 
     public Int32Rect? GetSmartCropRect(BitmapSource source, int targetSquareSize) =>
         GetCpuCropRect(source, targetSquareSize, useObjectDetection: false);
+
+    internal static Int32Rect? Analyze(BitmapSource source, int targetSquareSize = 120)
+    {
+        if (source == null || targetSquareSize <= 0) return null;
+        int imgWidth = source.PixelWidth;
+        int imgHeight = source.PixelHeight;
+        if (imgWidth < 64 || imgHeight < 64) return null;
+
+        if (!ArtworkFrameDetector.RentDownscaledPixels(source, out byte[]? pixels, out int w, out int h, out int stride, 120.0) || pixels == null)
+            return null;
+
+        try
+        {
+            var frame = ArtworkFrameDetector.DetectFrameFromPixels(pixels, w, h, imgWidth, imgHeight);
+            if (frame.HasValue && frame.Value.Width > 0 && frame.Value.Height > 0)
+                return frame.Value;
+
+            if (w >= 4 && h >= 4 && vn_smartcrop_compute_saliency_crop_rect(pixels.AsSpan(0, h * stride), w, h, stride, imgWidth, imgHeight, targetSquareSize, out var rect) == 0)
+                return rect.ToRect();
+
+            int cropSize = Math.Min(targetSquareSize, Math.Min(imgWidth, imgHeight));
+            return new Int32Rect((imgWidth - cropSize) / 2, (imgHeight - cropSize) / 2, cropSize, cropSize);
+        }
+        finally
+        {
+            ArrayPool<byte>.Shared.Return(pixels);
+        }
+    }
 
     private Int32Rect? GetCpuCropRect(BitmapSource source, int targetSquareSize, bool useObjectDetection)
     {
@@ -629,28 +651,12 @@ public sealed partial class SmartThumbnailCropService : IDisposable
     {
         try
         {
-            const int analysisSize = 128;
-            double scaleX = (double)analysisSize / imgWidth;
-            double scaleY = (double)analysisSize / imgHeight;
-            var scaled = new TransformedBitmap(source, new ScaleTransform(scaleX, scaleY));
-            scaled.Freeze();
+            if (!ArtworkFrameDetector.RentDownscaledPixels(source, out byte[]? pixels, out int w, out int h, out int stride, 128.0) || pixels == null)
+                return null;
 
-            int w = scaled.PixelWidth;
-            int h = scaled.PixelHeight;
-            if (w < 8 || h < 8) return null;
-
-            int stride = w * 4;
-            byte[] pixels = ArrayPool<byte>.Shared.Rent(h * stride);
             try
             {
-                BitmapSource scaledSource = scaled;
-                if (scaled.Format != PixelFormats.Bgra32)
-                {
-                    var converted = new FormatConvertedBitmap(scaled, PixelFormats.Bgra32, null, 0);
-                    converted.Freeze();
-                    scaledSource = converted;
-                }
-                scaledSource.CopyPixels(pixels, stride, 0);
+                if (w < 8 || h < 8) return null;
 
                 if (vn_smartcrop_try_detect_text_crop_rect(pixels.AsSpan(0, h * stride), w, h, stride, imgWidth, imgHeight, cropSize, out var rect, out byte found) == 0 && found != 0)
                 {
@@ -704,18 +710,30 @@ public sealed partial class SmartThumbnailCropService : IDisposable
             return objRect.ToRect();
         }
 
-        var textRect = TryDetectTextCropRect(source, imgWidth, imgHeight, cropSize);
-        if (textRect.HasValue)
+        if (ArtworkFrameDetector.RentDownscaledPixels(source, out byte[]? pixels, out int w, out int h, out int stride, 128.0) && pixels != null)
         {
-            VNotch.Services.RuntimeLog.Log(LogCategory, "text path -> centered text crop");
-            return textRect.Value;
-        }
+            try
+            {
+                ReadOnlySpan<byte> pixelSpan = pixels.AsSpan(0, h * stride);
+                if (w >= 8 && h >= 8 &&
+                    vn_smartcrop_try_detect_text_crop_rect(pixelSpan, w, h, stride, imgWidth, imgHeight, cropSize, out var textRect, out byte found) == 0 &&
+                    found != 0)
+                {
+                    VNotch.Services.RuntimeLog.Log(LogCategory, "text path -> centered text crop");
+                    return textRect.ToRect();
+                }
 
-        VNotch.Services.RuntimeLog.Log(LogCategory, "no person/object/text -> saliency fallback");
-        var saliencyRect = GetSaliencyCropRect(source, imgWidth, imgHeight, targetSize);
-        if (saliencyRect.HasValue)
-        {
-            return saliencyRect.Value;
+                VNotch.Services.RuntimeLog.Log(LogCategory, "no person/object/text -> saliency fallback");
+                if (w >= 4 && h >= 4 &&
+                    vn_smartcrop_compute_saliency_crop_rect(pixelSpan, w, h, stride, imgWidth, imgHeight, targetSize, out var salRect) == 0)
+                {
+                    return salRect.ToRect();
+                }
+            }
+            finally
+            {
+                ArrayPool<byte>.Shared.Return(pixels);
+            }
         }
 
         int cropX = Math.Max(0, Math.Min((imgWidth - cropSize) / 2, imgWidth - cropSize));
@@ -805,28 +823,12 @@ public sealed partial class SmartThumbnailCropService : IDisposable
     {
         try
         {
-            const int analysisSize = 64;
-            double scaleX = (double)analysisSize / imgWidth;
-            double scaleY = (double)analysisSize / imgHeight;
-            var scaled = new TransformedBitmap(source, new ScaleTransform(scaleX, scaleY));
-            scaled.Freeze();
+            if (!ArtworkFrameDetector.RentDownscaledPixels(source, out byte[]? pixels, out int w, out int h, out int stride, 64.0) || pixels == null)
+                return null;
 
-            int w = scaled.PixelWidth;
-            int h = scaled.PixelHeight;
-            if (w < 4 || h < 4) return null;
-
-            int stride = w * 4;
-            byte[] pixels = ArrayPool<byte>.Shared.Rent(h * stride);
             try
             {
-                BitmapSource scaledSource = scaled;
-                if (scaled.Format != PixelFormats.Bgra32)
-                {
-                    var converted = new FormatConvertedBitmap(scaled, PixelFormats.Bgra32, null, 0);
-                    converted.Freeze();
-                    scaledSource = converted;
-                }
-                scaledSource.CopyPixels(pixels, stride, 0);
+                if (w < 4 || h < 4) return null;
 
                 if (vn_smartcrop_compute_saliency_crop_rect(pixels.AsSpan(0, h * stride), w, h, stride, imgWidth, imgHeight, targetSize, out var rect) == 0)
                 {

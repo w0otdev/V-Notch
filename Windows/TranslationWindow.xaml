@@ -73,7 +73,7 @@
             <Grid x:Name="SelectionChip">
                 <Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition Width="28"/></Grid.ColumnDefinitions>
                 <Button x:Name="OpenButton" Style="{StaticResource ActionButton}" Background="Transparent" Padding="0,2" Click="Open_Click"/>
-                <Button Grid.Column="1" Style="{StaticResource CloseActionButton}" Width="28" Height="28" Padding="6" AutomationProperties.Name="Close" Click="Close_Click"><Path Style="{StaticResource BoldIcon}" Data="M 2,2 L 12,12 M 12,2 L 2,12" Width="12" Height="12" Margin="0"/></Button>
+                <Button x:Name="SelectionChipCloseButton" Grid.Column="1" Style="{StaticResource CloseActionButton}" Width="28" Height="28" Padding="6" AutomationProperties.Name="Close" Click="Close_Click"><Path Style="{StaticResource BoldIcon}" Data="M 2,2 L 12,12 M 12,2 L 2,12" Width="12" Height="12" Margin="0"/></Button>
             </Grid>
             <Grid x:Name="TranslationPanel" Visibility="Collapsed">
                 <Grid.RowDefinitions>
@@ -130,17 +130,8 @@
                                          VerticalScrollBarVisibility="Disabled" HorizontalScrollBarVisibility="Disabled"/>
                         </Grid>
                     </ScrollViewer>
-                    <!-- The gradient itself provides softness; blurring the overlay thins its outer edges and exposes text. -->
-                    <Border x:Name="ResultTopFade" Height="28" VerticalAlignment="Top" Opacity="0" IsHitTestVisible="False">
-                        <Border.Background><LinearGradientBrush StartPoint="0,0" EndPoint="0,1">
-                            <GradientStop Color="#FF080808" Offset="0"/><GradientStop Color="#A6080808" Offset="0.3"/><GradientStop Color="#40080808" Offset="0.65"/><GradientStop Color="#00080808" Offset="1"/>
-                        </LinearGradientBrush></Border.Background>
-                    </Border>
-                    <Border x:Name="ResultBottomFade" Height="28" VerticalAlignment="Bottom" Opacity="0" IsHitTestVisible="False">
-                        <Border.Background><LinearGradientBrush StartPoint="0,0" EndPoint="0,1">
-                            <GradientStop Color="#00080808" Offset="0"/><GradientStop Color="#40080808" Offset="0.35"/><GradientStop Color="#A6080808" Offset="0.7"/><GradientStop Color="#FF080808" Offset="1"/>
-                        </LinearGradientBrush></Border.Background>
-                    </Border>
+                    <Border x:Name="ResultTopFade" Height="28" VerticalAlignment="Top" Opacity="0" IsHitTestVisible="False" Background="#2E0A84FF"/>
+                    <Border x:Name="ResultBottomFade" Height="28" VerticalAlignment="Bottom" Opacity="0" IsHitTestVisible="False" Background="#2E0A84FF"/>
                 </Grid>
                 <Grid x:Name="TranslationStatusRow" Grid.Row="4" Margin="0,10,0,0" MinHeight="24">
                     <Grid.Style><Style TargetType="Grid"><Style.Triggers>

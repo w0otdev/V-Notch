@@ -113,6 +113,275 @@ namespace vnotch::services
     return VN_OK;
 }
 
+        static inline bool has_internal_whitespace(std::u16string_view s) noexcept
+        {
+            for (char16_t c : s)
+            {
+                if (is_unicode_whitespace(c))
+                {
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        static inline bool try_parse_unsigned_number(std::u16string_view s, double* out_val) noexcept
+        {
+            if (s.empty() || out_val == nullptr)
+            {
+                return false;
+            }
+            bool seen_dot = false;
+            bool seen_digit = false;
+            double int_part = 0.0;
+            double frac_part = 0.0;
+            double frac_div = 1.0;
+            for (char16_t c : s)
+            {
+                if (c == u'.')
+                {
+                    if (seen_dot)
+                    {
+                        return false;
+                    }
+                    seen_dot = true;
+                }
+                else if (c >= u'0' && c <= u'9')
+                {
+                    seen_digit = true;
+                    if (!seen_dot)
+                    {
+                        int_part = int_part * 10.0 + static_cast<double>(c - u'0');
+                    }
+                    else
+                    {
+                        frac_div *= 10.0;
+                        frac_part += static_cast<double>(c - u'0') / frac_div;
+                    }
+                }
+                else
+                {
+                    return false;
+                }
+            }
+            if (!seen_digit)
+            {
+                return false;
+            }
+            *out_val = int_part + frac_part;
+            return true;
+        }
+
+        static inline bool try_parse_percentage(std::u16string_view s, double* out_pct) noexcept
+        {
+            if (s.size() < 2 || s.back() != u'%' || out_pct == nullptr)
+            {
+                return false;
+            }
+            double pct = 0.0;
+            if (!try_parse_unsigned_number(s.substr(0, s.size() - 1), &pct) || pct < 0.0 || pct > 100.0)
+            {
+                return false;
+            }
+            *out_pct = pct;
+            return true;
+        }
+
+        static inline bool try_parse_alpha(std::u16string_view s, double* out_alpha) noexcept
+        {
+            if (s.empty() || out_alpha == nullptr)
+            {
+                return false;
+            }
+            if (s.back() == u'%')
+            {
+                double pct = 0.0;
+                if (!try_parse_percentage(s, &pct))
+                {
+                    return false;
+                }
+                *out_alpha = pct / 100.0;
+                return true;
+            }
+            double val = 0.0;
+            if (!try_parse_unsigned_number(s, &val) || val < 0.0 || val > 1.0)
+            {
+                return false;
+            }
+            *out_alpha = val;
+            return true;
+        }
+
+        static inline bool try_parse_rgb_channel(std::u16string_view s, uint8_t* out_byte) noexcept
+        {
+            if (s.empty() || out_byte == nullptr)
+            {
+                return false;
+            }
+            if (s.back() == u'%')
+            {
+                double pct = 0.0;
+                if (!try_parse_percentage(s, &pct))
+                {
+                    return false;
+                }
+                *out_byte = static_cast<uint8_t>(std::nearbyint(pct * 255.0 / 100.0));
+                return true;
+            }
+            double val = 0.0;
+            if (!try_parse_unsigned_number(s, &val) || val < 0.0 || val > 255.0)
+            {
+                return false;
+            }
+            *out_byte = static_cast<uint8_t>(std::nearbyint(val));
+            return true;
+        }
+
+        static inline bool try_parse_hue_degrees(std::u16string_view s, double* out_deg) noexcept
+        {
+            if (s.empty() || out_deg == nullptr)
+            {
+                return false;
+            }
+            double max_val = 360.0;
+            double scale = 1.0;
+            std::u16string_view num_part = s;
+            if (ends_with_ignore_case(s, u"grad"))
+            {
+                num_part = s.substr(0, s.size() - 4);
+                max_val = 400.0;
+                scale = 0.9;
+            }
+            else if (ends_with_ignore_case(s, u"turn"))
+            {
+                num_part = s.substr(0, s.size() - 4);
+                max_val = 1.0;
+                scale = 360.0;
+            }
+            else if (ends_with_ignore_case(s, u"deg"))
+            {
+                num_part = s.substr(0, s.size() - 3);
+                max_val = 360.0;
+                scale = 1.0;
+            }
+            else if (ends_with_ignore_case(s, u"rad"))
+            {
+                num_part = s.substr(0, s.size() - 3);
+                max_val = 6.28318530717958647692;
+                scale = 180.0 / 3.14159265358979323846;
+            }
+            double val = 0.0;
+            if (!try_parse_unsigned_number(num_part, &val) || val < 0.0 || val > max_val)
+            {
+                return false;
+            }
+            *out_deg = val * scale;
+            return true;
+        }
+
+        static inline bool try_split_color_args(
+            std::u16string_view inner,
+            std::u16string_view (&parts)[4],
+            size_t* out_count) noexcept
+        {
+            *out_count = 0;
+            bool has_comma = false;
+            size_t slash_pos = std::u16string_view::npos;
+            for (size_t i = 0; i < inner.size(); ++i)
+            {
+                if (inner[i] == u',')
+                {
+                    has_comma = true;
+                }
+                else if (inner[i] == u'/')
+                {
+                    if (slash_pos != std::u16string_view::npos)
+                    {
+                        return false;
+                    }
+                    slash_pos = i;
+                }
+            }
+
+            if (has_comma)
+            {
+                if (slash_pos != std::u16string_view::npos)
+                {
+                    return false;
+                }
+                size_t part_count = 0;
+                size_t start = 0;
+                for (size_t i = 0; i <= inner.size(); ++i)
+                {
+                    if (i == inner.size() || inner[i] == u',')
+                    {
+                        if (part_count >= 4)
+                        {
+                            return false;
+                        }
+                        std::u16string_view p = trim_view(inner.substr(start, i - start));
+                        if (p.empty() || has_internal_whitespace(p))
+                        {
+                            return false;
+                        }
+                        parts[part_count++] = p;
+                        start = i + 1;
+                    }
+                }
+                if (part_count != 3 && part_count != 4)
+                {
+                    return false;
+                }
+                *out_count = part_count;
+                return true;
+            }
+
+            std::u16string_view channels_view = (slash_pos != std::u16string_view::npos)
+                ? trim_view(inner.substr(0, slash_pos))
+                : trim_view(inner);
+
+            size_t part_count = 0;
+            size_t i = 0;
+            while (i < channels_view.size())
+            {
+                while (i < channels_view.size() && is_unicode_whitespace(channels_view[i]))
+                {
+                    ++i;
+                }
+                if (i >= channels_view.size())
+                {
+                    break;
+                }
+                size_t token_start = i;
+                while (i < channels_view.size() && !is_unicode_whitespace(channels_view[i]))
+                {
+                    ++i;
+                }
+                if (part_count >= 3)
+                {
+                    return false;
+                }
+                parts[part_count++] = channels_view.substr(token_start, i - token_start);
+            }
+            if (part_count != 3)
+            {
+                return false;
+            }
+
+            if (slash_pos != std::u16string_view::npos)
+            {
+                std::u16string_view alpha_view = trim_view(inner.substr(slash_pos + 1));
+                if (alpha_view.empty() || has_internal_whitespace(alpha_view))
+                {
+                    return false;
+                }
+                parts[part_count++] = alpha_view;
+            }
+
+            *out_count = part_count;
+            return true;
+        }
+
         static int32_t vn_clipboard_try_parse_color_impl(const char16_t* val_ptr,
     int32_t val_len,
     uint32_t* out_argb,
@@ -161,13 +430,27 @@ namespace vnotch::services
         return VN_OK;
     }
 
+    bool is_rgb = false;
+    bool is_hsl = false;
     size_t open_paren = 0;
-    if (starts_with_ordinal(text, u"rgb("))
+    if (starts_with_ignore_case(text, u"rgb("))
     {
+        is_rgb = true;
         open_paren = 3;
     }
-    else if (starts_with_ordinal(text, u"rgba("))
+    else if (starts_with_ignore_case(text, u"rgba("))
     {
+        is_rgb = true;
+        open_paren = 4;
+    }
+    else if (starts_with_ignore_case(text, u"hsl("))
+    {
+        is_hsl = true;
+        open_paren = 3;
+    }
+    else if (starts_with_ignore_case(text, u"hsla("))
+    {
+        is_hsl = true;
         open_paren = 4;
     }
     else
@@ -182,95 +465,62 @@ namespace vnotch::services
     std::u16string_view inner = text.substr(open_paren + 1, text.size() - open_paren - 2);
     std::u16string_view parts[4]{};
     size_t part_count = 0;
-    size_t start = 0;
-    for (size_t i = 0; i <= inner.size(); ++i)
-    {
-        if (i == inner.size() || inner[i] == u',')
-        {
-            if (part_count >= 4)
-            {
-                return VN_OK;
-            }
-            parts[part_count++] = trim_view(inner.substr(start, i - start));
-            start = i + 1;
-        }
-    }
-    if (part_count != 3 && part_count != 4)
+    if (!try_split_color_args(inner, parts, &part_count))
     {
         return VN_OK;
     }
 
     uint8_t rgb[3]{};
-    for (size_t p = 0; p < 3; ++p)
+    if (is_rgb)
     {
-        std::u16string_view ps = parts[p];
-        if (ps.empty())
+        for (size_t p = 0; p < 3; ++p)
+        {
+            if (!try_parse_rgb_channel(parts[p], &rgb[p]))
+            {
+                return VN_OK;
+            }
+        }
+    }
+    else if (is_hsl)
+    {
+        double deg = 0.0;
+        double s_pct = 0.0;
+        double l_pct = 0.0;
+        if (!try_parse_hue_degrees(parts[0], &deg) ||
+            !try_parse_percentage(parts[1], &s_pct) ||
+            !try_parse_percentage(parts[2], &l_pct))
         {
             return VN_OK;
         }
-        uint32_t val = 0;
-        for (char16_t c : ps)
+        double h = std::fmod(deg, 360.0);
+        if (h < 0.0)
         {
-            if (c < u'0' || c > u'9')
-            {
-                return VN_OK;
-            }
-            val = val * 10u + static_cast<uint32_t>(c - u'0');
-            if (val > 255u)
-            {
-                return VN_OK;
-            }
+            h += 360.0;
         }
-        rgb[p] = static_cast<uint8_t>(val);
+        double s = s_pct / 100.0;
+        double l = l_pct / 100.0;
+        double c = (1.0 - std::fabs(2.0 * l - 1.0)) * s;
+        double h_prime = h / 60.0;
+        double x = c * (1.0 - std::fabs(std::fmod(h_prime, 2.0) - 1.0));
+        double r1 = 0.0;
+        double g1 = 0.0;
+        double b1 = 0.0;
+        if (h_prime < 1.0)      { r1 = c; g1 = x; b1 = 0.0; }
+        else if (h_prime < 2.0) { r1 = x; g1 = c; b1 = 0.0; }
+        else if (h_prime < 3.0) { r1 = 0.0; g1 = c; b1 = x; }
+        else if (h_prime < 4.0) { r1 = 0.0; g1 = x; b1 = c; }
+        else if (h_prime < 5.0) { r1 = x; g1 = 0.0; b1 = c; }
+        else                    { r1 = c; g1 = 0.0; b1 = x; }
+        double m = l - c * 0.5;
+        rgb[0] = static_cast<uint8_t>(std::nearbyint((r1 + m) * 255.0));
+        rgb[1] = static_cast<uint8_t>(std::nearbyint((g1 + m) * 255.0));
+        rgb[2] = static_cast<uint8_t>(std::nearbyint((b1 + m) * 255.0));
     }
 
     double alpha = 1.0;
     if (part_count == 4)
     {
-        std::u16string_view as = parts[3];
-        if (as.empty())
-        {
-            return VN_OK;
-        }
-        bool seen_dot = false;
-        bool seen_digit = false;
-        double int_part = 0.0;
-        double frac_part = 0.0;
-        double frac_div = 1.0;
-        for (char16_t c : as)
-        {
-            if (c == u'.')
-            {
-                if (seen_dot)
-                {
-                    return VN_OK;
-                }
-                seen_dot = true;
-            }
-            else if (c >= u'0' && c <= u'9')
-            {
-                seen_digit = true;
-                if (!seen_dot)
-                {
-                    int_part = int_part * 10.0 + static_cast<double>(c - u'0');
-                }
-                else
-                {
-                    frac_div *= 10.0;
-                    frac_part += static_cast<double>(c - u'0') / frac_div;
-                }
-            }
-            else
-            {
-                return VN_OK;
-            }
-        }
-        if (!seen_digit)
-        {
-            return VN_OK;
-        }
-        alpha = int_part + frac_part;
-        if (alpha < 0.0 || alpha > 1.0)
+        if (!try_parse_alpha(parts[3], &alpha))
         {
             return VN_OK;
         }

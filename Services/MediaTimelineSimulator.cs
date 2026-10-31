@@ -39,7 +39,7 @@ public partial class MediaTimelineSimulator
 
     public void UpdateObservedPosition(TimeSpan position)
     {
-        if (position != _lastObservedPosition)
+        if (position != _lastObservedPosition || _lastPositionChangeTime == DateTime.MinValue)
         {
             _lastObservedPosition = position;
             _lastPositionChangeTime = DateTime.UtcNow;
@@ -48,6 +48,9 @@ public partial class MediaTimelineSimulator
 
     public bool IsPositionStuck(TimeSpan threshold)
     {
+        if (_lastPositionChangeTime == DateTime.MinValue)
+            return false;
+
         return (DateTime.UtcNow - _lastPositionChangeTime).TotalSeconds > threshold.TotalSeconds;
     }
 
@@ -114,6 +117,8 @@ public partial class MediaTimelineSimulator
     public void Reset()
     {
         _isThrottled = false;
+        _lastObservedPosition = TimeSpan.Zero;
+        _lastPositionChangeTime = DateTime.MinValue;
         RecoveredDuration = TimeSpan.Zero;
         RecoveredThumbnail = null;
         ResetSimulation();

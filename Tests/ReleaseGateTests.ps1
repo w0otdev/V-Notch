@@ -148,7 +148,50 @@ try {
     [IO.File]::WriteAllBytes((Join-Path $modelDirectory 'yolox_nano.onnx'), [byte[]](0, 1, 2))
     Expect-Failure { & $modelScript -RootDirectory $modelRoot } 'checksum or length'
     Expect-Failure { & (Join-Path $repository 'scripts/b.ps1') -RequireAuthenticode } 'thumbprint is required'
-    Write-Host 'Release gates passed: coverage boundaries, merged suites/assemblies, duplicate reports, XML safety, model allowlist/hash/license, required signing.'
+
+    $signDirectory = Join-Path $temporary 'manifest-signing'
+    New-Item -ItemType Directory -Path $signDirectory | Out-Null
+    $privateKeyFile = Join-Path $signDirectory 'test-private.pem'
+    $publicKeyFile = Join-Path $signDirectory 'test-public.pem'
+    if ($PSVersionTable.PSVersion.Major -ge 7) {
+        $testKey = [Security.Cryptography.ECDsa]::Create([Security.Cryptography.ECCurve+NamedCurves]::nistP256)
+        try {
+            [IO.File]::WriteAllText($privateKeyFile, $testKey.ExportPkcs8PrivateKeyPem())
+            [IO.File]::WriteAllText($publicKeyFile, $testKey.ExportSubjectPublicKeyInfoPem())
+        } finally {
+            $testKey.Dispose()
+        }
+    } else {
+        $pwsh = Get-Command pwsh.exe -ErrorAction Stop
+        & $pwsh.Source -NoProfile -Command "
+            `$k = [Security.Cryptography.ECDsa]::Create([Security.Cryptography.ECCurve+NamedCurves]::nistP256)
+            try {
+                [IO.File]::WriteAllText('$privateKeyFile', `$k.ExportPkcs8PrivateKeyPem())
+                [IO.File]::WriteAllText('$publicKeyFile', `$k.ExportSubjectPublicKeyInfoPem())
+            } finally { `$k.Dispose() }
+        "
+        if ($LASTEXITCODE -ne 0) { throw 'Failed to generate temporary ECDSA test keys via pwsh.' }
+    }
+    $signScript = Join-Path $repository 'scripts/Sign-UpdateManifest.ps1'
+    foreach ($installerName in @('V-Notch-Setup.exe', 'V-Notch-Setup-SelfContained.exe')) {
+        $dummyInstaller = Join-Path $signDirectory $installerName
+        [IO.File]::WriteAllBytes($dummyInstaller, [Text.Encoding]::ASCII.GetBytes("MZ-$installerName"))
+        & $signScript -InstallerPath $dummyInstaller -Version '2.0.1' -PrivateKeyPath $privateKeyFile -PublicKeyPath $publicKeyFile | Out-Null
+        $sidecarText = [IO.File]::ReadAllText("$dummyInstaller.sha256")
+        if (-not $sidecarText.EndsWith("`n")) {
+            throw "Expected .sha256 sidecar for $installerName to end with a trailing newline."
+        }
+    }
+    $checksumsPath = Join-Path $signDirectory 'checksums.txt'
+    $concatenatedBytes = [byte[]]@(foreach ($shaFile in Get-ChildItem -LiteralPath $signDirectory -Filter '*.sha256' | Sort-Object Name) {
+        [IO.File]::ReadAllBytes($shaFile.FullName)
+    })
+    [IO.File]::WriteAllBytes($checksumsPath, $concatenatedBytes)
+    if ((Get-Content -LiteralPath $checksumsPath).Count -ne 2) {
+        throw 'Concatenated .sha256 sidecars must produce 1 line per installer in checksums.txt.'
+    }
+
+    Write-Host 'Release gates passed: coverage boundaries, merged suites/assemblies, duplicate reports, XML safety, model allowlist/hash/license, required signing, manifest checksums.'
 } finally {
     $resolved = [IO.Path]::GetFullPath($temporary)
     $tempRoot = [IO.Path]::GetFullPath([IO.Path]::GetTempPath())

@@ -326,6 +326,11 @@ public partial class ChangelogWindow : Window
 
     private void ParseMarkdownContent(string content)
     {
+        RenderMarkdownContent(ChangelogContent, content);
+    }
+
+    internal static void RenderMarkdownContent(StackPanel targetPanel, string content)
+    {
         if (string.IsNullOrWhiteSpace(content))
         {
             var emptyText = new TextBlock
@@ -335,54 +340,118 @@ public partial class ChangelogWindow : Window
                 Foreground = new SolidColorBrush(Color.FromRgb(136, 136, 136)),
                 FontStyle = FontStyles.Italic
             };
-            ChangelogContent.Children.Add(emptyText);
+            targetPanel.Children.Add(emptyText);
             return;
         }
 
-        var lines = content.Split(new[] { "\r\n", "\r", "\n" }, StringSplitOptions.None);
-
-        foreach (var line in lines)
+        try
         {
-            var trimmedLine = line.Trim();
+            var blocks = VNotchNative.TokenizeMarkdownBlocks(content);
+            foreach (var block in blocks)
+            {
+                string textSlice = block.TextLen > 0
+                    ? content.Substring(block.TextStart, block.TextLen)
+                    : string.Empty;
 
-            if (string.IsNullOrEmpty(trimmedLine))
-            {
-                // Add spacing
-                ChangelogContent.Children.Add(new TextBlock { Height = 8 });
-                continue;
-            }
+                switch (block.BlockKind)
+                {
+                    case VnMarkdownBlockKind.Empty:
+                        targetPanel.Children.Add(new TextBlock { Height = 8 });
+                        break;
 
-            // Heading
-            if (trimmedLine.StartsWith("###", StringComparison.Ordinal))
-            {
-                var text = trimmedLine.TrimStart('#').Trim();
-                ChangelogContent.Children.Add(CreateHeading(text, 16, FontWeights.SemiBold));
+                    case VnMarkdownBlockKind.HorizontalRule:
+                        targetPanel.Children.Add(new Border
+                        {
+                            Height = 1,
+                            Background = new SolidColorBrush(Color.FromRgb(42, 42, 42)),
+                            Margin = new Thickness(0, 8, 0, 8)
+                        });
+                        break;
+
+                    case VnMarkdownBlockKind.Heading:
+                        {
+                            var (fontSize, weight) = block.Level switch
+                            {
+                                1 => (20.0, FontWeights.Bold),
+                                2 => (18.0, FontWeights.Bold),
+                                3 => (16.0, FontWeights.SemiBold),
+                                _ => (14.5, FontWeights.SemiBold)
+                            };
+                            targetPanel.Children.Add(CreateHeadingBlock(textSlice, fontSize, weight));
+                            break;
+                        }
+
+                    case VnMarkdownBlockKind.BulletItem:
+                        targetPanel.Children.Add(CreateBulletPointBlock("•", Color.FromRgb(0, 102, 255), textSlice));
+                        break;
+
+                    case VnMarkdownBlockKind.ChecklistItem:
+                        targetPanel.Children.Add(CreateBulletPointBlock(
+                            block.Checked ? "☑" : "☐",
+                            block.Checked ? Color.FromRgb(0, 204, 102) : Color.FromRgb(136, 136, 136),
+                            textSlice));
+                        break;
+
+                    case VnMarkdownBlockKind.NumberedItem:
+                        {
+                            string markerSlice = block.MarkerLen > 0
+                                ? content.Substring(block.MarkerStart, block.MarkerLen)
+                                : $"{block.Level}.";
+                            targetPanel.Children.Add(CreateBulletPointBlock(markerSlice, Color.FromRgb(136, 136, 136), textSlice));
+                            break;
+                        }
+
+                    case VnMarkdownBlockKind.Blockquote:
+                        targetPanel.Children.Add(CreateBlockquoteBlock(textSlice));
+                        break;
+
+                    case VnMarkdownBlockKind.TableSeparator:
+                        break;
+
+                    case VnMarkdownBlockKind.TableRow:
+                        {
+                            ReadOnlySpan<char> rowSpan = content.AsSpan(block.TextStart, block.TextLen);
+                            var tableGrid = CreateTableRowBlock(rowSpan);
+                            if (tableGrid != null)
+                            {
+                                targetPanel.Children.Add(tableGrid);
+                            }
+                            break;
+                        }
+
+                    case VnMarkdownBlockKind.Paragraph:
+                    default:
+                        targetPanel.Children.Add(CreateParagraphBlock(textSlice));
+                        break;
+                }
             }
-            else if (trimmedLine.StartsWith("##", StringComparison.Ordinal))
+        }
+        catch (RegexMatchTimeoutException)
+        {
+            targetPanel.Children.Add(new TextBlock
             {
-                var text = trimmedLine.TrimStart('#').Trim();
-                ChangelogContent.Children.Add(CreateHeading(text, 18, FontWeights.Bold));
-            }
-            else if (trimmedLine.StartsWith('#'))
+                Text = content,
+                FontSize = 13,
+                Foreground = new SolidColorBrush(Color.FromRgb(204, 204, 204)),
+                TextWrapping = TextWrapping.Wrap
+            });
+        }
+        catch (Exception)
+        {
+            targetPanel.Children.Add(new TextBlock
             {
-                var text = trimmedLine.TrimStart('#').Trim();
-                ChangelogContent.Children.Add(CreateHeading(text, 20, FontWeights.Bold));
-            }
-            // Bullet point
-            else if (trimmedLine.StartsWith('-') || trimmedLine.StartsWith('*'))
-            {
-                var text = trimmedLine[1..].Trim();
-                ChangelogContent.Children.Add(CreateBulletPoint(text));
-            }
-            // Regular paragraph
-            else
-            {
-                ChangelogContent.Children.Add(CreateParagraph(trimmedLine));
-            }
+                Text = content,
+                FontSize = 13,
+                Foreground = new SolidColorBrush(Color.FromRgb(204, 204, 204)),
+                TextWrapping = TextWrapping.Wrap
+            });
         }
     }
 
-    private TextBlock CreateHeading(string text, double fontSize, FontWeight weight)
+    private TextBlock CreateHeading(string text, double fontSize, FontWeight weight) =>
+        CreateHeadingBlock(text, fontSize, weight);
+
+    private static TextBlock CreateHeadingBlock(string text, double fontSize, FontWeight weight)
     {
         var tb = new TextBlock
         {
@@ -392,11 +461,14 @@ public partial class ChangelogWindow : Window
             Margin = new Thickness(0, 12, 0, 8),
             TextWrapping = TextWrapping.Wrap
         };
-        ParseInlineMarkdown(tb, text);
+        PopulateInlineMarkdown(tb, text);
         return tb;
     }
 
-    private Grid CreateBulletPoint(string text)
+    private Grid CreateBulletPoint(string text) =>
+        CreateBulletPointBlock("•", Color.FromRgb(0, 102, 255), text);
+
+    private static Grid CreateBulletPointBlock(string marker, Color markerColor, string text)
     {
         var grid = new Grid
         {
@@ -407,9 +479,9 @@ public partial class ChangelogWindow : Window
 
         var bullet = new TextBlock
         {
-            Text = "•",
+            Text = marker,
             FontSize = 13,
-            Foreground = new SolidColorBrush(Color.FromRgb(0, 102, 255)),
+            Foreground = new SolidColorBrush(markerColor),
             Margin = new Thickness(0, 0, 8, 0),
             VerticalAlignment = VerticalAlignment.Top
         };
@@ -423,14 +495,72 @@ public partial class ChangelogWindow : Window
             TextWrapping = TextWrapping.Wrap,
             LineHeight = 20
         };
-        ParseInlineMarkdown(content, text);
+        PopulateInlineMarkdown(content, text);
         Grid.SetColumn(content, 1);
         grid.Children.Add(content);
 
         return grid;
     }
 
-    private TextBlock CreateParagraph(string text)
+    private static Border CreateBlockquoteBlock(string text)
+    {
+        var tb = new TextBlock
+        {
+            FontSize = 13,
+            Foreground = new SolidColorBrush(Color.FromRgb(170, 170, 170)),
+            TextWrapping = TextWrapping.Wrap,
+            LineHeight = 20
+        };
+        PopulateInlineMarkdown(tb, text);
+
+        return new Border
+        {
+            BorderBrush = new SolidColorBrush(Color.FromRgb(64, 64, 64)),
+            BorderThickness = new Thickness(3, 0, 0, 0),
+            Padding = new Thickness(10, 2, 0, 2),
+            Margin = new Thickness(0, 4, 0, 4),
+            Child = tb
+        };
+    }
+
+    private static Grid? CreateTableRowBlock(ReadOnlySpan<char> rowSpan)
+    {
+        var cells = VNotchNative.SplitMarkdownTableCells(rowSpan);
+        if (cells.Length == 0)
+        {
+            return null;
+        }
+
+        var rowGrid = new Grid
+        {
+            Margin = new Thickness(0, 2, 0, 2)
+        };
+
+        for (int c = 0; c < cells.Length; c++)
+        {
+            rowGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+            string cellText = cells[c].Len > 0
+                ? rowSpan.Slice(cells[c].Start, cells[c].Len).ToString()
+                : string.Empty;
+
+            var cellBlock = new TextBlock
+            {
+                FontSize = 12.5,
+                Foreground = new SolidColorBrush(Color.FromRgb(214, 214, 214)),
+                TextWrapping = TextWrapping.Wrap,
+                Margin = new Thickness(0, 0, 8, 0)
+            };
+            PopulateInlineMarkdown(cellBlock, cellText);
+            Grid.SetColumn(cellBlock, c);
+            rowGrid.Children.Add(cellBlock);
+        }
+
+        return rowGrid;
+    }
+
+    private TextBlock CreateParagraph(string text) => CreateParagraphBlock(text);
+
+    private static TextBlock CreateParagraphBlock(string text)
     {
         var tb = new TextBlock
         {
@@ -440,78 +570,99 @@ public partial class ChangelogWindow : Window
             LineHeight = 20,
             Margin = new Thickness(0, 4, 0, 4)
         };
-        ParseInlineMarkdown(tb, text);
+        PopulateInlineMarkdown(tb, text);
         return tb;
     }
 
-    private void ParseInlineMarkdown(TextBlock textBlock, string text)
+    private void ParseInlineMarkdown(TextBlock textBlock, string text) =>
+        PopulateInlineMarkdown(textBlock, text);
+
+    internal static void PopulateInlineMarkdown(TextBlock textBlock, string text)
     {
         textBlock.Inlines.Clear();
-        var pattern = @"(\*\*.*?\*\*)|(?<!\w)(\*.*?\*)(?!\w)|(`.*?`)|(\[.*?\]\(.*?\))";
-
-        var matches = Regex.Matches(text, pattern, RegexOptions.None, TimeSpan.FromSeconds(1));
-        int lastIndex = 0;
-
-        foreach (Match match in matches)
+        if (string.IsNullOrEmpty(text))
         {
-            if (match.Index > lastIndex)
-            {
-                textBlock.Inlines.Add(new Run(text[lastIndex..match.Index]));
-            }
-
-            string value = match.Value;
-            if (value.StartsWith("**", StringComparison.Ordinal) && value.EndsWith("**", StringComparison.Ordinal))
-            {
-                textBlock.Inlines.Add(new Bold(new Run(value[2..^2])));
-            }
-            else if (value.StartsWith('*') && value.EndsWith('*'))
-            {
-                textBlock.Inlines.Add(new Italic(new Run(value[1..^1])));
-            }
-            else if (value.StartsWith('`') && value.EndsWith('`'))
-            {
-                var run = new Run(value[1..^1])
-                {
-                    FontFamily = SetupFonts.SFProDisplayFont,
-                    Background = new SolidColorBrush(Color.FromArgb(20, 255, 255, 255)),
-                    Foreground = new SolidColorBrush(Color.FromRgb(230, 230, 230))
-                };
-                textBlock.Inlines.Add(run);
-            }
-            else if (value.StartsWith('['))
-            {
-                var linkMatch = Regex.Match(value, @"\[(.*?)\]\((.*?)\)", RegexOptions.None, TimeSpan.FromSeconds(1));
-                if (linkMatch.Success)
-                {
-                    string linkTarget = linkMatch.Groups[2].Value;
-                    string linkText = linkMatch.Groups[1].Value;
-
-                    if (SafeLauncher.IsSafeUrl(linkTarget, out var safeUri) && safeUri != null)
-                    {
-                        var hyperlink = new Hyperlink(new Run(linkText));
-                        hyperlink.NavigateUri = safeUri;
-                        hyperlink.Foreground = new SolidColorBrush(Color.FromRgb(0, 102, 255));
-                        hyperlink.TextDecorations = null;
-                        hyperlink.RequestNavigate += (s, e) =>
-                        {
-                            SafeLauncher.TryOpenUrl(e.Uri);
-                            e.Handled = true;
-                        };
-                        textBlock.Inlines.Add(hyperlink);
-                    }
-                    else
-                    {
-                        textBlock.Inlines.Add(new Run(linkText));
-                    }
-                }
-            }
-
-            lastIndex = match.Index + match.Length;
+            return;
         }
 
-        if (lastIndex < text.Length)
+        try
         {
-            textBlock.Inlines.Add(new Run(text[lastIndex..]));
+            var tokens = VNotchNative.TokenizeMarkdownInlines(text);
+            foreach (var token in tokens)
+            {
+                if (token.TextLen <= 0)
+                {
+                    continue;
+                }
+
+                string partText = text.Substring(token.TextStart, token.TextLen);
+                switch (token.InlineKind)
+                {
+                    case VnMarkdownInlineKind.Bold:
+                        textBlock.Inlines.Add(new Bold(new Run(partText)));
+                        break;
+
+                    case VnMarkdownInlineKind.Italic:
+                        textBlock.Inlines.Add(new Italic(new Run(partText)));
+                        break;
+
+                    case VnMarkdownInlineKind.Code:
+                        {
+                            var run = new Run(partText)
+                            {
+                                FontFamily = SetupFonts.SFProDisplayFont,
+                                Background = new SolidColorBrush(Color.FromArgb(20, 255, 255, 255)),
+                                Foreground = new SolidColorBrush(Color.FromRgb(230, 230, 230))
+                            };
+                            textBlock.Inlines.Add(run);
+                            break;
+                        }
+
+                    case VnMarkdownInlineKind.Link:
+                    case VnMarkdownInlineKind.Url:
+                        {
+                            string linkTarget = token.InlineKind == VnMarkdownInlineKind.Url
+                                ? partText
+                                : (token.AuxLen > 0 ? text.Substring(token.AuxStart, token.AuxLen) : string.Empty);
+
+                            if (SafeLauncher.IsSafeUrl(linkTarget, out var safeUri) && safeUri != null)
+                            {
+                                var hyperlink = new Hyperlink(new Run(partText))
+                                {
+                                    NavigateUri = safeUri,
+                                    Foreground = new SolidColorBrush(Color.FromRgb(0, 102, 255)),
+                                    TextDecorations = null
+                                };
+                                hyperlink.RequestNavigate += (s, e) =>
+                                {
+                                    SafeLauncher.TryOpenUrl(e.Uri);
+                                    e.Handled = true;
+                                };
+                                textBlock.Inlines.Add(hyperlink);
+                            }
+                            else
+                            {
+                                textBlock.Inlines.Add(new Run(partText));
+                            }
+                            break;
+                        }
+
+                    case VnMarkdownInlineKind.Text:
+                    default:
+                        textBlock.Inlines.Add(new Run(partText));
+                        break;
+                }
+            }
+        }
+        catch (RegexMatchTimeoutException)
+        {
+            textBlock.Inlines.Clear();
+            textBlock.Inlines.Add(new Run(text));
+        }
+        catch (Exception)
+        {
+            textBlock.Inlines.Clear();
+            textBlock.Inlines.Add(new Run(text));
         }
     }
 
@@ -526,8 +677,25 @@ public partial class ChangelogWindow : Window
     {
         try
         {
-            var cleanVersion = Regex.Replace(versionString, @"[^\d\.]", "", RegexOptions.None, TimeSpan.FromSeconds(1));
-            return Version.Parse(cleanVersion);
+            if (UpdateService.TryParseReleaseVersion(versionString, out var parsed, out _))
+            {
+                return parsed;
+            }
+
+            Span<char> clean = stackalloc char[Math.Min(versionString.Length, 64)];
+            int len = 0;
+            foreach (char ch in versionString)
+            {
+                if ((ch >= '0' && ch <= '9') || ch == '.')
+                {
+                    if (len < clean.Length)
+                    {
+                        clean[len++] = ch;
+                    }
+                }
+            }
+
+            return Version.Parse(clean[..len]);
         }
         catch (Exception)
         {

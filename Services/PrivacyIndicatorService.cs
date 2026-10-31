@@ -88,7 +88,7 @@ public sealed partial class PrivacyIndicatorService : IDisposable
     private Task? _micFlowTask;
     private int _micFlowGeneration;
 
-    private IReadOnlyList<CapabilityUsage> _microphoneCandidates = Array.Empty<CapabilityUsage>();
+    private volatile IReadOnlyList<CapabilityUsage> _microphoneCandidates = Array.Empty<CapabilityUsage>();
     private IReadOnlyList<string> _microphoneCandidateNames = Array.Empty<string>();
     private IReadOnlyList<string> _cameraConsumers = Array.Empty<string>();
     private bool _cameraInUse;
@@ -101,7 +101,15 @@ public sealed partial class PrivacyIndicatorService : IDisposable
 
     public event EventHandler<PrivacyIndicatorState>? StateChanged;
 
-    public PrivacyIndicatorState CurrentState { get; private set; } = PrivacyIndicatorState.Empty;
+    private PrivacyIndicatorState _currentState = PrivacyIndicatorState.Empty;
+
+    public PrivacyIndicatorState CurrentState
+    {
+        get => Volatile.Read(ref _currentState);
+        private set => Volatile.Write(ref _currentState, value);
+    }
+
+    internal IReadOnlyList<CapabilityUsage> MicrophoneCandidates => _microphoneCandidates;
 
     public PrivacyIndicatorService(TimeSpan? pollInterval = null)
         : this(pollInterval, ScanCapability, null, new ScreenRecordingProbe())
@@ -364,7 +372,7 @@ public sealed partial class PrivacyIndicatorService : IDisposable
         }
     }
 
-    private void ApplyScanResult(PrivacyScanResult result)
+    internal void ApplyScanResult(PrivacyScanResult result)
     {
         _microphoneCandidates = result.MicrophoneCandidates;
         _microphoneCandidateNames = result.MicrophoneCandidateNames;
@@ -574,7 +582,7 @@ public sealed partial class PrivacyIndicatorService : IDisposable
 
 
 
-    private sealed record PrivacyScanResult(
+    internal sealed record PrivacyScanResult(
         IReadOnlyList<CapabilityUsage> MicrophoneCandidates,
         IReadOnlyList<string> MicrophoneCandidateNames,
         IReadOnlyList<string> CameraConsumers,

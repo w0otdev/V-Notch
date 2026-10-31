@@ -173,7 +173,7 @@ if (-not (Test-Path -LiteralPath "$publishDir\VNotch.Native.dll")) {
     throw 'Published VNotch.Native.dll is missing from the release output directory.'
 }
 $appExeHash = (Get-FileHash -Algorithm SHA256 "$publishDir\V-Notch.exe").Hash.ToLowerInvariant()
-Set-Content -Path "$publishDir\V-Notch.exe.sha256" -Value "$appExeHash  V-Notch.exe" -NoNewline
+Set-Content -Path "$publishDir\V-Notch.exe.sha256" -Value "$appExeHash  V-Notch.exe"
 Write-TreeItem ("Published V-Notch.exe & VNotch.Native.dll (v$exeVersion) in {0:N1}s." -f $pubSw.Elapsed.TotalSeconds) -State "Success"
 
 # Step 2b: Publish the standalone uninstaller into the same release folder so it
@@ -195,7 +195,7 @@ Write-TreeItem "Verified bundled ONNX model provenance & license." -State "Succe
 if ($CertificateThumbprint) {
     & (Join-Path $scriptDir 'Sign-ReleaseBinary.ps1') -Path "$publishDir\V-Notch.exe", "$publishDir\VNotch.Native.dll", "$publishDir\uninstall.exe" -CertificateThumbprint $CertificateThumbprint
     $appExeHash = (Get-FileHash -Algorithm SHA256 "$publishDir\V-Notch.exe").Hash.ToLowerInvariant()
-    Set-Content -Path "$publishDir\V-Notch.exe.sha256" -Value "$appExeHash  V-Notch.exe" -NoNewline
+    Set-Content -Path "$publishDir\V-Notch.exe.sha256" -Value "$appExeHash  V-Notch.exe"
     Write-TreeItem "Signed V-Notch.exe, VNotch.Native.dll and uninstall.exe (thumbprint)." -State "Success"
 }
 
@@ -208,7 +208,7 @@ if ($CertificatePath -and -not $CertificateThumbprint) {
     Write-TreeItem "V-Notch.exe, VNotch.Native.dll and uninstall.exe signed successfully." -State "Success"
 
     $appExeHash = (Get-FileHash -Algorithm SHA256 "$publishDir\V-Notch.exe").Hash.ToLowerInvariant()
-    Set-Content -Path "$publishDir\V-Notch.exe.sha256" -Value "$appExeHash  V-Notch.exe" -NoNewline
+    Set-Content -Path "$publishDir\V-Notch.exe.sha256" -Value "$appExeHash  V-Notch.exe"
 }
 
 # Step 3: Build NSIS installer
@@ -282,9 +282,9 @@ if ($null -eq $checksum) {
     exit 1
 }
 
-Set-Content -Path "installers\V-Notch-Setup.exe.sha256" -Value "$checksum  V-Notch-Setup.exe" -NoNewline
+Set-Content -Path "installers\V-Notch-Setup.exe.sha256" -Value "$checksum  V-Notch-Setup.exe"
 $exeShaName = if ($SelfContained) { "V-Notch-SelfContained.exe.sha256" } else { "V-Notch.exe.sha256" }
-Set-Content -Path "installers\$exeShaName" -Value "$appExeHash  V-Notch.exe" -NoNewline
+Set-Content -Path "installers\$exeShaName" -Value "$appExeHash  V-Notch.exe"
 Write-TreeItem "SHA-256: $checksum" -State "Success"
 
 $privateKeyCandidates = @(
@@ -293,7 +293,7 @@ $privateKeyCandidates = @(
 )
 $foundKey = $privateKeyCandidates | Where-Object { $_ -and (Test-Path $_) } | Select-Object -First 1
 
-if ($foundKey -or $env:VNOTCH_UPDATE_SIGNING_KEY_PEM) {
+if ($foundKey -or $env:VNOTCH_UPDATE_SIGNING_KEY_PEM -or $env:VNOTCH_UPDATE_SIGNING_PRIVATE_KEY_PEM) {
     $signScript = Join-Path $scriptDir "Sign-UpdateManifest.ps1"
     $pwshCmd = Get-Command pwsh.exe -ErrorAction SilentlyContinue
     $keyArg = if ($foundKey) { "-PrivateKeyPath '$foundKey'" } else { "" }
@@ -307,12 +307,16 @@ if ($foundKey -or $env:VNOTCH_UPDATE_SIGNING_KEY_PEM) {
             & $signScript @signParams | Out-Null
         } elseif ($pwshCmd) {
             & $pwshCmd.Source -NoProfile -ExecutionPolicy Bypass -Command "& '$signScript' -InstallerPath 'installers\V-Notch-Setup.exe' -Version '$projectVersion' $keyArg" | Out-Null
+            if ($LASTEXITCODE -ne 0) {
+                throw "Sign-UpdateManifest.ps1 failed with exit code $LASTEXITCODE."
+            }
         } else {
-            Write-TreeItem "PowerShell 7 (pwsh) not found; skipping update manifest signing." -State "Warn"
+            throw "PowerShell 7 (pwsh) is required to sign the ECDSA update manifest when VNOTCH_UPDATE_SIGNING_PRIVATE_KEY_PEM is set."
         }
         Write-TreeItem "Signed ECDSA update manifest." -State "Success"
     } catch {
-        Write-TreeItem "Could not sign update manifest: $_" -State "Warn"
+        Write-TreeItem "Could not sign update manifest: $_" -State "Error"
+        throw
     }
 }
 

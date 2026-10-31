@@ -6,6 +6,7 @@ using Xunit;
 
 namespace VNotch.Tests;
 
+[Collection("DiagnosticLogging")]
 public sealed class RuntimeLogTests
 {
     [Fact]
@@ -106,27 +107,58 @@ public sealed class RuntimeLogTests
     [Fact]
     public async Task ClearLog_PurgesLogFilesAndExecutesWithoutException()
     {
-        string logPath = Path.Combine(Path.GetTempPath(), $"vnotch-clearlog-{Guid.NewGuid():N}.log");
+        string tempDir = Path.Combine(Path.GetTempPath(), $"vnotch-clearlog-dir-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(tempDir);
+        string logPath = Path.Combine(tempDir, "vnotch-debug.log");
+        string primaryCrash = Path.Combine(tempDir, "primary-vnotch-crash.log");
+        string secondaryCrash = Path.Combine(tempDir, "secondary-vnotch-crash.log");
+        string fallbackCrash = Path.Combine(tempDir, "fallback-vnotch-crash.log");
+
         LogLevel previousMinimumLevel = RuntimeLog.MinimumLevel;
+        string originalPrimaryCrash = CrashReporter.CrashLogPath;
+        string originalSecondaryCrash = CrashReporter.SecondaryCrashLogPath;
+        string originalFallbackCrash = CrashReporter.FallbackCrashLogPath;
 
         try
         {
+            CrashReporter.CrashLogPath = primaryCrash;
+            CrashReporter.SecondaryCrashLogPath = secondaryCrash;
+            CrashReporter.FallbackCrashLogPath = fallbackCrash;
+
             RuntimeLog.MinimumLevel = LogLevel.Debug;
             await RuntimeLog.InitializeNewSessionAsync(logPath);
             RuntimeLog.Log("TEST", "Sample test log entry");
+            await RuntimeLog.FlushAsync().WaitAsync(TimeSpan.FromSeconds(5));
+            await File.WriteAllTextAsync(logPath + ".old", "old debug log");
+
+            await File.WriteAllTextAsync(primaryCrash, "primary crash");
+            await File.WriteAllTextAsync(primaryCrash + ".old", "primary crash old");
+            await File.WriteAllTextAsync(secondaryCrash, "secondary crash");
+            await File.WriteAllTextAsync(secondaryCrash + ".old", "secondary crash old");
+            await File.WriteAllTextAsync(fallbackCrash, "fallback crash");
+            await File.WriteAllTextAsync(fallbackCrash + ".old", "fallback crash old");
 
             await RuntimeLog.ClearLogAsync();
 
             Assert.NotNull(RuntimeLog.LogPath);
+            Assert.False(File.Exists(logPath + ".old"));
+            Assert.False(File.Exists(primaryCrash));
+            Assert.False(File.Exists(primaryCrash + ".old"));
+            Assert.False(File.Exists(secondaryCrash));
+            Assert.False(File.Exists(secondaryCrash + ".old"));
+            Assert.False(File.Exists(fallbackCrash));
+            Assert.False(File.Exists(fallbackCrash + ".old"));
         }
         finally
         {
             await RuntimeLog.ShutdownAsync(TimeSpan.FromSeconds(5));
             RuntimeLog.MinimumLevel = previousMinimumLevel;
+            CrashReporter.CrashLogPath = originalPrimaryCrash;
+            CrashReporter.SecondaryCrashLogPath = originalSecondaryCrash;
+            CrashReporter.FallbackCrashLogPath = originalFallbackCrash;
             try
             {
-                if (File.Exists(logPath)) File.Delete(logPath);
-                if (File.Exists(logPath + ".old")) File.Delete(logPath + ".old");
+                if (Directory.Exists(tempDir)) Directory.Delete(tempDir, recursive: true);
             }
             catch
             {

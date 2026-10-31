@@ -2,6 +2,7 @@ using System.Buffers;
 using System.IO;
 using System.Net.Http;
 using System.Runtime.InteropServices;
+using System.Runtime.InteropServices.WindowsRuntime;
 using System.Windows;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
@@ -68,13 +69,6 @@ public sealed partial class MediaArtworkService : IMediaArtworkService, IDisposa
         _smartCropAvailable = false;
     }
     public bool EnableSmartCrop { get; set; } = false;
-    public void InitializeSmartCrop()
-    {
-        if (!_smartCropAvailable)
-        {
-            _smartCropAvailable = _smartCrop.TryInitialize();
-        }
-    }
     public void ConfigureSmartCrop(bool enabled)
     {
         EnableSmartCrop = enabled;
@@ -317,7 +311,7 @@ public sealed partial class MediaArtworkService : IMediaArtworkService, IDisposa
     {
         try
         {
-            if (stream == null || stream.Size == 0)
+            if (stream == null || !stream.CanRead || stream.Size == 0)
             {
                 return null;
             }
@@ -328,15 +322,42 @@ public sealed partial class MediaArtworkService : IMediaArtworkService, IDisposa
                 return null;
             }
 
-            byte[] bytes;
-            using (var reader = new DataReader(stream))
+            try
             {
-                await reader.LoadAsync((uint)stream.Size).AsTask(ct);
-                bytes = new byte[stream.Size];
-                reader.ReadBytes(bytes);
+                if (stream.Position != 0)
+                {
+                    stream.Seek(0);
+                }
+            }
+            catch
+            {
+                // Some WinRT stream implementations may not support Position or Seek(0).
             }
 
-            return await DecodeImageAsync(bytes, ct);
+            int requestedBytes = (int)stream.Size;
+            byte[] buffer = ArrayPool<byte>.Shared.Rent(requestedBytes);
+            try
+            {
+                int bytesToRead;
+                using (var reader = new DataReader(stream))
+                {
+                    uint loaded = await reader.LoadAsync((uint)requestedBytes).AsTask(ct);
+                    if (loaded == 0)
+                    {
+                        return null;
+                    }
+
+                    bytesToRead = (int)Math.Min(loaded, (uint)buffer.Length);
+                    IBuffer dataBuffer = reader.ReadBuffer((uint)bytesToRead);
+                    dataBuffer.CopyTo(0, buffer, 0, bytesToRead);
+                }
+
+                return await DecodeImageAsync(buffer, ct, bytesToRead);
+            }
+            finally
+            {
+                ArrayPool<byte>.Shared.Return(buffer);
+            }
         }
         catch (Exception ex)
         {

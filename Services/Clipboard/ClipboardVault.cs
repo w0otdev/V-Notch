@@ -263,17 +263,17 @@ internal sealed partial class ClipboardVault : IDisposable
     internal void TransformFile(string source, string destination, bool encrypt)
     {
         using var input = File.OpenRead(source);
-        string temporary = destination + ".tmp";
+        string temporary = $"{destination}.{Guid.NewGuid():N}.tmp";
         try
         {
-            using (var output = new FileStream(temporary, FileMode.Create, FileAccess.Write, FileShare.None))
+            using (var output = new FileStream(temporary, FileMode.CreateNew, FileAccess.Write, FileShare.None))
             {
                 TransformFile(input, output, encrypt);
                 output.Flush(true);
             }
             File.Move(temporary, destination, true);
         }
-        finally { File.Delete(temporary); }
+        finally { if (File.Exists(temporary)) File.Delete(temporary); }
     }
 
     internal void TransformFile(Stream input, Stream output, bool encrypt)
@@ -333,10 +333,14 @@ internal sealed partial class ClipboardVault : IDisposable
     internal static void AtomicWrite(string path, byte[] bytes)
     {
         Directory.CreateDirectory(Path.GetDirectoryName(path)!);
-        string temporary = path + ".tmp";
-        using (var stream = new FileStream(temporary, FileMode.Create, FileAccess.Write, FileShare.None))
-        { stream.Write(bytes); stream.Flush(true); }
-        File.Move(temporary, path, true);
+        string temporary = $"{path}.{Guid.NewGuid():N}.tmp";
+        try
+        {
+            using (var stream = new FileStream(temporary, FileMode.CreateNew, FileAccess.Write, FileShare.None))
+            { stream.Write(bytes); stream.Flush(true); }
+            File.Move(temporary, path, true);
+        }
+        finally { if (File.Exists(temporary)) File.Delete(temporary); }
     }
 
     internal void Lock()

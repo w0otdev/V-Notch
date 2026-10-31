@@ -103,6 +103,32 @@ public sealed class ClipboardCardRenderingTests
         }
     });
 
+    [Fact]
+    public void CreateBitmapBounds4kScreenshotWidthAndFreezesResult() => SharedStaTestRunner.Run(() =>
+    {
+        int stride = (3840 + 7) / 8;
+        var source = BitmapSource.Create(
+            3840,
+            2160,
+            96,
+            96,
+            PixelFormats.Indexed1,
+            BitmapPalettes.BlackAndWhite,
+            new byte[stride * 2160],
+            stride);
+        var encoder = new PngBitmapEncoder();
+        encoder.Frames.Add(BitmapFrame.Create(source));
+        using var stream = new MemoryStream();
+        encoder.Save(stream);
+
+        var bitmap = ClipboardTray.CreateBitmap(stream.ToArray());
+
+        Assert.True(bitmap.PixelWidth <= 420);
+        Assert.Equal(420, bitmap.PixelWidth);
+        Assert.True(bitmap.PixelHeight <= 420);
+        Assert.True(bitmap.IsFrozen);
+    });
+
     private static Border CreateCard(ClipboardTray tray, ClipboardEntry entry, double height)
     {
         var list = (ListBox)tray.FindName("Cards");

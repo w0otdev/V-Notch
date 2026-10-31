@@ -2,6 +2,7 @@ param(
     [string]$Filter = "",
     [switch]$All,
     [switch]$NoBuild,
+    [ValidateSet(4, 6)]
     [int]$Shards = 6,
     [ValidateSet("Debug", "Release")]
     [string]$Configuration = "Debug",
@@ -25,11 +26,26 @@ try {
         git ls-files --others --exclude-standard 2>$null
     ) | Where-Object { -not [string]::IsNullOrWhiteSpace($_) } | Select-Object -Unique
 
-    $nativeChanged = $false
+    $nativeDirty = $false
     foreach ($f in $changedFiles) {
         if ($f -match '^Native[/\\]') {
-            $nativeChanged = $true
+            $nativeDirty = $true
             break
+        }
+    }
+
+    $nativeBinDll = if (Test-Path -LiteralPath $nativeDll) { Get-Item -LiteralPath $nativeDll } else { $null }
+    if (($null -ne $nativeBinDll) -and (-not $nativeDirty)) {
+        $nativeSources = @(Get-ChildItem -Path (Join-Path $repoRoot "Native") -Recurse -File -Include *.cpp,*.h -ErrorAction SilentlyContinue)
+        $mainCsproj = Join-Path $repoRoot "V-Notch.csproj"
+        if (Test-Path -LiteralPath $mainCsproj) {
+            $nativeSources += Get-Item -LiteralPath $mainCsproj
+        }
+        foreach ($src in $nativeSources) {
+            if ($src.LastWriteTimeUtc -gt $nativeBinDll.LastWriteTimeUtc) {
+                $nativeDirty = $true
+                break
+            }
         }
     }
 
@@ -45,7 +61,7 @@ try {
             "-p:EnforceCodeStyleInBuild=false"
         )
 
-        if ((Test-Path $nativeDll) -and (-not $nativeChanged)) {
+        if (($null -ne $nativeBinDll) -and (-not $nativeDirty)) {
             $buildArgs += "-p:SkipNativeCompile=true"
             $buildArgs += "-p:SkipShaderCompile=true"
         }

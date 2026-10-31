@@ -2,7 +2,9 @@ using System;
 using System.IO;
 using System.Text.Json;
 using System.Threading;
+using System.Runtime.InteropServices;
 using VNotch.Controllers;
+using VNotch.Models;
 using VNotch.Services;
 using Xunit;
 
@@ -84,5 +86,150 @@ public sealed class AuditRegressionTests
         };
 
         Assert.True(UpdateService.IsApprovedUpdate(update));
+    }
+
+    [Fact]
+    public void MediaSessionSelectionPolicy_SelectNewlyPlayingSession_MatchesDistinctWrappersWhenEquivalenceProvided()
+    {
+        var first = new SessionWrapper("chrome.exe#1");
+        var second = new SessionWrapper("chrome.exe#2");
+        var osCurrentWrapper = new SessionWrapper("chrome.exe#2");
+
+        Assert.NotSame(second, osCurrentWrapper);
+        Assert.Null(MediaSessionSelectionPolicy.SelectNewlyPlayingSession(new[] { first, second }, osCurrentWrapper));
+
+        var selected = MediaSessionSelectionPolicy.SelectNewlyPlayingSession(
+            new[] { first, second },
+            osCurrentWrapper,
+            static (a, b) => string.Equals(a.Key, b.Key, StringComparison.Ordinal));
+
+        Assert.Same(second, selected);
+        Assert.Null(MediaSessionSelectionPolicy.SelectNewlyPlayingSession(
+            new[] { first, second },
+            null,
+            static (a, b) => string.Equals(a.Key, b.Key, StringComparison.Ordinal)));
+    }
+
+    [UnmanagedFunctionPointer(CallingConvention.StdCall)]
+    private delegate int QueryInterfaceDelegate(nint thisPtr, in Guid riid, out nint ppvObject);
+
+    [UnmanagedFunctionPointer(CallingConvention.StdCall)]
+    private delegate uint AddRefReleaseDelegate(nint thisPtr);
+
+    private static readonly Guid IUnknownGuid = new("00000000-0000-0000-C000-000000000046");
+
+    private static readonly QueryInterfaceDelegate NativeQi = static (nint thisPtr, in Guid riid, out nint ppvObject) =>
+    {
+        if (riid == IUnknownGuid)
+        {
+            ppvObject = thisPtr;
+            return 0;
+        }
+        ppvObject = 0;
+        return unchecked((int)0x80004002);
+    };
+
+    private static readonly AddRefReleaseDelegate NativeAddRefRelease = static _ => 1;
+
+    [Fact]
+    public async Task MediaTransportControlService_PreviousTrackAsync_NavigatesBrowserBackForDistinctSessionWrappersAndRcws()
+    {
+        nint vtbl = Marshal.AllocHGlobal(IntPtr.Size * 3);
+        nint unk = Marshal.AllocHGlobal(IntPtr.Size);
+        try
+        {
+            Marshal.WriteIntPtr(vtbl, 0, Marshal.GetFunctionPointerForDelegate(NativeQi));
+            Marshal.WriteIntPtr(vtbl, IntPtr.Size, Marshal.GetFunctionPointerForDelegate(NativeAddRefRelease));
+            Marshal.WriteIntPtr(vtbl, IntPtr.Size * 2, Marshal.GetFunctionPointerForDelegate(NativeAddRefRelease));
+            Marshal.WriteIntPtr(unk, 0, vtbl);
+
+            object rcw1 = Marshal.GetUniqueObjectForIUnknown(unk);
+            object rcw2 = Marshal.GetUniqueObjectForIUnknown(unk);
+            try
+            {
+                Assert.NotSame(rcw1, rcw2);
+                Assert.True(Marshal.IsComObject(rcw1));
+                Assert.True(Marshal.IsComObject(rcw2));
+
+                var firstWrapper = new TestTransportSession(rcw1, "chrome.exe", "Browser Video");
+                var secondWrapper = new TestTransportSession(rcw2, "chrome.exe", "Browser Video");
+                int calls = 0;
+                var keys = new List<byte>();
+                MediaInfo? navigatedInfo = null;
+
+                var service = new MediaTransportControlService(
+                    () => calls++ == 0 ? firstWrapper : secondWrapper,
+                    keys.Add,
+                    _ => true,
+                    info => { navigatedInfo = info; return true; });
+
+                await service.PreviousTrackAsync();
+
+                Assert.NotNull(navigatedInfo);
+                Assert.Equal("Browser Video", navigatedInfo!.CurrentTrack);
+                Assert.Equal("chrome.exe", navigatedInfo.SourceAppId);
+                Assert.Empty(keys);
+            }
+            finally
+            {
+                if (Marshal.IsComObject(rcw1)) Marshal.ReleaseComObject(rcw1);
+                if (Marshal.IsComObject(rcw2)) Marshal.ReleaseComObject(rcw2);
+            }
+        }
+        finally
+        {
+            Marshal.FreeHGlobal(unk);
+            Marshal.FreeHGlobal(vtbl);
+        }
+    }
+
+    [Fact]
+    public void MediaWindowActivator_IsMediaBrowserWindow_MatchesResolvedBrowserNameWithoutAllocatingProcess()
+    {
+        int processLookups = 0;
+        bool matched = MediaWindowActivator.IsMediaBrowserWindowCore(
+            new IntPtr(0x1234),
+            @"C:\Program Files\Google\Chrome\Application\chrome.exe",
+            processId: 4242,
+            resolveProcessName: static _ => "chrome",
+            isChromiumWindow: static _ => false,
+            getProcessById: _ =>
+            {
+                processLookups++;
+                throw new InvalidOperationException("Process.GetProcessById should not be called when resolvedName matches.");
+            });
+
+        Assert.True(matched);
+        Assert.Equal(0, processLookups);
+
+        bool nonBrowser = MediaWindowActivator.IsMediaBrowserWindowCore(
+            new IntPtr(0x1234),
+            "Spotify.exe",
+            processId: 4242,
+            resolveProcessName: static _ => "Spotify",
+            isChromiumWindow: static _ => false,
+            getProcessById: _ =>
+            {
+                processLookups++;
+                throw new InvalidOperationException("Process.GetProcessById should not be called for non-browser windows.");
+            });
+
+        Assert.False(nonBrowser);
+        Assert.Equal(0, processLookups);
+    }
+
+    private sealed record SessionWrapper(string Key);
+
+    private sealed class TestTransportSession(object identity, string sourceAppId, string title) : IMediaTransportSession
+    {
+        public object Identity => identity;
+        public string SourceAppUserModelId => sourceAppId;
+        public MediaTransportControls? GetControls() => new(IsNextEnabled: false, IsPreviousEnabled: false);
+        public MediaTransportTimeline? GetTimelineProperties() => new(TimeSpan.Zero, TimeSpan.FromSeconds(120), TimeSpan.FromSeconds(1));
+        public Task<bool> TryTogglePlayPauseAsync() => Task.FromResult(false);
+        public Task<bool> TrySkipNextAsync() => Task.FromResult(false);
+        public Task<bool> TrySkipPreviousAsync() => Task.FromResult(false);
+        public Task<bool> TryChangePlaybackPositionAsync(long ticks) => Task.FromResult(false);
+        public Task<string?> GetTitleAsync() => Task.FromResult<string?>(title);
     }
 }

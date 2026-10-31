@@ -91,7 +91,7 @@
             <Grid Margin="24,22,20,18" Background="Transparent" MouseLeftButtonDown="Header_MouseLeftButtonDown">
                 <Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
                 <StackPanel VerticalAlignment="Center" Margin="0,0,12,0">
-                    <TextBlock Text="SPOTLIGHT" FontSize="10" FontWeight="SemiBold" Foreground="#909090" Margin="0,0,0,7"/>
+                    <TextBlock x:Name="DialogBadgeText" Text="SPOTLIGHT" FontSize="10" FontWeight="SemiBold" Foreground="#909090" Margin="0,0,0,7"/>
                     <TextBlock x:Name="Heading" FontSize="20" FontWeight="SemiBold" TextWrapping="Wrap"/>
                 </StackPanel>
                 <Button x:Name="CloseButton" Grid.Column="1" Style="{StaticResource DialogButton}" Click="Close_Click"

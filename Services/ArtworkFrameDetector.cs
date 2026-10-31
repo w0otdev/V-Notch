@@ -1,3 +1,4 @@
+using System;
 using System.Buffers;
 using System.Runtime.InteropServices;
 using System.Windows;
@@ -8,6 +9,9 @@ namespace VNotch.Services;
 
 internal static partial class ArtworkFrameDetector
 {
+    [ThreadStatic]
+    internal static int RentDownscaledPixelsCallCount;
+
     [LibraryImport("VNotch.Native.dll")]
     private static unsafe partial int vn_artwork_frame_detect_any(
         byte* pixels, int w, int h, int width, int height,
@@ -30,17 +34,25 @@ internal static partial class ArtworkFrameDetector
         var (pixels, w, h) = RentDownscaledPixels(source, width, height);
         try
         {
-            fixed (byte* p = pixels)
-            {
-                _ = vn_artwork_frame_detect_any(p, w, h, width, height, out int rx, out int ry, out int rw, out int rh, out byte found);
-                return found != 0 ? new Int32Rect(rx, ry, rw, rh) : null;
-            }
+            return DetectFrameFromPixels(pixels, w, h, width, height);
         }
         finally
         {
             ArrayPool<byte>.Shared.Return(pixels);
         }
     }
+
+    internal static unsafe Int32Rect? DetectFrameFromPixels(byte[] pixels, int w, int h, int width, int height)
+    {
+        fixed (byte* p = pixels)
+        {
+            _ = vn_artwork_frame_detect_any(p, w, h, width, height, out int rx, out int ry, out int rw, out int rh, out byte found);
+            return found != 0 ? new Int32Rect(rx, ry, rw, rh) : null;
+        }
+    }
+
+    internal static unsafe Int32Rect? DetectFrameFromPixels(byte[] pixels, int w, int h, int stride) =>
+        DetectFrameFromPixels(pixels, w, h, w, h);
 
     internal static unsafe Int32Rect? DetectDarkTexturedFrame(BitmapSource source)
     {
@@ -80,11 +92,47 @@ internal static partial class ArtworkFrameDetector
         }
     }
 
-    private static (byte[] Pixels, int W, int H) RentDownscaledPixels(BitmapSource source, int width, int height)
+    internal static bool RentDownscaledPixels(
+        BitmapSource source,
+        out byte[]? pixels,
+        out int w,
+        out int h,
+        out int stride,
+        double maxDimension = 384.0)
     {
-        double scale = Math.Min(1, 384.0 / Math.Max(width, height));
-        BitmapSource sample = new TransformedBitmap(source, new ScaleTransform(scale, scale));
-        sample = new FormatConvertedBitmap(sample, PixelFormats.Bgra32, null, 0);
+        if (source == null || source.PixelWidth <= 0 || source.PixelHeight <= 0)
+        {
+            pixels = null;
+            w = 0;
+            h = 0;
+            stride = 0;
+            return false;
+        }
+
+        (pixels, w, h) = RentDownscaledPixels(source, source.PixelWidth, source.PixelHeight, maxDimension);
+        stride = w * 4;
+        return true;
+    }
+
+    internal static (byte[] Pixels, int W, int H) RentDownscaledPixels(
+        BitmapSource source,
+        int width,
+        int height,
+        double maxDimension = 384.0)
+    {
+        RentDownscaledPixelsCallCount++;
+        double scale = Math.Min(1.0, maxDimension / Math.Max(width, height));
+        var scaled = new TransformedBitmap(source, new ScaleTransform(scale, scale));
+        scaled.Freeze();
+
+        BitmapSource sample = scaled;
+        if (scaled.Format != PixelFormats.Bgra32)
+        {
+            var converted = new FormatConvertedBitmap(scaled, PixelFormats.Bgra32, null, 0);
+            converted.Freeze();
+            sample = converted;
+        }
+
         int w = sample.PixelWidth, h = sample.PixelHeight;
         int stride = w * 4;
         byte[] pixels = ArrayPool<byte>.Shared.Rent(h * stride);

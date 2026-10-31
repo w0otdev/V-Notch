@@ -1,4 +1,6 @@
+using System.Collections.Concurrent;
 using System.Reflection;
+using System.Threading;
 using VNotch.Services;
 using Xunit;
 
@@ -272,6 +274,112 @@ public sealed class MediaSessionVolumeServiceTests
         Assert.Contains(expected, names, StringComparer.OrdinalIgnoreCase);
     }
 
+    [Fact]
+    public async Task ConcurrentVolumeOperationsProcessCacheLookupsAndScoreCalculationsAreThreadSafe()
+    {
+        var chromeState = new ConcurrentVolumeState(0.5f);
+        var edgeState = new ConcurrentVolumeState(0.7f);
+        var chromeSessionA = new MediaAudioSessionSnapshot(
+            101, "Chrome", @"C:\Program Files\Google\Chrome\Application\chrome.exe", "chrome!1", false,
+            () => 0.4f, () => new ConcurrentVolumeLease(chromeState));
+        var chromeSessionB = new MediaAudioSessionSnapshot(
+            102, "Chrome", @"C:\Program Files\Google\Chrome\Application\chrome.exe", "chrome!2", false,
+            () => 0.2f, () => new ConcurrentVolumeLease(chromeState));
+        var edgeSession = new MediaAudioSessionSnapshot(
+            201, "Edge", @"C:\Program Files\Microsoft\Edge\Application\msedge.exe", "msedge!1", false,
+            () => 0.6f, () => new ConcurrentVolumeLease(edgeState));
+
+        MediaAudioSessionSnapshot[] sessions = [chromeSessionA, chromeSessionB, edgeSession];
+        string[] sources = ["chrome.exe", "msedge.exe", "CHROME.EXE"];
+        long virtualClockMs = 0;
+        var startGate = new ManualResetEventSlim(false);
+        var exceptions = new ConcurrentBag<Exception>();
+
+        using var service = new MediaSessionVolumeService(
+            () => new MediaAudioSessions(sessions, static () => { }),
+            source =>
+            {
+                bool isChrome = source.StartsWith("chrome", StringComparison.OrdinalIgnoreCase);
+                uint basePid = isChrome ? 101u : 201u;
+                return [basePid, basePid + 1, basePid + 2];
+            },
+            () => new DateTime(2026, 1, 1, 0, 0, 0, DateTimeKind.Utc).AddMilliseconds(Interlocked.Add(ref virtualClockMs, 150)));
+
+        const int workerCount = 8;
+        const int iterationsPerWorker = 250;
+        var tasks = new Task[workerCount];
+
+        for (int w = 0; w < workerCount; w++)
+        {
+            int workerId = w;
+            tasks[w] = Task.Run(() =>
+            {
+                startGate.Wait();
+                try
+                {
+                    for (int i = 0; i < iterationsPerWorker; i++)
+                    {
+                        string source = sources[(workerId + i) % sources.Length];
+                        float targetVolume = ((workerId * 31 + i) % 100) / 100f;
+
+                        if (i % 9 == 0)
+                        {
+                            chromeState.SetActive(false);
+                        }
+                        else if (i % 9 == 3)
+                        {
+                            chromeState.SetActive(true);
+                        }
+
+                        Assert.True(service.TryGetVolume(source, out float readVol, out _));
+                        Assert.InRange(readVol, 0f, 1f);
+
+                        Assert.True(service.TrySetVolume(source, targetVolume));
+
+                        if (i % 5 == 0)
+                        {
+                            Assert.True(service.TryToggleMute(source));
+                        }
+
+                        if (i % 7 == 0)
+                        {
+                            service.InvalidateVolumeSessionCache();
+                        }
+
+                        HashSet<uint> pids = service.GetCachedProcessIdsForSourceApp(source);
+                        Assert.NotEmpty(pids);
+                        uint sum = 0;
+                        foreach (uint pid in pids)
+                        {
+                            sum += pid;
+                        }
+                        Assert.True(sum > 0);
+
+                        var targetSession = sessions[(workerId + i) % sessions.Length];
+                        double score = service.CalculateSessionScore(targetSession, source, pids);
+                        Assert.False(double.IsNaN(score));
+                    }
+                }
+                catch (Exception ex)
+                {
+                    exceptions.Add(ex);
+                }
+            });
+        }
+
+        startGate.Set();
+        await Task.WhenAll(tasks);
+
+        Assert.Empty(exceptions);
+
+        chromeState.SetActive(true);
+        Assert.True(service.TrySetVolume("chrome.exe", 0.35f));
+        Assert.True(service.TryGetVolume("chrome.exe", out float finalVolume, out bool finalMuted));
+        Assert.Equal(0.35f, finalVolume, 3);
+        Assert.False(finalMuted);
+        Assert.Contains(101u, service.GetCachedProcessIdsForSourceApp("chrome.exe"));
+    }
+
     private static MediaAudioSessionSnapshot Session(VolumeState state, uint process = 11, string identifier = "fixture.exe") =>
         new(process, "", identifier, identifier + "!instance", false, () => 0, () => new VolumeLease(state));
 
@@ -326,5 +434,43 @@ public sealed class MediaSessionVolumeServiceTests
         }
         public bool Mute { get => state.Muted; set => state.Muted = value; }
         public void Dispose() => state.RecordDisposal();
+    }
+
+    private sealed class ConcurrentVolumeState(float initialVolume)
+    {
+        private int _active = 1;
+        private float _volume = initialVolume;
+        private int _muted;
+
+        public bool IsActive => Volatile.Read(ref _active) != 0;
+        public void SetActive(bool active) => Interlocked.Exchange(ref _active, active ? 1 : 0);
+
+        public float Volume
+        {
+            get => Volatile.Read(ref _volume);
+            set => Volatile.Write(ref _volume, value);
+        }
+
+        public bool Mute
+        {
+            get => Volatile.Read(ref _muted) != 0;
+            set => Interlocked.Exchange(ref _muted, value ? 1 : 0);
+        }
+    }
+
+    private sealed class ConcurrentVolumeLease(ConcurrentVolumeState state) : IMediaAudioVolume
+    {
+        public bool IsActive => state.IsActive;
+        public float Volume
+        {
+            get => state.Volume;
+            set => state.Volume = value;
+        }
+        public bool Mute
+        {
+            get => state.Mute;
+            set => state.Mute = value;
+        }
+        public void Dispose() { }
     }
 }
