@@ -191,6 +191,21 @@ public sealed class DynamicIslandCropPaletteTests
         });
     }
 
+    [Fact]
+    public void DeepBlueIndigoArtworkAvoidsHarshNeonIndigoSubColorAndPrefersNonBluePrimaryWhenPresent()
+    {
+        SharedStaTestRunner.Run(() =>
+        {
+            var source = CreateTwoColorArtwork();
+            var whole = DynamicIslandColorExtractor.GetDynamicIslandPalette(source);
+            Assert.True(whole.Main.R > 200 && whole.Main.B < 40);
+
+            var pureBlue = DynamicIslandColorExtractor.GetDynamicIslandPalette(source, new Rect(40, 0, 40, 40));
+            Assert.True(pureBlue.Main.B > 200 && pureBlue.Main.R < 40);
+            Assert.True(pureBlue.Sub.R >= 160 && pureBlue.Sub.G >= 180, $"Expected softened sub color instead of harsh indigo, got ({pureBlue.Sub.R},{pureBlue.Sub.G},{pureBlue.Sub.B})");
+        });
+    }
+
     private static BitmapSource CreateTwoColorArtwork(bool freeze = true)
     {
         var pixels = new byte[80 * 40 * 4];

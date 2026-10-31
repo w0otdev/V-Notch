@@ -252,6 +252,15 @@ public sealed partial class ClipboardTray : UserControl, IDisposable
             if (IsVisible || _cards.Count == 0) QueueRefresh();
         }));
     }
+    private void SearchSurface_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
+    {
+        e.Handled = true;
+        if (!SearchBox.IsKeyboardFocusWithin)
+        {
+            SearchBox.Focus();
+            SearchBox.CaretIndex = SearchBox.Text?.Length ?? 0;
+        }
+    }
     private void Search_Changed(object sender, TextChangedEventArgs e)
     {
         _pendingSelectAll = null;

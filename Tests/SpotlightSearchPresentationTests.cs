@@ -382,6 +382,33 @@ public sealed class SpotlightSearchPresentationTests
     private static NotchSettings Settings() => new() { EnableLocalOnlyMode = true, NotchStyle = "default" };
     private static T Field<T>(SpotlightWindow window, string name) => (T)typeof(SpotlightWindow).GetField(name, Private)!.GetValue(window)!;
     private static void Invoke(SpotlightWindow window, string name, params object?[] args) => typeof(SpotlightWindow).GetMethod(name, Private)!.Invoke(window, args);
+
+    [Fact]
+    public void GlowingCaretAdvancesStrictlyPerCharacterWithoutDuplicateEndSlot() => SharedStaTestRunner.RunAsync(async ct =>
+    {
+        using var fixture = new SpotlightWindowFixture(Settings());
+        var window = fixture.Window;
+        window.ShowSpotlight();
+        await Dispatcher.Yield(DispatcherPriority.ApplicationIdle);
+
+        window.SearchBox.Text = "aaaa";
+        window.SearchBox.Focus();
+        window.SearchBox.UpdateLayout();
+
+        var positions = new double[5];
+        for (int i = 0; i <= 4; i++)
+        {
+            window.SearchBox.CaretIndex = i;
+            Invoke(window, "UpdateGlowingCaret");
+            positions[i] = window.GlowingCaret.Margin.Left;
+        }
+
+        for (int i = 1; i <= 4; i++)
+        {
+            Assert.True(positions[i] > positions[i - 1], $"Expected caret X at index {i} ({positions[i]}) > index {i - 1} ({positions[i - 1]})");
+        }
+    });
+
     private sealed class ResultsProvider : ISpotlightProvider
     {
         public bool IsAvailable => true;
@@ -396,7 +423,8 @@ public sealed class SpotlightSearchPresentationTests
         public Task<IReadOnlyList<SpotlightSearchItem>> SearchAsync(string query, int limit, CancellationToken cancellationToken) =>
             Task.FromResult<IReadOnlyList<SpotlightSearchItem>>(Enumerable.Range(0, query == "ba" ? initialCount : count)
                 .Select(i => new SpotlightSearchItem($"{query}-{i}", SpotlightResultKind.Application,
-                    $"{query} result {i}", "fixture", $"C:\\missing-{i}.exe") { Score = 100 - i }).ToArray());
+                    $"{query} result {i}", "fixture", $"C:\\missing-{i}.exe")
+                { Score = 100 - i }).ToArray());
     }
 
     private sealed class PendingProvider : ISpotlightProvider

@@ -233,6 +233,9 @@ public:
 
         float best_score = -1.0f, second_score = -1.0f;
         int32_t best_bucket = -1, second_bucket = -1;
+        float best_non_indigo_score = -1.0f;
+        int32_t best_non_indigo_bucket = -1;
+        const int32_t min_alt_pixels = std::max(1, total_color_pixels / 20);
 
         for (int32_t i = 0; i < NUM_BUCKETS; i++) {
             if (bucket_count[i] == 0) continue;
@@ -242,6 +245,12 @@ public:
             float avg_val = bucket_val_sum[i] / bucket_weight[i];
 
             float score = std::pow(area, 0.3f) * avg_sat * avg_val;
+            if (IsHarshBlueIndigoHue(bucket_peak_h[i])) {
+                score *= 0.15f;
+            } else if (bucket_count[i] >= min_alt_pixels && score > best_non_indigo_score) {
+                best_non_indigo_score = score;
+                best_non_indigo_bucket = i;
+            }
 
             if (score > best_score) {
                 if (best_bucket >= 0) {
@@ -262,6 +271,15 @@ public:
                     second_bucket = i;
                 }
             }
+        }
+
+        if (best_bucket >= 0 && IsHarshBlueIndigoHue(bucket_peak_h[best_bucket]) && best_non_indigo_bucket >= 0) {
+            if (second_bucket < 0 || second_bucket == best_non_indigo_bucket) {
+                second_bucket = best_bucket;
+                second_score = best_score;
+            }
+            best_bucket = best_non_indigo_bucket;
+            best_score = best_non_indigo_score;
         }
 
         uint8_t pr = 30, pg = 30, pb = 30, pa = 255;
@@ -285,6 +303,18 @@ public:
             sa = 255;
         }
 
+        uint8_t ar = 0, ag = 0, ab = 0;
+        EnsureTextOnDarkBackground(pr, pg, pb, 0, 0, 0, 4.5, &ar, &ag, &ab);
+        double ah = 0.0, as = 0.0, al = 0.0;
+        ToHsl(ar, ag, ab, &ah, &as, &al);
+        if (IsHarshBlueIndigoHue(ah) || (best_bucket >= 0 && IsHarshBlueIndigoHue(bucket_peak_h[best_bucket]))) {
+            if (sa != 0 && second_bucket >= 0 && !IsHarshBlueIndigoHue(bucket_peak_h[second_bucket])) {
+                EnsureTextOnDarkBackground(sr, sg, sb, 0, 0, 0, 4.5, &ar, &ag, &ab);
+            } else {
+                HslToColor(0.555, std::min(as * 0.35, 0.28), std::clamp(std::max(al, 0.80), 0.78, 0.86), &ar, &ag, &ab);
+            }
+        }
+
         bool is_flat_bg = best_score > 0.0f && second_score > 0.0f &&
                           (best_score / (best_score + second_score)) > 0.85f;
 
@@ -299,10 +329,10 @@ public:
         out_res->secondary_g = sg;
         out_res->secondary_b = sb;
         out_res->secondary_a = sa;
-        out_res->accent_r = sr;
-        out_res->accent_g = sg;
-        out_res->accent_b = sb;
-        out_res->accent_a = sa;
+        out_res->accent_r = ar;
+        out_res->accent_g = ag;
+        out_res->accent_b = ab;
+        out_res->accent_a = 255;
         out_res->is_monotone = 0;
         out_res->is_flat_bg = is_flat_bg ? 1 : 0;
         out_res->text_r = tr;
@@ -461,6 +491,10 @@ public:
     }
 
 private:
+    static constexpr bool IsHarshBlueIndigoHue(double h) noexcept {
+        return h >= 0.583 && h <= 0.755;
+    }
+
     static void RgbToHsv(float r, float g, float b, float* out_h, float* out_s, float* out_v) noexcept {
         float max_c = std::max(r, std::max(g, b));
         float min_c = std::min(r, std::min(g, b));

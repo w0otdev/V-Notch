@@ -261,6 +261,24 @@ struct VnProgressiveBlurStep
     double start_translate_y;
 };
 
+#ifndef VN_SETTINGS_SWITCH_MOTION_DEFINED
+#define VN_SETTINGS_SWITCH_MOTION_DEFINED
+struct VnSettingsSwitchMotionOut
+{
+    double target_x;
+    double peak_scale_x;
+    double dip_scale_y;
+    double rebound_scale_x;
+    double rebound_scale_y;
+    double press_scale_x;
+    double press_scale_y;
+    double press_shift_x;
+    int32_t peak_time_ms;
+    int32_t rebound_time_ms;
+    int32_t duration_ms;
+};
+#endif
+
 #pragma pack(pop)
 
 VN_EXPORT int32_t __stdcall vn_visualizer_mix_frames_to_mono(
@@ -477,6 +495,23 @@ struct VnVolumeHudTransitionParamsOut
     int32_t fade_duration_ms;
 };
 
+#ifndef VN_CATEGORY_PILL_MOTION_DEFINED
+#define VN_CATEGORY_PILL_MOTION_DEFINED
+struct VnCategoryPillMotionOut
+{
+    double start_scale_x;
+    double peak_scale_x;
+    double settle_overshoot_scale_x;
+    double dip_scale_y;
+    double rebound_scale_y;
+    double content_pop_scale;
+    double glow_peak_opacity;
+    int32_t peak_time_ms;
+    int32_t settle_overshoot_time_ms;
+    int32_t duration_ms;
+};
+#endif
+
 #pragma pack(pop)
 
 VN_EXPORT int32_t __stdcall vn_audio_sessions_open_all(int64_t* snapshot, int32_t* count, int32_t* hresult) noexcept;
@@ -520,3 +555,32 @@ VN_EXPORT int32_t __stdcall vn_animation_compute_volume_hud_transition(
     double collapsed_height,
     double collapsed_radius,
     VnVolumeHudTransitionParamsOut* out_params) noexcept;
+
+VN_EXPORT int32_t __stdcall vn_animation_compute_category_pill_motion(
+    double current_x,
+    double current_width,
+    double target_x,
+    double target_width,
+    uint8_t reduced_motion,
+    VnCategoryPillMotionOut* out_motion) noexcept;
+
+VN_EXPORT int32_t __stdcall vn_animation_compute_settings_switch_motion(
+    double track_width,
+    double thumb_width,
+    double margin_x,
+    uint8_t is_checked,
+    uint8_t is_pressed,
+    uint8_t reduced_motion,
+    VnSettingsSwitchMotionOut* out_motion) noexcept;
+
+VN_EXPORT int32_t vn_settings_search_score_row(
+    const char16_t* norm_title_ptr,
+    int32_t norm_title_len,
+    const char16_t* norm_content_ptr,
+    int32_t norm_content_len,
+    const char16_t* norm_combined_ptr,
+    int32_t norm_combined_len,
+    const char16_t* norm_query_ptr,
+    int32_t norm_query_len,
+    uint8_t allow_fuzzy,
+    int32_t* out_score) noexcept;

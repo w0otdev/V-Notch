@@ -59,7 +59,121 @@ public partial class SettingsWindow
         _navButtons[NavSectionPerformance] = NavPerformance;
         _navButtons[NavSectionDonating] = NavDonating;
         _navButtons[NavSectionUpdates] = NavUpdates;
+
+        foreach (var (key, btn) in _navButtons)
+        {
+            EnsureNavButtonTransform(btn);
+            btn.MouseEnter -= NavButton_MouseEnter;
+            btn.MouseEnter += NavButton_MouseEnter;
+            btn.MouseLeave -= NavButton_MouseLeave;
+            btn.MouseLeave += NavButton_MouseLeave;
+            btn.PreviewMouseLeftButtonDown -= NavButton_PreviewMouseDown;
+            btn.PreviewMouseLeftButtonDown += NavButton_PreviewMouseDown;
+            btn.PreviewMouseLeftButtonUp -= NavButton_PreviewMouseUp;
+            btn.PreviewMouseLeftButtonUp += NavButton_PreviewMouseUp;
+            UpdateNavButtonVisual(btn, string.Equals(key, _activeNav, StringComparison.Ordinal), animate: false);
+        }
+
         UpdateSectionHeader();
+    }
+
+    private static readonly SolidColorBrush _navHoverTextBrush = CreateFrozenNavBrush(0xFF, 0xEC, 0xF1, 0xF7);
+    private static readonly SolidColorBrush _navActiveBorderBrush = CreateFrozenNavBrush(0x38, 0xFF, 0xFF, 0xFF);
+    private static readonly SolidColorBrush _navHoverBorderBrush = CreateFrozenNavBrush(0x22, 0xFF, 0xFF, 0xFF);
+
+    private static SolidColorBrush CreateFrozenNavBrush(byte a, byte r, byte g, byte b)
+    {
+        var brush = new SolidColorBrush(Color.FromArgb(a, r, g, b));
+        brush.Freeze();
+        return brush;
+    }
+
+    private static (ScaleTransform Scale, TranslateTransform Translate) EnsureNavButtonTransform(Border btn)
+    {
+        btn.RenderTransformOrigin = new Point(0.5, 0.5);
+        if (btn.RenderTransform is TransformGroup { IsFrozen: false } existing &&
+            existing.Children.Count >= 2 &&
+            existing.Children[0] is ScaleTransform s &&
+            existing.Children[1] is TranslateTransform t)
+        {
+            return (s, t);
+        }
+
+        var scale = new ScaleTransform(1.0, 1.0);
+        var translate = new TranslateTransform(0.0, 0.0);
+        var group = new TransformGroup();
+        group.Children.Add(scale);
+        group.Children.Add(translate);
+        btn.RenderTransform = group;
+        return (scale, translate);
+    }
+
+    private void NavButton_MouseEnter(object sender, MouseEventArgs e)
+    {
+        if (sender is not Border btn || btn.Tag is not string section) return;
+        bool isActive = string.Equals(section, _activeNav, StringComparison.Ordinal);
+        var (scale, translate) = EnsureNavButtonTransform(btn);
+        if (!isActive)
+        {
+            btn.BorderBrush = _navHoverBorderBrush;
+            if (btn.Child is StackPanel stack && stack.Children.Count >= 2)
+            {
+                ApplyNavIconBrush(stack.Children[0], _navHoverTextBrush);
+                if (stack.Children[1] is TextBlock text) text.Foreground = _navHoverTextBrush;
+            }
+        }
+        AnimateNavTransform(translate, TranslateTransform.XProperty, isActive ? 0.0 : 2.0, 140);
+        AnimateNavTransform(scale, ScaleTransform.ScaleXProperty, 1.012, 140);
+        AnimateNavTransform(scale, ScaleTransform.ScaleYProperty, 1.012, 140);
+    }
+
+    private void NavButton_MouseLeave(object sender, MouseEventArgs e)
+    {
+        if (sender is not Border btn || btn.Tag is not string section) return;
+        bool isActive = string.Equals(section, _activeNav, StringComparison.Ordinal);
+        UpdateNavButtonVisual(btn, isActive, animate: true);
+    }
+
+    private void NavButton_PreviewMouseDown(object sender, MouseButtonEventArgs e)
+    {
+        if (sender is not Border btn) return;
+        var (scale, _) = EnsureNavButtonTransform(btn);
+        AnimateNavTransform(scale, ScaleTransform.ScaleXProperty, 0.968, 85);
+        AnimateNavTransform(scale, ScaleTransform.ScaleYProperty, 0.968, 85);
+    }
+
+    private void NavButton_PreviewMouseUp(object sender, MouseButtonEventArgs e)
+    {
+        if (sender is not Border btn) return;
+        var (scale, _) = EnsureNavButtonTransform(btn);
+        AnimateNavTransform(scale, ScaleTransform.ScaleXProperty, 1.0, 160);
+        AnimateNavTransform(scale, ScaleTransform.ScaleYProperty, 1.0, 160);
+    }
+
+    private static void AnimateNavTransform(Animatable target, DependencyProperty property, double to, int durationMs)
+    {
+        if (durationMs <= 0 || AnimationConfig.ReduceMotion || !SystemParameters.ClientAreaAnimation)
+        {
+            target.BeginAnimation(property, null);
+            target.SetValue(property, to);
+            return;
+        }
+
+        double current = (double)target.GetValue(property);
+        if (Math.Abs(current - to) < 0.001)
+        {
+            target.BeginAnimation(property, null);
+            target.SetValue(property, to);
+            return;
+        }
+
+        var anim = AnimationPrimitives.WithFps(new DoubleAnimation(current, to, TimeSpan.FromMilliseconds(durationMs))
+        {
+            EasingFunction = AnimationPrimitives._easeAppleOut,
+            FillBehavior = FillBehavior.Stop
+        });
+        target.BeginAnimation(property, anim, HandoffBehavior.SnapshotAndReplace);
+        target.SetValue(property, to);
     }
 
     private void Nav_Click(object sender, MouseButtonEventArgs e)
@@ -83,9 +197,24 @@ public partial class SettingsWindow
 
     private int _navTransitionVersion;
 
-    private void UpdateNavButtonVisual(Border btn, bool isActive)
+    private void UpdateNavButtonVisual(Border btn, bool isActive, bool animate = true)
     {
-        btn.Background = isActive ? (SolidColorBrush)FindResource("NavItemActiveBg") : _transparentBrush;
+        var (scale, translate) = EnsureNavButtonTransform(btn);
+        if (isActive)
+        {
+            btn.Background = (SolidColorBrush)FindResource("NavItemActiveBg");
+            btn.BorderBrush = _navActiveBorderBrush;
+        }
+        else
+        {
+            btn.ClearValue(Border.BackgroundProperty);
+            btn.BorderBrush = _transparentBrush;
+        }
+
+        AnimateNavTransform(translate, TranslateTransform.XProperty, 0.0, animate ? 170 : 0);
+        AnimateNavTransform(scale, ScaleTransform.ScaleXProperty, 1.0, animate ? 170 : 0);
+        AnimateNavTransform(scale, ScaleTransform.ScaleYProperty, 1.0, animate ? 170 : 0);
+
         if (btn.Child is not StackPanel stack || stack.Children.Count < 2) return;
 
         var targetBrush = isActive ? _whiteBrush : _navInactiveBrush;

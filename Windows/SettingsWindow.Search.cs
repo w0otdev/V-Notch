@@ -39,6 +39,25 @@ public partial class SettingsWindow
     private static readonly Comparison<SearchRowEntry> s_restoreOrderComparison =
         static (a, b) => a.OriginalIndex.CompareTo(b.OriginalIndex);
 
+    private void SettingsSearchSurface_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
+    {
+        e.Handled = true;
+        if (!SettingsSearchBox.IsKeyboardFocusWithin)
+        {
+            SettingsSearchBox.Focus();
+            SettingsSearchBox.CaretIndex = SettingsSearchBox.Text?.Length ?? 0;
+        }
+    }
+
+    private void SettingsSearchBox_PreviewKeyDown(object sender, KeyEventArgs e)
+    {
+        if (e.Key == Key.Escape && !string.IsNullOrEmpty(SettingsSearchBox.Text))
+        {
+            e.Handled = true;
+            SettingsSearchBox.Clear();
+        }
+    }
+
     private void SettingsSearchBox_TextChanged(object sender, System.Windows.Controls.TextChangedEventArgs e)
     {
         string query = SettingsSearchBox.Text?.Trim() ?? "";
@@ -56,7 +75,7 @@ public partial class SettingsWindow
         {
             _searchDebounce = new UiScheduledTimer(DispatcherPriority.Background)
             {
-                Interval = TimeSpan.FromMilliseconds(150)
+                Interval = TimeSpan.FromMilliseconds(75)
             };
             _searchDebounce.Tick += (s, _) =>
             {
@@ -81,13 +100,14 @@ public partial class SettingsWindow
     private void UpdateSearchPlaceholderVisibility()
     {
         string query = SettingsSearchBox.Text?.Trim() ?? "";
-        if (SettingsSearchBox.IsFocused || !string.IsNullOrEmpty(query))
+        bool hasText = !string.IsNullOrEmpty(query);
+        SearchPlaceholder.Visibility = (SettingsSearchBox.IsFocused || hasText)
+            ? Visibility.Collapsed
+            : Visibility.Visible;
+
+        if (FindName("SettingsSearchInlineClearButton") is UIElement clearBtn)
         {
-            SearchPlaceholder.Visibility = Visibility.Collapsed;
-        }
-        else
-        {
-            SearchPlaceholder.Visibility = Visibility.Visible;
+            clearBtn.Visibility = hasText ? Visibility.Visible : Visibility.Collapsed;
         }
     }
 
@@ -110,7 +130,7 @@ public partial class SettingsWindow
             }
         }
 
-        // Approximate spelling is a fallback, never extra noise beside direct matches.
+        // Approximate spelling is a fallback when direct matches are absent.
         if (_scoredSearchMatchesBuffer.Count == 0)
         {
             for (int i = 0; i < _searchRows.Count; i++)
@@ -158,15 +178,13 @@ public partial class SettingsWindow
         SettingsSearchBox.Focus();
     }
 
-    private static int GetSearchRowScore(SearchRowEntry row, string query, bool allowFuzzy)
-    {
-        int contentScore = SettingsSearchMatcher.GetNormalizedMatchScore(row.NormalizedSearchText, query, allowFuzzy);
-        // Category names can qualify a query, but must not generate typo matches for
-        // every setting in that category. Prefer matches within the setting itself.
-        int categoryScore = SettingsSearchMatcher.GetNormalizedMatchScore(
-            row.NormalizedCombinedText, query, allowFuzzy: false);
-        return Math.Max(contentScore > 0 ? contentScore * 10 + 1 : 0, categoryScore * 10);
-    }
+    private static int GetSearchRowScore(SearchRowEntry row, string query, bool allowFuzzy) =>
+        SettingsSearchMatcher.GetRowMatchScore(
+            row.NormalizedTitleText,
+            row.NormalizedSearchText,
+            row.NormalizedCombinedText,
+            query,
+            allowFuzzy);
 
     private bool EnterSearchMode()
     {
@@ -266,6 +284,7 @@ public partial class SettingsWindow
                     parent,
                     parent.Children.IndexOf(row),
                     row.Visibility,
+                    BuildPrimaryTitleText(row),
                     BuildSearchText(row),
                     sectionText));
             }
@@ -307,6 +326,37 @@ public partial class SettingsWindow
         return string.Join(" ", parts);
     }
 
+    private string BuildPrimaryTitleText(DependencyObject root)
+    {
+        var parts = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        CollectPrimaryTitleText(root, parts);
+        return string.Join(" ", parts);
+    }
+
+    private static bool CollectPrimaryTitleText(DependencyObject current, ISet<string> parts)
+    {
+        switch (current)
+        {
+            case ElasticSlider slider when !string.IsNullOrWhiteSpace(slider.Label):
+                AddAllTranslations(slider.Label, parts);
+                return true;
+            case CheckBox checkBox when checkBox.Content is string checkText && !string.IsNullOrWhiteSpace(checkText):
+                AddAllTranslations(checkText, parts);
+                return true;
+            case TextBlock textBlock when !string.IsNullOrWhiteSpace(textBlock.Text) && textBlock.Text.Length > 1:
+                AddAllTranslations(textBlock.Text, parts);
+                return true;
+        }
+
+        int childCount = VisualTreeHelper.GetChildrenCount(current);
+        for (int i = 0; i < childCount; i++)
+        {
+            if (CollectPrimaryTitleText(VisualTreeHelper.GetChild(current, i), parts))
+                return true;
+        }
+        return false;
+    }
+
     private string BuildSearchText(DependencyObject root)
     {
         var parts = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
@@ -337,7 +387,7 @@ public partial class SettingsWindow
                 sectionTextCache[row.Section] = sectionText;
             }
 
-            row.UpdateSearchText(BuildSearchText(row.Row), sectionText);
+            row.UpdateSearchText(BuildPrimaryTitleText(row.Row), BuildSearchText(row.Row), sectionText);
         }
     }
 
@@ -474,6 +524,7 @@ public partial class SettingsWindow
             StackPanel originalParent,
             int originalIndex,
             Visibility originalVisibility,
+            string titleText,
             string searchText,
             string sectionText)
         {
@@ -482,7 +533,7 @@ public partial class SettingsWindow
             OriginalParent = originalParent;
             OriginalIndex = originalIndex;
             OriginalVisibility = originalVisibility;
-            UpdateSearchText(searchText, sectionText);
+            UpdateSearchText(titleText, searchText, sectionText);
         }
 
         public string Section { get; }
@@ -490,12 +541,14 @@ public partial class SettingsWindow
         public StackPanel OriginalParent { get; }
         public int OriginalIndex { get; }
         public Visibility OriginalVisibility { get; set; }
+        public string NormalizedTitleText { get; private set; } = string.Empty;
         public string NormalizedSearchText { get; private set; } = string.Empty;
         public string NormalizedSectionText { get; private set; } = string.Empty;
         public string NormalizedCombinedText { get; private set; } = string.Empty;
 
-        public void UpdateSearchText(string searchText, string sectionText)
+        public void UpdateSearchText(string titleText, string searchText, string sectionText)
         {
+            NormalizedTitleText = SettingsSearchMatcher.Normalize(titleText);
             NormalizedSearchText = SettingsSearchMatcher.Normalize(searchText);
             NormalizedSectionText = SettingsSearchMatcher.Normalize(sectionText);
             NormalizedCombinedText = string.Concat(NormalizedSectionText, " ", NormalizedSearchText);

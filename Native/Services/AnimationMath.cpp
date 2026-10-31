@@ -356,4 +356,124 @@ VN_EXPORT int32_t __stdcall vn_animation_compute_volume_hud_transition(
     return VN_OK;
 }
 
+#ifndef VN_CATEGORY_PILL_MOTION_DEFINED
+#define VN_CATEGORY_PILL_MOTION_DEFINED
+#pragma pack(push, 1)
+struct VnCategoryPillMotionOut
+{
+    double start_scale_x;
+    double peak_scale_x;
+    double settle_overshoot_scale_x;
+    double dip_scale_y;
+    double rebound_scale_y;
+    double content_pop_scale;
+    double glow_peak_opacity;
+    int32_t peak_time_ms;
+    int32_t settle_overshoot_time_ms;
+    int32_t duration_ms;
+};
+#pragma pack(pop)
+#endif
+
+VN_EXPORT int32_t __stdcall vn_animation_compute_category_pill_motion(
+    double current_x,
+    double current_width,
+    double target_x,
+    double target_width,
+    uint8_t reduced_motion,
+    VnCategoryPillMotionOut* out_motion) noexcept
+{
+    if (!out_motion || !std::isfinite(target_width) || target_width <= 0.0)
+        return VN_ERR_INVALID_ARG;
+
+    const double safe_current_w = (std::isfinite(current_width) && current_width > 1.0)
+        ? current_width
+        : target_width;
+    const double start_scale_x = std::clamp(safe_current_w / target_width, 0.25, 4.0);
+
+    if (reduced_motion != 0)
+    {
+        out_motion->start_scale_x = 1.0;
+        out_motion->peak_scale_x = 1.0;
+        out_motion->settle_overshoot_scale_x = 1.0;
+        out_motion->dip_scale_y = 1.0;
+        out_motion->rebound_scale_y = 1.0;
+        out_motion->content_pop_scale = 1.0;
+        out_motion->glow_peak_opacity = 0.0;
+        out_motion->peak_time_ms = 0;
+        out_motion->settle_overshoot_time_ms = 0;
+        out_motion->duration_ms = 0;
+        return VN_OK;
+    }
+
+    const double dx = (std::isfinite(current_x) && std::isfinite(target_x))
+        ? std::abs(target_x - current_x)
+        : 0.0;
+    const double travel = std::clamp(dx / std::max(target_width, 48.0), 0.0, 6.0);
+
+    const double stretch_delta = std::clamp(0.065 + travel * 0.042, 0.065, 0.24);
+    const double base_peak_x = std::lerp(start_scale_x, 1.0, 0.45);
+    out_motion->start_scale_x = start_scale_x;
+    out_motion->peak_scale_x = std::clamp(base_peak_x + stretch_delta, 0.40, 4.25);
+    out_motion->settle_overshoot_scale_x = 1.0 - std::clamp(0.016 + travel * 0.007, 0.016, 0.042);
+
+    out_motion->dip_scale_y = 1.0 - std::clamp(0.055 + travel * 0.020, 0.055, 0.135);
+    out_motion->rebound_scale_y = 1.0 + std::clamp(0.022 + travel * 0.006, 0.022, 0.045);
+    out_motion->content_pop_scale = std::clamp(1.045 + travel * 0.008, 1.045, 1.075);
+    out_motion->glow_peak_opacity = std::clamp(0.55 + travel * 0.075, 0.55, 0.92);
+
+    out_motion->peak_time_ms = 85;
+    out_motion->settle_overshoot_time_ms = 190;
+    out_motion->duration_ms = 280;
+    return VN_OK;
+}
+
+VN_EXPORT int32_t __stdcall vn_animation_compute_settings_switch_motion(
+    double track_width,
+    double thumb_width,
+    double margin_x,
+    uint8_t is_checked,
+    uint8_t is_pressed,
+    uint8_t reduced_motion,
+    VnSettingsSwitchMotionOut* out_motion) noexcept
+{
+    if (!out_motion) return VN_ERR_INVALID_ARG;
+
+    const double safe_track = std::max(0.0, track_width);
+    const double safe_thumb = std::max(1.0, thumb_width);
+    const double travel = std::max(0.0, safe_track - safe_thumb - margin_x * 2.0);
+    const bool checked = is_checked != 0;
+    const bool pressed = is_pressed != 0;
+
+    out_motion->target_x = checked ? travel : 0.0;
+
+    if (reduced_motion != 0)
+    {
+        out_motion->peak_scale_x = 1.0;
+        out_motion->dip_scale_y = 1.0;
+        out_motion->rebound_scale_x = 1.0;
+        out_motion->rebound_scale_y = 1.0;
+        out_motion->press_scale_x = 1.0;
+        out_motion->press_scale_y = 1.0;
+        out_motion->press_shift_x = 0.0;
+        out_motion->peak_time_ms = 0;
+        out_motion->rebound_time_ms = 0;
+        out_motion->duration_ms = 0;
+        return VN_OK;
+    }
+
+    const double travel_ratio = std::clamp(travel / 28.0, 0.75, 1.35);
+    out_motion->peak_scale_x = 1.0 + 0.22 * travel_ratio;
+    out_motion->dip_scale_y = 1.0 - 0.10 * travel_ratio;
+    out_motion->rebound_scale_x = 0.96;
+    out_motion->rebound_scale_y = 1.035;
+    out_motion->press_scale_x = pressed ? 1.15 : 1.0;
+    out_motion->press_scale_y = pressed ? 0.94 : 1.0;
+    out_motion->press_shift_x = pressed ? (checked ? -1.8 : 1.8) : 0.0;
+    out_motion->peak_time_ms = 75;
+    out_motion->rebound_time_ms = 175;
+    out_motion->duration_ms = 250;
+    return VN_OK;
+}
+
 } // extern "C"
