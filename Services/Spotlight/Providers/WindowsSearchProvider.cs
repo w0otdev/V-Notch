@@ -20,6 +20,8 @@ internal sealed partial class WindowsSearchProvider : ISpotlightProvider
     private const string ConnectionString =
         "Provider=Search.CollatorDSO;Extended Properties='Application=Windows'";
     private static readonly TimeSpan RetryCooldown = TimeSpan.FromSeconds(30);
+    private static readonly Lazy<string> CachedDefaultWindowsScope =
+        new(() => SpotlightFileVisibility.BuildWindowsScope(string.Empty));
 
     private volatile bool _isAvailable = true;
     private long _lastFailureTicks = DateTime.MinValue.Ticks;
@@ -135,6 +137,24 @@ internal sealed partial class WindowsSearchProvider : ISpotlightProvider
         ".exe", ".cmd", ".bat", ".msc", ".cpl", ".com", ".ps1", ".appref-ms", ".lnk"
     };
 
+    internal static string BuildQuerySql(string sanitizedQuery, string originalQuery, int fetch)
+    {
+        bool isExplicitPath = SpotlightFileVisibility.IsExplicitPath(originalQuery);
+        string predicate = isExplicitPath
+            ? "System.ItemPathDisplay LIKE '" + EscapeLikePattern(originalQuery.Trim().Trim('"')
+                .Replace('/', '\\').Replace("'", "''")) + "%'"
+            : BuildNamePredicate(sanitizedQuery);
+        string scope = isExplicitPath
+            ? SpotlightFileVisibility.BuildWindowsScope(originalQuery)
+            : CachedDefaultWindowsScope.Value;
+        return
+            $"SELECT TOP {fetch} System.ItemNameDisplay, System.ItemPathDisplay, System.ItemType " +
+            "FROM SystemIndex " +
+            $"WHERE SCOPE='file:' AND ({predicate}) " +
+            scope + " " +
+            "ORDER BY System.Search.Rank DESC";
+    }
+
     private static List<SpotlightSearchItem> ExecuteQuery(
         string sanitizedQuery,
         string originalQuery,
@@ -142,16 +162,7 @@ internal sealed partial class WindowsSearchProvider : ISpotlightProvider
         CancellationToken cancellationToken)
     {
         int fetch = Math.Clamp(limit * 4, 20, 100);
-        string predicate = SpotlightFileVisibility.IsExplicitPath(originalQuery)
-            ? "System.ItemPathDisplay LIKE '" + EscapeLikePattern(originalQuery.Trim().Trim('"')
-                .Replace('/', '\\').Replace("'", "''")) + "%'"
-            : BuildNamePredicate(sanitizedQuery);
-        string sql =
-            $"SELECT TOP {fetch} System.ItemNameDisplay, System.ItemPathDisplay, System.ItemType " +
-            "FROM SystemIndex " +
-            $"WHERE SCOPE='file:' AND ({predicate}) " +
-            SpotlightFileVisibility.BuildWindowsScope(originalQuery) + " " +
-            "ORDER BY System.Search.Rank DESC";
+        string sql = BuildQuerySql(sanitizedQuery, originalQuery, fetch);
 
         var results = new List<SpotlightSearchItem>(fetch);
         using var connection = new OleDbConnection(ConnectionString);

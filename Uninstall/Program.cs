@@ -257,9 +257,19 @@ internal static class Program
         string legacyData = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "VNotch");
         if (!SafeFileDeletion.PathsOverlap(legacyData, installDirectory)) DeleteDirectoryIfExists(legacyData);
 
-        // Leftover update installer in the temp folder.
-        DeleteFileIfExists(Path.Combine(Path.GetTempPath(), "V-Notch-Setup.exe"));
+        if (!string.IsNullOrWhiteSpace(installDirectory) && Directory.Exists(installDirectory))
+        {
+            RemoveInstalledAppFiles(installDirectory);
+        }
+
+        // Leftover update installers and verification sidecars in the temp folder.
+        InstallDirectoryCleanup.RemoveTempInstallerArtifacts(Path.GetTempPath(), DeleteFileIfExists);
         // Temp/V-Notch can contain recovery copies and user files; never wipe the shared root.
+    }
+
+    private static void RemoveInstalledAppFiles(string installDirectory)
+    {
+        InstallDirectoryCleanup.RemoveRuntimeLogs(installDirectory, DeleteFileIfExists);
     }
 
     private static void ScheduleInstallDirRemoval(string installDirectory)
@@ -274,6 +284,7 @@ internal static class Program
             return;
         }
 
+        RemoveInstalledAppFiles(installDirectory);
         InstallDirectoryCleanup.Schedule(installDirectory);
     }
 

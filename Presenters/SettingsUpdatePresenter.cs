@@ -1,3 +1,4 @@
+using System.Diagnostics.CodeAnalysis;
 using System.Windows;
 using System.Windows.Controls;
 using VNotch.Services;
@@ -49,11 +50,11 @@ public sealed class SettingsUpdatePresenter : IDisposable
                     if (_refs == null || !_canUseNetwork() || _lifetime.IsCancellationRequested) return;
                     if (includePrereleases != _includePrereleases()) continue;
                     _availableUpdate = update;
-                    bool newer = update != null && (update.IsNewerVersion || UpdateService.CompareVersions(update.Version, _service.CurrentVersion) > 0);
+                    bool newer = IsNewerUpdate(update);
                     string updateText = newer ? Loc.Get("settings.updateAvailable", update!.Version) : Loc.Get("settings.upToDate");
                     _refs.Status.Text = update == null ? Loc.Get("settings.checkUpdate") : updateText;
 
-                    _refs.Download.Visibility = update?.IsNewerVersion == true ? Visibility.Visible : Visibility.Collapsed;
+                    _refs.Download.Visibility = newer ? Visibility.Visible : Visibility.Collapsed;
                     try { UpdateDetected?.Invoke(this, update); }
                     catch (Exception ex) { RuntimeLog.Error("SETTINGS", ex, "UpdateDetected handler threw"); }
                 }
@@ -88,9 +89,13 @@ public sealed class SettingsUpdatePresenter : IDisposable
         return CheckForUpdatesAsync();
     }
 
+    private bool IsNewerUpdate([NotNullWhen(true)] UpdateInfo? update) =>
+        update != null && (update.IsNewerVersion || UpdateService.CompareVersions(update.Version, _service.CurrentVersion) > 0);
+
     public async Task DownloadUpdateAsync()
     {
-        if (_refs == null || _availableUpdate is not { IsNewerVersion: true } update ||
+        var update = _availableUpdate;
+        if (_refs == null || !IsNewerUpdate(update) ||
             _checking || _downloading || !_canUseNetwork()) return;
         _downloading = true;
         _refs.Status.Text = Loc.Get("update.preparing");

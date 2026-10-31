@@ -340,10 +340,14 @@ VN_EXPORT int32_t vn_settings_search_normalize(
     int32_t out_cap,
     int32_t* out_len) noexcept
 {
+    if (out_len == nullptr || input_len < 0 || (input_ptr == nullptr && input_len > 0) || out_cap < 0) return VN_ERR_INVALID_ARG;
     try {
         std::u16string res = vnotch::services::SettingsSearchMatcher::Normalize(vnotch::make_u16_view(input_ptr, input_len));
         return vnotch::copy_out_u16(res, out_buf, out_cap, out_len);
-    } catch (...) { return VN_ERR_FAIL; }
+    } catch (...) {
+        *out_len = 0;
+        return VN_ERR_FAIL;
+    }
 }
 
 VN_EXPORT int32_t vn_settings_search_get_normalized_score(
@@ -361,7 +365,10 @@ VN_EXPORT int32_t vn_settings_search_get_normalized_score(
             vnotch::make_u16_view(norm_query_ptr, norm_query_len),
             allow_fuzzy != 0);
         return VN_OK;
-    } catch (...) { return VN_ERR_FAIL; }
+    } catch (...) {
+        *out_score = 0;
+        return VN_ERR_FAIL;
+    }
 }
 
 VN_EXPORT int32_t vn_settings_search_score_row(
@@ -385,7 +392,10 @@ VN_EXPORT int32_t vn_settings_search_score_row(
             vnotch::make_u16_view(norm_query_ptr, norm_query_len),
             allow_fuzzy != 0);
         return VN_OK;
-    } catch (...) { return VN_ERR_FAIL; }
+    } catch (...) {
+        *out_score = 0;
+        return VN_ERR_FAIL;
+    }
 }
 
 VN_EXPORT int32_t vn_settings_search_is_match(
@@ -401,7 +411,10 @@ VN_EXPORT int32_t vn_settings_search_is_match(
         std::u16string nq = vnotch::services::SettingsSearchMatcher::Normalize(vnotch::make_u16_view(query_ptr, query_len));
         *out_is_match = vnotch::services::SettingsSearchMatcher::IsNormalizedMatch(ns, nq) ? 1u : 0u;
         return VN_OK;
-    } catch (...) { return VN_ERR_FAIL; }
+    } catch (...) {
+        *out_is_match = 0u;
+        return VN_ERR_FAIL;
+    }
 }
 
 VN_EXPORT int32_t vn_settings_search_is_normalized_match(
@@ -412,8 +425,13 @@ VN_EXPORT int32_t vn_settings_search_is_normalized_match(
     uint8_t* out_result) noexcept
 {
     if (out_result == nullptr) return VN_ERR_INVALID_ARG;
-    *out_result = vnotch::services::SettingsSearchMatcher::IsNormalizedMatch(
-        vnotch::make_u16_view(candidate_ptr, candidate_len),
-        vnotch::make_u16_view(query_ptr, query_len)) ? 1u : 0u;
-    return VN_OK;
+    try {
+        *out_result = vnotch::services::SettingsSearchMatcher::IsNormalizedMatch(
+            vnotch::make_u16_view(candidate_ptr, candidate_len),
+            vnotch::make_u16_view(query_ptr, query_len)) ? 1u : 0u;
+        return VN_OK;
+    } catch (...) {
+        *out_result = 0u;
+        return VN_ERR_FAIL;
+    }
 }

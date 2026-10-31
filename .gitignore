@@ -140,6 +140,7 @@ CLAUDE.md
 
 # Context-mode MCP local session stats & caches
 .github/context-mode/
+.github/context-mode/*.db*
 .context-mode/
 /.github/context-mode
 .brooks-lint.yaml

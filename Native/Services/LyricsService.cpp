@@ -265,4 +265,88 @@ VN_EXPORT int32_t vn_lyrics_clean_artist_span(
     return VN_OK;
 }
 
+VN_EXPORT int32_t __stdcall vn_lyrics_normalize_for_matching(
+    const char16_t* text_ptr,
+    int32_t text_len,
+    char16_t* out_buf,
+    int32_t out_cap,
+    int32_t* out_written) noexcept {
+    if (!out_written || text_len < 0 || (text_len > 0 && !text_ptr) || out_cap < 0 || (out_cap > 0 && !out_buf)) {
+        return VN_ERR_INVALID_ARG;
+    }
+    *out_written = 0;
+    if (!text_ptr || text_len == 0) {
+        return VN_OK;
+    }
+    const std::u16string_view sv(text_ptr, static_cast<size_t>(text_len));
+    if (vnotch::is_null_or_whitespace(sv)) {
+        return VN_OK;
+    }
+    try {
+        std::u16string stripped;
+        stripped.reserve(sv.size());
+        for (size_t i = 0; i < sv.size(); ++i) {
+            const char16_t ch = sv[i];
+            if (ch == u'(' || ch == u'[') {
+                size_t j = i + 1;
+                while (j < sv.size() && sv[j] != u')' && sv[j] != u']') {
+                    ++j;
+                }
+                if (j < sv.size()) {
+                    i = j;
+                    continue;
+                }
+            }
+            stripped.push_back(ch);
+        }
+
+        const std::u16string decomposed = vnotch::normalize_unicode_form(stripped, NormalizationD);
+        std::u16string filtered;
+        filtered.reserve(decomposed.size());
+        bool needs_recomposition = false;
+        for (const char16_t original : decomposed) {
+            if (original == 0x0111u || original == 0x0110u) {
+                filtered.push_back(u'd');
+                continue;
+            }
+            if (original > 127) {
+                WORD ctype3 = 0;
+                const wchar_t wch = static_cast<wchar_t>(original);
+                if (vn_is_non_spacing_mark(original) ||
+                    (GetStringTypeW(CT_CTYPE3, &wch, 1, &ctype3) && (ctype3 & C3_NONSPACING) != 0)) {
+                    continue;
+                }
+            }
+            filtered.push_back(original);
+            needs_recomposition |= (original > 127);
+        }
+
+        if (needs_recomposition) {
+            filtered = vnotch::normalize_unicode_form(filtered, NormalizationC);
+        }
+
+        std::u16string result;
+        result.reserve(filtered.size());
+        bool pending_space = false;
+        for (const char16_t original : filtered) {
+            const char16_t c = (original >= u'A' && original <= u'Z')
+                ? static_cast<char16_t>(original + (u'a' - u'A'))
+                : original;
+            if ((c >= u'a' && c <= u'z') || (c >= u'0' && c <= u'9')) {
+                if (pending_space) {
+                    result.push_back(u' ');
+                }
+                result.push_back(c);
+                pending_space = false;
+            } else {
+                pending_space = !result.empty();
+            }
+        }
+
+        return vnotch::copy_out_u16(result, out_buf, out_cap, out_written);
+    } catch (...) {
+        return VN_ERR_FAIL;
+    }
+}
+
 } // extern "C"

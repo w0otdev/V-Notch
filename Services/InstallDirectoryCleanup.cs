@@ -12,6 +12,27 @@ namespace VNotch.Services;
 internal static partial class InstallDirectoryCleanup
 {
     internal const string ManifestFileName = "installed-files.json";
+    internal static readonly string[] RuntimeLogFileNames =
+    [
+        "vnotch-debug.log",
+        "vnotch-debug.log.old",
+        "vnotch-crash.log",
+        "vnotch-crash.log.old"
+    ];
+    internal static readonly string[] RuntimeLogPatterns =
+    [
+        "vnotch-debug.log*",
+        "vnotch-crash.log*"
+    ];
+    internal static readonly string[] TempInstallerArtifactNames =
+    [
+        "V-Notch-Setup.exe",
+        "V-Notch-Setup-SelfContained.exe",
+        "V-Notch-Setup.exe.manifest.json",
+        "V-Notch-Setup.exe.sig",
+        "V-Notch-Setup-SelfContained.exe.manifest.json",
+        "V-Notch-Setup-SelfContained.exe.sig"
+    ];
     internal sealed record InstalledFile(string Path, string Sha256);
     internal sealed record InstallManifest(int Version, InstalledFile[] Files);
 
@@ -132,6 +153,19 @@ internal static partial class InstallDirectoryCleanup
                     # Keep one handle from hashing through deletion; a writer cannot replace verified contents in between.
                     if (-not [VNotchOwnedFile]::DeleteIfUnchanged($target.Path, $target.Hash)) { $preserved = $true }
                 }
+                foreach ($logName in @('vnotch-debug.log', 'vnotch-debug.log.old', 'vnotch-crash.log', 'vnotch-crash.log.old')) {
+                    $logPath = [IO.Path]::Combine($directory, $logName)
+                    if ([IO.File]::Exists($logPath)) {
+                        if (([IO.File]::GetAttributes($logPath) -band [IO.FileAttributes]::ReparsePoint) -ne 0) { exit 1 }
+                        [IO.File]::Delete($logPath)
+                    }
+                }
+                foreach ($pattern in @('vnotch-debug.log*', 'vnotch-crash.log*')) {
+                    foreach ($logPath in [IO.Directory]::GetFiles($directory, $pattern, [IO.SearchOption]::TopDirectoryOnly)) {
+                        if (([IO.File]::GetAttributes($logPath) -band [IO.FileAttributes]::ReparsePoint) -ne 0) { exit 1 }
+                        [IO.File]::Delete($logPath)
+                    }
+                }
                 if (-not $preserved) { [IO.File]::Delete($manifest) }
                 foreach ($target in $targets) {
                     $parent = [IO.Path]::GetDirectoryName($target.Path)
@@ -140,6 +174,9 @@ internal static partial class InstallDirectoryCleanup
                         if ($parent -eq $directory) { break }
                         $parent = [IO.Path]::GetDirectoryName($parent)
                     }
+                }
+                if (-not $preserved -and [IO.Directory]::Exists($directory)) {
+                    try { [IO.Directory]::Delete($directory, $false) } catch [IO.IOException] { }
                 }
                 exit 0
             } catch [IO.IOException] { } catch [UnauthorizedAccessException] { }
@@ -203,6 +240,97 @@ internal static partial class InstallDirectoryCleanup
         startInfo.Environment["VNOTCH_CLEANUP_DIRECTORY"] = fullPath;
         startInfo.Environment["VNOTCH_CLEANUP_OWNER"] = ownerProcessId.ToString(CultureInfo.InvariantCulture);
         return startInfo;
+    }
+
+    internal static void RemoveRuntimeLogs(string directory, Action<string>? deleteFile = null)
+    {
+        if (string.IsNullOrWhiteSpace(directory) || !Directory.Exists(directory)) return;
+        var fullPath = ValidateDirectory(directory);
+        var deleter = deleteFile ?? SafeFileDeletion.DeleteFile;
+
+        foreach (var logName in RuntimeLogFileNames)
+        {
+            var logPath = Path.Combine(fullPath, logName);
+            if (File.Exists(logPath))
+            {
+                deleter(logPath);
+            }
+        }
+
+        if (!Directory.Exists(fullPath)) return;
+        foreach (var pattern in RuntimeLogPatterns)
+        {
+            foreach (var logPath in Directory.GetFiles(fullPath, pattern, SearchOption.TopDirectoryOnly))
+            {
+                if (File.Exists(logPath))
+                {
+                    deleter(logPath);
+                }
+            }
+        }
+    }
+
+    internal static void RemoveTempInstallerArtifacts(string? tempDirectory = null, Action<string>? deleteFile = null)
+    {
+        var root = string.IsNullOrWhiteSpace(tempDirectory) ? Path.GetTempPath() : Path.GetFullPath(tempDirectory);
+        if (!Directory.Exists(root)) return;
+        var deleter = deleteFile ?? SafeFileDeletion.DeleteFile;
+
+        foreach (var fileName in TempInstallerArtifactNames)
+        {
+            var path = Path.Combine(root, fileName);
+            if (File.Exists(path))
+            {
+                deleter(path);
+            }
+        }
+    }
+
+    internal static void RemoveInstalledAppFiles(string directory, Action<string>? deleteFile = null)
+    {
+        if (string.IsNullOrWhiteSpace(directory) || !Directory.Exists(directory)) return;
+        var fullPath = ValidateDirectory(directory);
+        var deleter = deleteFile ?? SafeFileDeletion.DeleteFile;
+
+        RemoveRuntimeLogs(fullPath, deleter);
+
+        var manifestPath = Path.Combine(fullPath, ManifestFileName);
+        var targets = ReadManifest(fullPath);
+        bool preserved = false;
+        foreach (var entry in targets)
+        {
+            var targetPath = Path.GetFullPath(Path.Combine(fullPath, entry.Path));
+            if (!File.Exists(targetPath)) continue;
+            if (!HashFile(targetPath).Equals(entry.Sha256, StringComparison.OrdinalIgnoreCase))
+            {
+                preserved = true;
+                continue;
+            }
+            deleter(targetPath);
+        }
+
+        if (!preserved && File.Exists(manifestPath))
+        {
+            deleter(manifestPath);
+        }
+
+        foreach (var entry in targets)
+        {
+            var parent = Path.GetDirectoryName(Path.GetFullPath(Path.Combine(fullPath, entry.Path)));
+            while (!string.IsNullOrEmpty(parent) && parent.StartsWith(fullPath, StringComparison.OrdinalIgnoreCase))
+            {
+                try { Directory.Delete(parent, recursive: false); }
+                catch (IOException) { break; }
+                if (string.Equals(parent, fullPath, StringComparison.OrdinalIgnoreCase)) break;
+                parent = Path.GetDirectoryName(parent);
+            }
+        }
+
+        if (!preserved && Directory.Exists(fullPath))
+        {
+            try { Directory.Delete(fullPath, recursive: false); }
+            catch (IOException) { }
+        }
     }
 
     internal static void Schedule(string directory)

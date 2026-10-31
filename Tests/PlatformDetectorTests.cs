@@ -1,3 +1,5 @@
+using System.Globalization;
+using VNotch.Models;
 using VNotch.Services;
 using Xunit;
 
@@ -180,6 +182,16 @@ public class PlatformDetectorTests
         Assert.Equal("My Video", result);
     }
 
+    [Fact]
+    public void ExtractTitleFromWindow_ShortAndLongInputs_MatchExpectedOutput()
+    {
+        string shortTitle = new string('V', 32);
+        Assert.Equal(shortTitle, PlatformDetector.ExtractTitleFromWindow($"{shortTitle} - YouTube", "YouTube"));
+
+        string longTitle = new string('V', 1000);
+        Assert.Equal(longTitle, PlatformDetector.ExtractTitleFromWindow($"{longTitle} - YouTube", "YouTube"));
+    }
+
     #endregion
 
     #region ParseSpotifyTitle
@@ -198,6 +210,18 @@ public class PlatformDetectorTests
         var (artist, track) = PlatformDetector.ParseSpotifyTitle("Blinding Lights");
         Assert.Equal("Spotify", artist);
         Assert.Equal("Blinding Lights", track);
+    }
+
+    [Fact]
+    public void ParseSpotifyTitle_ShortAndLongInputs_MatchExpectedOutput()
+    {
+        string shortArtist = new string('A', 20);
+        string shortTrack = new string('T', 20);
+        Assert.Equal((shortArtist, shortTrack), PlatformDetector.ParseSpotifyTitle($"{shortArtist} - {shortTrack}"));
+
+        string longArtist = new string('A', 600);
+        string longTrack = new string('T', 600);
+        Assert.Equal((longArtist, longTrack), PlatformDetector.ParseSpotifyTitle($"{longArtist} - {longTrack}"));
     }
 
     #endregion
@@ -223,6 +247,16 @@ public class PlatformDetectorTests
         Assert.Equal("", PlatformDetector.NormalizeForLooseMatch("   "));
     }
 
+    [Fact]
+    public void NormalizeForLooseMatch_ShortAndLongInputs_MatchExpectedOutput()
+    {
+        string shortUpper = new string('K', 24);
+        Assert.Equal(new string('k', 24), PlatformDetector.NormalizeForLooseMatch($"{shortUpper}!"));
+
+        string longUpper = new string('K', 1000);
+        Assert.Equal(new string('k', 1000), PlatformDetector.NormalizeForLooseMatch($"{longUpper}!"));
+    }
+
     #endregion
 
     #region HasReliableWindowMatch
@@ -246,6 +280,63 @@ public class PlatformDetectorTests
     {
         var titles = new[] { "Video - YouTube" };
         Assert.False(PlatformDetector.HasReliableWindowMatch(titles, "", "youtube"));
+    }
+
+    [Fact]
+    public void TurkishCulture_HasReliableWindowMatch_RefineFromMetadata_AndDetectPlatform_HandleUppercaseDottedIInputs()
+    {
+        CultureInfo prevCulture = CultureInfo.CurrentCulture;
+        CultureInfo prevUiCulture = CultureInfo.CurrentUICulture;
+        try
+        {
+            var tr = CultureInfo.GetCultureInfo("tr-TR");
+            CultureInfo.CurrentCulture = tr;
+            CultureInfo.CurrentUICulture = tr;
+
+            Assert.True(PlatformDetector.HasReliableWindowMatch("My Song - YOUTUBE", MediaPlatform.YouTube));
+            Assert.True(PlatformDetector.HasReliableWindowMatch("My Song - SPOTIFY", MediaPlatform.Spotify));
+            Assert.True(PlatformDetector.HasReliableWindowMatch("My Song - BILIBILI", MediaPlatform.Bilibili));
+            Assert.True(PlatformDetector.HasReliableWindowMatch("My Song - APPLE MUSIC", MediaPlatform.AppleMusic));
+            Assert.True(PlatformDetector.HasReliableWindowMatch(new[] { "My Song - YOUTUBE" }, "My Song", "YOUTUBE"));
+            Assert.True(PlatformDetector.HasReliableWindowMatch(new[] { "My Song - SPOTIFY" }, "My Song", "SPOTIFY"));
+            Assert.True(PlatformDetector.HasReliableWindowMatch(new[] { "My Song - BILIBILI" }, "My Song", "BILIBILI"));
+
+            Assert.Equal(MediaPlatform.Spotify, PlatformDetector.DetectFromAppId("SPOTIFY"));
+            Assert.Equal(MediaPlatform.Twitch, PlatformDetector.DetectFromAppId("TWITCH"));
+            Assert.Equal(MediaPlatform.Tidal, PlatformDetector.DetectFromAppId("TIDAL"));
+            Assert.Equal(MediaPlatform.Discord, PlatformDetector.DetectFromAppId("DISCORD"));
+
+            var appleMusicAppInfo = new MediaInfo();
+            MediaSourceClassifier.ApplyFromAppId(appleMusicAppInfo, "APPLEMUSIC");
+            Assert.Equal(MediaPlatform.AppleMusic, appleMusicAppInfo.Platform);
+            Assert.Equal(MediaPlatform.YouTube, PlatformDetector.DetectFromWindowTitles(new[] { "Song - YOUTUBE" }));
+            Assert.Equal(MediaPlatform.Bilibili, PlatformDetector.DetectFromWindowTitles(new[] { "Song - BILIBILI" }));
+            Assert.Equal(MediaPlatform.AppleMusic, PlatformDetector.DetectFromWindowTitles(new[] { "Song - APPLE MUSIC" }));
+            Assert.Equal(MediaPlatform.YouTube, MediaPlatformExtensions.ParsePlatform("YOUTUBE"));
+            Assert.Equal(MediaPlatform.Spotify, MediaPlatformExtensions.ParsePlatform("SPOTIFY"));
+            Assert.Equal(MediaPlatform.Bilibili, MediaPlatformExtensions.ParsePlatform("BILIBILI"));
+
+            var ytInfo = new MediaInfo { MediaSource = "Browser" };
+            MediaSourceClassifier.RefineFromMetadata(ytInfo, "SONG - YOUTUBE", "", "");
+            Assert.Equal(MediaPlatform.YouTube, ytInfo.Platform);
+
+            var biliInfo = new MediaInfo { MediaSource = "Browser" };
+            MediaSourceClassifier.RefineFromMetadata(biliInfo, "VIDEO - BILIBILI", "", "");
+            Assert.Equal(MediaPlatform.Bilibili, biliInfo.Platform);
+
+            var musicInfo = new MediaInfo { MediaSource = "Browser" };
+            MediaSourceClassifier.RefineFromMetadata(musicInfo, "SONG", "ARTIST", "APPLE MUSIC");
+            Assert.Equal(MediaPlatform.AppleMusic, musicInfo.Platform);
+
+            var spotifyInfo = new MediaInfo();
+            MediaSourceClassifier.ApplyFromAppId(spotifyInfo, "SPOTIFY");
+            Assert.Equal(MediaPlatform.Spotify, spotifyInfo.Platform);
+        }
+        finally
+        {
+            CultureInfo.CurrentCulture = prevCulture;
+            CultureInfo.CurrentUICulture = prevUiCulture;
+        }
     }
 
     #endregion
@@ -302,6 +393,18 @@ public class PlatformDetectorTests
         var (artist, track) = PlatformDetector.ParseSoundCloudTitle(extracted);
         Assert.Equal(expectedArtist, artist);
         Assert.Equal(expectedTrack, track);
+    }
+
+    [Fact]
+    public void ParseSoundCloudTitle_ShortAndLongInputs_MatchExpectedOutput()
+    {
+        string shortArtist = new string('A', 20);
+        string shortTrack = new string('T', 20);
+        Assert.Equal((shortArtist, shortTrack), PlatformDetector.ParseSoundCloudTitle($"{shortTrack} by {shortArtist}"));
+
+        string longArtist = new string('A', 600);
+        string longTrack = new string('T', 600);
+        Assert.Equal((longArtist, longTrack), PlatformDetector.ParseSoundCloudTitle($"{longTrack} by {longArtist}"));
     }
 
     #endregion

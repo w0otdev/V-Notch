@@ -73,11 +73,7 @@ internal sealed class VideoIdCache
             {
                 _cache.Remove(key);
             }
-            _order.Clear();
-            foreach (var key in _cache.Keys)
-            {
-                _order.Enqueue(key);
-            }
+            PruneOrder();
         }
     }
 
@@ -86,20 +82,38 @@ internal sealed class VideoIdCache
         if (string.IsNullOrEmpty(track) || string.IsNullOrEmpty(staleVideoId)) return;
         lock (_lock)
         {
+            bool removed = false;
             string trackIdentity = MediaHeuristics.BuildTrackIdentity(track, "");
             if (_cache.TryGetValue(track, out var v1))
             {
                 if (string.Equals(v1, staleVideoId, StringComparison.Ordinal))
                 {
-                    _cache.Remove(track);
+                    removed |= _cache.Remove(track);
                 }
             }
             if (_cache.TryGetValue(trackIdentity, out var v2))
             {
                 if (string.Equals(v2, staleVideoId, StringComparison.Ordinal))
                 {
-                    _cache.Remove(trackIdentity);
+                    removed |= _cache.Remove(trackIdentity);
                 }
+            }
+            if (removed)
+            {
+                PruneOrder();
+            }
+        }
+    }
+
+    private void PruneOrder()
+    {
+        int count = _order.Count;
+        for (int i = 0; i < count; i++)
+        {
+            string key = _order.Dequeue();
+            if (_cache.ContainsKey(key))
+            {
+                _order.Enqueue(key);
             }
         }
     }

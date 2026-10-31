@@ -1,4 +1,5 @@
 using System;
+using System.Linq;
 using System.Reflection;
 using System.Threading;
 using System.Threading.Tasks;
@@ -71,22 +72,26 @@ public class SettingsWindowDecouplingTests
             var fakeService = new FakeSettingsAppService();
             var initialSettings = new NotchSettings { Width = 230, Height = 34 };
             var window = new SettingsWindow(initialSettings, fakeService);
+            try
+            {
+                bool settingsChangedFired = false;
+                window.SettingsChanged += (_, _) => settingsChangedFired = true;
 
-            bool settingsChangedFired = false;
-            window.SettingsChanged += (_, _) => settingsChangedFired = true;
+                // Change UI sliders
+                window.WidthSlider.Value = 350;
+                window.HeightSlider.Value = 48;
 
-            // Change UI sliders
-            window.WidthSlider.Value = 350;
-            window.HeightSlider.Value = 48;
+                // Reading settings from UI should create snapshot without side effects
+                var snapshot = window.ReadSettingsFromUi();
 
-            // Reading settings from UI should create snapshot without side effects
-            var snapshot = window.ReadSettingsFromUi();
-
-            Assert.Equal(350, snapshot.Width);
-            Assert.Equal(48, snapshot.Height);
-            Assert.False(settingsChangedFired, "ReadSettingsFromUi must not fire SettingsChanged.");
-            Assert.Equal(0, fakeService.ExportCount);
-            Assert.Equal(0, fakeService.ApplyCount);
+                Assert.Equal(350, snapshot.Width);
+                Assert.Equal(48, snapshot.Height);
+                Assert.False(settingsChangedFired, "ReadSettingsFromUi must not fire SettingsChanged.");
+                Assert.Equal(0, fakeService.ExportCount);
+                Assert.Equal(0, fakeService.ApplyCount);
+            }
+            finally { window.Close(); }
+            if (Application.Current != null) Assert.DoesNotContain(window, Application.Current.Windows.OfType<SettingsWindow>());
         });
     }
 
@@ -119,6 +124,7 @@ public class SettingsWindowDecouplingTests
                 Assert.Equal(.35, received.InteractionSoundVolume);
             }
             finally { window.Close(); }
+            if (Application.Current != null) Assert.DoesNotContain(window, Application.Current.Windows.OfType<SettingsWindow>());
         });
     }
 
@@ -131,17 +137,21 @@ public class SettingsWindowDecouplingTests
             var fakeService = new FakeSettingsAppService();
             var initialSettings = new NotchSettings { Width = 230, Height = 34 };
             var window = new SettingsWindow(initialSettings, fakeService);
+            try
+            {
+                // Snapshot of unchanged controls
+                var snapshot = window.ReadSettingsFromUi();
 
-            // Snapshot of unchanged controls
-            var snapshot = window.ReadSettingsFromUi();
+                bool settingsChangedFired = false;
+                window.SettingsChanged += (_, _) => settingsChangedFired = true;
 
-            bool settingsChangedFired = false;
-            window.SettingsChanged += (_, _) => settingsChangedFired = true;
+                bool applied = window.ApplyPreview(snapshot);
 
-            bool applied = window.ApplyPreview(snapshot);
-
-            Assert.False(applied);
-            Assert.False(settingsChangedFired, "ApplyPreview must not fire SettingsChanged when there are no changes.");
+                Assert.False(applied);
+                Assert.False(settingsChangedFired, "ApplyPreview must not fire SettingsChanged when there are no changes.");
+            }
+            finally { window.Close(); }
+            if (Application.Current != null) Assert.DoesNotContain(window, Application.Current.Windows.OfType<SettingsWindow>());
         });
     }
 
@@ -154,48 +164,49 @@ public class SettingsWindowDecouplingTests
             var fakeService = new FakeSettingsAppService();
             var initialSettings = new NotchSettings { Width = 230, Height = 34 };
             var window = new SettingsWindow(initialSettings, fakeService);
+            try
+            {
+                window.WidthSlider.Value = 320;
+                var snapshot = window.ReadSettingsFromUi();
 
-            window.WidthSlider.Value = 320;
-            var snapshot = window.ReadSettingsFromUi();
+                NotchSettings? emittedSettings = null;
+                window.SettingsChanged += (_, s) => emittedSettings = s;
 
-            NotchSettings? emittedSettings = null;
-            window.SettingsChanged += (_, s) => emittedSettings = s;
+                bool applied = window.ApplyPreview(snapshot);
 
-            bool applied = window.ApplyPreview(snapshot);
-
-            Assert.True(applied);
-            Assert.NotNull(emittedSettings);
-            Assert.Equal(320, emittedSettings.Width);
+                Assert.True(applied);
+                Assert.NotNull(emittedSettings);
+                Assert.Equal(320, emittedSettings.Width);
+            }
+            finally { window.Close(); }
+            if (Application.Current != null) Assert.DoesNotContain(window, Application.Current.Windows.OfType<SettingsWindow>());
         });
     }
 
     [Fact]
-    public async Task SettingsWindow_SaveAsync_PersistsThroughAppService()
+    public Task SettingsWindow_SaveAsync_PersistsThroughAppService()
     {
-        FakeSettingsAppService? fakeService = null;
-        SettingsWindow? window = null;
-        NotchSettings? snapshot = null;
-
-        SharedStaTestRunner.Run(() =>
+        SharedStaTestRunner.RunAsync(async () =>
         {
             EnsureApplicationResources();
-            fakeService = new FakeSettingsAppService();
+            var fakeService = new FakeSettingsAppService();
             var initialSettings = new NotchSettings { Width = 230 };
-            window = new SettingsWindow(initialSettings, fakeService);
+            var window = new SettingsWindow(initialSettings, fakeService);
+            try
+            {
+                window.WidthSlider.Value = 380;
+                var snapshot = window.ReadSettingsFromUi();
 
-            window.WidthSlider.Value = 380;
-            snapshot = window.ReadSettingsFromUi();
+                await window.SaveAsync(snapshot);
+
+                Assert.Equal(1, fakeService.ApplyCount);
+                Assert.NotNull(fakeService.AppliedSettings);
+                Assert.Equal(380, fakeService.AppliedSettings.Width);
+            }
+            finally { window.Close(); }
+            if (Application.Current != null) Assert.DoesNotContain(window, Application.Current.Windows.OfType<SettingsWindow>());
         });
-
-        Assert.NotNull(window);
-        Assert.NotNull(fakeService);
-        Assert.NotNull(snapshot);
-
-        await window.SaveAsync(snapshot);
-
-        Assert.Equal(1, fakeService.ApplyCount);
-        Assert.NotNull(fakeService.AppliedSettings);
-        Assert.Equal(380, fakeService.AppliedSettings.Width);
+        return Task.CompletedTask;
     }
 
     [Fact]
@@ -233,6 +244,7 @@ public class SettingsWindowDecouplingTests
                 Assert.Equal(3, prompts);
             }
             finally { window.Close(); }
+            if (Application.Current != null) Assert.DoesNotContain(window, Application.Current.Windows.OfType<SettingsWindow>());
         });
     }
 
@@ -255,6 +267,7 @@ public class SettingsWindowDecouplingTests
             Assert.True((bool)typeof(SettingsWindow).GetField("_isClosing", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(window)!);
         }
         finally { complete.TrySetResult(); window.Close(); }
+        if (Application.Current != null) Assert.DoesNotContain(window, Application.Current.Windows.OfType<SettingsWindow>());
         ct.ThrowIfCancellationRequested();
     });
 
@@ -304,6 +317,7 @@ public class SettingsWindowDecouplingTests
             Assert.Equal(1, window.TrayDelayRow.Opacity);
         }
         finally { window.Close(); }
+        if (Application.Current != null) Assert.DoesNotContain(window, Application.Current.Windows.OfType<SettingsWindow>());
     });
 
     [Fact]
@@ -333,6 +347,7 @@ public class SettingsWindowDecouplingTests
             Assert.Equal(320, reverted!.Width);
         }
         finally { complete.TrySetResult(); window.Close(); }
+        if (Application.Current != null) Assert.DoesNotContain(window, Application.Current.Windows.OfType<SettingsWindow>());
     });
 
     [Fact]
@@ -349,6 +364,7 @@ public class SettingsWindowDecouplingTests
             Assert.True((bool)typeof(SettingsWindow).GetField("_isClosing", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(window)!);
         }
         finally { window.Close(); }
+        if (Application.Current != null) Assert.DoesNotContain(window, Application.Current.Windows.OfType<SettingsWindow>());
     });
 
     [Fact]
@@ -371,6 +387,7 @@ public class SettingsWindowDecouplingTests
             Assert.Equal(2, service.ApplyCount);
         }
         finally { window.Close(); }
+        if (Application.Current != null) Assert.DoesNotContain(window, Application.Current.Windows.OfType<SettingsWindow>());
         ct.ThrowIfCancellationRequested();
     });
 

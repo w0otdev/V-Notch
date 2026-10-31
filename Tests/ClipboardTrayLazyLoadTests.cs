@@ -343,6 +343,51 @@ public sealed class ClipboardTrayLazyLoadTests
     });
 
     [Fact]
+    public void UnloadingDuringInFlightThumbnailLoadAndReloadingDoesNotThrowObjectDisposed() => SharedStaTestRunner.RunAsync(async () =>
+    {
+        string root = Path.Combine(Path.GetTempPath(), "vnotch-unload-reload-preview-" + Guid.NewGuid().ToString("N"));
+        using var store = new ClipboardHistoryStore(root);
+        using var controller = new ClipboardHistoryController(Dispatcher.CurrentDispatcher, store);
+        using var tray = new ClipboardTray();
+        var window = new BackgroundWindow { Content = tray, Width = 780, Height = 300 };
+        try
+        {
+            await store.InitializeAsync();
+            var entry = (await store.ImportAsync(new ClipboardCapture { ImagePng = ImageBytes(200, 64, 64) })).Entry!;
+            tray.Attach(controller);
+            Field<UiScheduledTimer>(tray, "_searchTimer").Stop();
+            SetField(tray, "_queryDirty", false);
+            Invoke(tray, "ReconcilePreparedCards", (object)new[] { entry }, null);
+            window.Show();
+            var cards = Field<ObservableCollection<ClipboardCardViewModel>>(tray, "_cards");
+            await WpfFrameWaiter.UntilAsync(() => cards.Single().Image != null, "initial preview loads");
+
+            var element = Field<HashSet<FrameworkElement>>(tray, "_realizedCardElements").Single();
+            cards.Single().Image = null;
+            Invoke(tray, "CancelThumbnailLoads", false);
+
+            var inFlightLoad = (Task)Invoke(tray, "LoadCardContentAsync", element)!;
+            Assert.False(inFlightLoad.IsCompleted);
+
+            window.Content = null;
+            window.UpdateLayout();
+            Invoke(tray, "Tray_Unloaded", tray, new RoutedEventArgs(FrameworkElement.UnloadedEvent));
+            await inFlightLoad;
+
+            window.Content = tray;
+            window.UpdateLayout();
+            await WpfFrameWaiter.UntilAsync(() => cards.SingleOrDefault()?.Image != null, "preview reloads after tray reload");
+        }
+        finally
+        {
+            window.Close();
+            tray.Dispose();
+            await controller.DisposeAsync();
+            if (Directory.Exists(root)) Directory.Delete(root, true);
+        }
+    });
+
+    [Fact]
     public void SearchAndEmptyMessageReversePendingDismissals() => SharedStaTestRunner.RunAsync(async () =>
     {
         using var tray = new ClipboardTray();

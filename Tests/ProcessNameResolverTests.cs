@@ -28,6 +28,29 @@ public sealed class ProcessNameResolverTests
         process.Refresh();
         Assert.InRange(process.HandleCount - before, -int.MaxValue, 20);
     }
+
+    [Fact]
+    public void MediaWindowActivator_MatchesResolvedProcessNameWithoutOpeningFullAccessProcessHandle()
+    {
+        using var process = Process.GetCurrentProcess();
+        uint pid = (uint)process.Id;
+        int processByIdCalls = 0;
+
+        bool matched = MediaWindowActivator.IsMediaBrowserWindowCore(
+            new IntPtr(0x1001),
+            $"{process.ProcessName}.exe",
+            pid,
+            ProcessNameResolver.TryGetName,
+            isChromiumWindow: static _ => true,
+            getProcessById: _ =>
+            {
+                processByIdCalls++;
+                throw new InvalidOperationException("Process.GetProcessById must not be invoked when ProcessNameResolver matches.");
+            });
+
+        Assert.True(matched);
+        Assert.Equal(0, processByIdCalls);
+    }
 }
 
 [CollectionDefinition("Process handles", DisableParallelization = true)]

@@ -93,8 +93,8 @@ public:
         return IsProcNameChar(c);
     }
 
-    static int32_t ExtractProcessName(std::u16string_view source_app, char16_t* out_buf, int32_t out_cap) noexcept {
-        if (source_app.size() < 5 || out_cap <= 0) return 0;
+    static constexpr std::u16string_view ExtractProcessNameView(std::u16string_view source_app) noexcept {
+        if (source_app.size() < 5) return {};
         for (size_t i = 0; i + 4 <= source_app.size(); ++i) {
             if (source_app[i] == u'.' &&
                 vnotch::to_lower_ascii(source_app[i + 1]) == u'e' &&
@@ -105,15 +105,11 @@ public:
                     --start;
                 }
                 if (start < i) {
-                    const int32_t len = std::min(static_cast<int32_t>(i - start), out_cap);
-                    for (int32_t k = 0; k < len; ++k) {
-                        out_buf[k] = source_app[start + static_cast<size_t>(k)];
-                    }
-                    return len;
+                    return source_app.substr(start, i - start);
                 }
             }
         }
-        return 0;
+        return {};
     }
 
     static int32_t ExtractYouTubeVideoId(std::u16string_view url, char16_t* out_buf, int32_t out_cap) noexcept {
@@ -278,37 +274,41 @@ struct SpotifySearchContext {
 };
 
 BOOL CALLBACK EnumSpotifyWindowsProc(HWND hwnd, LPARAM lparam) noexcept {
-    if (!IsWindowVisible(hwnd)) return TRUE;
-    wchar_t title[512]{};
-    const int title_len = GetWindowTextW(hwnd, title, 511);
-    if (title_len <= 0) return TRUE;
+    try {
+        if (!IsWindowVisible(hwnd)) return TRUE;
+        wchar_t title[512]{};
+        const int title_len = GetWindowTextW(hwnd, title, 511);
+        if (title_len <= 0) return TRUE;
 
-    DWORD pid = 0;
-    GetWindowThreadProcessId(hwnd, &pid);
-    std::u16string exe_path;
-    if (!vnotch::try_get_process_image_path(pid, &exe_path) || exe_path.size() < 11) return TRUE;
+        DWORD pid = 0;
+        GetWindowThreadProcessId(hwnd, &pid);
+        std::u16string exe_path;
+        if (!vnotch::try_get_process_image_path(pid, &exe_path) || exe_path.size() < 11) return TRUE;
 
-    std::u16string_view path_sv(exe_path);
-    if (!vnotch::ends_with_ignore_case(path_sv, u"\\spotify.exe") &&
-        !vnotch::equals_ignore_case(path_sv, u"spotify.exe")) {
+        std::u16string_view path_sv(exe_path);
+        if (!vnotch::ends_with_ignore_case(path_sv, u"\\spotify.exe") &&
+            !vnotch::equals_ignore_case(path_sv, u"spotify.exe")) {
+            return TRUE;
+        }
+
+        std::u16string_view title_sv(reinterpret_cast<const char16_t*>(title), static_cast<size_t>(title_len));
+        if (title_sv == u"Spotify" ||
+            title_sv == u"Spotify Premium" ||
+            title_sv == u"Spotify Free" ||
+            vnotch::ends_with_ignore_case(title_sv, u"spotify")) {
+            return TRUE;
+        }
+
+        auto* ctx = reinterpret_cast<SpotifySearchContext*>(lparam);
+        const int32_t copy_len = std::min(static_cast<int32_t>(title_sv.size()), ctx->out_cap);
+        for (int32_t i = 0; i < copy_len; ++i) {
+            ctx->out_buf[i] = title_sv[static_cast<size_t>(i)];
+        }
+        ctx->out_len = copy_len;
+        return FALSE;
+    } catch (...) {
         return TRUE;
     }
-
-    std::u16string_view title_sv(reinterpret_cast<const char16_t*>(title), static_cast<size_t>(title_len));
-    if (title_sv == u"Spotify" ||
-        title_sv == u"Spotify Premium" ||
-        title_sv == u"Spotify Free" ||
-        vnotch::ends_with_ignore_case(title_sv, u"spotify")) {
-        return TRUE;
-    }
-
-    auto* ctx = reinterpret_cast<SpotifySearchContext*>(lparam);
-    const int32_t copy_len = std::min(static_cast<int32_t>(title_sv.size()), ctx->out_cap);
-    for (int32_t i = 0; i < copy_len; ++i) {
-        ctx->out_buf[i] = title_sv[static_cast<size_t>(i)];
-    }
-    ctx->out_len = copy_len;
-    return FALSE;
 }
 
 template <typename TAsyncOp>
@@ -412,10 +412,12 @@ VN_EXPORT int32_t __stdcall vn_media_detection_extract_process_name(
     char16_t* out_buf,
     int32_t out_cap,
     int32_t* out_len) noexcept {
-    if (!out_buf || out_cap <= 0 || !out_len || source_app_len < 0) return VN_ERR_INVALID_ARG;
-    std::u16string_view sv(source_app ? source_app : u"", static_cast<size_t>(source_app_len));
-    *out_len = vnotch::services::MediaDetectionService::ExtractProcessName(sv, out_buf, out_cap);
-    return VN_OK;
+    if (out_cap < 0 || !out_len || source_app_len < 0 || (!source_app && source_app_len > 0) || (!out_buf && out_cap > 0)) {
+        return VN_ERR_INVALID_ARG;
+    }
+    const std::u16string_view sv(source_app ? source_app : u"", static_cast<size_t>(source_app_len));
+    const std::u16string_view proc_name = vnotch::services::MediaDetectionService::ExtractProcessNameView(sv);
+    return vnotch::copy_out_u16(proc_name, out_buf, out_cap, out_len);
 }
 
 VN_EXPORT int32_t __stdcall vn_media_detection_extract_youtube_video_id(
@@ -497,7 +499,7 @@ VN_EXPORT int32_t __stdcall vn_gsmtc_get_source_app_id(
     char16_t* out_buf,
     int32_t out_cap,
     int32_t* out_len) noexcept {
-    if (!session_ptr || !out_buf || out_cap < 0 || !out_len) return VN_ERR_INVALID_ARG;
+    if (!session_ptr || out_cap < 0 || !out_len || (!out_buf && out_cap > 0)) return VN_ERR_INVALID_ARG;
     *out_len = 0;
 
     auto* unk = reinterpret_cast<IUnknown*>(session_ptr);
@@ -512,13 +514,10 @@ VN_EXPORT int32_t __stdcall vn_gsmtc_get_source_app_id(
 
     UINT32 raw_len = 0;
     const wchar_t* raw = WindowsGetStringRawBuffer(hstr, &raw_len);
-    const int32_t copy_len = std::min(static_cast<int32_t>(raw_len), out_cap);
-    for (int32_t i = 0; i < copy_len; ++i) {
-        out_buf[i] = static_cast<char16_t>(raw[i]);
-    }
-    *out_len = copy_len;
+    const std::u16string_view sv(reinterpret_cast<const char16_t*>(raw ? raw : L""), static_cast<size_t>(raw_len));
+    const int32_t rc = vnotch::copy_out_u16(sv, out_buf, out_cap, out_len);
     WindowsDeleteString(hstr);
-    return VN_OK;
+    return rc;
 }
 
 VN_EXPORT int32_t __stdcall vn_gsmtc_get_controls(
@@ -627,7 +626,7 @@ VN_EXPORT int32_t __stdcall vn_gsmtc_get_title(
     int32_t out_cap,
     int32_t* out_len,
     uint8_t* out_has_title) noexcept {
-    if (!session_ptr || !out_buf || out_cap < 0 || !out_len || !out_has_title) return VN_ERR_INVALID_ARG;
+    if (!session_ptr || out_cap < 0 || !out_len || !out_has_title || (!out_buf && out_cap > 0)) return VN_ERR_INVALID_ARG;
     *out_len = 0;
     *out_has_title = 0;
 
@@ -652,13 +651,10 @@ VN_EXPORT int32_t __stdcall vn_gsmtc_get_title(
 
     UINT32 raw_len = 0;
     const wchar_t* raw = WindowsGetStringRawBuffer(hstr, &raw_len);
-    const int32_t copy_len = std::min(static_cast<int32_t>(raw_len), out_cap);
-    for (int32_t i = 0; i < copy_len; ++i) {
-        out_buf[i] = static_cast<char16_t>(raw[i]);
-    }
-    *out_len = copy_len;
+    const std::u16string_view sv(reinterpret_cast<const char16_t*>(raw ? raw : L""), static_cast<size_t>(raw_len));
+    const int32_t rc = vnotch::copy_out_u16(sv, out_buf, out_cap, out_len);
     WindowsDeleteString(hstr);
-    return VN_OK;
+    return rc;
 }
 
 } // extern "C"

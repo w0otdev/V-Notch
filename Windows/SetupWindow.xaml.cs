@@ -71,8 +71,15 @@ public partial class SetupWindow : Window
     private bool _isTransitioning;
     private bool _isInstalling;
     private bool _installationSucceeded;
+    private bool _hasInstallFailed;
     private bool _isShowingCancelSetupPage;
     private bool _hasForcedForeground;
+    internal bool HasInstallFailed => _hasInstallFailed;
+    internal int CurrentPageIndex => _currentPageIndex;
+    internal bool IsShowingCancelSetupPage => _isShowingCancelSetupPage;
+    internal DirectoryPage DirectoryStepPage => _directoryPage;
+    internal TermsOfServicePage TermsStepPage => _termsPage;
+    internal InstallProgressPage InstallProgressStepPage => _installProgressPage;
     public int ResultExitCode { get; private set; } = 1;
 
     private static void SetForegroundWindow(IntPtr hWnd) => _ = Win32Interop.SetForegroundWindow(hWnd);
@@ -281,7 +288,10 @@ public partial class SetupWindow : Window
 
         if (_currentPageIndex > 0)
         {
-            ShowPage(_isUpgrade && _currentPageIndex == 6 ? 2 : _currentPageIndex - 1, NavigationDirection.Backward);
+            int targetIndex = _currentPageIndex == 6
+                ? 4
+                : (_isUpgrade && _currentPageIndex == 4 ? 2 : _currentPageIndex - 1);
+            ShowPage(targetIndex, NavigationDirection.Backward);
         }
     }
 
@@ -305,7 +315,13 @@ public partial class SetupWindow : Window
 
         if (_currentPageIndex < _pageFactories.Length - 1)
         {
-            ShowPage(_isUpgrade && _currentPageIndex == 2 ? 6 : _currentPageIndex + 1, NavigationDirection.Forward);
+            int nextIndex = _isUpgrade && _currentPageIndex is 2 or 4 ? 6 : _currentPageIndex + 1;
+            if (nextIndex == _pageFactories.Length - 2)
+            {
+                _hasInstallFailed = false;
+            }
+
+            ShowPage(nextIndex, NavigationDirection.Forward);
         }
         else
         {
@@ -324,6 +340,12 @@ public partial class SetupWindow : Window
         CloseButton_Click(sender, e);
     }
 
+    internal void InitializeForTest() => InitializeFirstPage();
+    internal void TriggerBack() => BackButton_Click(BackButton, new RoutedEventArgs());
+    internal void TriggerNext() => NextButton_Click(NextButton, new RoutedEventArgs());
+    internal void TriggerCancel() => CancelButton_Click(CancelButton, new RoutedEventArgs());
+    internal void NavigateToPage(int index) => ShowPage(index, NavigationDirection.Forward);
+
     private void ShowPage(int index, NavigationDirection direction)
     {
         if (index < 0 || index >= _pageFactories.Length)
@@ -331,11 +353,16 @@ public partial class SetupWindow : Window
             return;
         }
 
-        if (_isUpgrade && index is not (2 or 6 or 7)) return;
+        if (_isUpgrade && index is not (2 or 6 or 7) && !(_hasInstallFailed && index == 4)) return;
 
         if (_isTransitioning)
         {
             return;
+        }
+
+        if (index == _pageFactories.Length - 2)
+        {
+            _hasInstallFailed = false;
         }
 
         _isTransitioning = true;
@@ -402,7 +429,7 @@ public partial class SetupWindow : Window
         else if (page is IntroductionPage intro) intro.RefreshLocalization();
         else if (page is DirectoryPage dir) dir.RefreshLocalization();
         else if (page is StartupOptionsPage startup) startup.RefreshLocalization();
-        else if (page is InstallProgressPage progress) progress.RefreshLocalization();
+        else if (page is InstallProgressPage progress && !_hasInstallFailed) progress.RefreshLocalization();
         else if (page is FinishPage finish) finish.RefreshLocalization();
 
         ShowDynamicContent(page, direction, () =>
@@ -411,7 +438,16 @@ public partial class SetupWindow : Window
 
             if (index == _pageFactories.Length - 2)
             {
-                _ = BeginInstallationAsync();
+                if (_hasInstallFailed)
+                {
+                    BackButton.Visibility = Visibility.Visible;
+                    CancelButton.Visibility = Visibility.Visible;
+                    NextButton.Visibility = Visibility.Collapsed;
+                }
+                else
+                {
+                    _ = BeginInstallationAsync();
+                }
             }
         });
     }
@@ -438,8 +474,8 @@ public partial class SetupWindow : Window
 
         if (index == _pageFactories.Length - 2)
         {
-            showBack = false;
-            showCancel = false;
+            showBack = _hasInstallFailed;
+            showCancel = _hasInstallFailed;
             showNext = false;
         }
         else if (index == _pageFactories.Length - 1)
@@ -517,6 +553,14 @@ public partial class SetupWindow : Window
         var transform = EnsureTranslateTransform(ContentPresenter);
         StopAnimations(ContentPresenter);
 
+        if (!IsLoaded)
+        {
+            transform.Y = offset;
+            ContentPresenter.Opacity = 0;
+            onComplete?.Invoke();
+            return;
+        }
+
         fadeOut.Completed += (s, e) =>
         {
             StopAnimations(ContentPresenter);
@@ -554,6 +598,14 @@ public partial class SetupWindow : Window
         StopAnimations(ContentPresenter);
         transform.Y = offset;
         ContentPresenter.Opacity = 0;
+
+        if (!IsLoaded)
+        {
+            transform.Y = 0;
+            ContentPresenter.Opacity = 1;
+            onComplete?.Invoke();
+            return;
+        }
 
         fadeIn.Completed += (s, e) =>
         {
@@ -650,6 +702,14 @@ public partial class SetupWindow : Window
         element.Opacity = 0;
         element.Visibility = Visibility.Visible;
 
+        if (!IsLoaded)
+        {
+            transform.Y = 0;
+            element.Opacity = 1;
+            onComplete?.Invoke();
+            return;
+        }
+
         fadeIn.Completed += (s, e) =>
         {
             StopAnimations(element);
@@ -684,6 +744,15 @@ public partial class SetupWindow : Window
 
         var transform = EnsureTranslateTransform(element);
         StopAnimations(element);
+
+        if (!IsLoaded)
+        {
+            transform.Y = offsetY;
+            element.Opacity = 0;
+            element.Visibility = Visibility.Collapsed;
+            onComplete?.Invoke();
+            return;
+        }
 
         fadeOut.Completed += (s, e) =>
         {
@@ -1073,6 +1142,7 @@ public partial class SetupWindow : Window
             return;
         }
 
+        _hasInstallFailed = false;
         _isInstalling = true;
         _installProgressPage.ShowIndeterminate(Loc.Get("setup.install.preparing"));
 
@@ -1110,12 +1180,18 @@ public partial class SetupWindow : Window
         catch (Exception ex)
         {
             _isInstalling = false;
-            _installProgressPage.ShowFailure(ex.Message);
-            BackButton.Visibility = Visibility.Visible;
-            CancelButton.Visibility = Visibility.Visible;
-            NextButton.Visibility = Visibility.Collapsed;
-            SetNavigationEnabled(true);
+            ShowFailure(ex.Message);
         }
+    }
+
+    internal void ShowFailure(string message)
+    {
+        _hasInstallFailed = true;
+        _installProgressPage.ShowFailure(message);
+        BackButton.Visibility = Visibility.Visible;
+        CancelButton.Visibility = Visibility.Visible;
+        NextButton.Visibility = Visibility.Collapsed;
+        SetNavigationEnabled(true);
     }
 }
 
@@ -1697,6 +1773,9 @@ public class InstallProgressPage : UserControl, ISetupAnimatedPage
     {
         return new UIElement[] { _headline, _status, _progressBar };
     }
+
+    internal string StatusText => _status.Text;
+    internal bool IsProgressIndeterminate => _progressBar.IsIndeterminate;
 
     public void ShowIndeterminate(string status)
     {

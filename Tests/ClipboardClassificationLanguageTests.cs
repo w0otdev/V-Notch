@@ -31,6 +31,8 @@ public sealed class ClipboardClassificationLanguageTests
     [InlineData("print(\"hello\");")]
     [InlineData("int answer = 42;")]
     [InlineData("string message = \"hello\";")]
+    [InlineData("[Serializable]\npublic class Example")]
+    [InlineData("[Fact]\npublic void Test()")]
     public void CommonLanguageSnippetsAreRecognizedAsCode(string text) =>
         Assert.Equal(ClipboardKind.Code, ClipboardClassifier.Detect(new ClipboardCapture { Text = text }));
 
@@ -57,6 +59,8 @@ public sealed class ClipboardClassificationLanguageTests
     [InlineData("}")]
     [InlineData(";")]
     [InlineData("public classroom discussion")]
+    [InlineData("[Serializable]")]
+    [InlineData("[Obsolete(\"Use NewMethod instead\")]")]
     public void SimilarWordsInProseDoNotBecomeCode(string text) =>
         Assert.Equal(ClipboardKind.Text, ClipboardClassifier.Detect(new ClipboardCapture { Text = text }));
 
@@ -64,6 +68,15 @@ public sealed class ClipboardClassificationLanguageTests
     [InlineData("rgb(0, 255, 127)", 0xFF00FF7Fu)]
     [InlineData("rgba(12, 34, 56, .5)", 0x800C2238u)]
     [InlineData("rgba(255, 0, 0, 0)", 0x00FF0000u)]
+    [InlineData("rgb(255 0 128)", 0xFFFF0080u)]
+    [InlineData("rgb(255 0 128 / 50%)", 0x80FF0080u)]
+    [InlineData("rgb(100% 0% 50% / 0.5)", 0x80FF0080u)]
+    [InlineData("rgba(255 0 128 / 0.5)", 0x80FF0080u)]
+    [InlineData("hsl(120 100% 50% / 50%)", 0x8000FF00u)]
+    [InlineData("hsl(120 100% 50% / 0.25)", 0x4000FF00u)]
+    [InlineData("hsl(120deg 100% 50% / 0.5)", 0x8000FF00u)]
+    [InlineData("hsl(120, 100%, 50%)", 0xFF00FF00u)]
+    [InlineData("hsla(120, 100%, 50%, 0.5)", 0x8000FF00u)]
     [InlineData("#1234", 0x44112233u)]
     [InlineData("#11223344", 0x44112233u)]
     public void ColorFormatsPreserveAlphaAndChannels(string text, uint expected)
@@ -71,6 +84,15 @@ public sealed class ClipboardClassificationLanguageTests
         Assert.True(ClipboardClassifier.TryParseColor(text, out uint actual));
         Assert.Equal(expected, actual);
     }
+
+    [Theory]
+    [InlineData("rgb(255 0 128 / 50%)")]
+    [InlineData("hsl(120 100% 50% / 0.25)")]
+    [InlineData("rgb(255 0 128)")]
+    [InlineData("hsl(120deg 100% 50% / 0.5)")]
+    [InlineData("rgba(255 0 128 / 0.5)")]
+    public void CssColor4AndHslFormatsAreDetectedAsColor(string text) =>
+        Assert.Equal(ClipboardKind.Color, ClipboardClassifier.Detect(new ClipboardCapture { Text = text }));
 
     [Theory]
     [InlineData("rgb(256, 0, 0)")]
@@ -81,6 +103,10 @@ public sealed class ClipboardClassificationLanguageTests
     [InlineData("rgb(0, 0)")]
     [InlineData("rgb(x, 0, 0)")]
     [InlineData("rgb(0; 0; 0)")]
+    [InlineData("rgb(255 0 128 / 150%)")]
+    [InlineData("hsl(120 120% 50%)")]
+    [InlineData("hsl(120 100 50%)")]
+    [InlineData("rgb(255, 0 128)")]
     [InlineData("#12345")]
     [InlineData("#1234567")]
     public void MalformedColorsAreRejected(string text) =>
@@ -92,4 +118,3 @@ public sealed class ClipboardClassificationLanguageTests
     public void EmailAddressAddsEmailGroup(string text) =>
         Assert.Contains("Email", ClipboardClassifier.Classify(text, ClipboardKind.Text));
 }
-

@@ -57,7 +57,8 @@ public sealed partial class MediaSessionVolumeService : IDisposable
     private string _lastMatchedSourceAppId = "";
     private string _cachedProcessSourceAppId = "";
     private DateTime _cachedProcessIdsAtUtc = DateTime.MinValue;
-    private HashSet<uint> _cachedProcessIds = new();
+    private HashSet<uint> _cachedProcessIds = [];
+    private int _processCacheVersion;
 
     private IMediaAudioVolume? _cachedSimpleVolume;
     private string _cachedVolumeSourceAppId = "";
@@ -93,6 +94,8 @@ public sealed partial class MediaSessionVolumeService : IDisposable
                 // Browser audio helpers can restart while the old COM volume still accepts writes.
                 InvalidateVolumeSessionCacheLocked();
                 _cachedProcessIdsAtUtc = DateTime.MinValue;
+                _cachedProcessSourceAppId = "";
+                _processCacheVersion++;
             }
             if (_cachedSimpleVolume != null &&
                 string.Equals(sourceAppId, _cachedVolumeSourceAppId, StringComparison.OrdinalIgnoreCase) &&
@@ -158,6 +161,7 @@ public sealed partial class MediaSessionVolumeService : IDisposable
             _cachedSimpleVolume = null;
         }
         _cachedVolumeSourceAppId = "";
+        _cachedVolumeSessionAtUtc = DateTime.MinValue;
     }
 
     public bool TryToggleMute(string sourceAppId)
@@ -190,9 +194,14 @@ public sealed partial class MediaSessionVolumeService : IDisposable
             if (targetSession == null)
                 return false;
 
-            _lastMatchedSourceAppId = sourceAppId;
-            _lastMatchedProcessId = targetSession.GetProcessID;
-            _lastMatchedSessionId = targetSession.GetSessionIdentifier ?? "";
+            uint matchedProcessId = targetSession.GetProcessID;
+            string matchedSessionId = targetSession.GetSessionIdentifier ?? "";
+            lock (_volumeCacheLock)
+            {
+                _lastMatchedSourceAppId = sourceAppId;
+                _lastMatchedProcessId = matchedProcessId;
+                _lastMatchedSessionId = matchedSessionId;
+            }
 
             return action(targetSession);
         }
@@ -224,7 +233,7 @@ public sealed partial class MediaSessionVolumeService : IDisposable
         return targetSession;
     }
 
-    private double CalculateSessionScore(MediaAudioSessionSnapshot session, string sourceAppId, HashSet<uint> candidateProcessIds)
+    internal double CalculateSessionScore(MediaAudioSessionSnapshot session, string sourceAppId, HashSet<uint> candidateProcessIds)
     {
         uint processId = session.GetProcessID;
         bool matchedByProcess = candidateProcessIds.Contains(processId);
@@ -232,14 +241,24 @@ public sealed partial class MediaSessionVolumeService : IDisposable
         if (!matchedByProcess && !matchedByMetadata)
             return double.MinValue;
 
-        bool sourceMatchesLast = string.Equals(sourceAppId, _lastMatchedSourceAppId, StringComparison.OrdinalIgnoreCase);
-        bool sessionIdMatchesLast = string.Equals(session.GetSessionIdentifier, _lastMatchedSessionId, StringComparison.OrdinalIgnoreCase);
+        string lastMatchedSourceAppId;
+        uint lastMatchedProcessId;
+        string lastMatchedSessionId;
+        lock (_volumeCacheLock)
+        {
+            lastMatchedSourceAppId = _lastMatchedSourceAppId;
+            lastMatchedProcessId = _lastMatchedProcessId;
+            lastMatchedSessionId = _lastMatchedSessionId;
+        }
+
+        bool sourceMatchesLast = string.Equals(sourceAppId, lastMatchedSourceAppId, StringComparison.OrdinalIgnoreCase);
+        bool sessionIdMatchesLast = string.Equals(session.GetSessionIdentifier, lastMatchedSessionId, StringComparison.OrdinalIgnoreCase);
         vn_media_session_volume_compute_score(
             matchedByProcess ? (byte)1 : (byte)0,
             matchedByMetadata ? (byte)1 : (byte)0,
             sourceMatchesLast ? (byte)1 : (byte)0,
             processId,
-            _lastMatchedProcessId,
+            lastMatchedProcessId,
             sessionIdMatchesLast ? (byte)1 : (byte)0,
             session.State,
             out double score);
@@ -284,19 +303,33 @@ public sealed partial class MediaSessionVolumeService : IDisposable
         return candidates;
     }
 
-    private HashSet<uint> GetCachedProcessIdsForSourceApp(string sourceAppId)
+    internal HashSet<uint> GetCachedProcessIdsForSourceApp(string sourceAppId)
     {
-        bool canUseCache =
-            string.Equals(sourceAppId, _cachedProcessSourceAppId, StringComparison.OrdinalIgnoreCase) &&
-            (_utcNow() - _cachedProcessIdsAtUtc).TotalMilliseconds < 1200;
+        int versionBefore;
+        lock (_volumeCacheLock)
+        {
+            if (string.Equals(sourceAppId, _cachedProcessSourceAppId, StringComparison.OrdinalIgnoreCase) &&
+                (_utcNow() - _cachedProcessIdsAtUtc).TotalMilliseconds < 1200)
+            {
+                return _cachedProcessIds;
+            }
+            versionBefore = _processCacheVersion;
+        }
 
-        if (canUseCache)
-            return _cachedProcessIds;
+        var resolved = _getProcessIds(sourceAppId);
+        var snapshot = resolved is { Count: > 0 } ? new HashSet<uint>(resolved) : [];
+        var fetchedAtUtc = _utcNow();
 
-        _cachedProcessSourceAppId = sourceAppId;
-        _cachedProcessIds = _getProcessIds(sourceAppId);
-        _cachedProcessIdsAtUtc = _utcNow();
-        return _cachedProcessIds;
+        lock (_volumeCacheLock)
+        {
+            if (_processCacheVersion == versionBefore)
+            {
+                _cachedProcessSourceAppId = sourceAppId;
+                _cachedProcessIds = snapshot;
+                _cachedProcessIdsAtUtc = fetchedAtUtc;
+            }
+            return snapshot;
+        }
     }
 
     internal static HashSet<uint> GetProcessIds(string sourceAppId)

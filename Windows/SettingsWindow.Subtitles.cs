@@ -141,7 +141,7 @@ public partial class SettingsWindow
             AnimateSubtitlePriorityReorder(draggedItem, positions);
         });
 
-        ApplySettingsFromUi(persist: true);
+        ApplySettingsFromUi(persist: false);
     }
 
     private void AnimateSubtitlePriorityReorder(SubtitlePriorityItem draggedItem, Dictionary<SubtitlePriorityItem, double> positions)

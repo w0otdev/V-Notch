@@ -77,16 +77,14 @@ public static partial class PlatformDetector
         return platform.ToDisplayString();
     }
 
-    public static bool HasReliableWindowMatch(IEnumerable<string> windowTitles, string track, MediaPlatform platform)
+    public static bool HasReliableWindowMatch(string windowTitle, MediaPlatform platform)
     {
-        if (string.IsNullOrWhiteSpace(track))
+        if (string.IsNullOrWhiteSpace(windowTitle))
             return false;
 
-        string platformName = platform.ToDisplayString().ToLower();
-        if (string.IsNullOrEmpty(platformName))
-            return false;
-
-        return HasReliableWindowMatch(windowTitles, track, platformName);
+        string platformName = platform.ToDisplayString();
+        return !string.IsNullOrEmpty(platformName) &&
+               windowTitle.Contains(platformName, StringComparison.OrdinalIgnoreCase);
     }
 
     public static bool HasReliableWindowMatch(IEnumerable<string> windowTitles, string track, string platformName)
@@ -100,7 +98,7 @@ public static partial class PlatformDetector
 
         foreach (var title in windowTitles)
         {
-            if (!title.Contains(platformName, StringComparison.OrdinalIgnoreCase))
+            if (string.IsNullOrEmpty(title) || !title.Contains(platformName, StringComparison.OrdinalIgnoreCase))
                 continue;
 
             string normalizedTitle = NormalizeForLooseMatch(title);
@@ -121,13 +119,13 @@ public static partial class PlatformDetector
         string t = windowTitle ?? string.Empty;
         string fb = platformFallback ?? string.Empty;
         int cap = Math.Max(64, Math.Max(t.Length, fb.Length) + 16);
-        char[] buf = new char[cap];
+        Span<char> buf = cap <= 512 ? stackalloc char[cap] : new char[cap];
         fixed (char* pT = t)
         fixed (char* pFb = fb)
         fixed (char* pOut = buf)
         {
             _ = vn_platform_extract_title_from_window(pT, t.Length, pFb, fb.Length, pOut, cap, out int outLen);
-            return outLen > 0 ? new string(buf, 0, outLen) : string.Empty;
+            return outLen > 0 ? new string(buf.Slice(0, outLen)) : string.Empty;
         }
     }
 
@@ -135,15 +133,15 @@ public static partial class PlatformDetector
     {
         string t = title ?? string.Empty;
         int cap = Math.Max(32, t.Length + 8);
-        char[] artistBuf = new char[cap];
-        char[] trackBuf = new char[cap];
+        Span<char> artistBuf = cap <= 512 ? stackalloc char[cap] : new char[cap];
+        Span<char> trackBuf = cap <= 512 ? stackalloc char[cap] : new char[cap];
         fixed (char* pT = t)
         fixed (char* pA = artistBuf)
         fixed (char* pTr = trackBuf)
         {
             _ = vn_platform_parse_spotify_title(pT, t.Length, pA, cap, out int aLen, pTr, cap, out int trLen);
-            return (aLen > 0 ? new string(artistBuf, 0, aLen) : string.Empty,
-                    trLen > 0 ? new string(trackBuf, 0, trLen) : string.Empty);
+            return (aLen > 0 ? new string(artistBuf.Slice(0, aLen)) : string.Empty,
+                    trLen > 0 ? new string(trackBuf.Slice(0, trLen)) : string.Empty);
         }
     }
 
@@ -151,15 +149,15 @@ public static partial class PlatformDetector
     {
         string t = extractedTitle ?? string.Empty;
         int cap = Math.Max(32, t.Length + 8);
-        char[] artistBuf = new char[cap];
-        char[] trackBuf = new char[cap];
+        Span<char> artistBuf = cap <= 512 ? stackalloc char[cap] : new char[cap];
+        Span<char> trackBuf = cap <= 512 ? stackalloc char[cap] : new char[cap];
         fixed (char* pT = t)
         fixed (char* pA = artistBuf)
         fixed (char* pTr = trackBuf)
         {
             _ = vn_platform_parse_soundcloud_title(pT, t.Length, pA, cap, out int aLen, pTr, cap, out int trLen);
-            return (aLen > 0 ? new string(artistBuf, 0, aLen) : string.Empty,
-                    trLen > 0 ? new string(trackBuf, 0, trLen) : string.Empty);
+            return (aLen > 0 ? new string(artistBuf.Slice(0, aLen)) : string.Empty,
+                    trLen > 0 ? new string(trackBuf.Slice(0, trLen)) : string.Empty);
         }
     }
 
@@ -169,14 +167,14 @@ public static partial class PlatformDetector
             return string.Empty;
 
         int cap = value.Length * 4 + 16;
-        char[] buf = new char[cap];
+        Span<char> buf = cap <= 512 ? stackalloc char[cap] : new char[cap];
         fixed (char* pIn = value)
         fixed (char* pOut = buf)
         {
             int rc = vn_platform_normalize_for_loose_match(pIn, value.Length, pOut, cap, out int outLen);
             if (rc == -2 && outLen > cap) { char[] larger = new char[outLen]; fixed (char* pL = larger) rc = vn_platform_normalize_for_loose_match(pIn, value.Length, pL, outLen, out outLen); return rc == 0 && outLen > 0 ? new string(larger, 0, outLen) : string.Empty; }
             if (rc != 0) outLen = 0;
-            return outLen > 0 ? new string(buf, 0, outLen) : string.Empty;
+            return outLen > 0 ? new string(buf.Slice(0, outLen)) : string.Empty;
         }
     }
 }

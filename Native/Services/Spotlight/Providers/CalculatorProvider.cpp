@@ -41,7 +41,7 @@ namespace vnotch::services
                 if (digits == 0) return false;
                 char* end_ptr = nullptr;
                 out_val = std::strtod(buf, &end_ptr);
-                return end_ptr == buf + s.size();
+                return end_ptr == buf + s.size() && std::isfinite(out_val);
             }
         
             static bool try_parse_factor(std::u16string_view s, size_t& pos, double& value, int depth) noexcept
@@ -57,13 +57,13 @@ namespace vnotch::services
                     double inner = 0.0;
                     if (!try_parse_factor(s, pos, inner, depth + 1)) return false;
                     value = (sign == u'-') ? -inner : inner;
-                    return true;
+                    return std::isfinite(value);
                 }
         
                 if (s[pos] == u'(')
                 {
                     ++pos;
-                    if (!try_parse_add_sub(s, pos, value, depth + 1)) return false;
+                    if (!try_parse_add_sub(s, pos, value, depth + 1) || !std::isfinite(value)) return false;
                     skip_ws(s, pos);
                     if (pos >= s.size() || s[pos] != u')') return false;
                     ++pos;
@@ -74,12 +74,12 @@ namespace vnotch::services
                 while (pos < s.size() && (vnotch::is_ascii_digit(s[pos]) || s[pos] == u'.'))
                     ++pos;
         
-                return pos > start && try_parse_decimal_double(s.substr(start, pos - start), value);
+                return pos > start && try_parse_decimal_double(s.substr(start, pos - start), value) && std::isfinite(value);
             }
         
             static bool try_parse_mul_div_mod(std::u16string_view s, size_t& pos, double& value, int depth) noexcept
             {
-                if (!try_parse_factor(s, pos, value, depth)) return false;
+                if (!try_parse_factor(s, pos, value, depth) || !std::isfinite(value)) return false;
                 while (true)
                 {
                     skip_ws(s, pos);
@@ -87,16 +87,28 @@ namespace vnotch::services
                         return true;
                     char16_t op = s[pos++];
                     double rhs = 0.0;
-                    if (!try_parse_factor(s, pos, rhs, depth)) return false;
-                    if (op == u'*') value *= rhs;
-                    else if (op == u'/') value /= rhs;
-                    else value = std::fmod(value, rhs);
+                    if (!try_parse_factor(s, pos, rhs, depth) || !std::isfinite(rhs)) return false;
+                    if (op == u'*')
+                    {
+                        value *= rhs;
+                    }
+                    else if (op == u'/')
+                    {
+                        if (rhs == 0.0) return false;
+                        value /= rhs;
+                    }
+                    else
+                    {
+                        if (rhs == 0.0) return false;
+                        value = std::fmod(value, rhs);
+                    }
+                    if (!std::isfinite(value)) return false;
                 }
             }
         
             static bool try_parse_add_sub(std::u16string_view s, size_t& pos, double& value, int depth) noexcept
             {
-                if (!try_parse_mul_div_mod(s, pos, value, depth)) return false;
+                if (!try_parse_mul_div_mod(s, pos, value, depth) || !std::isfinite(value)) return false;
                 while (true)
                 {
                     skip_ws(s, pos);
@@ -104,8 +116,9 @@ namespace vnotch::services
                         return true;
                     char16_t op = s[pos++];
                     double rhs = 0.0;
-                    if (!try_parse_mul_div_mod(s, pos, rhs, depth)) return false;
+                    if (!try_parse_mul_div_mod(s, pos, rhs, depth) || !std::isfinite(rhs)) return false;
                     value = (op == u'+') ? (value + rhs) : (value - rhs);
+                    if (!std::isfinite(value)) return false;
                 }
             }
 

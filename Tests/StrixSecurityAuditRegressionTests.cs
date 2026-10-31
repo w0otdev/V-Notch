@@ -245,7 +245,7 @@ public sealed partial class StrixSecurityAuditRegressionTests
         Assert.Equal(0, vn_color_extract_sampled(pixels, pixels.Length, 16, 16, coords, coords.Length, out _, out _, out _));
 
         // SubjectAwareBlurService must handle NaN factor/coordinates and reject stride < width * 4
-        Assert.Equal(0, vn_subject_blur_brighten( dst, dst.Length, float.NaN));
+        Assert.Equal(0, vn_subject_blur_brighten(dst, dst.Length, float.NaN));
         Assert.True(vn_subject_blur_composite(dst, pixels, 0.5f, 0.5f, 0.5f, 0.5f, 16, 16, 16) < 0);
         Assert.Equal(0, vn_subject_blur_composite(dst, pixels, float.NaN, float.PositiveInfinity, -1.0f, float.NaN, 16, 16, 64));
 
@@ -270,11 +270,18 @@ public sealed partial class StrixSecurityAuditRegressionTests
     }
 
     [Fact]
-    public void Vuln06_WeatherServiceCleanCity_RejectsControlCharOnlyInput()
+    public void Vuln06_WeatherServiceCleanCity_StripsControlCharOnlyInputToEmpty()
     {
         Span<char> outBuf = stackalloc char[64];
         string controlOnly = "\u0001\u0002\u007F \t";
         int rc = vn_weather_service_clean_city(controlOnly.AsSpan(), controlOnly.Length, outBuf, outBuf.Length, out int len, out byte hasValue);
+        Assert.Equal(0, rc);
+        Assert.Equal(1, hasValue);
+        Assert.Equal(0, len);
+        Assert.Equal(string.Empty, VNotch.Services.WeatherService.CleanCity(controlOnly));
+
+        string whitespaceOnly = " \t\r\n ";
+        rc = vn_weather_service_clean_city(whitespaceOnly.AsSpan(), whitespaceOnly.Length, outBuf, outBuf.Length, out len, out hasValue);
         Assert.Equal(0, rc);
         Assert.Equal(0, hasValue);
         Assert.Equal(0, len);

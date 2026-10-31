@@ -10,14 +10,19 @@ import sys
 
 
 DOCUMENTATION = {
-    "README.md", "README_VI.md", "CHANGELOG.md", "CONTRIBUTING.md",
+    "README.md", "README_VI.md", "CONTRIBUTING.md",
     "GLOBAL_RELEASE_AUDIT.md", "DEVOPS_PIPELINE_AUDIT.md",
 }
 
 PACKAGED_DOCS = {
+    "CHANGELOG.md",
+    "PRIVACY_POLICY.md",
+    "PRIVACY_POLICY_VI.md",
     "TERMS_OF_SERVICE.md",
     "TERMS_OF_SERVICE_VI.md",
     "THIRD_PARTY_NOTICES.md",
+    "docs/PRIVACY_POLICY.md",
+    "docs/PRIVACY_POLICY_VI.md",
     "docs/TERMS_OF_SERVICE.md",
     "docs/TERMS_OF_SERVICE_VI.md",
     "docs/THIRD_PARTY_NOTICES.md",
@@ -31,6 +36,7 @@ def needs_windows(paths):
     # classify every Markdown file as documentation: some are embedded assets.
     return not paths or any(
         path in PACKAGED_DOCS
+        or path.startswith("docs/PRIVACY_POLICY")
         or path.startswith("docs/licenses/")
         or (path not in DOCUMENTATION and not path.startswith("docs/"))
         for path in paths

@@ -32,8 +32,10 @@ internal sealed partial class TranslationModelStore
     internal static TranslationModelStore For(string? id)
     {
         var profile = TranslationModelCatalog.Find(id);
-        return profile.Id == Shared.Profile.Id ? Shared : Stores.GetOrAdd(profile.Id, _ => new(profile: profile));
+        return For(profile);
     }
+    internal static TranslationModelStore For(TranslationModelProfile profile, string? root = null) =>
+        profile.Id == Shared.Profile.Id ? Shared : Stores.GetOrAdd(profile.Id, _ => new(root: root, profile: profile));
     private readonly HttpClient _client;
     private readonly TimeSpan _networkTimeout;
     private readonly NetworkPrivacy _privacy;
@@ -110,6 +112,7 @@ internal sealed partial class TranslationModelStore
         try
         {
             Directory.CreateDirectory(Root);
+            using var _ = AppFileCleanupService.Protect(Root);
             _verifiedState = null;
             Replacing?.Invoke();
             File.Delete(Path.Combine(Root, "verified.txt"));
@@ -262,26 +265,34 @@ internal sealed partial class TranslationModelStore
         finally { Gate.Release(); Changed?.Invoke(); }
     }
 
-    internal async Task RemoveAsync(CancellationToken ct)
+    internal async Task RemoveAsync(CancellationToken ct = default)
     {
         await Gate.WaitAsync(ct).ConfigureAwait(false);
         try
         {
             _verifiedState = null;
             Replacing?.Invoke();
-            File.Delete(Path.Combine(Root, "verified.txt"));
-            foreach (var asset in Assets)
+            if (Directory.Exists(Root))
             {
-                // A custom model can reference its original file when a hardlink is
-                // unavailable. Removing the registration must never delete that file.
-                if (Path.IsPathFullyQualified(asset.Name)) continue;
-                File.Delete(Path.Combine(Root, asset.Name));
-                File.Delete(Path.Combine(Root, asset.Name + ".part"));
-                File.Delete(Path.Combine(Root, asset.Name + ".install.part"));
+                File.Delete(Path.Combine(Root, "verified.txt"));
+                foreach (var asset in Assets)
+                {
+                    // A custom model can reference its original file when a hardlink is
+                    // unavailable. Removing the registration must never delete that file.
+                    if (Path.IsPathFullyQualified(asset.Name)) continue;
+                    File.Delete(Path.Combine(Root, asset.Name));
+                    File.Delete(Path.Combine(Root, asset.Name + ".part"));
+                    File.Delete(Path.Combine(Root, asset.Name + ".install.part"));
+                }
             }
             if (Profile.IsCustom)
             {
-                File.Delete(Path.Combine(Root, "custom.json"));
+                if (Directory.Exists(Root))
+                {
+                    File.Delete(Path.Combine(Root, "custom.json"));
+                    Directory.Delete(Root, recursive: true);
+                }
+                Stores.TryRemove(Profile.Id, out _);
                 CustomTranslationModels.Shared.Forget(Profile.Id);
             }
         }

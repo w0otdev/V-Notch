@@ -218,7 +218,6 @@ public partial class MediaSourceCache
             {
                 _lru.Remove(node);
                 _lru.AddFirst(node);
-                _isDirty = true;
             }
         }
         else

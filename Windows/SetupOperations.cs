@@ -37,7 +37,10 @@ internal static class SetupOperations
 #pragma warning disable S1075 // Official project repository URL for Windows uninstall registry
     private static readonly string AppUrl = string.Concat("https://", "github.com/w0otdev/V-Notch");
 #pragma warning restore S1075
-    private const string UninstallRegistryPath = @"Software\Microsoft\Windows\CurrentVersion\Uninstall\V-Notch";
+    internal const string UninstallRegistryPath = @"Software\Microsoft\Windows\CurrentVersion\Uninstall\V-Notch";
+    internal const string StartupRegistryPath = @"Software\Microsoft\Windows\CurrentVersion\Run";
+    internal const string AppRegistryPath = @"Software\V-Notch";
+    internal const string LegacyInnoUninstallKey = @"Software\Microsoft\Windows\CurrentVersion\Uninstall\{B2567AF4-8BAE-46D2-B83E-56539C82F888}_is1";
 
     public static string GetDefaultInstallDirectory()
     {
@@ -64,8 +67,8 @@ internal static class SetupOperations
     internal static string?[] ReadInstallDirectories(RegistryKey root)
     {
         using var uninstallKey = root.OpenSubKey(UninstallRegistryPath);
-        using var appKey = root.OpenSubKey($@"Software\{AppName}");
-        using var legacyKey = root.OpenSubKey(@"Software\Microsoft\Windows\CurrentVersion\Uninstall\{B2567AF4-8BAE-46D2-B83E-56539C82F888}_is1");
+        using var appKey = root.OpenSubKey(AppRegistryPath);
+        using var legacyKey = root.OpenSubKey(LegacyInnoUninstallKey);
         return [uninstallKey?.GetValue("InstallLocation") as string, appKey?.GetValue("InstallDir") as string,
             legacyKey?.GetValue("InstallLocation") as string, legacyKey?.GetValue("Inno Setup: App Path") as string];
     }
@@ -342,7 +345,7 @@ internal static class SetupOperations
             if (!silent)
             {
                 MessageBox.Show(
-                    "Invalid installation directory for uninstall.",
+                    Loc.Get("setup.uninstall.invalidDir"),
                     Loc.Get("setup.uninstall.title"),
                     MessageBoxButton.OK,
                     MessageBoxImage.Error);
@@ -380,16 +383,48 @@ internal static class SetupOperations
             return;
         }
 
-        InstallDirectoryCleanup.CreateStartInfo(installDirectory, Environment.ProcessId);
-        StopOtherRunningInstancesAsync().GetAwaiter().GetResult();
-        RemoveStartupRegistration();
-        RemoveUninstallRegistration();
-        try { RemoveShortcuts(); } catch (Exception ex) { Debug.WriteLine($"[Setup] Could not remove shortcuts: {ex.Message}"); }
-        RemoveAppData(installDirectory);
-
-        InstallDirectoryCleanup.Schedule(installDirectory);
+        ExecuteUninstallCleanupSteps(installDirectory);
 
         Application.Current.Shutdown(0);
+    }
+
+    internal static void ExecuteUninstallCleanupSteps(
+        string installDirectory,
+        Action? validateCleanupStartInfo = null,
+        Action? stopRunningInstances = null,
+        Action? removeStartup = null,
+        Action? removeUninstallRegistry = null,
+        Action? removeShortcuts = null,
+        Action<string>? removeAppData = null,
+        Action<string>? scheduleDirectoryCleanup = null)
+    {
+        TryUninstallStep("validate install directory cleanup",
+            validateCleanupStartInfo ?? (() => InstallDirectoryCleanup.CreateStartInfo(installDirectory, Environment.ProcessId)));
+        TryUninstallStep("stop running instances",
+            stopRunningInstances ?? (() => StopOtherRunningInstancesAsync().GetAwaiter().GetResult()));
+        TryUninstallStep("remove startup registration",
+            removeStartup ?? RemoveStartupRegistration);
+        TryUninstallStep("remove uninstall registration",
+            removeUninstallRegistry ?? RemoveUninstallRegistration);
+        TryUninstallStep("remove shortcuts",
+            removeShortcuts ?? RemoveShortcuts);
+        TryUninstallStep("remove app data",
+            () => (removeAppData ?? RemoveAppData)(installDirectory));
+        TryUninstallStep("schedule install directory cleanup",
+            () => (scheduleDirectoryCleanup ?? InstallDirectoryCleanup.Schedule)(installDirectory));
+    }
+
+    private static void TryUninstallStep(string stepName, Action action)
+    {
+        try
+        {
+            action();
+        }
+        catch (Exception ex)
+        {
+            RuntimeLog.Warn("SETUP", $"Uninstall step '{stepName}' failed: {ex.Message}");
+            Debug.WriteLine($"[Setup] Could not {stepName}: {ex.Message}");
+        }
     }
 
     private static async Task StopOtherRunningInstancesAsync()
@@ -528,43 +563,69 @@ internal static class SetupOperations
         appKey?.SetValue("InstallDir", installDirectory);
     }
 
-    private static void RemoveUninstallRegistration()
+    internal static void RemoveUninstallRegistration()
     {
-        try
-        {
-            Registry.CurrentUser.DeleteSubKeyTree(UninstallRegistryPath, throwOnMissingSubKey: false);
-        }
-        catch (UnauthorizedAccessException ex)
-        {
-            // Best-effort cleanup: ignore permission errors when removing HKCU uninstall entry.
-            Debug.WriteLine($"[Setup] Could not remove HKCU uninstall key: {ex.Message}");
-        }
+        RemoveUninstallRegistration(Registry.CurrentUser, Registry.LocalMachine);
 
-        try
+        foreach (var hive in new[] { RegistryHive.CurrentUser, RegistryHive.LocalMachine })
         {
-            Registry.LocalMachine.DeleteSubKeyTree(UninstallRegistryPath, throwOnMissingSubKey: false);
-        }
-        catch (UnauthorizedAccessException ex)
-        {
-            // Best-effort cleanup: ignore permission errors when running without admin privileges for HKLM.
-            Debug.WriteLine($"[Setup] Could not remove HKLM uninstall key: {ex.Message}");
-        }
-
-        try
-        {
-            Registry.CurrentUser.DeleteSubKeyTree($@"Software\{AppName}", throwOnMissingSubKey: false);
-        }
-        catch (UnauthorizedAccessException ex)
-        {
-            // Best-effort cleanup: ignore permission errors when removing HKCU app key.
-            Debug.WriteLine($"[Setup] Could not remove HKCU app key: {ex.Message}");
+            foreach (var view in new[] { RegistryView.Registry64, RegistryView.Registry32 })
+            {
+                try
+                {
+                    using var baseKey = RegistryKey.OpenBaseKey(hive, view);
+                    DeleteSubKeyTreeBestEffort(baseKey, UninstallRegistryPath);
+                    DeleteSubKeyTreeBestEffort(baseKey, LegacyInnoUninstallKey);
+                    if (hive == RegistryHive.CurrentUser)
+                    {
+                        DeleteSubKeyTreeBestEffort(baseKey, AppRegistryPath);
+                    }
+                }
+                catch (Exception ex) when (ex is UnauthorizedAccessException or System.Security.SecurityException or IOException or ArgumentException)
+                {
+                    Debug.WriteLine($"[Setup] Could not open {hive} ({view}) for uninstall cleanup: {ex.Message}");
+                }
+            }
         }
     }
 
-    private static void RemoveStartupRegistration()
+    internal static void RemoveUninstallRegistration(RegistryKey currentUserRoot, RegistryKey localMachineRoot)
     {
-        using var runKey = Registry.CurrentUser.CreateSubKey(@"Software\Microsoft\Windows\CurrentVersion\Run");
-        runKey?.DeleteValue(AppName, false);
+        DeleteSubKeyTreeBestEffort(currentUserRoot, UninstallRegistryPath);
+        DeleteSubKeyTreeBestEffort(localMachineRoot, UninstallRegistryPath);
+        DeleteSubKeyTreeBestEffort(currentUserRoot, AppRegistryPath);
+        DeleteSubKeyTreeBestEffort(currentUserRoot, LegacyInnoUninstallKey);
+        DeleteSubKeyTreeBestEffort(localMachineRoot, LegacyInnoUninstallKey);
+    }
+
+    private static void DeleteSubKeyTreeBestEffort(RegistryKey root, string subKeyPath)
+    {
+        try
+        {
+            root.DeleteSubKeyTree(subKeyPath, throwOnMissingSubKey: false);
+        }
+        catch (Exception ex) when (ex is UnauthorizedAccessException or System.Security.SecurityException or IOException or ArgumentException)
+        {
+            // Best-effort cleanup: ignore permission or missing-key errors when removing uninstall entries.
+            Debug.WriteLine($"[Setup] Could not remove registry key '{subKeyPath}': {ex.Message}");
+        }
+    }
+
+    internal static void RemoveStartupRegistration()
+        => RemoveStartupRegistration(Registry.CurrentUser);
+
+    internal static void RemoveStartupRegistration(RegistryKey currentUserRoot)
+    {
+        try
+        {
+            using var runKey = currentUserRoot.OpenSubKey(StartupRegistryPath, writable: true);
+            runKey?.DeleteValue(AppName, throwOnMissingValue: false);
+        }
+        catch (Exception ex)
+        {
+            RuntimeLog.Warn("SETUP", $"Could not remove startup registration: {ex.Message}");
+            Debug.WriteLine($"[Setup] Could not remove startup key: {ex.Message}");
+        }
     }
 
     private static void CreateShortcuts(string installedExePath, string installDirectory)
@@ -589,15 +650,29 @@ internal static class SetupOperations
         var desktopShortcutPath = Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.DesktopDirectory),
             $"{AppName}.lnk");
-        if (File.Exists(desktopShortcutPath))
+        try
         {
-            SafeFileDeletion.DeleteFile(desktopShortcutPath);
+            if (File.Exists(desktopShortcutPath))
+            {
+                SafeFileDeletion.DeleteFile(desktopShortcutPath);
+            }
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            Debug.WriteLine($"[Setup] Could not remove desktop shortcut '{desktopShortcutPath}': {ex.Message}");
         }
 
         var startMenuDirectory = Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.Programs),
             AppName);
-        SafeFileDeletion.DeleteShortcutDirectory(startMenuDirectory);
+        try
+        {
+            SafeFileDeletion.DeleteShortcutDirectory(startMenuDirectory);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            Debug.WriteLine($"[Setup] Could not remove Start Menu shortcut directory '{startMenuDirectory}': {ex.Message}");
+        }
     }
 
     private static void RemoveAppData(string installDirectory)
@@ -622,16 +697,45 @@ internal static class SetupOperations
             }
         }
 
-        // Temp/V-Notch can contain recovery copies and user files; never wipe the shared root.
+        if (!string.IsNullOrWhiteSpace(installDirectory) && Directory.Exists(installDirectory))
+        {
+            try
+            {
+                InstallDirectoryCleanup.RemoveRuntimeLogs(installDirectory, DeleteSetupFileIfExists);
+            }
+            catch (Exception ex) when (ex is ArgumentException or IOException or UnauthorizedAccessException)
+            {
+                Debug.WriteLine($"[Setup] Could not remove runtime logs in '{installDirectory}': {ex.Message}");
+            }
+        }
 
-        var legacyTempSetup = Path.Combine(Path.GetTempPath(), "V-Notch-Setup.exe");
+        // Temp/V-Notch can contain recovery copies and user files; never wipe the shared root.
         try
         {
-            SafeFileDeletion.DeleteFile(legacyTempSetup);
+            RemoveTempInstallerArtifacts();
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
-            Debug.WriteLine($"[Setup] Could not remove temp installer '{legacyTempSetup}': {ex.Message}");
+            Debug.WriteLine($"[Setup] Could not remove temp installer artifacts: {ex.Message}");
+        }
+    }
+
+    internal static void RemoveInstalledAppFiles(string installDirectory)
+        => InstallDirectoryCleanup.RemoveInstalledAppFiles(installDirectory, DeleteSetupFileIfExists);
+
+    internal static void RemoveTempInstallerArtifacts(string? tempDirectory = null)
+        => InstallDirectoryCleanup.RemoveTempInstallerArtifacts(tempDirectory, DeleteSetupFileIfExists);
+
+    private static void DeleteSetupFileIfExists(string filePath)
+    {
+        if (!File.Exists(filePath)) return;
+        try
+        {
+            SafeFileDeletion.DeleteFile(filePath);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            Debug.WriteLine($"[Setup] Could not remove file '{filePath}': {ex.Message}");
         }
     }
 

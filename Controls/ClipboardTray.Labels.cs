@@ -76,6 +76,7 @@ public sealed partial class ClipboardTray
         ++_labelEditorVersion;
         _labelEditorOpen = true;
         EndSelection();
+        foreach (var menu in _openMenus.ToArray()) menu.IsOpen = false;
         LabelNameBox.Clear();
         LabelEditorError.Text = "";
         TrayContentGrid.IsHitTestVisible = false;

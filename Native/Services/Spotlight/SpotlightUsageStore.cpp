@@ -17,13 +17,27 @@ public:
         int64_t now_utc_ticks,
         uint8_t remembered) noexcept
     {
-        double count_boost = std::min(kCountBoostCap, kCountBoostFactor * std::log2(1.0 + static_cast<double>(count)));
-        double age_days = std::max(0.0, static_cast<double>(now_utc_ticks - last_launched_utc_ticks) / static_cast<double>(vnotch::TICKS_PER_DAY));
+        const int32_t safe_count = std::max(0, count);
+        const double count_boost = std::min(
+            kCountBoostCap,
+            kCountBoostFactor * std::log2(1.0 + static_cast<double>(safe_count)));
+
         double recency_boost = 0.0;
-        if (age_days < 1.0) recency_boost = 35.0;
-        else if (age_days < 3.0) recency_boost = 25.0;
-        else if (age_days < 7.0) recency_boost = 15.0;
-        else if (age_days < 30.0) recency_boost = 5.0;
+        if (safe_count > 0)
+        {
+            double age_days = 0.0;
+            if (now_utc_ticks > last_launched_utc_ticks)
+            {
+                const uint64_t elapsed_ticks =
+                    static_cast<uint64_t>(now_utc_ticks) - static_cast<uint64_t>(last_launched_utc_ticks);
+                age_days = static_cast<double>(elapsed_ticks) / static_cast<double>(vnotch::TICKS_PER_DAY);
+            }
+
+            if (age_days < 1.0) recency_boost = 35.0;
+            else if (age_days < 3.0) recency_boost = 25.0;
+            else if (age_days < 7.0) recency_boost = 15.0;
+            else if (age_days < 30.0) recency_boost = 5.0;
+        }
 
         return count_boost + recency_boost + (remembered != 0 ? 350.0 : 0.0);
     }

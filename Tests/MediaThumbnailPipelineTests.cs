@@ -347,6 +347,11 @@ public sealed class MediaThumbnailPipelineTests
         info.IsPlaying = true;
         Set(fixture.Service, "_lastTrackName", info.CurrentTrack);
         Set(fixture.Service, "_lastMetadataChangeTime", DateTime.UtcNow.AddMinutes(-1));
+        var simulator = Field<MediaTimelineSimulator>(fixture.Service, "_timelineSimulator");
+        simulator.UpdateObservedPosition(info.Position);
+        typeof(MediaTimelineSimulator)
+            .GetField("_lastPositionChangeTime", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!
+            .SetValue(simulator, DateTime.UtcNow.AddSeconds(-5));
         int scans = 0;
         fixture.Scanner.Titles = () => ++scans == 1
             ? new List<string> { "Previous video - YouTube - Google Chrome" }
@@ -784,12 +789,114 @@ public sealed class MediaThumbnailPipelineTests
         Assert.False((bool)Invoke(fixture.Service, "InvalidateThumbnailStateIfTrackChanged", info)!);
     });
 
+    [Theory]
+    [InlineData("YouTube")]
+    [InlineData("SoundCloud")]
+    public void ThumbnailOnlyUpdatePreservesLatestPlaybackStateWhenPausedDuringDownload(string source) => SharedStaTestRunner.RunAsync(async ct =>
+    {
+        using var fixture = new Fixture();
+        var info = fixture.Track(source);
+        info.IsAnyMediaPlaying = true;
+        info.IsPlaying = true;
+        info.Position = TimeSpan.FromSeconds(10);
+        info.Duration = TimeSpan.FromSeconds(123);
+        Set(fixture.Service, "_bgCts", new CancellationTokenSource());
+        await (Task<bool>)Invoke(fixture.Service, "TryPublishMediaChangeAsync", info, info.GetSignature(), false, true)!;
+
+        fixture.Metadata.TrackResult = Result(info.CurrentTrack);
+        fixture.Metadata.SoundCloudSearch = "https://fixture.invalid/artwork.jpg";
+        var pending = new TaskCompletionSource<BitmapImage?>(TaskCreationOptions.RunContinuationsAsynchronously);
+        fixture.Artwork.Download = _ => pending.Task;
+
+        var fetch = source == "YouTube"
+            ? FetchYouTube(fixture.Service, info, ct)
+            : FetchSoundCloud(fixture.Service, info, ct);
+        await WpfFrameWaiter.UntilAsync(() => fixture.Artwork.Downloads.Count == 1, "artwork download started", ct);
+
+        var paused = Field<MediaInfo>(fixture.Service, "_lastPublishedInfo").Clone();
+        paused.IsPlaying = false;
+        paused.Position = TimeSpan.FromSeconds(42);
+        await (Task<bool>)Invoke(fixture.Service, "TryPublishMediaChangeAsync", paused, paused.GetSignature(), false, false)!;
+
+        var image = Bitmap(640, 360);
+        pending.SetResult(image);
+        await fetch;
+
+        var thumbnailUpdate = Assert.Single(fixture.Updates.Where(update => update.IsThumbnailOnlyUpdate));
+        Assert.Same(image, thumbnailUpdate.Thumbnail);
+        Assert.False(thumbnailUpdate.IsPlaying);
+        Assert.Equal(TimeSpan.FromSeconds(42), thumbnailUpdate.Position);
+        var lastPublished = Field<MediaInfo>(fixture.Service, "_lastPublishedInfo");
+        Assert.False(lastPublished.IsPlaying);
+        Assert.Equal(TimeSpan.FromSeconds(42), lastPublished.Position);
+        Assert.Same(image, lastPublished.Thumbnail);
+    });
+
+    [Fact]
+    public void PublishPreservesCachedThumbnailWhenUpdateHasNullThumbnailOnSameTrack() => SharedStaTestRunner.RunAsync(async () =>
+    {
+        using var fixture = new Fixture();
+        var cached = Bitmap(300, 300);
+        fixture.Service.CachedThumbnail = cached;
+        var info = fixture.Track("YouTube");
+        info.Thumbnail = null;
+        Set(fixture.Service, "_bgCts", new CancellationTokenSource());
+
+        await (Task<bool>)Invoke(fixture.Service, "TryPublishMediaChangeAsync", info, info.GetSignature(), false, true)!;
+
+        Assert.Same(cached, info.Thumbnail);
+        Assert.Same(cached, Assert.Single(fixture.Updates).Thumbnail);
+    });
+
+    [Fact]
+    public void ConvertToWpfBitmapAsyncHandlesOversizedPooledBufferPartialNonZeroPositionAndEmptyStreams() => SharedStaTestRunner.RunAsync(async ct =>
+    {
+        using var service = new MediaArtworkService();
+        byte[] pngBytes = EncodePng(Bitmap(16, 16, detailed: true));
+
+        using var validStream = new TestRandomAccessStream(pngBytes);
+        var validBitmap = await service.ConvertToWpfBitmapAsync(validStream, ct);
+        Assert.NotNull(validBitmap);
+        Assert.Equal(16, validBitmap!.PixelWidth);
+        Assert.Equal(16, validBitmap.PixelHeight);
+
+        using var nonZeroPositionStream = new TestRandomAccessStream(pngBytes);
+        nonZeroPositionStream.Seek((ulong)(pngBytes.Length / 2));
+        Assert.NotEqual(0UL, nonZeroPositionStream.Position);
+        var seekedBitmap = await service.ConvertToWpfBitmapAsync(nonZeroPositionStream, ct);
+        Assert.NotNull(seekedBitmap);
+        Assert.Equal(16, seekedBitmap!.PixelWidth);
+
+        using var partialStream = new TestRandomAccessStream(pngBytes, reportedSize: (ulong)(pngBytes.Length + 512), reportedPosition: 32, throwOnSeek: true);
+        var partialBitmap = await service.ConvertToWpfBitmapAsync(partialStream, ct);
+        Assert.NotNull(partialBitmap);
+        Assert.Equal(16, partialBitmap!.PixelWidth);
+
+        using var truncatedStream = new TestRandomAccessStream(pngBytes[..12], reportedSize: 256);
+        Assert.Null(await service.ConvertToWpfBitmapAsync(truncatedStream, ct));
+
+        using var emptyStream = new TestRandomAccessStream(Array.Empty<byte>());
+        Assert.Null(await service.ConvertToWpfBitmapAsync(emptyStream, ct));
+
+        using var zeroLoadedStream = new TestRandomAccessStream(Array.Empty<byte>(), reportedSize: 128);
+        Assert.Null(await service.ConvertToWpfBitmapAsync(zeroLoadedStream, ct));
+    });
+
     private static YouTubeLookupResult Result(string title, string id = "abcdefghijk") => new() { Id = id, Title = title, Author = "Fixture artist - Topic", Duration = TimeSpan.FromSeconds(123), Source = YouTubeLookupSource.DataApi, ThumbnailUrl = "https://fixture.invalid/preferred.jpg" };
     private static Task FetchYouTube(MediaDetectionService service, MediaInfo info, CancellationToken ct) => (Task)Invoke(service, "FetchYouTubeThumbnailAsync", info, ct, false, info.CurrentTrack, info.CurrentArtist, info.SourceAppId, info.SessionInstanceKey, 0, 0, true, null)!;
     private static Task FetchSoundCloud(MediaDetectionService service, MediaInfo info, CancellationToken ct) => (Task)Invoke(service, "FetchSoundCloudThumbnailAsync", info, ct, info.CurrentTrack, info.CurrentArtist, info.SourceAppId, info.SessionInstanceKey, 0, 0, true, null)!;
     private static T Field<T>(MediaDetectionService service, string name) => (T)typeof(MediaDetectionService).GetField(name, Private)!.GetValue(service)!;
     private static void Set(MediaDetectionService service, string name, object value) => typeof(MediaDetectionService).GetField(name, Private)!.SetValue(service, value);
     private static object? Invoke(MediaDetectionService service, string name, params object?[] args) => typeof(MediaDetectionService).GetMethod(name, Private)!.Invoke(service, args);
+
+    private static byte[] EncodePng(BitmapSource source)
+    {
+        var encoder = new PngBitmapEncoder();
+        encoder.Frames.Add(BitmapFrame.Create(source));
+        using var stream = new MemoryStream();
+        encoder.Save(stream);
+        return stream.ToArray();
+    }
 
     private static BitmapImage Bitmap(int width, int height, bool detailed = false)
     {
@@ -811,6 +918,50 @@ public sealed class MediaThumbnailPipelineTests
         var image = new BitmapImage();
         image.BeginInit(); image.CacheOption = BitmapCacheOption.OnLoad; image.StreamSource = stream; image.EndInit(); image.Freeze();
         return image;
+    }
+
+    private sealed class TestRandomAccessStream : IRandomAccessStreamWithContentType
+    {
+        private readonly InMemoryRandomAccessStream _inner = new();
+        private readonly ulong? _reportedSize;
+        private readonly ulong? _reportedPosition;
+        private readonly bool _throwOnSeek;
+
+        public TestRandomAccessStream(byte[] bytes, ulong? reportedSize = null, ulong? reportedPosition = null, bool throwOnSeek = false)
+        {
+            _reportedSize = reportedSize;
+            _reportedPosition = reportedPosition;
+            _throwOnSeek = throwOnSeek;
+            if (bytes.Length > 0)
+            {
+                using var writer = new DataWriter(_inner);
+                writer.WriteBytes(bytes);
+                writer.StoreAsync().AsTask().GetAwaiter().GetResult();
+                writer.DetachStream();
+                _inner.Seek(0);
+            }
+        }
+
+        public string ContentType => "image/png";
+        public ulong Size { get => _reportedSize ?? _inner.Size; set => _inner.Size = value; }
+        public bool CanRead => true;
+        public bool CanWrite => _inner.CanWrite;
+        public ulong Position => _reportedPosition ?? _inner.Position;
+        public IInputStream GetInputStreamAt(ulong position) => _inner.GetInputStreamAt(position);
+        public IOutputStream GetOutputStreamAt(ulong position) => _inner.GetOutputStreamAt(position);
+        public void Seek(ulong position)
+        {
+            if (_throwOnSeek) throw new NotSupportedException();
+            _inner.Seek(position);
+        }
+        public IRandomAccessStream CloneStream() => _inner.CloneStream();
+        public global::Windows.Foundation.IAsyncOperationWithProgress<IBuffer, uint> ReadAsync(IBuffer buffer, uint count, InputStreamOptions options)
+            => _inner.ReadAsync(buffer, count, options);
+        public global::Windows.Foundation.IAsyncOperationWithProgress<uint, uint> WriteAsync(IBuffer buffer)
+            => _inner.WriteAsync(buffer);
+        public global::Windows.Foundation.IAsyncOperation<bool> FlushAsync()
+            => _inner.FlushAsync();
+        public void Dispose() => _inner.Dispose();
     }
 
     private sealed class Fixture : IDisposable

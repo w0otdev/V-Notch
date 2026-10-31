@@ -1,3 +1,4 @@
+using System;
 using System.IO;
 using VNotch.Services;
 using Xunit;
@@ -153,5 +154,32 @@ public sealed class MediaSourceCacheTests : IDisposable
         Set(_cache, "key", "YouTube");
         _cache.Save();
         Assert.False(File.Exists(_tempPath));
+    }
+
+    [Fact]
+    public void TryGet_And_HasSource_ReadHits_DoNotMarkDirtyOrRewriteFile()
+    {
+        Set(_cache, "track1|artist1", "YouTube");
+        Set(_cache, "track2|artist2", "Spotify");
+        _cache.Save();
+
+        var sentinelWriteTime = new DateTime(2020, 1, 1, 0, 0, 0, DateTimeKind.Utc);
+        File.SetLastWriteTimeUtc(_tempPath, sentinelWriteTime);
+        string originalContent = File.ReadAllText(_tempPath);
+
+        for (int i = 0; i < 5; i++)
+        {
+            Assert.True(_cache.TryGet("track1|artist1", out var s1));
+            Assert.Equal("YouTube", s1);
+            Assert.True(_cache.TryGet("track2|artist2", out var s2));
+            Assert.Equal("Spotify", s2);
+            Assert.True(_cache.HasSource("track1|artist1", "", "YouTube"));
+            Assert.True(_cache.HasSource("track2|artist2", "", "Spotify"));
+        }
+
+        _cache.Save();
+
+        Assert.Equal(sentinelWriteTime, File.GetLastWriteTimeUtc(_tempPath));
+        Assert.Equal(originalContent, File.ReadAllText(_tempPath));
     }
 }

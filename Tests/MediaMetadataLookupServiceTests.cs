@@ -177,8 +177,6 @@ public sealed class MediaMetadataLookupServiceTests
         {
             if (request.RequestUri!.Host == "www.youtube.com")
                 return Json(new { title = "Fallback song", author_name = "Fallback artist" });
-            if (request.RequestUri.Query.Contains("part=contentDetails"))
-                return Json(new { items = new[] { new { contentDetails = new { duration = "PT90S" } } } });
             return failure switch
             {
                 "empty" => Json(new { items = Array.Empty<object>() }),
@@ -190,9 +188,39 @@ public sealed class MediaMetadataLookupServiceTests
         var result = await Service(client, apiKey: "test-key-for-fixtures").TryGetYouTubeVideoIdWithInfoAsync(id);
         Assert.NotNull(result);
         Assert.Equal("Fallback song", result.Title);
-        Assert.Equal(TimeSpan.FromSeconds(90), result.Duration);
+        Assert.Equal(TimeSpan.Zero, result.Duration);
         Assert.Equal(YouTubeLookupSource.OEmbed, result.Source);
-        Assert.Equal(3, handler.Requests.Count);
+        Assert.Single(handler.Requests, uri => uri.Host == "www.googleapis.com" && uri.AbsolutePath == "/youtube/v3/videos");
+        Assert.Equal(2, handler.Requests.Count);
+    }
+
+    [Fact]
+    public async Task ScrapeParsesVideoRendererWithLongThumbnailListAndJsonEscapes()
+    {
+        string id = NewId();
+        string longThumbnails = new string('x', 1100);
+        string ytJson =
+            "{\"contents\":{\"videoRenderer\":{\"videoId\":\"" + id + "\"," +
+            "\"thumbnail\":{\"thumbnails\":[{\"url\":\"https://i.ytimg.com/vi/" + id + "/" + longThumbnails + ".jpg\",\"width\":1280,\"height\":720}]}," +
+            "\"title\":{\"runs\":[{\"text\":\"Rock \\u0026 Roll \\\"Live\\\" &amp; Loud\"}]}," +
+            "\"longBylineText\":{\"runs\":[{\"text\":\"Band \\u0026 Crew\"}]}}}}";
+
+        using var handler = new Handler(request =>
+        {
+            var uri = request.RequestUri!;
+            if (uri.AbsolutePath == "/oembed")
+                return new HttpResponseMessage(HttpStatusCode.BadGateway);
+            if (uri.Host == "www.youtube.com")
+                return Body("<script>var ytInitialData = " + ytJson + ";</script>");
+            return new HttpResponseMessage(HttpStatusCode.NotFound);
+        });
+        using var client = new HttpClient(handler);
+        var service = Service(client);
+        var result = await service.TrySearchYouTubeByTitleAsync("Rock & Roll \"Live\" & Loud", "Band & Crew");
+        Assert.NotNull(result);
+        Assert.Equal(id, result.Id);
+        Assert.Equal("Rock & Roll \"Live\" & Loud", result.Title);
+        Assert.Equal("Band & Crew", result.Author);
     }
 
     [Theory]
@@ -276,7 +304,17 @@ public sealed class MediaMetadataLookupServiceTests
         Assert.Null(await service.TryGetSoundCloudArtworkUrlAsync("Test song"));
         using var cancelled = new CancellationTokenSource();
         await cancelled.CancelAsync();
+        Assert.Null(await service.TryGetYouTubeVideoIdWithInfoAsync(NewId(), ct: cancelled.Token));
+        Assert.Null(await service.TryGetYouTubeVideoInfoFromUrlAsync($"https://www.youtube.com/watch?v={NewId()}", cancelled.Token));
+        Assert.Null(await service.TryGetSoundCloudArtworkFromUrlAsync("https://soundcloud.com/artist/test-song", cancelled.Token));
         Assert.Null(await service.TrySearchYouTubeByTitleAsync("Test song", ct: cancelled.Token));
+
+        using var cancelMidFlightHandler = new Handler(_ => throw new OperationCanceledException());
+        using var cancelMidFlightClient = new HttpClient(cancelMidFlightHandler);
+        var cancelMidFlightService = Service(cancelMidFlightClient);
+        Assert.Null(await cancelMidFlightService.TryGetYouTubeVideoIdWithInfoAsync(NewId()));
+        Assert.Null(await cancelMidFlightService.TryGetYouTubeVideoInfoFromUrlAsync($"https://www.youtube.com/watch?v={NewId()}"));
+        Assert.Null(await cancelMidFlightService.TryGetSoundCloudArtworkFromUrlAsync("https://soundcloud.com/artist/test-song"));
     }
 
     [Fact]

@@ -25,7 +25,24 @@ public sealed class ClipboardCredentialDetectionTests
     [InlineData("postgresql://user:p@database.local/db")]
     [InlineData("Your security code is 1234")]
     [InlineData("Mã xác nhận của bạn là 678901")]
+    [InlineData("aws_secret_access_key = wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY")]
+    [InlineData("user_password = supersecretvalue")]
+    [InlineData("admin_password: supersecretvalue")]
+    [InlineData("jwt_secret=supersecretvalue")]
+    [InlineData("app_secret=supersecretvalue")]
+    [InlineData("private_key=supersecretvalue")]
     public void MasksCredentialEvidence(string text) => Assert.True(ClipboardSensitiveData.Analyze(text).ShouldMask);
+
+    [Fact]
+    public void RecognizesSnakeCasePrefixedAndSuffixedCredentialLabels()
+    {
+        Assert.True(ClipboardSensitiveData.IsSensitive("aws_secret_access_key = wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY", "", ""));
+        Assert.True(ClipboardSensitiveData.IsSensitive("user_password = supersecretvalue", "", ""));
+        Assert.True(ClipboardSensitiveData.IsSensitive("admin_password: supersecretvalue", "", ""));
+        Assert.True(ClipboardSensitiveData.IsSensitive("jwt_secret=supersecretvalue", "", ""));
+        Assert.True(ClipboardSensitiveData.IsSensitive("app_secret=supersecretvalue", "", ""));
+        Assert.True(ClipboardSensitiveData.IsSensitive("private_key=supersecretvalue", "", ""));
+    }
 
     [Theory]
     [InlineData("john.smith+work@example.com")]

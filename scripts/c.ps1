@@ -337,6 +337,10 @@ if ($startStep -le 5) {
         New-Item -ItemType Directory -Path $testResultsDir -Force | Out-Null
         Save-Checkpoint 5
     }
+    $coverageResultsDir = Join-Path $repository 'TestResults\Coverage'
+    if (Test-Path -LiteralPath $coverageResultsDir) {
+        Remove-Item -LiteralPath $coverageResultsDir -Recurse -Force -ErrorAction SilentlyContinue
+    }
     $testArgs = @(
         'test', "$repository/Tests/VNotch.Tests.csproj",
         '--configuration', 'Release', '--no-build', '--no-restore'
@@ -346,7 +350,8 @@ if ($startStep -le 5) {
     }
     $testArgs += @(
         '--blame-hang-timeout', '60s',
-        '--results-directory', $testResultsDir,
+        '--collect:XPlat Code Coverage',
+        '--results-directory', $coverageResultsDir,
         '--logger', 'trx;LogFileName=unit-tests.trx',
         '--logger', 'console;verbosity=minimal'
     )
@@ -356,6 +361,9 @@ if ($startStep -le 5) {
     if ($LASTEXITCODE -ne 0) {
         foreach ($l in @($tstOut | ForEach-Object { "$_" } | Where-Object { $_.Trim() })) { Write-TreeItem $l -State "Error" }
         throw "Test run failed."
+    }
+    if ($MinimumCoverage -gt 0) {
+        Invoke-StepScript { & "$repository/Tools/Assert-Coverage.ps1" -ResultsDirectory $coverageResultsDir -MinimumLinePercent $MinimumCoverage } | Out-Null
     }
     Write-TreeItem ("Unit tests passed in {0:N1}s." -f $tstSw.Elapsed.TotalSeconds) -State "Success"
 

@@ -452,6 +452,21 @@ VN_EXPORT int32_t __stdcall vn_clipboard_card_compute_age_bucket(
     int32_t* out_bucket,
     int32_t* out_value) noexcept;
 
+VN_EXPORT int32_t __stdcall vn_clipboard_validate_file_handle(
+    intptr_t file_handle,
+    const char16_t* expected_full_path_ptr,
+    int32_t expected_full_path_len,
+    int32_t* out_error_kind,
+    int32_t* out_win32_error) noexcept;
+
+VN_EXPORT int32_t __stdcall vn_clipboard_sensitive_try_decode_hex_payload(
+    const char16_t* text_ptr,
+    int32_t text_len,
+    char16_t* out_wide,
+    int32_t out_cap,
+    int32_t* out_len,
+    uint8_t* out_decoded) noexcept;
+
 VN_EXPORT int32_t __stdcall vn_ui_smooth_scroll_step(
     double current_offset,
     double target_offset,
@@ -636,3 +651,120 @@ VN_EXPORT int32_t vn_settings_search_score_row(
     int32_t norm_query_len,
     uint8_t allow_fuzzy,
     int32_t* out_score) noexcept;
+
+VN_EXPORT int32_t __stdcall vn_ffmpeg_read_process_command_line(
+    uint32_t process_id,
+    char16_t* out_buf,
+    int32_t out_cap,
+    int32_t* out_written) noexcept;
+
+VN_EXPORT int32_t __stdcall vn_lyrics_normalize_for_matching(
+    const char16_t* text_ptr,
+    int32_t text_len,
+    char16_t* out_buf,
+    int32_t out_cap,
+    int32_t* out_written) noexcept;
+
+VN_EXPORT int32_t __stdcall vn_yt_next_scrape_candidate(
+    const char16_t* json,
+    int32_t json_len,
+    int32_t start_pos,
+    int32_t* out_next_pos,
+    char16_t* out_video_id,
+    int32_t video_id_cap,
+    int32_t* out_video_id_len,
+    char16_t* out_title,
+    int32_t title_cap,
+    int32_t* out_title_len,
+    char16_t* out_channel,
+    int32_t channel_cap,
+    int32_t* out_channel_len) noexcept;
+
+#ifndef VN_MARKDOWN_NATIVE_DEFINED
+#define VN_MARKDOWN_NATIVE_DEFINED
+
+#pragma pack(push, 1)
+
+enum VnMarkdownBlockKind : uint8_t
+{
+    VN_MD_BLOCK_EMPTY = 0,
+    VN_MD_BLOCK_HEADING = 1,
+    VN_MD_BLOCK_HORIZONTAL_RULE = 2,
+    VN_MD_BLOCK_TABLE_ROW = 3,
+    VN_MD_BLOCK_TABLE_SEPARATOR = 4,
+    VN_MD_BLOCK_BLOCKQUOTE = 5,
+    VN_MD_BLOCK_CHECKLIST_ITEM = 6,
+    VN_MD_BLOCK_BULLET_ITEM = 7,
+    VN_MD_BLOCK_NUMBERED_ITEM = 8,
+    VN_MD_BLOCK_PARAGRAPH = 9,
+};
+
+struct VnMarkdownBlockToken
+{
+    uint8_t kind;
+    uint8_t level;
+    uint8_t is_checked;
+    uint8_t hard_break;
+    int32_t text_start;
+    int32_t text_len;
+    int32_t marker_start;
+    int32_t marker_len;
+};
+
+struct VnMarkdownSlice
+{
+    int32_t start;
+    int32_t len;
+};
+
+enum VnMarkdownInlineKind : uint8_t
+{
+    VN_MD_INLINE_TEXT = 0,
+    VN_MD_INLINE_BOLD = 1,
+    VN_MD_INLINE_ITALIC = 2,
+    VN_MD_INLINE_CODE = 3,
+    VN_MD_INLINE_LINK = 4,
+    VN_MD_INLINE_URL = 5,
+};
+
+struct VnMarkdownInlineToken
+{
+    uint8_t kind;
+    int32_t text_start;
+    int32_t text_len;
+    int32_t aux_start;
+    int32_t aux_len;
+};
+
+#pragma pack(pop)
+
+VN_EXPORT int32_t __stdcall vn_markdown_classify_line(
+    const char16_t* line_ptr,
+    int32_t line_len,
+    VnMarkdownBlockToken* out_token) noexcept;
+
+VN_EXPORT int32_t __stdcall vn_markdown_tokenize_blocks(
+    const char16_t* text_ptr,
+    int32_t text_len,
+    VnMarkdownBlockToken* out_tokens,
+    int32_t token_cap,
+    int32_t* out_written) noexcept;
+
+VN_EXPORT int32_t __stdcall vn_markdown_split_table_cells(
+    const char16_t* line_ptr,
+    int32_t line_len,
+    VnMarkdownSlice* out_cells,
+    int32_t cell_cap,
+    int32_t* out_written) noexcept;
+
+VN_EXPORT int32_t __stdcall vn_markdown_tokenize_inlines(
+    const char16_t* text_ptr,
+    int32_t text_len,
+    VnMarkdownInlineToken* out_tokens,
+    int32_t token_cap,
+    int32_t* out_written) noexcept;
+
+#endif
+
+
+
