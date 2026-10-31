@@ -1,6 +1,7 @@
 using System.IO;
 using System.Reflection;
 using System.Text.Json;
+using Microsoft.Win32;
 using VNotch.Models;
 using VNotch.Services;
 using Xunit;
@@ -142,6 +143,26 @@ public sealed class UpgradeCompatibilityTests : IDisposable
         var candidates = new[] { "cmd.exe /c untrusted", Path.GetPathRoot(_directory), _directory };
         Assert.Equal(_directory, SetupOperations.SelectInstallDirectory(candidates, "fallback"));
         Assert.Equal("fallback", SetupOperations.SelectInstallDirectory([Path.Combine(_directory, "missing")], "fallback"));
+    }
+
+    [Theory]
+    [InlineData("InstallLocation")]
+    [InlineData("Inno Setup: App Path")]
+    public void SetupFindsLegacyInnoInstallationsWithoutRunningTheirUninstallCommand(string valueName)
+    {
+        File.WriteAllText(Path.Combine(_directory, "V-Notch.exe"), "legacy fixture executable");
+        string registryPath = @"Software\VNotch.Tests\" + Guid.NewGuid().ToString("N");
+        try
+        {
+            using var root = Registry.CurrentUser.CreateSubKey(registryPath);
+            using (var legacy = root.CreateSubKey(@"Software\Microsoft\Windows\CurrentVersion\Uninstall\{B2567AF4-8BAE-46D2-B83E-56539C82F888}_is1"))
+            {
+                legacy.SetValue(valueName, _directory);
+                legacy.SetValue("UninstallString", "untrusted registry command; must never execute");
+            }
+            Assert.Equal(_directory, SetupOperations.SelectInstallDirectory(SetupOperations.ReadInstallDirectories(root), "fallback"));
+        }
+        finally { Registry.CurrentUser.DeleteSubKeyTree(registryPath, false); }
     }
 
     [Fact]

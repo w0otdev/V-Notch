@@ -92,7 +92,8 @@ public sealed class LyricsFetchTests
         using var client = Client((_, _) => ++requests == 1
             ? Task.FromException<HttpResponseMessage>(new HttpRequestException("Offline fixture"))
             : Task.FromResult(Lyrics()));
-        using var service = new LyricsService(client, client);
+        using var fallback = Client((_, _) => Task.FromResult(new HttpResponseMessage(HttpStatusCode.NotFound)));
+        using var service = new LyricsService(client, fallback);
         Assert.Null(await service.FetchSyncedLyricsAsync("Track", "Artist", 240));
         Assert.NotNull(await service.FetchSyncedLyricsAsync("Track", "Artist", 240));
         Assert.Equal(2, requests);

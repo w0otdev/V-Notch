@@ -16,14 +16,23 @@ internal sealed partial class AppSearchProvider : ISpotlightProvider
         byte existsOnDisk,
         out int outMode);
 
-    private readonly Lazy<Task<IReadOnlyList<SpotlightSearchItem>>> _index;
+    private readonly object _indexGate = new();
+    private Task<IReadOnlyList<SpotlightSearchItem>>? _index;
+    private DateTime _indexExpiresUtc;
+    private readonly Func<IReadOnlyList<SpotlightSearchItem>> _buildIndex;
+    private readonly Func<DateTime> _utcNow;
 
     public bool IsAvailable => true;
     public bool IsInstant => true;
 
-    public AppSearchProvider()
+    public AppSearchProvider() : this(BuildIndex, () => DateTime.UtcNow)
     {
-        _index = new(() => Task.Run(BuildIndex));
+    }
+
+    internal AppSearchProvider(Func<IReadOnlyList<SpotlightSearchItem>> buildIndex, Func<DateTime> utcNow)
+    {
+        _buildIndex = buildIndex;
+        _utcNow = utcNow;
     }
 
     public async Task<IReadOnlyList<SpotlightSearchItem>> SearchAsync(
@@ -32,7 +41,7 @@ internal sealed partial class AppSearchProvider : ISpotlightProvider
         CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
-        var apps = await _index.Value.WaitAsync(cancellationToken).ConfigureAwait(false);
+        var apps = await WarmupAsync().WaitAsync(cancellationToken).ConfigureAwait(false);
         cancellationToken.ThrowIfCancellationRequested();
         string subtitle = Loc.Get("spotlight.kind.application");
         var matches = new List<SpotlightSearchItem>();
@@ -53,7 +62,18 @@ internal sealed partial class AppSearchProvider : ISpotlightProvider
             .ToArray();
     }
 
-    internal Task WarmupAsync() => _index.Value;
+    internal Task<IReadOnlyList<SpotlightSearchItem>> WarmupAsync()
+    {
+        lock (_indexGate)
+        {
+            if (_index == null || _index.IsCompleted && (_utcNow() >= _indexExpiresUtc || _index.IsFaulted))
+            {
+                _index = Task.Run(_buildIndex);
+                _indexExpiresUtc = _utcNow().AddMinutes(1);
+            }
+            return _index;
+        }
+    }
 
     private static IReadOnlyList<SpotlightSearchItem> BuildIndex()
     {

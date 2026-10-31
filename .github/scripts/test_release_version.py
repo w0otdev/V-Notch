@@ -6,7 +6,7 @@ import unittest
 from unittest.mock import patch
 from urllib.error import HTTPError
 
-from release_version import latest_stable_version, release_identity
+from release_version import changelog_notes, latest_stable_version, release_identity
 
 
 class ReleaseVersionTests(unittest.TestCase):
@@ -39,6 +39,22 @@ class ReleaseVersionTests(unittest.TestCase):
         self.assertEqual("2.0.0", result["version"])
         self.assertEqual("2.0.0.0", result["windows_version"])
         self.assertEqual("false", result["prerelease"])
+
+    def test_notes_select_only_the_requested_version_and_keep_subheadings(self):
+        changelog = Path(self.temporary.name) / "CHANGELOG.md"
+        changelog.write_text("# Changelog\n\n## [2.0.1] - 2026-10-31\n\n### Fixed\n\n- Giữ dữ liệu.\n\n## [2.0.0] - 2026-10-24\n\nOld release.\n", encoding="utf-8")
+        expected = "### Fixed\n\n- Giữ dữ liệu.\n"
+        self.assertEqual(expected, changelog_notes(changelog, "2.0.1"))
+        self.assertEqual(expected, changelog_notes(changelog, "2.0.1-beta.1.1"))
+        self.assertEqual("Old release.\n", changelog_notes(changelog, "2.0.0"))
+
+    def test_stable_notes_fail_closed_but_a_future_beta_can_use_the_build_summary(self):
+        changelog = Path(self.temporary.name) / "CHANGELOG.md"
+        changelog.write_text("# Changelog\n\n## [2.0.1] - 2026-10-31\n\n", encoding="utf-8")
+        for version in ("2.0.1", "2.0.0", "invalid"):
+            with self.subTest(version=version), self.assertRaises(ValueError):
+                changelog_notes(changelog, version)
+        self.assertEqual("", changelog_notes(changelog, "2.0.2-beta.1.1"))
 
     def test_preparing_stable_keeps_beta_core_until_stable_is_published(self):
         before = self.identity()

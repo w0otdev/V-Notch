@@ -16,9 +16,7 @@ public sealed class PrereleaseUpdateTests
     [InlineData("<!DOCTYPE feed [<!ENTITY example SYSTEM 'https://example.invalid/entity'>]><feed>&example;</feed>")]
     public async Task InvalidOrExternalEntityFeedCannotSupplyReleaseHistory(string feed)
     {
-        using var client = new HttpClient(new Handler(request => request.RequestUri!.Host == "api.github.com"
-            ? new(HttpStatusCode.Forbidden)
-            : new(HttpStatusCode.OK) { Content = new StringContent(feed) }));
+        using var client = new HttpClient(new Handler(_ => new(HttpStatusCode.OK) { Content = new StringContent(feed) }));
         using var service = new UpdateService(client, new UpdateSecurityPolicy());
         Assert.Empty(await service.GetAllReleasesAsync());
     }
@@ -30,8 +28,7 @@ public sealed class PrereleaseUpdateTests
         using var client = new HttpClient(new Handler(request =>
         {
             requests++;
-            if (request.RequestUri!.Host == "api.github.com") return new(HttpStatusCode.Forbidden);
-            Assert.Equal("/w0otdev/V-Notch/releases.atom", request.RequestUri.AbsolutePath);
+            Assert.Equal("/w0otdev/V-Notch/releases.atom", request.RequestUri!.AbsolutePath);
             return new(HttpStatusCode.OK) { Content = new StringContent("""
                 <feed xmlns="http://www.w3.org/2005/Atom"><entry>
                 <id>tag:github.com,2008:Repository/123/v2.2.0-beta.298.1</id>
@@ -50,25 +47,22 @@ public sealed class PrereleaseUpdateTests
         Assert.False(releases[0].IsNewerVersion); // History cannot authorize an installer.
         Assert.Empty(releases[0].DownloadUrl);
         Assert.Equal(2, (await service.GetAllReleasesAsync()).Count);
-        Assert.Equal(2, requests);
+        Assert.Equal(1, requests);
     }
 
     [Theory]
     [InlineData("99.1.0-beta.10", "99.0.0", "99.1.0-beta.10", true)]
     [InlineData("99.0.0-beta.10", "99.0.0", "99.0.0", false)]
     [InlineData("99.0.0-beta.10", "99.1.0", "99.1.0", false)]
-    [InlineData("99.1.0", "99.0.0", "99.1.0", true)] // GitHub can flag numeric tags as prerelease.
     [InlineData("99.0.0-beta.65534.65534", "99.0.0", "99.0.0", false)]
     public async Task BetaChannelSelectsHighestApprovedVersionRegardlessOfPublicationOrder(
         string beta, string stable, string expected, bool isPrerelease)
     {
-        using var client = new HttpClient(new Handler(_ => Json(new[]
-        {
-            Release("100.0.0-beta.1", prerelease: true, draft: true),
-            Release(stable), Release(beta, prerelease: true),
-            Release("999.0.0", signed: false), Release("invalid", prerelease: true)
-        })));
-        using var service = new UpdateService(client, new UpdateSecurityPolicy());
+        using var key = ECDsa.Create(ECCurve.NamedCurves.nistP256);
+        var signed = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { stable, beta };
+        using var client = new HttpClient(new Handler(request => ReplyFeedOrManifest(
+            request, key, [stable, beta, "999.0.0", "invalid"], signed)));
+        using var service = new UpdateService(client, new UpdateSecurityPolicy(), manifestPublicKey: key.ExportSubjectPublicKeyInfoPem());
         var update = await service.CheckForUpdatesAsync(true);
         Assert.NotNull(update);
         Assert.Equal(expected, update.Version);
@@ -82,57 +76,68 @@ public sealed class PrereleaseUpdateTests
     [Fact]
     public async Task ManualForceRefreshBypassesMinRefreshIntervalAndUpdatesToNewestBeta()
     {
-        string currentBeta = "99.1.0-beta.288.1";
-        int requests = 0;
+        using var key = ECDsa.Create(ECCurve.NamedCurves.nistP256);
+        var signed = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "99.1.0-beta.288.1", "99.1.0-beta.298.1" };
+        int feedRequests = 0;
         using var client = new HttpClient(new Handler(request =>
         {
-            requests++;
-            if (requests > 1 && request.Headers.IfNoneMatch.Any(tag => tag.Tag == "\"beta-288\""))
+            if (request.RequestUri!.AbsolutePath.EndsWith("/releases.atom"))
             {
-                var updated = Json(new[] { Release("99.1.0-beta.298.1", prerelease: true), Release("99.1.0-beta.288.1", prerelease: true) });
-                updated.Headers.ETag = new("\"beta-298\"");
-                return updated;
+                feedRequests++;
+                if (feedRequests > 1 && request.Headers.IfNoneMatch.Any(tag => tag.Tag == "\"beta-288\""))
+                {
+                    var updated = Feed(["99.1.0-beta.298.1", "99.1.0-beta.288.1"]);
+                    updated.Headers.ETag = new("\"beta-298\"");
+                    return updated;
+                }
+                var initial = Feed(["99.1.0-beta.288.1"]);
+                initial.Headers.ETag = new("\"beta-288\"");
+                return initial;
             }
-            var initial = Json(new[] { Release(currentBeta, prerelease: true) });
-            initial.Headers.ETag = new("\"beta-288\"");
-            return initial;
+            return ReplyFeedOrManifest(request, key, [], signed);
         }));
-        using var service = new UpdateService(client, new UpdateSecurityPolicy());
+        using var service = new UpdateService(client, new UpdateSecurityPolicy(), manifestPublicKey: key.ExportSubjectPublicKeyInfoPem());
         Assert.Equal("99.1.0-beta.288.1", (await service.CheckForUpdatesAsync(includePrereleases: true))!.Version);
         Assert.Equal("99.1.0-beta.288.1", (await service.CheckForUpdatesAsync(includePrereleases: true, forceRefresh: false))!.Version);
-        Assert.Equal(1, requests);
+        Assert.Equal(1, feedRequests);
         var forced = await service.CheckForUpdatesAsync(includePrereleases: true, forceRefresh: true);
         Assert.Equal("99.1.0-beta.298.1", forced!.Version);
         Assert.True(forced.IsNewerVersion);
-        Assert.Equal(2, requests);
+        Assert.Equal(2, feedRequests);
     }
 
     [Fact]
     public async Task SwitchingChannelsClearsCacheAndEtagAndNeverReturnsBetaOnStableFailure()
     {
-        var paths = new List<string>();
-        bool failStable = false;
+        using var key = ECDsa.Create(ECCurve.NamedCurves.nistP256);
+        var signed = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "99.0.0", "99.1.0-beta.1" };
+        var feedPaths = new List<string>();
+        bool failFeed = false;
         using var client = new HttpClient(new Handler(request =>
         {
-            paths.Add(request.RequestUri!.PathAndQuery);
-            Assert.False(request.Headers.Contains("If-None-Match"));
-            if (request.RequestUri.AbsolutePath.EndsWith("/latest"))
-                return failStable ? new(HttpStatusCode.ServiceUnavailable) : Json(Release("99.0.0"));
-            var response = Json(new[] { Release("99.1.0-beta.1", prerelease: true) });
-            response.Headers.ETag = new("\"beta-etag\"");
-            return response;
+            if (request.RequestUri!.AbsolutePath.EndsWith("/releases.atom"))
+            {
+                feedPaths.Add(request.RequestUri.PathAndQuery);
+                Assert.False(request.Headers.Contains("If-None-Match"));
+                if (failFeed) return new(HttpStatusCode.ServiceUnavailable);
+                var response = Feed(["99.1.0-beta.1", "99.0.0"]);
+                response.Headers.ETag = new("\"feed-etag\"");
+                return response;
+            }
+            return ReplyFeedOrManifest(request, key, [], signed);
         }));
-        using var service = new UpdateService(client, new UpdateSecurityPolicy());
+        using var service = new UpdateService(client, new UpdateSecurityPolicy(), manifestPublicKey: key.ExportSubjectPublicKeyInfoPem());
         Assert.Equal("99.0.0", (await service.CheckForUpdatesAsync())!.Version);
         Assert.Equal("99.1.0-beta.1", (await service.CheckForUpdatesAsync(true))!.Version);
         Assert.Equal("99.1.0-beta.1", (await service.CheckForUpdatesAsync(true))!.Version);
-        Assert.Equal(2, paths.Count);
-        failStable = true;
+        Assert.Equal(2, feedPaths.Count);
+        failFeed = true;
         Assert.Null(await service.CheckForUpdatesAsync(false));
         Assert.Null(service.LatestUpdateInfo);
-        failStable = false;
+        failFeed = false;
         Assert.Equal("99.0.0", (await service.CheckForUpdatesAsync(false))!.Version);
-        Assert.Equal(4, paths.Count);
+        Assert.Equal(4, feedPaths.Count);
+        Assert.All(feedPaths, path => Assert.Equal("/w0otdev/V-Notch/releases.atom", path));
     }
 
     [Theory]
@@ -148,34 +153,29 @@ public sealed class PrereleaseUpdateTests
     public void ReleaseOrderAllowsStablePromotionAndNeverDowngrades(string target, string current, int expectedSign)
         => Assert.Equal(expectedSign, Math.Sign(UpdateService.CompareVersions(target, current)));
 
-    [Theory]
-    [InlineData(true, "99.1.0")]
-    [InlineData(false, "99.1.0-beta.1")]
-    public async Task StableChannelRejectsPrereleasesByFlagOrSuffix(bool flag, string version)
+    [Fact]
+    public async Task StableChannelRejectsPrereleasesBySuffix()
     {
-        using var client = new HttpClient(new Handler(_ => Json(Release(version, prerelease: flag))));
-        using var service = new UpdateService(client, new UpdateSecurityPolicy());
+        using var key = ECDsa.Create(ECCurve.NamedCurves.nistP256);
+        var signed = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "99.1.0-beta.1" };
+        using var client = new HttpClient(new Handler(request => ReplyFeedOrManifest(request, key, ["99.1.0-beta.1"], signed)));
+        using var service = new UpdateService(client, new UpdateSecurityPolicy(), manifestPublicKey: key.ExportSubjectPublicKeyInfoPem());
         Assert.Null(await service.CheckForUpdatesAsync());
     }
 
     [Theory]
     [InlineData("100.0.0-beta.1", true)]
     [InlineData("99.0.0", false)]
-    public async Task BetaChannelFollowsPaginationToFindHigherVersion(string latestVersion, bool prerelease)
+    public async Task BetaChannelFindsHigherVersionAcrossLargeFeed(string latestVersion, bool prerelease)
     {
-        int requests = 0;
-        using var client = new HttpClient(new Handler(request =>
-        {
-            requests++;
-            return request.RequestUri!.Query.Contains("page=2")
-                ? Json(new[] { Release(latestVersion, prerelease) })
-                : Json(Enumerable.Range(0, 100).Select(_ => Release("99.0.0-beta.65534.65534", prerelease: true)));
-        }));
-        using var service = new UpdateService(client, new UpdateSecurityPolicy());
+        using var key = ECDsa.Create(ECCurve.NamedCurves.nistP256);
+        var signed = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "99.0.0-beta.65534.65534", latestVersion };
+        var versions = Enumerable.Repeat("99.0.0-beta.65534.65534", 100).Append(latestVersion).ToArray();
+        using var client = new HttpClient(new Handler(request => ReplyFeedOrManifest(request, key, versions, signed)));
+        using var service = new UpdateService(client, new UpdateSecurityPolicy(), manifestPublicKey: key.ExportSubjectPublicKeyInfoPem());
         var update = await service.CheckForUpdatesAsync(true);
         Assert.Equal(latestVersion, update!.Version);
         Assert.Equal(prerelease, update.IsPrerelease);
-        Assert.Equal(2, requests);
     }
 
     [Theory]
@@ -210,19 +210,32 @@ public sealed class PrereleaseUpdateTests
         Assert.True(JsonSerializer.Deserialize<NotchSettings>(JsonSerializer.Serialize(settings))!.IncludePrereleaseUpdates);
     }
 
-    private static object Release(string version, bool prerelease = false, bool draft = false, bool signed = true) => new
+    private static HttpResponseMessage Feed(IEnumerable<string> versions) => new(HttpStatusCode.OK)
     {
-        tag_name = "v" + version,
-        prerelease,
-        draft,
-        body = "notes",
-        published_at = DateTime.UtcNow,
-        assets = (signed ? new[] { UpdateService.SetupName, UpdateService.SetupName + SignedUpdateManifest.ManifestSuffix,
-            UpdateService.SetupName + SignedUpdateManifest.SignatureSuffix } : new[] { UpdateService.SetupName })
-            .Select(name => new { name, browser_download_url = "https://github.com/w0otdev/V-Notch/releases/download/v" + version + "/" + name })
+        Content = new StringContent("<feed xmlns=\"http://www.w3.org/2005/Atom\">" + string.Concat(versions.Select(version =>
+            $"<entry><id>tag:github.com,2008:Repository/123/v{version}</id><updated>2026-10-31T00:00:00Z</updated><content>notes</content></entry>")) + "</feed>")
     };
 
-    private static HttpResponseMessage Json(object value) => new(HttpStatusCode.OK) { Content = new StringContent(JsonSerializer.Serialize(value)) };
+    private static HttpResponseMessage ReplyFeedOrManifest(
+        HttpRequestMessage request, ECDsa key, IEnumerable<string> versions, IReadOnlySet<string> signedVersions)
+    {
+        string url = request.RequestUri!.AbsoluteUri;
+        if (url.EndsWith("/releases.atom")) return Feed(versions);
+        foreach (string version in signedVersions)
+        {
+            string baseUrl = "https://github.com/w0otdev/V-Notch/releases/download/" + Uri.EscapeDataString("v" + version) + "/" + UpdateService.SetupName;
+            byte[] payload = JsonSerializer.SerializeToUtf8Bytes(new SignedUpdateManifest(1, version, UpdateService.SetupName, 123, new string('A', 64)));
+            if (url == baseUrl + SignedUpdateManifest.ManifestSuffix)
+                return new(HttpStatusCode.OK) { Content = new ByteArrayContent(payload) };
+            if (url == baseUrl + SignedUpdateManifest.SignatureSuffix)
+            {
+                byte[] signature = key.SignData(payload, HashAlgorithmName.SHA256, DSASignatureFormat.IeeeP1363FixedFieldConcatenation);
+                return new(HttpStatusCode.OK) { Content = new ByteArrayContent(signature) };
+            }
+        }
+        return new(HttpStatusCode.NotFound);
+    }
+
     private sealed class Handler(Func<HttpRequestMessage, HttpResponseMessage> reply) : HttpMessageHandler
     {
         protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken) => Task.FromResult(reply(request));

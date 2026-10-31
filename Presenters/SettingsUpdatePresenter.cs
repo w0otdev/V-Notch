@@ -49,7 +49,8 @@ public sealed class SettingsUpdatePresenter : IDisposable
                     if (_refs == null || !_canUseNetwork() || _lifetime.IsCancellationRequested) return;
                     if (includePrereleases != _includePrereleases()) continue;
                     _availableUpdate = update;
-                    string updateText = update?.IsNewerVersion == true ? Loc.Get("settings.updateAvailable", update.Version) : Loc.Get("settings.upToDate");
+                    bool newer = update != null && (update.IsNewerVersion || UpdateService.CompareVersions(update.Version, _service.CurrentVersion) > 0);
+                    string updateText = newer ? Loc.Get("settings.updateAvailable", update!.Version) : Loc.Get("settings.upToDate");
                     _refs.Status.Text = update == null ? Loc.Get("settings.checkUpdate") : updateText;
 
                     _refs.Download.Visibility = update?.IsNewerVersion == true ? Visibility.Visible : Visibility.Collapsed;

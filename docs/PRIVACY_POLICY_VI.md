@@ -1,10 +1,10 @@
-# Chính Sách Bảo Mật — V-Notch
+# Chính Sách Bảo Mật - V-Notch
 
-**Ngày hiệu lực:** 24 tháng 10 năm 2026
+**Ngày hiệu lực:** 31 tháng 10 năm 2026
 
-**Bản công bố trước:** 9 tháng 10 năm 2026
+**Bản công bố trước:** 24 tháng 10 năm 2026
 
-**Phạm vi:** Mã nguồn hiện tại ngày 24 tháng 10 năm 2026; tính năng khả dụng phụ thuộc bản cài đặt.
+**Phạm vi:** Mã nguồn hiện tại ngày 31 tháng 10 năm 2026 (v2.2.1); tính năng khả dụng phụ thuộc bản cài đặt.
 
 **Nhà phát triển:** w0otdev  
 **Liên hệ:** [github.com/w0otdev/V-Notch/issues](https://github.com/w0otdev/V-Notch/issues)  
@@ -37,13 +37,13 @@ Chính sách này dùng các thuật ngữ sau:
 | **Phương tiện đang phát** | Tên bài, nghệ sĩ, album, ảnh bìa, vị trí phát, trạng thái (Windows SMTC) | Không (trừ tra cứu ảnh bìa/lời/phụ đề — xem §4) | Không (tạm thời trong bộ nhớ) |
 | **Tra cứu ảnh bìa album** | Tên bài + nghệ sĩ gửi đi như một truy vấn tìm kiếm | Có — YouTube/Google, SoundCloud, Piped/Invidious | Có: ánh xạ nguồn có thể lưu cục bộ (§5.3); ảnh có thể được cache bởi thành phần hiển thị |
 | **Lời bài hát đồng bộ** | Tên bài + nghệ sĩ + thời lượng gửi đi như truy vấn | Có — lrclib.net, và api.lrcmux.dev làm nguồn tổng hợp dự phòng | Không (tạm thời trong bộ nhớ) |
-| **Phụ đề YouTube / Captions** | Video ID + yêu cầu track phụ đề (YoutubeExplode) | Có — YouTube | Không (tạm thời trong bộ nhớ) |
+| **Phụ đề YouTube / Captions** | Video ID + yêu cầu track phụ đề công khai | Có - YouTube | Không (tạm thời trong bộ nhớ) |
 | **Spotify Canvas (tùy chọn)** | Phiên Spotify web (`sp_dc`), tên bài + nghệ sĩ | Có — Spotify, Musixmatch (dự phòng) | Phiên được mã hóa cục bộ bằng Windows DPAPI |
 | **Thời tiết (opt-in)** | Vị trí gần đúng dựa trên IP (`ipwho.is`) hoặc tên thành phố thủ công | Có — `ipwho.is`, Open-Meteo | Không (tạm thời trong bộ nhớ) |
-| **Kiểm tra & tải cập nhật** | Chỉ header HTTP tiêu chuẩn | Có — GitHub Releases API | Thông tin phiên bản trong bộ nhớ; bộ cài tải vào thư mục tạm khi cập nhật |
+| **Kiểm tra & tải cập nhật** | Chỉ header HTTP tiêu chuẩn | Có - GitHub Releases API & Atom feed | Thông tin phiên bản trong bộ nhớ; bộ cài tải vào thư mục tạm khi cập nhật |
 | **Spotlight AI (tùy chọn)** | Tin nhắn gửi, ngữ cảnh gần đây, khóa API, model | Có — nhà cung cấp AI được chọn (§4.8) | Khóa và lịch sử chat mã hóa cục bộ (§5.6) |
 | **Dịch trực tiếp (tùy chọn)** | Văn bản được chọn qua UI Automation; clipboard chỉ khi bạn yêu cầu | Không gửi văn bản; tải model tùy chọn kết nối Hugging Face | Chỉ model/cấu hình; cache bản dịch nằm trong RAM |
-| **Tìm kiếm & Launcher Spotlight** | Tên ứng dụng cục bộ, metadata tệp cục bộ (Windows Search / Everything), biểu thức toán | Không | Lịch sử tần suất khởi chạy lưu cục bộ (tối đa 100 mục, xem §5) |
+| **Tìm kiếm & Launcher Spotlight** | Tên ứng dụng cục bộ, metadata tệp cục bộ (bộ lập chỉ mục tích hợp / Windows Search / Everything), biểu thức toán | Không | Lịch sử tần suất khởi chạy lưu cục bộ (tối đa 100 mục, xem §5) |
 | **Chụp nền hiệu ứng Liquid Glass** | Pixel màn hình ngay dưới vùng notch (DXGI / Magnification API) | Không | Không (xử lý theo từng frame trên GPU/CPU và giải phóng ngay) |
 | **Giám sát phần cứng hệ thống** | Tỷ lệ dùng CPU, mức RAM, tải GPU (Windows performance counters / DXGI) | Không | Không (tạm thời trong bộ nhớ) |
 | **Xem trước camera (opt-in)** | Khung hình camera trực tiếp | Không | Không (không bao giờ ghi lại, chụp hay lưu) |
@@ -53,9 +53,9 @@ Chính sách này dùng các thuật ngữ sau:
 | **Bluetooth & trạng thái pin** | Tên thiết bị, loại, mức pin phụ kiện, trạng thái kết nối | Không | Không (tạm thời trong bộ nhớ) |
 | **Lịch sử, Chỉ báo & Xem trước Clipboard** | Văn bản, HTML/RTF, ảnh, tệp/thư mục đã sao chép và metadata ứng dụng nguồn | Lịch sử Clipboard không tự động tải nội dung lên | Có — tại `%LOCALAPPDATA%\V-Notch\Clipboard\` (§3.10, §5.7) |
 | **Chỉ báo quyền riêng tư** | Micro, camera, hoặc quay màn hình có đang hoạt động không | Không | Không (tạm thời trong bộ nhớ) |
-| **Đồng hồ, Lịch, Hẹn giờ** | Giờ hệ thống, bộ đếm ngược, bấm giờ | Không | Cấu hình hẹn giờ lưu trong cài đặt |
+| **Đồng hồ, Lịch, Hẹn giờ & Tiếng ồn trắng** | Giờ hệ thống, bộ đếm ngược, bấm giờ, âm thanh nền tổng hợp | Không | Cấu hình hẹn giờ lưu trong cài đặt |
 | **Cử chỉ chuột** | Di chuyển/nhấp chuột trên vùng notch | Không | Không |
-| **Cắt ảnh bìa thông minh** | Nhận diện đối tượng YOLO11n trên thiết bị (ONNX Runtime) | Không | Không (chạy 100% cục bộ) |
+| **Cắt ảnh bìa thông minh** | Nhận diện đối tượng YOLOX-Nano trên thiết bị (ONNX Runtime) | Không | Không (chạy 100% cục bộ) |
 
 ### Tổng quan dịch vụ mạng và lưu trữ
 
@@ -75,7 +75,7 @@ Cài đặt và một số bộ nhớ đệm cục bộ được lưu tại `%AP
 > [!NOTE]
 > **An toàn khóa API:** Thông tin xác thực API do người dùng cung cấp (OpenAI, Gemini, Claude, DeepSeek, YouTube) được mã hóa cục bộ bằng Windows DPAPI. V-Notch không duy trì máy chủ trung gian. Nhóm phát triển không chịu trách nhiệm về chi phí phát sinh từ bên thứ ba, việc cạn hạn mức, hoặc thông tin xác thực bị lộ từ môi trường người dùng hay các bản dựng thử nghiệm trước phát hành. Vui lòng thiết lập giới hạn chi tiêu trên tài khoản nhà cung cấp của bạn.
 
-Chấm chỉ báo quyền riêng tư sử dụng báo cáo thu hình từ Windows cùng tín hiệu ghi hình từ Bandicam, OBS Studio và FFmpeg. Xem [phạm vi phát hiện ghi hình và các giới hạn](../RECORDING_DETECTION.md).
+Chấm chỉ báo quyền riêng tư sử dụng báo cáo thu hình từ Windows cùng tín hiệu ghi hình cục bộ từ Bandicam, OBS Studio và FFmpeg. Chúng chỉ cung cấp chỉ báo trạng thái và không phát hiện được mọi phương thức ghi hình.
 
 ---
 
@@ -105,8 +105,8 @@ Việc kiểm tra này diễn ra hoàn toàn trên thiết bị của bạn. Cá
 V-Notch tích hợp trình tìm kiếm Spotlight cho phép bạn tìm ứng dụng, tìm kiếm tệp và tính toán biểu thức toán học nhanh chóng:
 
 - **Tìm kiếm ứng dụng** — Lập chỉ mục các phím tắt Start Menu và các ứng dụng Windows đã cài đặt.
-- **Tìm kiếm tệp** — Truy vấn chỉ mục Windows Search Index cục bộ (qua OLE DB) hoặc instance Everything của voidtools đang chạy trên máy (qua Everything IPC socket cục bộ).
-- **Máy tính số học tích hợp** — Tính toán các biểu thức số học và đại số trực tiếp trên máy bằng MathNet.Numerics.
+- **Tìm kiếm tệp**: Truy vấn bộ lập chỉ mục tệp cục bộ tích hợp, chỉ mục Windows Search Index cục bộ (qua OLE DB) hoặc instance Everything của voidtools đang chạy trên máy (qua Everything IPC socket cục bộ).
+- **Máy tính số học tích hợp**: Tính toán các biểu thức số học và đại số trực tiếp trên máy bằng bộ tính toán C++ gốc.
 - **Bảng xếp hạng tần suất khởi chạy** — Để hiển thị nhanh các mục bạn hay mở, V-Notch lưu một tệp xếp hạng cục bộ (`%APPDATA%\V-Notch\spotlight-usage.json`) chứa ID mục, tên, số lần mở và thời gian gần nhất (giới hạn tối đa 100 mục).
 
 **Spotlight Search xử lý truy vấn ứng dụng/tệp và phép tính cục bộ.** Chế độ AI riêng biệt gửi tin nhắn bạn chủ động gửi và ngữ cảnh hội thoại như mô tả tại §4.8.
@@ -132,7 +132,7 @@ Khi bạn kéo tệp vào File Shelf, V-Notch ghi lại đường dẫn của m�
 
 ### 3.8 Âm lượng hệ thống & Bộ trộn âm thanh (Audio Mixer)
 
-V-Notch dùng API Windows Core Audio (qua NAudio) để đọc âm lượng tổng của hệ thống, theo dõi phiên âm thanh của từng ứng dụng đang mở, và điều chỉnh mức âm lượng tương ứng khi bạn sử dụng thanh trượt trên notch. Không có âm thanh nào bị ghi âm, thu lại hoặc chặn bắt; chỉ mức âm lượng dạng số và định danh phiên âm thanh của các audio endpoint đang hoạt động được đọc và thiết lập.
+V-Notch dùng trực tiếp API Windows Core Audio trong mã gốc để đọc âm lượng tổng của hệ thống, theo dõi phiên âm thanh của từng ứng dụng đang mở, và điều chỉnh mức âm lượng tương ứng khi bạn sử dụng thanh trượt trên notch. Không có âm thanh nào bị ghi âm, thu lại hoặc chặn bắt; chỉ mức âm lượng dạng số và định danh phiên âm thanh của các audio endpoint đang hoạt động được đọc và thiết lập.
 
 ### 3.9 Trạng thái thiết bị Bluetooth & Mức pin
 
@@ -152,9 +152,9 @@ Tạm dừng thu thập trong khay Clipboard hoặc tắt từng loại văn b�
 
 Mô phỏng hành vi của iOS/macOS, V-Notch có thể hiển thị một chấm màu nhỏ khi micro, camera, hoặc tính năng quay màn hình của bạn đang được *bất kỳ* ứng dụng nào trên hệ thống sử dụng. Đây chỉ là phản ánh trạng thái cảm biến — xử lý tạm thời trong bộ nhớ và không lưu hay truyền tải bất kỳ thông tin nào.
 
-### 3.12 Tiện ích môi trường (Đồng hồ, Lịch, Hẹn giờ & Bấm giờ)
+### 3.12 Tiện ích môi trường (Đồng hồ, Lịch, Hẹn giờ, Bấm giờ & Tiếng ồn trắng)
 
-V-Notch tích hợp sẵn các tiện ích hiển thị giờ hệ thống, ngày tháng, giờ quốc tế, lịch tương tác, và bộ đếm ngược / bấm giờ thể thao. Toàn bộ quá trình tính toán và đếm giờ đều chạy hoàn toàn cục bộ trên thiết bị của bạn.
+V-Notch tích hợp sẵn các tiện ích hiển thị giờ hệ thống, ngày tháng, giờ quốc tế, lịch tương tác, bộ đếm ngược / bấm giờ thể thao và trình tạo tiếng ồn trắng (white noise). Toàn bộ quá trình tính toán, đếm giờ và tổng hợp âm thanh đều chạy cục bộ trên thiết bị của bạn.
 
 ### 3.13 Cử chỉ & Đầu vào chuột
 
@@ -162,7 +162,7 @@ V-Notch tích hợp sẵn các tiện ích hiển thị giờ hệ thống, ngà
 
 ### 3.14 Cắt ảnh bìa thông minh trên thiết bị (ONNX)
 
-Nếu được bật, V-Notch dùng mô hình nhận diện đối tượng YOLO11n đi kèm, chạy cục bộ qua ONNX Runtime, để tự động cắt ảnh bìa rộng một cách thông minh (canh giữa khuôn mặt hoặc chủ thể bài hát). **Toàn bộ quá trình phân tích ảnh chạy 100% trên thiết bị của bạn. Không có hình ảnh, đầu vào mô hình, hay kết quả nhận diện nào được gửi đi.** Tính năng này không cần kết nối mạng.
+Nếu được bật, V-Notch dùng mô hình nhận diện đối tượng YOLOX-Nano đi kèm, chạy cục bộ qua ONNX Runtime, để tự động cắt ảnh bìa rộng quanh khuôn mặt hoặc chủ thể bài hát. **Toàn bộ quá trình phân tích ảnh chạy trên thiết bị của bạn. Không có hình ảnh, đầu vào mô hình, hay kết quả nhận diện nào được gửi đi.** Tính năng này không cần kết nối mạng.
 
 ---
 
@@ -172,14 +172,14 @@ V-Notch không có máy chủ backend và không thực hiện analytics, teleme
 
 ### 4.1 Kiểm tra & Tải bản cập nhật ứng dụng — GitHub
 
-- **Điểm đến:** `https://api.github.com/repos/w0otdev/V-Notch/releases/latest`
+- **Điểm đến:** `https://api.github.com/repos/w0otdev/V-Notch/releases/latest`, `https://api.github.com/repos/w0otdev/V-Notch/releases` (khi kiểm tra bản thử nghiệm hoặc ghi chú phát hành) và `https://github.com/w0otdev/V-Notch/releases.atom` (dự phòng khi REST API bị giới hạn tốc độ).
 - **Tại sao:** Để phát hiện xem có phiên bản V-Notch mới hơn hay không.
 - **Dữ liệu gửi đi:** Header HTTP tiêu chuẩn, gồm `User-Agent: V-Notch-Updater` và header `If-None-Match` (ETag) có điều kiện để lưu cache. Tính năng này không gửi metadata media, thông tin đăng nhập hay nội dung tệp cục bộ. Như mọi yêu cầu HTTPS, dịch vụ từ xa có thể thấy thông tin kết nối như địa chỉ IP của bạn.
 - **Dữ liệu nhận về:** Tag phiên bản mới nhất, ghi chú phát hành (changelog), URL tải bộ cài; khi cập nhật còn có manifest đã ký, chữ ký tách rời và bộ cài.
 - **Tần suất:** Giới hạn tối đa một lần mỗi 45 giây; phản hồi được cache trong bộ nhớ và xác thực lại bằng ETag.
 - **Bảo mật & Tính toàn vẹn:** Từ phiên bản 1.9.2, cập nhật trong ứng dụng bắt buộc dùng HTTPS và manifest có chữ ký ECDSA P-256/SHA-256, được xác minh cục bộ bằng khóa công khai nhúng trong ứng dụng. Phiên bản, tên bộ cài, kích thước và mã băm SHA-256 đã ký phải khớp trước khi chạy bộ cài. Chữ ký thiếu hoặc không hợp lệ và việc hạ phiên bản đều bị từ chối. Authenticode là tùy chọn trừ khi có cấu hình thêm allowlist chứng chỉ; Windows vẫn có thể hiện cảnh báo nhà phát hành không xác định hoặc SmartScreen. Ứng dụng bản cũ dùng cơ chế xác minh cũ cho lần nâng cấp đầu tiên lên phiên bản này.
 - **Dữ liệu xác minh:** Manifest và chữ ký tách rời được tải từ cùng các asset GitHub release với bộ cài và xử lý trong bộ nhớ. Việc xác minh chữ ký không liên hệ dịch vụ mới hay tải lên tệp cục bộ, thông tin đăng nhập hoặc mã định danh thiết bị. GitHub và hạ tầng tải xuống có thể thấy thông tin kết nối tiêu chuẩn, gồm địa chỉ IP và header HTTP của bạn.
-- **Quyền kiểm soát của bạn:** Việc tải và cài đặt bản cập nhật chỉ xảy ra **khi** bạn chủ động chọn thực hiện. Khi bạn bắt đầu cập nhật, bộ cài (`V-Notch-Setup.exe`) được tải từ GitHub Releases về thư mục tạm của bạn và khởi chạy.
+- **Quyền kiểm soát của bạn:** Việc tải và cài đặt bản cập nhật chỉ xảy ra **khi** bạn chủ động chọn thực hiện. Khi bạn bắt đầu cập nhật, bộ cài tương ứng (`V-Notch-Setup.exe` hoặc `V-Notch-Setup-SelfContained.exe`) được tải từ GitHub Releases về thư mục tạm của bạn và khởi chạy.
 
 ### 4.2 Tra cứu ảnh bìa album
 
@@ -208,9 +208,9 @@ V-Notch thử nghiệm hai nhà cung cấp lời bài hát độc lập theo th�
 
 **Dữ liệu nhận về (cả hai):** Các dòng lời bài hát đã đồng bộ thời gian, chỉ dùng tạm thời trong bộ nhớ để hiển thị và không bao giờ ghi xuống đĩa. Bên nhận thấy IP kết nối; truy vấn nghe nhạc có thể là dữ liệu cá nhân tùy ngữ cảnh.
 
-### 4.4 Phụ đề & Captions YouTube — YoutubeExplode
+### 4.4 Phụ đề & Captions YouTube
 
-- **Điểm đến:** Các endpoint phụ đề video công khai của YouTube thông qua thư viện YoutubeExplode.
+- **Điểm đến:** Các endpoint phụ đề video công khai của YouTube.
 - **Tại sao:** Để lấy phụ đề/captions theo thời gian thực khi bạn nghe nhạc hoặc xem video trên YouTube và đã bật tính năng phụ đề YouTube.
 - **Dữ liệu gửi đi:** ID video YouTube và header HTTP tiêu chuẩn. Không gửi tài khoản người dùng hay dữ liệu định danh cá nhân.
 - **Dữ liệu nhận về:** Văn bản phụ đề theo thời gian, chỉ dùng tạm thời trong bộ nhớ để hiển thị.
@@ -290,7 +290,7 @@ Nằm trong thư mục chương trình của ứng dụng, nhật ký này ghi l
 
 ### 5.5 Mô hình ONNX tùy chọn
 
-Nếu có, tệp mô hình cắt ảnh thông minh (`yolo11n.onnx`) được lưu cục bộ cùng với ứng dụng và chỉ dùng cho mục đích phân tích nhận diện hình ảnh trực tiếp trên thiết bị.
+Nếu có, tệp mô hình cắt ảnh thông minh (`yolox_nano.onnx`) được lưu cục bộ cùng với ứng dụng và chỉ dùng cho mục đích phân tích nhận diện hình ảnh trực tiếp trên thiết bị.
 
 Để xóa dữ liệu do ứng dụng quản lý, hãy ngắt kết nối Spotify trong Cài đặt nếu có, thoát V-Notch, rồi kiểm tra và xóa `%APPDATA%\V-Notch\`, `%LOCALAPPDATA%\V-Notch\`, thư mục cũ `%LOCALAPPDATA%\VNotch\` nếu còn và thư mục cài đặt. Hai thư mục cục bộ chứa cả lịch sử Clipboard, lịch sử/bản phục hồi AI và model dịch. Cần kiểm tra riêng cache, bản sao lưu và dữ liệu đã xuất; xóa thư mục ứng dụng không xóa các bản sao này.
 

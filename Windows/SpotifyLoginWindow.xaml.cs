@@ -273,7 +273,7 @@ public partial class SpotifyLoginWindow : Window
             try
             {
                 if (Directory.Exists(userDataFolder))
-                    Directory.Delete(userDataFolder, recursive: true);
+                    SafeFileDeletion.DeleteDirectory(userDataFolder);
                 return;
             }
             catch (IOException)

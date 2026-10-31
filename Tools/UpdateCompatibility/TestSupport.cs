@@ -35,6 +35,12 @@ namespace VNotch.Services
             => throw new InvalidOperationException("Installer execution is forbidden in the compatibility probe.");
     }
 
+    internal static class SafeFileDeletion
+    {
+        public static void DeleteDirectory(string path)
+            => throw new InvalidOperationException("Installer directory deletion is forbidden in the compatibility probe.");
+    }
+
     internal static class SafeLauncher
     {
         public static bool TryOpenUrl(string? url)

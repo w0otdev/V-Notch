@@ -1,6 +1,6 @@
-# Third-party notices — V-Notch
+# Third-party notices - V-Notch
 
-**Reviewed document date:** October 23, 2026
+**Reviewed document date:** October 31, 2026
 **Status:** Attribution inventory; not a certification of license compliance. Reconcile the bundled release with its dependency lockfile, SBOM and actual included assets before distribution.
 
 V-Notch includes third-party components and assets listed below. Their licenses
@@ -19,7 +19,6 @@ CI and installer builds reject unreviewed or modified model bytes.
 The former Ultralytics `yolo11n.onnx` has been removed from the current tree and
 installer payload. Earlier Git history/releases remain a separate review item.
 Removal does not retroactively resolve obligations for previous distributions.
-See `Models/README.md` for the replacement's preprocessing and output contract.
 
 ## SVG and icon assets
 
@@ -38,17 +37,12 @@ is implied. Verify **each file** against its original source URL, creator, preci
 | LLamaSharp 0.27.0 | MIT | <https://github.com/SciSharp/LLamaSharp/tree/v0.27.0> |
 | LLamaSharp.Backend.Cpu / LLamaSharp.Backend.Vulkan.Windows 0.27.0 | MIT core; included native dependency notices in `Assets/Translation/Licenses/` | <https://github.com/SciSharp/LLamaSharp/tree/v0.27.0> |
 | Markdig 0.41.3 | BSD-2-Clause | <https://github.com/xoofx/markdig> |
-| AngleSharp 1.8.2 | MIT | <https://github.com/AngleSharp/AngleSharp> |
-| JsonExtensions 1.2.0 (transitive via YoutubeExplode) | MIT | <https://github.com/Tyrrrz/JsonExtensions> |
 | Microsoft.Extensions.DependencyInjection 8.0.1 | MIT | <https://dot.net/> |
 | Microsoft.ML.OnnxRuntime 1.31.0 | MIT | <https://github.com/microsoft/onnxruntime> |
 | Microsoft.Web.WebView2 1.0.4078.44 | Microsoft Software License | <https://github.com/MicrosoftEdge/WebView2Feedback> |
-| NAudio 2.2.1 | MIT | <https://github.com/naudio/NAudio> |
 | System.Data.OleDb 8.0.1 | MIT | <https://github.com/dotnet/runtime> |
-| Vortice.Direct3D11 3.8.3 | MIT | <https://github.com/amerkoleci/Vortice.Windows> |
 | Vortice.Direct3D9 3.8.3 | MIT | <https://github.com/amerkoleci/Vortice.Windows> |
 | Vortice.DXGI 3.8.3 | MIT | <https://github.com/amerkoleci/Vortice.Windows> |
-| YoutubeExplode 6.6.0 | MIT | <https://github.com/Tyrrrz/YoutubeExplode> |
 
 **Distribution requirements:** A source link and license label are not substitutes for including the applicable complete license/copyright texts and any mandatory NOTICE or attribution statements in each distribution where required. Audit direct **and transitive** dependencies and bundled native/runtime assets against the exact shipped binaries; classifications other than the specifically checked NotifyIcon package remain inherited from the supplied inventory and are **not independently verified**. Review Microsoft/WebView2 redistribution conditions. Keep corresponding permission records and an SBOM in release records.
 
@@ -56,7 +50,7 @@ is implied. Verify **each file** against its original source URL, creator, preci
 
 Spotify Canvas, YouTube thumbnails/captions, album artwork, lyrics, Musixmatch, LRCLIB and weather content may be subject to separate provider terms, copyright, trademark, access and caching conditions. A notice, user consent or non-affiliation disclaimer does not authorize scraping, reuse, redistribution or access through unofficial credentials. Review each implementation against the provider's current conditions, and disable functionality that lacks a defensible authorization basis.
 
-Canvas is experimental, off by default and requires explicit in-app acknowledgement before sign-in or network access. This control does not resolve the authorization question. YoutubeExplode's MIT license covers the library, not permission to access YouTube or use caption content. See [Spotify's User Guidelines](https://www.spotify.com/us/legal/user-guidelines/), [YouTube's Terms](https://www.youtube.com/static?template=terms) and the [Fair Use Index](https://www.copyright.gov/fair-use/); a fair-use notice is not a blanket exemption.
+Canvas is experimental, off by default and requires explicit in-app acknowledgement before sign-in or network access. This control does not resolve the authorization question. Open-source software licenses cover the application code, not permission to access YouTube or use caption content. See [Spotify's User Guidelines](https://www.spotify.com/us/legal/user-guidelines/), [YouTube's Terms](https://www.youtube.com/static?template=terms) and the [Fair Use Index](https://www.copyright.gov/fair-use/); a fair-use notice is not a blanket exemption.
 
 ## Required release evidence / unresolved items
 
@@ -65,7 +59,7 @@ Canvas is experimental, off by default and requires explicit in-app acknowledgem
 - For every SVG/icon/font/media asset, record file path, source link, author, license, required attribution, modification and replacement decision; remove unverifiable assets.
 - Bundle the full required third-party license texts and NOTICE statements with source and installer as applicable; validate separately for Windows/WebView2 runtimes.
 - Verify that the repository's Apache-2.0 `LICENSE` describes only material the project can legally license; third-party components retain their own licenses.
-- The current tray dependency is MIT-licensed `Hardcodet.NotifyIcon.Wpf 2.0.1`; its complete package license is shipped in `licenses/Hardcodet.NotifyIcon.Wpf-MIT.txt`. See [the version-specific assessment](NOTIFYICON_REPLACEMENT_PLAN.md). Earlier releases containing 1.1.0 retain their separate CPOL review obligations.
+- The current tray dependency is MIT-licensed `Hardcodet.NotifyIcon.Wpf 2.0.1`; its complete package license is shipped in `licenses/Hardcodet.NotifyIcon.Wpf-MIT.txt`. Earlier releases containing 1.1.0 retain their separate CPOL review obligations.
 - Optional offline translation uses the pinned Qwen model described below, not the earlier M2M100/MADLAD research candidates. Tokenizers.DotNet is restricted to the benchmark project and is not a production dependency. Do not distribute research model assets as part of the app.
 
 ## Reference links
@@ -120,67 +114,7 @@ OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 ~~~
 
-### AngleSharp 1.8.2 — MIT
-
-HTML parsing. Copyright (c) 2013 - 2026 AngleSharp.
-
-Complete upstream license: <https://raw.githubusercontent.com/AngleSharp/AngleSharp/35b26db83557a6a74ce286907833e3b17806d9eb/LICENSE>
-
-~~~text
-The MIT License (MIT)
-
-Copyright (c) 2013 - 2026 AngleSharp
-
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
-
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-SOFTWARE.
-~~~
-
-### JsonExtensions 1.2.0 — MIT
-
-Transitive dependency of YoutubeExplode. Copyright (c) 2020-2021 Alexey Golub (Tyrrrz; now known as Oleksii Holub).
-
-Complete upstream license: <https://raw.githubusercontent.com/Tyrrrz/JsonExtensions/a7f72f1a9673258411a35d5aa40453f3cc917cf4/License.txt>
-
-~~~text
-MIT License
-
-Copyright (c) 2020-2021 Alexey Golub
-
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
-
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-SOFTWARE.
-~~~
-
-### OverShifted/LiquidGlass — MIT
+### OverShifted/LiquidGlass - MIT
 
 Copyright (c) 2026 Sepehr Kalanaki (OverShifted). The adapted refraction formulas and noise in Shaders/LiquidGlassRefraction.hlsl, and its compiled .ps output, are based on this project. V-Notch contains a modified HLSL adaptation for its WPF rendering pipeline. License reference commit: 3797fa541c1f026c521a75885ee271f03bdf9f0f; the original adaptation commit is not recorded.
 
@@ -242,4 +176,4 @@ SOFTWARE.
 
 ### Additional optional translation models
 
-The selectable catalog also includes TranslateGemma 4B/12B (Gemma terms), Hunyuan-MT 7B (Tencent Hunyuan terms), Qwen2.5 14B, Qwen3 14B, Qwen3.5 27B and Gemma 4 26B A4B/31B (Apache-2.0). Weights are not bundled. Community GGUF conversions are identified separately from the original publishers. See [the model catalog](TRANSLATION_MODELS.md) for sources and capacity estimates; pinned revisions, asset sizes and SHA-256 values are in `Services/Translation/TranslationModelCatalog.cs`. The source button in Settings opens the selected repository and its license information before download.
+The selectable catalog also includes TranslateGemma 4B/12B (Gemma terms), Hunyuan-MT 7B (Tencent Hunyuan terms), Qwen2.5 14B, Qwen3 14B, Qwen3.5 27B and Gemma 4 26B A4B/31B (Apache-2.0). Weights are not bundled. Community GGUF conversions are identified separately from the original publishers. Pinned revisions, asset sizes and SHA-256 values are in `Services/Translation/TranslationModelCatalog.cs`. The source button in Settings opens the selected repository and its license information before download.

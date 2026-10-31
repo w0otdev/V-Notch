@@ -261,6 +261,11 @@ jobs:
     permissions:
       contents: write
     steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+          persist-credentials: false
+
       # actions/download-artifact@v4.3.0
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
         with:
@@ -273,7 +278,8 @@ jobs:
         run: |
           set -euo pipefail
           cat release-assets/*.sha256 > release-assets/checksums.txt
-          printf 'Release %s from commit `%s`.\n\n- `V-Notch-Setup.exe` (requires [.NET 8 Desktop Runtime](https://dotnet.microsoft.com/download/dotnet/8.0))\n- `V-Notch-Setup-SelfContained.exe` (runtime bundled)\n- Signed update manifests and SHA256 checksums are attached.\n' "$RELEASE_VERSION" "$HEAD_SHA" > release-notes.md
+          python .github/scripts/release_version.py --notes "$RELEASE_VERSION" > release-notes.md
+          printf '\nRelease %s from commit `%s`.\n\n- `V-Notch-Setup.exe` (requires [.NET 8 Desktop Runtime](https://dotnet.microsoft.com/download/dotnet/8.0))\n- `V-Notch-Setup-SelfContained.exe` (runtime bundled)\n- Signed update manifests and SHA256 checksums are attached.\n' "$RELEASE_VERSION" "$HEAD_SHA" >> release-notes.md
           if [ "$IS_PRERELEASE" = 'true' ]; then
             printf '\nBeta testing build. Enable pre-release updates in Settings to receive these builds.\nBuild: %s\n' "$INFORMATIONAL_VERSION" >> release-notes.md
             gh release create "$RELEASE_TAG" release-assets/* \
@@ -287,7 +293,7 @@ jobs:
               --notes-file release-notes.md
           fi
         env:
-          # This job downloads artifacts without checkout, so gh cannot infer a repo from .git.
+          # Pin the publication repository explicitly.
           GH_REPO: ${{ github.repository }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

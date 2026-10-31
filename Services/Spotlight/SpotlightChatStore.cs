@@ -1,17 +1,10 @@
 using System.IO;
-using System.Runtime.InteropServices;
 using System.Text.Json;
 
 namespace VNotch.Services.Spotlight;
 
-internal sealed partial class SpotlightSavedChat
+internal sealed class SpotlightSavedChat
 {
-    [LibraryImport("VNotch.Native.dll", StringMarshalling = StringMarshalling.Utf16)]
-    private static partial int vn_spotlight_chat_compute_title_length(
-        ReadOnlySpan<char> content,
-        int contentLen,
-        out int outTitleLen);
-
     public string Id { get; set; } = Guid.NewGuid().ToString("N");
     public string Provider { get; set; } = "";
     public string Model { get; set; } = "";
@@ -23,7 +16,9 @@ internal sealed partial class SpotlightSavedChat
         get
         {
             if (Messages.FirstOrDefault(m => m.Role == "user")?.Content is not { } content) return "…";
-            _ = vn_spotlight_chat_compute_title_length(content.AsSpan(), content.Length, out int length);
+            int lineEnd = content.IndexOfAny(['\r', '\n']);
+            int length = Math.Min(64, lineEnd < 0 ? content.Length : lineEnd);
+            if (length > 0 && char.IsHighSurrogate(content[length - 1])) length--;
             return content[..length];
         }
     }
@@ -34,6 +29,10 @@ internal sealed class SpotlightChatStore
     private readonly string _path;
     private readonly object _gate = new();
     private bool _canSave = true;
+    private readonly object _saveGate = new();
+    private List<SpotlightSavedChat>? _pendingChats;
+    private Task<bool> _saveTask = Task.FromResult(true);
+    private bool _saving;
     internal SpotlightChatStore(string? path = null) => _path = path ?? Path.Combine(AppPaths.LocalAppDataRoot, "spotlight-chats.enc");
 
     internal List<SpotlightSavedChat> Load()
@@ -97,4 +96,41 @@ internal sealed class SpotlightChatStore
             }
         }
     }
+
+    internal Task<bool> SaveAsync(List<SpotlightSavedChat> chats)
+    {
+        var snapshot = chats.Select(chat => new SpotlightSavedChat
+        {
+            Id = chat.Id,
+            Provider = chat.Provider,
+            Model = chat.Model,
+            Draft = chat.Draft,
+            UpdatedUtc = chat.UpdatedUtc,
+            Messages = chat.Messages.ToList()
+        }).ToList();
+        lock (_saveGate)
+        {
+            _pendingChats = snapshot;
+            if (_saving) return _saveTask;
+            _saving = true;
+            _saveTask = Task.Run(() =>
+            {
+                bool result = true;
+                while (true)
+                {
+                    List<SpotlightSavedChat> pending;
+                    lock (_saveGate)
+                    {
+                        if (_pendingChats == null) { _saving = false; return result; }
+                        pending = _pendingChats;
+                        _pendingChats = null;
+                    }
+                    result = Save(pending);
+                }
+            });
+            return _saveTask;
+        }
+    }
+
+    internal Task FlushAsync() { lock (_saveGate) return _saveTask; }
 }

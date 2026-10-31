@@ -1,9 +1,9 @@
-# V-Notch — Điều khoản sử dụng
+# V-Notch - Điều khoản sử dụng
 
-**Ngày hiệu lực:** 3 tháng 10 năm 2026
+**Ngày hiệu lực:** 31 tháng 10 năm 2026
 **Người duy trì:** w0otdev  
 **Dự án:** https://github.com/w0otdev/V-Notch  
-**Phạm vi:** bản ứng dụng Windows chính thức và tài liệu đi kèm, luôn tuân theo các giấy phép mã nguồn mở có hiệu lực riêng. Phiên bản ứng dụng được mô tả là 2.1; phải đối chiếu với bản nhị phân thực tế phát hành.
+**Phạm vi:** bản ứng dụng Windows chính thức và tài liệu đi kèm, luôn tuân theo các giấy phép mã nguồn mở có hiệu lực riêng. Phiên bản ứng dụng được mô tả là 2.2.1; phải đối chiếu với bản nhị phân thực tế phát hành.
 
 > **Lưu ý:** V-Notch là dự án mã nguồn mở, miễn phí và độc lập, không phải dịch vụ lưu trữ trả phí. Văn bản này không sửa đổi Apache-2.0 hoặc giấy phép bên thứ ba; không tước quyền luật định bắt buộc; không cấp quyền đối với nội dung của người khác; không chứng minh bất kỳ nền tảng nào đã cho phép tích hợp. Không điều khoản nào bảo đảm ngăn được kiện tụng.
 
@@ -33,7 +33,7 @@ File Shelf quản lý tham chiếu đường dẫn tệp; đường dẫn có th
 
 Canvas là **tính năng thử nghiệm, mặc định tắt**. Người dùng phải chủ động xác nhận thông báo trong ứng dụng trước khi được mở đăng nhập hoặc gửi yêu cầu Canvas. Cấu hình nâng cấp từ trước khi có thông báo này hoặc nhập từ tệp đều yêu cầu xác nhận lại. Tắt Canvas thu hồi xác nhận và hủy các yêu cầu Canvas do ứng dụng quản lý; thao tác này không hủy phiên tài khoản Spotify. Hãy ngắt kết nối riêng để xóa cookie lưu trên máy. Đọc [Hướng dẫn người dùng Spotify](https://www.spotify.com/us/legal/user-guidelines/); xác nhận không cấp quyền thu thập tự động hoặc bảo đảm tài khoản tiếp tục được truy cập.
 
-**Phụ đề YouTube và Fair Use:** Việc lấy phụ đề dùng thư viện độc lập YoutubeExplode, không phải giấy phép từ YouTube. Giấy phép của thư viện không cấp quyền truy cập YouTube hoặc quyền sử dụng nội dung phụ đề. [Điều khoản YouTube](https://www.youtube.com/static?template=terms) hạn chế truy cập tự động ngoài các ngoại lệ được nêu, trong đó có chấp thuận bằng văn bản trước đó. Chỉ dùng phụ đề khi cả phương thức truy cập và cách dùng nội dung đều được phép. Theo pháp luật Hoa Kỳ, Fair Use được đánh giá từng trường hợp theo các yếu tố tương ứng; các nước khác có thể quy định ngoại lệ khác. Sử dụng cá nhân, giáo dục hoặc phi thương mại không tự động là Fair Use. Thông báo này không cấp giấy phép, chấp thuận từ nền tảng hay quyền miễn trừ khiếu nại. Xem [Fair Use Index của U.S. Copyright Office](https://www.copyright.gov/fair-use/).
+**Phụ đề YouTube và Fair Use:** Việc lấy phụ đề truy vấn trực tiếp các endpoint phụ đề công khai của YouTube mà không có giấy phép từ YouTube. Giấy phép phần mềm không cấp quyền truy cập YouTube hoặc quyền sử dụng nội dung phụ đề. [Điều khoản YouTube](https://www.youtube.com/static?template=terms) hạn chế truy cập tự động ngoài các ngoại lệ được nêu, trong đó có chấp thuận bằng văn bản trước đó. Chỉ dùng phụ đề khi cả phương thức truy cập và cách dùng nội dung đều được phép. Theo pháp luật Hoa Kỳ, Fair Use được đánh giá từng trường hợp theo các yếu tố tương ứng; các nước khác có thể quy định ngoại lệ khác. Sử dụng cá nhân, giáo dục hoặc phi thương mại không tự động là Fair Use. Thông báo này không cấp giấy phép, chấp thuận từ nền tảng hay quyền miễn trừ khiếu nại. Xem [Fair Use Index của U.S. Copyright Office](https://www.copyright.gov/fair-use/).
 
 **Nội dung media:** Metadata, lời bài hát, phụ đề, ảnh thu nhỏ, Canvas vẫn thuộc quyền của chủ thể tương ứng. Tính năng hiển thị không tự cấp quyền tải, sao chép, tái phân phối, chỉnh sửa, khai thác thương mại hoặc trình diễn công khai ngoài phạm vi được phép theo luật và giấy phép. Chủ thể quyền có thể khiếu nại nội dung thực sự nằm trong repo/bản phát hành theo Mục 10.
 
@@ -113,4 +113,4 @@ Nếu một phần vô hiệu, chỉ phần đó không áp dụng trong giới 
 
 Kho chính thức: https://github.com/w0otdev/V-Notch  
 Liên hệ chung: https://github.com/w0otdev/V-Notch/issues (công khai; không đăng thông tin bí mật).  
-Có hiệu lực từ 03/10/2026. Xem bản cũ trong lịch sử repo. Đây là dự thảo công bố của dự án, không phải bằng chứng luật sư đã duyệt hoặc bản nhị phân đã được kiểm toán.
+Có hiệu lực từ 31/10/2026. Xem bản cũ trong lịch sử repo. Đây là dự thảo công bố của dự án, không phải bằng chứng luật sư đã duyệt hoặc bản nhị phân đã được kiểm toán.

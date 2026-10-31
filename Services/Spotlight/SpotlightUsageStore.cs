@@ -5,7 +5,7 @@ using VNotch.Models;
 
 namespace VNotch.Services.Spotlight;
 
-internal sealed partial class SpotlightUsageStore
+internal sealed partial class SpotlightUsageStore : IAsyncDisposable, IDisposable
 {
     [LibraryImport("VNotch.Native.dll", StringMarshalling = StringMarshalling.Utf16)]
     private static partial int vn_spotlight_usage_compute_boost(
@@ -140,8 +140,8 @@ internal sealed partial class SpotlightUsageStore
             }
             catch (Exception ex)
             {
-                // Best-effort file deletion; in-memory state is already cleared
                 RuntimeLog.Warn(LogTag, $"Failed to delete history file: {ex.Message}");
+                throw;
             }
         }
     }
@@ -155,6 +155,14 @@ internal sealed partial class SpotlightUsageStore
             return _saveWorker;
         }
     }
+
+    public async ValueTask DisposeAsync()
+    {
+        await WaitForPendingSavesAsync().ConfigureAwait(false);
+        await Preferences.FlushAsync().ConfigureAwait(false);
+    }
+
+    public void Dispose() => DisposeAsync().AsTask().GetAwaiter().GetResult();
 
     public double GetBoost(string id, string query = "")
     {
