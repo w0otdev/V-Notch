@@ -181,7 +181,7 @@
       <_UseFxc Condition="'$(FxcPath)' != '' And Exists('$(FxcPath)')">true</_UseFxc>
     </PropertyGroup>
 
-    <Exec Condition="'$(_UseFxc)' == 'true'" Command="&quot;$(FxcPath)&quot; /nologo /T ps_3_0 /E main /Fo &quot;$(_LiquidGlassShaderOutput)&quot; &quot;$(_LiquidGlassShaderSource)&quot;" IgnoreExitCode="true" IgnoreStandardErrorWarningFormat="true">
+    <Exec Condition="'$(_UseFxc)' == 'true'" Command="&quot;$(FxcPath)&quot; /nologo /T ps_3_0 /O3 /E main /Fo &quot;$(_LiquidGlassShaderOutput)&quot; &quot;$(_LiquidGlassShaderSource)&quot;" IgnoreExitCode="true" IgnoreStandardErrorWarningFormat="true">
       <Output TaskParameter="ExitCode" PropertyName="_ShaderCompileExitCode" />
     </Exec>
     <Message Condition="'$(_UseFxc)' != 'true'" Importance="high" Text="fxc.exe not found (set FxcPath to override). Falling back to Tools\ShaderCompiler." />

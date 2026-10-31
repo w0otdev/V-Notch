@@ -32,13 +32,9 @@ public partial class MainWindow
 
     private void VolumeSyncTimer_Tick(object? sender, EventArgs e)
     {
-        if (_isExpanded && _isMusicExpanded && !_isDraggingVolume && DateTime.UtcNow >= _volumeScrollSyncAfterUtc &&
-            _mediaService.TryGetCurrentSessionVolume(out float volume, out bool isMuted))
-        {
-            _currentVolume = volume;
-            SetVolumeFill(VolumeBarScale, _currentVolume);
-            UpdateVolumeIcon(_currentVolume, isMuted);
-        }
+        // The audio endpoint query is a COM call; keep it off the UI thread (guarded against overlap).
+        if (_isExpanded && _isMusicExpanded && !_isDraggingVolume && DateTime.UtcNow >= _volumeScrollSyncAfterUtc)
+            _ = SyncVolumeFromActiveSession();
     }
 
     private readonly Queue<OutsideClickSnapshot> _outsideClicks = new();

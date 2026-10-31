@@ -95,7 +95,8 @@ struct Capture {
         if (SUCCEEDED(client.ptr->GetBufferSize(&buffer_frames)) &&
             !EnsureSilence(silence, static_cast<size_t>(buffer_frames) * static_cast<size_t>(block_align))) {
             failure = E_OUTOFMEMORY;
-        }        while (SUCCEEDED(failure) && WaitForSingleObject(stop_event, kPollMs) == WAIT_TIMEOUT) {
+        }
+        while (SUCCEEDED(failure) && WaitForSingleObject(stop_event, kPollMs) == WAIT_TIMEOUT) {
             UINT32 packet = 0;
             HRESULT hr = capture.ptr->GetNextPacketSize(&packet);
             while (SUCCEEDED(hr) && packet > 0) {

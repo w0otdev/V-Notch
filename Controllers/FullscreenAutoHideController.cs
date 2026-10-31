@@ -1,4 +1,5 @@
 using System;
+using System.Threading;
 using System.Windows.Threading;
 using VNotch.Models;
 using VNotch.Services;
@@ -15,7 +16,14 @@ public sealed class FullscreenAutoHideController : IDisposable
     private readonly Func<IntPtr> _getNotchHwnd;
     private readonly Func<bool>? _isAutoHideSuppressed;
     private NotchSettings _settings;
-    private readonly UiScheduledTimer _pollTimer;
+    // Window queries run on a thread-pool timer so a slow Win32 call never stalls the UI thread.
+    // The dispatcher is only woken when the sampled state differs from the applied one.
+    private readonly Timer _pollTimer;
+    private readonly Dispatcher _dispatcher;
+    private readonly Action _applyPolledState;
+    private int _pollRunning;
+    private int _wakePending;
+    private bool _pollActive;
 
     private long _lastCheckTick;
     private long _lastStateChangeTick;
@@ -35,36 +43,62 @@ public sealed class FullscreenAutoHideController : IDisposable
         _isAutoHideSuppressed = isAutoHideSuppressed;
         _settings = settings ?? throw new ArgumentNullException(nameof(settings));
 
-        _pollTimer = new UiScheduledTimer(DispatcherPriority.Background)
-        {
-            Interval = TimeSpan.FromMilliseconds(PollIntervalMs)
-        };
-        _pollTimer.Tick += PollTimer_Tick;
+        _dispatcher = Dispatcher.CurrentDispatcher;
+        _applyPolledState = ApplyPolledState;
+        _pollTimer = new Timer(PollTimer_Tick, null, Timeout.Infinite, Timeout.Infinite);
         SyncTimerState();
     }
 
     private void SyncTimerState()
     {
         if (_disposed) return;
-        if (_settings.HideOnExclusiveFullscreen || _settings.HideOnWindowedFullscreen)
+        bool enabled = _settings.HideOnExclusiveFullscreen || _settings.HideOnWindowedFullscreen;
+        if (enabled == _pollActive) return;
+        _pollActive = enabled;
+        _pollTimer.Change(enabled ? PollIntervalMs : Timeout.Infinite, enabled ? PollIntervalMs : Timeout.Infinite);
+    }
+
+    // Thread-pool thread: no UI state is touched except lock-free reads of values the UI thread owns.
+    private void PollTimer_Tick(object? state)
+    {
+        if (_disposed || Interlocked.Exchange(ref _pollRunning, 1) != 0) return;
+        try
         {
-            _pollTimer.Start();
+            var settings = Volatile.Read(ref _settings);
+            IntPtr notchHwnd = _getNotchHwnd();
+            if (notchHwnd == IntPtr.Zero) return;
+            bool hidden = Volatile.Read(ref _isHiddenByFullscreen);
+            // While hidden and an auto-hide suppressor exists, the UI re-evaluates (the suppressor lives on the UI thread).
+            bool wake = hidden && _isAutoHideSuppressed != null;
+            if (!wake)
+            {
+                IntPtr foreground = GetForegroundWindow();
+                wake = FullscreenDetector.ShouldHideForFullscreen(
+                    foreground, notchHwnd, settings.HideOnExclusiveFullscreen, settings.HideOnWindowedFullscreen) != hidden;
+            }
+            if (!wake || _dispatcher.HasShutdownStarted || Interlocked.Exchange(ref _wakePending, 1) != 0) return;
+            _dispatcher.BeginInvoke(DispatcherPriority.Background, _applyPolledState);
         }
-        else
+        catch (Exception)
         {
-            _pollTimer.Stop();
+            // Sampling is best effort; the next tick retries.
+        }
+        finally
+        {
+            Volatile.Write(ref _pollRunning, 0);
         }
     }
 
-    private void PollTimer_Tick(object? sender, EventArgs e)
+    private void ApplyPolledState()
     {
+        Volatile.Write(ref _wakePending, 0);
         if (_disposed) return;
         Evaluate(default, force: false);
     }
 
     public void UpdateSettings(NotchSettings settings)
     {
-        _settings = settings ?? throw new ArgumentNullException(nameof(settings));
+        Volatile.Write(ref _settings, settings ?? throw new ArgumentNullException(nameof(settings)));
         SyncTimerState();
         Evaluate(default, force: true);
     }
@@ -132,8 +166,7 @@ public sealed class FullscreenAutoHideController : IDisposable
         if (_disposed) return;
         _disposed = true;
 
-        _pollTimer.Stop();
-        _pollTimer.Tick -= PollTimer_Tick;
+        _pollActive = false;
         _pollTimer.Dispose();
     }
 }

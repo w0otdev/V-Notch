@@ -46,6 +46,12 @@ struct ComPtr {
         return &ptr;
     }
     T** put() noexcept { return Put(); }
+    // Takes a new reference on a borrowed pointer; the previous reference (if any) is released.
+    void Assign(T* borrowed) noexcept {
+        if (borrowed) borrowed->AddRef();
+        Reset();
+        ptr = borrowed;
+    }
     T* get() const noexcept { return ptr; }
     T* operator->() const noexcept { return ptr; }
     explicit operator bool() const noexcept { return ptr != nullptr; }

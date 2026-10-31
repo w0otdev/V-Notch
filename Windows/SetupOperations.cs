@@ -647,12 +647,18 @@ internal static class SetupOperations
         try
         {
             dynamic shortcut = shell.CreateShortcut(shortcutPath);
-            shortcut.TargetPath = targetPath;
-            shortcut.WorkingDirectory = workingDirectory;
-            shortcut.IconLocation = targetPath;
-            shortcut.Description = AppName;
-            shortcut.Save();
-            System.Runtime.InteropServices.Marshal.FinalReleaseComObject(shortcut);
+            try
+            {
+                shortcut.TargetPath = targetPath;
+                shortcut.WorkingDirectory = workingDirectory;
+                shortcut.IconLocation = targetPath;
+                shortcut.Description = AppName;
+                shortcut.Save();
+            }
+            finally
+            {
+                System.Runtime.InteropServices.Marshal.FinalReleaseComObject(shortcut);
+            }
         }
         finally
         {

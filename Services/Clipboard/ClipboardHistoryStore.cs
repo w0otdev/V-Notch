@@ -779,7 +779,7 @@ public sealed partial class ClipboardHistoryStore : IDisposable, IAsyncDisposabl
             _ = vn_clipboard_store_validate_archive_extract_step(
                 entryIndex++, maxEntries, entry.Length, totalBytes, maxTotalBytes,
                 root.AsSpan(), root.Length, path.AsSpan(), path.Length, out byte isValid);
-            if (isValid == 0) throw new IOException("Invalid archive path or extraction quota exceeded.");
+            if (isValid == 0 || !path.StartsWith(root, StringComparison.OrdinalIgnoreCase)) throw new IOException("Invalid archive path or extraction quota exceeded.");
             if (string.IsNullOrEmpty(entry.Name) || entry.FullName.EndsWith('/') || entry.FullName.EndsWith('\\')) Directory.CreateDirectory(path);
             else
             {

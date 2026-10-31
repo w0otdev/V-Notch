@@ -371,12 +371,12 @@ VN_EXPORT int32_t __stdcall vn_media_detection_build_session_instance_key(
     if (!unk_ptr || !out_buf || out_cap <= 0 || !out_len || source_app_len < 0) return VN_ERR_INVALID_ARG;
 
     auto* unk = reinterpret_cast<IUnknown*>(unk_ptr);
-    IUnknown* identity = nullptr;
-    if (FAILED(unk->QueryInterface(IID_IUnknown, reinterpret_cast<void**>(&identity))) || !identity) {
+    vnotch::com::ComPtr<IUnknown> identity;
+    if (FAILED(unk->QueryInterface(IID_IUnknown, reinterpret_cast<void**>(identity.Put()))) || !identity) {
         return VN_ERR_FAIL;
     }
-    const auto addr = static_cast<uint64_t>(reinterpret_cast<uintptr_t>(identity));
-    identity->Release();
+    const auto addr = static_cast<uint64_t>(reinterpret_cast<uintptr_t>(identity.get()));
+    identity.Reset();
 
     char16_t hex[16]{};
     int32_t hex_len = 0;
