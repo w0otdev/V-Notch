@@ -8,7 +8,7 @@ namespace vnotch::services
     {
     public:
         static int32_t vn_translation_input_sanitize_impl(const char16_t* text_ptr, int32_t text_len,
-    char16_t* out_buf, int32_t out_cap, int32_t* out_len) noexcept
+    char16_t* out_buf, int32_t out_cap, int32_t* out_len)
         {
     if (!out_len) return VN_ERR_INVALID_ARG;
     std::u16string_view sv = vnotch::make_view(text_ptr, text_len);
@@ -23,7 +23,7 @@ namespace vnotch::services
 }
 
         static int32_t vn_translation_input_is_keyboard_mash_impl(const char16_t* text_ptr, int32_t text_len,
-    uint8_t* out_result) noexcept
+    uint8_t* out_result)
         {
     if (!out_result) return VN_ERR_INVALID_ARG;
     std::u16string_view sv = vnotch::trim(vnotch::make_view(text_ptr, text_len));
@@ -56,12 +56,14 @@ namespace vnotch::services
 VN_EXPORT int32_t vn_translation_input_sanitize(const char16_t* text_ptr, int32_t text_len,
     char16_t* out_buf, int32_t out_cap, int32_t* out_len) noexcept
 {
-    return vnotch::services::TranslationInput::vn_translation_input_sanitize_impl(text_ptr, text_len, out_buf, out_cap, out_len);
+    try { return vnotch::services::TranslationInput::vn_translation_input_sanitize_impl(text_ptr, text_len, out_buf, out_cap, out_len);
+ } catch (...) { return VN_ERR_FAIL; }
 }
 
 VN_EXPORT int32_t vn_translation_input_is_keyboard_mash(const char16_t* text_ptr, int32_t text_len,
     uint8_t* out_result) noexcept
 {
-    return vnotch::services::TranslationInput::vn_translation_input_is_keyboard_mash_impl(text_ptr, text_len, out_result);
+    try { return vnotch::services::TranslationInput::vn_translation_input_is_keyboard_mash_impl(text_ptr, text_len, out_result);
+ } catch (...) { return VN_ERR_FAIL; }
 }
 

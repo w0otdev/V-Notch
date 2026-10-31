@@ -142,9 +142,16 @@ VN_EXPORT int32_t vn_clipboard_drop_strip_html_fragment_tags(
     int32_t out_cap,
     int32_t* out_len) noexcept
 {
-    std::u16string stripped = vnotch::services::ClipboardDropReader::StripHtmlFragmentTags(
-        vnotch::make_u16_view(html_ptr, html_len));
-    return vnotch::copy_out_u16(stripped, out_buf, out_cap, out_len);
+    try
+    {
+        std::u16string stripped = vnotch::services::ClipboardDropReader::StripHtmlFragmentTags(
+            vnotch::make_u16_view(html_ptr, html_len));
+        return vnotch::copy_out_u16(stripped, out_buf, out_cap, out_len);
+    }
+    catch (...)
+    {
+        return VN_ERR_FAIL;
+    }
 }
 
 } // extern "C"

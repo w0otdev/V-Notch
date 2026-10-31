@@ -426,6 +426,7 @@ public sealed class SettingsWindowControlTests
                 await WpfFrameWaiter.UntilAsync(() => panels[section].Visibility == Visibility.Visible && panels.Values.Count(panel => panel.Visibility == Visibility.Visible) == 1, "settings section navigation", ct);
                 Assert.Equal(section, Field<string>(window, "_activeNav"));
                 Assert.Equal(0, window.SettingsScrollViewer.VerticalOffset);
+                Assert.True(window.NavActiveIndicatorTranslate.Y >= 0);
             }
             string[] destinations = panels.Keys.Where(key => key != Field<string>(window, "_activeNav")).Take(3).ToArray();
             foreach (string destination in destinations) Invoke(window, "NavigateToSection", destination);

@@ -267,6 +267,12 @@
                             <Trigger Property="IsHighlighted" Value="True">
                                 <Setter TargetName="Root" Property="Background" Value="{StaticResource SelectedItemBrush}"/>
                             </Trigger>
+                            <Trigger Property="IsKeyboardFocused" Value="True">
+                                <Setter TargetName="Root" Property="Background" Value="{StaticResource SelectedItemBrush}"/>
+                            </Trigger>
+                            <Trigger Property="Tag" Value="Selected">
+                                <Setter TargetName="Root" Property="Background" Value="{StaticResource SelectedItemBrush}"/>
+                            </Trigger>
                         </ControlTemplate.Triggers>
                     </ControlTemplate>
                 </Setter.Value>
@@ -713,7 +719,7 @@
                         <RowDefinition Height="Auto"/>
                     </Grid.RowDefinitions>
 
-                    <Grid Grid.Row="0" Margin="0,6,0,7">
+                    <Grid Grid.Row="0" Margin="0,6,0,7" ClipToBounds="True">
                         <StackPanel x:Name="AiPanel" Visibility="Collapsed" Margin="20,10,20,4" TextElement.FontFamily="{StaticResource SFProDisplay}" TextElement.FontWeight="Bold">
                             <!-- Unified macOS Header Toolbar -->
                             <Grid x:Name="AiHeader" Margin="0,0,0,10">
@@ -849,9 +855,13 @@
                                  Background="Transparent"
                                  BorderThickness="0"
                                  MaxHeight="440"
+                                 VerticalAlignment="Top"
                                  AlternationCount="20"
                                  VirtualizingPanel.IsVirtualizing="False"
                                  AutomationProperties.Name="Search results">
+                            <ListBox.RenderTransform>
+                                <TranslateTransform x:Name="ResultsListTranslate" X="0"/>
+                            </ListBox.RenderTransform>
                             <ListBox.Resources>
                                 <Style TargetType="ScrollBar" BasedOn="{StaticResource ThinScrollBar}"/>
                             </ListBox.Resources>
@@ -993,6 +1003,102 @@
                                 </DataTemplate>
                             </ListBox.ItemTemplate>
                         </ListBox>
+
+                        <StackPanel x:Name="QuickActionsPanel"
+                                    Visibility="Collapsed"
+                                    Opacity="0"
+                                    VerticalAlignment="Top">
+                            <StackPanel.RenderTransform>
+                                <TranslateTransform x:Name="QuickActionsTranslate" X="0"/>
+                            </StackPanel.RenderTransform>
+                            <Grid Margin="14,6,18,6">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                </Grid.ColumnDefinitions>
+                                <Button x:Name="QuickActionsBackButton"
+                                        Style="{StaticResource AiToolbarStyle}"
+                                        Click="QuickActionsBack_Click"
+                                        Margin="0,0,10,0"
+                                        VerticalAlignment="Center">
+                                    <Path Data="{x:Static local:SpotlightWindow.AiArrowLeftGeometry}"
+                                          Fill="{x:Static local:SpotlightWindow.ChatIconBrush}"
+                                          Stretch="Uniform"
+                                          Width="11"
+                                          Height="11"/>
+                                </Button>
+                                <Image x:Name="QuickActionsTargetIcon"
+                                       Grid.Column="1"
+                                       Width="24"
+                                       Height="24"
+                                       Margin="0,0,10,0"
+                                       VerticalAlignment="Center"
+                                       RenderOptions.BitmapScalingMode="HighQuality"/>
+                                <Viewbox x:Name="QuickActionsTargetSolidBox"
+                                         Grid.Column="1"
+                                         Width="20"
+                                         Height="20"
+                                         Margin="2,0,12,0"
+                                         Stretch="Uniform"
+                                         VerticalAlignment="Center"
+                                         Visibility="Collapsed">
+                                    <Canvas Width="24" Height="24">
+                                        <Path x:Name="QuickActionsTargetSolidIcon"
+                                              Stretch="None"
+                                              Fill="#C8C8C8"/>
+                                    </Canvas>
+                                </Viewbox>
+                                <StackPanel Grid.Column="2"
+                                            VerticalAlignment="Center"
+                                            Margin="0,0,12,0">
+                                    <TextBlock x:Name="QuickActionsTargetTitle"
+                                               FontFamily="{StaticResource SFProDisplay}"
+                                               FontSize="14"
+                                               FontWeight="Bold"
+                                               Foreground="{StaticResource TitleTextBrush}"
+                                               TextTrimming="CharacterEllipsis"/>
+                                    <TextBlock x:Name="QuickActionsTargetSubtitle"
+                                               FontFamily="{StaticResource SFProDisplay}"
+                                               FontSize="11"
+                                               FontWeight="Bold"
+                                               Foreground="{StaticResource TertiaryTextBrush}"
+                                               TextTrimming="CharacterEllipsis"
+                                               Margin="0,1,0,0"/>
+                                </StackPanel>
+                                <TextBlock Grid.Column="3"
+                                           Text="← Esc"
+                                           FontFamily="{StaticResource SFProDisplay}"
+                                           FontSize="11"
+                                           FontWeight="Bold"
+                                           Foreground="#78FFFFFF"
+                                           VerticalAlignment="Center"/>
+                            </Grid>
+                            <Border Height="1"
+                                    Background="#14FFFFFF"
+                                    Margin="14,2,14,4"/>
+                            <Grid Margin="0,0,0,2">
+                                <Border x:Name="QuickActionsSelectionGlide"
+                                        HorizontalAlignment="Left"
+                                        VerticalAlignment="Top"
+                                        Background="{StaticResource SelectedItemBrush}"
+                                        CornerRadius="8"
+                                        Opacity="0"
+                                        IsHitTestVisible="False">
+                                    <Border.RenderTransform>
+                                        <TranslateTransform x:Name="QuickActionsGlideTransform"/>
+                                    </Border.RenderTransform>
+                                    <Border Width="3"
+                                            Margin="0,4"
+                                            CornerRadius="1.5"
+                                            Background="{StaticResource AccentBrush}"
+                                            HorizontalAlignment="Left"
+                                            VerticalAlignment="Stretch"/>
+                                </Border>
+                                <StackPanel x:Name="QuickActionsItems"/>
+                            </Grid>
+                        </StackPanel>
 
                         <Grid x:Name="StatusPanel"
                               MinHeight="112"

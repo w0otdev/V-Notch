@@ -9,7 +9,7 @@ class MediaArtworkService final
 {
     static constexpr int32_t kBlackThreshold = 25;
 
-    static bool IsRowDark(const uint8_t* pixels, int32_t row_offset, int32_t start_x, int32_t end_x) noexcept
+    static bool IsRowDark(const uint8_t* pixels, int64_t row_offset, int32_t start_x, int32_t end_x) noexcept
     {
         int32_t total = end_x - start_x;
         if (total <= 0)
@@ -19,7 +19,7 @@ class MediaArtworkService final
         int32_t dark_pixels = 0;
         for (int32_t x = start_x; x < end_x; ++x)
         {
-            int32_t i = row_offset + x * 4;
+            int64_t i = row_offset + static_cast<int64_t>(x) * 4LL;
             if (pixels[i] < kBlackThreshold && pixels[i + 1] < kBlackThreshold && pixels[i + 2] < kBlackThreshold)
             {
                 ++dark_pixels;
@@ -38,7 +38,7 @@ class MediaArtworkService final
         int32_t dark_pixels = 0;
         for (int32_t y = start_y; y < end_y; ++y)
         {
-            int32_t i = y * stride + col_x * 4;
+            int64_t i = static_cast<int64_t>(y) * stride + static_cast<int64_t>(col_x) * 4LL;
             if (pixels[i] < kBlackThreshold && pixels[i + 1] < kBlackThreshold && pixels[i + 2] < kBlackThreshold)
             {
                 ++dark_pixels;
@@ -63,7 +63,12 @@ public:
         int32_t* out_w,
         int32_t* out_h) noexcept
     {
-        if (!pixels || !out_x || !out_y || !out_w || !out_h || sw < 4 || sh < 4 || pixels_len < sh * stride)
+        if (!pixels || !out_x || !out_y || !out_w || !out_h ||
+            sw < 4 || sh < 4 || width <= 0 || height <= 0 ||
+            stride <= 0 || static_cast<int64_t>(stride) < static_cast<int64_t>(sw) * 4LL ||
+            static_cast<int64_t>(pixels_len) < static_cast<int64_t>(sh) * static_cast<int64_t>(stride) ||
+            !std::isfinite(scale_x) || scale_x <= 0.0 ||
+            !std::isfinite(scale_y) || scale_y <= 0.0)
         {
             return VN_ERR_INVALID_ARG;
         }
@@ -71,7 +76,7 @@ public:
         int32_t top_bar = 0;
         for (int32_t y = 0; y < sh / 3; ++y)
         {
-            if (IsRowDark(pixels, y * stride, sw / 4, sw * 3 / 4))
+            if (IsRowDark(pixels, static_cast<int64_t>(y) * stride, sw / 4, sw * 3 / 4))
                 top_bar = y + 1;
             else
                 break;
@@ -80,7 +85,7 @@ public:
         int32_t bottom_bar = 0;
         for (int32_t y = sh - 1; y >= sh * 2 / 3; --y)
         {
-            if (IsRowDark(pixels, y * stride, sw / 4, sw * 3 / 4))
+            if (IsRowDark(pixels, static_cast<int64_t>(y) * stride, sw / 4, sw * 3 / 4))
                 ++bottom_bar;
             else
                 break;
@@ -104,10 +109,14 @@ public:
                 break;
         }
 
-        int32_t content_x = static_cast<int32_t>(left_bar / scale_x);
-        int32_t content_y = static_cast<int32_t>(top_bar / scale_y);
-        int32_t content_w = width - content_x - static_cast<int32_t>(right_bar / scale_x);
-        int32_t content_h = height - content_y - static_cast<int32_t>(bottom_bar / scale_y);
+        const double max_w = static_cast<double>(width);
+        const double max_h = static_cast<double>(height);
+        int32_t content_x = static_cast<int32_t>(std::clamp(left_bar / scale_x, 0.0, max_w));
+        int32_t content_y = static_cast<int32_t>(std::clamp(top_bar / scale_y, 0.0, max_h));
+        int32_t right_cut = static_cast<int32_t>(std::clamp(right_bar / scale_x, 0.0, max_w));
+        int32_t bottom_cut = static_cast<int32_t>(std::clamp(bottom_bar / scale_y, 0.0, max_h));
+        int32_t content_w = width - content_x - right_cut;
+        int32_t content_h = height - content_y - bottom_cut;
 
         if (content_w < width / 2 || content_h < height / 2)
         {

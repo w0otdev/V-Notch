@@ -100,7 +100,7 @@ namespace vnotch::services
             }
 
         static int32_t vn_spotlight_visibility_is_explicit_path_impl(const char16_t* query_ptr, int32_t query_len,
-    uint8_t* out_result) noexcept
+    uint8_t* out_result)
         {
     if (!out_result) return VN_ERR_INVALID_ARG;
     *out_result = is_explicit_path_impl(vnotch::make_view(query_ptr, query_len)) ? 1 : 0;
@@ -108,7 +108,7 @@ namespace vnotch::services
 }
 
         static int32_t vn_spotlight_visibility_should_search_impl(const char16_t* query_ptr, int32_t query_len,
-    uint8_t* out_result) noexcept
+    uint8_t* out_result)
         {
     if (!out_result) return VN_ERR_INVALID_ARG;
     std::u16string_view q = vnotch::make_view(query_ptr, query_len);
@@ -117,7 +117,7 @@ namespace vnotch::services
 }
 
         static int32_t vn_spotlight_visibility_is_file_name_query_impl(const char16_t* query_ptr, int32_t query_len,
-    uint8_t* out_result) noexcept
+    uint8_t* out_result)
         {
     if (!out_result) return VN_ERR_INVALID_ARG;
     *out_result = is_file_name_query_impl(vnotch::make_view(query_ptr, query_len)) ? 1 : 0;
@@ -128,7 +128,7 @@ namespace vnotch::services
     const char16_t* query_ptr, int32_t query_len,
     uint8_t is_folder,
     uint8_t is_under_hidden_root,
-    uint8_t* out_result) noexcept
+    uint8_t* out_result)
         {
     if (!out_result) return VN_ERR_INVALID_ARG;
     *out_result = 0;
@@ -202,19 +202,22 @@ namespace vnotch::services
 VN_EXPORT int32_t vn_spotlight_visibility_is_explicit_path(const char16_t* query_ptr, int32_t query_len,
     uint8_t* out_result) noexcept
 {
-    return vnotch::services::SpotlightFileVisibility::vn_spotlight_visibility_is_explicit_path_impl(query_ptr, query_len, out_result);
+    try { return vnotch::services::SpotlightFileVisibility::vn_spotlight_visibility_is_explicit_path_impl(query_ptr, query_len, out_result);
+ } catch (...) { return VN_ERR_FAIL; }
 }
 
 VN_EXPORT int32_t vn_spotlight_visibility_should_search(const char16_t* query_ptr, int32_t query_len,
     uint8_t* out_result) noexcept
 {
-    return vnotch::services::SpotlightFileVisibility::vn_spotlight_visibility_should_search_impl(query_ptr, query_len, out_result);
+    try { return vnotch::services::SpotlightFileVisibility::vn_spotlight_visibility_should_search_impl(query_ptr, query_len, out_result);
+ } catch (...) { return VN_ERR_FAIL; }
 }
 
 VN_EXPORT int32_t vn_spotlight_visibility_is_file_name_query(const char16_t* query_ptr, int32_t query_len,
     uint8_t* out_result) noexcept
 {
-    return vnotch::services::SpotlightFileVisibility::vn_spotlight_visibility_is_file_name_query_impl(query_ptr, query_len, out_result);
+    try { return vnotch::services::SpotlightFileVisibility::vn_spotlight_visibility_is_file_name_query_impl(query_ptr, query_len, out_result);
+ } catch (...) { return VN_ERR_FAIL; }
 }
 
 VN_EXPORT int32_t vn_spotlight_visibility_should_include(const char16_t* target_ptr, int32_t target_len,
@@ -223,6 +226,7 @@ VN_EXPORT int32_t vn_spotlight_visibility_should_include(const char16_t* target_
     uint8_t is_under_hidden_root,
     uint8_t* out_result) noexcept
 {
-    return vnotch::services::SpotlightFileVisibility::vn_spotlight_visibility_should_include_impl(target_ptr, target_len, query_ptr, query_len, is_folder, is_under_hidden_root, out_result);
+    try { return vnotch::services::SpotlightFileVisibility::vn_spotlight_visibility_should_include_impl(target_ptr, target_len, query_ptr, query_len, is_folder, is_under_hidden_root, out_result);
+ } catch (...) { return VN_ERR_FAIL; }
 }
 

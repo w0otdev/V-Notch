@@ -78,7 +78,7 @@ namespace vnotch::services
             uint8_t* out_g,
             uint8_t* out_b) noexcept
         {
-            if (!pixels || !coords || !out_r || !out_g || !out_b || width <= 0 || height <= 0)
+            if (!pixels || !coords || !out_r || !out_g || !out_b || width <= 0 || height <= 0 || pixel_len <= 0 || coords_len < 0)
             {
                 return VN_ERR_INVALID_ARG;
             }
@@ -88,10 +88,16 @@ namespace vnotch::services
 
             for (int32_t i = 0; i + 1 < coords_len; i += 2)
             {
-                int32_t x = static_cast<int32_t>(coords[i] * width);
-                int32_t y = static_cast<int32_t>(coords[i + 1] * height);
-                int32_t index = (y * width + x) * 4;
-                if (index < 0 || index + 3 >= pixel_len)
+                double cx = coords[i];
+                double cy = coords[i + 1];
+                if (!std::isfinite(cx) || !std::isfinite(cy) || cx < 0.0 || cx >= 1.0 || cy < 0.0 || cy >= 1.0)
+                {
+                    continue;
+                }
+                int64_t x = static_cast<int64_t>(cx * width);
+                int64_t y = static_cast<int64_t>(cy * height);
+                int64_t index = (y * static_cast<int64_t>(width) + x) * 4LL;
+                if (index < 0 || index + 3 >= static_cast<int64_t>(pixel_len))
                 {
                     continue;
                 }

@@ -78,8 +78,22 @@ public sealed partial class ClipboardHistoryStore : IDisposable, IAsyncDisposabl
         static (a, b) => b.CopiedUtc.CompareTo(a.CopiedUtc);
 
     public const long ApprovalThreshold = 50L * 1024 * 1024;
+    [LibraryImport(NativeDll, StringMarshalling = StringMarshalling.Utf16)]
+    private static partial int vn_clipboard_store_validate_archive_extract_step(
+        int entryIndex,
+        int maxEntries,
+        long declaredLength,
+        long accumulatedBytes,
+        long maxTotalBytes,
+        ReadOnlySpan<char> rootPrefix,
+        int rootPrefixLen,
+        ReadOnlySpan<char> resolvedPath,
+        int resolvedPathLen,
+        out byte outIsValid);
+
     public const int MaxImportItems = 512;
     public const int MaxImportContents = 100_000;
+    public const long MaxArchiveExtractBytes = 512L * 1024 * 1024;
     private readonly string _root;
     private readonly object _gate = new();
     private readonly ConcurrentDictionary<Guid, ClipboardEntry> _entries = new();
@@ -715,13 +729,17 @@ public sealed partial class ClipboardHistoryStore : IDisposable, IAsyncDisposabl
                         using var temporaryArchive = new ClipboardPersonalExport();
                         var stream = temporaryArchive.WriteFile(materialized, output =>
                         { using var input = File.OpenRead(source); _vault.TransformFile(input, output, false); });
-                        ExtractPersonalDirectory(stream, destination, personalExport);
+                        ExtractArchiveDirectory(stream, destination, personalExport);
                     }
                     else personalExport.WriteFile(destination, output =>
                     { using var input = File.OpenRead(source); _vault.TransformFile(input, output, false); });
                 }
+                else if (file.IsDirectory)
+                {
+                    using var input = File.OpenRead(source);
+                    ExtractArchiveDirectory(input, destination, null);
+                }
                 else File.Copy(source, materialized);
-                if (file.IsDirectory && personalExport == null) { ZipFile.ExtractToDirectory(materialized, destination); SafeFileDeletion.DeleteFile(materialized); }
                 paths.Add(destination);
             }
             if (entry.Kind == ClipboardKind.Image && content.Files.Length == 0)
@@ -748,20 +766,42 @@ public sealed partial class ClipboardHistoryStore : IDisposable, IAsyncDisposabl
         catch { personalExport?.Dispose(); TryDeleteDirectory(export); throw; }
     });
 
-    private static void ExtractPersonalDirectory(Stream input, string destination, ClipboardPersonalExport lease)
+    internal static void ExtractArchiveDirectory(Stream input, string destination, ClipboardPersonalExport? lease, long maxTotalBytes = MaxArchiveExtractBytes, int maxEntries = MaxImportContents)
     {
         Directory.CreateDirectory(destination);
         string root = Path.GetFullPath(destination) + Path.DirectorySeparatorChar;
         using var archive = new ZipArchive(input, ZipArchiveMode.Read, leaveOpen: true);
+        long totalBytes = 0;
+        int entryIndex = 0;
         foreach (var entry in archive.Entries)
         {
             string path = Path.GetFullPath(Path.Combine(destination, entry.FullName));
-            if (!path.StartsWith(root, StringComparison.OrdinalIgnoreCase)) throw new IOException("Invalid archive path.");
+            _ = vn_clipboard_store_validate_archive_extract_step(
+                entryIndex++, maxEntries, entry.Length, totalBytes, maxTotalBytes,
+                root.AsSpan(), root.Length, path.AsSpan(), path.Length, out byte isValid);
+            if (isValid == 0) throw new IOException("Invalid archive path or extraction quota exceeded.");
             if (string.IsNullOrEmpty(entry.Name) || entry.FullName.EndsWith('/') || entry.FullName.EndsWith('\\')) Directory.CreateDirectory(path);
             else
             {
                 Directory.CreateDirectory(Path.GetDirectoryName(path)!);
-                lease.WriteFile(path, output => { using var source = entry.Open(); source.CopyTo(output); });
+                Action<Stream> copyBounded = output =>
+                {
+                    using var source = entry.Open();
+                    byte[] buf = ArrayPool<byte>.Shared.Rent(65536);
+                    try
+                    {
+                        int read;
+                        while ((read = source.Read(buf, 0, buf.Length)) > 0)
+                        {
+                            totalBytes += read;
+                            if (totalBytes > maxTotalBytes) throw new IOException("Archive extraction quota exceeded.");
+                            output.Write(buf, 0, read);
+                        }
+                    }
+                    finally { ArrayPool<byte>.Shared.Return(buf); }
+                };
+                if (lease != null) lease.WriteFile(path, copyBounded);
+                else { using (var output = File.Create(path)) copyBounded(output); if (entry.LastWriteTime.Year is >= 1980 and <= 2107) File.SetLastWriteTime(path, entry.LastWriteTime.DateTime); }
             }
         }
     }

@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Runtime.InteropServices;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
@@ -24,9 +25,51 @@ public partial class SettingsWindow
 {
     #region Navigation
 
+    [StructLayout(LayoutKind.Sequential, Pack = 1)]
+    private struct VnNavTabMotionOut
+    {
+        public double TargetY;
+        public double TargetHeight;
+        public double PeakScaleY;
+        public double DipScaleX;
+        public double ReboundScaleY;
+        public double ReboundScaleX;
+        public double ContentShiftX;
+        public int PeakTimeMs;
+        public int ReboundTimeMs;
+        public int DurationMs;
+    }
+
+    [LibraryImport("VNotch.Native", EntryPoint = "vn_animation_compute_nav_tab_motion")]
+    private static unsafe partial int NativeComputeNavTabMotion(
+        double currentY,
+        double targetY,
+        double itemHeight,
+        byte reducedMotion,
+        VnNavTabMotionOut* outMotion);
+
     private string _activeNav = NavSectionAppearance;
+    private string? _hoveredNav;
+    private int _lastNavDirection = 1;
     private readonly Dictionary<string, StackPanel> _navPanels = new();
     private readonly Dictionary<string, Border> _navButtons = new();
+
+    private static readonly SolidColorBrush _navHoverTextBrush = CreateFrozenNavBrush(0xFF, 0xE2, 0xE8, 0xF0);
+    private static readonly CubicEase _navEaseOut = CreateFrozenNavEase(EasingMode.EaseOut);
+
+    private static SolidColorBrush CreateFrozenNavBrush(byte a, byte r, byte g, byte b)
+    {
+        var brush = new SolidColorBrush(Color.FromArgb(a, r, g, b));
+        brush.Freeze();
+        return brush;
+    }
+
+    private static CubicEase CreateFrozenNavEase(EasingMode mode)
+    {
+        var ease = new CubicEase { EasingMode = mode };
+        ease.Freeze();
+        return ease;
+    }
 
     private void InitializeNavigation()
     {
@@ -62,69 +105,171 @@ public partial class SettingsWindow
 
         foreach (var (key, btn) in _navButtons)
         {
-            EnsureNavButtonTransform(btn);
+            btn.Background = _transparentBrush;
+            btn.BorderBrush = _transparentBrush;
             btn.MouseEnter -= NavButton_MouseEnter;
             btn.MouseEnter += NavButton_MouseEnter;
             btn.MouseLeave -= NavButton_MouseLeave;
             btn.MouseLeave += NavButton_MouseLeave;
-            btn.PreviewMouseLeftButtonDown -= NavButton_PreviewMouseDown;
-            btn.PreviewMouseLeftButtonDown += NavButton_PreviewMouseDown;
-            btn.PreviewMouseLeftButtonUp -= NavButton_PreviewMouseUp;
-            btn.PreviewMouseLeftButtonUp += NavButton_PreviewMouseUp;
             UpdateNavButtonVisual(btn, string.Equals(key, _activeNav, StringComparison.Ordinal), animate: false);
         }
 
+        SyncNavIndicators(animate: false);
+        Dispatcher.BeginInvoke(DispatcherPriority.Loaded, () => SyncNavIndicators(animate: false));
         UpdateSectionHeader();
     }
 
-    private static readonly SolidColorBrush _navHoverTextBrush = CreateFrozenNavBrush(0xFF, 0xEC, 0xF1, 0xF7);
-    private static readonly SolidColorBrush _navActiveBorderBrush = CreateFrozenNavBrush(0x38, 0xFF, 0xFF, 0xFF);
-    private static readonly SolidColorBrush _navHoverBorderBrush = CreateFrozenNavBrush(0x22, 0xFF, 0xFF, 0xFF);
-
-    private static SolidColorBrush CreateFrozenNavBrush(byte a, byte r, byte g, byte b)
+    private (double Y, double Height) ResolveNavButtonSlot(Border btn)
     {
-        var brush = new SolidColorBrush(Color.FromArgb(a, r, g, b));
-        brush.Freeze();
-        return brush;
-    }
-
-    private static (ScaleTransform Scale, TranslateTransform Translate) EnsureNavButtonTransform(Border btn)
-    {
-        btn.RenderTransformOrigin = new Point(0.5, 0.5);
-        if (btn.RenderTransform is TransformGroup { IsFrozen: false } existing &&
-            existing.Children.Count >= 2 &&
-            existing.Children[0] is ScaleTransform s &&
-            existing.Children[1] is TranslateTransform t)
+        double height = btn.ActualHeight > 0 ? btn.ActualHeight : (btn.MinHeight > 0 ? btn.MinHeight : 30.0);
+        if (NavItemsStack != null && btn.ActualHeight > 0 && NavItemsStack.ActualHeight > 0)
         {
-            return (s, t);
+            try
+            {
+                Point pt = btn.TranslatePoint(new Point(0, 0), NavItemsStack);
+                if (!double.IsNaN(pt.Y) && !double.IsInfinity(pt.Y))
+                {
+                    return (Math.Max(0.0, pt.Y), height);
+                }
+            }
+            catch (InvalidOperationException)
+            {
+            }
         }
 
-        var scale = new ScaleTransform(1.0, 1.0);
-        var translate = new TranslateTransform(0.0, 0.0);
-        var group = new TransformGroup();
-        group.Children.Add(scale);
-        group.Children.Add(translate);
-        btn.RenderTransform = group;
-        return (scale, translate);
+        int visibleIndex = 0;
+        foreach (string key in _navOrder)
+        {
+            if (!_navButtons.TryGetValue(key, out var candidate) || candidate.Visibility != Visibility.Visible)
+                continue;
+            if (ReferenceEquals(candidate, btn))
+                break;
+            visibleIndex++;
+        }
+
+        double slotStride = height + btn.Margin.Top + btn.Margin.Bottom;
+        return (visibleIndex * slotStride + btn.Margin.Top, height);
+    }
+
+    private static unsafe VnNavTabMotionOut ComputeNavTabMotion(double currentY, double targetY, double itemHeight, bool animate)
+    {
+        VnNavTabMotionOut motion = default;
+        try
+        {
+            if (NativeComputeNavTabMotion(currentY, targetY, itemHeight, animate ? (byte)0 : (byte)1, &motion) == 0)
+            {
+                return motion;
+            }
+        }
+        catch (DllNotFoundException)
+        {
+        }
+        catch (EntryPointNotFoundException)
+        {
+        }
+
+        return new VnNavTabMotionOut
+        {
+            TargetY = Math.Max(0.0, targetY),
+            TargetHeight = Math.Max(24.0, itemHeight),
+            DurationMs = animate ? 200 : 0
+        };
+    }
+
+    internal void SyncNavIndicators(bool animate)
+    {
+        string targetKey = _isSearchMode ? NavSectionSearching : _activeNav;
+        if (_navButtons.TryGetValue(targetKey, out var activeBtn) && activeBtn.Visibility == Visibility.Visible)
+        {
+            AnimateNavActiveIndicator(activeBtn, animate);
+        }
+    }
+
+    private void AnimateNavActiveIndicator(Border targetBtn, bool animate)
+    {
+        if (NavActiveIndicator == null || NavActiveIndicatorTranslate == null)
+            return;
+
+        animate &= IsLoaded && !AnimationConfig.ReduceMotion && SystemParameters.ClientAreaAnimation;
+        var (targetY, targetHeight) = ResolveNavButtonSlot(targetBtn);
+        double currentY = NavActiveIndicatorTranslate.Y;
+        var motion = ComputeNavTabMotion(currentY, targetY, targetHeight, animate);
+
+        NavActiveIndicator.Height = motion.TargetHeight;
+
+        if (!animate || Math.Abs(currentY - motion.TargetY) < 0.5)
+        {
+            NavActiveIndicatorTranslate.BeginAnimation(TranslateTransform.YProperty, null);
+            NavActiveIndicatorTranslate.Y = motion.TargetY;
+            return;
+        }
+
+        var moveY = AnimationPrimitives.WithFps(new DoubleAnimation(motion.TargetY, TimeSpan.FromMilliseconds(200))
+        {
+            EasingFunction = _navEaseOut,
+            FillBehavior = FillBehavior.Stop
+        });
+        NavActiveIndicatorTranslate.BeginAnimation(TranslateTransform.YProperty, moveY, HandoffBehavior.SnapshotAndReplace);
+        NavActiveIndicatorTranslate.Y = motion.TargetY;
+    }
+
+    private void AnimateNavHoverIndicator(Border? hoveredBtn)
+    {
+        if (NavHoverIndicator == null || NavHoverIndicatorTranslate == null)
+            return;
+
+        bool animate = IsLoaded && !AnimationConfig.ReduceMotion && SystemParameters.ClientAreaAnimation;
+        if (hoveredBtn == null ||
+            (hoveredBtn.Tag is string tag && string.Equals(tag, _activeNav, StringComparison.Ordinal)))
+        {
+            AnimateNavElementOpacity(NavHoverIndicator, 0.0, animate ? 160 : 0);
+            return;
+        }
+
+        var (targetY, targetHeight) = ResolveNavButtonSlot(hoveredBtn);
+        NavHoverIndicator.Height = targetHeight;
+        bool wasVisible = NavHoverIndicator.Opacity >= 0.05;
+
+        if (!wasVisible || !animate)
+        {
+            NavHoverIndicatorTranslate.BeginAnimation(TranslateTransform.YProperty, null);
+            NavHoverIndicatorTranslate.Y = targetY;
+        }
+        else
+        {
+            AnimateNavTransform(NavHoverIndicatorTranslate, TranslateTransform.YProperty, targetY, 150);
+        }
+
+        AnimateNavElementOpacity(NavHoverIndicator, 1.0, animate ? 150 : 0);
+    }
+
+    private void NavItemsHost_MouseLeave(object sender, MouseEventArgs e)
+    {
+        _hoveredNav = null;
+        AnimateNavHoverIndicator(null);
     }
 
     private void NavButton_MouseEnter(object sender, MouseEventArgs e)
     {
         if (sender is not Border btn || btn.Tag is not string section) return;
+        if (_isSearchMode && section != NavSectionSearching) return;
+
+        _hoveredNav = section;
         bool isActive = string.Equals(section, _activeNav, StringComparison.Ordinal);
-        var (scale, translate) = EnsureNavButtonTransform(btn);
+
         if (!isActive)
         {
-            btn.BorderBrush = _navHoverBorderBrush;
             if (btn.Child is StackPanel stack && stack.Children.Count >= 2)
             {
                 ApplyNavIconBrush(stack.Children[0], _navHoverTextBrush);
                 if (stack.Children[1] is TextBlock text) text.Foreground = _navHoverTextBrush;
             }
+            AnimateNavHoverIndicator(btn);
         }
-        AnimateNavTransform(translate, TranslateTransform.XProperty, isActive ? 0.0 : 2.0, 140);
-        AnimateNavTransform(scale, ScaleTransform.ScaleXProperty, 1.012, 140);
-        AnimateNavTransform(scale, ScaleTransform.ScaleYProperty, 1.012, 140);
+        else
+        {
+            AnimateNavHoverIndicator(null);
+        }
     }
 
     private void NavButton_MouseLeave(object sender, MouseEventArgs e)
@@ -132,22 +277,6 @@ public partial class SettingsWindow
         if (sender is not Border btn || btn.Tag is not string section) return;
         bool isActive = string.Equals(section, _activeNav, StringComparison.Ordinal);
         UpdateNavButtonVisual(btn, isActive, animate: true);
-    }
-
-    private void NavButton_PreviewMouseDown(object sender, MouseButtonEventArgs e)
-    {
-        if (sender is not Border btn) return;
-        var (scale, _) = EnsureNavButtonTransform(btn);
-        AnimateNavTransform(scale, ScaleTransform.ScaleXProperty, 0.968, 85);
-        AnimateNavTransform(scale, ScaleTransform.ScaleYProperty, 0.968, 85);
-    }
-
-    private void NavButton_PreviewMouseUp(object sender, MouseButtonEventArgs e)
-    {
-        if (sender is not Border btn) return;
-        var (scale, _) = EnsureNavButtonTransform(btn);
-        AnimateNavTransform(scale, ScaleTransform.ScaleXProperty, 1.0, 160);
-        AnimateNavTransform(scale, ScaleTransform.ScaleYProperty, 1.0, 160);
     }
 
     private static void AnimateNavTransform(Animatable target, DependencyProperty property, double to, int durationMs)
@@ -159,21 +288,31 @@ public partial class SettingsWindow
             return;
         }
 
-        double current = (double)target.GetValue(property);
-        if (Math.Abs(current - to) < 0.001)
+        var anim = AnimationPrimitives.WithFps(new DoubleAnimation(to, TimeSpan.FromMilliseconds(durationMs))
         {
-            target.BeginAnimation(property, null);
-            target.SetValue(property, to);
-            return;
-        }
-
-        var anim = AnimationPrimitives.WithFps(new DoubleAnimation(current, to, TimeSpan.FromMilliseconds(durationMs))
-        {
-            EasingFunction = AnimationPrimitives._easeAppleOut,
+            EasingFunction = _navEaseOut,
             FillBehavior = FillBehavior.Stop
         });
         target.BeginAnimation(property, anim, HandoffBehavior.SnapshotAndReplace);
         target.SetValue(property, to);
+    }
+
+    private static void AnimateNavElementOpacity(UIElement target, double to, int durationMs)
+    {
+        if (durationMs <= 0 || AnimationConfig.ReduceMotion || !SystemParameters.ClientAreaAnimation)
+        {
+            target.BeginAnimation(OpacityProperty, null);
+            target.Opacity = to;
+            return;
+        }
+
+        var anim = AnimationPrimitives.WithFps(new DoubleAnimation(to, TimeSpan.FromMilliseconds(durationMs))
+        {
+            EasingFunction = _navEaseOut,
+            FillBehavior = FillBehavior.Stop
+        });
+        target.BeginAnimation(OpacityProperty, anim, HandoffBehavior.SnapshotAndReplace);
+        target.Opacity = to;
     }
 
     private void Nav_Click(object sender, MouseButtonEventArgs e)
@@ -199,21 +338,8 @@ public partial class SettingsWindow
 
     private void UpdateNavButtonVisual(Border btn, bool isActive, bool animate = true)
     {
-        var (scale, translate) = EnsureNavButtonTransform(btn);
-        if (isActive)
-        {
-            btn.Background = (SolidColorBrush)FindResource("NavItemActiveBg");
-            btn.BorderBrush = _navActiveBorderBrush;
-        }
-        else
-        {
-            btn.ClearValue(Border.BackgroundProperty);
-            btn.BorderBrush = _transparentBrush;
-        }
-
-        AnimateNavTransform(translate, TranslateTransform.XProperty, 0.0, animate ? 170 : 0);
-        AnimateNavTransform(scale, ScaleTransform.ScaleXProperty, 1.0, animate ? 170 : 0);
-        AnimateNavTransform(scale, ScaleTransform.ScaleYProperty, 1.0, animate ? 170 : 0);
+        btn.Background = _transparentBrush;
+        btn.BorderBrush = _transparentBrush;
 
         if (btn.Child is not StackPanel stack || stack.Children.Count < 2) return;
 
@@ -253,10 +379,13 @@ public partial class SettingsWindow
         if (section == _activeNav) return;
 
         string previous = _activeNav;
+        int direction = Math.Sign(Array.IndexOf(_navOrder, section) - Array.IndexOf(_navOrder, previous));
+        if (direction == 0) direction = 1;
+        _lastNavDirection = direction;
 
         if (_navButtons.TryGetValue(previous, out var oldBtn))
         {
-            UpdateNavButtonVisual(oldBtn, false);
+            UpdateNavButtonVisual(oldBtn, false, animate: true);
         }
 
         _activeNav = section;
@@ -264,97 +393,21 @@ public partial class SettingsWindow
 
         if (_navButtons.TryGetValue(section, out var newBtn))
         {
-            UpdateNavButtonVisual(newBtn, true);
+            UpdateNavButtonVisual(newBtn, true, animate: true);
+            AnimateNavActiveIndicator(newBtn, animate: true);
+            AnimateNavHoverIndicator(null);
         }
 
-        int version = ++_navTransitionVersion;
-        int direction = Math.Sign(Array.IndexOf(_navOrder, section) - Array.IndexOf(_navOrder, previous));
-        if (direction == 0) direction = 1;
+        _navTransitionVersion++;
 
-        var (oldCard, oldTranslate) = GetSectionCardParts(previous);
-        _navPanels.TryGetValue(previous, out var oldPanel);
+        foreach (var kvp in _navPanels)
+            if (kvp.Key != section) kvp.Value.Visibility = Visibility.Collapsed;
+        if (_navPanels.TryGetValue(section, out var newPanel))
+            newPanel.Visibility = Visibility.Visible;
 
-        void RevealIncoming()
-        {
-            if (version != _navTransitionVersion ||
-                !string.Equals(_activeNav, section, StringComparison.Ordinal))
-                return;
-
-            foreach (var kvp in _navPanels)
-                if (kvp.Key != section) kvp.Value.Visibility = Visibility.Collapsed;
-            if (_navPanels.TryGetValue(section, out var newPanel))
-                newPanel.Visibility = Visibility.Visible;
-
-            StopSmoothScroll();
-            SettingsScrollViewer.ScrollToTop();
-            AnimateActivePanel(section, direction);
-        }
-
-        if (oldCard == null || oldTranslate == null || VNotch.Services.AnimationConfig.ReduceMotion)
-        {
-            RevealIncoming();
-            return;
-        }
-
-        AnimateSectionExit(oldCard, oldTranslate, oldPanel, previous, direction, version, RevealIncoming);
-    }
-
-    private static readonly CubicEase SectionExitEase = CreateFrozenSectionExitEase();
-
-    private static CubicEase CreateFrozenSectionExitEase()
-    {
-        var ease = new CubicEase { EasingMode = EasingMode.EaseIn };
-        ease.Freeze();
-        return ease;
-    }
-
-    private void AnimateSectionExit(
-        FrameworkElement oldCard,
-        TranslateTransform oldTranslate,
-        UIElement? oldPanel,
-        string previous,
-        int direction,
-        int version,
-        Action onExitCompleted)
-    {
-        ResetProgressiveBlurElements(isMenuList: false);
-
-        int fps = VNotch.Services.AnimationConfig.TargetFps;
-        var exitEase = SectionExitEase;
-        var exitDur = TimeSpan.FromMilliseconds(170);
-
-        var fadeOut = new DoubleAnimation(oldCard.Opacity, 0, exitDur) { EasingFunction = exitEase };
-        var slideOut = new DoubleAnimation(oldTranslate.Y, -14 * direction, exitDur) { EasingFunction = exitEase };
-        Timeline.SetDesiredFrameRate(fadeOut, fps);
-        Timeline.SetDesiredFrameRate(slideOut, fps);
-
-        var exitBlur = new BlurEffect { Radius = 0, RenderingBias = RenderingBias.Performance };
-        oldCard.Effect = exitBlur;
-        var blurOut = new DoubleAnimation(0, 8, exitDur) { EasingFunction = exitEase };
-        Timeline.SetDesiredFrameRate(blurOut, fps);
-
-        fadeOut.Completed += (_, _) =>
-        {
-            if (ReferenceEquals(oldCard.Effect, exitBlur))
-            {
-                oldCard.Effect = null;
-            }
-            if (!string.Equals(previous, _activeNav, StringComparison.Ordinal))
-            {
-                oldCard.BeginAnimation(OpacityProperty, null);
-                oldCard.Opacity = 0;
-                oldTranslate.BeginAnimation(TranslateTransform.YProperty, null);
-                oldTranslate.Y = 12;
-                if (oldPanel != null)
-                    oldPanel.Visibility = Visibility.Collapsed;
-            }
-            if (version == _navTransitionVersion)
-                onExitCompleted();
-        };
-
-        oldCard.BeginAnimation(OpacityProperty, fadeOut);
-        oldTranslate.BeginAnimation(TranslateTransform.YProperty, slideOut);
-        exitBlur.BeginAnimation(BlurEffect.RadiusProperty, blurOut);
+        StopSmoothScroll();
+        SettingsScrollViewer.ScrollToTop();
+        AnimateActivePanel(section, direction);
     }
 
     private (FrameworkElement? Card, TranslateTransform? Translate) GetSectionCardParts(string section)
@@ -400,29 +453,15 @@ public partial class SettingsWindow
         return (card, translate);
     }
 
-    private static ScaleTransform EnsureCardScale(FrameworkElement card, TranslateTransform translate)
-    {
-        if (card.RenderTransform is TransformGroup existing &&
-            existing.Children.Count > 0 && existing.Children[0] is ScaleTransform s)
-            return s;
-
-        var scale = new ScaleTransform(1, 1);
-        var group = new TransformGroup();
-        group.Children.Add(scale);
-        group.Children.Add(translate);
-        card.RenderTransform = group;
-        card.RenderTransformOrigin = new Point(0.5, 0.5);
-        return scale;
-    }
-
     private void AnimateActivePanel(string section, int direction = 1, bool entranceDirection = false)
     {
         var (card, translate) = GetSectionCardParts(section);
         if (card == null || translate == null) return;
 
-        if (VNotch.Services.AnimationConfig.ReduceMotion)
+        ResetProgressiveBlurElements(isMenuList: false);
+
+        if (VNotch.Services.AnimationConfig.ReduceMotion || !SystemParameters.ClientAreaAnimation)
         {
-            ResetProgressiveBlurElements(isMenuList: false);
             card.BeginAnimation(OpacityProperty, null);
             card.Opacity = 1;
             card.Effect = null;
@@ -439,16 +478,37 @@ public partial class SettingsWindow
             return;
         }
 
-        int fps = entranceDirection
-            ? Math.Min(60, VNotch.Services.AnimationConfig.TargetFps)
-            : VNotch.Services.AnimationConfig.TargetFps;
-        var ease = EntranceEaseOut;
+        if (!entranceDirection)
+        {
+            int tabFps = VNotch.Services.AnimationConfig.TargetFps;
+            double offset = 6.0 * (direction == 0 ? 1 : direction);
+            card.Effect = null;
+            card.Opacity = 0.25;
+            translate.Y = offset;
 
-        // entranceDirection=true → slide from above (-14px) to match top-down open cascade
-        // Normal nav switching uses ±direction * 14
-        int cascadeDir = entranceDirection ? -1 : (direction == 0 ? 1 : direction);
-        double fromY = entranceDirection ? -14 : 14 * cascadeDir;
-        int baseDelayMs = entranceDirection ? 200 : 0;
+            var tabFade = new DoubleAnimation(0.25, 1.0, TimeSpan.FromMilliseconds(180)) { EasingFunction = _navEaseOut };
+            var tabSlide = new DoubleAnimation(offset, 0.0, TimeSpan.FromMilliseconds(210)) { EasingFunction = _navEaseOut };
+            Timeline.SetDesiredFrameRate(tabFade, tabFps);
+            Timeline.SetDesiredFrameRate(tabSlide, tabFps);
+            card.BeginAnimation(OpacityProperty, tabFade);
+            translate.BeginAnimation(TranslateTransform.YProperty, tabSlide);
+
+            if (section == NavSectionSystem && BackupCard != null && BackupCardTranslate != null)
+            {
+                BackupCard.Effect = null;
+                BackupCard.Opacity = 0.25;
+                BackupCardTranslate.Y = offset;
+                BackupCard.BeginAnimation(OpacityProperty, tabFade);
+                BackupCardTranslate.BeginAnimation(TranslateTransform.YProperty, tabSlide);
+            }
+            return;
+        }
+
+        int fps = Math.Min(60, VNotch.Services.AnimationConfig.TargetFps);
+        var ease = EntranceEaseOut;
+        int cascadeDir = -1;
+        double fromY = -14;
+        int baseDelayMs = 200;
 
         card.Effect = null;
         card.Opacity = 0;

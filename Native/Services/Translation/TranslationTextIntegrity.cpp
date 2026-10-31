@@ -18,7 +18,7 @@ namespace vnotch::services
             }
 
         static int32_t vn_translation_normalize_fact_impl(const char16_t* fact_ptr, int32_t fact_len,
-    char16_t* out_buf, int32_t out_cap, int32_t* out_len) noexcept
+    char16_t* out_buf, int32_t out_cap, int32_t* out_len)
         {
     if (!out_len) return VN_ERR_INVALID_ARG;
     std::u16string_view fact = vnotch::make_view(fact_ptr, fact_len);
@@ -56,7 +56,7 @@ namespace vnotch::services
 
         static int32_t vn_translation_has_unresolved_placeholder_impl(const char16_t* source_ptr, int32_t source_len,
     const char16_t* translated_ptr, int32_t translated_len,
-    uint8_t* out_result) noexcept
+    uint8_t* out_result)
         {
     if (!out_result) return VN_ERR_INVALID_ARG;
     *out_result = 0;
@@ -95,7 +95,7 @@ namespace vnotch::services
 }
 
         static int32_t vn_translation_clean_text_impl(const char16_t* text_ptr, int32_t text_len,
-    char16_t* out_buf, int32_t out_cap, int32_t* out_len) noexcept
+    char16_t* out_buf, int32_t out_cap, int32_t* out_len)
         {
     if (!out_len) return VN_ERR_INVALID_ARG;
     return vnotch::write_u16_out(vnotch::trim(vnotch::make_view(text_ptr, text_len)), out_buf, out_cap, out_len);
@@ -107,19 +107,22 @@ namespace vnotch::services
 VN_EXPORT int32_t vn_translation_normalize_fact(const char16_t* fact_ptr, int32_t fact_len,
     char16_t* out_buf, int32_t out_cap, int32_t* out_len) noexcept
 {
-    return vnotch::services::TranslationTextIntegrity::vn_translation_normalize_fact_impl(fact_ptr, fact_len, out_buf, out_cap, out_len);
+    try { return vnotch::services::TranslationTextIntegrity::vn_translation_normalize_fact_impl(fact_ptr, fact_len, out_buf, out_cap, out_len);
+ } catch (...) { return VN_ERR_FAIL; }
 }
 
 VN_EXPORT int32_t vn_translation_has_unresolved_placeholder(const char16_t* source_ptr, int32_t source_len,
     const char16_t* translated_ptr, int32_t translated_len,
     uint8_t* out_result) noexcept
 {
-    return vnotch::services::TranslationTextIntegrity::vn_translation_has_unresolved_placeholder_impl(source_ptr, source_len, translated_ptr, translated_len, out_result);
+    try { return vnotch::services::TranslationTextIntegrity::vn_translation_has_unresolved_placeholder_impl(source_ptr, source_len, translated_ptr, translated_len, out_result);
+ } catch (...) { return VN_ERR_FAIL; }
 }
 
 VN_EXPORT int32_t vn_translation_clean_text(const char16_t* text_ptr, int32_t text_len,
     char16_t* out_buf, int32_t out_cap, int32_t* out_len) noexcept
 {
-    return vnotch::services::TranslationTextIntegrity::vn_translation_clean_text_impl(text_ptr, text_len, out_buf, out_cap, out_len);
+    try { return vnotch::services::TranslationTextIntegrity::vn_translation_clean_text_impl(text_ptr, text_len, out_buf, out_cap, out_len);
+ } catch (...) { return VN_ERR_FAIL; }
 }
 

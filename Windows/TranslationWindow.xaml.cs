@@ -387,16 +387,8 @@ public partial class TranslationWindow : Window
             return null;
         }
         if (FindChevron(combo) is not { } chevron) return;
-        var rotation = chevron.RenderTransform as RotateTransform ?? new RotateTransform();
-        chevron.RenderTransform = rotation;
         chevron.RenderTransformOrigin = new Point(0.5, 0.5);
-        double target = combo.IsDropDownOpen ? 180 : 0;
-        if (AnimationConfig.ReduceMotion || !SystemParameters.ClientAreaAnimation)
-        {
-            rotation.BeginAnimation(RotateTransform.AngleProperty, null);
-            rotation.Angle = target;
-        }
-        else rotation.BeginAnimation(RotateTransform.AngleProperty, Motion(rotation.Angle, target, 180));
+        AnimateChevron(chevron, combo.IsDropDownOpen ? 180 : 0);
     }
 
     private void OriginalExpansionChanged(object sender, RoutedEventArgs e)
@@ -404,23 +396,27 @@ public partial class TranslationWindow : Window
         OriginalExpander.ApplyTemplate();
         if (OriginalExpander.Template.FindName("OriginalToggle", OriginalExpander) is not ToggleButton toggle) return;
         toggle.ApplyTemplate();
-        if (toggle.Template.FindName("OriginalChevron", toggle) is System.Windows.Shapes.Path chevron && chevron.RenderTransform is RotateTransform rotation)
-        {
-            if (rotation.IsFrozen) { rotation = rotation.Clone(); chevron.RenderTransform = rotation; }
-            double target = OriginalExpander.IsExpanded ? 0 : -90;
-            if (AnimationConfig.ReduceMotion || !SystemParameters.ClientAreaAnimation)
-            {
-                rotation.BeginAnimation(RotateTransform.AngleProperty, null);
-                rotation.Angle = target;
-            }
-            else rotation.BeginAnimation(RotateTransform.AngleProperty, Motion(rotation.Angle, target, 180));
-        }
+        if (toggle.Template.FindName("OriginalChevron", toggle) is System.Windows.Shapes.Path chevron)
+            AnimateChevron(chevron, OriginalExpander.IsExpanded ? 0 : -90);
         if (OriginalExpander.IsExpanded && OriginalExpander.Template.FindName("OriginalContent", OriginalExpander) is FrameworkElement content)
         {
             var offset = new TranslateTransform();
             content.RenderTransform = offset;
             Reveal(content, offset, 4);
         }
+    }
+
+    private static void AnimateChevron(System.Windows.Shapes.Path chevron, double target)
+    {
+        var rotation = chevron.RenderTransform as RotateTransform ?? new RotateTransform();
+        if (rotation.IsFrozen) rotation = rotation.Clone();
+        chevron.RenderTransform = rotation;
+        if (AnimationConfig.ReduceMotion || !SystemParameters.ClientAreaAnimation)
+        {
+            rotation.BeginAnimation(RotateTransform.AngleProperty, null);
+            rotation.Angle = target;
+        }
+        else rotation.BeginAnimation(RotateTransform.AngleProperty, Motion(rotation.Angle, target, 180));
     }
 
     internal static Point ClampPlacement(Rect selection, Rect work, double width, double height)

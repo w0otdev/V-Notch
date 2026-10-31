@@ -218,14 +218,9 @@ public partial class SettingsWindow
             kvp.Value.Visibility = Visibility.Visible;
             kvp.Value.IsHitTestVisible = isSearching;
             kvp.Value.Opacity = isSearching ? 1.0 : 0.35;
-            kvp.Value.Background = isSearching
-                ? (SolidColorBrush)FindResource("NavItemActiveBg")
-                : _transparentBrush;
-
-            var stack = kvp.Value.Child as StackPanel;
-            if (stack?.Children.Count > 1 && stack.Children[1] is TextBlock txt)
-                txt.Foreground = isSearching ? _whiteBrush : _navInactiveBrush;
+            UpdateNavButtonVisual(kvp.Value, isSearching, animate: false);
         }
+        SyncNavIndicators(animate: true);
     }
 
     private void ExitSearchMode()
@@ -573,13 +568,9 @@ public partial class SettingsWindow
             kvp.Value.IsHitTestVisible = true;
             kvp.Value.Opacity = 1.0;
             bool isActive = kvp.Key == _activeNav;
-            kvp.Value.Background = isActive
-                ? (SolidColorBrush)FindResource("NavItemActiveBg")
-                : _transparentBrush;
-            var stack = kvp.Value.Child as StackPanel;
-            if (stack?.Children.Count > 1 && stack.Children[1] is TextBlock txt)
-                txt.Foreground = isActive ? _whiteBrush : _navInactiveBrush;
+            UpdateNavButtonVisual(kvp.Value, isActive, animate: true);
         }
+        SyncNavIndicators(animate: true);
     }
 
     #endregion

@@ -476,4 +476,118 @@ VN_EXPORT int32_t __stdcall vn_animation_compute_settings_switch_motion(
     return VN_OK;
 }
 
+VN_EXPORT int32_t __stdcall vn_animation_compute_nav_tab_motion(
+    double current_y,
+    double target_y,
+    double item_height,
+    uint8_t reduced_motion,
+    VnNavTabMotionOut* out_motion) noexcept
+{
+    if (!out_motion) return VN_ERR_INVALID_ARG;
+
+    const double safe_h = std::max(24.0, item_height);
+    out_motion->target_y = std::max(0.0, target_y);
+    out_motion->target_height = safe_h;
+
+    if (reduced_motion != 0)
+    {
+        out_motion->peak_scale_y = 1.0;
+        out_motion->dip_scale_x = 1.0;
+        out_motion->rebound_scale_y = 1.0;
+        out_motion->rebound_scale_x = 1.0;
+        out_motion->content_shift_x = 0.0;
+        out_motion->peak_time_ms = 0;
+        out_motion->rebound_time_ms = 0;
+        out_motion->duration_ms = 0;
+        return VN_OK;
+    }
+
+    const double dist = std::abs(target_y - current_y);
+    const double slots = std::clamp(dist / safe_h, 0.0, 8.0);
+
+    out_motion->peak_scale_y = 1.0 + std::clamp(0.08 + slots * 0.042, 0.08, 0.34);
+    out_motion->dip_scale_x = 1.0 - std::clamp(0.018 + slots * 0.006, 0.018, 0.055);
+    out_motion->rebound_scale_y = 1.0 - std::clamp(0.025 + slots * 0.005, 0.025, 0.055);
+    out_motion->rebound_scale_x = 1.0 + std::clamp(0.010 + slots * 0.002, 0.010, 0.022);
+    out_motion->content_shift_x = 2.5;
+    out_motion->peak_time_ms = 75;
+    out_motion->rebound_time_ms = 175;
+    out_motion->duration_ms = 260;
+    return VN_OK;
+}
+
+VN_EXPORT int32_t __stdcall vn_animation_compute_elastic_slider_overscroll(
+    double overflow_px,
+    double usable_width,
+    uint8_t reduced_motion,
+    double* out_scale_x,
+    double* out_scale_y) noexcept
+{
+    if (!out_scale_x || !out_scale_y) return VN_ERR_INVALID_ARG;
+    if (reduced_motion != 0 || std::abs(overflow_px) < 0.5)
+    {
+        *out_scale_x = 1.0;
+        *out_scale_y = 1.0;
+        return VN_OK;
+    }
+
+    const double abs_over = std::abs(overflow_px);
+    const double max_over = std::max(40.0, usable_width * 0.22);
+    const double entry = abs_over / max_over;
+    const double sigmoid = 2.0 * (1.0 / (1.0 + std::exp(-entry * 1.6)) - 0.5);
+
+    *out_scale_x = 1.0 + std::clamp(sigmoid * 0.048, 0.0, 0.055);
+    *out_scale_y = 1.0 - std::clamp(sigmoid * 0.075, 0.0, 0.085);
+    return VN_OK;
+}
+
+VN_EXPORT int32_t __stdcall vn_animation_compute_spotlight_quick_actions_motion(
+    uint8_t entering,
+    double viewport_width,
+    uint8_t reduced_motion,
+    VnQuickActionsSlideMotionOut* out_motion) noexcept
+{
+    if (!out_motion) return VN_ERR_INVALID_ARG;
+
+    if (reduced_motion != 0)
+    {
+        out_motion->results_from_x = 0.0;
+        out_motion->results_to_x = 0.0;
+        out_motion->actions_from_x = 0.0;
+        out_motion->actions_to_x = 0.0;
+        out_motion->item_slide_x = 0.0;
+        out_motion->exit_duration_ms = 0;
+        out_motion->enter_duration_ms = 0;
+        out_motion->stagger_step_ms = 0;
+        return VN_OK;
+    }
+
+    const double safe_w = (std::isfinite(viewport_width) && viewport_width > 120.0) ? viewport_width : 720.0;
+    const double travel = std::clamp(safe_w * 0.08, 42.0, 64.0);
+
+    if (entering != 0)
+    {
+        out_motion->results_from_x = 0.0;
+        out_motion->results_to_x = -travel;
+        out_motion->actions_from_x = travel;
+        out_motion->actions_to_x = 0.0;
+        out_motion->item_slide_x = 14.0;
+        out_motion->exit_duration_ms = 200;
+        out_motion->enter_duration_ms = 280;
+        out_motion->stagger_step_ms = 18;
+    }
+    else
+    {
+        out_motion->results_from_x = -travel;
+        out_motion->results_to_x = 0.0;
+        out_motion->actions_from_x = 0.0;
+        out_motion->actions_to_x = travel;
+        out_motion->item_slide_x = 0.0;
+        out_motion->exit_duration_ms = 190;
+        out_motion->enter_duration_ms = 270;
+        out_motion->stagger_step_ms = 0;
+    }
+    return VN_OK;
+}
+
 } // extern "C"

@@ -53,7 +53,7 @@
         <SolidColorBrush x:Key="SurfaceBrush" Color="#141414"/>
         <SolidColorBrush x:Key="SurfaceBrushHover" Color="#1B1B1B"/>
         <SolidColorBrush x:Key="NavItemBg" Color="Transparent"/>
-        <SolidColorBrush x:Key="NavItemActiveBg" Color="#24FFFFFF"/>
+        <SolidColorBrush x:Key="NavItemActiveBg" Color="#1EFFFFFF"/>
         <CubicEase x:Key="InteractiveEaseOut" EasingMode="EaseOut"/>
 
         <LinearGradientBrush x:Key="WindowGlow" StartPoint="0,0" EndPoint="1,1">
@@ -73,7 +73,7 @@
         </Style>
 
         <Style x:Key="SectionHeader" TargetType="TextBlock" BasedOn="{StaticResource {x:Type TextBlock}}">
-            <Setter Property="Foreground" Value="#8E96A0"/>
+            <Setter Property="Foreground" Value="#7C7C7C"/>
             <Setter Property="FontSize" Value="10"/>
             <Setter Property="FontWeight" Value="Bold"/>
             <Setter Property="Margin" Value="0,0,0,14"/>
@@ -82,7 +82,7 @@
 
         <Style x:Key="CardBorderStyle" TargetType="Border">
             <Setter Property="Background" Value="{StaticResource CardBg}"/>
-            <Setter Property="BorderBrush" Value="#14FFFFFF"/>
+            <Setter Property="BorderBrush" Value="#10FFFFFF"/>
             <Setter Property="BorderThickness" Value="1"/>
             <Setter Property="CornerRadius" Value="18"/>
             <Setter Property="Padding" Value="18,4,18,14"/>
@@ -96,11 +96,6 @@
                     </TransformGroup>
                 </Setter.Value>
             </Setter>
-            <Style.Triggers>
-                <Trigger Property="IsMouseOver" Value="True">
-                    <Setter Property="BorderBrush" Value="#24FFFFFF"/>
-                </Trigger>
-            </Style.Triggers>
         </Style>
 
         <Style x:Key="SettingTitleText" TargetType="TextBlock" BasedOn="{StaticResource {x:Type TextBlock}}">
@@ -133,33 +128,20 @@
 
         <Style x:Key="SettingRowBorder" TargetType="Border">
             <Setter Property="Background" Value="Transparent"/>
-            <Setter Property="BorderBrush" Value="Transparent"/>
-            <Setter Property="BorderThickness" Value="1"/>
-            <Setter Property="CornerRadius" Value="10"/>
-            <Setter Property="Padding" Value="8,8"/>
-            <Setter Property="Margin" Value="-8,0,-8,4"/>
-            <Style.Triggers>
-                <Trigger Property="IsMouseOver" Value="True">
-                    <Setter Property="Background" Value="#0CFFFFFF"/>
-                    <Setter Property="BorderBrush" Value="#16FFFFFF"/>
-                </Trigger>
-            </Style.Triggers>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="CornerRadius" Value="0"/>
+            <Setter Property="Padding" Value="0,8"/>
+            <Setter Property="Margin" Value="0,0,0,4"/>
         </Style>
 
         <Style x:Key="NavButton" TargetType="Border">
             <Setter Property="Background" Value="Transparent"/>
-            <Setter Property="BorderBrush" Value="Transparent"/>
-            <Setter Property="BorderThickness" Value="1"/>
-            <Setter Property="CornerRadius" Value="10"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="CornerRadius" Value="8"/>
             <Setter Property="MinHeight" Value="30"/>
             <Setter Property="Padding" Value="12,3"/>
             <Setter Property="Margin" Value="0,1"/>
             <Setter Property="Cursor" Value="Hand"/>
-            <Style.Triggers>
-                <Trigger Property="IsMouseOver" Value="True">
-                    <Setter Property="Background" Value="#14FFFFFF"/>
-                </Trigger>
-            </Style.Triggers>
         </Style>
 
         <Style TargetType="CheckBox">
@@ -203,13 +185,14 @@
                                 </ContentPresenter.Resources>
                             </ContentPresenter>
 
-                            <Grid x:Name="SwitchVisual" Grid.Column="1" Width="54" Height="28"
+                            <Grid x:Name="SwitchVisual" Grid.Column="1" Width="52" Height="26"
                                   VerticalAlignment="Center" HorizontalAlignment="Right"
                                   IsHitTestVisible="False">
-                                <Border x:Name="SwitchTrack" CornerRadius="14" Background="#28FFFFFF" BorderBrush="#36FFFFFF" BorderThickness="1"/>
-                                <Border x:Name="SwitchOnTrack" CornerRadius="14" Background="#34C759" BorderBrush="#5CFFFFFF" BorderThickness="1" Opacity="0"/>
+                                <Border x:Name="SwitchTrack" CornerRadius="13" Background="#2E2E32"/>
+                                <Border x:Name="SwitchHoverOverlay" CornerRadius="13" Background="#14FFFFFF" Opacity="0"/>
+                                <Border x:Name="SwitchOnTrack" CornerRadius="13" Background="#34C759" Opacity="0"/>
                                 <Border x:Name="SwitchThumb" Width="22" Height="22" CornerRadius="11"
-                                        Background="Transparent" Margin="3,0"
+                                        Background="Transparent" Margin="2,0"
                                         HorizontalAlignment="Left" VerticalAlignment="Center">
                                     <Border.RenderTransform>
                                         <TranslateTransform X="0"/>
@@ -220,8 +203,8 @@
                                             <ScaleTransform ScaleX="1" ScaleY="1"/>
                                         </Border.RenderTransform>
                                         <Border.Effect>
-                                            <DropShadowEffect BlurRadius="5" ShadowDepth="1"
-                                                              Opacity="0.28" Color="Black" Direction="270"/>
+                                            <DropShadowEffect BlurRadius="4" ShadowDepth="1"
+                                                              Opacity="0.24" Color="Black" Direction="270"/>
                                         </Border.Effect>
                                     </Border>
                                 </Border>
@@ -229,12 +212,26 @@
                         </Grid>
                         <ControlTemplate.Triggers>
                             <Trigger Property="IsMouseOver" Value="True">
-                                <Setter TargetName="SwitchTrack" Property="Background" Value="#36FFFFFF"/>
-                                <Setter TargetName="SwitchTrack" Property="BorderBrush" Value="#58FFFFFF"/>
-                                <Setter Property="Foreground" Value="#FFFFFF"/>
-                            </Trigger>
-                            <Trigger Property="IsKeyboardFocused" Value="True">
-                                <Setter TargetName="SwitchTrack" Property="BorderBrush" Value="#88FFFFFF"/>
+                                <Trigger.EnterActions>
+                                    <BeginStoryboard>
+                                        <Storyboard>
+                                            <DoubleAnimation Storyboard.TargetName="SwitchHoverOverlay"
+                                                             Storyboard.TargetProperty="Opacity"
+                                                             To="1" Duration="0:0:0.16"
+                                                             EasingFunction="{StaticResource InteractiveEaseOut}"/>
+                                        </Storyboard>
+                                    </BeginStoryboard>
+                                </Trigger.EnterActions>
+                                <Trigger.ExitActions>
+                                    <BeginStoryboard>
+                                        <Storyboard>
+                                            <DoubleAnimation Storyboard.TargetName="SwitchHoverOverlay"
+                                                             Storyboard.TargetProperty="Opacity"
+                                                             To="0" Duration="0:0:0.20"
+                                                             EasingFunction="{StaticResource InteractiveEaseOut}"/>
+                                        </Storyboard>
+                                    </BeginStoryboard>
+                                </Trigger.ExitActions>
                             </Trigger>
                             <Trigger Property="IsEnabled" Value="False">
                                 <Setter Property="Opacity" Value="0.4"/>
@@ -251,81 +248,91 @@
             <Setter Property="MinHeight" Value="62"/>
             <Setter Property="Cursor" Value="Hand"/>
             <Setter Property="Focusable" Value="True"/>
+            <Setter Property="FocusVisualStyle" Value="{x:Null}"/>
             <Setter Property="Template">
                 <Setter.Value>
                     <ControlTemplate TargetType="controls:ElasticSlider">
                         <StackPanel>
-                            <TextBlock x:Name="PART_Label"
-                                       TextTrimming="CharacterEllipsis" ToolTip="{Binding Label, RelativeSource={RelativeSource TemplatedParent}}"
-                                       Margin="2,0,0,0"
-                                       LineHeight="24" LineStackingStrategy="BlockLineHeight"
-                                       FontSize="{StaticResource SettingsLabelFontSize}"
-                                       FontWeight="SemiBold"
-                                       Foreground="{StaticResource SettingsTextBrush}"
-                                       FontFamily="{StaticResource SettingsFont}"
-                                       IsHitTestVisible="False"/>
+                            <Grid Margin="2,0,2,4">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                </Grid.ColumnDefinitions>
+                                <TextBlock x:Name="PART_Label"
+                                           Grid.Column="0"
+                                           TextTrimming="CharacterEllipsis"
+                                           ToolTip="{Binding Label, RelativeSource={RelativeSource TemplatedParent}}"
+                                           VerticalAlignment="Center"
+                                           LineHeight="22" LineStackingStrategy="BlockLineHeight"
+                                           FontSize="{StaticResource SettingsLabelFontSize}"
+                                           FontWeight="SemiBold"
+                                           Foreground="{StaticResource SettingsTextBrush}"
+                                           FontFamily="{StaticResource SettingsFont}"
+                                           IsHitTestVisible="False"/>
+                                <TextBlock x:Name="PART_Value"
+                                           Grid.Column="1"
+                                           Margin="12,0,0,0"
+                                           VerticalAlignment="Center"
+                                           HorizontalAlignment="Right"
+                                           FontSize="13"
+                                           FontWeight="SemiBold"
+                                           Foreground="{StaticResource SoftText}"
+                                           FontFamily="{StaticResource SFProDisplay}"
+                                           IsHitTestVisible="False"/>
+                            </Grid>
                             <TextBlock x:Name="PART_Description"
-                                       Margin="2,4,0,7"
+                                       Margin="2,0,0,7"
                                        Style="{StaticResource SettingHintText}"
                                        Foreground="{StaticResource MutedText}"
                                        TextWrapping="Wrap"
                                        FontFamily="{StaticResource SettingsFont}"
                                        IsHitTestVisible="False"/>
                             <Border x:Name="PART_Root"
-                                    Height="40"
-                                    CornerRadius="11"
-                                    Background="#1AFFFFFF"
-                                    BorderBrush="#2AFFFFFF"
+                                    Height="36"
+                                    CornerRadius="10"
+                                    Background="#14FFFFFF"
+                                    BorderBrush="#1EFFFFFF"
                                     BorderThickness="1"
                                     SnapsToDevicePixels="False"
                                     ClipToBounds="True">
                                 <Grid>
                                     <Border x:Name="PART_Fill"
                                             HorizontalAlignment="Left"
-                                            CornerRadius="10"
-                                            Background="#30FFFFFF"
+                                            CornerRadius="9"
+                                            Background="#26FFFFFF"
                                             Width="0"/>
+                                    <Border x:Name="PART_HoverOverlay"
+                                            CornerRadius="9"
+                                            Background="#0AFFFFFF"
+                                            BorderBrush="#2CFFFFFF"
+                                            BorderThickness="1"
+                                            Opacity="0"
+                                            IsHitTestVisible="False"/>
                                     <Canvas x:Name="PART_Ticks"
                                             IsHitTestVisible="False"/>
                                     <Canvas IsHitTestVisible="False">
                                         <Rectangle x:Name="PART_Indicator"
-                                                   Width="3.5"
-                                                   Height="20"
-                                                   RadiusX="1.75"
-                                                   RadiusY="1.75"
-                                                   Fill="#FFFFFF"
-                                                   Canvas.Top="9"
-                                                   Canvas.Left="0">
+                                                   Width="3"
+                                                   Height="18"
+                                                   RadiusX="1.5"
+                                                   RadiusY="1.5"
+                                                   Fill="#F0F4F8"
+                                                   Canvas.Top="8"
+                                                   Canvas.Left="0"
+                                                   RenderTransformOrigin="0.5,0.5">
+                                            <Rectangle.RenderTransform>
+                                                <ScaleTransform ScaleX="1" ScaleY="1"/>
+                                            </Rectangle.RenderTransform>
                                             <Rectangle.Effect>
-                                                <DropShadowEffect BlurRadius="6" ShadowDepth="0"
-                                                                  Opacity="0.55" Color="White"/>
+                                                <DropShadowEffect BlurRadius="5" ShadowDepth="0"
+                                                                  Opacity="0.45" Color="White"/>
                                             </Rectangle.Effect>
                                         </Rectangle>
                                     </Canvas>
-                                    <TextBlock x:Name="PART_Value"
-                                               VerticalAlignment="Center"
-                                               HorizontalAlignment="Right"
-                                               Margin="0,0,12,0"
-                                               FontSize="13"
-                                               FontWeight="Bold"
-                                               Foreground="#F2F6FA"
-                                               FontFamily="{StaticResource SFProDisplay}"
-                                               IsHitTestVisible="False"/>
                                     <Track x:Name="PART_Track" Visibility="Hidden"/>
                                 </Grid>
                             </Border>
                         </StackPanel>
-                        <ControlTemplate.Triggers>
-                            <Trigger Property="IsMouseOver" Value="True">
-                                <Setter TargetName="PART_Root" Property="Background" Value="#22FFFFFF"/>
-                                <Setter TargetName="PART_Root" Property="BorderBrush" Value="#4CFFFFFF"/>
-                                <Setter TargetName="PART_Fill" Property="Background" Value="#3EFFFFFF"/>
-                                <Setter TargetName="PART_Label" Property="Foreground" Value="#FFFFFF"/>
-                            </Trigger>
-                            <Trigger Property="IsKeyboardFocused" Value="True">
-                                <Setter TargetName="PART_Root" Property="BorderBrush" Value="#7CFFFFFF"/>
-                            </Trigger>
-                        </ControlTemplate.Triggers>
                     </ControlTemplate>
                 </Setter.Value>
             </Setter>
@@ -336,7 +343,7 @@
             <Setter Property="MinWidth" Value="84"/>
             <Setter Property="Background" Value="{StaticResource SurfaceBrush}"/>
             <Setter Property="Foreground" Value="{StaticResource SettingsTextBrush}"/>
-            <Setter Property="BorderBrush" Value="#34FFFFFF"/>
+            <Setter Property="BorderBrush" Value="#2B2B2B"/>
             <Setter Property="BorderThickness" Value="1"/>
             <Setter Property="Padding" Value="18,0"/>
             <Setter Property="FontSize" Value="13"/>
@@ -346,36 +353,32 @@
             <Setter Property="Template">
                 <Setter.Value>
                     <ControlTemplate TargetType="Button">
-                        <Border x:Name="ButtonBorder"
-                                Background="{TemplateBinding Background}"
-                                BorderBrush="{TemplateBinding BorderBrush}"
-                                BorderThickness="{TemplateBinding BorderThickness}"
-                                CornerRadius="13"
-                                Padding="{TemplateBinding Padding}"
-                                RenderTransformOrigin="0.5,0.5">
-                            <Border.RenderTransform>
-                                <TransformGroup>
-                                    <ScaleTransform ScaleX="1" ScaleY="1"/>
-                                    <TranslateTransform Y="0"/>
-                                </TransformGroup>
-                            </Border.RenderTransform>
-                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
-                        </Border>
+                        <Grid RenderTransformOrigin="0.5,0.5">
+                            <Grid.RenderTransform>
+                                <ScaleTransform x:Name="ButtonScale" ScaleX="1" ScaleY="1"/>
+                            </Grid.RenderTransform>
+                            <Border x:Name="ButtonBorder"
+                                    Background="{TemplateBinding Background}"
+                                    BorderBrush="{TemplateBinding BorderBrush}"
+                                    BorderThickness="{TemplateBinding BorderThickness}"
+                                    CornerRadius="13"/>
+                            <Border x:Name="ButtonHoverOverlay"
+                                    Background="#0EFFFFFF"
+                                    BorderBrush="#36FFFFFF"
+                                    BorderThickness="1"
+                                    CornerRadius="13"
+                                    Opacity="0"
+                                    IsHitTestVisible="False"/>
+                            <ContentPresenter Margin="{TemplateBinding Padding}" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Grid>
                         <ControlTemplate.Triggers>
                             <Trigger Property="IsMouseOver" Value="True">
-                                <Setter TargetName="ButtonBorder" Property="Background" Value="#24FFFFFF"/>
-                                <Setter TargetName="ButtonBorder" Property="BorderBrush" Value="#5CFFFFFF"/>
-                                <Setter Property="Foreground" Value="#FFFFFF"/>
                                 <Trigger.EnterActions>
                                     <BeginStoryboard>
                                         <Storyboard>
-                                            <DoubleAnimation Storyboard.TargetName="ButtonBorder"
-                                                             Storyboard.TargetProperty="(UIElement.RenderTransform).(TransformGroup.Children)[0].(ScaleTransform.ScaleX)"
-                                                             To="1.016" Duration="0:0:0.14"
-                                                             EasingFunction="{StaticResource InteractiveEaseOut}"/>
-                                            <DoubleAnimation Storyboard.TargetName="ButtonBorder"
-                                                             Storyboard.TargetProperty="(UIElement.RenderTransform).(TransformGroup.Children)[0].(ScaleTransform.ScaleY)"
-                                                             To="1.016" Duration="0:0:0.14"
+                                            <DoubleAnimation Storyboard.TargetName="ButtonHoverOverlay"
+                                                             Storyboard.TargetProperty="Opacity"
+                                                             To="1" Duration="0:0:0.16"
                                                              EasingFunction="{StaticResource InteractiveEaseOut}"/>
                                         </Storyboard>
                                     </BeginStoryboard>
@@ -383,31 +386,25 @@
                                 <Trigger.ExitActions>
                                     <BeginStoryboard>
                                         <Storyboard>
-                                            <DoubleAnimation Storyboard.TargetName="ButtonBorder"
-                                                             Storyboard.TargetProperty="(UIElement.RenderTransform).(TransformGroup.Children)[0].(ScaleTransform.ScaleX)"
-                                                             To="1" Duration="0:0:0.16"
-                                                             EasingFunction="{StaticResource InteractiveEaseOut}"/>
-                                            <DoubleAnimation Storyboard.TargetName="ButtonBorder"
-                                                             Storyboard.TargetProperty="(UIElement.RenderTransform).(TransformGroup.Children)[0].(ScaleTransform.ScaleY)"
-                                                             To="1" Duration="0:0:0.16"
+                                            <DoubleAnimation Storyboard.TargetName="ButtonHoverOverlay"
+                                                             Storyboard.TargetProperty="Opacity"
+                                                             To="0" Duration="0:0:0.20"
                                                              EasingFunction="{StaticResource InteractiveEaseOut}"/>
                                         </Storyboard>
                                     </BeginStoryboard>
                                 </Trigger.ExitActions>
                             </Trigger>
                             <Trigger Property="IsPressed" Value="True">
-                                <Setter TargetName="ButtonBorder" Property="Background" Value="#18FFFFFF"/>
-                                <Setter TargetName="ButtonBorder" Property="BorderBrush" Value="#78FFFFFF"/>
                                 <Trigger.EnterActions>
                                     <BeginStoryboard>
                                         <Storyboard>
-                                            <DoubleAnimation Storyboard.TargetName="ButtonBorder"
-                                                             Storyboard.TargetProperty="(UIElement.RenderTransform).(TransformGroup.Children)[0].(ScaleTransform.ScaleX)"
-                                                             To="0.974" Duration="0:0:0.08"
+                                            <DoubleAnimation Storyboard.TargetName="ButtonScale"
+                                                             Storyboard.TargetProperty="ScaleX"
+                                                             To="0.986" Duration="0:0:0.08"
                                                              EasingFunction="{StaticResource InteractiveEaseOut}"/>
-                                            <DoubleAnimation Storyboard.TargetName="ButtonBorder"
-                                                             Storyboard.TargetProperty="(UIElement.RenderTransform).(TransformGroup.Children)[0].(ScaleTransform.ScaleY)"
-                                                             To="0.974" Duration="0:0:0.08"
+                                            <DoubleAnimation Storyboard.TargetName="ButtonScale"
+                                                             Storyboard.TargetProperty="ScaleY"
+                                                             To="0.986" Duration="0:0:0.08"
                                                              EasingFunction="{StaticResource InteractiveEaseOut}"/>
                                         </Storyboard>
                                     </BeginStoryboard>
@@ -415,12 +412,12 @@
                                 <Trigger.ExitActions>
                                     <BeginStoryboard>
                                         <Storyboard>
-                                            <DoubleAnimation Storyboard.TargetName="ButtonBorder"
-                                                             Storyboard.TargetProperty="(UIElement.RenderTransform).(TransformGroup.Children)[0].(ScaleTransform.ScaleX)"
+                                            <DoubleAnimation Storyboard.TargetName="ButtonScale"
+                                                             Storyboard.TargetProperty="ScaleX"
                                                              To="1" Duration="0:0:0.15"
                                                              EasingFunction="{StaticResource InteractiveEaseOut}"/>
-                                            <DoubleAnimation Storyboard.TargetName="ButtonBorder"
-                                                             Storyboard.TargetProperty="(UIElement.RenderTransform).(TransformGroup.Children)[0].(ScaleTransform.ScaleY)"
+                                            <DoubleAnimation Storyboard.TargetName="ButtonScale"
+                                                             Storyboard.TargetProperty="ScaleY"
                                                              To="1" Duration="0:0:0.15"
                                                              EasingFunction="{StaticResource InteractiveEaseOut}"/>
                                         </Storyboard>
@@ -436,40 +433,37 @@
         <Style x:Key="PrimaryButton" TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
             <Setter Property="Background" Value="#F3F6FA"/>
             <Setter Property="Foreground" Value="#11161D"/>
-            <Setter Property="BorderBrush" Value="#FFFFFF"/>
+            <Setter Property="BorderBrush" Value="#F3F6FA"/>
             <Setter Property="Template">
                 <Setter.Value>
                     <ControlTemplate TargetType="Button">
-                        <Border x:Name="ButtonBorder"
-                                Background="{TemplateBinding Background}"
-                                BorderBrush="{TemplateBinding BorderBrush}"
-                                BorderThickness="{TemplateBinding BorderThickness}"
-                                CornerRadius="13"
-                                Padding="{TemplateBinding Padding}"
-                                RenderTransformOrigin="0.5,0.5">
-                            <Border.RenderTransform>
-                                <TransformGroup>
-                                    <ScaleTransform ScaleX="1" ScaleY="1"/>
-                                    <TranslateTransform Y="0"/>
-                                </TransformGroup>
-                            </Border.RenderTransform>
-                            <ContentPresenter HorizontalAlignment="Center"
+                        <Grid RenderTransformOrigin="0.5,0.5">
+                            <Grid.RenderTransform>
+                                <ScaleTransform x:Name="ButtonScale" ScaleX="1" ScaleY="1"/>
+                            </Grid.RenderTransform>
+                            <Border x:Name="ButtonBorder"
+                                    Background="{TemplateBinding Background}"
+                                    BorderBrush="{TemplateBinding BorderBrush}"
+                                    BorderThickness="{TemplateBinding BorderThickness}"
+                                    CornerRadius="13"/>
+                            <Border x:Name="ButtonHoverOverlay"
+                                    Background="#FFFFFF"
+                                    CornerRadius="13"
+                                    Opacity="0"
+                                    IsHitTestVisible="False"/>
+                            <ContentPresenter Margin="{TemplateBinding Padding}"
+                                              HorizontalAlignment="Center"
                                               VerticalAlignment="Center"
                                               TextElement.Foreground="{TemplateBinding Foreground}"/>
-                        </Border>
+                        </Grid>
                         <ControlTemplate.Triggers>
                             <Trigger Property="IsMouseOver" Value="True">
-                                <Setter TargetName="ButtonBorder" Property="Background" Value="#FFFFFF"/>
                                 <Trigger.EnterActions>
                                     <BeginStoryboard>
                                         <Storyboard>
-                                            <DoubleAnimation Storyboard.TargetName="ButtonBorder"
-                                                             Storyboard.TargetProperty="(UIElement.RenderTransform).(TransformGroup.Children)[0].(ScaleTransform.ScaleX)"
-                                                             To="1.018" Duration="0:0:0.14"
-                                                             EasingFunction="{StaticResource InteractiveEaseOut}"/>
-                                            <DoubleAnimation Storyboard.TargetName="ButtonBorder"
-                                                             Storyboard.TargetProperty="(UIElement.RenderTransform).(TransformGroup.Children)[0].(ScaleTransform.ScaleY)"
-                                                             To="1.018" Duration="0:0:0.14"
+                                            <DoubleAnimation Storyboard.TargetName="ButtonHoverOverlay"
+                                                             Storyboard.TargetProperty="Opacity"
+                                                             To="1" Duration="0:0:0.16"
                                                              EasingFunction="{StaticResource InteractiveEaseOut}"/>
                                         </Storyboard>
                                     </BeginStoryboard>
@@ -477,30 +471,26 @@
                                 <Trigger.ExitActions>
                                     <BeginStoryboard>
                                         <Storyboard>
-                                            <DoubleAnimation Storyboard.TargetName="ButtonBorder"
-                                                             Storyboard.TargetProperty="(UIElement.RenderTransform).(TransformGroup.Children)[0].(ScaleTransform.ScaleX)"
-                                                             To="1" Duration="0:0:0.16"
-                                                             EasingFunction="{StaticResource InteractiveEaseOut}"/>
-                                            <DoubleAnimation Storyboard.TargetName="ButtonBorder"
-                                                             Storyboard.TargetProperty="(UIElement.RenderTransform).(TransformGroup.Children)[0].(ScaleTransform.ScaleY)"
-                                                             To="1" Duration="0:0:0.16"
+                                            <DoubleAnimation Storyboard.TargetName="ButtonHoverOverlay"
+                                                             Storyboard.TargetProperty="Opacity"
+                                                             To="0" Duration="0:0:0.20"
                                                              EasingFunction="{StaticResource InteractiveEaseOut}"/>
                                         </Storyboard>
                                     </BeginStoryboard>
                                 </Trigger.ExitActions>
                             </Trigger>
                             <Trigger Property="IsPressed" Value="True">
-                                <Setter TargetName="ButtonBorder" Property="Background" Value="#DCE4EE"/>
+                                <Setter TargetName="ButtonBorder" Property="Background" Value="#DDE5EF"/>
                                 <Trigger.EnterActions>
                                     <BeginStoryboard>
                                         <Storyboard>
-                                            <DoubleAnimation Storyboard.TargetName="ButtonBorder"
-                                                             Storyboard.TargetProperty="(UIElement.RenderTransform).(TransformGroup.Children)[0].(ScaleTransform.ScaleX)"
-                                                             To="0.974" Duration="0:0:0.08"
+                                            <DoubleAnimation Storyboard.TargetName="ButtonScale"
+                                                             Storyboard.TargetProperty="ScaleX"
+                                                             To="0.986" Duration="0:0:0.08"
                                                              EasingFunction="{StaticResource InteractiveEaseOut}"/>
-                                            <DoubleAnimation Storyboard.TargetName="ButtonBorder"
-                                                             Storyboard.TargetProperty="(UIElement.RenderTransform).(TransformGroup.Children)[0].(ScaleTransform.ScaleY)"
-                                                             To="0.974" Duration="0:0:0.08"
+                                            <DoubleAnimation Storyboard.TargetName="ButtonScale"
+                                                             Storyboard.TargetProperty="ScaleY"
+                                                             To="0.986" Duration="0:0:0.08"
                                                              EasingFunction="{StaticResource InteractiveEaseOut}"/>
                                         </Storyboard>
                                     </BeginStoryboard>
@@ -508,12 +498,12 @@
                                 <Trigger.ExitActions>
                                     <BeginStoryboard>
                                         <Storyboard>
-                                            <DoubleAnimation Storyboard.TargetName="ButtonBorder"
-                                                             Storyboard.TargetProperty="(UIElement.RenderTransform).(TransformGroup.Children)[0].(ScaleTransform.ScaleX)"
+                                            <DoubleAnimation Storyboard.TargetName="ButtonScale"
+                                                             Storyboard.TargetProperty="ScaleX"
                                                              To="1" Duration="0:0:0.15"
                                                              EasingFunction="{StaticResource InteractiveEaseOut}"/>
-                                            <DoubleAnimation Storyboard.TargetName="ButtonBorder"
-                                                             Storyboard.TargetProperty="(UIElement.RenderTransform).(TransformGroup.Children)[0].(ScaleTransform.ScaleY)"
+                                            <DoubleAnimation Storyboard.TargetName="ButtonScale"
+                                                             Storyboard.TargetProperty="ScaleY"
                                                              To="1" Duration="0:0:0.15"
                                                              EasingFunction="{StaticResource InteractiveEaseOut}"/>
                                         </Storyboard>
@@ -745,10 +735,35 @@
                         <!-- Fit every navigation item into the available height, including on smaller displays. -->
                         <Viewbox Grid.Row="0" Stretch="Uniform" StretchDirection="DownOnly"
                                  HorizontalAlignment="Left" VerticalAlignment="Top">
-                            <StackPanel Width="174">
+                            <Grid x:Name="NavItemsHost" Width="174" Background="Transparent" MouseLeave="NavItemsHost_MouseLeave">
+                                <Border x:Name="NavHoverIndicator"
+                                        Height="30"
+                                        VerticalAlignment="Top"
+                                        HorizontalAlignment="Stretch"
+                                        CornerRadius="8"
+                                        Background="#10FFFFFF"
+                                        BorderThickness="0"
+                                        Opacity="0"
+                                        IsHitTestVisible="False">
+                                    <Border.RenderTransform>
+                                        <TranslateTransform x:Name="NavHoverIndicatorTranslate" Y="0"/>
+                                    </Border.RenderTransform>
+                                </Border>
+                                <Border x:Name="NavActiveIndicator"
+                                        Height="30"
+                                        VerticalAlignment="Top"
+                                        HorizontalAlignment="Stretch"
+                                        CornerRadius="8"
+                                        Background="#1EFFFFFF"
+                                        BorderThickness="0"
+                                        IsHitTestVisible="False">
+                                    <Border.RenderTransform>
+                                        <TranslateTransform x:Name="NavActiveIndicatorTranslate" Y="1"/>
+                                    </Border.RenderTransform>
+                                </Border>
+                                <StackPanel x:Name="NavItemsStack" Width="174">
                                 <Border x:Name="NavSearching" Style="{StaticResource NavButton}"
                                         Visibility="Collapsed"
-                                        Background="{StaticResource NavItemActiveBg}"
                                         MouseLeftButtonDown="Nav_Click" Tag="Searching">
                                     <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
                                         <TextBlock Text="&#xE721;" FontFamily="{StaticResource IconFont}" FontSize="14" Width="14" TextAlignment="Center"
@@ -758,7 +773,6 @@
                                     </StackPanel>
                                 </Border>
                                 <Border x:Name="NavAppearance" Style="{StaticResource NavButton}"
-                                        Background="{StaticResource NavItemActiveBg}"
                                         MouseLeftButtonDown="Nav_Click" Tag="Appearance">
                                     <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
                                         <Viewbox Width="14" Height="14" VerticalAlignment="Center" Margin="0,0,10,0">
@@ -895,7 +909,8 @@
                                                    Foreground="#AAAAAA" VerticalAlignment="Center"/>
                                     </StackPanel>
                                 </Border>
-                            </StackPanel>
+                                </StackPanel>
+                            </Grid>
                         </Viewbox>
 
                         <Border Grid.Row="1" Margin="10,4,10,0" Padding="0,12,0,12"

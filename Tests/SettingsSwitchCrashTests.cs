@@ -31,17 +31,22 @@ public sealed class SettingsSwitchCrashTests
                 .ToArray();
             Assert.True(switches.Length >= 2);
             var thumbs = switches.Select(Thumb).ToArray();
+            var caps = switches.Select(ThumbCapScale).ToArray();
             Assert.All(thumbs, thumb => Assert.False(thumb.IsFrozen));
+            Assert.All(caps, cap => Assert.False(cap.IsFrozen));
             Assert.Equal(thumbs.Length, thumbs.Distinct().Count());
+            Assert.Equal(caps.Length, caps.Distinct().Count());
 
             var check = window.DynamicIslandModeCheck;
             var thumb = Thumb(check);
+            var cap = ThumbCapScale(check);
             var other = switches.First(value => value != check);
             double otherPosition = Thumb(other).X;
             foreach (bool on in new[] { true, false, true, false }) check.IsChecked = on;
-            await WpfFrameWaiter.UntilAsync(() => Math.Abs(thumb.X) < .001, "switch settles after rapid toggles", ct);
+            await WpfFrameWaiter.UntilAsync(() => Math.Abs(thumb.X) < .001 && Math.Abs(cap.ScaleX - 1.0) < .001, "switch settles after rapid toggles", ct);
 
             Assert.False(thumb.IsFrozen);
+            Assert.False(cap.IsFrozen);
             Assert.Equal(otherPosition, Thumb(other).X);
         }
         finally
@@ -53,6 +58,9 @@ public sealed class SettingsSwitchCrashTests
 
     private static TranslateTransform Thumb(CheckBox check) => Assert.IsType<TranslateTransform>(
         Assert.IsType<Border>(check.Template.FindName("SwitchThumb", check)).RenderTransform);
+
+    private static ScaleTransform ThumbCapScale(CheckBox check) => Assert.IsType<ScaleTransform>(
+        Assert.IsType<Border>(check.Template.FindName("SwitchThumbCap", check)).RenderTransform);
 
     private static IEnumerable<DependencyObject> Descendants(DependencyObject parent)
     {

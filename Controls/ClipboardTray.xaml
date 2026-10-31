@@ -471,7 +471,7 @@
    </ControlTemplate></Setter.Value></Setter>
    <Style.Triggers>
     <DataTrigger Binding="{Binding IsSelected}" Value="True">
-     <Setter Property="Background" Value="#30FFFFFF"/>
+     <Setter Property="Background" Value="#18FFFFFF"/>
      <Setter Property="Foreground" Value="{x:Static svc:UiPalette.PrimaryBrush}"/>
     </DataTrigger>
    </Style.Triggers>
@@ -604,8 +604,8 @@
      <ColumnDefinition Width="Auto"/>
     </Grid.ColumnDefinitions>
     
-    <Border x:Name="SearchSurface" Grid.Column="1" Height="30" MaxWidth="360" HorizontalAlignment="Stretch" Margin="8,0,0,0"
-     CornerRadius="15" BorderThickness="1" Cursor="IBeam" MouseLeftButtonDown="SearchSurface_MouseLeftButtonDown">
+    <Border x:Name="SearchSurface" Grid.Column="1" Height="28" MaxWidth="360" HorizontalAlignment="Stretch" Margin="8,0,0,0"
+     CornerRadius="14" BorderThickness="1" Cursor="IBeam" MouseLeftButtonDown="SearchSurface_MouseLeftButtonDown">
      <Border.Style>
       <Style TargetType="Border">
        <Setter Property="Background" Value="#1EFFFFFF"/>

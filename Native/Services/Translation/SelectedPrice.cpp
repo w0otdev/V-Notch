@@ -46,7 +46,7 @@ namespace vnotch::services
             }
 
         static int32_t vn_currency_supported_impl(const char16_t* code_ptr, int32_t code_len,
-    uint8_t* out_supported) noexcept
+    uint8_t* out_supported)
         {
     if (!out_supported) return VN_ERR_INVALID_ARG;
     if (!code_ptr || code_len <= 0)
@@ -59,7 +59,7 @@ namespace vnotch::services
 }
 
         static int32_t vn_currency_decimal_places_impl(const char16_t* currency_ptr, int32_t currency_len,
-    int32_t* out_places) noexcept
+    int32_t* out_places)
         {
     if (!out_places) return VN_ERR_INVALID_ARG;
     *out_places = decimal_places_impl(vnotch::make_view(currency_ptr, currency_len));
@@ -67,7 +67,7 @@ namespace vnotch::services
 }
 
         static int32_t vn_currency_for_language_impl(const char16_t* lang_ptr, int32_t lang_len,
-    char16_t* out_buf, int32_t out_cap, int32_t* out_len) noexcept
+    char16_t* out_buf, int32_t out_cap, int32_t* out_len)
         {
     if (!out_len) return VN_ERR_INVALID_ARG;
     *out_len = 0;
@@ -120,7 +120,7 @@ namespace vnotch::services
         static int32_t vn_currency_resolve_token_impl(const char16_t* token_ptr, int32_t token_len,
     const char16_t* source_ptr, int32_t source_len,
     const char16_t* local_dollar_ptr, int32_t local_dollar_len,
-    char16_t* out_buf, int32_t out_cap, int32_t* out_len) noexcept
+    char16_t* out_buf, int32_t out_cap, int32_t* out_len)
         {
     if (!out_len) return VN_ERR_INVALID_ARG;
     *out_len = 0;
@@ -181,7 +181,7 @@ namespace vnotch::services
         static int32_t vn_currency_normalize_amount_impl(const char16_t* value_ptr, int32_t value_len,
     const char16_t* currency_ptr, int32_t currency_len,
     char16_t* out_buf, int32_t out_cap, int32_t* out_len,
-    uint8_t* out_valid) noexcept
+    uint8_t* out_valid)
         {
     if (!out_len || !out_valid) return VN_ERR_INVALID_ARG;
     *out_len = 0;
@@ -301,19 +301,22 @@ namespace vnotch::services
 VN_EXPORT int32_t vn_currency_supported(const char16_t* code_ptr, int32_t code_len,
     uint8_t* out_supported) noexcept
 {
-    return vnotch::services::SelectedPrice::vn_currency_supported_impl(code_ptr, code_len, out_supported);
+    try { return vnotch::services::SelectedPrice::vn_currency_supported_impl(code_ptr, code_len, out_supported);
+ } catch (...) { return VN_ERR_FAIL; }
 }
 
 VN_EXPORT int32_t vn_currency_decimal_places(const char16_t* currency_ptr, int32_t currency_len,
     int32_t* out_places) noexcept
 {
-    return vnotch::services::SelectedPrice::vn_currency_decimal_places_impl(currency_ptr, currency_len, out_places);
+    try { return vnotch::services::SelectedPrice::vn_currency_decimal_places_impl(currency_ptr, currency_len, out_places);
+ } catch (...) { return VN_ERR_FAIL; }
 }
 
 VN_EXPORT int32_t vn_currency_for_language(const char16_t* lang_ptr, int32_t lang_len,
     char16_t* out_buf, int32_t out_cap, int32_t* out_len) noexcept
 {
-    return vnotch::services::SelectedPrice::vn_currency_for_language_impl(lang_ptr, lang_len, out_buf, out_cap, out_len);
+    try { return vnotch::services::SelectedPrice::vn_currency_for_language_impl(lang_ptr, lang_len, out_buf, out_cap, out_len);
+ } catch (...) { return VN_ERR_FAIL; }
 }
 
 VN_EXPORT int32_t vn_currency_resolve_token(const char16_t* token_ptr, int32_t token_len,
@@ -321,7 +324,8 @@ VN_EXPORT int32_t vn_currency_resolve_token(const char16_t* token_ptr, int32_t t
     const char16_t* local_dollar_ptr, int32_t local_dollar_len,
     char16_t* out_buf, int32_t out_cap, int32_t* out_len) noexcept
 {
-    return vnotch::services::SelectedPrice::vn_currency_resolve_token_impl(token_ptr, token_len, source_ptr, source_len, local_dollar_ptr, local_dollar_len, out_buf, out_cap, out_len);
+    try { return vnotch::services::SelectedPrice::vn_currency_resolve_token_impl(token_ptr, token_len, source_ptr, source_len, local_dollar_ptr, local_dollar_len, out_buf, out_cap, out_len);
+ } catch (...) { return VN_ERR_FAIL; }
 }
 
 VN_EXPORT int32_t vn_currency_normalize_amount(const char16_t* value_ptr, int32_t value_len,
@@ -329,6 +333,7 @@ VN_EXPORT int32_t vn_currency_normalize_amount(const char16_t* value_ptr, int32_
     char16_t* out_buf, int32_t out_cap, int32_t* out_len,
     uint8_t* out_valid) noexcept
 {
-    return vnotch::services::SelectedPrice::vn_currency_normalize_amount_impl(value_ptr, value_len, currency_ptr, currency_len, out_buf, out_cap, out_len, out_valid);
+    try { return vnotch::services::SelectedPrice::vn_currency_normalize_amount_impl(value_ptr, value_len, currency_ptr, currency_len, out_buf, out_cap, out_len, out_valid);
+ } catch (...) { return VN_ERR_FAIL; }
 }
 

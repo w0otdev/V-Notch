@@ -87,8 +87,15 @@ VN_EXPORT int32_t vn_spotify_normalize_for_match(
     char16_t* out_buf, int32_t out_cap, int32_t* out_len) noexcept
 {
     if (out_len == nullptr) return VN_ERR_INVALID_ARG;
-    std::u16string norm = vnotch::normalize_for_loose_match_impl(vnotch::make_u16_view(val_ptr, val_len));
-    return vnotch::copy_u16_out(norm, out_buf, out_cap, out_len);
+    try
+    {
+        std::u16string norm = vnotch::normalize_for_loose_match_impl(vnotch::make_u16_view(val_ptr, val_len));
+        return vnotch::copy_u16_out(norm, out_buf, out_cap, out_len);
+    }
+    catch (...)
+    {
+        return VN_ERR_FAIL;
+    }
 }
 
 VN_EXPORT int32_t vn_spotify_match_normalized_score(

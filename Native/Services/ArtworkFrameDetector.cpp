@@ -13,7 +13,7 @@ namespace vnotch::services
 
         static double Brightness(const uint8_t* pixels, int32_t w, int32_t x, int32_t y) noexcept
         {
-            int32_t i = (y * w + x) * 4;
+            int64_t i = (static_cast<int64_t>(y) * w + x) * 4LL;
             return (static_cast<int32_t>(pixels[i]) +
                     static_cast<int32_t>(pixels[i + 1]) +
                     static_cast<int32_t>(pixels[i + 2])) / 3.0;
@@ -171,7 +171,7 @@ namespace vnotch::services
 
         static bool IsWhite(const uint8_t* pixels, int32_t w, int32_t x, int32_t y) noexcept
         {
-            int32_t i = (y * w + x) * 4;
+            int64_t i = (static_cast<int64_t>(y) * w + x) * 4LL;
             int32_t b = pixels[i], g = pixels[i + 1], r = pixels[i + 2], a = pixels[i + 3];
             int32_t mn = std::min(b, std::min(g, r));
             int32_t mx = std::max(b, std::max(g, r));
@@ -270,7 +270,7 @@ VN_EXPORT int32_t vn_artwork_frame_detect_white(
     int32_t* out_h,
     uint8_t* out_found) noexcept
 {
-    if (!pixels || w <= 0 || h <= 0 || !out_x || !out_y || !out_w || !out_h || !out_found)
+    if (!pixels || w < 8 || h < 8 || w > 16384 || h > 16384 || width <= 0 || height <= 0 || !out_x || !out_y || !out_w || !out_h || !out_found)
         return VN_ERR_INVALID_ARG;
     *out_x = *out_y = *out_w = *out_h = 0;
     try {
@@ -292,7 +292,7 @@ VN_EXPORT int32_t vn_artwork_frame_detect_dark_textured(
     int32_t* out_h,
     uint8_t* out_found) noexcept
 {
-    if (!pixels || w <= 0 || h <= 0 || !out_x || !out_y || !out_w || !out_h || !out_found)
+    if (!pixels || w < 8 || h < 8 || w > 16384 || h > 16384 || width <= 0 || height <= 0 || !out_x || !out_y || !out_w || !out_h || !out_found)
         return VN_ERR_INVALID_ARG;
     *out_x = *out_y = *out_w = *out_h = 0;
     try {
@@ -314,7 +314,7 @@ VN_EXPORT int32_t vn_artwork_frame_detect_any(
     int32_t* out_h,
     uint8_t* out_found) noexcept
 {
-    if (!pixels || w <= 0 || h <= 0 || !out_x || !out_y || !out_w || !out_h || !out_found)
+    if (!pixels || w < 8 || h < 8 || w > 16384 || h > 16384 || width <= 0 || height <= 0 || !out_x || !out_y || !out_w || !out_h || !out_found)
         return VN_ERR_INVALID_ARG;
     *out_x = *out_y = *out_w = *out_h = 0;
     try {

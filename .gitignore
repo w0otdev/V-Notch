@@ -142,3 +142,7 @@ CLAUDE.md
 .github/context-mode/
 .context-mode/
 /.github/context-mode
+.brooks-lint.yaml
+skills-lock.json
+.brooks-lint-history.json
+/.claude/

@@ -401,13 +401,21 @@ VN_EXPORT int32_t vn_translation_date_preserves_weekdays(
     {
         return VN_ERR_INVALID_ARG;
     }
-    bool ok = vnotch::services::TranslationDateIntegrity::PreservesWeekdays(
-        vnotch::make_u16_view(orig_ptr, orig_len),
-        vnotch::make_u16_view(src_ptr, src_len),
-        vnotch::make_u16_view(trans_ptr, trans_len),
-        vnotch::make_u16_view(tgt_ptr, tgt_len));
-    *out_preserved = ok ? 1u : 0u;
-    return VN_OK;
+    try
+    {
+        bool ok = vnotch::services::TranslationDateIntegrity::PreservesWeekdays(
+            vnotch::make_u16_view(orig_ptr, orig_len),
+            vnotch::make_u16_view(src_ptr, src_len),
+            vnotch::make_u16_view(trans_ptr, trans_len),
+            vnotch::make_u16_view(tgt_ptr, tgt_len));
+        *out_preserved = ok ? 1u : 0u;
+        return VN_OK;
+    }
+    catch (...)
+    {
+        *out_preserved = 0u;
+        return VN_ERR_FAIL;
+    }
 }
 
 VN_EXPORT int32_t vn_translation_date_extract_weekdays(
@@ -422,31 +430,39 @@ VN_EXPORT int32_t vn_translation_date_extract_weekdays(
     {
         return VN_ERR_INVALID_ARG;
     }
-    std::vector<vnotch::services::VnWeekdaySpan> spans;
-    vnotch::services::TranslationDateIntegrity::ExtractSpans(
-        vnotch::make_u16_view(text_ptr, text_len),
-        vnotch::make_u16_view(lang_ptr, lang_len),
-        spans);
-    if (sort_by_index != 0)
+    try
     {
-        std::stable_sort(spans.begin(), spans.end(),
-            [](const vnotch::services::VnWeekdaySpan& lhs, const vnotch::services::VnWeekdaySpan& rhs) noexcept
-            {
-                return lhs.index < rhs.index;
-            });
-    }
-    int32_t count = static_cast<int32_t>(spans.size());
-    *out_count = count;
-    if (count == 0)
-    {
+        std::vector<vnotch::services::VnWeekdaySpan> spans;
+        vnotch::services::TranslationDateIntegrity::ExtractSpans(
+            vnotch::make_u16_view(text_ptr, text_len),
+            vnotch::make_u16_view(lang_ptr, lang_len),
+            spans);
+        if (sort_by_index != 0)
+        {
+            std::stable_sort(spans.begin(), spans.end(),
+                [](const vnotch::services::VnWeekdaySpan& lhs, const vnotch::services::VnWeekdaySpan& rhs) noexcept
+                {
+                    return lhs.index < rhs.index;
+                });
+        }
+        int32_t count = static_cast<int32_t>(spans.size());
+        *out_count = count;
+        if (count == 0)
+        {
+            return VN_OK;
+        }
+        if (out_spans == nullptr || out_cap < count)
+        {
+            return VN_ERR_BUFFER_TOO_SMALL;
+        }
+        std::memcpy(out_spans, spans.data(), static_cast<size_t>(count) * sizeof(vnotch::services::VnWeekdaySpan));
         return VN_OK;
     }
-    if (out_spans == nullptr || out_cap < count)
+    catch (...)
     {
-        return VN_ERR_BUFFER_TOO_SMALL;
+        *out_count = 0;
+        return VN_ERR_FAIL;
     }
-    std::memcpy(out_spans, spans.data(), static_cast<size_t>(count) * sizeof(vnotch::services::VnWeekdaySpan));
-    return VN_OK;
 }
 
 } // extern "C"

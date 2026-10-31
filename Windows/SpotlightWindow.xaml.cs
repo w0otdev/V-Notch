@@ -1,3 +1,4 @@
+using System.Runtime.InteropServices;
 using System.ComponentModel;
 using System.Threading;
 using System.Threading.Tasks;
@@ -493,6 +494,7 @@ public partial class SpotlightWindow : Window
     {
         if (!IsSpotlightOpen || _isClosing) return;
         PlaySpotlightClickSfx();
+        CloseResultContextMenu();
         SaveAiHistory();
         StopAiActivity();
         _lastDismissedQuery = SearchBox.Text;
@@ -656,6 +658,7 @@ public partial class SpotlightWindow : Window
             return;
         }
         PlayTypingAnimation();
+        CloseResultContextMenu();
         UpdateGlowingCaret();
         CancelSearchingGrace();
         _pendingLaunchQuery = null;
@@ -795,9 +798,36 @@ public partial class SpotlightWindow : Window
 
     }
 
+    [StructLayout(LayoutKind.Sequential, Pack = 1)]
+    private struct VnQuickActionsSlideMotionOut
+    {
+        public double ResultsFromX;
+        public double ResultsToX;
+        public double ActionsFromX;
+        public double ActionsToX;
+        public double ItemSlideX;
+        public int ExitDurationMs;
+        public int EnterDurationMs;
+        public int StaggerStepMs;
+    }
+
+    [LibraryImport("VNotch.Native", EntryPoint = "vn_animation_compute_spotlight_quick_actions_motion")]
+    private static unsafe partial int NativeComputeSpotlightQuickActionsMotion(
+        byte entering,
+        double viewportWidth,
+        byte reducedMotion,
+        VnQuickActionsSlideMotionOut* outMotion);
+
+    private ContextMenu? _activeResultMenu;
+    private int _activeResultMenuIndex = -1;
+    private bool _quickActionsOpen;
+    private int _quickActionsSlideVersion;
+    private readonly List<Action> _quickActionCallbacks = new();
+
     private void Window_PreviewKeyDown(object sender, KeyEventArgs e)
     {
         if (_personalizationOpen) return;
+        if (HandleResultMenuKey(e)) return;
         if (HandleAiKey(e)) return;
         // Navigation keys must be intercepted on the tunnel: the search box's
         if (e.Key == Key.Down || (e.Key == Key.Tab && Keyboard.Modifiers == ModifierKeys.None))
@@ -819,6 +849,16 @@ public partial class SpotlightWindow : Window
         {
             MoveSelection(-PageJump);
             e.Handled = true;
+        }
+        else if ((e.Key == Key.Right && Keyboard.Modifiers == ModifierKeys.None && CanOpenQuickActionsFromCaret()) ||
+                 e.Key == Key.Apps ||
+                 (e.Key == Key.F10 && Keyboard.Modifiers == ModifierKeys.Shift))
+        {
+            if (_viewModel.SelectedResult is { } selected)
+            {
+                OpenResultContextMenu(selected, openedByKeyboard: true);
+                e.Handled = true;
+            }
         }
         else if (e.Key == Key.Escape)
         {
@@ -856,6 +896,300 @@ public partial class SpotlightWindow : Window
         }
     }
 
+    private bool CanOpenQuickActionsFromCaret() =>
+        _viewModel.SelectedResult != null &&
+        SearchBox.SelectionLength == 0 &&
+        SearchBox.CaretIndex >= (SearchBox.Text?.Length ?? 0);
+
+    private bool HandleResultMenuKey(KeyEventArgs e)
+    {
+        if (e.Handled || !_quickActionsOpen || _quickActionCallbacks.Count == 0)
+            return false;
+
+        int count = _quickActionCallbacks.Count;
+        if (e.Key == Key.Down || (e.Key == Key.Tab && Keyboard.Modifiers == ModifierKeys.None))
+        {
+            SelectQuickActionIndex(_activeResultMenuIndex < 0 ? 0 : _activeResultMenuIndex + 1, animateGlide: true);
+            e.Handled = true;
+            return true;
+        }
+        if (e.Key == Key.Up || (e.Key == Key.Tab && Keyboard.Modifiers == ModifierKeys.Shift))
+        {
+            SelectQuickActionIndex(_activeResultMenuIndex <= 0 ? count - 1 : _activeResultMenuIndex - 1, animateGlide: true);
+            e.Handled = true;
+            return true;
+        }
+        if (e.Key is Key.Enter or Key.Space)
+        {
+            int idx = _activeResultMenuIndex >= 0 && _activeResultMenuIndex < count ? _activeResultMenuIndex : 0;
+            Action callback = _quickActionCallbacks[idx];
+            CloseResultContextMenu(animate: false);
+            callback();
+            e.Handled = true;
+            return true;
+        }
+        if (e.Key is Key.Left or Key.Escape)
+        {
+            CloseResultContextMenu(animate: true);
+            if (IsSpotlightOpen && !_isClosing && !_personalizationOpen)
+                SearchBox.Focus();
+            e.Handled = true;
+            return true;
+        }
+        return false;
+    }
+
+    private void QuickActionsBack_Click(object sender, RoutedEventArgs e)
+    {
+        CloseResultContextMenu(animate: true);
+        if (IsSpotlightOpen && !_isClosing && !_personalizationOpen)
+            SearchBox.Focus();
+    }
+
+    private readonly List<System.Windows.Shapes.Path> _quickActionRightIcons = new();
+    private readonly List<ScaleTransform> _quickActionIconScales = new();
+
+    private void SelectQuickActionIndex(int index, bool animateGlide)
+    {
+        int count = _quickActionCallbacks.Count;
+        if (count == 0) return;
+        _activeResultMenuIndex = ((index % count) + count) % count;
+
+        if (_activeResultMenu != null)
+        {
+            for (int i = 0; i < _activeResultMenu.Items.Count; i++)
+            {
+                if (_activeResultMenu.Items[i] is MenuItem mi)
+                    mi.Tag = i == _activeResultMenuIndex ? "Selected" : null;
+            }
+        }
+
+        bool animateIcons = animateGlide && !AnimationConfig.ReduceMotion;
+        for (int i = 0; i < _quickActionRightIcons.Count; i++)
+        {
+            bool isSelected = i == _activeResultMenuIndex;
+            double targetOpacity = isSelected ? 0.96 : 0.56;
+            double targetScale = isSelected ? 1.1 : 1.0;
+            var icon = _quickActionRightIcons[i];
+            if (animateIcons)
+            {
+                var fade = AnimationPrimitives.MakeAnim(targetOpacity, new Duration(TimeSpan.FromMilliseconds(140)), CreateContentResizeEase());
+                icon.BeginAnimation(OpacityProperty, fade);
+                if (i < _quickActionIconScales.Count)
+                {
+                    var scaleAnim = AnimationPrimitives.MakeAnim(targetScale, new Duration(TimeSpan.FromMilliseconds(160)), CreateContentResizeEase());
+                    _quickActionIconScales[i].BeginAnimation(ScaleTransform.ScaleXProperty, scaleAnim);
+                    _quickActionIconScales[i].BeginAnimation(ScaleTransform.ScaleYProperty, scaleAnim);
+                }
+            }
+            else
+            {
+                icon.BeginAnimation(OpacityProperty, null);
+                icon.Opacity = targetOpacity;
+                if (i < _quickActionIconScales.Count)
+                {
+                    _quickActionIconScales[i].BeginAnimation(ScaleTransform.ScaleXProperty, null);
+                    _quickActionIconScales[i].BeginAnimation(ScaleTransform.ScaleYProperty, null);
+                    _quickActionIconScales[i].ScaleX = targetScale;
+                    _quickActionIconScales[i].ScaleY = targetScale;
+                }
+            }
+        }
+
+        UpdateQuickActionsSelectionGlide(animateGlide);
+    }
+
+    private void UpdateQuickActionsSelectionGlide(bool animate)
+    {
+        if (!_quickActionsOpen || _activeResultMenuIndex < 0 || _activeResultMenuIndex >= QuickActionsItems.Children.Count)
+        {
+            QuickActionsSelectionGlide.Opacity = 0;
+            return;
+        }
+
+        if (QuickActionsItems.Children[_activeResultMenuIndex] is not FrameworkElement row)
+            return;
+
+        QuickActionsItems.UpdateLayout();
+        double rowHeight = row.ActualHeight > 0 ? row.ActualHeight : 38;
+        double rowWidth = row.ActualWidth > 0 ? row.ActualWidth : Math.Max(120, Shell.ActualWidth - 18);
+        Point offset = row.TranslatePoint(new Point(0, 0), QuickActionsItems);
+        double targetY = double.IsFinite(offset.Y) ? offset.Y : _activeResultMenuIndex * (rowHeight + 4);
+
+        QuickActionsSelectionGlide.Margin = new Thickness(row.Margin.Left, 0, row.Margin.Right, 0);
+        QuickActionsSelectionGlide.Width = rowWidth;
+        QuickActionsSelectionGlide.Height = rowHeight;
+        QuickActionsSelectionGlide.Opacity = 1;
+
+        if (!animate || AnimationConfig.ReduceMotion)
+        {
+            QuickActionsGlideTransform.BeginAnimation(TranslateTransform.YProperty, null);
+            QuickActionsGlideTransform.Y = targetY;
+            return;
+        }
+
+        var glideAnim = new DoubleAnimation(targetY, TimeSpan.FromMilliseconds(165))
+        {
+            EasingFunction = CreateContentResizeEase()
+        };
+        Timeline.SetDesiredFrameRate(glideAnim, AnimationConfig.TargetFps);
+        QuickActionsGlideTransform.BeginAnimation(TranslateTransform.YProperty, glideAnim, HandoffBehavior.SnapshotAndReplace);
+    }
+
+    private double MeasureTargetContentHeight()
+    {
+        var inset = ContentRegion.BorderThickness;
+        var padding = ContentRegion.Padding;
+        double baseWidth = ContentRegion.ActualWidth > 0 ? ContentRegion.ActualWidth : Shell.ActualWidth;
+        double width = Math.Max(1, baseWidth - inset.Left - inset.Right - padding.Left - padding.Right);
+
+        Visibility savedResultsVis = ResultsList.Visibility;
+        Visibility savedActionsVis = QuickActionsPanel.Visibility;
+        if (_quickActionsOpen && ResultsList.Visibility == Visibility.Visible)
+            ResultsList.Visibility = Visibility.Collapsed;
+        else if (!_quickActionsOpen && QuickActionsPanel.Visibility == Visibility.Visible)
+            QuickActionsPanel.Visibility = Visibility.Collapsed;
+
+        InvalidateMeasureRecursive(ContentRegion.Child);
+        ContentRegion.Child.Measure(new Size(width, double.PositiveInfinity));
+        double desiredHeight = ContentRegion.Child.DesiredSize.Height;
+
+        ResultsList.Visibility = savedResultsVis;
+        QuickActionsPanel.Visibility = savedActionsVis;
+
+        return desiredHeight + inset.Top + inset.Bottom + padding.Top + padding.Bottom;
+    }
+
+    private static void InvalidateMeasureRecursive(DependencyObject? root)
+    {
+        if (root is not UIElement element) return;
+        element.InvalidateMeasure();
+        int count = VisualTreeHelper.GetChildrenCount(element);
+        for (int i = 0; i < count; i++)
+        {
+            InvalidateMeasureRecursive(VisualTreeHelper.GetChild(element, i));
+        }
+    }
+
+    private void AnimateQuickActionsViewportHeight(double? lockedOldHeight = null)
+    {
+        if (!_contentShown || _entranceActive) return;
+        double oldHeight = lockedOldHeight is > 0 ? lockedOldHeight.Value : ContentRegion.ActualHeight;
+        if (oldHeight <= 0)
+        {
+            ScheduleContentResize();
+            return;
+        }
+
+        int generation = ++_contentSizeGeneration;
+        ContentRegion.Height = oldHeight;
+        ContentRegion.ClipToBounds = true;
+
+        double target = MeasureTargetContentHeight();
+        if (!double.IsFinite(target) || Math.Abs(target - oldHeight) < 1)
+        {
+            ++_contentHeightAnimationVersion;
+            _contentHeightTarget = target;
+            ContentRegion.BeginAnimation(HeightProperty, null);
+            ContentRegion.Height = double.NaN;
+            ContentRegion.ClipToBounds = false;
+            return;
+        }
+
+        BeginContentHeightAnimation(oldHeight, target, generation);
+    }
+
+    private unsafe void CloseResultContextMenu(bool animate = false)
+    {
+        if (_activeResultMenu is { IsOpen: true } popupMenu)
+            popupMenu.IsOpen = false;
+        _activeResultMenu = null;
+        _activeResultMenuIndex = -1;
+
+        if (!_quickActionsOpen) return;
+        _quickActionsOpen = false;
+        _resultMenuOpen = false;
+        int slideGen = ++_quickActionsSlideVersion;
+
+        bool canAnimate = animate && !AnimationConfig.ReduceMotion && IsSpotlightOpen && !_isClosing;
+        if (!canAnimate)
+        {
+            QuickActionsPanel.BeginAnimation(OpacityProperty, null);
+            QuickActionsTranslate.BeginAnimation(TranslateTransform.XProperty, null);
+            QuickActionsTranslate.BeginAnimation(TranslateTransform.YProperty, null);
+            QuickActionsPanel.Opacity = 0;
+            QuickActionsTranslate.X = 0;
+            QuickActionsTranslate.Y = 0;
+            QuickActionsPanel.Visibility = Visibility.Collapsed;
+
+            ResultsList.BeginAnimation(OpacityProperty, null);
+            ResultsListTranslate.BeginAnimation(TranslateTransform.XProperty, null);
+            ResultsListTranslate.BeginAnimation(TranslateTransform.YProperty, null);
+            ResultsList.Opacity = 1;
+            ResultsListTranslate.X = 0;
+            ResultsListTranslate.Y = 0;
+            ResultsList.IsHitTestVisible = true;
+            if (_viewModel.Results.Count > 0)
+                ResultsList.Visibility = Visibility.Visible;
+            ScheduleContentResize();
+            ScheduleGlideUpdate();
+            return;
+        }
+
+        VnQuickActionsSlideMotionOut motion;
+        NativeComputeSpotlightQuickActionsMotion(0, Shell.ActualWidth, 0, &motion);
+
+        double lockedHeight = ContentRegion.ActualHeight;
+        if (lockedHeight > 0)
+        {
+            ContentRegion.Height = lockedHeight;
+            ContentRegion.ClipToBounds = true;
+        }
+
+        ResultsList.Visibility = Visibility.Visible;
+        ResultsList.IsHitTestVisible = true;
+        QuickActionsPanel.IsHitTestVisible = false;
+
+        var exitDur = new Duration(TimeSpan.FromMilliseconds(motion.ExitDurationMs));
+        var enterDur = new Duration(TimeSpan.FromMilliseconds(motion.EnterDurationMs));
+        var revealEase = CreateContentResizeEase();
+        var contractEase = CreateContentContractEase();
+
+        var actionsOutX = AnimationPrimitives.MakeAnim(QuickActionsTranslate.X, motion.ActionsToX, exitDur, contractEase);
+        var actionsOutY = AnimationPrimitives.MakeAnim(QuickActionsTranslate.Y, -4, exitDur, contractEase);
+        var actionsOutFade = AnimationPrimitives.MakeAnim(QuickActionsPanel.Opacity, 0, exitDur, contractEase);
+        actionsOutFade.Completed += (_, _) =>
+        {
+            if (slideGen != _quickActionsSlideVersion || _quickActionsOpen) return;
+            QuickActionsPanel.BeginAnimation(OpacityProperty, null);
+            QuickActionsTranslate.BeginAnimation(TranslateTransform.XProperty, null);
+            QuickActionsTranslate.BeginAnimation(TranslateTransform.YProperty, null);
+            QuickActionsPanel.Opacity = 0;
+            QuickActionsTranslate.X = 0;
+            QuickActionsTranslate.Y = 0;
+            QuickActionsPanel.Visibility = Visibility.Collapsed;
+        };
+        QuickActionsTranslate.BeginAnimation(TranslateTransform.XProperty, actionsOutX);
+        QuickActionsTranslate.BeginAnimation(TranslateTransform.YProperty, actionsOutY);
+        QuickActionsPanel.BeginAnimation(OpacityProperty, actionsOutFade);
+
+        var resultsInX = AnimationPrimitives.MakeAnim(motion.ResultsFromX, motion.ResultsToX, enterDur, revealEase);
+        var resultsInY = AnimationPrimitives.MakeAnim(-8, 0, enterDur, revealEase);
+        var resultsInFade = AnimationPrimitives.MakeAnim(0, 1, new Duration(TimeSpan.FromMilliseconds(230)), revealEase);
+        resultsInX.FillBehavior = FillBehavior.Stop;
+        resultsInY.FillBehavior = FillBehavior.Stop;
+        resultsInFade.FillBehavior = FillBehavior.Stop;
+        ResultsListTranslate.X = 0;
+        ResultsListTranslate.Y = 0;
+        ResultsList.Opacity = 1;
+        ResultsListTranslate.BeginAnimation(TranslateTransform.XProperty, resultsInX);
+        ResultsListTranslate.BeginAnimation(TranslateTransform.YProperty, resultsInY);
+        ResultsList.BeginAnimation(OpacityProperty, resultsInFade);
+
+        AnimateQuickActionsViewportHeight(lockedHeight);
+        ScheduleGlideUpdate();
+    }
+
     private void ResultItem_MouseLeftButtonUp(object sender, MouseButtonEventArgs e)
     {
         if (sender is not ListBoxItem { DataContext: SpotlightSearchItem item }) return;
@@ -868,12 +1202,21 @@ public partial class SpotlightWindow : Window
     private void ResultItem_MouseRightButtonUp(object sender, MouseButtonEventArgs e)
     {
         if (sender is not ListBoxItem { DataContext: SpotlightSearchItem item } container) return;
+        OpenResultContextMenu(item, container, openedByKeyboard: true);
+        e.Handled = true;
+    }
+
+    private unsafe ContextMenu OpenResultContextMenu(SpotlightSearchItem item, FrameworkElement? container = null, bool openedByKeyboard = false)
+    {
         _viewModel.SelectedResult = item;
+        _quickActionCallbacks.Clear();
+        _quickActionRightIcons.Clear();
+        _quickActionIconScales.Clear();
+        QuickActionsItems.Children.Clear();
 
         var menu = new ContextMenu
         {
-            Style = (Style)FindResource("SpotlightContextMenuStyle"),
-            PlacementTarget = container
+            Style = (Style)FindResource("SpotlightContextMenuStyle")
         };
 
         if (item.Kind == SpotlightResultKind.Calculation)
@@ -881,29 +1224,256 @@ public partial class SpotlightWindow : Window
             AddMenuItem(menu, Loc.Get("spotlight.copy"), () =>
             {
                 if (TryCopyToClipboard(item.Target)) HideSpotlight();
-            });
+            }, QuickActionCopyGeometry);
         }
         else
         {
-            AddMenuItem(menu, item.Kind == SpotlightResultKind.SystemAction ? item.Title : Loc.Get("spotlight.open"), LaunchSelected);
+            AddMenuItem(menu, item.Kind == SpotlightResultKind.SystemAction ? item.Title : Loc.Get("spotlight.open"), LaunchSelected, QuickActionOpenGeometry);
             if (SpotlightLauncher.CanLaunchElevated(item))
-                AddMenuItem(menu, Loc.Get("spotlight.runAsAdmin"), LaunchSelectedElevated);
+                AddMenuItem(menu, Loc.Get("spotlight.runAsAdmin"), LaunchSelectedElevated, QuickActionAdminGeometry);
             if (SpotlightLauncher.CanReveal(item))
-                AddMenuItem(menu, Loc.Get("spotlight.reveal"), RevealSelected);
+                AddMenuItem(menu, Loc.Get("spotlight.reveal"), RevealSelected, QuickActionFolderGeometry);
             if (SpotlightLauncher.GetCopyableText(item) != null)
-                AddMenuItem(menu, Loc.Get("spotlight.copyPath"), CopySelected);
+                AddMenuItem(menu, Loc.Get("spotlight.copyPath"), CopySelected, QuickActionCopyGeometry);
         }
 
         AddPersonalizationActions(menu, item);
-        menu.IsOpen = true;
-        e.Handled = true;
+
+        QuickActionsTargetIcon.Source = item.Icon;
+        QuickActionsTargetIcon.Visibility = item.Icon != null ? Visibility.Visible : Visibility.Collapsed;
+        QuickActionsTargetSolidIcon.Data = item.SolidIcon;
+        QuickActionsTargetSolidBox.Visibility = item.Icon == null && item.SolidIcon != null ? Visibility.Visible : Visibility.Collapsed;
+        QuickActionsTargetTitle.Text = item.DisplayTitle;
+        QuickActionsTargetSubtitle.Text = item.DisplaySubtitle;
+        QuickActionsTargetSubtitle.Visibility = string.IsNullOrWhiteSpace(item.DisplaySubtitle) ? Visibility.Collapsed : Visibility.Visible;
+
+        VnQuickActionsSlideMotionOut motion;
+        NativeComputeSpotlightQuickActionsMotion(1, Shell.ActualWidth, AnimationConfig.ReduceMotion ? (byte)1 : (byte)0, &motion);
+
+        var sfPro = (FontFamily)FindResource("SFProDisplay");
+        var primaryBrush = (Brush)FindResource("TitleTextBrush");
+        var hoverBrush = (Brush)FindResource("HoverItemBrush");
+        var revealEase = CreateContentResizeEase();
+
+        for (int i = 0; i < menu.Items.Count; i++)
+        {
+            if (menu.Items[i] is not MenuItem mi) continue;
+            int actionIndex = _quickActionCallbacks.Count;
+            Action callback = () => mi.RaiseEvent(new RoutedEventArgs(MenuItem.ClickEvent));
+            _quickActionCallbacks.Add(callback);
+
+            var rowTranslate = new TranslateTransform(motion.ItemSlideX, 0);
+            var hoverSurface = new Border
+            {
+                Background = hoverBrush,
+                CornerRadius = new CornerRadius(8),
+                Opacity = 0,
+                IsHitTestVisible = false
+            };
+
+            var rowGrid = new Grid();
+            rowGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+            rowGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+
+            var labelText = new TextBlock
+            {
+                Text = mi.Header?.ToString() ?? string.Empty,
+                FontFamily = sfPro,
+                FontSize = 13.5,
+                FontWeight = FontWeights.Bold,
+                Foreground = primaryBrush,
+                VerticalAlignment = VerticalAlignment.Center,
+                TextTrimming = TextTrimming.CharacterEllipsis
+            };
+            rowGrid.Children.Add(labelText);
+
+            var iconGeom = mi.DataContext as Geometry ?? QuickActionOpenGeometry;
+            double initialOpacity = actionIndex == 0 ? 0.96 : 0.56;
+            double initialScale = actionIndex == 0 ? 1.1 : 1.0;
+            var iconScale = new ScaleTransform(initialScale, initialScale);
+            var rightIcon = new System.Windows.Shapes.Path
+            {
+                Data = iconGeom,
+                Fill = Brushes.White,
+                Stretch = Stretch.None,
+                Opacity = initialOpacity,
+                IsHitTestVisible = false
+            };
+            var iconCanvas = new Canvas
+            {
+                Width = 24,
+                Height = 24
+            };
+            iconCanvas.Children.Add(rightIcon);
+            var iconViewbox = new Viewbox
+            {
+                Width = 16,
+                Height = 16,
+                Stretch = Stretch.Uniform,
+                VerticalAlignment = VerticalAlignment.Center,
+                HorizontalAlignment = HorizontalAlignment.Center,
+                Margin = new Thickness(14, 0, 2, 0),
+                RenderTransformOrigin = new Point(0.5, 0.5),
+                RenderTransform = iconScale,
+                IsHitTestVisible = false,
+                Child = iconCanvas
+            };
+            Grid.SetColumn(iconViewbox, 1);
+            rowGrid.Children.Add(iconViewbox);
+            _quickActionRightIcons.Add(rightIcon);
+            _quickActionIconScales.Add(iconScale);
+
+            var contentBorder = new Border
+            {
+                Padding = new Thickness(15, 7, 15, 7),
+                Child = rowGrid
+            };
+
+            var rowContainer = new Grid
+            {
+                Margin = new Thickness(9, 1, 9, 1),
+                Background = Brushes.Transparent,
+                Cursor = Cursors.Hand,
+                RenderTransform = rowTranslate
+            };
+            rowContainer.Children.Add(hoverSurface);
+            rowContainer.Children.Add(contentBorder);
+
+            rowContainer.MouseEnter += (_, _) =>
+            {
+                SelectQuickActionIndex(actionIndex, animateGlide: true);
+                var hoverIn = new DoubleAnimation(1, TimeSpan.FromMilliseconds(120)) { EasingFunction = revealEase };
+                hoverSurface.BeginAnimation(OpacityProperty, hoverIn);
+            };
+            rowContainer.MouseLeave += (_, _) =>
+            {
+                var hoverOut = new DoubleAnimation(0, TimeSpan.FromMilliseconds(160)) { EasingFunction = revealEase };
+                hoverSurface.BeginAnimation(OpacityProperty, hoverOut);
+            };
+            rowContainer.MouseLeftButtonUp += (_, me) =>
+            {
+                CloseResultContextMenu(animate: false);
+                callback();
+                me.Handled = true;
+            };
+
+            QuickActionsItems.Children.Add(rowContainer);
+
+            if (!AnimationConfig.ReduceMotion && motion.EnterDurationMs > 0)
+            {
+                rowContainer.Opacity = 0;
+                rowTranslate.Y = -5;
+                rightIcon.Opacity = 0;
+                iconScale.ScaleX = 0.68;
+                iconScale.ScaleY = 0.68;
+
+                var delay = TimeSpan.FromMilliseconds(actionIndex * motion.StaggerStepMs);
+                var iconDelay = TimeSpan.FromMilliseconds(actionIndex * motion.StaggerStepMs + 25);
+                var dur = new Duration(TimeSpan.FromMilliseconds(motion.EnterDurationMs));
+                var fadeDur = new Duration(TimeSpan.FromMilliseconds(220));
+
+                var rowSlideX = AnimationPrimitives.MakeAnim(motion.ItemSlideX, 0, dur, revealEase, delay);
+                var rowSlideY = AnimationPrimitives.MakeAnim(-5, 0, dur, revealEase, delay);
+                var rowFade = AnimationPrimitives.MakeAnim(0, 1, fadeDur, revealEase, delay);
+                rowTranslate.BeginAnimation(TranslateTransform.XProperty, rowSlideX);
+                rowTranslate.BeginAnimation(TranslateTransform.YProperty, rowSlideY);
+                rowContainer.BeginAnimation(OpacityProperty, rowFade);
+
+                var iconFade = AnimationPrimitives.MakeAnim(0, initialOpacity, fadeDur, revealEase, iconDelay);
+                var iconScaleIn = AnimationPrimitives.MakeAnim(0.68, initialScale, dur, AnimationPrimitives._easeBackOut022, iconDelay);
+                rightIcon.BeginAnimation(OpacityProperty, iconFade);
+                iconScale.BeginAnimation(ScaleTransform.ScaleXProperty, iconScaleIn);
+                iconScale.BeginAnimation(ScaleTransform.ScaleYProperty, iconScaleIn);
+            }
+            else
+            {
+                rowTranslate.X = 0;
+                rowTranslate.Y = 0;
+            }
+        }
+
+        double lockedHeight = ContentRegion.ActualHeight;
+        if (lockedHeight > 0 && !AnimationConfig.ReduceMotion)
+        {
+            ContentRegion.Height = lockedHeight;
+            ContentRegion.ClipToBounds = true;
+        }
+
+        _activeResultMenu = menu;
+        _quickActionsOpen = true;
+        _resultMenuOpen = true;
+        int slideGen = ++_quickActionsSlideVersion;
+
+        QuickActionsPanel.Visibility = Visibility.Visible;
+        QuickActionsPanel.IsHitTestVisible = true;
+        SelectQuickActionIndex(0, animateGlide: false);
+        Dispatcher.BeginInvoke(DispatcherPriority.Loaded, () =>
+        {
+            if (_quickActionsOpen)
+                UpdateQuickActionsSelectionGlide(animate: false);
+        });
+
+        if (AnimationConfig.ReduceMotion || motion.EnterDurationMs <= 0)
+        {
+            ResultsList.BeginAnimation(OpacityProperty, null);
+            ResultsListTranslate.BeginAnimation(TranslateTransform.XProperty, null);
+            ResultsListTranslate.BeginAnimation(TranslateTransform.YProperty, null);
+            ResultsList.Opacity = 1;
+            ResultsListTranslate.X = 0;
+            ResultsListTranslate.Y = 0;
+            ResultsList.Visibility = Visibility.Collapsed;
+
+            QuickActionsPanel.BeginAnimation(OpacityProperty, null);
+            QuickActionsTranslate.BeginAnimation(TranslateTransform.XProperty, null);
+            QuickActionsTranslate.BeginAnimation(TranslateTransform.YProperty, null);
+            QuickActionsPanel.Opacity = 1;
+            QuickActionsTranslate.X = 0;
+            QuickActionsTranslate.Y = 0;
+            ScheduleContentResize();
+            return menu;
+        }
+
+        ResultsList.IsHitTestVisible = false;
+        var exitDur = new Duration(TimeSpan.FromMilliseconds(motion.ExitDurationMs));
+        var enterDur = new Duration(TimeSpan.FromMilliseconds(motion.EnterDurationMs));
+        var contractEase = CreateContentContractEase();
+
+        var resultsOutX = AnimationPrimitives.MakeAnim(0, motion.ResultsToX, exitDur, contractEase);
+        var resultsOutY = AnimationPrimitives.MakeAnim(0, -4, exitDur, contractEase);
+        var resultsOutFade = AnimationPrimitives.MakeAnim(1, 0, exitDur, contractEase);
+        resultsOutFade.Completed += (_, _) =>
+        {
+            if (slideGen != _quickActionsSlideVersion || !_quickActionsOpen) return;
+            ResultsList.BeginAnimation(OpacityProperty, null);
+            ResultsListTranslate.BeginAnimation(TranslateTransform.XProperty, null);
+            ResultsListTranslate.BeginAnimation(TranslateTransform.YProperty, null);
+            ResultsList.Opacity = 1;
+            ResultsListTranslate.X = 0;
+            ResultsListTranslate.Y = 0;
+            ResultsList.IsHitTestVisible = true;
+            ResultsList.Visibility = Visibility.Collapsed;
+        };
+        ResultsListTranslate.BeginAnimation(TranslateTransform.XProperty, resultsOutX);
+        ResultsListTranslate.BeginAnimation(TranslateTransform.YProperty, resultsOutY);
+        ResultsList.BeginAnimation(OpacityProperty, resultsOutFade);
+
+        var actionsInX = AnimationPrimitives.MakeAnim(motion.ActionsFromX, motion.ActionsToX, enterDur, revealEase);
+        var actionsInY = AnimationPrimitives.MakeAnim(-8, 0, enterDur, revealEase);
+        var actionsInFade = AnimationPrimitives.MakeAnim(0, 1, new Duration(TimeSpan.FromMilliseconds(220)), revealEase);
+        QuickActionsTranslate.BeginAnimation(TranslateTransform.XProperty, actionsInX);
+        QuickActionsTranslate.BeginAnimation(TranslateTransform.YProperty, actionsInY);
+        QuickActionsPanel.BeginAnimation(OpacityProperty, actionsInFade);
+
+        AnimateQuickActionsViewportHeight(lockedHeight);
+        return menu;
     }
 
-    private void AddMenuItem(ContextMenu menu, string header, Action action)
+    private void AddMenuItem(ContextMenu menu, string header, Action action, Geometry? iconGeometry = null)
     {
         var menuItem = new MenuItem
         {
             Header = header,
+            DataContext = iconGeometry,
             Style = (Style)FindResource("SpotlightMenuItemStyle")
         };
         menuItem.Click += (_, _) => action();
@@ -1408,7 +1978,7 @@ public partial class SpotlightWindow : Window
         bool showContent = hasResults || showStatus || isSearchingInFlight;
 
         // Children first: the reveal/resize animations below measure the
-        ResultsList.Visibility = (hasResults || (isSearchingInFlight && !showStatus)) ? Visibility.Visible : Visibility.Collapsed;
+        if (!_quickActionsOpen) ResultsList.Visibility = (hasResults || (isSearchingInFlight && !showStatus)) ? Visibility.Visible : Visibility.Collapsed;
         StatusPanel.Visibility = showStatus ? Visibility.Visible : Visibility.Collapsed;
         if (showStatus && !retainStatus)
         {
@@ -1473,7 +2043,11 @@ public partial class SpotlightWindow : Window
         if (AnimationConfig.ReduceMotion || (!shown && (!IsSpotlightOpen || _isClosing)))
         {
             ContentRegion.BeginAnimation(HeightProperty, null);
+            ContentRegion.BeginAnimation(OpacityProperty, null);
+            ContentRegionTranslate.BeginAnimation(TranslateTransform.YProperty, null);
             ContentRegion.Height = double.NaN;
+            ContentRegion.Opacity = 1;
+            ContentRegionTranslate.Y = 0;
             ContentRegion.ClipToBounds = false;
             ContentRegion.Visibility = shown ? Visibility.Visible : Visibility.Collapsed;
             return;
@@ -1488,26 +2062,51 @@ public partial class SpotlightWindow : Window
             ContentRegion.Visibility = Visibility.Visible;
             ContentRegion.BeginAnimation(HeightProperty, null);
             ContentRegion.Height = double.NaN;
+            InvalidateMeasureRecursive(ContentRegion);
             ContentRegion.Measure(new Size(Math.Max(1, Shell.ActualWidth), double.PositiveInfinity));
             double targetHeight = ContentRegion.DesiredSize.Height;
             ContentRegion.Height = from;
             BeginContentHeightAnimation(from, targetHeight, generation);
-            if (from < 1) PlayContentReveal();
+            if (from < 1)
+            {
+                PlayContentReveal();
+            }
+            else
+            {
+                var ease = CreateContentResizeEase();
+                ContentRegion.BeginAnimation(OpacityProperty,
+                    CreateAnimation(ContentRegion.Opacity, 1, TimeSpan.FromMilliseconds(180), ease));
+                ContentRegionTranslate.BeginAnimation(TranslateTransform.YProperty,
+                    CreateAnimation(ContentRegionTranslate.Y, 0, TimeSpan.FromMilliseconds(200), ease));
+            }
         }
         else
         {
             ContentRegion.ClipToBounds = true;
+            var contractEase = CreateContentContractEase();
             var collapse = CreateAnimation(ContentRegion.ActualHeight, 0,
+                TimeSpan.FromMilliseconds(240),
+                contractEase);
+            var fadeOut = CreateAnimation(ContentRegion.Opacity, 0,
                 TimeSpan.FromMilliseconds(180),
-                CreateContentResizeEase());
+                contractEase);
+            var slideUp = CreateAnimation(ContentRegionTranslate.Y, -6,
+                TimeSpan.FromMilliseconds(220),
+                contractEase);
             collapse.Completed += (_, _) =>
             {
                 if (generation != _contentSizeGeneration) return;
                 ContentRegion.BeginAnimation(HeightProperty, null);
+                ContentRegion.BeginAnimation(OpacityProperty, null);
+                ContentRegionTranslate.BeginAnimation(TranslateTransform.YProperty, null);
                 ContentRegion.Height = double.NaN;
+                ContentRegion.Opacity = 1;
+                ContentRegionTranslate.Y = 0;
                 ContentRegion.ClipToBounds = false;
                 ContentRegion.Visibility = Visibility.Collapsed;
             };
+            ContentRegion.BeginAnimation(OpacityProperty, fadeOut);
+            ContentRegionTranslate.BeginAnimation(TranslateTransform.YProperty, slideUp);
             ContentRegion.BeginAnimation(HeightProperty, collapse);
         }
     }
@@ -1588,6 +2187,7 @@ public partial class SpotlightWindow : Window
         ContentRegion.ClipToBounds = true;
         double availableWidth = Math.Max(1, Shell.ActualWidth
             - Shell.BorderThickness.Left - Shell.BorderThickness.Right);
+        InvalidateMeasureRecursive(ContentRegion);
         ContentRegion.Measure(new Size(availableWidth, double.PositiveInfinity));
         double naturalHeight = ContentRegion.DesiredSize.Height;
         if (!double.IsFinite(naturalHeight) || naturalHeight <= 0)
@@ -1639,8 +2239,8 @@ public partial class SpotlightWindow : Window
             return;
         }
 
-        var collapse = CreateAnimation(from, 0, TimeSpan.FromMilliseconds(180),
-            new CubicEase { EasingMode = EasingMode.EaseIn });
+        var collapse = CreateAnimation(from, 0, TimeSpan.FromMilliseconds(240),
+            CreateContentContractEase());
         collapse.Completed += (_, _) =>
         {
             if (generation != _contentSizeGeneration) return;
@@ -1670,16 +2270,26 @@ public partial class SpotlightWindow : Window
             // Measure the child without releasing the visible border to Auto:
             // UpdateLayout on the border would snap it before animating back.
             double oldHeight = ContentRegion.ActualHeight;
-            var inset = ContentRegion.BorderThickness;
-            var padding = ContentRegion.Padding;
-            double width = Math.Max(1, ContentRegion.ActualWidth - inset.Left - inset.Right - padding.Left - padding.Right);
-            ContentRegion.Child.Measure(new Size(width, double.PositiveInfinity));
-            double target = ContentRegion.Child.DesiredSize.Height + inset.Top + inset.Bottom + padding.Top + padding.Bottom;
+            double target = MeasureTargetContentHeight();
             if (!double.IsFinite(target)) return;
             // Keep partial results steady, but size a waiting message to its
             // own content instead of retaining an empty results viewport.
             if (searchPending && StatusPanel.Visibility != Visibility.Visible && target <= oldHeight + 1) return;
-            if ((!_searchHeightHeld || searchPending) && Math.Abs(target - _contentHeightTarget) < 1) return;
+            if (Math.Abs(target - _contentHeightTarget) < 1)
+            {
+                if (!searchPending && _searchHeightHeld)
+                {
+                    _searchHeightHeld = false;
+                    if (Math.Abs(target - oldHeight) < 1)
+                    {
+                        ++_contentHeightAnimationVersion;
+                        ContentRegion.BeginAnimation(HeightProperty, null);
+                        ContentRegion.Height = double.NaN;
+                        ContentRegion.ClipToBounds = false;
+                    }
+                }
+                return;
+            }
             _searchHeightHeld = searchPending;
             if (AnimationConfig.ReduceMotion || Math.Abs(target - oldHeight) < 1)
             {
@@ -1702,8 +2312,8 @@ public partial class SpotlightWindow : Window
         _contentHeightTarget = to;
         ContentRegion.ClipToBounds = true;
         // The lower edge leads; text stays at its natural size as it is revealed.
-        var resize = CreateAnimation(from, to, TimeSpan.FromMilliseconds(to > from ? 360 : 180),
-            CreateContentResizeEase());
+        var resize = CreateAnimation(from, to, TimeSpan.FromMilliseconds(to >= from ? 310 : 280),
+            to >= from ? CreateContentResizeEase() : CreateContentContractEase());
         resize.Completed += (_, _) =>
         {
             if (generation != _contentSizeGeneration || version != _contentHeightAnimationVersion) return;
@@ -1806,7 +2416,10 @@ public partial class SpotlightWindow : Window
     }
 
     private static IEasingFunction CreateContentResizeEase() =>
-        new CubicBezierEase(0.32, 0.72, 0, 1) { EasingMode = EasingMode.EaseIn };
+        CubicBezierEase.FromEaseOutCurve(0.22, 0.88, 0.28, 1.0);
+
+    private static IEasingFunction CreateContentContractEase() =>
+        CubicBezierEase.FromEaseOutCurve(0.26, 0.82, 0.28, 1.0);
 
     private void PlayContentReveal()
     {
@@ -1816,10 +2429,22 @@ public partial class SpotlightWindow : Window
         ContentRegionTranslate.Y = 0;
         if (AnimationConfig.ReduceMotion) return;
 
-        // Reveal through the expanding viewport without moving the result rows.
-        var fade = CreateAnimation(0, 1, TimeSpan.FromMilliseconds(180),
-            CreateContentResizeEase());
+        var ease = CreateContentResizeEase();
+        var fade = CreateAnimation(0, 1, TimeSpan.FromMilliseconds(220), ease);
+        var slide = CreateAnimation(-8, 0, TimeSpan.FromMilliseconds(250), ease);
+        fade.FillBehavior = FillBehavior.Stop;
+        slide.FillBehavior = FillBehavior.Stop;
         ContentRegion.BeginAnimation(OpacityProperty, fade);
+        ContentRegionTranslate.BeginAnimation(TranslateTransform.YProperty, slide);
+
+        if (!_quickActionsOpen && ResultsList.Visibility == Visibility.Visible)
+        {
+            ResultsListTranslate.BeginAnimation(TranslateTransform.YProperty, null);
+            ResultsListTranslate.Y = 0;
+            var listSlide = CreateAnimation(-6, 0, TimeSpan.FromMilliseconds(240), ease);
+            listSlide.FillBehavior = FillBehavior.Stop;
+            ResultsListTranslate.BeginAnimation(TranslateTransform.YProperty, listSlide);
+        }
     }
 
     private (double Left, double Top) GetSpotlightTarget()

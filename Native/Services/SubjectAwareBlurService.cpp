@@ -23,11 +23,13 @@ namespace vnotch::services
 
         static void Brighten(uint8_t* pixels, int32_t buf_len, float factor) noexcept
         {
+            if (!pixels || buf_len <= 0) return;
+            const float safe_factor = std::isfinite(factor) ? std::clamp(factor, 0.0f, 255.0f) : 1.0f;
             for (int32_t i = 0; i + 2 < buf_len; i += 4)
             {
-                pixels[i] = static_cast<uint8_t>(std::min(255.0f, pixels[i] * factor));
-                pixels[i + 1] = static_cast<uint8_t>(std::min(255.0f, pixels[i + 1] * factor));
-                pixels[i + 2] = static_cast<uint8_t>(std::min(255.0f, pixels[i + 2] * factor));
+                pixels[i] = static_cast<uint8_t>(std::min(255.0f, pixels[i] * safe_factor));
+                pixels[i + 1] = static_cast<uint8_t>(std::min(255.0f, pixels[i + 1] * safe_factor));
+                pixels[i + 2] = static_cast<uint8_t>(std::min(255.0f, pixels[i + 2] * safe_factor));
             }
         }
 
@@ -42,15 +44,20 @@ namespace vnotch::services
             int32_t height,
             int32_t stride) noexcept
         {
-            float cx = std::clamp(center_x, 0.0f, 1.0f) * static_cast<float>(width);
-            float cy = std::clamp(center_y, 0.0f, 1.0f) * static_cast<float>(height);
-            float rx = std::max(width * 0.18f, sub_width * width * 0.55f);
-            float ry = std::max(height * 0.22f, sub_height * height * 0.55f);
+            const float safe_cx = std::isfinite(center_x) ? std::clamp(center_x, 0.0f, 1.0f) : 0.5f;
+            const float safe_cy = std::isfinite(center_y) ? std::clamp(center_y, 0.0f, 1.0f) : 0.5f;
+            const float safe_sw = std::isfinite(sub_width) ? std::clamp(sub_width, 0.0f, 1.0f) : 0.36f;
+            const float safe_sh = std::isfinite(sub_height) ? std::clamp(sub_height, 0.0f, 1.0f) : 0.44f;
+
+            float cx = safe_cx * static_cast<float>(width);
+            float cy = safe_cy * static_cast<float>(height);
+            float rx = std::max(width * 0.18f, safe_sw * width * 0.55f);
+            float ry = std::max(height * 0.22f, safe_sh * height * 0.55f);
             constexpr float feather = 0.40f;
 
             for (int32_t y = 0; y < height; ++y)
             {
-                int32_t row = y * stride;
+                int64_t row = static_cast<int64_t>(y) * stride;
                 float dy = (static_cast<float>(y) - cy) / ry;
                 float dy_squared = dy * dy;
                 for (int32_t x = 0; x < width; ++x)
@@ -58,7 +65,7 @@ namespace vnotch::services
                     float dx = (static_cast<float>(x) - cx) / rx;
                     float t = ComputeBlendWeight(dx * dx + dy_squared, feather);
 
-                    int32_t p = row + x * 4;
+                    int64_t p = row + static_cast<int64_t>(x) * 4LL;
                     uint8_t bb = background[p];
                     uint8_t gb = background[p + 1];
                     uint8_t rb = background[p + 2];
@@ -78,7 +85,7 @@ namespace vnotch::services
 
 VN_EXPORT int32_t vn_subject_blur_brighten(uint8_t* pixels, int32_t buf_len, float factor) noexcept
 {
-    if (!pixels && buf_len > 0) return VN_ERR_INVALID_ARG;
+    if ((!pixels && buf_len > 0) || buf_len < 0) return VN_ERR_INVALID_ARG;
     vnotch::services::SubjectAwareBlurService::Brighten(pixels, buf_len, factor);
     return VN_OK;
 }
@@ -94,7 +101,8 @@ VN_EXPORT int32_t vn_subject_blur_composite(
     int32_t height,
     int32_t stride) noexcept
 {
-    if (!background || !subject_layer || width <= 0 || height <= 0 || stride < width * 4)
+    if (!background || !subject_layer || width <= 0 || height <= 0 || width > 16384 || height > 16384 ||
+        static_cast<int64_t>(stride) < static_cast<int64_t>(width) * 4LL)
         return VN_ERR_INVALID_ARG;
     vnotch::services::SubjectAwareBlurService::CompositeLayers(
         background, subject_layer, center_x, center_y, sub_width, sub_height, width, height, stride);

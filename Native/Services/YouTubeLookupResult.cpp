@@ -9,7 +9,7 @@ namespace vnotch::services
     public:
         static int32_t vn_youtube_title_matches_impl(const char16_t* title_ptr, int32_t title_len,
     const char16_t* other_ptr, int32_t other_len,
-    uint8_t* out_matches) noexcept
+    uint8_t* out_matches)
         {
     if (out_matches == nullptr)
     {
@@ -41,6 +41,7 @@ VN_EXPORT int32_t vn_youtube_title_matches(const char16_t* title_ptr, int32_t ti
     const char16_t* other_ptr, int32_t other_len,
     uint8_t* out_matches) noexcept
 {
-    return vnotch::services::YouTubeLookupResult::vn_youtube_title_matches_impl(title_ptr, title_len, other_ptr, other_len, out_matches);
+    try { return vnotch::services::YouTubeLookupResult::vn_youtube_title_matches_impl(title_ptr, title_len, other_ptr, other_len, out_matches);
+ } catch (...) { return VN_ERR_FAIL; }
 }
 

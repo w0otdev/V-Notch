@@ -64,6 +64,7 @@ public sealed class ElasticSliderPresentationTests
         Assert.Equal(21, ticks.Children.Count);
         Assert.Equal(14, ((Rectangle)ticks.Children[0]).Height);
         Assert.Equal(8, ((Rectangle)ticks.Children[1]).Height);
+        Assert.NotSame(((Rectangle)ticks.Children[0]).Fill, ((Rectangle)ticks.Children[5]).Fill);
         slider.Description = "";
         Assert.Equal(Visibility.Collapsed, Part<TextBlock>(slider, "PART_Description").Visibility);
         slider.Unit = "%";
