@@ -60,6 +60,15 @@ internal static partial class ClipboardSensitiveData
         out int outReason,
         out int outConfidence);
 
+    [LibraryImport(NativeDll, StringMarshalling = StringMarshalling.Utf16)]
+    private static partial int vn_clipboard_sensitive_try_decode_hex_payload(
+        ReadOnlySpan<char> textPtr,
+        int textLen,
+        Span<char> outWide,
+        int outCap,
+        out int outLen,
+        out byte outDecoded);
+
     private static Regex Pattern(string pattern) => new(pattern,
         RegexOptions.IgnoreCase | RegexOptions.CultureInvariant | RegexOptions.NonBacktracking,
         TimeSpan.FromMilliseconds(100));
@@ -90,8 +99,8 @@ internal static partial class ClipboardSensitiveData
     private const string LabelValue = """["']?\s*(?:=>|->|[:=]|\bis\b|\blà\b|\bla\b)\s*(?:"(?<value>[^"\r\n]+)"|'(?<value>[^'\r\n]+)'|(?<value>[^\s"';,}<>]+))""";
     private static readonly Regex[] Labels = new[]
     {
-        @"\b(?:(?:client|db|mysql|postgres|wifi)[_ -]?)?(?:password|passwd|pwd|passphrase|passcode|pass|pin|secret)",
-        @"\b(?:api[_ -]?key|auth[_ -]?token|access[_ -]?token|refresh[_ -]?token|token|otp|totp|2fa|verification[_ -]?code)",
+        @"\b(?:[a-z0-9_.-]*[_ -])?(?:password|passwd|pwd|passphrase|passcode|pass|pin|secret(?:[_ -]?access)?(?:[_ -]?(?:key|token|value|id|code|string|hash))?|private[_ -]?key|secret[_ -]?key|access[_ -]?key|client[_ -]?secret)",
+        @"\b(?:[a-z0-9_.-]*[_ -])?(?:api[_ -]?key|apikey|auth[_ -]?token|access[_ -]?token|refresh[_ -]?token|session[_ -]?token|id[_ -]?token|token|otp|totp|2fa|verification[_ -]?code)",
         @"\b(?:mật[_ ]?khẩu|mat[_ ]?khau|mật[_ ]?mã|mat[_ ]?ma|mã[_ ]?pin|ma[_ ]?pin|mk)",
         @"\b(?:mã[_ ]?xác[_ ]?(?:nhận|thực)|ma[_ ]?xac[_ ]?(?:nhan|thuc)|mã[_ ]?otp|ma[_ ]?otp|mã[_ ]?bảo[_ ]?mật|ma[_ ]?bao[_ ]?mat)"
     }.Select(label => Pattern(label + LabelValue)).ToArray();
@@ -124,6 +133,7 @@ internal static partial class ClipboardSensitiveData
             foreach (var label in Labels)
                 foreach (Match match in label.Matches(normalized))
                     if (IsCredentialValue(match.Groups["value"].Value)) return High(ClipboardSensitivityReason.CredentialLabel);
+            if (TryInspectHexPayload(normalized, out var hexResult)) return hexResult;
             if (ContextualCode.IsMatch(normalized)) return High(ClipboardSensitivityReason.VerificationCode);
             if (IsPaymentCard(normalized)) return High(ClipboardSensitivityReason.PaymentCard);
             string candidate = normalized.Trim();
@@ -136,6 +146,37 @@ internal static partial class ClipboardSensitiveData
     }
 
     private static ClipboardSensitivityResult High(ClipboardSensitivityReason reason) => new(reason, ClipboardSensitivityConfidence.High);
+
+    private static bool TryInspectHexPayload(string text, out ClipboardSensitivityResult result)
+    {
+        result = default;
+        return text.Length >= 32 && TryInspectHexSpan(text.AsSpan(), out result);
+    }
+
+    private static bool TryInspectHexSpan(ReadOnlySpan<char> candidate, out ClipboardSensitivityResult result)
+    {
+        result = default;
+        char[] buffer = System.Buffers.ArrayPool<char>.Shared.Rent(8192);
+        try
+        {
+            if (vn_clipboard_sensitive_try_decode_hex_payload(candidate, candidate.Length, buffer, 8192, out int len, out byte decoded) != 0
+                || decoded == 0 || len <= 0)
+                return false;
+            string decodedText = new(buffer, 0, len);
+            if (ContainsJwt(decodedText)) { result = High(ClipboardSensitivityReason.CredentialFormat); return true; }
+            foreach (var format in CredentialFormats)
+                if (format.IsMatch(decodedText)) { result = High(ClipboardSensitivityReason.CredentialFormat); return true; }
+            foreach (var label in Labels)
+                foreach (Match match in label.Matches(decodedText))
+                    if (IsCredentialValue(match.Groups["value"].Value)) { result = High(ClipboardSensitivityReason.CredentialLabel); return true; }
+            return false;
+        }
+        finally
+        {
+            Array.Clear(buffer, 0, buffer.Length);
+            System.Buffers.ArrayPool<char>.Shared.Return(buffer);
+        }
+    }
 
     private static bool IsCredentialValue(string value)
     {

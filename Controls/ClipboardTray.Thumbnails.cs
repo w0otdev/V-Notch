@@ -146,38 +146,7 @@ public sealed partial class ClipboardTray
             if (card.Entry.Kind != ClipboardKind.Image || card.Image != null || !IsCurrent()) return;
             bytes = await controller.Store.GetImageAsync(card.Entry.Id, cancellation);
             if (bytes == null || !IsCurrent()) return;
-            var image = await Task.Run(() =>
-            {
-                cancellation.ThrowIfCancellationRequested();
-                using var stream = new MemoryStream(bytes);
-                var decoder = BitmapDecoder.Create(stream, BitmapCreateOptions.DelayCreation | BitmapCreateOptions.IgnoreColorProfile, BitmapCacheOption.None);
-                var frame = decoder.Frames[0];
-                bool landscape = frame.PixelWidth >= frame.PixelHeight;
-                stream.Position = 0;
-                var bitmap = new BitmapImage();
-                bitmap.BeginInit(); bitmap.CacheOption = BitmapCacheOption.OnLoad;
-                // Bound both portrait and landscape previews. Width alone can
-                // decode a very tall screenshot into a huge bitmap.
-                if (landscape) bitmap.DecodePixelWidth = Math.Min(420, frame.PixelWidth);
-                else bitmap.DecodePixelHeight = Math.Min(420, frame.PixelHeight);
-                bitmap.StreamSource = stream;
-                bitmap.EndInit();
-                cancellation.ThrowIfCancellationRequested();
-                // Copy only the decoded pixels so a retained preview cannot
-                // keep its MemoryStream and the original full-size PNG alive.
-                int stride = (bitmap.PixelWidth * bitmap.Format.BitsPerPixel + 7) / 8;
-                var pixels = new byte[stride * bitmap.PixelHeight];
-                try
-                {
-                    bitmap.CopyPixels(pixels, stride, 0);
-                    var preview = BitmapSource.Create(bitmap.PixelWidth, bitmap.PixelHeight, bitmap.DpiX, bitmap.DpiY,
-                        bitmap.Format, bitmap.Palette, pixels, stride);
-                    preview.Freeze();
-                    cancellation.ThrowIfCancellationRequested();
-                    return preview;
-                }
-                finally { if (card.Entry.IsPersonal) CryptographicOperations.ZeroMemory(pixels); }
-            }, cancellation);
+            var image = await Task.Run(() => CreateBitmapCore(bytes, card.Entry.IsPersonal, cancellation), cancellation);
             if (IsCurrent()) card.Image = image;
         }
         catch (Exception ex) when (ex is OperationCanceledException or ObjectDisposedException) { /* Intentionally ignored. */ }
@@ -195,6 +164,44 @@ public sealed partial class ClipboardTray
             }
             load.Cancellation.Dispose();
         }
+    }
+
+    internal static BitmapSource CreateBitmap(byte[] bytes) =>
+        CreateBitmapCore(bytes, isPersonal: false, CancellationToken.None);
+
+    private static BitmapSource CreateBitmapCore(byte[] bytes, bool isPersonal, CancellationToken cancellation)
+    {
+        cancellation.ThrowIfCancellationRequested();
+        using var stream = new MemoryStream(bytes, writable: false);
+        var decoder = BitmapDecoder.Create(stream, BitmapCreateOptions.DelayCreation | BitmapCreateOptions.IgnoreColorProfile, BitmapCacheOption.None);
+        var frame = decoder.Frames[0];
+        bool landscape = frame.PixelWidth >= frame.PixelHeight;
+        stream.Position = 0;
+        var bitmap = new BitmapImage();
+        bitmap.BeginInit();
+        bitmap.CreateOptions = BitmapCreateOptions.IgnoreColorProfile;
+        bitmap.CacheOption = BitmapCacheOption.OnLoad;
+        // Bound both portrait and landscape previews. Width alone can
+        // decode a very tall screenshot into a huge bitmap.
+        if (landscape) bitmap.DecodePixelWidth = frame.PixelWidth > 0 ? Math.Min(420, frame.PixelWidth) : 420;
+        else bitmap.DecodePixelHeight = frame.PixelHeight > 0 ? Math.Min(420, frame.PixelHeight) : 420;
+        bitmap.StreamSource = stream;
+        bitmap.EndInit();
+        cancellation.ThrowIfCancellationRequested();
+        // Copy only the decoded pixels so a retained preview cannot
+        // keep its MemoryStream and the original full-size PNG alive.
+        int stride = (bitmap.PixelWidth * bitmap.Format.BitsPerPixel + 7) / 8;
+        var pixels = new byte[stride * bitmap.PixelHeight];
+        try
+        {
+            bitmap.CopyPixels(pixels, stride, 0);
+            var preview = BitmapSource.Create(bitmap.PixelWidth, bitmap.PixelHeight, bitmap.DpiX, bitmap.DpiY,
+                bitmap.Format, bitmap.Palette, pixels, stride);
+            preview.Freeze();
+            cancellation.ThrowIfCancellationRequested();
+            return preview;
+        }
+        finally { if (isPersonal) CryptographicOperations.ZeroMemory(pixels); }
     }
 
     private void CancelThumbnailLoad(FrameworkElement element)

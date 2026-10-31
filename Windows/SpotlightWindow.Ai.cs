@@ -1,4 +1,5 @@
 using System.Windows;
+using System.Windows.Controls;
 using System.Windows.Input;
 using VNotch.Services;
 using VNotch.Services.Spotlight;
@@ -19,17 +20,39 @@ public partial class SpotlightWindow
     private object[] _aiStatusArgs = [];
     private string? _aiStatusDiagnostic;
 
-    internal static bool IsAiToggle(Key key, ModifierKeys modifiers) => key == Key.Tab && modifiers == ModifierKeys.None;
+    internal static bool IsAiToggle(Key key, ModifierKeys modifiers, bool searchBoxFocused = true) =>
+        key == Key.Tab && modifiers == ModifierKeys.None && searchBoxFocused;
+
+    internal bool IsAiToggle(KeyEventArgs e) =>
+        IsAiToggle(e.Key, Keyboard.Modifiers, IsSearchBoxFocusedForAiToggle(e));
+
+    private bool IsSearchBoxFocusedForAiToggle(KeyEventArgs e)
+    {
+        if (e.OriginalSource is DependencyObject source && source != this && source != SearchBox && !SearchBox.IsAncestorOf(source))
+            return false;
+        if (Keyboard.FocusedElement is DependencyObject kb && GetWindow(kb) == this)
+            return kb == SearchBox || SearchBox.IsAncestorOf(kb);
+        var logical = FocusManager.GetFocusedElement(this) as DependencyObject;
+        if (logical != null)
+            return logical == SearchBox || SearchBox.IsAncestorOf(logical);
+        return !_aiMode || SearchBox.IsKeyboardFocused;
+    }
 
     private bool HandleAiKey(KeyEventArgs e)
     {
-        if (IsAiToggle(e.Key, Keyboard.Modifiers))
+        if (IsAiToggle(e))
         {
             if (!e.IsRepeat) ToggleAiMode();
             e.Handled = true;
             return true;
         }
         if (!_aiMode) return false;
+        if (e.Key == Key.Tab && (Keyboard.Modifiers == ModifierKeys.None || Keyboard.Modifiers == ModifierKeys.Shift))
+        {
+            AdvanceAiTabFocus(Keyboard.Modifiers == ModifierKeys.Shift, e);
+            e.Handled = true;
+            return true;
+        }
         // Keep all search launch/navigation shortcuts out of the AI surface.
         if (e.Key == Key.Enter && Keyboard.Modifiers == ModifierKeys.None)
         {
@@ -42,6 +65,53 @@ public partial class SpotlightWindow
             e.Handled = true;
         }
         return true;
+    }
+
+    private void AdvanceAiTabFocus(bool reverse, KeyEventArgs e)
+    {
+        var stopList = new List<Control>(8);
+        void AddIfFocusable(Control? control, bool parentVisible = true)
+        {
+            if (parentVisible && control is { Visibility: Visibility.Visible, IsEnabled: true, Focusable: true })
+                stopList.Add(control);
+        }
+
+        AddIfFocusable(AiBackButton);
+        AddIfFocusable(AiCopyButton);
+        AddIfFocusable(AiHistoryButton);
+        AddIfFocusable(AiNewChatButton);
+        bool welcomeVisible = AiWelcome?.Visibility == Visibility.Visible;
+        AddIfFocusable(AiPromptOne, welcomeVisible);
+        AddIfFocusable(AiPromptTwo, welcomeVisible);
+        if (AiHistoryPanel?.Visibility == Visibility.Visible && AiHistoryItems != null)
+        {
+            foreach (UIElement child in AiHistoryItems.Children)
+            {
+                if (child is Border { Child: Panel panel })
+                {
+                    foreach (UIElement item in panel.Children)
+                        AddIfFocusable(item as Control);
+                }
+            }
+        }
+        AddIfFocusable(AiUsageRefresh, AiUsageRow?.Visibility == Visibility.Visible);
+        AddIfFocusable(AiStopButton, AiBottomActionRow?.Visibility == Visibility.Visible);
+        AddIfFocusable(SearchBox);
+
+        if (stopList.Count == 0) return;
+
+        var current = (Keyboard.FocusedElement as DependencyObject is { } kb && GetWindow(kb) == this ? kb : null)
+            ?? FocusManager.GetFocusedElement(this) as DependencyObject
+            ?? e.OriginalSource as DependencyObject;
+
+        int index = stopList.FindIndex(c => c == current || (current != null && c.IsAncestorOf(current)));
+        int nextIndex = index < 0
+            ? (reverse ? stopList.Count - 1 : 0)
+            : (index + (reverse ? stopList.Count - 1 : 1)) % stopList.Count;
+
+        Control target = stopList[nextIndex];
+        FocusManager.SetFocusedElement(this, target);
+        target.Focus();
     }
 
     private void EscapeAiMode()
@@ -171,6 +241,7 @@ public partial class SpotlightWindow
         SetContentShown(true);
         if (shown) ScheduleContentResize();
         UpdateAiWelcome();
+        UpdateAiScrollEdges();
         AiModeLabel.Text = Loc.Get("spotlight.ai.agent", _aiHistory.Count > 0 ? _aiConversationProvider : _settings.SpotlightAiProvider);
         SetEscBadgeVisible(true);
         EscBadgeText.Text = "TAB · " + Loc.Get("spotlight.searchMode");

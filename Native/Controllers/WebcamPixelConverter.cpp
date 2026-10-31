@@ -103,7 +103,8 @@ public:
         uint8_t* dst) noexcept
     {
         if (src == nullptr || dst == nullptr || width <= 0 || height <= 0
-            || static_cast<int64_t>(width) * height > kMaxPixels)
+            || (width & 1) != 0 || (height & 1) != 0
+            || static_cast<int64_t>(width) * static_cast<int64_t>(height) > kMaxPixels)
         {
             return VN_ERR_INVALID_ARG;
         }

@@ -94,6 +94,9 @@ internal sealed partial class QwenTranslationEngine : ILocalTranslationEngine
     private readonly Task _previousDisposal;
     internal Task Disposal { get; private set; } = Task.CompletedTask;
     private LLamaWeights? _weights;
+    private (string Text, TranslationEngineInput Input)? _lastPreparedInput;
+    internal int PrepareInputCallCount { get; private set; }
+    internal Func<string, int>? TokenCounterForTesting { get; init; }
     private string? _cachedInstruction;
     private int _instructionTokens;
     private int _gpuLayers;
@@ -177,19 +180,49 @@ internal sealed partial class QwenTranslationEngine : ILocalTranslationEngine
         try
         {
             await EnsureLoadedUnderGateAsync(cancellationToken).ConfigureAwait(false);
-            return await Task.Run(() =>
-            {
-                var fitted = TranslationInput.FitTokensWithCount(text, value =>
-                {
-                    cancellationToken.ThrowIfCancellationRequested();
-                    return _weights!.Tokenize(value, false, false, Encoding.UTF8).Length;
-                }, 512);
-                cancellationToken.ThrowIfCancellationRequested();
-                return new TranslationEngineInput(fitted.Text, fitted.TokenCount, _weights);
-            }, cancellationToken).ConfigureAwait(false);
+            return await Task.Run(() => PrepareInput(text, cancellationToken), cancellationToken).ConfigureAwait(false);
         }
         finally { _lastUsed = DateTime.UtcNow; _store.Gate.Release(); }
     }
+
+    internal TranslationEngineInput PrepareInput(string text, CancellationToken cancellationToken = default)
+    {
+        PrepareInputCallCount++;
+        object? tokenizer = (object?)_weights ?? TokenCounterForTesting;
+        var fitted = TranslationInput.FitTokensWithCount(text, value =>
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            return CountTokens(value);
+        }, 512);
+        cancellationToken.ThrowIfCancellationRequested();
+        var input = new TranslationEngineInput(fitted.Text, fitted.TokenCount, tokenizer);
+        _lastPreparedInput = (input.Text, input);
+        return input;
+    }
+
+    internal TranslationEngineInput ResolvePreparedInput(TranslationEngineInput fittedInput)
+    {
+        object? tokenizer = (object?)_weights ?? TokenCounterForTesting;
+        if (ReferenceEquals(fittedInput.Tokenizer, tokenizer) && fittedInput.TokenCount is >= 0)
+            return fittedInput;
+        if (_lastPreparedInput is { } cached &&
+            ReferenceEquals(cached.Input.Tokenizer, tokenizer) &&
+            cached.Input.TokenCount is >= 0 &&
+            string.Equals(cached.Text, fittedInput.Text, StringComparison.Ordinal))
+        {
+            return cached.Input;
+        }
+        PrepareInputCallCount++;
+        int tokens = CountTokens(fittedInput.Text);
+        var resolved = new TranslationEngineInput(fittedInput.Text, tokens, tokenizer);
+        _lastPreparedInput = (resolved.Text, resolved);
+        return resolved;
+    }
+
+    private int CountTokens(string value) =>
+        TokenCounterForTesting != null
+            ? TokenCounterForTesting(value)
+            : _weights!.Tokenize(value, false, false, Encoding.UTF8).Length;
 
     private async Task LoadUnderGateAsync(CancellationToken ct)
     {
@@ -268,10 +301,9 @@ internal sealed partial class QwenTranslationEngine : ILocalTranslationEngine
     {
         _stage = TranslationStage.Translating;
         ct.ThrowIfCancellationRequested();
+        fittedInput = ResolvePreparedInput(fittedInput);
         string text = fittedInput.Text;
-        int inputTokens = ReferenceEquals(fittedInput.Tokenizer, _weights) && fittedInput.TokenCount is >= 0
-            ? fittedInput.TokenCount.Value
-            : _weights!.Tokenize(text, false, false, Encoding.UTF8).Length;
+        int inputTokens = fittedInput.TokenCount!.Value;
         if (inputTokens > 512)
             throw new TranslationException("translation.textTooLong");
         if (_store.Profile.PromptKind != TranslationPromptKind.General)
@@ -435,6 +467,7 @@ internal sealed partial class QwenTranslationEngine : ILocalTranslationEngine
 
     private void UnloadUnderGate()
     {
+        _lastPreparedInput = null;
         _cachedInstruction = null;
         _instructionTokens = 0;
         _weights?.Dispose(); _weights = null;

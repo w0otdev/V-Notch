@@ -8,10 +8,12 @@
 #include <windows.h>
 #include <shellapi.h>
 #include <cstdint>
+#include <cstring>
 #include <cwchar>
 #include <cwctype>
 #include <string>
 #include <string_view>
+#include <vector>
 
 #pragma comment(lib, "shell32.lib")
 
@@ -147,6 +149,92 @@ VN_EXPORT int32_t vn_ffmpeg_is_screen_capture_command(
     try {
         *out_is_capture = vnotch::services::FfmpegRecordingProbe::IsScreenCaptureCommand(
             std::u16string_view(cmd_ptr, static_cast<size_t>(cmd_len))) ? 1 : 0;
+        return VN_OK;
+    } catch (...) {
+        return VN_ERR_FAIL;
+    }
+}
+
+VN_EXPORT int32_t __stdcall vn_ffmpeg_read_process_command_line(
+    uint32_t process_id,
+    char16_t* out_buf,
+    int32_t out_cap,
+    int32_t* out_written) noexcept
+{
+    if (out_written == nullptr || process_id == 0 || out_cap < 0 || (out_cap > 0 && out_buf == nullptr)) {
+        return VN_ERR_INVALID_ARG;
+    }
+    *out_written = 0;
+
+    HANDLE proc = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, FALSE, process_id);
+    if (proc == nullptr) {
+        return VN_ERR_FAIL;
+    }
+    struct HandleGuard {
+        HANDLE h;
+        ~HandleGuard() noexcept {
+            if (h != nullptr) {
+                CloseHandle(h);
+            }
+        }
+    } guard{proc};
+
+    using NtQueryInformationProcessFn = LONG(NTAPI*)(
+        HANDLE ProcessHandle,
+        ULONG ProcessInformationClass,
+        PVOID ProcessInformation,
+        ULONG ProcessInformationLength,
+        PULONG ReturnLength);
+
+    static const NtQueryInformationProcessFn query_fn = []() noexcept -> NtQueryInformationProcessFn {
+        HMODULE ntdll = GetModuleHandleW(L"ntdll.dll");
+        if (ntdll == nullptr) return nullptr;
+        return reinterpret_cast<NtQueryInformationProcessFn>(
+            GetProcAddress(ntdll, "NtQueryInformationProcess"));
+    }();
+    if (query_fn == nullptr) {
+        return VN_ERR_FAIL;
+    }
+
+    struct VnUnicodeString {
+        USHORT Length;
+        USHORT MaximumLength;
+        PWSTR Buffer;
+    };
+
+    static constexpr ULONG kProcessCommandLineInformation = 60;
+    static constexpr LONG kStatusInfoLengthMismatch = static_cast<LONG>(0xC0000004u);
+    static constexpr LONG kStatusBufferOverflow = static_cast<LONG>(0x80000005u);
+    static constexpr LONG kStatusBufferTooSmall = static_cast<LONG>(0xC0000023u);
+
+    try {
+        alignas(8) uint8_t stack_buf[4096];
+        ULONG return_len = 0;
+        uint8_t* active_buf = stack_buf;
+        std::vector<uint8_t> heap_buf;
+
+        LONG status = query_fn(proc, kProcessCommandLineInformation, stack_buf, sizeof(stack_buf), &return_len);
+        if (status == kStatusInfoLengthMismatch || status == kStatusBufferOverflow || status == kStatusBufferTooSmall) {
+            const ULONG alloc_size = (return_len > sizeof(stack_buf) && return_len <= 65536u) ? return_len : 65536u;
+            heap_buf.resize(alloc_size);
+            active_buf = heap_buf.data();
+            status = query_fn(proc, kProcessCommandLineInformation, active_buf, alloc_size, &return_len);
+        }
+        if (status < 0) {
+            return VN_ERR_FAIL;
+        }
+
+        const auto* ustr = reinterpret_cast<const VnUnicodeString*>(active_buf);
+        const int32_t char_len = static_cast<int32_t>(ustr->Length / sizeof(wchar_t));
+        if (ustr->Buffer == nullptr || char_len <= 0) {
+            return VN_ERR_FAIL;
+        }
+        if (out_cap < char_len) {
+            *out_written = char_len;
+            return VN_ERR_BUFFER_TOO_SMALL;
+        }
+        std::memcpy(out_buf, ustr->Buffer, static_cast<size_t>(char_len) * sizeof(char16_t));
+        *out_written = char_len;
         return VN_OK;
     } catch (...) {
         return VN_ERR_FAIL;

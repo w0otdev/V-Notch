@@ -24,6 +24,7 @@ internal interface IMediaTransportSession
 internal sealed partial class WindowsMediaTransportSession(GlobalSystemMediaTransportControlsSession session) : IMediaTransportSession
 {
     private const string NativeDll = "VNotch.Native.dll";
+    private const int VN_ERR_BUFFER_TOO_SMALL = -2;
 
     [LibraryImport(NativeDll, StringMarshalling = StringMarshalling.Utf16)]
     private static partial int vn_gsmtc_get_source_app_id(
@@ -73,7 +74,13 @@ internal sealed partial class WindowsMediaTransportSession(GlobalSystemMediaTran
             Span<char> buf = stackalloc char[512];
             try
             {
-                return vn_gsmtc_get_source_app_id(NativePtr, buf, buf.Length, out int len) == 0 && len > 0
+                int rc = vn_gsmtc_get_source_app_id(NativePtr, buf, buf.Length, out int len);
+                if (rc == VN_ERR_BUFFER_TOO_SMALL && len > buf.Length)
+                {
+                    buf = new char[len];
+                    rc = vn_gsmtc_get_source_app_id(NativePtr, buf, buf.Length, out len);
+                }
+                return rc == 0 && len > 0
                     ? new string(buf[..len])
                     : string.Empty;
             }
@@ -134,7 +141,13 @@ internal sealed partial class WindowsMediaTransportSession(GlobalSystemMediaTran
         Span<char> buf = stackalloc char[1024];
         try
         {
-            return vn_gsmtc_get_title(NativePtr, buf, buf.Length, out int len, out byte hasTitle) == 0 && hasTitle != 0
+            int rc = vn_gsmtc_get_title(NativePtr, buf, buf.Length, out int len, out byte hasTitle);
+            if (rc == VN_ERR_BUFFER_TOO_SMALL && len > buf.Length)
+            {
+                buf = new char[len];
+                rc = vn_gsmtc_get_title(NativePtr, buf, buf.Length, out len, out hasTitle);
+            }
+            return rc == 0 && hasTitle != 0
                 ? new string(buf[..len])
                 : null;
         }

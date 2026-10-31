@@ -125,6 +125,8 @@ public partial class TranslationWindow : Window
         CancelLabel.Text = Loc.Get("translation.cancel");
         OriginalExpander.Header = Loc.Get("translation.original");
         CloseButton.ToolTip = Loc.Get("translation.close");
+        SelectionChipCloseButton.ToolTip = Loc.Get("common.close");
+        System.Windows.Automation.AutomationProperties.SetName(SelectionChipCloseButton, Loc.Get("common.close"));
         System.Windows.Automation.AutomationProperties.SetName(CloseButton, Loc.Get("translation.close"));
         System.Windows.Automation.AutomationProperties.SetName(SourceLanguageCombo, Loc.Get("translation.source"));
         System.Windows.Automation.AutomationProperties.SetName(TargetLanguageCombo, Loc.Get("translation.target"));
@@ -679,6 +681,23 @@ public partial class TranslationWindow : Window
         else if (e.Key == Key.Enter && Keyboard.Modifiers == ModifierKeys.None && TranslateButton.IsEnabled &&
                  e.OriginalSource is not ComboBoxItem && !SourceLanguageCombo.IsDropDownOpen && !TargetLanguageCombo.IsDropDownOpen &&
                  !SourceCurrencyCombo.IsDropDownOpen && !TargetCurrencyCombo.IsDropDownOpen)
-        { TranslateRequested?.Invoke(); e.Handled = true; }
+        {
+            if (GetFocusedElement(e) is ButtonBase focusedButton && !ReferenceEquals(focusedButton, TranslateButton))
+                return;
+            TranslateRequested?.Invoke();
+            e.Handled = true;
+        }
+    }
+
+    private IInputElement? GetFocusedElement(KeyEventArgs e)
+    {
+        if (Keyboard.FocusedElement is DependencyObject kb && GetWindow(kb) == this)
+            return (IInputElement)kb;
+        var logicalFocus = FocusManager.GetFocusedElement(this);
+        if (!IsVisible && logicalFocus != null)
+            FocusManager.SetFocusedElement(this, null);
+        if (logicalFocus != null && !ReferenceEquals(logicalFocus, this))
+            return logicalFocus;
+        return Keyboard.FocusedElement ?? e.OriginalSource as IInputElement;
     }
 }

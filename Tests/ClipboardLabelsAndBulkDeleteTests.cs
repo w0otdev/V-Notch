@@ -157,6 +157,64 @@ public sealed class ClipboardLabelsAndBulkDeleteTests
         finally { window.Close(); }
     });
 
+    [Fact]
+    public void LabelEditorClosesWhenTransientOverlaysResetOrTrayHides() => SharedStaTestRunner.RunAsync(async () =>
+    {
+        using var fixture = new Fixture();
+        using var store = new ClipboardHistoryStore(fixture.Root);
+        await using var controller = new ClipboardHistoryController(Dispatcher.CurrentDispatcher, store);
+        using var tray = new ClipboardTray();
+        var window = new BackgroundWindow { Content = tray, Width = 900, Height = 340 };
+        try
+        {
+            await store.InitializeAsync();
+            tray.Attach(controller);
+            window.Show();
+            await Dispatcher.Yield(DispatcherPriority.ApplicationIdle);
+
+            var addLabelButton = (Button)tray.FindName("AddLabelButton");
+            var labelEditorPanel = (FrameworkElement)tray.FindName("LabelEditorPanel");
+
+            addLabelButton.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+            Assert.Equal(Visibility.Visible, labelEditorPanel.Visibility);
+            Assert.True(tray.IsContextMenuOpen);
+
+            Invoke(tray, "HidePrivateContent");
+            Assert.Equal(Visibility.Collapsed, labelEditorPanel.Visibility);
+            Assert.False(tray.IsContextMenuOpen);
+        }
+        finally { window.Close(); }
+    });
+
+    [Fact]
+    public async Task LabelsCategoryOrderAndVaultWriteAtomicallyWithoutLeavingTempFiles()
+    {
+        using var fixture = new Fixture();
+        using var store = new ClipboardHistoryStore(fixture.Root);
+        await store.InitializeAsync();
+
+        var label = await store.AddLabelAsync("Atomic label");
+        await store.ReorderCategoryAsync(label.Id, "All");
+
+        using var pin = new SecureString();
+        foreach (char digit in "123456") pin.AppendChar(digit);
+        pin.MakeReadOnly();
+        Assert.True(await store.UnlockPersonalAsync(pin, create: true));
+
+        Assert.Empty(Directory.GetFiles(fixture.Root, "*.tmp", SearchOption.AllDirectories));
+
+        var labelsJson = await File.ReadAllTextAsync(Path.Combine(fixture.Root, "labels.json"));
+        var orderJson = await File.ReadAllTextAsync(Path.Combine(fixture.Root, "category-order.json"));
+        var vaultJson = await File.ReadAllTextAsync(Path.Combine(fixture.Root, "personal-key.json"));
+
+        using var labelsDoc = System.Text.Json.JsonDocument.Parse(labelsJson);
+        using var orderDoc = System.Text.Json.JsonDocument.Parse(orderJson);
+        using var vaultDoc = System.Text.Json.JsonDocument.Parse(vaultJson);
+        Assert.Equal(System.Text.Json.JsonValueKind.Array, labelsDoc.RootElement.ValueKind);
+        Assert.Equal(System.Text.Json.JsonValueKind.Array, orderDoc.RootElement.ValueKind);
+        Assert.Equal(System.Text.Json.JsonValueKind.Object, vaultDoc.RootElement.ValueKind);
+    }
+
     private static object? Invoke(object target, string name, params object?[] args)
         => target.GetType().GetMethod(name, BindingFlags.Instance | BindingFlags.NonPublic)!.Invoke(target, args);
 

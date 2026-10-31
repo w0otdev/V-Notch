@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Net;
 using System.Net.Http;
@@ -6,6 +7,7 @@ using System.Security.Cryptography;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
+using VNotch.Models;
 using VNotch.Services;
 using VNotch.Windows;
 using Xunit;
@@ -223,6 +225,163 @@ public sealed class AppIntegrityServiceTests
             var status = await AppIntegrityService.VerifyChecksumAsync(tempFile, "99.9.9", client);
 
             Assert.Equal(IntegrityCheckStatus.ReleaseNotFound, status);
+        }
+        finally
+        {
+            if (File.Exists(tempFile))
+                File.Delete(tempFile);
+        }
+    }
+
+    [Theory]
+    [InlineData("1.9.0", "v1.9.0", "1.9.0")]
+    [InlineData("v1.9.0", "v1.9.0", "1.9.0")]
+    [InlineData("V2.0.1", "v2.0.1", "2.0.1")]
+    public void BuildCandidateReleaseTags_OrdersVPrefixedTagBeforeBareVersion(string inputVersion, string expectedFirst, string expectedSecond)
+    {
+        string[] tags = AppIntegrityService.BuildCandidateReleaseTags(inputVersion);
+        Assert.Equal([expectedFirst, expectedSecond], tags);
+    }
+
+    [Fact]
+    public async Task VerifyChecksumAsync_RequestsVPrefixedReleaseTagFirst()
+    {
+        string tempFile = Path.Combine(Path.GetTempPath(), $"vtag-first-{Guid.NewGuid():N}.exe");
+        try
+        {
+            byte[] fileBytes = Encoding.UTF8.GetBytes("Official Release Binary");
+            await File.WriteAllBytesAsync(tempFile, fileBytes);
+            string fileHash = Convert.ToHexString(SHA256.HashData(fileBytes)).ToLowerInvariant();
+
+            string releaseJson = """
+            {
+              "tag_name": "v1.9.0",
+              "assets": [
+                {
+                  "name": "checksums.txt",
+                  "browser_download_url": "https://test.local/checksums.txt"
+                }
+              ]
+            }
+            """;
+
+            var requestedUris = new List<string>();
+            var handler = new MockHttpMessageHandler((req) =>
+            {
+                string uri = req.RequestUri!.ToString();
+                requestedUris.Add(uri);
+
+                if (uri.EndsWith("/releases/tags/v1.9.0", StringComparison.Ordinal))
+                {
+                    return new HttpResponseMessage(HttpStatusCode.OK)
+                    {
+                        Content = new StringContent(releaseJson)
+                    };
+                }
+
+                if (uri.Contains("checksums.txt", StringComparison.Ordinal))
+                {
+                    return new HttpResponseMessage(HttpStatusCode.OK)
+                    {
+                        Content = new StringContent($"{fileHash}  V-Notch.exe\n")
+                    };
+                }
+
+                return new HttpResponseMessage(HttpStatusCode.NotFound);
+            });
+
+            using var client = new HttpClient(handler);
+            var status = await AppIntegrityService.VerifyChecksumAsync(tempFile, "1.9.0", client);
+
+            Assert.Equal(IntegrityCheckStatus.Verified, status);
+            Assert.Equal(2, requestedUris.Count);
+            Assert.Equal("https://api.github.com/repos/w0otdev/V-Notch/releases/tags/v1.9.0", requestedUris[0]);
+            Assert.DoesNotContain("https://api.github.com/repos/w0otdev/V-Notch/releases/tags/1.9.0", requestedUris);
+        }
+        finally
+        {
+            if (File.Exists(tempFile))
+                File.Delete(tempFile);
+        }
+    }
+
+    [Fact]
+    public async Task StartBackgroundCheckAsync_WhenAutoCheckUpdatesDisabled_SendsZeroHttpRequests()
+    {
+        string tempFile = Path.Combine(Path.GetTempPath(), $"no-autocheck-{Guid.NewGuid():N}.exe");
+        try
+        {
+            await File.WriteAllTextAsync(tempFile, "dummy binary");
+
+            int requestCount = 0;
+            var handler = new MockHttpMessageHandler((_) =>
+            {
+                Interlocked.Increment(ref requestCount);
+                return new HttpResponseMessage(HttpStatusCode.OK);
+            });
+
+            using var client = new HttpClient(handler);
+            var disabledSettings = new NotchSettings
+            {
+                AutoCheckUpdates = false,
+                EnableLocalOnlyMode = false
+            };
+
+            var bgStatus = await AppIntegrityService.StartBackgroundCheckAsync(
+                delay: TimeSpan.Zero,
+                settings: disabledSettings,
+                customClient: client,
+                executablePath: tempFile,
+                ignoreDevEnvironment: true);
+
+            var directStatus = await AppIntegrityService.VerifyChecksumAsync(
+                tempFile,
+                "1.9.0",
+                client,
+                settings: disabledSettings);
+
+            Assert.Equal(IntegrityCheckStatus.Skipped, bgStatus);
+            Assert.Equal(IntegrityCheckStatus.Skipped, directStatus);
+            Assert.Equal(0, requestCount);
+        }
+        finally
+        {
+            if (File.Exists(tempFile))
+                File.Delete(tempFile);
+        }
+    }
+
+    [Fact]
+    public async Task StartBackgroundCheckAsync_WhenLocalOnlyModeEnabled_SendsZeroHttpRequests()
+    {
+        string tempFile = Path.Combine(Path.GetTempPath(), $"local-only-{Guid.NewGuid():N}.exe");
+        try
+        {
+            await File.WriteAllTextAsync(tempFile, "dummy binary");
+
+            int requestCount = 0;
+            var handler = new MockHttpMessageHandler((_) =>
+            {
+                Interlocked.Increment(ref requestCount);
+                return new HttpResponseMessage(HttpStatusCode.OK);
+            });
+
+            using var client = new HttpClient(handler);
+            var offlineSettings = new NotchSettings
+            {
+                AutoCheckUpdates = true,
+                EnableLocalOnlyMode = true
+            };
+
+            var bgStatus = await AppIntegrityService.StartBackgroundCheckAsync(
+                delay: TimeSpan.Zero,
+                settings: offlineSettings,
+                customClient: client,
+                executablePath: tempFile,
+                ignoreDevEnvironment: true);
+
+            Assert.Equal(IntegrityCheckStatus.Skipped, bgStatus);
+            Assert.Equal(0, requestCount);
         }
         finally
         {

@@ -73,7 +73,47 @@ public sealed class ClipboardControllerImportTests
             await WpfFrameWaiter.UntilAsync(() => status != null, "locked vault status", ct);
             Assert.Equal(Loc.Get("clipboard.saveError"), status);
             Assert.Equal(0, drops);
+            Assert.Empty(controller.Store.Snapshot());
             Assert.Empty(await controller.Store.SearchAsync("", "All"));
+            string itemsDir = Path.Combine(root, "items");
+            if (Directory.Exists(itemsDir))
+                Assert.Empty(Directory.GetDirectories(itemsDir));
+
+            status = null;
+            var dropData = new DataObject();
+            dropData.SetText("vault-only");
+            await controller.ImportDropAsync(dropData, "personal");
+            await WpfFrameWaiter.UntilAsync(() => status != null, "locked drop status", ct);
+            Assert.Equal(Loc.Get("clipboard.saveError"), status);
+            Assert.Equal(0, drops);
+            Assert.Empty(controller.Store.Snapshot());
+            if (Directory.Exists(itemsDir))
+                Assert.Empty(Directory.GetDirectories(itemsDir));
+        }
+        finally { Directory.Delete(root, true); }
+    });
+
+    [Fact]
+    public void OversizedRichTextPayloadIsStrippedWhileKeepingPlainText() => SharedStaTestRunner.RunAsync(async ct =>
+    {
+        string root = Directory.CreateTempSubdirectory("vnotch-controller-richtext-").FullName;
+        try
+        {
+            await using var controller = new ClipboardHistoryController(Dispatcher.CurrentDispatcher, new ClipboardHistoryStore(root));
+            string hugeHtml = new('h', ClipboardHistoryController.MaxRichTextCaptureChars + 1);
+            string hugeRtf = new('r', ClipboardHistoryController.MaxRichTextCaptureChars + 1);
+            await controller.ImportAsync(new ClipboardCapture
+            {
+                Text = "concise summary",
+                Html = hugeHtml,
+                Rtf = hugeRtf,
+                TargetCategory = "All"
+            });
+            var entry = Assert.Single(controller.Store.Snapshot());
+            var content = await controller.Store.GetContentAsync(entry.Id);
+            Assert.Equal("concise summary", content.Text);
+            Assert.Equal(string.Empty, content.Html);
+            Assert.Equal(string.Empty, content.Rtf);
         }
         finally { Directory.Delete(root, true); }
     });

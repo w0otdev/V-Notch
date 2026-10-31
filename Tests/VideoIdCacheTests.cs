@@ -127,6 +127,24 @@ public class VideoIdCacheTests
         Assert.Equal("id", _cache.Get("song"));
     }
 
+    [Fact]
+    public void Evict_ThenReAdd_DoesNotPrematurelyEvictReAddedTrackAtCapacity()
+    {
+        _cache.Set("songA", "v1");
+        _cache.Set("other-0", "id-0");
+        _cache.Evict("songA", "v1");
+        _cache.Set("songA", "v2");
+
+        for (int i = 1; i < 50; i++)
+        {
+            _cache.Set($"other-{i}", $"id-{i}");
+        }
+
+        Assert.Equal(50, _cache.Count);
+        Assert.Equal("v2", _cache.Get("songA"));
+        Assert.Null(_cache.Get("other-0"));
+    }
+
     #endregion
 
     #region Mismatch blocklist

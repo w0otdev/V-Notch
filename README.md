@@ -180,7 +180,7 @@ V-Notch runs on 64-bit Windows 10 build 19041 or later, or Windows 11. It requir
 <details>
 <summary><strong>Build with GitHub Actions</strong></summary>
 
-Open the Actions tab, select Release Installer, and click Run workflow. Choose `framework-dependent` (smaller, requires .NET runtime) or `self-contained` (standalone). Download the installer from Artifacts when the build finishes, or from the automated `nightly` release tag.
+The `Release Installer` workflow runs automatically via `workflow_run` after `CI` succeeds on `main` (or `master` and `v*` release branches). For `main` pushes, it publishes a beta release tag `v<version>-beta.<run>.<attempt>` containing both `V-Notch-Setup.exe` (framework-dependent) and `V-Notch-Setup-SelfContained.exe` (self-contained), plus `.sha256`, `.manifest.json`, `.sig`, and `checksums.txt`.
 
 </details>
 

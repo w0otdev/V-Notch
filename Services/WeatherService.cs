@@ -2,6 +2,7 @@ using System;
 using System.Globalization;
 using System.Net.Http;
 using System.Runtime.InteropServices;
+using System.Text;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
@@ -34,6 +35,12 @@ public sealed partial class WeatherService : IWeatherService, IDisposable
         out int outRounded);
 
     private const string LogCategory = "WEATHER";
+    private const int MaxWeatherResponseBytes = 512 * 1024; // 512 KB
+    private static readonly JsonDocumentOptions WeatherJsonOptions = new() { MaxDepth = 16 };
+
+    private sealed record CachedLocation(double Lat, double Lon, string City, DateTime Expiry);
+    private CachedLocation? _cachedLocation;
+
     private readonly HttpClient _http;
     private readonly bool _ownsHttpClient;
 
@@ -93,8 +100,6 @@ public sealed partial class WeatherService : IWeatherService, IDisposable
         }
     }
 
-    private const int MaxWeatherResponseBytes = 512 * 1024; // 512 KB
-
     private CancellationTokenSource CreateRequestCancellation(CancellationToken token)
     {
         // ResponseHeadersRead stops HttpClient's timeout at the headers. Keep
@@ -102,6 +107,45 @@ public sealed partial class WeatherService : IWeatherService, IDisposable
         var cts = CancellationTokenSource.CreateLinkedTokenSource(token);
         cts.CancelAfter(_http.Timeout);
         return cts;
+    }
+
+    internal static async Task<string> ReadBoundedStringAsync(
+        HttpClient client,
+        string url,
+        int maxBytes = MaxWeatherResponseBytes,
+        CancellationToken ct = default)
+    {
+        ArgumentNullException.ThrowIfNull(client);
+        using var response = await client.GetAsync(url, HttpCompletionOption.ResponseHeadersRead, ct).ConfigureAwait(false);
+        response.EnsureSuccessStatusCode();
+
+        var length = response.Content.Headers.ContentLength;
+        if (length.HasValue && length.Value > maxBytes)
+            throw new InvalidOperationException($"Response content length ({length.Value}) exceeds limit ({maxBytes}).");
+
+        await using var stream = await response.Content.ReadAsStreamAsync(ct).ConfigureAwait(false);
+        using var memory = new System.IO.MemoryStream(length.HasValue ? (int)length.Value : 4096);
+        byte[] buffer = System.Buffers.ArrayPool<byte>.Shared.Rent(4096);
+        try
+        {
+            int totalRead = 0;
+            while (true)
+            {
+                ct.ThrowIfCancellationRequested();
+                int read = await stream.ReadAsync(buffer.AsMemory(0, Math.Min(buffer.Length, maxBytes - totalRead + 1)), ct).ConfigureAwait(false);
+                if (read == 0) break;
+                totalRead += read;
+                if (totalRead > maxBytes)
+                    throw new InvalidOperationException($"Response body exceeded limit of {maxBytes} bytes.");
+                await memory.WriteAsync(buffer.AsMemory(0, read), ct).ConfigureAwait(false);
+            }
+
+            return Encoding.UTF8.GetString(memory.GetBuffer(), 0, totalRead);
+        }
+        finally
+        {
+            System.Buffers.ArrayPool<byte>.Shared.Return(buffer);
+        }
     }
 
     internal static async Task<JsonDocument?> ReadLimitedJsonAsync(HttpResponseMessage response, int maxBytes, CancellationToken token)
@@ -127,7 +171,7 @@ public sealed partial class WeatherService : IWeatherService, IDisposable
 
             // This is MemoryStream-owned storage, NOT a rented array. The document
             // retains it safely after the stream is disposed until its own disposal.
-            return totalRead == 0 ? null : JsonDocument.Parse(memory.GetBuffer().AsMemory(0, totalRead));
+            return totalRead == 0 ? null : JsonDocument.Parse(memory.GetBuffer().AsMemory(0, totalRead), WeatherJsonOptions);
         }
         finally
         {
@@ -264,6 +308,10 @@ public sealed partial class WeatherService : IWeatherService, IDisposable
     private async Task<(double, double, string)?> TryIpWhoIsAsync(CancellationToken token)
     {
         token.ThrowIfCancellationRequested();
+        var cached = Volatile.Read(ref _cachedLocation);
+        if (cached is not null && DateTime.UtcNow < cached.Expiry)
+            return (cached.Lat, cached.Lon, cached.City);
+
         try
         {
             using var requestCts = CreateRequestCancellation(token);
@@ -298,6 +346,7 @@ public sealed partial class WeatherService : IWeatherService, IDisposable
                 ? cityProp.GetString() ?? string.Empty
                 : string.Empty;
 
+            Volatile.Write(ref _cachedLocation, new CachedLocation(lat, lon, city, DateTime.UtcNow.AddMinutes(30)));
             return (lat, lon, city);
         }
         catch (OperationCanceledException)
@@ -329,7 +378,11 @@ public sealed partial class WeatherService : IWeatherService, IDisposable
 
     private static HttpClient CreateHttpClient()
     {
-        var client = new HttpClient(NetworkPrivacy.Handler(NetworkFeature.Weather)) { Timeout = TimeSpan.FromSeconds(8) };
+        var client = new HttpClient(NetworkPrivacy.Handler(NetworkFeature.Weather))
+        {
+            Timeout = TimeSpan.FromSeconds(8),
+            MaxResponseContentBufferSize = MaxWeatherResponseBytes
+        };
         client.DefaultRequestHeaders.UserAgent.ParseAdd(AppVersion.UserAgent);
         return client;
     }

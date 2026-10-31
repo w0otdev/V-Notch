@@ -45,11 +45,6 @@ public sealed partial class MediaSessionState
         return entry;
     }
 
-    public bool TryGet(string sessionKey, out SessionEntry entry)
-    {
-        return _sessions.TryGetValue(sessionKey, out entry!);
-    }
-
     public void SetLastPlayingTime(string sourceAppId, DateTime time)
     {
         GetOrCreate(sourceAppId).LastPlayingTime = time;

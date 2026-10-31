@@ -158,7 +158,10 @@ public partial class App : Application
             }
             ServicePrewarmer.Prewarm(Services).SafeFireAndForget("PREWARM");
 
-            _ = AppIntegrityService.StartBackgroundCheckAsync();
+            if (loadedSettings.AutoCheckUpdates && !loadedSettings.EnableLocalOnlyMode)
+            {
+                _ = AppIntegrityService.StartBackgroundCheckAsync(settings: loadedSettings);
+            }
 
             base.OnStartup(e);
         }

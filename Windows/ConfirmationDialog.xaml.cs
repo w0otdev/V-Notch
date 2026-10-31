@@ -296,9 +296,35 @@ public partial class ConfirmationDialog : Window
         }
         else if (e.Key == Key.Enter)
         {
+            var focused = GetFocusedElement(e);
+            if (ReferenceEquals(focused, CancelButton))
+            {
+                CloseWithAnimation(false);
+                e.Handled = true;
+                return;
+            }
+
+            if (focused is System.Windows.Controls.Primitives.ButtonBase focusedBtn &&
+                !ReferenceEquals(focusedBtn, ConfirmButton))
+            {
+                return;
+            }
+
             e.Handled = true;
             CloseWithAnimation(true);
         }
+    }
+
+    private IInputElement? GetFocusedElement(KeyEventArgs e)
+    {
+        if (Keyboard.FocusedElement is DependencyObject kb && GetWindow(kb) == this)
+            return (IInputElement)kb;
+        var logicalFocus = FocusManager.GetFocusedElement(this);
+        if (!IsVisible && logicalFocus != null)
+            FocusManager.SetFocusedElement(this, null);
+        if (logicalFocus != null && !ReferenceEquals(logicalFocus, this))
+            return logicalFocus;
+        return Keyboard.FocusedElement ?? e.OriginalSource as IInputElement;
     }
 
     private void Window_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)

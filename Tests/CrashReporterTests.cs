@@ -7,21 +7,41 @@ using Xunit;
 
 namespace VNotch.Tests;
 
+[CollectionDefinition("DiagnosticLogging", DisableParallelization = true)]
+public sealed class DiagnosticLoggingCollection { }
+
+[Collection("DiagnosticLogging")]
 public sealed class CrashReporterTests : IDisposable
 {
     private readonly string _tempDirectory;
     private readonly string _originalCrashLogPath;
+    private readonly string _originalSecondaryCrashLogPath;
+    private readonly string _originalFallbackCrashLogPath;
+    private readonly LogLevel _originalMinimumLevel;
+    private readonly bool _originalDiskCaptureEnabled;
 
     public CrashReporterTests()
     {
         _tempDirectory = Path.Combine(Path.GetTempPath(), $"vnotch-crash-tests-{Guid.NewGuid():N}");
         Directory.CreateDirectory(_tempDirectory);
         _originalCrashLogPath = CrashReporter.CrashLogPath;
+        _originalSecondaryCrashLogPath = CrashReporter.SecondaryCrashLogPath;
+        _originalFallbackCrashLogPath = CrashReporter.FallbackCrashLogPath;
+        _originalMinimumLevel = RuntimeLog.MinimumLevel;
+        _originalDiskCaptureEnabled = RuntimeLog.IsDiskCaptureEnabled;
+
+        CrashReporter.SecondaryCrashLogPath = Path.Combine(_tempDirectory, "secondary-vnotch-crash.log");
+        CrashReporter.FallbackCrashLogPath = Path.Combine(_tempDirectory, "fallback-vnotch-crash.log");
+        RuntimeLog.SetDiskCaptureEnabled(true);
     }
 
     public void Dispose()
     {
         CrashReporter.CrashLogPath = _originalCrashLogPath;
+        CrashReporter.SecondaryCrashLogPath = _originalSecondaryCrashLogPath;
+        CrashReporter.FallbackCrashLogPath = _originalFallbackCrashLogPath;
+        RuntimeLog.MinimumLevel = _originalMinimumLevel;
+        RuntimeLog.SetDiskCaptureEnabled(_originalDiskCaptureEnabled);
         try
         {
             if (Directory.Exists(_tempDirectory))
@@ -115,6 +135,7 @@ public sealed class CrashReporterTests : IDisposable
     {
         string testLogPath = Path.Combine(_tempDirectory, "test-crash.log");
         CrashReporter.CrashLogPath = testLogPath;
+        RuntimeLog.SetDiskCaptureEnabled(true);
 
         var ex = new ApplicationException("Simulated unexpected crash");
 
@@ -128,10 +149,61 @@ public sealed class CrashReporterTests : IDisposable
     }
 
     [Fact]
+    public void LogCrash_DoesNotWriteToDisk_WhenDiagnosticLoggingIsDisabled()
+    {
+        string primaryPath = Path.Combine(_tempDirectory, "disabled-primary-crash.log");
+        string secondaryPath = Path.Combine(_tempDirectory, "disabled-secondary-crash.log");
+        string fallbackPath = Path.Combine(_tempDirectory, "disabled-fallback-crash.log");
+        CrashReporter.CrashLogPath = primaryPath;
+        CrashReporter.SecondaryCrashLogPath = secondaryPath;
+        CrashReporter.FallbackCrashLogPath = fallbackPath;
+        RuntimeLog.SetDiskCaptureEnabled(false);
+
+        CrashReporter.LogCrash(
+            "UnitTests.DisabledDiskWrite",
+            new InvalidOperationException("Should not persist to disk"),
+            "Privacy opt-out verification",
+            isTerminating: true);
+        CrashReporter.TryWriteReport("Direct report should also be blocked when disk capture is disabled");
+
+        Assert.False(File.Exists(primaryPath));
+        Assert.False(File.Exists(secondaryPath));
+        Assert.False(File.Exists(fallbackPath));
+    }
+
+    [Fact]
+    public void DeleteCrashLogs_RemovesPrimarySecondaryAndFallbackCrashLogsAndBackups()
+    {
+        string primaryPath = Path.Combine(_tempDirectory, "purge-primary-crash.log");
+        string secondaryPath = Path.Combine(_tempDirectory, "purge-secondary-crash.log");
+        string fallbackPath = Path.Combine(_tempDirectory, "purge-fallback-crash.log");
+        CrashReporter.CrashLogPath = primaryPath;
+        CrashReporter.SecondaryCrashLogPath = secondaryPath;
+        CrashReporter.FallbackCrashLogPath = fallbackPath;
+
+        File.WriteAllText(primaryPath, "primary");
+        File.WriteAllText(primaryPath + ".old", "primary-old");
+        File.WriteAllText(secondaryPath, "secondary");
+        File.WriteAllText(secondaryPath + ".old", "secondary-old");
+        File.WriteAllText(fallbackPath, "fallback");
+        File.WriteAllText(fallbackPath + ".old", "fallback-old");
+
+        CrashReporter.DeleteCrashLogs();
+
+        Assert.False(File.Exists(primaryPath));
+        Assert.False(File.Exists(primaryPath + ".old"));
+        Assert.False(File.Exists(secondaryPath));
+        Assert.False(File.Exists(secondaryPath + ".old"));
+        Assert.False(File.Exists(fallbackPath));
+        Assert.False(File.Exists(fallbackPath + ".old"));
+    }
+
+    [Fact]
     public void LogCrash_RotatesWhenFileSizeExceedsLimit()
     {
         string testLogPath = Path.Combine(_tempDirectory, "rotating-crash.log");
         CrashReporter.CrashLogPath = testLogPath;
+        RuntimeLog.SetDiskCaptureEnabled(true);
 
         // Pre-fill file to > 2MB
         byte[] dummyData = new byte[2 * 1024 * 1024 + 100];

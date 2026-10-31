@@ -35,6 +35,59 @@ public sealed class DataProtectionSettingsTests : IDisposable
     }
 
     [Fact]
+    public void ProtectBytesNative_And_UnprotectBytesNative_RoundTrip_EmptySmallAndLargePayloads()
+    {
+        int[] sizes = [0, 1, 32, 512, 4096, 16384];
+        foreach (int size in sizes)
+        {
+            byte[] plain = new byte[size];
+            for (int i = 0; i < size; i++)
+            {
+                plain[i] = (byte)((i * 31 + 17) & 0xFF);
+            }
+
+            byte[] cipher = DataProtection.ProtectBytesNative(plain);
+            Assert.True(cipher.Length > plain.Length);
+
+            byte[] roundTripped = DataProtection.UnprotectBytesNative(cipher);
+            Assert.Equal(plain, roundTripped);
+        }
+
+        Assert.Throws<CryptographicException>(() => DataProtection.UnprotectBytesNative(ReadOnlySpan<byte>.Empty));
+    }
+
+    [Fact]
+    public void ProtectAndUnprotect_LargeUnicodePayload_RoundTripsSinglePass()
+    {
+        string payload = string.Concat(Enumerable.Repeat("V-Notch-Secret-Khóa-Bí-Mật-🔒-0123456789;", 120));
+        string encrypted = DataProtection.Protect(payload);
+
+        Assert.StartsWith("enc:", encrypted);
+        Assert.Equal(payload, DataProtection.Unprotect(encrypted));
+    }
+
+    [Fact]
+    public void NativeDataProtection_AlwaysSecureZeroesDataBlobBeforeLocalFree_AndUsesSinglePassBuffers()
+    {
+        var dir = new DirectoryInfo(AppContext.BaseDirectory);
+        while (dir is not null && !File.Exists(Path.Combine(dir.FullName, "V-Notch.csproj")))
+        {
+            dir = dir.Parent;
+        }
+        Assert.NotNull(dir);
+
+        string cppSource = File.ReadAllText(Path.Combine(dir!.FullName, "Native", "Services", "DataProtection.cpp"));
+        Assert.Contains("SecureZeroMemory(out_blob.pbData, out_blob.cbData);", cppSource, StringComparison.Ordinal);
+        Assert.DoesNotContain("struct BlobGuard", cppSource, StringComparison.Ordinal);
+        Assert.Contains("catch (...)", cppSource, StringComparison.Ordinal);
+
+        string csSource = File.ReadAllText(Path.Combine(dir.FullName, "Services", "DataProtection.cs"));
+        Assert.Contains("ArrayPool<byte>.Shared.Rent", csSource, StringComparison.Ordinal);
+        Assert.Contains("CryptographicOperations.ZeroMemory(rented)", csSource, StringComparison.Ordinal);
+        Assert.DoesNotContain("null, 0, out int reqLen", csSource, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void Unprotect_CorruptData_ThrowsCryptographicException()
     {
         Assert.Throws<CryptographicException>(() => DataProtection.Unprotect("enc:not-valid-base64"));
@@ -227,6 +280,82 @@ public sealed class DataProtectionSettingsTests : IDisposable
         Assert.Equal(original, File.ReadAllText(path));
         Assert.NotNull(warning);
         Assert.DoesNotContain(cookie, File.ReadAllText(path));
+    }
+
+    [Fact]
+    public void DpapiJsonConverter_RoundTripsSecretWithEncPrefix()
+    {
+        var converter = new DpapiJsonConverter();
+        var options = new JsonSerializerOptions();
+        const string secret = "  sk-live-secret-token-12345  ";
+
+        using var stream = new MemoryStream();
+        using (var writer = new Utf8JsonWriter(stream))
+        {
+            converter.Write(writer, secret, options);
+        }
+
+        string rawJson = System.Text.Encoding.UTF8.GetString(stream.ToArray());
+        string? writtenValue = JsonSerializer.Deserialize<string>(rawJson);
+        Assert.NotNull(writtenValue);
+        Assert.StartsWith("enc:", writtenValue);
+        Assert.DoesNotContain("sk-live-secret-token", rawJson, StringComparison.Ordinal);
+
+        var reader = new Utf8JsonReader(stream.ToArray());
+        Assert.True(reader.Read());
+        string decrypted = converter.Read(ref reader, typeof(string), options);
+        Assert.Equal(secret, decrypted);
+    }
+
+    [Fact]
+    public void DpapiJsonConverter_EmptyAndNullValues_SerializeAndReadAsEmptyString()
+    {
+        var converter = new DpapiJsonConverter();
+        var options = new JsonSerializerOptions();
+
+        using var stream = new MemoryStream();
+        using (var writer = new Utf8JsonWriter(stream))
+        {
+            converter.Write(writer, "", options);
+        }
+
+        Assert.Equal("\"\"", System.Text.Encoding.UTF8.GetString(stream.ToArray()));
+
+        var emptyReader = new Utf8JsonReader("\"\""u8);
+        Assert.True(emptyReader.Read());
+        Assert.Equal("", converter.Read(ref emptyReader, typeof(string), options));
+
+        var nullReader = new Utf8JsonReader("null"u8);
+        Assert.True(nullReader.Read());
+        Assert.Equal("", converter.Read(ref nullReader, typeof(string), options));
+    }
+
+    [Fact]
+    public void DpapiJsonConverter_PlaintextAndCorruptPayloads_EnforceMigrationAndCorruptionProtection()
+    {
+        var converter = new DpapiJsonConverter();
+        var options = new JsonSerializerOptions();
+
+        Assert.Throws<CryptographicException>(() =>
+        {
+            var plaintextReader = new Utf8JsonReader("\"unmigrated-plaintext-secret\""u8);
+            Assert.True(plaintextReader.Read());
+            return converter.Read(ref plaintextReader, typeof(string), options);
+        });
+
+        var (migratedSettings, migrated) = SettingsMigrator.Migrate("{\"SettingsVersion\":14,\"YouTubeApiKey\":\"plaintext-migrated\"}");
+        Assert.True(migrated);
+        Assert.Equal("plaintext-migrated", migratedSettings.YouTubeApiKey);
+
+        foreach (string corrupt in new[] { "\"enc:not-valid-base64!!!\"", "\"enc:AAAA\"" })
+        {
+            Assert.Throws<CryptographicException>(() =>
+            {
+                var corruptReader = new Utf8JsonReader(System.Text.Encoding.UTF8.GetBytes(corrupt));
+                Assert.True(corruptReader.Read());
+                return converter.Read(ref corruptReader, typeof(string), options);
+            });
+        }
     }
 
     public void Dispose()

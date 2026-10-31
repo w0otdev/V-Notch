@@ -2,7 +2,6 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
-using System.IO;
 using System.Linq;
 using System.Runtime.InteropServices;
 using System.Windows.Media;
@@ -33,6 +32,8 @@ public enum SpatialAudioMode
     DolbyAtmos
 }
 
+internal readonly record struct CachedSessionMetadata(string DisplayName, string? ExePath, ImageSource? Icon);
+
 public sealed partial class AudioMixerService : IDisposable
 {
     // Endpoint and session access lives in Native/Services/AudioDevices.cpp and AudioSessions.cpp.
@@ -42,6 +43,7 @@ public sealed partial class AudioMixerService : IDisposable
     private const int NativeBufferTooSmall = -2;
     private const int AudioSessionActive = 1;
     private const int AudioSessionExpired = 2;
+    private const int MaxMetadataCacheSize = 128;
 
     [LibraryImport(NativeAudioDll)]
     private static partial int vn_audio_session_get_state(long snapshot, int index, out int state);
@@ -75,114 +77,118 @@ public sealed partial class AudioMixerService : IDisposable
     private static partial int vn_audio_capture_invalidate();
 
     private readonly object _enumLock = new();
-    private readonly Dictionary<uint, CachedProcessMetadata> _iconCache = new();
-    private const int MaxIconCacheSize = 48;
+    private readonly Dictionary<(uint Pid, string RawIdentifier), CachedSessionMetadata> _metadataCache = new();
+    private readonly object _metadataCacheLock = new();
 
-    private sealed class CachedProcessMetadata
+    internal int MetadataCacheCount
     {
-        public required string Name { get; init; }
-        public ImageSource? Icon { get; set; }
-        public bool IconResolved { get; set; }
-        public string? ProcessName { get; init; }
-        public DateTime? ProcessStartTimeUtc { get; init; }
-        public string? ExePath { get; init; }
-        public DateTime LastAccessedUtc { get; set; }
-        public long LastValidatedTicks { get; set; } = Environment.TickCount64;
+        get
+        {
+            lock (_metadataCacheLock)
+            {
+                return _metadataCache.Count;
+            }
+        }
     }
 
-    private void SetCacheEntry(uint pid, CachedProcessMetadata entry)
+    internal CachedSessionMetadata GetOrResolveSessionMetadata(
+        uint pid,
+        string rawId,
+        Func<uint, string, (string DisplayName, string? ExePath)>? nameResolver = null,
+        Func<string, uint, ImageSource?>? iconResolver = null)
     {
-        if (_iconCache.Count >= MaxIconCacheSize && !_iconCache.ContainsKey(pid))
+        string normalizedRawId = rawId ?? string.Empty;
+        var key = (pid, normalizedRawId);
+
+        lock (_metadataCacheLock)
         {
-            uint oldestKey = 0;
-            DateTime oldestTime = DateTime.MaxValue;
-            foreach (var kvp in _iconCache)
+            if (_metadataCache.TryGetValue(key, out var cached))
             {
-                if (kvp.Value.LastAccessedUtc < oldestTime)
+                return cached;
+            }
+
+            var resolver = nameResolver ?? ResolveDisplayName;
+            var (displayName, exePath) = resolver(pid, normalizedRawId);
+
+            ImageSource? icon = null;
+            if (iconResolver != null)
+            {
+                try { icon = iconResolver(exePath ?? string.Empty, pid); }
+                catch (Exception) { /* Icon resolver failed */ }
+            }
+            else if (!string.IsNullOrEmpty(exePath))
+            {
+                try { icon = FileIconProvider.GetAppIcon(exePath, small: true); }
+                catch (Exception) { /* Icon extraction failed */ }
+            }
+
+            // shortcut: cap metadata cache at 128 entries, upgrade to LRU if concurrent session churn exceeds 128
+            if (_metadataCache.Count >= MaxMetadataCacheSize)
+            {
+                foreach (var existingKey in _metadataCache.Keys)
                 {
-                    oldestTime = kvp.Value.LastAccessedUtc;
-                    oldestKey = kvp.Key;
+                    _metadataCache.Remove(existingKey);
+                    break;
                 }
             }
-            if (oldestKey != 0)
-            {
-                _iconCache.Remove(oldestKey);
-            }
-        }
-        _iconCache[pid] = entry;
-    }
 
-    private void PruneCacheExcept(HashSet<uint> activePids)
-    {
-        if (_iconCache.Count == 0) return;
-        var toRemove = new List<uint>();
-        foreach (var pid in _iconCache.Keys)
-        {
-            if (!activePids.Contains(pid))
-            {
-                toRemove.Add(pid);
-            }
-        }
-        foreach (var pid in toRemove)
-        {
-            _iconCache.Remove(pid);
+            var resolved = new CachedSessionMetadata(displayName, exePath, icon);
+            _metadataCache[key] = resolved;
+            return resolved;
         }
     }
 
-    private static bool IsCachedProcessValid(uint pid, CachedProcessMetadata cached)
+    internal void PruneMetadataCache(ReadOnlySpan<uint> activePids)
     {
-        long now = Environment.TickCount64;
-        if (now - cached.LastValidatedTicks < 3000) return true;
-
-        try
+        lock (_metadataCacheLock)
         {
-            using var proc = Process.GetProcessById((int)pid);
-            if (proc.HasExited) return false;
-
-            if (cached.ProcessStartTimeUtc.HasValue)
+            if (_metadataCache.Count == 0) return;
+            if (activePids.IsEmpty)
             {
-                try
+                _metadataCache.Clear();
+                return;
+            }
+
+            var toRemove = new List<(uint Pid, string RawIdentifier)>();
+            foreach (var key in _metadataCache.Keys)
+            {
+                if (!ContainsPid(activePids, key.Pid))
                 {
-                    if (Math.Abs((proc.StartTime.ToUniversalTime() - cached.ProcessStartTimeUtc.Value).TotalSeconds) > 1.0)
-                        return false;
-                }
-                catch
-                {
-                    if (!string.IsNullOrWhiteSpace(cached.ProcessName) &&
-                        !string.Equals(proc.ProcessName, cached.ProcessName, StringComparison.OrdinalIgnoreCase))
-                    {
-                        return false;
-                    }
+                    toRemove.Add(key);
                 }
             }
-            else if (!string.IsNullOrWhiteSpace(cached.ProcessName) &&
-                     !string.Equals(proc.ProcessName, cached.ProcessName, StringComparison.OrdinalIgnoreCase))
+
+            foreach (var key in toRemove)
             {
-                return false;
+                _metadataCache.Remove(key);
             }
-            cached.LastValidatedTicks = now;
-            return true;
-        }
-        catch
-        {
-            var resolved = ProcessNameResolver.TryGetNameAndExecutable(pid);
-            if (string.IsNullOrEmpty(resolved.Name) && string.IsNullOrEmpty(resolved.Executable))
-                return false;
-            if (!string.IsNullOrWhiteSpace(cached.ProcessName) &&
-                !string.Equals(resolved.Name, cached.ProcessName, StringComparison.OrdinalIgnoreCase))
+
+            while (_metadataCache.Count > MaxMetadataCacheSize)
             {
-                return false;
+                foreach (var existingKey in _metadataCache.Keys)
+                {
+                    _metadataCache.Remove(existingKey);
+                    break;
+                }
             }
-            cached.LastValidatedTicks = now;
-            return true;
         }
     }
 
+    private static bool ContainsPid(ReadOnlySpan<uint> pids, uint target)
+    {
+        for (int i = 0; i < pids.Length; i++)
+        {
+            if (pids[i] == target) return true;
+        }
+        return false;
+    }
 
     public List<AudioSessionInfo> GetSessions() => GetSessions(includeIcons: true);
 
-#pragma warning disable S3776 // Enumerates active CoreAudio audio sessions with icon cache and volume state resolution
-    public List<AudioSessionInfo> GetSessions(bool includeIcons)
+    public List<AudioSessionInfo> GetSessions(bool includeIcons) => ReadSessions(includeIcons);
+
+#pragma warning disable S3776 // Enumerates active CoreAudio audio sessions with metadata cache and volume state resolution
+    internal List<AudioSessionInfo> ReadSessions(bool includeIcons = true)
     {
         var results = new List<AudioSessionInfo>();
         lock (_enumLock)
@@ -196,6 +202,7 @@ public sealed partial class AudioMixerService : IDisposable
             try
             {
                 var seenProcessIds = new HashSet<uint>();
+                var activePids = new List<uint>();
                 var indexAndStateByPid = new Dictionary<uint, (int ResultIndex, int State)>();
                 for (int i = 0; i < count; i++)
                 {
@@ -232,6 +239,11 @@ public sealed partial class AudioMixerService : IDisposable
                             continue;
                         }
 
+                        if (!isSystem)
+                        {
+                            activePids.Add(pid);
+                        }
+
                         if (WindowsMediaAudioSessions.NativeOpenVolume(snapshot, i, out long lease) != 0)
                             continue;
                         float volume;
@@ -257,33 +269,10 @@ public sealed partial class AudioMixerService : IDisposable
                         }
                         else
                         {
-                            if (!_iconCache.TryGetValue(pid, out var cached) || !IsCachedProcessValid(pid, cached))
-                            {
-                                // Resolve the final name in the first background snapshot.
-                                // Only shell icon extraction is deferred to the detailed pass.
-                                ResolveProcess(pid, WindowsMediaAudioSessions.ReadString(snapshot, i, 0), out name, out var procName, out var startTime, out var exePath);
-                                cached = new CachedProcessMetadata
-                                {
-                                    Name = name,
-                                    ProcessName = procName,
-                                    ProcessStartTimeUtc = startTime,
-                                    ExePath = exePath
-                                };
-                                if (!string.IsNullOrWhiteSpace(name)) SetCacheEntry(pid, cached);
-                            }
-
-                            cached.LastAccessedUtc = DateTime.UtcNow;
-                            name = cached.Name;
-                            if (includeIcons && !cached.IconResolved)
-                            {
-                                cached.IconResolved = true;
-                                if (!string.IsNullOrEmpty(cached.ExePath))
-                                {
-                                    try { cached.Icon = FileIconProvider.GetAppIcon(cached.ExePath, small: true); }
-                                    catch (Exception) { /* Icon extraction failed */ }
-                                }
-                            }
-                            icon = cached.Icon;
+                            string rawId = WindowsMediaAudioSessions.ReadString(snapshot, i, 0);
+                            var metadata = GetOrResolveSessionMetadata(pid, rawId);
+                            name = metadata.DisplayName;
+                            icon = includeIcons ? metadata.Icon : null;
                         }
 
                         if (string.IsNullOrWhiteSpace(name))
@@ -306,7 +295,7 @@ public sealed partial class AudioMixerService : IDisposable
                     }
                 }
 
-                PruneCacheExcept(seenProcessIds);
+                PruneMetadataCache(CollectionsMarshal.AsSpan(activePids));
             }
             finally
             {
@@ -320,6 +309,12 @@ public sealed partial class AudioMixerService : IDisposable
             .ToList();
     }
 #pragma warning restore S3776
+
+    private static (string DisplayName, string? ExePath) ResolveDisplayName(uint pid, string rawIdentifier)
+    {
+        ResolveProcess(pid, rawIdentifier, out string name, out _, out _, out string? exePath);
+        return (name, exePath);
+    }
 
 #pragma warning disable S3776 // Resolves process metadata, description, and icon from executable file info
     private static void ResolveProcess(
@@ -586,10 +581,7 @@ public sealed partial class AudioMixerService : IDisposable
     public void Dispose()
     {
         ReleaseSessions();
-        lock (_enumLock)
-        {
-            _iconCache.Clear();
-        }
+        PruneMetadataCache(ReadOnlySpan<uint>.Empty);
     }
 
     public void ReleaseSessionCache() => ReleaseSessions();

@@ -70,7 +70,8 @@ internal sealed partial class LocalTranslationService(ILocalTranslationEngine en
         text = prepared;
         if (TranslationStructuredText.IsOnlyIcons(text))
             return new(text, source, target, true) { InputTruncated = truncated };
-        var key = (text, source, target);
+        string originalText = text;
+        var key = (originalText, source, target);
         if (TryGetCached(key, truncated, ct) is { } cached) return cached;
         if (!sameLanguageChecked)
         {
@@ -91,6 +92,18 @@ internal sealed partial class LocalTranslationService(ILocalTranslationEngine en
             string fitted = await engine.FitInputAsync(text, ct).ConfigureAwait(false);
             bool tokenTruncated = fitted.Length < text.Length;
             text = fitted;
+            var fittedKey = (text, source, target);
+            if (fittedKey != key && TryGetCached(fittedKey, tokenTruncated || truncated, ct) is { } fittedCached)
+            {
+                var cachedInspection = TranslationTextIntegrity.Inspect(originalText, fittedCached.Text);
+                if (!cachedInspection.LiteralsPreserved && !cachedInspection.ProtectedFactsPreserved)
+                    throw new TranslationException("translation.literalsChanged");
+                return fittedCached with
+                {
+                    LiteralsPreserved = fittedCached.LiteralsPreserved && cachedInspection.LiteralsPreserved,
+                    InputTruncated = tokenTruncated || truncated
+                };
+            }
             string translated = await TranslationStructuredText.TranslateAsync(text,
                 (prose, token) => engine.TranslateAsync(prose, source, target, token), ct).ConfigureAwait(false);
             ct.ThrowIfCancellationRequested();
@@ -99,7 +112,7 @@ internal sealed partial class LocalTranslationService(ILocalTranslationEngine en
             if (!TranslationMeaningIntegrity.PreservesStatement(text, hintSource, translated))
                 throw new TranslationException("translation.meaningChanged");
             // Numeric mismatches remain readable for review, without replacement or caching.
-            var inspection = TranslationTextIntegrity.Inspect(text, translated);
+            var inspection = TranslationTextIntegrity.Inspect(originalText, translated);
             bool literalsPreserved = inspection.LiteralsPreserved;
             if (!literalsPreserved && !inspection.ProtectedFactsPreserved)
                 throw new TranslationException("translation.literalsChanged");
@@ -117,14 +130,14 @@ internal sealed partial class LocalTranslationService(ILocalTranslationEngine en
                     // Configuration/disposal can change while inference is running.
                     if (!_disposed && Volatile.Read(ref _requestedOptions).CanReuseCachedResults(_options))
                     {
-                        if (_cache.Remove(key, out var replaced)) _order.Remove(replaced);
+                        if (_cache.Remove(fittedKey, out var replaced)) _order.Remove(replaced);
                         while (_cache.Count >= _options.CacheEntries && _order.First is { } oldest)
                         {
                             _order.RemoveFirst();
                             _cache.Remove(oldest.Value.Key);
                         }
-                        var node = new LinkedListNode<CacheEntry>(new(key, result, DateTime.UtcNow.AddMinutes(_options.CacheMinutes)));
-                        _cache[key] = node;
+                        var node = new LinkedListNode<CacheEntry>(new(fittedKey, result, DateTime.UtcNow.AddMinutes(_options.CacheMinutes)));
+                        _cache[fittedKey] = node;
                         _order.AddLast(node);
                     }
                 }

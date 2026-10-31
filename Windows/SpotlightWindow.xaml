@@ -777,22 +777,8 @@
                                 <ScrollViewer.Resources><Style TargetType="ScrollBar" BasedOn="{StaticResource ThinScrollBar}"/></ScrollViewer.Resources>
                                 <StackPanel x:Name="AiTranscript" Margin="0,0,8,0"/>
                             </ScrollViewer>
-                            <Border x:Name="AiTopEdge" Height="22" VerticalAlignment="Top" IsHitTestVisible="False" Opacity="0">
-                                <Border.Background><LinearGradientBrush StartPoint="0,0" EndPoint="0,1"><GradientStop Color="#F0000000" Offset="0"/><GradientStop Color="#00000000" Offset="1"/></LinearGradientBrush></Border.Background>
-                                <Border.OpacityMask><LinearGradientBrush StartPoint="0,0" EndPoint="0,1"><GradientStop Color="White" Offset="0"/><GradientStop Color="Transparent" Offset="1"/></LinearGradientBrush></Border.OpacityMask>
-                                <Rectangle>
-                                    <Rectangle.Fill><VisualBrush x:Name="AiTopEdgeBrush" Visual="{Binding ElementName=AiTranscriptScroll}" ViewboxUnits="RelativeToBoundingBox" Viewbox="0,0,1,0.07" Stretch="Fill"/></Rectangle.Fill>
-                                    <Rectangle.Effect><BlurEffect Radius="5"/></Rectangle.Effect>
-                                </Rectangle>
-                            </Border>
-                            <Border x:Name="AiBottomEdge" Height="22" VerticalAlignment="Bottom" IsHitTestVisible="False" Opacity="0">
-                                <Border.Background><LinearGradientBrush StartPoint="0,1" EndPoint="0,0"><GradientStop Color="#F0000000" Offset="0"/><GradientStop Color="#00000000" Offset="1"/></LinearGradientBrush></Border.Background>
-                                <Border.OpacityMask><LinearGradientBrush StartPoint="0,1" EndPoint="0,0"><GradientStop Color="White" Offset="0"/><GradientStop Color="Transparent" Offset="1"/></LinearGradientBrush></Border.OpacityMask>
-                                <Rectangle>
-                                    <Rectangle.Fill><VisualBrush x:Name="AiBottomEdgeBrush" Visual="{Binding ElementName=AiTranscriptScroll}" ViewboxUnits="RelativeToBoundingBox" Viewbox="0,0,1,0.07" Stretch="Fill"/></Rectangle.Fill>
-                                    <Rectangle.Effect><BlurEffect Radius="5"/></Rectangle.Effect>
-                                </Rectangle>
-                            </Border>
+                            <Border x:Name="AiTopEdge" Height="22" VerticalAlignment="Top" IsHitTestVisible="False" Opacity="0" Background="#CC121216"/>
+                            <Border x:Name="AiBottomEdge" Height="22" VerticalAlignment="Bottom" IsHitTestVisible="False" Opacity="0" Background="#CC121216"/>
                             </Grid>
 
                             <!-- Unified Bottom Status and Action Row (Cancel button, status, and token usage on 1 line) -->

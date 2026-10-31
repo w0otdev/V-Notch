@@ -1,5 +1,7 @@
 using System.IO;
+using System.Text;
 using VNotch.Models;
+using VNotch.Services;
 using VNotch.Services.Clipboard;
 using VNotch.ViewModels;
 using Xunit;
@@ -71,7 +73,7 @@ public sealed class ClipboardSensitiveDataTests
     [InlineData("66ff0f75-4ccd-4414-bb16-65a8bd714442")]
     [InlineData("e60ccc4")]
     [InlineData("#FF0000")]
-    [InlineData("C:\\Users\\gauze\\Documents\\project.cs")]
+    [InlineData("C:\\Users\\alice\\Documents\\project.cs")]
     [InlineData("int count = list.Count;")]
     [InlineData("Xin chào bạn, hôm nay thế nào?")]
     public void LeavesOrdinaryTextVisible(string text) => Assert.False(ClipboardSensitiveData.IsSensitive(text));
@@ -297,8 +299,9 @@ public sealed class ClipboardSensitiveDataTests
             await store.ExpireSensitiveAsync(now.AddSeconds(61));
             Assert.NotNull(store.GetEntry(entry.Id));
             store.AutoDeleteSensitive = true;
-            await store.ExpireSensitiveAsync(now.AddSeconds(59));
+            await store.ExpireSensitiveAsync(now.AddSeconds(61));
             Assert.NotNull(store.GetEntry(entry.Id));
+            await store.UpdateAsync(entry.Id, pinned: false, archived: false);
             await store.ImportAsync(capture with { CopiedUtc = now.AddSeconds(30) });
             await store.ExpireSensitiveAsync(now.AddSeconds(60));
             Assert.NotNull(store.GetEntry(entry.Id));
@@ -310,7 +313,7 @@ public sealed class ClipboardSensitiveDataTests
     }
 
     [Fact]
-    public async Task LockedPersonalExpiresAfterRestart()
+    public async Task LockedPersonalIsPreservedAcrossSensitiveExpiryAfterRestart()
     {
         string root = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N"));
         using var pin = new System.Security.SecureString();
@@ -329,9 +332,10 @@ public sealed class ClipboardSensitiveDataTests
             await using var reopened = new ClipboardHistoryStore(root) { AutoDeleteSensitive = true };
             await reopened.InitializeAsync();
             await reopened.ExpireSensitiveAsync(now.AddSeconds(60));
-            Assert.False(Directory.Exists(Path.Combine(root, "personal", id.ToString("N"))));
+            Assert.True(Directory.Exists(Path.Combine(root, "personal", id.ToString("N"))));
+            Assert.False(File.Exists(Path.Combine(root, "sensitive-expiry", id.ToString("N"))));
             Assert.True(await reopened.UnlockPersonalAsync(pin));
-            Assert.Empty(reopened.Snapshot(personal: true));
+            Assert.Single(reopened.Snapshot(personal: true));
         }
         finally { if (Directory.Exists(root)) Directory.Delete(root, true); }
     }
@@ -366,7 +370,7 @@ public sealed class ClipboardSensitiveDataTests
     }
 
     [Fact]
-    public async Task MovingToPersonalKeepsExpiryAndOrdinaryItemsSurvive()
+    public async Task MovingToPersonalClearsExpiryMarkerAndPreservesVaultAndOrdinaryItems()
     {
         string root = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N"));
         using var pin = new System.Security.SecureString();
@@ -380,11 +384,42 @@ public sealed class ClipboardSensitiveDataTests
             var ordinary = (await store.ImportAsync(new ClipboardCapture { Text = "ordinary note", CopiedUtc = now })).Entry!;
             Assert.True(await store.UnlockPersonalAsync(pin, create: true));
             await store.MovePersonalAsync(secret.Id, true);
+            Assert.False(File.Exists(Path.Combine(root, "sensitive-expiry", secret.Id.ToString("N"))));
             await store.LockPersonalAsync();
             await store.ExpireSensitiveAsync(now.AddSeconds(60));
             Assert.NotNull(store.GetEntry(ordinary.Id));
-            Assert.False(Directory.Exists(Path.Combine(root, "personal", secret.Id.ToString("N"))));
+            Assert.True(Directory.Exists(Path.Combine(root, "personal", secret.Id.ToString("N"))));
         }
         finally { if (Directory.Exists(root)) Directory.Delete(root, true); }
+    }
+
+    [Fact]
+    public void ScrubberRedactsAwsGitHubAndPrefixedSessionFields()
+    {
+        string awsKey = string.Concat("AKIA", "IOSFODNN7EXAMPLE");
+        string ghPat = string.Concat("ghp_", "1234567890abcdefghijklmnopqrstuvwxyz");
+        string jsonToken = "{ \"my_access_token\": \"secret123456\" }";
+
+        string scrubbedAws = SensitiveDataScrubber.Scrub(awsKey);
+        Assert.DoesNotContain("IOSFODNN7EXAMPLE", scrubbedAws);
+        Assert.Contains("[REDACTED]", scrubbedAws);
+
+        string scrubbedGh = SensitiveDataScrubber.Scrub(ghPat);
+        Assert.DoesNotContain("1234567890abcdefghijklmnopqrstuvwxyz", scrubbedGh);
+        Assert.Contains("[REDACTED]", scrubbedGh);
+
+        string scrubbedJson = SensitiveDataScrubber.Scrub(jsonToken);
+        Assert.DoesNotContain("secret123456", scrubbedJson);
+        Assert.Contains("[REDACTED]", scrubbedJson);
+    }
+
+    [Fact]
+    public void RecognizesLargeHexEncodedBearerTokenPayload()
+    {
+        string prefix = "Bearer abcdefghijklmnopqrstuvwxyz012345 ";
+        string payloadText = prefix + new string('x', 5000 - prefix.Length);
+        string hexPayload = Convert.ToHexString(Encoding.UTF8.GetBytes(payloadText));
+        Assert.Equal(10_000, hexPayload.Length);
+        Assert.True(ClipboardSensitiveData.IsSensitive(hexPayload));
     }
 }

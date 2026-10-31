@@ -32,6 +32,15 @@ public sealed partial class MediaTransportControlService
         long endTimeTicks,
         out long outClampedTicks);
 
+    [LibraryImport(NativeDll, StringMarshalling = StringMarshalling.Utf16)]
+    private static partial int vn_media_detection_build_session_instance_key(
+        nint unkPtr,
+        ReadOnlySpan<char> sourceApp,
+        int sourceAppLen,
+        Span<char> outBuf,
+        int outCap,
+        out int outLen);
+
     private const string LogTag = "MEDIA-CTRL";
 
     private readonly Func<IMediaTransportSession?> _getActiveSession;
@@ -183,7 +192,7 @@ public sealed partial class MediaTransportControlService
                     // Outside a playlist, a browser may expose no previous-track
                     // action. The media key cannot navigate its watch history.
                     browserInfo.CurrentTrack = await session.GetTitleAsync() ?? string.Empty;
-                    if (!ReferenceEquals(session.Identity, _getActiveSession()?.Identity)) return;
+                    if (!AreSameSession(session, _getActiveSession())) return;
 
                     bool navigated = await Task.Run(() => _goBackInMediaTab(browserInfo));
                     RuntimeLog.Log(LogTag, navigated
@@ -200,6 +209,81 @@ public sealed partial class MediaTransportControlService
             RuntimeLog.Error(LogTag, ex, "PreviousTrack failed");
             _sendMediaKey(Win32Interop.VK_MEDIA_PREV_TRACK);
         }
+    }
+
+    internal static bool AreSameSession(IMediaTransportSession? a, IMediaTransportSession? b)
+    {
+        if (ReferenceEquals(a, b)) return true;
+        if (a is null || b is null) return false;
+
+        object? idA = a.Identity;
+        object? idB = b.Identity;
+        if (ReferenceEquals(idA, idB)) return true;
+        if (idA is null || idB is null) return false;
+        if (Equals(idA, idB)) return true;
+
+        return TryBuildNativeSessionKey(idA, a.SourceAppUserModelId, out string keyA) &&
+               TryBuildNativeSessionKey(idB, b.SourceAppUserModelId, out string keyB) &&
+               string.Equals(keyA, keyB, StringComparison.Ordinal);
+    }
+
+    private static bool TryBuildNativeSessionKey(object identity, string? sourceAppId, out string key)
+    {
+        string sourceApp = sourceAppId ?? string.Empty;
+        if (identity is WinRT.IWinRTObject winRtObject)
+        {
+            nint ptr = winRtObject.NativeObject.ThisPtr;
+            if (ptr != 0 && TryBuildNativeSessionKeyFromPtr(ptr, sourceApp, out key))
+            {
+                GC.KeepAlive(identity);
+                return true;
+            }
+        }
+
+        if (Marshal.IsComObject(identity))
+        {
+            nint unk = Marshal.GetIUnknownForObject(identity);
+            try
+            {
+                if (unk != 0 && TryBuildNativeSessionKeyFromPtr(unk, sourceApp, out key))
+                {
+                    return true;
+                }
+            }
+            finally
+            {
+                if (unk != 0) Marshal.Release(unk);
+            }
+        }
+
+        key = string.Empty;
+        return false;
+    }
+
+    private static bool TryBuildNativeSessionKeyFromPtr(nint unkPtr, string sourceApp, out string key)
+    {
+        Span<char> buf = stackalloc char[512];
+        int rc = vn_media_detection_build_session_instance_key(
+            unkPtr, sourceApp.AsSpan(), sourceApp.Length, buf, buf.Length, out int len);
+        if (rc == -2 && len > buf.Length)
+        {
+            char[] heapBuf = new char[len];
+            rc = vn_media_detection_build_session_instance_key(
+                unkPtr, sourceApp.AsSpan(), sourceApp.Length, heapBuf, heapBuf.Length, out len);
+            if (rc == 0 && len > 0)
+            {
+                key = new string(heapBuf, 0, len);
+                return true;
+            }
+        }
+        else if (rc == 0 && len > 0)
+        {
+            key = new string(buf[..len]);
+            return true;
+        }
+
+        key = string.Empty;
+        return false;
     }
 
     private static MediaTransportControls? TryGetControls(IMediaTransportSession session)

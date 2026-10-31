@@ -200,7 +200,8 @@ public sealed class ClipboardStorageAuditTests
             Assert.True(await store.UnlockPersonalAsync(pin));
             Assert.True(await store.UnlockPersonalAsync(pin));
             Assert.Single(store.Snapshot(true));
-            Assert.Equal(personal.Id, (await store.ImportAsync(capture)).Entry!.Id);
+            Assert.Equal(personal.Id, (await store.ImportAsync(capture with { TargetCategory = "Personal" })).Entry!.Id);
+            Assert.Equal(publicEntry.Id, (await store.ImportAsync(capture)).Entry!.Id);
             await store.LockPersonalAsync();
             Assert.Equal(publicEntry.Id, (await store.ImportAsync(capture)).Entry!.Id);
             Assert.Single(store.Snapshot());
@@ -275,6 +276,73 @@ public sealed class ClipboardStorageAuditTests
         Assert.NotNull(store.GetEntry(entry.Id));
         Assert.Equal("source remains intact", await File.ReadAllTextAsync(Path.Combine(source, "original.txt")));
         Assert.NotNull((await store.ImportAsync(new ClipboardCapture { Text = "queue after rejected ZIP" })).Entry);
+    }
+
+    [Fact]
+    public async Task MovePersonalLockedSourceFileRollsBackWithoutDuplicatingAcrossPublicAndPersonal()
+    {
+        using var fixture = new Fixture();
+        using var store = new ClipboardHistoryStore(fixture.History);
+        await store.InitializeAsync();
+        using var pin = Pin();
+        Assert.True(await store.UnlockPersonalAsync(pin, true));
+
+        var entry = (await store.ImportAsync(new ClipboardCapture { Text = "locked source rollback" })).Entry!;
+        string publicDir = Path.Combine(fixture.History, "items", entry.Id.ToString("N"));
+        string personalDir = Path.Combine(fixture.History, "personal", entry.Id.ToString("N"));
+
+        using (var lockStream = new FileStream(Path.Combine(publicDir, "entry.json"), FileMode.Open, FileAccess.Read, FileShare.Read))
+        {
+            await Assert.ThrowsAnyAsync<IOException>(() => store.MovePersonalAsync(entry.Id, true));
+        }
+
+        Assert.True(Directory.Exists(publicDir));
+        Assert.False(Directory.Exists(personalDir));
+        Assert.Single(store.Snapshot());
+        Assert.Empty(store.Snapshot(true));
+        Assert.Equal("locked source rollback", (await store.GetContentAsync(entry.Id)).Text);
+    }
+
+    [Fact]
+    public async Task PruneEnforcesMaxUnpinnedEntriesAndMaxUnpinnedBytesWhilePreservingPinned()
+    {
+        using var fixture = new Fixture();
+        using var store = new ClipboardHistoryStore(fixture.History);
+        await store.InitializeAsync();
+
+        DateTime baseUtc = DateTime.UtcNow.AddMinutes(-10);
+        var pinned = (await store.ImportAsync(new ClipboardCapture { Text = new string('P', 200), CopiedUtc = baseUtc })).Entry!;
+        await store.UpdateAsync(pinned.Id, pinned: true);
+
+        store.MaxUnpinnedEntries = 3;
+        var unpinned = new ClipboardEntry[5];
+        for (int i = 0; i < 5; i++)
+        {
+            unpinned[i] = (await store.ImportAsync(new ClipboardCapture
+            {
+                Text = $"item-{i}-" + new string((char)('a' + i), 100),
+                CopiedUtc = baseUtc.AddSeconds(i + 1)
+            })).Entry!;
+        }
+
+        await store.PruneAsync(DateTime.UtcNow);
+
+        var remainingAfterCountPrune = store.Snapshot().Select(e => e.Id).ToHashSet();
+        Assert.Contains(pinned.Id, remainingAfterCountPrune);
+        Assert.DoesNotContain(unpinned[0].Id, remainingAfterCountPrune);
+        Assert.DoesNotContain(unpinned[1].Id, remainingAfterCountPrune);
+        Assert.Contains(unpinned[2].Id, remainingAfterCountPrune);
+        Assert.Contains(unpinned[3].Id, remainingAfterCountPrune);
+        Assert.Contains(unpinned[4].Id, remainingAfterCountPrune);
+
+        store.MaxUnpinnedBytes = unpinned[3].ByteSize + unpinned[4].ByteSize;
+        await store.PruneAsync(DateTime.UtcNow);
+
+        var remainingAfterBytePrune = store.Snapshot().Select(e => e.Id).ToHashSet();
+        Assert.Contains(pinned.Id, remainingAfterBytePrune);
+        Assert.DoesNotContain(unpinned[2].Id, remainingAfterBytePrune);
+        Assert.Contains(unpinned[3].Id, remainingAfterBytePrune);
+        Assert.Contains(unpinned[4].Id, remainingAfterBytePrune);
     }
 
     private static void AssertEncryptedTree(string history, Guid id, string secret)

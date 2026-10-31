@@ -1759,6 +1759,7 @@
                                                            Style="{StaticResource SettingHintText}"
                                                            Margin="0,4,0,6"/>
                                                 <TextBox x:Name="ManualCityTextBox"
+                                                         TextChanged="ManualCityTextBox_TextChanged"
                                                          Height="40"
                                                          Padding="12,10"
                                                          FontSize="12"
@@ -2165,7 +2166,7 @@
                                                             <TextBlock x:Name="TranslationProgressPercent" Grid.Column="1" Foreground="{StaticResource AccentBrushStrong}" FontWeight="SemiBold"/>
                                                         </Grid>
                                                         <Grid x:Name="TranslationProgressTrack" Height="8" ClipToBounds="True" SizeChanged="TranslationProgress_SizeChanged">
-                                                            <ProgressBar x:Name="TranslationModelProgress" Minimum="0" Maximum="100" Height="8" Foreground="{StaticResource AccentBrush}" Background="{StaticResource TrackBg}" AutomationProperties.Name="Model download progress">
+                                                            <ProgressBar x:Name="TranslationModelProgress" Minimum="0" Maximum="100" Height="8" Foreground="{StaticResource AccentBrush}" Background="{StaticResource TrackBg}">
                                                                 <ProgressBar.Template>
                                                                     <ControlTemplate TargetType="ProgressBar">
                                                                         <Grid x:Name="PART_Track" Background="Transparent">
@@ -2706,7 +2707,7 @@
                                 </Border>
                             </StackPanel>
 
-                            <StackPanel x:Name="PanelDonating" Visibility="Collapsed">
+                            <StackPanel x:Name="PanelDonating" Visibility="Collapsed" IsVisibleChanged="PanelDonating_IsVisibleChanged">
                                 <Border x:Name="DonatingCard" Style="{StaticResource CardBorderStyle}" Margin="0,0,0,6" Opacity="0">
                                     <Border.RenderTransform>
                                         <TranslateTransform x:Name="DonatingCardTranslate" Y="12"/>
@@ -2731,25 +2732,61 @@
                                                 <!-- Soft background aura glow -->
                                                 <Path Data="M 12,2 L 15.09,8.26 L 22,9.27 L 17,14.14 L 18.18,21.02 L 12,17.77 L 5.82,21.02 L 7,14.14 L 2,9.27 L 8.91,8.26 Z"
                                                       Stretch="Uniform"
-                                                      Fill="#44FFB800">
-                                                    <Path.Effect>
-                                                        <BlurEffect Radius="16"/>
-                                                    </Path.Effect>
+                                                      Fill="#22FFB800"
+                                                      RenderTransformOrigin="0.5,0.5">
+                                                    <Path.RenderTransform>
+                                                        <ScaleTransform ScaleX="1.18" ScaleY="1.18"/>
+                                                    </Path.RenderTransform>
                                                 </Path>
 
                                                 <!-- Main animated Star -->
                                                 <Path x:Name="AnimatedStarPath"
                                                       Data="M 12,2 L 15.09,8.26 L 22,9.27 L 17,14.14 L 18.18,21.02 L 12,17.77 L 5.82,21.02 L 7,14.14 L 2,9.27 L 8.91,8.26 Z"
                                                       Stretch="Uniform"
+                                                      Fill="#FFFFC83D"
                                                       RenderTransformOrigin="0.5,0.5">
-                                                    <Path.Fill>
-                                                        <LinearGradientBrush StartPoint="0.1,0" EndPoint="0.9,1">
-                                                            <GradientStop Color="#FFFBEA" Offset="0.0"/>
-                                                            <GradientStop Color="#FFD54F" Offset="0.3"/>
-                                                            <GradientStop Color="#FFB800" Offset="0.7"/>
-                                                            <GradientStop Color="#FF8F00" Offset="1.0"/>
-                                                        </LinearGradientBrush>
-                                                    </Path.Fill>
+                                                    <Path.Resources>
+                                                        <Storyboard x:Key="StarPulseStoryboard"
+                                                                    RepeatBehavior="Forever"
+                                                                    Timeline.DesiredFrameRate="24">
+                                                            <DoubleAnimation Storyboard.TargetName="StarScaleTransform"
+                                                                             Storyboard.TargetProperty="ScaleX"
+                                                                             From="0.92" To="1.14"
+                                                                             Duration="0:0:1.6"
+                                                                             AutoReverse="True">
+                                                                <DoubleAnimation.EasingFunction>
+                                                                    <SineEase EasingMode="EaseInOut"/>
+                                                                </DoubleAnimation.EasingFunction>
+                                                            </DoubleAnimation>
+                                                            <DoubleAnimation Storyboard.TargetName="StarScaleTransform"
+                                                                             Storyboard.TargetProperty="ScaleY"
+                                                                             From="0.92" To="1.14"
+                                                                             Duration="0:0:1.6"
+                                                                             AutoReverse="True">
+                                                                <DoubleAnimation.EasingFunction>
+                                                                    <SineEase EasingMode="EaseInOut"/>
+                                                                </DoubleAnimation.EasingFunction>
+                                                            </DoubleAnimation>
+                                                            <DoubleAnimation Storyboard.TargetName="StarRotateTransform"
+                                                                             Storyboard.TargetProperty="Angle"
+                                                                             From="-8" To="8"
+                                                                             Duration="0:0:2.4"
+                                                                             AutoReverse="True">
+                                                                <DoubleAnimation.EasingFunction>
+                                                                    <SineEase EasingMode="EaseInOut"/>
+                                                                </DoubleAnimation.EasingFunction>
+                                                            </DoubleAnimation>
+                                                            <DoubleAnimation Storyboard.TargetName="StarShadowEffect"
+                                                                             Storyboard.TargetProperty="Opacity"
+                                                                             From="0.4" To="0.95"
+                                                                             Duration="0:0:1.6"
+                                                                             AutoReverse="True">
+                                                                <DoubleAnimation.EasingFunction>
+                                                                    <SineEase EasingMode="EaseInOut"/>
+                                                                </DoubleAnimation.EasingFunction>
+                                                            </DoubleAnimation>
+                                                        </Storyboard>
+                                                    </Path.Resources>
                                                     <Path.Effect>
                                                         <DropShadowEffect x:Name="StarShadowEffect"
                                                                           Color="#FFB800"
@@ -2763,50 +2800,6 @@
                                                             <RotateTransform x:Name="StarRotateTransform" Angle="0"/>
                                                         </TransformGroup>
                                                     </Path.RenderTransform>
-                                                    <Path.Triggers>
-                                                        <EventTrigger RoutedEvent="FrameworkElement.Loaded">
-                                                            <BeginStoryboard>
-                                                                <Storyboard RepeatBehavior="Forever">
-                                                                    <DoubleAnimation Storyboard.TargetName="StarScaleTransform"
-                                                                                     Storyboard.TargetProperty="ScaleX"
-                                                                                     From="0.92" To="1.14"
-                                                                                     Duration="0:0:1.6"
-                                                                                     AutoReverse="True">
-                                                                        <DoubleAnimation.EasingFunction>
-                                                                            <SineEase EasingMode="EaseInOut"/>
-                                                                        </DoubleAnimation.EasingFunction>
-                                                                    </DoubleAnimation>
-                                                                    <DoubleAnimation Storyboard.TargetName="StarScaleTransform"
-                                                                                     Storyboard.TargetProperty="ScaleY"
-                                                                                     From="0.92" To="1.14"
-                                                                                     Duration="0:0:1.6"
-                                                                                     AutoReverse="True">
-                                                                        <DoubleAnimation.EasingFunction>
-                                                                            <SineEase EasingMode="EaseInOut"/>
-                                                                        </DoubleAnimation.EasingFunction>
-                                                                    </DoubleAnimation>
-                                                                    <DoubleAnimation Storyboard.TargetName="StarRotateTransform"
-                                                                                     Storyboard.TargetProperty="Angle"
-                                                                                     From="-8" To="8"
-                                                                                     Duration="0:0:2.4"
-                                                                                     AutoReverse="True">
-                                                                        <DoubleAnimation.EasingFunction>
-                                                                            <SineEase EasingMode="EaseInOut"/>
-                                                                        </DoubleAnimation.EasingFunction>
-                                                                    </DoubleAnimation>
-                                                                    <DoubleAnimation Storyboard.TargetName="StarShadowEffect"
-                                                                                     Storyboard.TargetProperty="Opacity"
-                                                                                     From="0.4" To="0.95"
-                                                                                     Duration="0:0:1.6"
-                                                                                     AutoReverse="True">
-                                                                        <DoubleAnimation.EasingFunction>
-                                                                            <SineEase EasingMode="EaseInOut"/>
-                                                                        </DoubleAnimation.EasingFunction>
-                                                                    </DoubleAnimation>
-                                                                </Storyboard>
-                                                            </BeginStoryboard>
-                                                        </EventTrigger>
-                                                    </Path.Triggers>
                                                 </Path>
                                             </Grid>
 

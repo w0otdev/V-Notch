@@ -2,6 +2,7 @@
 #include "../vnotch_cpu.h"
 #include "../vnotch_simd_kernels.h"
 #include <algorithm>
+#include <cmath>
 #include <cstring>
 
 namespace vnotch::services
@@ -10,7 +11,13 @@ namespace vnotch::services
     {
         static void DarkenScalar(uint8_t* pixels, int32_t length, int32_t start, float factor) noexcept
         {
-            for (int32_t i = start; i + 2 < length; i += 4)
+            if (pixels == nullptr || length <= 0 || start < 0 || !std::isfinite(factor))
+            {
+                return;
+            }
+            factor = std::clamp(factor, 0.0f, 1.0f);
+            const int64_t len = static_cast<int64_t>(length);
+            for (int64_t i = static_cast<int64_t>(start); i + 2 < len; i += 4)
             {
                 pixels[i] = static_cast<uint8_t>(pixels[i] * factor);
                 pixels[i + 1] = static_cast<uint8_t>(pixels[i + 1] * factor);
@@ -22,17 +29,32 @@ namespace vnotch::services
         // 2 * radius + 1 must stay far below 2^24 so the fixed-point reciprocal and the running sums cannot overflow.
         static constexpr int32_t kMaxRadius = 256;
 
+        static constexpr bool IsValidDimensions(int32_t w, int32_t h, int32_t radius) noexcept
+        {
+            return w > 0 && h > 0 &&
+                   radius >= 0 && radius <= kMaxRadius &&
+                   static_cast<int64_t>(w) * static_cast<int64_t>(h) <= (INT32_MAX / 4);
+        }
+
         static constexpr uint32_t GetWindowReciprocal(int32_t window) noexcept
         {
+            if (window <= 0)
+            {
+                return 0u;
+            }
             uint32_t w = static_cast<uint32_t>(window);
             return ((1u << 24) + w - 1u) / w;
         }
 
         static void DarkenPixels(uint8_t* pixels, int32_t length, float factor) noexcept
         {
-            // Vector path only for factors in [0, 1] where the float to byte conversion is well defined.
+            if (pixels == nullptr || length <= 0 || !std::isfinite(factor))
+            {
+                return;
+            }
+            factor = std::clamp(factor, 0.0f, 1.0f);
             int32_t i = 0;
-            if (factor >= 0.0f && factor <= 1.0f && vnotch::cpu::SupportsX64V3())
+            if (vnotch::cpu::SupportsX64V3())
             {
                 i = vnotch::kernels::avx2::DarkenPixelsBulk(pixels, length, factor);
             }
@@ -41,6 +63,10 @@ namespace vnotch::services
 
         static void BoxBlurHorizontal(const uint8_t* source, uint8_t* target, int32_t w, int32_t h, int32_t radius) noexcept
         {
+            if (!source || !target || !IsValidDimensions(w, h, radius))
+            {
+                return;
+            }
             if (vnotch::cpu::SupportsX64V3())
             {
                 vnotch::kernels::avx2::BoxBlurHorizontal(source, target, w, h, radius);
@@ -95,6 +121,10 @@ namespace vnotch::services
 
         static void BoxBlurVertical(const uint8_t* source, uint8_t* target, int32_t w, int32_t h, int32_t radius) noexcept
         {
+            if (!source || !target || !IsValidDimensions(w, h, radius))
+            {
+                return;
+            }
             if (vnotch::cpu::SupportsX64V3())
             {
                 vnotch::kernels::avx2::BoxBlurVertical(source, target, w, h, radius);
@@ -158,7 +188,7 @@ VN_EXPORT int32_t vn_fast_blur_get_window_reciprocal(int32_t window, uint32_t* o
 
 VN_EXPORT int32_t vn_fast_blur_darken_pixels(uint8_t* pixels, int32_t length, float factor) noexcept
 {
-    if (pixels == nullptr && length > 0)
+    if (length < 0 || (length > 0 && pixels == nullptr) || !std::isfinite(factor))
         return VN_ERR_INVALID_ARG;
     vnotch::services::FastBlurService::DarkenPixels(pixels, length, factor);
     return VN_OK;
@@ -166,7 +196,7 @@ VN_EXPORT int32_t vn_fast_blur_darken_pixels(uint8_t* pixels, int32_t length, fl
 
 VN_EXPORT int32_t vn_fast_blur_box_horizontal(const uint8_t* source, uint8_t* target, int32_t w, int32_t h, int32_t radius) noexcept
 {
-    if (!source || !target || w <= 0 || h <= 0 || radius < 0 || radius > vnotch::services::FastBlurService::kMaxRadius)
+    if (!source || !target || !vnotch::services::FastBlurService::IsValidDimensions(w, h, radius))
         return VN_ERR_INVALID_ARG;
     vnotch::services::FastBlurService::BoxBlurHorizontal(source, target, w, h, radius);
     return VN_OK;
@@ -174,7 +204,7 @@ VN_EXPORT int32_t vn_fast_blur_box_horizontal(const uint8_t* source, uint8_t* ta
 
 VN_EXPORT int32_t vn_fast_blur_box_vertical(const uint8_t* source, uint8_t* target, int32_t w, int32_t h, int32_t radius) noexcept
 {
-    if (!source || !target || w <= 0 || h <= 0 || radius < 0 || radius > vnotch::services::FastBlurService::kMaxRadius)
+    if (!source || !target || !vnotch::services::FastBlurService::IsValidDimensions(w, h, radius))
         return VN_ERR_INVALID_ARG;
     vnotch::services::FastBlurService::BoxBlurVertical(source, target, w, h, radius);
     return VN_OK;

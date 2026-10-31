@@ -422,6 +422,135 @@ public sealed class ClipboardHistoryTests
         internal string HistoryRoot => Path.Combine(Root, "history");
         internal Fixture() => Directory.CreateDirectory(Root);
         internal ClipboardHistoryStore Store() => new(HistoryRoot);
-        public void Dispose() => Directory.Delete(Root, true);
+        public void Dispose() { if (Directory.Exists(Root)) Directory.Delete(Root, true); }
+    }
+
+    [Fact]
+    public void PersonalEntryRemainsEncryptedAndIsolatedWhenSameContentIsImportedToPublicCategory() => SharedStaTestRunner.RunAsync(async ct =>
+    {
+        using var fixture = new Fixture();
+        await using var controller = new VNotch.Controllers.ClipboardHistoryController(
+            System.Windows.Threading.Dispatcher.CurrentDispatcher,
+            fixture.Store());
+        var store = controller.Store;
+        await store.InitializeAsync();
+        Assert.True(await UnlockAsync(store, "123456", create: true));
+
+        var personalEntry = (await store.ImportAsync(new ClipboardCapture { Text = "secret", TargetCategory = "Personal" })).Entry!;
+        Assert.True(personalEntry.IsPersonal);
+
+        await controller.ImportAsync(new ClipboardCapture { Text = "secret", TargetCategory = "Work" });
+
+        var stillPersonal = Assert.Single(store.Snapshot(personal: true));
+        Assert.Equal(personalEntry.Id, stillPersonal.Id);
+        Assert.True(stillPersonal.IsPersonal);
+        Assert.True(Directory.Exists(Path.Combine(fixture.HistoryRoot, "personal", personalEntry.Id.ToString("N"))));
+        Assert.False(Directory.Exists(Path.Combine(fixture.HistoryRoot, "items", personalEntry.Id.ToString("N"))));
+
+        var publicEntry = Assert.Single(store.Snapshot(personal: false));
+        Assert.NotEqual(personalEntry.Id, publicEntry.Id);
+        Assert.False(publicEntry.IsPersonal);
+        Assert.Contains("Work", publicEntry.Groups);
+    });
+
+    [Fact]
+    public async Task ExpireSensitivePreservesPinnedArchivedAndPersonalSensitiveItems()
+    {
+        using var fixture = new Fixture();
+        using var store = fixture.Store();
+        store.AutoDeleteSensitive = true;
+        await store.InitializeAsync();
+        Assert.True(await UnlockAsync(store, "123456", create: true));
+
+        var pinned = (await store.ImportAsync(new ClipboardCapture { Text = "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.pinnedsecret" })).Entry!;
+        var archived = (await store.ImportAsync(new ClipboardCapture { Text = "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.archivedsecret" })).Entry!;
+        var personal = (await store.ImportAsync(new ClipboardCapture { Text = "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.personalsecret", TargetCategory = "Personal" })).Entry!;
+        var ephemeral = (await store.ImportAsync(new ClipboardCapture { Text = "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.ephemeralsecret" })).Entry!;
+
+        Assert.True(pinned.IsSensitive);
+        Assert.True(archived.IsSensitive);
+        Assert.True(personal.IsSensitive);
+        Assert.True(ephemeral.IsSensitive);
+
+        await store.UpdateAsync(pinned.Id, pinned: true);
+        await store.UpdateAsync(archived.Id, archived: true);
+
+        await store.ExpireSensitiveAsync(DateTime.UtcNow.AddSeconds(61));
+
+        var publicSnapshot = store.Snapshot().Select(e => e.Id).ToHashSet();
+        Assert.Contains(pinned.Id, publicSnapshot);
+        Assert.Contains(archived.Id, publicSnapshot);
+        Assert.DoesNotContain(ephemeral.Id, publicSnapshot);
+        Assert.Equal(personal.Id, Assert.Single(store.Snapshot(personal: true)).Id);
+    }
+
+    [Fact]
+    public async Task LargeTenMegabyteHtmlStreamsAndRoundTripsForPublicAndPersonal()
+    {
+        using var fixture = new Fixture();
+        using var store = fixture.Store();
+        await store.InitializeAsync();
+        Assert.True(await UnlockAsync(store, "123456", create: true));
+
+        string largeHtml = "<div>" + new string('A', 10 * 1024 * 1024) + "</div>";
+        var publicEntry = (await store.ImportAsync(new ClipboardCapture { Text = "public-10mb", Html = largeHtml })).Entry!;
+        var personalEntry = (await store.ImportAsync(new ClipboardCapture { Text = "personal-10mb", Html = largeHtml, TargetCategory = "Personal" })).Entry!;
+
+        var publicContent = await store.GetContentAsync(publicEntry.Id);
+        Assert.Equal(largeHtml, publicContent.Html);
+
+        var personalContent = await store.GetContentAsync(personalEntry.Id);
+        Assert.Equal(largeHtml, personalContent.Html);
+
+        string personalDir = Path.Combine(fixture.HistoryRoot, "personal", personalEntry.Id.ToString("N"));
+        string encryptedContentPath = File.Exists(Path.Combine(personalDir, "content.json.enc"))
+            ? Path.Combine(personalDir, "content.json.enc")
+            : Directory.GetFiles(personalDir, "content*")[0];
+        byte[] magicBytes = new byte[4];
+        await using (var fs = File.OpenRead(encryptedContentPath))
+        {
+            Assert.Equal(4, await fs.ReadAsync(magicBytes));
+        }
+        string magic = Encoding.ASCII.GetString(magicBytes);
+        Assert.True(magic is "VNC1" or "VCF1", $"Expected streaming vault header VNC1 or VCF1, got '{magic}'");
+    }
+
+    [Fact]
+    public async Task ReleasePersonalExportsPreservesPublicExportsWhileDeletingPersonalExports()
+    {
+        using var fixture = new Fixture();
+        string publicSrc = Path.Combine(fixture.Root, "public.txt");
+        string personalSrc = Path.Combine(fixture.Root, "personal.txt");
+        await File.WriteAllTextAsync(publicSrc, "public-payload");
+        await File.WriteAllTextAsync(personalSrc, "personal-payload");
+
+        using var store = fixture.Store();
+        await store.InitializeAsync();
+        Assert.True(await UnlockAsync(store, "123456", create: true));
+
+        var publicEntry = (await store.ImportAsync(new ClipboardCapture { FilePaths = [publicSrc] })).Entry!;
+        var personalEntry = (await store.ImportAsync(new ClipboardCapture { FilePaths = [personalSrc], TargetCategory = "Personal" })).Entry!;
+
+        string publicExport = Assert.Single(await store.ExportFilesAsync(publicEntry.Id));
+        string personalExport = Assert.Single(await store.ExportFilesAsync(personalEntry.Id));
+        Assert.True(File.Exists(publicExport));
+        Assert.True(File.Exists(personalExport));
+
+        await store.ReleasePersonalExportsAsync();
+
+        Assert.True(File.Exists(publicExport));
+        Assert.Equal("public-payload", await File.ReadAllTextAsync(publicExport));
+        Assert.False(File.Exists(personalExport));
+
+        string personalExport2 = Assert.Single(await store.ExportFilesAsync(personalEntry.Id));
+        Assert.True(File.Exists(personalExport2));
+        await store.ReleasePersonalExportsAsync([publicExport, personalExport2]);
+        Assert.True(File.Exists(publicExport));
+        Assert.False(File.Exists(personalExport2));
+    }
+
+    private static void EndHelper()
+    {
+
     }
 }

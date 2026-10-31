@@ -32,10 +32,15 @@ public:
         int32_t max_output_tokens,
         int32_t& out_budget) noexcept {
         out_budget = 0;
-        const int32_t available = context_size - used_tokens - reserve_tokens;
-        if (available < 128) return false;
-        const int32_t target = std::clamp(input_tokens * 4 + 96, 128, max_output_tokens);
-        out_budget = std::min(available, target);
+        if (context_size <= 0 || used_tokens < 0 || reserve_tokens < 0 || input_tokens < 0 || max_output_tokens <= 0) {
+            return false;
+        }
+        const int64_t remaining = static_cast<int64_t>(context_size) - static_cast<int64_t>(used_tokens) - static_cast<int64_t>(reserve_tokens);
+        if (remaining < 16) return false;
+        const int64_t desired = static_cast<int64_t>(input_tokens) * 4LL + 96LL;
+        const int64_t min_budget = std::min<int64_t>(max_output_tokens, 128LL);
+        const int64_t clamped_desired = std::clamp<int64_t>(desired, min_budget, static_cast<int64_t>(max_output_tokens));
+        out_budget = static_cast<int32_t>(std::min<int64_t>(clamped_desired, remaining));
         return true;
     }
 

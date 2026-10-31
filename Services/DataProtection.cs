@@ -1,4 +1,5 @@
 using System;
+using System.Buffers;
 using System.Runtime.InteropServices;
 using System.Security.Cryptography;
 using System.Text;
@@ -8,6 +9,9 @@ namespace VNotch.Services;
 public static partial class DataProtection
 {
     private const string Prefix = "enc:";
+    private const int VnOk = 0;
+    private const int VnErrBufferTooSmall = -2;
+    private const int DpapiOverheadEstimate = 512;
 
     [LibraryImport("VNotch.Native.dll")]
     private static unsafe partial int vn_dpapi_protect_bytes(
@@ -19,41 +23,84 @@ public static partial class DataProtection
 
     internal static Func<byte[], byte[]> ProtectBytes { get; set; } = DefaultProtectBytes;
 
-    private static unsafe byte[] DefaultProtectBytes(byte[] data)
-    {
-        fixed (byte* pIn = data)
-        {
-            int status = vn_dpapi_protect_bytes(pIn, data.Length, null, 0, out int reqLen);
-            if (status != 0 && status != -2)
-                throw new CryptographicException("DPAPI encryption failed.");
+    private static byte[] DefaultProtectBytes(byte[] data) => ProtectBytesNative(data);
 
-            byte[] outBuf = new byte[reqLen];
-            fixed (byte* pOut = outBuf)
+    internal static unsafe byte[] ProtectBytesNative(ReadOnlySpan<byte> plainBytes)
+    {
+        int initialCap = checked(plainBytes.Length + DpapiOverheadEstimate);
+        byte[] rented = ArrayPool<byte>.Shared.Rent(initialCap);
+        try
+        {
+            fixed (byte* pPlain = plainBytes)
+            fixed (byte* pRented = rented)
             {
-                status = vn_dpapi_protect_bytes(pIn, data.Length, pOut, reqLen, out _);
-                if (status != 0)
+                byte dummy = 0;
+                byte* pIn = plainBytes.IsEmpty ? &dummy : pPlain;
+                int rc = vn_dpapi_protect_bytes(pIn, plainBytes.Length, pRented, rented.Length, out int reqLen);
+                if (rc == VnOk)
+                {
+                    return rented.AsSpan(0, reqLen).ToArray();
+                }
+                if (rc != VnErrBufferTooSmall || reqLen < 0)
+                {
                     throw new CryptographicException("DPAPI encryption failed.");
+                }
+
+                byte[] exact = new byte[reqLen];
+                fixed (byte* pExact = exact)
+                {
+                    byte* pOut = reqLen == 0 ? &dummy : pExact;
+                    rc = vn_dpapi_protect_bytes(pIn, plainBytes.Length, pOut, reqLen, out int writtenLen);
+                    if (rc != VnOk)
+                        throw new CryptographicException("DPAPI encryption failed.");
+                    return exact.Length == writtenLen ? exact : exact.AsSpan(0, writtenLen).ToArray();
+                }
             }
-            return outBuf;
+        }
+        finally
+        {
+            CryptographicOperations.ZeroMemory(rented);
+            ArrayPool<byte>.Shared.Return(rented);
         }
     }
 
-    private static unsafe byte[] UnprotectBytesNative(byte[] encrypted)
+    internal static unsafe byte[] UnprotectBytesNative(ReadOnlySpan<byte> cipherBytes)
     {
-        fixed (byte* pIn = encrypted)
-        {
-            int status = vn_dpapi_unprotect_bytes(pIn, encrypted.Length, null, 0, out int reqLen);
-            if (status != 0 && status != -2)
-                throw new CryptographicException("DPAPI decryption failed.");
+        if (cipherBytes.IsEmpty)
+            throw new CryptographicException("DPAPI decryption failed.");
 
-            byte[] outBuf = new byte[reqLen];
-            fixed (byte* pOut = outBuf)
+        byte[] rented = ArrayPool<byte>.Shared.Rent(cipherBytes.Length);
+        try
+        {
+            fixed (byte* pCipher = cipherBytes)
+            fixed (byte* pRented = rented)
             {
-                status = vn_dpapi_unprotect_bytes(pIn, encrypted.Length, pOut, reqLen, out _);
-                if (status != 0)
+                int rc = vn_dpapi_unprotect_bytes(pCipher, cipherBytes.Length, pRented, rented.Length, out int reqLen);
+                if (rc == VnOk)
+                {
+                    return rented.AsSpan(0, reqLen).ToArray();
+                }
+                if (rc != VnErrBufferTooSmall || reqLen < 0)
+                {
                     throw new CryptographicException("DPAPI decryption failed.");
+                }
+
+                byte[] exact = new byte[reqLen];
+                fixed (byte* pExact = exact)
+                {
+                    byte dummy = 0;
+                    byte* pOut = reqLen == 0 ? &dummy : pExact;
+                    rc = vn_dpapi_unprotect_bytes(pCipher, cipherBytes.Length, pOut, reqLen, out int writtenLen);
+                    if (rc != VnOk)
+                        throw new CryptographicException("DPAPI decryption failed.");
+                    return exact.Length == writtenLen ? exact : exact.AsSpan(0, writtenLen).ToArray();
+                }
             }
-            return outBuf;
+        }
+        finally
+        {
+            CryptographicOperations.ZeroMemory(rented);
+            ArrayPool<byte>.Shared.Return(rented);
         }
     }
 

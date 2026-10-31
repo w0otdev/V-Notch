@@ -16,7 +16,28 @@ constexpr int32_t kMaximumResults = 200;
 constexpr uint32_t kEntriesPerTurn = 64;
 
 struct Result { std::wstring path; int32_t kind; double score; };
-struct Search { std::atomic<bool> cancelled{false}; std::vector<Result> results; };
+struct Search {
+    SRWLOCK lock = SRWLOCK_INIT;
+    std::atomic<bool> cancelled{false};
+    std::vector<Result> results;
+};
+
+struct ExclusiveSrwLockGuard {
+    SRWLOCK* lock;
+    explicit ExclusiveSrwLockGuard(SRWLOCK& l) noexcept : lock(&l) { AcquireSRWLockExclusive(lock); }
+    ~ExclusiveSrwLockGuard() noexcept { ReleaseSRWLockExclusive(lock); }
+    ExclusiveSrwLockGuard(const ExclusiveSrwLockGuard&) = delete;
+    ExclusiveSrwLockGuard& operator=(const ExclusiveSrwLockGuard&) = delete;
+};
+
+struct SharedSrwLockGuard {
+    SRWLOCK* lock;
+    explicit SharedSrwLockGuard(SRWLOCK& l) noexcept : lock(&l) { AcquireSRWLockShared(lock); }
+    ~SharedSrwLockGuard() noexcept { ReleaseSRWLockShared(lock); }
+    SharedSrwLockGuard(const SharedSrwLockGuard&) = delete;
+    SharedSrwLockGuard& operator=(const SharedSrwLockGuard&) = delete;
+};
+
 HandleRegistry<Search> searches;
 
 static std::u16string_view View(std::wstring_view value) noexcept {
@@ -94,22 +115,22 @@ static int32_t Kind(const WIN32_FIND_DATAW& data, std::wstring_view name) noexce
     return 1;
 }
 
-static void AddResult(Search& search, const std::wstring& path, std::wstring_view name,
+static void AddResult(std::vector<Result>& out_results, const std::wstring& path, std::wstring_view name,
     const std::wstring& query, int32_t kind, size_t limit) {
     double score = 0;
     auto title = View(name), target = View(path), q = View(query);
     if (vn_spotlight_ranker_score(title.data(), static_cast<int32_t>(title.size()), title.data(), static_cast<int32_t>(title.size()),
         target.data(), static_cast<int32_t>(target.size()), target.data(), static_cast<int32_t>(target.size()),
         target.data(), static_cast<int32_t>(target.size()), kind, q.data(), static_cast<int32_t>(q.size()), &score) != VN_OK || score <= 0) return;
-    for (const auto& result : search.results) if (equals_icase(View(result.path), target)) return;
+    for (const auto& result : out_results) if (equals_icase(View(result.path), target)) return;
     auto compare = [](const Result& a, const Result& b) {
         if (a.score != b.score) return a.score > b.score;
         return _wcsicmp(a.path.c_str(), b.path.c_str()) < 0;
     };
     Result result{path, kind, score};
-    if (search.results.size() == limit && !compare(result, search.results.back())) return;
-    search.results.insert(std::lower_bound(search.results.begin(), search.results.end(), result, compare), std::move(result));
-    if (search.results.size() > limit) search.results.pop_back();
+    if (out_results.size() == limit && !compare(result, out_results.back())) return;
+    out_results.insert(std::lower_bound(out_results.begin(), out_results.end(), result, compare), std::move(result));
+    if (out_results.size() > limit) out_results.pop_back();
 }
 
 struct Walk {
@@ -122,7 +143,7 @@ struct Walk {
     bool Done() const noexcept { return cursor == INVALID_HANDLE_VALUE && pending.empty(); }
 };
 
-static bool Step(Walk& walk, Search& search, const std::wstring& query, const std::u16string& normalized,
+static bool Step(Walk& walk, const Search& search, std::vector<Result>& out_results, const std::wstring& query, const std::u16string& normalized,
     bool explicit_path, const std::vector<std::wstring>& hidden, size_t limit, ULONGLONG deadline) {
     for (uint32_t count = 0; count < kEntriesPerTurn; ++count) {
         if (search.cancelled.load(std::memory_order_relaxed) || GetTickCount64() >= deadline) return false;
@@ -151,7 +172,7 @@ static bool Step(Walk& walk, Search& search, const std::wstring& query, const st
             bool matches = explicit_path ? starts_with_icase(View(path), View(query)) :
                 normalize_search(View(name)).find(normalized) != std::u16string::npos;
             if (visible && matches && (explicit_path || !(data.dwFileAttributes & (FILE_ATTRIBUTE_HIDDEN | FILE_ATTRIBUTE_SYSTEM))))
-                AddResult(search, path, name, query, Kind(data, name), limit);
+                AddResult(out_results, path, name, query, Kind(data, name), limit);
         }
         if (!FindNextFileW(walk.cursor, &walk.data)) {
             FindClose(walk.cursor);
@@ -193,6 +214,15 @@ VN_EXPORT int32_t __stdcall vn_local_file_search_run(int64_t handle,
     auto lease = lf::searches.Acquire(handle);
     auto* search = lease.get();
     if (!search) return VN_ERR_INVALID_ARG;
+    {
+        lf::ExclusiveSrwLockGuard guard(search->lock);
+        search->results.clear();
+    }
+    auto commit_results = [&](std::vector<lf::Result>& local_results) noexcept {
+        lf::ExclusiveSrwLockGuard guard(search->lock);
+        search->results.swap(local_results);
+        *count = static_cast<int32_t>(search->results.size());
+    };
     try {
         auto q = vnotch::trim(vnotch::make_u16_view(query_ptr, query_len));
         while (!q.empty() && q.front() == u'"') q.remove_prefix(1);
@@ -206,6 +236,7 @@ VN_EXPORT int32_t __stdcall vn_local_file_search_run(int64_t handle,
         auto hidden = lf::SplitRoots(hidden_ptr, hidden_len);
         auto normalized = vnotch::normalize_search(q);
         size_t capacity = static_cast<size_t>(std::clamp(limit, 1, lf::kMaximumResults));
+        std::vector<lf::Result> local_results;
         if (explicit_path) {
             query = lf::FullPath(std::move(query));
             if (query.empty()) return VN_OK;
@@ -214,10 +245,10 @@ VN_EXPORT int32_t __stdcall vn_local_file_search_run(int64_t handle,
                 auto name = vnotch::get_file_name(lf::View(query));
                 WIN32_FIND_DATAW data{};
                 data.dwFileAttributes = attributes;
-                if (lf::Visible(query, query, false, hidden)) lf::AddResult(*search, query,
+                if (lf::Visible(query, query, false, hidden)) lf::AddResult(local_results, query,
                     std::wstring_view(reinterpret_cast<const wchar_t*>(name.data()), name.size()), query,
                     lf::Kind(data, std::wstring_view(reinterpret_cast<const wchar_t*>(name.data()), name.size())), capacity);
-                *count = static_cast<int32_t>(search->results.size());
+                commit_results(local_results);
                 return VN_OK;
             }
             std::wstring root = attributes != INVALID_FILE_ATTRIBUTES ? query : query.substr(0, query.find_last_of(L'\\') + 1);
@@ -233,13 +264,13 @@ VN_EXPORT int32_t __stdcall vn_local_file_search_run(int64_t handle,
             pending = false;
             for (auto& walk : walks) if (!walk->Done()) {
                 pending = true;
-                if (!lf::Step(*walk, *search, query, normalized, explicit_path, hidden, capacity, deadline)) {
-                    *count = static_cast<int32_t>(search->results.size());
+                if (!lf::Step(*walk, *search, local_results, query, normalized, explicit_path, hidden, capacity, deadline)) {
+                    commit_results(local_results);
                     return VN_OK;
                 }
             }
         } while (pending);
-        *count = static_cast<int32_t>(search->results.size());
+        commit_results(local_results);
         return VN_OK;
     } catch (...) { return VN_ERR_FAIL; }
 }
@@ -247,8 +278,11 @@ VN_EXPORT int32_t __stdcall vn_local_file_search_run(int64_t handle,
 VN_EXPORT int32_t __stdcall vn_local_file_search_get_result(int64_t handle, int32_t index,
     char16_t* path, int32_t capacity, int32_t* length, int32_t* kind, double* score) noexcept {
     auto lease = lf::searches.Acquire(handle);
-    if (!lease.get() || !kind || !score || index < 0 || static_cast<size_t>(index) >= lease.get()->results.size()) return VN_ERR_INVALID_ARG;
-    const auto& result = lease.get()->results[static_cast<size_t>(index)];
+    auto* search = lease.get();
+    if (!search || !kind || !score || index < 0) return VN_ERR_INVALID_ARG;
+    lf::SharedSrwLockGuard guard(search->lock);
+    if (static_cast<size_t>(index) >= search->results.size()) return VN_ERR_INVALID_ARG;
+    const auto& result = search->results[static_cast<size_t>(index)];
     *kind = result.kind;
     *score = result.score;
     return vnotch::copy_out_u16(lf::View(result.path), path, capacity, length);

@@ -155,6 +155,129 @@ public sealed class ClipboardImportSecurityTests
         Assert.Single(store.Snapshot(true));
     }
 
+    [Fact]
+    public void ValidateEntryHandlesBoundaryAndInvalidPathsWithoutCrashing()
+    {
+        using var fixture = new Fixture();
+        string validFile = Path.Combine(fixture.Root, "boundary.txt");
+        File.WriteAllText(validFile, "ok");
+
+        var attrs = ClipboardImportPaths.ValidateEntry(validFile);
+        Assert.Equal(0, (int)(attrs & FileAttributes.ReparsePoint));
+
+        string longSubDir = Path.Combine(fixture.Root, new string('a', 120), new string('b', 120));
+        Directory.CreateDirectory(longSubDir);
+        Assert.True((ClipboardImportPaths.ValidateEntry(longSubDir) & FileAttributes.Directory) != 0);
+
+        Assert.Throws<IOException>(() => ClipboardImportPaths.ValidateEntry(@"\\attacker\share\boundary.txt"));
+        Assert.Throws<IOException>(() => ClipboardImportPaths.ValidateEntry(""));
+    }
+
+    [Fact]
+    public async Task UnapprovedImportGrowingPastApprovalThresholdAbortsAndCleansStaging()
+    {
+        using var fixture = new Fixture();
+        string source = Path.Combine(fixture.Root, "growing.bin");
+        await File.WriteAllBytesAsync(source, [1, 2, 3, 4]);
+
+        bool grew = false;
+        using var store = new ClipboardHistoryStore(fixture.History, () =>
+        {
+            if (!grew)
+            {
+                grew = true;
+                using var fs = new FileStream(source, FileMode.Open, FileAccess.Write, FileShare.ReadWrite);
+                fs.SetLength(ClipboardHistoryStore.ApprovalThreshold + 4096);
+            }
+            return long.MaxValue;
+        });
+        await store.InitializeAsync();
+
+        await Assert.ThrowsAsync<ClipboardImportLimitException>(() =>
+            store.ImportAsync(new ClipboardCapture { FilePaths = [source] }, approved: false));
+
+        Assert.Empty(store.Snapshot());
+        string stagingRoot = Path.Combine(fixture.History, "staging");
+        if (Directory.Exists(stagingRoot))
+            Assert.Empty(Directory.GetFileSystemEntries(stagingRoot));
+    }
+
+    [Fact]
+    public async Task ToctouSymlinkOrJunctionSwapBeforeOpenValidatedReadThrowsIOException()
+    {
+        using var fixture = new Fixture();
+        string targetDir = Path.Combine(fixture.Root, "target");
+        Directory.CreateDirectory(targetDir);
+        string targetFile = Path.Combine(targetDir, "secret.txt");
+        await File.WriteAllTextAsync(targetFile, "redirected secret");
+
+        string workDir = Path.Combine(fixture.Root, "work");
+        Directory.CreateDirectory(workDir);
+        string sourceFile = Path.Combine(workDir, "secret.txt");
+        await File.WriteAllTextAsync(sourceFile, "benign");
+
+        ClipboardImportPaths.ValidateEntry(sourceFile);
+
+        bool replacedWithFileSymlink = false;
+        try
+        {
+            File.Delete(sourceFile);
+            File.CreateSymbolicLink(sourceFile, targetFile);
+            replacedWithFileSymlink = true;
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            Directory.Delete(workDir, true);
+            using var proc = System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
+            {
+                FileName = "cmd.exe",
+                ArgumentList = { "/c", "mklink", "/J", workDir, targetDir },
+                CreateNoWindow = true,
+                UseShellExecute = false
+            })!;
+            await proc.WaitForExitAsync();
+            Assert.Equal(0, proc.ExitCode);
+        }
+
+        Assert.Throws<IOException>(() =>
+        {
+            using var stream = ClipboardImportPaths.OpenValidatedRead(sourceFile);
+        });
+        Assert.True(replacedWithFileSymlink || Directory.Exists(workDir));
+        if (replacedWithFileSymlink && File.Exists(sourceFile)) File.Delete(sourceFile);
+        else if (Directory.Exists(workDir) && (File.GetAttributes(workDir) & FileAttributes.ReparsePoint) != 0) Directory.Delete(workDir, false);
+    }
+
+    [Fact]
+    public void ExtractArchiveDirectoryHandlesTrailingSeparatorAndRejectsNtfsAlternateDataStream()
+    {
+        using var fixture = new Fixture();
+
+        using var validZipStream = new MemoryStream();
+        using (var zip = new System.IO.Compression.ZipArchive(validZipStream, System.IO.Compression.ZipArchiveMode.Create, leaveOpen: true))
+        {
+            using var writer = new StreamWriter(zip.CreateEntry("sub/hello.txt").Open());
+            writer.Write("hello world");
+        }
+        validZipStream.Position = 0;
+
+        string destWithTrailingSep = Path.Combine(fixture.Root, "extracted") + Path.DirectorySeparatorChar;
+        ClipboardHistoryStore.ExtractArchiveDirectory(validZipStream, destWithTrailingSep, null);
+        Assert.Equal("hello world", File.ReadAllText(Path.Combine(fixture.Root, "extracted", "sub", "hello.txt")));
+
+        using var adsZipStream = new MemoryStream();
+        using (var zip = new System.IO.Compression.ZipArchive(adsZipStream, System.IO.Compression.ZipArchiveMode.Create, leaveOpen: true))
+        {
+            using var writer = new StreamWriter(zip.CreateEntry("test.txt:ads").Open());
+            writer.Write("hidden ads payload");
+        }
+        adsZipStream.Position = 0;
+
+        string adsDest = Path.Combine(fixture.Root, "ads-extracted");
+        Assert.Throws<InvalidDataException>(() =>
+            ClipboardHistoryStore.ExtractArchiveDirectory(adsZipStream, adsDest, null));
+    }
+
     private static byte[] Encode(byte[] pixels)
     {
         var encoder = new PngBitmapEncoder();

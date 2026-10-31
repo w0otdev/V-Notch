@@ -199,6 +199,56 @@ public sealed class AppFileCleanupTests : IDisposable
         Assert.Throws<ObjectDisposedException>(service.Start);
     }
 
+    [Fact]
+    public void InstallDirectoryCleanup_RemovesRuntimeLogsAndInstallRootDirectory()
+    {
+        string installRoot = Path.Combine(_root, "install");
+        string exePath = Create(Path.Combine(installRoot, "V-Notch.exe"), 32);
+        string debugLog = Create(Path.Combine(installRoot, "vnotch-debug.log"));
+        string debugOldLog = Create(Path.Combine(installRoot, "vnotch-debug.log.old"));
+        string crashLog = Create(Path.Combine(installRoot, "vnotch-crash.log"));
+        string crashOldLog = Create(Path.Combine(installRoot, "vnotch-crash.log.old"));
+
+        var manifest = new InstallDirectoryCleanup.InstallManifest(
+            2,
+            [new InstallDirectoryCleanup.InstalledFile("V-Notch.exe", InstallDirectoryCleanup.HashFile(exePath))]);
+        File.WriteAllText(
+            Path.Combine(installRoot, InstallDirectoryCleanup.ManifestFileName),
+            System.Text.Json.JsonSerializer.Serialize(manifest));
+
+        SetupOperations.RemoveInstalledAppFiles(installRoot);
+
+        Assert.False(File.Exists(debugLog));
+        Assert.False(File.Exists(debugOldLog));
+        Assert.False(File.Exists(crashLog));
+        Assert.False(File.Exists(crashOldLog));
+        Assert.False(Directory.Exists(installRoot));
+    }
+
+    [Fact]
+    public void TempInstallerCleanup_RemovesSelfContainedInstallerAndSidecarFiles()
+    {
+        string tempDir = Path.Combine(_root, "temp-installers");
+        string[] artifacts =
+        [
+            Create(Path.Combine(tempDir, "V-Notch-Setup.exe")),
+            Create(Path.Combine(tempDir, "V-Notch-Setup-SelfContained.exe")),
+            Create(Path.Combine(tempDir, "V-Notch-Setup.exe.manifest.json")),
+            Create(Path.Combine(tempDir, "V-Notch-Setup.exe.sig")),
+            Create(Path.Combine(tempDir, "V-Notch-Setup-SelfContained.exe.manifest.json")),
+            Create(Path.Combine(tempDir, "V-Notch-Setup-SelfContained.exe.sig"))
+        ];
+        string preserved = Create(Path.Combine(tempDir, "other-file.tmp"));
+
+        SetupOperations.RemoveTempInstallerArtifacts(tempDir);
+
+        foreach (string artifact in artifacts)
+        {
+            Assert.False(File.Exists(artifact), artifact);
+        }
+        Assert.True(File.Exists(preserved));
+    }
+
     private AppFileCleanupService.Policy FilePolicy() => new(_root, false, _ => true, TimeSpan.FromDays(1));
     private AppFileCleanupService.Policy DirectoryPolicy() => new(_root, true,
         name => Guid.TryParseExact(name, "N", out _), TimeSpan.FromDays(1));

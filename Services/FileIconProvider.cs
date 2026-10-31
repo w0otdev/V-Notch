@@ -9,6 +9,8 @@ using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
+using System.Xml;
+using System.Xml.Linq;
 using Windows.Storage;
 using Windows.Storage.FileProperties;
 
@@ -82,8 +84,34 @@ internal static partial class FileIconProvider
 
     // The Shell associates every .msc with a generic document icon. Each MMC
     // console declares its real artwork in its XML (<Icon Index File>).
-    private static ImageSource? TryGetMscIcon(string mscPath, bool small)
+    private static bool CanProbeLocalFilesystemPath(string? path)
     {
+        if (string.IsNullOrWhiteSpace(path))
+            return false;
+
+        string trimmed = path.Trim();
+        if (trimmed.StartsWith(@"\\", StringComparison.Ordinal) ||
+            trimmed.StartsWith("//", StringComparison.Ordinal) ||
+            LocalPathPolicy.IsUncPath(trimmed))
+        {
+            return false;
+        }
+
+        if (Uri.TryCreate(trimmed, UriKind.Absolute, out var uri) && (!uri.IsFile || uri.IsUnc))
+            return false;
+
+        return Path.IsPathFullyQualified(trimmed) &&
+               trimmed.Length >= 3 &&
+               char.IsAsciiLetter(trimmed[0]) &&
+               trimmed[1] == ':' &&
+               (trimmed[2] == '\\' || trimmed[2] == '/');
+    }
+
+    internal static ImageSource? TryGetMscIcon(string mscPath, bool small = false)
+    {
+        if (!CanProbeLocalFilesystemPath(mscPath))
+            return null;
+
         ReadOnlySpan<char> extSpan = Path.GetExtension(mscPath.AsSpan());
         if (vn_file_icon_provider_classify_extension(extSpan, extSpan.Length, out var extFlags) != 0 || extFlags.IsMsc == 0)
             return null;
@@ -91,31 +119,73 @@ internal static partial class FileIconProvider
         {
             string? file = null;
             int index = 0;
-            using (var reader = new StreamReader(mscPath))
+            var mscInfo = new FileInfo(mscPath);
+            if (!mscInfo.Exists || mscInfo.Length <= 0 || mscInfo.Length > 1024 * 1024)
+                return null;
+
+            using var fs = new FileStream(mscPath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
+            using var reader = XmlReader.Create(fs, new XmlReaderSettings
+            {
+                DtdProcessing = DtdProcessing.Prohibit,
+                XmlResolver = null,
+                MaxCharactersInDocument = 1_000_000
+            });
+            var doc = XDocument.Load(reader);
+            foreach (var iconElement in doc.Descendants())
+            {
+                if (!string.Equals(iconElement.Name.LocalName, "Icon", StringComparison.OrdinalIgnoreCase))
+                    continue;
+
+                string? attrFile = iconElement.Attributes()
+                    .FirstOrDefault(a => string.Equals(a.Name.LocalName, "File", StringComparison.OrdinalIgnoreCase))
+                    ?.Value;
+                if (attrFile != null)
+                {
+                    string expandedAttr = Environment.ExpandEnvironmentVariables(attrFile.Trim());
+                    if (!CanProbeLocalFilesystemPath(expandedAttr))
+                        return null;
+                }
+            }
+
+            string xml = doc.ToString(SaveOptions.DisableFormatting);
+            if (true)
             {
                 // The Icon element sits near the top; avoid reading large embedded binaries.
-                const int maxChars = 64 * 1024;
-                char[] buffer = ArrayPool<char>.Shared.Rent(maxChars);
+
+
                 try
                 {
-                    int read = reader.ReadBlock(buffer, 0, maxChars);
-                    ReadOnlySpan<char> xmlSpan = buffer.AsSpan(0, read);
+                    ReadOnlySpan<char> xmlSpan = xml.AsSpan();
+                    // xmlSpan initialized above
                     if (vn_file_icon_provider_parse_msc_icon_xml(xmlSpan, xmlSpan.Length, out int parsedIdx, out int fileStart, out int fileLen, out byte matched) == 0 && matched != 0)
                     {
                         index = parsedIdx;
-                        file = Environment.ExpandEnvironmentVariables(new string(xmlSpan.Slice(fileStart, fileLen)));
+                        file = Environment.ExpandEnvironmentVariables(new string(xmlSpan.Slice(fileStart, fileLen)).Trim());
+                        if (!CanProbeLocalFilesystemPath(file))
+                            return null;
                         // Some consoles ship a malformed path (e.g. %SystemRoot%\Windows\system32).
-                        if (!File.Exists(file)) file = Path.Combine(Environment.SystemDirectory, Path.GetFileName(file));
+                        if (!File.Exists(file))
+                        {
+                            string sysPath = Path.Combine(Environment.SystemDirectory, Path.GetFileName(file));
+                            if (!CanProbeLocalFilesystemPath(sysPath))
+                                return null;
+                            file = sysPath;
+                        }
+                        // Some consoles ship a malformed path (e.g. %SystemRoot%\Windows\system32).
+                        // System32 fallback handled above
                     }
                 }
                 finally
                 {
-                    ArrayPool<char>.Shared.Return(buffer);
+
                 }
             }
             if (file == null || !File.Exists(file))
             {
-                file = Path.Combine(Environment.SystemDirectory, "mmc.exe");
+                string mmcPath = Path.Combine(Environment.SystemDirectory, "mmc.exe");
+                if (!CanProbeLocalFilesystemPath(mmcPath) || !File.Exists(mmcPath))
+                    return null;
+                file = mmcPath;
                 index = 0;
             }
             IntPtr handle = Win32Interop.ExtractShellIcon(file, index, small);
