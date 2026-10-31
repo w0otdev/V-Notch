@@ -733,8 +733,19 @@ public partial class SpotlightWindow : Window
             CaretGlow.Color = Colors.White;
             GlowingCaret.Background = Brushes.White;
 
-            Rect rect = SearchBox.GetRectFromCharacterIndex(SearchBox.CaretIndex, true);
+            int textLength = SearchBox.Text?.Length ?? 0;
+            int caretIndex = Math.Clamp(SearchBox.CaretIndex, 0, textLength);
+            Rect rect = GetSearchBoxCaretRect(caretIndex, textLength);
+            if (rect.IsEmpty)
+            {
+                SearchBox.UpdateLayout();
+                rect = GetSearchBoxCaretRect(caretIndex, textLength);
+            }
+
             double left = (!rect.IsEmpty && double.IsFinite(rect.Left)) ? Math.Max(2, rect.Left) : 2;
+            if (SearchBox.ActualWidth > 4)
+                left = Math.Min(left, SearchBox.ActualWidth - GlowingCaret.Width);
+
             GlowingCaret.Margin = new Thickness(left, 0, 0, 0);
             GlowingCaret.Visibility = Visibility.Visible;
             ResetGlowingCaretBlink();
@@ -745,6 +756,11 @@ public partial class SpotlightWindow : Window
             GlowingCaret.Visibility = Visibility.Visible;
         }
     }
+
+    private Rect GetSearchBoxCaretRect(int caretIndex, int textLength) =>
+        caretIndex > 0 && caretIndex >= textLength
+            ? SearchBox.GetRectFromCharacterIndex(textLength - 1, trailingEdge: true)
+            : SearchBox.GetRectFromCharacterIndex(caretIndex, trailingEdge: false);
 
     private void ResetGlowingCaretBlink()
     {

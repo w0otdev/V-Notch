@@ -421,7 +421,9 @@
    <Setter Property="Margin" Value="0,0,6,0"/>
    <Setter Property="Padding" Value="12,5"/>
    <Setter Property="Background" Value="Transparent"/>
-   <Setter Property="Foreground" Value="{x:Static svc:UiPalette.IconBrush}"/>
+   <Setter Property="BorderThickness" Value="0"/>
+   <Setter Property="FocusVisualStyle" Value="{x:Null}"/>
+   <Setter Property="Foreground" Value="#96FFFFFF"/>
    <Setter Property="Tag" Value="{Binding Name}"/>
    <Setter Property="AllowDrop" Value="True"/>
    <Setter Property="Cursor" Value="Hand"/>
@@ -435,26 +437,41 @@
    <EventSetter Event="DragLeave" Handler="Category_DragLeave"/><EventSetter Event="Drop" Handler="Category_Drop"/>
    <Setter Property="Template"><Setter.Value><ControlTemplate TargetType="Button">
     <Grid>
-    <Border x:Name="Surface" Background="#141416" CornerRadius="13"
-     BorderThickness="1" BorderBrush="#0AFFFFFF" Padding="{TemplateBinding Padding}">
-     <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+    <Border x:Name="Surface" Background="#12FFFFFF" local:TrayMotion.Background="#12FFFFFF" CornerRadius="13"
+     BorderThickness="0" Padding="{TemplateBinding Padding}">
+     <Grid x:Name="ContentHost" RenderTransformOrigin="0.5,0.5" local:TrayMotion.Scale="1">
+      <Grid.RenderTransform>
+       <TransformGroup>
+        <ScaleTransform ScaleX="1" ScaleY="1"/>
+       </TransformGroup>
+      </Grid.RenderTransform>
+      <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+     </Grid>
     </Border>
-    <Border x:Name="CategoryHover" Background="#18FFFFFF" BorderBrush="#28FFFFFF" BorderThickness="1" CornerRadius="13" IsHitTestVisible="False" local:TrayMotion.Opacity="0"/>
+    <Border x:Name="CategoryHover" Background="#18FFFFFF" BorderThickness="0" CornerRadius="13" IsHitTestVisible="False" local:TrayMotion.Opacity="0"/>
     </Grid>
     <ControlTemplate.Triggers>
      <DataTrigger Binding="{Binding IsSelected}" Value="True">
-      <Setter TargetName="Surface" Property="Background" Value="Transparent"/>
+      <Setter TargetName="Surface" Property="local:TrayMotion.Background" Value="Transparent"/>
      </DataTrigger>
-     <Trigger Property="IsMouseOver" Value="True">
+     <MultiDataTrigger>
+      <MultiDataTrigger.Conditions>
+       <Condition Binding="{Binding IsMouseOver, RelativeSource={RelativeSource Self}}" Value="True"/>
+       <Condition Binding="{Binding IsSelected}" Value="False"/>
+      </MultiDataTrigger.Conditions>
       <Setter TargetName="CategoryHover" Property="local:TrayMotion.Opacity" Value="1"/>
+      <Setter TargetName="ContentHost" Property="local:TrayMotion.Scale" Value="1.03"/>
+      <Setter Property="Foreground" Value="#E6FFFFFF"/>
+     </MultiDataTrigger>
+     <Trigger Property="IsPressed" Value="True">
+      <Setter TargetName="Surface" Property="local:TrayMotion.Opacity" Value="0.82"/>
+      <Setter TargetName="ContentHost" Property="local:TrayMotion.Scale" Value="0.93"/>
      </Trigger>
-     <Trigger Property="IsKeyboardFocused" Value="True"><Setter TargetName="Surface" Property="BorderBrush" Value="#A0FFFFFF"/></Trigger>
-     <Trigger Property="IsPressed" Value="True"><Setter TargetName="Surface" Property="local:TrayMotion.Opacity" Value="0.75"/></Trigger>
     </ControlTemplate.Triggers>
    </ControlTemplate></Setter.Value></Setter>
    <Style.Triggers>
     <DataTrigger Binding="{Binding IsSelected}" Value="True">
-     <Setter Property="Background" Value="#18FFFFFF"/>
+     <Setter Property="Background" Value="#30FFFFFF"/>
      <Setter Property="Foreground" Value="{x:Static svc:UiPalette.PrimaryBrush}"/>
     </DataTrigger>
    </Style.Triggers>
@@ -587,14 +604,31 @@
      <ColumnDefinition Width="Auto"/>
     </Grid.ColumnDefinitions>
     
-    <Border x:Name="SearchSurface" Grid.Column="1" Height="28" MaxWidth="340" HorizontalAlignment="Stretch" Margin="8,0,0,0"
-     Background="#12FFFFFF" BorderBrush="#20FFFFFF" BorderThickness="1" CornerRadius="14">
-     <Grid>
-      <local:TrayIcon Kind="Search" Width="13" Height="13" Margin="13,0,0,0" HorizontalAlignment="Left" VerticalAlignment="Center" Foreground="#8AFFFFFF"/>
-      <Grid x:Name="SearchTextSurface" Margin="34,0,34,0">
-       <TextBox x:Name="SearchBox" AutomationProperties.Name="Search clipboard" Background="Transparent" BorderThickness="0" Foreground="White" CaretBrush="White" FontSize="12.5"
+    <Border x:Name="SearchSurface" Grid.Column="1" Height="30" MaxWidth="360" HorizontalAlignment="Stretch" Margin="8,0,0,0"
+     CornerRadius="15" BorderThickness="1" Cursor="IBeam" MouseLeftButtonDown="SearchSurface_MouseLeftButtonDown">
+     <Border.Style>
+      <Style TargetType="Border">
+       <Setter Property="Background" Value="#1EFFFFFF"/>
+       <Setter Property="BorderBrush" Value="#38FFFFFF"/>
+       <Style.Triggers>
+        <Trigger Property="IsMouseOver" Value="True">
+         <Setter Property="Background" Value="#26FFFFFF"/>
+         <Setter Property="BorderBrush" Value="#54FFFFFF"/>
+        </Trigger>
+        <Trigger Property="IsKeyboardFocusWithin" Value="True">
+         <Setter Property="Background" Value="#2AFFFFFF"/>
+         <Setter Property="BorderBrush" Value="#88FFFFFF"/>
+        </Trigger>
+       </Style.Triggers>
+      </Style>
+     </Border.Style>
+     <Grid Background="Transparent">
+      <local:TrayIcon Kind="Search" Width="13.5" Height="13.5" Margin="13,0,0,0" HorizontalAlignment="Left" VerticalAlignment="Center" Foreground="#C8FFFFFF" IsHitTestVisible="False"/>
+      <Grid x:Name="SearchTextSurface" Margin="33,0,32,0">
+       <TextBox x:Name="SearchBox" AutomationProperties.Name="Search clipboard" Background="Transparent" BorderThickness="0" Foreground="White" CaretBrush="White"
+        SelectionBrush="#48FFFFFF" SelectionOpacity="1" FontSize="12.5" VerticalAlignment="Stretch"
         FontFamily="{StaticResource SFProDisplay}" FontWeight="Bold" VerticalContentAlignment="Center" TextChanged="Search_Changed"/>
-       <TextBlock x:Name="SearchHint" IsHitTestVisible="False" VerticalAlignment="Center" FontSize="12.5" FontFamily="{StaticResource SFProDisplay}" FontWeight="Bold" Foreground="#8AFFFFFF"/>
+       <TextBlock x:Name="SearchHint" IsHitTestVisible="False" VerticalAlignment="Center" FontSize="12.5" FontFamily="{StaticResource SFProDisplay}" FontWeight="Bold" Foreground="#B4FFFFFF"/>
        <!-- Left Edge Black Fade -->
        <Border x:Name="SearchFadeLeft" Width="20" HorizontalAlignment="Left" IsHitTestVisible="False" Opacity="0">
         <Border.Background>
@@ -656,24 +690,36 @@
   <ScrollViewer x:Name="CategoryScroll" Grid.Row="1" VerticalScrollBarVisibility="Disabled" HorizontalScrollBarVisibility="Hidden" ScrollChanged="TrayScroll_Changed" SizeChanged="TrayScroll_SizeChanged" PreviewMouseWheel="Category_Wheel" Margin="12,3,12,5">
    <Border Background="Transparent" Padding="0,3" HorizontalAlignment="Left">
     <Grid>
-     <Border x:Name="CategorySelection" Width="1" HorizontalAlignment="Left" CornerRadius="13" IsHitTestVisible="False" Opacity="0">
+     <Border x:Name="CategorySelection" Width="1" HorizontalAlignment="Left" CornerRadius="13"
+             BorderThickness="0" RenderTransformOrigin="0,0.5"
+             IsHitTestVisible="False" Opacity="0">
       <Border.RenderTransform><TransformGroup><ScaleTransform x:Name="CategorySelectionScale"/><TranslateTransform x:Name="CategorySelectionOffset"/></TransformGroup></Border.RenderTransform>
+      <Border x:Name="CategorySelectionPulse" CornerRadius="13" Background="#22FFFFFF" BorderThickness="0" Opacity="0" IsHitTestVisible="False"/>
      </Border>
     <ItemsControl x:Name="CategoryPanel" LayoutUpdated="CategoryPanel_LayoutUpdated">
      <ItemsControl.ItemsPanel><ItemsPanelTemplate><StackPanel Orientation="Horizontal"/></ItemsPanelTemplate></ItemsControl.ItemsPanel>
      <ItemsControl.ItemTemplate><DataTemplate DataType="{x:Type vm:ClipboardCategoryViewModel}">
       <Button Style="{StaticResource CategoryButton}">
        <StackPanel Orientation="Horizontal">
-        <local:TrayIcon Kind="{Binding IconKind}" Width="13" Height="13" Margin="0,0,6,0" VerticalAlignment="Center" Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"/>
+        <local:TrayIcon Kind="{Binding IconKind}" Width="13" Height="13" Margin="0,0,6,0" VerticalAlignment="Center" Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}">
+         <local:TrayIcon.Style>
+          <Style TargetType="local:TrayIcon">
+           <Setter Property="Opacity" Value="0.78"/>
+           <Style.Triggers>
+            <DataTrigger Binding="{Binding IsSelected}" Value="True"><Setter Property="Opacity" Value="1"/></DataTrigger>
+           </Style.Triggers>
+          </Style>
+         </local:TrayIcon.Style>
+        </local:TrayIcon>
         <TextBlock Text="{Binding Label}" FontSize="12" FontWeight="Bold" FontFamily="{StaticResource SFProDisplay}" VerticalAlignment="Center" Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"/>
         <TextBlock Text="{Binding CountLabel, NotifyOnTargetUpdated=True}" TargetUpdated="CategoryCount_TargetUpdated" RenderTransformOrigin="0.5,0.5" FontSize="11" FontWeight="Bold" FontFamily="{StaticResource SFProDisplay}" Margin="5,0,0,0" VerticalAlignment="Center" Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}">
          <TextBlock.Style>
           <Style TargetType="TextBlock">
-           <Setter Property="Opacity" Value="0.55"/>
+           <Setter Property="Opacity" Value="0.52"/>
            <Setter Property="Visibility" Value="Visible"/>
            <Style.Triggers>
             <DataTrigger Binding="{Binding IsPersonal}" Value="True"><Setter Property="Visibility" Value="Collapsed"/></DataTrigger>
-            <DataTrigger Binding="{Binding IsSelected}" Value="True"><Setter Property="Opacity" Value="0.75"/></DataTrigger>
+            <DataTrigger Binding="{Binding IsSelected}" Value="True"><Setter Property="Opacity" Value="0.95"/></DataTrigger>
            </Style.Triggers>
           </Style>
          </TextBlock.Style>

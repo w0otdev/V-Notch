@@ -13,6 +13,14 @@ internal static partial class SettingsSearchMatcher
         char* normSourcePtr, int normSourceLen, char* normQueryPtr, int normQueryLen, byte allowFuzzy, out int outScore);
 
     [LibraryImport("VNotch.Native.dll")]
+    private static unsafe partial int vn_settings_search_score_row(
+        char* normTitlePtr, int normTitleLen,
+        char* normContentPtr, int normContentLen,
+        char* normCombinedPtr, int normCombinedLen,
+        char* normQueryPtr, int normQueryLen,
+        byte allowFuzzy, out int outScore);
+
+    [LibraryImport("VNotch.Native.dll")]
     private static unsafe partial int vn_settings_search_is_match(
         char* sourcePtr, int sourceLen, char* queryPtr, int queryLen, out byte outIsMatch);
 
@@ -57,6 +65,36 @@ internal static partial class SettingsSearchMatcher
         {
             _ = vn_settings_search_get_normalized_score(
                 pS, normalizedSource.Length,
+                pQ, normalizedQuery.Length,
+                allowFuzzy ? (byte)1 : (byte)0,
+                out int score);
+            return score;
+        }
+    }
+
+    public static unsafe int GetRowMatchScore(
+        string normalizedTitle,
+        string normalizedContent,
+        string normalizedCombined,
+        string normalizedQuery,
+        bool allowFuzzy = true)
+    {
+        if (string.IsNullOrEmpty(normalizedQuery))
+            return 0;
+
+        string t = normalizedTitle ?? string.Empty;
+        string c = normalizedContent ?? string.Empty;
+        string cb = normalizedCombined ?? string.Empty;
+
+        fixed (char* pT = t)
+        fixed (char* pC = c)
+        fixed (char* pCb = cb)
+        fixed (char* pQ = normalizedQuery)
+        {
+            _ = vn_settings_search_score_row(
+                pT, t.Length,
+                pC, c.Length,
+                pCb, cb.Length,
                 pQ, normalizedQuery.Length,
                 allowFuzzy ? (byte)1 : (byte)0,
                 out int score);

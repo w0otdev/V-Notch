@@ -138,6 +138,21 @@ public sealed class SettingsSearchMatcherTests
             element => (string?)element.Attribute(xaml + "Name") == "EnableSpotlightCheck");
     }
 
+
+    [Fact]
+    public void SmartSearchSupportsShortPrefixCompoundAcronymAndSynonymQueries()
+    {
+        Assert.True(SettingsSearchMatcher.IsMatch("Automatically hide notch when idle", "a"));
+        Assert.True(SettingsSearchMatcher.IsMatch("Audio mixer and equalizer", "au"));
+        Assert.True(SettingsSearchMatcher.IsMatch("Hide notch in fullscreen apps", "screen"));
+        Assert.True(SettingsSearchMatcher.IsMatch("Show Spotify Canvas background", "sc"));
+        Assert.True(SettingsSearchMatcher.IsMatch("Press Alt + Space to launch Spotlight", "hotkey"));
+
+        int titleMatch = SettingsSearchMatcher.GetRowMatchScore("width", "width notch horizontal size", "appearance width notch horizontal size", "width");
+        int descMatch = SettingsSearchMatcher.GetRowMatchScore("corner radius", "adjust corner radius for width", "appearance adjust corner radius for width", "width");
+        Assert.True(titleMatch > descMatch);
+    }
+
     private static string FindRepositoryRoot()
     {
         var directory = new DirectoryInfo(AppContext.BaseDirectory);

@@ -42,7 +42,10 @@ public sealed class ClipboardTrayPersonalTransitionTests
             var bounds = Field<Rect>(tray, "_categorySelectionBounds");
             Assert.Equal(bounds.X, offset.X, 2);
             Assert.Equal(bounds.Width, ((Border)tray.FindName("CategorySelection")).ActualWidth, 2);
-            Assert.Equal(1, ((System.Windows.Media.ScaleTransform)tray.FindName("CategorySelectionScale")).ScaleX, 2);
+            var scale = (System.Windows.Media.ScaleTransform)tray.FindName("CategorySelectionScale");
+            Assert.Equal(1, scale.ScaleX, 2);
+            Assert.Equal(1, scale.ScaleY, 2);
+            Assert.NotNull(tray.FindName("CategorySelectionPulse"));
         }
         finally { window.Close(); AnimationConfig.SetReduceMotion(previous); }
     });
@@ -185,6 +188,31 @@ public sealed class ClipboardTrayPersonalTransitionTests
             if (Directory.Exists(root)) Directory.Delete(root, true);
         }
     });
+
+
+    [Fact]
+    public void CategoryPillNativeKinematicsComputesLiquidStretchAndSquash()
+    {
+        int rc = ClipboardTray.vn_animation_compute_category_pill_motion(0, 64, 240, 80, 0, out var motion);
+        Assert.Equal(0, rc);
+        Assert.Equal(0.8, motion.StartScaleX, 3);
+        Assert.True(motion.PeakScaleX > 1.0);
+        Assert.InRange(motion.SettleOvershootScaleX, 0.94, 0.99);
+        Assert.InRange(motion.DipScaleY, 0.85, 0.96);
+        Assert.InRange(motion.ReboundScaleY, 1.01, 1.06);
+        Assert.InRange(motion.ContentPopScale, 1.04, 1.08);
+        Assert.InRange(motion.GlowPeakOpacity, 0.55, 0.95);
+        Assert.Equal(280, motion.DurationMs);
+
+        int reducedRc = ClipboardTray.vn_animation_compute_category_pill_motion(0, 64, 240, 80, 1, out var reduced);
+        Assert.Equal(0, reducedRc);
+        Assert.Equal(1.0, reduced.PeakScaleX, 3);
+        Assert.Equal(1.0, reduced.DipScaleY, 3);
+        Assert.Equal(0, reduced.DurationMs);
+
+        int invalidRc = ClipboardTray.vn_animation_compute_category_pill_motion(0, 64, 240, 0, 0, out _);
+        Assert.True(invalidRc < 0);
+    }
 
     private static void StopRefresh(ClipboardTray tray) => Field<UiScheduledTimer>(tray, "_searchTimer").Stop();
     private static T Field<T>(object target, string name) => (T)target.GetType().GetField(name, BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(target)!;

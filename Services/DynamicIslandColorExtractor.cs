@@ -106,7 +106,7 @@ internal static partial class DynamicIslandColorExtractor
                 $"OK: Primary=({result.Primary.R},{result.Primary.G},{result.Primary.B}) Secondary=({result.Secondary.R},{result.Secondary.G},{result.Secondary.B})");
             var main = result.Primary;
             var darkUiBackground = Colors.Black;
-            var sub = EnsureTextOnDarkBackground(main, darkUiBackground, 4.5);
+            var sub = result.Accent != default ? result.Accent : EnsureTextOnDarkBackground(main, darkUiBackground, 4.5);
             palette = new Palette(main, sub);
         }
 
@@ -275,7 +275,8 @@ internal static partial class DynamicIslandColorExtractor
                     : default;
                 Color textOnPrimary = Color.FromArgb(nRes.TextA, nRes.TextR, nRes.TextG, nRes.TextB);
 
-                return new PaletteResult(primary, secondary, secondary, false, nRes.IsFlatBg != 0, textOnPrimary);
+                Color accent = nRes.AccentA != 0 ? Color.FromArgb(nRes.AccentA, nRes.AccentR, nRes.AccentG, nRes.AccentB) : secondary;
+                return new PaletteResult(primary, secondary, accent, false, nRes.IsFlatBg != 0, textOnPrimary);
             }
             finally
             {
