@@ -170,7 +170,7 @@ public sealed class MediaMetadataLookupServiceTests
     [InlineData("empty")]
     [InlineData("malformed")]
     [InlineData("error")]
-    public async Task FailedDataApiFallsBackToOEmbedAndCanEnrichItsDuration(string failure)
+    public async Task FailedDataApiFallsBackToOEmbedWhenDurationEnrichmentAlsoFails(string failure)
     {
         string id = NewId();
         using var handler = new Handler(request =>
@@ -190,8 +190,48 @@ public sealed class MediaMetadataLookupServiceTests
         Assert.Equal("Fallback song", result.Title);
         Assert.Equal(TimeSpan.Zero, result.Duration);
         Assert.Equal(YouTubeLookupSource.OEmbed, result.Source);
-        Assert.Single(handler.Requests, uri => uri.Host == "www.googleapis.com" && uri.AbsolutePath == "/youtube/v3/videos");
-        Assert.Equal(2, handler.Requests.Count);
+        Assert.Collection(handler.Requests,
+            uri =>
+            {
+                Assert.Equal("www.googleapis.com", uri.Host);
+                Assert.Equal("/youtube/v3/videos", uri.AbsolutePath);
+                Assert.Contains("part=snippet,contentDetails", uri.Query);
+            },
+            uri => Assert.Equal("/oembed", uri.AbsolutePath),
+            uri =>
+            {
+                Assert.Equal("www.googleapis.com", uri.Host);
+                Assert.Equal("/youtube/v3/videos", uri.AbsolutePath);
+                Assert.Contains("part=contentDetails", uri.Query);
+            });
+    }
+
+    [Fact]
+    public async Task FailedDataApiFallsBackToOEmbedAndCachesEnrichedDuration()
+    {
+        string id = NewId();
+        using var handler = new Handler(request =>
+        {
+            var uri = request.RequestUri!;
+            if (uri.AbsolutePath == "/oembed")
+                return Json(new { title = "Fallback song", author_name = "Fallback artist" });
+            return uri.Query.Contains("part=snippet,contentDetails", StringComparison.Ordinal)
+                ? Json(new { items = Array.Empty<object>() })
+                : Json(new { items = new[] { new { contentDetails = new { duration = "PT3M42S" } } } });
+        });
+        using var client = new HttpClient(handler);
+        var service = Service(client, apiKey: "test-key-for-fixtures");
+
+        var result = await service.TryGetYouTubeVideoIdWithInfoAsync(id);
+
+        Assert.NotNull(result);
+        Assert.Equal("Fallback song", result.Title);
+        Assert.Equal("Fallback artist", result.Author);
+        Assert.Equal(TimeSpan.FromSeconds(222), result.Duration);
+        Assert.Equal(YouTubeLookupSource.OEmbed, result.Source);
+        Assert.Equal(3, handler.Requests.Count);
+        Assert.Same(result, await service.TryGetYouTubeVideoIdWithInfoAsync(id));
+        Assert.Equal(3, handler.Requests.Count);
     }
 
     [Fact]

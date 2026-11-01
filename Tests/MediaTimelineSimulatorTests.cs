@@ -58,9 +58,9 @@ public class MediaTimelineSimulatorTests
     #region IsPositionStuck
 
     [Fact]
-    public void IsPositionStuck_InitialState_True()
+    public void IsPositionStuck_InitialState_False()
     {
-        Assert.True(_sim.IsPositionStuck(TimeSpan.FromSeconds(1)));
+        Assert.False(_sim.IsPositionStuck(TimeSpan.FromSeconds(1)));
     }
 
     [Fact]
@@ -68,6 +68,21 @@ public class MediaTimelineSimulatorTests
     {
         _sim.UpdateObservedPosition(TimeSpan.FromSeconds(10));
         Assert.False(_sim.IsPositionStuck(TimeSpan.FromSeconds(5)));
+    }
+
+    [Fact]
+    public void IsPositionStuck_UnchangedZeroPositionPastThreshold_True()
+    {
+        _sim.UpdateObservedPosition(TimeSpan.Zero);
+        var staleTime = DateTime.UtcNow - TimeSpan.FromSeconds(5);
+        typeof(MediaTimelineSimulator)
+            .GetField("_lastPositionChangeTime", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!
+            .SetValue(_sim, staleTime);
+
+        _sim.UpdateObservedPosition(TimeSpan.Zero);
+
+        Assert.Equal(staleTime, _sim.LastPositionChangeTime);
+        Assert.True(_sim.IsPositionStuck(TimeSpan.FromSeconds(1.5)));
     }
 
     #endregion

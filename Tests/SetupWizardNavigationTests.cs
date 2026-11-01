@@ -126,7 +126,7 @@ public sealed class SetupWizardNavigationTests
     });
 
     [Fact]
-    public void FailedUpgradeReturnsToPolicyAndCanRetryWithoutShowingFirstRunSteps() => SharedStaTestRunner.RunAsync(async ct =>
+    public void FailedUpgradeCanChangeDirectoryOrReturnToPolicyAndRetry() => SharedStaTestRunner.RunAsync(async ct =>
     {
         LiquidGlassSpotlightTests.CreateApplicationResources();
         string directory = System.IO.Directory.CreateTempSubdirectory("vnotch-update-retry-").FullName;
@@ -146,6 +146,11 @@ public sealed class SetupWizardNavigationTests
             await Settled(window, ct);
             Assert.Equal(1, attempts);
             Assert.IsType<InstallProgressPage>(window.ContentPresenter.Content);
+            Assert.Equal(Visibility.Visible, window.BackButton.Visibility);
+            Invoke(window, "BackButton_Click", window.BackButton, new RoutedEventArgs());
+            await Settled(window, ct);
+            var directoryPage = Assert.IsType<DirectoryPage>(window.ContentPresenter.Content);
+            Assert.Equal(directory, directoryPage.InstallPath);
             Assert.Equal(Visibility.Visible, window.BackButton.Visibility);
             Invoke(window, "BackButton_Click", window.BackButton, new RoutedEventArgs());
             await Settled(window, ct);

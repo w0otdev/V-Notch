@@ -2,7 +2,6 @@ using System.Reflection;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media.Animation;
-using System.Windows.Threading;
 using VNotch.Services;
 using Xunit;
 
@@ -16,7 +15,7 @@ public sealed class SpotlightAiRevealTests
     [InlineData("AnimateAiArrival")]
     public void CompletedRevealCanReplayRepeatedly(string methodName)
     {
-        SharedStaTestRunner.Run(() =>
+        SharedStaTestRunner.RunAsync(async ct =>
         {
             bool previous = AnimationConfig.ReduceMotion;
             var element = new Border();
@@ -57,7 +56,9 @@ public sealed class SpotlightAiRevealTests
                             ? new object[] { element } : new object[] { element, 6d, 240 });
                         observe(null, EventArgs.Empty);
                         element.UpdateLayout();
-                        Pump(TimeSpan.FromMilliseconds(450));
+                        await WpfFrameWaiter.UntilAsync(
+                            () => minimumOpacity < 1 && element.Opacity == 1d,
+                            $"AI reveal {attempt + 1} completion", ct);
                     }
                     finally { descriptor.RemoveValueChanged(element, observe); }
                     Assert.True(minimumOpacity < 1, $"Reveal {attempt + 1} never published a fade-in value.");
@@ -70,14 +71,5 @@ public sealed class SpotlightAiRevealTests
                 AnimationConfig.SetReduceMotion(previous);
             }
         });
-    }
-
-    private static void Pump(TimeSpan duration)
-    {
-        var frame = new DispatcherFrame();
-        var timer = new DispatcherTimer { Interval = duration };
-        timer.Tick += (_, _) => { timer.Stop(); frame.Continue = false; };
-        timer.Start();
-        Dispatcher.PushFrame(frame);
     }
 }

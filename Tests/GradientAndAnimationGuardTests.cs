@@ -39,16 +39,15 @@ public sealed class GradientAndAnimationGuardTests
     }
 
     [Fact]
-    public void ClipboardCardViewModel_DoesNotUseLinearGradientBrush()
+    public void ClipboardCardViewModel_SurfaceGradientIsSharedAndFrozen()
     {
-        string source = File.ReadAllText(Path.Combine(FindRepoRoot(), "ViewModels", "ClipboardCardViewModel.cs"));
-        Assert.DoesNotContain("LinearGradientBrush", source, StringComparison.Ordinal);
-
         FieldInfo? sharedCardBrushField = typeof(ClipboardCardViewModel).GetField("SharedCardBrush", BindingFlags.NonPublic | BindingFlags.Static);
         Assert.NotNull(sharedCardBrushField);
 
-        var cardBrush = Assert.IsType<SolidColorBrush>(sharedCardBrushField!.GetValue(null));
+        var cardBrush = Assert.IsType<LinearGradientBrush>(sharedCardBrushField!.GetValue(null));
         Assert.True(cardBrush.IsFrozen);
+        Assert.Equal(3, cardBrush.GradientStops.Count);
+        Assert.Same(cardBrush, sharedCardBrushField.GetValue(null));
     }
 
     [Fact]

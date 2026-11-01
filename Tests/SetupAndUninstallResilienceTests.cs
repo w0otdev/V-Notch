@@ -2,21 +2,21 @@ using System;
 using System.Collections.Generic;
 using System.ComponentModel;
 using System.IO;
-using System.Runtime.ExceptionServices;
-using System.Threading;
 using System.Threading.Tasks;
 using System.Windows;
+using System.Windows.Threading;
 using Microsoft.Win32;
 using Xunit;
 
 namespace VNotch.Tests;
 
+[Collection("Localization")]
 public class SetupAndUninstallResilienceTests
 {
     [Fact]
     public void CancelDismissal_AfterInstallFailure_DoesNotRetriggerInstall_AndRestoresFailureButtons()
     {
-        RunOnStaThread(() =>
+        SharedStaTestRunner.RunAsync(async ct =>
         {
             string tempRoot = Path.Combine(Path.GetTempPath(), "VNotchSetupTest_" + Guid.NewGuid().ToString("N"));
             string sourceDir = Path.Combine(tempRoot, "source");
@@ -24,10 +24,11 @@ public class SetupAndUninstallResilienceTests
             Directory.CreateDirectory(sourceDir);
             Directory.CreateDirectory(installDir);
 
+            SetupWindow? window = null;
             try
             {
                 int installAttempts = 0;
-                var window = new SetupWindow(
+                window = new SetupWindow(
                     sourceDir,
                     "en",
                     (_, _) =>
@@ -39,6 +40,7 @@ public class SetupAndUninstallResilienceTests
 
                 window.InitializeForTest();
                 window.NavigateToPage(6);
+                await Dispatcher.Yield(DispatcherPriority.ApplicationIdle);
 
                 Assert.Equal(1, installAttempts);
                 Assert.True(window.HasInstallFailed);
@@ -51,9 +53,11 @@ public class SetupAndUninstallResilienceTests
 
                 // Click Cancel to open the confirmation page, then click Keep Setup (BackButton) to dismiss it.
                 window.TriggerCancel();
+                await Dispatcher.Yield(DispatcherPriority.ApplicationIdle);
                 Assert.True(window.IsShowingCancelSetupPage);
 
                 window.TriggerBack();
+                await Dispatcher.Yield(DispatcherPriority.ApplicationIdle);
                 Assert.False(window.IsShowingCancelSetupPage);
                 Assert.Equal(6, window.CurrentPageIndex);
                 Assert.Equal(1, installAttempts);
@@ -66,6 +70,7 @@ public class SetupAndUninstallResilienceTests
             }
             finally
             {
+                window?.Close();
                 TryDeleteDirectory(tempRoot);
             }
         });
@@ -74,7 +79,7 @@ public class SetupAndUninstallResilienceTests
     [Fact]
     public void FailedUpgrade_AllowsNavigatingBackToDirectoryPage_AndRetryingInstallInNewDirectory()
     {
-        RunOnStaThread(() =>
+        SharedStaTestRunner.RunAsync(async ct =>
         {
             string tempRoot = Path.Combine(Path.GetTempPath(), "VNotchUpgradeTest_" + Guid.NewGuid().ToString("N"));
             string sourceDir = Path.Combine(tempRoot, "source");
@@ -85,12 +90,13 @@ public class SetupAndUninstallResilienceTests
             Directory.CreateDirectory(newInstallDir);
             File.WriteAllBytes(Path.Combine(lockedUpgradeDir, "V-Notch.exe"), [0x4D, 0x5A]);
 
+            SetupWindow? window = null;
             try
             {
                 int installAttempts = 0;
                 SetupInstallOptions? lastOptions = null;
 
-                var window = new SetupWindow(
+                window = new SetupWindow(
                     sourceDir,
                     "en",
                     (options, _) =>
@@ -110,18 +116,21 @@ public class SetupAndUninstallResilienceTests
                 Assert.Equal(2, window.CurrentPageIndex);
 
                 window.NavigateToPage(6);
+                await Dispatcher.Yield(DispatcherPriority.ApplicationIdle);
                 Assert.Equal(1, installAttempts);
                 Assert.True(window.HasInstallFailed);
                 Assert.Equal(6, window.CurrentPageIndex);
 
                 // Clicking Back after a failed upgrade must navigate to DirectoryPage (index 4).
                 window.TriggerBack();
+                await Dispatcher.Yield(DispatcherPriority.ApplicationIdle);
                 Assert.Equal(4, window.CurrentPageIndex);
 
                 window.DirectoryStepPage.InstallPath = newInstallDir;
 
                 // Clicking Next from DirectoryPage on an upgrade must start a fresh install attempt on page 6 (and advance to 7 on success).
                 window.TriggerNext();
+                await Dispatcher.Yield(DispatcherPriority.ApplicationIdle);
                 Assert.Equal(2, installAttempts);
                 Assert.False(window.HasInstallFailed);
                 Assert.NotNull(lastOptions);
@@ -130,6 +139,7 @@ public class SetupAndUninstallResilienceTests
             }
             finally
             {
+                window?.Close();
                 TryDeleteDirectory(tempRoot);
             }
         });
@@ -261,34 +271,6 @@ public class SetupAndUninstallResilienceTests
         Assert.Equal(
             ["validate", "stop", "startup", "registry", "shortcuts", "appdata:V-Notch", "schedule:V-Notch"],
             executedSteps);
-    }
-
-    private static void RunOnStaThread(Action action)
-    {
-        Exception? caught = null;
-        var thread = new Thread(() =>
-        {
-            try
-            {
-                action();
-            }
-            catch (Exception ex)
-            {
-                caught = ex;
-            }
-            finally
-            {
-                System.Windows.Threading.Dispatcher.CurrentDispatcher.InvokeShutdown();
-            }
-        });
-        thread.SetApartmentState(ApartmentState.STA);
-        thread.Start();
-        thread.Join();
-
-        if (caught != null)
-        {
-            ExceptionDispatchInfo.Capture(caught).Throw();
-        }
     }
 
     private static void TryDeleteDirectory(string path)

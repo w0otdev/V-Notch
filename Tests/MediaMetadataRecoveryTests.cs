@@ -159,6 +159,7 @@ public sealed class MediaMetadataRecoveryTests
         var info = fixture.Info();
         info.MediaSource = "YouTube";
         info.Duration = TimeSpan.FromSeconds(200);
+        fixture.FreezeTimelineAt(info.Position);
         Invoke(fixture.Service, "ApplyVideoTimelineRecovery", info, new List<string> { "YouTube", title });
         Assert.Equal(track, info.CurrentTrack);
         Assert.Equal(artist, info.CurrentArtist);
@@ -194,7 +195,7 @@ public sealed class MediaMetadataRecoveryTests
         var info = fixture.Info("Song");
         info.MediaSource = "YouTube";
         info.Duration = TimeSpan.FromSeconds(200);
-        var simulator = Get<MediaTimelineSimulator>(fixture.Service, "_timelineSimulator");
+        var simulator = fixture.FreezeTimelineAt(info.Position);
         Invoke(fixture.Service, "ApplyVideoTimelineRecovery", info, new List<string>());
         Assert.True(simulator.IsThrottled);
         info.Position = TimeSpan.FromSeconds(10);
@@ -248,6 +249,14 @@ public sealed class MediaMetadataRecoveryTests
             Service = new MediaDetectionService(new MediaMetadataLookupService(), new FakeMediaArtworkService(), Scanner, null, Cache, () => spotifyTitle);
         }
         public MediaInfo Info(string track = "") => new() { CurrentTrack = track, MediaSource = "Browser", SourceAppId = "chrome", SessionInstanceKey = "fixture-session", IsPlaying = true, IsAnyMediaPlaying = true };
+        public MediaTimelineSimulator FreezeTimelineAt(TimeSpan position)
+        {
+            var simulator = Get<MediaTimelineSimulator>(Service, "_timelineSimulator");
+            simulator.UpdateObservedPosition(position);
+            typeof(MediaTimelineSimulator).GetField("_lastPositionChangeTime", Private)!
+                .SetValue(simulator, DateTime.UtcNow.AddSeconds(-5));
+            return simulator;
+        }
         public void Dispose()
         {
             Service.Dispose();
