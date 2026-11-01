@@ -263,10 +263,10 @@ internal sealed partial class ClipboardVault : IDisposable
     internal void TransformFile(string source, string destination, bool encrypt)
     {
         using var input = File.OpenRead(source);
-        string temporary = $"{destination}.{Guid.NewGuid():N}.tmp";
+        string temporary = destination + ".tmp";
         try
         {
-            using (var output = new FileStream(temporary, FileMode.CreateNew, FileAccess.Write, FileShare.None))
+            using (var output = new FileStream(temporary, FileMode.Create, FileAccess.Write, FileShare.None))
             {
                 TransformFile(input, output, encrypt);
                 output.Flush(true);

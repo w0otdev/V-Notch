@@ -289,7 +289,7 @@ public partial class SetupWindow : Window
         if (_currentPageIndex > 0)
         {
             int targetIndex = _currentPageIndex == 6
-                ? 4
+                ? (_isUpgrade ? 2 : 4)
                 : (_isUpgrade && _currentPageIndex == 4 ? 2 : _currentPageIndex - 1);
             ShowPage(targetIndex, NavigationDirection.Backward);
         }
@@ -353,7 +353,7 @@ public partial class SetupWindow : Window
             return;
         }
 
-        if (_isUpgrade && index is not (2 or 6 or 7) && !(_hasInstallFailed && index == 4)) return;
+        if (_isUpgrade && index is not (2 or 6 or 7)) return;
 
         if (_isTransitioning)
         {
@@ -506,6 +506,7 @@ public partial class SetupWindow : Window
     {
         ResetButtonPanelForEntry();
 
+        if (!IsLoaded && (_isWelcomePage || (ContentPresenter.Visibility == Visibility.Visible && ContentPresenter.Content != null))) { var next = onComplete; onComplete = () => Dispatcher.BeginInvoke(DispatcherPriority.Background, next); }
         if (_isWelcomePage)
         {
             AnimateWelcomeOut(direction, () =>

@@ -373,5 +373,20 @@ public sealed partial class ClipboardCardViewModel : ObservableObject
     }
 
     private static Brush CreateSurfaceBrush()
-        => CreateFrozenBrush(ClipboardTrayTokens.CardMiddle);
+        => CreateFrozenSurfaceGradient();
+
+    private static LinearGradientBrush CreateFrozenSurfaceGradient()
+    {
+        var brush = new LinearGradientBrush(
+            new GradientStopCollection
+            {
+                new(ClipboardTrayTokens.CardTop, 0.0),
+                new(ClipboardTrayTokens.CardMiddle, 0.55),
+                new(ClipboardTrayTokens.CardBottom, 1.0)
+            },
+            new System.Windows.Point(0, 0),
+            new System.Windows.Point(0, 1));
+        brush.Freeze();
+        return brush;
+    }
 }

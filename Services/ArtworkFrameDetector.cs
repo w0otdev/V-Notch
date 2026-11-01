@@ -122,14 +122,14 @@ internal static partial class ArtworkFrameDetector
     {
         RentDownscaledPixelsCallCount++;
         double scale = Math.Min(1.0, maxDimension / Math.Max(width, height));
-        var scaled = new TransformedBitmap(source, new ScaleTransform(scale, scale));
-        scaled.Freeze();
+        BitmapSource scaled = scale < 1.0 ? new TransformedBitmap(source, new ScaleTransform(scale, scale)) : source;
+        // Do not freeze temporary wrapper bitmaps; freezing propagates to mutable caller sources.
 
         BitmapSource sample = scaled;
         if (scaled.Format != PixelFormats.Bgra32)
         {
             var converted = new FormatConvertedBitmap(scaled, PixelFormats.Bgra32, null, 0);
-            converted.Freeze();
+            // Do not freeze temporary format conversion wrapper.
             sample = converted;
         }
 

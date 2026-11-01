@@ -39,7 +39,7 @@ public partial class MediaTimelineSimulator
 
     public void UpdateObservedPosition(TimeSpan position)
     {
-        if (position != _lastObservedPosition || _lastPositionChangeTime == DateTime.MinValue)
+        if (position != _lastObservedPosition)
         {
             _lastObservedPosition = position;
             _lastPositionChangeTime = DateTime.UtcNow;
@@ -48,7 +48,7 @@ public partial class MediaTimelineSimulator
 
     public bool IsPositionStuck(TimeSpan threshold)
     {
-        if (_lastPositionChangeTime == DateTime.MinValue)
+        if (_lastPositionChangeTime == DateTime.MaxValue)
             return false;
 
         return (DateTime.UtcNow - _lastPositionChangeTime).TotalSeconds > threshold.TotalSeconds;

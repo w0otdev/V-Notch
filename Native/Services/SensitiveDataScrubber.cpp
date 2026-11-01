@@ -21,16 +21,17 @@ struct ScrubberSecretStart
 static constexpr std::u16string_view SCRUB_REDACTED = u"[REDACTED]";
 
 static constexpr std::u16string_view SCRUB_SESSION_EXACT_FIELDS[] = {
+    u"token", u"secret", u"session",
     u"sp_dc", u"connect.sid", u"sid",
     u"JSESSIONID", u"PHPSESSID", u"ASP.NET_SessionId", u".AspNetCore.Cookies"
 };
 
 static constexpr std::u16string_view SCRUB_SESSION_SUFFIX_FIELDS[] = {
-    u"token", u"access_token", u"refresh_token", u"session_token", u"id_token", u"auth_token",
+    u"access_token", u"refresh_token", u"session_token", u"id_token", u"auth_token",
     u"accesstoken", u"refreshtoken", u"sessiontoken", u"idtoken", u"authtoken",
-    u"secret", u"client_secret", u"jwt_secret", u"app_secret", u"api_secret",
+    u"client_secret", u"jwt_secret", u"app_secret", u"api_secret",
     u"clientsecret", u"jwtsecret", u"appsecret", u"apisecret",
-    u"session", u"sessionid", u"session_id", u"session-id"
+    u"sessionid", u"session_id", u"session-id"
 };
 
 static constexpr std::u16string_view SCRUB_KEY_SUFFIXES[] = {
@@ -264,7 +265,7 @@ inline bool try_read_scrub_field(std::u16string_view input, int32_t delimiter, i
     if (quote != 0)
     {
         bool found_open_quote = false;
-        while (key_start > min_start)
+        while (key_start > cursor)
         {
             --key_start;
             if (input[static_cast<size_t>(key_start)] == quote && !is_scrub_escaped_quote(input, key_start))
@@ -300,6 +301,11 @@ inline bool try_read_scrub_field(std::u16string_view input, int32_t delimiter, i
         complete_name = (dec_len <= 128);
         const int32_t clamped = std::clamp<int32_t>(dec_len, 0, 128);
         key = std::u16string_view(decoded, static_cast<size_t>(clamped));
+    }
+    else if (key.size() > 128)
+    {
+        complete_name = false;
+        key = key.substr(key.size() - 128);
     }
 
     bool password = is_scrub_password_field(key, complete_name);
@@ -654,7 +660,7 @@ inline bool try_read_scrub_standalone_token(std::u16string_view input, int32_t i
             starts_with_ordinal(text, u"AIza") &&
             has_scrub_token_alphabet(text.substr(4), 16, false))
         {
-            value = index;
+            value = index + 4;
         }
         else
         {

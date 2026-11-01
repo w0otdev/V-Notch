@@ -484,12 +484,12 @@ public sealed partial class PerformanceDiagnosticService
         bool hasAlert = false;
         double processAgeSec = (double)(Stopwatch.GetTimestamp() - _serviceStartTicks) / Stopwatch.Frequency;
 
-        if (CheckFrameDrops(m, now)) hasAlert = true;
-        if (CheckDispatcherLag(m, processAgeSec, now)) hasAlert = true;
-        if (CheckGcGen2(m, now)) hasAlert = true;
-        if (CheckMemorySurge(m, processAgeSec, now)) hasAlert = true;
-        if (CheckCpuBottlenecks(m, now)) hasAlert = true;
-        if (CheckSystemMemory(m, now)) hasAlert = true;
+        if (CheckGcGen2(m, now)) hasAlert = true; if (CheckSystemMemory(m, now)) hasAlert = true; if (CheckMemorySurge(m, processAgeSec, now)) hasAlert = true; if (CheckCpuBottlenecks(m, now)) hasAlert = true; if (CheckDispatcherLag(m, processAgeSec, now)) hasAlert = true; if (CheckFrameDrops(m, now)) hasAlert = true;
+        // Ordered above from background GC/RAM checks to active UI/FPS bottlenecks.
+        // (CheckGcGen2 handled above)
+        // (CheckMemorySurge handled above)
+        // (CheckCpuBottlenecks handled above)
+        // (CheckSystemMemory handled above)
 
         if (hasAlert)
         {

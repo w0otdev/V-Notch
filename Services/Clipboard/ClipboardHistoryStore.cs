@@ -877,7 +877,7 @@ public sealed partial class ClipboardHistoryStore : IDisposable, IAsyncDisposabl
             roots.Add(Path.GetDirectoryName(p));
 
         var toRelease = new List<string>();
-        foreach (string key in _personalExports.Keys)
+        foreach (string key in _personalExports.Keys.Union(_exportLeases.Keys, StringComparer.OrdinalIgnoreCase))
         {
             if (roots.Contains(key))
                 toRelease.Add(key);

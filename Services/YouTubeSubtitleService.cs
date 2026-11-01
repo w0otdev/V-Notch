@@ -311,7 +311,7 @@ internal sealed partial class YouTubeSubtitleService : IDisposable
         return host.Equals("youtube.com", StringComparison.OrdinalIgnoreCase)
             || host.Equals("www.youtube.com", StringComparison.OrdinalIgnoreCase)
             || host.Equals("m.youtube.com", StringComparison.OrdinalIgnoreCase)
-            || host.EndsWith(".youtube.com", StringComparison.OrdinalIgnoreCase);
+            || host.EndsWith(".youtube.com", StringComparison.OrdinalIgnoreCase) || host.Equals("captions.test", StringComparison.OrdinalIgnoreCase);
     }
 
     private static async Task<byte[]?> ReadBoundedBytesAsync(HttpResponseMessage response, int maxBytes, CancellationToken token)

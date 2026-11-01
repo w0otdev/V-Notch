@@ -34,14 +34,14 @@ internal readonly partial record struct ArtworkFingerprint(ulong ContentHash, in
         if (scale < 1.0)
         {
             var resized = new TransformedBitmap(source, new ScaleTransform(scale, scale));
-            resized.Freeze();
+            // Do not freeze temporary resize wrapper; freezing propagates to mutable caller sources.
             sampled = resized;
         }
 
         if (sampled.Format != PixelFormats.Bgra32)
         {
             var converted = new FormatConvertedBitmap(sampled, PixelFormats.Bgra32, null, 0);
-            converted.Freeze();
+            // Do not freeze temporary format conversion wrapper.
             sampled = converted;
         }
 

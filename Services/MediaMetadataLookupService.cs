@@ -233,7 +233,7 @@ public sealed partial class MediaMetadataLookupService : IMediaMetadataLookupSer
                     Id = videoId,
                     Title = resultTitle,
                     Author = channelTitle,
-                    Duration = TimeSpan.Zero,
+                        Duration = TimeSpan.Zero,
                     ThumbnailUrl = null,
                     Source = YouTubeLookupSource.DataApi,
                 };
@@ -432,7 +432,7 @@ public sealed partial class MediaMetadataLookupService : IMediaMetadataLookupSer
                     Id = videoId,
                     Title = videoTitle,
                     Author = channelName,
-                    Duration = TimeSpan.Zero,
+                        Duration = TimeSpan.Zero,
                     ThumbnailUrl = null,
                     Source = YouTubeLookupSource.OEmbed,
                 };
@@ -575,7 +575,7 @@ public sealed partial class MediaMetadataLookupService : IMediaMetadataLookupSer
             RuntimeLog.Log(YouTubeApiLogTag, $"data-api-disabled videoId={videoId} -> using oEmbed only");
         }
 
-        var oembed = await ValidateVideoIdWithOEmbedAsync(videoId, ct);
+        var oembed = await ValidateVideoIdWithOEmbedAsync(videoId, apiKey, ct);
         if (oembed == null)
         {
             if (!ct.IsCancellationRequested)
@@ -589,6 +589,9 @@ public sealed partial class MediaMetadataLookupService : IMediaMetadataLookupSer
             return null;
         }
 
+        TimeSpan enrichedDuration = await TryFetchDurationFromDataApiAsync(videoId, apiKey, ct);
+        if (enrichedDuration > TimeSpan.Zero)
+            oembed = new YouTubeLookupResult { Id = oembed.Id, Title = oembed.Title, Author = oembed.Author, Duration = enrichedDuration, ThumbnailUrl = oembed.ThumbnailUrl, Source = oembed.Source };
         CacheVideo(videoId, oembed, apiKey);
         return oembed;
     }
@@ -638,7 +641,7 @@ public sealed partial class MediaMetadataLookupService : IMediaMetadataLookupSer
         return null;
     }
 
-    private async Task<YouTubeLookupResult?> ValidateVideoIdWithOEmbedAsync(string videoId, CancellationToken ct)
+    private async Task<YouTubeLookupResult?> ValidateVideoIdWithOEmbedAsync(string videoId, string? apiKey, CancellationToken ct)
     {
         try
         {
@@ -661,7 +664,7 @@ public sealed partial class MediaMetadataLookupService : IMediaMetadataLookupSer
                 Id = videoId,
                 Title = oembedTitle,
                 Author = oembedAuthor,
-                Duration = TimeSpan.Zero,
+                    Duration = TimeSpan.Zero,
                 ThumbnailUrl = null,
                 Source = YouTubeLookupSource.OEmbed,
             };
@@ -673,6 +676,40 @@ public sealed partial class MediaMetadataLookupService : IMediaMetadataLookupSer
     }
 
 #pragma warning disable S3776
+    private async Task<TimeSpan> TryFetchDurationFromDataApiAsync(string videoId, string? apiKey, CancellationToken ct)
+    {
+        if (string.IsNullOrEmpty(apiKey) || QuotaCooldown.IsActive(apiKey))
+            return TimeSpan.Zero;
+        try
+        {
+            string url = $"https://www.googleapis.com/youtube/v3/videos?part=contentDetails&id={Uri.EscapeDataString(videoId)}&fields=items(contentDetails/duration)";
+            using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+            timeoutCts.CancelAfter(2000);
+            using var request = CreateYouTubeApiRequest(url, apiKey);
+            using var response = await _keyClient.SendAsync(request, timeoutCts.Token);
+            string json = await response.Content.ReadAsStringAsync(timeoutCts.Token);
+            if (!response.IsSuccessStatusCode)
+            {
+                if (LooksLikeQuotaExceeded(json))
+                    QuotaCooldown.Trip(apiKey);
+                return TimeSpan.Zero;
+            }
+            if (!string.IsNullOrWhiteSpace(json))
+            {
+                using var doc = JsonDocument.Parse(json);
+                if (doc.RootElement.TryGetProperty(ItemsPropertyName, out var items) && items.GetArrayLength() > 0 &&
+                    items[0].TryGetProperty("contentDetails", out var details) &&
+                    details.TryGetProperty(DurationPropertyName, out var durationEl) &&
+                    durationEl.GetString() is { Length: > 0 } iso)
+                {
+                    return ParseIso8601Duration(iso);
+                }
+            }
+        }
+        catch { /* Best-effort duration enrichment */ }
+        return TimeSpan.Zero;
+    }
+
     private async Task<YouTubeLookupResult?> TryGetVideoFromDataApiAsync(string videoId, string apiKey, CancellationToken ct)
     {
         if (QuotaCooldown.IsActive(apiKey))

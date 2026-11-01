@@ -24,7 +24,8 @@ public sealed class CountdownPresenter : IDisposable
     private static readonly Color _digitsFlashColor = Color.FromRgb(0xFF, 0xC9, 0x85);
 
     private static readonly Duration _dur200 = new(TimeSpan.FromMilliseconds(200));
-    private static readonly IEasingFunction _easeQuadOut = new QuadraticEase { EasingMode = EasingMode.EaseOut };
+    private static readonly IEasingFunction _easeQuadOut = CreateFrozenQuadOut();
+    private static QuadraticEase CreateFrozenQuadOut() { var e = new QuadraticEase { EasingMode = EasingMode.EaseOut }; e.Freeze(); return e; }
 
     private const int RepeatInitialDelayMs = 400;
     private const int RepeatFastIntervalMs = 80;
