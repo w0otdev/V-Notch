@@ -24,7 +24,7 @@ if ($InstalledVersion -and $InstalledVersion -cnotmatch '^[0-9]+\.[0-9]+\.[0-9]+
 }
 $repository = Split-Path $PSScriptRoot -Parent
 # Immutable source of the public 1.9.3 client, rather than today's updater.
-$legacyCommit = 'daddcb4e711adb71c215ba7b13f77b511c6a7804'
+$legacyCommit = 'bd7590dabd42dcedbd4d4443dee3fca252277f32'
 if ($ClientRef) {
     $resolvedClient = & git -C $repository rev-parse --verify "${ClientRef}^{commit}"
     if ($LASTEXITCODE -ne 0) { throw 'Installed updater source ref could not be resolved.' }

@@ -250,7 +250,7 @@ public sealed class SignedUpdateManifestTests
                 key.ExportSubjectPublicKeyInfoPem(), version, UpdateService.SetupName, "1.9.2");
             Assert.Equal(Manifest.Size, verified.Size);
             string sidecar = await File.ReadAllTextAsync(installerPath + ".sha256");
-            Assert.Equal(Manifest.Sha256.ToLowerInvariant() + "  " + UpdateService.SetupName, sidecar);
+            Assert.Equal(Manifest.Sha256.ToLowerInvariant() + "  " + UpdateService.SetupName + "\n", sidecar);
         }
         finally
         {

@@ -51,7 +51,7 @@ try {
     [IO.File]::WriteAllBytes($installer.FullName + '.manifest.json', $bytes)
     [IO.File]::WriteAllBytes($installer.FullName + '.manifest.sig', $signature)
     # Keep the original asset contract for clients released before signed manifests.
-    [IO.File]::WriteAllText($installer.FullName + '.sha256', "$hash  $($installer.Name)")
+    [IO.File]::WriteAllText($installer.FullName + '.sha256', "$hash  $($installer.Name)`n")
     Write-Host "Signed update manifest for $($installer.Name) ($Version)."
 } finally {
     $privatePem = $null
