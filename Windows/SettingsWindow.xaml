@@ -2810,7 +2810,7 @@
                                                            Style="{StaticResource SettingTitleText}"
                                                            TextWrapping="Wrap"/>
                                                 <TextBlock x:Name="StarRepoDescription"
-                                                           Text="Giving a star on GitHub is completely free, but it is a huge motivation for w0otdev to keep maintaining and developing this project."
+                                                           Text="Giving a star on GitHub is completely free, but it is a huge motivation for w0otdev &amp; viper1aa to keep maintaining and developing this project."
                                                            Style="{StaticResource SettingHintText}"
                                                            LineHeight="17"
                                                            Margin="0,4,0,0"

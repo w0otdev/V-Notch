@@ -1,7 +1,7 @@
 # V-Notch - Terms of Use
 
 **Effective date:** October 31, 2026
-**Maintainer:** w0otdev  
+**Maintainer:** w0otdev & viper1aa  
 **Project:** https://github.com/w0otdev/V-Notch  
 **Applies to:** official Windows desktop releases and related project materials, subject to the overriding open-source licenses below. The currently described application version is 2.2.2; confirm the version of the actual released binary.
 

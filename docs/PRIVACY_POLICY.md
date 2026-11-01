@@ -6,7 +6,7 @@
 
 **Scope:** Current source tree as of October 31, 2026 (v2.2.2); feature availability depends on the installed build.
 
-**Developer:** w0otdev  
+**Developer:** w0otdev & viper1aa  
 **Contact:** [github.com/w0otdev/V-Notch/issues](https://github.com/w0otdev/V-Notch/issues)  
 
 ---

@@ -210,7 +210,7 @@ If you like V-Notch, check out other free and open-source Windows utilities by w
 V-Notch uses the Apache License 2.0. See [LICENSE](LICENSE) and [THIRD_PARTY_NOTICES.md](docs/THIRD_PARTY_NOTICES.md).
 
 <p align="center">
-  Made by <a href="https://w0otdev.id.vn">w0otdev</a> ·
+  Made by <a href="https://w0otdev.id.vn">w0otdev</a> &amp; <a href="https://github.com/viper1aa">viper1aa</a> ·
   <a href="https://v-notch.vercel.app">Website</a> ·
   <a href="https://github.com/w0otdev/V-Notch">GitHub</a> ·
   <a href="https://www.facebook.com/rain.107/">Facebook</a> ·

@@ -43,10 +43,10 @@
     <Version>2.2.2</Version>
     <AssemblyVersion>2.2.2</AssemblyVersion>
     <FileVersion>2.2.2</FileVersion>
-    <Authors>w0otdev</Authors>
+    <Authors>w0otdev, viper1aa</Authors>
     <Company>V-Notch</Company>
     <Product>V-Notch</Product>
-    <Copyright>Copyright © 2026 w0otdev</Copyright>
+    <Copyright>Copyright © 2026 w0otdev &amp; viper1aa</Copyright>
     <PackageId>V-Notch</PackageId>
     <PackageProjectUrl>https://github.com/w0otdev/V-Notch</PackageProjectUrl>
     <RepositoryUrl>https://github.com/w0otdev/V-Notch</RepositoryUrl>

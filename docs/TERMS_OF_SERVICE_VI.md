@@ -1,7 +1,7 @@
 # V-Notch - Điều khoản sử dụng
 
 **Ngày hiệu lực:** 31 tháng 10 năm 2026
-**Người duy trì:** w0otdev  
+**Người duy trì:** w0otdev & viper1aa  
 **Dự án:** https://github.com/w0otdev/V-Notch  
 **Phạm vi:** bản ứng dụng Windows chính thức và tài liệu đi kèm, luôn tuân theo các giấy phép mã nguồn mở có hiệu lực riêng. Phiên bản ứng dụng được mô tả là 2.2.2; phải đối chiếu với bản nhị phân thực tế phát hành.
 

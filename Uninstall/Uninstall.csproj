@@ -19,10 +19,10 @@
     <PublishReferencesDocumentationFiles>false</PublishReferencesDocumentationFiles>
     <SelfContained>false</SelfContained>
 
-    <Authors>w0otdev</Authors>
+    <Authors>w0otdev, viper1aa</Authors>
     <Company>V-Notch</Company>
     <Product>V-Notch Uninstaller</Product>
-    <Copyright>Copyright © 2026 w0otdev</Copyright>
+    <Copyright>Copyright © 2026 w0otdev &amp; viper1aa</Copyright>
     <Description>Completely removes V-Notch and all of its data from this computer.</Description>
     <ApplicationIcon>..\Services\icons\logo.ico</ApplicationIcon>
   </PropertyGroup>
