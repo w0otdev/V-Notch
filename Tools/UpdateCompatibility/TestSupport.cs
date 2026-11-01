@@ -19,6 +19,11 @@ namespace VNotch.Services
     internal enum NetworkFeature { Updates }
     internal static class NetworkPrivacy
     {
+        public static class Current
+        {
+            public static bool IsAllowed(NetworkFeature feature) => false;
+        }
+
         public static System.Net.Http.HttpMessageHandler Handler(NetworkFeature feature, System.Net.Http.HttpMessageHandler? inner = null)
             => new ForbiddenNetworkHandler();
 
@@ -54,6 +59,15 @@ namespace VNotch
     {
         public static Task RequestShutdownAsync()
             => throw new InvalidOperationException("Application shutdown is forbidden in the compatibility probe.");
+    }
+}
+
+namespace VNotch.Models
+{
+    public sealed class NotchSettings
+    {
+        public bool AutoCheckUpdates { get; set; } = true;
+        public bool EnableLocalOnlyMode { get; set; }
     }
 }
 
