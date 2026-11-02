@@ -1,4 +1,7 @@
 #include "vnotch_common.h"
+#include "../vnotch_cpu.h"
+#include "../vnotch_simd_kernels.h"
+#include "Oklab.h"
 #include <algorithm>
 #include <array>
 #include <cmath>
@@ -180,6 +183,13 @@ public:
         std::array<float, NUM_BUCKETS> bucket_peak_s{};
         std::array<float, NUM_BUCKETS> bucket_peak_h{};
         std::array<float, NUM_BUCKETS> bucket_peak_v{};
+        std::array<float, NUM_BUCKETS> bucket_peak_chroma{};
+        std::array<std::array<uint8_t, 4>, NUM_BUCKETS> bucket_peak_pixel{};
+        const bool avx = vnotch::cpu::SupportsX64V3();
+        const float* linear = vnotch::color::LinearSrgb().data();
+        alignas(32) float lab_l[8]{}, chromas[8]{}, weights[8]{};
+        alignas(32) int32_t buckets[8]{};
+        alignas(32) std::array<uint8_t, 32> tail_pixels{};
 
         float center_x = width / 2.0f;
         float center_y = height / 2.0f;
@@ -187,41 +197,50 @@ public:
         int32_t total_pixels = 0;
 
         for (int32_t y = 0; y < height; y++) {
+            const float dy = (y - center_y) / center_y;
+            const float dy_squared = dy * dy;
             for (int32_t x = 0; x < width; x++) {
                 int64_t i = static_cast<int64_t>(y) * stride + static_cast<int64_t>(x) * 4LL;
+                if (avx && x % 8 == 0) {
+                    const uint8_t* block = pixels + i;
+                    if (x + 8 > width) {
+                        // A bounded copy keeps narrow images and the 36 px UI sample
+                        // on SIMD without reading across row or buffer boundaries.
+                        std::copy_n(block, (width - x) * 4, tail_pixels.data());
+                        block = tail_pixels.data();
+                    }
+                    vnotch::kernels::avx2::PaletteMetricsEight(block, linear, x, center_x, dy_squared, lab_l, chromas, weights, buckets);
+                }
                 uint8_t a = pixels[i + 3];
                 if (a < 80) continue;
-
-                float rf = pixels[i + 2] / 255.0f;
-                float gf = pixels[i + 1] / 255.0f;
-                float bf = pixels[i] / 255.0f;
-
-                float h = 0.0f, s = 0.0f, v = 0.0f;
-                RgbToHsv(rf, gf, bf, &h, &s, &v);
+                const bool vector_pixel = avx;
+                const auto lab = vector_pixel ? vnotch::color::Oklab{lab_l[x % 8], 0, 0} : vnotch::color::FromBgra(pixels + i);
+                const float chroma = vector_pixel ? chromas[x % 8] : std::sqrt(lab.a * lab.a + lab.b * lab.b);
                 total_pixels++;
-
-                if (v < 0.06f) continue;
-                if (s < 0.12f) continue;
-
+                if (lab.l < 0.10f || chroma < 0.025f) continue;
                 total_color_pixels++;
+                int32_t bucket;
+                float zone_weight;
+                if (vector_pixel) {
+                    bucket = buckets[x % 8]; zone_weight = weights[x % 8];
+                } else {
+                    float h = std::atan2(lab.b, lab.a) / 6.28318530718f;
+                    if (h < 0) h += 1.0f;
+                    bucket = static_cast<int32_t>(h * NUM_BUCKETS) % NUM_BUCKETS;
+                    if (bucket < 0) bucket += NUM_BUCKETS;
+                    const float dx = (x - center_x) / center_x;
+                    zone_weight = 1.0f + std::max(0.0f, 1.0f - std::sqrt(dx * dx + dy_squared)) * 0.5f;
+                }
 
-                int32_t bucket = static_cast<int32_t>(h * NUM_BUCKETS) % NUM_BUCKETS;
-                if (bucket < 0) bucket += NUM_BUCKETS;
-
-                float dx = (x - center_x) / center_x;
-                float dy = (y - center_y) / center_y;
-                float zone_weight = 1.0f + std::max(0.0f, 1.0f - std::sqrt(dx * dx + dy * dy)) * 0.5f;
-
-                bucket_sat_sum[bucket] += s * zone_weight;
-                bucket_val_sum[bucket] += v * zone_weight;
+                bucket_sat_sum[bucket] += chroma * zone_weight;
+                bucket_val_sum[bucket] += lab.l * zone_weight;
                 bucket_weight[bucket] += zone_weight;
                 bucket_count[bucket]++;
 
-                float vibrancy = s * std::max(v, 0.3f);
-                if (vibrancy > bucket_peak_s[bucket]) {
-                    bucket_peak_s[bucket] = vibrancy;
-                    bucket_peak_h[bucket] = h;
-                    bucket_peak_v[bucket] = std::max(v, 0.4f);
+                float vibrancy = chroma * lab.l;
+                if (vibrancy > bucket_peak_chroma[bucket]) {
+                    bucket_peak_chroma[bucket] = vibrancy;
+                    std::copy_n(pixels + i, 4, bucket_peak_pixel[bucket].begin());
                 }
             }
         }
@@ -239,6 +258,12 @@ public:
 
         for (int32_t i = 0; i < NUM_BUCKETS; i++) {
             if (bucket_count[i] == 0) continue;
+            // HSV is only used for the final 36 candidates and the existing indigo policy.
+            const auto& pixel = bucket_peak_pixel[i];
+            float h = 0, s = 0, v = 0;
+            RgbToHsv(pixel[2] / 255.0f, pixel[1] / 255.0f, pixel[0] / 255.0f, &h, &s, &v);
+            bucket_peak_h[i] = h; bucket_peak_v[i] = std::max(v, 0.4f);
+            bucket_peak_s[i] = s * std::max(v, 0.3f);
 
             float area = static_cast<float>(bucket_count[i]) / std::max(total_color_pixels, 1);
             float avg_sat = bucket_sat_sum[i] / bucket_weight[i];
@@ -319,7 +344,7 @@ public:
                           (best_score / (best_score + second_score)) > 0.85f;
 
         double primary_lum = GetRelativeLuminance(pr, pg, pb);
-        uint8_t tr = primary_lum > 0.4 ? 0 : 255;
+        uint8_t tr = (primary_lum + 0.05) / 0.05 >= 1.05 / (primary_lum + 0.05) ? 0 : 255;
 
         out_res->primary_r = pr;
         out_res->primary_g = pg;
@@ -592,6 +617,28 @@ private:
 } // namespace vnotch::services
 
 extern "C" {
+
+VN_EXPORT int32_t __stdcall vn_dicolor_convert_oklab(const uint8_t* pixels, int32_t length,
+    float* lab, int32_t capacity, uint8_t prefer_avx) noexcept {
+    if (!pixels || !lab || length < 0 || length % 4 != 0 || static_cast<int64_t>(capacity) < static_cast<int64_t>(length / 4) * 3)
+        return VN_ERR_INVALID_ARG;
+    const int32_t count = length / 4;
+    int32_t i = 0;
+    if (prefer_avx && vnotch::cpu::SupportsX64V3()) {
+        alignas(32) float l[8], a[8], b[8];
+        for (; i + 8 <= count; i += 8) {
+            vnotch::kernels::avx2::OklabEight(pixels + 4 * i, vnotch::color::LinearSrgb().data(), l, a, b);
+            for (int32_t k = 0; k < 8; ++k) {
+                lab[3 * (i + k)] = l[k]; lab[3 * (i + k) + 1] = a[k]; lab[3 * (i + k) + 2] = b[k];
+            }
+        }
+    }
+    for (; i < count; ++i) {
+        const auto value = vnotch::color::FromBgra(pixels + 4 * i);
+        lab[3 * i] = value.l; lab[3 * i + 1] = value.a; lab[3 * i + 2] = value.b;
+    }
+    return VN_OK;
+}
 
 VN_EXPORT int32_t vn_dicolor_get_clamped_crop_rect(
     double left, double top, double right, double bottom, uint8_t is_empty,

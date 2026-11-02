@@ -220,10 +220,17 @@ public sealed partial class PrivacyIndicatorService : IDisposable
 
     private async Task WorkerLoopAsync(int generation, CancellationToken token)
     {
+        using var registryWake = new SemaphoreSlim(0, 1);
+        void Wake()
+        {
+            try { registryWake.Release(); }
+            catch (SemaphoreFullException) { /* Changes are coalesced. */ }
+            catch (ObjectDisposedException) { /* Retired worker. */ }
+        }
         using var userChanges = _registryChanged == null
-            ? new RegistryChangeMonitor(Registry.CurrentUser, ConsentRoot) : null;
+            ? new RegistryChangeMonitor(Registry.CurrentUser, ConsentRoot, onChanged: Wake) : null;
         using var machineChanges = _registryChanged == null
-            ? new RegistryChangeMonitor(Registry.LocalMachine, ConsentRoot) : null;
+            ? new RegistryChangeMonitor(Registry.LocalMachine, ConsentRoot, onChanged: Wake) : null;
         var capabilityCache = new CapabilityUsageCache(_scanCapability);
         while (!token.IsCancellationRequested)
         {
@@ -277,7 +284,7 @@ public sealed partial class PrivacyIndicatorService : IDisposable
             TimeSpan delay = CurrentState.AnyInUse ? _activeInterval : IdlePollInterval;
             try
             {
-                await Task.Delay(delay, token).ConfigureAwait(false);
+                await registryWake.WaitAsync(delay, token).ConfigureAwait(false);
             }
             catch (OperationCanceledException)
             {
@@ -945,26 +952,42 @@ public sealed partial class PrivacyIndicatorService : IDisposable
         internal static bool IsDesktopExecutableProcess(string executablePath, uint processId) =>
             Win32Interop.ProcessImagePathEquals(processId, executablePath);
         private static readonly System.Collections.Concurrent.ConcurrentDictionary<uint, (string Family, long ExpireTicks)> _packageFamilyByPidCache = new();
-        private const int MaxPackageFamilyPidCacheEntries = 256;
+        private const int MaxPackageFamilyPidCacheEntries = 2048;
+        private static readonly object PackageFamilyCacheLock = new();
 
         private static void CachePackageFamilyForPid(uint processId, string family, long expireTicks, long now)
         {
-            if (_packageFamilyByPidCache.Count >= MaxPackageFamilyPidCacheEntries &&
-                !_packageFamilyByPidCache.ContainsKey(processId))
+            lock (PackageFamilyCacheLock)
             {
-                foreach (var kvp in _packageFamilyByPidCache)
+                if (_packageFamilyByPidCache.Count >= MaxPackageFamilyPidCacheEntries &&
+                    !_packageFamilyByPidCache.ContainsKey(processId))
                 {
-                    if (now >= kvp.Value.ExpireTicks)
+                    foreach (var kvp in _packageFamilyByPidCache)
                     {
-                        _packageFamilyByPidCache.TryRemove(kvp.Key, out _);
+                        if (now >= kvp.Value.ExpireTicks)
+                        {
+                            _packageFamilyByPidCache.TryRemove(kvp.Key, out _);
+                        }
+                    }
+                    if (_packageFamilyByPidCache.Count >= MaxPackageFamilyPidCacheEntries)
+                    {
+                        // Evict only the entry closest to expiry. Clearing the entire cache
+                        // forces every remaining PID through OpenProcess again on this scan.
+                        uint oldestPid = 0;
+                        long oldestExpiry = long.MaxValue;
+                        foreach (var entry in _packageFamilyByPidCache)
+                        {
+                            if (entry.Value.ExpireTicks < oldestExpiry)
+                            {
+                                oldestPid = entry.Key;
+                                oldestExpiry = entry.Value.ExpireTicks;
+                            }
+                        }
+                        _packageFamilyByPidCache.TryRemove(oldestPid, out _);
                     }
                 }
-                if (_packageFamilyByPidCache.Count >= MaxPackageFamilyPidCacheEntries)
-                {
-                    _packageFamilyByPidCache.Clear();
-                }
+                _packageFamilyByPidCache[processId] = (family, expireTicks);
             }
-            _packageFamilyByPidCache[processId] = (family, expireTicks);
         }
 
         private bool IsPackageFamilyRunning(string packageFamily)

@@ -513,7 +513,7 @@ public sealed partial class PerformanceDiagnosticService
             _currentHealthLevel = PerformanceHealthLevel.Warning;
             _currentHealthSummary = $"FPS Drop: {m.Fps:0} FPS ({m.FrameTimeMs:0.0}ms frame time)";
             AddLog(PerformanceHealthLevel.Warning, "BOTTLENECK-FPS",
-                $"Frame drop ({m.Fps:0} FPS, {m.FrameTimeMs:0.1}ms frame time). Cause: Render composition pipeline exceeded target {targetFrameBudgetMs:0.1}ms frame budget (DWM composition or GPU refraction overhead).");
+                $"Frame drop ({m.Fps:0} FPS, {m.FrameTimeMs:0.0}ms frame time). Cause: Render composition pipeline exceeded target {targetFrameBudgetMs:0.0}ms frame budget (DWM composition or GPU refraction overhead).");
             return true;
         }
 
@@ -545,9 +545,9 @@ public sealed partial class PerformanceDiagnosticService
             if (heapMb >= 60.0)
             {
                 _currentHealthLevel = PerformanceHealthLevel.Warning;
-                _currentHealthSummary = $"GC Gen 2 Collection ({heapMb:0.1} MB Heap)";
+                _currentHealthSummary = $"GC Gen 2 Collection ({heapMb:0.0} MB Heap)";
                 AddLog(PerformanceHealthLevel.Warning, "BOTTLENECK-GC",
-                    $"Full GC Gen 2 collection triggered ({heapMb:0.1} MB managed heap). Cause: Large Object Heap compaction or high temporary object churn.");
+                    $"Full GC Gen 2 collection triggered ({heapMb:0.0} MB managed heap). The collection counter does not identify its trigger; inspect an allocation trace for the cause.");
                 _lastGen2 = m.Gen2;
                 return true;
             }
@@ -575,7 +575,7 @@ public sealed partial class PerformanceDiagnosticService
                     _currentHealthLevel = PerformanceHealthLevel.Warning;
                     _currentHealthSummary = $"Memory Surge: +{mbPerSec:0.0} MB/s (Private: {currentPrivMb:0} MB, WS: {currentWsMb:0} MB)";
                     AddLog(PerformanceHealthLevel.Warning, "BOTTLENECK-RAM",
-                        $"Rapid memory allocation surge (+{deltaMb:0.0} MB private commit within {deltaSec:0.1}s, +{mbPerSec:0.1} MB/s, total private {currentPrivMb:0.0} MB, working set {currentWsMb:0.0} MB). Cause: Heavy visual tree instantiation, shell icon extraction, or media artwork cache.");
+                        $"Rapid memory allocation surge (+{deltaMb:0.0} MB private commit within {deltaSec:0.0}s, +{mbPerSec:0.0} MB/s, total private {currentPrivMb:0.0} MB, working set {currentWsMb:0.0} MB). Private commit includes managed, native and graphics allocations; an allocation trace is needed to identify the source.");
                     // Note: Do NOT trigger working-set trim or forced GC here, as that creates a destructive page-fault thrashing cycle.
                     _lastPrivateBytes = m.ProcPrivateBytes;
                     _lastMemSampleTicks = Stopwatch.GetTimestamp();
@@ -603,9 +603,9 @@ public sealed partial class PerformanceDiagnosticService
             alert = true;
             var level = m.ProcCpu > 50.0 ? PerformanceHealthLevel.Critical : PerformanceHealthLevel.Warning;
             _currentHealthLevel = level;
-            _currentHealthSummary = $"High V-Notch CPU: {m.ProcCpu:0.1}%";
+            _currentHealthSummary = $"High V-Notch CPU: {m.ProcCpu:0.0}%";
             AddLog(level, "BOTTLENECK-CPU",
-                $"High CPU usage by V-Notch ({m.ProcCpu:0.1}% across {m.ThreadCount} threads). Cause: Active liquid glass refraction, shader convolution, or rapid polling loops.");
+                $"High CPU usage by V-Notch ({m.ProcCpu:0.0}% across {m.ThreadCount} threads). Cause: Active liquid glass refraction, shader convolution, or rapid polling loops.");
         }
 
         if (m.GlobalCpu > 92.0 && (now - _lastGlobalCpuAlert).TotalSeconds > 4.0)
@@ -628,7 +628,7 @@ public sealed partial class PerformanceDiagnosticService
         {
             _lastLowRamAlert = now;
             _currentHealthLevel = PerformanceHealthLevel.Critical;
-            _currentHealthSummary = $"Low System RAM: {availGb:0.1} GB Available ({m.GlobalRamPercent:0}%)";
+            _currentHealthSummary = $"Low System RAM: {availGb:0.0} GB Available ({m.GlobalRamPercent:0}%)";
             AddLog(PerformanceHealthLevel.Critical, "BOTTLENECK-SYS",
                 $"Critical low system memory ({availGb:0.2} GB available, {m.GlobalRamPercent:0}% utilized). Cause: Global OS physical memory exhaustion across running apps.");
             return true;

@@ -15,6 +15,7 @@ public partial class SpotlightWindow
 {
     private bool _aiActivityAnimating;
     private Border? _aiThinkingCard;
+    private LinearGradientBrush? _aiThinkingShimmer;
 
     private RichTextBox? AddAiMessage(SpotlightAiMessage message, bool animate)
     {
@@ -198,6 +199,7 @@ public partial class SpotlightWindow
         shimmerBrush.GradientStops.Add(stop0);
         shimmerBrush.GradientStops.Add(stop1);
         shimmerBrush.GradientStops.Add(stop2);
+        _aiThinkingShimmer = shimmerBrush;
 
         var sparkText = new TextBlock
         {
@@ -252,6 +254,12 @@ public partial class SpotlightWindow
 
     private void HideAiThinking()
     {
+        if (_aiThinkingShimmer != null)
+        {
+            foreach (var stop in _aiThinkingShimmer.GradientStops)
+                stop.BeginAnimation(GradientStop.OffsetProperty, null);
+            _aiThinkingShimmer = null;
+        }
         if (_aiThinkingCard == null) return;
         AiTranscript.Children.Remove(_aiThinkingCard);
         _aiThinkingCard = null;

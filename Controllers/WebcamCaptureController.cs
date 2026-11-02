@@ -16,6 +16,7 @@ namespace VNotch.Controllers;
 public sealed class WebcamCaptureController : IDisposable
 {
     private readonly object _lifecycleLock = new();
+    private readonly object _frameBufferLock = new();
 
     private MediaCapture? _mediaCapture;
     private MediaFrameReader? _frameReader;
@@ -381,6 +382,7 @@ public sealed class WebcamCaptureController : IDisposable
             reader.FrameArrived -= OnFrameArrived;
         }
 
+        DiscardStoppedBuffers();
         return (reader, capture, initializingCapture);
     }
 
@@ -410,7 +412,24 @@ public sealed class WebcamCaptureController : IDisposable
             reader.FrameArrived -= OnFrameArrived;
         }
 
+        DiscardStoppedBuffers();
         return true;
+    }
+
+    private void DiscardStoppedBuffers()
+    {
+        lock (_frameBufferLock)
+        {
+            lock (_lifecycleLock)
+            {
+                if (_isActive) return;
+                // An already queued UI frame owns its array reference until it releases
+                // the lease. Drop controller references after any active copy completes.
+                _frameBuffer = Array.Empty<byte>();
+                _conversionBuffer = Array.Empty<byte>();
+                _frameBufferCapacity = 0;
+            }
+        }
     }
 
     public void EndGracefulStop(int fadeToken)
@@ -492,6 +511,11 @@ public sealed class WebcamCaptureController : IDisposable
     }
 
     internal void ProcessFrame(SoftwareBitmap softwareBitmap, int frameToken)
+    {
+        lock (_frameBufferLock) ProcessFrameUnderLock(softwareBitmap, frameToken);
+    }
+
+    private void ProcessFrameUnderLock(SoftwareBitmap softwareBitmap, int frameToken)
     {
         lock (_lifecycleLock)
         {

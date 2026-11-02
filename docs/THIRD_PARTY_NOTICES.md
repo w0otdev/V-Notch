@@ -38,7 +38,8 @@ is implied. Verify **each file** against its original source URL, creator, preci
 | LLamaSharp.Backend.Cpu / LLamaSharp.Backend.Vulkan.Windows 0.27.0 | MIT core; included native dependency notices in `Assets/Translation/Licenses/` | <https://github.com/SciSharp/LLamaSharp/tree/v0.27.0> |
 | Markdig 0.41.3 | BSD-2-Clause | <https://github.com/xoofx/markdig> |
 | Microsoft.Extensions.DependencyInjection 8.0.1 | MIT | <https://dot.net/> |
-| Microsoft.ML.OnnxRuntime 1.31.0 | MIT | <https://github.com/microsoft/onnxruntime> |
+| Microsoft.ML.OnnxRuntime.DirectML 1.24.4 | MIT | <https://github.com/microsoft/onnxruntime> |
+| Microsoft.AI.DirectML 1.15.4 | Microsoft Software License; bundled terms in `licenses/DirectML-1.15.4.txt` | <https://github.com/microsoft/DirectML> |
 | Microsoft.Web.WebView2 1.0.4078.44 | Microsoft Software License | <https://github.com/MicrosoftEdge/WebView2Feedback> |
 | System.Data.OleDb 8.0.1 | MIT | <https://github.com/dotnet/runtime> |
 | Vortice.Direct3D9 3.8.3 | MIT | <https://github.com/amerkoleci/Vortice.Windows> |

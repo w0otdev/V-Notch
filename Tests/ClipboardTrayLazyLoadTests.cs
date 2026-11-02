@@ -236,7 +236,9 @@ public sealed class ClipboardTrayLazyLoadTests
             scroll.ScrollToHorizontalOffset(0);
             await Dispatcher.Yield(DispatcherPriority.ApplicationIdle);
             await WpfFrameWaiter.UntilAsync(() => visible.All(card => card.Image != null), "returning previews reload");
-            Assert.NotSame(firstImage, visible[0].Image);
+            // Viewport references are released, but the bounded public-preview
+            // cache avoids decoding the original again when scrolling back.
+            Assert.Same(firstImage, visible[0].Image);
             tray.Visibility = Visibility.Collapsed;
             Assert.All(cards, card => { Assert.Null(card.Image); Assert.Null(card.SourceIcon); });
             Assert.Empty(Field<IDictionary>(tray, "_cardViewportStates"));

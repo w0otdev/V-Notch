@@ -402,7 +402,9 @@ public partial class SettingsWindow
                 Radius = step.StartBlurRadius,
                 RenderingBias = RenderingBias.Performance
             };
-            el.Effect = blur;
+            // Keep the cascade's motion, but bound concurrent offscreen blur
+            // surfaces when a page contains many cards.
+            el.Effect = i < 6 ? blur : null;
 
             var delay = TimeSpan.FromMilliseconds(step.DelayMs);
             var fadeAnim = new DoubleAnimation(step.StartOpacity, targetOpacity, TimeSpan.FromMilliseconds(step.FadeDurationMs))

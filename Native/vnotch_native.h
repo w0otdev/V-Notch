@@ -39,6 +39,31 @@ constexpr int32_t VN_ERR_INVALID_ARG = -1;
 constexpr int32_t VN_ERR_BUFFER_TOO_SMALL = -2;
 constexpr int32_t VN_ERR_FAIL = -3;
 
+VN_EXPORT int32_t __stdcall vn_clipboard_record_open(const wchar_t*, int32_t, int64_t*) noexcept;
+VN_EXPORT int32_t __stdcall vn_clipboard_record_close(int64_t) noexcept;
+VN_EXPORT int32_t __stdcall vn_clipboard_record_migrate(int64_t, const wchar_t*, int32_t) noexcept;
+VN_EXPORT int32_t __stdcall vn_clipboard_record_read(int64_t, const wchar_t*, int32_t, uint8_t*, int32_t, int32_t*) noexcept;
+VN_EXPORT int32_t __stdcall vn_clipboard_record_append(int64_t, const wchar_t*, int32_t, const uint8_t*, int32_t) noexcept;
+
+namespace vnotch::services { struct VnDetection; namespace loopback { struct VnLoopbackFormat; } }
+VN_EXPORT int32_t __stdcall vn_smartcrop_preprocess_bgra32(const uint8_t*, int32_t, int32_t, int32_t, int32_t, float*, int32_t, float*) noexcept;
+VN_EXPORT int32_t __stdcall vn_smartcrop_session_create(const wchar_t*, int32_t, const wchar_t*, int32_t, uint8_t, int64_t*, uint8_t*) noexcept;
+VN_EXPORT int32_t __stdcall vn_smartcrop_session_destroy(int64_t) noexcept;
+VN_EXPORT int32_t __stdcall vn_smartcrop_session_infer(int64_t, const uint8_t*, int32_t, int32_t, int32_t, int32_t,
+    vnotch::services::VnDetection*, int32_t, int32_t*, uint8_t*) noexcept;
+VN_EXPORT int32_t __stdcall vn_registry_watch_create(HKEY, const wchar_t*, int32_t, HANDLE, int64_t*) noexcept;
+VN_EXPORT int32_t __stdcall vn_registry_watch_consume(int64_t, uint8_t*) noexcept;
+VN_EXPORT int32_t __stdcall vn_registry_watch_close(int64_t) noexcept;
+VN_EXPORT int32_t __stdcall vn_media_title_watch_create(HANDLE, int64_t*) noexcept;
+VN_EXPORT int32_t __stdcall vn_media_title_watch_close(int64_t) noexcept;
+VN_EXPORT int32_t __stdcall vn_visualizer_stream_create(int32_t, int64_t*) noexcept;
+VN_EXPORT int32_t __stdcall vn_visualizer_stream_close(int64_t) noexcept;
+VN_EXPORT int32_t __stdcall vn_visualizer_stream_push(int64_t, const uint8_t*, int32_t, int32_t, int32_t, uint8_t, float*, float*, float*) noexcept;
+VN_EXPORT int32_t __stdcall vn_dicolor_convert_oklab(const uint8_t*, int32_t, float*, int32_t, uint8_t) noexcept;
+VN_EXPORT int32_t __stdcall vn_loopback_start_levels(const char16_t*, int32_t,
+    void(__stdcall*)(int64_t, const float*, float), void(__stdcall*)(int64_t, int32_t), int64_t,
+    int64_t*, vnotch::services::loopback::VnLoopbackFormat*, int32_t*) noexcept;
+
 #pragma pack(push, 1)
 
 struct VnSessionSwitchInputs

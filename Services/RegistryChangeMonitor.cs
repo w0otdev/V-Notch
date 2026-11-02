@@ -1,64 +1,67 @@
 using System.Runtime.InteropServices;
-using System.Security.AccessControl;
 using Microsoft.Win32;
-using Microsoft.Win32.SafeHandles;
 
 namespace VNotch.Services;
 
-// Owned by one background worker. Failed subscriptions request a rescan, then back off.
-internal sealed class RegistryChangeMonitor(RegistryKey hive, string path, Func<long>? tickCount = null) : IDisposable
+// The native thread-pool wait rearms registry notifications before waking the worker.
+internal sealed partial class RegistryChangeMonitor : IDisposable
 {
+    private readonly RegistryKey _hive;
+    private readonly string _path;
+    private readonly Func<long>? _tickCount;
     private readonly AutoResetEvent _changed = new(false);
-    private RegistryKey? _key;
-    private long _nextRetry;
+    private readonly RegisteredWaitHandle? _wait;
+    private long _handle, _nextRetry;
 
+    [LibraryImport("VNotch.Native.dll", StringMarshalling = StringMarshalling.Utf16)]
+    private static partial int vn_registry_watch_create(nint hive, string path, int length, nint signal, out long handle);
+    [LibraryImport("VNotch.Native.dll")]
+    private static partial int vn_registry_watch_consume(long handle, out byte changed);
+    [LibraryImport("VNotch.Native.dll")]
+    private static partial int vn_registry_watch_close(long handle);
+
+    internal RegistryChangeMonitor(RegistryKey hive, string path, Func<long>? tickCount = null, Action? onChanged = null)
+    {
+        _hive = hive; _path = path; _tickCount = tickCount;
+        if (onChanged != null)
+            _wait = ThreadPool.RegisterWaitForSingleObject(_changed, static (state, _) => ((Action)state!).Invoke(),
+                onChanged, Timeout.Infinite, false);
+    }
 
     internal bool ConsumeChange()
     {
-        long now = tickCount?.Invoke() ?? Environment.TickCount64;
-        if (_key == null && now < _nextRetry) return false;
-        try
+        long now = _tickCount?.Invoke() ?? Environment.TickCount64;
+        if (_handle == 0 && now < _nextRetry) return false;
+        if (_handle == 0)
         {
-            if (_key != null && !_changed.WaitOne(0)) return false;
-            if (_key == null)
-                _key = hive.OpenSubKey(path, RegistryKeyPermissionCheck.ReadSubTree, RegistryRights.Notify);
-            // Rearm before reading the registry so changes during a scan are not lost.
-            if (_key != null)
+            bool hiveRef = false, eventRef = false;
+            var hiveHandle = _hive.Handle;
+            var eventHandle = _changed.SafeWaitHandle;
+            try
             {
-                bool keyRef = false;
-                bool waitRef = false;
-                try
-                {
-                    _key.Handle.DangerousAddRef(ref keyRef);
-                    _changed.SafeWaitHandle.DangerousAddRef(ref waitRef);
-#pragma warning disable S3869 // Handles are ref-counted via DangerousAddRef above
-                    if (Win32Interop.RegistryNotifyChange(_key.Handle.DangerousGetHandle(), true,
-                            0x10000000 | 0x1 | 0x4 | 0x8, _changed.SafeWaitHandle.DangerousGetHandle()))
-#pragma warning restore S3869
-                        return true;
-                }
-                finally
-                {
-                    if (waitRef) _changed.SafeWaitHandle.DangerousRelease();
-                    if (keyRef) _key.Handle.DangerousRelease();
-                }
+                hiveHandle.DangerousAddRef(ref hiveRef);
+                eventHandle.DangerousAddRef(ref eventRef);
+                vn_registry_watch_create(hiveHandle.DangerousGetHandle(), _path, _path.Length,
+                    eventHandle.DangerousGetHandle(), out _handle);
+            }
+            finally
+            {
+                if (eventRef) eventHandle.DangerousRelease();
+                if (hiveRef) hiveHandle.DangerousRelease();
             }
         }
-        catch (Exception)
-        {
-            // Access changes and missing keys must not leave stale privacy evidence.
-        }
-        _key?.Dispose();
-        _key = null;
-        // The usage cache also reconciles missed changes every 30 seconds.
-        // An inaccessible or absent hive must not force full scans every 1–2 seconds.
+        if (_handle != 0 && vn_registry_watch_consume(_handle, out byte changed) == 0) return changed != 0;
+        if (_handle != 0) vn_registry_watch_close(_handle);
+        _handle = 0;
         _nextRetry = now + 30_000;
         return true;
     }
 
     public void Dispose()
     {
-        _key?.Dispose();
+        if (_handle != 0) vn_registry_watch_close(_handle);
+        _handle = 0;
+        _wait?.Unregister(null);
         _changed.Dispose();
     }
 }

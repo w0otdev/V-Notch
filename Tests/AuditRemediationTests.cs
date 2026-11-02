@@ -176,7 +176,7 @@ public sealed class AuditRemediationTests : IDisposable
         var provider = new AppSearchProvider(() => [new($"app:{++builds}", SpotlightResultKind.Application, "Editor", "App", "editor.exe")], () => now);
         var first = await provider.WarmupAsync();
         Assert.Same(first, await provider.WarmupAsync());
-        now = now.AddMinutes(2);
+        now = now.AddMinutes(31);
         Assert.NotEqual(first[0].Id, (await provider.WarmupAsync())[0].Id);
     }
 

@@ -7,6 +7,29 @@ namespace VNotch.Services;
 internal static class ArtworkAnalysisSource
 {
     private static readonly ConditionalWeakTable<BitmapSource, BitmapSource> FormattedSources = new();
+    private static readonly ConditionalWeakTable<BitmapSource, Dictionary<(int, int), BitmapSource>> Samples = new();
+
+    internal static BitmapSource GetSample(BitmapSource source, int width, int height)
+    {
+        width = Math.Clamp(width, 1, 512); height = Math.Clamp(height, 1, 512);
+        if (!source.IsFrozen) return Build();
+        var samples = Samples.GetValue(source, _ => new());
+        lock (samples)
+        {
+            if (samples.TryGetValue((width, height), out var cached)) return cached;
+            var image = Build();
+            if (samples.Count < 8) samples[(width, height)] = image;
+            return image;
+        }
+        BitmapSource Build()
+        {
+            BitmapSource scaled = source.PixelWidth == width && source.PixelHeight == height ? source :
+                new TransformedBitmap(source, new ScaleTransform((double)width / source.PixelWidth, (double)height / source.PixelHeight));
+            var copy = new WriteableBitmap(GetBgra32(scaled));
+            copy.Freeze();
+            return copy;
+        }
+    }
 
     internal static async Task<BitmapSource> GetFrozenSnapshotAsync(BitmapSource source)
     {

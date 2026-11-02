@@ -9,6 +9,23 @@ namespace VNotch.Tests;
 public sealed class MetricsAndAudioMixerCacheTests
 {
     [Fact]
+    public void AudioMetadataDefersIconsUntilRequestedAndCachesMissingIcons()
+    {
+        using var service = new AudioMixerService();
+        int names = 0, icons = 0;
+        (string, string?) Name(uint pid, string raw) { names++; return ("Fixture", "fixture.exe"); }
+        System.Windows.Media.ImageSource? Icon(string path, uint pid) { icons++; return null; }
+        for (int i = 0; i < 10; i++)
+            service.GetOrResolveSessionMetadata(123, "test", Name, Icon, includeIcons: false);
+        Assert.Equal(1, names);
+        Assert.Equal(0, icons);
+        for (int i = 0; i < 10; i++)
+            service.GetOrResolveSessionMetadata(123, "test", Name, Icon, includeIcons: true);
+        Assert.Equal(1, names);
+        Assert.Equal(1, icons);
+    }
+
+    [Fact]
     public async Task ConcurrentMetricSampling_StaysBoundedWithoutNaNOrNegativeValues()
     {
         const int threadCount = 4;

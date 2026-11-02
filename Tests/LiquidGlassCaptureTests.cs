@@ -6,6 +6,20 @@ namespace VNotch.Tests;
 public sealed class LiquidGlassCaptureTests
 {
     [Fact]
+    public void LowBlurPreservesSubpixelControlAtEveryDpi()
+    {
+        foreach (double dpi in new[] { 1.0, 1.5, 2.0, 3.0 })
+        {
+            double fivePercent = LiquidGlassController.BlurAmountToSigma(0.05, dpi);
+            Assert.InRange(fivePercent, 0.05, 0.25);
+            Assert.True(LiquidGlassController.BlurAmountToSigma(0.06, dpi) > fivePercent);
+            Assert.True(LiquidGlassController.BlurAmountToSigma(0.04, dpi) < fivePercent);
+        }
+        Assert.Equal(0, LiquidGlassController.BlurAmountToSigma(0));
+        Assert.Equal(28, LiquidGlassController.BlurAmountToSigma(1));
+    }
+
+    [Fact]
     public void CompleteFrame_AcceptsExactAndPaddedImages()
     {
         Assert.True(MagnifierCaptureSource.IsCompleteFrame(320, 80, 320, 80, 1280, 102400));

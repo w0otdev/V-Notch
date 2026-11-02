@@ -798,7 +798,7 @@
     </Style></ListBox.ItemContainerStyle>
     <ListBox.ItemTemplate><DataTemplate DataType="{x:Type vm:ClipboardCardViewModel}">
      <!-- Flagship Card Container (Exact 210 Width Required by Interaction Tests) -->
-     <Border Width="210" CornerRadius="{StaticResource TrayRadiusLarge}" Background="Transparent" BorderThickness="0" ClipToBounds="True" Cursor="Hand" SnapsToDevicePixels="False" UseLayoutRounding="True"
+     <Border Width="210" CornerRadius="{StaticResource TrayRadiusLarge}" Background="Transparent" BorderThickness="0" Cursor="Hand" SnapsToDevicePixels="False" UseLayoutRounding="True"
       ContextMenuOpening="Card_ContextMenu" Loaded="Card_Loaded" Unloaded="Card_Unloaded" DataContextChanged="Card_DataContextChanged" SizeChanged="Card_SizeChanged" PreviewMouseLeftButtonDown="Card_Down" PreviewMouseLeftButtonUp="Card_Up" PreviewMouseMove="Card_Move" MouseLeave="Card_MouseLeave" IsVisibleChanged="Card_VisibilityChanged">
       <Border.ContextMenu><ContextMenu/></Border.ContextMenu>
       <local:ClipboardCardPresentation x:Name="CardPresentation">
@@ -941,9 +941,18 @@
         <!-- Layer 5: Card Actions (Pin & More) in Top Right -->
         <Border x:Name="CardActions" HorizontalAlignment="Right" VerticalAlignment="Top" Margin="7" Panel.ZIndex="4" Background="#E6181818" BorderBrush="#26FFFFFF" BorderThickness="1" CornerRadius="7" Padding="2" local:TrayMotion.Opacity="0" IsHitTestVisible="False">
         <Grid>
-         <Border CornerRadius="6" ClipToBounds="True" SizeChanged="CardActionGlass_SizeChanged" IsHitTestVisible="False">
+         <Border CornerRadius="6" SizeChanged="CardActionGlass_SizeChanged" IsHitTestVisible="False">
           <local:CardActionBackdrop Source="{Binding ElementName=CardContentGrid}">
-           <local:CardActionBackdrop.Effect><BlurEffect Radius="0" RenderingBias="Performance"/></local:CardActionBackdrop.Effect>
+           <local:CardActionBackdrop.Style>
+            <Style TargetType="local:CardActionBackdrop">
+             <Style.Triggers>
+              <DataTrigger Binding="{Binding Opacity, ElementName=CardActions}" Value="0">
+               <Setter Property="Visibility" Value="Collapsed"/>
+              </DataTrigger>
+             </Style.Triggers>
+            </Style>
+           </local:CardActionBackdrop.Style>
+
           </local:CardActionBackdrop>
          </Border>
          <Border Background="#A6181818" CornerRadius="6" IsHitTestVisible="False"/>

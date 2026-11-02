@@ -166,7 +166,13 @@ public sealed partial class ClipboardHistoryStore : IDisposable, IAsyncDisposabl
             if (!Guid.TryParseExact(Path.GetFileName(directory), "N", out var id)) continue;
             try
             {
-                var entry = JsonSerializer.Deserialize<ClipboardEntry>(File.ReadAllBytes(Path.Combine(directory, "entry.json")));
+                try
+                {
+                    PublicRecords.Migrate(Path.Combine(directory, "entry.json"));
+                    PublicRecords.Migrate(Path.Combine(directory, "content.json"));
+                }
+                catch (IOException) { RuntimeLog.Warn("CLIPBOARD", "Clipboard migration was deferred; existing records were preserved."); }
+                var entry = ReadDocument<ClipboardEntry>(Path.Combine(directory, "entry.json"), false);
                 if (entry != null && entry.Id == id && !entry.IsPersonal) PutEntry(RestoreFileMetadata(entry), persistExpiryMarker: false);
             }
             catch (Exception ex) when (ex is IOException or JsonException or UnauthorizedAccessException)
@@ -1358,7 +1364,7 @@ public sealed partial class ClipboardHistoryStore : IDisposable, IAsyncDisposabl
             {
                 try
                 {
-                    existing = JsonSerializer.Deserialize<ClipboardEntry>(File.ReadAllBytes(Path.Combine(publicDir, "entry.json")));
+                    existing = ReadDocument<ClipboardEntry>(Path.Combine(publicDir, "entry.json"), false);
                 }
                 catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or JsonException) { }
             }
@@ -1472,6 +1478,7 @@ public sealed partial class ClipboardHistoryStore : IDisposable, IAsyncDisposabl
 
     private void PutEntry(ClipboardEntry entry, bool persistExpiryMarker = true)
     {
+        if (entry.IsPersonal || entry.IsSensitive) RemoveImagePreview(entry.Id);
         lock (_entriesLock)
         {
             if (_entries.TryGetValue(entry.Id, out var previous)) RemoveFingerprint(previous);
@@ -1533,6 +1540,7 @@ public sealed partial class ClipboardHistoryStore : IDisposable, IAsyncDisposabl
 
     private void RemoveEntry(Guid id)
     {
+        RemoveImagePreview(id);
         _searchText.Remove(id);
         DeleteSensitiveExpiryMarker(id);
         lock (_entriesLock)
@@ -1562,6 +1570,8 @@ public sealed partial class ClipboardHistoryStore : IDisposable, IAsyncDisposabl
         string target = path + (personal ? ".enc" : "");
         if (!personal)
         {
+            if (PublicRecords.TryReadJson<T>(target, out var value))
+                return value ?? throw new JsonException("Invalid clipboard record.");
             using var stream = File.OpenRead(target);
             return JsonSerializer.Deserialize<T>(stream) ?? throw new JsonException("Invalid clipboard record.");
         }
@@ -1589,27 +1599,23 @@ public sealed partial class ClipboardHistoryStore : IDisposable, IAsyncDisposabl
     {
         string target = path + (personal ? ".enc" : "");
         Directory.CreateDirectory(Path.GetDirectoryName(target)!);
+        if (!personal)
+        {
+            byte[] payload = JsonSerializer.SerializeToUtf8Bytes(value);
+            try { PublicRecords.Append(target, payload); }
+            finally { CryptographicOperations.ZeroMemory(payload); }
+            return;
+        }
         string temp = target + "." + Guid.NewGuid().ToString("N") + ".tmp";
         try
         {
-            if (personal)
+            using var plainStream = new PooledChunkStream();
+            JsonSerializer.Serialize(plainStream, value);
+            plainStream.Position = 0;
+            using (var output = new FileStream(temp, FileMode.CreateNew, FileAccess.Write, FileShare.None))
             {
-                using var plainStream = new PooledChunkStream();
-                JsonSerializer.Serialize(plainStream, value);
-                plainStream.Position = 0;
-                using (var output = new FileStream(temp, FileMode.CreateNew, FileAccess.Write, FileShare.None))
-                {
-                    _vault.TransformFile(plainStream, output, encrypt: true);
-                    output.Flush(true);
-                }
-            }
-            else
-            {
-                using (var output = new FileStream(temp, FileMode.CreateNew, FileAccess.Write, FileShare.None))
-                {
-                    JsonSerializer.Serialize(output, value);
-                    output.Flush(true);
-                }
+                _vault.TransformFile(plainStream, output, encrypt: true);
+                output.Flush(true);
             }
             File.Move(temp, target, overwrite: true);
         }
@@ -1857,7 +1863,10 @@ public sealed partial class ClipboardHistoryStore : IDisposable, IAsyncDisposabl
 
         try
         {
-            if (ImagePixelFingerprint(File.ReadAllBytes(existingImg)) == ImagePixelFingerprint(File.ReadAllBytes(stagingImg)))
+            string incoming = capture.ImagePng != null ? Fingerprint(capture) : FingerprintImageFile(stagingImg);
+            string existing = recent.Fingerprint.StartsWith("image-v2:", StringComparison.Ordinal)
+                ? recent.Fingerprint : FingerprintImageFile(existingImg);
+            if (existing == incoming)
                 return recent;
         }
         catch
@@ -1914,53 +1923,64 @@ public sealed partial class ClipboardHistoryStore : IDisposable, IAsyncDisposabl
     }
     private static string Fingerprint(ClipboardCapture capture)
     {
-        if (capture.ImagePng != null) return ImagePixelFingerprint(capture.ImagePng);
+        if (capture.ImagePng != null) return capture.ImagePixelFingerprint ?? ImagePixelFingerprint(capture.ImagePng);
         using var hash = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
         AppendCaptureFingerprint(hash, capture);
         return Convert.ToHexString(hash.GetHashAndReset());
     }
 
+    private static string FingerprintImageFile(string path)
+    {
+        using var input = File.OpenRead(path);
+        return FingerprintImageStream(input);
+    }
+
     private static string ImagePixelFingerprint(byte[] image)
     {
-        using var hash = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
-        // Clipboard owners can publish the same bitmap several times with different
-        // auxiliary formats or PNG metadata. Image identity is its pixels, not its encoding.
-        byte[]? rentedRow = null;
         try
         {
             using var input = new MemoryStream(image, writable: false);
-            var decoder = System.Windows.Media.Imaging.BitmapDecoder.Create(input,
-                System.Windows.Media.Imaging.BitmapCreateOptions.PreservePixelFormat,
-                System.Windows.Media.Imaging.BitmapCacheOption.OnLoad);
-            var pixels = new System.Windows.Media.Imaging.FormatConvertedBitmap(decoder.Frames[0],
-                System.Windows.Media.PixelFormats.Pbgra32, null, 0);
-            int width = pixels.PixelWidth;
-            int height = pixels.PixelHeight;
-            Span<byte> dims = stackalloc byte[8];
-            BinaryPrimitives.WriteInt32LittleEndian(dims[..4], width);
-            BinaryPrimitives.WriteInt32LittleEndian(dims[4..8], height);
-            hash.AppendData(dims);
-            int stride = checked(width * 4);
-            rentedRow = ArrayPool<byte>.Shared.Rent(stride);
-            Span<byte> rowSpan = rentedRow.AsSpan(0, stride);
-            for (int y = 0; y < height; y++)
-            {
-                pixels.CopyPixels(new System.Windows.Int32Rect(0, y, width, 1), rentedRow, stride, 0);
-                hash.AppendData(rowSpan);
-            }
-            return "image-v2:" + Convert.ToHexString(hash.GetHashAndReset());
+            return FingerprintImageStream(input);
         }
         catch (Exception ex) when (ex is NotSupportedException or ArgumentException or IOException
             or System.Runtime.InteropServices.COMException or InvalidOperationException or OverflowException)
         {
-            // Decoding can fail after rows have been hashed; start with a fresh hash.
             return "image-raw:" + Convert.ToHexString(SHA256.HashData(image));
         }
-        finally
+    }
+
+    private static string FingerprintImageStream(Stream input)
+    {
+        var decoder = System.Windows.Media.Imaging.BitmapDecoder.Create(input,
+            System.Windows.Media.Imaging.BitmapCreateOptions.PreservePixelFormat,
+            System.Windows.Media.Imaging.BitmapCacheOption.None);
+        return FingerprintPixels(decoder.Frames[0]);
+    }
+
+    internal static string FingerprintPixels(System.Windows.Media.Imaging.BitmapSource source)
+    {
+        using var hash = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
+        var pixels = new System.Windows.Media.Imaging.FormatConvertedBitmap(source,
+            System.Windows.Media.PixelFormats.Pbgra32, null, 0);
+        int width = pixels.PixelWidth, height = pixels.PixelHeight;
+        Span<byte> dims = stackalloc byte[8];
+        BinaryPrimitives.WriteInt32LittleEndian(dims[..4], width);
+        BinaryPrimitives.WriteInt32LittleEndian(dims[4..8], height);
+        hash.AppendData(dims);
+        int stride = checked(width * 4);
+        int rows = Math.Min(height, 16);
+        byte[] buffer = ArrayPool<byte>.Shared.Rent(checked(stride * rows));
+        try
         {
-            if (rentedRow != null)
-                ArrayPool<byte>.Shared.Return(rentedRow);
+            for (int y = 0; y < height; y += rows)
+            {
+                int count = Math.Min(rows, height - y);
+                pixels.CopyPixels(new System.Windows.Int32Rect(0, y, width, count), buffer, stride, 0);
+                hash.AppendData(buffer.AsSpan(0, stride * count));
+            }
+            return "image-v2:" + Convert.ToHexString(hash.GetHashAndReset());
         }
+        finally { CryptographicOperations.ZeroMemory(buffer); ArrayPool<byte>.Shared.Return(buffer); }
     }
 
     private static void AppendCaptureFingerprint(IncrementalHash hash, ClipboardCapture capture)
@@ -2077,7 +2097,10 @@ public sealed partial class ClipboardHistoryStore : IDisposable, IAsyncDisposabl
         try { await pending.ConfigureAwait(false); } catch { /* Failed operations still release their resources. */ }
         LockPersonalCore();
         _searchText.Clear();
+        _imagePreviews.Clear();
+        _imagePreviewBytes = 0;
         _vault.Dispose();
+        _publicRecords?.Dispose();
         foreach (var lease in _exportLeases.Values) lease.Dispose();
         _exportLeases.Clear();
     }

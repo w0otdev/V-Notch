@@ -33,13 +33,7 @@ public sealed partial class ColorExtractionService : IColorExtractionService
         try
         {
             const int sampleDimension = 64;
-            var formatConvertedBitmap = ArtworkAnalysisSource.GetBgra32(image);
-
-            double scaleX = (double)sampleDimension / formatConvertedBitmap.PixelWidth;
-            double scaleY = (double)sampleDimension / formatConvertedBitmap.PixelHeight;
-            BitmapSource smallBitmap = formatConvertedBitmap.PixelWidth == sampleDimension && formatConvertedBitmap.PixelHeight == sampleDimension
-                ? formatConvertedBitmap
-                : new TransformedBitmap(formatConvertedBitmap, new ScaleTransform(scaleX, scaleY));
+            BitmapSource smallBitmap = ArtworkAnalysisSource.GetSample(image, sampleDimension, sampleDimension);
 
             int width = smallBitmap.PixelWidth;
             int height = smallBitmap.PixelHeight;

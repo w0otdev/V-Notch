@@ -42,6 +42,7 @@ public partial class MediaSourceCache
 
     private readonly object _lock = new();
     private bool _isDirty;
+    private int _saveQueued;
 
     public MediaSourceCache(int capacity = DefaultCapacity)
     {
@@ -155,6 +156,17 @@ public partial class MediaSourceCache
         {
             RuntimeLog.Warn("MEDIA-SOURCE-CACHE", $"Failed to load cache from '{_cachePath}': {ex.Message}");
         }
+    }
+
+    public void QueueSave()
+    {
+        if (System.Threading.Interlocked.Exchange(ref _saveQueued, 1) != 0) return;
+        _ = System.Threading.Tasks.Task.Run(async () =>
+        {
+            await System.Threading.Tasks.Task.Delay(500).ConfigureAwait(false);
+            System.Threading.Interlocked.Exchange(ref _saveQueued, 0);
+            Save();
+        });
     }
 
     public void Save()

@@ -498,11 +498,15 @@ public class MediaDetectionServiceLifecycleTests
         var downloadToken = await downloadStarted.Task.WaitAsync(TimeSpan.FromSeconds(5));
         Assert.False(downloadToken.IsCancellationRequested);
 
+        var cancelled = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        using var cancellationRegistration = downloadToken.Register(() => cancelled.TrySetResult());
+
         var stopTask = service.StopAsync();
         try
         {
-            Assert.True(downloadToken.WaitHandle.WaitOne(TimeSpan.FromSeconds(2)),
-                "Expected StopAsync to cancel the linked thumbnail token immediately via _bgCts.");
+            // The download may dispose its linked CTS immediately after observing
+            // cancellation; a registered signal remains valid after that disposal.
+            await cancelled.Task.WaitAsync(TimeSpan.FromSeconds(2));
             Assert.True(downloadToken.IsCancellationRequested);
         }
         finally

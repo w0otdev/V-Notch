@@ -497,7 +497,7 @@ public sealed partial class AudioMixerView : UserControl, IDisposable
             var quick = ReadAudioSnapshot(includeIcons: false);
             QueueAudioSnapshot(token, quick, afterBuild);
 
-            var detailedSessions = SafeCall(() => AudioMixer.GetSessions(includeIcons: true));
+            var detailedSessions = SafeCall(() => AudioMixer.ResolveSessionIcons(quick.Sessions));
             if (detailedSessions == null || token != System.Threading.Volatile.Read(ref _audioPopulateToken))
                 return;
 

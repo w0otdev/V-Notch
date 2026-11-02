@@ -53,8 +53,29 @@ public sealed class DebugWindowAllocationTests
             }
             long allocated = GC.GetAllocatedBytesForCurrentThread() - before;
 
-            Assert.Equal("60 FPS", window.FpsSummaryText.Text);
+            Assert.Equal("UI 60 FPS", window.FpsSummaryText.Text);
             Assert.True(allocated < 4096, $"Unchanged metric updates allocated {allocated} bytes.");
+        }
+        finally { window.Close(); }
+    });
+
+    [Fact]
+    public void GlassFpsCountsSubmissionsSeparatelyFromUiRendering() => SharedStaTestRunner.Run(() =>
+    {
+        LiquidGlassSpotlightTests.CreateApplicationResources();
+        var window = new DebugWindow();
+        try
+        {
+            long second = System.Diagnostics.Stopwatch.Frequency;
+            window.UpdateFps(120);
+            window.UpdateGlassMetrics(true, 50, 4, second);
+            window.UpdateGlassMetrics(true, 80, 6.25, second * 2);
+            Assert.Equal("UI 120 FPS", window.FpsSummaryText.Text);
+            Assert.StartsWith("Glass 30 FPS", window.GlassSummaryText.Text);
+            window.UpdateGlassMetrics(true, 80, 6.25, second * 3);
+            Assert.Equal("Glass: idle", window.GlassSummaryText.Text);
+            window.UpdateGlassMetrics(false, 80, 0, second * 4);
+            Assert.Equal(System.Windows.Visibility.Collapsed, window.GlassSummaryText.Visibility);
         }
         finally { window.Close(); }
     });

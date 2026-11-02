@@ -9,7 +9,6 @@ using System.Runtime.InteropServices.WindowsRuntime;
 using System.Windows;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
-using Microsoft.ML.OnnxRuntime;
 using Microsoft.ML.OnnxRuntime.Tensors;
 
 namespace VNotch.Services;
@@ -19,15 +18,13 @@ public sealed partial class SmartThumbnailCropService : IDisposable
     private const string LogCategory = "SMART-CROP";
     private readonly object _lock = new();
 
-    private const int ModelInputSize = 416;
-
     private readonly Dictionary<(ArtworkFingerprint Artwork, int Size, bool ObjectDetection), Int32Rect> _cropCache = new();
     private readonly Queue<(ArtworkFingerprint Artwork, int Size, bool ObjectDetection)> _cropCacheOrder = new();
 
     private bool _disposed;
     private bool _modelExists;
     private bool _modelExistsChecked;
-    private InferenceSession? _cachedSession;
+    private NativeCropSession? _cachedSession;
 
     private const int MaxInferenceCacheEntries = 24;
     private readonly Dictionary<ArtworkFingerprint, InferenceCacheEntry> _inferenceCache = new();
@@ -36,50 +33,6 @@ public sealed partial class SmartThumbnailCropService : IDisposable
 
     private static readonly TimeSpan IdleTimeout = TimeSpan.FromSeconds(60);
 
-    [LibraryImport("ucrtbase.dll")]
-    private static partial int _heapmin();
-
-    [LibraryImport("kernel32.dll")]
-    private static partial IntPtr GetCurrentProcess();
-
-    [LibraryImport("kernel32.dll", SetLastError = true)]
-    [return: MarshalAs(UnmanagedType.Bool)]
-    private static partial bool K32EmptyWorkingSet(IntPtr hProcess);
-
-    private static long _lastWorkingSetTrimTicks;
-
-    internal static void TryMinimizeNativeHeap(bool trimWorkingSet = false)
-    {
-        try
-        {
-            _ = _heapmin();
-        }
-        catch
-        {
-            // Best-effort CRT heap compaction.
-        }
-
-        if (!trimWorkingSet)
-            return;
-
-        long now = Environment.TickCount64;
-        long last = System.Threading.Interlocked.Read(ref _lastWorkingSetTrimTicks);
-        if (now - last < 30_000 || System.Threading.Interlocked.CompareExchange(ref _lastWorkingSetTrimTicks, now, last) != last)
-            return;
-
-        try
-        {
-#pragma warning disable S1215 // Intentional non-blocking gen2 trim after heavy ONNX inference idle timeout
-            GC.Collect(2, GCCollectionMode.Optimized, blocking: false, compacting: false);
-#pragma warning restore S1215
-            _ = _heapmin();
-            _ = K32EmptyWorkingSet(GetCurrentProcess());
-        }
-        catch
-        {
-            // Best-effort working-set trim.
-        }
-    }
     private DateTime _lastUsedUtc;
     private System.Threading.Timer? _idleTimer;
 
@@ -106,9 +59,28 @@ public sealed partial class SmartThumbnailCropService : IDisposable
     }
 
     [LibraryImport("VNotch.Native.dll")]
-    private static partial int vn_smartcrop_fill_tensor_from_bgra32(
-        ReadOnlySpan<byte> pixels, int scaledW, int scaledH, int stride,
-        Span<float> tensorBuffer);
+    private static partial int vn_smartcrop_preprocess_bgra32(ReadOnlySpan<byte> pixels,
+        int length, int width, int height, int stride, Span<float> tensor, int capacity, out float scale);
+
+    [LibraryImport("VNotch.Native.dll", StringMarshalling = StringMarshalling.Utf16)]
+    private static partial int vn_smartcrop_session_create(string model, int modelLength,
+        string directory, int directoryLength, byte preferDml, out long handle, out byte dml);
+
+    [LibraryImport("VNotch.Native.dll")]
+    private static partial int vn_smartcrop_session_destroy(long handle);
+
+    [LibraryImport("VNotch.Native.dll")]
+    private static partial int vn_smartcrop_session_infer(NativeCropSession handle, ReadOnlySpan<byte> pixels,
+        int length, int width, int height, int stride, Span<Detection> detections, int capacity,
+        out int count, out byte dml);
+
+    private sealed class NativeCropSession : SafeHandle
+    {
+        public NativeCropSession() : base(IntPtr.Zero, true) { }
+        internal NativeCropSession(long value) : this() => SetHandle((IntPtr)value);
+        public override bool IsInvalid => handle == IntPtr.Zero;
+        protected override bool ReleaseHandle() => vn_smartcrop_session_destroy((long)handle) == 0;
+    }
 
     [LibraryImport("VNotch.Native.dll")]
     private static partial int vn_smartcrop_apply_nms(
@@ -212,7 +184,6 @@ public sealed partial class SmartThumbnailCropService : IDisposable
                 _idleTimer?.Dispose();
                 _idleTimer = null;
                 VNotch.Services.RuntimeLog.Log(LogCategory, "Session unloaded after idle timeout");
-                TryMinimizeNativeHeap(trimWorkingSet: true);
             }
         }
     }
@@ -428,33 +399,23 @@ public sealed partial class SmartThumbnailCropService : IDisposable
         EnsureSessionLoadedLocked();
         MarkSessionUsed();
 
-        float[]? tensorBuffer = null;
+        int stride = checked(imgWidth * 4);
+        int length = checked(stride * imgHeight);
+        byte[] pixels = ArrayPool<byte>.Shared.Rent(length);
         try
         {
-            int requiredLength = 3 * ModelInputSize * ModelInputSize;
-            tensorBuffer = ArrayPool<float>.Shared.Rent(requiredLength);
-
-            float scale = PreprocessImageFast(source, tensorBuffer);
-            var tensor = new DenseTensor<float>(
-                new Memory<float>(tensorBuffer, 0, requiredLength),
-                new[] { 1, 3, ModelInputSize, ModelInputSize });
-            var inputs = new List<NamedOnnxValue>(1)
-            {
-                NamedOnnxValue.CreateFromTensor(_cachedSession!.InputNames[0], tensor)
-            };
-
-            using var results = _cachedSession.Run(inputs);
-            var output = results[0].AsTensor<float>();
-            Detection[] detections = ParseYoloxOutput(output, imgWidth, imgHeight, scale).ToArray();
-
+            CopyBgraPixels(source, pixels, stride);
+            Span<Detection> output = stackalloc Detection[3549];
+            if (vn_smartcrop_session_infer(_cachedSession!, pixels.AsSpan(0, length), length,
+                imgWidth, imgHeight, stride, output, output.Length, out int count, out _) != 0)
+                throw new InvalidOperationException("Native YOLOX inference failed.");
+            Detection[] detections = output[..count].ToArray();
             AddInferenceCacheEntryLocked(fingerprint, detections);
             return detections;
         }
         finally
         {
-            if (tensorBuffer != null)
-                ArrayPool<float>.Shared.Return(tensorBuffer);
-            TryMinimizeNativeHeap();
+            ArrayPool<byte>.Shared.Return(pixels);
         }
     }
 
@@ -463,26 +424,11 @@ public sealed partial class SmartThumbnailCropService : IDisposable
         if (_cachedSession != null)
             return;
 
-        using var options = new SessionOptions
-        {
-            GraphOptimizationLevel = GraphOptimizationLevel.ORT_ENABLE_ALL,
-            ExecutionMode = ExecutionMode.ORT_SEQUENTIAL,
-            InterOpNumThreads = 1,
-            IntraOpNumThreads = 2,
-            EnableMemoryPattern = false,
-            EnableCpuMemArena = false
-        };
-
-        var session = new InferenceSession(GetModelPath(), options);
-        if (session.InputMetadata.Count != 1 || session.OutputMetadata.Count != 1 ||
-            !session.InputMetadata.Single().Value.Dimensions.SequenceEqual(new[] { 1, 3, ModelInputSize, ModelInputSize }) ||
-            !session.OutputMetadata.Single().Value.Dimensions.SequenceEqual(new[] { 1, 3549, 85 }))
-        {
-            session.Dispose();
-            throw new InvalidDataException("Smart crop requires the bundled YOLOX-Nano raw-output model.");
-        }
-        _cachedSession = session;
-        System.Diagnostics.Debug.WriteLine("[SmartCrop] Model loaded (cached session).");
+        string path = GetModelPath(), directory = AppContext.BaseDirectory;
+        if (vn_smartcrop_session_create(path, path.Length, directory, directory.Length, 1, out long handle, out byte dml) != 0)
+            throw new InvalidDataException("Could not load the bundled YOLOX-Nano model in the native runtime.");
+        _cachedSession = new NativeCropSession(handle);
+        RuntimeLog.Log(LogCategory, dml != 0 ? "Native YOLOX loaded (DirectML)" : "Native YOLOX loaded (CPU fallback)");
     }
 
     private bool TryGetCachedCropDetections(CroppedBitmap crop, out Detection[] detections)
@@ -535,41 +481,33 @@ public sealed partial class SmartThumbnailCropService : IDisposable
         int imgWidth = source.PixelWidth;
         int imgHeight = source.PixelHeight;
 
-        float scale = Math.Min((float)ModelInputSize / imgWidth, (float)ModelInputSize / imgHeight);
-        int newWidth = Math.Max(1, (int)(imgWidth * scale));
-        int newHeight = Math.Max(1, (int)(imgHeight * scale));
-
-        var scaled = new TransformedBitmap(source, new ScaleTransform(
-            (double)newWidth / imgWidth,
-            (double)newHeight / imgHeight));
-        scaled.Freeze();
-
-        int scaledW = scaled.PixelWidth;
-        int scaledH = scaled.PixelHeight;
-        int stride = scaledW * 4;
-
-        byte[] pixels = ArrayPool<byte>.Shared.Rent(scaledH * stride);
+        int stride = checked(imgWidth * 4);
+        int length = checked(imgHeight * stride);
+        byte[] pixels = ArrayPool<byte>.Shared.Rent(length);
         try
         {
-            if (scaled.Format != PixelFormats.Bgra32)
-            {
-                var formatted = new FormatConvertedBitmap(scaled, PixelFormats.Bgra32, null, 0);
-                formatted.Freeze();
-                formatted.CopyPixels(pixels, stride, 0);
-            }
-            else
-            {
-                scaled.CopyPixels(pixels, stride, 0);
-            }
-
-            vn_smartcrop_fill_tensor_from_bgra32(pixels.AsSpan(0, scaledH * stride), scaledW, scaledH, stride, tensorBuffer);
+            CopyBgraPixels(source, pixels, stride);
+            if (vn_smartcrop_preprocess_bgra32(pixels.AsSpan(0, length), length, imgWidth, imgHeight,
+                stride, tensorBuffer, tensorBuffer.Length, out float scale) != 0)
+                throw new ArgumentException("Invalid image or tensor capacity.");
+            return scale;
         }
         finally
         {
             ArrayPool<byte>.Shared.Return(pixels);
         }
 
-        return scale;
+    }
+
+    private static void CopyBgraPixels(BitmapSource source, byte[] pixels, int stride)
+    {
+        if (source.Format != PixelFormats.Bgra32)
+        {
+            var formatted = new FormatConvertedBitmap(source, PixelFormats.Bgra32, null, 0);
+            formatted.Freeze();
+            formatted.CopyPixels(pixels, stride, 0);
+        }
+        else source.CopyPixels(pixels, stride, 0);
     }
 
     internal static List<Detection> ParseYoloxOutput(Tensor<float> output, int imgWidth, int imgHeight, float scale)

@@ -1,4 +1,7 @@
 #include "../vnotch_common.h"
+#include "MediaTitleEvents.h"
+#include <array>
+#include <mutex>
 #include "../vnotch_com.h"
 #include <winstring.h>
 #include <windows.media.control.h>
@@ -440,9 +443,19 @@ VN_EXPORT int32_t __stdcall vn_media_detection_get_spotify_window_title(
     int32_t* out_len) noexcept {
     if (!out_buf || out_cap <= 0 || !out_len) return VN_ERR_INVALID_ARG;
     try {
-        vnotch::services::SpotifySearchContext ctx{ out_buf, out_cap, 0 };
-        EnumWindows(vnotch::services::EnumSpotifyWindowsProc, reinterpret_cast<LPARAM>(&ctx));
-        *out_len = ctx.out_len;
+        static std::mutex gate;
+        static std::array<char16_t, 512> cached{};
+        static int32_t cached_length = 0;
+        static uint64_t revision = 0, scanned_at = 0;
+        std::lock_guard lock(gate);
+        const uint64_t now = GetTickCount64(), current = vnotch::services::MediaTitleRevision();
+        if (!vnotch::services::MediaTitleNotificationsActive() || current != revision || now - scanned_at >= 30'000) {
+            vnotch::services::SpotifySearchContext ctx{cached.data(), static_cast<int32_t>(cached.size()), 0};
+            EnumWindows(vnotch::services::EnumSpotifyWindowsProc, reinterpret_cast<LPARAM>(&ctx));
+            cached_length = ctx.out_len; revision = current; scanned_at = now;
+        }
+        *out_len = std::min(cached_length, out_cap);
+        std::copy_n(cached.data(), *out_len, out_buf);
         return VN_OK;
     } catch (...) {
         return VN_ERR_FAIL;

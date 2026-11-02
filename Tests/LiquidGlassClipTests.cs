@@ -22,7 +22,7 @@ public sealed class LiquidGlassClipTests
         XNamespace presentation = "http://schemas.microsoft.com/winfx/2006/xaml/presentation";
         XNamespace xaml = "http://schemas.microsoft.com/winfx/2006/xaml";
 
-        XElement clipHost = document.Descendants(presentation + "Grid")
+        XElement clipHost = document.Descendants()
             .Single(element => (string?)element.Attribute(xaml + "Name") == "GlassMaterialClipHost");
 
         Assert.Equal("GlassMaterialClipHost_SizeChanged", (string?)clipHost.Attribute("SizeChanged"));

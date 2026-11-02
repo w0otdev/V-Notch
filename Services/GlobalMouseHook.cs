@@ -1,6 +1,9 @@
 using System;
 using System.Runtime.InteropServices;
 using System.Windows.Interop;
+using System.Threading;
+using System.Threading.Tasks;
+using System.Windows.Threading;
 
 namespace VNotch.Services;
 
@@ -36,9 +39,12 @@ public static partial class InputMonitorService
         out int outX,
         out int outY);
 
-    private static readonly HwndSourceHook InputHook = OnWindowMessage;
     private static HwndSource? _source;
+    private static Dispatcher? _inputDispatcher;
+    private static HwndSource? _inputWindow;
+    private static int _generation;
     internal static bool IsStarted => _source != null;
+    internal static int InputThreadId { get; private set; }
 
     public static event EventHandler<POINT>? MouseActionTriggered;
 
@@ -49,17 +55,52 @@ public static partial class InputMonitorService
         if (source == null || source.IsDisposed || ReferenceEquals(source, _source)) return;
         source.Dispatcher.VerifyAccess();
         Stop();
-        source.AddHook(InputHook);
-
-        // Raw input is delivered asynchronously to our window. A busy dispatcher
-        // cannot hold up the system mouse hook chain. Keep ordinary mouse messages.
-        if (vn_input_register_raw_mouse(windowHandle, 0, out int lastError) != 0)
+        int generation = ++_generation;
+        var ready = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var thread = new Thread(() =>
         {
-            source.RemoveHook(InputHook);
-            RuntimeLog.Warn("INPUT", $"Raw mouse registration failed: {lastError}");
-            return;
-        }
-        _source = source;
+            var dispatcher = Dispatcher.CurrentDispatcher;
+            try
+            {
+                using var input = new HwndSource(new HwndSourceParameters("VNotch input worker")
+                { ParentWindow = new IntPtr(-3), Width = 0, Height = 0, WindowStyle = 0 });
+                input.AddHook((IntPtr hwnd, int message, IntPtr wp, IntPtr lp, ref bool handled) =>
+                {
+                    if (message == WM_INPUT &&
+                        vn_input_read_left_click(lp, out byte down, out int x, out int y) == 0 && down != 0 &&
+                        !source.Dispatcher.HasShutdownStarted)
+                    {
+                        // Movement and wheel packets never wake the WPF UI dispatcher.
+                        source.Dispatcher.BeginInvoke(DispatcherPriority.Input, () =>
+                        {
+                            if (generation == _generation && ReferenceEquals(_source, source))
+                                MouseActionTriggered?.Invoke(null, new POINT { x = x, y = y });
+                        });
+                    }
+                    return IntPtr.Zero; // DefWindowProc still owns raw-input cleanup.
+                });
+                if (vn_input_register_raw_mouse(input.Handle, 0, out int error) != 0)
+                {
+                    RuntimeLog.Warn("INPUT", $"Raw mouse registration failed: {error}");
+                    ready.TrySetResult(false);
+                    return;
+                }
+                _inputDispatcher = dispatcher;
+                _inputWindow = input;
+                InputThreadId = Environment.CurrentManagedThreadId;
+                ready.TrySetResult(true);
+                Dispatcher.Run();
+            }
+            catch (Exception ex)
+            {
+                ready.TrySetResult(false);
+                RuntimeLog.Warn("INPUT", $"Input worker stopped: {ex.GetType().Name}");
+            }
+        })
+        { IsBackground = true, Name = "VNotch raw mouse" };
+        thread.SetApartmentState(ApartmentState.STA);
+        thread.Start();
+        if (ready.Task.GetAwaiter().GetResult()) _source = source;
     }
 
     public static void Stop()
@@ -67,20 +108,20 @@ public static partial class InputMonitorService
         var source = _source;
         if (source == null) return;
         source.Dispatcher.VerifyAccess();
-        vn_input_register_raw_mouse(0, 1, out _);
-        if (!source.IsDisposed) source.RemoveHook(InputHook);
+        ++_generation;
         _source = null;
-    }
-
-    private static IntPtr OnWindowMessage(IntPtr hwnd, int message, IntPtr wParam, IntPtr lParam, ref bool handled)
-    {
-        if (message == WM_INPUT && _source != null &&
-            vn_input_read_left_click(lParam, out byte leftDown, out int x, out int y) == 0 && leftDown != 0)
+        var dispatcher = _inputDispatcher;
+        _inputDispatcher = null;
+        if (dispatcher == null || dispatcher.HasShutdownStarted) return;
+        // Unregister before another Start can register its window. No thread join
+        // or hardware callback is needed on the WPF dispatcher.
+        dispatcher.Invoke(() =>
         {
-            MouseActionTriggered?.Invoke(null, new POINT { x = x, y = y });
-        }
-        // Let WPF/DefWindowProc perform WM_INPUT cleanup.
-        return IntPtr.Zero;
+            vn_input_register_raw_mouse(0, 1, out _);
+            _inputWindow?.Dispose();
+            _inputWindow = null;
+            dispatcher.BeginInvokeShutdown(DispatcherPriority.Send);
+        }, DispatcherPriority.Send);
     }
 
     internal static bool IsLeftButtonDown(ReadOnlySpan<byte> packet)

@@ -47,6 +47,7 @@ public sealed record ClipboardCapture
     public string[] FilePaths { get; init; } = [];
     public bool SeparateFiles { get; init; }
     public byte[]? ImagePng { get; init; }
+    internal string? ImagePixelFingerprint { get; init; }
 }
 
 public sealed record ClipboardImportResult(ClipboardEntry? Entry, bool NeedsApproval = false, long ByteSize = 0, int ImportedCount = 0, int FailedCount = 0)

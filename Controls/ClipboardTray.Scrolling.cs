@@ -121,6 +121,7 @@ public sealed partial class ClipboardTray
     {
         if (_disposed || !IsLoaded || !IsVisible) { StopCategoryScrolling(); return; }
         long now = Stopwatch.GetTimestamp();
+        if ((now - _categoryFrameTime) * 1000d / Stopwatch.Frequency + 0.1 < 1000d / Math.Max(1, AnimationConfig.TargetFps)) return;
         double seconds = Math.Clamp((now - _categoryFrameTime) / (double)Stopwatch.Frequency, 0, 0.05);
         _categoryFrameTime = now;
         _categoryScrollTarget = Math.Clamp(_categoryScrollTarget, 0, CategoryScroll.ScrollableWidth);
@@ -299,6 +300,7 @@ public sealed partial class ClipboardTray
         if (scroll == null) { StopCardsScrollFrames(); return; }
 
         long now = Stopwatch.GetTimestamp();
+        if ((now - _cardsFrameTime) * 1000d / Stopwatch.Frequency + 0.1 < 1000d / Math.Max(1, AnimationConfig.TargetFps)) return;
         double seconds = Math.Clamp((now - _cardsFrameTime) / (double)Stopwatch.Frequency, 0, 0.05);
         _cardsFrameTime = now;
 

@@ -547,7 +547,7 @@
 
                         <!-- Final rounded clip for material stack; kept outside blurred children
                              so post-effects cannot spread Touch Light into rectangular corners. -->
-                        <Grid x:Name="GlassMaterialClipHost"
+                        <ctrl:GlassClipGrid x:Name="GlassMaterialClipHost"
                               Visibility="Collapsed"
                               IsHitTestVisible="False"
                               SizeChanged="GlassMaterialClipHost_SizeChanged">
@@ -556,12 +556,14 @@
                                 Visibility="Collapsed"
                                 CornerRadius="0,0,20,20">
 
+                            <Canvas>
                             <Image x:Name="GlassBackdropImage"
                                    HorizontalAlignment="Left"
                                    VerticalAlignment="Top"
                                    Stretch="Fill"
                                    Margin="0"
                                    RenderOptions.BitmapScalingMode="HighQuality"/>
+                            </Canvas>
                         </Border>
 
                         <Border x:Name="GlassGrainOverlay"
@@ -715,7 +717,7 @@
                                 </RadialGradientBrush>
                             </Border.BorderBrush>
                         </Border>
-                        </Grid>
+                        </ctrl:GlassClipGrid>
 
                         <!-- Add live widgets inside this group; startup greetings hide the group. -->
                         <Grid x:Name="NotchLiveContent">
@@ -915,7 +917,7 @@
                         </Border>
 
                         <Grid x:Name="SpotlightReturnContentHost">
-                        <Grid x:Name="NotchContent" Margin="0" SizeChanged="NotchContent_SizeChanged" RenderOptions.ClearTypeHint="Enabled" UseLayoutRounding="False" SnapsToDevicePixels="False">
+                        <ctrl:GlassClipGrid x:Name="NotchContent" Margin="0" SizeChanged="NotchContent_SizeChanged" RenderOptions.ClearTypeHint="Enabled" UseLayoutRounding="False" SnapsToDevicePixels="False">
 
 
 
@@ -1133,9 +1135,9 @@
                                 Orientation="Horizontal"
                                 HorizontalAlignment="Center"
                                 VerticalAlignment="Center">
-                        <StackPanel.Effect>
+                        <ctrl:ActiveBlur.Blur><ctrl:BlurDefinition>
                             <BlurEffect x:Name="CollapsedContentBlur" Radius="0" RenderingBias="Performance"/>
-                        </StackPanel.Effect>
+                        </ctrl:BlurDefinition></ctrl:ActiveBlur.Blur>
                     </StackPanel>
 
                     <StackPanel x:Name="PrivacyIndicatorPanel"
@@ -1387,9 +1389,9 @@
                                 MouseRightButtonUp="Thumbnail_MouseRightButtonUp"
                                 MouseEnter="CompactThumbnailBorder_MouseEnter"
                                 MouseLeave="CompactThumbnailBorder_MouseLeave">
-                            <Border.Effect>
+                            <ctrl:ActiveBlur.Blur><ctrl:BlurDefinition>
                                 <BlurEffect x:Name="MusicCompactContentBlur" Radius="0" RenderingBias="Performance"/>
-                            </Border.Effect>
+                            </ctrl:BlurDefinition></ctrl:ActiveBlur.Blur>
                             <Border.RenderTransform>
 
                                 <ScaleTransform x:Name="CompactThumbnailScale" ScaleX="1" ScaleY="1"/>
@@ -1410,9 +1412,9 @@
                                         <Image.RenderTransform>
                                             <ScaleTransform x:Name="CompactThumbnailOutScale" ScaleX="1" ScaleY="1"/>
                                         </Image.RenderTransform>
-                                        <Image.Effect>
+                                        <ctrl:ActiveBlur.Blur><ctrl:BlurDefinition>
                                             <BlurEffect x:Name="CompactThumbnailOutBlur" Radius="0" RenderingBias="Performance"/>
-                                        </Image.Effect>
+                                        </ctrl:BlurDefinition></ctrl:ActiveBlur.Blur>
                                     </Image>
                                     <Image x:Name="CompactThumbnailNext"
                                            Width="22"
@@ -1427,9 +1429,9 @@
                                         <Image.RenderTransform>
                                             <ScaleTransform x:Name="CompactThumbnailNextScale" ScaleX="1" ScaleY="1"/>
                                         </Image.RenderTransform>
-                                        <Image.Effect>
+                                        <ctrl:ActiveBlur.Blur><ctrl:BlurDefinition>
                                             <BlurEffect x:Name="CompactThumbnailNextBlur" Radius="0" RenderingBias="Performance"/>
-                                        </Image.Effect>
+                                        </ctrl:BlurDefinition></ctrl:ActiveBlur.Blur>
                                     </Image>
                                     <Border x:Name="CompactThumbnailRim"
                                             BorderThickness="0"
@@ -1704,9 +1706,9 @@
                                 Margin="-40,-26,-36,-48"
                                 Panel.ZIndex="0"
                                 IsHitTestVisible="False">
-                            <Border.Effect>
+                            <ctrl:ActiveBlur.Blur><ctrl:BlurDefinition>
                                 <BlurEffect x:Name="ExpandedContentBlur" Radius="0" RenderingBias="Performance"/>
-                            </Border.Effect>
+                            </ctrl:BlurDefinition></ctrl:ActiveBlur.Blur>
                             <Border.OpacityMask>
                                 <RadialGradientBrush GradientOrigin="0.30,0.56" Center="0.30,0.56" RadiusX="0.52" RadiusY="0.52">
                                     <GradientStop Color="#FFFFFFFF" Offset="0"/>
@@ -1874,9 +1876,9 @@
                                                     <Image.RenderTransform>
                                                         <ScaleTransform x:Name="ThumbnailOutScale" ScaleX="1" ScaleY="1"/>
                                                     </Image.RenderTransform>
-                                                    <Image.Effect>
+                                                    <ctrl:ActiveBlur.Blur><ctrl:BlurDefinition>
                                                         <BlurEffect x:Name="ThumbnailOutBlur" Radius="0" RenderingBias="Performance"/>
-                                                    </Image.Effect>
+                                                    </ctrl:BlurDefinition></ctrl:ActiveBlur.Blur>
                                                 </Image>
 
                                                 <Image x:Name="ThumbnailImageNext"
@@ -1890,9 +1892,9 @@
                                                     <Image.RenderTransform>
                                                         <ScaleTransform x:Name="ThumbnailNextScale" ScaleX="1" ScaleY="1"/>
                                                     </Image.RenderTransform>
-                                                    <Image.Effect>
+                                                    <ctrl:ActiveBlur.Blur><ctrl:BlurDefinition>
                                                         <BlurEffect x:Name="ThumbnailNextBlur" Radius="0" RenderingBias="Performance"/>
-                                                    </Image.Effect>
+                                                    </ctrl:BlurDefinition></ctrl:ActiveBlur.Blur>
                                                 </Image>
 
                                                 <Viewbox x:Name="ThumbnailFallback"
@@ -2421,9 +2423,9 @@
                             </Border>
 
                             <Grid x:Name="GreetingSection" Grid.Row="1" Margin="4,-6,0,0">
-                                <Grid.Effect>
+                                <ctrl:ActiveBlur.Blur><ctrl:BlurDefinition>
                                     <BlurEffect x:Name="CalendarGreetingContextBlur" Radius="0" RenderingBias="Performance"/>
-                                </Grid.Effect>
+                                </ctrl:BlurDefinition></ctrl:ActiveBlur.Blur>
                                 <Grid.ColumnDefinitions>
                                     <ColumnDefinition Width="Auto"
                                                       MinWidth="40"
@@ -2922,7 +2924,7 @@
                             </RadialGradientBrush>
                         </Border.Background>
                     </Border>
-                    </Grid>
+                    </ctrl:GlassClipGrid>
                         </Grid>
                         </Grid>
                     <Grid x:Name="GreetingOverlay"

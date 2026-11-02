@@ -134,7 +134,7 @@ public sealed class ClipboardCredentialDetectionTests
                 id = (await store.ImportAsync(new ClipboardCapture { Text = "password: a" })).Entry!.Id;
             }
             string path = Path.Combine(root, "items", id.ToString("N"), "entry.json");
-            var entry = JsonSerializer.Deserialize<ClipboardEntry>(await File.ReadAllTextAsync(path))!;
+            var entry = ClipboardRecordTestReader.Read<ClipboardEntry>(root, path);
             await File.WriteAllTextAsync(path, JsonSerializer.Serialize(entry with
             {
                 IsSensitive = false,
@@ -146,7 +146,7 @@ public sealed class ClipboardCredentialDetectionTests
             await reopened.InitializeAsync();
             Assert.True(reopened.GetEntry(id)!.IsSensitive);
             Assert.Empty(await reopened.SearchAsync("password: a", "All"));
-            var persisted = JsonSerializer.Deserialize<ClipboardEntry>(await File.ReadAllTextAsync(path))!;
+            var persisted = ClipboardRecordTestReader.Read<ClipboardEntry>(root, path);
             Assert.Equal(ClipboardSensitiveData.DetectorVersion, persisted.SensitivityVersion);
             Assert.Equal(ClipboardSensitiveData.Mask, persisted.Title);
         }

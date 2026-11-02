@@ -1,4 +1,5 @@
 #include "vnotch_common.h"
+#include "../vnotch_keyword_trie.h"
 
 using namespace vnotch;
 
@@ -40,6 +41,10 @@ static constexpr std::u16string_view SCRUB_KEY_SUFFIXES[] = {
     u"secretkey", u"secret_key", u"secret-key",
     u"accesskey", u"access_key", u"access-key"
 };
+
+static constexpr auto session_fields = vnotch::MakeKeywordTrie(SCRUB_SESSION_EXACT_FIELDS);
+static constexpr auto session_suffixes = vnotch::MakeKeywordTrie(SCRUB_SESSION_SUFFIX_FIELDS, true);
+static constexpr auto key_suffixes = vnotch::MakeKeywordTrie(SCRUB_KEY_SUFFIXES, true);
 
 inline bool is_ascii_alnum(char16_t c) noexcept
 {
@@ -205,14 +210,7 @@ inline bool is_scrub_api_key_field(std::u16string_view key) noexcept
     {
         return false;
     }
-    for (std::u16string_view suffix : SCRUB_KEY_SUFFIXES)
-    {
-        if (key.size() >= suffix.size() && equals_ignore_case(key.substr(key.size() - suffix.size()), suffix))
-        {
-            return true;
-        }
-    }
-    return false;
+    return key_suffixes.MatchesSuffix(key, [](size_t) noexcept { return true; });
 }
 
 inline bool is_scrub_session_field(std::u16string_view key, bool complete_name = true) noexcept
@@ -221,24 +219,10 @@ inline bool is_scrub_session_field(std::u16string_view key, bool complete_name =
     {
         return false;
     }
-    if (complete_name)
-    {
-        for (std::u16string_view name : SCRUB_SESSION_EXACT_FIELDS)
-        {
-            if (equals_ignore_case(key, name))
-            {
-                return true;
-            }
-        }
-    }
-    for (std::u16string_view suffix : SCRUB_SESSION_SUFFIX_FIELDS)
-    {
-        if (has_scrub_field_suffix(key, suffix, complete_name))
-        {
-            return true;
-        }
-    }
-    return false;
+    if (complete_name && session_fields.Contains(key)) return true;
+    return session_suffixes.MatchesSuffix(key, [&](size_t length) noexcept {
+        return has_scrub_field_suffix(key, key.substr(key.size() - length), complete_name);
+    });
 }
 
 inline bool try_read_scrub_field(std::u16string_view input, int32_t delimiter, int32_t cursor, ScrubberSecretStart& start) noexcept

@@ -42,7 +42,7 @@ public sealed class ServicePrewarmerTests
         await ServicePrewarmer.Prewarm(provider);
         Assert.Equal(enabled, artwork.SmartCropEnabled);
         Assert.Null(settings.LastSaved);
-        Assert.Equal(enabled ? 1 : 0, provider.Requests.Count(type => type == typeof(VNotch.Services.Spotlight.SpotlightSearchService)));
+        Assert.DoesNotContain(typeof(VNotch.Services.Spotlight.SpotlightSearchService), provider.Requests);
     }
 
     [Theory]

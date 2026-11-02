@@ -82,7 +82,9 @@ public sealed class LiquidGlassDesktopIntegrationTests
                 await WpfFrameWaiter.NextAsync(cancellationToken);
 
                 var controller = Assert.IsType<LiquidGlassController>(controllerField.GetValue(host));
-                var effect = Assert.IsType<LiquidGlassRefractionEffect>(host.GlassBackdropImage.Effect);
+                Assert.Null(host.GlassBackdropImage.Effect);
+                Assert.True(controller.UsesNativeRefraction);
+                var effect = GetNativeLens(host);
                 var presentation = Assert.IsType<DrawingImage>(host.GlassBackdropImage.Source);
                 var drawing = Assert.IsType<DrawingGroup>(presentation.Drawing);
                 var source = Assert.IsType<D3DImage>(Assert.IsType<ImageDrawing>(Assert.Single(drawing.Children)).ImageSource);
@@ -103,9 +105,9 @@ public sealed class LiquidGlassDesktopIntegrationTests
                     "the captured MainWindow backdrop pixel", cancellationToken);
 
                 var d3dCopy = ImageSourceSnapshot.Capture(source, source.PixelWidth, source.PixelHeight);
-                int textureX = Math.Clamp((int)Math.Round(effect.OffX + effect.NotchW * 0.5),
+                int textureX = Math.Clamp((int)Math.Round(effect.NotchW * 0.5),
                     0, d3dCopy.PixelWidth - 1);
-                int textureY = Math.Clamp((int)Math.Round(effect.OffY + effect.NotchH * 0.5),
+                int textureY = Math.Clamp((int)Math.Round(effect.NotchH * 0.5),
                     0, d3dCopy.PixelHeight - 1);
                 var texturePixel = new byte[4];
                 d3dCopy.CopyPixels(new Int32Rect(textureX, textureY, 1, 1), texturePixel, 4, 0);
@@ -252,15 +254,16 @@ public sealed class LiquidGlassDesktopIntegrationTests
             await WpfFrameWaiter.NextAsync(cancellationToken);
             Assert.Same(surface, window.GlassBackdropImage.Source);
             Assert.True(controller.HasPresentedFrame);
-            var effect = Assert.IsType<LiquidGlassRefractionEffect>(window.GlassBackdropImage.Effect);
+            Assert.Null(window.GlassBackdropImage.Effect);
+            var effect = GetNativeLens(window);
             double dpi = VisualTreeHelper.GetDpi(window).DpiScaleX;
             Assert.True(effect.SrcW >= window.GlassBackdropHost.ActualWidth * dpi);
             Assert.True(effect.SrcH >= window.GlassBackdropHost.ActualHeight * dpi);
             var d3d = Assert.IsType<D3DImage>(surface);
             var copy = ImageSourceSnapshot.Capture(d3d, d3d.PixelWidth, d3d.PixelHeight);
             Assert.NotNull(copy);
-            int sx = Math.Clamp((int)(effect.OffX + effect.NotchW / 2), 0, copy.PixelWidth - 1);
-            int sy = Math.Clamp((int)(effect.OffY + effect.NotchH / 2), 0, copy.PixelHeight - 1);
+            int sx = Math.Clamp((int)(effect.NotchW / 2), 0, copy.PixelWidth - 1);
+            int sy = Math.Clamp((int)(effect.NotchH / 2), 0, copy.PixelHeight - 1);
             var sample = new byte[4];
             copy.CopyPixels(new Int32Rect(sx, sy, 1, 1), sample, 4, 0);
             Assert.True(sample[1] >= 175 && sample[1] <= 205,
@@ -281,7 +284,8 @@ public sealed class LiquidGlassDesktopIntegrationTests
     private static async Task VerifyLiveDesktopDynamicUpdateAsync(SpotlightWindow window, Window background, LiquidGlassController controller, CancellationToken cancellationToken)
     {
         await WpfFrameWaiter.UntilAsync(() => double.IsNaN(window.Shell.Height), "glass presentation or transition completion", cancellationToken);
-        var effect = Assert.IsType<LiquidGlassRefractionEffect>(window.GlassBackdropImage.Effect);
+        Assert.Null(window.GlassBackdropImage.Effect);
+        var effect = GetNativeLens(window);
         int physicalX = controller.LastPresentedCaptureOriginX + (int)(effect.OffX + effect.NotchW / 2);
         int physicalY = controller.LastPresentedCaptureOriginY + (int)(effect.OffY + effect.NotchH / 2);
         var panel = new Canvas();
@@ -391,15 +395,19 @@ public sealed class LiquidGlassDesktopIntegrationTests
 
     private static byte[] ReadCenterPixel(SpotlightWindow window)
     {
-        var effect = (LiquidGlassRefractionEffect)window.GlassBackdropImage.Effect;
+        var effect = GetNativeLens(window);
         var source = Assert.IsType<D3DImage>(window.GlassBackdropImage.Source);
         var copy = ImageSourceSnapshot.Capture(source, source.PixelWidth, source.PixelHeight);
-        int x = Math.Clamp((int)(effect.OffX + effect.NotchW / 2), 0, copy.PixelWidth - 1);
-        int y = Math.Clamp((int)(effect.OffY + effect.NotchH / 2), 0, copy.PixelHeight - 1);
+        int x = Math.Clamp((int)(effect.NotchW / 2), 0, copy.PixelWidth - 1);
+        int y = Math.Clamp((int)(effect.NotchH / 2), 0, copy.PixelHeight - 1);
         var pixel = new byte[4];
         copy.CopyPixels(new Int32Rect(x, y, 1, 1), pixel, 4, 0);
         return pixel;
     }
+
+    private static LiquidGlassRefractionEffect GetNativeLens(Window window) =>
+        Assert.IsType<LiquidGlassRefractionEffect>(window.GetType().GetField(
+            "_glassRefractionEffect", BindingFlags.NonPublic | BindingFlags.Instance)!.GetValue(window));
 
     private sealed class GlassMorphHost : ISpotlightMorphHost
     {

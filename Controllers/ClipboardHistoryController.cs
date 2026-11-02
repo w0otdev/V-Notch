@@ -249,7 +249,7 @@ public sealed class ClipboardHistoryController : IDisposable, IAsyncDisposable
         var encoder = new PngBitmapEncoder();
         encoder.Frames.Add(BitmapFrame.Create(image));
         encoder.Save(stream);
-        return capture with { ImagePng = stream.ToArray() };
+        return capture with { ImagePng = stream.ToArray(), ImagePixelFingerprint = ClipboardHistoryStore.FingerprintPixels(image) };
     });
 
     internal async Task ImportDropAsync(System.Windows.IDataObject data, string? category = null)

@@ -104,6 +104,31 @@ public sealed class ClipboardCardRenderingTests
     });
 
     [Fact]
+    public void RoundedCardClipsDoNotCombineWithRedundantLayoutClips() => SharedStaTestRunner.Run(() =>
+    {
+        using var tray = new ClipboardTray();
+        var card = CreateCard(tray, new ClipboardEntry { Kind = ClipboardKind.Image }, 150);
+        var backdrop = Descendants(card).OfType<CardActionBackdrop>().Single();
+        var actionGlass = Assert.IsType<Border>(VisualTreeHelper.GetParent(backdrop));
+        foreach (double height in new[] { 150d, 210d, 173.25d })
+        {
+            card.Height = height;
+            Layout(card, height);
+            System.Windows.Threading.Dispatcher.CurrentDispatcher.Invoke(static () => { }, System.Windows.Threading.DispatcherPriority.Background);
+            var cardClip = Assert.IsType<RectangleGeometry>(VisualTreeHelper.GetClip(card));
+            var actionClip = Assert.IsType<RectangleGeometry>(VisualTreeHelper.GetClip(actionGlass));
+            Assert.Same(card.Clip, cardClip);
+            Assert.Same(actionGlass.Clip, actionClip);
+            Assert.True(cardClip.IsFrozen);
+            Assert.True(actionClip.IsFrozen);
+            for (int i = 0; i < 20; i++) { _ = cardClip.Bounds; _ = actionClip.Bounds; }
+            long before = GC.GetAllocatedBytesForCurrentThread();
+            for (int i = 0; i < 100; i++) { _ = cardClip.Bounds; _ = actionClip.Bounds; }
+            Assert.True(GC.GetAllocatedBytesForCurrentThread() - before < 1024);
+        }
+    });
+
+    [Fact]
     public void CreateBitmapBounds4kScreenshotWidthAndFreezesResult() => SharedStaTestRunner.Run(() =>
     {
         int stride = (3840 + 7) / 8;

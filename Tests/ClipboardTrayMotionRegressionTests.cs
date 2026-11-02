@@ -70,7 +70,7 @@ public sealed class ClipboardTrayMotionRegressionTests
         var clock = typeof(ClipboardTray).GetField("_cardsFrameTime", flags)!;
         for (int frame = 0; frame < 100 && (bool)active.GetValue(tray)!; frame++)
         {
-            clock.SetValue(tray, System.Diagnostics.Stopwatch.GetTimestamp() - System.Diagnostics.Stopwatch.Frequency / 1000);
+            clock.SetValue(tray, System.Diagnostics.Stopwatch.GetTimestamp() - System.Diagnostics.Stopwatch.Frequency / Math.Max(1, AnimationConfig.TargetFps));
             Invoke(tray, "Cards_ScrollFrame", null, EventArgs.Empty);
         }
         await Dispatcher.Yield(DispatcherPriority.ApplicationIdle);

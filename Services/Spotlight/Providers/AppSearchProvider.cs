@@ -69,7 +69,7 @@ internal sealed partial class AppSearchProvider : ISpotlightProvider
             if (_index == null || _index.IsCompleted && (_utcNow() >= _indexExpiresUtc || _index.IsFaulted))
             {
                 _index = Task.Run(_buildIndex);
-                _indexExpiresUtc = _utcNow().AddMinutes(1);
+                _indexExpiresUtc = _utcNow().AddMinutes(30);
             }
             return _index;
         }

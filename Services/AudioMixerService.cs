@@ -32,7 +32,7 @@ public enum SpatialAudioMode
     DolbyAtmos
 }
 
-internal readonly record struct CachedSessionMetadata(string DisplayName, string? ExePath, ImageSource? Icon);
+internal readonly record struct CachedSessionMetadata(string DisplayName, string? ExePath, ImageSource? Icon, bool IconResolved = false);
 
 public sealed partial class AudioMixerService : IDisposable
 {
@@ -95,35 +95,37 @@ public sealed partial class AudioMixerService : IDisposable
         uint pid,
         string rawId,
         Func<uint, string, (string DisplayName, string? ExePath)>? nameResolver = null,
-        Func<string, uint, ImageSource?>? iconResolver = null)
+        Func<string, uint, ImageSource?>? iconResolver = null,
+        bool includeIcons = true)
     {
         string normalizedRawId = rawId ?? string.Empty;
         var key = (pid, normalizedRawId);
 
         lock (_metadataCacheLock)
         {
-            if (_metadataCache.TryGetValue(key, out var cached))
+            bool found = _metadataCache.TryGetValue(key, out var cached);
+            if (found && (!includeIcons || cached.IconResolved))
             {
                 return cached;
             }
 
             var resolver = nameResolver ?? ResolveDisplayName;
-            var (displayName, exePath) = resolver(pid, normalizedRawId);
+            var (displayName, exePath) = found ? (cached.DisplayName, cached.ExePath) : resolver(pid, normalizedRawId);
 
             ImageSource? icon = null;
-            if (iconResolver != null)
+            if (includeIcons && iconResolver != null)
             {
                 try { icon = iconResolver(exePath ?? string.Empty, pid); }
                 catch (Exception) { /* Icon resolver failed */ }
             }
-            else if (!string.IsNullOrEmpty(exePath))
+            else if (includeIcons && !string.IsNullOrEmpty(exePath))
             {
                 try { icon = FileIconProvider.GetAppIcon(exePath, small: true); }
                 catch (Exception) { /* Icon extraction failed */ }
             }
 
             // shortcut: cap metadata cache at 128 entries, upgrade to LRU if concurrent session churn exceeds 128
-            if (_metadataCache.Count >= MaxMetadataCacheSize)
+            if (!found && _metadataCache.Count >= MaxMetadataCacheSize)
             {
                 foreach (var existingKey in _metadataCache.Keys)
                 {
@@ -132,7 +134,7 @@ public sealed partial class AudioMixerService : IDisposable
                 }
             }
 
-            var resolved = new CachedSessionMetadata(displayName, exePath, icon);
+            var resolved = new CachedSessionMetadata(displayName, exePath, icon, includeIcons);
             _metadataCache[key] = resolved;
             return resolved;
         }
@@ -186,6 +188,30 @@ public sealed partial class AudioMixerService : IDisposable
     public List<AudioSessionInfo> GetSessions() => GetSessions(includeIcons: true);
 
     public List<AudioSessionInfo> GetSessions(bool includeIcons) => ReadSessions(includeIcons);
+
+    internal List<AudioSessionInfo> ResolveSessionIcons(IReadOnlyList<AudioSessionInfo> sessions)
+    {
+        var result = new List<AudioSessionInfo>(sessions.Count);
+        foreach (var session in sessions)
+        {
+            string? rawId = null;
+            lock (_metadataCacheLock)
+                foreach (var entry in _metadataCache)
+                    if (entry.Key.Pid == session.ProcessId && entry.Value.DisplayName == session.DisplayName)
+                    { rawId = entry.Key.RawIdentifier; break; }
+            var icon = rawId == null ? session.Icon : GetOrResolveSessionMetadata(session.ProcessId, rawId).Icon;
+            result.Add(new AudioSessionInfo
+            {
+                ProcessId = session.ProcessId,
+                DisplayName = session.DisplayName,
+                Volume = session.Volume,
+                IsMuted = session.IsMuted,
+                IsSystemSounds = session.IsSystemSounds,
+                Icon = icon
+            });
+        }
+        return result;
+    }
 
 #pragma warning disable S3776 // Enumerates active CoreAudio audio sessions with metadata cache and volume state resolution
     internal List<AudioSessionInfo> ReadSessions(bool includeIcons = true)
@@ -270,7 +296,7 @@ public sealed partial class AudioMixerService : IDisposable
                         else
                         {
                             string rawId = WindowsMediaAudioSessions.ReadString(snapshot, i, 0);
-                            var metadata = GetOrResolveSessionMetadata(pid, rawId);
+                            var metadata = GetOrResolveSessionMetadata(pid, rawId, includeIcons: includeIcons);
                             name = metadata.DisplayName;
                             icon = includeIcons ? metadata.Icon : null;
                         }

@@ -21,7 +21,7 @@ internal static partial class BandicamRecordingProbe
             {
                 try
                 {
-                    if (RecordingFileOwnership.IsFileOwnedBy(path, process)) return true;
+                    if (RecordingFileOwnership.IsFileOwnedByCached(path, process)) return true;
                 }
                 catch (InvalidOperationException) { /* Process exited */ }
                 catch (System.ComponentModel.Win32Exception) { /* Access denied */ }

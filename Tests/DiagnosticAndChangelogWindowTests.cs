@@ -61,7 +61,7 @@ public sealed class DiagnosticAndChangelogWindowTests
             window.UpdateSnapshot(snapshot);
             Assert.Equal(badge, window.HealthBadgeText.Text);
             Assert.Equal("Test health", window.HealthSummaryText.Text);
-            Assert.Equal("60 FPS", window.FpsSummaryText.Text);
+            Assert.Equal("UI 60 FPS", window.FpsSummaryText.Text);
             Assert.Equal("(120 Hz)", window.HzSummaryText.Text);
             Assert.Equal(1, window.VNotchCpuScale.ScaleX);
             Assert.Equal(0, window.VNotchGpuScale.ScaleX);
@@ -77,7 +77,7 @@ public sealed class DiagnosticAndChangelogWindowTests
             window.UpdateFps(144);
             window.UpdateRefreshRate(0);
             window.UpdateRefreshRate(0);
-            Assert.Equal("144 FPS", window.FpsSummaryText.Text);
+            Assert.Equal("UI 144 FPS", window.FpsSummaryText.Text);
             Assert.Equal("(-- Hz)", window.HzSummaryText.Text);
         }
         finally { window.Close(); }
