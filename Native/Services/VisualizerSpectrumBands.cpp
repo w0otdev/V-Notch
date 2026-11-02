@@ -1,15 +1,8 @@
 #include "vnotch_common.h"
+#include "VisualizerStream.h"
 #include <algorithm>
 #include <cmath>
 #include <cstdint>
-
-#pragma pack(push, 1)
-struct VnComplexFloat
-{
-    float x;
-    float y;
-};
-#pragma pack(pop)
 
 #pragma fp_contract(off)
 

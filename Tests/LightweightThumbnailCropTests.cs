@@ -38,7 +38,7 @@ public sealed class LightweightThumbnailCropTests
             var crop = service.CropToSquare(CreateWideArtwork(), "test");
             Assert.NotNull(crop);
             Assert.Equal(crop.PixelWidth, crop.PixelHeight);
-            Assert.IsType<CroppedBitmap>(crop);
+            Assert.IsType<WriteableBitmap>(crop);
             Assert.True(crop.IsFrozen);
         });
     }
@@ -52,12 +52,15 @@ public sealed class LightweightThumbnailCropTests
         {
             using var service = new MediaArtworkService { EnableSmartCrop = smartCrop };
             var source = CreateWideArtwork();
-            var crop = Assert.IsType<CroppedBitmap>(service.CropToSquare(source, "pixel-test", forceCenterCrop: !smartCrop));
+            var cached = service.CropToSquare(source, "pixel-test", forceCenterCrop: !smartCrop);
+            Assert.Same(cached, service.CropToSquare(source, "pixel-test", forceCenterCrop: !smartCrop));
+            var rect = new System.Windows.Int32Rect(160, 0, 320, 320);
+            var originalCrop = new CroppedBitmap(source, rect);
+            var crop = MediaArtworkService.DetachCrop(originalCrop);
             Assert.True(crop.IsFrozen);
-            Assert.Same(crop, service.CropToSquare(source, "pixel-test", forceCenterCrop: !smartCrop));
             int stride = (crop.PixelWidth * crop.Format.BitsPerPixel + 7) / 8;
             var expected = new byte[stride * crop.PixelHeight];
-            crop.Source.CopyPixels(crop.SourceRect, expected, stride, 0);
+            source.CopyPixels(rect, expected, stride, 0);
             var actual = Task.Run(() =>
             {
                 var pixels = new byte[expected.Length];

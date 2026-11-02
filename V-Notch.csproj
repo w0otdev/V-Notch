@@ -66,7 +66,7 @@
     <PackageReference Include="LLamaSharp.Backend.Vulkan.Windows" Version="0.27.0" />
     <PackageReference Include="Markdig" Version="0.41.3" />
     <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="8.0.1" />
-    <PackageReference Include="Microsoft.ML.OnnxRuntime" Version="1.31.0" />
+    <PackageReference Include="Microsoft.ML.OnnxRuntime.DirectML" Version="1.24.4" GeneratePathProperty="true" />
     <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.4078.44" />
     <PackageReference Include="System.Data.OleDb" Version="8.0.1" />
     <PackageReference Include="Vortice.Direct3D9" Version="3.8.3" />
@@ -96,6 +96,7 @@
     <None Update="LICENSE" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
     <None Update="docs\THIRD_PARTY_NOTICES.md" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" Link="THIRD_PARTY_NOTICES.md" />
     <None Update="docs\licenses\Hardcodet.NotifyIcon.Wpf-MIT.txt" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" Link="licenses\Hardcodet.NotifyIcon.Wpf-MIT.txt" />
+    <None Update="docs\licenses\OnnxRuntime-1.24.4.txt;docs\licenses\DirectML-1.15.4.txt" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" ExcludeFromSingleFile="true" Link="licenses\%(Filename)%(Extension)" />
     <None Update="Assets\MediaProtocols.json" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" ExcludeFromSingleFile="true" />
     <None Update="Introduction\**\*" CopyToOutputDirectory="Never" CopyToPublishDirectory="Never" />
     <None Update="Assets\Translation\**\*" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" ExcludeFromSingleFile="true" />
@@ -109,6 +110,8 @@
   </Target>
   <Target Name="PruneUnusedPublishPayload" AfterTargets="ComputeFilesToPublish" BeforeTargets="_HandleFileConflictsForPublish;_ComputeFilesToBundle">
     <ItemGroup>
+      <ResolvedFileToPublish Update="@(ResolvedFileToPublish)" Condition="'%(Filename)%(Extension)' == 'DirectML.dll' Or '%(Filename)%(Extension)' == 'onnxruntime.dll'" ExcludeFromSingleFile="true" />
+      <ResolvedFileToPublish Remove="@(ResolvedFileToPublish)" Condition="'%(Filename)%(Extension)' == 'DirectML.pdb' Or '%(Filename)%(Extension)' == 'DirectML.Debug.dll' Or '%(Filename)%(Extension)' == 'DirectML.Debug.pdb'" />
       <ResolvedFileToPublish Remove="@(ResolvedFileToPublish)" Condition="'%(Filename)%(Extension)' == 'mtmd.dll' Or '%(Extension)' == '.lib' Or '%(RelativePath)' == 'runtimes\win-x64\native\WebView2Loader.dll'" />
     </ItemGroup>
   </Target>
@@ -196,12 +199,14 @@
     <_VNotchNativeObjDir>$(MSBuildThisFileDirectory)obj\native</_VNotchNativeObjDir>
   </PropertyGroup>
   <ItemGroup>
+    <_VNotchGpuShaderInputs Include="$(MSBuildThisFileDirectory)Shaders\GlassGpu.hlsl;$(MSBuildThisFileDirectory)Shaders\LiquidGlassRefraction.hlsl;$(MSBuildThisFileDirectory)scripts\Generate-GlassShaders.ps1" />
     <_VNotchNativeHeaders Include="$(MSBuildThisFileDirectory)Native\**\*.h" />
+    <_VNotchNativeHeaders Include="$(PkgMicrosoft_ML_OnnxRuntime_DirectML)\build\native\include\*.h" />
     <_VNotchNativeSources Include="$(MSBuildThisFileDirectory)Native\**\*.cpp" />
     <_VNotchNativeAvx2Sources Include="$(MSBuildThisFileDirectory)Native\**\*.avx2.cpp" />
     <_VNotchNativeBaselineSources Include="$(MSBuildThisFileDirectory)Native\**\*.cpp" Exclude="$(MSBuildThisFileDirectory)Native\**\*.avx2.cpp" />
   </ItemGroup>
-  <Target Name="CompileVNotchNative" BeforeTargets="BeforeBuild" Condition="'$(SkipNativeCompile)' != 'true' And '$(DesignTimeBuild)' != 'true' And !$(MSBuildProjectName.EndsWith('_wpftmp'))" Inputs="@(_VNotchNativeSources);@(_VNotchNativeHeaders)" Outputs="$(_VNotchNativeDll)">
+  <Target Name="CompileVNotchNative" BeforeTargets="BeforeBuild" Condition="'$(SkipNativeCompile)' != 'true' And '$(DesignTimeBuild)' != 'true' And !$(MSBuildProjectName.EndsWith('_wpftmp'))" Inputs="@(_VNotchNativeSources);@(_VNotchNativeHeaders);@(_VNotchGpuShaderInputs)" Outputs="$(_VNotchNativeDll)">
     <PropertyGroup Condition="'$(VcVars64Path)' == ''">
       <_VcVarsCacheFile>$(_VNotchNativeObjDir)\vcvars64.cache</_VcVarsCacheFile>
       <VcVars64Path Condition="Exists('$(_VcVarsCacheFile)')">$([System.IO.File]::ReadAllText('$(_VcVarsCacheFile)').Trim())</VcVars64Path>
@@ -225,6 +230,7 @@
     </PropertyGroup>
     <Error Condition="'$(VcVars64Path)' == '' Or !Exists('$(VcVars64Path)')" Text="vcvars64.bat was not found. Install the Visual Studio C++ x64 build tools or pass -p:VcVars64Path=..." />
     <MakeDir Directories="$(MSBuildThisFileDirectory)Native\out;$(_VNotchNativeObjDir)" />
+    <Exec Command="powershell.exe -NoProfile -ExecutionPolicy Bypass -File &quot;$(MSBuildThisFileDirectory)scripts\Generate-GlassShaders.ps1&quot; -Root &quot;$(MSBuildProjectDirectory)&quot; -Output &quot;$(_VNotchNativeObjDir)\GlassShaders.g.h&quot;" />
     <WriteLinesToFile Condition="'$(_VcVarsCacheFile)' != '' And !Exists('$(_VcVarsCacheFile)')" File="$(_VcVarsCacheFile)" Lines="$(VcVars64Path)" Overwrite="true" />
     <!--
       Baseline x64 (SSE2) for everything except *.avx2.cpp. The AVX2 kernels are compiled with /arch:AVX2
@@ -238,12 +244,18 @@
     <WriteLinesToFile File="$(_VNotchNativeObjDir)\baseline.rsp" Lines="@(_VNotchNativeBaselineSources -> '&quot;%(FullPath)&quot;')" Overwrite="true" />
     <WriteLinesToFile File="$(_VNotchNativeObjDir)\avx2.rsp" Lines="@(_VNotchNativeAvx2Sources -> '&quot;%(FullPath)&quot;')" Overwrite="true" />
     <PropertyGroup>
+      <_OnnxRuntimePkgRoot>$(PkgMicrosoft_ML_OnnxRuntime_DirectML)</_OnnxRuntimePkgRoot>
+      <_OnnxRuntimePkgRoot Condition="'$(_OnnxRuntimePkgRoot)' == '' And '$(NuGetPackageRoot)' != ''">$(NuGetPackageRoot)microsoft.ml.onnxruntime.directml\1.24.4</_OnnxRuntimePkgRoot>
+      <_OnnxRuntimePkgRoot Condition="'$(_OnnxRuntimePkgRoot)' == '' And '$(NUGET_PACKAGES)' != ''">$(NUGET_PACKAGES)\microsoft.ml.onnxruntime.directml\1.24.4</_OnnxRuntimePkgRoot>
+      <_OnnxRuntimePkgRoot Condition="'$(_OnnxRuntimePkgRoot)' == '' And '$(USERPROFILE)' != ''">$(USERPROFILE)\.nuget\packages\microsoft.ml.onnxruntime.directml\1.24.4</_OnnxRuntimePkgRoot>
+      <_OnnxRuntimeIncludeDir>$(_OnnxRuntimePkgRoot)\build\native\include</_OnnxRuntimeIncludeDir>
       <_NativeBaselineOptFlags Condition="'$(NativeFastCompile)' == 'true'">/O2 /Oi /Ot /Gy /Gw</_NativeBaselineOptFlags>
       <_NativeBaselineOptFlags Condition="'$(NativeFastCompile)' != 'true'">/O2 /Oi /Ot /Gy /Gw /GL</_NativeBaselineOptFlags>
       <_NativeLinkOptFlags Condition="'$(NativeFastCompile)' == 'true'">/OPT:REF /OPT:ICF</_NativeLinkOptFlags>
       <_NativeLinkOptFlags Condition="'$(NativeFastCompile)' != 'true'">/LTCG /OPT:REF /OPT:ICF</_NativeLinkOptFlags>
     </PropertyGroup>
-    <Exec Command="call &quot;$(VcVars64Path)&quot; &gt;nul &amp;&amp; cl.exe /nologo /c /std:c++latest $(_NativeBaselineOptFlags) /MT /EHsc /MP /W4 /utf-8 /I&quot;$(MSBuildThisFileDirectory)Native&quot; /Fo&quot;$(_VNotchNativeObjDir)\\&quot; @&quot;$(_VNotchNativeObjDir)\baseline.rsp&quot; &amp;&amp; cl.exe /nologo /c /std:c++latest /O2 /Oi /Ot /Gy /Gw /arch:AVX2 /MT /EHsc /MP /W4 /utf-8 /I&quot;$(MSBuildThisFileDirectory)Native&quot; /Fo&quot;$(_VNotchNativeObjDir)\\&quot; @&quot;$(_VNotchNativeObjDir)\avx2.rsp&quot;" IgnoreStandardErrorWarningFormat="true" />
+    <Exec Condition="!Exists('$(_OnnxRuntimeIncludeDir)\onnxruntime_cxx_api.h')" Command="dotnet restore &quot;$(MSBuildThisFileFullPath)&quot; --locked-mode -nologo -v:q" />
+    <Exec Command="call &quot;$(VcVars64Path)&quot; &gt;nul &amp;&amp; cl.exe /nologo /c /std:c++latest $(_NativeBaselineOptFlags) /MT /EHsc /MP /W4 /utf-8 /I&quot;$(MSBuildThisFileDirectory)Native&quot; /I&quot;$(_VNotchNativeObjDir)&quot; /I&quot;$(_OnnxRuntimeIncludeDir)&quot; /Fo&quot;$(_VNotchNativeObjDir)\\&quot; @&quot;$(_VNotchNativeObjDir)\baseline.rsp&quot; &amp;&amp; cl.exe /nologo /c /std:c++latest /O2 /Oi /Ot /Gy /Gw /arch:AVX2 /MT /EHsc /MP /W4 /utf-8 /I&quot;$(MSBuildThisFileDirectory)Native&quot; /Fo&quot;$(_VNotchNativeObjDir)\\&quot; @&quot;$(_VNotchNativeObjDir)\avx2.rsp&quot;" IgnoreStandardErrorWarningFormat="true" />
     <ItemGroup>
       <_VNotchNativeObj Include="$(_VNotchNativeObjDir)\*.obj" />
     </ItemGroup>

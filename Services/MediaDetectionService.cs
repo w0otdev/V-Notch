@@ -644,25 +644,39 @@ public sealed partial class MediaDetectionService : IMediaDetectionService, IAsy
 
     private async Task HeartbeatLoopAsync(CancellationToken ct)
     {
-        while (!ct.IsCancellationRequested)
+        var scanner = _windowTitleScanner as WindowTitleScanner;
+        using var titleChanges = scanner == null ? null : new NativeWindowTitleMonitor(() =>
         {
-            int intervalMs = vn_media_detection_resolve_heartbeat_interval_ms((int)_currentMode, out int outMs) == 0 ? outMs : 3000;
-            var interval = TimeSpan.FromMilliseconds(intervalMs);
-
-            try
+            if (ct.IsCancellationRequested) return;
+            scanner?.InvalidateWindowTitles();
+            _windowTitleScanner.InvalidateUrlCaches();
+            Interlocked.Exchange(ref _lastEventTimeTicks, DateTime.UtcNow.Ticks);
+            _changes.Enqueue(ChangeTypes.MediaProperties);
+        });
+        scanner?.SetTitleNotificationsActive(titleChanges?.IsActive ?? false);
+        try
+        {
+            while (!ct.IsCancellationRequested)
             {
-                await Task.Delay(interval, ct);
-            }
-            catch (OperationCanceledException) { break; }
+                int intervalMs = vn_media_detection_resolve_heartbeat_interval_ms((int)_currentMode, out int outMs) == 0 ? outMs : 3000;
+                var interval = TimeSpan.FromMilliseconds(intervalMs);
 
-            var lastEvtTicks = Interlocked.Read(ref _lastEventTimeTicks);
-            if (vn_media_detection_should_skip_heartbeat((int)_currentMode, lastEvtTicks, DateTime.UtcNow.Ticks, out byte skip) == 0 && skip != 0)
-            {
-                continue;
-            }
+                try
+                {
+                    await Task.Delay(interval, ct);
+                }
+                catch (OperationCanceledException) { break; }
 
-            _changes.Enqueue(ChangeTypes.Heartbeat);
+                var lastEvtTicks = Interlocked.Read(ref _lastEventTimeTicks);
+                if (vn_media_detection_should_skip_heartbeat((int)_currentMode, lastEvtTicks, DateTime.UtcNow.Ticks, out byte skip) == 0 && skip != 0)
+                {
+                    continue;
+                }
+
+                _changes.Enqueue(ChangeTypes.Heartbeat);
+            }
         }
+        finally { scanner?.SetTitleNotificationsActive(false); }
     }
 
     private void UpdateDetectionMode(MediaInfo info, bool isSessionGapRecovery = false)
@@ -1764,7 +1778,7 @@ public sealed partial class MediaDetectionService : IMediaDetectionService, IAsy
                             info.IsYouTubeRunning = true;
                             SetSessionSourceOverride(info, MediaPlatform.YouTube.ToDisplayString());
                             _sourceCache.SetBoth(trackDuringFetch, BuildTrackIdentity(trackDuringFetch, artistDuringFetch), MediaPlatform.YouTube.ToDisplayString());
-                            _sourceCache.Save();
+                            _sourceCache.QueueSave();
 
                             if (!string.IsNullOrEmpty(urlResult.Author) && urlResult.Author != YouTubePlatformName)
                             {
@@ -1815,7 +1829,7 @@ public sealed partial class MediaDetectionService : IMediaDetectionService, IAsy
                                 info.IsYouTubeRunning = true;
                                 SetSessionSourceOverride(info, MediaPlatform.YouTube.ToDisplayString());
                                 _sourceCache.SetBoth(trackDuringFetch, BuildTrackIdentity(trackDuringFetch, artistDuringFetch), MediaPlatform.YouTube.ToDisplayString());
-                                _sourceCache.Save();
+                                _sourceCache.QueueSave();
                             }
 
                             if (!string.IsNullOrEmpty(result.Author) && result.Author != YouTubePlatformName)
@@ -1856,7 +1870,7 @@ public sealed partial class MediaDetectionService : IMediaDetectionService, IAsy
                             info.IsYouTubeRunning = true;
                             SetSessionSourceOverride(info, MediaPlatform.YouTube.ToDisplayString());
                             _sourceCache.SetBoth(trackDuringFetch, BuildTrackIdentity(trackDuringFetch, artistDuringFetch), MediaPlatform.YouTube.ToDisplayString());
-                            _sourceCache.Save();
+                            _sourceCache.QueueSave();
 
                             CacheVideoIdForTrack(BuildTrackIdentity(trackDuringFetch, artistDuringFetch), videoId);
                             CacheVideoIdForTrack(trackDuringFetch, videoId);
@@ -2091,7 +2105,7 @@ public sealed partial class MediaDetectionService : IMediaDetectionService, IAsy
                                 info.IsYouTubeRunning = true;
                                 SetSessionSourceOverride(info, MediaPlatform.YouTube.ToDisplayString());
                                 _sourceCache.SetBoth(trackDuringFetch, BuildTrackIdentity(trackDuringFetch, artistDuringFetch), MediaPlatform.YouTube.ToDisplayString());
-                                _sourceCache.Save();
+                                _sourceCache.QueueSave();
 
                                 if (!string.IsNullOrEmpty(pollResult.Author) && pollResult.Author != YouTubePlatformName)
                                 {
@@ -2133,7 +2147,7 @@ public sealed partial class MediaDetectionService : IMediaDetectionService, IAsy
                                         MediaSourceClassifier.SetPlatformRunning(info, MediaPlatform.YouTube);
                                         SetSessionSourceOverride(info, MediaPlatform.YouTube.ToDisplayString());
                                         _sourceCache.SetBoth(trackDuringFetch, BuildTrackIdentity(trackDuringFetch, artistDuringFetch), MediaPlatform.YouTube.ToDisplayString());
-                                        _sourceCache.Save();
+                                        _sourceCache.QueueSave();
                                         CacheVideoIdForTrack(BuildTrackIdentity(trackDuringFetch, artistDuringFetch), videoId);
                                         CacheVideoIdForTrack(trackDuringFetch, videoId);
 
@@ -2292,7 +2306,7 @@ public sealed partial class MediaDetectionService : IMediaDetectionService, IAsy
                     if (!string.IsNullOrEmpty(currentTrackIdentity))
                     {
                         _sourceCache.SetBoth(currentTrackIdentity, currentTrackOnlyIdentity, MediaPlatform.SoundCloud.ToDisplayString());
-                        _sourceCache.Save();
+                        _sourceCache.QueueSave();
                     }
                 }
                 info.Thumbnail = frameBitmap;
@@ -3052,7 +3066,7 @@ public sealed partial class MediaDetectionService : IMediaDetectionService, IAsy
                     _sourceCache.SetBoth(_stableSourceTrackIdentity, trackOnlyIdentity, info.MediaSource);
                     if (info.Platform == MediaPlatform.YouTube || info.Platform == MediaPlatform.SoundCloud)
                     {
-                        _sourceCache.Save();
+                        _sourceCache.QueueSave();
                     }
                 }
             }
@@ -4200,6 +4214,7 @@ public sealed partial class MediaDetectionService : IMediaDetectionService, IAsy
             cts?.Dispose();
             if (isDisposing)
             {
+                _sourceCache.Save();
                 _volumeService.Dispose();
                 _updateLock.Dispose();
             }

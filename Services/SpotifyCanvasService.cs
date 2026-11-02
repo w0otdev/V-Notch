@@ -30,6 +30,7 @@ public sealed partial class SpotifyCanvasService : IDisposable
     private readonly SpotifyCanvasClient _canvas;
     private readonly ConcurrentDictionary<string, CacheEntry> _cache = new(StringComparer.Ordinal);
     private readonly object _cacheLock = new();
+    private readonly CanvasMediaCache? _mediaCache;
 
     public SpotifyCanvasService()
         : this(CreateHttpClient(), ownsHttpClient: true)
@@ -45,6 +46,7 @@ public sealed partial class SpotifyCanvasService : IDisposable
     {
         _http = http ?? throw new ArgumentNullException(nameof(http));
         _ownsHttpClient = ownsHttpClient;
+        if (ownsHttpClient) _mediaCache = new(http, System.IO.Path.Combine(AppPaths.LocalAppDataRoot, "CanvasMedia"));
         _tokens = new SpotifyTokenProvider(http);
         _metadata = new SpotifyQueryMetadataProvider(http);
         _catalog = new SpotifyCatalogClient(http, _metadata);
@@ -97,6 +99,8 @@ public sealed partial class SpotifyCanvasService : IDisposable
                 return null;
 
             Uri? canvasUri = await _canvas.FetchAsync(trackId, accessToken, timeoutCts.Token).ConfigureAwait(false);
+            if (canvasUri != null && _mediaCache != null)
+                canvasUri = await _mediaCache.GetAsync(canvasUri, timeoutCts.Token).ConfigureAwait(false);
             if (canvasUri != null)
                 CacheCanvas(cacheKey, canvasUri);
 

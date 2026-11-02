@@ -17,6 +17,5 @@ public partial class MainWindow
                 _settingsService.Save(_settings);
             });
         _liveTranslation.ApplySettings(_settings);
-        _ = _liveTranslation.PrepareModelAsync();
     }
 }

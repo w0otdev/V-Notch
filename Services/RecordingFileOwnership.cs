@@ -5,6 +5,8 @@ namespace VNotch.Services;
 
 internal static partial class RecordingFileOwnership
 {
+    private static readonly object CacheLock = new();
+    private static readonly Dictionary<(string Path, int Pid, long Start), (bool Owned, long Expires)> Cache = new();
     internal static bool MatchesRecorder(UniqueProcess owner, int processId, long startFileTime)
     {
         vn_recording_matches_recorder(
@@ -17,15 +19,34 @@ internal static partial class RecordingFileOwnership
         return matches != 0;
     }
 
+    internal static bool IsFileOwnedByCached(string path, Process process, int positiveTtlMs = 1000, int negativeTtlMs = 1000)
+    {
+        if (string.IsNullOrEmpty(path)) return false;
+        long start = process.StartTime.ToUniversalTime().ToFileTimeUtc();
+        var key = (System.IO.Path.GetFullPath(path).ToUpperInvariant(), process.Id, start);
+        long now = Environment.TickCount64;
+        lock (CacheLock)
+        {
+            if (Cache.TryGetValue(key, out var cached) && now < cached.Expires)
+                return cached.Owned && !process.HasExited;
+        }
+        bool result = IsFileOwnedBy(path, process);
+        lock (CacheLock)
+        {
+            foreach (var entry in Cache.Where(entry => entry.Value.Expires <= now).ToArray()) Cache.Remove(entry.Key);
+            if (Cache.Count >= 128) Cache.Remove(Cache.Keys.First());
+            Cache[key] = (result, now + (result ? positiveTtlMs : negativeTtlMs));
+        }
+        return result;
+    }
+
     internal static unsafe bool IsFileOwnedBy(string path, Process process)
     {
         if (string.IsNullOrEmpty(path)) return false;
         long start = process.StartTime.ToUniversalTime().ToFileTimeUtc();
         byte owned;
         fixed (char* ptr = path)
-        {
             vn_recording_is_file_owned_by_process(ptr, path.Length, process.Id, start, out owned);
-        }
         return owned != 0 && !process.HasExited;
     }
 

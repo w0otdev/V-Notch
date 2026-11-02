@@ -17,6 +17,7 @@ public sealed class InputMonitorServiceTests
         {
             InputMonitorService.Start(source.Handle);
             Assert.True(InputMonitorService.IsStarted);
+            Assert.NotEqual(Environment.CurrentManagedThreadId, InputMonitorService.InputThreadId);
             InputMonitorService.Start(source.Handle);
             InputMonitorService.Stop();
             Assert.False(InputMonitorService.IsStarted);

@@ -87,8 +87,12 @@ update_settings.ps1
 !/docs/TERMS_OF_SERVICE.md
 !/docs/TERMS_OF_SERVICE_VI.md
 !/docs/THIRD_PARTY_NOTICES.md
+!/docs/performance-audit-status.md
+!/docs/native-pipeline-optimizations.md
 !/docs/licenses/
 /docs/licenses/*
+!/docs/licenses/OnnxRuntime-1.24.4.txt
+!/docs/licenses/DirectML-1.15.4.txt
 !/docs/licenses/Hardcodet.NotifyIcon.Wpf-MIT.txt
 /.agents
 # Ignore ad-hoc tools, retaining the reproducible benchmark/stress runners
@@ -102,6 +106,7 @@ update_settings.ps1
 !/Tools/TestSupport/
 !/Tools/UpdateCompatibility/
 !/Tools/ShaderCompiler/
+!/Tools/GlassGpuProbe/
 /changes
 build-installer.ps1
 .test-output/ai-errors/Locales/ar.json
@@ -147,3 +152,7 @@ CLAUDE.md
 skills-lock.json
 .brooks-lint-history.json
 /.claude/
+!/Tools/NativePipelineBench/
+!/Tools/NativePipelineBench/README.md
+!/docs/native-pipeline-benchmark.md
+!/docs/native-hotpath-optimizations.md

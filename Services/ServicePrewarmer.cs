@@ -54,19 +54,14 @@ internal static partial class ServicePrewarmer
     private static void RunBackgroundWarmups(IServiceProvider provider)
     {
         var settings = WarmupSettings(provider);
-        Task spotlightTask = WarmupSpotlight(provider, settings);
+        // Build file indexes on the first actual Spotlight query. They are not
+        // needed for startup and can enumerate thousands of system files.
         WarmupBattery(provider);
         WarmupVolume(provider);
         WarmupWindowTitleScanner(provider);
 
         RuntimeLog.Log(LogCategory, "background warmup complete");
-        SmartThumbnailCropService.TryMinimizeNativeHeap(trimWorkingSet: true);
-        if (!spotlightTask.IsCompleted)
-        {
-            _ = spotlightTask.ContinueWith(
-                static _ => SmartThumbnailCropService.TryMinimizeNativeHeap(trimWorkingSet: true),
-                TaskScheduler.Default);
-        }
+
     }
 
     private static NotchSettings? WarmupSettings(IServiceProvider provider)

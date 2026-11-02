@@ -120,6 +120,7 @@ internal sealed partial class ProgressSpringRenderer
             return;
         }
 
+        if (_stopwatch.Elapsed.TotalMilliseconds + 0.1 < 1000d / Math.Max(1, AnimationConfig.TargetFps)) return;
         RenderFrame();
     }
 

@@ -80,8 +80,6 @@ internal sealed partial class SpotlightController : ISpotlightController, IAsync
         {
             _window?.ApplySettings(_settings);
         }
-        if (settings.EnableSpotlight && (spotlightChanged || glassChanged))
-            QueuePreparation();
 
         if (_hwnd == IntPtr.Zero) return;
 

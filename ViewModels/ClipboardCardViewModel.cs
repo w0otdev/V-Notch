@@ -138,6 +138,7 @@ public sealed partial class ClipboardCardViewModel : ObservableObject
 
     internal void ReleaseMaskedPreviewSize()
     {
+        if (_maskedPreviewSize == null) return;
         _maskedPreviewSize = null;
         OnPropertyChanged(nameof(MaskedPreviewWidth));
         OnPropertyChanged(nameof(MaskedPreviewHeight));

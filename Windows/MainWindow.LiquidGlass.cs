@@ -186,9 +186,8 @@ public partial class MainWindow
         _glassMaterialPresenter.PowerFactor = cfg.PowerFactor;
         UpdateNotchClip();
 
-        double dipRadius = Math.Clamp(cfg.BlurAmount, 0, 1) * 28.0;
         double dpiScale = GetGlassDpiScale();
-        int gaussianSigma = (int)Math.Round(dipRadius * dpiScale);
+        double gaussianSigma = LiquidGlassController.BlurAmountToSigma(cfg.BlurAmount, dpiScale);
         if (_liquidGlass != null)
         {
             _liquidGlass.SetBlur(gaussianSigma);
@@ -205,7 +204,7 @@ public partial class MainWindow
             }
         }
 
-        // GPU mode blurs on the host element instead of the CPU box blur.
+        // Native GPU mode blurs the captured texture before refraction.
         ApplyGpuBlur(cfg.BlurAmount);
 
         _glassConfiguredOpacity = Math.Clamp(cfg.Opacity, 0, 1);
@@ -289,13 +288,13 @@ public partial class MainWindow
         bool useUltimateGpu = _settings.LiquidGlass?.UseUltimateGpu ?? false;
         if (_gpuRefractionConfigured &&
             _gpuUltimateConfigured == useUltimateGpu &&
-            ReferenceEquals(GlassBackdropImage.Effect, _glassRefractionEffect))
+            _liquidGlass.UsesNativeRefraction)
             return;
 
         try
         {
             _glassRefractionEffect ??= new LiquidGlassRefractionEffect();
-            GlassBackdropImage.Effect = _glassRefractionEffect;
+            GlassBackdropImage.Effect = null;
 
             _glassInteractionController ??= new LiquidGlassInteractionController(NotchContainer, NotchBorder, _glassRefractionEffect);
 
@@ -305,6 +304,7 @@ public partial class MainWindow
                 return;
             }
 
+            _liquidGlass.EnableNativeRefraction();
             VNotch.Services.RuntimeLog.Log("LIQUIDGLASS",
                 $"GPU refraction enabled; target={Math.Clamp(_settings.LiquidGlass?.TargetFps ?? 60, 30, LiquidGlassController.MaxTargetFps)} FPS; ultimateGpu={useUltimateGpu}");
             _gpuRefractionConfigured = true;
@@ -596,6 +596,7 @@ public partial class MainWindow
             _lastAppliedTouchLight = cfg.TouchLight;
             fx.HighlightStrength = cfg.TouchLight;
         }
+        lg.UpdateGpuLens(fx, screenLeft, screenTop);
     }
 
     private void ApplyGpuBlur(double blurAmount)
@@ -837,7 +838,7 @@ public partial class MainWindow
                       _glassGestureSnapBackMotion || _glassHoverMotion;
 
         _liquidGlass?.SetAnimating(motion);
-        _liquidGlass?.SetIdle(!_isExpanded);
+        _liquidGlass?.SetIdle(!motion);
         if (_liquidGlass != null) _liquidGlass.CaptureFullSurface = motion;
         // We no longer pause presentation during hover, DXGI handles it smoothly.
         SetGlassRegionPush(motion && _liquidGlass != null && IsLiquidGlassEnabled);

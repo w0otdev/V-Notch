@@ -224,9 +224,8 @@ public partial class SpotlightWindow
         _lastGpuGeometry = null;
         _lastAppliedGpuOptics = null;
 
-        double dipRadius = Math.Clamp(cfg.BlurAmount, 0, 1) * 28.0;
         double dpiScale = GetGlassDpiScale();
-        int gaussianSigma = (int)Math.Round(dipRadius * dpiScale);
+        double gaussianSigma = LiquidGlassController.BlurAmountToSigma(cfg.BlurAmount, dpiScale);
         if (_liquidGlass != null)
         {
             _liquidGlass.SetBlur(gaussianSigma);
@@ -316,13 +315,13 @@ public partial class SpotlightWindow
         bool useUltimateGpu = _settings.LiquidGlass?.UseUltimateGpu ?? false;
         if (_gpuRefractionConfigured &&
             _gpuUltimateConfigured == useUltimateGpu &&
-            ReferenceEquals(GlassBackdropImage.Effect, _glassRefractionEffect))
+            _liquidGlass.UsesNativeRefraction)
             return;
 
         try
         {
             _glassRefractionEffect ??= new LiquidGlassRefractionEffect();
-            GlassBackdropImage.Effect = _glassRefractionEffect;
+            GlassBackdropImage.Effect = null;
 
             _glassInteractionController ??= new LiquidGlassInteractionController(Shell, Shell, _glassRefractionEffect);
 
@@ -335,6 +334,7 @@ public partial class SpotlightWindow
                 return;
             }
 
+            _liquidGlass.EnableNativeRefraction();
             RuntimeLog.Log("LIQUIDGLASS",
                 $"Spotlight GPU refraction enabled; target={Math.Clamp(_settings.LiquidGlass?.TargetFps ?? 60, 30, LiquidGlassController.MaxTargetFps)} FPS; ultimateGpu={useUltimateGpu}");
             _gpuRefractionConfigured = true;
@@ -555,6 +555,7 @@ public partial class SpotlightWindow
             _lastAppliedTouchLight = cfg.TouchLight;
             fx.HighlightStrength = cfg.TouchLight;
         }
+        lg.UpdateGpuLens(fx, screenLeft, screenTop);
     }
 
     private (double ScreenLeft, double ScreenTop) GetShellScreenPosition(double exactW, double dpiScale)

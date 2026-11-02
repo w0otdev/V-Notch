@@ -47,6 +47,8 @@ public partial class MainWindow
                         PerformanceDiagnosticService.Instance.PingDispatcher(Dispatcher);
                         return (_currentMeasuredFps, _currentDisplayHz, _currentMeasuredFrameTimeMs, _lastNetDownBytesPerSec, _lastNetUpBytesPerSec);
                     },
+                    GlassMetricsProvider = () => (_liquidGlass?.IsActive == true,
+                        _liquidGlass?.FrameSubmissionCount ?? 0, _liquidGlass?.LastSubmissionLatencyMs ?? 0),
                     OnLockViewChanged = (locked) => SetDebugViewLock(locked),
                     OnDragNotchChanged = (draggable) => SetDebugDraggable(draggable),
                     OnViewStateChanged = (state) => SetDebugViewState(state),

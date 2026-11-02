@@ -1,4 +1,7 @@
 #include "vnotch_common.h"
+#include "SmartCropInference.h"
+#include "../vnotch_cpu.h"
+#include "../vnotch_simd_kernels.h"
 #include <algorithm>
 #include <array>
 #include <cmath>
@@ -9,15 +12,6 @@
 namespace vnotch::services {
 
 #pragma pack(push, 1)
-struct VnDetection {
-    float x1;
-    float y1;
-    float x2;
-    float y2;
-    float confidence;
-    int32_t class_id;
-};
-
 struct VnSubjectBounds {
     float center_x;
     float center_y;
@@ -444,11 +438,15 @@ private:
 
         float max_score = 0.0f;
         int32_t max_class_id = -1;
-        for (int32_t c = 5; c < channels; c++) {
-            float score = buffer[offset + c];
-            if (std::isfinite(score) && score > max_score && score <= 1.0f) {
-                max_score = score;
-                max_class_id = c - 5;
+        if (vnotch::cpu::SupportsX64V3()) {
+            max_score = vnotch::kernels::avx2::YoloxBestClass(buffer + offset + 5, &max_class_id);
+        } else {
+            for (int32_t c = 5; c < channels; c++) {
+                float score = buffer[offset + c];
+                if (std::isfinite(score) && score > max_score && score <= 1.0f) {
+                    max_score = score;
+                    max_class_id = c - 5;
+                }
             }
         }
 

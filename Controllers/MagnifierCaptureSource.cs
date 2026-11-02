@@ -335,6 +335,6 @@ public sealed partial class MagnifierCaptureSource : IDisposable
         if (_handle <= 0) return;
         if (NativeDestroy(_handle, out byte released) == 0 && released != 0) return;
         // The pump thread may still call into the callback. The native object is kept alive rather than crash.
-        RuntimeLog.Log(LogTag, "Magnifier pump thread did not exit within 500ms; leaking the native source.");
+        RuntimeLog.Log(LogTag, "Magnifier pump stop exceeded 500ms; native cleanup continues after the pump exits.");
     }
 }

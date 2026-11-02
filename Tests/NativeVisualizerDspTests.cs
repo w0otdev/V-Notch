@@ -16,10 +16,15 @@ public sealed class NativeVisualizerDspTests
 
     // The band analysis was calibrated against NAudio's FFT, so the native transform must match it bin for bin.
     [Theory]
+    [InlineData(4, 2, 1)]
+    [InlineData(8, 3, 2)]
+    [InlineData(16, 4, 3)]
     [InlineData(512, 9, 1)]
     [InlineData(512, 9, 2)]
     [InlineData(256, 8, 3)]
     [InlineData(1024, 10, 4)]
+    [InlineData(2048, 11, 5)]
+    [InlineData(4096, 12, 6)]
     public void WindowedFftMatchesTheNAudioReference(int length, int m, int seed)
     {
         float[] samples = Noise(length, seed);
@@ -38,8 +43,10 @@ public sealed class NativeVisualizerDspTests
 
         for (int i = 0; i < length; i++)
         {
-            Assert.Equal(reference[i].X, native[i].X, 6);
-            Assert.Equal(reference[i].Y, native[i].Y, 6);
+            // FMA performs one rounding instead of two; compare numerical error,
+            // since decimal rounding equality can reject adjacent floats at a midpoint.
+            Assert.InRange(Math.Abs(reference[i].X - native[i].X), 0, 1e-6f);
+            Assert.InRange(Math.Abs(reference[i].Y - native[i].Y), 0, 1e-6f);
         }
     }
 

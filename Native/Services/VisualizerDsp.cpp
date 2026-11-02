@@ -1,6 +1,7 @@
 #include "../vnotch_common.h"
 #include "../vnotch_cpu.h"
 #include "../vnotch_simd_kernels.h"
+#include "VisualizerStream.h"
 #include <algorithm>
 #include <array>
 #include <bit>
@@ -87,26 +88,6 @@ constexpr std::array<double, kBarCount> kMaxGains = { 1.45, 1.55, 1.35, 1.85, 2.
 constexpr std::array<double, kBarCount> kFallback = { 0.025, 0.035, 0.070, 0.030, 0.022 };
 constexpr std::array<double, kBarCount> kCaps = { 0.86, 0.82, 0.76, 0.70, 0.64 };
 
-#pragma pack(push, 1)
-struct VnSpectrumComplex {
-    float x;
-    float y;
-};
-
-struct VnVisualizerDspState {
-    double agc_peak;
-    double prev_kick_energy;
-    double prev_snare_energy;
-    double kick_accent;
-    double snare_accent;
-    double prev_rms_for_beat;
-    double beat_accent;
-    double role_peaks[kBarCount];
-    double rms_sum_squares;
-    int32_t rms_sample_count;
-};
-#pragma pack(pop)
-
 bool IsPowerOfTwo(int32_t value) noexcept {
     return value >= 4 && value <= kMaxFftLength && (value & (value - 1)) == 0;
 }
@@ -135,34 +116,33 @@ const double* HammingWindow(int32_t length) noexcept {
 // Stage l1 occupies entries [l1 - 1, 2 * l1 - 1), each stored as an interleaved (re, im) float pair, so the
 // butterfly loop reads them contiguously. The values come from the same float half-angle recurrence the
 // NAudio reference uses, because the band analysis is calibrated against that transform bin for bin.
-const float* FftTwiddles() noexcept {
-    alignas(32) static float table[2 * kMaxFftLength];
-    static std::atomic<bool> ready{false};
-    static SRWLOCK lock = SRWLOCK_INIT;
-    if (!ready.load(std::memory_order_acquire)) {
-        AcquireSRWLockExclusive(&lock);
-        if (!ready.load(std::memory_order_relaxed)) {
-            float c1 = -1.0f;
-            float c2 = 0.0f;
-            for (int32_t l1 = 1; l1 < kMaxFftLength; l1 <<= 1) {
-                float u1 = 1.0f;
-                float u2 = 0.0f;
-                for (int32_t j = 0; j < l1; ++j) {
-                    const size_t index = 2u * static_cast<size_t>(l1 - 1 + j);
-                    table[index] = u1;
-                    table[index + 1] = u2;
-                    const float z = u1 * c1 - u2 * c2;
-                    u2 = u1 * c2 + u2 * c1;
-                    u1 = z;
-                }
-                c2 = -std::sqrt((1.0f - c1) / 2.0f);
-                c1 = std::sqrt((1.0f + c1) / 2.0f);
-            }
-            ready.store(true, std::memory_order_release);
+consteval float TwiddleSqrt(float value) {
+    if (value == 0) return 0;
+    double root = 1;
+    for (int i = 0; i < 32; ++i) root = (root + static_cast<double>(value) / root) / 2;
+    return static_cast<float>(root);
+}
+
+consteval auto BuildFftTwiddles() {
+    struct Table { float values[2 * kMaxFftLength]{}; } table;
+    float c1 = -1.0f, c2 = 0.0f;
+    for (int32_t l1 = 1; l1 < kMaxFftLength; l1 <<= 1) {
+        float u1 = 1.0f, u2 = 0.0f;
+        for (int32_t j = 0; j < l1; ++j) {
+            const size_t index = 2u * static_cast<size_t>(l1 - 1 + j);
+            table.values[index] = u1; table.values[index + 1] = u2;
+            const float z = u1 * c1 - u2 * c2;
+            u2 = u1 * c2 + u2 * c1; u1 = z;
         }
-        ReleaseSRWLockExclusive(&lock);
+        c2 = -TwiddleSqrt((1.0f - c1) / 2.0f);
+        c1 = TwiddleSqrt((1.0f + c1) / 2.0f);
     }
     return table;
+}
+
+const float* FftTwiddles() noexcept {
+    alignas(32) static constexpr auto table = BuildFftTwiddles();
+    return table.values;
 }
 
 void FftForward(VnSpectrumComplex* data, int32_t m) noexcept {
@@ -186,6 +166,29 @@ void FftForward(VnSpectrumComplex* data, int32_t m) noexcept {
         const int32_t l1 = 1 << l;
         const int32_t l2 = l1 << 1;
         const float* stage = twiddles + 2 * static_cast<size_t>(l1 - 1);
+        if (l + 1 < m) {
+            const float* next = twiddles + 2 * static_cast<size_t>(l2 - 1);
+            const int32_t begin = use_avx2 ? vnotch::kernels::avx2::FftRadix4Bulk(flat, stage, next, n, l1) : 0;
+            const auto multiply = [](VnSpectrumComplex v, const float* w) noexcept {
+                return VnSpectrumComplex{w[0] * v.x - w[1] * v.y, w[0] * v.y + w[1] * v.x};
+            };
+            for (int32_t block = 0; block < n; block += 4 * l1) {
+                for (int32_t k = begin; k < l1; ++k) {
+                    const auto a = data[block + k], c = data[block + k + 2 * l1];
+                    const auto b = multiply(data[block + k + l1], stage + 2 * k);
+                    const auto d = multiply(data[block + k + 3 * l1], stage + 2 * k);
+                    const VnSpectrumComplex ab{a.x + b.x, a.y + b.y}, amb{a.x - b.x, a.y - b.y};
+                    const auto cd = multiply({c.x + d.x, c.y + d.y}, next + 2 * k);
+                    const auto cmd = multiply({c.x - d.x, c.y - d.y}, next + 2 * (k + l1));
+                    data[block + k] = {ab.x + cd.x, ab.y + cd.y};
+                    data[block + k + 2 * l1] = {ab.x - cd.x, ab.y - cd.y};
+                    data[block + k + l1] = {amb.x + cmd.x, amb.y + cmd.y};
+                    data[block + k + 3 * l1] = {amb.x - cmd.x, amb.y - cmd.y};
+                }
+            }
+            ++l;
+            continue;
+        }
         // The AVX2 kernel handles groups of four butterflies for every block; the scalar loop finishes the rest.
         const int32_t k_start = use_avx2 ? vnotch::kernels::avx2::FftStageBulk(flat, stage, n, l1) : 0;
         for (int32_t block = 0; block < n; block += l2) {

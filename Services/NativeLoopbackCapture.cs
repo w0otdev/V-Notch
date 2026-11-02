@@ -25,6 +25,10 @@ internal sealed unsafe partial class NativeLoopbackCapture : IDisposable
         string deviceId, int deviceIdLength, nint onData, nint onStopped, long context,
         out long handle, out VnLoopbackFormat format, out int hresult);
 
+    [LibraryImport(NativeDll, EntryPoint = "vn_loopback_start_levels", StringMarshalling = StringMarshalling.Utf16)]
+    private static partial int NativeStartLevels(string deviceId, int length, nint levels, nint stopped, long context,
+        out long handle, out VnLoopbackFormat format, out int hresult);
+
     [LibraryImport(NativeDll, EntryPoint = "vn_loopback_stop")]
     private static partial int NativeStop(long handle);
 
@@ -34,16 +38,53 @@ internal sealed unsafe partial class NativeLoopbackCapture : IDisposable
     [LibraryImport(NativeDll, EntryPoint = "vn_loopback_resolve_device_id", StringMarshalling = StringMarshalling.Utf16)]
     private static partial int NativeResolveDeviceId(string requested, int requestedLength, char* buffer, int capacity, out int length);
 
-    private readonly Action<byte[], int> _onData;
+    internal delegate void LevelsCallback(ReadOnlySpan<float> levels, float beat);
+    private readonly Action<byte[], int>? _onData;
+    private readonly LevelsCallback? _onLevels;
     private readonly Action _onStopped;
     private GCHandle _self;
     private long _handle;
-    private byte[] _buffer = new byte[16384];
+    private byte[] _buffer = Array.Empty<byte>();
 
     private NativeLoopbackCapture(Action<byte[], int> onData, Action onStopped)
     {
+        _buffer = new byte[16384];
         _onData = onData;
         _onStopped = onStopped;
+    }
+
+    private NativeLoopbackCapture(LevelsCallback onLevels, Action onStopped)
+    {
+        _onLevels = onLevels; _onStopped = onStopped;
+    }
+
+    internal static NativeLoopbackCapture? StartAnalyzed(string requestedDeviceId, LevelsCallback onLevels,
+        Action onStopped, out int hresult)
+    {
+        var capture = new NativeLoopbackCapture(onLevels, onStopped);
+        capture._self = GCHandle.Alloc(capture);
+        delegate* unmanaged[Stdcall]<long, float*, float, void> levels = &OnNativeLevels;
+        delegate* unmanaged[Stdcall]<long, int, void> stopped = &OnNativeStopped;
+        string requested = requestedDeviceId ?? string.Empty;
+        if (NativeStartLevels(requested, requested.Length, (nint)levels, (nint)stopped,
+            GCHandle.ToIntPtr(capture._self), out long handle, out VnLoopbackFormat format, out hresult) != 0)
+        { capture._self.Free(); return null; }
+        capture._handle = handle;
+        capture.SampleRate = format.SampleRate; capture.Channels = format.Channels;
+        capture.BitsPerSample = format.BitsPerSample; capture.IsFloat = format.IsFloat != 0;
+        capture.DeviceId = capture.ReadDeviceId(out _);
+        return capture;
+    }
+
+    [UnmanagedCallersOnly(CallConvs = [typeof(System.Runtime.CompilerServices.CallConvStdcall)])]
+    private static void OnNativeLevels(long context, float* values, float beat)
+    {
+        try
+        {
+            if (GCHandle.FromIntPtr((nint)context).Target is NativeLoopbackCapture capture)
+                capture._onLevels?.Invoke(new ReadOnlySpan<float>(values, 5), beat);
+        }
+        catch (Exception) { /* Never unwind through the native capture thread. */ }
     }
 
     internal int SampleRate { get; private set; }
@@ -126,7 +167,7 @@ internal sealed unsafe partial class NativeLoopbackCapture : IDisposable
             if (GCHandle.FromIntPtr((IntPtr)context).Target is not NativeLoopbackCapture capture || bytes <= 0) return;
             if (capture._buffer.Length < bytes) capture._buffer = new byte[bytes];
             new ReadOnlySpan<byte>(data, bytes).CopyTo(capture._buffer);
-            capture._onData(capture._buffer, bytes);
+            capture._onData?.Invoke(capture._buffer, bytes);
         }
         catch (Exception)
         {

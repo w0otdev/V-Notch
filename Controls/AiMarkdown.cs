@@ -183,14 +183,7 @@ internal static partial class AiMarkdown
     {
         // Temporarily close common unfinished spans while the next network chunk is pending.
         // These closers are presentation-only and never change the saved response.
-        var fenceCount = FenceRegex().Count(markdown);
-        if (fenceCount % 2 != 0) markdown += "\n```";
-        else
-        {
-            string outsideCode = CodeSpanRegex().Replace(markdown, "");
-            if (BoldMarkerRegex().Count(outsideCode) % 2 != 0)
-                markdown += "**";
-        }
+        markdown = CloseSpans(markdown);
         var doc = Render(markdown);
         shown = 0;
         TextPointer? lastStart = null;

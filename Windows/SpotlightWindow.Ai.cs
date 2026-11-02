@@ -329,7 +329,7 @@ public partial class SpotlightWindow
         progressTimer.Start();
         System.Windows.Controls.RichTextBox? liveView = null;
         string receivedText = "";
-        int revealedLength = 0;
+        var streamRenderer = new VNotch.Controls.AiMarkdown.StreamRenderer();
         bool revealCaughtUp = false;
         AiUsageSnapshot? receivedUsage = null;
         var revealTimer = new UiScheduledTimer
@@ -347,11 +347,8 @@ public partial class SpotlightWindow
             else
             {
                 int step = Math.Max(1, receivedText.Length / 120);
-                var doc = VNotch.Controls.AiMarkdown.RenderWords(receivedText, revealedLength + step,
-                    out int shown, out revealCaughtUp, Math.Min(240, revealTimer.Interval.TotalMilliseconds));
-                if (shown == revealedLength) return;
-                revealedLength = shown;
-                liveView.Document = doc;
+                revealCaughtUp = streamRenderer.Advance(receivedText, step, Math.Min(240, revealTimer.Interval.TotalMilliseconds));
+                if (!ReferenceEquals(liveView.Document, streamRenderer.Document)) liveView.Document = streamRenderer.Document;
             }
             if (follow) AiTranscriptScroll.ScrollToEnd();
             ScheduleContentResize();
@@ -457,8 +454,6 @@ public partial class SpotlightWindow
             revealTimer.Stop();
             revealTimer.Dispose();
             RevealText(finish: true);
-            if (ReferenceEquals(_aiRequest, cts) && liveView != null)
-                liveView.Document = VNotch.Controls.AiMarkdown.Render(receivedText);
             if (ReferenceEquals(_aiRequest, cts))
             {
                 // A buffered response can finish before queued usage callbacks run.

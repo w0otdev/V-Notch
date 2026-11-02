@@ -1,6 +1,8 @@
 #include "../vnotch_common.h"
 #include "../vnotch_com.h"
 #include "../vnotch_handle_registry.h"
+#include "VisualizerStream.h"
+#include <avrt.h>
 #include <mmdeviceapi.h>
 #include <audioclient.h>
 #include <ks.h>
@@ -12,9 +14,10 @@
 #include <vector>
 
 #pragma comment(lib, "ole32.lib")
+#pragma comment(lib, "avrt.lib")
 
 // WASAPI loopback capture of a render endpoint for the music visualizer. A worker thread drains packets
-// and hands the raw mix-format bytes to a callback; the managed side does the analysis.
+// and performs DSP before publishing five display levels. The raw callback remains available for other consumers.
 
 namespace vnotch::services::loopback {
 
@@ -24,9 +27,9 @@ using vnotch::com::Guard;
 
 using DataCallback = void(__stdcall*)(int64_t context, const uint8_t* data, int32_t bytes);
 using StoppedCallback = void(__stdcall*)(int64_t context, int32_t hresult);
+using LevelsCallback = void(__stdcall*)(int64_t context, const float* levels, float beat);
 
 constexpr REFERENCE_TIME kBufferDuration = 1'000'000; // 100 ms
-constexpr DWORD kPollMs = 10;
 
 #pragma pack(push, 1)
 struct VnLoopbackFormat {
@@ -47,19 +50,26 @@ struct Capture {
     HANDLE thread = nullptr;
     DWORD thread_id = 0;
     HANDLE stop_event = nullptr;
+    HANDLE data_event = nullptr;
     DataCallback on_data = nullptr;
+    LevelsCallback on_levels = nullptr;
+    visualizer::VisualizerStream analysis;
     StoppedCallback on_stopped = nullptr;
     int64_t context = 0;
     SRWLOCK stop_lock = SRWLOCK_INIT;
     std::atomic<bool> stopping{false};
     std::atomic<bool> self_delete{false};
 
-    Capture() noexcept { stop_event = CreateEventW(nullptr, TRUE, FALSE, nullptr); }
+    Capture() noexcept {
+        stop_event = CreateEventW(nullptr, TRUE, FALSE, nullptr);
+        data_event = CreateEventW(nullptr, FALSE, FALSE, nullptr);
+    }
     Capture(const Capture&) = delete;
     Capture& operator=(const Capture&) = delete;
     ~Capture() {
         Stop();
         if (stop_event) CloseHandle(stop_event);
+        if (data_event) CloseHandle(data_event);
     }
 
     void Stop() noexcept {
@@ -88,15 +98,19 @@ struct Capture {
 
     void Run() noexcept {
         EnsureMta();
+        DWORD task_index = 0;
+        HANDLE mmcss = AvSetMmThreadCharacteristicsW(L"Pro Audio", &task_index);
+        analysis.Reset(format.sample_rate);
         // Sized for a full endpoint buffer up front so the capture loop normally never allocates.
         std::vector<uint8_t> silence;
         HRESULT failure = S_OK;
         UINT32 buffer_frames = 0;
-        if (SUCCEEDED(client.ptr->GetBufferSize(&buffer_frames)) &&
+        if (!on_levels && SUCCEEDED(client.ptr->GetBufferSize(&buffer_frames)) &&
             !EnsureSilence(silence, static_cast<size_t>(buffer_frames) * static_cast<size_t>(block_align))) {
             failure = E_OUTOFMEMORY;
         }
-        while (SUCCEEDED(failure) && WaitForSingleObject(stop_event, kPollMs) == WAIT_TIMEOUT) {
+        HANDLE events[]{stop_event, data_event};
+        while (SUCCEEDED(failure) && WaitForMultipleObjects(2, events, FALSE, INFINITE) == WAIT_OBJECT_0 + 1) {
             UINT32 packet = 0;
             HRESULT hr = capture.ptr->GetNextPacketSize(&packet);
             while (SUCCEEDED(hr) && packet > 0) {
@@ -106,7 +120,11 @@ struct Capture {
                 hr = capture.ptr->GetBuffer(&data, &frames, &flags, nullptr, nullptr);
                 if (FAILED(hr)) break;
                 const int32_t bytes = static_cast<int32_t>(frames) * block_align;
-                if (!stopping.load(std::memory_order_acquire) && on_data) {
+                if (!stopping.load(std::memory_order_acquire) && on_levels) {
+                    if (analysis.Process((flags & AUDCLNT_BUFFERFLAGS_SILENT) ? nullptr : data,
+                        static_cast<int32_t>(frames), format.channels, format.bits_per_sample, format.is_float, block_align))
+                        on_levels(context, analysis.published.data(), analysis.beat);
+                } else if (!stopping.load(std::memory_order_acquire) && on_data) {
                     if (flags & AUDCLNT_BUFFERFLAGS_SILENT) {
                         if (!EnsureSilence(silence, static_cast<size_t>(bytes))) {
                             // Give the packet back and stop with an error instead of terminating the process.
@@ -129,6 +147,7 @@ struct Capture {
             }
         }
         if (FAILED(failure) && !stopping.load(std::memory_order_acquire) && on_stopped) on_stopped(context, static_cast<int32_t>(failure));
+        if (mmcss) AvRevertMmThreadCharacteristics(mmcss);
     }
 
     static DWORD WINAPI Main(LPVOID param) noexcept {
@@ -181,10 +200,10 @@ namespace lb = vnotch::services::loopback;
 extern "C" {
 
 // Starts loopback capture of the requested endpoint (empty = default). out_format is the endpoint mix format.
-VN_EXPORT int32_t __stdcall vn_loopback_start(
+static int32_t StartCapture(
     const char16_t* device_id, int32_t device_id_length, lb::DataCallback on_data, lb::StoppedCallback on_stopped, int64_t context,
-    int64_t* out_handle, lb::VnLoopbackFormat* out_format, int32_t* out_hresult) noexcept {
-    if (!on_data || !out_handle || !out_format || !out_hresult || device_id_length < 0 || device_id_length > 1024 ||
+    int64_t* out_handle, lb::VnLoopbackFormat* out_format, int32_t* out_hresult, lb::LevelsCallback on_levels) noexcept {
+    if ((!on_data && !on_levels) || !out_handle || !out_format || !out_hresult || device_id_length < 0 || device_id_length > 1024 ||
         (device_id_length > 0 && !device_id))
         return VN_ERR_INVALID_ARG;
     *out_handle = 0;
@@ -192,7 +211,7 @@ VN_EXPORT int32_t __stdcall vn_loopback_start(
     try {
         lb::EnsureMta();
         auto capture = std::make_unique<lb::Capture>();
-        if (!capture->stop_event) return VN_ERR_FAIL;
+        if (!capture->stop_event || !capture->data_event) return VN_ERR_FAIL;
         lb::ComPtr<IMMDeviceEnumerator> enumerator;
         HRESULT hr = CoCreateInstance(__uuidof(MMDeviceEnumerator), nullptr, CLSCTX_ALL, IID_PPV_ARGS(enumerator.Put()));
         if (SUCCEEDED(hr))
@@ -209,7 +228,22 @@ VN_EXPORT int32_t __stdcall vn_loopback_start(
             capture->format.is_float = (mix->wFormatTag == WAVE_FORMAT_IEEE_FLOAT ||
                 (mix->wFormatTag == WAVE_FORMAT_EXTENSIBLE &&
                  reinterpret_cast<WAVEFORMATEXTENSIBLE*>(mix)->SubFormat == KSDATAFORMAT_SUBTYPE_IEEE_FLOAT)) ? 1 : 0;
-            hr = capture->client.ptr->Initialize(AUDCLNT_SHAREMODE_SHARED, AUDCLNT_STREAMFLAGS_LOOPBACK, lb::kBufferDuration, 0, mix, nullptr);
+            const DWORD flags = AUDCLNT_STREAMFLAGS_LOOPBACK | AUDCLNT_STREAMFLAGS_EVENTCALLBACK;
+            lb::ComPtr<IAudioClient3> low_latency;
+            hr = capture->client.ptr->QueryInterface(IID_PPV_ARGS(low_latency.Put()));
+            if (SUCCEEDED(hr)) {
+                UINT32 default_period = 0, fundamental = 0, minimum = 0, maximum = 0;
+                hr = low_latency.ptr->GetSharedModeEnginePeriod(mix, &default_period, &fundamental, &minimum, &maximum);
+                if (SUCCEEDED(hr)) hr = low_latency.ptr->InitializeSharedAudioStream(flags, minimum, mix, nullptr);
+            }
+            if (FAILED(hr)) {
+                // A failed Initialize can leave the client unusable; use a fresh activation for fallback.
+                capture->client.ptr->Release(); capture->client.ptr = nullptr;
+                hr = capture->device.ptr->Activate(__uuidof(IAudioClient), CLSCTX_ALL, nullptr,
+                    reinterpret_cast<void**>(capture->client.Put()));
+                if (SUCCEEDED(hr)) hr = capture->client.ptr->Initialize(AUDCLNT_SHAREMODE_SHARED, flags, lb::kBufferDuration, 0, mix, nullptr);
+            }
+            if (SUCCEEDED(hr)) hr = capture->client.ptr->SetEventHandle(capture->data_event);
         }
         if (mix) CoTaskMemFree(mix);
         if (SUCCEEDED(hr)) hr = capture->client.ptr->GetService(__uuidof(IAudioCaptureClient), reinterpret_cast<void**>(capture->capture.Put()));
@@ -220,6 +254,7 @@ VN_EXPORT int32_t __stdcall vn_loopback_start(
 
         capture->device_id = lb::DeviceId(capture->device.ptr);
         capture->on_data = on_data;
+        capture->on_levels = on_levels;
         capture->on_stopped = on_stopped;
         capture->context = context;
         *out_format = capture->format;
@@ -240,6 +275,18 @@ VN_EXPORT int32_t __stdcall vn_loopback_start(
     } catch (...) {
         return VN_ERR_FAIL;
     }
+}
+
+VN_EXPORT int32_t __stdcall vn_loopback_start(
+    const char16_t* device_id, int32_t length, lb::DataCallback data, lb::StoppedCallback stopped, int64_t context,
+    int64_t* handle, lb::VnLoopbackFormat* format, int32_t* hresult) noexcept {
+    return StartCapture(device_id, length, data, stopped, context, handle, format, hresult, nullptr);
+}
+
+VN_EXPORT int32_t __stdcall vn_loopback_start_levels(
+    const char16_t* device_id, int32_t length, lb::LevelsCallback levels, lb::StoppedCallback stopped, int64_t context,
+    int64_t* handle, lb::VnLoopbackFormat* format, int32_t* hresult) noexcept {
+    return StartCapture(device_id, length, nullptr, stopped, context, handle, format, hresult, levels);
 }
 
 // Stops and releases the capture. Safe from any thread, including callbacks.

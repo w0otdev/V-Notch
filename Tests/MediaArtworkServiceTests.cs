@@ -138,16 +138,16 @@ public sealed class MediaArtworkServiceTests : IDisposable
 
         Assert.NotNull(bitmap);
         Assert.True(bitmap.IsFrozen);
-        Assert.Equal(1024, bitmap.DecodePixelWidth);
-        Assert.Equal(1024, bitmap.PixelWidth);
-        Assert.Equal(768, bitmap.PixelHeight); // 1600x1200 scaled to 1024 width -> 768 height
+        Assert.Equal(512, bitmap.DecodePixelWidth);
+        Assert.Equal(512, bitmap.PixelWidth);
+        Assert.Equal(384, bitmap.PixelHeight);
     }
 
     [Theory]
-    [InlineData(1024, 8192, 128, 1024)]
-    [InlineData(800, 7500, 109, 1024)]
-    [InlineData(8192, 1024, 1024, 128)]
-    [InlineData(800, 900, 800, 900)]
+    [InlineData(1024, 8192, 64, 512)]
+    [InlineData(800, 7500, 54, 512)]
+    [InlineData(8192, 1024, 512, 64)]
+    [InlineData(800, 900, 455, 512)]
     public async Task DownloadImageAsync_BoundsLongestDecodedEdge(int width, int height, int expectedWidth, int expectedHeight)
     {
         byte[] bytes = CreateTestPngBytes(width, height);

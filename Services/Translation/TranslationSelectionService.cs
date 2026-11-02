@@ -44,6 +44,7 @@ internal sealed partial class TranslationSelectionService : IDisposable
     private Win32Interop.WinEventHook? _foregroundHook, _focusHook, _selectionHook;
     private IntPtr _lastExternalWindow;
     private readonly Func<IntPtr, bool>? _isBlocked;
+    private volatile bool _automaticWatching;
     internal event Action<TranslationSelection?>? SelectionChanged;
     internal event Action<TranslationSelection?>? ManualTranslationRequested;
     internal event Action<IntPtr, long>? ManualSelectionUnavailable;
@@ -107,9 +108,10 @@ internal sealed partial class TranslationSelectionService : IDisposable
         if (isCurrent()) unavailable?.Invoke();
     }
 
-    internal TranslationSelectionService(Func<IntPtr, bool>? isBlocked = null)
+    internal TranslationSelectionService(Func<IntPtr, bool>? isBlocked = null, bool automaticWatching = true)
     {
         _isBlocked = isBlocked;
+        _automaticWatching = automaticWatching;
         _selectionChanged = (sender, _) => { _eventElement = sender as AutomationElement; QueueCapture(); };
         _foregroundChanged = (_, hwnd) =>
         {
@@ -146,9 +148,7 @@ internal sealed partial class TranslationSelectionService : IDisposable
             _foregroundHook = new Win32Interop.WinEventHook(3, 3, _foregroundChanged);
             _focusHook = new Win32Interop.WinEventHook(0x8005, 0x8005, _objectEventChanged);
             _selectionHook = new Win32Interop.WinEventHook(0x8014, 0x8014, _objectEventChanged);
-            _foregroundHook.Install();
-            _focusHook.Install();
-            _selectionHook.Install();
+            UpdateAutomaticHooks();
             if (_disposed) return;
             _ready.TrySetResult(dispatcher);
             QueueCapture();
@@ -174,14 +174,43 @@ internal sealed partial class TranslationSelectionService : IDisposable
 
     private void QueueCapture()
     {
+        if (!_automaticWatching) return;
         var dispatcher = Volatile.Read(ref _dispatcher);
         if (_disposed || dispatcher == null || dispatcher.HasShutdownStarted || Interlocked.Exchange(ref _queued, 1) != 0) return;
         dispatcher.BeginInvoke(() =>
         {
             Interlocked.Exchange(ref _queued, 0);
-            if (_disposed) return;
+            if (_disposed || !_automaticWatching) return;
             _debounce!.Stop(); _debounce.Start();
         }, DispatcherPriority.Background);
+    }
+
+    internal void SetAutomaticWatching(bool enabled)
+    {
+        if (_automaticWatching == enabled) return;
+        _automaticWatching = enabled;
+        var dispatcher = Volatile.Read(ref _dispatcher);
+        if (!_disposed && dispatcher != null && !dispatcher.HasShutdownStarted)
+            dispatcher.BeginInvoke(UpdateAutomaticHooks, DispatcherPriority.Background);
+    }
+
+    private void UpdateAutomaticHooks()
+    {
+        if (_disposed) return;
+        // Manual shortcuts retain their worker, but install no global UIA / WinEvent
+        // watchers and perform no background selection scans in manual mode.
+        _foregroundHook?.Dispose(); _focusHook?.Dispose(); _selectionHook?.Dispose();
+        if (_automaticWatching)
+        {
+            _foregroundHook?.Install(); _focusHook?.Install(); _selectionHook?.Install();
+            QueueCapture();
+        }
+        else
+        {
+            _debounce?.Stop();
+            DetachSelection();
+            _element = null; _range = null; _snapshot = null;
+        }
     }
 
     private TranslationSelection? _lastValidSnapshot;
@@ -198,7 +227,8 @@ internal sealed partial class TranslationSelectionService : IDisposable
                 DetachSelection(); _lastValidSnapshot = null; Publish(null, !manual); return;
             }
             _lastExternalWindow = window;
-            if ((Win32Interop.GetAsyncKeyState(1) & 0x8000) != 0) { _debounce!.Start(); return; }
+            if (!manual && !_automaticWatching) return;
+            if ((Win32Interop.GetAsyncKeyState(1) & 0x8000) != 0) { if (_automaticWatching) _debounce!.Start(); return; }
             if (window != _watchedWindow)
             {
                 DetachSelection();
@@ -206,7 +236,7 @@ internal sealed partial class TranslationSelectionService : IDisposable
                 Publish(null, !manual);
                 _root = AutomationElement.FromHandle(window);
                 _watchedWindow = window;
-                try { Automation.AddAutomationEventHandler(TextPattern.TextSelectionChangedEvent, _root, TreeScope.Subtree, _selectionChanged); }
+                try { if (_automaticWatching) Automation.AddAutomationEventHandler(TextPattern.TextSelectionChangedEvent, _root, TreeScope.Subtree, _selectionChanged); }
                 catch (Exception ex) when (ex is InvalidOperationException or COMException or ElementNotAvailableException) { /* Selection worker shutting down or UIA provider unavailable. */ }
             }
             var result = SelectionTextReader.Read(window, _eventElement, manual, out bool protectedInput, _element, _root);

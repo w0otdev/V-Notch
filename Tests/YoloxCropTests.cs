@@ -33,6 +33,20 @@ public sealed class YoloxCropTests
         Assert.Empty(SmartThumbnailCropService.ParseYoloxOutput(output, 832, 468, .5f));
     }
 
+    [Fact]
+    public void ClassReductionRejectsInvalidScoresAndKeepsTheEarliestClassOnTies()
+    {
+        var output = Prediction(1050, .9f, 0, .9f, MathF.Log(8), MathF.Log(12));
+        var row = output.Buffer.Span.Slice(1050 * 85, 85);
+        row[5 + 79] = .9f;
+        row[5 + 8] = float.NaN;
+        row[5 + 32] = 1.1f;
+        row[5 + 63] = float.PositiveInfinity;
+        Assert.Equal(0, Assert.Single(SmartThumbnailCropService.ParseYoloxOutput(output, 832, 468, .5f)).ClassId);
+        row[5 + 79] = .99f;
+        Assert.Equal(79, Assert.Single(SmartThumbnailCropService.ParseYoloxOutput(output, 832, 468, .5f)).ClassId);
+    }
+
     [Theory]
     [InlineData(float.NaN)]
     [InlineData(float.PositiveInfinity)]

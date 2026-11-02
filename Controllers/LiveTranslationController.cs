@@ -97,14 +97,14 @@ internal sealed class LiveTranslationController : IDisposable
         if (_settings.EnableLiveTranslation)
         {
             _idle.Start();
-            if (!_injected) _ = PrepareModelAsync();
             if (_selectionService == null)
             {
-                _selectionService = new(_appPolicy.IsBlocked);
+                _selectionService = new(_appPolicy.IsBlocked, _settings.AutoLiveTranslation);
                 _selectionService.SelectionChanged += SelectionChanged;
                 _selectionService.ManualTranslationRequested += ManualTranslationRequested;
                 _selectionService.ManualSelectionUnavailable += ManualSelectionUnavailable;
             }
+            _selectionService.SetAutomaticWatching(_settings.AutoLiveTranslation);
             _shiftShortcut ??= new TranslationShiftShortcut(_selectionService.RequestManualTranslation, _appPolicy.IsBlocked);
         }
         else
@@ -135,8 +135,8 @@ internal sealed class LiveTranslationController : IDisposable
     {
         _dispatcher.VerifyAccess();
         if (_disposed || !_store.IsInstalled) return Task.CompletedTask;
-        // Startup also prepares manual translation when selection watching is off.
-        // Share an in-flight load with settings changes and retain idle eviction.
+        // Prepare only for an explicit translation request. Share an in-flight load
+        // across requests and retain idle eviction.
         _idle.Start();
         if (_preparation?.IsCompleted != false)
             _preparation = PrepareInBackgroundAsync(_service);

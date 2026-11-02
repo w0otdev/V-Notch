@@ -144,9 +144,17 @@ internal sealed partial class SpotlightSearchService
             return Array.Empty<SpotlightSearchItem>();
 
         var tasks = new Task<IReadOnlyList<SpotlightSearchItem>>[selectedProviders.Length];
+        int everythingIndex = Array.FindIndex(selectedProviders, provider => provider is EverythingSearchProvider);
         for (int i = 0; i < selectedProviders.Length; i++)
         {
+            if (selectedProviders[i] is LocalFileSearchProvider) continue;
             tasks[i] = SearchProviderAsync(selectedProviders[i], query, MaxResults, cancellationToken);
+        }
+        for (int i = 0; i < selectedProviders.Length; i++)
+        {
+            if (selectedProviders[i] is LocalFileSearchProvider)
+                tasks[i] = SearchLocalFallbackAsync(selectedProviders[i],
+                    everythingIndex >= 0 ? tasks[everythingIndex] : null, query, cancellationToken);
         }
 
         var results = await Task.WhenAll(tasks).ConfigureAwait(false);
@@ -165,6 +173,20 @@ internal sealed partial class SpotlightSearchService
             normalizedForUsage);
 
         return Merge(groups, limit);
+    }
+
+    private async Task<IReadOnlyList<SpotlightSearchItem>> SearchLocalFallbackAsync(
+        ISpotlightProvider local, Task<IReadOnlyList<SpotlightSearchItem>>? indexedQuery,
+        string query, CancellationToken cancellationToken)
+    {
+        // A successful indexed query with zero matches is still authoritative.
+        // Await this query's IPC result so an unavailable / timed-out index keeps
+        // the disk fallback, including on the first search after startup.
+        if (indexedQuery != null) await indexedQuery.ConfigureAwait(false);
+        cancellationToken.ThrowIfCancellationRequested();
+        if (_everythingSearchProvider?.IsAvailable == true)
+            return Array.Empty<SpotlightSearchItem>();
+        return await SearchProviderAsync(local, query, MaxResults, cancellationToken).ConfigureAwait(false);
     }
 
     private IReadOnlyList<SpotlightSearchItem> ApplyUsageBoost(

@@ -427,15 +427,16 @@ public partial class LiquidGlassConfig
     public double GlowEdge0 { get; set; } = 0.441;
     public double GlowEdge1 { get; set; } = -0.474;
 
-    // Legacy compatibility only. The magnifier filter now excludes the notch from
-    // its private backdrop source without hiding the visible overlay in screenshots.
+    // Legacy CPU capture preference. GPU desktop capture always excludes the
+    // glass window to prevent recursive feedback.
     public bool HideFromScreenCapture { get; set; } = false;
 
     // New installations use the native-resolution GPU lens. Existing settings keep
     // their serialized value, including an explicit false from the old opt-in UI.
     public bool UseGpuRefraction { get; set; } = true;
 
-    // Dedicated high-performance GPU (GPU 0 / dGPU) mode for Liquid Glass, paced strictly to TargetFps.
+    // Uncapped-by-display pacing to TargetFps. Shared capture/render textures use
+    // the adapter driving the window's monitor, including in this mode.
     public bool UseUltimateGpu { get; set; } = false;
 
     public LiquidGlassConfig Clone() => (LiquidGlassConfig)MemberwiseClone();

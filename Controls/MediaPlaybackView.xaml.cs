@@ -544,7 +544,9 @@ public sealed partial class MediaPlaybackView : UserControl, IDisposable
     {
         if (e is RenderingEventArgs frame)
         {
-            if (_lastProgressRenderTime == frame.RenderingTime) return;
+            if (_lastProgressRenderTime != TimeSpan.MinValue &&
+                (frame.RenderingTime - _lastProgressRenderTime).TotalMilliseconds + 0.1 <
+                1000d / Math.Max(1, AnimationConfig.TargetFps)) return;
             _lastProgressRenderTime = frame.RenderingTime;
         }
         if (IsVisible && _currentMediaInfo != null)

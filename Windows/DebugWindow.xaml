@@ -673,10 +673,15 @@
                         <ColumnDefinition Width="*"/>
                         <ColumnDefinition Width="Auto"/>
                     </Grid.ColumnDefinitions>
-                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                        <TextBlock x:Name="FpsSummaryText" Text="-- FPS" Foreground="#E0E0E6" FontSize="11.5" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                    <StackPanel VerticalAlignment="Center">
+                      <StackPanel Orientation="Horizontal">
+                        <TextBlock x:Name="FpsSummaryText" Text="UI -- FPS" Foreground="#E0E0E6" FontSize="11.5" FontWeight="SemiBold" VerticalAlignment="Center"
+                                   ToolTip="WPF rendering callbacks across this dispatcher; not a measurement of frames displayed by DWM."/>
                         <TextBlock x:Name="HzSummaryText" Text=" (-- Hz)" Foreground="#8A8A94" FontSize="11" VerticalAlignment="Center" Margin="4,0,0,0"/>
                         <TextBlock x:Name="FrameTimeSummaryText" Text=" • 0.0ms" Foreground="#64D2FF" FontSize="10.5" VerticalAlignment="Center" Margin="4,0,0,0"/>
+                      </StackPanel>
+                      <TextBlock x:Name="GlassSummaryText" Visibility="Collapsed" Foreground="#64D2FF" FontSize="10.5" Margin="0,3,0,0"
+                                 ToolTip="Completed glass frames submitted to WPF. Submit time includes GPU rendering and the UI queue; DWM display latency is excluded. Static backdrops may be idle."/>
                     </StackPanel>
                     <Button Grid.Column="1" x:Name="ToggleServiceLogsBtn"
                             Click="ToggleServiceLogsBtn_Click"

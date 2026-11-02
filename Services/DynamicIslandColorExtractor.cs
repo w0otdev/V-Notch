@@ -238,11 +238,7 @@ internal static partial class DynamicIslandColorExtractor
 
         try
         {
-            var formattedBitmap = ArtworkAnalysisSource.GetBgra32(bitmap);
-
-            double scaleX = (double)analysisSize / formattedBitmap.PixelWidth;
-            double scaleY = (double)analysisSize / formattedBitmap.PixelHeight;
-            var small = new TransformedBitmap(formattedBitmap, new ScaleTransform(scaleX, scaleY));
+            var small = ArtworkAnalysisSource.GetSample(bitmap, analysisSize, analysisSize);
 
             int width = small.PixelWidth;
             int height = small.PixelHeight;

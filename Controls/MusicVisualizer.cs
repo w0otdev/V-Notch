@@ -214,11 +214,12 @@ namespace VNotch.Controls
 
         private void OnRendering(object? sender, EventArgs e)
         {
-            EnsureAudioCaptureStarted();
-
             double totalSec = _stopwatch.Elapsed.TotalSeconds;
             double dt = totalSec - _lastTickSeconds;
+            if (dt * 1000 + 0.1 < 1000d / Math.Max(1, VNotch.Services.AnimationConfig.TargetFps)) return;
             _lastTickSeconds = totalSec;
+
+            EnsureAudioCaptureStarted();
 
             if (dt <= 0) return;
             // A delayed UI frame must not advance the morph by a large jump.
@@ -742,8 +743,8 @@ namespace VNotch.Controls
                 {
                     ResetAudioState();
                     var receiver = new NativeCaptureReceiver();
-                    var capture = VNotch.Services.NativeLoopbackCapture.Start(
-                        _audioDeviceId, receiver.OnData, receiver.OnStopped, out int hresult);
+                    var capture = VNotch.Services.NativeLoopbackCapture.StartAnalyzed(
+                        _audioDeviceId, receiver.OnLevels, receiver.OnStopped, out int hresult);
                     if (capture == null)
                     {
                         Debug.WriteLine($"Failed to initialize audio capture: 0x{hresult:X8}");
@@ -770,11 +771,17 @@ namespace VNotch.Controls
         {
             internal VNotch.Services.NativeLoopbackCapture? Capture;
 
-            internal void OnData(byte[] buffer, int bytes)
+            internal void OnLevels(ReadOnlySpan<float> levels, float beat)
             {
                 var capture = _capture;
                 if (capture == null || !ReferenceEquals(capture, Capture)) return;
-                ProcessAudioBuffer(buffer, bytes, capture.Channels, capture.BitsPerSample, capture.IsFloat);
+                lock (_outputLock)
+                {
+                    if (!ReferenceEquals(_capture, Capture)) return;
+                    levels.CopyTo(_publishedTargets);
+                    _publishedBeatAccent = beat;
+                    _publishedFrameTicks = DateTime.UtcNow.Ticks;
+                }
             }
 
             internal void OnStopped() => OnCaptureStopped(Capture);

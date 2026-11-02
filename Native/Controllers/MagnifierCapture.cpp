@@ -102,6 +102,7 @@ public:
 
     // ---- state shared with the pump thread ----
     HANDLE thread = nullptr;
+    SRWLOCK stop_lock = SRWLOCK_INIT;
     HANDLE init_done = nullptr;
     HANDLE request = nullptr;
     HANDLE frame_received = nullptr;
@@ -112,6 +113,7 @@ public:
     std::atomic<int32_t> init_stage{kInitOk};
     std::atomic<int64_t> source_fail_count{0};
     std::atomic<int64_t> callback_enter_count{0};
+    std::atomic<bool> teardown_queued{false};
 
     HWND host = nullptr;
     HWND mag = nullptr;
@@ -123,6 +125,7 @@ public:
     int32_t applied_filter_version = 0;
 
     CaptureRequest active;
+    CaptureRequest requested;
 
     SRWLOCK frame_lock = SRWLOCK_INIT;
     std::vector<uint8_t> completed;
@@ -224,6 +227,11 @@ public:
     }
 
     bool HasUsableFrameLocked(int32_t x, int32_t y, int32_t width, int32_t height) const noexcept {
+        const int vx = GetSystemMetrics(SM_XVIRTUALSCREEN), vy = GetSystemMetrics(SM_YVIRTUALSCREEN);
+        const int vr = vx + GetSystemMetrics(SM_CXVIRTUALSCREEN), vb = vy + GetSystemMetrics(SM_CYVIRTUALSCREEN);
+        if (std::max(x, vx) < completed_x || std::max(y, vy) < completed_y ||
+            std::min(x + width, vr) > completed_x + completed_width ||
+            std::min(y + height, vb) > completed_y + completed_height) return false;
         return has_completed && completed_filter_version == filter_version.load() &&
                static_cast<int64_t>(GetTickCount64()) - completed_tick <= kFrameFreshMs &&
                !IsUninitializedZeroCrop(x, y, width, height);
@@ -345,8 +353,8 @@ public:
         int screen_h = GetSystemMetrics(SM_CYVIRTUALSCREEN);
         if (screen_w <= 0) screen_w = GetSystemMetrics(SM_CXSCREEN);
         if (screen_h <= 0) screen_h = GetSystemMetrics(SM_CYSCREEN);
-        int mag_w = screen_w;
-        int mag_h = screen_h;
+        int mag_w = 1;
+        int mag_h = 1;
 
         host = CreateWindowExW(WS_EX_LAYERED | WS_EX_TRANSPARENT | WS_EX_TOOLWINDOW, kHostClass, L"VNotchMagHost", WS_POPUP,
                                screen_x, screen_y, mag_w, mag_h, nullptr, nullptr, instance, nullptr);
@@ -393,11 +401,17 @@ public:
                     host_shown = true;
                     ApplyFiltersIfDirty();
 
-                    // A fixed source gives callbacks an unambiguous physical origin.
-                    const CaptureRequest req{GetSystemMetrics(SM_XVIRTUALSCREEN), GetSystemMetrics(SM_YVIRTUALSCREEN),
-                                             GetSystemMetrics(SM_CXVIRTUALSCREEN), GetSystemMetrics(SM_CYVIRTUALSCREEN)};
+                    CaptureRequest req;
+                    { ScopedLock guard(&frame_lock); req = requested; }
                     if (req.width > 0 && req.height > 0) {
+                        const bool changed = memcmp(&active, &req, sizeof(req)) != 0;
+                        if (changed) {
+                            ScopedLock guard(&frame_lock);
+                            has_completed = false;
+                        }
                         active = req;
+                        SetWindowPos(host, nullptr, req.x, req.y, req.width, req.height, SWP_NOACTIVATE | SWP_NOZORDER);
+                        SetWindowPos(mag, nullptr, 0, 0, req.width, req.height, SWP_NOACTIVATE | SWP_NOZORDER);
                         if (req.width != mag_w || req.height != mag_h) {
                             mag_w = req.width;
                             mag_h = req.height;
@@ -457,6 +471,7 @@ public:
 
     // True when the pump thread is gone and every native handle can be released.
     bool Stop() noexcept {
+        ScopedLock stop_guard(&stop_lock);
         running = false;
         ready = false;
         SetEvent(request);
@@ -469,6 +484,13 @@ public:
         ScopedLock guard(&frame_lock);
         ClearFrameLocked();
         return true;
+    }
+
+    HANDLE DuplicateThreadForCleanup() noexcept {
+        ScopedLock guard(&stop_lock);
+        HANDLE duplicate = nullptr;
+        if (thread) DuplicateHandle(GetCurrentProcess(), thread, GetCurrentProcess(), &duplicate, SYNCHRONIZE, FALSE, 0);
+        return duplicate;
     }
 };
 
@@ -585,7 +607,29 @@ VN_EXPORT int32_t __stdcall vn_magcap_destroy(int32_t handle, uint8_t* out_relea
         *out_released = 1;
         return VN_OK;
     }
-    if (!source->Stop()) return VN_OK;
+    if (!source->Stop()) {
+        // The pump may be inside DWM when the bounded UI-side stop expires.
+        // Keep a lease until it exits, then retire it without leaking the buffers.
+        if (!source->teardown_queued.exchange(true)) {
+            struct Reap {
+                int32_t handle; mc::SourceLease source; HANDLE waitThread;
+                ~Reap() { if (waitThread) CloseHandle(waitThread); }
+            };
+            HANDLE waitThread = source->DuplicateThreadForCleanup();
+            if (!waitThread) { source->teardown_queued = false; return VN_OK; }
+            auto* reap = new (std::nothrow) Reap{ handle, std::move(source), waitThread };
+            if (!reap) { source->teardown_queued = false; CloseHandle(waitThread); return VN_OK; }
+            if (reap && QueueUserWorkItem([](void* parameter) -> DWORD {
+                std::unique_ptr<Reap> item(static_cast<Reap*>(parameter));
+                WaitForSingleObject(item->waitThread, INFINITE);
+                uint8_t released = 0;
+                vn_magcap_destroy(item->handle, &released);
+                return 0;
+            }, reap, WT_EXECUTELONGFUNCTION)) return VN_OK;
+            if (reap) { reap->source->teardown_queued = false; delete reap; }
+        }
+        return VN_OK;
+    }
     source.Reset();
     std::unique_ptr<mc::Source> doomed;
     {
@@ -649,6 +693,10 @@ VN_EXPORT int32_t __stdcall vn_magcap_capture_into(
     {
         mc::ScopedLock guard(&source->frame_lock);
         previous = source->frame_counter;
+        const int vx = GetSystemMetrics(SM_XVIRTUALSCREEN), vy = GetSystemMetrics(SM_YVIRTUALSCREEN);
+        const int vr = vx + GetSystemMetrics(SM_CXVIRTUALSCREEN), vb = vy + GetSystemMetrics(SM_CYVIRTUALSCREEN);
+        int left = std::clamp(x, vx, vr - 1), top = std::clamp(y, vy, vb - 1);
+        source->requested = { left, top, std::max(1, std::min(x + width, vr) - left), std::max(1, std::min(y + height, vb) - top) };
     }
     ResetEvent(source->frame_received);
     SetEvent(source->request);

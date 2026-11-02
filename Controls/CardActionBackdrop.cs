@@ -25,17 +25,27 @@ public sealed class CardActionBackdrop : FrameworkElement
         IsHitTestVisible = false;
         Loaded += OnLoaded;
         Unloaded += OnUnloaded;
+        IsVisibleChanged += (_, _) => UpdateSubscription();
     }
 
     private void OnLoaded(object sender, RoutedEventArgs e)
     {
-        LayoutUpdated -= OnLayoutUpdated;
-        LayoutUpdated += OnLayoutUpdated;
+        UpdateSubscription();
     }
 
     private void OnUnloaded(object sender, RoutedEventArgs e)
     {
         LayoutUpdated -= OnLayoutUpdated;
+        _brush = null;
+        _brushSource = null;
+        _sample = Rect.Empty;
+    }
+
+    private void UpdateSubscription()
+    {
+        LayoutUpdated -= OnLayoutUpdated;
+        if (IsLoaded && IsVisible) LayoutUpdated += OnLayoutUpdated;
+        else { _brush = null; _brushSource = null; _sample = Rect.Empty; }
     }
 
     private void OnLayoutUpdated(object? sender, System.EventArgs e)

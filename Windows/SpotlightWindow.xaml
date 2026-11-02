@@ -403,7 +403,7 @@
             <!-- Material bounds follow shell bounds during morphs; desktop texture
                  contributes no desired size so content min-size is not inherited. -->
             <Canvas IsHitTestVisible="False">
-            <Grid x:Name="GlassMaterialClipHost"
+            <controls:GlassClipGrid x:Name="GlassMaterialClipHost"
                   Width="{Binding ActualWidth, ElementName=Shell}"
                   Height="{Binding ActualHeight, ElementName=Shell}"
                   IsHitTestVisible="False"
@@ -575,7 +575,7 @@
                         </RadialGradientBrush>
                     </Border.BorderBrush>
                 </Border>
-            </Grid>
+            </controls:GlassClipGrid>
 
             </Canvas>
 

@@ -11,6 +11,7 @@ namespace VNotch.Services;
 internal sealed partial class ObsRecordingProbe
 {
     private readonly Dictionary<string, LogState> _logs = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<(int Pid, long Start), string?> _executables = new();
 
     internal bool IsRecording(PrivacyProcessSnapshot snapshot)
     {
@@ -27,7 +28,13 @@ internal sealed partial class ObsRecordingProbe
                     {
                         Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "obs-studio", "logs")
                     };
-                    string? executable = process.MainModule?.FileName;
+                    var identity = (process.Id, process.StartTime.ToFileTimeUtc());
+                    if (!_executables.TryGetValue(identity, out string? executable))
+                    {
+                        executable = process.MainModule?.FileName;
+                        if (_executables.Count >= 16) _executables.Clear();
+                        _executables[identity] = executable;
+                    }
                     if (executable != null)
                     {
                         var root = Directory.GetParent(executable)?.Parent?.Parent;
@@ -39,7 +46,7 @@ internal sealed partial class ObsRecordingProbe
                         foreach (var file in new DirectoryInfo(folder).EnumerateFiles("*.txt")
                             .OrderByDescending(f => f.LastWriteTimeUtc).Take(4))
                         {
-                            if (!RecordingFileOwnership.IsFileOwnedBy(file.FullName, process)) continue;
+                            if (!RecordingFileOwnership.IsFileOwnedByCached(file.FullName, process, positiveTtlMs: 5000, negativeTtlMs: 10000)) continue;
                             string key = $"{process.Id}:{process.StartTime.ToFileTimeUtc()}:{file.FullName}";
                             seen.Add(key);
                             if (!_logs.TryGetValue(key, out var state)) _logs[key] = state = new LogState();
@@ -92,16 +99,15 @@ internal sealed partial class ObsRecordingProbe
             }
             if (length == _position) return;
             stream.Position = _position;
-            int toRead = (int)(length - _position);
+            int toRead = (int)Math.Min(16 * 1024, length - _position);
             byte[] bytes = ArrayPool<byte>.Shared.Rent(toRead);
             char[] chars = ArrayPool<char>.Shared.Rent(Encoding.UTF8.GetMaxCharCount(toRead) + 4);
             try
             {
-                int read = 0, count;
-                while (read < toRead && (count = stream.Read(bytes, read, toRead - read)) > 0) read += count;
-                _position += read;
-                if (read > 0)
+                int read;
+                while (_position < length && (read = stream.Read(bytes, 0, (int)Math.Min(toRead, length - _position))) > 0)
                 {
+                    _position += read;
                     int charCount = _decoder.GetChars(bytes, 0, read, chars, 0, flush: false);
                     if (charCount > 0)
                     {

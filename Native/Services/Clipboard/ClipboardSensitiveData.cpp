@@ -1,4 +1,5 @@
 #include "vnotch_common.h"
+#include "../../vnotch_keyword_trie.h"
 
 using namespace vnotch;
 
@@ -120,14 +121,8 @@ namespace vnotch::services
             static constexpr std::u16string_view SECRET_SUFFIXES[] = {
                 u"key", u"token", u"value", u"id", u"code", u"string", u"hash"
             };
-            for (std::u16string_view suf : SECRET_SUFFIXES)
-            {
-                if (equals_ignore_case(rem, suf))
-                {
-                    return true;
-                }
-            }
-            return false;
+            static constexpr auto suffixes = vnotch::MakeKeywordTrie(SECRET_SUFFIXES);
+            return suffixes.Contains(rem);
         }
 
         static inline bool is_sensitive_label_tail(std::u16string_view tail) noexcept
@@ -136,13 +131,8 @@ namespace vnotch::services
                 u"password", u"passwd", u"pwd", u"passphrase", u"passcode", u"pass", u"pin",
                 u"apikey", u"token", u"otp", u"totp", u"2fa"
             };
-            for (std::u16string_view exact : EXACT_LABELS)
-            {
-                if (equals_ignore_case(tail, exact))
-                {
-                    return true;
-                }
-            }
+            static constexpr auto labels = vnotch::MakeKeywordTrie(EXACT_LABELS);
+            if (labels.Contains(tail)) return true;
             if (starts_with_ignore_case(tail, u"secret") && is_secret_suffix(tail.substr(6)))
             {
                 return true;

@@ -199,7 +199,7 @@ internal static partial class WhiteNoiseService
     internal static void Pause()
     {
         if (Interlocked.Exchange(ref _playingKind, NoneKind) < 0) return;
-        vn_noise_stop();
+        vn_noise_stop_fade(0.25f);
         StateChanged?.Invoke();
     }
 

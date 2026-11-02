@@ -128,13 +128,6 @@ public partial class SpotifyLoginWindow : Window
             await SpotifyWebView.EnsureCoreWebView2Async(environment);
 
             if (!NetworkPrivacy.Current.IsAllowed(NetworkFeature.Canvas)) { Close(); return; }
-            SpotifyWebView.CoreWebView2.AddWebResourceRequestedFilter("*", CoreWebView2WebResourceContext.All);
-            SpotifyWebView.CoreWebView2.WebResourceRequested += (_, args) =>
-            {
-                if (!NetworkPrivacy.Current.IsAllowed(NetworkFeature.Canvas))
-                    args.Response = environment.CreateWebResourceResponse(null, 403, "Disabled by privacy settings", "");
-            };
-
             SpotifyWebView.CoreWebView2.Settings.AreDevToolsEnabled = false;
             SpotifyWebView.CoreWebView2.Settings.AreDefaultContextMenusEnabled = false;
             SpotifyWebView.CoreWebView2.Settings.AreHostObjectsAllowed = false;

@@ -55,6 +55,17 @@ public sealed partial class WindowTitleScanner : IWindowTitleScanner, IDisposabl
     private char[] _titleBuffer = new char[256];
     private List<string> _cachedWindowTitles = new();
     private DateTime _lastWindowEnumTime = DateTime.MinValue;
+    private bool _titleNotificationsActive;
+
+    internal void SetTitleNotificationsActive(bool active)
+    {
+        lock (_cacheLock) { _titleNotificationsActive = active; _lastWindowEnumTime = DateTime.MinValue; }
+    }
+
+    internal void InvalidateWindowTitles()
+    {
+        lock (_cacheLock) _lastWindowEnumTime = DateTime.MinValue;
+    }
 
     public List<string> GetAllWindowTitles(bool isThrottled)
     {
@@ -62,7 +73,7 @@ public sealed partial class WindowTitleScanner : IWindowTitleScanner, IDisposabl
         {
             // Throttled players need fallback detection, but full desktop scans
             // should back off instead of increasing their polling frequency.
-            int cacheDurationMs = isThrottled ? 2000 : 700;
+            int cacheDurationMs = _titleNotificationsActive ? 30_000 : isThrottled ? 2000 : 700;
             if ((DateTime.UtcNow - _lastWindowEnumTime).TotalMilliseconds < cacheDurationMs)
             {
                 return new List<string>(_cachedWindowTitles);
