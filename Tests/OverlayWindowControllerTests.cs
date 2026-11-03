@@ -11,6 +11,54 @@ namespace VNotch.Tests;
 [Collection("Localization")]
 public class OverlayWindowControllerTests
 {
+    [Theory]
+    [InlineData(-1)]
+    [InlineData(double.NaN)]
+    [InlineData(double.PositiveInfinity)]
+    public void HeightResizeRejectsInvalidBoundsWithoutChangingState(double height) => SharedStaTestRunner.Run(() =>
+    {
+        var window = new BackgroundWindow();
+        var state = new NotchShellState { WindowHeight = 100 };
+        using var controller = new OverlayWindowController(window, state, () => true, () => false,
+            () => { }, () => { }, () => { }, () => { });
+        Assert.Throws<ArgumentOutOfRangeException>(() => controller.ResizeHeight(height));
+        Assert.Equal(100, state.WindowHeight);
+    });
+
+    [Fact]
+    public void HeightResizeUsesOneNativeSizeRequestAndSynchronizesWpfBounds() => SharedStaTestRunner.Run(() =>
+    {
+        var window = new BackgroundWindow { Width = 200, Height = 100, Left = -32000, Top = -32000 };
+        var state = new NotchShellState();
+        using var controller = new OverlayWindowController(window, state, () => true, () => false,
+            () => { }, () => { }, () => { }, () => { });
+        HwndSource? source = null;
+        int sizeRequests = 0;
+        IntPtr CountResize(IntPtr hwnd, int message, IntPtr wParam, IntPtr lParam, ref bool handled)
+        {
+            if (message == WM_WINDOWPOSCHANGING && lParam != IntPtr.Zero &&
+                (Marshal.PtrToStructure<WINDOWPOS>(lParam).flags & SWP_NOSIZE) == 0) sizeRequests++;
+            return IntPtr.Zero;
+        }
+        try
+        {
+            window.Show(); controller.Initialize();
+            Assert.True(GetWindowRect(state.Hwnd, out var initial));
+            state.FixedX = initial.Left; state.FixedY = initial.Top;
+            state.WindowWidth = initial.Right - initial.Left; state.WindowHeight = initial.Bottom - initial.Top;
+            state.HasFixedBounds = true;
+            source = HwndSource.FromHwnd(state.Hwnd)!;
+            source.AddHook(CountResize);
+            controller.ResizeHeight(160);
+            Assert.Equal(1, sizeRequests);
+            Assert.True(GetWindowRect(state.Hwnd, out var resized));
+            Assert.Equal(state.WindowHeight, resized.Bottom - resized.Top);
+            Assert.Equal(state.WindowWidth, resized.Right - resized.Left);
+            Assert.InRange(Math.Abs(window.Height * controller.DpiScale - state.WindowHeight), 0, 1);
+        }
+        finally { source?.RemoveHook(CountResize); window.Close(); }
+    });
+
     [Fact]
     public void PopupStaysAboveTheOverlayThroughActivationAndResize() => SharedStaTestRunner.Run(() =>
     {

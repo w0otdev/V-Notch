@@ -83,6 +83,8 @@ public sealed class OverlayWindowController : IDisposable
         double dpiScale = MonitorSelection.GetScale(screen);
         double widthDip = surfaceWidth + HorizontalPadding;
         double heightDip = expandedHeight + 80;
+        if (!double.IsFinite(widthDip) || widthDip <= 0) throw new ArgumentOutOfRangeException(nameof(surfaceWidth));
+        if (!double.IsFinite(heightDip) || heightDip <= 0) throw new ArgumentOutOfRangeException(nameof(expandedHeight));
         int screenLeft = screen.Bounds.Left;
         int screenWidth = screen.Bounds.Width;
 
@@ -94,8 +96,12 @@ public sealed class OverlayWindowController : IDisposable
         _state.WindowWidth = bounds.Width;
         _state.WindowHeight = bounds.Height;
         _state.HasFixedBounds = true;
-        _window.Width = widthDip;
-        _window.Height = heightDip;
+        // WM_SIZE synchronizes both WPF dimensions after the single native resize.
+        if (_state.Hwnd == IntPtr.Zero)
+        {
+            _window.Width = widthDip;
+            _window.Height = heightDip;
+        }
 
         // Decouple geometry from desktop anchor to avoid placement rejections
         // when Explorer rebuilds WorkerW/Progman windows during sign-in.
@@ -105,8 +111,9 @@ public sealed class OverlayWindowController : IDisposable
 
     public void ResizeHeight(double heightDip)
     {
-        _window.Height = heightDip;
+        if (!double.IsFinite(heightDip) || heightDip <= 0) throw new ArgumentOutOfRangeException(nameof(heightDip));
         _state.WindowHeight = (int)Math.Round(heightDip * GetDpiScale());
+        if (_state.Hwnd == IntPtr.Zero || !_state.HasFixedBounds) _window.Height = heightDip;
         ReassertBounds();
     }
 

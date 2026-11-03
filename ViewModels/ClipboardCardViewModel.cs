@@ -29,6 +29,8 @@ public sealed partial class ClipboardCardViewModel : ObservableObject
     private string? _size;
     internal int SlotIndex { get; set; } = -1;
     public ClipboardEntry Entry { get; private set; }
+    public ClipboardKind Kind => Entry.Kind;
+    public bool IsPinned => Entry.IsPinned;
 
     public void UpdateEntry(ClipboardEntry entry)
         => UpdatePreparedEntry(entry, null);

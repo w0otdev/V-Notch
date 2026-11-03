@@ -45,14 +45,14 @@ public sealed partial class ClipboardTray
     private double _categoryScrollTarget;
     private bool _categoryDragging;
     private bool _categoryScrollActive;
-    private long _categoryFrameTime;
+    private AnimationFrameClock _categoryFrameClock;
     private readonly TranslateTransform _categoryElasticTransform = new();
 
     private void StartCategoryScrollFrames()
     {
         if (_categoryScrollActive) return;
         _categoryScrollActive = true;
-        _categoryFrameTime = Stopwatch.GetTimestamp();
+        _categoryFrameClock.Reset(Stopwatch.GetTimestamp());
         CompositionTarget.Rendering += Category_ScrollFrame;
     }
 
@@ -120,10 +120,11 @@ public sealed partial class ClipboardTray
     private void Category_ScrollFrame(object? sender, EventArgs e)
     {
         if (_disposed || !IsLoaded || !IsVisible) { StopCategoryScrolling(); return; }
-        long now = Stopwatch.GetTimestamp();
-        if ((now - _categoryFrameTime) * 1000d / Stopwatch.Frequency + 0.1 < 1000d / Math.Max(1, AnimationConfig.TargetFps)) return;
-        double seconds = Math.Clamp((now - _categoryFrameTime) / (double)Stopwatch.Frequency, 0, 0.05);
-        _categoryFrameTime = now;
+        double seconds;
+        bool advance = e is RenderingEventArgs frame
+            ? _categoryFrameClock.TryAdvance(frame.RenderingTime, AnimationConfig.TargetFps, out seconds)
+            : _categoryFrameClock.TryAdvance(Stopwatch.GetTimestamp(), AnimationConfig.TargetFps, out seconds);
+        if (!advance) return;
         _categoryScrollTarget = Math.Clamp(_categoryScrollTarget, 0, CategoryScroll.ScrollableWidth);
         double current = CategoryScroll.HorizontalOffset;
         double remaining = _categoryScrollTarget - current;
@@ -237,7 +238,7 @@ public sealed partial class ClipboardTray
     private double _cardsScrollTarget;
     private double _cardsScrollPosition;
     private bool _cardsScrollActive;
-    private long _cardsFrameTime;
+    private AnimationFrameClock _cardsFrameClock;
     private ScrollViewer? _cardsFrameScroll;
 
     private void Cards_Wheel(object sender, MouseWheelEventArgs e)
@@ -281,7 +282,7 @@ public sealed partial class ClipboardTray
         if (_cardsScrollActive) return;
         _cardsScrollActive = true;
         _cardsFrameScroll = FindScrollViewer(Cards);
-        _cardsFrameTime = Stopwatch.GetTimestamp();
+        _cardsFrameClock.Reset(Stopwatch.GetTimestamp());
         CompositionTarget.Rendering += Cards_ScrollFrame;
     }
 
@@ -299,10 +300,11 @@ public sealed partial class ClipboardTray
         var scroll = _cardsFrameScroll;
         if (scroll == null) { StopCardsScrollFrames(); return; }
 
-        long now = Stopwatch.GetTimestamp();
-        if ((now - _cardsFrameTime) * 1000d / Stopwatch.Frequency + 0.1 < 1000d / Math.Max(1, AnimationConfig.TargetFps)) return;
-        double seconds = Math.Clamp((now - _cardsFrameTime) / (double)Stopwatch.Frequency, 0, 0.05);
-        _cardsFrameTime = now;
+        double seconds;
+        bool advance = e is RenderingEventArgs frame
+            ? _cardsFrameClock.TryAdvance(frame.RenderingTime, AnimationConfig.TargetFps, out seconds)
+            : _cardsFrameClock.TryAdvance(Stopwatch.GetTimestamp(), AnimationConfig.TargetFps, out seconds);
+        if (!advance) return;
 
         _cardsScrollTarget = Math.Clamp(_cardsScrollTarget, 0, scroll.ScrollableWidth);
         // Layout may round the applied offset. Feeding it back into the easing

@@ -2,12 +2,10 @@ using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
-using System.Linq;
 using System.Net.Http;
 using System.Runtime.InteropServices;
 using System.Text;
 using System.Text.Json;
-using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
 using VNotch.Models;
@@ -54,6 +52,27 @@ public sealed partial class MediaMetadataLookupService : IMediaMetadataLookupSer
         int channelCap,
         out int outChannelLen);
 
+    [LibraryImport(NativeDll, StringMarshalling = StringMarshalling.Utf16)]
+    private static partial int vn_media_metadata_extract_youtube_video_id(
+        ReadOnlySpan<char> input,
+        int inputLen,
+        byte mode,
+        out int outStart,
+        out int outLen,
+        out byte outFound);
+
+    [LibraryImport(NativeDll, StringMarshalling = StringMarshalling.Utf16)]
+    private static partial int vn_media_metadata_score_youtube_track_match(
+        ReadOnlySpan<char> candidateTitle,
+        int candidateTitleLen,
+        ReadOnlySpan<char> targetTitle,
+        int targetTitleLen,
+        long candidateDurationSec,
+        long targetDurationSec,
+        out int outScore,
+        out int outDurationDelta,
+        out byte outIsMatch);
+
     private const string YouTubeTitleSearchLogTag = "META-YOUTUBE-TITLE-SEARCH";
     private const string YouTubeApiLogTag = "META-YOUTUBE-API";
     private const string ItemsPropertyName = "items";
@@ -88,12 +107,60 @@ public sealed partial class MediaMetadataLookupService : IMediaMetadataLookupSer
         ReadOnlySpan<char> keySpan = apiKey.AsSpan();
         bool validKey = vn_media_metadata_is_valid_api_key_format(keySpan, keySpan.Length, out byte outValid) == 0
             ? outValid != 0
-            : (apiKey.Length > 0 && apiKey.Length <= 4096 && !apiKey.Any(c => c < '!' || c > '~'));
+            : IsPrintableAsciiKey(keySpan);
         if (!validKey)
             throw new ArgumentException("Invalid API key format.");
         var request = new HttpRequestMessage(HttpMethod.Get, uri);
         request.Headers.Add("x-goog-api-key", apiKey);
         return request;
+    }
+
+    private static bool IsPrintableAsciiKey(ReadOnlySpan<char> keySpan)
+    {
+        if (keySpan.Length == 0 || keySpan.Length > 4096) return false;
+        for (int i = 0; i < keySpan.Length; i++)
+        {
+            char c = keySpan[i];
+            if (c < '!' || c > '~') return false;
+        }
+        return true;
+    }
+
+    private static bool TryExtractYouTubeVideoId(string input, byte mode, out string videoId)
+    {
+        videoId = string.Empty;
+        if (string.IsNullOrEmpty(input)) return false;
+        ReadOnlySpan<char> span = input.AsSpan();
+        if (vn_media_metadata_extract_youtube_video_id(span, span.Length, mode, out int start, out int len, out byte found) == 0 &&
+            found != 0 && start >= 0 && len == 11 && start + len <= input.Length)
+        {
+            videoId = input.Substring(start, len);
+            return true;
+        }
+        return false;
+    }
+
+    internal static bool ScoreYouTubeTrackMatch(
+        string? candidateTitle,
+        string? targetTitle,
+        long candidateDurationSec,
+        long targetDurationSec,
+        out int score,
+        out int durationDelta)
+    {
+        ReadOnlySpan<char> candSpan = candidateTitle is not null ? candidateTitle.AsSpan() : ReadOnlySpan<char>.Empty;
+        ReadOnlySpan<char> targSpan = targetTitle is not null ? targetTitle.AsSpan() : ReadOnlySpan<char>.Empty;
+        if (vn_media_metadata_score_youtube_track_match(
+                candSpan, candSpan.Length,
+                targSpan, targSpan.Length,
+                candidateDurationSec, targetDurationSec,
+                out score, out durationDelta, out byte isMatch) == 0)
+        {
+            return isMatch != 0;
+        }
+        score = 0;
+        durationDelta = int.MaxValue / 2;
+        return false;
     }
 
     static MediaMetadataLookupService()
@@ -124,10 +191,8 @@ public sealed partial class MediaMetadataLookupService : IMediaMetadataLookupSer
                     return validated;
             }
 
-            var urlMatch = Regex.Match(cleanTitle, @"(?:youtube\.com/watch\?.*v=|youtu\.be/|music\.youtube\.com/watch\?.*v=)([a-zA-Z0-9_-]{11})", RegexOptions.None, TimeSpan.FromMilliseconds(250));
-            if (urlMatch.Success)
+            if (TryExtractYouTubeVideoId(cleanTitle, mode: 0, out string extractedId))
             {
-                string extractedId = urlMatch.Groups[1].Value;
                 var validated = await ResolveVideoIdAsync(extractedId, ct);
                 if (validated != null)
                     return validated;
@@ -233,7 +298,7 @@ public sealed partial class MediaMetadataLookupService : IMediaMetadataLookupSer
                     Id = videoId,
                     Title = resultTitle,
                     Author = channelTitle,
-                        Duration = TimeSpan.Zero,
+                    Duration = TimeSpan.Zero,
                     ThumbnailUrl = null,
                     Source = YouTubeLookupSource.DataApi,
                 };
@@ -307,11 +372,8 @@ public sealed partial class MediaMetadataLookupService : IMediaMetadataLookupSer
                     if (string.IsNullOrEmpty(itemUrl))
                         continue;
 
-                    var match = Regex.Match(itemUrl, @"v=([a-zA-Z0-9_-]{11})", RegexOptions.None, TimeSpan.FromMilliseconds(250));
-                    if (!match.Success)
+                    if (!TryExtractYouTubeVideoId(itemUrl, mode: 2, out string videoId))
                         continue;
-
-                    string videoId = match.Groups[1].Value;
 
                     var candidate = new YouTubeLookupResult
                     {
@@ -432,7 +494,7 @@ public sealed partial class MediaMetadataLookupService : IMediaMetadataLookupSer
                     Id = videoId,
                     Title = videoTitle,
                     Author = channelName,
-                        Duration = TimeSpan.Zero,
+                    Duration = TimeSpan.Zero,
                     ThumbnailUrl = null,
                     Source = YouTubeLookupSource.OEmbed,
                 };
@@ -525,11 +587,9 @@ public sealed partial class MediaMetadataLookupService : IMediaMetadataLookupSer
             if (string.IsNullOrWhiteSpace(url))
                 return null;
 
-            var match = Regex.Match(url, @"(?:youtube\.com/watch\?.*v=|youtu\.be/|music\.youtube\.com/watch\?.*v=|youtube\.com/embed/|youtube\.com/v/)([a-zA-Z0-9_-]{11})", RegexOptions.None, TimeSpan.FromMilliseconds(250));
-            if (!match.Success)
+            if (!TryExtractYouTubeVideoId(url, mode: 1, out string videoId))
                 return null;
 
-            string videoId = match.Groups[1].Value;
             return await ResolveVideoIdAsync(videoId, ct);
         }
         catch (OperationCanceledException)
@@ -664,7 +724,7 @@ public sealed partial class MediaMetadataLookupService : IMediaMetadataLookupSer
                 Id = videoId,
                 Title = oembedTitle,
                 Author = oembedAuthor,
-                    Duration = TimeSpan.Zero,
+                Duration = TimeSpan.Zero,
                 ThumbnailUrl = null,
                 Source = YouTubeLookupSource.OEmbed,
             };
@@ -832,12 +892,31 @@ public sealed partial class MediaMetadataLookupService : IMediaMetadataLookupSer
             if (_videoCache.Count >= VideoCacheMaxEntries)
             {
                 var now = DateTime.UtcNow;
-                var stale = _videoCache.Where(kv => kv.Value.ExpiresUtc <= now).Select(kv => kv.Key).ToList();
-                foreach (var key in stale) _videoCache.Remove(key);
+                List<string>? stale = null;
+                foreach (var kv in _videoCache)
+                {
+                    if (kv.Value.ExpiresUtc <= now)
+                    {
+                        stale ??= new List<string>();
+                        stale.Add(kv.Key);
+                    }
+                }
+                if (stale != null)
+                {
+                    for (int i = 0; i < stale.Count; i++)
+                        _videoCache.Remove(stale[i]);
+                }
                 if (_videoCache.Count >= VideoCacheMaxEntries)
                 {
-                    foreach (var key in _videoCache.Keys.Take(_videoCache.Count / 2).ToList())
-                        _videoCache.Remove(key);
+                    int evictCount = _videoCache.Count / 2;
+                    var toEvict = new List<string>(evictCount);
+                    foreach (var key in _videoCache.Keys)
+                    {
+                        if (toEvict.Count >= evictCount) break;
+                        toEvict.Add(key);
+                    }
+                    for (int i = 0; i < toEvict.Count; i++)
+                        _videoCache.Remove(toEvict[i]);
                 }
             }
             _videoCache[VideoCacheKey(videoId, apiKey)] = (result, DateTime.UtcNow.Add(_videoCacheTtl));

@@ -561,6 +561,8 @@ internal sealed partial class D3DImageFramePresenter : IDisposable
                     _pendingForcePresent = false;
                     _pendingDirtyRows = default;
                     _presentedTag = _uploadTag;
+                    SubmittedGpuRenderMs = LastGpuRenderMs;
+                    SubmittedGpuWaitMs = LastGpuWaitMs;
                     presented = true;
                 }
                 finally

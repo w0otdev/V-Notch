@@ -575,11 +575,12 @@ public sealed class ClockWidgetPresenter : IDisposable
         if (allowShrink && Math.Abs(_refs.Window.Height - targetHeightDip) < 0.5 && _host.WindowHeight == targetPixelHeight)
             return;
 
-        _refs.Window.Height = targetHeightDip;
         _host.WindowHeight = targetPixelHeight;
 
         if (_host.Hwnd != IntPtr.Zero)
             SetWindowPos(_host.Hwnd, HWND_TOPMOST, _host.FixedX, _host.FixedY, _host.WindowWidth, _host.WindowHeight, SWP_NOACTIVATE);
+        else
+            _refs.Window.Height = targetHeightDip;
     }
 
 #pragma warning disable S107 // WPF notch resize transition requires source, target, timing, and callback parameters

@@ -400,13 +400,13 @@
      <Setter Property="Foreground" Value="White"/>
     </Trigger>
     <!-- Amber and full opacity distinguish pinned files without rotating the icon. -->
-    <DataTrigger Binding="{Binding Entry.IsPinned}" Value="True">
+    <DataTrigger Binding="{Binding IsPinned}" Value="True">
      <Setter Property="Opacity" Value="1.0"/>
      <Setter Property="Foreground" Value="#FFD60A"/>
     </DataTrigger>
     <MultiDataTrigger>
      <MultiDataTrigger.Conditions>
-      <Condition Binding="{Binding Entry.IsPinned}" Value="True"/>
+      <Condition Binding="{Binding IsPinned}" Value="True"/>
       <Condition Binding="{Binding IsMouseOver, RelativeSource={RelativeSource Self}}" Value="True"/>
      </MultiDataTrigger.Conditions>
      <Setter Property="Foreground" Value="#FFE040"/>
@@ -584,6 +584,57 @@
     </Grid>
    </ControlTemplate></Setter.Value></Setter>
   </Style>
+  <!-- Only the active content kind instantiates its visual tree and bindings. -->
+  <ControlTemplate x:Key="TrayCardImageContent" TargetType="Control">
+   <Grid>
+    <Image Source="{Binding Image, NotifyOnTargetUpdated=True}" TargetUpdated="CardPreview_TargetUpdated" Stretch="UniformToFill" RenderOptions.BitmapScalingMode="HighQuality" HorizontalAlignment="Stretch" VerticalAlignment="Stretch"/>
+    <Border CornerRadius="{StaticResource TrayRadiusLarge}" IsHitTestVisible="False">
+     <Border.Background>
+      <LinearGradientBrush StartPoint="0,0" EndPoint="0,1">
+       <GradientStop Color="#55000000" Offset="0"/>
+       <GradientStop Color="#00000000" Offset="0.32"/>
+       <GradientStop Color="#00000000" Offset="0.58"/>
+       <GradientStop Color="#90000000" Offset="1"/>
+      </LinearGradientBrush>
+     </Border.Background>
+    </Border>
+   </Grid>
+  </ControlTemplate>
+  <ControlTemplate x:Key="TrayCardFileContent" TargetType="Control">
+   <Border x:Name="FileBadgePanel" Margin="14,30,14,40" Padding="6,0" IsHitTestVisible="False">
+    <Grid>
+     <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/></Grid.RowDefinitions>
+     <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
+      <Grid x:Name="FileHeroIcon" Width="24" Height="24" VerticalAlignment="Center" Margin="0,0,7,0">
+       <Image Source="{Binding FilePreviewIcon}" Stretch="Uniform" RenderOptions.BitmapScalingMode="HighQuality"/>
+      </Grid>
+      <Border CornerRadius="4" Background="{Binding FileBadgeBackgroundBrush}" Padding="6,1.5" VerticalAlignment="Center">
+       <TextBlock x:Name="FileTypeTagText" Text="{Binding FileTypeTag}" FontSize="11" FontWeight="Bold" FontFamily="{StaticResource SFProDisplay}" Foreground="{x:Static svc:UiPalette.PrimaryBrush}"/>
+      </Border>
+     </StackPanel>
+     <TextBlock x:Name="FileHeroName" Grid.Row="1" Text="{Binding Title}" ToolTip="{Binding Title}" FontFamily="{StaticResource SFProDisplay}" FontSize="11" LineHeight="14" Foreground="{x:Static svc:UiPalette.PrimaryBrush}" TextWrapping="Wrap" TextTrimming="CharacterEllipsis" TextAlignment="Center" VerticalAlignment="Center" MaxHeight="28" Margin="0,4,0,0"/>
+    </Grid>
+   </Border>
+  </ControlTemplate>
+  <ControlTemplate x:Key="TrayCardTextContent" TargetType="Control">
+   <Grid x:Name="CardPreviewViewport" Margin="14,13,14,48" VerticalAlignment="Top" MaxHeight="96" ClipToBounds="True">
+    <Grid HorizontalAlignment="Left" VerticalAlignment="Top" Width="{Binding MaskedPreviewWidth}" Height="{Binding MaskedPreviewHeight}">
+     <TextBlock x:Name="CardPreviewText" Text="{Binding DisplayPreview}" Opacity="{Binding MaskedTextOpacity}" FontFamily="{StaticResource SFProDisplay}" FontSize="14" FontWeight="SemiBold" LineHeight="19" LineStackingStrategy="BlockLineHeight" MaxHeight="95" TextWrapping="Wrap" TextTrimming="CharacterEllipsis" Foreground="{x:Static svc:UiPalette.PrimaryBrush}">
+      <TextBlock.Effect><BlurEffect Radius="{Binding BlurRadius}" RenderingBias="Performance"/></TextBlock.Effect>
+     </TextBlock>
+     <local:DustParticleOverlay x:Name="DustOverlay" IsActive="{Binding IsMasked}" IsDissolved="{Binding IsRevealed}" DissolveRequested="DustOverlay_DissolveRequested" HorizontalAlignment="Stretch" VerticalAlignment="Stretch"/>
+    </Grid>
+   </Grid>
+   <ControlTemplate.Triggers>
+    <DataTrigger Binding="{Binding Kind}" Value="Color">
+     <Setter TargetName="CardPreviewText" Property="Background" Value="#D9000000"/>
+     <Setter TargetName="CardPreviewText" Property="Padding" Value="6,3"/>
+     <Setter TargetName="CardPreviewText" Property="HorizontalAlignment" Value="Left"/>
+    </DataTrigger>
+    <DataTrigger Binding="{Binding Kind}" Value="File"><Setter TargetName="CardPreviewText" Property="Visibility" Value="Collapsed"/></DataTrigger>
+    <DataTrigger Binding="{Binding Kind}" Value="Image"><Setter TargetName="CardPreviewText" Property="Visibility" Value="Collapsed"/></DataTrigger>
+   </ControlTemplate.Triggers>
+  </ControlTemplate>
  </UserControl.Resources>
 
  <Grid x:Name="SelectionSurface" Background="Transparent">
@@ -806,33 +857,19 @@
        <Border CornerRadius="{StaticResource TrayRadiusLarge}" Background="{Binding CardBrush}" IsHitTestVisible="False"/>
        <!-- Card Visual Content (Blurred when copied) -->
        <Grid x:Name="CardContentGrid" local:TrayMotion.BlurRadius="{Binding IsCopied, Converter={StaticResource BoolBlur}}">
-        <!-- Layer 2: Image Thumbnail -->
-        <!-- Edge-to-edge artwork; the footer vignette keeps metadata readable. -->
-        <Image Source="{Binding Image, NotifyOnTargetUpdated=True}" TargetUpdated="CardPreview_TargetUpdated" Stretch="UniformToFill" RenderOptions.BitmapScalingMode="HighQuality" HorizontalAlignment="Stretch" VerticalAlignment="Stretch"/>
-        
-        <!-- Layer 3: Protective Vignette for Image readability -->
-        <Border CornerRadius="{StaticResource TrayRadiusLarge}" IsHitTestVisible="False">
-         <Border.Style>
-          <Style TargetType="Border">
+        <Control Focusable="False" IsTabStop="False">
+         <Control.Style>
+          <Style TargetType="Control">
            <Setter Property="Visibility" Value="Collapsed"/>
            <Style.Triggers>
-            <DataTrigger Binding="{Binding Entry.Kind}" Value="Image">
+            <DataTrigger Binding="{Binding Kind}" Value="Image">
              <Setter Property="Visibility" Value="Visible"/>
-             <Setter Property="Background">
-              <Setter.Value>
-               <LinearGradientBrush StartPoint="0,0" EndPoint="0,1">
-                <GradientStop Color="#55000000" Offset="0"/>
-                <GradientStop Color="#00000000" Offset="0.32"/>
-                <GradientStop Color="#00000000" Offset="0.58"/>
-                <GradientStop Color="#90000000" Offset="1"/>
-               </LinearGradientBrush>
-              </Setter.Value>
-             </Setter>
+             <Setter Property="Template" Value="{StaticResource TrayCardImageContent}"/>
             </DataTrigger>
            </Style.Triggers>
           </Style>
-         </Border.Style>
-        </Border>
+         </Control.Style>
+        </Control>
 
         <!-- Inset rims avoid overlapping the rounded card clip and losing edge coverage. -->
         <Rectangle x:Name="BaseRim" RadiusX="16" RadiusY="16" Margin="0" StrokeThickness="1.2" IsHitTestVisible="False" Panel.ZIndex="2">
@@ -867,52 +904,45 @@
          </Rectangle.Stroke>
         </Rectangle>
 
-        <!-- Layer 5b: File Card Hero Presentation (Kind == File) -->
-        <Border x:Name="FileBadgePanel" Margin="14,30,14,40" Padding="6,0" IsHitTestVisible="False">
-         <Border.Style>
-          <Style TargetType="Border">
+        <Control Focusable="False" IsTabStop="False" IsHitTestVisible="False">
+         <Control.Style>
+          <Style TargetType="Control">
            <Setter Property="Visibility" Value="Collapsed"/>
            <Style.Triggers>
-            <DataTrigger Binding="{Binding Entry.Kind}" Value="File">
+            <DataTrigger Binding="{Binding Kind}" Value="File">
              <Setter Property="Visibility" Value="Visible"/>
+             <Setter Property="Template" Value="{StaticResource TrayCardFileContent}"/>
             </DataTrigger>
            </Style.Triggers>
           </Style>
-         </Border.Style>
-         <Grid>
-          <Grid.RowDefinitions>
-           <RowDefinition Height="Auto"/>
-           <RowDefinition Height="*"/>
-          </Grid.RowDefinitions>
-          <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
-          <Grid x:Name="FileHeroIcon" Width="24" Height="24" VerticalAlignment="Center" Margin="0,0,7,0">
-           <Image Source="{Binding FilePreviewIcon}" Stretch="Uniform" RenderOptions.BitmapScalingMode="HighQuality"/>
-          </Grid>
-          <Border CornerRadius="4" Background="{Binding FileBadgeBackgroundBrush}" Padding="6,1.5" VerticalAlignment="Center">
-           <TextBlock x:Name="FileTypeTagText" Text="{Binding FileTypeTag}" FontSize="11" FontWeight="Bold" FontFamily="{StaticResource SFProDisplay}" Foreground="{x:Static svc:UiPalette.PrimaryBrush}"/>
-          </Border>
-          </StackPanel>
-          <TextBlock x:Name="FileHeroName" Grid.Row="1" Text="{Binding Title}" ToolTip="{Binding Title}" FontFamily="{StaticResource SFProDisplay}" FontSize="11" LineHeight="14" Foreground="{x:Static svc:UiPalette.PrimaryBrush}" TextWrapping="Wrap" TextTrimming="CharacterEllipsis" TextAlignment="Center" VerticalAlignment="Center" MaxHeight="28" Margin="0,4,0,0"/>
-         </Grid>
-        </Border>
-
-        <!-- Layer 6: Text Preview Container with Dust Particle Overlay for Passwords -->
-        <Grid x:Name="CardPreviewViewport" Margin="14,13,14,48" VerticalAlignment="Top" MaxHeight="96" ClipToBounds="True">
-         <Grid HorizontalAlignment="Left" VerticalAlignment="Top" Width="{Binding MaskedPreviewWidth}" Height="{Binding MaskedPreviewHeight}">
-         <TextBlock x:Name="CardPreviewText" Text="{Binding DisplayPreview}" Opacity="{Binding MaskedTextOpacity}" FontFamily="{StaticResource SFProDisplay}" FontSize="14" FontWeight="SemiBold" LineHeight="19" LineStackingStrategy="BlockLineHeight" MaxHeight="95" TextWrapping="Wrap" TextTrimming="CharacterEllipsis" Foreground="{x:Static svc:UiPalette.PrimaryBrush}">
-          <TextBlock.Effect>
-           <BlurEffect Radius="{Binding BlurRadius}" RenderingBias="Performance"/>
-          </TextBlock.Effect>
-         </TextBlock>
-
-         <!-- Bụi bay mờ effect overlay: click to dissolve and show password -->
-         <local:DustParticleOverlay x:Name="DustOverlay"
-                                    IsActive="{Binding IsMasked}"
-                                    IsDissolved="{Binding IsRevealed}"
-                                    DissolveRequested="DustOverlay_DissolveRequested"
-                                    HorizontalAlignment="Stretch" VerticalAlignment="Stretch"/>
-         </Grid>
-        </Grid>
+         </Control.Style>
+        </Control>
+        <Control Focusable="False" IsTabStop="False">
+         <Control.Style>
+          <Style TargetType="Control">
+           <Setter Property="Template" Value="{StaticResource TrayCardTextContent}"/>
+           <Style.Triggers>
+            <!-- Sensitive files/images retain their dust overlay and reveal interaction. -->
+            <MultiDataTrigger>
+             <MultiDataTrigger.Conditions>
+              <Condition Binding="{Binding Kind}" Value="File"/>
+              <Condition Binding="{Binding IsMasked}" Value="False"/>
+             </MultiDataTrigger.Conditions>
+             <Setter Property="Template" Value="{x:Null}"/>
+             <Setter Property="Visibility" Value="Collapsed"/>
+            </MultiDataTrigger>
+            <MultiDataTrigger>
+             <MultiDataTrigger.Conditions>
+              <Condition Binding="{Binding Kind}" Value="Image"/>
+              <Condition Binding="{Binding IsMasked}" Value="False"/>
+             </MultiDataTrigger.Conditions>
+             <Setter Property="Template" Value="{x:Null}"/>
+             <Setter Property="Visibility" Value="Collapsed"/>
+            </MultiDataTrigger>
+           </Style.Triggers>
+          </Style>
+         </Control.Style>
+        </Control>
 
         <!-- Darken the glyph band early enough to protect metadata on bright previews. -->
         <Border x:Name="CardFooter" VerticalAlignment="Bottom" Height="48" CornerRadius="0,0,16,16">
@@ -999,20 +1029,9 @@
        <Setter TargetName="CardActions" Property="local:TrayMotion.Opacity" Value="1"/>
        <Setter TargetName="CardActions" Property="IsHitTestVisible" Value="True"/>
       </DataTrigger>
-      <DataTrigger Binding="{Binding Entry.IsPinned}" Value="True">
+      <DataTrigger Binding="{Binding IsPinned}" Value="True">
        <Setter TargetName="CardActions" Property="local:TrayMotion.Opacity" Value="1"/>
        <Setter TargetName="CardActions" Property="IsHitTestVisible" Value="True"/>
-      </DataTrigger>
-      <DataTrigger Binding="{Binding Entry.Kind}" Value="Color">
-       <Setter TargetName="CardPreviewText" Property="Background" Value="#D9000000"/>
-       <Setter TargetName="CardPreviewText" Property="Padding" Value="6,3"/>
-       <Setter TargetName="CardPreviewText" Property="HorizontalAlignment" Value="Left"/>
-      </DataTrigger>
-      <DataTrigger Binding="{Binding Entry.Kind}" Value="File">
-       <Setter TargetName="CardPreviewText" Property="Visibility" Value="Collapsed"/>
-      </DataTrigger>
-      <DataTrigger Binding="{Binding Entry.Kind}" Value="Image">
-       <Setter TargetName="CardPreviewText" Property="Visibility" Value="Collapsed"/>
       </DataTrigger>
       <!-- Animated appearing & disappearing for Copied notification badge -->
       <DataTrigger Binding="{Binding IsCopied}" Value="True">

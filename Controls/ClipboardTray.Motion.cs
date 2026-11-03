@@ -1,3 +1,8 @@
+using System;
+using System.Collections.Generic;
+using System.Runtime.InteropServices;
+using System.Threading;
+using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
@@ -21,6 +26,46 @@ public sealed partial class ClipboardTray
         ease.Freeze();
         return ease;
     }
+
+    [LibraryImport("VNotch.Native")]
+    private static partial int vn_clipboard_motion_compute_stagger(
+        ReadOnlySpan<int> candidateIndices,
+        int count,
+        int baseDelayMs,
+        Span<int> outSortedPositions,
+        Span<int> outDelaysMs);
+
+    [LibraryImport("VNotch.Native")]
+    private static partial int vn_clipboard_motion_card_delay(
+        int itemIndex,
+        int animatedCount,
+        int baseDelayMs,
+        out int outDelayMs);
+
+    [LibraryImport("VNotch.Native")]
+    private static partial int vn_clipboard_motion_compute_reflow_offset(
+        double originX,
+        double renderedOffsetX,
+        double scrollOffset,
+        double previousX,
+        byte hasPreviousLayout,
+        double previousLayoutX,
+        byte sameTransform,
+        out double outLayoutX,
+        out double outOffsetX,
+        out byte outShouldAnimate);
+
+    [LibraryImport("VNotch.Native")]
+    private static partial int vn_clipboard_motion_step_scroll_physics(
+        ref double ioPosition,
+        ref double ioVelocity,
+        double minBound,
+        double maxBound,
+        double dt,
+        double friction,
+        double springStiffness,
+        double springDamping,
+        out byte outIsSettled);
 
     private bool _animateResults = true;
     private int _motionVersion;
@@ -230,7 +275,13 @@ public sealed partial class ClipboardTray
         int duration = AnimationConfig.ReduceMotion ? 80 : fullDuration;
         var fade = CreateLayerAnimation(opacity, targetOpacity, AnimationConfig.ReduceMotion ? 0 : delay, duration);
         if (personalLock)
-            foreach (var frame in fade.KeyFrames.OfType<EasingDoubleKeyFrame>()) frame.EasingFunction = TrayMotion.EaseOut;
+        {
+            for (int i = 0; i < fade.KeyFrames.Count; i++)
+            {
+                if (fade.KeyFrames[i] is EasingDoubleKeyFrame frame)
+                    frame.EasingFunction = TrayMotion.EaseOut;
+            }
+        }
         if (completed != null) fade.Completed += (_, _) => completed();
         element.BeginAnimation(OpacityProperty, fade, HandoffBehavior.SnapshotAndReplace);
         if (AnimationConfig.ReduceMotion)
@@ -245,7 +296,7 @@ public sealed partial class ClipboardTray
 
     private static DoubleAnimationUsingKeyFrames CreateLayerAnimation(double from, double to, int delay, int duration)
     {
-        var animation = new DoubleAnimationUsingKeyFrames { FillBehavior = FillBehavior.HoldEnd };
+        var animation = new DoubleAnimationUsingKeyFrames { FillBehavior = FillBehavior.Stop };
         animation.KeyFrames.Add(new DiscreteDoubleKeyFrame(from, KeyTime.FromTimeSpan(TimeSpan.Zero)));
         if (delay > 0)
             animation.KeyFrames.Add(new DiscreteDoubleKeyFrame(from, KeyTime.FromTimeSpan(TimeSpan.FromMilliseconds(delay))));
@@ -307,7 +358,16 @@ public sealed partial class ClipboardTray
         else if (button.RenderTransform is TransformGroup group)
         {
             if (group.IsFrozen) button.RenderTransform = group = group.CloneCurrentValue();
-            scale = group.Children.OfType<ScaleTransform>().FirstOrDefault() ?? new ScaleTransform(1, 1);
+            ScaleTransform? foundScale = null;
+            for (int i = 0; i < group.Children.Count; i++)
+            {
+                if (group.Children[i] is ScaleTransform candidate)
+                {
+                    foundScale = candidate;
+                    break;
+                }
+            }
+            scale = foundScale ?? new ScaleTransform(1, 1);
             if (!group.Children.Contains(scale)) group.Children.Insert(0, scale);
             else if (scale.IsFrozen)
             {
@@ -399,11 +459,25 @@ public sealed partial class ClipboardTray
                 !positions.TryGetValue(card.Entry.Id, out double previous) ||
                 !TryGetPositionInCards(item, out var origin)) continue;
             var rendered = item.RenderTransform.Value;
-            double layoutX = origin.X - rendered.OffsetX + scrollOffset;
-            double offset = previous - layoutX;
+            (double X, Transform Motion) previousLayout = default;
+            bool hasPrevLayout = layouts != null && layouts.TryGetValue(card.Entry.Id, out previousLayout);
+            byte sameTransform = hasPrevLayout && ReferenceEquals(item.RenderTransform, previousLayout.Motion) ? (byte)1 : (byte)0;
+
+            vn_clipboard_motion_compute_reflow_offset(
+                origin.X,
+                rendered.OffsetX,
+                scrollOffset,
+                previous,
+                hasPrevLayout ? (byte)1 : (byte)0,
+                hasPrevLayout ? previousLayout.X : 0.0,
+                sameTransform,
+                out _,
+                out double offset,
+                out byte shouldAnimate);
+
             // Metadata-only refreshes must not restart an in-flight slide.
-            if (layouts != null && layouts.TryGetValue(card.Entry.Id, out var previousLayout) &&
-                Math.Abs(layoutX - previousLayout.X) < 0.5 && ReferenceEquals(item.RenderTransform, previousLayout.Motion)) continue;
+            if (shouldAnimate == 0) continue;
+
             var translate = new TranslateTransform(offset, rendered.OffsetY);
             item.RenderTransform = translate;
             AnimateCardValue(translate, TranslateTransform.XProperty, offset, 0, MotionReflow);
@@ -556,31 +630,49 @@ public sealed partial class ClipboardTray
         _entranceBaseDelay = baseDelay;
         // Animate cards that are already realized in the virtualizing panel from left to right.
         // Cards loaded later during this entrance will be caught by CardContainer_Loaded.
-        var candidates = new HashSet<ListBoxItem>(_selectionContainers.Where(item => item.IsLoaded || item.IsVisible));
+        var candidateSet = new HashSet<ListBoxItem>();
+        var candidateList = new List<ListBoxItem>(16);
+        foreach (var item in _selectionContainers)
+        {
+            if ((item.IsLoaded || item.IsVisible) && candidateSet.Add(item))
+                candidateList.Add(item);
+        }
         int count = Math.Min(_cards.Count, 16);
         for (int i = 0; i < count; i++)
         {
-            if (Cards.ItemContainerGenerator.ContainerFromIndex(i) is ListBoxItem generated)
-                candidates.Add(generated);
+            if (Cards.ItemContainerGenerator.ContainerFromIndex(i) is ListBoxItem generated && candidateSet.Add(generated))
+                candidateList.Add(generated);
         }
 
         foreach (var element in _realizedCardElements)
             RefreshCardViewportVisibility(element, true);
 
-        int visualIndex = 0;
-        foreach (var item in candidates
-            .OrderBy(item =>
-            {
-                int idx = Cards.ItemContainerGenerator.IndexFromContainer(item);
-                if (idx >= 0) return idx;
-                return item.DataContext is VNotch.ViewModels.ClipboardCardViewModel card ? _cards.IndexOf(card) : int.MaxValue;
-            }))
+        int candidateCount = candidateList.Count;
+        if (candidateCount == 0) return;
+
+        Span<int> candidateIndices = candidateCount <= 64 ? stackalloc int[candidateCount] : new int[candidateCount];
+        Span<int> sortedPositions = candidateCount <= 64 ? stackalloc int[candidateCount] : new int[candidateCount];
+        Span<int> delaysMs = candidateCount <= 64 ? stackalloc int[candidateCount] : new int[candidateCount];
+
+        for (int i = 0; i < candidateCount; i++)
         {
+            var item = candidateList[i];
+            int idx = Cards.ItemContainerGenerator.IndexFromContainer(item);
+            if (idx < 0)
+                idx = item.DataContext is VNotch.ViewModels.ClipboardCardViewModel card ? _cards.IndexOf(card) : int.MaxValue;
+            candidateIndices[i] = idx;
+        }
+
+        vn_clipboard_motion_compute_stagger(candidateIndices, candidateCount, baseDelay, sortedPositions, delaysMs);
+
+        int visualIndex = 0;
+        for (int i = 0; i < candidateCount; i++)
+        {
+            var item = candidateList[sortedPositions[i]];
             if (_entranceAnimatedContainers.Add(item))
             {
                 ResetCardMotion(item);
-                int delay = Math.Min(visualIndex, 7) * 40 + baseDelay;
-                AnimateCardJumpEntrance(item, delay);
+                AnimateCardJumpEntrance(item, delaysMs[visualIndex]);
                 visualIndex++;
             }
         }
@@ -599,8 +691,7 @@ public sealed partial class ClipboardTray
                 int itemIndex = Cards.ItemContainerGenerator.IndexFromContainer(item);
                 if (itemIndex < 0 && item.DataContext is VNotch.ViewModels.ClipboardCardViewModel card)
                     itemIndex = _cards.IndexOf(card);
-                int visualIndex = itemIndex >= 0 ? itemIndex : Math.Max(0, _entranceAnimatedContainers.Count - 1);
-                int delay = Math.Min(visualIndex, 7) * 40 + _entranceBaseDelay;
+                vn_clipboard_motion_card_delay(itemIndex, _entranceAnimatedContainers.Count, _entranceBaseDelay, out int delay);
                 AnimateCardJumpEntrance(item, delay);
             }
         }

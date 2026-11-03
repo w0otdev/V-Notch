@@ -793,3 +793,1277 @@ VN_EXPORT int32_t __stdcall vn_markdown_tokenize_inlines(
 
 
 
+
+// ---------------------------------------------------------------------------
+// UI Motion, Particles, Morphing & Visualizer Bars (UiMotionAndParticles.cpp)
+// ---------------------------------------------------------------------------
+
+#ifndef VN_DUST_PARTICLE_DEFINED
+#define VN_DUST_PARTICLE_DEFINED
+#pragma pack(push, 1)
+struct VnDustParticle
+{
+    float x;
+    float y;
+    float vx;
+    float vy;
+    float base_radius;
+    float radius;
+    float peak_alpha;
+    float alpha;
+    float life;
+    float life_speed;
+    float twinkle_phase;
+    uint8_t tint_index;
+};
+#pragma pack(pop)
+#endif
+
+VN_EXPORT int32_t __stdcall vn_dust_particles_init(
+    VnDustParticle* particles,
+    int32_t capacity,
+    double width,
+    double height,
+    uint32_t* io_rng_state,
+    int32_t* io_r2_sequence,
+    int32_t* out_active_count) noexcept;
+
+VN_EXPORT int32_t __stdcall vn_dust_particles_step(
+    VnDustParticle* particles,
+    int32_t active_count,
+    double width,
+    double height,
+    float dt,
+    uint8_t is_dissolving,
+    double dissolve_progress,
+    double reform_progress,
+    uint32_t* io_rng_state,
+    int32_t* io_r2_sequence) noexcept;
+
+VN_EXPORT int32_t __stdcall vn_dust_particles_dissolve_impulse(
+    VnDustParticle* particles,
+    int32_t active_count,
+    double width,
+    double height,
+    float origin_x,
+    float origin_y,
+    uint32_t* io_rng_state) noexcept;
+
+VN_EXPORT int32_t __stdcall vn_morph_settings_icon_sample_contour(
+    const double* raw_xy,
+    int32_t raw_point_count,
+    const double* matrix6,
+    uint8_t is_closed,
+    int32_t sample_count,
+    double* out_sampled_xy,
+    int32_t out_cap_doubles,
+    double* out_center_x,
+    double* out_center_y,
+    double* out_min_x,
+    double* out_bbox_area) noexcept;
+
+VN_EXPORT int32_t __stdcall vn_morph_settings_icon_compute_points(
+    const double* from_xy,
+    int32_t from_point_count,
+    const double* to_xy,
+    int32_t to_point_count,
+    double center_x,
+    double center_y,
+    double progress,
+    int32_t sample_count,
+    double* out_xy,
+    int32_t out_cap_doubles,
+    int32_t* out_point_count) noexcept;
+
+VN_EXPORT int32_t __stdcall vn_clipboard_motion_compute_stagger(
+    const int32_t* candidate_indices,
+    int32_t count,
+    int32_t base_delay_ms,
+    int32_t* out_sorted_positions,
+    int32_t* out_delays_ms) noexcept;
+
+VN_EXPORT int32_t __stdcall vn_clipboard_motion_card_delay(
+    int32_t item_index,
+    int32_t animated_count,
+    int32_t base_delay_ms,
+    int32_t* out_delay_ms) noexcept;
+
+VN_EXPORT int32_t __stdcall vn_clipboard_motion_compute_reflow_offset(
+    double origin_x,
+    double rendered_offset_x,
+    double scroll_offset,
+    double previous_x,
+    uint8_t has_previous_layout,
+    double previous_layout_x,
+    uint8_t same_transform,
+    double* out_layout_x,
+    double* out_offset_x,
+    uint8_t* out_should_animate) noexcept;
+
+VN_EXPORT int32_t __stdcall vn_clipboard_motion_step_scroll_physics(
+    double* io_position,
+    double* io_velocity,
+    double min_bound,
+    double max_bound,
+    double dt,
+    double friction,
+    double spring_stiffness,
+    double spring_damping,
+    uint8_t* out_is_settled) noexcept;
+
+VN_EXPORT int32_t __stdcall vn_visualizer_step_bars(
+    const double* current_heights,
+    const double* smoothed_heights,
+    const double* draw_heights,
+    int32_t bar_count,
+    double width,
+    double height,
+    double dpi_scale_x,
+    double dpi_scale_y,
+    double current_opacity,
+    double icon_mix,
+    double* out_bar_rects_xywh,
+    int32_t out_rects_cap_doubles,
+    double* out_corner_radius,
+    double* out_frame_opacity,
+    double* out_morph_opacity,
+    double* out_bars_opacity,
+    uint8_t* out_draw_settled) noexcept;
+
+VN_EXPORT int32_t __stdcall vn_visualizer_compute_morph_quads(
+    const double* bar_rects_xywh,
+    int32_t bar_count,
+    double width,
+    double height,
+    double play_mix,
+    double check_mix,
+    double icon_mix,
+    double* out_quad_points_xy,
+    int32_t out_cap_doubles) noexcept;
+
+// ---------------------------------------------------------------------------
+// Spotlight Search & Providers Extended Operations
+// ---------------------------------------------------------------------------
+
+VN_EXPORT int32_t __stdcall vn_app_search_provider_scan_start_menu(
+    const char16_t* start_menu_ptr,
+    int32_t start_menu_len,
+    char16_t* out_buf,
+    int32_t out_cap,
+    int32_t* out_written) noexcept;
+
+VN_EXPORT int32_t __stdcall vn_everything_provider_read_reply_item_count(
+    const uint8_t* list_ptr,
+    int32_t byte_count,
+    int32_t* out_count) noexcept;
+
+VN_EXPORT int32_t __stdcall vn_everything_provider_extract_reply_item(
+    const uint8_t* list_ptr,
+    int32_t byte_count,
+    int32_t index,
+    int32_t* out_name_offset,
+    int32_t* out_name_len,
+    int32_t* out_path_offset,
+    int32_t* out_path_len,
+    uint8_t* out_is_folder) noexcept;
+
+VN_EXPORT int32_t __stdcall vn_everything_provider_pack_ipc_query(
+    int64_t reply_hwnd,
+    uint32_t query_id,
+    uint32_t search_flags,
+    int32_t max_results,
+    const char16_t* query_ptr,
+    int32_t query_len,
+    uint8_t* out_buf,
+    int32_t out_cap,
+    int32_t* out_bytes) noexcept;
+
+VN_EXPORT int32_t __stdcall vn_windows_search_build_query_sql(
+    const char16_t* sanitized_ptr, int32_t sanitized_len,
+    const char16_t* original_ptr, int32_t original_len,
+    const char16_t* scope_ptr, int32_t scope_len,
+    uint8_t is_explicit_path,
+    int32_t fetch,
+    char16_t* out_buf, int32_t out_cap, int32_t* out_len) noexcept;
+
+VN_EXPORT int32_t __stdcall vn_windows_search_normalize_result_path(
+    const char16_t* raw_path_ptr,
+    int32_t raw_path_len,
+    char16_t* out_buf,
+    int32_t out_cap,
+    int32_t* out_len) noexcept;
+
+VN_EXPORT int32_t __stdcall vn_spotlight_search_compare_keys(
+    double score_a,
+    const char16_t* title_a_ptr,
+    int32_t title_a_len,
+    const char16_t* id_a_ptr,
+    int32_t id_a_len,
+    double score_b,
+    const char16_t* title_b_ptr,
+    int32_t title_b_len,
+    const char16_t* id_b_ptr,
+    int32_t id_b_len,
+    int32_t* out_cmp) noexcept;
+
+// ---------------------------------------------------------------------------
+// Clipboard Store, Sensitive Data & Selection Extended Operations
+// ---------------------------------------------------------------------------
+
+#ifndef VN_CLIPBOARD_PRUNE_CANDIDATE_DEFINED
+#define VN_CLIPBOARD_PRUNE_CANDIDATE_DEFINED
+#pragma pack(push, 1)
+struct VnClipboardPruneCandidate {
+    int32_t entry_index;
+    uint8_t is_personal;
+    uint8_t is_pinned;
+    uint8_t is_archived;
+    int64_t copied_utc_ticks;
+    int64_t byte_size;
+};
+#pragma pack(pop)
+#endif
+
+VN_EXPORT int32_t __stdcall vn_clipboard_store_tokenize_query(
+    const char16_t* query,
+    int32_t query_len,
+    int32_t* out_starts,
+    int32_t* out_lengths,
+    int32_t max_tokens,
+    int32_t* out_token_count) noexcept;
+
+VN_EXPORT int32_t __stdcall vn_clipboard_store_contains_icase(
+    const char16_t* haystack,
+    int32_t haystack_len,
+    const char16_t* needle,
+    int32_t needle_len,
+    uint8_t* out_contains) noexcept;
+
+VN_EXPORT int32_t __stdcall vn_clipboard_store_equals_icase(
+    const char16_t* a,
+    int32_t a_len,
+    const char16_t* b,
+    int32_t b_len,
+    uint8_t* out_equals) noexcept;
+
+VN_EXPORT int32_t __stdcall vn_clipboard_store_entry_matches_metadata_token(
+    uint8_t is_sensitive,
+    const char16_t* title,
+    int32_t title_len,
+    const char16_t* preview,
+    int32_t preview_len,
+    const char16_t* source_app,
+    int32_t source_app_len,
+    const char16_t* token,
+    int32_t token_len,
+    uint8_t* out_matches) noexcept;
+
+VN_EXPORT int32_t __stdcall vn_clipboard_store_plan_prune(
+    const VnClipboardPruneCandidate* candidates,
+    int32_t candidate_count,
+    int64_t cutoff_utc_ticks,
+    int32_t max_unpinned_entries,
+    int64_t max_unpinned_bytes,
+    int32_t* out_ordered_indices,
+    int32_t max_indices,
+    int32_t* out_expired_count,
+    int32_t* out_evict_candidate_count,
+    int64_t* out_total_active_bytes) noexcept;
+
+VN_EXPORT int32_t __stdcall vn_clipboard_store_evaluate_sensitive_expiry(
+    uint8_t has_entry,
+    uint8_t is_pinned,
+    uint8_t is_archived,
+    uint8_t is_personal,
+    uint8_t has_personal_dir,
+    uint8_t ticks_valid,
+    int64_t marker_ticks,
+    int64_t expiry_cutoff_ticks,
+    int32_t* out_action) noexcept;
+
+VN_EXPORT int32_t __stdcall vn_clipboard_store_is_vault_stream_magic(
+    const uint8_t* magic,
+    int32_t magic_len,
+    uint8_t* out_is_magic) noexcept;
+
+VN_EXPORT int32_t __stdcall vn_clipboard_store_format_prefixed_sha256_hex(
+    const char16_t* prefix,
+    int32_t prefix_len,
+    const uint8_t* hash_bytes,
+    int32_t hash_len,
+    char16_t* out_buf,
+    int32_t out_cap,
+    int32_t* out_written) noexcept;
+
+VN_EXPORT int32_t __stdcall vn_clipboard_store_are_signatures_equal(
+    const char16_t* sig_a,
+    int32_t len_a,
+    const char16_t* sig_b,
+    int32_t len_b,
+    uint8_t* out_equal) noexcept;
+
+VN_EXPORT int32_t __stdcall vn_clipboard_store_is_probable_duplicate_image_candidate(
+    int32_t kind,
+    uint8_t is_personal,
+    int64_t capture_ticks,
+    int64_t entry_ticks,
+    int64_t best_ticks,
+    uint8_t has_best,
+    uint8_t* out_is_better) noexcept;
+
+VN_EXPORT int32_t __stdcall vn_clipboard_store_is_export_path_protected(
+    const char16_t* directory,
+    int32_t directory_len,
+    const char16_t* active_lease,
+    int32_t active_lease_len,
+    uint16_t dir_sep,
+    uint8_t* out_protected) noexcept;
+
+VN_EXPORT int32_t __stdcall vn_clipboard_sensitive_analyze(
+    const char16_t* text_ptr, int32_t text_len,
+    const char16_t* app_ptr, int32_t app_len,
+    const char16_t* exe_ptr, int32_t exe_len,
+    int32_t* out_reason, int32_t* out_confidence) noexcept;
+
+VN_EXPORT int32_t __stdcall vn_clipboard_sensitive_format_mask(
+    const char16_t* text_ptr, int32_t text_len,
+    char16_t* out_mask, int32_t out_cap,
+    int32_t* out_len) noexcept;
+
+VN_EXPORT int32_t __stdcall vn_clipboard_selection_scroll_speed(
+    double x,
+    double width,
+    double* out_speed) noexcept;
+
+VN_EXPORT int32_t __stdcall vn_clipboard_selection_compute_lasso_range(
+    int32_t card_count,
+    int32_t ref_index,
+    double container_width,
+    double margin_left,
+    double margin_right,
+    double origin_x,
+    double origin_y,
+    double container_height,
+    double scroll_offset,
+    double rect_left,
+    double rect_top,
+    double rect_right,
+    double rect_bottom,
+    double row_top,
+    double row_bottom,
+    uint8_t swept,
+    int32_t* out_first,
+    int32_t* out_last,
+    uint8_t* out_hits_row,
+    uint8_t* out_expand_vertical) noexcept;
+
+VN_EXPORT int32_t __stdcall vn_clipboard_selection_filter_ordered_indices(
+    const int32_t* selected_indices,
+    int32_t selected_count,
+    int32_t card_count,
+    uint8_t* scratch_mask,
+    int32_t* out_ordered_indices,
+    int32_t* out_count) noexcept;
+
+VN_EXPORT int32_t __stdcall vn_clipboard_selection_merge_optimistic_order(
+    int32_t desired_count,
+    const int32_t* optimistic_to_desired_index,
+    int32_t optimistic_count,
+    uint8_t* scratch_taken_mask,
+    int32_t* out_merged_desired_indices,
+    int32_t* out_merged_count) noexcept;
+
+// ---------------------------------------------------------------------------
+// Privacy Indicator, Window Title Scanner, Lyrics, YouTube & Media Metadata
+// ---------------------------------------------------------------------------
+
+#ifndef VN_PRIVACY_INDICATOR_BATCH_DEFINED
+#define VN_PRIVACY_INDICATOR_BATCH_DEFINED
+#pragma pack(push, 1)
+struct VnConsentStoreEntry {
+    int64_t last_start_file_time;
+    int32_t raw_len;
+    int32_t display_start;
+    int32_t display_len;
+    char16_t raw_name[260];
+};
+
+struct VnActiveAppSlice {
+    int32_t name_offset;
+    int32_t name_len;
+    int64_t last_start_file_time;
+};
+#pragma pack(pop)
+#endif
+
+#ifndef VN_VISIBLE_WINDOW_ENTRY_DEFINED
+#define VN_VISIBLE_WINDOW_ENTRY_DEFINED
+#pragma pack(push, 1)
+struct VnVisibleWindowEntry {
+    int64_t hwnd;
+    uint32_t process_id;
+    int32_t title_len;
+    uint8_t matches_platform_title;
+    char16_t title[256];
+};
+#pragma pack(pop)
+#endif
+
+#ifndef VN_CAPTION_TRACK_META_DEFINED
+#define VN_CAPTION_TRACK_META_DEFINED
+#pragma pack(push, 1)
+struct VnCaptionTrackMeta {
+    int32_t lang_offset;
+    int32_t lang_len;
+    uint8_t is_auto_generated;
+    uint8_t is_vss_a_prefix;
+};
+#pragma pack(pop)
+#endif
+
+VN_EXPORT int32_t __stdcall vn_privacy_indicator_scan_consent_store(
+    const char16_t* capability,
+    int32_t capability_len,
+    VnConsentStoreEntry* out_entries,
+    int32_t entries_cap,
+    int32_t* out_count) noexcept;
+
+VN_EXPORT int32_t __stdcall vn_privacy_indicator_merge_active_apps(
+    const VnActiveAppSlice* items,
+    int32_t item_count,
+    const char16_t* char_pool,
+    int32_t char_pool_len,
+    uint8_t sort_by_name,
+    int32_t* out_indices,
+    int32_t out_cap,
+    int32_t* out_count) noexcept;
+
+VN_EXPORT int32_t __stdcall vn_wtscanner_collect_visible_windows(
+    uint32_t exclude_pid,
+    uint8_t only_platform_titles,
+    VnVisibleWindowEntry* out_entries,
+    int32_t entries_cap,
+    int32_t* out_count) noexcept;
+
+VN_EXPORT int32_t __stdcall vn_lyrics_strip_title_extras(
+    const char16_t* title_ptr,
+    int32_t title_len,
+    uint8_t is_turkic_culture,
+    char16_t* out_buf,
+    int32_t out_cap,
+    int32_t* out_written) noexcept;
+
+VN_EXPORT int32_t __stdcall vn_youtube_subtitle_normalize_cue_text(
+    const char16_t* raw_text,
+    int32_t raw_len,
+    uint8_t strip_xml_tags,
+    char16_t* out_buf,
+    int32_t out_cap,
+    int32_t* out_written) noexcept;
+
+VN_EXPORT int32_t __stdcall vn_youtube_subtitle_clamp_timestamp_ticks(
+    int64_t raw_ms,
+    double raw_seconds,
+    uint8_t use_seconds,
+    int64_t* out_ticks,
+    uint8_t* out_valid) noexcept;
+
+VN_EXPORT int32_t __stdcall vn_youtube_subtitle_order_candidate_tracks(
+    const VnCaptionTrackMeta* tracks,
+    int32_t track_count,
+    const char16_t* lang_pool,
+    int32_t lang_pool_len,
+    const uint8_t* priority_modes,
+    int32_t priority_count,
+    const char16_t* native_lang_hint,
+    int32_t native_lang_hint_len,
+    uint8_t ignore_auto_generated,
+    int32_t* out_indices,
+    int32_t out_cap,
+    int32_t* out_count) noexcept;
+
+VN_EXPORT int32_t __stdcall vn_media_metadata_extract_youtube_video_id(
+    const char16_t* input,
+    int32_t input_len,
+    uint8_t mode,
+    int32_t* out_start,
+    int32_t* out_len,
+    uint8_t* out_found) noexcept;
+
+VN_EXPORT int32_t __stdcall vn_media_metadata_score_youtube_track_match(
+    const char16_t* candidate_title,
+    int32_t candidate_title_len,
+    const char16_t* target_title,
+    int32_t target_title_len,
+    int64_t candidate_duration_sec,
+    int64_t target_duration_sec,
+    int32_t* out_score,
+    int32_t* out_duration_delta,
+    uint8_t* out_is_match) noexcept;
+
+// ---------------------------------------------------------------------------
+// AI Streaming, Markdown Extended & Settings Search Batch
+// ---------------------------------------------------------------------------
+
+#ifndef VN_MARKDOWN_EXTENDED_DEFINED
+#define VN_MARKDOWN_EXTENDED_DEFINED
+#pragma pack(push, 1)
+struct VnMarkdownCodeFenceHeader
+{
+    uint8_t is_fence;
+    uint8_t fence_char;
+    uint8_t fence_count;
+    uint8_t reserved;
+    int32_t lang_start;
+    int32_t lang_length;
+};
+
+struct VnMarkdownListPrefix
+{
+    uint8_t list_kind;
+    uint8_t is_checked;
+    uint16_t ordered_number;
+    int32_t prefix_start;
+    int32_t prefix_length;
+    int32_t content_start;
+    int32_t content_length;
+};
+
+struct VnMarkdownSpanBoundarySummary
+{
+    uint8_t has_unclosed_fence;
+    uint8_t has_unclosed_inline_code;
+    uint8_t has_unclosed_bold;
+    uint8_t has_unclosed_italic;
+    int32_t fence_count;
+    int32_t inline_code_count;
+    int32_t bold_marker_count;
+    int32_t italic_marker_count;
+};
+#pragma pack(pop)
+#endif
+
+#ifndef VN_SETTINGS_SEARCH_BATCH_DEFINED
+#define VN_SETTINGS_SEARCH_BATCH_DEFINED
+#pragma pack(push, 1)
+struct VnSettingsSearchRowSpan
+{
+    int32_t title_offset;
+    int32_t title_len;
+    int32_t content_offset;
+    int32_t content_len;
+    int32_t combined_offset;
+    int32_t combined_len;
+};
+
+struct VnSettingsSearchMatchResult
+{
+    int32_t row_index;
+    int32_t score;
+};
+#pragma pack(pop)
+#endif
+
+VN_EXPORT int32_t __stdcall vn_spotlight_ai_parse_sse_data_line(
+    const char16_t* line_ptr,
+    int32_t line_len,
+    int32_t* out_payload_offset,
+    int32_t* out_payload_len,
+    uint8_t* out_is_data,
+    uint8_t* out_is_done) noexcept;
+
+VN_EXPORT int32_t __stdcall vn_spotlight_ai_extract_json_delta(
+    const char16_t* payload_ptr,
+    int32_t payload_len,
+    const char16_t* provider_ptr,
+    int32_t provider_len,
+    char16_t* out_delta_buf,
+    int32_t delta_cap,
+    int32_t* out_delta_len,
+    uint8_t* out_status,
+    uint8_t* out_completed) noexcept;
+
+VN_EXPORT int32_t __stdcall vn_markdown_scan_word_spans(
+    const char16_t* text_ptr,
+    int32_t text_len,
+    VnMarkdownSlice* out_spans,
+    int32_t span_cap,
+    int32_t* out_written) noexcept;
+
+VN_EXPORT int32_t __stdcall vn_markdown_parse_code_fence_header(
+    const char16_t* line_ptr,
+    int32_t line_len,
+    VnMarkdownCodeFenceHeader* out_header) noexcept;
+
+VN_EXPORT int32_t __stdcall vn_markdown_strip_list_prefix(
+    const char16_t* line_ptr,
+    int32_t line_len,
+    VnMarkdownListPrefix* out_prefix) noexcept;
+
+VN_EXPORT int32_t __stdcall vn_markdown_scan_span_boundaries(
+    const char16_t* text_ptr,
+    int32_t text_len,
+    VnMarkdownSpanBoundarySummary* out_summary,
+    VnMarkdownSlice* out_code_spans,
+    int32_t code_span_cap,
+    int32_t* out_code_span_count) noexcept;
+
+VN_EXPORT int32_t __stdcall vn_settings_search_normalize_row(
+    const char16_t* title_ptr,
+    int32_t title_len,
+    const char16_t* content_ptr,
+    int32_t content_len,
+    const char16_t* section_ptr,
+    int32_t section_len,
+    char16_t* out_arena_buf,
+    int32_t arena_cap,
+    VnSettingsSearchRowSpan* out_span,
+    int32_t* out_arena_len) noexcept;
+
+VN_EXPORT int32_t __stdcall vn_settings_search_evaluate_batch(
+    const char16_t* arena_ptr,
+    int32_t arena_len,
+    const VnSettingsSearchRowSpan* rows_ptr,
+    int32_t row_count,
+    const char16_t* query_ptr,
+    int32_t query_len,
+    VnSettingsSearchMatchResult* out_results,
+    int32_t results_cap,
+    int32_t* out_match_count) noexcept;
+
+// ---------------------------------------------------------------------------
+// UI Motion, Particles, Morphing & Visualizer Bars (UiMotionAndParticles.cpp)
+// ---------------------------------------------------------------------------
+
+#ifndef VN_DUST_PARTICLE_DEFINED
+#define VN_DUST_PARTICLE_DEFINED
+#pragma pack(push, 1)
+struct VnDustParticle
+{
+    float x;
+    float y;
+    float vx;
+    float vy;
+    float base_radius;
+    float radius;
+    float peak_alpha;
+    float alpha;
+    float life;
+    float life_speed;
+    float twinkle_phase;
+    uint8_t tint_index;
+};
+#pragma pack(pop)
+#endif
+
+VN_EXPORT int32_t __stdcall vn_dust_particles_init(
+    VnDustParticle* particles,
+    int32_t capacity,
+    double width,
+    double height,
+    uint32_t* io_rng_state,
+    int32_t* io_r2_sequence,
+    int32_t* out_active_count) noexcept;
+
+VN_EXPORT int32_t __stdcall vn_dust_particles_step(
+    VnDustParticle* particles,
+    int32_t active_count,
+    double width,
+    double height,
+    float dt,
+    uint8_t is_dissolving,
+    double dissolve_progress,
+    double reform_progress,
+    uint32_t* io_rng_state,
+    int32_t* io_r2_sequence) noexcept;
+
+VN_EXPORT int32_t __stdcall vn_dust_particles_dissolve_impulse(
+    VnDustParticle* particles,
+    int32_t active_count,
+    double width,
+    double height,
+    float origin_x,
+    float origin_y,
+    uint32_t* io_rng_state) noexcept;
+
+VN_EXPORT int32_t __stdcall vn_morph_settings_icon_sample_contour(
+    const double* raw_xy,
+    int32_t raw_point_count,
+    const double* matrix6,
+    uint8_t is_closed,
+    int32_t sample_count,
+    double* out_sampled_xy,
+    int32_t out_cap_doubles,
+    double* out_center_x,
+    double* out_center_y,
+    double* out_min_x,
+    double* out_bbox_area) noexcept;
+
+VN_EXPORT int32_t __stdcall vn_morph_settings_icon_compute_points(
+    const double* from_xy,
+    int32_t from_point_count,
+    const double* to_xy,
+    int32_t to_point_count,
+    double center_x,
+    double center_y,
+    double progress,
+    int32_t sample_count,
+    double* out_xy,
+    int32_t out_cap_doubles,
+    int32_t* out_point_count) noexcept;
+
+VN_EXPORT int32_t __stdcall vn_clipboard_motion_compute_stagger(
+    const int32_t* candidate_indices,
+    int32_t count,
+    int32_t base_delay_ms,
+    int32_t* out_sorted_positions,
+    int32_t* out_delays_ms) noexcept;
+
+VN_EXPORT int32_t __stdcall vn_clipboard_motion_card_delay(
+    int32_t item_index,
+    int32_t animated_count,
+    int32_t base_delay_ms,
+    int32_t* out_delay_ms) noexcept;
+
+VN_EXPORT int32_t __stdcall vn_clipboard_motion_compute_reflow_offset(
+    double origin_x,
+    double rendered_offset_x,
+    double scroll_offset,
+    double previous_x,
+    uint8_t has_previous_layout,
+    double previous_layout_x,
+    uint8_t same_transform,
+    double* out_layout_x,
+    double* out_offset_x,
+    uint8_t* out_should_animate) noexcept;
+
+VN_EXPORT int32_t __stdcall vn_clipboard_motion_step_scroll_physics(
+    double* io_position,
+    double* io_velocity,
+    double min_bound,
+    double max_bound,
+    double dt,
+    double friction,
+    double spring_stiffness,
+    double spring_damping,
+    uint8_t* out_is_settled) noexcept;
+
+VN_EXPORT int32_t __stdcall vn_visualizer_step_bars(
+    const double* current_heights,
+    const double* smoothed_heights,
+    const double* draw_heights,
+    int32_t bar_count,
+    double width,
+    double height,
+    double dpi_scale_x,
+    double dpi_scale_y,
+    double current_opacity,
+    double icon_mix,
+    double* out_bar_rects_xywh,
+    int32_t out_rects_cap_doubles,
+    double* out_corner_radius,
+    double* out_frame_opacity,
+    double* out_morph_opacity,
+    double* out_bars_opacity,
+    uint8_t* out_draw_settled) noexcept;
+
+VN_EXPORT int32_t __stdcall vn_visualizer_compute_morph_quads(
+    const double* bar_rects_xywh,
+    int32_t bar_count,
+    double width,
+    double height,
+    double play_mix,
+    double check_mix,
+    double icon_mix,
+    double* out_quad_points_xy,
+    int32_t out_cap_doubles) noexcept;
+
+// ---------------------------------------------------------------------------
+// Spotlight Search & Providers Extended Operations
+// ---------------------------------------------------------------------------
+
+VN_EXPORT int32_t __stdcall vn_app_search_provider_scan_start_menu(
+    const char16_t* start_menu_ptr,
+    int32_t start_menu_len,
+    char16_t* out_buf,
+    int32_t out_cap,
+    int32_t* out_written) noexcept;
+
+VN_EXPORT int32_t __stdcall vn_everything_provider_read_reply_item_count(
+    const uint8_t* list_ptr,
+    int32_t byte_count,
+    int32_t* out_count) noexcept;
+
+VN_EXPORT int32_t __stdcall vn_everything_provider_extract_reply_item(
+    const uint8_t* list_ptr,
+    int32_t byte_count,
+    int32_t index,
+    int32_t* out_name_offset,
+    int32_t* out_name_len,
+    int32_t* out_path_offset,
+    int32_t* out_path_len,
+    uint8_t* out_is_folder) noexcept;
+
+VN_EXPORT int32_t __stdcall vn_everything_provider_pack_ipc_query(
+    int64_t reply_hwnd,
+    uint32_t query_id,
+    uint32_t search_flags,
+    int32_t max_results,
+    const char16_t* query_ptr,
+    int32_t query_len,
+    uint8_t* out_buf,
+    int32_t out_cap,
+    int32_t* out_bytes) noexcept;
+
+VN_EXPORT int32_t __stdcall vn_windows_search_build_query_sql(
+    const char16_t* sanitized_ptr, int32_t sanitized_len,
+    const char16_t* original_ptr, int32_t original_len,
+    const char16_t* scope_ptr, int32_t scope_len,
+    uint8_t is_explicit_path,
+    int32_t fetch,
+    char16_t* out_buf, int32_t out_cap, int32_t* out_len) noexcept;
+
+VN_EXPORT int32_t __stdcall vn_windows_search_normalize_result_path(
+    const char16_t* raw_path_ptr,
+    int32_t raw_path_len,
+    char16_t* out_buf,
+    int32_t out_cap,
+    int32_t* out_len) noexcept;
+
+VN_EXPORT int32_t __stdcall vn_spotlight_search_compare_keys(
+    double score_a,
+    const char16_t* title_a_ptr,
+    int32_t title_a_len,
+    const char16_t* id_a_ptr,
+    int32_t id_a_len,
+    double score_b,
+    const char16_t* title_b_ptr,
+    int32_t title_b_len,
+    const char16_t* id_b_ptr,
+    int32_t id_b_len,
+    int32_t* out_cmp) noexcept;
+
+// ---------------------------------------------------------------------------
+// Clipboard Store, Sensitive Data & Selection Extended Operations
+// ---------------------------------------------------------------------------
+
+#ifndef VN_CLIPBOARD_PRUNE_CANDIDATE_DEFINED
+#define VN_CLIPBOARD_PRUNE_CANDIDATE_DEFINED
+#pragma pack(push, 1)
+struct VnClipboardPruneCandidate {
+    int32_t entry_index;
+    uint8_t is_personal;
+    uint8_t is_pinned;
+    uint8_t is_archived;
+    int64_t copied_utc_ticks;
+    int64_t byte_size;
+};
+#pragma pack(pop)
+#endif
+
+VN_EXPORT int32_t __stdcall vn_clipboard_store_tokenize_query(
+    const char16_t* query,
+    int32_t query_len,
+    int32_t* out_starts,
+    int32_t* out_lengths,
+    int32_t max_tokens,
+    int32_t* out_token_count) noexcept;
+
+VN_EXPORT int32_t __stdcall vn_clipboard_store_contains_icase(
+    const char16_t* haystack,
+    int32_t haystack_len,
+    const char16_t* needle,
+    int32_t needle_len,
+    uint8_t* out_contains) noexcept;
+
+VN_EXPORT int32_t __stdcall vn_clipboard_store_equals_icase(
+    const char16_t* a,
+    int32_t a_len,
+    const char16_t* b,
+    int32_t b_len,
+    uint8_t* out_equals) noexcept;
+
+VN_EXPORT int32_t __stdcall vn_clipboard_store_entry_matches_metadata_token(
+    uint8_t is_sensitive,
+    const char16_t* title,
+    int32_t title_len,
+    const char16_t* preview,
+    int32_t preview_len,
+    const char16_t* source_app,
+    int32_t source_app_len,
+    const char16_t* token,
+    int32_t token_len,
+    uint8_t* out_matches) noexcept;
+
+VN_EXPORT int32_t __stdcall vn_clipboard_store_plan_prune(
+    const VnClipboardPruneCandidate* candidates,
+    int32_t candidate_count,
+    int64_t cutoff_utc_ticks,
+    int32_t max_unpinned_entries,
+    int64_t max_unpinned_bytes,
+    int32_t* out_ordered_indices,
+    int32_t max_indices,
+    int32_t* out_expired_count,
+    int32_t* out_evict_candidate_count,
+    int64_t* out_total_active_bytes) noexcept;
+
+VN_EXPORT int32_t __stdcall vn_clipboard_store_evaluate_sensitive_expiry(
+    uint8_t has_entry,
+    uint8_t is_pinned,
+    uint8_t is_archived,
+    uint8_t is_personal,
+    uint8_t has_personal_dir,
+    uint8_t ticks_valid,
+    int64_t marker_ticks,
+    int64_t expiry_cutoff_ticks,
+    int32_t* out_action) noexcept;
+
+VN_EXPORT int32_t __stdcall vn_clipboard_store_is_vault_stream_magic(
+    const uint8_t* magic,
+    int32_t magic_len,
+    uint8_t* out_is_magic) noexcept;
+
+VN_EXPORT int32_t __stdcall vn_clipboard_store_format_prefixed_sha256_hex(
+    const char16_t* prefix,
+    int32_t prefix_len,
+    const uint8_t* hash_bytes,
+    int32_t hash_len,
+    char16_t* out_buf,
+    int32_t out_cap,
+    int32_t* out_written) noexcept;
+
+VN_EXPORT int32_t __stdcall vn_clipboard_store_are_signatures_equal(
+    const char16_t* sig_a,
+    int32_t len_a,
+    const char16_t* sig_b,
+    int32_t len_b,
+    uint8_t* out_equal) noexcept;
+
+VN_EXPORT int32_t __stdcall vn_clipboard_store_is_probable_duplicate_image_candidate(
+    int32_t kind,
+    uint8_t is_personal,
+    int64_t capture_ticks,
+    int64_t entry_ticks,
+    int64_t best_ticks,
+    uint8_t has_best,
+    uint8_t* out_is_better) noexcept;
+
+VN_EXPORT int32_t __stdcall vn_clipboard_store_is_export_path_protected(
+    const char16_t* directory,
+    int32_t directory_len,
+    const char16_t* active_lease,
+    int32_t active_lease_len,
+    uint16_t dir_sep,
+    uint8_t* out_protected) noexcept;
+
+VN_EXPORT int32_t __stdcall vn_clipboard_sensitive_analyze(
+    const char16_t* text_ptr, int32_t text_len,
+    const char16_t* app_ptr, int32_t app_len,
+    const char16_t* exe_ptr, int32_t exe_len,
+    int32_t* out_reason, int32_t* out_confidence) noexcept;
+
+VN_EXPORT int32_t __stdcall vn_clipboard_sensitive_format_mask(
+    const char16_t* text_ptr, int32_t text_len,
+    char16_t* out_mask, int32_t out_cap,
+    int32_t* out_len) noexcept;
+
+VN_EXPORT int32_t __stdcall vn_clipboard_selection_scroll_speed(
+    double x,
+    double width,
+    double* out_speed) noexcept;
+
+VN_EXPORT int32_t __stdcall vn_clipboard_selection_compute_lasso_range(
+    int32_t card_count,
+    int32_t ref_index,
+    double container_width,
+    double margin_left,
+    double margin_right,
+    double origin_x,
+    double origin_y,
+    double container_height,
+    double scroll_offset,
+    double rect_left,
+    double rect_top,
+    double rect_right,
+    double rect_bottom,
+    double row_top,
+    double row_bottom,
+    uint8_t swept,
+    int32_t* out_first,
+    int32_t* out_last,
+    uint8_t* out_hits_row,
+    uint8_t* out_expand_vertical) noexcept;
+
+VN_EXPORT int32_t __stdcall vn_clipboard_selection_filter_ordered_indices(
+    const int32_t* selected_indices,
+    int32_t selected_count,
+    int32_t card_count,
+    uint8_t* scratch_mask,
+    int32_t* out_ordered_indices,
+    int32_t* out_count) noexcept;
+
+VN_EXPORT int32_t __stdcall vn_clipboard_selection_merge_optimistic_order(
+    int32_t desired_count,
+    const int32_t* optimistic_to_desired_index,
+    int32_t optimistic_count,
+    uint8_t* scratch_taken_mask,
+    int32_t* out_merged_desired_indices,
+    int32_t* out_merged_count) noexcept;
+
+// ---------------------------------------------------------------------------
+// Privacy Indicator, Window Title Scanner, Lyrics, YouTube & Media Metadata
+// ---------------------------------------------------------------------------
+
+#ifndef VN_PRIVACY_INDICATOR_BATCH_DEFINED
+#define VN_PRIVACY_INDICATOR_BATCH_DEFINED
+#pragma pack(push, 1)
+struct VnConsentStoreEntry {
+    int64_t last_start_file_time;
+    int32_t raw_len;
+    int32_t display_start;
+    int32_t display_len;
+    char16_t raw_name[260];
+};
+
+struct VnActiveAppSlice {
+    int32_t name_offset;
+    int32_t name_len;
+    int64_t last_start_file_time;
+};
+#pragma pack(pop)
+#endif
+
+#ifndef VN_VISIBLE_WINDOW_ENTRY_DEFINED
+#define VN_VISIBLE_WINDOW_ENTRY_DEFINED
+#pragma pack(push, 1)
+struct VnVisibleWindowEntry {
+    int64_t hwnd;
+    uint32_t process_id;
+    int32_t title_len;
+    uint8_t matches_platform_title;
+    char16_t title[256];
+};
+#pragma pack(pop)
+#endif
+
+#ifndef VN_CAPTION_TRACK_META_DEFINED
+#define VN_CAPTION_TRACK_META_DEFINED
+#pragma pack(push, 1)
+struct VnCaptionTrackMeta {
+    int32_t lang_offset;
+    int32_t lang_len;
+    uint8_t is_auto_generated;
+    uint8_t is_vss_a_prefix;
+};
+#pragma pack(pop)
+#endif
+
+VN_EXPORT int32_t __stdcall vn_privacy_indicator_scan_consent_store(
+    const char16_t* capability,
+    int32_t capability_len,
+    VnConsentStoreEntry* out_entries,
+    int32_t entries_cap,
+    int32_t* out_count) noexcept;
+
+VN_EXPORT int32_t __stdcall vn_privacy_indicator_merge_active_apps(
+    const VnActiveAppSlice* items,
+    int32_t item_count,
+    const char16_t* char_pool,
+    int32_t char_pool_len,
+    uint8_t sort_by_name,
+    int32_t* out_indices,
+    int32_t out_cap,
+    int32_t* out_count) noexcept;
+
+VN_EXPORT int32_t __stdcall vn_wtscanner_collect_visible_windows(
+    uint32_t exclude_pid,
+    uint8_t only_platform_titles,
+    VnVisibleWindowEntry* out_entries,
+    int32_t entries_cap,
+    int32_t* out_count) noexcept;
+
+VN_EXPORT int32_t __stdcall vn_lyrics_strip_title_extras(
+    const char16_t* title_ptr,
+    int32_t title_len,
+    uint8_t is_turkic_culture,
+    char16_t* out_buf,
+    int32_t out_cap,
+    int32_t* out_written) noexcept;
+
+VN_EXPORT int32_t __stdcall vn_youtube_subtitle_normalize_cue_text(
+    const char16_t* raw_text,
+    int32_t raw_len,
+    uint8_t strip_xml_tags,
+    char16_t* out_buf,
+    int32_t out_cap,
+    int32_t* out_written) noexcept;
+
+VN_EXPORT int32_t __stdcall vn_youtube_subtitle_clamp_timestamp_ticks(
+    int64_t raw_ms,
+    double raw_seconds,
+    uint8_t use_seconds,
+    int64_t* out_ticks,
+    uint8_t* out_valid) noexcept;
+
+VN_EXPORT int32_t __stdcall vn_youtube_subtitle_order_candidate_tracks(
+    const VnCaptionTrackMeta* tracks,
+    int32_t track_count,
+    const char16_t* lang_pool,
+    int32_t lang_pool_len,
+    const uint8_t* priority_modes,
+    int32_t priority_count,
+    const char16_t* native_lang_hint,
+    int32_t native_lang_hint_len,
+    uint8_t ignore_auto_generated,
+    int32_t* out_indices,
+    int32_t out_cap,
+    int32_t* out_count) noexcept;
+
+VN_EXPORT int32_t __stdcall vn_media_metadata_extract_youtube_video_id(
+    const char16_t* input,
+    int32_t input_len,
+    uint8_t mode,
+    int32_t* out_start,
+    int32_t* out_len,
+    uint8_t* out_found) noexcept;
+
+VN_EXPORT int32_t __stdcall vn_media_metadata_score_youtube_track_match(
+    const char16_t* candidate_title,
+    int32_t candidate_title_len,
+    const char16_t* target_title,
+    int32_t target_title_len,
+    int64_t candidate_duration_sec,
+    int64_t target_duration_sec,
+    int32_t* out_score,
+    int32_t* out_duration_delta,
+    uint8_t* out_is_match) noexcept;
+
+// ---------------------------------------------------------------------------
+// AI Streaming, Markdown Extended & Settings Search Batch
+// ---------------------------------------------------------------------------
+
+#ifndef VN_MARKDOWN_EXTENDED_DEFINED
+#define VN_MARKDOWN_EXTENDED_DEFINED
+#pragma pack(push, 1)
+struct VnMarkdownCodeFenceHeader
+{
+    uint8_t is_fence;
+    uint8_t fence_char;
+    uint8_t fence_count;
+    uint8_t reserved;
+    int32_t lang_start;
+    int32_t lang_length;
+};
+
+struct VnMarkdownListPrefix
+{
+    uint8_t list_kind;
+    uint8_t is_checked;
+    uint16_t ordered_number;
+    int32_t prefix_start;
+    int32_t prefix_length;
+    int32_t content_start;
+    int32_t content_length;
+};
+
+struct VnMarkdownSpanBoundarySummary
+{
+    uint8_t has_unclosed_fence;
+    uint8_t has_unclosed_inline_code;
+    uint8_t has_unclosed_bold;
+    uint8_t has_unclosed_italic;
+    int32_t fence_count;
+    int32_t inline_code_count;
+    int32_t bold_marker_count;
+    int32_t italic_marker_count;
+};
+#pragma pack(pop)
+#endif
+
+#ifndef VN_SETTINGS_SEARCH_BATCH_DEFINED
+#define VN_SETTINGS_SEARCH_BATCH_DEFINED
+#pragma pack(push, 1)
+struct VnSettingsSearchRowSpan
+{
+    int32_t title_offset;
+    int32_t title_len;
+    int32_t content_offset;
+    int32_t content_len;
+    int32_t combined_offset;
+    int32_t combined_len;
+};
+
+struct VnSettingsSearchMatchResult
+{
+    int32_t row_index;
+    int32_t score;
+};
+#pragma pack(pop)
+#endif
+
+VN_EXPORT int32_t __stdcall vn_spotlight_ai_parse_sse_data_line(
+    const char16_t* line_ptr,
+    int32_t line_len,
+    int32_t* out_payload_offset,
+    int32_t* out_payload_len,
+    uint8_t* out_is_data,
+    uint8_t* out_is_done) noexcept;
+
+VN_EXPORT int32_t __stdcall vn_spotlight_ai_extract_json_delta(
+    const char16_t* payload_ptr,
+    int32_t payload_len,
+    const char16_t* provider_ptr,
+    int32_t provider_len,
+    char16_t* out_delta_buf,
+    int32_t delta_cap,
+    int32_t* out_delta_len,
+    uint8_t* out_status,
+    uint8_t* out_completed) noexcept;
+
+VN_EXPORT int32_t __stdcall vn_markdown_scan_word_spans(
+    const char16_t* text_ptr,
+    int32_t text_len,
+    VnMarkdownSlice* out_spans,
+    int32_t span_cap,
+    int32_t* out_written) noexcept;
+
+VN_EXPORT int32_t __stdcall vn_markdown_parse_code_fence_header(
+    const char16_t* line_ptr,
+    int32_t line_len,
+    VnMarkdownCodeFenceHeader* out_header) noexcept;
+
+VN_EXPORT int32_t __stdcall vn_markdown_strip_list_prefix(
+    const char16_t* line_ptr,
+    int32_t line_len,
+    VnMarkdownListPrefix* out_prefix) noexcept;
+
+VN_EXPORT int32_t __stdcall vn_markdown_scan_span_boundaries(
+    const char16_t* text_ptr,
+    int32_t text_len,
+    VnMarkdownSpanBoundarySummary* out_summary,
+    VnMarkdownSlice* out_code_spans,
+    int32_t code_span_cap,
+    int32_t* out_code_span_count) noexcept;
+
+VN_EXPORT int32_t __stdcall vn_settings_search_normalize_row(
+    const char16_t* title_ptr,
+    int32_t title_len,
+    const char16_t* content_ptr,
+    int32_t content_len,
+    const char16_t* section_ptr,
+    int32_t section_len,
+    char16_t* out_arena_buf,
+    int32_t arena_cap,
+    VnSettingsSearchRowSpan* out_span,
+    int32_t* out_arena_len) noexcept;
+
+VN_EXPORT int32_t __stdcall vn_settings_search_evaluate_batch(
+    const char16_t* arena_ptr,
+    int32_t arena_len,
+    const VnSettingsSearchRowSpan* rows_ptr,
+    int32_t row_count,
+    const char16_t* query_ptr,
+    int32_t query_len,
+    VnSettingsSearchMatchResult* out_results,
+    int32_t results_cap,
+    int32_t* out_match_count) noexcept;

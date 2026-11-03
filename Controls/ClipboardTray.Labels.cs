@@ -1,3 +1,4 @@
+using System.Runtime.InteropServices;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
@@ -11,34 +12,127 @@ namespace VNotch.Controls;
 
 public sealed partial class ClipboardTray
 {
+    [LibraryImport(NativeDll)]
+    private static partial int vn_clipboard_selection_merge_optimistic_order(
+        int desiredCount,
+        ReadOnlySpan<int> optimisticToDesiredIndex,
+        int optimisticCount,
+        Span<byte> scratchTakenMask,
+        Span<int> outMergedDesiredIndices,
+        out int outMergedCount);
+
     private int _labelEditorVersion;
     private bool _labelEditorOpen;
     private void SynchronizeLabels()
     {
         if (_controller == null) return;
-        var desired = _controller.Store.GetCategoryOrder().ToList();
-        if (_optimisticCategoryOrder != null)
+        var storeOrder = _controller.Store.GetCategoryOrder();
+        int desiredCount = storeOrder.Count;
+        if (desiredCount == 0)
         {
-            var known = desired.ToHashSet(StringComparer.Ordinal);
-            var preview = _optimisticCategoryOrder.ToHashSet(StringComparer.Ordinal);
-            desired = _optimisticCategoryOrder.Where(known.Contains)
-                .Concat(desired.Where(id => !preview.Contains(id))).ToList();
-        }
-        if (_categoryItems.Select(item => item.Name).SequenceEqual(desired))
+            if (_categoryItems.Length != 0)
+            {
+                CancelCategoryReorder();
+                _categoryItems = [];
+                CategoryPanel.ItemsSource = _categoryItems;
+            }
             return;
-        CancelCategoryReorder();
-        var existing = _categoryItems.ToDictionary(item => item.Name);
-        var labels = _controller.Store.GetLabels().ToDictionary(label => label.Id);
-        _categoryItems = desired.Select(name =>
+        }
+
+        Span<int> mergedIndices = desiredCount <= 256 ? stackalloc int[desiredCount] : new int[desiredCount];
+        int mergedCount;
+        if (_optimisticCategoryOrder is { } optimistic && optimistic.Length > 0)
         {
-            if (existing.TryGetValue(name, out var category)) return category;
-            return ClipboardLabel.IsCustomId(name)
-                ? new ClipboardCategoryViewModel(TrayIconKind.Shopping, name, labels[name].Name)
+            int optCount = optimistic.Length;
+            Span<int> optToDesired = optCount <= 256 ? stackalloc int[optCount] : new int[optCount];
+            for (int i = 0; i < optCount; i++)
+            {
+                string optId = optimistic[i];
+                int foundIdx = -1;
+                for (int d = 0; d < desiredCount; d++)
+                {
+                    if (string.Equals(storeOrder[d], optId, StringComparison.Ordinal))
+                    {
+                        foundIdx = d;
+                        break;
+                    }
+                }
+                optToDesired[i] = foundIdx;
+            }
+            Span<byte> scratchTaken = desiredCount <= 256 ? stackalloc byte[desiredCount] : new byte[desiredCount];
+            _ = vn_clipboard_selection_merge_optimistic_order(
+                desiredCount, optToDesired, optCount, scratchTaken, mergedIndices, out mergedCount);
+        }
+        else
+        {
+            mergedCount = desiredCount;
+            for (int i = 0; i < desiredCount; i++)
+                mergedIndices[i] = i;
+        }
+
+        if (_categoryItems.Length == mergedCount)
+        {
+            bool sameOrder = true;
+            for (int i = 0; i < mergedCount; i++)
+            {
+                if (!string.Equals(_categoryItems[i].Name, storeOrder[mergedIndices[i]], StringComparison.Ordinal))
+                {
+                    sameOrder = false;
+                    break;
+                }
+            }
+            if (sameOrder) return;
+        }
+
+        CancelCategoryReorder();
+        var existingItems = _categoryItems;
+        var labels = _controller.Store.GetLabels();
+        var nextItems = new ClipboardCategoryViewModel[mergedCount];
+        for (int i = 0; i < mergedCount; i++)
+        {
+            string name = storeOrder[mergedIndices[i]];
+            var existing = FindExistingCategoryItem(existingItems, name);
+            if (existing != null)
+            {
+                nextItems[i] = existing;
+                continue;
+            }
+            nextItems[i] = ClipboardLabel.IsCustomId(name)
+                ? new ClipboardCategoryViewModel(TrayIconKind.Shopping, name, FindCustomLabelName(labels, name))
                 : new ClipboardCategoryViewModel(Enum.Parse<TrayIconKind>(name));
-        }).ToArray();
-
-
+        }
+        _categoryItems = nextItems;
         CategoryPanel.ItemsSource = _categoryItems;
+    }
+
+    private static ClipboardCategoryViewModel? FindExistingCategoryItem(ClipboardCategoryViewModel[] items, string name)
+    {
+        for (int i = 0; i < items.Length; i++)
+        {
+            if (string.Equals(items[i].Name, name, StringComparison.Ordinal))
+                return items[i];
+        }
+        return null;
+    }
+
+    private static string FindCustomLabelName(IReadOnlyList<ClipboardLabel> labels, string id)
+    {
+        for (int i = 0; i < labels.Count; i++)
+        {
+            if (string.Equals(labels[i].Id, id, StringComparison.Ordinal))
+                return labels[i].Name;
+        }
+        return id;
+    }
+
+    private static T? FindTransform<T>(TransformCollection children) where T : Transform
+    {
+        for (int i = 0; i < children.Count; i++)
+        {
+            if (children[i] is T match)
+                return match;
+        }
+        return null;
     }
 
     private void LocalizeLabelActions()
@@ -76,7 +170,7 @@ public sealed partial class ClipboardTray
         ++_labelEditorVersion;
         _labelEditorOpen = true;
         EndSelection();
-        foreach (var menu in _openMenus.ToArray()) menu.IsOpen = false;
+        CloseAllOpenMenus();
         LabelNameBox.Clear();
         LabelEditorError.Text = "";
         TrayContentGrid.IsHitTestVisible = false;
@@ -115,8 +209,8 @@ public sealed partial class ClipboardTray
     private void AnimateLabelEditorBorder(bool entering)
     {
         if (LabelEditorBorder?.RenderTransform is not TransformGroup group ||
-            group.Children.OfType<ScaleTransform>().FirstOrDefault() is not { } scale ||
-            group.Children.OfType<TranslateTransform>().FirstOrDefault() is not { } translate) return;
+            FindTransform<ScaleTransform>(group.Children) is not { } scale ||
+            FindTransform<TranslateTransform>(group.Children) is not { } translate) return;
 
         scale.BeginAnimation(ScaleTransform.ScaleXProperty, null);
         scale.BeginAnimation(ScaleTransform.ScaleYProperty, null);
@@ -179,7 +273,7 @@ public sealed partial class ClipboardTray
     private void ShakeLabelEditor()
     {
         if (AnimationConfig.ReduceMotion || LabelEditorBorder?.RenderTransform is not TransformGroup group ||
-            group.Children.OfType<TranslateTransform>().FirstOrDefault() is not { } translate) return;
+            FindTransform<TranslateTransform>(group.Children) is not { } translate) return;
         var shake = new DoubleAnimationUsingKeyFrames
         {
             FillBehavior = FillBehavior.Stop,

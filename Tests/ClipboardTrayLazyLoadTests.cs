@@ -257,6 +257,41 @@ public sealed class ClipboardTrayLazyLoadTests
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
+    public void ViewportMotionStopsOnHideOrDisposeAndCanRestart(bool dispose) => SharedStaTestRunner.RunAsync(async () =>
+    {
+        bool previous = AnimationConfig.ReduceMotion;
+        AnimationConfig.SetReduceMotion(false);
+        using var tray = new ClipboardTray();
+        var card = new ClipboardCardViewModel(new ClipboardEntry { Kind = ClipboardKind.File, Title = "document.txt" });
+        Field<ObservableCollection<ClipboardCardViewModel>>(tray, "_cards").Add(card);
+        var window = new BackgroundWindow { Content = tray, Width = 780, Height = 300 };
+        try
+        {
+            window.Show();
+            await Dispatcher.Yield(DispatcherPriority.ApplicationIdle);
+            var border = Field<HashSet<FrameworkElement>>(tray, "_realizedCardElements").Single();
+            Invoke(tray, "RefreshCardViewportVisibility", border, false);
+            Assert.True(Field<bool>(tray, "_viewportMotionHooked"));
+            Assert.NotEmpty(Field<System.Collections.IList>(tray, "_viewportMotions"));
+            if (dispose) tray.Dispose();
+            else tray.Visibility = Visibility.Collapsed;
+            Assert.False(Field<bool>(tray, "_viewportMotionHooked"));
+            Assert.Empty(Field<System.Collections.IList>(tray, "_viewportMotions"));
+            if (!dispose)
+            {
+                tray.Visibility = Visibility.Visible;
+                Invoke(tray, "RefreshCardViewportVisibility", border, true);
+                Assert.True(Field<bool>(tray, "_viewportMotionHooked"));
+                await WpfFrameWaiter.UntilAsync(() => !Field<bool>(tray, "_viewportMotionHooked"), "reopened viewport motion settles");
+                Assert.Equal(1, ((Border)border).Child.Opacity);
+            }
+        }
+        finally { window.Close(); AnimationConfig.SetReduceMotion(previous); }
+    });
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
     public void ViewportExitReversesWithoutLosingAReadyPreviewAndHonorsReduceMotion(bool reduceMotion) => SharedStaTestRunner.RunAsync(async () =>
     {
         bool previous = AnimationConfig.ReduceMotion;
@@ -288,12 +323,21 @@ public sealed class ClipboardTrayLazyLoadTests
             }
             else
             {
-                await WpfFrameWaiter.UntilAsync(() => visual.Opacity > 0 && visual.Opacity < .9, "card fades out");
-                double opacity = visual.Opacity;
-                Assert.Same(image, card.Image);
-                container.RenderTransform = Transform.Identity;
-                container.UpdateLayout();
-                Invoke(tray, "RefreshCardViewport", border);
+                double opacity = 0;
+                bool reversed = false;
+                // Reverse in the frame that observes the active fade. An async
+                // continuation may resume after the exit has legitimately finished.
+                await WpfFrameWaiter.UntilAsync(() =>
+                {
+                    if (reversed) return true;
+                    if (visual.Opacity <= 0 || visual.Opacity >= .9) return false;
+                    opacity = visual.Opacity;
+                    Assert.Same(image, card.Image);
+                    container.RenderTransform = Transform.Identity;
+                    container.UpdateLayout();
+                    Invoke(tray, "RefreshCardViewport", border);
+                    return reversed = true;
+                }, "card reverses while fading out");
                 await WpfFrameWaiter.NextAsync();
                 Assert.InRange(visual.Opacity, opacity - .1, 1);
                 await WpfFrameWaiter.UntilAsync(() => Math.Abs(visual.Opacity - 1) < 1e-6, "reversed entrance settles");
@@ -305,6 +349,7 @@ public sealed class ClipboardTrayLazyLoadTests
                 await WpfFrameWaiter.UntilAsync(() => card.Image == null, "exit releases its preview");
                 Assert.Equal(0, visual.Opacity);
                 Assert.Null(card.SourceIcon);
+                Assert.False(Field<bool>(tray, "_viewportMotionHooked"));
             }
         }
         finally { window.Close(); AnimationConfig.SetReduceMotion(previous); }

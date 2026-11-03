@@ -46,6 +46,43 @@ public sealed partial class PrivacyIndicatorService : IDisposable
         ref long inoutLastSignalUtcTicks,
         out byte outActive);
 
+    [StructLayout(LayoutKind.Sequential, Pack = 1)]
+    private unsafe struct VnConsentStoreEntry
+    {
+        public long LastStartFileTime;
+        public int RawLen;
+        public int DisplayStart;
+        public int DisplayLen;
+        public fixed char RawName[260];
+    }
+
+    [StructLayout(LayoutKind.Sequential, Pack = 1)]
+    private struct VnActiveAppSlice
+    {
+        public int NameOffset;
+        public int NameLen;
+        public long LastStartFileTime;
+    }
+
+    [LibraryImport(NativeDll, StringMarshalling = StringMarshalling.Utf16)]
+    private static partial int vn_privacy_indicator_scan_consent_store(
+        ReadOnlySpan<char> capability,
+        int capabilityLen,
+        Span<VnConsentStoreEntry> outEntries,
+        int entriesCap,
+        out int outCount);
+
+    [LibraryImport(NativeDll, StringMarshalling = StringMarshalling.Utf16)]
+    private static partial int vn_privacy_indicator_merge_active_apps(
+        ReadOnlySpan<VnActiveAppSlice> items,
+        int itemCount,
+        ReadOnlySpan<char> charPool,
+        int charPoolLen,
+        byte sortByName,
+        Span<int> outIndices,
+        int outCap,
+        out int outCount);
+
     private const string ConsentRoot =
         @"Software\Microsoft\Windows\CurrentVersion\CapabilityAccessManager\ConsentStore";
 
@@ -646,18 +683,34 @@ public sealed partial class PrivacyIndicatorService : IDisposable
         if (usages is IReadOnlyCollection<CapabilityUsage> { Count: 0 })
             return Array.Empty<CapabilityUsage>();
 
-        Dictionary<string, CapabilityUsage>? latest = null;
+        List<CapabilityUsage>? filtered = null;
         foreach (var usage in usages)
         {
             if ((additionalRule != null && !additionalRule(usage)) || !isRunning(usage.RawName))
                 continue;
 
-            latest ??= new(StringComparer.OrdinalIgnoreCase);
+            filtered ??= new List<CapabilityUsage>();
+            filtered.Add(usage);
+        }
+        if (filtered == null) return Array.Empty<CapabilityUsage>();
+        if (filtered.Count == 1) return new[] { filtered[0] };
+
+        if (TryMergeActiveApps(filtered, useDisplayName: false, sortByName: false, out int[]? indices, out int mergedCount) && indices != null)
+        {
+            var merged = new CapabilityUsage[mergedCount];
+            for (int i = 0; i < mergedCount; i++)
+                merged[i] = filtered[indices[i]];
+            return merged;
+        }
+
+        var latest = new Dictionary<string, CapabilityUsage>(filtered.Count, StringComparer.OrdinalIgnoreCase);
+        for (int i = 0; i < filtered.Count; i++)
+        {
+            var usage = filtered[i];
             if (!latest.TryGetValue(usage.RawName, out var previous) ||
                 usage.LastStartFileTime > previous.LastStartFileTime)
                 latest[usage.RawName] = usage;
         }
-        if (latest == null) return Array.Empty<CapabilityUsage>();
 
         var result = new CapabilityUsage[latest.Count];
         latest.Values.CopyTo(result, 0);
@@ -670,6 +723,14 @@ public sealed partial class PrivacyIndicatorService : IDisposable
         if (count == 0) return Array.Empty<string>();
         if (count == 1) return new[] { usages[0].DisplayName };
 
+        if (TryMergeActiveApps(usages, useDisplayName: true, sortByName: true, out int[]? indices, out int mergedCount) && indices != null)
+        {
+            var sorted = new string[mergedCount];
+            for (int i = 0; i < mergedCount; i++)
+                sorted[i] = usages[indices[i]].DisplayName;
+            return sorted;
+        }
+
         var seen = new HashSet<string>(count, StringComparer.OrdinalIgnoreCase);
         for (int i = 0; i < count; i++)
             seen.Add(usages[i].DisplayName);
@@ -678,6 +739,59 @@ public sealed partial class PrivacyIndicatorService : IDisposable
         seen.CopyTo(result);
         Array.Sort(result, StringComparer.OrdinalIgnoreCase);
         return result;
+    }
+
+    private static bool TryMergeActiveApps(
+        IReadOnlyList<CapabilityUsage> usages,
+        bool useDisplayName,
+        bool sortByName,
+        out int[]? outIndices,
+        out int outCount)
+    {
+        outIndices = null;
+        outCount = 0;
+        int count = usages.Count;
+        if (count <= 0) return false;
+
+        int totalChars = 0;
+        for (int i = 0; i < count; i++)
+        {
+            string s = (useDisplayName ? usages[i].DisplayName : usages[i].RawName) ?? string.Empty;
+            totalChars += s.Length;
+        }
+
+        Span<VnActiveAppSlice> slices = count <= 64 ? stackalloc VnActiveAppSlice[count] : new VnActiveAppSlice[count];
+        Span<char> charPool = totalChars <= 2048 ? stackalloc char[Math.Max(1, totalChars)] : new char[Math.Max(1, totalChars)];
+        int offset = 0;
+        for (int i = 0; i < count; i++)
+        {
+            string s = (useDisplayName ? usages[i].DisplayName : usages[i].RawName) ?? string.Empty;
+            s.AsSpan().CopyTo(charPool.Slice(offset, s.Length));
+            slices[i] = new VnActiveAppSlice
+            {
+                NameOffset = offset,
+                NameLen = s.Length,
+                LastStartFileTime = usages[i].LastStartFileTime
+            };
+            offset += s.Length;
+        }
+
+        int[] indices = new int[count];
+        int status = vn_privacy_indicator_merge_active_apps(
+            slices,
+            count,
+            charPool[..offset],
+            offset,
+            sortByName ? (byte)1 : (byte)0,
+            indices,
+            indices.Length,
+            out int mergedCount);
+        if (status != 0 || mergedCount < 0 || mergedCount > count)
+            return false;
+
+        outIndices = indices;
+        outCount = mergedCount;
+        return true;
     }
 
     internal static bool UpdateMicrophoneCandidateNames(
@@ -698,12 +812,62 @@ public sealed partial class PrivacyIndicatorService : IDisposable
 
     private static IReadOnlyList<CapabilityUsage> ScanCapability(string capability)
     {
+        if (TryScanConsentStoreNative(capability, out var nativeUsages))
+            return nativeUsages;
+
         var consumers = new List<CapabilityUsage>();
 
         ScanCapabilityHive(Registry.CurrentUser, capability, consumers);
         ScanCapabilityHive(Registry.LocalMachine, capability, consumers);
 
         return consumers.Count == 0 ? Array.Empty<CapabilityUsage>() : consumers;
+    }
+
+    private static unsafe bool TryScanConsentStoreNative(string capability, out IReadOnlyList<CapabilityUsage> usages)
+    {
+        usages = Array.Empty<CapabilityUsage>();
+        if (string.IsNullOrWhiteSpace(capability)) return true;
+
+        Span<VnConsentStoreEntry> stackEntries = stackalloc VnConsentStoreEntry[32];
+        ReadOnlySpan<char> capSpan = capability.AsSpan();
+        int status = vn_privacy_indicator_scan_consent_store(capSpan, capSpan.Length, stackEntries, stackEntries.Length, out int count);
+        if (status == 0)
+        {
+            if (count <= 0) return true;
+            usages = BuildConsentUsages(stackEntries[..count]);
+            return true;
+        }
+        if (status == -2 && count > stackEntries.Length)
+        {
+            var heapEntries = new VnConsentStoreEntry[count];
+            status = vn_privacy_indicator_scan_consent_store(capSpan, capSpan.Length, heapEntries, heapEntries.Length, out count);
+            if (status == 0)
+            {
+                if (count <= 0) return true;
+                usages = BuildConsentUsages(heapEntries.AsSpan(0, Math.Min(count, heapEntries.Length)));
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static unsafe CapabilityUsage[] BuildConsentUsages(ReadOnlySpan<VnConsentStoreEntry> entries)
+    {
+        var result = new CapabilityUsage[entries.Length];
+        for (int i = 0; i < entries.Length; i++)
+        {
+            int rawLen = Math.Clamp(entries[i].RawLen, 0, 259);
+            string raw;
+            fixed (char* ptr = entries[i].RawName)
+            {
+                raw = new string(ptr, 0, rawLen);
+            }
+            int dispStart = Math.Clamp(entries[i].DisplayStart, 0, rawLen);
+            int dispLen = Math.Clamp(entries[i].DisplayLen, 0, rawLen - dispStart);
+            string display = (dispStart == 0 && dispLen == rawLen) ? raw : raw.Substring(dispStart, dispLen);
+            result[i] = new CapabilityUsage(raw, display, entries[i].LastStartFileTime);
+        }
+        return result;
     }
 
     private static void ScanCapabilityHive(RegistryKey hive, string capability, List<CapabilityUsage> consumers)

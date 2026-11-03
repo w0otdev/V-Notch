@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
@@ -17,7 +18,7 @@ namespace VNotch.Controls;
 /// pre-frozen alpha brush LUTs (zero PushOpacity/Pop overhead), and a shared static
 /// frame coordinator with adaptive frame pacing.
 /// </summary>
-public sealed class DustParticleOverlay : FrameworkElement
+public sealed partial class DustParticleOverlay : FrameworkElement
 {
     public static readonly DependencyProperty IsActiveProperty = DependencyProperty.Register(
         nameof(IsActive), typeof(bool), typeof(DustParticleOverlay),
@@ -48,10 +49,7 @@ public sealed class DustParticleOverlay : FrameworkElement
     private const double ReformDurationMs = 240.0;
     private const long IdleFrameIntervalMs = 22; // ~45 FPS for sub-pixel idle drift (zero wasted GPU work on 120/240Hz displays)
 
-    // Martin Roberts' R2 low-discrepancy quasirandom constants (plastic constant phi_2 = 1.324717957244746)
-    private const double R2AlphaX = 0.7548776662466927;
-    private const double R2AlphaY = 0.5698402909980532;
-
+    [StructLayout(LayoutKind.Sequential, Pack = 1)]
     private struct DustParticle
     {
         public float X;
@@ -67,6 +65,39 @@ public sealed class DustParticleOverlay : FrameworkElement
         public float TwinklePhase;
         public byte TintIndex;
     }
+
+    [LibraryImport("VNotch.Native")]
+    private static partial int vn_dust_particles_init(
+        Span<DustParticle> particles,
+        int capacity,
+        double width,
+        double height,
+        ref uint ioRngState,
+        ref int ioR2Sequence,
+        out int outActiveCount);
+
+    [LibraryImport("VNotch.Native")]
+    private static partial int vn_dust_particles_step(
+        Span<DustParticle> particles,
+        int activeCount,
+        double width,
+        double height,
+        float dt,
+        byte isDissolving,
+        double dissolveProgress,
+        double reformProgress,
+        ref uint ioRngState,
+        ref int ioR2Sequence);
+
+    [LibraryImport("VNotch.Native")]
+    private static partial int vn_dust_particles_dissolve_impulse(
+        Span<DustParticle> particles,
+        int activeCount,
+        double width,
+        double height,
+        float originX,
+        float originY,
+        ref uint ioRngState);
 
     // Pre-frozen 2D LUT [tintIndex * AlphaLevels + alphaBucket] to eliminate dc.PushOpacity/Pop per particle.
     private static readonly Brush[] BrushLut = CreateBrushLut();
@@ -237,119 +268,21 @@ public sealed class DustParticleOverlay : FrameworkElement
         }
     }
 
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private float NextFloat()
-    {
-        // Xorshift32: branchless, zero-allocation PRNG
-        uint x = _rngState;
-        x ^= x << 13;
-        x ^= x >> 17;
-        x ^= x << 5;
-        _rngState = x;
-        return (x & 0x00FFFFFF) * (1.0f / 16777216.0f);
-    }
-
     private void InitParticles(double width, double height)
     {
-        double w = Math.Max(12.0, width);
-        double h = Math.Max(14.0, height);
-
-        // Scale particle count with area (~1 particle per 22 sq px) to maintain uniform
-        // Telegram micro-grain density across both short PINs and long multi-line secrets
-        int targetCount = (int)Math.Round((w * h) / 22.0);
-        _activeCount = Math.Clamp(targetCount, MinParticles, MaxParticles);
         if (_particles.Length == 0)
             _particles = new DustParticle[MaxParticles];
 
-        Span<DustParticle> span = _particles.AsSpan(0, _activeCount);
-        for (int i = 0; i < span.Length; i++)
-        {
-            SpawnParticle(ref span[i], w, h, randomLifePhase: true);
-        }
+        vn_dust_particles_init(
+            _particles,
+            _particles.Length,
+            width,
+            height,
+            ref _rngState,
+            ref _r2SequenceIndex,
+            out _activeCount);
 
         _particlesInitialized = true;
-    }
-
-    private void SpawnParticle(ref DustParticle p, double width, double height, bool randomLifePhase)
-    {
-        int seq = ++_r2SequenceIndex;
-        double u = (0.5 + seq * R2AlphaX) % 1.0;
-        double v = (0.5 + seq * R2AlphaY) % 1.0;
-
-        // Add subtle jitter around the low-discrepancy R2 lattice point
-        double jitterX = (NextFloat() - 0.5) * 4.5;
-        double jitterY = (NextFloat() - 0.5) * 3.0;
-
-        double padX = Math.Min(3.0, width * 0.04);
-        double padY = Math.Min(2.0, height * 0.08);
-        double usableW = Math.Max(4.0, width - padX * 2.0);
-        double usableH = Math.Max(4.0, height - padY * 2.0);
-
-        float x = (float)Math.Clamp(padX + u * usableW + jitterX, padX, width - padX);
-        float y = (float)Math.Clamp(padY + v * usableH + jitterY, padY, height - padY);
-
-        // 3-tier Telegram size distribution: 62% micro specks, 28% medium motes, 10% crisp highlights
-        float sizeRoll = NextFloat();
-        float radius;
-        if (sizeRoll < 0.62f)
-            radius = 0.62f + NextFloat() * 0.24f;
-        else if (sizeRoll < 0.90f)
-            radius = 0.88f + NextFloat() * 0.24f;
-        else
-            radius = 1.14f + NextFloat() * 0.22f;
-
-
-
-
-
-        // Isotropic drift velocity (Telegram spoiler particles drift continuously across bounds)
-        float angle = NextFloat() * MathF.Tau;
-        float speed = 7.5f + NextFloat() * 14.5f;
-
-        float lifetime = 0.60f + NextFloat() * 0.85f;
-        float life = randomLifePhase ? NextFloat() : 0.0f;
-        float peakAlpha = sizeRoll < 0.62f
-            ? 0.42f + NextFloat() * 0.46f
-            : 0.55f + NextFloat() * 0.40f;
-
-        byte tint = (byte)(seq % TintVariants);
-
-        p.X = x;
-        p.Y = y;
-        p.Vx = MathF.Cos(angle) * speed;
-        p.Vy = MathF.Sin(angle) * speed * 0.78f;
-        p.BaseRadius = radius;
-        p.Radius = radius;
-        p.PeakAlpha = peakAlpha;
-        p.Life = life;
-        p.LifeSpeed = 1.0f / lifetime;
-        p.TwinklePhase = NextFloat() * MathF.Tau;
-        p.TintIndex = tint;
-        p.Alpha = ComputeLifecycleAlpha(life, peakAlpha, p.TwinklePhase);
-    }
-
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static float ComputeLifecycleAlpha(float life, float peakAlpha, float twinklePhase)
-    {
-        // Smooth envelope: quick fade-in (0..0.22), shimmering plateau (0.22..0.74), soft fade-out (0.74..1.0)
-        float envelope;
-        if (life < 0.22f)
-        {
-            float t = life * (1.0f / 0.22f);
-            envelope = t * t * (3.0f - 2.0f * t);
-        }
-        else if (life > 0.74f)
-        {
-            float t = (1.0f - life) * (1.0f / 0.26f);
-            envelope = Math.Clamp(t * t * (3.0f - 2.0f * t), 0.0f, 1.0f);
-        }
-        else
-        {
-            envelope = 1.0f;
-        }
-
-        float twinkle = 0.82f + 0.18f * MathF.Sin(life * MathF.Tau * 1.5f + twinklePhase);
-        return peakAlpha * envelope * twinkle;
     }
 
     private void UpdateRenderingState()
@@ -407,24 +340,17 @@ public sealed class DustParticleOverlay : FrameworkElement
         if (_isDissolving)
         {
             double progress = Math.Clamp((nowMs - _transitionStartMs) / DissolveDurationMs, 0.0, 1.0);
-
-
-            // Ease-out drag & quadratic alpha decay during shockwave burst
-            float drag = MathF.Exp(-4.8f * dt);
-            float remain = (float)(1.0 - progress);
-            float alphaFade = remain * remain;
-            float radiusScale = 1.0f - (float)progress * 0.35f;
-
-            for (int i = 0; i < span.Length; i++)
-            {
-                ref var p = ref span[i];
-                p.X += p.Vx * dt;
-                p.Y += p.Vy * dt;
-                p.Vx *= drag;
-                p.Vy *= drag;
-                p.Radius = Math.Max(0.35f, p.BaseRadius * radiusScale);
-                p.Alpha = p.PeakAlpha * alphaFade;
-            }
+            vn_dust_particles_step(
+                span,
+                span.Length,
+                w,
+                h,
+                dt,
+                isDissolving: 1,
+                dissolveProgress: progress,
+                reformProgress: _reformProgress,
+                ref _rngState,
+                ref _r2SequenceIndex);
 
             InvalidateVisual();
 
@@ -456,27 +382,17 @@ public sealed class DustParticleOverlay : FrameworkElement
 
         if (!IsDissolved)
         {
-            float maxW = (float)w - 1.5f;
-            float maxH = (float)h - 1.5f;
-            float reformFactor = (float)_reformProgress;
-
-            for (int i = 0; i < span.Length; i++)
-            {
-                ref var p = ref span[i];
-                p.Life += p.LifeSpeed * dt;
-
-                // Subtle curl turbulence keeps trajectories organic
-                float curl = MathF.Sin(p.TwinklePhase + p.Life * 4.2f) * 6.0f;
-                p.X += (p.Vx + curl * 0.25f) * dt;
-                p.Y += (p.Vy - curl * 0.18f) * dt;
-
-                if (p.Life >= 1.0f || p.X < 1.5f || p.X > maxW || p.Y < 1.5f || p.Y > maxH)
-                {
-                    SpawnParticle(ref p, w, h, randomLifePhase: false);
-                }
-
-                p.Alpha = ComputeLifecycleAlpha(p.Life, p.PeakAlpha, p.TwinklePhase) * reformFactor;
-            }
+            vn_dust_particles_step(
+                span,
+                span.Length,
+                w,
+                h,
+                dt,
+                isDissolving: 0,
+                dissolveProgress: 0.0,
+                reformProgress: _reformProgress,
+                ref _rngState,
+                ref _r2SequenceIndex);
 
             InvalidateVisual();
         }
@@ -512,27 +428,8 @@ public sealed class DustParticleOverlay : FrameworkElement
 
         float originX = (float)(clickPoint?.X ?? (w * 0.5));
         float originY = (float)(clickPoint?.Y ?? (h * 0.5));
-        float maxDist = MathF.Max(24.0f, MathF.Sqrt((float)(w * w + h * h)));
-
         Span<DustParticle> span = _particles.AsSpan(0, _activeCount);
-        for (int i = 0; i < span.Length; i++)
-        {
-            ref var p = ref span[i];
-            float dx = p.X - originX;
-            float dy = p.Y - originY;
-            float dist = MathF.Sqrt(dx * dx + dy * dy);
-
-            float baseAngle = dist > 0.5f ? MathF.Atan2(dy, dx) : NextFloat() * MathF.Tau;
-            float scatterAngle = baseAngle + (NextFloat() - 0.5f) * 0.65f;
-
-            // Radial shockwave: particles near the click receive a stronger initial impulse
-            float proximity = 1.0f - Math.Clamp(dist / maxDist, 0.0f, 0.75f);
-            float speed = (85.0f + NextFloat() * 165.0f) * (0.75f + 0.55f * proximity);
-
-            p.Vx = MathF.Cos(scatterAngle) * speed;
-            p.Vy = MathF.Sin(scatterAngle) * speed;
-            p.PeakAlpha = Math.Max(p.Alpha, 0.45f + NextFloat() * 0.45f);
-        }
+        vn_dust_particles_dissolve_impulse(span, span.Length, w, h, originX, originY, ref _rngState);
 
         AnimateBlur(fromRadius: MaskedBlurRadius, toRadius: 0.0);
         StartRendering();

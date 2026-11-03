@@ -1,9 +1,12 @@
+using System.Buffers;
 using System.Diagnostics;
+using System.Runtime.InteropServices;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
 using System.Windows.Input;
 using System.Windows.Media;
+using VNotch.Models;
 using VNotch.Services.Clipboard;
 using VNotch.ViewModels;
 
@@ -11,6 +14,44 @@ namespace VNotch.Controls;
 
 public sealed partial class ClipboardTray
 {
+    [LibraryImport(NativeDll)]
+    private static partial int vn_clipboard_selection_scroll_speed(
+        double x,
+        double width,
+        out double outSpeed);
+
+    [LibraryImport(NativeDll)]
+    private static partial int vn_clipboard_selection_compute_lasso_range(
+        int cardCount,
+        int refIndex,
+        double containerWidth,
+        double marginLeft,
+        double marginRight,
+        double originX,
+        double originY,
+        double containerHeight,
+        double scrollOffset,
+        double rectLeft,
+        double rectTop,
+        double rectRight,
+        double rectBottom,
+        double rowTop,
+        double rowBottom,
+        byte swept,
+        out int outFirst,
+        out int outLast,
+        out byte outHitsRow,
+        out byte outExpandVertical);
+
+    [LibraryImport(NativeDll)]
+    private static partial int vn_clipboard_selection_filter_ordered_indices(
+        ReadOnlySpan<int> selectedIndices,
+        int selectedCount,
+        int cardCount,
+        Span<byte> scratchMask,
+        Span<int> outOrderedIndices,
+        out int outCount);
+
     private (string Category, string Query)? _pendingSelectAll;
 
     private bool SelectAllTrayItems(DependencyObject? source)
@@ -122,7 +163,7 @@ public sealed partial class ClipboardTray
         _selectionStartOffset = FindScrollViewer(Cards)?.HorizontalOffset ?? 0;
         _selectionFrameTime = Stopwatch.GetTimestamp();
         bool extend = (Keyboard.Modifiers & (ModifierKeys.Control | ModifierKeys.Shift)) != 0;
-        _selection.BeginLasso(Cards.SelectedItems.Cast<ClipboardCardViewModel>(), extend);
+        _selection.BeginLasso(ExtractSelectedCardViewModels(), extend);
         if (!extend) Cards.ApplySelection(Array.Empty<ClipboardCardViewModel>());
         _selectionPointer = start;
         _selectionHasMoved = false;
@@ -135,6 +176,32 @@ public sealed partial class ClipboardTray
         SelectionSurface.Cursor = Cursors.Cross;
         if (!Mouse.Capture(SelectionSurface)) { EndSelection(); return; }
         CompositionTarget.Rendering += Selection_Rendering;
+    }
+
+    private ClipboardCardViewModel[] ExtractSelectedCardViewModels()
+    {
+        int count = Cards.SelectedItems.Count;
+        if (count == 0) return [];
+        var result = new ClipboardCardViewModel[count];
+        int writeIdx = 0;
+        foreach (var obj in Cards.SelectedItems)
+        {
+            if (obj is ClipboardCardViewModel vm)
+                result[writeIdx++] = vm;
+        }
+        return writeIdx == result.Length ? result : result[..writeIdx];
+    }
+
+    private bool AreSelectionTargetsEqualToSelectedItems()
+    {
+        var targets = _selection.Targets;
+        if (targets.Count != Cards.SelectedItems.Count) return false;
+        foreach (var obj in Cards.SelectedItems)
+        {
+            if (obj is not ClipboardCardViewModel vm || !targets.Contains(vm))
+                return false;
+        }
+        return true;
     }
 
     private void Selection_Move(object sender, MouseEventArgs e)
@@ -187,12 +254,8 @@ public sealed partial class ClipboardTray
 
     internal static double SelectionScrollSpeed(double x, double width)
     {
-        if (width <= 0) return 0;
-        double edge = Math.Min(48, width / 2);
-        double rightStrength = x > width - edge ? Math.Clamp((x - width + edge) / edge, 0, 1) : 0;
-        double strength = x < edge ? -Math.Clamp((edge - x) / edge, 0, 1) : rightStrength;
-
-        return 720 * strength * Math.Abs(strength);
+        _ = vn_clipboard_selection_scroll_speed(x, width, out double speed);
+        return speed;
     }
 
     private void ScrollSelection(double seconds)
@@ -233,19 +296,35 @@ public sealed partial class ClipboardTray
                 index = _cards.IndexOf(card);
             if (index < 0 || !SelectionSurface.IsAncestorOf(container)) continue;
             foundContainer = true;
-            double pitch = container.ActualWidth + container.Margin.Left + container.Margin.Right;
             var origin = container.TranslatePoint(new Point(), SelectionSurface);
-            double firstX = origin.X + offset - index * pitch;
-            int first = Math.Max(0, (int)Math.Ceiling((rectangle.Left - firstX - container.ActualWidth) / pitch));
-            int last = Math.Min(_cards.Count - 1, (int)Math.Floor((rectangle.Right - firstX) / pitch));
-            bool hitsRow = swept && rectangle.Bottom >= row.Top && rectangle.Top <= row.Bottom;
-            if (hitsRow && (rectangle.Bottom < origin.Y || rectangle.Top > origin.Y + container.ActualHeight))
+            _ = vn_clipboard_selection_compute_lasso_range(
+                _cards.Count,
+                index,
+                container.ActualWidth,
+                container.Margin.Left,
+                container.Margin.Right,
+                origin.X,
+                origin.Y,
+                container.ActualHeight,
+                offset,
+                rectangle.Left,
+                rectangle.Top,
+                rectangle.Right,
+                rectangle.Bottom,
+                row.Top,
+                row.Bottom,
+                swept ? (byte)1 : (byte)0,
+                out int first,
+                out int last,
+                out byte hitsRowByte,
+                out byte expandVerticalByte);
+            bool hitsRow = hitsRowByte != 0;
+            if (expandVerticalByte != 0)
             {
                 // A horizontal sweep through the top/bottom gutter targets the
                 // whole row. Expand its visible band so the selected area agrees
                 // with the card highlights even when the pointer never enters a card.
                 rectangle.Union(new Rect(rectangle.Left, origin.Y, rectangle.Width, container.ActualHeight));
-
             }
             int normFirst = hitsRow && first <= last ? first : -1;
             int normLast = hitsRow && first <= last ? last : -2;
@@ -277,8 +356,7 @@ public sealed partial class ClipboardTray
         SelectionRectangle.Width = visible.IsEmpty ? 0 : visible.Width;
         SelectionRectangle.Height = visible.IsEmpty ? 0 : visible.Height;
         SelectionRectangle.Visibility = swept ? Visibility.Visible : Visibility.Collapsed;
-        if (rangeChanged && (_selection.Targets.Count != Cards.SelectedItems.Count ||
-            !_selection.Targets.SetEquals(Cards.SelectedItems.Cast<ClipboardCardViewModel>())))
+        if (rangeChanged && !AreSelectionTargetsEqualToSelectedItems())
         {
             Cards.ApplySelection(_selection.Targets);
         }
@@ -312,7 +390,11 @@ public sealed partial class ClipboardTray
     private void ClearSelectionContainers()
     {
         EndSelection();
-        foreach (var container in _selectionContainers.ToArray()) UnregisterSelectionContainer(container);
+        if (_selectionContainers.Count == 0) return;
+        var copy = new ListBoxItem[_selectionContainers.Count];
+        _selectionContainers.CopyTo(copy);
+        for (int i = 0; i < copy.Length; i++)
+            UnregisterSelectionContainer(copy[i]);
     }
 
     private void EndSelection()
@@ -331,7 +413,7 @@ public sealed partial class ClipboardTray
     private void SelectCard(ClipboardCardViewModel card)
     {
         var modifiers = Keyboard.Modifiers;
-        Cards.ApplySelection(_selection.Select(_cards, Cards.SelectedItems.Cast<ClipboardCardViewModel>(), card,
+        Cards.ApplySelection(_selection.Select(_cards, ExtractSelectedCardViewModels(), card,
             (modifiers & ModifierKeys.Control) != 0, (modifiers & ModifierKeys.Shift) != 0, modifiers != ModifierKeys.None));
         Cards.Focus();
     }
@@ -341,23 +423,58 @@ public sealed partial class ClipboardTray
         int selCount = Cards.SelectedItems.Count;
         if (selCount == 0) return [];
         if (selCount == 1 && Cards.SelectedItems[0] is ClipboardCardViewModel single) return [single];
-        if (selCount >= _cards.Count) return _cards.ToArray();
+        int cardCount = _cards.Count;
+        if (cardCount == 0) return [];
+        if (selCount >= cardCount)
+        {
+            var all = new ClipboardCardViewModel[cardCount];
+            for (int i = 0; i < cardCount; i++) all[i] = _cards[i];
+            return all;
+        }
 
-        var selectedSet = new HashSet<ClipboardCardViewModel>(selCount);
-        foreach (var obj in Cards.SelectedItems)
+        int[]? rentedSel = selCount > 512 ? ArrayPool<int>.Shared.Rent(selCount) : null;
+        byte[]? rentedMask = cardCount > 1024 ? ArrayPool<byte>.Shared.Rent(cardCount) : null;
+        int[]? rentedOrdered = cardCount > 512 ? ArrayPool<int>.Shared.Rent(cardCount) : null;
+        Span<int> selIndices = rentedSel != null ? rentedSel.AsSpan(0, selCount) : stackalloc int[selCount];
+        Span<byte> scratchMask = rentedMask != null ? rentedMask.AsSpan(0, cardCount) : stackalloc byte[cardCount];
+        Span<int> orderedIndices = rentedOrdered != null ? rentedOrdered.AsSpan(0, cardCount) : stackalloc int[cardCount];
+
+        try
         {
-            if (obj is ClipboardCardViewModel vm)
-                selectedSet.Add(vm);
+            int idxCount = 0;
+            foreach (var obj in Cards.SelectedItems)
+            {
+                if (obj is not ClipboardCardViewModel vm) continue;
+                int slot = vm.SlotIndex;
+                if (slot < 0 || slot >= cardCount || !ReferenceEquals(_cards[slot], vm))
+                    slot = _cards.IndexOf(vm);
+                if (slot >= 0)
+                    selIndices[idxCount++] = slot;
+            }
+
+            _ = vn_clipboard_selection_filter_ordered_indices(
+                selIndices[..idxCount], idxCount, cardCount, scratchMask, orderedIndices, out int outCount);
+            if (outCount <= 0) return [];
+            var result = new ClipboardCardViewModel[outCount];
+            for (int i = 0; i < outCount; i++)
+                result[i] = _cards[orderedIndices[i]];
+            return result;
         }
-        var result = new ClipboardCardViewModel[selectedSet.Count];
-        int writeIdx = 0;
-        for (int i = 0; i < _cards.Count && writeIdx < result.Length; i++)
+        finally
         {
-            var card = _cards[i];
-            if (selectedSet.Contains(card))
-                result[writeIdx++] = card;
+            if (rentedSel != null) ArrayPool<int>.Shared.Return(rentedSel);
+            if (rentedMask != null) ArrayPool<byte>.Shared.Return(rentedMask);
+            if (rentedOrdered != null) ArrayPool<int>.Shared.Return(rentedOrdered);
         }
-        return writeIdx == result.Length ? result : result[..writeIdx];
+    }
+
+    private static ClipboardEntry[] ExtractEntries(ClipboardCardViewModel[] cards)
+    {
+        if (cards.Length == 0) return [];
+        var entries = new ClipboardEntry[cards.Length];
+        for (int i = 0; i < cards.Length; i++)
+            entries[i] = cards[i].Entry;
+        return entries;
     }
 
     private async Task CopySelectionAsync()
@@ -365,6 +482,6 @@ public sealed partial class ClipboardTray
         if (_controller == null) return;
         var cards = SelectedCards();
         if (cards.Length == 1) { await CopyAsync(cards[0]); return; }
-        await SafeAsync(() => _controller.CopyManyAsync(cards.Select(card => card.Entry).ToArray()));
+        await SafeAsync(() => _controller.CopyManyAsync(ExtractEntries(cards)));
     }
 }

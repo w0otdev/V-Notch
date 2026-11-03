@@ -52,6 +52,27 @@ internal sealed partial class SpotlightAiService
         int diagCap,
         out int outDiagLen);
 
+    [LibraryImport("VNotch.Native.dll", StringMarshalling = StringMarshalling.Utf16)]
+    private static partial int vn_spotlight_ai_parse_sse_data_line(
+        ReadOnlySpan<char> linePtr,
+        int lineLen,
+        out int outPayloadOffset,
+        out int outPayloadLen,
+        out byte outIsData,
+        out byte outIsDone);
+
+    [LibraryImport("VNotch.Native.dll", StringMarshalling = StringMarshalling.Utf16)]
+    private static partial int vn_spotlight_ai_extract_json_delta(
+        ReadOnlySpan<char> payloadPtr,
+        int payloadLen,
+        ReadOnlySpan<char> providerPtr,
+        int providerLen,
+        Span<char> outDeltaBuf,
+        int deltaCap,
+        out int outDeltaLen,
+        out byte outStatus,
+        out byte outCompleted);
+
     private static readonly HttpClient SharedClient = new(NetworkPrivacy.Handler(NetworkFeature.Ai, new NativeWinHttpHandler { AllowAutoRedirect = false }))
     { Timeout = TimeSpan.FromSeconds(90), MaxResponseContentBufferSize = 2 * 1024 * 1024 };
     private readonly HttpClient _client;
@@ -102,11 +123,23 @@ internal sealed partial class SpotlightAiService
         if (provider == "Gemini")
         {
             url = $"https://generativelanguage.googleapis.com/v1beta/models/{Uri.EscapeDataString(model.Trim())}:{(streaming ? "streamGenerateContent?alt=sse" : "generateContent")}";
-            body = new { contents = history.Select(m => new { role = m.Role == "assistant" ? "model" : "user", parts = m.GeminiParts is { Length: > 0 } saved ? (object)saved : new[] { new { text = m.Content } } }) };
+            var contents = new object[history.Count];
+            for (int i = 0; i < history.Count; i++)
+            {
+                var m = history[i];
+                object partsObj = m.GeminiParts is { Length: > 0 } saved ? saved : new[] { new { text = m.Content } };
+                contents[i] = new { role = m.Role == "assistant" ? "model" : "user", parts = partsObj };
+            }
+            body = new { contents };
         }
         else
         {
-            var messages = history.Select(m => new { role = m.Role, content = m.Content }).ToArray();
+            var messages = new object[history.Count];
+            for (int i = 0; i < history.Count; i++)
+            {
+                var m = history[i];
+                messages[i] = new { role = m.Role, content = m.Content };
+            }
             string endpoint = provider switch
             {
                 "Claude" => "api.anthropic.com/v1/messages",
@@ -158,6 +191,41 @@ internal sealed partial class SpotlightAiService
                 {
                     string payload = data.ToString();
                     data.Clear();
+                    string provider = settings.SpotlightAiProvider ?? string.Empty;
+
+                    if (onGeminiParts == null || provider != "Gemini")
+                    {
+                        Span<char> fastDeltaBuf = stackalloc char[4096];
+                        if (vn_spotlight_ai_extract_json_delta(
+                            payload.AsSpan(), payload.Length,
+                            provider.AsSpan(), provider.Length,
+                            fastDeltaBuf, fastDeltaBuf.Length,
+                            out int fastDeltaLen,
+                            out byte fastStatus,
+                            out byte fastCompleted) == 0)
+                        {
+                            if (fastStatus == 1)
+                            {
+                                completed = true;
+                                return null;
+                            }
+                            if (fastStatus == 2)
+                            {
+                                if (fastCompleted != 0)
+                                    completed = true;
+                                onUsage?.Invoke(usage);
+                                if (fastDeltaLen > 0)
+                                {
+                                    total += fastDeltaLen;
+                                    if (total > 200000) throw new SpotlightAiException("spotlight.ai.tooLong");
+                                    received = true;
+                                    return new string(fastDeltaBuf[..fastDeltaLen]);
+                                }
+                                return null;
+                            }
+                        }
+                    }
+
                     if (payload == "[DONE]") { completed = true; return null; }
                     JsonDocument json;
                     try { json = JsonDocument.Parse(payload); }
@@ -167,18 +235,36 @@ internal sealed partial class SpotlightAiService
                         var root = json.RootElement;
                         if (settings.SpotlightAiProvider == "Gemini" &&
                             root.TryGetProperty("candidates", out var finishedCandidates) && finishedCandidates.ValueKind == JsonValueKind.Array)
-                            completed |= finishedCandidates.EnumerateArray().Any(c => c.TryGetProperty("finishReason", out var reason) && reason.GetString() == "STOP");
-                        usage = usage.Read(root, settings.SpotlightAiProvider);
+                        {
+                            foreach (var c in finishedCandidates.EnumerateArray())
+                            {
+                                if (c.TryGetProperty("finishReason", out var reason) && reason.GetString() == "STOP")
+                                {
+                                    completed = true;
+                                    break;
+                                }
+                            }
+                        }
+                        usage = usage.Read(root, provider);
                         onUsage?.Invoke(usage);
                         if (root.TryGetProperty("error", out var error))
                         {
                             throw StreamError(error);
                         }
-                        if (settings.SpotlightAiProvider == "Gemini" &&
+                        if (settings.SpotlightAiProvider == "Gemini" && onGeminiParts != null &&
                             root.TryGetProperty("candidates", out var candidates) && candidates.ValueKind == JsonValueKind.Array && candidates.GetArrayLength() > 0 &&
                             candidates[0].TryGetProperty("content", out var content) && content.TryGetProperty("parts", out var parts) && parts.ValueKind == JsonValueKind.Array)
-                            onGeminiParts?.Invoke(parts.EnumerateArray().Select(part => part.Clone()).ToArray());
-                        string delta = ReadDelta(root, settings.SpotlightAiProvider);
+                        {
+                            int partCount = parts.GetArrayLength();
+                            var clonedParts = new JsonElement[partCount];
+                            int partIdx = 0;
+                            foreach (var part in parts.EnumerateArray())
+                            {
+                                clonedParts[partIdx++] = part.Clone();
+                            }
+                            onGeminiParts.Invoke(clonedParts);
+                        }
+                        string delta = ReadDelta(root, provider);
                         string? yielded = null;
                         if (delta.Length > 0)
                         {
@@ -196,10 +282,13 @@ internal sealed partial class SpotlightAiService
                     }
                 }
             }
-            else if (line.StartsWith("data:", StringComparison.Ordinal))
+            else if (vn_spotlight_ai_parse_sse_data_line(
+                line.AsSpan(), line.Length,
+                out int payloadOffset, out int payloadLen,
+                out byte isData, out _) == 0 && isData != 0)
             {
                 if (data.Length > 0) data.Append('\n');
-                data.Append(line.AsSpan(5).TrimStart());
+                data.Append(line.AsSpan(payloadOffset, payloadLen));
                 if (data.Length > MaxStreamResponseChars) throw new SpotlightAiException("spotlight.ai.tooLong");
             }
             return null;
@@ -353,9 +442,7 @@ internal sealed partial class SpotlightAiService
         {
             if (!root.TryGetProperty("candidates", out var candidates) || candidates.ValueKind != JsonValueKind.Array || candidates.GetArrayLength() == 0 ||
                 !candidates[0].TryGetProperty("content", out var content) || !content.TryGetProperty("parts", out var parts) || parts.ValueKind != JsonValueKind.Array) return "";
-            return string.Concat(parts.EnumerateArray().Where(p => p.TryGetProperty("text", out _) &&
-                (!p.TryGetProperty("thought", out var thought) || thought.ValueKind != JsonValueKind.True))
-                .Select(p => p.GetProperty("text").GetString()));
+            return ConcatNonThoughtGeminiParts(parts);
         }
         if (provider == "Claude")
         {
@@ -365,6 +452,33 @@ internal sealed partial class SpotlightAiService
         return root.TryGetProperty("choices", out var choices) && choices.GetArrayLength() > 0 &&
             choices[0].TryGetProperty("delta", out var d) && d.TryGetProperty("content", out var c) &&
             c.ValueKind == JsonValueKind.String ? c.GetString() ?? "" : "";
+    }
+
+    private static string ConcatNonThoughtGeminiParts(JsonElement parts)
+    {
+        var sb = new StringBuilder();
+        foreach (var p in parts.EnumerateArray())
+        {
+            if (p.TryGetProperty("text", out var textProp) &&
+                (!p.TryGetProperty("thought", out var thought) || thought.ValueKind != JsonValueKind.True))
+            {
+                sb.Append(textProp.GetString());
+            }
+        }
+        return sb.ToString();
+    }
+
+    private static string ConcatClaudeTextBlocks(JsonElement contentArray)
+    {
+        var sb = new StringBuilder();
+        foreach (var p in contentArray.EnumerateArray())
+        {
+            if (p.GetProperty("type").GetString() == "text")
+            {
+                sb.Append(p.GetProperty("text").GetString());
+            }
+        }
+        return sb.ToString();
     }
 
     internal async Task<string> SendAsync(NotchSettings settings, IReadOnlyList<SpotlightAiMessage> history, CancellationToken token)
@@ -382,12 +496,8 @@ internal sealed partial class SpotlightAiService
             var root = json.RootElement;
             string? text = settings.SpotlightAiProvider switch
             {
-                "Gemini" => string.Concat(root.GetProperty("candidates")[0].GetProperty("content").GetProperty("parts")
-                    .EnumerateArray().Where(p => p.TryGetProperty("text", out _) &&
-                        (!p.TryGetProperty("thought", out var thought) || thought.ValueKind != JsonValueKind.True))
-                    .Select(p => p.GetProperty("text").GetString())),
-                "Claude" => string.Concat(root.GetProperty("content").EnumerateArray()
-                    .Where(p => p.GetProperty("type").GetString() == "text").Select(p => p.GetProperty("text").GetString())),
+                "Gemini" => ConcatNonThoughtGeminiParts(root.GetProperty("candidates")[0].GetProperty("content").GetProperty("parts")),
+                "Claude" => ConcatClaudeTextBlocks(root.GetProperty("content")),
                 _ => root.GetProperty("choices")[0].GetProperty("message").GetProperty("content").GetString()
             };
             if (string.IsNullOrWhiteSpace(text)) throw new SpotlightAiException("spotlight.ai.emptyError");

@@ -29,8 +29,8 @@ internal static class FpsProbe
         {
             if (!glass.SetGpuMode(true, _ => { }, ex => failure = ex, ultimateGpu: true)) throw new InvalidOperationException("GPU unavailable");
             var presenter = typeof(LiquidGlassController).GetField("_d3dPresenter", BindingFlags.NonPublic | BindingFlags.Instance)!.GetValue(glass)!;
-            var renderProperty = presenter.GetType().GetProperty("LastGpuRenderMs", BindingFlags.NonPublic | BindingFlags.Instance)!;
-            var waitProperty = presenter.GetType().GetProperty("LastGpuWaitMs", BindingFlags.NonPublic | BindingFlags.Instance)!;
+            var renderProperty = presenter.GetType().GetProperty("SubmittedGpuRenderMs", BindingFlags.NonPublic | BindingFlags.Instance)!;
+            var waitProperty = presenter.GetType().GetProperty("SubmittedGpuWaitMs", BindingFlags.NonPublic | BindingFlags.Instance)!;
             presenter.GetType().GetEvent("FramePresented")!.AddEventHandler(presenter, (Action<LiquidGlassController.GpuGeometry>)(_ =>
             {
                 presented++;

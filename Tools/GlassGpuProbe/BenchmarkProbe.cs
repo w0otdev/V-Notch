@@ -28,9 +28,11 @@ internal static class BenchmarkProbe
         double CpuMachinePercent, double CpuCorePercent, double ManagedAllocMiBPerSecond,
         double PrivateStartMiB, double PrivateEndMiB, double PrivatePeakMiB, double WorkingSetPeakMiB,
         int Gen0, int Gen1, int Gen2, long GpuRetries, long ImageRetries, long WorkerTimeouts,
-        ulong ConsumerRetries, double IntervalMaxMs, bool? CadencePassed, string[] GateFailures);
+        ulong ConsumerRetries, double IntervalMaxMs, bool? CadencePassed, string[] GateFailures, LateFrame[] LateFrames);
+    private readonly record struct LateFrame(int Index, int Width, int Height, double IntervalMs, double LatencyMs,
+        double GpuRenderMs, double GpuWaitMs, double SinceResizeMs, double ResizeSetterMs);
 
-    internal static int Run(bool focused = false, int durationMs = 3000, int repeats = 3)
+    internal static int Run(bool focused = false, int durationMs = 3000, int repeats = 3, bool resizeOnly = false)
     {
         BenchmarkChecks.SelfCheck();
         string output = ResultPath("glass-benchmark-results.json");
@@ -51,6 +53,10 @@ internal static class BenchmarkProbe
         bool moving = true, recording = false;
         int sampleCapacity = durationMs * 144 / 1000 + 1024;
         double[] latencies = new double[sampleCapacity], intervals = new double[sampleCapacity];
+        var lateFrames = new LateFrame[sampleCapacity];
+        int lateCount = 0, measuringTarget = 120;
+        long lastResize = 0;
+        double resizeSetterMs = 0;
         long previousFrame = 0;
         Exception? renderFailure = null;
         using var glass = new LiquidGlassController(image, () => hwnd,
@@ -59,11 +65,19 @@ internal static class BenchmarkProbe
         var wake = new DispatcherTimer(DispatcherPriority.Background) { Interval = TimeSpan.FromMilliseconds(1) };
         wake.Tick += (_, _) => glass.ForceRefresh();
         var resize = new DispatcherTimer(DispatcherPriority.Background) { Interval = TimeSpan.FromMilliseconds(250) };
+        var setWindowPos = typeof(LiquidGlassController).Assembly.GetType("VNotch.Services.Win32Interop")!
+            .GetMethod("SetWindowPos", BindingFlags.Public | BindingFlags.Static)!
+            .CreateDelegate<Func<IntPtr, IntPtr, int, int, int, int, uint, bool>>();
         void SetSize(int w, int h)
         {
+            long started = Stopwatch.GetTimestamp();
             width = w; height = h;
-            window.Width = w / dpi; window.Height = h / dpi;
+            // Both WPF setters resize the HWND synchronously; issue one WM_SIZE.
+            if (!setWindowPos(hwnd, IntPtr.Zero, 0, 0, w, h, 0x0016))
+                throw new InvalidOperationException("Cannot resize benchmark HWND");
             glass.SetLiveRegion(new(160 + phase, 120, width, height));
+            lastResize = Stopwatch.GetTimestamp();
+            resizeSetterMs = (lastResize - started) * 1000.0 / Stopwatch.Frequency;
         }
         resize.Tick += (_, _) => SetSize(width == 320 ? 1200 : 320, height == 64 ? 600 : 64);
         try
@@ -86,6 +100,8 @@ internal static class BenchmarkProbe
             var imageRetries = Getter<long>(presenter, "ImageBusyRetries");
             var timeouts = Getter<long>(presenter, "GpuWorkerTimeouts");
             var consumerRetries = Getter<ulong>(presenter, "GpuConsumerRetries");
+            var gpuRender = Getter<double>(presenter, "SubmittedGpuRenderMs");
+            var gpuWait = Getter<double>(presenter, "SubmittedGpuWaitMs");
             presenter.GetType().GetEvent("FramePresented")!.AddEventHandler(presenter, (Action<LiquidGlassController.GpuGeometry>)(_ =>
             {
                 long now = Stopwatch.GetTimestamp();
@@ -96,6 +112,9 @@ internal static class BenchmarkProbe
                     {
                         latencies[index] = latency();
                         intervals[index] = previousFrame == 0 ? 0 : (now - previousFrame) * 1000.0 / Stopwatch.Frequency;
+                        if (intervals[index] > 1500.0 / measuringTarget)
+                            lateFrames[lateCount++] = new(index, width, height, intervals[index], latencies[index],
+                                gpuRender(), gpuWait(), (now - lastResize) * 1000.0 / Stopwatch.Frequency, resizeSetterMs);
                     }
                     previousFrame = now;
                 }
@@ -118,7 +137,7 @@ internal static class BenchmarkProbe
 
             RunResult Measure(string name, int target, double blur, int repeat, int sampleMs)
             {
-                count = 0; previousFrame = 0;
+                count = 0; previousFrame = 0; lateCount = 0; measuringTarget = target;
                 process.Refresh();
                 long privateStart = process.PrivateMemorySize64, privatePeak = privateStart, workingPeak = process.WorkingSet64;
                 TimeSpan cpu = process.TotalProcessorTime;
@@ -127,7 +146,11 @@ internal static class BenchmarkProbe
                 long retryStart = gpuRetries(), busyStart = imageRetries(), timeoutStart = timeouts();
                 ulong consumerStart = consumerRetries();
                 var memory = new DispatcherTimer(DispatcherPriority.Background) { Interval = TimeSpan.FromMilliseconds(100) };
-                memory.Tick += (_, _) => { process.Refresh(); privatePeak = Math.Max(privatePeak, process.PrivateMemorySize64); workingPeak = Math.Max(workingPeak, process.WorkingSet64); };
+                memory.Tick += (_, _) =>
+                {
+                    var sample = BenchmarkChecks.ReadMemory();
+                    privatePeak = Math.Max(privatePeak, sample.PrivateBytes); workingPeak = Math.Max(workingPeak, sample.WorkingSet);
+                };
                 string phaseName = $"{name}/{width}x{height}/{target}/{blur}";
                 BenchmarkEvents.Log.PhaseStart(phaseName, repeat);
                 var watch = Stopwatch.StartNew();
@@ -156,13 +179,13 @@ internal static class BenchmarkProbe
                     Math.Max(workingPeak, process.WorkingSet64) / MiB,
                     GC.CollectionCount(0) - gc0, GC.CollectionCount(1) - gc1, GC.CollectionCount(2) - gc2,
                     gpuRetries() - retryStart, imageRetries() - busyStart, timeouts() - timeoutStart,
-                    consumerDelta, Q(sortedInterval, 1), name == "idle" ? null : gateFailures.Length == 0, gateFailures);
+                    consumerDelta, Q(sortedInterval, 1), name == "idle" ? null : gateFailures.Length == 0, gateFailures, lateFrames[..lateCount]);
                 results.Add(result);
                 Console.WriteLine($"{name} {width}x{height} blur={blur}% target={target} run={repeat}: {result.SubmittedFps:F1} FPS, latency p95={result.LatencyP95Ms:F2} ms, interval p95={result.IntervalP95Ms:F2} ms, CPU={result.CpuMachinePercent:F2}% machine, alloc={result.ManagedAllocMiBPerSecond:F3} MiB/s, private delta={result.PrivateEndMiB - result.PrivateStartMiB:F2} MiB, consumer retries={consumerDelta}, cadence={(result.CadencePassed is null ? "observed" : result.CadencePassed.Value ? "PASS" : "FAIL")}");
                 return result;
             }
 
-            foreach (var size in new[] { (320, 64), (800, 420), (1200, 600) })
+            foreach (var size in resizeOnly ? Array.Empty<(int, int)>() : new[] { (320, 64), (800, 420), (1200, 600) })
             {
                 SetSize(size.Item1, size.Item2);
                 foreach (int target in focused ? new[] { 120 } : new[] { 30, 60, 120, 144 })

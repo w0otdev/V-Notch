@@ -50,12 +50,32 @@ public sealed partial class WindowTitleScanner : IWindowTitleScanner, IDisposabl
     private static partial int vn_wtscanner_is_media_url(
         ReadOnlySpan<ushort> url, int urlLen, out byte outIsMedia);
 
+    [StructLayout(LayoutKind.Sequential, Pack = 1)]
+    private unsafe struct VnVisibleWindowEntry
+    {
+        public long Hwnd;
+        public uint ProcessId;
+        public int TitleLen;
+        public byte MatchesPlatformTitle;
+        public fixed char Title[256];
+    }
+
+    [LibraryImport("VNotch.Native.dll")]
+    private static partial int vn_wtscanner_collect_visible_windows(
+        uint excludePid,
+        byte onlyPlatformTitles,
+        Span<VnVisibleWindowEntry> outEntries,
+        int entriesCap,
+        out int outCount);
+
     private readonly object _cacheLock = new();
     // All title enumerations are serialized by _cacheLock.
     private char[] _titleBuffer = new char[256];
     private List<string> _cachedWindowTitles = new();
     private DateTime _lastWindowEnumTime = DateTime.MinValue;
     private bool _titleNotificationsActive;
+
+    internal Action<Func<IntPtr, bool>>? WindowEnumerator { get; set; }
 
     internal void SetTitleNotificationsActive(bool active)
     {
@@ -81,29 +101,104 @@ public sealed partial class WindowTitleScanner : IWindowTitleScanner, IDisposabl
 
             var titles = new List<string>();
 
-            EnumWindows((hWnd, _) =>
+            if (WindowEnumerator != null)
             {
-                if (!IsWindowVisible(hWnd))
+                WindowEnumerator(hWnd =>
                 {
+                    if (!IsWindowVisible(hWnd)) return true;
+                    GetWindowThreadProcessId(hWnd, out uint processId);
+                    if (processId == 0 || processId == (uint)Environment.ProcessId) return true;
+                    AddMatchingWindowTitle(hWnd, titles);
                     return true;
-                }
+                });
+            }
+            else if (!TryCollectPlatformWindowTitlesNative((uint)Environment.ProcessId, titles))
+            {
+                EnumWindows((hWnd, _) =>
+                {
+                    if (!IsWindowVisible(hWnd))
+                    {
+                        return true;
+                    }
 
-                // USER32 reads foreign-process captions without WM_GETTEXT.
-                // Our own windows can synchronously message a UI thread while
-                // this background scanner holds the cache lock.
-                GetWindowThreadProcessId(hWnd, out uint processId);
-                if (processId == 0 || processId == (uint)Environment.ProcessId)
+                    // USER32 reads foreign-process captions without WM_GETTEXT.
+                    // Our own windows can synchronously message a UI thread while
+                    // this background scanner holds the cache lock.
+                    GetWindowThreadProcessId(hWnd, out uint processId);
+                    if (processId == 0 || processId == (uint)Environment.ProcessId)
+                        return true;
+
+                    AddMatchingWindowTitle(hWnd, titles);
+
                     return true;
-
-                AddMatchingWindowTitle(hWnd, titles);
-
-                return true;
-            }, IntPtr.Zero);
+                }, IntPtr.Zero);
+            }
 
             _cachedWindowTitles = titles;
             _lastWindowEnumTime = DateTime.UtcNow;
             return new List<string>(titles);
         }
+    }
+
+    private static unsafe bool TryCollectPlatformWindowTitlesNative(uint excludePid, List<string> titles)
+    {
+        Span<VnVisibleWindowEntry> stackEntries = stackalloc VnVisibleWindowEntry[32];
+        int status = vn_wtscanner_collect_visible_windows(excludePid, 1, stackEntries, stackEntries.Length, out int count);
+        if (status == 0)
+        {
+            AppendWindowTitles(stackEntries[..Math.Min(count, stackEntries.Length)], titles);
+            return true;
+        }
+        if (status == -2 && count > stackEntries.Length)
+        {
+            var heapEntries = new VnVisibleWindowEntry[count];
+            status = vn_wtscanner_collect_visible_windows(excludePid, 1, heapEntries, heapEntries.Length, out count);
+            if (status == 0)
+            {
+                AppendWindowTitles(heapEntries.AsSpan(0, Math.Min(count, heapEntries.Length)), titles);
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static unsafe void AppendWindowTitles(ReadOnlySpan<VnVisibleWindowEntry> entries, List<string> titles)
+    {
+        for (int i = 0; i < entries.Length; i++)
+        {
+            int len = Math.Clamp(entries[i].TitleLen, 0, 255);
+            if (len <= 0) continue;
+            fixed (char* ptr = entries[i].Title)
+            {
+                titles.Add(new string(ptr, 0, len));
+            }
+        }
+    }
+
+    private static bool TryCollectVisibleWindowsNative(uint excludePid, out VnVisibleWindowEntry[] entries, out int count)
+    {
+        entries = Array.Empty<VnVisibleWindowEntry>();
+        count = 0;
+        var buffer = new VnVisibleWindowEntry[64];
+        int status = vn_wtscanner_collect_visible_windows(excludePid, 0, buffer, buffer.Length, out int actual);
+        if (status == 0)
+        {
+            entries = buffer;
+            count = Math.Min(actual, buffer.Length);
+            return true;
+        }
+        if (status == -2 && actual > buffer.Length)
+        {
+            buffer = new VnVisibleWindowEntry[actual];
+            status = vn_wtscanner_collect_visible_windows(excludePid, 0, buffer, buffer.Length, out actual);
+            if (status == 0)
+            {
+                entries = buffer;
+                count = Math.Min(actual, buffer.Length);
+                return true;
+            }
+        }
+        return false;
     }
 
     private unsafe void AddMatchingWindowTitle(IntPtr hWnd, List<string> titles)
@@ -589,6 +684,22 @@ public sealed partial class WindowTitleScanner : IWindowTitleScanner, IDisposabl
         if (!string.IsNullOrEmpty(foregroundUrl) && IsMediaUrl(foregroundUrl))
             return foregroundUrl;
 
+        if (TryCollectVisibleWindowsNative((uint)Environment.ProcessId, out var entries, out int count))
+        {
+            for (int i = 0; i < count; i++)
+            {
+                uint pid = entries[i].ProcessId;
+                if (pid == 0) continue;
+                string? processName = TryGetProcessName((int)pid);
+                if (processName == null || !IsBrowserProcess(processName)) continue;
+
+                var url = ExtractUrlFromWindowHandle((IntPtr)entries[i].Hwnd, processName);
+                if (!string.IsNullOrEmpty(url) && IsMediaUrl(url))
+                    return url;
+            }
+            return null;
+        }
+
         string? foundUrl = null;
 
         EnumWindows((hWnd, _) =>
@@ -762,7 +873,7 @@ public sealed partial class WindowTitleScanner : IWindowTitleScanner, IDisposabl
 
             string? fallbackAddressBarUrl = null;
             AutomationElement? addressBar = processName.Contains("firefox", StringComparison.OrdinalIgnoreCase)
-                ? FindBrowserChromeElements(element, ControlType.Edit).FirstOrDefault(edit => edit.Current.AutomationId == "urlbar-input")
+                ? FindFirefoxAddressBar(element)
                 : FindChromiumAddressBar(element);
 
             if (addressBar != null &&
@@ -795,6 +906,24 @@ public sealed partial class WindowTitleScanner : IWindowTitleScanner, IDisposabl
             // UI Automation can throw COM/ElementNotAvailable exceptions during window enumeration
         }
 
+        return null;
+    }
+
+    private static AutomationElement? FindFirefoxAddressBar(AutomationElement element)
+    {
+        var edits = FindBrowserChromeElements(element, ControlType.Edit);
+        for (int i = 0; i < edits.Count; i++)
+        {
+            try
+            {
+                if (edits[i].Current.AutomationId == "urlbar-input")
+                    return edits[i];
+            }
+            catch (Exception)
+            {
+                // Element state may change during UIA query
+            }
+        }
         return null;
     }
 
@@ -984,6 +1113,20 @@ public sealed partial class WindowTitleScanner : IWindowTitleScanner, IDisposabl
 
         try
         {
+            if (TryCollectVisibleWindowsNative((uint)Environment.ProcessId, out var entries, out int count))
+            {
+                for (int i = 0; i < count; i++)
+                {
+                    uint pid = entries[i].ProcessId;
+                    if (pid == 0) continue;
+                    string? processName = TryGetProcessName((int)pid);
+                    if (processName == null || !IsBrowserProcess(processName)) continue;
+                    if (WindowHasSpotifyWebPlayer((IntPtr)entries[i].Hwnd, processName))
+                        return true;
+                }
+                return false;
+            }
+
             EnumWindows((hWnd, _) =>
             {
                 if (!IsWindowVisible(hWnd) || GetWindowTextLength(hWnd) == 0) return true;

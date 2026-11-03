@@ -787,3 +787,439 @@ VN_EXPORT int32_t __stdcall vn_markdown_tokenize_inlines(
     }
     return VN_OK;
 }
+
+#ifndef VN_MARKDOWN_EXTENDED_DEFINED
+#define VN_MARKDOWN_EXTENDED_DEFINED
+#pragma pack(push, 1)
+struct VnMarkdownCodeFenceHeader
+{
+    uint8_t is_fence;
+    uint8_t fence_char;
+    uint8_t fence_count;
+    uint8_t reserved;
+    int32_t lang_start;
+    int32_t lang_length;
+};
+
+struct VnMarkdownListPrefix
+{
+    uint8_t list_kind;
+    uint8_t is_checked;
+    uint16_t ordered_number;
+    int32_t prefix_start;
+    int32_t prefix_length;
+    int32_t content_start;
+    int32_t content_length;
+};
+
+struct VnMarkdownSpanBoundarySummary
+{
+    uint8_t has_unclosed_fence;
+    uint8_t has_unclosed_inline_code;
+    uint8_t has_unclosed_bold;
+    uint8_t has_unclosed_italic;
+    int32_t fence_count;
+    int32_t inline_code_count;
+    int32_t bold_marker_count;
+    int32_t italic_marker_count;
+};
+#pragma pack(pop)
+#endif
+
+namespace
+{
+    constexpr bool is_unicode_ws(char16_t ch) noexcept
+    {
+        if (ch <= 0x0020u)
+        {
+            return ch == u' ' || ch == u'\t' || ch == u'\n' || ch == u'\v' || ch == u'\f' || ch == u'\r';
+        }
+        if (ch < 0x0085u)
+        {
+            return false;
+        }
+        return ch == 0x0085u || ch == 0x00A0u || ch == 0x1680u ||
+               (ch >= 0x2000u && ch <= 0x200Au) ||
+               ch == 0x2028u || ch == 0x2029u || ch == 0x202Fu || ch == 0x205Fu || ch == 0x3000u;
+    }
+}
+
+extern "C" VN_EXPORT int32_t __stdcall vn_markdown_scan_word_spans(
+    const char16_t* text_ptr,
+    int32_t text_len,
+    VnMarkdownSlice* out_spans,
+    int32_t span_cap,
+    int32_t* out_written) noexcept
+{
+    if (text_len < 0 || (text_len > 0 && text_ptr == nullptr) ||
+        span_cap < 0 || (span_cap > 0 && out_spans == nullptr) ||
+        out_written == nullptr)
+    {
+        return VN_ERR_INVALID_ARG;
+    }
+
+    *out_written = 0;
+    if (text_len == 0)
+    {
+        return VN_OK;
+    }
+
+    int32_t count = 0;
+    int32_t i = 0;
+    while (i < text_len && is_unicode_ws(text_ptr[i]))
+    {
+        ++i;
+    }
+
+    while (i < text_len)
+    {
+        int32_t start = i;
+        while (i < text_len && !is_unicode_ws(text_ptr[i]))
+        {
+            ++i;
+        }
+        while (i < text_len && is_unicode_ws(text_ptr[i]))
+        {
+            ++i;
+        }
+
+        if (out_spans != nullptr && count < span_cap)
+        {
+            out_spans[count] = { start, i - start };
+        }
+        ++count;
+    }
+
+    *out_written = count;
+    if (out_spans != nullptr && count > span_cap)
+    {
+        return VN_ERR_BUFFER_TOO_SMALL;
+    }
+    return VN_OK;
+}
+
+extern "C" VN_EXPORT int32_t __stdcall vn_markdown_parse_code_fence_header(
+    const char16_t* line_ptr,
+    int32_t line_len,
+    VnMarkdownCodeFenceHeader* out_header) noexcept
+{
+    if (line_len < 0 || (line_len > 0 && line_ptr == nullptr) || out_header == nullptr)
+    {
+        return VN_ERR_INVALID_ARG;
+    }
+
+    *out_header = { 0, 0, 0, 0, 0, 0 };
+    int32_t start = 0;
+    int32_t end = line_len;
+    while (end > 0 && (line_ptr[end - 1] == u'\r' || line_ptr[end - 1] == u'\n'))
+    {
+        --end;
+    }
+    while (start < end && (line_ptr[start] == u' ' || line_ptr[start] == u'\t'))
+    {
+        ++start;
+    }
+
+    if (end - start < 3)
+    {
+        return VN_OK;
+    }
+
+    const char16_t fc = line_ptr[start];
+    if (fc != u'`' && fc != u'~')
+    {
+        return VN_OK;
+    }
+
+    int32_t f_end = start;
+    while (f_end < end && line_ptr[f_end] == fc)
+    {
+        ++f_end;
+    }
+
+    const int32_t f_count = f_end - start;
+    if (f_count < 3)
+    {
+        return VN_OK;
+    }
+
+    int32_t lang_start = f_end;
+    while (lang_start < end && is_space(line_ptr[lang_start]))
+    {
+        ++lang_start;
+    }
+
+    int32_t lang_end = lang_start;
+    while (lang_end < end && !is_space(line_ptr[lang_end]) && line_ptr[lang_end] != u'`' && line_ptr[lang_end] != u'~')
+    {
+        ++lang_end;
+    }
+
+    out_header->is_fence = 1;
+    out_header->fence_char = static_cast<uint8_t>(fc);
+    out_header->fence_count = static_cast<uint8_t>(f_count > 255 ? 255 : f_count);
+    out_header->lang_start = lang_start;
+    out_header->lang_length = lang_end - lang_start;
+    return VN_OK;
+}
+
+extern "C" VN_EXPORT int32_t __stdcall vn_markdown_strip_list_prefix(
+    const char16_t* line_ptr,
+    int32_t line_len,
+    VnMarkdownListPrefix* out_prefix) noexcept
+{
+    if (line_len < 0 || (line_len > 0 && line_ptr == nullptr) || out_prefix == nullptr)
+    {
+        return VN_ERR_INVALID_ARG;
+    }
+
+    *out_prefix = { 0, 0, 0, 0, 0, 0, line_len };
+    if (line_len == 0)
+    {
+        return VN_OK;
+    }
+
+    int32_t trim_start = 0;
+    int32_t trim_end = line_len;
+    while (trim_end > 0 && (line_ptr[trim_end - 1] == u'\r' || line_ptr[trim_end - 1] == u'\n'))
+    {
+        --trim_end;
+    }
+    while (trim_start < trim_end && is_space(line_ptr[trim_start]))
+    {
+        ++trim_start;
+    }
+    while (trim_end > trim_start && is_space(line_ptr[trim_end - 1]))
+    {
+        --trim_end;
+    }
+
+    const int32_t trim_len = trim_end - trim_start;
+    if (trim_len <= 0)
+    {
+        out_prefix->content_start = trim_start;
+        out_prefix->content_length = 0;
+        return VN_OK;
+    }
+
+    const char16_t first = line_ptr[trim_start];
+    if ((first == u'-' || first == u'*' || first == u'+' || first == u'\u2022') &&
+        trim_len >= 2 && is_space(line_ptr[trim_start + 1]))
+    {
+        int32_t p = trim_start + 1;
+        while (p < trim_end && is_space(line_ptr[p]))
+        {
+            ++p;
+        }
+        if (p + 3 <= trim_end &&
+            line_ptr[p] == u'[' &&
+            (line_ptr[p + 1] == u' ' || line_ptr[p + 1] == u'x' || line_ptr[p + 1] == u'X') &&
+            line_ptr[p + 2] == u']' &&
+            (p + 3 == trim_end || is_space(line_ptr[p + 3])))
+        {
+            const uint8_t checked = (line_ptr[p + 1] == u'x' || line_ptr[p + 1] == u'X') ? 1u : 0u;
+            int32_t c_start = p + 3;
+            while (c_start < trim_end && is_space(line_ptr[c_start]))
+            {
+                ++c_start;
+            }
+            *out_prefix = { 3, checked, 0, trim_start, (p + 3) - trim_start, c_start, trim_end - c_start };
+            return VN_OK;
+        }
+
+        *out_prefix = { 1, 0, 0, trim_start, 1, p, trim_end - p };
+        return VN_OK;
+    }
+
+    if (is_digit(first))
+    {
+        int32_t d_end = trim_start;
+        uint32_t num_val = 0;
+        while (d_end < trim_end && is_digit(line_ptr[d_end]))
+        {
+            num_val = num_val * 10u + static_cast<uint32_t>(line_ptr[d_end] - u'0');
+            if (num_val > 65535u)
+            {
+                num_val = 65535u;
+            }
+            ++d_end;
+        }
+
+        if (d_end == trim_end)
+        {
+            *out_prefix = { 2, 0, static_cast<uint16_t>(num_val), trim_start, trim_len, trim_end, 0 };
+            return VN_OK;
+        }
+
+        if (d_end > trim_start && d_end + 1 < trim_end &&
+            (line_ptr[d_end] == u'.' || line_ptr[d_end] == u')') &&
+            is_space(line_ptr[d_end + 1]))
+        {
+            int32_t c_start = d_end + 1;
+            while (c_start < trim_end && is_space(line_ptr[c_start]))
+            {
+                ++c_start;
+            }
+            *out_prefix = {
+                2,
+                0,
+                static_cast<uint16_t>(num_val),
+                trim_start,
+                (d_end + 1) - trim_start,
+                c_start,
+                trim_end - c_start
+            };
+            return VN_OK;
+        }
+    }
+
+    out_prefix->content_start = trim_start;
+    out_prefix->content_length = trim_len;
+    return VN_OK;
+}
+
+extern "C" VN_EXPORT int32_t __stdcall vn_markdown_scan_span_boundaries(
+    const char16_t* text_ptr,
+    int32_t text_len,
+    VnMarkdownSpanBoundarySummary* out_summary,
+    VnMarkdownSlice* out_code_spans,
+    int32_t code_span_cap,
+    int32_t* out_code_span_count) noexcept
+{
+    if (text_len < 0 || (text_len > 0 && text_ptr == nullptr) ||
+        out_summary == nullptr ||
+        code_span_cap < 0 || (code_span_cap > 0 && out_code_spans == nullptr))
+    {
+        return VN_ERR_INVALID_ARG;
+    }
+
+    *out_summary = { 0, 0, 0, 0, 0, 0, 0, 0 };
+    if (out_code_span_count != nullptr)
+    {
+        *out_code_span_count = 0;
+    }
+    if (text_len == 0)
+    {
+        return VN_OK;
+    }
+
+    int32_t fence_count = 0;
+    int32_t pos = 0;
+    while (pos < text_len)
+    {
+        int32_t line_start = pos;
+        while (pos < text_len && text_ptr[pos] != u'\n')
+        {
+            ++pos;
+        }
+        int32_t p = line_start;
+        while (p < pos && is_unicode_ws(text_ptr[p]))
+        {
+            ++p;
+        }
+        if (p + 3 <= pos && text_ptr[p] == u'`' && text_ptr[p + 1] == u'`' && text_ptr[p + 2] == u'`')
+        {
+            ++fence_count;
+        }
+        if (pos < text_len && text_ptr[pos] == u'\n')
+        {
+            ++pos;
+        }
+    }
+
+    out_summary->fence_count = fence_count;
+    out_summary->has_unclosed_fence = (fence_count & 1) != 0 ? 1u : 0u;
+    if (out_summary->has_unclosed_fence != 0)
+    {
+        return VN_OK;
+    }
+
+    int32_t code_span_count = 0;
+    int32_t inline_code_count = 0;
+    int32_t bold_count = 0;
+    int32_t italic_count = 0;
+    bool unclosed_inline_code = false;
+
+    int32_t i = 0;
+    while (i < text_len)
+    {
+        if (i + 3 <= text_len && text_ptr[i] == u'`' && text_ptr[i + 1] == u'`' && text_ptr[i + 2] == u'`')
+        {
+            int32_t close = i + 3;
+            bool found = false;
+            while (close + 3 <= text_len)
+            {
+                if (text_ptr[close] == u'`' && text_ptr[close + 1] == u'`' && text_ptr[close + 2] == u'`')
+                {
+                    found = true;
+                    break;
+                }
+                ++close;
+            }
+            if (found)
+            {
+                if (out_code_spans != nullptr && code_span_count < code_span_cap)
+                {
+                    out_code_spans[code_span_count] = { i, (close + 3) - i };
+                }
+                ++code_span_count;
+                i = close + 3;
+                continue;
+            }
+        }
+
+        if (text_ptr[i] == u'`')
+        {
+            int32_t close = i + 1;
+            while (close < text_len && text_ptr[close] != u'`')
+            {
+                ++close;
+            }
+            if (close < text_len)
+            {
+                if (out_code_spans != nullptr && code_span_count < code_span_cap)
+                {
+                    out_code_spans[code_span_count] = { i, (close + 1) - i };
+                }
+                ++code_span_count;
+                ++inline_code_count;
+                i = close + 1;
+                continue;
+            }
+            unclosed_inline_code = true;
+            ++inline_code_count;
+            ++i;
+            continue;
+        }
+
+        if (text_ptr[i] == u'*' && (i == 0 || text_ptr[i - 1] != u'\\'))
+        {
+            if (i + 1 < text_len && text_ptr[i + 1] == u'*')
+            {
+                ++bold_count;
+                i += 2;
+                continue;
+            }
+            ++italic_count;
+        }
+
+        ++i;
+    }
+
+    out_summary->inline_code_count = inline_code_count;
+    out_summary->bold_marker_count = bold_count;
+    out_summary->italic_marker_count = italic_count;
+    out_summary->has_unclosed_inline_code = unclosed_inline_code ? 1u : 0u;
+    out_summary->has_unclosed_bold = (!unclosed_inline_code && (bold_count & 1) != 0) ? 1u : 0u;
+    out_summary->has_unclosed_italic = (!unclosed_inline_code && (italic_count & 1) != 0) ? 1u : 0u;
+
+    if (out_code_span_count != nullptr)
+    {
+        *out_code_span_count = code_span_count;
+    }
+    if (out_code_spans != nullptr && code_span_count > code_span_cap)
+    {
+        return VN_ERR_BUFFER_TOO_SMALL;
+    }
+    return VN_OK;
+}

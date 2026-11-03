@@ -185,6 +185,164 @@ public:
         out_start = static_cast<int32_t>(orig_start);
         out_length = static_cast<int32_t>(orig_end - orig_start);
     }
+
+    [[nodiscard]] static constexpr bool StartsWithPatternCultureAware(
+        std::u16string_view sv,
+        std::u16string_view pattern,
+        bool is_turkic,
+        bool i_matches_both_cases = false) noexcept {
+        if (sv.size() < pattern.size()) return false;
+        for (size_t k = 0; k < pattern.size(); ++k) {
+            const char16_t ch = sv[k];
+            const char16_t p = pattern[k];
+            if (p == u'i') {
+                if (i_matches_both_cases || !is_turkic) {
+                    if (ch != u'i' && ch != u'I' && ch != u'\u0130') return false;
+                } else {
+                    if (ch != u'i' && ch != u'\u0130') return false;
+                }
+            } else if (p == u'I') {
+                if (i_matches_both_cases || !is_turkic) {
+                    if (ch != u'i' && ch != u'I' && ch != u'\u0130') return false;
+                } else {
+                    if (ch != u'I' && ch != u'\u0131') return false;
+                }
+            } else {
+                const char16_t lower_ch = (ch >= u'A' && ch <= u'Z') ? static_cast<char16_t>(ch + 32) : ch;
+                const char16_t lower_p = (p >= u'A' && p <= u'Z') ? static_cast<char16_t>(p + 32) : p;
+                if (lower_ch != lower_p) return false;
+            }
+        }
+        return true;
+    }
+
+    [[nodiscard]] static constexpr bool StartsWithTrackNoDigits(std::u16string_view sv) noexcept {
+        if (!vn_starts_with_icase_ascii(sv, u"track")) return false;
+        size_t pos = 5;
+        while (pos < sv.size() && vn_is_whitespace(sv[pos])) ++pos;
+        if (!vn_starts_with_icase_ascii(sv.substr(pos), u"no.")) return false;
+        pos += 3;
+        return pos < sv.size() && sv[pos] >= u'0' && sv[pos] <= u'9';
+    }
+
+    [[nodiscard]] static constexpr bool IsVideoPipeSuffix(std::u16string_view sv, bool is_turkic) noexcept {
+        return StartsWithPatternCultureAware(sv, u"Official", is_turkic, true) ||
+               StartsWithPatternCultureAware(sv, u"MV", is_turkic, true) ||
+               StartsWithPatternCultureAware(sv, u"Music Video", is_turkic, false) ||
+               StartsWithPatternCultureAware(sv, u"Visualizer", is_turkic, false) ||
+               StartsWithPatternCultureAware(sv, u"Lyric Video", is_turkic, false) ||
+               StartsWithPatternCultureAware(sv, u"Audio", is_turkic, false) ||
+               StartsWithTrackNoDigits(sv);
+    }
+
+    [[nodiscard]] static constexpr bool IsRecordingDashSuffix(std::u16string_view sv, bool is_turkic) noexcept {
+        return StartsWithPatternCultureAware(sv, u"Remaster", is_turkic, false) ||
+               StartsWithPatternCultureAware(sv, u"Live", is_turkic, false) ||
+               StartsWithPatternCultureAware(sv, u"Acoustic", is_turkic, false) ||
+               StartsWithPatternCultureAware(sv, u"Radio Edit", is_turkic, false) ||
+               StartsWithPatternCultureAware(sv, u"Bonus Track", is_turkic, false) ||
+               StartsWithPatternCultureAware(sv, u"Single Version", is_turkic, false) ||
+               StartsWithPatternCultureAware(sv, u"Instrumental", is_turkic, false) ||
+               StartsWithPatternCultureAware(sv, u"Deluxe", is_turkic, false) ||
+               StartsWithPatternCultureAware(sv, u"Mono", is_turkic, false) ||
+               StartsWithPatternCultureAware(sv, u"Stereo", is_turkic, false);
+    }
+
+    static constexpr int32_t StripTitleExtras(
+        std::u16string_view title,
+        bool is_turkic,
+        char16_t* out_buf,
+        int32_t out_cap,
+        int32_t& out_written) noexcept {
+        out_written = 0;
+        if (title.empty()) return VN_OK;
+        if (out_cap < static_cast<int32_t>(title.size())) {
+            out_written = static_cast<int32_t>(title.size());
+            return VN_ERR_BUFFER_TOO_SMALL;
+        }
+        if (!out_buf) return VN_ERR_INVALID_ARG;
+
+        if (vnotch::is_null_or_whitespace(title)) {
+            for (size_t i = 0; i < title.size(); ++i) {
+                out_buf[i] = title[i];
+            }
+            out_written = static_cast<int32_t>(title.size());
+            return VN_OK;
+        }
+
+        int32_t len = 0;
+        for (size_t i = 0; i < title.size(); ++i) {
+            const char16_t ch = title[i];
+            if (ch == u'(' || ch == u'[') {
+                size_t close_pos = std::u16string_view::npos;
+                for (size_t j = i + 1; j < title.size(); ++j) {
+                    if (title[j] == u')' || title[j] == u']') {
+                        close_pos = j;
+                        break;
+                    }
+                }
+                if (close_pos != std::u16string_view::npos) {
+                    while (len > 0 && vn_is_whitespace(out_buf[len - 1])) {
+                        --len;
+                    }
+                    i = close_pos;
+                    continue;
+                }
+            }
+            out_buf[len++] = ch;
+        }
+
+        for (int32_t i = 0; i < len; ++i) {
+            if (out_buf[i] == u'|') {
+                int32_t p = i + 1;
+                while (p < len && vn_is_whitespace(out_buf[p])) ++p;
+                const std::u16string_view rem(out_buf + p, static_cast<size_t>(len - p));
+                if (IsVideoPipeSuffix(rem, is_turkic)) {
+                    int32_t cut = i;
+                    while (cut > 0 && vn_is_whitespace(out_buf[cut - 1])) --cut;
+                    len = cut;
+                    break;
+                }
+            }
+        }
+
+        for (int32_t i = 0; i < len; ++i) {
+            if (out_buf[i] == u'-') {
+                int32_t p = i + 1;
+                while (p < len && vn_is_whitespace(out_buf[p])) ++p;
+                const std::u16string_view rem(out_buf + p, static_cast<size_t>(len - p));
+                if (IsRecordingDashSuffix(rem, is_turkic)) {
+                    int32_t cut = i;
+                    while (cut > 0 && vn_is_whitespace(out_buf[cut - 1])) --cut;
+                    len = cut;
+                    break;
+                }
+            }
+        }
+
+        int32_t start = 0;
+        while (start < len && vn_is_whitespace(out_buf[start])) ++start;
+        int32_t end = len;
+        while (end > start && vn_is_whitespace(out_buf[end - 1])) --end;
+
+        if (end > start) {
+            const int32_t final_len = end - start;
+            if (start > 0) {
+                for (int32_t i = 0; i < final_len; ++i) {
+                    out_buf[i] = out_buf[start + i];
+                }
+            }
+            out_written = final_len;
+            return VN_OK;
+        }
+
+        const std::u16string_view fallback = vn_trim(title);
+        for (size_t i = 0; i < fallback.size(); ++i) {
+            out_buf[i] = fallback[i];
+        }
+        out_written = static_cast<int32_t>(fallback.size());
+        return VN_OK;
+    }
 };
 
 } // namespace vnotch::services
@@ -347,6 +505,20 @@ VN_EXPORT int32_t __stdcall vn_lyrics_normalize_for_matching(
     } catch (...) {
         return VN_ERR_FAIL;
     }
+}
+
+VN_EXPORT int32_t __stdcall vn_lyrics_strip_title_extras(
+    const char16_t* title_ptr,
+    int32_t title_len,
+    uint8_t is_turkic_culture,
+    char16_t* out_buf,
+    int32_t out_cap,
+    int32_t* out_written) noexcept {
+    if (!out_written || title_len < 0 || (title_len > 0 && !title_ptr) || out_cap < 0 || (out_cap > 0 && !out_buf)) {
+        return VN_ERR_INVALID_ARG;
+    }
+    const std::u16string_view sv(title_ptr ? title_ptr : u"", static_cast<size_t>(title_len));
+    return vnotch::services::LyricsService::StripTitleExtras(sv, is_turkic_culture != 0, out_buf, out_cap, *out_written);
 }
 
 } // extern "C"

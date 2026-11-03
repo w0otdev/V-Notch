@@ -12,6 +12,15 @@ internal static class Program
     private static int Main(string[] args)
     {
         var options = args.ToList();
+        TrayBenchmark.ObserveUi = !options.Remove("--no-ui-observer");
+        TrayBenchmark.MoveBackdrop = options.Remove("--move-backdrop");
+        TrayBenchmark.ProfileUi = options.Remove("--profile-ui");
+        TrayBenchmark.WheelScroll = options.Remove("--wheel-scroll");
+        TrayBenchmark.ControlledBackdrop = options.Remove("--controlled-backdrop");
+        TrayBenchmark.ResizeTray = options.Remove("--resize-tray");
+        TrayBenchmark.OpaqueHost = options.Remove("--opaque-host");
+        TrayBenchmark.DwmHost = options.Remove("--dwm-host");
+        TrayBenchmark.ForegroundHost = options.Remove("--foreground-host");
         int outputIndex = options.IndexOf("--output-dir");
         if (outputIndex >= 0)
         {
@@ -20,10 +29,11 @@ internal static class Program
             options.RemoveRange(outputIndex, 2);
         }
         args = options.ToArray();
+        if (args.Contains("--host-alpha-probe")) return DwmProbeHost.Run();
         if (args.Contains("--benchmark-self-check")) { BenchmarkChecks.SelfCheck(); return 0; }
-        if (args.Contains("--benchmark") || args.Contains("--benchmark-focused"))
+        if (args.Contains("--benchmark") || args.Contains("--benchmark-focused") || args.Contains("--benchmark-resize"))
         {
-            bool focused = args.Contains("--benchmark-focused");
+            bool focused = args.Contains("--benchmark-focused") || args.Contains("--benchmark-resize");
             int ReadOption(string name, int fallback, int minimum, int maximum)
             {
                 int index = Array.IndexOf(args, name);
@@ -33,7 +43,7 @@ internal static class Program
                 return value;
             }
             return BenchmarkProbe.Run(focused, ReadOption("--duration-ms", focused ? 10000 : 3000, 1000, 60000),
-                ReadOption("--repeats", 3, 1, 10));
+                ReadOption("--repeats", 3, 1, 10), args.Contains("--benchmark-resize"));
         }
         if (args.Length == 2 && args[0] == "--tray-fixture") return TrayBenchmark.Prepare(args[1]);
         if (args.Length == 2 && args[0] == "--tray-fixture-default") return TrayBenchmark.Prepare(args[1], 500);

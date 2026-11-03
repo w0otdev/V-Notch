@@ -1,5 +1,6 @@
 #include "vnotch_common.h"
 #include <windows.h>
+#include <algorithm>
 #include <array>
 #include <cstdint>
 #include <cwctype>
@@ -7,6 +8,21 @@
 #include <string_view>
 #include <vector>
 
+#pragma comment(lib, "user32.lib")
+#ifndef VN_VISIBLE_WINDOW_ENTRY_DEFINED
+#define VN_VISIBLE_WINDOW_ENTRY_DEFINED
+
+#pragma pack(push, 1)
+struct VnVisibleWindowEntry {
+    int64_t hwnd;
+    uint32_t process_id;
+    int32_t title_len;
+    uint8_t matches_platform_title;
+    char16_t title[256];
+};
+#pragma pack(pop)
+
+#endif
 namespace vnotch::services {
 
 class WindowTitleScanner final {
@@ -148,6 +164,73 @@ public:
                ContainsIgnoreCase(url, L"vimeo.com/") ||
                ContainsIgnoreCase(url, L"crunchyroll.com/watch");
     }
+
+    struct EnumWindowsContext {
+        uint32_t exclude_pid;
+        uint8_t only_platform_titles;
+        VnVisibleWindowEntry* out_entries;
+        int32_t entries_cap;
+        int32_t total_count;
+    };
+
+    static BOOL CALLBACK EnumVisibleWindowsCallback(HWND hwnd, LPARAM lparam) noexcept {
+        auto* ctx = reinterpret_cast<EnumWindowsContext*>(lparam);
+        if (!ctx) return FALSE;
+        if (!::IsWindowVisible(hwnd)) return TRUE;
+
+        DWORD pid = 0;
+        ::GetWindowThreadProcessId(hwnd, &pid);
+        if (pid == 0 || (ctx->exclude_pid != 0 && pid == ctx->exclude_pid)) {
+            return TRUE;
+        }
+
+        const int text_len = ::GetWindowTextLengthW(hwnd);
+        if (text_len <= 0) return TRUE;
+
+        wchar_t title_buf[512];
+        const int copied = ::GetWindowTextW(hwnd, title_buf, 512);
+        if (copied <= 0) return TRUE;
+
+        const std::u16string_view title_sv(reinterpret_cast<const char16_t*>(title_buf), static_cast<size_t>(copied));
+        const bool is_platform = MatchesPlatformTitle(title_sv);
+        if (ctx->only_platform_titles != 0 && !is_platform) {
+            return TRUE;
+        }
+
+        if (ctx->total_count < ctx->entries_cap && ctx->out_entries != nullptr) {
+            VnVisibleWindowEntry& dst = ctx->out_entries[ctx->total_count];
+            dst.hwnd = static_cast<int64_t>(reinterpret_cast<intptr_t>(hwnd));
+            dst.process_id = static_cast<uint32_t>(pid);
+            const int32_t clamped_len = std::min<int32_t>(copied, 255);
+            dst.title_len = clamped_len;
+            dst.matches_platform_title = is_platform ? 1u : 0u;
+            for (int32_t i = 0; i < clamped_len; ++i) {
+                dst.title[i] = static_cast<char16_t>(title_buf[i]);
+            }
+            dst.title[clamped_len] = u'\0';
+        }
+        ++ctx->total_count;
+        return TRUE;
+    }
+
+    static int32_t CollectVisibleWindows(
+        uint32_t exclude_pid,
+        uint8_t only_platform_titles,
+        VnVisibleWindowEntry* out_entries,
+        int32_t entries_cap,
+        int32_t& out_count) noexcept {
+        out_count = 0;
+        EnumWindowsContext ctx{
+            exclude_pid,
+            only_platform_titles,
+            out_entries,
+            entries_cap,
+            0
+        };
+        ::EnumWindows(&EnumVisibleWindowsCallback, reinterpret_cast<LPARAM>(&ctx));
+        out_count = ctx.total_count;
+        return ctx.total_count > entries_cap ? VN_ERR_BUFFER_TOO_SMALL : VN_OK;
+    }
 };
 
 } // namespace vnotch::services
@@ -212,6 +295,20 @@ VN_EXPORT int32_t vn_wtscanner_is_media_url(
     std::u16string_view sv(url ? url : u"", url && url_len > 0 ? static_cast<size_t>(url_len) : 0);
     *out_is_media = vnotch::services::WindowTitleScanner::IsMediaUrl(sv) ? 1 : 0;
     return VN_OK;
+}
+
+VN_EXPORT int32_t __stdcall vn_wtscanner_collect_visible_windows(
+    uint32_t exclude_pid,
+    uint8_t only_platform_titles,
+    VnVisibleWindowEntry* out_entries,
+    int32_t entries_cap,
+    int32_t* out_count) noexcept
+{
+    if (!out_count || entries_cap < 0 || (!out_entries && entries_cap > 0)) {
+        return VN_ERR_INVALID_ARG;
+    }
+    return vnotch::services::WindowTitleScanner::CollectVisibleWindows(
+        exclude_pid, only_platform_titles, out_entries, entries_cap, *out_count);
 }
 
 } // extern "C"

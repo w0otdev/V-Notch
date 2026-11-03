@@ -63,7 +63,7 @@ public sealed partial class LiquidGlassController
         _hasGpuLens = false;
     }
 
-    private bool ProcessDesktopGpuFrame(GlassParams p, CaptureRegion region, FrameDimensions dims, int generation, double blurSigma)
+    private bool ProcessDesktopGpuFrame(GlassParams p, CaptureRegion region, FrameDimensions dims, int generation, double blurSigma, long refreshVersion)
     {
         if (_presentationPaused || !_isActive || !_gpuMode || generation != Volatile.Read(ref _renderGeneration)) return false;
         var presenter = _d3dPresenter;
@@ -80,7 +80,7 @@ public sealed partial class LiquidGlassController
         frame.X = dims.SrcX; frame.Y = dims.SrcY;
         frame.Width = dims.SrcW; frame.Height = dims.SrcH;
         frame.Blur = (float)blurSigma;
-        frame.Refract = (UsesNativeRefraction ? 1 : 0) | (_forceRefreshNeeded ? 2 : 0);
+        frame.Refract = (UsesNativeRefraction ? 1 : 0) | (refreshVersion != Volatile.Read(ref _renderedRefreshVersion) ? 2 : 0);
         frame.Set(0, g.SrcW); frame.Set(1, g.SrcH);
         if (!hasLens)
         {
@@ -102,7 +102,7 @@ public sealed partial class LiquidGlassController
             ShouldContinueWorker(generation) && ReferenceEquals(presenter, _d3dPresenter))
         {
             _hasUploadedGpuFrame = true;
-            _forceRefreshNeeded = false;
+            CompleteRefresh(refreshVersion);
             _lastPresentTicks = Environment.TickCount64;
             OnGpuFrameUploaded?.Invoke();
         }

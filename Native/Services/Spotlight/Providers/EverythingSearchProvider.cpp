@@ -1,6 +1,7 @@
 #include "vnotch_common.h"
 #include <algorithm>
 #include <cstdint>
+#include <cstring>
 #include <string_view>
 
 namespace vnotch::services::spotlight::providers {
@@ -11,8 +12,13 @@ public:
 
     static constexpr int32_t kMaxParsedItems = 512;
     static constexpr uint32_t kMatchPath = 0x00000004U;
+    static constexpr int32_t kListHeaderBytes = 28;
+    static constexpr int32_t kListNumItemsOffset = 20;
+    static constexpr int32_t kItemBytes = 12;
+    static constexpr int32_t kItemFolderFlag = 0x00000001;
+    static constexpr int32_t kQueryHeaderBytes = 20;
 
-    [[nodiscard]] static constexpr void ComputeSearchParams(
+    static constexpr void ComputeSearchParams(
         std::u16string_view query,
         int32_t limit,
         int32_t& out_max_results,
@@ -69,6 +75,99 @@ public:
         }
         return max_chars;
     }
+
+    [[nodiscard]] static int32_t ReadReplyItemCount(
+        const uint8_t* list_ptr,
+        int32_t byte_count) noexcept {
+        if (!list_ptr || byte_count < kListHeaderBytes) {
+            return 0;
+        }
+        int32_t raw_count = 0;
+        std::memcpy(&raw_count, list_ptr + kListNumItemsOffset, sizeof(int32_t));
+        const int32_t clamped = std::clamp(raw_count, 0, kMaxParsedItems);
+        const int32_t max_by_bytes = (byte_count - kListHeaderBytes) / kItemBytes;
+        return std::min(clamped, max_by_bytes);
+    }
+
+    static void ExtractReplyItem(
+        const uint8_t* list_ptr,
+        int32_t byte_count,
+        int32_t index,
+        int32_t& out_name_offset,
+        int32_t& out_name_len,
+        int32_t& out_path_offset,
+        int32_t& out_path_len,
+        uint8_t& out_is_folder) noexcept {
+        out_name_offset = 0;
+        out_name_len = 0;
+        out_path_offset = 0;
+        out_path_len = 0;
+        out_is_folder = 0;
+
+        if (!list_ptr || index < 0 || index >= kMaxParsedItems) {
+            return;
+        }
+        const int32_t item_offset = kListHeaderBytes + index * kItemBytes;
+        if (item_offset < kListHeaderBytes || item_offset + kItemBytes > byte_count) {
+            return;
+        }
+
+        int32_t flags = 0;
+        int32_t name_offset = 0;
+        int32_t path_offset = 0;
+        std::memcpy(&flags, list_ptr + item_offset, sizeof(int32_t));
+        std::memcpy(&name_offset, list_ptr + item_offset + 4, sizeof(int32_t));
+        std::memcpy(&path_offset, list_ptr + item_offset + 8, sizeof(int32_t));
+
+        if (name_offset < 0 || name_offset >= byte_count) return;
+        if (path_offset < 0 || path_offset >= byte_count) return;
+
+        const int32_t name_len = ParseBoundedUtf16Length(list_ptr, name_offset, byte_count);
+        if (name_len <= 0) return;
+        const int32_t path_len = ParseBoundedUtf16Length(list_ptr, path_offset, byte_count);
+
+        out_name_offset = name_offset;
+        out_name_len = name_len;
+        out_path_offset = path_offset;
+        out_path_len = path_len;
+        out_is_folder = (flags & kItemFolderFlag) != 0 ? 1u : 0u;
+    }
+
+    static int32_t PackIpcQuery(
+        int64_t reply_hwnd,
+        uint32_t query_id,
+        uint32_t search_flags,
+        int32_t max_results,
+        std::u16string_view query,
+        uint8_t* out_buf,
+        int32_t out_cap,
+        int32_t* out_bytes) noexcept {
+        if (!out_bytes) return VN_ERR_INVALID_ARG;
+        const int32_t string_bytes = static_cast<int32_t>((query.size() + 1) * sizeof(char16_t));
+        const int32_t total_bytes = kQueryHeaderBytes + string_bytes;
+        *out_bytes = total_bytes;
+        if (!out_buf || out_cap < total_bytes) {
+            return VN_ERR_BUFFER_TOO_SMALL;
+        }
+
+        const int32_t hwnd32 = static_cast<int32_t>(static_cast<uint32_t>(reply_hwnd));
+        const int32_t qid32 = static_cast<int32_t>(query_id);
+        const int32_t flags32 = static_cast<int32_t>(search_flags);
+        const int32_t offset32 = 0;
+
+        std::memcpy(out_buf + 0, &hwnd32, sizeof(int32_t));
+        std::memcpy(out_buf + 4, &qid32, sizeof(int32_t));
+        std::memcpy(out_buf + 8, &flags32, sizeof(int32_t));
+        std::memcpy(out_buf + 12, &offset32, sizeof(int32_t));
+        std::memcpy(out_buf + 16, &max_results, sizeof(int32_t));
+
+        if (!query.empty()) {
+            std::memcpy(out_buf + kQueryHeaderBytes, query.data(), query.size() * sizeof(char16_t));
+        }
+        const char16_t nul = u'\0';
+        std::memcpy(out_buf + kQueryHeaderBytes + query.size() * sizeof(char16_t), &nul, sizeof(char16_t));
+        return VN_OK;
+    }
 };
 
 } // namespace vnotch::services::spotlight::providers
@@ -122,6 +221,61 @@ VN_EXPORT int32_t vn_everything_provider_parse_bounded_utf16_len(
     *out_char_len = vnotch::services::spotlight::providers::EverythingSearchProvider::ParseBoundedUtf16Length(
         base_ptr, offset, total_bytes);
     return VN_OK;
+}
+
+VN_EXPORT int32_t __stdcall vn_everything_provider_read_reply_item_count(
+    const uint8_t* list_ptr,
+    int32_t byte_count,
+    int32_t* out_count) noexcept {
+    if (!out_count) return VN_ERR_INVALID_ARG;
+    *out_count = vnotch::services::spotlight::providers::EverythingSearchProvider::ReadReplyItemCount(
+        list_ptr, byte_count);
+    return VN_OK;
+}
+
+VN_EXPORT int32_t __stdcall vn_everything_provider_extract_reply_item(
+    const uint8_t* list_ptr,
+    int32_t byte_count,
+    int32_t index,
+    int32_t* out_name_offset,
+    int32_t* out_name_len,
+    int32_t* out_path_offset,
+    int32_t* out_path_len,
+    uint8_t* out_is_folder) noexcept {
+    if (!out_name_offset || !out_name_len || !out_path_offset || !out_path_len || !out_is_folder) {
+        return VN_ERR_INVALID_ARG;
+    }
+    vnotch::services::spotlight::providers::EverythingSearchProvider::ExtractReplyItem(
+        list_ptr,
+        byte_count,
+        index,
+        *out_name_offset,
+        *out_name_len,
+        *out_path_offset,
+        *out_path_len,
+        *out_is_folder);
+    return VN_OK;
+}
+
+VN_EXPORT int32_t __stdcall vn_everything_provider_pack_ipc_query(
+    int64_t reply_hwnd,
+    uint32_t query_id,
+    uint32_t search_flags,
+    int32_t max_results,
+    const char16_t* query_ptr,
+    int32_t query_len,
+    uint8_t* out_buf,
+    int32_t out_cap,
+    int32_t* out_bytes) noexcept {
+    return vnotch::services::spotlight::providers::EverythingSearchProvider::PackIpcQuery(
+        reply_hwnd,
+        query_id,
+        search_flags,
+        max_results,
+        vnotch::make_u16_view(query_ptr, query_len),
+        out_buf,
+        out_cap,
+        out_bytes);
 }
 
 } // extern "C"

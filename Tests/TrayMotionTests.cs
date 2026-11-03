@@ -11,6 +11,26 @@ namespace VNotch.Tests;
 public sealed class TrayMotionTests
 {
     [Fact]
+    public void SettledLayerEntranceReturnsOpacityToItsBaseState() => SharedStaTestRunner.RunAsync(async () =>
+    {
+        var layer = new Border { Opacity = 0 };
+        var window = new BackgroundWindow { Content = layer, Width = 100, Height = 100 };
+        try
+        {
+            window.Show();
+            await System.Windows.Threading.Dispatcher.Yield(System.Windows.Threading.DispatcherPriority.ApplicationIdle);
+            typeof(ClipboardTray).GetMethod("AnimateLayer", System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.NonPublic)!
+                .Invoke(null, [layer, true, 0, false, 40, 6d, null]);
+            await Task.Delay(180);
+            await System.Windows.Threading.Dispatcher.Yield(System.Windows.Threading.DispatcherPriority.ApplicationIdle);
+            Assert.Equal(1, layer.Opacity);
+            layer.Opacity = .5;
+            Assert.Equal(.5, layer.Opacity);
+        }
+        finally { window.Close(); }
+    });
+
+    [Fact]
     public void BrushFeedbackPreservesBindingAndDoesNotMutateSharedBrushes() => SharedStaTestRunner.Run(() =>
     {
         var source = new Border { Background = Brushes.Red };

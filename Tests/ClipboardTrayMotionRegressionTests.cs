@@ -67,10 +67,12 @@ public sealed class ClipboardTrayMotionRegressionTests
         typeof(ClipboardTray).GetField("_cardsScrollTarget", flags)!.SetValue(tray, 1d);
         Invoke(tray, "StartCardsScrollFrames");
         var active = typeof(ClipboardTray).GetField("_cardsScrollActive", flags)!;
-        var clock = typeof(ClipboardTray).GetField("_cardsFrameTime", flags)!;
+        var clock = typeof(ClipboardTray).GetField("_cardsFrameClock", flags)!;
         for (int frame = 0; frame < 100 && (bool)active.GetValue(tray)!; frame++)
         {
-            clock.SetValue(tray, System.Diagnostics.Stopwatch.GetTimestamp() - System.Diagnostics.Stopwatch.Frequency / Math.Max(1, AnimationConfig.TargetFps));
+            var frameClock = new AnimationFrameClock();
+            frameClock.Reset(System.Diagnostics.Stopwatch.GetTimestamp() - System.Diagnostics.Stopwatch.Frequency / Math.Max(1, AnimationConfig.TargetFps));
+            clock.SetValue(tray, frameClock);
             Invoke(tray, "Cards_ScrollFrame", null, EventArgs.Empty);
         }
         await Dispatcher.Yield(DispatcherPriority.ApplicationIdle);

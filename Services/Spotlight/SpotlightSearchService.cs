@@ -25,9 +25,23 @@ internal sealed partial class SpotlightSearchService
         byte isPinned,
         out double outScore);
 
+    [LibraryImport("VNotch.Native.dll", StringMarshalling = StringMarshalling.Utf16)]
+    internal static partial int vn_spotlight_search_compare_keys(
+        double scoreA,
+        ReadOnlySpan<char> titleAPtr,
+        int titleALen,
+        ReadOnlySpan<char> idAPtr,
+        int idALen,
+        double scoreB,
+        ReadOnlySpan<char> titleBPtr,
+        int titleBLen,
+        ReadOnlySpan<char> idBPtr,
+        int idBLen,
+        out int outCmp);
 
     private const int MaxResults = 50;
     private static readonly Comparison<SpotlightSearchItem> s_mergeComparison = CompareMergedItems;
+    internal static readonly Comparison<SpotlightSearchItem> s_scoreAndTitleComparison = CompareScoreAndTitle;
 
     private readonly ISpotlightProvider[] _providers;
     private readonly ISpotlightProvider[] _instantProviders;
@@ -144,9 +158,11 @@ internal sealed partial class SpotlightSearchService
             return Array.Empty<SpotlightSearchItem>();
 
         var tasks = new Task<IReadOnlyList<SpotlightSearchItem>>[selectedProviders.Length];
-        int everythingIndex = Array.FindIndex(selectedProviders, provider => provider is EverythingSearchProvider);
+        int everythingIndex = -1;
         for (int i = 0; i < selectedProviders.Length; i++)
         {
+            if (selectedProviders[i] is EverythingSearchProvider && everythingIndex < 0)
+                everythingIndex = i;
             if (selectedProviders[i] is LocalFileSearchProvider) continue;
             tasks[i] = SearchProviderAsync(selectedProviders[i], query, MaxResults, cancellationToken);
         }
@@ -251,13 +267,34 @@ internal sealed partial class SpotlightSearchService
 
     private static int CompareMergedItems(SpotlightSearchItem a, SpotlightSearchItem b)
     {
-        int scoreCmp = b.Score.CompareTo(a.Score);
-        if (scoreCmp != 0) return scoreCmp;
+        string titleA = a.Title ?? string.Empty;
+        string titleB = b.Title ?? string.Empty;
+        string idA = a.Id ?? string.Empty;
+        string idB = b.Id ?? string.Empty;
+        _ = vn_spotlight_search_compare_keys(
+            a.Score,
+            titleA.AsSpan(), titleA.Length,
+            idA.AsSpan(), idA.Length,
+            b.Score,
+            titleB.AsSpan(), titleB.Length,
+            idB.AsSpan(), idB.Length,
+            out int cmp);
+        return cmp;
+    }
 
-        int titleCmp = StringComparer.CurrentCultureIgnoreCase.Compare(a.Title, b.Title);
-        if (titleCmp != 0) return titleCmp;
-
-        return StringComparer.Ordinal.Compare(a.Id, b.Id);
+    internal static int CompareScoreAndTitle(SpotlightSearchItem a, SpotlightSearchItem b)
+    {
+        string titleA = a.Title ?? string.Empty;
+        string titleB = b.Title ?? string.Empty;
+        _ = vn_spotlight_search_compare_keys(
+            a.Score,
+            titleA.AsSpan(), titleA.Length,
+            ReadOnlySpan<char>.Empty, 0,
+            b.Score,
+            titleB.AsSpan(), titleB.Length,
+            ReadOnlySpan<char>.Empty, 0,
+            out int cmp);
+        return cmp;
     }
 
     private static bool TryNormalizeInput(

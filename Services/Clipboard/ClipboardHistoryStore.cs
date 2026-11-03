@@ -74,10 +74,125 @@ public sealed partial class ClipboardHistoryStore : IDisposable, IAsyncDisposabl
         int entryCount,
         out VnClipboardCategoryCountsOut outCounts);
 
+    [StructLayout(LayoutKind.Sequential, Pack = 1)]
+    private struct VnClipboardPruneCandidate
+    {
+        public int EntryIndex;
+        public byte IsPersonal;
+        public byte IsPinned;
+        public byte IsArchived;
+        public long CopiedUtcTicks;
+        public long ByteSize;
+    }
+
+    [LibraryImport(NativeDll, StringMarshalling = StringMarshalling.Utf16)]
+    private static partial int vn_clipboard_store_tokenize_query(
+        ReadOnlySpan<char> query,
+        int queryLen,
+        Span<int> outStarts,
+        Span<int> outLengths,
+        int maxTokens,
+        out int outTokenCount);
+
+    [LibraryImport(NativeDll, StringMarshalling = StringMarshalling.Utf16)]
+    private static partial int vn_clipboard_store_contains_icase(
+        ReadOnlySpan<char> haystack,
+        int haystackLen,
+        ReadOnlySpan<char> needle,
+        int needleLen,
+        out byte outContains);
+
+    [LibraryImport(NativeDll, StringMarshalling = StringMarshalling.Utf16)]
+    private static partial int vn_clipboard_store_equals_icase(
+        ReadOnlySpan<char> a,
+        int aLen,
+        ReadOnlySpan<char> b,
+        int bLen,
+        out byte outEquals);
+
+    [LibraryImport(NativeDll, StringMarshalling = StringMarshalling.Utf16)]
+    private static partial int vn_clipboard_store_entry_matches_metadata_token(
+        byte isSensitive,
+        ReadOnlySpan<char> title,
+        int titleLen,
+        ReadOnlySpan<char> preview,
+        int previewLen,
+        ReadOnlySpan<char> sourceApp,
+        int sourceAppLen,
+        ReadOnlySpan<char> token,
+        int tokenLen,
+        out byte outMatches);
+
+    [LibraryImport(NativeDll)]
+    private static partial int vn_clipboard_store_plan_prune(
+        ReadOnlySpan<VnClipboardPruneCandidate> candidates,
+        int candidateCount,
+        long cutoffUtcTicks,
+        int maxUnpinnedEntries,
+        long maxUnpinnedBytes,
+        Span<int> outOrderedIndices,
+        int maxIndices,
+        out int outExpiredCount,
+        out int outEvictCandidateCount,
+        out long outTotalActiveBytes);
+
+    [LibraryImport(NativeDll)]
+    private static partial int vn_clipboard_store_evaluate_sensitive_expiry(
+        byte hasEntry,
+        byte isPinned,
+        byte isArchived,
+        byte isPersonal,
+        byte hasPersonalDir,
+        byte ticksValid,
+        long markerTicks,
+        long expiryCutoffTicks,
+        out int outAction);
+
+    [LibraryImport(NativeDll)]
+    private static partial int vn_clipboard_store_is_vault_stream_magic(
+        ReadOnlySpan<byte> magic,
+        int magicLen,
+        out byte outIsMagic);
+
+    [LibraryImport(NativeDll, StringMarshalling = StringMarshalling.Utf16)]
+    private static partial int vn_clipboard_store_format_prefixed_sha256_hex(
+        ReadOnlySpan<char> prefix,
+        int prefixLen,
+        ReadOnlySpan<byte> hashBytes,
+        int hashLen,
+        Span<char> outBuf,
+        int outCap,
+        out int outWritten);
+
+    [LibraryImport(NativeDll, StringMarshalling = StringMarshalling.Utf16)]
+    private static partial int vn_clipboard_store_are_signatures_equal(
+        ReadOnlySpan<char> sigA,
+        int lenA,
+        ReadOnlySpan<char> sigB,
+        int lenB,
+        out byte outEqual);
+
+    [LibraryImport(NativeDll)]
+    private static partial int vn_clipboard_store_is_probable_duplicate_image_candidate(
+        int kind,
+        byte isPersonal,
+        long captureTicks,
+        long entryTicks,
+        long bestTicks,
+        byte hasBest,
+        out byte outIsBetter);
+
+    [LibraryImport(NativeDll, StringMarshalling = StringMarshalling.Utf16)]
+    private static partial int vn_clipboard_store_is_export_path_protected(
+        ReadOnlySpan<char> directory,
+        int directoryLen,
+        ReadOnlySpan<char> activeLease,
+        int activeLeaseLen,
+        ushort dirSep,
+        out byte outProtected);
+
     private static readonly Comparison<ClipboardEntry> s_copiedUtcDescComparison =
         static (a, b) => b.CopiedUtc.CompareTo(a.CopiedUtc);
-    private static readonly Comparison<ClipboardEntry> s_copiedUtcAscComparison =
-        static (a, b) => a.CopiedUtc.CompareTo(b.CopiedUtc);
 
     public const long ApprovalThreshold = 50L * 1024 * 1024;
     public const int DefaultMaxUnpinnedEntries = 500;
@@ -513,7 +628,7 @@ public sealed partial class ClipboardHistoryStore : IDisposable, IAsyncDisposabl
             }
             // shortcut: legacy attachment hashes stay unchanged, rehash stored files if cross-version deduplication is required.
             string fingerprint = files.Count == 0 ? Fingerprint(capture)
-                : "files-v2:" + Convert.ToHexString(fileHash.GetHashAndReset());
+                : FormatPrefixedHash("files-v2:", fileHash);
             var duplicate = FindDuplicate(fingerprint, personal);
             if (duplicate == null && kind == ClipboardKind.Image && !personal)
             {
@@ -596,8 +711,12 @@ public sealed partial class ClipboardHistoryStore : IDisposable, IAsyncDisposabl
             return Array.Empty<ClipboardEntry>();
         }
 
-        var tokens = query.Split(' ', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
-        var labelNames = tokens.Length == 0 ? null : _labels.ToDictionary(label => label.Id, label => label.Name, StringComparer.OrdinalIgnoreCase);
+        query ??= string.Empty;
+        int maxTokens = Math.Min(256, (query.Length / 2) + 1);
+        Span<int> tokenStarts = stackalloc int[maxTokens];
+        Span<int> tokenLengths = stackalloc int[maxTokens];
+        _ = vn_clipboard_store_tokenize_query(query.AsSpan(), query.Length, tokenStarts, tokenLengths, maxTokens, out int tokenCount);
+
         List<ClipboardEntry> candidates;
         lock (_entriesLock)
         {
@@ -611,18 +730,20 @@ public sealed partial class ClipboardHistoryStore : IDisposable, IAsyncDisposabl
         }
 
         var result = new List<ClipboardEntry>(candidates.Count);
+        ReadOnlySpan<char> querySpan = query.AsSpan();
         for (int i = 0; i < candidates.Count; i++)
         {
             cancellation.ThrowIfCancellationRequested();
             var entry = candidates[i];
 
-            if (tokens.Length > 0)
+            if (tokenCount > 0)
             {
                 string? fullText = null;
                 bool matches = true;
-                for (int t = 0; t < tokens.Length; t++)
+                for (int t = 0; t < tokenCount; t++)
                 {
-                    if (!EntryMatchesToken(entry, tokens[t], labelNames!, ref fullText, cancellation))
+                    ReadOnlySpan<char> tokenSpan = querySpan.Slice(tokenStarts[t], tokenLengths[t]);
+                    if (!EntryMatchesToken(entry, tokenSpan, ref fullText, cancellation))
                     {
                         matches = false;
                         break;
@@ -638,30 +759,39 @@ public sealed partial class ClipboardHistoryStore : IDisposable, IAsyncDisposabl
         return result;
     });
 
-    private bool EntryMatchesToken(ClipboardEntry entry, string token, IReadOnlyDictionary<string, string> labelNames, ref string? fullText, CancellationToken cancellation)
+    private bool EntryMatchesToken(ClipboardEntry entry, ReadOnlySpan<char> token, ref string? fullText, CancellationToken cancellation)
     {
-        if (token.StartsWith('@'))
+        if (!token.IsEmpty && token[0] == '@')
             return MatchesCategory(entry, token[1..], includeArchived: true);
 
-        if (!entry.IsSensitive)
-        {
-            if (entry.Title.Contains(token, StringComparison.OrdinalIgnoreCase)) return true;
-            if (entry.Preview.Contains(token, StringComparison.OrdinalIgnoreCase))
-            {
-                return true;
-            }
-        }
-
-        if (entry.SourceApp.Contains(token, StringComparison.OrdinalIgnoreCase))
+        ReadOnlySpan<char> title = (entry.Title ?? string.Empty).AsSpan();
+        ReadOnlySpan<char> preview = (entry.Preview ?? string.Empty).AsSpan();
+        ReadOnlySpan<char> sourceApp = (entry.SourceApp ?? string.Empty).AsSpan();
+        _ = vn_clipboard_store_entry_matches_metadata_token(
+            entry.IsSensitive ? (byte)1 : (byte)0,
+            title, title.Length,
+            preview, preview.Length,
+            sourceApp, sourceApp.Length,
+            token, token.Length,
+            out byte metaMatch);
+        if (metaMatch != 0)
             return true;
 
         var groups = entry.Groups;
         for (int i = 0; i < groups.Length; i++)
         {
-            if (groups[i].Contains(token, StringComparison.OrdinalIgnoreCase))
+            ReadOnlySpan<char> grp = groups[i].AsSpan();
+            _ = vn_clipboard_store_contains_icase(grp, grp.Length, token, token.Length, out byte grpMatch);
+            if (grpMatch != 0)
                 return true;
-            if (labelNames.TryGetValue(groups[i], out var labelName) && labelName.Contains(token, StringComparison.OrdinalIgnoreCase))
-                return true;
+            string? labelName = FindLabelNameById(grp);
+            if (labelName != null)
+            {
+                ReadOnlySpan<char> ln = labelName.AsSpan();
+                _ = vn_clipboard_store_contains_icase(ln, ln.Length, token, token.Length, out byte lblMatch);
+                if (lblMatch != 0)
+                    return true;
+            }
         }
 
         if (entry.IsSensitive)
@@ -684,19 +814,36 @@ public sealed partial class ClipboardHistoryStore : IDisposable, IAsyncDisposabl
                 fullText = string.Empty;
             }
         }
-        return fullText.Contains(token, StringComparison.OrdinalIgnoreCase);
+        ReadOnlySpan<char> ft = fullText.AsSpan();
+        _ = vn_clipboard_store_contains_icase(ft, ft.Length, token, token.Length, out byte textMatch);
+        return textMatch != 0;
     }
 
-    public static bool MatchesCategory(ClipboardEntry entry, string category, bool includeArchived = false)
+    private string? FindLabelNameById(ReadOnlySpan<char> id)
     {
-        category ??= "";
+        for (int i = 0; i < _labels.Length; i++)
+        {
+            var label = _labels[i];
+            ReadOnlySpan<char> lid = label.Id.AsSpan();
+            _ = vn_clipboard_store_equals_icase(lid, lid.Length, id, id.Length, out byte eq);
+            if (eq != 0)
+                return label.Name;
+        }
+        return null;
+    }
+
+    public static bool MatchesCategory(ClipboardEntry entry, string category, bool includeArchived = false) =>
+        MatchesCategory(entry, (category ?? string.Empty).AsSpan(), includeArchived);
+
+    private static bool MatchesCategory(ClipboardEntry entry, ReadOnlySpan<char> category, bool includeArchived = false)
+    {
         _ = vn_clipboard_store_matches_category_core(
             entry.IsPersonal ? (byte)1 : (byte)0,
             entry.IsArchived ? (byte)1 : (byte)0,
             entry.IsPinned ? (byte)1 : (byte)0,
             (int)entry.Kind,
             includeArchived ? (byte)1 : (byte)0,
-            category.AsSpan(),
+            category,
             category.Length,
             out int res);
         if (res == 1) return true;
@@ -705,7 +852,9 @@ public sealed partial class ClipboardHistoryStore : IDisposable, IAsyncDisposabl
         var groups = entry.Groups;
         for (int i = 0; i < groups.Length; i++)
         {
-            if (string.Equals(groups[i], category, StringComparison.OrdinalIgnoreCase))
+            ReadOnlySpan<char> grp = groups[i].AsSpan();
+            _ = vn_clipboard_store_equals_icase(grp, grp.Length, category, category.Length, out byte eq);
+            if (eq != 0)
                 return true;
         }
         return false;
@@ -872,9 +1021,13 @@ public sealed partial class ClipboardHistoryStore : IDisposable, IAsyncDisposabl
     {
         if (paths == null)
         {
-            var allPersonal = _personalExports.Keys.ToArray();
-            for (int i = 0; i < allPersonal.Length; i++)
-                ReleasePersonalExport(allPersonal[i]);
+            if (_personalExports.Count > 0)
+            {
+                var allPersonal = new string[_personalExports.Count];
+                _personalExports.Keys.CopyTo(allPersonal, 0);
+                for (int i = 0; i < allPersonal.Length; i++)
+                    ReleasePersonalExport(allPersonal[i]);
+            }
             return true;
         }
 
@@ -883,9 +1036,14 @@ public sealed partial class ClipboardHistoryStore : IDisposable, IAsyncDisposabl
             roots.Add(Path.GetDirectoryName(p));
 
         var toRelease = new List<string>();
-        foreach (string key in _personalExports.Keys.Union(_exportLeases.Keys, StringComparer.OrdinalIgnoreCase))
+        foreach (string key in _personalExports.Keys)
         {
             if (roots.Contains(key))
+                toRelease.Add(key);
+        }
+        foreach (string key in _exportLeases.Keys)
+        {
+            if (!_personalExports.ContainsKey(key) && roots.Contains(key))
                 toRelease.Add(key);
         }
         for (int i = 0; i < toRelease.Count; i++)
@@ -899,6 +1057,19 @@ public sealed partial class ClipboardHistoryStore : IDisposable, IAsyncDisposabl
         lease?.Dispose();
         if (_exportLeases.Remove(root, out var cleanupLease)) cleanupLease.Dispose();
         if (personal) TryDeleteDirectory(root);
+    }
+
+    private static Guid[] DeduplicateIds(IReadOnlyCollection<Guid> ids)
+    {
+        if (ids.Count == 0) return Array.Empty<Guid>();
+        var seen = new HashSet<Guid>(ids.Count);
+        var list = new List<Guid>(ids.Count);
+        foreach (Guid id in ids)
+        {
+            if (seen.Add(id))
+                list.Add(id);
+        }
+        return list.ToArray();
     }
 
     public Task UpdateAsync(Guid id, bool? pinned = null, string[]? groups = null, bool? archived = null) => Run(() =>
@@ -920,7 +1091,7 @@ public sealed partial class ClipboardHistoryStore : IDisposable, IAsyncDisposabl
     public Task UpdateManyAsync(IReadOnlyCollection<Guid> ids, bool? pinned = null, string[]? groups = null, bool? archived = null, string? addGroup = null)
     {
         if (ids.Count == 0) return Task.CompletedTask;
-        var targetIds = ids.Distinct().ToArray();
+        var targetIds = DeduplicateIds(ids);
         return Run(() =>
         {
             bool changed = false;
@@ -1215,14 +1386,15 @@ public sealed partial class ClipboardHistoryStore : IDisposable, IAsyncDisposabl
     /// <summary>Deletes a selection in one queued operation and publishes one refresh.</summary>
     public Task DeleteManyAsync(IReadOnlyCollection<Guid> ids)
     {
-        var selectedIds = ids.Distinct().ToArray();
+        var selectedIds = DeduplicateIds(ids);
         return Run(() =>
         {
             bool changed = false;
             try
             {
-                foreach (var id in selectedIds)
+                for (int i = 0; i < selectedIds.Length; i++)
                 {
+                    var id = selectedIds[i];
                     ClipboardEntry? entry;
                     lock (_entriesLock)
                     {
@@ -1285,60 +1457,91 @@ public sealed partial class ClipboardHistoryStore : IDisposable, IAsyncDisposabl
     private void PruneCore(DateTime nowUtc)
     {
         PruneSensitiveCore(nowUtc);
-        DateTime cutoffUtc = nowUtc.AddDays(-30);
-        List<ClipboardEntry>? expired = null;
-        lock (_entriesLock)
-        {
-            foreach (var pair in _entries)
-            {
-                var entry = pair.Value;
-                if (!entry.IsPersonal && !entry.IsPinned && !entry.IsArchived && entry.CopiedUtc < cutoffUtc)
-                {
-                    expired ??= new List<ClipboardEntry>();
-                    expired.Add(entry);
-                }
-            }
-        }
-        if (expired != null)
-        {
-            for (int i = 0; i < expired.Count; i++)
-            {
-                var entry = expired[i];
-                if (TryDeleteDirectory(EntryDirectory(entry))) RemoveEntry(entry.Id);
-            }
-        }
-
+        long cutoffTicks = nowUtc.AddDays(-30).Ticks;
         int maxEntries = Math.Max(0, MaxUnpinnedEntries);
         long maxBytes = Math.Max(0L, MaxUnpinnedBytes);
-        List<ClipboardEntry>? evictable = null;
-        long totalBytes = 0;
+
+        List<ClipboardEntry> snapshot;
         lock (_entriesLock)
         {
+            snapshot = new List<ClipboardEntry>(_entries.Count);
             foreach (var pair in _entries)
-            {
-                var entry = pair.Value;
-                if (!entry.IsPersonal && !entry.IsPinned && !entry.IsArchived)
-                {
-                    evictable ??= new List<ClipboardEntry>();
-                    evictable.Add(entry);
-                    totalBytes = checked(totalBytes + Math.Max(0L, entry.ByteSize));
-                }
-            }
+                snapshot.Add(pair.Value);
         }
-        if (evictable != null && (evictable.Count > maxEntries || totalBytes > maxBytes))
+        int count = snapshot.Count;
+        if (count == 0) return;
+
+        VnClipboardPruneCandidate[]? rentedCandidates = count > 256 ? ArrayPool<VnClipboardPruneCandidate>.Shared.Rent(count) : null;
+        int[]? rentedIndices = count > 256 ? ArrayPool<int>.Shared.Rent(count) : null;
+        Span<VnClipboardPruneCandidate> candidates = rentedCandidates != null
+            ? rentedCandidates.AsSpan(0, count)
+            : stackalloc VnClipboardPruneCandidate[count];
+        Span<int> orderedIndices = rentedIndices != null
+            ? rentedIndices.AsSpan(0, count)
+            : stackalloc int[count];
+
+        try
         {
-            evictable.Sort(s_copiedUtcAscComparison);
-            int remainingCount = evictable.Count;
-            for (int i = 0; i < evictable.Count && (remainingCount > maxEntries || totalBytes > maxBytes); i++)
+            for (int i = 0; i < count; i++)
             {
-                var entry = evictable[i];
+                var e = snapshot[i];
+                candidates[i] = new VnClipboardPruneCandidate
+                {
+                    EntryIndex = i,
+                    IsPersonal = e.IsPersonal ? (byte)1 : (byte)0,
+                    IsPinned = e.IsPinned ? (byte)1 : (byte)0,
+                    IsArchived = e.IsArchived ? (byte)1 : (byte)0,
+                    CopiedUtcTicks = e.CopiedUtc.Ticks,
+                    ByteSize = e.ByteSize
+                };
+            }
+
+            _ = vn_clipboard_store_plan_prune(
+                candidates,
+                count,
+                cutoffTicks,
+                maxEntries,
+                maxBytes,
+                orderedIndices,
+                count,
+                out int expiredCount,
+                out int evictCandidateCount,
+                out long totalBytes);
+
+            int remainingCount = evictCandidateCount;
+            for (int i = 0; i < expiredCount; i++)
+            {
+                var entry = snapshot[orderedIndices[i]];
                 if (TryDeleteDirectory(EntryDirectory(entry)))
                 {
                     RemoveEntry(entry.Id);
-                    remainingCount--;
-                    totalBytes -= Math.Max(0L, entry.ByteSize);
+                }
+                else
+                {
+                    remainingCount++;
+                    totalBytes = checked(totalBytes + Math.Max(0L, entry.ByteSize));
                 }
             }
+
+            if (remainingCount > maxEntries || totalBytes > maxBytes)
+            {
+                int evictEnd = expiredCount + evictCandidateCount;
+                for (int i = expiredCount; i < evictEnd && (remainingCount > maxEntries || totalBytes > maxBytes); i++)
+                {
+                    var entry = snapshot[orderedIndices[i]];
+                    if (TryDeleteDirectory(EntryDirectory(entry)))
+                    {
+                        RemoveEntry(entry.Id);
+                        remainingCount--;
+                        totalBytes -= Math.Max(0L, entry.ByteSize);
+                    }
+                }
+            }
+        }
+        finally
+        {
+            if (rentedCandidates != null) ArrayPool<VnClipboardPruneCandidate>.Shared.Return(rentedCandidates);
+            if (rentedIndices != null) ArrayPool<int>.Shared.Return(rentedIndices);
         }
     }
     public Task ExpireSensitiveAsync(DateTime nowUtc) => Run(() => { PruneSensitiveCore(nowUtc); return true; });
@@ -1368,14 +1571,31 @@ public sealed partial class ClipboardHistoryStore : IDisposable, IAsyncDisposabl
                 }
                 catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or JsonException) { }
             }
-            if ((existing != null && (existing.IsPinned || existing.IsArchived || existing.IsPersonal)) ||
-                Directory.Exists(personalDir))
+            bool hasPersonalDir = Directory.Exists(personalDir);
+            bool ticksValid = false;
+            long ticks = 0;
+            if (existing == null || (!existing.IsPinned && !existing.IsArchived && !existing.IsPersonal && !hasPersonalDir))
+            {
+                try { ticksValid = long.TryParse(File.ReadAllText(marker), out ticks); }
+                catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { }
+            }
+            _ = vn_clipboard_store_evaluate_sensitive_expiry(
+                existing != null ? (byte)1 : (byte)0,
+                existing?.IsPinned == true ? (byte)1 : (byte)0,
+                existing?.IsArchived == true ? (byte)1 : (byte)0,
+                existing?.IsPersonal == true ? (byte)1 : (byte)0,
+                hasPersonalDir ? (byte)1 : (byte)0,
+                ticksValid ? (byte)1 : (byte)0,
+                ticks,
+                expiryTicks,
+                out int action);
+            if (action == 1)
             {
                 try { SafeFileDeletion.DeleteFile(marker); }
                 catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { }
                 continue;
             }
-            if (!long.TryParse(File.ReadAllText(marker), out long ticks) || ticks > expiryTicks) continue;
+            if (action == 0) continue;
             if (TryDeleteDirectory(publicDir))
             {
                 try { SafeFileDeletion.DeleteFile(marker); }
@@ -1392,24 +1612,38 @@ public sealed partial class ClipboardHistoryStore : IDisposable, IAsyncDisposabl
         string root = Path.Combine(_root, "exports");
         if (!Directory.Exists(root)) return;
         SafeFileDeletion.ValidatePath(root);
-        string[] dirs = new[] { "public", "personal" }
-            .Select(category => Path.Combine(root, category)).Where(Directory.Exists)
-            .SelectMany(category =>
-            {
-                SafeFileDeletion.ValidatePath(category);
-                return Directory.GetDirectories(category);
-            })
-            .Where(directory => Guid.TryParseExact(Path.GetFileName(directory), "N", out _)).ToArray();
         DateTime cutoff = DateTime.UtcNow.AddHours(-1);
-        for (int i = 0; i < dirs.Length; i++)
+        ReadOnlySpan<string> categories = ["public", "personal"];
+        for (int c = 0; c < categories.Length; c++)
         {
-            string directory = dirs[i];
-            if (_exportLeases.Keys.Any(active => directory.Equals(active, StringComparison.OrdinalIgnoreCase) ||
-                active.StartsWith(directory + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase) ||
-                directory.StartsWith(active + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase))) continue;
-            if (Directory.GetLastWriteTimeUtc(directory) < cutoff)
-                TryDeleteDirectory(directory);
+            string categoryPath = Path.Combine(root, categories[c]);
+            if (!Directory.Exists(categoryPath)) continue;
+            SafeFileDeletion.ValidatePath(categoryPath);
+            string[] subDirs = Directory.GetDirectories(categoryPath);
+            for (int i = 0; i < subDirs.Length; i++)
+            {
+                string directory = subDirs[i];
+                if (!Guid.TryParseExact(Path.GetFileName(directory), "N", out _)) continue;
+                if (IsExportDirectoryProtected(directory)) continue;
+                if (Directory.GetLastWriteTimeUtc(directory) < cutoff)
+                    TryDeleteDirectory(directory);
+            }
         }
+    }
+
+    private bool IsExportDirectoryProtected(string directory)
+    {
+        ReadOnlySpan<char> dirSpan = directory.AsSpan();
+        ushort sep = Path.DirectorySeparatorChar;
+        foreach (string active in _exportLeases.Keys)
+        {
+            ReadOnlySpan<char> activeSpan = active.AsSpan();
+            _ = vn_clipboard_store_is_export_path_protected(
+                dirSpan, dirSpan.Length, activeSpan, activeSpan.Length, sep, out byte isProtected);
+            if (isProtected != 0)
+                return true;
+        }
+        return false;
     }
 
     private static bool TryDeleteDirectory(string path)
@@ -1580,7 +1814,9 @@ public sealed partial class ClipboardHistoryStore : IDisposable, IAsyncDisposabl
             if (input.Length >= 44)
             {
                 Span<byte> magic = stackalloc byte[4];
-                if (input.Read(magic) == 4 && (magic.SequenceEqual("VNC1"u8) || magic.SequenceEqual("VCF1"u8)))
+                if (input.Read(magic) == 4 &&
+                    vn_clipboard_store_is_vault_stream_magic(magic, 4, out byte isMagic) == 0 &&
+                    isMagic != 0)
                 {
                     input.Position = 0;
                     using var plainStream = new PooledChunkStream();
@@ -1836,12 +2072,21 @@ public sealed partial class ClipboardHistoryStore : IDisposable, IAsyncDisposabl
         if (!File.Exists(stagingImg)) return null;
 
         ClipboardEntry? recent = null;
+        long captureTicks = capture.CopiedUtc.Ticks;
         lock (_entriesLock)
         {
             foreach (var pair in _entries)
             {
                 var e = pair.Value;
-                if (e.Kind == ClipboardKind.Image && !e.IsPersonal && Math.Abs((capture.CopiedUtc - e.CopiedUtc).TotalSeconds) < 2.0 && (recent == null || e.CopiedUtc > recent.CopiedUtc))
+                _ = vn_clipboard_store_is_probable_duplicate_image_candidate(
+                    (int)e.Kind,
+                    e.IsPersonal ? (byte)1 : (byte)0,
+                    captureTicks,
+                    e.CopiedUtc.Ticks,
+                    recent?.CopiedUtc.Ticks ?? 0,
+                    recent != null ? (byte)1 : (byte)0,
+                    out byte isBetter);
+                if (isBetter != 0)
                 {
                     recent = e;
                 }
@@ -1866,7 +2111,9 @@ public sealed partial class ClipboardHistoryStore : IDisposable, IAsyncDisposabl
             string incoming = capture.ImagePng != null ? Fingerprint(capture) : FingerprintImageFile(stagingImg);
             string existing = recent.Fingerprint.StartsWith("image-v2:", StringComparison.Ordinal)
                 ? recent.Fingerprint : FingerprintImageFile(existingImg);
-            if (existing == incoming)
+            ReadOnlySpan<char> exSpan = existing.AsSpan();
+            ReadOnlySpan<char> inSpan = incoming.AsSpan();
+            if (vn_clipboard_store_are_signatures_equal(exSpan, exSpan.Length, inSpan, inSpan.Length, out byte eq) == 0 && eq != 0)
                 return recent;
         }
         catch
@@ -1921,12 +2168,27 @@ public sealed partial class ClipboardHistoryStore : IDisposable, IAsyncDisposabl
         }
         return size;
     }
+    private static string FormatPrefixedHash(ReadOnlySpan<char> prefix, IncrementalHash hash)
+    {
+        Span<byte> digest = stackalloc byte[32];
+        hash.GetHashAndReset(digest);
+        return FormatPrefixedHashBytes(prefix, digest);
+    }
+
+    private static string FormatPrefixedHashBytes(ReadOnlySpan<char> prefix, ReadOnlySpan<byte> digest)
+    {
+        int cap = prefix.Length + (digest.Length * 2);
+        Span<char> buf = stackalloc char[cap];
+        _ = vn_clipboard_store_format_prefixed_sha256_hex(prefix, prefix.Length, digest, digest.Length, buf, cap, out int written);
+        return new string(buf[..written]);
+    }
+
     private static string Fingerprint(ClipboardCapture capture)
     {
         if (capture.ImagePng != null) return capture.ImagePixelFingerprint ?? ImagePixelFingerprint(capture.ImagePng);
         using var hash = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
         AppendCaptureFingerprint(hash, capture);
-        return Convert.ToHexString(hash.GetHashAndReset());
+        return FormatPrefixedHash(ReadOnlySpan<char>.Empty, hash);
     }
 
     private static string FingerprintImageFile(string path)
@@ -1945,8 +2207,15 @@ public sealed partial class ClipboardHistoryStore : IDisposable, IAsyncDisposabl
         catch (Exception ex) when (ex is NotSupportedException or ArgumentException or IOException
             or System.Runtime.InteropServices.COMException or InvalidOperationException or OverflowException)
         {
-            return "image-raw:" + Convert.ToHexString(SHA256.HashData(image));
+            return HashRawImageBytes(image);
         }
+    }
+
+    private static string HashRawImageBytes(byte[] image)
+    {
+        Span<byte> digest = stackalloc byte[32];
+        SHA256.HashData(image, digest);
+        return FormatPrefixedHashBytes("image-raw:", digest);
     }
 
     private static string FingerprintImageStream(Stream input)
@@ -1978,7 +2247,7 @@ public sealed partial class ClipboardHistoryStore : IDisposable, IAsyncDisposabl
                 pixels.CopyPixels(new System.Windows.Int32Rect(0, y, width, count), buffer, stride, 0);
                 hash.AppendData(buffer.AsSpan(0, stride * count));
             }
-            return "image-v2:" + Convert.ToHexString(hash.GetHashAndReset());
+            return FormatPrefixedHash("image-v2:", hash);
         }
         finally { CryptographicOperations.ZeroMemory(buffer); ArrayPool<byte>.Shared.Return(buffer); }
     }

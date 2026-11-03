@@ -3,8 +3,22 @@
 #define WIN32_LEAN_AND_MEAN
 #endif
 #include <windows.h>
+#include <algorithm>
+#include <cmath>
 #include <cstdint>
 #include <string_view>
+
+#ifndef VN_CAPTION_TRACK_META_DEFINED
+#define VN_CAPTION_TRACK_META_DEFINED
+#pragma pack(push, 1)
+struct VnCaptionTrackMeta {
+    int32_t lang_offset;
+    int32_t lang_len;
+    uint8_t is_auto_generated;
+    uint8_t is_vss_a_prefix;
+};
+#pragma pack(pop)
+#endif
 
 namespace vnotch::services {
 
@@ -86,6 +100,296 @@ public:
                json_is_auto ||
                json_is_asr;
     }
+
+    static constexpr int32_t HexValue(char16_t c) noexcept {
+        if (c >= u'0' && c <= u'9') return static_cast<int32_t>(c - u'0');
+        if (c >= u'a' && c <= u'f') return static_cast<int32_t>(c - u'a' + 10);
+        if (c >= u'A' && c <= u'F') return static_cast<int32_t>(c - u'A' + 10);
+        return -1;
+    }
+
+    static constexpr int32_t DecodeHtmlEntitiesInPlace(char16_t* buf, int32_t len) noexcept {
+        int32_t read_idx = 0;
+        int32_t write_idx = 0;
+        while (read_idx < len) {
+            if (buf[read_idx] == u'&') {
+                const int32_t max_semi = std::min(len, read_idx + 12);
+                int32_t semi_idx = -1;
+                for (int32_t i = read_idx + 2; i < max_semi; ++i) {
+                    if (buf[i] == u';') {
+                        semi_idx = i;
+                        break;
+                    }
+                    if (buf[i] == u'&' || vn_is_whitespace(buf[i])) {
+                        break;
+                    }
+                }
+                if (semi_idx > read_idx + 1) {
+                    const std::u16string_view entity(buf + read_idx + 1, static_cast<size_t>(semi_idx - read_idx - 1));
+                    char16_t replacement = 0;
+                    if (vn_equals_icase_ascii(entity, u"amp")) replacement = u'&';
+                    else if (vn_equals_icase_ascii(entity, u"quot")) replacement = u'"';
+                    else if (vn_equals_icase_ascii(entity, u"apos") || entity == u"#39" || entity == u"#039") replacement = u'\'';
+                    else if (vn_equals_icase_ascii(entity, u"lt")) replacement = u'<';
+                    else if (vn_equals_icase_ascii(entity, u"gt")) replacement = u'>';
+                    else if (vn_equals_icase_ascii(entity, u"nbsp")) replacement = u'\u00A0';
+                    else if (entity.size() >= 2 && entity[0] == u'#') {
+                        uint32_t cp = 0;
+                        bool ok = true;
+                        if (entity[1] == u'x' || entity[1] == u'X') {
+                            ok = entity.size() > 2;
+                            for (size_t k = 2; k < entity.size(); ++k) {
+                                const int32_t hv = HexValue(entity[k]);
+                                if (hv < 0) { ok = false; break; }
+                                cp = (cp << 4) | static_cast<uint32_t>(hv);
+                            }
+                        } else {
+                            for (size_t k = 1; k < entity.size(); ++k) {
+                                if (entity[k] < u'0' || entity[k] > u'9') { ok = false; break; }
+                                cp = cp * 10u + static_cast<uint32_t>(entity[k] - u'0');
+                            }
+                        }
+                        if (ok && cp > 0 && cp <= 0xFFFFu) {
+                            replacement = static_cast<char16_t>(cp);
+                        }
+                    }
+                    if (replacement != 0) {
+                        buf[write_idx++] = replacement;
+                        read_idx = semi_idx + 1;
+                        continue;
+                    }
+                }
+            }
+            buf[write_idx++] = buf[read_idx++];
+        }
+        return write_idx;
+    }
+
+    static constexpr int32_t NormalizeCueText(
+        std::u16string_view raw_text,
+        bool strip_xml_tags,
+        char16_t* out_buf,
+        int32_t out_cap,
+        int32_t& out_written) noexcept {
+        out_written = 0;
+        if (raw_text.empty()) return VN_OK;
+        if (out_cap < static_cast<int32_t>(raw_text.size())) {
+            out_written = static_cast<int32_t>(raw_text.size());
+            return VN_ERR_BUFFER_TOO_SMALL;
+        }
+        if (!out_buf) return VN_ERR_INVALID_ARG;
+
+        int32_t len = 0;
+        if (strip_xml_tags) {
+            for (size_t i = 0; i < raw_text.size(); ++i) {
+                const char16_t ch = raw_text[i];
+                if (ch == u'<') {
+                    const size_t close_idx = raw_text.find(u'>', i + 1);
+                    if (close_idx != std::u16string_view::npos) {
+                        i = close_idx;
+                        continue;
+                    }
+                }
+                out_buf[len++] = ch;
+            }
+            len = DecodeHtmlEntitiesInPlace(out_buf, len);
+        } else {
+            for (size_t i = 0; i < raw_text.size(); ++i) {
+                out_buf[len++] = raw_text[i];
+            }
+        }
+
+        int32_t start = 0;
+        while (start < len && vn_is_whitespace(out_buf[start])) ++start;
+        int32_t end = len;
+        while (end > start && vn_is_whitespace(out_buf[end - 1])) --end;
+
+        if (end <= start) {
+            out_written = 0;
+            return VN_OK;
+        }
+
+        const int32_t trimmed_len = end - start;
+        if (trimmed_len == 1 && out_buf[start] == u'\n') {
+            out_written = 0;
+            return VN_OK;
+        }
+
+        if (start > 0) {
+            for (int32_t i = 0; i < trimmed_len; ++i) {
+                out_buf[i] = out_buf[start + i];
+            }
+        }
+        out_written = trimmed_len;
+        return VN_OK;
+    }
+
+    static bool ClampTimestampTicks(
+        int64_t raw_ms,
+        double raw_seconds,
+        bool use_seconds,
+        int64_t& out_ticks) noexcept {
+        out_ticks = 0;
+        constexpr int64_t kMaxTicks = 9223372036854770000LL;
+        constexpr int64_t kMinTicks = -9223372036854770000LL;
+        if (use_seconds) {
+            if (!std::isfinite(raw_seconds)) return false;
+            const double scaled = raw_seconds * 10000000.0;
+            if (scaled >= static_cast<double>(kMaxTicks)) {
+                out_ticks = kMaxTicks;
+                return true;
+            }
+            if (scaled <= static_cast<double>(kMinTicks)) {
+                out_ticks = kMinTicks;
+                return true;
+            }
+            out_ticks = static_cast<int64_t>(std::llround(scaled));
+            return true;
+        }
+
+        constexpr int64_t kMaxMs = kMaxTicks / 10000LL;
+        constexpr int64_t kMinMs = kMinTicks / 10000LL;
+        const int64_t clamped_ms = std::clamp(raw_ms, kMinMs, kMaxMs);
+        out_ticks = clamped_ms * 10000LL;
+        return true;
+    }
+
+    static int32_t OrderCandidateTracks(
+        const VnCaptionTrackMeta* tracks,
+        int32_t track_count,
+        const char16_t* lang_pool,
+        int32_t lang_pool_len,
+        const uint8_t* priority_modes,
+        int32_t priority_count,
+        std::u16string_view native_lang_hint,
+        bool ignore_auto_generated,
+        int32_t* out_indices,
+        int32_t out_cap,
+        int32_t& out_count) noexcept {
+        out_count = 0;
+        if (track_count <= 0) return VN_OK;
+        if (out_cap < track_count) {
+            out_count = track_count;
+            return VN_ERR_BUFFER_TOO_SMALL;
+        }
+        if (!out_indices) return VN_ERR_INVALID_ARG;
+
+        auto get_lang = [&](int32_t idx) noexcept -> std::u16string_view {
+            const VnCaptionTrackMeta& m = tracks[idx];
+            if (m.lang_offset < 0 || m.lang_len <= 0 || m.lang_offset + m.lang_len > lang_pool_len || !lang_pool) {
+                return {};
+            }
+            return std::u16string_view(lang_pool + m.lang_offset, static_cast<size_t>(m.lang_len));
+        };
+
+        int32_t auto_native_idx = -1;
+        for (int32_t i = 0; i < track_count; ++i) {
+            if (tracks[i].is_auto_generated != 0 && tracks[i].is_vss_a_prefix != 0) {
+                auto_native_idx = i;
+                break;
+            }
+        }
+        if (auto_native_idx < 0) {
+            for (int32_t i = 0; i < track_count; ++i) {
+                if (tracks[i].is_auto_generated != 0) {
+                    auto_native_idx = i;
+                    break;
+                }
+            }
+        }
+
+        const std::u16string_view native_lang = (auto_native_idx >= 0)
+            ? get_lang(auto_native_idx)
+            : native_lang_hint;
+
+        bool any_effective = false;
+        for (int32_t i = 0; i < track_count; ++i) {
+            if (!ignore_auto_generated || tracks[i].is_auto_generated == 0) {
+                any_effective = true;
+                break;
+            }
+        }
+        if (!any_effective) return VN_OK;
+
+        int32_t written = 0;
+        auto add_track = [&](int32_t idx) noexcept {
+            if (idx < 0 || idx >= track_count) return;
+            if (ignore_auto_generated && tracks[idx].is_auto_generated != 0) return;
+            for (int32_t k = 0; k < written; ++k) {
+                if (out_indices[k] == idx) return;
+            }
+            out_indices[written++] = idx;
+        };
+
+        for (int32_t p = 0; p < priority_count; ++p) {
+            const uint8_t mode = priority_modes[p];
+            if (mode == 1) { // native
+                if (!native_lang.empty()) {
+                    for (int32_t i = 0; i < track_count; ++i) {
+                        if (tracks[i].is_auto_generated == 0 && LanguageCodeMatches(get_lang(i), native_lang)) {
+                            add_track(i);
+                        }
+                    }
+                    if (!ignore_auto_generated && auto_native_idx >= 0) {
+                        add_track(auto_native_idx);
+                    }
+                } else {
+                    for (int32_t i = 0; i < track_count; ++i) {
+                        if (tracks[i].is_auto_generated == 0 && !LanguageCodeMatches(get_lang(i), u"en")) {
+                            add_track(i);
+                        }
+                    }
+                }
+            } else if (mode == 2) { // english
+                for (int32_t i = 0; i < track_count; ++i) {
+                    if (tracks[i].is_auto_generated == 0 && LanguageCodeMatches(get_lang(i), u"en")) {
+                        add_track(i);
+                    }
+                }
+                if (!ignore_auto_generated) {
+                    for (int32_t i = 0; i < track_count; ++i) {
+                        if (tracks[i].is_auto_generated != 0 && LanguageCodeMatches(get_lang(i), u"en")) {
+                            add_track(i);
+                        }
+                    }
+                }
+            } else if (mode == 3) { // auto
+                for (int32_t i = 0; i < track_count; ++i) {
+                    if (tracks[i].is_auto_generated == 0 && !LanguageCodeMatches(get_lang(i), u"en")) {
+                        add_track(i);
+                    }
+                }
+                for (int32_t i = 0; i < track_count; ++i) {
+                    if (tracks[i].is_auto_generated == 0 && LanguageCodeMatches(get_lang(i), u"en")) {
+                        add_track(i);
+                    }
+                }
+                if (!ignore_auto_generated) {
+                    for (int32_t i = 0; i < track_count; ++i) {
+                        if (tracks[i].is_auto_generated != 0) {
+                            add_track(i);
+                        }
+                    }
+                }
+            }
+        }
+
+        for (int32_t i = 0; i < track_count; ++i) {
+            if (tracks[i].is_auto_generated == 0) {
+                add_track(i);
+            }
+        }
+        if (!ignore_auto_generated) {
+            for (int32_t i = 0; i < track_count; ++i) {
+                if (tracks[i].is_auto_generated != 0) {
+                    add_track(i);
+                }
+            }
+        }
+
+        out_count = written;
+        return VN_OK;
+    }
 };
 
 } // namespace vnotch::services
@@ -143,6 +447,68 @@ VN_EXPORT int32_t vn_youtube_subtitle_determine_is_auto_generated(
     *out_is_auto = vnotch::services::YouTubeSubtitleService::DetermineIsAutoGenerated(
         k, v, b, n, json_is_auto != 0, json_is_asr != 0) ? 1 : 0;
     return VN_OK;
+}
+
+VN_EXPORT int32_t __stdcall vn_youtube_subtitle_normalize_cue_text(
+    const char16_t* raw_text,
+    int32_t raw_len,
+    uint8_t strip_xml_tags,
+    char16_t* out_buf,
+    int32_t out_cap,
+    int32_t* out_written) noexcept {
+    if (!out_written || raw_len < 0 || (!raw_text && raw_len > 0) || out_cap < 0 || (!out_buf && out_cap > 0)) {
+        return VN_E_INVALID_ARG;
+    }
+    const std::u16string_view sv(raw_text ? raw_text : u"", static_cast<size_t>(raw_len));
+    return vnotch::services::YouTubeSubtitleService::NormalizeCueText(
+        sv, strip_xml_tags != 0, out_buf, out_cap, *out_written);
+}
+
+VN_EXPORT int32_t __stdcall vn_youtube_subtitle_clamp_timestamp_ticks(
+    int64_t raw_ms,
+    double raw_seconds,
+    uint8_t use_seconds,
+    int64_t* out_ticks,
+    uint8_t* out_valid) noexcept {
+    if (!out_ticks || !out_valid) return VN_E_INVALID_ARG;
+    *out_valid = vnotch::services::YouTubeSubtitleService::ClampTimestampTicks(
+        raw_ms, raw_seconds, use_seconds != 0, *out_ticks) ? 1u : 0u;
+    return VN_OK;
+}
+
+VN_EXPORT int32_t __stdcall vn_youtube_subtitle_order_candidate_tracks(
+    const VnCaptionTrackMeta* tracks,
+    int32_t track_count,
+    const char16_t* lang_pool,
+    int32_t lang_pool_len,
+    const uint8_t* priority_modes,
+    int32_t priority_count,
+    const char16_t* native_lang_hint,
+    int32_t native_lang_hint_len,
+    uint8_t ignore_auto_generated,
+    int32_t* out_indices,
+    int32_t out_cap,
+    int32_t* out_count) noexcept {
+    if (!out_count || track_count < 0 || (!tracks && track_count > 0) ||
+        lang_pool_len < 0 || (!lang_pool && lang_pool_len > 0) ||
+        priority_count < 0 || (!priority_modes && priority_count > 0) ||
+        native_lang_hint_len < 0 || (!native_lang_hint && native_lang_hint_len > 0) ||
+        out_cap < 0 || (!out_indices && out_cap > 0)) {
+        return VN_E_INVALID_ARG;
+    }
+    const std::u16string_view hint(native_lang_hint ? native_lang_hint : u"", static_cast<size_t>(native_lang_hint_len));
+    return vnotch::services::YouTubeSubtitleService::OrderCandidateTracks(
+        tracks,
+        track_count,
+        lang_pool,
+        lang_pool_len,
+        priority_modes,
+        priority_count,
+        hint,
+        ignore_auto_generated != 0,
+        out_indices,
+        out_cap,
+        *out_count);
 }
 
 } // extern "C"

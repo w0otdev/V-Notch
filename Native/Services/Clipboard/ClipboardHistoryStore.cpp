@@ -1,12 +1,327 @@
 #include "vnotch_common.h"
+#include <algorithm>
 #include <cstdint>
+#include <limits>
 #include <string_view>
+
+#ifndef VN_CLIPBOARD_PRUNE_CANDIDATE_DEFINED
+#define VN_CLIPBOARD_PRUNE_CANDIDATE_DEFINED
+#pragma pack(push, 1)
+struct VnClipboardPruneCandidate {
+    int32_t entry_index;
+    uint8_t is_personal;
+    uint8_t is_pinned;
+    uint8_t is_archived;
+    int64_t copied_utc_ticks;
+    int64_t byte_size;
+};
+#pragma pack(pop)
+#endif
 
 namespace vnotch::services::clipboard {
 
 class ClipboardHistoryStore final {
 public:
     ClipboardHistoryStore() = delete;
+
+    [[nodiscard]] static inline bool EqualsOrdinalIgnoreCase(
+        std::u16string_view a,
+        std::u16string_view b) noexcept {
+        if (a.size() != b.size()) return false;
+        if (a.empty()) return true;
+        bool has_non_ascii = false;
+        for (size_t i = 0; i < a.size(); ++i) {
+            char16_t ca = a[i];
+            char16_t cb = b[i];
+            if ((ca | cb) >= 0x80) {
+                has_non_ascii = true;
+                break;
+            }
+            if (ca >= u'A' && ca <= u'Z') ca = static_cast<char16_t>(ca + 32);
+            if (cb >= u'A' && cb <= u'Z') cb = static_cast<char16_t>(cb + 32);
+            if (ca != cb) return false;
+        }
+        if (!has_non_ascii) return true;
+        return CompareStringOrdinal(
+                   reinterpret_cast<LPCWCH>(a.data()),
+                   static_cast<int>(a.size()),
+                   reinterpret_cast<LPCWCH>(b.data()),
+                   static_cast<int>(b.size()),
+                   TRUE) == CSTR_EQUAL;
+    }
+
+    [[nodiscard]] static inline bool ContainsOrdinalIgnoreCase(
+        std::u16string_view haystack,
+        std::u16string_view needle) noexcept {
+        if (needle.empty()) return true;
+        if (haystack.size() < needle.size()) return false;
+        bool has_non_ascii = false;
+        for (char16_t ch : needle) {
+            if (ch >= 0x80) {
+                has_non_ascii = true;
+                break;
+            }
+        }
+        const size_t limit = haystack.size() - needle.size();
+        if (!has_non_ascii) {
+            const char16_t first_lo = (needle[0] >= u'A' && needle[0] <= u'Z')
+                ? static_cast<char16_t>(needle[0] + 32)
+                : needle[0];
+            const char16_t first_hi = (needle[0] >= u'a' && needle[0] <= u'z')
+                ? static_cast<char16_t>(needle[0] - 32)
+                : needle[0];
+            for (size_t i = 0; i <= limit; ++i) {
+                const char16_t c = haystack[i];
+                if (c != first_lo && c != first_hi) continue;
+                bool match = true;
+                for (size_t j = 1; j < needle.size(); ++j) {
+                    char16_t hc = haystack[i + j];
+                    char16_t nc = needle[j];
+                    if (hc >= u'A' && hc <= u'Z') hc = static_cast<char16_t>(hc + 32);
+                    if (nc >= u'A' && nc <= u'Z') nc = static_cast<char16_t>(nc + 32);
+                    if (hc != nc) {
+                        match = false;
+                        break;
+                    }
+                }
+                if (match) return true;
+            }
+            return false;
+        }
+        for (size_t i = 0; i <= limit; ++i) {
+            if (CompareStringOrdinal(
+                    reinterpret_cast<LPCWCH>(haystack.data() + i),
+                    static_cast<int>(needle.size()),
+                    reinterpret_cast<LPCWCH>(needle.data()),
+                    static_cast<int>(needle.size()),
+                    TRUE) == CSTR_EQUAL) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    static int32_t TokenizeQuery(
+        std::u16string_view query,
+        int32_t* out_starts,
+        int32_t* out_lengths,
+        int32_t max_tokens) noexcept {
+        int32_t count = 0;
+        size_t i = 0;
+        const size_t n = query.size();
+        while (i < n && count < max_tokens) {
+            while (i < n && query[i] == u' ') {
+                ++i;
+            }
+            if (i >= n) break;
+            size_t end = i;
+            while (end < n && query[end] != u' ') {
+                ++end;
+            }
+            size_t tok_start = i;
+            size_t tok_end = end;
+            while (tok_start < tok_end && vnotch::is_unicode_whitespace(query[tok_start])) {
+                ++tok_start;
+            }
+            while (tok_end > tok_start && vnotch::is_unicode_whitespace(query[tok_end - 1])) {
+                --tok_end;
+            }
+            if (tok_end > tok_start) {
+                out_starts[count] = static_cast<int32_t>(tok_start);
+                out_lengths[count] = static_cast<int32_t>(tok_end - tok_start);
+                ++count;
+            }
+            i = end + 1;
+        }
+        return count;
+    }
+
+    [[nodiscard]] static bool EntryMatchesMetadataToken(
+        bool is_sensitive,
+        std::u16string_view title,
+        std::u16string_view preview,
+        std::u16string_view source_app,
+        std::u16string_view token) noexcept {
+        if (!is_sensitive) {
+            if (ContainsOrdinalIgnoreCase(title, token)) return true;
+            if (ContainsOrdinalIgnoreCase(preview, token)) return true;
+        }
+        return ContainsOrdinalIgnoreCase(source_app, token);
+    }
+
+    static void PlanPrune(
+        const VnClipboardPruneCandidate* candidates,
+        int32_t candidate_count,
+        int64_t cutoff_utc_ticks,
+        int32_t max_unpinned_entries,
+        int64_t max_unpinned_bytes,
+        int32_t* out_ordered_indices,
+        int32_t max_indices,
+        int32_t& out_expired_count,
+        int32_t& out_evict_candidate_count,
+        int64_t& out_total_active_bytes) noexcept {
+        out_expired_count = 0;
+        out_evict_candidate_count = 0;
+        out_total_active_bytes = 0;
+        if (candidate_count <= 0 || max_indices <= 0) return;
+
+        const int32_t capped_max_entries = std::max<int32_t>(0, max_unpinned_entries);
+        const int64_t capped_max_bytes = std::max<int64_t>(0, max_unpinned_bytes);
+
+        int32_t expired_count = 0;
+        int32_t active_count = 0;
+        int64_t active_bytes = 0;
+
+        for (int32_t i = 0; i < candidate_count; ++i) {
+            const auto& c = candidates[i];
+            if (c.is_personal != 0 || c.is_pinned != 0 || c.is_archived != 0) continue;
+            if (c.copied_utc_ticks < cutoff_utc_ticks) {
+                ++expired_count;
+            } else {
+                ++active_count;
+                const int64_t sz = std::max<int64_t>(0, c.byte_size);
+                if (active_bytes > std::numeric_limits<int64_t>::max() - sz) {
+                    active_bytes = std::numeric_limits<int64_t>::max();
+                } else {
+                    active_bytes += sz;
+                }
+            }
+        }
+
+        out_total_active_bytes = active_bytes;
+        if (expired_count == 0 && active_count <= capped_max_entries && active_bytes <= capped_max_bytes) {
+            return;
+        }
+
+        int32_t exp_write = 0;
+        int32_t act_write = std::min<int32_t>(expired_count, max_indices);
+        const int32_t act_start = act_write;
+
+        for (int32_t i = 0; i < candidate_count; ++i) {
+            const auto& c = candidates[i];
+            if (c.is_personal != 0 || c.is_pinned != 0 || c.is_archived != 0) continue;
+            if (c.copied_utc_ticks < cutoff_utc_ticks) {
+                if (exp_write < act_start) {
+                    out_ordered_indices[exp_write++] = c.entry_index;
+                }
+            } else {
+                if (act_write < max_indices) {
+                    out_ordered_indices[act_write++] = i;
+                }
+            }
+        }
+
+        const int32_t actual_act_count = act_write - act_start;
+        int32_t* act_slice = out_ordered_indices + act_start;
+        std::sort(act_slice, act_slice + actual_act_count, [candidates](int32_t a, int32_t b) noexcept {
+            const int64_t ta = candidates[a].copied_utc_ticks;
+            const int64_t tb = candidates[b].copied_utc_ticks;
+            return (ta != tb) ? (ta < tb) : (a < b);
+        });
+        for (int32_t k = 0; k < actual_act_count; ++k) {
+            act_slice[k] = candidates[act_slice[k]].entry_index;
+        }
+
+        out_expired_count = exp_write;
+        out_evict_candidate_count = actual_act_count;
+    }
+
+    [[nodiscard]] static constexpr int32_t EvaluateSensitiveExpiry(
+        bool has_entry,
+        bool is_pinned,
+        bool is_archived,
+        bool is_personal,
+        bool has_personal_dir,
+        bool ticks_valid,
+        int64_t marker_ticks,
+        int64_t expiry_cutoff_ticks) noexcept {
+        if ((has_entry && (is_pinned || is_archived || is_personal)) || has_personal_dir) {
+            return 1; // Protected: remove marker only
+        }
+        if (!ticks_valid || marker_ticks > expiry_cutoff_ticks) {
+            return 0; // Keep
+        }
+        return 2; // Expired: delete directory, marker, and entry
+    }
+
+    [[nodiscard]] static constexpr bool IsVaultStreamMagic(const uint8_t* magic, int32_t len) noexcept {
+        if (!magic || len < 4) return false;
+        return (magic[0] == 'V' && magic[1] == 'N' && magic[2] == 'C' && magic[3] == '1') ||
+               (magic[0] == 'V' && magic[1] == 'C' && magic[2] == 'F' && magic[3] == '1');
+    }
+
+    [[nodiscard]] static constexpr bool FormatPrefixedSha256Hex(
+        std::u16string_view prefix,
+        const uint8_t* hash_bytes,
+        int32_t hash_len,
+        char16_t* out_buf,
+        int32_t out_cap,
+        int32_t& out_written) noexcept {
+        out_written = 0;
+        if (!out_buf || hash_len < 0 || (hash_len > 0 && !hash_bytes)) return false;
+        const int32_t total_len = static_cast<int32_t>(prefix.size()) + hash_len * 2;
+        if (out_cap < total_len) return false;
+        static constexpr char16_t kHexDigits[16] = {
+            u'0', u'1', u'2', u'3', u'4', u'5', u'6', u'7',
+            u'8', u'9', u'A', u'B', u'C', u'D', u'E', u'F'
+        };
+        int32_t pos = 0;
+        for (char16_t ch : prefix) {
+            out_buf[pos++] = ch;
+        }
+        for (int32_t i = 0; i < hash_len; ++i) {
+            const uint8_t b = hash_bytes[i];
+            out_buf[pos++] = kHexDigits[(b >> 4) & 0x0F];
+            out_buf[pos++] = kHexDigits[b & 0x0F];
+        }
+        out_written = pos;
+        return true;
+    }
+
+    [[nodiscard]] static constexpr bool AreSignaturesEqual(
+        std::u16string_view a,
+        std::u16string_view b) noexcept {
+        if (a.size() != b.size()) return false;
+        uint16_t diff = 0;
+        for (size_t i = 0; i < a.size(); ++i) {
+            diff |= static_cast<uint16_t>(a[i] ^ b[i]);
+        }
+        return diff == 0;
+    }
+
+    [[nodiscard]] static constexpr bool IsProbableDuplicateImageCandidate(
+        int32_t kind,
+        bool is_personal,
+        int64_t capture_ticks,
+        int64_t entry_ticks,
+        int64_t best_ticks,
+        bool has_best) noexcept {
+        constexpr int64_t kTwoSecondsTicks = 20'000'000LL;
+        if (kind != 3 || is_personal) return false;
+        const int64_t diff = (capture_ticks >= entry_ticks)
+            ? (capture_ticks - entry_ticks)
+            : (entry_ticks - capture_ticks);
+        if (diff >= kTwoSecondsTicks) return false;
+        return !has_best || entry_ticks > best_ticks;
+    }
+
+    [[nodiscard]] static bool IsExportPathProtectedByLease(
+        std::u16string_view directory,
+        std::u16string_view active_lease,
+        char16_t dir_sep) noexcept {
+        if (EqualsOrdinalIgnoreCase(directory, active_lease)) return true;
+        if (active_lease.size() > directory.size() &&
+             (active_lease[directory.size()] == dir_sep || active_lease[directory.size()] == u'\\' || active_lease[directory.size()] == u'/') &&
+            EqualsOrdinalIgnoreCase(active_lease.substr(0, directory.size()), directory)) {
+            return true;
+        }
+        if (directory.size() > active_lease.size() &&
+            (directory[active_lease.size()] == dir_sep || directory[active_lease.size()] == u'\\' || directory[active_lease.size()] == u'/') &&
+            EqualsOrdinalIgnoreCase(directory.substr(0, active_lease.size()), active_lease)) {
+            return true;
+        }
+        return false;
+    }
 
     // ClipboardKind: Text=0, Code=1, Link=2, Image=3, Color=4, File=5
     // Returns: 1 = matches, 0 = does not match, -1 = check custom Groups (when include_archived || !is_archived)
@@ -403,6 +718,257 @@ VN_EXPORT int32_t __stdcall vn_clipboard_store_validate_archive_extract_step(
         const std::u16string_view path_sv(resolved_path ? resolved_path : u"", static_cast<size_t>(resolved_path_len));
         *out_is_valid = vnotch::services::clipboard::ClipboardHistoryStore::ValidateArchiveExtractStep(
             entry_index, max_entries, declared_length, accumulated_bytes, max_total_bytes, root_sv, path_sv) ? 1 : 0;
+        return VN_OK;
+    } catch (...) {
+        return VN_ERR_FAIL;
+    }
+}
+
+VN_EXPORT int32_t __stdcall vn_clipboard_store_tokenize_query(
+    const char16_t* query,
+    int32_t query_len,
+    int32_t* out_starts,
+    int32_t* out_lengths,
+    int32_t max_tokens,
+    int32_t* out_token_count) noexcept {
+    try {
+        if (!out_token_count || max_tokens < 0 ||
+            (!query && query_len > 0) || query_len < 0 ||
+            (max_tokens > 0 && (!out_starts || !out_lengths))) {
+            return VN_E_INVALID_ARG;
+        }
+        const std::u16string_view q_sv(query ? query : u"", static_cast<size_t>(query_len));
+        *out_token_count = vnotch::services::clipboard::ClipboardHistoryStore::TokenizeQuery(
+            q_sv, out_starts, out_lengths, max_tokens);
+        return VN_OK;
+    } catch (...) {
+        return VN_ERR_FAIL;
+    }
+}
+
+VN_EXPORT int32_t __stdcall vn_clipboard_store_contains_icase(
+    const char16_t* haystack,
+    int32_t haystack_len,
+    const char16_t* needle,
+    int32_t needle_len,
+    uint8_t* out_contains) noexcept {
+    try {
+        if (!out_contains ||
+            (!haystack && haystack_len > 0) || haystack_len < 0 ||
+            (!needle && needle_len > 0) || needle_len < 0) {
+            return VN_E_INVALID_ARG;
+        }
+        const std::u16string_view h_sv(haystack ? haystack : u"", static_cast<size_t>(haystack_len));
+        const std::u16string_view n_sv(needle ? needle : u"", static_cast<size_t>(needle_len));
+        *out_contains = vnotch::services::clipboard::ClipboardHistoryStore::ContainsOrdinalIgnoreCase(h_sv, n_sv) ? 1 : 0;
+        return VN_OK;
+    } catch (...) {
+        return VN_ERR_FAIL;
+    }
+}
+
+VN_EXPORT int32_t __stdcall vn_clipboard_store_equals_icase(
+    const char16_t* a,
+    int32_t a_len,
+    const char16_t* b,
+    int32_t b_len,
+    uint8_t* out_equals) noexcept {
+    try {
+        if (!out_equals ||
+            (!a && a_len > 0) || a_len < 0 ||
+            (!b && b_len > 0) || b_len < 0) {
+            return VN_E_INVALID_ARG;
+        }
+        const std::u16string_view a_sv(a ? a : u"", static_cast<size_t>(a_len));
+        const std::u16string_view b_sv(b ? b : u"", static_cast<size_t>(b_len));
+        *out_equals = vnotch::services::clipboard::ClipboardHistoryStore::EqualsOrdinalIgnoreCase(a_sv, b_sv) ? 1 : 0;
+        return VN_OK;
+    } catch (...) {
+        return VN_ERR_FAIL;
+    }
+}
+
+VN_EXPORT int32_t __stdcall vn_clipboard_store_entry_matches_metadata_token(
+    uint8_t is_sensitive,
+    const char16_t* title,
+    int32_t title_len,
+    const char16_t* preview,
+    int32_t preview_len,
+    const char16_t* source_app,
+    int32_t source_app_len,
+    const char16_t* token,
+    int32_t token_len,
+    uint8_t* out_matches) noexcept {
+    try {
+        if (!out_matches ||
+            (!title && title_len > 0) || title_len < 0 ||
+            (!preview && preview_len > 0) || preview_len < 0 ||
+            (!source_app && source_app_len > 0) || source_app_len < 0 ||
+            (!token && token_len > 0) || token_len < 0) {
+            return VN_E_INVALID_ARG;
+        }
+        const std::u16string_view title_sv(title ? title : u"", static_cast<size_t>(title_len));
+        const std::u16string_view preview_sv(preview ? preview : u"", static_cast<size_t>(preview_len));
+        const std::u16string_view app_sv(source_app ? source_app : u"", static_cast<size_t>(source_app_len));
+        const std::u16string_view tok_sv(token ? token : u"", static_cast<size_t>(token_len));
+        *out_matches = vnotch::services::clipboard::ClipboardHistoryStore::EntryMatchesMetadataToken(
+            is_sensitive != 0, title_sv, preview_sv, app_sv, tok_sv) ? 1 : 0;
+        return VN_OK;
+    } catch (...) {
+        return VN_ERR_FAIL;
+    }
+}
+
+VN_EXPORT int32_t __stdcall vn_clipboard_store_plan_prune(
+    const VnClipboardPruneCandidate* candidates,
+    int32_t candidate_count,
+    int64_t cutoff_utc_ticks,
+    int32_t max_unpinned_entries,
+    int64_t max_unpinned_bytes,
+    int32_t* out_ordered_indices,
+    int32_t max_indices,
+    int32_t* out_expired_count,
+    int32_t* out_evict_candidate_count,
+    int64_t* out_total_active_bytes) noexcept {
+    try {
+        if (!out_expired_count || !out_evict_candidate_count || !out_total_active_bytes ||
+            candidate_count < 0 || max_indices < 0 ||
+            (candidate_count > 0 && !candidates) ||
+            (max_indices > 0 && !out_ordered_indices)) {
+            return VN_E_INVALID_ARG;
+        }
+        vnotch::services::clipboard::ClipboardHistoryStore::PlanPrune(
+            candidates,
+            candidate_count,
+            cutoff_utc_ticks,
+            max_unpinned_entries,
+            max_unpinned_bytes,
+            out_ordered_indices,
+            max_indices,
+            *out_expired_count,
+            *out_evict_candidate_count,
+            *out_total_active_bytes);
+        return VN_OK;
+    } catch (...) {
+        return VN_ERR_FAIL;
+    }
+}
+
+VN_EXPORT int32_t __stdcall vn_clipboard_store_evaluate_sensitive_expiry(
+    uint8_t has_entry,
+    uint8_t is_pinned,
+    uint8_t is_archived,
+    uint8_t is_personal,
+    uint8_t has_personal_dir,
+    uint8_t ticks_valid,
+    int64_t marker_ticks,
+    int64_t expiry_cutoff_ticks,
+    int32_t* out_action) noexcept {
+    try {
+        if (!out_action) return VN_E_INVALID_ARG;
+        *out_action = vnotch::services::clipboard::ClipboardHistoryStore::EvaluateSensitiveExpiry(
+            has_entry != 0, is_pinned != 0, is_archived != 0, is_personal != 0,
+            has_personal_dir != 0, ticks_valid != 0, marker_ticks, expiry_cutoff_ticks);
+        return VN_OK;
+    } catch (...) {
+        return VN_ERR_FAIL;
+    }
+}
+
+VN_EXPORT int32_t __stdcall vn_clipboard_store_is_vault_stream_magic(
+    const uint8_t* magic,
+    int32_t magic_len,
+    uint8_t* out_is_magic) noexcept {
+    try {
+        if (!out_is_magic || magic_len < 0 || (magic_len > 0 && !magic)) return VN_E_INVALID_ARG;
+        *out_is_magic = vnotch::services::clipboard::ClipboardHistoryStore::IsVaultStreamMagic(magic, magic_len) ? 1 : 0;
+        return VN_OK;
+    } catch (...) {
+        return VN_ERR_FAIL;
+    }
+}
+
+VN_EXPORT int32_t __stdcall vn_clipboard_store_format_prefixed_sha256_hex(
+    const char16_t* prefix,
+    int32_t prefix_len,
+    const uint8_t* hash_bytes,
+    int32_t hash_len,
+    char16_t* out_buf,
+    int32_t out_cap,
+    int32_t* out_written) noexcept {
+    try {
+        if (!out_written || (!prefix && prefix_len > 0) || prefix_len < 0 ||
+            (!hash_bytes && hash_len > 0) || hash_len < 0 ||
+            (!out_buf && out_cap > 0) || out_cap < 0) {
+            return VN_E_INVALID_ARG;
+        }
+        const std::u16string_view pref_sv(prefix ? prefix : u"", static_cast<size_t>(prefix_len));
+        if (!vnotch::services::clipboard::ClipboardHistoryStore::FormatPrefixedSha256Hex(
+                pref_sv, hash_bytes, hash_len, out_buf, out_cap, *out_written)) {
+            return VN_ERR_BUFFER_TOO_SMALL;
+        }
+        return VN_OK;
+    } catch (...) {
+        return VN_ERR_FAIL;
+    }
+}
+
+VN_EXPORT int32_t __stdcall vn_clipboard_store_are_signatures_equal(
+    const char16_t* sig_a,
+    int32_t len_a,
+    const char16_t* sig_b,
+    int32_t len_b,
+    uint8_t* out_equal) noexcept {
+    try {
+        if (!out_equal ||
+            (!sig_a && len_a > 0) || len_a < 0 ||
+            (!sig_b && len_b > 0) || len_b < 0) {
+            return VN_E_INVALID_ARG;
+        }
+        const std::u16string_view a_sv(sig_a ? sig_a : u"", static_cast<size_t>(len_a));
+        const std::u16string_view b_sv(sig_b ? sig_b : u"", static_cast<size_t>(len_b));
+        *out_equal = vnotch::services::clipboard::ClipboardHistoryStore::AreSignaturesEqual(a_sv, b_sv) ? 1 : 0;
+        return VN_OK;
+    } catch (...) {
+        return VN_ERR_FAIL;
+    }
+}
+
+VN_EXPORT int32_t __stdcall vn_clipboard_store_is_probable_duplicate_image_candidate(
+    int32_t kind,
+    uint8_t is_personal,
+    int64_t capture_ticks,
+    int64_t entry_ticks,
+    int64_t best_ticks,
+    uint8_t has_best,
+    uint8_t* out_is_better) noexcept {
+    try {
+        if (!out_is_better) return VN_E_INVALID_ARG;
+        *out_is_better = vnotch::services::clipboard::ClipboardHistoryStore::IsProbableDuplicateImageCandidate(
+            kind, is_personal != 0, capture_ticks, entry_ticks, best_ticks, has_best != 0) ? 1 : 0;
+        return VN_OK;
+    } catch (...) {
+        return VN_ERR_FAIL;
+    }
+}
+
+VN_EXPORT int32_t __stdcall vn_clipboard_store_is_export_path_protected(
+    const char16_t* directory,
+    int32_t directory_len,
+    const char16_t* active_lease,
+    int32_t active_lease_len,
+    uint16_t dir_sep,
+    uint8_t* out_protected) noexcept {
+    try {
+        if (!out_protected ||
+            (!directory && directory_len > 0) || directory_len < 0 ||
+            (!active_lease && active_lease_len > 0) || active_lease_len < 0) {
+            return VN_E_INVALID_ARG;
+        }
+        const std::u16string_view dir_sv(directory ? directory : u"", static_cast<size_t>(directory_len));
+        const std::u16string_view lease_sv(active_lease ? active_lease : u"", static_cast<size_t>(active_lease_len));
+        *out_protected = vnotch::services::clipboard::ClipboardHistoryStore::IsExportPathProtectedByLease(
+            dir_sv, lease_sv, static_cast<char16_t>(dir_sep)) ? 1 : 0;
         return VN_OK;
     } catch (...) {
         return VN_ERR_FAIL;

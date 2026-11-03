@@ -142,11 +142,10 @@ public sealed class LiquidGlassPacingTests
 
                 Assert.True(sw.ElapsedMilliseconds < 50, $"Unpausing took too long: {sw.ElapsedMilliseconds} ms");
 
-                // Verify _forceRefreshNeeded flag via reflection
-                var field = typeof(LiquidGlassController).GetField("_forceRefreshNeeded",
+                var property = typeof(LiquidGlassController).GetProperty("ForceRefreshNeeded",
                     BindingFlags.NonPublic | BindingFlags.Instance);
-                Assert.NotNull(field);
-                bool forceRefresh = (bool)field.GetValue(controller)!;
+                Assert.NotNull(property);
+                bool forceRefresh = (bool)property.GetValue(controller)!;
                 // Either true or already processed by worker
                 Assert.True(forceRefresh || controller.HasPresentedFrame);
             }

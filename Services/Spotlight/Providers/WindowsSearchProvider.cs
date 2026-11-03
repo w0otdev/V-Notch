@@ -2,7 +2,6 @@ using System;
 using System.Collections.Generic;
 using System.Data.OleDb;
 using System.IO;
-using System.Linq;
 using System.Runtime.InteropServices;
 using System.Threading;
 using System.Threading.Tasks;
@@ -51,6 +50,28 @@ internal sealed partial class WindowsSearchProvider : ISpotlightProvider
         int outCap,
         out int outLen);
 
+    [LibraryImport(NativeDll, StringMarshalling = StringMarshalling.Utf16)]
+    private static partial int vn_windows_search_build_query_sql(
+        ReadOnlySpan<char> sanitizedPtr,
+        int sanitizedLen,
+        ReadOnlySpan<char> originalPtr,
+        int originalLen,
+        ReadOnlySpan<char> scopePtr,
+        int scopeLen,
+        byte isExplicitPath,
+        int fetch,
+        Span<char> outBuf,
+        int outCap,
+        out int outLen);
+
+    [LibraryImport(NativeDll, StringMarshalling = StringMarshalling.Utf16)]
+    private static partial int vn_windows_search_normalize_result_path(
+        ReadOnlySpan<char> rawPathPtr,
+        int rawPathLen,
+        Span<char> outBuf,
+        int outCap,
+        out int outLen);
+
     public bool IsAvailable
     {
         get
@@ -86,15 +107,26 @@ internal sealed partial class WindowsSearchProvider : ISpotlightProvider
             _isAvailable = true;
             Interlocked.Exchange(ref _loggedUnavailable, 0);
 
-            return items
-                .Where(item => IsExcluded?.Invoke(item.Target) != true)
-                .Where(item => SpotlightFileVisibility.ShouldInclude(item, query))
-                .Select(item => item with { Score = SpotlightRanker.Score(item, query) })
-                .Where(item => item.Score > 0)
-                .OrderByDescending(item => item.Score)
-                .ThenBy(item => item.Title, StringComparer.CurrentCultureIgnoreCase)
-                .Take(limit)
-                .ToArray();
+            if (items.Count == 0) return Array.Empty<SpotlightSearchItem>();
+
+            var matches = new List<SpotlightSearchItem>(items.Count);
+            var isExcluded = IsExcluded;
+            for (int i = 0; i < items.Count; i++)
+            {
+                var item = items[i];
+                if (isExcluded?.Invoke(item.Target) == true) continue;
+                if (!SpotlightFileVisibility.ShouldInclude(item, query)) continue;
+                double score = SpotlightRanker.Score(item, query);
+                if (score <= 0) continue;
+                matches.Add(item with { Score = score });
+            }
+
+            if (matches.Count == 0) return Array.Empty<SpotlightSearchItem>();
+            matches.Sort(SpotlightSearchService.s_scoreAndTitleComparison);
+            int resultCount = Math.Min(limit, matches.Count);
+            var results = new SpotlightSearchItem[resultCount];
+            matches.CopyTo(0, results, 0, resultCount);
+            return results;
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
@@ -140,19 +172,54 @@ internal sealed partial class WindowsSearchProvider : ISpotlightProvider
     internal static string BuildQuerySql(string sanitizedQuery, string originalQuery, int fetch)
     {
         bool isExplicitPath = SpotlightFileVisibility.IsExplicitPath(originalQuery);
-        string predicate = isExplicitPath
-            ? "System.ItemPathDisplay LIKE '" + EscapeLikePattern(originalQuery.Trim().Trim('"')
-                .Replace('/', '\\').Replace("'", "''")) + "%'"
-            : BuildNamePredicate(sanitizedQuery);
         string scope = isExplicitPath
             ? SpotlightFileVisibility.BuildWindowsScope(originalQuery)
             : CachedDefaultWindowsScope.Value;
-        return
-            $"SELECT TOP {fetch} System.ItemNameDisplay, System.ItemPathDisplay, System.ItemType " +
-            "FROM SystemIndex " +
-            $"WHERE SCOPE='file:' AND ({predicate}) " +
-            scope + " " +
-            "ORDER BY System.Search.Rank DESC";
+
+        ReadOnlySpan<char> sanitizedSpan = (sanitizedQuery ?? string.Empty).AsSpan();
+        ReadOnlySpan<char> originalSpan = (originalQuery ?? string.Empty).AsSpan();
+        ReadOnlySpan<char> scopeSpan = (scope ?? string.Empty).AsSpan();
+
+        int cap = sanitizedSpan.Length * 4 + originalSpan.Length * 3 + scopeSpan.Length + 256;
+        Span<char> buf = cap <= 1024 ? stackalloc char[cap] : new char[cap];
+        int rc = vn_windows_search_build_query_sql(
+            sanitizedSpan, sanitizedSpan.Length,
+            originalSpan, originalSpan.Length,
+            scopeSpan, scopeSpan.Length,
+            isExplicitPath ? (byte)1 : (byte)0,
+            fetch,
+            buf, buf.Length,
+            out int len);
+        if (rc == -2 && len > buf.Length)
+        {
+            char[] larger = new char[len];
+            rc = vn_windows_search_build_query_sql(
+                sanitizedSpan, sanitizedSpan.Length,
+                originalSpan, originalSpan.Length,
+                scopeSpan, scopeSpan.Length,
+                isExplicitPath ? (byte)1 : (byte)0,
+                fetch,
+                larger, larger.Length,
+                out len);
+            return rc == 0 && len > 0 ? new string(larger, 0, len) : string.Empty;
+        }
+        return rc == 0 && len > 0 ? new string(buf[..len]) : string.Empty;
+    }
+
+    internal static string NormalizeResultPath(string rawPath)
+    {
+        if (string.IsNullOrEmpty(rawPath)) return string.Empty;
+        ReadOnlySpan<char> span = rawPath.AsSpan();
+        int cap = span.Length + 8;
+        Span<char> buf = cap <= 520 ? stackalloc char[cap] : new char[cap];
+        int rc = vn_windows_search_normalize_result_path(span, span.Length, buf, buf.Length, out int len);
+        if (rc == -2 && len > buf.Length)
+        {
+            char[] larger = new char[len];
+            rc = vn_windows_search_normalize_result_path(span, span.Length, larger, larger.Length, out len);
+            return rc == 0 && len > 0 ? new string(larger, 0, len) : string.Empty;
+        }
+        return rc == 0 && len > 0 ? new string(buf[..len]) : string.Empty;
     }
 
     private static List<SpotlightSearchItem> ExecuteQuery(
@@ -190,7 +257,7 @@ internal sealed partial class WindowsSearchProvider : ISpotlightProvider
         if (reader.IsDBNull(0) || reader.IsDBNull(1)) return null;
 
         string name = reader.GetString(0);
-        string path = reader.GetString(1);
+        string path = NormalizeResultPath(reader.GetString(1));
         if (name.Length == 0 || path.Length == 0) return null;
 
         bool isFolder = !reader.IsDBNull(2) &&

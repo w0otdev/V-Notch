@@ -64,6 +64,10 @@ internal sealed partial class D3DImageFramePresenter
     private double _appliedCaptureIntervalMs;
     internal double LastGpuRenderMs { get; private set; }
     internal double LastGpuWaitMs { get; private set; }
+    internal double SubmittedGpuRenderMs { get; private set; }
+    internal double SubmittedGpuWaitMs { get; private set; }
+    internal long GpuCaptureRequests { get; private set; }
+    internal long GpuRenderSkips { get; private set; }
     internal long GpuCompletionRetries { get; private set; }
     internal long GpuWorkerTimeouts { get; private set; }
     internal ulong GpuConsumerRetries
@@ -121,11 +125,12 @@ internal sealed partial class D3DImageFramePresenter
                     _appliedCaptureIntervalMs = intervalMs;
                 }
                 long renderStarted = Stopwatch.GetTimestamp();
+                GpuCaptureRequests++;
                 int hr = NativeGpuRender(_gpuHandle, in frame);
                 long renderEnded = Stopwatch.GetTimestamp();
                 LastGpuRenderMs = (renderEnded - renderStarted) * 1000.0 / Stopwatch.Frequency;
                 Marshal.ThrowExceptionForHR(hr);
-                if (hr != 0) return true;
+                if (hr != 0) { GpuRenderSkips++; return true; }
                 // Wait briefly on the capture worker, so the first UI dispatch
                 // normally receives a completed texture. Never wait on the UI.
                 int waitResult = NativeGpuWaitReady(_gpuHandle, 4);

@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Data;
@@ -14,10 +15,17 @@ public sealed partial class ClipboardTray
     {
         internal ClipboardCardViewModel Card { get; } = card;
         internal FrameworkElement Presentation { get; } = presentation;
+        internal TranslateTransform Translation { get; } = new();
         internal bool Visible { get; set; }
+        internal double FromOpacity { get; set; }
+        internal double FromY { get; set; }
+        internal long MotionStarted { get; set; }
     }
 
     private readonly Dictionary<FrameworkElement, CardViewportState> _cardViewportStates = [];
+    private readonly List<CardViewportState> _viewportMotions = [];
+    private AnimationFrameClock _viewportFrameClock;
+    private bool _viewportMotionHooked;
 
     private void RefreshCardViewport(FrameworkElement element)
         => RefreshCardViewportVisibility(element, IsCardInViewport(element));
@@ -34,7 +42,8 @@ public sealed partial class ClipboardTray
             state = new CardViewportState(card, presentation);
             _cardViewportStates.Add(element, state);
             presentation.Opacity = inStaggerEntrance ? 1 : 0;
-            presentation.RenderTransform = new TranslateTransform(0, AnimationConfig.ReduceMotion || inStaggerEntrance ? 0 : 6);
+            state.Translation.Y = AnimationConfig.ReduceMotion || inStaggerEntrance ? 0 : 6;
+            presentation.RenderTransform = state.Translation;
         }
 
         if (state.Visible == visible) return;
@@ -45,25 +54,86 @@ public sealed partial class ClipboardTray
         double opacity = visual.Opacity;
         double y = visual.RenderTransform.Value.OffsetY;
         visual.BeginAnimation(OpacityProperty, null);
-        visual.Opacity = visible ? 1 : 0;
-        var translate = new TranslateTransform(0, visible || AnimationConfig.ReduceMotion ? 0 : 6);
-        visual.RenderTransform = translate;
         if (AnimationConfig.ReduceMotion || inStaggerEntrance)
         {
+            CancelViewportMotion(state);
+            visual.Opacity = visible ? 1 : 0;
+            state.Translation.Y = 0;
             if (!visible) ReleaseCardPreview(card);
             return;
         }
 
-        // The same duration/curve in both directions; interrupt from the
-        // rendered values when the user quickly scrolls back to a card.
-        var fade = CreateViewportAnimation(opacity, visual.Opacity);
-        if (!visible) fade.Completed += (_, _) =>
+        // One tray-level tick shares timing across every fade/translation.
+        // Per-property clocks allocate timing interval arrays on every frame.
+        state.FromOpacity = visual.Opacity = opacity;
+        state.FromY = state.Translation.Y = y;
+        state.MotionStarted = Stopwatch.GetTimestamp();
+        if (!_viewportMotions.Contains(state)) _viewportMotions.Add(state);
+        if (!_viewportMotionHooked)
         {
-            if (_cardViewportStates.TryGetValue(element, out var current) && ReferenceEquals(current, state) && !state.Visible)
-                ReleaseCardPreview(card);
-        };
-        visual.BeginAnimation(OpacityProperty, fade, HandoffBehavior.SnapshotAndReplace);
-        translate.BeginAnimation(TranslateTransform.YProperty, CreateViewportAnimation(y, translate.Y), HandoffBehavior.SnapshotAndReplace);
+            _viewportMotionHooked = true;
+            _viewportFrameClock.Reset(state.MotionStarted);
+            CompositionTarget.Rendering += ViewportMotion_Frame;
+        }
+    }
+
+    private void ViewportMotion_Frame(object? sender, EventArgs args)
+    {
+        if (_disposed || !IsLoaded || !IsVisible || _trayLeaving)
+        {
+            StopViewportMotions();
+            return;
+        }
+        bool advance = args is RenderingEventArgs frame
+            ? _viewportFrameClock.TryAdvance(frame.RenderingTime, AnimationConfig.TargetFps, out _)
+            : _viewportFrameClock.TryAdvance(Stopwatch.GetTimestamp(), AnimationConfig.TargetFps, out _);
+        if (!advance) return;
+        long now = Stopwatch.GetTimestamp();
+        for (int index = _viewportMotions.Count - 1; index >= 0; index--)
+        {
+            var state = _viewportMotions[index];
+            double progress = AnimationConfig.ReduceMotion ? 1 : Math.Clamp(
+                (now - state.MotionStarted) * 1000d / Stopwatch.Frequency / MotionStandard, 0, 1);
+            if (progress >= 1)
+            {
+                _viewportMotions.RemoveAt(index);
+                SettleViewportMotion(state);
+                continue;
+            }
+            double eased = TrayMotion.EaseOut.Ease(progress);
+            double targetY = state.Visible ? 0 : 6;
+            state.Presentation.Opacity = state.FromOpacity + ((state.Visible ? 1 : 0) - state.FromOpacity) * eased;
+            state.Translation.Y = state.FromY + (targetY - state.FromY) * eased;
+        }
+        if (_viewportMotions.Count == 0) UnhookViewportMotionFrames();
+    }
+
+    private static void SettleViewportMotion(CardViewportState state)
+    {
+        state.Presentation.Opacity = state.Visible ? 1 : 0;
+        state.Translation.Y = state.Visible || AnimationConfig.ReduceMotion ? 0 : 6;
+        if (!state.Visible) ReleaseCardPreview(state.Card);
+    }
+
+    private void CancelViewportMotion(CardViewportState state)
+    {
+        _viewportMotions.Remove(state);
+        if (_viewportMotions.Count == 0) UnhookViewportMotionFrames();
+    }
+
+    private void StopViewportMotions()
+    {
+        UnhookViewportMotionFrames();
+        for (int index = _viewportMotions.Count - 1; index >= 0; index--)
+            SettleViewportMotion(_viewportMotions[index]);
+        _viewportMotions.Clear();
+    }
+
+    private void UnhookViewportMotionFrames()
+    {
+        if (!_viewportMotionHooked) return;
+        CompositionTarget.Rendering -= ViewportMotion_Frame;
+        _viewportMotionHooked = false;
     }
 
     private static DoubleAnimation CreateViewportAnimation(double from, double to)
@@ -80,6 +150,7 @@ public sealed partial class ClipboardTray
     private void ForgetCardViewport(FrameworkElement element)
     {
         if (!_cardViewportStates.Remove(element, out var state)) return;
+        CancelViewportMotion(state);
         ResetCardMotion(state.Presentation);
         ReleaseCardPreview(state.Card);
     }

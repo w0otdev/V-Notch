@@ -16,6 +16,14 @@ internal sealed partial class AppSearchProvider : ISpotlightProvider
         byte existsOnDisk,
         out int outMode);
 
+    [LibraryImport("VNotch.Native.dll", StringMarshalling = StringMarshalling.Utf16)]
+    private static partial int vn_app_search_provider_scan_start_menu(
+        ReadOnlySpan<char> startMenuPtr,
+        int startMenuLen,
+        Span<char> outBuf,
+        int outCap,
+        out int outWritten);
+
     private readonly object _indexGate = new();
     private Task<IReadOnlyList<SpotlightSearchItem>>? _index;
     private DateTime _indexExpiresUtc;
@@ -43,6 +51,8 @@ internal sealed partial class AppSearchProvider : ISpotlightProvider
         cancellationToken.ThrowIfCancellationRequested();
         var apps = await WarmupAsync().WaitAsync(cancellationToken).ConfigureAwait(false);
         cancellationToken.ThrowIfCancellationRequested();
+        if (limit <= 0 || apps.Count == 0) return Array.Empty<SpotlightSearchItem>();
+
         string subtitle = Loc.Get("spotlight.kind.application");
         var matches = new List<SpotlightSearchItem>();
         for (int i = 0; i < apps.Count; i++)
@@ -55,11 +65,12 @@ internal sealed partial class AppSearchProvider : ISpotlightProvider
             }
         }
         if (matches.Count == 0) return Array.Empty<SpotlightSearchItem>();
-        return matches
-            .OrderByDescending(app => app.Score)
-            .ThenBy(app => app.Title, StringComparer.CurrentCultureIgnoreCase)
-            .Take(limit)
-            .ToArray();
+
+        matches.Sort(SpotlightSearchService.s_scoreAndTitleComparison);
+        int resultCount = Math.Min(limit, matches.Count);
+        var results = new SpotlightSearchItem[resultCount];
+        matches.CopyTo(0, results, 0, resultCount);
+        return results;
     }
 
     internal Task<IReadOnlyList<SpotlightSearchItem>> WarmupAsync()
@@ -84,33 +95,58 @@ internal sealed partial class AppSearchProvider : ISpotlightProvider
 
         // Decode icons lazily in Merge for displayed results only, avoiding
         // upfront decoding overhead for hundreds of unused app bitmaps.
-        return apps.Values.ToArray();
+        var result = new SpotlightSearchItem[apps.Count];
+        apps.Values.CopyTo(result, 0);
+        return result;
     }
 
     private static void AddStartMenuShortcuts(
         IDictionary<string, SpotlightSearchItem> apps,
         string startMenu)
     {
-        string programs = Path.Combine(startMenu, "Programs");
-        if (!Directory.Exists(programs)) return;
+        if (string.IsNullOrWhiteSpace(startMenu)) return;
 
         try
         {
-            foreach (string shortcut in Directory.EnumerateFiles(programs, "*.lnk", new EnumerationOptions
+            ReadOnlySpan<char> rootSpan = startMenu.AsSpan();
+            char[] buffer = new char[16384];
+            int rc = vn_app_search_provider_scan_start_menu(
+                rootSpan, rootSpan.Length, buffer, buffer.Length, out int written);
+            if (rc == -2 && written > buffer.Length)
             {
-                RecurseSubdirectories = true,
-                IgnoreInaccessible = true
-            }))
+                buffer = new char[written];
+                rc = vn_app_search_provider_scan_start_menu(
+                    rootSpan, rootSpan.Length, buffer, buffer.Length, out written);
+            }
+            if (rc != 0 || written <= 0) return;
+
+            string subtitle = Loc.Get("spotlight.kind.application");
+            ReadOnlySpan<char> data = buffer.AsSpan(0, written);
+            int pos = 0;
+            while (pos < data.Length)
             {
-                string title = Path.GetFileNameWithoutExtension(shortcut);
-                AddIfMissing(apps, new SpotlightSearchItem(
-                    $"app:{shortcut}", SpotlightResultKind.Application, title,
-                    Loc.Get("spotlight.kind.application"), shortcut, shortcut));
+                int titleLen = data[pos..].IndexOf('\0');
+                if (titleLen < 0) break;
+                string title = new string(data.Slice(pos, titleLen));
+                pos += titleLen + 1;
+                if (pos >= data.Length) break;
+
+                int pathLen = data[pos..].IndexOf('\0');
+                if (pathLen < 0) break;
+                string shortcut = new string(data.Slice(pos, pathLen));
+                pos += pathLen + 1;
+
+                if (shortcut.Length > 0)
+                {
+                    AddIfMissing(apps, new SpotlightSearchItem(
+                        $"app:{shortcut}", SpotlightResultKind.Application, title,
+                        subtitle, shortcut, shortcut));
+                }
             }
         }
         catch (Exception ex)
         {
-            RuntimeLog.Error("SPOTLIGHT-APP-INDEX", ex, $"Failed to read Start Menu: {programs}");
+            RuntimeLog.Error("SPOTLIGHT-APP-INDEX", ex, $"Failed to read Start Menu: {startMenu}");
         }
     }
 

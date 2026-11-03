@@ -1,3 +1,5 @@
+using System.Buffers;
+using System.Runtime.InteropServices;
 using System.Windows;
 using System.Windows.Documents;
 using System.Windows.Media;
@@ -11,6 +13,78 @@ namespace VNotch.Controls;
 
 internal static partial class AiMarkdown
 {
+    [StructLayout(LayoutKind.Sequential, Pack = 1)]
+    internal struct VnMarkdownWordSlice
+    {
+        public int Start;
+        public int Length;
+    }
+
+    [StructLayout(LayoutKind.Sequential, Pack = 1)]
+    internal struct VnMarkdownCodeFenceHeader
+    {
+        public byte IsFence;
+        public byte FenceChar;
+        public byte FenceCount;
+        public byte Reserved;
+        public int LangStart;
+        public int LangLength;
+    }
+
+    [StructLayout(LayoutKind.Sequential, Pack = 1)]
+    internal struct VnMarkdownListPrefix
+    {
+        public byte ListKind;
+        public byte IsChecked;
+        public ushort OrderedNumber;
+        public int PrefixStart;
+        public int PrefixLength;
+        public int ContentStart;
+        public int ContentLength;
+    }
+
+    [StructLayout(LayoutKind.Sequential, Pack = 1)]
+    internal struct VnMarkdownSpanBoundarySummary
+    {
+        public byte HasUnclosedFence;
+        public byte HasUnclosedInlineCode;
+        public byte HasUnclosedBold;
+        public byte HasUnclosedItalic;
+        public int FenceCount;
+        public int InlineCodeCount;
+        public int BoldMarkerCount;
+        public int ItalicMarkerCount;
+    }
+
+    [LibraryImport("VNotch.Native.dll", StringMarshalling = StringMarshalling.Utf16)]
+    private static partial int vn_markdown_scan_word_spans(
+        ReadOnlySpan<char> textPtr,
+        int textLen,
+        Span<VnMarkdownWordSlice> outSpans,
+        int spanCap,
+        out int outWritten);
+
+    [LibraryImport("VNotch.Native.dll", StringMarshalling = StringMarshalling.Utf16)]
+    private static partial int vn_markdown_parse_code_fence_header(
+        ReadOnlySpan<char> linePtr,
+        int lineLen,
+        out VnMarkdownCodeFenceHeader outHeader);
+
+    [LibraryImport("VNotch.Native.dll", StringMarshalling = StringMarshalling.Utf16)]
+    private static partial int vn_markdown_strip_list_prefix(
+        ReadOnlySpan<char> linePtr,
+        int lineLen,
+        out VnMarkdownListPrefix outPrefix);
+
+    [LibraryImport("VNotch.Native.dll", StringMarshalling = StringMarshalling.Utf16)]
+    private static partial int vn_markdown_scan_span_boundaries(
+        ReadOnlySpan<char> textPtr,
+        int textLen,
+        out VnMarkdownSpanBoundarySummary outSummary,
+        Span<VnMarkdownWordSlice> outCodeSpans,
+        int codeSpanCap,
+        out int outCodeSpanCount);
+
     private static readonly Uri FontsBaseUri = VNotch.Services.AppFonts.BaseUri;
     private static readonly MarkdownPipeline Pipeline = new MarkdownPipelineBuilder().UsePipeTables().UseEmphasisExtras().Build();
     private static readonly FontFamily FallbackBodyFont = new(FontsBaseUri, "./#SF Pro Display, Segoe UI Emoji, Segoe UI, Arial");
@@ -42,6 +116,29 @@ internal static partial class AiMarkdown
 
     [System.Text.RegularExpressions.GeneratedRegex(@"\S+\s*")]
     private static partial System.Text.RegularExpressions.Regex WordSpanRegex();
+
+    internal static bool TryParseCodeFenceHeader(ReadOnlySpan<char> line, out ReadOnlySpan<char> language)
+    {
+        if (vn_markdown_parse_code_fence_header(line, line.Length, out var header) == 0 && header.IsFence != 0)
+        {
+            language = line.Slice(header.LangStart, header.LangLength);
+            return true;
+        }
+        language = default;
+        return false;
+    }
+
+    internal static VnMarkdownListPrefix StripListPrefix(ReadOnlySpan<char> line)
+    {
+        vn_markdown_strip_list_prefix(line, line.Length, out var prefix);
+        return prefix;
+    }
+
+    internal static VnMarkdownSpanBoundarySummary ScanSpanBoundaries(ReadOnlySpan<char> markdown)
+    {
+        vn_markdown_scan_span_boundaries(markdown, markdown.Length, out var summary, Span<VnMarkdownWordSlice>.Empty, 0, out _);
+        return summary;
+    }
 
     private static SolidColorBrush CreateFrozenBrush(Color color)
     {
@@ -106,9 +203,18 @@ internal static partial class AiMarkdown
                 Margin = new Thickness(0, 4, 0, 8),
                 Padding = new Thickness(22, 0, 0, 0)
             };
-            if (list.IsOrdered && int.TryParse(list.OrderedStart, out int start) && start > 0) result.StartIndex = start;
-            foreach (var item in list.OfType<ListItemBlock>())
+            if (list.IsOrdered && !string.IsNullOrEmpty(list.OrderedStart))
             {
+                ReadOnlySpan<char> orderedSpan = list.OrderedStart.AsSpan();
+                if (vn_markdown_strip_list_prefix(orderedSpan, orderedSpan.Length, out var prefix) == 0 &&
+                    prefix.ListKind == 2 && prefix.OrderedNumber > 0)
+                {
+                    result.StartIndex = prefix.OrderedNumber;
+                }
+            }
+            for (int i = 0; i < list.Count; i++)
+            {
+                if (list[i] is not ListItemBlock item) continue;
                 var li = new ListItem { FontFamily = font, FontWeight = normalBody ? FontWeights.Normal : FontWeights.Bold };
                 foreach (var child in item) li.Blocks.Add(RenderBlock(child, font, normalBody));
                 result.ListItems.Add(li);
@@ -120,11 +226,13 @@ internal static partial class AiMarkdown
             var result = new System.Windows.Documents.Table { FontFamily = font, FontWeight = normalBody ? FontWeights.Normal : FontWeights.Bold, CellSpacing = 0, Margin = new Thickness(0, 6, 0, 10) };
             var rows = new TableRowGroup();
             result.RowGroups.Add(rows);
-            foreach (var row in table.OfType<Markdig.Extensions.Tables.TableRow>())
+            for (int r = 0; r < table.Count; r++)
             {
+                if (table[r] is not Markdig.Extensions.Tables.TableRow row) continue;
                 var rendered = new System.Windows.Documents.TableRow();
-                foreach (var cell in row.OfType<Markdig.Extensions.Tables.TableCell>())
+                for (int c = 0; c < row.Count; c++)
                 {
+                    if (row[c] is not Markdig.Extensions.Tables.TableCell cell) continue;
                     var target = new System.Windows.Documents.TableCell
                     {
                         FontFamily = font,
@@ -191,24 +299,48 @@ internal static partial class AiMarkdown
         var fadingWords = new List<(TextPointer Start, TextPointer End, double Progress)>();
         var cursor = doc.ContentStart;
         caughtUp = true;
+        Span<VnMarkdownWordSlice> stackWordSlices = stackalloc VnMarkdownWordSlice[128];
+
         while (cursor != null && cursor.CompareTo(doc.ContentEnd) < 0)
         {
             if (cursor.GetPointerContext(LogicalDirection.Forward) == TextPointerContext.Text)
             {
                 string text = cursor.GetTextInRun(LogicalDirection.Forward);
-                foreach (var word in WordSpanRegex().EnumerateMatches(text.AsSpan()))
+                ReadOnlySpan<char> textSpan = text.AsSpan();
+                VnMarkdownWordSlice[]? rentedSlices = null;
+                Span<VnMarkdownWordSlice> wordSlices = stackWordSlices;
+                int rc = vn_markdown_scan_word_spans(textSpan, textSpan.Length, wordSlices, wordSlices.Length, out int wordCount);
+                if (rc == -2 && wordCount > wordSlices.Length)
                 {
-                    if (shown == wordLimit) { caughtUp = false; break; }
-                    lastStart = cursor.GetPositionAtOffset(word.Index);
-                    cutoff = cursor.GetPositionAtOffset(word.Index + word.Length);
-                    if (revealTimes != null)
+                    rentedSlices = ArrayPool<VnMarkdownWordSlice>.Shared.Rent(wordCount);
+                    wordSlices = rentedSlices.AsSpan(0, wordCount);
+                    vn_markdown_scan_word_spans(textSpan, textSpan.Length, wordSlices, wordSlices.Length, out wordCount);
+                }
+
+                try
+                {
+                    for (int i = 0; i < wordCount; i++)
                     {
-                        if (shown >= revealTimes.Count) revealTimes.Add(nowMilliseconds);
-                        double progress = Math.Clamp((nowMilliseconds - revealTimes[shown]) / fadeMilliseconds, 0, 1);
-                        if (progress < 1 && lastStart != null && cutoff != null)
-                            fadingWords.Add((lastStart, cutoff, progress));
+                        var word = wordSlices[i];
+                        if (shown == wordLimit) { caughtUp = false; break; }
+                        lastStart = cursor.GetPositionAtOffset(word.Start);
+                        cutoff = cursor.GetPositionAtOffset(word.Start + word.Length);
+                        if (revealTimes != null)
+                        {
+                            if (shown >= revealTimes.Count) revealTimes.Add(nowMilliseconds);
+                            double progress = Math.Clamp((nowMilliseconds - revealTimes[shown]) / fadeMilliseconds, 0, 1);
+                            if (progress < 1 && lastStart != null && cutoff != null)
+                                fadingWords.Add((lastStart, cutoff, progress));
+                        }
+                        shown++;
                     }
-                    shown++;
+                }
+                finally
+                {
+                    if (rentedSlices != null)
+                    {
+                        ArrayPool<VnMarkdownWordSlice>.Shared.Return(rentedSlices);
+                    }
                 }
                 if (!caughtUp) break;
             }

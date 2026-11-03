@@ -2,11 +2,9 @@
 using System;
 using System.Buffers;
 using System.Collections.Generic;
-using System.Linq;
 using System.Net.Http;
 using System.Runtime.InteropServices;
 using System.Text.Json;
-using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -60,21 +58,18 @@ internal sealed partial class LyricsService : IDisposable
         int out_cap,
         out int out_written);
 
+    [LibraryImport(NativeDll, StringMarshalling = StringMarshalling.Utf16)]
+    private static partial int vn_lyrics_strip_title_extras(
+        ReadOnlySpan<char> title_ptr,
+        int title_len,
+        byte is_turkic_culture,
+        Span<char> out_buf,
+        int out_cap,
+        out int out_written);
+
     private const string LogTag = "LYRICS";
     private static readonly string[] Dashes = { " - ", " – ", " — ", " // " };
     private const int MaxLyricsResponseBytes = 512 * 1024;
-
-    [GeneratedRegex(@"\s*[\(\[][^\)\]]*[\)\]]")]
-    private static partial Regex TitleExtrasRegex();
-
-    private const string VideoSuffixPattern = @"\s*\|\s*(?:Official|OFFICIAL|MV|mv|Music Video|Visualizer|Lyric Video|Audio|Track\s*No\.\d+).*";
-    private const string RecordingSuffixPattern = @"\s*-\s*(?:Remaster(?:ed)?|Live|Acoustic|Radio Edit|Bonus Track|Single Version|Instrumental|Deluxe|Mono|Stereo).*";
-
-    [GeneratedRegex(VideoSuffixPattern, RegexOptions.IgnoreCase)]
-    private static partial Regex VideoSuffixRegex();
-
-    [GeneratedRegex(RecordingSuffixPattern, RegexOptions.IgnoreCase)]
-    private static partial Regex RecordingSuffixRegex();
 
     private static readonly HttpClient _lrclibHttp = new(NetworkPrivacy.Handler(NetworkFeature.Lyrics))
     {
@@ -304,7 +299,7 @@ internal sealed partial class LyricsService : IDisposable
         {
             addCandidate(parts[1], parts[0]);
             addCandidate(parts[0], parts[1]);
-            addCandidate(string.Join(" ", parts.Skip(1)), parts[0]);
+            addCandidate(string.Join(' ', parts, 1, parts.Length - 1), parts[0]);
         }
     }
 
@@ -584,28 +579,25 @@ internal sealed partial class LyricsService : IDisposable
     {
         if (string.IsNullOrWhiteSpace(title)) return title;
 
-        // Drop bracketed/parenthesised extras like (Official Music Video), (Lyric Video), [MV], etc.
-        string s = TitleExtrasRegex().Replace(title, "");
-
-        bool useRuntimeCultureRegex = s.AsSpan().ContainsAnyExceptInRange('\0', '\u007F') ||
-            System.Globalization.CultureInfo.CurrentCulture.TwoLetterISOLanguageName is "tr" or "az";
-
-        if (useRuntimeCultureRegex)
+        int cap = title.Length;
+        char[]? rented = cap <= 512 ? null : ArrayPool<char>.Shared.Rent(cap);
+        Span<char> buffer = rented is null ? stackalloc char[cap] : rented.AsSpan(0, cap);
+        try
         {
-            s = Regex.Replace(s, VideoSuffixPattern, "", RegexOptions.IgnoreCase, TimeSpan.FromMilliseconds(250));
-            s = Regex.Replace(s, RecordingSuffixPattern, "", RegexOptions.IgnoreCase, TimeSpan.FromMilliseconds(250));
+            byte isTurkic = System.Globalization.CultureInfo.CurrentCulture.TwoLetterISOLanguageName is "tr" or "az" ? (byte)1 : (byte)0;
+            int status = vn_lyrics_strip_title_extras(title.AsSpan(), title.Length, isTurkic, buffer, buffer.Length, out int written);
+            if (status == 0 && written > 0 && written <= buffer.Length)
+            {
+                ReadOnlySpan<char> slice = buffer[..written];
+                return slice.SequenceEqual(title.AsSpan()) ? title : new string(slice);
+            }
         }
-        else
+        finally
         {
-            // Remove YouTube visualizer/MV suffix patterns
-            s = VideoSuffixRegex().Replace(s, "");
-
-            // Strip standard remaster/live suffixes
-            s = RecordingSuffixRegex().Replace(s, "");
+            if (rented != null) ArrayPool<char>.Shared.Return(rented);
         }
 
-        s = s.Trim();
-        return s.Length == 0 ? title.Trim() : s;
+        return title.Trim();
     }
 
     private static string CleanArtist(string artist)

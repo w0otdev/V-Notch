@@ -37,6 +37,35 @@ internal sealed partial class EverythingSearchProvider : ISpotlightProvider, IDi
         int totalBytes,
         out int outCharLen);
 
+    [LibraryImport(NativeDll)]
+    private static partial int vn_everything_provider_read_reply_item_count(
+        IntPtr listPtr,
+        int byteCount,
+        out int outCount);
+
+    [LibraryImport(NativeDll)]
+    private static partial int vn_everything_provider_extract_reply_item(
+        IntPtr listPtr,
+        int byteCount,
+        int index,
+        out int outNameOffset,
+        out int outNameLen,
+        out int outPathOffset,
+        out int outPathLen,
+        out byte outIsFolder);
+
+    [LibraryImport(NativeDll, StringMarshalling = StringMarshalling.Utf16)]
+    private static partial int vn_everything_provider_pack_ipc_query(
+        long replyHwnd,
+        uint queryId,
+        uint searchFlags,
+        int maxResults,
+        ReadOnlySpan<char> queryPtr,
+        int queryLen,
+        IntPtr outBuf,
+        int outCap,
+        out int outBytes);
+
     internal Func<string, bool>? IsExcluded { get; set; }
 
     private const string EverythingIpcWindowClass = "EVERYTHING_TASKBAR_NOTIFICATION";
@@ -44,13 +73,6 @@ internal sealed partial class EverythingSearchProvider : ISpotlightProvider, IDi
     private const int WmCopyData = 0x004A;
 
     private const int QueryHeaderBytes = 20;
-    // EVERYTHING_IPC_LISTW header: totfolders, totfiles, totitems, numfolders,
-    // numfiles, numitems, offset — 7 DWORDs before the item array.
-    private const int ListHeaderBytes = 28;
-    private const int ListNumItemsOffset = 20;
-    private const int ItemBytes = 12;
-    private const int ItemFolderFlag = 0x00000001;
-    private const int MaxParsedItems = 512;
     private const int ReplyTimeoutMilliseconds = 900;
 
     private static readonly IntPtr HwndMessage = new(-3);
@@ -175,16 +197,26 @@ internal sealed partial class EverythingSearchProvider : ISpotlightProvider, IDi
         }
 
         IsAvailable = true;
-        return rows
-            .Select(row => ToSearchItem(row.Name, row.Parent, row.IsFolder))
-            .OfType<SpotlightSearchItem>()
-            .Where(item => IsExcluded?.Invoke(item.Target) != true)
-            .Where(item => SpotlightFileVisibility.ShouldInclude(item, query))
-            .Select(item => item with { Score = ScoreItem(item, query) })
-            .OrderByDescending(item => item.Score)
-            .ThenBy(item => item.Title, StringComparer.CurrentCultureIgnoreCase)
-            .Take(limit)
-            .ToArray();
+        if (rows.Count == 0) return Array.Empty<SpotlightSearchItem>();
+
+        var matches = new List<SpotlightSearchItem>(rows.Count);
+        var isExcluded = IsExcluded;
+        for (int i = 0; i < rows.Count; i++)
+        {
+            var row = rows[i];
+            var item = ToSearchItem(row.Name, row.Parent, row.IsFolder);
+            if (item == null) continue;
+            if (isExcluded?.Invoke(item.Target) == true) continue;
+            if (!SpotlightFileVisibility.ShouldInclude(item, query)) continue;
+            matches.Add(item with { Score = ScoreItem(item, query) });
+        }
+
+        if (matches.Count == 0) return Array.Empty<SpotlightSearchItem>();
+        matches.Sort(SpotlightSearchService.s_scoreAndTitleComparison);
+        int resultCount = Math.Min(limit, matches.Count);
+        var results = new SpotlightSearchItem[resultCount];
+        matches.CopyTo(0, results, 0, resultCount);
+        return results;
     }
 
     private static double ScoreItem(SpotlightSearchItem item, string query)
@@ -297,33 +329,30 @@ internal sealed partial class EverythingSearchProvider : ISpotlightProvider, IDi
         }
     }
 
-    internal static IReadOnlyList<(string, string, bool)> ParseReply(IntPtr list, int byteCount)
+    internal static unsafe IReadOnlyList<(string, string, bool)> ParseReply(IntPtr list, int byteCount)
     {
-        if (list == IntPtr.Zero || byteCount < ListHeaderBytes)
+        if (vn_everything_provider_read_reply_item_count(list, byteCount, out int itemCount) != 0 || itemCount <= 0)
             return Array.Empty<(string, string, bool)>();
 
-        // numitems counts the entries actually present in this list; the
-        // preceding fields describe the whole index and the full result set.
-        int itemCount = Marshal.ReadInt32(list, ListNumItemsOffset);
-        itemCount = Math.Clamp(itemCount, 0, MaxParsedItems);
         var rows = new List<(string, string, bool)>(itemCount);
-
         for (int index = 0; index < itemCount; index++)
         {
-            int itemOffset = ListHeaderBytes + index * ItemBytes;
-            if (itemOffset + ItemBytes > byteCount) break;
+            if (vn_everything_provider_extract_reply_item(
+                    list,
+                    byteCount,
+                    index,
+                    out int nameOffset,
+                    out int nameLen,
+                    out int pathOffset,
+                    out int pathLen,
+                    out byte isFolder) != 0 || nameLen <= 0)
+            {
+                continue;
+            }
 
-            int flags = Marshal.ReadInt32(list, itemOffset);
-            int nameOffset = Marshal.ReadInt32(list, itemOffset + 4);
-            int pathOffset = Marshal.ReadInt32(list, itemOffset + 8);
-            if (nameOffset < 0 || nameOffset >= byteCount) continue;
-            if (pathOffset < 0 || pathOffset >= byteCount) continue;
-
-            string name = ReadBoundedUniString(list, nameOffset, byteCount);
-            string parent = ReadBoundedUniString(list, pathOffset, byteCount);
-            if (name.Length == 0) continue;
-
-            rows.Add((name, parent, (flags & ItemFolderFlag) != 0));
+            string name = new string((char*)(list + nameOffset), 0, nameLen);
+            string parent = pathLen > 0 ? new string((char*)(list + pathOffset), 0, pathLen) : string.Empty;
+            rows.Add((name, parent, isFolder != 0));
         }
 
         return rows;
@@ -349,21 +378,24 @@ internal sealed partial class EverythingSearchProvider : ISpotlightProvider, IDi
         IntPtr buffer = Marshal.AllocHGlobal(totalBytes);
         try
         {
-            // EVERYTHING_IPC_QUERYW: reply_hwnd is documented as 32 bits even
-            // on x64, followed by reply message id, flags, offset, max count.
-            Marshal.WriteInt32(buffer, 0, unchecked((int)(uint)replyWindow.ToInt64()));
-            Marshal.WriteInt32(buffer, 4, unchecked((int)queryId));
-            Marshal.WriteInt32(buffer, 8, unchecked((int)searchFlags));
-            Marshal.WriteInt32(buffer, 12, 0);
-            Marshal.WriteInt32(buffer, 16, maxResults);
-            char[] characters = query.ToCharArray();
-            Marshal.Copy(characters, 0, buffer + QueryHeaderBytes, characters.Length);
-            Marshal.WriteInt16(buffer, QueryHeaderBytes + characters.Length * sizeof(char), 0);
+            if (vn_everything_provider_pack_ipc_query(
+                    replyWindow.ToInt64(),
+                    queryId,
+                    searchFlags,
+                    maxResults,
+                    query.AsSpan(),
+                    query.Length,
+                    buffer,
+                    totalBytes,
+                    out int writtenBytes) != 0)
+            {
+                return false;
+            }
 
             var copyData = new CopyDataStruct
             {
                 dwData = new IntPtr(CopyDataQueryW),
-                cbData = totalBytes,
+                cbData = writtenBytes,
                 lpData = buffer
             };
             int copyDataSize = Marshal.SizeOf<CopyDataStruct>();
@@ -436,5 +468,4 @@ internal sealed partial class EverythingSearchProvider : ISpotlightProvider, IDi
 
     private const uint SMTO_BLOCK = 0x0001;
     private const uint SMTO_ABORTIFHUNG = 0x0002;
-
 }

@@ -1,7 +1,27 @@
 using System.Diagnostics.Tracing;
+using System.Diagnostics;
+using System.Runtime.InteropServices;
 
 internal static class BenchmarkChecks
 {
+    [StructLayout(LayoutKind.Sequential, Pack = 1)]
+    private struct MemoryCounters
+    {
+        public uint Size, PageFaultCount;
+        public ulong PeakWorkingSet, WorkingSet, PeakPagedPool, PagedPool, PeakNonPagedPool, NonPagedPool;
+        public ulong PageFile, PeakPageFile, PrivateUsage;
+    }
+
+    [DllImport("VNotch.Native.dll", EntryPoint = "vn_win32_get_process_memory_info", CallingConvention = CallingConvention.StdCall)]
+    private static extern int ReadMemoryCounters(long process, out MemoryCounters counters);
+
+    internal static (long PrivateBytes, long WorkingSet) ReadMemory()
+    {
+        if (ReadMemoryCounters(-1, out var counters) != 0)
+            throw new InvalidOperationException("Cannot sample benchmark process memory");
+        return (checked((long)counters.PrivateUsage), checked((long)counters.WorkingSet));
+    }
+
     internal static string[] Cadence(int target, double fps, double intervalP95Ms, double latePercent)
     {
         if (target <= 0 || !double.IsFinite(fps) || !double.IsFinite(intervalP95Ms) ||
@@ -25,6 +45,13 @@ internal static class BenchmarkChecks
         Require(Cadence(120, 117, 18, 5).Length == 2);
         Require(Cadence(120, double.NaN, 10, 0).Length == 1);
         Require(Cadence(0, 0, 0, 0).Length == 1);
+        Require(Marshal.SizeOf<MemoryCounters>() == 80);
+        var memory = ReadMemory();
+        Require(memory.PrivateBytes > 0 && memory.WorkingSet > 0);
+        var sampling = Stopwatch.StartNew();
+        for (int i = 0; i < 1000; i++) _ = ReadMemory();
+        Require(sampling.ElapsedMilliseconds < 1000);
+        Console.WriteLine($"PASS: 1000 direct process-memory samples in {sampling.Elapsed.TotalMilliseconds:F2} ms.");
         Console.WriteLine("PASS: cadence gates reject low throughput, cap bypass, long intervals, invalid samples and excess jitter.");
     }
 }

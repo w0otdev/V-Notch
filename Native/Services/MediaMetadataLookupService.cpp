@@ -439,6 +439,231 @@ public:
             return;
         }
     }
+
+    static constexpr bool FindPrefixVideoId(
+        std::u16string_view sv,
+        std::u16string_view prefix,
+        size_t& out_match_pos,
+        int32_t& out_id_start) noexcept {
+        size_t pos = 0;
+        while (pos < sv.size()) {
+            const size_t found = sv.find(prefix, pos);
+            if (found == std::u16string_view::npos) return false;
+            const size_t id_start = found + prefix.size();
+            if (id_start + 11 <= sv.size() && IsDirectVideoId(sv.substr(id_start, 11))) {
+                out_match_pos = found;
+                out_id_start = static_cast<int32_t>(id_start);
+                return true;
+            }
+            pos = found + 1;
+        }
+        return false;
+    }
+
+    static constexpr bool FindWatchParamVideoId(
+        std::u16string_view sv,
+        size_t& out_match_pos,
+        int32_t& out_id_start) noexcept {
+        constexpr std::u16string_view kWatch = u"youtube.com/watch?";
+        size_t pos = 0;
+        while (pos < sv.size()) {
+            const size_t found = sv.find(kWatch, pos);
+            if (found == std::u16string_view::npos) return false;
+            const size_t search_from = found + kWatch.size();
+            int32_t last_valid_id = -1;
+            size_t v_pos = search_from;
+            while (v_pos < sv.size()) {
+                const size_t vf = sv.find(u"v=", v_pos);
+                if (vf == std::u16string_view::npos) break;
+                const size_t id_start = vf + 2;
+                if (id_start + 11 <= sv.size() && IsDirectVideoId(sv.substr(id_start, 11))) {
+                    last_valid_id = static_cast<int32_t>(id_start);
+                }
+                v_pos = vf + 1;
+            }
+            if (last_valid_id >= 0) {
+                out_match_pos = found;
+                out_id_start = last_valid_id;
+                return true;
+            }
+            pos = found + 1;
+        }
+        return false;
+    }
+
+    static constexpr bool TryExtractYouTubeVideoIdFromUrl(
+        std::u16string_view input,
+        uint8_t mode,
+        int32_t& out_start,
+        int32_t& out_len) noexcept {
+        out_start = 0;
+        out_len = 0;
+        if (input.size() < 11) return false;
+
+        if (mode == 2) {
+            size_t match_pos = 0;
+            int32_t id_start = 0;
+            if (FindPrefixVideoId(input, u"v=", match_pos, id_start)) {
+                out_start = id_start;
+                out_len = 11;
+                return true;
+            }
+            return false;
+        }
+
+        size_t best_match_pos = std::u16string_view::npos;
+        int32_t best_id_start = -1;
+
+        auto consider = [&](size_t match_pos, int32_t id_start) noexcept {
+            if (match_pos < best_match_pos) {
+                best_match_pos = match_pos;
+                best_id_start = id_start;
+            }
+        };
+
+        size_t mp = 0;
+        int32_t ids = 0;
+        if (FindWatchParamVideoId(input, mp, ids)) consider(mp, ids);
+        if (FindPrefixVideoId(input, u"youtu.be/", mp, ids)) consider(mp, ids);
+        if (mode == 1) {
+            if (FindPrefixVideoId(input, u"youtube.com/embed/", mp, ids)) consider(mp, ids);
+            if (FindPrefixVideoId(input, u"youtube.com/v/", mp, ids)) consider(mp, ids);
+        }
+
+        if (best_id_start >= 0) {
+            out_start = best_id_start;
+            out_len = 11;
+            return true;
+        }
+        return false;
+    }
+
+    static constexpr int32_t NormalizeTrackTokens(
+        std::u16string_view src,
+        char16_t* dst,
+        int32_t cap) noexcept {
+        int32_t len = 0;
+        bool pending_space = false;
+        for (size_t i = 0; i < src.size() && len < cap; ++i) {
+            const char16_t ch = src[i];
+            if (ch == u'(' || ch == u'[') {
+                size_t close_idx = std::u16string_view::npos;
+                for (size_t j = i + 1; j < src.size(); ++j) {
+                    if (src[j] == u')' || src[j] == u']') {
+                        close_idx = j;
+                        break;
+                    }
+                }
+                if (close_idx != std::u16string_view::npos) {
+                    i = close_idx;
+                    pending_space = (len > 0);
+                    continue;
+                }
+            }
+            const char16_t lower = (ch >= u'A' && ch <= u'Z')
+                ? static_cast<char16_t>(ch + (u'a' - u'A'))
+                : ch;
+            const bool is_alnum = (lower >= u'a' && lower <= u'z') ||
+                                  (lower >= u'0' && lower <= u'9') ||
+                                  (lower > 127 && !vnotch::is_unicode_whitespace(lower));
+            if (is_alnum) {
+                if (pending_space && len < cap - 1) {
+                    dst[len++] = u' ';
+                }
+                if (len < cap) {
+                    dst[len++] = lower;
+                }
+                pending_space = false;
+            } else if (len > 0) {
+                pending_space = true;
+            }
+        }
+        return len;
+    }
+
+    static constexpr bool ContainsWholePhraseNormalized(
+        std::u16string_view text,
+        std::u16string_view phrase) noexcept {
+        if (phrase.size() < 3 || text.size() < phrase.size()) return false;
+        size_t start = 0;
+        const size_t max_start = text.size() - phrase.size();
+        while (start <= max_start) {
+            const size_t pos = text.find(phrase, start);
+            if (pos == std::u16string_view::npos) return false;
+            const size_t end = pos + phrase.size();
+            if ((pos == 0 || text[pos - 1] == u' ') && (end == text.size() || text[end] == u' ')) {
+                return true;
+            }
+            start = pos + 1;
+        }
+        return false;
+    }
+
+    static constexpr void ScoreYouTubeTrackMatch(
+        std::u16string_view candidate_title,
+        std::u16string_view target_title,
+        int64_t candidate_duration_sec,
+        int64_t target_duration_sec,
+        int32_t& out_score,
+        int32_t& out_duration_delta,
+        uint8_t& out_is_match) noexcept {
+        out_score = 0;
+        out_duration_delta = 1073741823;
+        out_is_match = 0;
+
+        char16_t cand_buf[512];
+        char16_t targ_buf[512];
+        const int32_t cand_len = NormalizeTrackTokens(candidate_title, cand_buf, 512);
+        const int32_t targ_len = NormalizeTrackTokens(target_title, targ_buf, 512);
+        const std::u16string_view cand_norm(cand_buf, static_cast<size_t>(cand_len));
+        const std::u16string_view targ_norm(targ_buf, static_cast<size_t>(targ_len));
+
+        int32_t title_score = 0;
+        if (targ_norm.empty() || cand_norm.empty()) {
+            title_score = (targ_norm.empty() && cand_norm.empty()) ? 50 : 0;
+        } else if (cand_norm == targ_norm) {
+            title_score = 100;
+        } else if (ContainsWholePhraseNormalized(cand_norm, targ_norm) ||
+                   ContainsWholePhraseNormalized(targ_norm, cand_norm)) {
+            title_score = 80;
+        } else {
+            int32_t total_words = 0;
+            int32_t matched_words = 0;
+            size_t pos = 0;
+            while (pos < targ_norm.size()) {
+                size_t space = targ_norm.find(u' ', pos);
+                if (space == std::u16string_view::npos) space = targ_norm.size();
+                const std::u16string_view word = targ_norm.substr(pos, space - pos);
+                if (word.size() >= 2) {
+                    ++total_words;
+                    if (ContainsWholePhraseNormalized(cand_norm, word) || cand_norm == word) {
+                        ++matched_words;
+                    }
+                }
+                pos = space + 1;
+            }
+            if (total_words > 0 && matched_words * 10 >= total_words * 6) {
+                title_score = 60;
+            }
+        }
+
+        if (candidate_duration_sec > 0 && target_duration_sec > 0) {
+            const int64_t diff = candidate_duration_sec >= target_duration_sec
+                ? (candidate_duration_sec - target_duration_sec)
+                : (target_duration_sec - candidate_duration_sec);
+            out_duration_delta = diff > 1073741823LL ? 1073741823 : static_cast<int32_t>(diff);
+        }
+
+        int32_t total_score = title_score;
+        if (title_score > 0 && candidate_duration_sec > 0 && target_duration_sec > 0) {
+            if (out_duration_delta <= 2) total_score += 20;
+            else if (out_duration_delta <= 5) total_score += 10;
+            else if (out_duration_delta > 15) total_score -= 30;
+        }
+
+        out_score = std::max(0, total_score);
+        out_is_match = (title_score >= 60 && (candidate_duration_sec <= 0 || target_duration_sec <= 0 || out_duration_delta <= 15)) ? 1u : 0u;
+    }
 };
 
 } // namespace vnotch::services
@@ -520,6 +745,45 @@ VN_EXPORT int32_t __stdcall vn_yt_next_scrape_candidate(
         *out_channel_len = 0;
         return -3;
     }
+}
+
+VN_EXPORT int32_t __stdcall vn_media_metadata_extract_youtube_video_id(
+    const char16_t* input,
+    int32_t input_len,
+    uint8_t mode,
+    int32_t* out_start,
+    int32_t* out_len,
+    uint8_t* out_found) noexcept {
+    if (!out_start || !out_len || !out_found || input_len < 0 || (!input && input_len > 0)) {
+        return VN_E_INVALID_ARG;
+    }
+    const std::u16string_view sv(input ? input : u"", static_cast<size_t>(input_len));
+    *out_found = vnotch::services::MediaMetadataLookupService::TryExtractYouTubeVideoIdFromUrl(
+        sv, mode, *out_start, *out_len) ? 1u : 0u;
+    return VN_OK;
+}
+
+VN_EXPORT int32_t __stdcall vn_media_metadata_score_youtube_track_match(
+    const char16_t* candidate_title,
+    int32_t candidate_title_len,
+    const char16_t* target_title,
+    int32_t target_title_len,
+    int64_t candidate_duration_sec,
+    int64_t target_duration_sec,
+    int32_t* out_score,
+    int32_t* out_duration_delta,
+    uint8_t* out_is_match) noexcept {
+    if (!out_score || !out_duration_delta || !out_is_match ||
+        candidate_title_len < 0 || (!candidate_title && candidate_title_len > 0) ||
+        target_title_len < 0 || (!target_title && target_title_len > 0)) {
+        return VN_E_INVALID_ARG;
+    }
+    const std::u16string_view cand_sv(candidate_title ? candidate_title : u"", static_cast<size_t>(candidate_title_len));
+    const std::u16string_view targ_sv(target_title ? target_title : u"", static_cast<size_t>(target_title_len));
+    vnotch::services::MediaMetadataLookupService::ScoreYouTubeTrackMatch(
+        cand_sv, targ_sv, candidate_duration_sec, target_duration_sec,
+        *out_score, *out_duration_delta, *out_is_match);
+    return VN_OK;
 }
 
 } // extern "C"

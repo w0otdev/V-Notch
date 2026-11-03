@@ -760,6 +760,41 @@ inline std::u16string settings_search_normalize_impl(std::u16string_view input)
     {
         return {};
     }
+    bool all_ascii = true;
+    for (char16_t ch : input)
+    {
+        if (ch >= 0x80u)
+        {
+            all_ascii = false;
+            break;
+        }
+    }
+    if (all_ascii)
+    {
+        std::u16string res;
+        res.reserve(input.size());
+        bool prev_sep = true;
+        for (char16_t ch : input)
+        {
+            char16_t norm_ch = (ch >= u'A' && ch <= u'Z') ? static_cast<char16_t>(ch + 32) : ch;
+            if ((norm_ch >= u'a' && norm_ch <= u'z') || (norm_ch >= u'0' && norm_ch <= u'9'))
+            {
+                res.push_back(norm_ch);
+                prev_sep = false;
+            }
+            else if (!prev_sep)
+            {
+                res.push_back(u' ');
+                prev_sep = true;
+            }
+        }
+        if (!res.empty() && res.back() == u' ')
+        {
+            res.pop_back();
+        }
+        return res;
+    }
+
     std::u16string decomposed = normalize_unicode_form(input, NormalizationKD);
     std::u16string res;
     res.reserve(decomposed.size());
