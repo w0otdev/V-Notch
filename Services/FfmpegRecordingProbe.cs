@@ -1,7 +1,6 @@
 using System;
 using System.Buffers;
 using System.Collections.Generic;
-using System.Linq;
 using System.Runtime.InteropServices;
 
 namespace VNotch.Services;
@@ -20,39 +19,6 @@ internal sealed partial class FfmpegRecordingProbe
     {
         get => _commandLineReader;
         init => _commandLineReader = value ?? ReadCommandLine;
-    }
-
-    internal bool IsRecording(PrivacyProcessSnapshot snapshot)
-    {
-        var processes = snapshot.GetProcessesByExecutableName("ffmpeg.exe");
-        var seen = new HashSet<(int, long)>();
-        bool active = false;
-        try
-        {
-            foreach (var process in processes)
-            {
-                try
-                {
-                    var start = process.StartTime.ToUniversalTime();
-                    var key = (process.Id, start.ToFileTimeUtc());
-                    seen.Add(key);
-                    if (DateTime.UtcNow - start < TimeSpan.FromSeconds(2)) continue;
-                    bool capture = CheckProcess(key.Id, key.Item2);
-                    active |= capture && !process.HasExited;
-                }
-                catch (Exception ex) when (ex is COMException or InvalidOperationException or
-                    System.ComponentModel.Win32Exception or UnauthorizedAccessException)
-                {
-                    // Ignore inaccessible process during process scan.
-                }
-            }
-        }
-        finally
-        {
-            foreach (var process in processes) process.Dispose();
-            foreach (var key in _cache.Keys.Where(key => !seen.Contains(key)).ToArray()) _cache.Remove(key);
-        }
-        return active;
     }
 
     internal bool CheckProcess(int pid, long startFileTimeUtc)

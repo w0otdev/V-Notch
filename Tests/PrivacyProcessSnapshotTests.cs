@@ -33,24 +33,16 @@ public sealed class PrivacyProcessSnapshotTests
     }
 
     [Fact]
-    public void MatchingProcessesAreOpenedOnlyForExactExecutableNames()
+    public void ConsumerMatchingRequiresTheFullExecutablePathAndPreservesTheSnapshot()
     {
         using var snapshot = PrivacyProcessSnapshot.Capture();
-        string executableName = Path.GetFileName(Environment.ProcessPath!);
-        Assert.Empty(snapshot.GetProcessesByExecutableName(executableName + ".other"));
-
-        var processes = snapshot.GetProcessesByExecutableName("missing-recorder.exe", executableName.ToUpperInvariant());
-        try
-        {
-            Assert.Contains(processes, process => process.Id == Environment.ProcessId);
-            Assert.All(processes, process => Assert.Equal(
-                Path.GetFileNameWithoutExtension(executableName).ToUpperInvariant(), process.ProcessName.ToUpperInvariant()));
-            Assert.Contains((uint)Environment.ProcessId,
-                Enumerable.Range(0, snapshot.Count).Select(snapshot.GetProcessId));
-        }
-        finally
-        {
-            foreach (var process in processes) process.Dispose();
-        }
+        string executable = Environment.ProcessPath!;
+        Assert.True(snapshot.ContainsConsumer(executable, package: false));
+        Assert.True(snapshot.ContainsConsumer(executable.ToUpperInvariant(), package: false));
+        Assert.False(snapshot.ContainsConsumer(executable + ".other", package: false));
+        Assert.False(snapshot.ContainsConsumer(Path.Combine(Path.GetTempPath(), "not-the-app", Path.GetFileName(executable)), package: false));
+        Assert.False(snapshot.ContainsConsumer("VNotch.NonexistentPackage_123456", package: true));
+        Assert.Contains((uint)Environment.ProcessId,
+            Enumerable.Range(0, snapshot.Count).Select(snapshot.GetProcessId));
     }
 }

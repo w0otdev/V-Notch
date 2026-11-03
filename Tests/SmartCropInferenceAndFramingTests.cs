@@ -112,21 +112,40 @@ public sealed class SmartCropInferenceAndFramingTests
         Assert.Equal(114, tensor[3 * plane - 1]);
     });
 
-    [Fact]
-    public void GetDominantSubjectBoundsUsesCpp26SaliencyWithoutLoadingOnnxSessionAndClearCachesReleasesState() => SharedStaTestRunner.Run(() =>
+    [Theory]
+    [InlineData(256, 256)]
+    [InlineData(400, 200)]
+    [InlineData(200, 400)]
+    public void GetDominantSubjectBoundsUsesCpp26SaliencyWithoutLoadingOnnxSessionAndClearCachesReleasesState(int width, int height) => SharedStaTestRunner.Run(() =>
     {
         using var service = new SmartThumbnailCropService();
-        var textured = Image(256, 256, true);
-        var flat = Image(256, 256, false);
-
-        service.ClearCaches();
+        var textured = Image(width, height, true);
+        var flat = Image(width, height, false);
 
         var bounds = service.GetDominantSubjectBounds(textured);
         Assert.NotNull(bounds);
+        Assert.InRange(bounds.Value.CenterX, 0f, 1f);
+        Assert.InRange(bounds.Value.CenterY, 0f, 1f);
         Assert.InRange(bounds.Value.Width, 0.08, 0.92);
         Assert.InRange(bounds.Value.Height, 0.08, 0.92);
-        Assert.Null(Get<object?>(service, "_cachedSession"));
+        Assert.InRange(bounds.Value.Confidence, 0f, 1f);
+        Assert.Equal(bounds, service.GetDominantSubjectBounds(textured));
         Assert.Null(service.GetDominantSubjectBounds(flat));
+        Assert.Null(service.GetDominantSubjectBounds(Image(63, 256, true)));
+        Assert.Null(Get<object?>(service, "_cachedSession"));
+        Assert.Null(Get<object?>(service, "_idleTimer"));
+        Assert.False(Get<bool>(service, "_modelExistsChecked"));
+
+        Detection[] detections = [new() { X1 = width / 8f, Y1 = height / 4f, X2 = width * 3f / 8f, Y2 = height * 3f / 4f, Confidence = .9f, ClassId = 16 }];
+        Invoke(service, "AddInferenceCacheEntryLocked", ArtworkFingerprint.Create(textured), detections);
+        Assert.Equal(16, service.GetDominantSubjectBounds(textured)!.Value.ClassId);
+
+        service.ClearCaches();
+
+        Assert.Equal(bounds, service.GetDominantSubjectBounds(textured));
+        Assert.Null(Get<object?>(service, "_cachedSession"));
+        Assert.Null(Get<object?>(service, "_idleTimer"));
+        Assert.False(Get<bool>(service, "_modelExistsChecked"));
     });
 
     private static BitmapImage Image(int width, int height, bool edges)

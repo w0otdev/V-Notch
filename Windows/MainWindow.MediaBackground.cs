@@ -395,7 +395,7 @@ public partial class MainWindow
     {
         if (MediaBackground.Opacity == 0 && MediaBackground.Visibility != Visibility.Visible)
         {
-            if ((!_isExpanded || _currentMediaInfo == null || !_currentMediaInfo.IsAnyMediaPlaying) &&
+            if (_currentMediaInfo?.IsAnyMediaPlaying != true &&
                 (MediaBackgroundImage.Source != null || MediaBackgroundImageBack.Source != null || _lastBlurThumbnailRef != null))
             {
                 ClearBlurredBackgroundSources();
@@ -421,7 +421,7 @@ public partial class MainWindow
             {
                 MediaBackground.Visibility = Visibility.Collapsed;
                 MediaBackground2.Visibility = Visibility.Collapsed;
-                if (!_isExpanded || _currentMediaInfo == null || !_currentMediaInfo.IsAnyMediaPlaying)
+                if (_currentMediaInfo?.IsAnyMediaPlaying != true)
                 {
                     ClearBlurredBackgroundSources();
                 }

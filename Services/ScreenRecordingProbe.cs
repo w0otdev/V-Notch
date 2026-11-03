@@ -3,74 +3,38 @@ using System.Runtime.InteropServices;
 
 namespace VNotch.Services;
 
-// Supplemental providers for recorders which bypass Windows ConsentStore.
+// Native polling owns process discovery, file tails and Restart Manager sessions.
 internal sealed partial class ScreenRecordingProbe
 {
-    private const string NativeDll = "VNotch.Native.dll";
+    private readonly Func<bool>[]? _providers;
 
-    [LibraryImport(NativeDll, EntryPoint = "vn_screen_recording_probe_should_capture_owned_snapshot")]
-    private static partial int NativeShouldCaptureOwnedSnapshot(
-        int processProviderCount,
-        byte hasGetSnapshotDelegate,
-        out byte outShouldCapture);
+    [LibraryImport("VNotch.Native.dll")]
+    private static partial int vn_privacy_poll_recorders(ReadOnlySpan<Win32Interop.VnProcessEntry> entries,
+        int count, byte capture, out byte active);
 
-    private readonly Func<bool>[] _providers = Array.Empty<Func<bool>>();
-    private readonly Func<PrivacyProcessSnapshot, bool>[] _processProviders = Array.Empty<Func<PrivacyProcessSnapshot, bool>>();
-
-    internal ScreenRecordingProbe()
-    {
-        var obs = new ObsRecordingProbe();
-        var ffmpeg = new FfmpegRecordingProbe();
-        _processProviders = new Func<PrivacyProcessSnapshot, bool>[]
-            { BandicamRecordingProbe.IsRecording, obs.IsRecording, ffmpeg.IsRecording };
-    }
-
+    internal ScreenRecordingProbe() { }
     internal ScreenRecordingProbe(params Func<bool>[] providers) => _providers = providers;
 
     internal bool IsRecording(Func<PrivacyProcessSnapshot>? getSnapshot = null)
     {
-        // Reuse the sensor scan's snapshot instead of enumerating every Windows
-        // process separately for Bandicam, both OBS variants and FFmpeg.
-        try
+        if (_providers != null) return ReadInjectedProviders();
+        try { return IsRecordingWithSnapshot(getSnapshot?.Invoke()); }
+        catch (Exception) { return false; }
+    }
+
+    internal bool IsRecordingWithSnapshot(PrivacyProcessSnapshot? snapshot)
+    {
+        if (_providers != null) return ReadInjectedProviders();
+        var entries = snapshot == null ? ReadOnlySpan<Win32Interop.VnProcessEntry>.Empty : snapshot.Entries;
+        return vn_privacy_poll_recorders(entries, entries.Length, snapshot == null ? (byte)1 : (byte)0, out byte active) == 0 && active != 0;
+    }
+
+    private bool ReadInjectedProviders()
+    {
+        foreach (var provider in _providers!)
         {
-            NativeShouldCaptureOwnedSnapshot(
-                _processProviders.Length,
-                getSnapshot != null ? (byte)1 : (byte)0,
-                out byte shouldCapture);
-            using var ownedSnapshot = shouldCapture != 0
-                ? PrivacyProcessSnapshot.Capture() : null;
-            if (_processProviders.Length > 0)
-            {
-                var snapshot = ownedSnapshot ?? getSnapshot!();
-                foreach (var provider in _processProviders)
-                {
-                    try
-                    {
-                        if (provider(snapshot)) return true;
-                    }
-                    catch (Exception)
-                    {
-                        // One inaccessible recorder must not prevent other providers.
-                    }
-                }
-            }
-        }
-        catch (Exception)
-        {
-            // Failed process discovery is unknown recording evidence. Sensor
-            // state from the same privacy scan must still be published.
-        }
-        foreach (var provider in _providers)
-        {
-            try
-            {
-                if (provider()) return true;
-            }
-            catch (Exception)
-            {
-                // Best-effort providers fail independently. Never freeze mic/camera/location
-                // at their previous state because one recorder is inaccessible or has exited.
-            }
+            try { if (provider()) return true; }
+            catch (Exception) { /* Independent providers must not freeze sensor updates. */ }
         }
         return false;
     }

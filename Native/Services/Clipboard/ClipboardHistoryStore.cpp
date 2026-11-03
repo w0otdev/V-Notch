@@ -976,3 +976,62 @@ VN_EXPORT int32_t __stdcall vn_clipboard_store_is_export_path_protected(
 }
 
 } // extern "C"
+
+VN_EXPORT int32_t __stdcall vn_clipboard_store_filter_entries_batch(const VnClipboardSearchEntry* entries, int32_t count,
+    const VnClipboardSearchSlice* groups, int32_t group_count, const VnClipboardSearchLabel* labels, int32_t label_count,
+    const char16_t* pool, int32_t pool_length, const char16_t* query, int32_t query_length,
+    const char16_t* category, int32_t category_length, uint8_t personal, uint8_t* matches, int32_t capacity) noexcept {
+    using Store = vnotch::services::clipboard::ClipboardHistoryStore;
+    if (count < 0 || group_count < 0 || label_count < 0 || pool_length < 0 || query_length < 0 || category_length < 0 || capacity < count ||
+        (count && (!entries || !matches)) || (group_count && !groups) || (label_count && !labels) || (pool_length && !pool) ||
+        (query_length && !query) || (category_length && !category)) return VN_ERR_INVALID_ARG;
+    auto valid = [pool_length](VnClipboardSearchSlice slice) {
+        return slice.offset >= 0 && slice.length >= 0 && slice.offset <= pool_length && slice.length <= pool_length - slice.offset;
+    };
+    auto view = [pool](VnClipboardSearchSlice slice) { return std::u16string_view(pool ? pool + slice.offset : u"", slice.length); };
+    for (int32_t i = 0; i < group_count; ++i) if (!valid(groups[i])) return VN_ERR_INVALID_ARG;
+    for (int32_t i = 0; i < label_count; ++i) if (!valid(labels[i].id) || !valid(labels[i].name)) return VN_ERR_INVALID_ARG;
+    for (int32_t i = 0; i < count; ++i) {
+        const auto& e = entries[i];
+        if (!valid(e.title) || !valid(e.preview) || !valid(e.source) || (e.full_text.length != -1 && !valid(e.full_text)) ||
+            e.group_start < 0 || e.group_count < 0 || e.group_start > group_count || e.group_count > group_count - e.group_start) return VN_ERR_INVALID_ARG;
+    }
+    int32_t starts[256]{}, lengths[256]{};
+    const std::u16string_view query_view(query ? query : u"", query_length);
+    const int32_t token_count = Store::TokenizeQuery(query_view, starts, lengths, 256);
+    const std::u16string_view category_view(category ? category : u"", category_length);
+    auto in_category = [&](const VnClipboardSearchEntry& e, std::u16string_view value, bool archived) {
+        const auto result = Store::MatchesCategoryCore(e.personal != 0, e.archived != 0, e.pinned != 0, e.kind, archived, value);
+        if (result >= 0) return result != 0;
+        for (int32_t g = 0; g < e.group_count; ++g) if (Store::EqualsOrdinalIgnoreCase(view(groups[e.group_start + g]), value)) return true;
+        return false;
+    };
+    for (int32_t i = 0; i < count; ++i) {
+        const auto& e = entries[i];
+        matches[i] = 0;
+        if ((e.personal != 0) != (personal != 0) || !in_category(e, category_view, false)) continue;
+        uint8_t result = 1;
+        for (int32_t t = 0; t < token_count; ++t) {
+            auto token = query_view.substr(starts[t], lengths[t]);
+            if (token.front() == u'@') {
+                if (!in_category(e, token.substr(1), true)) { result = 0; break; }
+                continue;
+            }
+            bool match = Store::EntryMatchesMetadataToken(e.sensitive != 0, view(e.title), view(e.preview), view(e.source), token);
+            for (int32_t g = 0; !match && g < e.group_count; ++g) {
+                const auto group = view(groups[e.group_start + g]);
+                match = Store::ContainsOrdinalIgnoreCase(group, token);
+                for (int32_t l = 0; !match && l < label_count; ++l)
+                    if (Store::EqualsOrdinalIgnoreCase(group, view(labels[l].id))) {
+                        match = Store::ContainsOrdinalIgnoreCase(view(labels[l].name), token); break;
+                    }
+            }
+            if (match) continue;
+            if (e.sensitive) { result = 0; break; }
+            if (e.full_text.length == -1) { result = 2; continue; }
+            if (!Store::ContainsOrdinalIgnoreCase(view(e.full_text), token)) { result = 0; break; }
+        }
+        matches[i] = result;
+    }
+    return VN_OK;
+}

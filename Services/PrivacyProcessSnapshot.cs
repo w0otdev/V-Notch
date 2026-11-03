@@ -1,7 +1,5 @@
 using System.Buffers;
-using System.Diagnostics;
 using System.Runtime.InteropServices;
-using Microsoft.Win32.SafeHandles;
 
 namespace VNotch.Services;
 
@@ -9,6 +7,14 @@ internal sealed partial class PrivacyProcessSnapshot : IDisposable
 {
     private Win32Interop.VnProcessEntry[]? _entries;
     internal int Count { get; private set; }
+    internal ReadOnlySpan<Win32Interop.VnProcessEntry> Entries => _entries.AsSpan(0, Count);
+
+    [LibraryImport("VNotch.Native.dll", StringMarshalling = StringMarshalling.Utf16)]
+    private static partial int vn_privproc_contains_consumer(ReadOnlySpan<Win32Interop.VnProcessEntry> entries, int count,
+        ReadOnlySpan<char> consumer, int length, byte package, out byte running);
+
+    internal bool ContainsConsumer(string consumer, bool package)
+        => vn_privproc_contains_consumer(Entries, Count, consumer, consumer.Length, package ? (byte)1 : (byte)0, out byte running) == 0 && running != 0;
 
 
     [LibraryImport("VNotch.Native.dll")]
@@ -55,26 +61,6 @@ internal sealed partial class PrivacyProcessSnapshot : IDisposable
         {
             return vn_privproc_matches_exe_name(name, MemoryMarshal.Cast<char, ushort>(executableName), executableName.Length, out byte matches) == 0 && matches != 0;
         }
-    }
-
-    internal Process[] GetProcessesByExecutableName(string executableName, string? alternativeName = null)
-    {
-        List<Process>? matches = null;
-        for (int i = 0; i < Count; i++)
-        {
-            if (!MatchesExecutableName(i, executableName) &&
-                (alternativeName == null || !MatchesExecutableName(i, alternativeName))) continue;
-            try
-            {
-                var process = Process.GetProcessById(checked((int)GetProcessId(i)));
-                (matches ??= new List<Process>()).Add(process);
-            }
-            catch (ArgumentException)
-            {
-                // The process may have exited after the snapshot was captured.
-            }
-        }
-        return matches?.ToArray() ?? Array.Empty<Process>();
     }
 
     public void Dispose()

@@ -1,5 +1,7 @@
 #include "../vnotch_common.h"
 #include "../vnotch_com.h"
+#include <winver.h>
+#pragma comment(lib, "version.lib")
 #include "../vnotch_handle_registry.h"
 #include <mmdeviceapi.h>
 #include <audiopolicy.h>
@@ -406,3 +408,145 @@ VN_EXPORT int32_t __stdcall vn_audio_volume_close(int64_t volume) noexcept {
 }
 
 } // extern "C"
+
+namespace {
+struct MixerMetadata {
+    DWORD pid{};
+    uint64_t started{};
+    std::wstring name, path;
+};
+thread_local std::vector<MixerMetadata> mixer_metadata;
+MixerMetadata ReadMixerMetadata(DWORD pid, const std::wstring& fallback) {
+    vnotch::UniqueHandle process(OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, FALSE, pid));
+    FILETIME created{}, exited{}, kernel{}, user{};
+    uint64_t started = 0;
+    if (process.valid() && GetProcessTimes(process.get(), &created, &exited, &kernel, &user))
+        started = (uint64_t{created.dwHighDateTime} << 32) | created.dwLowDateTime;
+    for (auto& cached : mixer_metadata)
+        if (started && cached.pid == pid && cached.started == started) return cached;
+    MixerMetadata value{pid, started, {}, {}};
+    wchar_t path[32768];
+    DWORD length = ARRAYSIZE(path);
+    if (process.valid() && QueryFullProcessImageNameW(process.get(), 0, path, &length)) {
+        value.path.assign(path, length);
+        const auto slash = value.path.find_last_of(L"\\/");
+        value.name = value.path.substr(slash == std::wstring::npos ? 0 : slash + 1);
+        const auto dot = value.name.find_last_of(L'.');
+        if (dot != std::wstring::npos) value.name.resize(dot);
+        DWORD unused = 0;
+        const DWORD size = GetFileVersionInfoSizeW(value.path.c_str(), &unused);
+        if (size && size <= 4 * 1024 * 1024) {
+            std::vector<uint8_t> version(size);
+            if (GetFileVersionInfoW(value.path.c_str(), 0, size, version.data())) {
+                struct Translation { WORD language, codepage; };
+                Translation* translations = nullptr;
+                UINT bytes = 0;
+                if (VerQueryValueW(version.data(), L"\\VarFileInfo\\Translation", reinterpret_cast<void**>(&translations), &bytes)) {
+                    for (UINT i = 0; i < bytes / sizeof(Translation); ++i) {
+                        wchar_t key[80];
+                        swprintf_s(key, L"\\StringFileInfo\\%04x%04x\\FileDescription", translations[i].language, translations[i].codepage);
+                        wchar_t* description = nullptr;
+                        UINT chars = 0;
+                        if (VerQueryValueW(version.data(), key, reinterpret_cast<void**>(&description), &chars) && description && chars > 1) {
+                            const auto trimmed = vnotch::trim_view(std::u16string_view(reinterpret_cast<char16_t*>(description), chars - 1));
+                            if (!trimmed.empty()) { value.name.assign(reinterpret_cast<const wchar_t*>(trimmed.data()), trimmed.size()); break; }
+                        }
+                    }
+                }
+            }
+        }
+    }
+    if (value.name.empty() && !fallback.empty() && fallback.front() != L'@') value.name = fallback;
+    if (started) {
+        if (mixer_metadata.size() >= 128) mixer_metadata.erase(mixer_metadata.begin());
+        mixer_metadata.push_back(value);
+    }
+    return value;
+}
+}
+
+VN_EXPORT int32_t __stdcall vn_audio_resolve_session_metadata(uint32_t pid, const char16_t* raw, int32_t raw_length,
+    VnAudioSessionState* output, char16_t* text, int32_t capacity, int32_t* required) noexcept {
+    if (!output || !required || raw_length < 0 || (raw_length && !raw) || capacity < 0 || (capacity && !text)) return VN_ERR_INVALID_ARG;
+    *output = {}; *required = 0;
+    try {
+        const auto metadata = ReadMixerMetadata(pid, std::wstring(reinterpret_cast<const wchar_t*>(raw ? raw : u""), raw_length));
+        const auto size = metadata.name.size() + metadata.path.size();
+        if (size > INT32_MAX) return VN_ERR_FAIL;
+        *required = static_cast<int32_t>(size);
+        if (size > static_cast<size_t>(capacity)) return VN_ERR_BUFFER_TOO_SMALL;
+        output->name_length = static_cast<int32_t>(metadata.name.size());
+        output->path_offset = output->name_length;
+        output->path_length = static_cast<int32_t>(metadata.path.size());
+        if (output->name_length) std::memcpy(text, metadata.name.data(), metadata.name.size() * sizeof(char16_t));
+        if (output->path_length) std::memcpy(text + output->path_offset, metadata.path.data(), metadata.path.size() * sizeof(char16_t));
+        return VN_OK;
+    } catch (...) { return VN_ERR_FAIL; }
+}
+
+static int32_t ReadSessionsBatch(int64_t snapshot, VnAudioSessionState* output, int32_t capacity,
+    char16_t* text, int32_t text_capacity, int32_t* count, int32_t* text_length) noexcept {
+    if (!count || !text_length || capacity < 0 || text_capacity < 0 || (capacity && !output) || (text_capacity && !text)) return VN_ERR_INVALID_ARG;
+    *count = *text_length = 0;
+    try {
+        auto lease = as::g_snapshots.Acquire(snapshot);
+        if (!lease) return VN_ERR_INVALID_ARG;
+        struct Item { const as::Session* session; float volume; BOOL mute; MixerMetadata metadata; };
+        std::vector<Item> items;
+        for (const auto& session : lease->sessions) {
+            if (session->state == AudioSessionStateExpired || !session->volume.ptr) continue;
+            const DWORD pid = session->is_system_sounds ? 0 : session->process_id;
+            const auto existing = std::find_if(items.begin(), items.end(), [pid](const Item& item) {
+                return (item.session->is_system_sounds ? 0 : item.session->process_id) == pid;
+            });
+            if (existing != items.end() && (existing->session->state == AudioSessionStateActive || session->state != AudioSessionStateActive)) continue;
+            float volume = 0;
+            BOOL mute = FALSE;
+            if (FAILED(session->volume.ptr->GetMasterVolume(&volume)) || FAILED(session->volume.ptr->GetMute(&mute))) continue;
+            if (existing != items.end()) {
+                existing->session = session.get(); existing->volume = volume; existing->mute = mute;
+                continue;
+            }
+            MixerMetadata metadata = session->is_system_sounds ? MixerMetadata{0, 0, L"System Sounds", {}} : ReadMixerMetadata(pid, session->display_name);
+            if (metadata.name.empty()) continue;
+            items.push_back({session.get(), std::clamp(volume, 0.0f, 1.0f), mute, std::move(metadata)});
+        }
+        std::sort(items.begin(), items.end(), [](const Item& a, const Item& b) {
+            if (a.session->is_system_sounds != b.session->is_system_sounds) return a.session->is_system_sounds;
+            return a.session->process_id < b.session->process_id;
+        });
+        size_t required = 0;
+        for (const auto& item : items) required += item.metadata.name.size() + item.metadata.path.size() + item.session->display_name.size();
+        if (required > INT32_MAX || items.size() > INT32_MAX) return VN_ERR_FAIL;
+        *count = static_cast<int32_t>(items.size()); *text_length = static_cast<int32_t>(required);
+        if (*count > capacity || *text_length > text_capacity) return VN_ERR_BUFFER_TOO_SMALL;
+        int32_t offset = 0;
+        auto copy = [&](const std::wstring& value, int32_t& start, int32_t& length) {
+            start = offset; length = static_cast<int32_t>(value.size());
+            if (length) std::memcpy(text + offset, value.data(), value.size() * sizeof(char16_t));
+            offset += length;
+        };
+        for (size_t i = 0; i < items.size(); ++i) {
+            const auto& item = items[i];
+            auto& out = output[i]; out = {};
+            out.process_id = item.session->is_system_sounds ? 0 : item.session->process_id;
+            out.system_sounds = item.session->is_system_sounds ? 1 : 0;
+            out.volume = std::clamp(item.volume, 0.0f, 1.0f); out.muted = item.mute ? 1 : 0;
+            copy(item.metadata.name, out.name_offset, out.name_length);
+            copy(item.metadata.path, out.path_offset, out.path_length);
+            copy(item.session->display_name, out.raw_offset, out.raw_length);
+        }
+        return VN_OK;
+    } catch (...) { return VN_ERR_FAIL; }
+}
+
+VN_EXPORT int32_t __stdcall vn_audio_get_sessions_batch(VnAudioSessionState* output, int32_t capacity,
+    char16_t* text, int32_t text_capacity, int32_t* count, int32_t* text_length, int32_t* hresult) noexcept {
+    if (!count || !text_length || !hresult || capacity < 0 || text_capacity < 0 || (capacity && !output) || (text_capacity && !text)) return VN_ERR_INVALID_ARG;
+    *count = *text_length = *hresult = 0;
+    int64_t snapshot = 0;
+    const auto status = vn_audio_sessions_open(&snapshot, count, hresult);
+    if (status != VN_OK) return status;
+    struct Close { int64_t handle; ~Close() { vn_audio_sessions_close(handle); } } close{snapshot};
+    return ReadSessionsBatch(snapshot, output, capacity, text, text_capacity, count, text_length);
+}

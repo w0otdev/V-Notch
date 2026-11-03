@@ -192,3 +192,42 @@ VN_EXPORT int32_t __stdcall vn_audio_capture_invalidate() noexcept {
 }
 
 } // extern "C"
+
+VN_EXPORT int32_t __stdcall vn_audio_get_devices_batch(int64_t list, VnAudioDeviceState* output, int32_t capacity,
+    char16_t* text, int32_t text_capacity, int32_t* count, int32_t* text_length) noexcept {
+    if (!count || !text_length || capacity < 0 || text_capacity < 0 || (capacity && !output) || (text_capacity && !text)) return VN_ERR_INVALID_ARG;
+    *count = *text_length = 0;
+    try {
+        auto lease = ad::g_lists.Acquire(list);
+        if (!lease) return VN_ERR_INVALID_ARG;
+        size_t required = 0;
+        for (const auto& device : lease->devices) required += device.id.size() + device.friendly_name.size();
+        if (required > INT32_MAX || lease->devices.size() > INT32_MAX) return VN_ERR_FAIL;
+        *count = static_cast<int32_t>(lease->devices.size()); *text_length = static_cast<int32_t>(required);
+        if (*count > capacity || *text_length > text_capacity) return VN_ERR_BUFFER_TOO_SMALL;
+        int32_t offset = 0;
+        for (size_t i = 0; i < lease->devices.size(); ++i) {
+            const auto& device = lease->devices[i];
+            auto& out = output[i]; out = {};
+            out.id_offset = offset; out.id_length = static_cast<int32_t>(device.id.size());
+            if (out.id_length) std::memcpy(text + offset, device.id.data(), device.id.size() * sizeof(char16_t));
+            offset += out.id_length;
+            out.name_offset = offset; out.name_length = static_cast<int32_t>(device.friendly_name.size());
+            if (out.name_length) std::memcpy(text + offset, device.friendly_name.data(), device.friendly_name.size() * sizeof(char16_t));
+            offset += out.name_length;
+            out.is_default = device.is_default ? 1 : 0;
+        }
+        return VN_OK;
+    } catch (...) { return VN_ERR_FAIL; }
+}
+
+VN_EXPORT int32_t __stdcall vn_audio_enumerate_devices_batch(int32_t flow, VnAudioDeviceState* output, int32_t capacity,
+    char16_t* text, int32_t text_capacity, int32_t* count, int32_t* text_length, int32_t* hresult) noexcept {
+    if (!count || !text_length || !hresult || capacity < 0 || text_capacity < 0 || (capacity && !output) || (text_capacity && !text)) return VN_ERR_INVALID_ARG;
+    *count = *text_length = *hresult = 0;
+    int64_t list = 0;
+    const auto status = vn_audio_devices_open(flow, &list, count, hresult);
+    if (status != VN_OK) return status;
+    struct Close { int64_t handle; ~Close() { vn_audio_devices_close(handle); } } close{list};
+    return vn_audio_get_devices_batch(list, output, capacity, text, text_capacity, count, text_length);
+}

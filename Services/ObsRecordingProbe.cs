@@ -1,79 +1,14 @@
 using System;
-using System.Buffers;
-using System.Collections.Generic;
 using System.IO;
-using System.Linq;
 using System.Runtime.InteropServices;
-using System.Text;
 
 namespace VNotch.Services;
 
 internal sealed partial class ObsRecordingProbe
 {
-    private readonly Dictionary<string, LogState> _logs = new(StringComparer.OrdinalIgnoreCase);
-    private readonly Dictionary<(int Pid, long Start), string?> _executables = new();
-
-    internal bool IsRecording(PrivacyProcessSnapshot snapshot)
-    {
-        var processes = snapshot.GetProcessesByExecutableName("obs64.exe", "obs32.exe");
-        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        bool active = false;
-        try
-        {
-            foreach (var process in processes)
-            {
-                try
-                {
-                    var folders = new List<string>
-                    {
-                        Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "obs-studio", "logs")
-                    };
-                    var identity = (process.Id, process.StartTime.ToFileTimeUtc());
-                    if (!_executables.TryGetValue(identity, out string? executable))
-                    {
-                        executable = process.MainModule?.FileName;
-                        if (_executables.Count >= 16) _executables.Clear();
-                        _executables[identity] = executable;
-                    }
-                    if (executable != null)
-                    {
-                        var root = Directory.GetParent(executable)?.Parent?.Parent;
-                        if (root != null) folders.Add(Path.Combine(root.FullName, "config", "obs-studio", "logs"));
-                    }
-                    foreach (string folder in folders.Distinct(StringComparer.OrdinalIgnoreCase))
-                    {
-                        if (!Directory.Exists(folder)) continue;
-                        foreach (var file in new DirectoryInfo(folder).EnumerateFiles("*.txt")
-                            .OrderByDescending(f => f.LastWriteTimeUtc).Take(4))
-                        {
-                            if (!RecordingFileOwnership.IsFileOwnedByCached(file.FullName, process, positiveTtlMs: 5000, negativeTtlMs: 10000)) continue;
-                            string key = $"{process.Id}:{process.StartTime.ToFileTimeUtc()}:{file.FullName}";
-                            seen.Add(key);
-                            if (!_logs.TryGetValue(key, out var state)) _logs[key] = state = new LogState();
-                            state.Read(file.FullName);
-                            active |= state.Active;
-                        }
-                    }
-                }
-                catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or
-                    System.ComponentModel.Win32Exception or InvalidOperationException or System.Security.SecurityException)
-                {
-                    // Ignore inaccessible process or log file.
-                }
-            }
-        }
-        finally
-        {
-            foreach (var process in processes) process.Dispose();
-            foreach (string key in _logs.Keys.Where(key => !seen.Contains(key)).ToArray()) _logs.Remove(key);
-        }
-        return active;
-    }
-
     internal sealed class LogState
     {
-        private readonly Decoder _decoder = Encoding.UTF8.GetDecoder();
-        private long _position;
+        private NativeLogState _readState;
         private string _partialLine = "";
         private bool _recording, _streaming, _replay;
         internal bool Active => _recording || _streaming || _replay;
@@ -81,45 +16,13 @@ internal sealed partial class ObsRecordingProbe
 
         internal void Read(string path)
         {
-            using var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
-            const int maxRead = 1024 * 1024;
-            long length = stream.Length;
-            if (length < _position || length - _position > maxRead)
-            {
-                _recording = _streaming = _replay = false;
-                _partialLine = "";
-                _decoder.Reset();
-                _position = Math.Max(0, length - maxRead);
-                if (_position > 0)
-                {
-                    stream.Position = _position;
-                    while (stream.Position < length && stream.ReadByte() != '\n') { /* Advance to next line */ }
-                    _position = stream.Position;
-                }
-            }
-            if (length == _position) return;
-            stream.Position = _position;
-            int toRead = (int)Math.Min(16 * 1024, length - _position);
-            byte[] bytes = ArrayPool<byte>.Shared.Rent(toRead);
-            char[] chars = ArrayPool<char>.Shared.Rent(Encoding.UTF8.GetMaxCharCount(toRead) + 4);
-            try
-            {
-                int read;
-                while (_position < length && (read = stream.Read(bytes, 0, (int)Math.Min(toRead, length - _position))) > 0)
-                {
-                    _position += read;
-                    int charCount = _decoder.GetChars(bytes, 0, read, chars, 0, flush: false);
-                    if (charCount > 0)
-                    {
-                        Feed(chars.AsSpan(0, charCount));
-                    }
-                }
-            }
-            finally
-            {
-                ArrayPool<char>.Shared.Return(chars);
-                ArrayPool<byte>.Shared.Return(bytes);
-            }
+            Span<char> partial = stackalloc char[4096];
+            if (vn_obs_read_log(path, path.Length, ref _readState, partial, partial.Length, out int written) != 0)
+                throw new IOException("Could not read recorder log.");
+            _recording = _readState.Recording != 0;
+            _streaming = _readState.Streaming != 0;
+            _replay = _readState.Replay != 0;
+            _partialLine = written == 0 ? string.Empty : new string(partial[..written]);
         }
 
         internal void Feed(string text) => Feed(text.AsSpan());
@@ -151,6 +54,18 @@ internal sealed partial class ObsRecordingProbe
             _partialLine = outLen > 0 ? new string(outPartial[..outLen]) : "";
         }
     }
+
+    [StructLayout(LayoutKind.Sequential, Pack = 1)]
+    private unsafe struct NativeLogState
+    {
+        public ulong Position, FileId;
+        public byte Recording, Streaming, Replay;
+        public int PartialLength;
+        public fixed byte Partial[4096];
+    }
+    [LibraryImport("VNotch.Native.dll", StringMarshalling = StringMarshalling.Utf16)]
+    private static partial int vn_obs_read_log(ReadOnlySpan<char> path, int pathLength, ref NativeLogState state,
+        Span<char> partial, int capacity, out int written);
 
     [LibraryImport("VNotch.Native.dll")]
     private static unsafe partial int vn_obs_feed_log_chunk(

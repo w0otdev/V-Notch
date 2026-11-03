@@ -140,4 +140,24 @@ public sealed class RecordingProviderTests
         }
         finally { File.Delete(path); }
     }
+
+    [Fact]
+    public void Obs_KeepsActiveOutputsWhenTheStartMarkerIsOutsideTheLastReadChunk()
+    {
+        string path = Path.GetTempFileName();
+        try
+        {
+            File.WriteAllText(path, "==== Recording Start ====\n" + string.Concat(Enumerable.Repeat("ordinary log line\n", 20000)));
+            var state = new ObsRecordingProbe.LogState();
+            state.Read(path);
+            Assert.True(state.Active);
+            File.AppendAllText(path, "==== Streaming Start ====\n==== Recording Stop ====\n");
+            state.Read(path);
+            Assert.True(state.Active);
+            File.AppendAllText(path, "==== Streaming Stop ====\n");
+            state.Read(path);
+            Assert.False(state.Active);
+        }
+        finally { File.Delete(path); }
+    }
 }

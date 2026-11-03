@@ -1,5 +1,4 @@
 using System.Buffers;
-using System.Buffers.Binary;
 using System.Collections.Concurrent;
 using System.IO;
 using System.IO.Compression;
@@ -86,42 +85,12 @@ public sealed partial class ClipboardHistoryStore : IDisposable, IAsyncDisposabl
     }
 
     [LibraryImport(NativeDll, StringMarshalling = StringMarshalling.Utf16)]
-    private static partial int vn_clipboard_store_tokenize_query(
-        ReadOnlySpan<char> query,
-        int queryLen,
-        Span<int> outStarts,
-        Span<int> outLengths,
-        int maxTokens,
-        out int outTokenCount);
-
-    [LibraryImport(NativeDll, StringMarshalling = StringMarshalling.Utf16)]
-    private static partial int vn_clipboard_store_contains_icase(
-        ReadOnlySpan<char> haystack,
-        int haystackLen,
-        ReadOnlySpan<char> needle,
-        int needleLen,
-        out byte outContains);
-
-    [LibraryImport(NativeDll, StringMarshalling = StringMarshalling.Utf16)]
     private static partial int vn_clipboard_store_equals_icase(
         ReadOnlySpan<char> a,
         int aLen,
         ReadOnlySpan<char> b,
         int bLen,
         out byte outEquals);
-
-    [LibraryImport(NativeDll, StringMarshalling = StringMarshalling.Utf16)]
-    private static partial int vn_clipboard_store_entry_matches_metadata_token(
-        byte isSensitive,
-        ReadOnlySpan<char> title,
-        int titleLen,
-        ReadOnlySpan<char> preview,
-        int previewLen,
-        ReadOnlySpan<char> sourceApp,
-        int sourceAppLen,
-        ReadOnlySpan<char> token,
-        int tokenLen,
-        out byte outMatches);
 
     [LibraryImport(NativeDll)]
     private static partial int vn_clipboard_store_plan_prune(
@@ -500,7 +469,7 @@ public sealed partial class ClipboardHistoryStore : IDisposable, IAsyncDisposabl
         try
         {
             var files = new List<ClipboardFile>(capture.FilePaths.Length);
-            using var fileHash = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
+            using var fileHash = NativeClipboardHash.Create();
             AppendCaptureFingerprint(fileHash, capture);
             int copiedItems = 0;
             long copiedSize = 0;
@@ -518,7 +487,7 @@ public sealed partial class ClipboardHistoryStore : IDisposable, IAsyncDisposabl
                     bool directory = (ClipboardImportPaths.ValidateEntry(path) & FileAttributes.Directory) != 0;
                     string stored = $"{files.Count}." + (directory ? "zip" : "bin");
                     AppendUtf8String(fileHash, (directory ? "directory:" : "file:") + name, includeLengthPrefix: true);
-                    using var attachmentHash = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
+                    using var attachmentHash = NativeClipboardHash.Create();
                     long maxAllowedBytes = approved ? long.MaxValue : Math.Max(0L, ApprovalThreshold - copiedSize);
                     using var inputFile = directory ? null : OpenReadFileWithRetry(path);
                     if (!approved && inputFile is { CanSeek: true } && inputFile.Length > maxAllowedBytes)
@@ -619,7 +588,7 @@ public sealed partial class ClipboardHistoryStore : IDisposable, IAsyncDisposabl
                 {
                     AppendUtf8String(fileHash, (file.IsDirectory ? "directory:" : "file:") + file.Name, includeLengthPrefix: true);
                     using var input = File.OpenRead(Path.Combine(staging, file.StoredName + (personal ? ".enc" : "")));
-                    using var attachmentHash = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
+                    using var attachmentHash = NativeClipboardHash.Create();
                     using var hashing = new ClipboardHashingStream(Stream.Null, attachmentHash);
                     if (personal) _vault.TransformFile(input, hashing, encrypt: false);
                     else input.CopyTo(hashing);
@@ -702,135 +671,8 @@ public sealed partial class ClipboardHistoryStore : IDisposable, IAsyncDisposabl
         finally { TryDeleteDirectory(staging); }
     }
 
-    public Task<IReadOnlyList<ClipboardEntry>> SearchAsync(string query, string category, CancellationToken cancellation = default) => Run<IReadOnlyList<ClipboardEntry>>(() =>
-    {
-        bool personal = category == "Personal";
-        if (personal && !IsPersonalUnlocked)
-        {
-            cancellation.ThrowIfCancellationRequested();
-            return Array.Empty<ClipboardEntry>();
-        }
-
-        query ??= string.Empty;
-        int maxTokens = Math.Min(256, (query.Length / 2) + 1);
-        Span<int> tokenStarts = stackalloc int[maxTokens];
-        Span<int> tokenLengths = stackalloc int[maxTokens];
-        _ = vn_clipboard_store_tokenize_query(query.AsSpan(), query.Length, tokenStarts, tokenLengths, maxTokens, out int tokenCount);
-
-        List<ClipboardEntry> candidates;
-        lock (_entriesLock)
-        {
-            candidates = new List<ClipboardEntry>(_entries.Count);
-            foreach (var pair in _entries)
-            {
-                var entry = pair.Value;
-                if (entry.IsPersonal == personal && MatchesCategory(entry, category))
-                    candidates.Add(entry);
-            }
-        }
-
-        var result = new List<ClipboardEntry>(candidates.Count);
-        ReadOnlySpan<char> querySpan = query.AsSpan();
-        for (int i = 0; i < candidates.Count; i++)
-        {
-            cancellation.ThrowIfCancellationRequested();
-            var entry = candidates[i];
-
-            if (tokenCount > 0)
-            {
-                string? fullText = null;
-                bool matches = true;
-                for (int t = 0; t < tokenCount; t++)
-                {
-                    ReadOnlySpan<char> tokenSpan = querySpan.Slice(tokenStarts[t], tokenLengths[t]);
-                    if (!EntryMatchesToken(entry, tokenSpan, ref fullText, cancellation))
-                    {
-                        matches = false;
-                        break;
-                    }
-                }
-                if (!matches) continue;
-            }
-
-            result.Add(entry);
-        }
-
-        result.Sort(s_copiedUtcDescComparison);
-        return result;
-    });
-
-    private bool EntryMatchesToken(ClipboardEntry entry, ReadOnlySpan<char> token, ref string? fullText, CancellationToken cancellation)
-    {
-        if (!token.IsEmpty && token[0] == '@')
-            return MatchesCategory(entry, token[1..], includeArchived: true);
-
-        ReadOnlySpan<char> title = (entry.Title ?? string.Empty).AsSpan();
-        ReadOnlySpan<char> preview = (entry.Preview ?? string.Empty).AsSpan();
-        ReadOnlySpan<char> sourceApp = (entry.SourceApp ?? string.Empty).AsSpan();
-        _ = vn_clipboard_store_entry_matches_metadata_token(
-            entry.IsSensitive ? (byte)1 : (byte)0,
-            title, title.Length,
-            preview, preview.Length,
-            sourceApp, sourceApp.Length,
-            token, token.Length,
-            out byte metaMatch);
-        if (metaMatch != 0)
-            return true;
-
-        var groups = entry.Groups;
-        for (int i = 0; i < groups.Length; i++)
-        {
-            ReadOnlySpan<char> grp = groups[i].AsSpan();
-            _ = vn_clipboard_store_contains_icase(grp, grp.Length, token, token.Length, out byte grpMatch);
-            if (grpMatch != 0)
-                return true;
-            string? labelName = FindLabelNameById(grp);
-            if (labelName != null)
-            {
-                ReadOnlySpan<char> ln = labelName.AsSpan();
-                _ = vn_clipboard_store_contains_icase(ln, ln.Length, token, token.Length, out byte lblMatch);
-                if (lblMatch != 0)
-                    return true;
-            }
-        }
-
-        if (entry.IsSensitive)
-            return false;
-
-        if (fullText == null)
-        {
-            cancellation.ThrowIfCancellationRequested();
-            try
-            {
-                if (!_searchText.TryGet(entry.Id, out fullText))
-                {
-                    fullText = ReadContent(entry).Text;
-                    _searchText.Set(entry.Id, fullText);
-                }
-            }
-            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or JsonException or CryptographicException)
-            {
-                RuntimeLog.Warn("CLIPBOARD", "An unreadable clipboard item was skipped during search.");
-                fullText = string.Empty;
-            }
-        }
-        ReadOnlySpan<char> ft = fullText.AsSpan();
-        _ = vn_clipboard_store_contains_icase(ft, ft.Length, token, token.Length, out byte textMatch);
-        return textMatch != 0;
-    }
-
-    private string? FindLabelNameById(ReadOnlySpan<char> id)
-    {
-        for (int i = 0; i < _labels.Length; i++)
-        {
-            var label = _labels[i];
-            ReadOnlySpan<char> lid = label.Id.AsSpan();
-            _ = vn_clipboard_store_equals_icase(lid, lid.Length, id, id.Length, out byte eq);
-            if (eq != 0)
-                return label.Name;
-        }
-        return null;
-    }
+    public Task<IReadOnlyList<ClipboardEntry>> SearchAsync(string query, string category, CancellationToken cancellation = default)
+        => Run<IReadOnlyList<ClipboardEntry>>(() => SearchCore(query, category, cancellation));
 
     public static bool MatchesCategory(ClipboardEntry entry, string category, bool includeArchived = false) =>
         MatchesCategory(entry, (category ?? string.Empty).AsSpan(), includeArchived);
@@ -868,6 +710,7 @@ public sealed partial class ClipboardHistoryStore : IDisposable, IAsyncDisposabl
         var entry = Find(id);
         string path = Path.Combine(EntryDirectory(entry), "image.png" + (entry.IsPersonal ? ".enc" : ""));
         if (!File.Exists(path)) return null;
+        if (entry.IsPersonal) return _vault.ReadImage(path, cancellation);
         byte[]? bytes = null;
         try
         {
@@ -881,7 +724,6 @@ public sealed partial class ClipboardHistoryStore : IDisposable, IAsyncDisposabl
                 offset += read;
             }
             cancellation.ThrowIfCancellationRequested();
-            if (entry.IsPersonal) bytes = _vault.Open(bytes);
             cancellation.ThrowIfCancellationRequested();
             return bytes;
         }
@@ -946,14 +788,9 @@ public sealed partial class ClipboardHistoryStore : IDisposable, IAsyncDisposabl
             if (entry.Kind == ClipboardKind.Image && content.Files.Length == 0)
             {
                 string destination = Path.Combine(export, "Image.png");
-                byte[] bytes = File.ReadAllBytes(Path.Combine(EntryDirectory(entry), "image.png" + (entry.IsPersonal ? ".enc" : "")));
-                if (entry.IsPersonal) bytes = _vault.Open(bytes);
-                try
-                {
-                    if (personalExport != null) personalExport.WriteFile(destination, output => output.Write(bytes));
-                    else File.WriteAllBytes(destination, bytes);
-                }
-                finally { if (entry.IsPersonal) CryptographicOperations.ZeroMemory(bytes); }
+                string imagePath = Path.Combine(EntryDirectory(entry), "image.png" + (entry.IsPersonal ? ".enc" : ""));
+                if (personalExport != null) personalExport.WriteFile(destination, output => _vault.CopyImage(imagePath, output));
+                else File.Copy(imagePath, destination);
                 paths.Add(destination);
             }
             if (personalExport != null)
@@ -1009,7 +846,7 @@ public sealed partial class ClipboardHistoryStore : IDisposable, IAsyncDisposabl
                             output.Write(buf, 0, read);
                         }
                     }
-                    finally { ArrayPool<byte>.Shared.Return(buf); }
+                    finally { ArrayPool<byte>.Shared.Return(buf, clearArray: lease != null); }
                 };
                 if (lease != null) lease.WriteFile(path, copyBounded);
                 else { using (var output = File.Create(path)) copyBounded(output); if (entry.LastWriteTime.Year is >= 1980 and <= 2107) File.SetLastWriteTime(path, entry.LastWriteTime.DateTime); }
@@ -2168,7 +2005,7 @@ public sealed partial class ClipboardHistoryStore : IDisposable, IAsyncDisposabl
         }
         return size;
     }
-    private static string FormatPrefixedHash(ReadOnlySpan<char> prefix, IncrementalHash hash)
+    private static string FormatPrefixedHash(ReadOnlySpan<char> prefix, NativeClipboardHash hash)
     {
         Span<byte> digest = stackalloc byte[32];
         hash.GetHashAndReset(digest);
@@ -2186,73 +2023,45 @@ public sealed partial class ClipboardHistoryStore : IDisposable, IAsyncDisposabl
     private static string Fingerprint(ClipboardCapture capture)
     {
         if (capture.ImagePng != null) return capture.ImagePixelFingerprint ?? ImagePixelFingerprint(capture.ImagePng);
-        using var hash = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
+        using var hash = NativeClipboardHash.Create();
         AppendCaptureFingerprint(hash, capture);
         return FormatPrefixedHash(ReadOnlySpan<char>.Empty, hash);
     }
 
     private static string FingerprintImageFile(string path)
     {
-        using var input = File.OpenRead(path);
-        return FingerprintImageStream(input);
+        Span<byte> digest = stackalloc byte[32];
+        if (!NativeClipboardHash.TryHashImage(default, path, digest)) throw new IOException("Could not decode clipboard image.");
+        return FormatPrefixedHashBytes("image-v2:", digest);
     }
 
     private static string ImagePixelFingerprint(byte[] image)
     {
-        try
-        {
-            using var input = new MemoryStream(image, writable: false);
-            return FingerprintImageStream(input);
-        }
-        catch (Exception ex) when (ex is NotSupportedException or ArgumentException or IOException
-            or System.Runtime.InteropServices.COMException or InvalidOperationException or OverflowException)
-        {
-            return HashRawImageBytes(image);
-        }
+        Span<byte> digest = stackalloc byte[32];
+        return NativeClipboardHash.TryHashImage(image, null, digest)
+            ? FormatPrefixedHashBytes("image-v2:", digest) : HashRawImageBytes(image);
     }
 
     private static string HashRawImageBytes(byte[] image)
     {
         Span<byte> digest = stackalloc byte[32];
-        SHA256.HashData(image, digest);
+        NativeClipboardHash.HashData(image, digest);
         return FormatPrefixedHashBytes("image-raw:", digest);
-    }
-
-    private static string FingerprintImageStream(Stream input)
-    {
-        var decoder = System.Windows.Media.Imaging.BitmapDecoder.Create(input,
-            System.Windows.Media.Imaging.BitmapCreateOptions.PreservePixelFormat,
-            System.Windows.Media.Imaging.BitmapCacheOption.None);
-        return FingerprintPixels(decoder.Frames[0]);
     }
 
     internal static string FingerprintPixels(System.Windows.Media.Imaging.BitmapSource source)
     {
-        using var hash = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
-        var pixels = new System.Windows.Media.Imaging.FormatConvertedBitmap(source,
-            System.Windows.Media.PixelFormats.Pbgra32, null, 0);
-        int width = pixels.PixelWidth, height = pixels.PixelHeight;
-        Span<byte> dims = stackalloc byte[8];
-        BinaryPrimitives.WriteInt32LittleEndian(dims[..4], width);
-        BinaryPrimitives.WriteInt32LittleEndian(dims[4..8], height);
-        hash.AppendData(dims);
-        int stride = checked(width * 4);
-        int rows = Math.Min(height, 16);
-        byte[] buffer = ArrayPool<byte>.Shared.Rent(checked(stride * rows));
-        try
-        {
-            for (int y = 0; y < height; y += rows)
-            {
-                int count = Math.Min(rows, height - y);
-                pixels.CopyPixels(new System.Windows.Int32Rect(0, y, width, count), buffer, stride, 0);
-                hash.AppendData(buffer.AsSpan(0, stride * count));
-            }
-            return FormatPrefixedHash("image-v2:", hash);
-        }
-        finally { CryptographicOperations.ZeroMemory(buffer); ArrayPool<byte>.Shared.Return(buffer); }
+        var converted = source.Format == System.Windows.Media.PixelFormats.Pbgra32 ? source :
+            new System.Windows.Media.Imaging.FormatConvertedBitmap(source, System.Windows.Media.PixelFormats.Pbgra32, null, 0);
+        var pixels = new System.Windows.Media.Imaging.WriteableBitmap(converted);
+        Span<byte> digest = stackalloc byte[32];
+        pixels.Lock();
+        try { NativeClipboardHash.HashPixels(pixels.BackBuffer, pixels.PixelWidth, pixels.PixelHeight, pixels.BackBufferStride, digest); }
+        finally { pixels.Unlock(); }
+        return FormatPrefixedHashBytes("image-v2:", digest);
     }
 
-    private static void AppendCaptureFingerprint(IncrementalHash hash, ClipboardCapture capture)
+    private static void AppendCaptureFingerprint(NativeClipboardHash hash, ClipboardCapture capture)
     {
         AppendUtf8String(hash, capture.Text, includeLengthPrefix: true);
         AppendUtf8String(hash, capture.Html, includeLengthPrefix: true);
@@ -2260,38 +2069,8 @@ public sealed partial class ClipboardHistoryStore : IDisposable, IAsyncDisposabl
         if (capture.ImagePng != null) hash.AppendData(capture.ImagePng);
     }
 
-    private static void AppendUtf8String(IncrementalHash hash, string? value, bool includeLengthPrefix)
-    {
-        value ??= string.Empty;
-        int byteCount = Encoding.UTF8.GetByteCount(value);
-        if (includeLengthPrefix)
-        {
-            Span<byte> lenBytes = stackalloc byte[4];
-            BinaryPrimitives.WriteInt32LittleEndian(lenBytes, byteCount);
-            hash.AppendData(lenBytes);
-        }
-        if (byteCount == 0) return;
-
-        if (byteCount <= 512)
-        {
-            Span<byte> utf8 = stackalloc byte[byteCount];
-            Encoding.UTF8.GetBytes(value.AsSpan(), utf8);
-            hash.AppendData(utf8);
-        }
-        else
-        {
-            byte[] rented = ArrayPool<byte>.Shared.Rent(byteCount);
-            try
-            {
-                int written = Encoding.UTF8.GetBytes(value.AsSpan(), rented.AsSpan(0, byteCount));
-                hash.AppendData(rented.AsSpan(0, written));
-            }
-            finally
-            {
-                ArrayPool<byte>.Shared.Return(rented);
-            }
-        }
-    }
+    private static void AppendUtf8String(NativeClipboardHash hash, string? value, bool includeLengthPrefix)
+        => hash.AppendUtf16(value, includeLengthPrefix);
 
     private void EnsureDiskSpace(long bytes)
     {

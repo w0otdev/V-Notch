@@ -169,9 +169,12 @@ public sealed class SpotifyCanvasPresenter : ISpotifyCanvasPresenter
 
             if (_standbyVideo != null)
             {
-                ReleaseVideo(_standbyVideo);
+                _standbyVideo.Stop();
+                _standbyVideo.BeginAnimation(UIElement.OpacityProperty, null);
                 Panel.SetZIndex(_standbyVideo, 0);
                 _standbyVideo.Opacity = 0.0;
+                _standbyVideo.Source = uri;
+                _standbyVideo.Pause();
             }
 
             _activeVideo.Stop();
@@ -267,7 +270,7 @@ public sealed class SpotifyCanvasPresenter : ISpotifyCanvasPresenter
                 _refs.Video.Stop();
                 if (_refs.VideoAlt != null)
                 {
-                    ReleaseVideo(_refs.VideoAlt);
+                    _refs.VideoAlt.Stop();
                 }
             }
         }

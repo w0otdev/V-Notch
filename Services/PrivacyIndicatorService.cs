@@ -269,6 +269,7 @@ public sealed partial class PrivacyIndicatorService : IDisposable
         using var machineChanges = _registryChanged == null
             ? new RegistryChangeMonitor(Registry.LocalMachine, ConsentRoot, onChanged: Wake) : null;
         var capabilityCache = new CapabilityUsageCache(_scanCapability);
+        using var nativeCache = _scanCapability == (Func<string, IReadOnlyList<CapabilityUsage>>)ScanCapability ? NativeConsentCache.Create() : null;
         while (!token.IsCancellationRequested)
         {
             PrivacyScanResult? result = null;
@@ -292,9 +293,10 @@ public sealed partial class PrivacyIndicatorService : IDisposable
                         bool machineChanged = machineChanges!.ConsumeChange();
                         registryChanged = userChanged || machineChanged;
                     }
-                    var capabilities = capabilityCache.GetSnapshot(registryChanged, Environment.TickCount64);
-                    // Process exits and recording-duration thresholds still need reconciliation.
-                    result = ExecuteBackgroundScan(utcNow, capabilities);
+                    if (nativeCache != null)
+                        result = ExecuteNativeBackgroundScan(utcNow, nativeCache, registryChanged);
+                    else
+                        result = ExecuteBackgroundScan(utcNow, capabilityCache.GetSnapshot(registryChanged, Environment.TickCount64));
                 }
                 finally
                 {
@@ -339,20 +341,27 @@ public sealed partial class PrivacyIndicatorService : IDisposable
         var locationUsage = capabilities?[4] ?? _scanCapability("location");
 
         using var running = new ConsumerProcessProbe();
-        var microphoneCandidates = GetRelevantConsumerUsages(
+        return BuildBackgroundScan(utcNow, micUsage, camUsage, programmaticCapture, borderlessCapture, locationUsage, running);
+    }
+
+    private PrivacyScanResult BuildBackgroundScan(DateTime utcNow, IReadOnlyList<CapabilityUsage> micUsage,
+        IReadOnlyList<CapabilityUsage> camUsage, IReadOnlyList<CapabilityUsage> programmaticCapture,
+        IReadOnlyList<CapabilityUsage> borderlessCapture, IReadOnlyList<CapabilityUsage> locationUsage, ConsumerProcessProbe running, bool nativeConsumers = false)
+    {
+        var microphoneCandidates = nativeConsumers ? micUsage : GetRelevantConsumerUsages(
             micUsage,
             running.IsRunning,
             s_notIgnoredMicRule);
         var microphoneCandidateNames = GetConsumerNames(microphoneCandidates);
 
-        var cam = GetRelevantConsumerUsages(camUsage, running.IsRunning);
+        var cam = nativeConsumers ? camUsage : GetRelevantConsumerUsages(camUsage, running.IsRunning);
         var cameraConsumers = GetConsumerNames(cam);
         bool cameraInUse = cameraConsumers.Count > 0;
-        var locationConsumers = GetConsumerNames(GetRelevantConsumerUsages(locationUsage, running.IsRunning));
+        var locationConsumers = GetConsumerNames(nativeConsumers ? locationUsage : GetRelevantConsumerUsages(locationUsage, running.IsRunning));
         bool screenRecordingActive =
-            DetectScreenRecording(programmaticCapture, running, utcNow) ||
-            DetectScreenRecording(borderlessCapture, running, utcNow) ||
-            _screenRecordingProbe.IsRecording(running.GetProcessSnapshot);
+            DetectScreenRecording(programmaticCapture, running, utcNow, nativeConsumers) ||
+            DetectScreenRecording(borderlessCapture, running, utcNow, nativeConsumers) ||
+            _screenRecordingProbe.IsRecordingWithSnapshot(running.CapturedProcessSnapshot);
 
         return new PrivacyScanResult(
             MicrophoneCandidates: microphoneCandidates,
@@ -929,12 +938,12 @@ public sealed partial class PrivacyIndicatorService : IDisposable
     private static bool DetectScreenRecording(
         IReadOnlyList<CapabilityUsage> usages,
         ConsumerProcessProbe running,
-        DateTime utcNow)
+        DateTime utcNow, bool consumersFiltered = false)
     {
         for (int i = 0; i < usages.Count; i++)
         {
             var usage = usages[i];
-            if (running.IsRunning(usage.RawName) &&
+            if ((consumersFiltered || running.IsRunning(usage.RawName)) &&
                 HasMinimumActiveDuration(usage.LastStartFileTime, utcNow, MinimumScreenRecordingDuration))
             {
                 return true;
@@ -1057,145 +1066,6 @@ public sealed partial class PrivacyIndicatorService : IDisposable
         }
     }
 
-    internal sealed class ConsumerProcessProbe : IDisposable
-    {
-        private sealed class ProcessConsumerKeyComparer : IEqualityComparer<(uint ProcessId, string RawConsumer)>
-        {
-            public static readonly ProcessConsumerKeyComparer Instance = new();
-            public bool Equals((uint ProcessId, string RawConsumer) x, (uint ProcessId, string RawConsumer) y) =>
-                x.ProcessId == y.ProcessId &&
-                string.Equals(x.RawConsumer, y.RawConsumer, StringComparison.OrdinalIgnoreCase);
-
-            public int GetHashCode((uint ProcessId, string RawConsumer) obj) =>
-                HashCode.Combine(obj.ProcessId, StringComparer.OrdinalIgnoreCase.GetHashCode(obj.RawConsumer ?? string.Empty));
-        }
-
-        private readonly Dictionary<string, bool> _cache = new(StringComparer.OrdinalIgnoreCase);
-        private readonly Dictionary<(uint ProcessId, string RawConsumer), bool> _processMatchCache = new(ProcessConsumerKeyComparer.Instance);
-        private PrivacyProcessSnapshot? _processSnapshot;
-
-        internal PrivacyProcessSnapshot GetProcessSnapshot()
-            => _processSnapshot ??= PrivacyProcessSnapshot.Capture();
-
-        public bool IsRunning(string rawConsumer)
-        {
-            if (_cache.TryGetValue(rawConsumer, out bool running)) return running;
-            running = TryDecodeDesktopConsumerPath(rawConsumer) is { } path
-                ? IsDesktopExecutableRunning(path)
-                : IsPackageFamilyRunning(rawConsumer);
-            _cache[rawConsumer] = running;
-            return running;
-        }
-
-        public bool MatchesProcess(string rawConsumer, uint processId)
-        {
-            if (processId == 0) return false;
-
-            var key = (processId, rawConsumer);
-            if (_processMatchCache.TryGetValue(key, out bool matches)) return matches;
-
-            matches = TryDecodeDesktopConsumerPath(rawConsumer) is { } path
-                ? IsDesktopExecutableProcess(path, processId)
-                : IsPackageFamilyProcess(rawConsumer, processId);
-            _processMatchCache[key] = matches;
-            return matches;
-        }
-
-        private bool IsDesktopExecutableRunning(string executablePath)
-        {
-            string processName = Path.GetFileName(executablePath);
-            if (string.IsNullOrWhiteSpace(processName)) return false;
-
-            _processSnapshot ??= PrivacyProcessSnapshot.Capture();
-            for (int i = 0; i < _processSnapshot.Count; i++)
-                if (_processSnapshot.MatchesExecutableName(i, processName) &&
-                    IsDesktopExecutableProcess(executablePath, _processSnapshot.GetProcessId(i))) return true;
-            return false;
-        }
-
-        internal static bool IsDesktopExecutableProcess(string executablePath, uint processId) =>
-            Win32Interop.ProcessImagePathEquals(processId, executablePath);
-        private static readonly System.Collections.Concurrent.ConcurrentDictionary<uint, (string Family, long ExpireTicks)> _packageFamilyByPidCache = new();
-        private const int MaxPackageFamilyPidCacheEntries = 2048;
-        private static readonly object PackageFamilyCacheLock = new();
-
-        private static void CachePackageFamilyForPid(uint processId, string family, long expireTicks, long now)
-        {
-            lock (PackageFamilyCacheLock)
-            {
-                if (_packageFamilyByPidCache.Count >= MaxPackageFamilyPidCacheEntries &&
-                    !_packageFamilyByPidCache.ContainsKey(processId))
-                {
-                    foreach (var kvp in _packageFamilyByPidCache)
-                    {
-                        if (now >= kvp.Value.ExpireTicks)
-                        {
-                            _packageFamilyByPidCache.TryRemove(kvp.Key, out _);
-                        }
-                    }
-                    if (_packageFamilyByPidCache.Count >= MaxPackageFamilyPidCacheEntries)
-                    {
-                        // Evict only the entry closest to expiry. Clearing the entire cache
-                        // forces every remaining PID through OpenProcess again on this scan.
-                        uint oldestPid = 0;
-                        long oldestExpiry = long.MaxValue;
-                        foreach (var entry in _packageFamilyByPidCache)
-                        {
-                            if (entry.Value.ExpireTicks < oldestExpiry)
-                            {
-                                oldestPid = entry.Key;
-                                oldestExpiry = entry.Value.ExpireTicks;
-                            }
-                        }
-                        _packageFamilyByPidCache.TryRemove(oldestPid, out _);
-                    }
-                }
-                _packageFamilyByPidCache[processId] = (family, expireTicks);
-            }
-        }
-
-        private bool IsPackageFamilyRunning(string packageFamily)
-        {
-            if (string.IsNullOrWhiteSpace(packageFamily)) return false;
-
-            _processSnapshot ??= PrivacyProcessSnapshot.Capture();
-            for (int i = 0; i < _processSnapshot.Count; i++)
-                if (IsPackageFamilyProcess(packageFamily, _processSnapshot.GetProcessId(i))) return true;
-            return false;
-        }
-
-        public void Dispose() => _processSnapshot?.Dispose();
-
-        private static bool IsPackageFamilyProcess(string packageFamily, uint processId)
-        {
-            if (string.IsNullOrWhiteSpace(packageFamily) || processId == 0) return false;
-
-            long now = Environment.TickCount64;
-            if (_packageFamilyByPidCache.TryGetValue(processId, out var cached) && now < cached.ExpireTicks)
-            {
-                return !string.IsNullOrEmpty(cached.Family) &&
-                       string.Equals(cached.Family, packageFamily, StringComparison.OrdinalIgnoreCase);
-            }
-
-            try
-            {
-                string? family = Win32Interop.GetProcessPackageFamilyName(processId, out int failure);
-                if (family != null)
-                {
-                    CachePackageFamilyForPid(processId, family, now + 60000, now);
-                    return string.Equals(family, packageFamily, StringComparison.OrdinalIgnoreCase);
-                }
-
-                bool openFailed = failure == Win32Interop.ProcessPackageFamilyOpenFailed;
-                CachePackageFamilyForPid(processId, string.Empty, now + (openFailed ? 15000 : 30000), now);
-                return false;
-            }
-            catch
-            {
-                return false;
-            }
-        }
-    }
     // Capture sessions, meters and endpoint notifications live in Native/Services/MicrophoneProbe.cpp. This class
     // keeps the topology-refresh schedule and decides which processes count as a consumer.
     private sealed unsafe partial class MicrophoneFlowProbe : IDisposable

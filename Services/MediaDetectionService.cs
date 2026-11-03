@@ -1102,6 +1102,18 @@ public sealed partial class MediaDetectionService : IMediaDetectionService, IAsy
     }
 
 #pragma warning disable S3776
+    private MediaWindowTitle? FindMediaWindowTitle(bool recovery, List<string>? titles)
+    {
+        if (titles != null)
+        {
+            foreach (string title in titles)
+                if (WindowTitleScanner.ParseMediaWindowTitle(title, recovery) is { } match) return match;
+            return null;
+        }
+        return _windowTitleScanner.FindMediaWindowTitle(recovery,
+            _timelineSimulator.IsThrottled || _currentMode == DetectionMode.AwaitingMetadata);
+    }
+
     private void ApplyWindowTitleFallback(MediaInfo info, ref List<string>? windowTitles)
     {
         bool needsFallback = !info.IsAnyMediaPlaying || (string.IsNullOrEmpty(info.CurrentTrack) && info.Platform == MediaPlatform.Browser) || info.Platform == MediaPlatform.Browser || string.IsNullOrEmpty(info.MediaSource);
@@ -1113,8 +1125,6 @@ public sealed partial class MediaDetectionService : IMediaDetectionService, IAsy
 
         if (needsFallback && (info.IsAnyMediaPlaying || recentlyHadMedia))
         {
-            windowTitles ??= GetAllWindowTitles();
-
             if (info.Platform != MediaPlatform.Spotify)
             {
                 var wTitle = _spotifyWindowTitle();
@@ -1130,41 +1140,24 @@ public sealed partial class MediaDetectionService : IMediaDetectionService, IAsy
                 }
             }
 
-            if (string.IsNullOrEmpty(info.CurrentTrack))
+            if (string.IsNullOrEmpty(info.CurrentTrack) &&
+                MediaMetadataRecoveryPolicy.CanUseBrowserWindowTitleFallback(info.IsSpotifyPlaying, info.MediaSource) &&
+                FindMediaWindowTitle(false, windowTitles) is { } match)
             {
-                foreach (var title in windowTitles)
+                info.IsAnyMediaPlaying = true;
+                info.CurrentTrack = match.Track;
+                info.CurrentArtist = match.Artist;
+                if (match.Platform == MediaPlatform.YouTube)
                 {
-                    if (title.Contains(YouTubePlatformName, StringComparison.OrdinalIgnoreCase) &&
-                        !title.StartsWith(YouTubePlatformName + " -", StringComparison.OrdinalIgnoreCase) &&
-                        !title.Equals(YouTubePlatformName, StringComparison.OrdinalIgnoreCase) &&
-                        MediaMetadataRecoveryPolicy.CanUseBrowserWindowTitleFallback(info.IsSpotifyPlaying, info.MediaSource))
-                    {
-                        info.IsAnyMediaPlaying = true;
-                        info.MediaSource = MediaPlatform.YouTube.ToDisplayString();
-                        info.YouTubeTitle = ExtractVideoTitle(title, YouTubePlatformName);
-                        info.CurrentTrack = info.YouTubeTitle;
-
-                        info.CurrentArtist = !string.IsNullOrEmpty(_stableArtist) && (DateTime.UtcNow - _lastSourceConfirmedTime).TotalSeconds < 15.0 ? _stableArtist : YouTubePlatformName;
-                        break;
-                    }
-
-                    if (title.Contains(SoundCloudPlatformName, StringComparison.OrdinalIgnoreCase) &&
-                        !title.StartsWith(SoundCloudPlatformName + " -", StringComparison.OrdinalIgnoreCase) &&
-                        !title.Equals(SoundCloudPlatformName, StringComparison.OrdinalIgnoreCase) &&
-                        MediaMetadataRecoveryPolicy.CanUseBrowserWindowTitleFallback(info.IsSpotifyPlaying, info.MediaSource))
-                    {
-                        info.IsAnyMediaPlaying = true;
-                        MediaSourceClassifier.SetPlatformRunning(info, MediaPlatform.SoundCloud);
-
-                        string extractedTitle = ExtractVideoTitle(title, SoundCloudPlatformName);
-                        var (parsedArtist, parsedTrack) = PlatformDetector.ParseSoundCloudTitle(extractedTitle);
-                        info.CurrentTrack = parsedTrack;
-                        info.CurrentArtist = parsedArtist;
-
-                        SetSessionSourceOverride(info, MediaPlatform.SoundCloud.ToDisplayString());
-
-                        break;
-                    }
+                    info.MediaSource = YouTubePlatformName;
+                    info.YouTubeTitle = match.ExtractedTitle;
+                    if (!string.IsNullOrEmpty(_stableArtist) && (DateTime.UtcNow - _lastSourceConfirmedTime).TotalSeconds < 15.0)
+                        info.CurrentArtist = _stableArtist;
+                }
+                else
+                {
+                    MediaSourceClassifier.SetPlatformRunning(info, MediaPlatform.SoundCloud);
+                    SetSessionSourceOverride(info, SoundCloudPlatformName);
                 }
             }
         }
@@ -1216,32 +1209,11 @@ public sealed partial class MediaDetectionService : IMediaDetectionService, IAsy
                 if (!foundRecovery)
                 {
 
-                    windowTitles ??= GetAllWindowTitles();
-                    Span<char> trackBuf = stackalloc char[512];
-                    Span<char> artistBuf = stackalloc char[512];
-
-                    foreach (var title in windowTitles)
+                    if (FindMediaWindowTitle(true, windowTitles) is { } match)
                     {
-                        if (title.Contains(YouTubePlatformName, StringComparison.OrdinalIgnoreCase) &&
-                            !title.StartsWith(YouTubePlatformName + " -", StringComparison.OrdinalIgnoreCase) &&
-                            !title.Equals(YouTubePlatformName, StringComparison.OrdinalIgnoreCase))
-                        {
-                            var extractedTitle = ExtractVideoTitle(title, YouTubePlatformName);
-                            string trackName = extractedTitle;
-                            string artistName = YouTubePlatformName;
-                            if (vn_media_detection_parse_youtube_window_title(
-                                    extractedTitle.AsSpan(), extractedTitle.Length,
-                                    trackBuf, trackBuf.Length, out int tLen,
-                                    artistBuf, artistBuf.Length, out int aLen) == 0)
-                            {
-                                trackName = new string(trackBuf[..tLen]);
-                                artistName = new string(artistBuf[..aLen]);
-                            }
-
-                            if (string.IsNullOrWhiteSpace(trackName) ||
-                                trackName.Equals(YouTubePlatformName, StringComparison.OrdinalIgnoreCase) ||
-                                trackName.StartsWith("- " + YouTubePlatformName, StringComparison.OrdinalIgnoreCase))
-                                continue;
+                            string extractedTitle = match.ExtractedTitle;
+                            string trackName = match.Track;
+                            string artistName = match.Artist;
 
                             bool isSameSplitTitle = !string.IsNullOrEmpty(_lastTrackName) &&
                                 (string.Equals(trackName, _lastTrackName, StringComparison.OrdinalIgnoreCase) ||
@@ -1268,7 +1240,6 @@ public sealed partial class MediaDetectionService : IMediaDetectionService, IAsy
                                 info.LastUpdated = DateTimeOffset.Now;
                                 ApplyTimelineAvailability(info, true, true, false, TimeSpan.Zero, DateTime.UtcNow);
                                 foundRecovery = true;
-                                break;
                             }
                             else if (positionStuck || _timelineSimulator.IsThrottled)
                             {
@@ -1297,9 +1268,7 @@ public sealed partial class MediaDetectionService : IMediaDetectionService, IAsy
                                 info.LastUpdated = DateTimeOffset.Now;
                                 ApplyTimelineAvailability(info, true, false, false, info.Duration, DateTime.UtcNow);
                                 foundRecovery = true;
-                                break;
                             }
-                        }
                     }
                 }
 
@@ -1324,7 +1293,9 @@ public sealed partial class MediaDetectionService : IMediaDetectionService, IAsy
 
     private void ApplyPrePublishThumbnailFallbackAndCrop(MediaInfo info, bool isNewTrackForThumbnail)
     {
-        if (!info.IsAnyMediaPlaying && string.IsNullOrEmpty(info.CurrentTrack))
+        // Metadata may briefly disappear between tracks while the source session remains open.
+        if (!info.IsAnyMediaPlaying && string.IsNullOrEmpty(info.CurrentTrack) &&
+            string.IsNullOrEmpty(info.SourceAppId))
         {
             info.Thumbnail = null;
             CachedThumbnail = null;
@@ -3972,12 +3943,9 @@ public sealed partial class MediaDetectionService : IMediaDetectionService, IAsy
         {
             try
             {
-                var titles = GetAllWindowTitles();
-                if (titles != null && titles.Count > 0 &&
-                    PlatformDetector.HasReliableWindowMatch(titles, info.CurrentTrack, YouTubeLowerPlatformName))
-                {
+                if (_windowTitleScanner.HasYouTubeWindowMatch(info.CurrentTrack,
+                        _timelineSimulator.IsThrottled || _currentMode == DetectionMode.AwaitingMetadata))
                     return true;
-                }
             }
             catch
             {

@@ -103,6 +103,37 @@ namespace sys = vnotch::services::sysinterop;
 
 extern "C" {
 
+VN_EXPORT int32_t __stdcall vn_privproc_contains_consumer(const VnPrivacyProcessEntry* entries, int32_t count,
+    const char16_t* consumer, int32_t length, uint8_t package, uint8_t* running) noexcept {
+    if (!running || count < 0 || (count && !entries) || !consumer || length <= 0) return VN_ERR_INVALID_ARG;
+    *running = 0;
+    const std::u16string_view expected(consumer, length);
+    if (sys::HasEmbeddedNull(expected)) return VN_ERR_INVALID_ARG;
+    const auto slash = expected.find_last_of(u"\\/");
+    const auto name = expected.substr(slash == expected.npos ? 0 : slash + 1);
+    try {
+        for (int32_t i = 0; i < count; ++i) {
+            if (!package) {
+                const auto& executable = entries[i].executable_file;
+                size_t chars = 0;
+                while (chars < std::size(executable) && executable[chars]) ++chars;
+                if (!sys::OrdinalEqualsIgnoreCase(std::u16string_view(executable, chars), name)) continue;
+            }
+            sys::ProcessHandle process(entries[i].process_id);
+            if (!process) continue;
+            bool match = false;
+            if (!package) match = sys::ImagePathEquals(process.handle, expected);
+            else {
+                wchar_t family[512]; UINT32 chars = std::size(family);
+                if (GetPackageFamilyName(process.handle, &chars, family) == ERROR_SUCCESS && chars > 1)
+                    match = sys::OrdinalEqualsIgnoreCase(std::u16string_view(reinterpret_cast<const char16_t*>(family), chars - 1), expected);
+            }
+            if (match) { *running = 1; break; }
+        }
+        return VN_OK;
+    } catch (...) { return VN_ERR_FAIL; }
+}
+
 // ---------------------------------------------------------------- processes
 
 // Fills buffer with up to capacity entries; out_total is the full process count so callers can retry larger.

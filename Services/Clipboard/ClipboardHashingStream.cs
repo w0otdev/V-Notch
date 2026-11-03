@@ -1,10 +1,9 @@
 using System.IO;
-using System.Security.Cryptography;
 
 namespace VNotch.Services.Clipboard;
 
 /// <summary>Hashes the exact archive/file bytes as they are written, without rereading the copy.</summary>
-internal sealed class ClipboardHashingStream(Stream output, IncrementalHash hash) : Stream
+internal sealed class ClipboardHashingStream(Stream output, NativeClipboardHash hash) : Stream
 {
     internal long BytesWritten { get; private set; }
     public override bool CanRead => false;

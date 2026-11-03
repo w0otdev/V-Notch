@@ -8,6 +8,33 @@ namespace VNotch.Tests;
 public sealed class SelectionTextReaderTests
 {
     [Fact]
+    public void NativeSelectionRetainsRangeIdentityAndHonorsCancelledReplacement() => SharedStaTestRunner.Run(() =>
+    {
+        var text = new System.Windows.Controls.TextBox { Text = "First second", Width = 300, Height = 100 };
+        var window = new Window { Content = text, Width = 320, Height = 160, Opacity = 0, ShowInTaskbar = false, ShowActivated = false };
+        BackgroundTestWindows.ProtectInput(window);
+        try
+        {
+            window.Show(); window.UpdateLayout(); text.Select(0, 5);
+            var hwnd = new System.Windows.Interop.WindowInteropHelper(window).Handle;
+            using var first = SelectionTextReader.Read(hwnd, null, false, out _, allowOwnProcess: true);
+            Assert.NotNull(first);
+            using var same = SelectionTextReader.Read(hwnd, null, false, out _, allowOwnProcess: true, previousSelection: first.Native);
+            Assert.NotNull(same);
+            Assert.True(first.Native.SameSelection(same.Native));
+            using var cancelled = new CancellationTokenSource(); cancelled.Cancel();
+            Assert.ThrowsAny<OperationCanceledException>(() => first.Native.PrepareReplace(first.Text, "replacement", cancelled.Token));
+            Assert.Equal("First second", text.Text);
+            text.Select(6, 6);
+            using var changed = SelectionTextReader.Read(hwnd, null, false, out _, allowOwnProcess: true, previousSelection: first.Native);
+            Assert.NotNull(changed);
+            Assert.Equal("second", changed.Text);
+            Assert.False(first.Native.SameSelection(changed.Native));
+        }
+        finally { window.Close(); }
+    });
+
+    [Fact]
     public void MultipleSelectedRangesPreserveOrderAndExcludeEmptyCarets()
         => Assert.Equal("first\nsecond", SelectionTextReader.JoinSelection(["first", "", "second"]));
 
@@ -119,7 +146,7 @@ public sealed class SelectionTextReaderTests
             rtb.SelectAll();
             var hwnd = new System.Windows.Interop.WindowInteropHelper(window).Handle;
             var root = System.Windows.Automation.AutomationElement.FromHandle(hwnd);
-            var result = SelectionTextReader.Read(hwnd, null, manual: true, out bool protectedInput, rootElement: root, allowOwnProcess: true);
+            using var result = SelectionTextReader.Read(hwnd, null, manual: true, out bool protectedInput, rootElement: root, allowOwnProcess: true);
             Assert.False(protectedInput);
             Assert.NotNull(result);
             Assert.Contains("Tiếng Việt", result.Text);
@@ -143,7 +170,7 @@ public sealed class SelectionTextReaderTests
             tb.Select(9, 6);
             var hwnd = new System.Windows.Interop.WindowInteropHelper(window).Handle;
             var root = System.Windows.Automation.AutomationElement.FromHandle(hwnd);
-            var result = SelectionTextReader.Read(hwnd, null, manual: true, out bool protectedInput, rootElement: root, allowOwnProcess: true);
+            using var result = SelectionTextReader.Read(hwnd, null, manual: true, out bool protectedInput, rootElement: root, allowOwnProcess: true);
             Assert.False(protectedInput);
             Assert.NotNull(result);
             Assert.Equal("public", result.Text);
@@ -192,7 +219,7 @@ public sealed class SelectionTextReaderTests
             var listElement = root.FindFirst(
                 System.Windows.Automation.TreeScope.Subtree,
                 new System.Windows.Automation.PropertyCondition(System.Windows.Automation.AutomationElement.ControlTypeProperty, System.Windows.Automation.ControlType.List));
-            var result = SelectionTextReader.Read(hwnd, listElement, manual: true, out bool protectedInput, rootElement: root, allowOwnProcess: true);
+            using var result = SelectionTextReader.Read(hwnd, listElement, manual: true, out bool protectedInput, rootElement: root, allowOwnProcess: true);
             Assert.False(protectedInput);
             Assert.NotNull(result);
             Assert.Equal("Item two Tiếng Việt", result.Text);
@@ -223,7 +250,7 @@ public sealed class SelectionTextReaderTests
             var treeElement = root.FindFirst(
                 System.Windows.Automation.TreeScope.Subtree,
                 new System.Windows.Automation.PropertyCondition(System.Windows.Automation.AutomationElement.ControlTypeProperty, System.Windows.Automation.ControlType.Tree));
-            var treeResult = SelectionTextReader.Read(hwnd, treeElement, manual: true, out bool protectedInput, rootElement: root, allowOwnProcess: true);
+            using var treeResult = SelectionTextReader.Read(hwnd, treeElement, manual: true, out bool protectedInput, rootElement: root, allowOwnProcess: true);
             Assert.False(protectedInput);
             Assert.NotNull(treeResult);
             Assert.Equal("Selected Tiếng Việt node", treeResult.Text);
@@ -231,7 +258,7 @@ public sealed class SelectionTextReaderTests
             var textElement = root.FindFirst(
                 System.Windows.Automation.TreeScope.Subtree,
                 new System.Windows.Automation.PropertyCondition(System.Windows.Automation.AutomationElement.NameProperty, "Static status message"));
-            var textResult = SelectionTextReader.Read(hwnd, textElement, manual: true, out protectedInput, rootElement: root, allowOwnProcess: true);
+            using var textResult = SelectionTextReader.Read(hwnd, textElement, manual: true, out protectedInput, rootElement: root, allowOwnProcess: true);
             Assert.False(protectedInput);
             Assert.NotNull(textResult);
             Assert.Equal("Static status message", textResult.Text);

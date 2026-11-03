@@ -39,6 +39,126 @@ constexpr int32_t VN_ERR_INVALID_ARG = -1;
 constexpr int32_t VN_ERR_BUFFER_TOO_SMALL = -2;
 constexpr int32_t VN_ERR_FAIL = -3;
 
+// Native selection results retain their UIA element/range until vn_selection_close.
+VN_EXPORT int32_t vn_selection_read(intptr_t, const int32_t*, int32_t, intptr_t, int64_t, uint8_t, uint8_t, int32_t,
+    char16_t*, int32_t, int32_t*, double*, uint8_t*, uint8_t*, uint8_t*, int64_t*) noexcept;
+VN_EXPORT int32_t vn_selection_close(int64_t) noexcept;
+VN_EXPORT int32_t vn_selection_same(int64_t, int64_t, uint8_t*) noexcept;
+VN_EXPORT int32_t vn_selection_prepare_replace(int64_t, const char16_t*, int32_t, const char16_t*, int32_t, int32_t*, int32_t*) noexcept;
+VN_EXPORT int32_t vn_wtscanner_media_title(const char16_t*, int32_t, uint32_t, uint8_t, char16_t*, int32_t,
+    int32_t*, int32_t*, int32_t*, int32_t*) noexcept;
+VN_EXPORT int32_t vn_wtscanner_has_youtube_title(const char16_t*, int32_t, uint32_t, uint8_t*) noexcept;
+
+// A mapped ciphertext file produces authenticated native plaintext; close zeroes it.
+VN_EXPORT int32_t vn_clipboard_vault_open_image(intptr_t, const uint8_t*, int32_t, int64_t*, uint8_t**, int32_t*) noexcept;
+VN_EXPORT int32_t vn_clipboard_vault_close_image(int64_t) noexcept;
+
+#pragma pack(push, 1)
+struct VnYoutubeJsonRow {
+    int32_t offset[5]{}, length[5]{};
+    int64_t ticks = 0;
+    int32_t flags = 0;
+};
+#pragma pack(pop)
+static_assert(sizeof(VnYoutubeJsonRow) == 52);
+// All returned pointers borrow the parsed response handle's lifetime.
+VN_EXPORT int32_t vn_youtube_parse_utf8(const uint8_t*, int32_t, int32_t, const char16_t*, int32_t,
+    int64_t*, const VnYoutubeJsonRow**, int32_t*, const char16_t**, uint8_t*) noexcept;
+VN_EXPORT int32_t vn_youtube_parsed_close(int64_t) noexcept;
+
+#pragma pack(push, 1)
+struct VnSystemMetricsState {
+    uint64_t process_time, idle_time, kernel_time, user_time;
+    int64_t timestamp;
+    double process_cpu, global_cpu;
+};
+struct VnSystemMetricsSnapshot {
+    double process_cpu, global_cpu;
+    uint64_t working_set, ram_used, ram_total;
+    double ram_percent, process_gpu, global_gpu;
+};
+#pragma pack(pop)
+VN_EXPORT int32_t __stdcall vn_system_metrics_sample(VnSystemMetricsState*, VnSystemMetricsSnapshot*) noexcept;
+VN_EXPORT int32_t __stdcall vn_gpu_monitor_sample(VnSystemMetricsSnapshot*) noexcept;
+VN_EXPORT int32_t __stdcall vn_gpu_monitor_reset() noexcept;
+
+#pragma pack(push, 1)
+struct VnAudioSessionState {
+    uint32_t process_id;
+    float volume;
+    uint8_t muted, system_sounds;
+    int32_t name_offset, name_length, path_offset, path_length, raw_offset, raw_length;
+};
+struct VnAudioDeviceState {
+    int32_t id_offset, id_length, name_offset, name_length;
+    uint8_t is_default;
+};
+#pragma pack(pop)
+VN_EXPORT int32_t __stdcall vn_audio_get_sessions_batch(VnAudioSessionState*, int32_t, char16_t*, int32_t, int32_t*, int32_t*, int32_t*) noexcept;
+VN_EXPORT int32_t __stdcall vn_audio_resolve_session_metadata(uint32_t, const char16_t*, int32_t, VnAudioSessionState*, char16_t*, int32_t, int32_t*) noexcept;
+VN_EXPORT int32_t __stdcall vn_audio_get_devices_batch(int64_t, VnAudioDeviceState*, int32_t, char16_t*, int32_t, int32_t*, int32_t*) noexcept;
+VN_EXPORT int32_t __stdcall vn_audio_enumerate_devices_batch(int32_t, VnAudioDeviceState*, int32_t, char16_t*, int32_t, int32_t*, int32_t*, int32_t*) noexcept;
+
+#pragma pack(push, 1)
+struct VnPrivacyProcessEntry {
+    uint32_t process_id, parent_process_id;
+    char16_t executable_file[260];
+};
+#pragma pack(pop)
+struct VnConsentStoreEntry;
+VN_EXPORT int32_t vn_privacy_consumers_create(const VnPrivacyProcessEntry*, int32_t, int64_t*) noexcept;
+VN_EXPORT int32_t vn_privacy_consumers_close(int64_t) noexcept;
+VN_EXPORT int32_t vn_privacy_consumers_match(int64_t, const char16_t*, int32_t, uint32_t, uint8_t*) noexcept;
+VN_EXPORT int32_t vn_privacy_consent_cache_create(int64_t*) noexcept;
+VN_EXPORT int32_t vn_privacy_consent_cache_close(int64_t) noexcept;
+VN_EXPORT int32_t vn_privacy_consent_cache_refresh(int64_t, uint8_t) noexcept;
+VN_EXPORT int32_t vn_privacy_consumers_scan(int64_t, int64_t, const char16_t*, int32_t, VnConsentStoreEntry*, int32_t, int32_t*) noexcept;
+VN_EXPORT int32_t __stdcall vn_privacy_poll_recorders(const VnPrivacyProcessEntry*, int32_t, uint8_t, uint8_t*) noexcept;
+VN_EXPORT int32_t __stdcall vn_privproc_contains_consumer(const VnPrivacyProcessEntry*, int32_t, const char16_t*, int32_t, uint8_t, uint8_t*) noexcept;
+#pragma pack(push, 1)
+struct VnObsLogReadState {
+    uint64_t position, file_id;
+    uint8_t recording, streaming, replay;
+    int32_t partial_length;
+    char partial[4096];
+};
+#pragma pack(pop)
+VN_EXPORT int32_t __stdcall vn_obs_read_log(const char16_t*, int32_t, VnObsLogReadState*, char16_t*, int32_t, int32_t*) noexcept;
+
+#pragma pack(push, 1)
+struct VnClipboardSearchSlice { int32_t offset, length; };
+struct VnClipboardSearchEntry {
+    VnClipboardSearchSlice title, preview, source, full_text;
+    int32_t group_start, group_count, kind;
+    uint8_t personal, archived, pinned, sensitive;
+};
+struct VnClipboardSearchLabel { VnClipboardSearchSlice id, name; };
+#pragma pack(pop)
+VN_EXPORT int32_t __stdcall vn_clipboard_store_filter_entries_batch(const VnClipboardSearchEntry*, int32_t,
+    const VnClipboardSearchSlice*, int32_t, const VnClipboardSearchLabel*, int32_t, const char16_t*, int32_t,
+    const char16_t*, int32_t, const char16_t*, int32_t, uint8_t, uint8_t*, int32_t) noexcept;
+VN_EXPORT int32_t __stdcall vn_clipboard_hash_create(int64_t*) noexcept;
+VN_EXPORT int32_t __stdcall vn_clipboard_hash_close(int64_t) noexcept;
+VN_EXPORT int32_t __stdcall vn_clipboard_hash_append(int64_t, const uint8_t*, int32_t) noexcept;
+VN_EXPORT int32_t __stdcall vn_clipboard_hash_append_utf16(int64_t, const char16_t*, int32_t, uint8_t) noexcept;
+VN_EXPORT int32_t __stdcall vn_clipboard_hash_finish(int64_t, uint8_t*, int32_t) noexcept;
+VN_EXPORT int32_t __stdcall vn_clipboard_hash_bytes(const uint8_t*, int32_t, uint8_t*, int32_t) noexcept;
+VN_EXPORT int32_t __stdcall vn_clipboard_hash_pixels(const uint8_t*, int32_t, int32_t, int32_t, uint8_t*, int32_t) noexcept;
+VN_EXPORT int32_t __stdcall vn_clipboard_hash_image(const uint8_t*, int32_t, const char16_t*, int32_t, uint8_t*, int32_t) noexcept;
+
+#pragma pack(push, 1)
+struct VnBrowserTabSnapshot { int32_t url_offset, url_length; uint8_t spotify; };
+struct VnBrowserChromeSnapshot {
+    int32_t url_offset, url_length, address_offset, address_length, toolbar_count, tab_count;
+    uint8_t spotify;
+};
+#pragma pack(pop)
+VN_EXPORT int32_t __stdcall vn_wtscanner_scan_browser(intptr_t, uint8_t, VnBrowserChromeSnapshot*, VnBrowserTabSnapshot*, int32_t,
+    char16_t*, int32_t, int32_t*) noexcept;
+VN_EXPORT int32_t __stdcall vn_media_browser_tab_action(const intptr_t*, int32_t, uint8_t,
+    const char16_t*, int32_t, const char16_t*, int32_t, const char16_t*, int32_t,
+    const char16_t*, int32_t, const char16_t*, int32_t, int32_t, uint8_t*) noexcept;
+
 VN_EXPORT int32_t __stdcall vn_clipboard_record_open(const wchar_t*, int32_t, int64_t*) noexcept;
 VN_EXPORT int32_t __stdcall vn_clipboard_record_close(int64_t) noexcept;
 VN_EXPORT int32_t __stdcall vn_clipboard_record_migrate(int64_t, const wchar_t*, int32_t) noexcept;

@@ -848,6 +848,34 @@ public sealed class MediaThumbnailPipelineTests
         Assert.Same(cached, Assert.Single(fixture.Updates).Thumbnail);
     });
 
+    [Theory]
+    [InlineData("chrome")]
+    [InlineData("Spotify.exe")]
+    public void PublishRetainsCoverDuringMetadataGapUntilSourceSessionCloses(string sourceAppId) => SharedStaTestRunner.RunAsync(async () =>
+    {
+        using var fixture = new Fixture();
+        var cached = Bitmap(300, 300);
+        fixture.Service.CachedThumbnail = cached;
+        var simulator = Field<MediaTimelineSimulator>(fixture.Service, "_timelineSimulator");
+        simulator.RecoveredThumbnail = cached;
+        var gap = new MediaInfo { SourceAppId = sourceAppId };
+        Set(fixture.Service, "_bgCts", new CancellationTokenSource());
+
+        await (Task<bool>)Invoke(fixture.Service, "TryPublishMediaChangeAsync", gap, gap.GetSignature(), false, true)!;
+
+        Assert.Same(cached, fixture.Service.CachedThumbnail);
+        Assert.Same(cached, simulator.RecoveredThumbnail);
+        Assert.Same(cached, Assert.Single(fixture.Updates).Thumbnail);
+
+        var closed = new MediaInfo();
+        await (Task<bool>)Invoke(fixture.Service, "TryPublishMediaChangeAsync", closed, closed.GetSignature(), false, true)!;
+
+        Assert.Null(fixture.Service.CachedThumbnail);
+        Assert.Null(simulator.RecoveredThumbnail);
+        Assert.Equal(2, fixture.Updates.Count);
+        Assert.Null(fixture.Updates[^1].Thumbnail);
+    });
+
     [Fact]
     public void ConvertToWpfBitmapAsyncHandlesOversizedPooledBufferPartialNonZeroPositionAndEmptyStreams() => SharedStaTestRunner.RunAsync(async ct =>
     {

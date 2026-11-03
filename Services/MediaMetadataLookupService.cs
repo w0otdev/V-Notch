@@ -258,61 +258,21 @@ public sealed partial class MediaMetadataLookupService : IMediaMetadataLookupSer
             timeoutCts.CancelAfter(TimeSpan.FromSeconds(5));
 
             using var request = CreateYouTubeApiRequest(url, apiKey);
-            using var response = await _keyClient.SendAsync(request, timeoutCts.Token);
+            using var response = await _keyClient.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, timeoutCts.Token);
             if (!response.IsSuccessStatusCode)
             {
-                string body = await response.Content.ReadAsStringAsync(timeoutCts.Token);
-                if (LooksLikeQuotaExceeded(body))
+                using var errorBody = await PooledUtf8Response.ReadAsync(response, YouTubeMetadataParsing.MaxJsonResponseBytes, timeoutCts.Token);
+                if (YouTubeMetadataParsing.LooksLikeQuotaExceeded(errorBody.Span))
                     QuotaCooldown.Trip(apiKey);
                 return null;
             }
 
-            string json = await response.Content.ReadAsStringAsync(timeoutCts.Token);
-            using var doc = JsonDocument.Parse(json);
-            var root = doc.RootElement;
-
-            if (!root.TryGetProperty(ItemsPropertyName, out var items) || items.GetArrayLength() == 0)
-                return null;
-
-            foreach (var item in items.EnumerateArray())
+            var candidates = await YouTubeMetadataParsing.ReadMetadataAsync(response, 0, originalTitle, timeoutCts.Token);
+            foreach (var candidate in candidates)
             {
-                string? videoId = null;
-                string? resultTitle = null;
-                string? channelTitle = null;
-
-                if (item.TryGetProperty("id", out var idEl) && idEl.TryGetProperty(VideoIdPropertyName, out var vidEl))
-                    videoId = vidEl.GetString();
-                if (item.TryGetProperty("snippet", out var snippet))
-                {
-                    if (snippet.TryGetProperty(TitlePropertyName, out var titleEl))
-                        resultTitle = titleEl.GetString();
-                    if (snippet.TryGetProperty("channelTitle", out var chEl))
-                        channelTitle = chEl.GetString();
-                }
-
-                if (string.IsNullOrEmpty(videoId))
-                    continue;
-
-                var candidate = new YouTubeLookupResult
-                {
-                    Id = videoId,
-                    Title = resultTitle,
-                    Author = channelTitle,
-                    Duration = TimeSpan.Zero,
-                    ThumbnailUrl = null,
-                    Source = YouTubeLookupSource.DataApi,
-                };
-
-                if (candidate.TitleMatches(originalTitle))
-                {
-                    var enriched = await ResolveVideoIdAsync(videoId, ct);
-                    if (enriched != null && enriched.TitleMatches(originalTitle))
-                    {
-                        RuntimeLog.Log(YouTubeTitleSearchLogTag,
-                            $"data-api-search-ok query='{query}' videoId={videoId} title='{resultTitle}'");
-                        return enriched;
-                    }
-                }
+                if (candidate.Id is not { Length: > 0 } videoId) continue;
+                var enriched = await ResolveVideoIdAsync(videoId, ct);
+                if (enriched != null && enriched.TitleMatches(originalTitle)) return enriched;
             }
 
         }
@@ -339,59 +299,16 @@ public sealed partial class MediaMetadataLookupService : IMediaMetadataLookupSer
                 using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
                 timeoutCts.CancelAfter(TimeSpan.FromSeconds(2));
 
-                using var response = await _httpClient.GetAsync(url, timeoutCts.Token);
+                using var response = await _httpClient.GetAsync(url, HttpCompletionOption.ResponseHeadersRead, timeoutCts.Token);
                 if (!response.IsSuccessStatusCode)
                     continue;
 
-                string json = await response.Content.ReadAsStringAsync(timeoutCts.Token);
-                using var doc = JsonDocument.Parse(json);
-                var root = doc.RootElement;
-
-                if (!root.TryGetProperty(ItemsPropertyName, out var items) || items.GetArrayLength() == 0)
-                    continue;
-
-                foreach (var item in items.EnumerateArray())
+                var candidates = await YouTubeMetadataParsing.ReadMetadataAsync(response, 1, originalTitle, timeoutCts.Token);
+                if (candidates.Count > 0)
                 {
-                    string? itemUrl = null;
-                    string? itemTitle = null;
-                    string? uploaderName = null;
-                    long durationSec = 0;
-                    string? thumbnailUrl = null;
-
-                    if (item.TryGetProperty("url", out var urlEl))
-                        itemUrl = urlEl.GetString();
-                    if (item.TryGetProperty(TitlePropertyName, out var titleEl))
-                        itemTitle = titleEl.GetString();
-                    if (item.TryGetProperty("uploaderName", out var uploaderEl))
-                        uploaderName = uploaderEl.GetString();
-                    if (item.TryGetProperty(DurationPropertyName, out var durEl) && durEl.ValueKind == JsonValueKind.Number)
-                        durationSec = durEl.GetInt64();
-                    if (item.TryGetProperty("thumbnail", out var thumbEl))
-                        thumbnailUrl = thumbEl.GetString();
-
-                    if (string.IsNullOrEmpty(itemUrl))
-                        continue;
-
-                    if (!TryExtractYouTubeVideoId(itemUrl, mode: 2, out string videoId))
-                        continue;
-
-                    var candidate = new YouTubeLookupResult
-                    {
-                        Id = videoId,
-                        Title = itemTitle,
-                        Author = uploaderName,
-                        Duration = TimeSpan.FromSeconds(durationSec),
-                        ThumbnailUrl = thumbnailUrl,
-                        Source = YouTubeLookupSource.OEmbed,
-                    };
-
-                    if (candidate.TitleMatches(originalTitle))
-                    {
-                        RuntimeLog.Log(YouTubeTitleSearchLogTag,
-                            $"piped-search-ok instance={instance} query='{query}' videoId={videoId} title='{itemTitle}'");
-                        CacheVideo(videoId, candidate);
-                        return candidate;
-                    }
+                    var candidate = candidates[0];
+                    if (candidate.Id is { Length: > 0 } videoId) CacheVideo(videoId, candidate);
+                    return candidate;
                 }
 
             }
@@ -413,44 +330,16 @@ public sealed partial class MediaMetadataLookupService : IMediaMetadataLookupSer
                 using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
                 timeoutCts.CancelAfter(TimeSpan.FromSeconds(2));
 
-                using var response = await _httpClient.GetAsync(url, timeoutCts.Token);
+                using var response = await _httpClient.GetAsync(url, HttpCompletionOption.ResponseHeadersRead, timeoutCts.Token);
                 if (!response.IsSuccessStatusCode)
                     continue;
 
-                string json = await response.Content.ReadAsStringAsync(timeoutCts.Token);
-                using var doc = JsonDocument.Parse(json);
-                var root = doc.RootElement;
-
-                if (root.ValueKind != JsonValueKind.Array || root.GetArrayLength() == 0)
-                    continue;
-
-                foreach (var item in root.EnumerateArray())
+                var candidates = await YouTubeMetadataParsing.ReadMetadataAsync(response, 2, originalTitle, timeoutCts.Token);
+                if (candidates.Count > 0)
                 {
-                    string? videoId = item.TryGetProperty(VideoIdPropertyName, out var vidEl) ? vidEl.GetString() : null;
-                    string? itemTitle = item.TryGetProperty(TitlePropertyName, out var titleEl) ? titleEl.GetString() : null;
-                    string? author = item.TryGetProperty("author", out var authEl) ? authEl.GetString() : null;
-                    long lengthSec = item.TryGetProperty("lengthSeconds", out var lenEl) && lenEl.ValueKind == JsonValueKind.Number ? lenEl.GetInt64() : 0;
-
-                    if (string.IsNullOrEmpty(videoId))
-                        continue;
-
-                    var candidate = new YouTubeLookupResult
-                    {
-                        Id = videoId,
-                        Title = itemTitle,
-                        Author = author,
-                        Duration = TimeSpan.FromSeconds(lengthSec),
-                        ThumbnailUrl = null,
-                        Source = YouTubeLookupSource.OEmbed,
-                    };
-
-                    if (candidate.TitleMatches(originalTitle))
-                    {
-                        RuntimeLog.Log(YouTubeTitleSearchLogTag,
-                            $"invidious-search-ok instance={instance} query='{query}' videoId={videoId} title='{itemTitle}'");
-                        CacheVideo(videoId, candidate);
-                        return candidate;
-                    }
+                    var candidate = candidates[0];
+                    if (candidate.Id is { Length: > 0 } videoId) CacheVideo(videoId, candidate);
+                    return candidate;
                 }
 
             }
@@ -709,25 +598,10 @@ public sealed partial class MediaMetadataLookupService : IMediaMetadataLookupSer
             using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
             timeoutCts.CancelAfter(2000);
 
-            string json = await _httpClient.GetStringAsync(oembedUrl, timeoutCts.Token);
-            if (string.IsNullOrWhiteSpace(json))
-                return null;
-
-            using var doc = JsonDocument.Parse(json);
-            var root = doc.RootElement;
-
-            string? oembedTitle = root.TryGetProperty(TitlePropertyName, out var titleEl) ? titleEl.GetString() : null;
-            string? oembedAuthor = root.TryGetProperty("author_name", out var authorEl) ? authorEl.GetString() : null;
-
-            return new YouTubeLookupResult
-            {
-                Id = videoId,
-                Title = oembedTitle,
-                Author = oembedAuthor,
-                Duration = TimeSpan.Zero,
-                ThumbnailUrl = null,
-                Source = YouTubeLookupSource.OEmbed,
-            };
+            using var response = await _httpClient.GetAsync(oembedUrl, HttpCompletionOption.ResponseHeadersRead, timeoutCts.Token);
+            if (!response.IsSuccessStatusCode) return null;
+            var results = await YouTubeMetadataParsing.ReadMetadataAsync(response, 3, videoId, timeoutCts.Token);
+            return results.Count > 0 ? results[0] : null;
         }
         catch
         {
@@ -746,25 +620,15 @@ public sealed partial class MediaMetadataLookupService : IMediaMetadataLookupSer
             using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
             timeoutCts.CancelAfter(2000);
             using var request = CreateYouTubeApiRequest(url, apiKey);
-            using var response = await _keyClient.SendAsync(request, timeoutCts.Token);
-            string json = await response.Content.ReadAsStringAsync(timeoutCts.Token);
+            using var response = await _keyClient.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, timeoutCts.Token);
             if (!response.IsSuccessStatusCode)
             {
-                if (LooksLikeQuotaExceeded(json))
-                    QuotaCooldown.Trip(apiKey);
+                using var errorBody = await PooledUtf8Response.ReadAsync(response, YouTubeMetadataParsing.MaxJsonResponseBytes, timeoutCts.Token);
+                if (YouTubeMetadataParsing.LooksLikeQuotaExceeded(errorBody.Span)) QuotaCooldown.Trip(apiKey);
                 return TimeSpan.Zero;
             }
-            if (!string.IsNullOrWhiteSpace(json))
-            {
-                using var doc = JsonDocument.Parse(json);
-                if (doc.RootElement.TryGetProperty(ItemsPropertyName, out var items) && items.GetArrayLength() > 0 &&
-                    items[0].TryGetProperty("contentDetails", out var details) &&
-                    details.TryGetProperty(DurationPropertyName, out var durationEl) &&
-                    durationEl.GetString() is { Length: > 0 } iso)
-                {
-                    return ParseIso8601Duration(iso);
-                }
-            }
+            var results = await YouTubeMetadataParsing.ReadMetadataAsync(response, 4, videoId, timeoutCts.Token);
+            return results.Count > 0 ? results[0].Duration : TimeSpan.Zero;
         }
         catch { /* Best-effort duration enrichment */ }
         return TimeSpan.Zero;
@@ -783,64 +647,15 @@ public sealed partial class MediaMetadataLookupService : IMediaMetadataLookupSer
             timeoutCts.CancelAfter(2500);
 
             using var request = CreateYouTubeApiRequest(url, apiKey);
-            using var response = await _keyClient.SendAsync(request, timeoutCts.Token);
-            string json = await response.Content.ReadAsStringAsync(timeoutCts.Token);
-
+            using var response = await _keyClient.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, timeoutCts.Token);
             if (!response.IsSuccessStatusCode)
             {
-                if (LooksLikeQuotaExceeded(json))
-                {
-                    QuotaCooldown.Trip(apiKey);
-                    RuntimeLog.Log(YouTubeApiLogTag, "quotaExceeded — Data API disabled until tomorrow, falling back to oEmbed.");
-                }
-                else
-                {
-                    RuntimeLog.Log(YouTubeApiLogTag, $"HTTP {(int)response.StatusCode} for videoId={videoId}");
-                }
+                using var errorBody = await PooledUtf8Response.ReadAsync(response, YouTubeMetadataParsing.MaxJsonResponseBytes, timeoutCts.Token);
+                if (YouTubeMetadataParsing.LooksLikeQuotaExceeded(errorBody.Span)) QuotaCooldown.Trip(apiKey);
                 return null;
             }
-
-            if (string.IsNullOrWhiteSpace(json))
-                return null;
-
-            using var doc = JsonDocument.Parse(json);
-            if (!doc.RootElement.TryGetProperty(ItemsPropertyName, out var items) || items.GetArrayLength() == 0)
-                return null;
-
-            var item = items[0];
-            string? title = null;
-            string? channel = null;
-            string? thumbnailUrl = null;
-            TimeSpan duration = TimeSpan.Zero;
-
-            if (item.TryGetProperty("snippet", out var snippet))
-            {
-                if (snippet.TryGetProperty(TitlePropertyName, out var titleEl)) title = titleEl.GetString();
-                if (snippet.TryGetProperty("channelTitle", out var channelEl)) channel = channelEl.GetString();
-                if (snippet.TryGetProperty("thumbnails", out var thumbs))
-                    thumbnailUrl = PickBestThumbnail(thumbs);
-            }
-
-            if (item.TryGetProperty("contentDetails", out var details) &&
-                details.TryGetProperty(DurationPropertyName, out var durationEl))
-            {
-                string? iso = durationEl.GetString();
-                if (!string.IsNullOrEmpty(iso))
-                    duration = ParseIso8601Duration(iso);
-            }
-
-            RuntimeLog.Log(YouTubeApiLogTag,
-                $"data-api-ok videoId={videoId} title='{title}' channel='{channel}' duration={duration} thumb={(string.IsNullOrWhiteSpace(thumbnailUrl) ? "(none)" : "ok")}");
-
-            return new YouTubeLookupResult
-            {
-                Id = videoId,
-                Title = title,
-                Author = channel,
-                Duration = duration,
-                ThumbnailUrl = thumbnailUrl,
-                Source = YouTubeLookupSource.DataApi,
-            };
+            var results = await YouTubeMetadataParsing.ReadMetadataAsync(response, 4, videoId, timeoutCts.Token);
+            return results.Count > 0 ? results[0] : null;
         }
         catch (OperationCanceledException)
         {

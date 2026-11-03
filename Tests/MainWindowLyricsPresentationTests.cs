@@ -58,6 +58,87 @@ public sealed class MainWindowLyricsPresentationTests
     });
 
     [Fact]
+    public void CompactCollapseAndReopeningTheSameTrackReuseMediaAndLyricsBackdrops() => SharedStaTestRunner.RunAsync(async ct =>
+    {
+        await using var fixture = CreateFixture();
+        var window = fixture.Window;
+        var settings = Field<NotchSettings>(window, "_settings");
+        settings.EnableBlurEffects = settings.ShowMediaArtBackground = true;
+        settings.NotchStyle = "default";
+        settings.BrightenDarkLyricsBackground = false;
+        window.SetDebugViewLock(true);
+        window.Show();
+        var coordinator = Field<VNotch.Controllers.NotchTransitionCoordinator>(window, "_transitionCoordinator");
+        await WpfFrameWaiter.UntilAsync(() => Field<bool>(window, "_isStartupLayoutReady") && !coordinator.IsTransitionActive, "backdrop window startup", ct);
+        window.SetDebugViewState("MediaExpanded");
+        await WpfFrameWaiter.UntilAsync(() => !coordinator.IsTransitionActive, "backdrop media view", ct);
+
+        var bitmap = System.Windows.Media.Imaging.BitmapSource.Create(8, 8, 96, 96,
+            System.Windows.Media.PixelFormats.Bgra32, null, new byte[8 * 8 * 4], 8 * 4);
+        bitmap.Freeze();
+        Set(window, "_currentMediaInfo", new MediaInfo { CurrentTrack = "Track", CurrentArtist = "Artist", Thumbnail = bitmap, IsAnyMediaPlaying = true });
+        Set(window, "_lastBlurThumbnailRef", bitmap);
+        Set(window, "_lastBackgroundThumbnail", bitmap);
+        Set(window, "_isLyricsActive", true);
+        window.MediaBackgroundImage.Source = window.MediaBackgroundImage2.Source = bitmap;
+        window.MediaBackgroundImage.Opacity = window.MediaBackgroundImage2.Opacity = 1;
+        window.LyricsBlurImage.Source = bitmap;
+        int blurVersion = Field<int>(window, "_blurTaskVersion");
+
+        window.SetDebugViewState("CollapsedNotch");
+        await WpfFrameWaiter.UntilAsync(() => !coordinator.IsTransitionActive, "backdrop compact collapse", ct);
+        Assert.Same(bitmap, window.MediaBackgroundImage.Source);
+        Assert.Same(bitmap, window.LyricsBlurImage.Source);
+
+        // Both a delayed hide completion and a repeated compact update retain artwork.
+        Invoke(window, "HideMediaBackgroundOverlay");
+        await WpfFrameWaiter.UntilAsync(() => window.MediaBackground.Visibility == Visibility.Collapsed, "backdrop overlay hide", ct);
+        Invoke(window, "HideMediaBackgroundOverlay");
+        Invoke(window, "FadeInLyricsBlurBackgroundIfActive", false);
+        Assert.Same(bitmap, window.MediaBackgroundImage.Source);
+        Assert.Same(bitmap, window.LyricsBlurImage.Source);
+        Assert.Same(bitmap, Field<object>(window, "_lastBlurThumbnailRef"));
+
+        window.SetDebugViewState("MediaExpanded");
+        await WpfFrameWaiter.UntilAsync(() => !coordinator.IsTransitionActive, "backdrop same-track reopen", ct);
+        Invoke(window, "FadeInLyricsBlurBackgroundIfActive", false);
+        Assert.Same(bitmap, window.MediaBackgroundImage.Source);
+        Assert.Same(bitmap, window.LyricsBlurImage.Source);
+        Assert.Equal(Visibility.Visible, window.LyricsBlurBackground.Visibility);
+        Assert.Equal(blurVersion, Field<int>(window, "_blurTaskVersion"));
+    });
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void CompactBackdropsReleaseArtworkWhenMediaStops(bool closedSession) => SharedStaTestRunner.Run(() =>
+    {
+        using var fixture = CreateFixture();
+        var window = fixture.Window;
+        Set(window, "_currentMediaInfo", closedSession ? null : new MediaInfo { IsAnyMediaPlaying = false });
+        var bitmap = System.Windows.Media.Imaging.BitmapSource.Create(8, 8, 96, 96,
+            System.Windows.Media.PixelFormats.Bgra32, null, new byte[8 * 8 * 4], 8 * 4);
+        bitmap.Freeze();
+        window.MediaBackgroundImage.Source = window.MediaBackgroundImage2.Source = bitmap;
+        window.MediaBackgroundImageBack.Source = window.MediaBackgroundImageBack2.Source = bitmap;
+        window.MediaBackground.Opacity = 0;
+        window.MediaBackground.Visibility = Visibility.Collapsed;
+        window.LyricsBlurImage.Source = window.LyricsBlurImageNext.Source = bitmap;
+        Set(window, "_lastBlurThumbnailRef", bitmap);
+
+        Invoke(window, "HideMediaBackgroundOverlay");
+        Invoke(window, "HideLyricsBlurBackgroundImmediately");
+
+        Assert.Null(window.MediaBackgroundImage.Source);
+        Assert.Null(window.MediaBackgroundImage2.Source);
+        Assert.Null(window.MediaBackgroundImageBack.Source);
+        Assert.Null(window.MediaBackgroundImageBack2.Source);
+        Assert.Null(window.LyricsBlurImage.Source);
+        Assert.Null(window.LyricsBlurImageNext.Source);
+        Assert.Null(Field<object?>(window, "_lastBlurThumbnailRef"));
+    });
+
+    [Fact]
     public void NegativeSubtitleResultDoesNotRestartOnRepeatedMediaEvents() => SharedStaTestRunner.Run(() =>
     {
         using var fixture = CreateFixture();

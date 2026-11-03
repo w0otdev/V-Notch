@@ -1,43 +1,10 @@
 using System;
-using System.IO;
 using System.Runtime.InteropServices;
-using Microsoft.Win32;
 
 namespace VNotch.Services;
 
 internal static partial class BandicamRecordingProbe
 {
-    internal static bool IsRecording(PrivacyProcessSnapshot snapshot)
-    {
-        var processes = snapshot.GetProcessesByExecutableName("bdcam.exe");
-        try
-        {
-            if (processes.Length == 0) return false;
-            using var options = Registry.CurrentUser.OpenSubKey(@"Software\BANDISOFT\BANDICAM\OPTION");
-            if (options?.GetValue("sLatestRecordingFile") is not string path ||
-                !IsSupportedOutputPath(path) || !File.Exists(path)) return false;
-
-            foreach (var process in processes)
-            {
-                try
-                {
-                    if (RecordingFileOwnership.IsFileOwnedByCached(path, process)) return true;
-                }
-                catch (InvalidOperationException) { /* Process exited */ }
-                catch (System.ComponentModel.Win32Exception) { /* Access denied */ }
-            }
-        }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or System.Security.SecurityException)
-        {
-            // Ignore inaccessible directory.
-        }
-        finally
-        {
-            foreach (var process in processes) process.Dispose();
-        }
-        return false;
-    }
-
     internal static unsafe bool IsSupportedOutputPath(string path)
     {
         if (string.IsNullOrWhiteSpace(path)) return false;

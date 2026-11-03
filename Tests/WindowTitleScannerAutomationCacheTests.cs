@@ -50,10 +50,10 @@ public sealed class WindowTitleScannerAutomationCacheTests
                     new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.Document)).Cast<AutomationElement>());
                 Assert.Single(document.FindAll(TreeScope.Descendants,
                     new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.ToolBar)).Cast<AutomationElement>());
-                int toolbarCount = WindowTitleScanner.FindBrowserChromeElements(root, ControlType.ToolBar).Count;
-                int tabCount = WindowTitleScanner.FindCachedTabs(root).Count;
-                var address = WindowTitleScanner.FindChromiumAddressBar(root);
-                string? url = address == null ? null : ((ValuePattern)address.GetCurrentPattern(ValuePattern.Pattern)).Current.Value;
+                var native = WindowTitleScanner.ReadBrowserChromeSnapshot(hwnd);
+                int toolbarCount = native.ToolbarCount;
+                int tabCount = native.Tabs.Count;
+                string? url = native.AddressUrl;
                 return (toolbarCount, tabCount, url);
             });
             PumpUntilComplete(scan);
@@ -91,19 +91,19 @@ public sealed class WindowTitleScannerAutomationCacheTests
             ShowInTaskbar = false,
             Content = control
         };
-        AutomationElement tab;
+        WindowTitleScanner.BrowserTabSnapshot tab;
         try
         {
             window.Show();
             window.UpdateLayout();
             IntPtr hwnd = new WindowInteropHelper(window).Handle;
-            var snapshot = Task.Run(() => WindowTitleScanner.FindCachedTabs(AutomationElement.FromHandle(hwnd)));
+            var snapshot = Task.Run(() => WindowTitleScanner.ReadBrowserChromeSnapshot(hwnd).Tabs);
             PumpUntilComplete(snapshot);
             tab = Assert.Single(snapshot.GetAwaiter().GetResult());
         }
         finally { window.Close(); }
-        Assert.Equal("https://open.spotify.com/track/child", WindowTitleScanner.TryReadTabUrl(tab));
-        Assert.True(WindowTitleScanner.TabReferencesSpotifyWebPlayer(tab));
+        Assert.Equal("https://open.spotify.com/track/child", tab.Url);
+        Assert.True(tab.ReferencesSpotify);
     });
 
     [Fact]
@@ -128,13 +128,13 @@ public sealed class WindowTitleScannerAutomationCacheTests
             ShowInTaskbar = false,
             Content = control
         };
-        IReadOnlyList<AutomationElement> tabs;
+        IReadOnlyList<WindowTitleScanner.BrowserTabSnapshot> tabs;
         try
         {
             window.Show();
             window.UpdateLayout();
             IntPtr hwnd = new WindowInteropHelper(window).Handle;
-            var snapshot = Task.Run(() => WindowTitleScanner.FindCachedTabs(AutomationElement.FromHandle(hwnd)));
+            var snapshot = Task.Run(() => WindowTitleScanner.ReadBrowserChromeSnapshot(hwnd).Tabs);
             PumpUntilComplete(snapshot);
             tabs = snapshot.GetAwaiter().GetResult();
         }
@@ -142,12 +142,12 @@ public sealed class WindowTitleScannerAutomationCacheTests
 
         Assert.Equal(50, tabs.Count);
         for (int i = 0; i < 49; i++)
-            Assert.Equal($"https://youtube.com/watch?v=video{i}", WindowTitleScanner.TryReadTabUrl(tabs[i]));
-        Assert.Equal("https://open.spotify.com/track/example", WindowTitleScanner.TryReadTabUrl(tabs[49]));
-        Assert.True(WindowTitleScanner.TabReferencesSpotifyWebPlayer(tabs[49]));
-        Assert.False(WindowTitleScanner.TabReferencesSpotifyWebPlayer(tabs[0]));
-        // None mode forbids live access: the readers above must use only cached data.
-        Assert.Throws<InvalidOperationException>(() => _ = tabs[0].Current.Name);
+            Assert.Equal($"https://youtube.com/watch?v=video{i}", tabs[i].Url);
+        Assert.Equal("https://open.spotify.com/track/example", tabs[49].Url);
+        Assert.True(tabs[49].ReferencesSpotify);
+        Assert.False(tabs[0].ReferencesSpotify);
+        // Detached native results remain readable without a live provider or COM reference.
+        Assert.All(tabs, tab => Assert.False(string.IsNullOrEmpty(tab.Url)));
     });
 
     private static void PumpUntilComplete(Task task)

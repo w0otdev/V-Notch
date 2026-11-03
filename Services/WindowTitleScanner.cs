@@ -1,6 +1,5 @@
 using System.Runtime.InteropServices;
 using System.Threading;
-using System.Windows.Automation;
 
 using static VNotch.Services.Win32Interop;
 
@@ -9,6 +8,14 @@ namespace VNotch.Services;
 public interface IWindowTitleScanner
 {
     List<string> GetAllWindowTitles(bool isThrottled);
+    bool HasYouTubeWindowMatch(string track, bool isThrottled) =>
+        PlatformDetector.HasReliableWindowMatch(GetAllWindowTitles(isThrottled), track, "YouTube");
+    MediaWindowTitle? FindMediaWindowTitle(bool recovery, bool isThrottled)
+    {
+        foreach (string title in GetAllWindowTitles(isThrottled))
+            if (WindowTitleScanner.ParseMediaWindowTitle(title, recovery) is { } match) return match;
+        return null;
+    }
     string? TryGetBrowserUrl();
     string? TryGetMediaUrlFromAnyBrowser();
 
@@ -79,12 +86,12 @@ public sealed partial class WindowTitleScanner : IWindowTitleScanner, IDisposabl
 
     internal void SetTitleNotificationsActive(bool active)
     {
-        lock (_cacheLock) { _titleNotificationsActive = active; _lastWindowEnumTime = DateTime.MinValue; }
+        lock (_cacheLock) { _titleNotificationsActive = active; _lastWindowEnumTime = _lastMediaTitleScan = _lastRecoveryTitleScan = _lastYouTubeMatchScan = DateTime.MinValue; }
     }
 
     internal void InvalidateWindowTitles()
     {
-        lock (_cacheLock) _lastWindowEnumTime = DateTime.MinValue;
+        lock (_cacheLock) _lastWindowEnumTime = _lastMediaTitleScan = _lastRecoveryTitleScan = _lastYouTubeMatchScan = DateTime.MinValue;
     }
 
     public List<string> GetAllWindowTitles(bool isThrottled)
@@ -865,247 +872,7 @@ public sealed partial class WindowTitleScanner : IWindowTitleScanner, IDisposabl
         RunWithTimeout(() => ExtractUrlFromWindowHandleCore(hwnd, processName));
 
     private static string? ExtractUrlFromWindowHandleCore(IntPtr hwnd, string processName)
-    {
-        try
-        {
-            var element = AutomationElement.FromHandle(hwnd);
-            if (element == null) return null;
-
-            string? fallbackAddressBarUrl = null;
-            AutomationElement? addressBar = processName.Contains("firefox", StringComparison.OrdinalIgnoreCase)
-                ? FindFirefoxAddressBar(element)
-                : FindChromiumAddressBar(element);
-
-            if (addressBar != null &&
-                addressBar.TryGetCurrentPattern(ValuePattern.Pattern, out object? urlPattern))
-            {
-                var vp = (ValuePattern)urlPattern;
-                string url = vp.Current.Value ?? "";
-
-                if (!url.StartsWith("http", StringComparison.OrdinalIgnoreCase) && url.Contains('.'))
-                    url = HttpsPrefix + url;
-
-                if (!string.IsNullOrWhiteSpace(url))
-                {
-                    if (IsMediaUrl(url))
-                        return url;
-
-                    fallbackAddressBarUrl = url;
-                }
-            }
-
-            var tabUrl = TryFindMediaUrlInTabs(element);
-            if (!string.IsNullOrEmpty(tabUrl))
-                return tabUrl;
-
-            if (!string.IsNullOrWhiteSpace(fallbackAddressBarUrl))
-                return fallbackAddressBarUrl;
-        }
-        catch (Exception)
-        {
-            // UI Automation can throw COM/ElementNotAvailable exceptions during window enumeration
-        }
-
-        return null;
-    }
-
-    private static AutomationElement? FindFirefoxAddressBar(AutomationElement element)
-    {
-        var edits = FindBrowserChromeElements(element, ControlType.Edit);
-        for (int i = 0; i < edits.Count; i++)
-        {
-            try
-            {
-                if (edits[i].Current.AutomationId == "urlbar-input")
-                    return edits[i];
-            }
-            catch (Exception)
-            {
-                // Element state may change during UIA query
-            }
-        }
-        return null;
-    }
-
-    internal static AutomationElement? FindChromiumAddressBar(AutomationElement element)
-    {
-        foreach (var toolbar in FindBrowserChromeElements(element, ControlType.ToolBar))
-            foreach (var edit in FindBrowserChromeElements(toolbar, ControlType.Edit))
-            {
-                try
-                {
-                    if (edit.TryGetCurrentPattern(ValuePattern.Pattern, out object? pattern))
-                    {
-                        var valuePattern = (ValuePattern)pattern;
-                        string val = valuePattern.Current.Value ?? "";
-
-                        if (IsAddressBarValue(val))
-                        {
-                            return edit;
-                        }
-                    }
-                }
-                catch (Exception)
-                {
-                    // ValuePattern may throw if element state changed during UI automation traversal
-                }
-            }
-
-        return null;
-    }
-
-    private static bool IsAddressBarValue(string val)
-    {
-        ReadOnlySpan<char> sp = val != null ? val.AsSpan() : ReadOnlySpan<char>.Empty;
-        return vn_wtscanner_is_address_bar_value(MemoryMarshal.Cast<char, ushort>(sp), sp.Length, out byte isAddr) == 0 && isAddr != 0;
-    }
-
-    private static string? TryFindMediaUrlInTabs(AutomationElement root)
-    {
-        try
-        {
-            var tabs = FindCachedTabs(root);
-            if (tabs == null || tabs.Count == 0) return null;
-
-            foreach (AutomationElement tab in tabs)
-            {
-                string? candidate = TryReadTabUrl(tab);
-                if (!string.IsNullOrEmpty(candidate) && IsMediaUrl(candidate))
-                {
-                    return candidate;
-                }
-            }
-        }
-        catch (Exception)
-        {
-            // UI Automation can throw when reading tabs from tearing-down browsers
-        }
-        return null;
-    }
-
-    // Walk only browser chrome. Never descend into the page's accessibility tree,
-    // and bound work even if a provider exposes unusual or deeply nested controls.
-    internal static IReadOnlyList<AutomationElement> FindBrowserChromeElements(AutomationElement root, ControlType targetType)
-    {
-        const int maxElements = 256;
-        const int maxDepth = 8;
-        var matches = new List<AutomationElement>();
-        var pending = new Queue<(AutomationElement Element, int Depth)>();
-        pending.Enqueue((root, 0));
-        int visited = 0;
-        var cache = new CacheRequest { TreeScope = TreeScope.Element, TreeFilter = Automation.RawViewCondition };
-        cache.Add(AutomationElement.ControlTypeProperty);
-        while (pending.Count > 0 && visited < maxElements)
-        {
-            var (parent, depth) = pending.Dequeue();
-            if (depth >= maxDepth) continue;
-            try
-            {
-                AutomationElementCollection children;
-                using (cache.Activate())
-                    children = parent.FindAll(TreeScope.Children, Condition.TrueCondition);
-                foreach (AutomationElement child in children)
-                {
-                    if (++visited > maxElements) break;
-                    var type = child.Cached.ControlType;
-                    if (type == ControlType.Document) continue;
-                    if (type == targetType) matches.Add(child);
-                    else pending.Enqueue((child, depth + 1));
-                }
-            }
-            catch (Exception)
-            {
-                // A disappearing provider must not discard other browser controls.
-            }
-        }
-        return matches;
-    }
-
-    internal static IReadOnlyList<AutomationElement> FindCachedTabs(AutomationElement root)
-    {
-        var cache = new CacheRequest
-        {
-            AutomationElementMode = AutomationElementMode.None,
-            TreeScope = TreeScope.Element | TreeScope.Children,
-            // Match FindAll(Children, IsControlElement=true): direct raw children,
-            // filtered below, rather than walking through non-control ancestors.
-            TreeFilter = Automation.RawViewCondition
-        };
-        cache.Add(AutomationElement.HelpTextProperty);
-        cache.Add(AutomationElement.NameProperty);
-        cache.Add(AutomationElement.IsControlElementProperty);
-        cache.Add(ValuePattern.Pattern);
-        cache.Add(ValuePattern.ValueProperty);
-        var tabs = new List<AutomationElement>();
-        foreach (var tab in FindBrowserChromeElements(root, ControlType.TabItem))
-        {
-            try { tabs.Add(tab.GetUpdatedCache(cache)); }
-            catch (Exception) { /* Tab closed while capturing its snapshot. */ }
-        }
-        return tabs;
-    }
-
-    internal static string? TryReadTabUrl(AutomationElement tab)
-    {
-        try
-        {
-            string help = tab.Cached.HelpText ?? string.Empty;
-            if (LooksLikeUrl(help)) return NormalizeUrl(help);
-
-            string name = tab.Cached.Name ?? string.Empty;
-            if (LooksLikeUrl(name)) return NormalizeUrl(name);
-
-            var subtree = tab.CachedChildren;
-
-            foreach (AutomationElement child in subtree)
-            {
-                if (!child.Cached.IsControlElement) continue;
-                string childHelp = child.Cached.HelpText ?? string.Empty;
-                if (LooksLikeUrl(childHelp)) return NormalizeUrl(childHelp);
-
-                string childName = child.Cached.Name ?? string.Empty;
-                if (LooksLikeUrl(childName)) return NormalizeUrl(childName);
-
-                if (child.TryGetCachedPattern(ValuePattern.Pattern, out object? p))
-                {
-                    string v = ((ValuePattern)p).Cached.Value ?? string.Empty;
-                    if (LooksLikeUrl(v)) return NormalizeUrl(v);
-                }
-            }
-        }
-        catch (Exception)
-        {
-            // UI Automation element properties may throw if child is destroyed
-        }
-        return null;
-    }
-
-    private static bool LooksLikeUrl(string s)
-    {
-        ReadOnlySpan<char> sp = s != null ? s.AsSpan() : ReadOnlySpan<char>.Empty;
-        return vn_wtscanner_looks_like_url(MemoryMarshal.Cast<char, ushort>(sp), sp.Length, out byte looksLike) == 0 && looksLike != 0;
-    }
-
-    private static string NormalizeUrl(string s)
-    {
-        ReadOnlySpan<ushort> sp = MemoryMarshal.Cast<char, ushort>(s != null ? s.AsSpan() : ReadOnlySpan<char>.Empty);
-        Span<char> buf = stackalloc char[512];
-        int rc = vn_wtscanner_normalize_url(sp, sp.Length, MemoryMarshal.Cast<char, ushort>(buf), buf.Length, out int outLen);
-        if (rc == 0) return outLen > 0 ? new string(buf[..outLen]) : string.Empty;
-        if (rc == -2 && outLen > 0)
-        {
-            char[] arr = new char[outLen];
-            if (vn_wtscanner_normalize_url(sp, sp.Length, MemoryMarshal.Cast<char, ushort>(arr.AsSpan()), arr.Length, out int actual) == 0)
-                return new string(arr, 0, actual);
-        }
-        return s ?? string.Empty;
-    }
-
-    private static bool IsMediaUrl(string url)
-    {
-        ReadOnlySpan<char> sp = url != null ? url.AsSpan() : ReadOnlySpan<char>.Empty;
-        return vn_wtscanner_is_media_url(MemoryMarshal.Cast<char, ushort>(sp), sp.Length, out byte isMedia) == 0 && isMedia != 0;
-    }
+        => ScanNativeBrowser(hwnd, processName).Url;
 
     private static bool DetectSpotifyWebPlayer()
     {
@@ -1158,122 +925,7 @@ public sealed partial class WindowTitleScanner : IWindowTitleScanner, IDisposabl
         RunWithTimeout(() => WindowHasSpotifyWebPlayerCore(hwnd, processName));
 
     private static bool WindowHasSpotifyWebPlayerCore(IntPtr hwnd, string processName)
-    {
-        try
-        {
-            var element = AutomationElement.FromHandle(hwnd);
-            if (element == null) return false;
-
-            if (processName.Contains("firefox", StringComparison.OrdinalIgnoreCase))
-            {
-                if (FirefoxAddressBarHasSpotify(element)) return true;
-            }
-            else if (ChromiumAddressBarHasSpotify(element))
-            {
-                return true;
-            }
-
-            return TabsContainSpotify(element);
-        }
-        catch (Exception)
-        {
-            // UI Automation tree inspection may throw if window closes
-        }
-
-        return false;
-    }
-
-    private static bool FirefoxAddressBarHasSpotify(AutomationElement element)
-    {
-        foreach (var edit in FindBrowserChromeElements(element, ControlType.Edit))
-        {
-            try
-            {
-                if (edit.Current.AutomationId == "urlbar-input" &&
-                    edit.TryGetCurrentPattern(ValuePattern.Pattern, out object? fp))
-                {
-                    string val = ((ValuePattern)fp).Current.Value ?? "";
-                    return val.Contains(SpotifyWebPlayerHost, StringComparison.OrdinalIgnoreCase);
-                }
-            }
-            catch (Exception)
-            {
-                // UI automation read failure on individual element
-            }
-        }
-        return false;
-    }
-
-    private static bool ChromiumAddressBarHasSpotify(AutomationElement element)
-    {
-        foreach (var toolbar in FindBrowserChromeElements(element, ControlType.ToolBar))
-            foreach (var edit in FindBrowserChromeElements(toolbar, ControlType.Edit))
-            {
-                try
-                {
-                    if (edit.TryGetCurrentPattern(ValuePattern.Pattern, out object? pattern))
-                    {
-                        string val = ((ValuePattern)pattern).Current.Value ?? "";
-                        if (val.Contains(SpotifyWebPlayerHost, StringComparison.OrdinalIgnoreCase))
-                            return true;
-                    }
-                }
-                catch (Exception)
-                {
-                    // UI automation read failure on individual element
-                }
-            }
-        return false;
-    }
-
-    private static bool TabsContainSpotify(AutomationElement element)
-    {
-        var tabs = FindCachedTabs(element);
-        if (tabs != null)
-        {
-            foreach (AutomationElement tab in tabs)
-            {
-                if (TabReferencesSpotifyWebPlayer(tab))
-                    return true;
-            }
-        }
-        return false;
-    }
-
-    internal static bool TabReferencesSpotifyWebPlayer(AutomationElement tab)
-    {
-        try
-        {
-            string help = tab.Cached.HelpText ?? string.Empty;
-            if (help.Contains(SpotifyWebPlayerHost, StringComparison.OrdinalIgnoreCase)) return true;
-
-            string name = tab.Cached.Name ?? string.Empty;
-            if (name.Contains(SpotifyWebPlayerHost, StringComparison.OrdinalIgnoreCase)) return true;
-
-            var subtree = tab.CachedChildren;
-            foreach (AutomationElement child in subtree)
-            {
-                if (!child.Cached.IsControlElement) continue;
-                string childHelp = child.Cached.HelpText ?? string.Empty;
-                if (childHelp.Contains(SpotifyWebPlayerHost, StringComparison.OrdinalIgnoreCase)) return true;
-
-                string childName = child.Cached.Name ?? string.Empty;
-                if (childName.Contains(SpotifyWebPlayerHost, StringComparison.OrdinalIgnoreCase)) return true;
-
-                if (child.TryGetCachedPattern(ValuePattern.Pattern, out object? p))
-                {
-                    string v = ((ValuePattern)p).Cached.Value ?? string.Empty;
-                    if (v.Contains(SpotifyWebPlayerHost, StringComparison.OrdinalIgnoreCase)) return true;
-                }
-            }
-        }
-        catch (Exception)
-        {
-            // Tab element inspection may throw if tab closes during query
-        }
-
-        return false;
-    }
+        => ScanNativeBrowser(hwnd, processName).Spotify;
 
     private static string? ExtractBrowserUrlCore()
     {

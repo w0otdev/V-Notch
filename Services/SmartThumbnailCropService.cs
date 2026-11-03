@@ -247,7 +247,8 @@ public sealed partial class SmartThumbnailCropService : IDisposable
             }
         }
 
-        // shortcut: C++26 saliency moments instead of loading 130MB ONNX+DirectML for backdrop blur, upgrade if out-of-process NPU/ONNX service is added
+        // Backdrop blur must not load YOLOX/DirectML. Reuse detections only when
+        // already cached; cold artwork uses bounded C++ saliency analysis.
         if (!ArtworkFrameDetector.RentDownscaledPixels(source, out byte[]? pixels, out int w, out int h, out int stride, 96.0) || pixels == null)
             return null;
 
