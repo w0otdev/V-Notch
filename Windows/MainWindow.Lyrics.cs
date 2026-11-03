@@ -1293,5 +1293,25 @@ public partial class MainWindow
         ResetSpotifyCanvas();
         HideLyricsSearchState(immediate: true);
         HideLyricsWidget();
+
+        void ClearLyricsBlurImages()
+        {
+            if (LyricsBlurImage != null)
+            {
+                LyricsBlurImage.BeginAnimation(OpacityProperty, null);
+                LyricsBlurImage.Source = null;
+            }
+            if (LyricsBlurImageNext != null)
+            {
+                LyricsBlurImageNext.BeginAnimation(OpacityProperty, null);
+                LyricsBlurImageNext.Opacity = 0.0;
+                LyricsBlurImageNext.Source = null;
+            }
+        }
+
+        if (Dispatcher.CheckAccess())
+            ClearLyricsBlurImages();
+        else
+            Dispatcher.Invoke(ClearLyricsBlurImages);
     }
 }

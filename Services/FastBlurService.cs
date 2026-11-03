@@ -22,6 +22,10 @@ public static partial class FastBlurService
     [LibraryImport("VNotch.Native.dll")]
     private static unsafe partial int vn_fast_blur_box_vertical(byte* source, byte* target, int w, int h, int radius);
 
+    [LibraryImport("VNotch.Native.dll")]
+    private static unsafe partial int vn_fast_blur_process_bgra32(
+        byte* pixels, byte* scratch, int w, int h, int radius, int passes, float darkenFactor);
+
     public static async Task<BitmapSource?> GetBlurredImageAsync(BitmapSource source, int downscaleWidth = 128, int blurRadius = 8)
     {
         if (source == null) return null;
@@ -61,14 +65,14 @@ public static partial class FastBlurService
                 {
                     smallBitmap.CopyPixels(pixels, stride, 0);
 
-                    int passes = 2;
-                    for (int i = 0; i < passes; i++)
+                    unsafe
                     {
-                        BoxBlurHorizontal(pixels, target, actualW, actualH, blurRadius);
-                        BoxBlurVertical(target, pixels, actualW, actualH, blurRadius);
+                        fixed (byte* pPixels = pixels)
+                        fixed (byte* pTarget = target)
+                        {
+                            _ = vn_fast_blur_process_bgra32(pPixels, pTarget, actualW, actualH, blurRadius, 2, 0.96f);
+                        }
                     }
-
-                    DarkenPixels(pixels, bufferSize);
 
                     var writeableBitmap = new WriteableBitmap(actualW, actualH, 96, 96, PixelFormats.Bgra32, null);
                     writeableBitmap.WritePixels(new Int32Rect(0, 0, actualW, actualH), pixels, stride, 0);

@@ -18,10 +18,14 @@ public interface IMediaArtworkService
     void ConfigureSmartCrop(bool enabled);
 
     SubjectBounds? GetDominantSubjectBounds(BitmapSource source);
+    void TrimMemory(bool compactWorkingSet = true) { }
 }
 
 public sealed partial class MediaArtworkService : IMediaArtworkService, IDisposable
 {
+    [LibraryImport("VNotch.Native.dll")]
+    private static partial int vn_memory_trim_working_set();
+
     [LibraryImport("VNotch.Native.dll")]
     private static partial int vn_media_artwork_detect_content_bounds(
         ReadOnlySpan<byte> pixels,
@@ -78,13 +82,35 @@ public sealed partial class MediaArtworkService : IMediaArtworkService, IDisposa
 
     public SubjectBounds? GetDominantSubjectBounds(BitmapSource source)
     {
-        if (!_smartCropAvailable)
-        {
-            _smartCropAvailable = _smartCrop.TryInitialize();
-            if (!_smartCropAvailable)
-                return null;
-        }
         return _smartCrop.GetDominantSubjectBounds(source);
+    }
+
+    public void TrimMemory(bool compactWorkingSet = true)
+    {
+        _smartCrop.ClearCaches();
+        TrimGlobalMemory(compactWorkingSet);
+    }
+
+    public static void TrimGlobalMemory(bool compactWorkingSet = true)
+    {
+        lock (DecodeCacheLock)
+        {
+            DecodedImages.Clear();
+        }
+        lock (_cropCacheLock)
+        {
+            _cropCache.Clear();
+        }
+        ArtworkAnalysisSource.ClearCache();
+        LyricsBackgroundBrightness.ClearCache();
+        DynamicIslandColorExtractor.ClearCache();
+
+        if (compactWorkingSet)
+        {
+            System.Runtime.GCSettings.LargeObjectHeapCompactionMode = System.Runtime.GCLargeObjectHeapCompactionMode.CompactOnce;
+            GC.Collect(2, GCCollectionMode.Forced, blocking: false, compacting: true);
+            _ = vn_memory_trim_working_set();
+        }
     }
 
     static MediaArtworkService()

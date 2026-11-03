@@ -19,10 +19,13 @@ public partial class MorphingSettingsIcon : FrameworkElement
     private Point[][] _from = Array.Empty<Point[]>();
     private Point[][] _to = Array.Empty<Point[]>();
     private Point[] _collapseCenters = Array.Empty<Point>();
-    private Point[][] _framePoints = Array.Empty<Point[]>();
-    private PathGeometry _morphGeometry = new() { FillRule = FillRule.Nonzero };
+    private PointCollection[] _framePoints = Array.Empty<PointCollection>();
+    private static readonly PointCollection EmptyPoints = CreateEmptyPoints();
+    private PathGeometry? _morphGeometry;
     private GeometryGroup? _progressGeometry;
     private Transform _renderTransform = Transform.Identity;
+    private double _lastDrawProgress = double.NaN;
+    private int _morphVersion;
 
     [LibraryImport("VNotch.Native")]
     private static partial int vn_morph_settings_icon_sample_contour(
@@ -86,10 +89,11 @@ public partial class MorphingSettingsIcon : FrameworkElement
     {
         Unloaded += (_, _) =>
         {
+            ++_morphVersion;
             BeginAnimation(ProgressProperty, null);
             SetValue(ProgressProperty, 1d);
             _display = _target;
-            _geometryAtProgress = null;
+            ReleaseMorphResources();
         };
     }
 
@@ -100,7 +104,7 @@ public partial class MorphingSettingsIcon : FrameworkElement
         TimeSpan? duration = null, IEasingFunction? easing = null,
         Func<double, Geometry>? geometryAtProgress = null)
     {
-        var next = geometry.Clone();
+        var next = geometry.IsFrozen ? geometry : geometry.Clone();
         Rect bounds = viewport ?? next.Bounds;
         if (bounds.IsEmpty || bounds.Width <= 0 || bounds.Height <= 0) return;
         double scale = 48 / Math.Max(bounds.Width, bounds.Height);
@@ -114,7 +118,9 @@ public partial class MorphingSettingsIcon : FrameworkElement
         normalized.Freeze();
 
         var previous = _display;
-        _geometryAtProgress = null;
+        int version = ++_morphVersion;
+        ReleaseMorphResources();
+        _lastDrawProgress = double.NaN;
         _target = normalized;
         BeginAnimation(ProgressProperty, null);
         SetValue(ProgressProperty, 1d);
@@ -131,13 +137,15 @@ public partial class MorphingSettingsIcon : FrameworkElement
             _from = Sample(previous, out var fromCenters);
             _to = Sample(normalized, out var toCenters);
             _collapseCenters = new Point[Math.Max(_from.Length, _to.Length)];
-            _framePoints = new Point[_collapseCenters.Length][];
+            _framePoints = new PointCollection[_collapseCenters.Length];
             _morphGeometry = new PathGeometry { FillRule = FillRule.Nonzero };
             for (int i = 0; i < _collapseCenters.Length; i++)
             {
                 var segment = new PolyLineSegment { IsStroked = false };
-                _framePoints[i] = new Point[Samples - 1];
-                segment.Points = new PointCollection(_framePoints[i]);
+                var points = new PointCollection(Samples - 1);
+                for (int point = 1; point < Samples; point++) points.Add(default);
+                _framePoints[i] = points;
+                segment.Points = points;
                 var figure = new PathFigure { IsFilled = true, IsClosed = true };
                 figure.Segments.Add(segment);
                 _morphGeometry.Figures.Add(figure);
@@ -154,7 +162,36 @@ public partial class MorphingSettingsIcon : FrameworkElement
             EasingFunction = easing ?? new CubicEase { EasingMode = EasingMode.EaseOut }
         };
         Timeline.SetDesiredFrameRate(animation, AnimationConfig.TargetFps);
+        animation.Completed += (_, _) =>
+        {
+            if (version != _morphVersion) return;
+            BeginAnimation(ProgressProperty, null);
+            SetValue(ProgressProperty, 1d);
+            _display = _target;
+            ReleaseMorphResources();
+            InvalidateVisual();
+        };
+        SetValue(ProgressProperty, 0d);
         BeginAnimation(ProgressProperty, animation);
+    }
+
+    private void ReleaseMorphResources()
+    {
+        _geometryAtProgress = null;
+        _from = Array.Empty<Point[]>();
+        _to = Array.Empty<Point[]>();
+        _framePoints = Array.Empty<PointCollection>();
+        _collapseCenters = Array.Empty<Point>();
+        _morphGeometry = null;
+        _progressGeometry = null;
+        _morphTransform = Transform.Identity;
+    }
+
+    private static PointCollection CreateEmptyPoints()
+    {
+        var points = new PointCollection();
+        points.Freeze();
+        return points;
     }
 
     private Point[][] Sample(Geometry geometry, out Point[] sortedCenters)
@@ -290,7 +327,12 @@ public partial class MorphingSettingsIcon : FrameworkElement
         if (progress >= 1)
         {
             _display = _target;
-            _geometryAtProgress = null;
+            ReleaseMorphResources();
+        }
+        else if (progress == _lastDrawProgress)
+        {
+            // Repaint (brush/layout changes or duplicate render callbacks) can
+            // reuse this frame's geometry without resampling its contours.
         }
         else if (_geometryAtProgress != null)
         {
@@ -301,7 +343,7 @@ public partial class MorphingSettingsIcon : FrameworkElement
         }
         else
         {
-            var shape = _morphGeometry;
+            var shape = _morphGeometry!;
             Span<double> coords = stackalloc double[Samples * 2];
             for (int i = 0; i < shape.Figures.Count; i++)
             {
@@ -329,16 +371,17 @@ public partial class MorphingSettingsIcon : FrameworkElement
                     out _);
 
                 figure.StartPoint = new Point(coords[0], coords[1]);
-                coords.Slice(2).CopyTo(MemoryMarshal.Cast<Point, double>(points.AsSpan()));
-
-                // Publish all points together. Mutating a live PointCollection
-                // individually propagates 95 Freezable notifications per contour.
-                var collection = new PointCollection(points);
-                collection.Freeze();
-                ((PolyLineSegment)figure.Segments[0]).Points = collection;
+                // Detach while writing so 95 point updates do not propagate
+                // through the live geometry. Reattach once, without reallocating.
+                var segment = (PolyLineSegment)figure.Segments[0];
+                segment.Points = EmptyPoints;
+                for (int point = 0; point < points.Count; point++)
+                    points[point] = new Point(coords[point * 2 + 2], coords[point * 2 + 3]);
+                segment.Points = points;
             }
             _display = shape;
         }
+        _lastDrawProgress = progress;
         // RenderSize is authoritative even before the deferred SizeChanged callback.
         // Keep the normalized 56-unit geometry inside the current layout slot.
         if (!IsTextGeometry &&

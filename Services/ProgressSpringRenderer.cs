@@ -35,10 +35,10 @@ internal sealed partial class ProgressSpringRenderer
     private readonly Func<double> _getPlaybackRate;
 
     private readonly Stopwatch _stopwatch = new();
+    private AnimationFrameClock _frameClock;
 
     private bool _hooked;
     private bool _active;
-    private DateTime _startTimeUtc = DateTime.MinValue;
 
     #endregion
 
@@ -74,7 +74,7 @@ internal sealed partial class ProgressSpringRenderer
     public void Start()
     {
         _active = true;
-        _startTimeUtc = DateTime.UtcNow;
+        _stopwatch.Restart();
         Hook();
     }
     public void Stop()
@@ -88,7 +88,7 @@ internal sealed partial class ProgressSpringRenderer
     {
         if (_hooked) return;
         _hooked = true;
-        _stopwatch.Restart();
+        _frameClock.Reset(Stopwatch.GetTimestamp());
 
         CompositionTarget.Rendering += OnRendering;
     }
@@ -120,16 +120,18 @@ internal sealed partial class ProgressSpringRenderer
             return;
         }
 
-        if (_stopwatch.Elapsed.TotalMilliseconds + 0.1 < 1000d / Math.Max(1, AnimationConfig.TargetFps)) return;
-        RenderFrame();
+        // WPF may raise Rendering more than once per presentation. Keep the
+        // deadline's remainder instead of rounding the target to a display divisor.
+        double seconds;
+        bool advance = e is RenderingEventArgs frame
+            ? _frameClock.TryAdvance(frame.RenderingTime, AnimationConfig.TargetFps, out seconds)
+            : _frameClock.TryAdvance(Stopwatch.GetTimestamp(), AnimationConfig.TargetFps, out seconds);
+        if (advance) RenderFrame(seconds);
     }
 
-    private void RenderFrame()
+    private void RenderFrame(double frameSeconds)
     {
-        double frameSeconds = _stopwatch.Elapsed.TotalSeconds;
-        _stopwatch.Restart();
-
-        double elapsedMs = (DateTime.UtcNow - _startTimeUtc).TotalMilliseconds;
+        double elapsedMs = _stopwatch.Elapsed.TotalMilliseconds;
         if (vn_progress_spring_step(ref _state, frameSeconds, _getPlaybackRate(), elapsedMs, out byte finished) != 0)
             return;
 

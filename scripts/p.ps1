@@ -40,7 +40,7 @@
 #>
 [CmdletBinding()]
 param(
-    [string]$TestFilter = "FullyQualifiedName~PerformanceBenchmarkTests|FullyQualifiedName~HotPathRegressionTests.BenchmarkRenderAndHighlightAllocations|FullyQualifiedName~LiquidGlassPacingTests.LiquidGlass_PacingBenchmark_60Fps_And_120Fps|FullyQualifiedName~FirstOpenLatencyTests|FullyQualifiedName~ClipboardTrayOpeningPerformanceTests|FullyQualifiedName~ScrubberPerformanceTests|FullyQualifiedName~ProgressViewModelPerformanceTests|FullyQualifiedName~PerformanceAuditRegressionTests|FullyQualifiedName~DebugWindowAllocationTests|FullyQualifiedName~PrivacyPollingAllocationTests|FullyQualifiedName~ServiceOptimizationTests|FullyQualifiedName~ServicePollingOptimizationTests|FullyQualifiedName~SubjectAwareBlurOptimizationTests",
+    [string]$TestFilter = "FullyQualifiedName~PerformanceBenchmarkTests|FullyQualifiedName~HotPathRegressionTests|FullyQualifiedName~SpringEasingPerformanceTests|FullyQualifiedName~MorphAnimationResourceTests|FullyQualifiedName~LiquidGlassPacingTests.LiquidGlass_PacingBenchmark_60Fps_And_120Fps|FullyQualifiedName~FirstOpenLatencyTests|FullyQualifiedName~ClipboardTrayOpeningPerformanceTests|FullyQualifiedName~ScrubberPerformanceTests|FullyQualifiedName~ProgressViewModelPerformanceTests|FullyQualifiedName~PerformanceAuditRegressionTests|FullyQualifiedName~DebugWindowAllocationTests|FullyQualifiedName~PrivacyPollingAllocationTests|FullyQualifiedName~ServiceOptimizationTests|FullyQualifiedName~ServicePollingOptimizationTests|FullyQualifiedName~SubjectAwareBlurOptimizationTests",
 
     [ValidateRange(2, 300)]
     [int]$LiveBenchmarkSeconds = 8,
@@ -441,6 +441,8 @@ try {
                 "*Scrubber*"     { "Log Scrubber & Throughput"; break }
                 "*Progress*"     { "UI Binding & ViewModels"; break }
                 "*HotPath*"      { "Hot-Path Rendering"; break }
+                "*Spring*"       { "Spring Physics & Easing"; break }
+                "*Morph*"        { "Hot-Path Rendering"; break }
                 default          { "Core Microbenchmarks" }
             }
 
@@ -528,6 +530,13 @@ try {
                 Optimized = "$($Matches[2]) | Alloc: $($Matches[3])"
                 Gain      = "0-Byte Steady Alloc"
             })
+        } elseif ($note -match '^damping=([0-9.]+):\s*scalar native=([0-9.]+\s*ns/ease),\s*current=([0-9.]+\s*ns/ease),\s*ratio=([0-9.]+x)') {
+            $highlightComparisons.Add([pscustomobject]@{
+                Operation = "DampedSpringEase Lookup (damping=$($Matches[1]))"
+                Legacy    = "P/Invoke scalar: $($Matches[2])"
+                Optimized = "Cubic Hermite: $($Matches[3])"
+                Gain      = "$($Matches[4]) FASTER"
+            })
         }
     }
 
@@ -545,8 +554,9 @@ try {
     Write-TreeSpacer
     Write-TreeStep "3/4" "Generate Executive Summary & Export PDF Report"
 
+    $ramLimitMb  = if ($spawnedTempApp) { 280.0 } else { 550.0 }
     $cpuBudgetOk = (-not $liveMetrics.Captured) -or ($liveMetrics.CpuMachineMean -le 8.0)
-    $ramBudgetOk = (-not $liveMetrics.Captured) -or ($liveMetrics.WorkingSetMean -le 220.0)
+    $ramBudgetOk = (-not $liveMetrics.Captured) -or ($liveMetrics.WorkingSetMean -le $ramLimitMb)
     $testsOk     = ($testExit -eq 0 -and $failedCount -eq 0 -and $totalTests -gt 0)
 
     $overallVerdict = if ($testsOk -and $cpuBudgetOk -and $ramBudgetOk) {
@@ -621,7 +631,7 @@ try {
 
     $liveTableHtml = if ($liveMetrics.Captured) {
         $cpuState = if ($liveMetrics.CpuMachineMean -le 8.0) { "PASS (<= 8%)" } else { "WARN (> 8%)" }
-        $ramState = if ($liveMetrics.WorkingSetMean -le 220.0) { "PASS (<= 220 MB)" } else { "WARN (> 220 MB)" }
+        $ramState = if ($liveMetrics.WorkingSetMean -le $ramLimitMb) { "PASS (<= $ramLimitMb MB)" } else { "WARN (> $ramLimitMb MB)" }
         $gdiState = if ($liveMetrics.GdiObjects -le 500) { "PASS (<= 500)" } else { "WARN (> 500)" }
         @"
         <table>

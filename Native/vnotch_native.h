@@ -628,6 +628,10 @@ VN_EXPORT int32_t __stdcall vn_animation_compute_volume_hud_transition(
     double collapsed_radius,
     VnVolumeHudTransitionParamsOut* out_params) noexcept;
 
+VN_EXPORT int32_t __stdcall vn_damped_spring_ease(double damping_ratio, double normalized_time, double* out_value) noexcept;
+VN_EXPORT int32_t __stdcall vn_damped_spring_sample_curve(double damping_ratio, double* out_samples, int32_t sample_count) noexcept;
+VN_EXPORT int32_t __stdcall vn_damped_spring_build_segments(double damping_ratio, double* out_coefficients, int32_t coefficient_count) noexcept;
+
 VN_EXPORT int32_t __stdcall vn_animation_compute_category_pill_motion(
     double current_x,
     double current_width,
@@ -2067,3 +2071,39 @@ VN_EXPORT int32_t __stdcall vn_settings_search_evaluate_batch(
     VnSettingsSearchMatchResult* out_results,
     int32_t results_cap,
     int32_t* out_match_count) noexcept;
+
+// ---------------------------------------------------------------------------
+// Saliency Subject Bounds, Single-Call Blur Pipelines & Working-Set Trimmer
+// ---------------------------------------------------------------------------
+
+#ifndef VN_SUBJECT_BOUNDS_DEFINED
+#define VN_SUBJECT_BOUNDS_DEFINED
+#pragma pack(push, 1)
+struct VnSubjectBounds
+{
+    float center_x;
+    float center_y;
+    float width;
+    float height;
+    float confidence;
+    int32_t class_id;
+};
+#pragma pack(pop)
+#endif
+
+VN_EXPORT int32_t __stdcall vn_smartcrop_compute_saliency_subject_bounds(
+    const uint8_t* pixels, int32_t w, int32_t h, int32_t stride,
+    VnSubjectBounds* out_bounds, uint8_t* out_found) noexcept;
+
+VN_EXPORT int32_t __stdcall vn_fast_blur_process_bgra32(
+    uint8_t* pixels, uint8_t* scratch, int32_t w, int32_t h,
+    int32_t radius, int32_t passes, float darken_factor) noexcept;
+
+VN_EXPORT int32_t __stdcall vn_subject_blur_process_bgra32(
+    uint8_t* background, uint8_t* subject_layer, uint8_t* scratch,
+    int32_t w, int32_t h, int32_t stride,
+    float center_x, float center_y, float sub_w, float sub_h,
+    int32_t bg_radius, int32_t sub_radius,
+    float bg_darken, float sub_brighten) noexcept;
+
+VN_EXPORT int32_t __stdcall vn_memory_trim_working_set() noexcept;

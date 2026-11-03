@@ -73,6 +73,60 @@ VN_EXPORT int32_t __stdcall vn_damped_spring_ease(double damping_ratio, double n
     return VN_OK;
 }
 
+// Build the immutable easing table once. Hoist invariant spring coefficients
+// out of the sample loop; WPF can interpolate without native transitions per tick.
+VN_EXPORT int32_t __stdcall vn_damped_spring_sample_curve(
+    double damping_ratio, double* out_samples, int32_t sample_count) noexcept {
+    if (!out_samples || sample_count < 2 || !std::isfinite(damping_ratio) ||
+        damping_ratio <= 0.0 || damping_ratio > 1.0) return VN_ERR_INVALID_ARG;
+
+    const double frequency = anim::kNaturalFrequency * std::sqrt(std::max(0.0, 1.0 - damping_ratio * damping_ratio));
+    const double end_response = anim::StepResponse(damping_ratio, frequency, 1.0);
+    const double interval = 1.0 / static_cast<double>(sample_count - 1);
+    out_samples[0] = 0.0;
+    for (int32_t i = 1; i < sample_count - 1; ++i) {
+        out_samples[i] = 1.0 - anim::StepResponse(damping_ratio, frequency, 1.0 - i * interval) / end_response;
+    }
+    out_samples[sample_count - 1] = 1.0;
+    return VN_OK;
+}
+
+// Cubic Hermite coefficients preserve the analytic curve using a much smaller
+// immutable table. Each segment stores a + b*t + c*t^2 + d*t^3, t in [0, 1].
+VN_EXPORT int32_t __stdcall vn_damped_spring_build_segments(
+    double damping_ratio, double* out_coefficients, int32_t coefficient_count) noexcept {
+    if (!out_coefficients || coefficient_count < 4 || coefficient_count % 4 != 0 ||
+        !std::isfinite(damping_ratio) || damping_ratio <= 0.0 || damping_ratio > 1.0)
+        return VN_ERR_INVALID_ARG;
+
+    const int32_t segments = coefficient_count / 4;
+    const double interval = 1.0 / static_cast<double>(segments);
+    const double frequency = anim::kNaturalFrequency * std::sqrt(std::max(0.0, 1.0 - damping_ratio * damping_ratio));
+    const double end_response = anim::StepResponse(damping_ratio, frequency, 1.0);
+    double previous_value = 0.0, previous_slope = 0.0;
+    for (int32_t i = 0; i <= segments; ++i) {
+        const double time = i == segments ? 0.0 : 1.0 - i * interval;
+        const double value = i == 0 ? 0.0 : i == segments ? 1.0
+            : 1.0 - anim::StepResponse(damping_ratio, frequency, time) / end_response;
+        const double decay = std::exp(-damping_ratio * anim::kNaturalFrequency * time);
+        const double derivative = frequency <= 1e-9
+            ? anim::kNaturalFrequency * anim::kNaturalFrequency * time * decay
+            : anim::kNaturalFrequency * anim::kNaturalFrequency * decay * std::sin(frequency * time) / frequency;
+        const double slope = derivative * interval / end_response;
+        if (i > 0) {
+            const double delta = value - previous_value;
+            const int32_t offset = (i - 1) * 4;
+            out_coefficients[offset] = previous_value;
+            out_coefficients[offset + 1] = previous_slope;
+            out_coefficients[offset + 2] = 3.0 * delta - 2.0 * previous_slope - slope;
+            out_coefficients[offset + 3] = -2.0 * delta + previous_slope + slope;
+        }
+        previous_value = value;
+        previous_slope = slope;
+    }
+    return VN_OK;
+}
+
 // One integration step of the progress spring. frame_seconds is the raw time since the previous frame,
 // elapsed_ms the time since the animation started. out_finished = 1 when the spring settled or timed out.
 VN_EXPORT int32_t __stdcall vn_progress_spring_step(

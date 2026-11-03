@@ -1,5 +1,9 @@
 #include "vnotch_common.h"
 
+VN_EXPORT int32_t vn_fast_blur_darken_pixels(uint8_t* pixels, int32_t length, float factor) noexcept;
+VN_EXPORT int32_t vn_fast_blur_box_horizontal(const uint8_t* source, uint8_t* target, int32_t w, int32_t h, int32_t radius) noexcept;
+VN_EXPORT int32_t vn_fast_blur_box_vertical(const uint8_t* source, uint8_t* target, int32_t w, int32_t h, int32_t radius) noexcept;
+
 namespace vnotch::services
 {
     class SubjectAwareBlurService final
@@ -106,5 +110,43 @@ VN_EXPORT int32_t vn_subject_blur_composite(
         return VN_ERR_INVALID_ARG;
     vnotch::services::SubjectAwareBlurService::CompositeLayers(
         background, subject_layer, center_x, center_y, sub_width, sub_height, width, height, stride);
+    return VN_OK;
+}
+
+VN_EXPORT int32_t __stdcall vn_subject_blur_process_bgra32(
+    uint8_t* background, uint8_t* subject_layer, uint8_t* scratch,
+    int32_t w, int32_t h, int32_t stride,
+    float center_x, float center_y, float sub_w, float sub_h,
+    int32_t bg_radius, int32_t sub_radius,
+    float bg_darken, float sub_brighten) noexcept
+{
+    if (!background || !subject_layer || !scratch || w <= 0 || h <= 0 || w > 16384 || h > 16384 ||
+        static_cast<int64_t>(stride) < static_cast<int64_t>(w) * 4LL ||
+        static_cast<int64_t>(stride) * static_cast<int64_t>(h) > INT32_MAX ||
+        bg_radius < 0 || bg_radius > 256 || sub_radius < 0 || sub_radius > 256)
+        return VN_ERR_INVALID_ARG;
+
+    const int32_t buf_len = stride * h;
+    std::memcpy(subject_layer, background, static_cast<size_t>(buf_len));
+
+    if (bg_radius >= 1)
+    {
+        for (int32_t i = 0; i < 2; ++i)
+        {
+            vn_fast_blur_box_horizontal(background, scratch, w, h, bg_radius);
+            vn_fast_blur_box_vertical(scratch, background, w, h, bg_radius);
+        }
+    }
+    vn_fast_blur_darken_pixels(background, w * h * 4, bg_darken);
+
+    if (sub_radius >= 1)
+    {
+        vn_fast_blur_box_horizontal(subject_layer, scratch, w, h, sub_radius);
+        vn_fast_blur_box_vertical(scratch, subject_layer, w, h, sub_radius);
+    }
+    vnotch::services::SubjectAwareBlurService::Brighten(subject_layer, buf_len, sub_brighten);
+
+    vnotch::services::SubjectAwareBlurService::CompositeLayers(
+        background, subject_layer, center_x, center_y, sub_w, sub_h, w, h, stride);
     return VN_OK;
 }

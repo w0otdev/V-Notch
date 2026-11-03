@@ -292,7 +292,7 @@ public partial class MainWindow
         int activeGen = generation ?? _viewTransitionGeneration;
         NotchBorder.IsHitTestVisible = false;
 
-        var durOut = new Duration(TimeSpan.FromMilliseconds(170));
+        var durOut = new Duration(TimeSpan.FromMilliseconds(190));
         var durIn = new Duration(TimeSpan.FromMilliseconds(440));
         var inDelay = TimeSpan.FromMilliseconds(40);
         int fps = AnimationConfig.TargetFps;
@@ -305,7 +305,7 @@ public partial class MainWindow
             var closeTranslate = new TranslateTransform(0, 0);
             outgoing.RenderTransform = closeTranslate;
 
-            var aFade = MakeAnim(1, 0, durOut, _easeAppleIn);
+            var aFade = MakeAnim(1, 0, durOut, _easeQuadInOut);
             var aSlide = MakeAnim(0, 10, durOut, _easeAppleIn);
             Timeline.SetDesiredFrameRate(aSlide, fps);
 
@@ -342,7 +342,7 @@ public partial class MainWindow
             var outTranslate = new TranslateTransform(0, outRestY);
             outgoing.RenderTransform = outTranslate;
 
-            var fadeOut = MakeAnim(1, 0, durOut, _easeAppleIn);
+            var fadeOut = MakeAnim(1, 0, durOut, _easeQuadInOut);
             var slideUp = MakeAnim(outRestY, outRestY - 10, durOut, _easeAppleIn);
             Timeline.SetDesiredFrameRate(slideUp, fps);
 

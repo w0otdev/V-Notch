@@ -1324,6 +1324,19 @@ public sealed partial class MediaDetectionService : IMediaDetectionService, IAsy
 
     private void ApplyPrePublishThumbnailFallbackAndCrop(MediaInfo info, bool isNewTrackForThumbnail)
     {
+        if (!info.IsAnyMediaPlaying && string.IsNullOrEmpty(info.CurrentTrack))
+        {
+            info.Thumbnail = null;
+            CachedThumbnail = null;
+            _lastInitialCroppedThumbnail = null;
+            _lastSessionArtworkFingerprint = null;
+            _sessionArtworkGeneration = -1;
+            _cachedThumbnailSource = "";
+            _lastThumbTrackIdentity = "";
+            _timelineSimulator.RecoveredThumbnail = null;
+            CancelAndClearThumbnailCts();
+            return;
+        }
         if (!isNewTrackForThumbnail && info.Thumbnail == null && CachedThumbnail != null)
         {
             info.Thumbnail = CachedThumbnail;
@@ -2535,7 +2548,11 @@ public sealed partial class MediaDetectionService : IMediaDetectionService, IAsy
         try
         {
             var (session, spotifyGroundTruth, mediaProperties) = await ResolveActiveSessionAsync(forceRefresh);
-            if (session == null) return false;
+            if (session == null)
+            {
+                DetachActiveDisplaySession();
+                return false;
+            }
 
             SwitchActiveDisplaySessionIfNeeded(session);
 

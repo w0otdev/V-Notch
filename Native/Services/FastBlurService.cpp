@@ -4,6 +4,8 @@
 #include <algorithm>
 #include <cmath>
 #include <cstring>
+#include <malloc.h>
+#include <psapi.h>
 
 namespace vnotch::services
 {
@@ -207,5 +209,33 @@ VN_EXPORT int32_t vn_fast_blur_box_vertical(const uint8_t* source, uint8_t* targ
     if (!source || !target || !vnotch::services::FastBlurService::IsValidDimensions(w, h, radius))
         return VN_ERR_INVALID_ARG;
     vnotch::services::FastBlurService::BoxBlurVertical(source, target, w, h, radius);
+    return VN_OK;
+}
+
+VN_EXPORT int32_t __stdcall vn_fast_blur_process_bgra32(
+    uint8_t* pixels, uint8_t* scratch, int32_t w, int32_t h,
+    int32_t radius, int32_t passes, float darken_factor) noexcept
+{
+    if (!pixels || !scratch || passes < 0 || !std::isfinite(darken_factor) ||
+        !vnotch::services::FastBlurService::IsValidDimensions(w, h, radius))
+        return VN_ERR_INVALID_ARG;
+
+    if (radius >= 1)
+    {
+        for (int32_t i = 0; i < passes; ++i)
+        {
+            vnotch::services::FastBlurService::BoxBlurHorizontal(pixels, scratch, w, h, radius);
+            vnotch::services::FastBlurService::BoxBlurVertical(scratch, pixels, w, h, radius);
+        }
+    }
+    vnotch::services::FastBlurService::DarkenPixels(pixels, w * h * 4, darken_factor);
+    return VN_OK;
+}
+
+VN_EXPORT int32_t __stdcall vn_memory_trim_working_set() noexcept
+{
+    _heapmin();
+    SetProcessWorkingSetSizeEx(GetCurrentProcess(), static_cast<SIZE_T>(-1), static_cast<SIZE_T>(-1), 0);
+    K32EmptyWorkingSet(GetCurrentProcess());
     return VN_OK;
 }

@@ -10,6 +10,8 @@ internal static partial class LyricsBackgroundBrightness
 {
     private static readonly ConditionalWeakTable<BitmapSource, BitmapSource> Cache = new();
 
+    internal static void ClearCache() => Cache.Clear();
+
     [LibraryImport("VNotch.Native.dll")]
     private static unsafe partial int vn_lyrics_brightness_apply(byte* pixels, int byteCount, out byte outModified);
 

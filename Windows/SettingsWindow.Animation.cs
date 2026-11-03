@@ -397,14 +397,14 @@ public partial class SettingsWindow
             el.Opacity = step.StartOpacity;
             translate.Y = step.StartTranslateY;
 
-            var blur = new BlurEffect
+            var blur = i < 6 ? new BlurEffect
             {
                 Radius = step.StartBlurRadius,
                 RenderingBias = RenderingBias.Performance
-            };
+            } : null;
             // Keep the cascade's motion, but bound concurrent offscreen blur
             // surfaces when a page contains many cards.
-            el.Effect = i < 6 ? blur : null;
+            el.Effect = blur;
 
             var delay = TimeSpan.FromMilliseconds(step.DelayMs);
             var fadeAnim = new DoubleAnimation(step.StartOpacity, targetOpacity, TimeSpan.FromMilliseconds(step.FadeDurationMs))
@@ -417,7 +417,7 @@ public partial class SettingsWindow
                 BeginTime = delay,
                 EasingFunction = ease
             };
-            var blurAnim = new DoubleAnimation(step.StartBlurRadius, 0.0, TimeSpan.FromMilliseconds(step.BlurDurationMs))
+            var blurAnim = blur == null ? null : new DoubleAnimation(step.StartBlurRadius, 0.0, TimeSpan.FromMilliseconds(step.BlurDurationMs))
             {
                 BeginTime = delay,
                 EasingFunction = ease
@@ -425,9 +425,11 @@ public partial class SettingsWindow
 
             Timeline.SetDesiredFrameRate(fadeAnim, fps);
             Timeline.SetDesiredFrameRate(slideAnim, fps);
-            Timeline.SetDesiredFrameRate(blurAnim, fps);
+            if (blurAnim != null) Timeline.SetDesiredFrameRate(blurAnim, fps);
 
-            blurAnim.Completed += (_, _) =>
+            // Unblurred items finish with their last visible motion; no dummy blur clock is needed.
+            var completion = blurAnim ?? (step.SlideDurationMs >= step.FadeDurationMs ? slideAnim : fadeAnim);
+            completion.Completed += (_, _) =>
             {
                 int currentVer = isMenuList ? _progressiveMenuBlurVersion : _progressiveContentBlurVersion;
                 if (version != currentVer) return;
@@ -444,7 +446,7 @@ public partial class SettingsWindow
 
             el.BeginAnimation(OpacityProperty, fadeAnim);
             translate.BeginAnimation(TranslateTransform.YProperty, slideAnim);
-            blur.BeginAnimation(BlurEffect.RadiusProperty, blurAnim);
+            blur?.BeginAnimation(BlurEffect.RadiusProperty, blurAnim);
         }
 
         for (int i = written; i < items.Count; i++)

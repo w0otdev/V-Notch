@@ -24,6 +24,23 @@ public static partial class SubjectAwareBlurService
         int height,
         int stride);
 
+    [LibraryImport("VNotch.Native.dll")]
+    private static unsafe partial int vn_subject_blur_process_bgra32(
+        byte* background,
+        byte* subjectLayer,
+        byte* scratch,
+        int w,
+        int h,
+        int stride,
+        float centerX,
+        float centerY,
+        float subW,
+        float subH,
+        int bgRadius,
+        int subRadius,
+        float bgDarken,
+        float subBrighten);
+
     public static async Task<BitmapSource?> GetSubjectBlurredAsync(
         BitmapSource source,
         SubjectBounds? subject,
@@ -81,11 +98,20 @@ public static partial class SubjectAwareBlurService
             try
             {
                 small.CopyPixels(background, stride, 0);
-                Buffer.BlockCopy(background, 0, subjectLayer, 0, bufLen);
-
-                RenderBackgroundLayer(background, tmp, actualW, actualH, backgroundBlurRadius);
-                RenderSubjectLayer(subjectLayer, tmp, actualW, actualH, bufLen, subjectBlurRadius);
-                CompositeLayers(background, subjectLayer, s, actualW, actualH, stride);
+                unsafe
+                {
+                    fixed (byte* pBg = background)
+                    fixed (byte* pSub = subjectLayer)
+                    fixed (byte* pTmp = tmp)
+                    {
+                        _ = vn_subject_blur_process_bgra32(
+                            pBg, pSub, pTmp,
+                            actualW, actualH, stride,
+                            s.CenterX, s.CenterY, s.Width, s.Height,
+                            backgroundBlurRadius, subjectBlurRadius,
+                            0.78f, 1.04f);
+                    }
+                }
 
                 var wb = new WriteableBitmap(actualW, actualH, 96, 96, PixelFormats.Bgra32, null);
                 wb.WritePixels(new Int32Rect(0, 0, actualW, actualH), background, stride, 0);

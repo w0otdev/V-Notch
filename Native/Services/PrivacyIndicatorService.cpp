@@ -296,7 +296,7 @@ public:
                 const VnActiveAppSlice& prev = items[prev_idx];
                 const char16_t* prev_ptr = char_pool + prev.name_offset;
                 if (EqualsOrdinalIgnoreCase(cur_ptr, cur.name_len, prev_ptr, prev.name_len)) {
-                    if (cur.last_start_file_time > prev.last_start_file_time) {
+                    if (sort_by_name == 0 && cur.last_start_file_time > prev.last_start_file_time) {
                         out_indices[u] = i;
                     }
                     matched = true;

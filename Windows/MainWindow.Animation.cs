@@ -442,10 +442,10 @@ public partial class MainWindow
 
     private void SetupExpandedContentBeforeAnimation()
     {
+        double opacity = ExpandedContent.Visibility == Visibility.Visible ? ExpandedContent.Opacity : 0;
         ExpandedContent.BeginAnimation(OpacityProperty, null);
         CollapsedContent.BeginAnimation(OpacityProperty, null);
         MusicCompactContent.BeginAnimation(OpacityProperty, null);
-        SecondaryContent.BeginAnimation(OpacityProperty, null);
         ResetAnimationThumbnailOverlay();
         MediaBackground.BeginAnimation(OpacityProperty, null);
         MediaBackground2.BeginAnimation(OpacityProperty, null);
@@ -457,10 +457,15 @@ public partial class MainWindow
         MediaBackground.Opacity = 0;
         MediaBackground2.Opacity = 0;
 
-        SecondaryContent.Visibility = Visibility.Collapsed;
-        TimerContent.Visibility = Visibility.Collapsed;
+        // Keep the outgoing view visible until the content presenter's fade ends.
+        if (_notchContentPresenter == null)
+        {
+            SecondaryContent.BeginAnimation(OpacityProperty, null);
+            SecondaryContent.Visibility = Visibility.Collapsed;
+            TimerContent.Visibility = Visibility.Collapsed;
+        }
 
-        ExpandedContent.Opacity = 0;
+        ExpandedContent.Opacity = opacity;
         ExpandedContent.Visibility = Visibility.Visible;
 
         if (LyricsBlurBackground != null)
@@ -708,6 +713,17 @@ public partial class MainWindow
     private void HideLyricsBlurBackgroundImmediately()
     {
         _isLyricsBlurFadeInProgress = false;
+        if (LyricsBlurImage != null)
+        {
+            LyricsBlurImage.BeginAnimation(OpacityProperty, null);
+            LyricsBlurImage.Source = null;
+        }
+        if (LyricsBlurImageNext != null)
+        {
+            LyricsBlurImageNext.BeginAnimation(OpacityProperty, null);
+            LyricsBlurImageNext.Opacity = 0;
+            LyricsBlurImageNext.Source = null;
+        }
         if (LyricsBlurBackground == null) return;
         LyricsBlurBackground.BeginAnimation(OpacityProperty, null);
         LyricsBlurBackground.Opacity = 0;
@@ -956,6 +972,7 @@ public partial class MainWindow
         _isAnimating = true;
 
         var effectiveTarget = targetView ?? VNotch.Models.NotchView.Media;
+        double mediaStartY = ExpandedContent.Visibility == Visibility.Visible ? GetCurrentExpandedContentTranslationY() : 10;
         if (_isAudioView && effectiveTarget != VNotch.Models.NotchView.AudioMixer) StopAudioPoll();
         if (effectiveTarget != VNotch.Models.NotchView.Media)
         {
@@ -1224,11 +1241,11 @@ public partial class MainWindow
         {
             double contentTargetY = ExpandedContentRestY;
             var expandedGroup = new TransformGroup();
-            var expandedTranslate = new TranslateTransform(0, contentTargetY);
+            var expandedTranslate = new TranslateTransform(0, mediaStartY);
             expandedGroup.Children.Add(expandedTranslate);
             ExpandedContent.RenderTransform = expandedGroup;
             ExpandedContent.RenderTransformOrigin = new Point(0.5, 0.4);
-            var springSlide = MakeAnim(10, contentTargetY, _dur400, _easeExpOut6);
+            var springSlide = MakeAnim(mediaStartY, contentTargetY, _dur400, _easeExpOut6);
 
             ExpandedContentBlur.Radius = 0;
             expandedTranslate.BeginAnimation(TranslateTransform.YProperty, springSlide);
@@ -1891,7 +1908,15 @@ public partial class MainWindow
 
         ResetContentTransformAndEffectsAfterCollapse();
 
-
+        if (!_isExpanded)
+        {
+            ClearBlurredBackgroundSources();
+            HideLyricsBlurBackgroundImmediately();
+        }
+        if (VNotch.Controls.ActiveBlur.GetBlur(ExpandedContent) == null)
+        {
+            ExpandedContent.Effect = null;
+        }
 
         FinalizeCompactModeAfterCollapse(contentToShow, suppressCompactThumbnailMotion, deferCompactThumbnailReveal);
         FinalizeCompactThumbnailAndVisualizerAfterCollapse(suppressCompactThumbnailMotion, deferCompactThumbnailReveal);
@@ -1900,6 +1925,8 @@ public partial class MainWindow
         {
             ScheduleDesktopLayerDemotion();
         }
+
+        Task.Run(() => _mediaService.ArtworkService.TrimMemory(compactWorkingSet: true)).SafeFireAndForget("COLLAPSE-TRIM");
     }
 
     private void ResetContentTransformAndEffectsAfterCollapse()
@@ -2023,6 +2050,8 @@ public partial class MainWindow
         _viewTransitionGeneration = generation;
         _isAnimating = true;
 
+        double expandedOpacity = ExpandedContent.Visibility == Visibility.Visible ? ExpandedContent.Opacity : 0;
+        double currentY = GetCurrentExpandedContentTranslationY();
         PrepareStateBeforeCollapse();
         if (fromView.HasValue && fromView.Value != VNotch.Models.NotchView.Compact)
         {
@@ -2050,6 +2079,7 @@ public partial class MainWindow
         _isTimerView = false;
 
         ResetContentBlurAndOverlaysBeforeCollapse();
+        ExpandedContent.Opacity = expandedOpacity;
 
         NotchBorder.IsHitTestVisible = false;
         int animFps = VNotch.Services.AnimationConfig.TargetFps;
@@ -2058,13 +2088,12 @@ public partial class MainWindow
         double currentHeight = NotchBorder.ActualHeight > 0 ? NotchBorder.ActualHeight : _expandedHeight;
 
         var expandedGroup = new TransformGroup();
-        var expandedTranslate = new TranslateTransform(0, ExpandedContentRestY);
+        var expandedTranslate = new TranslateTransform(0, currentY);
         expandedGroup.Children.Add(expandedTranslate);
         ExpandedContent.RenderTransform = expandedGroup;
         ExpandedContent.RenderTransformOrigin = new Point(0.5, 0.4);
 
-        var fadeOutAnim = MakeAnim(0, _dur200, _easeQuadOut);
-        double currentY = ExpandedContentRestY;
+        var fadeOutAnim = MakeAnim(expandedOpacity, 0, _dur200, _easeQuadOut);
         var slideOutAnim = MakeAnim(currentY, -10, _dur400, _easeExpOut6);
 
         fadeOutAnim.Completed += (s, e) => OnExpandedContentFadeOutCompleted(generation, wasSecondary, wasTimer);

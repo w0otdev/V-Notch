@@ -270,26 +270,9 @@ namespace VNotch.Controls
             // Advance smoothing once per animation tick, never once per paint.
             PrepareDrawHeights();
 
-            vn_visualizer_step_bars(
-                _currentHeights,
-                _smoothedHeights,
-                ReadOnlySpan<double>.Empty,
-                BarCount,
-                0,
-                0,
-                1,
-                1,
-                _currentOpacity,
-                _iconMix,
-                Span<double>.Empty,
-                0,
-                out _,
-                out _,
-                out _,
-                out _,
-                out byte drawSettledByte);
-
-            bool drawSettled = drawSettledByte != 0;
+            Span<double> barRects = stackalloc double[BarCount * 4];
+            var frame = ComputeBarFrame(barRects);
+            bool drawSettled = frame.Settled;
             bool opacityChanged = Math.Abs(oldOpacity - _currentOpacity) > 0.0001;
             bool copiedFeedbackSettled = _copiedFeedback && Math.Abs(_iconMix - 1) < 1e-6 && Math.Abs(_checkMix - 1) < 1e-6 &&
                 Math.Abs(_playMix - (IsPlaying ? 1 : 0)) < 1e-6;
@@ -298,7 +281,7 @@ namespace VNotch.Controls
                 (isSettled && drawSettled && !opacityChanged && !feedbackActive && _state == VisualizerState.Paused))
             {
                 if (feedbackChanged || !copiedFeedbackSettled)
-                    RefreshDrawingFrame();
+                    RefreshDrawingFrame(barRects, frame);
                 if (copiedFeedbackSettled) StopRendering();
                 if (_state != VisualizerState.Playing)
                 {
@@ -308,9 +291,9 @@ namespace VNotch.Controls
                 return;
             }
 
-            if ((!isSettled || !drawSettled || opacityChanged || feedbackChanged) && (feedbackChanged || NeedsDrawingUpdate()))
+            if ((!isSettled || !drawSettled || opacityChanged || feedbackChanged) && (feedbackChanged || NeedsDrawingUpdate(barRects, frame.Dpi)))
             {
-                RefreshDrawingFrame();
+                RefreshDrawingFrame(barRects, frame);
             }
         }
 
@@ -600,10 +583,10 @@ namespace VNotch.Controls
             _frameDrawing.Children.Add(_barsDrawing);
         }
 
-        private void RefreshDrawingFrame()
+        private void RefreshDrawingFrame(ReadOnlySpan<double> barRects, BarFrame frame)
         {
             if (_frameDrawing == null) InvalidateVisual();
-            else UpdateDrawingFrame();
+            else ApplyDrawingFrame(barRects, frame);
         }
 
         // The bars are snapped to device pixels. Their smoothed amplitudes can
@@ -611,33 +594,19 @@ namespace VNotch.Controls
         // Keep the current drawing until its exact bounds, opacity or color differ.
         internal bool NeedsDrawingUpdate()
         {
+            Span<double> barRects = stackalloc double[BarCount * 4];
+            var frame = ComputeBarFrame(barRects);
+            return NeedsDrawingUpdate(barRects, frame.Dpi);
+        }
+
+        private bool NeedsDrawingUpdate(ReadOnlySpan<double> barRects, DpiScale dpi)
+        {
             if (!_hasRenderedBars || Math.Abs(_iconMix) > 1e-6 || Math.Abs(_renderedOpacity - _currentOpacity) > 1e-6 ||
                 Math.Abs(_renderedWidth - ActualWidth) > 1e-6 || Math.Abs(_renderedHeight - ActualHeight) > 1e-6 || ActiveBrush == null)
                 return true;
-            DpiScale dpi = _cachedDpi ??= VisualTreeHelper.GetDpi(this);
             if (Math.Abs(dpi.DpiScaleX - _renderedDpi.DpiScaleX) > 1e-6 || Math.Abs(dpi.DpiScaleY - _renderedDpi.DpiScaleY) > 1e-6 ||
                 (ActiveBrush is SolidColorBrush brush ? brush.Color : Colors.White) != _renderedBaseColor)
                 return true;
-
-            Span<double> barRects = stackalloc double[BarCount * 4];
-            vn_visualizer_step_bars(
-                _currentHeights,
-                _smoothedHeights,
-                _drawHeights,
-                BarCount,
-                ActualWidth,
-                ActualHeight,
-                dpi.DpiScaleX,
-                dpi.DpiScaleY,
-                _currentOpacity,
-                _iconMix,
-                barRects,
-                barRects.Length,
-                out _,
-                out _,
-                out _,
-                out _,
-                out _);
 
             for (int i = 0; i < BarCount; i++)
             {
@@ -655,6 +624,26 @@ namespace VNotch.Controls
 
         internal bool UpdateDrawingFrame()
         {
+            Span<double> barRects = stackalloc double[BarCount * 4];
+            var frame = ComputeBarFrame(barRects);
+            return ApplyDrawingFrame(barRects, frame);
+        }
+
+        private readonly record struct BarFrame(DpiScale Dpi, double Radius, double Opacity,
+            double MorphOpacity, double BarsOpacity, bool Settled);
+
+        private BarFrame ComputeBarFrame(Span<double> barRects)
+        {
+            DpiScale dpi = _cachedDpi ??= VisualTreeHelper.GetDpi(this);
+            vn_visualizer_step_bars(_currentHeights, _smoothedHeights, _drawHeights, BarCount,
+                ActualWidth, ActualHeight, dpi.DpiScaleX, dpi.DpiScaleY, _currentOpacity, _iconMix,
+                barRects, barRects.Length, out double radius, out double opacity,
+                out double morphOpacity, out double barsOpacity, out byte settled);
+            return new BarFrame(dpi, radius, opacity, morphOpacity, barsOpacity, settled != 0);
+        }
+
+        private bool ApplyDrawingFrame(ReadOnlySpan<double> barRects, BarFrame frame)
+        {
             EnsureFrameDrawing();
             _hasRenderedBars = false;
             double width = ActualWidth;
@@ -666,40 +655,19 @@ namespace VNotch.Controls
                 return false;
             }
 
-            DpiScale dpi = _cachedDpi ??= VisualTreeHelper.GetDpi(this);
+            DpiScale dpi = frame.Dpi;
+            _frameDrawing!.Opacity = frame.Opacity;
+            _morphDrawing!.Opacity = frame.MorphOpacity;
+            _barsDrawing!.Opacity = frame.BarsOpacity;
 
-            Span<double> barRects = stackalloc double[BarCount * 4];
-            vn_visualizer_step_bars(
-                _currentHeights,
-                _smoothedHeights,
-                _drawHeights,
-                BarCount,
-                width,
-                height,
-                dpi.DpiScaleX,
-                dpi.DpiScaleY,
-                _currentOpacity,
-                _iconMix,
-                barRects,
-                barRects.Length,
-                out double radius,
-                out double frameOpacity,
-                out double morphOpacity,
-                out double barsOpacity,
-                out _);
-
-            _frameDrawing!.Opacity = frameOpacity;
-            _morphDrawing!.Opacity = morphOpacity;
-            _barsDrawing!.Opacity = barsOpacity;
-
-            if (morphOpacity > 0)
+            if (frame.MorphOpacity > 0)
             {
                 var morphBrush = GetPlaybackMorphBrush();
                 if (!ReferenceEquals(_retainedMorphBrush, morphBrush))
                     ((GeometryDrawing)_morphDrawing.Children[0]).Brush = _retainedMorphBrush = morphBrush;
                 UpdatePlaybackMorph(width, height, barRects);
             }
-            if (morphOpacity >= 1)
+            if (frame.MorphOpacity >= 1)
                 return true;
             var gradientBrush = GetBarGradientBrush();
             bool brushChanged = !ReferenceEquals(_retainedBarBrush, gradientBrush);
@@ -725,11 +693,11 @@ namespace VNotch.Controls
                     }
                     geometry.SetValue(RectangleGeometry.RectProperty, boxedBounds);
                 }
-                if (Math.Abs(geometry.RadiusX - radius) > 1e-6) geometry.RadiusX = radius;
-                if (Math.Abs(geometry.RadiusY - radius) > 1e-6) geometry.RadiusY = radius;
+                if (Math.Abs(geometry.RadiusX - frame.Radius) > 1e-6) geometry.RadiusX = frame.Radius;
+                if (Math.Abs(geometry.RadiusY - frame.Radius) > 1e-6) geometry.RadiusY = frame.Radius;
                 if (brushChanged) ((GeometryDrawing)_barsDrawing.Children[i]).Brush = gradientBrush;
             }
-            _hasRenderedBars = morphOpacity == 0;
+            _hasRenderedBars = frame.MorphOpacity == 0;
             _renderedWidth = width;
             _renderedHeight = height;
             _renderedOpacity = _currentOpacity;

@@ -40,6 +40,8 @@ public partial class MainWindow
 
         if (info == null || !info.IsAnyMediaPlaying)
         {
+            _lastBackgroundThumbnail = null;
+            _lastTrackId = null;
             HideMediaBackground();
             return;
         }
@@ -391,7 +393,15 @@ public partial class MainWindow
 
     private void HideMediaBackgroundOverlay()
     {
-        if (MediaBackground.Opacity == 0 && MediaBackground.Visibility != Visibility.Visible) return;
+        if (MediaBackground.Opacity == 0 && MediaBackground.Visibility != Visibility.Visible)
+        {
+            if ((!_isExpanded || _currentMediaInfo == null || !_currentMediaInfo.IsAnyMediaPlaying) &&
+                (MediaBackgroundImage.Source != null || MediaBackgroundImageBack.Source != null || _lastBlurThumbnailRef != null))
+            {
+                ClearBlurredBackgroundSources();
+            }
+            return;
+        }
 
         _lastDominantColor = Colors.Transparent;
         int animationVersion = ++_mediaBackgroundAnimationVersion;
@@ -411,6 +421,14 @@ public partial class MainWindow
             {
                 MediaBackground.Visibility = Visibility.Collapsed;
                 MediaBackground2.Visibility = Visibility.Collapsed;
+                if (!_isExpanded || _currentMediaInfo == null || !_currentMediaInfo.IsAnyMediaPlaying)
+                {
+                    ClearBlurredBackgroundSources();
+                }
+                if (_currentMediaInfo == null || !_currentMediaInfo.IsAnyMediaPlaying)
+                {
+                    _lastBackgroundThumbnail = null;
+                }
             }
         };
 

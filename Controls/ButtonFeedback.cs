@@ -24,35 +24,54 @@ internal static class ButtonFeedback
     internal static void AnimateIconSwitch(Canvas fromIcon, Canvas toIcon, TimeSpan duration, EasingFunctionBase easing)
     {
         int fromVersion = NextTransitionVersion(fromIcon);
-        _ = NextTransitionVersion(toIcon);
+        int toVersion = NextTransitionVersion(toIcon);
 
         var fromTransform = fromIcon.RenderTransform as ScaleTransform ?? new ScaleTransform(1, 1);
+        var toTransform = toIcon.RenderTransform as ScaleTransform ?? new ScaleTransform(1, 1);
+
+        // Read the effective values before removing clocks. A play/pause reversal
+        // can arrive while both glyphs are only partly visible.
+        double fromOpacity = fromIcon.Visibility == Visibility.Visible ? fromIcon.Opacity : 0;
+        double toOpacity = toIcon.Visibility == Visibility.Visible ? toIcon.Opacity : 0;
+        double fromX = fromTransform.ScaleX, fromY = fromTransform.ScaleY;
+        double toX = toIcon.Visibility == Visibility.Visible ? toTransform.ScaleX : .3;
+        double toY = toIcon.Visibility == Visibility.Visible ? toTransform.ScaleY : .3;
         fromIcon.RenderTransform = fromTransform;
         fromTransform.BeginAnimation(ScaleTransform.ScaleXProperty, null);
         fromTransform.BeginAnimation(ScaleTransform.ScaleYProperty, null);
         fromIcon.BeginAnimation(UIElement.OpacityProperty, null);
 
-        var toTransform = toIcon.RenderTransform as ScaleTransform ?? new ScaleTransform(1, 1);
         toIcon.RenderTransform = toTransform;
         toTransform.BeginAnimation(ScaleTransform.ScaleXProperty, null);
         toTransform.BeginAnimation(ScaleTransform.ScaleYProperty, null);
         toIcon.BeginAnimation(UIElement.OpacityProperty, null);
 
-        fromIcon.Visibility = Visibility.Visible;
-        fromTransform.ScaleX = 1;
-        fromTransform.ScaleY = 1;
-        fromIcon.Opacity = 1;
+        if (VNotch.Services.AnimationConfig.ReduceMotion || duration <= TimeSpan.Zero || ReferenceEquals(fromIcon, toIcon))
+        {
+            fromIcon.Visibility = Visibility.Collapsed;
+            fromTransform.ScaleX = fromTransform.ScaleY = 1;
+            fromIcon.Opacity = 1;
+            toIcon.Visibility = Visibility.Visible;
+            toTransform.ScaleX = toTransform.ScaleY = 1;
+            toIcon.Opacity = 1;
+            return;
+        }
 
-        toIcon.Visibility = Visibility.Visible;
-        toTransform.ScaleX = 0.3;
-        toTransform.ScaleY = 0.3;
-        toIcon.Opacity = 0;
+        fromIcon.Visibility = toIcon.Visibility = Visibility.Visible;
+        fromTransform.ScaleX = fromX;
+        fromTransform.ScaleY = fromY;
+        fromIcon.Opacity = fromOpacity;
+        toTransform.ScaleX = toX;
+        toTransform.ScaleY = toY;
+        toIcon.Opacity = toOpacity;
 
         var dur = new Duration(duration);
-        var scaleDown = new DoubleAnimation(1, 0.3, dur) { EasingFunction = easing };
-        var fadeOut = new DoubleAnimation(1, 0, dur) { EasingFunction = easing };
-        var scaleUp = new DoubleAnimation(0.3, 1, dur) { EasingFunction = easing };
-        var fadeIn = new DoubleAnimation(0, 1, dur) { EasingFunction = easing };
+        var scaleDownX = MakeAnim(fromX, .3, dur, easing);
+        var scaleDownY = MakeAnim(fromY, .3, dur, easing);
+        var fadeOut = MakeAnim(fromOpacity, 0, dur, easing);
+        var scaleUpX = MakeAnim(toX, 1, dur, easing);
+        var scaleUpY = MakeAnim(toY, 1, dur, easing);
+        var fadeIn = MakeAnim(toOpacity, 1, dur, easing);
 
         var capturedFromIcon = fromIcon;
         var capturedFromTransform = fromTransform;
@@ -71,16 +90,22 @@ internal static class ButtonFeedback
             capturedFromIcon.BeginAnimation(UIElement.OpacityProperty, null);
         };
 
-        System.Windows.Media.Animation.Timeline.SetDesiredFrameRate(scaleDown, VNotch.Services.AnimationConfig.TargetFps);
-        fromTransform.BeginAnimation(ScaleTransform.ScaleXProperty, scaleDown);
-        fromTransform.BeginAnimation(ScaleTransform.ScaleYProperty, scaleDown);
-        System.Windows.Media.Animation.Timeline.SetDesiredFrameRate(fadeOut, VNotch.Services.AnimationConfig.TargetFps);
+        fadeIn.Completed += (_, _) =>
+        {
+            if (!IsTransitionVersionCurrent(toIcon, toVersion)) return;
+            toTransform.ScaleX = toTransform.ScaleY = 1;
+            toIcon.Opacity = 1;
+            toTransform.BeginAnimation(ScaleTransform.ScaleXProperty, null);
+            toTransform.BeginAnimation(ScaleTransform.ScaleYProperty, null);
+            toIcon.BeginAnimation(UIElement.OpacityProperty, null);
+        };
+
+        fromTransform.BeginAnimation(ScaleTransform.ScaleXProperty, scaleDownX);
+        fromTransform.BeginAnimation(ScaleTransform.ScaleYProperty, scaleDownY);
         fromIcon.BeginAnimation(UIElement.OpacityProperty, fadeOut);
 
-        System.Windows.Media.Animation.Timeline.SetDesiredFrameRate(scaleUp, VNotch.Services.AnimationConfig.TargetFps);
-        toTransform.BeginAnimation(ScaleTransform.ScaleXProperty, scaleUp);
-        toTransform.BeginAnimation(ScaleTransform.ScaleYProperty, scaleUp);
-        System.Windows.Media.Animation.Timeline.SetDesiredFrameRate(fadeIn, VNotch.Services.AnimationConfig.TargetFps);
+        toTransform.BeginAnimation(ScaleTransform.ScaleXProperty, scaleUpX);
+        toTransform.BeginAnimation(ScaleTransform.ScaleYProperty, scaleUpY);
         toIcon.BeginAnimation(UIElement.OpacityProperty, fadeIn);
     }
 

@@ -105,7 +105,7 @@ public sealed class NotchContentTransitionPresenter : IDisposable
             ? new Duration(TimeSpan.FromMilliseconds(Math.Min(320, plan.Motion.Duration.TimeSpan.TotalMilliseconds)))
             : plan.Motion.Duration;
         var exitDuration = switchingExpandedView
-            ? new Duration(TimeSpan.FromMilliseconds(Math.Min(160, plan.Motion.Duration.TimeSpan.TotalMilliseconds)))
+            ? new Duration(TimeSpan.FromMilliseconds(Math.Min(190, plan.Motion.Duration.TimeSpan.TotalMilliseconds)))
             : plan.Motion.Duration;
 
         // Chuẩn bị target element theo Rule D3: Lấy opacity hiện tại TRƯỚC KHI dừng animation clock
@@ -167,7 +167,7 @@ public sealed class NotchContentTransitionPresenter : IDisposable
 
                 var fadeOut = new DoubleAnimation(currentElOpacity, 0.0, exitDuration)
                 {
-                    EasingFunction = plan.Motion.Easing
+                    EasingFunction = switchingExpandedView ? AnimationPrimitives._easeQuadInOut : plan.Motion.Easing
                 };
                 Timeline.SetDesiredFrameRate(fadeOut, fps);
                 fadeOut.Completed += (_, _) =>
@@ -205,15 +205,70 @@ public sealed class NotchContentTransitionPresenter : IDisposable
             double currentOpacity = el.Visibility == Visibility.Visible ? el.Opacity : 0.0;
             el.BeginAnimation(UIElement.OpacityProperty, null);
             el.Opacity = currentOpacity;
-            ClearTemporaryAnimationTransforms(el);
+            HoldCurrentTransformAndEffect(el);
         }
         if (_refs.AudioScrollViewer != null && !ReferenceEquals(_refs.AudioScrollViewer, _refs.AudioContent))
         {
             double currentScrollOpacity = _refs.AudioScrollViewer.Visibility == Visibility.Visible ? _refs.AudioScrollViewer.Opacity : 0.0;
             _refs.AudioScrollViewer.BeginAnimation(UIElement.OpacityProperty, null);
             _refs.AudioScrollViewer.Opacity = currentScrollOpacity;
-            ClearTemporaryAnimationTransforms(_refs.AudioScrollViewer);
+            HoldCurrentTransformAndEffect(_refs.AudioScrollViewer);
         }
+    }
+
+    private static void HoldCurrentTransformAndEffect(FrameworkElement element)
+    {
+        // Keep named transform/effect instances: other entrance animations can
+        // still reference them. Only detach clocks, retaining the frame on screen.
+        HoldTransform(element.RenderTransform);
+        if (element.Effect is BlurEffect { IsFrozen: false } blur)
+            HoldAnimatedValue(blur, BlurEffect.RadiusProperty);
+    }
+
+    private static void HoldTransform(Transform? transform)
+    {
+        if (transform == null || transform.IsFrozen) return;
+        if (transform is TransformGroup group)
+        {
+            foreach (var child in group.Children) HoldTransform(child);
+            return;
+        }
+        if (!transform.HasAnimatedProperties) return;
+        switch (transform)
+        {
+            case TranslateTransform:
+                HoldAnimatedValue(transform, TranslateTransform.XProperty);
+                HoldAnimatedValue(transform, TranslateTransform.YProperty);
+                break;
+            case ScaleTransform:
+                HoldAnimatedValue(transform, ScaleTransform.ScaleXProperty);
+                HoldAnimatedValue(transform, ScaleTransform.ScaleYProperty);
+                HoldAnimatedValue(transform, ScaleTransform.CenterXProperty);
+                HoldAnimatedValue(transform, ScaleTransform.CenterYProperty);
+                break;
+            case RotateTransform:
+                HoldAnimatedValue(transform, RotateTransform.AngleProperty);
+                HoldAnimatedValue(transform, RotateTransform.CenterXProperty);
+                HoldAnimatedValue(transform, RotateTransform.CenterYProperty);
+                break;
+            case SkewTransform:
+                HoldAnimatedValue(transform, SkewTransform.AngleXProperty);
+                HoldAnimatedValue(transform, SkewTransform.AngleYProperty);
+                HoldAnimatedValue(transform, SkewTransform.CenterXProperty);
+                HoldAnimatedValue(transform, SkewTransform.CenterYProperty);
+                break;
+            case MatrixTransform:
+                HoldAnimatedValue(transform, MatrixTransform.MatrixProperty);
+                break;
+        }
+    }
+
+    private static void HoldAnimatedValue(Animatable target, DependencyProperty property)
+    {
+        if (!DependencyPropertyHelper.GetValueSource(target, property).IsAnimated) return;
+        object value = target.GetValue(property);
+        target.BeginAnimation(property, null);
+        target.SetCurrentValue(property, value);
     }
 
     public void SnapToView(NotchView view)
@@ -296,6 +351,10 @@ public sealed class NotchContentTransitionPresenter : IDisposable
             {
                 blur.BeginAnimation(BlurEffect.RadiusProperty, null);
                 blur.Radius = 0;
+            }
+            if (Controls.ActiveBlur.GetBlur(el) == null)
+            {
+                el.Effect = null;
             }
             return;
         }

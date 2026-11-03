@@ -31,7 +31,7 @@ public sealed partial class SmartThumbnailCropService : IDisposable
     private readonly ConditionalWeakTable<BitmapSource, FingerprintHolder> _fingerprintCache = new();
     private long _inferenceCacheAccess;
 
-    private static readonly TimeSpan IdleTimeout = TimeSpan.FromSeconds(60);
+    private static readonly TimeSpan IdleTimeout = TimeSpan.FromSeconds(15);
 
     private DateTime _lastUsedUtc;
     private System.Threading.Timer? _idleTimer;
@@ -128,6 +128,11 @@ public sealed partial class SmartThumbnailCropService : IDisposable
         out VnCropRect outRect);
 
     [LibraryImport("VNotch.Native.dll")]
+    private static partial int vn_smartcrop_compute_saliency_subject_bounds(
+        ReadOnlySpan<byte> pixels, int w, int h, int stride,
+        out VnSubjectBounds outBounds, out byte outFound);
+
+    [LibraryImport("VNotch.Native.dll")]
     private static partial int vn_smartcrop_try_detect_text_crop_rect(
         ReadOnlySpan<byte> pixels, int w, int h, int stride,
         int imgWidth, int imgHeight, int cropSize,
@@ -157,6 +162,18 @@ public sealed partial class SmartThumbnailCropService : IDisposable
             _cachedSession = null;
             _idleTimer?.Dispose();
             _idleTimer = null;
+        }
+    }
+
+    public void ClearCaches()
+    {
+        lock (_lock)
+        {
+            _cropCache.Clear();
+            _cropCacheOrder.Clear();
+            _inferenceCache.Clear();
+            _fingerprintCache.Clear();
+            Unload();
         }
     }
 
@@ -190,10 +207,7 @@ public sealed partial class SmartThumbnailCropService : IDisposable
 
     public SubjectBounds? GetDominantSubjectBounds(BitmapSource source)
     {
-        if (_disposed) return null;
-        if (!_modelExists && !TryInitialize()) return null;
-        if (!_modelExists) return null;
-        if (source == null) return null;
+        if (_disposed || source == null) return null;
 
         int imgWidth = source.PixelWidth;
         int imgHeight = source.PixelHeight;
@@ -201,24 +215,55 @@ public sealed partial class SmartThumbnailCropService : IDisposable
 
         lock (_lock)
         {
+            if (_disposed) return null;
             try
             {
-                var detections = GetOrRunInferenceLocked(source, imgWidth, imgHeight);
-                if (detections.Length == 0) return null;
+                ArtworkFingerprint fingerprint = _fingerprintCache
+                    .GetValue(source, static bitmap => new FingerprintHolder(ArtworkFingerprint.Create(bitmap)))
+                    .Value;
 
-                if (vn_smartcrop_find_best_subject_bounds(detections, detections.Length, imgWidth, imgHeight, out var bounds, out byte found) == 0 && found != 0)
+                if (_inferenceCache.TryGetValue(fingerprint, out var cached))
                 {
-                    return new SubjectBounds(bounds.CenterX, bounds.CenterY, bounds.Width, bounds.Height, bounds.Confidence, bounds.ClassId);
+                    cached.LastAccess = ++_inferenceCacheAccess;
+                    if (cached.Detections.Length > 0 &&
+                        vn_smartcrop_find_best_subject_bounds(cached.Detections, cached.Detections.Length, imgWidth, imgHeight, out var cachedBounds, out byte cachedFound) == 0 &&
+                        cachedFound != 0)
+                    {
+                        return new SubjectBounds(cachedBounds.CenterX, cachedBounds.CenterY, cachedBounds.Width, cachedBounds.Height, cachedBounds.Confidence, cachedBounds.ClassId);
+                    }
                 }
-                return null;
+                else if (source is CroppedBitmap crop && TryGetCachedCropDetections(crop, out var croppedDetections) && croppedDetections.Length > 0)
+                {
+                    if (vn_smartcrop_find_best_subject_bounds(croppedDetections, croppedDetections.Length, imgWidth, imgHeight, out var cropBounds, out byte cropFound) == 0 &&
+                        cropFound != 0)
+                    {
+                        return new SubjectBounds(cropBounds.CenterX, cropBounds.CenterY, cropBounds.Width, cropBounds.Height, cropBounds.Confidence, cropBounds.ClassId);
+                    }
+                }
             }
             catch (Exception ex)
             {
-                VNotch.Services.RuntimeLog.Error("SUBJECT-BOUNDS", $"Inference failed: {ex.GetType().Name}: {ex.Message}");
-                _cachedSession?.Dispose();
-                _cachedSession = null;
-                return null;
+                VNotch.Services.RuntimeLog.Error("SUBJECT-BOUNDS", $"Cached detection lookup failed: {ex.GetType().Name}: {ex.Message}");
             }
+        }
+
+        // shortcut: C++26 saliency moments instead of loading 130MB ONNX+DirectML for backdrop blur, upgrade if out-of-process NPU/ONNX service is added
+        if (!ArtworkFrameDetector.RentDownscaledPixels(source, out byte[]? pixels, out int w, out int h, out int stride, 96.0) || pixels == null)
+            return null;
+
+        try
+        {
+            if (w >= 8 && h >= 8 &&
+                vn_smartcrop_compute_saliency_subject_bounds(pixels.AsSpan(0, h * stride), w, h, stride, out var salBounds, out byte salFound) == 0 &&
+                salFound != 0)
+            {
+                return new SubjectBounds(salBounds.CenterX, salBounds.CenterY, salBounds.Width, salBounds.Height, salBounds.Confidence, salBounds.ClassId);
+            }
+            return null;
+        }
+        finally
+        {
+            ArrayPool<byte>.Shared.Return(pixels);
         }
     }
 

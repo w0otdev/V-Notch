@@ -33,6 +33,13 @@ internal static partial class DynamicIslandColorExtractor
     private static readonly ConditionalWeakTable<BitmapSource, CroppedPalette> _croppedPaletteCache = new();
     private static readonly ConditionalWeakTable<BitmapSource, BoxedDim> _dimCache = new();
 
+    internal static void ClearCache()
+    {
+        _paletteCache.Clear();
+        _croppedPaletteCache.Clear();
+        _dimCache.Clear();
+    }
+
     #region Public entry points
 
     public static Task<Palette> PreloadDynamicIslandPaletteAsync(BitmapSource bitmap)

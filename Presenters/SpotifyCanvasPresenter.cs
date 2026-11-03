@@ -169,8 +169,8 @@ public sealed class SpotifyCanvasPresenter : ISpotifyCanvasPresenter
 
             if (_standbyVideo != null)
             {
+                ReleaseVideo(_standbyVideo);
                 Panel.SetZIndex(_standbyVideo, 0);
-                _standbyVideo.BeginAnimation(UIElement.OpacityProperty, null);
                 _standbyVideo.Opacity = 0.0;
             }
 
@@ -184,13 +184,6 @@ public sealed class SpotifyCanvasPresenter : ISpotifyCanvasPresenter
             else
             {
                 _activeVideo.Pause();
-            }
-
-            if (_standbyVideo != null)
-            {
-                _standbyVideo.Stop();
-                _standbyVideo.Source = uri;
-                _standbyVideo.Pause();
             }
 
             RuntimeLog.Debug(LogTag, $"Opening Canvas video in lyrics background (version #{sourceVersion})");
@@ -230,6 +223,10 @@ public sealed class SpotifyCanvasPresenter : ISpotifyCanvasPresenter
             _refs.Background.BeginAnimation(UIElement.OpacityProperty, null);
             _refs.Background.Opacity = 0;
             _refs.Background.Visibility = Visibility.Collapsed;
+            if (_standbyVideo != null)
+            {
+                ReleaseVideo(_standbyVideo);
+            }
         }
 
         if (_isMediaOpen || IsCanvasVisiblyShowing)
@@ -268,7 +265,10 @@ public sealed class SpotifyCanvasPresenter : ISpotifyCanvasPresenter
             else
             {
                 _refs.Video.Stop();
-                _refs.VideoAlt?.Stop();
+                if (_refs.VideoAlt != null)
+                {
+                    ReleaseVideo(_refs.VideoAlt);
+                }
             }
         }
         catch

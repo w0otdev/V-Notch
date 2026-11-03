@@ -1,6 +1,7 @@
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.Windows;
-using System.Windows.Media;
+using System.Windows.Automation.Peers;
 using System.Windows.Threading;
 using VNotch.Models;
 using VNotch.Services;
@@ -20,6 +21,14 @@ public partial class SettingsWindow
     private bool _backgroundInitializationStarted;
 
     private bool IsDeferringBackgroundInitialization => _firstShowState == FirstShowState.StandbyPrewarm;
+
+    protected override AutomationPeer OnCreateAutomationPeer() =>
+        new SettingsWindowAutomationPeer(this);
+
+    private sealed class SettingsWindowAutomationPeer(SettingsWindow owner) : WindowAutomationPeer(owner)
+    {
+        protected override List<AutomationPeer>? GetChildrenCore() => null;
+    }
 
     internal void PrepareForFirstShow()
     {

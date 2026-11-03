@@ -771,7 +771,7 @@ public sealed partial class PrivacyIndicatorService : IDisposable
             {
                 NameOffset = offset,
                 NameLen = s.Length,
-                LastStartFileTime = usages[i].LastStartFileTime
+                LastStartFileTime = useDisplayName ? 0 : usages[i].LastStartFileTime
             };
             offset += s.Length;
         }

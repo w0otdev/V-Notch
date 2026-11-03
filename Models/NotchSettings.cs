@@ -7,22 +7,12 @@ namespace VNotch.Models;
 
 public partial class NotchSettings
 {
-    private const string NativeDll = "VNotch.Native.dll";
-
-    [LibraryImport(NativeDll)]
-    internal static partial int vn_settings_clamp_int(int value, int minVal, int maxVal, out int outValue);
-
-    [LibraryImport(NativeDll)]
-    internal static partial int vn_settings_clamp_double(double value, double minVal, double maxVal, double fallbackIfNonFinite, out double outValue);
-
-    [LibraryImport(NativeDll)]
-    internal static partial int vn_settings_double_equals(double a, double b, byte allowNanEqual, out byte outEqual);
-
     private static int ClampInt(int value, int min, int max) =>
-        vn_settings_clamp_int(value, min, max, out int result) == 0 ? result : value;
+        min <= max ? Math.Clamp(value, min, max) : value;
 
     private static double ClampDouble(double value, double min, double max, double fallback) =>
-        vn_settings_clamp_double(value, min, max, fallback, out double result) == 0 ? result : fallback;
+        double.IsFinite(value) && double.IsFinite(min) && double.IsFinite(max) && min <= max
+            ? Math.Clamp(value, min, max) : fallback;
 
     public const string SystemBatteryDeviceId = "";
     public const string AutoBluetoothBatteryDeviceId = "__auto_bluetooth__";
@@ -249,7 +239,7 @@ public partial class NotchSettings
     private static readonly Func<NotchSettings, NotchSettings, bool> _scalarValueEquals = BuildScalarValueEquals();
 
     private static bool DoubleEquals(double d1, double d2) =>
-        vn_settings_double_equals(d1, d2, 0, out byte equal) == 0 && equal != 0;
+        d1 == d2 || (double.IsFinite(d1) && double.IsFinite(d2) && Math.Abs(d1 - d2) <= 0.0001);
 
     private static bool NullableDoubleEquals(double? d1, double? d2)
     {

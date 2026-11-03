@@ -11,16 +11,9 @@
 
 namespace vnotch::services {
 
-#pragma pack(push, 1)
-struct VnSubjectBounds {
-    float center_x;
-    float center_y;
-    float width;
-    float height;
-    float confidence;
-    int32_t class_id;
-};
+using VnSubjectBounds = ::VnSubjectBounds;
 
+#pragma pack(push, 1)
 struct VnCropRect {
     int32_t x;
     int32_t y;
@@ -315,6 +308,101 @@ public:
         float saliency_center_x = (best_gx + 1.0f) / grid_size * img_width;
         float saliency_center_y = (best_gy + 1.0f) / grid_size * img_height;
         return BuildCropRect(saliency_center_x, saliency_center_y, img_width, img_height, crop_size);
+    }
+
+    static bool ComputeSaliencySubjectBounds(
+        const uint8_t* pixels, int32_t w, int32_t h, int32_t stride,
+        VnSubjectBounds* out_bounds) noexcept
+    {
+        if (!out_bounds || !IsValidPixelArgs(pixels, w, h, stride, 8)) {
+            return false;
+        }
+
+        double sum_w = 0.0;
+        double sum_x = 0.0;
+        double sum_y = 0.0;
+        double sum_xx = 0.0;
+        double sum_yy = 0.0;
+        int32_t active_pixels = 0;
+
+        const float inv_w = 1.0f / static_cast<float>(w);
+        const float inv_h = 1.0f / static_cast<float>(h);
+
+        for (int32_t y = 0; y + 1 < h; ++y) {
+            const float ny = (static_cast<float>(y) + 0.5f) * inv_h;
+            const float dy = ny - 0.46f;
+            const float dy2 = dy * dy;
+            const int32_t row_off = y * stride;
+            const int32_t next_row_off = (y + 1) * stride;
+
+            for (int32_t x = 0; x + 1 < w; ++x) {
+                const int32_t i = row_off + x * 4;
+                const int32_t i_right = i + 4;
+                const int32_t i_below = next_row_off + x * 4;
+
+                const uint8_t b = pixels[i];
+                const uint8_t g = pixels[i + 1];
+                const uint8_t r = pixels[i + 2];
+
+                const float lum = 0.299f * r + 0.587f * g + 0.114f * b;
+                const float lum_r = 0.299f * pixels[i_right + 2] + 0.587f * pixels[i_right + 1] + 0.114f * pixels[i_right];
+                const float lum_b = 0.299f * pixels[i_below + 2] + 0.587f * pixels[i_below + 1] + 0.114f * pixels[i_below];
+
+                const float grad = (std::abs(lum - lum_r) + std::abs(lum - lum_b)) * (1.0f / 255.0f);
+                if (grad < 0.02f) {
+                    continue;
+                }
+
+                const uint8_t max_c = std::max(r, std::max(g, b));
+                const uint8_t min_c = std::min(r, std::min(g, b));
+                const float sat = max_c > 0u ? static_cast<float>(max_c - min_c) / static_cast<float>(max_c) : 0.0f;
+
+                const float lum_weight = (lum < 18.0f || lum > 242.0f) ? 0.25f : 1.0f;
+                const float nx = (static_cast<float>(x) + 0.5f) * inv_w;
+                const float dx = nx - 0.5f;
+                const float center_weight = std::max(0.15f, 1.0f - (dx * dx + dy2) * 1.8f);
+
+                const float weight = grad * (1.25f + sat * 0.85f) * lum_weight * center_weight;
+                if (weight > 0.02f) {
+                    const double dw = static_cast<double>(weight);
+                    const double dnx = static_cast<double>(nx);
+                    const double dny = static_cast<double>(ny);
+                    sum_w += dw;
+                    sum_x += dw * dnx;
+                    sum_y += dw * dny;
+                    sum_xx += dw * dnx * dnx;
+                    sum_yy += dw * dny * dny;
+                    ++active_pixels;
+                }
+            }
+        }
+
+        const int32_t total_samples = std::max(1, (w - 1) * (h - 1));
+        if (sum_w <= 1e-3 || active_pixels < std::max(4, total_samples / 64)) {
+            return false;
+        }
+
+        const float raw_cx = static_cast<float>(sum_x / sum_w);
+        const float raw_cy = static_cast<float>(sum_y / sum_w);
+        const float var_x = std::max(0.0f, static_cast<float>(sum_xx / sum_w) - raw_cx * raw_cx);
+        const float var_y = std::max(0.0f, static_cast<float>(sum_yy / sum_w) - raw_cy * raw_cy);
+        const float sx = std::sqrt(var_x);
+        const float sy = std::sqrt(var_y);
+
+        const float cx = std::clamp(raw_cx, 0.15f, 0.85f);
+        const float cy = std::clamp(raw_cy, 0.15f, 0.85f);
+        const float box_w = std::clamp(sx * 2.4f, 0.22f, 0.75f);
+        const float box_h = std::clamp(sy * 2.6f, 0.22f, 0.75f);
+        const float avg_sal = static_cast<float>(sum_w / static_cast<double>(std::max(1, (w - 1) * (h - 1))));
+        const float conf = std::clamp(avg_sal * 2.5f, 0.25f, 0.95f);
+
+        out_bounds->center_x = cx;
+        out_bounds->center_y = cy;
+        out_bounds->width = box_w;
+        out_bounds->height = box_h;
+        out_bounds->confidence = conf;
+        out_bounds->class_id = 0;
+        return true;
     }
 
     static bool TryDetectTextCropRect(
@@ -755,6 +843,22 @@ VN_EXPORT int32_t vn_smartcrop_compute_saliency_crop_rect(
     }
     *out_rect = vnotch::services::SmartThumbnailCropService::ComputeSaliencyCropRect(
         pixels, w, h, stride, img_width, img_height, target_size);
+    return VN_OK;
+}
+
+VN_EXPORT int32_t __stdcall vn_smartcrop_compute_saliency_subject_bounds(
+    const uint8_t* pixels, int32_t w, int32_t h, int32_t stride,
+    VnSubjectBounds* out_bounds, uint8_t* out_found) noexcept
+{
+    if (!out_bounds || !out_found) {
+        return VN_ERR_INVALID_ARG;
+    }
+    *out_found = 0;
+    if (!vnotch::services::SmartThumbnailCropService::IsValidPixelArgs(pixels, w, h, stride, 8)) {
+        return VN_ERR_INVALID_ARG;
+    }
+    *out_found = vnotch::services::SmartThumbnailCropService::ComputeSaliencySubjectBounds(
+        pixels, w, h, stride, out_bounds) ? 1 : 0;
     return VN_OK;
 }
 

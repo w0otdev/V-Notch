@@ -11,6 +11,15 @@ public partial class MainWindow
     private NotchSettings? _preparedSettingsSnapshot;
     private bool _firstOpenUiPrepared;
 
+    protected override System.Windows.Automation.Peers.AutomationPeer OnCreateAutomationPeer() =>
+        new MainWindowAutomationPeer(this);
+
+    private sealed class MainWindowAutomationPeer(MainWindow owner)
+        : System.Windows.Automation.Peers.WindowAutomationPeer(owner)
+    {
+        protected override System.Collections.Generic.List<System.Windows.Automation.Peers.AutomationPeer>? GetChildrenCore() => null;
+    }
+
     private SettingsWindow CreateSettingsWindow(bool prepareForFirstShow = false) => new(
         _settings, _settingsService, _spotlightController.IsHotkeyRegistered,
         _updateService, prepareForFirstShow,

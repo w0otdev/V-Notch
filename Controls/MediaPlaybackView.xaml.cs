@@ -529,13 +529,13 @@ public sealed partial class MediaPlaybackView : UserControl, IDisposable
     }
 
     private bool _progressRenderingActive;
-    private TimeSpan _lastProgressRenderTime = TimeSpan.MinValue;
+    private AnimationFrameClock _progressFrameClock;
 
     private void SetProgressRenderingEnabled(bool enabled)
     {
         if (_progressRenderingActive == enabled) return;
         _progressRenderingActive = enabled;
-        _lastProgressRenderTime = TimeSpan.MinValue;
+        _progressFrameClock.Reset(System.Diagnostics.Stopwatch.GetTimestamp());
         if (enabled) CompositionTarget.Rendering += OnProgressRendering;
         else CompositionTarget.Rendering -= OnProgressRendering;
     }
@@ -544,10 +544,7 @@ public sealed partial class MediaPlaybackView : UserControl, IDisposable
     {
         if (e is RenderingEventArgs frame)
         {
-            if (_lastProgressRenderTime != TimeSpan.MinValue &&
-                (frame.RenderingTime - _lastProgressRenderTime).TotalMilliseconds + 0.1 <
-                1000d / Math.Max(1, AnimationConfig.TargetFps)) return;
-            _lastProgressRenderTime = frame.RenderingTime;
+            if (!_progressFrameClock.TryAdvance(frame.RenderingTime, AnimationConfig.TargetFps, out _)) return;
         }
         if (IsVisible && _currentMediaInfo != null)
         {

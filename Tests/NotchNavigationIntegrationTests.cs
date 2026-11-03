@@ -275,8 +275,13 @@ public sealed class NotchNavigationIntegrationTests
         double expandedWidth = window.NotchBorder.Width;
         window.SetDebugViewState("CollapsedNotch");
         await WpfFrameWaiter.UntilAsync(() => window.NotchBorder.Width < expandedWidth - 10, "partway through collapse", ct);
+        double opacity = window.ExpandedContent.Opacity;
+        double y = window.ExpandedContent.RenderTransform.Value.OffsetY;
         var coordinator = Field<NotchTransitionCoordinator>(window, "_transitionCoordinator");
         Assert.True(coordinator.RequestView(NotchView.Media, "ReverseCollapse"));
+        ExecutePendingTransition(window);
+        Assert.Equal(opacity, window.ExpandedContent.Opacity, 6);
+        Assert.Equal(y, window.ExpandedContent.RenderTransform.Value.OffsetY, 6);
         await WpfFrameWaiter.UntilAsync(() => !IsAnimating(window), "reversed media expansion", ct);
         Assert.Equal(NotchView.Media, coordinator.CurrentView);
         Assert.Equal(expandedWidth, window.NotchBorder.Width, 2);
@@ -337,9 +342,50 @@ public sealed class NotchNavigationIntegrationTests
         Assert.Equal(HorizontalAlignment.Center, window.ExpandedContent.HorizontalAlignment);
     });
 
+    [Fact]
+    public void ClosingDuringMediaEntrancePreservesRenderedOpacityAndPosition() => SharedStaTestRunner.RunAsync(async ct =>
+    {
+        await using var fixture = CreateFixture();
+        var window = fixture.Window;
+        await StartAsync(window, ct);
+        window.SetDebugViewState("MediaExpanded");
+        await WpfFrameWaiter.UntilAsync(() => !IsAnimating(window), "initial expansion", ct);
+
+        // Hold an in-flight entrance independently of the desktop's frame rate.
+        window.ExpandedContent.BeginAnimation(UIElement.OpacityProperty, null);
+        window.ExpandedContent.Opacity = 0;
+        var clock = (System.Windows.Media.Animation.AnimationClock)new System.Windows.Media.Animation.DoubleAnimation(
+            0, 1, TimeSpan.FromSeconds(1)).CreateClock(true);
+        window.ExpandedContent.ApplyAnimationClock(UIElement.OpacityProperty, clock);
+        clock.Controller!.Begin();
+        clock.Controller.SeekAlignedToLastTick(TimeSpan.FromMilliseconds(350), System.Windows.Media.Animation.TimeSeekOrigin.BeginTime);
+        window.ExpandedContent.RenderTransform = new TranslateTransform(0, 17);
+        double opacity = window.ExpandedContent.Opacity;
+        double y = window.ExpandedContent.RenderTransform.Value.OffsetY;
+
+        window.SetDebugViewState("CollapsedNotch");
+        ExecutePendingTransition(window);
+
+        Assert.Equal(opacity, window.ExpandedContent.Opacity, 6);
+        Assert.Equal(y, window.ExpandedContent.RenderTransform.Value.OffsetY, 6);
+        Assert.Equal(Visibility.Visible, window.ExpandedContent.Visibility);
+        await WpfFrameWaiter.UntilAsync(() => !IsAnimating(window), "continuous collapse", ct);
+        Assert.Equal(Visibility.Collapsed, window.ExpandedContent.Visibility);
+    });
+
     private static GreetingAcceptanceTests.MainWindowFixture CreateFixture() => new("en", greeting: false,
         settings => { settings.EnableLocalOnlyMode = true; settings.DisableMouseLeaveAutoClose = true; },
         services => services.AddSingleton<IMediaDetectionService>(new Fakes.FakeMediaDetectionService()));
+
+    private static void ExecutePendingTransition(MainWindow window)
+    {
+        // Dispatch synchronously at this sampled frame. Letting the test yield
+        // would advance the clocks before checking continuity at the boundary.
+        var pending = Field<TransitionRequestEventArgs>(window, "_pendingTransitionRequest");
+        Assert.NotNull(pending);
+        typeof(MainWindow).GetField("_pendingTransitionRequest", Private)!.SetValue(window, null);
+        typeof(MainWindow).GetMethod("ExecuteTransitionRequest", Private)!.Invoke(window, [pending]);
+    }
 
     private static async Task StartAsync(MainWindow window, CancellationToken ct)
     {

@@ -100,7 +100,7 @@ public partial class MainWindow
         PrepareClockViewContentSize();
         RefreshClockView();
 
-        var durOut = new Duration(TimeSpan.FromMilliseconds(170));
+        var durOut = new Duration(TimeSpan.FromMilliseconds(190));
         var durIn = new Duration(TimeSpan.FromMilliseconds(440));
         var inDelay = TimeSpan.FromMilliseconds(40);
         int fps = VNotch.Services.AnimationConfig.TargetFps;
@@ -108,7 +108,7 @@ public partial class MainWindow
         var primaryTranslate = new TranslateTransform(0, ExpandedContentRestY);
         ExpandedContent.RenderTransform = primaryTranslate;
 
-        var fadeOut = MakeAnim(1, 0, durOut, _easeAppleIn);
+        var fadeOut = MakeAnim(1, 0, durOut, _easeQuadInOut);
         var slideUp = MakeAnim(ExpandedContentRestY, ExpandedContentRestY - 10, durOut, _easeAppleIn);
         Timeline.SetDesiredFrameRate(slideUp, fps);
 
@@ -381,7 +381,7 @@ public partial class MainWindow
         TimerContent.RenderTransformOrigin = new Point(0.5, 0.5);
 
         var timerSlideDown = MakeAnim(0, 40, durScroll, _easeExpOut6);
-        var timerFadeOut = MakeAnim(1, 0, new Duration(TimeSpan.FromMilliseconds(200)), _easeQuadIn);
+        var timerFadeOut = MakeAnim(1, 0, new Duration(TimeSpan.FromMilliseconds(210)), _easeQuadInOut);
         Timeline.SetDesiredFrameRate(timerSlideDown, fps);
         Timeline.SetDesiredFrameRate(timerFadeOut, fps);
 

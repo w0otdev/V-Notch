@@ -9,6 +9,12 @@ internal static class ArtworkAnalysisSource
     private static readonly ConditionalWeakTable<BitmapSource, BitmapSource> FormattedSources = new();
     private static readonly ConditionalWeakTable<BitmapSource, Dictionary<(int, int), BitmapSource>> Samples = new();
 
+    internal static void ClearCache()
+    {
+        FormattedSources.Clear();
+        Samples.Clear();
+    }
+
     internal static BitmapSource GetSample(BitmapSource source, int width, int height)
     {
         width = Math.Clamp(width, 1, 512); height = Math.Clamp(height, 1, 512);

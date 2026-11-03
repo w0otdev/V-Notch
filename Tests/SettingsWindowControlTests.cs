@@ -441,6 +441,34 @@ public sealed class SettingsWindowControlTests
         finally { AnimationConfig.SetReduceMotion(previous); }
     });
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void CascadeWithoutTailBlurPreservesOpacityAndReleasesEveryClock(bool menu) => SharedStaTestRunner.RunAsync(async ct =>
+    {
+        bool previous = AnimationConfig.ReduceMotion;
+        AnimationConfig.SetReduceMotion(false);
+        try
+        {
+            using var fixture = new Fixture();
+            var items = Enumerable.Range(0, 8).Select(index => (UIElement)new Border
+            {
+                Opacity = index == 7 ? .4 : 1,
+                IsEnabled = index != 7
+            }).ToArray();
+            fixture.Window.ApplyProgressiveBlurCascade(items, 0, menu ? -1 : 1, menu, 60);
+            Assert.All(items.Take(6), item => Assert.IsType<System.Windows.Media.Effects.BlurEffect>(item.Effect));
+            Assert.All(items.Skip(6), item => Assert.Null(item.Effect));
+            await WpfFrameWaiter.UntilAsync(() => items.All(item => !item.HasAnimatedProperties &&
+                !item.RenderTransform.HasAnimatedProperties && item.Effect == null), "cascade releases blur and motion clocks", ct);
+            Assert.All(items.Take(7), item => Assert.Equal(1, item.Opacity));
+            Assert.Equal(.4, items[7].Opacity);
+            fixture.Window.ResetProgressiveBlurElements(menu);
+            Assert.All(items, item => Assert.Equal(0, ((TranslateTransform)item.RenderTransform).Y));
+        }
+        finally { AnimationConfig.SetReduceMotion(previous); }
+    });
+
     [Fact]
     public void EntranceAnimationFinishesItsShellHeaderSocialIconsAndFooter() => SharedStaTestRunner.RunAsync(async ct =>
     {

@@ -5,6 +5,7 @@ using System.Windows.Controls;
 using System.Windows.Documents;
 using System.Windows.Interop;
 using System.Windows.Media;
+using System.Windows.Media.Imaging;
 using System.Windows.Threading;
 using VNotch.Controls;
 using VNotch.Services;
@@ -140,6 +141,55 @@ public sealed class HotPathRegressionTests(ITestOutputHelper output)
         icon.SetValue(property, value);
     }
 
+    [Theory]
+    [InlineData(96)]
+    [InlineData(120)]
+    [InlineData(144)]
+    public void MorphFramesKeepIdenticalPixelsAcrossDpiAndInterruptions(double dpi) => SharedStaTestRunner.Run(() =>
+    {
+        var icon = new RenderProbe { Width = 56, Height = 56 };
+        var baseline = new BeforeMemoryRenderProbe { Width = 56, Height = 56 };
+        var panel = new StackPanel();
+        panel.Children.Add(icon);
+        panel.Children.Add(baseline);
+        using var host = new HwndSource(new HwndSourceParameters("Morph pixels")
+        {
+            Width = 56, Height = 112, WindowStyle = 0
+        }) { RootVisual = panel };
+        host.CompositionTarget.RenderMode = RenderMode.SoftwareOnly;
+        panel.Dispatcher.Invoke(() => { }, DispatcherPriority.Loaded);
+        panel.Measure(new Size(56, 112)); panel.Arrange(new Rect(0, 0, 56, 112));
+        var shapes = new[] { Geometry.Parse("M0,0 L48,0 48,48 0,48 Z"),
+            Geometry.Parse("M24,0 L48,48 0,48 Z M18,18 L30,18 24,30 Z"),
+            Geometry.Parse("M2,2 L46,2 40,46 8,46 Z") };
+        icon.MorphTo(shapes[0], false); baseline.MorphTo(shapes[0], false);
+        foreach (var shape in shapes.Skip(1).Concat(shapes.Take(2)))
+        {
+            icon.MorphTo(shape); baseline.MorphTo(shape);
+            foreach (double progress in new[] { 0, .1, .25, .5, .9, .999 })
+            {
+                SetProgress(icon, typeof(MorphingSettingsIcon), progress);
+                SetProgress(baseline, typeof(BeforeMemoryMorphingSettingsIcon), progress);
+                var actual = Pixels(icon.Render);
+                var expected = Pixels(baseline.Render);
+                Assert.Contains(actual, value => value != 0);
+                Assert.True(actual.AsSpan().SequenceEqual(expected), $"Morph pixels changed at DPI {dpi}, progress {progress}.");
+            }
+        }
+
+        byte[] Pixels(Action<DrawingContext> render)
+        {
+            var drawing = new DrawingVisual();
+            using (var dc = drawing.RenderOpen()) render(dc);
+            int pixels = (int)Math.Ceiling(56 * dpi / 96);
+            var bitmap = new RenderTargetBitmap(pixels, pixels, dpi, dpi, PixelFormats.Pbgra32);
+            bitmap.Render(drawing);
+            var bytes = new byte[pixels * pixels * 4];
+            bitmap.CopyPixels(bytes, pixels * 4, 0);
+            return bytes;
+        }
+    });
+
     private static Geometry GetDisplay(FrameworkElement icon, Type type)
         => (Geometry)type.GetField("_display", BindingFlags.NonPublic | BindingFlags.Instance)!.GetValue(icon)!;
 
@@ -167,10 +217,14 @@ public sealed class HotPathRegressionTests(ITestOutputHelper output)
         var baseline = new BaselineRenderProbe();
         double baselineBytes = MeasureMorph(baseline, baseline.Render,
             (g, animate) => baseline.MorphTo(g, animate), typeof(BaselineMorphingSettingsIcon), "baseline morph frame");
+        var beforeMemory = new BeforeMemoryRenderProbe();
+        double beforeMemoryBytes = MeasureMorph(beforeMemory, beforeMemory.Render,
+            (g, animate) => beforeMemory.MorphTo(g, animate), typeof(BeforeMemoryMorphingSettingsIcon), "before memory pass morph frame");
         var icon = new RenderProbe();
         double optimizedBytes = MeasureMorph(icon, icon.Render,
             (g, animate) => icon.MorphTo(g, animate), typeof(MorphingSettingsIcon), "optimized morph frame");
         Assert.True(optimizedBytes < baselineBytes / 2, "Morph rendering must substantially reduce frame allocations.");
+        Assert.True(optimizedBytes < beforeMemoryBytes / 4, "Point reuse must reduce allocations without reintroducing contour churn.");
         var block = new TextBlock();
         int index = 0;
         Measure("empty-query title", 1000, () => HighlightedText.SetText(block, ++index % 2 == 0 ? "Hello world" : "Hello there"));
@@ -227,6 +281,11 @@ public sealed class HotPathRegressionTests(ITestOutputHelper output)
     }
 
     private sealed class BaselineRenderProbe : BaselineMorphingSettingsIcon
+    {
+        public void Render(DrawingContext dc) => OnRender(dc);
+    }
+
+    private sealed class BeforeMemoryRenderProbe : BeforeMemoryMorphingSettingsIcon
     {
         public void Render(DrawingContext dc) => OnRender(dc);
     }

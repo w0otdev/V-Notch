@@ -40,9 +40,9 @@
          reflection, COM interop or CPU/GPU translation backends. -->
     <EnableCompressionInSingleFile Condition="'$(Configuration)' == 'Release' And '$(SelfContained)' == 'true'">true</EnableCompressionInSingleFile>
     <PublishReferencesDocumentationFiles>false</PublishReferencesDocumentationFiles>
-    <Version>2.2.2</Version>
-    <AssemblyVersion>2.2.2</AssemblyVersion>
-    <FileVersion>2.2.2</FileVersion>
+    <Version>2.3.0</Version>
+    <AssemblyVersion>2.3.0</AssemblyVersion>
+    <FileVersion>2.3.0</FileVersion>
     <Authors>w0otdev, viper1aa</Authors>
     <Company>V-Notch</Company>
     <Product>V-Notch</Product>

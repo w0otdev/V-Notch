@@ -112,6 +112,23 @@ public sealed class SmartCropInferenceAndFramingTests
         Assert.Equal(114, tensor[3 * plane - 1]);
     });
 
+    [Fact]
+    public void GetDominantSubjectBoundsUsesCpp26SaliencyWithoutLoadingOnnxSessionAndClearCachesReleasesState() => SharedStaTestRunner.Run(() =>
+    {
+        using var service = new SmartThumbnailCropService();
+        var textured = Image(256, 256, true);
+        var flat = Image(256, 256, false);
+
+        service.ClearCaches();
+
+        var bounds = service.GetDominantSubjectBounds(textured);
+        Assert.NotNull(bounds);
+        Assert.InRange(bounds.Value.Width, 0.08, 0.92);
+        Assert.InRange(bounds.Value.Height, 0.08, 0.92);
+        Assert.Null(Get<object?>(service, "_cachedSession"));
+        Assert.Null(service.GetDominantSubjectBounds(flat));
+    });
+
     private static BitmapImage Image(int width, int height, bool edges)
     {
         byte[] pixels = new byte[width * height * 3];

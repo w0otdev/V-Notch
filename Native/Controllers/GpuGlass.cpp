@@ -465,9 +465,9 @@ public:
         }
         captureWaitStarted = 0;
         sourceDirty |= desktopChanged;
-        if (workWidth && static_cast<uint64_t>(f.width) * f.height * 4 < static_cast<uint64_t>(workWidth) * workHeight) {
+        if (workWidth && static_cast<uint64_t>(f.width) * f.height * 2 < static_cast<uint64_t>(workWidth) * workHeight) {
             if (!smallSince) smallSince = GetTickCount64();
-            if (GetTickCount64() - smallSince >= 5000) {
+            if (GetTickCount64() - smallSince >= 1000) {
                 workWidth = workHeight = 0;
                 pyramid.clear(); reconstruction.clear(); resolved = {};
                 sourceDirty = true; smallSince = 0;
