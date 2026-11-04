@@ -1453,12 +1453,13 @@
                                         <Border Style="{StaticResource SettingRowBorder}" Margin="0,0,0,4">
                                             <StackPanel>
                                                 <controls:ElasticSlider x:Name="IdleAutoHideDelaySlider"
-                                                        Label="Idle delay" Unit=" s"
+                                                        Label="Idle delay" Unit=" s" ValueFormat="0.#"
                                                         Description="How long the notch stays empty before hiding."
-                                                        Minimum="2"
+                                                        Minimum="0.1"
                                                         Maximum="30"
                                                         Value="5"
-                                                        TickFrequency="1"
+                                                        TickFrequency="0.1"
+                                                        SmallChange="0.1"
                                                         IsSnapToTickEnabled="True"/>
                                                 <TextBlock x:Name="IdleAutoHideDelayKeywords" Visibility="Collapsed"/>
                                             </StackPanel>

@@ -271,6 +271,9 @@ public sealed class SettingsWindowControlTests
     [InlineData("AnimationFpsSlider", "AnimationFps", 60, 60)]
     [InlineData("HoverDelaySlider", "HoverExpandDelay", 500, 500)]
     [InlineData("IdleAutoHideDelaySlider", "IdleAutoHideDelay", 5, 5000)]
+    [InlineData("IdleAutoHideDelaySlider", "IdleAutoHideDelay", 0.5, 500)]
+    [InlineData("IdleAutoHideDelaySlider", "IdleAutoHideDelay", 0.3, 300)]
+    [InlineData("IdleAutoHideDelaySlider", "IdleAutoHideDelay", 0.1, 100)]
     [InlineData("TrayDelaySlider", "ClipboardCaptureDelay", 700, 700)]
     public void SlidersConvertDisplayUnitsToSettings(string controlName, string settingName, double value, double expected) => SharedStaTestRunner.Run(() =>
     {

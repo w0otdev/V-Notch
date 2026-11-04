@@ -104,6 +104,23 @@ public sealed class ElasticSliderPresentationTests
     });
 
     [Fact]
+    public void FractionalSecondsRemainVisibleWhenTheValueOrFormatChanges() => SharedStaTestRunner.Run(() =>
+    {
+        var slider = Create();
+        slider.Minimum = 0.1;
+        slider.Maximum = 30;
+        slider.TickFrequency = 0.1;
+        slider.Unit = " s";
+        slider.ValueFormat = "0.#";
+        slider.Value = 0.5;
+        Assert.Equal(0.5.ToString("0.#") + " s", Part<TextBlock>(slider, "PART_Value").Text);
+        slider.Value = 0.1;
+        Assert.Equal(0.1.ToString("0.#") + " s", Part<TextBlock>(slider, "PART_Value").Text);
+        slider.Value = 5;
+        Assert.Equal("5 s", Part<TextBlock>(slider, "PART_Value").Text);
+    });
+
+    [Fact]
     public void MissingTemplatePartsAndZeroRangeRemainSafe() => SharedStaTestRunner.Run(() =>
     {
         var slider = new ElasticSlider { Minimum = 5, Maximum = 5 };

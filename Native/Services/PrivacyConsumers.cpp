@@ -93,6 +93,16 @@ struct Identity { std::wstring path, family; bool queried = false; };
 struct Package { uint64_t created; ULONGLONG expires; std::wstring family; };
 std::mutex package_lock;
 std::unordered_map<DWORD, Package> packages;
+void cache_package_family(DWORD pid, uint64_t created, std::wstring_view family, ULONGLONG expires, ULONGLONG now) {
+    if (!packages.contains(pid) && packages.size() >= 2048) {
+        std::erase_if(packages, [now](const auto& item) { return now >= item.second.expires; });
+        if (packages.size() >= 2048) {
+            packages.erase(std::min_element(packages.begin(), packages.end(),
+                [](const auto& a, const auto& b) { return a.second.expires < b.second.expires; }));
+        }
+    }
+    packages[pid] = {created, expires, std::wstring(family)};
+}
 struct Consumers {
     std::mutex lock;
     std::vector<VnPrivacyProcessEntry> entries;
@@ -117,11 +127,7 @@ struct Consumers {
             wchar_t family[512]; UINT32 count = ARRAYSIZE(family);
             const auto status = GetPackageFamilyName(process.get(), &count, family);
             if (status == ERROR_SUCCESS && count > 1) result.family.assign(family, count - 1);
-            if (packages.size() >= 2048) {
-                std::erase_if(packages, [now](const auto& item) { return now >= item.second.expires; });
-                if (packages.size() >= 2048) packages.erase(packages.begin());
-            }
-            packages[pid] = {started, now + (result.family.empty() ? 15000 : 60000), result.family};
+            cache_package_family(pid, started, result.family, now + (result.family.empty() ? 15000 : 60000), now);
         }
         return result;
     }
@@ -226,4 +232,25 @@ VN_EXPORT int32_t vn_privacy_consumers_scan(int64_t handle, int64_t cache_handle
         std::copy(active.begin(), active.end(), output);
         return VN_OK;
     } catch (...) { return VN_ERR_FAIL; }
+}
+VN_EXPORT int32_t __stdcall vn_privacy_consumers_cache_package(uint32_t pid, const char16_t* family, int32_t length, int64_t expires, int64_t now) noexcept {
+    if (length < 0 || (length && !family)) return VN_ERR_INVALID_ARG;
+    try {
+        std::lock_guard guard(package_lock);
+        cache_package_family(pid, 0, {reinterpret_cast<const wchar_t*>(family), static_cast<size_t>(length)},
+            expires > 0 ? static_cast<ULONGLONG>(expires) : 0, now > 0 ? static_cast<ULONGLONG>(now) : 0);
+        return VN_OK;
+    } catch (...) { return VN_ERR_FAIL; }
+}
+VN_EXPORT int32_t __stdcall vn_privacy_consumers_query_package_cache(uint32_t pid, int32_t* count, uint8_t* contains) noexcept {
+    if (!count || !contains) return VN_ERR_INVALID_ARG;
+    std::lock_guard guard(package_lock);
+    *count = static_cast<int32_t>(packages.size());
+    *contains = packages.contains(pid) ? 1 : 0;
+    return VN_OK;
+}
+VN_EXPORT int32_t __stdcall vn_privacy_consumers_clear_package_cache() noexcept {
+    std::lock_guard guard(package_lock);
+    packages.clear();
+    return VN_OK;
 }

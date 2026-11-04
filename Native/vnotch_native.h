@@ -113,6 +113,9 @@ VN_EXPORT int32_t vn_privacy_consent_cache_create(int64_t*) noexcept;
 VN_EXPORT int32_t vn_privacy_consent_cache_close(int64_t) noexcept;
 VN_EXPORT int32_t vn_privacy_consent_cache_refresh(int64_t, uint8_t) noexcept;
 VN_EXPORT int32_t vn_privacy_consumers_scan(int64_t, int64_t, const char16_t*, int32_t, VnConsentStoreEntry*, int32_t, int32_t*) noexcept;
+VN_EXPORT int32_t __stdcall vn_privacy_consumers_cache_package(uint32_t, const char16_t*, int32_t, int64_t, int64_t) noexcept;
+VN_EXPORT int32_t __stdcall vn_privacy_consumers_query_package_cache(uint32_t, int32_t*, uint8_t*) noexcept;
+VN_EXPORT int32_t __stdcall vn_privacy_consumers_clear_package_cache() noexcept;
 VN_EXPORT int32_t __stdcall vn_privacy_poll_recorders(const VnPrivacyProcessEntry*, int32_t, uint8_t, uint8_t*) noexcept;
 VN_EXPORT int32_t __stdcall vn_privproc_contains_consumer(const VnPrivacyProcessEntry*, int32_t, const char16_t*, int32_t, uint8_t, uint8_t*) noexcept;
 #pragma pack(push, 1)

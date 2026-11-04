@@ -355,7 +355,10 @@
     </Window.Resources>
 
     <AdornerDecorator>
-    <Grid RenderOptions.ClearTypeHint="Enabled">
+    <Grid x:Name="DesktopRevealRoot" RenderOptions.ClearTypeHint="Enabled">
+        <Grid.RenderTransform>
+            <TranslateTransform x:Name="DesktopRevealTranslate"/>
+        </Grid.RenderTransform>
 
         <tb:TaskbarIcon x:Name="TrayIcon"
                         Visibility="Collapsed"

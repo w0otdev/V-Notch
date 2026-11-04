@@ -18,6 +18,12 @@ public sealed partial class PrivacyIndicatorService
     [LibraryImport(NativeDll, StringMarshalling = StringMarshalling.Utf16)]
     private static partial int vn_privacy_consent_cache_refresh(NativeConsentCache handle, byte changed);
     [LibraryImport(NativeDll, StringMarshalling = StringMarshalling.Utf16)]
+    private static partial int vn_privacy_consumers_cache_package(uint pid, ReadOnlySpan<char> family, int length, long expires, long now);
+    [LibraryImport(NativeDll)]
+    private static partial int vn_privacy_consumers_query_package_cache(uint pid, out int count, out byte contains);
+    [LibraryImport(NativeDll)]
+    private static partial int vn_privacy_consumers_clear_package_cache();
+    [LibraryImport(NativeDll, StringMarshalling = StringMarshalling.Utf16)]
     private static partial int vn_privacy_consumers_scan(NativeConsumersHandle handle, NativeConsentCache cache, ReadOnlySpan<char> capability, int length,
         Span<VnConsentStoreEntry> output, int capacity, out int count);
 
@@ -53,6 +59,12 @@ public sealed partial class PrivacyIndicatorService
         public bool MatchesProcess(string rawConsumer, uint processId) => processId != 0 &&
             vn_privacy_consumers_match(Native, rawConsumer, rawConsumer.Length, processId, out byte matched) == 0 && matched != 0;
         internal static bool IsDesktopExecutableProcess(string executablePath, uint processId) => Win32Interop.ProcessImagePathEquals(processId, executablePath);
+        internal static void CachePackageFamilyForPid(uint processId, string family, long expireTicks, long now) =>
+            vn_privacy_consumers_cache_package(processId, family, family.Length, expireTicks, now);
+        internal static int CachedPackageFamilyCount => vn_privacy_consumers_query_package_cache(0, out int count, out _) == 0 ? count : 0;
+        internal static bool ContainsCachedPackageFamily(uint processId) =>
+            vn_privacy_consumers_query_package_cache(processId, out _, out byte contains) == 0 && contains != 0;
+        internal static void ClearPackageFamilyCache() => vn_privacy_consumers_clear_package_cache();
         public void Dispose() { _native?.Dispose(); _processSnapshot?.Dispose(); }
 
         internal IReadOnlyList<CapabilityUsage> Scan(NativeConsentCache cache, string capability)

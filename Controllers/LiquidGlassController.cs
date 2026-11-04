@@ -2481,9 +2481,9 @@ public sealed partial class LiquidGlassController : IDisposable
     {
         int pixels = checked(w * h);
         int bytes = checked(pixels * 4);
-        if (_sourceBlurBuffer.Length < bytes || (bytes > 0 && _sourceBlurBuffer.Length > checked(bytes * 4)))
+        if (_sourceBlurBuffer.Length < bytes)
             _sourceBlurBuffer = new byte[checked(GrowPixelBufferCapacity(_sourceBlurBuffer.Length / 4, pixels) * 4)];
-        if (_sourceBlurTmp.Length < bytes || (bytes > 0 && _sourceBlurTmp.Length > checked(bytes * 4)))
+        if (_sourceBlurTmp.Length < bytes)
             _sourceBlurTmp = new byte[_sourceBlurBuffer.Length];
 
         byte[] a = _sourceBlurBuffer, b = _sourceBlurTmp;
@@ -2644,12 +2644,12 @@ public sealed partial class LiquidGlassController : IDisposable
     {
         int n = checked(outW * outH);
         int needed = checked(n * 4);
-        if (_outBuffer.Length < needed || (needed > 0 && _outBuffer.Length > checked(needed * 4)))
+        if (_outBuffer.Length < needed)
         {
             _outBuffer = new byte[checked(GrowPixelBufferCapacity(_outBuffer.Length / 4, n) * 4)];
         }
         int mapInts = checked(n * 6);
-        if (_refractMap.Length < mapInts || (mapInts > 0 && _refractMap.Length > checked(mapInts * 4)))
+        if (_refractMap.Length < mapInts)
         {
             int capacity = checked(GrowPixelBufferCapacity(_refractMap.Length / 6, n) * 6);
             _refractMap = new int[capacity];
@@ -2658,7 +2658,7 @@ public sealed partial class LiquidGlassController : IDisposable
 
     internal static int GrowPixelBufferCapacity(int current, int required)
     {
-        if (required > 0 && current > checked(required * 4)) return required;
+        // Retain capacity across collapse/expand cycles to prevent LOH thrashing.
         if (current >= required) return current;
         // Amortize LOH allocations through expansion. Bound unused capacity to
         // 64K pixels per buffer instead of retaining another full-sized frame.

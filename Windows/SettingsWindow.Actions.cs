@@ -598,7 +598,7 @@ public partial class SettingsWindow
         snapshot.HideOnExclusiveFullscreen = HideOnExclusiveFullscreenCheck.IsChecked ?? true;
         snapshot.HideOnWindowedFullscreen = HideOnWindowedFullscreenCheck.IsChecked ?? true;
         snapshot.EnableIdleAutoHide = IdleAutoHideCheck.IsChecked ?? false;
-        snapshot.IdleAutoHideDelay = Math.Max(1000, (int)(IdleAutoHideDelaySlider.Value * 1000));
+        snapshot.IdleAutoHideDelay = Math.Max(100, (int)Math.Round(IdleAutoHideDelaySlider.Value * 1000));
         snapshot.ShowMusicNotifications = MusicNotifyCheck.IsChecked ?? true;
         snapshot.ShowSystemNotifications = SystemNotifyCheck.IsChecked ?? true;
         snapshot.ShowBatteryIndicator = ShowBatteryCheck.IsChecked ?? true;

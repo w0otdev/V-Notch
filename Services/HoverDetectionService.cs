@@ -9,6 +9,7 @@ namespace VNotch.Services;
 public sealed partial class HoverDetectionService : IDisposable
 {
     private const int OutsideWindowIntervalMs = 125;
+    private const int ResponsiveIntervalMs = 50;
 
     private readonly UiScheduledTimer _pollTimer;
     private readonly UiScheduledTimer _hoverDelayTimer;
@@ -54,8 +55,8 @@ public sealed partial class HoverDetectionService : IDisposable
         _mousePositionHandler = InputWindow_MousePositionChanged;
         var dispatcher = inputWindow?.Dispatcher ?? Dispatcher.CurrentDispatcher;
         // WPF cannot receive mouse events outside its HWND, including the reveal
-        // strip when the notch is behind other windows. Sample that area slowly.
-        _pollTimer = new UiScheduledTimer(DispatcherPriority.Background, dispatcher)
+        // strip when the notch is hidden or behind other windows.
+        _pollTimer = new UiScheduledTimer(DispatcherPriority.Input, dispatcher)
         {
             Interval = TimeSpan.FromMilliseconds(OutsideWindowIntervalMs)
         };
@@ -211,6 +212,14 @@ public sealed partial class HoverDetectionService : IDisposable
     public bool IsPointOverNotch(Point point)
     {
         return _notchBounds.Contains(point);
+    }
+
+    public void SetResponsivePolling(bool enabled)
+    {
+        if (_disposed) return;
+        var interval = TimeSpan.FromMilliseconds(enabled ? ResponsiveIntervalMs : OutsideWindowIntervalMs);
+        if (_pollTimer.Interval != interval)
+            _pollTimer.Interval = interval;
     }
 
     public bool IsPointInTopEdgeRevealZone(Point point)

@@ -312,7 +312,7 @@ public partial class SettingsWindow : Window
         HideOnExclusiveFullscreenCheck.IsChecked = _settings.HideOnExclusiveFullscreen;
         HideOnWindowedFullscreenCheck.IsChecked = _settings.HideOnWindowedFullscreen;
         IdleAutoHideCheck.IsChecked = _settings.EnableIdleAutoHide;
-        IdleAutoHideDelaySlider.Value = Math.Max(2, _settings.IdleAutoHideDelay / 1000.0);
+        IdleAutoHideDelaySlider.Value = Math.Max(IdleAutoHideDelaySlider.Minimum, _settings.IdleAutoHideDelay / 1000.0);
         IdleAutoHideDelaySlider.IsEnabled = _settings.EnableIdleAutoHide;
         IdleAutoHideDelaySlider.Opacity = _settings.EnableIdleAutoHide ? 1.0 : 0.4;
         MusicNotifyCheck.IsChecked = _settings.ShowMusicNotifications;

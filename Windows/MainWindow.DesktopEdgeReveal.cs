@@ -18,7 +18,6 @@ public partial class MainWindow
     private int _desktopRevealAnimationVersion;
     private UiScheduledTimer? _desktopDemotionDelayTimer;
     private EventHandler? _desktopTransparentFrameHandler;
-    private int _desktopTransparentFramesObserved;
     private bool _desktopPointerInHoverZone;
     private DateTime _startupHoldUntilUtc = DateTime.MinValue;
     private UiScheduledTimer? _startupHoldTimer;
@@ -232,32 +231,14 @@ public partial class MainWindow
         _desktopDemotionDelayTimer?.Stop();
     }
 
-    private long _lastNotchObscuredCheckTicks;
-    private volatile bool _lastNotchObscuredResult = true;
-    private int _notchObscuredCheckQueued;
-
-    private bool IsNotchObscuredByAnyWindow()
+    private Task<bool> IsNotchObscuredByAnyWindowAsync()
     {
         IntPtr notchHwnd = _hwnd;
-        if (notchHwnd == IntPtr.Zero) return false;
-        long now = Environment.TickCount64;
-        bool expired = now - Interlocked.Read(ref _lastNotchObscuredCheckTicks) >= 250;
-        if (expired &&
-            Interlocked.CompareExchange(ref _notchObscuredCheckQueued, 1, 0) == 0)
-        {
-            _ = Task.Run(() =>
-            {
-                try
-                {
-                    _lastNotchObscuredResult = ProbeNotchObscuredByAnyWindow(notchHwnd);
-                    Interlocked.Exchange(ref _lastNotchObscuredCheckTicks, Environment.TickCount64);
-                }
-                finally { Interlocked.Exchange(ref _notchObscuredCheckQueued, 0); }
-            });
-        }
-        // Until the first probe completes, use the fade path to avoid exposing
-        // an opaque stale frame. Mouse input never waits on desktop enumeration.
-        return expired || _lastNotchObscuredResult;
+        // Keep the current frame visible while probing. Assuming a stale result
+        // means "obscured" made a notch on the desktop blink off before revealing.
+        return notchHwnd == IntPtr.Zero
+            ? Task.FromResult(false)
+            : Task.Run(() => ProbeNotchObscuredByAnyWindow(notchHwnd));
     }
 
     private static bool ProbeNotchObscuredByAnyWindow(IntPtr notchHwnd)
@@ -318,9 +299,18 @@ public partial class MainWindow
 
         if (_desktopPromotionPending) return;
 
-        // If the notch is not obscured by any window (e.g. on Desktop), promote
-        // immediately without dropping opacity to 0 or playing a fade animation.
-        if (!IsNotchObscuredByAnyWindow())
+        CancelScheduledDesktopDemotion();
+        _desktopPromotionPending = true;
+        int version = ++_desktopRevealAnimationVersion;
+        PromoteFromDesktopLayerAsync(version).SafeFireAndForget("DESKTOP-REVEAL");
+    }
+
+    private async Task PromoteFromDesktopLayerAsync(int version)
+    {
+        bool obscured = await IsNotchObscuredByAnyWindowAsync();
+        if (!IsDesktopRevealCurrent(version) || !_desktopPromotionPending) return;
+
+        if (!obscured || !IsEffectivelyNotchVisible)
         {
             _desktopPromotionPending = false;
             _desktopDemotionPending = false;
@@ -330,39 +320,18 @@ public partial class MainWindow
             return;
         }
 
-        // Render a transparent frame before promotion to prevent DWM from
-        // exposing the previous opaque surface as a bright flash.
-        _desktopPromotionPending = true;
         _desktopDemotionPending = false;
         SetDesktopRevealOpacityImmediate(0);
-        _desktopTransparentFramesObserved = 0;
+        DesktopRevealTranslate.Y = -NotchVisibilitySlideDistance;
 
-        // Wait for composition frame and commit transparent frame before altering z-order
-        if (_desktopTransparentFrameHandler != null) CompositionTarget.Rendering -= _desktopTransparentFrameHandler;
-        _desktopTransparentFrameHandler = (_, _) =>
+        QueueAfterDesktopTransparentFrame(() =>
         {
-            // Wait for subsequent composition callback to guarantee transparent frame
-            // submission to DWM before promoting, preventing one-frame flashes.
-            if (++_desktopTransparentFramesObserved < 2)
-                return;
-
-            if (_desktopTransparentFrameHandler != null)
-            {
-                CompositionTarget.Rendering -= _desktopTransparentFrameHandler;
-                _desktopTransparentFrameHandler = null;
-            }
-
-            if (!_desktopPromotionPending || _cleanedUp) return;
-
             _desktopPromotionPending = false;
             _isDesktopEdgePromoted = true;
-
-            // Update HWND layer after transparent frame commit, maintaining
-            // WS_EX_TOPMOST without exposing stale opaque surfaces.
             ConfigureOverlayWindow();
-            AnimateDesktopRevealOpacity(1, 320, null);
-        };
-        CompositionTarget.Rendering += _desktopTransparentFrameHandler;
+            CompleteDesktopLayerChangeAsync(_desktopRevealAnimationVersion, revealing: true)
+                .SafeFireAndForget("DESKTOP-REVEAL");
+        });
     }
 
     private void DemoteToDesktopLayerWithFade()
@@ -370,9 +339,17 @@ public partial class MainWindow
         if (_desktopDemotionPending) return;
         CancelScheduledDesktopDemotion();
 
-        // If the notch is not obscured by any window (e.g. on Desktop), demote
-        // directly without fading opacity out to 0 and back to 1.
-        if (!IsNotchObscuredByAnyWindow())
+        _desktopDemotionPending = true;
+        int version = ++_desktopRevealAnimationVersion;
+        DemoteToDesktopLayerAsync(version).SafeFireAndForget("DESKTOP-REVEAL");
+    }
+
+    private async Task DemoteToDesktopLayerAsync(int version)
+    {
+        bool obscured = await IsNotchObscuredByAnyWindowAsync();
+        if (!IsDesktopRevealCurrent(version) || !_desktopDemotionPending) return;
+
+        if (!obscured || !IsEffectivelyNotchVisible)
         {
             _desktopDemotionPending = false;
             _isDesktopEdgePromoted = false;
@@ -381,37 +358,59 @@ public partial class MainWindow
             return;
         }
 
-        _desktopDemotionPending = true;
-
-        AnimateDesktopRevealOpacity(0, 240, () =>
+        AnimateDesktopReveal(revealing: false, () => QueueAfterDesktopTransparentFrame(() =>
         {
-            if (!_desktopDemotionPending) return;
-
             _desktopDemotionPending = false;
             _isDesktopEdgePromoted = false;
-            // The fade has completely finished, so changing the HWND layer cannot
-            // expose a partially rendered frame.
             ConfigureOverlayWindow();
+            CompleteDesktopLayerChangeAsync(_desktopRevealAnimationVersion, revealing: false)
+                .SafeFireAndForget("DESKTOP-REVEAL");
+        }));
+    }
 
-            // Offload DWM flush to a background task so UI thread is never blocked.
-            _ = Task.Run(() =>
+    private bool IsDesktopRevealCurrent(int version) =>
+        !_cleanedUp && version == _desktopRevealAnimationVersion;
+
+    private void QueueAfterDesktopTransparentFrame(Action completed)
+    {
+        DetachDesktopTransparentFrameHandler();
+        int version = _desktopRevealAnimationVersion;
+        TimeSpan? firstFrame = null;
+        _desktopTransparentFrameHandler = (_, args) =>
+        {
+            // Rendering can run more than once for one frame. Only a distinct
+            // frame guarantees the previous transparent surface was submitted.
+            if (args is not RenderingEventArgs rendering) return;
+            if (firstFrame == null)
             {
-                DwmFlush();
-                Dispatcher.BeginInvoke(DispatcherPriority.Render, new Action(() =>
-                {
-                    if (!_isDesktopEdgePromoted)
-                    {
-                        SetDesktopRevealOpacityImmediate(1);
-                    }
-                }));
-            });
-        });
+                firstFrame = rendering.RenderingTime;
+                return;
+            }
+            if (firstFrame == rendering.RenderingTime) return;
+
+            DetachDesktopTransparentFrameHandler();
+            if (IsDesktopRevealCurrent(version)) completed();
+        };
+        CompositionTarget.Rendering += _desktopTransparentFrameHandler;
+    }
+
+    private async Task CompleteDesktopLayerChangeAsync(int version, bool revealing)
+    {
+        // Wait off the UI thread until the new z-order reaches the compositor.
+        if (_hwnd != IntPtr.Zero) await Task.Run(() => DwmFlush());
+        if (!IsDesktopRevealCurrent(version)
+            || _isDesktopEdgePromoted != revealing
+            || _desktopPromotionPending || _desktopDemotionPending) return;
+
+        if (revealing) AnimateDesktopReveal(revealing: true);
+        else SetDesktopRevealOpacityImmediate(1);
     }
 
     private void CancelDesktopLayerDemotion()
     {
         _desktopDemotionPending = false;
-        AnimateDesktopRevealOpacity(1, 220, null);
+        DetachDesktopTransparentFrameHandler();
+        AnimateDesktopReveal(revealing: true);
         EnsureTopmost(force: true);
     }
 
@@ -435,32 +434,32 @@ public partial class MainWindow
 
     private void AnimateDesktopRevealOpacity(double target, int durationMs, Action? completed)
     {
-        // Animate Window.Opacity and snapshot current value before replacement to
-        // avoid animation collisions with NotchContainer and base-value resets.
-        double from = Math.Clamp(Opacity, 0, 1);
+        // Keep the layered HWND's alpha stable while changing z-order. A separate
+        // visual also lets idle and desktop transitions animate independently.
+        double from = Math.Clamp(DesktopRevealRoot.Opacity, 0, 1);
         int version = ++_desktopRevealAnimationVersion;
-        BeginAnimation(Window.OpacityProperty, null);
-        Opacity = from;
+        DesktopRevealRoot.BeginAnimation(UIElement.OpacityProperty, null);
+        DesktopRevealRoot.Opacity = from;
 
-        var animation = new DoubleAnimation(from, target, TimeSpan.FromMilliseconds(durationMs))
+        var animation = new DoubleAnimation(from, target, DesktopRevealDuration(durationMs))
         {
             EasingFunction = new CubicEase
             {
-                EasingMode = target > from ? EasingMode.EaseOut : EasingMode.EaseInOut
+                EasingMode = target > from ? EasingMode.EaseOut : EasingMode.EaseIn
             },
-            FillBehavior = FillBehavior.Stop
+            FillBehavior = FillBehavior.HoldEnd
         };
         Timeline.SetDesiredFrameRate(animation, AnimationConfig.TargetFps);
         animation.Completed += (_, _) =>
         {
             if (version != _desktopRevealAnimationVersion) return;
 
-            BeginAnimation(Window.OpacityProperty, null);
-            Opacity = target;
+            DesktopRevealRoot.Opacity = target;
+            DesktopRevealRoot.BeginAnimation(UIElement.OpacityProperty, null);
             completed?.Invoke();
         };
-        BeginAnimation(
-            Window.OpacityProperty,
+        DesktopRevealRoot.BeginAnimation(
+            UIElement.OpacityProperty,
             animation,
             System.Windows.Media.Animation.HandoffBehavior.SnapshotAndReplace);
     }
@@ -468,8 +467,40 @@ public partial class MainWindow
     private void SetDesktopRevealOpacityImmediate(double opacity)
     {
         _desktopRevealAnimationVersion++;
-        BeginAnimation(Window.OpacityProperty, null);
-        Opacity = opacity;
+        DesktopRevealRoot.BeginAnimation(UIElement.OpacityProperty, null);
+        DesktopRevealRoot.Opacity = opacity;
+        DesktopRevealTranslate.BeginAnimation(TranslateTransform.YProperty, null);
+        DesktopRevealTranslate.Y = 0;
+    }
+
+    private static TimeSpan DesktopRevealDuration(int milliseconds) =>
+        AnimationConfig.ReduceMotion || !SystemParameters.ClientAreaAnimation
+            ? TimeSpan.Zero : TimeSpan.FromMilliseconds(milliseconds);
+
+    private void AnimateDesktopReveal(bool revealing, Action? completed = null)
+    {
+        double fromY = DesktopRevealTranslate.Y;
+        double targetY = revealing ? 0 : -NotchVisibilitySlideDistance;
+        AnimateDesktopRevealOpacity(revealing ? 1 : 0,
+            revealing ? NotchRevealFadeDurationMs : NotchHideFadeDurationMs, null);
+        int version = _desktopRevealAnimationVersion;
+        DesktopRevealTranslate.BeginAnimation(TranslateTransform.YProperty, null);
+        DesktopRevealTranslate.Y = fromY;
+        var animation = new DoubleAnimation(fromY, targetY,
+            DesktopRevealDuration(revealing ? NotchRevealSlideDurationMs : NotchHideSlideDurationMs))
+        {
+            EasingFunction = new CubicEase { EasingMode = revealing ? EasingMode.EaseOut : EasingMode.EaseIn },
+            FillBehavior = FillBehavior.HoldEnd
+        };
+        Timeline.SetDesiredFrameRate(animation, AnimationConfig.TargetFps);
+        animation.Completed += (_, _) =>
+        {
+            if (!IsDesktopRevealCurrent(version)) return;
+            DesktopRevealTranslate.Y = targetY;
+            DesktopRevealTranslate.BeginAnimation(TranslateTransform.YProperty, null);
+            completed?.Invoke();
+        };
+        DesktopRevealTranslate.BeginAnimation(TranslateTransform.YProperty, animation, HandoffBehavior.SnapshotAndReplace);
     }
 
     private void ResetDesktopEdgePromotionIfDisabled()

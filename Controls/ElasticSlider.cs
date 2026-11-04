@@ -38,6 +38,16 @@ public partial class ElasticSlider : Slider
         DependencyProperty.Register(nameof(Unit), typeof(string), typeof(ElasticSlider),
             new PropertyMetadata(string.Empty, OnUnitChanged));
 
+    public static readonly DependencyProperty ValueFormatProperty =
+        DependencyProperty.Register(nameof(ValueFormat), typeof(string), typeof(ElasticSlider),
+            new PropertyMetadata(string.Empty, OnUnitChanged));
+
+    public string ValueFormat
+    {
+        get => (string)GetValue(ValueFormatProperty);
+        set => SetValue(ValueFormatProperty, value);
+    }
+
     public string Label
     {
         get => (string)GetValue(LabelProperty);
@@ -480,7 +490,7 @@ public partial class ElasticSlider : Slider
         if (val == 0 && unit == " fps")
             _valueText.Text = Loc.Get("settings.fps.auto");
         else
-            _valueText.Text = string.IsNullOrEmpty(unit) ? val.ToString() : $"{val}{unit}";
+            _valueText.Text = (string.IsNullOrEmpty(ValueFormat) ? val.ToString() : Value.ToString(ValueFormat)) + unit;
     }
 
     #endregion

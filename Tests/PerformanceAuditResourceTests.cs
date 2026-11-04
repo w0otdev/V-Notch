@@ -51,18 +51,18 @@ public sealed class PerformanceAuditResourceTests
     [Fact]
     public void PackagePidCacheRetainsOtherLiveEntriesWhenFull()
     {
-        var probe = typeof(PrivacyIndicatorService).GetNestedType("ConsumerProcessProbe", BindingFlags.NonPublic)!;
-        var cache = (System.Collections.Concurrent.ConcurrentDictionary<uint, (string Family, long ExpireTicks)>)
-            probe.GetField("_packageFamilyByPidCache", BindingFlags.NonPublic | BindingFlags.Static)!.GetValue(null)!;
-        var add = probe.GetMethod("CachePackageFamilyForPid", BindingFlags.NonPublic | BindingFlags.Static)!;
-        cache.Clear();
+        PrivacyIndicatorService.ConsumerProcessProbe.ClearPackageFamilyCache();
+        // Native C++26 package PID cache lives in VNotch.Native.dll (PrivacyConsumers.cpp)
+        // and is exposed via ConsumerProcessProbe P/Invoke wrappers.
+        // Evicts expired entries first, then earliest-expiring entry when at capacity (2048).
+        Assert.Equal(0, PrivacyIndicatorService.ConsumerProcessProbe.CachedPackageFamilyCount);
         try
         {
-            for (uint i = 1; i <= 2050; i++) add.Invoke(null, [i, "fixture", 10000L + i, 0L]);
-            Assert.Equal(2048, cache.Count);
-            Assert.True(cache.ContainsKey(500));
-            Assert.True(cache.ContainsKey(2050));
+            for (uint i = 1; i <= 2050; i++) PrivacyIndicatorService.ConsumerProcessProbe.CachePackageFamilyForPid(i, "fixture", 10000L + i, 0L);
+            Assert.Equal(2048, PrivacyIndicatorService.ConsumerProcessProbe.CachedPackageFamilyCount);
+            Assert.True(PrivacyIndicatorService.ConsumerProcessProbe.ContainsCachedPackageFamily(500));
+            Assert.True(PrivacyIndicatorService.ConsumerProcessProbe.ContainsCachedPackageFamily(2050));
         }
-        finally { cache.Clear(); }
+        finally { PrivacyIndicatorService.ConsumerProcessProbe.ClearPackageFamilyCache(); }
     }
 }
