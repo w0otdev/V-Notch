@@ -35,8 +35,11 @@ public sealed class SettingsWindowControlTests
         Assert.Equal(last, window.LyricsProviderList.SelectedIndex);
         Assert.False(string.IsNullOrWhiteSpace(window.LyricsProviderList.Tag as string));
         Assert.False(string.IsNullOrWhiteSpace(window.LyricsProviderLabel.Tag as string));
+        Assert.False(string.IsNullOrWhiteSpace(window.LyricsProviderHeaderGrid.Tag as string));
+        Assert.False(string.IsNullOrWhiteSpace(window.LyricsProviderTextPanel.Tag as string));
         Assert.False(string.IsNullOrWhiteSpace(window.LyricsProviderPanel.Tag as string));
         Assert.False(string.IsNullOrWhiteSpace(window.LyricsProviderHint.Tag as string));
+        Assert.DoesNotContain("API key", window.LyricsProviderHint.Tag as string, StringComparison.OrdinalIgnoreCase);
     });
     private const BindingFlags Private = BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public;
 

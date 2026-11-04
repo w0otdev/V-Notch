@@ -102,6 +102,7 @@ public sealed class WebcamCaptureController : IDisposable
 
     // The leased array may have headroom; only width * height * 4 bytes contain frame pixels.
     public event Action<byte[], int, int, int>? FrameAvailable;
+    internal Func<SoftwareBitmap, int, bool>? PresentNativeFrame { get; set; }
 
     public void ReleaseFrameBuffer()
     {
@@ -506,8 +507,8 @@ public sealed class WebcamCaptureController : IDisposable
 
         if (Volatile.Read(ref _frameBufferInUse) != 0) return;
         using var frame = sender.TryAcquireLatestFrame();
-        if (frame?.VideoMediaFrame?.SoftwareBitmap == null) return;
-        ProcessFrame(frame.VideoMediaFrame.SoftwareBitmap, frameToken);
+        using var bitmap = frame?.VideoMediaFrame?.SoftwareBitmap;
+        if (bitmap != null) ProcessFrame(bitmap, frameToken);
     }
 
     internal void ProcessFrame(SoftwareBitmap softwareBitmap, int frameToken)
@@ -535,6 +536,8 @@ public sealed class WebcamCaptureController : IDisposable
         bool handedOff = false;
         try
         {
+            // The capture callback owns the WinRT bitmap until this synchronous upload returns.
+            if (PresentNativeFrame?.Invoke(softwareBitmap, frameToken) == true) return;
             int width = softwareBitmap.PixelWidth;
             int height = softwareBitmap.PixelHeight;
             int requiredSize = checked(width * height * 4);

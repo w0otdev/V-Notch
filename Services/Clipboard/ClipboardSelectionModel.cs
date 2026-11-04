@@ -113,5 +113,12 @@ internal sealed class ClipboardSelectionModel<T> where T : class
     }
 
     internal void EndLasso() { _seed.Clear(); _targets.Clear(); }
+    internal void Remove(T item)
+    {
+        _seed.Remove(item);
+        _targets.Remove(item);
+        if (Anchor != null && EqualityComparer<T>.Default.Equals(Anchor, item))
+            Anchor = null;
+    }
     internal void Reset() { EndLasso(); Anchor = null; Modified = false; }
 }

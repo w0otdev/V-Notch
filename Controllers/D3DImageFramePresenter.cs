@@ -114,7 +114,8 @@ internal sealed partial class D3DImageFramePresenter : IDisposable
         int surfaceHeight,
         ID3DFrameTarget? frameTarget = null,
         bool ultimateGpuMode = false,
-        bool useGpuCapture = false)
+        bool useGpuCapture = false,
+        bool webcam = false)
     {
         _image = frameTarget ?? new D3DFrameTarget();
         _dispatcher = dispatcher ?? throw new ArgumentNullException(nameof(dispatcher));
@@ -131,6 +132,7 @@ internal sealed partial class D3DImageFramePresenter : IDisposable
         _surfaceHeight = surfaceHeight;
         _ultimateGpuMode = ultimateGpuMode;
         _useGpuCapture = useGpuCapture;
+        _webcam = webcam;
         _presentAction = PresentPendingFrame;
         // CompositionTarget.Rendering already retries at the display cadence.
         // This fallback yields to input and allows one frame interval between attempts.
@@ -414,26 +416,36 @@ internal sealed partial class D3DImageFramePresenter : IDisposable
         IDirect3DSurface9? nextRender = null;
         try
         {
-            nextUpload = _device.CreateOffscreenPlainSurface(
-                (uint)_surfaceWidth,
-                (uint)_surfaceHeight,
-                Format.X8R8G8B8,
-                Pool.SystemMemory);
-            nextRender = _device.CreateRenderTarget(
-                (uint)_surfaceWidth,
-                (uint)_surfaceHeight,
-                Format.X8R8G8B8,
-                MultisampleType.None,
-                0,
-                lockable: false);
-            // A partial first capture must not expose uninitialized pixels in
-            // the fixed-size texture around it. Initialize once, not per frame.
-            LockedRectangle initial = nextUpload.LockRect(LockFlags.None);
-            try { ClearSurface(initial.DataPointer, initial.Pitch, _surfaceHeight); }
-            finally { nextUpload.UnlockRect(); }
-            _device.UpdateSurface(nextUpload,
-                new Vortice.Direct3D9.Rect(0, 0, _surfaceWidth, _surfaceHeight),
-                nextRender, new Int2(0, 0));
+            if (_webcam)
+            {
+                // Write only to the detached target. WPF owns the front target until
+                // the next successful back-buffer swap under the image lock.
+                nextUpload = CreateWebcamTarget();
+                nextRender = CreateWebcamTarget();
+            }
+            else
+            {
+                nextUpload = _device.CreateOffscreenPlainSurface(
+                    (uint)_surfaceWidth,
+                    (uint)_surfaceHeight,
+                    Format.X8R8G8B8,
+                    Pool.SystemMemory);
+                nextRender = _device.CreateRenderTarget(
+                    (uint)_surfaceWidth,
+                    (uint)_surfaceHeight,
+                    Format.X8R8G8B8,
+                    MultisampleType.None,
+                    0,
+                    lockable: false);
+                // A partial first capture must not expose uninitialized pixels in
+                // the fixed-size texture around it. Initialize once, not per frame.
+                LockedRectangle initial = nextUpload.LockRect(LockFlags.None);
+                try { ClearSurface(initial.DataPointer, initial.Pitch, _surfaceHeight); }
+                finally { nextUpload.UnlockRect(); }
+                _device.UpdateSurface(nextUpload,
+                    new Vortice.Direct3D9.Rect(0, 0, _surfaceWidth, _surfaceHeight),
+                    nextRender, new Int2(0, 0));
+            }
         }
         catch
         {
@@ -533,7 +545,11 @@ internal sealed partial class D3DImageFramePresenter : IDisposable
                     int dirtyBottom = dirtyRows.Bottom;
                     var frameRect = new Vortice.Direct3D9.Rect(
                         0, dirtyTop, frameWidth, dirtyBottom);
-                    if (!_useGpuCapture)
+                    if (_webcam)
+                    {
+                        (_renderSurface, _uploadSurface) = (_uploadSurface, _renderSurface);
+                    }
+                    else if (!_useGpuCapture)
                     {
                         _device.UpdateSurface(_uploadSurface!, frameRect, _renderSurface!, new Int2(0, dirtyTop));
                         Interlocked.Add(ref _transferredBytes, (long)frameWidth * (dirtyBottom - dirtyTop) * 4);
@@ -719,7 +735,7 @@ internal sealed partial class D3DImageFramePresenter : IDisposable
     {
         // A retry can run before D3D11 completes the first frame. Do not attach
         // the freshly allocated D3D9 target until its GPU copy has initialized it.
-        if (_useGpuCapture && !_hasGpuBackBuffer) return;
+        if ((_useGpuCapture && !_hasGpuBackBuffer) || (_webcam && _attachedSurface == null)) return;
         var surface = _attachedSurface ?? _renderSurface;
         if (surface == null || !_image.IsFrontBufferAvailable)
             return;

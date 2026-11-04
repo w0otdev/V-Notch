@@ -3,6 +3,7 @@
 #include <UIAutomation.h>
 #include <wrl/client.h>
 #include <deque>
+#include <mutex>
 
 #pragma comment(lib, "uiautomationcore.lib")
 #pragma comment(lib, "oleaut32.lib")
@@ -218,6 +219,200 @@ VN_EXPORT int32_t __stdcall vn_spotify_read_track_link(intptr_t window, const wc
         *written = static_cast<int32_t>(url.size());
         return VN_OK;
     } catch (...) { return VN_ERR_FAIL; }
+}
+
+namespace {
+
+bool is_spotify_window(HWND hwnd) noexcept {
+    wchar_t cls[64]{};
+    if (GetClassNameW(hwnd, cls, 63) <= 0 ||
+        !vnotch::equals_ignore_case(View(reinterpret_cast<const char16_t*>(cls)), u"Chrome_WidgetWin_1")) {
+        return false;
+    }
+    DWORD pid = 0;
+    GetWindowThreadProcessId(hwnd, &pid);
+    if (pid == 0) return false;
+    Text exe_path;
+    if (!vnotch::try_get_process_image_path(pid, &exe_path) || exe_path.size() < 11) return false;
+    const View path_sv(exe_path);
+    return vnotch::ends_with_ignore_case(path_sv, u"\\spotify.exe") ||
+           vnotch::equals_ignore_case(path_sv, u"spotify.exe");
+}
+
+BOOL CALLBACK enum_spotify_windows(HWND hwnd, LPARAM lparam) noexcept {
+    try {
+        auto* list = reinterpret_cast<std::vector<HWND>*>(lparam);
+        if (list && is_spotify_window(hwnd)) {
+            list->push_back(hwnd);
+        }
+    } catch (...) {}
+    return TRUE;
+}
+
+bool parse_document_title_sv(View doc_name, View& out_title, View& out_artists) noexcept {
+    out_title = {};
+    out_artists = {};
+    const size_t sep = doc_name.rfind(u" \u2022 ");
+    if (sep == View::npos || sep == 0) return false;
+    const View title = vnotch::trim_view(doc_name.substr(0, sep));
+    const View artists = vnotch::trim_view(doc_name.substr(sep + 3));
+    if (title.empty() || artists.empty()) return false;
+    out_title = title;
+    out_artists = artists;
+    return true;
+}
+
+Text current_name(IUIAutomationElement* element) {
+    Variant value;
+    if (!element || FAILED(element->get_CurrentName( &value.value.bstrVal )) || !value.value.bstrVal) return {};
+    value.value.vt = VT_BSTR;
+    return Text(reinterpret_cast<const char16_t*>(value.value.bstrVal), SysStringLen(value.value.bstrVal));
+}
+
+} // namespace
+
+VN_EXPORT int32_t __stdcall vn_spotify_read_local_track(
+    uint8_t include_track_id,
+    char16_t* out_title, int32_t title_cap, int32_t* out_title_len,
+    char16_t* out_artists, int32_t artists_cap, int32_t* out_artists_len,
+    char16_t* out_track_url, int32_t url_cap, int32_t* out_url_len) noexcept {
+    if (!out_title || title_cap <= 0 || !out_title_len ||
+        !out_artists || artists_cap <= 0 || !out_artists_len ||
+        !out_track_url || url_cap <= 0 || !out_url_len) {
+        return VN_ERR_INVALID_ARG;
+    }
+    *out_title_len = 0;
+    *out_artists_len = 0;
+    *out_url_len = 0;
+
+    try {
+        vnotch::ComScope com;
+        static std::mutex s_gate;
+        static Ptr<IUIAutomation> s_api;
+        static Ptr<IUIAutomationCondition> s_doc_cond;
+        static Ptr<IUIAutomationCacheRequest> s_link_cache;
+        static Ptr<IUIAutomationElement> s_cached_doc;
+        static HWND s_cached_hwnd = nullptr;
+
+        std::lock_guard lock(s_gate);
+        if (!s_api) {
+            if (FAILED(CoCreateInstance(CLSID_CUIAutomation, nullptr, CLSCTX_INPROC_SERVER, IID_PPV_ARGS(s_api.GetAddressOf()))) || !s_api) {
+                return VN_ERR_FAIL;
+            }
+            Variant doc_type;
+            doc_type.value.vt = VT_I4;
+            doc_type.value.lVal = UIA_DocumentControlTypeId;
+            if (FAILED(s_api->CreatePropertyCondition(UIA_ControlTypePropertyId, doc_type.value, s_doc_cond.GetAddressOf())) || !s_doc_cond) {
+                s_api.Reset();
+                return VN_ERR_FAIL;
+            }
+            if (FAILED(s_api->CreateCacheRequest(s_link_cache.GetAddressOf())) || !s_link_cache) {
+                s_doc_cond.Reset();
+                s_api.Reset();
+                return VN_ERR_FAIL;
+            }
+            s_link_cache->put_TreeScope(TreeScope_Element);
+            s_link_cache->AddProperty(UIA_ValueValuePropertyId);
+            s_link_cache->AddProperty(UIA_LegacyIAccessibleValuePropertyId);
+        }
+
+        auto try_read_doc = [&](IUIAutomationElement* doc, Text& doc_name, View& title_sv, View& artists_sv) -> bool {
+            if (!doc) return false;
+            doc_name = current_name(doc);
+            return parse_document_title_sv(doc_name, title_sv, artists_sv);
+        };
+
+        Text doc_name;
+        View title_sv{}, artists_sv{};
+        bool found = false;
+
+        if (s_cached_doc && s_cached_hwnd && IsWindow(s_cached_hwnd)) {
+            if (try_read_doc(s_cached_doc.Get(), doc_name, title_sv, artists_sv)) {
+                found = true;
+            } else {
+                s_cached_doc.Reset();
+                s_cached_hwnd = nullptr;
+            }
+        } else {
+            s_cached_doc.Reset();
+            s_cached_hwnd = nullptr;
+        }
+
+        if (!found) {
+            std::vector<HWND> windows;
+            windows.reserve(4);
+            EnumWindows(enum_spotify_windows, reinterpret_cast<LPARAM>(&windows));
+            for (HWND hwnd : windows) {
+                Ptr<IUIAutomationElement> root, doc;
+                if (FAILED(s_api->ElementFromHandle(hwnd, root.GetAddressOf())) || !root) continue;
+                if (FAILED(root->FindFirst(TreeScope_Descendants, s_doc_cond.Get(), doc.GetAddressOf())) || !doc) continue;
+                if (try_read_doc(doc.Get(), doc_name, title_sv, artists_sv)) {
+                    s_cached_doc = doc;
+                    s_cached_hwnd = hwnd;
+                    found = true;
+                    break;
+                }
+            }
+        }
+
+        if (!found) return VN_OK;
+
+        const int32_t t_len = std::min(static_cast<int32_t>(title_sv.size()), title_cap);
+        std::copy_n(title_sv.data(), t_len, out_title);
+        *out_title_len = t_len;
+
+        const int32_t a_len = std::min(static_cast<int32_t>(artists_sv.size()), artists_cap);
+        std::copy_n(artists_sv.data(), a_len, out_artists);
+        *out_artists_len = a_len;
+
+        if (include_track_id && s_cached_doc) {
+            Text title_str(title_sv);
+            Variant ctrl_var, name_var;
+            ctrl_var.value.vt = VT_I4;
+            ctrl_var.value.lVal = UIA_HyperlinkControlTypeId;
+            name_var.value.vt = VT_BSTR;
+            name_var.value.bstrVal = SysAllocStringLen(reinterpret_cast<const OLECHAR*>(title_str.data()), static_cast<UINT>(title_str.size()));
+            if (name_var.value.bstrVal) {
+                Ptr<IUIAutomationCondition> by_type, by_name, link_cond;
+                if (SUCCEEDED(s_api->CreatePropertyCondition(UIA_ControlTypePropertyId, ctrl_var.value, by_type.GetAddressOf())) &&
+                    SUCCEEDED(s_api->CreatePropertyCondition(UIA_NamePropertyId, name_var.value, by_name.GetAddressOf())) &&
+                    SUCCEEDED(s_api->CreateAndCondition(by_type.Get(), by_name.Get(), link_cond.GetAddressOf()))) {
+                    Ptr<IUIAutomationElementArray> links;
+                    if (SUCCEEDED(s_cached_doc->FindAllBuildCache(TreeScope_Descendants, link_cond.Get(), s_link_cache.Get(), links.GetAddressOf())) && links) {
+                        int count = 0;
+                        links->get_Length(&count);
+                        if (count > 0 && count <= 100) {
+                            Text url;
+                            bool ambiguous = false;
+                            for (int i = 0; i < count; ++i) {
+                                Ptr<IUIAutomationElement> link;
+                                if (FAILED(links->GetElement(i, link.GetAddressOf())) || !link) continue;
+                                Text candidate = property(link.Get(), UIA_ValueValuePropertyId);
+                                if (candidate.empty()) candidate = property(link.Get(), UIA_LegacyIAccessibleValuePropertyId);
+                                if (!vnotch::starts_with_ignore_case(candidate, u"https://open.spotify.com/") &&
+                                    !vnotch::starts_with_ignore_case(candidate, u"spotify:track:")) {
+                                    continue;
+                                }
+                                if (!url.empty() && url != candidate) {
+                                    ambiguous = true;
+                                    break;
+                                }
+                                url = std::move(candidate);
+                            }
+                            if (!ambiguous && !url.empty() && current_name(s_cached_doc.Get()) == doc_name) {
+                                const int32_t u_len = std::min(static_cast<int32_t>(url.size()), url_cap);
+                                std::copy_n(url.data(), u_len, out_track_url);
+                                *out_url_len = u_len;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        return VN_OK;
+    } catch (...) {
+        return VN_ERR_FAIL;
+    }
 }
 
 VN_EXPORT int32_t __stdcall vn_wtscanner_scan_browser(intptr_t hwnd, uint8_t firefox, VnBrowserChromeSnapshot* result,

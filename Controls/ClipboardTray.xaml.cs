@@ -156,6 +156,7 @@ public sealed partial class ClipboardTray : UserControl, IDisposable
         InitializeSearchEdgeFade();
         PasscodeBox.PasswordChanged += PasscodeBox_PasswordChanged;
         _statusTimer.Tick += StatusTimer_Tick;
+        Cards.ClearingContainer = OnClearingCardContainer;
         Cards.ItemsSource = _cards;
         CategoryPanel.ItemsSource = _categoryItems;
         _searchTimer = new UiScheduledTimer { Interval = TimeSpan.FromMilliseconds(120) };
@@ -491,6 +492,11 @@ public sealed partial class ClipboardTray : UserControl, IDisposable
 
                 var scroll = FindScrollViewer(Cards);
                 double offset = scroll?.HorizontalOffset ?? 0;
+                for (int i = 0; i < existingCount; i++)
+                {
+                    if (existingSurvivorMask[i] == 0)
+                        ReleaseRemovedCard(_cards[i]);
+                }
                 var replacement = new ClipboardCardViewModel[desiredCount];
                 for (int i = 0; i < desiredCount; i++)
                 {
@@ -516,7 +522,10 @@ public sealed partial class ClipboardTray : UserControl, IDisposable
             for (int i = existingCount - 1; i >= 0; i--)
             {
                 if (existingSurvivorMask[i] == 0)
+                {
+                    ReleaseRemovedCard(_cards[i]);
                     _cards.RemoveAt(i);
+                }
             }
 
             for (int index = 0; index < desiredCount; index++)
@@ -611,8 +620,7 @@ public sealed partial class ClipboardTray : UserControl, IDisposable
             EmptyText.Visibility = Visibility.Collapsed;
             EmptyDropSilhouette.Visibility = Visibility.Collapsed;
             CancelThumbnailLoads();
-            ReleaseCardPreviews();
-            _cards.Clear();
+            ReleaseAllCards();
             _arrivingCards.Clear();
         }
         CloseDetails();
@@ -624,6 +632,49 @@ public sealed partial class ClipboardTray : UserControl, IDisposable
         UpdateCategoryLockState();
         RebuildCategories();
         QueueRefresh();
+    }
+
+    private void ReleaseRemovedCard(ClipboardCardViewModel card, bool removeSelection = true)
+    {
+        foreach (var pair in _thumbnailLoads.ToArray())
+            if (ReferenceEquals(pair.Value.Card, card)) CancelThumbnailLoad(pair.Key);
+        foreach (var pair in _completedContentLoads.ToArray())
+            if (ReferenceEquals(pair.Value, card)) _completedContentLoads.Remove(pair.Key);
+        foreach (var pair in _cardViewportStates.ToArray())
+            if (ReferenceEquals(pair.Value.Card, card)) ForgetCardViewport(pair.Key);
+        card.IsMenuOpen = false;
+        ReleaseCardPreview(card);
+        if (!removeSelection) return;
+        _selection.Remove(card);
+        if (ReferenceEquals(_pressedCard, card))
+        {
+            _pressedCard = null;
+            _dragStart = null;
+            _copyOnRelease = false;
+        }
+        if (ReferenceEquals(_lastOpenedMenuCard, card))
+        {
+            _lastOpenedMenuCard = null;
+            _lastOpenedMenuTarget = null;
+            _lastOpenedMenu = null;
+        }
+        if (ReferenceEquals(_lastClosedMenuCard, card))
+        {
+            _lastClosedMenuCard = null;
+            _lastClosedMenuTarget = null;
+            _lastClosedMenu = null;
+            _lastClosedMenuTime = 0;
+        }
+        if (ReferenceEquals(_detailCard, card) || _groupEntryId == card.Entry.Id)
+            CloseDetails();
+    }
+
+    private void ReleaseAllCards()
+    {
+        ReleaseCardPreviews();
+        for (int i = 0; i < _cards.Count; i++)
+            ReleaseRemovedCard(_cards[i]);
+        _cards.Clear();
     }
 
     private bool UpdateCategoryLockState()
@@ -644,7 +695,7 @@ public sealed partial class ClipboardTray : UserControl, IDisposable
         SetTrayDropBorderVisible(false);
         EmptyText.Visibility = Visibility.Collapsed;
         EmptyDropSilhouette.Visibility = Visibility.Collapsed;
-        _cards.Clear();
+        ReleaseAllCards();
         LockTitle.Text = Loc.Get(_controller?.Store.HasPersonalPasscode == true ? "clipboard.locked" : "clipboard.setPin");
         UpdatePinStep();
         ForgotPinButton.Visibility = _controller?.Store.HasPersonalPasscode == true ? Visibility.Visible : Visibility.Collapsed;
@@ -694,14 +745,17 @@ public sealed partial class ClipboardTray : UserControl, IDisposable
         if (_category == "Personal")
         {
             _queryDirty = true;
-            _cards.Clear();
+            ReleaseAllCards();
             Cards.Visibility = Visibility.Collapsed;
             ShowTransientLayer(LockPanel);
         }
         else
         {
             for (int i = _cards.Count - 1; i >= 0; i--) if (_cards[i].Entry.IsPersonal)
+                {
+                    ReleaseRemovedCard(_cards[i]);
                     _cards.RemoveAt(i);
+                }
         }
     }
 
@@ -1607,7 +1661,7 @@ public sealed partial class ClipboardTray : UserControl, IDisposable
             _controller.ImportProgress -= OnImportProgress;
         }
         HidePrivateContent();
-        _cards.Clear();
+        ReleaseAllCards();
         _approvals.Clear();
         CloseAllOpenMenus();
         _openMenus.Clear();

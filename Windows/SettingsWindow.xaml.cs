@@ -587,6 +587,8 @@ public partial class SettingsWindow : Window
         LyricsProviderHint.Tag = Loc.Get("settings.lyrics.provider.amll.desc");
         LyricsProviderList.Tag = Loc.Get("settings.lyrics.provider.lrclib.desc");
         LyricsProviderLabel.Tag = Loc.Get("settings.lyrics.provider.netease.desc");
+        LyricsProviderHeaderGrid.Tag = Loc.Get("settings.lyrics.provider.kugou.desc");
+        LyricsProviderTextPanel.Tag = Loc.Get("settings.lyrics.provider.qqmusic.desc");
         LyricsProviderPanel.Tag = Loc.Get("settings.lyrics.provider.lrcmux.desc");
         LyricsProviderList.SetValue(System.Windows.Automation.AutomationProperties.NameProperty, LyricsProviderLabel.Text);
         LyricsProviderUp.ToolTip = Loc.Get("settings.tab.moveUp");

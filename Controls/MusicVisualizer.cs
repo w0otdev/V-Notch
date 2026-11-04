@@ -108,7 +108,6 @@ namespace VNotch.Controls
 
         private readonly Stopwatch _stopwatch = new Stopwatch();
         private double _lastTickSeconds;
-        private double _lastDtMs;
         private DateTime _lastCaptureRetryUtc = DateTime.MinValue;
         private bool _isRenderingActive;
         private bool _holdsCaptureLease;
@@ -258,7 +257,6 @@ namespace VNotch.Controls
             // A delayed UI frame must not advance the morph by a large jump.
             dt = Math.Min(dt, 0.05);
 
-            _lastDtMs = dt * 1000.0;
             double oldOpacity = _currentOpacity;
             bool isSettled = UpdateAnimation(dt, totalSec);
             double oldIconMix = _iconMix, oldCheckMix = _checkMix, oldPlayMix = _playMix;
@@ -267,8 +265,6 @@ namespace VNotch.Controls
                 Math.Abs(oldIconMix - _iconMix) > 0.0001 ||
                 Math.Abs(oldCheckMix - _checkMix) > 0.0001 ||
                 Math.Abs(oldPlayMix - _playMix) > 0.0001;
-            // Advance smoothing once per animation tick, never once per paint.
-            PrepareDrawHeights();
 
             Span<double> barRects = stackalloc double[BarCount * 4];
             var frame = ComputeBarFrame(barRects);
@@ -368,7 +364,7 @@ namespace VNotch.Controls
                 _noAudioHash,
                 _floorHash,
                 ref _currentOpacity,
-                _currentHeights);
+                _currentHeights, _smoothedHeights, _sortedHeights, _drawHeights);
         }
 
         private void EnsureHashCache(string sid)
@@ -494,9 +490,6 @@ namespace VNotch.Controls
                 RequestCaptureUpdate();
         }
 #pragma warning restore S2696
-
-        private void PrepareDrawHeights() =>
-            VNotch.Services.VisualizerDsp.PrepareDrawHeights(_lastDtMs, _currentHeights, _smoothedHeights, _sortedHeights, _drawHeights);
 
         private Color _cachedGradientBaseColor;
         private LinearGradientBrush? _cachedBarGradient;
@@ -941,9 +934,6 @@ namespace VNotch.Controls
                 _publishedBeatAccent = (float)_dspState.BeatAccent;
             }
         }
-
-
-
 
         private float[] GetLatestDisplayLevels(out bool hasFreshAudio, out double beatAccent)
         {

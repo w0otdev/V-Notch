@@ -1238,38 +1238,21 @@ public sealed partial class MediaMetadataLookupService : IMediaMetadataLookupSer
             ? $"https://itunes.apple.com/search?term={query}&entity=song&limit=5"
             : $"https://itunes.apple.com/search?term={query}&entity=song&limit=5&country={country}";
 
-        string? json = await GetStringWithTimeoutAsync(url, 2200, ct);
-        if (string.IsNullOrWhiteSpace(json))
-            return null;
+        using var body = await GetCatalogBodyAsync(url, 2200, ct).ConfigureAwait(false);
+        return body == null ? null : NativeCatalogParser.Select(body.Span, 2, title, primaryArtist, targetDurationMs, albumTitle).Text;
+    }
 
-        using var doc = JsonDocument.Parse(json);
-        if (!doc.RootElement.TryGetProperty("results", out var results) || results.ValueKind != JsonValueKind.Array)
-            return null;
-
-        string? bestArtists = null;
-        int bestScore = 0;
-
-        foreach (var item in results.EnumerateArray())
+    private async Task<PooledUtf8Response?> GetCatalogBodyAsync(string url, int timeoutMs, CancellationToken ct)
+    {
+        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        timeout.CancelAfter(timeoutMs);
+        try
         {
-            string? trackName = item.TryGetProperty("trackName", out var tn) ? tn.GetString() : null;
-            string? artistName = item.TryGetProperty("artistName", out var an) ? an.GetString() : null;
-            string? collectionName = item.TryGetProperty("collectionName", out var cn) ? cn.GetString() : null;
-            long trackTimeMs = item.TryGetProperty("trackTimeMillis", out var tm) && tm.TryGetInt64(out long ms) ? ms : 0;
-
-            string? formatted = FormatSpotifyArtistsCandidate(
-                trackName, artistName, trackTimeMs, title, primaryArtist, targetDurationMs, out int score);
-            if (formatted != null && score > 0)
-            {
-                score += ComputeAlbumTieBreakerBonus(collectionName, albumTitle);
-                if (score > bestScore)
-                {
-                    bestScore = score;
-                    bestArtists = formatted;
-                }
-            }
+            using var response = await _httpClient.GetAsync(url, HttpCompletionOption.ResponseHeadersRead, timeout.Token).ConfigureAwait(false);
+            return response.IsSuccessStatusCode ? await PooledUtf8Response.ReadAsync(response, YouTubeMetadataParsing.MaxJsonResponseBytes, timeout.Token).ConfigureAwait(false) : null;
         }
-
-        return bestArtists;
+        catch (OperationCanceledException) when (ct.IsCancellationRequested) { throw; }
+        catch { return null; }
     }
 
     private async Task<string?> TrySearchDeezerArtistsAsync(
@@ -1281,62 +1264,19 @@ public sealed partial class MediaMetadataLookupService : IMediaMetadataLookupSer
     {
         string query = Uri.EscapeDataString($"{title} {primaryArtist}");
         string searchUrl = $"https://api.deezer.com/search?q={query}&limit=5";
-        string? searchJson = await GetStringWithTimeoutAsync(searchUrl, 2200, ct);
-        if (string.IsNullOrWhiteSpace(searchJson))
-            return null;
-
-        using var searchDoc = JsonDocument.Parse(searchJson);
-        if (!searchDoc.RootElement.TryGetProperty("data", out var data) || data.ValueKind != JsonValueKind.Array)
-            return null;
-
+        using var searchBody = await GetCatalogBodyAsync(searchUrl, 2200, ct).ConfigureAwait(false);
+        if (searchBody == null) return null;
+        var tracks = YouTubeMetadataParsing.ParseUtf8(searchBody.Span, 7).Items;
         string? bestArtists = null;
         int bestScore = 0;
-
-        foreach (var item in data.EnumerateArray())
+        foreach (var track in tracks)
         {
-            if (!item.TryGetProperty("id", out var idEl) || !idEl.TryGetInt64(out long trackId) || trackId <= 0)
-                continue;
-
-            string? trackTitle = item.TryGetProperty("title", out var tEl) ? tEl.GetString() : null;
-            long durationSec = item.TryGetProperty("duration", out var dEl) && dEl.TryGetInt64(out long sec) ? sec : 0;
-            string? candAlbum = item.TryGetProperty("album", out var alEl) && alEl.ValueKind == JsonValueKind.Object &&
-                                alEl.TryGetProperty("title", out var alTitleEl) ? alTitleEl.GetString() : null;
-
-            string? trackJson = await GetStringWithTimeoutAsync($"https://api.deezer.com/track/{trackId}", 2000, ct);
-            if (string.IsNullOrWhiteSpace(trackJson))
-                continue;
-
-            using var trackDoc = JsonDocument.Parse(trackJson);
-            if (!trackDoc.RootElement.TryGetProperty("contributors", out var contribs) || contribs.ValueKind != JsonValueKind.Array)
-                continue;
-
-            var sb = new StringBuilder();
-            foreach (var c in contribs.EnumerateArray())
-            {
-                string? name = c.TryGetProperty("name", out var nEl) ? nEl.GetString() : null;
-                if (!string.IsNullOrWhiteSpace(name))
-                {
-                    if (sb.Length > 0) sb.Append(" & ");
-                    sb.Append(name.Trim());
-                }
-            }
-
-            if (sb.Length == 0)
-                continue;
-
-            string? formatted = FormatSpotifyArtistsCandidate(
-                trackTitle, sb.ToString(), durationSec * 1000L, title, primaryArtist, targetDurationMs, out int score);
-            if (formatted != null && score > 0)
-            {
-                score += ComputeAlbumTieBreakerBonus(candAlbum, albumTitle);
-                if (score > bestScore)
-                {
-                    bestScore = score;
-                    bestArtists = formatted;
-                }
-            }
+            ct.ThrowIfCancellationRequested();
+            using var detail = await GetCatalogBodyAsync($"https://api.deezer.com/track/{track.Ticks}", 2000, ct).ConfigureAwait(false);
+            if (detail == null) continue;
+            var selected = NativeCatalogParser.Select(detail.Span, 6, title, primaryArtist, targetDurationMs, albumTitle, searchBody.Span, track.Ticks);
+            if (selected.Text != null && selected.Score > bestScore) { bestArtists = selected.Text; bestScore = selected.Score; }
         }
-
         return bestArtists;
     }
 }

@@ -187,9 +187,8 @@ public sealed partial class ClipboardHistoryStore : IDisposable, IAsyncDisposabl
     private readonly string _root;
     private readonly object _gate = new();
     private readonly object _entriesLock = new();
-    private readonly ConcurrentDictionary<Guid, ClipboardEntry> _entries = new();
+    private readonly NativeClipboardEntryIndex _entries = new();
     private readonly ClipboardVault _vault;
-    private readonly Dictionary<(string Fingerprint, bool Personal), HashSet<Guid>> _fingerprints = new();
     private readonly ClipboardSearchTextCache _searchText = new();
     private int _entriesMutationVersion = 1;
     private int _cachedCategoryVersion = -1;
@@ -203,6 +202,7 @@ public sealed partial class ClipboardHistoryStore : IDisposable, IAsyncDisposabl
     private readonly Func<long> _availableSpace;
     private readonly Dictionary<string, ClipboardPersonalExport> _personalExports = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, IDisposable> _exportLeases = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, Guid> _exportEntries = new(StringComparer.OrdinalIgnoreCase);
     public bool AutoDeleteSensitive { get; set; }
     public event Action? Changed;
     public bool IsPersonalUnlocked => _personalUnlocked;
@@ -799,6 +799,7 @@ public sealed partial class ClipboardHistoryStore : IDisposable, IAsyncDisposabl
                 _personalExports.Add(export, personalExport);
             }
             _exportLeases.Add(export, AppFileCleanupService.Protect(export));
+            _exportEntries[export] = entry.Id;
             return paths.ToArray();
         }
         catch { personalExport?.Dispose(); TryDeleteDirectory(export); throw; }
@@ -835,18 +836,7 @@ public sealed partial class ClipboardHistoryStore : IDisposable, IAsyncDisposabl
                 Action<Stream> copyBounded = output =>
                 {
                     using var source = entry.Open();
-                    byte[] buf = ArrayPool<byte>.Shared.Rent(65536);
-                    try
-                    {
-                        int read;
-                        while ((read = source.Read(buf, 0, buf.Length)) > 0)
-                        {
-                            totalBytes += read;
-                            if (totalBytes > maxTotalBytes) throw new IOException("Archive extraction quota exceeded.");
-                            output.Write(buf, 0, read);
-                        }
-                    }
-                    finally { ArrayPool<byte>.Shared.Return(buf, clearArray: lease != null); }
+                    totalBytes = checked(totalBytes + NativeClipboardStreamCopy.Copy(source, output, maxTotalBytes - totalBytes, archiveExtraction: true));
                 };
                 if (lease != null) lease.WriteFile(path, copyBounded);
                 else { using (var output = File.Create(path)) copyBounded(output); if (entry.LastWriteTime.Year is >= 1980 and <= 2107) File.SetLastWriteTime(path, entry.LastWriteTime.DateTime); }
@@ -890,10 +880,33 @@ public sealed partial class ClipboardHistoryStore : IDisposable, IAsyncDisposabl
 
     private void ReleasePersonalExport(string root)
     {
+        _exportEntries.Remove(root);
         bool personal = _personalExports.Remove(root, out var lease);
         lease?.Dispose();
         if (_exportLeases.Remove(root, out var cleanupLease)) cleanupLease.Dispose();
         if (personal) TryDeleteDirectory(root);
+    }
+
+    private void ReleaseEntryExports(Guid id)
+    {
+        List<string>? toRelease = null;
+        foreach (var pair in _exportEntries)
+        {
+            if (pair.Value == id)
+            {
+                toRelease ??= new List<string>();
+                toRelease.Add(pair.Key);
+            }
+        }
+        if (toRelease == null) return;
+        for (int i = 0; i < toRelease.Count; i++)
+        {
+            string root = toRelease[i];
+            _exportEntries.Remove(root);
+            if (_personalExports.Remove(root, out var lease)) lease.Dispose();
+            if (_exportLeases.Remove(root, out var cleanupLease)) cleanupLease.Dispose();
+            TryDeleteDirectory(root);
+        }
     }
 
     private static Guid[] DeduplicateIds(IReadOnlyCollection<Guid> ids)
@@ -1552,13 +1565,9 @@ public sealed partial class ClipboardHistoryStore : IDisposable, IAsyncDisposabl
         if (entry.IsPersonal || entry.IsSensitive) RemoveImagePreview(entry.Id);
         lock (_entriesLock)
         {
-            if (_entries.TryGetValue(entry.Id, out var previous)) RemoveFingerprint(previous);
             _entries[entry.Id] = entry;
             Interlocked.Increment(ref _entriesMutationVersion);
             _cachedCategoryCounts = null;
-            var key = (entry.Fingerprint, entry.IsPersonal);
-            if (!_fingerprints.TryGetValue(key, out var ids)) _fingerprints[key] = ids = new HashSet<Guid>();
-            ids.Add(entry.Id);
         }
         if (entry.IsSensitive)
         {
@@ -1583,35 +1592,13 @@ public sealed partial class ClipboardHistoryStore : IDisposable, IAsyncDisposabl
 
     private ClipboardEntry? FindDuplicate(string fingerprint, bool personal)
     {
-        lock (_entriesLock)
-        {
-            if (!_fingerprints.TryGetValue((fingerprint, personal), out var ids)) return null;
-
-            ClipboardEntry? latest = null;
-            foreach (Guid id in ids)
-            {
-                if (_entries.TryGetValue(id, out var entry) &&
-                    entry.IsPersonal == personal &&
-                    (latest == null || entry.CopiedUtc > latest.CopiedUtc))
-                {
-                    latest = entry;
-                }
-            }
-            return latest;
-        }
-    }
-
-    private void RemoveFingerprint(ClipboardEntry entry)
-    {
-        var key = (entry.Fingerprint, entry.IsPersonal);
-        if (!_fingerprints.TryGetValue(key, out var ids)) return;
-        ids.Remove(entry.Id);
-        if (ids.Count == 0) _fingerprints.Remove(key);
+        lock (_entriesLock) return _entries.FindDuplicate(fingerprint, personal);
     }
 
     private void RemoveEntry(Guid id)
     {
         RemoveImagePreview(id);
+        ReleaseEntryExports(id);
         _searchText.Remove(id);
         DeleteSensitiveExpiryMarker(id);
         lock (_entriesLock)
@@ -1620,7 +1607,6 @@ public sealed partial class ClipboardHistoryStore : IDisposable, IAsyncDisposabl
             {
                 Interlocked.Increment(ref _entriesMutationVersion);
                 _cachedCategoryCounts = null;
-                RemoveFingerprint(entry);
             }
         }
     }
@@ -1656,7 +1642,7 @@ public sealed partial class ClipboardHistoryStore : IDisposable, IAsyncDisposabl
                     isMagic != 0)
                 {
                     input.Position = 0;
-                    using var plainStream = new PooledChunkStream();
+                    using var plainStream = new NativeBufferStream();
                     _vault.TransformFile(input, plainStream, encrypt: false);
                     plainStream.Position = 0;
                     return JsonSerializer.Deserialize<T>(plainStream) ?? throw new JsonException("Invalid clipboard record.");
@@ -1682,7 +1668,7 @@ public sealed partial class ClipboardHistoryStore : IDisposable, IAsyncDisposabl
         string temp = target + "." + Guid.NewGuid().ToString("N") + ".tmp";
         try
         {
-            using var plainStream = new PooledChunkStream();
+            using var plainStream = new NativeBufferStream();
             JsonSerializer.Serialize(plainStream, value);
             plainStream.Position = 0;
             using (var output = new FileStream(temp, FileMode.CreateNew, FileAccess.Write, FileShare.None))
@@ -1702,143 +1688,27 @@ public sealed partial class ClipboardHistoryStore : IDisposable, IAsyncDisposabl
     }
     private void WriteEntry(ClipboardEntry entry) => WriteDocument(Path.Combine(EntryDirectory(entry), "entry.json"), entry, entry.IsPersonal);
 
-    private sealed class PooledChunkStream : Stream
-    {
-        private const int ChunkSize = 65536;
-        private readonly List<byte[]> _chunks = new();
-        private long _length;
-        private long _position;
-
-        public override bool CanRead => true;
-        public override bool CanSeek => true;
-        public override bool CanWrite => true;
-        public override long Length => _length;
-
-        public override long Position
-        {
-            get => _position;
-            set
-            {
-                ArgumentOutOfRangeException.ThrowIfNegative(value);
-                _position = value;
-            }
-        }
-
-        public override void Flush() { }
-
-        public override int Read(byte[] buffer, int offset, int count) =>
-            Read(buffer.AsSpan(offset, count));
-
-        public override int Read(Span<byte> buffer)
-        {
-            long remaining = _length - _position;
-            if (remaining <= 0 || buffer.IsEmpty) return 0;
-            int toRead = (int)Math.Min(buffer.Length, remaining);
-            int totalRead = 0;
-            while (totalRead < toRead)
-            {
-                int chunkIndex = (int)(_position / ChunkSize);
-                int chunkOffset = (int)(_position % ChunkSize);
-                int copy = Math.Min(toRead - totalRead, ChunkSize - chunkOffset);
-                _chunks[chunkIndex].AsSpan(chunkOffset, copy).CopyTo(buffer.Slice(totalRead, copy));
-                _position += copy;
-                totalRead += copy;
-            }
-            return totalRead;
-        }
-
-        public override void Write(byte[] buffer, int offset, int count) =>
-            Write(buffer.AsSpan(offset, count));
-
-        public override void Write(ReadOnlySpan<byte> buffer)
-        {
-            int totalWritten = 0;
-            while (totalWritten < buffer.Length)
-            {
-                int chunkIndex = (int)(_position / ChunkSize);
-                int chunkOffset = (int)(_position % ChunkSize);
-                while (_chunks.Count <= chunkIndex)
-                    _chunks.Add(ArrayPool<byte>.Shared.Rent(ChunkSize));
-                int copy = Math.Min(buffer.Length - totalWritten, ChunkSize - chunkOffset);
-                buffer.Slice(totalWritten, copy).CopyTo(_chunks[chunkIndex].AsSpan(chunkOffset, copy));
-                _position += copy;
-                totalWritten += copy;
-                if (_position > _length) _length = _position;
-            }
-        }
-
-        public override long Seek(long offset, SeekOrigin origin)
-        {
-            long target = origin switch
-            {
-                SeekOrigin.Begin => offset,
-                SeekOrigin.Current => _position + offset,
-                SeekOrigin.End => _length + offset,
-                _ => throw new ArgumentOutOfRangeException(nameof(origin))
-            };
-            Position = target;
-            return _position;
-        }
-
-        public override void SetLength(long value)
-        {
-            ArgumentOutOfRangeException.ThrowIfNegative(value);
-            _length = value;
-            if (_position > _length) _position = _length;
-        }
-
-        protected override void Dispose(bool disposing)
-        {
-            if (disposing)
-            {
-                for (int i = 0; i < _chunks.Count; i++)
-                {
-                    CryptographicOperations.ZeroMemory(_chunks[i].AsSpan(0, ChunkSize));
-                    ArrayPool<byte>.Shared.Return(_chunks[i]);
-                }
-                _chunks.Clear();
-            }
-            base.Dispose(disposing);
-        }
-    }
-
     private static long CopyStreamBounded(Stream input, Stream destination, long maxAllowedBytes, long copiedSizeSoFar, bool approved)
     {
         if (!approved && input.CanSeek && input.Length > maxAllowedBytes)
             throw new ClipboardImportLimitException();
-        byte[] buffer = ArrayPool<byte>.Shared.Rent(65536);
-        try
-        {
-            long written = 0;
-            int read;
-            while ((read = input.Read(buffer, 0, buffer.Length)) > 0)
-            {
-                written = checked(written + read);
-                if (!approved && written > maxAllowedBytes)
-                    throw new ClipboardImportLimitException();
-                destination.Write(buffer, 0, read);
-            }
-            return written;
-        }
-        finally
-        {
-            ArrayPool<byte>.Shared.Return(buffer);
-        }
+        return NativeClipboardStreamCopy.Copy(input, destination, approved ? long.MaxValue : maxAllowedBytes);
     }
 
     private long CopyDirectory(string source, Stream destination, ref int copiedItems, long maxAllowedBytes, long copiedSizeSoFar, bool approved)
     {
         long size = 0;
         using var archive = new ZipArchive(destination, ZipArchiveMode.Create, leaveOpen: true);
-        foreach (string path in EnumerateDirectory(source))
+        foreach (var item in EnumerateDirectory(source))
         {
             CountImportItem(ref copiedItems);
+            string path = item.Path;
             string name = Path.GetRelativePath(source, path).Replace('\\', '/');
             var attributes = ClipboardImportPaths.ValidateEntry(path);
             var entry = archive.CreateEntry(name + ((attributes & FileAttributes.Directory) != 0 ? "/" : ""), CompressionLevel.NoCompression);
             // Preserve source dates, including empty folders, instead of using the
             // import time (which would make identical folder copies hash differently).
-            var modified = new DateTimeOffset(File.GetLastWriteTime(path));
+            var modified = new DateTimeOffset(item.Modified);
             entry.LastWriteTime = modified.Year is >= 1980 and <= 2107 ? modified
                 : new DateTimeOffset(1980, 1, 1, 0, 0, 0, TimeSpan.Zero);
             if ((attributes & FileAttributes.Directory) == 0)
@@ -1961,30 +1831,10 @@ public sealed partial class ClipboardHistoryStore : IDisposable, IAsyncDisposabl
         return null;
     }
 
-    private IEnumerable<string> EnumerateDirectory(string root)
+    private IEnumerable<NativeClipboardDirectoryScan.Entry> EnumerateDirectory(string root)
     {
-        var pending = new Stack<string>();
-        var children = new List<string>();
-        pending.Push(root);
-        while (pending.TryPop(out string? directory))
-        {
-            children.Clear();
-            foreach (string entry in Directory.EnumerateFileSystemEntries(directory))
-            {
-                children.Add(entry);
-                if (children.Count >= MaxImportContents + 1) break;
-            }
-            children.Sort(StringComparer.Ordinal);
-            for (int i = 0; i < children.Count; i++)
-            {
-                string path = children[i];
-                // A drive/root-folder drop must never archive its own growing staging area.
-                if (path.Equals(_root, StringComparison.OrdinalIgnoreCase)) continue;
-                var attributes = ClipboardImportPaths.ValidateEntry(path);
-                yield return path;
-                if ((attributes & FileAttributes.Directory) != 0) pending.Push(path);
-            }
-        }
+        using var scan = new NativeClipboardDirectoryScan(root, _root);
+        for (int i = 0; i < scan.Count; ++i) yield return scan.Get(i);
     }
 
     private static void CountImportItem(ref int count)
@@ -1997,11 +1847,11 @@ public sealed partial class ClipboardHistoryStore : IDisposable, IAsyncDisposabl
         CountImportItem(ref measuredItems);
         if ((ClipboardImportPaths.ValidateEntry(path) & FileAttributes.Directory) == 0) return new FileInfo(path).Length;
         long size = 0;
-        foreach (string child in EnumerateDirectory(path))
+        foreach (var child in EnumerateDirectory(path))
         {
             CountImportItem(ref measuredItems);
-            if ((ClipboardImportPaths.ValidateEntry(child) & FileAttributes.Directory) == 0)
-                size = checked(size + new FileInfo(child).Length);
+            if ((child.Attributes & FileAttributes.Directory) == 0)
+                size = checked(size + child.Size);
         }
         return size;
     }
@@ -2149,7 +1999,9 @@ public sealed partial class ClipboardHistoryStore : IDisposable, IAsyncDisposabl
         _imagePreviewBytes = 0;
         _vault.Dispose();
         _publicRecords?.Dispose();
+        lock (_entriesLock) _entries.Dispose();
         foreach (var lease in _exportLeases.Values) lease.Dispose();
         _exportLeases.Clear();
+        _exportEntries.Clear();
     }
 }

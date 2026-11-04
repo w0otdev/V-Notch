@@ -1059,6 +1059,8 @@
   "tooltip.ultimateGpu": "استخدام بطاقة الرسومات عالية الأداء GPU 0 للزجاج السائل مع تقييد الإطارات",
   "settings.lyrics.provider.lrclib.desc": "كلمات متزامنة سطراً بسطر مع بحث سريع في قاعدة المجتمع",
   "settings.lyrics.provider.lrcmux.desc": "تزامن كلمة بكلمة بأسلوب الكاراوكي من مصادر متعددة",
-  "settings.lyrics.provider.amll.desc": "توقيت الكلمات والمقاطع من المجتمع حسب معرّف مقطع Spotify؛ دون مفتاح API",
-  "settings.lyrics.provider.netease.desc": "كلمات متزامنة كلمة بكلمة أو سطراً بسطر من مكتبة NetEase Cloud Music"
+  "settings.lyrics.provider.amll.desc": "توقيت الكلمات والمقاطع من المجتمع حسب معرّف مقطع Spotify",
+  "settings.lyrics.provider.netease.desc": "كلمات متزامنة كلمة بكلمة أو سطراً بسطر من مكتبة NetEase Cloud Music",
+  "settings.lyrics.provider.kugou.desc": "كلمات KRC متزامنة كلمة بكلمة وسطراً بسطر من مكتبة Kugou Music",
+  "settings.lyrics.provider.qqmusic.desc": "كلمات متزامنة سطراً بسطر من مكتبة QQ Music"
 }

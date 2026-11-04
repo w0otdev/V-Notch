@@ -1059,6 +1059,8 @@
   "tooltip.ultimateGpu": "为液态玻璃启用高性能 GPU 0 并按目标帧率限速",
   "settings.lyrics.provider.lrclib.desc": "按行同步歌词，社区曲库查询迅速",
   "settings.lyrics.provider.lrcmux.desc": "聚合多音源的逐字卡拉 OK 时间轴",
-  "settings.lyrics.provider.amll.desc": "按 Spotify 歌曲 ID 获取社区制作的逐词、逐音节时间轴；无需 API 密钥",
-  "settings.lyrics.provider.netease.desc": "来自网易云音乐曲库的逐字与逐行同步歌词"
+  "settings.lyrics.provider.amll.desc": "按 Spotify 歌曲 ID 获取社区制作的逐词、逐音节时间轴",
+  "settings.lyrics.provider.netease.desc": "来自网易云音乐曲库的逐字与逐行同步歌词",
+  "settings.lyrics.provider.kugou.desc": "来自酷狗音乐曲库的 KRC 逐字与逐行同步歌词",
+  "settings.lyrics.provider.qqmusic.desc": "来自 QQ 音乐曲库的逐行同步歌词"
 }

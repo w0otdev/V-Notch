@@ -39,6 +39,32 @@ constexpr int32_t VN_ERR_INVALID_ARG = -1;
 constexpr int32_t VN_ERR_BUFFER_TOO_SMALL = -2;
 constexpr int32_t VN_ERR_FAIL = -3;
 
+// Flat parsing results borrow native-owned storage until their close function.
+struct VnLyricWord { int64_t start, end; int32_t offset, length; };
+struct VnLyricLine { int64_t start; int32_t offset, length, word_offset, word_count; };
+static_assert(sizeof(VnLyricWord) == 24 && sizeof(VnLyricLine) == 24);
+VN_EXPORT int32_t vn_lyrics_parse(const uint8_t*, int32_t, int32_t, int32_t,
+    int64_t*, const VnLyricLine**, int32_t*, const VnLyricWord**, const char16_t**) noexcept;
+VN_EXPORT int32_t vn_lyrics_parsed_close(int64_t) noexcept;
+VN_EXPORT int32_t vn_lyrics_parse_enhanced(const char16_t*, int32_t, int64_t,
+    char16_t*, int32_t, int32_t*, VnLyricWord*, int32_t, int32_t*) noexcept;
+VN_EXPORT int32_t vn_catalog_select_utf8(const uint8_t*, int32_t, int32_t,
+    const char16_t*, int32_t, const char16_t*, int32_t, const char16_t*, int32_t, int64_t, const uint8_t*, int32_t, int64_t,
+    char16_t*, int32_t, int32_t*, char16_t*, int32_t, int32_t*, int64_t*, int32_t*, int32_t*) noexcept;
+VN_EXPORT int32_t vn_youtube_extract_api_key_utf8(const uint8_t*, int32_t, char16_t*, int32_t, int32_t*) noexcept;
+VN_EXPORT int32_t vn_clipboard_index_create(int64_t*) noexcept;
+VN_EXPORT int32_t vn_clipboard_index_close(int64_t) noexcept;
+VN_EXPORT int32_t vn_clipboard_index_put(int64_t, uint64_t, uint64_t, int32_t, const char16_t*, int32_t, int64_t, uint8_t) noexcept;
+VN_EXPORT int32_t vn_clipboard_index_find(int64_t, uint64_t, uint64_t, int32_t*) noexcept;
+VN_EXPORT int32_t vn_clipboard_index_remove(int64_t, uint64_t, uint64_t) noexcept;
+VN_EXPORT int32_t vn_clipboard_index_duplicate(int64_t, const char16_t*, int32_t, uint8_t, int32_t*) noexcept;
+struct VnClipboardDirectoryRow { int64_t size, modified; int32_t offset, length; uint32_t attributes, reserved; };
+VN_EXPORT int32_t vn_clipboard_directory_scan(const char16_t*, int32_t, const char16_t*, int32_t, int32_t,
+    int64_t*, const VnClipboardDirectoryRow**, int32_t*, const char16_t**, int32_t*) noexcept;
+VN_EXPORT int32_t vn_clipboard_directory_scan_close(int64_t) noexcept;
+VN_EXPORT int32_t vn_clipboard_stream_copy(intptr_t, intptr_t, int32_t (*)(intptr_t, uint8_t*, int32_t),
+    int32_t (*)(intptr_t, const uint8_t*, int32_t), intptr_t, int64_t, int64_t*, int32_t*) noexcept;
+
 // Native selection results retain their UIA element/range until vn_selection_close.
 VN_EXPORT int32_t vn_selection_read(intptr_t, const int32_t*, int32_t, intptr_t, int64_t, uint8_t, uint8_t, int32_t,
     char16_t*, int32_t, int32_t*, double*, uint8_t*, uint8_t*, uint8_t*, int64_t*) noexcept;
@@ -2265,6 +2291,12 @@ VN_EXPORT int32_t __stdcall vn_media_metadata_format_spotify_artists(
     int32_t out_cap,
     int32_t* out_len,
     int32_t* out_score) noexcept;
+
+VN_EXPORT int32_t __stdcall vn_spotify_read_local_track(
+    uint8_t include_track_id,
+    char16_t* out_title, int32_t title_cap, int32_t* out_title_len,
+    char16_t* out_artists, int32_t artists_cap, int32_t* out_artists_len,
+    char16_t* out_track_url, int32_t url_cap, int32_t* out_url_len) noexcept;
 
 VN_EXPORT int32_t __stdcall vn_translation_runtime_is_allowed_uri(
     const char16_t* scheme_ptr, int32_t scheme_len,

@@ -592,14 +592,8 @@ internal sealed partial class YouTubeSubtitleService : IDisposable
             using var resp = await _httpClient.SendAsync(req, HttpCompletionOption.ResponseHeadersRead, token);
             if (!resp.IsSuccessStatusCode) return null;
 
-            string? html = await ReadBoundedStringAsync(resp, MaxResponseBytes, token);
-            if (string.IsNullOrEmpty(html)) return null;
-
-            var m = Regex.Match(html, "\"INNERTUBE_API_KEY\":\\s*\"([a-zA-Z0-9_-]+)\"", RegexOptions.None, TimeSpan.FromMilliseconds(250));
-            if (m.Success && m.Groups.Count > 1)
-            {
-                return m.Groups[1].Value;
-            }
+            using var html = await PooledUtf8Response.ReadAsync(resp, MaxResponseBytes, token).ConfigureAwait(false);
+            return NativeCatalogParser.ExtractYouTubeApiKey(html.Span);
         }
         catch (Exception)
         {
@@ -772,7 +766,7 @@ internal sealed partial class YouTubeSubtitleService : IDisposable
         if (bytes.StartsWith(new byte[] { 0xEF, 0xBB, 0xBF })) bytes = bytes[3..];
         int index = 0;
         while (index < bytes.Length && bytes[index] is (byte)' ' or (byte)'\r' or (byte)'\n' or (byte)'\t') ++index;
-        return index < bytes.Length && bytes[index] == (byte)'{' ? ParseJson3Utf8(bytes) : ParseXml(Encoding.UTF8.GetString(bytes));
+        return index < bytes.Length && bytes[index] == (byte)'{' ? ParseJson3Utf8(bytes) : ParseXmlUtf8(bytes);
     }
 
     private static List<LyricLine> ParseJson3Utf8(ReadOnlySpan<byte> bytes)
@@ -791,61 +785,15 @@ internal sealed partial class YouTubeSubtitleService : IDisposable
 
     public static List<LyricLine> ParseXml(string xml)
     {
-        var result = new List<LyricLine>();
-        if (string.IsNullOrWhiteSpace(xml)) return result;
-        try
-        {
-            var settings = new XmlReaderSettings
-            {
-                DtdProcessing = DtdProcessing.Prohibit,
-                XmlResolver = null,
-                MaxCharactersInDocument = 2_000_000,
-                MaxCharactersFromEntities = 1024
-            };
-            using var stringReader = new StringReader(xml);
-            using var reader = XmlReader.Create(stringReader, settings);
-            var doc = XDocument.Load(reader);
-            AppendXmlCueElements(doc.Descendants("p"), result);
-            AppendXmlCueElements(doc.Descendants("text"), result);
-            result.Sort((a, b) => a.Time.CompareTo(b.Time));
-        }
-        catch (Exception ex)
-        {
-            RuntimeLog.Debug(LogCategory, () => $"ParseXml error: {ex.Message}");
-        }
-        return result;
+        if (string.IsNullOrWhiteSpace(xml)) return new();
+        try { return NativeLyricParser.ParseXml(xml, amll: false); }
+        catch (XmlException ex) { RuntimeLog.Debug(LogCategory, () => $"ParseXml error: {ex.Message}"); return new(); }
     }
 
-    private static void AppendXmlCueElements(IEnumerable<XElement> elements, List<LyricLine> result)
+    private static List<LyricLine> ParseXmlUtf8(ReadOnlySpan<byte> bytes)
     {
-        foreach (var p in elements)
-        {
-            string text = NormalizeCueText(p.Value, stripXmlTags: true);
-            if (string.IsNullOrWhiteSpace(text)) continue;
-
-            var tAttr = p.Attribute("t");
-            var startAttr = p.Attribute("start");
-
-            TimeSpan timestamp;
-            if (tAttr != null && long.TryParse(tAttr.Value, out long ms))
-            {
-                timestamp = TryClampTimestamp(ms, 0, useSeconds: false, out var clamped)
-                    ? clamped
-                    : TimeSpan.FromMilliseconds(ms);
-            }
-            else if (startAttr != null && double.TryParse(startAttr.Value, System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out double sec))
-            {
-                timestamp = TryClampTimestamp(0, sec, useSeconds: true, out var clamped)
-                    ? clamped
-                    : TimeSpan.FromSeconds(sec);
-            }
-            else
-            {
-                continue;
-            }
-
-            result.Add(new LyricLine(timestamp, text));
-        }
+        try { return NativeLyricParser.Parse(bytes, 1); }
+        catch (XmlException) { return new(); }
     }
 
     public void Reset()

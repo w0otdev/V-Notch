@@ -694,6 +694,62 @@ public sealed class MediaMetadataLookupServiceTests
         Assert.Empty(handler.Requests);
     }
 
+    [Fact]
+    public async Task SoloSpotifyArtistStopsAtFirstMatchedProviderInsteadOfCascadingAllFallbacks()
+    {
+        using var handler = new Handler(request =>
+        {
+            var uri = request.RequestUri!;
+            if (uri.Host == "open.spotify.com" && uri.AbsolutePath.EndsWith("/server-time"))
+                return Json(new { serverTime = 1700000000 });
+            if (uri.Host == "open.spotify.com" && uri.AbsolutePath.EndsWith("/token"))
+                return Json(new { accessToken = "anon-token", accessTokenExpirationTimestampMs = 4102444800000L, isAnonymous = true });
+            if (uri.Host == "api-partner.spotify.com" && uri.AbsolutePath.EndsWith("/pathfinder/v2/query"))
+            {
+                return Json(new
+                {
+                    data = new
+                    {
+                        searchV2 = new
+                        {
+                            tracksV2 = new
+                            {
+                                items = new[]
+                                {
+                                    new
+                                    {
+                                        item = new
+                                        {
+                                            data = new
+                                            {
+                                                __typename = "Track",
+                                                id = "3333333333333333333333",
+                                                name = "Dưới Tán Cây Khô Hoa Nở",
+                                                artists = new
+                                                {
+                                                    items = new[]
+                                                    {
+                                                        new { profile = new { name = "Jack - J97" } }
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                });
+            }
+            throw new InvalidOperationException($"Unexpected fallback request to {uri}");
+        });
+        using var client = new HttpClient(handler);
+        string? artists = await Service(client).TryGetSpotifyFullArtistsAsync(
+            "Dưới Tán Cây Khô Hoa Nở", "Jack - J97", TimeSpan.FromSeconds(282));
+        Assert.Equal("Jack - J97", artists);
+        Assert.DoesNotContain(handler.Requests, u => u.Host is "itunes.apple.com" or "api.deezer.com");
+    }
+
     private static MediaMetadataLookupService Service(HttpClient client, string? apiKey = null, bool allowed = true) =>
         new(client, client, () => allowed, () => apiKey);
     private static string NewId() => Guid.NewGuid().ToString("N")[..11];

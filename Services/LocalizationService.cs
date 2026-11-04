@@ -35,15 +35,6 @@ public static partial class Loc
         out int outLen,
         out byte outMatched);
 
-    [LibraryImport(NativeDll, StringMarshalling = StringMarshalling.Utf16)]
-    private static partial int vn_localization_should_store_entry(
-        ReadOnlySpan<char> propName,
-        int propNameLen,
-        ReadOnlySpan<char> text,
-        int textLen,
-        byte keyExists,
-        out byte outShouldStore);
-
     // Where one locale's strings come from. A code can have several sources (embedded resource, locale folder next
     // to the app, community folder in AppData); they are merged in discovery order.
     private sealed record LocaleSource(string? ResourceName, string? FilePath);
@@ -57,28 +48,38 @@ public static partial class Loc
     private static readonly Dictionary<string, LocaleMetadata> _metadata = new(StringComparer.OrdinalIgnoreCase);
     // Only the fallback and the active language are kept in memory. Published as an immutable snapshot
     // (copy on write) so readers on any thread never observe a dictionary that is being modified.
-    private static volatile Dictionary<string, Dictionary<string, string>> _strings = new(StringComparer.OrdinalIgnoreCase);
+    private static volatile Dictionary<string, NativeLocaleTable> _strings = new(StringComparer.OrdinalIgnoreCase);
     private static readonly string[] DefaultLanguageOrder = { "en", "vi", "zh", "pt", "ru", "ar", "ko", "es", "fr", "de", "ja", "hi", "it", "tr", "pl", "nl", "id" };
     // Cross-language reverse lookup used only by the settings search. It is built on first use (or prewarmed by
     // the settings window) and released when that window closes, so it does not occupy memory the rest of the time.
-    private static Lazy<Dictionary<string, IReadOnlyList<string>>> _translationsByText = NewTranslationIndex();
-
-    private static Lazy<Dictionary<string, IReadOnlyList<string>>> NewTranslationIndex() =>
-        new(BuildTranslationLookup, LazyThreadSafetyMode.ExecutionAndPublication);
+    private static readonly object TranslationLock = new();
+    private static int _translationGeneration;
+    private static NativeTranslationIndex? _translationsByText;
 
     /// <summary>Starts building the cross-language search index on a worker thread.</summary>
     public static void PrewarmTranslationIndex()
     {
-        ThreadPool.QueueUserWorkItem(static index =>
+        ThreadPool.QueueUserWorkItem(static generation =>
         {
-            try { _ = ((Lazy<Dictionary<string, IReadOnlyList<string>>>)index!).Value; }
-            catch { /* the index is rebuilt on demand if this fails */ }
-        }, _translationsByText);
+            lock (TranslationLock)
+            {
+                if (generation != _translationGeneration) return;
+                try { _translationsByText ??= BuildTranslationLookup(); }
+                catch { /* The next lookup can retry a failed prewarm. */ }
+            }
+        }, Volatile.Read(ref _translationGeneration), preferLocal: false);
     }
 
-    /// <summary>Drops the cross-language search index. It is rebuilt on the next lookup.</summary>
-    public static void ReleaseTranslationIndex() =>
-        Interlocked.Exchange(ref _translationsByText, NewTranslationIndex());
+    /// <summary>Releases the native search index and its nonresident locale tables.</summary>
+    public static void ReleaseTranslationIndex()
+    {
+        lock (TranslationLock)
+        {
+            _translationGeneration++;
+            _translationsByText?.Dispose();
+            _translationsByText = null;
+        }
+    }
 
     static Loc()
     {
@@ -118,7 +119,7 @@ public static partial class Loc
     }
 
     internal static IReadOnlyCollection<string> GetKeys(string language) =>
-        GetOrLoadStrings(language)?.Keys ?? (IReadOnlyCollection<string>)Array.Empty<string>();
+        GetOrLoadStrings(language)?.Keys() ?? (IReadOnlyCollection<string>)Array.Empty<string>();
 
     public static List<(string Code, string Name)> GetAvailableLanguages()
     {
@@ -155,10 +156,10 @@ public static partial class Loc
     public static string Get(string key)
     {
         var strings = _strings;
-        if (strings.TryGetValue(_currentLanguage, out var langDict) && langDict.TryGetValue(key, out var value))
+        if (strings.TryGetValue(_currentLanguage, out var langDict) && langDict.Get(key) is { } value)
             return value;
 
-        if (_currentLanguage != FallbackLanguage && strings.TryGetValue(FallbackLanguage, out var enDict) && enDict.TryGetValue(key, out var enValue))
+        if (_currentLanguage != FallbackLanguage && strings.TryGetValue(FallbackLanguage, out var enDict) && enDict.Get(key) is { } enValue)
             return enValue;
 
         return key;
@@ -175,9 +176,8 @@ public static partial class Loc
     {
         if (string.IsNullOrWhiteSpace(text)) return new List<string>();
 
-        return _translationsByText.Value.TryGetValue(text, out var translations)
-            ? new List<string>(translations)
-            : new List<string> { text };
+        lock (TranslationLock)
+            return (_translationsByText ??= BuildTranslationLookup()).Find(text);
     }
 
     internal static bool IsValidExternalLocaleFile(string filePath)
@@ -296,7 +296,7 @@ public static partial class Loc
     }
 
     // Returns the strings for a locale, loading and publishing them on first use. Null when the locale is unknown.
-    private static Dictionary<string, string>? GetOrLoadStrings(string code)
+    private static NativeLocaleTable? GetOrLoadStrings(string code)
     {
         if (_strings.TryGetValue(code, out var loaded)) return loaded;
         if (!_sources.ContainsKey(code)) return null;
@@ -306,7 +306,7 @@ public static partial class Loc
             if (_strings.TryGetValue(code, out loaded)) return loaded;
 
             var dict = LoadLocaleStrings(code);
-            var next = new Dictionary<string, Dictionary<string, string>>(_strings, StringComparer.OrdinalIgnoreCase)
+            var next = new Dictionary<string, NativeLocaleTable>(_strings, StringComparer.OrdinalIgnoreCase)
             {
                 [code] = dict
             };
@@ -315,12 +315,14 @@ public static partial class Loc
         }
     }
 
-    // Parses every source of a locale into a fresh dictionary, in discovery order.
-    private static Dictionary<string, string> LoadLocaleStrings(string code)
+    // Sources merge into one native arena before the table is published.
+    private static NativeLocaleTable LoadLocaleStrings(string code)
     {
         var dict = new Dictionary<string, string>(StringComparer.Ordinal);
         ApplyBuiltInDefaults(code, dict);
-        if (!_sources.TryGetValue(code, out var sources)) return dict;
+        var table = new NativeLocaleTable();
+        table.Merge(JsonSerializer.SerializeToUtf8Bytes(dict));
+        if (!_sources.TryGetValue(code, out var sources)) return table;
 
         var assembly = typeof(Loc).Assembly;
         foreach (var source in sources)
@@ -334,7 +336,14 @@ public static partial class Loc
                         : null);
                 if (stream != null)
                 {
-                    LoadLocaleFromStream(dict, stream);
+                    int length = checked((int)stream.Length);
+                    byte[] json = System.Buffers.ArrayPool<byte>.Shared.Rent(length);
+                    try
+                    {
+                        stream.ReadExactly(json.AsSpan(0, length));
+                        table.Merge(json.AsSpan(0, length));
+                    }
+                    finally { System.Buffers.ArrayPool<byte>.Shared.Return(json); }
                 }
             }
             catch
@@ -343,7 +352,7 @@ public static partial class Loc
             }
         }
 
-        return dict;
+        return table;
     }
 
     // Drops every loaded language except the fallback and the active one so a switch does not accumulate memory.
@@ -351,7 +360,7 @@ public static partial class Loc
     {
         lock (LoadLock)
         {
-            var kept = new Dictionary<string, Dictionary<string, string>>(StringComparer.OrdinalIgnoreCase);
+            var kept = new Dictionary<string, NativeLocaleTable>(StringComparer.OrdinalIgnoreCase);
             foreach (var (code, dict) in _strings)
             {
                 if (string.Equals(code, FallbackLanguage, StringComparison.OrdinalIgnoreCase)
@@ -365,90 +374,31 @@ public static partial class Loc
         }
     }
 
-    private static void LoadLocaleFromStream(Dictionary<string, string> dict, Stream stream)
+    private static NativeTranslationIndex BuildTranslationLookup()
     {
+        var resident = _strings;
+        var codes = DefaultLanguageOrder.Where(_sources.ContainsKey).Concat(_sources.Keys)
+            .Distinct(StringComparer.OrdinalIgnoreCase);
+        var tables = new List<NativeLocaleTable>();
+        var owned = new List<NativeLocaleTable>();
         try
         {
-            using var doc = JsonDocument.Parse(stream, LocaleJsonOptions);
-            var root = doc.RootElement;
-            if (root.ValueKind != JsonValueKind.Object) return;
-
-            foreach (var prop in root.EnumerateObject())
+            foreach (string code in codes)
             {
-                if (!prop.Name.StartsWith('_') && prop.Value.ValueKind == JsonValueKind.String)
+                if (!resident.TryGetValue(code, out var table))
                 {
-                    string? text = prop.Value.GetString();
-                    ReadOnlySpan<char> propSpan = prop.Name.AsSpan();
-                    ReadOnlySpan<char> textSpan = text is not null ? text.AsSpan() : ReadOnlySpan<char>.Empty;
-                    bool keyExists = dict.ContainsKey(prop.Name);
-                    byte existsFlag = keyExists ? (byte)1 : (byte)0;
-                    bool shouldStore = vn_localization_should_store_entry(
-                        propSpan, propSpan.Length, textSpan, textSpan.Length, existsFlag, out byte outStore) == 0
-                        ? outStore != 0
-                        : (text != prop.Name && (!string.IsNullOrWhiteSpace(text) || !keyExists));
-                    if (shouldStore)
-                        dict[prop.Name] = text ?? string.Empty;
+                    table = LoadLocaleStrings(code);
+                    owned.Add(table);
                 }
+                tables.Add(table);
             }
+            return new NativeTranslationIndex(tables.ToArray(), owned.ToArray());
         }
         catch
         {
-            // Keep existing loaded strings if parse fails
+            foreach (var table in owned) table.Dispose();
+            throw;
         }
-    }
-
-    private static Dictionary<string, IReadOnlyList<string>> BuildTranslationLookup()
-    {
-        // Every language is needed here. Languages that are not resident are loaded into a local map and released
-        // once the lookup is built, so only the lookup itself stays alive.
-        var all = new Dictionary<string, Dictionary<string, string>>(StringComparer.OrdinalIgnoreCase);
-        var resident = _strings;
-        foreach (string code in _sources.Keys)
-        {
-            all[code] = resident.TryGetValue(code, out var dict) ? dict : LoadLocaleStrings(code);
-        }
-
-        var keysByText = new Dictionary<string, HashSet<string>>(StringComparer.OrdinalIgnoreCase);
-        foreach (string language in all.Keys)
-        {
-            foreach (var (key, value) in all[language])
-            {
-                if (string.IsNullOrWhiteSpace(value)) continue;
-
-                if (!keysByText.TryGetValue(value, out var keys))
-                {
-                    keys = new HashSet<string>(StringComparer.Ordinal);
-                    keysByText[value] = keys;
-                }
-
-                keys.Add(key);
-            }
-        }
-
-        var lookup = new Dictionary<string, IReadOnlyList<string>>(StringComparer.OrdinalIgnoreCase);
-        foreach (var (sourceText, matchingKeys) in keysByText)
-        {
-            var translations = new List<string>();
-            var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-
-            foreach (string key in matchingKeys.OrderBy(key => key, StringComparer.Ordinal))
-            {
-                foreach (string language in DefaultLanguageOrder.Concat(all.Keys))
-                {
-                    if (all.TryGetValue(language, out var langDict)
-                        && langDict.TryGetValue(key, out string? translation)
-                        && !string.IsNullOrWhiteSpace(translation)
-                        && seen.Add(translation))
-                    {
-                        translations.Add(translation);
-                    }
-                }
-            }
-
-            lookup[sourceText] = translations;
-        }
-
-        return lookup;
     }
 
     private static void ApplyBuiltInDefaults(string code, Dictionary<string, string> dict)

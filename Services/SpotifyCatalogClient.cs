@@ -56,10 +56,10 @@ internal sealed partial class SpotifyCatalogClient
         PathfinderQueryResult queryResult = await QueryPathfinderAsync(
                 trackName, artistName, accessToken, hash, token)
             .ConfigureAwait(false);
-        string? json = queryResult.Json;
+        byte[]? json = queryResult.Json;
 
         if (queryResult.QueryMetadataRejected ||
-            (json != null && ContainsPersistedQueryNotFound(json)))
+            (json != null && NativeCatalogParser.ContainsPersistedQueryNotFound(json)))
         {
             string? refreshedHash = await _metadata.RefreshAsync(SpotifyQuery.FindTracks, hash, token).ConfigureAwait(false);
             if (!string.IsNullOrEmpty(refreshedHash))
@@ -92,10 +92,10 @@ internal sealed partial class SpotifyCatalogClient
         PathfinderQueryResult queryResult = await QueryPathfinderAsync(
                 trackName, artistName, accessToken, hash, token)
             .ConfigureAwait(false);
-        string? json = queryResult.Json;
+        byte[]? json = queryResult.Json;
 
         if (queryResult.QueryMetadataRejected ||
-            (json != null && ContainsPersistedQueryNotFound(json)))
+            (json != null && NativeCatalogParser.ContainsPersistedQueryNotFound(json)))
         {
             string? refreshedHash = await _metadata.RefreshAsync(SpotifyQuery.FindTracks, hash, token).ConfigureAwait(false);
             if (!string.IsNullOrEmpty(refreshedHash))
@@ -150,8 +150,7 @@ internal sealed partial class SpotifyCatalogClient
         }
 
         byte[]? bytes = await ReadLimitedBytesAsync(response, token).ConfigureAwait(false);
-        string? json = bytes == null ? null : Encoding.UTF8.GetString(bytes);
-        return new PathfinderQueryResult(json, queryMetadataRejected);
+        return new PathfinderQueryResult(bytes, queryMetadataRejected);
     }
 
     private static string BuildQuery(string? trackName, string? artistName)
@@ -172,5 +171,5 @@ internal sealed partial class SpotifyCatalogClient
         return string.IsNullOrWhiteSpace(a) ? t : $"{t} {a}";
     }
 
-    private sealed record PathfinderQueryResult(string? Json, bool QueryMetadataRejected);
+    private sealed record PathfinderQueryResult(byte[]? Json, bool QueryMetadataRejected);
 }

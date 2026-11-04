@@ -1059,6 +1059,8 @@
   "tooltip.ultimateGpu": "टारगेट FPS सीमा के साथ लिक्विड ग्लास के लिए हाई-परफॉर्मेंस GPU 0 का उपयोग करें",
   "settings.lyrics.provider.lrclib.desc": "तेज़ कम्युनिटी खोज के साथ पंक्ति-दर-पंक्ति सिंक किए गए बोल",
   "settings.lyrics.provider.lrcmux.desc": "कई स्रोतों से एकत्रित शब्द-दर-शब्द कराओके टाइमिंग",
-  "settings.lyrics.provider.amll.desc": "Spotify ट्रैक ID से समुदाय द्वारा शब्द और अक्षर का समय; API कुंजी की ज़रूरत नहीं",
-  "settings.lyrics.provider.netease.desc": "NetEase Cloud Music कैटलॉग से शब्द और पंक्ति के अनुसार सिंक किए गए बोल"
+  "settings.lyrics.provider.amll.desc": "Spotify ट्रैक ID से समुदाय द्वारा शब्द और अक्षर का समय",
+  "settings.lyrics.provider.netease.desc": "NetEase Cloud Music कैटलॉग से शब्द और पंक्ति के अनुसार सिंक किए गए बोल",
+  "settings.lyrics.provider.kugou.desc": "Kugou Music कैटलॉग से शब्द-दर-शब्द KRC और पंक्ति के अनुसार सिंक किए गए बोल",
+  "settings.lyrics.provider.qqmusic.desc": "QQ Music कैटलॉग से पंक्ति-दर-पंक्ति सिंक किए गए बोल"
 }

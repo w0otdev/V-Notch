@@ -706,6 +706,12 @@
                             <DataTrigger Binding="{Binding}" Value="NetEase">
                                 <Setter TargetName="ProviderDescription" Property="Text" Value="{Binding Tag, ElementName=LyricsProviderLabel}"/>
                             </DataTrigger>
+                            <DataTrigger Binding="{Binding}" Value="Kugou">
+                                <Setter TargetName="ProviderDescription" Property="Text" Value="{Binding Tag, ElementName=LyricsProviderHeaderGrid}"/>
+                            </DataTrigger>
+                            <DataTrigger Binding="{Binding}" Value="QQ Music">
+                                <Setter TargetName="ProviderDescription" Property="Text" Value="{Binding Tag, ElementName=LyricsProviderTextPanel}"/>
+                            </DataTrigger>
                             <DataTrigger Binding="{Binding}" Value="lrc mux">
                                 <Setter TargetName="ProviderDescription" Property="Text" Value="{Binding Tag, ElementName=LyricsProviderPanel}"/>
                             </DataTrigger>
@@ -2544,12 +2550,12 @@
                                                            Margin="0,4,0,0"/>
 
                                                 <StackPanel x:Name="LyricsProviderPanel" Margin="0,14,0,0">
-                                                    <Grid>
+                                                    <Grid x:Name="LyricsProviderHeaderGrid">
                                                         <Grid.ColumnDefinitions>
                                                             <ColumnDefinition Width="*"/>
                                                             <ColumnDefinition Width="Auto"/>
                                                         </Grid.ColumnDefinitions>
-                                                        <StackPanel Grid.Column="0" Margin="0,0,12,0">
+                                                        <StackPanel x:Name="LyricsProviderTextPanel" Grid.Column="0" Margin="0,0,12,0">
                                                             <TextBlock x:Name="LyricsProviderLabel" Style="{StaticResource SettingTitleText}"/>
                                                             <TextBlock x:Name="LyricsProviderHint" Style="{StaticResource SettingHintText}" TextWrapping="Wrap" Margin="0,4,0,0"/>
                                                         </StackPanel>

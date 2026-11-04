@@ -52,6 +52,22 @@ public sealed class SettingsSearchMatcherTests
     }
 
     [Fact]
+    public void NativeLocaleOverlayAndReverseLookupPreserveKeyAndLanguageOrder()
+    {
+        using var a = new NativeLocaleTable();
+        using var b = new NativeLocaleTable();
+        a.Merge("""{"z":"Same","a":"SAME","blank":"","_meta":"ignored"}"""u8);
+        a.Merge("""{"z":" ","a":"a"}"""u8);
+        Assert.Throws<ArgumentException>(() => a.Merge("""{"a":"broken","z":}"""u8));
+        b.Merge("""{"a":"first","z":"last"}"""u8);
+        using var index = new NativeTranslationIndex([a, b], []);
+        Assert.Equal(new[] { "SAME", "first", "last" }, index.Find("same"));
+        Assert.Equal("", a.Get("blank"));
+        Assert.Null(a.Get("_meta"));
+        Assert.Equal(new[] { "unknown" }, index.Find("unknown"));
+    }
+
+    [Fact]
     public void TranslationLookupIncludesNewlySupportedHindi()
     {
         var translations = Loc.GetAllTranslations("Width");

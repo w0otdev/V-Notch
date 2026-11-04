@@ -1059,6 +1059,8 @@
   "tooltip.ultimateGpu": "Liquid Glass için Hedef FPS sınırıyla yüksek performanslı GPU 0 kullan",
   "settings.lyrics.provider.lrclib.desc": "Hızlı topluluk aramasıyla satır satır senkronize şarkı sözleri",
   "settings.lyrics.provider.lrcmux.desc": "Birden fazla kaynaktan derlenen kelime kelime karaoke zamanlaması",
-  "settings.lyrics.provider.amll.desc": "Spotify parça kimliğine göre topluluk sözcük ve hece zamanlaması; API anahtarı gerekmez",
-  "settings.lyrics.provider.netease.desc": "NetEase Cloud Music kataloğundan kelime ve satır senkronize şarkı sözleri"
+  "settings.lyrics.provider.amll.desc": "Spotify parça kimliğine göre topluluk sözcük ve hece zamanlaması",
+  "settings.lyrics.provider.netease.desc": "NetEase Cloud Music kataloğundan kelime ve satır senkronize şarkı sözleri",
+  "settings.lyrics.provider.kugou.desc": "Kugou Music kataloğundan kelime kelime KRC ve satır senkronize şarkı sözleri",
+  "settings.lyrics.provider.qqmusic.desc": "QQ Music kataloğundan satır satır senkronize şarkı sözleri"
 }

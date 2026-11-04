@@ -1059,6 +1059,8 @@
   "tooltip.ultimateGpu": "목표 FPS 한도에 맞춰 리퀴드 글래스에 고성능 GPU 0 사용",
   "settings.lyrics.provider.lrclib.desc": "빠른 커뮤니티 검색을 지원하는 줄 단위 동기화 가사",
   "settings.lyrics.provider.lrcmux.desc": "여러 소스에서 수집한 단어 단위 노래방 타이밍",
-  "settings.lyrics.provider.amll.desc": "Spotify 트랙 ID로 조회하는 커뮤니티 단어·음절 동기화, API 키 불필요",
-  "settings.lyrics.provider.netease.desc": "NetEase Cloud Music 카탈로그 기반의 단어 및 줄 단위 동기화 가사"
+  "settings.lyrics.provider.amll.desc": "Spotify 트랙 ID로 조회하는 커뮤니티 단어·음절 동기화",
+  "settings.lyrics.provider.netease.desc": "NetEase Cloud Music 카탈로그 기반의 단어 및 줄 단위 동기화 가사",
+  "settings.lyrics.provider.kugou.desc": "Kugou Music 카탈로그 기반의 단어 단위 KRC 및 줄 단위 동기화 가사",
+  "settings.lyrics.provider.qqmusic.desc": "QQ Music 카탈로그 기반의 줄 단위 동기화 가사"
 }

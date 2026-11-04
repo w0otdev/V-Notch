@@ -62,10 +62,11 @@ internal sealed partial class MusixmatchTrackResolver : IDisposable
                       $"&q_duration={durationSeconds}&f_subtitle_length={durationSeconds}";
 
         using var request = CreateMusixmatchRequest(new Uri(MusixmatchBaseUri, path));
-        string? json = await SendForStringAsync(_http, request, token).ConfigureAwait(false);
-        string? trackId = json == null
+        using var response = await _http.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, token).ConfigureAwait(false);
+        using var body = response.IsSuccessStatusCode ? await PooledUtf8Response.ReadAsync(response, YouTubeMetadataParsing.MaxJsonResponseBytes, token).ConfigureAwait(false) : null;
+        string? trackId = body == null
             ? null
-            : ParseTrackId(json, trackName, artistName, duration);
+            : ParseTrackId(body.Span, trackName, artistName, duration);
         RuntimeLog.Debug(LogCategory, () =>
             string.IsNullOrEmpty(trackId)
                 ? "Musixmatch metadata did not contain a matching Spotify track ID"

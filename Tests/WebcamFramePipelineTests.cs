@@ -78,6 +78,43 @@ public sealed class WebcamFramePipelineTests
     }
 
     [Fact]
+    public void NativeUploadConvertsIntoPitchedRowsDuringCaptureWithoutLeasingAnArray()
+    {
+        using var controller = new WebcamCaptureController();
+        int token = Activate(controller);
+        byte[] pixels = Enumerable.Range(0, 24).Select(i => (byte)i).ToArray();
+        using var bitmap = SoftwareBitmap.CreateCopyFromBuffer(pixels.AsBuffer(), BitmapPixelFormat.Gray8, 8, 3, BitmapAlphaMode.Ignore);
+        const int pitch = 40;
+        byte[] output = Enumerable.Repeat((byte)0xcd, pitch * 3).ToArray();
+        controller.PresentNativeFrame = (frame, generation) =>
+        {
+            Assert.Equal(token, generation);
+            unsafe
+            {
+                fixed (byte* dst = output)
+                {
+                    int hr = D3DImageFramePresenter.vn_webcam_write_surface(((WinRT.IWinRTObject)frame).NativeObject.ThisPtr,
+                        (nint)dst, pitch, 8, 3);
+                    System.Runtime.InteropServices.Marshal.ThrowExceptionForHR(hr);
+                }
+            }
+            return true;
+        };
+        controller.ProcessFrame(bitmap, token);
+        for (int row = 0; row < 3; row++)
+        {
+            for (int x = 0; x < 8; x++)
+            {
+                byte value = pixels[row * 8 + x];
+                Assert.Equal(new byte[] { value, value, value, 255 }, output.AsSpan(row * pitch + x * 4, 4).ToArray());
+            }
+            Assert.All(output.Skip(row * pitch + 32).Take(8), x => Assert.Equal(0xcd, x));
+        }
+        Assert.Empty(Get<byte[]>(controller, "_frameBuffer"));
+        Assert.Equal(0, Get<int>(controller, "_frameBufferInUse"));
+    }
+
+    [Fact]
     public void ANewResolutionGrowsTheBufferAndSmallerFramesReuseIt()
     {
         using var controller = new WebcamCaptureController();

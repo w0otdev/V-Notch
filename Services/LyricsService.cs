@@ -569,9 +569,8 @@ internal sealed partial class LyricsService : IDisposable
                 return null;
             }
 
-            using var doc = await ReadBoundedJsonAsync(response.Content, timeout.Token);
-            if (doc == null) return null;
-            var result = ParseLrcMuxResult(doc.RootElement);
+            using var body = await PooledUtf8Response.ReadAsync(response, MaxLyricsResponseBytes, timeout.Token).ConfigureAwait(false);
+            var result = ParseLrcMuxResult(body.Span);
             if (result is { Lines.Count: > 0 })
                 RuntimeLog.Log(LogTag, $"Got {result.Lines.Count} synced lines from {result.Provider} for '{trackName}'");
             return result;
@@ -583,52 +582,17 @@ internal sealed partial class LyricsService : IDisposable
         }
     }
 
-    internal static LyricsResult? ParseLrcMuxResult(string json)
+    internal static LyricsResult? ParseLrcMuxResult(string json) =>
+        string.IsNullOrWhiteSpace(json) ? null : ParseLrcMuxResult(System.Text.Encoding.UTF8.GetBytes(json));
+
+    private static LyricsResult? ParseLrcMuxResult(ReadOnlySpan<byte> json)
     {
-        if (string.IsNullOrWhiteSpace(json)) return null;
-
-        using var doc = JsonDocument.Parse(json);
-        return ParseLrcMuxResult(doc.RootElement);
-    }
-
-    private static LyricsResult? ParseLrcMuxResult(JsonElement root)
-    {
-        if (root.ValueKind != JsonValueKind.Object) return null;
-
-        if (!root.TryGetProperty("meta", out var meta) || meta.ValueKind != JsonValueKind.Object)
-            return null;
-
-        if (!IsValidSyncLevel(meta))
-            return null;
-
-        string provider = ResolveProviderName(meta);
-
-        if (!root.TryGetProperty("lines", out var linesProp) || linesProp.ValueKind != JsonValueKind.Array)
-            return null;
-
-        var lines = LyricTiming.ParseTimedLines(linesProp);
-        lines.Sort((a, b) => a.Time.CompareTo(b.Time));
-        return lines.Count > 0 ? new LyricsResult(lines, provider) : null;
-    }
-
-    private static bool IsValidSyncLevel(JsonElement meta)
-    {
-        string syncLevel = meta.TryGetProperty("level", out var levelProp)
-            ? levelProp.GetString() ?? ""
-            : "";
-        return vn_lyrics_is_valid_sync_level(syncLevel.AsSpan(), syncLevel.Length, out byte valid) == 0 && valid != 0;
-    }
-
-    private static string ResolveProviderName(JsonElement meta)
-    {
-        if (meta.TryGetProperty("source", out var source) &&
-            source.ValueKind == JsonValueKind.Object &&
-            source.TryGetProperty("name", out var nameProp) &&
-            !string.IsNullOrWhiteSpace(nameProp.GetString()))
-        {
-            return $"{nameProp.GetString()!.Trim()} via lrc mux";
-        }
-        return "lrc mux";
+        var fields = YouTubeMetadataParsing.ParseUtf8(json, 11).Items;
+        if (fields.Count == 0 || !(fields[0].First.Equals("line", StringComparison.OrdinalIgnoreCase) ||
+                                  fields[0].First.Equals("word", StringComparison.OrdinalIgnoreCase))) return null;
+        var lines = NativeLyricParser.Parse(json, 2);
+        string provider = string.IsNullOrWhiteSpace(fields[0].Second) ? "lrc mux" : $"{fields[0].Second.Trim()} via lrc mux";
+        return lines.Count == 0 ? null : new(lines, provider);
     }
 
     private static List<LyricLine>? ExtractSyncedLines(JsonElement element)
@@ -686,21 +650,8 @@ internal sealed partial class LyricsService : IDisposable
         lock (_fetchLock) CancelActiveFetchLocked();
     }
 
-    internal static List<LyricLine> ParseLrc(string lrc)
-    {
-        var lines = new List<LyricLine>();
-        foreach (var rawLine in lrc.AsSpan().EnumerateLines())
-        {
-            if (vn_lyrics_try_parse_lrc_line(rawLine, rawLine.Length, out long ticks, out int textStart, out int textLength, out byte ok) == 0 &&
-                ok != 0 && textStart >= 0 && textLength <= 4096 && textStart + textLength <= rawLine.Length)
-            {
-                lines.Add(LyricTiming.ParseEnhanced(TimeSpan.FromTicks(ticks), new string(rawLine.Slice(textStart, textLength))));
-            }
-        }
-
-        lines.Sort((a, b) => a.Time.CompareTo(b.Time));
-        return lines;
-    }
+    internal static List<LyricLine> ParseLrc(string lrc) =>
+        NativeLyricParser.Parse(MemoryMarshal.AsBytes(lrc.AsSpan()), 6, utf16: true);
 
     private static async Task<JsonDocument?> ReadBoundedJsonAsync(HttpContent content, CancellationToken token)
     {

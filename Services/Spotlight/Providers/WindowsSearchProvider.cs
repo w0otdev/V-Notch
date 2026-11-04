@@ -1,6 +1,6 @@
 using System;
 using System.Collections.Generic;
-using System.Data.OleDb;
+using Microsoft.Win32.SafeHandles;
 using System.IO;
 using System.Runtime.InteropServices;
 using System.Threading;
@@ -16,8 +16,13 @@ internal sealed partial class WindowsSearchProvider : ISpotlightProvider
     internal Func<string, bool>? IsExcluded { get; set; }
 
     private const int QueryTimeoutMilliseconds = 1500;
-    private const string ConnectionString =
-        "Provider=Search.CollatorDSO;Extended Properties='Application=Windows'";
+    [StructLayout(LayoutKind.Sequential)]
+    private struct SearchResult { public nint Name, Path; public int Folder; }
+
+    [LibraryImport(NativeDll, StringMarshalling = StringMarshalling.Utf16)]
+    private static partial int vn_windows_search_execute(string sql, SafeWaitHandle cancel,
+        Span<SearchResult> rows, int capacity, out int count);
+
     private static readonly TimeSpan RetryCooldown = TimeSpan.FromSeconds(30);
     private static readonly Lazy<string> CachedDefaultWindowsScope =
         new(() => SpotlightFileVisibility.BuildWindowsScope(string.Empty));
@@ -138,7 +143,7 @@ internal sealed partial class WindowsSearchProvider : ISpotlightProvider
             _isAvailable = false;
             return Array.Empty<SpotlightSearchItem>();
         }
-        catch (OleDbException ex)
+        catch (COMException ex)
         {
             Interlocked.Exchange(ref _lastFailureTicks, DateTime.UtcNow.Ticks);
             _isAvailable = false;
@@ -232,36 +237,34 @@ internal sealed partial class WindowsSearchProvider : ISpotlightProvider
         string sql = BuildQuerySql(sanitizedQuery, originalQuery, fetch);
 
         var results = new List<SpotlightSearchItem>(fetch);
-        using var connection = new OleDbConnection(ConnectionString);
-        connection.Open();
-        using var command = new OleDbCommand(sql, connection)
+        Span<SearchResult> rows = stackalloc SearchResult[fetch];
+        int count = 0;
+        try
         {
-            CommandTimeout = Math.Max(1, QueryTimeoutMilliseconds / 1000)
-        };
-        using var reader = command.ExecuteReader();
-        while (results.Count < fetch && reader.Read())
-        {
+            int hr = vn_windows_search_execute(sql, cancellationToken.WaitHandle.SafeWaitHandle, rows, fetch, out count);
             cancellationToken.ThrowIfCancellationRequested();
-            var item = ReadSearchItem(reader);
-            if (item != null)
+            if (hr < 0) throw new COMException(Marshal.GetExceptionForHR(hr)?.Message, hr);
+            foreach (var row in rows[..count])
             {
-                results.Add(item);
+                var item = ReadSearchItem(Marshal.PtrToStringBSTR(row.Name),
+                    NormalizeResultPath(Marshal.PtrToStringBSTR(row.Path)), row.Folder != 0);
+                if (item != null) results.Add(item);
+            }
+            return results;
+        }
+        finally
+        {
+            foreach (var row in rows[..count])
+            {
+                Marshal.FreeBSTR(row.Name);
+                Marshal.FreeBSTR(row.Path);
             }
         }
-
-        return results;
     }
 
-    private static SpotlightSearchItem? ReadSearchItem(OleDbDataReader reader)
+    private static SpotlightSearchItem? ReadSearchItem(string name, string path, bool isFolder)
     {
-        if (reader.IsDBNull(0) || reader.IsDBNull(1)) return null;
-
-        string name = reader.GetString(0);
-        string path = NormalizeResultPath(reader.GetString(1));
         if (name.Length == 0 || path.Length == 0) return null;
-
-        bool isFolder = !reader.IsDBNull(2) &&
-            string.Equals(reader.GetString(2), "Directory", StringComparison.OrdinalIgnoreCase);
         string ext = Path.GetExtension(path);
         bool isExec = !isFolder && ExecutableExtensions.Contains(ext);
 

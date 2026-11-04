@@ -15,30 +15,6 @@ namespace VNotch.Services;
 
 internal sealed partial class LyricsService
 {
-    [StructLayout(LayoutKind.Sequential, Pack = 1)]
-    private struct VnNetEaseWordSpan
-    {
-        public long StartTicks;
-        public long EndTicks;
-        public int TextOffset;
-        public int TextLength;
-    }
-
-    [LibraryImport(NativeDll, StringMarshalling = StringMarshalling.Utf16)]
-    private static partial int vn_lyrics_score_netease_candidate(
-        ReadOnlySpan<char> targetTitle,
-        int targetTitleLen,
-        ReadOnlySpan<char> targetArtist,
-        int targetArtistLen,
-        int targetDurationSec,
-        ReadOnlySpan<char> candTitle,
-        int candTitleLen,
-        ReadOnlySpan<char> candArtists,
-        int candArtistsLen,
-        int candDurationMs,
-        out int outScore,
-        out byte outAccepted);
-
     [LibraryImport(NativeDll, StringMarshalling = StringMarshalling.Utf16)]
     private static partial int vn_lyrics_is_credit_header_line(
         ReadOnlySpan<char> text,
@@ -46,38 +22,12 @@ internal sealed partial class LyricsService
         long timeTicks,
         out byte outIsCredit);
 
-    [LibraryImport(NativeDll, StringMarshalling = StringMarshalling.Utf16)]
-    private static partial int vn_lyrics_try_parse_yrc_line(
-        ReadOnlySpan<char> rawLine,
-        int rawLineLen,
-        out long outLineTicks,
-        Span<char> outTextBuf,
-        int outTextCap,
-        out int outTextLen,
-        Span<VnNetEaseWordSpan> outWords,
-        int outWordsCap,
-        out int outWordsCount,
-        out byte outOk);
-
     [LibraryImport(NativeDll)]
     private static partial int vn_lyrics_decode_krc_payload(
         ReadOnlySpan<byte> rawBytes,
         int rawLen,
         Span<byte> outZlibBytes,
         out int outZlibLen);
-
-    [LibraryImport(NativeDll, StringMarshalling = StringMarshalling.Utf16)]
-    private static partial int vn_lyrics_try_parse_krc_line(
-        ReadOnlySpan<char> rawLine,
-        int rawLineLen,
-        out long outLineTicks,
-        Span<char> outTextBuf,
-        int outTextCap,
-        out int outTextLen,
-        Span<VnNetEaseWordSpan> outWords,
-        int outWordsCap,
-        out int outWordsCount,
-        out byte outOk);
 
     private static readonly HttpClient NetEaseHttp = CreateRefererClient("https://music.163.com", "https://music.163.com/", 2200);
     private static readonly HttpClient KugouHttp = CreateClient("https://lyrics.kugou.com", 2000);
@@ -116,16 +66,14 @@ internal sealed partial class LyricsService
             }
             if (!searchResponse.IsSuccessStatusCode) return null;
 
-            using var searchDoc = await ReadBoundedJsonAsync(searchResponse.Content, timeout.Token).ConfigureAwait(false);
-            if (searchDoc == null) return null;
-            if (searchDoc.RootElement.TryGetProperty("code", out var codeProp) && codeProp.ValueKind == JsonValueKind.Number &&
-                codeProp.TryGetInt32(out int apiCode) && apiCode == -460)
+            using var searchBody = await PooledUtf8Response.ReadAsync(searchResponse, MaxLyricsResponseBytes, timeout.Token).ConfigureAwait(false);
+            var selection = NativeCatalogParser.Select(searchBody.Span, 3, trackName, artistName, durationSeconds * 1000L);
+            if (selection.ApiCode == -460)
             {
                 MarkCooldown(ref _netEaseRetryUntil, TimeSpan.FromMinutes(2));
                 return null;
             }
-
-            long songId = SelectBestNetEaseSongId(searchDoc.RootElement, trackName, artistName, durationSeconds);
+            long songId = selection.Id;
             if (songId <= 0) return null;
 
             string lyricUrl = $"/api/song/lyric?id={songId}&lv=-1&yv=-1&tv=-1";
@@ -137,8 +85,9 @@ internal sealed partial class LyricsService
             }
             if (!lyricResponse.IsSuccessStatusCode) return null;
 
-            using var lyricDoc = await ReadBoundedJsonAsync(lyricResponse.Content, timeout.Token).ConfigureAwait(false);
-            return lyricDoc == null ? null : ParseNetEaseLyricResult(lyricDoc.RootElement);
+            using var lyricBody = await PooledUtf8Response.ReadAsync(lyricResponse, MaxLyricsResponseBytes, timeout.Token).ConfigureAwait(false);
+            var lines = NativeLyricParser.Parse(lyricBody.Span, 7);
+            return lines.Count == 0 ? null : new(lines, "NetEase");
         }
         catch (Exception ex) when (!token.IsCancellationRequested && ex is HttpRequestException or OperationCanceledException)
         {
@@ -173,10 +122,9 @@ internal sealed partial class LyricsService
             }
             if (!searchResponse.IsSuccessStatusCode) return null;
 
-            using var searchDoc = await ReadBoundedJsonAsync(searchResponse.Content, timeout.Token).ConfigureAwait(false);
-            if (searchDoc == null) return null;
-
-            var (id, accessKey) = SelectBestKugouCandidate(searchDoc.RootElement, trackName, artistName, durationSeconds);
+            using var searchBody = await PooledUtf8Response.ReadAsync(searchResponse, MaxLyricsResponseBytes, timeout.Token).ConfigureAwait(false);
+            var selection = NativeCatalogParser.Select(searchBody.Span, 4, trackName, artistName, durationSeconds * 1000L);
+            var (id, accessKey) = (selection.Text, selection.Key);
             if (string.IsNullOrEmpty(id) || string.IsNullOrEmpty(accessKey)) return null;
 
             string downloadUrl = $"/download?ver=1&client=pc&id={Uri.EscapeDataString(id)}&accesskey={Uri.EscapeDataString(accessKey)}&fmt=krc&charset=utf8";
@@ -188,8 +136,9 @@ internal sealed partial class LyricsService
             }
             if (!downloadResponse.IsSuccessStatusCode) return null;
 
-            using var downloadDoc = await ReadBoundedJsonAsync(downloadResponse.Content, timeout.Token).ConfigureAwait(false);
-            return downloadDoc == null ? null : ParseKugouDownloadResult(downloadDoc.RootElement);
+            using var downloadBody = await PooledUtf8Response.ReadAsync(downloadResponse, MaxLyricsResponseBytes, timeout.Token).ConfigureAwait(false);
+            var fields = YouTubeMetadataParsing.ParseUtf8(downloadBody.Span, 10).Items;
+            return fields.Count == 0 ? null : ParseKugouContent(fields[0].First);
         }
         catch (Exception ex) when (!token.IsCancellationRequested && ex is HttpRequestException or OperationCanceledException)
         {
@@ -223,10 +172,8 @@ internal sealed partial class LyricsService
             }
             if (!searchResponse.IsSuccessStatusCode) return null;
 
-            using var searchDoc = await ReadBoundedJsonAsync(searchResponse.Content, timeout.Token).ConfigureAwait(false);
-            if (searchDoc == null) return null;
-
-            string? songMid = SelectBestQqMusicSongMid(searchDoc.RootElement, trackName, artistName, durationSeconds);
+            using var searchBody = await PooledUtf8Response.ReadAsync(searchResponse, MaxLyricsResponseBytes, timeout.Token).ConfigureAwait(false);
+            string? songMid = NativeCatalogParser.Select(searchBody.Span, 5, trackName, artistName, durationSeconds * 1000L).Text;
             if (string.IsNullOrEmpty(songMid)) return null;
 
             string lyricUrl = $"/lyric/fcgi-bin/fcg_query_lyric_new.fcg?songmid={Uri.EscapeDataString(songMid)}&g_tk=5381&format=json&inCharset=utf8&outCharset=utf-8&nobase64=1";
@@ -238,8 +185,9 @@ internal sealed partial class LyricsService
             }
             if (!lyricResponse.IsSuccessStatusCode) return null;
 
-            using var lyricDoc = await ReadBoundedJsonAsync(lyricResponse.Content, timeout.Token).ConfigureAwait(false);
-            return lyricDoc == null ? null : ParseQqMusicLyricResult(lyricDoc.RootElement);
+            using var lyricBody = await PooledUtf8Response.ReadAsync(lyricResponse, MaxLyricsResponseBytes, timeout.Token).ConfigureAwait(false);
+            var fields = YouTubeMetadataParsing.ParseUtf8(lyricBody.Span, 9).Items;
+            return fields.Count == 0 ? null : ParseQqMusicLyrics(fields[0].First);
         }
         catch (Exception ex) when (!token.IsCancellationRequested && ex is HttpRequestException or OperationCanceledException)
         {
@@ -248,210 +196,23 @@ internal sealed partial class LyricsService
         }
     }
 
-    internal static long SelectBestNetEaseSongId(JsonElement root, string targetTrack, string targetArtist, int targetDurationSeconds)
-    {
-        if (root.ValueKind != JsonValueKind.Object ||
-            !root.TryGetProperty("result", out var result) || result.ValueKind != JsonValueKind.Object ||
-            !result.TryGetProperty("songs", out var songs) || songs.ValueKind != JsonValueKind.Array)
-        {
-            return 0;
-        }
-
-        long bestId = 0;
-        int bestScore = int.MinValue;
-        var artistBuilder = new StringBuilder(128);
-
-        foreach (var song in songs.EnumerateArray())
-        {
-            if (song.ValueKind != JsonValueKind.Object ||
-                !song.TryGetProperty("id", out var idProp) || !idProp.TryGetInt64(out long id) || id <= 0 ||
-                !song.TryGetProperty("name", out var nameProp) || nameProp.ValueKind != JsonValueKind.String)
-            {
-                continue;
-            }
-
-            string candTitle = nameProp.GetString() ?? "";
-            int candDurationMs = 0;
-            if (song.TryGetProperty("dt", out var dtProp) && dtProp.ValueKind == JsonValueKind.Number)
-                dtProp.TryGetInt32(out candDurationMs);
-            else if (song.TryGetProperty("duration", out var durProp) && durProp.ValueKind == JsonValueKind.Number)
-                durProp.TryGetInt32(out candDurationMs);
-
-            artistBuilder.Clear();
-            AppendNetEaseArtists(song, "ar", artistBuilder);
-            AppendNetEaseArtists(song, "artists", artistBuilder);
-            string candArtists = artistBuilder.ToString();
-
-            if (vn_lyrics_score_netease_candidate(
-                    targetTrack.AsSpan(), targetTrack.Length,
-                    targetArtist.AsSpan(), targetArtist.Length,
-                    targetDurationSeconds,
-                    candTitle.AsSpan(), candTitle.Length,
-                    candArtists.AsSpan(), candArtists.Length,
-                    candDurationMs,
-                    out int score,
-                    out byte accepted) == 0 &&
-                accepted != 0 && score > bestScore)
-            {
-                bestScore = score;
-                bestId = id;
-            }
-        }
-
-        return bestId;
-    }
+    internal static long SelectBestNetEaseSongId(JsonElement root, string targetTrack, string targetArtist, int targetDurationSeconds) =>
+        NativeCatalogParser.Select(root.GetRawText(), 3, targetTrack, targetArtist, targetDurationSeconds * 1000L).Id;
 
     internal static (string? Id, string? AccessKey) SelectBestKugouCandidate(JsonElement root, string targetTrack, string targetArtist, int targetDurationSeconds)
     {
-        if (root.ValueKind != JsonValueKind.Object ||
-            !root.TryGetProperty("candidates", out var candidates) || candidates.ValueKind != JsonValueKind.Array)
-        {
-            return (null, null);
-        }
-
-        string? bestId = null;
-        string? bestKey = null;
-        int bestScore = int.MinValue;
-
-        foreach (var cand in candidates.EnumerateArray())
-        {
-            if (cand.ValueKind != JsonValueKind.Object ||
-                !cand.TryGetProperty("id", out var idProp) ||
-                !cand.TryGetProperty("accesskey", out var keyProp) || keyProp.ValueKind != JsonValueKind.String)
-            {
-                continue;
-            }
-
-            string id = idProp.ValueKind == JsonValueKind.String ? idProp.GetString() ?? "" : idProp.ToString();
-            string accessKey = keyProp.GetString() ?? "";
-            if (string.IsNullOrEmpty(id) || string.IsNullOrEmpty(accessKey)) continue;
-
-            string candTitle = cand.TryGetProperty("song", out var songProp) && songProp.ValueKind == JsonValueKind.String
-                ? songProp.GetString() ?? "" : "";
-            string candArtists = cand.TryGetProperty("singer", out var singerProp) && singerProp.ValueKind == JsonValueKind.String
-                ? (singerProp.GetString() ?? "").Replace('、', '|').Replace('/', '|') : "";
-            int candDurationMs = cand.TryGetProperty("duration", out var durProp) && durProp.ValueKind == JsonValueKind.Number && durProp.TryGetInt32(out int d) ? d : 0;
-
-            if (vn_lyrics_score_netease_candidate(
-                    targetTrack.AsSpan(), targetTrack.Length,
-                    targetArtist.AsSpan(), targetArtist.Length,
-                    targetDurationSeconds,
-                    candTitle.AsSpan(), candTitle.Length,
-                    candArtists.AsSpan(), candArtists.Length,
-                    candDurationMs,
-                    out int score,
-                    out byte accepted) == 0 &&
-                accepted != 0 && score > bestScore)
-            {
-                bestScore = score;
-                bestId = id;
-                bestKey = accessKey;
-            }
-        }
-
-        return (bestId, bestKey);
+        var selected = NativeCatalogParser.Select(root.GetRawText(), 4, targetTrack, targetArtist, targetDurationSeconds * 1000L);
+        return (selected.Text, selected.Key);
     }
 
-    internal static string? SelectBestQqMusicSongMid(JsonElement root, string targetTrack, string targetArtist, int targetDurationSeconds)
-    {
-        if (root.ValueKind != JsonValueKind.Object ||
-            !root.TryGetProperty("data", out var data) || data.ValueKind != JsonValueKind.Object ||
-            !data.TryGetProperty("song", out var songObj) || songObj.ValueKind != JsonValueKind.Object ||
-            !songObj.TryGetProperty("list", out var list) || list.ValueKind != JsonValueKind.Array)
-        {
-            return null;
-        }
-
-        string? bestMid = null;
-        int bestScore = int.MinValue;
-        var artistBuilder = new StringBuilder(128);
-
-        foreach (var item in list.EnumerateArray())
-        {
-            if (item.ValueKind != JsonValueKind.Object ||
-                !item.TryGetProperty("songmid", out var midProp) || midProp.ValueKind != JsonValueKind.String)
-            {
-                continue;
-            }
-
-            string mid = midProp.GetString() ?? "";
-            if (string.IsNullOrEmpty(mid)) continue;
-
-            string candTitle = item.TryGetProperty("songname", out var nameProp) && nameProp.ValueKind == JsonValueKind.String
-                ? nameProp.GetString() ?? ""
-                : item.TryGetProperty("name", out nameProp) && nameProp.ValueKind == JsonValueKind.String ? nameProp.GetString() ?? "" : "";
-            int intervalSec = item.TryGetProperty("interval", out var intProp) && intProp.ValueKind == JsonValueKind.Number && intProp.TryGetInt32(out int sec) ? sec : 0;
-
-            artistBuilder.Clear();
-            AppendNetEaseArtists(item, "singer", artistBuilder);
-            string candArtists = artistBuilder.ToString();
-
-            if (vn_lyrics_score_netease_candidate(
-                    targetTrack.AsSpan(), targetTrack.Length,
-                    targetArtist.AsSpan(), targetArtist.Length,
-                    targetDurationSeconds,
-                    candTitle.AsSpan(), candTitle.Length,
-                    candArtists.AsSpan(), candArtists.Length,
-                    intervalSec * 1000,
-                    out int score,
-                    out byte accepted) == 0 &&
-                accepted != 0 && score > bestScore)
-            {
-                bestScore = score;
-                bestMid = mid;
-            }
-        }
-
-        return bestMid;
-    }
-
-    private static void AppendNetEaseArtists(JsonElement song, string propName, StringBuilder sb)
-    {
-        if (!song.TryGetProperty(propName, out var arr) || arr.ValueKind != JsonValueKind.Array) return;
-        foreach (var ar in arr.EnumerateArray())
-        {
-            if (ar.ValueKind != JsonValueKind.Object) continue;
-            if (ar.TryGetProperty("name", out var n) && n.ValueKind == JsonValueKind.String && !string.IsNullOrWhiteSpace(n.GetString()))
-            {
-                if (sb.Length > 0) sb.Append('|');
-                sb.Append(n.GetString());
-            }
-            if (ar.TryGetProperty("alias", out var aliases) && aliases.ValueKind == JsonValueKind.Array)
-            {
-                foreach (var al in aliases.EnumerateArray())
-                {
-                    if (al.ValueKind == JsonValueKind.String && !string.IsNullOrWhiteSpace(al.GetString()))
-                    {
-                        if (sb.Length > 0) sb.Append('|');
-                        sb.Append(al.GetString());
-                    }
-                }
-            }
-        }
-    }
+    internal static string? SelectBestQqMusicSongMid(JsonElement root, string targetTrack, string targetArtist, int targetDurationSeconds) =>
+        NativeCatalogParser.Select(root.GetRawText(), 5, targetTrack, targetArtist, targetDurationSeconds * 1000L).Text;
 
     internal static LyricsResult? ParseNetEaseLyricResult(JsonElement root)
     {
         if (root.ValueKind != JsonValueKind.Object) return null;
-        if (root.TryGetProperty("nolyric", out var noLyric) && noLyric.ValueKind == JsonValueKind.True) return null;
-
-        if (root.TryGetProperty("yrc", out var yrcObj) && yrcObj.ValueKind == JsonValueKind.Object &&
-            yrcObj.TryGetProperty("lyric", out var yrcProp) && yrcProp.ValueKind == JsonValueKind.String &&
-            !string.IsNullOrWhiteSpace(yrcProp.GetString()))
-        {
-            var yrcLines = ParseNetEaseYrc(yrcProp.GetString()!);
-            if (yrcLines.Count > 0) return new LyricsResult(yrcLines, "NetEase");
-        }
-
-        if (root.TryGetProperty("lrc", out var lrcObj) && lrcObj.ValueKind == JsonValueKind.Object &&
-            lrcObj.TryGetProperty("lyric", out var lrcProp) && lrcProp.ValueKind == JsonValueKind.String &&
-            !string.IsNullOrWhiteSpace(lrcProp.GetString()))
-        {
-            var filtered = FilterCreditLines(ParseLrc(lrcProp.GetString()!));
-            if (filtered.Count > 0) return new LyricsResult(filtered, "NetEase");
-        }
-
-        return null;
+        var lines = NativeLyricParser.Parse(Encoding.UTF8.GetBytes(root.GetRawText()), 7);
+        return lines.Count == 0 ? null : new(lines, "NetEase");
     }
 
     internal static LyricsResult? ParseQqMusicLyricResult(JsonElement root)
@@ -463,7 +224,12 @@ internal sealed partial class LyricsService
             return null;
         }
 
-        string text = WebUtility.HtmlDecode(lyricProp.GetString()!);
+        return ParseQqMusicLyrics(lyricProp.GetString()!);
+    }
+
+    private static LyricsResult? ParseQqMusicLyrics(string lyric)
+    {
+        string text = WebUtility.HtmlDecode(lyric);
         var filtered = FilterCreditLines(ParseLrc(text));
         return filtered.Count > 0 ? new LyricsResult(filtered, "QQ Music") : null;
     }
@@ -477,8 +243,13 @@ internal sealed partial class LyricsService
             return null;
         }
 
+        return ParseKugouContent(contentProp.GetString()!);
+    }
+
+    private static LyricsResult? ParseKugouContent(string content)
+    {
         byte[] raw;
-        try { raw = Convert.FromBase64String(contentProp.GetString()!); }
+        try { raw = Convert.FromBase64String(content); }
         catch (FormatException) { return null; }
 
         if (raw.Length <= 4 || raw.Length > MaxLyricsResponseBytes) return null;
@@ -491,9 +262,9 @@ internal sealed partial class LyricsService
 
             using var input = new MemoryStream(rented, 0, zlibLen, writable: false);
             using var zstream = new ZLibStream(input, CompressionMode.Decompress);
-            using var reader = new StreamReader(zstream, Encoding.UTF8);
-            string krcText = reader.ReadToEnd();
-            var lines = ParseKugouKrc(krcText);
+            using var plain = new Clipboard.NativeBufferStream();
+            Clipboard.NativeClipboardStreamCopy.Copy(zstream, plain, MaxLyricsResponseBytes);
+            var lines = plain.ReadBuffered(static bytes => NativeLyricParser.Parse(bytes, 5));
             return lines.Count > 0 ? new LyricsResult(lines, "Kugou") : null;
         }
         catch (Exception ex) when (ex is InvalidDataException or IOException)
@@ -518,69 +289,9 @@ internal sealed partial class LyricsService
         return filtered;
     }
 
-    internal static List<LyricLine> ParseNetEaseYrc(string yrc)
-    {
-        var lines = new List<LyricLine>();
-        Span<char> textBuf = stackalloc char[1024];
-        Span<VnNetEaseWordSpan> wordBuf = stackalloc VnNetEaseWordSpan[128];
+    internal static List<LyricLine> ParseNetEaseYrc(string yrc) =>
+        NativeLyricParser.Parse(MemoryMarshal.AsBytes(yrc.AsSpan()), 4, utf16: true);
 
-        foreach (var rawLine in yrc.AsSpan().EnumerateLines())
-        {
-            if (vn_lyrics_try_parse_yrc_line(
-                    rawLine, rawLine.Length,
-                    out long lineTicks,
-                    textBuf, textBuf.Length, out int textLen,
-                    wordBuf, wordBuf.Length, out int wordCount,
-                    out byte ok) != 0 || ok == 0 || textLen <= 0)
-            {
-                continue;
-            }
-
-            string text = new(textBuf[..textLen]);
-            var lineTime = TimeSpan.FromTicks(lineTicks);
-            var words = new List<LyricWord>(wordCount);
-            for (int i = 0; i < wordCount; i++)
-            {
-                var w = wordBuf[i];
-                words.Add(new LyricWord(TimeSpan.FromTicks(w.StartTicks), TimeSpan.FromTicks(w.EndTicks), w.TextOffset, w.TextLength));
-            }
-            lines.Add(new LyricLine(lineTime, text, LyricTiming.ValidateWords(lineTime, text, words)));
-        }
-
-        lines.Sort((a, b) => a.Time.CompareTo(b.Time));
-        return lines;
-    }
-
-    internal static List<LyricLine> ParseKugouKrc(string krc)
-    {
-        var lines = new List<LyricLine>();
-        Span<char> textBuf = stackalloc char[1024];
-        Span<VnNetEaseWordSpan> wordBuf = stackalloc VnNetEaseWordSpan[128];
-
-        foreach (var rawLine in krc.AsSpan().EnumerateLines())
-        {
-            if (vn_lyrics_try_parse_krc_line(
-                    rawLine, rawLine.Length,
-                    out long lineTicks,
-                    textBuf, textBuf.Length, out int textLen,
-                    wordBuf, wordBuf.Length, out int wordCount,
-                    out byte ok) != 0 || ok == 0 || textLen <= 0)
-            {
-                continue;
-            }
-
-            string text = new(textBuf[..textLen]);
-            var lineTime = TimeSpan.FromTicks(lineTicks);
-            var words = new List<LyricWord>(wordCount);
-            for (int i = 0; i < wordCount; i++)
-            {
-                var w = wordBuf[i];
-                words.Add(new LyricWord(TimeSpan.FromTicks(w.StartTicks), TimeSpan.FromTicks(w.EndTicks), w.TextOffset, w.TextLength));
-            }
-            lines.Add(new LyricLine(lineTime, text, LyricTiming.ValidateWords(lineTime, text, words)));
-        }
-
-        lines.Sort((a, b) => a.Time.CompareTo(b.Time));
-        return lines;
-    }
+    internal static List<LyricLine> ParseKugouKrc(string krc) =>
+        NativeLyricParser.Parse(MemoryMarshal.AsBytes(krc.AsSpan()), 5, utf16: true);
 }

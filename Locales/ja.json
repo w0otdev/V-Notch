@@ -1059,6 +1059,8 @@
   "tooltip.ultimateGpu": "目標 FPS の制限内で Liquid Glass に高性能な GPU 0 を使用する",
   "settings.lyrics.provider.lrclib.desc": "コミュニティデータベースから高速に取得する行単位の同期歌詞",
   "settings.lyrics.provider.lrcmux.desc": "複数のソースから集約した単語単位のカラオケ同期",
-  "settings.lyrics.provider.amll.desc": "SpotifyトラックIDで取得するコミュニティ制作の単語・音節同期。APIキー不要",
-  "settings.lyrics.provider.netease.desc": "NetEase Cloud Music カタログからの単語・行単位の同期歌詞"
+  "settings.lyrics.provider.amll.desc": "SpotifyトラックIDで取得するコミュニティ制作の単語・音節同期",
+  "settings.lyrics.provider.netease.desc": "NetEase Cloud Music カタログからの単語・行単位の同期歌詞",
+  "settings.lyrics.provider.kugou.desc": "Kugou Music カタログからの単語単位 KRC および行単位の同期歌詞",
+  "settings.lyrics.provider.qqmusic.desc": "QQ Music カタログからの行単位の同期歌詞"
 }

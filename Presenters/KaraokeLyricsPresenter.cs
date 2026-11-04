@@ -7,7 +7,7 @@ using VNotch.Services;
 
 namespace VNotch.Presenters;
 
-internal sealed class KaraokeLyricsPresenter
+internal sealed partial class KaraokeLyricsPresenter
 {
     private sealed class WordVisual(Run run, Color sung, Color pending)
     {
@@ -27,6 +27,11 @@ internal sealed class KaraokeLyricsPresenter
         }
     }
 
+    [System.Runtime.InteropServices.LibraryImport("VNotch.Native.dll")]
+    private static partial void vn_karaoke_progress(double position, ReadOnlySpan<double> starts,
+        ReadOnlySpan<double> ends, Span<double> progress, int count);
+
+    private double[] _starts = [], _ends = [], _progress = [];
     private LyricWord[]? _words;
     private WordVisual[]? _visuals;
     private Brush _sung = Brushes.White, _pending = Brushes.Gray;
@@ -41,6 +46,9 @@ internal sealed class KaraokeLyricsPresenter
         block.Text = line.Text;
         if (line.Words is not { Length: > 0 } words) return;
         _words = words;
+        _starts = new double[words.Length];
+        _ends = new double[words.Length];
+        _progress = new double[words.Length];
         _visuals = new WordVisual[words.Length];
         Color sung = (block.Foreground as SolidColorBrush)?.Color ?? Colors.White;
         sung.A = 255;
@@ -55,6 +63,8 @@ internal sealed class KaraokeLyricsPresenter
         for (int i = 0; i < words.Length; i++)
         {
             var word = words[i];
+            _starts[i] = word.Start.Ticks;
+            _ends[i] = word.End.Ticks;
             if (word.Offset > offset) block.Inlines.Add(new Run(line.Text[offset..word.Offset]) { Foreground = _pending });
             var run = new Run(line.Text.Substring(word.Offset, word.Length)) { Foreground = _pending };
             var visual = new WordVisual(run, sung, pending);
@@ -85,15 +95,15 @@ internal sealed class KaraokeLyricsPresenter
         _scheduled = true;
         _scheduledTick = tick;
         _scheduledPosition = position;
+        vn_karaoke_progress(position.Ticks, _starts, _ends, _progress, _progress.Length);
         for (int i = 0; i < _visuals.Length; i++)
         {
             var visual = _visuals[i];
             var word = _words[i];
             visual.Stop();
-            if (position >= word.End && position >= word.Start) { visual.Run.Foreground = _sung; continue; }
-            if (position < word.Start && (!playing || reduceMotion)) { visual.Run.Foreground = _pending; continue; }
-            double duration = (word.End - word.Start).TotalSeconds;
-            double progress = duration <= 0 ? 0 : Math.Clamp((position - word.Start).TotalSeconds / duration, 0, 1);
+            if (_progress[i] == -2) { visual.Run.Foreground = _sung; continue; }
+            if (_progress[i] == -1 && (!playing || reduceMotion)) { visual.Run.Foreground = _pending; continue; }
+            double progress = Math.Max(0, _progress[i]);
             visual.Run.Foreground = visual.Brush;
             visual.Head.Offset = -0.28 + 1.28 * progress;
             visual.Tail.Offset = 1.28 * progress;
@@ -117,6 +127,7 @@ internal sealed class KaraokeLyricsPresenter
     {
         Suspend();
         _words = null;
+        _starts = _ends = _progress = [];
         _visuals = null;
         _scheduledTick = 0;
     }

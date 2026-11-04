@@ -36,6 +36,11 @@ namespace vnotch::kernels::avx2
     int32_t WebcamNv12RowBulk(const uint8_t* luma_row, const uint8_t* chroma_row, int32_t width, uint8_t* dst_row) noexcept;
     int32_t WebcamYuy2Bulk(const uint8_t* src, int32_t pixel_count, uint8_t* dst) noexcept;
 
+    void BezierSamples(double p1, double p2, double* values, int intervals) noexcept;
+    int KaraokeProgress(double position, const double* starts, const double* ends, double* progress, int count) noexcept;
+    void SmoothFourBars(double smoothing, double small_delta, double threshold, const double* current,
+        double* smoothed, double* sorted) noexcept;
+
     // VisualizerFftKernel.avx2.cpp
     // Runs the radix-2 butterflies for k in [0, l1 & ~3) of every block. Returns the number of k values handled.
     int32_t FftStageBulk(float* flat, const float* stage, int32_t n, int32_t l1) noexcept;

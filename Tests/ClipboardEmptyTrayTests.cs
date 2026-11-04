@@ -174,6 +174,82 @@ public sealed class ClipboardEmptyTrayTests
         Loc.SetLanguage("en");
     });
 
+    [Fact]
+    public void DeleteFileCardReleasesExportFilesCardPreviewsRecycledContainerImagesAndTrayReferences()
+        => SharedStaTestRunner.RunAsync(async () =>
+    {
+        using var fixture = new Fixture();
+        using var store = new ClipboardHistoryStore(fixture.Root);
+        using var controller = new ClipboardHistoryController(Dispatcher.CurrentDispatcher, store);
+        using var tray = new ClipboardTray();
+        var window = new BackgroundWindow { Content = tray, Width = 780, Height = 300 };
+        try
+        {
+            await store.InitializeAsync();
+            string sourceFile = Path.Combine(fixture.Root, "sample.bin");
+            File.WriteAllText(sourceFile, "exported file payload");
+            var fileEntry = (await store.ImportAsync(new ClipboardCapture { FilePaths = [sourceFile] })).Entry!;
+            string[] exportedPaths = await store.ExportFilesAsync(fileEntry.Id);
+            string exportDir = Path.GetDirectoryName(exportedPaths[0])!;
+            Assert.True(Directory.Exists(exportDir));
+
+            tray.Attach(controller);
+            window.Show();
+            await (Task)Invoke(tray, "RefreshAsync")!;
+            window.UpdateLayout();
+            await Dispatcher.Yield(DispatcherPriority.ApplicationIdle);
+
+            var cardsBox = (ListBox)tray.FindName("Cards");
+            var cardVm = (VNotch.ViewModels.ClipboardCardViewModel)Assert.Single(cardsBox.Items)!;
+            var container = (ListBoxItem)cardsBox.ItemContainerGenerator.ContainerFromItem(cardVm);
+            Assert.NotNull(container);
+
+            var dummyBitmap = new System.Windows.Media.Imaging.WriteableBitmap(2, 2, 96, 96, System.Windows.Media.PixelFormats.Pbgra32, null);
+            dummyBitmap.Freeze();
+            cardVm.Image = dummyBitmap;
+            cardVm.FileIcon = dummyBitmap;
+            cardVm.SourceIcon = dummyBitmap;
+            window.UpdateLayout();
+            Assert.Contains(FindImages(container), img => ReferenceEquals(img.Source, dummyBitmap));
+
+            var selectionField = typeof(ClipboardTray).GetField("_selection", BindingFlags.Instance | BindingFlags.NonPublic)!;
+            var selection = selectionField.GetValue(tray)!;
+            selection.GetType().GetMethod("Select", BindingFlags.Instance | BindingFlags.NonPublic)!
+                .Invoke(selection, new object?[] { (System.Collections.Generic.IList<VNotch.ViewModels.ClipboardCardViewModel>)cardsBox.ItemsSource, Array.Empty<VNotch.ViewModels.ClipboardCardViewModel>(), cardVm, false, false, false });
+            typeof(ClipboardTray).GetField("_lastOpenedMenuCard", BindingFlags.Instance | BindingFlags.NonPublic)!.SetValue(tray, cardVm);
+            typeof(ClipboardTray).GetField("_lastClosedMenuCard", BindingFlags.Instance | BindingFlags.NonPublic)!.SetValue(tray, cardVm);
+
+            await store.DeleteAsync(fileEntry.Id);
+            await (Task)Invoke(tray, "RefreshAsync")!;
+            window.UpdateLayout();
+
+            Assert.False(Directory.Exists(exportDir));
+            Assert.Null(cardVm.Image);
+            Assert.Null(cardVm.FileIcon);
+            Assert.Null(cardVm.SourceIcon);
+            Assert.Null(selection.GetType().GetProperty("Anchor", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(selection));
+            Assert.Null(typeof(ClipboardTray).GetField("_lastOpenedMenuCard", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(tray));
+            Assert.Null(typeof(ClipboardTray).GetField("_lastClosedMenuCard", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(tray));
+            foreach (var image in FindImages(container))
+            {
+                Assert.NotSame(dummyBitmap, image.Source);
+                Assert.Null(image.Tag);
+            }
+        }
+        finally { window.Close(); }
+    });
+
+    private static IEnumerable<Image> FindImages(DependencyObject root)
+    {
+        int count = System.Windows.Media.VisualTreeHelper.GetChildrenCount(root);
+        for (int i = 0; i < count; i++)
+        {
+            var child = System.Windows.Media.VisualTreeHelper.GetChild(root, i);
+            if (child is Image image) yield return image;
+            foreach (var nested in FindImages(child)) yield return nested;
+        }
+    }
+
     private static object? Invoke(object target, string name, params object?[] args)
         => target.GetType().GetMethod(name, BindingFlags.Instance | BindingFlags.NonPublic)!.Invoke(target, args);
 

@@ -88,4 +88,12 @@ public sealed class SpotifyLocalMetadataReaderTests
         await Assert.ThrowsAnyAsync<OperationCanceledException>(() => reader.TryGetArtistsAsync("Song", "Singer", cancelled.Token));
         Assert.Equal("Singer, Collaborator", await reader.TryGetArtistsAsync("Song", "Singer", default));
     }
+
+    [Fact]
+    public void NativeReaderDoesNotThrowOrCrashWhenInvoked()
+    {
+        var reader = new SpotifyLocalMetadataReader(includeTrackId: true);
+        var ex = Record.Exception(() => reader.WarmUp());
+        Assert.Null(ex);
+    }
 }

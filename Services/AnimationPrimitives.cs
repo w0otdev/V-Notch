@@ -258,7 +258,7 @@ internal static class AnimationPrimitives
     #endregion
 }
 
-internal sealed class CubicBezierEase : EasingFunctionBase
+internal sealed partial class CubicBezierEase : EasingFunctionBase
 {
     public double X1 { get; set; }
     public double Y1 { get; set; }
@@ -277,49 +277,39 @@ internal sealed class CubicBezierEase : EasingFunctionBase
     public static CubicBezierEase FromEaseOutCurve(double x1, double y1, double x2, double y2) =>
         new(1 - x2, 1 - y2, 1 - x1, 1 - y1) { EasingMode = EasingMode.EaseOut };
 
+    private const int Intervals = 2048;
+    private static readonly System.Collections.Concurrent.ConcurrentDictionary<(double, double), double[]> Samples = new();
+    private sealed record Curve((double, double, double, double) Points, double[] X, double[] Y);
+    private volatile Curve? _curve;
+
+    [System.Runtime.InteropServices.LibraryImport("VNotch.Native.dll")]
+    private static partial void vn_bezier_samples(double p1, double p2, Span<double> values, int intervals);
+
+    private static double[] SamplesFor(double p1, double p2) => Samples.GetOrAdd((p1, p2), static pair =>
+    {
+        var samples = new double[Intervals + 1];
+        vn_bezier_samples(pair.Item1, pair.Item2, samples, Intervals);
+        return samples;
+    });
+
     protected override double EaseInCore(double normalizedTime)
     {
-        double x = Math.Clamp(normalizedTime, 0.0, 1.0);
-        double t = SolveForT(x);
-        return Sample(t, Y1, Y2);
-    }
-
-    private double SolveForT(double x)
-    {
-        if (x <= 0 || x >= 1) return x;
-        double lower = 0, upper = 1;
-        double t = x;
-        for (int i = 0; i < 8; i++)
+        if (normalizedTime <= 0 || normalizedTime >= 1) return Math.Clamp(normalizedTime, 0, 1);
+        if (double.IsNaN(normalizedTime)) return double.NaN;
+        var points = (X1, Y1, X2, Y2);
+        var curve = _curve;
+        if (curve == null || curve.Points != points)
         {
-            double error = Sample(t, X1, X2) - x;
-            if (Math.Abs(error) < 1e-8) return t;
-            if (error < 0) lower = t; else upper = t;
-            double slope = Derivative(t, X1, X2);
-            double next = Math.Abs(slope) > 1e-8 ? t - error / slope : double.NaN;
-            t = next > lower && next < upper ? next : (lower + upper) / 2;
+            // Frozen easing functions can be evaluated from more than one dispatcher.
+            curve = new Curve(points, SamplesFor(X1, X2), SamplesFor(Y1, Y2));
+            _curve = curve;
         }
-        // Flat tangents can defeat Newton's method. A bounded bisection keeps
-        // progress continuous rather than clamping an escaped estimate.
-        for (int i = 0; i < 24; i++)
-        {
-            double error = Sample(t, X1, X2) - x;
-            if (Math.Abs(error) < 1e-8) return t;
-            if (error < 0) lower = t; else upper = t;
-            t = (lower + upper) / 2;
-        }
-        return t;
-    }
 
-    private static double Sample(double t, double p1, double p2)
-    {
-        double mt = 1 - t;
-        return (3 * mt * mt * t * p1) + (3 * mt * t * t * p2) + (t * t * t);
-    }
-
-    private static double Derivative(double t, double p1, double p2)
-    {
-        double mt = 1 - t;
-        return (3 * mt * mt * p1) + (6 * mt * t * (p2 - p1)) + (3 * t * t * (1 - p2));
+        int index = Array.BinarySearch(curve.X, normalizedTime);
+        if (index >= 0) return curve.Y[index];
+        int hi = ~index, lo = hi - 1;
+        double mix = (normalizedTime - curve.X[lo]) / (curve.X[hi] - curve.X[lo]);
+        return curve.Y[lo] + mix * (curve.Y[hi] - curve.Y[lo]);
     }
 
     protected override Freezable CreateInstanceCore() => new CubicBezierEase(X1, Y1, X2, Y2);

@@ -31,13 +31,13 @@ inline bool string_end(Bytes input, size_t& pos) noexcept {
     }
     return false;
 }
-inline bool skip(Bytes input, size_t& pos, int depth = 0) noexcept {
+inline bool skip(Bytes input, size_t& pos, int depth = 0, int max_depth = 32) noexcept {
     whitespace(input, pos);
     if (pos == input.size()) return false;
     const char type = input[pos];
     if (type == '"') return string_end(input, pos);
     if (type == '{' || type == '[') {
-        if (depth >= 32) return false;
+        if (depth >= max_depth) return false;
         const char end = type == '{' ? '}' : ']'; ++pos; whitespace(input, pos);
         if (pos < input.size() && input[pos] == end) { ++pos; return true; }
         while (pos < input.size()) {
@@ -45,7 +45,7 @@ inline bool skip(Bytes input, size_t& pos, int depth = 0) noexcept {
                 if (!string_end(input, pos)) return false;
                 whitespace(input, pos); if (pos == input.size() || input[pos++] != ':') return false;
             }
-            if (!skip(input, pos, depth + 1)) return false;
+            if (!skip(input, pos, depth + 1, max_depth)) return false;
             whitespace(input, pos);
             if (pos == input.size()) return false;
             if (input[pos] == end) { ++pos; return true; }
@@ -78,6 +78,7 @@ inline bool skip(Bytes input, size_t& pos, int depth = 0) noexcept {
 }
 struct Value {
     Bytes bytes;
+    int max_depth = 32;
     bool is(char type) const noexcept { return !bytes.empty() && bytes.front() == type; }
     std::u16string text() const {
         if (!is('"')) return {};
@@ -135,8 +136,8 @@ struct Value {
                 key = bytes.substr(begin, pos - begin); whitespace(bytes, pos); ++pos;
             }
             whitespace(bytes, pos); const auto begin = pos;
-            if (!skip(bytes, pos)) return;
-            if (!action(Value{key}, Value{bytes.substr(begin, pos - begin)})) return;
+            if (!skip(bytes, pos, 0, max_depth)) return;
+            if (!action(Value{key, max_depth}, Value{bytes.substr(begin, pos - begin), max_depth})) return;
             whitespace(bytes, pos);
             if (pos < bytes.size() && bytes[pos] == ',') { ++pos; whitespace(bytes, pos); }
         }
@@ -163,14 +164,14 @@ struct Value {
         return error == std::errc{} && end == bytes.data() + bytes.size() ? value : fallback;
     }
 };
-inline Value parse(Bytes input) {
+inline Value parse(Bytes input, int max_depth = 32) {
     if (input.starts_with("\xEF\xBB\xBF")) input.remove_prefix(3);
     if (input.empty() || !MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, input.data(), static_cast<int>(input.size()), nullptr, 0))
         throw std::invalid_argument("Invalid UTF-8");
     size_t begin = 0; whitespace(input, begin); size_t end = begin;
-    if (!skip(input, end)) throw std::invalid_argument("Invalid JSON");
+    if (!skip(input, end, 0, max_depth)) throw std::invalid_argument("Invalid JSON");
     const auto value = input.substr(begin, end - begin); whitespace(input, end);
     if (end != input.size()) throw std::invalid_argument("Trailing JSON");
-    return {value};
+    return {value, max_depth};
 }
 }

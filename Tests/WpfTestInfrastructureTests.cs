@@ -1,3 +1,5 @@
+using System.Runtime.InteropServices.WindowsRuntime;
+using Windows.Graphics.Imaging;
 using System.Windows;
 using System.Windows.Interop;
 using System.Windows.Media;
@@ -38,6 +40,29 @@ public sealed class WpfTestInfrastructureTests
         cancellation.Cancel();
         await Assert.ThrowsAnyAsync<OperationCanceledException>(() => waiting);
         await Dispatcher.CurrentDispatcher.InvokeAsync(() => { });
+    });
+
+    [DesktopFact]
+    [Trait("Category", "DesktopIntegration")]
+    public void WebcamSwapsOnlyCompletedSurfaces() => SharedStaTestRunner.RunAsync(async cancellationToken =>
+    {
+        using var source = new HwndSource(new HwndSourceParameters("CameraSwapTest") { Width = 2, Height = 2, WindowStyle = 0 });
+        using var presenter = new D3DImageFramePresenter(Dispatcher.CurrentDispatcher, source.Handle, 2, 2, webcam: true);
+        presenter.PrepareResources();
+        presenter.BeginSession(7);
+        int presented = 0;
+        presenter.FramePresented += _ => presented++;
+        for (int frame = 1; frame <= 3; frame++)
+        {
+            byte[] pixels = Enumerable.Range(0, 4).SelectMany(_ => new byte[] { (byte)(frame * 20), 30, 40, 255 }).ToArray();
+            using var bitmap = SoftwareBitmap.CreateCopyFromBuffer(pixels.AsBuffer(), BitmapPixelFormat.Bgra8, 2, 2, BitmapAlphaMode.Ignore);
+            Assert.True(await Task.Run(() => presenter.UploadWebcam(bitmap, 7), cancellationToken));
+            await WpfFrameWaiter.UntilAsync(() => presented == frame, "webcam surface swap", cancellationToken);
+            var snapshot = ImageSourceSnapshot.Capture(presenter.ImageSource, 2, 2);
+            byte[] output = new byte[16];
+            snapshot.CopyPixels(output, 8, 0);
+            Assert.Equal(pixels, output);
+        }
     });
 
     [Fact]

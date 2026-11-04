@@ -1,4 +1,3 @@
-using System.Collections.Concurrent;
 using System.Reflection;
 using System.Windows;
 using System.Windows.Controls;
@@ -67,11 +66,12 @@ public sealed class ClipboardTrayLoadTests
                 await Dispatcher.Yield(DispatcherPriority.ApplicationIdle);
                 Field<UiScheduledTimer>(tray, "_searchTimer").Stop();
                 SetField(tray, "_queryDirty", false);
-                var entries = Field<ConcurrentDictionary<Guid, ClipboardEntry>>(store, "_entries");
+                var entries = Field<NativeClipboardEntryIndex>(store, "_entries");
+                var entriesLock = Field<object>(store, "_entriesLock");
                 for (int i = 0; i < 3; i++)
                 {
                     var entry = new ClipboardEntry { Kind = ClipboardKind.File, Title = $"Latest {i}.pdf" };
-                    entries[entry.Id] = entry;
+                    lock (entriesLock) entries[entry.Id] = entry;
                 }
                 int queued = CountBurst(tray, 10_000);
                 Assert.Equal(1, queued);
@@ -84,7 +84,7 @@ public sealed class ClipboardTrayLoadTests
                 Assert.Equal(3, Field<Dictionary<string, int>>(tray, "_categoryCounts")["Files"]);
 
                 var next = new ClipboardEntry { Kind = ClipboardKind.File, Title = "After the burst.pdf" };
-                entries[next.Id] = next;
+                lock (entriesLock) entries[next.Id] = next;
                 Assert.Equal(1, CountBurst(tray, 1));
                 await Dispatcher.Yield(DispatcherPriority.ApplicationIdle);
                 Field<UiScheduledTimer>(tray, "_searchTimer").Stop();

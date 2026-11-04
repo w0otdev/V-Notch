@@ -41,7 +41,6 @@ is implied. Verify **each file** against its original source URL, creator, preci
 | Microsoft.ML.OnnxRuntime.DirectML 1.24.4 | MIT | <https://github.com/microsoft/onnxruntime> |
 | Microsoft.AI.DirectML 1.15.4 | Microsoft Software License; bundled terms in `licenses/DirectML-1.15.4.txt` | <https://github.com/microsoft/DirectML> |
 | Microsoft.Web.WebView2 1.0.4078.44 | Microsoft Software License | <https://github.com/MicrosoftEdge/WebView2Feedback> |
-| System.Data.OleDb 8.0.1 | MIT | <https://github.com/dotnet/runtime> |
 | Vortice.Direct3D9 3.8.3 | MIT | <https://github.com/amerkoleci/Vortice.Windows> |
 | Vortice.DXGI 3.8.3 | MIT | <https://github.com/amerkoleci/Vortice.Windows> |
 

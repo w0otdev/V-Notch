@@ -1059,6 +1059,8 @@
   "tooltip.ultimateGpu": "Использовать производительную GPU 0 для Liquid Glass с лимитом FPS",
   "settings.lyrics.provider.lrclib.desc": "Построчная синхронизация текста с быстрым поиском по базе сообщества",
   "settings.lyrics.provider.lrcmux.desc": "Пословная караоке-синхронизация из нескольких источников",
-  "settings.lyrics.provider.amll.desc": "Синхронизация слов и слогов от сообщества по ID трека Spotify; без ключа API",
-  "settings.lyrics.provider.netease.desc": "Пословная и построчная синхронизация из каталога NetEase Cloud Music"
+  "settings.lyrics.provider.amll.desc": "Синхронизация слов и слогов от сообщества по ID трека Spotify",
+  "settings.lyrics.provider.netease.desc": "Пословная и построчная синхронизация из каталога NetEase Cloud Music",
+  "settings.lyrics.provider.kugou.desc": "Пословная KRC и построчная синхронизация из каталога Kugou Music",
+  "settings.lyrics.provider.qqmusic.desc": "Построчная синхронизация текста из каталога QQ Music"
 }

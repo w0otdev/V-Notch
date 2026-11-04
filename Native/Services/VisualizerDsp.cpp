@@ -843,7 +843,14 @@ VN_EXPORT int32_t __stdcall vn_visualizer_prepare_draw_heights(
 
     const double smoothing_factor = std::pow(0.56, last_dt_ms / vz::kReferenceFrameMs);
     const double small_bar_smoothing_delta = std::pow(0.58, last_dt_ms / vz::kReferenceFrameMs) - smoothing_factor;
-    for (int32_t i = 0; i < vz::kBarCount; ++i) {
+    int32_t first_scalar = 0;
+    if (vnotch::cpu::SupportsX64V3()) {
+        static_assert(vz::kBarCount >= 4);
+        vnotch::kernels::avx2::SmoothFourBars(smoothing_factor, small_bar_smoothing_delta,
+            vz::kSmallBarHeightThreshold, current_heights, io_smoothed_heights, out_sorted_heights);
+        first_scalar = 4;
+    }
+    for (int32_t i = first_scalar; i < vz::kBarCount; ++i) {
         double target_smoothing = smoothing_factor;
         const double ref_height = std::max(io_smoothed_heights[i], current_heights[i]);
         if (ref_height < vz::kSmallBarHeightThreshold) {
@@ -874,6 +881,16 @@ VN_EXPORT int32_t __stdcall vn_visualizer_prepare_draw_heights(
         out_draw_heights[i] = (io_smoothed_heights[i] * (1.0 - bias)) + (out_sorted_heights[i] * bias);
     }
     return VN_OK;
+}
+
+// Advance all bars and their draw smoothing once per render tick.
+VN_EXPORT int32_t vn_visualizer_bar_frame(int32_t state, double dt, double total_sec,
+    uint8_t fresh, double beat, const float* levels, const uint32_t* no_audio, const uint32_t* floor,
+    double* opacity, double* heights, double* smoothed, double* sorted, double* draw, uint8_t* settled) noexcept {
+    int32_t rc = vn_visualizer_update_animation(state, dt, total_sec, fresh, beat,
+        levels, no_audio, floor, opacity, heights, settled);
+    if (rc != VN_OK) return rc;
+    return vn_visualizer_prepare_draw_heights(dt * 1000.0, heights, smoothed, sorted, draw);
 }
 
 } // extern "C"

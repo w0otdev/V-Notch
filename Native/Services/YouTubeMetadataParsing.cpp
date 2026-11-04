@@ -231,13 +231,24 @@ void json3(Json root, JsonResponse& output) {
 // 4 Data API video/duration, 5 Innertube caption tracks, 6 JSON3 cues.
 VN_EXPORT int32_t vn_youtube_parse_utf8(const uint8_t* bytes, int32_t length, int32_t kind, const char16_t* expected, int32_t expected_length,
     int64_t* handle, const JsonRow** rows, int32_t* count, const char16_t** characters, uint8_t* has_collection) noexcept {
-    if (!bytes || length <= 0 || length > 2 * 1024 * 1024 || kind < 0 || kind > 6 || expected_length < 0 || (!expected && expected_length) ||
+    if (!bytes || length <= 0 || length > 2 * 1024 * 1024 || kind < 0 || kind > 11 || expected_length < 0 || (!expected && expected_length) ||
         !handle || !rows || !count || !characters || !has_collection) return VN_ERR_INVALID_ARG;
     *handle = 0; *rows = nullptr; *count = 0; *characters = nullptr; *has_collection = 0;
     try {
         const auto root = vnotch::json::parse({reinterpret_cast<const char*>(bytes), static_cast<size_t>(length)});
         auto result = std::make_unique<JsonResponse>();
-        if (kind == 5) captions(root, *result);
+        if (kind == 7) {
+            root.get("data").each([&](Json, Json item) {
+                auto id = item.get("id").integer();
+                if (id > 0) result->append({item.get("title").text(), item.get("album").get("title").text(), {}, {}, {}}, id);
+                return true;
+            });
+        }
+        else if (kind == 8) { if (root.get("nolyric").bytes != "true") result->append({root.get("yrc").get("lyric").text(), root.get("lrc").get("lyric").text(), {}, {}, {}}); }
+        else if (kind == 9) result->append({root.get("lyric").text(), {}, {}, {}, {}});
+        else if (kind == 10) result->append({root.get("content").text(), {}, {}, {}, {}});
+        else if (kind == 11) { if (root.get("lines").is('[')) result->append({root.get("meta").get("level").text(), root.get("meta").get("source").get("name").text(), {}, {}, {}}); }
+        else if (kind == 5) captions(root, *result);
         else if (kind == 6) json3(root, *result);
         else metadata(root, kind, {expected ? expected : u"", static_cast<size_t>(expected_length)}, *result);
         *rows = result->rows.data(); *count = static_cast<int32_t>(result->rows.size());

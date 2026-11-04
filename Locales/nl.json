@@ -1059,6 +1059,8 @@
   "tooltip.ultimateGpu": "Gebruik krachtige GPU 0 voor Liquid Glass begrensd op doel-FPS",
   "settings.lyrics.provider.lrclib.desc": "Regel voor regel gesynchroniseerde songteksten met snelle community-zoekopdracht",
   "settings.lyrics.provider.lrcmux.desc": "Woord-voor-woord karaoketiming verzameld uit meerdere bronnen",
-  "settings.lyrics.provider.amll.desc": "Woord- en lettergreeptiming van de community via Spotify-track-ID; zonder API-sleutel",
-  "settings.lyrics.provider.netease.desc": "Per woord en regel gesynchroniseerde songteksten uit de NetEase Cloud Music-catalogus"
+  "settings.lyrics.provider.amll.desc": "Woord- en lettergreeptiming van de community via Spotify-track-ID",
+  "settings.lyrics.provider.netease.desc": "Per woord en regel gesynchroniseerde songteksten uit de NetEase Cloud Music-catalogus",
+  "settings.lyrics.provider.kugou.desc": "Per woord en regel gesynchroniseerde KRC-songteksten uit de Kugou Music-catalogus",
+  "settings.lyrics.provider.qqmusic.desc": "Regel voor regel gesynchroniseerde songteksten uit de QQ Music-catalogus"
 }

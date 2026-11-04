@@ -805,19 +805,21 @@ public:
         }
 
         const std::u16string_view trimmed = vnotch::trim_view(formatted);
-        if (trimmed.size() <= primary_artist.size() ||
-            vnotch::equals_ignore_case(trimmed, primary_artist) ||
-            !vnotch::contains_ordinal(trimmed, u", ")) {
+        if (trimmed.empty()) {
             return;
         }
 
-        // First artist before ", " must match primary_artist (normalized) unless primary_artist itself is a group in trimmed
-        size_t first_comma = trimmed.find(u", ");
-        if (first_comma != std::u16string_view::npos && !primary_has_amp) {
-            const std::u16string norm_first = vnotch::normalize_for_loose_match_impl(trimmed.substr(0, first_comma));
-            if (norm_first != norm_primary) {
-                return;
+        if (vnotch::contains_ordinal(trimmed, u", ")) {
+            // First artist before ", " must match primary_artist (normalized) unless primary_artist itself is a group in trimmed
+            size_t first_comma = trimmed.find(u", ");
+            if (first_comma != std::u16string_view::npos && !primary_has_amp) {
+                const std::u16string norm_first = vnotch::normalize_for_loose_match_impl(trimmed.substr(0, first_comma));
+                if (norm_first != norm_primary) {
+                    return;
+                }
             }
+        } else if (vnotch::normalize_for_loose_match_impl(trimmed) != norm_primary) {
+            return;
         }
 
         const int32_t copy_len = std::min(static_cast<int32_t>(trimmed.size()), out_cap);

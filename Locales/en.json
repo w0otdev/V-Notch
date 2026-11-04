@@ -1059,6 +1059,8 @@
   "tooltip.ultimateGpu": "Use high-performance GPU 0 for Liquid Glass paced to Target FPS",
   "settings.lyrics.provider.lrclib.desc": "Line-by-line synced lyrics with fast community lookup",
   "settings.lyrics.provider.lrcmux.desc": "Word-by-word karaoke timing aggregated from multiple sources",
-  "settings.lyrics.provider.amll.desc": "Community word and syllable timing by Spotify track ID; no API key",
-  "settings.lyrics.provider.netease.desc": "Word and line synced lyrics from the NetEase Cloud Music catalog"
+  "settings.lyrics.provider.amll.desc": "Community word and syllable timing by Spotify track ID",
+  "settings.lyrics.provider.netease.desc": "Word and line synced lyrics from the NetEase Cloud Music catalog",
+  "settings.lyrics.provider.kugou.desc": "Word-by-word KRC and line synced lyrics from the Kugou Music catalog",
+  "settings.lyrics.provider.qqmusic.desc": "Line-by-line synced lyrics from the QQ Music catalog"
 }

@@ -1059,6 +1059,8 @@
   "tooltip.ultimateGpu": "Usa la GPU 0 ad alte prestazioni per Liquid Glass con limite di FPS",
   "settings.lyrics.provider.lrclib.desc": "Testi sincronizzati riga per riga con ricerca rapida nella community",
   "settings.lyrics.provider.lrcmux.desc": "Sincronizzazione parola per parola in stile karaoke da più fonti",
-  "settings.lyrics.provider.amll.desc": "Tempi di parole e sillabe della comunità tramite ID Spotify; senza chiave API",
-  "settings.lyrics.provider.netease.desc": "Testi sincronizzati per parola e riga dal catalogo NetEase Cloud Music"
+  "settings.lyrics.provider.amll.desc": "Tempi di parole e sillabe della comunità tramite ID Spotify",
+  "settings.lyrics.provider.netease.desc": "Testi sincronizzati per parola e riga dal catalogo NetEase Cloud Music",
+  "settings.lyrics.provider.kugou.desc": "Testi KRC sincronizzati parola per parola e per riga dal catalogo Kugou Music",
+  "settings.lyrics.provider.qqmusic.desc": "Testi sincronizzati riga per riga dal catalogo QQ Music"
 }

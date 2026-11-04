@@ -79,7 +79,7 @@ internal static unsafe partial class VisualizerDsp
         double dt);
 
     [LibraryImport(NativeDll)]
-    private static partial int vn_visualizer_update_animation(
+    private static partial int vn_visualizer_bar_frame(
         int state,
         double dt,
         double totalSec,
@@ -90,15 +90,7 @@ internal static unsafe partial class VisualizerDsp
         uint* floorHash,
         ref double currentOpacity,
         double* currentHeights,
-        out byte isSettled);
-
-    [LibraryImport(NativeDll)]
-    private static partial int vn_visualizer_prepare_draw_heights(
-        double lastDtMs,
-        double* currentHeights,
-        double* smoothedHeights,
-        double* sortedHeights,
-        double* drawHeights);
+        double* smoothed, double* sorted, double* draw, out byte isSettled);
 
     /// <summary>Decodes one PCM or float sample; unsupported widths and out-of-range reads give 0.</summary>
     internal static float ReadSample(byte[] buffer, int offset, bool isFloat, int bitsPerSample)
@@ -186,18 +178,18 @@ internal static unsafe partial class VisualizerDsp
         uint[] noAudioHash,
         uint[] floorHash,
         ref double currentOpacity,
-        double[] currentHeights)
+        double[] currentHeights, double[] smoothed, double[] sorted, double[] draw)
     {
         if (levels == null || levels.Length < 5 ||
             noAudioHash == null || noAudioHash.Length < 5 ||
             floorHash == null || floorHash.Length < 5 ||
-            currentHeights == null || currentHeights.Length < 5)
+            currentHeights == null || currentHeights.Length < 5 || smoothed.Length < 5 || sorted.Length < 5 || draw.Length < 5)
             return true;
         fixed (float* pLevels = levels)
         fixed (uint* pNoAudio = noAudioHash, pFloor = floorHash)
-        fixed (double* pHeights = currentHeights)
+        fixed (double* pHeights = currentHeights, pSmoothed = smoothed, pSorted = sorted, pDraw = draw)
         {
-            _ = vn_visualizer_update_animation(
+            _ = vn_visualizer_bar_frame(
                 state,
                 dt,
                 totalSec,
@@ -208,24 +200,9 @@ internal static unsafe partial class VisualizerDsp
                 pFloor,
                 ref currentOpacity,
                 pHeights,
-                out byte isSettled);
+                pSmoothed, pSorted, pDraw, out byte isSettled);
             return isSettled != 0;
         }
     }
 
-    internal static void PrepareDrawHeights(
-        double lastDtMs,
-        double[] currentHeights,
-        double[] smoothedHeights,
-        double[] sortedHeights,
-        double[] drawHeights)
-    {
-        if (currentHeights == null || currentHeights.Length < 5 ||
-            smoothedHeights == null || smoothedHeights.Length < 5 ||
-            sortedHeights == null || sortedHeights.Length < 5 ||
-            drawHeights == null || drawHeights.Length < 5)
-            return;
-        fixed (double* pCurrent = currentHeights, pSmoothed = smoothedHeights, pSorted = sortedHeights, pDraw = drawHeights)
-            _ = vn_visualizer_prepare_draw_heights(lastDtMs, pCurrent, pSmoothed, pSorted, pDraw);
-    }
 }

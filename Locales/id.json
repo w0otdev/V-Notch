@@ -1059,6 +1059,8 @@
   "tooltip.ultimateGpu": "Gunakan GPU 0 berperforma tinggi untuk Liquid Glass sesuai batas Target FPS",
   "settings.lyrics.provider.lrclib.desc": "Lirik tersinkronisasi baris demi baris dengan pencarian komunitas yang cepat",
   "settings.lyrics.provider.lrcmux.desc": "Sinkronisasi kata demi kata bergaya karaoke dari berbagai sumber",
-  "settings.lyrics.provider.amll.desc": "Waktu kata dan suku kata komunitas berdasarkan ID lagu Spotify; tanpa kunci API",
-  "settings.lyrics.provider.netease.desc": "Lirik tersinkronisasi per kata dan baris dari katalog NetEase Cloud Music"
+  "settings.lyrics.provider.amll.desc": "Waktu kata dan suku kata komunitas berdasarkan ID lagu Spotify",
+  "settings.lyrics.provider.netease.desc": "Lirik tersinkronisasi per kata dan baris dari katalog NetEase Cloud Music",
+  "settings.lyrics.provider.kugou.desc": "Lirik KRC tersinkronisasi per kata dan baris dari katalog Kugou Music",
+  "settings.lyrics.provider.qqmusic.desc": "Lirik tersinkronisasi baris demi baris dari katalog QQ Music"
 }

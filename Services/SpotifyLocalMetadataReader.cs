@@ -1,7 +1,5 @@
 using System.Diagnostics;
-using System.ComponentModel;
 using System.Runtime.InteropServices;
-using System.Windows.Automation;
 
 namespace VNotch.Services;
 
@@ -10,8 +8,11 @@ namespace VNotch.Services;
 internal sealed partial class SpotifyLocalMetadataReader
 {
     [LibraryImport("VNotch.Native.dll", StringMarshalling = StringMarshalling.Utf16)]
-    private static partial int vn_spotify_read_track_link(nint window, string documentName, string title,
-        Span<char> output, int capacity, out int written);
+    private static partial int vn_spotify_read_local_track(
+        byte includeTrackId,
+        Span<char> outTitle, int titleCap, out int outTitleLen,
+        Span<char> outArtists, int artistsCap, out int outArtistsLen,
+        Span<char> outTrackUrl, int urlCap, out int outUrlLen);
 
     internal sealed record Track(string Title, string Artists, string? TrackId = null);
     private static readonly TimeSpan ReadBudget = TimeSpan.FromMilliseconds(180);
@@ -19,8 +20,6 @@ internal sealed partial class SpotifyLocalMetadataReader
     private readonly Func<Track?> _read;
     private Task<Track?>? _pending;
     private Track? _cached;
-    private AutomationElement? _document;
-    private nint _window;
     private readonly bool _includeTrackId;
 
     internal SpotifyLocalMetadataReader(bool includeTrackId = false)
@@ -63,7 +62,7 @@ internal sealed partial class SpotifyLocalMetadataReader
 
             // SMTC and the Spotify title can notify in either order. Give the
             // local title a few frames to catch up before falling back online.
-            await Task.Delay(15, ct).ConfigureAwait(false);
+            await Task.Delay(8, ct).ConfigureAwait(false);
         } while (Stopwatch.GetElapsedTime(started) < ReadBudget);
         return null;
     }
@@ -101,64 +100,26 @@ internal sealed partial class SpotifyLocalMetadataReader
             track.Artists.StartsWith(primaryArtist.Trim() + ", ", StringComparison.OrdinalIgnoreCase) ||
             primaryArtist.Trim().StartsWith(track.Artists + ", ", StringComparison.OrdinalIgnoreCase));
 
-    private Track? ReadDocumentTrack(AutomationElement document, nint window)
-    {
-        string documentName = document.Current.Name;
-        var track = ParseDocumentTitle(documentName);
-        if (track == null || !_includeTrackId) return track;
-        // Read only links whose accessible name is the current song title. Never
-        // use the first track link in a playlist or invoke/copy anything in Spotify.
-        Span<char> url = stackalloc char[2048];
-        string? id = vn_spotify_read_track_link(window, documentName, track.Title, url, url.Length, out int written) == 0 &&
-                     written > 0 && written <= url.Length
-            ? LyricsService.NormalizeSpotifyTrackId(new string(url[..written])) : null;
-        // Discard a snapshot if playback changed while the accessibility tree was read.
-        return ParseDocumentTitle(document.Current.Name) == track ? track with { TrackId = id } : null;
-    }
-
     private Track? ReadCurrentTrack()
     {
-        if (_document != null)
-        {
-            try
-            {
-                var current = ReadDocumentTrack(_document, _window);
-                if (current != null) return current;
-            }
-            catch (ElementNotAvailableException) { }
-            catch (InvalidOperationException) { }
-            catch (COMException) { }
-            _document = null;
-        }
+        Span<char> titleBuf = stackalloc char[512];
+        Span<char> artistsBuf = stackalloc char[512];
+        Span<char> urlBuf = stackalloc char[2048];
 
-        var processes = Process.GetProcessesByName("Spotify");
-        try
-        {
-            foreach (var process in processes)
-            {
-                try
-                {
-                    nint window = process.MainWindowHandle;
-                    if (window == 0) continue;
-                    var root = AutomationElement.FromHandle(window);
-                    var document = root?.FindFirst(TreeScope.Descendants,
-                        new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.Document));
-                    var track = document == null ? null : ReadDocumentTrack(document, window);
-                    if (track == null) continue;
-                    _document = document;
-                    _window = window;
-                    return track;
-                }
-                catch (ElementNotAvailableException) { continue; }
-                catch (InvalidOperationException) { continue; }
-                catch (Win32Exception) { continue; }
-                catch (COMException) { continue; }
-            }
-        }
-        finally
-        {
-            foreach (var process in processes) process.Dispose();
-        }
-        return null;
+        int rc = vn_spotify_read_local_track(
+            _includeTrackId ? (byte)1 : (byte)0,
+            titleBuf, titleBuf.Length, out int titleLen,
+            artistsBuf, artistsBuf.Length, out int artistsLen,
+            urlBuf, urlBuf.Length, out int urlLen);
+
+        if (rc != 0 || titleLen <= 0 || artistsLen <= 0)
+            return null;
+
+        string title = new(titleBuf[..Math.Min(titleLen, titleBuf.Length)]);
+        string artists = new(artistsBuf[..Math.Min(artistsLen, artistsBuf.Length)]);
+        string? trackId = _includeTrackId && urlLen > 0 && urlLen <= urlBuf.Length
+            ? LyricsService.NormalizeSpotifyTrackId(new string(urlBuf[..urlLen]))
+            : null;
+        return new(title, artists, trackId);
     }
 }

@@ -42,7 +42,72 @@ public partial class MainWindow
 
     private void InitializeCameraController()
     {
+        _camera.PresentNativeFrame = PresentNativeCameraFrame;
         _camera.FrameAvailable += OnCameraFrameAvailable;
+    }
+
+    private volatile D3DImageFramePresenter? _cameraPresenter;
+    private int _cameraSetupQueued;
+    private volatile int _cameraFallbackToken = -1;
+
+    private bool PresentNativeCameraFrame(SoftwareBitmap bitmap, int token)
+    {
+        if (_cameraFallbackToken == token) return false;
+        int width = bitmap.PixelWidth, height = bitmap.PixelHeight;
+        var presenter = _cameraPresenter;
+        if (presenter?.FitsWebcam(width, height, token) == true)
+            return presenter.UploadWebcam(bitmap, token);
+
+        if (System.Threading.Interlocked.Exchange(ref _cameraSetupQueued, 1) == 0)
+        {
+            Dispatcher.BeginInvoke(() =>
+            {
+                try
+                {
+                    if (!_camera.IsActive || _camera.FadeToken != token) return;
+                    DisposeCameraPresenter();
+                    var next = new D3DImageFramePresenter(Dispatcher,
+                        new System.Windows.Interop.WindowInteropHelper(this).Handle, width, height, webcam: true);
+                    try
+                    {
+                        next.PrepareResources();
+                        next.BeginSession(token);
+                        next.Failed += ex =>
+                        {
+                            if (_cameraPresenter != next) return;
+                            _cameraFallbackToken = token;
+                            RuntimeLog.Error(CameraLogTag, ex, "Camera surface failed");
+                        };
+                        next.FramePresented += _ =>
+                        {
+                            if (!_camera.IsActive || token != _camera.FadeToken || _cameraPresenter != next) return;
+                            if (CameraPreviewImage.Source != next.ImageSource)
+                            {
+                                CameraPreviewImage.Source = next.ImageSource;
+                                ApplyAppearanceOpacity();
+                            }
+                            if (_cameraPreviewMorphPending) AnimateCameraPreviewMorphIn();
+                        };
+                        _cameraPresenter = next;
+                    }
+                    catch { next.Dispose(); throw; }
+                }
+                catch (Exception ex)
+                {
+                    _cameraFallbackToken = token;
+                    RuntimeLog.Error(CameraLogTag, ex, "Camera surface initialization failed");
+                }
+                finally { System.Threading.Volatile.Write(ref _cameraSetupQueued, 0); }
+            });
+        }
+        return true;
+    }
+
+    private void DisposeCameraPresenter()
+    {
+        var presenter = _cameraPresenter;
+        _cameraPresenter = null;
+        presenter?.Dispose();
     }
 
     private readonly System.Collections.Generic.Dictionary<UIElement, Brush?> _cameraAppearanceMasks = new();
@@ -240,6 +305,7 @@ public partial class MainWindow
     private void DetachCameraHardwareForExit()
     {
         _cameraPreviewMorphPending = false;
+        _cameraPresenter?.SuspendPresentation();
         _cameraWriteableBitmap = null;
         _cameraBitmapAllocW = 0;
         _cameraBitmapAllocH = 0;
@@ -267,6 +333,7 @@ public partial class MainWindow
 
         CameraPreviewImage.Opacity = 0;
         CameraPreviewImage.Source = null;
+        DisposeCameraPresenter();
         ApplyAppearanceOpacity();
         CameraPreviewScale.ScaleX = 1.06;
         CameraPreviewScale.ScaleY = 1.06;
@@ -285,6 +352,7 @@ public partial class MainWindow
     {
         CancelCameraPreviewMorphOut();
         _cameraPreviewMorphPending = false;
+        _cameraPresenter?.SuspendPresentation();
         _cameraWriteableBitmap = null;
         _cameraBitmapAllocW = 0;
         _cameraBitmapAllocH = 0;
@@ -299,6 +367,7 @@ public partial class MainWindow
 
         CameraPreviewImage.Opacity = 0;
         CameraPreviewImage.Source = null;
+        DisposeCameraPresenter();
         ApplyAppearanceOpacity();
         CameraPreviewScale.ScaleX = 1.06;
         CameraPreviewScale.ScaleY = 1.06;
@@ -424,6 +493,7 @@ public partial class MainWindow
         CameraPreviewBlur.Radius = _settings.EnableBlurEffects ? 16.0 : 0.0;
         CameraOverlay.Opacity = 1;
         CameraPreviewImage.Source = null;
+        DisposeCameraPresenter();
         ApplyAppearanceOpacity();
         _cameraWriteableBitmap = null;
     }
@@ -446,6 +516,7 @@ public partial class MainWindow
             _cameraBitmapAllocW = 0;
             _cameraBitmapAllocH = 0;
 
+            _cameraPresenter?.SuspendPresentation();
             AnimateCameraPreviewMorphOut(fadeToken);
         }
         catch (Exception ex)
