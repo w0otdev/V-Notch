@@ -45,7 +45,7 @@ public partial class WhiteNoiseStrip : UserControl
         BuildControls();
         VolumeBar.ToolTip = Loc.Get("whitenoise.volume");
         VolumeBar.SizeChanged += (_, _) => UpdateVolumeFill(false);
-        WhiteNoiseService.StateChanged += Refresh;
+
         Unloaded += (_, _) => { WhiteNoiseService.StateChanged -= Refresh; Loc.LanguageChanged -= Refresh; };
         Loaded += (_, _) =>
         {

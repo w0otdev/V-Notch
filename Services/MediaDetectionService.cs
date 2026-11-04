@@ -234,6 +234,7 @@ public sealed partial class MediaDetectionService : IMediaDetectionService, IAsy
     private string _stableSource = "";
     private string _stableArtist = "";
     private string _stableSourceTrackIdentity = "";
+    private const int MaxSpotifyArtistCacheEntries = 512;
     private readonly ConcurrentDictionary<string, string> _spotifyArtistCache = new(StringComparer.OrdinalIgnoreCase);
 
     public MediaDetectionService(
@@ -2872,6 +2873,12 @@ public sealed partial class MediaDetectionService : IMediaDetectionService, IAsy
 
     private void StoreSpotifyArtistCache(string track, string primaryArtist, string album, TimeSpan duration, string enriched)
     {
+        // shortcut: full clear at 512 entries (~85 tracks), upgrade to ring buffer/LRU if cache eviction causes re-lookups
+        if (_spotifyArtistCache.Count >= MaxSpotifyArtistCacheEntries)
+        {
+            _spotifyArtistCache.Clear();
+        }
+
         _spotifyArtistCache[BuildSpotifyArtistCacheKey(track, primaryArtist, album, duration)] = enriched;
         _spotifyArtistCache[BuildSpotifyArtistCacheKey(track, primaryArtist, album, TimeSpan.Zero)] = enriched;
         _spotifyArtistCache[BuildSpotifyArtistTrackOnlyKey(track, primaryArtist)] = enriched;
@@ -4270,6 +4277,7 @@ public sealed partial class MediaDetectionService : IMediaDetectionService, IAsy
         _workerResourceReleaseTask = ReleaseWorkerResourcesAsync(allTasks, ctsToCancel, isDisposing);
 
         // 5. Complete the channel or drain it for a later restart.
+        _spotifyArtistCache.Clear();
         _sessionState.Clear();
         CancelAndClearThumbnailCts();
         if (isDisposing)

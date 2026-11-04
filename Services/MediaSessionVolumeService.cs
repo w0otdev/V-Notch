@@ -97,9 +97,14 @@ public sealed partial class MediaSessionVolumeService : IDisposable
                 _cachedProcessSourceAppId = "";
                 _processCacheVersion++;
             }
-            if (_cachedSimpleVolume != null &&
-                string.Equals(sourceAppId, _cachedVolumeSourceAppId, StringComparison.OrdinalIgnoreCase) &&
-                (_utcNow() - _cachedVolumeSessionAtUtc).TotalMilliseconds < SessionCacheLifetimeMs)
+            else if (_cachedSimpleVolume != null &&
+                (!string.Equals(sourceAppId, _cachedVolumeSourceAppId, StringComparison.OrdinalIgnoreCase) ||
+                 (_utcNow() - _cachedVolumeSessionAtUtc).TotalMilliseconds >= SessionCacheLifetimeMs))
+            {
+                InvalidateVolumeSessionCacheLocked();
+            }
+
+            if (_cachedSimpleVolume != null)
             {
                 try
                 {
@@ -122,16 +127,24 @@ public sealed partial class MediaSessionVolumeService : IDisposable
             lock (_volumeCacheLock)
             {
                 InvalidateVolumeSessionCacheLocked();
-                _cachedSimpleVolume = session.SimpleAudioVolume;
-                _cachedVolumeSourceAppId = sourceAppId;
-                _cachedVolumeSessionAtUtc = _utcNow();
-
-                _cachedSimpleVolume.Volume = target;
-                if (target > 0.001f && _cachedSimpleVolume.Mute)
+                var simpleVolume = session.SimpleAudioVolume;
+                try
                 {
-                    _cachedSimpleVolume.Mute = false;
+                    simpleVolume.Volume = target;
+                    if (target > 0.001f && simpleVolume.Mute)
+                    {
+                        simpleVolume.Mute = false;
+                    }
+                    _cachedSimpleVolume = simpleVolume;
+                    _cachedVolumeSourceAppId = sourceAppId;
+                    _cachedVolumeSessionAtUtc = _utcNow();
+                    return true;
                 }
-                return true;
+                catch
+                {
+                    try { simpleVolume.Dispose(); } catch { }
+                    throw;
+                }
             }
         });
     }

@@ -286,76 +286,99 @@ VN_EXPORT int32_t __stdcall vn_spotify_read_local_track(
     *out_url_len = 0;
 
     try {
-        vnotch::ComScope com;
+        vnotch::com::EnsureMta();
         static std::mutex s_gate;
         static Ptr<IUIAutomation> s_api;
         static Ptr<IUIAutomationCondition> s_doc_cond;
         static Ptr<IUIAutomationCacheRequest> s_link_cache;
-        static Ptr<IUIAutomationElement> s_cached_doc;
-        static HWND s_cached_hwnd = nullptr;
 
         std::lock_guard lock(s_gate);
-        if (!s_api) {
+        auto reset_automation = [&]() noexcept {
+            s_link_cache.Reset();
+            s_doc_cond.Reset();
+            s_api.Reset();
+        };
+        auto ensure_automation = [&]() noexcept -> bool {
+            if (s_api && s_doc_cond && s_link_cache) return true;
+            reset_automation();
             if (FAILED(CoCreateInstance(CLSID_CUIAutomation, nullptr, CLSCTX_INPROC_SERVER, IID_PPV_ARGS(s_api.GetAddressOf()))) || !s_api) {
-                return VN_ERR_FAIL;
+                reset_automation();
+                return false;
             }
             Variant doc_type;
             doc_type.value.vt = VT_I4;
             doc_type.value.lVal = UIA_DocumentControlTypeId;
             if (FAILED(s_api->CreatePropertyCondition(UIA_ControlTypePropertyId, doc_type.value, s_doc_cond.GetAddressOf())) || !s_doc_cond) {
-                s_api.Reset();
-                return VN_ERR_FAIL;
+                reset_automation();
+                return false;
             }
-            if (FAILED(s_api->CreateCacheRequest(s_link_cache.GetAddressOf())) || !s_link_cache) {
-                s_doc_cond.Reset();
-                s_api.Reset();
-                return VN_ERR_FAIL;
+            if (FAILED(s_api->CreateCacheRequest(s_link_cache.GetAddressOf())) || !s_link_cache ||
+                FAILED(s_link_cache->put_TreeScope(TreeScope_Element)) ||
+                FAILED(s_link_cache->AddProperty(UIA_NamePropertyId)) ||
+                FAILED(s_link_cache->AddProperty(UIA_ValueValuePropertyId)) ||
+                FAILED(s_link_cache->AddProperty(UIA_LegacyIAccessibleValuePropertyId))) {
+                reset_automation();
+                return false;
             }
-            s_link_cache->put_TreeScope(TreeScope_Element);
-            s_link_cache->AddProperty(UIA_ValueValuePropertyId);
-            s_link_cache->AddProperty(UIA_LegacyIAccessibleValuePropertyId);
-        }
+            return true;
+        };
+        auto is_stale_com_error = [](HRESULT hr) noexcept -> bool {
+            return hr == RPC_E_DISCONNECTED ||
+                   hr == CO_E_OBJNOTCONNECTED ||
+                   hr == CO_E_NOTINITIALIZED ||
+                   hr == RPC_E_SERVER_DIED ||
+                   hr == RPC_E_SERVER_DIED_DNE ||
+                   hr == HRESULT_FROM_WIN32(RPC_S_SERVER_UNAVAILABLE) ||
+                   hr == HRESULT_FROM_WIN32(RPC_S_UNKNOWN_IF);
+        };
 
-        auto try_read_doc = [&](IUIAutomationElement* doc, Text& doc_name, View& title_sv, View& artists_sv) -> bool {
-            if (!doc) return false;
-            doc_name = current_name(doc);
+        if (!ensure_automation()) return VN_ERR_FAIL;
+
+        auto try_read_doc = [&](IUIAutomationElement* elem, Text& doc_name, View& title_sv, View& artists_sv) -> bool {
+            if (!elem) return false;
+            doc_name = property(elem, UIA_NamePropertyId);
+            if (doc_name.empty()) doc_name = current_name(elem);
             return parse_document_title_sv(doc_name, title_sv, artists_sv);
         };
 
+        std::vector<HWND> windows;
+        windows.reserve(4);
+        EnumWindows(enum_spotify_windows, reinterpret_cast<LPARAM>(&windows));
+
+        Ptr<IUIAutomationElement> doc;
         Text doc_name;
         View title_sv{}, artists_sv{};
-        bool found = false;
 
-        if (s_cached_doc && s_cached_hwnd && IsWindow(s_cached_hwnd)) {
-            if (try_read_doc(s_cached_doc.Get(), doc_name, title_sv, artists_sv)) {
-                found = true;
-            } else {
-                s_cached_doc.Reset();
-                s_cached_hwnd = nullptr;
+        for (HWND hwnd : windows) {
+            if (!IsWindow(hwnd)) continue;
+            Ptr<IUIAutomationElement> root, candidate_doc;
+            HRESULT hr = s_api->ElementFromHandle(hwnd, root.GetAddressOf());
+            if (is_stale_com_error(hr)) {
+                reset_automation();
+                vnotch::com::EnsureMta();
+                if (!ensure_automation()) return VN_ERR_FAIL;
+                hr = s_api->ElementFromHandle(hwnd, root.GetAddressOf());
             }
-        } else {
-            s_cached_doc.Reset();
-            s_cached_hwnd = nullptr;
-        }
+            if (FAILED(hr) || !root) continue;
 
-        if (!found) {
-            std::vector<HWND> windows;
-            windows.reserve(4);
-            EnumWindows(enum_spotify_windows, reinterpret_cast<LPARAM>(&windows));
-            for (HWND hwnd : windows) {
-                Ptr<IUIAutomationElement> root, doc;
+            hr = root->FindFirstBuildCache(TreeScope_Descendants, s_doc_cond.Get(), s_link_cache.Get(), candidate_doc.GetAddressOf());
+            if (is_stale_com_error(hr)) {
+                reset_automation();
+                vnotch::com::EnsureMta();
+                if (!ensure_automation()) return VN_ERR_FAIL;
+                root.Reset();
                 if (FAILED(s_api->ElementFromHandle(hwnd, root.GetAddressOf())) || !root) continue;
-                if (FAILED(root->FindFirst(TreeScope_Descendants, s_doc_cond.Get(), doc.GetAddressOf())) || !doc) continue;
-                if (try_read_doc(doc.Get(), doc_name, title_sv, artists_sv)) {
-                    s_cached_doc = doc;
-                    s_cached_hwnd = hwnd;
-                    found = true;
-                    break;
-                }
+                hr = root->FindFirstBuildCache(TreeScope_Descendants, s_doc_cond.Get(), s_link_cache.Get(), candidate_doc.GetAddressOf());
+            }
+            if (FAILED(hr) || !candidate_doc) continue;
+
+            if (try_read_doc(candidate_doc.Get(), doc_name, title_sv, artists_sv)) {
+                doc = std::move(candidate_doc);
+                break;
             }
         }
 
-        if (!found) return VN_OK;
+        if (!doc) return VN_OK;
 
         const int32_t t_len = std::min(static_cast<int32_t>(title_sv.size()), title_cap);
         std::copy_n(title_sv.data(), t_len, out_title);
@@ -365,7 +388,7 @@ VN_EXPORT int32_t __stdcall vn_spotify_read_local_track(
         std::copy_n(artists_sv.data(), a_len, out_artists);
         *out_artists_len = a_len;
 
-        if (include_track_id && s_cached_doc) {
+        if (include_track_id && doc) {
             Text title_str(title_sv);
             Variant ctrl_var, name_var;
             ctrl_var.value.vt = VT_I4;
@@ -378,7 +401,10 @@ VN_EXPORT int32_t __stdcall vn_spotify_read_local_track(
                     SUCCEEDED(s_api->CreatePropertyCondition(UIA_NamePropertyId, name_var.value, by_name.GetAddressOf())) &&
                     SUCCEEDED(s_api->CreateAndCondition(by_type.Get(), by_name.Get(), link_cond.GetAddressOf()))) {
                     Ptr<IUIAutomationElementArray> links;
-                    if (SUCCEEDED(s_cached_doc->FindAllBuildCache(TreeScope_Descendants, link_cond.Get(), s_link_cache.Get(), links.GetAddressOf())) && links) {
+                    const HRESULT find_hr = doc->FindAllBuildCache(TreeScope_Descendants, link_cond.Get(), s_link_cache.Get(), links.GetAddressOf());
+                    if (is_stale_com_error(find_hr)) {
+                        reset_automation();
+                    } else if (SUCCEEDED(find_hr) && links) {
                         int count = 0;
                         links->get_Length(&count);
                         if (count > 0 && count <= 100) {
@@ -399,13 +425,15 @@ VN_EXPORT int32_t __stdcall vn_spotify_read_local_track(
                                 }
                                 url = std::move(candidate);
                             }
-                            if (!ambiguous && !url.empty() && current_name(s_cached_doc.Get()) == doc_name) {
+                            if (!ambiguous && !url.empty() && current_name(doc.Get()) == doc_name) {
                                 const int32_t u_len = std::min(static_cast<int32_t>(url.size()), url_cap);
                                 std::copy_n(url.data(), u_len, out_track_url);
                                 *out_url_len = u_len;
                             }
                         }
                     }
+                } else {
+                    reset_automation();
                 }
             }
         }

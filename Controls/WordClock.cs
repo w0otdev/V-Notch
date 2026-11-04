@@ -46,7 +46,7 @@ public class WordClock : TextBlock
 
     private void UpdateRunningState()
     {
-        if (IsVisible)
+        if (IsVisible && IsLoaded)
             StartTimer();
         else
             StopTimer();

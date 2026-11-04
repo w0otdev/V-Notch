@@ -183,12 +183,22 @@ HRESULT ResolveDevice(IMMDeviceEnumerator* enumerator, const std::wstring& reque
     return enumerator->GetDefaultAudioEndpoint(eRender, eMultimedia, out.Put());
 }
 
+bool ReadId(IMMDevice* device, std::wstring& value) {
+    value.clear();
+    if (!device) return false;
+    LPWSTR id = nullptr;
+    struct Guard { LPWSTR& p; ~Guard() noexcept { if (p) CoTaskMemFree(p); } } guard{id};
+    if (FAILED(device->GetId(&id)) || !id) return false;
+    value.assign(id);
+    return true;
+}
+
 std::wstring DeviceId(IMMDevice* device) {
     LPWSTR id = nullptr;
     std::wstring result;
-    if (device && SUCCEEDED(device->GetId(&id)) && id) {
+    struct Guard { LPWSTR& p; ~Guard() noexcept { if (p) CoTaskMemFree(p); } } guard{id}; if (device && SUCCEEDED(device->GetId(&id)) && id) {
         result = id;
-        CoTaskMemFree(id);
+
     }
     return result;
 }

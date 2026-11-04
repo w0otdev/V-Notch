@@ -55,12 +55,12 @@ public partial class DotLoadingIndicator : UserControl
         _motion.Children.Add(rotation);
         Loaded += (_, _) =>
         {
-            AnimationConfig.ReduceMotionChanged += RefreshMotion;
+            AnimationConfig.ReduceMotionChanged -= OnReduceMotionChanged; AnimationConfig.ReduceMotionChanged += OnReduceMotionChanged;
             RefreshMotion();
         };
         Unloaded += (_, _) =>
         {
-            AnimationConfig.ReduceMotionChanged -= RefreshMotion;
+            AnimationConfig.ReduceMotionChanged -= OnReduceMotionChanged;
             StopMotion();
         };
         IsVisibleChanged += (_, _) => RefreshMotion();
@@ -79,6 +79,7 @@ public partial class DotLoadingIndicator : UserControl
         _motion.Children.Add(wave);
     }
 
+    private void OnReduceMotionChanged() => RefreshMotion();
     private void RefreshMotion()
     {
         bool animate = IsActive && IsLoaded && IsVisible && !AnimationConfig.ReduceMotion && SystemParameters.ClientAreaAnimation;

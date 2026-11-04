@@ -1119,7 +1119,10 @@ public partial class SettingsWindow : Window
                 {
                     timer.Stop();
                     timer.Dispose();
-                    button.Tag = null;
+                    if (ReferenceEquals(button.Tag, timer))
+                    {
+                        button.Tag = null;
+                    }
 
                     var revertFadeOut = new DoubleAnimation(button.Opacity, 0.0, TimeSpan.FromMilliseconds(140)) { EasingFunction = ease };
 
@@ -1135,6 +1138,11 @@ public partial class SettingsWindow : Window
                     button.BeginAnimation(OpacityProperty, revertFadeOut);
                 };
 
+                if (button.Tag is UiScheduledTimer activeTimer)
+                {
+                    activeTimer.Stop();
+                    activeTimer.Dispose();
+                }
                 button.Tag = timer;
                 timer.Start();
             };

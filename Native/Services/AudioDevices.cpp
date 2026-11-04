@@ -48,19 +48,30 @@ std::wstring ReadFriendlyName(IMMDevice* device) {
     if (FAILED(device->OpenPropertyStore(STGM_READ, store.Put()))) return {};
     PROPVARIANT value;
     PropVariantInit(&value);
+    struct Guard { PROPVARIANT* p; ~Guard() noexcept { PropVariantClear(p); } } guard{&value};
     std::wstring name;
     if (SUCCEEDED(store.ptr->GetValue(PKEY_Device_FriendlyName, &value)) && value.vt == VT_LPWSTR && value.pwszVal)
         name = value.pwszVal;
-    PropVariantClear(&value);
+
     return name;
+}
+
+bool ReadId(IMMDevice* device, std::wstring& value) {
+    value.clear();
+    if (!device) return false;
+    LPWSTR id = nullptr;
+    struct Guard { LPWSTR& p; ~Guard() noexcept { if (p) CoTaskMemFree(p); } } guard{id};
+    if (FAILED(device->GetId(&id)) || !id) return false;
+    value.assign(id);
+    return true;
 }
 
 std::wstring ReadId(IMMDevice* device) {
     LPWSTR id = nullptr;
     std::wstring result;
-    if (SUCCEEDED(device->GetId(&id)) && id) {
+    struct Guard { LPWSTR& p; ~Guard() noexcept { if (p) CoTaskMemFree(p); } } guard{id}; if (device && SUCCEEDED(device->GetId(&id)) && id) {
         result = id;
-        CoTaskMemFree(id);
+
     }
     return result;
 }

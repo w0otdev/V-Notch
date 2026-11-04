@@ -117,6 +117,7 @@ public:
 
     HWND host = nullptr;
     HWND mag = nullptr;
+    bool mag_initialized = false;
 
     SRWLOCK filter_lock = SRWLOCK_INIT;
     std::vector<HWND> filters;
@@ -318,7 +319,10 @@ public:
         }
         if (mag) { DestroyWindow(mag); mag = nullptr; }
         if (host) { DestroyWindow(host); host = nullptr; }
-        if (Api().Complete()) Api().uninitialize();
+        if (mag_initialized) {
+            Api().uninitialize();
+            mag_initialized = false;
+        }
     }
 
     void Fail(int32_t stage) noexcept {
@@ -339,6 +343,7 @@ public:
             CoUninitialize();
             return;
         }
+        mag_initialized = true;
 
         HINSTANCE instance = GetModuleHandleW(nullptr);
         WNDCLASSW wc{};
@@ -449,16 +454,24 @@ public:
     // May throw std::bad_alloc before the pump thread exists; vn_magcap_initialize reports that as VN_ERR_FAIL.
     bool Start(HWND exclude) {
         if (!init_done || !request || !frame_received || !unfiltered_received) return false;
-        if (running.load()) Stop();
-        if (exclude) AddFilterNoSignal(exclude);
-        filter_dirty = true;
-        running = true;
-        thread = CreateThread(nullptr, 0, PumpMain, this, 0, nullptr);
-        if (!thread) {
-            running = false;
-            return false;
+        if (running.load() || thread != nullptr) {
+            if (!Stop()) return false;
         }
-        SetThreadPriority(thread, THREAD_PRIORITY_ABOVE_NORMAL);
+        if (exclude) AddFilterNoSignal(exclude);
+        {
+            ScopedLock stop_guard(&stop_lock);
+            if (running.load() || thread != nullptr) return false;
+            ResetEvent(init_done);
+            init_stage = kInitOk;
+            filter_dirty = true;
+            running.store(true, std::memory_order_release);
+            thread = CreateThread(nullptr, 0, PumpMain, this, 0, nullptr);
+            if (!thread) {
+                running.store(false, std::memory_order_release);
+                return false;
+            }
+            SetThreadPriority(thread, THREAD_PRIORITY_ABOVE_NORMAL);
+        }
         WaitForSingleObject(init_done, kInitTimeoutMs);
         if (!ready.load()) { Stop(); return false; }
         return true;
@@ -472,11 +485,13 @@ public:
     // True when the pump thread is gone and every native handle can be released.
     bool Stop() noexcept {
         ScopedLock stop_guard(&stop_lock);
-        running = false;
-        ready = false;
+        running.store(false, std::memory_order_release);
+        ready.store(false, std::memory_order_release);
         SetEvent(request);
         SetEvent(frame_received);
         if (thread) {
+            if (const DWORD tid = GetThreadId(thread))
+                PostThreadMessageW(tid, WM_NULL, 0, 0);
             if (WaitForSingleObject(thread, kJoinTimeoutMs) != WAIT_OBJECT_0) return false;
             CloseHandle(thread);
             thread = nullptr;

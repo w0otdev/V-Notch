@@ -229,8 +229,15 @@ public:
         // Hybrid graphics can expose a monitor on the discrete adapter while
         // DuplicateOutput only works on the integrated adapter. WGC delivers a
         // texture on our presentation device without a CPU readback bridge.
+        MONITORINFO info{ sizeof(info) };
+        winrt::check_bool(GetMonitorInfoW(wanted, &info));
         vnotch::com::EnsureMta();
         if (!Capture::GraphicsCaptureSession::IsSupported()) throw DXGI_ERROR_UNSUPPORTED;
+        ResetCapture();
+        struct Rollback {
+            GpuGlass* self;
+            ~Rollback() noexcept { if (self) self->ResetCapture(); }
+        } rollback{ this };
         auto interop = winrt::get_activation_factory<Capture::GraphicsCaptureItem, IGraphicsCaptureItemInterop>();
         winrt::check_hresult(interop->CreateForMonitor(wanted,
             winrt::guid_of<Capture::IGraphicsCaptureItem>(), winrt::put_abi(captureItem)));
@@ -261,12 +268,11 @@ public:
             borderlessResult = borderlessRequest;
         }
         captureSession.StartCapture();
-        MONITORINFO info{ sizeof(info) };
-        if (!GetMonitorInfoW(wanted, &info)) throw HRESULT_FROM_WIN32(GetLastError());
         outputDesc.DesktopCoordinates = info.rcMonitor;
         outputDesc.Rotation = DXGI_MODE_ROTATION_IDENTITY; // WGC frames are already oriented.
         monitor = wanted; retryAt = 0;
         captureResult = S_FALSE;
+        rollback.self = nullptr;
         return true;
     }
     void ApplyCaptureInterval() {

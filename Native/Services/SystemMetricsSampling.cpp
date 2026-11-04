@@ -3,6 +3,7 @@
 #include <pdhmsg.h>
 #include <psapi.h>
 #include <cwchar>
+#include <mutex>
 
 #pragma comment(lib, "pdh.lib")
 #pragma comment(lib, "psapi.lib")
@@ -12,7 +13,7 @@ uint64_t ticks(FILETIME value) noexcept {
     return (uint64_t{value.dwHighDateTime} << 32) | value.dwLowDateTime;
 }
 
-// Each dedicated sampler thread owns its query and reusable, suitably aligned buffer.
+// Process-wide shared sampler query and reusable, suitably aligned buffer.
 struct GpuQuery {
     PDH_HQUERY query{};
     PDH_HCOUNTER counter{};
@@ -24,6 +25,8 @@ struct GpuQuery {
         query = nullptr;
         counter = nullptr;
         next_retry = 0;
+        buffer.clear();
+        buffer.shrink_to_fit();
     }
     void sample(VnSystemMetricsSnapshot& result) {
         if (!query) {
@@ -56,7 +59,7 @@ struct GpuQuery {
             // The size from a failed nonzero-buffer call is not reliable (PDH contract).
             bytes = 0;
             status = PdhGetFormattedCounterArrayW(counter, format, &bytes, &count, nullptr);
-            if (status != PDH_MORE_DATA || bytes == 0 || bytes > 64 * 1024 * 1024) return;
+            if (status != PDH_MORE_DATA || bytes == 0 || bytes > 16 * 1024 * 1024) return;
             buffer.resize((bytes + sizeof(uint64_t) - 1) / sizeof(uint64_t));
             bytes = static_cast<DWORD>(buffer.size() * sizeof(uint64_t));
             status = PdhGetFormattedCounterArrayW(counter, format, &bytes, &count,
@@ -81,21 +84,36 @@ struct GpuQuery {
         }
         result.process_gpu = std::clamp(result.process_gpu, 0.0, 100.0);
         result.global_gpu = std::clamp(result.global_gpu, 0.0, 100.0);
+        if (buffer.capacity() * sizeof(uint64_t) > 512 * 1024) {
+            buffer.clear();
+            buffer.shrink_to_fit();
+        }
     }
 };
-thread_local GpuQuery gpu_query;
+std::mutex gpu_query_mutex;
+GpuQuery gpu_query;
 }
 
 VN_EXPORT int32_t __stdcall vn_gpu_monitor_sample(VnSystemMetricsSnapshot* output) noexcept {
     if (!output) return VN_ERR_INVALID_ARG;
     *output = {};
-    try { gpu_query.sample(*output); return VN_OK; }
-    catch (...) { gpu_query.reset(); return VN_ERR_FAIL; }
+    try {
+        std::lock_guard<std::mutex> lock(gpu_query_mutex);
+        try { gpu_query.sample(*output); return VN_OK; }
+        catch (...) { gpu_query.reset(); return VN_ERR_FAIL; }
+    } catch (...) {
+        return VN_ERR_FAIL;
+    }
 }
 
 VN_EXPORT int32_t __stdcall vn_gpu_monitor_reset() noexcept {
-    gpu_query.reset();
-    return VN_OK;
+    try {
+        std::lock_guard<std::mutex> lock(gpu_query_mutex);
+        gpu_query.reset();
+        return VN_OK;
+    } catch (...) {
+        return VN_ERR_FAIL;
+    }
 }
 
 VN_EXPORT int32_t __stdcall vn_system_metrics_sample(VnSystemMetricsState* state, VnSystemMetricsSnapshot* output) noexcept {

@@ -1,4 +1,5 @@
 using System.Runtime.InteropServices;
+using System.Threading;
 
 namespace VNotch.Services;
 
@@ -123,18 +124,22 @@ internal static unsafe partial class WindowsMediaAudioSessions
 
     private sealed class VolumeLease(long handle) : IMediaAudioVolume
     {
-        public bool IsActive => NativeVolumeGetState(handle, out int state) == 0 && state == 1;
+        private long _handle = handle;
+
+        ~VolumeLease() => Release();
+
+        public bool IsActive => NativeVolumeGetState(Volatile.Read(ref _handle), out int state) == 0 && state == 1;
 
         public float Volume
         {
             get
             {
-                if (NativeVolumeGet(handle, out float scalar, out _, out int hr) != 0) Marshal.ThrowExceptionForHR(hr);
+                if (NativeVolumeGet(Volatile.Read(ref _handle), out float scalar, out _, out int hr) != 0) Marshal.ThrowExceptionForHR(hr);
                 return scalar;
             }
             set
             {
-                if (NativeVolumeSet(handle, value, out int hr) != 0) Marshal.ThrowExceptionForHR(hr);
+                if (NativeVolumeSet(Volatile.Read(ref _handle), value, out int hr) != 0) Marshal.ThrowExceptionForHR(hr);
             }
         }
 
@@ -142,15 +147,25 @@ internal static unsafe partial class WindowsMediaAudioSessions
         {
             get
             {
-                if (NativeVolumeGet(handle, out _, out byte muted, out int hr) != 0) Marshal.ThrowExceptionForHR(hr);
+                if (NativeVolumeGet(Volatile.Read(ref _handle), out _, out byte muted, out int hr) != 0) Marshal.ThrowExceptionForHR(hr);
                 return muted != 0;
             }
             set
             {
-                if (NativeVolumeSetMute(handle, value ? (byte)1 : (byte)0, out int hr) != 0) Marshal.ThrowExceptionForHR(hr);
+                if (NativeVolumeSetMute(Volatile.Read(ref _handle), value ? (byte)1 : (byte)0, out int hr) != 0) Marshal.ThrowExceptionForHR(hr);
             }
         }
 
-        public void Dispose() => NativeVolumeClose(handle);
+        public void Dispose()
+        {
+            Release();
+            GC.SuppressFinalize(this);
+        }
+
+        private void Release()
+        {
+            long h = Interlocked.Exchange(ref _handle, 0);
+            if (h != 0) NativeVolumeClose(h);
+        }
     }
 }

@@ -43,6 +43,7 @@ public partial class MainWindow
     private void InitializeCameraController()
     {
         _camera.PresentNativeFrame = PresentNativeCameraFrame;
+        _camera.FrameAvailable -= OnCameraFrameAvailable;
         _camera.FrameAvailable += OnCameraFrameAvailable;
     }
 
@@ -52,7 +53,7 @@ public partial class MainWindow
 
     private bool PresentNativeCameraFrame(SoftwareBitmap bitmap, int token)
     {
-        if (_cameraFallbackToken == token) return false;
+        if (_cleanedUp || _cameraFallbackToken == token) return false;
         int width = bitmap.PixelWidth, height = bitmap.PixelHeight;
         var presenter = _cameraPresenter;
         if (presenter?.FitsWebcam(width, height, token) == true)
@@ -64,7 +65,7 @@ public partial class MainWindow
             {
                 try
                 {
-                    if (!_camera.IsActive || _camera.FadeToken != token) return;
+                    if (_cleanedUp || !_camera.IsActive || _camera.FadeToken != token) return;
                     DisposeCameraPresenter();
                     var next = new D3DImageFramePresenter(Dispatcher,
                         new System.Windows.Interop.WindowInteropHelper(this).Handle, width, height, webcam: true);

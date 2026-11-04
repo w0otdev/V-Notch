@@ -222,7 +222,7 @@ public partial class MainWindow
 
     private void StartUpdatePulseAnimation()
     {
-        if (UpdateIconBrush == null ||
+        if (_cleanedUp || UpdateIconBrush == null ||
             !_isUpdateAvailable ||
             _isUpdateInstalling ||
             UpdateNotificationButton.Visibility != Visibility.Visible)
@@ -244,7 +244,7 @@ public partial class MainWindow
 
     private void UpdatePulseTimer_Tick(object? sender, EventArgs e)
     {
-        if (UpdateIconBrush == null) return;
+        if (_cleanedUp || UpdateIconBrush == null) { StopUpdatePulseAnimationCore(); return; }
         if (!_isUpdateAvailable || UpdateNotificationButton.Visibility != Visibility.Visible)
         {
             StopUpdatePulseAnimation();
@@ -261,6 +261,12 @@ public partial class MainWindow
     private void StopUpdatePulseAnimationCore()
     {
         _updatePulseTimer?.Stop();
+        if (_cleanedUp && _updatePulseTimer != null)
+        {
+            _updatePulseTimer.Tick -= UpdatePulseTimer_Tick;
+            _updatePulseTimer.Dispose();
+            _updatePulseTimer = null;
+        }
         if (UpdateIconBrush != null) { UpdateIconBrush.BeginAnimation(SolidColorBrush.ColorProperty, null); UpdateIconBrush.Color = Color.FromRgb(48, 209, 88); }
     }
 

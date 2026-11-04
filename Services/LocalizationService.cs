@@ -360,17 +360,31 @@ public static partial class Loc
     {
         lock (LoadLock)
         {
+            var previous = _strings;
             var kept = new Dictionary<string, NativeLocaleTable>(StringComparer.OrdinalIgnoreCase);
-            foreach (var (code, dict) in _strings)
+            List<NativeLocaleTable>? evicted = null;
+            foreach (var (code, dict) in previous)
             {
                 if (string.Equals(code, FallbackLanguage, StringComparison.OrdinalIgnoreCase)
                     || string.Equals(code, active, StringComparison.OrdinalIgnoreCase))
                 {
                     kept[code] = dict;
                 }
+                else
+                {
+                    (evicted ??= new List<NativeLocaleTable>()).Add(dict);
+                }
             }
 
             _strings = kept;
+            if (evicted is not null)
+            {
+                ReleaseTranslationIndex();
+                foreach (var table in evicted)
+                {
+                    table.Dispose();
+                }
+            }
         }
     }
 

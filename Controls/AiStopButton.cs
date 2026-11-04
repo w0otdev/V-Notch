@@ -25,7 +25,7 @@ public sealed class AiStopButton : Button
     {
         Loaded += (_, _) =>
         {
-            AnimationConfig.ReduceMotionChanged += OnReduceMotionChanged;
+            AnimationConfig.ReduceMotionChanged -= OnReduceMotionChanged; AnimationConfig.ReduceMotionChanged += OnReduceMotionChanged;
             if (IsVisible && _shown) Reveal(fresh: true);
         };
         Unloaded += (_, _) =>

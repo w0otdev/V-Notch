@@ -95,7 +95,7 @@ public class AnalogClock : FrameworkElement
 
     private void UpdateRunningState()
     {
-        if (IsVisible)
+        if (IsVisible && IsLoaded)
             StartTimer();
         else
             StopTimer();

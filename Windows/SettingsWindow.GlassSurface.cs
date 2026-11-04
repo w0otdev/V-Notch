@@ -116,12 +116,28 @@ public partial class SettingsWindow
         finally { _isLoadingSettings = wasLoading; }
     }
 
+    private static void StopAndDisposeTagTimer(FrameworkElement? element)
+    {
+        if (element?.Tag is UiScheduledTimer timer)
+        {
+            timer.Stop();
+            timer.Dispose();
+            element.Tag = null;
+        }
+    }
+
     protected override void OnClosed(EventArgs e)
     {
         CompositionTarget.Rendering -= SmoothScroll_Tick;
         _isScrollAnimating = false;
         _livePreviewDebounce?.Dispose();
         _searchDebounce?.Dispose();
+        StopAndDisposeTagTimer(ClearLogButton);
+        StopAndDisposeTagTimer(ClearSpotlightHistoryButton);
+        StopAndDisposeTagTimer(BackupStatusText);
+        StopAndDisposeTagTimer(ExportSettingsButton);
+        StopAndDisposeTagTimer(ImportSettingsButton);
+        StopAndDisposeTagTimer(CheckUpdateButton);
         _updatePresenter.Dispose();
         Loc.ReleaseTranslationIndex();
         _monitorChoicesClosed = true;

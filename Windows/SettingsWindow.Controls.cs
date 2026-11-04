@@ -748,6 +748,12 @@ public partial class SettingsWindow
 
                 if (BackupStatusText != null)
                 {
+                    if (BackupStatusText.Tag is UiScheduledTimer existingTimer)
+                    {
+                        existingTimer.Stop();
+                        existingTimer.Dispose();
+                        BackupStatusText.Tag = null;
+                    }
                     BackupStatusText.Text = Loc.Get("settings.export.success");
                     BackupStatusText.Foreground = BackupSuccessBrush;
                     BackupStatusText.Visibility = Visibility.Visible;
@@ -757,8 +763,13 @@ public partial class SettingsWindow
                     {
                         timer.Stop();
                         timer.Dispose();
+                        if (ReferenceEquals(BackupStatusText.Tag, timer))
+                        {
+                            BackupStatusText.Tag = null;
+                        }
                         BackupStatusText.Visibility = Visibility.Collapsed;
                     };
+                    BackupStatusText.Tag = timer;
                     timer.Start();
                 }
             }
@@ -792,6 +803,12 @@ public partial class SettingsWindow
 
                 if (BackupStatusText != null)
                 {
+                    if (BackupStatusText.Tag is UiScheduledTimer existingTimer)
+                    {
+                        existingTimer.Stop();
+                        existingTimer.Dispose();
+                        BackupStatusText.Tag = null;
+                    }
                     BackupStatusText.Text = Loc.Get("settings.import.success");
                     BackupStatusText.Foreground = BackupSuccessBrush;
                     BackupStatusText.Visibility = Visibility.Visible;
@@ -801,8 +818,13 @@ public partial class SettingsWindow
                     {
                         timer.Stop();
                         timer.Dispose();
+                        if (ReferenceEquals(BackupStatusText.Tag, timer))
+                        {
+                            BackupStatusText.Tag = null;
+                        }
                         BackupStatusText.Visibility = Visibility.Collapsed;
                     };
+                    BackupStatusText.Tag = timer;
                     timer.Start();
                 }
 

@@ -10,6 +10,7 @@
 #include <cmath>
 #include <cstdint>
 #include <memory>
+#include <mutex>
 #include <string>
 #include <vector>
 
@@ -53,8 +54,9 @@ vnotch::HandleRegistry<VolumeLease> g_leases;
 
 
 std::wstring TakeString(LPWSTR text) {
+    struct Guard { LPWSTR p; ~Guard() noexcept { if (p) CoTaskMemFree(p); } } guard{text};
     std::wstring result = text ? std::wstring(text) : std::wstring();
-    if (text) CoTaskMemFree(text);
+
     return result;
 }
 
@@ -86,11 +88,11 @@ void AppendEndpointSessions(IMMDevice* device, Snapshot& snapshot, HRESULT& hr) 
         AudioSessionState state = AudioSessionStateInactive;
         if (SUCCEEDED(session->control.ptr->GetState(&state))) session->state = static_cast<int32_t>(state);
         LPWSTR text = nullptr;
-        if (SUCCEEDED(session->control.ptr->GetDisplayName(&text))) session->display_name = TakeString(text);
+        if (SUCCEEDED(session->control.ptr->GetDisplayName(&text))) session->display_name = TakeString(text); else if (text) CoTaskMemFree(text);
         text = nullptr;
-        if (SUCCEEDED(session->control.ptr->GetSessionIdentifier(&text))) session->identifier = TakeString(text);
+        if (SUCCEEDED(session->control.ptr->GetSessionIdentifier(&text))) session->identifier = TakeString(text); else if (text) CoTaskMemFree(text);
         text = nullptr;
-        if (SUCCEEDED(session->control.ptr->GetSessionInstanceIdentifier(&text))) session->instance_identifier = TakeString(text);
+        if (SUCCEEDED(session->control.ptr->GetSessionInstanceIdentifier(&text))) session->instance_identifier = TakeString(text); else if (text) CoTaskMemFree(text);
         snapshot.sessions.push_back(std::move(session));
     }
 }
@@ -415,15 +417,16 @@ struct MixerMetadata {
     uint64_t started{};
     std::wstring name, path;
 };
-thread_local std::vector<MixerMetadata> mixer_metadata;
+std::mutex mixer_metadata_mutex;
+std::vector<MixerMetadata> mixer_metadata;
 MixerMetadata ReadMixerMetadata(DWORD pid, const std::wstring& fallback) {
     vnotch::UniqueHandle process(OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, FALSE, pid));
     FILETIME created{}, exited{}, kernel{}, user{};
     uint64_t started = 0;
     if (process.valid() && GetProcessTimes(process.get(), &created, &exited, &kernel, &user))
         started = (uint64_t{created.dwHighDateTime} << 32) | created.dwLowDateTime;
-    for (auto& cached : mixer_metadata)
-        if (started && cached.pid == pid && cached.started == started) return cached;
+    { std::lock_guard<std::mutex> lock(mixer_metadata_mutex); for (auto& cached : mixer_metadata)
+        if (started && cached.pid == pid && cached.started == started) return cached; }
     MixerMetadata value{pid, started, {}, {}};
     wchar_t path[32768];
     DWORD length = ARRAYSIZE(path);
@@ -458,12 +461,13 @@ MixerMetadata ReadMixerMetadata(DWORD pid, const std::wstring& fallback) {
     }
     if (value.name.empty() && !fallback.empty() && fallback.front() != L'@') value.name = fallback;
     if (started) {
-        if (mixer_metadata.size() >= 128) mixer_metadata.erase(mixer_metadata.begin());
+        std::lock_guard<std::mutex> lock(mixer_metadata_mutex); if (mixer_metadata.size() >= 128) mixer_metadata.erase(mixer_metadata.begin());
         mixer_metadata.push_back(value);
     }
     return value;
 }
 }
+
 
 VN_EXPORT int32_t __stdcall vn_audio_resolve_session_metadata(uint32_t pid, const char16_t* raw, int32_t raw_length,
     VnAudioSessionState* output, char16_t* text, int32_t capacity, int32_t* required) noexcept {

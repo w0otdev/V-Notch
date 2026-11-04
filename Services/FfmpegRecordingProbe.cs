@@ -7,6 +7,7 @@ namespace VNotch.Services;
 
 internal sealed partial class FfmpegRecordingProbe
 {
+    private const int MaxCacheEntries = 128;
     private readonly Dictionary<(int Id, long Start), bool> _cache = new();
     private readonly Func<int, string?> _commandLineReader;
 
@@ -32,6 +33,9 @@ internal sealed partial class FfmpegRecordingProbe
             return false;
 
         capture = IsScreenCaptureCommand(cmd);
+        // shortcut: full-clear eviction at 128 entries, upgrade to bounded LRU if >128 concurrent ffmpeg processes run
+        if (_cache.Count >= MaxCacheEntries)
+            _cache.Clear();
         _cache[key] = capture;
         return capture;
     }

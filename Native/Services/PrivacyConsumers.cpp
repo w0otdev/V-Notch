@@ -109,6 +109,8 @@ struct Consumers {
     std::unordered_map<DWORD, Identity> identities;
     std::unordered_map<std::wstring, bool> running;
     Identity& identity(DWORD pid) {
+        // shortcut: 512-entry per-handle cache cap, switch to LRU if active PIDs exceed 512
+        if (!identities.contains(pid) && identities.size() >= 512) identities.clear();
         auto& result = identities[pid];
         if (result.queried) return result;
         result.queried = true;
@@ -152,6 +154,8 @@ struct Consumers {
     bool is_running(const std::wstring& raw) {
         const auto found = running.find(raw);
         if (found != running.end()) return found->second;
+        // shortcut: 512-entry per-handle running-app cache cap, switch to LRU if unique app names exceed 512
+        if (running.size() >= 512) running.clear();
         return running.emplace(raw, matches(raw)).first->second;
     }
 };
@@ -205,7 +209,7 @@ VN_EXPORT int32_t vn_privacy_consumers_scan(int64_t handle, int64_t cache_handle
         std::scoped_lock guard(item->lock, cache->lock);
         auto [found, inserted] = cache->capabilities.try_emplace(std::u16string(capability, length));
         auto& entries = found->second;
-        if (inserted || !entries.empty()) {
+        if (inserted || entries.empty()) {
             entries.resize(32); int32_t total = 0;
             int status = vn_privacy_indicator_scan_consent_store(capability, length, entries.data(), static_cast<int32_t>(entries.size()), &total);
             for (int retry = 0; status == VN_ERR_BUFFER_TOO_SMALL && retry < 3 && total <= 65536; ++retry) {

@@ -134,6 +134,18 @@ public partial class DebugWindow : Window
             {
                 _updateTimer.Stop();
                 _updateTimer.Tick -= UpdateTimer_Tick;
+                if (CopyAllLogsBtn?.Tag is UiScheduledTimer copyAllTimer)
+                {
+                    copyAllTimer.Stop();
+                    copyAllTimer.Dispose();
+                    CopyAllLogsBtn.Tag = null;
+                }
+                if (CopyServiceLogsBtn?.Tag is UiScheduledTimer copyServiceTimer)
+                {
+                    copyServiceTimer.Stop();
+                    copyServiceTimer.Dispose();
+                    CopyServiceLogsBtn.Tag = null;
+                }
                 _updateTimer.Dispose();
             }
             _serviceLogCapture?.Dispose();
@@ -747,15 +759,30 @@ public partial class DebugWindow : Window
             }
 
             Clipboard.SetText(sb.ToString());
-            CopyAllLogsBtn.Content = "Copied!";
+            var btn = CopyAllLogsBtn;
+            if (btn.Tag is UiScheduledTimer existingTimer)
+            {
+                existingTimer.Stop();
+                existingTimer.Dispose();
+                btn.Tag = null;
+            }
+            btn.Content = "Copied!";
 
             var timer = new UiScheduledTimer { Interval = TimeSpan.FromSeconds(1.5) };
             timer.Tick += (s, ev) =>
             {
                 timer.Stop();
                 timer.Dispose();
-                if (CopyAllLogsBtn != null) CopyAllLogsBtn.Content = "Copy";
+                if (CopyAllLogsBtn != null)
+                {
+                    if (ReferenceEquals(CopyAllLogsBtn.Tag, timer))
+                    {
+                        CopyAllLogsBtn.Tag = null;
+                    }
+                    CopyAllLogsBtn.Content = "Copy";
+                }
             };
+            btn.Tag = timer;
             timer.Start();
         }
         catch (Exception ex)
@@ -778,15 +805,30 @@ public partial class DebugWindow : Window
             }
 
             Clipboard.SetText(sb.ToString());
-            CopyServiceLogsBtn.Content = "Copied!";
+            var btn = CopyServiceLogsBtn;
+            if (btn.Tag is UiScheduledTimer existingTimer)
+            {
+                existingTimer.Stop();
+                existingTimer.Dispose();
+                btn.Tag = null;
+            }
+            btn.Content = "Copied!";
 
             var timer = new UiScheduledTimer { Interval = TimeSpan.FromSeconds(1.5) };
             timer.Tick += (s, ev) =>
             {
                 timer.Stop();
                 timer.Dispose();
-                if (CopyServiceLogsBtn != null) CopyServiceLogsBtn.Content = "Copy All";
+                if (CopyServiceLogsBtn != null)
+                {
+                    if (ReferenceEquals(CopyServiceLogsBtn.Tag, timer))
+                    {
+                        CopyServiceLogsBtn.Tag = null;
+                    }
+                    CopyServiceLogsBtn.Content = "Copy All";
+                }
             };
+            btn.Tag = timer;
             timer.Start();
         }
         catch (Exception ex)

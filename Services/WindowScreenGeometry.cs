@@ -1,3 +1,4 @@
+using System;
 using System.Runtime.InteropServices;
 using System.Windows;
 using System.Windows.Media;
@@ -6,7 +7,7 @@ namespace VNotch.Services;
 
 // Only the HWND origin and DPI are cached. TransformToAncestor still observes
 // animated translations, scales, margins and layout rounding on every frame.
-internal sealed partial class WindowScreenGeometry
+internal sealed partial class WindowScreenGeometry : IDisposable
 {
     private const string NativeDll = "VNotch.Native.dll";
 
@@ -24,17 +25,36 @@ internal sealed partial class WindowScreenGeometry
 
     private readonly Window _window;
     private bool _valid;
+    private bool _disposed;
     private Point _origin;
     private DpiScale _dpi = new(1, 1);
 
     internal WindowScreenGeometry(Window window)
     {
         _window = window;
-        window.LocationChanged += (_, _) => _valid = false;
-        window.SizeChanged += (_, _) => _valid = false;
-        window.DpiChanged += (_, _) => _valid = false;
-        window.SourceInitialized += (_, _) => _valid = false;
-        window.IsVisibleChanged += (_, _) => _valid = false;
+        _window.LocationChanged += OnWindowEvent;
+        _window.SizeChanged += OnWindowEvent;
+        _window.DpiChanged += OnWindowDpiChanged;
+        _window.SourceInitialized += OnWindowEvent;
+        _window.IsVisibleChanged += OnWindowIsVisibleChanged;
+        _window.Closed += OnWindowClosed;
+    }
+
+    private void OnWindowEvent(object? sender, EventArgs e) => _valid = false;
+    private void OnWindowDpiChanged(object sender, DpiChangedEventArgs e) => _valid = false;
+    private void OnWindowIsVisibleChanged(object sender, DependencyPropertyChangedEventArgs e) => _valid = false;
+    private void OnWindowClosed(object? sender, EventArgs e) => Dispose();
+
+    public void Dispose()
+    {
+        if (_disposed) return;
+        _disposed = true;
+        _window.LocationChanged -= OnWindowEvent;
+        _window.SizeChanged -= OnWindowEvent;
+        _window.DpiChanged -= OnWindowDpiChanged;
+        _window.SourceInitialized -= OnWindowEvent;
+        _window.IsVisibleChanged -= OnWindowIsVisibleChanged;
+        _window.Closed -= OnWindowClosed;
     }
 
     internal double DpiScaleX

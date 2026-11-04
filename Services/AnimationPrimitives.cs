@@ -278,6 +278,7 @@ internal sealed partial class CubicBezierEase : EasingFunctionBase
         new(1 - x2, 1 - y2, 1 - x1, 1 - y1) { EasingMode = EasingMode.EaseOut };
 
     private const int Intervals = 2048;
+    private const int MaxCachedCurves = 64;
     private static readonly System.Collections.Concurrent.ConcurrentDictionary<(double, double), double[]> Samples = new();
     private sealed record Curve((double, double, double, double) Points, double[] X, double[] Y);
     private volatile Curve? _curve;
@@ -285,12 +286,19 @@ internal sealed partial class CubicBezierEase : EasingFunctionBase
     [System.Runtime.InteropServices.LibraryImport("VNotch.Native.dll")]
     private static partial void vn_bezier_samples(double p1, double p2, Span<double> values, int intervals);
 
-    private static double[] SamplesFor(double p1, double p2) => Samples.GetOrAdd((p1, p2), static pair =>
+    private static double[] SamplesFor(double p1, double p2)
+    {
+        var key = (Math.Round(p1, 4), Math.Round(p2, 4));
+        // shortcut: full-clear eviction at 64 curves, upgrade to bounded LRU if >64 distinct curves are active concurrently
+        if (Samples.Count >= MaxCachedCurves && !Samples.ContainsKey(key))
+            Samples.Clear();
+        return Samples.GetOrAdd(key, static pair =>
     {
         var samples = new double[Intervals + 1];
         vn_bezier_samples(pair.Item1, pair.Item2, samples, Intervals);
         return samples;
-    });
+        });
+    }
 
     protected override double EaseInCore(double normalizedTime)
     {
