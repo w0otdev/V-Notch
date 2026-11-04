@@ -69,7 +69,7 @@
             <Setter Property="FontFamily" Value="{StaticResource SettingsFont}"/>
             <Setter Property="TextOptions.TextFormattingMode" Value="Ideal"/>
             <Setter Property="TextOptions.TextRenderingMode" Value="Grayscale"/>
-            <Setter Property="TextOptions.TextHintingMode" Value="Animated"/>
+            <Setter Property="TextOptions.TextHintingMode" Value="Auto"/>
         </Style>
 
         <Style x:Key="SectionHeader" TargetType="TextBlock" BasedOn="{StaticResource {x:Type TextBlock}}">

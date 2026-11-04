@@ -404,7 +404,7 @@ public partial class MainWindow
 
     private void InitializeShellCornerRadiusSync()
     {
-        foreach (var layer in new[] { InnerClipBorder, NotchBackground, MediaBackground, MediaBackground2, NotchBorderShadow, HoverGlow })
+        foreach (var layer in new[] { InnerClipBorder, NotchBackground, NotchBorderShadow, HoverGlow })
             layer.IsVisibleChanged += (_, _) =>
             {
                 if (layer.IsVisible) layer.CornerRadius = NotchBorder.CornerRadius;
@@ -416,8 +416,8 @@ public partial class MainWindow
         NotchBorder.CornerRadius = radius;
         SyncVisibleRadius(InnerClipBorder, radius);
         SyncVisibleRadius(NotchBackground, radius);
-        SyncVisibleRadius(MediaBackground, radius);
-        SyncVisibleRadius(MediaBackground2, radius);
+        // removed MediaBackground CornerRadius sync
+        // removed MediaBackground2 CornerRadius sync
         SyncVisibleRadius(NotchBorderShadow, radius);
         SyncVisibleRadius(HoverGlow, radius);
     }
@@ -552,8 +552,8 @@ public partial class MainWindow
         NotchBorder.CornerRadius = cr;
         InnerClipBorder.CornerRadius = cr;
         NotchBackground.CornerRadius = cr;
-        MediaBackground.CornerRadius = cr;
-        MediaBackground2.CornerRadius = cr;
+        // removed MediaBackground CornerRadius
+        // removed MediaBackground2 CornerRadius
         NotchBorderShadow.CornerRadius = cr;
         HoverGlow.CornerRadius = cr;
         _glassMaterialPresenter.SyncCornerRadius(cr);
@@ -700,196 +700,128 @@ public partial class MainWindow
 
     #region Status Bar Animation
 
+    private int _statusBarRevealVersion;
+    private readonly Dictionary<(DependencyObject Target, DependencyProperty Property), DoubleAnimation> _chromeAnimations = new();
+
     private void AnimateStatusBarReveal(bool show)
     {
+        int version = ++_statusBarRevealVersion;
+        bool animate = !VNotch.Services.AnimationConfig.ReduceMotion && SystemParameters.ClientAreaAnimation;
+        bool chromeVisible = NavIconsPanel.Visibility == Visibility.Visible && NavIconsPanel.Opacity > 0.01;
+        var targetView = _navigationVisualTarget ?? _transitionCoordinator.CurrentView;
+        bool showBattery = show && _settings.ShowBatteryIndicator;
+        bool showBackground = show && targetView is VNotch.Models.NotchView.Secondary
+            or VNotch.Models.NotchView.Timer or VNotch.Models.NotchView.AudioMixer;
+        double restY = _settings.EnableDynamicIslandMode ? 5 : 0;
+        double settingsY = targetView == VNotch.Models.NotchView.Secondary ? 0 : restY;
+        var duration = new Duration(TimeSpan.FromMilliseconds(show ? 340 : 220));
+        var settingsDelay = show ? TimeSpan.FromMilliseconds(56) : TimeSpan.Zero;
+
         SettingsButton.IsHitTestVisible = show;
         SettingsButton.Focusable = show;
-        if (!show) HideSharedSettingsButton();
-        var dur = TimeSpan.FromMilliseconds(show ? 340 : 220);
-        var easing = _easeExpOut5;
-        var settingsEase = _easeBackOut022;
-        int animFps = VNotch.Services.AnimationConfig.TargetFps;
-
-        BatterySection.BeginAnimation(OpacityProperty, null);
-        BatteryTranslate.BeginAnimation(TranslateTransform.YProperty, null);
-        NavIconsPanel.BeginAnimation(OpacityProperty, null);
-        NavIconsBackground.BeginAnimation(OpacityProperty, null);
-        NavIconsTranslate.BeginAnimation(TranslateTransform.YProperty, null);
-        SettingsButton.BeginAnimation(OpacityProperty, null);
-        SettingsTranslate.BeginAnimation(TranslateTransform.YProperty, null);
-        SettingsScale.BeginAnimation(ScaleTransform.ScaleXProperty, null);
-        SettingsScale.BeginAnimation(ScaleTransform.ScaleYProperty, null);
-        SettingsRotate.BeginAnimation(RotateTransform.AngleProperty, null);
-
-        bool showBatterySection = show && _settings.ShowBatteryIndicator;
-        VNotch.Models.NotchView fallbackView = VNotch.Models.NotchView.Media;
-        if (_isCameraView) fallbackView = VNotch.Models.NotchView.Camera;
-        else if (_isAudioView) fallbackView = VNotch.Models.NotchView.AudioMixer;
-        else if (_isTimerView) fallbackView = VNotch.Models.NotchView.Timer;
-        else if (_isSecondaryView) fallbackView = VNotch.Models.NotchView.Secondary;
-        var activeTargetView = _navigationVisualTarget ?? fallbackView;
-        bool showNavIconsBg = activeTargetView is VNotch.Models.NotchView.Secondary
-            or VNotch.Models.NotchView.Timer
-            or VNotch.Models.NotchView.AudioMixer;
-        double iconTargetY = _settings.EnableDynamicIslandMode ? 5 : 0;
-        double settingsTargetY = activeTargetView == VNotch.Models.NotchView.Secondary ? 0 : iconTargetY;
-
+        BatterySection.IsHitTestVisible = showBattery;
+        NavIconsBackground.IsHitTestVisible = showBackground;
         if (show)
         {
-            PlaceSharedSettingsButton(activeTargetView);
-            BatterySection.Visibility = showBatterySection ? Visibility.Visible : Visibility.Collapsed;
-            BatterySection.IsHitTestVisible = showBatterySection;
+            bool movedSettingsHost = PlaceSharedSettingsButton(targetView);
+            BatterySection.Visibility = showBattery ? Visibility.Visible : Visibility.Collapsed;
             NavIconsPanel.Visibility = Visibility.Visible;
-            UpdateNavIconsActiveState();
-            NavIconsBackground.Visibility = showNavIconsBg ? Visibility.Visible : Visibility.Collapsed;
-            if (!showNavIconsBg)
-                NavIconsBackground.Opacity = 0;
+            NavIconsBackground.Visibility = Visibility.Visible;
             SettingsButton.Visibility = Visibility.Visible;
-            SettingsScale.ScaleX = 0.86;
-            SettingsScale.ScaleY = 0.86;
-            SettingsRotate.Angle = 20;
+            UpdateNavIconsActiveState(animate);
+            // The chrome belongs to the shell. A tab switch must not replay its
+            // entrance or expose the base values underneath a previous clock.
+            if (!chromeVisible)
+            {
+                SettingsScale.BeginAnimation(ScaleTransform.ScaleXProperty, null);
+                SettingsScale.BeginAnimation(ScaleTransform.ScaleYProperty, null);
+                SettingsRotate.BeginAnimation(RotateTransform.AngleProperty, null);
+                SettingsScale.ScaleX = SettingsScale.ScaleY = 0.86;
+                SettingsRotate.Angle = 20;
+            }
+            else if (movedSettingsHost)
+            {
+                // Reparenting into the tray changes layout coordinates. Reveal in
+                // the destination toolbar rather than displaying a teleport frame.
+                SettingsButton.BeginAnimation(OpacityProperty, null);
+                SettingsButton.Opacity = 0;
+            }
         }
 
-        var batteryOpacityAnim = new DoubleAnimation
+        RetargetChromeValue(BatterySection, OpacityProperty, showBattery ? 1 : 0, duration, animate);
+        RetargetChromeValue(BatteryTranslate, TranslateTransform.YProperty, showBattery ? restY : -6, duration, animate);
+        RetargetChromeValue(NavIconsPanel, OpacityProperty, show ? 1 : 0, duration, animate);
+        RetargetChromeValue(NavIconsTranslate, TranslateTransform.YProperty, show ? restY : -6, duration, animate);
+        RetargetChromeValue(NavIconsBackground, OpacityProperty, showBackground ? 1 : 0,
+            new Duration(TimeSpan.FromMilliseconds(show ? 340 : 120)), animate);
+        RetargetChromeValue(SettingsTranslate, TranslateTransform.YProperty, show ? settingsY : -6, duration, animate,
+            easing: _easeBackOut022, beginTime: settingsDelay);
+        var settingsScaleDuration = new Duration(TimeSpan.FromMilliseconds(show ? 460 : 200));
+        RetargetChromeValue(SettingsScale, ScaleTransform.ScaleXProperty, show ? 1 : 0.86, settingsScaleDuration, animate,
+            easing: _easeBackOut022, beginTime: settingsDelay);
+        RetargetChromeValue(SettingsScale, ScaleTransform.ScaleYProperty, show ? 1 : 0.86, settingsScaleDuration, animate,
+            easing: _easeBackOut022, beginTime: settingsDelay);
+        RetargetChromeValue(SettingsRotate, RotateTransform.AngleProperty, show ? 45 : 20,
+            new Duration(TimeSpan.FromMilliseconds(show ? 520 : 200)), animate, beginTime: settingsDelay);
+        RetargetChromeValue(SettingsButton, OpacityProperty, show ? 1 : 0, duration, animate, () =>
         {
-            To = showBatterySection ? 1.0 : 0.0,
-            Duration = dur,
-            EasingFunction = easing
-        };
-        Timeline.SetDesiredFrameRate(batteryOpacityAnim, animFps);
+            if (version == _statusBarRevealVersion && !show) HideSharedSettingsButton();
+        }, beginTime: settingsDelay);
 
-        var batteryTranslateAnim = new DoubleAnimation
+        if (UpdateNotificationButton == null) return;
+        bool showUpdate = show && _isUpdateAvailable;
+        UpdateNotificationButton.IsHitTestVisible = showUpdate;
+        if (showUpdate)
         {
-            To = showBatterySection ? iconTargetY : -6,
-            Duration = dur,
-            EasingFunction = easing
-        };
-        Timeline.SetDesiredFrameRate(batteryTranslateAnim, animFps);
-
-        var settingsDelay = show ? TimeSpan.FromMilliseconds(56) : TimeSpan.Zero;
-        var settingsOpacityAnim = new DoubleAnimation
-        {
-            To = show ? 1.0 : 0.0,
-            Duration = dur,
-            EasingFunction = easing,
-            BeginTime = settingsDelay
-        };
-        Timeline.SetDesiredFrameRate(settingsOpacityAnim, animFps);
-
-        var settingsTranslateAnim = new DoubleAnimation
-        {
-            To = show ? settingsTargetY : -6,
-            Duration = dur,
-            EasingFunction = settingsEase,
-            BeginTime = settingsDelay
-        };
-        Timeline.SetDesiredFrameRate(settingsTranslateAnim, animFps);
-
-        var settingsScaleAnim = new DoubleAnimation
-        {
-            To = show ? 1.0 : 0.86,
-            Duration = new Duration(TimeSpan.FromMilliseconds(show ? 460 : 200)),
-            EasingFunction = settingsEase,
-            BeginTime = settingsDelay
-        };
-        Timeline.SetDesiredFrameRate(settingsScaleAnim, animFps);
-
-        var settingsRotateAnim = new DoubleAnimation
-        {
-            To = show ? 45 : 20,
-            Duration = new Duration(TimeSpan.FromMilliseconds(show ? 520 : 200)),
-            EasingFunction = easing,
-            BeginTime = settingsDelay
-        };
-        Timeline.SetDesiredFrameRate(settingsRotateAnim, animFps);
-
-        if (_isUpdateAvailable && UpdateNotificationButton != null)
-        {
-            var updateOpacityAnim = new DoubleAnimation
-            {
-                To = show ? 1.0 : 0.0,
-                Duration = dur,
-                EasingFunction = easing,
-                BeginTime = show ? TimeSpan.FromMilliseconds(30) : TimeSpan.Zero
-            };
-            Timeline.SetDesiredFrameRate(updateOpacityAnim, animFps);
-
-            var updateTranslateAnim = new DoubleAnimation
-            {
-                To = show ? iconTargetY : -4,
-                Duration = dur,
-                EasingFunction = easing,
-                BeginTime = show ? TimeSpan.FromMilliseconds(30) : TimeSpan.Zero
-            };
-            Timeline.SetDesiredFrameRate(updateTranslateAnim, animFps);
-
-            if (show)
+            bool alreadyVisible = UpdateNotificationButton.Visibility == Visibility.Visible && UpdateNotificationButton.Opacity > 0.01;
+            UpdateNotificationButton.Visibility = Visibility.Visible;
+            UpdateNotificationButton.Cursor = System.Windows.Input.Cursors.Hand;
+            if (!alreadyVisible)
             {
                 if (UpdateIconBrush != null)
                 {
                     UpdateIconBrush.BeginAnimation(SolidColorBrush.ColorProperty, null);
                     UpdateIconBrush.Color = Color.FromRgb(48, 209, 88);
                 }
-                UpdateNotificationButton.Visibility = Visibility.Visible;
-                UpdateNotificationButton.IsHitTestVisible = true;
-                UpdateNotificationButton.Cursor = System.Windows.Input.Cursors.Hand;
                 StartUpdatePulseAnimation();
             }
-            else
-            {
-                UpdateNotificationButton.IsHitTestVisible = false;
-                StopUpdatePulseAnimation();
-            }
-
-            UpdateNotificationButton.BeginAnimation(OpacityProperty, updateOpacityAnim);
-            UpdateNotificationTranslate.BeginAnimation(TranslateTransform.YProperty, updateTranslateAnim);
         }
-        else if (UpdateNotificationButton != null)
+        else StopUpdatePulseAnimation();
+        var updateDelay = show ? TimeSpan.FromMilliseconds(30) : TimeSpan.Zero;
+        RetargetChromeValue(UpdateNotificationTranslate, TranslateTransform.YProperty, showUpdate ? restY : -4, duration, animate,
+            beginTime: updateDelay);
+        RetargetChromeValue(UpdateNotificationButton, OpacityProperty, showUpdate ? 1 : 0, duration, animate,
+            beginTime: updateDelay);
+    }
+
+    private void RetargetChromeValue(IAnimatable target, DependencyProperty property,
+        double to, Duration duration, bool animate, Action? completed = null,
+        IEasingFunction? easing = null, TimeSpan? beginTime = null)
+    {
+        var element = (DependencyObject)target;
+        double from = (double)element.GetValue(property);
+        var key = (element, property);
+        _chromeAnimations.Remove(key);
+        target.BeginAnimation(property, null);
+        element.SetValue(property, from);
+        if (!animate || Math.Abs(from - to) < 0.0001)
         {
-            UpdateNotificationButton.Visibility = Visibility.Collapsed;
-            UpdateNotificationButton.IsHitTestVisible = false;
-            StopUpdatePulseAnimation();
+            element.SetValue(property, to);
+            completed?.Invoke();
+            return;
         }
-
-        BatterySection.BeginAnimation(OpacityProperty, batteryOpacityAnim);
-        BatteryTranslate.BeginAnimation(TranslateTransform.YProperty, batteryTranslateAnim);
-
-        var navOpacityAnim = new DoubleAnimation
+        var animation = MakeAnim(from, to, duration, easing ?? _easeExpOut5);
+        animation.BeginTime = beginTime ?? TimeSpan.Zero;
+        _chromeAnimations[key] = animation;
+        animation.Completed += (_, _) =>
         {
-            To = show ? 1.0 : 0.0,
-            Duration = dur,
-            EasingFunction = easing
+            if (!_chromeAnimations.TryGetValue(key, out var active) || !ReferenceEquals(active, animation)) return;
+            _chromeAnimations.Remove(key);
+            target.BeginAnimation(property, null);
+            element.SetValue(property, to);
+            completed?.Invoke();
         };
-        Timeline.SetDesiredFrameRate(navOpacityAnim, animFps);
-
-        var navTranslateAnim = new DoubleAnimation
-        {
-            To = show ? iconTargetY : -6,
-            Duration = dur,
-            EasingFunction = easing
-        };
-        Timeline.SetDesiredFrameRate(navTranslateAnim, animFps);
-
-        NavIconsPanel.BeginAnimation(OpacityProperty, navOpacityAnim);
-        NavIconsTranslate.BeginAnimation(TranslateTransform.YProperty, navTranslateAnim);
-
-        if (showNavIconsBg)
-        {
-            var navBgOpacityAnim = new DoubleAnimation
-            {
-                To = show ? 1.0 : 0.0,
-                Duration = new Duration(TimeSpan.FromMilliseconds(show ? 340 : 120)),
-                EasingFunction = easing
-            };
-            Timeline.SetDesiredFrameRate(navBgOpacityAnim, animFps);
-            NavIconsBackground.BeginAnimation(OpacityProperty, navBgOpacityAnim);
-        }
-
-        SettingsButton.BeginAnimation(OpacityProperty, settingsOpacityAnim, HandoffBehavior.SnapshotAndReplace);
-        SettingsTranslate.BeginAnimation(TranslateTransform.YProperty, settingsTranslateAnim, HandoffBehavior.SnapshotAndReplace);
-        SettingsScale.BeginAnimation(ScaleTransform.ScaleXProperty, settingsScaleAnim, HandoffBehavior.SnapshotAndReplace);
-        SettingsScale.BeginAnimation(ScaleTransform.ScaleYProperty, settingsScaleAnim, HandoffBehavior.SnapshotAndReplace);
-        SettingsRotate.BeginAnimation(RotateTransform.AngleProperty, settingsRotateAnim, HandoffBehavior.SnapshotAndReplace);
+        target.BeginAnimation(property, animation, HandoffBehavior.SnapshotAndReplace);
     }
 
     #endregion
@@ -1171,6 +1103,8 @@ public partial class MainWindow
                 MediaPlayback.RemainingTimeText.Opacity = 1.0;
         }
 
+        if (MediaRightColumn != null)
+            MediaRightColumn.Visibility = IsNoWidgetMode && !_isLyricsActive ? Visibility.Collapsed : Visibility.Visible;
         if (CalendarWidget != null)
         {
             if (_isLyricsActive)

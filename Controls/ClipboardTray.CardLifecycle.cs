@@ -18,7 +18,7 @@ public sealed partial class ClipboardTray
             var bounds = new Rect(0, 0, border.ActualWidth, border.ActualHeight);
             if (border.Clip is not RectangleGeometry existing || existing.Rect != bounds)
             {
-                var clip = new RectangleGeometry(bounds, 16, 16);
+                var clip = new RectangleGeometry(bounds, 12, 12);
                 clip.Freeze();
                 border.Clip = clip;
             }

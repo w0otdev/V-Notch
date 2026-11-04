@@ -20,6 +20,8 @@ public sealed class GlassClipGrid : Grid
                 bounds.Right <= RenderSize.Width + epsilon && bounds.Bottom <= RenderSize.Height + epsilon)
                 return null;
         }
+        if (Clip is null && !ClipToBounds)
+            return null;
         // Preserve layout clipping while a resize is waiting for its new outline.
         return base.GetLayoutClip(layoutSlotSize);
     }

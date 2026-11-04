@@ -182,6 +182,32 @@ try {
             throw "Expected .sha256 sidecar for $installerName to end with a trailing newline."
         }
     }
+    # Exercise the build's signing parameters with a release override, then verify
+    # the resulting signed metadata uses the same identity as the published app.
+    $signingParameters = $buildAst.Find({ param($node)
+        $node -is [Management.Automation.Language.AssignmentStatementAst] -and
+        $node.Left.Extent.Text -eq '$signParams'
+    }, $true)
+    if (-not $signingParameters) { throw 'Build manifest signing parameters were not found.' }
+    & {
+        $projectVersion = '2.3.0'
+        $ReleaseVersion = '2.3.1-beta'
+        $probeInstallers = Join-Path $signDirectory 'installers'
+        New-Item -ItemType Directory -Path $probeInstallers | Out-Null
+        Copy-Item -LiteralPath (Join-Path $signDirectory 'V-Notch-Setup.exe') -Destination $probeInstallers
+        Push-Location $signDirectory
+        try {
+            . ([scriptblock]::Create($signingParameters.Extent.Text))
+            $signParams.PrivateKeyPath = $privateKeyFile
+            $signParams.PublicKeyPath = $publicKeyFile
+            & $signScript @signParams | Out-Null
+            $manifest = Get-Content -LiteralPath ($signParams.InstallerPath + '.manifest.json') -Raw | ConvertFrom-Json
+            if ($manifest.Version -cne $ReleaseVersion) {
+                throw "Build signed manifest version '$($manifest.Version)' instead of requested release '$ReleaseVersion'."
+            }
+        } finally { Pop-Location }
+    }
+
     $checksumsPath = Join-Path $signDirectory 'checksums.txt'
     $concatenatedBytes = [byte[]]@(foreach ($shaFile in Get-ChildItem -LiteralPath $signDirectory -Filter '*.sha256' | Sort-Object Name) {
         [IO.File]::ReadAllBytes($shaFile.FullName)
@@ -191,7 +217,8 @@ try {
         throw 'Concatenated .sha256 sidecars must produce 1 line per installer in checksums.txt.'
     }
 
-    Write-Host 'Release gates passed: coverage boundaries, merged suites/assemblies, duplicate reports, XML safety, model allowlist/hash/license, required signing, manifest checksums.'
+    & (Join-Path $repository 'Tests/DevRunnerTests.ps1')
+    Write-Host 'Release gates passed: coverage boundaries, merged suites/assemblies, duplicate reports, XML safety, model allowlist/hash/license, required signing, manifest checksums, dev runner process scope.'
 } finally {
     $resolved = [IO.Path]::GetFullPath($temporary)
     $tempRoot = [IO.Path]::GetFullPath([IO.Path]::GetTempPath())

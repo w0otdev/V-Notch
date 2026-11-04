@@ -14,8 +14,6 @@
             <Setter Property="TextOptions.TextFormattingMode" Value="Ideal"/>
             <Setter Property="TextOptions.TextRenderingMode" Value="Grayscale"/>
             <Setter Property="TextOptions.TextHintingMode" Value="Animated"/>
-            <Setter Property="UseLayoutRounding" Value="True"/>
-            <Setter Property="SnapsToDevicePixels" Value="True"/>
         </Style>
 <Style x:Key="SubtitleText" TargetType="TextBlock">
             <Setter Property="Foreground" Value="{x:Static svc:UiPalette.SecondaryBrush}"/>
@@ -25,8 +23,6 @@
             <Setter Property="TextOptions.TextFormattingMode" Value="Ideal"/>
             <Setter Property="TextOptions.TextRenderingMode" Value="Grayscale"/>
             <Setter Property="TextOptions.TextHintingMode" Value="Animated"/>
-            <Setter Property="UseLayoutRounding" Value="True"/>
-            <Setter Property="SnapsToDevicePixels" Value="True"/>
         </Style>
 <Style x:Key="ProgressTimeText" TargetType="TextBlock" BasedOn="{StaticResource SubtitleText}"><Setter Property="Foreground" Value="#B3FFFFFF"/>
             <Setter Property="FontSize" Value="10.5"/>
@@ -60,7 +56,7 @@ c1.513-0.625,3.253-0.275,4.407,0.885l17.862,17.951c2.088,2.098,2.088,5.488,0,7.5
                                             <RowDefinition Height="Auto"/>
                                         </Grid.RowDefinitions>
 
-                                        <StackPanel Grid.Row="0" MaxWidth="340" RenderOptions.ClearTypeHint="Enabled" Margin="0,0,0,0">
+                                        <StackPanel Grid.Row="0" MaxWidth="340" Margin="0,0,0,0">
                                             <StackPanel.OpacityMask>
                                                 <LinearGradientBrush x:Name="TextFadeBrush" MappingMode="RelativeToBoundingBox" StartPoint="0,0" EndPoint="1,0">
                                                     <GradientStop Color="Black" Offset="0"/>
@@ -81,13 +77,6 @@ c1.513-0.625,3.253-0.275,4.407,0.885l17.862,17.951c2.088,2.098,2.088,5.488,0,7.5
                                                             </TransformGroup>
                                                         </Grid.RenderTransform>
 
-                                                        <TextBlock Text="{Binding Text, ElementName=TrackTitle}"
-                                                                   Style="{StaticResource TitleText}" TextOptions.TextHintingMode="Animated"
-                                                                   FontSize="14"
-                                                                   FontWeight="Bold"
-                                                                   Foreground="#80000000"
-                                                                   Margin="0,1,0,0" />
-
                                                         <TextBlock x:Name="TrackTitle"
                                                                    Text="No media playing"
                                                                    Style="{StaticResource TitleText}" TextOptions.TextHintingMode="Animated"
@@ -103,13 +92,6 @@ c1.513-0.625,3.253-0.275,4.407,0.885l17.862,17.951c2.088,2.098,2.088,5.488,0,7.5
                                                                 <TranslateTransform x:Name="TitleMorphTranslateNext" Y="0"/>
                                                             </TransformGroup>
                                                         </Grid.RenderTransform>
-
-                                                        <TextBlock Text="{Binding Text, ElementName=TrackTitleNext}"
-                                                                   Style="{StaticResource TitleText}" TextOptions.TextHintingMode="Animated"
-                                                                   FontSize="14"
-                                                                   FontWeight="Bold"
-                                                                   Foreground="#80000000"
-                                                                   Margin="0,1,0,0" />
 
                                                         <TextBlock x:Name="TrackTitleNext"
                                                                    Text=""
@@ -132,12 +114,6 @@ c1.513-0.625,3.253-0.275,4.407,0.885l17.862,17.951c2.088,2.098,2.088,5.488,0,7.5
                                                             </TransformGroup>
                                                         </Grid.RenderTransform>
 
-                                                        <TextBlock Text="{Binding Text, ElementName=TrackArtist}"
-                                                                   Style="{StaticResource SubtitleText}"
-                                                                   FontWeight="Bold"
-                                                                   Foreground="#80000000"
-                                                                   Margin="0,1,0,0" />
-
                                                         <TextBlock x:Name="TrackArtist"
                                                                      Text="Artist name"
                                                                      Style="{StaticResource SubtitleText}"
@@ -152,12 +128,6 @@ c1.513-0.625,3.253-0.275,4.407,0.885l17.862,17.951c2.088,2.098,2.088,5.488,0,7.5
                                                                 <TranslateTransform x:Name="ArtistMorphTranslateNext" Y="0"/>
                                                             </TransformGroup>
                                                         </Grid.RenderTransform>
-
-                                                        <TextBlock Text="{Binding Text, ElementName=TrackArtistNext}"
-                                                                   Style="{StaticResource SubtitleText}"
-                                                                   FontWeight="Bold"
-                                                                   Foreground="#80000000"
-                                                                   Margin="0,1,0,0" />
 
                                                          <TextBlock x:Name="TrackArtistNext"
                                                                     Text=""

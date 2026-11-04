@@ -195,6 +195,7 @@ public sealed partial class ClipboardTray : UserControl, IDisposable
             }
             else
             {
+                _entranceWasHidden = true;
                 CloseLabelEditor(immediately: true);
                 StopEntranceWork();
                 StopCategoryScrolling();
@@ -933,7 +934,7 @@ public sealed partial class ClipboardTray : UserControl, IDisposable
         if (sender is not Border border || e.NewSize.Width <= 0 || e.NewSize.Height <= 0) return;
         var bounds = new Rect(e.NewSize);
         if (border.Clip is RectangleGeometry existing && existing.Rect == bounds) return;
-        var clip = new RectangleGeometry(bounds, 16, 16);
+        var clip = new RectangleGeometry(bounds, 12, 12);
         clip.Freeze();
         border.Clip = clip;
     }

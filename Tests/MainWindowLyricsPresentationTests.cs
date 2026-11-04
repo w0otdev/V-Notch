@@ -333,6 +333,50 @@ public sealed class MainWindowLyricsPresentationTests
         Assert.Equal(expected, Invoke(window, "FindLyricIndex", TimeSpan.FromSeconds(seconds)));
     });
 
+    [Fact]
+    public void NoWidgetModeShrinksMediaViewToTitleAndExpandsWhenLyricsAreActive() => SharedStaTestRunner.RunAsync(async ct =>
+    {
+        await using var fixture = CreateFixture();
+        var window = fixture.Window;
+        var settings = Field<NotchSettings>(window, "_settings");
+        var shellState = Field<NotchShellState>(window, "_shellState");
+        var coordinator = Field<VNotch.Controllers.NotchTransitionCoordinator>(window, "_transitionCoordinator");
+
+        window.SetDebugViewLock(true);
+        window.Show();
+        await WpfFrameWaiter.UntilAsync(() => Field<bool>(window, "_isStartupLayoutReady") && !coordinator.IsTransitionActive, "no-widget startup", ct);
+
+        window.SetDebugViewState("MediaExpanded");
+        await WpfFrameWaiter.UntilAsync(() => !coordinator.IsTransitionActive, "no-widget media expand", ct);
+        Assert.Equal(480, shellState.ExpandedWidth);
+
+        settings.ExpandedWidget = "none";
+        Invoke(window, "ApplyExpandedWidgetMode", true);
+        Assert.Equal(328, shellState.ExpandedWidth);
+        await WpfFrameWaiter.UntilAsync(() =>
+            !Field<bool>(window, "_isMediaWidthAnimating") &&
+            Math.Abs(window.NotchBorder.ActualWidth - 328) < 0.5 &&
+            Math.Abs(window.ExpandedContent.ActualWidth - 312) < 0.5,
+            "no-widget media shrink", ct);
+
+        Invoke(window, "ShowLyricsWidget");
+        Assert.Equal(480, shellState.ExpandedWidth);
+        await WpfFrameWaiter.UntilAsync(() =>
+            !Field<bool>(window, "_isMediaWidthAnimating") &&
+            Math.Abs(window.NotchBorder.ActualWidth - 480) < 0.5 &&
+            Math.Abs(window.ExpandedContent.ActualWidth - 464) < 0.5,
+            "no-widget lyrics expand", ct);
+
+        Invoke(window, "HideLyricsWidget");
+        Assert.Equal(328, shellState.ExpandedWidth);
+        await WpfFrameWaiter.UntilAsync(() =>
+            !Field<bool>(window, "_isMediaWidthAnimating") &&
+            Math.Abs(window.NotchBorder.ActualWidth - 328) < 0.5 &&
+            Math.Abs(window.ExpandedContent.ActualWidth - 312) < 0.5 &&
+            window.LyricsBlurBackground.Visibility == Visibility.Collapsed,
+            "no-widget lyrics hide shrink", ct);
+    });
+
     private static GreetingAcceptanceTests.MainWindowFixture CreateFixture() => new("en", greeting: false,
         settings => { settings.EnableLocalOnlyMode = true; settings.DisableMouseLeaveAutoClose = true; },
         services => services.AddSingleton<IMediaDetectionService>(new FakeMediaDetectionService()));

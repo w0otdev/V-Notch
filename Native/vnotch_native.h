@@ -2230,3 +2230,9 @@ VN_EXPORT int32_t __stdcall vn_subject_blur_process_bgra32(
     float bg_darken, float sub_brighten) noexcept;
 
 VN_EXPORT int32_t __stdcall vn_memory_trim_working_set() noexcept;
+
+VN_EXPORT int32_t __stdcall vn_notchshell_compute_expanded_width(
+    uint8_t is_no_widget_mode,
+    uint8_t is_lyrics_active,
+    uint8_t is_music_expanded,
+    double* out_width) noexcept;

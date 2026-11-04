@@ -290,7 +290,7 @@ public partial class MainWindow
                         if (saveOrder) PersistNavTabOrderFromUI();
                     });
                 }
-                else
+                else if (wasDragging)
                 {
                     AnimateNavDragDropSettle(item, 0.0, onCompleted: () =>
                     {
@@ -299,7 +299,7 @@ public partial class MainWindow
                     });
                 }
             }
-            else
+            else if (wasDragging)
             {
                 ResetAllNavTabTransforms();
                 UpdateNavIconsActiveState();
@@ -706,7 +706,8 @@ public partial class MainWindow
 
     public void NavigateToNotchView(NotchView targetView)
     {
-        if (_isAnimating) return;
+        if (_isAnimating && (_transitionCoordinator.CurrentView == NotchView.Compact ||
+            _transitionCoordinator.TargetView == NotchView.Compact)) return;
         _transitionCoordinator.RequestView(targetView, "NavTabClick");
     }
 

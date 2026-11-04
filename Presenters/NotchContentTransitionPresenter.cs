@@ -29,6 +29,8 @@ public sealed class NotchContentTransitionPresenter : IDisposable
     private long _activeSessionId;
     private long _animationVersion;
     private bool _disposed;
+    private sealed record PageOffset(Transform Original, TransformGroup Wrapper, TranslateTransform Offset);
+    private readonly Dictionary<FrameworkElement, PageOffset> _pageOffsets = new();
 
     public NotchContentTransitionPresenter(NotchContentViewRefs refs)
     {
@@ -83,11 +85,13 @@ public sealed class NotchContentTransitionPresenter : IDisposable
                     el.BeginAnimation(UIElement.OpacityProperty, null);
                     el.Visibility = Visibility.Visible;
                     el.Opacity = 1.0;
+                    ReleasePageOffset(el);
                     ClearTemporaryAnimationTransforms(el);
+                    el.IsHitTestVisible = true;
                 }
                 else
                 {
-                    ResetElementVisualState(el);
+                    ResetContentVisualState(el);
                 }
             }
             if (IsCurrent(sessionId, version) && plan.TargetView != NotchView.AudioMixer && _refs.AudioScrollViewer != null && !ReferenceEquals(_refs.AudioScrollViewer, _refs.AudioContent))
@@ -100,7 +104,7 @@ public sealed class NotchContentTransitionPresenter : IDisposable
 
         // Cross-fade animation
         int fps = plan.Motion.TargetFps > 0 ? plan.Motion.TargetFps : AnimationConfig.TargetFps;
-        bool switchingExpandedView = plan.FromView != NotchView.Compact && plan.FromView != plan.TargetView;
+        bool switchingExpandedView = plan.FromView != NotchView.Compact;
         var enterDuration = switchingExpandedView
             ? new Duration(TimeSpan.FromMilliseconds(Math.Min(320, plan.Motion.Duration.TimeSpan.TotalMilliseconds)))
             : plan.Motion.Duration;
@@ -109,11 +113,22 @@ public sealed class NotchContentTransitionPresenter : IDisposable
             : plan.Motion.Duration;
 
         // Chuẩn bị target element theo Rule D3: Lấy opacity hiện tại TRƯỚC KHI dừng animation clock
+        bool targetWasVisible = targetElement.Visibility == Visibility.Visible && targetElement.Opacity > 0.01;
         double targetStartOpacity = targetElement.Visibility == Visibility.Visible ? targetElement.Opacity : 0.0;
         targetElement.BeginAnimation(UIElement.OpacityProperty, null);
         targetElement.Visibility = Visibility.Visible;
         targetElement.Opacity = targetStartOpacity;
-        ClearTemporaryAnimationTransforms(targetElement);
+        if (switchingExpandedView)
+        {
+            targetElement.IsHitTestVisible = false;
+            AnimatePageOffset(targetElement, targetWasVisible ? 0 : 22 * plan.NavigationDirection,
+                0, enterDuration, fps);
+        }
+        else
+        {
+            ReleasePageOffset(targetElement);
+            ClearTemporaryAnimationTransforms(targetElement);
+        }
 
         var fadeIn = new DoubleAnimation(targetStartOpacity, 1.0, enterDuration)
         {
@@ -129,13 +144,15 @@ public sealed class NotchContentTransitionPresenter : IDisposable
             targetElement.BeginAnimation(UIElement.OpacityProperty, null);
             targetElement.Opacity = 1.0;
             targetElement.Visibility = Visibility.Visible;
+            ReleasePageOffset(targetElement);
+            targetElement.IsHitTestVisible = true;
 
             // Ẩn các element khác và dọn dẹp transform/effect
             foreach (var el in allElements)
             {
                 if (!ReferenceEquals(el, targetElement))
                 {
-                    ResetElementVisualState(el);
+                    ResetContentVisualState(el);
                 }
             }
 
@@ -164,6 +181,11 @@ public sealed class NotchContentTransitionPresenter : IDisposable
                 double currentElOpacity = el.Opacity;
                 el.BeginAnimation(UIElement.OpacityProperty, null);
                 el.Opacity = currentElOpacity;
+                if (switchingExpandedView)
+                {
+                    el.IsHitTestVisible = false;
+                    AnimatePageOffset(el, 0, -14 * plan.NavigationDirection, exitDuration, fps);
+                }
 
                 var fadeOut = new DoubleAnimation(currentElOpacity, 0.0, exitDuration)
                 {
@@ -173,7 +195,7 @@ public sealed class NotchContentTransitionPresenter : IDisposable
                 fadeOut.Completed += (_, _) =>
                 {
                     if (!IsCurrent(sessionId, version)) return;
-                    ResetElementVisualState(el);
+                    ResetContentVisualState(el);
                     if (ReferenceEquals(el, _refs.AudioContent) && _refs.AudioScrollViewer != null && !ReferenceEquals(_refs.AudioScrollViewer, _refs.AudioContent))
                     {
                         ResetElementVisualState(_refs.AudioScrollViewer);
@@ -183,11 +205,45 @@ public sealed class NotchContentTransitionPresenter : IDisposable
             }
             else
             {
-                ResetElementVisualState(el);
+                ResetContentVisualState(el);
             }
         }
 
         targetElement.BeginAnimation(UIElement.OpacityProperty, fadeIn);
+    }
+
+    private void AnimatePageOffset(FrameworkElement element, double initialX, double targetX, Duration duration, int fps)
+    {
+        if (!_pageOffsets.TryGetValue(element, out var layer) || !ReferenceEquals(element.RenderTransform, layer.Wrapper))
+        {
+            var original = element.RenderTransform ?? Transform.Identity;
+            var offset = new TranslateTransform(initialX, 0);
+            var wrapper = new TransformGroup();
+            wrapper.Children.Add(original);
+            wrapper.Children.Add(offset);
+            layer = new PageOffset(original, wrapper, offset);
+            _pageOffsets[element] = layer;
+            element.RenderTransform = wrapper;
+        }
+        double from = layer.Offset.X;
+        layer.Offset.BeginAnimation(TranslateTransform.XProperty, null);
+        layer.Offset.X = from;
+        var slide = AnimationPrimitives.MakeAnim(from, targetX, duration, AnimationPrimitives._easeAppleOut, fps);
+        layer.Offset.BeginAnimation(TranslateTransform.XProperty, slide, HandoffBehavior.SnapshotAndReplace);
+    }
+
+    private void ReleasePageOffset(FrameworkElement element)
+    {
+        if (!_pageOffsets.Remove(element, out var layer)) return;
+        layer.Offset.BeginAnimation(TranslateTransform.XProperty, null);
+        if (ReferenceEquals(element.RenderTransform, layer.Wrapper)) element.RenderTransform = layer.Original;
+    }
+
+    private void ResetContentVisualState(FrameworkElement element)
+    {
+        ReleasePageOffset(element);
+        ResetElementVisualState(element);
+        element.IsHitTestVisible = true;
     }
 
     public long InvalidateSession()
@@ -296,11 +352,13 @@ public sealed class NotchContentTransitionPresenter : IDisposable
                 el.BeginAnimation(UIElement.OpacityProperty, null);
                 el.Visibility = Visibility.Visible;
                 el.Opacity = 1.0;
+                ReleasePageOffset(el);
+                el.IsHitTestVisible = true;
                 ClearTemporaryAnimationTransforms(el);
             }
             else
             {
-                ResetElementVisualState(el);
+                ResetContentVisualState(el);
             }
         }
     }
@@ -377,7 +435,7 @@ public sealed class NotchContentTransitionPresenter : IDisposable
         {
             foreach (var el in elements)
             {
-                ResetElementVisualState(el);
+                ResetContentVisualState(el);
             }
             if (IsCurrent(sessionId, version) && _refs.AudioScrollViewer != null && !ReferenceEquals(_refs.AudioScrollViewer, _refs.AudioContent))
             {
@@ -402,7 +460,7 @@ public sealed class NotchContentTransitionPresenter : IDisposable
                 fade.Completed += (_, _) =>
                 {
                     if (!IsCurrent(sessionId, version)) return;
-                    ResetElementVisualState(el);
+                    ResetContentVisualState(el);
                     pendingCount--;
                     if (pendingCount <= 0)
                     {
@@ -417,7 +475,7 @@ public sealed class NotchContentTransitionPresenter : IDisposable
             }
             else
             {
-                ResetElementVisualState(el);
+                ResetContentVisualState(el);
             }
         }
 
@@ -460,6 +518,7 @@ public sealed class NotchContentTransitionPresenter : IDisposable
         if (_disposed) return;
         _disposed = true;
         CancelActiveTransition();
+        foreach (var element in GetAllElements()) ReleasePageOffset(element);
     }
 
     private bool IsCurrent(long sessionId, long version) =>

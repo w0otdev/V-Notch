@@ -166,7 +166,8 @@ public partial class MainWindow
         icon.BeginAnimation(UIElement.OpacityProperty, null);
         icon.Opacity = targetOpacity;
 
-        if (!animate || Math.Abs(currentOpacity - targetOpacity) < 0.01)
+        if (!animate || AnimationConfig.ReduceMotion || !SystemParameters.ClientAreaAnimation ||
+            Math.Abs(currentOpacity - targetOpacity) < 0.01)
             return;
 
         var anim = new DoubleAnimation

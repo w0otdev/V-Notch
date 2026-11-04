@@ -28,14 +28,17 @@ public partial class MainWindow
     private bool IsNonCalendarWidgetMode => IsAnyClockWidgetMode || IsWeatherWidgetMode || IsSystemMonitorWidgetMode;
 
     private bool IsNoWidgetMode => string.Equals(_settings.ExpandedWidget, "none", StringComparison.OrdinalIgnoreCase);
-    private bool ShouldShowMediaBlurBackground => _isLyricsActive || IsNoWidgetMode;
+    private bool ShouldShowMediaBlurBackground => _isLyricsActive;
     private bool ShouldShowGreetingSection => !IsNoWidgetMode && !_isLyricsActive && (!IsNonCalendarWidgetMode || IsDigitalClockWidgetMode);
 
-    private void ApplyExpandedWidgetMode()
+    private void ApplyExpandedWidgetMode(bool animateResize = false)
     {
         if (_clockWidgetPresenter == null) InitializeClockWidgetPresenter();
         _clockWidgetPresenter?.ApplyExpandedWidgetMode();
+        if (MediaRightColumn != null)
+            MediaRightColumn.Visibility = IsNoWidgetMode && !_isLyricsActive ? System.Windows.Visibility.Collapsed : System.Windows.Visibility.Visible;
         EnsureActiveExpandedWidgetFeatureLoaded();
+        SyncExpandedMediaWidth(animate: animateResize);
         if (ShouldShowMediaBlurBackground)
             FadeInLyricsBlurBackgroundIfActive();
         else if (LyricsBlurBackground != null)

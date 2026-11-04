@@ -16,7 +16,7 @@ public sealed class ClipboardCardPresentation : Grid
         var bounds = new Rect(RenderSize);
         if (_roundedClip == null || _roundedClip.Rect != bounds)
         {
-            _roundedClip = new RectangleGeometry(bounds, 16, 16);
+            _roundedClip = new RectangleGeometry(bounds, 12, 12);
             _roundedClip.Freeze();
         }
         return _roundedClip;

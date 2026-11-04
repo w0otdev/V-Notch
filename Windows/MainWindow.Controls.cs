@@ -830,6 +830,11 @@ public partial class MainWindow
         if (_isExpanded || _isAnimating) return;
 
         bool animateFill = _isVolumeIndicatorActive;
+        if (!_hasVolumeHudMediaTint && _currentMediaInfo?.Thumbnail != null &&
+            (_currentMediaInfo.IsAnyMediaPlaying || !string.IsNullOrEmpty(_currentMediaInfo.CurrentTrack)))
+        {
+            UpdateMediaBackground(_currentMediaInfo, forceRefresh: true);
+        }
 
         if (!_isVolumeIndicatorActive)
         {

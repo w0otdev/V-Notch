@@ -75,6 +75,8 @@ public partial class MainWindow
     {
         var visibility = ExpandedContent.Visibility;
         double opacity = ExpandedContent.Opacity;
+        _shellState.UpdateExpandedWidth(IsNoWidgetMode, _isLyricsActive, _isMusicExpanded);
+        if (MediaRightColumn != null) MediaRightColumn.Visibility = IsNoWidgetMode && !_isLyricsActive ? Visibility.Collapsed : Visibility.Visible;
         double targetWidth = Math.Max(0, _expandedWidth - ExpandedContentHorizontalInset);
         double targetHeight = Math.Max(0, _expandedHeight - ExpandedContentVerticalInset);
         try

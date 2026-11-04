@@ -2,6 +2,7 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Data;
 using System.Windows.Media;
+using System.Windows.Media.Imaging;
 using VNotch.Controls;
 using Xunit;
 
@@ -150,4 +151,94 @@ public sealed class TrayMotionTests
             VNotch.Services.AnimationConfig.SetReduceMotion(prev);
         }
     });
+
+    [Fact]
+    public void LoadedContainerKeepsTheEntranceThatWasPreparedBeforeItsLoadedEvent() => SharedStaTestRunner.RunAsync(async () =>
+    {
+        bool previous = VNotch.Services.AnimationConfig.ReduceMotion;
+        VNotch.Services.AnimationConfig.SetReduceMotion(false);
+        using var tray = new ClipboardTray();
+        var flags = System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic;
+        var cards = (System.Collections.ObjectModel.ObservableCollection<VNotch.ViewModels.ClipboardCardViewModel>)typeof(ClipboardTray)
+            .GetField("_cards", flags)!.GetValue(tray)!;
+        cards.Add(new(new VNotch.Models.ClipboardEntry { Title = "File 0", Kind = VNotch.Models.ClipboardKind.File }));
+        var window = new BackgroundWindow { Content = tray, Width = 800, Height = 400 };
+        try
+        {
+            window.Show();
+            await System.Windows.Threading.Dispatcher.Yield(System.Windows.Threading.DispatcherPriority.ApplicationIdle);
+            var list = (ListBox)tray.FindName("Cards");
+            var item = (ListBoxItem)list.ItemContainerGenerator.ContainerFromIndex(0);
+            tray.BeginEntrance();
+            var entrance = Assert.IsType<TranslateTransform>(item.RenderTransform);
+            Assert.True(entrance.HasAnimatedProperties);
+
+            // WPF can realize a container during layout and raise Loaded after
+            // BeginEntrance has already prepared that container's stagger.
+            item.RaiseEvent(new RoutedEventArgs(FrameworkElement.LoadedEvent));
+
+            Assert.Same(entrance, item.RenderTransform);
+            Assert.True(entrance.HasAnimatedProperties);
+            Assert.True(item.HasAnimatedProperties);
+        }
+        finally { window.Close(); VNotch.Services.AnimationConfig.SetReduceMotion(previous); }
+    });
+
+    [Fact]
+    public void ReopeningAHiddenTrayRevealsItsCachedCardsIndividually() => SharedStaTestRunner.RunAsync(async () =>
+    {
+        bool previous = VNotch.Services.AnimationConfig.ReduceMotion;
+        VNotch.Services.AnimationConfig.SetReduceMotion(false);
+        using var tray = new ClipboardTray();
+        var flags = System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic;
+        var cards = (System.Collections.ObjectModel.ObservableCollection<VNotch.ViewModels.ClipboardCardViewModel>)typeof(ClipboardTray)
+            .GetField("_cards", flags)!.GetValue(tray)!;
+        for (int index = 0; index < 3; index++)
+            cards.Add(new(new VNotch.Models.ClipboardEntry { Title = $"Project {index}.pdf", Kind = VNotch.Models.ClipboardKind.File }));
+        var window = new BackgroundWindow { Content = tray, Width = 800, Height = 400 };
+        try
+        {
+            window.Show();
+            await System.Windows.Threading.Dispatcher.Yield(System.Windows.Threading.DispatcherPriority.ApplicationIdle);
+            tray.BeginEntrance();
+            await Task.Delay(850);
+            tray.BeginExit();
+            tray.Visibility = Visibility.Collapsed;
+            await System.Windows.Threading.Dispatcher.Yield(System.Windows.Threading.DispatcherPriority.ApplicationIdle);
+            tray.Visibility = Visibility.Visible;
+            tray.BeginEntrance();
+            await WpfFrameWaiter.NextAsync();
+            var list = (ListBox)tray.FindName("Cards");
+            var first = (ListBoxItem)list.ItemContainerGenerator.ContainerFromIndex(0);
+            var last = (ListBoxItem)list.ItemContainerGenerator.ContainerFromIndex(2);
+            Assert.True(last.Opacity < .99, "Reopening must reveal each card, not just fade the entire row.");
+            Assert.True(first.Opacity >= last.Opacity, "The leftmost card must reveal before the rightmost card.");
+            await WpfFrameWaiter.UntilAsync(() => Math.Abs(last.Opacity - 1) < 1e-6 &&
+                Math.Abs(last.RenderTransform.Value.OffsetY) < 1e-6, "cached card reveal settled");
+            Assert.Equal(0, last.RenderTransform.Value.OffsetY);
+            SaveTrayArtifact(tray);
+        }
+        finally { window.Close(); VNotch.Services.AnimationConfig.SetReduceMotion(previous); }
+    });
+
+    private static void SaveTrayArtifact(ClipboardTray tray)
+    {
+        string? directory = Environment.GetEnvironmentVariable("VNOTCH_QA_ARTIFACT_DIR");
+        if (string.IsNullOrWhiteSpace(directory)) return;
+        System.IO.Directory.CreateDirectory(directory);
+        tray.UpdateLayout();
+        var bounds = new Rect(tray.RenderSize);
+        var visual = new DrawingVisual();
+        using (var drawing = visual.RenderOpen())
+        {
+            drawing.DrawRectangle(Brushes.Black, null, bounds);
+            drawing.DrawRectangle(new VisualBrush(tray), null, bounds);
+        }
+        var bitmap = new RenderTargetBitmap((int)bounds.Width, (int)bounds.Height, 96, 96, PixelFormats.Pbgra32);
+        bitmap.Render(visual);
+        var encoder = new PngBitmapEncoder();
+        encoder.Frames.Add(BitmapFrame.Create(bitmap));
+        using var stream = System.IO.File.Create(System.IO.Path.Combine(directory, "tray-corners.png"));
+        encoder.Save(stream);
+    }
 }

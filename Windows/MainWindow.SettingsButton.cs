@@ -6,7 +6,7 @@ namespace VNotch;
 
 public partial class MainWindow
 {
-    private void PlaceSharedSettingsButton(NotchView view)
+    private bool PlaceSharedSettingsButton(NotchView view)
     {
         // Let the tray's toolbar lay out this same button alongside its actions.
         // Other expanded views keep the button in the shared corner host.
@@ -15,7 +15,7 @@ public partial class MainWindow
         SettingsButton.CornerRadius = new CornerRadius(inTray ? 14 : 12);
         ContentControl host = inTray
             ? ClipboardTrayView.SettingsButtonHost : SharedSettingsHost;
-        if (ReferenceEquals(host.Content, SettingsButton)) return;
+        if (ReferenceEquals(host.Content, SettingsButton)) return false;
 
         if (SettingsButton.Parent is ContentControl previous)
         {
@@ -24,6 +24,7 @@ public partial class MainWindow
         }
         host.Visibility = Visibility.Visible;
         host.Content = SettingsButton;
+        return true;
     }
 
     private void HideSharedSettingsButton()

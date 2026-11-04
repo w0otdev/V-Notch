@@ -98,11 +98,13 @@ public partial class MainWindow
         bool isThumbnailOnlyUpdate = info.IsThumbnailOnlyUpdate;
         if (!isThumbnailOnlyUpdate)
         {
+            if (info.Thumbnail == null && _currentMediaInfo?.Thumbnail != null && MediaUpdateQueue.SameTrack(info, _currentMediaInfo))
+            {
+                info.Thumbnail = _currentMediaInfo.Thumbnail;
+            }
             _currentMediaInfo = info;
             RefreshMediaPinBadges();
         }
-
-        WakeFromIdle();
 
         if (isThumbnailOnlyUpdate)
         {
@@ -119,6 +121,7 @@ public partial class MainWindow
             if (info.Thumbnail != null)
             {
                 _currentMediaInfo.Thumbnail = info.Thumbnail;
+                info.IsAnyMediaPlaying |= _currentMediaInfo.IsAnyMediaPlaying;
                 DynamicIslandColorExtractor.PreloadDynamicIslandPaletteAsync(info.Thumbnail).SafeFireAndForget("PRELOAD-PALETTE");
             }
         }
@@ -130,6 +133,11 @@ public partial class MainWindow
 
         if (result.Action == MediaDisplayAction.Ignore)
             return;
+
+        // Browser session/title changes also publish empty and stopped states.
+        // Only active media should reveal the idle notch; artwork is a refresh.
+        if (!isThumbnailOnlyUpdate && info.IsAnyMediaPlaying)
+            WakeFromIdle();
 
         if (_showingEmptyThumbnail && (result.HasRealTrack || info.IsAnyMediaPlaying))
         {
@@ -237,7 +245,7 @@ public partial class MainWindow
                 ThumbnailImage.Visibility = Visibility.Visible;
                 ThumbnailFallback.Visibility = Visibility.Collapsed;
 
-                if (result.NeedsBackgroundUpdate)
+                if (result.NeedsBackgroundUpdate || !_hasVolumeHudMediaTint || _lastDominantColor == Colors.Transparent)
                 {
                     UpdateMediaBackground(info);
                     if (_isExpanded)

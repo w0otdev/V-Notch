@@ -279,7 +279,7 @@ public partial class MainWindow
 
         if (oldSettings == null || !string.Equals(oldSettings.ExpandedWidget, _settings.ExpandedWidget, StringComparison.Ordinal))
         {
-            ApplyExpandedWidgetMode();
+            ApplyExpandedWidgetMode(animateResize: oldSettings != null);
         }
 
         if (oldSettings == null || oldSettings.HideCamera != _settings.HideCamera || !string.Equals(oldSettings.NavTabOrder, _settings.NavTabOrder, StringComparison.Ordinal) || !string.Equals(oldSettings.VisibleNavTabs, _settings.VisibleNavTabs, StringComparison.Ordinal))
@@ -439,8 +439,8 @@ public partial class MainWindow
                         InnerClipBorder.CornerRadius = cr;
                         NotchBackground.CornerRadius = cr;
                         NotchBorderShadow.CornerRadius = cr;
-                        MediaBackground.CornerRadius = cr;
-                        MediaBackground2.CornerRadius = cr;
+                        // removed MediaBackground CornerRadius
+                        // removed MediaBackground2 CornerRadius
                         _glassMaterialPresenter.SyncCornerRadius(cr);
                         CurrentCornerRadius = _cornerRadiusCollapsed;
                     }

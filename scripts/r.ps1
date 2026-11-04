@@ -105,11 +105,34 @@ function Next-StepTag {
 Write-TreeHeader
 
 # --- 1. Stop old instances and WAIT for them to actually exit ---------------
+function Get-VNotchInstances {
+    # The per-user single-instance mutex is shared by installed and dev builds.
+    $sessionId = [Diagnostics.Process]::GetCurrentProcess().SessionId
+    $userSid = [Security.Principal.WindowsIdentity]::GetCurrent().User.Value
+    $candidates = @(Get-Process -Name $processName -ErrorAction SilentlyContinue |
+        Where-Object { $_.SessionId -eq $sessionId })
+    foreach ($instance in $candidates) {
+        try {
+            $processInfo = Get-CimInstance Win32_Process -Filter "ProcessId = $($instance.Id)" -ErrorAction Stop
+            if (-not $processInfo) { continue }
+            $owner = Invoke-CimMethod -InputObject $processInfo -MethodName GetOwnerSid -ErrorAction Stop
+            if ($owner.ReturnValue -ne 0 -or -not $owner.Sid) {
+                throw 'Could not determine the process owner.'
+            }
+            if ($owner.Sid -eq $userSid) { $instance }
+        } catch {
+            # An instance may exit while its ownership is being queried.
+            if (-not (Get-Process -Id $instance.Id -ErrorAction SilentlyContinue)) { continue }
+            throw "Cannot inspect $processName PID $($instance.Id): $($_.Exception.Message)"
+        }
+    }
+}
+
 function Wait-VNotchExit {
     param([int]$TimeoutMs = 7000)
     $deadline = (Get-Date).AddMilliseconds($TimeoutMs)
     while ((Get-Date) -lt $deadline) {
-        $alive = Get-Process -Name $processName -ErrorAction SilentlyContinue | Where-Object { $_.Path -eq $exePath }
+        $alive = @(Get-VNotchInstances)
         if (-not $alive) { return $true }
         Start-Sleep -Milliseconds 150
     }
@@ -117,20 +140,30 @@ function Wait-VNotchExit {
 }
 
 Write-TreeStep (Next-StepTag) "Process Check"
-$running = @(Get-Process -Name $processName -ErrorAction SilentlyContinue | Where-Object { $_.Path -eq $exePath })
-if ($running.Count -gt 0) {
-    $pids = ($running | Select-Object -ExpandProperty Id) -join ", "
-    Write-TreeItem "Stopping $($running.Count) running instance(s) (PID: $pids)..." -State Info
-    $running | Stop-Process -Force -ErrorAction SilentlyContinue
+try {
+    $running = @(Get-VNotchInstances)
+    if ($running.Count -gt 0) {
+        $pids = ($running | Select-Object -ExpandProperty Id) -join ", "
+        Write-TreeItem "Stopping $($running.Count) running instance(s) (PID: $pids)..." -State Info
+        foreach ($instance in $running) {
+            try {
+                if (-not $instance.HasExited) { Stop-Process -InputObject $instance -Force -ErrorAction Stop }
+            } catch {
+                if (-not $instance.HasExited) { throw }
+            }
+        }
 
-    if (-not (Wait-VNotchExit -TimeoutMs 7000)) {
-        Write-TreeItem "Process still alive after 7s - aborting." -State Error
-        Write-Host "  $gBotLeft$lineRule`n" -ForegroundColor DarkCyan
-        exit 1
+        if (-not (Wait-VNotchExit -TimeoutMs 7000)) {
+            throw 'Process still alive after 7s - aborting.'
+        }
+        Write-TreeItem "Terminated cleanly." -State Success
+    } else {
+        Write-TreeItem "No active V-Notch process." -State Success
     }
-    Write-TreeItem "Terminated cleanly." -State Success
-} else {
-    Write-TreeItem "No active V-Notch process." -State Success
+} catch {
+    Write-TreeItem "Cannot stop the previous instance: $($_.Exception.Message)" -State Error
+    Write-Host "  $gBotLeft$lineRule`n" -ForegroundColor DarkCyan
+    exit 1
 }
 
 # --- 2. (Only with -Clean) Hard-delete obj/bin to force a full rebuild -------

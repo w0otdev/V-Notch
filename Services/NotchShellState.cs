@@ -10,6 +10,11 @@ public sealed partial class NotchShellState
         byte isNotchVisible, byte isHiddenByFullscreen, byte isHiddenByIdle,
         out byte outVisible);
 
+    [LibraryImport("VNotch.Native.dll")]
+    private static partial int vn_notchshell_compute_expanded_width(
+        byte isNoWidgetMode, byte isLyricsActive, byte isMusicExpanded,
+        out double outWidth);
+
     public IntPtr Hwnd { get; set; }
 
     public bool IsNotchVisible { get; set; } = true;
@@ -40,4 +45,17 @@ public sealed partial class NotchShellState
             IsHiddenByFullscreen ? (byte)1 : (byte)0,
             IsHiddenByIdle ? (byte)1 : (byte)0,
             out byte vis) == 0 && vis != 0;
+
+    public double UpdateExpandedWidth(bool isNoWidgetMode, bool isLyricsActive, bool isMusicExpanded)
+    {
+        if (vn_notchshell_compute_expanded_width(
+                isNoWidgetMode ? (byte)1 : (byte)0,
+                isLyricsActive ? (byte)1 : (byte)0,
+                isMusicExpanded ? (byte)1 : (byte)0,
+                out double width) == 0 && width > 0)
+        {
+            ExpandedWidth = width;
+        }
+        return ExpandedWidth;
+    }
 }

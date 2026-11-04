@@ -19,7 +19,8 @@ public sealed record TransitionPlan(
     double TargetWidth,
     double TargetHeight,
     double TargetCornerRadius,
-    TransitionMotionConfig Motion
+    TransitionMotionConfig Motion,
+    int NavigationDirection = 1
 );
 
 public enum TransitionExecutionStatus

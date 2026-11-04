@@ -1119,6 +1119,7 @@ public partial class MainWindow
             }
 
             // Always make LyricsWidget visible
+            if (MediaRightColumn != null) MediaRightColumn.Visibility = Visibility.Visible;
             if (LyricsWidget.Visibility != Visibility.Visible)
             {
                 LyricsWidget.Visibility = Visibility.Visible;
@@ -1166,6 +1167,7 @@ public partial class MainWindow
             ShowSpotifyCanvasBackgroundIfAvailable();
 
             FadeInLyricsBlurBackgroundIfActive();
+            SyncExpandedMediaWidth(animate: !alreadyActive);
         });
     }
 
@@ -1174,7 +1176,11 @@ public partial class MainWindow
         _subtitleSearchController.Invalidate();
         if (!_isLyricsActive)
         {
-            if (!IsNoWidgetMode) Dispatcher.Invoke(HideLyricsBlurBackgroundImmediately);
+            Dispatcher.Invoke(() =>
+            {
+                HideLyricsBlurBackgroundImmediately();
+                SyncExpandedMediaWidth(animate: false);
+            });
             return;
         }
         _isLyricsActive = false;
@@ -1220,10 +1226,13 @@ public partial class MainWindow
             LyricsWidget.BeginAnimation(OpacityProperty, fadeOutLyrics);
 
             // The returning widget must never inherit the lyrics backdrop.
-            if (!IsNoWidgetMode) HideLyricsBlurBackgroundImmediately();
+            HideLyricsBlurBackgroundImmediately();
+            SyncExpandedMediaWidth(animate: true);
 
             SuspendSpotifyCanvasLifecycle();
 
+            if (MediaRightColumn != null)
+                MediaRightColumn.Visibility = IsNoWidgetMode && !_isLyricsActive ? Visibility.Collapsed : Visibility.Visible;
             CalendarWidget.Visibility = IsNoWidgetMode ? Visibility.Collapsed : Visibility.Visible;
             CalendarWidget.Opacity = 0;
             var fadeInCalendar = new DoubleAnimation(0, 1, new Duration(TimeSpan.FromMilliseconds(350)))
@@ -1233,7 +1242,7 @@ public partial class MainWindow
             };
             System.Windows.Media.Animation.Timeline.SetDesiredFrameRate(fadeInCalendar, VNotch.Services.AnimationConfig.TargetFps);
             CalendarWidget.BeginAnimation(OpacityProperty, fadeInCalendar);
-            if (IsNoWidgetMode) FadeInLyricsBlurBackgroundIfActive();
+
 
             if (ShouldShowGreetingSection)
             {

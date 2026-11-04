@@ -135,6 +135,47 @@ public sealed class MainWindowUpdateNotificationTests
         Assert.True(window.UpdateNotificationButton.IsHitTestVisible);
     });
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void UpdatesArrivingAfterExpansionStayAlignedWithTheStatusIcons(bool island) => SharedStaTestRunner.RunAsync(async ct =>
+    {
+        await using var fixture = new GreetingAcceptanceTests.MainWindowFixture("en", greeting: false,
+            configureSettings: settings =>
+            {
+                settings.EnableLocalOnlyMode = true;
+                settings.DisableMouseLeaveAutoClose = true;
+                settings.EnableDynamicIslandMode = island;
+                settings.ShowBatteryIndicator = true;
+            }, configureServices: services => services.AddSingleton<IMediaDetectionService>(new FakeMediaDetectionService()));
+        var window = fixture.Window;
+        var coordinator = Field<VNotch.Controllers.NotchTransitionCoordinator>(window, "_transitionCoordinator");
+        window.Show();
+        window.NavigateToNotchView(NotchView.Media);
+        await WpfFrameWaiter.UntilAsync(() => !coordinator.IsTransitionActive &&
+            coordinator.CurrentView == NotchView.Media && Math.Abs(window.SettingsRotate.Angle - 45) < 1e-6,
+            "expanded status icons settled", ct);
+
+        double CenterY(FrameworkElement element)
+        {
+            var bounds = element.TransformToAncestor(window.NotchContent).TransformBounds(new Rect(element.RenderSize));
+            return bounds.Top + bounds.Height / 2;
+        }
+
+        foreach (string version in new[] { "9.8.0", "9.8.1" })
+        {
+            // Exercise both a newly arriving update and refreshing a visible one.
+            window.SetAvailableUpdate(NewRelease(version));
+            await WpfFrameWaiter.UntilAsync(() => window.UpdateNotificationButton.Opacity > .99 &&
+                Field<UiScheduledTimer?>(window, "_updatePulseTimer")?.IsEnabled == true,
+                "update icon appeared", ct);
+            window.UpdateLayout();
+            double offset = CenterY(window.UpdateNotificationButton) - CenterY(window.SettingsButton);
+            Assert.True(Math.Abs(offset) <= .5,
+                $"Update icon is offset by {offset:F2} DIPs (island={island}, version={version}).");
+        }
+    });
+
     private static UpdateInfo NewRelease(string version) => new() { Version = version, IsNewerVersion = true };
 
     [Fact]

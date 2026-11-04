@@ -301,12 +301,12 @@ if ($foundKey -or $env:VNOTCH_UPDATE_SIGNING_KEY_PEM -or $env:VNOTCH_UPDATE_SIGN
         if ($PSVersionTable.PSVersion.Major -ge 7) {
             $signParams = @{
                 InstallerPath = "installers\V-Notch-Setup.exe"
-                Version = $projectVersion
+                Version = $ReleaseVersion
             }
             if ($foundKey) { $signParams["PrivateKeyPath"] = $foundKey }
             & $signScript @signParams | Out-Null
         } elseif ($pwshCmd) {
-            & $pwshCmd.Source -NoProfile -ExecutionPolicy Bypass -Command "& '$signScript' -InstallerPath 'installers\V-Notch-Setup.exe' -Version '$projectVersion' $keyArg" | Out-Null
+            & $pwshCmd.Source -NoProfile -ExecutionPolicy Bypass -Command "& '$signScript' -InstallerPath 'installers\V-Notch-Setup.exe' -Version '$ReleaseVersion' $keyArg" | Out-Null
             if ($LASTEXITCODE -ne 0) {
                 throw "Sign-UpdateManifest.ps1 failed with exit code $LASTEXITCODE."
             }

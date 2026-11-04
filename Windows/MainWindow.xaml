@@ -25,6 +25,7 @@
         RenderOptions.EdgeMode="Unspecified"
         TextElement.FontFamily="{StaticResource SFProText}">
 
+    <!-- Auto restores full text quality at rest while allowing motion-aware hinting. -->
     <Window.Resources>
 
         <ExponentialEase x:Key="CameraExitEase" EasingMode="EaseOut" Exponent="6" po:Freeze="True"/>
@@ -98,7 +99,7 @@
             <Setter Property="FontFamily" Value="{StaticResource MainSystemFont}"/>
             <Setter Property="TextOptions.TextFormattingMode" Value="Ideal"/>
             <Setter Property="TextOptions.TextRenderingMode" Value="Grayscale"/>
-            <Setter Property="TextOptions.TextHintingMode" Value="Animated"/>
+            <Setter Property="TextOptions.TextHintingMode" Value="Auto"/>
             <Setter Property="UseLayoutRounding" Value="True"/>
             <Setter Property="SnapsToDevicePixels" Value="True"/>
         </Style>
@@ -110,7 +111,7 @@
             <Setter Property="FontFamily" Value="{StaticResource MainSystemFont}"/>
             <Setter Property="TextOptions.TextFormattingMode" Value="Ideal"/>
             <Setter Property="TextOptions.TextRenderingMode" Value="Grayscale"/>
-            <Setter Property="TextOptions.TextHintingMode" Value="Animated"/>
+            <Setter Property="TextOptions.TextHintingMode" Value="Auto"/>
             <Setter Property="UseLayoutRounding" Value="True"/>
             <Setter Property="SnapsToDevicePixels" Value="True"/>
         </Style>
@@ -122,7 +123,7 @@
             <Setter Property="FontFamily" Value="{StaticResource MainSystemFont}"/>
             <Setter Property="TextOptions.TextFormattingMode" Value="Ideal"/>
             <Setter Property="TextOptions.TextRenderingMode" Value="Grayscale"/>
-            <Setter Property="TextOptions.TextHintingMode" Value="Animated"/>
+            <Setter Property="TextOptions.TextHintingMode" Value="Auto"/>
             <Setter Property="UseLayoutRounding" Value="True"/>
             <Setter Property="SnapsToDevicePixels" Value="True"/>
         </Style>
@@ -1542,7 +1543,7 @@
 
                     </Grid>
 
-                    <Grid x:Name="ExpandedContent"
+                    <ctrl:GlassClipGrid x:Name="ExpandedContent"
                           Opacity="0"
                           Visibility="Collapsed"
                           Margin="8,2,8,8"
@@ -1554,9 +1555,9 @@
                           UseLayoutRounding="False"
                           SnapsToDevicePixels="False">
                         <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="1.48*"/>
+                            <ColumnDefinition Width="312"/>
                             <ColumnDefinition Width="Auto"/>
-                            <ColumnDefinition Width="0.72*"/>
+                            <ColumnDefinition Width="*"/>
                         </Grid.ColumnDefinitions>
 
                         <Grid x:Name="StatusBar" Grid.Column="0" Grid.ColumnSpan="3"
@@ -1607,7 +1608,8 @@
                                                Margin="0,1,0,0"
                                                TextOptions.TextHintingMode="Animated"
                                                VerticalAlignment="Center"/>
-                                    <Grid Margin="4.51,0,0,0"
+                                    <!-- Reserve the battery terminal plus the same 4-DIP inset as adjacent action glyphs. -->
+                                    <Grid Margin="4.51,0,6.71,0"
                                           SnapsToDevicePixels="True"
                                           UseLayoutRounding="True">
 
@@ -1666,10 +1668,10 @@
                             </ctrl:ActionBorder>
 
                             <ctrl:ActionBorder x:Name="UpdateNotificationButton" Grid.Column="1" AutomationProperties.Name="Update Available"
-                                    Width="20" Height="20"
+                                    Width="24" Height="24"
                                     Background="Transparent"
                                     Cursor="Hand"
-                                    Margin="7,0,0,0"
+                                    Margin="4,0,0,0"
                                     ToolTipService.IsEnabled="False"
                                     Click="UpdateNotification_Click"
                                     MouseEnter="UpdateNotification_MouseEnter"
@@ -1698,7 +1700,8 @@
                                 </Viewbox>
                             </ctrl:ActionBorder>
 
-                            <Border Grid.Column="2" Width="31" Height="24" IsHitTestVisible="False"/>
+                            <!-- Reserve the shared 24-DIP Settings action with the same 4-DIP gap. -->
+                            <Border Grid.Column="2" Width="28" Height="24" IsHitTestVisible="False"/>
                         </Grid>
 
                         <Border x:Name="MediaBackground"
@@ -2130,7 +2133,7 @@
 
                     </Grid>
 
-                        <Grid x:Name="MediaRightColumn" Grid.Column="2" Margin="0,20,-1,0" VerticalAlignment="Stretch" HorizontalAlignment="Stretch" Grid.IsSharedSizeScope="True" RenderOptions.ClearTypeHint="Enabled">
+                        <Grid x:Name="MediaRightColumn" Grid.Column="2" Width="151.85" Margin="0,20,-1,0" VerticalAlignment="Stretch" HorizontalAlignment="Left" Grid.IsSharedSizeScope="True" RenderOptions.ClearTypeHint="Enabled">
                             <!-- Center each surface independently so collapsing lyrics after a fade
                                  cannot redistribute the calendar's Auto rows. -->
                             <Grid VerticalAlignment="Center">
@@ -2177,7 +2180,7 @@
                                                    FontSize="15"
                                                    HorizontalAlignment="Center"
                                                    RenderTransformOrigin="0.5,0.5"
-                                                   TextOptions.TextRenderingMode="ClearType"
+                                                   TextOptions.TextRenderingMode="Grayscale"
                                                    TextOptions.TextHintingMode="Animated">
                                             <TextBlock.RenderTransform>
                                                 <TransformGroup>
@@ -2194,7 +2197,7 @@
                                                    Foreground="#99FFFFFF"
                                                    HorizontalAlignment="Center"
                                                    Visibility="Collapsed"
-                                                   TextOptions.TextRenderingMode="ClearType"
+                                                   TextOptions.TextRenderingMode="Grayscale"
                                                    TextOptions.TextHintingMode="Animated"/>
                                     </StackPanel>
 
@@ -2559,10 +2562,6 @@
                                                VerticalAlignment="Center"
                                                HorizontalAlignment="Stretch"
                                                Opacity="0">
-                                        <!-- Keep glyph rasterization stable during translation and at rest. -->
-                                        <TextBlock.CacheMode>
-                                            <BitmapCache EnableClearType="False" SnapsToDevicePixels="False"/>
-                                        </TextBlock.CacheMode>
                                         <TextBlock.Foreground>
                                             <SolidColorBrush Color="#BFFFFFFF"/>
                                         </TextBlock.Foreground>
@@ -2590,10 +2589,6 @@
                                                VerticalAlignment="Center"
                                                HorizontalAlignment="Stretch"
                                                Opacity="0">
-                                        <!-- Keep glyph rasterization stable during translation and at rest. -->
-                                        <TextBlock.CacheMode>
-                                            <BitmapCache EnableClearType="False" SnapsToDevicePixels="False"/>
-                                        </TextBlock.CacheMode>
                                         <TextBlock.Foreground>
                                             <SolidColorBrush Color="#BFFFFFFF"/>
                                         </TextBlock.Foreground>
@@ -2605,9 +2600,9 @@
                                 </Grid>
                             </Border>
                         </Grid>
-                    </Grid>
+                    </ctrl:GlassClipGrid>
 
-                    <Grid x:Name="SecondaryContent" Opacity="0" Visibility="Collapsed" Margin="14,0,14,16" HorizontalAlignment="Center" VerticalAlignment="Stretch" Width="888" MouseLeftButtonDown="SecondaryContent_Click">
+                    <Grid x:Name="SecondaryContent" Opacity="0" Visibility="Collapsed" Margin="8,0,8,8" HorizontalAlignment="Center" VerticalAlignment="Stretch" Width="888" MouseLeftButtonDown="SecondaryContent_Click">
                         <ContentControl x:Name="ClipboardTrayHost" HorizontalContentAlignment="Stretch" VerticalContentAlignment="Stretch"/>
                     </Grid>
                     <Grid x:Name="CameraContent" Opacity="0" Visibility="Collapsed" Margin="16,36,16,16" HorizontalAlignment="Center" VerticalAlignment="Stretch" Width="488">

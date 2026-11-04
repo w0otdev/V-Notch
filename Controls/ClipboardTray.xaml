@@ -22,8 +22,8 @@
   <SolidColorBrush x:Key="TrayMutedForeground" Color="#8E8E93"/>
   <CornerRadius x:Key="TrayRadiusSmall">8</CornerRadius>
   <CornerRadius x:Key="TrayRadiusMedium">12</CornerRadius>
-  <CornerRadius x:Key="TrayRadiusLarge">16</CornerRadius>
-  <CornerRadius x:Key="TrayRadiusCardFooter">0,0,16,16</CornerRadius>
+  <CornerRadius x:Key="TrayRadiusLarge">12</CornerRadius>
+  <CornerRadius x:Key="TrayRadiusCardFooter">0,0,12,12</CornerRadius>
   <SolidColorBrush x:Key="TrayMenuSurfaceBrush" Color="#000000"/>
   <LinearGradientBrush x:Key="TrayMenuRim" StartPoint="0,0" EndPoint="0,1">
    <GradientStop Color="#38FFFFFF" Offset="0"/>
@@ -647,7 +647,7 @@
    </Grid.RowDefinitions>
 
    <!-- Row 0: Top Header (NavTabs Clearance + Flagship Search Capsule & Toolbar) -->
-   <Grid Grid.Row="0" Margin="12,0,12,0" Height="28" VerticalAlignment="Top">
+   <Grid Grid.Row="0" Margin="18,0,18,0" Height="28" VerticalAlignment="Top">
     <Grid.RenderTransform><TranslateTransform x:Name="HeaderTranslate"/></Grid.RenderTransform>
     <Grid.ColumnDefinitions>
      <ColumnDefinition Width="{Binding NavigationWidth, RelativeSource={RelativeSource AncestorType={x:Type local:ClipboardTray}}}"/>
@@ -827,7 +827,8 @@
   <!-- Row 2: Cards Canvas & Overlays -->
   <Grid x:Name="CardsViewport" Grid.Row="2" Background="Transparent" Cursor="Cross">
    <!-- Permanent Tray Drop Zone Silhouette Border (Framing both empty and filled tray) -->
-   <Rectangle x:Name="TrayDropBorder" Margin="2,2,2,4" RadiusX="14" RadiusY="14"
+   <!-- The 10-DIP outer and inner insets keep the 24/18/12-DIP corners concentric. -->
+   <Rectangle x:Name="TrayDropBorder" Margin="2,2,2,2" RadiusX="18" RadiusY="18"
               Fill="Transparent" Stroke="#75FFFFFF" StrokeThickness="2.0" StrokeDashArray="5 4"
               IsHitTestVisible="False"/>
 
@@ -836,7 +837,7 @@
    <local:ClipboardCardListBox x:Name="Cards" Background="Transparent" BorderThickness="0" Padding="0" ScrollViewer.HorizontalScrollBarVisibility="Hidden" SnapsToDevicePixels="False" UseLayoutRounding="False" TextOptions.TextRenderingMode="Grayscale"
     ScrollViewer.VerticalScrollBarVisibility="Disabled" ScrollViewer.CanContentScroll="True" VirtualizingPanel.IsVirtualizing="True"
     VirtualizingPanel.VirtualizationMode="Recycling" VirtualizingPanel.ScrollUnit="Pixel" VirtualizingPanel.CacheLength="0.5" VirtualizingPanel.CacheLengthUnit="Page" TextOptions.TextFormattingMode="Display" RenderOptions.ClearTypeHint="Auto" PreviewMouseWheel="Cards_Wheel"
-    ScrollViewer.ScrollChanged="TrayScroll_Changed" SizeChanged="TrayScroll_SizeChanged" PreviewKeyDown="Cards_KeyDown" SelectionChanged="Cards_SelectionChanged" SelectionMode="Extended" Margin="8,7,8,12">
+    ScrollViewer.ScrollChanged="TrayScroll_Changed" SizeChanged="TrayScroll_SizeChanged" PreviewKeyDown="Cards_KeyDown" SelectionChanged="Cards_SelectionChanged" SelectionMode="Extended" Margin="6,12,6,12">
     
     <ListBox.ItemsPanel><ItemsPanelTemplate><VirtualizingStackPanel Orientation="Horizontal"/></ItemsPanelTemplate></ListBox.ItemsPanel>
     <ListBox.ItemContainerStyle><Style TargetType="ListBoxItem">
@@ -872,7 +873,7 @@
         </Control>
 
         <!-- Inset rims avoid overlapping the rounded card clip and losing edge coverage. -->
-        <Rectangle x:Name="BaseRim" RadiusX="16" RadiusY="16" Margin="0" StrokeThickness="1.2" IsHitTestVisible="False" Panel.ZIndex="2">
+        <Rectangle x:Name="BaseRim" RadiusX="12" RadiusY="12" Margin="0" StrokeThickness="1.2" IsHitTestVisible="False" Panel.ZIndex="2">
          <Rectangle.Stroke>
           <LinearGradientBrush StartPoint="0,0" EndPoint="0,1">
            <GradientStop Color="#66FFFFFF" Offset="0"/>
@@ -883,7 +884,7 @@
         </Rectangle>
 
         <!-- Layer 4b: Hover Optical Rim (Smooth animated illumination on card hover) -->
-        <Rectangle x:Name="HoverRim" RadiusX="16" RadiusY="16" Margin="0" StrokeThickness="2" Opacity="0" IsHitTestVisible="False" Panel.ZIndex="3">
+        <Rectangle x:Name="HoverRim" RadiusX="12" RadiusY="12" Margin="0" StrokeThickness="2" Opacity="0" IsHitTestVisible="False" Panel.ZIndex="3">
          <Rectangle.Stroke>
           <LinearGradientBrush StartPoint="0,0" EndPoint="0,1">
            <GradientStop Color="#85FFFFFF" Offset="0"/>
@@ -894,7 +895,7 @@
         </Rectangle>
 
         <!-- Layer 4c: Selected Optical Rim (High-contrast animated rim on selection) -->
-        <Rectangle x:Name="SelectedRim" RadiusX="16" RadiusY="16" Margin="0" StrokeThickness="2" Opacity="0" IsHitTestVisible="False" Panel.ZIndex="4">
+        <Rectangle x:Name="SelectedRim" RadiusX="12" RadiusY="12" Margin="0" StrokeThickness="2" Opacity="0" IsHitTestVisible="False" Panel.ZIndex="4">
          <Rectangle.Stroke>
           <LinearGradientBrush StartPoint="0,0" EndPoint="0,1">
            <GradientStop Color="#FFFFFF" Offset="0"/>
@@ -945,7 +946,7 @@
         </Control>
 
         <!-- Darken the glyph band early enough to protect metadata on bright previews. -->
-        <Border x:Name="CardFooter" VerticalAlignment="Bottom" Height="48" CornerRadius="0,0,16,16">
+        <Border x:Name="CardFooter" VerticalAlignment="Bottom" Height="48" CornerRadius="0,0,12,12">
          <Border.Background>
           <LinearGradientBrush StartPoint="0,0" EndPoint="0,1">
            <GradientStop Color="#00000000" Offset="0"/>
@@ -1125,7 +1126,7 @@
      </DataTemplate.Triggers>
     </DataTemplate></ListBox.ItemTemplate>
    </local:ClipboardCardListBox>
-   <Grid Margin="8,6,8,11" IsHitTestVisible="False">
+   <Grid Margin="6,11,6,11" IsHitTestVisible="False">
     <Border x:Name="CardsFadeLeft" Width="26" HorizontalAlignment="Left" Opacity="0">
      <Border.Background>
       <LinearGradientBrush StartPoint="0,0" EndPoint="1,0">

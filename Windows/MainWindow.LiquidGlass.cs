@@ -835,7 +835,7 @@ public partial class MainWindow
     {
         // Hover applies a ScaleTransform (NotchScale) that renders the notch — and
         bool motion = _isAnimating || _isModeTransitioning || _isGestureActive ||
-                      _glassGestureSnapBackMotion || _glassHoverMotion;
+                      _glassGestureSnapBackMotion || _glassHoverMotion || _isMediaWidthAnimating;
 
         _liquidGlass?.SetAnimating(motion);
         _liquidGlass?.SetIdle(!motion);

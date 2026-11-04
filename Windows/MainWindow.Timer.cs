@@ -400,12 +400,14 @@ public partial class MainWindow
 
         double currentH = NotchBorder.ActualHeight > 0 ? NotchBorder.ActualHeight : _clockViewHeight;
         double currentWidthExit = NotchBorder.ActualWidth > 0 ? NotchBorder.ActualWidth : _clockViewWidth;
+        _shellState.UpdateExpandedWidth(IsNoWidgetMode, _isLyricsActive, _isMusicExpanded);
         AnimateClockViewNotchResize(currentWidthExit, currentH, _expandedWidth, _expandedHeight, durIn, inDelay, RestoreExpandedWindowSize, generation: generation);
 
         ExpandedContent.Visibility = Visibility.Visible;
         ExpandedContent.BeginAnimation(OpacityProperty, null);
         ExpandedContent.Opacity = 0;
         ExpandedContent.Effect = null;
+        CancelMediaWidthAnimation();
         ExpandedContent.Width = _expandedWidth - 16;
         ExpandedContent.Height = _expandedHeight - 10;
         ExpandedContent.HorizontalAlignment = HorizontalAlignment.Center;

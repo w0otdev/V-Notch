@@ -70,6 +70,7 @@ public sealed partial class ClipboardTray
     private bool _animateResults = true;
     private int _motionVersion;
     private bool _trayLeaving;
+    private bool _entranceWasHidden = true;
     private int _entranceStaggerVersion;
     private int _entranceBaseDelay = 60;
     private readonly HashSet<ListBoxItem> _entranceAnimatedContainers = [];
@@ -135,7 +136,8 @@ public sealed partial class ClipboardTray
 
     public void BeginEntrance()
     {
-        bool reversing = _trayLeaving && IsVisible && Opacity > 0.01;
+        bool reversing = _trayLeaving && !_entranceWasHidden && IsVisible && Opacity > 0.01;
+        _entranceWasHidden = false;
         _trayLeaving = false;
         ++_motionVersion;
         DeferEntranceWork();
@@ -665,15 +667,13 @@ public sealed partial class ClipboardTray
 
         vn_clipboard_motion_compute_stagger(candidateIndices, candidateCount, baseDelay, sortedPositions, delaysMs);
 
-        int visualIndex = 0;
         for (int i = 0; i < candidateCount; i++)
         {
             var item = candidateList[sortedPositions[i]];
             if (_entranceAnimatedContainers.Add(item))
             {
                 ResetCardMotion(item);
-                AnimateCardJumpEntrance(item, delaysMs[visualIndex]);
-                visualIndex++;
+                AnimateCardJumpEntrance(item, delaysMs[i]);
             }
         }
     }
@@ -682,12 +682,13 @@ public sealed partial class ClipboardTray
     {
         if (sender is not ListBoxItem item) return;
         RegisterSelectionContainer(item);
-        ResetCardMotion(item);
         if (_entranceStaggerVersion == _motionVersion && _entranceStaggerVersion > 0)
         {
-            // Card appeared during an active view entrance — apply staggered left-to-right spring jump.
+            // Realization can prepare the entrance before WPF raises Loaded.
+            // Keep that clock rather than resetting an already animated card.
             if (_entranceAnimatedContainers.Add(item))
             {
+                ResetCardMotion(item);
                 int itemIndex = Cards.ItemContainerGenerator.IndexFromContainer(item);
                 if (itemIndex < 0 && item.DataContext is VNotch.ViewModels.ClipboardCardViewModel card)
                     itemIndex = _cards.IndexOf(card);
@@ -695,8 +696,12 @@ public sealed partial class ClipboardTray
                 AnimateCardJumpEntrance(item, delay);
             }
         }
-        else if (item.DataContext is VNotch.ViewModels.ClipboardCardViewModel card && _arrivingCards.Remove(card.Entry.Id))
-            AnimateCardLifecycle(item, entering: true, fresh: true);
+        else
+        {
+            ResetCardMotion(item);
+            if (item.DataContext is VNotch.ViewModels.ClipboardCardViewModel card && _arrivingCards.Remove(card.Entry.Id))
+                AnimateCardLifecycle(item, entering: true, fresh: true);
+        }
     }
 
     private void CardContainer_Unloaded(object sender, RoutedEventArgs e)

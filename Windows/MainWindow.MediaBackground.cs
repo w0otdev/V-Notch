@@ -30,15 +30,7 @@ public partial class MainWindow
     {
         bool glass = IsLiquidGlassEnabled;
 
-        // In glass mode, skip backdrop image but derive accent colors from album
-        // art so themed UI controls remain styled over glass.
-        if (!glass && (!_settings.ShowMediaArtBackground || !_settings.EnableBlurEffects))
-        {
-            HideMediaBackground();
-            return;
-        }
-
-        if (info == null || !info.IsAnyMediaPlaying)
+        if (info == null || (!info.IsAnyMediaPlaying && string.IsNullOrEmpty(info.CurrentTrack)))
         {
             _lastBackgroundThumbnail = null;
             _lastTrackId = null;
@@ -51,7 +43,7 @@ public partial class MainWindow
             return;
         }
 
-        bool suppressBackdrop = glass;
+        bool suppressBackdrop = glass || !_settings.ShowMediaArtBackground || !_settings.EnableBlurEffects;
 
         var palette = DynamicIslandColorExtractor.GetDynamicIslandPalette(info.Thumbnail);
         var dominantColor = palette.Main;
@@ -73,7 +65,7 @@ public partial class MainWindow
             return;
         }
 
-        if (!forceRefresh && dominantColor == _lastDominantColor && !isNewTrack &&
+        if (!forceRefresh && _hasVolumeHudMediaTint && dominantColor == _lastDominantColor && !isNewTrack &&
             ReferenceEquals(info.Thumbnail, _lastBackgroundThumbnail) &&
             (suppressBackdrop || !_isExpanded || MediaBackground.Opacity > 0.49)) return;
 
@@ -329,7 +321,8 @@ public partial class MainWindow
         ClearGlassMediaTint();
         HideMediaBackgroundOverlay();
 
-        if (_isTimerView || _isAudioView) return;
+        if (_isTimerView || _isAudioView || _isSecondaryView || _isCameraView) return;
+        _lastDominantColor = Colors.Transparent;
 
         var defaultColorAnim = new ColorAnimation
         {
@@ -403,7 +396,7 @@ public partial class MainWindow
             return;
         }
 
-        _lastDominantColor = Colors.Transparent;
+
         int animationVersion = ++_mediaBackgroundAnimationVersion;
         var opacityAnim = new DoubleAnimation(0, TimeSpan.FromMilliseconds(400))
         {

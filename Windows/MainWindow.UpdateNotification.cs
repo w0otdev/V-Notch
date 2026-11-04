@@ -117,6 +117,7 @@ public partial class MainWindow
 
         int visibilityGeneration = ++_updateVisibilityGeneration;
         bool wasVisible = UpdateNotificationButton.Visibility == Visibility.Visible;
+        double iconRestY = _settings.EnableDynamicIslandMode ? 5 : 0;
 
         // A visible button may actually be halfway through a stale fade-out.
         // Remove that clock before restoring its visible base state.
@@ -127,7 +128,7 @@ public partial class MainWindow
         UpdateNotificationButton.Tag = Loc.Get(LocKeyUpdateVersion, _availableUpdate.Version?.ToString() ?? "-");
         UpdateNotificationButton.Cursor = Cursors.Hand;
         UpdateNotificationButton.Opacity = 1.0;
-        UpdateNotificationTranslate.Y = 0;
+        UpdateNotificationTranslate.Y = iconRestY;
         SetUpdateInlineTooltipContent(
             Loc.Get(LocKeyUpdateVersion, _availableUpdate.Version?.ToString() ?? "-"),
             Loc.Get(LocKeyUpdateClickToInstall));
@@ -154,8 +155,8 @@ public partial class MainWindow
 
         var slideIn = new DoubleAnimation
         {
-            From = -4,
-            To = 0,
+            From = iconRestY - 4,
+            To = iconRestY,
             Duration = TimeSpan.FromMilliseconds(400),
             EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut }
         };
