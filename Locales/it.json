@@ -343,6 +343,8 @@
   "settings.enableSpotifyCanvas.hint": "Sperimentale e disattivato per impostazione predefinita. Usa il cookie di sessione Spotify, cifrato localmente, e punti di accesso non ufficiali. Spotify limita la raccolta automatica; accesso o account possono essere sospesi. Il consenso non concede autorizzazioni. Attivare solo per usi autorizzati.",
   "settings.enableSpotifyLyrics": "Mostra testi di Spotify",
   "settings.enableSpotifyLyrics.hint": "Visualizza i testi sincronizzati nel notch espanso durante l'ascolto su Spotify.",
+  "settings.lyrics.providers": "Priorità fonti dei testi",
+  "settings.lyrics.providers.hint": "Trascina le righe o usa le frecce per riordinare. Carica i testi in ordine di priorità al cambio traccia su Spotify.",
   "settings.enableSpotlight": "Ricerca Spotlight",
   "settings.enableSpotlight.conflict": "La scorciatoia Alt + Spazio è occupata da un'altra app. Modifica l'altra applicazione per usarla qui.",
   "settings.enableSpotlight.hint": "Premi Alt + Spazio per cercare velocemente app e file indicizzati.",
@@ -481,7 +483,7 @@
   "settings.privacy.onlineArtwork": "Ricerca copertine album online",
   "settings.privacy.onlineArtwork.hint": "Cerca copertine sul web (YouTube, SoundCloud, Piped) quando il lettore attivo non fornisce un'immagine incorporata.",
   "settings.privacy.onlineLyrics": "Ricerca testi sincronizzati online",
-  "settings.privacy.onlineLyrics.hint": "Scarica testi con timestamp da provider pubblici (LRCLIB, lrc mux) per il brano in ascolto.",
+  "settings.privacy.onlineLyrics.hint": "Scarica testi con timestamp da provider pubblici (AMLL TTML DB, LRCLIB, NetEase, lrc mux) per il brano in ascolto.",
   "settings.privacy.section.network": "RETE E SERVIZI ONLINE",
   "settings.privacy.section.sensors": "SENSORI E STATO DEL SISTEMA",
   "settings.privacy.section.storage": "DATI LOCALI E CRONOLOGIA",
@@ -1054,5 +1056,9 @@
   "settings.glass.ultimateGpu.warning": "Avviso: La modalità GPU dedicata consuma più energia. Imposta gli FPS target in modo che la GPU lavori solo fino al limite scelto.",
   "settings.glass.ultimateGpu.title": "Attivare la modalità GPU Ultimate?",
   "settings.glass.ultimateGpu.confirm": "Questa opzione assegna la GPU dedicata (GPU 0) a Liquid Glass per una maggiore fluidità, aumentando il consumo energetico sui portatili. Il rendering resta limitato agli FPS target per evitare sovraccarichi della GPU.",
-  "tooltip.ultimateGpu": "Usa la GPU 0 ad alte prestazioni per Liquid Glass con limite di FPS"
+  "tooltip.ultimateGpu": "Usa la GPU 0 ad alte prestazioni per Liquid Glass con limite di FPS",
+  "settings.lyrics.provider.lrclib.desc": "Testi sincronizzati riga per riga con ricerca rapida nella community",
+  "settings.lyrics.provider.lrcmux.desc": "Sincronizzazione parola per parola in stile karaoke da più fonti",
+  "settings.lyrics.provider.amll.desc": "Tempi di parole e sillabe della comunità tramite ID Spotify; senza chiave API",
+  "settings.lyrics.provider.netease.desc": "Testi sincronizzati per parola e riga dal catalogo NetEase Cloud Music"
 }

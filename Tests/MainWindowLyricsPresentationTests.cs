@@ -14,6 +14,122 @@ public sealed class MainWindowLyricsPresentationTests
     private const BindingFlags Private = BindingFlags.Instance | BindingFlags.NonPublic;
 
     [Fact]
+    public void SpotifyPrefetchWarmsTheSelectedSourceWithoutChangingCollapsedUi() => SharedStaTestRunner.Run(() =>
+    {
+        using var fixture = CreateFixture();
+        var window = fixture.Window;
+        var settings = Field<NotchSettings>(window, "_settings");
+        settings.EnableLocalOnlyMode = false;
+        settings.EnableOnlineLyrics = settings.EnableSpotifyLyrics = true;
+        int requests = 0;
+        using var client = new System.Net.Http.HttpClient(new LyricsHandler(() => requests++))
+        { BaseAddress = new Uri("https://lyrics.test") };
+        var local = new SpotifyLocalMetadataReader(() => new("Track", "Artist", "2dkIbR4mudsHg45av3YwxQ"));
+        var service = new LyricsService(client, client, netEaseClient: client, kugouClient: client, qqMusicClient: client, amllClient: client, spotifyLocalMetadata: local);
+        Field<LyricsService>(window, "_lyricsService").Dispose();
+        Set(window, "_lyricsService", service);
+        var info = new MediaInfo
+        {
+            CurrentTrack = "Track",
+            CurrentArtist = "Artist",
+            Duration = TimeSpan.FromSeconds(240),
+            MediaSource = "Spotify",
+            IsPlaying = true
+        };
+        Invoke(window, "PrefetchSpotifyLyrics", info);
+        Invoke(window, "PrefetchSpotifyLyrics", info);
+        var lyrics = service.FetchSyncedLyricsAsync("Track", "Artist", 240, settings.LyricsProviderPriority).GetAwaiter().GetResult();
+        Assert.NotNull(lyrics);
+        Assert.Equal(LyricsProviderOrder.Amll, lyrics.Provider);
+        Assert.Equal(1, requests);
+        Assert.Equal("", Field<string>(window, "_lyricsTrackKey"));
+        Assert.False(Field<bool>(window, "_isLyricsSearchVisible"));
+    });
+
+    private sealed class LyricsHandler(Action request) : System.Net.Http.HttpMessageHandler
+    {
+        protected override Task<System.Net.Http.HttpResponseMessage> SendAsync(System.Net.Http.HttpRequestMessage message, CancellationToken token)
+        {
+            request();
+            return Task.FromResult(new System.Net.Http.HttpResponseMessage(System.Net.HttpStatusCode.OK)
+            { Content = new System.Net.Http.StringContent("<tt xmlns=\"http://www.w3.org/ns/ttml\"><body><p begin=\"1s\" end=\"2s\"><span begin=\"1s\" end=\"2s\">Selected source</span></p></body></tt>") });
+        }
+    }
+
+    [Fact]
+    public void LineLyricsRemainVisibleDuringBackgroundWordSearchThenUpgrade() => SharedStaTestRunner.RunAsync(async ct =>
+    {
+        await using var fixture = CreateFixture();
+        var window = fixture.Window;
+        var settings = Field<NotchSettings>(window, "_settings");
+        settings.EnableLocalOnlyMode = false;
+        settings.EnableOnlineLyrics = settings.EnableSpotifyLyrics = true;
+        settings.LyricsProviderPriority = "LRCLIB,lrc mux";
+        var response = new TaskCompletionSource<System.Net.Http.HttpResponseMessage>(TaskCreationOptions.RunContinuationsAsynchronously);
+        using var line = new System.Net.Http.HttpClient(new ProgressiveHandler(_ => Task.FromResult(
+            new System.Net.Http.HttpResponseMessage(System.Net.HttpStatusCode.OK)
+            { Content = new System.Net.Http.StringContent("{\"syncedLyrics\":\"[00:01.00]Hello world\"}") })))
+        { BaseAddress = new Uri("https://line.test") };
+        using var words = new System.Net.Http.HttpClient(new ProgressiveHandler(token => response.Task.WaitAsync(token)))
+        { BaseAddress = new Uri("https://words.test") };
+        var service = new LyricsService(line, words);
+        Field<LyricsService>(window, "_lyricsService").Dispose();
+        Set(window, "_lyricsService", service);
+        var info = new MediaInfo
+        {
+            CurrentTrack = "Track",
+            CurrentArtist = "Artist",
+            MediaSource = "Spotify",
+            Duration = TimeSpan.FromSeconds(240),
+            Position = TimeSpan.FromSeconds(1)
+        };
+        Set(window, "_currentMediaInfo", info);
+        Field<VNotch.Controllers.NotchTransitionCoordinator>(window, "_transitionCoordinator").ForceState(
+            NotchView.Media, VNotch.Controllers.NotchShapeState.Expanded, "progressive lyrics test");
+        window.ExpandedContent.Visibility = Visibility.Visible;
+        var pending = (Task)Invoke(window, "FetchLyricsForTrack", info)!;
+        await WpfFrameWaiter.UntilAsync(() => Field<List<LyricLine>?>(window, "_currentLyrics") is { Count: > 0 }, "line lyrics preview", ct);
+        Assert.False(pending.IsCompleted);
+        Assert.False(Field<bool>(window, "_isLyricsSearchVisible"));
+        Assert.Null(Field<List<LyricLine>>(window, "_currentLyrics")[0].Words);
+        response.SetResult(new(System.Net.HttpStatusCode.OK) { Content = new System.Net.Http.StringContent(ProgressiveLyricsTests.WordPayload) });
+        await pending.WaitAsync(ct);
+        Assert.NotNull(Field<List<LyricLine>>(window, "_currentLyrics")[0].Words);
+    });
+
+    private sealed class ProgressiveHandler(Func<CancellationToken, Task<System.Net.Http.HttpResponseMessage>> response) : System.Net.Http.HttpMessageHandler
+    {
+        protected override Task<System.Net.Http.HttpResponseMessage> SendAsync(System.Net.Http.HttpRequestMessage request, CancellationToken token) => response(token);
+    }
+
+    [Fact]
+    public void LyricsUseThePlaybackClockWhenMetadataIsStaleOrStillSaysPlaying() => SharedStaTestRunner.Run(() =>
+    {
+        using var fixture = CreateFixture();
+        var window = fixture.Window;
+        Set(window, "_currentMediaInfo", new MediaInfo
+        {
+            Position = TimeSpan.FromSeconds(5),
+            Duration = TimeSpan.FromMinutes(3),
+            IsPlaying = true,
+            LastUpdated = DateTimeOffset.UtcNow.AddSeconds(-20)
+        });
+        var engine = window.MediaPlayback.Progress;
+        engine.OnMediaSnapshot(new ProgressSnapshot
+        {
+            Position = TimeSpan.FromSeconds(40),
+            Duration = TimeSpan.FromMinutes(3),
+            IsPlaying = false,
+            PlaybackRate = 1,
+            Timestamp = DateTime.UtcNow,
+            SequenceNumber = 1
+        });
+        var playback = ((TimeSpan Position, bool Playing))Invoke(window, "GetLyricsPlayback")!;
+        Assert.Equal(TimeSpan.FromSeconds(40), playback.Position);
+        Assert.False(playback.Playing);
+    });
+
+    [Fact]
     public void ClipboardVisualTreeIsCreatedOnlyOnFirstUseAndSurvivesLocalization()
         => SharedStaTestRunner.Run(() =>
     {

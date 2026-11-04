@@ -24,7 +24,7 @@
     <SelfContained>false</SelfContained>
     <RuntimeIdentifier>win-x64</RuntimeIdentifier>
 
-    <ReadyToRun>true</ReadyToRun>
+    <PublishReadyToRun>false</PublishReadyToRun>
 
     <TieredCompilation>true</TieredCompilation>
     <TieredPGO>true</TieredPGO>
@@ -104,7 +104,7 @@
   </ItemGroup>
   <Target Name="KeepTranslationNativeLibrariesBesideExecutable" BeforeTargets="AssignTargetPaths">
     <ItemGroup>
-      <Content Remove="@(Content)" Condition="$([System.String]::Copy('%(Content.Identity)').Contains('LLamaSharpRuntimes')) And '%(Filename)%(Extension)' == 'mtmd.dll'" />
+      <Content Remove="@(Content)" Condition="$([System.String]::Copy('%(Content.Identity)').Contains('LLamaSharpRuntimes')) And ('%(Filename)%(Extension)' == 'mtmd.dll' Or $([System.String]::Copy('%(Content.Identity)').Contains('\avx\')) Or $([System.String]::Copy('%(Content.Identity)').Contains('\avx512\')) Or $([System.String]::Copy('%(Content.Identity)').Contains('\vulkan\')))" />
       <Content Update="@(Content)" Condition="$([System.String]::Copy('%(Content.Identity)').Contains('LLamaSharpRuntimes'))" CopyToPublishDirectory="PreserveNewest" ExcludeFromSingleFile="true" />
     </ItemGroup>
   </Target>
@@ -112,7 +112,7 @@
     <ItemGroup>
       <ResolvedFileToPublish Update="@(ResolvedFileToPublish)" Condition="'%(Filename)%(Extension)' == 'DirectML.dll' Or '%(Filename)%(Extension)' == 'onnxruntime.dll'" ExcludeFromSingleFile="true" />
       <ResolvedFileToPublish Remove="@(ResolvedFileToPublish)" Condition="'%(Filename)%(Extension)' == 'DirectML.pdb' Or '%(Filename)%(Extension)' == 'DirectML.Debug.dll' Or '%(Filename)%(Extension)' == 'DirectML.Debug.pdb'" />
-      <ResolvedFileToPublish Remove="@(ResolvedFileToPublish)" Condition="'%(Filename)%(Extension)' == 'mtmd.dll' Or '%(Extension)' == '.lib' Or '%(RelativePath)' == 'runtimes\win-x64\native\WebView2Loader.dll'" />
+      <ResolvedFileToPublish Remove="@(ResolvedFileToPublish)" Condition="'%(Filename)%(Extension)' == 'mtmd.dll' Or '%(Extension)' == '.lib' Or '%(RelativePath)' == 'runtimes\win-x64\native\WebView2Loader.dll' Or $([System.String]::Copy('%(RelativePath)').StartsWith('runtimes\win-x64\native\avx\')) Or $([System.String]::Copy('%(RelativePath)').StartsWith('runtimes\win-x64\native\avx512\')) Or $([System.String]::Copy('%(RelativePath)').StartsWith('runtimes\win-x64\native\vulkan\'))" />
     </ItemGroup>
   </Target>
 

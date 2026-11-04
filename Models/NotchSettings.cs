@@ -176,6 +176,7 @@ public partial class NotchSettings
 
 
     public bool EnableSpotifyLyrics { get; set; } = true;
+    public string LyricsProviderPriority { get; set; } = VNotch.Services.LyricsProviderOrder.Default;
 
     public bool EnableSpotifyCanvas { get; set; } = false;
     public int SpotifyCanvasConsentVersion { get; set; } = 0;

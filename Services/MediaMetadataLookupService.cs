@@ -73,6 +73,23 @@ public sealed partial class MediaMetadataLookupService : IMediaMetadataLookupSer
         out int outDurationDelta,
         out byte outIsMatch);
 
+    [LibraryImport(NativeDll, StringMarshalling = StringMarshalling.Utf16)]
+    private static partial int vn_media_metadata_format_spotify_artists(
+        ReadOnlySpan<char> rawArtist,
+        int rawArtistLen,
+        ReadOnlySpan<char> primaryArtist,
+        int primaryArtistLen,
+        ReadOnlySpan<char> candTitle,
+        int candTitleLen,
+        ReadOnlySpan<char> expTitle,
+        int expTitleLen,
+        long candDurMs,
+        long expDurMs,
+        Span<char> outFormatted,
+        int outCap,
+        out int outLen,
+        out int outScore);
+
     private const string YouTubeTitleSearchLogTag = "META-YOUTUBE-TITLE-SEARCH";
     private const string YouTubeApiLogTag = "META-YOUTUBE-API";
     private const string ItemsPropertyName = "items";
@@ -86,15 +103,43 @@ public sealed partial class MediaMetadataLookupService : IMediaMetadataLookupSer
     private readonly HttpClient _keyClient;
     private readonly Func<bool> _artworkAllowed;
     private readonly Func<string?> _apiKey;
+    private readonly SpotifyTokenProvider _spotifyTokens;
+    private readonly SpotifyQueryMetadataProvider _spotifyQueryMeta;
+    private readonly SpotifyCatalogClient _spotifyCatalog;
+    private readonly SpotifyLocalMetadataReader? _spotifyLocalMetadata;
 
-    public MediaMetadataLookupService() : this(SharedHttpClient, SharedKeyClient, IsOnlineArtworkAllowed, GetYouTubeApiKey) { }
+    public MediaMetadataLookupService() : this(SharedHttpClient, SharedKeyClient, IsOnlineArtworkAllowed, GetYouTubeApiKey,
+        new SpotifyLocalMetadataReader())
+    {
+        _spotifyLocalMetadata?.WarmUp();
+        if (_artworkAllowed())
+        {
+            _ = Task.Run(async () =>
+            {
+                try
+                {
+                    using var cts = new CancellationTokenSource(3000);
+                    await _spotifyTokens.GetAccessTokenAsync(null, cts.Token).ConfigureAwait(false);
+                }
+                catch
+                {
+                    // Ignore background token prewarm errors
+                }
+            });
+        }
+    }
 
-    internal MediaMetadataLookupService(HttpClient httpClient, HttpClient keyClient, Func<bool> artworkAllowed, Func<string?> apiKey)
+    internal MediaMetadataLookupService(HttpClient httpClient, HttpClient keyClient, Func<bool> artworkAllowed, Func<string?> apiKey,
+        SpotifyLocalMetadataReader? spotifyLocalMetadata = null)
     {
         _httpClient = httpClient ?? throw new ArgumentNullException(nameof(httpClient));
         _keyClient = keyClient ?? throw new ArgumentNullException(nameof(keyClient));
         _artworkAllowed = artworkAllowed ?? throw new ArgumentNullException(nameof(artworkAllowed));
         _apiKey = apiKey ?? throw new ArgumentNullException(nameof(apiKey));
+        _spotifyTokens = new SpotifyTokenProvider(_httpClient);
+        _spotifyQueryMeta = new SpotifyQueryMetadataProvider(_httpClient);
+        _spotifyCatalog = new SpotifyCatalogClient(_httpClient, _spotifyQueryMeta);
+        _spotifyLocalMetadata = spotifyLocalMetadata;
     }
 
     internal static HttpRequestMessage CreateYouTubeApiRequest(string url, string apiKey)
@@ -1061,4 +1106,237 @@ public sealed partial class MediaMetadataLookupService : IMediaMetadataLookupSer
 
     private static bool IsLikelySoundCloudPlaceholderArtworkUrl(string? url)
         => MediaHeuristics.IsLikelySoundCloudPlaceholderArtworkUrl(url);
+
+    internal static string? FormatSpotifyArtistsCandidate(
+        string? candidateTitle,
+        string? candidateArtists,
+        long candidateDurationMs,
+        string targetTitle,
+        string primaryArtist,
+        long targetDurationMs,
+        out int score)
+    {
+        score = 0;
+        if (string.IsNullOrWhiteSpace(candidateTitle) || string.IsNullOrWhiteSpace(candidateArtists))
+            return null;
+
+        Span<char> buf = stackalloc char[512];
+        if (vn_media_metadata_format_spotify_artists(
+                candidateArtists.AsSpan(), candidateArtists.Length,
+                primaryArtist.AsSpan(), primaryArtist.Length,
+                candidateTitle.AsSpan(), candidateTitle.Length,
+                targetTitle.AsSpan(), targetTitle.Length,
+                candidateDurationMs,
+                targetDurationMs,
+                buf, buf.Length,
+                out int outLen,
+                out score) == 0 && outLen > 0 && score > 0)
+        {
+            return new string(buf[..outLen]);
+        }
+
+        return null;
+    }
+
+    public async Task<string?> TryGetSpotifyFullArtistsAsync(
+        string title,
+        string primaryArtist,
+        TimeSpan duration = default,
+        string? albumTitle = null,
+        CancellationToken ct = default)
+    {
+        if (string.IsNullOrWhiteSpace(title) || string.IsNullOrWhiteSpace(primaryArtist))
+            return null;
+
+        string cleanTitle = title.Trim();
+        string cleanArtist = primaryArtist.Trim();
+        string? cleanAlbum = string.IsNullOrWhiteSpace(albumTitle) ? null : albumTitle.Trim();
+        long targetDurationMs = duration > TimeSpan.Zero ? (long)duration.TotalMilliseconds : 0;
+
+        try
+        {
+            if (_spotifyLocalMetadata != null)
+            {
+                string? localArtists = await _spotifyLocalMetadata.TryGetArtistsAsync(cleanTitle, cleanArtist, ct).ConfigureAwait(false);
+                if (!string.IsNullOrWhiteSpace(localArtists))
+                    return localArtists;
+            }
+            if (!_artworkAllowed()) return null;
+
+            string? spotifyMatch = await TrySearchSpotifyCatalogArtistsAsync(cleanTitle, cleanArtist, cleanAlbum, ct);
+            if (!string.IsNullOrEmpty(spotifyMatch))
+                return spotifyMatch;
+
+            string? itunesMatch = await TrySearchItunesArtistsAsync(cleanTitle, cleanArtist, cleanAlbum, targetDurationMs, "VN", ct)
+                               ?? await TrySearchItunesArtistsAsync(cleanTitle, cleanArtist, cleanAlbum, targetDurationMs, null, ct);
+            if (!string.IsNullOrEmpty(itunesMatch))
+                return itunesMatch;
+
+            return await TrySearchDeezerArtistsAsync(cleanTitle, cleanArtist, cleanAlbum, targetDurationMs, ct);
+        }
+        catch (OperationCanceledException)
+        {
+            return null;
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    private async Task<string?> TrySearchSpotifyCatalogArtistsAsync(
+        string title,
+        string primaryArtist,
+        string? albumTitle,
+        CancellationToken ct)
+    {
+        try
+        {
+            using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+            timeoutCts.CancelAfter(2500);
+            string? token = await _spotifyTokens.GetAccessTokenAsync(null, timeoutCts.Token).ConfigureAwait(false);
+            if (string.IsNullOrEmpty(token))
+                return null;
+
+            return await _spotifyCatalog.ResolveTrackArtistsAsync(title, primaryArtist, albumTitle, token, timeoutCts.Token).ConfigureAwait(false);
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    private static int ComputeAlbumTieBreakerBonus(string? candidateAlbum, string? expectedAlbum)
+    {
+        if (string.IsNullOrWhiteSpace(expectedAlbum) || string.IsNullOrWhiteSpace(candidateAlbum))
+            return 0;
+
+        string normCand = SpotifyTrackMatcher.NormalizeForMatch(candidateAlbum);
+        string normExp = SpotifyTrackMatcher.NormalizeForMatch(expectedAlbum);
+        if (normCand.Length == 0 || normExp.Length == 0)
+            return 0;
+
+        if (string.Equals(normCand, normExp, StringComparison.Ordinal) ||
+            normCand.StartsWith(normExp + " ", StringComparison.Ordinal))
+        {
+            return 40;
+        }
+
+        return -20;
+    }
+
+    private async Task<string?> TrySearchItunesArtistsAsync(
+        string title,
+        string primaryArtist,
+        string? albumTitle,
+        long targetDurationMs,
+        string? country,
+        CancellationToken ct)
+    {
+        string query = Uri.EscapeDataString($"{title} {primaryArtist}");
+        string url = string.IsNullOrEmpty(country)
+            ? $"https://itunes.apple.com/search?term={query}&entity=song&limit=5"
+            : $"https://itunes.apple.com/search?term={query}&entity=song&limit=5&country={country}";
+
+        string? json = await GetStringWithTimeoutAsync(url, 2200, ct);
+        if (string.IsNullOrWhiteSpace(json))
+            return null;
+
+        using var doc = JsonDocument.Parse(json);
+        if (!doc.RootElement.TryGetProperty("results", out var results) || results.ValueKind != JsonValueKind.Array)
+            return null;
+
+        string? bestArtists = null;
+        int bestScore = 0;
+
+        foreach (var item in results.EnumerateArray())
+        {
+            string? trackName = item.TryGetProperty("trackName", out var tn) ? tn.GetString() : null;
+            string? artistName = item.TryGetProperty("artistName", out var an) ? an.GetString() : null;
+            string? collectionName = item.TryGetProperty("collectionName", out var cn) ? cn.GetString() : null;
+            long trackTimeMs = item.TryGetProperty("trackTimeMillis", out var tm) && tm.TryGetInt64(out long ms) ? ms : 0;
+
+            string? formatted = FormatSpotifyArtistsCandidate(
+                trackName, artistName, trackTimeMs, title, primaryArtist, targetDurationMs, out int score);
+            if (formatted != null && score > 0)
+            {
+                score += ComputeAlbumTieBreakerBonus(collectionName, albumTitle);
+                if (score > bestScore)
+                {
+                    bestScore = score;
+                    bestArtists = formatted;
+                }
+            }
+        }
+
+        return bestArtists;
+    }
+
+    private async Task<string?> TrySearchDeezerArtistsAsync(
+        string title,
+        string primaryArtist,
+        string? albumTitle,
+        long targetDurationMs,
+        CancellationToken ct)
+    {
+        string query = Uri.EscapeDataString($"{title} {primaryArtist}");
+        string searchUrl = $"https://api.deezer.com/search?q={query}&limit=5";
+        string? searchJson = await GetStringWithTimeoutAsync(searchUrl, 2200, ct);
+        if (string.IsNullOrWhiteSpace(searchJson))
+            return null;
+
+        using var searchDoc = JsonDocument.Parse(searchJson);
+        if (!searchDoc.RootElement.TryGetProperty("data", out var data) || data.ValueKind != JsonValueKind.Array)
+            return null;
+
+        string? bestArtists = null;
+        int bestScore = 0;
+
+        foreach (var item in data.EnumerateArray())
+        {
+            if (!item.TryGetProperty("id", out var idEl) || !idEl.TryGetInt64(out long trackId) || trackId <= 0)
+                continue;
+
+            string? trackTitle = item.TryGetProperty("title", out var tEl) ? tEl.GetString() : null;
+            long durationSec = item.TryGetProperty("duration", out var dEl) && dEl.TryGetInt64(out long sec) ? sec : 0;
+            string? candAlbum = item.TryGetProperty("album", out var alEl) && alEl.ValueKind == JsonValueKind.Object &&
+                                alEl.TryGetProperty("title", out var alTitleEl) ? alTitleEl.GetString() : null;
+
+            string? trackJson = await GetStringWithTimeoutAsync($"https://api.deezer.com/track/{trackId}", 2000, ct);
+            if (string.IsNullOrWhiteSpace(trackJson))
+                continue;
+
+            using var trackDoc = JsonDocument.Parse(trackJson);
+            if (!trackDoc.RootElement.TryGetProperty("contributors", out var contribs) || contribs.ValueKind != JsonValueKind.Array)
+                continue;
+
+            var sb = new StringBuilder();
+            foreach (var c in contribs.EnumerateArray())
+            {
+                string? name = c.TryGetProperty("name", out var nEl) ? nEl.GetString() : null;
+                if (!string.IsNullOrWhiteSpace(name))
+                {
+                    if (sb.Length > 0) sb.Append(" & ");
+                    sb.Append(name.Trim());
+                }
+            }
+
+            if (sb.Length == 0)
+                continue;
+
+            string? formatted = FormatSpotifyArtistsCandidate(
+                trackTitle, sb.ToString(), durationSec * 1000L, title, primaryArtist, targetDurationMs, out int score);
+            if (formatted != null && score > 0)
+            {
+                score += ComputeAlbumTieBreakerBonus(candAlbum, albumTitle);
+                if (score > bestScore)
+                {
+                    bestScore = score;
+                    bestArtists = formatted;
+                }
+            }
+        }
+
+        return bestArtists;
+    }
 }

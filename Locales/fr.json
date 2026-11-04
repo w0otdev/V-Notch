@@ -343,6 +343,8 @@
   "settings.enableSpotifyCanvas.hint": "Expérimental et désactivé par défaut. Utilise votre cookie de session Spotify, chiffré localement, et des points d’accès non officiels. Spotify limite la collecte automatisée ; l’accès ou le compte peut être suspendu. Le consentement ne vaut pas autorisation. Activez uniquement pour un usage autorisé.",
   "settings.enableSpotifyLyrics": "Afficher les paroles Spotify",
   "settings.enableSpotifyLyrics.hint": "Afficher les paroles synchronisées dans le notch étendu avec Spotify.",
+  "settings.lyrics.providers": "Priorité des sources de paroles",
+  "settings.lyrics.providers.hint": "Glissez les lignes ou utilisez les flèches pour réorganiser. Charge les paroles par ordre de priorité au changement de titre sur Spotify.",
   "settings.enableSpotlight": "Recherche Spotlight",
   "settings.enableSpotlight.conflict": "Alt + Espace est utilisé par une autre application. Modifiez-y le raccourci ou désactivez ce lanceur.",
   "settings.enableSpotlight.hint": "Appuyez sur Alt + Espace pour rechercher des applications et des fichiers indexés.",
@@ -481,7 +483,7 @@
   "settings.privacy.onlineArtwork": "Recherche de pochettes en ligne",
   "settings.privacy.onlineArtwork.hint": "Rechercher des pochettes en ligne (YouTube, SoundCloud, Piped) lorsque le lecteur n'en fournit pas.",
   "settings.privacy.onlineLyrics": "Recherche de paroles synchronisées en ligne",
-  "settings.privacy.onlineLyrics.hint": "Récupérer les paroles synchronisées depuis des fournisseurs publics (LRCLIB, lrc mux).",
+  "settings.privacy.onlineLyrics.hint": "Récupérer les paroles synchronisées depuis des fournisseurs publics (AMLL TTML DB, LRCLIB, NetEase, lrc mux).",
   "settings.privacy.section.network": "RÉSEAU ET SERVICES EN LIGNE",
   "settings.privacy.section.sensors": "CAPTEURS ET INSPECTION DU SYSTÈME",
   "settings.privacy.section.storage": "DONNÉES LOCALES ET HISTORIQUE",
@@ -1054,5 +1056,9 @@
   "settings.glass.ultimateGpu.warning": "Attention : Le mode GPU dédié consomme plus d'énergie. Réglez la cible de FPS pour plafonner l'activité du GPU.",
   "settings.glass.ultimateGpu.title": "Activer le mode GPU Ultimate ?",
   "settings.glass.ultimateGpu.confirm": "Cette option attribue votre GPU dédié (GPU 0) à Liquid Glass pour une réfraction plus fluide, ce qui augmente la consommation sur ordinateur portable. Le rendu reste plafonné à votre cible de FPS pour éviter toute surcharge.",
-  "tooltip.ultimateGpu": "Utiliser le GPU 0 haute performance pour Liquid Glass selon la cible de FPS"
+  "tooltip.ultimateGpu": "Utiliser le GPU 0 haute performance pour Liquid Glass selon la cible de FPS",
+  "settings.lyrics.provider.lrclib.desc": "Paroles synchronisées ligne par ligne avec recherche communautaire rapide",
+  "settings.lyrics.provider.lrcmux.desc": "Synchronisation mot à mot de type karaoké agrégée depuis plusieurs sources",
+  "settings.lyrics.provider.amll.desc": "Synchronisation des mots et syllabes par la communauté via l’ID Spotify ; sans clé API",
+  "settings.lyrics.provider.netease.desc": "Paroles synchronisées par mot et par ligne depuis le catalogue NetEase Cloud Music"
 }

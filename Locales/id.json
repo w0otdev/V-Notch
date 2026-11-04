@@ -343,6 +343,8 @@
   "settings.enableSpotifyCanvas.hint": "Eksperimental dan nonaktif secara bawaan. Menggunakan cookie sesi Spotify yang dienkripsi secara lokal dan titik akses tidak resmi. Spotify membatasi pengambilan otomatis; akses atau akun dapat ditangguhkan. Persetujuan tidak memberikan izin. Aktifkan hanya untuk penggunaan yang diizinkan.",
   "settings.enableSpotifyLyrics": "Tampilkan lirik Spotify",
   "settings.enableSpotifyLyrics.hint": "Tampilkan lirik tersinkronisasi di notch saat mendengarkan musik di Spotify.",
+  "settings.lyrics.providers": "Prioritas penyedia lirik",
+  "settings.lyrics.providers.hint": "Seret baris atau gunakan panah untuk mengubah urutan. Memuat lirik sesuai urutan prioritas saat lagu berganti di Spotify.",
   "settings.enableSpotlight": "Pencarian Spotlight",
   "settings.enableSpotlight.conflict": "Pintasan Alt + Spasi sedang digunakan oleh aplikasi lain. Silakan ubah pintasan di aplikasi tersebut.",
   "settings.enableSpotlight.hint": "Tekan Alt + Spasi untuk mencari aplikasi dan file yang terindeks.",
@@ -481,7 +483,7 @@
   "settings.privacy.onlineArtwork": "Pencarian sampul album online",
   "settings.privacy.onlineArtwork.hint": "Cari sampul album di YouTube, SoundCloud, dan Piped saat pemutar tidak menyediakan sampul bawaan.",
   "settings.privacy.onlineLyrics": "Pencarian lirik tersinkronisasi online",
-  "settings.privacy.onlineLyrics.hint": "Ambil lirik tersinkronisasi dari penyedia publik (LRCLIB, lrc mux) untuk lagu saat ini.",
+  "settings.privacy.onlineLyrics.hint": "Ambil lirik tersinkronisasi dari penyedia publik (AMLL TTML DB, LRCLIB, NetEase, lrc mux) untuk lagu saat ini.",
   "settings.privacy.section.network": "JARINGAN & LAYANAN ONLINE",
   "settings.privacy.section.sensors": "SENSOR & PEMERIKSAAN SISTEM",
   "settings.privacy.section.storage": "DATA LOKAL & RIWAYAT",
@@ -1054,5 +1056,9 @@
   "settings.glass.ultimateGpu.warning": "Peringatan: Mode GPU khusus menggunakan lebih banyak daya. Atur Target FPS agar GPU hanya bekerja hingga batas frame yang dipilih.",
   "settings.glass.ultimateGpu.title": "Aktifkan mode GPU Ultimate?",
   "settings.glass.ultimateGpu.confirm": "Opsi ini menetapkan GPU diskrit (GPU 0) untuk Liquid Glass agar pembiasan lebih mulus, namun meningkatkan konsumsi baterai pada laptop. Rendering tetap dibatasi sesuai Target FPS untuk mencegah beban GPU berlebih.",
-  "tooltip.ultimateGpu": "Gunakan GPU 0 berperforma tinggi untuk Liquid Glass sesuai batas Target FPS"
+  "tooltip.ultimateGpu": "Gunakan GPU 0 berperforma tinggi untuk Liquid Glass sesuai batas Target FPS",
+  "settings.lyrics.provider.lrclib.desc": "Lirik tersinkronisasi baris demi baris dengan pencarian komunitas yang cepat",
+  "settings.lyrics.provider.lrcmux.desc": "Sinkronisasi kata demi kata bergaya karaoke dari berbagai sumber",
+  "settings.lyrics.provider.amll.desc": "Waktu kata dan suku kata komunitas berdasarkan ID lagu Spotify; tanpa kunci API",
+  "settings.lyrics.provider.netease.desc": "Lirik tersinkronisasi per kata dan baris dari katalog NetEase Cloud Music"
 }

@@ -343,6 +343,8 @@
   "settings.enableSpotifyCanvas.hint": "实验性功能，默认关闭。使用在本机加密的 Spotify 会话 Cookie 和非官方接口。Spotify 限制自动抓取，访问权限或账号可能被暂停。用户同意不等于获得授权。仅在有权使用时启用。",
   "settings.enableSpotifyLyrics": "显示 Spotify 歌词",
   "settings.enableSpotifyLyrics.hint": "播放 Spotify 音乐时在展开刘海中显示同步歌词。",
+  "settings.lyrics.providers": "歌词源优先级",
+  "settings.lyrics.providers.hint": "拖动条目或使用箭头调整顺序。Spotify 切歌时将按优先级顺序加载同步歌词。",
   "settings.enableSpotlight": "聚焦搜索",
   "settings.enableSpotlight.conflict": "Alt + 空格 快捷键已被其他程序占用，请更换该程序的快捷键或禁用其启动器。",
   "settings.enableSpotlight.hint": "按下 Alt + 空格 快速搜索应用程序和已建立索引的文件。",
@@ -1054,5 +1056,9 @@
   "settings.glass.ultimateGpu.warning": "警告：独立显卡模式会增加功耗。请合理设置目标帧率，让 GPU 仅在所选帧率上限内工作。",
   "settings.glass.ultimateGpu.title": "启用终极 GPU 模式？",
   "settings.glass.ultimateGpu.confirm": "此选项会将高性能独立显卡 (GPU 0) 分配给液态玻璃以获得更流畅的折射效果，但会增加笔记本电脑耗电。渲染帧率将严格锁定在您设置的目标帧率上限，防止 GPU 满载运行。",
-  "tooltip.ultimateGpu": "为液态玻璃启用高性能 GPU 0 并按目标帧率限速"
+  "tooltip.ultimateGpu": "为液态玻璃启用高性能 GPU 0 并按目标帧率限速",
+  "settings.lyrics.provider.lrclib.desc": "按行同步歌词，社区曲库查询迅速",
+  "settings.lyrics.provider.lrcmux.desc": "聚合多音源的逐字卡拉 OK 时间轴",
+  "settings.lyrics.provider.amll.desc": "按 Spotify 歌曲 ID 获取社区制作的逐词、逐音节时间轴；无需 API 密钥",
+  "settings.lyrics.provider.netease.desc": "来自网易云音乐曲库的逐字与逐行同步歌词"
 }

@@ -27,7 +27,16 @@ public:
                    vnotch::equals_icase_ascii(sv, u"SoundCloud") ||
                    vnotch::equals_icase_ascii(sv, u"Unknown Artist");
         };
+        auto is_comma_prefix_artist = [](std::u16string_view full, std::u16string_view prefix) noexcept {
+            return !prefix.empty() &&
+                   full.size() > prefix.size() + 2 &&
+                   vnotch::equals_ignore_case(full.substr(0, prefix.size()), prefix) &&
+                   full[prefix.size()] == u',' &&
+                   full[prefix.size() + 1] == u' ';
+        };
         const bool artist_match = vnotch::equals_ignore_case(left_artist, right_artist) ||
+                                  is_comma_prefix_artist(left_artist, right_artist) ||
+                                  is_comma_prefix_artist(right_artist, left_artist) ||
                                   is_generic_source_or_artist(left_artist) ||
                                   is_generic_source_or_artist(right_artist);
         const bool source_match = vnotch::equals_ignore_case(left_source, right_source) ||

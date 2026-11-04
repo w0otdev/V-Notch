@@ -1372,6 +1372,19 @@ VN_EXPORT int32_t __stdcall vn_wtscanner_collect_visible_windows(
     int32_t entries_cap,
     int32_t* out_count) noexcept;
 
+#pragma pack(push, 1)
+struct VnNetEaseWordSpan {
+    int64_t start_ticks;
+    int64_t end_ticks;
+    int32_t text_offset;
+    int32_t text_length;
+};
+#pragma pack(pop)
+VN_EXPORT int32_t __stdcall vn_lyrics_score_netease_candidate(const char16_t*, int32_t, const char16_t*, int32_t, int32_t, const char16_t*, int32_t, const char16_t*, int32_t, int32_t, int32_t*, uint8_t*) noexcept;
+VN_EXPORT int32_t __stdcall vn_lyrics_is_credit_header_line(const char16_t*, int32_t, int64_t, uint8_t*) noexcept;
+VN_EXPORT int32_t __stdcall vn_lyrics_try_parse_yrc_line(const char16_t*, int32_t, int64_t*, char16_t*, int32_t, int32_t*, VnNetEaseWordSpan*, int32_t, int32_t*, uint8_t*) noexcept;
+VN_EXPORT int32_t __stdcall vn_lyrics_decode_krc_payload(const uint8_t*, int32_t, uint8_t*, int32_t*) noexcept;
+VN_EXPORT int32_t __stdcall vn_lyrics_try_parse_krc_line(const char16_t*, int32_t, int64_t*, char16_t*, int32_t, int32_t*, VnNetEaseWordSpan*, int32_t, int32_t*, uint8_t*) noexcept;
 VN_EXPORT int32_t __stdcall vn_lyrics_strip_title_extras(
     const char16_t* title_ptr,
     int32_t title_len,
@@ -2236,3 +2249,26 @@ VN_EXPORT int32_t __stdcall vn_notchshell_compute_expanded_width(
     uint8_t is_lyrics_active,
     uint8_t is_music_expanded,
     double* out_width) noexcept;
+
+VN_EXPORT int32_t __stdcall vn_media_metadata_format_spotify_artists(
+    const char16_t* raw_artist,
+    int32_t raw_artist_len,
+    const char16_t* primary_artist,
+    int32_t primary_artist_len,
+    const char16_t* cand_title,
+    int32_t cand_title_len,
+    const char16_t* exp_title,
+    int32_t exp_title_len,
+    int64_t cand_dur_ms,
+    int64_t exp_dur_ms,
+    char16_t* out_buf,
+    int32_t out_cap,
+    int32_t* out_len,
+    int32_t* out_score) noexcept;
+
+VN_EXPORT int32_t __stdcall vn_translation_runtime_is_allowed_uri(
+    const char16_t* scheme_ptr, int32_t scheme_len,
+    int32_t user_info_len,
+    uint8_t is_default_port,
+    const char16_t* host_ptr, int32_t host_len,
+    uint8_t* out_allowed) noexcept;

@@ -36,7 +36,7 @@ Chính sách này dùng các thuật ngữ sau:
 |---|---|---|---|
 | **Phương tiện đang phát** | Tên bài, nghệ sĩ, album, ảnh bìa, vị trí phát, trạng thái (Windows SMTC) | Không (trừ tra cứu ảnh bìa/lời/phụ đề, xem §4) | Không (tạm thời trong bộ nhớ) |
 | **Tra cứu ảnh bìa album** | Tên bài + nghệ sĩ gửi đi như một truy vấn tìm kiếm | Có: YouTube/Google (`/results`, `/oembed`, `/youtube/v3/search`, `/youtube/v3/videos`), SoundCloud (`soundcloud.com`, `m.soundcloud.com`), Piped/Invidious | Có: ánh xạ nguồn có thể lưu cục bộ (§5.3); ảnh có thể được cache bởi thành phần hiển thị |
-| **Lời bài hát đồng bộ** | Tên bài + nghệ sĩ + thời lượng gửi đi như truy vấn | Có: lrclib.net, và api.lrcmux.dev làm nguồn tổng hợp dự phòng | Không (tạm thời trong bộ nhớ) |
+| **Lời bài hát đồng bộ** | Tên bài + nghệ sĩ + thời lượng gửi đi như truy vấn | Có: music.163.com (NetEase), lyrics.kugou.com (Kugou), c.y.qq.com (QQ Music), lrclib.net, và api.lrcmux.dev | Không (tạm thời trong bộ nhớ) |
 | **Phụ đề YouTube / Captions** | Video ID + yêu cầu track phụ đề qua Android Innertube player (`com.google.android.youtube`) | Có: YouTube (`youtube.com/youtubei/v1/player`, `youtube.com/api/timedtext`) | Không (tạm thời trong bộ nhớ) |
 | **Spotify Canvas (tùy chọn)** | Phiên Spotify web (`sp_dc`), tên bài + nghệ sĩ | Có: Spotify, Musixmatch (dự phòng) | Phiên được mã hóa cục bộ bằng Windows DPAPI |
 | **Thời tiết (opt-in)** | Vị trí gần đúng dựa trên IP (`ipwho.is`) hoặc tên thành phố thủ công | Có: `ipwho.is`, Open-Meteo | Không (tạm thời trong bộ nhớ) |
@@ -63,7 +63,7 @@ Chính sách này dùng các thuật ngữ sau:
 | Dịch vụ | Mục đích |
 | --- | --- |
 | GitHub Releases API & Máy chủ Asset (`api.github.com`, `github.com`, `objects.githubusercontent.com`, `release-assets.githubusercontent.com`) | Kiểm tra cập nhật (`V-Notch-Updater`) và xác minh tính toàn vẹn mã băm tệp nhị phân bản phát hành ở chế độ nền (`V-Notch-Integrity-Checker`) |
-| LRCLIB / lrc mux | Lời bài hát đồng bộ |
+| NetEase / Kugou / QQ Music / LRCLIB / lrc mux | Lời bài hát đồng bộ |
 | YouTube / SoundCloud (`youtube.com`, `googleapis.com`, `soundcloud.com`, `m.soundcloud.com`) | Ảnh thu nhỏ, metadata video (`/youtube/v3/search`, `/youtube/v3/videos`), oEmbed/tìm kiếm SoundCloud, và phụ đề công khai (`com.google.android.youtube`) |
 | Spotify Web Services | Canvas thử nghiệm, mặc định tắt; yêu cầu chủ động bật; phiên được mã hóa bằng Windows DPAPI |
 | Open-Meteo / ipwho.is | Thời tiết tùy chọn |
@@ -204,14 +204,18 @@ Khi SMTC không cung cấp ảnh bìa nhúng hoặc thiếu metadata đầy đ�
 
 **Dữ liệu gửi đi:** Tên bài và nghệ sĩ (như một truy vấn tìm kiếm thông thường), hoặc URL/ID video đã phân giải, cùng các header HTTP trình duyệt tiêu chuẩn. **Bên nhận có thể thấy địa chỉ IP kết nối; truy vấn bài hát có thể phản ánh sở thích nghe nhạc.** Ảnh tải về được lưu trong bộ nhớ để hiển thị và không được ghi xuống đĩa.
 
-### 4.3 Lời bài hát đồng bộ (LRCLIB và lrc mux)
+### 4.3 Lời bài hát đồng bộ (NetEase, Kugou, QQ Music, LRCLIB và lrc mux)
 
-V-Notch thử nghiệm hai nhà cung cấp lời bài hát độc lập theo thứ tự và dừng lại ngay khi một trong hai trả về kết quả:
+V-Notch thử các nguồn lời bài hát theo thứ tự ưu tiên trong Cài đặt. App hiện lời theo dòng ngay khi tìm được, rồi tìm đồng bộ từng chữ ở các nguồn còn lại trong nền. Nếu có, app nâng cấp sang karaoke; nếu không, app kết thúc tìm kiếm và giữ lời theo dòng. AMLL TTML DB đứng đầu theo mặc định:
 
+- **AMLL TTML DB**: `https://raw.githubusercontent.com/amll-dev/amll-ttml-db/main/spotify-lyrics/{spotifyTrackId}.ttml`. App đọc cục bộ tên bài đang phát và liên kết bài tương ứng từ Spotify desktop qua Windows UI Automation. Chỉ Spotify track ID và HTTP header chuẩn được gửi tới GitHub; không cần API key, cookie Spotify, tìm theo tên hoặc so khớp thời lượng. Khi thiếu ID hoặc file cộng đồng, app thử nguồn tiếp theo. GitHub có thể thấy địa chỉ IP và ID bài được yêu cầu.
 - **LRCLIB**: `https://lrclib.net/api/get?...` (khớp chính xác) và endpoint tìm kiếm (khớp mờ). **Dữ liệu gửi đi:** tên bài, tên nghệ sĩ, và thời lượng bài hát làm tham số truy vấn, kèm `User-Agent` nhận diện V-Notch.
-- **lrc mux**: `https://api.lrcmux.dev/get?...`, dùng làm nguồn tổng hợp dự phòng khi LRCLIB không có kết quả khớp. **Dữ liệu gửi đi:** tên bài, tên nghệ sĩ, và thời lượng bài hát làm tham số truy vấn, kèm `User-Agent` nhận diện V-Notch. lrc mux là dịch vụ tổng hợp lời bài hát của bên thứ ba với các nguồn thượng nguồn riêng; V-Notch không kiểm soát nhà cung cấp thượng nguồn mà dịch vụ này truy vấn nội bộ.
+- **NetEase (`music.163.com`)**: `https://music.163.com/api/cloudsearch/pc` (tìm bài hát) và `https://music.163.com/api/song/lyric` (lời bài hát đồng bộ theo chữ/dòng). **Dữ liệu gửi đi:** tên bài hát và nghệ sĩ, ID bài hát khớp, cùng HTTP header chuẩn (`User-Agent` và `Referer`).
+- **Kugou (`lyrics.kugou.com`)**: `https://lyrics.kugou.com/search` và `https://lyrics.kugou.com/download` (lời bài hát KRC đồng bộ theo từng chữ). **Dữ liệu gửi đi:** tên bài hát, nghệ sĩ, thời lượng (ms), ID/accesskey lời bài hát khớp và `User-Agent`.
+- **QQ Music (`c.y.qq.com`)**: `https://c.y.qq.com/soso/fcgi-bin/client_search_cp` và `https://c.y.qq.com/lyric/fcgi-bin/fcg_query_lyric_new.fcg` (lời bài hát đồng bộ). **Dữ liệu gửi đi:** tên bài hát và nghệ sĩ, `songmid` khớp, cùng HTTP header chuẩn (`User-Agent` và `Referer`).
+- **lrc mux**: `https://api.lrcmux.dev/get?...`, dùng làm nguồn tổng hợp dự phòng khi các nguồn trước chưa có kết quả khớp. **Dữ liệu gửi đi:** tên bài, tên nghệ sĩ, và thời lượng bài hát làm tham số truy vấn, kèm `User-Agent` nhận diện V-Notch. lrc mux là dịch vụ tổng hợp lời bài hát của bên thứ ba với các nguồn thượng nguồn riêng; V-Notch không kiểm soát nhà cung cấp thượng nguồn mà dịch vụ này truy vấn nội bộ.
 
-**Dữ liệu nhận về (cả hai):** Các dòng lời bài hát đã đồng bộ thời gian, chỉ dùng tạm thời trong bộ nhớ để hiển thị và không bao giờ ghi xuống đĩa. Bên nhận thấy IP kết nối; truy vấn nghe nhạc có thể là dữ liệu cá nhân tùy ngữ cảnh.
+**Dữ liệu nhận về:** Các dòng lời bài hát đã đồng bộ thời gian, chỉ dùng tạm thời trong bộ nhớ để hiển thị và không bao giờ ghi xuống đĩa. Bên nhận thấy IP kết nối; truy vấn nghe nhạc có thể là dữ liệu cá nhân tùy ngữ cảnh.
 
 ### 4.4 Phụ đề & Captions YouTube (Innertube) và Xác minh tính toàn vẹn bản phát hành
 
@@ -377,7 +381,7 @@ V-Notch cung cấp một mục **Quyền riêng tư** riêng biệt trong Cài �
 - **Chế độ hoàn toàn ngoại tuyến (`EnableLocalOnlyMode`):** Chặn các yêu cầu HTTP do ứng dụng quản lý, gồm cập nhật thủ công/tự động (`V-Notch-Updater`), kiểm tra tính toàn vẹn bản phát hành ở chế độ nền (`V-Notch-Integrity-Checker`), ảnh bìa/metadata, lời bài hát, phụ đề, Canvas, thời tiết, tải mô hình từ Hugging Face, tra cứu tỷ giá qua Frankfurter, tin nhắn AI và làm mới số dư. Chặn mở và đóng cửa sổ đăng nhập Spotify đang mở. Chặn mở liên kết trực tuyến qua ứng dụng. Yêu cầu và việc đọc phản hồi đang chạy nhận tín hiệu hủy khi thu hồi quyền. Không thể thu hồi dữ liệu đã gửi. Tính năng cục bộ và lựa chọn riêng vẫn được giữ. Đây là kiểm soát cấp ứng dụng, không phải tường lửa hệ điều hành: không bảo đảm chặn lưu lượng của Windows, ứng dụng khác hay kết nối nền tự phát của runtime/WebView; cần kiểm tra bản phát hành bằng công cụ theo dõi mạng.
 - **Tự động kiểm tra bản cập nhật mới (`AutoCheckUpdates`):** Bật/tắt kiểm tra định kỳ bản phát hành mới (`V-Notch-Updater`) và xác minh tính toàn vẹn mã băm tệp nhị phân (`V-Notch-Integrity-Checker`) trên GitHub Releases ở chế độ nền.
 - **Tìm kiếm ảnh bìa album trực tuyến:** Bật/tắt tra cứu ảnh bìa từ YouTube, SoundCloud, Piped khi trình phát không có ảnh bìa nhúng.
-- **Tìm kiếm lời bài hát đồng bộ trực tuyến:** Bật/tắt tải lời bài hát đồng bộ từ LRCLIB và lrc mux cho bài hát đang phát.
+- **Tìm kiếm lời bài hát đồng bộ trực tuyến:** Bật/tắt tải lời bài hát đồng bộ từ NetEase, Kugou, QQ Music, LRCLIB và lrc mux cho bài hát đang phát.
 - **Chấm thông báo quyền riêng tư:** Bật/tắt chấm màu cảnh báo sử dụng cảm biến phần cứng (Mic, Camera, Quay màn hình) trên notch nhỏ gọn.
 - **Đọc URL trình duyệt để nhận diện phương tiện:** Bật/tắt Windows UI Automation quét thanh địa chỉ trình duyệt để nhận diện nguồn phát chính xác.
 - **Ghi nhật ký chẩn đoán ra ổ đĩa (`EnableDiagnosticLogging`):** Bật/tắt việc ghi thông điệp gỡ lỗi vào tệp `vnotch-debug.log` và báo cáo lỗi chưa xử lý vào tệp `vnotch-crash.log` (kèm các bản xoay vòng `.old`) trên ổ đĩa cục bộ.

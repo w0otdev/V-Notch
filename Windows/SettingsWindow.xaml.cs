@@ -210,14 +210,14 @@ public partial class SettingsWindow : Window
         int maxDepth = 64;
         while (source != null && maxDepth-- > 0)
         {
-            if (source is ButtonBase or Slider or Thumb or ComboBox or ComboBoxItem or CheckBox or ScrollBar or TextBox or PasswordBox)
+            if (source is ButtonBase or Slider or Thumb or ComboBox or ComboBoxItem or ListBox or ListBoxItem or CheckBox or ScrollBar or TextBox or PasswordBox)
             {
                 return true;
             }
 
             if (source is FrameworkElement fe)
             {
-                if (fe.Name is "SubtitlePriorityItems" or "NavTabsSettingsContainer" or "NavTabsSettingsCard")
+                if (fe.Name is "SubtitlePriorityItems" or "LyricsProviderList" or "NavTabsSettingsContainer" or "NavTabsSettingsCard")
                     return true;
 
                 if (fe.Tag is string tag &&
@@ -281,6 +281,9 @@ public partial class SettingsWindow : Window
         EnableSmartCropCheck.IsChecked = _settings.EnableSmartCrop;
         UpdatePerformanceDependentControls(_settings.EnableBlurEffects);
         EnableSpotifyLyricsCheck.IsChecked = _settings.EnableSpotifyLyrics;
+        LyricsProviderList.ItemsSource = LyricsProviderOrder.Normalize(_settings.LyricsProviderPriority);
+        LyricsProviderList.SelectedIndex = 0;
+        UpdateLyricsProviderButtonStates();
         BrightenDarkLyricsBackgroundCheck.IsChecked = _settings.BrightenDarkLyricsBackground;
         UpdateLyricsDependentControls(_settings.EnableSpotifyLyrics);
         EnableSpotifyCanvasCheck.IsChecked = _settings.EnableSpotifyCanvas;
@@ -579,6 +582,17 @@ public partial class SettingsWindow : Window
         EnableDebugModeCheck.Content = Loc.Get("settings.enableDebugMode");
         EnableDebugModeHint.Text = Loc.Get("settings.enableDebugMode.hint");
         EnableSpotifyLyricsCheck.Content = Loc.Get("settings.enableSpotifyLyrics");
+        LyricsProviderLabel.Text = Loc.Get("settings.lyrics.providers");
+        LyricsProviderHint.Text = Loc.Get("settings.lyrics.providers.hint");
+        LyricsProviderHint.Tag = Loc.Get("settings.lyrics.provider.amll.desc");
+        LyricsProviderList.Tag = Loc.Get("settings.lyrics.provider.lrclib.desc");
+        LyricsProviderLabel.Tag = Loc.Get("settings.lyrics.provider.netease.desc");
+        LyricsProviderPanel.Tag = Loc.Get("settings.lyrics.provider.lrcmux.desc");
+        LyricsProviderList.SetValue(System.Windows.Automation.AutomationProperties.NameProperty, LyricsProviderLabel.Text);
+        LyricsProviderUp.ToolTip = Loc.Get("settings.tab.moveUp");
+        LyricsProviderDown.ToolTip = Loc.Get("settings.tab.moveDown");
+        LyricsProviderUp.SetValue(System.Windows.Automation.AutomationProperties.NameProperty, Loc.Get("settings.tab.moveUp"));
+        LyricsProviderDown.SetValue(System.Windows.Automation.AutomationProperties.NameProperty, Loc.Get("settings.tab.moveDown"));
         BrightenDarkLyricsBackgroundCheck.Content = Loc.Get("settings.brightenDarkLyricsBackground");
         if (EnableSpotifyCanvasLabel != null) EnableSpotifyCanvasLabel.Text = Loc.Get("settings.enableSpotifyCanvas");
         if (SpotifyCanvasExperimentalBadge != null) SpotifyCanvasExperimentalBadge.Text = Loc.Get(LocKeyBadgeExperimental);

@@ -564,6 +564,7 @@ public partial class SettingsWindow
         snapshot.EnableSubjectBlur = EnableSubjectBlurCheck.IsChecked ?? true;
         snapshot.EnableSmartCrop = EnableSmartCropCheck.IsChecked ?? true;
         snapshot.EnableSpotifyLyrics = EnableSpotifyLyricsCheck.IsChecked ?? true;
+        snapshot.LyricsProviderPriority = string.Join(',', LyricsProviderList.Items.Cast<string>());
         snapshot.BrightenDarkLyricsBackground = BrightenDarkLyricsBackgroundCheck.IsChecked == true;
         snapshot.EnableSpotifyCanvas = EnableSpotifyCanvasCheck.IsChecked == true && SpotifyCanvasConsent.HasAccepted(snapshot);
         snapshot.EnableYouTubeSubtitles = EnableYouTubeSubtitlesCheck.IsChecked ?? true;

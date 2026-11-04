@@ -208,6 +208,24 @@ public class MediaDisplayControllerTests
 
     #endregion
 
+    [Fact]
+    public void ProcessMediaUpdate_SpotifyArtistEnrichment_UpdatesArtistWithoutNewTrackAnimation()
+    {
+        var thumb = NewThumb();
+        var initial = Track("Lối Chơi (Interlude)", artist: "Wren Evans", source: "Spotify", thumb: thumb);
+        var r1 = _sut.ProcessMediaUpdate(initial, true, false, false, false);
+        Assert.True(r1.IsNewTrack);
+        Assert.Equal("Wren Evans", r1.DisplayText.Artist);
+
+        var enriched = Track("Lối Chơi (Interlude)", artist: "Wren Evans, itsnk", source: "Spotify", thumb: thumb);
+        Assert.True(VNotch.Services.MediaUpdateQueue.SameTrack(initial, enriched));
+
+        var r2 = _sut.ProcessMediaUpdate(enriched, true, false, false, false);
+        Assert.False(r2.IsNewTrack);
+        Assert.Equal(ThumbnailAction.None, r2.ThumbnailAction);
+        Assert.Equal("Wren Evans, itsnk", r2.DisplayText.Artist);
+    }
+
     #region Generation counter
 
     [Fact]

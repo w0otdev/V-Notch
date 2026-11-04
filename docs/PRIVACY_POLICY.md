@@ -34,7 +34,7 @@ This policy uses the following terms:
 |---|---|---|---|
 | **Now-playing media** | Track title, artist, album, artwork, playback position, play state (Windows SMTC) | No (except artwork/lyrics/captions lookup, see §4) | No (transient in memory) |
 | **Album artwork lookup** | Track title + artist sent as a search query | Yes: YouTube/Google (`/results`, `/oembed`, `/youtube/v3/search`, `/youtube/v3/videos`), SoundCloud (`soundcloud.com`, `m.soundcloud.com`), Piped/Invidious | Yes: source mapping may be stored locally (§5.3); image retention depends on component cache |
-| **Synced lyrics** | Track title + artist + duration sent as a query | Yes: lrclib.net, and api.lrcmux.dev as a fallback aggregator | No (transient in memory) |
+| **Synced lyrics** | Track title + artist + duration sent as a query | Yes: music.163.com (NetEase), lyrics.kugou.com (Kugou), c.y.qq.com (QQ Music), lrclib.net, and api.lrcmux.dev | No (transient in memory) |
 | **YouTube subtitles / captions** | Video ID + Android Innertube player caption track requests (`com.google.android.youtube`) | Yes: YouTube (`youtube.com/youtubei/v1/player`, `youtube.com/api/timedtext`) | No (transient in memory) |
 | **Spotify Canvas (opt-in)** | Spotify web session (`sp_dc`), track title + artist | Yes: Spotify, Musixmatch (fallback) | Session encrypted locally with Windows DPAPI |
 | **Weather (opt-in)** | Approximate IP-based location (`ipwho.is`) or manual city name | Yes: `ipwho.is`, Open-Meteo | No (transient in memory) |
@@ -61,7 +61,7 @@ This policy uses the following terms:
 | Service | Purpose |
 | --- | --- |
 | GitHub Releases API & Asset Hosts (`api.github.com`, `github.com`, `objects.githubusercontent.com`, `release-assets.githubusercontent.com`) | Update checks (`V-Notch-Updater`) and background release binary integrity verification (`V-Notch-Integrity-Checker`) |
-| LRCLIB / lrc mux | Synced lyrics |
+| NetEase / Kugou / QQ Music / LRCLIB / lrc mux | Synced lyrics |
 | YouTube / SoundCloud (`youtube.com`, `googleapis.com`, `soundcloud.com`, `m.soundcloud.com`) | Public thumbnails, video metadata (`/youtube/v3/search`, `/youtube/v3/videos`), SoundCloud oEmbed/search, and captions (`com.google.android.youtube`) |
 | Spotify Web Services | Experimental Canvas, off by default; explicit opt-in; session encrypted with Windows DPAPI |
 | Open-Meteo / ipwho.is | Optional weather |
@@ -200,14 +200,18 @@ When SMTC does not provide embedded artwork or full metadata (common for browser
 
 **Data sent:** Track title and artist (as a search query), or resolved media URL/video ID, and standard browser-like HTTP headers. **The recipient may see the connecting IP address; track queries may reveal listening interests.** Retrieved images are held in memory for display and are not written to disk.
 
-### 4.3 Synced Lyrics (LRCLIB and lrc mux)
+### 4.3 Synced Lyrics (NetEase, Kugou, QQ Music, LRCLIB, and lrc mux)
 
-V-Notch tries two independent lyrics providers, in order, and stops as soon as one returns a result:
+V-Notch tries lyrics providers in the priority order selected in Settings. It displays the first usable line lyrics immediately, then searches the remaining providers in the background for word timing. It upgrades when word timing is found; otherwise the search ends and the line lyrics remain. AMLL TTML DB is first by default:
 
+- **AMLL TTML DB**: `https://raw.githubusercontent.com/amll-dev/amll-ttml-db/main/spotify-lyrics/{spotifyTrackId}.ttml`. The Spotify desktop app’s current song title and matching track hyperlink are read locally through Windows UI Automation. Only the Spotify track ID and standard HTTP headers are sent to GitHub; no API key, Spotify cookie, title search or duration matching is required. If the ID or community file is unavailable, V-Notch tries the next provider. GitHub may observe your IP address and requested song ID.
 - **LRCLIB**: `https://lrclib.net/api/get?...` (exact match) and its search endpoint (fuzzy match). **Data sent:** track title, artist name, and track duration as query parameters, plus a `User-Agent` identifying V-Notch.
-- **lrc mux**: `https://api.lrcmux.dev/get?...`, used as a fallback aggregator when LRCLIB has no match. **Data sent:** track title, artist name, and track duration as query parameters, plus a `User-Agent` identifying V-Notch. lrc mux is a third-party lyrics aggregation service with its own upstream sources; V-Notch does not control which upstream provider it queries internally.
+- **NetEase (`music.163.com`)**: `https://music.163.com/api/cloudsearch/pc` (track search) and `https://music.163.com/api/song/lyric` (synchronized word/line lyrics). **Data sent:** track title and artist query, resolved song ID, and standard HTTP headers (`User-Agent` and `Referer`).
+- **Kugou (`lyrics.kugou.com`)**: `https://lyrics.kugou.com/search` and `https://lyrics.kugou.com/download` (synchronized word-level KRC lyrics). **Data sent:** track title, artist, and duration in milliseconds, resolved lyric ID/accesskey, and `User-Agent`.
+- **QQ Music (`c.y.qq.com`)**: `https://c.y.qq.com/soso/fcgi-bin/client_search_cp` and `https://c.y.qq.com/lyric/fcgi-bin/fcg_query_lyric_new.fcg` (synchronized lyrics). **Data sent:** track title and artist query, resolved `songmid`, and standard HTTP headers (`User-Agent` and `Referer`).
+- **lrc mux**: `https://api.lrcmux.dev/get?...`, used as a fallback aggregator when earlier providers have no match. **Data sent:** track title, artist name, and track duration as query parameters, plus a `User-Agent` identifying V-Notch. lrc mux is a third-party lyrics aggregation service with its own upstream sources; V-Notch does not control which upstream provider it queries internally.
 
-**Data received (both):** Synced lyric lines, used transiently in memory for display and never written to disk. Music selections and connection IP addresses may be personal data in context and may be observable by the recipient providers.
+**Data received:** Synced lyric lines, used transiently in memory for display and never written to disk. Music selections and connection IP addresses may be personal data in context and may be observable by the recipient providers.
 
 ### 4.4 YouTube Subtitles & Captions (Innertube) and Release Integrity Verification
 
@@ -372,7 +376,7 @@ V-Notch provides a dedicated **Privacy** section in Settings with granular toggl
 - **Strict Local-Only Mode (`EnableLocalOnlyMode`):** Blocks app-managed HTTP requests, including manual/automatic updates (`V-Notch-Updater`) and background release integrity checks (`V-Notch-Integrity-Checker`), artwork/metadata, lyrics, subtitles, Canvas, weather, Hugging Face model downloads, Frankfurter currency lookups, AI messages, and balance refreshes. It blocks Spotify sign-in initialization and closes active sign-in windows. Online links opened through the app are also blocked. Existing managed requests and response-body reads receive cancellation when access is revoked. Already transmitted data cannot be recalled. Local functionality and individual online preferences remain available. This is an application control, not an operating-system firewall: it does not guarantee silence from Windows, other apps, or autonomous runtime/WebView background traffic; verify release behavior with network monitoring.
 - **Automatic update checks (`AutoCheckUpdates`):** Toggle periodic background update checks (`V-Notch-Updater`) and background release binary integrity verification (`V-Notch-Integrity-Checker`) against GitHub Releases.
 - **Online album artwork lookup:** Toggle querying YouTube, SoundCloud, or Piped for album art when the active player provides no embedded cover.
-- **Online synced lyrics lookup:** Toggle fetching synced lyrics from LRCLIB and lrc mux for now-playing songs.
+- **Online synced lyrics lookup:** Toggle fetching synced lyrics from NetEase, Kugou, QQ Music, LRCLIB, and lrc mux for now-playing songs.
 - **Privacy indicators:** Toggle the colored hardware sensor usage dot (Mic, Camera, Screen Capture) in the compact notch.
 - **Browser media URL detection:** Toggle Windows UI Automation inspection of browser address bars for media source detection.
 - **Diagnostic disk logging (`EnableDiagnosticLogging`):** Toggle writing debug messages to `vnotch-debug.log` and unhandled crash reports to `vnotch-crash.log` (including `.old` rotations) on local disk.

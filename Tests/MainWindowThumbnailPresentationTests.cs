@@ -15,6 +15,39 @@ public sealed class MainWindowThumbnailPresentationTests
 {
     private const BindingFlags Private = BindingFlags.Instance | BindingFlags.Static | BindingFlags.NonPublic;
 
+    [Fact]
+    public void ArtworkSnapshotCannotReplaceTheFullSpotifyArtistList() => SharedStaTestRunner.RunAsync(async ct =>
+    {
+        await using var fixture = CreateFixture(false);
+        var window = fixture.Window;
+        window.SetDebugViewLock(true);
+        window.Show();
+        await WpfFrameWaiter.UntilAsync(() => Field<bool>(window, "_isStartupLayoutReady") && !Property<bool>(window, "_isAnimating"), "artist window startup", ct);
+        var info = new MediaInfo
+        {
+            CurrentTrack = "Song",
+            CurrentArtist = "Singer, Collaborator",
+            MediaSource = "Spotify",
+            SourceAppId = "Spotify.exe",
+            IsAnyMediaPlaying = true,
+            IsPlaying = true,
+            Thumbnail = Bitmap("white-mat-artwork.png")
+        };
+        Invoke(window, "ApplyMediaUpdate", info);
+        var marquee = window.MediaPlayback.GetType().GetField("_marqueeController", Private)!.GetValue(window.MediaPlayback)!;
+        string ArtistText() => (string)marquee.GetType().GetField("_lastArtistText", Private)!.GetValue(marquee)!;
+        const string expected = "Singer, Collaborator";
+        Assert.Equal(expected, ArtistText());
+
+        var artwork = info.Clone();
+        artwork.CurrentArtist = "Singer";
+        artwork.IsThumbnailOnlyUpdate = true;
+        artwork.Thumbnail = Bitmap("dark-textured-artwork.png");
+        Invoke(window, "ApplyMediaUpdate", artwork);
+        Assert.Equal(expected, ArtistText());
+        Assert.Null(marquee.GetType().GetField("_pendingArtistText", Private)!.GetValue(marquee));
+    });
+
     [Theory]
     [InlineData("SoundCloud")]
     [InlineData("Browser")]
@@ -160,6 +193,45 @@ public sealed class MainWindowThumbnailPresentationTests
         Assert.Equal(Visibility.Visible, window.CompactThumbnailBorder.Visibility);
     });
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void ColdExpandTargetMatchesLiveExpandedThumbnailSlot(bool islandMode) => SharedStaTestRunner.RunAsync(async ct =>
+    {
+        await using var fixture = CreateFixture(true);
+        var window = fixture.Window;
+        var settings = Field<NotchSettings>(window, "_settings");
+        settings.EnableDynamicIslandMode = islandMode;
+        window.SetDebugViewLock(true);
+        window.Show();
+        await WpfFrameWaiter.UntilAsync(() => Field<bool>(window, "_isStartupLayoutReady") && !Property<bool>(window, "_isAnimating"), "expand target startup", ct);
+
+        Set(window, "_cachedThumbnailExpandTarget", null!);
+        Invoke(window, "SetupExpandedContentBeforeAnimation");
+        var coldTarget = ((double X, double Y)?)InvokeResult(window, "EnsureCachedThumbnailExpandTarget");
+        Assert.True(coldTarget.HasValue);
+
+        window.SetDebugViewState("MediaExpanded");
+        await WpfFrameWaiter.UntilAsync(() => !Property<bool>(window, "_isAnimating"), "media expanded layout", ct);
+        window.UpdateLayout();
+
+        var parameters = new object?[] { default((double X, double Y)) };
+        bool hasLive = (bool)typeof(MainWindow).GetMethod("TryComputeThumbnailExpandTarget", Private)!.Invoke(window, parameters)!;
+        Assert.True(hasLive);
+        var liveTarget = ((double X, double Y))parameters[0]!;
+
+        Assert.Equal(liveTarget.X, coldTarget.Value.X, 3);
+        Assert.Equal(liveTarget.Y, coldTarget.Value.Y, 3);
+        Assert.False(window.ThumbnailBorder.UseLayoutRounding);
+        Assert.False(window.AnimationThumbnailBorder.UseLayoutRounding);
+        Assert.False(window.CompactThumbnailBorder.UseLayoutRounding);
+
+        settings.EnableDynamicIslandMode = !islandMode;
+        var toggledTarget = ((double X, double Y)?)InvokeResult(window, "EnsureCachedThumbnailExpandTarget");
+        Assert.True(toggledTarget.HasValue);
+        Assert.NotEqual(coldTarget.Value.Y, toggledTarget.Value.Y);
+    });
+
     private static BitmapImage Bitmap(string name)
     {
         var bitmap = new BitmapImage();
@@ -177,4 +249,5 @@ public sealed class MainWindowThumbnailPresentationTests
     private static T Property<T>(MainWindow window, string name) => (T)typeof(MainWindow).GetProperty(name, Private)!.GetValue(window)!;
     private static void Set(MainWindow window, string name, object value) => typeof(MainWindow).GetField(name, Private)!.SetValue(window, value);
     private static void Invoke(MainWindow window, string name, params object?[] args) => ReflectionInvoker.InvokeWithDefaults(window, typeof(MainWindow).GetMethod(name, Private)!, args);
+    private static object? InvokeResult(MainWindow window, string name, params object?[] args) => ReflectionInvoker.InvokeWithDefaults(window, typeof(MainWindow).GetMethod(name, Private)!, args);
 }

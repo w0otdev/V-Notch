@@ -664,6 +664,169 @@ public:
         out_score = std::max(0, total_score);
         out_is_match = (title_score >= 60 && (candidate_duration_sec <= 0 || target_duration_sec <= 0 || out_duration_delta <= 15)) ? 1u : 0u;
     }
+
+    static std::u16string ExtractFeaturingFromTitle(
+        std::u16string_view title,
+        std::u16string& out_stripped_title) noexcept {
+        out_stripped_title.assign(title);
+        std::u16string feat_artists;
+        constexpr std::u16string_view markers[] = {
+            u"(feat. ", u"[feat. ", u"(ft. ", u"[ft. ", u"(with ", u"[with "
+        };
+        for (auto marker : markers) {
+            int32_t idx = vnotch::index_of_ignore_case(out_stripped_title, marker);
+            if (idx >= 0) {
+                char16_t close_ch = marker[0] == u'(' ? u')' : u']';
+                size_t content_start = static_cast<size_t>(idx) + marker.size();
+                size_t close_pos = out_stripped_title.find(close_ch, content_start);
+                if (close_pos != std::u16string::npos) {
+                    std::u16string_view inside = vnotch::trim_view(
+                        std::u16string_view(out_stripped_title).substr(content_start, close_pos - content_start));
+                    if (!inside.empty()) {
+                        feat_artists.assign(inside);
+                    }
+                    out_stripped_title.erase(static_cast<size_t>(idx), close_pos - static_cast<size_t>(idx) + 1);
+                    out_stripped_title = std::u16string(vnotch::trim_view(out_stripped_title));
+                    break;
+                }
+            }
+        }
+        return feat_artists;
+    }
+
+    static bool HasExtraVersionTag(
+        std::u16string_view norm_cand,
+        std::u16string_view norm_exp) noexcept {
+        constexpr std::u16string_view tags[] = {
+            u"mix", u"remix", u"live", u"instrumental", u"karaoke", u"acoustic",
+            u"sped up", u"slowed", u"reverb", u"lofi", u"lo fi", u"cover",
+            u"demo", u"vip", u"flip", u"bootleg", u"mashup", u"nightcore", u"8d", u"edit"
+        };
+        for (auto tag : tags) {
+            const bool cand_has = ContainsWholePhraseNormalized(norm_cand, tag) || norm_cand == tag;
+            const bool exp_has = ContainsWholePhraseNormalized(norm_exp, tag) || norm_exp == tag;
+            if (cand_has != exp_has) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    static void FormatSpotifyArtists(
+        std::u16string_view raw_artist,
+        std::u16string_view primary_artist,
+        std::u16string_view cand_title,
+        std::u16string_view exp_title,
+        int64_t cand_dur_ms,
+        int64_t exp_dur_ms,
+        char16_t* out_buf,
+        int32_t out_cap,
+        int32_t& out_len,
+        int32_t& out_score) noexcept {
+        out_len = 0;
+        out_score = 0;
+        if (raw_artist.empty() || primary_artist.empty() || cand_title.empty() || exp_title.empty() || !out_buf || out_cap <= 0) {
+            return;
+        }
+
+        std::u16string stripped_cand_title;
+        std::u16string title_feat = ExtractFeaturingFromTitle(cand_title, stripped_cand_title);
+
+        std::u16string stripped_exp_title;
+        (void)ExtractFeaturingFromTitle(exp_title, stripped_exp_title);
+
+        const std::u16string norm_cand_full = vnotch::normalize_for_loose_match_impl(cand_title);
+        const std::u16string norm_cand_stripped = vnotch::normalize_for_loose_match_impl(stripped_cand_title);
+        const std::u16string norm_exp_full = vnotch::normalize_for_loose_match_impl(exp_title);
+        const std::u16string norm_exp_stripped = vnotch::normalize_for_loose_match_impl(stripped_exp_title);
+        if (norm_cand_stripped.empty() || norm_exp_stripped.empty()) return;
+
+        // Strict canonical title equality: reject any candidate that adds/removes extra words or version tags
+        if (norm_cand_full != norm_exp_full && norm_cand_stripped != norm_exp_stripped) {
+            return;
+        }
+        if (HasExtraVersionTag(norm_cand_full, norm_exp_full)) {
+            return;
+        }
+
+        int32_t title_score = (norm_cand_full == norm_exp_full) ? 105 : 100;
+
+        if (cand_dur_ms > 0 && exp_dur_ms > 0) {
+            const int64_t diff_ms = cand_dur_ms >= exp_dur_ms ? (cand_dur_ms - exp_dur_ms) : (exp_dur_ms - cand_dur_ms);
+            if (diff_ms > 4000) return;
+            if (diff_ms <= 1500) title_score += 25;
+            else title_score += 10;
+        }
+
+        const std::u16string norm_raw_artist = vnotch::normalize_for_loose_match_impl(raw_artist);
+        const std::u16string norm_primary = vnotch::normalize_for_loose_match_impl(primary_artist);
+        if (norm_raw_artist.empty() || norm_primary.empty()) {
+            return;
+        }
+        // Primary artist must match as exact or whole phrase at the start of raw_artist
+        if (norm_raw_artist != norm_primary &&
+            !vnotch::starts_with_ordinal(norm_raw_artist, norm_primary) &&
+            !ContainsWholePhraseNormalized(norm_raw_artist, norm_primary)) {
+            return;
+        }
+
+        std::u16string combined_raw(raw_artist);
+        if (!title_feat.empty()) {
+            const std::u16string norm_feat = vnotch::normalize_for_loose_match_impl(title_feat);
+            if (!norm_feat.empty() && !vnotch::contains_ordinal(norm_raw_artist, norm_feat)) {
+                combined_raw.append(u", ");
+                combined_raw.append(title_feat);
+            }
+        }
+
+        const bool primary_has_amp = vnotch::contains_ordinal(primary_artist, u" & ");
+        std::u16string formatted;
+        formatted.reserve(combined_raw.size() + 4);
+        for (size_t i = 0; i < combined_raw.size();) {
+            if (!primary_has_amp && i + 3 <= combined_raw.size() &&
+                combined_raw[i] == u' ' && combined_raw[i + 1] == u'&' && combined_raw[i + 2] == u' ') {
+                formatted.append(u", ");
+                i += 3;
+                continue;
+            }
+            if (i + 6 <= combined_raw.size() &&
+                vnotch::equals_ignore_case(std::u16string_view(combined_raw).substr(i, 6), u" feat.")) {
+                formatted.append(u",");
+                i += 6;
+                continue;
+            }
+            if (i + 4 <= combined_raw.size() &&
+                vnotch::equals_ignore_case(std::u16string_view(combined_raw).substr(i, 4), u" ft.")) {
+                formatted.append(u",");
+                i += 4;
+                continue;
+            }
+            formatted.push_back(combined_raw[i++]);
+        }
+
+        const std::u16string_view trimmed = vnotch::trim_view(formatted);
+        if (trimmed.size() <= primary_artist.size() ||
+            vnotch::equals_ignore_case(trimmed, primary_artist) ||
+            !vnotch::contains_ordinal(trimmed, u", ")) {
+            return;
+        }
+
+        // First artist before ", " must match primary_artist (normalized) unless primary_artist itself is a group in trimmed
+        size_t first_comma = trimmed.find(u", ");
+        if (first_comma != std::u16string_view::npos && !primary_has_amp) {
+            const std::u16string norm_first = vnotch::normalize_for_loose_match_impl(trimmed.substr(0, first_comma));
+            if (norm_first != norm_primary) {
+                return;
+            }
+        }
+
+        const int32_t copy_len = std::min(static_cast<int32_t>(trimmed.size()), out_cap);
+        for (int32_t i = 0; i < copy_len; ++i) {
+            out_buf[i] = trimmed[static_cast<size_t>(i)];
+        }
+        out_len = copy_len;
+        out_score = title_score + 35;
+    }
 };
 
 } // namespace vnotch::services
@@ -784,6 +947,45 @@ VN_EXPORT int32_t __stdcall vn_media_metadata_score_youtube_track_match(
         cand_sv, targ_sv, candidate_duration_sec, target_duration_sec,
         *out_score, *out_duration_delta, *out_is_match);
     return VN_OK;
+}
+
+VN_EXPORT int32_t __stdcall vn_media_metadata_format_spotify_artists(
+    const char16_t* raw_artist,
+    int32_t raw_artist_len,
+    const char16_t* primary_artist,
+    int32_t primary_artist_len,
+    const char16_t* cand_title,
+    int32_t cand_title_len,
+    const char16_t* exp_title,
+    int32_t exp_title_len,
+    int64_t cand_dur_ms,
+    int64_t exp_dur_ms,
+    char16_t* out_buf,
+    int32_t out_cap,
+    int32_t* out_len,
+    int32_t* out_score) noexcept {
+    if (!out_buf || out_cap <= 0 || !out_len || !out_score ||
+        raw_artist_len < 0 || primary_artist_len < 0 || cand_title_len < 0 || exp_title_len < 0) {
+        return VN_E_INVALID_ARG;
+    }
+    try {
+        vnotch::services::MediaMetadataLookupService::FormatSpotifyArtists(
+            std::u16string_view(raw_artist ? raw_artist : u"", static_cast<size_t>(raw_artist_len)),
+            std::u16string_view(primary_artist ? primary_artist : u"", static_cast<size_t>(primary_artist_len)),
+            std::u16string_view(cand_title ? cand_title : u"", static_cast<size_t>(cand_title_len)),
+            std::u16string_view(exp_title ? exp_title : u"", static_cast<size_t>(exp_title_len)),
+            cand_dur_ms,
+            exp_dur_ms,
+            out_buf,
+            out_cap,
+            *out_len,
+            *out_score);
+        return VN_OK;
+    } catch (...) {
+        *out_len = 0;
+        *out_score = 0;
+        return VN_ERR_FAIL;
+    }
 }
 
 } // extern "C"

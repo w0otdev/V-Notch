@@ -515,6 +515,216 @@
                 </Setter.Value>
             </Setter>
         </Style>
+        <Style x:Key="CompactIconButton" TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
+            <Setter Property="Width" Value="30"/>
+            <Setter Property="Height" Value="30"/>
+            <Setter Property="MinWidth" Value="0"/>
+            <Setter Property="Padding" Value="0"/>
+            <Setter Property="Background" Value="#161616"/>
+            <Setter Property="Foreground" Value="{StaticResource SoftText}"/>
+            <Setter Property="BorderBrush" Value="#2A2A2A"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Grid RenderTransformOrigin="0.5,0.5">
+                            <Grid.RenderTransform>
+                                <ScaleTransform x:Name="ButtonScale" ScaleX="1" ScaleY="1"/>
+                            </Grid.RenderTransform>
+                            <Border x:Name="ButtonBorder"
+                                    Background="{TemplateBinding Background}"
+                                    BorderBrush="{TemplateBinding BorderBrush}"
+                                    BorderThickness="{TemplateBinding BorderThickness}"
+                                    CornerRadius="8"/>
+                            <Border x:Name="ButtonHoverOverlay"
+                                    Background="#12FFFFFF"
+                                    BorderBrush="#3AFFFFFF"
+                                    BorderThickness="1"
+                                    CornerRadius="8"
+                                    Opacity="0"
+                                    IsHitTestVisible="False"/>
+                            <ContentPresenter HorizontalAlignment="Center"
+                                              VerticalAlignment="Center"/>
+                        </Grid>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Trigger.EnterActions>
+                                    <BeginStoryboard>
+                                        <Storyboard>
+                                            <DoubleAnimation Storyboard.TargetName="ButtonHoverOverlay"
+                                                             Storyboard.TargetProperty="Opacity"
+                                                             To="1" Duration="0:0:0.14"
+                                                             EasingFunction="{StaticResource InteractiveEaseOut}"/>
+                                        </Storyboard>
+                                    </BeginStoryboard>
+                                </Trigger.EnterActions>
+                                <Trigger.ExitActions>
+                                    <BeginStoryboard>
+                                        <Storyboard>
+                                            <DoubleAnimation Storyboard.TargetName="ButtonHoverOverlay"
+                                                             Storyboard.TargetProperty="Opacity"
+                                                             To="0" Duration="0:0:0.18"
+                                                             EasingFunction="{StaticResource InteractiveEaseOut}"/>
+                                        </Storyboard>
+                                    </BeginStoryboard>
+                                </Trigger.ExitActions>
+                            </Trigger>
+                            <Trigger Property="IsPressed" Value="True">
+                                <Trigger.EnterActions>
+                                    <BeginStoryboard>
+                                        <Storyboard>
+                                            <DoubleAnimation Storyboard.TargetName="ButtonScale"
+                                                             Storyboard.TargetProperty="ScaleX"
+                                                             To="0.93" Duration="0:0:0.07"
+                                                             EasingFunction="{StaticResource InteractiveEaseOut}"/>
+                                            <DoubleAnimation Storyboard.TargetName="ButtonScale"
+                                                             Storyboard.TargetProperty="ScaleY"
+                                                             To="0.93" Duration="0:0:0.07"
+                                                             EasingFunction="{StaticResource InteractiveEaseOut}"/>
+                                        </Storyboard>
+                                    </BeginStoryboard>
+                                </Trigger.EnterActions>
+                                <Trigger.ExitActions>
+                                    <BeginStoryboard>
+                                        <Storyboard>
+                                            <DoubleAnimation Storyboard.TargetName="ButtonScale"
+                                                             Storyboard.TargetProperty="ScaleX"
+                                                             To="1" Duration="0:0:0.14"
+                                                             EasingFunction="{StaticResource InteractiveEaseOut}"/>
+                                            <DoubleAnimation Storyboard.TargetName="ButtonScale"
+                                                             Storyboard.TargetProperty="ScaleY"
+                                                             To="1" Duration="0:0:0.14"
+                                                             EasingFunction="{StaticResource InteractiveEaseOut}"/>
+                                        </Storyboard>
+                                    </BeginStoryboard>
+                                </Trigger.ExitActions>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <Style x:Key="LyricsProviderListBoxItemStyle" TargetType="ListBoxItem">
+            <Setter Property="Background" Value="#141414"/>
+            <Setter Property="BorderBrush" Value="#242424"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="Padding" Value="14,11"/>
+            <Setter Property="Margin" Value="0,0,0,6"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="FocusVisualStyle" Value="{x:Null}"/>
+            <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+            <Setter Property="RenderTransformOrigin" Value="0.5,0.5"/>
+            <Setter Property="RenderTransform">
+                <Setter.Value>
+                    <TranslateTransform/>
+                </Setter.Value>
+            </Setter>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ListBoxItem">
+                        <Border x:Name="RowBorder"
+                                Background="{TemplateBinding Background}"
+                                BorderBrush="{TemplateBinding BorderBrush}"
+                                BorderThickness="{TemplateBinding BorderThickness}"
+                                CornerRadius="10"
+                                Padding="{TemplateBinding Padding}">
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="26"/>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                </Grid.ColumnDefinitions>
+                                <TextBlock x:Name="RankText"
+                                           Grid.Column="0"
+                                           Text="1"
+                                           FontSize="13"
+                                           FontWeight="Bold"
+                                           FontFamily="{StaticResource SFProDisplay}"
+                                           Foreground="{StaticResource AccentBrushStrong}"
+                                           VerticalAlignment="Center"/>
+                                <StackPanel Grid.Column="1"
+                                            VerticalAlignment="Center"
+                                            Margin="0,0,12,0">
+                                    <TextBlock x:Name="ProviderTitle"
+                                               Text="{Binding}"
+                                               FontSize="13.5"
+                                               FontWeight="SemiBold"
+                                               FontFamily="{StaticResource SFProDisplay}"
+                                               Foreground="{StaticResource SoftText}"/>
+                                    <TextBlock x:Name="ProviderDescription"
+                                               FontSize="11.5"
+                                               Foreground="{StaticResource MutedText}"
+                                               FontFamily="{StaticResource SettingsFont}"
+                                               TextWrapping="Wrap"
+                                               Margin="0,2,0,0"/>
+                                </StackPanel>
+                                <Viewbox Grid.Column="2"
+                                         Width="14"
+                                         Height="10"
+                                         Stretch="Uniform"
+                                         VerticalAlignment="Center"
+                                         Opacity="0.75"
+                                         IsHitTestVisible="False">
+                                    <Path x:Name="GripGlyph"
+                                          Data="M2 2.2h16v1.6H2zm0 3.8h16v1.6H2zm0 3.8h16v1.6H2z"
+                                          Fill="#666666"/>
+                                </Viewbox>
+                            </Grid>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="ItemsControl.AlternationIndex" Value="0">
+                                <Setter TargetName="RankText" Property="Text" Value="1"/>
+                                <Setter TargetName="RankText" Property="Foreground" Value="{StaticResource AccentBrushStrong}"/>
+                            </Trigger>
+                            <Trigger Property="ItemsControl.AlternationIndex" Value="1">
+                                <Setter TargetName="RankText" Property="Text" Value="2"/>
+                                <Setter TargetName="RankText" Property="Foreground" Value="{StaticResource MutedText}"/>
+                            </Trigger>
+                            <Trigger Property="ItemsControl.AlternationIndex" Value="2">
+                                <Setter TargetName="RankText" Property="Text" Value="3"/>
+                                <Setter TargetName="RankText" Property="Foreground" Value="{StaticResource MutedText}"/>
+                            </Trigger>
+                            <Trigger Property="ItemsControl.AlternationIndex" Value="3">
+                                <Setter TargetName="RankText" Property="Text" Value="4"/>
+                                <Setter TargetName="RankText" Property="Foreground" Value="{StaticResource MutedText}"/>
+                            </Trigger>
+                            <Trigger Property="ItemsControl.AlternationIndex" Value="4">
+                                <Setter TargetName="RankText" Property="Text" Value="5"/>
+                                <Setter TargetName="RankText" Property="Foreground" Value="{StaticResource MutedText}"/>
+                            </Trigger>
+                            <Trigger Property="ItemsControl.AlternationIndex" Value="5">
+                                <Setter TargetName="RankText" Property="Text" Value="6"/>
+                                <Setter TargetName="RankText" Property="Foreground" Value="{StaticResource MutedText}"/>
+                            </Trigger>
+                            <DataTrigger Binding="{Binding}" Value="LRCLIB">
+                                <Setter TargetName="ProviderDescription" Property="Text" Value="{Binding Tag, ElementName=LyricsProviderList}"/>
+                            </DataTrigger>
+                            <DataTrigger Binding="{Binding}" Value="AMLL TTML DB">
+                                <Setter TargetName="ProviderDescription" Property="Text" Value="{Binding Tag, ElementName=LyricsProviderHint}"/>
+                            </DataTrigger>
+                            <DataTrigger Binding="{Binding}" Value="NetEase">
+                                <Setter TargetName="ProviderDescription" Property="Text" Value="{Binding Tag, ElementName=LyricsProviderLabel}"/>
+                            </DataTrigger>
+                            <DataTrigger Binding="{Binding}" Value="lrc mux">
+                                <Setter TargetName="ProviderDescription" Property="Text" Value="{Binding Tag, ElementName=LyricsProviderPanel}"/>
+                            </DataTrigger>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="RowBorder" Property="Background" Value="#1B1B1B"/>
+                                <Setter TargetName="RowBorder" Property="BorderBrush" Value="#343434"/>
+                                <Setter TargetName="GripGlyph" Property="Fill" Value="#9A9A9A"/>
+                            </Trigger>
+                            <Trigger Property="IsSelected" Value="True">
+                                <Setter TargetName="RowBorder" Property="Background" Value="#1E1E1E"/>
+                                <Setter TargetName="RowBorder" Property="BorderBrush" Value="#4D4D4D"/>
+                                <Setter TargetName="ProviderTitle" Property="Foreground" Value="#FFFFFF"/>
+                                <Setter TargetName="GripGlyph" Property="Fill" Value="#B8B8B8"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
         </ResourceDictionary>
     </Window.Resources>
 
@@ -1914,7 +2124,7 @@
                                                               Checked="EnableOnlineLyricsCheck_Changed"
                                                               Unchecked="EnableOnlineLyricsCheck_Changed"/>
                                                     <TextBlock x:Name="EnableOnlineLyricsHint"
-                                                               Text="Fetch synced lyrics from public providers (LRCLIB, lrc mux) for now-playing songs."
+                                                               Text="Fetch synced lyrics from AMLL TTML DB and other public providers for now-playing songs."
                                                                Style="{StaticResource SettingHintText}"
                                                                Margin="0,4,0,0"
                                                                TextWrapping="Wrap"/>
@@ -2332,6 +2542,64 @@
                                                            Text="Display synced lyrics inside the expanded notch when listening on Spotify."
                                                            Style="{StaticResource SettingHintText}"
                                                            Margin="0,4,0,0"/>
+
+                                                <StackPanel x:Name="LyricsProviderPanel" Margin="0,14,0,0">
+                                                    <Grid>
+                                                        <Grid.ColumnDefinitions>
+                                                            <ColumnDefinition Width="*"/>
+                                                            <ColumnDefinition Width="Auto"/>
+                                                        </Grid.ColumnDefinitions>
+                                                        <StackPanel Grid.Column="0" Margin="0,0,12,0">
+                                                            <TextBlock x:Name="LyricsProviderLabel" Style="{StaticResource SettingTitleText}"/>
+                                                            <TextBlock x:Name="LyricsProviderHint" Style="{StaticResource SettingHintText}" TextWrapping="Wrap" Margin="0,4,0,0"/>
+                                                        </StackPanel>
+                                                        <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Top" Margin="0,2,0,0">
+                                                            <Button x:Name="LyricsProviderUp"
+                                                                    Style="{StaticResource CompactIconButton}"
+                                                                    Click="LyricsProviderMove_Click"
+                                                                    Tag="-1">
+                                                                <Viewbox Width="13" Height="13" Stretch="Uniform">
+                                                                    <Path Data="M8 2.5L2.5 8h3.75v5.5h3.5V8H13.5L8 2.5z"
+                                                                          Fill="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"/>
+                                                                </Viewbox>
+                                                            </Button>
+                                                            <Button x:Name="LyricsProviderDown"
+                                                                    Style="{StaticResource CompactIconButton}"
+                                                                    Margin="6,0,0,0"
+                                                                    Click="LyricsProviderMove_Click"
+                                                                    Tag="1">
+                                                                <Viewbox Width="13" Height="13" Stretch="Uniform">
+                                                                    <Path Data="M8 13.5L13.5 8H9.75V2.5h-3.5V8H2.5L8 13.5z"
+                                                                          Fill="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"/>
+                                                                </Viewbox>
+                                                            </Button>
+                                                        </StackPanel>
+                                                    </Grid>
+                                                    <ListBox x:Name="LyricsProviderList"
+                                                             Margin="0,10,0,0"
+                                                             Background="Transparent"
+                                                             BorderThickness="0"
+                                                             Padding="0"
+                                                             SelectionMode="Single"
+                                                             AlternationCount="10"
+                                                             AllowDrop="True"
+                                                             ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                                                             ScrollViewer.VerticalScrollBarVisibility="Disabled"
+                                                             ItemContainerStyle="{StaticResource LyricsProviderListBoxItemStyle}"
+                                                             SelectionChanged="LyricsProviderList_SelectionChanged"
+                                                             PreviewMouseLeftButtonDown="LyricsProviderList_PreviewMouseLeftButtonDown"
+                                                             PreviewMouseMove="LyricsProviderList_PreviewMouseMove"
+                                                             MouseDoubleClick="LyricsProviderList_MouseDoubleClick"
+                                                             PreviewKeyDown="LyricsProviderList_PreviewKeyDown"
+                                                             DragOver="LyricsProviderList_DragOver"
+                                                             Drop="LyricsProviderList_Drop">
+                                                        <ListBox.Template>
+                                                            <ControlTemplate TargetType="ListBox">
+                                                                <ItemsPresenter SnapsToDevicePixels="{TemplateBinding SnapsToDevicePixels}"/>
+                                                            </ControlTemplate>
+                                                        </ListBox.Template>
+                                                    </ListBox>
+                                                </StackPanel>
 
                                                 <CheckBox x:Name="EnableSpotifyCanvasCheck"
                                                           x:Uid="enableSpotifyCanvas"

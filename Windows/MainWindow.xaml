@@ -884,7 +884,7 @@
                             </Grid>
                         </Border>
 
-                        <Border x:Name="AnimationThumbnailBorder"
+                        <Border x:Name="AnimationThumbnailBorder" UseLayoutRounding="False" SnapsToDevicePixels="False"
                                 HorizontalAlignment="Left"
                                 VerticalAlignment="Top"
                                 Width="22" Height="22"
@@ -1378,7 +1378,7 @@
                             <ColumnDefinition Width="Auto"/>
                         </Grid.ColumnDefinitions>
 
-                        <Border x:Name="CompactThumbnailBorder"
+                        <Border x:Name="CompactThumbnailBorder" UseLayoutRounding="False" SnapsToDevicePixels="False"
                                 Grid.Row="0"
                                 Grid.Column="0"
                                 Width="22" Height="22"
@@ -1851,7 +1851,7 @@
                                             <ColumnDefinition Width="Auto"/>
                                         </Grid.ColumnDefinitions>
 
-                                    <Border x:Name="ThumbnailBorder"
+                                    <Border x:Name="ThumbnailBorder" BorderBrush="Transparent" BorderThickness="0" ClipToBounds="False" UseLayoutRounding="False" SnapsToDevicePixels="False"
                                             Grid.Column="0"
                                             Width="102" Height="102"
                                             VerticalAlignment="Center"
@@ -1912,6 +1912,7 @@
                                                     </Canvas>
                                                 </Viewbox>
 
+                                                <Border x:Name="ThumbnailRim" BorderThickness="0" BorderBrush="Transparent" CornerRadius="14" IsHitTestVisible="False"/>
                                                 <Border x:Name="ThumbnailPipBadge"
                                                         HorizontalAlignment="Left"
                                                         VerticalAlignment="Bottom"
@@ -2458,16 +2459,22 @@
 
                             <Border x:Name="LyricsWidget"
                                     Height="130"
-                                    TextOptions.TextHintingMode="Animated"
                                     Background="Transparent"
                                     CornerRadius="16"
-                                    Padding="4,2,7,2"
+                                    Padding="3,2,5,2"
                                     Margin="0,0,10,2"
                                     Visibility="Collapsed"
                                     Opacity="0"
                                     VerticalAlignment="Center"
                                     HorizontalAlignment="Stretch"
+                                    RenderTransformOrigin="0.5,0.5"
                                     ClipToBounds="True">
+                                <Border.RenderTransform>
+                                    <TransformGroup>
+                                        <ScaleTransform x:Name="LyricsWidgetScale" ScaleX="1" ScaleY="1"/>
+                                        <TranslateTransform x:Name="LyricsWidgetTranslate" X="0" Y="0"/>
+                                    </TransformGroup>
+                                </Border.RenderTransform>
                                 <Grid ClipToBounds="True" VerticalAlignment="Stretch">
 
                                     <Border x:Name="LyricsSearchPanel"
@@ -2480,6 +2487,7 @@
                                         </Border.RenderTransform>
                                         <TextBlock x:Name="LyricsSearchText"
                                                    Text="Searching for lyrics…"
+                                                   Padding="1,0,2,0"
                                                    FontSize="11.5"
                                                    FontWeight="SemiBold"
                                                    TextTrimming="CharacterEllipsis"
@@ -2496,39 +2504,42 @@
                                                 Visibility="Collapsed">
                                         <TextBlock x:Name="LyricsPlaceholderTitle"
                                                    Text=""
+                                                   Padding="1,2,2,2"
                                                    FontSize="12.5"
                                                    FontWeight="Bold"
                                                    Foreground="#EEFFFFFF"
                                                    TextWrapping="Wrap"
                                                    TextTrimming="CharacterEllipsis"
-                                                   LineHeight="15"
-                                                   LineStackingStrategy="BlockLineHeight"
-                                                   MaxHeight="30"
+                                                   LineHeight="17.5"
+                                                   LineStackingStrategy="MaxHeight"
+                                                   MaxHeight="39"
                                                    TextAlignment="Right"
                                                    HorizontalAlignment="Stretch"
                                                    FontFamily="{StaticResource MainSystemFont}"
                                                    TextOptions.TextFormattingMode="Ideal"/>
                                         <TextBlock x:Name="LyricsPlaceholderArtist"
                                                    Text=""
+                                                   Padding="1,1,2,2"
                                                    FontSize="10.5"
                                                    FontWeight="SemiBold"
                                                    Foreground="#99FFFFFF"
                                                    TextTrimming="CharacterEllipsis"
-                                                   LineHeight="13"
-                                                   LineStackingStrategy="BlockLineHeight"
+                                                   LineHeight="15"
+                                                   LineStackingStrategy="MaxHeight"
                                                    TextAlignment="Right"
                                                    HorizontalAlignment="Stretch"
-                                                   Margin="0,2,0,0"
+                                                   Margin="0,1,0,0"
                                                    FontFamily="{StaticResource MainSystemFont}"
                                                    TextOptions.TextFormattingMode="Ideal"/>
                                         <TextBlock x:Name="LyricsPlaceholderProvider"
                                                    Text=""
+                                                   Padding="1,1,2,1"
                                                    FontSize="9"
                                                    FontWeight="Medium"
                                                    Foreground="#70FFFFFF"
                                                    TextTrimming="CharacterEllipsis"
-                                                   LineHeight="12"
-                                                   LineStackingStrategy="BlockLineHeight"
+                                                   LineHeight="13"
+                                                   LineStackingStrategy="MaxHeight"
                                                    TextAlignment="Right"
                                                    HorizontalAlignment="Stretch"
                                                    Margin="0,1,0,0"
@@ -2548,17 +2559,17 @@
                                                Style="{StaticResource SubtitleText}"
                                                FontSize="12.5"
                                                FontWeight="Bold"
-                                               LineHeight="17"
-                                               LineStackingStrategy="BlockLineHeight"
-                                               Padding="0,2,0,4"
+                                               LineHeight="18.5"
+                                               LineStackingStrategy="MaxHeight"
+                                               Padding="1,3,2,4"
                                                TextWrapping="Wrap"
                                                TextTrimming="CharacterEllipsis"
-                                               MaxHeight="110"
-                                               Margin="0,8"
+                                               MaxHeight="114"
+                                               Margin="0,6"
                                                TextAlignment="Right"
                                                TextOptions.TextFormattingMode="Ideal"
                                                TextOptions.TextRenderingMode="Grayscale"
-                                               TextOptions.TextHintingMode="Animated"
+                                               TextOptions.TextHintingMode="Auto"
                                                VerticalAlignment="Center"
                                                HorizontalAlignment="Stretch"
                                                Opacity="0">
@@ -2575,17 +2586,17 @@
                                                Style="{StaticResource SubtitleText}"
                                                FontSize="12.5"
                                                FontWeight="Bold"
-                                               LineHeight="17"
-                                               LineStackingStrategy="BlockLineHeight"
-                                               Padding="0,2,0,4"
+                                               LineHeight="18.5"
+                                               LineStackingStrategy="MaxHeight"
+                                               Padding="1,3,2,4"
                                                TextWrapping="Wrap"
                                                TextTrimming="CharacterEllipsis"
-                                               MaxHeight="110"
-                                               Margin="0,8"
+                                               MaxHeight="114"
+                                               Margin="0,6"
                                                TextAlignment="Right"
                                                TextOptions.TextFormattingMode="Ideal"
                                                TextOptions.TextRenderingMode="Grayscale"
-                                               TextOptions.TextHintingMode="Animated"
+                                               TextOptions.TextHintingMode="Auto"
                                                VerticalAlignment="Center"
                                                HorizontalAlignment="Stretch"
                                                Opacity="0">

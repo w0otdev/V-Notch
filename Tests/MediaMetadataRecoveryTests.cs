@@ -1,4 +1,5 @@
 using System.IO;
+using System.Net.Http;
 using System.Reflection;
 using VNotch.Models;
 using VNotch.Services;
@@ -232,6 +233,97 @@ public sealed class MediaMetadataRecoveryTests
         Assert.Equal(DateTime.MinValue, decision.TransitionStartedUtc);
     }
 
+    [Theory]
+    [InlineData("Singer, Collaborator", false)]
+    [InlineData(null, false)]
+    [InlineData(null, true)]
+    public async Task SlowSpotifyLookupPublishesOnlyAfterTheArtistListIsReady(string? result, bool fails)
+    {
+        var completion = new TaskCompletionSource<string?>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var metadata = new SpotifyMetadata(completion.Task);
+        using var fixture = new Fixture("Singer - Song", metadata);
+        Set(fixture.Service, "_lastSource", "Browser");
+        Set(fixture.Service, "_emptyMetadataStartTime", DateTime.UtcNow);
+        var update = (Task)Invoke(fixture.Service, "UpdateMediaInfoAsync", true, CancellationToken.None)!;
+        await metadata.Started.Task.WaitAsync(TimeSpan.FromSeconds(5));
+
+        // Exceed the old 320 ms deadline. No incomplete or empty-artist
+        // snapshot may reach the UI while the catalog request is still pending.
+        await Task.Delay(450);
+        Assert.False(update.IsCompleted);
+        Assert.Null(Get<MediaInfo?>(fixture.Service, "_lastPublishedInfo"));
+        if (fails) completion.SetException(new HttpRequestException("lookup failed"));
+        else completion.SetResult(result);
+        await update.WaitAsync(TimeSpan.FromSeconds(5));
+        var published = Get<MediaInfo>(fixture.Service, "_lastPublishedInfo");
+        Assert.Equal("Song", published.CurrentTrack);
+        Assert.Equal(result ?? "Singer", published.CurrentArtist);
+        Assert.False(string.IsNullOrWhiteSpace(published.CurrentArtist));
+
+        // Repeated snapshots use the resolved list directly, without a second
+        // request or a later background mutation of the published track.
+        var resolved = new MediaInfo { CurrentTrack = "Song", CurrentArtist = "Singer", MediaSource = "Spotify", IsAnyMediaPlaying = true };
+        await (Task)Invoke(fixture.Service, "ResolveSpotifyArtistsBeforePublishAsync", resolved, CancellationToken.None)!;
+        Assert.Equal(published.CurrentArtist, resolved.CurrentArtist);
+        Assert.Equal(1, metadata.Calls);
+    }
+
+    [Fact]
+    public async Task CancellingSpotifyLookupDoesNotPublishOrCachePartialArtists()
+    {
+        var completion = new TaskCompletionSource<string?>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var metadata = new SpotifyMetadata(completion.Task);
+        using var fixture = new Fixture("Singer - Song", metadata);
+        using var cancellation = new CancellationTokenSource();
+        Set(fixture.Service, "_lastSource", "Browser");
+        Set(fixture.Service, "_emptyMetadataStartTime", DateTime.UtcNow);
+        var update = (Task)Invoke(fixture.Service, "UpdateMediaInfoAsync", true, cancellation.Token)!;
+        await metadata.Started.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        cancellation.Cancel();
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => update);
+        Assert.Null(Get<MediaInfo?>(fixture.Service, "_lastPublishedInfo"));
+
+        completion.SetResult("Singer, Collaborator");
+        var info = new MediaInfo { CurrentTrack = "Song", CurrentArtist = "Singer", MediaSource = "Spotify" };
+        await (Task)Invoke(fixture.Service, "ResolveSpotifyArtistsBeforePublishAsync", info, CancellationToken.None)!;
+        Assert.Equal("Singer, Collaborator", info.CurrentArtist);
+        Assert.Equal(2, metadata.Calls);
+    }
+
+    [Fact]
+    public async Task FastSpotifyLookupAndWindowTitleFallbackPublishTheFullArtistImmediately()
+    {
+        var metadata = new SpotifyMetadata(Task.FromResult<string?>("Singer, Collaborator"));
+        using var fixture = new Fixture("Singer - Song", metadata);
+        for (int pass = 0; pass < 2; pass++)
+        {
+            Set(fixture.Service, "_lastSource", "Browser");
+            Set(fixture.Service, "_emptyMetadataStartTime", DateTime.UtcNow);
+            await (Task)Invoke(fixture.Service, "UpdateMediaInfoAsync", true, CancellationToken.None)!;
+            var published = Get<MediaInfo>(fixture.Service, "_lastPublishedInfo");
+            Assert.Equal("Song", published.CurrentTrack);
+            Assert.Equal("Singer, Collaborator", published.CurrentArtist);
+        }
+        Assert.Equal(1, metadata.Calls);
+    }
+
+    private sealed class SpotifyMetadata(Task<string?> result) : IMediaMetadataLookupService
+    {
+        public int Calls;
+        public TaskCompletionSource Started { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public Task<string?> TryGetSpotifyFullArtistsAsync(string title, string primaryArtist, TimeSpan duration = default, string? albumTitle = null, CancellationToken ct = default)
+        {
+            Interlocked.Increment(ref Calls);
+            Started.TrySetResult();
+            return result;
+        }
+        public Task<YouTubeLookupResult?> TryGetYouTubeVideoInfoFromUrlAsync(string url, CancellationToken ct = default) => Task.FromResult<YouTubeLookupResult?>(null);
+        public Task<YouTubeLookupResult?> TryGetYouTubeVideoIdWithInfoAsync(string title, string artist = "", CancellationToken ct = default) => Task.FromResult<YouTubeLookupResult?>(null);
+        public Task<YouTubeLookupResult?> TrySearchYouTubeByTitleAsync(string title, string artist = "", CancellationToken ct = default) => Task.FromResult<YouTubeLookupResult?>(null);
+        public Task<string?> TryGetSoundCloudArtworkUrlAsync(string title, string artist = "", bool requireStrongMatch = false, CancellationToken ct = default) => Task.FromResult<string?>(null);
+        public Task<string?> TryGetSoundCloudArtworkFromUrlAsync(string soundCloudUrl, CancellationToken ct = default) => Task.FromResult<string?>(null);
+    }
+
     private static void Resolve(Fixture fixture, MediaInfo info, bool completingAd = false) => Invoke(fixture.Service, "ResolveBrowserMediaSource", info, "chrome", (Func<List<string>>)(() => fixture.Scanner.Titles), completingAd);
     private static object? Invoke(MediaDetectionService service, string name, params object?[] arguments) => typeof(MediaDetectionService).GetMethod(name, Private)!.Invoke(service, arguments);
     private static T Get<T>(MediaDetectionService service, string name) => (T)typeof(MediaDetectionService).GetField(name, Private)!.GetValue(service)!;
@@ -243,10 +335,10 @@ public sealed class MediaMetadataRecoveryTests
         public Scanner Scanner { get; } = new();
         public MediaSourceCache Cache { get; }
         public MediaDetectionService Service { get; }
-        public Fixture(string spotifyTitle = "")
+        public Fixture(string spotifyTitle = "", IMediaMetadataLookupService? metadata = null)
         {
             Cache = new MediaSourceCache(Path.Combine(_directory, "sources.json"));
-            Service = new MediaDetectionService(new MediaMetadataLookupService(), new FakeMediaArtworkService(), Scanner, null, Cache, () => spotifyTitle);
+            Service = new MediaDetectionService(metadata ?? new MediaMetadataLookupService(), new FakeMediaArtworkService(), Scanner, null, Cache, () => spotifyTitle);
         }
         public MediaInfo Info(string track = "") => new() { CurrentTrack = track, MediaSource = "Browser", SourceAppId = "chrome", SessionInstanceKey = "fixture-session", IsPlaying = true, IsAnyMediaPlaying = true };
         public MediaTimelineSimulator FreezeTimelineAt(TimeSpan position)

@@ -343,6 +343,8 @@
   "settings.enableSpotifyCanvas.hint": "Экспериментальная функция, по умолчанию выключена. Использует локально зашифрованный cookie сеанса Spotify и неофициальные точки доступа. Spotify ограничивает автоматический сбор; доступ или аккаунт могут быть приостановлены. Согласие не даёт разрешения. Включайте только для разрешённого использования.",
   "settings.enableSpotifyLyrics": "Текст песен из Spotify",
   "settings.enableSpotifyLyrics.hint": "Показывать синхронизированный текст в развёрнутой шторке при прослушивании в Spotify.",
+  "settings.lyrics.providers": "Приоритет источников текста песен",
+  "settings.lyrics.providers.hint": "Перетащите строки или используйте стрелки для изменения порядка. Загружает текст по приоритету при смене трека в Spotify.",
   "settings.enableSpotlight": "Поиск Spotlight",
   "settings.enableSpotlight.conflict": "Сочетание Alt + Пробел занято другим приложением. Измените его там или закройте конфликтную программу.",
   "settings.enableSpotlight.hint": "Нажмите Alt + Пробел для быстрого поиска программ и индексированных файлов.",
@@ -481,7 +483,7 @@
   "settings.privacy.onlineArtwork": "Поиск обложек альбомов в сети",
   "settings.privacy.onlineArtwork.hint": "Искать обложки в интернете (YouTube, SoundCloud, Piped), если у текущего трека нет встроенной картинки.",
   "settings.privacy.onlineLyrics": "Поиск синхронизированных текстов песен",
-  "settings.privacy.onlineLyrics.hint": "Загружать тайминги строк из открытых источников (LRCLIB, lrc mux) для текущей песни.",
+  "settings.privacy.onlineLyrics.hint": "Загружать тайминги строк из открытых источников (AMLL TTML DB, LRCLIB, NetEase, lrc mux) для текущей песни.",
   "settings.privacy.section.network": "СЕТЬ И ОНЛАЙН-СЛУЖБЫ",
   "settings.privacy.section.sensors": "ДАТЧИКИ И ДИАГНОСТИКА СИСТЕМЫ",
   "settings.privacy.section.storage": "ЛОКАЛЬНЫЕ ДАННЫЕ И ИСТОРИЯ",
@@ -1054,5 +1056,9 @@
   "settings.glass.ultimateGpu.warning": "Внимание: режим дискретной видеокарты потребляет больше энергии. Задайте целевой FPS, чтобы ограничить частоту работы GPU.",
   "settings.glass.ultimateGpu.title": "Включить режим Ultimate GPU?",
   "settings.glass.ultimateGpu.confirm": "Эта опция назначает дискретную видеокарту (GPU 0) для Liquid Glass ради максимальной плавности, что повышает расход заряда на ноутбуках. Частота кадров строго ограничена параметром целевого FPS без лишней нагрузки на GPU.",
-  "tooltip.ultimateGpu": "Использовать производительную GPU 0 для Liquid Glass с лимитом FPS"
+  "tooltip.ultimateGpu": "Использовать производительную GPU 0 для Liquid Glass с лимитом FPS",
+  "settings.lyrics.provider.lrclib.desc": "Построчная синхронизация текста с быстрым поиском по базе сообщества",
+  "settings.lyrics.provider.lrcmux.desc": "Пословная караоке-синхронизация из нескольких источников",
+  "settings.lyrics.provider.amll.desc": "Синхронизация слов и слогов от сообщества по ID трека Spotify; без ключа API",
+  "settings.lyrics.provider.netease.desc": "Пословная и построчная синхронизация из каталога NetEase Cloud Music"
 }

@@ -293,10 +293,219 @@ public partial class SettingsWindow
 
     private void UpdateLyricsDependentControls(bool lyricsEnabled, bool animate = false)
     {
+        AnimateDependentElement(LyricsProviderPanel, lyricsEnabled, 0.45, animate);
         AnimateDependentElement(BrightenDarkLyricsBackgroundCheck, lyricsEnabled, 0.45, animate);
         AnimateDependentElement(DarkOverlayLabel, lyricsEnabled, 0.45, animate);
         AnimateDependentElement(DarkOverlayHint, lyricsEnabled, 0.45, animate);
         AnimateDependentElement(BlurDarkOverlaySlider, lyricsEnabled, 0.45, animate);
+    }
+
+    private const string LyricsProviderDragFormat = "VNotch.LyricsProviderItem";
+    private Point _lyricsProviderDragStart;
+    private bool _lyricsProviderIsDragging;
+
+    internal void UpdateLyricsProviderButtonStates()
+    {
+        if (LyricsProviderList == null || LyricsProviderUp == null || LyricsProviderDown == null) return;
+        int index = LyricsProviderList.SelectedIndex;
+        int count = LyricsProviderList.Items.Count;
+        bool canMoveUp = index > 0 && count > 1;
+        bool canMoveDown = index >= 0 && index < count - 1;
+        LyricsProviderUp.Opacity = canMoveUp ? 1.0 : 0.38;
+        LyricsProviderDown.Opacity = canMoveDown ? 1.0 : 0.38;
+    }
+
+    private void LyricsProviderList_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        UpdateLyricsProviderButtonStates();
+    }
+
+    private void LyricsProviderMove_Click(object sender, RoutedEventArgs e)
+    {
+        if (_isLoadingSettings || sender is not Button button || LyricsProviderList.SelectedIndex < 0) return;
+        int index = LyricsProviderList.SelectedIndex;
+        int target = index + (button.Tag?.ToString() == "-1" ? -1 : 1);
+        MoveLyricsProviderItem(index, target);
+    }
+
+    private void LyricsProviderList_MouseDoubleClick(object sender, System.Windows.Input.MouseButtonEventArgs e)
+    {
+        if (_isLoadingSettings || LyricsProviderList.SelectedIndex < 0 || LyricsProviderList.Items.Count < 2) return;
+        int index = LyricsProviderList.SelectedIndex;
+        int target = index > 0 ? index - 1 : index + 1;
+        MoveLyricsProviderItem(index, target);
+        e.Handled = true;
+    }
+
+    private void LyricsProviderList_PreviewKeyDown(object sender, System.Windows.Input.KeyEventArgs e)
+    {
+        if (_isLoadingSettings || LyricsProviderList.SelectedIndex < 0) return;
+        if ((System.Windows.Input.Keyboard.Modifiers & System.Windows.Input.ModifierKeys.Alt) == System.Windows.Input.ModifierKeys.Alt)
+        {
+            if (e.Key == System.Windows.Input.Key.Up || e.SystemKey == System.Windows.Input.Key.Up)
+            {
+                MoveLyricsProviderItem(LyricsProviderList.SelectedIndex, LyricsProviderList.SelectedIndex - 1);
+                e.Handled = true;
+            }
+            else if (e.Key == System.Windows.Input.Key.Down || e.SystemKey == System.Windows.Input.Key.Down)
+            {
+                MoveLyricsProviderItem(LyricsProviderList.SelectedIndex, LyricsProviderList.SelectedIndex + 1);
+                e.Handled = true;
+            }
+        }
+    }
+
+    private void LyricsProviderList_PreviewMouseLeftButtonDown(object sender, System.Windows.Input.MouseButtonEventArgs e)
+    {
+        _lyricsProviderDragStart = e.GetPosition(LyricsProviderList);
+        _lyricsProviderIsDragging = false;
+    }
+
+    private void LyricsProviderList_PreviewMouseMove(object sender, System.Windows.Input.MouseEventArgs e)
+    {
+        if (e.LeftButton != System.Windows.Input.MouseButtonState.Pressed || _lyricsProviderIsDragging) return;
+        if (LyricsProviderList.SelectedIndex < 0) return;
+
+        Point pos = e.GetPosition(LyricsProviderList);
+        if (Math.Abs(pos.X - _lyricsProviderDragStart.X) > SystemParameters.MinimumHorizontalDragDistance ||
+            Math.Abs(pos.Y - _lyricsProviderDragStart.Y) > SystemParameters.MinimumVerticalDragDistance)
+        {
+            _lyricsProviderIsDragging = true;
+            try
+            {
+                if (LyricsProviderList.SelectedItem is string item)
+                {
+                    var data = new DataObject(LyricsProviderDragFormat, item);
+                    DragDrop.DoDragDrop(LyricsProviderList, data, DragDropEffects.Move);
+                }
+            }
+            finally
+            {
+                _lyricsProviderIsDragging = false;
+            }
+        }
+    }
+
+    private void LyricsProviderList_DragOver(object sender, DragEventArgs e)
+    {
+        e.Effects = e.Data.GetDataPresent(LyricsProviderDragFormat) ? DragDropEffects.Move : DragDropEffects.None;
+        e.Handled = true;
+    }
+
+    private void LyricsProviderList_Drop(object sender, DragEventArgs e)
+    {
+        if (!e.Data.GetDataPresent(LyricsProviderDragFormat)) return;
+        if (e.Data.GetData(LyricsProviderDragFormat) is not string draggedItem) return;
+
+        int count = LyricsProviderList.Items.Count;
+        int oldIndex = -1;
+        for (int i = 0; i < count; i++)
+        {
+            if (string.Equals(LyricsProviderList.Items[i] as string, draggedItem, StringComparison.Ordinal))
+            {
+                oldIndex = i;
+                break;
+            }
+        }
+        if (oldIndex < 0) return;
+
+        Point dropPos = e.GetPosition(LyricsProviderList);
+        int newIndex = GetLyricsProviderDropIndex(dropPos, count);
+        MoveLyricsProviderItem(oldIndex, newIndex);
+        e.Handled = true;
+    }
+
+    private int GetLyricsProviderDropIndex(Point dropPoint, int count)
+    {
+        double y = 0;
+        for (int i = 0; i < count; i++)
+        {
+            if (LyricsProviderList.ItemContainerGenerator.ContainerFromIndex(i) is not FrameworkElement container)
+                continue;
+
+            double itemHeight = container.ActualHeight;
+            if (dropPoint.Y < y + itemHeight * 0.5)
+                return i;
+            y += itemHeight;
+        }
+        return count > 0 ? count - 1 : 0;
+    }
+
+    private void MoveLyricsProviderItem(int index, int target)
+    {
+        int count = LyricsProviderList.Items.Count;
+        if (index < 0 || index >= count || target < 0 || target >= count || index == target) return;
+
+        var providers = new string[count];
+        var oldPositions = new double[count];
+        for (int i = 0; i < count; i++)
+        {
+            providers[i] = LyricsProviderList.Items[i]?.ToString() ?? "";
+            if (LyricsProviderList.ItemContainerGenerator.ContainerFromIndex(i) is FrameworkElement container && IsLoaded)
+            {
+                oldPositions[i] = container.TranslatePoint(new Point(0, 0), LyricsProviderList).Y;
+            }
+        }
+
+        string moved = providers[index];
+        if (index < target)
+        {
+            for (int i = index; i < target; i++)
+                providers[i] = providers[i + 1];
+        }
+        else
+        {
+            for (int i = index; i > target; i--)
+                providers[i] = providers[i - 1];
+        }
+        providers[target] = moved;
+
+        LyricsProviderList.ItemsSource = providers;
+        LyricsProviderList.SelectedIndex = target;
+        UpdateLyricsProviderButtonStates();
+
+        if (IsLoaded && count >= 2)
+        {
+            Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.Loaded, () =>
+            {
+                AnimateLyricsProviderSwap(index, target, oldPositions);
+            });
+        }
+
+        PushLivePreview();
+    }
+
+    private void AnimateLyricsProviderSwap(int fromIndex, int toIndex, double[] oldPositions)
+    {
+        int count = LyricsProviderList.Items.Count;
+        if (fromIndex < 0 || fromIndex >= count || toIndex < 0 || toIndex >= count) return;
+        var ease = new CubicEase { EasingMode = EasingMode.EaseOut };
+
+        for (int i = 0; i < count; i++)
+        {
+            if (LyricsProviderList.ItemContainerGenerator.ContainerFromIndex(i) is not FrameworkElement container)
+                continue;
+
+            double newY = container.TranslatePoint(new Point(0, 0), LyricsProviderList).Y;
+            int prevIndex = i == toIndex ? fromIndex : (fromIndex < toIndex && i >= fromIndex && i < toIndex ? i + 1 : (fromIndex > toIndex && i > toIndex && i <= fromIndex ? i - 1 : i));
+            if (prevIndex < 0 || prevIndex >= oldPositions.Length) continue;
+
+            double deltaY = oldPositions[prevIndex] - newY;
+            if (Math.Abs(deltaY) <= 1.0) continue;
+
+            if (container.RenderTransform is not TranslateTransform translate || translate.IsFrozen)
+            {
+                translate = new TranslateTransform();
+                container.RenderTransform = translate;
+            }
+
+            var anim = new DoubleAnimation(deltaY, 0, TimeSpan.FromMilliseconds(220))
+            {
+                EasingFunction = ease
+            };
+            Timeline.SetDesiredFrameRate(anim, AnimationConfig.TargetFps);
+            translate.BeginAnimation(TranslateTransform.YProperty, anim);
+        }
     }
 
     private void UpdateYouTubeSubtitlesDependentControls(bool subtitlesEnabled, bool animate = false)

@@ -343,6 +343,8 @@
   "settings.enableSpotifyCanvas.hint": "Experimental and off by default. Uses your Spotify session cookie, encrypted locally, and unofficial endpoints. Spotify restricts scraping; access or your account may be suspended. Consent does not grant permission. Enable only for authorized use.",
   "settings.enableSpotifyLyrics": "Show Spotify lyrics",
   "settings.enableSpotifyLyrics.hint": "Display synced lyrics inside the expanded notch when listening on Spotify.",
+  "settings.lyrics.providers": "Lyrics provider priority",
+  "settings.lyrics.providers.hint": "Select a provider and use the arrows to reorder. Shows line lyrics immediately, then looks for word timing in the background. Keeps line lyrics if no word timing is found.",
   "settings.enableSpotlight": "Spotlight search",
   "settings.enableSpotlight.conflict": "Alt + Space is currently used by another app. Choose a different hotkey there or disable that launcher.",
   "settings.enableSpotlight.hint": "Press Alt + Space to search applications and indexed files.",
@@ -481,7 +483,7 @@
   "settings.privacy.onlineArtwork": "Online album artwork lookup",
   "settings.privacy.onlineArtwork.hint": "Search online (YouTube, SoundCloud, Piped) for album art when the active player provides no embedded cover.",
   "settings.privacy.onlineLyrics": "Online synced lyrics lookup",
-  "settings.privacy.onlineLyrics.hint": "Fetch synced lyrics from public providers (LRCLIB, lrc mux) for now-playing songs.",
+  "settings.privacy.onlineLyrics.hint": "Fetch synced lyrics from public providers (AMLL TTML DB, LRCLIB, NetEase, lrc mux) for now-playing songs.",
   "settings.privacy.section.network": "NETWORK & ONLINE SERVICES",
   "settings.privacy.section.sensors": "SENSORS & SYSTEM INSPECTION",
   "settings.privacy.section.storage": "LOCAL DATA & HISTORY",
@@ -846,7 +848,7 @@
   "tooltip.privacy.localOnly": "Block V-Notch online features, including manual AI requests",
   "tooltip.privacy.logging": "Turn local diagnostic logging on or off",
   "tooltip.privacy.onlineArtwork": "Search web providers for missing media album covers",
-  "tooltip.privacy.onlineLyrics": "Fetch synchronized lyrics from LRCLIB and lrc mux",
+  "tooltip.privacy.onlineLyrics": "Fetch synchronized lyrics from AMLL TTML DB, LRCLIB, NetEase and lrc mux",
   "tooltip.privacy.spotlightHistory": "Use app launch frequency to rank search results",
   "tooltip.redo": "Redo",
   "tooltip.refresh": "Refresh",
@@ -1054,5 +1056,9 @@
   "settings.glass.ultimateGpu.warning": "Warning: Dedicated GPU mode draws more power. Set Target FPS carefully so the GPU only runs up to your chosen frame limit.",
   "settings.glass.ultimateGpu.title": "Enable Ultimate GPU mode?",
   "settings.glass.ultimateGpu.confirm": "This assigns your discrete GPU (GPU 0) to Liquid Glass for smoother refraction. It increases power usage on laptops. Frame rendering stays capped to your Target FPS setting so the GPU never runs unconstrained.",
-  "tooltip.ultimateGpu": "Use high-performance GPU 0 for Liquid Glass paced to Target FPS"
+  "tooltip.ultimateGpu": "Use high-performance GPU 0 for Liquid Glass paced to Target FPS",
+  "settings.lyrics.provider.lrclib.desc": "Line-by-line synced lyrics with fast community lookup",
+  "settings.lyrics.provider.lrcmux.desc": "Word-by-word karaoke timing aggregated from multiple sources",
+  "settings.lyrics.provider.amll.desc": "Community word and syllable timing by Spotify track ID; no API key",
+  "settings.lyrics.provider.netease.desc": "Word and line synced lyrics from the NetEase Cloud Music catalog"
 }

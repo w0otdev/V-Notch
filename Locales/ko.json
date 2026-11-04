@@ -343,6 +343,8 @@
   "settings.enableSpotifyCanvas.hint": "실험 기능으로 기본값은 꺼짐입니다. 로컬에서 암호화한 Spotify 세션 쿠키와 비공식 접속 경로를 사용합니다. Spotify는 자동 수집을 제한하며 접근이나 계정이 정지될 수 있습니다. 동의가 사용 허가를 부여하지는 않습니다. 허가된 용도로만 켜세요.",
   "settings.enableSpotifyLyrics": "Spotify 실시간 가사 표시",
   "settings.enableSpotifyLyrics.hint": "Spotify 청취 중 확장된 노치에 싱크 가사를 표시합니다.",
+  "settings.lyrics.providers": "가사 제공자 우선순위",
+  "settings.lyrics.providers.hint": "항목을 드래그하거나 화살표 버튼으로 순서를 변경하세요. Spotify 곡이 바뀔 때 우선순위에 따라 가사를 불러옵니다.",
   "settings.enableSpotlight": "Spotlight 검색",
   "settings.enableSpotlight.conflict": "Alt + Space 단축키가 다른 앱에서 이미 사용 중입니다. 해당 앱의 단축키를 변경해 주세요.",
   "settings.enableSpotlight.hint": "Alt + Space를 눌러 설치된 앱과 색인된 파일을 즉시 검색합니다.",
@@ -1054,5 +1056,9 @@
   "settings.glass.ultimateGpu.warning": "경고: 외장 GPU 모드는 더 많은 전력을 소모합니다. 선택한 프레임 한도까지만 GPU가 작동하도록 목표 FPS를 조절하세요.",
   "settings.glass.ultimateGpu.title": "얼티밋 GPU 모드를 활성화할까요?",
   "settings.glass.ultimateGpu.confirm": "리퀴드 글래스에 고성능 GPU (GPU 0)를 할당하여 굴절 성능을 높입니다. 노트북에서는 배터리 소모가 늘어날 수 있으며, 과부하를 막기 위해 설정한 목표 FPS까지만 렌더링합니다.",
-  "tooltip.ultimateGpu": "목표 FPS 한도에 맞춰 리퀴드 글래스에 고성능 GPU 0 사용"
+  "tooltip.ultimateGpu": "목표 FPS 한도에 맞춰 리퀴드 글래스에 고성능 GPU 0 사용",
+  "settings.lyrics.provider.lrclib.desc": "빠른 커뮤니티 검색을 지원하는 줄 단위 동기화 가사",
+  "settings.lyrics.provider.lrcmux.desc": "여러 소스에서 수집한 단어 단위 노래방 타이밍",
+  "settings.lyrics.provider.amll.desc": "Spotify 트랙 ID로 조회하는 커뮤니티 단어·음절 동기화, API 키 불필요",
+  "settings.lyrics.provider.netease.desc": "NetEase Cloud Music 카탈로그 기반의 단어 및 줄 단위 동기화 가사"
 }

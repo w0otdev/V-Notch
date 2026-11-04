@@ -343,6 +343,8 @@
   "settings.enableSpotifyCanvas.hint": "ميزة تجريبية معطّلة افتراضيًا. تستخدم ملف ارتباط جلسة Spotify المشفّر محليًا ونقاط وصول غير رسمية. يقيّد Spotify الجمع الآلي؛ قد يُعلّق الوصول أو الحساب. الموافقة لا تمنح إذنًا. فعّلها فقط للاستخدام المصرّح به.",
   "settings.enableSpotifyLyrics": "عرض كلمات أغاني Spotify",
   "settings.enableSpotifyLyrics.hint": "عرض الكلمات المتزامنة داخل النتوء الموسع عند الاستماع عبر Spotify.",
+  "settings.lyrics.providers": "أولوية مصادر كلمات الأغاني",
+  "settings.lyrics.providers.hint": "اسحب الصفوف أو استخدم الأسهم لتغيير الترتيب. يتم تحميل الكلمات حسب الأولوية عند تغيير المسار في Spotify.",
   "settings.enableSpotlight": "بحث Spotlight",
   "settings.enableSpotlight.conflict": "اختصار Alt + مفتاح المسافة مستخدم حالياً بواسطة تطبيق آخر. يرجى تغييره هناك.",
   "settings.enableSpotlight.hint": "اضغط Alt + مفتاح المسافة للبحث الفوري عن التطبيقات والملفات المفهرسة.",
@@ -1054,5 +1056,9 @@
   "settings.glass.ultimateGpu.warning": "تحذير: يستهلك وضع البطاقة المنفصلة طاقة أكبر. اضبط معدل الإطارات المستهدف ليعمل المعالج الرسومي ضمن الحد المختار فقط.",
   "settings.glass.ultimateGpu.title": "تفعيل وضع المعالج الرسومي الفائق؟",
   "settings.glass.ultimateGpu.confirm": "يخصص هذا الخيار بطاقة الرسومات المنفصلة (GPU 0) للزجاج السائل للحصول على سلاسة أعلى، مما يزيد استهلاك الطاقة في الأجهزة المحمولة. يظل الرسم مقيدا بحد الإطارات المستهدف لتجنب استهلاك البطاقة بالكامل.",
-  "tooltip.ultimateGpu": "استخدام بطاقة الرسومات عالية الأداء GPU 0 للزجاج السائل مع تقييد الإطارات"
+  "tooltip.ultimateGpu": "استخدام بطاقة الرسومات عالية الأداء GPU 0 للزجاج السائل مع تقييد الإطارات",
+  "settings.lyrics.provider.lrclib.desc": "كلمات متزامنة سطراً بسطر مع بحث سريع في قاعدة المجتمع",
+  "settings.lyrics.provider.lrcmux.desc": "تزامن كلمة بكلمة بأسلوب الكاراوكي من مصادر متعددة",
+  "settings.lyrics.provider.amll.desc": "توقيت الكلمات والمقاطع من المجتمع حسب معرّف مقطع Spotify؛ دون مفتاح API",
+  "settings.lyrics.provider.netease.desc": "كلمات متزامنة كلمة بكلمة أو سطراً بسطر من مكتبة NetEase Cloud Music"
 }

@@ -343,6 +343,8 @@
   "settings.enableSpotifyCanvas.hint": "Experimenteel en standaard uit. Gebruikt uw lokaal versleutelde Spotify-sessiecookie en onofficiële toegangspunten. Spotify beperkt scraping; toegang of account kan worden opgeschort. Toestemming verleent geen gebruiksrechten. Alleen inschakelen voor toegestaan gebruik.",
   "settings.enableSpotifyLyrics": "Spotify-songteksten weergeven",
   "settings.enableSpotifyLyrics.hint": "Toont gesynchroniseerde songteksten in de uitgevouwen notch tijdens het luisteren op Spotify.",
+  "settings.lyrics.providers": "Prioriteit songtekstbronnen",
+  "settings.lyrics.providers.hint": "Versleep rijen of gebruik de pijlen om de volgorde aan te passen. Laadt songteksten op volgorde van prioriteit bij een nieuw nummer op Spotify.",
   "settings.enableSpotlight": "Spotlight-zoekfunctie",
   "settings.enableSpotlight.conflict": "De sneltoets Alt + Spatiebalk is al in gebruik door een andere app. Wijzig de sneltoets in die app.",
   "settings.enableSpotlight.hint": "Druk op Alt + Spatiebalk om direct te zoeken naar apps en geïndexeerde bestanden.",
@@ -1054,5 +1056,9 @@
   "settings.glass.ultimateGpu.warning": "Waarschuwing: De losse GPU-modus verbruikt meer stroom. Stel de doel-FPS zorgvuldig in zodat de GPU alleen tot de gekozen limiet werkt.",
   "settings.glass.ultimateGpu.title": "Ultimate GPU-modus inschakelen?",
   "settings.glass.ultimateGpu.confirm": "Deze optie wijst je losse videokaart (GPU 0) toe aan Liquid Glass voor vloeiendere breking, wat op laptops meer batterij verbruikt. De weergave blijft begrensd op je doel-FPS om overbelasting van de GPU te voorkomen.",
-  "tooltip.ultimateGpu": "Gebruik krachtige GPU 0 voor Liquid Glass begrensd op doel-FPS"
+  "tooltip.ultimateGpu": "Gebruik krachtige GPU 0 voor Liquid Glass begrensd op doel-FPS",
+  "settings.lyrics.provider.lrclib.desc": "Regel voor regel gesynchroniseerde songteksten met snelle community-zoekopdracht",
+  "settings.lyrics.provider.lrcmux.desc": "Woord-voor-woord karaoketiming verzameld uit meerdere bronnen",
+  "settings.lyrics.provider.amll.desc": "Woord- en lettergreeptiming van de community via Spotify-track-ID; zonder API-sleutel",
+  "settings.lyrics.provider.netease.desc": "Per woord en regel gesynchroniseerde songteksten uit de NetEase Cloud Music-catalogus"
 }

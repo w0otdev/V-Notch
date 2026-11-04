@@ -13,6 +13,31 @@ namespace VNotch.Tests;
 [Collection("Localization")]
 public sealed class SettingsWindowControlTests
 {
+    [Fact]
+    public void LyricsProvidersReorderPersistAndStopAtTheListEdges() => SharedStaTestRunner.Run(() =>
+    {
+        using var fixture = new Fixture();
+        var window = fixture.Window;
+        window.EnableSpotifyLyricsCheck.IsChecked = true;
+        Assert.Equal(LyricsProviderOrder.Default, window.ReadSettingsFromUi().LyricsProviderPriority);
+        window.LyricsProviderList.SelectedIndex = 0;
+        window.LyricsProviderUp.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+        Assert.Equal(0, window.LyricsProviderList.SelectedIndex);
+        window.LyricsProviderDown.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+        Assert.Equal("NetEase,AMLL TTML DB,Kugou,QQ Music,LRCLIB,lrc mux", window.ReadSettingsFromUi().LyricsProviderPriority);
+        Assert.Equal(1, window.LyricsProviderList.SelectedIndex);
+        Assert.Equal(1.0, window.LyricsProviderUp.Opacity, 2);
+        Assert.Equal(1.0, window.LyricsProviderDown.Opacity, 2);
+        int last = window.LyricsProviderList.Items.Count - 1;
+        window.LyricsProviderList.SelectedIndex = last;
+        Assert.Equal(0.38, window.LyricsProviderDown.Opacity, 2);
+        window.LyricsProviderDown.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+        Assert.Equal(last, window.LyricsProviderList.SelectedIndex);
+        Assert.False(string.IsNullOrWhiteSpace(window.LyricsProviderList.Tag as string));
+        Assert.False(string.IsNullOrWhiteSpace(window.LyricsProviderLabel.Tag as string));
+        Assert.False(string.IsNullOrWhiteSpace(window.LyricsProviderPanel.Tag as string));
+        Assert.False(string.IsNullOrWhiteSpace(window.LyricsProviderHint.Tag as string));
+    });
     private const BindingFlags Private = BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public;
 
     [Fact]

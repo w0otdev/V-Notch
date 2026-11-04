@@ -151,7 +151,7 @@ public:
         int32_t& out_start,
         int32_t& out_length) noexcept {
         constexpr std::u16string_view kSeparators[] = {
-            u" feat.", u" ft.", u" featuring", u" & ", u"; ", u" / ", u" with "
+            u" feat.", u" ft.", u" featuring", u" & ", u", ", u"; ", u" / ", u" with "
         };
         std::u16string_view s = artist;
         for (const auto sep : kSeparators) {
@@ -246,6 +246,341 @@ public:
                StartsWithPatternCultureAware(sv, u"Deluxe", is_turkic, false) ||
                StartsWithPatternCultureAware(sv, u"Mono", is_turkic, false) ||
                StartsWithPatternCultureAware(sv, u"Stereo", is_turkic, false);
+    }
+
+    [[nodiscard]] static constexpr bool ContainsSubstringIcase(
+        std::u16string_view haystack,
+        std::u16string_view needle) noexcept {
+        if (needle.empty() || haystack.size() < needle.size()) return false;
+        const size_t max_i = haystack.size() - needle.size();
+        for (size_t i = 0; i <= max_i; ++i) {
+            bool match = true;
+            for (size_t j = 0; j < needle.size(); ++j) {
+                char16_t a = haystack[i + j];
+                char16_t b = needle[j];
+                if (a >= u'A' && a <= u'Z') a += 32;
+                if (b >= u'A' && b <= u'Z') b += 32;
+                if (a != b) { match = false; break; }
+            }
+            if (match) return true;
+        }
+        return false;
+    }
+
+    [[nodiscard]] static constexpr bool HasEditionMismatch(
+        std::u16string_view target_raw,
+        std::u16string_view cand_raw) noexcept {
+        constexpr std::u16string_view kAsciiKeywords[] = {
+            u"live", u"remix", u"cover", u"acoustic", u"instrumental",
+            u"karaoke", u"sped up", u"slowed", u"demo", u"nightcore", u"reverb", u"bootleg", u"edit"
+        };
+        for (const auto kw : kAsciiKeywords) {
+            // Check word-bounded in candidate vs target
+            const bool cand_has = ContainsAsciiWordIcase(cand_raw, kw);
+            if (cand_has && !ContainsAsciiWordIcase(target_raw, kw)) return true;
+        }
+        constexpr std::u16string_view kCjkKeywords[] = {
+            u"伴奏", u"翻唱", u"现场", u"純音樂", u"纯音乐", u"DJ版", u"慢摇"
+        };
+        for (const auto kw : kCjkKeywords) {
+            if (ContainsSubstringIcase(cand_raw, kw) && !ContainsSubstringIcase(target_raw, kw)) return true;
+        }
+        return false;
+    }
+
+    [[nodiscard]] static constexpr bool ContainsAsciiWordIcase(
+        std::u16string_view text,
+        std::u16string_view word) noexcept {
+        if (word.empty() || text.size() < word.size()) return false;
+        const size_t max_i = text.size() - word.size();
+        for (size_t i = 0; i <= max_i; ++i) {
+            if (!vn_equals_icase_ascii(text.substr(i, word.size()), word)) continue;
+            const bool left_ok = (i == 0) || !IsAsciiAlnum(text[i - 1]);
+            const size_t end = i + word.size();
+            const bool right_ok = (end == text.size()) || !IsAsciiAlnum(text[end]);
+            if (left_ok && right_ok) return true;
+        }
+        return false;
+    }
+
+    [[nodiscard]] static constexpr bool IsAsciiAlnum(char16_t ch) noexcept {
+        return (ch >= u'a' && ch <= u'z') || (ch >= u'A' && ch <= u'Z') || (ch >= u'0' && ch <= u'9');
+    }
+
+    [[nodiscard]] static constexpr bool IsCreditHeaderLine(
+        std::u16string_view text,
+        int64_t time_ticks) noexcept {
+        const auto trimmed = vn_trim(text);
+        if (trimmed.empty()) return true;
+        if (trimmed.front() == u'{' && trimmed.back() == u'}') return true;
+        // Credit lines usually appear in the first 15 seconds and contain ':' or '：'
+        if (time_ticks > 150000000LL) return false;
+        int32_t colon_pos = -1;
+        for (size_t i = 0; i < trimmed.size() && i < 24; ++i) {
+            if (trimmed[i] == u':' || trimmed[i] == u'：') {
+                colon_pos = static_cast<int32_t>(i);
+                break;
+            }
+        }
+        if (colon_pos <= 0) return false;
+        const auto prefix = vn_trim(trimmed.substr(0, static_cast<size_t>(colon_pos)));
+        constexpr std::u16string_view kCreditPrefixes[] = {
+            u"作词", u"作曲", u"编曲", u"制作人", u"混音", u"母带", u"和声", u"吉他", u"录音", u"统筹",
+            u"监制", u"出品", u"发行", u"词", u"曲", u"原唱", u"翻唱", u"歌词贡献者", u"曲绘",
+            u"lyricist", u"composer", u"arranger", u"producer", u"written by", u"produced by"
+        };
+        for (const auto kw : kCreditPrefixes) {
+            if (ContainsSubstringIcase(prefix, kw)) return true;
+        }
+        return false;
+    }
+
+    [[nodiscard]] static constexpr bool DecodeKrcPayload(
+        const uint8_t* raw_bytes,
+        int32_t raw_len,
+        uint8_t* out_zlib_bytes,
+        int32_t& out_zlib_len) noexcept {
+        out_zlib_len = 0;
+        if (!raw_bytes || !out_zlib_bytes || raw_len <= 4) return false;
+        if (raw_bytes[0] != 'k' || raw_bytes[1] != 'r' || raw_bytes[2] != 'c' || raw_bytes[3] != '1') {
+            return false;
+        }
+        constexpr uint8_t kKrcKey[16] = {
+            64, 71, 97, 119, 94, 50, 116, 71, 81, 54, 49, 45, 206, 210, 110, 105
+        };
+        const int32_t payload_len = raw_len - 4;
+        for (int32_t i = 0; i < payload_len; ++i) {
+            out_zlib_bytes[i] = static_cast<uint8_t>(raw_bytes[i + 4] ^ kKrcKey[i & 15]);
+        }
+        out_zlib_len = payload_len;
+        return true;
+    }
+
+    [[nodiscard]] static constexpr bool TryParseKrcLine(
+        std::u16string_view raw_line,
+        int64_t& out_line_ticks,
+        char16_t* out_text_buf,
+        int32_t out_text_cap,
+        int32_t& out_text_len,
+        VnNetEaseWordSpan* out_words,
+        int32_t out_words_cap,
+        int32_t& out_words_count) noexcept {
+        out_line_ticks = 0;
+        out_text_len = 0;
+        out_words_count = 0;
+
+        const auto line = vn_trim(raw_line);
+        if (line.size() < 6 || line[0] != u'[') return false;
+
+        size_t close_bracket = std::u16string_view::npos;
+        size_t comma_pos = std::u16string_view::npos;
+        for (size_t i = 1; i < line.size(); ++i) {
+            if (comma_pos == std::u16string_view::npos && line[i] == u',') comma_pos = i;
+            if (line[i] == u']') { close_bracket = i; break; }
+        }
+        if (close_bracket == std::u16string_view::npos || comma_pos == std::u16string_view::npos || comma_pos >= close_bracket) {
+            return false;
+        }
+
+        int32_t line_start_ms = 0;
+        if (!TryParsePositiveInt(line.substr(1, comma_pos - 1), line_start_ms)) return false;
+        out_line_ticks = static_cast<int64_t>(line_start_ms) * 10000LL;
+
+        size_t pos = close_bracket + 1;
+        while (pos < line.size()) {
+            if (line[pos] == u'<') {
+                size_t close_angle = std::u16string_view::npos;
+                size_t c1 = std::u16string_view::npos;
+                size_t c2 = std::u16string_view::npos;
+                for (size_t j = pos + 1; j < line.size(); ++j) {
+                    if (line[j] == u',') {
+                        if (c1 == std::u16string_view::npos) c1 = j;
+                        else if (c2 == std::u16string_view::npos) c2 = j;
+                    } else if (line[j] == u'>') {
+                        close_angle = j;
+                        break;
+                    }
+                }
+                if (close_angle != std::u16string_view::npos && c1 != std::u16string_view::npos) {
+                    int32_t w_rel_ms = 0;
+                    int32_t w_dur_ms = 0;
+                    const size_t dur_end = (c2 != std::u16string_view::npos && c2 < close_angle) ? c2 : close_angle;
+                    if (TryParsePositiveInt(line.substr(pos + 1, c1 - (pos + 1)), w_rel_ms) &&
+                        TryParsePositiveInt(line.substr(c1 + 1, dur_end - (c1 + 1)), w_dur_ms)) {
+                        size_t next_angle = close_angle + 1;
+                        while (next_angle < line.size() && line[next_angle] != u'<') ++next_angle;
+                        const std::u16string_view word_sv = line.substr(close_angle + 1, next_angle - (close_angle + 1));
+                        const int32_t word_offset = out_text_len;
+                        for (size_t k = 0; k < word_sv.size(); ++k) {
+                            if (out_text_len >= out_text_cap) return false;
+                            out_text_buf[out_text_len++] = word_sv[k];
+                        }
+                        if (!word_sv.empty() && out_words && out_words_count < out_words_cap) {
+                            const int64_t ws_ms = static_cast<int64_t>(line_start_ms) + static_cast<int64_t>(w_rel_ms);
+                            const int64_t we_ms = ws_ms + static_cast<int64_t>(w_dur_ms > 0 ? w_dur_ms : 0);
+                            out_words[out_words_count++] = VnNetEaseWordSpan{
+                                ws_ms * 10000LL,
+                                we_ms * 10000LL,
+                                word_offset,
+                                static_cast<int32_t>(word_sv.size())
+                            };
+                        }
+                        pos = next_angle;
+                        continue;
+                    }
+                }
+            }
+            if (out_text_len >= out_text_cap) return false;
+            out_text_buf[out_text_len++] = line[pos++];
+        }
+
+        int32_t trim_lead = 0;
+        while (trim_lead < out_text_len && vn_is_whitespace(out_text_buf[trim_lead])) ++trim_lead;
+        int32_t trim_end = out_text_len;
+        while (trim_end > trim_lead && vn_is_whitespace(out_text_buf[trim_end - 1])) --trim_end;
+        if (trim_end <= trim_lead) return false;
+
+        const int32_t final_len = trim_end - trim_lead;
+        if (trim_lead > 0) {
+            for (int32_t i = 0; i < final_len; ++i) {
+                out_text_buf[i] = out_text_buf[trim_lead + i];
+            }
+        }
+        out_text_len = final_len;
+
+        int32_t valid_words = 0;
+        for (int32_t i = 0; i < out_words_count; ++i) {
+            int32_t off = out_words[i].text_offset - trim_lead;
+            int32_t len = out_words[i].text_length;
+            if (off < 0) { len += off; off = 0; }
+            if (off + len > final_len) len = final_len - off;
+            if (len > 0 && off >= 0 && off + len <= final_len) {
+                out_words[valid_words] = out_words[i];
+                out_words[valid_words].text_offset = off;
+                out_words[valid_words].text_length = len;
+                ++valid_words;
+            }
+        }
+        out_words_count = valid_words;
+
+        if (IsCreditHeaderLine(std::u16string_view(out_text_buf, static_cast<size_t>(out_text_len)), out_line_ticks)) {
+            return false;
+        }
+        return true;
+    }
+
+    [[nodiscard]] static constexpr bool TryParseYrcLine(
+        std::u16string_view raw_line,
+        int64_t& out_line_ticks,
+        char16_t* out_text_buf,
+        int32_t out_text_cap,
+        int32_t& out_text_len,
+        VnNetEaseWordSpan* out_words,
+        int32_t out_words_cap,
+        int32_t& out_words_count) noexcept {
+        out_line_ticks = 0;
+        out_text_len = 0;
+        out_words_count = 0;
+
+        const auto line = vn_trim(raw_line);
+        if (line.size() < 6 || line[0] != u'[') return false;
+
+        size_t close_bracket = std::u16string_view::npos;
+        size_t comma_pos = std::u16string_view::npos;
+        for (size_t i = 1; i < line.size(); ++i) {
+            if (comma_pos == std::u16string_view::npos && line[i] == u',') comma_pos = i;
+            if (line[i] == u']') { close_bracket = i; break; }
+        }
+        if (close_bracket == std::u16string_view::npos || comma_pos == std::u16string_view::npos || comma_pos >= close_bracket) {
+            return false;
+        }
+
+        int32_t line_start_ms = 0;
+        if (!TryParsePositiveInt(line.substr(1, comma_pos - 1), line_start_ms)) return false;
+        out_line_ticks = static_cast<int64_t>(line_start_ms) * 10000LL;
+
+        size_t pos = close_bracket + 1;
+        while (pos < line.size()) {
+            if (line[pos] == u'(') {
+                size_t close_paren = std::u16string_view::npos;
+                size_t c1 = std::u16string_view::npos;
+                size_t c2 = std::u16string_view::npos;
+                for (size_t j = pos + 1; j < line.size(); ++j) {
+                    if (line[j] == u',') {
+                        if (c1 == std::u16string_view::npos) c1 = j;
+                        else if (c2 == std::u16string_view::npos) c2 = j;
+                    } else if (line[j] == u')') {
+                        close_paren = j;
+                        break;
+                    }
+                }
+                if (close_paren != std::u16string_view::npos && c1 != std::u16string_view::npos) {
+                    int32_t w_start_ms = 0;
+                    int32_t w_dur_ms = 0;
+                    const size_t dur_end = (c2 != std::u16string_view::npos && c2 < close_paren) ? c2 : close_paren;
+                    if (TryParsePositiveInt(line.substr(pos + 1, c1 - (pos + 1)), w_start_ms) &&
+                        TryParsePositiveInt(line.substr(c1 + 1, dur_end - (c1 + 1)), w_dur_ms)) {
+                        size_t next_paren = close_paren + 1;
+                        while (next_paren < line.size() && line[next_paren] != u'(') ++next_paren;
+                        const std::u16string_view word_sv = line.substr(close_paren + 1, next_paren - (close_paren + 1));
+                        const int32_t word_offset = out_text_len;
+                        for (size_t k = 0; k < word_sv.size(); ++k) {
+                            if (out_text_len >= out_text_cap) return false;
+                            out_text_buf[out_text_len++] = word_sv[k];
+                        }
+                        if (!word_sv.empty() && out_words && out_words_count < out_words_cap) {
+                            const int64_t ws_ticks = static_cast<int64_t>(w_start_ms) * 10000LL;
+                            const int64_t we_ticks = static_cast<int64_t>(w_start_ms + (w_dur_ms > 0 ? w_dur_ms : 0)) * 10000LL;
+                            out_words[out_words_count++] = VnNetEaseWordSpan{
+                                ws_ticks,
+                                we_ticks >= ws_ticks ? we_ticks : ws_ticks,
+                                word_offset,
+                                static_cast<int32_t>(word_sv.size())
+                            };
+                        }
+                        pos = next_paren;
+                        continue;
+                    }
+                }
+            }
+            if (out_text_len >= out_text_cap) return false;
+            out_text_buf[out_text_len++] = line[pos++];
+        }
+
+        // Trim leading/trailing whitespace while shifting word offsets
+        int32_t trim_lead = 0;
+        while (trim_lead < out_text_len && vn_is_whitespace(out_text_buf[trim_lead])) ++trim_lead;
+        int32_t trim_end = out_text_len;
+        while (trim_end > trim_lead && vn_is_whitespace(out_text_buf[trim_end - 1])) --trim_end;
+        if (trim_end <= trim_lead) return false;
+
+        const int32_t final_len = trim_end - trim_lead;
+        if (trim_lead > 0) {
+            for (int32_t i = 0; i < final_len; ++i) {
+                out_text_buf[i] = out_text_buf[trim_lead + i];
+            }
+        }
+        out_text_len = final_len;
+
+        int32_t valid_words = 0;
+        for (int32_t i = 0; i < out_words_count; ++i) {
+            int32_t off = out_words[i].text_offset - trim_lead;
+            int32_t len = out_words[i].text_length;
+            if (off < 0) { len += off; off = 0; }
+            if (off + len > final_len) len = final_len - off;
+            if (len > 0 && off >= 0 && off + len <= final_len) {
+                out_words[valid_words] = out_words[i];
+                out_words[valid_words].text_offset = off;
+                out_words[valid_words].text_length = len;
+                ++valid_words;
+            }
+        }
+        out_words_count = valid_words;
+
+        if (IsCreditHeaderLine(std::u16string_view(out_text_buf, static_cast<size_t>(out_text_len)), out_line_ticks)) {
+            return false;
+        }
+        return true;
     }
 
     static constexpr int32_t StripTitleExtras(
@@ -519,6 +854,200 @@ VN_EXPORT int32_t __stdcall vn_lyrics_strip_title_extras(
     }
     const std::u16string_view sv(title_ptr ? title_ptr : u"", static_cast<size_t>(title_len));
     return vnotch::services::LyricsService::StripTitleExtras(sv, is_turkic_culture != 0, out_buf, out_cap, *out_written);
+}
+
+
+VN_EXPORT int32_t __stdcall vn_lyrics_is_credit_header_line(
+    const char16_t* text_ptr,
+    int32_t text_len,
+    int64_t time_ticks,
+    uint8_t* out_is_credit) noexcept {
+    if (!out_is_credit || text_len < 0 || (text_len > 0 && !text_ptr)) return VN_ERR_INVALID_ARG;
+    const std::u16string_view sv(text_ptr ? text_ptr : u"", static_cast<size_t>(text_len));
+    *out_is_credit = vnotch::services::LyricsService::IsCreditHeaderLine(sv, time_ticks) ? 1 : 0;
+    return VN_OK;
+}
+
+VN_EXPORT int32_t __stdcall vn_lyrics_try_parse_yrc_line(
+    const char16_t* raw_line,
+    int32_t raw_line_len,
+    int64_t* out_line_ticks,
+    char16_t* out_text_buf,
+    int32_t out_text_cap,
+    int32_t* out_text_len,
+    VnNetEaseWordSpan* out_words,
+    int32_t out_words_cap,
+    int32_t* out_words_count,
+    uint8_t* out_ok) noexcept {
+    if (!out_line_ticks || !out_text_len || !out_words_count || !out_ok ||
+        raw_line_len < 0 || (raw_line_len > 0 && !raw_line) ||
+        out_text_cap <= 0 || !out_text_buf || out_words_cap < 0 || (out_words_cap > 0 && !out_words)) {
+        return VN_ERR_INVALID_ARG;
+    }
+    const std::u16string_view sv(raw_line ? raw_line : u"", static_cast<size_t>(raw_line_len));
+    const bool ok = vnotch::services::LyricsService::TryParseYrcLine(
+        sv, *out_line_ticks, out_text_buf, out_text_cap, *out_text_len, out_words, out_words_cap, *out_words_count);
+    *out_ok = ok ? 1 : 0;
+    return VN_OK;
+}
+
+VN_EXPORT int32_t __stdcall vn_lyrics_score_netease_candidate(
+    const char16_t* target_title_ptr,
+    int32_t target_title_len,
+    const char16_t* target_artist_ptr,
+    int32_t target_artist_len,
+    int32_t target_duration_sec,
+    const char16_t* cand_title_ptr,
+    int32_t cand_title_len,
+    const char16_t* cand_artists_ptr,
+    int32_t cand_artists_len,
+    int32_t cand_duration_ms,
+    int32_t* out_score,
+    uint8_t* out_accepted) noexcept {
+    if (!out_score || !out_accepted ||
+        target_title_len < 0 || target_artist_len < 0 || cand_title_len < 0 || cand_artists_len < 0) {
+        return VN_ERR_INVALID_ARG;
+    }
+    *out_score = -1;
+    *out_accepted = 0;
+
+    const std::u16string_view t_title_raw(target_title_ptr ? target_title_ptr : u"", static_cast<size_t>(target_title_len));
+    const std::u16string_view t_artist_raw(target_artist_ptr ? target_artist_ptr : u"", static_cast<size_t>(target_artist_len));
+    const std::u16string_view c_title_raw(cand_title_ptr ? cand_title_ptr : u"", static_cast<size_t>(cand_title_len));
+    const std::u16string_view c_artists_raw(cand_artists_ptr ? cand_artists_ptr : u"", static_cast<size_t>(cand_artists_len));
+
+    if (vnotch::services::LyricsService::HasEditionMismatch(t_title_raw, c_title_raw)) {
+        return VN_OK;
+    }
+
+    // Duration gate: when target duration > 0, require candidate duration within 3500 ms
+    int32_t delta_ms = 0;
+    if (target_duration_sec > 0) {
+        if (cand_duration_ms <= 0) return VN_OK;
+        const int32_t target_ms = target_duration_sec * 1000;
+        delta_ms = cand_duration_ms >= target_ms ? (cand_duration_ms - target_ms) : (target_ms - cand_duration_ms);
+        if (delta_ms > 3500) return VN_OK;
+    }
+
+    char16_t t_title_buf[512];
+    char16_t c_title_buf[512];
+    int32_t t_title_norm_len = 0;
+    int32_t c_title_norm_len = 0;
+    vn_lyrics_normalize_for_matching(t_title_raw.data(), static_cast<int32_t>(t_title_raw.size()), t_title_buf, 512, &t_title_norm_len);
+    vn_lyrics_normalize_for_matching(c_title_raw.data(), static_cast<int32_t>(c_title_raw.size()), c_title_buf, 512, &c_title_norm_len);
+
+    const std::u16string_view t_title_norm(t_title_buf, static_cast<size_t>(t_title_norm_len > 0 ? t_title_norm_len : 0));
+    const std::u16string_view c_title_norm(c_title_buf, static_cast<size_t>(c_title_norm_len > 0 ? c_title_norm_len : 0));
+
+    bool exact_title = false;
+    bool phrase_title = false;
+    if (!t_title_norm.empty() && !c_title_norm.empty()) {
+        exact_title = (t_title_norm == c_title_norm);
+        phrase_title = exact_title ||
+            vnotch::services::LyricsService::ContainsWholePhrase(c_title_norm, t_title_norm) ||
+            vnotch::services::LyricsService::ContainsWholePhrase(t_title_norm, c_title_norm);
+    } else {
+        // Non-Latin (CJK) fallback: compare trimmed raw titles
+        const auto tt = vnotch::vn_trim(t_title_raw);
+        const auto ct = vnotch::vn_trim(c_title_raw);
+        exact_title = !tt.empty() && (tt == ct);
+        phrase_title = exact_title || (!tt.empty() && !ct.empty() &&
+            (vnotch::services::LyricsService::ContainsSubstringIcase(ct, tt) ||
+             vnotch::services::LyricsService::ContainsSubstringIcase(tt, ct)));
+    }
+    if (!phrase_title) return VN_OK;
+
+    // Artist verification
+    bool artist_matched = false;
+    bool exact_artist = false;
+    if (vnotch::is_null_or_whitespace(t_artist_raw) ||
+        vnotch::services::LyricsService::IsGenericPlatformName(vnotch::vn_trim(t_artist_raw))) {
+        artist_matched = true;
+    } else {
+        int32_t prim_start = 0, prim_len = 0;
+        vnotch::services::LyricsService::CleanArtistSpan(t_artist_raw, prim_start, prim_len);
+        const std::u16string_view t_prim_raw = t_artist_raw.substr(static_cast<size_t>(prim_start), static_cast<size_t>(prim_len));
+
+        char16_t t_prim_buf[256];
+        int32_t t_prim_norm_len = 0;
+        vn_lyrics_normalize_for_matching(t_prim_raw.data(), static_cast<int32_t>(t_prim_raw.size()), t_prim_buf, 256, &t_prim_norm_len);
+        const std::u16string_view t_prim_norm(t_prim_buf, static_cast<size_t>(t_prim_norm_len > 0 ? t_prim_norm_len : 0));
+
+        // Iterate pipe/comma-separated candidate artists
+        size_t pos = 0;
+        while (pos <= c_artists_raw.size()) {
+            size_t next = c_artists_raw.find(u'|', pos);
+            if (next == std::u16string_view::npos) next = c_artists_raw.size();
+            const auto seg_raw = vnotch::vn_trim(c_artists_raw.substr(pos, next - pos));
+            if (!seg_raw.empty()) {
+                char16_t seg_buf[256];
+                int32_t seg_norm_len = 0;
+                vn_lyrics_normalize_for_matching(seg_raw.data(), static_cast<int32_t>(seg_raw.size()), seg_buf, 256, &seg_norm_len);
+                const std::u16string_view seg_norm(seg_buf, static_cast<size_t>(seg_norm_len > 0 ? seg_norm_len : 0));
+                if (!t_prim_norm.empty() && !seg_norm.empty()) {
+                    if (seg_norm == t_prim_norm) {
+                        artist_matched = true;
+                        exact_artist = true;
+                        break;
+                    }
+                    if (vnotch::services::LyricsService::ContainsWholePhrase(seg_norm, t_prim_norm) ||
+                        vnotch::services::LyricsService::ContainsWholePhrase(t_prim_norm, seg_norm)) {
+                        artist_matched = true;
+                    }
+                } else if (vnotch::services::LyricsService::ContainsSubstringIcase(seg_raw, t_prim_raw) ||
+                           vnotch::services::LyricsService::ContainsSubstringIcase(t_prim_raw, seg_raw)) {
+                    artist_matched = true;
+                    exact_artist = (seg_raw == t_prim_raw);
+                }
+            }
+            pos = next + 1;
+        }
+    }
+
+    if (!artist_matched) return VN_OK;
+
+    int32_t score = 10000 - delta_ms;
+    if (exact_title) score += 2000;
+    if (exact_artist) score += 1000;
+    *out_score = score;
+    *out_accepted = 1;
+    return VN_OK;
+}
+
+
+VN_EXPORT int32_t __stdcall vn_lyrics_decode_krc_payload(
+    const uint8_t* raw_bytes,
+    int32_t raw_len,
+    uint8_t* out_zlib_bytes,
+    int32_t* out_zlib_len) noexcept {
+    if (!out_zlib_len || raw_len < 0 || (raw_len > 0 && (!raw_bytes || !out_zlib_bytes))) {
+        return VN_ERR_INVALID_ARG;
+    }
+    return vnotch::services::LyricsService::DecodeKrcPayload(raw_bytes, raw_len, out_zlib_bytes, *out_zlib_len)
+        ? VN_OK : VN_ERR_FAIL;
+}
+
+VN_EXPORT int32_t __stdcall vn_lyrics_try_parse_krc_line(
+    const char16_t* raw_line,
+    int32_t raw_line_len,
+    int64_t* out_line_ticks,
+    char16_t* out_text_buf,
+    int32_t out_text_cap,
+    int32_t* out_text_len,
+    VnNetEaseWordSpan* out_words,
+    int32_t out_words_cap,
+    int32_t* out_words_count,
+    uint8_t* out_ok) noexcept {
+    if (!out_line_ticks || !out_text_len || !out_words_count || !out_ok ||
+        raw_line_len < 0 || (raw_line_len > 0 && !raw_line) ||
+        out_text_cap <= 0 || !out_text_buf || out_words_cap < 0 || (out_words_cap > 0 && !out_words)) {
+        return VN_ERR_INVALID_ARG;
+    }
+    const std::u16string_view sv(raw_line ? raw_line : u"", static_cast<size_t>(raw_line_len));
+    const bool ok = vnotch::services::LyricsService::TryParseKrcLine(
+        sv, *out_line_ticks, out_text_buf, out_text_cap, *out_text_len, out_words, out_words_cap, *out_words_count);
+    *out_ok = ok ? 1 : 0;
+    return VN_OK;
 }
 
 } // extern "C"

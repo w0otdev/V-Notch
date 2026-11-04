@@ -98,6 +98,110 @@ internal static partial class SpotifyTrackMatcher
         }
     }
 
+    internal static string? ParsePathfinderTrackArtists(
+        string json,
+        string expectedTrack,
+        string expectedArtist,
+        string? expectedAlbum = null)
+    {
+        try
+        {
+            using var document = JsonDocument.Parse(json, new JsonDocumentOptions { MaxDepth = 64 });
+            if (!TryGetProperty(document.RootElement, "data", out var data) ||
+                data.ValueKind != JsonValueKind.Object ||
+                !TryGetProperty(data, "searchV2", out var search) ||
+                search.ValueKind != JsonValueKind.Object ||
+                !TryGetProperty(search, "tracksV2", out var tracks) ||
+                tracks.ValueKind != JsonValueKind.Object ||
+                !TryGetProperty(tracks, "items", out var items) ||
+                items.ValueKind != JsonValueKind.Array)
+            {
+                return null;
+            }
+
+            JsonElement? bestTrack = null;
+            int bestScore = int.MinValue;
+            string normalizedTrack = NormalizeForMatch(expectedTrack);
+            string normalizedArtist = NormalizeForMatch(expectedArtist);
+            string normalizedAlbum = NormalizeForMatch(expectedAlbum);
+            if (normalizedTrack.Length == 0 || normalizedArtist.Length == 0)
+                return null;
+
+            foreach (var result in items.EnumerateArray())
+            {
+                if (result.ValueKind != JsonValueKind.Object ||
+                    !TryGetProperty(result, "item", out var item) ||
+                    item.ValueKind != JsonValueKind.Object ||
+                    !TryGetProperty(item, "data", out var track) ||
+                    track.ValueKind != JsonValueKind.Object ||
+                    !IsTrackUnionType(track))
+                {
+                    continue;
+                }
+
+                string? title = GetDirectString(track, "name");
+                if (!string.Equals(NormalizeForMatch(title), normalizedTrack, StringComparison.Ordinal))
+                {
+                    // Exact title required so "Song - Madihu mix" or "Song (Live)" never matches "Song"
+                    continue;
+                }
+
+                IReadOnlyList<string> candArtists = GetPathfinderArtistNames(track);
+                if (candArtists.Count <= 1 || !string.Equals(candArtists[0], normalizedArtist, StringComparison.Ordinal))
+                {
+                    // Primary artist from SMTC must be the first artist on Spotify
+                    continue;
+                }
+
+                int score = 135;
+                if (normalizedAlbum.Length > 0 &&
+                    TryGetProperty(track, "albumOfTrack", out var albumObj) &&
+                    albumObj.ValueKind == JsonValueKind.Object)
+                {
+                    string normCandAlbum = NormalizeForMatch(GetDirectString(albumObj, "name"));
+                    if (string.Equals(normCandAlbum, normalizedAlbum, StringComparison.Ordinal))
+                        score += 50;
+                    else if (normCandAlbum.Length > 0)
+                        score -= 20;
+                }
+
+                if (score > bestScore)
+                {
+                    bestTrack = track;
+                    bestScore = score;
+                }
+            }
+
+            if (!bestTrack.HasValue ||
+                !TryGetProperty(bestTrack.Value, "artists", out var artistsObj) ||
+                artistsObj.ValueKind != JsonValueKind.Object ||
+                !TryGetProperty(artistsObj, "items", out var artistItems) ||
+                artistItems.ValueKind != JsonValueKind.Array)
+            {
+                return null;
+            }
+
+            var displayNames = new List<string>();
+            foreach (var item in artistItems.EnumerateArray())
+            {
+                if (item.ValueKind == JsonValueKind.Object &&
+                    TryGetProperty(item, "profile", out var profile) &&
+                    profile.ValueKind == JsonValueKind.Object)
+                {
+                    string? name = GetDirectString(profile, "name")?.Trim();
+                    if (!string.IsNullOrEmpty(name))
+                        displayNames.Add(name);
+                }
+            }
+
+            return displayNames.Count > 1 ? string.Join(", ", displayNames) : null;
+        }
+        catch (JsonException)
+        {
+            return null;
+        }
+    }
+
     private static bool IsTrackUnionType(JsonElement track)
     {
         string? typeName = GetDirectString(track, "__typename");

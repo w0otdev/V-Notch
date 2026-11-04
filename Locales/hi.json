@@ -343,6 +343,8 @@
   "settings.enableSpotifyCanvas.hint": "प्रयोगात्मक सुविधा, डिफ़ॉल्ट रूप से बंद। यह स्थानीय रूप से एन्क्रिप्ट किए गए Spotify सत्र कुकी और अनौपचारिक एंडपॉइंट का उपयोग करती है। Spotify स्वचालित संग्रह पर रोक लगाता है; पहुँच या खाता निलंबित हो सकता है। सहमति से अनुमति नहीं मिलती। केवल अधिकृत उपयोग के लिए चालू करें।",
   "settings.enableSpotifyLyrics": "Spotify के बोल दिखाएँ",
   "settings.enableSpotifyLyrics.hint": "Spotify सुनते समय खुले नॉच में समय के साथ चलने वाले गीत के बोल दिखाएँ।",
+  "settings.lyrics.providers": "गीत के बोल प्रदाता प्राथमिकता",
+  "settings.lyrics.providers.hint": "क्रम बदलने के लिए पंक्तियों को खींचें या तीरों का उपयोग करें। Spotify पर ट्रैक बदलने पर प्राथमिकता के क्रम में बोल लोड होते हैं।",
   "settings.enableSpotlight": "Spotlight खोज",
   "settings.enableSpotlight.conflict": "Alt + Space किसी दूसरे ऐप में इस्तेमाल हो रहा है। वहाँ शॉर्टकट बदलें या उस लॉन्चर को बंद करें।",
   "settings.enableSpotlight.hint": "ऐप और इंडेक्स की गई फ़ाइलें खोजने के लिए Alt + Space दबाएँ।",
@@ -1054,5 +1056,9 @@
   "settings.glass.ultimateGpu.warning": "चेतावनी: डेडिकेटेड GPU मोड अधिक बिजली लेता है। टारगेट FPS को सही स्तर पर रखें ताकि GPU केवल चुनी गई सीमा तक ही चले।",
   "settings.glass.ultimateGpu.title": "अल्टीमेट GPU मोड चालू करें?",
   "settings.glass.ultimateGpu.confirm": "यह विकल्प बेहतर स्मूथनेस के लिए लिक्विड ग्लास को डिस्क्रीट GPU (GPU 0) सौंपता है, जिससे लैपटॉप पर बैटरी की खपत बढ़ सकती है। अत्यधिक लोड से बचने के लिए रेंडरिंग आपके टारगेट FPS तक सीमित रहती है।",
-  "tooltip.ultimateGpu": "टारगेट FPS सीमा के साथ लिक्विड ग्लास के लिए हाई-परफॉर्मेंस GPU 0 का उपयोग करें"
+  "tooltip.ultimateGpu": "टारगेट FPS सीमा के साथ लिक्विड ग्लास के लिए हाई-परफॉर्मेंस GPU 0 का उपयोग करें",
+  "settings.lyrics.provider.lrclib.desc": "तेज़ कम्युनिटी खोज के साथ पंक्ति-दर-पंक्ति सिंक किए गए बोल",
+  "settings.lyrics.provider.lrcmux.desc": "कई स्रोतों से एकत्रित शब्द-दर-शब्द कराओके टाइमिंग",
+  "settings.lyrics.provider.amll.desc": "Spotify ट्रैक ID से समुदाय द्वारा शब्द और अक्षर का समय; API कुंजी की ज़रूरत नहीं",
+  "settings.lyrics.provider.netease.desc": "NetEase Cloud Music कैटलॉग से शब्द और पंक्ति के अनुसार सिंक किए गए बोल"
 }

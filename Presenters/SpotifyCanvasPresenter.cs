@@ -232,9 +232,12 @@ public sealed class SpotifyCanvasPresenter : ISpotifyCanvasPresenter
             }
         }
 
-        if (_isMediaOpen || IsCanvasVisiblyShowing)
+        if (_isMediaOpen)
         {
-            HideBlurFallback();
+            if (IsCanvasVisiblyShowing)
+            {
+                HideBlurFallback(animate: false);
+            }
         }
         else if (options.IsLyricsActive)
         {
@@ -242,7 +245,7 @@ public sealed class SpotifyCanvasPresenter : ISpotifyCanvasPresenter
         }
         else
         {
-            HideBlurFallback();
+            HideBlurFallback(animate: false);
         }
     }
 
@@ -371,9 +374,9 @@ public sealed class SpotifyCanvasPresenter : ISpotifyCanvasPresenter
         _refs.Background.Opacity = fromOpacity;
         _refs.Background.Visibility = Visibility.Visible;
 
-        var fadeIn = new DoubleAnimation(fromOpacity, 1, TimeSpan.FromMilliseconds(250))
+        var fadeIn = new DoubleAnimation(fromOpacity, 1, TimeSpan.FromMilliseconds(520))
         {
-            EasingFunction = new ExponentialEase { Exponent = 4, EasingMode = EasingMode.EaseOut }
+            EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut }
         };
         fadeIn.Completed += (s, e) =>
         {
@@ -383,11 +386,12 @@ public sealed class SpotifyCanvasPresenter : ISpotifyCanvasPresenter
             _refs.Background.BeginAnimation(UIElement.OpacityProperty, null);
             if (_isMediaOpen && (_options?.CanFadeIn ?? true) && _activeVideo.Source == canvasUri && _sourceVersion == sourceVersion)
             {
-                HideBlurFallback();
+                HideBlurFallback(animate: false);
             }
         };
         Timeline.SetDesiredFrameRate(fadeIn, AnimationConfig.TargetFps);
         _refs.Background.BeginAnimation(UIElement.OpacityProperty, fadeIn);
+        HideBlurFallback(animate: true);
     }
 
     public void UpdateCrop()
@@ -423,14 +427,40 @@ public sealed class SpotifyCanvasPresenter : ISpotifyCanvasPresenter
         video.Height = videoHeight * scale;
     }
 
-    public void HideBlurFallback()
+    public void HideBlurFallback() => HideBlurFallback(animate: false);
+
+    public void HideBlurFallback(bool animate)
     {
         if (_refs.BlurFallbackBackground == null)
             return;
 
+        if (!animate || AnimationConfig.ReduceMotion ||
+            _refs.BlurFallbackBackground.Visibility != Visibility.Visible ||
+            _refs.BlurFallbackBackground.Opacity <= 0.01)
+        {
+            _refs.BlurFallbackBackground.BeginAnimation(UIElement.OpacityProperty, null);
+            _refs.BlurFallbackBackground.Opacity = 0;
+            _refs.BlurFallbackBackground.Visibility = Visibility.Collapsed;
+            return;
+        }
+
+        double fromOpacity = _refs.BlurFallbackBackground.Opacity;
         _refs.BlurFallbackBackground.BeginAnimation(UIElement.OpacityProperty, null);
-        _refs.BlurFallbackBackground.Opacity = 0;
-        _refs.BlurFallbackBackground.Visibility = Visibility.Collapsed;
+        _refs.BlurFallbackBackground.Opacity = fromOpacity;
+
+        var fadeOut = new DoubleAnimation(fromOpacity, 0, TimeSpan.FromMilliseconds(480))
+        {
+            EasingFunction = new CubicEase { EasingMode = EasingMode.EaseInOut }
+        };
+        fadeOut.Completed += (_, _) =>
+        {
+            if (_disposed || (!_isMediaOpen && (_options?.IsLyricsActive ?? false))) return;
+            _refs.BlurFallbackBackground.BeginAnimation(UIElement.OpacityProperty, null);
+            _refs.BlurFallbackBackground.Opacity = 0;
+            _refs.BlurFallbackBackground.Visibility = Visibility.Collapsed;
+        };
+        Timeline.SetDesiredFrameRate(fadeOut, AnimationConfig.TargetFps);
+        _refs.BlurFallbackBackground.BeginAnimation(UIElement.OpacityProperty, fadeOut);
     }
 
     public void RestoreBlurFallback()
@@ -646,9 +676,9 @@ public sealed class SpotifyCanvasPresenter : ISpotifyCanvasPresenter
             Panel.SetZIndex(incoming, 2);
             Panel.SetZIndex(outgoing, 1);
 
-            var fadeIn = new DoubleAnimation(0.0, 1.0, TimeSpan.FromMilliseconds(120))
+            var fadeIn = new DoubleAnimation(0.0, 1.0, TimeSpan.FromMilliseconds(220))
             {
-                EasingFunction = new QuadraticEase { EasingMode = EasingMode.EaseInOut }
+                EasingFunction = new SineEase { EasingMode = EasingMode.EaseInOut }
             };
 
             fadeIn.Completed += (_, _) =>

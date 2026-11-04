@@ -343,6 +343,8 @@
   "settings.enableSpotifyCanvas.hint": "Tính năng thử nghiệm, mặc định tắt. Dùng cookie phiên Spotify, mã hóa trên máy, và các điểm truy cập không chính thức. Spotify hạn chế thu thập tự động; quyền truy cập hoặc tài khoản có thể bị đình chỉ. Sự đồng ý không thay thế giấy phép. Chỉ bật khi có quyền sử dụng.",
   "settings.enableSpotifyLyrics": "Hiện lời bài hát Spotify",
   "settings.enableSpotifyLyrics.hint": "Hiển thị lời bài hát đồng bộ trong notch khi đang nghe nhạc trên Spotify.",
+  "settings.lyrics.providers": "Thứ tự ưu tiên nguồn lời bài hát",
+  "settings.lyrics.providers.hint": "Chọn nguồn rồi dùng mũi tên để đổi thứ tự. Hiện lời theo dòng ngay, rồi tìm đồng bộ từng chữ ở nền. Nếu không có, giữ lời theo dòng và kết thúc tìm kiếm.",
   "settings.enableSpotlight": "Tìm kiếm Spotlight",
   "settings.enableSpotlight.conflict": "Ứng dụng khác đang dùng Alt + Space. Hãy đổi phím tắt trong ứng dụng đó hoặc tắt ứng dụng.",
   "settings.enableSpotlight.hint": "Nhấn Alt + Space để tìm ứng dụng và tệp đã được lập chỉ mục.",
@@ -481,7 +483,7 @@
   "settings.privacy.onlineArtwork": "Tìm kiếm ảnh bìa album trực tuyến",
   "settings.privacy.onlineArtwork.hint": "Tìm kiếm ảnh bìa trực tuyến (YouTube, SoundCloud, Piped) khi trình phát không cung cấp sẵn ảnh bìa.",
   "settings.privacy.onlineLyrics": "Tìm kiếm lời bài hát đồng bộ trực tuyến",
-  "settings.privacy.onlineLyrics.hint": "Tải lời bài hát đồng bộ từ các nguồn công khai (LRCLIB, lrc mux) cho bài hát đang phát.",
+  "settings.privacy.onlineLyrics.hint": "Tải lời bài hát đồng bộ từ các nguồn công khai (AMLL TTML DB, LRCLIB, NetEase, lrc mux) cho bài hát đang phát.",
   "settings.privacy.section.network": "MẠNG & DỊCH VỤ TRỰC TUYẾN",
   "settings.privacy.section.sensors": "CẢM BIẾN & THEO DÕI HỆ THỐNG",
   "settings.privacy.section.storage": "DỮ LIỆU CỤC BỘ & LỊCH SỬ",
@@ -846,7 +848,7 @@
   "tooltip.privacy.localOnly": "Chặn các tính năng kết nối mạng của V-Notch, bao gồm cả yêu cầu AI",
   "tooltip.privacy.logging": "Bật hoặc tắt ghi nhật ký chẩn đoán trên máy",
   "tooltip.privacy.onlineArtwork": "Tìm kiếm ảnh bìa còn thiếu từ các dịch vụ web",
-  "tooltip.privacy.onlineLyrics": "Tải lời bài hát đồng bộ từ LRCLIB và lrc mux",
+  "tooltip.privacy.onlineLyrics": "Tải lời bài hát đồng bộ từ AMLL TTML DB, LRCLIB, NetEase và lrc mux",
   "tooltip.privacy.spotlightHistory": "Dùng tần suất mở ứng dụng để xếp hạng kết quả tìm kiếm",
   "tooltip.redo": "Làm lại",
   "tooltip.refresh": "Làm mới",
@@ -1054,5 +1056,9 @@
   "settings.glass.ultimateGpu.warning": "Cảnh báo: Chế độ GPU 0 tiêu thụ nhiều điện năng hơn. Hãy đặt giới hạn Target FPS phù hợp để GPU chỉ hoạt động đúng tới mức FPS đó và tránh tải cao.",
   "settings.glass.ultimateGpu.title": "Bật chế độ Ultimate GPU (GPU 0)?",
   "settings.glass.ultimateGpu.confirm": "Tùy chọn này dùng riêng GPU hiệu năng cao (GPU 0) cho Liquid Glass để đạt độ mượt tốt nhất, nhưng sẽ tốn pin hơn trên laptop. Hoạt động của GPU sẽ được khóa chặt theo mức Target FPS bạn chọn để tránh chạy quá tải 99%.",
-  "tooltip.ultimateGpu": "Sử dụng GPU 0 hiệu năng cao cho Liquid Glass theo giới hạn Target FPS"
+  "tooltip.ultimateGpu": "Sử dụng GPU 0 hiệu năng cao cho Liquid Glass theo giới hạn Target FPS",
+  "settings.lyrics.provider.lrclib.desc": "Lời bài hát đồng bộ theo từng dòng, phản hồi nhanh",
+  "settings.lyrics.provider.lrcmux.desc": "Đồng bộ từng chữ kiểu karaoke tổng hợp từ nhiều nguồn",
+  "settings.lyrics.provider.amll.desc": "Đồng bộ từng từ, âm tiết từ cộng đồng theo Spotify ID; không cần API key",
+  "settings.lyrics.provider.netease.desc": "Lời bài hát đồng bộ từng chữ và từng dòng từ kho nhạc NetEase Cloud Music"
 }

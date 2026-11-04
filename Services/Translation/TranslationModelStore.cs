@@ -185,6 +185,11 @@ internal sealed partial class TranslationModelStore
                 progress?.Report(completed / (double)TotalBytes);
             }
             await File.WriteAllTextAsync(Path.Combine(Root, "verified.txt"), Profile.Revision, ct).ConfigureAwait(false);
+            if (ReferenceEquals(_client, Client))
+            {
+                try { await TranslationNativeRuntime.EnsureVulkanRuntimeAsync(_client, ct).ConfigureAwait(false); }
+                catch (Exception ex) when (ex is not OperationCanceledException) { /* CPU avx2 fallback remains available */ }
+            }
             details?.Report(new(TranslationDownloadStage.Completed, TotalBytes, TotalBytes));
         }
         finally { Gate.Release(); Changed?.Invoke(); }

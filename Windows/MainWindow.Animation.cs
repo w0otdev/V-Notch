@@ -240,11 +240,6 @@ public partial class MainWindow
     {
         double width = ThumbnailBorder?.ActualWidth > 0 ? ThumbnailBorder.ActualWidth : 102;
         double height = ThumbnailBorder?.ActualHeight > 0 ? ThumbnailBorder.ActualHeight : 102;
-        DpiScale dpi = VisualTreeHelper.GetDpi(ThumbnailBorder ?? AnimationThumbnailBorder);
-
-        // The live thumbnail is layout-rounded, while an animated Width/Height
-        width = Math.Round(width * dpi.DpiScaleX) / dpi.DpiScaleX;
-        height = Math.Round(height * dpi.DpiScaleY) / dpi.DpiScaleY;
         return new Size(width, height);
     }
 
@@ -310,6 +305,7 @@ public partial class MainWindow
     }
 
     private bool _isThumbnailExpandAnimating;
+    private bool _isThumbnailCollapseAnimating;
     private Action? _pendingThumbnailHandoff;
     private long _thumbnailOverlayVersion;
 
@@ -328,6 +324,7 @@ public partial class MainWindow
     {
         ++_thumbnailOverlayVersion;
         _isThumbnailExpandAnimating = false;
+        _isThumbnailCollapseAnimating = false;
         _pendingThumbnailHandoff = null;
         AnimationThumbnailBorder.BeginAnimation(OpacityProperty, null);
         AnimationThumbnailBorder.BeginAnimation(WidthProperty, null);
@@ -361,9 +358,9 @@ public partial class MainWindow
             animShadow.BeginAnimation(DropShadowEffect.BlurRadiusProperty, null);
             animShadow.BeginAnimation(DropShadowEffect.OpacityProperty, null);
             animShadow.BeginAnimation(DropShadowEffect.ShadowDepthProperty, null);
-            animShadow.BlurRadius = 4;
-            animShadow.Opacity = 0.35;
-            animShadow.ShadowDepth = 0.8;
+            animShadow.BlurRadius = 8;
+            animShadow.Opacity = 0.5;
+            animShadow.ShadowDepth = 1.2;
         }
 
         if (clearSource)
@@ -424,6 +421,7 @@ public partial class MainWindow
     private double _lastMeasuredTargetExpandedWidth;
     private double _lastMeasuredTargetExpandedHeight;
     private double _lastMeasuredTargetDpi;
+    private bool _lastMeasuredTargetIslandMode;
 
     private DoubleAnimation? _cachedThumbWidthExpand;
     private DoubleAnimation? _cachedThumbHeightExpand;
@@ -586,6 +584,7 @@ public partial class MainWindow
     {
         double dpi = VisualTreeHelper.GetDpi(this).DpiScaleX;
         if (_cachedThumbnailExpandTarget.HasValue &&
+            _lastMeasuredTargetIslandMode == _settings.EnableDynamicIslandMode &&
             Math.Abs(_lastMeasuredTargetExpandedWidth - _expandedWidth) < 0.1 &&
             Math.Abs(_lastMeasuredTargetExpandedHeight - _expandedHeight) < 0.1 &&
             Math.Abs(_lastMeasuredTargetDpi - dpi) < 0.001)
@@ -595,7 +594,7 @@ public partial class MainWindow
 
         // A cold cache needs only the media subtree's destination layout. Never
         // resize the shell or flush the window's pending Measure/Arrange queue.
-        var destination = new Size(_expandedWidth, _expandedHeight);
+        var destination = new Size(Math.Max(0, _expandedWidth - ExpandedContentHorizontalInset), Math.Max(0, _expandedHeight - ExpandedContentVerticalInset));
         ExpandedContent.Measure(destination);
         ExpandedContent.Arrange(new Rect(destination));
         if (ThumbnailBorder.ActualWidth > 0 && ThumbnailBorder.ActualHeight > 0)
@@ -608,6 +607,7 @@ public partial class MainWindow
             _lastMeasuredTargetExpandedWidth = _expandedWidth;
             _lastMeasuredTargetExpandedHeight = _expandedHeight;
             _lastMeasuredTargetDpi = dpi;
+            _lastMeasuredTargetIslandMode = _settings.EnableDynamicIslandMode;
         }
 
         return _cachedThumbnailExpandTarget;
@@ -719,7 +719,7 @@ public partial class MainWindow
 
         if (IsLiquidGlassEnabled && AnimationThumbnailBorder.Effect is DropShadowEffect animShadow)
         {
-            animShadow.BeginAnimation(DropShadowEffect.OpacityProperty, MakeAnim(0.35, 0.55, thumbDur, _easeExpOut6));
+            animShadow.BeginAnimation(DropShadowEffect.OpacityProperty, MakeAnim(0.5, 0.5, thumbDur, _easeExpOut6));
         }
 
         if (CompactThumbnailBorder != null)
@@ -1032,6 +1032,10 @@ public partial class MainWindow
         if (effectiveTarget == VNotch.Models.NotchView.Media && _isMusicCompactMode && TryComputeThumbnailExpandTarget(out var updatedTarget))
         {
             _cachedThumbnailExpandTarget = updatedTarget;
+            _lastMeasuredTargetExpandedWidth = _expandedWidth;
+            _lastMeasuredTargetExpandedHeight = _expandedHeight;
+            _lastMeasuredTargetDpi = VisualTreeHelper.GetDpi(this).DpiScaleX;
+            _lastMeasuredTargetIslandMode = _settings.EnableDynamicIslandMode;
         }
 
         if (effectiveTarget == VNotch.Models.NotchView.Media && _isThumbnailExpandAnimating)
@@ -1800,6 +1804,7 @@ public partial class MainWindow
     {
         if (_cachedThumbWidthCollapse != null &&
             _cachedThumbWidthCollapse.Duration == thumbDur &&
+            _cachedThumbWidthCollapse.BeginTime == thumbDelay &&
             Math.Abs((_cachedThumbWidthCollapse.From ?? 0) - expandedThumbWidth) <= 0.001 &&
             Math.Abs((_cachedThumbHeightCollapse?.From ?? 0) - expandedThumbHeight) <= 0.001)
         {
@@ -1844,10 +1849,13 @@ public partial class MainWindow
             ThumbnailBorder.Opacity = 0;
         }
 
-        if (!_cachedThumbnailExpandTarget.HasValue &&
-            TryComputeThumbnailExpandTarget(out var measuredTarget))
+        if (TryComputeThumbnailExpandTarget(out var measuredTarget))
         {
             _cachedThumbnailExpandTarget = measuredTarget;
+            _lastMeasuredTargetExpandedWidth = _expandedWidth;
+            _lastMeasuredTargetExpandedHeight = _expandedHeight;
+            _lastMeasuredTargetDpi = VisualTreeHelper.GetDpi(this).DpiScaleX;
+            _lastMeasuredTargetIslandMode = _settings.EnableDynamicIslandMode;
         }
 
         var cachedExpandTarget = _cachedThumbnailExpandTarget;
@@ -1885,6 +1893,23 @@ public partial class MainWindow
         Timeline.SetDesiredFrameRate(thumbTranslateXAnim, thumbFps);
         Timeline.SetDesiredFrameRate(thumbTranslateYAnim, thumbFps);
 
+        _isThumbnailCollapseAnimating = true;
+        _pendingThumbnailHandoff = null;
+        long overlayVersion = ++_thumbnailOverlayVersion;
+        thumbTranslateYAnim.Completed += (s, e) =>
+        {
+            if (overlayVersion != _thumbnailOverlayVersion) return;
+            _isThumbnailCollapseAnimating = false;
+            var handoff = _pendingThumbnailHandoff;
+            _pendingThumbnailHandoff = null;
+            handoff?.Invoke();
+        };
+
+        AnimationThumbnailBorder.Width = 22;
+        AnimationThumbnailBorder.Height = 22;
+        AnimationThumbnailTranslate.X = compactRestX;
+        AnimationThumbnailTranslate.Y = compactRestY;
+        AnimationThumbnailClip.Rect = new Rect(0, 0, 22, 22);
         AnimationThumbnailBorder.BeginAnimation(WidthProperty, _cachedThumbWidthCollapse);
         AnimationThumbnailBorder.BeginAnimation(HeightProperty, _cachedThumbHeightCollapse);
         AnimationThumbnailTranslate.BeginAnimation(TranslateTransform.XProperty, thumbTranslateXAnim);
@@ -1895,7 +1920,7 @@ public partial class MainWindow
 
         if (IsLiquidGlassEnabled && AnimationThumbnailBorder.Effect is DropShadowEffect animShadow)
         {
-            animShadow.BeginAnimation(DropShadowEffect.OpacityProperty, MakeAnim(0.55, 0.35, thumbDur, thumbEase, thumbDelay));
+            animShadow.BeginAnimation(DropShadowEffect.OpacityProperty, MakeAnim(0.5, 0.5, thumbDur, thumbEase, thumbDelay));
         }
     }
 
@@ -1953,7 +1978,19 @@ public partial class MainWindow
         bool allowThumbnailHandoff = !_isClipboardPeekActive && !_isVolumeIndicatorActive && !suppressCompactThumbnailMotion && !deferCompactThumbnailReveal;
         if (allowThumbnailHandoff)
         {
-            HandoffAnimationThumbnailToCompact();
+            if (_isThumbnailCollapseAnimating)
+            {
+                int generation = _viewTransitionGeneration;
+                _pendingThumbnailHandoff = () =>
+                {
+                    if (generation != _viewTransitionGeneration || _isExpanded) return;
+                    HandoffAnimationThumbnailToCompact();
+                };
+            }
+            else
+            {
+                HandoffAnimationThumbnailToCompact();
+            }
         }
         else
         {
@@ -1967,7 +2004,7 @@ public partial class MainWindow
 
         if (CompactThumbnailBorder != null)
         {
-            if (allowCompactChrome && !deferCompactThumbnailReveal)
+            if (allowCompactChrome && !deferCompactThumbnailReveal && !_isThumbnailCollapseAnimating)
             {
                 CompactThumbnailBorder.BeginAnimation(OpacityProperty, null);
                 CompactThumbnailBorder.Visibility = Visibility.Visible;

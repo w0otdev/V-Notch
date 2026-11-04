@@ -29,6 +29,7 @@ public class MediaInfo
 
     public string CurrentTrack { get; set; } = "";
     public string CurrentArtist { get; set; } = "";
+    public string CurrentAlbum { get; set; } = "";
     public string YouTubeTitle { get; set; } = "";
     private string _mediaSource = "";
     private MediaPlatform _platform = MediaPlatform.Unknown;

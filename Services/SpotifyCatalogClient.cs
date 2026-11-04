@@ -81,6 +81,35 @@ internal sealed partial class SpotifyCatalogClient
         return trackId;
     }
 
+    internal async Task<string?> ResolveTrackArtistsAsync(
+        string trackName,
+        string artistName,
+        string? albumName,
+        string accessToken,
+        CancellationToken token)
+    {
+        string hash = _metadata.FindTracksHash;
+        PathfinderQueryResult queryResult = await QueryPathfinderAsync(
+                trackName, artistName, accessToken, hash, token)
+            .ConfigureAwait(false);
+        string? json = queryResult.Json;
+
+        if (queryResult.QueryMetadataRejected ||
+            (json != null && ContainsPersistedQueryNotFound(json)))
+        {
+            string? refreshedHash = await _metadata.RefreshAsync(SpotifyQuery.FindTracks, hash, token).ConfigureAwait(false);
+            if (!string.IsNullOrEmpty(refreshedHash))
+            {
+                queryResult = await QueryPathfinderAsync(
+                        trackName, artistName, accessToken, refreshedHash, token)
+                    .ConfigureAwait(false);
+                json = queryResult.Json;
+            }
+        }
+
+        return json == null ? null : ParsePathfinderTrackArtists(json, trackName, artistName, albumName);
+    }
+
     private async Task<PathfinderQueryResult> QueryPathfinderAsync(
         string trackName,
         string artistName,

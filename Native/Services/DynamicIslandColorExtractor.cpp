@@ -336,7 +336,10 @@ public:
             if (sa != 0 && second_bucket >= 0 && !IsHarshBlueIndigoHue(bucket_peak_h[second_bucket])) {
                 EnsureTextOnDarkBackground(sr, sg, sb, 0, 0, 0, 4.5, &ar, &ag, &ab);
             } else {
-                HslToColor(0.555, std::min(as * 0.35, 0.28), std::clamp(std::max(al, 0.80), 0.78, 0.86), &ar, &ag, &ab);
+                double safe_h = std::clamp(ah, 0.59, 0.64);
+                double safe_s = std::clamp(as, 0.72, 0.90);
+                double safe_l = std::clamp(std::max(al, 0.64), 0.62, 0.70);
+                HslToColor(safe_h, safe_s, safe_l, &ar, &ag, &ab);
             }
         }
 

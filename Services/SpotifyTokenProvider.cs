@@ -30,7 +30,13 @@ internal sealed partial class SpotifyTokenProvider : IDisposable
     internal SpotifyTokenProvider(HttpClient http) => _http = http;
     internal void ClearCache() => _accessToken = null;
 
-    internal Task<string?> GetAccessTokenAsync(string sessionCookie, CancellationToken token)
+    internal Task<string?> GetAccessTokenAsync(string? sessionCookie, CancellationToken token)
+    {
+        string key = sessionCookie ?? string.Empty;
+        return GetAccessTokenByKeyAsync(key, token);
+    }
+
+    private Task<string?> GetAccessTokenByKeyAsync(string sessionCookie, CancellationToken token)
     {
         AccessTokenCache? cached = _accessToken;
         if (cached != null &&
@@ -134,7 +140,8 @@ internal sealed partial class SpotifyTokenProvider : IDisposable
             "(KHTML, like Gecko) Chrome/127.0.0.0 Safari/537.36");
         request.Headers.TryAddWithoutValidation("Origin", SpotifyWebOrigin);
         request.Headers.Referrer = SpotifyWebUri;
-        request.Headers.TryAddWithoutValidation("Cookie", $"sp_dc={sessionCookie}");
+        if (!string.IsNullOrEmpty(sessionCookie))
+            request.Headers.TryAddWithoutValidation("Cookie", $"sp_dc={sessionCookie}");
     }
 
     internal static string GenerateTotp(ReadOnlySpan<byte> secret, long timestampMs)

@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Globalization;
 using System.IO;
@@ -233,6 +234,7 @@ public sealed partial class MediaDetectionService : IMediaDetectionService, IAsy
     private string _stableSource = "";
     private string _stableArtist = "";
     private string _stableSourceTrackIdentity = "";
+    private readonly ConcurrentDictionary<string, string> _spotifyArtistCache = new(StringComparer.OrdinalIgnoreCase);
 
     public MediaDetectionService(
         IMediaMetadataLookupService metadataLookup,
@@ -826,6 +828,11 @@ public sealed partial class MediaDetectionService : IMediaDetectionService, IAsy
             if (Volatile.Read(ref _pinnedSession) == null)
                 PreserveSoundCloudSourceIfNeeded(info, ref windowTitles);
 
+            // Window-title recovery can replace the session metadata. Resolve the
+            // final artist state before publishing, including that fallback path.
+            await ResolveSpotifyArtistsBeforePublishAsync(info, ct);
+            ct.ThrowIfCancellationRequested();
+
             info.IsThrottled = _timelineSimulator.IsThrottled;
             UpdateDetectionMode(info);
             var currentSignature = info.GetSignature();
@@ -1136,6 +1143,7 @@ public sealed partial class MediaDetectionService : IMediaDetectionService, IAsy
                     info.IsPlaying = true;
                     info.MediaSource = MediaPlatform.Spotify.ToDisplayString();
                     ParseSpotifyTitle(wTitle, info);
+                    ApplyCachedSpotifyArtists(info);
                     if (!string.IsNullOrEmpty(info.CurrentArtist)) _stableArtist = info.CurrentArtist;
                 }
             }
@@ -1211,64 +1219,64 @@ public sealed partial class MediaDetectionService : IMediaDetectionService, IAsy
 
                     if (FindMediaWindowTitle(true, windowTitles) is { } match)
                     {
-                            string extractedTitle = match.ExtractedTitle;
-                            string trackName = match.Track;
-                            string artistName = match.Artist;
+                        string extractedTitle = match.ExtractedTitle;
+                        string trackName = match.Track;
+                        string artistName = match.Artist;
 
-                            bool isSameSplitTitle = !string.IsNullOrEmpty(_lastTrackName) &&
-                                (string.Equals(trackName, _lastTrackName, StringComparison.OrdinalIgnoreCase) ||
-                                 string.Equals(extractedTitle, _lastTrackName, StringComparison.OrdinalIgnoreCase));
-                            bool isNewTrack = !isSameSplitTitle &&
-                                (string.IsNullOrEmpty(_lastTrackName) ||
-                                 PublishedTrackMatcher.IsNewTrackForThumbnail(BuildTrackIdentity(_lastTrackName, ""), trackName) ||
-                                 !string.Equals(trackName, _lastTrackName, StringComparison.OrdinalIgnoreCase));
+                        bool isSameSplitTitle = !string.IsNullOrEmpty(_lastTrackName) &&
+                            (string.Equals(trackName, _lastTrackName, StringComparison.OrdinalIgnoreCase) ||
+                             string.Equals(extractedTitle, _lastTrackName, StringComparison.OrdinalIgnoreCase));
+                        bool isNewTrack = !isSameSplitTitle &&
+                            (string.IsNullOrEmpty(_lastTrackName) ||
+                             PublishedTrackMatcher.IsNewTrackForThumbnail(BuildTrackIdentity(_lastTrackName, ""), trackName) ||
+                             !string.Equals(trackName, _lastTrackName, StringComparison.OrdinalIgnoreCase));
 
-                            if (isNewTrack)
+                        if (isNewTrack)
+                        {
+                            _throttledStaleSmtcTrack = info.CurrentTrack;
+                            info.CurrentTrack = trackName;
+                            info.CurrentArtist = artistName;
+                            info.MediaSource = MediaPlatform.YouTube.ToDisplayString();
+                            info.IsYouTubeRunning = true;
+                            info.IsThrottled = true;
+                            _timelineSimulator.EnterThrottledMode();
+
+                            _timelineSimulator.ResetRecoveredData();
+                            info.Duration = TimeSpan.Zero;
+
+                            info.Position = TimeSpan.FromSeconds(1.5);
+                            info.LastUpdated = DateTimeOffset.Now;
+                            ApplyTimelineAvailability(info, true, true, false, TimeSpan.Zero, DateTime.UtcNow);
+                            foundRecovery = true;
+                        }
+                        else if (positionStuck || _timelineSimulator.IsThrottled)
+                        {
+
+                            info.CurrentTrack = trackName;
+                            info.CurrentArtist = artistName;
+                            info.MediaSource = MediaPlatform.YouTube.ToDisplayString();
+                            info.IsYouTubeRunning = true;
+                            info.IsThrottled = true;
+                            _timelineSimulator.EnterThrottledMode();
+
+                            if (_timelineSimulator.RecoveredDuration.TotalSeconds > 0)
                             {
-                                _throttledStaleSmtcTrack = info.CurrentTrack;
-                                info.CurrentTrack = trackName;
-                                info.CurrentArtist = artistName;
-                                info.MediaSource = MediaPlatform.YouTube.ToDisplayString();
-                                info.IsYouTubeRunning = true;
-                                info.IsThrottled = true;
-                                _timelineSimulator.EnterThrottledMode();
+                                info.Duration = _timelineSimulator.RecoveredDuration;
+                            }
+                            else
+                            {
 
-                                _timelineSimulator.ResetRecoveredData();
                                 info.Duration = TimeSpan.Zero;
-
-                                info.Position = TimeSpan.FromSeconds(1.5);
-                                info.LastUpdated = DateTimeOffset.Now;
-                                ApplyTimelineAvailability(info, true, true, false, TimeSpan.Zero, DateTime.UtcNow);
-                                foundRecovery = true;
                             }
-                            else if (positionStuck || _timelineSimulator.IsThrottled)
-                            {
 
-                                info.CurrentTrack = trackName;
-                                info.CurrentArtist = artistName;
-                                info.MediaSource = MediaPlatform.YouTube.ToDisplayString();
-                                info.IsYouTubeRunning = true;
-                                info.IsThrottled = true;
-                                _timelineSimulator.EnterThrottledMode();
+                            if (_timelineSimulator.RecoveredThumbnail != null) info.Thumbnail = _timelineSimulator.RecoveredThumbnail;
 
-                                if (_timelineSimulator.RecoveredDuration.TotalSeconds > 0)
-                                {
-                                    info.Duration = _timelineSimulator.RecoveredDuration;
-                                }
-                                else
-                                {
-
-                                    info.Duration = TimeSpan.Zero;
-                                }
-
-                                if (_timelineSimulator.RecoveredThumbnail != null) info.Thumbnail = _timelineSimulator.RecoveredThumbnail;
-
-                                var timeOnTrack = DateTime.UtcNow - _lastMetadataChangeTime;
-                                info.Position = timeOnTrack;
-                                info.LastUpdated = DateTimeOffset.Now;
-                                ApplyTimelineAvailability(info, true, false, false, info.Duration, DateTime.UtcNow);
-                                foundRecovery = true;
-                            }
+                            var timeOnTrack = DateTime.UtcNow - _lastMetadataChangeTime;
+                            info.Position = timeOnTrack;
+                            info.LastUpdated = DateTimeOffset.Now;
+                            ApplyTimelineAvailability(info, true, false, false, info.Duration, DateTime.UtcNow);
+                            foundRecovery = true;
+                        }
                     }
                 }
 
@@ -2537,7 +2545,8 @@ public sealed partial class MediaDetectionService : IMediaDetectionService, IAsy
             mediaProperties ??= await session.TryGetMediaPropertiesAsync();
             string sessionTitle = mediaProperties?.Title ?? "";
             string sessionArtist = mediaProperties?.Artist ?? "";
-            string lowerAlbum = (mediaProperties?.AlbumTitle ?? "").ToLowerInvariant();
+            string sessionAlbum = mediaProperties?.AlbumTitle ?? "";
+            string lowerAlbum = sessionAlbum.ToLowerInvariant();
 
             RefineMediaSourceFromMetadata(info, sessionTitle.ToLowerInvariant(), sessionArtist.ToLowerInvariant(), lowerAlbum);
 
@@ -2547,6 +2556,7 @@ public sealed partial class MediaDetectionService : IMediaDetectionService, IAsy
             info.IsAnyMediaPlaying = true;
             info.CurrentTrack = sessionTitle;
             info.CurrentArtist = sessionArtist;
+            info.CurrentAlbum = sessionAlbum;
 
             bool isJunkTitle = TryHandleJunkSessionTitle(info, sessionTitle, sessionArtist);
             if (isJunkTitle)
@@ -2578,7 +2588,10 @@ public sealed partial class MediaDetectionService : IMediaDetectionService, IAsy
             }
 
             if (info.Platform == MediaPlatform.Spotify)
+            {
                 ApplySpotifyGroundTruthCorrection(info, spotifyGroundTruth, ref mediaProperties);
+                ApplyCachedSpotifyArtists(info);
+            }
 
             string prevTrackName = _lastTrackName;
             DateTime prevMetadataChangeTime = _lastMetadataChangeTime;
@@ -2830,12 +2843,100 @@ public sealed partial class MediaDetectionService : IMediaDetectionService, IAsy
         }
     }
 
+    private static string BuildSpotifyArtistCacheKey(string track, string artist, string? album, TimeSpan duration)
+        => $"{track.Trim()}|{artist.Trim()}|{(album ?? string.Empty).Trim()}|{(int)Math.Round(duration.TotalSeconds)}";
+
+    private static string BuildSpotifyArtistTrackOnlyKey(string track, string artist)
+        => $"{track.Trim()}|{artist.Trim()}||0";
+
+    private void ApplyCachedSpotifyArtists(MediaInfo info)
+    {
+        if (info.Platform != MediaPlatform.Spotify ||
+            string.IsNullOrWhiteSpace(info.CurrentTrack) ||
+            string.IsNullOrWhiteSpace(info.CurrentArtist))
+        {
+            return;
+        }
+
+        string key = BuildSpotifyArtistCacheKey(info.CurrentTrack, info.CurrentArtist, info.CurrentAlbum, info.Duration);
+        string albumZeroKey = BuildSpotifyArtistCacheKey(info.CurrentTrack, info.CurrentArtist, info.CurrentAlbum, TimeSpan.Zero);
+        string trackOnlyKey = BuildSpotifyArtistTrackOnlyKey(info.CurrentTrack, info.CurrentArtist);
+        if ((_spotifyArtistCache.TryGetValue(key, out string? enriched) ||
+             _spotifyArtistCache.TryGetValue(albumZeroKey, out enriched) ||
+             _spotifyArtistCache.TryGetValue(trackOnlyKey, out enriched)) && !string.IsNullOrEmpty(enriched))
+        {
+            info.CurrentArtist = enriched;
+            _stableArtist = enriched;
+        }
+    }
+
+    private void StoreSpotifyArtistCache(string track, string primaryArtist, string album, TimeSpan duration, string enriched)
+    {
+        _spotifyArtistCache[BuildSpotifyArtistCacheKey(track, primaryArtist, album, duration)] = enriched;
+        _spotifyArtistCache[BuildSpotifyArtistCacheKey(track, primaryArtist, album, TimeSpan.Zero)] = enriched;
+        _spotifyArtistCache[BuildSpotifyArtistTrackOnlyKey(track, primaryArtist)] = enriched;
+        _spotifyArtistCache[BuildSpotifyArtistCacheKey(track, enriched, album, duration)] = enriched;
+        _spotifyArtistCache[BuildSpotifyArtistCacheKey(track, enriched, album, TimeSpan.Zero)] = enriched;
+        _spotifyArtistCache[BuildSpotifyArtistTrackOnlyKey(track, enriched)] = enriched;
+    }
+
+    private async Task ResolveSpotifyArtistsBeforePublishAsync(MediaInfo info, CancellationToken ct)
+    {
+        if (info.Platform != MediaPlatform.Spotify ||
+            string.IsNullOrWhiteSpace(info.CurrentTrack) ||
+            string.IsNullOrWhiteSpace(info.CurrentArtist))
+        {
+            return;
+        }
+
+        ApplyCachedSpotifyArtists(info);
+        string track = info.CurrentTrack.Trim();
+        string artist = info.CurrentArtist.Trim();
+        string album = (info.CurrentAlbum ?? string.Empty).Trim();
+        TimeSpan duration = info.Duration;
+        string key = BuildSpotifyArtistCacheKey(track, artist, album, duration);
+
+        if (_spotifyArtistCache.TryGetValue(key, out string? existing))
+        {
+            if (!string.IsNullOrEmpty(existing))
+            {
+                info.CurrentArtist = existing;
+                _stableArtist = existing;
+            }
+            return;
+        }
+
+        string? enriched = null;
+        try
+        {
+            // Publish the track and its full artist list together. A short
+            // timeout here would expose the primary artist as an intermediate
+            // frame and trigger a second text transition when the lookup ends.
+            enriched = await _metadataLookup.TryGetSpotifyFullArtistsAsync(track, artist, duration, album, ct)
+                .WaitAsync(ct).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch
+        {
+            // Keep the session artist available when all metadata sources fail.
+        }
+
+        ct.ThrowIfCancellationRequested();
+        string resolved = string.IsNullOrWhiteSpace(enriched) ? artist : enriched.Trim();
+        StoreSpotifyArtistCache(track, artist, album, duration, resolved);
+        info.CurrentArtist = resolved;
+        _stableArtist = resolved;
+    }
+
     private bool InvalidateThumbnailStateIfTrackChanged(MediaInfo info)
     {
         // Browser artist metadata can be enriched while artwork is downloading.
         // Native players retain the artist identity for equally named songs.
         bool isBrowserSession = IsBrowserSourceApp(info.SourceAppId) ||
-                                info.Platform is MediaPlatform.Browser or MediaPlatform.YouTube or MediaPlatform.SoundCloud;
+                                info.Platform is MediaPlatform.Browser or MediaPlatform.YouTube or MediaPlatform.SoundCloud or MediaPlatform.Spotify;
         string currentTrackOnlyIdentityForThumb = BuildTrackIdentity(info.CurrentTrack, isBrowserSession ? "" : info.CurrentArtist);
         bool trackChangedForThisPass = !string.Equals(currentTrackOnlyIdentityForThumb, _lastThumbTrackIdentity, StringComparison.Ordinal);
         if (trackChangedForThisPass)

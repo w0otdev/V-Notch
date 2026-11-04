@@ -685,6 +685,7 @@ public partial class MainWindow
         {
             AnimationThumbnailRim.BorderBrush = glass ? _glassPanelBorder : System.Windows.Media.Brushes.Transparent;
             AnimationThumbnailRim.BorderThickness = glass ? new Thickness(0.5) : new Thickness(0);
+            if (ThumbnailRim != null) { ThumbnailRim.BorderBrush = AnimationThumbnailRim.BorderBrush; ThumbnailRim.BorderThickness = AnimationThumbnailRim.BorderThickness; }
         }
 
         if (glass)
@@ -894,10 +895,10 @@ public partial class MainWindow
             _glassAnimThumbnailShadow = new System.Windows.Media.Effects.DropShadowEffect
             {
                 Color = Colors.Black,
-                BlurRadius = 4,
-                ShadowDepth = 0.8,
+                BlurRadius = 8,
+                ShadowDepth = 1.2,
                 Direction = 270,
-                Opacity = 0.35,
+                Opacity = 0.5,
                 RenderingBias = System.Windows.Media.Effects.RenderingBias.Performance
             };
         }

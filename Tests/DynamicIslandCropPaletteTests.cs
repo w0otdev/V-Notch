@@ -202,7 +202,7 @@ public sealed class DynamicIslandCropPaletteTests
 
             var pureBlue = DynamicIslandColorExtractor.GetDynamicIslandPalette(source, new Rect(40, 0, 40, 40));
             Assert.True(pureBlue.Main.B > 200 && pureBlue.Main.R < 40);
-            Assert.True(pureBlue.Sub.R >= 160 && pureBlue.Sub.G >= 180, $"Expected softened sub color instead of harsh indigo, got ({pureBlue.Sub.R},{pureBlue.Sub.G},{pureBlue.Sub.B})");
+            Assert.True(pureBlue.Sub.B >= 220 && pureBlue.Sub.B > pureBlue.Sub.G && pureBlue.Sub.G > pureBlue.Sub.R && pureBlue.Sub.G >= 100, $"Expected vibrant readable blue sub color instead of washed-out gray or dark indigo, got ({pureBlue.Sub.R},{pureBlue.Sub.G},{pureBlue.Sub.B})");
         });
     }
 

@@ -49,6 +49,8 @@ is implied. Verify **each file** against its original source URL, creator, preci
 
 ## External APIs and retrieved content (not bundled open-source assets)
 
+[AMLL TTML DB](https://github.com/amll-dev/amll-ttml-db) supplies community TTML timing through GitHub raw files, looked up by Spotify track ID. Contributor-authored portions use [CC0 1.0](https://github.com/amll-dev/amll-ttml-db/blob/main/LICENSE); externally sourced data retains its original provider terms, as stated in the [upstream README](https://github.com/amll-dev/amll-ttml-db#共享协议). V-Notch retrieves individual files on demand and keeps parsed lyrics in memory; it does not bundle the database.
+
 Spotify Canvas, YouTube thumbnails/captions, album artwork, lyrics, Musixmatch, LRCLIB and weather content may be subject to separate provider terms, copyright, trademark, access and caching conditions. A notice, user consent or non-affiliation disclaimer does not authorize scraping, reuse, redistribution or access through unofficial credentials. Review each implementation against the provider's current conditions, and disable functionality that lacks a defensible authorization basis.
 
 Canvas is experimental, off by default and requires explicit in-app acknowledgement before sign-in or network access. This control does not resolve the authorization question. Open-source software licenses cover the application code, not permission to access YouTube or use caption content. See [Spotify's User Guidelines](https://www.spotify.com/us/legal/user-guidelines/), [YouTube's Terms](https://www.youtube.com/static?template=terms) and the [Fair Use Index](https://www.copyright.gov/fair-use/); a fair-use notice is not a blanket exemption.

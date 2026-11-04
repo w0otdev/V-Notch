@@ -507,10 +507,20 @@ public partial class MainWindow
             ApplySpotifyCanvasBrightness();
         }
 
-        if (oldSettings == null || oldSettings.EnableSpotifyLyrics != _settings.EnableSpotifyLyrics)
+        bool lyricsOrderChanged = oldSettings != null && oldSettings.LyricsProviderPriority != _settings.LyricsProviderPriority;
+        if (lyricsOrderChanged && _syncedTextSource == SyncedTextSource.SpotifyLyrics)
         {
+            ++_lyricsFetchGeneration;
+            _lyricsService.Reset();
+            _lyricsTrackKey = "";
+        }
+        if (oldSettings == null || oldSettings.EnableSpotifyLyrics != _settings.EnableSpotifyLyrics || lyricsOrderChanged)
+        {
+            _lyricsPrefetchKey = null;
             if (!_settings.EnableSpotifyLyrics)
             {
+                ++_lyricsFetchGeneration;
+                _lyricsService.Reset();
                 if (_isLyricsActive && _syncedTextSource == SyncedTextSource.SpotifyLyrics)
                 {
                     _lyricsTrackKey = "";
@@ -520,7 +530,7 @@ public partial class MainWindow
             else if (_currentMediaInfo != null
                      && _currentMediaInfo.Platform == MediaPlatform.Spotify
                      && !string.IsNullOrEmpty(_currentMediaInfo.CurrentTrack)
-                     && !_isLyricsActive)
+                     && (!_isLyricsActive || lyricsOrderChanged))
             {
                 _lyricsTrackKey = "";
                 FetchLyricsForTrack(_currentMediaInfo).SafeFireAndForget("LYRICS");

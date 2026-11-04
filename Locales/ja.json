@@ -343,6 +343,8 @@
   "settings.enableSpotifyCanvas.hint": "実験的機能で、初期設定はオフです。ローカルで暗号化したSpotifyのセッションCookieと非公式の接続先を使用します。Spotifyは自動収集を制限しており、アクセスやアカウントが停止される可能性があります。同意は利用許可を与えません。許可された用途に限り有効にしてください。",
   "settings.enableSpotifyLyrics": "Spotifyの歌詞を表示する",
   "settings.enableSpotifyLyrics.hint": "Spotifyで音楽再生時、展開されたノッチ内に同期された歌詞を表示します。",
+  "settings.lyrics.providers": "歌詞プロバイダーの優先順位",
+  "settings.lyrics.providers.hint": "行をドラッグするか矢印ボタンで並び替えます。Spotifyの曲が変わると優先順に歌詞を読み込みます。",
   "settings.enableSpotlight": "Spotlight 検索",
   "settings.enableSpotlight.conflict": "Alt + Space は別のアプリで使用されています。そのアプリのショートカットを変更するか、ランチャーを無効にしてください。",
   "settings.enableSpotlight.hint": "Alt + Space でアプリとインデックス済みファイルを検索します。",
@@ -1054,5 +1056,9 @@
   "settings.glass.ultimateGpu.warning": "警告: 専用 GPU モードは消費電力が増加します。選択したフレーム上限までしか GPU が稼働しないよう目標 FPS を調整してください。",
   "settings.glass.ultimateGpu.title": "アルティメット GPU モードを有効にしますか？",
   "settings.glass.ultimateGpu.confirm": "Liquid Glass に専用 GPU (GPU 0) を割り当てて滑らかに描画します。ノート PC ではバッテリー消費が増えますが、GPU 負荷を抑えるためフレームレートは目標 FPS の設定値に制限されます。",
-  "tooltip.ultimateGpu": "目標 FPS の制限内で Liquid Glass に高性能な GPU 0 を使用する"
+  "tooltip.ultimateGpu": "目標 FPS の制限内で Liquid Glass に高性能な GPU 0 を使用する",
+  "settings.lyrics.provider.lrclib.desc": "コミュニティデータベースから高速に取得する行単位の同期歌詞",
+  "settings.lyrics.provider.lrcmux.desc": "複数のソースから集約した単語単位のカラオケ同期",
+  "settings.lyrics.provider.amll.desc": "SpotifyトラックIDで取得するコミュニティ制作の単語・音節同期。APIキー不要",
+  "settings.lyrics.provider.netease.desc": "NetEase Cloud Music カタログからの単語・行単位の同期歌詞"
 }

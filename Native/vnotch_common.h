@@ -507,7 +507,8 @@ inline std::u16string normalize_for_loose_match_impl(std::u16string_view value)
         }
         if (vn_is_letter_or_digit(ch))
         {
-            sb.push_back(to_lower_invariant(ch));
+            char16_t norm_ch = (ch == 0x0111u || ch == 0x0110u) ? u'd' : to_lower_invariant(ch);
+            sb.push_back(norm_ch);
             last_was_space = false;
         }
         else if (!last_was_space)

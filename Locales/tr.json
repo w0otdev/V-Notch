@@ -343,6 +343,8 @@
   "settings.enableSpotifyCanvas.hint": "Deneyseldir ve varsayılan olarak kapalıdır. Yerel olarak şifrelenen Spotify oturum çerezini ve resmî olmayan erişim noktalarını kullanır. Spotify otomatik veri toplamayı kısıtlar; erişim veya hesap askıya alınabilir. Onay, kullanım izni vermez. Yalnızca izin verilen kullanım için etkinleştirin.",
   "settings.enableSpotifyLyrics": "Spotify şarkı sözlerini göster",
   "settings.enableSpotifyLyrics.hint": "Spotify dinlerken genişletilmiş çentikte senkronize şarkı sözlerini görüntüler.",
+  "settings.lyrics.providers": "Şarkı sözü sağlayıcı önceliği",
+  "settings.lyrics.providers.hint": "Sıralamayı değiştirmek için satırları sürükleyin veya okları kullanın. Spotify şarkı değiştirdiğinde sözleri öncelik sırasına göre yükler.",
   "settings.enableSpotlight": "Spotlight arama",
   "settings.enableSpotlight.conflict": "Alt + Boşluk kısayolu başka bir uygulama tarafından kullanılıyor. Lütfen çakışan uygulamadaki kısayolu değiştirin.",
   "settings.enableSpotlight.hint": "Uygulamaları ve dizine eklenmiş dosyaları aramak için Alt + Boşluk tuşlarına basın.",
@@ -1054,5 +1056,9 @@
   "settings.glass.ultimateGpu.warning": "Uyarı: Harici GPU modu daha fazla güç tüketir. GPU'nun yalnızca seçtiğiniz kare sınırına kadar çalışması için Hedef FPS değerini dikkatli ayarlayın.",
   "settings.glass.ultimateGpu.title": "Ultimate GPU modu etkinleştirilsin mi?",
   "settings.glass.ultimateGpu.confirm": "Bu seçenek daha akıcı kırılma için harici ekran kartınızı (GPU 0) Liquid Glass'a atar ve dizüstü bilgisayarlarda pil tüketimini artırır. Aşırı yükü önlemek için kare hızı Hedef FPS ayarınızla sınırlandırılır.",
-  "tooltip.ultimateGpu": "Liquid Glass için Hedef FPS sınırıyla yüksek performanslı GPU 0 kullan"
+  "tooltip.ultimateGpu": "Liquid Glass için Hedef FPS sınırıyla yüksek performanslı GPU 0 kullan",
+  "settings.lyrics.provider.lrclib.desc": "Hızlı topluluk aramasıyla satır satır senkronize şarkı sözleri",
+  "settings.lyrics.provider.lrcmux.desc": "Birden fazla kaynaktan derlenen kelime kelime karaoke zamanlaması",
+  "settings.lyrics.provider.amll.desc": "Spotify parça kimliğine göre topluluk sözcük ve hece zamanlaması; API anahtarı gerekmez",
+  "settings.lyrics.provider.netease.desc": "NetEase Cloud Music kataloğundan kelime ve satır senkronize şarkı sözleri"
 }

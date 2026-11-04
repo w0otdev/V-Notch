@@ -47,7 +47,7 @@ OutFile "installers\V-Notch-Setup.exe"
 InstallDir "$LOCALAPPDATA\Programs\${APP_NAME}"
 RequestExecutionLevel user
 SetCompressor /SOLID lzma
-SetCompressorDictSize 64
+SetCompressorDictSize 96
 
 ; Keep extraction visible: a large payload can take several seconds before the
 ; WPF wizard starts, especially during updates or on slower disks/AV scanners.
