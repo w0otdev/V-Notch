@@ -116,9 +116,58 @@ public class ThumbnailHeuristicsTests
     }
 
     [Fact]
+    public void Candidate_CircularTransparentCornerBrowserIcon_False()
+    {
+        int width = 256, height = 256;
+        var px = new byte[width * height * 4];
+        for (int y = 0; y < height; y++)
+        {
+            for (int x = 0; x < width; x++)
+            {
+                int i = (y * width + x) * 4;
+                double dx = x - 127.5, dy = y - 127.5;
+                if (dx * dx + dy * dy > 120.0 * 120.0)
+                {
+                    px[i + 3] = 0;
+                    continue;
+                }
+                px[i] = (byte)((x * 7 + y * 3) & 255);
+                px[i + 1] = (byte)((x * 5 + y * 11) & 255);
+                px[i + 2] = (byte)((x * 13 + y * 2) & 255);
+                px[i + 3] = 255;
+            }
+        }
+        var icon = FromPixels(width, height, px);
+        Assert.False(ThumbnailHeuristics.IsLikelyArtworkCandidate(icon));
+        Assert.True(ThumbnailHeuristics.IsLikelyPlaceholderThumbnail(icon));
+    }
+
+    [Fact]
     public void Candidate_LargeGraySquare_False()
     {
         Assert.False(ThumbnailHeuristics.IsLikelyArtworkCandidate(Solid(500, 500, 235, 235, 235)));
+    }
+
+    [Fact]
+    public void Candidate_DarkNocturnal150x150SpotifyWebCover_True()
+    {
+        int width = 150, height = 150;
+        var px = new byte[width * height * 4];
+        for (int y = 0; y < height; y++)
+        {
+            for (int x = 0; x < width; x++)
+            {
+                int i = (y * width + x) * 4;
+                byte lum = (byte)((x * 92 / width + y * 92 / height) / 2);
+                px[i] = (byte)(lum * 3 / 4);
+                px[i + 1] = (byte)(lum * 4 / 5);
+                px[i + 2] = lum;
+                px[i + 3] = 255;
+            }
+        }
+        var darkCover = FromPixels(width, height, px);
+        Assert.True(ThumbnailHeuristics.IsLikelyArtworkCandidate(darkCover));
+        Assert.False(ThumbnailHeuristics.IsLikelyPlaceholderThumbnail(darkCover));
     }
 
     #endregion
@@ -300,6 +349,26 @@ public class ThumbnailHeuristicsTests
         };
         Assert.Equal(ThumbnailHeuristics.SmtcThumbnailDecision.Skip,
             ThumbnailHeuristics.DecideSmtcThumbnail(inputs));
+    }
+
+    [Fact]
+    public void Decide_BrowserSessionIcon_AfterSpotifyWebDetection_SkipsUntilRealArtwork()
+    {
+        var iconInputs = new ThumbnailHeuristics.SmtcThumbnailInputs
+        {
+            IsBrowserOrYouTubePlatform = false,
+            IsBrowserSession = true,
+            TrackChanged = true,
+            LikelySoundCloudArtwork = false,
+            PixelWidth = 256,
+            PixelHeight = 256,
+        };
+        Assert.Equal(ThumbnailHeuristics.SmtcThumbnailDecision.Skip,
+            ThumbnailHeuristics.DecideSmtcThumbnail(iconInputs));
+
+        var artworkInputs = iconInputs with { TrackChanged = false, LikelySoundCloudArtwork = true };
+        Assert.Equal(ThumbnailHeuristics.SmtcThumbnailDecision.Accept,
+            ThumbnailHeuristics.DecideSmtcThumbnail(artworkInputs));
     }
 
     [Fact]

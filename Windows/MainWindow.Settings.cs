@@ -174,7 +174,6 @@ public partial class MainWindow
 
         if (spotifyCanvasChanged)
         {
-            _spotifyCanvasController?.ClearCache();
             _spotifyCanvasController?.UpdateSettings(_settings);
         }
     }

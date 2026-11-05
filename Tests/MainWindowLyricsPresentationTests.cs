@@ -103,6 +103,41 @@ public sealed class MainWindowLyricsPresentationTests
     }
 
     [Fact]
+    public void BrowserTrackRecognizedAsSpotifySwitchesFromSubtitlesToLyricsAndCanvas() => SharedStaTestRunner.RunAsync(async ct =>
+    {
+        await using var fixture = CreateFixture();
+        var window = fixture.Window;
+        var settings = Field<NotchSettings>(window, "_settings");
+        settings.EnableLocalOnlyMode = false;
+        settings.EnableOnlineLyrics = settings.EnableSpotifyLyrics = settings.EnableYouTubeSubtitles = true;
+        settings.LyricsProviderPriority = "LRCLIB";
+        using var client = new System.Net.Http.HttpClient(new ProgressiveHandler(_ => Task.FromResult(
+            new System.Net.Http.HttpResponseMessage(System.Net.HttpStatusCode.OK)
+            { Content = new System.Net.Http.StringContent("{\"syncedLyrics\":\"[00:01.00]Browser lyrics\"}") })))
+        { BaseAddress = new Uri("https://lyrics.test") };
+        Field<LyricsService>(window, "_lyricsService").Dispose();
+        Set(window, "_lyricsService", new LyricsService(client, client));
+        Field<VNotch.Controllers.NotchTransitionCoordinator>(window, "_transitionCoordinator").ForceState(
+            NotchView.Media, VNotch.Controllers.NotchShapeState.Expanded, "Spotify Web test");
+        window.ExpandedContent.Visibility = Visibility.Visible;
+        var info = new MediaInfo
+        {
+            CurrentTrack = "Song", CurrentArtist = "Artist", SourceAppId = "Chrome", MediaSource = "Browser",
+            Duration = TimeSpan.FromMinutes(3), IsPlaying = true, IsAnyMediaPlaying = true
+        };
+        Invoke(window, "ApplyMediaUpdate", info);
+        Assert.NotNull(Field<string?>(window, "_subtitleRequestKey"));
+        var spotify = info.Clone();
+        spotify.MediaSource = "Spotify";
+        Invoke(window, "ApplyMediaUpdate", spotify);
+        await WpfFrameWaiter.UntilAsync(() => Field<List<LyricLine>?>(window, "_currentLyrics") is { Count: > 0 },
+            "Spotify Web lyrics", ct);
+        Assert.Equal("Browser lyrics", Field<List<LyricLine>>(window, "_currentLyrics")[0].Text);
+        Assert.Equal("Song|Artist", Field<VNotch.Controllers.SpotifyCanvasController>(window, "_spotifyCanvasController").CurrentTrackKey);
+        Assert.Null(Field<string?>(window, "_subtitleRequestKey"));
+    });
+
+    [Fact]
     public void LyricsUseThePlaybackClockWhenMetadataIsStaleOrStillSaysPlaying() => SharedStaTestRunner.Run(() =>
     {
         using var fixture = CreateFixture();

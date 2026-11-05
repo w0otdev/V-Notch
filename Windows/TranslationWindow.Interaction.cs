@@ -1,3 +1,4 @@
+using System.Runtime.InteropServices;
 using System.Windows;
 using System.Windows.Input;
 using System.Windows.Interop;
@@ -13,6 +14,19 @@ public partial class TranslationWindow
     private Size _expansionStartSize;
     private ScaleTransform? _expansionScale;
     private Point _dragStart, _dragOrigin;
+
+    [LibraryImport("VNotch.Native")]
+    private static partial int vn_translation_compute_popup_limits(
+        double workHeight, double dpiScaleY, out double outMaxHeight, out double outPanelMaxHeight);
+
+    [LibraryImport("VNotch.Native")]
+    private static partial int vn_translation_compute_viewport_height(
+        double panelMaxHeight, double chromeHeight, double currentMaxHeight, out double outHeight, out byte outChanged);
+
+    [LibraryImport("VNotch.Native")]
+    private static partial int vn_translation_compute_drag_position(
+        double originX, double originY, double startX, double startY, double screenX, double screenY,
+        out int outX, out int outY);
 
     private void PreparePopupExpansion()
     {
@@ -97,15 +111,20 @@ public partial class TranslationWindow
         _workArea = new Rect(work.X, work.Y, work.Width, work.Height);
         double scale = VisualTreeHelper.GetDpi(this).DpiScaleY;
         // Use the monitor's available height. Reposition the menu to fit instead of nesting scroll areas.
-        MaxHeight = Math.Max(60, work.Height / scale - 16);
-        TranslationPanel.MaxHeight = Math.Max(1, MaxHeight - 90);
+        if (vn_translation_compute_popup_limits(work.Height, scale, out double maxHeight, out double panelMaxHeight) != 0)
+            return;
+        MaxHeight = maxHeight;
+        TranslationPanel.MaxHeight = panelMaxHeight;
     }
 
     private bool UpdateResultViewportHeight()
     {
-        double chrome = TranslationPanel.RowDefinitions.Where((_, index) => index != 3).Sum(row => row.ActualHeight);
-        double height = Math.Clamp(TranslationPanel.MaxHeight - chrome, 1, 260);
-        if (Math.Abs(ResultScroll.MaxHeight - height) < .5) return false;
+        double chrome = 0;
+        var rows = TranslationPanel.RowDefinitions;
+        for (int i = 0; i < rows.Count; i++)
+            if (i != 3) chrome += rows[i].ActualHeight;
+        if (vn_translation_compute_viewport_height(TranslationPanel.MaxHeight, chrome, ResultScroll.MaxHeight, out double height, out byte changed) != 0 || changed == 0)
+            return false;
         ResultScroll.MaxHeight = height;
         return true;
     }
@@ -160,9 +179,12 @@ public partial class TranslationWindow
     internal void MovePopupDrag(Point screenPosition)
     {
         if (!_draggingPopup) return;
-        var position = _dragOrigin + (screenPosition - _dragStart);
+        if (vn_translation_compute_drag_position(
+            _dragOrigin.X, _dragOrigin.Y, _dragStart.X, _dragStart.Y, screenPosition.X, screenPosition.Y,
+            out int x, out int y) != 0)
+            return;
         Win32Interop.SetWindowPos(new WindowInteropHelper(this).Handle, IntPtr.Zero,
-            (int)Math.Round(position.X), (int)Math.Round(position.Y), 0, 0, 0x0010 | 0x0001 | 0x0004);
+            x, y, 0, 0, 0x0010 | 0x0001 | 0x0004);
     }
 
     internal void EndPopupDrag()

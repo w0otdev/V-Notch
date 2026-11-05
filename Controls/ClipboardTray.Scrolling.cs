@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Runtime.InteropServices;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
@@ -9,6 +10,38 @@ namespace VNotch.Controls;
 
 public sealed partial class ClipboardTray
 {
+    [LibraryImport("VNotch.Native")]
+    private static partial int vn_clipboard_scroll_category_drop_speed(
+        double x, double width, out double outSpeed);
+
+    [LibraryImport("VNotch.Native")]
+    private static partial int vn_clipboard_scroll_category_overscroll(
+        double excess, byte reduceMotion, out double outElasticX);
+
+    [LibraryImport("VNotch.Native")]
+    private static partial int vn_clipboard_scroll_step_category_frame(
+        double scrollTarget,
+        double scrollableWidth,
+        double currentOffset,
+        double currentElasticX,
+        double seconds,
+        byte reduceMotion,
+        out double outClampedTarget,
+        out double outNextOffset,
+        out double outNextElasticX,
+        out byte outStop);
+
+    [LibraryImport("VNotch.Native")]
+    private static partial int vn_clipboard_scroll_step_cards_frame(
+        double scrollTarget,
+        double scrollableWidth,
+        double currentPos,
+        double seconds,
+        byte reduceMotion,
+        out double outClampedTarget,
+        out double outNextPos,
+        out byte outStop);
+
     private readonly UiScheduledTimer _categoryDropTimer = new() { Interval = TimeSpan.FromMilliseconds(30) };
     private double _categoryDropSpeed;
     private long _categoryDropLastSeen;
@@ -27,10 +60,8 @@ public sealed partial class ClipboardTray
 
     internal static double CategoryDropSpeed(double x, double width)
     {
-        if (width <= 0 || x < 0 || x > width) return 0;
-        double edge = Math.Min(40, width / 2);
-        if (x < edge) return -12 * (1 - x / edge);
-        return x > width - edge ? 12 * (1 - (width - x) / edge) : 0;
+        _ = vn_clipboard_scroll_category_drop_speed(x, width, out double speed);
+        return speed;
     }
 
     private void CategoryDrop_Tick(object? sender, EventArgs e)
@@ -59,8 +90,11 @@ public sealed partial class ClipboardTray
     private void SetCategoryOverscroll(double excess)
     {
         // A bounded resistance curve keeps repeated wheel input within 20 DIPs.
-        _categoryElasticTransform.X = AnimationConfig.ReduceMotion ? 0
-            : -20 * Math.Tanh(excess / 120);
+        _ = vn_clipboard_scroll_category_overscroll(
+            excess,
+            AnimationConfig.ReduceMotion ? (byte)1 : (byte)0,
+            out double elasticX);
+        _categoryElasticTransform.X = elasticX;
     }
 
     private void InitializeCategoryScrolling()
@@ -125,28 +159,29 @@ public sealed partial class ClipboardTray
             ? _categoryFrameClock.TryAdvance(frame.RenderingTime, AnimationConfig.TargetFps, out seconds)
             : _categoryFrameClock.TryAdvance(Stopwatch.GetTimestamp(), AnimationConfig.TargetFps, out seconds);
         if (!advance) return;
-        _categoryScrollTarget = Math.Clamp(_categoryScrollTarget, 0, CategoryScroll.ScrollableWidth);
-        double current = CategoryScroll.HorizontalOffset;
-        double remaining = _categoryScrollTarget - current;
 
         // Smooth critically-damped relaxation of any drag overscroll back to 0
         // (pure exponential decay: never oscillates or rebounds past zero)
-        if (Math.Abs(_categoryElasticTransform.X) > 0.05)
-        {
-            _categoryElasticTransform.X *= Math.Exp(-24 * seconds);
-        }
-        else
-        {
-            _categoryElasticTransform.X = 0;
-        }
+        _ = vn_clipboard_scroll_step_category_frame(
+            _categoryScrollTarget,
+            CategoryScroll.ScrollableWidth,
+            CategoryScroll.HorizontalOffset,
+            _categoryElasticTransform.X,
+            seconds,
+            AnimationConfig.ReduceMotion ? (byte)1 : (byte)0,
+            out _categoryScrollTarget,
+            out double nextOffset,
+            out double nextElasticX,
+            out byte stop);
+        _categoryElasticTransform.X = nextElasticX;
 
-        if ((Math.Abs(remaining) < 0.5 && Math.Abs(_categoryElasticTransform.X) < 0.1) || AnimationConfig.ReduceMotion)
+        if (stop != 0)
         {
             CategoryScroll.ScrollToHorizontalOffset(_categoryScrollTarget);
             StopCategoryScrollFrames();
             return;
         }
-        CategoryScroll.ScrollToHorizontalOffset(current + remaining * (1 - Math.Exp(-22 * seconds)));
+        CategoryScroll.ScrollToHorizontalOffset(nextOffset);
     }
 
     private void Category_PointerDown(object sender, MouseButtonEventArgs e)
@@ -306,20 +341,26 @@ public sealed partial class ClipboardTray
             : _cardsFrameClock.TryAdvance(Stopwatch.GetTimestamp(), AnimationConfig.TargetFps, out seconds);
         if (!advance) return;
 
-        _cardsScrollTarget = Math.Clamp(_cardsScrollTarget, 0, scroll.ScrollableWidth);
         // Layout may round the applied offset. Feeding it back into the easing
         // loses subpixel movement and can stall the tail at high refresh rates.
-        double current = Math.Clamp(_cardsScrollPosition, 0, scroll.ScrollableWidth);
-        double remaining = _cardsScrollTarget - current;
+        _ = vn_clipboard_scroll_step_cards_frame(
+            _cardsScrollTarget,
+            scroll.ScrollableWidth,
+            _cardsScrollPosition,
+            seconds,
+            AnimationConfig.ReduceMotion ? (byte)1 : (byte)0,
+            out _cardsScrollTarget,
+            out double nextPos,
+            out byte stop);
 
-        if (Math.Abs(remaining) < 0.5 || AnimationConfig.ReduceMotion)
+        if (stop != 0)
         {
             scroll.ScrollToHorizontalOffset(_cardsScrollTarget);
             StopCardsScrollFrames();
             return;
         }
 
-        _cardsScrollPosition = current + remaining * (1 - Math.Exp(-22 * seconds));
+        _cardsScrollPosition = nextPos;
         scroll.ScrollToHorizontalOffset(_cardsScrollPosition);
     }
 

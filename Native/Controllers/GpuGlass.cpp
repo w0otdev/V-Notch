@@ -498,7 +498,8 @@ public:
             if (hr == S_FALSE || !consumed) { ++consumerStalls; return S_FALSE; }
             target.awaitingConsumer = false;
         }
-        int levels = f.blur == 0 ? 0 : std::clamp(static_cast<int>(std::ceil(std::log2(std::max(1.0f, f.blur)))), 1, 5);
+        const float effectiveBlur = f.blur <= 0.0f ? 0.0f : std::clamp(std::pow(f.blur / 28.0f, 0.55f) * 28.0f, 0.0f, 60.0f);
+        int levels = effectiveBlur == 0.0f ? 0 : std::clamp(static_cast<int>(std::ceil(std::log2(std::max(1.0f, effectiveBlur)))), 1, 5);
         if (static_cast<UINT>(f.width) > workWidth || static_cast<UINT>(f.height) > workHeight) {
             // Grow in bounded buckets, retain the peak capacity across view
             // transitions, and render only the active subrectangle. Never shrink
@@ -531,10 +532,10 @@ public:
             D3D11_TEXTURE2D_DESC desktopDesc{}; desktopTexture->GetDesc(&desktopDesc);
             Draw({ desktopView.Get(), desktopDesc.Width, desktopDesc.Height, desktopDesc.Width, desktopDesc.Height },
                 pyramid[0].rtv.Get(), f.width, f.height, crop.Get(), data);
-            data.pass[2] = std::max(1.0f, static_cast<float>(f.blur) / 32.0f);
+            data.pass[2] = std::max(1.0f, effectiveBlur / 16.0f);
             const float upper = static_cast<float>(1 << levels);
             const float lower = levels == 1 ? 0.0f : upper * 0.5f;
-            const float fraction = std::clamp((f.blur - lower) / std::max(1.0f, upper - lower), 0.0f, 1.0f);
+            const float fraction = std::clamp((effectiveBlur - lower) / std::max(1.0f, upper - lower), 0.0f, 1.0f);
             const float blend = fraction * fraction * (3.0f - 2.0f * fraction);
             for (int i = 1; i <= levels; ++i) {
                 data.pass[0] = 1.0f / activeW[i-1]; data.pass[1] = 1.0f / activeH[i-1];

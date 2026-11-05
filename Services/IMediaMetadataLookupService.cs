@@ -17,4 +17,7 @@ public interface IMediaMetadataLookupService
 
     Task<string?> TryGetSpotifyFullArtistsAsync(string title, string primaryArtist, TimeSpan duration = default, string? albumTitle = null, CancellationToken ct = default)
         => Task.FromResult<string?>(null);
+
+    Task<string?> TryGetSpotifyArtworkUrlAsync(string title, string primaryArtist, TimeSpan duration = default, string? albumTitle = null, CancellationToken ct = default)
+        => Task.FromResult<string?>(null);
 }

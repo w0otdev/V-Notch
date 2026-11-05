@@ -1,3 +1,4 @@
+using System.Runtime.InteropServices;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
@@ -9,6 +10,25 @@ namespace VNotch.Controls;
 
 public sealed partial class ClipboardTray
 {
+    [LibraryImport("VNotch.Native")]
+    private static partial int vn_clipboard_category_compute_preview_shift(
+        int itemIndex,
+        int sourceIndex,
+        int destinationIndex,
+        double span,
+        out double outShift);
+
+    [LibraryImport("VNotch.Native")]
+    private static partial int vn_clipboard_category_compute_gap_x(
+        int sourceIndex,
+        int beforeIndex,
+        double beforeOriginX,
+        double lastOriginX,
+        double lastWidth,
+        double lastMarginRight,
+        double span,
+        out double outGapX);
+
     private sealed record CategoryPreview(Transform Original, TranslateTransform Offset, int Index);
     private readonly Dictionary<Button, CategoryPreview> _categoryReorderPreviews = [];
     private bool _categoryReorderVisualsReady;
@@ -60,34 +80,37 @@ public sealed partial class ClipboardTray
         CategoryReorderGhost.Width = CategoryReorderMarker.Width = sourceButton.ActualWidth;
         CategoryReorderGhost.Height = CategoryReorderMarker.Height = sourceButton.ActualHeight;
         int sourceIndex = Array.IndexOf(_categoryItems, source);
-        int destination = _categoryReorderBeforeId == null ? _categoryItems.Length - 1 :
+        int beforeIndex = _categoryReorderBeforeId == null ? -1 :
             Array.FindIndex(_categoryItems, category => category.Name == _categoryReorderBeforeId);
-        if (_categoryReorderBeforeId != null && destination > sourceIndex) destination--;
+        if (_categoryReorderBeforeId != null && beforeIndex < 0) beforeIndex = _categoryItems.Length;
+        _ = vn_clipboard_category_resolve_move(_categoryItems.Length, sourceIndex, beforeIndex, out int destination, out _);
         double span = sourceButton.ActualWidth + sourceButton.Margin.Left + sourceButton.Margin.Right;
         foreach (var (_, preview) in _categoryReorderPreviews)
         {
-            int index = preview.Index;
-            double shift = 0;
-            if (sourceIndex < destination && index > sourceIndex && index <= destination)
-                shift = -span;
-            else if (sourceIndex > destination && index >= destination && index < sourceIndex)
-                shift = span;
-
+            _ = vn_clipboard_category_compute_preview_shift(preview.Index, sourceIndex, destination, span, out double shift);
             AnimateCategoryReorderValue(preview.Offset, TranslateTransform.XProperty, shift, 170);
         }
 
-        double x;
-        if (_categoryReorderBeforeId != null)
-        {
-            var before = _categoryItems.First(category => category.Name == _categoryReorderBeforeId);
-            x = CategorySlotOrigin(before).X - (Array.IndexOf(_categoryItems, before) > sourceIndex ? span : 0);
-        }
+        double beforeOriginX = 0, lastOriginX = 0, lastWidth = 0, lastMarginRight = 0;
+        if (beforeIndex >= 0 && beforeIndex < _categoryItems.Length)
+            beforeOriginX = CategorySlotOrigin(_categoryItems[beforeIndex]).X;
         else
         {
             var last = _categoryItems[^1];
             var lastButton = CategoryButton(last)!;
-            x = CategorySlotOrigin(last).X + lastButton.ActualWidth + lastButton.Margin.Right - span;
+            lastOriginX = CategorySlotOrigin(last).X;
+            lastWidth = lastButton.ActualWidth;
+            lastMarginRight = lastButton.Margin.Right;
         }
+        _ = vn_clipboard_category_compute_gap_x(
+            sourceIndex,
+            beforeIndex < _categoryItems.Length ? beforeIndex : -1,
+            beforeOriginX,
+            lastOriginX,
+            lastWidth,
+            lastMarginRight,
+            span,
+            out double x);
         Canvas.SetTop(CategoryReorderMarker, Math.Max(0, (CategoryScroll.ActualHeight - sourceButton.ActualHeight) / 2));
         AnimateCategoryReorderValue(CategoryReorderGapOffset, TranslateTransform.XProperty, x, _categoryReorderGapPlaced ? 170 : 0);
         _categoryReorderGapPlaced = true;

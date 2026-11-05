@@ -36,13 +36,22 @@ public:
         double saturation_sum = 0.0;
         int32_t near_gray_count = 0;
         int32_t bright_count = 0;
+        int32_t transparent_count = 0;
+        int32_t opaque_count = 0;
         int32_t buf_len = static_cast<int32_t>(pixels.size());
 
         for (int32_t i = 0; i + 3 < buf_len; i += 4) {
             uint8_t b = pixels[i];
             uint8_t g = pixels[i + 1];
             uint8_t r = pixels[i + 2];
+            uint8_t a = pixels[i + 3];
 
+            if (a < 200) {
+                transparent_count++;
+                continue;
+            }
+
+            opaque_count++;
             int32_t max_c = std::max<int32_t>(r, std::max<int32_t>(g, b));
             int32_t min_c = std::min<int32_t>(r, std::min<int32_t>(g, b));
             int32_t delta = max_c - min_c;
@@ -57,17 +66,20 @@ public:
             saturation_sum += max_c == 0 ? 0.0 : static_cast<double>(delta) / max_c;
         }
 
+        if (opaque_count <= 0) return true;
+        if (reject_simple_color_icons && transparent_count * 50 >= pixel_count) return true;
+
         int32_t unique_bin_count = 0;
         for (size_t i = 0; i < bins.size(); i++) {
             unique_bin_count += std::popcount(bins[i]);
         }
 
         int32_t unique_lum_bins = std::popcount(lum_bins);
-        double avg_saturation = saturation_sum / pixel_count;
-        double gray_ratio = static_cast<double>(near_gray_count) / pixel_count;
-        double bright_ratio = static_cast<double>(bright_count) / pixel_count;
+        double avg_saturation = saturation_sum / opaque_count;
+        double gray_ratio = static_cast<double>(near_gray_count) / opaque_count;
+        double bright_ratio = static_cast<double>(bright_count) / opaque_count;
 
-        return (reject_simple_color_icons && unique_bin_count <= 18) ||
+        return (reject_simple_color_icons && unique_bin_count <= 18 && unique_lum_bins < 12) ||
                (unique_bin_count <= 18 &&
                 unique_lum_bins <= 12 &&
                 avg_saturation <= 0.08 &&
@@ -131,11 +143,10 @@ private:
         }
 
         bool is_unverified_browser_icon = (x.is_browser_session != 0) &&
-                                          (x.is_browser_or_youtube_platform != 0) &&
                                           (x.has_verified_youtube_thumb == 0);
 
-        return (x.is_browser_or_youtube_platform != 0) &&
-               (x.pixel_width <= 300 || is_unverified_browser_icon);
+        return ((x.is_browser_or_youtube_platform != 0) && x.pixel_width <= 300) ||
+               is_unverified_browser_icon;
     }
 };
 

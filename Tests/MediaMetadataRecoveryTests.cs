@@ -41,6 +41,25 @@ public sealed class MediaMetadataRecoveryTests
     }
 
     [Theory]
+    [InlineData("Chuyện Đôi Ta • Emcee L, Da LAB - Google Chrome", "Spotify")]
+    [InlineData("Chuyện Đôi Ta • Emcee L, Da LAB — Mozilla Firefox", "Spotify")]
+    [InlineData("Chuyện Đôi Ta • Khác - Google Chrome", "Browser")]
+    [InlineData("Bài khác • Emcee L, Da LAB - Google Chrome", "Browser")]
+    public void SpotifyWebCaptionMustMatchTheBrowserSession(string caption, string expected)
+    {
+        using var fixture = new Fixture();
+        var info = fixture.Info("Chuyện Đôi Ta");
+        info.CurrentArtist = "Emcee L, Da LAB";
+        // The same browser previously played a YouTube video.
+        Invoke(fixture.Service, "SetSessionSourceOverride", info, "YouTube");
+        Assert.True(WindowTitleScanner.MatchesPlatformTitle(caption));
+        fixture.Scanner.Titles.Add(caption);
+        Resolve(fixture, info);
+        Assert.Equal(expected, info.MediaSource);
+        Assert.Equal(expected == "Spotify", info.IsSpotifyRunning);
+    }
+
+    [Theory]
     [InlineData(true)]
     [InlineData(false)]
     public void YouTubeTitleKeepsOnlyARecentlyConfirmedArtist(bool recent)

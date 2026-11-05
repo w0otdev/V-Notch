@@ -122,6 +122,7 @@ public partial class MainWindow
         int generation = ++_lyricsFetchGeneration;
         _lyricsTrackKey = trackKey;
         _syncedTextSource = SyncedTextSource.SpotifyLyrics;
+        _subtitleRequestKey = null;
 
         if (info.Platform != MediaPlatform.Spotify)
         {

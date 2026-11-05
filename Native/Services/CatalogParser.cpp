@@ -139,6 +139,19 @@ VN_EXPORT int32_t vn_catalog_select_utf8(const uint8_t* bytes, int32_t length, i
         Text best, best_key;
         int best_value = (kind == 2 || kind == 6) ? 0 : INT32_MIN;
         *api_code = static_cast<int32_t>(root.get("code").integer());
+        auto cover_art = [](Json track) {
+            Text best_url;
+            int64_t best_width = -1;
+            track.get("albumOfTrack").get("coverArt").get("sources").each([&](Json, Json src) {
+                auto url = src.get("url").text();
+                if (!url.empty()) {
+                    auto w = src.get("width").integer();
+                    if (w > best_width) { best_width = w; best_url = std::move(url); }
+                }
+                return true;
+            });
+            return best_url;
+        };
         auto consider_spotify = [&](Json track, bool pathfinder) {
             auto candidate_id = id(track);
             if (candidate_id.empty()) return;
@@ -169,7 +182,7 @@ VN_EXPORT int32_t vn_catalog_select_utf8(const uint8_t* bytes, int32_t length, i
                 }
             }
             value += artist_score;
-            if (value > best_value) { best_value = value; best = std::move(candidate_id); }
+            if (value > best_value) { best_value = value; best = std::move(candidate_id); if (pathfinder) best_key = cover_art(track); }
         };
         if (kind == 0) {
             auto visit = [&](auto&& self, Json value, int depth) -> void {
@@ -179,7 +192,8 @@ VN_EXPORT int32_t vn_catalog_select_utf8(const uint8_t* bytes, int32_t length, i
             };
             visit(visit, root, 0);
         } else if (kind == 1) {
-            root.get("data").get("searchV2").get("tracksV2").get("items").each([&](Json, Json item) { consider_spotify(item.get("item").get("data"), true); return true; });
+            if (root.get("thumbnail_url").is('"')) best_key = root.get("thumbnail_url").text();
+            else root.get("data").get("searchV2").get("tracksV2").get("items").each([&](Json, Json item) { consider_spotify(item.get("item").get("data"), true); return true; });
         } else if (kind == 7) {
             const auto expected_album = vnotch::normalize_for_loose_match_impl(raw_album);
             if (!expected_title.empty() && !expected_artist.empty()) root.get("data").get("searchV2").get("tracksV2").get("items").each([&](Json, Json item) {
@@ -202,7 +216,7 @@ VN_EXPORT int32_t vn_catalog_select_utf8(const uint8_t* bytes, int32_t length, i
                     if (album_name == expected_album) value += 50;
                     else if (!album_name.empty()) value -= 20;
                 }
-                if (value > best_value) { best_value = value; best = std::move(display); }
+                if (value > best_value) { best_value = value; best = std::move(display); best_key = cover_art(track); }
                 return true;
             });
         } else if (kind == 2 || kind == 6) {
@@ -213,22 +227,25 @@ VN_EXPORT int32_t vn_catalog_select_utf8(const uint8_t* bytes, int32_t length, i
                 if (!search_item.is('{')) return VN_OK;
             }
             auto consider = [&](Json item) {
-                Text candidate_title, candidate_artist, candidate_album;
+                Text candidate_title, candidate_artist, candidate_album, candidate_art;
                 int64_t milliseconds = 0;
                 if (kind == 2) {
                     candidate_title = item.get("trackName").text(); candidate_artist = item.get("artistName").text(); candidate_album = item.get("collectionName").text();
                     milliseconds = item.get("trackTimeMillis").integer();
+                    candidate_art = item.get("artworkUrl100").text();
+                    if (const auto pos = candidate_art.rfind(u"100x100bb"); pos != Text::npos) candidate_art.replace(pos, 9, u"600x600bb");
                 } else {
                     const auto source = search_item.is('{') ? search_item : item;
                     candidate_title = source.get("title").text(); append_artists(item.get("contributors"), candidate_artist, u" & "); candidate_album = source.get("album").get("title").text();
                     const auto seconds = source.get("duration").integer(); milliseconds = seconds >= 0 && seconds <= INT64_MAX / 1000 ? seconds * 1000 : 0;
+                    candidate_art = first(source.get("album"), {"cover_xl", "cover_big", "cover_medium", "cover"});
                 }
                 std::array<char16_t, 512> formatted{}; int32_t count = 0, value = 0;
                 if (vn_media_metadata_format_spotify_artists(candidate_artist.data(), static_cast<int32_t>(candidate_artist.size()), raw_artist.data(), static_cast<int32_t>(raw_artist.size()),
                     candidate_title.data(), static_cast<int32_t>(candidate_title.size()), raw_title.data(), static_cast<int32_t>(raw_title.size()), milliseconds, target_ms,
                     formatted.data(), static_cast<int32_t>(formatted.size()), &count, &value) == VN_OK && count > 0 && value > 0) {
                     value += album_bonus(candidate_album, raw_album);
-                    if (value > best_value) { best_value = value; best.assign(formatted.data(), count); }
+                    if (value > best_value) { best_value = value; best.assign(formatted.data(), count); best_key = std::move(candidate_art); }
                 }
             };
             if (kind == 6) consider(root);

@@ -178,7 +178,7 @@ public sealed class SpotifyCanvasControllerTests
     }
 
     [Fact]
-    public void UpdateSettings_WhenDisabled_HidesAndResets()
+    public void UpdateSettings_WhenDisabled_CancelsLookupAndHidesVideo()
     {
         var presenter = new FakeSpotifyCanvasPresenter();
         using var service = CreateStubService(_ => new HttpResponseMessage(HttpStatusCode.NotFound));
@@ -190,9 +190,51 @@ public sealed class SpotifyCanvasControllerTests
 
         controller.UpdateSettings(new NotchSettings { SpotifyCanvasBrightness = 0.8 });
 
-        Assert.Equal(string.Empty, controller.CurrentTrackKey);
+        Assert.Null(controller.CurrentUri);
         Assert.False(controller.HasPendingFetch);
         Assert.Contains(presenter.HideCalls, c => c.clearSource);
+    }
+
+    [Theory]
+    [InlineData(true, true)]
+    [InlineData(true, false)]
+    [InlineData(false, true)]
+    [InlineData(false, false)]
+    public async Task ConnectingStartsLookupForAlreadySelectedTrack(bool canvasEnabled, bool visible)
+    {
+        int requests = 0;
+        using var service = CreateStubService(_ =>
+        {
+            requests++;
+            return new HttpResponseMessage(HttpStatusCode.NotFound);
+        });
+        using var controller = new SpotifyCanvasController(service, new FakeSpotifyCanvasPresenter(), action => action());
+        var settings = OptedInSettings();
+        settings.EnableSpotifyCanvas = canvasEnabled;
+        settings.SpotifySpDc = "";
+        controller.UpdateSettings(settings);
+        controller.SetSurfaceVisibility(visible);
+        controller.UpdateTrack("Track", "Artist", TimeSpan.FromMinutes(3), MediaPlatform.Spotify, true);
+        Assert.Equal(0, controller.CurrentRequestId);
+
+        controller.UpdateSettings(OptedInSettings());
+        if (!visible)
+        {
+            Assert.Equal(0, requests);
+            controller.SetSurfaceVisibility(true);
+        }
+        Assert.Equal(1, controller.CurrentRequestId);
+        await controller.InFlightTask!;
+        Assert.True(requests > 0);
+
+        var reconnected = OptedInSettings();
+        reconnected.SpotifyCanvasBrightness = 0.9;
+        controller.UpdateSettings(reconnected);
+        Assert.Equal(1, controller.CurrentRequestId);
+        reconnected.SpotifySpDc = "replacement-session";
+        controller.UpdateSettings(reconnected);
+        Assert.Equal(2, controller.CurrentRequestId);
+        await controller.InFlightTask!;
     }
 
     [Fact]

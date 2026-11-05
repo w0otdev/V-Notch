@@ -1,5 +1,6 @@
 using System;
 using System.Globalization;
+using System.Runtime.InteropServices;
 using System.Windows;
 using System.Windows.Media;
 using System.Windows.Threading;
@@ -7,8 +8,32 @@ using VNotch.Services;
 
 namespace VNotch.Controls;
 
-public class AnalogClock : FrameworkElement
+public partial class AnalogClock : FrameworkElement
 {
+    [StructLayout(LayoutKind.Sequential, Pack = 1)]
+    private struct VnClockTickSegment
+    {
+        public double X1;
+        public double Y1;
+        public double X2;
+        public double Y2;
+        public byte IsMajor;
+    }
+
+    [LibraryImport("VNotch.Native")]
+    private static partial int vn_analog_clock_calculate_face_radius(
+        double width, double height, double facePadding, out double outRadius);
+
+    [LibraryImport("VNotch.Native")]
+    private static partial int vn_analog_clock_compute_hand_angles(
+        int hour, int minute, int second, int millisecond,
+        out double outHourAngle, out double outMinuteAngle, out double outSecondAngle);
+
+    [LibraryImport("VNotch.Native")]
+    private static partial int vn_analog_clock_compute_ticks(
+        double centerX, double centerY, double radius,
+        Span<VnClockTickSegment> outSegments, int segmentCap, out int outWritten);
+
     private static readonly Brush HandBrush = VNotch.Services.UiPalette.PrimaryBrush;
     private static readonly Brush MajorTickBrush = VNotch.Services.UiPalette.PrimaryBrush;
     private static readonly Brush MinorTickBrush = CreateFrozenBrush(0x6E, 0x6E, 0x73);
@@ -174,7 +199,7 @@ public class AnalogClock : FrameworkElement
     }
 
     internal static double CalculateFaceRadius(double width, double height) =>
-        Math.Max(0, Math.Min(width, height) / 2.0 - FacePadding);
+        vn_analog_clock_calculate_face_radius(width, height, FacePadding, out double radius) == 0 ? radius : 0.0;
 
     private DrawingGroup BuildStaticFace(Point center, double r, int day, double pixelsPerDip)
     {
@@ -193,18 +218,17 @@ public class AnalogClock : FrameworkElement
 
     private static void DrawTicks(DrawingContext dc, Point center, double r)
     {
-        double outer = r * 0.97;
-        for (int i = 0; i < 60; i++)
-        {
-            bool isFive = i % 5 == 0;
-            double angle = i * 6.0 * Math.PI / 180.0;
-            double sin = Math.Sin(angle);
-            double cos = Math.Cos(angle);
+        Span<VnClockTickSegment> segments = stackalloc VnClockTickSegment[60];
+        if (vn_analog_clock_compute_ticks(center.X, center.Y, r, segments, segments.Length, out int written) != 0)
+            return;
 
-            double innerLen = isFive ? r * 0.86 : r * 0.91;
-            var p1 = new Point(center.X + sin * innerLen, center.Y - cos * innerLen);
-            var p2 = new Point(center.X + sin * outer, center.Y - cos * outer);
-            dc.DrawLine(isFive ? MajorRulerPen : MinorTickPen, p1, p2);
+        for (int i = 0; i < written; i++)
+        {
+            ref readonly var seg = ref segments[i];
+            dc.DrawLine(
+                seg.IsMajor != 0 ? MajorRulerPen : MinorTickPen,
+                new Point(seg.X1, seg.Y1),
+                new Point(seg.X2, seg.Y2));
         }
     }
 
@@ -267,12 +291,14 @@ public class AnalogClock : FrameworkElement
 
     private void UpdateHandAngles(DateTime now)
     {
-        double seconds = now.Second + now.Millisecond / 1000.0;
-        double minutes = now.Minute + seconds / 60.0;
-        double hours = (now.Hour % 12) + minutes / 60.0;
-        _hourRotation.Angle = hours * 30.0;
-        _minuteRotation.Angle = minutes * 6.0;
-        _secondRotation.Angle = seconds * 6.0;
+        if (vn_analog_clock_compute_hand_angles(
+                now.Hour, now.Minute, now.Second, now.Millisecond,
+                out double hourAngle, out double minuteAngle, out double secondAngle) != 0)
+            return;
+
+        _hourRotation.Angle = hourAngle;
+        _minuteRotation.Angle = minuteAngle;
+        _secondRotation.Angle = secondAngle;
     }
 
     private static void DrawRetainedHand(DrawingContext dc, Point center, RotateTransform rotation,

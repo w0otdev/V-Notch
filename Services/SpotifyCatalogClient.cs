@@ -110,6 +110,54 @@ internal sealed partial class SpotifyCatalogClient
         return json == null ? null : ParsePathfinderTrackArtists(json, trackName, artistName, albumName);
     }
 
+    internal async Task<string?> ResolveTrackArtworkUrlAsync(
+        string trackName,
+        string artistName,
+        string? albumName,
+        string accessToken,
+        CancellationToken token)
+    {
+        string hash = _metadata.FindTracksHash;
+        PathfinderQueryResult queryResult = await QueryPathfinderAsync(
+                trackName, artistName, accessToken, hash, token)
+            .ConfigureAwait(false);
+        byte[]? json = queryResult.Json;
+
+        if (queryResult.QueryMetadataRejected ||
+            (json != null && NativeCatalogParser.ContainsPersistedQueryNotFound(json)))
+        {
+            string? refreshedHash = await _metadata.RefreshAsync(SpotifyQuery.FindTracks, hash, token).ConfigureAwait(false);
+            if (!string.IsNullOrEmpty(refreshedHash))
+            {
+                queryResult = await QueryPathfinderAsync(
+                        trackName, artistName, accessToken, refreshedHash, token)
+                    .ConfigureAwait(false);
+                json = queryResult.Json;
+            }
+        }
+
+        if (json == null) return null;
+
+        var selected = NativeCatalogParser.Select(json, 7, trackName, artistName, album: albumName);
+        if (!string.IsNullOrEmpty(selected.Key))
+            return selected.Key;
+
+        selected = NativeCatalogParser.Select(json, 1, trackName, artistName);
+        if (!string.IsNullOrEmpty(selected.Key))
+            return selected.Key;
+
+        if (string.IsNullOrEmpty(selected.Text))
+            return null;
+
+        using var oembedRequest = new HttpRequestMessage(
+            HttpMethod.Get,
+            $"https://open.spotify.com/oembed?url=https://open.spotify.com/track/{Uri.EscapeDataString(selected.Text)}");
+        using var oembedResponse = await _http.SendAsync(
+            oembedRequest, HttpCompletionOption.ResponseHeadersRead, token).ConfigureAwait(false);
+        byte[]? oembedJson = await ReadLimitedBytesAsync(oembedResponse, token).ConfigureAwait(false);
+        return oembedJson == null ? null : NativeCatalogParser.Select(oembedJson, 1, "", "").Key;
+    }
+
     private async Task<PathfinderQueryResult> QueryPathfinderAsync(
         string trackName,
         string artistName,

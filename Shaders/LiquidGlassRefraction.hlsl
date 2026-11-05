@@ -230,12 +230,13 @@ float4 main(float2 uv : TEXCOORD) : COLOR
 
     // OverShifted parameters
     float nSquircle = max(powerFactor, 1.05);
+    float bevelAmt = saturate(bevelMode);
     float paramA = max(u_a, 0.0);
     float paramB = max(u_b, 0.0);
     float paramC = max(u_c, 0.1);
-    float paramD = max(u_d, 0.1);
+    float paramD = max(u_d, 0.1) * lerp(1.0, 0.58, bevelAmt);
     float fPow   = max(u_fPower, 0.1);
-    float bend   = max(edgeBend, 0.1);
+    float bend   = max(edgeBend, 0.05);
 
     // Compute SDF and normal
     float3 field = notchDistanceField(localPos, halfSize, topCornerR, bottomCornerR, nSquircle);
@@ -255,6 +256,7 @@ float4 main(float2 uv : TEXCOORD) : COLOR
     // Optical Rim & Normalized depth [0, 1] from edge to center
     float notchRadius = min(halfSize.x, halfSize.y);
     float distNorm = saturate(insidePixels / max(notchRadius, 1.0));
+    float oneMinusDist = 1.0 - distNorm;
 
     // -----------------------------------------------------------------
     // Pointer interaction & dynamic ripple (only evaluated when pressed > 0.001)
@@ -290,14 +292,28 @@ float4 main(float2 uv : TEXCOORD) : COLOR
     }
 
     // -----------------------------------------------------------------
-    // OverShifted Exponential Refraction Lens Formula
+    // OverShifted Exponential Refraction Lens Formula + Deep Meniscus Dome
     // -----------------------------------------------------------------
     float fVal = f_refract(distNorm, paramA, paramB, paramC, paramD);
-    float refractFactor = (abs(fPow - 1.0) < 0.001) ? fVal : pow(max(fVal, 0.0001), fPow);
+    float domePull = (oneMinusDist * oneMinusDist) * lerp(0.16, 0.36, bevelAmt) * saturate(paramB * 0.45);
+    float refractBase = clamp(fVal - domePull, 0.02, 1.25);
+    float refractFactor = (abs(fPow - 1.0) < 0.001) ? refractBase : pow(max(refractBase, 0.0001), fPow);
 
     // OverShifted displacement vector mapping background coordinates
     float2 samplePNorm = pNorm * refractFactor;
     float2 displacement = (samplePNorm - pNorm) * halfSize * bend;
+
+    // Organic glass surface wave distortion (driven by u_glowEdge0)
+    float distortAmt = clamp(u_glowEdge0, 0.0, 2.0);
+    if (distortAmt > 0.001)
+    {
+        float2 wavePhase = localPos * 0.085;
+        float2 wave = float2(
+            sin(wavePhase.x + wavePhase.y * 0.7) + cos(wavePhase.y * 1.3 - wavePhase.x * 0.5) * 0.5,
+            cos(wavePhase.y - wavePhase.x * 0.6) + sin(wavePhase.x * 1.2 + wavePhase.y * 0.4) * 0.5);
+        float waveMask = lerp(0.35, 1.0, oneMinusDist);
+        displacement += wave * (distortAmt * 14.0 * waveMask);
+    }
 
     // Add pointer ripple displacement
     if (pressed > 0.001)
@@ -312,30 +328,58 @@ float4 main(float2 uv : TEXCOORD) : COLOR
     // -----------------------------------------------------------------
     float3 col = float3(0.0, 0.0, 0.0);
     float dispMag = length(displacement);
-    float chromaAmount = max(u_chroma, 0.0) * (1.0 - distNorm) * saturate(dispMag * 0.5) * 2.0;
+    float2 outwardNormal = -inwardNormal;
+    float chromaEdge = pow(oneMinusDist, 0.75);
+    float chromaAmount = max(u_chroma, 0.0) * (0.45 + 0.55 * chromaEdge) * (1.2 + saturate(dispMag * 0.12) * 3.5);
 
     float activeBlur = clamp(blurRadius, 0.0, 28.0);
     if (chromaAmount > 0.001)
     {
-        float2 chromaOffset = safeNormalize(displacement) * chromaAmount * 1.5;
-        float3 sampleR = sampleSource(sourcePixel + chromaOffset, rcpSourceSize);
-        float3 sampleG = sampleSource(sourcePixel, rcpSourceSize);
-        float3 sampleB = sampleSource(sourcePixel - chromaOffset, rcpSourceSize);
+        float2 chromaDir = dispMag > 0.001 ? (displacement / dispMag) : outwardNormal;
+        float2 chromaOffset = chromaDir * min(chromaAmount * 4.5, 14.0);
+        float3 sampleR = sampleBlurredSource(sourcePixel + chromaOffset, rcpSourceSize, activeBlur);
+        float3 sampleG = sampleBlurredSource(sourcePixel, rcpSourceSize, activeBlur);
+        float3 sampleB = sampleBlurredSource(sourcePixel - chromaOffset, rcpSourceSize, activeBlur);
         col = float3(sampleR.r, sampleG.g, sampleB.b);
     }
     else
     {
-        col = sampleSource(sourcePixel, rcpSourceSize);
+        col = sampleBlurredSource(sourcePixel, rcpSourceSize, activeBlur);
     }
 
     // -----------------------------------------------------------------
-    // Apple Liquid Glass Micro-Bevel Chamfer Hairline (outer 1.8px)
+    // Fresnel Inner Bloom & Specular Rim Glint (u_glowBias & u_glowWeight)
     // -----------------------------------------------------------------
-    float2 outwardNormal = -inwardNormal;
-    if (insidePixels < 1.8)
+    float fresnelStrength = clamp(u_glowBias, 0.0, 2.5);
+    if (fresnelStrength > 0.001)
+    {
+        float fresnelWidth = lerp(22.0, 38.0, bevelAmt);
+        float fresnelBand = 1.0 - smoother01(insidePixels / fresnelWidth);
+        float topBias = saturate(-outwardNormal.y * 0.5 + 0.5);
+        float fresnelCurve = fresnelBand * fresnelBand * (0.65 + 0.35 * topBias);
+        float3 fresnelTint = lerp(float3(0.82, 0.90, 1.0), float3(1.0, 1.0, 1.0), topBias);
+        col = lerp(col, saturate(col * 1.18 + fresnelTint * 0.30), saturate(fresnelCurve * fresnelStrength * 0.58));
+    }
+
+    float specStrength = clamp(u_glowWeight, 0.0, 2.5);
+    if (specStrength > 0.001)
+    {
+        float dirGlow = saturate(directionalGlow(pNorm) * 0.5 + 0.5);
+        float bevelWidth = lerp(3.2, 8.0, bevelAmt);
+        float outerBevel = smoothstep(bevelWidth, 0.15, insidePixels);
+        float innerSheen = (1.0 - smoother01(insidePixels / lerp(12.0, 26.0, bevelAmt))) * 0.38;
+        float specRim = (outerBevel * (0.45 + 0.55 * dirGlow) + innerSheen * pow4(dirGlow)) * specStrength * 0.42;
+        col += float3(specRim, specRim, specRim * 1.04);
+    }
+
+    // -----------------------------------------------------------------
+    // Apple Liquid Glass Micro-Bevel Chamfer Hairline (outer 1.8px..3.5px)
+    // -----------------------------------------------------------------
+    float chamferWidth = lerp(1.8, 3.4, bevelAmt);
+    if (insidePixels < chamferWidth)
     {
         float topLight = saturate(-outwardNormal.y * 0.65 + 0.35);
-        float bevelHairline = smoothstep(1.8, 0.2, insidePixels) * topLight * 0.14;
+        float bevelHairline = smoothstep(chamferWidth, 0.2, insidePixels) * topLight * lerp(0.14, 0.24, bevelAmt);
         col += float3(bevelHairline, bevelHairline, bevelHairline);
     }
 
@@ -347,7 +391,7 @@ float4 main(float2 uv : TEXCOORD) : COLOR
     {
         // Optical rim factor: confined strictly to the outer perimeter rim (18px)
         // This ensures the central notch body remains crystal clear with ZERO lighting seams
-        float rimWidth = max(bottomCornerR * 0.85, 18.0);
+        float rimWidth = max(bottomCornerR * 0.85, lerp(18.0, 28.0, bevelAmt));
         float rim = 1.0 - smoother01(insidePixels / rimWidth);
 
         if (rim > 0.0001 || pressed > 0.001)
@@ -365,7 +409,7 @@ float4 main(float2 uv : TEXCOORD) : COLOR
             float localLightFalloff = 1.0 - smoother01(lightDistance);
 
             // Specular highlight along the glass outer squircle rim (ambient when idle, focused when pressed)
-            float specular = lightFacing4 * rim * touchLightStrength * lerp(0.35, 1.0, localLightFalloff) * lerp(0.15, 1.0, pressed);
+            float specular = lightFacing4 * rim * touchLightStrength * lerp(0.45, 1.0, localLightFalloff) * lerp(0.55, 1.0, pressed);
 
             // Ambient touch light glow radiating from touch / cursor position during click / hold
             if (pressed > 0.001)
@@ -381,9 +425,19 @@ float4 main(float2 uv : TEXCOORD) : COLOR
             }
 
             // Specular surface sheen spill along outer rim
-            float3 ambientSpill = saturate(col * 1.08 + 0.02);
-            col += specular * (float3(0.024, 0.024, 0.024) + ambientSpill * 0.024);
+            float3 ambientSpill = saturate(col * 1.08 + 0.04);
+            col += specular * (float3(0.085, 0.088, 0.095) + ambientSpill * 0.075);
         }
+    }
+
+    // -----------------------------------------------------------------
+    // Frosted Glass Physical Micro-Grain (u_noise)
+    // -----------------------------------------------------------------
+    float noiseStrength = clamp(u_noise, 0.0, 1.0);
+    if (noiseStrength > 0.001)
+    {
+        float grain = rand(floor(localPos + halfSize)) - 0.5;
+        col += grain * (noiseStrength * 0.24);
     }
 
     // -----------------------------------------------------------------

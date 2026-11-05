@@ -1,11 +1,12 @@
 using System.Buffers;
+using System.Runtime.InteropServices;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Documents;
 
 namespace VNotch.Controls;
 
-public static class HighlightedText
+public static partial class HighlightedText
 {
     public static readonly DependencyProperty TextProperty = DependencyProperty.RegisterAttached(
         "Text", typeof(string), typeof(HighlightedText),
@@ -97,25 +98,25 @@ public static class HighlightedText
 
     private static bool FillMatchMask(ReadOnlySpan<char> text, ReadOnlySpan<char> query, Span<bool> mask)
     {
-        mask.Clear();
-        bool matched = false;
-        while (!query.IsEmpty)
-        {
-            int separator = query.IndexOf(' ');
-            var token = (separator < 0 ? query : query[..separator]).Trim();
-            query = separator < 0 ? ReadOnlySpan<char>.Empty : query[(separator + 1)..];
-            if (token.IsEmpty) continue;
-            int searchFrom = 0;
-            int matchAt;
-            while (searchFrom < text.Length
-                   && (matchAt = text[searchFrom..].IndexOf(token, StringComparison.OrdinalIgnoreCase)) >= 0)
-            {
-                matchAt += searchFrom;
-                mask.Slice(matchAt, token.Length).Fill(true);
-                matched = true;
-                searchFrom = matchAt + 1;
-            }
-        }
-        return matched;
+        Span<byte> byteMask = MemoryMarshal.AsBytes(mask);
+        int rc = vn_highlighted_text_fill_mask(
+            text,
+            text.Length,
+            query,
+            query.Length,
+            byteMask,
+            byteMask.Length,
+            out byte matched);
+        return rc == 0 && matched != 0;
     }
+
+    [LibraryImport("VNotch.Native", StringMarshalling = StringMarshalling.Utf16)]
+    private static partial int vn_highlighted_text_fill_mask(
+        ReadOnlySpan<char> text_ptr,
+        int text_len,
+        ReadOnlySpan<char> query_ptr,
+        int query_len,
+        Span<byte> out_mask,
+        int mask_cap,
+        out byte out_matched);
 }

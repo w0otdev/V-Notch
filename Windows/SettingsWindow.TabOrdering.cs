@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Runtime.InteropServices;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
@@ -33,6 +34,37 @@ public partial class SettingsWindow
     private readonly Dictionary<FrameworkElement, double> _settingsNavNeighborOffsets = new();
     private bool _isSyncingCameraVisibility = false;
 
+    [StructLayout(LayoutKind.Sequential, Pack = 1)]
+    private struct VnNavTabTokenSlice
+    {
+        public int Offset;
+        public int Length;
+    }
+
+    [LibraryImport("VNotch.Native")]
+    private static partial int vn_nav_tabs_calculate_target_slot_hysteresis(
+        int current_target,
+        double visual_pos,
+        double pitch,
+        int total_slots,
+        out int out_slot);
+
+    [LibraryImport("VNotch.Native")]
+    private static partial int vn_nav_tabs_calculate_neighbor_offset(
+        int index,
+        int initial_slot,
+        int target_slot,
+        double pitch,
+        out double out_offset);
+
+    [LibraryImport("VNotch.Native")]
+    private static unsafe partial int vn_nav_tabs_parse_unique_tokens(
+        char* raw_ptr,
+        int raw_len,
+        VnNavTabTokenSlice* out_slices,
+        int slice_cap,
+        out int out_written);
+
     private static TranslateTransform? FindSettingsRowTranslateTransform(TransformGroup group)
     {
         var children = group.Children;
@@ -55,29 +87,48 @@ public partial class SettingsWindow
         return null;
     }
 
-    private static List<string> ParseUniqueTabTokens(string? rawOrder)
+    internal static unsafe List<string> ParseUniqueTabTokens(string? rawOrder)
     {
-        string[] parts = (rawOrder ?? DefaultNavTabs)
-            .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
-        var orderTokens = new List<string>(parts.Length + 5);
-        for (int i = 0; i < parts.Length; i++)
+        string source = rawOrder ?? DefaultNavTabs;
+        if (source.Length == 0)
         {
-            string part = parts[i];
-            bool exists = false;
-            for (int j = 0; j < orderTokens.Count; j++)
+            return new List<string>(5);
+        }
+
+        const int stackSliceCap = 32;
+        Span<VnNavTabTokenSlice> stackSlices = stackalloc VnNavTabTokenSlice[stackSliceCap];
+
+        fixed (char* rawPtr = source)
+        fixed (VnNavTabTokenSlice* slicePtr = stackSlices)
+        {
+            int status = vn_nav_tabs_parse_unique_tokens(rawPtr, source.Length, slicePtr, stackSliceCap, out int written);
+            if (status == 0)
             {
-                if (string.Equals(orderTokens[j], part, StringComparison.OrdinalIgnoreCase))
+                var orderTokens = new List<string>(written + 5);
+                for (int i = 0; i < written; i++)
                 {
-                    exists = true;
-                    break;
+                    orderTokens.Add(source.Substring(stackSlices[i].Offset, stackSlices[i].Length));
                 }
-            }
-            if (!exists)
-            {
-                orderTokens.Add(part);
+                return orderTokens;
             }
         }
-        return orderTokens;
+
+        int fallbackCap = (source.Length / 2) + 2;
+        var heapSlices = new VnNavTabTokenSlice[fallbackCap];
+        fixed (char* rawPtr = source)
+        fixed (VnNavTabTokenSlice* slicePtr = heapSlices)
+        {
+            int status = vn_nav_tabs_parse_unique_tokens(rawPtr, source.Length, slicePtr, fallbackCap, out int written);
+            var orderTokens = new List<string>((status == 0 ? written : 0) + 5);
+            if (status == 0)
+            {
+                for (int i = 0; i < written; i++)
+                {
+                    orderTokens.Add(source.Substring(heapSlices[i].Offset, heapSlices[i].Length));
+                }
+            }
+            return orderTokens;
+        }
     }
 
     private static readonly string[] SupportedNavTabKeys = [NavTabMedia, "Secondary", "Timer", "AudioMixer", "Camera"];
@@ -122,8 +173,7 @@ public partial class SettingsWindow
         var orderTokens = ResolveFullNavTabOrder(_settings.NavTabOrder, tabMetadata.Keys);
 
         var visibleTokens = new HashSet<string>(
-            (_settings.VisibleNavTabs ?? DefaultNavTabs)
-                .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries),
+            ParseUniqueTabTokens(_settings.VisibleNavTabs),
             StringComparer.OrdinalIgnoreCase);
         visibleTokens.Add(NavTabMedia);
         if (_settings.HideCamera) visibleTokens.Remove("Camera");
@@ -388,37 +438,16 @@ public partial class SettingsWindow
 
     private static double CalculateNeighborDesiredOffset(int index, int initialSlot, int targetSlot, double pitch)
     {
-        if (targetSlot < initialSlot && index >= targetSlot && index < initialSlot)
-        {
-            // Dragged UP: rows between targetSlot and initialSlot - 1 shift DOWN (+pitch)
-            return pitch;
-        }
-
-        if (targetSlot > initialSlot && index > initialSlot && index <= targetSlot)
-        {
-            // Dragged DOWN: rows between initialSlot + 1 and targetSlot shift UP (-pitch)
-            return -pitch;
-        }
-
-        return 0.0;
+        return vn_nav_tabs_calculate_neighbor_offset(index, initialSlot, targetSlot, pitch, out double offset) == 0
+            ? offset
+            : 0.0;
     }
 
     private static int CalculateSettingsTargetSlotWithHysteresis(int currentTarget, double visualPos, double pitch, int totalSlots)
     {
-        double currentSlotCenter = currentTarget * pitch;
-        double diff = visualPos - currentSlotCenter;
-
-        int proposedSlot = currentTarget;
-        if (diff > pitch * 0.55)
-        {
-            proposedSlot = (int)Math.Floor((visualPos + pitch * 0.45) / pitch);
-        }
-        else if (diff < -pitch * 0.55)
-        {
-            proposedSlot = (int)Math.Ceiling((visualPos - pitch * 0.45) / pitch);
-        }
-
-        return Math.Clamp(proposedSlot, 0, totalSlots - 1);
+        return vn_nav_tabs_calculate_target_slot_hysteresis(currentTarget, visualPos, pitch, totalSlots, out int slot) == 0
+            ? slot
+            : Math.Clamp(currentTarget, 0, Math.Max(0, totalSlots - 1));
     }
 
     private void AnimateSettingsRowToY(FrameworkElement element, double targetY)

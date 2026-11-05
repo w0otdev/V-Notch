@@ -24,6 +24,41 @@ public partial class ElasticSlider : Slider
         double* outScaleX,
         double* outScaleY);
 
+    [LibraryImport("VNotch.Native", EntryPoint = "vn_elastic_slider_compute_metrics")]
+    private static unsafe partial int NativeComputeElasticSliderMetrics(
+        double value,
+        double minVal,
+        double maxVal,
+        double tickFreq,
+        double* outFraction,
+        double* outEffectiveStep,
+        int* outTickCount,
+        double* outSnappedValue);
+
+    [LibraryImport("VNotch.Native", EntryPoint = "vn_elastic_slider_compute_indicator_layout")]
+    private static unsafe partial int NativeComputeElasticSliderIndicatorLayout(
+        double value,
+        double minVal,
+        double maxVal,
+        double width,
+        double trackEdgePad,
+        double indicatorWidth,
+        double* outTargetLeft,
+        double* outFillWidth);
+
+    [LibraryImport("VNotch.Native", EntryPoint = "vn_elastic_slider_eval_mouse")]
+    private static unsafe partial int NativeEvalElasticSliderMouse(
+        double mouseX,
+        double width,
+        double trackEdgePad,
+        double minVal,
+        double maxVal,
+        double tickFreq,
+        double* outDragOverflow,
+        double* outClampedFraction,
+        double* outSnappedValue,
+        int* outOverscrollDir);
+
     #region Dependency Properties
 
     public static readonly DependencyProperty LabelProperty =
@@ -282,13 +317,14 @@ public partial class ElasticSlider : Slider
 
     #region Tick Marks & Indicator
 
-    private double GetNormalizedFraction()
+    private unsafe double GetNormalizedFraction()
     {
-        if (Maximum <= Minimum) return 0;
-        return Math.Clamp((Value - Minimum) / (Maximum - Minimum), 0, 1);
+        double f = 0.0, step = 1.0, snapped = Value;
+        int ticks = 1;
+        return NativeComputeElasticSliderMetrics(Value, Minimum, Maximum, TickFrequency, &f, &step, &ticks, &snapped) == 0 ? f : 0.0;
     }
 
-    private void DrawTicks()
+    private unsafe void DrawTicks()
     {
         if (_tickCanvas == null || _rootBorder == null) return;
         _tickCanvas.Children.Clear();
@@ -298,11 +334,13 @@ public partial class ElasticSlider : Slider
         if (width <= 0 || height <= 0) return;
         if (Maximum <= Minimum) return;
 
-        int totalTicks = GetTickCount();
         double usableWidth = width - TrackEdgePad * 2.0;
         if (usableWidth <= 0) return;
 
-        double currentFraction = GetNormalizedFraction();
+        double currentFraction = 0.0, step = 1.0, snapped = Value;
+        int totalTicks = 1;
+        if (NativeComputeElasticSliderMetrics(Value, Minimum, Maximum, TickFrequency, &currentFraction, &step, &totalTicks, &snapped) != 0)
+            return;
 
         for (int i = 0; i <= totalTicks; i++)
         {
@@ -351,7 +389,7 @@ public partial class ElasticSlider : Slider
         }
     }
 
-    private void UpdateIndicatorPosition(bool immediate = false)
+    private unsafe void UpdateIndicatorPosition(bool immediate = false)
     {
         if (_indicator == null || _rootBorder == null) return;
 
@@ -363,10 +401,9 @@ public partial class ElasticSlider : Slider
         double usableWidth = width - TrackEdgePad * 2.0;
         if (usableWidth <= 0) return;
 
-        double fraction = GetNormalizedFraction();
-        double fillEdgeX = width * fraction;
-        double clampedCenterX = Math.Clamp(fillEdgeX, TrackEdgePad, width - TrackEdgePad);
-        double targetLeft = clampedCenterX - _indicator.Width / 2;
+        double targetLeft = 0.0, fill = 0.0;
+        if (NativeComputeElasticSliderIndicatorLayout(Value, Minimum, Maximum, width, TrackEdgePad, _indicator.Width, &targetLeft, &fill) != 0)
+            return;
         double currentLeft = Canvas.GetLeft(_indicator);
 
         Canvas.SetTop(_indicator, (height - _indicator.Height) / 2);
@@ -393,9 +430,12 @@ public partial class ElasticSlider : Slider
 
     #region Fill
 
-    private double ComputeTargetFillWidth(double width)
+    private unsafe double ComputeTargetFillWidth(double width)
     {
-        return width * GetNormalizedFraction();
+        double left = 0.0, fillWidth = 0.0;
+        return NativeComputeElasticSliderIndicatorLayout(Value, Minimum, Maximum, width, TrackEdgePad, _indicator?.Width ?? 0.0, &left, &fillWidth) == 0
+            ? fillWidth
+            : 0.0;
     }
 
     private void SetFillImmediate()
@@ -553,28 +593,12 @@ public partial class ElasticSlider : Slider
     {
         double sx = 1.0, sy = 1.0;
         bool reduced = AnimationConfig.ReduceMotion || !SystemParameters.ClientAreaAnimation;
-        try
-        {
-            if (NativeComputeElasticSliderOverscroll(overflowPx, usableWidth, reduced ? (byte)1 : (byte)0, &sx, &sy) == 0)
-            {
-                return (sx, sy);
-            }
-        }
-        catch (DllNotFoundException)
-        {
-        }
-        catch (EntryPointNotFoundException)
-        {
-        }
-
-        if (reduced || Math.Abs(overflowPx) < 0.5)
-            return (1.0, 1.0);
-
-        double decay = Decay(Math.Abs(overflowPx), 60);
-        return (1.0 + decay * 0.0006, 1.0 - decay * 0.0010);
+        return NativeComputeElasticSliderOverscroll(overflowPx, usableWidth, reduced ? (byte)1 : (byte)0, &sx, &sy) == 0
+            ? (sx, sy)
+            : (1.0, 1.0);
     }
 
-    private void SetValueFromMouse(MouseEventArgs e)
+    private unsafe void SetValueFromMouse(MouseEventArgs e)
     {
         if (_rootBorder == null) return;
 
@@ -585,19 +609,24 @@ public partial class ElasticSlider : Slider
         double usableWidth = width - TrackEdgePad * 2.0;
         if (usableWidth <= 0) return;
 
-        double fraction = (pos.X - TrackEdgePad) / usableWidth;
-
-        if (fraction < 0)
+        double dragOverflow = 0.0, clampedFraction = 0.0, snappedValue = Minimum;
+        int overscrollDir = 0;
+        if (NativeEvalElasticSliderMouse(
+            pos.X, width, TrackEdgePad, Minimum, Maximum, TickFrequency,
+            &dragOverflow, &clampedFraction, &snappedValue, &overscrollDir) != 0)
         {
-            _dragOverflow = fraction * usableWidth;
-            fraction = 0;
+            return;
+        }
+
+        if (overscrollDir < 0)
+        {
+            _dragOverflow = dragOverflow;
             var (sx, sy) = ComputeOverscrollScale(_dragOverflow, usableWidth);
             AnimateScaleImmediate(sx, sy, stretchFromLeft: false);
         }
-        else if (fraction > 1)
+        else if (overscrollDir > 0)
         {
-            _dragOverflow = (fraction - 1) * usableWidth;
-            fraction = 1;
+            _dragOverflow = dragOverflow;
             var (sx, sy) = ComputeOverscrollScale(_dragOverflow, usableWidth);
             AnimateScaleImmediate(sx, sy, stretchFromLeft: true);
         }
@@ -615,55 +644,28 @@ public partial class ElasticSlider : Slider
                 _rootBorder.RenderTransformOrigin = new Point(0.5, 0.5);
         }
 
-        double rawValue = Minimum + fraction * (Maximum - Minimum);
-        rawValue = SnapValue(rawValue);
-        Value = Math.Max(Minimum, Math.Min(Maximum, rawValue));
+        Value = Math.Max(Minimum, Math.Min(Maximum, snappedValue));
     }
 
-    private double GetEffectiveTickStep()
+    private unsafe double GetEffectiveTickStep()
     {
-        if (TickFrequency > 0)
-        {
-            return TickFrequency;
-        }
-
-        return Maximum > Minimum ? (Maximum - Minimum) / 20.0 : 1.0;
+        double f = 0.0, step = 1.0, snapped = Value;
+        int ticks = 1;
+        return NativeComputeElasticSliderMetrics(Value, Minimum, Maximum, TickFrequency, &f, &step, &ticks, &snapped) == 0 ? step : 1.0;
     }
 
-    private int GetTickCount()
+    private unsafe int GetTickCount()
     {
-        if (Maximum <= Minimum)
-        {
-            return 1;
-        }
-
-        double step = GetEffectiveTickStep();
-        if (step <= 0)
-        {
-            return 20;
-        }
-
-        return Math.Max(1, (int)Math.Round((Maximum - Minimum) / step));
+        double f = 0.0, step = 1.0, snapped = Value;
+        int ticks = 1;
+        return NativeComputeElasticSliderMetrics(Value, Minimum, Maximum, TickFrequency, &f, &step, &ticks, &snapped) == 0 ? ticks : 1;
     }
 
-    private double SnapValue(double value)
+    private unsafe double SnapValue(double value)
     {
-        double step = GetEffectiveTickStep();
-        if (step <= 0)
-        {
-            return Math.Max(Minimum, Math.Min(Maximum, value));
-        }
-
-        double snapped = Math.Round((value - Minimum) / step) * step + Minimum;
-        return Math.Max(Minimum, Math.Min(Maximum, snapped));
-    }
-
-    private static double Decay(double value, double max)
-    {
-        if (max == 0) return 0;
-        double entry = value / max;
-        double sigmoid = 2.0 * (1.0 / (1.0 + Math.Exp(-entry)) - 0.5);
-        return sigmoid * max;
+        double f = 0.0, step = 1.0, snapped = value;
+        int ticks = 1;
+        return NativeComputeElasticSliderMetrics(value, Minimum, Maximum, TickFrequency, &f, &step, &ticks, &snapped) == 0 ? snapped : value;
     }
 
     #endregion

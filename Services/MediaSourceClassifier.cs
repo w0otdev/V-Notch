@@ -138,6 +138,29 @@ internal static partial class MediaSourceClassifier
         }
     }
 
+    internal static bool MatchesSpotifyWebCaption(string caption, string track, string artist)
+    {
+        if (string.IsNullOrWhiteSpace(track)) return false;
+        ReadOnlySpan<char> title = caption.AsSpan().Trim();
+        int suffix = Math.Max(title.LastIndexOf(" - "), title.LastIndexOf(" — "));
+        bool browserCaption = suffix >= 0 && PlatformDetector.IsBrowserApp(title[(suffix + 3)..].ToString());
+        if (browserCaption)
+            title = title[..suffix];
+
+        if (title.EndsWith(" - Spotify", StringComparison.OrdinalIgnoreCase) ||
+            title.EndsWith(" | Spotify", StringComparison.OrdinalIgnoreCase))
+        {
+            title = title[..^" - Spotify".Length];
+            if (title.Equals(track.AsSpan(), StringComparison.OrdinalIgnoreCase)) return true;
+        }
+        else if (!browserCaption) return false;
+
+        int separator = title.LastIndexOf(" • ");
+        return separator > 0 && !string.IsNullOrWhiteSpace(artist) &&
+               title[..separator].Equals(track.AsSpan(), StringComparison.OrdinalIgnoreCase) &&
+               title[(separator + 3)..].Equals(artist.AsSpan(), StringComparison.OrdinalIgnoreCase);
+    }
+
     internal static void SetPlatformRunning(MediaInfo info, MediaPlatform platform)
     {
         info.IsSpotifyRunning = false;

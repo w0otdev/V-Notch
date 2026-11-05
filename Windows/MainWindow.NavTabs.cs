@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Runtime.InteropServices;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
@@ -27,6 +28,22 @@ public partial class MainWindow
     private int _dragTargetSlot = -1;
     private readonly Dictionary<FrameworkElement, double> _neighborTargetOffsets = new();
     private readonly List<FrameworkElement> _visibleNavChildrenBuffer = new(8);
+
+    [LibraryImport("VNotch.Native")]
+    private static partial int vn_nav_tabs_calculate_target_slot_hysteresis(
+        int current_target,
+        double visual_pos,
+        double pitch,
+        int total_slots,
+        out int out_slot);
+
+    [LibraryImport("VNotch.Native")]
+    private static partial int vn_nav_tabs_calculate_neighbor_offset(
+        int index,
+        int initial_slot,
+        int target_slot,
+        double pitch,
+        out double out_offset);
 
     private static TranslateTransform? FindTranslateTransform(TransformGroup group)
     {
@@ -166,18 +183,9 @@ public partial class MainWindow
             var child = visibleChildren[i];
             if (child == _navDragItem) continue;
 
-            double desiredOffset = 0.0;
-
-            if (targetSlot < initialSlot && i >= targetSlot && i < initialSlot)
-            {
-                // Dragged to the left: items between targetSlot and initialSlot-1 shift right (+NavTabSlotWidth)
-                desiredOffset = NavTabSlotWidth;
-            }
-            else if (targetSlot > initialSlot && i > initialSlot && i <= targetSlot)
-            {
-                // Dragged to the right: items between initialSlot+1 and targetSlot shift left (-NavTabSlotWidth)
-                desiredOffset = -NavTabSlotWidth;
-            }
+            double desiredOffset = vn_nav_tabs_calculate_neighbor_offset(i, initialSlot, targetSlot, NavTabSlotWidth, out double offset) == 0
+                ? offset
+                : 0.0;
 
             AnimateElementToX(child, desiredOffset);
         }
@@ -185,20 +193,9 @@ public partial class MainWindow
 
     private static int CalculateNavTargetSlotWithHysteresis(int currentTarget, double visualPos, double pitch, int totalSlots)
     {
-        double currentSlotCenter = currentTarget * pitch;
-        double diff = visualPos - currentSlotCenter;
-
-        int proposedSlot = currentTarget;
-        if (diff > pitch * 0.55)
-        {
-            proposedSlot = (int)Math.Floor((visualPos + pitch * 0.45) / pitch);
-        }
-        else if (diff < -pitch * 0.55)
-        {
-            proposedSlot = (int)Math.Ceiling((visualPos - pitch * 0.45) / pitch);
-        }
-
-        return Math.Clamp(proposedSlot, 0, totalSlots - 1);
+        return vn_nav_tabs_calculate_target_slot_hysteresis(currentTarget, visualPos, pitch, totalSlots, out int slot) == 0
+            ? slot
+            : Math.Clamp(currentTarget, 0, Math.Max(0, totalSlots - 1));
     }
 
     private void AnimateElementToX(FrameworkElement element, double targetX)
@@ -606,23 +603,7 @@ public partial class MainWindow
         }
 
         // Determine configured order
-        var rawTokens = (_settings.NavTabOrder ?? "Media,Secondary,Timer,AudioMixer,Camera")
-            .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
-        var orderTokens = new List<string>(elementsByTag.Count);
-        var seenTokens = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        for (int i = 0; i < rawTokens.Length; i++)
-        {
-            string tok = rawTokens[i];
-            if (seenTokens.Add(tok))
-                orderTokens.Add(tok);
-        }
-
-        // Ensure all known elements are included
-        foreach (var key in elementsByTag.Keys)
-        {
-            if (seenTokens.Add(key))
-                orderTokens.Add(key);
-        }
+        var orderTokens = SettingsWindow.ResolveFullNavTabOrder(_settings.NavTabOrder, elementsByTag.Keys);
 
         // Reorder children in NavTabsStackPanel only if the order actually changed
         bool sameOrder = currentChildrenTags.Count == orderTokens.Count;
@@ -646,8 +627,7 @@ public partial class MainWindow
 
         // Apply visibility from VisibleNavTabs
         var visibleTokens = new HashSet<string>(
-            (_settings.VisibleNavTabs ?? "Media,Secondary,Timer,AudioMixer,Camera")
-                .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries),
+            SettingsWindow.ParseUniqueTabTokens(_settings.VisibleNavTabs),
             StringComparer.OrdinalIgnoreCase);
 
         // Home/Media is always kept visible

@@ -173,6 +173,8 @@ public partial class MainWindow
     private void ApplyLiquidGlassConfig()
     {
         if (GlassBackdropHost == null) return;
+        _lastGpuGeometry = null;
+        _lastAppliedGpuOptics = null;
         if (_liquidGlass?.HasPresentedFrame != true)
         {
             _lastGpuGeometry = null;
@@ -208,6 +210,12 @@ public partial class MainWindow
         ApplyGpuBlur(cfg.BlurAmount);
 
         _glassConfiguredOpacity = Math.Clamp(cfg.Opacity, 0, 1);
+        if (GlassTintOverlay != null)
+        {
+            GlassTintOverlay.Opacity = cfg.Variant == 1
+                ? 0.16
+                : Math.Clamp(0.42 + cfg.BlurAmount * 0.42 - cfg.Brightness * 0.85, 0.14, 0.96);
+        }
         if (!_glassInitialFramePending)
             GlassBackdropHost.Opacity = _glassConfiguredOpacity;
 
@@ -263,6 +271,10 @@ public partial class MainWindow
             Saturation = cfg.Saturation,
             Brightness = cfg.Brightness,
             BevelMode = cfg.BevelMode,
+            EdgeHighlight = cfg.EdgeHighlight,
+            Specular = cfg.Specular,
+            Fresnel = cfg.Fresnel,
+            Variant = cfg.Variant,
             TopCornerRadius = _lastDynamicTopCornerR,
             BottomCornerRadius = _lastDynamicBottomCornerR
         });
@@ -662,7 +674,7 @@ public partial class MainWindow
 
         if (CompactThumbnailBorder != null)
         {
-            CompactThumbnailBorder.Background = glass ? _glassPanelBg : _defaultPanelBg;
+            CompactThumbnailBorder.Background = System.Windows.Media.Brushes.Transparent;
             CompactThumbnailBorder.BorderBrush = System.Windows.Media.Brushes.Transparent;
             CompactThumbnailBorder.BorderThickness = new Thickness(0);
         }
@@ -883,7 +895,7 @@ public partial class MainWindow
                 Opacity = 0.5,
                 RenderingBias = System.Windows.Media.Effects.RenderingBias.Performance
             };
-            _glassContentShadow.Freeze();
+
         }
         return _glassContentShadow;
     }
@@ -911,8 +923,20 @@ public partial class MainWindow
         {
             // The tray already supplies card contrast. A shadow on the entire
             // scrolling subtree forces a large intermediate render surface.
-            NotchContent.Effect = enable && _clipboardTrayView?.IsVisible != true
-                ? GetOrCreateGlassContentShadow() : null;
+            bool shouldAttach = enable && _clipboardTrayView?.IsVisible != true;
+            bool fadeRestoredShadow = shouldAttach && NotchContent.Effect == null && _glassContentShadow != null && _isMusicCompactMode && !_isExpanded && !VNotch.Services.AnimationConfig.ReduceMotion;
+            var contentShadow = shouldAttach ? GetOrCreateGlassContentShadow() : null;
+            if (contentShadow != null)
+            {
+                contentShadow.BeginAnimation(System.Windows.Media.Effects.DropShadowEffect.OpacityProperty, null);
+                contentShadow.Opacity = fadeRestoredShadow ? 0.0 : 0.5;
+            }
+            NotchContent.Effect = contentShadow;
+            if (fadeRestoredShadow && contentShadow != null)
+            {
+                contentShadow.BeginAnimation(System.Windows.Media.Effects.DropShadowEffect.OpacityProperty, new System.Windows.Media.Animation.DoubleAnimation(0.0, 0.5, new Duration(TimeSpan.FromMilliseconds(250))) { EasingFunction = new System.Windows.Media.Animation.QuadraticEase { EasingMode = System.Windows.Media.Animation.EasingMode.EaseOut } });
+            }
+
         }
 
         if (AnimationThumbnailBorder != null)
@@ -1252,6 +1276,10 @@ public partial class MainWindow
                 Saturation = cfg.Saturation,
                 Brightness = cfg.Brightness,
                 BevelMode = cfg.BevelMode,
+            EdgeHighlight = cfg.EdgeHighlight,
+            Specular = cfg.Specular,
+            Fresnel = cfg.Fresnel,
+            Variant = cfg.Variant,
                 TopCornerRadius = topR,
                 BottomCornerRadius = bottomR
             });

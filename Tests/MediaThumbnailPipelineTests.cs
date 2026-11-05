@@ -3,7 +3,7 @@ using System.Reflection;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using VNotch.Models;
-using VNotch.Services;
+using VNotch.Services;  
 using Windows.Storage.Streams;
 using Xunit;
 
@@ -17,14 +17,21 @@ public sealed class MediaThumbnailPipelineTests
     [Theory]
     [InlineData("SoundCloud")]
     [InlineData("Browser")]
+    [InlineData("Spotify")]
     public void DelayedSessionArtworkReplacesCachedCoverWithoutAnotherTitleChange(string source) => SharedStaTestRunner.RunAsync(async () =>
     {
         using var fixture = new Fixture();
         var info = fixture.Track(source);
         info.SourceAppId = "Helium";
         Invoke(fixture.Service, "InvalidateThumbnailStateIfTrackChanged", info);
+        if (source == "Spotify")
+        {
+            await ApplyArtwork(fixture.Service, info, Bitmap(256, 256, detailed: true, circularIcon: true), true);
+            Assert.Null(info.Thumbnail);
+            Assert.Null(fixture.Service.CachedThumbnail);
+        }
         var first = Bitmap(150, 150, detailed: true);
-        await ApplyArtwork(fixture.Service, info, first, true);
+        await ApplyArtwork(fixture.Service, info, first, source != "Spotify");
         var corrected = Bitmap(151, 151, detailed: true);
         await ApplyArtwork(fixture.Service, info, corrected, false);
         Assert.Same(corrected, info.Thumbnail);
@@ -36,6 +43,7 @@ public sealed class MediaThumbnailPipelineTests
     [Theory]
     [InlineData("SoundCloud")]
     [InlineData("Browser")]
+    [InlineData("Spotify")]
     public void NextTrackRejectsPreviousSessionCoverUntilNewArtworkArrives(string source) => SharedStaTestRunner.RunAsync(async () =>
     {
         using var fixture = new Fixture();
@@ -57,6 +65,41 @@ public sealed class MediaThumbnailPipelineTests
         var current = Bitmap(151, 151, detailed: true);
         await ApplyArtwork(fixture.Service, info, current, false);
         Assert.Same(current, info.Thumbnail);
+    });
+
+    [Fact]
+    public void SpotifyWebSharedAlbumOrMissingSmtcCoverRecoversArtworkFromCatalog() => SharedStaTestRunner.RunAsync(async ct =>
+    {
+        using var fixture = new Fixture();
+        var info = fixture.Track("Spotify");
+        info.CurrentTrack = "Open Arms (feat. Travis Scott)";
+        info.CurrentArtist = "SZA, Travis Scott";
+        Invoke(fixture.Service, "InvalidateThumbnailStateIfTrackChanged", info);
+        var sharedAlbumSmtc = Bitmap(150, 150, detailed: true);
+        await ApplyArtwork(fixture.Service, info, sharedAlbumSmtc, true);
+        Assert.Same(sharedAlbumSmtc, fixture.Service.CachedThumbnail);
+
+        info.CurrentTrack = "Snooze";
+        info.CurrentArtist = "SZA";
+        info.Thumbnail = null;
+        Invoke(fixture.Service, "InvalidateThumbnailStateIfTrackChanged", info);
+        await ApplyArtwork(fixture.Service, info, sharedAlbumSmtc, true);
+        Assert.Null(info.Thumbnail);
+        Assert.Null(fixture.Service.CachedThumbnail);
+
+        fixture.PublishIdentity(info);
+        Set(fixture.Service, "_lastPublishedInfo", info.Clone());
+        fixture.Metadata.SpotifyArtworkUrl = "https://i.scdn.co/image/sos-cover-640.jpg";
+        var catalogCover = Bitmap(640, 640, detailed: true);
+        fixture.Artwork.Image = catalogCover;
+
+        Invoke(fixture.Service, "StartThumbnailFetchIfNeeded", info, true);
+        await WpfFrameWaiter.UntilAsync(() => fixture.Updates.Any(u => u.IsThumbnailOnlyUpdate), "spotify catalog artwork published", ct);
+
+        Assert.Equal(1, fixture.Metadata.SpotifyArtworkCalls);
+        Assert.Same(catalogCover, fixture.Service.CachedThumbnail);
+        Assert.Equal("Spotify", Field<string>(fixture.Service, "_cachedThumbnailSource"));
+        Assert.Same(catalogCover, Assert.Single(fixture.Updates.Where(u => u.IsThumbnailOnlyUpdate)).Thumbnail);
     });
 
     [Fact]
@@ -926,7 +969,7 @@ public sealed class MediaThumbnailPipelineTests
         return stream.ToArray();
     }
 
-    private static BitmapImage Bitmap(int width, int height, bool detailed = false)
+    private static BitmapImage Bitmap(int width, int height, bool detailed = false, bool circularIcon = false)
     {
         byte[] pixels = new byte[width * height * 4];
         for (int i = 0; i < pixels.Length; i += 4)
@@ -935,7 +978,8 @@ public sealed class MediaThumbnailPipelineTests
             pixels[i] = detailed ? (byte)(x * 255 / width) : (byte)180;
             pixels[i + 1] = detailed ? (byte)(y * 255 / height) : (byte)60;
             pixels[i + 2] = detailed ? (byte)((x + y) % 256) : (byte)30;
-            pixels[i + 3] = 255;
+            double nx = (x + 0.5) / width * 2.0 - 1.0, ny = (y + 0.5) / height * 2.0 - 1.0;
+            pixels[i + 3] = circularIcon && (nx * nx + ny * ny > 0.90) ? (byte)0 : (byte)255;
         }
         var source = BitmapSource.Create(width, height, 96, 96, PixelFormats.Bgra32, null, pixels, width * 4);
         var encoder = new PngBitmapEncoder();
@@ -1040,6 +1084,9 @@ public sealed class MediaThumbnailPipelineTests
         public Task<YouTubeLookupResult?> TrySearchYouTubeByTitleAsync(string title, string artist = "", CancellationToken ct = default) { SearchCalls++; return Task.FromResult(SearchResult); }
         public Task<string?> TryGetSoundCloudArtworkFromUrlAsync(string soundCloudUrl, CancellationToken ct = default) => Task.FromResult(SoundCloudUrl);
         public Task<string?> TryGetSoundCloudArtworkUrlAsync(string title, string artist = "", bool requireStrongMatch = false, CancellationToken ct = default) { SoundCloudSearchCalls++; Assert.True(requireStrongMatch); return Task.FromResult(SoundCloudSearch); }
+        public string? SpotifyArtworkUrl;
+        public int SpotifyArtworkCalls;
+        public Task<string?> TryGetSpotifyArtworkUrlAsync(string title, string primaryArtist, TimeSpan duration = default, string? albumTitle = null, CancellationToken ct = default) { SpotifyArtworkCalls++; return Task.FromResult(SpotifyArtworkUrl); }
     }
 
     private sealed class Artwork : IMediaArtworkService

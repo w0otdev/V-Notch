@@ -36,8 +36,8 @@ public sealed class SpotifyCanvasPresenterTests
         refs.Video.RaiseEvent(new RoutedEventArgs(MediaElement.MediaOpenedEvent));
         refs.VideoAlt?.RaiseEvent(new RoutedEventArgs(MediaElement.MediaOpenedEvent));
         Assert.Equal(1, opened);
-        await WpfFrameWaiter.UntilAsync(() => presenter.IsCanvasVisiblyShowing, "canvas fade in", ct);
-        Assert.Equal(Visibility.Collapsed, refs.BlurFallbackBackground!.Visibility);
+        await WpfFrameWaiter.UntilAsync(() => presenter.IsCanvasVisiblyShowing &&
+            refs.BlurFallbackBackground!.Visibility == Visibility.Collapsed, "canvas and fallback crossfade", ct);
         presenter.SetSource(source, 2, !playing);
         Assert.Equal(2, presenter.CurrentSourceVersion);
         Assert.True(presenter.IsCanvasVisiblyShowing);

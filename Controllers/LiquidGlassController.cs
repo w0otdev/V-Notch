@@ -47,6 +47,9 @@ public sealed partial class LiquidGlassController : IDisposable
         public double RefractionB;
         public double RefractionC;
         public double RefractionD;
+        public double Refraction;
+        public double ZRadius;
+        public int BevelMode;
     }
 
     [StructLayout(LayoutKind.Sequential, Pack = 1)]
@@ -163,6 +166,10 @@ public sealed partial class LiquidGlassController : IDisposable
         public double Saturation { get; set; }
         public double Brightness { get; set; }
         public int BevelMode { get; set; }
+        public double EdgeHighlight { get; set; }
+        public double Specular { get; set; }
+        public double Fresnel { get; set; }
+        public int Variant { get; set; }
         public double TopCornerRadius { get; set; }
         public double BottomCornerRadius { get; set; }
 
@@ -781,10 +788,30 @@ public sealed partial class LiquidGlassController : IDisposable
                 Math.Abs(p.ChromaticAberration - _params.ChromaticAberration) > 1e-4 ||
                 Math.Abs(p.Distortion - _params.Distortion) > 1e-4 ||
                 Math.Abs(p.TopCornerRadius - _params.TopCornerRadius) > 1e-4 ||
-                Math.Abs(p.BottomCornerRadius - _params.BottomCornerRadius) > 1e-4;
+                Math.Abs(p.BottomCornerRadius - _params.BottomCornerRadius) > 1e-4 ||
+                Math.Abs(p.Refraction - _params.Refraction) > 1e-4 ||
+                Math.Abs(p.ZRadius - _params.ZRadius) > 1e-4 ||
+                p.BevelMode != _params.BevelMode;
+            bool anyChanged = cpuMapChanged ||
+                Math.Abs(p.Noise - _params.Noise) > 1e-4 ||
+                Math.Abs(p.GlowWeight - _params.GlowWeight) > 1e-4 ||
+                Math.Abs(p.GlowBias - _params.GlowBias) > 1e-4 ||
+                Math.Abs(p.GlowEdge0 - _params.GlowEdge0) > 1e-4 ||
+                Math.Abs(p.GlowEdge1 - _params.GlowEdge1) > 1e-4 ||
+                Math.Abs(p.Saturation - _params.Saturation) > 1e-4 ||
+                Math.Abs(p.Brightness - _params.Brightness) > 1e-4 ||
+                Math.Abs(p.EdgeHighlight - _params.EdgeHighlight) > 1e-4 ||
+                Math.Abs(p.Specular - _params.Specular) > 1e-4 ||
+                Math.Abs(p.Fresnel - _params.Fresnel) > 1e-4 ||
+                p.Variant != _params.Variant;
 
             _params = p;
             if (cpuMapChanged) _mapsDirty = true;
+            if (anyChanged)
+            {
+                Interlocked.Increment(ref _refreshVersion);
+                SignalWakeEventSafe();
+            }
         }
     }
 
@@ -803,6 +830,7 @@ public sealed partial class LiquidGlassController : IDisposable
             if (sigma == _blurSigma) return;
             _blurSigma = sigma;
             _blurPassRadii = GaussianBoxRadii(sigma);
+            SignalWakeEventSafe();
             Interlocked.Increment(ref _refreshVersion);
             _mapsDirty = true;
         }
@@ -2126,10 +2154,17 @@ public sealed partial class LiquidGlassController : IDisposable
         return new GpuGeometry(
             dims.SrcW, dims.SrcH, dims.OutW, dims.OutH, offX, offY,
             topR, bottomR,
-            p.PowerFactor, p.RefractionA, p.RefractionB, p.RefractionC, p.RefractionD,
-            p.FPower, p.Noise, p.GlowWeight, p.GlowBias, p.GlowEdge0, p.GlowEdge1,
+            p.PowerFactor, p.RefractionA,
+            p.RefractionB * (p.Refraction > 1e-4 ? (0.15 + 1.15 * Math.Clamp(p.Refraction, 0.0, 3.0)) : 0.0),
+            p.RefractionC,
+            Math.Clamp(p.RefractionD * (0.25 / Math.Clamp(double.IsFinite(p.ZRadius) ? p.ZRadius : 0.25, 0.04, 1.0)), 1.2, 24.0),
+            p.FPower, p.Noise,
+            Math.Clamp(p.Specular * 1.15 + p.EdgeHighlight * 0.65 + p.GlowWeight * 0.12, 0.0, 2.5),
+            Math.Clamp(p.Fresnel * 1.15 + p.EdgeHighlight * 0.40 + Math.Max(0.0, p.GlowBias), 0.0, 2.5),
+            Math.Clamp(p.Distortion, 0.0, 2.0),
+            p.GlowEdge1,
             Math.Clamp(p.ChromaticAberration, 0.0, 2.0),
-            double.IsFinite(p.EdgeBend) ? Math.Max(0.0, p.EdgeBend) : 0.0,
+            (double.IsFinite(p.EdgeBend) ? Math.Max(0.0, p.EdgeBend) : 0.0) * (p.Refraction > 1e-4 ? (0.25 + 0.95 * Math.Clamp(p.Refraction, 0.0, 3.0)) : 0.0),
             1.0 + p.Saturation, p.Brightness,
             p.BevelMode >= 1 ? 1.0 : 0.0,
             dims.SrcX, dims.SrcY);
@@ -2581,7 +2616,10 @@ public sealed partial class LiquidGlassController : IDisposable
             RefractionA = p.RefractionA,
             RefractionB = p.RefractionB,
             RefractionC = p.RefractionC,
-            RefractionD = p.RefractionD
+            RefractionD = p.RefractionD,
+            Refraction = p.Refraction,
+            ZRadius = p.ZRadius,
+            BevelMode = p.BevelMode
         };
 
         fixed (double* lutPtr = _refractLut)

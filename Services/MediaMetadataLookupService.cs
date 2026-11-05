@@ -1184,6 +1184,119 @@ public sealed partial class MediaMetadataLookupService : IMediaMetadataLookupSer
         }
     }
 
+    public async Task<string?> TryGetSpotifyArtworkUrlAsync(
+        string title,
+        string primaryArtist,
+        TimeSpan duration = default,
+        string? albumTitle = null,
+        CancellationToken ct = default)
+    {
+        if (string.IsNullOrWhiteSpace(title) || string.IsNullOrWhiteSpace(primaryArtist) || !_artworkAllowed())
+            return null;
+
+        string cleanTitle = title.Trim();
+        string cleanArtist = primaryArtist.Trim();
+        string? cleanAlbum = string.IsNullOrWhiteSpace(albumTitle) ? null : albumTitle.Trim();
+        long targetDurationMs = duration > TimeSpan.Zero ? (long)duration.TotalMilliseconds : 0;
+
+        try
+        {
+            string? spotifyArt = await TrySearchSpotifyCatalogArtworkAsync(cleanTitle, cleanArtist, cleanAlbum, ct);
+            if (!string.IsNullOrEmpty(spotifyArt))
+                return spotifyArt;
+
+            string? itunesArt = await TrySearchItunesArtworkAsync(cleanTitle, cleanArtist, cleanAlbum, targetDurationMs, "VN", ct)
+                             ?? await TrySearchItunesArtworkAsync(cleanTitle, cleanArtist, cleanAlbum, targetDurationMs, null, ct);
+            if (!string.IsNullOrEmpty(itunesArt))
+                return itunesArt;
+
+            return await TrySearchDeezerArtworkAsync(cleanTitle, cleanArtist, cleanAlbum, targetDurationMs, ct);
+        }
+        catch (OperationCanceledException)
+        {
+            return null;
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    private async Task<string?> TrySearchSpotifyCatalogArtworkAsync(
+        string title,
+        string primaryArtist,
+        string? albumTitle,
+        CancellationToken ct)
+    {
+        try
+        {
+            using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+            timeoutCts.CancelAfter(2500);
+            string? token = await _spotifyTokens.GetAccessTokenAsync(null, timeoutCts.Token).ConfigureAwait(false);
+            if (string.IsNullOrEmpty(token))
+                return null;
+
+            return await _spotifyCatalog.ResolveTrackArtworkUrlAsync(title, primaryArtist, albumTitle, token, timeoutCts.Token).ConfigureAwait(false);
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    private async Task<string?> TrySearchItunesArtworkAsync(
+        string title,
+        string primaryArtist,
+        string? albumTitle,
+        long targetDurationMs,
+        string? country,
+        CancellationToken ct)
+    {
+        string query = Uri.EscapeDataString($"{title} {primaryArtist}");
+        string url = string.IsNullOrEmpty(country)
+            ? $"https://itunes.apple.com/search?term={query}&entity=song&limit=5"
+            : $"https://itunes.apple.com/search?term={query}&entity=song&limit=5&country={country}";
+
+        using var body = await GetCatalogBodyAsync(url, 2200, ct).ConfigureAwait(false);
+        return body == null ? null : NativeCatalogParser.Select(body.Span, 2, title, primaryArtist, targetDurationMs, albumTitle).Key;
+    }
+
+    private async Task<string?> TrySearchDeezerArtworkAsync(
+        string title,
+        string primaryArtist,
+        string? albumTitle,
+        long targetDurationMs,
+        CancellationToken ct)
+    {
+        try
+        {
+            string query = Uri.EscapeDataString($"{title} {primaryArtist}");
+            string searchUrl = $"https://api.deezer.com/search?q={query}&limit=5";
+            using var searchBody = await GetCatalogBodyAsync(searchUrl, 2200, ct).ConfigureAwait(false);
+            if (searchBody == null) return null;
+            var tracks = YouTubeMetadataParsing.ParseUtf8(searchBody.Span, 7).Items;
+            string? bestArtwork = null;
+            int bestScore = 0;
+            foreach (var track in tracks)
+            {
+                ct.ThrowIfCancellationRequested();
+                using var detail = await GetCatalogBodyAsync($"https://api.deezer.com/track/{track.Ticks}", 2000, ct).ConfigureAwait(false);
+                if (detail == null) continue;
+                var selected = NativeCatalogParser.Select(detail.Span, 6, title, primaryArtist, targetDurationMs, albumTitle, searchBody.Span, track.Ticks);
+                if (!string.IsNullOrEmpty(selected.Key) && selected.Score > bestScore) { bestArtwork = selected.Key; bestScore = selected.Score; }
+            }
+            return bestArtwork;
+        }
+        catch (OperationCanceledException)
+        {
+            return null;
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
     private async Task<string?> TrySearchSpotifyCatalogArtistsAsync(
         string title,
         string primaryArtist,

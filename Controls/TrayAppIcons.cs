@@ -1,3 +1,4 @@
+using System.Runtime.InteropServices;
 using System.Windows;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
@@ -8,55 +9,53 @@ namespace VNotch.Controls;
 public enum TrayAppIconKind { Notes, Finder, Safari, Chrome, Photos, Colors, Figma, Terminal, Document, Pdf, Archive, Audio, Video, Folder }
 
 /// <summary>Official app artwork and shared macOS-style vectors for tray file previews.</summary>
-public static class TrayAppIcons
+public static partial class TrayAppIcons
 {
+    [LibraryImport("VNotch.Native", StringMarshalling = StringMarshalling.Utf16)]
+    private static partial int vn_tray_icons_match_source(
+        ReadOnlySpan<char> appPtr, int appLen,
+        ReadOnlySpan<char> exePtr, int exeLen,
+        out int outIconKind, out byte outMatched);
+
+    [LibraryImport("VNotch.Native", StringMarshalling = StringMarshalling.Utf16)]
+    private static partial int vn_tray_icons_match_extension(
+        ReadOnlySpan<char> extPtr, int extLen,
+        out int outIconKind, out byte outMatched);
+
+    [LibraryImport("VNotch.Native")]
+    private static partial int vn_tray_icons_for_clipboard_kind(
+        int clipboardKind, out int outIconKind);
+
+    [LibraryImport("VNotch.Native")]
+    private static partial int vn_tray_icons_compute_color_sector(
+        int index, int count, double cx, double cy, double radius,
+        out double outX1, out double outY1, out double outX2, out double outY2);
+
     private static readonly IReadOnlyDictionary<TrayAppIconKind, Lazy<ImageSource>> Icons = CreateIcons();
 
     public static ImageSource Get(TrayAppIconKind kind) => Icons[kind].Value;
 
     internal static ImageSource? FindSource(string app, string executable)
-        => MatchSource(app.Trim().ToLowerInvariant()) ?? MatchSource(ExecutableName(executable));
-
-    private static string ExecutableName(string path)
     {
-        int separator = path.LastIndexOfAny(['/', '\\']);
-        string name = path[(separator + 1)..].ToLowerInvariant();
-        return name.EndsWith(".exe", StringComparison.Ordinal) ? name[..^4] : name;
+        ReadOnlySpan<char> appSpan = app is not null ? app.AsSpan() : ReadOnlySpan<char>.Empty;
+        ReadOnlySpan<char> exeSpan = executable is not null ? executable.AsSpan() : ReadOnlySpan<char>.Empty;
+        return vn_tray_icons_match_source(appSpan, appSpan.Length, exeSpan, exeSpan.Length, out int kind, out byte matched) == 0 && matched != 0
+            ? Get((TrayAppIconKind)kind)
+            : null;
     }
 
-    private static ImageSource? MatchSource(string name) => name switch
-    {
-        "notes" or "notepad" or "windows notepad" => Get(TrayAppIconKind.Notes),
-        "finder" or "explorer" or "file explorer" or "windows explorer" => Get(TrayAppIconKind.Finder),
-        "safari" => Get(TrayAppIconKind.Safari),
-        "chrome" or "google chrome" => Get(TrayAppIconKind.Chrome),
-        "photos" or "microsoft photos" or "microsoft.photos" => Get(TrayAppIconKind.Photos),
-        "figma" => Get(TrayAppIconKind.Figma),
-        "terminal" or "windows terminal" or "windowsterminal" or "powershell" or "pwsh" or "cmd" or "command prompt" => Get(TrayAppIconKind.Terminal),
-        _ => null
-    };
+    internal static ImageSource ForContent(ClipboardKind kind)
+        => vn_tray_icons_for_clipboard_kind((int)kind, out int iconKind) == 0
+            ? Get((TrayAppIconKind)iconKind)
+            : Get(TrayAppIconKind.Notes);
 
-    internal static ImageSource ForContent(ClipboardKind kind) => Get(kind switch
+    internal static ImageSource? FindFile(string extension)
     {
-        ClipboardKind.File => TrayAppIconKind.Finder,
-        ClipboardKind.Image => TrayAppIconKind.Photos,
-        ClipboardKind.Link => TrayAppIconKind.Safari,
-        ClipboardKind.Code => TrayAppIconKind.Terminal,
-        ClipboardKind.Color => TrayAppIconKind.Colors,
-        _ => TrayAppIconKind.Notes
-    });
-
-    internal static ImageSource? FindFile(string extension) => extension.ToLowerInvariant() switch
-    {
-        ".pdf" => Get(TrayAppIconKind.Pdf),
-        ".zip" or ".rar" or ".7z" or ".tar" or ".gz" or ".bz2" => Get(TrayAppIconKind.Archive),
-        ".mp3" or ".wav" or ".flac" or ".m4a" or ".aac" or ".ogg" => Get(TrayAppIconKind.Audio),
-        ".mp4" or ".mkv" or ".mov" or ".avi" or ".wmv" or ".webm" => Get(TrayAppIconKind.Video),
-        ".png" or ".jpg" or ".jpeg" or ".gif" or ".webp" or ".heic" or ".bmp" or ".tiff" => Get(TrayAppIconKind.Photos),
-        ".cs" or ".js" or ".ts" or ".tsx" or ".jsx" or ".py" or ".cpp" or ".c" or ".h" or ".json" or ".xml" or ".html" or ".css" or ".sql" => Get(TrayAppIconKind.Terminal),
-        ".doc" or ".docx" or ".rtf" or ".odt" or ".txt" or ".md" or ".xls" or ".xlsx" or ".csv" or ".ppt" or ".pptx" => Get(TrayAppIconKind.Document),
-        _ => null
-    };
+        ReadOnlySpan<char> extSpan = extension is not null ? extension.AsSpan() : ReadOnlySpan<char>.Empty;
+        return vn_tray_icons_match_extension(extSpan, extSpan.Length, out int kind, out byte matched) == 0 && matched != 0
+            ? Get((TrayAppIconKind)kind)
+            : null;
+    }
 
     // First card realization needs only its source/file icons. Decode each shared
     // asset on demand instead of loading the whole pack on that first UI frame.
@@ -72,14 +71,14 @@ public static class TrayAppIcons
             string[] colors = ["#FF4C5B", "#FF9C35", "#FFE44A", "#75D354", "#48D5C4", "#3FA8FF", "#7764E8", "#DF58B4"];
             for (int i = 0; i < colors.Length; i++)
             {
-                double start = i * Math.PI / 4;
-                double end = (i + 1) * Math.PI / 4;
+                if (vn_tray_icons_compute_color_sector(i, colors.Length, 32, 32, 28, out double x1, out double y1, out double x2, out double y2) != 0)
+                    continue;
                 var sector = new StreamGeometry();
                 using (var shape = sector.Open())
                 {
                     shape.BeginFigure(new Point(32, 32), true, true);
-                    shape.LineTo(new Point(32 + 28 * Math.Cos(start), 32 + 28 * Math.Sin(start)), true, false);
-                    shape.ArcTo(new Point(32 + 28 * Math.Cos(end), 32 + 28 * Math.Sin(end)), new Size(28, 28), 0, false, SweepDirection.Clockwise, true, false);
+                    shape.LineTo(new Point(x1, y1), true, false);
+                    shape.ArcTo(new Point(x2, y2), new Size(28, 28), 0, false, SweepDirection.Clockwise, true, false);
                 }
                 dc.DrawGeometry(Brush(colors[i]), null, sector);
             }

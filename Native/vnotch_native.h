@@ -410,6 +410,9 @@ struct VnGlassMapParams
     double refraction_b;
     double refraction_c;
     double refraction_d;
+    double refraction;
+    double z_radius;
+    int32_t bevel_mode;
 };
 
 struct VnGlassBackdropOpticsOut
@@ -2304,3 +2307,160 @@ VN_EXPORT int32_t __stdcall vn_translation_runtime_is_allowed_uri(
     uint8_t is_default_port,
     const char16_t* host_ptr, int32_t host_len,
     uint8_t* out_allowed) noexcept;
+
+#pragma pack(push, 1)
+struct VnClockTickSegment
+{
+    double x1;
+    double y1;
+    double x2;
+    double y2;
+    uint8_t is_major;
+};
+#pragma pack(pop)
+VN_EXPORT int32_t __stdcall vn_analog_clock_calculate_face_radius(
+    double width, double height, double face_padding, double* out_radius) noexcept;
+VN_EXPORT int32_t __stdcall vn_analog_clock_compute_hand_angles(
+    int32_t hour, int32_t minute, int32_t second, int32_t millisecond,
+    double* out_hour_angle, double* out_minute_angle, double* out_second_angle) noexcept;
+VN_EXPORT int32_t __stdcall vn_analog_clock_compute_ticks(
+    double center_x, double center_y, double radius,
+    VnClockTickSegment* out_segments, int32_t segment_cap, int32_t* out_written) noexcept;
+
+VN_EXPORT int32_t __stdcall vn_elastic_slider_compute_metrics(
+    double value, double min_val, double max_val, double tick_freq,
+    double* out_fraction, double* out_effective_step, int32_t* out_tick_count, double* out_snapped_value) noexcept;
+VN_EXPORT int32_t __stdcall vn_elastic_slider_compute_indicator_layout(
+    double value, double min_val, double max_val, double width, double track_edge_pad, double indicator_width,
+    double* out_target_left, double* out_fill_width) noexcept;
+VN_EXPORT int32_t __stdcall vn_elastic_slider_compute_overscroll(
+    double overflow_px, double usable_width, uint8_t reduce_motion,
+    double* out_scale_x, double* out_scale_y) noexcept;
+VN_EXPORT int32_t __stdcall vn_elastic_slider_eval_mouse(
+    double mouse_x, double width, double track_edge_pad, double min_val, double max_val, double tick_freq,
+    double* out_drag_overflow, double* out_clamped_fraction, double* out_snapped_value, int32_t* out_overscroll_dir) noexcept;
+
+#pragma pack(push, 1)
+struct VnCpuRimOpacities
+{
+    double active_fresnel;
+    double rim;
+    double depth_rim;
+    double fresnel_bloom;
+    double fresnel;
+    double inner_fresnel;
+    double specular;
+    double cool_rim;
+    double warm_rim;
+};
+
+struct VnDynamicFresnelStep
+{
+    double fresnel_x;
+    double fresnel_y;
+    double fresnel_contrast;
+    uint8_t tint_r;
+    uint8_t tint_g;
+    uint8_t tint_b;
+    uint8_t bright_r;
+    uint8_t bright_g;
+    uint8_t bright_b;
+    uint8_t mid_r;
+    uint8_t mid_g;
+    uint8_t mid_b;
+    uint8_t inner_shadow_a;
+    double origin_x;
+    double origin_y;
+    double radius_x;
+    double radius_y;
+    double bloom_opacity;
+    double fresnel_opacity;
+    double inner_fresnel_opacity;
+};
+#pragma pack(pop)
+VN_EXPORT int32_t __stdcall vn_glass_binder_compute_cpu_rim_opacities(
+    double edge_highlight, double specular, double fresnel, double chroma, VnCpuRimOpacities* out_opacities) noexcept;
+VN_EXPORT int32_t __stdcall vn_glass_binder_build_fresnel_tint(
+    uint8_t red, uint8_t green, uint8_t blue, uint8_t* out_r, uint8_t* out_g, uint8_t* out_b) noexcept;
+VN_EXPORT int32_t __stdcall vn_glass_binder_interpolate_color(
+    uint8_t from_r, uint8_t from_g, uint8_t from_b, uint8_t to_r, uint8_t to_g, uint8_t to_b,
+    double amount, uint8_t* out_r, uint8_t* out_g, uint8_t* out_b) noexcept;
+VN_EXPORT int32_t __stdcall vn_glass_binder_step_dynamic_fresnel(
+    int64_t now_ticks, int64_t last_ticks, double active_fresnel_level,
+    double light_x, double light_y, double contrast,
+    uint8_t optic_r, uint8_t optic_g, uint8_t optic_b,
+    double cur_x, double cur_y, double cur_contrast,
+    uint8_t cur_tint_r, uint8_t cur_tint_g, uint8_t cur_tint_b,
+    VnDynamicFresnelStep* out_step) noexcept;
+VN_EXPORT int32_t __stdcall vn_glass_binder_read_system_transparency(uint8_t* out_enabled) noexcept;
+
+VN_EXPORT int32_t __stdcall vn_highlighted_text_fill_mask(
+    const wchar_t* text_ptr, int32_t text_len, const wchar_t* query_ptr, int32_t query_len,
+    uint8_t* out_mask, int32_t mask_cap, uint8_t* out_matched) noexcept;
+
+VN_EXPORT int32_t __stdcall vn_clipboard_scroll_category_drop_speed(
+    double x, double width, double* out_speed) noexcept;
+VN_EXPORT int32_t __stdcall vn_clipboard_scroll_category_overscroll(
+    double excess, uint8_t reduce_motion, double* out_elastic_x) noexcept;
+VN_EXPORT int32_t __stdcall vn_clipboard_scroll_step_category_frame(
+    double scroll_target, double scrollable_width, double current_offset, double current_elastic_x,
+    double seconds, uint8_t reduce_motion,
+    double* out_clamped_target, double* out_next_offset, double* out_next_elastic_x, uint8_t* out_stop) noexcept;
+VN_EXPORT int32_t __stdcall vn_clipboard_scroll_step_cards_frame(
+    double scroll_target, double scrollable_width, double current_pos, double seconds, uint8_t reduce_motion,
+    double* out_clamped_target, double* out_next_pos, uint8_t* out_stop) noexcept;
+
+#pragma pack(push, 1)
+struct VnNavTabTokenSlice
+{
+    int32_t offset;
+    int32_t length;
+};
+#pragma pack(pop)
+VN_EXPORT int32_t __stdcall vn_nav_tabs_calculate_target_slot_hysteresis(
+    int32_t current_target, double visual_pos, double pitch, int32_t total_slots, int32_t* out_slot) noexcept;
+VN_EXPORT int32_t __stdcall vn_nav_tabs_calculate_neighbor_offset(
+    int32_t index, int32_t initial_slot, int32_t target_slot, double pitch, double* out_offset) noexcept;
+VN_EXPORT int32_t __stdcall vn_nav_tabs_parse_unique_tokens(
+    const wchar_t* raw_ptr, int32_t raw_len, VnNavTabTokenSlice* out_slices, int32_t slice_cap, int32_t* out_written) noexcept;
+
+VN_EXPORT int32_t __stdcall vn_app_integrity_is_valid_release_tag(
+    const wchar_t* tag_ptr, int32_t tag_len, uint8_t* out_valid) noexcept;
+VN_EXPORT int32_t __stdcall vn_app_integrity_matches_checksum_manifest(
+    const wchar_t* manifest_ptr, int32_t manifest_len,
+    const wchar_t* actual_hash_ptr, int32_t actual_hash_len,
+    const wchar_t* target_file_ptr, int32_t target_file_len,
+    uint8_t* out_matches) noexcept;
+
+VN_EXPORT int32_t __stdcall vn_tray_icons_match_source(
+    const wchar_t* app_ptr, int32_t app_len, const wchar_t* exe_ptr, int32_t exe_len,
+    int32_t* out_icon_kind, uint8_t* out_matched) noexcept;
+VN_EXPORT int32_t __stdcall vn_tray_icons_match_extension(
+    const wchar_t* ext_ptr, int32_t ext_len, int32_t* out_icon_kind, uint8_t* out_matched) noexcept;
+VN_EXPORT int32_t __stdcall vn_tray_icons_for_clipboard_kind(
+    int32_t clipboard_kind, int32_t* out_icon_kind) noexcept;
+VN_EXPORT int32_t __stdcall vn_tray_icons_compute_color_sector(
+    int32_t index, int32_t count, double cx, double cy, double radius,
+    double* out_x1, double* out_y1, double* out_x2, double* out_y2) noexcept;
+
+VN_EXPORT int32_t __stdcall vn_translation_compute_character_fades(
+    double elapsed, double interval, double fade_ms, int32_t brush_count, int32_t completed_index,
+    double* out_opacities, int32_t opacity_cap, int32_t* out_start_index, int32_t* out_end_index, int32_t* out_new_completed) noexcept;
+VN_EXPORT int32_t __stdcall vn_translation_compute_popup_limits(
+    double work_height, double dpi_scale_y, double* out_max_height, double* out_panel_max_height) noexcept;
+VN_EXPORT int32_t __stdcall vn_translation_compute_viewport_height(
+    double panel_max_height, double chrome_height, double current_max_height, double* out_height, uint8_t* out_changed) noexcept;
+VN_EXPORT int32_t __stdcall vn_translation_compute_drag_position(
+    double origin_x, double origin_y, double start_x, double start_y, double screen_x, double screen_y,
+    int32_t* out_x, int32_t* out_y) noexcept;
+
+VN_EXPORT int32_t __stdcall vn_clipboard_category_eval_ghost(
+    double point_x, double point_y, double grip_x, double scroll_width, double scroll_height, double source_height,
+    uint8_t state_valid, double* out_ghost_left, double* out_ghost_top, double* out_ghost_opacity, uint8_t* out_reorder_valid) noexcept;
+VN_EXPORT int32_t __stdcall vn_clipboard_category_resolve_move(
+    int32_t count, int32_t source_index, int32_t before_index, int32_t* out_destination, uint8_t* out_changed) noexcept;
+VN_EXPORT int32_t __stdcall vn_clipboard_category_compute_preview_shift(
+    int32_t item_index, int32_t source_index, int32_t destination_index, double span, double* out_shift) noexcept;
+VN_EXPORT int32_t __stdcall vn_clipboard_category_compute_gap_x(
+    int32_t source_index, int32_t before_index, double before_origin_x, double last_origin_x,
+    double last_width, double last_margin_right, double span, double* out_gap_x) noexcept;

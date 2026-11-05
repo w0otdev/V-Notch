@@ -409,6 +409,7 @@ public partial class MainWindow
                 CompactThumbnail.Source = ThumbnailImage.Source;
                 CompactThumbnail.Visibility = Visibility.Visible;
             }
+            ResetCompactThumbnailRestingState();
             CompactThumbnailBorder.BeginAnimation(OpacityProperty, null);
             CompactThumbnailBorder.Visibility = Visibility.Visible;
             CompactThumbnailBorder.Opacity = 1;
@@ -719,7 +720,7 @@ public partial class MainWindow
 
         if (IsLiquidGlassEnabled && AnimationThumbnailBorder.Effect is DropShadowEffect animShadow)
         {
-            animShadow.BeginAnimation(DropShadowEffect.OpacityProperty, MakeAnim(0.5, 0.5, thumbDur, _easeExpOut6));
+            animShadow.BeginAnimation(DropShadowEffect.OpacityProperty, null); animShadow.Opacity = 0.5; animShadow.BeginAnimation(DropShadowEffect.OpacityProperty, MakeAnim(0.5, 0.0, thumbDur, _easeExpOut6));
         }
 
         if (CompactThumbnailBorder != null)
@@ -903,6 +904,7 @@ public partial class MainWindow
     {
         if (CompactThumbnailBorder != null && !_isClipboardPeekActive && !suppressCompactThumbnailMotion)
         {
+            ResetCompactThumbnailRestingState();
             CompactThumbnailBorder.BeginAnimation(OpacityProperty, null);
             CompactThumbnailBorder.Visibility = Visibility.Visible;
             CompactThumbnailBorder.Opacity = 1;
@@ -1920,7 +1922,7 @@ public partial class MainWindow
 
         if (IsLiquidGlassEnabled && AnimationThumbnailBorder.Effect is DropShadowEffect animShadow)
         {
-            animShadow.BeginAnimation(DropShadowEffect.OpacityProperty, MakeAnim(0.5, 0.5, thumbDur, thumbEase, thumbDelay));
+            animShadow.BeginAnimation(DropShadowEffect.OpacityProperty, null); animShadow.Opacity = 0.0; animShadow.BeginAnimation(DropShadowEffect.OpacityProperty, MakeAnim(0.0, 0.5, thumbDur, _easeQuadOut, thumbDelay));
         }
     }
 
@@ -1967,7 +1969,7 @@ public partial class MainWindow
         contentToShow.BeginAnimation(OpacityProperty, null);
         contentToShow.RenderTransform = null;
 
-        if (!deferCompactThumbnailReveal)
+        if (!deferCompactThumbnailReveal && !_isThumbnailCollapseAnimating)
         {
             ResetCompactThumbnailRestingState();
         }
@@ -2006,7 +2008,8 @@ public partial class MainWindow
         {
             if (allowCompactChrome && !deferCompactThumbnailReveal && !_isThumbnailCollapseAnimating)
             {
-                CompactThumbnailBorder.BeginAnimation(OpacityProperty, null);
+                ResetCompactThumbnailRestingState();
+            CompactThumbnailBorder.BeginAnimation(OpacityProperty, null);
                 CompactThumbnailBorder.Visibility = Visibility.Visible;
                 CompactThumbnailBorder.Opacity = 1;
             }

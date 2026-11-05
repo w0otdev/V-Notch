@@ -89,6 +89,22 @@ public static partial class AppIntegrityService
         byte isInstaller,
         out byte outApplicable);
 
+    [LibraryImport("VNotch.Native.dll", StringMarshalling = StringMarshalling.Utf16)]
+    private static partial int vn_app_integrity_is_valid_release_tag(
+        ReadOnlySpan<char> tagPtr,
+        int tagLen,
+        out byte outValid);
+
+    [LibraryImport("VNotch.Native.dll", StringMarshalling = StringMarshalling.Utf16)]
+    private static partial int vn_app_integrity_matches_checksum_manifest(
+        ReadOnlySpan<char> manifestPtr,
+        int manifestLen,
+        ReadOnlySpan<char> actualHashPtr,
+        int actualHashLen,
+        ReadOnlySpan<char> targetFilePtr,
+        int targetFileLen,
+        out byte outMatches);
+
     private const string LogCategory = "INTEGRITY";
     private const string OfficialRepoOwner = "w0otdev";
     private const string OfficialRepoName = "V-Notch";
@@ -307,16 +323,11 @@ public static partial class AppIntegrityService
 
     internal static bool IsValidReleaseTag(string tag)
     {
-        if (string.IsNullOrWhiteSpace(tag))
+        if (string.IsNullOrEmpty(tag))
             return false;
-        if (tag.Contains('/') || tag.Contains('\\') || tag.Contains("..", StringComparison.Ordinal))
-            return false;
-        foreach (char c in tag)
-        {
-            if (char.IsControl(c) || char.IsWhiteSpace(c) || c is '?' or '#' or '%')
-                return false;
-        }
-        return true;
+
+        ReadOnlySpan<char> span = tag.AsSpan();
+        return vn_app_integrity_is_valid_release_tag(span, span.Length, out byte valid) == 0 && valid != 0;
     }
 
     internal static bool MatchesChecksumManifest(string checksumData, string actualHash, string targetFileName = "V-Notch.exe")
@@ -324,88 +335,14 @@ public static partial class AppIntegrityService
         if (string.IsNullOrWhiteSpace(checksumData) || string.IsNullOrWhiteSpace(actualHash))
             return false;
 
-        ReadOnlySpan<char> expectedHash = actualHash.AsSpan().Trim();
-        if (!IsHex64(expectedHash))
-            return false;
-
-        ReadOnlySpan<char> normalizedTarget = NormalizeManifestFileName(targetFileName.AsSpan());
-        if (normalizedTarget.IsEmpty)
-            normalizedTarget = "V-Notch.exe".AsSpan();
-
-        foreach (ReadOnlySpan<char> rawLine in checksumData.AsSpan().EnumerateLines())
-        {
-            ReadOnlySpan<char> line = rawLine.Trim();
-            if (line.IsEmpty || line[0] == '#' || line[0] == ';')
-                continue;
-
-            int commentIdx = line.IndexOf('#');
-            if (commentIdx >= 0)
-            {
-                line = line[..commentIdx].Trim();
-                if (line.IsEmpty)
-                    continue;
-            }
-
-            bool foundMatchingHash = false;
-            int fileTokenCount = 0;
-            bool allFileTokensMatch = true;
-
-            int i = 0;
-            while (i < line.Length)
-            {
-                while (i < line.Length && (char.IsWhiteSpace(line[i]) || line[i] == ':'))
-                    i++;
-                if (i >= line.Length)
-                    break;
-
-                int start = i;
-                while (i < line.Length && !char.IsWhiteSpace(line[i]) && line[i] != ':')
-                    i++;
-
-                ReadOnlySpan<char> token = line[start..i];
-                if (IsHex64(token) && token.Equals(expectedHash, StringComparison.OrdinalIgnoreCase))
-                {
-                    foundMatchingHash = true;
-                }
-                else
-                {
-                    fileTokenCount++;
-                    ReadOnlySpan<char> normalizedFile = NormalizeManifestFileName(token);
-                    if (normalizedFile.IsEmpty || !normalizedFile.Equals(normalizedTarget, StringComparison.OrdinalIgnoreCase))
-                    {
-                        allFileTokensMatch = false;
-                    }
-                }
-            }
-
-            if (foundMatchingHash && (fileTokenCount == 0 || (fileTokenCount == 1 && allFileTokensMatch)))
-            {
-                return true;
-            }
-        }
-
-        return false;
-    }
-
-    private static bool IsHex64(ReadOnlySpan<char> value)
-    {
-        if (value.Length != 64)
-            return false;
-        for (int i = 0; i < 64; i++)
-        {
-            if (!Uri.IsHexDigit(value[i]))
-                return false;
-        }
-        return true;
-    }
-
-    private static ReadOnlySpan<char> NormalizeManifestFileName(ReadOnlySpan<char> rawToken)
-    {
-        ReadOnlySpan<char> token = rawToken.Trim().Trim(':').Trim("\"'()"u8.Length > 0 ? "\"'()".AsSpan() : default).TrimStart('*').Trim();
-        int lastSlash = token.LastIndexOfAny('/', '\\');
-        if (lastSlash >= 0)
-            token = token[(lastSlash + 1)..];
-        return token.Trim();
+        ReadOnlySpan<char> manifestSpan = checksumData.AsSpan();
+        ReadOnlySpan<char> hashSpan = actualHash.AsSpan();
+        ReadOnlySpan<char> targetSpan = (targetFileName ?? string.Empty).AsSpan();
+        return vn_app_integrity_matches_checksum_manifest(
+            manifestSpan, manifestSpan.Length,
+            hashSpan, hashSpan.Length,
+            targetSpan, targetSpan.Length,
+            out byte matches) == 0 && matches != 0;
     }
 
     private static async Task<string> ReadBoundedStringAsync(HttpResponseMessage response, int maxBytes, CancellationToken cancellationToken)

@@ -258,16 +258,47 @@ public sealed class MainWindowGlassPresentationTests
         Invoke(window, "UpdateShaderGeometryPerFrame");
         Assert.Equal(effect.SrcW, window.GlassBackdropImage.Width * dpi, 6);
         Assert.Equal(effect.SrcH, window.GlassBackdropImage.Height * dpi, 6);
+        settings.LiquidGlass.PowerFactor = 4;
+        settings.LiquidGlass.RefractionD = 9;
+        Invoke(window, "ApplyLiquidGlassConfig");
+        Assert.Equal(4, effect.PowerFactor);
+        Assert.Equal(9, effect.D);
         Invoke(window, "OnGpuRefractionFailure", new InvalidOperationException("fixture GPU unavailable"));
         Assert.Null(window.GlassBackdropImage.Effect);
         Assert.Null(window.GlassBackdropHost.Effect);
         Assert.True(double.IsNaN(window.GlassBackdropImage.Height));
     });
 
+    [Fact]
+    public void FinalizeCompactModeDefersRestingThumbnailWhileCollapseOverlayAnimates() => SharedStaTestRunner.Run(() =>
+    {
+        using var fixture = CreateFixture();
+        var window = fixture.Window;
+        Invoke(window, "ApplyGlassPanelMaterial", true);
+        Assert.Same(Brushes.Transparent, window.CompactThumbnailBorder.Background);
+
+        Set(window, "_isMusicCompactMode", true);
+
+        Set(window, "_isThumbnailCollapseAnimating", true);
+        window.CompactThumbnailBorder.Opacity = 0;
+        window.CompactThumbnailBorder.Visibility = Visibility.Hidden;
+
+        Invoke(window, "FinalizeCompactModeAfterCollapse", window.MusicCompactContent, false, false);
+        Assert.Equal(Visibility.Hidden, window.CompactThumbnailBorder.Visibility);
+        Assert.Equal(0, window.CompactThumbnailBorder.Opacity);
+
+        var handoff = Field<Action?>(window, "_pendingThumbnailHandoff");
+        Assert.NotNull(handoff);
+        Set(window, "_isThumbnailCollapseAnimating", false);
+        handoff!();
+        Assert.Equal(Visibility.Visible, window.CompactThumbnailBorder.Visibility);
+        Assert.Equal(1, window.CompactThumbnailBorder.Opacity);
+    });
+
     private static GreetingAcceptanceTests.MainWindowFixture CreateFixture() => new("en", greeting: false,
         configureSettings: settings => settings.EnableLocalOnlyMode = true,
         configureServices: services => services.AddSingleton<IMediaDetectionService>(new FakeMediaDetectionService()));
     private static T Field<T>(MainWindow window, string name) => (T)typeof(MainWindow).GetField(name, Private)!.GetValue(window)!;
-    private static void Set(MainWindow window, string name, object value) => typeof(MainWindow).GetField(name, Private)!.SetValue(window, value);
+    private static void Set(MainWindow window, string name, object value) { if (typeof(MainWindow).GetField(name, Private) is { } f) f.SetValue(window, value); else typeof(MainWindow).GetProperty(name, Private)!.SetValue(window, value); }
     private static void Invoke(MainWindow window, string name, params object?[] args) => typeof(MainWindow).GetMethod(name, Private)!.Invoke(window, args);
 }

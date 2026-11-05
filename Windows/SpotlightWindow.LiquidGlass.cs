@@ -246,6 +246,12 @@ public partial class SpotlightWindow
 
         ApplyGpuBlur(cfg.BlurAmount);
         GlassBackdropHost.Opacity = Math.Clamp(cfg.Opacity, 0, 1);
+        if (GlassTintOverlay != null)
+        {
+            GlassTintOverlay.Opacity = cfg.Variant == 1
+                ? 0.16
+                : Math.Clamp(0.42 + cfg.BlurAmount * 0.42 - cfg.Brightness * 0.85, 0.14, 0.96);
+        }
 
         if (GlassGrainOverlay != null)
         {
@@ -291,6 +297,10 @@ public partial class SpotlightWindow
             Saturation = cfg.Saturation,
             Brightness = cfg.Brightness,
             BevelMode = cfg.BevelMode,
+            EdgeHighlight = cfg.EdgeHighlight,
+            Specular = cfg.Specular,
+            Fresnel = cfg.Fresnel,
+            Variant = cfg.Variant,
             TopCornerRadius = Shell.CornerRadius.TopLeft,
             BottomCornerRadius = Shell.CornerRadius.BottomLeft
         });

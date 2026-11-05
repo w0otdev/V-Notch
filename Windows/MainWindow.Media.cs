@@ -192,9 +192,11 @@ public partial class MainWindow
         }
         else
         {
-            if (isSpotify && _currentLyrics == null && string.IsNullOrEmpty(_lyricsTrackKey))
+            if (isSpotify && info.Platform == MediaPlatform.Spotify && !isThumbnailOnlyUpdate &&
+                (_syncedTextSource == SyncedTextSource.YouTubeSubtitles ||
+                 (_currentLyrics == null && string.IsNullOrEmpty(_lyricsTrackKey))))
                 FetchLyricsForTrack(info).SafeFireAndForget("LYRICS");
-            if (isYouTube && !string.IsNullOrEmpty(info.YouTubeVideoId))
+            if (!isSpotify && isYouTube && !string.IsNullOrEmpty(info.YouTubeVideoId))
             {
                 // Re-fetch if the resolved video ID has changed, or if subtitles were not loaded and lyrics are inactive.
                 string targetKey = $"yt:{info.YouTubeVideoId}";
@@ -414,8 +416,8 @@ public partial class MainWindow
         var overlap = TimeSpan.FromMilliseconds(220);
         var totalDur = overlap + inDur;
 
-        double expandedPeakBlur = _settings.EnableBlurEffects ? 18.0 : 0.0;
-        double compactPeakBlur = _settings.EnableBlurEffects ? 6.0 : 0.0;
+        double expandedPeakBlur = 0.0;
+        double compactPeakBlur = 0.0;
 
         var quintOut = new QuinticEase { EasingMode = EasingMode.EaseOut };
         var cubicOut = new CubicEase { EasingMode = EasingMode.EaseOut };
@@ -549,20 +551,20 @@ public partial class MainWindow
         ThumbnailImage.BeginAnimation(OpacityProperty, outFade);
         ThumbnailOutScale.BeginAnimation(ScaleTransform.ScaleXProperty, outScale);
         ThumbnailOutScale.BeginAnimation(ScaleTransform.ScaleYProperty, outScale);
-        ThumbnailOutBlur.BeginAnimation(BlurEffect.RadiusProperty, outBlurExpanded);
+        _ = outBlurExpanded;
         ThumbnailImageNext.BeginAnimation(OpacityProperty, inFade);
         ThumbnailNextScale.BeginAnimation(ScaleTransform.ScaleXProperty, inScale);
         ThumbnailNextScale.BeginAnimation(ScaleTransform.ScaleYProperty, inScale);
-        ThumbnailNextBlur.BeginAnimation(BlurEffect.RadiusProperty, inBlurExpanded);
+        _ = inBlurExpanded;
 
         CompactThumbnail.BeginAnimation(OpacityProperty, outFade);
         CompactThumbnailOutScale.BeginAnimation(ScaleTransform.ScaleXProperty, outScale);
         CompactThumbnailOutScale.BeginAnimation(ScaleTransform.ScaleYProperty, outScale);
-        CompactThumbnailOutBlur.BeginAnimation(BlurEffect.RadiusProperty, outBlurCompact);
+        _ = outBlurCompact;
         CompactThumbnailNext.BeginAnimation(OpacityProperty, inFade);
         CompactThumbnailNextScale.BeginAnimation(ScaleTransform.ScaleXProperty, inScale);
         CompactThumbnailNextScale.BeginAnimation(ScaleTransform.ScaleYProperty, inScale);
-        CompactThumbnailNextBlur.BeginAnimation(BlurEffect.RadiusProperty, inBlurCompact);
+        _ = inBlurCompact;
     }
 #pragma warning restore S3776
 

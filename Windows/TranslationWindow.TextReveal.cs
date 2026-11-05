@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.Runtime.InteropServices;
 using System.Windows;
 using System.Windows.Documents;
 using System.Windows.Media;
@@ -18,6 +19,11 @@ public partial class TranslationWindow
     private int _resultRevealVersion, _resultRevealCompleted;
     private List<SolidColorBrush>? _resultRevealBrushes;
     private double _resultRevealInterval;
+
+    [LibraryImport("VNotch.Native")]
+    private static partial int vn_translation_compute_character_fades(
+        double elapsed, double interval, double fadeMs, int brushCount, int completedIndex,
+        Span<double> outOpacities, int opacityCap, out int outStartIndex, out int outEndIndex, out int outNewCompleted);
 
     private void QueueResultReveal()
     {
@@ -114,14 +120,16 @@ public partial class TranslationWindow
     private void UpdateCharacterFades(double elapsed)
     {
         var brushes = _resultRevealBrushes;
-        if (brushes == null) return;
-        int activeEnd = Math.Min(brushes.Count, (int)(elapsed / _resultRevealInterval) + 1);
-        for (int i = _resultRevealCompleted; i < activeEnd; i++)
-        {
-            double progress = Math.Clamp((elapsed - i * _resultRevealInterval) / CharacterFadeMilliseconds, 0, 1);
-            brushes[i].Opacity = 1 - (1 - progress) * (1 - progress);
-            if (Math.Abs(progress - 1) < 1e-6) _resultRevealCompleted = i + 1;
-        }
+        if (brushes == null || _resultRevealCompleted >= brushes.Count) return;
+        int cap = brushes.Count - _resultRevealCompleted;
+        Span<double> opacities = cap <= 512 ? stackalloc double[cap] : new double[cap];
+        if (vn_translation_compute_character_fades(
+            elapsed, _resultRevealInterval, CharacterFadeMilliseconds, brushes.Count, _resultRevealCompleted,
+            opacities, cap, out int startIndex, out int endIndex, out int newCompleted) != 0)
+            return;
+        for (int i = startIndex; i < endIndex; i++)
+            brushes[i].Opacity = opacities[i - startIndex];
+        _resultRevealCompleted = newCompleted;
     }
 
     private void StopResultReveal(bool revealImmediately = true)

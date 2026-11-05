@@ -507,7 +507,9 @@ VN_EXPORT int32_t __stdcall vn_glass_build_refraction_rows(
         !std::isfinite(params->refraction_a) ||
         !std::isfinite(params->refraction_b) ||
         !std::isfinite(params->refraction_c) ||
-        !std::isfinite(params->refraction_d))
+        !std::isfinite(params->refraction_d) ||
+        !std::isfinite(params->refraction) ||
+        !std::isfinite(params->z_radius))
     {
         return VN_ERR_INVALID_ARG;
     }
@@ -529,12 +531,17 @@ VN_EXPORT int32_t __stdcall vn_glass_build_refraction_rows(
     const double bottom_r = std::clamp(params->bottom_corner_radius * params->out_scale, 0.0, min_half);
     const double u_chroma = std::clamp(params->chromatic_aberration, 0.0, 2.0);
     const double distort = std::clamp(params->distortion, 0.0, 2.0);
+    const double refract_strength = std::clamp(params->refraction, 0.0, 3.0);
+    const double z_rad = std::clamp(params->z_radius, 0.04, 1.0);
+    const double depth_reach = std::clamp(z_rad / 0.25, 0.20, 2.8) * (params->bevel_mode >= 1 ? 1.45 : 1.0);
+    const double bevel_shelf = params->bevel_mode >= 1 ? 0.22 : 0.0;
     const double aspect = std::clamp(
         static_cast<double>(params->notch_h) / std::max(static_cast<double>(params->notch_w), 1.0) * 2.5,
         0.0,
         1.0);
     const double vertical_balance = 0.68 + 0.32 * aspect;
-    const double bend = std::max(params->edge_bend, 0.1);
+    const double bend = std::max(params->edge_bend, 0.05) *
+        (refract_strength > 1e-4 ? (0.20 + 1.15 * refract_strength) : 0.0);
     const double inv_half_x = 1.0 / std::max(half_x, 1.0);
     const double inv_half_y = 1.0 / std::max(half_y, 1.0);
     const double inv_min_half = 1.0 / std::max(min_half, 1.0);
@@ -569,9 +576,10 @@ VN_EXPORT int32_t __stdcall vn_glass_build_refraction_rows(
             const double py_norm = ly * inv_half_y;
             const double raw_dist = inside * inv_min_half;
             const double dist_norm = std::isfinite(raw_dist) ? std::clamp(raw_dist, 0.0, 1.0) : 0.0;
-            const double one_minus_dist = 1.0 - dist_norm;
+            const double scaled_dist = std::clamp(dist_norm / depth_reach, 0.0, 1.0);
+            const double one_minus_dist = 1.0 - scaled_dist;
 
-            const double raw_lut_pos = dist_norm * lut_scale;
+            const double raw_lut_pos = scaled_dist * lut_scale;
             const double lut_pos = std::isfinite(raw_lut_pos)
                 ? std::clamp(raw_lut_pos, 0.0, static_cast<double>(lut_max_idx - 1))
                 : 0.0;
@@ -579,17 +587,19 @@ VN_EXPORT int32_t __stdcall vn_glass_build_refraction_rows(
             lut_idx = std::clamp(lut_idx, 0, lut_max_idx - 1);
             const double lut0 = std::isfinite(lut[lut_idx]) ? lut[lut_idx] : 1.0;
             const double lut1 = std::isfinite(lut[lut_idx + 1]) ? lut[lut_idx + 1] : lut0;
-            const double frac = std::clamp((dist_norm * lut_scale) - static_cast<double>(lut_idx), 0.0, 1.0);
-            const double refract_factor = lut0 + (lut1 - lut0) * frac;
+            const double frac = std::clamp((scaled_dist * lut_scale) - static_cast<double>(lut_idx), 0.0, 1.0);
+            const double base_refract = lut0 + (lut1 - lut0) * frac;
+            const double dome_pull = (one_minus_dist * one_minus_dist) * (0.18 + bevel_shelf) * std::min(refract_strength, 1.8);
+            const double refract_factor = std::clamp(base_refract - dome_pull, 0.05, 1.25);
 
             double disp_x = (px_norm * refract_factor - px_norm) * half_x * bend;
             double disp_y = (py_norm * refract_factor - py_norm) * half_y * bend;
 
-            if (distort > 0.0 && one_minus_dist > 0.0)
+            if (distort > 0.0)
             {
-                const double noise_x = vnotch::controllers::ValueNoise(lx * 0.045, ly * 0.045) * 2.0 - 1.0;
-                const double noise_y = vnotch::controllers::ValueNoise(lx * 0.045 + 19.7, ly * 0.045 + 43.1) * 2.0 - 1.0;
-                const double distort_scale = distort * 2.25 * one_minus_dist;
+                const double noise_x = vnotch::controllers::ValueNoise(lx * 0.055, ly * 0.055) * 2.0 - 1.0;
+                const double noise_y = vnotch::controllers::ValueNoise(lx * 0.055 + 19.7, ly * 0.055 + 43.1) * 2.0 - 1.0;
+                const double distort_scale = distort * 14.0 * (0.35 + 0.65 * one_minus_dist);
                 disp_x += noise_x * distort_scale;
                 disp_y += noise_y * vertical_balance * distort_scale;
             }
@@ -597,7 +607,7 @@ VN_EXPORT int32_t __stdcall vn_glass_build_refraction_rows(
             base_x += disp_x;
             base_y += disp_y;
 
-            const double ca_s = std::min(u_chroma * one_minus_dist * 3.0, 8.0);
+            const double ca_s = std::min(u_chroma * (0.30 + 0.70 * one_minus_dist) * 9.5, 14.0);
             if (ca_s <= 0.0)
             {
                 int32_t s_idx = 0, s_aux = 0;
@@ -609,8 +619,13 @@ VN_EXPORT int32_t __stdcall vn_glass_build_refraction_rows(
             }
 
             const double disp_len = std::sqrt(disp_x * disp_x + disp_y * disp_y);
-            const double ca_dir_x = (std::isfinite(disp_len) && disp_len > 1e-6) ? disp_x / disp_len : 0.0;
-            const double ca_dir_y = (std::isfinite(disp_len) && disp_len > 1e-6) ? disp_y / disp_len : 0.0;
+            const double norm_len = std::sqrt(px_norm * px_norm + py_norm * py_norm);
+            const double ca_dir_x = (std::isfinite(disp_len) && disp_len > 1e-4)
+                ? disp_x / disp_len
+                : ((norm_len > 1e-4) ? -px_norm / norm_len : 1.0);
+            const double ca_dir_y = (std::isfinite(disp_len) && disp_len > 1e-4)
+                ? disp_y / disp_len
+                : ((norm_len > 1e-4) ? -py_norm / norm_len : 0.0);
             const double ca_x = ca_dir_x * ca_s;
             const double ca_y = ca_dir_y * vertical_balance * ca_s;
 

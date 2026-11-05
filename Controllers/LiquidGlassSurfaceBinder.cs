@@ -1,4 +1,5 @@
 using System;
+using System.Runtime.InteropServices;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
@@ -8,8 +9,72 @@ using VNotch.Services;
 namespace VNotch.Controllers;
 
 
-internal sealed class LiquidGlassSurfaceBinder
+internal sealed partial class LiquidGlassSurfaceBinder
 {
+    [StructLayout(LayoutKind.Sequential, Pack = 1)]
+    private struct VnCpuRimOpacities
+    {
+        public double ActiveFresnel;
+        public double Rim;
+        public double DepthRim;
+        public double FresnelBloom;
+        public double Fresnel;
+        public double InnerFresnel;
+        public double Specular;
+        public double CoolRim;
+        public double WarmRim;
+    }
+
+    [StructLayout(LayoutKind.Sequential, Pack = 1)]
+    private struct VnDynamicFresnelStep
+    {
+        public double FresnelX;
+        public double FresnelY;
+        public double FresnelContrast;
+        public byte TintR;
+        public byte TintG;
+        public byte TintB;
+        public byte BrightR;
+        public byte BrightG;
+        public byte BrightB;
+        public byte MidR;
+        public byte MidG;
+        public byte MidB;
+        public byte InnerShadowA;
+        public double OriginX;
+        public double OriginY;
+        public double RadiusX;
+        public double RadiusY;
+        public double BloomOpacity;
+        public double FresnelOpacity;
+        public double InnerFresnelOpacity;
+    }
+
+    [LibraryImport("VNotch.Native")]
+    private static partial int vn_glass_binder_compute_cpu_rim_opacities(
+        double edge_highlight, double specular, double fresnel, double chroma, out VnCpuRimOpacities out_opacities);
+
+    [LibraryImport("VNotch.Native")]
+    private static partial int vn_glass_binder_build_fresnel_tint(
+        byte red, byte green, byte blue, out byte out_r, out byte out_g, out byte out_b);
+
+    [LibraryImport("VNotch.Native")]
+    private static partial int vn_glass_binder_interpolate_color(
+        byte from_r, byte from_g, byte from_b, byte to_r, byte to_g, byte to_b, double amount,
+        out byte out_r, out byte out_g, out byte out_b);
+
+    [LibraryImport("VNotch.Native")]
+    private static partial int vn_glass_binder_step_dynamic_fresnel(
+        long now_ticks, long last_ticks, double active_fresnel_level,
+        double light_x, double light_y, double contrast,
+        byte optic_r, byte optic_g, byte optic_b,
+        double cur_x, double cur_y, double cur_contrast,
+        byte cur_tint_r, byte cur_tint_g, byte cur_tint_b,
+        out VnDynamicFresnelStep out_step);
+
+    [LibraryImport("VNotch.Native")]
+    private static partial int vn_glass_binder_read_system_transparency(out byte out_enabled);
+
     private readonly Border _depthRim;
     private readonly Border _coolRim;
     private readonly Border _warmRim;
@@ -87,24 +152,18 @@ internal sealed class LiquidGlassSurfaceBinder
     {
         EnsureDynamicFresnelBrush();
 
-        double edge = Math.Clamp(edgeHighlight, 0, 1);
-        double spec = Math.Clamp(specular, 0, 1);
-        double fres = Math.Clamp(fresnel, 0, 1);
-        double spectral = Math.Clamp(chroma, 0, 2);
-        _activeFresnelLevel = fres;
+        vn_glass_binder_compute_cpu_rim_opacities(edgeHighlight, specular, fresnel, chroma, out var opacities);
+        _activeFresnelLevel = opacities.ActiveFresnel;
 
         // A square-root response preserves a delicate rim at low slider values
-        GlassVisualUpdates.SetDouble(_rim, UIElement.OpacityProperty, Math.Sqrt(edge) * 0.82);
-        GlassVisualUpdates.SetDouble(_depthRim, UIElement.OpacityProperty, Math.Clamp(edge * 0.34 + fres * 0.24, 0, 0.46));
-        double fresnelEnergy = Math.Sqrt(fres);
-        GlassVisualUpdates.SetDouble(_fresnelBloom, UIElement.OpacityProperty, fresnelEnergy * 0.30);
-        GlassVisualUpdates.SetDouble(_fresnel, UIElement.OpacityProperty, fresnelEnergy * 0.94);
-        GlassVisualUpdates.SetDouble(_innerFresnel, UIElement.OpacityProperty, fresnelEnergy * 0.64);
-        GlassVisualUpdates.SetDouble(_specular, UIElement.OpacityProperty, spec * 0.92);
-
-        double spectralOpacity = Math.Clamp(spectral * 0.30 + edge * 0.10, 0, 0.52);
-        GlassVisualUpdates.SetDouble(_coolRim, UIElement.OpacityProperty, spectralOpacity);
-        GlassVisualUpdates.SetDouble(_warmRim, UIElement.OpacityProperty, spectralOpacity * 0.76);
+        GlassVisualUpdates.SetDouble(_rim, UIElement.OpacityProperty, opacities.Rim);
+        GlassVisualUpdates.SetDouble(_depthRim, UIElement.OpacityProperty, opacities.DepthRim);
+        GlassVisualUpdates.SetDouble(_fresnelBloom, UIElement.OpacityProperty, opacities.FresnelBloom);
+        GlassVisualUpdates.SetDouble(_fresnel, UIElement.OpacityProperty, opacities.Fresnel);
+        GlassVisualUpdates.SetDouble(_innerFresnel, UIElement.OpacityProperty, opacities.InnerFresnel);
+        GlassVisualUpdates.SetDouble(_specular, UIElement.OpacityProperty, opacities.Specular);
+        GlassVisualUpdates.SetDouble(_coolRim, UIElement.OpacityProperty, opacities.CoolRim);
+        GlassVisualUpdates.SetDouble(_warmRim, UIElement.OpacityProperty, opacities.WarmRim);
     }
 
     public void EnsureDynamicFresnelBrush()
@@ -153,60 +212,52 @@ internal sealed class LiquidGlassSurfaceBinder
         var innerBrush = _dynamicInnerFresnelBrush!;
 
         long now = Environment.TickCount64;
-        double elapsedSeconds = _lastDynamicFresnelTicks == 0
-            ? 1.0
-            : Math.Clamp((now - _lastDynamicFresnelTicks) / 1000.0, 0.0, 0.25);
+        vn_glass_binder_step_dynamic_fresnel(
+            now,
+            _lastDynamicFresnelTicks,
+            _activeFresnelLevel,
+            optics.LightX,
+            optics.LightY,
+            optics.Contrast,
+            optics.Red,
+            optics.Green,
+            optics.Blue,
+            _dynamicFresnelX,
+            _dynamicFresnelY,
+            _dynamicFresnelContrast,
+            _dynamicFresnelTint.R,
+            _dynamicFresnelTint.G,
+            _dynamicFresnelTint.B,
+            out var step);
         _lastDynamicFresnelTicks = now;
-        // Fresnel should read as a stable material reflection, not a highlight
-        double response = 1.0 - Math.Exp(-elapsedSeconds * 1.1);
 
-        double targetX = Math.Clamp(0.42 + optics.LightX * 0.08, 0.34, 0.50);
-        double targetY = Math.Clamp(0.34 + optics.LightY * 0.07, 0.27, 0.41);
-        _dynamicFresnelX += (targetX - _dynamicFresnelX) * response;
-        _dynamicFresnelY += (targetY - _dynamicFresnelY) * response;
-        _dynamicFresnelContrast +=
-            (Math.Clamp(optics.Contrast, 0.0, 1.0) - _dynamicFresnelContrast) * response;
+        _dynamicFresnelX = step.FresnelX;
+        _dynamicFresnelY = step.FresnelY;
+        _dynamicFresnelContrast = step.FresnelContrast;
+        _dynamicFresnelTint = Color.FromRgb(step.TintR, step.TintG, step.TintB);
 
-        Color targetTint = BuildContentFresnelTint(optics.Red, optics.Green, optics.Blue);
-        _dynamicFresnelTint = InterpolateColor(_dynamicFresnelTint, targetTint, response);
-
-        GlassVisualUpdates.SetPoint(brush, RadialGradientBrush.CenterProperty, new Point(_dynamicFresnelX, _dynamicFresnelY));
-        GlassVisualUpdates.SetPoint(brush, RadialGradientBrush.GradientOriginProperty, new Point(
-            Math.Clamp(0.5 + (_dynamicFresnelX - 0.5) * 0.72, 0.30, 0.62),
-            Math.Clamp(0.5 + (_dynamicFresnelY - 0.5) * 0.72, 0.26, 0.58)));
-        GlassVisualUpdates.SetDouble(brush, RadialGradientBrush.RadiusXProperty, 0.84 - _dynamicFresnelContrast * 0.08);
-        GlassVisualUpdates.SetDouble(brush, RadialGradientBrush.RadiusYProperty, 0.90 - _dynamicFresnelContrast * 0.06);
+        GlassVisualUpdates.SetPoint(brush, RadialGradientBrush.CenterProperty, new Point(step.FresnelX, step.FresnelY));
+        GlassVisualUpdates.SetPoint(brush, RadialGradientBrush.GradientOriginProperty, new Point(step.OriginX, step.OriginY));
+        GlassVisualUpdates.SetDouble(brush, RadialGradientBrush.RadiusXProperty, step.RadiusX);
+        GlassVisualUpdates.SetDouble(brush, RadialGradientBrush.RadiusYProperty, step.RadiusY);
 
         // Keep the inner reflection axis fixed. Normalizing the tiny per-frame
 
-        Color bright = InterpolateColor(_dynamicFresnelTint, Colors.White, 0.68);
-        Color mid = InterpolateColor(_dynamicFresnelTint, Colors.White, 0.42);
-        GlassVisualUpdates.SetColor(brush.GradientStops[0], Color.FromArgb(255, bright.R, bright.G, bright.B));
-        GlassVisualUpdates.SetColor(brush.GradientStops[1], Color.FromArgb(200, mid.R, mid.G, mid.B));
-        GlassVisualUpdates.SetColor(brush.GradientStops[2], Color.FromArgb(
-            112, _dynamicFresnelTint.R, _dynamicFresnelTint.G, _dynamicFresnelTint.B));
-        GlassVisualUpdates.SetColor(brush.GradientStops[3], Color.FromArgb(
-            18, _dynamicFresnelTint.R, _dynamicFresnelTint.G, _dynamicFresnelTint.B));
-        GlassVisualUpdates.SetColor(brush.GradientStops[4], Color.FromArgb(
-            0, _dynamicFresnelTint.R, _dynamicFresnelTint.G, _dynamicFresnelTint.B));
+        GlassVisualUpdates.SetColor(brush.GradientStops[0], Color.FromArgb(255, step.BrightR, step.BrightG, step.BrightB));
+        GlassVisualUpdates.SetColor(brush.GradientStops[1], Color.FromArgb(200, step.MidR, step.MidG, step.MidB));
+        GlassVisualUpdates.SetColor(brush.GradientStops[2], Color.FromArgb(112, step.TintR, step.TintG, step.TintB));
+        GlassVisualUpdates.SetColor(brush.GradientStops[3], Color.FromArgb(18, step.TintR, step.TintG, step.TintB));
+        GlassVisualUpdates.SetColor(brush.GradientStops[4], Color.FromArgb(0, step.TintR, step.TintG, step.TintB));
 
-        GlassVisualUpdates.SetColor(innerBrush.GradientStops[0], Color.FromArgb(255, bright.R, bright.G, bright.B));
-        GlassVisualUpdates.SetColor(innerBrush.GradientStops[1], Color.FromArgb(
-            150, _dynamicFresnelTint.R, _dynamicFresnelTint.G, _dynamicFresnelTint.B));
-        GlassVisualUpdates.SetColor(innerBrush.GradientStops[2], Color.FromArgb(
-            18, _dynamicFresnelTint.R, _dynamicFresnelTint.G, _dynamicFresnelTint.B));
-        GlassVisualUpdates.SetColor(innerBrush.GradientStops[3], Color.FromArgb(
-            (byte)Math.Round(82 + _dynamicFresnelContrast * 48), 0, 0, 0));
-        GlassVisualUpdates.SetColor(innerBrush.GradientStops[4], Color.FromArgb(184, mid.R, mid.G, mid.B));
+        GlassVisualUpdates.SetColor(innerBrush.GradientStops[0], Color.FromArgb(255, step.BrightR, step.BrightG, step.BrightB));
+        GlassVisualUpdates.SetColor(innerBrush.GradientStops[1], Color.FromArgb(150, step.TintR, step.TintG, step.TintB));
+        GlassVisualUpdates.SetColor(innerBrush.GradientStops[2], Color.FromArgb(18, step.TintR, step.TintG, step.TintB));
+        GlassVisualUpdates.SetColor(innerBrush.GradientStops[3], Color.FromArgb(step.InnerShadowA, 0, 0, 0));
+        GlassVisualUpdates.SetColor(innerBrush.GradientStops[4], Color.FromArgb(184, step.MidR, step.MidG, step.MidB));
 
-        double fresnelEnergy = Math.Sqrt(Math.Clamp(_activeFresnelLevel, 0.0, 1.0));
-        double contrastResponse = 0.94 + _dynamicFresnelContrast * 0.12;
-        GlassVisualUpdates.SetDouble(_fresnelBloom, UIElement.OpacityProperty, Math.Clamp(
-            fresnelEnergy * (0.24 + _dynamicFresnelContrast * 0.08), 0.0, 0.42));
-        GlassVisualUpdates.SetDouble(_fresnel, UIElement.OpacityProperty, Math.Clamp(
-            fresnelEnergy * 0.98 * contrastResponse, 0.0, 1.0));
-        GlassVisualUpdates.SetDouble(_innerFresnel, UIElement.OpacityProperty, Math.Clamp(
-            fresnelEnergy * (0.58 + _dynamicFresnelContrast * 0.10), 0.0, 0.76));
+        GlassVisualUpdates.SetDouble(_fresnelBloom, UIElement.OpacityProperty, step.BloomOpacity);
+        GlassVisualUpdates.SetDouble(_fresnel, UIElement.OpacityProperty, step.FresnelOpacity);
+        GlassVisualUpdates.SetDouble(_innerFresnel, UIElement.OpacityProperty, step.InnerFresnelOpacity);
     }
 
     /// <summary>
@@ -234,49 +285,19 @@ internal sealed class LiquidGlassSurfaceBinder
 
     public static Color BuildContentFresnelTint(byte red, byte green, byte blue)
     {
-        double luminance = 0.299 * red + 0.587 * green + 0.114 * blue;
-        double r = luminance + (red - luminance) * 1.30;
-        double g = luminance + (green - luminance) * 1.30;
-        double b = luminance + (blue - luminance) * 1.30;
-        double peak = Math.Max(r, Math.Max(g, b));
-
-        if (peak < 12.0)
-            return Color.FromRgb(104, 116, 130);
-
-        if (peak < 96.0)
-        {
-            double lift = 96.0 / peak;
-            r *= lift; g *= lift; b *= lift;
-        }
-
-        return Color.FromRgb(
-            (byte)Math.Clamp((int)Math.Round(r), 0, 255),
-            (byte)Math.Clamp((int)Math.Round(g), 0, 255),
-            (byte)Math.Clamp((int)Math.Round(b), 0, 255));
+        vn_glass_binder_build_fresnel_tint(red, green, blue, out byte r, out byte g, out byte b);
+        return Color.FromRgb(r, g, b);
     }
 
     public static Color InterpolateColor(Color from, Color to, double amount)
     {
-        double t = Math.Clamp(amount, 0.0, 1.0);
-        return Color.FromRgb(
-            (byte)Math.Round(from.R + (to.R - from.R) * t),
-            (byte)Math.Round(from.G + (to.G - from.G) * t),
-            (byte)Math.Round(from.B + (to.B - from.B) * t));
+        vn_glass_binder_interpolate_color(from.R, from.G, from.B, to.R, to.G, to.B, amount, out byte r, out byte g, out byte b);
+        return Color.FromRgb(r, g, b);
     }
 
     /// <summary>Reads the Windows "Transparency effects" personalization toggle (defaults to enabled).</summary>
     public static bool ReadSystemTransparencySetting()
     {
-        try
-        {
-            using var key = Microsoft.Win32.Registry.CurrentUser.OpenSubKey(@"Software\Microsoft\Windows\CurrentVersion\Themes\Personalize");
-            if (key != null)
-            {
-                var val = key.GetValue("EnableTransparency");
-                if (val is int i) return i == 1;
-            }
-        }
-        catch { /* ignored */ }
-        return true;
+        return vn_glass_binder_read_system_transparency(out byte enabled) == 0 ? enabled != 0 : true;
     }
 }

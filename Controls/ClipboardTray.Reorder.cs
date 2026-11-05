@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Runtime.InteropServices;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
@@ -9,6 +10,28 @@ namespace VNotch.Controls;
 
 public sealed partial class ClipboardTray
 {
+    [LibraryImport("VNotch.Native")]
+    private static partial int vn_clipboard_category_eval_ghost(
+        double pointX,
+        double pointY,
+        double gripX,
+        double scrollWidth,
+        double scrollHeight,
+        double sourceHeight,
+        byte stateValid,
+        out double outGhostLeft,
+        out double outGhostTop,
+        out double outGhostOpacity,
+        out byte outReorderValid);
+
+    [LibraryImport("VNotch.Native")]
+    private static partial int vn_clipboard_category_resolve_move(
+        int count,
+        int sourceIndex,
+        int beforeIndex,
+        out int outDestination,
+        out byte outChanged);
+
     private Button? _categoryReorderSource;
     private Point _categoryReorderStart;
     private Point _categoryReorderGrip;
@@ -57,13 +80,24 @@ public sealed partial class ClipboardTray
     private void UpdateCategoryReorder(Point viewportPoint)
     {
         if (!_categoryReordering || _categoryReorderSource?.DataContext is not ClipboardCategoryViewModel source) return;
-        _categoryReorderValid = !_disposed && !_trayLeaving && IsVisible && CategoryScroll.IsVisible &&
-            CategoryPanel.IsAncestorOf(_categoryReorderSource) &&
-            viewportPoint.X >= 0 && viewportPoint.X <= CategoryScroll.ActualWidth &&
-            viewportPoint.Y >= 0 && viewportPoint.Y <= CategoryScroll.ActualHeight;
-        Canvas.SetLeft(CategoryReorderGhost, viewportPoint.X - _categoryReorderGrip.X);
-        Canvas.SetTop(CategoryReorderGhost, Math.Max(0, (CategoryScroll.ActualHeight - _categoryReorderSource.ActualHeight) / 2));
-        CategoryReorderGhost.Opacity = _categoryReorderValid ? 1 : 0.5;
+        byte stateValid = !_disposed && !_trayLeaving && IsVisible && CategoryScroll.IsVisible &&
+            CategoryPanel.IsAncestorOf(_categoryReorderSource) ? (byte)1 : (byte)0;
+        _ = vn_clipboard_category_eval_ghost(
+            viewportPoint.X,
+            viewportPoint.Y,
+            _categoryReorderGrip.X,
+            CategoryScroll.ActualWidth,
+            CategoryScroll.ActualHeight,
+            _categoryReorderSource.ActualHeight,
+            stateValid,
+            out double ghostLeft,
+            out double ghostTop,
+            out double ghostOpacity,
+            out byte reorderValid);
+        _categoryReorderValid = reorderValid != 0;
+        Canvas.SetLeft(CategoryReorderGhost, ghostLeft);
+        Canvas.SetTop(CategoryReorderGhost, ghostTop);
+        CategoryReorderGhost.Opacity = ghostOpacity;
         CategoryScroll.Cursor = _categoryReorderValid ? Cursors.SizeAll : Cursors.No;
         CategoryReorderMarker.Visibility = _categoryReorderValid ? Visibility.Visible : Visibility.Collapsed;
         if (!_categoryReorderValid) return;
@@ -188,10 +222,10 @@ public sealed partial class ClipboardTray
     private static bool ApplyCategoryMove(List<string> order, string id, string? beforeId)
     {
         int source = order.IndexOf(id);
-        if (source < 0 || beforeId == id || beforeId != null && !order.Contains(beforeId)) return false;
-        int destination = beforeId == null ? order.Count - 1 : order.IndexOf(beforeId);
-        if (beforeId != null && destination > source) destination--;
-        if (source == destination) return false;
+        int before = beforeId == null ? -1 : order.IndexOf(beforeId);
+        if (beforeId != null && before < 0) before = order.Count;
+        _ = vn_clipboard_category_resolve_move(order.Count, source, before, out int destination, out byte changed);
+        if (changed == 0) return false;
         order.RemoveAt(source);
         order.Insert(destination, id);
         return true;

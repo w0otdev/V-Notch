@@ -34,10 +34,8 @@ public sealed class SpotifyCanvasController : IDisposable
     private bool _shouldPlay;
     private bool _disposed;
 
-    private bool _enabled;
     private string _spDc = "";
     private double _brightness = 0.7;
-    private bool _localOnlyMode;
     private bool _blurFallbackEnabled = true;
     private bool _canFadeIn;
     private bool _isLyricsActive;
@@ -69,22 +67,16 @@ public sealed class SpotifyCanvasController : IDisposable
     public void UpdateSettings(NotchSettings settings)
     {
         if (_disposed) return;
-        bool wasDisabled = !_enabled || _localOnlyMode;
-        _enabled = NetworkPrivacy.Allows(settings, NetworkFeature.Canvas);
-        _spDc = _enabled ? settings.SpotifySpDc ?? "" : "";
+        string session = NetworkPrivacy.Allows(settings, NetworkFeature.Canvas)
+            ? settings.SpotifySpDc ?? "" : "";
         _brightness = settings.SpotifyCanvasBrightness;
-        _localOnlyMode = settings.EnableLocalOnlyMode;
 
         NotifyPresentationChanged();
 
-        if (!_enabled || _localOnlyMode)
-        {
-            Reset();
-        }
-        else if (wasDisabled && _isSpotifyPlatform && !string.IsNullOrEmpty(_currentTrackKey))
-        {
-            RefreshForCurrentTrack();
-        }
+        if (string.Equals(session, _spDc, StringComparison.Ordinal)) return;
+        _spDc = session;
+        ClearCache();
+        RefreshForCurrentTrack();
     }
 
     public void UpdatePresentationContext(bool canFadeIn, bool blurFallbackEnabled, bool isLyricsActive)
@@ -124,7 +116,7 @@ public sealed class SpotifyCanvasController : IDisposable
         _shouldPlay = platform == MediaPlatform.Spotify && isPlaying;
         _isSpotifyPlatform = platform == MediaPlatform.Spotify;
 
-        if (!_isSpotifyPlatform || string.IsNullOrWhiteSpace(track) || !_enabled || _localOnlyMode)
+        if (!_isSpotifyPlatform || string.IsNullOrWhiteSpace(track))
         {
             Reset();
             return;
@@ -225,8 +217,7 @@ public sealed class SpotifyCanvasController : IDisposable
     private void TryStartFetch()
     {
         if (_disposed ||
-            !_enabled ||
-            _localOnlyMode ||
+            string.IsNullOrWhiteSpace(_spDc) ||
             !_isSpotifyPlatform ||
             !_isSurfaceVisible ||
             _lookupCompleted ||

@@ -51,6 +51,12 @@ public:
 
     static bool MatchesPlatformTitle(std::u16string_view title) noexcept {
         if (title.empty()) return false;
+        // Spotify Web uses "track • artists" without the site name while playing.
+        if (title.find(u" \u2022 ") != title.npos) {
+            const auto separator = title.find_last_of(u"-\u2014");
+            if (separator != title.npos && vnotch::is_browser_app_view(title.substr(separator + 1)))
+                return true;
+        }
         static constexpr std::array<std::wstring_view, 38> kPlatformKeywords = {
             L"spotify", L"youtube", L"soundcloud", L"instagram", L"twitter", L" / x",
             L"apple music", L"apple", L"music", L"twitch", L"discord", L"vesktop",
