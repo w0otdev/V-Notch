@@ -1488,6 +1488,28 @@ public partial class MainWindow : Window
         CurrentCornerRadius = _cornerRadiusCollapsed;
     }
 
+    internal void ApplyWindowShadow(bool enabled)
+    {
+        if (NotchShadowWrapper != null)
+        {
+            NotchShadowWrapper.Visibility = enabled ? Visibility.Visible : Visibility.Collapsed;
+        }
+        if (CountdownWidget?.TimerControlBarShadow != null)
+        {
+            CountdownWidget.TimerControlBarShadow.Opacity = (IsLiquidGlassEnabled || !enabled) ? 0 : 0.45;
+        }
+        if (IsLiquidGlassEnabled)
+        {
+            ApplyGlassContentShadow(_isExpanded || _isMusicCompactMode);
+        }
+    }
+
+    private void ApplyNotchShadowSetting()
+    {
+        WindowAnimationPolicy.SetShadowEnabled(_settings.EnableShadow);
+        ApplyWindowShadow(_settings.EnableShadow);
+    }
+
     private void ApplyPerformanceSettings()
     {
         if (!_settings.EnableBlurEffects)

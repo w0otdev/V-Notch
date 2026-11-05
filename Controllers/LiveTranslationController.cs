@@ -79,6 +79,7 @@ internal sealed class LiveTranslationController : IDisposable
         _window?.ConfigureLanguages(_settings.TranslationSourceLanguage, _settings.TranslationTargetLanguage);
         _window?.RefreshLocalization();
         _window?.ConfigureFormatting(_settings.FormatTranslationText);
+        _window?.ApplyWindowShadow(_settings.EnableShadow);
         UpdateWatcher();
         if (!changed && languagesChanged && _window?.IsVisible == true && _text.Length > 0) _ = TranslateAsync();
     }

@@ -276,6 +276,9 @@ public partial class SettingsWindow : Window
         // Liquid Glass availability depends on this checkbox. Initialize the mode
         DynamicIslandModeCheck.IsChecked = _settings.EnableDynamicIslandMode;
         UpdateDynamicIslandDependentControls(_settings.EnableDynamicIslandMode);
+        EnableShadowCheck.IsChecked = _settings.EnableShadow;
+        UpdateShadowDependentControls(_settings.EnableShadow);
+        ApplyWindowShadow(_settings.EnableShadow);
         LoadLiquidGlassUi();
         EnableSubjectBlurCheck.IsChecked = _settings.EnableSubjectBlur;
         EnableSmartCropCheck.IsChecked = _settings.EnableSmartCrop;
@@ -429,6 +432,7 @@ public partial class SettingsWindow : Window
         TooltipHelper.SetLocalizedTooltip(EnableSubjectBlurCheck, "tooltip.subjectBlur");
         TooltipHelper.SetLocalizedTooltip(EnableSmartCropCheck, "tooltip.smartCrop");
         TooltipHelper.SetLocalizedTooltip(DynamicIslandModeCheck, "tooltip.dynamicIsland");
+        TooltipHelper.SetLocalizedTooltip(EnableShadowCheck, "tooltip.notchShadow");
         TooltipHelper.SetLocalizedTooltip(HoverExpandCheck, "tooltip.hoverExpand");
         TooltipHelper.SetLocalizedTooltip(DisableMouseLeaveAutoCloseCheck, "tooltip.disableAutoClose");
         TooltipHelper.SetLocalizedTooltip(ReopenLastViewCheck, "tooltip.reopenLastView");
@@ -618,6 +622,8 @@ public partial class SettingsWindow : Window
 
         DynamicIslandModeCheck.Content = Loc.Get("settings.dynamicIslandMode");
         DynamicIslandModeHint.Text = Loc.Get("settings.dynamicIslandMode.hint");
+        EnableShadowCheck.Content = Loc.Get("settings.enableShadow");
+        EnableShadowHint.Text = Loc.Get("settings.enableShadow.hint");
 
         HoverExpandCheck.Content = Loc.Get("settings.hoverExpand");
         HoverExpandHint.Text = Loc.Get("settings.hoverExpand.hint");

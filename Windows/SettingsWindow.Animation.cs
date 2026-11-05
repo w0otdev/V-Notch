@@ -169,6 +169,12 @@ public partial class SettingsWindow
             void AttachEntranceShadow()
             {
                 if (_isClosing) return;
+                if (!(EnableShadowCheck?.IsChecked ?? _settings.EnableShadow))
+                {
+                    MainShell.Effect = null;
+                    return;
+                }
+                if (_isClosing) return;
                 if (Mouse.LeftButton == MouseButtonState.Pressed)
                 {
                     PreviewMouseLeftButtonUp += OnMouseReleasedBeforeShadow;
@@ -269,6 +275,30 @@ public partial class SettingsWindow
                 };
                 blur.BeginAnimation(BlurEffect.RadiusProperty, blurAnim);
             }
+        }
+    }
+
+    internal void ApplyWindowShadow(bool enabled)
+    {
+        if (Cpp26PromptShadowLayer != null)
+            Cpp26PromptShadowLayer.Visibility = enabled ? Visibility.Visible : Visibility.Collapsed;
+        if (RestartPromptShadowLayer != null)
+            RestartPromptShadowLayer.Visibility = enabled ? Visibility.Visible : Visibility.Collapsed;
+        if (MainShell == null) return;
+        if (!enabled)
+        {
+            MainShell.Effect = null;
+            return;
+        }
+        if (IsLoaded && !_isClosing && MainShell.Effect is not System.Windows.Media.Effects.DropShadowEffect)
+        {
+            MainShell.Effect = new System.Windows.Media.Effects.DropShadowEffect
+            {
+                Color = System.Windows.Media.Colors.Black,
+                BlurRadius = 30,
+                ShadowDepth = 0,
+                Opacity = 0.42
+            };
         }
     }
 

@@ -15,6 +15,77 @@ internal static class WindowAnimationPolicy
     private static readonly ConditionalWeakTable<Window, WindowLifetime> Windows = new();
     private static int _initialized;
     internal static bool InvisibleMode { get; private set; }
+    internal static bool ShadowEnabled { get; private set; } = true;
+
+    private static readonly DependencyProperty OriginalShadowOpacityProperty =
+        DependencyProperty.RegisterAttached(
+            "OriginalShadowOpacity",
+            typeof(double),
+            typeof(WindowAnimationPolicy),
+            new PropertyMetadata(-1.0));
+
+    internal static void SetShadowEnabled(bool enabled)
+    {
+        ShadowEnabled = enabled;
+        if (Application.Current == null) return;
+        Application.Current.Dispatcher.VerifyAccess();
+        foreach (Window window in Application.Current.Windows.Cast<Window>().ToArray()) Attach(window);
+    }
+
+    internal static void ApplyWindowShadowPolicy(Window window, bool enabled)
+    {
+        switch (window)
+        {
+            case MainWindow mainWindow:
+                mainWindow.ApplyWindowShadow(enabled);
+                return;
+            case SettingsWindow settingsWindow:
+                settingsWindow.ApplyWindowShadow(enabled);
+                return;
+            case SpotlightWindow spotlightWindow:
+                spotlightWindow.ApplyWindowShadow(enabled);
+                return;
+            case TranslationWindow translationWindow:
+                translationWindow.ApplyWindowShadow(enabled);
+                return;
+        }
+
+        if (window.Content is DependencyObject contentRoot)
+        {
+            ApplyDropShadowTree(contentRoot, enabled);
+        }
+    }
+
+    private static void ApplyDropShadowTree(DependencyObject node, bool enabled)
+    {
+        if (node is UIElement element && element.Effect is System.Windows.Media.Effects.DropShadowEffect dse)
+        {
+            if (!enabled)
+            {
+                if ((double)element.GetValue(OriginalShadowOpacityProperty) < 0)
+                {
+                    element.SetValue(OriginalShadowOpacityProperty, dse.Opacity);
+                }
+                dse.Opacity = 0.0;
+            }
+            else
+            {
+                double orig = (double)element.GetValue(OriginalShadowOpacityProperty);
+                if (orig >= 0)
+                {
+                    dse.Opacity = orig;
+                }
+            }
+        }
+
+        foreach (object? child in LogicalTreeHelper.GetChildren(node))
+        {
+            if (child is DependencyObject depChild)
+            {
+                ApplyDropShadowTree(depChild, enabled);
+            }
+        }
+    }
 
     internal static void SetInvisibleMode(bool enabled)
     {
@@ -67,6 +138,7 @@ internal static class WindowAnimationPolicy
 
         internal void Apply()
         {
+            ApplyWindowShadowPolicy(_window, ShadowEnabled);
             if (_invisibleApplied != InvisibleMode)
             {
                 _invisibleApplied = InvisibleMode;

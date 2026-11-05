@@ -109,6 +109,7 @@ public partial class App : Application
             NetworkPrivacy.Current.Apply(loadedSettings);
             WindowTitleScanner.UpdateInspectionAllowed(loadedSettings.EnableBrowserUrlInspection);
             WindowAnimationPolicy.SetInvisibleMode(loadedSettings.InvisibleMode);
+            WindowAnimationPolicy.SetShadowEnabled(loadedSettings.EnableShadow);
             LocalizedPresentation.Initialize();
             Loc.SetLanguage(loadedSettings.Language);
             AnimationConfig.Configure(loadedSettings.AnimationFps, loadedSettings.AutoAnimationFps);

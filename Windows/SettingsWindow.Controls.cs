@@ -277,6 +277,22 @@ public partial class SettingsWindow
 
 
 
+    private void EnableShadowCheck_Changed(object sender, RoutedEventArgs e)
+    {
+        bool shadowEnabled = EnableShadowCheck.IsChecked ?? true;
+        UpdateShadowDependentControls(shadowEnabled, animate: true);
+        ApplyWindowShadow(shadowEnabled);
+        if (_isLoadingSettings) return;
+        WindowAnimationPolicy.SetShadowEnabled(shadowEnabled);
+        PushLivePreview();
+    }
+
+    private void UpdateShadowDependentControls(bool shadowEnabled, bool animate = false)
+    {
+        AnimateDependentElement(GlassShadowOpacitySlider, shadowEnabled, 0.4, animate);
+        AnimateDependentElement(GlassShadowSpreadSlider, shadowEnabled, 0.4, animate);
+    }
+
     private void DynamicIslandModeCheck_Changed(object sender, RoutedEventArgs e)
     {
         UpdateDynamicIslandDependentControls(DynamicIslandModeCheck.IsChecked ?? false, animate: true);

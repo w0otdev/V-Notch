@@ -117,8 +117,19 @@ public partial class SpotlightWindow
         ApplyLiquidGlassSkin();
     }
 
+    internal void ApplyWindowShadow(bool enabled)
+    {
+        if (ShellShadowBorder != null)
+            ShellShadowBorder.Visibility = enabled ? Visibility.Visible : Visibility.Collapsed;
+        if (ShellShadowEffect != null)
+            ShellShadowEffect.Opacity = enabled ? 0.6 : 0.0;
+        if (!enabled && Shell?.Effect is DropShadowEffect)
+            Shell.Effect = null;
+    }
+
     internal void ApplyLiquidGlassSkin()
     {
+        ApplyWindowShadow(_settings.EnableShadow);
         if (GlassBackdropHost == null) return;
 
         if (IsLiquidGlassEnabled)
@@ -272,7 +283,7 @@ public partial class SpotlightWindow
 
         if (Shell.Effect is DropShadowEffect dse)
         {
-            dse.Opacity = Math.Clamp(cfg.ShadowOpacity, 0, 1);
+            dse.Opacity = _settings.EnableShadow ? Math.Clamp(cfg.ShadowOpacity, 0, 1) : 0.0;
             dse.BlurRadius = Math.Clamp(cfg.ShadowSpread, 0, 60);
         }
 

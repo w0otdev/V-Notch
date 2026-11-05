@@ -1424,6 +1424,8 @@
 
                                         <Border Style="{StaticResource SettingRowBorder}">
                                             <StackPanel>
+
+
                                                 <TextBlock x:Name="NavTabsLabel" Text="Navigation Tabs" Style="{StaticResource SettingTitleText}"/>
                                                 <TextBlock x:Name="NavTabsHint" Text="Hold and drag icons in the notch to reorder tabs, or arrange them here."
                                                            Style="{StaticResource SettingHintText}"
@@ -2932,6 +2934,21 @@
                                             </StackPanel>
                                         </Border>
 
+                                        <Border Style="{StaticResource SettingRowBorder}" Margin="0,4,0,4">
+                                            <StackPanel>
+                                                <CheckBox x:Name="EnableShadowCheck"
+                                                          x:Uid="enableShadow"
+                                                          Content="Notch drop shadow"
+                                                          Checked="EnableShadowCheck_Changed"
+                                                          Unchecked="EnableShadowCheck_Changed"
+                                                          Margin="0,0,0,0"/>
+                                                <TextBlock x:Name="EnableShadowHint"
+                                                           Text="Render a soft drop shadow beneath the notch."
+                                                           Style="{StaticResource SettingHintText}"
+                                                           Margin="0,4,0,0"/>
+                                            </StackPanel>
+                                        </Border>
+
                                         <Border Style="{StaticResource SettingRowBorder}" Margin="0,0,0,4" BorderThickness="0">
                                             <StackPanel>
                                                 <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
@@ -3556,7 +3573,7 @@
                             </Grid.RenderTransform>
 
                             <!-- Shadow Layer -->
-                            <Border CornerRadius="16"
+                            <Border x:Name="Cpp26PromptShadowLayer" CornerRadius="16"
                                     Background="#F0101620">
                                 <Border.Effect>
                                     <DropShadowEffect BlurRadius="20" ShadowDepth="4" Opacity="0.45" Color="Black" Direction="270"/>
@@ -3611,7 +3628,7 @@
                         </Grid.RenderTransform>
 
                         <!-- Shadow Layer -->
-                        <Border CornerRadius="16"
+                        <Border x:Name="RestartPromptShadowLayer" CornerRadius="16"
                                 Background="#F018140E">
                             <Border.Effect>
                                 <DropShadowEffect BlurRadius="20" ShadowDepth="4" Opacity="0.45" Color="Black" Direction="270"/>

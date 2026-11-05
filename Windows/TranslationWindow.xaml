@@ -61,7 +61,7 @@
         </ResourceDictionary>
     </Window.Resources>
     <Grid>
-        <Border Margin="26" Background="#080808" CornerRadius="22" IsHitTestVisible="False"
+        <Border x:Name="PopupShadowBorder" Margin="26" Background="#080808" CornerRadius="22" IsHitTestVisible="False"
                 Opacity="{Binding Opacity, ElementName=PopupSurface}" RenderTransform="{Binding RenderTransform, ElementName=PopupSurface}"
                 RenderTransformOrigin="{Binding RenderTransformOrigin, ElementName=PopupSurface}">
             <Border.CacheMode><BitmapCache/></Border.CacheMode>

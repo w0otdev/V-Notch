@@ -350,14 +350,14 @@
                 VerticalAlignment="Top"
                 IsHitTestVisible="False">
             <Grid.Effect>
-                <DropShadowEffect Color="#000000"
+                <DropShadowEffect x:Name="ShellShadowEffect" Color="#000000"
                                   BlurRadius="20"
                                   ShadowDepth="4"
                                   Direction="270"
                                   Opacity="0.6"
                                   RenderingBias="Performance"/>
             </Grid.Effect>
-            <Border Background="Black"
+            <Border x:Name="ShellShadowBorder" Background="Black"
                     CornerRadius="{Binding CornerRadius, ElementName=Shell}"/>
         </Grid>
     <Border x:Name="Shell"

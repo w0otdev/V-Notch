@@ -486,6 +486,11 @@ public partial class MainWindow
             ApplyAppearanceOpacity();
         }
 
+        if (oldSettings == null || oldSettings.EnableShadow != _settings.EnableShadow)
+        {
+            ApplyNotchShadowSetting();
+        }
+
         if (oldSettings == null || oldSettings.BrightenDarkLyricsBackground != _settings.BrightenDarkLyricsBackground)
         {
             AnimateLyricsBlurImageSwitch(_currentMediaInfo?.Thumbnail);

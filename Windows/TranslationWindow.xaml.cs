@@ -38,10 +38,17 @@ public partial class TranslationWindow : Window
     internal bool IsExpanded => _expanded;
     internal bool IsPresentationAnimating => _popupAnimating || _placementAnimating;
 
+    internal void ApplyWindowShadow(bool enabled)
+    {
+        if (PopupShadowBorder != null)
+            PopupShadowBorder.Visibility = enabled ? Visibility.Visible : Visibility.Collapsed;
+    }
+
     internal TranslationWindow(string source, string target)
     {
         WindowAnimationPolicy.Attach(this);
         InitializeComponent();
+        ApplyWindowShadow(WindowAnimationPolicy.ShadowEnabled);
         ResultText.TextChanged += (_, _) =>
         {
             if (ResultText.Text.Length != 0) return;

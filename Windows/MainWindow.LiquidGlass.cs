@@ -923,7 +923,7 @@ public partial class MainWindow
         {
             // The tray already supplies card contrast. A shadow on the entire
             // scrolling subtree forces a large intermediate render surface.
-            bool shouldAttach = enable && _clipboardTrayView?.IsVisible != true;
+            bool shouldAttach = enable && _settings.EnableShadow && _clipboardTrayView?.IsVisible != true;
             bool fadeRestoredShadow = shouldAttach && NotchContent.Effect == null && _glassContentShadow != null && _isMusicCompactMode && !_isExpanded && !VNotch.Services.AnimationConfig.ReduceMotion;
             var contentShadow = shouldAttach ? GetOrCreateGlassContentShadow() : null;
             if (contentShadow != null)
@@ -941,7 +941,7 @@ public partial class MainWindow
 
         if (AnimationThumbnailBorder != null)
         {
-            AnimationThumbnailBorder.Effect = enable ? GetOrCreateGlassAnimThumbnailShadow() : null;
+            AnimationThumbnailBorder.Effect = (enable && _settings.EnableShadow) ? GetOrCreateGlassAnimThumbnailShadow() : null;
         }
     }
 
@@ -971,7 +971,7 @@ public partial class MainWindow
         else
         {
             CountdownWidget.TimerControlBar.Background = _timerBarDefaultBg;
-            if (CountdownWidget.TimerControlBarShadow != null) CountdownWidget.TimerControlBarShadow.Opacity = 0.45;
+            if (CountdownWidget.TimerControlBarShadow != null) CountdownWidget.TimerControlBarShadow.Opacity = _settings.EnableShadow ? 0.45 : 0;
         }
     }
 
@@ -1276,10 +1276,10 @@ public partial class MainWindow
                 Saturation = cfg.Saturation,
                 Brightness = cfg.Brightness,
                 BevelMode = cfg.BevelMode,
-            EdgeHighlight = cfg.EdgeHighlight,
-            Specular = cfg.Specular,
-            Fresnel = cfg.Fresnel,
-            Variant = cfg.Variant,
+                EdgeHighlight = cfg.EdgeHighlight,
+                Specular = cfg.Specular,
+                Fresnel = cfg.Fresnel,
+                Variant = cfg.Variant,
                 TopCornerRadius = topR,
                 BottomCornerRadius = bottomR
             });

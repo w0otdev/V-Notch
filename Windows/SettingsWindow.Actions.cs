@@ -573,6 +573,7 @@ public partial class SettingsWindow
         snapshot.SubtitlePriority = GetSubtitlePriorityString();
 
         snapshot.EnableDynamicIslandMode = DynamicIslandModeCheck.IsChecked ?? false;
+        snapshot.EnableShadow = EnableShadowCheck.IsChecked ?? true;
 
         snapshot.EnableHoverExpand = HoverExpandCheck.IsChecked ?? true;
         snapshot.HoverExpandDelay = (int)HoverDelaySlider.Value;

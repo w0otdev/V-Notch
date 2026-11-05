@@ -56,6 +56,7 @@ public sealed class MainWindowSettingsIntegrationTests
                 changed.SubtitlePriority = "en,vi";
                 changed.ManualCity = "Test city";
                 changed.ShowBatteryIndicator = false;
+                changed.EnableShadow = false;
                 Assert.True(settings.ApplyPreview(changed));
                 var applied = (NotchSettings)field.GetValue(window)!;
                 Assert.Equal(340, applied.Width);
@@ -63,8 +64,13 @@ public sealed class MainWindowSettingsIntegrationTests
                 Assert.Equal("vi", applied.Language);
                 Assert.Equal(Visibility.Visible, window.ClockViewDigitalClock.Visibility);
                 Assert.False(applied.ShowBatteryIndicator);
+                Assert.False(applied.EnableShadow);
+                Assert.Equal(Visibility.Collapsed, window.NotchShadowWrapper.Visibility);
+                Assert.Null(settings.MainShell.Effect);
+                Assert.False(WindowAnimationPolicy.ShadowEnabled);
                 typeof(SettingsWindow).GetMethod("RevertLivePreviewIfNeeded", flags)!.Invoke(settings, null);
-                Assert.True(original.ValueEquals((NotchSettings)field.GetValue(window)!));
+                Assert.Equal(Visibility.Visible, window.NotchShadowWrapper.Visibility);
+                Assert.True(WindowAnimationPolicy.ShadowEnabled);
             }
             catch (Exception ex) { failure = ex; }
             finally
