@@ -23,6 +23,11 @@ internal static class AnimationConfig
 
     public static event Action? ReduceMotionChanged;
 
+    // Tests only: headless CI sessions report ClientAreaAnimation=false, which hides every transition.
+    internal static bool? ClientAreaAnimationOverride { get; set; }
+    internal static bool ClientAreaAnimation =>
+        ClientAreaAnimationOverride ?? System.Windows.SystemParameters.ClientAreaAnimation;
+
     public static void SetReduceMotion(bool on)
     {
         if (_reduceMotion == on) return;

@@ -24,8 +24,14 @@ public sealed class AppNotificationPreviewTests
                 settings.EnableDynamicIslandMode = false; settings.Width = 230; settings.Height = 34;
             }, configureServices: services => services.AddSingleton<IMediaDetectionService>(new FakeMediaDetectionService()));
         var window = fixture.Window;
-        var app = global::Windows.ApplicationModel.AppInfo.GetFromAppUserModelId("OpenAI.Codex_2p2nqsd0c76g0!App");
-        var logo = await AppNotificationService.TryLoadAppLogoAsync(app.DisplayInfo);
+        ImageSource? logo = null;
+        try
+        {
+            // The sample app is only installed on the author's machine; CI renders the avatar fallback.
+            var app = global::Windows.ApplicationModel.AppInfo.GetFromAppUserModelId("OpenAI.Codex_2p2nqsd0c76g0!App");
+            logo = await AppNotificationService.TryLoadAppLogoAsync(app.DisplayInfo);
+        }
+        catch (System.Runtime.InteropServices.COMException) { }
         var gif = new GifBitmapEncoder();
         long last = Environment.TickCount64;
         async Task Frames(int count)

@@ -28,6 +28,7 @@ public sealed class NotchTabMotionTests
         try
         {
             AnimationConfig.SetReduceMotion(false);
+            AnimationConfig.ClientAreaAnimationOverride = true;
             typeof(MainWindow).GetField("_navigationVisualTarget", Private)!.SetValue(window, NotchView.Media);
             window.NavIconsPanel.Visibility = Visibility.Visible;
             window.SettingsButton.Visibility = Visibility.Visible;
@@ -46,7 +47,11 @@ public sealed class NotchTabMotionTests
             Assert.Equal(scale, window.SettingsScale.ScaleX, 8);
             Assert.Equal(angle, window.SettingsRotate.Angle, 8);
         }
-        finally { AnimationConfig.SetReduceMotion(previous); }
+        finally
+        {
+            AnimationConfig.ClientAreaAnimationOverride = null;
+            AnimationConfig.SetReduceMotion(previous);
+        }
     });
 
     [Fact]

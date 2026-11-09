@@ -717,7 +717,7 @@ public partial class MainWindow
     private void AnimateStatusBarReveal(bool show)
     {
         int version = ++_statusBarRevealVersion;
-        bool animate = !VNotch.Services.AnimationConfig.ReduceMotion && SystemParameters.ClientAreaAnimation;
+        bool animate = !VNotch.Services.AnimationConfig.ReduceMotion && VNotch.Services.AnimationConfig.ClientAreaAnimation;
         bool chromeVisible = NavIconsPanel.Visibility == Visibility.Visible && NavIconsPanel.Opacity > 0.01;
         var targetView = _navigationVisualTarget ?? _transitionCoordinator.CurrentView;
         bool showBattery = show && _settings.ShowBatteryIndicator;
