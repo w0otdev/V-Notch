@@ -1579,7 +1579,8 @@ public sealed partial class ClipboardTray : UserControl, IDisposable
         _controller.IsPaused = !_controller.IsPaused;
         PauseGlyph.Kind = _controller.IsPaused ? TrayIconKind.Resume : TrayIconKind.Pause;
         AnimateLayer(PauseGlyph, true, 0, true);
-        PauseGlyph.Foreground = _controller.IsPaused ? (Brush)FindResource("TrayAccent") : Brush("#BFFFFFFF");
+        if (_controller.IsPaused) PauseGlyph.SetResourceReference(TrayIcon.ForegroundProperty, "AccentBrushStrong");
+        else PauseGlyph.Foreground = Brush("#BFFFFFFF");
         UpdatePauseLabel();
     }
     private void UpdatePauseLabel()

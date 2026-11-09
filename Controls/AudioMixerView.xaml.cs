@@ -193,7 +193,6 @@ public sealed partial class AudioMixerView : UserControl, IDisposable
     private const double ColPercent = 50;
     private const double ColDevice = 206;
 
-    private static readonly Brush AudioGreen = Frozen("#3FD15B");
     private static readonly Brush AudioTrack = Frozen("#4D4D4D");
     private static readonly Brush AudioMuted = Frozen("#8C8C8C");
     private static readonly Brush AudioComboBg = Frozen("#33000000");
@@ -1207,13 +1206,13 @@ public sealed partial class AudioMixerView : UserControl, IDisposable
         {
             Height = 4,
             CornerRadius = new CornerRadius(4),
-            Background = AudioGreen,
             HorizontalAlignment = HorizontalAlignment.Left,
             VerticalAlignment = VerticalAlignment.Center,
             Width = 0,
             RenderTransformOrigin = new Point(0, 0.5)
         };
         var fillScale = new ScaleTransform(0, 1);
+        fill.SetResourceReference(Border.BackgroundProperty, "AccentBrush");
         fill.RenderTransform = fillScale;
         area.Children.Add(fill);
 
@@ -1511,10 +1510,10 @@ public sealed partial class AudioMixerView : UserControl, IDisposable
                     Text = "\uE73E",
                     FontFamily = SegoeSymbolFont,
                     FontSize = 12,
-                    Foreground = AudioGreen,
                     VerticalAlignment = VerticalAlignment.Center,
                     Margin = new Thickness(8, 0, 0, 0)
                 };
+                check.SetResourceReference(TextBlock.ForegroundProperty, "AccentBrushStrong");
                 Grid.SetColumn(check, 1);
                 g.Children.Add(check);
             }

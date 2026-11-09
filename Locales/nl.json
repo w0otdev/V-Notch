@@ -1,4 +1,15 @@
 {
+  "settings.accentColor": "Accentkleur",
+  "settings.accentColor.hint": "Kies de markeerkleur voor de hele app.",
+  "settings.accentColor.default": "Standaard",
+  "settings.accentColor.blue": "Blauw",
+  "settings.accentColor.purple": "Paars",
+  "settings.accentColor.pink": "Roze",
+  "settings.accentColor.red": "Rood",
+  "settings.accentColor.orange": "Oranje",
+  "settings.accentColor.yellow": "Geel",
+  "settings.accentColor.green": "Groen",
+  "settings.accentColor.teal": "Turkoois",
   "clipboard.addLabel": "Label toevoegen",
   "clipboard.selectAll": "Alle zichtbare items selecteren",
   "clipboard.deleteSelected": "{0} geselecteerde items verwijderen",
@@ -377,7 +388,7 @@
   "settings.glass.fresnel": "Fresnel-reflectie",
   "settings.glass.grain": "Filmkorrel",
   "settings.glass.hideCapture": "Verbergen bij schermopname",
-  "settings.glass.hideCapture.hint": "Aan: live breking van wat zich achter de notch bevindt (notch verschijnt niet in screenshots of opnames). Uit: getint glas zichtbaar in opnames.",
+  "settings.glass.hideCapture.hint": "Verberg de notch en Spotlight in schermafbeeldingen en opnamen. GPU-breking verbergt ze altijd; schakel dit uit om deze optie te wijzigen.",
   "settings.glass.opacity": "Dekking",
   "settings.glass.preset": "Voorinstelling",
   "settings.glass.preset.clear": "Helder vloeibaar glas",
@@ -1065,5 +1076,10 @@
   "settings.lyrics.provider.amll.desc": "Woord- en lettergreeptiming van de community via Spotify-track-ID",
   "settings.lyrics.provider.netease.desc": "Per woord en regel gesynchroniseerde songteksten uit de NetEase Cloud Music-catalogus",
   "settings.lyrics.provider.kugou.desc": "Per woord en regel gesynchroniseerde KRC-songteksten uit de Kugou Music-catalogus",
-  "settings.lyrics.provider.qqmusic.desc": "Regel voor regel gesynchroniseerde songteksten uit de QQ Music-catalogus"
+  "settings.lyrics.provider.qqmusic.desc": "Regel voor regel gesynchroniseerde songteksten uit de QQ Music-catalogus",
+  "settings.autoDismissNotify": "Meldingen automatisch sluiten",
+  "settings.autoDismissNotify.hint": "Sluit de meldingsbanner automatisch zodra de tijd is verstreken.",
+  "settings.notificationDuration": "Weergaveduur van melding",
+  "settings.notificationDuration.hint": "Hoe lang elke melding zichtbaar blijft op de notch.",
+  "tooltip.autoDismissNotify": "Verberg meldingen automatisch na de ingestelde tijd."
 }

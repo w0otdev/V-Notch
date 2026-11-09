@@ -305,6 +305,7 @@ public partial class SettingsWindow
         c.ShadowSpread = (int)Math.Round(GlassShadowSpreadSlider.Value);
         c.BevelMode = (int)Math.Round(GlassBevelModeSlider.Value);
         c.TargetFps = (int)Math.Round(GlassFpsSlider.Value);
+        c.HideFromScreenCapture = GlassHideCaptureCheck.IsChecked == true;
         return c;
     }
 
@@ -332,6 +333,7 @@ public partial class SettingsWindow
             GlassShadowSpreadSlider.Value = c.ShadowSpread;
             GlassBevelModeSlider.Value = c.BevelMode;
             GlassFpsSlider.Value = c.TargetFps <= 0 ? 0 : c.TargetFps;
+            GlassHideCaptureCheck.IsChecked = c.HideFromScreenCapture;
         }
         finally
         {
@@ -375,6 +377,7 @@ public partial class SettingsWindow
             ApplyGlassConfigToSliders(c);
             if (GpuRefractionCheck != null)
                 GpuRefractionCheck.IsChecked = c.UseGpuRefraction;
+            UpdateGlassCaptureControls();
             if (UltimateGpuCheck != null)
             {
                 UltimateGpuCheck.IsChecked = c.UseUltimateGpu;
@@ -438,6 +441,7 @@ public partial class SettingsWindow
         c.GlowBias = ui.GlowBias;
         c.GlowEdge0 = ui.GlowEdge0;
         c.GlowEdge1 = ui.GlowEdge1;
+        c.HideFromScreenCapture = ui.HideFromScreenCapture;
 
         string activePreset = (GlassPresetCombo.SelectedItem as System.Windows.Controls.ComboBoxItem)?.Tag as string ?? GlassPresetCustom;
         if (activePreset == GlassPresetClear) c.Variant = 1;
@@ -479,10 +483,12 @@ public partial class SettingsWindow
             var currentFps = (int)Math.Round(GlassFpsSlider.Value);
             var currentGpu = GpuRefractionCheck.IsChecked ?? false;
             var currentUltimateGpu = UltimateGpuCheck?.IsChecked ?? false;
+            bool hideCapture = GlassHideCaptureCheck.IsChecked == true;
             _settings.LiquidGlass = preset.Clone();
             _settings.LiquidGlass.TargetFps = currentFps;
             _settings.LiquidGlass.UseGpuRefraction = currentGpu;
             _settings.LiquidGlass.UseUltimateGpu = currentUltimateGpu;
+            _settings.LiquidGlass.HideFromScreenCapture = hideCapture;
             ApplyGlassConfigToSliders(_settings.LiquidGlass);
         }
 
@@ -546,6 +552,7 @@ public partial class SettingsWindow
     {
         if (_isLoadingSettings) return;
         bool gpuEnabled = GpuRefractionCheck?.IsChecked ?? false;
+        UpdateGlassCaptureControls();
         if (_settings.LiquidGlass != null && GpuRefractionCheck != null)
         {
             _settings.LiquidGlass.UseGpuRefraction = gpuEnabled;
@@ -557,6 +564,14 @@ public partial class SettingsWindow
         }
         ApplyEffectiveGpuPreference();
         PushLivePreview();
+    }
+
+    private void UpdateGlassCaptureControls()
+    {
+        // Desktop Duplication requires capture exclusion to avoid recursive frames.
+        if (GlassHideCaptureCheck == null) return;
+        GlassHideCaptureCheck.IsEnabled = GpuRefractionCheck?.IsChecked != true;
+        GlassHideCaptureCheck.Opacity = GlassHideCaptureCheck.IsEnabled ? 1 : .4;
     }
 
     private void UltimateGpuCheck_Changed(object sender, RoutedEventArgs e)
@@ -649,6 +664,8 @@ public partial class SettingsWindow
         GlassShadowSpreadSlider.Label = Loc.Get("settings.glass.shadowSpread");
         GlassBevelModeSlider.Label = Loc.Get("settings.glass.bevelMode");
         GlassFpsSlider.Label = Loc.Get("settings.glass.targetFps");
+        GlassHideCaptureCheck.Content = Loc.Get("settings.glass.hideCapture");
+        GlassHideCaptureHint.Text = Loc.Get("settings.glass.hideCapture.hint");
     }
 
     #endregion

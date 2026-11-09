@@ -1,4 +1,15 @@
 {
+  "settings.accentColor": "لون التمييز",
+  "settings.accentColor.hint": "اختر لون التمييز المستخدم في التطبيق بأكمله.",
+  "settings.accentColor.default": "الافتراضي",
+  "settings.accentColor.blue": "أزرق",
+  "settings.accentColor.purple": "بنفسجي",
+  "settings.accentColor.pink": "وردي",
+  "settings.accentColor.red": "أحمر",
+  "settings.accentColor.orange": "برتقالي",
+  "settings.accentColor.yellow": "أصفر",
+  "settings.accentColor.green": "أخضر",
+  "settings.accentColor.teal": "فيروزي",
   "clipboard.addLabel": "إضافة تسمية",
   "clipboard.selectAll": "تحديد كل العناصر الظاهرة",
   "clipboard.deleteSelected": "حذف {0} من العناصر المحددة",
@@ -377,7 +388,7 @@
   "settings.glass.fresnel": "تأثير فرينل",
   "settings.glass.grain": "الحبيبات",
   "settings.glass.hideCapture": "إخفاء أثناء لقطات الشاشة",
-  "settings.glass.hideCapture.hint": "مفعّل: انكسار مباشر للصورة خلف النتوء، ولا يظهر النتوء في لقطات الشاشة أو التسجيلات. معطّل: زجاج شفاف ملوّن يظهر في لقطات الشاشة.",
+  "settings.glass.hideCapture.hint": "إخفاء الشريط وSpotlight من لقطات الشاشة والتسجيلات. يخفيهما انكسار GPU دائمًا؛ عطّله لتغيير هذا الخيار.",
   "settings.glass.opacity": "العتامة",
   "settings.glass.preset": "الإعداد المسبق",
   "settings.glass.preset.clear": "زجاج سائل شفاف",
@@ -1065,5 +1076,10 @@
   "settings.lyrics.provider.amll.desc": "توقيت الكلمات والمقاطع من المجتمع حسب معرّف مقطع Spotify",
   "settings.lyrics.provider.netease.desc": "كلمات متزامنة كلمة بكلمة أو سطراً بسطر من مكتبة NetEase Cloud Music",
   "settings.lyrics.provider.kugou.desc": "كلمات KRC متزامنة كلمة بكلمة وسطراً بسطر من مكتبة Kugou Music",
-  "settings.lyrics.provider.qqmusic.desc": "كلمات متزامنة سطراً بسطر من مكتبة QQ Music"
+  "settings.lyrics.provider.qqmusic.desc": "كلمات متزامنة سطراً بسطر من مكتبة QQ Music",
+  "settings.autoDismissNotify": "إخفاء الإشعارات تلقائياً",
+  "settings.autoDismissNotify.hint": "إغلاق شريط الإشعار تلقائياً بعد انتهاء المهلة المحددة.",
+  "settings.notificationDuration": "مدة عرض الإشعار",
+  "settings.notificationDuration.hint": "المدة التي يبقى فيها كل إشعار ظاهراً على النوتش.",
+  "tooltip.autoDismissNotify": "إخفاء الإشعارات تلقائياً بعد الوقت المحدد."
 }

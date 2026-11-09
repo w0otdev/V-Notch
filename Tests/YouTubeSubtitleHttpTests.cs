@@ -13,6 +13,52 @@ public sealed class YouTubeSubtitleHttpTests
     private const string Json3 = "{\"events\":[{\"tStartMs\":2000,\"segs\":[{\"utf8\":\"Second line\"}]},{\"tStartMs\":1000,\"segs\":[{\"utf8\":\"First line\"}]}]}";
 
     [Theory]
+    [InlineData("vi.4", "An official music video", "en", "native,english,auto", "/vi")]
+    [InlineData("en.4", "VŨ CÁT TƯỜNG - YÊU XA | OFFICIAL", "vi", "native,english,auto", "/en")]
+    [InlineData(null, "VŨ CÁT TƯỜNG - YÊU XA | OFFICIAL", "en", "native,english,auto", "/vi")]
+    [InlineData(null, "A walk through the ancient city", "vi", "native,english,auto", "/en")]
+    [InlineData(null, "VŨ CÁT TƯỜNG - YÊU XA | OFFICIAL", "en", "english,native,auto", "/en")]
+    public async Task NativePriorityUsesTheVideosAudioLanguageInsteadOfTheUiLanguage(
+        string? audioTrackId, string title, string uiLanguage, string priority, string expectedPath)
+    {
+        // The manual-only Yêu Xa manifest lists English first and recommends it
+        // by default even though the song and its title are Vietnamese.
+        string player = JsonSerializer.Serialize(new
+        {
+            videoDetails = new { title },
+            captions = new
+            {
+                playerCaptionsTracklistRenderer = new
+                {
+                    captionTracks = new[]
+                    {
+                        new { baseUrl = "https://captions.test/en", languageCode = "en", vssId = ".en", name = new { simpleText = "English" } },
+                        new { baseUrl = "https://captions.test/vi", languageCode = "vi", vssId = ".vi", name = new { simpleText = "Tiếng Việt" } }
+                    },
+                    audioTracks = new[] { new { audioTrackId, captionTrackIndices = new[] { 0, 1 }, defaultCaptionTrackIndex = 0 } },
+                    defaultAudioTrackIndex = 0
+                }
+            }
+        });
+        var downloads = new List<string>();
+        using var client = Client((request, _) =>
+        {
+            if (request.Method == HttpMethod.Post) return Task.FromResult(Response(player));
+            downloads.Add(request.RequestUri!.AbsolutePath);
+            return Task.FromResult(Response(request.RequestUri.AbsolutePath == "/vi"
+                ? "<transcript><text start='1'>Phụ đề tiếng Việt</text></transcript>"
+                : "<transcript><text start='1'>English translation</text></transcript>"));
+        });
+        using var service = Service(client);
+        service.SetMode(priority);
+        service.SetNativeLangHint(uiLanguage);
+
+        Assert.Equal(expectedPath == "/vi" ? "Phụ đề tiếng Việt" : "English translation",
+            Assert.Single((await service.FetchSubtitlesAsync(Video))!).Text);
+        Assert.Equal(new[] { expectedPath }, downloads);
+    }
+
+    [Theory]
     [InlineData(false)]
     [InlineData(true)]
     public async Task PlayerAndCaptionResponsesProduceSortedLinesAndReuseCacheUntilForced(bool json3)

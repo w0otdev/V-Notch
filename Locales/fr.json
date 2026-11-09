@@ -1,4 +1,15 @@
 {
+  "settings.accentColor": "Couleur d’accentuation",
+  "settings.accentColor.hint": "Choisissez la couleur de mise en valeur de l’application.",
+  "settings.accentColor.default": "Par défaut",
+  "settings.accentColor.blue": "Bleu",
+  "settings.accentColor.purple": "Violet",
+  "settings.accentColor.pink": "Rose",
+  "settings.accentColor.red": "Rouge",
+  "settings.accentColor.orange": "Orange",
+  "settings.accentColor.yellow": "Jaune",
+  "settings.accentColor.green": "Vert",
+  "settings.accentColor.teal": "Turquoise",
   "clipboard.addLabel": "Ajouter une étiquette",
   "clipboard.selectAll": "Sélectionner tous les éléments visibles",
   "clipboard.deleteSelected": "Supprimer {0} éléments sélectionnés",
@@ -377,7 +388,7 @@
   "settings.glass.fresnel": "Fresnel",
   "settings.glass.grain": "Grain",
   "settings.glass.hideCapture": "Masquer des captures d'écran",
-  "settings.glass.hideCapture.hint": "Actif : réfraction en direct (le notch n'apparaît pas dans les captures/vidéos). Inactif : verre teinté visible.",
+  "settings.glass.hideCapture.hint": "Masquer le notch et Spotlight dans les captures et enregistrements. La réfraction GPU les masque toujours ; désactivez-la pour modifier cette option.",
   "settings.glass.opacity": "Opacité",
   "settings.glass.preset": "Préréglage",
   "settings.glass.preset.clear": "Verre liquide transparent",
@@ -1065,5 +1076,10 @@
   "settings.lyrics.provider.amll.desc": "Synchronisation des mots et syllabes par la communauté via l’ID Spotify",
   "settings.lyrics.provider.netease.desc": "Paroles synchronisées par mot et par ligne depuis le catalogue NetEase Cloud Music",
   "settings.lyrics.provider.kugou.desc": "Paroles KRC synchronisées mot à mot et par ligne depuis le catalogue Kugou Music",
-  "settings.lyrics.provider.qqmusic.desc": "Paroles synchronisées ligne par ligne depuis le catalogue QQ Music"
+  "settings.lyrics.provider.qqmusic.desc": "Paroles synchronisées ligne par ligne depuis le catalogue QQ Music",
+  "settings.autoDismissNotify": "Masquer automatiquement les notifications",
+  "settings.autoDismissNotify.hint": "Ferme la bannière de notification automatiquement à la fin du délai.",
+  "settings.notificationDuration": "Durée d'affichage des notifications",
+  "settings.notificationDuration.hint": "Durée pendant laquelle chaque notification reste visible sur l'encoche.",
+  "tooltip.autoDismissNotify": "Masquer automatiquement les notifications après le délai défini."
 }

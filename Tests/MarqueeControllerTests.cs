@@ -1,5 +1,6 @@
 using System.Runtime.ExceptionServices;
 using System.Threading;
+using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
 using System.Windows.Threading;
@@ -10,6 +11,37 @@ namespace VNotch.Tests;
 
 public class MarqueeControllerTests
 {
+    [Theory]
+    [InlineData(-12)]
+    [InlineData(0)]
+    [InlineData(6)]
+    [InlineData(14)]
+    public void RefreshOnlyScrollsTitlesThatOverflowTheirViewport(double spareWidth)
+    {
+        RunOnStaThread(() =>
+        {
+            var targets = new MarqueeTestTargets("Đình - Có Thực Đến Mùa Cây", "Artist");
+            targets.TitleA.Measure(new Size(double.PositiveInfinity, double.PositiveInfinity));
+            double viewportWidth = targets.TitleA.DesiredSize.Width + spareWidth;
+            using var controller = targets.CreateController(viewportWidth);
+            var row = new Grid { Width = viewportWidth, Height = 35, ClipToBounds = true };
+            targets.TitleLayerA.Children.Add(targets.TitleA);
+            targets.TitleLayerA.RenderTransform = targets.TitleMarqueeA;
+            row.Children.Add(targets.TitleLayerA);
+            var host = new Window { Content = row, Width = viewportWidth + 40, Height = 100, ShowInTaskbar = false };
+            try
+            {
+                host.Show();
+                controller.RefreshMediaMarquee();
+                PumpDispatcherFor(TimeSpan.FromMilliseconds(1500));
+
+                if (spareWidth >= 0) Assert.Equal(0, targets.TitleMarqueeA.X);
+                else Assert.True(targets.TitleMarqueeA.X < 0, "A title wider than the viewport must still scroll.");
+            }
+            finally { host.Close(); }
+        });
+    }
+
     [Fact]
     public void PlaceholderThenRealTitleImmediately_DoesNotDropRealTitle()
     {
@@ -138,6 +170,7 @@ public class MarqueeControllerTests
         public Grid ArtistLayerB { get; } = new() { Opacity = 0 };
 
         private readonly TranslateTransform _titleMarqueeA = new();
+        public TranslateTransform TitleMarqueeA => _titleMarqueeA;
         private readonly TranslateTransform _titleMorphA = new();
         private readonly TranslateTransform _titleMarqueeB = new();
         private readonly TranslateTransform _titleMorphB = new();
@@ -152,7 +185,7 @@ public class MarqueeControllerTests
             ArtistA = new TextBlock { Text = artist };
         }
 
-        public MarqueeController CreateController() =>
+        public MarqueeController CreateController(double visibleWidth = 340) =>
             new(
                 title: new MarqueeTargets(
                     A: new MarqueeLayer(TitleLayerA, TitleA, _titleMarqueeA, _titleMorphA),
@@ -160,6 +193,6 @@ public class MarqueeControllerTests
                 artist: new MarqueeTargets(
                     A: new MarqueeLayer(ArtistLayerA, ArtistA, _artistMarqueeA, _artistMorphA),
                     B: new MarqueeLayer(ArtistLayerB, ArtistB, _artistMarqueeB, _artistMorphB)),
-                width => width);
+                _ => visibleWidth);
     }
 }

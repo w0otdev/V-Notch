@@ -438,6 +438,7 @@ public partial class MainWindow
         _suppressHoverCollapseUntilUtc = DateTime.UtcNow.AddMilliseconds(800);
 
         MediaPlayback.CancelRewindForNavigation();
+        CancelAppNotificationBannerImmediate();
 
         if (IsCountdownCompletionVisualActive)
         {
@@ -699,17 +700,17 @@ public partial class MainWindow
         {
             if (overlayVersion != _thumbnailOverlayVersion) return;
             _isThumbnailExpandAnimating = false;
+            AnimationThumbnailBorder.Width = expandedThumbWidth;
+            AnimationThumbnailBorder.Height = expandedThumbHeight;
+            AnimationThumbnailTranslate.X = targetX;
+            AnimationThumbnailTranslate.Y = targetY;
+            AnimationThumbnailClip.Rect = new Rect(0, 0, expandedThumbWidth, expandedThumbHeight);
             var handoff = _pendingThumbnailHandoff;
             _pendingThumbnailHandoff = null;
             handoff?.Invoke();
         };
 
-        AnimationThumbnailBorder.Width = expandedThumbWidth;
-        AnimationThumbnailBorder.Height = expandedThumbHeight;
         AnimationThumbnailBorder.BorderThickness = new Thickness(0);
-        AnimationThumbnailTranslate.X = targetX;
-        AnimationThumbnailTranslate.Y = targetY;
-        AnimationThumbnailClip.Rect = new Rect(0, 0, expandedThumbWidth, expandedThumbHeight);
         AnimationThumbnailBorder.BeginAnimation(WidthProperty, _cachedThumbWidthExpand);
         AnimationThumbnailBorder.BeginAnimation(HeightProperty, _cachedThumbHeightExpand);
         AnimationThumbnailTranslate.BeginAnimation(TranslateTransform.XProperty, thumbTranslateXAnim);
@@ -1882,7 +1883,7 @@ public partial class MainWindow
         AnimationThumbnailTranslate.X = startX;
         AnimationThumbnailTranslate.Y = startY;
 
-        var thumbDelay = TimeSpan.FromMilliseconds(30);
+        var thumbDelay = TimeSpan.Zero;
         var thumbDur = _dur500;
         var thumbEase = _easeThumbSpring;
         int thumbFps = VNotch.Services.AnimationConfig.TargetFps;
@@ -1902,16 +1903,16 @@ public partial class MainWindow
         {
             if (overlayVersion != _thumbnailOverlayVersion) return;
             _isThumbnailCollapseAnimating = false;
+            AnimationThumbnailBorder.Width = 22;
+            AnimationThumbnailBorder.Height = 22;
+            AnimationThumbnailTranslate.X = compactRestX;
+            AnimationThumbnailTranslate.Y = compactRestY;
+            AnimationThumbnailClip.Rect = new Rect(0, 0, 22, 22);
             var handoff = _pendingThumbnailHandoff;
             _pendingThumbnailHandoff = null;
             handoff?.Invoke();
         };
 
-        AnimationThumbnailBorder.Width = 22;
-        AnimationThumbnailBorder.Height = 22;
-        AnimationThumbnailTranslate.X = compactRestX;
-        AnimationThumbnailTranslate.Y = compactRestY;
-        AnimationThumbnailClip.Rect = new Rect(0, 0, 22, 22);
         AnimationThumbnailBorder.BeginAnimation(WidthProperty, _cachedThumbWidthCollapse);
         AnimationThumbnailBorder.BeginAnimation(HeightProperty, _cachedThumbHeightCollapse);
         AnimationThumbnailTranslate.BeginAnimation(TranslateTransform.XProperty, thumbTranslateXAnim);
@@ -2146,6 +2147,7 @@ public partial class MainWindow
         CancelThumbnailSwitchAnimations();
 
         MediaPlayback.CancelRewindForNavigation();
+        CancelAppNotificationBannerImmediate();
 
         EnsureTopmost();
 

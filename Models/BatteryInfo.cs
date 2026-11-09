@@ -2,6 +2,8 @@ namespace VNotch.Models;
 
 public class BatteryInfo
 {
+    public string DeviceId { get; set; } = NotchSettings.SystemBatteryDeviceId;
+    public string DeviceName { get; set; } = "";
     public int Percentage { get; set; } = 100;
     public bool IsCharging { get; set; } = false;
     public bool IsPluggedIn { get; set; } = false;

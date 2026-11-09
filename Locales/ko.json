@@ -1,4 +1,15 @@
 {
+  "settings.accentColor": "강조 색상",
+  "settings.accentColor.hint": "앱 전체에 사용할 강조 색상을 선택하세요.",
+  "settings.accentColor.default": "기본값",
+  "settings.accentColor.blue": "파랑",
+  "settings.accentColor.purple": "보라",
+  "settings.accentColor.pink": "분홍",
+  "settings.accentColor.red": "빨강",
+  "settings.accentColor.orange": "주황",
+  "settings.accentColor.yellow": "노랑",
+  "settings.accentColor.green": "초록",
+  "settings.accentColor.teal": "청록",
   "clipboard.addLabel": "레이블 추가",
   "clipboard.selectAll": "표시된 모든 항목 선택",
   "clipboard.deleteSelected": "선택한 항목 {0}개 삭제",
@@ -377,7 +388,7 @@
   "settings.glass.fresnel": "프레넬 반사",
   "settings.glass.grain": "필름 그레인",
   "settings.glass.hideCapture": "화면 캡처 시 숨기기",
-  "settings.glass.hideCapture.hint": "켜짐: 노치 뒷배경 화면을 실시간 굴절 (캡처나 녹화물에 노치가 찍히지 않음). 꺼짐: 반투명 컬러 유리로 캡처 시 그대로 보임.",
+  "settings.glass.hideCapture.hint": "스크린샷과 녹화에서 노치와 Spotlight를 숨깁니다. GPU 굴절은 항상 이를 숨깁니다. 이 옵션을 바꾸려면 GPU 굴절을 끄세요.",
   "settings.glass.opacity": "불투명도",
   "settings.glass.preset": "프리셋",
   "settings.glass.preset.clear": "투명 리퀴드 글래스",
@@ -1065,5 +1076,10 @@
   "settings.lyrics.provider.amll.desc": "Spotify 트랙 ID로 조회하는 커뮤니티 단어·음절 동기화",
   "settings.lyrics.provider.netease.desc": "NetEase Cloud Music 카탈로그 기반의 단어 및 줄 단위 동기화 가사",
   "settings.lyrics.provider.kugou.desc": "Kugou Music 카탈로그 기반의 단어 단위 KRC 및 줄 단위 동기화 가사",
-  "settings.lyrics.provider.qqmusic.desc": "QQ Music 카탈로그 기반의 줄 단위 동기화 가사"
+  "settings.lyrics.provider.qqmusic.desc": "QQ Music 카탈로그 기반의 줄 단위 동기화 가사",
+  "settings.autoDismissNotify": "알림 자동 닫기",
+  "settings.autoDismissNotify.hint": "지정한 시간이 지나면 알림 배너를 자동으로 닫습니다.",
+  "settings.notificationDuration": "알림 표시 시간",
+  "settings.notificationDuration.hint": "각 알림이 노치에 표시되는 시간입니다.",
+  "tooltip.autoDismissNotify": "설정한 시간 후 알림을 자동으로 숨깁니다."
 }

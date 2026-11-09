@@ -34,12 +34,10 @@
         <SolidColorBrush x:Key="TitleTextBrush" Color="#EDFFFFFF"/>
         <SolidColorBrush x:Key="SecondaryTextBrush" Color="#8AFFFFFF"/>
         <SolidColorBrush x:Key="TertiaryTextBrush" Color="#8AFFFFFF"/>
-        <SolidColorBrush x:Key="AccentBrush" Color="#F2F2F2"/>
         <!-- Fully opaque OLED black to match the notch; any translucency lets
              the window behind bleed through the search field. -->
         <SolidColorBrush x:Key="ShellBrush" Color="#FF000000"/>
         <SolidColorBrush x:Key="ShellBorderBrush" Color="Transparent"/>
-        <SolidColorBrush x:Key="SelectedItemBrush" Color="#24FFFFFF"/>
         <SolidColorBrush x:Key="HoverItemBrush" Color="#10FFFFFF"/>
 
         <Style x:Key="AiActionStyle" TargetType="Button">
@@ -265,13 +263,13 @@
                         </Border>
                         <ControlTemplate.Triggers>
                             <Trigger Property="IsHighlighted" Value="True">
-                                <Setter TargetName="Root" Property="Background" Value="{StaticResource SelectedItemBrush}"/>
+                                <Setter TargetName="Root" Property="Background" Value="{DynamicResource AccentSubtleBrush}"/>
                             </Trigger>
                             <Trigger Property="IsKeyboardFocused" Value="True">
-                                <Setter TargetName="Root" Property="Background" Value="{StaticResource SelectedItemBrush}"/>
+                                <Setter TargetName="Root" Property="Background" Value="{DynamicResource AccentSubtleBrush}"/>
                             </Trigger>
                             <Trigger Property="Tag" Value="Selected">
-                                <Setter TargetName="Root" Property="Background" Value="{StaticResource SelectedItemBrush}"/>
+                                <Setter TargetName="Root" Property="Background" Value="{DynamicResource AccentSubtleBrush}"/>
                             </Trigger>
                         </ControlTemplate.Triggers>
                     </ControlTemplate>
@@ -590,6 +588,7 @@
                 <Grid.RowDefinitions>
                     <RowDefinition Height="64"/>
                     <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
                 </Grid.RowDefinitions>
 
             <!-- Search field: text on the left, magnifier on the right (Flow Launcher layout). -->
@@ -704,9 +703,20 @@
                 </controls:MorphingSettingsIcon>
             </Grid>
 
+            <Border x:Name="SpotlightIntroPanel" Grid.Row="1" Visibility="Collapsed"
+                    BorderBrush="#20FFFFFF" BorderThickness="0,1,0,0" Padding="22,18,22,18">
+                <StackPanel>
+                    <TextBlock x:Name="SpotlightIntroTitle" FontSize="11" Foreground="#AAAAAA"/>
+                    <TextBlock x:Name="SpotlightIntroHeadline" FontSize="20" FontWeight="Bold" Foreground="#FFFFFF" Margin="0,5,0,8"/>
+                    <TextBlock x:Name="SpotlightIntroBody" FontSize="13" Foreground="#CCCCCC" TextWrapping="Wrap"/>
+                    <Button x:Name="SpotlightIntroClose" HorizontalAlignment="Left" Padding="14,7" Margin="0,14,0,0"
+                            Click="SpotlightIntroClose_Click"/>
+                </StackPanel>
+            </Border>
+
             <!-- Results appear only after the user starts searching. -->
             <Border x:Name="ContentRegion"
-                    Grid.Row="1"
+                    Grid.Row="2"
                     BorderBrush="#14FFFFFF"
                     BorderThickness="0,1,0,0"
                     Visibility="Collapsed">
@@ -863,7 +873,7 @@
                                             <Border x:Name="SelectionGlide"
                                                     HorizontalAlignment="Left"
                                                     VerticalAlignment="Top"
-                                                    Background="{StaticResource SelectedItemBrush}"
+                                                    Background="{DynamicResource AccentSubtleBrush}"
                                                     CornerRadius="8"
                                                     Opacity="0"
                                                     IsHitTestVisible="False">
@@ -874,7 +884,7 @@
                                                 <Border Width="3"
                                                         Margin="0,4"
                                                         CornerRadius="1.5"
-                                                        Background="{StaticResource AccentBrush}"
+                                                        Background="{DynamicResource AccentBrush}"
                                                         HorizontalAlignment="Left"
                                                         VerticalAlignment="Stretch"/>
                                             </Border>
@@ -1068,7 +1078,7 @@
                                 <Border x:Name="QuickActionsSelectionGlide"
                                         HorizontalAlignment="Left"
                                         VerticalAlignment="Top"
-                                        Background="{StaticResource SelectedItemBrush}"
+                                        Background="{DynamicResource AccentSubtleBrush}"
                                         CornerRadius="8"
                                         Opacity="0"
                                         IsHitTestVisible="False">
@@ -1078,7 +1088,7 @@
                                     <Border Width="3"
                                             Margin="0,4"
                                             CornerRadius="1.5"
-                                            Background="{StaticResource AccentBrush}"
+                                            Background="{DynamicResource AccentBrush}"
                                             HorizontalAlignment="Left"
                                             VerticalAlignment="Stretch"/>
                                 </Border>

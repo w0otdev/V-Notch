@@ -16,6 +16,7 @@ public sealed class IdleAutoHideController : IDisposable
     private readonly Action _applyVisibilityState;
     private readonly Action _stopHoverTimers;
     private readonly Action _onRevealed;
+    private readonly Func<bool>? _isVisibilityFrozen;
 
     private readonly UiScheduledTimer _timer;
     private long? _idleSinceTick;
@@ -27,7 +28,8 @@ public sealed class IdleAutoHideController : IDisposable
         Func<bool> isNotchEmptyAndIdle,
         Action applyVisibilityState,
         Action stopHoverTimers,
-        Action onRevealed)
+        Action onRevealed,
+        Func<bool>? isVisibilityFrozen = null)
     {
         _shellState = shellState ?? throw new ArgumentNullException(nameof(shellState));
         _getSettings = getSettings ?? throw new ArgumentNullException(nameof(getSettings));
@@ -35,6 +37,7 @@ public sealed class IdleAutoHideController : IDisposable
         _applyVisibilityState = applyVisibilityState ?? throw new ArgumentNullException(nameof(applyVisibilityState));
         _stopHoverTimers = stopHoverTimers ?? throw new ArgumentNullException(nameof(stopHoverTimers));
         _onRevealed = onRevealed ?? throw new ArgumentNullException(nameof(onRevealed));
+        _isVisibilityFrozen = isVisibilityFrozen;
 
         _timer = new UiScheduledTimer(DispatcherPriority.Input)
         {
@@ -94,6 +97,11 @@ public sealed class IdleAutoHideController : IDisposable
             return;
         }
 
+        if (_isVisibilityFrozen?.Invoke() == true)
+        {
+            _idleSinceTick = null;
+            return;
+        }
         bool idle = _isNotchEmptyAndIdle();
 
         if (!idle)
@@ -147,6 +155,7 @@ public sealed class IdleAutoHideController : IDisposable
     public void Wake()
     {
         if (_disposed || !_getSettings().EnableIdleAutoHide) return;
+        if (_isVisibilityFrozen?.Invoke() == true) return;
 
         _idleSinceTick = null;
         SetNextCheck(IdleHidePollIntervalMs);

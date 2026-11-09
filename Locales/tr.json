@@ -1,4 +1,15 @@
 {
+  "settings.accentColor": "Vurgu rengi",
+  "settings.accentColor.hint": "Uygulama genelinde kullanılan vurgu rengini seçin.",
+  "settings.accentColor.default": "Varsayılan",
+  "settings.accentColor.blue": "Mavi",
+  "settings.accentColor.purple": "Mor",
+  "settings.accentColor.pink": "Pembe",
+  "settings.accentColor.red": "Kırmızı",
+  "settings.accentColor.orange": "Turuncu",
+  "settings.accentColor.yellow": "Sarı",
+  "settings.accentColor.green": "Yeşil",
+  "settings.accentColor.teal": "Turkuaz",
   "clipboard.addLabel": "Etiket ekle",
   "clipboard.selectAll": "Görünen tüm öğeleri seç",
   "clipboard.deleteSelected": "Seçilen {0} öğeyi sil",
@@ -377,7 +388,7 @@
   "settings.glass.fresnel": "Fresnel Yansıması",
   "settings.glass.grain": "Film Greni",
   "settings.glass.hideCapture": "Ekran görüntülerinde gizle",
-  "settings.glass.hideCapture.hint": "Açık: Çentiğin arkasındaki görüntüyü doğrudan kırar (çentik ekran görüntülerinde ve kayıtlarda görünmez). Kapalı: Ekran görüntülerinde görünen renkli cam.",
+  "settings.glass.hideCapture.hint": "Ekran görüntülerinde ve kayıtlarda notch ve Spotlight gizlensin. GPU kırılması bunları her zaman gizler; bu seçeneği değiştirmek için GPU kırılmasını kapatın.",
   "settings.glass.opacity": "Opaklık",
   "settings.glass.preset": "Hazır Ayar",
   "settings.glass.preset.clear": "Berrak Sıvı Cam",
@@ -1065,5 +1076,10 @@
   "settings.lyrics.provider.amll.desc": "Spotify parça kimliğine göre topluluk sözcük ve hece zamanlaması",
   "settings.lyrics.provider.netease.desc": "NetEase Cloud Music kataloğundan kelime ve satır senkronize şarkı sözleri",
   "settings.lyrics.provider.kugou.desc": "Kugou Music kataloğundan kelime kelime KRC ve satır senkronize şarkı sözleri",
-  "settings.lyrics.provider.qqmusic.desc": "QQ Music kataloğundan satır satır senkronize şarkı sözleri"
+  "settings.lyrics.provider.qqmusic.desc": "QQ Music kataloğundan satır satır senkronize şarkı sözleri",
+  "settings.autoDismissNotify": "Bildirimleri otomatik kapat",
+  "settings.autoDismissNotify.hint": "Belirlenen süre dolduğunda bildirim başlığını otomatik olarak kapatır.",
+  "settings.notificationDuration": "Bildirim süresi",
+  "settings.notificationDuration.hint": "Her bildirimin çentikte ne kadar süre görünür kalacağı.",
+  "tooltip.autoDismissNotify": "Ayarlanan süreden sonra bildirimleri otomatik olarak gizler."
 }

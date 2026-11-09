@@ -75,7 +75,9 @@ internal sealed partial class SpotlightController : ISpotlightController, IAsync
                 VNotch.Services.Spotlight.SpotlightAiService.Configuration(_settings, provider)
                 != VNotch.Services.Spotlight.SpotlightAiService.Configuration(settings, provider));
 
+        bool introSeen = _settings?.HasSeenSpotlightIntro == true;
         _settings = settings.Clone();
+        _settings.HasSeenSpotlightIntro |= introSeen;
         if (glassChanged || historyChanged || languageChanged || aiChanged)
         {
             _window?.ApplySettings(_settings);
@@ -222,7 +224,15 @@ internal sealed partial class SpotlightController : ISpotlightController, IAsync
         var window = _windowFactory();
         window.OpenStateChanged += Window_OpenStateChanged;
         window.IsVisibleChanged += Window_IsVisibleChanged;
+        window.IntroDismissed += Window_IntroDismissed;
         return window;
+    }
+
+    private void Window_IntroDismissed(object? sender, EventArgs e)
+    {
+        if (_settings != null) _settings.HasSeenSpotlightIntro = true;
+        if (_host is MainWindow host)
+            host.MarkSpotlightIntroSeenAsync().SafeFireAndForget("SPOTLIGHT-INTRO-SAVE");
     }
 
     private void RemoveKeyboardHook()
@@ -296,6 +306,7 @@ internal sealed partial class SpotlightController : ISpotlightController, IAsync
         {
             _window.OpenStateChanged -= Window_OpenStateChanged;
             _window.IsVisibleChanged -= Window_IsVisibleChanged;
+            _window.IntroDismissed -= Window_IntroDismissed;
             _window.Shutdown();
             _window = null;
         }

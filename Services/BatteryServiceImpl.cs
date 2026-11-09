@@ -99,6 +99,33 @@ public partial class BatteryServiceImpl : IBatteryService
         return info;
     }
 
+    public async Task<BatteryInfo> GetBatteryInfoAsync(string deviceId)
+    {
+        var system = GetBatteryInfo();
+        if (string.IsNullOrEmpty(deviceId)) return system;
+        var devices = await BluetoothBatteryService.Instance.GetDevicesAsync();
+        return SelectSource(system, deviceId, devices);
+    }
+
+    internal static BatteryInfo SelectSource(BatteryInfo system, string deviceId, IReadOnlyList<BatteryDevice> devices)
+    {
+        if (string.IsNullOrEmpty(deviceId)) return system;
+        bool automatic = deviceId == NotchSettings.AutoBluetoothBatteryDeviceId;
+        var device = automatic
+            ? devices.FirstOrDefault(candidate => candidate.HasReading)
+            : devices.FirstOrDefault(candidate => string.Equals(candidate.Id, deviceId, StringComparison.OrdinalIgnoreCase));
+        if (automatic && device == null) return system;
+        return new BatteryInfo
+        {
+            DeviceId = device?.Id ?? deviceId,
+            DeviceName = device?.Name ?? deviceId,
+            Percentage = device?.HasReading == true ? device.Percentage : -1,
+            HasBattery = device?.HasReading == true,
+            // Power saver belongs to the computer, regardless of the displayed battery.
+            IsBatterySaver = system.IsBatterySaver
+        };
+    }
+
     internal static void ApplySystemPowerStatus(BatteryInfo info, SystemPowerStatus status)
     {
         var nativeStatus = new VnSystemPowerStatus

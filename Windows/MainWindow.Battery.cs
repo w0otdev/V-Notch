@@ -49,6 +49,14 @@ public partial class MainWindow
 
     private void HandleBatteryUpdate(BatteryInfo battery)
     {
+        _displayedBattery = battery;
+        RefreshBatteryAccessibleName();
+        LinkedDeviceBatteryIconView.Visibility = string.IsNullOrEmpty(battery.DeviceId) ? Visibility.Collapsed : Visibility.Visible;
+        if (_lastBatteryDeviceId != battery.DeviceId)
+        {
+            _wasPluggedIn = null;
+            _lastBatteryDeviceId = battery.DeviceId;
+        }
         AnimationConfig.SetReduceMotion(battery.IsBatterySaver);
 
         var scaleAnimation = new DoubleAnimation
@@ -105,6 +113,20 @@ public partial class MainWindow
             ShowChargingGlance(battery, ChargingGlanceKind.Unplugged);
         }
         _wasPluggedIn = battery.IsPowerConnected;
+    }
+
+    private BatteryInfo? _displayedBattery;
+    private string? _lastBatteryDeviceId;
+
+    private void RefreshBatteryAccessibleName()
+    {
+        var battery = _displayedBattery;
+        string name = battery == null || string.IsNullOrEmpty(battery.DeviceId)
+            ? Loc.Get("settings.batteryDevice.system")
+            : battery.HasBattery ? battery.DeviceName : Loc.Get("settings.batteryDevice.unavailable", battery.DeviceName);
+        string description = battery == null ? name : $"{name}, {battery.GetPercentageText()}";
+        System.Windows.Automation.AutomationProperties.SetName(BatterySection, description);
+        BatterySection.ToolTip = description;
     }
 
     private enum ChargingGlanceKind

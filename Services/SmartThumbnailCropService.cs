@@ -268,8 +268,8 @@ public sealed partial class SmartThumbnailCropService : IDisposable
         }
     }
 
-    public Int32Rect? GetSmartCropRect(BitmapSource source, int targetSquareSize) =>
-        GetCpuCropRect(source, targetSquareSize, useObjectDetection: false);
+    public Int32Rect? GetSmartCropRect(BitmapSource source, int targetSquareSize, bool useObjectDetection = false) =>
+        GetCpuCropRect(source, targetSquareSize, useObjectDetection);
 
     internal static Int32Rect? Analyze(BitmapSource source, int targetSquareSize = 120)
     {
@@ -316,6 +316,7 @@ public sealed partial class SmartThumbnailCropService : IDisposable
 
             var rect = useObjectDetection
                 ? ComputeSmartCropRectCore(source, targetSquareSize)
+                    ?? GetSaliencyCropRect(source, width, height, targetSquareSize)
                 : GetSaliencyCropRect(source, width, height, targetSquareSize);
             if (rect.HasValue)
             {
@@ -345,8 +346,7 @@ public sealed partial class SmartThumbnailCropService : IDisposable
             var fallback = GetCpuCropRect(bitmap, targetSquareSize, useObjectDetection);
             cancellationToken.ThrowIfCancellationRequested();
             int width = bitmap.PixelWidth, height = bitmap.PixelHeight;
-            if (!fallback.HasValue || !useObjectDetection || targetSquareSize <= 96 ||
-                (width < 400 && height < 400)) return fallback;
+            if (!fallback.HasValue || !useObjectDetection || targetSquareSize <= 96) return fallback;
             Detection[] persons;
             lock (_lock)
             {
@@ -392,14 +392,8 @@ public sealed partial class SmartThumbnailCropService : IDisposable
                     return null;
                 }
 
-                if (imgWidth < 400 && imgHeight < 400)
-                {
-                    int maxCrop = Math.Min(imgWidth, imgHeight);
-                    int cropSz = Math.Min(targetSquareSize, maxCrop);
-                    VNotch.Services.RuntimeLog.Log(LogCategory, $"GetSmartCropRect: small image {imgWidth}x{imgHeight} -> saliency only");
-                    return GetSaliencyCropRect(source, imgWidth, imgHeight, cropSz);
-                }
-
+                // Decoded video thumbnails are commonly 320x180 or 384x288.
+                // They still contain useful person detections after model preprocessing.
                 var detections = GetOrRunInferenceLocked(source, imgWidth, imgHeight);
 
                 if (detections.Length == 0)

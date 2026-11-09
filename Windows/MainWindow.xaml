@@ -25,7 +25,7 @@
         RenderOptions.EdgeMode="Unspecified"
         TextElement.FontFamily="{StaticResource SFProText}">
 
-    <!-- Auto restores full text quality at rest while allowing motion-aware hinting. -->
+    <!-- Grayscale filtering softens glyph edges on transparent surfaces. -->
     <Window.Resources>
 
         <ExponentialEase x:Key="CameraExitEase" EasingMode="EaseOut" Exponent="6" po:Freeze="True"/>
@@ -99,9 +99,9 @@
             <Setter Property="FontFamily" Value="{StaticResource MainSystemFont}"/>
             <Setter Property="TextOptions.TextFormattingMode" Value="Ideal"/>
             <Setter Property="TextOptions.TextRenderingMode" Value="Grayscale"/>
-            <Setter Property="TextOptions.TextHintingMode" Value="Auto"/>
-            <Setter Property="UseLayoutRounding" Value="True"/>
-            <Setter Property="SnapsToDevicePixels" Value="True"/>
+            <Setter Property="TextOptions.TextHintingMode" Value="Animated"/>
+            <Setter Property="UseLayoutRounding" Value="False"/>
+            <Setter Property="SnapsToDevicePixels" Value="False"/>
         </Style>
 
         <Style x:Key="SubtitleText" TargetType="TextBlock">
@@ -111,9 +111,9 @@
             <Setter Property="FontFamily" Value="{StaticResource MainSystemFont}"/>
             <Setter Property="TextOptions.TextFormattingMode" Value="Ideal"/>
             <Setter Property="TextOptions.TextRenderingMode" Value="Grayscale"/>
-            <Setter Property="TextOptions.TextHintingMode" Value="Auto"/>
-            <Setter Property="UseLayoutRounding" Value="True"/>
-            <Setter Property="SnapsToDevicePixels" Value="True"/>
+            <Setter Property="TextOptions.TextHintingMode" Value="Animated"/>
+            <Setter Property="UseLayoutRounding" Value="False"/>
+            <Setter Property="SnapsToDevicePixels" Value="False"/>
         </Style>
 
         <Style x:Key="SmallText" TargetType="TextBlock">
@@ -123,9 +123,9 @@
             <Setter Property="FontFamily" Value="{StaticResource MainSystemFont}"/>
             <Setter Property="TextOptions.TextFormattingMode" Value="Ideal"/>
             <Setter Property="TextOptions.TextRenderingMode" Value="Grayscale"/>
-            <Setter Property="TextOptions.TextHintingMode" Value="Auto"/>
-            <Setter Property="UseLayoutRounding" Value="True"/>
-            <Setter Property="SnapsToDevicePixels" Value="True"/>
+            <Setter Property="TextOptions.TextHintingMode" Value="Animated"/>
+            <Setter Property="UseLayoutRounding" Value="False"/>
+            <Setter Property="SnapsToDevicePixels" Value="False"/>
         </Style>
 
         <Style x:Key="ProgressTimeText" TargetType="TextBlock" BasedOn="{StaticResource SmallText}">
@@ -447,6 +447,7 @@
                     <TransformGroup>
                         <ScaleTransform x:Name="NotchShadowScale" ScaleX="1" ScaleY="1"/>
                         <TranslateTransform x:Name="NotchShadowGestureTranslate"/>
+                        <TranslateTransform x:Name="AppNotificationShadowTranslate"/>
                     </TransformGroup>
                 </Grid.RenderTransform>
                 <Grid.ColumnDefinitions>
@@ -503,6 +504,7 @@
                     <TransformGroup>
                         <ScaleTransform x:Name="NotchScale" ScaleX="1" ScaleY="1"/>
                         <TranslateTransform x:Name="NotchGestureTranslate"/>
+                        <TranslateTransform x:Name="AppNotificationShellTranslate"/>
                     </TransformGroup>
                 </Grid.RenderTransform>
                 <Grid.ColumnDefinitions>
@@ -1298,8 +1300,8 @@
                                        TextOptions.TextFormattingMode="Ideal"
                                        TextOptions.TextRenderingMode="Grayscale"
                                                        TextOptions.TextHintingMode="Animated"
-                                       UseLayoutRounding="True"
-                                       SnapsToDevicePixels="True"
+                                       UseLayoutRounding="False"
+                                       SnapsToDevicePixels="False"
                                        VerticalAlignment="Center"/>
 
                             <StackPanel Grid.Column="1"
@@ -1314,8 +1316,8 @@
                                            TextOptions.TextFormattingMode="Ideal"
                                            TextOptions.TextRenderingMode="Grayscale"
                                                        TextOptions.TextHintingMode="Animated"
-                                           UseLayoutRounding="True"
-                                           SnapsToDevicePixels="True"
+                                           UseLayoutRounding="False"
+                                           SnapsToDevicePixels="False"
                                            VerticalAlignment="Center"
                                            Margin="0,0,5,0"/>
 
@@ -1328,8 +1330,8 @@
                                            TextOptions.TextFormattingMode="Ideal"
                                            TextOptions.TextRenderingMode="Grayscale"
                                                        TextOptions.TextHintingMode="Animated"
-                                           UseLayoutRounding="True"
-                                           SnapsToDevicePixels="True"
+                                           UseLayoutRounding="False"
+                                           SnapsToDevicePixels="False"
                                            VerticalAlignment="Center"
                                            Visibility="Collapsed"
                                            Margin="0,0,6,0"/>
@@ -1359,6 +1361,196 @@
                                 </Grid>
                             </StackPanel>
                         </Grid>
+                    </Grid>
+
+                    <Border x:Name="AppNotificationHoverSurface"
+                            Background="White"
+                            CornerRadius="{Binding CornerRadius, ElementName=NotchBorder}"
+                            Opacity="0"
+                            Visibility="Collapsed"
+                            IsHitTestVisible="False"
+                            Panel.ZIndex="149"/>
+
+                    <Grid x:Name="AppNotificationBanner"
+                          Opacity="0"
+                          Visibility="Collapsed"
+                          HorizontalAlignment="Center"
+                          VerticalAlignment="Center"
+                          Background="Transparent"
+                          Cursor="Hand"
+                          Focusable="True"
+                          AutomationProperties.Name="Notification"
+                          Margin="0,10,0,10"
+                          Panel.ZIndex="150"
+                          RenderTransformOrigin="0.5,0.2"
+                          TextElement.FontFamily="{StaticResource SFProDisplay}"
+                          TextElement.FontWeight="Bold"
+                          TextOptions.TextFormattingMode="Display"
+                          TextOptions.TextHintingMode="Animated"
+                          MouseLeftButtonDown="AppNotificationBanner_MouseLeftButtonDown"
+                          MouseLeftButtonUp="AppNotificationBanner_MouseLeftButtonUp"
+                          MouseMove="AppNotificationBanner_MouseMove"
+                          LostMouseCapture="AppNotificationBanner_LostMouseCapture"
+                          KeyDown="AppNotificationBanner_KeyDown"
+                          MouseRightButtonUp="AppNotificationBanner_MouseRightButtonUp"
+                          MouseEnter="AppNotificationBanner_MouseEnter"
+                          MouseLeave="AppNotificationBanner_MouseLeave">
+                        <Grid.RenderTransform>
+                            <TransformGroup>
+                                <ScaleTransform x:Name="AppNotificationBannerScale" ScaleX="1" ScaleY="1"/>
+                                <TranslateTransform x:Name="AppNotificationBannerTranslate" Y="0"/>
+                                <TranslateTransform x:Name="AppNotificationPressTranslate"/>
+                            </TransformGroup>
+                        </Grid.RenderTransform>
+                        <Grid x:Name="AppNotificationContent">
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="Auto"/>
+                        </Grid.RowDefinitions>
+                        <Grid Grid.Row="0" VerticalAlignment="Center">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto"/>
+                                <ColumnDefinition Width="*"/>
+                            </Grid.ColumnDefinitions>
+                            <Grid x:Name="AppNotificationIconHost" Grid.Column="0"
+                                    Width="42" Height="42" Margin="0,0,13,0"
+                                    VerticalAlignment="Center"
+                                    RenderTransformOrigin="0.5,0.5">
+                                <Grid.RenderTransform>
+                                    <TransformGroup>
+                                        <ScaleTransform x:Name="AppNotificationIconScale"/>
+                                        <RotateTransform x:Name="AppNotificationIconRotate"/>
+                                        <TranslateTransform x:Name="AppNotificationIconTranslate"/>
+                                    </TransformGroup>
+                                </Grid.RenderTransform>
+                                <Border x:Name="AppNotificationAvatarCircle"
+                                        Width="40" Height="40"
+                                        CornerRadius="20"
+                                        Background="#6C6C72"
+                                        BorderBrush="#32FFFFFF"
+                                        BorderThickness="0.8"
+                                        HorizontalAlignment="Left"
+                                        VerticalAlignment="Center">
+                                    <TextBlock x:Name="AppNotificationAvatarInitialsText"
+                                               Text="VN"
+                                               Foreground="#FFFFFF"
+                                               FontFamily="{StaticResource SFProDisplay}"
+                                               FontSize="15"
+                                               FontWeight="Bold"
+                                               HorizontalAlignment="Center"
+                                               VerticalAlignment="Center"
+                                               Margin="0,0,0,0.5"/>
+                                </Border>
+                                <Grid Width="17" Height="17"
+                                      HorizontalAlignment="Right"
+                                      VerticalAlignment="Bottom"
+                                      Margin="0,0,-1,0">
+                                    <Image x:Name="AppNotificationIconImage"
+                                           Width="16" Height="16"
+                                           Stretch="Uniform"
+                                           HorizontalAlignment="Center"
+                                           VerticalAlignment="Center"
+                                           Visibility="Collapsed"
+                                           RenderOptions.BitmapScalingMode="HighQuality"/>
+                                    <Border x:Name="AppNotificationDefaultIcon"
+                                            Width="16" Height="16"
+                                            CornerRadius="8"
+                                            Background="#0A84FF"
+                                            HorizontalAlignment="Center"
+                                            VerticalAlignment="Center">
+                                        <Viewbox Width="9.5" Height="9.5" HorizontalAlignment="Center" VerticalAlignment="Center">
+                                            <Canvas Width="24" Height="24">
+                                                <Path Fill="#FFFFFF"
+                                                      Data="M12,3C6.5,3,2,6.6,2,11c0,2.1,1,4.1,2.8,5.5C4.4,18.2,3.3,19.8,3.2,20c-0.2,0.2-0.2,0.5,0,0.8C3.3,20.9,3.5,21,3.7,21c2.1,0,4.1-0.9,5.4-1.8c0.9,0.2,1.9,0.3,2.9,0.3c5.5,0,10-3.6,10-8.5S17.5,3,12,3z"/>
+                                            </Canvas>
+                                        </Viewbox>
+                                    </Border>
+                                </Grid>
+                            </Grid>
+                            <Grid Grid.Column="1" VerticalAlignment="Center">
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="Auto"/>
+                                    <RowDefinition Height="Auto"/>
+                                </Grid.RowDefinitions>
+                                <TextBlock x:Name="AppNotificationAppNameText"
+                                           Visibility="Collapsed"
+                                           Text=""
+                                           FontFamily="{StaticResource SFProDisplay}"
+                                           FontWeight="Bold">
+                                    <TextBlock.RenderTransform>
+                                        <TranslateTransform x:Name="AppNotificationAppNameTranslate"/>
+                                    </TextBlock.RenderTransform>
+                                </TextBlock>
+                                <Grid Grid.Row="0" VerticalAlignment="Center">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="Auto"/>
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock x:Name="AppNotificationTitleText"
+                                               Grid.Column="0"
+                                               Text=""
+                                               Foreground="#FFFFFF"
+                                               FontFamily="{StaticResource SFProDisplay}"
+                                               FontSize="13.5"
+                                               FontWeight="Bold"
+                                               Padding="0,1,0,2"
+                                               VerticalAlignment="Center"
+                                               TextTrimming="CharacterEllipsis">
+                                        <TextBlock.RenderTransform>
+                                            <TranslateTransform x:Name="AppNotificationTitleTranslate"/>
+                                        </TextBlock.RenderTransform>
+                                    </TextBlock>
+                                    <TextBlock x:Name="AppNotificationTimeText"
+                                               Grid.Column="1"
+                                               Text="now"
+                                               Foreground="#8A8A92"
+                                               FontFamily="{StaticResource SFProDisplay}"
+                                               FontSize="11.5"
+                                               FontWeight="Bold"
+                                               Margin="10,0,0,0"
+                                               VerticalAlignment="Center"/>
+                                </Grid>
+                                <TextBlock x:Name="AppNotificationBodyText"
+                                           Grid.Row="1"
+                                           Text=""
+                                           Foreground="#D8D8DE"
+                                           FontFamily="{StaticResource SFProDisplay}"
+                                           FontSize="12.5"
+                                           FontWeight="Bold"
+                                           Padding="0,1,0,2"
+                                           TextWrapping="Wrap"
+                                           TextTrimming="CharacterEllipsis"
+                                           LineHeight="16.5"
+                                           LineStackingStrategy="BlockLineHeight"
+                                           MaxHeight="37"
+                                           Margin="0,2,0,0">
+                                    <TextBlock.RenderTransform>
+                                        <TranslateTransform x:Name="AppNotificationBodyTranslate"/>
+                                    </TextBlock.RenderTransform>
+                                </TextBlock>
+                            </Grid>
+                        </Grid>
+                        <Border x:Name="AppNotificationProgressTrack" Grid.Row="1"
+                                Height="2.5" Margin="2,10,2,0" CornerRadius="1.25"
+                                Background="#1FFFFFFF" IsHitTestVisible="False">
+                            <Border Background="#98FFFFFF" CornerRadius="1.25" RenderTransformOrigin="0,0.5">
+                                <Border.RenderTransform>
+                                    <ScaleTransform x:Name="AppNotificationProgressScale" ScaleX="1"/>
+                                </Border.RenderTransform>
+                            </Border>
+                        </Border>
+                        </Grid>
+                        <Canvas IsHitTestVisible="False" Panel.ZIndex="1">
+                            <Image x:Name="AppNotificationBlurCover"
+                                   Width="{Binding ActualWidth, ElementName=AppNotificationContent}"
+                                   Height="{Binding ActualHeight, ElementName=AppNotificationContent}"
+                                   Stretch="Fill" Opacity="0" Visibility="Collapsed"
+                                   IsHitTestVisible="False" RenderOptions.BitmapScalingMode="HighQuality">
+                                <Image.Effect>
+                                    <BlurEffect Radius="10" KernelType="Gaussian" RenderingBias="Performance"/>
+                                </Image.Effect>
+                            </Image>
+                        </Canvas>
                     </Grid>
 
                     <Grid x:Name="MusicCompactContent"
@@ -1467,7 +1659,7 @@
                                     <GradientStop Color="Transparent" Offset="1"/>
                                 </LinearGradientBrush>
                             </Grid.OpacityMask>
-                            <Canvas x:Name="CompactTitleScrollContainer" Height="22" HorizontalAlignment="Stretch" ClipToBounds="True" Margin="0,2,0,0">
+                            <Canvas x:Name="CompactTitleScrollContainer" Height="24" HorizontalAlignment="Stretch" ClipToBounds="True" Margin="0,2,0,0">
                                 <TextBlock x:Name="CompactTitleMarquee"
                                            Text="Title"
                                            Style="{StaticResource TitleText}"
@@ -1527,8 +1719,8 @@
                                    TextOptions.TextFormattingMode="Ideal"
                                    TextOptions.TextRenderingMode="Grayscale"
                                                        TextOptions.TextHintingMode="Animated"
-                                   UseLayoutRounding="True"
-                                   SnapsToDevicePixels="True"
+                                   UseLayoutRounding="False"
+                                   SnapsToDevicePixels="False"
                                    VerticalAlignment="Center"
                                    HorizontalAlignment="Left"
                                    Margin="0,4,0,0"
@@ -2569,7 +2761,7 @@
                                                TextAlignment="Right"
                                                TextOptions.TextFormattingMode="Ideal"
                                                TextOptions.TextRenderingMode="Grayscale"
-                                               TextOptions.TextHintingMode="Auto"
+                                               TextOptions.TextHintingMode="Animated"
                                                VerticalAlignment="Center"
                                                HorizontalAlignment="Stretch"
                                                Opacity="0">
@@ -2596,7 +2788,7 @@
                                                TextAlignment="Right"
                                                TextOptions.TextFormattingMode="Ideal"
                                                TextOptions.TextRenderingMode="Grayscale"
-                                               TextOptions.TextHintingMode="Auto"
+                                               TextOptions.TextHintingMode="Animated"
                                                VerticalAlignment="Center"
                                                HorizontalAlignment="Stretch"
                                                Opacity="0">
@@ -2739,8 +2931,8 @@
                                            Foreground="#FF453A"
                                            HorizontalAlignment="Left"
                                            Margin="16,0,0,3"
-                                           UseLayoutRounding="True"
-                                           SnapsToDevicePixels="True"
+                                           UseLayoutRounding="False"
+                                           SnapsToDevicePixels="False"
                                            TextOptions.TextFormattingMode="Ideal"
                                            TextOptions.TextRenderingMode="Grayscale"
                                            TextOptions.TextHintingMode="Animated"/>
@@ -2915,16 +3107,8 @@
 
                     <Border x:Name="HoverGlow"
                             CornerRadius="0,0,20,20"
-                            BorderThickness="1"
                             Opacity="0"
                             IsHitTestVisible="False">
-                        <Border.BorderBrush>
-                            <LinearGradientBrush StartPoint="0,0" EndPoint="0.9,1">
-                                <GradientStop Color="#60FFFFFF" Offset="0"/>
-                                <GradientStop Color="#18FFFFFF" Offset="0.45"/>
-                                <GradientStop Color="#00FFFFFF" Offset="1"/>
-                            </LinearGradientBrush>
-                        </Border.BorderBrush>
                         <Border.Background>
                             <RadialGradientBrush GradientOrigin="0.5,0" Center="0.5,0" RadiusX="0.9" RadiusY="1.1">
                                 <GradientStop Color="#28FFFFFF" Offset="0"/>

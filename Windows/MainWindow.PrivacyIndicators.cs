@@ -36,7 +36,8 @@ public partial class MainWindow
     private bool IsCompactPillForPrivacyIndicator =>
         _transitionCoordinator.ShapeState == VNotch.Controllers.NotchShapeState.Collapsed &&
         !_isAnimating &&
-        !_isGreetingActive;
+        !_isGreetingActive &&
+        !_isAppNotificationBannerVisible;
 
     private bool IsPrivacyDotSuppressed => ShouldSuppressPrivacyDot(
         IsCompactPillForPrivacyIndicator,

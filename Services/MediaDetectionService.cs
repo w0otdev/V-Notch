@@ -1437,6 +1437,15 @@ public sealed partial class MediaDetectionService : IMediaDetectionService, IAsy
         bool needsFetch = forceFetchForTrackChange || (info.Thumbnail == null || info.Thumbnail.PixelWidth < 120);
         if (_timelineSimulator.IsThrottled && _timelineSimulator.RecoveredThumbnail != null && !forceFetchForTrackChange) needsFetch = false;
 
+        // The player's artwork identifies the playing upload; a title search can
+        // return a different recording or music video with the same song name.
+        if (isPotentialYouTube && info.Thumbnail != null &&
+            _lastSessionArtworkFingerprint.HasValue &&
+            _sessionArtworkGeneration == Volatile.Read(ref _thumbnailFetchGeneration))
+        {
+            needsFetch = false;
+        }
+
         if (needsFetch && !forceFetchForTrackChange && CachedThumbnail != null && CachedThumbnail.PixelWidth >= 200)
         {
             needsFetch = false;
@@ -3328,9 +3337,8 @@ public sealed partial class MediaDetectionService : IMediaDetectionService, IAsy
     {
         await ApplySessionThumbnailAsync(info, mediaProperties, trackChangedForThisPass);
 
-        bool isYouTubeLikeSource = info.Platform == MediaPlatform.YouTube || (info.Platform == MediaPlatform.Browser && IsLikelyYouTube(info));
-        bool refreshSessionArtwork = !isYouTubeLikeSource &&
-                                     (IsBrowserSourceApp(info.SourceAppId) || info.Platform is MediaPlatform.SoundCloud or MediaPlatform.Browser);
+        bool refreshSessionArtwork = IsBrowserSourceApp(info.SourceAppId) ||
+                                     info.Platform is MediaPlatform.YouTube or MediaPlatform.SoundCloud or MediaPlatform.Browser;
         if (info.Thumbnail != null || !refreshSessionArtwork || session == null)
             return;
 
@@ -3406,8 +3414,8 @@ public sealed partial class MediaDetectionService : IMediaDetectionService, IAsy
                 info.SessionInstanceKey,
                 StringComparison.Ordinal);
         bool hasVerifiedYouTubeThumb = MediaPlatformExtensions.ParsePlatform(_cachedThumbnailSource) == MediaPlatform.YouTube;
-        bool refreshSessionArtwork = !isYouTubeLikeSource &&
-                                     (IsBrowserSourceApp(info.SourceAppId) || info.Platform is MediaPlatform.SoundCloud or MediaPlatform.Browser);
+        bool refreshSessionArtwork = IsBrowserSourceApp(info.SourceAppId) ||
+                                     info.Platform is MediaPlatform.YouTube or MediaPlatform.SoundCloud or MediaPlatform.Browser;
         info.Thumbnail = CachedThumbnail;
         if (!trackChangedForThisPass && CachedThumbnail != null && !refreshSessionArtwork)
         {
@@ -3450,6 +3458,19 @@ public sealed partial class MediaDetectionService : IMediaDetectionService, IAsy
                     PixelHeight = newBitmap.PixelHeight,
                 });
 
+                // Keep checking the session after a track transition. Once its
+                // old fingerprint is excluded, real artwork takes precedence
+                // over a lookup that only matched the song title.
+                bool isSessionVideoArtwork = !trackChangedForThisPass &&
+                                             newBitmap.PixelWidth >= 120 && newBitmap.PixelHeight >= 90 &&
+                                             (double)newBitmap.PixelWidth / newBitmap.PixelHeight > 1.3 &&
+                                             !ThumbnailHeuristics.HasLowEntropyMonochromeProfile(newBitmap);
+                if (isYouTubeLikeSource && !browserSessionChanged &&
+                    (likelySoundCloudArtwork || isSessionVideoArtwork))
+                {
+                    thumbDecision = ThumbnailHeuristics.SmtcThumbnailDecision.Accept;
+                }
+
                 if (thumbDecision == ThumbnailHeuristics.SmtcThumbnailDecision.Reject)
                 {
                     RuntimeLog.Debug("MEDIA-THUMB-STALE",
@@ -3463,6 +3484,8 @@ public sealed partial class MediaDetectionService : IMediaDetectionService, IAsy
                     if (refreshSessionArtwork)
                     {
                         // A pending fallback must not overwrite newer artwork from the player.
+                        Interlocked.Increment(ref _youTubeFetchGeneration);
+                        Interlocked.Exchange(ref _youTubeFetchInFlight, 0);
                         Interlocked.Increment(ref _soundCloudFetchGeneration);
                         Interlocked.Exchange(ref _soundCloudFetchInFlight, 0);
                         _timelineSimulator.RecoveredThumbnail = null;

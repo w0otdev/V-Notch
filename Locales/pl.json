@@ -1,4 +1,15 @@
 {
+  "settings.accentColor": "Kolor akcentu",
+  "settings.accentColor.hint": "Wybierz kolor wyróżnienia dla całej aplikacji.",
+  "settings.accentColor.default": "Domyślny",
+  "settings.accentColor.blue": "Niebieski",
+  "settings.accentColor.purple": "Fioletowy",
+  "settings.accentColor.pink": "Różowy",
+  "settings.accentColor.red": "Czerwony",
+  "settings.accentColor.orange": "Pomarańczowy",
+  "settings.accentColor.yellow": "Żółty",
+  "settings.accentColor.green": "Zielony",
+  "settings.accentColor.teal": "Turkusowy",
   "clipboard.addLabel": "Dodaj etykietę",
   "clipboard.selectAll": "Zaznacz wszystkie widoczne elementy",
   "clipboard.deleteSelected": "Usuń zaznaczone elementy: {0}",
@@ -377,7 +388,7 @@
   "settings.glass.fresnel": "Efekt Fresnela",
   "settings.glass.grain": "Ziarnistość",
   "settings.glass.hideCapture": "Ukryj na zrzutach ekranu",
-  "settings.glass.hideCapture.hint": "Włączone: bezpośrednie załamywanie tła (notch nie pojawia się na zrzutach ekranu i nagraniach). Wyłączone: półprzezroczyste szkło widoczne na zrzutach.",
+  "settings.glass.hideCapture.hint": "Ukryj notch i Spotlight na zrzutach i nagraniach ekranu. Refrakcja GPU zawsze je ukrywa; wyłącz ją, aby zmienić tę opcję.",
   "settings.glass.opacity": "Przezroczystość",
   "settings.glass.preset": "Styl gotowy",
   "settings.glass.preset.clear": "Przezroczyste płynne szkło",
@@ -1065,5 +1076,10 @@
   "settings.lyrics.provider.amll.desc": "Synchronizacja słów i sylab społeczności według ID utworu Spotify",
   "settings.lyrics.provider.netease.desc": "Tekst synchronizowany słowo po słowie i wers po wersie z katalogu NetEase Cloud Music",
   "settings.lyrics.provider.kugou.desc": "Tekst KRC synchronizowany słowo po słowie i wers po wersie z katalogu Kugou Music",
-  "settings.lyrics.provider.qqmusic.desc": "Tekst synchronizowany wers po wersie z katalogu QQ Music"
+  "settings.lyrics.provider.qqmusic.desc": "Tekst synchronizowany wers po wersie z katalogu QQ Music",
+  "settings.autoDismissNotify": "Automatycznie zamykaj powiadomienia",
+  "settings.autoDismissNotify.hint": "Zamknij baner powiadomienia automatycznie po upływie wybranego czasu.",
+  "settings.notificationDuration": "Czas wyświetlania powiadomienia",
+  "settings.notificationDuration.hint": "Jak długo każde powiadomienie pozostaje widoczne na notchu.",
+  "tooltip.autoDismissNotify": "Automatycznie ukrywaj powiadomienia po ustalonym czasie."
 }

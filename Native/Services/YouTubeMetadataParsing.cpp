@@ -228,10 +228,11 @@ void json3(Json root, JsonResponse& output) {
 }
 
 // kind: 0 Data API search, 1 Piped, 2 Invidious, 3 oEmbed,
-// 4 Data API video/duration, 5 Innertube caption tracks, 6 JSON3 cues.
+// 4 Data API video/duration, 5 Innertube caption tracks, 6 JSON3 cues,
+// 12 Innertube original audio language and video title.
 VN_EXPORT int32_t vn_youtube_parse_utf8(const uint8_t* bytes, int32_t length, int32_t kind, const char16_t* expected, int32_t expected_length,
     int64_t* handle, const JsonRow** rows, int32_t* count, const char16_t** characters, uint8_t* has_collection) noexcept {
-    if (!bytes || length <= 0 || length > 2 * 1024 * 1024 || kind < 0 || kind > 11 || expected_length < 0 || (!expected && expected_length) ||
+    if (!bytes || length <= 0 || length > 2 * 1024 * 1024 || kind < 0 || kind > 12 || expected_length < 0 || (!expected && expected_length) ||
         !handle || !rows || !count || !characters || !has_collection) return VN_ERR_INVALID_ARG;
     *handle = 0; *rows = nullptr; *count = 0; *characters = nullptr; *has_collection = 0;
     try {
@@ -248,6 +249,37 @@ VN_EXPORT int32_t vn_youtube_parse_utf8(const uint8_t* bytes, int32_t length, in
         else if (kind == 9) result->append({root.get("lyric").text(), {}, {}, {}, {}});
         else if (kind == 10) result->append({root.get("content").text(), {}, {}, {}, {}});
         else if (kind == 11) { if (root.get("lines").is('[')) result->append({root.get("meta").get("level").text(), root.get("meta").get("source").get("name").text(), {}, {}, {}}); }
+        else if (kind == 12) {
+            Text language = root.get("videoDetails").get("defaultAudioLanguage").text();
+            if (language.empty()) language = root.get("microformat").get("playerMicroformatRenderer").get("defaultAudioLanguage").text();
+            // An original audio stream is stronger evidence than a localized
+            // default audio track or the player's preferred caption index.
+            for (const auto collection : {"adaptiveFormats", "formats"}) {
+                root.get("streamingData").get(collection).each([&](Json, Json format) {
+                    const auto audio = format.get("audioTrack");
+                    if (language.empty() && vnotch::vn_contains_icase_ascii(audio.get("displayName").text(), u"original"))
+                        language = audio.get("id").text();
+                    return true;
+                });
+            }
+            if (language.empty()) {
+                const auto renderer = root.get("captions").get("playerCaptionsTracklistRenderer");
+                const auto tracks = renderer.get("audioTracks");
+                const auto index = renderer.get("defaultAudioTrackIndex");
+                const int64_t selected_index = !index.bytes.empty() && index.bytes[0] >= '0' && index.bytes[0] <= '9' ? index.integer() : -1;
+                Json selected;
+                int64_t count = 0;
+                tracks.each([&](Json, Json track) {
+                    if (count++ == selected_index) selected = track;
+                    return true;
+                });
+                if (selected_index < 0 && count == 1) selected = tracks.first();
+                language = selected.get("languageCode").text();
+                if (language.empty()) language = selected.get("audioTrackId").text();
+            }
+            if (const auto separator = language.find(u'.'); separator != Text::npos) language.resize(separator);
+            result->append({language, root.get("videoDetails").get("title").text(), {}, {}, {}});
+        }
         else if (kind == 5) captions(root, *result);
         else if (kind == 6) json3(root, *result);
         else metadata(root, kind, {expected ? expected : u"", static_cast<size_t>(expected_length)}, *result);

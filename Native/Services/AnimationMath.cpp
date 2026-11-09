@@ -577,14 +577,16 @@ VN_EXPORT int32_t __stdcall vn_animation_compute_nav_tab_motion(
     const double dist = std::abs(safe_target_y - safe_current_y);
     const double slots = std::clamp(dist / safe_h, 0.0, 8.0);
 
-    out_motion->peak_scale_y = 1.0 + std::clamp(0.08 + slots * 0.042, 0.08, 0.34);
-    out_motion->dip_scale_x = 1.0 - std::clamp(0.018 + slots * 0.006, 0.018, 0.055);
-    out_motion->rebound_scale_y = 1.0 - std::clamp(0.025 + slots * 0.005, 0.025, 0.055);
-    out_motion->rebound_scale_x = 1.0 + std::clamp(0.010 + slots * 0.002, 0.010, 0.022);
+    out_motion->peak_scale_y = 1.0 + std::clamp(0.16 + slots * 0.065, 0.16, 0.60);
+    out_motion->dip_scale_x = 1.0 - std::clamp(0.020 + slots * 0.007, 0.020, 0.060);
+    out_motion->rebound_scale_y = 1.0;
+    out_motion->rebound_scale_x = 1.0;
     out_motion->content_shift_x = 2.5;
-    out_motion->peak_time_ms = 75;
-    out_motion->rebound_time_ms = 175;
-    out_motion->duration_ms = 260;
+    // Stretch in the direction of travel, then contract into the destination
+    // without a separate bounce after the background has arrived.
+    out_motion->duration_ms = 280 + static_cast<int32_t>(std::min(slots, 6.0) * 12.0);
+    out_motion->peak_time_ms = out_motion->duration_ms / 3;
+    out_motion->rebound_time_ms = out_motion->duration_ms * 4 / 5;
     return VN_OK;
 }
 

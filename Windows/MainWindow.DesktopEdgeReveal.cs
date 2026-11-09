@@ -26,6 +26,7 @@ public partial class MainWindow
 
     private void HoverService_MousePositionChangedForDesktopReveal(object? sender, Point point)
     {
+        if (IsScreenCaptureActive) return;
         if (!_settings.StayBehindWindows || !_isNotchVisible || _isHiddenByFullscreen)
             return;
 
@@ -59,6 +60,7 @@ public partial class MainWindow
 
     private bool IsDesktopNotchInteractionActive()
     {
+        if (IsScreenCaptureActive) return true;
         // Keep the file tray above other windows until the user dismisses it.
         if (_isSecondaryView) return true;
 

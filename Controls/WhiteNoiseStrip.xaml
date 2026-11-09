@@ -17,7 +17,7 @@
             <Grid x:Name="VolumeBar" Grid.Column="1" Height="26" Margin="6,0,14,0" Cursor="Hand" Background="Transparent"
                   MouseLeftButtonDown="VolumeBar_MouseDown" MouseMove="VolumeBar_MouseMove" MouseLeftButtonUp="VolumeBar_MouseUp">
                 <Border Height="4" CornerRadius="2" Background="#22FFFFFF" VerticalAlignment="Center"/>
-                <Border x:Name="VolumeFill" Height="4" CornerRadius="2" Background="#FFFF8C1A" VerticalAlignment="Center" HorizontalAlignment="Left" Width="0"/>
+                <Border x:Name="VolumeFill" Height="4" CornerRadius="2" Background="{DynamicResource AccentBrush}" VerticalAlignment="Center" HorizontalAlignment="Left" Width="0"/>
             </Grid>
         </Grid>
     </StackPanel>

@@ -108,7 +108,10 @@ public partial class SpotlightWindow
             CloseAiHistory();
             RenderAiHistory();
         }
+        bool introSeen = _settings.HasSeenSpotlightIntro;
         _settings = settings.Clone();
+        _settings.HasSeenSpotlightIntro |= introSeen;
+        RefreshSpotlightIntro();
         if (restoreSavedChats) LoadAiHistory();
         _viewModel.HistoryEnabled = _settings.EnableSpotlightHistory;
         _gpuRefractionFailed = false;

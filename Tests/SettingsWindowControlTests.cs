@@ -1,5 +1,6 @@
 using System.Reflection;
 using System.Windows;
+using System.Windows.Input;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
 using System.Windows.Media;
@@ -13,6 +14,57 @@ namespace VNotch.Tests;
 [Collection("Localization")]
 public sealed class SettingsWindowControlTests
 {
+    [Fact]
+    public void BatterySourceIsEditableAndSurvivesLocalizationAndApply() => SharedStaTestRunner.RunAsync(async _ =>
+    {
+        using var fixture = new Fixture();
+        var window = fixture.Window;
+        var combo = Assert.IsType<ComboBox>(window.FindName("BatteryDeviceCombo"));
+        combo.SelectedValue = NotchSettings.AutoBluetoothBatteryDeviceId;
+        Assert.Equal(NotchSettings.AutoBluetoothBatteryDeviceId, window.ReadSettingsFromUi().BatteryDeviceId);
+        Loc.SetLanguage("vi");
+        Invoke(window, "ApplyLocalization");
+        Assert.Equal(NotchSettings.AutoBluetoothBatteryDeviceId, combo.SelectedValue);
+        await window.ApplyWithoutClosingAsync();
+        Assert.Equal(NotchSettings.AutoBluetoothBatteryDeviceId, fixture.Service.Applied!.BatteryDeviceId);
+        combo.SelectedValue = NotchSettings.SystemBatteryDeviceId;
+        Assert.Equal(NotchSettings.SystemBatteryDeviceId, window.ReadSettingsFromUi().BatteryDeviceId);
+    });
+
+    [Fact]
+    public void GlassCapturePreferenceCanBeEditedAndSurvivesPresets() => SharedStaTestRunner.Run(() =>
+    {
+        using var fixture = new Fixture();
+        var window = fixture.Window;
+        window.NavigateToSection("Skins");
+        window.SkinCombo.SelectedIndex = 1;
+        var check = Assert.IsType<CheckBox>(window.FindName("GlassHideCaptureCheck"));
+        window.GpuRefractionCheck.IsChecked = true;
+        Assert.False(check.IsEnabled);
+        window.GpuRefractionCheck.IsChecked = false;
+        Assert.True(check.IsEnabled);
+        check.IsChecked = true;
+        Assert.True(window.ReadSettingsFromUi().LiquidGlass.HideFromScreenCapture);
+        window.GlassPresetCombo.SelectedIndex = 1;
+        Assert.True(window.ReadSettingsFromUi().LiquidGlass.HideFromScreenCapture);
+        check.IsChecked = false;
+        Assert.False(window.ReadSettingsFromUi().LiquidGlass.HideFromScreenCapture);
+    });
+
+    [Fact]
+    public void MissingBatteryChoiceIsRetainedWhenDevicesRefresh() => SharedStaTestRunner.Run(() =>
+    {
+        using var fixture = new Fixture();
+        var window = fixture.Window;
+        window.PopulateBatterySources([new("headset", "Headphones", 42, true)]);
+        window.BatteryDeviceCombo.SelectedValue = "headset";
+        window.PopulateBatterySources([new("headset", "Headphones", 42, false)]);
+        Assert.Equal(Loc.Get("settings.batteryDevice.unavailable", "Headphones"), ((ComboBoxItem)window.BatteryDeviceCombo.SelectedItem).Content);
+        window.PopulateBatterySources(Array.Empty<BatteryDevice>());
+        Assert.Equal("headset", window.ReadSettingsFromUi().BatteryDeviceId);
+        Assert.Equal("headset", window.BatteryDeviceCombo.SelectedValue);
+    });
+
     [Fact]
     public void LyricsProvidersReorderPersistAndStopAtTheListEdges() => SharedStaTestRunner.Run(() =>
     {
@@ -137,7 +189,7 @@ public sealed class SettingsWindowControlTests
         Assert.Equal(Loc.Get("translation.downloadingTitle"), window.TranslationProgressCaption.Text);
         Assert.Equal(Loc.Get("translation.downloading", 12), window.TranslationModelStatus.Text);
         Assert.Same(window.Resources["SurfaceBrush"], window.TranslationProgressCard.Background);
-        Assert.Same(window.Resources["AccentBrush"], window.TranslationModelProgress.Foreground);
+        Assert.Same(window.FindResource("AccentBrush"), window.TranslationModelProgress.Foreground);
         Assert.Same(window.Resources["TrackBg"], window.TranslationModelProgress.Background);
     });
 
@@ -443,6 +495,137 @@ public sealed class SettingsWindowControlTests
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
+    public void NavigationHoverPreservesSelectionAndReturnsToRestAfterRapidMoves(bool reducedMotion) => SharedStaTestRunner.RunAsync(async ct =>
+    {
+        bool previous = AnimationConfig.ReduceMotion;
+        AnimationConfig.SetReduceMotion(reducedMotion);
+        try
+        {
+            using var fixture = new Fixture();
+            var window = fixture.Window;
+            window.Show();
+            await WpfFrameWaiter.UntilAsync(() => window.IsLoaded && window.NavPanel.Opacity >= .999,
+                "settings window loads before pointer hover", ct);
+            var row = (StackPanel)window.NavAppearance.Child;
+            var pointer = new MouseEventArgs(Mouse.PrimaryDevice, Environment.TickCount);
+            Invoke(window, "NavButton_MouseEnter", window.NavAppearance, pointer);
+            await WpfFrameWaiter.UntilAsync(() => window.NavActiveHoverOverlay.Opacity >= .099,
+                "selected settings pill lights up on hover", ct);
+            Assert.Same(window.FindResource("AccentForegroundBrush"), window.NavAppearanceText.Foreground);
+            Assert.Same(window.FindResource("AccentBrush"), window.NavActiveIndicator.Background);
+            Assert.False(window.NavActiveHoverOverlay.IsHitTestVisible);
+            bool motion = !reducedMotion && SystemParameters.ClientAreaAnimation;
+            Assert.Equal(0, row.RenderTransform.Value.OffsetX);
+            Assert.Equal(1, row.Children[0].RenderTransform.Value.M11, 3);
+
+            Invoke(window, "NavButton_MouseEnter", window.NavSkins, pointer);
+            await WpfFrameWaiter.UntilAsync(() => window.NavHoverIndicator.Opacity == 1,
+                "unselected settings row reveals its hover surface", ct);
+            Assert.Same(window.FindResource("AccentNavHoverBrush"), window.NavHoverIndicator.Background);
+            Assert.Same(window.FindResource("AccentNavHoverBorderBrush"), window.NavHoverIndicator.BorderBrush);
+            double displayedY = window.NavHoverIndicatorTranslate.Y;
+            window.NavSkins.RaiseEvent(new MouseEventArgs(Mouse.PrimaryDevice, Environment.TickCount) { RoutedEvent = Mouse.MouseLeaveEvent });
+            Assert.Equal("Skins", Field<string>(window, "_hoveredNav"));
+            Assert.True(window.NavHoverIndicator.Opacity > .99);
+            Invoke(window, "NavButton_MouseEnter", window.NavPrivacy, pointer);
+            if (motion) Assert.Equal(displayedY, window.NavHoverIndicatorTranslate.Y, 3);
+
+            Invoke(window, "NavButton_MouseEnter", window.NavBehavior, pointer);
+            window.NavigateToSection("Behavior");
+            await WpfFrameWaiter.UntilAsync(() => window.NavActiveHoverOverlay.Opacity >= .099,
+                "newly selected settings pill keeps its hover feedback", ct);
+            Assert.Same(window.FindResource("AccentForegroundBrush"), window.NavBehaviorText.Foreground);
+            Invoke(window, "NavItemsHost_MouseLeave", window.NavItemsHost, pointer);
+            var nextRow = (StackPanel)window.NavBehavior.Child;
+            await WpfFrameWaiter.UntilAsync(() => window.NavActiveHoverOverlay.Opacity == 0 && window.NavHoverIndicator.Opacity == 0 &&
+                nextRow.RenderTransform.Value.OffsetX == 0 && nextRow.Children[0].RenderTransform.Value.M11 == 1,
+                "settings hover fully clears after leaving the navigation", ct);
+            Assert.Same(window.FindResource("AccentForegroundBrush"), window.NavBehaviorText.Foreground);
+            Assert.Equal("Behavior", Field<string>(window, "_activeNav"));
+            Assert.False(Field<bool>(window, "_navHoverAnimating"));
+
+            Invoke(window, "NavButton_MouseEnter", window.NavPrivacy, pointer);
+            window.Hide();
+            Assert.Equal(0, window.NavHoverIndicator.Opacity);
+            Assert.False(Field<bool>(window, "_navHoverAnimating"));
+        }
+        finally { AnimationConfig.SetReduceMotion(previous); }
+    });
+
+    [Fact]
+    public void SidebarHoverRetainsItsMomentumAcrossGapsAndWhenReenteringDuringFadeOut() => SharedStaTestRunner.RunAsync(async ct =>
+    {
+        bool previous = AnimationConfig.ReduceMotion;
+        AnimationConfig.SetReduceMotion(false);
+        try
+        {
+            using var fixture = new Fixture();
+            var window = fixture.Window;
+            window.Show();
+            await WpfFrameWaiter.UntilAsync(() => window.IsLoaded && window.NavPanel.Opacity >= .999,
+                "sidebar loads before testing continuous hover", ct);
+            if (!SystemParameters.ClientAreaAnimation) return;
+            var pointer = new MouseEventArgs(Mouse.PrimaryDevice, Environment.TickCount);
+            Invoke(window, "NavButton_MouseEnter", window.NavSkins, pointer);
+            Invoke(window, "AdvanceNavHoverMotion", .1);
+            Invoke(window, "NavButton_MouseEnter", window.NavSpotlight, pointer);
+            Invoke(window, "AdvanceNavHoverMotion", .016);
+            object moving = Field<object>(window, "_navHoverState");
+            Assert.True((double)moving.GetType().GetField("YVelocity")!.GetValue(moving)! > 0);
+            window.NavSpotlight.RaiseEvent(new MouseEventArgs(Mouse.PrimaryDevice, Environment.TickCount) { RoutedEvent = Mouse.MouseLeaveEvent });
+            Assert.Equal("Spotlight", Field<string>(window, "_hoveredNav"));
+            Assert.Equal(moving, Field<object>(window, "_navHoverState"));
+            Invoke(window, "NavButton_MouseEnter", window.NavBehavior, pointer);
+            Assert.Equal(moving, Field<object>(window, "_navHoverState"));
+            Invoke(window, "NavItemsHost_MouseLeave", window.NavItemsHost, pointer);
+            Invoke(window, "AdvanceNavHoverMotion", .1);
+            Invoke(window, "AdvanceNavHoverMotion", .1);
+            Assert.InRange(window.NavHoverIndicator.Opacity, .001, .05);
+            object fading = Field<object>(window, "_navHoverState");
+            Invoke(window, "NavButton_MouseEnter", window.NavDevices, pointer);
+            Assert.Equal(fading, Field<object>(window, "_navHoverState"));
+            for (int frame = 0; frame < 10; frame++) Invoke(window, "AdvanceNavHoverMotion", .1);
+            Assert.False(Field<bool>(window, "_navHoverAnimating"));
+            Assert.Equal(1, window.NavHoverIndicator.Opacity);
+
+            string? framesDirectory = Environment.GetEnvironmentVariable("VNOTCH_NAV_HOVER_FRAMES");
+            if (!string.IsNullOrEmpty(framesDirectory))
+            {
+                System.IO.Directory.CreateDirectory(framesDirectory);
+                AccentTheme.Apply("pink");
+                Invoke(window, "ResetProgressiveBlurElements", true);
+                var destinations = new[] { window.NavSkins, window.NavSpotlight, window.NavBehavior, window.NavFileTray, window.NavPrivacy };
+                for (int frame = 0; frame < 100; frame++)
+                {
+                    if (frame % 20 == 0) Invoke(window, "NavButton_MouseEnter", destinations[frame / 20], pointer);
+                    await WpfFrameWaiter.NextAsync(ct);
+                    var bitmap = new System.Windows.Media.Imaging.RenderTargetBitmap(
+                        (int)Math.Ceiling(window.NavItemsHost.ActualWidth * 2),
+                        (int)Math.Ceiling(window.NavItemsHost.ActualHeight * 2), 192, 192, PixelFormats.Pbgra32);
+                    var visual = new DrawingVisual();
+                    using (var drawing = visual.RenderOpen())
+                    {
+                        var bounds = new Rect(0, 0, window.NavItemsHost.ActualWidth, window.NavItemsHost.ActualHeight);
+                        drawing.DrawRectangle(new SolidColorBrush(Color.FromRgb(15, 15, 18)), null, bounds);
+                        drawing.DrawRectangle(new VisualBrush(window.NavItemsHost), null, bounds);
+                    }
+                    bitmap.Render(visual);
+                    var encoder = new System.Windows.Media.Imaging.PngBitmapEncoder();
+                    encoder.Frames.Add(System.Windows.Media.Imaging.BitmapFrame.Create(bitmap));
+                    using var file = System.IO.File.Create(System.IO.Path.Combine(framesDirectory, $"frame-{frame:000}.png"));
+                    encoder.Save(file);
+                }
+            }
+            window.Hide();
+            Assert.False(Field<bool>(window, "_navHoverAnimating"));
+            Assert.Equal(0, window.NavHoverIndicator.Opacity);
+        }
+        finally { AccentTheme.Apply("default"); AnimationConfig.SetReduceMotion(previous); }
+    });
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
     public void SectionNavigationShowsOnlyTheLatestRequestedPanelAndResetsItsScroll(bool reducedMotion) => SharedStaTestRunner.RunAsync(async ct =>
     {
         bool previous = AnimationConfig.ReduceMotion;
@@ -457,17 +640,130 @@ public sealed class SettingsWindowControlTests
             {
                 AnimationConfig.SetReduceMotion(reducedMotion || sectionIdx++ > 1);
                 Invoke(window, "NavigateToSection", section);
+                if (!reducedMotion && sectionIdx == 1 && window.IsLoaded && SystemParameters.ClientAreaAnimation)
+                {
+                    Assert.True(Field<bool>(window, "_navPillAnimating"));
+                }
                 await WpfFrameWaiter.UntilAsync(() => panels[section].Visibility == Visibility.Visible && panels.Values.Count(panel => panel.Visibility == Visibility.Visible) == 1, "settings section navigation", ct);
                 Assert.Equal(section, Field<string>(window, "_activeNav"));
                 Assert.Equal(0, window.SettingsScrollViewer.VerticalOffset);
                 Assert.True(window.NavActiveIndicatorTranslate.Y >= 0);
             }
             string[] destinations = panels.Keys.Where(key => key != Field<string>(window, "_activeNav")).Take(3).ToArray();
+            AnimationConfig.SetReduceMotion(reducedMotion);
             foreach (string destination in destinations) Invoke(window, "NavigateToSection", destination);
             string latest = destinations[^1];
             await WpfFrameWaiter.UntilAsync(() => panels[latest].Visibility == Visibility.Visible && panels.Values.Count(panel => panel.Visibility == Visibility.Visible) == 1, "latest settings section wins", ct);
+            await WpfFrameWaiter.UntilAsync(() => window.NavActiveIndicatorScale.ScaleX == 1 && window.NavActiveIndicatorScale.ScaleY == 1,
+                "settings selection pill settles after rapid selection", ct);
             Invoke(window, "NavigateToSection", latest);
             Assert.Equal(latest, Field<string>(window, "_activeNav"));
+        }
+        finally { AnimationConfig.SetReduceMotion(previous); }
+    });
+
+    [Fact]
+    public void SidebarSelectionMovesAndStretchesBeforeSettlingAndCanReverseMidFlight() => SharedStaTestRunner.RunAsync(async ct =>
+    {
+        bool previous = AnimationConfig.ReduceMotion;
+        AnimationConfig.SetReduceMotion(false);
+        try
+        {
+            using var fixture = new Fixture();
+            var window = fixture.Window;
+            string? framesDirectory = Environment.GetEnvironmentVariable("VNOTCH_NAV_MOTION_FRAMES");
+            if (!string.IsNullOrEmpty(framesDirectory))
+            {
+                window.Resources["AccentBrush"] = new SolidColorBrush(Color.FromRgb(0xEC, 0x82, 0xC4));
+                window.Resources["AccentForegroundBrush"] = Brushes.Black;
+            }
+            window.Show();
+            await WpfFrameWaiter.UntilAsync(() => window.IsLoaded && window.NavPanel.Opacity >= .999,
+                "settings sidebar settles before testing its selection pill", ct);
+            if (!SystemParameters.ClientAreaAnimation) return;
+            double start = window.NavActiveIndicator.TranslatePoint(new Point(0, 0), window.NavItemsStack).Y;
+            double target = window.NavPrivacy.TranslatePoint(new Point(0, 0), window.NavItemsStack).Y;
+            window.NavigateToSection("Privacy");
+            Invoke(window, "AdvanceNavPillMotion", .08);
+            double between = window.NavActiveIndicator.TranslatePoint(new Point(0, 0), window.NavItemsStack).Y;
+            double stretched = window.NavActiveIndicatorScale.ScaleY;
+            var state = Field<object>(window, "_navPillState");
+            double topVelocity = (double)state.GetType().GetField("TopVelocity")!.GetValue(state)!;
+            double bottomVelocity = (double)state.GetType().GetField("BottomVelocity")!.GetValue(state)!;
+            Assert.InRange(between, start + .1, target - .1);
+            Assert.True(stretched > 1.05);
+            Assert.True(window.NavActiveIndicatorScale.ScaleX < 1);
+
+            window.NavigateToSection("Appearance");
+            Assert.Equal(between, window.NavActiveIndicator.TranslatePoint(new Point(0, 0), window.NavItemsStack).Y, 3);
+            Assert.Equal(stretched, window.NavActiveIndicatorScale.ScaleY, 3);
+            var retargeted = Field<object>(window, "_navPillState");
+            Assert.Equal(topVelocity, (double)retargeted.GetType().GetField("TopVelocity")!.GetValue(retargeted)!);
+            Assert.Equal(bottomVelocity, (double)retargeted.GetType().GetField("BottomVelocity")!.GetValue(retargeted)!);
+            await WpfFrameWaiter.UntilAsync(() => !Field<bool>(window, "_navPillAnimating"),
+                "reversed sidebar selection settles and detaches its frame handler", ct);
+            Assert.Equal(window.NavAppearance.TranslatePoint(new Point(0, 0), window.NavItemsStack).Y,
+                window.NavActiveIndicatorTranslate.Y, 3);
+            Assert.Equal(1, window.NavActiveIndicatorScale.ScaleX);
+            Assert.Equal(1, window.NavActiveIndicatorScale.ScaleY);
+            if (!string.IsNullOrEmpty(framesDirectory))
+            {
+                window.ResetProgressiveBlurElements(isMenuList: true);
+                System.IO.Directory.CreateDirectory(framesDirectory);
+                window.NavigateToSection("Skins");
+                window.SyncNavIndicators(animate: false);
+                var iconBrushMethod = typeof(SettingsWindow).GetMethod("ApplyNavIconBrush", BindingFlags.Static | BindingFlags.NonPublic)!;
+                int frame = 0;
+                foreach (string section in new[] { "Devices", "Privacy", "Skins" })
+                {
+                    window.NavigateToSection(section);
+                    foreach (var button in window.NavItemsStack.Children.OfType<Border>())
+                    {
+                        if (button.Child is not StackPanel row || row.Children.Count < 2) continue;
+                        Brush brush = button.Tag as string == section ? Brushes.Black : Brushes.Silver;
+                        iconBrushMethod.Invoke(null, new object[] { row.Children[0], brush, false });
+                        if (row.Children[1] is TextBlock text) text.Foreground = brush;
+                    }
+                    for (int step = 0; step < 36; step++, frame++)
+                    {
+                        Invoke(window, "AdvanceNavPillMotion", .016);
+                        var bitmap = new System.Windows.Media.Imaging.RenderTargetBitmap(
+                            (int)Math.Ceiling(window.NavItemsHost.ActualWidth * 2),
+                            (int)Math.Ceiling(window.NavItemsHost.ActualHeight * 2), 192, 192, PixelFormats.Pbgra32);
+                        bitmap.Render(window.NavItemsHost);
+                        var encoder = new System.Windows.Media.Imaging.PngBitmapEncoder();
+                        encoder.Frames.Add(System.Windows.Media.Imaging.BitmapFrame.Create(bitmap));
+                        using var file = System.IO.File.Create(System.IO.Path.Combine(framesDirectory, $"frame-{frame:000}.png"));
+                        encoder.Save(file);
+                    }
+                }
+            }
+        }
+        finally { AnimationConfig.SetReduceMotion(previous); }
+    });
+
+    [Fact]
+    public void SidebarReducedMotionClearsAnInFlightSelectionAndUsesTheExactRow() => SharedStaTestRunner.RunAsync(async ct =>
+    {
+        bool previous = AnimationConfig.ReduceMotion;
+        AnimationConfig.SetReduceMotion(false);
+        try
+        {
+            using var fixture = new Fixture();
+            var window = fixture.Window;
+            window.Show();
+            await WpfFrameWaiter.UntilAsync(() => window.IsLoaded && window.NavPanel.Opacity >= .999,
+                "settings sidebar loads before reducing motion", ct);
+            window.NavigateToSection("System");
+            AnimationConfig.SetReduceMotion(true);
+            window.SyncNavIndicators(animate: false);
+            Assert.False(Field<bool>(window, "_navPillAnimating"));
+            Assert.False(window.NavActiveIndicatorTranslate.HasAnimatedProperties);
+            Assert.False(window.NavActiveIndicatorScale.HasAnimatedProperties);
+            Assert.Equal(System.Windows.Controls.Primitives.LayoutInformation.GetLayoutSlot(window.NavSystem).Y + window.NavSystem.Margin.Top,
+                window.NavActiveIndicatorTranslate.Y, 3);
+            Assert.Equal(1, window.NavActiveIndicatorScale.ScaleX);
+            Assert.Equal(1, window.NavActiveIndicatorScale.ScaleY);
         }
         finally { AnimationConfig.SetReduceMotion(previous); }
     });

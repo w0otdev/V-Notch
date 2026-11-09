@@ -92,6 +92,11 @@ public partial class MainWindow
     {
         WakeFromIdle();
         EnsureCompactPresentationGuard();
+        if (_isAppNotificationBannerVisible)
+        {
+            token = 0;
+            return false;
+        }
 
         var result = _compactPillArbiter.TryAcquire(slot);
         token = result.Token;

@@ -298,9 +298,9 @@ public:
             }
         }
 
-        const std::u16string_view native_lang = (auto_native_idx >= 0)
-            ? get_lang(auto_native_idx)
-            : native_lang_hint;
+        const std::u16string_view native_lang = !native_lang_hint.empty()
+            ? native_lang_hint
+            : (auto_native_idx >= 0 ? get_lang(auto_native_idx) : std::u16string_view{});
 
         bool any_effective = false;
         for (int32_t i = 0; i < track_count; ++i) {
@@ -330,8 +330,12 @@ public:
                             add_track(i);
                         }
                     }
-                    if (!ignore_auto_generated && auto_native_idx >= 0) {
-                        add_track(auto_native_idx);
+                    if (!ignore_auto_generated) {
+                        for (int32_t i = 0; i < track_count; ++i) {
+                            if (tracks[i].is_auto_generated != 0 && LanguageCodeMatches(get_lang(i), native_lang)) {
+                                add_track(i);
+                            }
+                        }
                     }
                 } else {
                     for (int32_t i = 0; i < track_count; ++i) {

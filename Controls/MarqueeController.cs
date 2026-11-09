@@ -250,7 +250,8 @@ internal sealed class MarqueeController : IDisposable
         double containerWidth = _getVisibleMediaTextWidth(340);
         double distance = textWidth - containerWidth + 15;
 
-        if (distance > 1)
+        // The trailing fade padding extends a scroll, but is not text overflow.
+        if (textWidth > containerWidth)
         {
             if (isTitle) _titleScrollDistance = distance;
             else _artistScrollDistance = distance;

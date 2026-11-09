@@ -1,4 +1,15 @@
 {
+  "settings.accentColor": "Màu nhấn",
+  "settings.accentColor.hint": "Chọn màu nhấn cho các nút và thành phần giao diện trong ứng dụng.",
+  "settings.accentColor.default": "Mặc định",
+  "settings.accentColor.blue": "Xanh dương",
+  "settings.accentColor.purple": "Tím",
+  "settings.accentColor.pink": "Hồng",
+  "settings.accentColor.red": "Đỏ",
+  "settings.accentColor.orange": "Cam",
+  "settings.accentColor.yellow": "Vàng",
+  "settings.accentColor.green": "Xanh lá",
+  "settings.accentColor.teal": "Xanh ngọc",
   "clipboard.addLabel": "Thêm nhãn",
   "clipboard.selectAll": "Chọn tất cả mục đang hiển thị",
   "clipboard.deleteSelected": "Xóa {0} mục đã chọn",
@@ -377,7 +388,7 @@
   "settings.glass.fresnel": "Fresnel",
   "settings.glass.grain": "Độ hạt",
   "settings.glass.hideCapture": "Ẩn khỏi chụp/quay màn hình",
-  "settings.glass.hideCapture.hint": "Bật: khúc xạ trực tiếp đúng nội dung phía sau notch (notch sẽ không hiện trong ảnh/video màn hình). Tắt: kính trong có tông màu, vẫn hiện trong ảnh chụp.",
+  "settings.glass.hideCapture.hint": "Ẩn notch và Spotlight trong ảnh chụp và video màn hình. Khúc xạ GPU luôn ẩn chúng; hãy tắt khúc xạ GPU để thay đổi tùy chọn này.",
   "settings.glass.opacity": "Độ mờ",
   "settings.glass.preset": "Cài đặt sẵn",
   "settings.glass.preset.clear": "Kính lỏng trong suốt",
@@ -1065,5 +1076,10 @@
   "settings.lyrics.provider.amll.desc": "Đồng bộ từng từ và âm tiết từ cộng đồng theo ID bài hát Spotify",
   "settings.lyrics.provider.netease.desc": "Lời bài hát đồng bộ từng chữ và từng dòng từ kho nhạc NetEase Cloud Music",
   "settings.lyrics.provider.kugou.desc": "Lời bài hát KRC đồng bộ từng chữ và từng dòng từ kho nhạc Kugou Music",
-  "settings.lyrics.provider.qqmusic.desc": "Lời bài hát đồng bộ theo từng dòng từ kho nhạc QQ Music"
+  "settings.lyrics.provider.qqmusic.desc": "Lời bài hát đồng bộ theo từng dòng từ kho nhạc QQ Music",
+  "settings.autoDismissNotify": "Tự động ẩn thông báo",
+  "settings.autoDismissNotify.hint": "Tự thu gọn thông báo trên notch sau khoảng thời gian đã chọn.",
+  "settings.notificationDuration": "Thời gian hiện thông báo",
+  "settings.notificationDuration.hint": "Khoảng thời gian mỗi thông báo hiển thị trên notch trước khi tự ẩn.",
+  "tooltip.autoDismissNotify": "Tự động đóng thông báo sau thời gian đã thiết lập."
 }

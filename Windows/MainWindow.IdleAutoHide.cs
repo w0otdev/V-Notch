@@ -29,7 +29,8 @@ public partial class MainWindow
             {
                 TriggerZOrderBurst(TimeSpan.FromMilliseconds(900));
                 EnsureTopmost(force: true);
-            });
+            },
+            isVisibilityFrozen: () => IsScreenCaptureActive);
         _notchManager.HoverService.MousePositionChanged += HoverService_MousePositionChangedForIdleAutoHide;
     }
 
@@ -49,6 +50,7 @@ public partial class MainWindow
     private void HoverService_MousePositionChangedForIdleAutoHide(object? sender, Point point)
     {
         if (_cleanedUp || !_settings.EnableIdleAutoHide) return;
+        if (IsScreenCaptureActive) return;
 
         bool wasInRevealZone = _idlePointerInRevealZone;
         // Use stable screen bounds: the hidden visual is collapsed or sliding off-screen.
@@ -70,6 +72,7 @@ public partial class MainWindow
 
     private bool IsNotchEmptyAndIdle()
     {
+        if (IsScreenCaptureActive) return false;
         if (IsStartupHoldActive(_isGreetingActive, _startupHoldUntilUtc, DateTime.UtcNow))
             return false;
 
@@ -84,7 +87,7 @@ public partial class MainWindow
         if (_compactPillArbiter.ActiveSlot != CompactPillSlot.None)
             return false;
 
-        if (_isCountdownRunning || IsCountdownCompletionVisualActive)
+        if (_isCountdownRunning || IsCountdownCompletionVisualActive || IsAppNotificationBannerActive)
             return false;
 
         if (_idlePointerInRevealZone || NotchWrapper.IsMouseOver)

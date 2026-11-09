@@ -1,5 +1,7 @@
 using System.Reflection;
 using System.Windows;
+using System.Windows.Media;
+using System.Windows.Media.Animation;
 using Microsoft.Extensions.DependencyInjection;
 using VNotch.Models;
 using VNotch.Services;
@@ -415,6 +417,57 @@ public sealed class MainWindowLyricsPresentationTests
             Assert.Equal("", window.LyricTextB.Text);
             Assert.Equal(Visibility.Visible, window.CalendarWidget.Visibility);
             Invoke(window, "ClearLyrics");
+        }
+        finally { AnimationConfig.SetReduceMotion(previous); }
+    });
+
+    [Theory]
+    [InlineData(0.25, false, false)]
+    [InlineData(0.75, false, false)]
+    [InlineData(0.25, true, false)]
+    [InlineData(0.75, true, false)]
+    [InlineData(0.25, false, true)]
+    [InlineData(0.75, false, true)]
+    [InlineData(0.25, true, true)]
+    [InlineData(0.75, true, true)]
+    public void ChangingLinesDuringEntranceKeepsTheOutgoingLineAtItsVisiblePosition(
+        double opacity, bool toPlaceholder, bool wordTiming) => SharedStaTestRunner.Run(() =>
+    {
+        using var fixture = CreateFixture();
+        var window = fixture.Window;
+        bool previous = AnimationConfig.ReduceMotion;
+        try
+        {
+            AnimationConfig.SetReduceMotion(false);
+            Invoke(window, "ShowLyricsWidget");
+            if (wordTiming)
+            {
+                Set(window, "_currentLyrics", new List<LyricLine>
+                {
+                    new(TimeSpan.Zero, "First line", new[] { new LyricWord(TimeSpan.Zero, TimeSpan.FromSeconds(1), 0, 10) })
+                });
+                Set(window, "_currentLyricIndex", 0);
+            }
+            Invoke(window, "AnimateLyricLine", "First line", false, false);
+            // Seek real WPF animation clocks to a reproducible entrance frame.
+            var fade = new DoubleAnimation(0, 1, TimeSpan.FromSeconds(1));
+            var slide = new DoubleAnimation(14, 0, TimeSpan.FromSeconds(1));
+            var fadeClock = (AnimationClock)fade.CreateClock(true);
+            var slideClock = (AnimationClock)slide.CreateClock(true);
+            window.LyricTextA.ApplyAnimationClock(UIElement.OpacityProperty, fadeClock);
+            window.LyricTranslateA.ApplyAnimationClock(TranslateTransform.YProperty, slideClock);
+            fadeClock.Controller!.SeekAlignedToLastTick(TimeSpan.FromSeconds(opacity), TimeSeekOrigin.BeginTime);
+            slideClock.Controller!.SeekAlignedToLastTick(TimeSpan.FromSeconds(opacity), TimeSeekOrigin.BeginTime);
+            double y = window.LyricTranslateA.Y;
+
+            if (toPlaceholder)
+                Invoke(window, "ShowLyricsPlaceholder", "Instrumental", "Artist", "", false);
+            else
+                Invoke(window, "AnimateLyricLine", "Second line", false, false);
+
+            Assert.Equal("First line", window.LyricTextA.Text);
+            Assert.Equal(y, window.LyricTranslateA.Y, 3);
+            Assert.Equal(opacity, window.LyricTextA.Opacity, 3);
         }
         finally { AnimationConfig.SetReduceMotion(previous); }
     });

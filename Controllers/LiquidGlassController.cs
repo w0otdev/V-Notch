@@ -280,6 +280,8 @@ public sealed partial class LiquidGlassController : IDisposable
     private volatile bool _hideFromCapture;
     private volatile bool _exactBitBltCapture;
     private int _currentDisplayAffinity = -1;
+    private IntPtr _currentDisplayAffinityHwnd;
+    private readonly object _displayAffinitySync = new();
     private int _captureAffinityFlushPending;
     public bool HideFromScreenCapture
     {
@@ -1017,17 +1019,26 @@ public sealed partial class LiquidGlassController : IDisposable
 
     private bool SetWindowDisplayAffinitySafe(uint affinity)
     {
-        if (Volatile.Read(ref _currentDisplayAffinity) == (int)affinity) return true;
         try
         {
-            var hwnd = _getHwnd();
-            if (hwnd == IntPtr.Zero) return false;
-            if (!SetWindowDisplayAffinity(hwnd, affinity)) return false;
-            Volatile.Write(ref _currentDisplayAffinity, (int)affinity);
-            // The worker must see the committed exclusion before capturing, but
-            // the UI thread must not wait for a compositor refresh on hotkey open.
-            Interlocked.Exchange(ref _captureAffinityFlushPending, 1);
-            return true;
+            lock (_displayAffinitySync)
+            {
+                var hwnd = _getHwnd();
+                if (hwnd == IntPtr.Zero)
+                {
+                    _currentDisplayAffinityHwnd = IntPtr.Zero;
+                    _currentDisplayAffinity = -1;
+                    return false;
+                }
+                if (_currentDisplayAffinityHwnd == hwnd && _currentDisplayAffinity == (int)affinity) return true;
+                if (!SetWindowDisplayAffinity(hwnd, affinity)) return false;
+                _currentDisplayAffinityHwnd = hwnd;
+                _currentDisplayAffinity = (int)affinity;
+                // The worker must see the committed exclusion before capturing, but
+                // the UI thread must not wait for a compositor refresh on hotkey open.
+                Interlocked.Exchange(ref _captureAffinityFlushPending, 1);
+                return true;
+            }
         }
         catch (Exception ex)
         {
@@ -1441,13 +1452,6 @@ public sealed partial class LiquidGlassController : IDisposable
         return _cachedRegion;
     }
 
-    private static readonly string[] _captureProcessNames =
-    {
-        "snippingtool", "screenclippinghost", "screensketch", "sharex",
-        "greenshot", "lightshot", "snagit32", "snagiteditor", "flameshot",
-        "picpick", "screenpresso", "ksnip"
-    };
-
     private long _lastOverlayCheckTicks;
     private bool _overlayActiveCached;
     private volatile bool _scannedOverlayActive;
@@ -1722,16 +1726,7 @@ public sealed partial class LiquidGlassController : IDisposable
         return _fgProbeResult;
     }
 
-    private static bool IsCaptureProcess(string name)
-    {
-        if (string.IsNullOrEmpty(name)) return false;
-        for (int i = 0; i < _captureProcessNames.Length; i++)
-        {
-            if (string.Equals(name, _captureProcessNames[i], StringComparison.OrdinalIgnoreCase))
-                return true;
-        }
-        return false;
-    }
+    private static bool IsCaptureProcess(string name) => ScreenCaptureActivity.IsCaptureProcessName(name);
 
     private static unsafe bool DetectCaptureOverlay()
     {

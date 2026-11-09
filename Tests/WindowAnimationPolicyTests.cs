@@ -13,6 +13,46 @@ public sealed class WindowAnimationPolicyTests
     [return: System.Runtime.InteropServices.MarshalAs(System.Runtime.InteropServices.UnmanagedType.Bool)]
     private static extern bool GetWindowDisplayAffinity(IntPtr hwnd, out uint affinity);
 
+    [Theory]
+    [InlineData("default")]
+    [InlineData("liquidglass")]
+    public void NotchIsExcludedBeforeFirstFrameAndRendererCleanupCannotExposeIt(string style) => SharedStaTestRunner.RunAsync(async () =>
+    {
+        using var fixture = new GreetingAcceptanceTests.MainWindowFixture("en", greeting: false,
+            configureSettings: settings => { settings.NotchStyle = style; settings.InvisibleMode = false; });
+        var window = fixture.Window;
+        var hwnd = new WindowInteropHelper(window).EnsureHandle();
+        Assert.True(GetWindowDisplayAffinity(hwnd, out uint affinity));
+        Assert.Equal(Win32Interop.WDA_EXCLUDEFROMCAPTURE, affinity);
+
+        // Stopping glass or switching to a solid theme cannot expose the notch.
+        Assert.True(await Task.Run(() => Win32Interop.SetWindowDisplayAffinity(hwnd, Win32Interop.WDA_NONE)));
+        WindowAnimationPolicy.Attach(window);
+        Assert.True(GetWindowDisplayAffinity(hwnd, out affinity));
+        Assert.Equal(Win32Interop.WDA_EXCLUDEFROMCAPTURE, affinity);
+    });
+
+    [Fact]
+    public void RendererCaptureExclusionSurvivesWindowPolicyRefresh() => SharedStaTestRunner.RunAsync(async () =>
+    {
+        var window = new Window { ShowInTaskbar = false, ShowActivated = false, Opacity = 0 };
+        try
+        {
+            var hwnd = new WindowInteropHelper(window).EnsureHandle();
+            WindowAnimationPolicy.Attach(window);
+            // Glass applies exclusion from its capture worker, outside the WPF dispatcher.
+            Assert.True(await Task.Run(() => Win32Interop.SetWindowDisplayAffinity(hwnd, Win32Interop.WDA_EXCLUDEFROMCAPTURE)));
+            Assert.True(GetWindowDisplayAffinity(hwnd, out uint affinity));
+            Assert.Equal(Win32Interop.WDA_EXCLUDEFROMCAPTURE, affinity);
+
+            // The same refresh runs on visibility and composition changes.
+            WindowAnimationPolicy.Attach(window);
+            Assert.True(GetWindowDisplayAffinity(hwnd, out affinity));
+            Assert.Equal(Win32Interop.WDA_EXCLUDEFROMCAPTURE, affinity);
+        }
+        finally { window.Close(); }
+    });
+
     [Fact]
     public void InvisibleModeExcludesCaptureAndRestoresTaskbarAndRequestedAffinity() => SharedStaTestRunner.Run(() =>
     {

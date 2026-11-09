@@ -1,4 +1,15 @@
 {
+  "settings.accentColor": "アクセントカラー",
+  "settings.accentColor.hint": "アプリ全体で使用する強調色を選択します。",
+  "settings.accentColor.default": "デフォルト",
+  "settings.accentColor.blue": "ブルー",
+  "settings.accentColor.purple": "パープル",
+  "settings.accentColor.pink": "ピンク",
+  "settings.accentColor.red": "レッド",
+  "settings.accentColor.orange": "オレンジ",
+  "settings.accentColor.yellow": "イエロー",
+  "settings.accentColor.green": "グリーン",
+  "settings.accentColor.teal": "ティール",
   "clipboard.addLabel": "ラベルを追加",
   "clipboard.selectAll": "表示中のすべての項目を選択",
   "clipboard.deleteSelected": "選択した {0} 件を削除",
@@ -377,7 +388,7 @@
   "settings.glass.fresnel": "フレネル効果",
   "settings.glass.grain": "グレイン",
   "settings.glass.hideCapture": "画面キャプチャから非表示にする",
-  "settings.glass.hideCapture.hint": "オン：背後を正確にリアルタイム屈折します（スクリーンショットや録画にノッチが写りません）。オフ：着色された半透明ガラスが写り込みます。",
+  "settings.glass.hideCapture.hint": "スクリーンショットや録画でノッチとSpotlightを非表示にします。GPU屈折では常に非表示になります。この設定を変更するにはGPU屈折をオフにしてください。",
   "settings.glass.opacity": "不透明度",
   "settings.glass.preset": "プリセット",
   "settings.glass.preset.clear": "透明なリキッドガラス",
@@ -1065,5 +1076,10 @@
   "settings.lyrics.provider.amll.desc": "SpotifyトラックIDで取得するコミュニティ制作の単語・音節同期",
   "settings.lyrics.provider.netease.desc": "NetEase Cloud Music カタログからの単語・行単位の同期歌詞",
   "settings.lyrics.provider.kugou.desc": "Kugou Music カタログからの単語単位 KRC および行単位の同期歌詞",
-  "settings.lyrics.provider.qqmusic.desc": "QQ Music カタログからの行単位の同期歌詞"
+  "settings.lyrics.provider.qqmusic.desc": "QQ Music カタログからの行単位の同期歌詞",
+  "settings.autoDismissNotify": "通知を自動的に閉じる",
+  "settings.autoDismissNotify.hint": "指定した時間が経過すると通知バナーを自動で閉じます。",
+  "settings.notificationDuration": "通知の表示時間",
+  "settings.notificationDuration.hint": "各通知がノッチに表示され続ける時間です。",
+  "tooltip.autoDismissNotify": "設定した時間の経過後に通知を自動で非表示にします。"
 }

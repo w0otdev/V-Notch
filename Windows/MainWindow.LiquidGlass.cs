@@ -111,8 +111,7 @@ public partial class MainWindow
                 maxRegionWidth: (int)Math.Ceiling(1600 * GetGlassDpiScale()),
                 maxRegionHeight: (int)Math.Ceiling(600 * GetGlassDpiScale()));
 
-            // Magnifier capture excludes the notch internally while the user-facing
-            _liquidGlass.HideFromScreenCapture = false;
+            _liquidGlass.HideFromScreenCapture = _settings.LiquidGlass?.HideFromScreenCapture ?? false;
             _liquidGlass.CropGpuPresentationToCapture = true;
 
             // Match the controller to the notch's current motion state so it starts

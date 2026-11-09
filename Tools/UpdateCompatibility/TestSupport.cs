@@ -60,6 +60,11 @@ namespace VNotch
         public static Task RequestShutdownAsync()
             => throw new InvalidOperationException("Application shutdown is forbidden in the compatibility probe.");
     }
+
+    internal sealed class MainWindow : System.Windows.Window { internal void ApplyWindowShadow(bool enabled) { } }
+    internal sealed class SettingsWindow : System.Windows.Window { internal void ApplyWindowShadow(bool enabled) { } }
+    internal sealed class SpotlightWindow : System.Windows.Window { internal void ApplyWindowShadow(bool enabled) { } }
+    internal sealed class TranslationWindow : System.Windows.Window { internal void ApplyWindowShadow(bool enabled) { } }
 }
 
 namespace VNotch.Models

@@ -55,7 +55,6 @@ public sealed partial class ClipboardTray
 
         var pos = button.TranslatePoint(new Point(), CategoryPanel);
         var bounds = new Rect(pos, button.RenderSize);
-        TrayMotion.SetBackground(CategorySelection, button.Background);
         CategorySelection.Opacity = 1;
         if (bounds == _categorySelectionBounds && _animatedCategoryName == selected.Name) return;
 
@@ -146,14 +145,15 @@ public sealed partial class ClipboardTray
 
         scale.BeginAnimation(ScaleTransform.ScaleXProperty, null);
         scale.BeginAnimation(ScaleTransform.ScaleYProperty, null);
-        scale.ScaleX = 1;
-        scale.ScaleY = 1;
+        double restScale = button.IsMouseOver && !AnimationConfig.ReduceMotion ? 1.03 : 1;
+        scale.ScaleX = restScale;
+        scale.ScaleY = restScale;
         if (!animate || peakScale <= 1.0) return;
 
         var pop = new DoubleAnimationUsingKeyFrames { FillBehavior = FillBehavior.Stop };
         pop.KeyFrames.Add(new DiscreteDoubleKeyFrame(0.92, KeyTime.FromTimeSpan(TimeSpan.Zero)));
         pop.KeyFrames.Add(new EasingDoubleKeyFrame(peakScale, KeyTime.FromTimeSpan(TimeSpan.FromMilliseconds(115)), TrayMotion.EaseOut));
-        pop.KeyFrames.Add(new EasingDoubleKeyFrame(1.0, KeyTime.FromTimeSpan(TimeSpan.FromMilliseconds(245)), TrayMotion.EaseOut));
+        pop.KeyFrames.Add(new EasingDoubleKeyFrame(restScale, KeyTime.FromTimeSpan(TimeSpan.FromMilliseconds(245)), TrayMotion.EaseOut));
         Timeline.SetDesiredFrameRate(pop, AnimationConfig.TargetFps);
         scale.BeginAnimation(ScaleTransform.ScaleXProperty, pop, HandoffBehavior.SnapshotAndReplace);
         scale.BeginAnimation(ScaleTransform.ScaleYProperty, pop, HandoffBehavior.SnapshotAndReplace);

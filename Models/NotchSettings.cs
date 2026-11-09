@@ -29,6 +29,8 @@ public partial class NotchSettings
 
     public string LastRunVersion { get; set; } = "";
 
+    public string AccentColor { get; set; } = "default";
+
     public int Width { get; set; } = 230;
     public int DynamicIslandWidth { get; set; } = 220;
     public int DynamicIslandHeight { get; set; } = 40;
@@ -101,14 +103,11 @@ public partial class NotchSettings
     public bool AutoStart { get; set; } = true;
     public bool StayBehindWindows { get; set; } = false;
     public bool EnableHoverExpand { get; set; } = false;
-    public bool EnableCursorBypass { get; set; } = false;
-    public bool EnableAnimations { get; set; } = true;
     public bool DisableMouseLeaveAutoClose { get; set; } = true;
     public bool KeepMediaPinnedOnTrackChange { get; set; } = true;
     public bool ReopenLastViewOnExpand { get; set; } = false;
 
     public double AnimationSpeed { get; set; } = 2.0;
-    public bool EnableBounceEffect { get; set; } = true;
 
     public int HoverExpandDelay { get; set; } = 0;
     public int HoverCollapseDelay { get; set; } = 500;
@@ -119,7 +118,6 @@ public partial class NotchSettings
     public double LargeExpandMultiplier { get; set; } = 2.5;
 
     public bool EnableShadow { get; set; } = true;
-    public bool EnableGlowOnHover { get; set; } = true;
     public string NotchStyle { get; set; } = "default";
 
     public LiquidGlassConfig LiquidGlass { get; set; } = new();
@@ -145,6 +143,7 @@ public partial class NotchSettings
 
     public bool ShowMusicNotifications { get; set; } = true;
     public bool ShowSystemNotifications { get; set; } = true;
+    public bool AutoDismissNotifications { get; set; } = true;
 
     public bool ShowBatteryIndicator { get; set; } = true;
     public int NotificationDuration { get; set; } = 5000;

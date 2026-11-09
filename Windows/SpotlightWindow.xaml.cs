@@ -168,6 +168,7 @@ public partial class SpotlightWindow : Window
 
     internal void RefreshLocalization()
     {
+        RefreshSpotlightIntro();
         Language = System.Windows.Markup.XmlLanguage.GetLanguage(Loc.GetCulture().IetfLanguageTag);
         if (PlaceholderText != null)
         {

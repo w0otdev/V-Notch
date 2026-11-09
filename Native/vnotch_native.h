@@ -473,6 +473,35 @@ struct VnNavTabMotionOut
 };
 #endif
 
+#ifndef VN_NAV_PILL_SPRING_DEFINED
+#define VN_NAV_PILL_SPRING_DEFINED
+#pragma pack(push, 1)
+struct VnNavPillSpringState
+{
+    double top;
+    double bottom;
+    double top_velocity;
+    double bottom_velocity;
+    double width_scale;
+    double width_velocity;
+};
+
+struct VnNavPillVisual
+{
+    double translate_y;
+    double scale_x;
+    double scale_y;
+};
+
+struct VnNavHoverSpringState
+{
+    double y, y_velocity;
+    double opacity, opacity_velocity;
+    double selected_opacity, selected_velocity;
+};
+#pragma pack(pop)
+#endif
+
 #ifndef VN_QUICK_ACTIONS_SLIDE_MOTION_DEFINED
 #define VN_QUICK_ACTIONS_SLIDE_MOTION_DEFINED
 struct VnQuickActionsSlideMotionOut
@@ -807,6 +836,19 @@ VN_EXPORT int32_t __stdcall vn_animation_compute_nav_tab_motion(
     double item_height,
     uint8_t reduced_motion,
     VnNavTabMotionOut* out_motion) noexcept;
+
+VN_EXPORT int32_t __stdcall vn_animation_step_nav_hover(
+    VnNavHoverSpringState* state, double target_y, uint8_t visible, uint8_t selected,
+    double elapsed_seconds, uint8_t reduced_motion, uint8_t* out_settled) noexcept;
+
+VN_EXPORT int32_t __stdcall vn_animation_step_nav_pill(
+    VnNavPillSpringState* state,
+    double target_y,
+    double item_height,
+    double elapsed_seconds,
+    uint8_t reduced_motion,
+    VnNavPillVisual* out_visual,
+    uint8_t* out_settled) noexcept;
 
 VN_EXPORT int32_t __stdcall vn_animation_compute_elastic_slider_overscroll(
     double overflow_px,
@@ -2464,3 +2506,68 @@ VN_EXPORT int32_t __stdcall vn_clipboard_category_compute_preview_shift(
 VN_EXPORT int32_t __stdcall vn_clipboard_category_compute_gap_x(
     int32_t source_index, int32_t before_index, double before_origin_x, double last_origin_x,
     double last_width, double last_margin_right, double span, double* out_gap_x) noexcept;
+
+#pragma pack(push, 1)
+struct VnAppNotificationBannerMetrics
+{
+    double target_width;
+    double target_height;
+    double target_corner_radius;
+    int32_t morph_duration_ms;
+    int32_t content_fade_ms;
+    int32_t dismiss_duration_ms;
+    uint8_t has_body;
+    uint8_t is_multiline_body;
+};
+
+struct VnAppNotificationFilterResult
+{
+    uint8_t accepted;
+    uint64_t content_hash;
+    int32_t normalized_app_len;
+    int32_t normalized_title_len;
+    int32_t normalized_body_len;
+};
+#pragma pack(pop)
+
+VN_EXPORT int32_t __stdcall vn_appnotify_reset_state() noexcept;
+VN_EXPORT int32_t __stdcall vn_appnotify_seed_existing_id(uint32_t notification_id, int64_t creation_unix_ms) noexcept;
+VN_EXPORT int32_t __stdcall vn_appnotify_evaluate_and_format(
+    uint32_t notification_id,
+    int64_t creation_unix_ms,
+    int64_t now_unix_ms,
+    const wchar_t* app_id_ptr, int32_t app_id_len,
+    const wchar_t* app_name_ptr, int32_t app_name_len,
+    const wchar_t* title_ptr, int32_t title_len,
+    const wchar_t* body_ptr, int32_t body_len,
+    wchar_t* out_app_buf, int32_t app_cap,
+    wchar_t* out_title_buf, int32_t title_cap,
+    wchar_t* out_body_buf, int32_t body_cap,
+    VnAppNotificationFilterResult* out_result) noexcept;
+VN_EXPORT int32_t __stdcall vn_appnotify_compute_banner_metrics(
+    double collapsed_width,
+    double collapsed_height,
+    double expanded_width,
+    double corner_radius_collapsed,
+    double corner_radius_expanded,
+    uint8_t is_dynamic_island,
+    uint8_t reduce_motion,
+    int32_t configured_duration_ms,
+    int32_t title_len,
+    int32_t body_len,
+    uint8_t has_newline_in_body,
+    VnAppNotificationBannerMetrics* out_metrics) noexcept;
+VN_EXPORT int32_t __stdcall vn_appnotify_try_activate_app(
+    const wchar_t* app_id_ptr, int32_t app_id_len,
+    const wchar_t* app_name_ptr, int32_t app_name_len,
+    uint8_t* out_activated) noexcept;
+VN_EXPORT int32_t __stdcall vn_appnotify_resolve_app_icon_source(
+    const wchar_t* app_id_ptr, int32_t app_id_len,
+    const wchar_t* app_name_ptr, int32_t app_name_len,
+    wchar_t* out_path_buf, int32_t path_cap,
+    int32_t* out_path_len) noexcept;
+VN_EXPORT int32_t __stdcall vn_appnotify_extract_initials(
+    const wchar_t* title_ptr, int32_t title_len,
+    const wchar_t* app_name_ptr, int32_t app_name_len,
+    wchar_t* out_buf, int32_t buf_cap,
+    int32_t* out_len) noexcept;

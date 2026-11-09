@@ -12,9 +12,7 @@ public partial class WhiteNoiseStrip : UserControl
 {
     private static readonly Color ChipIdleColor = Color.FromArgb(0x14, 0xFF, 0xFF, 0xFF);
     private static readonly Color ChipHoverColor = Color.FromArgb(0x26, 0xFF, 0xFF, 0xFF);
-    private static readonly Color ChipActiveColor = Color.FromRgb(0xFF, 0x8C, 0x1A);
     private static readonly Color TextIdleColor = Color.FromArgb(0xE0, 0xFF, 0xFF, 0xFF);
-    private static readonly Color TextActiveColor = Color.FromRgb(0x1A, 0x10, 0x05);
     private static readonly Color ToggleOffColor = Color.FromArgb(0x2A, 0xFF, 0xFF, 0xFF);
 
     private sealed record IconSpec(string Data, double Width, double Height, Stretch Stretch);
@@ -27,7 +25,7 @@ public partial class WhiteNoiseStrip : UserControl
         15, 15, Stretch.Uniform);
     private static readonly IEasingFunction Ease = new CubicEase { EasingMode = EasingMode.EaseOut };
 
-    private sealed record Chip(Border Border, TextBlock Label, SolidColorBrush Fill, SolidColorBrush Text, ScaleTransform Scale);
+    private sealed record Chip(Border Border, TextBlock Label, SolidColorBrush Fill, ScaleTransform Scale);
 
     private readonly Dictionary<int, Chip> _chips = [];
     private Border _muteButton = null!;
@@ -88,7 +86,6 @@ public partial class WhiteNoiseStrip : UserControl
 
     private void AddChip(WhiteNoiseService.Sound sound)
     {
-        var textBrush = new SolidColorBrush(TextIdleColor);
         var fill = new SolidColorBrush(ChipIdleColor);
         var scale = new ScaleTransform(1, 1);
         var label = new TextBlock
@@ -96,11 +93,11 @@ public partial class WhiteNoiseStrip : UserControl
             Text = Loc.Get(sound.LocKey),
             FontSize = 11,
             FontWeight = FontWeights.Bold,
-            Foreground = textBrush,
             TextTrimming = TextTrimming.CharacterEllipsis,
             HorizontalAlignment = HorizontalAlignment.Center,
             VerticalAlignment = VerticalAlignment.Center
         };
+        label.SetResourceReference(TextBlock.ForegroundProperty, "AccentBrushStrong");
         var border = new Border
         {
             Height = 26,
@@ -129,7 +126,7 @@ public partial class WhiteNoiseStrip : UserControl
             AnimateScale(scale, 1, 180);
             WhiteNoiseService.Toggle(sound);
         };
-        _chips[sound.Kind] = new Chip(border, label, fill, textBrush, scale);
+        _chips[sound.Kind] = new Chip(border, label, fill, scale);
         ChipHost.Children.Add(border);
     }
 
@@ -279,8 +276,13 @@ public partial class WhiteNoiseStrip : UserControl
             var chip = _chips[sound.Kind];
             chip.Label.Text = Loc.Get(sound.LocKey);
             bool playing = WhiteNoiseService.PlayingKind == sound.Kind;
-            AnimateColor(chip.Fill, playing ? ChipActiveColor : ChipIdleColor);
-            AnimateColor(chip.Text, playing ? TextActiveColor : TextIdleColor);
+            if (playing) chip.Border.SetResourceReference(Border.BackgroundProperty, "AccentBrush");
+            else
+            {
+                chip.Border.Background = chip.Fill;
+                AnimateColor(chip.Fill, chip.Border.IsMouseOver ? ChipHoverColor : ChipIdleColor);
+            }
+            chip.Label.SetResourceReference(TextBlock.ForegroundProperty, playing ? "AccentForegroundBrush" : "AccentBrushStrong");
         }
 
 
@@ -288,7 +290,16 @@ public partial class WhiteNoiseStrip : UserControl
         ((Path)_muteButton.Child).Opacity = WhiteNoiseService.Muted ? 0.55 : 1;
 
         bool sync = WhiteNoiseService.SyncWithTimer;
-        AnimateColor(_toggleBrush, sync ? ChipActiveColor : ToggleOffColor);
+        if (sync) _toggleTrack.SetResourceReference(Border.BackgroundProperty, "AccentBrush");
+        else
+        {
+            _toggleTrack.Background = _toggleBrush;
+            AnimateColor(_toggleBrush, ToggleOffColor);
+        }
+        if (_toggleTrack.Child is Border knob)
+        {
+            knob.Background = Brushes.White;
+        }
         AnimateKnob(sync ? 12 : 0);
 
         UpdateVolumeFill(Animated && !_draggingVolume);

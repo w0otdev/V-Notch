@@ -1,4 +1,15 @@
 {
+  "settings.accentColor": "强调色",
+  "settings.accentColor.hint": "选择整个应用使用的强调色。",
+  "settings.accentColor.default": "默认",
+  "settings.accentColor.blue": "蓝色",
+  "settings.accentColor.purple": "紫色",
+  "settings.accentColor.pink": "粉色",
+  "settings.accentColor.red": "红色",
+  "settings.accentColor.orange": "橙色",
+  "settings.accentColor.yellow": "黄色",
+  "settings.accentColor.green": "绿色",
+  "settings.accentColor.teal": "青色",
   "clipboard.addLabel": "添加标签",
   "clipboard.selectAll": "选择所有显示的项目",
   "clipboard.deleteSelected": "删除所选的 {0} 个项目",
@@ -377,7 +388,7 @@
   "settings.glass.fresnel": "菲涅尔反射",
   "settings.glass.grain": "噪点颗粒",
   "settings.glass.hideCapture": "屏幕截图时隐藏",
-  "settings.glass.hideCapture.hint": "开启：直接折射刘海背后的真实桌面（截图与录屏中不显示刘海本体）。关闭：采用半透明着色玻璃，截图可见。",
+  "settings.glass.hideCapture.hint": "在截图和录屏中隐藏刘海和Spotlight。GPU折射始终会隐藏它们；关闭GPU折射后才能更改此选项。",
   "settings.glass.opacity": "不透明度",
   "settings.glass.preset": "外观预设",
   "settings.glass.preset.clear": "清透流体玻璃",
@@ -1065,5 +1076,10 @@
   "settings.lyrics.provider.amll.desc": "按 Spotify 歌曲 ID 获取社区制作的逐词、逐音节时间轴",
   "settings.lyrics.provider.netease.desc": "来自网易云音乐曲库的逐字与逐行同步歌词",
   "settings.lyrics.provider.kugou.desc": "来自酷狗音乐曲库的 KRC 逐字与逐行同步歌词",
-  "settings.lyrics.provider.qqmusic.desc": "来自 QQ 音乐曲库的逐行同步歌词"
+  "settings.lyrics.provider.qqmusic.desc": "来自 QQ 音乐曲库的逐行同步歌词",
+  "settings.autoDismissNotify": "自动关闭通知",
+  "settings.autoDismissNotify.hint": "在设定时间结束后自动收起通知横幅。",
+  "settings.notificationDuration": "通知显示时长",
+  "settings.notificationDuration.hint": "每条通知在刘海区域保持可见的时间。",
+  "tooltip.autoDismissNotify": "在设定时间后自动隐藏通知。"
 }

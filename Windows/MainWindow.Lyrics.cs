@@ -69,6 +69,7 @@ public partial class MainWindow
     private int _lyricsSearchTransitionVersion;
     private Brush? _lyricsLayerFadeMask;
     private int _lyricsLineTransitionVersion;
+    private TextBlock? _activeLyricText;
     private int _lyricsPlaceholderTransitionVersion;
     private bool _isLyricsPlaceholderActive;
     private int _lyricsFetchGeneration;
@@ -675,10 +676,14 @@ public partial class MainWindow
 
             if (hasActiveLyricA)
             {
+                double opacity = LyricTextA!.Opacity;
+                double y = LyricTranslateA?.Y ?? 0;
                 LyricTextA!.BeginAnimation(OpacityProperty, null);
                 LyricTranslateA?.BeginAnimation(TranslateTransform.YProperty, null);
-                var fadeOutA = new DoubleAnimation(LyricTextA.Opacity, 0, lyricDur) { EasingFunction = lyricEase };
-                var slideOutA = new DoubleAnimation(LyricTranslateA?.Y ?? 0, -10, lyricDur) { EasingFunction = lyricEase };
+                LyricTextA.Opacity = opacity;
+                if (LyricTranslateA != null) LyricTranslateA.Y = y;
+                var fadeOutA = new DoubleAnimation(opacity, 0, lyricDur) { EasingFunction = lyricEase };
+                var slideOutA = new DoubleAnimation(y, -10, lyricDur) { EasingFunction = lyricEase };
                 Timeline.SetDesiredFrameRate(fadeOutA, AnimationConfig.TargetFps);
                 Timeline.SetDesiredFrameRate(slideOutA, AnimationConfig.TargetFps);
                 fadeOutA.Completed += (s, e) =>
@@ -694,10 +699,14 @@ public partial class MainWindow
 
             if (hasActiveLyricB)
             {
+                double opacity = LyricTextB!.Opacity;
+                double y = LyricTranslateB?.Y ?? 0;
                 LyricTextB!.BeginAnimation(OpacityProperty, null);
                 LyricTranslateB?.BeginAnimation(TranslateTransform.YProperty, null);
-                var fadeOutB = new DoubleAnimation(LyricTextB.Opacity, 0, lyricDur) { EasingFunction = lyricEase };
-                var slideOutB = new DoubleAnimation(LyricTranslateB?.Y ?? 0, -10, lyricDur) { EasingFunction = lyricEase };
+                LyricTextB.Opacity = opacity;
+                if (LyricTranslateB != null) LyricTranslateB.Y = y;
+                var fadeOutB = new DoubleAnimation(opacity, 0, lyricDur) { EasingFunction = lyricEase };
+                var slideOutB = new DoubleAnimation(y, -10, lyricDur) { EasingFunction = lyricEase };
                 Timeline.SetDesiredFrameRate(fadeOutB, AnimationConfig.TargetFps);
                 Timeline.SetDesiredFrameRate(slideOutB, AnimationConfig.TargetFps);
                 fadeOutB.Completed += (s, e) =>
@@ -978,11 +987,18 @@ public partial class MainWindow
         _lyricsLayerFadeMask ??= AnimatedLyricsLayer.OpacityMask;
         int transitionVersion = ++_lyricsLineTransitionVersion;
 
-        bool useA = LyricTextA.Opacity > 0.5;
+        // Track the incoming layer explicitly: a fast next line can arrive before
+        // its entrance reaches half opacity.
+        bool useA = ReferenceEquals(_activeLyricText, LyricTextA);
         TextBlock outgoing = useA ? LyricTextA : LyricTextB;
         TextBlock incoming = useA ? LyricTextB : LyricTextA;
         TranslateTransform outTransform = useA ? LyricTranslateA : LyricTranslateB;
         TranslateTransform inTransform = useA ? LyricTranslateB : LyricTranslateA;
+        _activeLyricText = incoming;
+
+        // Capture the displayed values before removing the previous clocks.
+        double outgoingOpacity = outgoing.Opacity;
+        double outgoingY = outTransform.Y;
 
         outgoing.BeginAnimation(OpacityProperty, null);
         outTransform.BeginAnimation(TranslateTransform.YProperty, null);
@@ -991,8 +1007,8 @@ public partial class MainWindow
 
         double startY = (transitionFromSearch || transitionFromPlaceholder) ? 10 : 14;
         bool hasOutgoingText = !string.IsNullOrWhiteSpace(outgoing.Text);
-        outgoing.Opacity = hasOutgoingText ? 1 : 0;
-        outTransform.Y = 0;
+        outgoing.Opacity = hasOutgoingText ? outgoingOpacity : 0;
+        outTransform.Y = outgoingY;
         incoming.Opacity = 0;
         incoming.Text = newText;
         var line = _currentLyrics != null && _currentLyricIndex >= 0 && _currentLyricIndex < _currentLyrics.Count
@@ -1038,8 +1054,8 @@ public partial class MainWindow
         var easeOut = _easeExpOut5;
         var easeIn = _easeCubicIn;
 
-        var fadeOut = new DoubleAnimation(1, 0, outDur) { EasingFunction = easeIn };
-        var slideOut = new DoubleAnimation(0, hasWordTiming ? -6 : -14, outDur) { EasingFunction = easeIn };
+        var fadeOut = new DoubleAnimation(outgoingOpacity, 0, outDur) { EasingFunction = easeIn };
+        var slideOut = new DoubleAnimation(outgoingY, hasWordTiming ? -6 : -14, outDur) { EasingFunction = easeIn };
         Timeline.SetDesiredFrameRate(fadeOut, fps);
         Timeline.SetDesiredFrameRate(slideOut, fps);
 

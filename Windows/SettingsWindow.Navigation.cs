@@ -25,36 +25,13 @@ public partial class SettingsWindow
 {
     #region Navigation
 
-    [StructLayout(LayoutKind.Sequential, Pack = 1)]
-    private struct VnNavTabMotionOut
-    {
-        public double TargetY;
-        public double TargetHeight;
-        public double PeakScaleY;
-        public double DipScaleX;
-        public double ReboundScaleY;
-        public double ReboundScaleX;
-        public double ContentShiftX;
-        public int PeakTimeMs;
-        public int ReboundTimeMs;
-        public int DurationMs;
-    }
-
-    [LibraryImport("VNotch.Native", EntryPoint = "vn_animation_compute_nav_tab_motion")]
-    private static unsafe partial int NativeComputeNavTabMotion(
-        double currentY,
-        double targetY,
-        double itemHeight,
-        byte reducedMotion,
-        VnNavTabMotionOut* outMotion);
-
     private string _activeNav = NavSectionAppearance;
     private string? _hoveredNav;
     private int _lastNavDirection = 1;
     private readonly Dictionary<string, StackPanel> _navPanels = new();
     private readonly Dictionary<string, Border> _navButtons = new();
 
-    private static readonly SolidColorBrush _navHoverTextBrush = CreateFrozenNavBrush(0xFF, 0xE2, 0xE8, 0xF0);
+    private static readonly SolidColorBrush _navHoverTextBrush = CreateFrozenNavBrush(0xFF, 0xD8, 0xDC, 0xE4);
     private static readonly CubicEase _navEaseOut = CreateFrozenNavEase(EasingMode.EaseOut);
 
     private static SolidColorBrush CreateFrozenNavBrush(byte a, byte r, byte g, byte b)
@@ -73,6 +50,10 @@ public partial class SettingsWindow
 
     private void InitializeNavigation()
     {
+        IsVisibleChanged -= NavPillVisibilityChanged;
+        IsVisibleChanged += NavPillVisibilityChanged;
+        IsVisibleChanged -= NavHoverVisibilityChanged;
+        IsVisibleChanged += NavHoverVisibilityChanged;
         _navPanels[NavSectionSearching] = PanelSearching;
         _navPanels[NavSectionAppearance] = PanelAppearance;
         _navPanels[NavSectionSkins] = PanelSkins;
@@ -109,8 +90,6 @@ public partial class SettingsWindow
             btn.BorderBrush = _transparentBrush;
             btn.MouseEnter -= NavButton_MouseEnter;
             btn.MouseEnter += NavButton_MouseEnter;
-            btn.MouseLeave -= NavButton_MouseLeave;
-            btn.MouseLeave += NavButton_MouseLeave;
             UpdateNavButtonVisual(btn, string.Equals(key, _activeNav, StringComparison.Ordinal), animate: false);
         }
 
@@ -126,10 +105,13 @@ public partial class SettingsWindow
         {
             try
             {
-                Point pt = btn.TranslatePoint(new Point(0, 0), NavItemsStack);
-                if (!double.IsNaN(pt.Y) && !double.IsInfinity(pt.Y))
+                // Entrance/hover transforms can still be moving a row. The
+                // shared background must land on its final layout slot.
+                Rect slot = System.Windows.Controls.Primitives.LayoutInformation.GetLayoutSlot(btn);
+                double y = slot.Y + btn.Margin.Top;
+                if (!slot.IsEmpty && double.IsFinite(y))
                 {
-                    return (Math.Max(0.0, pt.Y), height);
+                    return (Math.Max(0.0, y), height);
                 }
             }
             catch (InvalidOperationException)
@@ -151,31 +133,6 @@ public partial class SettingsWindow
         return (visibleIndex * slotStride + btn.Margin.Top, height);
     }
 
-    private static unsafe VnNavTabMotionOut ComputeNavTabMotion(double currentY, double targetY, double itemHeight, bool animate)
-    {
-        VnNavTabMotionOut motion = default;
-        try
-        {
-            if (NativeComputeNavTabMotion(currentY, targetY, itemHeight, animate ? (byte)0 : (byte)1, &motion) == 0)
-            {
-                return motion;
-            }
-        }
-        catch (DllNotFoundException)
-        {
-        }
-        catch (EntryPointNotFoundException)
-        {
-        }
-
-        return new VnNavTabMotionOut
-        {
-            TargetY = Math.Max(0.0, targetY),
-            TargetHeight = Math.Max(24.0, itemHeight),
-            DurationMs = animate ? 200 : 0
-        };
-    }
-
     internal void SyncNavIndicators(bool animate)
     {
         string targetKey = _isSearchMode ? NavSectionSearching : _activeNav;
@@ -187,64 +144,35 @@ public partial class SettingsWindow
 
     private void AnimateNavActiveIndicator(Border targetBtn, bool animate)
     {
-        if (NavActiveIndicator == null || NavActiveIndicatorTranslate == null)
-            return;
-
+        if (NavActiveIndicator == null || NavActiveIndicatorTranslate == null) return;
         animate &= IsLoaded && !AnimationConfig.ReduceMotion && SystemParameters.ClientAreaAnimation;
         var (targetY, targetHeight) = ResolveNavButtonSlot(targetBtn);
-        double currentY = NavActiveIndicatorTranslate.Y;
-        var motion = ComputeNavTabMotion(currentY, targetY, targetHeight, animate);
-
-        NavActiveIndicator.Height = motion.TargetHeight;
-
-        if (!animate || Math.Abs(currentY - motion.TargetY) < 0.5)
-        {
-            NavActiveIndicatorTranslate.BeginAnimation(TranslateTransform.YProperty, null);
-            NavActiveIndicatorTranslate.Y = motion.TargetY;
-            return;
-        }
-
-        var moveY = AnimationPrimitives.WithFps(new DoubleAnimation(motion.TargetY, TimeSpan.FromMilliseconds(200))
-        {
-            EasingFunction = _navEaseOut,
-            FillBehavior = FillBehavior.Stop
-        });
-        NavActiveIndicatorTranslate.BeginAnimation(TranslateTransform.YProperty, moveY, HandoffBehavior.SnapshotAndReplace);
-        NavActiveIndicatorTranslate.Y = motion.TargetY;
+        StartNavPillMotion(targetY, targetHeight, animate);
     }
-
     private void AnimateNavHoverIndicator(Border? hoveredBtn)
     {
         if (NavHoverIndicator == null || NavHoverIndicatorTranslate == null)
             return;
 
-        bool animate = IsLoaded && !AnimationConfig.ReduceMotion && SystemParameters.ClientAreaAnimation;
-        if (hoveredBtn == null ||
-            (hoveredBtn.Tag is string tag && string.Equals(tag, _activeNav, StringComparison.Ordinal)))
+        bool animate = IsVisible && !AnimationConfig.ReduceMotion && SystemParameters.ClientAreaAnimation;
+        bool activeHovered = hoveredBtn?.Tag is string activeTag && activeTag == _activeNav;
+        double targetY = _navHoverTargetY;
+        if (hoveredBtn != null)
         {
-            AnimateNavElementOpacity(NavHoverIndicator, 0.0, animate ? 160 : 0);
-            return;
+            var slot = ResolveNavButtonSlot(hoveredBtn);
+            targetY = slot.Y;
+            NavHoverIndicator.Height = slot.Height;
         }
-
-        var (targetY, targetHeight) = ResolveNavButtonSlot(hoveredBtn);
-        NavHoverIndicator.Height = targetHeight;
-        bool wasVisible = NavHoverIndicator.Opacity >= 0.05;
-
-        if (!wasVisible || !animate)
-        {
-            NavHoverIndicatorTranslate.BeginAnimation(TranslateTransform.YProperty, null);
-            NavHoverIndicatorTranslate.Y = targetY;
-        }
-        else
-        {
-            AnimateNavTransform(NavHoverIndicatorTranslate, TranslateTransform.YProperty, targetY, 150);
-        }
-
-        AnimateNavElementOpacity(NavHoverIndicator, 1.0, animate ? 150 : 0);
+        StartNavHoverMotion(targetY, hoveredBtn != null && !activeHovered, activeHovered, animate);
     }
 
     private void NavItemsHost_MouseLeave(object sender, MouseEventArgs e)
     {
+        if (_hoveredNav != null && _navButtons.TryGetValue(_hoveredNav, out var previous))
+        {
+            _hoveredNav = null;
+            UpdateNavButtonVisual(previous, previous.Tag as string == _activeNav);
+        }
         _hoveredNav = null;
         AnimateNavHoverIndicator(null);
     }
@@ -254,65 +182,28 @@ public partial class SettingsWindow
         if (sender is not Border btn || btn.Tag is not string section) return;
         if (_isSearchMode && section != NavSectionSearching) return;
 
+        if (_hoveredNav != section && _hoveredNav != null && _navButtons.TryGetValue(_hoveredNav, out var previous))
+        {
+            _hoveredNav = null;
+            UpdateNavButtonVisual(previous, previous.Tag as string == _activeNav);
+        }
         _hoveredNav = section;
-        bool isActive = string.Equals(section, _activeNav, StringComparison.Ordinal);
-
-        if (!isActive)
-        {
-            if (btn.Child is StackPanel stack && stack.Children.Count >= 2)
-            {
-                ApplyNavIconBrush(stack.Children[0], _navHoverTextBrush);
-                if (stack.Children[1] is TextBlock text) text.Foreground = _navHoverTextBrush;
-            }
-            AnimateNavHoverIndicator(btn);
-        }
-        else
-        {
-            AnimateNavHoverIndicator(null);
-        }
+        UpdateNavButtonVisual(btn, string.Equals(section, _activeNav, StringComparison.Ordinal));
+        AnimateNavHoverIndicator(btn);
     }
 
-    private void NavButton_MouseLeave(object sender, MouseEventArgs e)
+    // Row margins are part of the same hover interaction. Only leaving the
+    // whole host fades it out; entering another row simply changes its target.
+    private void RefreshNavHoverIndicator() => AnimateNavHoverIndicator(
+        _hoveredNav != null && _navButtons.TryGetValue(_hoveredNav, out var hovered) ? hovered : null);
+
+    private void NavHoverVisibilityChanged(object sender, DependencyPropertyChangedEventArgs e)
     {
-        if (sender is not Border btn || btn.Tag is not string section) return;
-        bool isActive = string.Equals(section, _activeNav, StringComparison.Ordinal);
-        UpdateNavButtonVisual(btn, isActive, animate: true);
-    }
-
-    private static void AnimateNavTransform(Animatable target, DependencyProperty property, double to, int durationMs)
-    {
-        if (durationMs <= 0 || AnimationConfig.ReduceMotion || !SystemParameters.ClientAreaAnimation)
-        {
-            target.BeginAnimation(property, null);
-            target.SetValue(property, to);
-            return;
-        }
-
-        var anim = AnimationPrimitives.WithFps(new DoubleAnimation(to, TimeSpan.FromMilliseconds(durationMs))
-        {
-            EasingFunction = _navEaseOut,
-            FillBehavior = FillBehavior.Stop
-        });
-        target.BeginAnimation(property, anim, HandoffBehavior.SnapshotAndReplace);
-        target.SetValue(property, to);
-    }
-
-    private static void AnimateNavElementOpacity(UIElement target, double to, int durationMs)
-    {
-        if (durationMs <= 0 || AnimationConfig.ReduceMotion || !SystemParameters.ClientAreaAnimation)
-        {
-            target.BeginAnimation(OpacityProperty, null);
-            target.Opacity = to;
-            return;
-        }
-
-        var anim = AnimationPrimitives.WithFps(new DoubleAnimation(to, TimeSpan.FromMilliseconds(durationMs))
-        {
-            EasingFunction = _navEaseOut,
-            FillBehavior = FillBehavior.Stop
-        });
-        target.BeginAnimation(OpacityProperty, anim, HandoffBehavior.SnapshotAndReplace);
-        target.Opacity = to;
+        if (IsVisible) return;
+        _hoveredNav = null;
+        foreach (var (section, button) in _navButtons)
+            UpdateNavButtonVisual(button, section == _activeNav, animate: false);
+        AnimateNavHoverIndicator(null);
     }
 
     private void Nav_Click(object sender, MouseButtonEventArgs e)
@@ -324,6 +215,7 @@ public partial class SettingsWindow
                 return;
             }
 
+            e.Handled = true;
             NavigateToSection(section);
         }
     }
@@ -343,34 +235,58 @@ public partial class SettingsWindow
 
         if (btn.Child is not StackPanel stack || stack.Children.Count < 2) return;
 
-        var targetBrush = isActive ? _whiteBrush : _navInactiveBrush;
-        ApplyNavIconBrush(stack.Children[0], targetBrush);
+        var targetBrush = isActive ? (Brush)FindResource("AccentForegroundBrush")
+            : btn.Tag as string == _hoveredNav ? _navHoverTextBrush : _navInactiveBrush;
+        if (!isActive && stack.Children[1] is TextBlock label && label.Foreground is SolidColorBrush from && targetBrush is SolidColorBrush to &&
+            animate && IsVisible && !AnimationConfig.ReduceMotion && SystemParameters.ClientAreaAnimation && from.Color != to.Color)
+        {
+            // Give each fading row its own ink; shared resource brushes can be frozen.
+            var ink = new SolidColorBrush(to.Color);
+            var fade = AnimationPrimitives.WithFps(new ColorAnimation(from.Color, to.Color, TimeSpan.FromMilliseconds(120))
+            {
+                EasingFunction = _navEaseOut,
+                FillBehavior = FillBehavior.Stop
+            });
+            var clock = fade.CreateClock();
+            clock.Completed += (_, _) => ink.ApplyAnimationClock(SolidColorBrush.ColorProperty, null);
+            ink.ApplyAnimationClock(SolidColorBrush.ColorProperty, clock);
+            clock.Controller!.SeekAlignedToLastTick(TimeSpan.Zero, TimeSeekOrigin.BeginTime);
+            targetBrush = ink;
+        }
+        ApplyNavIconBrush(stack.Children[0], targetBrush, useAccent: isActive);
 
         if (stack.Children[1] is TextBlock text)
         {
-            text.Foreground = targetBrush;
+            if (isActive) text.SetResourceReference(TextBlock.ForegroundProperty, "AccentForegroundBrush");
+            else text.Foreground = targetBrush;
         }
     }
 
-    private static void ApplyNavIconBrush(UIElement element, Brush targetBrush)
+    private static void ApplyNavIconBrush(UIElement element, Brush targetBrush, bool useAccent = false)
     {
         if (element is Viewbox vb)
         {
             if (vb.Child is System.Windows.Shapes.Path path)
             {
-                path.Fill = targetBrush;
+                if (useAccent) path.SetResourceReference(System.Windows.Shapes.Shape.FillProperty, "AccentForegroundBrush");
+                else path.Fill = targetBrush;
             }
             else if (vb.Child is Canvas canvas)
             {
                 foreach (var child in canvas.Children)
                 {
-                    if (child is System.Windows.Shapes.Path cp) cp.Fill = targetBrush;
+                    if (child is System.Windows.Shapes.Path cp)
+                    {
+                        if (useAccent) cp.SetResourceReference(System.Windows.Shapes.Shape.FillProperty, "AccentForegroundBrush");
+                        else cp.Fill = targetBrush;
+                    }
                 }
             }
         }
         else if (element is TextBlock iconText)
         {
-            iconText.Foreground = targetBrush;
+            if (useAccent) iconText.SetResourceReference(TextBlock.ForegroundProperty, "AccentForegroundBrush");
+            else iconText.Foreground = targetBrush;
         }
     }
 
@@ -395,7 +311,7 @@ public partial class SettingsWindow
         {
             UpdateNavButtonVisual(newBtn, true, animate: true);
             AnimateNavActiveIndicator(newBtn, animate: true);
-            AnimateNavHoverIndicator(null);
+            RefreshNavHoverIndicator();
         }
 
         _navTransitionVersion++;

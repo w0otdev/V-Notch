@@ -1,4 +1,15 @@
 {
+  "settings.accentColor": "Цвет акцента",
+  "settings.accentColor.hint": "Выберите цвет выделения для всего приложения.",
+  "settings.accentColor.default": "По умолчанию",
+  "settings.accentColor.blue": "Синий",
+  "settings.accentColor.purple": "Фиолетовый",
+  "settings.accentColor.pink": "Розовый",
+  "settings.accentColor.red": "Красный",
+  "settings.accentColor.orange": "Оранжевый",
+  "settings.accentColor.yellow": "Жёлтый",
+  "settings.accentColor.green": "Зелёный",
+  "settings.accentColor.teal": "Бирюзовый",
   "clipboard.addLabel": "Добавить метку",
   "clipboard.selectAll": "Выбрать все видимые элементы",
   "clipboard.deleteSelected": "Удалить выбранные элементы: {0}",
@@ -377,7 +388,7 @@
   "settings.glass.fresnel": "Эффект Френеля",
   "settings.glass.grain": "Зернистость",
   "settings.glass.hideCapture": "Скрывать при захвате экрана",
-  "settings.glass.hideCapture.hint": "Вкл.: преломление изображения за шторкой в реальном времени, шторка не видна на скриншотах и в записях экрана. Выкл.: прозрачное тонированное стекло, видимое на скриншотах.",
+  "settings.glass.hideCapture.hint": "Скрывать notch и Spotlight на снимках и записях экрана. Преломление GPU всегда скрывает их; отключите его, чтобы изменить этот параметр.",
   "settings.glass.opacity": "Непрозрачность",
   "settings.glass.preset": "Пресет",
   "settings.glass.preset.clear": "Прозрачное жидкое стекло",
@@ -1065,5 +1076,10 @@
   "settings.lyrics.provider.amll.desc": "Синхронизация слов и слогов от сообщества по ID трека Spotify",
   "settings.lyrics.provider.netease.desc": "Пословная и построчная синхронизация из каталога NetEase Cloud Music",
   "settings.lyrics.provider.kugou.desc": "Пословная KRC и построчная синхронизация из каталога Kugou Music",
-  "settings.lyrics.provider.qqmusic.desc": "Построчная синхронизация текста из каталога QQ Music"
+  "settings.lyrics.provider.qqmusic.desc": "Построчная синхронизация текста из каталога QQ Music",
+  "settings.autoDismissNotify": "Автоматически скрывать уведомления",
+  "settings.autoDismissNotify.hint": "Автоматически закрывать баннер уведомления по истечении времени.",
+  "settings.notificationDuration": "Время показа уведомления",
+  "settings.notificationDuration.hint": "Как долго каждое уведомление остается видимым в вырезе.",
+  "tooltip.autoDismissNotify": "Автоматически скрывать уведомления через заданное время."
 }

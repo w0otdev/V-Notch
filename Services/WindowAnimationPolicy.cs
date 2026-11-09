@@ -1,5 +1,6 @@
 using System.ComponentModel;
 using System.Runtime.CompilerServices;
+using System.Collections.Concurrent;
 using System.Windows;
 using System.Windows.Interop;
 
@@ -13,6 +14,7 @@ namespace VNotch.Services;
 internal static class WindowAnimationPolicy
 {
     private static readonly ConditionalWeakTable<Window, WindowLifetime> Windows = new();
+    private static readonly ConcurrentDictionary<IntPtr, WindowLifetime> WindowHandles = new();
     private static int _initialized;
     internal static bool InvisibleMode { get; private set; }
     internal static bool ShadowEnabled { get; private set; } = true;
@@ -97,8 +99,12 @@ internal static class WindowAnimationPolicy
 
     internal static bool SetCaptureAffinity(IntPtr hwnd, uint affinity)
     {
+        // HwndSource lookup is dispatcher-local. Capture workers must use the
+        // registered lifetime so a later UI refresh retains their request.
+        if (WindowHandles.TryGetValue(hwnd, out var lifetime))
+            return lifetime.SetCaptureAffinity(hwnd, affinity);
         if (HwndSource.FromHwnd(hwnd)?.RootVisual is Window window)
-            Windows.GetValue(window, static key => new WindowLifetime(key)).CaptureAffinity = affinity;
+            return Windows.GetValue(window, static key => new WindowLifetime(key)).SetCaptureAffinity(hwnd, affinity);
         return Win32Interop.SetWindowDisplayAffinityNative(hwnd,
             InvisibleMode ? Win32Interop.WDA_EXCLUDEFROMCAPTURE : affinity);
     }
@@ -121,8 +127,11 @@ internal static class WindowAnimationPolicy
     private sealed class WindowLifetime
     {
         private readonly Window _window;
+        private readonly bool _excludeFromCapture;
+        private readonly object _captureSync = new();
         private HwndSource? _source;
-        internal uint CaptureAffinity;
+        private IntPtr _hwnd;
+        private uint _captureAffinity;
         private bool _invisibleApplied;
         private bool _originalTaskbar;
         private int _originalShellStyle;
@@ -130,10 +139,39 @@ internal static class WindowAnimationPolicy
         internal WindowLifetime(Window window)
         {
             _window = window;
+            _excludeFromCapture = window is MainWindow;
             window.SourceInitialized += OnSourceInitialized;
             window.IsVisibleChanged += OnVisibilityChanged;
             window.Closing += OnClosing;
             window.Closed += OnClosed;
+            TrackHandle(new WindowInteropHelper(window).Handle);
+        }
+
+        internal bool SetCaptureAffinity(IntPtr hwnd, uint affinity)
+        {
+            lock (_captureSync)
+            {
+                _captureAffinity = affinity;
+                return Win32Interop.SetWindowDisplayAffinityNative(hwnd,
+                    EffectiveCaptureAffinity);
+            }
+        }
+
+        // The notch is an overlay in every theme. Its capture policy must not
+        // depend on renderer availability, hotkeys, or a hide animation finishing.
+        private uint EffectiveCaptureAffinity => InvisibleMode || _excludeFromCapture
+            ? Win32Interop.WDA_EXCLUDEFROMCAPTURE : _captureAffinity;
+
+        private void TrackHandle(IntPtr hwnd)
+        {
+            if (_hwnd == hwnd) return;
+            if (_hwnd != IntPtr.Zero) WindowHandles.TryRemove(_hwnd, out _);
+            if (_source is { IsDisposed: false }) _source.RemoveHook(WindowProc);
+            _hwnd = hwnd;
+            _source = hwnd == IntPtr.Zero ? null : HwndSource.FromHwnd(hwnd);
+            if (hwnd == IntPtr.Zero) return;
+            WindowHandles[hwnd] = this;
+            _source?.AddHook(WindowProc);
         }
 
         internal void Apply()
@@ -165,13 +203,12 @@ internal static class WindowAnimationPolicy
             }
             var hwnd = new WindowInteropHelper(_window).Handle;
             if (hwnd == IntPtr.Zero) return;
-            if (!Win32Interop.SetWindowDisplayAffinityNative(hwnd,
-                InvisibleMode ? Win32Interop.WDA_EXCLUDEFROMCAPTURE : CaptureAffinity))
-                RuntimeLog.Log("WINDOW-PRIVACY", $"Capture exclusion failed: {System.Runtime.InteropServices.Marshal.GetLastWin32Error()}");
-            if (_source == null)
+            TrackHandle(hwnd);
+            lock (_captureSync)
             {
-                _source = HwndSource.FromHwnd(hwnd);
-                _source?.AddHook(WindowProc);
+                if (!Win32Interop.SetWindowDisplayAffinityNative(hwnd,
+                    EffectiveCaptureAffinity))
+                    RuntimeLog.Log("WINDOW-PRIVACY", $"Capture exclusion failed: {System.Runtime.InteropServices.Marshal.GetLastWin32Error()}");
             }
 
             int disabled = 1; // Win32 BOOL, not a one-byte managed bool.
@@ -210,8 +247,7 @@ internal static class WindowAnimationPolicy
 
         private void OnClosed(object? sender, EventArgs e)
         {
-            if (_source is { IsDisposed: false }) _source.RemoveHook(WindowProc);
-            _source = null;
+            TrackHandle(IntPtr.Zero);
             _window.SourceInitialized -= OnSourceInitialized;
             _window.IsVisibleChanged -= OnVisibilityChanged;
             _window.Closing -= OnClosing;

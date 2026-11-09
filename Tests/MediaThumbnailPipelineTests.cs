@@ -18,6 +18,7 @@ public sealed class MediaThumbnailPipelineTests
     [InlineData("SoundCloud")]
     [InlineData("Browser")]
     [InlineData("Spotify")]
+    [InlineData("YouTube")]
     public void DelayedSessionArtworkReplacesCachedCoverWithoutAnotherTitleChange(string source) => SharedStaTestRunner.RunAsync(async () =>
     {
         using var fixture = new Fixture();
@@ -44,6 +45,7 @@ public sealed class MediaThumbnailPipelineTests
     [InlineData("SoundCloud")]
     [InlineData("Browser")]
     [InlineData("Spotify")]
+    [InlineData("YouTube")]
     public void NextTrackRejectsPreviousSessionCoverUntilNewArtworkArrives(string source) => SharedStaTestRunner.RunAsync(async () =>
     {
         using var fixture = new Fixture();
@@ -125,6 +127,71 @@ public sealed class MediaThumbnailPipelineTests
     private static Task ApplyArtwork(MediaDetectionService service, MediaInfo info, BitmapSource artwork, bool changed)
         => (Task)Invoke(service, "ApplySessionArtworkAsync", info, changed,
             (Func<Task<BitmapSource?>>)(() => Task.FromResult<BitmapSource?>(artwork)))!;
+
+    [Theory]
+    [InlineData(640, 360)]
+    [InlineData(150, 150)]
+    public void YouTubeSessionArtworkReplacesAnotherVersionsSearchCover(int width, int height) => SharedStaTestRunner.RunAsync(async ct =>
+    {
+        using var fixture = new Fixture();
+        var info = fixture.Track("YouTube");
+        info.CurrentTrack = "Giã từ vũ khí";
+        info.CurrentArtist = "Trường Vũ";
+        fixture.PublishIdentity(info);
+        fixture.Metadata.SearchResult = Result(info.CurrentTrack);
+        var otherVersion = Bitmap(640, 360);
+        fixture.Artwork.Image = otherVersion;
+        await FetchYouTube(fixture.Service, info, ct);
+        Assert.Same(otherVersion, info.Thumbnail);
+
+        var playingVersion = Bitmap(width, height, detailed: true);
+        await ApplyArtwork(fixture.Service, info, playingVersion, false);
+
+        Assert.Same(playingVersion, info.Thumbnail);
+        Assert.Same(playingVersion, fixture.Service.CachedThumbnail);
+    });
+
+    [Fact]
+    public void YouTubeSessionArtworkWinsAgainstAPendingOtherVersionDownload() => SharedStaTestRunner.RunAsync(async ct =>
+    {
+        using var fixture = new Fixture();
+        var info = fixture.Track("YouTube");
+        fixture.PublishIdentity(info);
+        fixture.Metadata.SearchResult = Result(info.CurrentTrack);
+        var download = new TaskCompletionSource<BitmapImage?>();
+        fixture.Artwork.Download = _ => download.Task;
+        var fetch = FetchYouTube(fixture.Service, info, ct);
+        Assert.Single(fixture.Artwork.Downloads);
+
+        var playingVersion = Bitmap(640, 360, detailed: true);
+        await ApplyArtwork(fixture.Service, info, playingVersion, false);
+        download.SetResult(Bitmap(640, 360));
+        await fetch;
+
+        Assert.Same(playingVersion, info.Thumbnail);
+        Assert.Same(playingVersion, fixture.Service.CachedThumbnail);
+    });
+
+    [Theory]
+    [InlineData(640, 360)]
+    [InlineData(150, 150)]
+    public void YouTubeWithCurrentSessionArtworkDoesNotSearchForAnotherVersion(int width, int height) => SharedStaTestRunner.RunAsync(async () =>
+    {
+        using var fixture = new Fixture();
+        var info = fixture.Track("YouTube");
+        fixture.PublishIdentity(info);
+        var playingVersion = Bitmap(width, height, detailed: true);
+        await ApplyArtwork(fixture.Service, info, playingVersion, false);
+        Assert.Same(playingVersion, info.Thumbnail);
+
+        Invoke(fixture.Service, "StartThumbnailFetchIfNeeded", info, true);
+
+        Assert.Equal(0, Field<int>(fixture.Service, "_youTubeFetchInFlight"));
+        Assert.Equal(0, fixture.Metadata.TrackCalls);
+        Assert.Equal(0, fixture.Metadata.SearchCalls);
+        Assert.Empty(fixture.Artwork.Downloads);
+        Assert.Same(playingVersion, info.Thumbnail);
+    });
 
     [Fact]
     public void PendingSoundCloudDownloadCannotReplaceNewSessionArtwork() => SharedStaTestRunner.RunAsync(async ct =>

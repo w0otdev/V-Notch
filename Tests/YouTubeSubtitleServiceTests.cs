@@ -9,6 +9,18 @@ namespace VNotch.Tests;
 public class YouTubeSubtitleServiceTests
 {
     [Fact]
+    public void KnownVideoLanguageTakesPriorityOverAnotherLanguagesAutomaticCaptions()
+    {
+        var vietnamese = new YouTubeCaptionTrack("vi", "Tiếng Việt", ".vi", "vi", false);
+        var englishAuto = new YouTubeCaptionTrack("en", "English (auto-generated)", "a.en", "en", true);
+
+        var ordered = YouTubeSubtitleService.GetOrderedCandidateTracks(
+            [englishAuto, vietnamese], ["native", "english", "auto"], nativeLangHint: "vi");
+
+        Assert.Equal(new[] { vietnamese, englishAuto }, ordered);
+    }
+
+    [Fact]
     public void RepeatedPrioritiesPreserveOrderAndDeduplicateEquivalentTracks()
     {
         var english = new YouTubeCaptionTrack("en", "English", ".en", "en", false);

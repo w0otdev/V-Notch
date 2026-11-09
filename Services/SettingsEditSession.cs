@@ -55,4 +55,10 @@ internal sealed partial class SettingsEditSession
     {
         _applied.LiquidGlassCustom ??= config.Clone();
     }
+
+    internal void CommitSpotlightIntroSeen()
+    {
+        _baseline.HasSeenSpotlightIntro = true;
+        _applied.HasSeenSpotlightIntro = true;
+    }
 }

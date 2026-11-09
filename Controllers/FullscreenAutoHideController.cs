@@ -15,6 +15,7 @@ public sealed class FullscreenAutoHideController : IDisposable
 
     private readonly Func<IntPtr> _getNotchHwnd;
     private readonly Func<bool>? _isAutoHideSuppressed;
+    private readonly Func<bool>? _isVisibilityFrozen;
     private NotchSettings _settings;
     // Window queries run on a thread-pool timer so a slow Win32 call never stalls the UI thread.
     // The dispatcher is only woken when the sampled state differs from the applied one.
@@ -37,10 +38,11 @@ public sealed class FullscreenAutoHideController : IDisposable
     public event Action? RecheckNeeded;
 
     public FullscreenAutoHideController(Func<IntPtr> getNotchHwnd, NotchSettings settings,
-        Func<bool>? isAutoHideSuppressed = null)
+        Func<bool>? isAutoHideSuppressed = null, Func<bool>? isVisibilityFrozen = null)
     {
         _getNotchHwnd = getNotchHwnd ?? throw new ArgumentNullException(nameof(getNotchHwnd));
         _isAutoHideSuppressed = isAutoHideSuppressed;
+        _isVisibilityFrozen = isVisibilityFrozen;
         _settings = settings ?? throw new ArgumentNullException(nameof(settings));
 
         _dispatcher = Dispatcher.CurrentDispatcher;
@@ -107,6 +109,7 @@ public sealed class FullscreenAutoHideController : IDisposable
     {
         IntPtr notchHwnd = _getNotchHwnd();
         if (notchHwnd == IntPtr.Zero) return false;
+        if (_isVisibilityFrozen?.Invoke() == true) return false;
 
         if (_isAutoHideSuppressed?.Invoke() == true ||
             (!_settings.HideOnExclusiveFullscreen && !_settings.HideOnWindowedFullscreen))

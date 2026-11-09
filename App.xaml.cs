@@ -62,6 +62,7 @@ public partial class App : Application
 
     public App()
     {
+        TextRenderingPolicy.Initialize();
         WindowAnimationPolicy.Initialize();
         try
         {
@@ -106,6 +107,7 @@ public partial class App : Application
             SetServices(services.BuildServiceProvider());
             var earlySettings = Services.GetRequiredService<ISettingsService>();
             var loadedSettings = earlySettings.Load();
+            AccentTheme.Apply(loadedSettings.AccentColor);
             NetworkPrivacy.Current.Apply(loadedSettings);
             WindowTitleScanner.UpdateInspectionAllowed(loadedSettings.EnableBrowserUrlInspection);
             WindowAnimationPolicy.SetInvisibleMode(loadedSettings.InvisibleMode);
@@ -358,8 +360,7 @@ public partial class App : Application
 
         try
         {
-            string message =
-                $"V-Notch encountered an unexpected error and must close. Details were written to:\n{RuntimeLog.LogPath}\n\nCrash Report:\n{CrashReporter.CrashLogPath}";
+            string message = Loc.Get("app.fatalClose", $"{RuntimeLog.LogPath}\n{CrashReporter.CrashLogPath}");
             MessageBox.Show(
                 message,
                 "V-Notch Error",

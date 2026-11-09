@@ -111,7 +111,8 @@ public sealed class NotchDesignAcceptanceTests
             Assert.Equal(1, fixture.Window.NotchScale.ScaleX);
             Assert.False(fixture.Window.NotchScale.HasAnimatedProperties);
             Assert.Equal(.35, fixture.Window.HoverGlow.Opacity, 3);
-            Assert.IsType<LinearGradientBrush>(fixture.Window.HoverGlow.BorderBrush);
+            Assert.Null(fixture.Window.HoverGlow.BorderBrush);
+            Assert.Equal(new Thickness(0), fixture.Window.HoverGlow.BorderThickness);
         }
         finally { AnimationConfig.SetReduceMotion(previous); }
     });

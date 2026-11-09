@@ -19,7 +19,7 @@
         FontWeight="Bold"
         TextOptions.TextFormattingMode="Ideal"
         TextOptions.TextRenderingMode="ClearType"
-        TextOptions.TextHintingMode="Fixed"
+        TextOptions.TextHintingMode="Animated"
         Loaded="Window_Loaded"
         SizeChanged="Window_SizeChanged">
     
@@ -35,7 +35,7 @@
             <Setter Property="FontWeight" Value="Bold"/>
             <Setter Property="TextOptions.TextFormattingMode" Value="Ideal"/>
             <Setter Property="TextOptions.TextRenderingMode" Value="ClearType"/>
-            <Setter Property="TextOptions.TextHintingMode" Value="Fixed"/>
+            <Setter Property="TextOptions.TextHintingMode" Value="Animated"/>
             <Setter Property="TextWrapping" Value="Wrap"/>
         </Style>
         <!-- Apple-like easing -->

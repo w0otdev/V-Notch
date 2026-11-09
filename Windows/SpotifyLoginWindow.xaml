@@ -21,8 +21,6 @@
         <SolidColorBrush x:Key="CardBorder" Color="#14FFFFFF"/>
         <SolidColorBrush x:Key="MutedText" Color="#8C959E"/>
         <SolidColorBrush x:Key="SoftText" Color="#D8DEE5"/>
-        <SolidColorBrush x:Key="AccentBrush" Color="#F2F2F2"/>
-        <SolidColorBrush x:Key="AccentBrushStrong" Color="#FFFFFF"/>
         <SolidColorBrush x:Key="TrackBg" Color="#262626"/>
         <SolidColorBrush x:Key="SurfaceBrush" Color="#141414"/>
         <SolidColorBrush x:Key="SurfaceBrushHover" Color="#1B1B1B"/>
@@ -40,7 +38,7 @@
             <Setter Property="FontFamily" Value="{StaticResource SettingsFont}"/>
             <Setter Property="TextOptions.TextFormattingMode" Value="Ideal"/>
             <Setter Property="TextOptions.TextRenderingMode" Value="ClearType"/>
-            <Setter Property="TextOptions.TextHintingMode" Value="Fixed"/>
+            <Setter Property="TextOptions.TextHintingMode" Value="Animated"/>
         </Style>
 
         <Style TargetType="Button">

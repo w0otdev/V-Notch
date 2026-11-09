@@ -6,6 +6,17 @@ namespace VNotch;
 
 public partial class MainWindow : ISpotlightMorphHost
 {
+    internal async Task MarkSpotlightIntroSeenAsync()
+    {
+        _settings.HasSeenSpotlightIntro = true;
+        _activeSettingsWindow?.MarkSpotlightIntroSeen();
+        _preparedSettingsWindow?.MarkSpotlightIntroSeen();
+        // Persist the committed snapshot so an unrelated live preview is not saved.
+        var committed = _settingsService.Load().Clone();
+        committed.HasSeenSpotlightIntro = true;
+        await _settingsService.SaveAsync(committed);
+    }
+
     internal ImageSource? CaptureSpotlightMorphVisual()
     {
         double width = NotchBorder.ActualWidth;

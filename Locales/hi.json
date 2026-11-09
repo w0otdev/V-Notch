@@ -1,4 +1,15 @@
 {
+  "settings.accentColor": "एक्सेंट रंग",
+  "settings.accentColor.hint": "पूरे ऐप में इस्तेमाल होने वाला हाइलाइट रंग चुनें।",
+  "settings.accentColor.default": "डिफ़ॉल्ट",
+  "settings.accentColor.blue": "नीला",
+  "settings.accentColor.purple": "बैंगनी",
+  "settings.accentColor.pink": "गुलाबी",
+  "settings.accentColor.red": "लाल",
+  "settings.accentColor.orange": "नारंगी",
+  "settings.accentColor.yellow": "पीला",
+  "settings.accentColor.green": "हरा",
+  "settings.accentColor.teal": "फ़िरोज़ी",
   "clipboard.addLabel": "लेबल जोड़ें",
   "clipboard.selectAll": "दिख रहे सभी आइटम चुनें",
   "clipboard.deleteSelected": "चुने गए {0} आइटम हटाएँ",
@@ -377,7 +388,7 @@
   "settings.glass.fresnel": "फ़्रेनल",
   "settings.glass.grain": "ग्रेन (Grain)",
   "settings.glass.hideCapture": "स्क्रीन कैप्चर में छिपाएँ",
-  "settings.glass.hideCapture.hint": "चालू: नॉच के ठीक पीछे की चीज़ों का लाइव रिफ़्रैक्शन होगा और नॉच स्क्रीनशॉट या रिकॉर्डिंग में नहीं आएगा। बंद: हल्का रंगीन पारदर्शी ग्लास स्क्रीनशॉट में भी दिखेगा।",
+  "settings.glass.hideCapture.hint": "स्क्रीनशॉट और रिकॉर्डिंग में नॉच और Spotlight छिपाएँ। GPU अपवर्तन इन्हें हमेशा छिपाता है; यह विकल्प बदलने के लिए उसे बंद करें।",
   "settings.glass.opacity": "अपारदर्शिता",
   "settings.glass.preset": "प्रीसेट",
   "settings.glass.preset.clear": "पारदर्शी लिक्विड ग्लास",
@@ -1065,5 +1076,10 @@
   "settings.lyrics.provider.amll.desc": "Spotify ट्रैक ID से समुदाय द्वारा शब्द और अक्षर का समय",
   "settings.lyrics.provider.netease.desc": "NetEase Cloud Music कैटलॉग से शब्द और पंक्ति के अनुसार सिंक किए गए बोल",
   "settings.lyrics.provider.kugou.desc": "Kugou Music कैटलॉग से शब्द-दर-शब्द KRC और पंक्ति के अनुसार सिंक किए गए बोल",
-  "settings.lyrics.provider.qqmusic.desc": "QQ Music कैटलॉग से पंक्ति-दर-पंक्ति सिंक किए गए बोल"
+  "settings.lyrics.provider.qqmusic.desc": "QQ Music कैटलॉग से पंक्ति-दर-पंक्ति सिंक किए गए बोल",
+  "settings.autoDismissNotify": "सूचनाएं स्वतः बंद करें",
+  "settings.autoDismissNotify.hint": "निर्धारित समय पूरा होने पर सूचना बैनर को अपने आप बंद करें।",
+  "settings.notificationDuration": "सूचना दिखाने की अवधि",
+  "settings.notificationDuration.hint": "नॉच पर प्रत्येक सूचना कितने समय तक दिखाई देगी।",
+  "tooltip.autoDismissNotify": "तय समय के बाद सूचनाओं को अपने आप छिपाएं।"
 }

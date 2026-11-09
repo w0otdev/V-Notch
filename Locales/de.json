@@ -1,4 +1,15 @@
 {
+  "settings.accentColor": "Akzentfarbe",
+  "settings.accentColor.hint": "Wähle die Hervorhebungsfarbe für die gesamte App.",
+  "settings.accentColor.default": "Standard",
+  "settings.accentColor.blue": "Blau",
+  "settings.accentColor.purple": "Lila",
+  "settings.accentColor.pink": "Rosa",
+  "settings.accentColor.red": "Rot",
+  "settings.accentColor.orange": "Orange",
+  "settings.accentColor.yellow": "Gelb",
+  "settings.accentColor.green": "Grün",
+  "settings.accentColor.teal": "Türkis",
   "clipboard.addLabel": "Bezeichnung hinzufügen",
   "clipboard.selectAll": "Alle sichtbaren Einträge auswählen",
   "clipboard.deleteSelected": "{0} ausgewählte Einträge löschen",
@@ -377,7 +388,7 @@
   "settings.glass.fresnel": "Fresnel",
   "settings.glass.grain": "Körnung",
   "settings.glass.hideCapture": "Bei Bildschirmaufnahme ausblenden",
-  "settings.glass.hideCapture.hint": "An: Live-Brechung (die Notch ist auf Screenshots/Videos unsichtbar). Aus: Getöntes Glas bleibt sichtbar.",
+  "settings.glass.hideCapture.hint": "Notch und Spotlight in Screenshots und Aufnahmen ausblenden. GPU-Brechung blendet sie immer aus; deaktiviere sie, um diese Option zu ändern.",
   "settings.glass.opacity": "Deckkraft",
   "settings.glass.preset": "Voreinstellung",
   "settings.glass.preset.clear": "Klares Flüssigglas",
@@ -1065,5 +1076,10 @@
   "settings.lyrics.provider.amll.desc": "Wort- und Silbenzeiten der Community per Spotify-Titel-ID",
   "settings.lyrics.provider.netease.desc": "Wort- und zeilenweise synchronisierte Liedtexte aus NetEase Cloud Music",
   "settings.lyrics.provider.kugou.desc": "Wort-für-Wort-KRC- und zeilenweise synchronisierte Liedtexte aus Kugou Music",
-  "settings.lyrics.provider.qqmusic.desc": "Zeilenweise synchronisierte Liedtexte aus QQ Music"
+  "settings.lyrics.provider.qqmusic.desc": "Zeilenweise synchronisierte Liedtexte aus QQ Music",
+  "settings.autoDismissNotify": "Benachrichtigungen automatisch ausblenden",
+  "settings.autoDismissNotify.hint": "Schließt das Benachrichtigungsbanner nach Ablauf der Zeit automatisch.",
+  "settings.notificationDuration": "Anzeigedauer der Benachrichtigung",
+  "settings.notificationDuration.hint": "Wie lange jede Benachrichtigung in der Notch sichtbar bleibt.",
+  "tooltip.autoDismissNotify": "Benachrichtigungen nach der festgelegten Zeit automatisch ausblenden."
 }

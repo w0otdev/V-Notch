@@ -17,6 +17,28 @@ public sealed class MainWindowAudioMixerTests
 {
     private const BindingFlags Private = BindingFlags.Instance | BindingFlags.Static | BindingFlags.NonPublic;
 
+    [Fact]
+    public void ExistingVolumeFillsFollowTheSelectedAccentWithoutRebuildingRows() => SharedStaTestRunner.Run(() =>
+    {
+        using var fixture = CreateFixture();
+        var window = fixture.Window;
+        try
+        {
+            Invoke(window, "BuildAudioUI", Snapshot(2));
+            var fills = Descendants<Border>(window.AudioContent.AudioRoot)
+                .Where(border => border.Height == 4 && border.HorizontalAlignment == HorizontalAlignment.Left && border.RenderTransform is ScaleTransform)
+                .ToArray();
+            Assert.Equal(4, fills.Length);
+            foreach (string id in new[] { "purple", "orange", "blue" })
+            {
+                AccentTheme.Apply(id);
+                foreach (var fill in fills)
+                    Assert.Equal(AccentTheme.GetSwatch(id).Color, Assert.IsType<SolidColorBrush>(fill.Background).Color);
+            }
+        }
+        finally { AccentTheme.Apply("default"); }
+    });
+
     [Theory]
     [InlineData(0)]
     [InlineData(1)]

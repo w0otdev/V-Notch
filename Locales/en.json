@@ -1,4 +1,15 @@
 {
+  "settings.accentColor": "Accent color",
+  "settings.accentColor.hint": "Choose the highlight color used throughout the app.",
+  "settings.accentColor.default": "Default",
+  "settings.accentColor.blue": "Blue",
+  "settings.accentColor.purple": "Purple",
+  "settings.accentColor.pink": "Pink",
+  "settings.accentColor.red": "Red",
+  "settings.accentColor.orange": "Orange",
+  "settings.accentColor.yellow": "Yellow",
+  "settings.accentColor.green": "Green",
+  "settings.accentColor.teal": "Teal",
   "clipboard.addLabel": "Add label",
   "clipboard.selectAll": "Select all visible items",
   "clipboard.deleteSelected": "Delete {0} selected items",
@@ -377,7 +388,7 @@
   "settings.glass.fresnel": "Fresnel",
   "settings.glass.grain": "Grain",
   "settings.glass.hideCapture": "Hide from screen capture",
-  "settings.glass.hideCapture.hint": "On: live refraction of exactly what's behind the notch (the notch won't appear in screenshots/recordings). Off: a clear tinted glass that stays visible in screenshots.",
+  "settings.glass.hideCapture.hint": "Hide the notch and Spotlight in screenshots and recordings. GPU refraction always hides them; turn off GPU refraction to change this option.",
   "settings.glass.opacity": "Opacity",
   "settings.glass.preset": "Preset",
   "settings.glass.preset.clear": "Clear Liquid Glass",
@@ -1065,5 +1076,10 @@
   "settings.lyrics.provider.amll.desc": "Community word and syllable timing by Spotify track ID",
   "settings.lyrics.provider.netease.desc": "Word and line synced lyrics from the NetEase Cloud Music catalog",
   "settings.lyrics.provider.kugou.desc": "Word-by-word KRC and line synced lyrics from the Kugou Music catalog",
-  "settings.lyrics.provider.qqmusic.desc": "Line-by-line synced lyrics from the QQ Music catalog"
+  "settings.lyrics.provider.qqmusic.desc": "Line-by-line synced lyrics from the QQ Music catalog",
+  "settings.autoDismissNotify": "Auto-dismiss notifications",
+  "settings.autoDismissNotify.hint": "Close the notification banner automatically after the timer runs out.",
+  "settings.notificationDuration": "Notification duration",
+  "settings.notificationDuration.hint": "How long each notification stays visible on the notch.",
+  "tooltip.autoDismissNotify": "Automatically hide notifications after the configured time."
 }

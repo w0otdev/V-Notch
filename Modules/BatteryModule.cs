@@ -12,6 +12,18 @@ public class BatteryModule : NotchModuleBase
     public override TimeSpan? TickInterval => TimeSpan.FromSeconds(15);
 
     private readonly IBatteryService _batteryService;
+    private string _deviceId = NotchSettings.SystemBatteryDeviceId;
+    private int _sourceVersion;
+    private bool _updating;
+
+    public void SelectSource(string? deviceId)
+    {
+        deviceId ??= NotchSettings.SystemBatteryDeviceId;
+        if (_deviceId == deviceId) return;
+        _deviceId = deviceId;
+        ++_sourceVersion;
+        if (IsRunning) EmitUpdate();
+    }
 
     public event EventHandler<BatteryInfo>? BatteryUpdated;
 
@@ -50,9 +62,22 @@ public class BatteryModule : NotchModuleBase
             EmitUpdate();
     }
 
-    private void EmitUpdate()
+    private async void EmitUpdate()
     {
-        var info = _batteryService.GetBatteryInfo();
-        BatteryUpdated?.Invoke(this, info);
+        if (_updating) return;
+        _updating = true;
+        try
+        {
+            int version;
+            BatteryInfo info;
+            do
+            {
+                version = _sourceVersion;
+                info = await _batteryService.GetBatteryInfoAsync(_deviceId);
+            } while (version != _sourceVersion && IsRunning);
+            if (IsRunning) BatteryUpdated?.Invoke(this, info);
+        }
+        catch (Exception ex) { RuntimeLog.Error("BATTERY", ex, "Could not update battery"); }
+        finally { _updating = false; }
     }
 }

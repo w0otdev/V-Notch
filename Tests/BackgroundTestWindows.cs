@@ -33,7 +33,13 @@ internal static class BackgroundTestWindows
 
     internal static void EnsureApplicationResources()
     {
+        VNotch.Services.TextRenderingPolicy.Initialize();
         var app = Application.Current ?? new Application { ShutdownMode = ShutdownMode.OnExplicitShutdown };
+        if (!app.Resources.Contains("AccentBrush"))
+            app.Resources.MergedDictionaries.Add(new ResourceDictionary
+            {
+                Source = new Uri("/V-Notch;component/Controls/AccentThemeResources.xaml", UriKind.Relative)
+            });
         if (!app.Resources.Contains("SFProDisplay"))
             app.Resources["SFProDisplay"] = VNotch.Services.AppFonts.Get("Segoe UI Emoji, Segoe UI, Arial");
         if (!app.Resources.Contains("SFProText"))

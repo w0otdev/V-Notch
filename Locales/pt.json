@@ -1,4 +1,15 @@
 {
+  "settings.accentColor": "Cor de destaque",
+  "settings.accentColor.hint": "Escolha a cor de destaque de todo o aplicativo.",
+  "settings.accentColor.default": "Padrão",
+  "settings.accentColor.blue": "Azul",
+  "settings.accentColor.purple": "Roxo",
+  "settings.accentColor.pink": "Rosa",
+  "settings.accentColor.red": "Vermelho",
+  "settings.accentColor.orange": "Laranja",
+  "settings.accentColor.yellow": "Amarelo",
+  "settings.accentColor.green": "Verde",
+  "settings.accentColor.teal": "Turquesa",
   "clipboard.addLabel": "Adicionar etiqueta",
   "clipboard.selectAll": "Selecionar todos os itens visíveis",
   "clipboard.deleteSelected": "Excluir {0} itens selecionados",
@@ -377,7 +388,7 @@
   "settings.glass.fresnel": "Efeito Fresnel",
   "settings.glass.grain": "Granulação",
   "settings.glass.hideCapture": "Ocultar em capturas de tela",
-  "settings.glass.hideCapture.hint": "Ativado: refrata ao vivo o que está atrás do notch (não sai em prints ou gravações). Desativado: vidro colorido que aparece nas capturas.",
+  "settings.glass.hideCapture.hint": "Ocultar o notch e o Spotlight em capturas e gravações de tela. A refração por GPU sempre os oculta; desative-a para alterar esta opção.",
   "settings.glass.opacity": "Opacidade",
   "settings.glass.preset": "Predefinição",
   "settings.glass.preset.clear": "Vidro líquido cristalino",
@@ -1065,5 +1076,10 @@
   "settings.lyrics.provider.amll.desc": "Tempos de palavras e sílabas da comunidade por ID do Spotify",
   "settings.lyrics.provider.netease.desc": "Letras sincronizadas por palavra e linha do catálogo do NetEase Cloud Music",
   "settings.lyrics.provider.kugou.desc": "Letras KRC sincronizadas palavra por palavra e por linha do catálogo do Kugou Music",
-  "settings.lyrics.provider.qqmusic.desc": "Letras sincronizadas linha por linha do catálogo do QQ Music"
+  "settings.lyrics.provider.qqmusic.desc": "Letras sincronizadas linha por linha do catálogo do QQ Music",
+  "settings.autoDismissNotify": "Ocultar notificações automaticamente",
+  "settings.autoDismissNotify.hint": "Fecha o banner de notificação automaticamente após o tempo definido.",
+  "settings.notificationDuration": "Duração da notificação",
+  "settings.notificationDuration.hint": "Por quanto tempo cada notificação fica visível no notch.",
+  "tooltip.autoDismissNotify": "Oculta as notificações automaticamente após o tempo configurado."
 }

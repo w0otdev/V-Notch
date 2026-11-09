@@ -4,6 +4,10 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              ShutdownMode="OnExplicitShutdown">
     <Application.Resources>
+        <ResourceDictionary>
+        <ResourceDictionary.MergedDictionaries>
+            <ResourceDictionary Source="/V-Notch;component/Controls/AccentThemeResources.xaml"/>
+        </ResourceDictionary.MergedDictionaries>
         <!-- Embedded SF Pro Display font - works on all machines without SF Pro installed -->
         <fonts:AppFont x:Key="SFProDisplay" Fallbacks="Segoe UI Emoji, Segoe UI, Arial" />
         <!-- SF Pro Text maps to Display since we only ship Display weights -->
@@ -20,5 +24,6 @@
         <Style TargetType="ToolTip">
             <Setter Property="FontFamily" Value="{StaticResource SFProDisplay}"/>
         </Style>
+        </ResourceDictionary>
     </Application.Resources>
 </Application>

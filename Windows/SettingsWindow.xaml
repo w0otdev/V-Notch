@@ -47,13 +47,46 @@
         <SolidColorBrush x:Key="SettingsTextBrush" Color="#C8C8C8"/>
         <SolidColorBrush x:Key="MutedText" Color="#8C959E"/>
         <SolidColorBrush x:Key="SoftText" Color="#D8DEE5"/>
-        <SolidColorBrush x:Key="AccentBrush" Color="#F2F2F2"/>
-        <SolidColorBrush x:Key="AccentBrushStrong" Color="#FFFFFF"/>
         <SolidColorBrush x:Key="TrackBg" Color="#262626"/>
         <SolidColorBrush x:Key="SurfaceBrush" Color="#141414"/>
         <SolidColorBrush x:Key="SurfaceBrushHover" Color="#1B1B1B"/>
         <SolidColorBrush x:Key="NavItemBg" Color="Transparent"/>
         <SolidColorBrush x:Key="NavItemActiveBg" Color="#1EFFFFFF"/>
+        <Style x:Key="AccentSwatchStyle" TargetType="RadioButton">
+            <Setter Property="Width" Value="40"/>
+            <Setter Property="Height" Value="40"/>
+            <Setter Property="Margin" Value="0,0,6,0"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="FocusVisualStyle" Value="{x:Null}"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="RadioButton">
+                        <Grid Background="Transparent">
+                            <Border x:Name="Ring" CornerRadius="20" BorderThickness="2" BorderBrush="Transparent"/>
+                            <Ellipse Margin="7" Fill="{TemplateBinding Background}"/>
+                            <Path x:Name="Check" Data="M 0,4 L 3,7 L 9,0" Stroke="{DynamicResource AccentForegroundBrush}" StrokeThickness="2"
+                                  StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round"
+                                  HorizontalAlignment="Center" VerticalAlignment="Center" Visibility="Collapsed"/>
+                        </Grid>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Ring" Property="BorderBrush" Value="#60FFFFFF"/>
+                            </Trigger>
+                            <Trigger Property="IsChecked" Value="True">
+                                <Setter TargetName="Ring" Property="BorderBrush" Value="{Binding Background, RelativeSource={RelativeSource TemplatedParent}}"/>
+                                <Setter TargetName="Check" Property="Visibility" Value="Visible"/>
+                            </Trigger>
+                            <Trigger Property="IsKeyboardFocused" Value="True">
+                                <Setter TargetName="Ring" Property="BorderBrush" Value="White"/>
+                            </Trigger>
+                            <Trigger Property="IsPressed" Value="True">
+                                <Setter Property="Opacity" Value="0.75"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
         <CubicEase x:Key="InteractiveEaseOut" EasingMode="EaseOut"/>
 
         <LinearGradientBrush x:Key="WindowGlow" StartPoint="0,0" EndPoint="1,1">
@@ -69,7 +102,9 @@
             <Setter Property="FontFamily" Value="{StaticResource SettingsFont}"/>
             <Setter Property="TextOptions.TextFormattingMode" Value="Ideal"/>
             <Setter Property="TextOptions.TextRenderingMode" Value="Grayscale"/>
-            <Setter Property="TextOptions.TextHintingMode" Value="Auto"/>
+            <Setter Property="TextOptions.TextHintingMode" Value="Animated"/>
+            <Setter Property="UseLayoutRounding" Value="False"/>
+            <Setter Property="SnapsToDevicePixels" Value="False"/>
         </Style>
 
         <Style x:Key="SectionHeader" TargetType="TextBlock" BasedOn="{StaticResource {x:Type TextBlock}}">
@@ -190,7 +225,7 @@
                                   IsHitTestVisible="False">
                                 <Border x:Name="SwitchTrack" CornerRadius="13" Background="#2E2E32"/>
                                 <Border x:Name="SwitchHoverOverlay" CornerRadius="13" Background="#14FFFFFF" Opacity="0"/>
-                                <Border x:Name="SwitchOnTrack" CornerRadius="13" Background="#34C759" Opacity="0"/>
+                                <Border x:Name="SwitchOnTrack" CornerRadius="13" Background="{DynamicResource AccentBrush}" Opacity="0"/>
                                 <Border x:Name="SwitchThumb" Width="22" Height="22" CornerRadius="11"
                                         Background="Transparent" Margin="2,0"
                                         HorizontalAlignment="Left" VerticalAlignment="Center">
@@ -299,7 +334,7 @@
                                     <Border x:Name="PART_Fill"
                                             HorizontalAlignment="Left"
                                             CornerRadius="9"
-                                            Background="#26FFFFFF"
+                                            Background="{DynamicResource AccentSubtleBrush}"
                                             Width="0"/>
                                     <Border x:Name="PART_HoverOverlay"
                                             CornerRadius="9"
@@ -316,7 +351,7 @@
                                                    Height="18"
                                                    RadiusX="1.5"
                                                    RadiusY="1.5"
-                                                   Fill="#F0F4F8"
+                                                   Fill="{DynamicResource AccentBrushStrong}"
                                                    Canvas.Top="8"
                                                    Canvas.Left="0"
                                                    RenderTransformOrigin="0.5,0.5">
@@ -431,9 +466,9 @@
         </Style>
 
         <Style x:Key="PrimaryButton" TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
-            <Setter Property="Background" Value="#F3F6FA"/>
-            <Setter Property="Foreground" Value="#11161D"/>
-            <Setter Property="BorderBrush" Value="#F3F6FA"/>
+            <Setter Property="Background" Value="{DynamicResource AccentBrush}"/>
+            <Setter Property="Foreground" Value="{DynamicResource AccentForegroundBrush}"/>
+            <Setter Property="BorderBrush" Value="{DynamicResource AccentBrush}"/>
             <Setter Property="Template">
                 <Setter.Value>
                     <ControlTemplate TargetType="Button">
@@ -447,7 +482,7 @@
                                     BorderThickness="{TemplateBinding BorderThickness}"
                                     CornerRadius="13"/>
                             <Border x:Name="ButtonHoverOverlay"
-                                    Background="#FFFFFF"
+                                    Background="{DynamicResource AccentHoverBrush}"
                                     CornerRadius="13"
                                     Opacity="0"
                                     IsHitTestVisible="False"/>
@@ -480,7 +515,7 @@
                                 </Trigger.ExitActions>
                             </Trigger>
                             <Trigger Property="IsPressed" Value="True">
-                                <Setter TargetName="ButtonBorder" Property="Background" Value="#DDE5EF"/>
+                                <Setter TargetName="ButtonBorder" Property="Background" Value="{DynamicResource AccentHoverBrush}"/>
                                 <Trigger.EnterActions>
                                     <BeginStoryboard>
                                         <Storyboard>
@@ -641,7 +676,7 @@
                                            FontSize="13"
                                            FontWeight="Bold"
                                            FontFamily="{StaticResource SFProDisplay}"
-                                           Foreground="{StaticResource AccentBrushStrong}"
+                                           Foreground="{DynamicResource AccentBrushStrong}"
                                            VerticalAlignment="Center"/>
                                 <StackPanel Grid.Column="1"
                                             VerticalAlignment="Center"
@@ -675,7 +710,7 @@
                         <ControlTemplate.Triggers>
                             <Trigger Property="ItemsControl.AlternationIndex" Value="0">
                                 <Setter TargetName="RankText" Property="Text" Value="1"/>
-                                <Setter TargetName="RankText" Property="Foreground" Value="{StaticResource AccentBrushStrong}"/>
+                                <Setter TargetName="RankText" Property="Foreground" Value="{DynamicResource AccentBrushStrong}"/>
                             </Trigger>
                             <Trigger Property="ItemsControl.AlternationIndex" Value="1">
                                 <Setter TargetName="RankText" Property="Text" Value="2"/>
@@ -956,9 +991,10 @@
                                         Height="30"
                                         VerticalAlignment="Top"
                                         HorizontalAlignment="Stretch"
-                                        CornerRadius="8"
-                                        Background="#10FFFFFF"
-                                        BorderThickness="0"
+                                        CornerRadius="15"
+                                        Background="{DynamicResource AccentNavHoverBrush}"
+                                        BorderBrush="{DynamicResource AccentNavHoverBorderBrush}"
+                                        BorderThickness="1"
                                         Opacity="0"
                                         IsHitTestVisible="False">
                                     <Border.RenderTransform>
@@ -969,13 +1005,20 @@
                                         Height="30"
                                         VerticalAlignment="Top"
                                         HorizontalAlignment="Stretch"
-                                        CornerRadius="8"
-                                        Background="#1EFFFFFF"
+                                        CornerRadius="15"
+                                        Background="{DynamicResource AccentBrush}"
                                         BorderThickness="0"
-                                        IsHitTestVisible="False">
+                                        IsHitTestVisible="False"
+                                        RenderTransformOrigin="0.5,0.5">
                                     <Border.RenderTransform>
-                                        <TranslateTransform x:Name="NavActiveIndicatorTranslate" Y="1"/>
+                                        <TransformGroup>
+                                            <ScaleTransform x:Name="NavActiveIndicatorScale"/>
+                                            <TranslateTransform x:Name="NavActiveIndicatorTranslate" Y="1"/>
+                                        </TransformGroup>
                                     </Border.RenderTransform>
+                                    <Border x:Name="NavActiveHoverOverlay" CornerRadius="15"
+                                            Background="{DynamicResource AccentNavSelectedHoverBrush}"
+                                            Opacity="0" IsHitTestVisible="False"/>
                                 </Border>
                                 <StackPanel x:Name="NavItemsStack" Width="174">
                                 <Border x:Name="NavSearching" Style="{StaticResource NavButton}"
@@ -1290,6 +1333,20 @@
                                     </Border.RenderTransform>
                                     <StackPanel>
                                         <TextBlock x:Name="AppearanceHeader" Text="APPEARANCE" Style="{StaticResource SectionHeader}" Visibility="Collapsed"/>
+
+                                        <Border Style="{StaticResource SettingRowBorder}">
+                                            <StackPanel>
+                                                <DockPanel>
+                                                    <TextBlock x:Name="AccentColorValue" DockPanel.Dock="Right" HorizontalAlignment="Right"
+                                                               Foreground="{DynamicResource AccentBrushStrong}" FontSize="12"/>
+                                                    <TextBlock x:Name="AccentColorLabel" Text="Accent color" Style="{StaticResource SettingTitleText}"/>
+                                                </DockPanel>
+                                                <TextBlock x:Name="AccentColorHint" Text="Choose the highlight color used throughout the app."
+                                                           Style="{StaticResource SettingHintText}" Margin="0,4,0,0"/>
+                                                <WrapPanel x:Name="AccentColorChoices" Margin="-7,12,0,0"
+                                                           KeyboardNavigation.TabNavigation="Once" KeyboardNavigation.DirectionalNavigation="Cycle"/>
+                                            </StackPanel>
+                                        </Border>
 
                                         <!-- Navigation Tabs Order & Visibility -->
                                         <Border Style="{StaticResource SettingRowBorder}">
@@ -1693,13 +1750,34 @@
 
                                         <Border Style="{StaticResource SettingRowBorder}" Margin="0,0,0,4">
                                             <StackPanel>
-                                                <CheckBox x:Name="SystemNotifyCheck" x:Uid="systemNotify" Content="Show system notifications"/>
+                                                <CheckBox x:Name="SystemNotifyCheck" x:Uid="systemNotify" Content="Show system notifications"
+                                                          Checked="SystemNotifyCheck_Changed" Unchecked="SystemNotifyCheck_Changed"/>
                                                 <TextBlock x:Name="SystemNotifyHint" Text="Allow the notch to surface device and system signals."
                                                            Style="{StaticResource SettingHintText}"
                                                            Margin="0,4,0,0"/>
                                             </StackPanel>
                                         </Border>
 
+                                        <Border Style="{StaticResource SettingRowBorder}" Margin="0,0,0,4"><StackPanel>
+                                                <CheckBox x:Name="AutoDismissNotifyCheck" x:Uid="autoDismissNotify" Content="Auto-dismiss notifications"
+                                                          Checked="AutoDismissNotifyCheck_Changed" Unchecked="AutoDismissNotifyCheck_Changed"/>
+                                                <TextBlock x:Name="AutoDismissNotifyHint" Text="Automatically collapse the notification banner after the set duration."
+                                                           Style="{StaticResource SettingHintText}"
+                                                           Margin="0,4,0,0"/>
+                                            </StackPanel></Border>
+                                        <Border Style="{StaticResource SettingRowBorder}" Margin="0,0,0,4">
+                                            <StackPanel>
+                                                <controls:ElasticSlider x:Name="NotificationDurationSlider"
+                                                        Label="Notification duration" Unit=" s" ValueFormat="0.#"
+                                                        Description="How long each notification stays visible on the notch."
+                                                        Minimum="1.5"
+                                                        Maximum="15"
+                                                        Value="5"
+                                                        TickFrequency="0.5"
+                                                        SmallChange="0.5"
+                                                        IsSnapToTickEnabled="True"/>
+                                            </StackPanel>
+                                        </Border>
                                         <Border Style="{StaticResource SettingRowBorder}" Margin="0,0,0,4"><StackPanel>
                                                 <CheckBox x:Name="HideCameraCheck" Content="Hide camera" Checked="ClipboardSetting_Changed" Unchecked="ClipboardSetting_Changed"/>
                                                 <TextBlock x:Name="HideCameraHint" Text="Hide the camera tab and stop its preview." Style="{StaticResource SettingHintText}" Margin="0,4,0,0"/>
@@ -1768,6 +1846,12 @@
                                                     <TextBlock x:Name="GlassPresetLabel" Text="Preset" Style="{StaticResource SettingTitleText}"/>
                                                     <ComboBox x:Name="GlassPresetCombo" Margin="0,6,0,0"
                                                             SelectionChanged="GlassPresetCombo_SelectionChanged"/>
+                                                </StackPanel>
+                                            </Border>
+                                            <Border Style="{StaticResource SettingRowBorder}">
+                                                <StackPanel>
+                                                    <CheckBox x:Name="GlassHideCaptureCheck" Checked="GlassConfigCheck_Changed" Unchecked="GlassConfigCheck_Changed"/>
+                                                    <TextBlock x:Name="GlassHideCaptureHint" Style="{StaticResource SettingHintText}"/>
                                                 </StackPanel>
                                             </Border>
                                             <TextBlock x:Name="GlassAdvancedWarning"
@@ -1936,6 +2020,15 @@
                                                 <ComboBox x:Name="VisualizerAudioCombo" SelectionChanged="VisualizerAudioCombo_SelectionChanged"/>
                                             </StackPanel>
                                         </Border>
+                                        <Border Style="{StaticResource SettingRowBorder}" Margin="0,0,0,4">
+                                            <StackPanel>
+                                                <TextBlock x:Name="BatteryDeviceLabel" Style="{StaticResource SettingTitleText}"/>
+                                                <TextBlock x:Name="BatteryDeviceHint" Style="{StaticResource SettingHintText}" Margin="0,4,0,0"/>
+                                                <ComboBox x:Name="BatteryDeviceCombo" SelectedValuePath="Tag"
+                                                          SelectionChanged="BatteryDeviceCombo_SelectionChanged"
+                                                          DropDownOpened="BatteryDeviceCombo_DropDownOpened"/>
+                                            </StackPanel>
+                                        </Border>
                                     </StackPanel>
                                 </Border>
                             </StackPanel>
@@ -1987,7 +2080,7 @@
                                                          Foreground="{StaticResource SettingsTextBrush}"
                                                          BorderBrush="#2A2A2A"
                                                          BorderThickness="1"
-                                                         CaretBrush="#C8C8C8"
+                                                         CaretBrush="{DynamicResource AccentBrushStrong}"
                                                          VerticalContentAlignment="Center">
                                                     <TextBox.Resources>
                                                         <Style TargetType="Border">
@@ -2272,11 +2365,11 @@
                                                 <ComboBox x:Name="SpotlightAiProviderCombo" MinHeight="40" Margin="0,6,0,16" SelectionChanged="SpotlightAiProvider_Changed"/>
                                                 <TextBlock x:Name="SpotlightAiModelLabel" Style="{StaticResource SettingHintText}"/>
                                                 <Border Background="#141414" BorderBrush="#2A2A2A" BorderThickness="1" CornerRadius="10" MinHeight="40" Padding="12,8" Margin="0,6,0,16">
-                                                    <TextBox x:Name="SpotlightAiModelBox" TextChanged="SpotlightAiModel_Changed" Background="Transparent" Foreground="{StaticResource SettingsTextBrush}" CaretBrush="#C8C8C8" BorderThickness="0" FontSize="13" FontWeight="Bold" FontFamily="{StaticResource SFProDisplay}" VerticalContentAlignment="Center"/>
+                                                    <TextBox x:Name="SpotlightAiModelBox" TextChanged="SpotlightAiModel_Changed" Background="Transparent" Foreground="{StaticResource SettingsTextBrush}" CaretBrush="{DynamicResource AccentBrushStrong}" BorderThickness="0" FontSize="13" FontWeight="Bold" FontFamily="{StaticResource SFProDisplay}" VerticalContentAlignment="Center"/>
                                                 </Border>
                                                 <TextBlock x:Name="SpotlightAiKeyLabel" Style="{StaticResource SettingHintText}"/>
                                                 <Border Background="#141414" BorderBrush="#2A2A2A" BorderThickness="1" CornerRadius="10" MinHeight="40" Padding="12,8" Margin="0,6,0,0">
-                                                    <PasswordBox x:Name="SpotlightAiKeyBox" PasswordChanged="SpotlightAiInput_Changed" FontFamily="{StaticResource SFProDisplay}" FontSize="13" FontWeight="Bold" PasswordChar="•" Background="Transparent" Foreground="{StaticResource SettingsTextBrush}" CaretBrush="#C8C8C8" BorderThickness="0" VerticalContentAlignment="Center"/>
+                                                    <PasswordBox x:Name="SpotlightAiKeyBox" PasswordChanged="SpotlightAiInput_Changed" FontFamily="{StaticResource SFProDisplay}" FontSize="13" FontWeight="Bold" PasswordChar="•" Background="Transparent" Foreground="{StaticResource SettingsTextBrush}" CaretBrush="{DynamicResource AccentBrushStrong}" BorderThickness="0" VerticalContentAlignment="Center"/>
                                                 </Border>
                                             </StackPanel>
                                         </Border>
@@ -2382,10 +2475,10 @@
                                                         <Grid Margin="0,0,0,10">
                                                             <Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
                                                             <TextBlock x:Name="TranslationProgressCaption" Foreground="{StaticResource SoftText}" FontWeight="SemiBold" TextWrapping="Wrap" Margin="0,0,12,0"/>
-                                                            <TextBlock x:Name="TranslationProgressPercent" Grid.Column="1" Foreground="{StaticResource AccentBrushStrong}" FontWeight="SemiBold"/>
+                                                            <TextBlock x:Name="TranslationProgressPercent" Grid.Column="1" Foreground="{DynamicResource AccentBrushStrong}" FontWeight="SemiBold"/>
                                                         </Grid>
                                                         <Grid x:Name="TranslationProgressTrack" Height="8" ClipToBounds="True" SizeChanged="TranslationProgress_SizeChanged">
-                                                            <ProgressBar x:Name="TranslationModelProgress" Minimum="0" Maximum="100" Height="8" Foreground="{StaticResource AccentBrush}" Background="{StaticResource TrackBg}">
+                                                            <ProgressBar x:Name="TranslationModelProgress" Minimum="0" Maximum="100" Height="8" Foreground="{DynamicResource AccentBrush}" Background="{StaticResource TrackBg}">
                                                                 <ProgressBar.Template>
                                                                     <ControlTemplate TargetType="ProgressBar">
                                                                         <Grid x:Name="PART_Track" Background="Transparent">
@@ -2410,10 +2503,10 @@
                                                     <Grid>
                                                         <Grid.ColumnDefinitions><ColumnDefinition Width="40"/><ColumnDefinition/></Grid.ColumnDefinitions>
                                                         <Border Background="{StaticResource TrackBg}" Width="28" Height="28" CornerRadius="14" VerticalAlignment="Top">
-                                                            <TextBlock Text="✓" Foreground="{StaticResource AccentBrushStrong}" FontSize="18" FontWeight="SemiBold" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                                            <TextBlock Text="✓" Foreground="{DynamicResource AccentBrushStrong}" FontSize="18" FontWeight="SemiBold" HorizontalAlignment="Center" VerticalAlignment="Center"/>
                                                         </Border>
                                                         <StackPanel Grid.Column="1">
-                                                            <TextBlock x:Name="TranslationReadyTitle" Foreground="{StaticResource AccentBrushStrong}" FontSize="14" FontWeight="SemiBold" TextWrapping="Wrap"/>
+                                                            <TextBlock x:Name="TranslationReadyTitle" Foreground="{DynamicResource AccentBrushStrong}" FontSize="14" FontWeight="SemiBold" TextWrapping="Wrap"/>
                                                             <TextBlock x:Name="TranslationReadyHint" Foreground="{StaticResource MutedText}" FontSize="12" TextWrapping="Wrap" Margin="0,6,0,0"/>
                                                         </StackPanel>
                                                     </Grid>
@@ -2816,7 +2909,7 @@
                                                              Foreground="{StaticResource SettingsTextBrush}"
                                                              BorderBrush="#2A2A2A"
                                                              BorderThickness="1"
-                                                             CaretBrush="#C8C8C8"
+                                                             CaretBrush="{DynamicResource AccentBrushStrong}"
                                                              VerticalContentAlignment="Center"
                                                              PasswordChar="●"
                                                              PasswordChanged="YouTubeApiKeyPasswordBox_PasswordChanged">
@@ -2835,7 +2928,7 @@
                                                              Foreground="{StaticResource SettingsTextBrush}"
                                                              BorderBrush="#2A2A2A"
                                                              BorderThickness="1"
-                                                             CaretBrush="#C8C8C8"
+                                                             CaretBrush="{DynamicResource AccentBrushStrong}"
                                                              VerticalContentAlignment="Center"
                                                              Visibility="Collapsed"
                                                              TextChanged="YouTubeApiKeyTextBox_TextChanged">
@@ -3707,7 +3800,7 @@
                             Content="Apply"
                             Click="Apply_Click"/>
                     <Button x:Name="SaveButton" Grid.Column="2" Height="36" MinWidth="96"
-                            Background="#DCDCDC" BorderBrush="#DCDCDC"
+                            Background="{DynamicResource AccentBrush}" BorderBrush="{DynamicResource AccentBrush}"
                             Margin="8,0,0,0"
                             Content="Save"
                             Style="{StaticResource PrimaryButton}"

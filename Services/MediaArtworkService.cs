@@ -250,9 +250,9 @@ public sealed partial class MediaArtworkService : IMediaArtworkService, IDisposa
                 height = trimmed.PixelHeight;
             }
 
-            vn_media_artwork_compute_square_crop_metrics(width, height, out double aspect, out int squareSize, out _, out _);
+            vn_media_artwork_compute_square_crop_metrics(width, height, out _, out int squareSize, out _, out _);
 
-            Int32Rect rect = DetermineCropRect(workingSource, width, height, squareSize, aspect, forceCenterCrop, smartCropEnabled);
+            Int32Rect rect = DetermineCropRect(workingSource, width, height, squareSize, forceCenterCrop, smartCropEnabled);
 
             if (ReferenceEquals(workingSource, source) && rect.X == 0 && rect.Y == 0 && rect.Width == width && rect.Height == height)
             {
@@ -321,15 +321,15 @@ public sealed partial class MediaArtworkService : IMediaArtworkService, IDisposa
         return detached;
     }
 
-    private Int32Rect DetermineCropRect(BitmapSource workingSource, int width, int height, int squareSize, double aspect, bool forceCenterCrop, bool smartCropEnabled)
+    private Int32Rect DetermineCropRect(BitmapSource workingSource, int width, int height, int squareSize, bool forceCenterCrop, bool smartCropEnabled)
     {
-        if (smartCropEnabled && aspect > 1.4 && !forceCenterCrop)
+        if (smartCropEnabled && !forceCenterCrop)
         {
             if (!_smartCropAvailable)
             {
                 _smartCropAvailable = _smartCrop.TryInitialize();
             }
-            var smartRect = _smartCrop.GetSmartCropRect(workingSource, squareSize);
+            var smartRect = _smartCrop.GetSmartCropRect(workingSource, squareSize, useObjectDetection: true);
             if (smartRect.HasValue)
             {
                 RuntimeLog.Log(CropPathLogTag, $"smart-crop OK rect=({smartRect.Value.X},{smartRect.Value.Y},{smartRect.Value.Width}x{smartRect.Value.Height})");

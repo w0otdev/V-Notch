@@ -337,7 +337,8 @@ public partial class MainWindow : Window
         _mediaDisplayController = new MediaDisplayController();
         InitializeCameraController();
         _fullscreenController = new FullscreenAutoHideController(() => _hwnd, _settings,
-            isAutoHideSuppressed: () => _isSecondaryView || _transitionCoordinator.TargetView == VNotch.Models.NotchView.Secondary);
+            isAutoHideSuppressed: () => _isSecondaryView || _transitionCoordinator.TargetView == VNotch.Models.NotchView.Secondary,
+            isVisibilityFrozen: () => IsScreenCaptureActive);
         _fullscreenController.HideStateChanged += FullscreenController_HideStateChanged;
         _fullscreenController.RecheckNeeded += ScheduleFullscreenRecheck;
         _moduleHost = moduleHost;
@@ -430,6 +431,7 @@ public partial class MainWindow : Window
         _hoverCollapseTimer.Tick += (s, e) =>
         {
             _hoverCollapseTimer.Stop();
+            if (IsScreenCaptureActive) return;
             if (IsKeyboardFocusWithin) return;
             _hoverCollapseTimer.Interval = TimeSpan.FromMilliseconds(_settings.HoverCollapseDelay);
 
@@ -466,6 +468,7 @@ public partial class MainWindow : Window
         {
             _hoverThumbnailDelayTimer.Stop();
 
+            if (IsScreenCaptureActive) return;
             if (IsCountdownCompletionVisualActive || _isVolumeIndicatorActive) return;
 
             if (_settings.EnableHoverExpand && !_isExpanded && !_isAnimating)
@@ -518,6 +521,7 @@ public partial class MainWindow : Window
         _spotlightController.Initialize(this, _settings);
         InitializeLiveTranslation();
         _clipboardListener.Start();
+        InitializeAppNotificationBanner();
 
         try
         {
@@ -594,6 +598,7 @@ public partial class MainWindow : Window
 
     private void HandleAppDeactivated()
     {
+        if (IsScreenCaptureActive) return;
         if (_clipboardHistory?.IsDragging == true || _clipboardTrayView?.IsContextMenuOpen == true) return;
 
         if (!_isDebugViewLocked && ShouldCollapseOnDeactivation(
@@ -613,6 +618,7 @@ public partial class MainWindow : Window
 
     private void MainWindow_Deactivated(object? sender, EventArgs e)
     {
+        if (IsScreenCaptureActive) return;
         if (_clipboardHistory?.IsDragging == true || _clipboardTrayView?.IsContextMenuOpen == true) return;
 
         if (!_isDebugViewLocked && ShouldCollapseOnDeactivation(
@@ -716,6 +722,7 @@ public partial class MainWindow : Window
         StopZOrderWatchdog();
         StopTitleGradientShift();
         StopChargingNotificationDismissTimer();
+        DisposeAppNotificationBanner();
         StopClipboardRevertTimer();
         MediaPlayback.Dispose();
         System.Windows.Input.InputManager.Current.PreProcessInput -= BlockGreetingInput;
@@ -1101,6 +1108,12 @@ public partial class MainWindow : Window
 
     private void FullscreenController_HideStateChanged(bool shouldHide)
     {
+        if (shouldHide && IsScreenCaptureActive)
+        {
+            // A poll can have sampled the overlay just before suppression began.
+            _fullscreenController.Reset();
+            return;
+        }
         if (_isDebugViewLocked) return;
         _isHiddenByFullscreen = shouldHide;
 
@@ -1170,6 +1183,7 @@ public partial class MainWindow : Window
     private void OnForegroundWindowChanged(IntPtr hwnd)
     {
         if (_hwnd == IntPtr.Zero) return;
+        if (ScreenCaptureActivityProbe == null) _screenCaptureActivity.IsActive(hwnd);
 
         UpdateFullscreenAutoHideState(hwnd, force: true);
         ScheduleFullscreenRecheck();
@@ -1816,7 +1830,7 @@ public partial class MainWindow : Window
     private void ToggleNotchFromClick(int clickCount)
     {
         if (_isDebugViewLocked) return;
-        if (IsCountdownCompletionVisualActive) return;
+        if (IsCountdownCompletionVisualActive || IsAppNotificationBannerActive) return;
         if (_isExpanded)
         {
             if (_isSecondaryView)
@@ -1843,6 +1857,12 @@ public partial class MainWindow : Window
 
     private void NotchWrapper_MouseLeave(object sender, MouseEventArgs e)
     {
+        if (IsScreenCaptureActive)
+        {
+            _hoverCollapseTimer.Stop();
+            _hoverThumbnailDelayTimer.Stop();
+            return;
+        }
 
         _hoverThumbnailDelayTimer.Stop();
         if (_isMusicCompactMode && _isCompactThumbnailHovered && !_isGestureActive)
@@ -1880,7 +1900,8 @@ public partial class MainWindow : Window
 
     private void QueueHoverExpand()
     {
-        if (IsCountdownCompletionVisualActive) return;
+        if (IsScreenCaptureActive) return;
+        if (IsCountdownCompletionVisualActive || IsAppNotificationBannerActive) return;
 
         if (_settings.EnableHoverExpand && !_isExpanded && !_isAnimating)
         {
@@ -1899,6 +1920,11 @@ public partial class MainWindow : Window
         Dispatcher.BeginInvoke(new Action(() =>
         {
             _hoverThumbnailDelayTimer.Stop();
+            if (IsScreenCaptureActive)
+            {
+                _hoverCollapseTimer.Stop();
+                return;
+            }
             if (_isCompactThumbnailHovered && !_isGestureActive && !IsCursorInsideCompactThumbnailExitZone())
             {
                 SetCompactThumbnailHover(false);
@@ -2010,7 +2036,8 @@ public partial class MainWindow : Window
         {
 #pragma warning disable S4036 // URI scheme is launched via Windows shell protocol
             string explorerPath = System.IO.Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Windows), "explorer.exe");
-            System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(explorerPath, "ms-settings:batterysaver") { UseShellExecute = false });
+            string page = string.IsNullOrEmpty(_displayedBattery?.DeviceId) ? "ms-settings:batterysaver" : "ms-settings:bluetooth";
+            System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(explorerPath, page) { UseShellExecute = false });
 #pragma warning restore S4036
         }
         catch (Exception ex)
@@ -2431,6 +2458,7 @@ public partial class MainWindow : Window
                 ReferenceEquals(current, AudioContent.AudioOverlay) ||
                 ReferenceEquals(current, CompactHoverInfo) ||
                 (ChargingNotification != null && ReferenceEquals(current, ChargingNotification)) ||
+                (AppNotificationBanner != null && ReferenceEquals(current, AppNotificationBanner)) ||
                 (BluetoothNotification != null && ReferenceEquals(current, BluetoothNotification)) ||
                 (BluetoothDisconnectNotification != null && ReferenceEquals(current, BluetoothDisconnectNotification)) ||
                 (UpdateNotificationButton != null && ReferenceEquals(current, UpdateNotificationButton)))

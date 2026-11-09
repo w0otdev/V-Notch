@@ -1,4 +1,15 @@
 {
+  "settings.accentColor": "Warna aksen",
+  "settings.accentColor.hint": "Pilih warna sorotan untuk seluruh aplikasi.",
+  "settings.accentColor.default": "Default",
+  "settings.accentColor.blue": "Biru",
+  "settings.accentColor.purple": "Ungu",
+  "settings.accentColor.pink": "Merah muda",
+  "settings.accentColor.red": "Merah",
+  "settings.accentColor.orange": "Oranye",
+  "settings.accentColor.yellow": "Kuning",
+  "settings.accentColor.green": "Hijau",
+  "settings.accentColor.teal": "Toska",
   "clipboard.addLabel": "Tambah label",
   "clipboard.selectAll": "Pilih semua item yang terlihat",
   "clipboard.deleteSelected": "Hapus {0} item terpilih",
@@ -377,7 +388,7 @@
   "settings.glass.fresnel": "Refleksi Fresnel",
   "settings.glass.grain": "Grain",
   "settings.glass.hideCapture": "Sembunyikan saat tangkapan layar",
-  "settings.glass.hideCapture.hint": "Aktif: refraksi langsung apa yang ada di balik notch (notch tidak muncul di screenshot atau rekaman). Nonaktif: kaca berwarna yang terlihat di tangkapan layar.",
+  "settings.glass.hideCapture.hint": "Sembunyikan notch dan Spotlight dari tangkapan dan rekaman layar. Refraksi GPU selalu menyembunyikannya; nonaktifkan untuk mengubah opsi ini.",
   "settings.glass.opacity": "Opasitas",
   "settings.glass.preset": "Preset",
   "settings.glass.preset.clear": "Kaca Cair Bening",
@@ -1065,5 +1076,10 @@
   "settings.lyrics.provider.amll.desc": "Waktu kata dan suku kata komunitas berdasarkan ID lagu Spotify",
   "settings.lyrics.provider.netease.desc": "Lirik tersinkronisasi per kata dan baris dari katalog NetEase Cloud Music",
   "settings.lyrics.provider.kugou.desc": "Lirik KRC tersinkronisasi per kata dan baris dari katalog Kugou Music",
-  "settings.lyrics.provider.qqmusic.desc": "Lirik tersinkronisasi baris demi baris dari katalog QQ Music"
+  "settings.lyrics.provider.qqmusic.desc": "Lirik tersinkronisasi baris demi baris dari katalog QQ Music",
+  "settings.autoDismissNotify": "Tutup notifikasi otomatis",
+  "settings.autoDismissNotify.hint": "Sembunyikan banner notifikasi secara otomatis setelah waktu habis.",
+  "settings.notificationDuration": "Durasi notifikasi",
+  "settings.notificationDuration.hint": "Berapa lama setiap notifikasi tampil di notch.",
+  "tooltip.autoDismissNotify": "Sembunyikan notifikasi secara otomatis setelah durasi yang diatur."
 }

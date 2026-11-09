@@ -566,6 +566,23 @@ public partial class SettingsWindow
         if (!_isLoadingSettings) PushLivePreview();
     }
 
+    private void SystemNotifyCheck_Changed(object sender, RoutedEventArgs e)
+    {
+        bool sysEnabled = SystemNotifyCheck.IsChecked ?? true;
+        bool autoDismiss = AutoDismissNotifyCheck.IsChecked ?? true;
+        AnimateDependentElement(AutoDismissNotifyCheck, sysEnabled, 0.4, animate: true);
+        AnimateDependentElement(NotificationDurationSlider, sysEnabled && autoDismiss, 0.4, animate: true);
+        if (!_isLoadingSettings) PushLivePreview();
+    }
+
+    private void AutoDismissNotifyCheck_Changed(object sender, RoutedEventArgs e)
+    {
+        bool sysEnabled = SystemNotifyCheck.IsChecked ?? true;
+        bool autoDismiss = AutoDismissNotifyCheck.IsChecked ?? true;
+        AnimateDependentElement(NotificationDurationSlider, sysEnabled && autoDismiss, 0.4, animate: true);
+        if (!_isLoadingSettings) PushLivePreview();
+    }
+
     private void LanguageCombo_SelectionChanged(object sender, System.Windows.Controls.SelectionChangedEventArgs e)
     {
         if (_isLoadingSettings) return;

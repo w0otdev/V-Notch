@@ -25,6 +25,12 @@ public partial class MainWindow
 
         if (!isHovered && _isGestureActive) return;
 
+        if (_isAppNotificationBannerVisible)
+        {
+            AnimateAppNotificationHover(isHovered);
+            return;
+        }
+
         var light = MakeAnim(isHovered ? 0.35 : 0, _dur200, _easeQuadOut);
         HoverGlow.BeginAnimation(OpacityProperty, light);
         if (VNotch.Services.AnimationConfig.ReduceMotion)
@@ -55,6 +61,12 @@ public partial class MainWindow
         if (_isExpanded || _isAnimating || _isGreetingActive || _isVolumeIndicatorActive) return;
 
         if (!isHovered && _isGestureActive) return;
+
+        if (_isAppNotificationBannerVisible)
+        {
+            AnimateAppNotificationHover(isHovered);
+            return;
+        }
 
         ResetAnimationThumbnailOverlay();
 
@@ -659,12 +671,11 @@ public partial class MainWindow
 
     private void AnimateThumbnailAnimationRadius(double fromRadius, double toRadius, Duration duration, IEasingFunction easing, TimeSpan? beginTime = null)
     {
-        // Keep the endpoint underneath the explicit clock so the overlay's held
-        // final frame and its live-thumbnail handoff use the same radius.
-        CurrentThumbnailAnimationRadius = toRadius;
         this.BeginAnimation(CurrentThumbnailAnimationRadiusProperty, null);
+        CurrentThumbnailAnimationRadius = fromRadius;
 
         var anim = MakeAnim(fromRadius, toRadius, duration, easing, beginTime);
+        anim.Completed += (_, _) => CurrentThumbnailAnimationRadius = toRadius;
         this.BeginAnimation(CurrentThumbnailAnimationRadiusProperty, anim);
     }
 
