@@ -16,39 +16,43 @@ public sealed class WindowAnimationPolicyTests
     [Theory]
     [InlineData("default")]
     [InlineData("liquidglass")]
-    public void NotchIsExcludedBeforeFirstFrameAndRendererCleanupCannotExposeIt(string style) => SharedStaTestRunner.RunAsync(async () =>
+    public void NotchIsCapturableBeforeFirstFrameAndAfterRendererCleanup(string style) => SharedStaTestRunner.RunAsync(async () =>
     {
         using var fixture = new GreetingAcceptanceTests.MainWindowFixture("en", greeting: false,
             configureSettings: settings => { settings.NotchStyle = style; settings.InvisibleMode = false; });
         var window = fixture.Window;
         var hwnd = new WindowInteropHelper(window).EnsureHandle();
         Assert.True(GetWindowDisplayAffinity(hwnd, out uint affinity));
-        Assert.Equal(Win32Interop.WDA_EXCLUDEFROMCAPTURE, affinity);
+        Assert.Equal(Win32Interop.WDA_NONE, affinity);
 
-        // Stopping glass or switching to a solid theme cannot expose the notch.
+        // Renderer requests must never hide the notch outside Ghost mode.
+        Assert.True(await Task.Run(() => Win32Interop.SetWindowDisplayAffinity(hwnd, Win32Interop.WDA_EXCLUDEFROMCAPTURE)));
+        WindowAnimationPolicy.Attach(window);
+        Assert.True(GetWindowDisplayAffinity(hwnd, out affinity));
+        Assert.Equal(Win32Interop.WDA_NONE, affinity);
         Assert.True(await Task.Run(() => Win32Interop.SetWindowDisplayAffinity(hwnd, Win32Interop.WDA_NONE)));
         WindowAnimationPolicy.Attach(window);
         Assert.True(GetWindowDisplayAffinity(hwnd, out affinity));
-        Assert.Equal(Win32Interop.WDA_EXCLUDEFROMCAPTURE, affinity);
+        Assert.Equal(Win32Interop.WDA_NONE, affinity);
     });
 
     [Fact]
-    public void RendererCaptureExclusionSurvivesWindowPolicyRefresh() => SharedStaTestRunner.RunAsync(async () =>
+    public void RendererCannotExcludeCaptureOutsideGhostMode() => SharedStaTestRunner.RunAsync(async () =>
     {
         var window = new Window { ShowInTaskbar = false, ShowActivated = false, Opacity = 0 };
         try
         {
             var hwnd = new WindowInteropHelper(window).EnsureHandle();
             WindowAnimationPolicy.Attach(window);
-            // Glass applies exclusion from its capture worker, outside the WPF dispatcher.
+            // Legacy/backend requests cannot override the app's capture policy.
             Assert.True(await Task.Run(() => Win32Interop.SetWindowDisplayAffinity(hwnd, Win32Interop.WDA_EXCLUDEFROMCAPTURE)));
             Assert.True(GetWindowDisplayAffinity(hwnd, out uint affinity));
-            Assert.Equal(Win32Interop.WDA_EXCLUDEFROMCAPTURE, affinity);
+            Assert.Equal(Win32Interop.WDA_NONE, affinity);
 
             // The same refresh runs on visibility and composition changes.
             WindowAnimationPolicy.Attach(window);
             Assert.True(GetWindowDisplayAffinity(hwnd, out affinity));
-            Assert.Equal(Win32Interop.WDA_EXCLUDEFROMCAPTURE, affinity);
+            Assert.Equal(Win32Interop.WDA_NONE, affinity);
         }
         finally { window.Close(); }
     });

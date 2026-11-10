@@ -419,6 +419,7 @@ public partial class LiquidGlassConfig
 
     // Legacy CPU capture preference. GPU desktop capture always excludes the
     // glass window to prevent recursive feedback.
+    // Legacy value retained for settings compatibility. Ghost mode owns capture visibility.
     public bool HideFromScreenCapture { get; set; } = false;
 
     // New installations use the native-resolution GPU lens. Existing settings keep

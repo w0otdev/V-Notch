@@ -1,12 +1,10 @@
 #pragma warning disable S6640 // Direct unmanaged memory pointers and DIB raster processing are required for high-performance real-time glass rendering
 
 using System;
-using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
-using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Windows;
@@ -283,6 +281,7 @@ public sealed partial class LiquidGlassController : IDisposable
     private IntPtr _currentDisplayAffinityHwnd;
     private readonly object _displayAffinitySync = new();
     private int _captureAffinityFlushPending;
+    // Legacy API retained for saved presets. Only Ghost mode may hide windows.
     public bool HideFromScreenCapture
     {
         get => _hideFromCapture;
@@ -292,18 +291,12 @@ public sealed partial class LiquidGlassController : IDisposable
             _hideFromCapture = value;
             if (_isActive)
             {
-                _exactBitBltCapture = (_gpuMode || value) && SetWindowDisplayAffinitySafe(WDA_EXCLUDEFROMCAPTURE);
-                if (!_gpuMode && !value) SetWindowDisplayAffinitySafe(WDA_NONE);
-                if (!_gpuMode && !_exactBitBltCapture && _mag == null) RequestMagnifierFallback();
                 ForceRefresh();
             }
         }
     }
 
     private double _bitmapDpi = 96;
-
-    private IntPtr _fgProbeHwnd;
-    private bool _fgProbeResult;
 
     private volatile bool _gpuMode;
     private volatile bool _ultimateGpuMode;
@@ -864,9 +857,9 @@ public sealed partial class LiquidGlassController : IDisposable
         Interlocked.Increment(ref _refreshVersion);
         SignalWakeEventSafe();
 
-        _exactBitBltCapture = (_gpuMode || _hideFromCapture) && SetWindowDisplayAffinitySafe(WDA_EXCLUDEFROMCAPTURE);
-        if (!_gpuMode && !_hideFromCapture) SetWindowDisplayAffinitySafe(WDA_NONE);
-        if (!_gpuMode && !_exactBitBltCapture && _mag == null)
+        _exactBitBltCapture = WindowAnimationPolicy.InvisibleMode && SetWindowDisplayAffinitySafe(WDA_EXCLUDEFROMCAPTURE);
+        if (!WindowAnimationPolicy.InvisibleMode) SetWindowDisplayAffinitySafe(WDA_NONE);
+        if (!_exactBitBltCapture && _mag == null)
         {
             try
             {
@@ -882,9 +875,6 @@ public sealed partial class LiquidGlassController : IDisposable
 
         uint dpiNow = GetDpiForWindow(_getHwnd());
         _bitmapDpi = dpiNow > 0 ? dpiNow : 96;
-        _captureVisibilityUntilTicks = 0;
-        _overlayActiveCached = false;
-        _lastOverlayCheckTicks = 0;
         StartWorkerIfNeeded();
     }
 
@@ -1107,7 +1097,7 @@ public sealed partial class LiquidGlassController : IDisposable
             return ShouldContinueWorker(generation);
         }
 
-        if (HandleCaptureOverlay(frameIntervalMs))
+        if (ApplyCapturePolicy(frameIntervalMs))
             return true;
 
         if (Interlocked.Exchange(ref _captureAffinityFlushPending, 0) != 0)
@@ -1238,8 +1228,17 @@ public sealed partial class LiquidGlassController : IDisposable
         }
     }
 
-    private bool HandleCaptureOverlay(double frameIntervalMs)
+    private bool ApplyCapturePolicy(double frameIntervalMs)
     {
+        if (!WindowAnimationPolicy.InvisibleMode)
+        {
+            _exactBitBltCapture = false;
+            SetWindowDisplayAffinitySafe(WDA_NONE);
+            // Magnifier excludes our windows from its own capture, independently of
+            // global display affinity. Screenshots and recordings can always see us.
+            if (_mag == null) RequestMagnifierFallback();
+            return false;
+        }
         if (_gpuMode)
         {
             // Desktop Duplication needs our top-level window excluded to avoid feedback.
@@ -1252,26 +1251,6 @@ public sealed partial class LiquidGlassController : IDisposable
             }
             return false;
         }
-        if (!_hideFromCapture)
-        {
-            if (_magReady && _mag != null)
-            {
-                if (_exactBitBltCapture)
-                {
-                    _exactBitBltCapture = false;
-                    SetWindowDisplayAffinitySafe(WDA_NONE);
-                }
-                return false;
-            }
-            if (!_hideFromCapture && IsCaptureOverlayActive()) { _exactBitBltCapture = false; SetWindowDisplayAffinitySafe(WDA_NONE); WaitForIdleOrEvent((int)Math.Max(15, frameIntervalMs)); return true; }
-            if (!_exactBitBltCapture)
-            {
-                _exactBitBltCapture = SetWindowDisplayAffinitySafe(WDA_EXCLUDEFROMCAPTURE);
-            }
-            if (_mag == null) RequestMagnifierFallback();
-            return false;
-        }
-
         if (!_exactBitBltCapture)
         {
             _exactBitBltCapture = SetWindowDisplayAffinitySafe(WDA_EXCLUDEFROMCAPTURE);
@@ -1452,33 +1431,6 @@ public sealed partial class LiquidGlassController : IDisposable
         return _cachedRegion;
     }
 
-    private long _lastOverlayCheckTicks;
-    private bool _overlayActiveCached;
-    private volatile bool _scannedOverlayActive;
-    private int _overlayScanQueued;
-    private long _captureVisibilityUntilTicks;
-
-    private const int VK_SNAPSHOT = 0x2C;
-    private const int VK_SHIFT = 0x10;
-    private const int VK_S = 0x53;
-    private const int VK_LWIN = 0x5B;
-    private const int VK_RWIN = 0x5C;
-
-    private bool CaptureHotkeyRequested(long now)
-    {
-        if (now < _nextCaptureHotkeyProbeTicks) return false;
-        _nextCaptureHotkeyProbeTicks = now + 8;
-        short snapshotState = GetAsyncKeyState(VK_SNAPSHOT);
-        bool snipChord = (GetAsyncKeyState(VK_SHIFT) & 0x8000) != 0 &&
-            (GetAsyncKeyState(VK_S) & 0x8000) != 0 &&
-            (((GetAsyncKeyState(VK_LWIN) | GetAsyncKeyState(VK_RWIN)) & 0x8000) != 0);
-        if ((snapshotState & 0x8001) == 0 && !snipChord) return false;
-
-        _captureVisibilityUntilTicks = now + 1400;
-        _overlayActiveCached = true;
-        return true;
-    }
-
     private void WaitForIdleOrEvent(int timeoutMs)
     {
         if (!_isActive) return;
@@ -1558,13 +1510,6 @@ public sealed partial class LiquidGlassController : IDisposable
     {
         long targetTicks = Stopwatch.GetTimestamp() + StopwatchTicksFromMilliseconds(Math.Max(0.1, milliseconds));
 
-        if (!_gpuMode && !_hideFromCapture && _exactBitBltCapture && CaptureHotkeyRequested(Environment.TickCount64))
-        {
-            _exactBitBltCapture = false;
-            SetWindowDisplayAffinitySafe(WDA_NONE);
-            return;
-        }
-
         bool isAnimating = _animating;
 
         while (_isActive)
@@ -1621,13 +1566,6 @@ public sealed partial class LiquidGlassController : IDisposable
                 return false;
             }
 
-            if (!_gpuMode && !_hideFromCapture && _exactBitBltCapture && CaptureHotkeyRequested(Environment.TickCount64))
-            {
-                _exactBitBltCapture = false;
-                SetWindowDisplayAffinitySafe(WDA_NONE);
-                return false;
-            }
-
             return true;
         }
 
@@ -1641,149 +1579,11 @@ public sealed partial class LiquidGlassController : IDisposable
             return false;
         }
 
-        if (!_gpuMode && !_hideFromCapture && _exactBitBltCapture && CaptureHotkeyRequested(Environment.TickCount64))
-        {
-            _exactBitBltCapture = false;
-            SetWindowDisplayAffinitySafe(WDA_NONE);
-            return false;
-        }
-
         return true;
     }
 
     private static long StopwatchTicksFromMilliseconds(double milliseconds) =>
         Math.Max(1, (long)Math.Round(milliseconds * Stopwatch.Frequency / 1000.0));
-
-    private bool IsCaptureOverlayActive()
-    {
-        long now = Environment.TickCount64;
-        if (CaptureHotkeyRequested(now))
-            return true;
-
-        if (now < _captureVisibilityUntilTicks) return true;
-
-        if (ForegroundIsCaptureTool())
-        {
-            _overlayActiveCached = true;
-            _lastOverlayCheckTicks = now;
-            _captureVisibilityUntilTicks = now + 800;
-            return true;
-        }
-
-        // Enumeration is a fallback for capture tools which do not take focus.
-        // Keep its DWM/process queries off the frame capture worker.
-        _overlayActiveCached = _scannedOverlayActive;
-        if (now - _lastOverlayCheckTicks < 500) return _overlayActiveCached;
-        _lastOverlayCheckTicks = now;
-        if (Interlocked.CompareExchange(ref _overlayScanQueued, 1, 0) == 0)
-#pragma warning disable S8949
-            _ = Task.Run(() =>
-            {
-                try { _scannedOverlayActive = DetectCaptureOverlay(); }
-                finally
-                {
-                    Interlocked.Exchange(ref _overlayScanQueued, 0);
-                    SignalWakeEventSafe();
-                }
-            });
-#pragma warning restore S8949
-        if (_overlayActiveCached)
-            _captureVisibilityUntilTicks = now + 800;
-        return _overlayActiveCached;
-    }
-
-    private bool ForegroundIsCaptureTool()
-    {
-        IntPtr fg = ZOrderManager.GetForegroundWindowCached();
-        if (fg == IntPtr.Zero) return false;
-        if (fg == _fgProbeHwnd) return _fgProbeResult;
-
-        _fgProbeHwnd = fg;
-        _fgProbeResult = false;
-        try
-        {
-            if (WindowClassContains(fg, "ScreenClipping"))
-            {
-                _fgProbeResult = true;
-                return true;
-            }
-
-            GetWindowThreadProcessId(fg, out uint pid);
-            if (pid != 0)
-            {
-                string name = SafeProcessName(pid);
-                if (IsCaptureProcess(name))
-                {
-                    _fgProbeResult = true;
-                    return true;
-                }
-            }
-        }
-        catch
-        {
-            /* probe may fail if window handle becomes invalid */
-        }
-        return _fgProbeResult;
-    }
-
-    private static bool IsCaptureProcess(string name) => ScreenCaptureActivity.IsCaptureProcessName(name);
-
-    private static unsafe bool DetectCaptureOverlay()
-    {
-        // The native layer walks the top-level windows; process names are resolved (and cached) only for candidates.
-        VnLargeWindow* windows = stackalloc VnLargeWindow[CaptureOverlayScanCapacity];
-        try
-        {
-            int count = EnumLargeVisibleWindows(400, "ScreenClipping", new Span<VnLargeWindow>(windows, CaptureOverlayScanCapacity));
-            for (int i = 0; i < count; i++)
-            {
-                if (windows[i].ClassMatches != 0) return true;
-                if (windows[i].ProcessId != 0 && IsCaptureProcess(SafeProcessName(windows[i].ProcessId))) return true;
-            }
-        }
-        catch
-        {
-            /* EnumWindows may fail during desktop switch */
-        }
-        return false;
-    }
-
-    private const int CaptureOverlayScanCapacity = 256;
-
-    private long _nextCaptureHotkeyProbeTicks;
-
-    private static readonly ConcurrentDictionary<uint, (string Name, long ExpireTicks)> _pidNameCache = new();
-
-    private static string SafeProcessName(uint pid)
-    {
-        long now = Environment.TickCount64;
-        if (_pidNameCache.TryGetValue(pid, out var cached) && now < cached.ExpireTicks)
-            return cached.Name;
-
-        string name = string.Empty;
-        try
-        {
-            name = ProcessNameResolver.TryGetName(pid) ?? string.Empty;
-        }
-        catch
-        {
-            name = string.Empty;
-        }
-
-        if (_pidNameCache.Count > 256)
-        {
-            foreach (var kv in _pidNameCache)
-            {
-                if (now >= kv.Value.ExpireTicks)
-                    _pidNameCache.TryRemove(kv.Key, out _);
-            }
-            if (_pidNameCache.Count > 256)
-                _pidNameCache.Clear();
-        }
-
-        _pidNameCache[pid] = (name, now + 15000);
-        return name;
-    }
 
     private int _regionQueryQueued;
     private CaptureRegion? _queriedRegion;
@@ -1874,17 +1674,17 @@ public sealed partial class LiquidGlassController : IDisposable
         if (displayW <= 1 || displayH <= 1) return false;
 
         bool gpuMode = _gpuMode;
-        if (gpuMode)
+        if (gpuMode && WindowAnimationPolicy.InvisibleMode)
         {
             var gpuDims = ComputeFrameDimensions(region, p, true, false, displayW, displayH);
             _outScale = gpuDims.OutScale;
             return ProcessDesktopGpuFrame(p, region, gpuDims, generation, blurSigma, refreshVersion);
         }
-        // Keep BitBlt running until the Magnifier has a usable frame for this crop.
+        // Keep the plain material (or Ghost-mode BitBlt) until Magnifier has a usable crop.
         // IsReady only means initialization succeeded; promoting it blindly every
         // three seconds used to freeze presentation for another 60 failed captures.
         long now = Environment.TickCount64;
-        if ((!_exactBitBltCapture || !_hideFromCapture) && !_magReady && _mag?.IsReady == true &&
+        if (!_exactBitBltCapture && !_magReady && _mag?.IsReady == true &&
             (now >= _nextMagnifierRetryTicks || now < _magnifierProbeUntilTicks))
         {
             if (now >= _nextMagnifierRetryTicks)
@@ -1898,7 +1698,7 @@ public sealed partial class LiquidGlassController : IDisposable
             if (TryRestoreMagnifier(probe.SrcX, probe.SrcY, probe.PhysSrcW, probe.PhysSrcH))
                 _magnifierProbeUntilTicks = 0;
         }
-        bool useMag = (!_exactBitBltCapture || !_hideFromCapture) && _magReady && _mag != null;
+        bool useMag = !_exactBitBltCapture && _magReady && _mag != null;
         var dims = ComputeFrameDimensions(region, p, gpuMode, useMag, displayW, displayH);
         _outScale = dims.OutScale;
 
@@ -1921,7 +1721,7 @@ public sealed partial class LiquidGlassController : IDisposable
         if (_mag?.HasUsableFrame(x, y, width, height) != true) return false;
         _magFailStreak = 0;
         _magReady = true;
-        if (!_hideFromCapture && _exactBitBltCapture)
+        if (!WindowAnimationPolicy.InvisibleMode && _exactBitBltCapture)
         {
             _exactBitBltCapture = false;
             SetWindowDisplayAffinitySafe(WDA_NONE);
@@ -2048,6 +1848,8 @@ public sealed partial class LiquidGlassController : IDisposable
             if (_presentationPaused || !_isActive || ctx.GpuMode != _gpuMode || generation != Volatile.Read(ref _renderGeneration))
                 return false;
 
+            if (ctx.GpuMode)
+                return ProcessDesktopGpuFrame(p, region, dims, generation, ctx.BlurSigma, ctx.RefreshVersion, _dibBits);
             return ProcessCpuFrame(p, dims.SrcW, dims.SrcH, ctx.MapsChanged, ctx.BlurSigma, ctx.BlurPassRadii, ctx.RefreshVersion);
         }
         finally
@@ -2083,7 +1885,7 @@ public sealed partial class LiquidGlassController : IDisposable
         {
             _magReady = false;
             _nextMagnifierRetryTicks = Environment.TickCount64 + 3000;
-            if (!_exactBitBltCapture && (!_hideFromCapture || !IsCaptureOverlayActive()))
+            if (!_exactBitBltCapture && WindowAnimationPolicy.InvisibleMode)
             {
                 _exactBitBltCapture = SetWindowDisplayAffinitySafe(WDA_EXCLUDEFROMCAPTURE);
             }
@@ -2096,7 +1898,9 @@ public sealed partial class LiquidGlassController : IDisposable
     private bool BitBltCapture(BackdropCaptureParams cp, out bool isSyntheticBackdrop)
     {
         isSyntheticBackdrop = false;
-        if (!_exactBitBltCapture && !_magReady && (!_hideFromCapture || !IsCaptureOverlayActive()))
+        if (!WindowAnimationPolicy.InvisibleMode)
+            _exactBitBltCapture = false;
+        if (!_exactBitBltCapture && !_magReady && WindowAnimationPolicy.InvisibleMode)
         {
             _exactBitBltCapture = SetWindowDisplayAffinitySafe(WDA_EXCLUDEFROMCAPTURE);
         }

@@ -5,6 +5,7 @@
 #include <stdexcept>
 
 #pragma comment(lib, "d3d9.lib")
+bool useUploadedFixtures = false;
 void Require(bool value, const char* message) { if (!value) throw std::runtime_error(message); }
 bool NearPixels(const std::vector<uint32_t>& actual, const std::vector<uint32_t>& expected) {
     if (actual.size() != expected.size()) return false;
@@ -16,15 +17,21 @@ bool NearPixels(const std::vector<uint32_t>& actual, const std::vector<uint32_t>
     return true;
 }
 
-std::vector<uint32_t> RenderFixture(GpuGlass& gpu, Frame frame, const std::vector<uint32_t>& pixels, IDirect3DSurface9* presentation = nullptr) {
-    auto fixture = gpu.MakeTarget(frame.width, frame.height);
-    gpu.context->UpdateSubresource(fixture.texture.Get(), 0, nullptr, pixels.data(), frame.width * 4, 0);
-    gpu.desktopTexture = fixture.texture; gpu.desktopView = fixture.srv;
-    gpu.outputDesc.DesktopCoordinates = {0, 0, frame.width, frame.height};
-    gpu.outputDesc.Rotation = DXGI_MODE_ROTATION_IDENTITY;
+std::vector<uint32_t> RenderFixture(GpuGlass& gpu, Frame frame, const std::vector<uint32_t>& pixels,
+    IDirect3DSurface9* presentation = nullptr, UINT stride = 0) {
+    if (!stride) stride = frame.width * 4;
+    if (!useUploadedFixtures) {
+        auto fixture = gpu.MakeTarget(frame.width, frame.height);
+        gpu.context->UpdateSubresource(fixture.texture.Get(), 0, nullptr, pixels.data(), stride, 0);
+        gpu.desktopTexture = fixture.texture; gpu.desktopView = fixture.srv;
+        gpu.outputDesc.DesktopCoordinates = {frame.x, frame.y, frame.x + frame.width, frame.y + frame.height};
+        gpu.outputDesc.Rotation = DXGI_MODE_ROTATION_IDENTITY;
+        gpu.usingUploadedBackdrop = false;
+    }
     UINT outputIndex = gpu.nextOutput;
     ULONGLONG deadline = GetTickCount64() + 5000;
-    while (gpu.RenderCaptured(frame) == S_FALSE && GetTickCount64() < deadline) Sleep(1);
+    while ((useUploadedFixtures ? gpu.RenderPixels(frame, reinterpret_cast<const uint8_t*>(pixels.data()), stride)
+        : gpu.RenderCaptured(frame)) == S_FALSE && GetTickCount64() < deadline) Sleep(1);
     Require(gpu.pending, "GPU completion query missing");
     Check(gpu.WaitReady(4));
     ComPtr<IDirect3DSurface9> ready;
@@ -74,6 +81,7 @@ std::vector<uint32_t> RenderFixture(GpuGlass& gpu, Frame frame, const std::vecto
 }
 
 int main(int argc, char** argv) {
+    useUploadedFixtures = argc > 1 && strcmp(argv[1], "--uploaded-backdrop") == 0;
     HWND hwnd = CreateWindowExW(0, L"STATIC", L"VNotch GPU probe", WS_POPUP, -32000, -32000, 1, 1, nullptr, nullptr, nullptr, nullptr);
     try {
         static_assert(sizeof(Frame) == 536, "Managed/native frame layout changed");
@@ -109,6 +117,54 @@ int main(int argc, char** argv) {
             DestroyWindow(hwnd); return 0;
         }
         GpuGlass gpu; gpu.Initialize(device9.Get(), 128, 96);
+        int64_t validationHandle = 0;
+        Check(vn_glass_gpu_create(device9.Get(), 128, 96, &validationHandle));
+        Frame invalid{}; invalid.width = 8; invalid.height = 4;
+        std::array<uint8_t, 128> smallPixels{};
+        Require(vn_glass_gpu_render_pixels(validationHandle, &invalid, smallPixels.data(), 127, 32) == E_INVALIDARG,
+            "Upload accepted a truncated last row");
+        Require(vn_glass_gpu_render_pixels(validationHandle, &invalid, smallPixels.data(), 128, 31) == E_INVALIDARG,
+            "Upload accepted a stride shorter than its row");
+        vn_glass_gpu_destroy(validationHandle);
+        if (useUploadedFixtures) {
+            Frame uploaded{};
+            ComPtr<IDirect3DSurface9> presentation;
+            Check(device9->CreateRenderTarget(128, 96, D3DFMT_A8R8G8B8, D3DMULTISAMPLE_NONE, 0, FALSE, &presentation, nullptr));
+            for (int cycle = 0; cycle < 120; ++cycle) {
+                uploaded.x = -500; uploaded.y = 120;
+                uploaded.width = cycle % 2 ? 95 : 31;
+                uploaded.height = cycle % 2 ? 63 : 17;
+                uploaded.blur = cycle % 3 == 0 ? 0.0f : cycle % 3 == 1 ? 5.0f : 60.0f;
+                uint32_t color = cycle % 2 ? 0xffa06020 : 0xff204080;
+                const int rowPixels = uploaded.width + 8;
+                std::vector<uint32_t> padded(rowPixels * uploaded.height, 0xff00ff00);
+                for (int y = 0; y < uploaded.height; ++y)
+                    std::fill_n(padded.begin() + y * rowPixels, uploaded.width, color);
+                std::vector<uint32_t> expected(uploaded.width * uploaded.height, color);
+                Require(NearPixels(RenderFixture(gpu, uploaded, padded, presentation.Get(), rowPixels * 4), expected),
+                    "Uploaded backdrop corrupted pixels, stride, crop origin or pooled capacity");
+            }
+            uploaded.width = 96; uploaded.height = 64; uploaded.blur = 0; uploaded.refract = 1;
+            const float lens[] = {96,64,80,48,8,8,12,12,3,.7f,2.3f,5.2f,6.9f,1,.06f,.25f,0,.15f,0,0,1,0,.5f,.5f,0,0,0,1.1f,.15f,-.15f,1.65f,0};
+            for (int i = 0; i < 32; ++i) uploaded.lens[i][0] = lens[i];
+            std::vector<uint32_t> uniform(uploaded.width * uploaded.height, 0xffa06020);
+            auto lensPixels = RenderFixture(gpu, uploaded, uniform, presentation.Get());
+            Require(NearPixels({lensPixels[24*96+40]}, {0xffa06020}), "Uploaded lens changed the neutral center");
+            Require(lensPixels[63*96+95] == 0 && (lensPixels[0] >> 24) == 0, "Uploaded lens lost rounded transparency");
+            for (int y = 0; y < uploaded.height; ++y)
+                for (int x = 0; x < uploaded.width; ++x) uniform[y*uploaded.width+x] = 0xff000000 | (x*2 << 16) | (x*2 << 8) | x*2;
+            auto neutral = RenderFixture(gpu, uploaded, uniform, presentation.Get());
+            uploaded.lens[19][0] = 2;
+            auto chromatic = RenderFixture(gpu, uploaded, uniform, presentation.Get());
+            bool dispersed = false;
+            for (size_t i = 0; i < neutral.size(); ++i) {
+                Require((neutral[i] & 0xff00ff00) == (chromatic[i] & 0xff00ff00), "Uploaded dispersion changed green/alpha");
+                dispersed |= neutral[i] != chromatic[i];
+            }
+            Require(dispersed, "Uploaded lens lost RGB dispersion");
+            printf("PASS: uploaded backdrop validation, 120 padded/moving/resizing frames, and refraction/alpha/dispersion.\n");
+            DestroyWindow(hwnd); return 0;
+        }
         printf("GPU completion fence: context=%d fence=%d event=%d\n", gpu.fenceContext != nullptr,
             gpu.completionFence != nullptr, static_cast<bool>(gpu.completionEvent));
         Frame f{}; f.width = 96; f.height = 64;

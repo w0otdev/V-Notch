@@ -56,7 +56,10 @@ public sealed partial class MediaArtworkService : IMediaArtworkService, IDisposa
     private const long MaxArtworkDownloadSizeBytes = 8 * 1024 * 1024; // 8 MiB
     private const int MaxDecodePixelDimension = 512;
     private static readonly object DecodeCacheLock = new();
-    private static readonly Dictionary<string, BitmapImage> DecodedImages = new();
+    private static readonly Dictionary<string, WeakReference<BitmapImage>> DecodedImages = new();
+    // Keep the current artwork warm. History can be reclaimed while images still
+    // owned by a media session or transition remain reusable through weak entries.
+    private static BitmapImage? _recentDecodedImage;
 
     private static readonly HttpClient _httpClient = new(NetworkPrivacy.Handler(NetworkFeature.Artwork));
     private readonly HttpClient _client;
@@ -96,10 +99,12 @@ public sealed partial class MediaArtworkService : IMediaArtworkService, IDisposa
         lock (DecodeCacheLock)
         {
             DecodedImages.Clear();
+            _recentDecodedImage = null;
         }
         lock (_cropCacheLock)
         {
             _cropCache.Clear();
+            _recentCropImage = null;
         }
         ArtworkAnalysisSource.ClearCache();
         LyricsBackgroundBrightness.ClearCache();
@@ -200,8 +205,9 @@ public sealed partial class MediaArtworkService : IMediaArtworkService, IDisposa
             HashCode.Combine(Fingerprint, ForceCenterCrop, SmartCropEnabled);
     }
 
-    private static readonly Dictionary<CropCacheKey, (BitmapSource Image, DateTime LastAccessedUtc)> _cropCache = new();
+    private static readonly Dictionary<CropCacheKey, (WeakReference<BitmapSource> Image, long Bytes, DateTime LastAccessedUtc)> _cropCache = new();
     private static readonly object _cropCacheLock = new();
+    private static BitmapSource? _recentCropImage;
     private const int MaxCropCacheSize = 24;
     private const long MaxCropCacheBytes = 8 * 1024 * 1024;
 
@@ -220,10 +226,11 @@ public sealed partial class MediaArtworkService : IMediaArtworkService, IDisposa
             var cacheKey = new CropCacheKey(ArtworkFingerprint.Create(source), forceCenterCrop, smartCropEnabled);
             lock (_cropCacheLock)
             {
-                if (_cropCache.TryGetValue(cacheKey, out var cached))
+                if (_cropCache.TryGetValue(cacheKey, out var cached) && cached.Image.TryGetTarget(out var image))
                 {
-                    _cropCache[cacheKey] = (cached.Image, DateTime.UtcNow);
-                    return cached.Image;
+                    _cropCache[cacheKey] = (cached.Image, cached.Bytes, DateTime.UtcNow);
+                    _recentCropImage = image;
+                    return image;
                 }
             }
 
@@ -285,7 +292,7 @@ public sealed partial class MediaArtworkService : IMediaArtworkService, IDisposa
         lock (_cropCacheLock)
         {
             _cropCache.Remove(cacheKey);
-            long retainedBytes = _cropCache.Values.Sum(entry => CropImageBytes(entry.Image));
+            long retainedBytes = _cropCache.Values.Sum(entry => entry.Bytes);
             while (_cropCache.Count >= MaxCropCacheSize || retainedBytes + imageBytes > MaxCropCacheBytes)
             {
                 CropCacheKey oldestKey = default;
@@ -300,12 +307,13 @@ public sealed partial class MediaArtworkService : IMediaArtworkService, IDisposa
                 }
                 if (oldestTime != DateTime.MaxValue)
                 {
-                    retainedBytes -= CropImageBytes(_cropCache[oldestKey].Image);
+                    retainedBytes -= _cropCache[oldestKey].Bytes;
                     _cropCache.Remove(oldestKey);
                 }
                 else break;
             }
-            _cropCache[cacheKey] = (image, DateTime.UtcNow);
+            _cropCache[cacheKey] = (new(image), imageBytes, DateTime.UtcNow);
+            _recentCropImage = image;
         }
 
         return image;
@@ -426,7 +434,13 @@ public sealed partial class MediaArtworkService : IMediaArtworkService, IDisposa
                 ct.ThrowIfCancellationRequested();
                 string key = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(bytes.AsSpan(0, length ?? bytes.Length)));
                 lock (DecodeCacheLock)
-                    if (DecodedImages.TryGetValue(key, out var cached)) return cached;
+                {
+                    if (DecodedImages.TryGetValue(key, out var cached) && cached.TryGetTarget(out var decoded))
+                    {
+                        _recentDecodedImage = decoded;
+                        return decoded;
+                    }
+                }
                 using var probeStream = new MemoryStream(bytes, 0, length ?? bytes.Length, writable: false);
                 var decoder = BitmapDecoder.Create(probeStream, BitmapCreateOptions.DelayCreation, BitmapCacheOption.None);
                 var frame = decoder.Frames.Count > 0 ? decoder.Frames[0] : null;
@@ -457,8 +471,10 @@ public sealed partial class MediaArtworkService : IMediaArtworkService, IDisposa
                 image.Freeze();
                 lock (DecodeCacheLock)
                 {
-                    if (DecodedImages.Count >= 4) DecodedImages.Remove(DecodedImages.Keys.First());
-                    DecodedImages[key] = image;
+                    if (!DecodedImages.ContainsKey(key) && DecodedImages.Count >= 4)
+                        DecodedImages.Remove(DecodedImages.Keys.First());
+                    DecodedImages[key] = new(image);
+                    _recentDecodedImage = image;
                 }
                 return image;
             }

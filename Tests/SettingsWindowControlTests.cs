@@ -32,23 +32,19 @@ public sealed class SettingsWindowControlTests
     });
 
     [Fact]
-    public void GlassCapturePreferenceCanBeEditedAndSurvivesPresets() => SharedStaTestRunner.Run(() =>
+    public void LegacyGlassCapturePreferenceIsRetiredInFavorOfGhostMode() => SharedStaTestRunner.Run(() =>
     {
         using var fixture = new Fixture();
         var window = fixture.Window;
         window.NavigateToSection("Skins");
         window.SkinCombo.SelectedIndex = 1;
-        var check = Assert.IsType<CheckBox>(window.FindName("GlassHideCaptureCheck"));
+        Assert.Null(window.FindName("GlassHideCaptureCheck"));
         window.GpuRefractionCheck.IsChecked = true;
-        Assert.False(check.IsEnabled);
+        Assert.False(window.ReadSettingsFromUi().InvisibleMode);
         window.GpuRefractionCheck.IsChecked = false;
-        Assert.True(check.IsEnabled);
-        check.IsChecked = true;
-        Assert.True(window.ReadSettingsFromUi().LiquidGlass.HideFromScreenCapture);
+        Assert.False(window.ReadSettingsFromUi().InvisibleMode);
         window.GlassPresetCombo.SelectedIndex = 1;
-        Assert.True(window.ReadSettingsFromUi().LiquidGlass.HideFromScreenCapture);
-        check.IsChecked = false;
-        Assert.False(window.ReadSettingsFromUi().LiquidGlass.HideFromScreenCapture);
+        Assert.False(window.ReadSettingsFromUi().InvisibleMode);
     });
 
     [Fact]

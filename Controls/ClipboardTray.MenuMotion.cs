@@ -26,7 +26,7 @@ public sealed partial class ClipboardTray
 
     private void QueueMenuEntrance(FrameworkElement surface, FrameworkElement? target, Func<bool> isOpen, bool fresh, bool submenu = false)
     {
-        if (target == null && MenuKeyboardInput)
+        if (MenuKeyboardInput || AnimationConfig.ReduceMotion || !AnimationConfig.ClientAreaAnimation)
         {
             _pendingMenuEntrances.Remove(surface);
             ResetMenuSurface(surface);
@@ -59,7 +59,8 @@ public sealed partial class ClipboardTray
     {
         // Native fade releases capture and disables hit testing immediately, then
         // retains the popup window just long enough to finish its dismissal.
-        popup.PopupAnimation = !AnimationConfig.ReduceMotion ? PopupAnimation.Fade : PopupAnimation.None;
+        popup.PopupAnimation = !AnimationConfig.ReduceMotion && AnimationConfig.ClientAreaAnimation && !MenuKeyboardInput
+            ? PopupAnimation.Fade : PopupAnimation.None;
     }
 
     internal static void AnimateMenuSurface(FrameworkElement surface, FrameworkElement? target, bool fresh, bool submenu = false)
@@ -67,7 +68,7 @@ public sealed partial class ClipboardTray
         double opacity = fresh ? 0 : surface.Opacity;
         var rendered = surface.RenderTransform.Value;
         bool isAnchored = target != null;
-        double anchoredScale = submenu ? 0.88 : 0.80;
+        double anchoredScale = 0.94;
         double unanchoredScale = submenu ? 0.98 : 0.96;
         double freshScale = isAnchored ? anchoredScale : unanchoredScale;
         double scaleFrom = fresh ? freshScale : rendered.M11;
@@ -75,11 +76,11 @@ public sealed partial class ClipboardTray
         surface.Opacity = 1;
         surface.RenderTransform = Transform.Identity;
 
-        if (target == null && MenuKeyboardInput) return;
+        if (MenuKeyboardInput || AnimationConfig.ReduceMotion || !AnimationConfig.ClientAreaAnimation) return;
 
         bool reduced = AnimationConfig.ReduceMotion;
         int unanchoredDuration = submenu ? MotionStandard : 200;
-        int activeDuration = isAnchored ? 260 : unanchoredDuration;
+        int activeDuration = isAnchored ? 220 : unanchoredDuration;
         int duration = reduced ? 80 : activeDuration;
         if (!reduced)
         {
@@ -91,14 +92,14 @@ public sealed partial class ClipboardTray
             surface.RenderTransform = new TransformGroup { Children = { scale, slide } };
 
             // Travel towards the settled position from the trigger-facing edge with authentic Apple spring physics
-            double anchoredX = anchor.X <= 0.5 ? -14 : 14;
+            double anchoredX = anchor.X <= 0.5 ? -8 : 8;
             double freshX = isAnchored ? anchoredX : (anchor.X - 0.5) * 8;
             double fromX = fresh ? freshX : rendered.OffsetX;
-            double anchoredY = anchor.Y <= 0.5 ? -10 : 10;
+            double anchoredY = anchor.Y <= 0.5 ? -6 : 6;
             double freshY = isAnchored ? anchoredY : (anchor.Y - 0.5) * 8;
             double fromY = fresh ? freshY : rendered.OffsetY;
 
-            var ease = isAnchored ? (IEasingFunction)AppleSpring : TrayMotion.EaseOut;
+            var ease = isAnchored ? (IEasingFunction)AnimationPrimitives._easeAppleOut : TrayMotion.EaseOut;
             scale.BeginAnimation(ScaleTransform.ScaleXProperty, MenuAnimation(scaleFrom, 1, duration, ease));
             scale.BeginAnimation(ScaleTransform.ScaleYProperty, MenuAnimation(scaleFrom, 1, duration, ease));
             slide.BeginAnimation(TranslateTransform.XProperty, MenuAnimation(fromX, 0, duration, ease));

@@ -1848,12 +1848,6 @@
                                                             SelectionChanged="GlassPresetCombo_SelectionChanged"/>
                                                 </StackPanel>
                                             </Border>
-                                            <Border Style="{StaticResource SettingRowBorder}">
-                                                <StackPanel>
-                                                    <CheckBox x:Name="GlassHideCaptureCheck" Checked="GlassConfigCheck_Changed" Unchecked="GlassConfigCheck_Changed"/>
-                                                    <TextBlock x:Name="GlassHideCaptureHint" Style="{StaticResource SettingHintText}"/>
-                                                </StackPanel>
-                                            </Border>
                                             <TextBlock x:Name="GlassAdvancedWarning"
                                                        Text="Đây là cài đặt chuyên sâu, ĐỪNG NÊN ĐỘNG VÀO trừ khi bạn biết mình đang làm gì."
                                                        Foreground="#E0A330"

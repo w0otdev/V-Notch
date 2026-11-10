@@ -283,7 +283,7 @@ public sealed class ClipboardTrayMenuRegressionTests
     });
 
     [Fact]
-    public void MenuItemBrightensSmoothlyAndSettlesAfterRapidHighlightChanges() => SharedStaTestRunner.RunAsync(async () =>
+    public void MenuItemInkBrightensSmoothlyWithoutPaintingASecondHighlight() => SharedStaTestRunner.RunAsync(async () =>
     {
         bool previousReducedMotion = AnimationConfig.ReduceMotion;
         AnimationConfig.SetReduceMotion(false);
@@ -304,7 +304,7 @@ public sealed class ClipboardTrayMenuRegressionTests
             // State changes in one input turn are coalesced before rendering.
             await Dispatcher.Yield(DispatcherPriority.Render);
             Assert.True(content.HasAnimatedProperties);
-            Assert.True(((SolidColorBrush)row.Background).HasAnimatedProperties);
+            Assert.Equal(Colors.Transparent, ((SolidColorBrush)row.Background).Color);
             await WpfFrameWaiter.UntilAsync(() => content.Opacity >= idleOpacity + 0.01, "highlight starts brightening");
             Assert.InRange(content.Opacity, idleOpacity + 0.01, 1.0);
             highlighted.SetValue(item, false);

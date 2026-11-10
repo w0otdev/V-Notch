@@ -527,7 +527,9 @@
       <Grid Margin="10,8,10,12">
        <Border x:Name="SubmenuSurface" Style="{StaticResource TrayMenuSurface}" MinWidth="190">
         <ScrollViewer MaxHeight="420" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" CanContentScroll="True">
-         <StackPanel IsItemsHost="True" KeyboardNavigation.DirectionalNavigation="Cycle"/>
+         <local:FluidMenuSurface x:Name="SubmenuHighlightHost">
+          <StackPanel IsItemsHost="True" KeyboardNavigation.DirectionalNavigation="Cycle"/>
+         </local:FluidMenuSurface>
         </ScrollViewer>
        </Border>
       </Grid>
@@ -535,14 +537,12 @@
     </Grid>
     <ControlTemplate.Triggers>
      <Trigger Property="IsHighlighted" Value="True">
-      <Setter TargetName="MenuRow" Property="local:TrayMotion.Background" Value="#18FFFFFF"/>
-      <Setter TargetName="MenuRow" Property="local:TrayMotion.BorderBrush" Value="#0DFFFFFF"/>
+      <Setter TargetName="MenuRow" Property="local:FluidMenuSurface.IsRowActive" Value="True"/>
       <Setter Property="Foreground" Value="White"/>
       <Setter TargetName="MenuContent" Property="local:TrayMotion.Opacity" Value="1"/>
      </Trigger>
      <Trigger Property="IsSubmenuOpen" Value="True">
-      <Setter TargetName="MenuRow" Property="local:TrayMotion.Background" Value="#18FFFFFF"/>
-      <Setter TargetName="MenuRow" Property="local:TrayMotion.BorderBrush" Value="#0DFFFFFF"/>
+      <Setter TargetName="MenuRow" Property="local:FluidMenuSurface.KeepsRowActive" Value="True"/>
       <Setter Property="Foreground" Value="White"/>
       <Setter TargetName="MenuContent" Property="local:TrayMotion.Opacity" Value="1"/>
      </Trigger>
@@ -561,8 +561,6 @@
        <Condition Binding="{Binding Tag, RelativeSource={RelativeSource Self}}" Value="danger"/>
        <Condition Binding="{Binding IsHighlighted, RelativeSource={RelativeSource Self}}" Value="True"/>
       </MultiDataTrigger.Conditions>
-      <Setter TargetName="MenuRow" Property="local:TrayMotion.Background" Value="#18FF453A"/>
-      <Setter TargetName="MenuRow" Property="local:TrayMotion.BorderBrush" Value="#14FF453A"/>
       <Setter Property="Foreground" Value="#FF6961"/>
      </MultiDataTrigger>
      <Trigger Property="IsEnabled" Value="False">
@@ -581,7 +579,9 @@
    <Setter Property="Template"><Setter.Value><ControlTemplate TargetType="ContextMenu">
     <Grid Margin="10,8,10,12">
      <Border x:Name="MenuSurface" Style="{StaticResource TrayMenuSurface}" MinWidth="220">
-      <StackPanel IsItemsHost="True" KeyboardNavigation.DirectionalNavigation="Cycle"/>
+      <local:FluidMenuSurface x:Name="MenuHighlightHost">
+       <StackPanel IsItemsHost="True" KeyboardNavigation.DirectionalNavigation="Cycle"/>
+      </local:FluidMenuSurface>
      </Border>
     </Grid>
    </ControlTemplate></Setter.Value></Setter>

@@ -107,7 +107,7 @@ public sealed class GlassReliabilityTests
             controller.HideFromScreenCapture = true;
             controller.HideFromScreenCapture = false;
             // Exercise the worker's affinity restore branch without desktop capture.
-            typeof(LiquidGlassController).GetMethod("HandleCaptureOverlay", BindingFlags.Instance | BindingFlags.NonPublic)!
+            typeof(LiquidGlassController).GetMethod("ApplyCapturePolicy", BindingFlags.Instance | BindingFlags.NonPublic)!
                 .Invoke(controller, new object[] { 1000.0 / 60 });
             Assert.True(GetWindowDisplayAffinity(hwnd, out affinity));
             Assert.Equal(0u, affinity);

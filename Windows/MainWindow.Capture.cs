@@ -10,8 +10,7 @@ public partial class MainWindow
 
     protected override void OnSourceInitialized(EventArgs e)
     {
-        // Apply exclusion before the first visible frame, including the solid
-        // theme and the entrance animation, before any glass worker has started.
+        // Apply the user's Invisible mode before the first visible frame.
         WindowAnimationPolicy.Attach(this);
         base.OnSourceInitialized(e);
     }

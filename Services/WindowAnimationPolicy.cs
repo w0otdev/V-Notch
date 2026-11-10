@@ -106,7 +106,7 @@ internal static class WindowAnimationPolicy
         if (HwndSource.FromHwnd(hwnd)?.RootVisual is Window window)
             return Windows.GetValue(window, static key => new WindowLifetime(key)).SetCaptureAffinity(hwnd, affinity);
         return Win32Interop.SetWindowDisplayAffinityNative(hwnd,
-            InvisibleMode ? Win32Interop.WDA_EXCLUDEFROMCAPTURE : affinity);
+            InvisibleMode ? Win32Interop.WDA_EXCLUDEFROMCAPTURE : Win32Interop.WDA_NONE);
     }
 
     internal static void Initialize()
@@ -127,11 +127,9 @@ internal static class WindowAnimationPolicy
     private sealed class WindowLifetime
     {
         private readonly Window _window;
-        private readonly bool _excludeFromCapture;
         private readonly object _captureSync = new();
         private HwndSource? _source;
         private IntPtr _hwnd;
-        private uint _captureAffinity;
         private bool _invisibleApplied;
         private bool _originalTaskbar;
         private int _originalShellStyle;
@@ -139,7 +137,6 @@ internal static class WindowAnimationPolicy
         internal WindowLifetime(Window window)
         {
             _window = window;
-            _excludeFromCapture = window is MainWindow;
             window.SourceInitialized += OnSourceInitialized;
             window.IsVisibleChanged += OnVisibilityChanged;
             window.Closing += OnClosing;
@@ -151,16 +148,15 @@ internal static class WindowAnimationPolicy
         {
             lock (_captureSync)
             {
-                _captureAffinity = affinity;
                 return Win32Interop.SetWindowDisplayAffinityNative(hwnd,
                     EffectiveCaptureAffinity);
             }
         }
 
-        // The notch is an overlay in every theme. Its capture policy must not
-        // depend on renderer availability, hotkeys, or a hide animation finishing.
-        private uint EffectiveCaptureAffinity => InvisibleMode || _excludeFromCapture
-            ? Win32Interop.WDA_EXCLUDEFROMCAPTURE : _captureAffinity;
+        // Ghost (Invisible) mode is the only reason to exclude an app window.
+        // Renderer/backend preferences must never hide it from ordinary captures.
+        private uint EffectiveCaptureAffinity => InvisibleMode
+            ? Win32Interop.WDA_EXCLUDEFROMCAPTURE : Win32Interop.WDA_NONE;
 
         private void TrackHandle(IntPtr hwnd)
         {

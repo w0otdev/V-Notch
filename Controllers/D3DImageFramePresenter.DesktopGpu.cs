@@ -33,6 +33,8 @@ internal sealed partial class D3DImageFramePresenter
     private static partial int NativeGpuCreate(IntPtr device, int width, int height, out long handle);
     [LibraryImport("VNotch.Native.dll", EntryPoint = "vn_glass_gpu_render")]
     private static partial int NativeGpuRender(GpuHandle handle, in GpuFrame frame);
+    [LibraryImport("VNotch.Native.dll", EntryPoint = "vn_glass_gpu_render_pixels")]
+    private static partial int NativeGpuRenderPixels(GpuHandle handle, in GpuFrame frame, IntPtr pixels, int length, int stride);
     [LibraryImport("VNotch.Native.dll", EntryPoint = "vn_glass_gpu_wait_ready")]
     private static partial int NativeGpuWaitReady(GpuHandle handle, uint timeoutMs);
     [LibraryImport("VNotch.Native.dll", EntryPoint = "vn_glass_gpu_present_ready")]
@@ -105,7 +107,8 @@ internal sealed partial class D3DImageFramePresenter
         }
     }
 
-    internal bool CaptureGpuFrame(in GpuFrame frame, LiquidGlassController.GpuGeometry tag, int generation, out bool submitted)
+    internal bool CaptureGpuFrame(in GpuFrame frame, LiquidGlassController.GpuGeometry tag, int generation, out bool submitted,
+        IntPtr pixels = default, int stride = 0, int length = 0)
     {
         submitted = false;
         if (_disposed || _failed) return false;
@@ -126,7 +129,9 @@ internal sealed partial class D3DImageFramePresenter
                 }
                 long renderStarted = Stopwatch.GetTimestamp();
                 GpuCaptureRequests++;
-                int hr = NativeGpuRender(_gpuHandle, in frame);
+                int hr = pixels == IntPtr.Zero
+                    ? NativeGpuRender(_gpuHandle, in frame)
+                    : NativeGpuRenderPixels(_gpuHandle, in frame, pixels, length, stride);
                 long renderEnded = Stopwatch.GetTimestamp();
                 LastGpuRenderMs = (renderEnded - renderStarted) * 1000.0 / Stopwatch.Frequency;
                 Marshal.ThrowExceptionForHR(hr);

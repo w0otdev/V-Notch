@@ -99,6 +99,8 @@ public:
     std::vector<Target> pyramid;
     std::vector<Target> reconstruction;
     Target resolved;
+    Target uploadedBackdrop;
+    bool usingUploadedBackdrop = false;
     UINT workWidth = 0, workHeight = 0;
     DXGI_OUTPUT_DESC outputDesc{};
     HMONITOR monitor = nullptr;
@@ -222,6 +224,7 @@ public:
         try { if (framePool) framePool.Close(); } catch (...) { }
         captureSession = nullptr; framePool = nullptr; captureItem = nullptr; captureDevice = nullptr;
         duplication.Reset(); desktopView.Reset(); desktopTexture.Reset(); monitor = nullptr;
+        uploadedBackdrop = {}; usingUploadedBackdrop = false;
         hasRenderedFrame = false;
         sourceDirty = true;
     }
@@ -488,6 +491,24 @@ public:
         if (hr == S_OK) { lastFrame = normalized; hasRenderedFrame = true; sourceDirty = false; }
         return hr;
     }
+    HRESULT RenderPixels(const Frame& f, const uint8_t* pixels, UINT stride) {
+        if (pending) return S_FALSE;
+        if (!usingUploadedBackdrop) ResetCapture();
+        usingUploadedBackdrop = true;
+        if (static_cast<UINT>(f.width) > uploadedBackdrop.width || static_cast<UINT>(f.height) > uploadedBackdrop.height) {
+            const UINT w = std::min(static_cast<UINT>(width), std::max(uploadedBackdrop.width, (static_cast<UINT>(f.width) + 127) / 128 * 128));
+            const UINT h = std::min(static_cast<UINT>(height), std::max(uploadedBackdrop.height, (static_cast<UINT>(f.height) + 63) / 64 * 64));
+            uploadedBackdrop = MakeTarget(w, h);
+        }
+        const D3D11_BOX region{ 0, 0, 0, static_cast<UINT>(f.width), static_cast<UINT>(f.height), 1 };
+        context->UpdateSubresource(uploadedBackdrop.texture.Get(), 0, &region, pixels, stride, 0);
+        desktopTexture = uploadedBackdrop.texture; desktopView = uploadedBackdrop.srv;
+        outputDesc.DesktopCoordinates = { f.x, f.y, f.x + f.width, f.y + f.height };
+        outputDesc.Rotation = DXGI_MODE_ROTATION_IDENTITY;
+        captureResult = S_OK;
+        ++captureFrames;
+        return RenderCaptured(f);
+    }
     HRESULT RenderCaptured(const Frame& f, bool rebuildSource = true) {
         auto& target = output[nextOutput];
         if (target.awaitingConsumer) {
@@ -530,7 +551,9 @@ public:
         data.desktop[2] = static_cast<float>(outputDesc.Rotation);
         if (rebuildSource) {
             D3D11_TEXTURE2D_DESC desktopDesc{}; desktopTexture->GetDesc(&desktopDesc);
-            Draw({ desktopView.Get(), desktopDesc.Width, desktopDesc.Height, desktopDesc.Width, desktopDesc.Height },
+            Draw({ desktopView.Get(), desktopDesc.Width, desktopDesc.Height,
+                    usingUploadedBackdrop ? static_cast<UINT>(f.width) : desktopDesc.Width,
+                    usingUploadedBackdrop ? static_cast<UINT>(f.height) : desktopDesc.Height },
                 pyramid[0].rtv.Get(), f.width, f.height, crop.Get(), data);
             data.pass[2] = std::max(1.0f, effectiveBlur / 16.0f);
             const float upper = static_cast<float>(1 << levels);
@@ -647,6 +670,21 @@ VN_EXPORT int32_t __stdcall vn_glass_gpu_render(int64_t handle, const Frame* fra
     try { return pipeline->Render(*frame); }
     catch (const winrt::hresult_error& error) { return pipeline->captureResult = error.code(); }
     catch (HRESULT hr) { return pipeline->captureResult = hr; } catch (...) { return pipeline->captureResult = E_FAIL; }
+}
+// The Magnifier backend supplies an exact crop with a private window-exclusion
+// list. Upload that crop while keeping blur, refraction and presentation on GPU.
+VN_EXPORT int32_t __stdcall vn_glass_gpu_render_pixels(int64_t handle, const Frame* frame,
+    const uint8_t* pixels, int32_t length, int32_t stride) noexcept {
+    auto pipeline = pipelines.Acquire(handle);
+    if (!pipeline || !frame || !pixels || frame->width <= 0 || frame->height <= 0 ||
+        frame->width > pipeline->width || frame->height > pipeline->height ||
+        !std::isfinite(frame->blur) || frame->blur < 0 || frame->blur > 60 ||
+        stride < static_cast<int64_t>(frame->width) * 4 ||
+        length < static_cast<int64_t>(frame->height - 1) * stride + static_cast<int64_t>(frame->width) * 4)
+        return E_INVALIDARG;
+    try { return pipeline->RenderPixels(*frame, pixels, static_cast<UINT>(stride)); }
+    catch (HRESULT hr) { return pipeline->captureResult = hr; }
+    catch (...) { return pipeline->captureResult = E_FAIL; }
 }
 VN_EXPORT int32_t __stdcall vn_glass_gpu_take_ready(int64_t handle, IDirect3DSurface9** surface) noexcept {
     if (!surface) return E_INVALIDARG;

@@ -63,7 +63,8 @@ public sealed partial class LiquidGlassController
         _hasGpuLens = false;
     }
 
-    private bool ProcessDesktopGpuFrame(GlassParams p, CaptureRegion region, FrameDimensions dims, int generation, double blurSigma, long refreshVersion)
+    private bool ProcessDesktopGpuFrame(GlassParams p, CaptureRegion region, FrameDimensions dims, int generation, double blurSigma, long refreshVersion,
+        IntPtr backdropPixels = default)
     {
         if (_presentationPaused || !_isActive || !_gpuMode || generation != Volatile.Read(ref _renderGeneration)) return false;
         var presenter = _d3dPresenter;
@@ -98,7 +99,8 @@ public sealed partial class LiquidGlassController
         frame.Set(18, 0); // Dual-Kawase already blurred the source.
         frame.Set(19, g.Chroma); frame.Set(20, g.SatFactor); frame.Set(21, g.BrightAdd);
         frame.Set(30, g.EdgeBend); frame.Set(31, g.BevelMode);
-        if (presenter.CaptureGpuFrame(in frame, g, generation, out bool submitted) && submitted &&
+        if (presenter.CaptureGpuFrame(in frame, g, generation, out bool submitted, backdropPixels,
+                checked(dims.SrcW * 4), checked(dims.SrcW * dims.SrcH * 4)) && submitted &&
             ShouldContinueWorker(generation) && ReferenceEquals(presenter, _d3dPresenter))
         {
             _hasUploadedGpuFrame = true;
