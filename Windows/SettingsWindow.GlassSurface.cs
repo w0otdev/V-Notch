@@ -133,6 +133,7 @@ public partial class SettingsWindow
         _isScrollAnimating = false;
         _livePreviewDebounce?.Dispose();
         _searchDebounce?.Dispose();
+        DetachSearchObservers();
         StopAndDisposeTagTimer(ClearLogButton);
         StopAndDisposeTagTimer(ClearSpotlightHistoryButton);
         StopAndDisposeTagTimer(BackupStatusText);

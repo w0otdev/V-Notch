@@ -11,7 +11,6 @@ namespace VNotch.Services;
 internal static partial class DynamicIslandColorExtractor
 {
     public readonly record struct Palette(Color Main, Color Sub);
-    public readonly record struct PaletteColor(Color Color, int Population, double Score);
 
     private const string LogTag = "COLOR-PICK";
     private static readonly Palette DefaultPalette = new(Color.FromRgb(34, 34, 34), Color.FromRgb(180, 180, 180));

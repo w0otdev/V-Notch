@@ -124,19 +124,6 @@ public:
 extern "C"
 {
 
-VN_EXPORT int32_t vn_media_protocol_is_hash(
-    const char16_t* ptr,
-    int32_t len,
-    uint8_t* out_valid) noexcept
-{
-    if (out_valid == nullptr)
-    {
-        return VN_ERR_INVALID_ARG;
-    }
-    *out_valid = (ptr != nullptr && vnotch::services::MediaProtocolConfiguration::IsHash(vnotch::make_u16_view(ptr, len))) ? 1u : 0u;
-    return VN_OK;
-}
-
 VN_EXPORT int32_t vn_media_protocol_validate_scalars(
     int32_t schema_version,
     const char16_t* totp_ver_ptr, int32_t totp_ver_len,

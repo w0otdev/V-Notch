@@ -76,6 +76,7 @@ public partial class MainWindow
     private readonly SubtitleSearchController _subtitleSearchController = new();
     private bool _isLyricsActive;
     private string _lastKnownYouTubeVideoId = "";
+    private string _resolvedSubtitleTrackIdentity = "";
 
     private bool IsSpotifyCanvasSurfaceVisible =>
         _isExpanded &&
@@ -250,6 +251,16 @@ public partial class MainWindow
         }
 
         string videoId = info.YouTubeVideoId ?? "";
+        string rawTrackIdentity = $"{info.CurrentTrack}|{info.CurrentArtist}";
+        if (string.IsNullOrEmpty(videoId) &&
+            !string.IsNullOrEmpty(info.CurrentTrack) &&
+            !force &&
+            string.Equals(rawTrackIdentity, _resolvedSubtitleTrackIdentity, StringComparison.Ordinal) &&
+            !string.IsNullOrEmpty(_lastKnownYouTubeVideoId))
+        {
+            videoId = _lastKnownYouTubeVideoId;
+            info.YouTubeVideoId = videoId;
+        }
 
         // Preserve resolved "yt:{id}" key and avoid overwriting with unresolved
         // fallback when MediaChanged fires with empty videoId while subtitles are already loaded.
@@ -302,7 +313,11 @@ public partial class MainWindow
             id => _youtubeSubtitleService.FetchSubtitlesAsync(id, force: force),
             id =>
             {
+                _lastKnownYouTubeVideoId = id;
+                _resolvedSubtitleTrackIdentity = rawTrackIdentity;
                 info.YouTubeVideoId = id;
+                if (_currentMediaInfo != null && MediaUpdateQueue.SameTrack(info, _currentMediaInfo))
+                    _currentMediaInfo.YouTubeVideoId = id;
                 trackKey = $"yt:{id}";
                 _lyricsTrackKey = trackKey;
                 _subtitleRequestKey = trackKey;
@@ -1347,6 +1362,8 @@ public partial class MainWindow
     {
         ++_lyricsFetchGeneration;
         _subtitleRequestKey = null;
+        _resolvedSubtitleTrackIdentity = "";
+        _lastKnownYouTubeVideoId = "";
         _lyricsTrackKey = "";
         _currentLyrics = null;
         _currentLyricIndex = -1;

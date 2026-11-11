@@ -93,44 +93,4 @@ VN_EXPORT int32_t vn_gpu_monitor_score_adapter(
     return VN_OK;
 }
 
-VN_EXPORT int32_t vn_gpu_monitor_compute_process_cpu_delta(
-    uint64_t proc_total_time,
-    uint64_t last_proc_time,
-    int64_t now_ticks,
-    int64_t last_proc_ticks,
-    int64_t stopwatch_freq,
-    int32_t processor_count,
-    double smoothed_proc_cpu,
-    double* out_cpu) noexcept {
-    if (!out_cpu) return VN_E_INVALID_ARG;
-    *out_cpu = vnotch::services::GpuMonitorService::ComputeProcessCpuDelta(
-        proc_total_time, last_proc_time, now_ticks, last_proc_ticks, stopwatch_freq, processor_count, smoothed_proc_cpu);
-    return VN_OK;
-}
-
-VN_EXPORT int32_t vn_gpu_monitor_compute_global_cpu_delta(
-    uint64_t idle,
-    uint64_t last_sys_idle,
-    uint64_t kernel,
-    uint64_t last_sys_kernel,
-    uint64_t user,
-    uint64_t last_sys_user,
-    double smoothed_global_cpu,
-    double* out_cpu) noexcept {
-    if (!out_cpu) return VN_E_INVALID_ARG;
-    *out_cpu = vnotch::services::GpuMonitorService::ComputeGlobalCpuDelta(
-        idle, last_sys_idle, kernel, last_sys_kernel, user, last_sys_user, smoothed_global_cpu);
-    return VN_OK;
-}
-
-VN_EXPORT int32_t vn_gpu_monitor_is_target_engine_instance(
-    const char16_t* inst,
-    int32_t inst_len,
-    uint8_t* out_is_target) noexcept {
-    if (!out_is_target || (!inst && inst_len > 0) || inst_len < 0) return VN_E_INVALID_ARG;
-    const std::u16string_view sv(inst ? inst : u"", static_cast<size_t>(inst_len));
-    *out_is_target = vnotch::services::GpuMonitorService::IsTargetGpuEngineInstance(sv) ? 1 : 0;
-    return VN_OK;
-}
-
 } // extern "C"

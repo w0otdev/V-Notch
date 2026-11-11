@@ -265,28 +265,6 @@ VN_EXPORT int32_t vn_pip_is_known_browser_process(
     }
 }
 
-VN_EXPORT int32_t vn_pip_is_pip_window(
-    intptr_t hwnd,
-    const char16_t* target_proc_ptr, int32_t target_proc_len,
-    const char16_t* current_track_ptr, int32_t current_track_len,
-    uint8_t* out_is_pip) noexcept
-{
-    if (!out_is_pip) return VN_ERR_INVALID_ARG;
-    try {
-        std::u16string_view proc_v = (target_proc_ptr && target_proc_len > 0)
-            ? std::u16string_view(target_proc_ptr, static_cast<size_t>(target_proc_len))
-            : std::u16string_view{};
-        std::u16string_view track_v = (current_track_ptr && current_track_len > 0)
-            ? std::u16string_view(current_track_ptr, static_cast<size_t>(current_track_len))
-            : std::u16string_view{};
-        *out_is_pip = vnotch::services::PipDetector::IsPipWindow(
-            reinterpret_cast<HWND>(hwnd), proc_v, track_v, nullptr) ? 1 : 0;
-        return VN_OK;
-    } catch (...) {
-        return VN_ERR_FAIL;
-    }
-}
-
 VN_EXPORT int32_t vn_pip_try_find_pip_window(
     const char16_t* target_proc_ptr, int32_t target_proc_len,
     const char16_t* current_track_ptr, int32_t current_track_len,

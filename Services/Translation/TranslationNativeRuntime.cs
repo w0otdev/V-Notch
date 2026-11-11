@@ -25,7 +25,7 @@ internal static partial class TranslationNativeRuntime
             uri.Host.AsSpan(), uri.Host.Length,
             out byte allowed) == 0 && allowed != 0;
 
-    private const string VulkanNupkgUrl = "https://api.nuget.org/v3-flatcontainer/llamasharp.backend.vulkan.windows/0.27.0/llamasharp.backend.vulkan.windows.0.27.0.nupkg";
+    internal const string VulkanNupkgUrl = "https://api.nuget.org/v3-flatcontainer/llamasharp.backend.vulkan.windows/0.27.0/llamasharp.backend.vulkan.windows.0.27.0.nupkg";
     private const string VulkanNupkgPrefix = "LLamaSharpRuntimes/win-x64/native/vulkan/";
     private const string LegacyVulkanNupkgPrefix = "runtimes/win-x64/native/vulkan/";
 

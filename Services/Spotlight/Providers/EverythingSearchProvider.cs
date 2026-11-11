@@ -88,22 +88,31 @@ internal sealed partial class EverythingSearchProvider : ISpotlightProvider, IDi
     private volatile bool _ipcFailed;
     private long _lastFailureTicks = DateTime.MinValue.Ticks;
     private readonly Func<IntPtr> _findWindow;
+    private readonly Func<DateTime> _utcNow;
 
     public EverythingSearchProvider() : this(() => Win32Interop.FindWindow(EverythingIpcWindowClass)) { }
 
-    internal EverythingSearchProvider(Func<IntPtr> findWindow) => _findWindow = findWindow;
+    internal EverythingSearchProvider(Func<IntPtr> findWindow) : this(findWindow, () => DateTime.UtcNow) { }
+
+    internal EverythingSearchProvider(Func<IntPtr> findWindow, Func<DateTime> utcNow)
+    {
+        _findWindow = findWindow;
+        _utcNow = utcNow;
+    }
+
+    private bool CanRetry => !_ipcFailed ||
+        _utcNow().Ticks - Interlocked.Read(ref _lastFailureTicks) >= RetryCooldown.Ticks;
 
     public bool IsAvailable
     {
         get
         {
             if (_disposed || _findWindow() == IntPtr.Zero) return false;
-            if (!_ipcFailed) return true;
-            return DateTime.UtcNow.Ticks - Interlocked.Read(ref _lastFailureTicks) > RetryCooldown.Ticks;
+            return CanRetry;
         }
         private set
         {
-            if (!value) Interlocked.Exchange(ref _lastFailureTicks, DateTime.UtcNow.Ticks);
+            if (!value) Interlocked.Exchange(ref _lastFailureTicks, _utcNow().Ticks);
             _ipcFailed = !value;
         }
     }
@@ -116,7 +125,8 @@ internal sealed partial class EverythingSearchProvider : ISpotlightProvider, IDi
         CancellationToken cancellationToken)
     {
         query = query?.Trim() ?? string.Empty;
-        if (_disposed) return Array.Empty<SpotlightSearchItem>();
+        cancellationToken.ThrowIfCancellationRequested();
+        if (_disposed || !CanRetry) return Array.Empty<SpotlightSearchItem>();
         if (!SpotlightFileVisibility.ShouldSearch(query) || limit <= 0) return Array.Empty<SpotlightSearchItem>();
 
         IntPtr everythingWindow = _findWindow();
@@ -137,7 +147,10 @@ internal sealed partial class EverythingSearchProvider : ISpotlightProvider, IDi
         await _queryLock.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
-            if (_disposed) return Array.Empty<SpotlightSearchItem>();
+            cancellationToken.ThrowIfCancellationRequested();
+            // A preceding request can fail while this one waits for the gate.
+            // Recheck here so queued input does not repeat that IPC timeout.
+            if (_disposed || !CanRetry) return Array.Empty<SpotlightSearchItem>();
             IntPtr replyHwnd = await EnsureReplyWindowAsync(dispatcher).ConfigureAwait(false);
             if (replyHwnd == IntPtr.Zero)
             {
@@ -172,6 +185,9 @@ internal sealed partial class EverythingSearchProvider : ISpotlightProvider, IDi
                 {
                     rows = await completion.Task.ConfigureAwait(false);
                 }
+                // Publish recovery before releasing the query gate so queued
+                // callers see the successful probe rather than the old failure.
+                IsAvailable = true;
             }
             finally
             {
@@ -196,7 +212,6 @@ internal sealed partial class EverythingSearchProvider : ISpotlightProvider, IDi
             _queryLock.Release();
         }
 
-        IsAvailable = true;
         if (rows.Count == 0) return Array.Empty<SpotlightSearchItem>();
 
         var matches = new List<SpotlightSearchItem>(rows.Count);

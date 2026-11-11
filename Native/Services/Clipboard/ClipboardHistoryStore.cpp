@@ -724,49 +724,6 @@ VN_EXPORT int32_t __stdcall vn_clipboard_store_validate_archive_extract_step(
     }
 }
 
-VN_EXPORT int32_t __stdcall vn_clipboard_store_tokenize_query(
-    const char16_t* query,
-    int32_t query_len,
-    int32_t* out_starts,
-    int32_t* out_lengths,
-    int32_t max_tokens,
-    int32_t* out_token_count) noexcept {
-    try {
-        if (!out_token_count || max_tokens < 0 ||
-            (!query && query_len > 0) || query_len < 0 ||
-            (max_tokens > 0 && (!out_starts || !out_lengths))) {
-            return VN_E_INVALID_ARG;
-        }
-        const std::u16string_view q_sv(query ? query : u"", static_cast<size_t>(query_len));
-        *out_token_count = vnotch::services::clipboard::ClipboardHistoryStore::TokenizeQuery(
-            q_sv, out_starts, out_lengths, max_tokens);
-        return VN_OK;
-    } catch (...) {
-        return VN_ERR_FAIL;
-    }
-}
-
-VN_EXPORT int32_t __stdcall vn_clipboard_store_contains_icase(
-    const char16_t* haystack,
-    int32_t haystack_len,
-    const char16_t* needle,
-    int32_t needle_len,
-    uint8_t* out_contains) noexcept {
-    try {
-        if (!out_contains ||
-            (!haystack && haystack_len > 0) || haystack_len < 0 ||
-            (!needle && needle_len > 0) || needle_len < 0) {
-            return VN_E_INVALID_ARG;
-        }
-        const std::u16string_view h_sv(haystack ? haystack : u"", static_cast<size_t>(haystack_len));
-        const std::u16string_view n_sv(needle ? needle : u"", static_cast<size_t>(needle_len));
-        *out_contains = vnotch::services::clipboard::ClipboardHistoryStore::ContainsOrdinalIgnoreCase(h_sv, n_sv) ? 1 : 0;
-        return VN_OK;
-    } catch (...) {
-        return VN_ERR_FAIL;
-    }
-}
-
 VN_EXPORT int32_t __stdcall vn_clipboard_store_equals_icase(
     const char16_t* a,
     int32_t a_len,
@@ -782,37 +739,6 @@ VN_EXPORT int32_t __stdcall vn_clipboard_store_equals_icase(
         const std::u16string_view a_sv(a ? a : u"", static_cast<size_t>(a_len));
         const std::u16string_view b_sv(b ? b : u"", static_cast<size_t>(b_len));
         *out_equals = vnotch::services::clipboard::ClipboardHistoryStore::EqualsOrdinalIgnoreCase(a_sv, b_sv) ? 1 : 0;
-        return VN_OK;
-    } catch (...) {
-        return VN_ERR_FAIL;
-    }
-}
-
-VN_EXPORT int32_t __stdcall vn_clipboard_store_entry_matches_metadata_token(
-    uint8_t is_sensitive,
-    const char16_t* title,
-    int32_t title_len,
-    const char16_t* preview,
-    int32_t preview_len,
-    const char16_t* source_app,
-    int32_t source_app_len,
-    const char16_t* token,
-    int32_t token_len,
-    uint8_t* out_matches) noexcept {
-    try {
-        if (!out_matches ||
-            (!title && title_len > 0) || title_len < 0 ||
-            (!preview && preview_len > 0) || preview_len < 0 ||
-            (!source_app && source_app_len > 0) || source_app_len < 0 ||
-            (!token && token_len > 0) || token_len < 0) {
-            return VN_E_INVALID_ARG;
-        }
-        const std::u16string_view title_sv(title ? title : u"", static_cast<size_t>(title_len));
-        const std::u16string_view preview_sv(preview ? preview : u"", static_cast<size_t>(preview_len));
-        const std::u16string_view app_sv(source_app ? source_app : u"", static_cast<size_t>(source_app_len));
-        const std::u16string_view tok_sv(token ? token : u"", static_cast<size_t>(token_len));
-        *out_matches = vnotch::services::clipboard::ClipboardHistoryStore::EntryMatchesMetadataToken(
-            is_sensitive != 0, title_sv, preview_sv, app_sv, tok_sv) ? 1 : 0;
         return VN_OK;
     } catch (...) {
         return VN_ERR_FAIL;

@@ -256,7 +256,7 @@ public sealed class MediaMetadataRecoveryTests
     [InlineData("Singer, Collaborator", false)]
     [InlineData(null, false)]
     [InlineData(null, true)]
-    public async Task SlowSpotifyLookupPublishesOnlyAfterTheArtistListIsReady(string? result, bool fails)
+    public async Task SlowSpotifyLookupPublishesPendingControlsThenCompleteCreditsTogether(string? result, bool fails)
     {
         var completion = new TaskCompletionSource<string?>(TaskCreationOptions.RunContinuationsAsynchronously);
         var metadata = new SpotifyMetadata(completion.Task);
@@ -266,18 +266,23 @@ public sealed class MediaMetadataRecoveryTests
         var update = (Task)Invoke(fixture.Service, "UpdateMediaInfoAsync", true, CancellationToken.None)!;
         await metadata.Started.Task.WaitAsync(TimeSpan.FromSeconds(5));
 
-        // Exceed the old 320 ms deadline. No incomplete or empty-artist
-        // snapshot may reach the UI while the catalog request is still pending.
-        await Task.Delay(450);
-        Assert.False(update.IsCompleted);
-        Assert.Null(Get<MediaInfo?>(fixture.Service, "_lastPublishedInfo"));
+        await update.WaitAsync(TimeSpan.FromSeconds(5));
+        var pending = Get<MediaInfo>(fixture.Service, "_lastPublishedInfo");
+        Assert.Equal("Song", pending.CurrentTrack);
+        Assert.True(pending.IsMetadataPending);
+        Assert.Null(pending.Thumbnail);
+        // A second media event does not queue behind the outstanding network request.
+        await fixture.PublishSpotifySnapshotAsync().WaitAsync(TimeSpan.FromSeconds(5));
+        Assert.Equal(1, metadata.Calls);
         if (fails) completion.SetException(new HttpRequestException("lookup failed"));
         else completion.SetResult(result);
-        await update.WaitAsync(TimeSpan.FromSeconds(5));
+        await fixture.Service.SpotifyArtistLookupCompletion.WaitAsync(TimeSpan.FromSeconds(5));
+        await fixture.PublishSpotifySnapshotAsync();
         var published = Get<MediaInfo>(fixture.Service, "_lastPublishedInfo");
         Assert.Equal("Song", published.CurrentTrack);
         Assert.Equal(result ?? "Singer", published.CurrentArtist);
         Assert.False(string.IsNullOrWhiteSpace(published.CurrentArtist));
+        Assert.False(published.IsMetadataPending);
 
         // Repeated snapshots use the resolved list directly, without a second
         // request or a later background mutation of the published track.
@@ -298,15 +303,117 @@ public sealed class MediaMetadataRecoveryTests
         Set(fixture.Service, "_emptyMetadataStartTime", DateTime.UtcNow);
         var update = (Task)Invoke(fixture.Service, "UpdateMediaInfoAsync", true, cancellation.Token)!;
         await metadata.Started.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        await update.WaitAsync(TimeSpan.FromSeconds(5));
+        var lookup = fixture.Service.SpotifyArtistLookupCompletion;
         cancellation.Cancel();
-        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => update);
-        Assert.Null(Get<MediaInfo?>(fixture.Service, "_lastPublishedInfo"));
+        await lookup.WaitAsync(TimeSpan.FromSeconds(5));
+        Assert.True(Get<MediaInfo>(fixture.Service, "_lastPublishedInfo").IsMetadataPending);
 
         completion.SetResult("Singer, Collaborator");
         var info = new MediaInfo { CurrentTrack = "Song", CurrentArtist = "Singer", MediaSource = "Spotify" };
         await (Task)Invoke(fixture.Service, "ResolveSpotifyArtistsBeforePublishAsync", info, CancellationToken.None)!;
         Assert.Equal("Singer, Collaborator", info.CurrentArtist);
         Assert.Equal(2, metadata.Calls);
+    }
+
+    [Fact]
+    public async Task SupersededLookupCannotCacheOrPublishCreditsForTheNewTrack()
+    {
+        var first = new TaskCompletionSource<string?>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var metadata = new SpotifyMetadata(first.Task);
+        using var fixture = new Fixture("", metadata);
+        var oldTrack = new MediaInfo { CurrentTrack = "Old", CurrentArtist = "Singer", MediaSource = "Spotify", SourceAppId = "Spotify.exe", SessionInstanceKey = "session" };
+        await (Task)Invoke(fixture.Service, "ResolveSpotifyArtistsBeforePublishAsync", oldTrack, CancellationToken.None)!;
+        var oldLookup = fixture.Service.SpotifyArtistLookupCompletion;
+        var newTrack = oldTrack.Clone();
+        newTrack.CurrentTrack = "New";
+        await (Task)Invoke(fixture.Service, "ResolveSpotifyArtistsBeforePublishAsync", newTrack, CancellationToken.None)!;
+        await oldLookup.WaitAsync(TimeSpan.FromSeconds(5));
+        first.SetResult("Singer, Collaborator");
+        await fixture.Service.SpotifyArtistLookupCompletion.WaitAsync(TimeSpan.FromSeconds(5));
+        var cache = Get<System.Collections.Concurrent.ConcurrentDictionary<string, string>>(fixture.Service, "_spotifyArtistCache");
+        Assert.DoesNotContain(cache.Keys, key => key.StartsWith("Old|", StringComparison.Ordinal));
+        Assert.Contains(cache.Keys, key => key.StartsWith("New|", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task ArtistLookupTimeoutReleasesPendingStateAndShutdownDiscardsLateCompletion()
+    {
+        var completion = new TaskCompletionSource<string?>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var metadata = new SpotifyMetadata(completion.Task);
+        using var fixture = new Fixture("Singer - Song", metadata);
+        fixture.Service.SpotifyArtistLookupTimeout = TimeSpan.FromMilliseconds(50);
+        await fixture.PublishSpotifySnapshotAsync();
+        Assert.True(Get<MediaInfo>(fixture.Service, "_lastPublishedInfo").IsMetadataPending);
+        await fixture.Service.SpotifyArtistLookupCompletion.WaitAsync(TimeSpan.FromSeconds(5));
+        await fixture.PublishSpotifySnapshotAsync();
+        Assert.False(Get<MediaInfo>(fixture.Service, "_lastPublishedInfo").IsMetadataPending);
+        Assert.Equal("Singer", Get<MediaInfo>(fixture.Service, "_lastPublishedInfo").CurrentArtist);
+
+        var other = new MediaInfo { CurrentTrack = "Other", CurrentArtist = "Singer", MediaSource = "Spotify" };
+        fixture.Service.SpotifyArtistLookupTimeout = TimeSpan.FromSeconds(8);
+        await (Task)Invoke(fixture.Service, "ResolveSpotifyArtistsBeforePublishAsync", other, CancellationToken.None)!;
+        var lookup = fixture.Service.SpotifyArtistLookupCompletion;
+        await fixture.Service.DisposeAsync();
+        completion.SetResult("Singer, Late");
+        await lookup.WaitAsync(TimeSpan.FromSeconds(5));
+        Assert.Empty(Get<System.Collections.Concurrent.ConcurrentDictionary<string, string>>(fixture.Service, "_spotifyArtistCache"));
+    }
+
+    [Fact]
+    public async Task PendingCreditsKeepPlaybackCurrentWithoutExposingPartialTextOrOldArtwork()
+    {
+        var completion = new TaskCompletionSource<string?>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var metadata = new SpotifyMetadata(completion.Task);
+        using var fixture = new Fixture("", metadata);
+        var viewModel = new VNotch.ViewModels.MediaViewModel(new FakeMediaDetectionService(), _ => Task.CompletedTask);
+        var info = new MediaInfo { CurrentTrack = "New", CurrentArtist = "Singer", MediaSource = "Spotify", SourceAppId = "Spotify.exe", SessionInstanceKey = "new-session", IsPlaying = true, Position = TimeSpan.FromSeconds(3) };
+        await (Task)Invoke(fixture.Service, "ResolveSpotifyArtistsBeforePublishAsync", info, CancellationToken.None)!;
+        viewModel.Update(info);
+        Assert.Equal("…", viewModel.Title);
+        Assert.Equal("", viewModel.Artist);
+        Assert.Null(viewModel.Thumbnail);
+        Assert.Equal("new-session", viewModel.CurrentInfo!.SessionInstanceKey);
+        var paused = info.Clone();
+        paused.IsPlaying = false;
+        paused.Position = TimeSpan.FromSeconds(4);
+        await (Task)Invoke(fixture.Service, "ResolveSpotifyArtistsBeforePublishAsync", paused, CancellationToken.None)!;
+        viewModel.Update(paused);
+        Assert.False(viewModel.IsPlaying);
+        Assert.Equal(TimeSpan.FromSeconds(4), viewModel.CurrentInfo!.Position);
+        Assert.Equal(1, metadata.Calls);
+        completion.SetResult("Singer, Collaborator");
+        await fixture.Service.SpotifyArtistLookupCompletion.WaitAsync(TimeSpan.FromSeconds(5));
+        await (Task)Invoke(fixture.Service, "ResolveSpotifyArtistsBeforePublishAsync", paused, CancellationToken.None)!;
+        viewModel.Update(paused);
+        Assert.Equal("New", viewModel.Title);
+        Assert.Equal("Singer, Collaborator", viewModel.Artist);
+        Assert.False(viewModel.IsPlaying);
+    }
+
+    [Theory]
+    [InlineData(0, 180)]
+    [InlineData(180, 181)]
+    public async Task DurationChangesReusePendingLookupAndItsCacheAliases(int firstSeconds, int nextSeconds)
+    {
+        var completion = new TaskCompletionSource<string?>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var metadata = new SpotifyMetadata(completion.Task);
+        using var fixture = new Fixture("", metadata);
+        var info = new MediaInfo { CurrentTrack = "Song", CurrentArtist = "Singer", CurrentAlbum = "Album", MediaSource = "Spotify", SourceAppId = "Spotify.exe", SessionInstanceKey = "session", Duration = TimeSpan.FromSeconds(firstSeconds) };
+        await (Task)Invoke(fixture.Service, "ResolveSpotifyArtistsBeforePublishAsync", info, CancellationToken.None)!;
+        info.Duration = TimeSpan.FromSeconds(nextSeconds);
+        await (Task)Invoke(fixture.Service, "ResolveSpotifyArtistsBeforePublishAsync", info, CancellationToken.None)!;
+        Assert.True(info.IsMetadataPending);
+        Assert.Equal(1, metadata.Calls);
+        completion.SetResult("Singer, Collaborator");
+        await fixture.Service.SpotifyArtistLookupCompletion.WaitAsync(TimeSpan.FromSeconds(5));
+        await (Task)Invoke(fixture.Service, "ResolveSpotifyArtistsBeforePublishAsync", info, CancellationToken.None)!;
+        Assert.False(info.IsMetadataPending);
+        Assert.Equal("Singer, Collaborator", info.CurrentArtist);
+        info.Duration += TimeSpan.FromSeconds(1);
+        await (Task)Invoke(fixture.Service, "ResolveSpotifyArtistsBeforePublishAsync", info, CancellationToken.None)!;
+        Assert.False(info.IsMetadataPending);
+        Assert.Equal(1, metadata.Calls);
     }
 
     [Fact]
@@ -360,6 +467,9 @@ public sealed class MediaMetadataRecoveryTests
             Service = new MediaDetectionService(metadata ?? new MediaMetadataLookupService(), new FakeMediaArtworkService(), Scanner, null, Cache, () => spotifyTitle);
         }
         public MediaInfo Info(string track = "") => new() { CurrentTrack = track, MediaSource = "Browser", SourceAppId = "chrome", SessionInstanceKey = "fixture-session", IsPlaying = true, IsAnyMediaPlaying = true };
+        public Task PublishSpotifySnapshotAsync() => (Task)Invoke(Service, "PublishMediaSnapshotAsync",
+            new MediaInfo { CurrentTrack = "Song", CurrentArtist = "Singer", MediaSource = "Spotify", IsPlaying = true, IsAnyMediaPlaying = true },
+            true, CancellationToken.None)!;
         public MediaTimelineSimulator FreezeTimelineAt(TimeSpan position)
         {
             var simulator = Get<MediaTimelineSimulator>(Service, "_timelineSimulator");

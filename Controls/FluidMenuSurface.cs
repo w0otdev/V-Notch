@@ -35,7 +35,7 @@ public sealed partial class FluidMenuSurface : Grid
         public double Y, YVelocity, Opacity, OpacityVelocity, SelectedOpacity, SelectedVelocity;
     }
 
-    [LibraryImport("VNotch.Native.dll", EntryPoint = "vn_animation_step_nav_pill")]
+    [LibraryImport("VNotch.Native.dll", EntryPoint = "vn_animation_step_menu_highlight")]
     private static partial int StepShape(ref ShapeState state, double target, double height, double seconds,
         byte reduced, out ShapeVisual visual, out byte settled);
     [LibraryImport("VNotch.Native.dll", EntryPoint = "vn_animation_step_nav_hover")]
@@ -68,6 +68,7 @@ public sealed partial class FluidMenuSurface : Grid
         {
             VerticalAlignment = VerticalAlignment.Top, Height = 32, CornerRadius = new CornerRadius(8),
             Background = NormalFill, BorderBrush = NormalRim, BorderThickness = new Thickness(1),
+            SnapsToDevicePixels = false, UseLayoutRounding = false,
             IsHitTestVisible = false, Opacity = 0, RenderTransformOrigin = new Point(.5, .5),
             RenderTransform = new TransformGroup { Children = { _scale, _translate } }
         };

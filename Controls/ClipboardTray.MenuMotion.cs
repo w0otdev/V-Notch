@@ -65,51 +65,17 @@ public sealed partial class ClipboardTray
 
     internal static void AnimateMenuSurface(FrameworkElement surface, FrameworkElement? target, bool fresh, bool submenu = false)
     {
-        double opacity = fresh ? 0 : surface.Opacity;
-        var rendered = surface.RenderTransform.Value;
-        bool isAnchored = target != null;
-        double anchoredScale = 0.94;
-        double unanchoredScale = submenu ? 0.98 : 0.96;
-        double freshScale = isAnchored ? anchoredScale : unanchoredScale;
-        double scaleFrom = fresh ? freshScale : rendered.M11;
-        surface.BeginAnimation(OpacityProperty, null);
-        surface.Opacity = 1;
-        surface.RenderTransform = Transform.Identity;
-
-        if (MenuKeyboardInput || AnimationConfig.ReduceMotion || !AnimationConfig.ClientAreaAnimation) return;
-
-        bool reduced = AnimationConfig.ReduceMotion;
-        int unanchoredDuration = submenu ? MotionStandard : 200;
-        int activeDuration = isAnchored ? 220 : unanchoredDuration;
-        int duration = reduced ? 80 : activeDuration;
-        if (!reduced)
+        if (MenuKeyboardInput || AnimationConfig.ReduceMotion || !AnimationConfig.ClientAreaAnimation)
         {
-            Point anchor = fresh ? MenuAnchor(surface, target) : surface.RenderTransformOrigin;
-            surface.RenderTransformOrigin = anchor;
-            // Completed or replaced clocks restore the settled dimensions.
-            var scale = new ScaleTransform(1, 1);
-            var slide = new TranslateTransform();
-            surface.RenderTransform = new TransformGroup { Children = { scale, slide } };
-
-            // Travel towards the settled position from the trigger-facing edge with authentic Apple spring physics
-            double anchoredX = anchor.X <= 0.5 ? -8 : 8;
-            double freshX = isAnchored ? anchoredX : (anchor.X - 0.5) * 8;
-            double fromX = fresh ? freshX : rendered.OffsetX;
-            double anchoredY = anchor.Y <= 0.5 ? -6 : 6;
-            double freshY = isAnchored ? anchoredY : (anchor.Y - 0.5) * 8;
-            double fromY = fresh ? freshY : rendered.OffsetY;
-
-            var ease = isAnchored ? (IEasingFunction)AnimationPrimitives._easeAppleOut : TrayMotion.EaseOut;
-            scale.BeginAnimation(ScaleTransform.ScaleXProperty, MenuAnimation(scaleFrom, 1, duration, ease));
-            scale.BeginAnimation(ScaleTransform.ScaleYProperty, MenuAnimation(scaleFrom, 1, duration, ease));
-            slide.BeginAnimation(TranslateTransform.XProperty, MenuAnimation(fromX, 0, duration, ease));
-            slide.BeginAnimation(TranslateTransform.YProperty, MenuAnimation(fromY, 0, duration, ease));
+            ResetMenuSurface(surface);
+            return;
         }
-
-        var opacityEase = isAnchored ? (IEasingFunction)new CubicEase { EasingMode = EasingMode.EaseOut } : TrayMotion.EaseOut;
-        int activeOpacityDuration = isAnchored ? 150 : Math.Min(duration, MotionFast);
-        int opacityDuration = reduced ? 80 : activeOpacityDuration;
-        surface.BeginAnimation(OpacityProperty, MenuAnimation(opacity, 1, opacityDuration, opacityEase), HandoffBehavior.SnapshotAndReplace);
+        bool anchored = target != null;
+        Point anchor = fresh ? MenuAnchor(surface, target) : surface.RenderTransformOrigin;
+        double scale = anchored ? .95 : submenu ? .98 : .96;
+        double x = anchored ? (anchor.X <= .5 ? -6 : 6) : (anchor.X - .5) * 6;
+        double y = anchored ? (anchor.Y <= .5 ? -4 : 4) : (anchor.Y - .5) * 6;
+        MenuSurfaceSpring.Open(surface, anchor, scale, x, y, fresh);
     }
 
     private static Point MenuAnchor(FrameworkElement surface, FrameworkElement? target)
@@ -144,9 +110,7 @@ public sealed partial class ClipboardTray
 
     private static void ResetMenuSurface(FrameworkElement surface)
     {
-        surface.BeginAnimation(OpacityProperty, null);
-        surface.Opacity = 1;
-        surface.RenderTransform = Transform.Identity;
+        MenuSurfaceSpring.Reset(surface);
     }
 
     private void Submenu_Opened(object sender, EventArgs e)

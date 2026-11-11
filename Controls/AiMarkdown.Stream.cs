@@ -1,3 +1,4 @@
+using System.Buffers;
 using System.Windows.Documents;
 
 namespace VNotch.Controls;
@@ -12,12 +13,35 @@ internal static partial class AiMarkdown
         internal bool Advance(string markdown, int words, double fadeMilliseconds)
         {
             int previous = _revealed, remaining = Math.Max(1, words);
-            foreach (var word in WordSpanRegex().EnumerateMatches(markdown.AsSpan(_revealed)))
+            ReadOnlySpan<char> unrevealed = markdown.AsSpan(previous);
+            if (!unrevealed.IsEmpty)
             {
-                _revealed = previous + word.Index + word.Length;
-                if (--remaining == 0) break;
+                Span<VnMarkdownWordSlice> stackSlices = stackalloc VnMarkdownWordSlice[128];
+                _ = vn_markdown_scan_word_spans(unrevealed, unrevealed.Length, stackSlices, stackSlices.Length, out int totalWords);
+                if (totalWords <= remaining)
+                {
+                    _revealed = markdown.Length;
+                }
+                else if (remaining <= stackSlices.Length)
+                {
+                    var target = stackSlices[remaining - 1];
+                    _revealed = previous + target.Start + target.Length;
+                }
+                else
+                {
+                    var rented = ArrayPool<VnMarkdownWordSlice>.Shared.Rent(remaining);
+                    try
+                    {
+                        _ = vn_markdown_scan_word_spans(unrevealed, unrevealed.Length, rented, remaining, out _);
+                        var target = rented[remaining - 1];
+                        _revealed = previous + target.Start + target.Length;
+                    }
+                    finally
+                    {
+                        ArrayPool<VnMarkdownWordSlice>.Shared.Return(rented);
+                    }
+                }
             }
-            if (remaining > 0) _revealed = markdown.Length;
             if (_revealed == previous) return _revealed == markdown.Length;
             string tail = markdown[_committed.._revealed];
             string balanced = CloseSpans(tail);
@@ -41,8 +65,8 @@ internal static partial class AiMarkdown
 
     private static string CloseSpans(string markdown)
     {
-        if (FenceRegex().Count(markdown) % 2 != 0) return markdown + "\n```";
-        string outsideCode = CodeSpanRegex().Replace(markdown, "");
-        return BoldMarkerRegex().Count(outsideCode) % 2 != 0 ? markdown + "**" : markdown;
+        var summary = ScanSpanBoundaries(markdown);
+        if (summary.HasUnclosedFence != 0) return markdown + "\n```";
+        return summary.HasUnclosedBold != 0 ? markdown + "**" : markdown;
     }
 }

@@ -30,11 +30,17 @@ public partial class SettingsWindow
         protected override List<AutomationPeer>? GetChildrenCore() => null;
     }
 
-    internal void PrepareForFirstShow()
+    private bool _preparingForFirstShow;
+    private double _prewarmOpacity;
+    private bool _prewarmShowActivated;
+
+    internal async Task PrepareForFirstShowAsync()
     {
         Dispatcher.VerifyAccess();
-        double opacity = Opacity;
-        bool showActivated = ShowActivated;
+        if (_monitorChoicesClosed || _firstShowState != FirstShowState.StandbyPrewarm) return;
+        _preparingForFirstShow = true;
+        _prewarmOpacity = Opacity;
+        _prewarmShowActivated = ShowActivated;
         _firstShowState = FirstShowState.StandbyPrewarm;
         try
         {
@@ -47,23 +53,32 @@ public partial class SettingsWindow
             NavPanel.Opacity = 1;
             Show();
             UpdateLayout();
-            Dispatcher.Invoke(static () => { }, DispatcherPriority.Render, CancellationToken.None);
-            Hide();
+            await Dispatcher.InvokeAsync(static () => { }, DispatcherPriority.Render);
         }
         finally
         {
-            if (IsVisible) Hide();
-            MainShell.Opacity = 0;
-            SettingsHeader.Opacity = 0;
-            NavPanel.Opacity = 0;
-            Opacity = opacity;
-            ShowActivated = showActivated;
+            if (_firstShowState == FirstShowState.StandbyPrewarm && !_monitorChoicesClosed)
+            {
+                if (IsVisible) Hide();
+                RestorePrewarmPresentation();
+            }
+            _preparingForFirstShow = false;
         }
+    }
+
+    private void RestorePrewarmPresentation()
+    {
+        MainShell.Opacity = 0;
+        SettingsHeader.Opacity = 0;
+        NavPanel.Opacity = 0;
+        Opacity = _prewarmOpacity;
+        ShowActivated = _prewarmShowActivated;
     }
 
     internal void ActivatePreparedWindow(NotchSettings settings, bool snapshotMatches, bool isHotkeyRegistered)
     {
         Dispatcher.VerifyAccess();
+        if (_preparingForFirstShow) RestorePrewarmPresentation();
         if (!snapshotMatches)
         {
             RefreshPreparedSettings(settings, isHotkeyRegistered);
@@ -76,6 +91,7 @@ public partial class SettingsWindow
 
         SubscribeDisplaySettingsChanged();
         _firstShowState = FirstShowState.ReadyForRealShow;
+        if (IsVisible) CompleteFirstRealShow();
     }
 
     internal void RefreshPreparedSettings(NotchSettings settings, bool isHotkeyRegistered)

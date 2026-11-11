@@ -26,8 +26,9 @@ public sealed class FakeMediaDetectionService : IMediaDetectionService
         PinnedSessionKey = IsSessionPinned(info.SessionInstanceKey) ? null : info.SessionInstanceKey;
         return true;
     }
+    public Func<string, string, CancellationToken, Task<YouTubeLookupResult?>>? LookupYouTubeVideoId { get; set; }
     public Task<YouTubeLookupResult?> TryGetYouTubeVideoIdWithInfoAsync(string title, string artist = "", CancellationToken ct = default) =>
-        Task.FromResult<YouTubeLookupResult?>(null);
+        LookupYouTubeVideoId != null ? LookupYouTubeVideoId(title, artist, ct) : Task.FromResult<YouTubeLookupResult?>(null);
     public event EventHandler<MediaInfo>? MediaChanged;
 
     public int StartCount { get; private set; }

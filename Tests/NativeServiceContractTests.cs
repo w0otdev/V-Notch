@@ -9,6 +9,10 @@ namespace VNotch.Tests;
 
 public sealed class NativeServiceContractTests(ITestOutputHelper output)
 {
+    private static bool IsVNotchNativeLibrary(string? name) =>
+        string.Equals(name, "VNotch.Native.dll", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(name, "VNotch.Native", StringComparison.OrdinalIgnoreCase);
+
     [Fact]
     public void EveryApplicationNativeImportHasAnExportInTheShippedLibrary()
     {
@@ -21,9 +25,9 @@ public sealed class NativeServiceContractTests(ITestOutputHelper output)
                 var generated = method.GetCustomAttribute<LibraryImportAttribute>();
                 var legacy = method.GetCustomAttribute<DllImportAttribute>();
                 var names = new List<string>();
-                if (generated != null && string.Equals(generated.LibraryName, library, StringComparison.OrdinalIgnoreCase))
+                if (generated != null && IsVNotchNativeLibrary(generated.LibraryName))
                     names.Add(generated.EntryPoint ?? method.Name);
-                if (legacy != null && string.Equals(legacy.Value, library, StringComparison.OrdinalIgnoreCase))
+                if (legacy != null && IsVNotchNativeLibrary(legacy.Value))
                     names.Add(legacy.EntryPoint ?? method.Name);
                 return names;
             }).Distinct(StringComparer.Ordinal).Order().ToArray();

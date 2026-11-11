@@ -1204,16 +1204,28 @@ public partial class SettingsWindow
             {
                 Interval = TimeSpan.FromMilliseconds(32)
             };
-            _livePreviewDebounce.Tick += (s, e) =>
-            {
-                _livePreviewDebounce.Stop();
-                var snapshot = ReadSettingsFromUi();
-                ApplyPreview(snapshot);
-            };
+            _livePreviewDebounce.Tick += (_, _) => FlushLivePreview();
         }
 
-        _livePreviewDebounce.Stop();
+        // Keep the first deadline while edits arrive. Restarting it on every
+        // pointer packet starves the preview for the entire slider drag.
         _livePreviewDebounce.Start();
+    }
+
+    internal void FlushLivePreview()
+    {
+        if (_livePreviewDebounce?.IsEnabled != true) return;
+        _livePreviewDebounce.Stop();
+        if (_isLoadingSettings || _isClosing) return;
+        ApplyPreview(ReadSettingsFromUi());
+    }
+
+    private void LivePreview_MouseUp(object sender, MouseButtonEventArgs e) => FlushLivePreview();
+
+    private void LivePreview_KeyUp(object sender, KeyEventArgs e)
+    {
+        if (e.Key is Key.Left or Key.Right or Key.Up or Key.Down or Key.Home or Key.End or Key.PageUp or Key.PageDown)
+            FlushLivePreview();
     }
 
     #endregion

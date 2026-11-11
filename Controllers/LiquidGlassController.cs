@@ -128,15 +128,6 @@ public sealed partial class LiquidGlassController : IDisposable
         byte ultimateGpu,
         out double outIntervalMs);
 
-    [LibraryImport("VNotch.Native.dll", EntryPoint = "vn_glass_should_submit_frame")]
-    private static partial int NativeShouldSubmitFrame(
-        long nowTicks,
-        long lastSubmitTicks,
-        long stopwatchFreq,
-        double activeIntervalMs,
-        byte forcePresent,
-        out byte outShouldSubmit);
-
     public const int MaxTargetFps = 1000;
 
     public readonly record struct CaptureRegion(int X, int Y, int Width, int Height,
@@ -321,16 +312,34 @@ public sealed partial class LiquidGlassController : IDisposable
     }
     public double ActiveIntervalMs => Volatile.Read(ref _activeIntervalMs);
 
-    public bool ShouldThrottleFrameUpdate(ref long lastTick, bool force = false)
+    private AnimationFrameClock _geometryFrameClock;
+    private TimeSpan? _geometryRenderingTime;
+
+    public bool ShouldThrottleFrameUpdate(ref long lastTick, bool force = false, TimeSpan? renderingTime = null) =>
+        ShouldThrottleFrameUpdate(ref lastTick, Stopwatch.GetTimestamp(), force, renderingTime);
+
+    internal bool ShouldThrottleFrameUpdate(ref long lastTick, long now, bool force = false, TimeSpan? renderingTime = null)
     {
-        long now = Stopwatch.GetTimestamp();
-        double intervalMs = Volatile.Read(ref _activeIntervalMs);
-        byte forceFlag = force ? (byte)1 : (byte)0;
-        if (NativeShouldSubmitFrame(now, lastTick, Stopwatch.Frequency, intervalMs, forceFlag, out byte shouldSubmit) == 0 &&
-            shouldSubmit == 0)
+        if (force || lastTick <= 0)
         {
-            return true;
+            _geometryFrameClock.Reset(now);
+            _geometryRenderingTime = renderingTime;
+            lastTick = now;
+            return false;
         }
+
+        // WPF can raise Rendering again for the same composition frame after layout.
+        // Callback wall time can cross a deadline without a new frame to display.
+        if (renderingTime.HasValue)
+        {
+            if (_geometryRenderingTime == renderingTime) return true;
+            _geometryRenderingTime = renderingTime;
+        }
+
+        // Advance deadlines rather than starting a new interval at each callback.
+        // Otherwise a 120 FPS target on a 144 Hz compositor falls to 72 updates/s.
+        double intervalMs = Volatile.Read(ref _activeIntervalMs);
+        if (!_geometryFrameClock.TryAdvance(now, 1000.0 / intervalMs, out _)) return true;
         lastTick = now;
         return false;
     }

@@ -118,29 +118,9 @@ public sealed partial class NotchManager : INotchManager
         SafeAreaChanged?.Invoke(this, _safeArea);
     }
 
-    private void UpdateSafeArea()
-    {
-        if (_currentScreen == null) return;
-
-        ComputeGeometry(_currentScreen, out var geom);
-        ApplySafeArea(in geom);
-    }
-
     private Screen GetTargetScreen()
     {
         return MonitorSelection.Resolve(_settings);
-    }
-
-    public static int GetMonitorCount()
-    {
-        return Screen.AllScreens.Length;
-    }
-
-    public static string[] GetMonitorNames()
-    {
-        return Screen.AllScreens
-            .Select((s, i) => Loc.Get("settings.display.name", i + 1) + (s.Primary ? Loc.Get("settings.display.primary") : ""))
-            .ToArray();
     }
 
     #region Public Controls

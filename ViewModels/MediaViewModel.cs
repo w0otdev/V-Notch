@@ -60,11 +60,11 @@ public partial class MediaViewModel : ObservableObject
         if (hasTrack)
         {
             SourceName = !string.IsNullOrEmpty(info.MediaSource) ? info.MediaSource : Loc.Get("media.nowPlaying");
-            Title = info.CurrentTrack;
+            Title = info.IsMetadataPending ? "…" : info.CurrentTrack;
             bool hasArtist = !string.IsNullOrEmpty(info.CurrentArtist) &&
                 MediaPlatformExtensions.ParsePlatform(info.CurrentArtist) is not (MediaPlatform.YouTube or MediaPlatform.Browser or MediaPlatform.Spotify);
             string fallbackArtist = !string.IsNullOrEmpty(info.MediaSource) ? info.MediaSource : Loc.Get("media.unknownArtist");
-            Artist = hasArtist ? info.CurrentArtist : fallbackArtist;
+            Artist = info.IsMetadataPending ? "" : hasArtist ? info.CurrentArtist : fallbackArtist;
         }
         else
         {
@@ -74,7 +74,13 @@ public partial class MediaViewModel : ObservableObject
         }
 
         string signature = info.GetSignature();
-        if (hasTrack && info.HasThumbnail && info.Thumbnail != null)
+        if (info.IsMetadataPending)
+        {
+            _lastAnimatedSignature = "";
+            Thumbnail = null;
+            HasThumbnail = false;
+        }
+        else if (hasTrack && info.HasThumbnail && info.Thumbnail != null)
         {
             Thumbnail = info.Thumbnail;
             HasThumbnail = true;

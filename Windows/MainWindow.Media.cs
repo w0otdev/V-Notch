@@ -98,11 +98,16 @@ public partial class MainWindow
     {
         if (!_mediaService.AcceptsMediaUpdate(info)) return;
         bool isThumbnailOnlyUpdate = info.IsThumbnailOnlyUpdate;
+        bool enteringMetadataPending = info.IsMetadataPending &&
+            (_currentMediaInfo?.IsMetadataPending != true || !MediaUpdateQueue.SameTrack(info, _currentMediaInfo));
         if (!isThumbnailOnlyUpdate)
         {
-            if (info.Thumbnail == null && _currentMediaInfo?.Thumbnail != null && MediaUpdateQueue.SameTrack(info, _currentMediaInfo))
+            if (!info.IsMetadataPending && _currentMediaInfo != null && MediaUpdateQueue.SameTrack(info, _currentMediaInfo))
             {
-                info.Thumbnail = _currentMediaInfo.Thumbnail;
+                if (info.Thumbnail == null && _currentMediaInfo.Thumbnail != null)
+                    info.Thumbnail = _currentMediaInfo.Thumbnail;
+                if (string.IsNullOrEmpty(info.YouTubeVideoId) && !string.IsNullOrEmpty(_currentMediaInfo.YouTubeVideoId))
+                    info.YouTubeVideoId = _currentMediaInfo.YouTubeVideoId;
             }
             _currentMediaInfo = info;
             RefreshMediaPinBadges();
@@ -128,8 +133,27 @@ public partial class MainWindow
             }
         }
 
+        var displayInfo = info;
+        if (info.IsMetadataPending)
+        {
+            displayInfo = info.Clone();
+            displayInfo.CurrentTrack = "…";
+            displayInfo.CurrentArtist = "";
+            displayInfo.Thumbnail = null;
+            if (enteringMetadataPending)
+            {
+                CancelThumbnailSwitchAnimations();
+                ThumbnailImage.Source = null;
+                CompactThumbnail.Source = null;
+                ThumbnailImage.Visibility = Visibility.Collapsed;
+                ThumbnailFallback.Visibility = Visibility.Visible;
+                ClearBlurredBackgroundSources();
+                _lastBackgroundThumbnail = null;
+                HideMediaBackground();
+            }
+        }
         var result = _mediaDisplayController.ProcessMediaUpdate(
-            info, _isExpanded, _isMusicExpanded, _isMusicCompactMode, _isAnimating);
+            displayInfo, _isExpanded, _isMusicExpanded, _isMusicCompactMode, _isAnimating);
 
         UpdateSpotifyCanvasPlaybackState(info);
 
@@ -169,7 +193,7 @@ public partial class MainWindow
         }
         UpdatePictureInPictureBadge(info.IsPictureInPicture && (result.HasRealTrack || info.IsAnyMediaPlaying));
 
-        bool isSpotify = result.HasRealTrack && MediaPlatformExtensions.ParsePlatform(renderedSource) == MediaPlatform.Spotify;
+        bool isSpotify = !info.IsMetadataPending && result.HasRealTrack && MediaPlatformExtensions.ParsePlatform(renderedSource) == MediaPlatform.Spotify;
         bool isYouTube = result.HasRealTrack && (
             MediaPlatformExtensions.ParsePlatform(renderedSource) is MediaPlatform.YouTube or MediaPlatform.Browser ||
             !string.IsNullOrEmpty(info.YouTubeVideoId) ||
@@ -178,7 +202,7 @@ public partial class MainWindow
             (info.CurrentArtist != null && info.CurrentArtist.Contains("YouTube", StringComparison.OrdinalIgnoreCase))
         );
 
-        if (result.IsNewTrack)
+        if (result.IsNewTrack || enteringMetadataPending)
         {
             ClearLyrics();
             if (isSpotify)

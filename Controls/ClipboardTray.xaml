@@ -34,7 +34,7 @@
    <Setter Property="BorderThickness" Value="1"/>
    <Setter Property="CornerRadius" Value="{StaticResource TrayRadiusMedium}"/>
    <Setter Property="Padding" Value="5"/>
-   <Setter Property="SnapsToDevicePixels" Value="True"/>
+   <Setter Property="SnapsToDevicePixels" Value="False"/>
    <Setter Property="Effect"><Setter.Value>
     <DropShadowEffect BlurRadius="22" ShadowDepth="5" Direction="270" Color="Black" Opacity="0.48" RenderingBias="Performance"/>
    </Setter.Value></Setter>

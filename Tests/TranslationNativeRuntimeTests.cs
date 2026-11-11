@@ -1,4 +1,5 @@
 using System.IO;
+using System.Xml.Linq;
 using VNotch.Services.Translation;
 using Xunit;
 
@@ -26,5 +27,28 @@ public sealed class TranslationNativeRuntimeTests
         Assert.True(TranslationNativeRuntime.IsLoadFailure(new DllNotFoundException()));
         Assert.False(TranslationNativeRuntime.IsLoadFailure(new InvalidOperationException()));
         Assert.False(TranslationNativeRuntime.IsLoadFailure(new TypeInitializationException("Other", null)));
+    }
+
+    [Fact]
+    public void OnDemandVulkanPackageVersionMatchesManagedLLamaSharpVersion()
+    {
+        string? dir = AppContext.BaseDirectory;
+        while (dir is not null && !File.Exists(Path.Combine(dir, "V-Notch.csproj")))
+        {
+            dir = Path.GetDirectoryName(dir);
+        }
+
+        Assert.NotNull(dir);
+        XDocument csproj = XDocument.Load(Path.Combine(dir!, "V-Notch.csproj"));
+        string? llamaVersion = csproj.Descendants("PackageReference")
+            .FirstOrDefault(x => string.Equals((string?)x.Attribute("Include"), "LLamaSharp", StringComparison.Ordinal))
+            ?.Attribute("Version")?.Value;
+        string? vulkanPkgVersion = csproj.Descendants("PackageReference")
+            .FirstOrDefault(x => string.Equals((string?)x.Attribute("Include"), "LLamaSharp.Backend.Vulkan.Windows", StringComparison.Ordinal))
+            ?.Attribute("Version")?.Value;
+
+        Assert.False(string.IsNullOrWhiteSpace(llamaVersion));
+        Assert.Equal(llamaVersion, vulkanPkgVersion);
+        Assert.Contains($"/{llamaVersion}/llamasharp.backend.vulkan.windows.{llamaVersion}.nupkg", TranslationNativeRuntime.VulkanNupkgUrl, StringComparison.Ordinal);
     }
 }

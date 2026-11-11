@@ -29,13 +29,4 @@ VN_EXPORT int32_t vn_volume_service_clamp_scalar(
     return VN_OK;
 }
 
-VN_EXPORT int32_t vn_volume_service_is_target_endpoint(
-    int32_t data_flow,
-    int32_t role,
-    uint8_t* out_is_target) noexcept {
-    if (!out_is_target) return VN_E_INVALID_ARG;
-    *out_is_target = vnotch::services::VolumeService::IsTargetRenderMultimediaEndpoint(data_flow, role) ? 1u : 0u;
-    return VN_OK;
-}
-
 } // extern "C"

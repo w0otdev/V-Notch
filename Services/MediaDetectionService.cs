@@ -215,6 +215,7 @@ public sealed partial class MediaDetectionService : IMediaDetectionService, IAsy
     private int _thumbnailFetchGeneration = 0;
     private ArtworkFingerprint? _lastSessionArtworkFingerprint;
     private int _sessionArtworkGeneration = -1;
+    private int _deferredThumbRefreshGeneration = -1;
     private static readonly TimeSpan YouTubeThumbnailRetryInterval = TimeSpan.FromSeconds(1.1);
     private static readonly TimeSpan SoundCloudArtworkRetryInterval = TimeSpan.FromSeconds(1.1);
 
@@ -829,31 +830,28 @@ public sealed partial class MediaDetectionService : IMediaDetectionService, IAsy
             if (Volatile.Read(ref _pinnedSession) == null)
                 PreserveSoundCloudSourceIfNeeded(info, ref windowTitles);
 
-            // Window-title recovery can replace the session metadata. Resolve the
-            // final artist state before publishing, including that fallback path.
-            await ResolveSpotifyArtistsBeforePublishAsync(info, ct);
-            ct.ThrowIfCancellationRequested();
-
-            info.IsThrottled = _timelineSimulator.IsThrottled;
-            UpdateDetectionMode(info);
-            var currentSignature = info.GetSignature();
-
-            if (UpdateEmptyMetadataHold(info, currentSignature))
-                return;
-
-            bool isNewTrackForThumbnail = ComputeIsNewTrackForThumbnail(info);
-            // Pre-publish thumbnail fallback & initial SMTC crop moved into TryPublishMediaChangeAsync.
-
-            ct.ThrowIfCancellationRequested();
-            if (!await TryPublishMediaChangeAsync(info, currentSignature, isNewTrackForThumbnail, forceRefresh))
-                return;
-
-            StartThumbnailFetchIfNeeded(info.Clone(), isNewTrackForThumbnail);
+            await PublishMediaSnapshotAsync(info, forceRefresh, ct);
         }
         finally
         {
             _updateLock.Release();
         }
+    }
+
+    private async Task PublishMediaSnapshotAsync(MediaInfo info, bool forceRefresh, CancellationToken ct)
+    {
+        // Both native session snapshots and recovered window titles take this
+        // path. Credits may remain pending, but playback can publish immediately.
+        await ResolveSpotifyArtistsBeforePublishAsync(info, ct);
+        ct.ThrowIfCancellationRequested();
+        info.IsThrottled = _timelineSimulator.IsThrottled;
+        UpdateDetectionMode(info);
+        var currentSignature = info.GetSignature();
+        if (UpdateEmptyMetadataHold(info, currentSignature)) return;
+        bool isNewTrackForThumbnail = ComputeIsNewTrackForThumbnail(info);
+        if (!await TryPublishMediaChangeAsync(info, currentSignature, isNewTrackForThumbnail, forceRefresh)) return;
+        if (!info.IsMetadataPending)
+            StartThumbnailFetchIfNeeded(info.Clone(), isNewTrackForThumbnail);
     }
 
     private void TrackNameChangeBookkeeping(MediaInfo info, bool resetThrottle = true)
@@ -940,7 +938,8 @@ public sealed partial class MediaDetectionService : IMediaDetectionService, IAsy
     private async Task<bool> TryPublishMediaChangeAsync(MediaInfo info, string currentSignature, bool isNewTrackForThumbnail, bool forceRefresh)
     {
         if (!AcceptsMediaUpdate(info)) return false;
-        ApplyPrePublishThumbnailFallbackAndCrop(info, isNewTrackForThumbnail);
+        if (info.IsMetadataPending) info.Thumbnail = null;
+        else ApplyPrePublishThumbnailFallbackAndCrop(info, isNewTrackForThumbnail);
         bool metadataChanged = currentSignature != _lastPublishedSignature;
         bool thumbnailChanged = !ReferenceEquals(info.Thumbnail, _lastPublishedInfo?.Thumbnail);
         bool playbackChanged = info.IsPlaying != _lastIsPlaying;
@@ -1386,8 +1385,12 @@ public sealed partial class MediaDetectionService : IMediaDetectionService, IAsy
                                             TryGetSessionSourceOverride(info, out var sourceOverride) &&
                                             MediaPlatformExtensions.ParsePlatform(sourceOverride) == MediaPlatform.SoundCloud;
 
+        bool thumbnailIsNullOrPlaceholder = info.Thumbnail == null || IsLikelySoundCloudPlaceholderThumbnail(info.Thumbnail);
+        bool canNeedBrowserUrlProbe = forceFetchForTrackChange ||
+                                      thumbnailIsNullOrPlaceholder ||
+                                      info.Thumbnail!.PixelWidth < 200;
         bool browserHasYouTubeTabOpen = false;
-        if (info.Platform == MediaPlatform.Browser && !hasSoundCloudSessionOverride)
+        if (info.Platform == MediaPlatform.Browser && !hasSoundCloudSessionOverride && canNeedBrowserUrlProbe)
         {
             try
             {
@@ -1410,8 +1413,6 @@ public sealed partial class MediaDetectionService : IMediaDetectionService, IAsy
                 RuntimeLog.Debug("MEDIA-URL", $"URL scan ignored: {ex.Message}");
             }
         }
-
-        bool thumbnailIsNullOrPlaceholder = info.Thumbnail == null || IsLikelySoundCloudPlaceholderThumbnail(info.Thumbnail);
         var sourcePlan = ThumbnailFetchPlanner.ClassifySources(new ThumbnailSourceInputs
         {
             PlatformIsYouTube = info.Platform == MediaPlatform.YouTube,
@@ -2791,7 +2792,7 @@ public sealed partial class MediaDetectionService : IMediaDetectionService, IAsy
                 windowTitleFactory,
                 adTransition.WasTransitionActive);
 
-            await ApplySessionThumbnailWithRefreshAsync(info, session, mediaProperties, trackChangedForThisPass);
+            await ApplySessionThumbnailWithRefreshAsync(info, session, mediaProperties, trackChangedForThisPass, forceRefresh);
 
             _lastTrackSignature = info.GetSignature();
             return false;
@@ -2997,13 +2998,13 @@ public sealed partial class MediaDetectionService : IMediaDetectionService, IAsy
     private static string BuildSpotifyArtistTrackOnlyKey(string track, string artist)
         => $"{track.Trim()}|{artist.Trim()}||0";
 
-    private void ApplyCachedSpotifyArtists(MediaInfo info)
+    private bool ApplyCachedSpotifyArtists(MediaInfo info)
     {
         if (info.Platform != MediaPlatform.Spotify ||
             string.IsNullOrWhiteSpace(info.CurrentTrack) ||
             string.IsNullOrWhiteSpace(info.CurrentArtist))
         {
-            return;
+            return false;
         }
 
         string key = BuildSpotifyArtistCacheKey(info.CurrentTrack, info.CurrentArtist, info.CurrentAlbum, info.Duration);
@@ -3015,7 +3016,9 @@ public sealed partial class MediaDetectionService : IMediaDetectionService, IAsy
         {
             info.CurrentArtist = enriched;
             _stableArtist = enriched;
+            return true;
         }
+        return false;
     }
 
     private void StoreSpotifyArtistCache(string track, string primaryArtist, string album, TimeSpan duration, string enriched)
@@ -3034,56 +3037,35 @@ public sealed partial class MediaDetectionService : IMediaDetectionService, IAsy
         _spotifyArtistCache[BuildSpotifyArtistTrackOnlyKey(track, enriched)] = enriched;
     }
 
-    private async Task ResolveSpotifyArtistsBeforePublishAsync(MediaInfo info, CancellationToken ct)
+    private Task ResolveSpotifyArtistsBeforePublishAsync(MediaInfo info, CancellationToken ct)
     {
+        ct.ThrowIfCancellationRequested();
+        info.IsMetadataPending = false;
         // The Web Player publishes its artist credits in the browser media session.
         if (info.Platform != MediaPlatform.Spotify || IsBrowserSourceApp(info.SourceAppId) ||
             string.IsNullOrWhiteSpace(info.CurrentTrack) ||
             string.IsNullOrWhiteSpace(info.CurrentArtist))
         {
-            return;
+            CancelSpotifyArtistLookup();
+            return Task.CompletedTask;
         }
 
-        ApplyCachedSpotifyArtists(info);
+        if (ApplyCachedSpotifyArtists(info))
+        {
+            CancelSpotifyArtistLookup();
+            return Task.CompletedTask;
+        }
         string track = info.CurrentTrack.Trim();
         string artist = info.CurrentArtist.Trim();
         string album = (info.CurrentAlbum ?? string.Empty).Trim();
         TimeSpan duration = info.Duration;
-        string key = BuildSpotifyArtistCacheKey(track, artist, album, duration);
-
-        if (_spotifyArtistCache.TryGetValue(key, out string? existing))
-        {
-            if (!string.IsNullOrEmpty(existing))
-            {
-                info.CurrentArtist = existing;
-                _stableArtist = existing;
-            }
-            return;
-        }
-
-        string? enriched = null;
-        try
-        {
-            // Publish the track and its full artist list together. A short
-            // timeout here would expose the primary artist as an intermediate
-            // frame and trigger a second text transition when the lookup ends.
-            enriched = await _metadataLookup.TryGetSpotifyFullArtistsAsync(track, artist, duration, album, ct)
-                .WaitAsync(ct).ConfigureAwait(false);
-        }
-        catch (OperationCanceledException) when (ct.IsCancellationRequested)
-        {
-            throw;
-        }
-        catch
-        {
-            // Keep the session artist available when all metadata sources fail.
-        }
-
-        ct.ThrowIfCancellationRequested();
-        string resolved = string.IsNullOrWhiteSpace(enriched) ? artist : enriched.Trim();
-        StoreSpotifyArtistCache(track, artist, album, duration, resolved);
-        info.CurrentArtist = resolved;
-        _stableArtist = resolved;
+        StartSpotifyArtistLookup(info, track, artist, album, duration, ct);
+        // A synchronous/local result can reveal both text fields immediately.
+        // Otherwise publish current controls/timeline with a pending text state;
+        // the lookup wakes the normal processor to read a fresh media snapshot.
+        info.IsMetadataPending = !ApplyCachedSpotifyArtists(info);
+        if (info.IsMetadataPending) info.Thumbnail = null;
+        return Task.CompletedTask;
     }
 
     private bool InvalidateThumbnailStateIfTrackChanged(MediaInfo info)
@@ -3333,8 +3315,34 @@ public sealed partial class MediaDetectionService : IMediaDetectionService, IAsy
         MediaInfo info,
         GlobalSystemMediaTransportControlsSession? session,
         GlobalSystemMediaTransportControlsSessionMediaProperties? mediaProperties,
-        bool trackChangedForThisPass)
+        bool trackChangedForThisPass,
+        bool forceRefresh = false)
     {
+        bool browserSessionChanged =
+            IsBrowserSourceApp(info.SourceAppId) &&
+            !string.IsNullOrEmpty(_lastPublishedSessionInstanceKey) &&
+            !string.IsNullOrEmpty(info.SessionInstanceKey) &&
+            !string.Equals(_lastPublishedSessionInstanceKey, info.SessionInstanceKey, StringComparison.Ordinal);
+        bool crossProviderCacheMismatch =
+            info.Platform == MediaPlatform.SoundCloud &&
+            MediaPlatformExtensions.ParsePlatform(_cachedThumbnailSource) == MediaPlatform.YouTube;
+        bool hasVerifiedTrackArtwork =
+            (_lastSessionArtworkFingerprint.HasValue &&
+             _sessionArtworkGeneration == Volatile.Read(ref _thumbnailFetchGeneration)) ||
+            !string.IsNullOrEmpty(_cachedThumbnailSource);
+        if (!trackChangedForThisPass &&
+            !forceRefresh &&
+            !browserSessionChanged &&
+            !crossProviderCacheMismatch &&
+            CachedThumbnail != null &&
+            hasVerifiedTrackArtwork &&
+            _lastMetadataChangeTime != DateTime.MinValue &&
+            (DateTime.UtcNow - _lastMetadataChangeTime) >= TimeSpan.FromSeconds(6))
+        {
+            info.Thumbnail = CachedThumbnail;
+            return;
+        }
+
         await ApplySessionThumbnailAsync(info, mediaProperties, trackChangedForThisPass);
 
         bool refreshSessionArtwork = IsBrowserSourceApp(info.SourceAppId) ||
@@ -3355,28 +3363,40 @@ public sealed partial class MediaDetectionService : IMediaDetectionService, IAsy
             RuntimeLog.Debug("MEDIA-THUMB-PROCESS", $"Deferred session thumbnail refresh skipped: {ex.Message}");
         }
 
-        if (info.Thumbnail == null && _state == ServiceLifecycleState.Running && _bgCts is { IsCancellationRequested: false } cts)
+        if (info.Thumbnail == null)
         {
-            int expectedGen = Volatile.Read(ref _thumbnailFetchGeneration);
-            var token = cts.Token;
-            _ = Task.Run(async () =>
-            {
-                try
-                {
-                    foreach (int delayMs in new[] { 250, 750 })
-                    {
-                        await Task.Delay(delayMs, token);
-                        if (expectedGen != Volatile.Read(ref _thumbnailFetchGeneration) || CachedThumbnail != null)
-                            return;
-                        _changes.Enqueue(ChangeTypes.Heartbeat);
-                    }
-                }
-                catch (OperationCanceledException)
-                {
-                    // Normal on shutdown/cancellation.
-                }
-            }, token);
+            ScheduleDeferredSessionThumbnailRefreshIfNeeded();
         }
+    }
+
+    private bool ScheduleDeferredSessionThumbnailRefreshIfNeeded()
+    {
+        if (_state != ServiceLifecycleState.Running || _bgCts is not { IsCancellationRequested: false } cts)
+            return false;
+
+        int expectedGen = Volatile.Read(ref _thumbnailFetchGeneration);
+        if (Interlocked.Exchange(ref _deferredThumbRefreshGeneration, expectedGen) == expectedGen)
+            return false;
+
+        var token = cts.Token;
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                foreach (int delayMs in new[] { 250, 750 })
+                {
+                    await Task.Delay(delayMs, token);
+                    if (expectedGen != Volatile.Read(ref _thumbnailFetchGeneration) || CachedThumbnail != null)
+                        return;
+                    _changes.Enqueue(ChangeTypes.Heartbeat);
+                }
+            }
+            catch (OperationCanceledException)
+            {
+                // Normal on shutdown/cancellation.
+            }
+        }, token);
+        return true;
     }
 
     private Task ApplySessionThumbnailAsync(MediaInfo info, GlobalSystemMediaTransportControlsSessionMediaProperties? mediaProperties, bool trackChangedForThisPass)
@@ -4428,7 +4448,7 @@ public sealed partial class MediaDetectionService : IMediaDetectionService, IAsy
             if (isDisposing) _pinReconnect.Dispose();
             else _pinReconnect.Reset();
 
-            var tasksToWait = new List<Task>();
+            var tasksToWait = new List<Task> { CancelSpotifyArtistLookup() };
             if (!_workerDrainTask.IsCompleted) tasksToWait.Add(_workerDrainTask);
             if (_initTask != null) tasksToWait.Add(_initTask);
             if (_processingTask != null) tasksToWait.Add(_processingTask);

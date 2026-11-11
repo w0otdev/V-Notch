@@ -21,29 +21,6 @@ internal static partial class AiMarkdown
     }
 
     [StructLayout(LayoutKind.Sequential, Pack = 1)]
-    internal struct VnMarkdownCodeFenceHeader
-    {
-        public byte IsFence;
-        public byte FenceChar;
-        public byte FenceCount;
-        public byte Reserved;
-        public int LangStart;
-        public int LangLength;
-    }
-
-    [StructLayout(LayoutKind.Sequential, Pack = 1)]
-    internal struct VnMarkdownListPrefix
-    {
-        public byte ListKind;
-        public byte IsChecked;
-        public ushort OrderedNumber;
-        public int PrefixStart;
-        public int PrefixLength;
-        public int ContentStart;
-        public int ContentLength;
-    }
-
-    [StructLayout(LayoutKind.Sequential, Pack = 1)]
     internal struct VnMarkdownSpanBoundarySummary
     {
         public byte HasUnclosedFence;
@@ -63,18 +40,6 @@ internal static partial class AiMarkdown
         Span<VnMarkdownWordSlice> outSpans,
         int spanCap,
         out int outWritten);
-
-    [LibraryImport("VNotch.Native.dll", StringMarshalling = StringMarshalling.Utf16)]
-    private static partial int vn_markdown_parse_code_fence_header(
-        ReadOnlySpan<char> linePtr,
-        int lineLen,
-        out VnMarkdownCodeFenceHeader outHeader);
-
-    [LibraryImport("VNotch.Native.dll", StringMarshalling = StringMarshalling.Utf16)]
-    private static partial int vn_markdown_strip_list_prefix(
-        ReadOnlySpan<char> linePtr,
-        int lineLen,
-        out VnMarkdownListPrefix outPrefix);
 
     [LibraryImport("VNotch.Native.dll", StringMarshalling = StringMarshalling.Utf16)]
     private static partial int vn_markdown_scan_span_boundaries(
@@ -104,35 +69,6 @@ internal static partial class AiMarkdown
 
     [ThreadStatic]
     private static MarkdownDocument? _cachedMarkdownDoc;
-
-    [System.Text.RegularExpressions.GeneratedRegex(@"(?m)^\s*```")]
-    private static partial System.Text.RegularExpressions.Regex FenceRegex();
-
-    [System.Text.RegularExpressions.GeneratedRegex(@"(?s)```.*?```|`[^`]*`")]
-    private static partial System.Text.RegularExpressions.Regex CodeSpanRegex();
-
-    [System.Text.RegularExpressions.GeneratedRegex(@"(?<!\\)\*\*")]
-    private static partial System.Text.RegularExpressions.Regex BoldMarkerRegex();
-
-    [System.Text.RegularExpressions.GeneratedRegex(@"\S+\s*")]
-    private static partial System.Text.RegularExpressions.Regex WordSpanRegex();
-
-    internal static bool TryParseCodeFenceHeader(ReadOnlySpan<char> line, out ReadOnlySpan<char> language)
-    {
-        if (vn_markdown_parse_code_fence_header(line, line.Length, out var header) == 0 && header.IsFence != 0)
-        {
-            language = line.Slice(header.LangStart, header.LangLength);
-            return true;
-        }
-        language = default;
-        return false;
-    }
-
-    internal static VnMarkdownListPrefix StripListPrefix(ReadOnlySpan<char> line)
-    {
-        vn_markdown_strip_list_prefix(line, line.Length, out var prefix);
-        return prefix;
-    }
 
     internal static VnMarkdownSpanBoundarySummary ScanSpanBoundaries(ReadOnlySpan<char> markdown)
     {
@@ -203,14 +139,11 @@ internal static partial class AiMarkdown
                 Margin = new Thickness(0, 4, 0, 8),
                 Padding = new Thickness(22, 0, 0, 0)
             };
-            if (list.IsOrdered && !string.IsNullOrEmpty(list.OrderedStart))
+            if (list.IsOrdered &&
+                ushort.TryParse(list.OrderedStart, System.Globalization.NumberStyles.None, System.Globalization.CultureInfo.InvariantCulture, out ushort orderedNumber) &&
+                orderedNumber > 0)
             {
-                ReadOnlySpan<char> orderedSpan = list.OrderedStart.AsSpan();
-                if (vn_markdown_strip_list_prefix(orderedSpan, orderedSpan.Length, out var prefix) == 0 &&
-                    prefix.ListKind == 2 && prefix.OrderedNumber > 0)
-                {
-                    result.StartIndex = prefix.OrderedNumber;
-                }
+                result.StartIndex = orderedNumber;
             }
             for (int i = 0; i < list.Count; i++)
             {

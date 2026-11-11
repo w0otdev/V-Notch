@@ -10,6 +10,8 @@ public partial class MainWindow
     private SettingsWindow? _activeSettingsWindow;
     private NotchSettings? _preparedSettingsSnapshot;
     private bool _firstOpenUiPrepared;
+    private bool _settingsPreparationScheduled;
+    private int _settingsPreparationGeneration;
 
     protected override System.Windows.Automation.Peers.AutomationPeer OnCreateAutomationPeer() =>
         new MainWindowAutomationPeer(this);
@@ -33,17 +35,40 @@ public partial class MainWindow
         _firstOpenUiPrepared = true;
         PrepareExpandedContentForFirstOpen();
         PrepareSecondaryContentForFirstOpen();
-        // Pay the one-time XAML/template/native-window cost before the startup
-        // entrance begins, while the notch is still waiting for its first layout.
+    }
+
+    private void ScheduleSettingsFirstOpenPreparation()
+    {
+        if (_settingsPreparationScheduled || _cleanedUp) return;
+        _settingsPreparationScheduled = true;
+        int generation = _settingsPreparationGeneration;
+        Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.ApplicationIdle, new Action(() =>
+            PrepareSettingsFirstOpenAsync(generation).SafeFireAndForget("SETTINGS-PREPARE")));
+    }
+
+    private async Task PrepareSettingsFirstOpenAsync(int generation)
+    {
+        if (_cleanedUp || generation != _settingsPreparationGeneration || _activeSettingsWindow != null) return;
+        SettingsWindow? prepared = null;
         try
         {
+            // Both stages run after the notch's entrance. Yield between XAML
+            // construction and native template realization so input can run.
             _preparedSettingsSnapshot = _settings.Clone();
-            _preparedSettingsWindow = CreateSettingsWindow(prepareForFirstShow: true);
-            _preparedSettingsWindow.PrepareForFirstShow();
+            prepared = CreateSettingsWindow(prepareForFirstShow: true);
+            _preparedSettingsWindow = prepared;
+            await Dispatcher.InvokeAsync(static () => { }, System.Windows.Threading.DispatcherPriority.ContextIdle);
+            if (_cleanedUp || generation != _settingsPreparationGeneration || !ReferenceEquals(prepared, _preparedSettingsWindow)) return;
+            await prepared.PrepareForFirstShowAsync();
         }
         catch (Exception ex)
         {
-            DiscardPreparedSettingsWindow();
+            if (ReferenceEquals(prepared, _preparedSettingsWindow))
+            {
+                _preparedSettingsWindow = null;
+                _preparedSettingsSnapshot = null;
+                prepared?.Close();
+            }
             RuntimeLog.Warn("FIRST-OPEN", $"Settings preparation skipped: {ex.GetType().Name}");
         }
     }
@@ -99,6 +124,9 @@ public partial class MainWindow
 
     private SettingsWindow TakeSettingsWindow()
     {
+        // Cancel queued stages before taking ownership. A user opening Settings
+        // while its hidden realization yields must never have it hidden again.
+        _settingsPreparationGeneration++;
         var prepared = _preparedSettingsWindow;
         _preparedSettingsWindow = null;
         var snapshot = _preparedSettingsSnapshot;
@@ -114,6 +142,7 @@ public partial class MainWindow
 
     private void DiscardPreparedSettingsWindow()
     {
+        _settingsPreparationGeneration++;
         var active = _activeSettingsWindow;
         _activeSettingsWindow = null;
         active?.Close();

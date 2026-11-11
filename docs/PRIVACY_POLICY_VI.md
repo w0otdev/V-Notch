@@ -4,7 +4,7 @@
 
 **Bản công bố trước:** 24 tháng 10 năm 2026
 
-**Phạm vi:** Mã nguồn hiện tại ngày 3 tháng 11 năm 2026 (v2.3.0); tính năng khả dụng phụ thuộc bản cài đặt.
+**Phạm vi:** Mã nguồn hiện tại ngày 11 tháng 11 năm 2026 (v2.3.1); tính năng khả dụng phụ thuộc bản cài đặt.
 
 **Nhà phát triển:** w0otdev & viper1aa  
 **Liên hệ:** [github.com/w0otdev/V-Notch/issues](https://github.com/w0otdev/V-Notch/issues)  

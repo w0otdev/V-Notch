@@ -667,7 +667,7 @@ public partial class SpotlightWindow : Window
 
         CancelSearchDebounce();
         _searchInputPending = !string.IsNullOrEmpty(SearchBox.Text);
-        // Invalidate the old query immediately, not after the new debounce.
+        // Invalidate the old query before starting its replacement.
         _viewModel.CancelPendingSearch();
 
         string currentText = SearchBox.Text;
@@ -690,7 +690,8 @@ public partial class SpotlightWindow : Window
 
         try
         {
-            if (IsSpotlightOpen) await Task.Delay(120, token);
+            // The service debounces IPC and disk providers independently; cached
+            // application results can start as soon as the input changes.
             if (token.IsCancellationRequested || _isClosing || _allowClose ||
                 !ReferenceEquals(_searchDebounceCts, cts)) return;
 

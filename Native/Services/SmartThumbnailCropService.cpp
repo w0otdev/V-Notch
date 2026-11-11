@@ -876,18 +876,4 @@ VN_EXPORT int32_t vn_smartcrop_try_detect_text_crop_rect(
     return VN_OK;
 }
 
-VN_EXPORT int32_t vn_smartcrop_detect_text_regions(
-    const uint8_t* pixels, int32_t w, int32_t h, int32_t stride,
-    int32_t img_width, int32_t img_height,
-    vnotch::services::VnCropRect* out_regions, int32_t out_cap, int32_t* out_count) noexcept
-{
-    if (!out_count || img_width <= 0 || img_height <= 0 ||
-        !vnotch::services::SmartThumbnailCropService::IsValidPixelArgs(pixels, w, h, stride, 8)) {
-        return VN_ERR_INVALID_ARG;
-    }
-    *out_count = vnotch::services::SmartThumbnailCropService::DetectTextRegions(
-        pixels, w, h, stride, img_width, img_height, out_regions, out_cap);
-    return VN_OK;
-}
-
 } // extern "C"

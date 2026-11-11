@@ -117,8 +117,8 @@ public sealed partial class LyricsProviderTests
     [InlineData("[{\"text\":5,\"start\":1000,\"end\":2000}]")]
     public void BadWordDataRetainsTheUsableLine(string words)
     {
-        using var doc = JsonDocument.Parse("[{\"text\":\"Hello\",\"start\":1000,\"words\":" + words + "}]");
-        var line = Assert.Single(LyricTiming.ParseTimedLines(doc.RootElement));
+        byte[] json = System.Text.Encoding.UTF8.GetBytes("{\"lines\":[{\"text\":\"Hello\",\"start\":1000,\"words\":" + words + "}],\"wordMap\":null}");
+        var line = Assert.Single(NativeLyricParser.Parse(json, 2));
         Assert.Equal("Hello", line.Text);
         Assert.Null(line.Words);
     }
@@ -126,12 +126,12 @@ public sealed partial class LyricsProviderTests
     [Fact]
     public void TopLevelWordMapAndSyllableBoundariesArePreserved()
     {
-        using var doc = JsonDocument.Parse("""
-            {"lines":[{"id":0,"text":"Hello world","start":1000}],"words":[[
+        byte[] json = """
+            {"lines":[{"id":0,"text":"Hello world","start":1000}],"wordMap":[[
              {"text":"Hel","start":1000,"end":1200},{"text":"lo","start":1200,"end":1800},
              {"text":"world","start":2000,"end":2600}]]}
-            """);
-        var line = Assert.Single(LyricTiming.ParseTimedLines(doc.RootElement.GetProperty("lines"), doc.RootElement.GetProperty("words")));
+            """u8.ToArray();
+        var line = Assert.Single(NativeLyricParser.Parse(json, 2));
         Assert.Equal(3, line.Words!.Length);
         Assert.Equal(3, line.Words[1].Offset);
         Assert.Equal(6, line.Words[2].Offset);

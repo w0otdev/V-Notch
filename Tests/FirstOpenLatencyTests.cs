@@ -23,7 +23,9 @@ public sealed class FirstOpenLatencyTests(ITestOutputHelper output)
         await using var fixture = Create();
         var window = fixture.Window;
         window.Show();
-        await WpfFrameWaiter.UntilAsync(() => !Animating(window), "notch startup settles", ct);
+        await WpfFrameWaiter.UntilAsync(() =>
+            typeof(MainWindow).GetField("_preparedSettingsWindow", Private)!.GetValue(window) is SettingsWindow { IsLoaded: true, IsVisible: false },
+            "post-entrance settings preparation finishes", ct);
 
         var pauses = new List<double>();
         void Capture(string message) => output.WriteLine(message);
@@ -93,6 +95,30 @@ public sealed class FirstOpenLatencyTests(ITestOutputHelper output)
             await WpfFrameWaiter.UntilAsync(() => !Animating(window) && coordinator.CurrentView == NotchView.Compact, "notch collapse completes", ct);
         }
         Assert.True(pauses[0] < 100, $"First notch click stalled the UI for {pauses[0]:F1} ms (second: {pauses[1]:F1} ms).");
+    });
+
+    [Fact]
+    public void SettingsPreparationWaitsUntilTheNotchStartupEntranceHasFinished() => SharedStaTestRunner.RunAsync(async ct =>
+    {
+        await using var fixture = Create();
+        var window = fixture.Window;
+        bool? afterEntrance = null;
+        void Capture(string message)
+        {
+            if (message.Contains("Settings XAML", StringComparison.Ordinal))
+                afterEntrance = (bool)typeof(MainWindow).GetField("_postAppearInitializationStarted", Private)!.GetValue(window)!;
+        }
+        SettingsWindow.FirstOpenProbe += Capture;
+        try
+        {
+            window.Show();
+            Assert.Null(typeof(MainWindow).GetField("_preparedSettingsWindow", Private)!.GetValue(window));
+            await WpfFrameWaiter.UntilAsync(() =>
+                typeof(MainWindow).GetField("_preparedSettingsWindow", Private)!.GetValue(window) is SettingsWindow { IsLoaded: true, IsVisible: false },
+                "deferred settings preparation completes", ct);
+            Assert.True(afterEntrance);
+        }
+        finally { SettingsWindow.FirstOpenProbe -= Capture; }
     });
 
     private static bool Animating(MainWindow window) =>

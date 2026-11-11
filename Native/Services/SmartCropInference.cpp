@@ -55,7 +55,7 @@ struct CropSession {
         options.SetExecutionMode(ExecutionMode::ORT_SEQUENTIAL);
         options.DisableMemPattern();
         options.DisableCpuMemArena();
-        options.SetInterOpNumThreads(1); options.SetIntraOpNumThreads(2);
+        options.SetInterOpNumThreads(1); options.SetIntraOpNumThreads(1);
         if (prefer_dml) {
             const auto append = reinterpret_cast<AppendDml>(GetProcAddress(GetModuleHandleW(L"onnxruntime.dll"),
                 "OrtSessionOptionsAppendExecutionProvider_DML"));

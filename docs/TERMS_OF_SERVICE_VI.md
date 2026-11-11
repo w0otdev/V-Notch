@@ -3,7 +3,7 @@
 **Ngày hiệu lực:** 31 tháng 10 năm 2026
 **Người duy trì:** w0otdev & viper1aa  
 **Dự án:** https://github.com/w0otdev/V-Notch  
-**Phạm vi:** bản ứng dụng Windows chính thức và tài liệu đi kèm, luôn tuân theo các giấy phép mã nguồn mở có hiệu lực riêng. Phiên bản ứng dụng được mô tả là 2.3.0; phải đối chiếu với bản nhị phân thực tế phát hành.
+**Phạm vi:** bản ứng dụng Windows chính thức và tài liệu đi kèm, luôn tuân theo các giấy phép mã nguồn mở có hiệu lực riêng. Phiên bản ứng dụng được mô tả là 2.3.1.
 
 > **Lưu ý:** V-Notch là dự án mã nguồn mở, miễn phí và độc lập, không phải dịch vụ lưu trữ trả phí. Văn bản này không sửa đổi Apache-2.0 hoặc giấy phép bên thứ ba; không tước quyền luật định bắt buộc; không cấp quyền đối với nội dung của người khác; không chứng minh bất kỳ nền tảng nào đã cho phép tích hợp. Không điều khoản nào bảo đảm ngăn được kiện tụng.
 
@@ -51,6 +51,7 @@ Khóa và lịch sử chat được bảo vệ cục bộ bằng Windows DPAPI, 
 
 **Tuyên bố miễn trừ trách nhiệm về khóa API (Bản Pre-release và Release chính thức):**
 Khóa API bạn nhập trong cài đặt V-Notch (bao gồm YouTube Data API, OpenAI, Gemini, Claude, DeepSeek) được mã hóa và lưu cục bộ bằng DPAPI. V-Notch không vận hành máy chủ trung gian và không thu thập hay lưu trữ các khóa này.
+
 - **Đối với các bản phát hành thử nghiệm (Pre-release, Alpha, Beta, Nightly, Canary):** Đây là các bản dựng phục vụ mục đích kiểm thử, có thể chứa mã gỡ lỗi (debug symbols), cơ chế ghi log chi tiết hoặc lỗi phần mềm chưa hoàn thiện. Bạn hoàn toàn tự chịu rủi ro khi cài đặt và sử dụng các bản thử nghiệm này.
 - **Miễn trừ trách nhiệm về rò rỉ khóa và chi phí phát sinh:** Trong phạm vi tối đa mà pháp luật cho phép, nhà phát triển và những người đóng góp (contributors) được miễn trừ hoàn toàn khỏi mọi trách nhiệm pháp lý, khiếu nại hoặc bồi thường thiệt hại đối với: (a) chi phí sử dụng dịch vụ vượt hạn mức (quota overage / billing charges) do khóa bị sử dụng ngoài ý muốn; (b) việc khóa API bị lộ do phần mềm độc hại, mã gián điệp, chia sẻ công khai tệp log/cấu hình/ảnh chụp màn hình/video của người dùng; (c) việc trích xuất bộ nhớ từ tài khoản máy tính bị xâm phạm; hoặc (d) các bản phân phối đã bị chỉnh sửa (forks/modifications) không chính thức.
 - **Trách nhiệm của người dùng:** Bạn có trách nhiệm tự bảo vệ tài khoản API bằng cách thiết lập hạn mức chi tiêu/tốc độ (usage/spending limits) tại bảng điều khiển của nhà cung cấp và lập tức thu hồi (revoke) khóa nếu phát hiện hoặc nghi ngờ bị rò rỉ.
@@ -114,3 +115,4 @@ Nếu một phần vô hiệu, chỉ phần đó không áp dụng trong giới 
 Kho chính thức: https://github.com/w0otdev/V-Notch  
 Liên hệ chung: https://github.com/w0otdev/V-Notch/issues (công khai; không đăng thông tin bí mật).  
 Có hiệu lực từ 31/10/2026. Xem bản cũ trong lịch sử repo. Đây là dự thảo công bố của dự án, không phải bằng chứng luật sư đã duyệt hoặc bản nhị phân đã được kiểm toán.
+

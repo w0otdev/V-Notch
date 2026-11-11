@@ -703,7 +703,7 @@ public partial class SpotlightWindow
             && Math.Abs(r1.SubY - r2.SubY) <= 1e-4;
     }
 
-    private void SyncLiveGlassFrame(bool updateDynamicFresnel)
+    private void SyncLiveGlassFrame(bool updateDynamicFresnel, TimeSpan? renderingTime = null)
     {
         if (_liquidGlass == null || !IsLiquidGlassEnabled || !IsSpotlightOpen) return;
 
@@ -717,7 +717,8 @@ public partial class SpotlightWindow
 
         if (isAnimating || regionChanged)
         {
-            if (!regionChanged && _liquidGlass.ShouldThrottleFrameUpdate(ref _lastGlassFrameUpdateTick))
+            if (_liquidGlass.ShouldThrottleFrameUpdate(ref _lastGlassFrameUpdateTick, force: regionChanged,
+                renderingTime: renderingTime))
                 return;
             _lastPushedCaptureRegion = region;
             _liquidGlass.SetLiveRegion(region);
@@ -732,7 +733,7 @@ public partial class SpotlightWindow
 
     private void OnLiquidGlassFrameUpdate(object? sender, EventArgs e)
     {
-        SyncLiveGlassFrame(updateDynamicFresnel: true);
+        SyncLiveGlassFrame(updateDynamicFresnel: true, renderingTime: (e as RenderingEventArgs)?.RenderingTime);
     }
 
     private void AnimateGlassReadability(bool opened, bool animate = true)

@@ -18,6 +18,23 @@ public sealed class SpotlightSearchPresentationTests
 {
     private const BindingFlags Private = BindingFlags.Instance | BindingFlags.NonPublic;
 
+    [Fact]
+    public void InputStartsTheReplacementQueryBeforeReturningToTheDispatcher() => SharedStaTestRunner.RunAsync(async ct =>
+    {
+        using var fixture = new SpotlightWindowFixture(Settings(), searchProvider: new ResultsProvider());
+        var window = fixture.Window;
+        window.ShowSpotlight();
+        await WpfFrameWaiter.UntilAsync(() => !Field<bool>(window, "_entranceActive"), "search entrance", ct);
+        var vm = Field<SpotlightViewModel>(window, "_viewModel");
+        window.SearchBox.Text = "fixture";
+        Assert.Equal("fixture", vm.Query);
+        window.SearchBox.Text = "replacement";
+        Assert.Equal("replacement", vm.Query);
+        await WpfFrameWaiter.UntilAsync(() => !vm.IsSearching && vm.Results.Count > 0,
+            "replacement query completes", ct);
+        Assert.All(vm.Results, result => Assert.StartsWith("replacement", result.Title));
+    });
+
     [Theory]
     [InlineData(false)]
     [InlineData(true)]

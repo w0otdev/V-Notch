@@ -75,18 +75,6 @@ public sealed partial class StrixSecurityAuditRegressionTests
         out int outBottom);
 
     [LibraryImport(NativeDll)]
-    private static partial int vn_color_extract_sampled(
-        ReadOnlySpan<byte> pixels,
-        int pixelLen,
-        int width,
-        int height,
-        ReadOnlySpan<double> coords,
-        int coordsLen,
-        out byte outR,
-        out byte outG,
-        out byte outB);
-
-    [LibraryImport(NativeDll)]
     private static partial int vn_subject_blur_brighten(
         Span<byte> pixels,
         int bufLen,
@@ -239,10 +227,6 @@ public sealed partial class StrixSecurityAuditRegressionTests
         byte[] dst = new byte[pixels.Length];
         Assert.True(vn_glass_upload_delta_copy_changed_rows(pixels, 16, dst, 64, 64, 16, out _, out _) < 0);
         Assert.True(vn_glass_upload_delta_copy_changed_rows(pixels, 64, dst, -64, 64, 16, out _, out _) < 0);
-
-        // ColorExtractionService must ignore NaN/Inf/out-of-range coordinates safely
-        double[] coords = [double.NaN, 0.5, 0.5, double.PositiveInfinity, -0.5, 0.5, 1.0, 1.0, 0.5, 0.5];
-        Assert.Equal(0, vn_color_extract_sampled(pixels, pixels.Length, 16, 16, coords, coords.Length, out _, out _, out _));
 
         // SubjectAwareBlurService must handle NaN factor/coordinates and reject stride < width * 4
         Assert.Equal(0, vn_subject_blur_brighten(dst, dst.Length, float.NaN));

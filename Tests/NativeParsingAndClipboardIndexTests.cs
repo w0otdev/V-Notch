@@ -44,7 +44,7 @@ public sealed class NativeParsingAndClipboardIndexTests
     [InlineData("<00:02>one<00:01>two", "onetwo", false)]
     public void EnhancedLrcKeepsInvalidTagsAndRejectsInvalidWordSequences(string input, string clean, bool timed)
     {
-        var line = LyricTiming.ParseEnhanced(TimeSpan.FromSeconds(1), input);
+        var line = NativeLyricParser.ParseEnhanced(TimeSpan.FromSeconds(1), input);
         Assert.Equal(clean, line.Text); Assert.Equal(timed, line.Words != null);
     }
 

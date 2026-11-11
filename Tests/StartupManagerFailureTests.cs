@@ -13,13 +13,13 @@ public sealed class StartupManagerFailureTests
     [InlineData(0, 2)]
     public void RegistryErrorsPropagateToTheSettingsCaller(int status, int error)
     {
-        var failure = Assert.Throws<Win32Exception>(() => StartupManager.EnsureChangeSucceeded(status, error));
+        var failure = Assert.Throws<Win32Exception>(() => WindowsStartupManager.EnsureChangeSucceeded(status, error));
         Assert.Equal(error, failure.NativeErrorCode);
     }
 
     [Fact]
     public void NativeFailureWithoutAWin32CodeStillFailsTheOperation() =>
-        Assert.Throws<InvalidOperationException>(() => StartupManager.EnsureChangeSucceeded(-3, 0));
+        Assert.Throws<InvalidOperationException>(() => WindowsStartupManager.EnsureChangeSucceeded(-3, 0));
 
     [Theory]
     [InlineData(1, 0)]

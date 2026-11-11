@@ -233,7 +233,14 @@ public sealed class ClipboardTrayMenuRegressionTests
                 Assert.InRange(surface.Opacity, previousOpacity - 0.00001, 1);
                 previousScale = scale;
                 previousOpacity = surface.Opacity;
-                if (frame == 1) animate.Invoke(null, [surface, null, false, false]);
+                if (frame == 1)
+                {
+                    Matrix rendered = surface.RenderTransform.Value;
+                    double opacity = surface.Opacity;
+                    animate.Invoke(null, [surface, null, false, false]);
+                    Assert.Equal(rendered, surface.RenderTransform.Value);
+                    Assert.Equal(opacity, surface.Opacity);
+                }
             }
             await WpfFrameWaiter.UntilAsync(() => Math.Abs(surface.RenderTransform.Value.M11 - 1) < 1e-6 && Math.Abs(surface.Opacity - 1) < 1e-6, "menu entrance settles");
             Assert.Equal(1, surface.RenderTransform.Value.M11, 3);

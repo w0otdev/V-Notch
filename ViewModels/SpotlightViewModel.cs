@@ -13,9 +13,6 @@ internal sealed partial class SpotlightViewModel : ObservableObject, IDisposable
 {
     private const int ResultLimit = 10;
 
-    // Debounce only Windows Search; in-memory and Everything IPC providers run
-    // on every keystroke for instant first paint.
-    private const int DeferredSearchDebounceMs = 75;
     private const int MaxIconConcurrency = 2;
     // Shared across query generations: cancellation cannot interrupt a native
     // shell icon call that has already started.
@@ -88,19 +85,18 @@ internal sealed partial class SpotlightViewModel : ObservableObject, IDisposable
         HasNoResults = false;
         try
         {
-            var instantResults = await _search.SearchInstantAsync(query, ResultLimit, cancellationToken);
-            cancellationToken.ThrowIfCancellationRequested();
-            if (_disposed || generation != Interlocked.Read(ref _queryGeneration)) return;
-            Publish(instantResults);
-            StartIconHydration(instantResults, generation, cancellationToken);
-
-            await Task.Delay(DeferredSearchDebounceMs, cancellationToken);
-            var deferredResults = await _search.SearchDeferredAsync(query, ResultLimit, cancellationToken);
-            cancellationToken.ThrowIfCancellationRequested();
-            if (_disposed || generation != Interlocked.Read(ref _queryGeneration)) return;
-            var merged = SpotlightSearchService.Merge([instantResults, deferredResults], ResultLimit);
-            Publish(merged);
-            StartIconHydration(merged, generation, cancellationToken);
+            await foreach (var update in _search.SearchUpdatesAsync(query, ResultLimit, cancellationToken))
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                if (_disposed || generation != Interlocked.Read(ref _queryGeneration)) return;
+                // Retain old rows until the immediate sources have answered. An
+                // empty immediate phase must then clear stale rows so a pending
+                // file query can show its searching status after the grace period.
+                // Only the completed query may declare that it has no results.
+                if (update.Results.Count == 0 && !update.IsImmediateComplete && !update.IsComplete) continue;
+                Publish(update.Results, markNoResults: update.IsComplete);
+                StartIconHydration(update.Results, generation, cancellationToken);
+            }
             IsWindowsSearchUnavailable = !_search.IsWindowsSearchAvailable;
         }
         catch (OperationCanceledException)

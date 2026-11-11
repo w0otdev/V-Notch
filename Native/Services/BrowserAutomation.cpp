@@ -172,55 +172,6 @@ Text normalize_title(View value, View source, bool media) {
 }
 }
 
-// Chromium exposes hyperlink URLs through the legacy accessibility value,
-// which the managed WPF UI Automation wrapper does not expose.
-VN_EXPORT int32_t __stdcall vn_spotify_read_track_link(intptr_t window, const wchar_t* document_name,
-    const wchar_t* title, char16_t* output, int32_t capacity, int32_t* written) noexcept {
-    if (!document_name || !title || !output || capacity <= 0 || !written) return VN_ERR_INVALID_ARG;
-    *written = 0;
-    try {
-        vnotch::ComScope com;
-        Automation automation;
-        if (!automation.initialize()) return VN_ERR_FAIL;
-        Ptr<IUIAutomationElement> root, document;
-        if (FAILED(automation.api->ElementFromHandle(reinterpret_cast<HWND>(window), root.GetAddressOf())) || !root) return VN_OK;
-        auto named_type = [&](CONTROLTYPEID type, const wchar_t* name, Ptr<IUIAutomationCondition>& condition) {
-            Variant control, label;
-            control.value.vt = VT_I4; control.value.lVal = type;
-            label.value.vt = VT_BSTR; label.value.bstrVal = SysAllocString(name);
-            if (!label.value.bstrVal) return false;
-            Ptr<IUIAutomationCondition> by_type, by_name;
-            return SUCCEEDED(automation.api->CreatePropertyCondition(UIA_ControlTypePropertyId, control.value, by_type.GetAddressOf())) &&
-                SUCCEEDED(automation.api->CreatePropertyCondition(UIA_NamePropertyId, label.value, by_name.GetAddressOf())) &&
-                SUCCEEDED(automation.api->CreateAndCondition(by_type.Get(), by_name.Get(), condition.GetAddressOf()));
-        };
-        Ptr<IUIAutomationCondition> doc_condition, link_condition;
-        if (!named_type(UIA_DocumentControlTypeId, document_name, doc_condition) ||
-            !named_type(UIA_HyperlinkControlTypeId, title, link_condition)) return VN_ERR_FAIL;
-        if (FAILED(root->FindFirst(TreeScope_Descendants, doc_condition.Get(), document.GetAddressOf())) || !document) return VN_OK;
-        if (FAILED(automation.cache->AddProperty(UIA_LegacyIAccessibleValuePropertyId))) return VN_ERR_FAIL;
-        Ptr<IUIAutomationElementArray> links;
-        if (FAILED(document->FindAllBuildCache(TreeScope_Descendants, link_condition.Get(), automation.cache.Get(), links.GetAddressOf())) || !links) return VN_OK;
-        int count = 0; links->get_Length(&count);
-        if (count > 100) return VN_OK;
-        Text url;
-        for (int i = 0; i < count; ++i) {
-            Ptr<IUIAutomationElement> link;
-            if (FAILED(links->GetElement(i, link.GetAddressOf())) || !link) continue;
-            Text candidate = property(link.Get(), UIA_ValueValuePropertyId);
-            if (candidate.empty()) candidate = property(link.Get(), UIA_LegacyIAccessibleValuePropertyId);
-            if (!vnotch::starts_with_ignore_case(candidate, u"https://open.spotify.com/") &&
-                !vnotch::starts_with_ignore_case(candidate, u"spotify:track:")) continue;
-            if (!url.empty() && url != candidate) return VN_OK;
-            url = std::move(candidate);
-        }
-        if (url.size() > static_cast<size_t>(capacity)) return VN_ERR_BUFFER_TOO_SMALL;
-        std::copy(url.begin(), url.end(), output);
-        *written = static_cast<int32_t>(url.size());
-        return VN_OK;
-    } catch (...) { return VN_ERR_FAIL; }
-}
-
 namespace {
 
 bool is_spotify_window(HWND hwnd) noexcept {

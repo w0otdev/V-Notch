@@ -1179,7 +1179,8 @@ public partial class MainWindow
             }
         }
 
-        if (_liquidGlass.ShouldThrottleFrameUpdate(ref _lastGlassFrameUpdateTick, force: initialFrameJustArrived))
+        if (_liquidGlass.ShouldThrottleFrameUpdate(ref _lastGlassFrameUpdateTick, force: initialFrameJustArrived,
+            renderingTime: (e as RenderingEventArgs)?.RenderingTime))
         {
             return;
         }

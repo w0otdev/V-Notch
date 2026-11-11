@@ -31,7 +31,7 @@ public sealed partial class SmartThumbnailCropService : IDisposable
     private readonly ConditionalWeakTable<BitmapSource, FingerprintHolder> _fingerprintCache = new();
     private long _inferenceCacheAccess;
 
-    private static readonly TimeSpan IdleTimeout = TimeSpan.FromSeconds(15);
+    private static readonly TimeSpan IdleTimeout = TimeSpan.FromSeconds(5);
 
     private DateTime _lastUsedUtc;
     private System.Threading.Timer? _idleTimer;
@@ -465,10 +465,12 @@ public sealed partial class SmartThumbnailCropService : IDisposable
             return;
 
         string path = GetModelPath(), directory = AppContext.BaseDirectory;
-        if (vn_smartcrop_session_create(path, path.Length, directory, directory.Length, 1, out long handle, out byte dml) != 0)
+        // DirectML initializes D3D12 + DirectML heaps (+130-160 MB working set that persists across unloads).
+        // YOLOX-Nano 416x416 runs in ~8ms on AVX2 CPU without GPU driver memory retention.
+        if (vn_smartcrop_session_create(path, path.Length, directory, directory.Length, 0, out long handle, out byte dml) != 0)
             throw new InvalidDataException("Could not load the bundled YOLOX-Nano model in the native runtime.");
         _cachedSession = new NativeCropSession(handle);
-        RuntimeLog.Log(LogCategory, dml != 0 ? "Native YOLOX loaded (DirectML)" : "Native YOLOX loaded (CPU fallback)");
+        RuntimeLog.Log(LogCategory, dml != 0 ? "Native YOLOX loaded (DirectML)" : "Native YOLOX loaded (CPU)");
     }
 
     private bool TryGetCachedCropDetections(CroppedBitmap crop, out Detection[] detections)

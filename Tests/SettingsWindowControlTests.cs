@@ -1231,6 +1231,121 @@ public sealed class SettingsWindowControlTests
         Assert.False(result.EnableSpotifyCanvas);
     });
 
+    [Fact]
+    public void ContinuousSliderEditsKeepTheirDeadlineAndReleaseFlushesTheLatestPreview() => SharedStaTestRunner.RunAsync(async ct =>
+    {
+        using var fixture = new Fixture();
+        var window = fixture.Window;
+        window.Show();
+        await WpfFrameWaiter.UntilAsync(() => window.IsLoaded, "settings loaded", ct);
+        window.FlushLivePreview();
+        var previews = new List<double>();
+        window.SettingsChanged += (_, settings) => previews.Add(settings.Opacity);
+        window.OpacitySlider.Value = 40;
+        var schedule = Field<UiScheduledTimer>(window, "_livePreviewDebounce");
+        long deadline = schedule.DueTimestamp;
+        for (int value = 41; value <= 75; value++) window.OpacitySlider.Value = value;
+        Assert.Equal(deadline, schedule.DueTimestamp);
+        await WpfFrameWaiter.UntilAsync(() => previews.Count > 0, "continuous preview publishes before release", ct);
+        Assert.Equal(.75, previews[^1], 3);
+
+        window.OpacitySlider.Value = 80;
+        window.RaiseEvent(new MouseButtonEventArgs(Mouse.PrimaryDevice, 0, MouseButton.Left) { RoutedEvent = Mouse.MouseUpEvent });
+        Assert.Equal(.8, previews[^1], 3);
+        Assert.False(schedule.IsEnabled);
+        Assert.Null(fixture.Service.Applied);
+    });
+
+    [Fact]
+    public void RepeatedSettingsQueriesReuseTextAndKeepUnchangedRowsAttached() => SharedStaTestRunner.Run(() =>
+    {
+        using var fixture = new Fixture();
+        var window = fixture.Window;
+        var title = new TextBlock { Text = "perfcachealpha" };
+        var row = new ParentTrackingBorder { Style = (Style)window.FindResource("SettingRowBorder"), Child = title };
+        window.PanelAppearance.Children.Add(row);
+        Invoke(window, "ExecuteSearch", "perfcachealpha");
+        Assert.Contains(row, window.SearchResultsStack.Children.Cast<UIElement>());
+        int parentChanges = row.ParentChanges;
+        var entry = Field<System.Collections.IEnumerable>(window, "_searchRows").Cast<object>()
+            .Single(item => ReferenceEquals(item.GetType().GetProperty("Row")!.GetValue(item), row));
+        var textProperty = entry.GetType().GetProperty("NormalizedSearchText")!;
+        var indexedText = textProperty.GetValue(entry);
+        Invoke(window, "ExecuteSearch", "perfcachealpha");
+        Assert.Equal(parentChanges, row.ParentChanges);
+        Assert.Same(indexedText, textProperty.GetValue(entry));
+
+        title.Text = "perfcacherenamed";
+        Invoke(window, "ExecuteSearch", "perfcacherenamed");
+        Assert.Contains(row, window.SearchResultsStack.Children.Cast<UIElement>());
+        Assert.NotEqual(indexedText, textProperty.GetValue(entry));
+        Invoke(window, "ExecuteSearch", "perfcachealpha");
+        Assert.DoesNotContain(row, window.SearchResultsStack.Children.Cast<UIElement>());
+    });
+
+    [Fact]
+    public void SearchDiffRestoresSourceOrderAndTracksAuthoredVisibilityAndItems() => SharedStaTestRunner.Run(() =>
+    {
+        using var fixture = new Fixture();
+        var window = fixture.Window;
+        var style = (Style)window.FindResource("SettingRowBorder");
+        var first = new ParentTrackingBorder { Style = style, Child = new TextBlock { Text = "perfdiffalpha" } };
+        var spacer = new TextBlock { Text = "spacer" };
+        var choices = new ComboBox();
+        choices.Items.Add("perfdiffbeta");
+        var second = new ParentTrackingBorder { Style = style, Child = choices, Visibility = Visibility.Hidden };
+        var third = new ParentTrackingBorder { Style = style, Child = new TextBlock { Text = "perfdiffgamma" } };
+        foreach (UIElement child in new UIElement[] { first, spacer, second, third }) window.PanelAppearance.Children.Add(child);
+        var original = window.PanelAppearance.Children.Cast<UIElement>().ToArray();
+
+        Invoke(window, "ExecuteSearch", "perfdiff");
+        Assert.Equal(Visibility.Visible, second.Visibility);
+        second.Visibility = Visibility.Collapsed;
+        choices.Items.Clear();
+        choices.Items.Add("perfdiffupdated");
+        Invoke(window, "ExecuteSearch", "perfdiffupdated");
+        Assert.Contains(second, window.SearchResultsStack.Children.Cast<UIElement>());
+        Invoke(window, "ExecuteSearch", "perfdiffalpha");
+        Assert.Same(window.PanelAppearance, second.Parent);
+        Assert.Equal(Visibility.Collapsed, second.Visibility);
+        Invoke(window, "ExitSearchMode");
+        Assert.Equal(original, window.PanelAppearance.Children.Cast<UIElement>());
+        Assert.Equal(Visibility.Collapsed, second.Visibility);
+    });
+
+    [Fact]
+    public void OpeningSettingsDuringHiddenPreparationKeepsTheClaimedWindowVisible() => SharedStaTestRunner.RunAsync(async ct =>
+    {
+        using var fixture = new Fixture();
+        var settings = new NotchSettings { Language = "en", AutoCheckUpdates = false };
+        var window = new SettingsWindow(settings, fixture.Service, prepareForFirstShow: true);
+        BackgroundTestWindows.ProtectInput(window);
+        double expectedOpacity = window.Opacity;
+        bool expectedActivation = window.ShowActivated;
+        try
+        {
+            var preparation = window.PrepareForFirstShowAsync();
+            window.ActivatePreparedWindow(settings, snapshotMatches: true, isHotkeyRegistered: true);
+            window.Show();
+            await preparation.WaitAsync(ct);
+            Assert.True(window.IsVisible);
+            Assert.Equal(expectedOpacity, window.Opacity);
+            Assert.Equal(expectedActivation, window.ShowActivated);
+            Assert.Equal("Shown", typeof(SettingsWindow).GetField("_firstShowState", Private)!.GetValue(window)!.ToString());
+        }
+        finally { window.Close(); }
+    });
+
+    private sealed class ParentTrackingBorder : Border
+    {
+        internal int ParentChanges { get; private set; }
+        protected override void OnVisualParentChanged(DependencyObject oldParent)
+        {
+            ParentChanges++;
+            base.OnVisualParentChanged(oldParent);
+        }
+    }
+
     private sealed class RecordingService : ISettingsApplicationService
     {
         internal NotchSettings? Applied { get; private set; }

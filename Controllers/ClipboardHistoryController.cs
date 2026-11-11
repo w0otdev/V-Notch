@@ -17,6 +17,7 @@ namespace VNotch.Controllers;
 public sealed class ClipboardHistoryController : IDisposable, IAsyncDisposable
 {
     private readonly Dispatcher _dispatcher;
+    private readonly Func<byte[], Task<BitmapSource>> _decodeOriginalImage;
     internal const int MaxPendingCaptures = 8;
     private readonly SemaphoreSlim _captureSlots = new(MaxPendingCaptures, MaxPendingCaptures);
     private readonly Channel<Task<ClipboardCapture>> _captures = Channel.CreateBounded<Task<ClipboardCapture>>(
@@ -63,8 +64,15 @@ public sealed class ClipboardHistoryController : IDisposable, IAsyncDisposable
         string.Equals(category, "Personal", StringComparison.OrdinalIgnoreCase);
 
     public ClipboardHistoryController(Dispatcher dispatcher, ClipboardHistoryStore? store = null)
+        : this(dispatcher, store, input => ClipboardOriginalImage.DecodeAsync(input))
+    {
+    }
+
+    internal ClipboardHistoryController(Dispatcher dispatcher, ClipboardHistoryStore? store,
+        Func<byte[], Task<BitmapSource>> decodeOriginalImage)
     {
         _dispatcher = dispatcher;
+        _decodeOriginalImage = decodeOriginalImage;
         Store = store ?? new ClipboardHistoryStore();
         try
         {
@@ -344,9 +352,10 @@ public sealed class ClipboardHistoryController : IDisposable, IAsyncDisposable
                 if (png == null) return;
                 try
                 {
-                    using var stream = new MemoryStream(png);
-                    var bitmap = new BitmapImage();
-                    bitmap.BeginInit(); bitmap.CacheOption = BitmapCacheOption.OnLoad; bitmap.StreamSource = stream; bitmap.EndInit(); bitmap.Freeze();
+                    var bitmap = await _decodeOriginalImage(png);
+                    var latest = Store.GetEntry(entry.Id) ?? throw new InvalidOperationException("Clipboard item is unavailable.");
+                    if (_disposed || (entry.IsPersonal || latest.IsPersonal) && !Store.IsPersonalUnlocked)
+                        throw new InvalidOperationException("Clipboard is unavailable or Personal is locked.");
                     data.SetImage(bitmap);
                 }
                 finally { if (entry.IsPersonal || Store.GetEntry(entry.Id)?.IsPersonal != false) System.Security.Cryptography.CryptographicOperations.ZeroMemory(png); }

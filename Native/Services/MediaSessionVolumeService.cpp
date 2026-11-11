@@ -269,26 +269,6 @@ VN_EXPORT int32_t vn_media_session_volume_matches_source(
     } catch (...) { *out_matches = 0; return VN_ERR_FAIL; }
 }
 
-VN_EXPORT int32_t vn_media_session_volume_compute_base_score(
-    uint8_t matched_by_process,
-    uint8_t matched_by_metadata,
-    uint8_t source_matches_last,
-    uint32_t process_id,
-    uint32_t last_process_id,
-    uint8_t session_id_matches_last,
-    double* out_score) noexcept
-{
-    if (out_score == nullptr) return VN_ERR_INVALID_ARG;
-    *out_score = vnotch::services::MediaSessionVolumeService::ComputeBaseSessionScore(
-        matched_by_process != 0u,
-        matched_by_metadata != 0u,
-        source_matches_last != 0u,
-        process_id,
-        last_process_id,
-        session_id_matches_last != 0u);
-    return VN_OK;
-}
-
 VN_EXPORT int32_t vn_media_session_volume_extract_candidates(
     const char16_t* source_app_ptr,
     int32_t source_app_len,

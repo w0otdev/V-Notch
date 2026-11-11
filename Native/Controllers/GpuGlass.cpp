@@ -5,7 +5,6 @@
 #include <d3d11.h>
 #include <d3d11_4.h>
 #include <dxgi1_5.h>
-#include <d3dcompiler.h>
 #include <wrl/client.h>
 #include <array>
 #include <memory>
@@ -22,7 +21,6 @@
 
 #pragma comment(lib, "d3d11.lib")
 #pragma comment(lib, "dxgi.lib")
-#pragma comment(lib, "d3dcompiler.lib")
 #pragma comment(lib, "windowsapp.lib")
 
 namespace {
@@ -111,6 +109,8 @@ public:
     bool desktopChanged = false;
     bool sourceDirty = true;
     bool hasRenderedFrame = false;
+    bool hasUploadedHash = false;
+    uint64_t lastUploadedHash = 0;
     Frame lastFrame{};
     ULONGLONG retryAt = 0;
     HRESULT captureResult = S_FALSE;
@@ -123,18 +123,9 @@ public:
     std::vector<DXGI_OUTDUPL_MOVE_RECT> moveRects;
     ULONGLONG smallSince = 0;
 
-    ComPtr<ID3DBlob> Compile(const char* entry, const char* profile) {
-        ComPtr<ID3DBlob> blob, errors;
-        HRESULT hr = D3DCompile(kGlassGpuShader, sizeof(kGlassGpuShader) - 1, "GlassGpu", nullptr,
-            nullptr, entry, profile, D3DCOMPILE_OPTIMIZATION_LEVEL3 | D3DCOMPILE_ENABLE_STRICTNESS,
-            0, &blob, &errors);
-        if (FAILED(hr) && errors) OutputDebugStringA(static_cast<const char*>(errors->GetBufferPointer()));
-        Check(hr);
-        return blob;
-    }
-    void PixelShader(const char* entry, ComPtr<ID3D11PixelShader>& shader) {
-        auto blob = Compile(entry, "ps_4_0");
-        Check(device->CreatePixelShader(blob->GetBufferPointer(), blob->GetBufferSize(), nullptr, &shader));
+    template<size_t Size>
+    void PixelShader(const unsigned char (&bytecode)[Size], ComPtr<ID3D11PixelShader>& shader) {
+        Check(device->CreatePixelShader(bytecode, Size, nullptr, &shader));
     }
     void Initialize(IDirect3DDevice9Ex* device9, int w, int h) {
         presentationDevice = device9;
@@ -175,11 +166,10 @@ public:
             Check(device->CreateRenderTargetView(target.texture.Get(), nullptr, &target.rtv));
             Check(device9->CreateQuery(D3DQUERYTYPE_EVENT, &target.consumed));
         }
-        auto blob = Compile("fullscreenVs", "vs_4_0");
-        Check(device->CreateVertexShader(blob->GetBufferPointer(), blob->GetBufferSize(), nullptr, &vertex));
-        PixelShader("cropPs", crop); PixelShader("downPs", down); PixelShader("upPs", up);
-        PixelShader("resolvePs", resolve);
-        PixelShader("copyPs", copy); PixelShader("refractPs", refraction);
+        Check(device->CreateVertexShader(kGlassGpuFullscreenVs, sizeof(kGlassGpuFullscreenVs), nullptr, &vertex));
+        PixelShader(kGlassGpuCropPs, crop); PixelShader(kGlassGpuDownPs, down); PixelShader(kGlassGpuUpPs, up);
+        PixelShader(kGlassGpuResolvePs, resolve);
+        PixelShader(kGlassGpuCopyPs, copy); PixelShader(kGlassGpuRefractPs, refraction);
         D3D11_SAMPLER_DESC sample{};
         sample.Filter = D3D11_FILTER_MIN_MAG_MIP_LINEAR;
         sample.AddressU = sample.AddressV = sample.AddressW = D3D11_TEXTURE_ADDRESS_CLAMP;
@@ -226,6 +216,8 @@ public:
         duplication.Reset(); desktopView.Reset(); desktopTexture.Reset(); monitor = nullptr;
         uploadedBackdrop = {}; usingUploadedBackdrop = false;
         hasRenderedFrame = false;
+        hasUploadedHash = false;
+        lastUploadedHash = 0;
         sourceDirty = true;
     }
     bool StartGraphicsCapture(HMONITOR wanted) {
@@ -491,10 +483,46 @@ public:
         if (hr == S_OK) { lastFrame = normalized; hasRenderedFrame = true; sourceDirty = false; }
         return hr;
     }
+    static uint64_t HashPixels(const uint8_t* pixels, int width, int height, UINT stride) noexcept {
+        const size_t rowBytes = static_cast<size_t>(width) * 4;
+        uint64_t hash = 14695981039346656037ull ^
+            ((static_cast<uint64_t>(static_cast<uint32_t>(width)) << 32) | static_cast<uint32_t>(height));
+        for (int y = 0; y < height; ++y) {
+            const uint8_t* row = pixels + static_cast<size_t>(y) * stride;
+            size_t i = 0;
+            for (; i + 8 <= rowBytes; i += 8) {
+                uint64_t word = 0;
+                memcpy(&word, row + i, sizeof(word));
+                hash = (hash ^ word) * 1099511628211ull;
+            }
+            for (; i < rowBytes; ++i) {
+                hash = (hash ^ row[i]) * 1099511628211ull;
+            }
+        }
+        return hash;
+    }
     HRESULT RenderPixels(const Frame& f, const uint8_t* pixels, UINT stride) {
         if (pending) return S_FALSE;
         if (!usingUploadedBackdrop) ResetCapture();
         usingUploadedBackdrop = true;
+        if (workWidth && static_cast<uint64_t>(f.width) * f.height * 2 < static_cast<uint64_t>(workWidth) * workHeight) {
+            if (!smallSince) smallSince = GetTickCount64();
+            if (GetTickCount64() - smallSince >= 1000) {
+                workWidth = workHeight = 0;
+                uploadedBackdrop = {};
+                desktopTexture.Reset(); desktopView.Reset();
+                pyramid.clear(); reconstruction.clear(); resolved = {};
+                sourceDirty = true; hasUploadedHash = false; smallSince = 0;
+            }
+        } else smallSince = 0;
+        const uint64_t pixelHash = HashPixels(pixels, f.width, f.height, stride);
+        const bool pixelsChanged = !hasUploadedHash || pixelHash != lastUploadedHash;
+        Frame normalized = f; normalized.refract &= 1;
+        if (hasRenderedFrame && !sourceDirty && !pixelsChanged && !(f.refract & 2) &&
+            memcmp(&normalized, &lastFrame, sizeof(Frame)) == 0) {
+            captureResult = S_OK;
+            return S_FALSE;
+        }
         if (static_cast<UINT>(f.width) > uploadedBackdrop.width || static_cast<UINT>(f.height) > uploadedBackdrop.height) {
             const UINT w = std::min(static_cast<UINT>(width), std::max(uploadedBackdrop.width, (static_cast<UINT>(f.width) + 127) / 128 * 128));
             const UINT h = std::min(static_cast<UINT>(height), std::max(uploadedBackdrop.height, (static_cast<UINT>(f.height) + 63) / 64 * 64));
@@ -507,7 +535,15 @@ public:
         outputDesc.Rotation = DXGI_MODE_ROTATION_IDENTITY;
         captureResult = S_OK;
         ++captureFrames;
-        return RenderCaptured(f);
+        const HRESULT hr = RenderCaptured(f);
+        if (hr == S_OK) {
+            lastFrame = normalized;
+            lastUploadedHash = pixelHash;
+            hasUploadedHash = true;
+            hasRenderedFrame = true;
+            sourceDirty = false;
+        }
+        return hr;
     }
     HRESULT RenderCaptured(const Frame& f, bool rebuildSource = true) {
         auto& target = output[nextOutput];

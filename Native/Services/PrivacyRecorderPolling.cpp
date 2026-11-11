@@ -227,37 +227,3 @@ VN_EXPORT int32_t __stdcall vn_privacy_poll_recorders(const VnPrivacyProcessEntr
         return VN_OK;
     } catch (...) { return VN_ERR_FAIL; }
 }
-
-VN_EXPORT int32_t __stdcall vn_obs_read_log(const char16_t* path, int32_t path_length, VnObsLogReadState* state,
-    char16_t* partial, int32_t capacity, int32_t* written) noexcept {
-    if (!path || path_length <= 0 || !state || !written || capacity < 0 || (capacity && !partial) ||
-        state->partial_length < 0 || state->partial_length > sizeof(state->partial)) return VN_ERR_INVALID_ARG;
-    *written = 0;
-    try {
-        ObsLog log;
-        log.path.assign(reinterpret_cast<const wchar_t*>(path), path_length);
-        log.position = state->position; log.file_id = state->file_id;
-        log.recording = state->recording != 0; log.streaming = state->streaming != 0; log.replay = state->replay != 0;
-        log.partial.assign(state->partial, state->partial_length);
-        bool success = false;
-        log.read(&success);
-        if (!success) return VN_ERR_FAIL;
-        size_t complete = log.partial.size();
-        if (complete) {
-            size_t lead = complete - 1;
-            while (lead > 0 && complete - lead < 4 && (static_cast<uint8_t>(log.partial[lead]) & 0xC0) == 0x80) --lead;
-            const auto ch = static_cast<uint8_t>(log.partial[lead]);
-            const size_t expected = (ch & 0xE0) == 0xC0 ? 2 : (ch & 0xF0) == 0xE0 ? 3 : (ch & 0xF8) == 0xF0 ? 4 : 1;
-            if (complete - lead < expected) complete = lead;
-        }
-        const int required = complete ? MultiByteToWideChar(CP_UTF8, 0, log.partial.data(), static_cast<int>(complete), nullptr, 0) : 0;
-        *written = required;
-        if (required > capacity) return VN_ERR_BUFFER_TOO_SMALL;
-        if (required && MultiByteToWideChar(CP_UTF8, 0, log.partial.data(), static_cast<int>(complete), reinterpret_cast<wchar_t*>(partial), capacity) != required) return VN_ERR_FAIL;
-        state->position = log.position; state->file_id = log.file_id;
-        state->recording = log.recording ? 1 : 0; state->streaming = log.streaming ? 1 : 0; state->replay = log.replay ? 1 : 0;
-        state->partial_length = static_cast<int32_t>(log.partial.size());
-        if (!log.partial.empty()) std::memcpy(state->partial, log.partial.data(), log.partial.size());
-        return VN_OK;
-    } catch (...) { return VN_ERR_FAIL; }
-}

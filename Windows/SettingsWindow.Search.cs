@@ -177,7 +177,6 @@ public partial class SettingsWindow
         if (string.IsNullOrWhiteSpace(query)) return;
 
         bool enteredSearchMode = EnterSearchMode();
-        SearchResultsStack.Children.Clear();
 
         int rowCount = _searchRows.Count;
         Span<VnSettingsSearchMatchResult> matchResults = rowCount <= 128
@@ -200,22 +199,7 @@ public partial class SettingsWindow
                 out matchCount);
         }
 
-        for (int i = 0; i < matchCount; i++)
-        {
-            int rowIndex = matchResults[i].RowIndex;
-            if ((uint)rowIndex >= (uint)rowCount) continue;
-
-            var match = _searchRows[rowIndex];
-            match.OriginalVisibility = match.Row.Visibility;
-
-            if (match.Row.Parent is StackPanel currentParent)
-            {
-                currentParent.Children.Remove(match.Row);
-            }
-
-            match.Row.Visibility = Visibility.Visible;
-            SearchResultsStack.Children.Add(match.Row);
-        }
+        ApplySearchResultDiff(matchResults[..matchCount]);
 
         bool wasShowingEmptyState = SearchingEmptyState.Visibility == Visibility.Visible;
         bool showEmptyState = matchCount == 0;
@@ -255,14 +239,13 @@ public partial class SettingsWindow
     {
         if (_isSearchMode)
         {
-            RestoreSearchRows();
-            RefreshSearchRows();
+            RefreshSearchRowsIfNeeded();
             return false;
         }
 
         _isSearchMode = true;
         IndexSearchRows();
-        RefreshSearchRows();
+        RefreshSearchRowsIfNeeded();
         _activeNav = NavSectionSearching;
         UpdateSectionHeader();
 
@@ -349,6 +332,10 @@ public partial class SettingsWindow
                     sectionText));
             }
         }
+        foreach (var row in _searchRows)
+            ObserveSearchRow(row);
+        foreach (var button in _navButtons.Values)
+            ObserveSearchInputs(button, null);
         RebuildNativeSearchArena();
     }
 
@@ -357,23 +344,19 @@ public partial class SettingsWindow
         _restoreRowsBuffer.Clear();
         for (int i = 0; i < _searchRows.Count; i++)
         {
-            _restoreRowsBuffer.Add(_searchRows[i]);
+            if (!ReferenceEquals(_searchRows[i].Row.Parent, _searchRows[i].OriginalParent))
+                _restoreRowsBuffer.Add(_searchRows[i]);
         }
 
         _restoreRowsBuffer.Sort(s_restoreOrderComparison);
 
-        for (int i = 0; i < _restoreRowsBuffer.Count; i++)
+        _updatingSearchPresentation = true;
+        try
         {
-            var row = _restoreRowsBuffer[i];
-            if (row.Row.Parent is StackPanel currentParent)
-            {
-                currentParent.Children.Remove(row.Row);
-            }
-
-            int insertIndex = Math.Clamp(row.OriginalIndex, 0, row.OriginalParent.Children.Count);
-            row.OriginalParent.Children.Insert(insertIndex, row.Row);
-            row.Row.Visibility = row.OriginalVisibility;
+            foreach (var row in _restoreRowsBuffer)
+                RestoreSearchRow(row);
         }
+        finally { _updatingSearchPresentation = false; }
     }
 
     private string BuildSectionSearchText(string section)
@@ -437,11 +420,17 @@ public partial class SettingsWindow
 
     private void RefreshSearchRows()
     {
+        InvalidateSearchIndex();
+        RefreshSearchRowsIfNeeded();
+    }
+
+    private void RefreshSearchRowsIfNeeded()
+    {
+        if (_dirtySearchRows.Count == 0) return;
         var sectionTextCache = new Dictionary<string, string>(StringComparer.Ordinal);
-        for (int i = 0; i < _searchRows.Count; i++)
+        foreach (var row in _dirtySearchRows)
         {
-            var row = _searchRows[i];
-            row.OriginalVisibility = row.Row.Visibility;
+            ObserveSearchInputs(row.Row, row);
             if (!sectionTextCache.TryGetValue(row.Section, out string? sectionText))
             {
                 sectionText = BuildSectionSearchText(row.Section);
@@ -450,6 +439,7 @@ public partial class SettingsWindow
 
             row.UpdateSearchText(BuildPrimaryTitleText(row.Row), BuildSearchText(row.Row), sectionText);
         }
+        _dirtySearchRows.Clear();
         RebuildNativeSearchArena();
     }
 

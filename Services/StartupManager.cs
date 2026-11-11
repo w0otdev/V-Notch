@@ -4,7 +4,7 @@ using System.Runtime.InteropServices;
 
 namespace VNotch.Services;
 
-public static partial class StartupManager
+public sealed partial class WindowsStartupManager : IStartupManager
 {
     [LibraryImport("VNotch.Native.dll")]
     private static partial int vn_startup_is_enabled(out byte outEnabled);
@@ -13,12 +13,12 @@ public static partial class StartupManager
     private static partial int vn_startup_set_enabled(
         byte enable, ReadOnlySpan<ushort> exePath, int exePathLen, out int outWin32Error);
 
-    public static bool IsAutoStartEnabled()
+    public bool IsAutoStartEnabled()
     {
         return vn_startup_is_enabled(out byte enabled) == 0 && enabled != 0;
     }
 
-    public static void SetAutoStart(bool enable)
+    public void SetAutoStart(bool enable)
     {
         string exePath = enable
             ? (Environment.ProcessPath ?? Path.Combine(AppContext.BaseDirectory, "V-Notch.exe"))
@@ -33,10 +33,4 @@ public static partial class StartupManager
         if (win32Error != 0) throw new Win32Exception(win32Error);
         if (status != 0) throw new InvalidOperationException($"Startup settings failed (native status {status}).");
     }
-}
-
-public sealed class WindowsStartupManager : IStartupManager
-{
-    public bool IsAutoStartEnabled() => StartupManager.IsAutoStartEnabled();
-    public void SetAutoStart(bool enable) => StartupManager.SetAutoStart(enable);
 }

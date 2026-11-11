@@ -47,7 +47,7 @@ public sealed partial class DustParticleOverlay : FrameworkElement
     private const double MaskedBlurRadius = 12.0;
     private const double DissolveDurationMs = 360.0;
     private const double ReformDurationMs = 240.0;
-    private const long IdleFrameIntervalMs = 22; // ~45 FPS for sub-pixel idle drift (zero wasted GPU work on 120/240Hz displays)
+    private const int IdleTargetFps = 45;
 
     [StructLayout(LayoutKind.Sequential, Pack = 1)]
     private struct DustParticle
@@ -137,6 +137,7 @@ public sealed partial class DustParticleOverlay : FrameworkElement
     private bool _isReforming;
     private long _transitionStartMs;
     private long _lastStepMs;
+    private AnimationFrameClock _simulationFrameClock;
 
     private double _reformProgress = 1.0;
 
@@ -299,8 +300,30 @@ public sealed partial class DustParticleOverlay : FrameworkElement
 
     private void StartRendering()
     {
-        _lastStepMs = Environment.TickCount64;
+        ResetFramePacing(Environment.TickCount64);
         FrameCoordinator.Register(this);
+    }
+
+    internal void ResetFramePacing(long nowMs)
+    {
+        _lastStepMs = nowMs;
+        _simulationFrameClock.Reset(ToFrameTicks(nowMs));
+    }
+
+    private static long ToFrameTicks(long milliseconds) =>
+        (long)Math.Round(milliseconds * (System.Diagnostics.Stopwatch.Frequency / 1000.0));
+
+    internal bool TryAdvanceSimulation(long nowMs, bool isTransitioning, out float dt, TimeSpan? renderingTime = null)
+    {
+        int targetFps = isTransitioning ? AnimationConfig.TargetFps : Math.Min(IdleTargetFps, AnimationConfig.TargetFps);
+        dt = 0;
+        bool advance = renderingTime.HasValue
+            ? _simulationFrameClock.TryAdvance(renderingTime.Value, targetFps, out _)
+            : _simulationFrameClock.TryAdvance(ToFrameTicks(nowMs), targetFps, out _);
+        if (!advance) return false;
+        dt = (float)Math.Clamp((nowMs - _lastStepMs) * 0.001, 0.001, 0.050);
+        _lastStepMs = nowMs;
+        return true;
     }
 
     private void StopRendering()
@@ -308,7 +331,7 @@ public sealed partial class DustParticleOverlay : FrameworkElement
         FrameCoordinator.Unregister(this);
     }
 
-    internal void OnCoordinatorTick(long nowMs)
+    internal void OnCoordinatorTick(long nowMs, TimeSpan? renderingTime = null)
     {
         if (!IsActive || !IsLoaded || !IsVisible)
         {
@@ -317,16 +340,7 @@ public sealed partial class DustParticleOverlay : FrameworkElement
         }
 
         bool isTransitioning = _isDissolving || _isReforming;
-        long elapsedMs = nowMs - _lastStepMs;
-
-        // Pace idle simulation to ~45 FPS to save CPU/GPU on high-refresh-rate monitors
-        if (!isTransitioning && elapsedMs < IdleFrameIntervalMs)
-        {
-            return;
-        }
-
-        float dt = (float)Math.Clamp(elapsedMs * 0.001, 0.001, 0.050);
-        _lastStepMs = nowMs;
+        if (!TryAdvanceSimulation(nowMs, isTransitioning, out float dt, renderingTime)) return;
 
         double w = Math.Max(12.0, ActualWidth);
         double h = Math.Max(14.0, ActualHeight);
@@ -627,11 +641,12 @@ public sealed partial class DustParticleOverlay : FrameworkElement
             }
 
             long now = Environment.TickCount64;
+            TimeSpan? renderingTime = (e as RenderingEventArgs)?.RenderingTime;
             for (int i = ActiveOverlays.Count - 1; i >= 0; i--)
             {
                 if (i < ActiveOverlays.Count)
                 {
-                    ActiveOverlays[i].OnCoordinatorTick(now);
+                    ActiveOverlays[i].OnCoordinatorTick(now, renderingTime);
                 }
             }
         }

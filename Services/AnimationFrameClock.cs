@@ -7,7 +7,7 @@ internal struct AnimationFrameClock
 {
     private long _lastTick;
     private double _nextTick;
-    private int _targetFps;
+    private double _targetFps;
     private TimeSpan _renderingTime;
 
     internal void Reset(long now)
@@ -29,10 +29,10 @@ internal struct AnimationFrameClock
         return TryAdvance(now, targetFps, out seconds);
     }
 
-    internal bool TryAdvance(long now, int targetFps, out double seconds)
+    internal bool TryAdvance(long now, double targetFps, out double seconds)
     {
         seconds = 0;
-        targetFps = Math.Max(1, targetFps);
+        targetFps = double.IsFinite(targetFps) ? Math.Max(1, targetFps) : 60;
         double interval = Stopwatch.Frequency / (double)targetFps;
         if (_targetFps != targetFps)
         {

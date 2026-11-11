@@ -9,7 +9,7 @@
     <RestorePackagesWithLockFile>true</RestorePackagesWithLockFile>
     <DisableImplicitNuGetFallbackFolder>true</DisableImplicitNuGetFallbackFolder>
     <!-- Audit snapshots are not application source, XAML pages, or resources. -->
-    <DefaultItemExcludes>$(DefaultItemExcludes);artifacts\**\*</DefaultItemExcludes>
+    <DefaultItemExcludes>$(DefaultItemExcludes);artifacts\**\*;.cache\**\*</DefaultItemExcludes>
 
     <!-- Opt out of CET shadow-stack enforcement. Added with the LiquidGlass D3D interop
          work (490e198); the app loads native GPU/audio/LLM libraries and hooks that are
@@ -40,9 +40,9 @@
          reflection, COM interop or CPU/GPU translation backends. -->
     <EnableCompressionInSingleFile Condition="'$(Configuration)' == 'Release' And '$(SelfContained)' == 'true'">true</EnableCompressionInSingleFile>
     <PublishReferencesDocumentationFiles>false</PublishReferencesDocumentationFiles>
-    <Version>2.3.0</Version>
-    <AssemblyVersion>2.3.0</AssemblyVersion>
-    <FileVersion>2.3.0</FileVersion>
+    <Version>2.3.1</Version>
+    <AssemblyVersion>2.3.1</AssemblyVersion>
+    <FileVersion>2.3.1</FileVersion>
     <Authors>w0otdev, viper1aa</Authors>
     <Company>V-Notch</Company>
     <Product>V-Notch</Product>
@@ -73,6 +73,7 @@
   </ItemGroup>
 
   <ItemGroup>
+    <Compile Remove=".cache\**\*.cs" />
     <Compile Remove="artifacts\**\*.cs" />
     <Compile Remove="Tests\**\*.cs" />
     <Compile Remove="Tools\**\*.cs" />
@@ -81,7 +82,6 @@
 
   <ItemGroup>
     <InternalsVisibleTo Include="VNotch.Tests" />
-    <InternalsVisibleTo Include="VNotch.TranslationBench" />
     <EmbeddedResource Include="Security\update-public-key.pem" LogicalName="VNotch.UpdatePublicKey.pem" />
     <EmbeddedResource Include="Assets\MediaProtocols.json" LogicalName="VNotch.MediaProtocols.json" />
     <EmbeddedResource Include="docs\TERMS_OF_SERVICE.md" LogicalName="VNotch.TERMS_OF_SERVICE.md" />
@@ -198,7 +198,7 @@
     <_VNotchNativeObjDir>$(MSBuildThisFileDirectory)obj\native</_VNotchNativeObjDir>
   </PropertyGroup>
   <ItemGroup>
-    <_VNotchGpuShaderInputs Include="$(MSBuildThisFileDirectory)Shaders\GlassGpu.hlsl;$(MSBuildThisFileDirectory)Shaders\LiquidGlassRefraction.hlsl;$(MSBuildThisFileDirectory)scripts\Generate-GlassShaders.ps1" />
+    <_VNotchGpuShaderInputs Include="$(MSBuildThisFileDirectory)Shaders\GlassGpu.hlsl;$(MSBuildThisFileDirectory)Shaders\LiquidGlassRefraction.hlsl;$(MSBuildThisFileDirectory)scripts\Generate-GlassShaders.ps1;$(MSBuildThisFileDirectory)Tools\ShaderCompiler\Program.cs;$(MSBuildThisFileDirectory)Tools\ShaderCompiler\ShaderCompiler.csproj" />
     <_VNotchNativeHeaders Include="$(MSBuildThisFileDirectory)Native\**\*.h" />
     <_VNotchNativeHeaders Include="$(PkgMicrosoft_ML_OnnxRuntime_DirectML)\build\native\include\*.h" />
     <_VNotchNativeSources Include="$(MSBuildThisFileDirectory)Native\**\*.cpp" />

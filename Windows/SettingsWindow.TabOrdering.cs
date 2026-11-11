@@ -158,6 +158,7 @@ public partial class SettingsWindow
     private void PopulateNavTabsSettings()
     {
         if (NavTabsSettingsContainer == null) return;
+        InvalidateSearchIndex();
         NavTabsSettingsContainer.Children.Clear();
 
         var tabMetadata = new Dictionary<string, (string title, string iconPath)>

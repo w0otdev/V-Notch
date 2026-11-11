@@ -71,12 +71,6 @@ public static partial class VNotchNative
     public const int VN_ERR_FAIL = -3;
 
     [LibraryImport("VNotch.Native", StringMarshalling = StringMarshalling.Utf16)]
-    internal static partial int vn_markdown_classify_line(
-        ReadOnlySpan<char> line_ptr,
-        int line_len,
-        out VnMarkdownBlockToken out_token);
-
-    [LibraryImport("VNotch.Native", StringMarshalling = StringMarshalling.Utf16)]
     internal static partial int vn_markdown_tokenize_blocks(
         ReadOnlySpan<char> text_ptr,
         int text_len,
@@ -99,22 +93,6 @@ public static partial class VNotchNative
         Span<VnMarkdownInlineToken> out_tokens,
         int token_cap,
         out int out_written);
-
-    public static VnMarkdownBlockToken ClassifyMarkdownLine(ReadOnlySpan<char> line)
-    {
-        if (line.IsEmpty)
-        {
-            return default;
-        }
-
-        int rc = vn_markdown_classify_line(line, line.Length, out var token);
-        return rc == VN_OK ? token : new VnMarkdownBlockToken
-        {
-            Kind = (byte)VnMarkdownBlockKind.Paragraph,
-            TextStart = 0,
-            TextLen = line.Length
-        };
-    }
 
     public static VnMarkdownBlockToken[] TokenizeMarkdownBlocks(ReadOnlySpan<char> markdown)
     {

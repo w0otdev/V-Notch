@@ -1,3 +1,4 @@
+using System.IO;
 using System.Runtime.InteropServices;
 using System.Text;
 using System.Windows;
@@ -44,16 +45,58 @@ public sealed class EverythingSearchIpcTests
     });
 
     [Fact]
-    public void QueryWithoutAReplyTimesOutAndReleasesTheNextQuery() => SharedStaTestRunner.RunAsync(async ct =>
+    public void FailedIpcSuppressesQueuedAndNewQueriesUntilTheCooldownThenRecovers() => SharedStaTestRunner.RunAsync(async ct =>
     {
         EnsureApplication();
         using var server = new Server([("report.txt", @"C:\Fixture", false)]) { DropReplies = true };
-        using var provider = new EverythingSearchProvider(() => server.Handle);
-        Assert.Empty(await provider.SearchAsync("report", 3, ct));
+        long nowTicks = DateTime.UtcNow.Ticks;
+        using var provider = new EverythingSearchProvider(() => server.Handle,
+            () => new DateTime(Interlocked.Read(ref nowTicks), DateTimeKind.Utc));
+        var first = provider.SearchAsync("report", 3, ct);
+        await server.Received.Task.WaitAsync(TimeSpan.FromSeconds(5), ct);
+        var queued = provider.SearchAsync("report", 3, ct);
+        Assert.Empty(await first);
+        Assert.Empty(await queued);
         Assert.False(provider.IsAvailable);
+        Assert.Equal(1, server.QueryCount);
         server.DropReplies = false;
+        Assert.Empty(await provider.SearchAsync("report", 3, ct));
+        Assert.Equal(1, server.QueryCount);
+        Interlocked.Add(ref nowTicks, TimeSpan.FromSeconds(15).Ticks);
         Assert.Single(await provider.SearchAsync("report", 3, ct));
         Assert.True(provider.IsAvailable);
+        Assert.Equal(2, server.QueryCount);
+    });
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void IncrementalSearchKeepsAuthoritativeEmptyIndexResultsAndFallsBackAfterFailure(bool dropReplies) => SharedStaTestRunner.RunAsync(async ct =>
+    {
+        EnsureApplication();
+        string root = Path.Combine(AppContext.BaseDirectory, "spotlight-index-tests", Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(root);
+        try
+        {
+            string path = Path.Combine(root, "authoritative-report.txt");
+            await File.WriteAllTextAsync(path, "fixture", ct);
+            using var server = new Server([]) { DropReplies = dropReplies };
+            using var index = new EverythingSearchProvider(() => server.Handle);
+            var service = new SpotlightSearchService([index, new LocalFileSearchProvider([root])]);
+            IReadOnlyList<SpotlightSearchItem> results = [];
+            await foreach (var update in service.SearchUpdatesAsync("authoritative-report", 10, ct))
+                results = update.Results;
+            if (dropReplies)
+            {
+                Assert.Equal(path, Assert.Single(results).Target);
+                await foreach (var update in service.SearchUpdatesAsync("authoritative-report", 10, ct))
+                    results = update.Results;
+                Assert.Equal(path, Assert.Single(results).Target);
+            }
+            else Assert.Empty(results);
+            Assert.Equal(1, server.QueryCount);
+        }
+        finally { Directory.Delete(root, recursive: true); }
     });
 
     [Fact]
@@ -107,6 +150,7 @@ public sealed class EverythingSearchIpcTests
         public uint Flags { get; private set; }
         public int MaximumResults { get; private set; }
         public string Query { get; private set; } = "";
+        public int QueryCount { get; private set; }
         public Server(IReadOnlyList<(string Name, string Parent, bool Folder)> rows)
         {
             _rows = rows;
@@ -124,6 +168,7 @@ public sealed class EverythingSearchIpcTests
             Assert.Equal(0, Marshal.ReadInt32(data.Buffer, 12));
             MaximumResults = Marshal.ReadInt32(data.Buffer, 16);
             Query = Marshal.PtrToStringUni(data.Buffer + 20)!;
+            QueryCount++;
             Received.TrySetResult();
             if (!DropReplies) SendReply(reply, id);
             handled = true;

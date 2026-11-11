@@ -92,19 +92,4 @@ VN_EXPORT int32_t vn_localization_extract_resource_code(
     return VN_OK;
 }
 
-VN_EXPORT int32_t vn_localization_should_store_entry(
-    const char16_t* prop_name,
-    int32_t prop_name_len,
-    const char16_t* text,
-    int32_t text_len,
-    uint8_t key_exists,
-    uint8_t* out_should_store) noexcept {
-    if (!out_should_store || prop_name_len < 0 || text_len < 0) return VN_E_INVALID_ARG;
-    std::u16string_view prop_sv(prop_name ? prop_name : u"", static_cast<size_t>(prop_name_len));
-    std::u16string_view text_sv(text ? text : u"", static_cast<size_t>(text_len));
-    *out_should_store = vnotch::services::LocalizationService::ShouldStoreLocaleEntry(
-        prop_sv, text_sv, key_exists != 0) ? 1u : 0u;
-    return VN_OK;
-}
-
 } // extern "C"
