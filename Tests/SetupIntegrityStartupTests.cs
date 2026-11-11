@@ -1,6 +1,6 @@
+using System;
 using System.IO;
-using System.Net;
-using System.Net.Http;
+using System.Threading.Tasks;
 using VNotch.Services;
 using Xunit;
 
@@ -10,72 +10,84 @@ namespace VNotch.Tests;
 public sealed class SetupIntegrityStartupTests
 {
     [Theory]
-    [InlineData(false)]
-    [InlineData(true)]
-    public async Task SetupTimeout_CancelsPendingNetworkRequest_AndLeavesDispatcherResponsive(bool downloadingChecksum)
+    [InlineData(new[] { "--setup" }, @"C:\App\V-Notch.exe", true)]
+    [InlineData(new[] { "--update" }, @"C:\App\V-Notch.exe", true)]
+    [InlineData(new[] { "--uninstall" }, @"C:\App\V-Notch.exe", true)]
+    [InlineData(new[] { "--setup-source", @"C:\Payload" }, @"C:\App\V-Notch.exe", true)]
+    [InlineData(new string[0], @"C:\Temp\V-Notch-Setup.exe", true)]
+    [InlineData(new string[0], @"C:\App\V-Notch.exe", false)]
+    public void IsSetupOrUninstall_DetectsInstallerAndUpdateEntryPoints(string[] args, string processPath, bool expected)
     {
-        string file = Path.Combine(Path.GetTempPath(), $"setup-integrity-{Guid.NewGuid():N}.exe");
-        await File.WriteAllTextAsync(file, "Test installer payload");
-        using var timeout = new CancellationTokenSource();
-        using var handler = new PendingIntegrityResponse(downloadingChecksum);
-        using var client = new HttpClient(handler);
-        Task<IntegrityCheckStatus>? check = null;
+        Assert.Equal(expected, App.IsSetupOrUninstall(args, processPath));
+    }
+
+    [Fact]
+    public void SetupWindow_AutoUpdateWithValidInstallPath_SkipsInteractivePagesAndStartsInstall()
+    {
+        string root = Directory.CreateDirectory(Path.Combine(Path.GetTempPath(), $"vnotch-autoupdate-{Guid.NewGuid():N}")).FullName;
+        string sourceDir = Directory.CreateDirectory(Path.Combine(root, "payload")).FullName;
+        string installDir = Directory.CreateDirectory(Path.Combine(root, "installed")).FullName;
+        File.WriteAllText(Path.Combine(sourceDir, "V-Notch.exe"), "new binary");
+        File.WriteAllText(Path.Combine(installDir, "V-Notch.exe"), "existing binary");
 
         try
         {
+            SetupInstallOptions? capturedOptions = null;
+            var pendingInstall = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+
             SharedStaTestRunner.Run(() =>
             {
-                check = AppIntegrityService.VerifyChecksumAsync(
-                    file, "1.9.2", client, timeout.Token);
+                LocalizedPresentation.Initialize();
+                var autoWindow = new SetupWindow(
+                    sourceDir,
+                    "vi",
+                    (opts, _) =>
+                    {
+                        capturedOptions = opts;
+                        return pendingInstall.Task;
+                    },
+                    installDir,
+                    isAutoUpdate: true);
+                try
+                {
+                    autoWindow.InitializeForTest();
+                    Assert.Equal(6, autoWindow.CurrentPageIndex);
+                    Assert.NotNull(capturedOptions);
+                    Assert.Equal(installDir, capturedOptions!.InstallDirectory);
+                    Assert.Equal("vi", capturedOptions.Language);
+                }
+                finally
+                {
+                    pendingInstall.TrySetResult();
+                    autoWindow.Close();
+                }
+
+                bool manualTriggered = false;
+                var interactiveWindow = new SetupWindow(
+                    sourceDir,
+                    "en",
+                    (_, _) =>
+                    {
+                        manualTriggered = true;
+                        return Task.CompletedTask;
+                    },
+                    installDir,
+                    isAutoUpdate: false);
+                try
+                {
+                    interactiveWindow.InitializeForTest();
+                    Assert.Equal(2, interactiveWindow.CurrentPageIndex);
+                    Assert.False(manualTriggered);
+                }
+                finally
+                {
+                    interactiveWindow.Close();
+                }
             });
-            await handler.RequestStarted.Task.WaitAsync(TimeSpan.FromSeconds(5));
-            Assert.False(check!.IsCompleted);
-
-            // A dispatcher callback must run even while the server has not replied.
-            bool dispatcherResponded = false;
-            SharedStaTestRunner.Run(() => dispatcherResponded = true);
-            Assert.True(dispatcherResponded);
-
-            await timeout.CancelAsync();
-            await Assert.ThrowsAnyAsync<OperationCanceledException>(
-                () => check.WaitAsync(TimeSpan.FromSeconds(5)));
-            Assert.True(handler.RequestWasCancelled);
         }
         finally
         {
-            await timeout.CancelAsync();
-            File.Delete(file);
-        }
-    }
-
-    private sealed class PendingIntegrityResponse(bool downloadingChecksum) : HttpMessageHandler
-    {
-        public TaskCompletionSource RequestStarted { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
-        public bool RequestWasCancelled { get; private set; }
-
-        protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
-        {
-            if (downloadingChecksum && request.RequestUri!.Host == "api.github.com")
-            {
-                return new(HttpStatusCode.OK)
-                {
-                    Content = new StringContent("""
-                        {"assets":[{"name":"checksums.txt","browser_download_url":"https://test.invalid/checksums.txt"}]}
-                        """)
-                };
-            }
-
-            RequestStarted.SetResult();
-            try
-            {
-                await Task.Delay(Timeout.InfiniteTimeSpan, cancellationToken);
-                throw new InvalidOperationException("Pending request completed without cancellation.");
-            }
-            catch (OperationCanceledException)
-            {
-                RequestWasCancelled = true;
-                throw;
-            }
+            SafeFileDeletion.DeleteDirectory(root);
         }
     }
 }

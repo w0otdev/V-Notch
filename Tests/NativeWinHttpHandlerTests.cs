@@ -1,9 +1,11 @@
+using System.Diagnostics;
 using System.IO;
 using System.IO.Compression;
 using System.Net;
 using System.Net.Http;
-using System.Runtime.InteropServices;
+using System.Net.Sockets;
 using System.Text;
+using VNotch.Models;
 using VNotch.Services;
 using Xunit;
 
@@ -28,11 +30,9 @@ public sealed class NativeWinHttpHandlerTests : IDisposable
 
     private static int GetFreePort()
     {
-        var probe = new System.Net.Sockets.TcpListener(IPAddress.Loopback, 0);
+        using var probe = new TcpListener(IPAddress.Loopback, 0);
         probe.Start();
-        int port = ((IPEndPoint)probe.LocalEndpoint).Port;
-        probe.Stop();
-        return port;
+        return ((IPEndPoint)probe.LocalEndpoint).Port;
     }
 
     private async Task Serve()
@@ -70,6 +70,16 @@ public sealed class NativeWinHttpHandlerTests : IDisposable
                     response.StatusCode = 302;
                     response.RedirectLocation = "/echo";
                     break;
+                case "/set-cookie":
+                    response.Headers.Add("Set-Cookie", "session=tracked-secret; Path=/");
+                    break;
+                case "/check-cookie":
+                    {
+                        byte[] cookieBytes = Encoding.UTF8.GetBytes(request.Headers["Cookie"] ?? "");
+                        response.ContentType = "text/plain";
+                        response.OutputStream.Write(cookieBytes, 0, cookieBytes.Length);
+                        break;
+                    }
                 case "/missing":
                     response.StatusCode = 404;
                     break;
@@ -81,6 +91,14 @@ public sealed class NativeWinHttpHandlerTests : IDisposable
                         gzip.Write(bytes, 0, bytes.Length);
                         break;
                     }
+                case "/brotli":
+                    {
+                        response.AddHeader("Content-Encoding", "br");
+                        using var brotli = new BrotliStream(response.OutputStream, CompressionLevel.Fastest);
+                        byte[] bytes = Encoding.UTF8.GetBytes(new string('b', 5000));
+                        brotli.Write(bytes, 0, bytes.Length);
+                        break;
+                    }
                 case "/large":
                     {
                         byte[] chunk = new byte[64 * 1024];
@@ -90,16 +108,13 @@ public sealed class NativeWinHttpHandlerTests : IDisposable
                         break;
                     }
                 case "/slow":
-                    Thread.Sleep(5000);
-                    break;
-                case "/hang":
-                    _stop.Token.WaitHandle.WaitOne(10_000);
+                    _stop.Token.WaitHandle.WaitOne(5000);
                     break;
             }
         }
         catch (Exception)
         {
-            // The client may abort the connection; that is part of the cancellation test.
+            // Client-initiated aborts are expected during cancellation tests.
         }
         finally
         {
@@ -107,8 +122,26 @@ public sealed class NativeWinHttpHandlerTests : IDisposable
         }
     }
 
-    private HttpClient NewClient(bool redirect = true) =>
-        new(new NativeWinHttpHandler { AllowAutoRedirect = redirect }) { Timeout = TimeSpan.FromSeconds(20) };
+    private static HttpClient NewClient(bool allowAutoRedirect = false) =>
+        new(NetworkPrivacy.CreateHttpHandler(allowAutoRedirect)) { Timeout = TimeSpan.FromSeconds(20) };
+
+    [Fact]
+    public void CreateHttpHandlerConfiguresHardenedTransportDefaults()
+    {
+        using var handler = NetworkPrivacy.CreateHttpHandler();
+        Assert.False(handler.AllowAutoRedirect);
+        Assert.False(handler.UseCookies);
+        Assert.Equal(TimeSpan.FromMinutes(5), handler.PooledConnectionLifetime);
+        Assert.Equal(
+            DecompressionMethods.GZip | DecompressionMethods.Deflate | DecompressionMethods.Brotli,
+            handler.AutomaticDecompression);
+
+        using var privacyWrapper = NetworkPrivacy.Handler(NetworkFeature.Weather);
+        var delegating = Assert.IsAssignableFrom<DelegatingHandler>(privacyWrapper);
+        var innerSockets = Assert.IsType<SocketsHttpHandler>(delegating.InnerHandler);
+        Assert.False(innerSockets.AllowAutoRedirect);
+        Assert.False(innerSockets.UseCookies);
+    }
 
     [Fact]
     public async Task GetAndPostRoundTripBodiesAndHeaders()
@@ -129,16 +162,128 @@ public sealed class NativeWinHttpHandlerTests : IDisposable
     }
 
     [Fact]
-    public async Task RedirectsFollowOrSurfaceAccordingToPolicy()
+    public async Task RedirectsSurfaceByDefaultAndFollowOnlyWhenAllowed()
     {
-        using var following = NewClient(redirect: true);
-        using var followed = await following.GetAsync(_prefix + "redirect", _stop.Token);
-        Assert.Equal(HttpStatusCode.OK, followed.StatusCode);
-
-        using var manual = NewClient(redirect: false);
+        int seenBefore = Volatile.Read(ref _requestsSeen);
+        using var manual = NewClient();
         using var surfaced = await manual.GetAsync(_prefix + "redirect", _stop.Token);
         Assert.Equal(HttpStatusCode.Found, surfaced.StatusCode);
         Assert.Equal("/echo", surfaced.Headers.Location?.OriginalString);
+        Assert.Equal(seenBefore + 1, Volatile.Read(ref _requestsSeen));
+
+        using var following = NewClient(allowAutoRedirect: true);
+        using var followed = await following.GetAsync(_prefix + "redirect", _stop.Token);
+        Assert.Equal(HttpStatusCode.OK, followed.StatusCode);
+    }
+
+    [Fact]
+    public async Task SetCookieIsNotEchoedWhileExplicitCookieHeaderStillTransmits()
+    {
+        using var client = NewClient();
+        using (var setCookie = await client.GetAsync(_prefix + "set-cookie", _stop.Token))
+        {
+            Assert.Equal(HttpStatusCode.OK, setCookie.StatusCode);
+            Assert.True(setCookie.Headers.Contains("Set-Cookie"));
+        }
+
+        using (var subsequent = await client.GetAsync(_prefix + "check-cookie", _stop.Token))
+        {
+            Assert.Equal(string.Empty, await subsequent.Content.ReadAsStringAsync(_stop.Token));
+        }
+
+        using var manualCookieRequest = new HttpRequestMessage(HttpMethod.Get, _prefix + "check-cookie");
+        manualCookieRequest.Headers.Add("Cookie", "sp_dc=explicit-session");
+        using var explicitResponse = await client.SendAsync(manualCookieRequest, _stop.Token);
+        Assert.Equal("sp_dc=explicit-session", await explicitResponse.Content.ReadAsStringAsync(_stop.Token));
+    }
+
+    [Fact]
+    public async Task PrivacyRevocationCancelsActiveResponseStreamAndBlocksSubsequentRequests()
+    {
+        var policy = new NetworkPrivacy();
+        using var client = new HttpClient(policy.CreateHandler(NetworkFeature.Weather))
+        {
+            Timeout = TimeSpan.FromSeconds(20)
+        };
+
+        // Default policy starts in local-only mode and blocks network access before reaching the socket.
+        await Assert.ThrowsAsync<HttpRequestException>(() => client.GetAsync(_prefix + "echo", _stop.Token));
+
+        policy.Apply(new NotchSettings
+        {
+            EnableLocalOnlyMode = false,
+            AllowOnlineWeather = true
+        });
+
+        using var tcpServer = new TcpListener(IPAddress.Loopback, 0);
+        tcpServer.Start();
+        int streamPort = ((IPEndPoint)tcpServer.LocalEndpoint).Port;
+
+        var serverTask = Task.Run(async () =>
+        {
+            using var accepted = await tcpServer.AcceptTcpClientAsync(_stop.Token).ConfigureAwait(false);
+            await using var net = accepted.GetStream();
+            byte[] reqBuf = new byte[1024];
+            _ = await net.ReadAsync(reqBuf, _stop.Token).ConfigureAwait(false);
+
+            byte[] headerAndPrefix = Encoding.ASCII.GetBytes(
+                "HTTP/1.1 200 OK\r\nContent-Length: 1024\r\nContent-Type: text/plain\r\n\r\nhello");
+            await net.WriteAsync(headerAndPrefix, _stop.Token).ConfigureAwait(false);
+            await net.FlushAsync(_stop.Token).ConfigureAwait(false);
+
+            try
+            {
+                await Task.Delay(TimeSpan.FromSeconds(10), _stop.Token).ConfigureAwait(false);
+            }
+            catch (OperationCanceledException)
+            {
+                // Disposed at test teardown.
+            }
+        }, _stop.Token);
+
+        using var response = await client.GetAsync(
+            $"http://127.0.0.1:{streamPort}/stream",
+            HttpCompletionOption.ResponseHeadersRead,
+            _stop.Token);
+        await using var stream = await response.Content.ReadAsStreamAsync(_stop.Token);
+
+        byte[] initial = new byte[5];
+        int firstRead = await stream.ReadAsync(initial, _stop.Token);
+        Assert.Equal(5, firstRead);
+        Assert.Equal("hello", Encoding.ASCII.GetString(initial));
+
+        byte[] pending = new byte[64];
+        var blockedRead = stream.ReadAsync(pending, _stop.Token).AsTask();
+
+        var sw = Stopwatch.StartNew();
+        policy.Apply(new NotchSettings
+        {
+            EnableLocalOnlyMode = false,
+            AllowOnlineWeather = false
+        });
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(
+            () => blockedRead.WaitAsync(TimeSpan.FromSeconds(4), _stop.Token));
+        Assert.True(sw.Elapsed < TimeSpan.FromSeconds(4));
+
+        await Assert.ThrowsAsync<HttpRequestException>(() => client.GetAsync(_prefix + "echo", _stop.Token));
+        tcpServer.Stop();
+        _ = serverTask.ContinueWith(_ => { }, TaskContinuationOptions.ExecuteSynchronously);
+    }
+
+    [Fact]
+    public async Task HttpRequestHeadersRejectsCrlfInjection()
+    {
+        using var request = new HttpRequestMessage(HttpMethod.Get, _prefix + "echo");
+        Assert.Throws<FormatException>(() => request.Headers.Add("X-Custom", "valid\r\nX-Injected: bad"));
+        Assert.Throws<FormatException>(() => request.Headers.Add("X-Custom\r\nBad", "valid"));
+        Assert.False(request.Headers.TryAddWithoutValidation("X-Custom\r\nBad", "valid"));
+
+        var policy = new NetworkPrivacy();
+        policy.Apply(new NotchSettings { EnableLocalOnlyMode = false, AllowOnlineWeather = true });
+        using var client = new HttpClient(policy.CreateHandler(NetworkFeature.Weather)) { Timeout = TimeSpan.FromSeconds(20) };
+        request.Headers.TryAddWithoutValidation("X-Custom", "valid\r\nX-Injected: bad");
+        await Assert.ThrowsAsync<HttpRequestException>(() => client.SendAsync(request, _stop.Token));
     }
 
     [Fact]
@@ -151,11 +296,14 @@ public sealed class NativeWinHttpHandlerTests : IDisposable
     }
 
     [Fact]
-    public async Task GzipBodiesAreDecodedByTheTransport()
+    public async Task CompressedBodiesAreDecodedByTheTransport()
     {
         using var client = NewClient();
-        using var response = await client.GetAsync(_prefix + "gzip", _stop.Token);
-        Assert.Equal(new string('a', 5000), await response.Content.ReadAsStringAsync(_stop.Token));
+        using var gzipResponse = await client.GetAsync(_prefix + "gzip", _stop.Token);
+        Assert.Equal(new string('a', 5000), await gzipResponse.Content.ReadAsStringAsync(_stop.Token));
+
+        using var brotliResponse = await client.GetAsync(_prefix + "brotli", _stop.Token);
+        Assert.Equal(new string('b', 5000), await brotliResponse.Content.ReadAsStringAsync(_stop.Token));
     }
 
     [Fact]
@@ -177,100 +325,9 @@ public sealed class NativeWinHttpHandlerTests : IDisposable
     {
         using var client = NewClient();
         using var cts = new CancellationTokenSource(TimeSpan.FromMilliseconds(300));
-        var started = System.Diagnostics.Stopwatch.StartNew();
+        var started = Stopwatch.StartNew();
         await Assert.ThrowsAnyAsync<OperationCanceledException>(() => client.GetAsync(_prefix + "slow", cts.Token));
         Assert.True(started.Elapsed < TimeSpan.FromSeconds(4), "cancellation must not wait for the server");
-    }
-
-    private static class Native
-    {
-        private const string Dll = "VNotch.Native.dll";
-        internal const int OperationCancelled = 12017;
-
-        [DllImport(Dll, EntryPoint = "vn_http_create")]
-        internal static extern int Create(out long handle);
-
-        [DllImport(Dll, EntryPoint = "vn_http_send", CharSet = CharSet.Unicode)]
-        internal static extern int Send(
-            long handle, string method, int methodLength, string url, int urlLength, string headers, int headersLength,
-            IntPtr body, int bodyLength, uint timeoutMs, uint flags, out int status, out int error);
-
-        [DllImport(Dll, EntryPoint = "vn_http_cancel")]
-        internal static extern int Cancel(long handle);
-
-        [DllImport(Dll, EntryPoint = "vn_http_destroy")]
-        internal static extern int Destroy(long handle);
-
-        internal static int Get(long handle, string url, uint timeoutMs, out int status, out int error) =>
-            Send(handle, "GET", 3, url, url.Length, string.Empty, 0, IntPtr.Zero, 0, timeoutMs, 0, out status, out error);
-    }
-
-    [Fact]
-    public async Task CancelBeforeSendFailsFastWithoutContactingTheServer()
-    {
-        Assert.Equal(0, Native.Create(out long handle));
-        try
-        {
-            Assert.Equal(0, Native.Cancel(handle));
-            int seenBefore = Volatile.Read(ref _requestsSeen);
-            var started = System.Diagnostics.Stopwatch.StartNew();
-
-            int result = Native.Get(handle, _prefix + "slow", 20_000, out int status, out int error);
-
-            Assert.NotEqual(0, result);
-            Assert.Equal(0, status);
-            Assert.Equal(Native.OperationCancelled, error);
-            Assert.True(started.Elapsed < TimeSpan.FromSeconds(2), "a cancelled request must not wait for the server");
-            await Task.Delay(150, _stop.Token);
-            Assert.Equal(seenBefore, Volatile.Read(ref _requestsSeen));
-        }
-        finally
-        {
-            Native.Destroy(handle);
-        }
-    }
-
-    [Fact]
-    public void CancelStaysCancelledForEverySubsequentSend()
-    {
-        Assert.Equal(0, Native.Create(out long handle));
-        try
-        {
-            Native.Cancel(handle);
-            for (int i = 0; i < 3; i++)
-            {
-                Assert.NotEqual(0, Native.Get(handle, _prefix + "echo", 5_000, out int status, out int error));
-                Assert.Equal(0, status);
-                Assert.Equal(Native.OperationCancelled, error);
-            }
-        }
-        finally
-        {
-            Native.Destroy(handle);
-        }
-    }
-
-    [Fact]
-    public async Task CancelRacingWithSendNeverLeavesTheSendBlocked()
-    {
-        // The server never answers /hang, so a send that missed its cancel would block for the 20 s native timeout.
-        for (int iteration = 0; iteration < 60; iteration++)
-        {
-            Assert.Equal(0, Native.Create(out long handle));
-            try
-            {
-                var send = Task.Run(() => Native.Get(handle, _prefix + "hang", 20_000, out _, out _), _stop.Token);
-                Thread.SpinWait(iteration * 400);
-                Native.Cancel(handle);
-
-                int status = await send.WaitAsync(TimeSpan.FromSeconds(5), _stop.Token);
-                Assert.NotEqual(0, status);
-            }
-            finally
-            {
-                Native.Destroy(handle);
-            }
-        }
     }
 
     [Fact]

@@ -12,7 +12,7 @@ public partial class MainWindow
 
     private const string LiquidGlassStyleId = "liquidglass";
 
-    private LiquidGlassRefractionEffect? _glassRefractionEffect;
+    private LiquidGlassLensState? _glassRefractionEffect;
     private LiquidGlassInteractionController? _glassInteractionController;
     private bool _gpuRefractionConfigured;
     private bool _gpuUltimateConfigured;
@@ -25,8 +25,7 @@ public partial class MainWindow
     private double _glassConfiguredOpacity = 1.0;
 
     private bool UseGpuRefraction =>
-        !_gpuRefractionFailed && (_settings.LiquidGlass?.UseGpuRefraction ?? true) &&
-        LiquidGlassRefractionEffect.IsAvailable;
+        !_gpuRefractionFailed && (_settings.LiquidGlass?.UseGpuRefraction ?? true);
 
     private bool IsLiquidGlassEnabled =>
         string.Equals(_settings.NotchStyle, LiquidGlassStyleId, StringComparison.OrdinalIgnoreCase);
@@ -287,7 +286,7 @@ public partial class MainWindow
 
         if (!UseGpuRefraction)
         {
-            if (_gpuRefractionConfigured || GlassBackdropImage.Effect != null)
+            if (_gpuRefractionConfigured)
             {
                 DetachGpuRefraction();
                 _liquidGlass.SetGpuMode(false, null);
@@ -304,8 +303,7 @@ public partial class MainWindow
 
         try
         {
-            _glassRefractionEffect ??= new LiquidGlassRefractionEffect();
-            GlassBackdropImage.Effect = null;
+            _glassRefractionEffect ??= new LiquidGlassLensState();
 
             _glassInteractionController ??= new LiquidGlassInteractionController(NotchContainer, NotchBorder, _glassRefractionEffect);
 
@@ -342,7 +340,7 @@ public partial class MainWindow
     private void ScheduleGlassGpuRetry()
     {
         if (_cleanedUp || !IsLiquidGlassEnabled ||
-            !(_settings.LiquidGlass?.UseGpuRefraction ?? true) || !LiquidGlassRefractionEffect.IsAvailable) return;
+            !(_settings.LiquidGlass?.UseGpuRefraction ?? true)) return;
         if (_glassGpuRetryTimer == null)
         {
             _glassGpuRetryTimer = new UiScheduledTimer(
@@ -399,7 +397,6 @@ public partial class MainWindow
 
         if (GlassBackdropImage != null)
         {
-            GlassBackdropImage.Effect = null;
             // Restore CPU-present layout defaults (GPU mode set explicit size).
             GlassBackdropImage.Width = double.NaN;
             GlassBackdropImage.Height = double.NaN;
@@ -613,7 +610,7 @@ public partial class MainWindow
     private void ApplyGpuBlur(double blurAmount)
     {
         if (UseGpuRefraction)
-            _glassRefractionEffect ??= new LiquidGlassRefractionEffect();
+            _glassRefractionEffect ??= new LiquidGlassLensState();
         LiquidGlassSurfaceBinder.ApplyGpuBlur(GlassBackdropHost, ref _glassHostBlur, blurAmount, UseGpuRefraction, _glassRefractionEffect);
     }
 

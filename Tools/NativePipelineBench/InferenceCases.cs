@@ -83,7 +83,20 @@ internal sealed unsafe class ManagedInference : IInferenceCase
         try
         {
             scaled.CopyPixels(pixels, stride, 0);
-            fixed (byte* p = pixels) fixed (float* t = tensor) NativeApi.Check(baseline.Fill(p, scaled.PixelWidth, scaled.PixelHeight, stride, t));
+            const int side = 416, plane = side * side;
+            Array.Fill(tensor, 114f, 0, 3 * plane);
+            int copyW = Math.Min(scaled.PixelWidth, side), copyH = Math.Min(scaled.PixelHeight, side);
+            for (int y = 0; y < copyH; ++y)
+            {
+                int rowOff = y * stride, dstRow = y * side;
+                for (int x = 0; x < copyW; ++x)
+                {
+                    int src = rowOff + x * 4, dst = dstRow + x;
+                    tensor[dst] = pixels[src];
+                    tensor[plane + dst] = pixels[src + 1];
+                    tensor[2 * plane + dst] = pixels[src + 2];
+                }
+            }
         }
         finally { ArrayPool<byte>.Shared.Return(pixels); }
         return scale;

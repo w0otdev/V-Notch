@@ -301,6 +301,17 @@ public sealed class DataDeletionSafetyTests : IDisposable
     public void AppDataPurgeMustNotOverlapTheInstallation(string first, string second, bool overlaps) =>
         Assert.Equal(overlaps, SafeFileDeletion.PathsOverlap(first, second));
 
+    [Theory]
+    [InlineData(0xA0000003u, true)]  // IO_REPARSE_TAG_MOUNT_POINT (junction)
+    [InlineData(0xA000000Cu, true)]  // IO_REPARSE_TAG_SYMLINK
+    [InlineData(0xA000001Du, true)]  // IO_REPARSE_TAG_LX_SYMLINK
+    [InlineData(0u, true)]           // IO_REPARSE_TAG_RESERVED_ZERO (unreadable/invalid)
+    [InlineData(0x9000001Au, false)] // IO_REPARSE_TAG_CLOUD (OneDrive)
+    [InlineData(0x9000F01Au, false)] // IO_REPARSE_TAG_CLOUD_F (OneDrive hydrated/folder)
+    [InlineData(0x80000017u, false)] // IO_REPARSE_TAG_WOF
+    public void ReparseTagPolicyBlocksNameSurrogatesWhileAllowingCloudPlaceholders(uint tag, bool expectedBlocked) =>
+        Assert.Equal(expectedBlocked, SafeFileDeletion.IsBlockedReparseTag(tag));
+
     [Fact]
     public void LinkedChildPreventsAnyPartialDeletionOfItsParent()
     {
@@ -331,9 +342,33 @@ public sealed class DataDeletionSafetyTests : IDisposable
         WriteManifest(install, "V-Notch.exe", "obsolete.dll", "custom.txt");
         File.WriteAllText(Path.Combine(install, "custom.txt"), "user customization");
         await SetupOperations.InstallAsync(new(source, install, false), _ => { }, Callbacks, Path.Combine(_root, "recovery"));
+        Assert.False(File.Exists(Path.Combine(install, "obsolete.dll")));
+        Assert.Single(InstallDirectoryCleanup.ReadManifest(install), f => f.Path == "V-Notch.exe");
         Assert.Equal(0, await RunHelper(InstallDirectoryCleanup.CreateStartInfo(install, int.MaxValue)));
         Assert.False(File.Exists(Path.Combine(install, "obsolete.dll")));
         Assert.Equal("user customization", File.ReadAllText(Path.Combine(install, "custom.txt")));
+    }
+
+    [Fact]
+    public void TempArtifactCleanupRemovesUnlockedUpdateSubfoldersAndPreservesLockedOrRecoveryDirs()
+    {
+        string tempRoot = Directory.CreateDirectory(Path.Combine(_root, "temp")).FullName;
+        string vnotchTemp = Directory.CreateDirectory(Path.Combine(tempRoot, "V-Notch")).FullName;
+        string staleUpdate = Directory.CreateDirectory(Path.Combine(vnotchTemp, "update-old")).FullName;
+        string activeUpdate = Directory.CreateDirectory(Path.Combine(vnotchTemp, "update-active")).FullName;
+        string recoveryDir = Directory.CreateDirectory(Path.Combine(vnotchTemp, "abc123.recovery")).FullName;
+        Write(staleUpdate, "V-Notch-Setup.exe", "stale");
+        string activeExe = Write(activeUpdate, "V-Notch-Setup.exe", "active");
+        string recoveryFile = Write(recoveryDir, "0", "preserved user customization");
+
+        using (var activeLock = new FileStream(activeExe, FileMode.Open, FileAccess.Read, FileShare.Read))
+        {
+            InstallDirectoryCleanup.RemoveTempInstallerArtifacts(tempRoot);
+        }
+
+        Assert.False(Directory.Exists(staleUpdate));
+        Assert.True(File.Exists(activeExe));
+        Assert.Equal("preserved user customization", File.ReadAllText(recoveryFile));
     }
 
     [Theory]

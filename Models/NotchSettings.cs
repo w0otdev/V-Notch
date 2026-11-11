@@ -1,11 +1,13 @@
+using System.Collections.Generic;
 using System.Linq.Expressions;
 using System.Reflection;
 using System.Runtime.InteropServices;
+using System.Text.Json;
 using System.Text.Json.Serialization;
 
 namespace VNotch.Models;
 
-public partial class NotchSettings
+public partial class NotchSettings : IJsonOnDeserialized
 {
     private static int ClampInt(int value, int min, int max) =>
         min <= max ? Math.Clamp(value, min, max) : value;
@@ -95,7 +97,6 @@ public partial class NotchSettings
     private int _translationTimeoutSeconds = 90;
     public int TranslationTimeoutSeconds { get => _translationTimeoutSeconds; set => _translationTimeoutSeconds = ClampInt(value, 15, 600); }
 
-
     public string CameraDeviceId { get; set; } = "";
     public string VisualizerAudioDeviceId { get; set; } = "";
     public string BatteryDeviceId { get; set; } = SystemBatteryDeviceId;
@@ -173,7 +174,6 @@ public partial class NotchSettings
     public string SpotlightDeepSeekApiKey { get; set; } = "";
     public string SpotlightDeepSeekModel { get; set; } = "";
 
-
     public bool EnableSpotifyLyrics { get; set; } = true;
     public string LyricsProviderPriority { get; set; } = VNotch.Services.LyricsProviderOrder.Default;
 
@@ -187,9 +187,6 @@ public partial class NotchSettings
 
     public bool EnableYouTubeSubtitles { get; set; } = true;
     public bool IgnoreYouTubeAutoSubtitles { get; set; } = true;
-
-
-
 
     public bool EnableWeather { get; set; } = false;
     public string ManualCity { get; set; } = string.Empty;
@@ -229,6 +226,15 @@ public partial class NotchSettings
     public bool EnableDiagnosticLogging { get; set; } = true;
     public bool EnableSpotlightHistory { get; set; } = true;
 
+    [JsonExtensionData]
+    public Dictionary<string, JsonElement>? ExtensionData { get; set; }
+
+    public void OnDeserialized()
+    {
+        if (SettingsVersion <= Services.SettingsMigrator.CurrentVersion)
+            ExtensionData = null;
+    }
+
     [JsonIgnore]
     public bool IsDirty { get; set; } = false;
 
@@ -265,7 +271,7 @@ public partial class NotchSettings
         for (int i = 0; i < _cloneableProperties.Length; i++)
         {
             var prop = _cloneableProperties[i];
-            if (prop.PropertyType == typeof(LiquidGlassConfig))
+            if (prop.PropertyType == typeof(LiquidGlassConfig) || prop.PropertyType == typeof(Dictionary<string, JsonElement>))
                 continue;
 
             var p1 = Expression.Property(left, prop);
@@ -310,7 +316,27 @@ public partial class NotchSettings
         clone.IsDirty = false;
         clone.LiquidGlass = LiquidGlass?.Clone() ?? new LiquidGlassConfig();
         clone.LiquidGlassCustom = LiquidGlassCustom?.Clone();
+        clone.ExtensionData = ExtensionData != null
+            ? new Dictionary<string, JsonElement>(ExtensionData, StringComparer.Ordinal)
+            : null;
         return clone;
+    }
+
+    private static bool ExtensionDataEquals(
+        Dictionary<string, JsonElement>? left,
+        Dictionary<string, JsonElement>? right)
+    {
+        int leftCount = left?.Count ?? 0;
+        int rightCount = right?.Count ?? 0;
+        if (leftCount != rightCount) return false;
+        if (leftCount == 0) return true;
+        foreach (var (key, leftVal) in left!)
+        {
+            if (!right!.TryGetValue(key, out var rightVal)) return false;
+            if (!string.Equals(leftVal.GetRawText(), rightVal.GetRawText(), StringComparison.Ordinal))
+                return false;
+        }
+        return true;
     }
 
     public bool ValueEquals(NotchSettings? other)
@@ -331,7 +357,7 @@ public partial class NotchSettings
         if (LiquidGlassCustom != null && other.LiquidGlassCustom != null && !LiquidGlassCustom.ValueEquals(other.LiquidGlassCustom))
             return false;
 
-        return true;
+        return ExtensionDataEquals(ExtensionData, other.ExtensionData);
     }
 }
 

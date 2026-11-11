@@ -134,69 +134,6 @@ public class UpdateAndIntegritySecurityTests
         Assert.False(launcherCalled);
     }
 
-    [Fact]
-    public void MatchesChecksumManifest_RejectsCommentSubstringAndWrongFilename()
-    {
-        const string actualHash = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855";
-        const string otherHash = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
-
-        // 1. Hash inside a full-line or inline '#' comment
-        string commentManifest = $"""
-            # {actualHash}  V-Notch.exe
-            ; {actualHash}  V-Notch.exe
-            {otherHash}  V-Notch.exe # {actualHash}  V-Notch.exe
-            """;
-        Assert.False(AppIntegrityService.MatchesChecksumManifest(commentManifest, actualHash, "V-Notch.exe"));
-
-        // 2. Hash as a substring of a longer hex string
-        string substringManifest = $"""
-            aa{actualHash}bb  V-Notch.exe
-            {actualHash}00  V-Notch.exe
-            """;
-        Assert.False(AppIntegrityService.MatchesChecksumManifest(substringManifest, actualHash, "V-Notch.exe"));
-
-        // 3. Hash associated with a wrong filename (other.exe / V-Notch-Setup.exe)
-        string wrongFileManifest = $"""
-            {actualHash}  other.exe
-            {actualHash} *V-Notch-Setup.exe
-            V-Notch-Setup.exe: {actualHash}
-            """;
-        Assert.False(AppIntegrityService.MatchesChecksumManifest(wrongFileManifest, actualHash, "V-Notch.exe"));
-    }
-
-    [Fact]
-    public void MatchesChecksumManifest_AcceptsValidStandardAndBinaryModeLines()
-    {
-        const string actualHash = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855";
-        const string otherHash = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
-
-        string standardManifest = $"""
-            # Official release checksums
-            {otherHash}  V-Notch-Setup.exe
-            {actualHash}  V-Notch.exe
-            """;
-        Assert.True(AppIntegrityService.MatchesChecksumManifest(standardManifest, actualHash, "V-Notch.exe"));
-
-        string binaryModeManifest = $"""
-            {otherHash} *V-Notch-Setup.exe
-            {actualHash.ToUpperInvariant()} *V-Notch.exe
-            """;
-        Assert.True(AppIntegrityService.MatchesChecksumManifest(binaryModeManifest, actualHash, "V-Notch.exe"));
-
-        string standaloneManifest = $"{actualHash}\n";
-        Assert.True(AppIntegrityService.MatchesChecksumManifest(standaloneManifest, actualHash, "V-Notch.exe"));
-    }
-
-    [Theory]
-    [InlineData("../latest")]
-    [InlineData("1.0.0/../../other")]
-    [InlineData(@"1.0.0\..\other")]
-    public void BuildCandidateReleaseTags_RejectsPathTraversalTags(string maliciousVersion)
-    {
-        string[] tags = AppIntegrityService.BuildCandidateReleaseTags(maliciousVersion);
-        Assert.Empty(tags);
-    }
-
     private sealed class MockHttpMessageHandler(Func<HttpRequestMessage, Task<HttpResponseMessage>> responder) : HttpMessageHandler
     {
         protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)

@@ -31,26 +31,12 @@ internal sealed partial class WindowsSearchProvider : ISpotlightProvider
     private long _lastFailureTicks = DateTime.MinValue.Ticks;
     private int _loggedUnavailable;
 
+    private const int MaxQueryLength = 256;
+
     [LibraryImport(NativeDll, StringMarshalling = StringMarshalling.Utf16)]
     private static partial int vn_windows_search_sanitize_query(
         ReadOnlySpan<char> queryPtr,
         int queryLen,
-        Span<char> outBuf,
-        int outCap,
-        out int outLen);
-
-    [LibraryImport(NativeDll, StringMarshalling = StringMarshalling.Utf16)]
-    private static partial int vn_windows_search_escape_like_pattern(
-        ReadOnlySpan<char> queryPtr,
-        int queryLen,
-        Span<char> outBuf,
-        int outCap,
-        out int outLen);
-
-    [LibraryImport(NativeDll, StringMarshalling = StringMarshalling.Utf16)]
-    private static partial int vn_windows_search_build_name_predicate(
-        ReadOnlySpan<char> sanitizedPtr,
-        int sanitizedLen,
         Span<char> outBuf,
         int outCap,
         out int outLen);
@@ -96,6 +82,7 @@ internal sealed partial class WindowsSearchProvider : ISpotlightProvider
         int limit,
         CancellationToken cancellationToken)
     {
+        query = ClampQuery(query);
         if (!IsAvailable || !SpotlightFileVisibility.ShouldSearch(query)) return Array.Empty<SpotlightSearchItem>();
 
         string sanitizedQuery = SanitizeQuery(query);
@@ -174,18 +161,38 @@ internal sealed partial class WindowsSearchProvider : ISpotlightProvider
         ".exe", ".cmd", ".bat", ".msc", ".cpl", ".com", ".ps1", ".appref-ms", ".lnk"
     };
 
+    private static string ClampQuery(string? query)
+    {
+        if (string.IsNullOrEmpty(query)) return string.Empty;
+        ReadOnlySpan<char> trimmed = query.AsSpan().Trim();
+        if (trimmed.Length <= MaxQueryLength)
+            return trimmed.Length == query.Length ? query : trimmed.ToString();
+        int len = MaxQueryLength;
+        if (char.IsHighSurrogate(trimmed[len - 1])) len--;
+        return trimmed[..len].ToString();
+    }
+
+    private static ReadOnlySpan<char> ClampSpan(ReadOnlySpan<char> span, int maxLen)
+    {
+        if (span.Length <= maxLen) return span;
+        int len = maxLen;
+        if (len > 0 && char.IsHighSurrogate(span[len - 1])) len--;
+        return span[..len];
+    }
+
     internal static string BuildQuerySql(string sanitizedQuery, string originalQuery, int fetch)
     {
-        bool isExplicitPath = SpotlightFileVisibility.IsExplicitPath(originalQuery);
+        string clampedOriginal = ClampQuery(originalQuery);
+        bool isExplicitPath = SpotlightFileVisibility.IsExplicitPath(clampedOriginal);
         string scope = isExplicitPath
-            ? SpotlightFileVisibility.BuildWindowsScope(originalQuery)
+            ? SpotlightFileVisibility.BuildWindowsScope(clampedOriginal)
             : CachedDefaultWindowsScope.Value;
 
-        ReadOnlySpan<char> sanitizedSpan = (sanitizedQuery ?? string.Empty).AsSpan();
-        ReadOnlySpan<char> originalSpan = (originalQuery ?? string.Empty).AsSpan();
-        ReadOnlySpan<char> scopeSpan = (scope ?? string.Empty).AsSpan();
+        ReadOnlySpan<char> sanitizedSpan = ClampSpan((sanitizedQuery ?? string.Empty).AsSpan(), MaxQueryLength);
+        ReadOnlySpan<char> originalSpan = ClampSpan(clampedOriginal.AsSpan(), MaxQueryLength);
+        ReadOnlySpan<char> scopeSpan = ClampSpan((scope ?? string.Empty).AsSpan(), 4097);
 
-        int cap = sanitizedSpan.Length * 4 + originalSpan.Length * 3 + scopeSpan.Length + 256;
+        int cap = checked(sanitizedSpan.Length * 4 + originalSpan.Length * 3 + scopeSpan.Length + 256);
         Span<char> buf = cap <= 1024 ? stackalloc char[cap] : new char[cap];
         int rc = vn_windows_search_build_query_sql(
             sanitizedSpan, sanitizedSpan.Length,
@@ -235,6 +242,7 @@ internal sealed partial class WindowsSearchProvider : ISpotlightProvider
     {
         int fetch = Math.Clamp(limit * 4, 20, 100);
         string sql = BuildQuerySql(sanitizedQuery, originalQuery, fetch);
+        if (sql.Length == 0) return new List<SpotlightSearchItem>();
 
         var results = new List<SpotlightSearchItem>(fetch);
         Span<SearchResult> rows = stackalloc SearchResult[fetch];
@@ -298,28 +306,6 @@ internal sealed partial class WindowsSearchProvider : ISpotlightProvider
             path,
             path,
             path);
-    }
-
-    private static string BuildNamePredicate(string sanitizedQuery)
-    {
-        ReadOnlySpan<char> span = (sanitizedQuery ?? string.Empty).AsSpan();
-        int cap = span.Length * 4 + 128;
-        Span<char> buf = cap <= 1024 ? stackalloc char[cap] : new char[cap];
-        int rc = vn_windows_search_build_name_predicate(span, span.Length, buf, buf.Length, out int len);
-        if (rc == -2 && len > buf.Length) { char[] larger = new char[len]; rc = vn_windows_search_build_name_predicate(span, span.Length, larger, larger.Length, out len); return rc == 0 && len > 0 ? new string(larger, 0, len) : string.Empty; }
-        if (rc != 0) len = 0;
-        return len > 0 ? new string(buf[..len]) : string.Empty;
-    }
-
-    private static string EscapeLikePattern(string sanitizedQuery)
-    {
-        ReadOnlySpan<char> span = (sanitizedQuery ?? string.Empty).AsSpan();
-        int cap = span.Length * 3 + 16;
-        Span<char> buf = cap <= 1024 ? stackalloc char[cap] : new char[cap];
-        int rc = vn_windows_search_escape_like_pattern(span, span.Length, buf, buf.Length, out int len);
-        if (rc == -2 && len > buf.Length) { char[] larger = new char[len]; rc = vn_windows_search_escape_like_pattern(span, span.Length, larger, larger.Length, out len); return rc == 0 && len > 0 ? new string(larger, 0, len) : string.Empty; }
-        if (rc != 0) len = 0;
-        return len > 0 ? new string(buf[..len]) : string.Empty;
     }
 
     internal static string SanitizeQuery(string query)

@@ -38,9 +38,9 @@ public sealed partial class ClipboardHistoryStore
             }
             else
             {
-                // Public originals can be streamed directly. Do not materialize
-                // a multi-megabyte compressed PNG just to display a small card.
-                using var input = File.OpenRead(path);
+                // Public originals are streamed/decrypted directly without materializing
+                // a full-size uncompressed bitmap on the managed heap.
+                using var input = OpenPublicBlobRead(path);
                 image = ClipboardImagePreview.Decode(input, entry.IsSensitive, cancellation);
             }
         }

@@ -31,6 +31,7 @@ internal sealed partial class D3DImageFramePresenter : IDisposable
         out byte outShouldSubmit);
 
     private readonly Dispatcher _dispatcher;
+    private readonly IntPtr _hwnd;
     private readonly object _surfaceSync = new();
     private readonly ID3DFrameTarget _image;
 
@@ -41,6 +42,7 @@ internal sealed partial class D3DImageFramePresenter : IDisposable
     // Keep D3DImage surface separate from _renderSurface during resize uploads
     // so WPF draws the last complete frame until replacement is ready.
     private IDirect3DSurface9? _attachedSurface;
+    private bool _hasWebcamBackBuffer;
     private readonly int _surfaceWidth;
     private readonly int _surfaceHeight;
     private int _frameWidth;
@@ -67,7 +69,7 @@ internal sealed partial class D3DImageFramePresenter : IDisposable
     private double _frameIntervalMs = 1000.0 / 60.0;
     private bool _pendingForcePresent;
     private readonly bool _ultimateGpuMode;
-    private readonly uint _adapterIndex;
+    private uint _adapterIndex;
 
     internal bool IsUltimateGpuMode => _ultimateGpuMode;
     internal uint AdapterIndex => _adapterIndex;
@@ -128,6 +130,7 @@ internal sealed partial class D3DImageFramePresenter : IDisposable
         if (surfaceHeight <= 0)
             throw new ArgumentOutOfRangeException(nameof(surfaceHeight));
 
+        _hwnd = windowHandle;
         _surfaceWidth = surfaceWidth;
         _surfaceHeight = surfaceHeight;
         _ultimateGpuMode = ultimateGpuMode;
@@ -142,72 +145,78 @@ internal sealed partial class D3DImageFramePresenter : IDisposable
         };
         _retryTimer.Tick += OnRetryTick;
 
-        // WPF D3DImage accepts IDirect3DSurface9 back buffers, even on current Windows.
-        _direct3D = D3D9.Direct3DCreate9Ex();
         try
         {
-            var present = new PresentParameters
-            {
-                BackBufferWidth = 1,
-                BackBufferHeight = 1,
-                BackBufferFormat = Format.Unknown,
-                BackBufferCount = 1,
-                MultiSampleType = MultisampleType.None,
-                SwapEffect = SwapEffect.Discard,
-                DeviceWindowHandle = windowHandle,
-                Windowed = true,
-                EnableAutoDepthStencil = false,
-                PresentationInterval = PresentInterval.Immediate
-            };
-
-            uint preferredAdapter = useGpuCapture
-                ? NativeGpuFindAdapter(_direct3D.NativePointer, windowHandle)
-                : ultimateGpuMode ? SelectBestHardwareAdapter(_direct3D) : 0u;
-            const CreateFlags deviceFlags =
-                CreateFlags.Multithreaded |
-                CreateFlags.FpuPreserve |
-                CreateFlags.HardwareVertexProcessing;
-
-            if (preferredAdapter != 0u)
-            {
-                try
-                {
-                    _device = _direct3D.CreateDeviceEx(
-                        preferredAdapter,
-                        DeviceType.Hardware,
-                        windowHandle,
-                        deviceFlags,
-                        present);
-                    _adapterIndex = preferredAdapter;
-                }
-                catch
-                {
-                    _device = null;
-                }
-            }
-
-            if (_device == null)
-            {
-                _device = _direct3D.CreateDeviceEx(
-                    0,
-                    DeviceType.Hardware,
-                    windowHandle,
-                    deviceFlags,
-                    present);
-                _adapterIndex = 0u;
-            }
+            CreateDevice();
         }
         catch
         {
             _retryTimer.Stop();
             _retryTimer.Tick -= OnRetryTick;
-            _direct3D.Dispose();
+            _direct3D?.Dispose();
+            _direct3D = null;
             throw;
         }
 
         _image.IsFrontBufferAvailableChanged += OnFrontBufferAvailableChanged;
         // State-driven: CompositionTarget.Rendering is hooked only while a frame is pending
         // (see RequestRenderingHook), so an idle presenter adds zero per-vsync UI ticks.
+    }
+
+    private void CreateDevice()
+    {
+        // WPF D3DImage accepts IDirect3DSurface9 back buffers, even on current Windows.
+        _direct3D = D3D9.Direct3DCreate9Ex();
+        var present = new PresentParameters
+        {
+            BackBufferWidth = 1,
+            BackBufferHeight = 1,
+            BackBufferFormat = Format.Unknown,
+            BackBufferCount = 1,
+            MultiSampleType = MultisampleType.None,
+            SwapEffect = SwapEffect.Discard,
+            DeviceWindowHandle = _hwnd,
+            Windowed = true,
+            EnableAutoDepthStencil = false,
+            PresentationInterval = PresentInterval.Immediate
+        };
+
+        uint preferredAdapter = _useGpuCapture
+            ? NativeGpuFindAdapter(_direct3D.NativePointer, _hwnd)
+            : _ultimateGpuMode ? SelectBestHardwareAdapter(_direct3D) : 0u;
+        const CreateFlags deviceFlags =
+            CreateFlags.Multithreaded |
+            CreateFlags.FpuPreserve |
+            CreateFlags.HardwareVertexProcessing;
+
+        if (preferredAdapter != 0u)
+        {
+            try
+            {
+                _device = _direct3D.CreateDeviceEx(
+                    preferredAdapter,
+                    DeviceType.Hardware,
+                    _hwnd,
+                    deviceFlags,
+                    present);
+                _adapterIndex = preferredAdapter;
+            }
+            catch
+            {
+                _device = null;
+            }
+        }
+
+        if (_device == null)
+        {
+            _device = _direct3D.CreateDeviceEx(
+                0,
+                DeviceType.Hardware,
+                _hwnd,
+                deviceFlags,
+                present);
+            _adapterIndex = 0u;
+        }
     }
 
     // 0 = unhooked, 1 = hook requested or active. Handler add/remove runs on the dispatcher only.
@@ -322,27 +331,8 @@ internal sealed partial class D3DImageFramePresenter : IDisposable
                 LockedRectangle locked = _uploadSurface.LockRect(LockFlags.None);
                 try
                 {
-                    GlassDirtyRows dirtyRows;
-                    if (_frameWidth != width || _frameHeight != height)
-                    {
-                        // Initialize every pixel when the capture extent changes.
-                        CopyRows(source, sourceStride, locked.DataPointer, locked.Pitch, rowBytes, height);
-                        dirtyRows = new GlassDirtyRows(0, height);
-                    }
-                    else
-                    {
-                        dirtyRows = GlassUploadDelta.CopyChangedRows(source, sourceStride, locked.DataPointer,
-                            locked.Pitch, rowBytes, height);
-                    }
-                    if (dirtyRows.IsEmpty && !forcePresent)
-                    {
-                        // Pending pixels already represent this frame. Leave their
-                        // scheduling/tag intact until WPF consumes them.
-                        return true;
-                    }
-                    // Geometry changes/explicit recovery still submit a frame; only
-                    // expand to full height when no specific dirty rows were detected.
-                    if (dirtyRows.IsEmpty && forcePresent) dirtyRows = new GlassDirtyRows(0, height);
+                    CopyRows(source, sourceStride, locked.DataPointer, locked.Pitch, rowBytes, height);
+                    var dirtyRows = new GlassDirtyRows(0, height);
                     _pendingDirtyRows = _pendingDirtyRows.Union(dirtyRows);
                 }
                 finally
@@ -548,6 +538,7 @@ internal sealed partial class D3DImageFramePresenter : IDisposable
                     if (_webcam)
                     {
                         (_renderSurface, _uploadSurface) = (_uploadSurface, _renderSurface);
+                        _hasWebcamBackBuffer = true;
                     }
                     else if (!_useGpuCapture)
                     {
@@ -706,14 +697,28 @@ internal sealed partial class D3DImageFramePresenter : IDisposable
 
     private void OnFrontBufferAvailableChanged(object sender, DependencyPropertyChangedEventArgs e)
     {
-        if (_disposed || _failed || !_image.IsFrontBufferAvailable)
+        if (_disposed || _failed)
             return;
+
+        if (!_image.IsFrontBufferAvailable)
+        {
+            lock (_surfaceSync)
+            {
+                TryDetachBackBufferLocked();
+            }
+            return;
+        }
 
         try
         {
             bool shouldSchedule = false;
             lock (_surfaceSync)
             {
+                if (_device != null && !IsDeviceHealthy(_device))
+                {
+                    RecreateDeviceAndResourcesLocked();
+                }
+
                 AttachBackBuffer();
                 if (_pendingFrame && !_presentQueued)
                 {
@@ -731,11 +736,88 @@ internal sealed partial class D3DImageFramePresenter : IDisposable
         }
     }
 
+    private bool IsDeviceHealthy(IDirect3DDevice9Ex device)
+    {
+        try
+        {
+            device.CheckDeviceState(_hwnd);
+            return true;
+        }
+        catch (SharpGen.Runtime.SharpGenException)
+        {
+            return false;
+        }
+    }
+
+    private void RecreateDeviceAndResourcesLocked()
+    {
+        bool hadResources = _gpuHandle != null || _uploadSurface != null || _renderSurface != null;
+
+        TryDetachBackBufferLocked();
+
+        _uploadSurface?.Dispose();
+        if (_renderSurface != null && !ReferenceEquals(_renderSurface, _attachedSurface))
+            _renderSurface.Dispose();
+        _attachedSurface?.Dispose();
+        _gpuHandle?.Dispose();
+        _uploadSurface = null;
+        _renderSurface = null;
+        _attachedSurface = null;
+        _gpuHandle = null;
+        _hasGpuBackBuffer = false;
+        _hasWebcamBackBuffer = false;
+        _appliedCaptureIntervalMs = 0;
+        _frameWidth = 0;
+        _frameHeight = 0;
+        _pendingFrame = false;
+        _pendingForcePresent = false;
+        _pendingDirtyRows = default;
+        _presentQueued = false;
+
+        _device?.Dispose();
+        _device = null;
+        _direct3D?.Dispose();
+        _direct3D = null;
+
+        CreateDevice();
+        if (hadResources)
+        {
+            CreateResources();
+        }
+    }
+
+    private void TryDetachBackBufferLocked()
+    {
+        _attachedSurface = null;
+        bool locked = false;
+        try
+        {
+            bool writable = _image.TryLock(new Duration(TimeSpan.FromMilliseconds(5)));
+            locked = true;
+            if (writable)
+            {
+                _image.SetBackBuffer(D3DResourceType.IDirect3DSurface9, IntPtr.Zero);
+            }
+        }
+        catch (Exception)
+        {
+            // Ignore lock/backbuffer detachment errors while the front buffer is unavailable.
+        }
+        finally
+        {
+            if (locked)
+            {
+                try { _image.Unlock(); }
+                catch (Exception) { }
+            }
+        }
+    }
+
     internal void AttachBackBuffer()
     {
         // A retry can run before D3D11 completes the first frame. Do not attach
         // the freshly allocated D3D9 target until its GPU copy has initialized it.
-        if ((_useGpuCapture && !_hasGpuBackBuffer) || (_webcam && _attachedSurface == null)) return;
+        if ((_useGpuCapture && !_hasGpuBackBuffer) || (_webcam && !_hasWebcamBackBuffer)) return;
         var surface = _attachedSurface ?? _renderSurface;
         if (surface == null || !_image.IsFrontBufferAvailable)
             return;
@@ -876,6 +958,8 @@ internal sealed partial class D3DImageFramePresenter : IDisposable
             _uploadSurface = null;
             _renderSurface = null;
             _attachedSurface = null;
+            _hasGpuBackBuffer = false;
+            _hasWebcamBackBuffer = false;
             _frameWidth = 0;
             _frameHeight = 0;
             _device = null;
@@ -883,5 +967,17 @@ internal sealed partial class D3DImageFramePresenter : IDisposable
             _pendingFrame = false;
             _presentQueued = false;
         }
+    }
+}
+
+internal readonly record struct GlassDirtyRows(int Top, int Bottom)
+{
+    public bool IsEmpty => Bottom <= Top;
+
+    public GlassDirtyRows Union(GlassDirtyRows other)
+    {
+        if (other.IsEmpty) return this;
+        if (IsEmpty) return other;
+        return new GlassDirtyRows(Math.Min(Top, other.Top), Math.Max(Bottom, other.Bottom));
     }
 }

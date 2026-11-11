@@ -43,7 +43,7 @@ namespace vnotch::services::data_protection
             in_blob.pbData = const_cast<BYTE*>(plain_len > 0 ? plain_ptr : &dummy);
 
             DATA_BLOB out_blob{};
-            if (!CryptProtectData(&in_blob, nullptr, nullptr, nullptr, nullptr, 0, &out_blob))
+            if (!CryptProtectData(&in_blob, nullptr, nullptr, nullptr, nullptr, CRYPTPROTECT_UI_FORBIDDEN, &out_blob))
             {
                 return VN_ERR_FAIL;
             }
@@ -91,7 +91,7 @@ namespace vnotch::services::data_protection
             in_blob.pbData = const_cast<BYTE*>(enc_ptr);
 
             DATA_BLOB out_blob{};
-            if (!CryptUnprotectData(&in_blob, nullptr, nullptr, nullptr, nullptr, 0, &out_blob))
+            if (!CryptUnprotectData(&in_blob, nullptr, nullptr, nullptr, nullptr, CRYPTPROTECT_UI_FORBIDDEN, &out_blob))
             {
                 return VN_ERR_FAIL;
             }

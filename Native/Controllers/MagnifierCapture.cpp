@@ -1,4 +1,5 @@
 #include "../vnotch_common.h"
+#include "../vnotch_handle_registry.h"
 #include <magnification.h>
 #include <algorithm>
 #include <cstdio>
@@ -514,49 +515,55 @@ BOOL CALLBACK Source::ScalingTrampoline(HWND, void* srcdata, MAGIMAGEHEADER srch
     return (source != nullptr && source->OnScalingCallback(srcdata, srcheader)) ? TRUE : FALSE;
 }
 
-struct SourceSlot {
-    std::unique_ptr<Source> object;
-    int32_t leases = 0;
-    bool retired = false;
-};
+using SourceLease = vnotch::HandleRegistry<Source>::Lease;
 
-SRWLOCK g_registry_lock = SRWLOCK_INIT;
-std::vector<SourceSlot> g_sources;
+vnotch::HandleRegistry<Source> g_sources;
+SRWLOCK g_epoch_lock = SRWLOCK_INIT;
+std::vector<uint32_t> g_slot_epochs;
 
-void ReleaseSourceLease(size_t index) noexcept {
-    std::unique_ptr<Source> doomed;
-    {
-        ScopedLock guard(&g_registry_lock);
-        SourceSlot& slot = g_sources[index];
-        if (--slot.leases == 0 && slot.retired) {
-            doomed = std::move(slot.object);
-            slot.retired = false;
-        }
+int32_t Register(std::unique_ptr<Source> source) {
+    const int64_t raw = g_sources.Add(std::move(source));
+    const uint32_t slot = static_cast<uint32_t>(static_cast<uint64_t>(raw) & 0xFFFFFFFFull);
+    const uint32_t gen = static_cast<uint32_t>(static_cast<uint64_t>(raw) >> 32);
+    if (slot == 0u || slot > 0xFFFFu || gen == 0u) {
+        g_sources.Remove(raw);
+        return 0;
     }
+    const uint32_t gen15 = ((gen - 1u) % 0x7FFFu) + 1u;
+    {
+        ScopedLock guard(&g_epoch_lock);
+        if (g_slot_epochs.size() < slot) {
+            g_slot_epochs.resize(slot, 0u);
+        }
+        g_slot_epochs[slot - 1u] = gen - gen15;
+    }
+    return static_cast<int32_t>((gen15 << 16) | slot);
 }
 
-struct SourceLease {
-    size_t index = 0;
-    Source* ptr = nullptr;
-    SourceLease() noexcept = default;
-    SourceLease(size_t idx, Source* p) noexcept : index(idx), ptr(p) {}
-    SourceLease(const SourceLease&) = delete;
-    SourceLease& operator=(const SourceLease&) = delete;
-    SourceLease(SourceLease&& o) noexcept : index(o.index), ptr(std::exchange(o.ptr, nullptr)) {}
-    void Reset() noexcept { if (ptr) { ReleaseSourceLease(index); ptr = nullptr; } }
-    ~SourceLease() { Reset(); }
-    Source* operator->() const noexcept { return ptr; }
-    explicit operator bool() const noexcept { return ptr != nullptr; }
-};
+int64_t UnpackHandle(int32_t handle) noexcept {
+    if (handle <= 0) return 0;
+    const uint32_t u = static_cast<uint32_t>(handle);
+    const uint32_t slot = u & 0xFFFFu;
+    const uint32_t gen15 = (u >> 16) & 0x7FFFu;
+    if (slot == 0u || gen15 == 0u) return 0;
+    uint32_t epoch = 0u;
+    {
+        ScopedLock guard(&g_epoch_lock);
+        if (slot > g_slot_epochs.size()) return 0;
+        epoch = g_slot_epochs[slot - 1u];
+    }
+    const uint32_t gen = epoch + gen15;
+    return (static_cast<int64_t>(gen) << 32) | static_cast<int64_t>(slot);
+}
 
 SourceLease Find(int32_t handle) noexcept {
-    ScopedLock guard(&g_registry_lock);
-    if (handle <= 0 || static_cast<size_t>(handle) > g_sources.size()) return {};
-    size_t idx = static_cast<size_t>(handle) - 1;
-    SourceSlot& slot = g_sources[idx];
-    if (!slot.object || slot.retired) return {};
-    ++slot.leases;
-    return SourceLease(idx, slot.object.get());
+    const int64_t raw = UnpackHandle(handle);
+    return raw > 0 ? g_sources.Acquire(raw) : SourceLease();
+}
+
+void Remove(int32_t handle) noexcept {
+    const int64_t raw = UnpackHandle(handle);
+    if (raw > 0) g_sources.Remove(raw);
 }
 
 HWND ToHwnd(int64_t value) noexcept {
@@ -571,18 +578,11 @@ extern "C" {
 
 VN_EXPORT int32_t __stdcall vn_magcap_create(int32_t* out_handle) noexcept {
     if (!out_handle) return VN_ERR_INVALID_ARG;
+    *out_handle = 0;
     try {
-        auto source = std::make_unique<mc::Source>();
-        mc::ScopedLock guard(&mc::g_registry_lock);
-        for (size_t i = 0; i < mc::g_sources.size(); ++i) {
-            if (!mc::g_sources[i].object && mc::g_sources[i].leases == 0 && !mc::g_sources[i].retired) {
-                mc::g_sources[i].object = std::move(source);
-                *out_handle = static_cast<int32_t>(i) + 1;
-                return VN_OK;
-            }
-        }
-        mc::g_sources.push_back(mc::SourceSlot{std::move(source), 0, false});
-        *out_handle = static_cast<int32_t>(mc::g_sources.size());
+        const int32_t handle = mc::Register(std::make_unique<mc::Source>());
+        if (handle <= 0) return VN_ERR_FAIL;
+        *out_handle = handle;
         return VN_OK;
     } catch (...) {
         return VN_ERR_FAIL;
@@ -627,37 +627,38 @@ VN_EXPORT int32_t __stdcall vn_magcap_destroy(int32_t handle, uint8_t* out_relea
         // Keep a lease until it exits, then retire it without leaking the buffers.
         if (!source->teardown_queued.exchange(true)) {
             struct Reap {
-                int32_t handle; mc::SourceLease source; HANDLE waitThread;
+                int32_t handle;
+                mc::SourceLease source;
+                HANDLE waitThread;
+                Reap(int32_t h, mc::SourceLease&& s, HANDLE w) noexcept
+                    : handle(h), source(std::move(s)), waitThread(w) {}
                 ~Reap() { if (waitThread) CloseHandle(waitThread); }
             };
             HANDLE waitThread = source->DuplicateThreadForCleanup();
             if (!waitThread) { source->teardown_queued = false; return VN_OK; }
-            auto* reap = new (std::nothrow) Reap{ handle, std::move(source), waitThread };
-            if (!reap) { source->teardown_queued = false; CloseHandle(waitThread); return VN_OK; }
-            if (reap && QueueUserWorkItem([](void* parameter) -> DWORD {
-                std::unique_ptr<Reap> item(static_cast<Reap*>(parameter));
-                WaitForSingleObject(item->waitThread, INFINITE);
-                uint8_t released = 0;
-                vn_magcap_destroy(item->handle, &released);
-                return 0;
-            }, reap, WT_EXECUTELONGFUNCTION)) return VN_OK;
-            if (reap) { reap->source->teardown_queued = false; delete reap; }
+            try {
+                auto reap = std::make_unique<Reap>(handle, std::move(source), waitThread);
+                if (QueueUserWorkItem([](void* parameter) -> DWORD {
+                    std::unique_ptr<Reap> item(static_cast<Reap*>(parameter));
+                    WaitForSingleObject(item->waitThread, INFINITE);
+                    item->source.Reset();
+                    uint8_t released = 0;
+                    vn_magcap_destroy(item->handle, &released);
+                    return 0;
+                }, reap.get(), WT_EXECUTELONGFUNCTION)) {
+                    (void)reap.release();
+                    return VN_OK;
+                }
+                reap->source->teardown_queued = false;
+            } catch (...) {
+                if (source) source->teardown_queued = false;
+                CloseHandle(waitThread);
+            }
         }
         return VN_OK;
     }
     source.Reset();
-    std::unique_ptr<mc::Source> doomed;
-    {
-        mc::ScopedLock guard(&mc::g_registry_lock);
-        if (handle > 0 && static_cast<size_t>(handle) <= mc::g_sources.size()) {
-            mc::SourceSlot& slot = mc::g_sources[static_cast<size_t>(handle) - 1];
-            slot.retired = true;
-            if (slot.leases == 0) {
-                doomed = std::move(slot.object);
-                slot.retired = false;
-            }
-        }
-    }
+    mc::Remove(handle);
     *out_released = 1;
     return VN_OK;
 }

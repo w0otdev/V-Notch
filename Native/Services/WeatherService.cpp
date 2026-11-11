@@ -117,7 +117,10 @@ VN_EXPORT int32_t vn_weather_service_clean_city(
             if (out_len) *out_len = 0;
             return VN_OK;
         }
-        return vnotch::copy_out_u16(cleaned, out_buf, out_cap, out_len);
+        int32_t written_len = 0;
+        int32_t rc = vnotch::copy_out_u16(cleaned, out_buf, out_cap, out_len ? out_len : &written_len);
+        if (rc != VN_OK) *out_has_value = 0u;
+        return rc;
     }
     catch (...)
     {

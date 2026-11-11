@@ -18,9 +18,9 @@ public sealed class UpgradeCompatibilityTests : IDisposable
     public void UpdateInstallerExplicitlyRequestsTheUpdateFlow()
     {
         var startInfo = UpdateService.CreateInstallerStartInfo(Path.Combine(_directory, "V-Notch-Setup.exe"), _directory);
-        Assert.Equal("--update", startInfo.Arguments);
+        Assert.Equal(["--update"], startInfo.ArgumentList);
         Assert.Equal(_directory, startInfo.WorkingDirectory);
-        Assert.True(startInfo.UseShellExecute);
+        Assert.False(startInfo.UseShellExecute);
     }
 
     [Fact]

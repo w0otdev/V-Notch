@@ -3,6 +3,7 @@
 #include <shobjidl.h>
 #include <commctrl.h>
 #include <string>
+#include <string_view>
 #include <cstdint>
 
 #pragma comment(lib, "shell32.lib")
@@ -24,8 +25,10 @@ inline int64_t FromHandle(const void* handle) noexcept {
 
 bool CopyPath(const char16_t* path, int32_t length, std::wstring& out) noexcept {
     if (!path || length <= 0 || length >= kMaxPathChars) return false;
+    std::wstring_view view(reinterpret_cast<const wchar_t*>(path), static_cast<size_t>(length));
+    if (view.find(L'\0') != std::wstring_view::npos) return false;
     try {
-        out.assign(reinterpret_cast<const wchar_t*>(path), static_cast<size_t>(length));
+        out.assign(view.data(), view.size());
         return true;
     } catch (...) {
         return false;

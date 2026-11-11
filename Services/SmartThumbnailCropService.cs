@@ -1,3 +1,4 @@
+using System.Runtime.InteropServices.WindowsRuntime;
 using System;
 using System.Buffers;
 using System.Collections.Generic;
@@ -5,11 +6,9 @@ using System.IO;
 using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
-using System.Runtime.InteropServices.WindowsRuntime;
 using System.Windows;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
-using Microsoft.ML.OnnxRuntime.Tensors;
 
 namespace VNotch.Services;
 
@@ -58,10 +57,6 @@ public sealed partial class SmartThumbnailCropService : IDisposable
         public readonly Int32Rect ToRect() => new(X, Y, Width, Height);
     }
 
-    [LibraryImport("VNotch.Native.dll")]
-    private static partial int vn_smartcrop_preprocess_bgra32(ReadOnlySpan<byte> pixels,
-        int length, int width, int height, int stride, Span<float> tensor, int capacity, out float scale);
-
     [LibraryImport("VNotch.Native.dll", StringMarshalling = StringMarshalling.Utf16)]
     private static partial int vn_smartcrop_session_create(string model, int modelLength,
         string directory, int directoryLength, byte preferDml, out long handle, out byte dml);
@@ -81,17 +76,6 @@ public sealed partial class SmartThumbnailCropService : IDisposable
         public override bool IsInvalid => handle == IntPtr.Zero;
         protected override bool ReleaseHandle() => vn_smartcrop_session_destroy((long)handle) == 0;
     }
-
-    [LibraryImport("VNotch.Native.dll")]
-    private static partial int vn_smartcrop_apply_nms(
-        ReadOnlySpan<Detection> inDetections, int inCount,
-        Span<Detection> outDetections, int outCap, out int outCount);
-
-    [LibraryImport("VNotch.Native.dll")]
-    private static partial int vn_smartcrop_parse_yolox_and_nms(
-        ReadOnlySpan<float> buffer, int imgWidth, int imgHeight, float scale,
-        Span<Detection> outDetections, int outCap,
-        out int outRawCount, out int outNmsCount);
 
     [LibraryImport("VNotch.Native.dll")]
     private static partial int vn_smartcrop_find_best_subject_bounds(
@@ -518,29 +502,6 @@ public sealed partial class SmartThumbnailCropService : IDisposable
         _inferenceCache[fingerprint] = new InferenceCacheEntry(detections, ++_inferenceCacheAccess);
     }
 
-    internal static float PreprocessImageFast(BitmapSource source, float[] tensorBuffer)
-    {
-        int imgWidth = source.PixelWidth;
-        int imgHeight = source.PixelHeight;
-
-        int stride = checked(imgWidth * 4);
-        int length = checked(imgHeight * stride);
-        byte[] pixels = ArrayPool<byte>.Shared.Rent(length);
-        try
-        {
-            CopyBgraPixels(source, pixels, stride);
-            if (vn_smartcrop_preprocess_bgra32(pixels.AsSpan(0, length), length, imgWidth, imgHeight,
-                stride, tensorBuffer, tensorBuffer.Length, out float scale) != 0)
-                throw new ArgumentException("Invalid image or tensor capacity.");
-            return scale;
-        }
-        finally
-        {
-            ArrayPool<byte>.Shared.Return(pixels);
-        }
-
-    }
-
     private static void CopyBgraPixels(BitmapSource source, byte[] pixels, int stride)
     {
         if (source.Format != PixelFormats.Bgra32)
@@ -550,110 +511,6 @@ public sealed partial class SmartThumbnailCropService : IDisposable
             formatted.CopyPixels(pixels, stride, 0);
         }
         else source.CopyPixels(pixels, stride, 0);
-    }
-
-    internal static List<Detection> ParseYoloxOutput(Tensor<float> output, int imgWidth, int imgHeight, float scale)
-    {
-        var dims = output.Dimensions;
-        if (dims.Length != 3 || dims[0] != 1 || dims[1] != 3549 || dims[2] != 85)
-            throw new InvalidDataException("Unexpected YOLOX-Nano output shape.");
-        if (imgWidth <= 0 || imgHeight <= 0 || !float.IsFinite(scale) || scale <= 0)
-            throw new ArgumentOutOfRangeException(nameof(scale));
-
-        const int totalElements = 3549 * 85;
-        float[]? rented = null;
-        try
-        {
-            ReadOnlySpan<float> buffer;
-            if (output is DenseTensor<float> dense && dense.Buffer.Span.Length == totalElements)
-            {
-                buffer = dense.Buffer.Span;
-            }
-            else
-            {
-                rented = ArrayPool<float>.Shared.Rent(totalElements);
-                int idx = 0;
-                for (int i = 0; i < 3549; i++)
-                {
-                    for (int c = 0; c < 85; c++)
-                    {
-                        rented[idx++] = output[0, i, c];
-                    }
-                }
-                buffer = rented.AsSpan(0, totalElements);
-            }
-
-            Span<Detection> stackBuf = stackalloc Detection[128];
-            int rc = vn_smartcrop_parse_yolox_and_nms(buffer, imgWidth, imgHeight, scale, stackBuf, stackBuf.Length, out int rawCount, out int nmsCount);
-            VNotch.Services.RuntimeLog.Log(LogCategory,
-                $"ParseYolox: raw={rawCount} predictions scanned=3549 classes=80");
-
-            if (rc == 0)
-            {
-                var list = new List<Detection>(nmsCount);
-                for (int i = 0; i < nmsCount; i++) list.Add(stackBuf[i]);
-                return list;
-            }
-            if (rc == -2 && nmsCount > 0)
-            {
-                var arr = new Detection[nmsCount];
-                if (vn_smartcrop_parse_yolox_and_nms(buffer, imgWidth, imgHeight, scale, arr, arr.Length, out _, out int actualCount) == 0)
-                {
-                    var list = new List<Detection>(actualCount);
-                    for (int i = 0; i < actualCount; i++) list.Add(arr[i]);
-                    return list;
-                }
-            }
-            return new List<Detection>();
-        }
-        finally
-        {
-            if (rented != null)
-                ArrayPool<float>.Shared.Return(rented);
-        }
-    }
-
-    internal static List<Detection> ApplyNms(List<Detection> detections)
-    {
-        if (detections.Count == 0) return new List<Detection>();
-        ReadOnlySpan<Detection> inSpan = CollectionsMarshal.AsSpan(detections);
-        Span<Detection> outSpan = detections.Count <= 256 ? stackalloc Detection[detections.Count] : new Detection[detections.Count];
-        if (vn_smartcrop_apply_nms(inSpan, inSpan.Length, outSpan, outSpan.Length, out int outCount) == 0)
-        {
-            var result = new List<Detection>(outCount);
-            for (int i = 0; i < outCount; i++) result.Add(outSpan[i]);
-            return result;
-        }
-        return new List<Detection>();
-    }
-
-    private static Int32Rect? TryDetectTextCropRect(BitmapSource source, int imgWidth, int imgHeight, int cropSize)
-    {
-        try
-        {
-            if (!ArtworkFrameDetector.RentDownscaledPixels(source, out byte[]? pixels, out int w, out int h, out int stride, 128.0) || pixels == null)
-                return null;
-
-            try
-            {
-                if (w < 8 || h < 8) return null;
-
-                if (vn_smartcrop_try_detect_text_crop_rect(pixels.AsSpan(0, h * stride), w, h, stride, imgWidth, imgHeight, cropSize, out var rect, out byte found) == 0 && found != 0)
-                {
-                    return rect.ToRect();
-                }
-                return null;
-            }
-            finally
-            {
-                ArrayPool<byte>.Shared.Return(pixels);
-            }
-        }
-        catch (Exception ex)
-        {
-            System.Diagnostics.Debug.WriteLine($"[SmartCrop] Text detection failed: {ex.Message}");
-            return null;
-        }
     }
 
     private static Int32Rect GetHybridCropRect(IReadOnlyList<Detection> detections, BitmapSource source, int imgWidth, int imgHeight, int targetSize)

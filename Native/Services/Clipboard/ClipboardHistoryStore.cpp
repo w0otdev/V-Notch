@@ -258,9 +258,9 @@ public:
         int32_t out_cap,
         int32_t& out_written) noexcept {
         out_written = 0;
-        if (!out_buf || hash_len < 0 || (hash_len > 0 && !hash_bytes)) return false;
-        const int32_t total_len = static_cast<int32_t>(prefix.size()) + hash_len * 2;
-        if (out_cap < total_len) return false;
+        if (!out_buf || prefix.size() > 1024 || hash_len < 0 || hash_len > 1024 || out_cap <= 0 || (hash_len > 0 && !hash_bytes)) return false;
+        const size_t total_len = prefix.size() + static_cast<size_t>(hash_len) * 2u;
+        if (static_cast<size_t>(out_cap) < total_len) return false;
         static constexpr char16_t kHexDigits[16] = {
             u'0', u'1', u'2', u'3', u'4', u'5', u'6', u'7',
             u'8', u'9', u'A', u'B', u'C', u'D', u'E', u'F'
@@ -498,10 +498,7 @@ public:
     }
 
     [[nodiscard]] static constexpr bool IsValidRelativeSegment(std::u16string_view seg) noexcept {
-        while (!seg.empty() && (seg.back() == u' ' || seg.back() == u'.')) {
-            seg.remove_suffix(1);
-        }
-        if (seg.empty()) {
+        if (seg.empty() || seg.back() == u' ' || seg.back() == u'.') {
             return false;
         }
         const size_t dot_pos = seg.find(u'.');

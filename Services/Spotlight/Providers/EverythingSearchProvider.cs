@@ -1,5 +1,6 @@
 using System.IO;
 using System.Runtime.InteropServices;
+using System.Security.Cryptography;
 using System.Windows.Interop;
 using VNotch.Models;
 
@@ -80,9 +81,9 @@ internal sealed partial class EverythingSearchProvider : ISpotlightProvider, IDi
     private readonly SemaphoreSlim _queryLock = new(1, 1);
     private readonly object _replyGate = new();
     private HwndSource? _replyWindow;
-    private uint _queryId;
     private TaskCompletionSource<IReadOnlyList<(string Name, string Parent, bool IsFolder)>>? _pendingReply;
     private uint _pendingReplyId;
+    private IntPtr _pendingEverythingHwnd;
     private static readonly TimeSpan RetryCooldown = TimeSpan.FromSeconds(15);
     private volatile bool _disposed;
     private volatile bool _ipcFailed;
@@ -160,13 +161,13 @@ internal sealed partial class EverythingSearchProvider : ISpotlightProvider, IDi
 
             var completion = new TaskCompletionSource<IReadOnlyList<(string, string, bool)>>(
                 TaskCreationOptions.RunContinuationsAsynchronously);
-            uint id;
+            uint id = NextQueryNonce();
             lock (_replyGate)
             {
                 if (_disposed) return Array.Empty<SpotlightSearchItem>();
-                id = ++_queryId;
                 _pendingReply = completion;
                 _pendingReplyId = id;
+                _pendingEverythingHwnd = everythingWindow;
             }
 
             try
@@ -193,7 +194,11 @@ internal sealed partial class EverythingSearchProvider : ISpotlightProvider, IDi
             {
                 lock (_replyGate)
                 {
-                    if (ReferenceEquals(_pendingReply, completion)) _pendingReply = null;
+                    if (ReferenceEquals(_pendingReply, completion))
+                    {
+                        _pendingReply = null;
+                        _pendingEverythingHwnd = IntPtr.Zero;
+                    }
                 }
             }
         }
@@ -311,18 +316,32 @@ internal sealed partial class EverythingSearchProvider : ISpotlightProvider, IDi
         }
     }
 
+    private static uint NextQueryNonce()
+    {
+        Span<byte> bytes = stackalloc byte[4];
+        uint nonce;
+        do
+        {
+            RandomNumberGenerator.Fill(bytes);
+            nonce = MemoryMarshal.Read<uint>(bytes);
+        } while (nonce == 0);
+        return nonce;
+    }
+
     private IntPtr ReplyWndProc(IntPtr hwnd, int msg, IntPtr wParam, IntPtr lParam, ref bool handled)
     {
-        if (msg != WmCopyData || lParam == IntPtr.Zero) return IntPtr.Zero;
+        if (msg != WmCopyData || lParam == IntPtr.Zero || wParam == IntPtr.Zero) return IntPtr.Zero;
 
         TaskCompletionSource<IReadOnlyList<(string, string, bool)>>? completion;
         uint expectedId;
+        IntPtr expectedSender;
         lock (_replyGate)
         {
             completion = _pendingReply;
             expectedId = _pendingReplyId;
+            expectedSender = _pendingEverythingHwnd;
         }
-        if (completion == null) return IntPtr.Zero;
+        if (completion == null || expectedSender == IntPtr.Zero || wParam != expectedSender) return IntPtr.Zero;
 
         try
         {
@@ -448,6 +467,7 @@ internal sealed partial class EverythingSearchProvider : ISpotlightProvider, IDi
             _disposed = true;
             _pendingReply?.TrySetCanceled();
             _pendingReply = null;
+            _pendingEverythingHwnd = IntPtr.Zero;
             window = Interlocked.Exchange(ref _replyWindow, null);
         }
         // A native IPC call may still own the semaphore. Leave this managed

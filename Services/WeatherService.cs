@@ -109,75 +109,15 @@ public sealed partial class WeatherService : IWeatherService, IDisposable
         return cts;
     }
 
-    internal static async Task<string> ReadBoundedStringAsync(
+    internal static Task<string> ReadBoundedStringAsync(
         HttpClient client,
         string url,
         int maxBytes = MaxWeatherResponseBytes,
-        CancellationToken ct = default)
-    {
-        ArgumentNullException.ThrowIfNull(client);
-        using var response = await client.GetAsync(url, HttpCompletionOption.ResponseHeadersRead, ct).ConfigureAwait(false);
-        response.EnsureSuccessStatusCode();
+        CancellationToken ct = default) =>
+        SpotifyHttpResponseReader.ReadBoundedStringAsync(client, url, maxBytes, ct);
 
-        var length = response.Content.Headers.ContentLength;
-        if (length.HasValue && length.Value > maxBytes)
-            throw new InvalidOperationException($"Response content length ({length.Value}) exceeds limit ({maxBytes}).");
-
-        await using var stream = await response.Content.ReadAsStreamAsync(ct).ConfigureAwait(false);
-        using var memory = new System.IO.MemoryStream(length.HasValue ? (int)length.Value : 4096);
-        byte[] buffer = System.Buffers.ArrayPool<byte>.Shared.Rent(4096);
-        try
-        {
-            int totalRead = 0;
-            while (true)
-            {
-                ct.ThrowIfCancellationRequested();
-                int read = await stream.ReadAsync(buffer.AsMemory(0, Math.Min(buffer.Length, maxBytes - totalRead + 1)), ct).ConfigureAwait(false);
-                if (read == 0) break;
-                totalRead += read;
-                if (totalRead > maxBytes)
-                    throw new InvalidOperationException($"Response body exceeded limit of {maxBytes} bytes.");
-                await memory.WriteAsync(buffer.AsMemory(0, read), ct).ConfigureAwait(false);
-            }
-
-            return Encoding.UTF8.GetString(memory.GetBuffer(), 0, totalRead);
-        }
-        finally
-        {
-            System.Buffers.ArrayPool<byte>.Shared.Return(buffer);
-        }
-    }
-
-    internal static async Task<JsonDocument?> ReadLimitedJsonAsync(HttpResponseMessage response, int maxBytes, CancellationToken token)
-    {
-        var length = response.Content.Headers.ContentLength;
-        if (length.HasValue && length.Value > maxBytes) return null;
-
-        await using var stream = await response.Content.ReadAsStreamAsync(token).ConfigureAwait(false);
-        using var memory = new System.IO.MemoryStream(length.HasValue ? (int)length.Value : 4096);
-        byte[] buffer = System.Buffers.ArrayPool<byte>.Shared.Rent(4096);
-        try
-        {
-            int totalRead = 0;
-            while (true)
-            {
-                token.ThrowIfCancellationRequested();
-                int read = await stream.ReadAsync(buffer.AsMemory(0, Math.Min(buffer.Length, maxBytes - totalRead + 1)), token).ConfigureAwait(false);
-                if (read == 0) break;
-                totalRead += read;
-                if (totalRead > maxBytes) return null;
-                await memory.WriteAsync(buffer.AsMemory(0, read), token).ConfigureAwait(false);
-            }
-
-            // This is MemoryStream-owned storage, NOT a rented array. The document
-            // retains it safely after the stream is disposed until its own disposal.
-            return totalRead == 0 ? null : JsonDocument.Parse(memory.GetBuffer().AsMemory(0, totalRead), WeatherJsonOptions);
-        }
-        finally
-        {
-            System.Buffers.ArrayPool<byte>.Shared.Return(buffer);
-        }
-    }
+    internal static Task<JsonDocument?> ReadLimitedJsonAsync(HttpResponseMessage response, int maxBytes, CancellationToken token) =>
+        SpotifyHttpResponseReader.ReadLimitedJsonAsync(response, maxBytes, token, WeatherJsonOptions);
 
     internal static string? CleanCity(string? city)
     {

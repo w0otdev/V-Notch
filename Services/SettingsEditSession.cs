@@ -1,16 +1,10 @@
-using System.Runtime.InteropServices;
 using VNotch.Models;
 
 namespace VNotch.Services;
 
 /// <summary>Owns committed and preview snapshots for one settings editing session.</summary>
-internal sealed partial class SettingsEditSession
+internal sealed class SettingsEditSession
 {
-    private const string NativeDll = "VNotch.Native.dll";
-
-    [LibraryImport(NativeDll, EntryPoint = "vn_settings_edit_session_should_apply_preview")]
-    private static partial int NativeShouldApplyPreview(byte valueEquals, out byte outShouldApply);
-
     private NotchSettings _baseline;
     private NotchSettings _applied;
     internal SettingsEditSession(NotchSettings settings)
@@ -23,8 +17,7 @@ internal sealed partial class SettingsEditSession
 
     internal bool Preview(NotchSettings settings)
     {
-        NativeShouldApplyPreview(_applied.ValueEquals(settings) ? (byte)1 : (byte)0, out byte shouldApply);
-        if (shouldApply == 0) return false;
+        if (_applied.ValueEquals(settings)) return false;
         _applied = settings.Clone();
         return true;
     }

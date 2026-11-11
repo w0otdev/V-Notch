@@ -104,15 +104,20 @@ public partial class SpotifyLoginWindow : Window
         int Bottom,
         int CornerDiameter);
 
-
     private CancellationTokenRegistration _privacyCancellation;
+    private bool _webViewDisposed;
 
     private async void SpotifyLoginWindow_Loaded(object sender, RoutedEventArgs e)
     {
         Loaded -= SpotifyLoginWindow_Loaded;
-        if (!NetworkPrivacy.Current.IsAllowed(NetworkFeature.Canvas)) { Close(); return; }
+        if (!NetworkPrivacy.Current.IsAllowed(NetworkFeature.Canvas)) { _isClosing = true; Close(); return; }
         _privacyCancellation = NetworkPrivacy.Current.Acquire(NetworkFeature.Canvas).Register(() =>
-            Dispatcher.BeginInvoke(() => { SpotifyWebView.Dispose(); Close(); }));
+            Dispatcher.BeginInvoke(() =>
+            {
+                _isClosing = true;
+                DisposeWebViewOnce();
+                Close();
+            }));
         PlayEntranceAnimation();
         try
         {
@@ -125,9 +130,18 @@ public partial class SpotifyLoginWindow : Window
 
             CoreWebView2Environment environment =
                 await CoreWebView2Environment.CreateAsync(userDataFolder: _userDataFolder);
-            await SpotifyWebView.EnsureCoreWebView2Async(environment);
+            if (_webViewDisposed || _isClosing) return;
+            CoreWebView2ControllerOptions controllerOptions = environment.CreateCoreWebView2ControllerOptions();
+            controllerOptions.IsInPrivateModeEnabled = true;
+            await SpotifyWebView.EnsureCoreWebView2Async(environment, controllerOptions);
 
-            if (!NetworkPrivacy.Current.IsAllowed(NetworkFeature.Canvas)) { Close(); return; }
+            if (_webViewDisposed || _isClosing || !NetworkPrivacy.Current.IsAllowed(NetworkFeature.Canvas))
+            {
+                _isClosing = true;
+                DisposeWebViewOnce();
+                Close();
+                return;
+            }
             SpotifyWebView.CoreWebView2.Settings.AreDevToolsEnabled = false;
             SpotifyWebView.CoreWebView2.Settings.AreDefaultContextMenusEnabled = false;
             SpotifyWebView.CoreWebView2.Settings.AreHostObjectsAllowed = false;
@@ -190,7 +204,7 @@ public partial class SpotifyLoginWindow : Window
 
     private async Task CheckForSpotifySessionAsync()
     {
-        if (_cookieCheckInProgress || SpotifyWebView.CoreWebView2 == null)
+        if (_webViewDisposed || _isClosing || _cookieCheckInProgress || SpotifyWebView.CoreWebView2 == null)
             return;
 
         _cookieCheckInProgress = true;
@@ -224,14 +238,12 @@ public partial class SpotifyLoginWindow : Window
         CloseWithAnimation(false);
     }
 
-    private void Window_Closed(object? sender, EventArgs e)
+    private void DisposeWebViewOnce()
     {
-        _privacyCancellation.Dispose();
+        if (_webViewDisposed) return;
+        _webViewDisposed = true;
         try
         {
-            _cookieTimer.Stop();
-            _cookieTimer.Tick -= CookieTimer_Tick;
-            _cookieTimer.Dispose();
             if (SpotifyWebView.CoreWebView2 != null)
             {
                 SpotifyWebView.CoreWebView2.NavigationCompleted -= CoreWebView2_NavigationCompleted;
@@ -252,31 +264,50 @@ public partial class SpotifyLoginWindow : Window
         {
             RuntimeLog.Warn(LogCategory, $"Error during WebView2 disposal: {ex.Message}");
         }
-
-        if (_userDataFolder != null)
-            DeleteTemporaryProfileAsync(_userDataFolder).SafeFireAndForget("SPOTIFY-LOGIN-CLEANUP");
-        _profileCleanupLease?.Dispose();
-        _profileCleanupLease = null;
     }
 
-    private static async Task DeleteTemporaryProfileAsync(string userDataFolder)
+    private void Window_Closed(object? sender, EventArgs e)
     {
-        for (int attempt = 0; attempt < 5; attempt++)
+        _isClosing = true;
+        _privacyCancellation.Dispose();
+        _cookieTimer.Stop();
+        _cookieTimer.Tick -= CookieTimer_Tick;
+        _cookieTimer.Dispose();
+        DisposeWebViewOnce();
+
+        IDisposable? cleanupLease = System.Threading.Interlocked.Exchange(ref _profileCleanupLease, null);
+        string? userDataFolder = System.Threading.Interlocked.Exchange(ref _userDataFolder, null);
+        if (userDataFolder != null)
+            DeleteTemporaryProfileAsync(userDataFolder, cleanupLease).SafeFireAndForget("SPOTIFY-LOGIN-CLEANUP");
+        else
+            cleanupLease?.Dispose();
+    }
+
+    private static async Task DeleteTemporaryProfileAsync(string userDataFolder, IDisposable? cleanupLease)
+    {
+        try
         {
-            try
+            for (int attempt = 0; attempt < 10; attempt++)
             {
-                if (Directory.Exists(userDataFolder))
-                    SafeFileDeletion.DeleteDirectory(userDataFolder);
-                return;
+                try
+                {
+                    if (Directory.Exists(userDataFolder))
+                        SafeFileDeletion.DeleteDirectory(userDataFolder);
+                    return;
+                }
+                catch (IOException)
+                {
+                    await Task.Delay(150).ConfigureAwait(false);
+                }
+                catch (UnauthorizedAccessException)
+                {
+                    await Task.Delay(150).ConfigureAwait(false);
+                }
             }
-            catch (IOException)
-            {
-                await Task.Delay(200);
-            }
-            catch (UnauthorizedAccessException)
-            {
-                await Task.Delay(200);
-            }
+        }
+        finally
+        {
+            cleanupLease?.Dispose();
         }
     }
 

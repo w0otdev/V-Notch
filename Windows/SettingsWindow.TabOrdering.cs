@@ -17,6 +17,7 @@ using VNotch.Models;
 using VNotch.Modules;
 using VNotch.Presenters;
 using VNotch.Services;
+using static VNotch.Services.VNotchNative;
 
 namespace VNotch;
 
@@ -40,22 +41,6 @@ public partial class SettingsWindow
         public int Offset;
         public int Length;
     }
-
-    [LibraryImport("VNotch.Native")]
-    private static partial int vn_nav_tabs_calculate_target_slot_hysteresis(
-        int current_target,
-        double visual_pos,
-        double pitch,
-        int total_slots,
-        out int out_slot);
-
-    [LibraryImport("VNotch.Native")]
-    private static partial int vn_nav_tabs_calculate_neighbor_offset(
-        int index,
-        int initial_slot,
-        int target_slot,
-        double pitch,
-        out double out_offset);
 
     [LibraryImport("VNotch.Native")]
     private static unsafe partial int vn_nav_tabs_parse_unique_tokens(

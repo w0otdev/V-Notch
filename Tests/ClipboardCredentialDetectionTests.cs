@@ -1,6 +1,9 @@
+using System.Buffers.Binary;
 using System.IO;
 using System.Text;
 using System.Text.Json;
+using System.Windows;
+using VNotch.Controllers;
 using VNotch.Models;
 using VNotch.Services.Clipboard;
 using Xunit;
@@ -151,5 +154,92 @@ public sealed class ClipboardCredentialDetectionTests
             Assert.Equal(ClipboardSensitiveData.Mask, persisted.Title);
         }
         finally { if (Directory.Exists(root)) Directory.Delete(root, true); }
+    }
+
+    [Fact]
+    public async Task EmptyTextFromPasswordManagerFlagsImagesAndFilesSensitive()
+    {
+        var result = ClipboardSensitiveData.Analyze("", "1Password", "1Password.exe");
+        Assert.Equal(ClipboardSensitivityReason.PasswordManager, result.Reason);
+        Assert.Equal(ClipboardSensitivityConfidence.High, result.Confidence);
+        Assert.True(result.ShouldMask);
+        Assert.True(ClipboardSensitiveData.Analyze(null!, "Bitwarden", "Bitwarden.exe").ShouldMask);
+        Assert.False(ClipboardSensitiveData.Analyze("", "", "").ShouldMask);
+        Assert.Equal(string.Empty, ClipboardSensitiveData.CreateLayoutMask(""));
+        Assert.Equal(ClipboardSensitiveData.Mask, ClipboardSensitiveData.CreateLayoutMask("secret"));
+
+        string root = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N"));
+        try
+        {
+            byte[] png = Convert.FromBase64String("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=");
+            await using var store = new ClipboardHistoryStore(root);
+            await store.InitializeAsync();
+            var entry = (await store.ImportAsync(new ClipboardCapture
+            {
+                ImagePng = png,
+                SourceApp = "Bitwarden",
+                SourceExecutable = "Bitwarden.exe"
+            })).Entry!;
+            Assert.True(entry.IsSensitive);
+            Assert.Equal(ClipboardSensitiveData.Mask, entry.Title);
+        }
+        finally { if (Directory.Exists(root)) Directory.Delete(root, true); }
+    }
+
+    [Theory]
+    [InlineData("server.PEM", true)]
+    [InlineData("private.key", true)]
+    [InlineData("cert.pfx", true)]
+    [InlineData("bundle.p12", true)]
+    [InlineData("vault.kdbx", true)]
+    [InlineData(".env", true)]
+    [InlineData("putty.ppk", true)]
+    [InlineData("client.ovpn", true)]
+    [InlineData("id_rsa", true)]
+    [InlineData("ID_ED25519", true)]
+    [InlineData("id_ecdsa", true)]
+    [InlineData("id_dsa", true)]
+    [InlineData(".npmrc", true)]
+    [InlineData(".netrc", true)]
+    [InlineData("credentials", true)]
+    [InlineData("readme.txt", false)]
+    [InlineData("archive.zip", false)]
+    public void ClassifiesSecretFileNamesAndExtensions(string name, bool expected) =>
+        Assert.Equal(expected, ClipboardSensitiveData.IsSensitiveFileName(name));
+
+    [Fact]
+    public async Task SecretFileCaptureIsFlaggedSensitiveAndPrivacyMarkersDisableHistoryAndCloud()
+    {
+        string root = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N"));
+        try
+        {
+            Directory.CreateDirectory(root);
+            string keyFile = Path.Combine(root, "id_ed25519");
+            await File.WriteAllTextAsync(keyFile, "placeholder");
+            string storeRoot = Path.Combine(root, "store");
+            await using var store = new ClipboardHistoryStore(storeRoot);
+            await store.InitializeAsync();
+            var entry = (await store.ImportAsync(new ClipboardCapture { FilePaths = [keyFile] })).Entry!;
+            Assert.True(entry.IsSensitive);
+            Assert.Equal(ClipboardSensitiveData.Mask, entry.Title);
+        }
+        finally { if (Directory.Exists(root)) Directory.Delete(root, true); }
+
+        SharedStaTestRunner.Run(() =>
+        {
+            var data = new DataObject();
+            ClipboardHistoryController.SetPrivacyClipboardMarkers(data);
+            static uint ReadDword(DataObject obj, string format)
+            {
+                using var ms = Assert.IsType<MemoryStream>(obj.GetData(format, false));
+                Span<byte> buf = stackalloc byte[4];
+                ms.Position = 0;
+                ms.ReadExactly(buf);
+                return BinaryPrimitives.ReadUInt32LittleEndian(buf);
+            }
+            Assert.Equal(1u, ReadDword(data, "ExcludeClipboardContentFromMonitorProcessing"));
+            Assert.Equal(0u, ReadDword(data, "CanIncludeInClipboardHistory"));
+            Assert.Equal(0u, ReadDword(data, "CanUploadToCloudClipboard"));
+        });
     }
 }

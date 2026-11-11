@@ -34,12 +34,9 @@ public sealed class MainWindowGlassPresentationTests
         Invoke(window, "OnGpuRefractionFailure", new InvalidOperationException("temporary device loss"));
         Assert.True(Field<bool>(window, "_gpuRefractionFailed"));
         var timer = Field<UiScheduledTimer?>(window, "_glassGpuRetryTimer");
-        if (LiquidGlassRefractionEffect.IsAvailable)
-        {
-            Assert.NotNull(timer);
-            Assert.True(timer.IsEnabled);
-            Assert.Equal(TimeSpan.FromSeconds(5), timer.Interval);
-        }
+        Assert.NotNull(timer);
+        Assert.True(timer.IsEnabled);
+        Assert.Equal(TimeSpan.FromSeconds(5), timer.Interval);
         Invoke(window, "PerformCleanup");
         Assert.False(controller.IsActive);
         Assert.False(Field<bool>(window, "_glassRegionPushActive"));
@@ -154,7 +151,7 @@ public sealed class MainWindowGlassPresentationTests
             if (gpu)
             {
                 Assert.Null(window.GlassBackdropHost.Effect);
-                Assert.Equal(7, Field<LiquidGlassRefractionEffect>(window, "_glassRefractionEffect").BlurRadius);
+                Assert.Equal(7, Field<LiquidGlassLensState>(window, "_glassRefractionEffect").BlurRadius);
                 Assert.Equal(0, window.GlassFresnelBorder.Opacity);
             }
             else
@@ -190,7 +187,7 @@ public sealed class MainWindowGlassPresentationTests
             Assert.Equal(Visibility.Collapsed, window.GlassGrainOverlay.Visibility);
             Assert.Equal(0, shadow.Opacity);
             Assert.Equal(60, shadow.BlurRadius);
-            if (gpu) Assert.Equal(0, Field<LiquidGlassRefractionEffect>(window, "_glassRefractionEffect").BlurRadius);
+            if (gpu) Assert.Equal(0, Field<LiquidGlassLensState>(window, "_glassRefractionEffect").BlurRadius);
             Assert.Null(window.GlassBackdropHost.Effect);
             settings.NotchStyle = "default";
             Invoke(window, "ApplyLiquidGlassSkin");
@@ -229,7 +226,7 @@ public sealed class MainWindowGlassPresentationTests
             BevelMode = 1
         };
         Set(window, "_liquidGlass", new LiquidGlassController(window.GlassBackdropImage, () => IntPtr.Zero, () => null));
-        var effect = new LiquidGlassRefractionEffect();
+        var effect = new LiquidGlassLensState();
         Set(window, "_glassRefractionEffect", effect);
         window.NotchBorder.Width = 300;
         window.NotchBorder.Height = 40;

@@ -1,5 +1,5 @@
-using System.Buffers.Binary;
 using System.Buffers.Text;
+using System.Buffers.Binary;
 using System.IO;
 using System.Runtime.InteropServices;
 using System.Security;
@@ -11,17 +11,6 @@ namespace VNotch.Services.Clipboard;
 internal sealed partial class ClipboardVault : IDisposable
 {
     private const string NativeDll = "VNotch.Native.dll";
-
-    [LibraryImport(NativeDll)]
-    private static partial int vn_clipboard_vault_compute_lockout_backoff_seconds(
-        int failedAttempts,
-        out double outSeconds);
-
-    [LibraryImport(NativeDll, StringMarshalling = StringMarshalling.Utf16)]
-    private static partial int vn_clipboard_vault_classify_pepper_prefix(
-        ReadOnlySpan<char> pepper,
-        int pepperLen,
-        out int outPrefixType);
 
     [LibraryImport(NativeDll)]
     private static partial int vn_clipboard_vault_validate_encrypted_attachment_length(
@@ -112,7 +101,7 @@ internal sealed partial class ClipboardVault : IDisposable
         catch (Exception ex) when (ex is CryptographicException or JsonException or FormatException)
         {
             _failedAttempts++;
-            _ = vn_clipboard_vault_compute_lockout_backoff_seconds(_failedAttempts, out double backoffSec);
+            double backoffSec = Math.Min(60.0, Math.Pow(2.0, Math.Min(6, _failedAttempts - 1)));
             _retryAfterUtc = _utcNow().AddSeconds(backoffSec);
             return new(ClipboardUnlockStatus.InvalidPin, _retryAfterUtc);
         }
@@ -133,56 +122,14 @@ internal sealed partial class ClipboardVault : IDisposable
     }
 
     /// <summary>
-    /// Decodes a pepper field from its stored format.
-    /// Supports "enc:" (DPAPI-protected) and "raw:" (portable base64).
+    /// Decodes a DPAPI-protected ("enc:") pepper field from its stored format.
     /// Throws <see cref="CryptographicException"/> for unknown or malformed formats.
     /// </summary>
     private static byte[] DecodePepper(string pepper)
     {
-        _ = vn_clipboard_vault_classify_pepper_prefix(pepper.AsSpan(), pepper.Length, out int prefixType);
-        if (prefixType == 1)
+        if (pepper.StartsWith("enc:", StringComparison.Ordinal))
             return ProtectedData.Unprotect(Convert.FromBase64String(pepper[4..]), null, DataProtectionScope.CurrentUser);
-        if (prefixType == 2)
-            return Convert.FromBase64String(pepper[4..]);
-        throw new CryptographicException("Unrecognised pepper format. Expected 'enc:' or 'raw:' prefix.");
-    }
-
-    /// <summary>
-    /// Exports a portable version of the vault configuration by replacing any DPAPI-protected
-    /// pepper with its machine-independent "raw:" equivalent. The exported config can be copied
-    /// to another machine; the user's PIN still protects the vault.
-    /// Returns null if the vault is not yet configured.
-    /// </summary>
-    internal string? ExportPortableConfig()
-    {
-        if (!IsConfigured) return null;
-        var config = JsonSerializer.Deserialize<Configuration>(File.ReadAllText(_configurationPath))
-            ?? throw new CryptographicException("Invalid Personal configuration.");
-        if (!config.Pepper.StartsWith("enc:", StringComparison.Ordinal)) return File.ReadAllText(_configurationPath);
-        byte[] raw = ProtectedData.Unprotect(Convert.FromBase64String(config.Pepper[4..]), null, DataProtectionScope.CurrentUser);
-        try
-        {
-            var portable = config with { Pepper = "raw:" + Convert.ToBase64String(raw) };
-            return JsonSerializer.Serialize(portable);
-        }
-        finally { CryptographicOperations.ZeroMemory(raw); }
-    }
-
-    /// <summary>
-    /// Imports a portable vault configuration (e.g. from <see cref="ExportPortableConfig"/>)
-    /// and writes it to disk. On the new machine the pepper will remain as "raw:" (portable).
-    /// Overwrites any existing configuration — call only when the user explicitly requests a restore.
-    /// </summary>
-    internal void ImportPortableConfig(string json)
-    {
-        var config = JsonSerializer.Deserialize<Configuration>(json)
-            ?? throw new CryptographicException("Invalid portable configuration.");
-        if (config.Version != 1 || config.Salt is not { Length: 32 } || config.Verification is not { Length: >= 28 } || string.IsNullOrWhiteSpace(config.Pepper))
-            throw new CryptographicException("Portable configuration is malformed.");
-        // Validate that the pepper field is decodable before writing anything.
-        byte[] rawPepper = DecodePepper(config.Pepper);
-        try { var reprotected = config with { Pepper = "enc:" + Convert.ToBase64String(ProtectedData.Protect(rawPepper, null, DataProtectionScope.CurrentUser)) }; AtomicWrite(_configurationPath, JsonSerializer.SerializeToUtf8Bytes(reprotected)); } finally { CryptographicOperations.ZeroMemory(rawPepper); }
-        Lock();
+        throw new CryptographicException("Unrecognised pepper format. Expected 'enc:' prefix.");
     }
 
     internal byte[] Seal(ReadOnlySpan<byte> data) => Encrypt(data, Key);

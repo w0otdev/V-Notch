@@ -66,12 +66,6 @@ internal static partial class MediaWindowActivator
         Span<ushort> outBuf, int outCap, out int outLen);
 
     [LibraryImport("VNotch.Native.dll")]
-    private static partial int vn_mediaactivator_normalize_media_title(
-        ReadOnlySpan<ushort> val, int valLen,
-        ReadOnlySpan<ushort> src, int srcLen,
-        Span<ushort> outBuf, int outCap, out int outLen);
-
-    [LibraryImport("VNotch.Native.dll")]
     private static partial int vn_mediaactivator_score_tab_item(
         ReadOnlySpan<ushort> tabTitle, int tabTitleLen,
         ReadOnlySpan<ushort> tabHelp, int tabHelpLen,
@@ -161,7 +155,6 @@ internal static partial class MediaWindowActivator
 
     private static bool TryActivateByProcessCandidates(IEnumerable<string> candidates)
         => candidates.Any(TryActivateProcessWindows);
-
 
     private static bool IsChromiumWindow(IntPtr hwnd)
     {
@@ -512,22 +505,6 @@ internal static partial class MediaWindowActivator
         {
             char[] arr = new char[outLen];
             if (vn_mediaactivator_normalize_title(sp, sp.Length, MemoryMarshal.Cast<char, ushort>(arr.AsSpan()), arr.Length, out int actual) == 0)
-                return new string(arr, 0, actual);
-        }
-        return string.Empty;
-    }
-
-    private static string NormalizeMediaTitle(string? value, string? source)
-    {
-        ReadOnlySpan<ushort> v = MemoryMarshal.Cast<char, ushort>(value != null ? value.AsSpan() : ReadOnlySpan<char>.Empty);
-        ReadOnlySpan<ushort> s = MemoryMarshal.Cast<char, ushort>(source != null ? source.AsSpan() : ReadOnlySpan<char>.Empty);
-        Span<char> buf = stackalloc char[256];
-        int rc = vn_mediaactivator_normalize_media_title(v, v.Length, s, s.Length, MemoryMarshal.Cast<char, ushort>(buf), buf.Length, out int outLen);
-        if (rc == 0) return outLen > 0 ? new string(buf[..outLen]) : string.Empty;
-        if (rc == -2 && outLen > 0)
-        {
-            char[] arr = new char[outLen];
-            if (vn_mediaactivator_normalize_media_title(v, v.Length, s, s.Length, MemoryMarshal.Cast<char, ushort>(arr.AsSpan()), arr.Length, out int actual) == 0)
                 return new string(arr, 0, actual);
         }
         return string.Empty;

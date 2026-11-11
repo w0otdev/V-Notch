@@ -15,5 +15,3 @@ namespace vnotch::cpu
     // The result is computed once and cached.
     bool SupportsX64V3() noexcept;
 }
-
-extern "C" __declspec(dllexport) int32_t __stdcall vn_cpu_supports_avx2() noexcept;

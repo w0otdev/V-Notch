@@ -15,18 +15,15 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
     [ObservableProperty] private NotchView _currentView = NotchView.Compact;
     [ObservableProperty] private bool _isExpanded;
     [ObservableProperty] private bool _isNotchVisible = true;
-    [ObservableProperty] private bool _isMusicCompactMode;
 
     public MediaViewModel Media { get; }
     public ProgressViewModel Progress { get; }
     public SecondaryViewModel Secondary { get; }
     public AudioMixerViewModel AudioMixer { get; }
-    public SettingsViewModel Settings { get; }
     public TimerViewModel Timer { get; } = new();
 
     public Func<bool>? IsExpandedCheck { get => Progress.IsExpandedCheck; set => Progress.IsExpandedCheck = value; }
     public event EventHandler<MediaInfo>? MediaInfoUpdated;
-    public event EventHandler<NotchSettings>? SettingsApplied { add => Settings.Applied += value; remove => Settings.Applied -= value; }
     public event EventHandler<MediaInfo>? NewTrackDetected { add => Media.NewTrackDetected += value; remove => Media.NewTrackDetected -= value; }
     public event EventHandler<bool>? PlayPauseToggled { add => Media.PlayPauseToggled += value; remove => Media.PlayPauseToggled -= value; }
     public event EventHandler? SessionTransitioned { add => Progress.SessionTransitioned += value; remove => Progress.SessionTransitioned -= value; }
@@ -35,7 +32,7 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
 
     private readonly NotchTransitionCoordinator? _coordinator;
 
-    public ShellViewModel(IMediaDetectionService mediaService, ISettingsService settingsService,
+    public ShellViewModel(IMediaDetectionService mediaService,
         IVolumeService volumeService, IBatteryService batteryService, IDispatcherService dispatcher,
         NotchTransitionCoordinator? coordinator = null)
     {
@@ -46,7 +43,6 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
         Media = new(mediaService, Progress.SeekRelative);
         Secondary = new(batteryService);
         AudioMixer = new(volumeService);
-        Settings = new(settingsService);
         _mediaUpdates = new(dispatcher.BeginInvokeBackground, ApplyMediaUpdate);
         _mediaService.MediaChanged += OnMediaChanged;
 
@@ -92,15 +88,7 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
         }
         Media.Update(info);
         Progress.Update(info);
-        IsMusicCompactMode = MediaDisplayController.ShouldBeCompactMode(info);
         MediaInfoUpdated?.Invoke(this, info);
-    }
-
-    [RelayCommand]
-    private void OpenMedia()
-    {
-        if (_coordinator != null) _coordinator.RequestView(NotchView.Media, "CommandOpenMedia");
-        else SetView(NotchView.Media);
     }
 
     [RelayCommand]
@@ -111,27 +99,11 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
     }
 
     [RelayCommand]
-    private void OpenSecondary()
-    {
-        if (_coordinator != null) _coordinator.RequestView(NotchView.Secondary, "CommandOpenSecondary");
-        else SetView(NotchView.Secondary);
-    }
-
-    [RelayCommand]
-    private void OpenAudioMixer()
-    {
-        if (_coordinator != null) _coordinator.RequestView(NotchView.AudioMixer, "CommandOpenAudioMixer");
-        else SetView(NotchView.AudioMixer);
-    }
-
-    [RelayCommand]
     private void Collapse()
     {
         if (_coordinator != null) _coordinator.RequestCollapse("CommandCollapse");
         else SetView(NotchView.Compact);
     }
-
-    [RelayCommand] private void ToggleNotch() => IsNotchVisible = !IsNotchVisible;
 
     public void SetView(NotchView view)
     {

@@ -42,6 +42,7 @@ namespace VNotch.Services
 
     internal static class SafeFileDeletion
     {
+        public static void ValidatePath(string path) { }
         public static void DeleteDirectory(string path)
             => throw new InvalidOperationException("Installer directory deletion is forbidden in the compatibility probe.");
     }

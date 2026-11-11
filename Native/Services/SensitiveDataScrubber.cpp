@@ -1,5 +1,5 @@
 #include "vnotch_common.h"
-#include "../vnotch_keyword_trie.h"
+#include "vnotch_secret_patterns.h"
 
 using namespace vnotch;
 
@@ -21,35 +21,7 @@ struct ScrubberSecretStart
 
 static constexpr std::u16string_view SCRUB_REDACTED = u"[REDACTED]";
 
-static constexpr std::u16string_view SCRUB_SESSION_EXACT_FIELDS[] = {
-    u"token", u"secret", u"session",
-    u"sp_dc", u"connect.sid", u"sid",
-    u"JSESSIONID", u"PHPSESSID", u"ASP.NET_SessionId", u".AspNetCore.Cookies"
-};
-
-static constexpr std::u16string_view SCRUB_SESSION_SUFFIX_FIELDS[] = {
-    u"access_token", u"refresh_token", u"session_token", u"id_token", u"auth_token",
-    u"accesstoken", u"refreshtoken", u"sessiontoken", u"idtoken", u"authtoken",
-    u"client_secret", u"jwt_secret", u"app_secret", u"api_secret",
-    u"clientsecret", u"jwtsecret", u"appsecret", u"apisecret",
-    u"sessionid", u"session_id", u"session-id"
-};
-
-static constexpr std::u16string_view SCRUB_KEY_SUFFIXES[] = {
-    u"apikey", u"api_key", u"api-key",
-    u"privatekey", u"private_key", u"private-key",
-    u"secretkey", u"secret_key", u"secret-key",
-    u"accesskey", u"access_key", u"access-key"
-};
-
-static constexpr auto session_fields = vnotch::MakeKeywordTrie(SCRUB_SESSION_EXACT_FIELDS);
-static constexpr auto session_suffixes = vnotch::MakeKeywordTrie(SCRUB_SESSION_SUFFIX_FIELDS, true);
-static constexpr auto key_suffixes = vnotch::MakeKeywordTrie(SCRUB_KEY_SUFFIXES, true);
-
-inline bool is_ascii_alnum(char16_t c) noexcept
-{
-    return (c >= u'0' && c <= u'9') || (c >= u'A' && c <= u'Z') || (c >= u'a' && c <= u'z');
-}
+using secret_patterns::is_ascii_alnum;
 
 inline bool is_scrub_trigger(char16_t c) noexcept
 {
@@ -126,10 +98,7 @@ inline bool try_decode_scrub_field_name(std::u16string_view key, char16_t tail[1
                 int32_t val = 0;
                 for (int n = 0; n < 4; ++n)
                 {
-                    char16_t hex = key[++i];
-                    int32_t digit = (hex >= u'0' && hex <= u'9') ? (hex - u'0')
-                                  : (hex >= u'a' && hex <= u'f') ? (hex - u'a' + 10)
-                                  : (hex >= u'A' && hex <= u'F') ? (hex - u'A' + 10) : -1;
+                    int32_t digit = secret_patterns::ascii_hex_value(key[++i]);
                     if (digit < 0)
                     {
                         return false;
@@ -164,65 +133,19 @@ inline bool try_decode_scrub_field_name(std::u16string_view key, char16_t tail[1
     return true;
 }
 
-inline bool has_scrub_field_suffix(std::u16string_view key, std::u16string_view suffix, bool complete_name = true) noexcept
-{
-    if (key.size() < suffix.size() || !equals_ignore_case(key.substr(key.size() - suffix.size()), suffix))
-    {
-        return false;
-    }
-    if (key.size() == suffix.size())
-    {
-        return complete_name;
-    }
-    size_t prefix_len = key.size() - suffix.size();
-    char16_t sep = key[prefix_len - 1];
-    if (sep == u'_' || sep == u'-' || sep == u'.' || sep == u'/' || sep == u':')
-    {
-        return true;
-    }
-    char16_t suffix_first = key[prefix_len];
-    return (suffix_first >= u'A' && suffix_first <= u'Z');
-}
-
 inline bool is_scrub_password_field(std::u16string_view key, bool complete_name = true) noexcept
 {
-    if (key.empty())
-    {
-        return false;
-    }
-    auto ends_ic = [&](std::u16string_view suffix) noexcept {
-        return key.size() >= suffix.size() && equals_ignore_case(key.substr(key.size() - suffix.size()), suffix);
-    };
-    return ends_ic(u"password") ||
-           ends_ic(u"passwd") ||
-           ends_ic(u"passphrase") ||
-           has_scrub_field_suffix(key, u"pwd", complete_name);
+    return secret_patterns::is_password_field_name(key, complete_name);
 }
 
 inline bool is_scrub_api_key_field(std::u16string_view key) noexcept
 {
-    if (key.empty())
-    {
-        return false;
-    }
-    char16_t last = key.back();
-    if (last != u'y' && last != u'Y')
-    {
-        return false;
-    }
-    return key_suffixes.MatchesSuffix(key, [](size_t) noexcept { return true; });
+    return secret_patterns::is_api_key_field_name(key);
 }
 
 inline bool is_scrub_session_field(std::u16string_view key, bool complete_name = true) noexcept
 {
-    if (key.empty())
-    {
-        return false;
-    }
-    if (complete_name && session_fields.Contains(key)) return true;
-    return session_suffixes.MatchesSuffix(key, [&](size_t length) noexcept {
-        return has_scrub_field_suffix(key, key.substr(key.size() - length), complete_name);
-    });
+    return secret_patterns::is_session_field_name(key, complete_name);
 }
 
 inline bool try_read_scrub_field(std::u16string_view input, int32_t delimiter, int32_t cursor, ScrubberSecretStart& start) noexcept
@@ -398,14 +321,17 @@ inline bool try_read_scrub_authentication(std::u16string_view input, int32_t ind
         return false;
     }
     std::u16string_view text = input.substr(static_cast<size_t>(index));
-    int32_t length = starts_with_ignore_case(text, u"Bearer") ? 6
-                   : starts_with_ignore_case(text, u"Basic") ? 5 : 0;
+    int32_t length = starts_with_ignore_case(text, secret_patterns::kPrefixBearer)
+                   ? static_cast<int32_t>(secret_patterns::kPrefixBearer.size())
+                   : starts_with_ignore_case(text, secret_patterns::kPrefixBasic)
+                   ? static_cast<int32_t>(secret_patterns::kPrefixBasic.size()) : 0;
     if (length == 0 || static_cast<int32_t>(text.size()) <= length || !is_scrub_horizontal_space(text[static_cast<size_t>(length)]))
     {
         return false;
     }
     int32_t value = scrub_skip_space(input, index + length);
-    if (length == 5 && !is_scrub_authorization_value(input, index) &&
+    if (length == static_cast<int32_t>(secret_patterns::kPrefixBasic.size()) &&
+        !is_scrub_authorization_value(input, index) &&
         !scrub_basic_has_credential_separator(input.substr(static_cast<size_t>(value))))
     {
         return false;
@@ -433,80 +359,59 @@ inline bool has_scrub_token_alphabet(std::u16string_view text, int32_t minimum, 
     return true;
 }
 
-inline bool is_aws_key_char(char16_t c) noexcept
-{
-    return (c >= u'A' && c <= u'Z') || (c >= u'0' && c <= u'9');
-}
-
 inline bool has_aws_access_key_body(std::u16string_view text) noexcept
 {
-    if (text.size() < 20)
+    if (text.size() < secret_patterns::kAwsAccessKeyTotalLen)
     {
         return false;
     }
-    for (size_t i = 4; i < 20; ++i)
+    for (size_t i = secret_patterns::kAwsAccessKeyPrefixLen; i < secret_patterns::kAwsAccessKeyTotalLen; ++i)
     {
-        if (!is_aws_key_char(text[i]))
+        if (!secret_patterns::is_aws_upper_alnum(text[i]))
         {
             return false;
         }
     }
-    return text.size() == 20 || !(is_ascii_alnum(text[20]) || text[20] == u'_' || text[20] == u'-');
+    return text.size() == secret_patterns::kAwsAccessKeyTotalLen ||
+           !secret_patterns::is_alnum_dash_under(text[secret_patterns::kAwsAccessKeyTotalLen]);
 }
 
 inline bool has_github_token_prefix(std::u16string_view text) noexcept
 {
-    if (starts_with_ordinal(text, u"ghp_") ||
-        starts_with_ordinal(text, u"gho_") ||
-        starts_with_ordinal(text, u"ghu_") ||
-        starts_with_ordinal(text, u"ghs_") ||
-        starts_with_ordinal(text, u"ghr_"))
+    if (secret_patterns::has_github_classic_prefix(text, false))
     {
         return has_scrub_token_alphabet(text.substr(4), 16, false);
     }
-    if (starts_with_ordinal(text, u"github_pat_"))
+    if (secret_patterns::has_github_pat_prefix(text, false))
     {
-        return has_scrub_token_alphabet(text.substr(11), 16, false);
+        return has_scrub_token_alphabet(text.substr(secret_patterns::kPrefixGitHubPat.size()), 16, false);
     }
     return false;
 }
 
 inline bool has_stripe_token_prefix(std::u16string_view text) noexcept
 {
-    if (starts_with_ordinal(text, u"sk_live_") ||
-        starts_with_ordinal(text, u"rk_live_") ||
-        starts_with_ordinal(text, u"sk_test_") ||
-        starts_with_ordinal(text, u"rk_test_"))
-    {
-        return has_scrub_token_alphabet(text.substr(8), 10, false);
-    }
-    return false;
+    return secret_patterns::has_stripe_token_prefix(text, false) &&
+           has_scrub_token_alphabet(text.substr(8), 10, false);
 }
 
 inline bool has_slack_token_prefix(std::u16string_view text) noexcept
 {
-    if (starts_with_ordinal(text, u"xoxb-") ||
-        starts_with_ordinal(text, u"xoxp-") ||
-        starts_with_ordinal(text, u"xoxa-") ||
-        starts_with_ordinal(text, u"xoxr-") ||
-        starts_with_ordinal(text, u"xoxs-"))
-    {
-        return has_scrub_token_alphabet(text.substr(5), 10, false);
-    }
-    return false;
+    return secret_patterns::has_slack_token_prefix(text, false) &&
+           has_scrub_token_alphabet(text.substr(5), 10, false);
 }
 
 inline bool try_read_scrub_pem_private_key(std::u16string_view input, int32_t index, ScrubberSecretStart& start) noexcept
 {
     std::u16string_view text = input.substr(static_cast<size_t>(index));
-    if (!starts_with_ordinal(text, u"-----BEGIN "))
+    if (!starts_with_ordinal(text, secret_patterns::kPemBeginPrefix))
     {
         return false;
     }
-    std::u16string_view after_begin = text.substr(11);
+    std::u16string_view after_begin = text.substr(secret_patterns::kPemBeginPrefix.size());
     size_t max_header = std::min<size_t>(after_begin.size(), 64);
     std::u16string_view header_window = after_begin.substr(0, max_header);
-    size_t close_dashes = header_window.find(u"-----");
+    size_t close_dashes = header_window.find(secret_patterns::kPemDashes);
     if (close_dashes == std::u16string_view::npos)
     {
         return false;
@@ -519,25 +424,29 @@ inline bool try_read_scrub_pem_private_key(std::u16string_view input, int32_t in
             return false;
         }
     }
-    if (label.find(u"PRIVATE KEY") == std::u16string_view::npos)
+    if (label.find(secret_patterns::kPemPrivateKeyMarker) == std::u16string_view::npos)
     {
         return false;
     }
 
-    size_t body_offset = 11 + close_dashes + 5;
+    size_t body_offset = secret_patterns::kPemBeginPrefix.size() + close_dashes + secret_patterns::kPemDashes.size();
     int32_t end = index + static_cast<int32_t>(body_offset);
     int32_t len = static_cast<int32_t>(input.size());
     while (end < len && input[static_cast<size_t>(end)] != u'"' && input[static_cast<size_t>(end)] != u'\'')
     {
         if (input[static_cast<size_t>(end)] == u'-' &&
-            starts_with_ordinal(input.substr(static_cast<size_t>(end)), u"-----END "))
+            starts_with_ordinal(input.substr(static_cast<size_t>(end)), secret_patterns::kPemEndPrefix))
         {
-            std::u16string_view after_end = input.substr(static_cast<size_t>(end + 9));
+            std::u16string_view after_end = input.substr(static_cast<size_t>(end) + secret_patterns::kPemEndPrefix.size());
             size_t end_window_len = std::min<size_t>(after_end.size(), 64);
-            size_t end_close = after_end.substr(0, end_window_len).find(u"-----");
+            size_t end_close = after_end.substr(0, end_window_len).find(secret_patterns::kPemDashes);
             if (end_close != std::u16string_view::npos)
             {
-                start = { index, ScrubberSecretKind::Token, end + 9 + static_cast<int32_t>(end_close + 5) };
+                start = {
+                    index,
+                    ScrubberSecretKind::Token,
+                    end + static_cast<int32_t>(secret_patterns::kPemEndPrefix.size() + end_close + secret_patterns::kPemDashes.size())
+                };
                 return true;
             }
         }
@@ -549,7 +458,7 @@ inline bool try_read_scrub_pem_private_key(std::u16string_view input, int32_t in
 
 inline bool is_scrub_base64_url(char16_t c) noexcept
 {
-    return is_ascii_alnum(c) || c == u'_' || c == u'-';
+    return secret_patterns::is_alnum_dash_under(c);
 }
 
 inline bool scrub_starts_with_json_object(std::u16string_view encoded) noexcept
@@ -621,7 +530,8 @@ inline bool try_read_scrub_standalone_token(std::u16string_view input, int32_t i
         {
             return true;
         }
-        if (index - 2 >= cursor && equals_ordinal(input.substr(static_cast<size_t>(index - 2), 2), u"sk") &&
+        if (index - 2 >= cursor &&
+            equals_ordinal(input.substr(static_cast<size_t>(index - 2), 2), secret_patterns::kPrefixOpenAiSkShort) &&
             is_scrub_word_start(input, index - 2) && has_scrub_token_alphabet(text.substr(1), 8, false))
         {
             value = index - 2;
@@ -634,17 +544,17 @@ inline bool try_read_scrub_standalone_token(std::u16string_view input, int32_t i
     else if (ch == u'A')
     {
         if (is_scrub_word_start(input, index) &&
-            (starts_with_ordinal(text, u"AKIA") || starts_with_ordinal(text, u"ASIA")) &&
+            secret_patterns::has_aws_access_key_prefix(text, true, false) &&
             has_aws_access_key_body(text))
         {
-            start = { index, ScrubberSecretKind::Token, index + 20 };
+            start = { index, ScrubberSecretKind::Token, index + static_cast<int32_t>(secret_patterns::kAwsAccessKeyTotalLen) };
             return true;
         }
         if (is_scrub_word_start(input, index) &&
-            starts_with_ordinal(text, u"AIza") &&
-            has_scrub_token_alphabet(text.substr(4), 16, false))
+            starts_with_ordinal(text, secret_patterns::kPrefixGoogleApiKey) &&
+            has_scrub_token_alphabet(text.substr(secret_patterns::kPrefixGoogleApiKey.size()), 16, false))
         {
-            value = index + 4;
+            value = index + static_cast<int32_t>(secret_patterns::kPrefixGoogleApiKey.size());
         }
         else
         {
@@ -660,7 +570,8 @@ inline bool try_read_scrub_standalone_token(std::u16string_view input, int32_t i
         value = index;
     }
     else if (ch == u's' && is_scrub_word_start(input, index) &&
-             starts_with_ordinal(text, u"sk-") && has_scrub_token_alphabet(text.substr(3), 8, false))
+             starts_with_ordinal(text, secret_patterns::kPrefixOpenAiSk) &&
+             has_scrub_token_alphabet(text.substr(secret_patterns::kPrefixOpenAiSk.size()), 8, false))
     {
         value = index;
     }
@@ -668,7 +579,8 @@ inline bool try_read_scrub_standalone_token(std::u16string_view input, int32_t i
     {
         value = index;
     }
-    else if (ch == u':' && index - 3 >= cursor && equals_ordinal(input.substr(static_cast<size_t>(index - 3), 3), u"enc") &&
+    else if (ch == u':' && index - 3 >= cursor &&
+             equals_ordinal(input.substr(static_cast<size_t>(index - 3), 3), secret_patterns::kPrefixEncrypted) &&
              has_scrub_token_alphabet(text.substr(1), 16, true))
     {
         value = index + 1;

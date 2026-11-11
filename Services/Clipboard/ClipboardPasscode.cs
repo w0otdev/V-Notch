@@ -18,13 +18,6 @@ internal static partial class ClipboardPasscode
         int destLen,
         out byte outOk);
 
-    [LibraryImport(NativeDll)]
-    private static partial int vn_clipboard_passcode_fixed_time_equals(
-        ReadOnlySpan<byte> leftPtr,
-        ReadOnlySpan<byte> rightPtr,
-        int len,
-        out byte outEqual);
-
     internal static bool IsValid(SecureString pin)
     {
         Span<byte> digits = stackalloc byte[Length];
@@ -40,8 +33,7 @@ internal static partial class ClipboardPasscode
         {
             if (!TryCopyDigits(first, left) || !TryCopyDigits(second, right))
                 return false;
-            vn_clipboard_passcode_fixed_time_equals(left, right, Length, out byte eq);
-            return eq != 0;
+            return CryptographicOperations.FixedTimeEquals(left, right);
         }
         finally { CryptographicOperations.ZeroMemory(left); CryptographicOperations.ZeroMemory(right); }
     }

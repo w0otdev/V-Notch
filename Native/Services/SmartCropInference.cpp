@@ -6,18 +6,47 @@
 #include <memory>
 #include <mutex>
 #include <stdexcept>
+#include <string_view>
 
 namespace {
 using Detection = vnotch::services::VnDetection;
 using AppendDml = OrtStatus*(ORT_API_CALL*)(OrtSessionOptions*, int);
 
+std::wstring ResolveNativeModuleDirectory() {
+    HMODULE self = nullptr;
+    if (!GetModuleHandleExW(
+            GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS | GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
+            reinterpret_cast<LPCWSTR>(&ResolveNativeModuleDirectory),
+            &self) || !self) {
+        throw std::runtime_error("Could not resolve VNotch.Native module handle");
+    }
+    std::wstring path(MAX_PATH, L'\0');
+    while (true) {
+        const DWORD len = GetModuleFileNameW(self, path.data(), static_cast<DWORD>(path.size()));
+        if (len == 0) throw std::runtime_error("Could not resolve VNotch.Native module path");
+        if (len < path.size()) {
+            path.resize(len);
+            break;
+        }
+        if (path.size() >= 32768) throw std::runtime_error("VNotch.Native module path too long");
+        path.resize(path.size() * 2);
+    }
+    const size_t slash = path.find_last_of(L"\\/");
+    if (slash == std::wstring::npos) throw std::runtime_error("Invalid VNotch.Native module path");
+    path.resize(slash);
+    return path;
+}
+
 // Keep the runtime loaded while any Ort object (including the managed compatibility API) exists.
-void InitializeRuntime(const std::wstring& directory) {
+void InitializeRuntime() {
     static const bool initialized = [&] {
-        HMODULE module = LoadLibraryExW((directory + L"\\onnxruntime.dll").c_str(), nullptr,
-            LOAD_LIBRARY_SEARCH_DLL_LOAD_DIR | LOAD_LIBRARY_SEARCH_DEFAULT_DIRS);
-        if (!module) module = LoadLibraryExW((directory + L"\\runtimes\\win-x64\\native\\onnxruntime.dll").c_str(),
-            nullptr, LOAD_LIBRARY_SEARCH_DLL_LOAD_DIR | LOAD_LIBRARY_SEARCH_DEFAULT_DIRS);
+        constexpr DWORD kLoadFlags = LOAD_LIBRARY_SEARCH_DLL_LOAD_DIR | LOAD_LIBRARY_SEARCH_SYSTEM32;
+        const std::wstring module_dir = ResolveNativeModuleDirectory();
+        HMODULE module = LoadLibraryExW((module_dir + L"\\onnxruntime.dll").c_str(), nullptr, kLoadFlags);
+        if (!module) {
+            module = LoadLibraryExW((module_dir + L"\\runtimes\\win-x64\\native\\onnxruntime.dll").c_str(),
+                nullptr, kLoadFlags);
+        }
         if (!module) throw std::runtime_error("ONNX Runtime unavailable");
         const auto get_api = reinterpret_cast<const OrtApiBase*(ORT_API_CALL*)()>(GetProcAddress(module, "OrtGetApiBase"));
         const OrtApi* api = get_api ? get_api()->GetApi(ORT_API_VERSION) : nullptr;
@@ -91,10 +120,14 @@ VN_EXPORT int32_t __stdcall vn_smartcrop_session_create(const wchar_t* model, in
     int64_t* out_handle, uint8_t* out_dml) noexcept {
     if (!model || model_length <= 0 || !directory || directory_length <= 0 || !out_handle || !out_dml)
         return VN_ERR_INVALID_ARG;
+    std::wstring_view model_view(model, static_cast<size_t>(model_length));
+    std::wstring_view dir_view(directory, static_cast<size_t>(directory_length));
+    if (model_view.find(L'\0') != std::wstring_view::npos || dir_view.find(L'\0') != std::wstring_view::npos)
+        return VN_ERR_INVALID_ARG;
     *out_handle = 0; *out_dml = 0;
     try {
-        InitializeRuntime(std::wstring(directory, directory_length));
-        auto session = std::make_unique<CropSession>(std::wstring(model, model_length), prefer_dml != 0);
+        InitializeRuntime();
+        auto session = std::make_unique<CropSession>(std::wstring(model_view), prefer_dml != 0);
         *out_dml = session->dml ? 1 : 0;
         *out_handle = sessions.Add(std::move(session));
         return VN_OK;

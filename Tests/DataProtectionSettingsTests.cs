@@ -358,6 +358,42 @@ public sealed class DataProtectionSettingsTests : IDisposable
         }
     }
 
+    [Fact]
+    public void ForwardVersionSettings_PreservesSchemaVersionUnknownFieldsAndDoesNotOverwriteOnStartup()
+    {
+        int futureVersion = SettingsMigrator.CurrentVersion + 5;
+        string path = Path.Combine(_directory, "settings-forward.json");
+        string original = JsonSerializer.Serialize(new
+        {
+            SettingsVersion = futureVersion,
+            Width = 312,
+            FutureFeatureFlag = true,
+            FutureProfileName = "next-gen"
+        });
+        File.WriteAllText(path, original);
+
+        var (migratedSettings, migrated) = SettingsMigrator.Migrate(original);
+        Assert.False(migrated);
+        Assert.Equal(futureVersion, migratedSettings.SettingsVersion);
+        Assert.NotNull(migratedSettings.ExtensionData);
+        Assert.True(migratedSettings.ExtensionData!.ContainsKey("FutureFeatureFlag"));
+
+        var cloned = migratedSettings.Clone();
+        Assert.True(cloned.ValueEquals(migratedSettings));
+
+        using var service = new SettingsService(path, _ => { });
+        var loaded = service.Load();
+        Assert.Equal(futureVersion, loaded.SettingsVersion);
+        Assert.Equal(312, loaded.Width);
+        Assert.Equal(original, File.ReadAllText(path));
+
+        service.Save(loaded);
+        using var savedDoc = JsonDocument.Parse(File.ReadAllText(path));
+        Assert.Equal(futureVersion, savedDoc.RootElement.GetProperty("SettingsVersion").GetInt32());
+        Assert.True(savedDoc.RootElement.GetProperty("FutureFeatureFlag").GetBoolean());
+        Assert.Equal("next-gen", savedDoc.RootElement.GetProperty("FutureProfileName").GetString());
+    }
+
     public void Dispose()
     {
         DataProtection.ProtectBytes = _originalProtectBytes;

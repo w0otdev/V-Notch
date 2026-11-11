@@ -12,7 +12,7 @@ using LLama.Transformers;
 
 namespace VNotch.Services.Translation;
 
-// This engine only reads installed local GGUF files. It has no network transport.
+// Inference reads local GGUF files; optional on-demand Vulkan provisioning goes through TranslationModelStore privacy gates.
 internal sealed partial class QwenTranslationEngine : ILocalTranslationEngine
 {
     private const string NativeDll = "VNotch.Native.dll";
@@ -138,6 +138,10 @@ internal sealed partial class QwenTranslationEngine : ILocalTranslationEngine
         if (_weights != null) return;
         _stage = TranslationStage.CheckingModel;
         await _store.VerifyAsync(ct).ConfigureAwait(false);
+        if (!_nativeConfigured && _gpuLayers > 0 && !TranslationNativeRuntime.IsLoaded)
+        {
+            await _store.TryEnsureVulkanRuntimeAsync(ct).ConfigureAwait(false);
+        }
         await LoadUnderGateAsync(ct).ConfigureAwait(false);
     }
 

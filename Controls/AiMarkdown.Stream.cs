@@ -63,10 +63,49 @@ internal static partial class AiMarkdown
         }
     }
 
-    private static string CloseSpans(string markdown)
+    internal static string CloseSpans(string markdown)
     {
+        if (string.IsNullOrEmpty(markdown)) return markdown;
+
         var summary = ScanSpanBoundaries(markdown);
-        if (summary.HasUnclosedFence != 0) return markdown + "\n```";
-        return summary.HasUnclosedBold != 0 ? markdown + "**" : markdown;
+        if (summary.HasUnclosedFence != 0)
+        {
+            char fenceChar = summary.FenceChar != 0 ? (char)summary.FenceChar : '`';
+            int fenceCount = Math.Max(3, (int)summary.FenceCount);
+            return markdown + "\n" + new string(fenceChar, fenceCount);
+        }
+
+        if (summary.HasUnclosedInlineCode != 0)
+        {
+            int ticks = Math.Max(1, (int)summary.InlineCodeTicks);
+            string closer = new string('`', ticks);
+            return markdown[^1] == '`' ? markdown + " " + closer : markdown + closer;
+        }
+
+        if (summary.HasUnclosedBold == 0 && summary.HasUnclosedItalic == 0)
+        {
+            return markdown;
+        }
+
+        string boldCloser = summary.HasUnclosedBold != 0
+            ? new string(summary.BoldChar != 0 ? (char)summary.BoldChar : '*', 2)
+            : string.Empty;
+        string italicCloser = summary.HasUnclosedItalic != 0
+            ? new string(summary.ItalicChar != 0 ? (char)summary.ItalicChar : '*', 1)
+            : string.Empty;
+        string emphasisCloser = summary.BoldOuter != 0
+            ? italicCloser + boldCloser
+            : boldCloser + italicCloser;
+
+        int trimEnd = markdown.Length;
+        while (trimEnd > 0 && char.IsWhiteSpace(markdown[trimEnd - 1]))
+        {
+            trimEnd--;
+        }
+
+        if (trimEnd == 0) return markdown;
+        return trimEnd == markdown.Length
+            ? markdown + emphasisCloser
+            : string.Concat(markdown.AsSpan(0, trimEnd), emphasisCloser, markdown.AsSpan(trimEnd));
     }
 }

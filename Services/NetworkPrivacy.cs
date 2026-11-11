@@ -80,13 +80,27 @@ internal sealed partial class NetworkPrivacy
         }
     }
 
+    internal static SocketsHttpHandler CreateHttpHandler(bool allowAutoRedirect = false) =>
+        new()
+        {
+            AllowAutoRedirect = allowAutoRedirect,
+            UseCookies = false,
+            PooledConnectionLifetime = TimeSpan.FromMinutes(5),
+            AutomaticDecompression = DecompressionMethods.GZip | DecompressionMethods.Deflate | DecompressionMethods.Brotli
+        };
+
     internal static HttpMessageHandler Handler(NetworkFeature feature, HttpMessageHandler? inner = null) =>
-        new PrivacyHandler(Current, feature, inner ?? new NativeWinHttpHandler());
+        Current.CreateHandler(feature, inner);
+
+    internal HttpMessageHandler CreateHandler(NetworkFeature feature, HttpMessageHandler? inner = null) =>
+        new PrivacyHandler(this, feature, inner ?? CreateHttpHandler());
 
     internal sealed class PrivacyHandler(NetworkPrivacy policy, NetworkFeature feature, HttpMessageHandler inner) : DelegatingHandler(inner)
     {
         protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
         {
+            ValidateHeaders(request.Headers);
+            if (request.Content != null) ValidateHeaders(request.Content.Headers);
             var permission = policy.Acquire(feature);
             using var linked = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, permission);
             var response = await base.SendAsync(request, linked.Token).ConfigureAwait(false);
@@ -97,6 +111,20 @@ internal sealed partial class NetworkPrivacy
             }
             response.Content = new PrivacyContent(response.Content, permission);
             return response;
+        }
+
+        private static void ValidateHeaders(System.Net.Http.Headers.HttpHeaders headers)
+        {
+            foreach (var header in headers)
+            {
+                if (header.Key.AsSpan().IndexOfAny('\r', '\n', '\0') >= 0)
+                    throw new HttpRequestException("Invalid control character in HTTP header name.");
+                foreach (var value in header.Value)
+                {
+                    if (value != null && value.AsSpan().IndexOfAny('\r', '\n', '\0') >= 0)
+                        throw new HttpRequestException("Invalid control character in HTTP header value.");
+                }
+            }
         }
     }
 

@@ -11,9 +11,6 @@ public partial class SecondaryViewModel : ObservableObject
     private string _batteryPercentText = "N/A";
 
     [ObservableProperty]
-    private double _batteryFillWidth = 26;
-
-    [ObservableProperty]
     private bool _isBatteryCharging;
 
     [ObservableProperty]
@@ -36,7 +33,6 @@ public partial class SecondaryViewModel : ObservableObject
     public void UpdateBattery(BatteryInfo battery)
     {
         BatteryPercentText = battery.GetPercentageText();
-        BatteryFillWidth = Math.Max(2, battery.Percentage / 100.0 * 26);
         IsBatteryCharging = battery.IsPowerConnected;
         IsBatteryLow = battery.HasBattery && battery.Percentage >= 0 && battery.Percentage < 20 && !battery.IsPowerConnected;
     }

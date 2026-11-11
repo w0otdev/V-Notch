@@ -55,16 +55,7 @@ public sealed partial class MediaDetectionService : IMediaDetectionService, IAsy
         in VnMediaPublishParams @params,
         out byte outShouldPublish);
 
-    [LibraryImport(NativeDll, StringMarshalling = StringMarshalling.Utf16)]
-    private static partial int vn_media_detection_build_session_instance_key(
-        nint unkPtr,
-        ReadOnlySpan<char> sourceApp,
-        int sourceAppLen,
-        Span<char> outBuf,
-        int outCap,
-        out int outLen);
-
-    [LibraryImport(NativeDll, StringMarshalling = StringMarshalling.Utf16)]
+        [LibraryImport(NativeDll, StringMarshalling = StringMarshalling.Utf16)]
     private static partial int vn_media_detection_extract_process_name(
         ReadOnlySpan<char> sourceApp,
         int sourceAppLen,
@@ -79,8 +70,6 @@ public sealed partial class MediaDetectionService : IMediaDetectionService, IAsy
         Span<char> outBuf,
         int outCap,
         out int outLen);
-
-
 
     [LibraryImport(NativeDll, StringMarshalling = StringMarshalling.Utf16)]
     private static partial int vn_media_detection_get_spotify_window_title(
@@ -637,12 +626,30 @@ public sealed partial class MediaDetectionService : IMediaDetectionService, IAsy
                 }
 
                 await UpdateMediaInfoAsync(forceRefresh, ct);
+                SyncTitleMonitorTarget();
             }
             catch (OperationCanceledException) { break; }
             catch (Exception ex)
             {
                 Log("ProcessError", ex.Message);
             }
+        }
+    }
+
+    private NativeWindowTitleMonitor? _titleMonitor;
+    private int _lastTitleNotificationsState = -1;
+
+    private void SyncTitleMonitorTarget()
+    {
+        if (_windowTitleScanner is not WindowTitleScanner scanner) return;
+        var monitor = Volatile.Read(ref _titleMonitor);
+        if (monitor == null) return;
+        bool active = monitor.UpdateSource(GetActiveSourceAppId(), out bool changed);
+        int nextState = active ? 1 : 0;
+        if (changed || Interlocked.Exchange(ref _lastTitleNotificationsState, nextState) != nextState)
+        {
+            Volatile.Write(ref _lastTitleNotificationsState, nextState);
+            scanner.SetTitleNotificationsActive(active);
         }
     }
 
@@ -657,11 +664,14 @@ public sealed partial class MediaDetectionService : IMediaDetectionService, IAsy
             Interlocked.Exchange(ref _lastEventTimeTicks, DateTime.UtcNow.Ticks);
             _changes.Enqueue(ChangeTypes.MediaProperties);
         });
-        scanner?.SetTitleNotificationsActive(titleChanges?.IsActive ?? false);
+        Volatile.Write(ref _lastTitleNotificationsState, -1);
+        Volatile.Write(ref _titleMonitor, titleChanges);
+        SyncTitleMonitorTarget();
         try
         {
             while (!ct.IsCancellationRequested)
             {
+                SyncTitleMonitorTarget();
                 int intervalMs = vn_media_detection_resolve_heartbeat_interval_ms((int)_currentMode, out int outMs) == 0 ? outMs : 3000;
                 var interval = TimeSpan.FromMilliseconds(intervalMs);
 
@@ -680,7 +690,12 @@ public sealed partial class MediaDetectionService : IMediaDetectionService, IAsy
                 _changes.Enqueue(ChangeTypes.Heartbeat);
             }
         }
-        finally { scanner?.SetTitleNotificationsActive(false); }
+        finally
+        {
+            Volatile.Write(ref _titleMonitor, null);
+            Volatile.Write(ref _lastTitleNotificationsState, -1);
+            scanner?.SetTitleNotificationsActive(false);
+        }
     }
 
     private void UpdateDetectionMode(MediaInfo info, bool isSessionGapRecovery = false)
@@ -2565,12 +2580,12 @@ public sealed partial class MediaDetectionService : IMediaDetectionService, IAsy
         Span<char> buf = stackalloc char[512];
         try
         {
-            int rc = vn_media_detection_build_session_instance_key(
+            int rc = VNotchNative.vn_media_detection_build_session_instance_key(
                 native.ThisPtr, sourceApp.AsSpan(), sourceApp.Length, buf, buf.Length, out int len);
             if (rc == -2 && len > buf.Length)
             {
                 char[] heapBuf = new char[len];
-                rc = vn_media_detection_build_session_instance_key(
+                rc = VNotchNative.vn_media_detection_build_session_instance_key(
                     native.ThisPtr, sourceApp.AsSpan(), sourceApp.Length, heapBuf, heapBuf.Length, out len);
                 return rc == 0 && len > 0 ? new string(heapBuf, 0, len) : sourceApp;
             }
@@ -4170,8 +4185,6 @@ public sealed partial class MediaDetectionService : IMediaDetectionService, IAsy
 
     private Task<string?> TryGetSoundCloudArtworkUrlAsync(string title, string artist = "", bool requireStrongMatch = false, CancellationToken ct = default)
         => _metadataLookup.TryGetSoundCloudArtworkUrlAsync(title, artist, requireStrongMatch, ct);
-
-
 
     private Task<string?> TryGetSoundCloudArtworkFromUrlAsync(string soundCloudUrl, string expectedTitle, string expectedArtist, CancellationToken ct = default)
         => _metadataLookup.TryGetSoundCloudArtworkFromUrlAsync(soundCloudUrl, expectedTitle, expectedArtist, ct);

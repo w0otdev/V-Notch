@@ -198,7 +198,7 @@ public sealed partial class ReleaseFeedIntegrationTests(ITestOutputHelper output
     {
         using var client = new HttpClient(new RateLimitedApiHandler
         {
-            InnerHandler = new NativeWinHttpHandler { AllowAutoRedirect = false }
+            InnerHandler = NetworkPrivacy.CreateHttpHandler()
         })
         { Timeout = TimeSpan.FromSeconds(30) };
         using var updater = new UpdateService(client, new UpdateSecurityPolicy());

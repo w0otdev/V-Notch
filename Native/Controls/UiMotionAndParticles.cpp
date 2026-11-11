@@ -534,59 +534,6 @@ extern "C" VN_EXPORT int32_t __stdcall vn_clipboard_motion_compute_reflow_offset
     return VN_OK;
 }
 
-extern "C" VN_EXPORT int32_t __stdcall vn_clipboard_motion_step_scroll_physics(
-    double* io_position,
-    double* io_velocity,
-    double min_bound,
-    double max_bound,
-    double dt,
-    double friction,
-    double spring_stiffness,
-    double spring_damping,
-    uint8_t* out_is_settled) noexcept
-{
-    if (!io_position || !io_velocity || !out_is_settled)
-        return VN_ERR_INVALID_ARG;
-
-    const double clamped_dt = std::clamp(dt, 0.0, 0.050);
-    double pos = *io_position;
-    double vel = *io_velocity;
-
-    const double lo = std::min(min_bound, max_bound);
-    const double hi = std::max(min_bound, max_bound);
-
-    double overscroll = 0.0;
-    if (pos < lo) overscroll = pos - lo;
-    else if (pos > hi) overscroll = pos - hi;
-
-    if ( std::abs(overscroll) > 1e-5 )
-    {
-        const double accel = -spring_stiffness * overscroll - spring_damping * vel;
-        vel += accel * clamped_dt;
-    }
-    else
-    {
-        vel *= std::exp(-std::max(0.0, friction) * clamped_dt);
-    }
-
-    pos += vel * clamped_dt;
-
-    if (std::abs(overscroll) < 0.25 && std::abs(vel) < 1.0)
-    {
-        pos = std::clamp(pos, lo, hi);
-        vel = 0.0;
-        *out_is_settled = 1u;
-    }
-    else
-    {
-        *out_is_settled = 0u;
-    }
-
-    *io_position = pos;
-    *io_velocity = vel;
-    return VN_OK;
-}
-
 extern "C" VN_EXPORT int32_t __stdcall vn_visualizer_step_bars(
     const double* current_heights,
     const double* smoothed_heights,

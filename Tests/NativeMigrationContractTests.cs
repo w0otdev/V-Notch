@@ -75,36 +75,35 @@ public sealed partial class NativeMigrationContractTests(ITestOutputHelper outpu
 
     [StructLayout(LayoutKind.Sequential, Pack = 1)]
     private struct DeviceState { public int IdOffset, IdLength, NameOffset, NameLength; public byte IsDefault; }
-    [LibraryImport("VNotch.Native.dll")] private static partial int vn_audio_devices_open(int flow, out long list, out int count, out int hresult);
-    [LibraryImport("VNotch.Native.dll")] private static partial int vn_audio_devices_close(long list);
+
     [LibraryImport("VNotch.Native.dll", StringMarshalling = StringMarshalling.Utf16)]
-    private static partial int vn_audio_get_devices_batch(long list, Span<DeviceState> entries, int capacity, Span<char> text, int textCapacity, out int count, out int textLength);
-    [LibraryImport("VNotch.Native.dll", StringMarshalling = StringMarshalling.Utf16)]
-    private static partial int vn_audio_device_get_string(long list, int index, int kind, Span<char> text, int capacity, out int length, out byte isDefault);
+    private static partial int vn_audio_enumerate_devices_batch(
+        int flow,
+        Span<DeviceState> entries,
+        int capacity,
+        Span<char> text,
+        int textCapacity,
+        out int count,
+        out int textLength,
+        out int hresult);
 
     [Fact]
     public void DeviceBatchReportsRequiredCapacityAndMatchesTheSameSnapshot()
     {
-        Assert.Equal(0, vn_audio_devices_open(0, out long list, out int expectedCount, out _));
-        try
+        int status = vn_audio_enumerate_devices_batch(0, default, 0, default, 0, out int expectedCount, out int chars, out _);
+        Assert.Equal(expectedCount == 0 ? 0 : -2, status);
+        var entries = new DeviceState[Math.Max(1, expectedCount + 4)];
+        var text = new char[Math.Max(1, chars + 256)];
+        Assert.Equal(0, vn_audio_enumerate_devices_batch(0, entries, entries.Length, text, text.Length, out int count, out int writtenChars, out _));
+        for (int i = 0; i < count; i++)
         {
-            int status = vn_audio_get_devices_batch(list, default, 0, default, 0, out int count, out int chars);
-            Assert.Equal(expectedCount == 0 ? 0 : -2, status);
-            Assert.Equal(expectedCount, count);
-            var entries = new DeviceState[count];
-            var text = new char[chars];
-            Assert.Equal(0, vn_audio_get_devices_batch(list, entries, entries.Length, text, text.Length, out count, out _));
-            Span<char> legacy = stackalloc char[32768];
-            for (int i = 0; i < count; i++)
-            {
-                Assert.Equal(0, vn_audio_device_get_string(list, i, 0, legacy, legacy.Length, out int length, out byte isDefault));
-                Assert.Equal(new string(legacy[..length]), new string(text, entries[i].IdOffset, entries[i].IdLength));
-                Assert.Equal(isDefault, entries[i].IsDefault);
-                Assert.Equal(0, vn_audio_device_get_string(list, i, 1, legacy, legacy.Length, out length, out _));
-                Assert.Equal(new string(legacy[..length]), new string(text, entries[i].NameOffset, entries[i].NameLength));
-            }
+            Assert.InRange(entries[i].IdOffset, 0, writtenChars);
+            Assert.InRange(entries[i].IdOffset + entries[i].IdLength, entries[i].IdOffset, writtenChars);
+            Assert.InRange(entries[i].NameOffset, 0, writtenChars);
+            Assert.InRange(entries[i].NameOffset + entries[i].NameLength, entries[i].NameOffset, writtenChars);
+            Assert.True(entries[i].IdLength > 0);
+            Assert.InRange(entries[i].IsDefault, (byte)0, (byte)1);
         }
-        finally { vn_audio_devices_close(list); }
-        Assert.Equal(-1, vn_audio_get_devices_batch(list, default, 0, default, 0, out _, out _));
+        Assert.Equal(-1, vn_audio_enumerate_devices_batch(99, default, 0, default, 0, out _, out _, out _));
     }
 }

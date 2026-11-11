@@ -49,11 +49,8 @@ public sealed partial class UpdateSecurityPolicy
             ?? new HashSet<string>(StringComparer.OrdinalIgnoreCase);
     }
 
-    public static UpdateSecurityPolicy FromEnvironment() => new()
-    {
-        AllowedPublisherNames = ParsePublishers("VNOTCH_UPDATER_ALLOWED_PUBLISHERS"),
-        AllowedCertificateThumbprints = ParseThumbprints("VNOTCH_UPDATER_ALLOWED_THUMBPRINTS")
-    };
+    // Untrusted process environment variables must never weaken or alter updater trust policy.
+    public static UpdateSecurityPolicy FromEnvironment() => new();
 
     public bool IsTrustedSignature(string installerPath, out string reason)
     {
@@ -124,22 +121,6 @@ public sealed partial class UpdateSecurityPolicy
             return false;
         }
     }
-
-    private static IReadOnlySet<string> ParsePublishers(string variable) =>
-        Environment.GetEnvironmentVariable(variable)?
-            .Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
-            .Select(s => s.Trim())
-            .Where(s => !string.IsNullOrWhiteSpace(s))
-            .ToHashSet(StringComparer.OrdinalIgnoreCase)
-        ?? new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-
-    private static IReadOnlySet<string> ParseThumbprints(string variable) =>
-        Environment.GetEnvironmentVariable(variable)?
-            .Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
-            .Select(NormalizeThumbprint)
-            .Where(s => !string.IsNullOrWhiteSpace(s))
-            .ToHashSet(StringComparer.OrdinalIgnoreCase)
-        ?? new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
     private static string NormalizeThumbprint(string? value)
     {

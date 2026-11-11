@@ -268,12 +268,12 @@ VN_EXPORT int32_t vn_youtube_parse_utf8(const uint8_t* bytes, int32_t length, in
                 const auto index = renderer.get("defaultAudioTrackIndex");
                 const int64_t selected_index = !index.bytes.empty() && index.bytes[0] >= '0' && index.bytes[0] <= '9' ? index.integer() : -1;
                 Json selected;
-                int64_t count = 0;
+                int64_t track_count = 0;
                 tracks.each([&](Json, Json track) {
-                    if (count++ == selected_index) selected = track;
+                    if (track_count++ == selected_index) selected = track;
                     return true;
                 });
-                if (selected_index < 0 && count == 1) selected = tracks.first();
+                if (selected_index < 0 && track_count == 1) selected = tracks.first();
                 language = selected.get("languageCode").text();
                 if (language.empty()) language = selected.get("audioTrackId").text();
             }

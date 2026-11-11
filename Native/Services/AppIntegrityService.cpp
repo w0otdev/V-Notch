@@ -109,37 +109,6 @@ public:
         return IsReleaseAssetHost(host);
     }
 
-    static bool IsApplicableChecksumAsset(std::u16string_view asset_name, bool is_installer) noexcept
-    {
-        if (HasEmbeddedNull(asset_name) || vnotch::trim_u16(asset_name).empty())
-        {
-            return false;
-        }
-
-        bool is_sha_file = vnotch::ends_with_icase_ascii(asset_name, u".sha256");
-        bool is_checksum_list = vnotch::equals_icase_ascii(asset_name, u"checksums.txt") ||
-                                vnotch::equals_icase_ascii(asset_name, u"SHA256SUMS.txt");
-        bool is_manifest = vnotch::ends_with_icase_ascii(asset_name, u".manifest.json");
-
-        if (!is_sha_file && !is_checksum_list && !is_manifest)
-        {
-            return false;
-        }
-
-        bool is_setup_asset = vnotch::contains_icase_ascii(asset_name, u"Setup") || is_manifest;
-
-        if (is_installer)
-        {
-            if (vnotch::equals_icase_ascii(asset_name, u"V-Notch.exe.sha256") ||
-                vnotch::equals_icase_ascii(asset_name, u"V-Notch-SelfContained.exe.sha256"))
-            {
-                return false;
-            }
-            return true;
-        }
-        return !is_setup_asset;
-    }
-
     static void ParseZoneIdentifier(
         std::u16string_view content,
         int32_t& out_host_start,
@@ -341,26 +310,5 @@ VN_EXPORT int32_t __stdcall vn_app_integrity_is_trusted_release_redirect(
     }
     *out_trusted = vnotch::services::AppIntegrityService::IsTrustedReleaseRedirect(
         is_absolute != 0u, scheme, port, user_info, host, abs_path) ? 1u : 0u;
-    return VN_OK;
-}
-
-VN_EXPORT int32_t __stdcall vn_app_integrity_is_applicable_checksum_asset(
-    const char16_t* asset_name_ptr,
-    int32_t asset_name_len,
-    uint8_t is_installer,
-    uint8_t* out_applicable) noexcept
-{
-    if (out_applicable == nullptr)
-    {
-        return VN_ERR_INVALID_ARG;
-    }
-    *out_applicable = 0u;
-    std::u16string_view asset_name;
-    if (!vnotch::try_make_u16_view(asset_name_ptr, asset_name_len, asset_name))
-    {
-        return VN_ERR_INVALID_ARG;
-    }
-    *out_applicable = vnotch::services::AppIntegrityService::IsApplicableChecksumAsset(
-        asset_name, is_installer != 0u) ? 1u : 0u;
     return VN_OK;
 }

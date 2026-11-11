@@ -1,6 +1,16 @@
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
 #include "vnotch_common.h"
+#include <objbase.h>
+#include <shlobj.h>
 #include <cstdint>
+#include <cstring>
+#include <string>
 #include <string_view>
+
+#pragma comment(lib, "ole32.lib")
+#pragma comment(lib, "shell32.lib")
 
 namespace vnotch::services::spotlight {
 
@@ -75,6 +85,44 @@ VN_EXPORT int32_t vn_spotlight_launcher_is_apps_folder_target(
     const std::u16string_view sv(target ? target : u"", static_cast<size_t>(target_len));
     *out_is_apps_folder = vnotch::services::spotlight::SpotlightLauncher::IsAppsFolderTarget(sv) ? 1 : 0;
     return VN_OK;
+}
+
+VN_EXPORT int32_t __stdcall vn_spotlight_launcher_reveal_in_explorer(
+    const char16_t* path,
+    int32_t path_len) noexcept {
+    if (!path || path_len <= 0 || path_len >= 32768) return VN_E_INVALID_ARG;
+    const std::u16string_view sv(path, static_cast<size_t>(path_len));
+    if (!vnotch::services::spotlight::SpotlightLauncher::IsTargetStringSafe(sv)) return VN_E_INVALID_ARG;
+
+    try {
+        wchar_t stack_buf[1024];
+        std::wstring heap_buf;
+        const wchar_t* c_path = nullptr;
+        if (sv.size() < std::size(stack_buf)) {
+            std::memcpy(stack_buf, sv.data(), sv.size() * sizeof(wchar_t));
+            stack_buf[sv.size()] = L'\0';
+            c_path = stack_buf;
+        } else {
+            heap_buf.assign(reinterpret_cast<const wchar_t*>(sv.data()), sv.size());
+            c_path = heap_buf.c_str();
+        }
+
+        const HRESULT hr_co = ::CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED | COINIT_DISABLE_OLE1DDE);
+        const bool should_uninit = SUCCEEDED(hr_co);
+        if (FAILED(hr_co) && hr_co != RPC_E_CHANGED_MODE) return VN_ERR_FAIL;
+
+        PIDLIST_ABSOLUTE pidl = nullptr;
+        HRESULT hr = ::SHParseDisplayName(c_path, nullptr, &pidl, 0, nullptr);
+        if (SUCCEEDED(hr) && pidl != nullptr) {
+            hr = ::SHOpenFolderAndSelectItems(pidl, 0, nullptr, 0);
+            ::ILFree(pidl);
+        }
+
+        if (should_uninit) ::CoUninitialize();
+        return SUCCEEDED(hr) ? VN_OK : VN_ERR_FAIL;
+    } catch (...) {
+        return VN_ERR_FAIL;
+    }
 }
 
 } // extern "C"

@@ -284,6 +284,34 @@ internal static partial class InstallDirectoryCleanup
                 deleter(path);
             }
         }
+
+        var vnotchTempRoot = Path.Combine(root, "V-Notch");
+        if (!Directory.Exists(vnotchTempRoot)) return;
+
+        try
+        {
+            if ((new DirectoryInfo(vnotchTempRoot).Attributes & FileAttributes.ReparsePoint) != 0)
+                return;
+
+            foreach (var subDir in Directory.GetDirectories(vnotchTempRoot))
+            {
+                if (Path.GetFileName(subDir).EndsWith(".recovery", StringComparison.OrdinalIgnoreCase))
+                    continue;
+
+                try
+                {
+                    SafeFileDeletion.DeleteDirectory(subDir);
+                }
+                catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+                {
+                    // Leave locked active updater folders untouched.
+                }
+            }
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            // Best-effort cleanup of stale temp subdirectories.
+        }
     }
 
     internal static void RemoveInstalledAppFiles(string directory, Action<string>? deleteFile = null)

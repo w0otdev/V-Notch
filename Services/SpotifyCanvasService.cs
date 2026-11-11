@@ -216,11 +216,7 @@ public sealed partial class SpotifyCanvasService : IDisposable
 
     private static HttpClient CreateHttpClient()
     {
-        var handler = new NativeWinHttpHandler
-        {
-            AllowAutoRedirect = false
-        };
-        var privacyHandler = NetworkPrivacy.Handler(NetworkFeature.Canvas, handler);
+        var privacyHandler = NetworkPrivacy.Handler(NetworkFeature.Canvas, NetworkPrivacy.CreateHttpHandler());
         var client = new HttpClient(privacyHandler) { Timeout = RequestTimeout };
         client.DefaultRequestHeaders.UserAgent.ParseAdd(AppVersion.UserAgent);
         return client;

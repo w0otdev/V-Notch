@@ -19,20 +19,14 @@ internal sealed unsafe class NativeApi : IDisposable
 {
     private readonly nint _module;
     private nint Get(string name) => NativeLibrary.TryGetExport(_module, name, out var address) ? address : 0;
-    internal readonly delegate* unmanaged[Stdcall]<int> Avx;
     internal readonly delegate* unmanaged[Stdcall]<float*, int, Complex*, int> Fft;
     internal readonly delegate* unmanaged[Stdcall]<byte*, int, int, int, byte*, int> Palette;
-    internal readonly delegate* unmanaged[Stdcall]<byte*, int, float*, int, byte, int> Oklab;
     internal readonly delegate* unmanaged[Stdcall]<char*, int, char*, int, int*, byte*, int> Scrub;
-    internal readonly delegate* unmanaged[Stdcall]<byte*, int, int, int, float*, int> Fill;
     internal readonly delegate* unmanaged[Stdcall]<byte*, int, int, int, int, float*, int, float*, int> Resize;
     internal readonly delegate* unmanaged[Stdcall]<float*, int, int, float, Detection*, int, int*, int*, int> Parse;
     internal readonly delegate* unmanaged[Stdcall]<char*, int, char*, int, byte, long*, byte*, int> CreateCrop;
     internal readonly delegate* unmanaged[Stdcall]<long, byte*, int, int, int, int, Detection*, int, int*, byte*, int> Infer;
     internal readonly delegate* unmanaged[Stdcall]<long, int> DestroyCrop;
-    internal readonly delegate* unmanaged[Stdcall]<int, long*, int> CreateStream;
-    internal readonly delegate* unmanaged[Stdcall]<long, byte*, int, int, int, byte, float*, float*, float*, int> Push;
-    internal readonly delegate* unmanaged[Stdcall]<long, int> CloseStream;
     internal readonly delegate* unmanaged[Stdcall]<byte*, int, int, int, int, byte, float*, int, int*, int> Mix;
     internal readonly delegate* unmanaged[Stdcall]<DspState*, int> Reset;
     internal readonly delegate* unmanaged[Stdcall]<double, float*, int> Normalize;
@@ -47,20 +41,14 @@ internal sealed unsafe class NativeApi : IDisposable
     internal NativeApi(string path)
     {
         _module = NativeLibrary.Load(path);
-        Avx = (delegate* unmanaged[Stdcall]<int>)Get("vn_cpu_supports_avx2");
         Fft = (delegate* unmanaged[Stdcall]<float*, int, Complex*, int>)Get("vn_visualizer_windowed_fft");
         Palette = (delegate* unmanaged[Stdcall]<byte*, int, int, int, byte*, int>)Get("vn_dicolor_extract_advanced_palette");
-        Oklab = (delegate* unmanaged[Stdcall]<byte*, int, float*, int, byte, int>)Get("vn_dicolor_convert_oklab");
         Scrub = (delegate* unmanaged[Stdcall]<char*, int, char*, int, int*, byte*, int>)Get("vn_sensitive_data_scrub");
-        Fill = (delegate* unmanaged[Stdcall]<byte*, int, int, int, float*, int>)Get("vn_smartcrop_fill_tensor_from_bgra32");
         Resize = (delegate* unmanaged[Stdcall]<byte*, int, int, int, int, float*, int, float*, int>)Get("vn_smartcrop_preprocess_bgra32");
         Parse = (delegate* unmanaged[Stdcall]<float*, int, int, float, Detection*, int, int*, int*, int>)Get("vn_smartcrop_parse_yolox_and_nms");
         CreateCrop = (delegate* unmanaged[Stdcall]<char*, int, char*, int, byte, long*, byte*, int>)Get("vn_smartcrop_session_create");
         Infer = (delegate* unmanaged[Stdcall]<long, byte*, int, int, int, int, Detection*, int, int*, byte*, int>)Get("vn_smartcrop_session_infer");
         DestroyCrop = (delegate* unmanaged[Stdcall]<long, int>)Get("vn_smartcrop_session_destroy");
-        CreateStream = (delegate* unmanaged[Stdcall]<int, long*, int>)Get("vn_visualizer_stream_create");
-        Push = (delegate* unmanaged[Stdcall]<long, byte*, int, int, int, byte, float*, float*, float*, int>)Get("vn_visualizer_stream_push");
-        CloseStream = (delegate* unmanaged[Stdcall]<long, int>)Get("vn_visualizer_stream_close");
         Mix = (delegate* unmanaged[Stdcall]<byte*, int, int, int, int, byte, float*, int, int*, int>)Get("vn_visualizer_mix_frames_to_mono");
         Reset = (delegate* unmanaged[Stdcall]<DspState*, int>)Get("vn_visualizer_dsp_reset");
         Normalize = (delegate* unmanaged[Stdcall]<double, float*, int>)Get("vn_visualizer_normalize_amplitude");
@@ -71,7 +59,7 @@ internal sealed unsafe class NativeApi : IDisposable
         Append = (delegate* unmanaged[Stdcall]<long, char*, int, byte*, int, int>)Get("vn_clipboard_record_append");
         Read = (delegate* unmanaged[Stdcall]<long, char*, int, byte*, int, int*, int>)Get("vn_clipboard_record_read");
         CloseRecords = (delegate* unmanaged[Stdcall]<long, int>)Get("vn_clipboard_record_close");
-        if (Fft == null || Palette == null || Scrub == null || Fill == null || Parse == null) throw new InvalidOperationException("Incomplete native benchmark library.");
+        if (Fft == null || Palette == null || Scrub == null || Parse == null) throw new InvalidOperationException("Incomplete native benchmark library.");
     }
     public void Dispose() => NativeLibrary.Free(_module);
     internal static void Check(int status) { if (status != 0) throw new InvalidOperationException($"Native status {status}"); }

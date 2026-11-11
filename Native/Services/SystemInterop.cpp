@@ -265,7 +265,7 @@ VN_EXPORT int32_t __stdcall vn_file_create_delete_on_close(
     return VN_OK;
 }
 
-// WinVerifyTrust(WINTRUST_ACTION_GENERIC_VERIFY_V2) for a file, no UI and no revocation check.
+// WinVerifyTrust(WINTRUST_ACTION_GENERIC_VERIFY_V2) for a file, no UI and whole-chain revocation check.
 VN_EXPORT int32_t __stdcall vn_update_verify_authenticode(
     const char16_t* path, int32_t path_length, uint8_t* out_trusted) noexcept {
     if (out_trusted) *out_trusted = 0;
@@ -285,7 +285,7 @@ VN_EXPORT int32_t __stdcall vn_update_verify_authenticode(
     WINTRUST_DATA data{};
     data.cbStruct = sizeof(data);
     data.dwUIChoice = WTD_UI_NONE;
-    data.fdwRevocationChecks = WTD_REVOKE_NONE;
+    data.fdwRevocationChecks = WTD_REVOKE_WHOLECHAIN;
     data.dwUnionChoice = WTD_CHOICE_FILE;
     data.pFile = &file;
     data.dwStateAction = WTD_STATEACTION_IGNORE;

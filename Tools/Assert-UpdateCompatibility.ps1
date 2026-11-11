@@ -87,7 +87,6 @@ try {
     }
     if ($useCurrentUpdater) {
         Copy-Item -LiteralPath (Join-Path $repository 'Services/AppVersion.cs') -Destination $temporary
-        Copy-Item -LiteralPath (Join-Path $repository 'Services/NativeWinHttpHandler.cs') -Destination $temporary
         Copy-Item -LiteralPath (Join-Path $repository 'Services/Win32Interop.cs') -Destination $temporary
         Copy-Item -LiteralPath (Join-Path $repository 'Services/Win32Interop.Process.cs') -Destination $temporary
         Copy-Item -LiteralPath (Join-Path $repository 'Services/WindowAnimationPolicy.cs') -Destination $temporary

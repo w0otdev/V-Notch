@@ -219,6 +219,8 @@ public sealed class BrowserYouTubeResourceRegressionTests(ITestOutputHelper outp
             if (vn_glass_gpu_create(device9.NativePointer, 256, 128, out gpuHandle) != 0 || gpuHandle == 0)
                 return;
 
+            using var destSurface = device9.CreateRenderTarget(256, 128, Format.A8R8G8B8, MultisampleType.None, 0, lockable: false);
+
             const int w = 64, h = 32, stride = w * 4;
             byte[] pixels = new byte[stride * h];
             for (int i = 0; i < pixels.Length; i++)
@@ -241,9 +243,7 @@ public sealed class BrowserYouTubeResourceRegressionTests(ITestOutputHelper outp
                 Assert.Equal(1UL, vn_glass_gpu_take_capture_count(gpuHandle));
 
                 _ = vn_glass_gpu_wait_ready(gpuHandle, 8);
-                int hrTake = vn_glass_gpu_take_ready(gpuHandle, out IntPtr readySurface);
-                if (hrTake == 0 && readySurface != IntPtr.Zero)
-                    Marshal.Release(readySurface);
+                System.Threading.SpinWait.SpinUntil(() => vn_glass_gpu_present_ready(gpuHandle, destSurface.NativePointer) == 0, 50);
 
                 // Identical pixels + identical frame parameters must skip GPU upload & render (S_FALSE == 1).
                 int hrDuplicate = vn_glass_gpu_render_pixels(gpuHandle, in frame, (IntPtr)ptr, pixels.Length, stride);
@@ -380,6 +380,7 @@ public sealed class BrowserYouTubeResourceRegressionTests(ITestOutputHelper outp
                 CreateFlags.HardwareVertexProcessing | CreateFlags.Multithreaded | CreateFlags.FpuPreserve, pp);
             if (vn_glass_gpu_create(device9.NativePointer, 512, 128, out gpuHandle) == 0 && gpuHandle != 0)
             {
+                using var destSurface = device9.CreateRenderTarget(512, 128, Format.A8R8G8B8, MultisampleType.None, 0, lockable: false);
                 const int w = 220, h = 38, stride = w * 4, frames = 600;
                 byte[] pixels = new byte[stride * h];
                 for (int i = 0; i < pixels.Length; i++) pixels[i] = (byte)((i * 29 + 11) & 0xFF);
@@ -396,8 +397,7 @@ public sealed class BrowserYouTubeResourceRegressionTests(ITestOutputHelper outp
                             ptr[0] = (byte)i;
                             Assert.Equal(0, vn_glass_gpu_render_pixels(gpuHandle, in frame, (IntPtr)ptr, pixels.Length, stride));
                             _ = vn_glass_gpu_wait_ready(gpuHandle, 8);
-                            if (vn_glass_gpu_take_ready(gpuHandle, out IntPtr surf) == 0 && surf != IntPtr.Zero)
-                                Marshal.Release(surf);
+                            System.Threading.SpinWait.SpinUntil(() => vn_glass_gpu_present_ready(gpuHandle, destSurface.NativePointer) == 0, 50);
                         }
                         swActive.Stop();
                         _ = vn_glass_gpu_take_capture_count(gpuHandle);
@@ -475,7 +475,7 @@ public sealed class BrowserYouTubeResourceRegressionTests(ITestOutputHelper outp
     private static extern int vn_glass_gpu_wait_ready(long handle, uint timeoutMs);
 
     [DllImport("VNotch.Native.dll", CallingConvention = CallingConvention.StdCall)]
-    private static extern int vn_glass_gpu_take_ready(long handle, out IntPtr surface);
+    private static extern int vn_glass_gpu_present_ready(long handle, IntPtr destination);
 
     [DllImport("VNotch.Native.dll", CallingConvention = CallingConvention.StdCall)]
     private static extern ulong vn_glass_gpu_take_capture_count(long handle);

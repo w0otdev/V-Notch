@@ -3,6 +3,7 @@ using System.Runtime.InteropServices;
 using System.Threading.Tasks;
 using VNotch.Models;
 using Windows.Media.Control;
+using static VNotch.Services.VNotchNative;
 
 namespace VNotch.Services;
 
@@ -31,15 +32,6 @@ public sealed partial class MediaTransportControlService
         long targetTicks,
         long endTimeTicks,
         out long outClampedTicks);
-
-    [LibraryImport(NativeDll, StringMarshalling = StringMarshalling.Utf16)]
-    private static partial int vn_media_detection_build_session_instance_key(
-        nint unkPtr,
-        ReadOnlySpan<char> sourceApp,
-        int sourceAppLen,
-        Span<char> outBuf,
-        int outCap,
-        out int outLen);
 
     private const string LogTag = "MEDIA-CTRL";
 

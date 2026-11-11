@@ -8,7 +8,6 @@ using VNotch.Services;
 
 namespace VNotch.Controllers;
 
-
 internal sealed partial class LiquidGlassSurfaceBinder
 {
     [StructLayout(LayoutKind.Sequential, Pack = 1)]
@@ -270,7 +269,7 @@ internal sealed partial class LiquidGlassSurfaceBinder
         ref BlurEffect? blur,
         double blurAmount,
         bool useGpuRefraction,
-        LiquidGlassRefractionEffect? refractionEffect = null)
+        LiquidGlassLensState? refractionEffect = null)
     {
         if (host?.Effect != null)
             host.Effect = null;
@@ -280,7 +279,7 @@ internal sealed partial class LiquidGlassSurfaceBinder
 
         double radius = Math.Clamp(blurAmount, 0, 1) * 14.0;
         if (radius < 0.5) radius = 0.0;
-        GlassVisualUpdates.SetDouble(refractionEffect, LiquidGlassRefractionEffect.BlurRadiusProperty, radius);
+        refractionEffect.BlurRadius = radius;
     }
 
     public static Color BuildContentFresnelTint(byte red, byte green, byte blue)

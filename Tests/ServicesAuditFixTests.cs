@@ -65,17 +65,33 @@ public class ServicesAuditFixTests
         string path = Path.Combine(dir, "settings.json");
         try
         {
-            WriteKey(path, "first-key-0123456789");
-            File.SetLastWriteTimeUtc(path, new DateTime(2024, 1, 1, 0, 0, 0, DateTimeKind.Utc));
-            Assert.Equal("first-key-0123456789", MediaMetadataLookupService.GetCachedYouTubeApiKey(path));
+            using var settingsService = new SettingsService(path);
+            settingsService.Save(new VNotch.Models.NotchSettings
+            {
+                SettingsVersion = SettingsMigrator.CurrentVersion,
+                EnableYouTubeApi = true,
+                YouTubeApiKey = "first-key-0123456789"
+            });
+            DateTime cachedTime = File.GetLastWriteTimeUtc(path);
+            Assert.Equal("first-key-0123456789", MediaMetadataLookupService.GetYouTubeApiKey(settingsService));
 
-            // Same timestamp: the cached value is reused without re-reading the file.
-            WriteKey(path, "second-key-0123456789");
-            File.SetLastWriteTimeUtc(path, new DateTime(2024, 1, 1, 0, 0, 0, DateTimeKind.Utc));
-            Assert.Equal("first-key-0123456789", MediaMetadataLookupService.GetCachedYouTubeApiKey(path));
+            // Replace encrypted key with an equal-length serialized JSON token and restore timestamp: cached value is reused.
+            string rawOnDisk = File.ReadAllText(path);
+            string oldToken = JsonSerializer.Serialize(JsonDocument.Parse(rawOnDisk).RootElement.GetProperty("YouTubeApiKey").GetString()!);
+            Assert.Contains(oldToken, rawOnDisk, StringComparison.Ordinal);
+            string newToken;
+            int salt = 0;
+            do
+            {
+                newToken = JsonSerializer.Serialize(DataProtection.Protect($"other-key-{salt++:D10}"));
+            } while (newToken.Length != oldToken.Length);
+            string expectedNewKey = $"other-key-{salt - 1:D10}";
+            File.WriteAllText(path, rawOnDisk.Replace(oldToken, newToken, StringComparison.Ordinal));
+            File.SetLastWriteTimeUtc(path, cachedTime);
+            Assert.Equal("first-key-0123456789", MediaMetadataLookupService.GetYouTubeApiKey(settingsService));
 
-            File.SetLastWriteTimeUtc(path, new DateTime(2024, 1, 2, 0, 0, 0, DateTimeKind.Utc));
-            Assert.Equal("second-key-0123456789", MediaMetadataLookupService.GetCachedYouTubeApiKey(path));
+            File.SetLastWriteTimeUtc(path, cachedTime.AddMinutes(1));
+            Assert.Equal(expectedNewKey, MediaMetadataLookupService.GetYouTubeApiKey(settingsService));
         }
         finally
         {
@@ -86,6 +102,7 @@ public class ServicesAuditFixTests
     private static void WriteKey(string path, string key) =>
         File.WriteAllText(path, JsonSerializer.Serialize(new Dictionary<string, object>
         {
+            ["SettingsVersion"] = SettingsMigrator.CurrentVersion,
             ["EnableYouTubeApi"] = true,
             ["YouTubeApiKey"] = DataProtection.Protect(key)
         }));

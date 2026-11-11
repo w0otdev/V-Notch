@@ -351,9 +351,10 @@ public sealed partial class SettingsService : ISettingsService, IAsyncDisposable
             var (settings, migrated) = SettingsMigrator.Migrate(raw);
             _settingsLoadFailed = false;
             bool normalized = NormalizeSettings(settings);
+            bool isForwardVersion = settings.SettingsVersion > SettingsMigrator.CurrentVersion;
             bool migrationSaved = true;
 
-            if (migrated || normalized)
+            if (!isForwardVersion && (migrated || normalized))
             {
                 RuntimeLog.Log(
                     LogCategoryLoad,
@@ -401,7 +402,7 @@ public sealed partial class SettingsService : ISettingsService, IAsyncDisposable
             _settingsLoadFailed = true;
             // A legacy key could not be protected. Do not touch the existing file.
             RuntimeLog.Error(LogCategoryLoad, "DPAPI encryption failed; legacy settings were left unchanged.");
-            _apiKeySaveWarning("Your API keys could not be protected or read. Existing settings were preserved. Restore Windows credential access and reload settings before saving.");
+            DispatchSaveWarning(Loc.Get("error.apiKeyEncrypt"));
             try
             {
                 var recovered = ImportSettingsFromString(raw).Settings;
@@ -535,7 +536,7 @@ public sealed partial class SettingsService : ISettingsService, IAsyncDisposable
         try
         {
             SafeFileDeletion.ValidatePath(_settingsPath);
-            settings.SettingsVersion = SettingsMigrator.CurrentVersion;
+            settings.SettingsVersion = Math.Max(settings.SettingsVersion, SettingsMigrator.CurrentVersion);
 
             var json = JsonSerializer.Serialize(settings, SaveJsonOptions);
 

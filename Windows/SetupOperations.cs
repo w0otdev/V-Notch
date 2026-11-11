@@ -215,7 +215,6 @@ internal static class SetupOperations
                             unownedBackups.Add(saved);
                     }
                     else originals.Add(destinationFile, null);
-                    File.WriteAllText(Path.Combine(backup, "restore-map.json"), System.Text.Json.JsonSerializer.Serialize(originals));
                     if (!string.IsNullOrEmpty(destinationFolder))
                     {
                         Directory.CreateDirectory(destinationFolder);
@@ -235,19 +234,31 @@ internal static class SetupOperations
                     if (saved != null) File.Copy(manifest, saved);
                     originals.Add(manifest, saved);
                 }
-                File.WriteAllText(Path.Combine(backup, "restore-map.json"), System.Text.Json.JsonSerializer.Serialize(originals));
                 var ownedFiles = files.Select(file => Path.GetRelativePath(sourceDirectory, file))
                     .Select(path => new InstallDirectoryCleanup.InstalledFile(path, InstallDirectoryCleanup.HashFile(Path.Combine(installDirectory, path))))
                     .ToDictionary(file => file.Path, StringComparer.OrdinalIgnoreCase);
-                foreach (var previous in previousFiles.Values)
-                {
-                    string path = Path.Combine(installDirectory, previous.Path);
-                    if (!ownedFiles.ContainsKey(previous.Path) && File.Exists(path) &&
-                        InstallDirectoryCleanup.HashFile(path).Equals(previous.Sha256, StringComparison.OrdinalIgnoreCase))
-                        ownedFiles.Add(previous.Path, previous);
-                }
                 File.WriteAllText(manifest, System.Text.Json.JsonSerializer.Serialize(new InstallDirectoryCleanup.InstallManifest(2, ownedFiles.Values.ToArray())));
                 committed = true;
+
+                foreach (var previous in previousFiles.Values)
+                {
+                    if (ownedFiles.ContainsKey(previous.Path))
+                        continue;
+
+                    string stalePath = Path.Combine(installDirectory, previous.Path);
+                    try
+                    {
+                        if (File.Exists(stalePath) &&
+                            InstallDirectoryCleanup.HashFile(stalePath).Equals(previous.Sha256, StringComparison.OrdinalIgnoreCase))
+                        {
+                            DeleteSetupFileIfExists(stalePath);
+                        }
+                    }
+                    catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+                    {
+                        Debug.WriteLine($"[Setup] Could not remove stale file '{stalePath}': {ex.Message}");
+                    }
+                }
 
                 var installedExePath = Path.Combine(installDirectory, AppExeName);
                 reportProgress(new SetupProgressInfo(VNotch.Services.Loc.Get("setup.install.creatingShortcuts"), files.Length, files.Length));
@@ -281,6 +292,14 @@ internal static class SetupOperations
                 if (failures.Count > 1)
                 {
                     recoveryFailed = true;
+                    try
+                    {
+                        File.WriteAllText(Path.Combine(backup, "restore-map.json"), System.Text.Json.JsonSerializer.Serialize(originals));
+                    }
+                    catch (Exception mapError)
+                    {
+                        failures.Add(mapError);
+                    }
                     throw new AggregateException($"Installation rollback failed. Recovery copies remain at {backup}.", failures);
                 }
                 throw;

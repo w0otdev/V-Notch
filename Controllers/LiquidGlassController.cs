@@ -210,6 +210,7 @@ public sealed partial class LiquidGlassController : IDisposable
     private volatile bool _presentationPaused;
     private readonly AutoResetEvent _idleWakeEvent = new(false);
     private int _disposed;
+    private int _idleWakeDisposed;
     private long _refreshVersion;
     private long _renderedRefreshVersion;
     private bool ForceRefreshNeeded => Volatile.Read(ref _refreshVersion) != Volatile.Read(ref _renderedRefreshVersion);
@@ -507,6 +508,7 @@ public sealed partial class LiquidGlassController : IDisposable
             if (_isActive) _d3dPresenter.BeginSession(Volatile.Read(ref _renderGeneration));
         }
 
+        RefreshBitmapDpi(updateHostDimensions: false);
         _host.Stretch = Stretch.Fill;
         _host.HorizontalAlignment = HorizontalAlignment.Left;
         _host.VerticalAlignment = VerticalAlignment.Top;
@@ -708,8 +710,40 @@ public sealed partial class LiquidGlassController : IDisposable
             ? intervalMs
             : 1000.0 / (displayRefreshHz > 0 && !ultimateGpu ? Math.Min(configuredFps, displayRefreshHz) : Math.Max(1, configuredFps));
 
+    private bool RefreshBitmapDpi(bool updateHostDimensions)
+    {
+        IntPtr hwnd = IntPtr.Zero;
+        try { hwnd = _getHwnd(); }
+        catch { /* best-effort handle retrieval */ }
+        if (hwnd == IntPtr.Zero) return false;
+
+        uint dpiNow = GetDpiForWindow(hwnd);
+        double nextDpi = dpiNow > 0 ? dpiNow : 96.0;
+        double prevDpi = Volatile.Read(ref _bitmapDpi);
+        if (Math.Abs(prevDpi - nextDpi) <= 1e-4) return false;
+
+        Volatile.Write(ref _bitmapDpi, nextDpi);
+        _mapsDirty = true;
+        Interlocked.Increment(ref _refreshVersion);
+        if (updateHostDimensions && _gpuMode && _d3dPresenter != null)
+        {
+            void SyncHostDimensions()
+            {
+                if (!_gpuMode || _d3dPresenter == null || Volatile.Read(ref _disposed) != 0) return;
+                double currentDpi = Volatile.Read(ref _bitmapDpi);
+                double scale = currentDpi > 0 ? currentDpi / 96.0 : 1.0;
+                _host.Width = SurfaceWidth / scale;
+                _host.Height = SurfaceHeight / scale;
+            }
+            if (_dispatcher.CheckAccess()) SyncHostDimensions();
+            else if (!_dispatcher.HasShutdownStarted) _dispatcher.BeginInvoke(DispatcherPriority.Render, (Action)SyncHostDimensions);
+        }
+        return true;
+    }
+
     private void RefreshDisplayCadence()
     {
+        RefreshBitmapDpi(updateHostDimensions: true);
         long now = Environment.TickCount64;
         if (now < _nextDisplayRefreshProbe) return;
         _nextDisplayRefreshProbe = now + 1000;
@@ -772,9 +806,27 @@ public sealed partial class LiquidGlassController : IDisposable
 
     private void SignalWakeEventSafe()
     {
-        if (Volatile.Read(ref _disposed) != 0) return;
+        if (Volatile.Read(ref _disposed) != 0 || Volatile.Read(ref _idleWakeDisposed) != 0) return;
         try { _idleWakeEvent.Set(); }
         catch (ObjectDisposedException) { /* disposed concurrently */ }
+    }
+
+    private void WakeWorkerForStop()
+    {
+        if (Volatile.Read(ref _idleWakeDisposed) != 0) return;
+        try { _idleWakeEvent.Set(); }
+        catch (ObjectDisposedException) { /* disposed concurrently */ }
+    }
+
+    private void DisposeTerminalKernelHandles()
+    {
+        ReleaseRenderTimerPeriod();
+        DisposeWaitableTimer();
+        if (Interlocked.Exchange(ref _idleWakeDisposed, 1) == 0)
+        {
+            try { _idleWakeEvent.Dispose(); }
+            catch { /* best-effort handle cleanup */ }
+        }
     }
 
     public void SetParams(GlassParams p)
@@ -856,6 +908,7 @@ public sealed partial class LiquidGlassController : IDisposable
         _hasVisibleFrame = false;
         _cachedRegion = null;
         _lastRegionFetchMs = double.NegativeInfinity;
+        RefreshBitmapDpi(updateHostDimensions: true);
         if (_gpuMode && _d3dPresenter == null && !TryEnableGpuPresenter(out var error))
             OnD3DPresenterFailed(error ?? new InvalidOperationException("GPU presenter restart failed."));
         if (_gpuMode) _d3dPresenter?.BeginSession(Volatile.Read(ref _renderGeneration));
@@ -882,14 +935,12 @@ public sealed partial class LiquidGlassController : IDisposable
             }
         }
 
-        uint dpiNow = GetDpiForWindow(_getHwnd());
-        _bitmapDpi = dpiNow > 0 ? dpiNow : 96;
         StartWorkerIfNeeded();
     }
 
     private void StartWorkerIfNeeded()
     {
-        if (!_isActive || _worker != null) return;
+        if (!_isActive || Volatile.Read(ref _disposed) != 0 || _worker != null) return;
         int generation = _renderGeneration;
         _worker = new Thread(() => WorkerLoop(generation))
         {
@@ -921,14 +972,12 @@ public sealed partial class LiquidGlassController : IDisposable
 
     public void Dispose()
     {
+        if (Interlocked.Exchange(ref _disposed, 1) != 0) return;
         ReleaseGpuLens();
         Stop(retainGpuResources: false);
-        if (Interlocked.Exchange(ref _disposed, 1) == 0 && _worker == null)
+        if (Volatile.Read(ref _worker) == null)
         {
-            ReleaseRenderTimerPeriod();
-            DisposeWaitableTimer();
-            try { _idleWakeEvent.Dispose(); }
-            catch { /* best-effort handle cleanup */ }
+            DisposeTerminalKernelHandles();
         }
     }
 
@@ -947,7 +996,7 @@ public sealed partial class LiquidGlassController : IDisposable
         ClearLiveRegion();
         _presentationPaused = false;
         _exactBitBltCapture = false;
-        SignalWakeEventSafe();
+        WakeWorkerForStop();
         // The worker owns the timer until its wait has returned and it exits.
         // Closing that handle here races WaitForMultipleObjects during Stop.
 
@@ -1215,25 +1264,32 @@ public sealed partial class LiquidGlassController : IDisposable
         ReleaseRenderTimerPeriod();
         DisposeWaitableTimer();
         _sourceBlurBuffer = _sourceBlurTmp = Array.Empty<byte>();
-        if (Volatile.Read(ref _disposed) != 0)
+        if (Volatile.Read(ref _disposed) != 0 || _dispatcher.HasShutdownStarted || _dispatcher.HasShutdownFinished)
         {
-            _worker = null;
-            try { _idleWakeEvent.Dispose(); }
-            catch { /* best-effort handle cleanup */ }
+            if (Volatile.Read(ref _disposed) != 0)
+                DisposeTerminalKernelHandles();
+            Volatile.Write(ref _worker, null);
             return;
         }
         try
         {
             _dispatcher.BeginInvoke(DispatcherPriority.Send, (Action)(() =>
             {
-                _worker = null;
+                Volatile.Write(ref _worker, null);
+                if (Volatile.Read(ref _disposed) != 0)
+                {
+                    DisposeTerminalKernelHandles();
+                    return;
+                }
                 StartWorkerIfNeeded();
             }));
         }
         catch
         {
             // Ignored if dispatcher is shutting down
-            _worker = null;
+            Volatile.Write(ref _worker, null);
+            if (Volatile.Read(ref _disposed) != 0)
+                DisposeTerminalKernelHandles();
         }
     }
 
@@ -1744,17 +1800,20 @@ public sealed partial class LiquidGlassController : IDisposable
 #pragma warning restore S1172
     {
         _ = useMag;
+        RefreshBitmapDpi(updateHostDimensions: true);
+        double bitmapDpi = Volatile.Read(ref _bitmapDpi);
+        if (bitmapDpi <= 0) bitmapDpi = 96.0;
         // A GPU-native lens renders the active crop; pooled capacity handles growth.
         // Full-surface capture remains for the legacy presentation path.
         bool fullSurface = gpuMode && CaptureFullSurface && !UsesNativeRefraction;
         double scale = 1.0;
         int outW = Math.Max(8, (int)Math.Round(displayW * scale));
         int outH = Math.Max(8, (int)Math.Round(displayH * scale));
-        double outScale = displayW > 0 ? (double)outW / displayW * (_bitmapDpi / 96.0) : 1.0;
+        double outScale = displayW > 0 ? (double)outW / displayW * (bitmapDpi / 96.0) : 1.0;
 
         int overscan = gpuMode
             ? 0
-            : Math.Clamp((int)Math.Round(80 * (_bitmapDpi / 96.0)), 64, 150);
+            : Math.Clamp((int)Math.Round(80 * (bitmapDpi / 96.0)), 64, 150);
         int bufW = outW + overscan * 2;
         int bufH = outH + overscan;
         int notchOffX = overscan;

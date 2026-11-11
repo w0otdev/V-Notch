@@ -18,7 +18,7 @@ namespace vnotch::services {
 
 class YouTubeQuotaCooldown final {
 public:
-    static bool HashKey(std::u16string_view key, char16_t* out_hex64) noexcept {
+    static bool HashKey(std::u16string_view key, char16_t* out_hex64) {
         std::u16string_view trimmed = vnotch::trim_view(key);
 
         std::string utf8;

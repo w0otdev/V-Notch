@@ -62,7 +62,7 @@ public sealed class SpotlightLauncherTests
     public void CanReveal_AllowsFileBackedTargetsButNotStoreApps()
     {
         string directory = Directory.CreateTempSubdirectory("vnotch-spotlight-").FullName;
-        string file = Path.Combine(directory, "item.txt");
+        string file = Path.Combine(directory, "item, 2026 (final).txt");
         File.WriteAllText(file, "test");
         try
         {
@@ -72,6 +72,7 @@ public sealed class SpotlightLauncherTests
             Assert.False(SpotlightLauncher.CanReveal(Item(
                 SpotlightResultKind.Application, "shell:AppsFolder\\PackageFamily!App")));
             Assert.False(SpotlightLauncher.CanReveal(Item(SpotlightResultKind.File, "C:\\missing-file.txt")));
+            Assert.False(new SpotlightLauncher().TryRevealInExplorer(Item(SpotlightResultKind.File, "C:\\missing,file.txt")));
         }
         finally
         {
@@ -139,6 +140,24 @@ public sealed class SpotlightLauncherTests
     {
         Assert.Equal(256, WindowsSearchProvider.SanitizeQuery(new string('a', 300)).Length);
         Assert.Empty(WindowsSearchProvider.SanitizeQuery("\\\"'():*"));
+    }
+
+    [Fact]
+    public void WindowsSearchNormalizeResultPath_DecodesUtf8PercentEncodedFileUris()
+    {
+        string decoded = WindowsSearchProvider.NormalizeResultPath(
+            "file:///C:/T%C3%A0i%20li%E1%BB%87u/B%C3%A1o%20c%C3%A1o%2C%202026.pdf");
+        Assert.Equal(@"C:\Tài liệu\Báo cáo, 2026.pdf", decoded);
+        Assert.Empty(WindowsSearchProvider.NormalizeResultPath("file:///C:/bad%00path.txt"));
+    }
+
+    [Fact]
+    public void WindowsSearchBuildQuerySql_SanitizesUntrustedQueryInputInternally()
+    {
+        string sql = WindowsSearchProvider.BuildQuerySql("report' OR 'x'='x", "report' OR 'x'='x", 20);
+        Assert.NotEmpty(sql);
+        Assert.DoesNotContain("report'", sql, StringComparison.Ordinal);
+        Assert.DoesNotContain("' OR '", sql, StringComparison.Ordinal);
     }
 
     private static SpotlightSearchItem Item(SpotlightResultKind kind, string target) =>

@@ -1,7 +1,13 @@
 #include "vnotch_common.h"
+#include <dxgi.h>
+#include <wrl/client.h>
 #include <algorithm>
 #include <cstdint>
+#include <cwchar>
+#include <iterator>
 #include <string_view>
+
+#pragma comment(lib, "dxgi.lib")
 
 namespace vnotch::services {
 
@@ -21,76 +27,82 @@ public:
         }
         return score;
     }
-
-    [[nodiscard]] static constexpr double ComputeProcessCpuDelta(
-        uint64_t proc_total_time,
-        uint64_t last_proc_time,
-        int64_t now_ticks,
-        int64_t last_proc_ticks,
-        int64_t stopwatch_freq,
-        int32_t processor_count,
-        double smoothed_proc_cpu) noexcept {
-        if (last_proc_ticks == 0 || stopwatch_freq <= 0 || processor_count <= 0) {
-            return 0.0;
-        }
-
-        const uint64_t delta_proc = proc_total_time > last_proc_time ? proc_total_time - last_proc_time : 0ULL;
-        const double delta_wall_sec = static_cast<double>(now_ticks - last_proc_ticks) / static_cast<double>(stopwatch_freq);
-        if (delta_wall_sec <= 0.005) {
-            return smoothed_proc_cpu;
-        }
-
-        const double proc_sec = static_cast<double>(delta_proc) / 10000000.0;
-        const double raw_proc_cpu = std::clamp((proc_sec / (delta_wall_sec * static_cast<double>(processor_count))) * 100.0, 0.0, 100.0);
-        return last_proc_time == 0ULL ? raw_proc_cpu : (smoothed_proc_cpu * 0.88 + raw_proc_cpu * 0.12);
-    }
-
-    [[nodiscard]] static constexpr double ComputeGlobalCpuDelta(
-        uint64_t idle,
-        uint64_t last_sys_idle,
-        uint64_t kernel,
-        uint64_t last_sys_kernel,
-        uint64_t user,
-        uint64_t last_sys_user,
-        double smoothed_global_cpu) noexcept {
-        if (last_sys_idle == 0ULL) {
-            return 0.0;
-        }
-
-        const uint64_t delta_idle = idle > last_sys_idle ? idle - last_sys_idle : 0ULL;
-        const uint64_t delta_kernel = kernel > last_sys_kernel ? kernel - last_sys_kernel : 0ULL;
-        const uint64_t delta_user = user > last_sys_user ? user - last_sys_user : 0ULL;
-        const uint64_t delta_total = delta_kernel + delta_user;
-
-        if (delta_total == 0ULL) {
-            return smoothed_global_cpu;
-        }
-
-        const double busy = delta_total > delta_idle ? static_cast<double>(delta_total - delta_idle) : 0.0;
-        const double raw_global_cpu = std::clamp((busy / static_cast<double>(delta_total)) * 100.0, 0.0, 100.0);
-        return smoothed_global_cpu * 0.88 + raw_global_cpu * 0.12;
-    }
-
-    [[nodiscard]] static constexpr bool IsTargetGpuEngineInstance(std::u16string_view inst) noexcept {
-        return vn_contains_icase_ascii(inst, u"engtype_3D") ||
-               vn_contains_icase_ascii(inst, u"engtype_Compute") ||
-               vn_contains_icase_ascii(inst, u"engtype_VR");
-    }
 };
 
 } // namespace vnotch::services
 
 extern "C" {
 
-VN_EXPORT int32_t vn_gpu_monitor_score_adapter(
-    const char16_t* name,
-    int32_t name_len,
-    uint64_t vram_bytes,
-    int64_t* out_score) noexcept {
-    if (!out_score || (!name && name_len > 0) || name_len < 0) return VN_E_INVALID_ARG;
-    const std::u16string_view sv(name ? name : u"", static_cast<size_t>(name_len));
-    *out_score = vnotch::services::GpuMonitorService::ScoreAdapter(sv, vram_bytes);
-    return VN_OK;
+VN_EXPORT int32_t __stdcall vn_gpu_monitor_find_best_adapter(
+    wchar_t* out_name,
+    int32_t out_name_cap,
+    int32_t* out_name_len,
+    uint64_t* out_dedicated_vram) noexcept {
+    if (!out_name || out_name_cap <= 0 || !out_name_len || !out_dedicated_vram) {
+        return VN_ERR_INVALID_ARG;
+    }
+
+    *out_name_len = 0;
+    *out_dedicated_vram = 0;
+
+    try {
+        Microsoft::WRL::ComPtr<IDXGIFactory1> factory;
+        if (FAILED(CreateDXGIFactory1(IID_PPV_ARGS(&factory))) || !factory) {
+            return VN_ERR_FAIL;
+        }
+
+        wchar_t best_name[128]{};
+        size_t best_name_len = 0;
+        uint64_t best_vram = 0;
+        int64_t best_score = -1;
+
+        for (UINT i = 0; ; ++i) {
+            Microsoft::WRL::ComPtr<IDXGIAdapter1> adapter;
+            if (FAILED(factory->EnumAdapters1(i, &adapter)) || !adapter) {
+                break;
+            }
+
+            DXGI_ADAPTER_DESC1 desc{};
+            if (FAILED(adapter->GetDesc1(&desc))) {
+                continue;
+            }
+
+            if ((desc.Flags & DXGI_ADAPTER_FLAG_SOFTWARE) != 0) {
+                continue;
+            }
+
+            const size_t raw_len = wcsnlen(desc.Description, std::size(desc.Description));
+            const std::u16string_view trimmed = vnotch::trim_view(
+                std::u16string_view(reinterpret_cast<const char16_t*>(desc.Description), raw_len));
+            const uint64_t vram = static_cast<uint64_t>(desc.DedicatedVideoMemory);
+            const int64_t score = vnotch::services::GpuMonitorService::ScoreAdapter(trimmed, vram);
+
+            if (score > best_score) {
+                best_score = score;
+                best_vram = vram;
+                best_name_len = std::min(trimmed.size(), std::size(best_name));
+                for (size_t k = 0; k < best_name_len; ++k) {
+                    best_name[k] = static_cast<wchar_t>(trimmed[k]);
+                }
+            }
+        }
+
+        if (best_name_len > 0) {
+            if (static_cast<int32_t>(best_name_len) > out_name_cap) {
+                *out_name_len = static_cast<int32_t>(best_name_len);
+                return VN_ERR_BUFFER_TOO_SMALL;
+            }
+            for (size_t k = 0; k < best_name_len; ++k) {
+                out_name[k] = best_name[k];
+            }
+            *out_name_len = static_cast<int32_t>(best_name_len);
+            *out_dedicated_vram = best_vram;
+        }
+
+        return VN_OK;
+    } catch (...) {
+        return VN_ERR_FAIL;
+    }
 }
 
 } // extern "C"

@@ -344,37 +344,6 @@ VN_EXPORT int32_t vn_settings_service_check_requires_restart(
     return VN_OK;
 }
 
-VN_EXPORT int32_t __stdcall vn_settings_clamp_int(
-    int32_t value,
-    int32_t min_val,
-    int32_t max_val,
-    int32_t* out_value) noexcept {
-    if (!out_value || min_val > max_val) return VN_E_INVALID_ARG;
-    *out_value = std::clamp(value, min_val, max_val);
-    return VN_OK;
-}
-
-VN_EXPORT int32_t __stdcall vn_settings_clamp_double(
-    double value,
-    double min_val,
-    double max_val,
-    double fallback_if_non_finite,
-    double* out_value) noexcept {
-    if (!out_value || !std::isfinite(min_val) || !std::isfinite(max_val) || min_val > max_val) return VN_E_INVALID_ARG;
-    *out_value = std::isfinite(value) ? std::clamp(value, min_val, max_val) : fallback_if_non_finite;
-    return VN_OK;
-}
-
-VN_EXPORT int32_t __stdcall vn_settings_double_equals(
-    double a,
-    double b,
-    uint8_t allow_nan_equal,
-    uint8_t* out_equal) noexcept {
-    if (!out_equal) return VN_E_INVALID_ARG;
-    *out_equal = vnotch::services::SettingsService::DoubleEquals(a, b, allow_nan_equal != 0) ? 1u : 0u;
-    return VN_OK;
-}
-
 VN_EXPORT int32_t __stdcall vn_liquid_glass_config_equals(
     const vnotch::services::VnLiquidGlassScalars* a,
     const vnotch::services::VnLiquidGlassScalars* b,

@@ -28,6 +28,11 @@ internal sealed partial class SpotlightLauncher
         ReadOnlySpan<char> target,
         int targetLen,
         out byte outIsAppsFolder);
+
+    [LibraryImport(NativeDll, StringMarshalling = StringMarshalling.Utf16)]
+    private static partial int vn_spotlight_launcher_reveal_in_explorer(
+        ReadOnlySpan<char> path,
+        int pathLen);
     public async Task<bool> TryLaunchAsync(SpotlightSearchItem item, bool systemActionConfirmed = false)
     {
         if (!IsValidTarget(item)) return false;
@@ -108,14 +113,10 @@ internal sealed partial class SpotlightLauncher
 
         try
         {
-            string explorerPath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Windows), "explorer.exe");
-            var startInfo = new ProcessStartInfo(explorerPath)
-            {
-                UseShellExecute = false
-            };
-            startInfo.Arguments = $"/select,\"{item.Target.Replace("\"", "")}\"";
-            using var process = Process.Start(startInfo);
-            return process != null;
+            if (vn_spotlight_launcher_reveal_in_explorer(item.Target.AsSpan(), item.Target.Length) == 0)
+                return true;
+            RuntimeLog.Warn("SPOTLIGHT-LAUNCH", $"Failed to reveal {item.Kind}: {item.Target}");
+            return false;
         }
         catch (Exception ex)
         {

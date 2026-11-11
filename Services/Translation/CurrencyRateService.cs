@@ -23,8 +23,7 @@ internal sealed partial class CurrencyRateService
         int todayDayNumber,
         out byte outValid);
 
-    private static readonly HttpClient Client = new(NetworkPrivacy.Handler(NetworkFeature.CurrencyRates,
-        new NativeWinHttpHandler { AllowAutoRedirect = false }))
+    private static readonly HttpClient Client = new(NetworkPrivacy.Handler(NetworkFeature.CurrencyRates))
     { Timeout = TimeSpan.FromSeconds(8), MaxResponseContentBufferSize = 16384 };
     internal static CurrencyRateService Shared { get; } = new();
     private readonly HttpClient _client;

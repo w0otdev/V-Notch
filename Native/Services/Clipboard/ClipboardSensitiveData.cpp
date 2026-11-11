@@ -1,5 +1,5 @@
 #include "vnotch_common.h"
-#include "../../vnotch_keyword_trie.h"
+#include "../vnotch_secret_patterns.h"
 
 using namespace vnotch;
 
@@ -12,18 +12,18 @@ namespace vnotch::services
             u"1password", u"bitwarden", u"keepass", u"keepassxc", u"lastpass", u"enpass", u"dashlane",
             u"nordpass", u"protonpass", u"proton pass", u"roboform", u"authpass", u"keeper", u"safeincloud"
         };
-        
+
         static constexpr std::u16string_view NON_VALUES[] = {
             u"null", u"undefined", u"true", u"false", u"none", u"required", u"optional", u"missing", u"invalid",
             u"incorrect", u"expired", u"string", u"redacted", u"your_password", u"your_api_key"
         };
-        
+
         static constexpr std::u16string_view FILE_EXTENSIONS[] = {
             u".cs", u".xaml", u".json", u".png", u".jpg", u".jpeg", u".exe", u".dll", u".md", u".html", u".txt",
             u".ts", u".tsx", u".js", u".jsx", u".py", u".zip", u".pdf", u".docx", u".xlsx", u".csv", u".xml",
             u".yaml", u".yml", u".log", u".sql", u".css", u".svg", u".mp4", u".mp3"
         };
-        
+
         static inline std::u16string_view get_file_name_without_ext(std::u16string_view path) noexcept
         {
             size_t last_sep = std::u16string_view::npos;
@@ -38,7 +38,7 @@ namespace vnotch::services
             size_t last_dot = name.rfind(u'.');
             return (last_dot == std::u16string_view::npos) ? name : name.substr(0, last_dot);
         }
-        
+
         static inline std::u16string_view get_path_ext(std::u16string_view path) noexcept
         {
             for (size_t i = path.size(); i > 0; --i)
@@ -57,18 +57,15 @@ namespace vnotch::services
             }
             return {};
         }
-        
+
         static inline bool is_ascii_hex(char16_t c) noexcept
         {
-            return (c >= u'0' && c <= u'9') || (c >= u'a' && c <= u'f') || (c >= u'A' && c <= u'F');
+            return secret_patterns::is_ascii_hex(c);
         }
 
         static inline int32_t hex_value(char16_t c) noexcept
         {
-            if (c >= u'0' && c <= u'9') return c - u'0';
-            if (c >= u'a' && c <= u'f') return 10 + (c - u'a');
-            if (c >= u'A' && c <= u'F') return 10 + (c - u'A');
-            return -1;
+            return secret_patterns::ascii_hex_value(c);
         }
 
         static inline bool is_label_sep(char16_t c) noexcept
@@ -118,36 +115,24 @@ namespace vnotch::services
                     rem.remove_prefix(1);
                 }
             }
-            static constexpr std::u16string_view SECRET_SUFFIXES[] = {
-                u"key", u"token", u"value", u"id", u"code", u"string", u"hash"
-            };
-            static constexpr auto suffixes = vnotch::MakeKeywordTrie(SECRET_SUFFIXES);
-            return suffixes.Contains(rem);
+            return secret_patterns::kSecretValueSuffixTrie.Contains(rem);
         }
 
         static inline bool is_sensitive_label_tail(std::u16string_view tail) noexcept
         {
-            static constexpr std::u16string_view EXACT_LABELS[] = {
-                u"password", u"passwd", u"pwd", u"passphrase", u"passcode", u"pass", u"pin",
-                u"apikey", u"token", u"otp", u"totp", u"2fa"
-            };
-            static constexpr auto labels = vnotch::MakeKeywordTrie(EXACT_LABELS);
-            if (labels.Contains(tail)) return true;
+            if (secret_patterns::kCredentialExactLabelTrie.Contains(tail)) return true;
             if (starts_with_ignore_case(tail, u"secret") && is_secret_suffix(tail.substr(6)))
             {
                 return true;
             }
-            return matches_compound_word(tail, u"private", u"key") ||
-                   matches_compound_word(tail, u"secret", u"key") ||
-                   matches_compound_word(tail, u"access", u"key") ||
-                   matches_compound_word(tail, u"api", u"key") ||
-                   matches_compound_word(tail, u"access", u"token") ||
-                   matches_compound_word(tail, u"refresh", u"token") ||
-                   matches_compound_word(tail, u"session", u"token") ||
-                   matches_compound_word(tail, u"auth", u"token") ||
-                   matches_compound_word(tail, u"id", u"token") ||
-                   matches_compound_word(tail, u"client", u"secret") ||
-                   matches_compound_word(tail, u"verification", u"code");
+            for (const auto& cp : secret_patterns::kCredentialCompoundLabels)
+            {
+                if (matches_compound_word(tail, cp.first, cp.second))
+                {
+                    return true;
+                }
+            }
+            return false;
         }
 
         static bool is_sensitive_credential_label(std::u16string_view raw_label) noexcept
@@ -261,7 +246,7 @@ namespace vnotch::services
             *out_len = copy_len;
             return true;
         }
-        
+
         static inline int32_t classify_char_for_entropy(char16_t c, int32_t& lower, int32_t& upper, int32_t& digits, int32_t& symbols, bool& strong_sym) noexcept
         {
             if (c >= u'a' && c <= u'z')
@@ -600,32 +585,32 @@ namespace vnotch::services
 
         static inline bool is_ascii_digit(char16_t c) noexcept
         {
-            return c >= u'0' && c <= u'9';
+            return secret_patterns::is_ascii_digit(c);
         }
 
         static inline bool is_ascii_alpha(char16_t c) noexcept
         {
-            return (c >= u'a' && c <= u'z') || (c >= u'A' && c <= u'Z');
+            return secret_patterns::is_ascii_alpha(c);
         }
 
         static inline bool is_ascii_alnum(char16_t c) noexcept
         {
-            return is_ascii_alpha(c) || is_ascii_digit(c);
+            return secret_patterns::is_ascii_alnum(c);
         }
 
         static inline bool is_ascii_alnum_under(char16_t c) noexcept
         {
-            return is_ascii_alnum(c) || c == u'_';
+            return secret_patterns::is_ascii_alnum_under(c);
         }
 
         static inline bool is_alnum_dash_under(char16_t c) noexcept
         {
-            return is_ascii_alnum(c) || c == u'_' || c == u'-';
+            return secret_patterns::is_alnum_dash_under(c);
         }
 
         static inline bool is_bearer_char(char16_t c) noexcept
         {
-            return is_ascii_alnum(c) || c == u'.' || c == u'_' || c == u'~' || c == u'+' || c == u'/' || c == u'-';
+            return secret_patterns::is_bearer_token_char(c);
         }
 
         static inline bool is_regex_word_char(char16_t c) noexcept
@@ -1041,14 +1026,14 @@ namespace vnotch::services
                 const char16_t c = text[i];
 
                 // 1. Private Keys: -----BEGIN (?:[A-Z0-9_-]+ )*PRIVATE KEY(?: BLOCK)?-----
-                if (c == u'-' && i + 27 <= n && starts_with_ignore_case(text.substr(i), u"-----BEGIN "))
+                if (c == u'-' && i + 27 <= n && starts_with_ignore_case(text.substr(i), secret_patterns::kPemBeginPrefix))
                 {
-                    size_t p = i + 11;
+                    size_t p = i + secret_patterns::kPemBeginPrefix.size();
                     while (p < n)
                     {
                         const std::u16string_view rem = text.substr(p);
-                        if (starts_with_ignore_case(rem, u"PRIVATE KEY-----") ||
-                            starts_with_ignore_case(rem, u"PRIVATE KEY BLOCK-----"))
+                        if (starts_with_ignore_case(rem, secret_patterns::kPemPrivateKeyClose) ||
+                            starts_with_ignore_case(rem, secret_patterns::kPemPrivateKeyBlockClose))
                         {
                             return true;
                         }
@@ -1060,9 +1045,9 @@ namespace vnotch::services
                 }
 
                 // 9. WIFI:(?:[^;]*;)*P:[^;]+;
-                if ((c == u'W' || c == u'w') && i + 8 <= n && starts_with_ignore_case(text.substr(i), u"WIFI:"))
+                if ((c == u'W' || c == u'w') && i + 8 <= n && starts_with_ignore_case(text.substr(i), secret_patterns::kPrefixWifi))
                 {
-                    size_t p = i + 5;
+                    size_t p = i + secret_patterns::kPrefixWifi.size();
                     while (p < n)
                     {
                         size_t semi = p;
@@ -1081,11 +1066,13 @@ namespace vnotch::services
                 const std::u16string_view rem = text.substr(i);
 
                 // 2. \b(?:sk-(?:proj-|ant-)?[A-Za-z0-9_-]{20,})\b
-                if (rem.size() >= 23 && starts_with_ignore_case(rem, u"sk-"))
+                if (rem.size() >= 23 && starts_with_ignore_case(rem, secret_patterns::kPrefixOpenAiSk))
                 {
-                    size_t body = i + 3;
-                    if (starts_with_ignore_case(text.substr(body), u"proj-")) body += 5;
-                    else if (starts_with_ignore_case(text.substr(body), u"ant-")) body += 4;
+                    size_t body = i + secret_patterns::kPrefixOpenAiSk.size();
+                    if (starts_with_ignore_case(text.substr(body), secret_patterns::kSubprefixOpenAiProj))
+                        body += secret_patterns::kSubprefixOpenAiProj.size();
+                    else if (starts_with_ignore_case(text.substr(body), secret_patterns::kSubprefixAnthropic))
+                        body += secret_patterns::kSubprefixAnthropic.size();
                     if (match_greedy_with_word_boundary(text, body, 20, static_cast<size_t>(-1), is_alnum_dash_under))
                     {
                         return true;
@@ -1093,62 +1080,57 @@ namespace vnotch::services
                 }
 
                 // 3a. gh[pousr]_[A-Za-z0-9]{20,}\b
-                if (rem.size() >= 24 && (rem[0] == u'g' || rem[0] == u'G') && (rem[1] == u'h' || rem[1] == u'H') && rem[3] == u'_')
+                if (rem.size() >= 24 &&
+                    secret_patterns::has_github_classic_prefix(rem, true) &&
+                    match_greedy_with_word_boundary(text, i + 4, 20, static_cast<size_t>(-1), is_ascii_alnum))
                 {
-                    const char16_t t = (rem[2] >= u'A' && rem[2] <= u'Z') ? static_cast<char16_t>(rem[2] + 32) : rem[2];
-                    if ((t == u'p' || t == u'o' || t == u'u' || t == u's' || t == u'r') &&
-                        match_greedy_with_word_boundary(text, i + 4, 20, static_cast<size_t>(-1), is_ascii_alnum))
-                    {
-                        return true;
-                    }
+                    return true;
                 }
 
                 // 3b. github_pat_[A-Za-z0-9_]{20,}\b
-                if (rem.size() >= 31 && starts_with_ignore_case(rem, u"github_pat_") &&
-                    match_greedy_with_word_boundary(text, i + 11, 20, static_cast<size_t>(-1), is_ascii_alnum_under))
+                if (rem.size() >= 31 &&
+                    secret_patterns::has_github_pat_prefix(rem, true) &&
+                    match_greedy_with_word_boundary(text, i + secret_patterns::kPrefixGitHubPat.size(), 20, static_cast<size_t>(-1), is_ascii_alnum_under))
                 {
                     return true;
                 }
 
                 // 3c. AKIA[A-Z0-9]{16}\b
-                if (rem.size() >= 20 && starts_with_ignore_case(rem, u"AKIA") &&
-                    match_greedy_with_word_boundary(text, i + 4, 16, 16, is_ascii_alnum))
+                if (rem.size() >= secret_patterns::kAwsAccessKeyTotalLen &&
+                    secret_patterns::has_aws_access_key_prefix(rem, false, true) &&
+                    match_greedy_with_word_boundary(text, i + secret_patterns::kAwsAccessKeyPrefixLen, secret_patterns::kAwsAccessKeyBodyLen, secret_patterns::kAwsAccessKeyBodyLen, is_ascii_alnum))
                 {
                     return true;
                 }
 
                 // 4a. AIza[0-9A-Za-z_-]{35}\b
-                if (rem.size() >= 39 && starts_with_ignore_case(rem, u"AIza") &&
-                    match_greedy_with_word_boundary(text, i + 4, 35, 35, is_alnum_dash_under))
+                if (rem.size() >= 39 &&
+                    starts_with_ignore_case(rem, secret_patterns::kPrefixGoogleApiKey) &&
+                    match_greedy_with_word_boundary(text, i + secret_patterns::kPrefixGoogleApiKey.size(), 35, 35, is_alnum_dash_under))
                 {
                     return true;
                 }
 
                 // 4b. xox[baprs]-[0-9A-Za-z]{10,48}\b
-                if (rem.size() >= 15 && starts_with_ignore_case(rem, u"xox") && rem[4] == u'-')
+                if (rem.size() >= 15 &&
+                    secret_patterns::has_slack_token_prefix(rem, true) &&
+                    match_greedy_with_word_boundary(text, i + 5, 10, 48, is_ascii_alnum))
                 {
-                    const char16_t t = (rem[3] >= u'A' && rem[3] <= u'Z') ? static_cast<char16_t>(rem[3] + 32) : rem[3];
-                    if ((t == u'b' || t == u'a' || t == u'p' || t == u'r' || t == u's') &&
-                        match_greedy_with_word_boundary(text, i + 5, 10, 48, is_ascii_alnum))
-                    {
-                        return true;
-                    }
+                    return true;
                 }
 
                 // 5a. [rs]k_(?:live|test)_[0-9a-zA-Z]{24,}\b
                 if (rem.size() >= 32 &&
-                    (rem[0] == u'r' || rem[0] == u'R' || rem[0] == u's' || rem[0] == u'S') &&
-                    (rem[1] == u'k' || rem[1] == u'K') && rem[2] == u'_' &&
-                    (starts_with_ignore_case(rem.substr(3), u"live_") || starts_with_ignore_case(rem.substr(3), u"test_")) &&
+                    secret_patterns::has_stripe_token_prefix(rem, true) &&
                     match_greedy_with_word_boundary(text, i + 8, 24, static_cast<size_t>(-1), is_ascii_alnum))
                 {
                     return true;
                 }
 
                 // 5b. SG\.[A-Za-z0-9_-]{22}\.[A-Za-z0-9_-]{43}\b
-                if (rem.size() >= 69 && starts_with_ignore_case(rem, u"SG."))
+                if (rem.size() >= 69 && starts_with_ignore_case(rem, secret_patterns::kPrefixSendGrid))
                 {
-                    size_t p1 = i + 3;
+                    size_t p1 = i + secret_patterns::kPrefixSendGrid.size();
                     while (p1 < n && p1 < i + 25 && is_alnum_dash_under(text[p1])) ++p1;
                     if (p1 == i + 25 && p1 < n && text[p1] == u'.' &&
                         match_greedy_with_word_boundary(text, p1 + 1, 43, 43, is_alnum_dash_under))
@@ -1175,9 +1157,11 @@ namespace vnotch::services
                 }
 
                 // 7. \bBearer\s+[A-Za-z0-9._~+/-]{20,}\b
-                if (rem.size() >= 27 && starts_with_ignore_case(rem, u"Bearer") && is_unicode_whitespace(rem[6]))
+                if (rem.size() >= 27 &&
+                    starts_with_ignore_case(rem, secret_patterns::kPrefixBearer) &&
+                    is_unicode_whitespace(rem[secret_patterns::kPrefixBearer.size()]))
                 {
-                    size_t p = i + 7;
+                    size_t p = i + secret_patterns::kPrefixBearer.size() + 1;
                     while (p < n && is_unicode_whitespace(text[p])) ++p;
                     if (match_greedy_with_word_boundary(text, p, 20, static_cast<size_t>(-1), is_bearer_char))
                     {
@@ -1357,16 +1341,13 @@ namespace vnotch::services
                             if (TryMatchLabelValueAt(text, i + after_access)) return true;
                         }
 
-                        static constexpr std::u16string_view kSecretSuffixes[] = {
-                            u"key", u"token", u"value", u"id", u"code", u"string", u"hash"
-                        };
                         const size_t starts[2] = { after_access, base_len };
                         const int start_cnt = (after_access != base_len) ? 2 : 1;
                         for (int s_idx = 0; s_idx < start_cnt; ++s_idx)
                         {
                             size_t sp = starts[s_idx];
                             if (sp < rem.size() && is_label_sep(rem[sp])) ++sp;
-                            for (std::u16string_view suf : kSecretSuffixes)
+                            for (std::u16string_view suf : secret_patterns::kSecretValueSuffixes)
                             {
                                 if (starts_with_ignore_case(rem.substr(sp), suf) &&
                                     TryMatchLabelValueAt(text, i + sp + suf.size()))
@@ -1377,14 +1358,7 @@ namespace vnotch::services
                         }
                     }
 
-                    struct CompoundPair { std::u16string_view first; std::u16string_view second; };
-                    static constexpr CompoundPair kEnglishCompounds[] = {
-                        { u"private", u"key" }, { u"access", u"key" }, { u"api", u"key" },
-                        { u"client", u"secret" }, { u"auth", u"token" }, { u"access", u"token" },
-                        { u"refresh", u"token" }, { u"session", u"token" }, { u"id", u"token" },
-                        { u"verification", u"code" }
-                    };
-                    for (const auto& cp : kEnglishCompounds)
+                    for (const auto& cp : secret_patterns::kCredentialCompoundLabels)
                     {
                         if (cp.first[0] != c0) continue;
                         size_t clen = 0;
@@ -1395,11 +1369,7 @@ namespace vnotch::services
                         }
                     }
 
-                    static constexpr std::u16string_view kEnglishSimple[] = {
-                        u"passphrase", u"password", u"passcode", u"passwd", u"apikey",
-                        u"token", u"totp", u"pass", u"pwd", u"pin", u"otp", u"2fa"
-                    };
-                    for (std::u16string_view kw : kEnglishSimple)
+                    for (std::u16string_view kw : secret_patterns::kCredentialExactLabels)
                     {
                         if (kw[0] != c0) continue;
                         if (starts_with_ignore_case(rem, kw) && TryMatchLabelValueAt(text, i + kw.size()))
@@ -1813,7 +1783,7 @@ namespace vnotch::services
             const char16_t* text_ptr, int32_t text_len,
             const char16_t* app_ptr, int32_t app_len,
             const char16_t* exe_ptr, int32_t exe_len,
-            int32_t* out_reason, int32_t* out_confidence) noexcept
+            int32_t* out_reason, int32_t* out_confidence)
         {
             if (out_reason == nullptr || out_confidence == nullptr || text_len < 0 || app_len < 0 || exe_len < 0)
             {
@@ -1822,16 +1792,16 @@ namespace vnotch::services
             *out_reason = 0;
             *out_confidence = 0;
 
-            const std::u16string_view raw = make_u16_view(text_ptr, text_len);
-            if (is_null_or_whitespace(raw))
-            {
-                return VN_OK;
-            }
             uint8_t is_pm = 0u;
             if (vn_clipboard_sensitive_is_from_password_manager_impl(app_ptr, app_len, exe_ptr, exe_len, &is_pm) == VN_OK && is_pm != 0u)
             {
                 *out_reason = 1; // PasswordManager
                 *out_confidence = 3; // High
+                return VN_OK;
+            }
+            const std::u16string_view raw = make_u16_view(text_ptr, text_len);
+            if (is_null_or_whitespace(raw))
+            {
                 return VN_OK;
             }
             if (raw.size() > 1'000'000u || HasInvalidSurrogates(raw))
@@ -1907,29 +1877,4 @@ extern "C" VN_EXPORT int32_t __stdcall vn_clipboard_sensitive_analyze(
         return VN_ERR_FAIL;
     }
 }
-
-extern "C" VN_EXPORT int32_t __stdcall vn_clipboard_sensitive_format_mask(
-    const char16_t* text_ptr, int32_t text_len,
-    char16_t* out_mask, int32_t out_cap,
-    int32_t* out_len) noexcept
-{
-    try
-    {
-        (void)text_ptr;
-        if (!out_mask || !out_len || text_len < 0) return VN_ERR_INVALID_ARG;
-        if (out_cap < 8) return VN_ERR_BUFFER_TOO_SMALL;
-        for (int32_t i = 0; i < 8; ++i)
-        {
-            out_mask[i] = u'\u2022';
-        }
-        *out_len = 8;
-        return VN_OK;
-    }
-    catch (...)
-    {
-        return VN_ERR_FAIL;
-    }
-}
-
-
 

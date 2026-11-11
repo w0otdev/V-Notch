@@ -24,12 +24,6 @@ public static partial class SettingsMigrator
         out int outFps);
 
     [LibraryImport(NativeDll)]
-    private static partial int vn_settings_migrator_is_supported_version(
-        int version,
-        int currentVersion,
-        out byte outSupported);
-
-    [LibraryImport(NativeDll)]
     private static partial int vn_settings_migrator_should_revoke_canvas_consent(
         byte hasAccepted,
         byte enableCanvas,
@@ -202,13 +196,18 @@ public static partial class SettingsMigrator
             startVersion = parsed;
         }
 
-        bool versionSupported = vn_settings_migrator_is_supported_version(startVersion, CurrentVersion, out byte outSupported) == 0
-            ? outSupported != 0
-            : (startVersion >= 0 && startVersion <= CurrentVersion);
-        if (startVersion > CurrentVersion) { RuntimeLog.Warn("SettingsMigrator", $"Settings schema version {startVersion} is newer than supported version {CurrentVersion}; loading forward-compatible fields without overwriting."); }
-        else if (!versionSupported)
-            throw new JsonException(
-                $"Unsupported settings version: {startVersion}");
+        if (startVersion < 0)
+        {
+            throw new JsonException($"Unsupported settings version: {startVersion}");
+        }
+
+        bool isForwardVersion = startVersion > CurrentVersion;
+        if (isForwardVersion)
+        {
+            RuntimeLog.Warn(
+                "SettingsMigrator",
+                $"Settings schema version {startVersion} is newer than supported version {CurrentVersion}; loading forward-compatible fields without overwriting.");
+        }
 
         int currentVersion = startVersion;
         bool migrated = false;
@@ -224,7 +223,10 @@ public static partial class SettingsMigrator
             currentVersion++;
         }
 
-        root[nameof(NotchSettings.SettingsVersion)] = CurrentVersion;
+        if (!isForwardVersion)
+        {
+            root[nameof(NotchSettings.SettingsVersion)] = CurrentVersion;
+        }
 
         // Inspect all files for legacy plaintext keys regardless of reported version;
         // callers must preserve the old file if protection fails.
@@ -252,7 +254,7 @@ public static partial class SettingsMigrator
 
         var normalizedJson = root.ToJsonString();
         var settings = JsonSerializer.Deserialize<NotchSettings>(normalizedJson) ?? new NotchSettings();
-        settings.SettingsVersion = CurrentVersion;
+        settings.SettingsVersion = isForwardVersion ? startVersion : CurrentVersion;
 
         bool hasAccepted = SpotifyCanvasConsent.HasAccepted(settings);
         byte acceptedFlag = hasAccepted ? (byte)1 : (byte)0;
@@ -270,12 +272,19 @@ public static partial class SettingsMigrator
         if (shouldRevoke)
         {
             SpotifyCanvasConsent.Revoke(settings);
-            migrated = true;
+            if (!isForwardVersion)
+            {
+                migrated = true;
+            }
         }
 
         if (startVersion < CurrentVersion)
         {
             migrated = true;
+        }
+        else if (isForwardVersion)
+        {
+            migrated = false;
         }
 
         return (settings, migrated);

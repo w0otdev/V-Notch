@@ -1,11 +1,9 @@
 #include "vnotch_common.h"
 #include "vnotch_com.h"
 #include <tlhelp32.h>
-#include <restartmanager.h>
 #include <shlobj.h>
 #include <array>
 
-#pragma comment(lib, "rstrtmgr.lib")
 #pragma comment(lib, "shell32.lib")
 
 VN_EXPORT int32_t __stdcall vn_ffmpeg_read_process_command_line(uint32_t, char16_t*, int32_t, int32_t*) noexcept;
@@ -15,9 +13,20 @@ VN_EXPORT int32_t vn_bandicam_is_supported_output_path(const char16_t*, int32_t,
 namespace {
 uint64_t file_time(FILETIME value) noexcept { return (uint64_t{value.dwHighDateTime} << 32) | value.dwLowDateTime; }
 struct Recorder { DWORD pid; uint64_t started; int kind; std::wstring executable; };
-struct Ownership { DWORD pid; uint64_t started; std::wstring path; ULONGLONG expires; bool owned; };
+
+bool is_locked_for_write(const wchar_t* path) noexcept {
+    if (!path || !*path) return false;
+    HANDLE handle = CreateFileW(path, GENERIC_READ, FILE_SHARE_READ, nullptr,
+        OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
+    if (handle == INVALID_HANDLE_VALUE) {
+        return GetLastError() == ERROR_SHARING_VIOLATION;
+    }
+    CloseHandle(handle);
+    return false;
+}
+
 struct ObsLog {
-    DWORD pid{}; uint64_t started{}, file_id{}, position{}, seen{};
+    uint64_t file_id{}, position{}, seen{};
     std::wstring path;
     std::string partial;
     bool recording{}, streaming{}, replay{};
@@ -28,8 +37,10 @@ struct ObsLog {
         while ((end = partial.find('\n', begin)) != partial.npos) {
             const std::string_view line(partial.data() + begin, end - begin);
             auto apply = [&](std::string_view start, std::string_view stop, bool& active) {
-                if (line.find(start) != line.npos) active = true;
-                if (line.find(stop) != line.npos) active = false;
+                const auto start_pos = line.find(start);
+                const auto stop_pos = line.find(stop);
+                if (start_pos != line.npos && (stop_pos == line.npos || start_pos > stop_pos)) active = true;
+                else if (stop_pos != line.npos) active = false;
             };
             apply("==== Recording Start ===", "==== Recording Stop ===", recording);
             apply("==== Streaming Start ===", "==== Streaming Stop ===", streaming);
@@ -49,30 +60,24 @@ struct ObsLog {
         if (!GetFileInformationByHandle(file.get(), &info) || !GetFileSizeEx(file.get(), &size) || size.QuadPart < 0) return false;
         const uint64_t id = (uint64_t{info.nFileIndexHigh} << 32) | info.nFileIndexLow;
         const auto length = static_cast<uint64_t>(size.QuadPart);
-        bool skip_first = false;
-        if (id != file_id || length < position || length - position > 1024 * 1024) {
+        if (id != file_id || length < position) {
             recording = streaming = replay = false;
             partial.clear();
-            position = length > 1024 * 1024 ? length - 1024 * 1024 : 0;
-            skip_first = position != 0;
+            position = 0;
             file_id = id;
         }
-        LARGE_INTEGER offset{}; offset.QuadPart = static_cast<LONGLONG>(position);
-        if (!SetFilePointerEx(file.get(), offset, nullptr, FILE_BEGIN)) return false;
-        char chunk[16 * 1024];
-        while (position < length) {
-            DWORD read = 0;
-            const auto amount = static_cast<DWORD>(std::min<uint64_t>(sizeof(chunk), length - position));
-            if (!ReadFile(file.get(), chunk, amount, &read, nullptr)) return false;
-            if (read == 0) break;
-            position += read;
-            std::string_view bytes(chunk, read);
-            if (skip_first) {
-                const auto newline = bytes.find('\n');
-                if (newline == bytes.npos) continue;
-                bytes.remove_prefix(newline + 1); skip_first = false;
+        if (position < length) {
+            LARGE_INTEGER offset{}; offset.QuadPart = static_cast<LONGLONG>(position);
+            if (!SetFilePointerEx(file.get(), offset, nullptr, FILE_BEGIN)) return false;
+            char chunk[32 * 1024];
+            while (position < length) {
+                DWORD read_bytes = 0;
+                const auto amount = static_cast<DWORD>(std::min<uint64_t>(sizeof(chunk), length - position));
+                if (!ReadFile(file.get(), chunk, amount, &read_bytes, nullptr)) return false;
+                if (read_bytes == 0) break;
+                position += read_bytes;
+                feed(std::string_view(chunk, read_bytes));
             }
-            feed(bytes);
         }
         if (success) *success = true;
         return recording || streaming || replay;
@@ -81,37 +86,10 @@ struct ObsLog {
 struct FfmpegCache { DWORD pid; uint64_t started, seen; bool capture; };
 SRWLOCK poll_lock = SRWLOCK_INIT;
 std::vector<Recorder> recorders;
-std::vector<Ownership> ownership;
 std::vector<ObsLog> logs;
 std::vector<FfmpegCache> commands;
 uint64_t generation = 0;
 
-bool owned_by(const std::wstring& path, const Recorder& recorder, ULONGLONG positive_ttl = 2000, ULONGLONG negative_ttl = 1000) {
-    const auto now = GetTickCount64();
-    for (const auto& cached : ownership)
-        if (cached.pid == recorder.pid && cached.started == recorder.started && cached.path == path && now < cached.expires) return cached.owned;
-    DWORD session = 0; wchar_t key[CCH_RM_SESSION_KEY + 1]{};
-    if (RmStartSession(&session, 0, key) != ERROR_SUCCESS) return false;
-    struct RmGuard { DWORD id; ~RmGuard() { RmEndSession(id); } } guard{session};
-    const wchar_t* resources[]{path.c_str()};
-    if (RmRegisterResources(session, 1, resources, 0, nullptr, 0, nullptr) != ERROR_SUCCESS) return false;
-    std::array<RM_PROCESS_INFO, 16> stack{};
-    std::vector<RM_PROCESS_INFO> extra;
-    auto owners = stack.data(); UINT needed = 0, count = static_cast<UINT>(stack.size()); DWORD reason = 0;
-    auto status = RmGetList(session, &needed, &count, owners, &reason);
-    for (int retry = 0; status == ERROR_MORE_DATA && retry < 3 && needed <= 1024; ++retry) {
-        extra.resize(needed); owners = extra.data(); count = needed;
-        status = RmGetList(session, &needed, &count, owners, &reason);
-    }
-    if (status != ERROR_SUCCESS) return false;
-    bool owned = false;
-    for (UINT i = 0; i < count; ++i)
-        owned |= owners[i].Process.dwProcessId == recorder.pid && file_time(owners[i].Process.ProcessStartTime) == recorder.started;
-    std::erase_if(ownership, [now](const auto& item) { return now >= item.expires; });
-    if (ownership.size() >= 128) ownership.erase(ownership.begin());
-    ownership.push_back({recorder.pid, recorder.started, path, now + (owned ? positive_ttl : negative_ttl), owned});
-    return owned;
-}
 void add_recorder(DWORD pid, const wchar_t* name) {
     const int kind = !_wcsicmp(name, L"bdcam.exe") ? 1 :
         (!_wcsicmp(name, L"obs64.exe") || !_wcsicmp(name, L"obs32.exe")) ? 2 : !_wcsicmp(name, L"ffmpeg.exe") ? 3 : 0;
@@ -126,9 +104,15 @@ void add_recorder(DWORD pid, const wchar_t* name) {
     if (QueryFullProcessImageNameW(process.get(), 0, path, &chars)) executable.assign(path, chars);
     recorders.push_back({pid, file_time(created), kind, std::move(executable)});
 }
+
 bool scan_obs_folder(const std::wstring& folder, const Recorder& recorder) {
-    struct Candidate { FILETIME time{}; std::wstring path; };
-    std::array<Candidate, 4> newest;
+    struct Candidate { uint64_t created{}; uint64_t written{}; std::wstring path; bool locked{}; };
+    std::array<Candidate, 4> newest{};
+    constexpr uint64_t kCreateSlack = 100'000ULL;    // 10ms FAT creation-time slack
+    constexpr uint64_t kWriteSlack  = 20'000'000ULL; // 2s FAT/exFAT write-time slack
+    const uint64_t min_created = recorder.started > kCreateSlack ? recorder.started - kCreateSlack : 0;
+    const uint64_t min_written = recorder.started > kWriteSlack  ? recorder.started - kWriteSlack  : 0;
+
     WIN32_FIND_DATAW data{};
     const auto pattern = folder + L"\\*.txt";
     HANDLE find = FindFirstFileW(pattern.c_str(), &data);
@@ -136,30 +120,51 @@ bool scan_obs_folder(const std::wstring& folder, const Recorder& recorder) {
     struct FindGuard { HANDLE handle; ~FindGuard() { FindClose(handle); } } guard{find};
     do {
         if (data.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) continue;
+        const uint64_t created = file_time(data.ftCreationTime);
+        const uint64_t written = file_time(data.ftLastWriteTime);
+        if (written < min_written) continue;
         for (size_t i = 0; i < newest.size(); ++i) {
-            if (newest[i].path.empty() || CompareFileTime(&data.ftLastWriteTime, &newest[i].time) > 0) {
+            if (newest[i].path.empty() || written > newest[i].written) {
                 for (size_t j = newest.size() - 1; j > i; --j) newest[j] = std::move(newest[j - 1]);
-                newest[i] = {data.ftLastWriteTime, folder + L"\\" + data.cFileName};
+                newest[i] = {created, written, folder + L"\\" + data.cFileName, false};
                 break;
             }
         }
     } while (FindNextFileW(find, &data));
+
+    bool any_locked = false;
+    for (auto& candidate : newest) {
+        if (candidate.path.empty()) continue;
+        candidate.locked = is_locked_for_write(candidate.path.c_str());
+        any_locked |= candidate.locked;
+    }
+
     bool active = false;
+    bool took_unlocked_fallback = false;
     for (const auto& file : newest) {
-        if (file.path.empty() || !owned_by(file.path, recorder, 5000, 10000)) continue;
+        if (file.path.empty()) continue;
+        if (any_locked) {
+            if (!file.locked) continue;
+        } else {
+            if (took_unlocked_fallback) continue;
+            if (file.created != 0 && file.created < min_created) continue;
+            took_unlocked_fallback = true;
+        }
         auto found = std::find_if(logs.begin(), logs.end(), [&](const auto& log) {
-            return log.pid == recorder.pid && log.started == recorder.started && log.path == file.path;
+            return log.path == file.path;
         });
         if (found == logs.end()) {
             if (logs.size() >= 128) continue;
-            logs.emplace_back(); found = logs.end() - 1;
-            found->pid = recorder.pid; found->started = recorder.started; found->path = file.path;
+            logs.emplace_back();
+            found = logs.end() - 1;
+            found->path = file.path;
         }
         found->seen = generation;
         active |= found->read();
     }
     return active;
 }
+
 bool poll(const VnPrivacyProcessEntry* entries, int32_t count, bool capture) {
     ++generation; recorders.clear();
     if (capture) {
@@ -185,7 +190,7 @@ bool poll(const VnPrivacyProcessEntry* entries, int32_t count, bool capture) {
                     RRF_RT_REG_SZ, nullptr, path, &bytes) == ERROR_SUCCESS) {
                     uint8_t supported = 0;
                     vn_bandicam_is_supported_output_path(reinterpret_cast<char16_t*>(path), static_cast<int32_t>(wcslen(path)), &supported);
-                    if (supported && GetFileAttributesW(path) != INVALID_FILE_ATTRIBUTES) active |= owned_by(path, recorder);
+                    if (supported) active |= is_locked_for_write(path);
                 }
             } else if (recorder.kind == 2) {
                 wchar_t roaming[32768];

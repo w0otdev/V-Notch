@@ -215,18 +215,6 @@ internal sealed partial class LyricsService
         return lines.Count == 0 ? null : new(lines, "NetEase");
     }
 
-    internal static LyricsResult? ParseQqMusicLyricResult(JsonElement root)
-    {
-        if (root.ValueKind != JsonValueKind.Object ||
-            !root.TryGetProperty("lyric", out var lyricProp) || lyricProp.ValueKind != JsonValueKind.String ||
-            string.IsNullOrWhiteSpace(lyricProp.GetString()))
-        {
-            return null;
-        }
-
-        return ParseQqMusicLyrics(lyricProp.GetString()!);
-    }
-
     private static LyricsResult? ParseQqMusicLyrics(string lyric)
     {
         string text = WebUtility.HtmlDecode(lyric);
@@ -288,10 +276,4 @@ internal sealed partial class LyricsService
         }
         return filtered;
     }
-
-    internal static List<LyricLine> ParseNetEaseYrc(string yrc) =>
-        NativeLyricParser.Parse(MemoryMarshal.AsBytes(yrc.AsSpan()), 4, utf16: true);
-
-    internal static List<LyricLine> ParseKugouKrc(string krc) =>
-        NativeLyricParser.Parse(MemoryMarshal.AsBytes(krc.AsSpan()), 5, utf16: true);
 }

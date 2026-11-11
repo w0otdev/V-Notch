@@ -2,6 +2,7 @@
 #include "vnotch_com.h"
 #include "vnotch_handle_registry.h"
 #include "vnotch_json_view.h"
+#include "LyricsInternal.h"
 #include <xmllite.h>
 #include <shlwapi.h>
 #include <array>
@@ -262,7 +263,6 @@ bool word_tag(View text, size_t at, size_t& end, int64_t& ticks) {
 }
 void line_format(View source, int kind, Result& output, bool filter_credit = false) {
     std::array<char16_t, 4097> text{};
-    std::array<VnNetEaseWordSpan, 256> spans{};
     std::array<VnLyricWord, 256> words{};
     while (!source.empty()) {
         const auto end = source.find_first_of(u"\r\n");
@@ -277,10 +277,11 @@ void line_format(View source, int kind, Result& output, bool filter_credit = fal
             vn_lyrics_parse_enhanced(label.data(), length, time, text.data(), static_cast<int32_t>(text.size()), &length,
                 words.data(), static_cast<int32_t>(words.size()), &count);
         } else {
-            const auto parse = kind == 4 ? vn_lyrics_try_parse_yrc_line : vn_lyrics_try_parse_krc_line;
+            const auto parse = kind == 4
+                ? vnotch::services::lyrics_internal::TryParseYrcLine
+                : vnotch::services::lyrics_internal::TryParseKrcLine;
             if (parse(line.data(), static_cast<int32_t>(line.size()), &time, text.data(), static_cast<int32_t>(text.size()), &length,
-                spans.data(), static_cast<int32_t>(spans.size()), &count, &ok) != VN_OK || !ok || length <= 0 || count > 256) continue;
-            for (int i = 0; i < count; ++i) words[i] = {spans[i].start_ticks, spans[i].end_ticks, spans[i].text_offset, spans[i].text_length};
+                words.data(), static_cast<int32_t>(words.size()), &count, &ok) != VN_OK || !ok || length <= 0 || count > 256) continue;
         }
         uint8_t credit = 0;
         if (kind != 6 || filter_credit) vn_lyrics_is_credit_header_line(text.data(), length, time, &credit);

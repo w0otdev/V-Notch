@@ -1,4 +1,5 @@
 #include "vnotch_common.h"
+#include "LyricsInternal.h"
 #include <cstdint>
 #include <string_view>
 
@@ -139,11 +140,6 @@ public:
                vn_equals_icase_ascii(artist, u"Browser") ||
                vn_equals_icase_ascii(artist, u"Google Chrome") ||
                vn_equals_icase_ascii(artist, u"Microsoft Edge");
-    }
-
-    [[nodiscard]] static constexpr bool IsValidSyncLevel(std::u16string_view sync_level) noexcept {
-        return vn_equals_icase_ascii(sync_level, u"word") ||
-               vn_equals_icase_ascii(sync_level, u"line");
     }
 
     [[nodiscard]] static constexpr void CleanArtistSpan(
@@ -362,7 +358,7 @@ public:
         char16_t* out_text_buf,
         int32_t out_text_cap,
         int32_t& out_text_len,
-        VnNetEaseWordSpan* out_words,
+        VnLyricWord* out_words,
         int32_t out_words_cap,
         int32_t& out_words_count) noexcept {
         out_line_ticks = 0;
@@ -418,7 +414,7 @@ public:
                         if (!word_sv.empty() && out_words && out_words_count < out_words_cap) {
                             const int64_t ws_ms = static_cast<int64_t>(line_start_ms) + static_cast<int64_t>(w_rel_ms);
                             const int64_t we_ms = ws_ms + static_cast<int64_t>(w_dur_ms > 0 ? w_dur_ms : 0);
-                            out_words[out_words_count++] = VnNetEaseWordSpan{
+                            out_words[out_words_count++] = VnLyricWord{
                                 ws_ms * 10000LL,
                                 we_ms * 10000LL,
                                 word_offset,
@@ -450,14 +446,14 @@ public:
 
         int32_t valid_words = 0;
         for (int32_t i = 0; i < out_words_count; ++i) {
-            int32_t off = out_words[i].text_offset - trim_lead;
-            int32_t len = out_words[i].text_length;
+            int32_t off = out_words[i].offset - trim_lead;
+            int32_t len = out_words[i].length;
             if (off < 0) { len += off; off = 0; }
             if (off + len > final_len) len = final_len - off;
             if (len > 0 && off >= 0 && off + len <= final_len) {
                 out_words[valid_words] = out_words[i];
-                out_words[valid_words].text_offset = off;
-                out_words[valid_words].text_length = len;
+                out_words[valid_words].offset = off;
+                out_words[valid_words].length = len;
                 ++valid_words;
             }
         }
@@ -475,7 +471,7 @@ public:
         char16_t* out_text_buf,
         int32_t out_text_cap,
         int32_t& out_text_len,
-        VnNetEaseWordSpan* out_words,
+        VnLyricWord* out_words,
         int32_t out_words_cap,
         int32_t& out_words_count) noexcept {
         out_line_ticks = 0;
@@ -531,7 +527,7 @@ public:
                         if (!word_sv.empty() && out_words && out_words_count < out_words_cap) {
                             const int64_t ws_ticks = static_cast<int64_t>(w_start_ms) * 10000LL;
                             const int64_t we_ticks = static_cast<int64_t>(w_start_ms + (w_dur_ms > 0 ? w_dur_ms : 0)) * 10000LL;
-                            out_words[out_words_count++] = VnNetEaseWordSpan{
+                            out_words[out_words_count++] = VnLyricWord{
                                 ws_ticks,
                                 we_ticks >= ws_ticks ? we_ticks : ws_ticks,
                                 word_offset,
@@ -564,14 +560,14 @@ public:
 
         int32_t valid_words = 0;
         for (int32_t i = 0; i < out_words_count; ++i) {
-            int32_t off = out_words[i].text_offset - trim_lead;
-            int32_t len = out_words[i].text_length;
+            int32_t off = out_words[i].offset - trim_lead;
+            int32_t len = out_words[i].length;
             if (off < 0) { len += off; off = 0; }
             if (off + len > final_len) len = final_len - off;
             if (len > 0 && off >= 0 && off + len <= final_len) {
                 out_words[valid_words] = out_words[i];
-                out_words[valid_words].text_offset = off;
-                out_words[valid_words].text_length = len;
+                out_words[valid_words].offset = off;
+                out_words[valid_words].length = len;
                 ++valid_words;
             }
         }
@@ -684,8 +680,6 @@ public:
 
 extern "C" {
 
-
-
 VN_EXPORT int32_t vn_lyrics_try_parse_lrc_line(
     const char16_t* raw_line,
     int32_t raw_line_len,
@@ -730,16 +724,6 @@ VN_EXPORT int32_t vn_lyrics_is_generic_platform_name(
     if (!out_is_generic || (!artist && artist_len > 0) || artist_len < 0) return VN_E_INVALID_ARG;
     const std::u16string_view sv(artist ? artist : u"", static_cast<size_t>(artist_len));
     *out_is_generic = vnotch::services::LyricsService::IsGenericPlatformName(sv) ? 1 : 0;
-    return VN_OK;
-}
-
-VN_EXPORT int32_t vn_lyrics_is_valid_sync_level(
-    const char16_t* sync_level,
-    int32_t sync_level_len,
-    uint8_t* out_is_valid) noexcept {
-    if (!out_is_valid || (!sync_level && sync_level_len > 0) || sync_level_len < 0) return VN_E_INVALID_ARG;
-    const std::u16string_view sv(sync_level ? sync_level : u"", static_cast<size_t>(sync_level_len));
-    *out_is_valid = vnotch::services::LyricsService::IsValidSyncLevel(sv) ? 1 : 0;
     return VN_OK;
 }
 
@@ -856,7 +840,6 @@ VN_EXPORT int32_t __stdcall vn_lyrics_strip_title_extras(
     return vnotch::services::LyricsService::StripTitleExtras(sv, is_turkic_culture != 0, out_buf, out_cap, *out_written);
 }
 
-
 VN_EXPORT int32_t __stdcall vn_lyrics_is_credit_header_line(
     const char16_t* text_ptr,
     int32_t text_len,
@@ -868,14 +851,30 @@ VN_EXPORT int32_t __stdcall vn_lyrics_is_credit_header_line(
     return VN_OK;
 }
 
-VN_EXPORT int32_t __stdcall vn_lyrics_try_parse_yrc_line(
+VN_EXPORT int32_t __stdcall vn_lyrics_decode_krc_payload(
+    const uint8_t* raw_bytes,
+    int32_t raw_len,
+    uint8_t* out_zlib_bytes,
+    int32_t* out_zlib_len) noexcept {
+    if (!out_zlib_len || raw_len < 0 || (raw_len > 0 && (!raw_bytes || !out_zlib_bytes))) {
+        return VN_ERR_INVALID_ARG;
+    }
+    return vnotch::services::LyricsService::DecodeKrcPayload(raw_bytes, raw_len, out_zlib_bytes, *out_zlib_len)
+        ? VN_OK : VN_ERR_FAIL;
+}
+
+} // extern "C"
+
+namespace vnotch::services::lyrics_internal {
+
+int32_t TryParseYrcLine(
     const char16_t* raw_line,
     int32_t raw_line_len,
     int64_t* out_line_ticks,
     char16_t* out_text_buf,
     int32_t out_text_cap,
     int32_t* out_text_len,
-    VnNetEaseWordSpan* out_words,
+    VnLyricWord* out_words,
     int32_t out_words_cap,
     int32_t* out_words_count,
     uint8_t* out_ok) noexcept {
@@ -891,7 +890,7 @@ VN_EXPORT int32_t __stdcall vn_lyrics_try_parse_yrc_line(
     return VN_OK;
 }
 
-VN_EXPORT int32_t __stdcall vn_lyrics_score_netease_candidate(
+int32_t ScoreNetEaseCandidate(
     const char16_t* target_title_ptr,
     int32_t target_title_len,
     const char16_t* target_artist_ptr,
@@ -1014,27 +1013,14 @@ VN_EXPORT int32_t __stdcall vn_lyrics_score_netease_candidate(
     return VN_OK;
 }
 
-
-VN_EXPORT int32_t __stdcall vn_lyrics_decode_krc_payload(
-    const uint8_t* raw_bytes,
-    int32_t raw_len,
-    uint8_t* out_zlib_bytes,
-    int32_t* out_zlib_len) noexcept {
-    if (!out_zlib_len || raw_len < 0 || (raw_len > 0 && (!raw_bytes || !out_zlib_bytes))) {
-        return VN_ERR_INVALID_ARG;
-    }
-    return vnotch::services::LyricsService::DecodeKrcPayload(raw_bytes, raw_len, out_zlib_bytes, *out_zlib_len)
-        ? VN_OK : VN_ERR_FAIL;
-}
-
-VN_EXPORT int32_t __stdcall vn_lyrics_try_parse_krc_line(
+int32_t TryParseKrcLine(
     const char16_t* raw_line,
     int32_t raw_line_len,
     int64_t* out_line_ticks,
     char16_t* out_text_buf,
     int32_t out_text_cap,
     int32_t* out_text_len,
-    VnNetEaseWordSpan* out_words,
+    VnLyricWord* out_words,
     int32_t out_words_cap,
     int32_t* out_words_count,
     uint8_t* out_ok) noexcept {
@@ -1050,4 +1036,4 @@ VN_EXPORT int32_t __stdcall vn_lyrics_try_parse_krc_line(
     return VN_OK;
 }
 
-} // extern "C"
+} // namespace vnotch::services::lyrics_internal

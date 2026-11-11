@@ -1,9 +1,10 @@
+using System.Buffers;
 using System;
+using System.Collections.Frozen;
 using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
 using System.Linq;
-using System.Reflection;
 using System.Runtime.InteropServices;
 using System.Text.Json;
 using System.Threading;
@@ -17,7 +18,7 @@ public static partial class Loc
     private const string NativeDll = "VNotch.Native.dll";
 
     internal const long MaxExternalLocaleFileBytes = 2 * 1024 * 1024;
-    private static readonly JsonDocumentOptions LocaleJsonOptions = new() { MaxDepth = 8 };
+    private static readonly JsonReaderOptions LocaleReaderOptions = new() { MaxDepth = 8 };
 
     [LibraryImport(NativeDll, StringMarshalling = StringMarshalling.Utf16)]
     private static partial int vn_localization_resolve_default_culture(
@@ -46,15 +47,17 @@ public static partial class Loc
     // Discovered once at startup and never mutated afterwards, so it can be read without locking.
     private static readonly Dictionary<string, List<LocaleSource>> _sources = new(StringComparer.OrdinalIgnoreCase);
     private static readonly Dictionary<string, LocaleMetadata> _metadata = new(StringComparer.OrdinalIgnoreCase);
-    // Only the fallback and the active language are kept in memory. Published as an immutable snapshot
-    // (copy on write) so readers on any thread never observe a dictionary that is being modified.
-    private static volatile Dictionary<string, NativeLocaleTable> _strings = new(StringComparer.OrdinalIgnoreCase);
+    // Only the fallback and the active language are kept in memory. Published as an immutable FrozenDictionary
+    // snapshot so concurrent readers never race with language switches or eviction.
+    private static volatile FrozenDictionary<string, FrozenDictionary<string, string>> _strings =
+        new Dictionary<string, FrozenDictionary<string, string>>(StringComparer.OrdinalIgnoreCase)
+            .ToFrozenDictionary(StringComparer.OrdinalIgnoreCase);
     private static readonly string[] DefaultLanguageOrder = { "en", "vi", "zh", "pt", "ru", "ar", "ko", "es", "fr", "de", "ja", "hi", "it", "tr", "pl", "nl", "id" };
-    // Cross-language reverse lookup used only by the settings search. It is built on first use (or prewarmed by
-    // the settings window) and released when that window closes, so it does not occupy memory the rest of the time.
+    // Cross-language reverse lookup used only by the settings search. Built on first use (or prewarmed by
+    // the settings window) and released when that window closes.
     private static readonly object TranslationLock = new();
     private static int _translationGeneration;
-    private static NativeTranslationIndex? _translationsByText;
+    private static volatile FrozenDictionary<string, string[]>? _translationsByText;
 
     /// <summary>Starts building the cross-language search index on a worker thread.</summary>
     public static void PrewarmTranslationIndex()
@@ -70,13 +73,12 @@ public static partial class Loc
         }, Volatile.Read(ref _translationGeneration), preferLocal: false);
     }
 
-    /// <summary>Releases the native search index and its nonresident locale tables.</summary>
+    /// <summary>Releases the cross-language search index.</summary>
     public static void ReleaseTranslationIndex()
     {
         lock (TranslationLock)
         {
             _translationGeneration++;
-            _translationsByText?.Dispose();
             _translationsByText = null;
         }
     }
@@ -119,7 +121,7 @@ public static partial class Loc
     }
 
     internal static IReadOnlyCollection<string> GetKeys(string language) =>
-        GetOrLoadStrings(language)?.Keys() ?? (IReadOnlyCollection<string>)Array.Empty<string>();
+        GetOrLoadStrings(language) is { } table ? table.Keys : Array.Empty<string>();
 
     public static List<(string Code, string Name)> GetAvailableLanguages()
     {
@@ -156,10 +158,13 @@ public static partial class Loc
     public static string Get(string key)
     {
         var strings = _strings;
-        if (strings.TryGetValue(_currentLanguage, out var langDict) && langDict.Get(key) is { } value)
+        var current = _currentLanguage;
+        if (strings.TryGetValue(current, out var langDict) && langDict.TryGetValue(key, out var value))
             return value;
 
-        if (_currentLanguage != FallbackLanguage && strings.TryGetValue(FallbackLanguage, out var enDict) && enDict.Get(key) is { } enValue)
+        if (!string.Equals(current, FallbackLanguage, StringComparison.OrdinalIgnoreCase)
+            && strings.TryGetValue(FallbackLanguage, out var enDict)
+            && enDict.TryGetValue(key, out var enValue))
             return enValue;
 
         return key;
@@ -176,8 +181,16 @@ public static partial class Loc
     {
         if (string.IsNullOrWhiteSpace(text)) return new List<string>();
 
-        lock (TranslationLock)
-            return (_translationsByText ??= BuildTranslationLookup()).Find(text);
+        var index = _translationsByText;
+        if (index is null)
+        {
+            lock (TranslationLock)
+            {
+                index = _translationsByText ??= BuildTranslationLookup();
+            }
+        }
+
+        return FindTranslations(index, text);
     }
 
     internal static bool IsValidExternalLocaleFile(string filePath)
@@ -194,8 +207,8 @@ public static partial class Loc
         }
     }
 
-    // Registers every available locale and its metadata. Strings are not kept: each file is parsed once here
-    // only to validate it and read the _metadata block.
+    // Registers every available locale and its metadata, streaming with Utf8JsonReader and stopping
+    // immediately once the top-level "_metadata" object has been read.
     private static void DiscoverLocales()
     {
         var assembly = typeof(Loc).Assembly;
@@ -261,21 +274,8 @@ public static partial class Loc
     {
         try
         {
-            using var doc = JsonDocument.Parse(stream, LocaleJsonOptions);
-            var root = doc.RootElement;
-            if (root.ValueKind != JsonValueKind.Object) return;
-
-            string? name = null;
-            string? culture = null;
-            foreach (var prop in root.EnumerateObject())
-            {
-                if (!prop.NameEquals("_metadata") || prop.Value.ValueKind != JsonValueKind.Object) continue;
-
-                if (prop.Value.TryGetProperty("name", out var nameProp) && nameProp.ValueKind == JsonValueKind.String)
-                    name = nameProp.GetString();
-                if (prop.Value.TryGetProperty("culture", out var cultureProp) && cultureProp.ValueKind == JsonValueKind.String)
-                    culture = cultureProp.GetString();
-            }
+            if (!TryReadLocaleMetadata(stream, out string? name, out string? culture))
+                return;
 
             if (!_sources.TryGetValue(code, out var sources))
             {
@@ -295,8 +295,150 @@ public static partial class Loc
         }
     }
 
+    private static bool TryReadLocaleMetadata(Stream stream, out string? name, out string? culture)
+    {
+        name = null;
+        culture = null;
+
+        byte[] buffer = ArrayPool<byte>.Shared.Rent(4096);
+        try
+        {
+            int bytesInBuffer = 0;
+            long totalBytesRead = 0;
+            bool isFinalBlock = false;
+            while (bytesInBuffer < 3 && !isFinalBlock)
+            {
+                int initialRead = stream.Read(buffer, bytesInBuffer, buffer.Length - bytesInBuffer);
+                if (initialRead == 0)
+                {
+                    isFinalBlock = true;
+                }
+                else
+                {
+                    bytesInBuffer += initialRead;
+                    totalBytesRead += initialRead;
+                }
+            }
+
+            if (bytesInBuffer >= 3 && buffer[0] == 0xEF && buffer[1] == 0xBB && buffer[2] == 0xBF)
+            {
+                bytesInBuffer -= 3;
+                if (bytesInBuffer > 0)
+                {
+                    buffer.AsSpan(3, bytesInBuffer).CopyTo(buffer);
+                }
+            }
+
+            var state = new JsonReaderState(LocaleReaderOptions);
+            bool seenRootStart = false;
+            bool inMetadataObject = false;
+            string? pendingProperty = null;
+
+            while (true)
+            {
+                var reader = new Utf8JsonReader(buffer.AsSpan(0, bytesInBuffer), isFinalBlock, state);
+                while (reader.Read())
+                {
+                    if (!seenRootStart)
+                    {
+                        if (reader.TokenType != JsonTokenType.StartObject) return false;
+                        seenRootStart = true;
+                        continue;
+                    }
+
+                    if (!inMetadataObject)
+                    {
+                        if (reader.CurrentDepth == 0 && reader.TokenType == JsonTokenType.EndObject)
+                        {
+                            return true;
+                        }
+                        if (reader.CurrentDepth == 1)
+                        {
+                            if (reader.TokenType == JsonTokenType.PropertyName)
+                            {
+                                pendingProperty = reader.ValueTextEquals("_metadata"u8) ? "_metadata" : null;
+                            }
+                            else if (pendingProperty is not null)
+                            {
+                                pendingProperty = null;
+                                if (reader.TokenType == JsonTokenType.StartObject)
+                                {
+                                    inMetadataObject = true;
+                                }
+                            }
+                        }
+                        continue;
+                    }
+
+                    if (reader.CurrentDepth == 1 && reader.TokenType == JsonTokenType.EndObject)
+                    {
+                        return true;
+                    }
+
+                    if (reader.CurrentDepth == 2)
+                    {
+                        if (reader.TokenType == JsonTokenType.PropertyName)
+                        {
+                            pendingProperty = reader.ValueTextEquals("name"u8)
+                                ? "name"
+                                : (reader.ValueTextEquals("culture"u8) ? "culture" : null);
+                        }
+                        else
+                        {
+                            if (reader.TokenType == JsonTokenType.String)
+                            {
+                                if (pendingProperty == "name") name = reader.GetString();
+                                else if (pendingProperty == "culture") culture = reader.GetString();
+                            }
+                            pendingProperty = null;
+                        }
+                    }
+                }
+
+                if (isFinalBlock) return false;
+
+                state = reader.CurrentState;
+                int consumed = (int)reader.BytesConsumed;
+                if (consumed > 0)
+                {
+                    bytesInBuffer -= consumed;
+                    if (bytesInBuffer > 0)
+                    {
+                        buffer.AsSpan(consumed, bytesInBuffer).CopyTo(buffer);
+                    }
+                }
+
+                if (bytesInBuffer == buffer.Length)
+                {
+                    if (buffer.Length >= MaxExternalLocaleFileBytes) return false;
+                    int nextSize = (int)Math.Min(MaxExternalLocaleFileBytes, (long)buffer.Length * 2);
+                    byte[] grown = ArrayPool<byte>.Shared.Rent(nextSize);
+                    buffer.AsSpan(0, bytesInBuffer).CopyTo(grown);
+                    ArrayPool<byte>.Shared.Return(buffer);
+                    buffer = grown;
+                }
+
+                int read = stream.Read(buffer, bytesInBuffer, buffer.Length - bytesInBuffer);
+                if (read == 0)
+                {
+                    isFinalBlock = true;
+                }
+                else
+                {
+                    totalBytesRead += read;
+                    if (totalBytesRead > MaxExternalLocaleFileBytes) return false;
+                    bytesInBuffer += read;
+                }
+            }
+        }
+        finally
+        {
+            ArrayPool<byte>.Shared.Return(buffer);
+        }
+    }
+
     // Returns the strings for a locale, loading and publishing them on first use. Null when the locale is unknown.
-    private static NativeLocaleTable? GetOrLoadStrings(string code)
+    private static FrozenDictionary<string, string>? GetOrLoadStrings(string code)
     {
         if (_strings.TryGetValue(code, out var loaded)) return loaded;
         if (!_sources.ContainsKey(code)) return null;
@@ -306,23 +448,92 @@ public static partial class Loc
             if (_strings.TryGetValue(code, out loaded)) return loaded;
 
             var dict = LoadLocaleStrings(code);
-            var next = new Dictionary<string, NativeLocaleTable>(_strings, StringComparer.OrdinalIgnoreCase)
+            var next = new Dictionary<string, FrozenDictionary<string, string>>(_strings, StringComparer.OrdinalIgnoreCase)
             {
                 [code] = dict
             };
-            _strings = next;
+            _strings = next.ToFrozenDictionary(StringComparer.OrdinalIgnoreCase);
             return dict;
         }
     }
 
-    // Sources merge into one native arena before the table is published.
-    private static NativeLocaleTable LoadLocaleStrings(string code)
+    internal static void MergeLocaleJson(Dictionary<string, string> target, ReadOnlySpan<byte> utf8Json)
+    {
+        if (utf8Json.IsEmpty) throw new ArgumentException("Locale JSON cannot be empty.", nameof(utf8Json));
+        if (utf8Json.Length >= 3 && utf8Json[0] == 0xEF && utf8Json[1] == 0xBB && utf8Json[2] == 0xBF)
+        {
+            utf8Json = utf8Json[3..];
+        }
+
+        var staged = new List<(string Key, string Value)>();
+        try
+        {
+            var reader = new Utf8JsonReader(utf8Json, isFinalBlock: true, new JsonReaderState(LocaleReaderOptions));
+            if (!reader.Read() || reader.TokenType != JsonTokenType.StartObject)
+            {
+                throw new ArgumentException("Locale JSON root must be an object.", nameof(utf8Json));
+            }
+
+            while (reader.Read())
+            {
+                if (reader.TokenType == JsonTokenType.EndObject && reader.CurrentDepth == 0)
+                {
+                    break;
+                }
+                if (reader.TokenType != JsonTokenType.PropertyName || reader.CurrentDepth != 1)
+                {
+                    throw new ArgumentException("Malformed locale JSON property.", nameof(utf8Json));
+                }
+
+                string key = reader.GetString()!;
+                if (!reader.Read())
+                {
+                    throw new ArgumentException("Unexpected end of locale JSON.", nameof(utf8Json));
+                }
+
+                if (reader.TokenType == JsonTokenType.String)
+                {
+                    staged.Add((key, reader.GetString()!));
+                }
+                else if (reader.TokenType is JsonTokenType.StartObject or JsonTokenType.StartArray)
+                {
+                    reader.Skip();
+                }
+            }
+        }
+        catch (JsonException ex)
+        {
+            throw new ArgumentException("Invalid locale JSON.", nameof(utf8Json), ex);
+        }
+
+        foreach (var (key, value) in staged)
+        {
+            if (string.IsNullOrEmpty(key) || key[0] == '_' || string.Equals(key, value, StringComparison.Ordinal))
+            {
+                continue;
+            }
+            if (target.ContainsKey(key))
+            {
+                if (!string.IsNullOrWhiteSpace(value))
+                {
+                    target[key] = value;
+                }
+            }
+            else
+            {
+                target[key] = value;
+            }
+        }
+    }
+
+    private static FrozenDictionary<string, string> LoadLocaleStrings(string code)
     {
         var dict = new Dictionary<string, string>(StringComparer.Ordinal);
         ApplyBuiltInDefaults(code, dict);
-        var table = new NativeLocaleTable();
-        table.Merge(JsonSerializer.SerializeToUtf8Bytes(dict));
-        if (!_sources.TryGetValue(code, out var sources)) return table;
+        if (!_sources.TryGetValue(code, out var sources))
+        {
+            return dict.ToFrozenDictionary(StringComparer.Ordinal);
+        }
 
         var assembly = typeof(Loc).Assembly;
         foreach (var source in sources)
@@ -337,22 +548,25 @@ public static partial class Loc
                 if (stream != null)
                 {
                     int length = checked((int)stream.Length);
-                    byte[] json = System.Buffers.ArrayPool<byte>.Shared.Rent(length);
+                    byte[] json = ArrayPool<byte>.Shared.Rent(length);
                     try
                     {
                         stream.ReadExactly(json.AsSpan(0, length));
-                        table.Merge(json.AsSpan(0, length));
+                        MergeLocaleJson(dict, json.AsSpan(0, length));
                     }
-                    finally { System.Buffers.ArrayPool<byte>.Shared.Return(json); }
+                    finally
+                    {
+                        ArrayPool<byte>.Shared.Return(json);
+                    }
                 }
             }
             catch
             {
-                // Ignore unreadable sources and keep what was loaded
+                // Ignore unreadable or broken community sources and keep what was loaded
             }
         }
 
-        return table;
+        return dict.ToFrozenDictionary(StringComparer.Ordinal);
     }
 
     // Drops every loaded language except the fallback and the active one so a switch does not accumulate memory.
@@ -361,8 +575,8 @@ public static partial class Loc
         lock (LoadLock)
         {
             var previous = _strings;
-            var kept = new Dictionary<string, NativeLocaleTable>(StringComparer.OrdinalIgnoreCase);
-            List<NativeLocaleTable>? evicted = null;
+            var kept = new Dictionary<string, FrozenDictionary<string, string>>(StringComparer.OrdinalIgnoreCase);
+            bool evictedAny = false;
             foreach (var (code, dict) in previous)
             {
                 if (string.Equals(code, FallbackLanguage, StringComparison.OrdinalIgnoreCase)
@@ -372,48 +586,96 @@ public static partial class Loc
                 }
                 else
                 {
-                    (evicted ??= new List<NativeLocaleTable>()).Add(dict);
+                    evictedAny = true;
                 }
             }
 
-            _strings = kept;
-            if (evicted is not null)
+            _strings = kept.ToFrozenDictionary(StringComparer.OrdinalIgnoreCase);
+            if (evictedAny)
             {
                 ReleaseTranslationIndex();
-                foreach (var table in evicted)
-                {
-                    table.Dispose();
-                }
             }
         }
     }
 
-    private static NativeTranslationIndex BuildTranslationLookup()
+    private static FrozenDictionary<string, string[]> BuildTranslationLookup()
     {
         var resident = _strings;
         var codes = DefaultLanguageOrder.Where(_sources.ContainsKey).Concat(_sources.Keys)
             .Distinct(StringComparer.OrdinalIgnoreCase);
-        var tables = new List<NativeLocaleTable>();
-        var owned = new List<NativeLocaleTable>();
-        try
+        var tables = new List<FrozenDictionary<string, string>>();
+        foreach (string code in codes)
         {
-            foreach (string code in codes)
+            if (!resident.TryGetValue(code, out var table))
             {
-                if (!resident.TryGetValue(code, out var table))
-                {
-                    table = LoadLocaleStrings(code);
-                    owned.Add(table);
-                }
-                tables.Add(table);
+                table = LoadLocaleStrings(code);
             }
-            return new NativeTranslationIndex(tables.ToArray(), owned.ToArray());
+            tables.Add(table);
         }
-        catch
-        {
-            foreach (var table in owned) table.Dispose();
-            throw;
-        }
+        return BuildTranslationIndex(tables);
     }
+
+    internal static FrozenDictionary<string, string[]> BuildTranslationIndex(
+        IReadOnlyList<FrozenDictionary<string, string>> tables)
+    {
+        var keysByText = new Dictionary<string, List<string>>(StringComparer.OrdinalIgnoreCase);
+        for (int t = 0; t < tables.Count; t++)
+        {
+            foreach (var (key, value) in tables[t])
+            {
+                if (string.IsNullOrWhiteSpace(value)) continue;
+                if (!keysByText.TryGetValue(value, out var keys))
+                {
+                    keys = new List<string>();
+                    keysByText[value] = keys;
+                }
+                keys.Add(key);
+            }
+        }
+
+        var result = new Dictionary<string, string[]>(keysByText.Count, StringComparer.OrdinalIgnoreCase);
+        foreach (var (text, keys) in keysByText)
+        {
+            keys.Sort(StringComparer.Ordinal);
+            var translations = new List<string>();
+            string? previousKey = null;
+            for (int k = 0; k < keys.Count; k++)
+            {
+                string key = keys[k];
+                if (string.Equals(key, previousKey, StringComparison.Ordinal)) continue;
+                previousKey = key;
+
+                for (int t = 0; t < tables.Count; t++)
+                {
+                    if (!tables[t].TryGetValue(key, out string? candidate) || string.IsNullOrWhiteSpace(candidate))
+                    {
+                        continue;
+                    }
+                    bool exists = false;
+                    for (int i = 0; i < translations.Count; i++)
+                    {
+                        if (string.Equals(translations[i], candidate, StringComparison.OrdinalIgnoreCase))
+                        {
+                            exists = true;
+                            break;
+                        }
+                    }
+                    if (!exists)
+                    {
+                        translations.Add(candidate);
+                    }
+                }
+            }
+            result[text] = translations.ToArray();
+        }
+
+        return result.ToFrozenDictionary(StringComparer.OrdinalIgnoreCase);
+    }
+
+    internal static List<string> FindTranslations(FrozenDictionary<string, string[]> index, string text) =>
+        index.TryGetValue(text, out string[]? matches) && matches.Length > 0
+            ? new List<string>(matches)
+            : new List<string> { text };
 
     private static void ApplyBuiltInDefaults(string code, Dictionary<string, string> dict)
     {
@@ -499,11 +761,4 @@ public static partial class Loc
         dict["nav.timer"] = navTimer;
         dict["nav.audio"] = navAudio;
     }
-}
-
-internal static class LocalizationService
-{
-    internal const long MaxExternalLocaleFileBytes = Loc.MaxExternalLocaleFileBytes;
-    internal static bool IsValidExternalLocaleFile(string filePath) => Loc.IsValidExternalLocaleFile(filePath);
-    internal static void DiscoverExternalDirectory(string dir) => Loc.DiscoverExternalDirectory(dir);
 }

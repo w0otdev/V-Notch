@@ -1,4 +1,5 @@
 using System.Buffers;
+using System.Buffers.Binary;
 using System.Collections.Concurrent;
 using System.IO;
 using System.IO.Compression;
@@ -189,6 +190,8 @@ public sealed partial class ClipboardHistoryStore : IDisposable, IAsyncDisposabl
     private readonly object _entriesLock = new();
     private readonly NativeClipboardEntryIndex _entries = new();
     private readonly ClipboardVault _vault;
+    private readonly object _publicBlobKeyLock = new();
+    private byte[]? _publicBlobKey;
     private readonly ClipboardSearchTextCache _searchText = new();
     private int _entriesMutationVersion = 1;
     private int _cachedCategoryVersion = -1;
@@ -508,11 +511,7 @@ public sealed partial class ClipboardHistoryStore : IDisposable, IAsyncDisposabl
                     }
                     storedPath = Path.Combine(staging, stored + (personal ? ".enc" : ""));
                     if (personal) _vault.WriteEncryptedFile(storedPath, s => WriteCopy(s));
-                    else
-                    {
-                        using var output = new FileStream(storedPath, FileMode.CreateNew, FileAccess.Write, FileShare.None);
-                        WriteCopy(output);
-                    }
+                    else WritePublicBlobFile(storedPath, s => WriteCopy(s));
                     File.SetAttributes(storedPath, FileAttributes.Normal);
                     fileHash.AppendData(attachmentHash.GetHashAndReset());
                     files.Add(new ClipboardFile(name, stored, directory));
@@ -537,7 +536,11 @@ public sealed partial class ClipboardHistoryStore : IDisposable, IAsyncDisposabl
                 if (!approved && size > ApprovalThreshold) return new ClipboardImportResult(null, true, size);
             }
             if (capture.ImagePng != null)
-                File.WriteAllBytes(Path.Combine(staging, "image.png" + (personal ? ".enc" : "")), personal ? _vault.Seal(capture.ImagePng) : capture.ImagePng);
+            {
+                string imagePath = Path.Combine(staging, "image.png" + (personal ? ".enc" : ""));
+                if (personal) File.WriteAllBytes(imagePath, _vault.Seal(capture.ImagePng));
+                else WritePublicBlobBytes(imagePath, capture.ImagePng);
+            }
             var kind = ClipboardClassifier.Detect(capture);
             if (kind == ClipboardKind.Image && files.Count > 0)
             {
@@ -572,7 +575,8 @@ public sealed partial class ClipboardHistoryStore : IDisposable, IAsyncDisposabl
             {
                 title = kind == ClipboardKind.Image ? "Image" : capture.Text.Trim();
             }
-            bool sensitive = ClipboardSensitiveData.IsSensitive(capture.Text, capture.SourceApp, capture.SourceExecutable)
+            bool sensitive = HasSensitiveFiles(files)
+                || ClipboardSensitiveData.IsSensitive(capture.Text, capture.SourceApp, capture.SourceExecutable)
                 || ClipboardSensitiveData.IsSensitive(capture.Html, capture.SourceApp, capture.SourceExecutable)
                 || ClipboardSensitiveData.IsSensitive(capture.Rtf, capture.SourceApp, capture.SourceExecutable);
             string preview = title.Length > 1024 ? title[..1024] : title;
@@ -587,11 +591,19 @@ public sealed partial class ClipboardHistoryStore : IDisposable, IAsyncDisposabl
                 foreach (var file in files)
                 {
                     AppendUtf8String(fileHash, (file.IsDirectory ? "directory:" : "file:") + file.Name, includeLengthPrefix: true);
-                    using var input = File.OpenRead(Path.Combine(staging, file.StoredName + (personal ? ".enc" : "")));
+                    string committedPath = Path.Combine(staging, file.StoredName + (personal ? ".enc" : ""));
                     using var attachmentHash = NativeClipboardHash.Create();
                     using var hashing = new ClipboardHashingStream(Stream.Null, attachmentHash);
-                    if (personal) _vault.TransformFile(input, hashing, encrypt: false);
-                    else input.CopyTo(hashing);
+                    if (personal)
+                    {
+                        using var input = File.OpenRead(committedPath);
+                        _vault.TransformFile(input, hashing, encrypt: false);
+                    }
+                    else
+                    {
+                        using var input = OpenPublicBlobRead(committedPath);
+                        input.CopyTo(hashing);
+                    }
                     fileHash.AppendData(attachmentHash.GetHashAndReset());
                 }
             }
@@ -711,27 +723,7 @@ public sealed partial class ClipboardHistoryStore : IDisposable, IAsyncDisposabl
         string path = Path.Combine(EntryDirectory(entry), "image.png" + (entry.IsPersonal ? ".enc" : ""));
         if (!File.Exists(path)) return null;
         if (entry.IsPersonal) return _vault.ReadImage(path, cancellation);
-        byte[]? bytes = null;
-        try
-        {
-            using var stream = File.OpenRead(path);
-            bytes = new byte[checked((int)stream.Length)];
-            for (int offset = 0; offset < bytes.Length;)
-            {
-                cancellation.ThrowIfCancellationRequested();
-                int read = stream.Read(bytes, offset, Math.Min(64 * 1024, bytes.Length - offset));
-                if (read == 0) throw new EndOfStreamException();
-                offset += read;
-            }
-            cancellation.ThrowIfCancellationRequested();
-            cancellation.ThrowIfCancellationRequested();
-            return bytes;
-        }
-        catch
-        {
-            if (bytes != null && entry.IsPersonal) CryptographicOperations.ZeroMemory(bytes);
-            throw;
-        }
+        return ReadPublicBlobBytes(path, cancellation);
     });
 
     public Task<string[]> ExportFilesAsync(Guid id) => Run(() =>
@@ -779,10 +771,10 @@ public sealed partial class ClipboardHistoryStore : IDisposable, IAsyncDisposabl
                 }
                 else if (file.IsDirectory)
                 {
-                    using var input = File.OpenRead(source);
+                    using var input = OpenPublicBlobRead(source);
                     ExtractArchiveDirectory(input, destination, null);
                 }
-                else File.Copy(source, materialized);
+                else CopyPublicBlobToPlainFile(source, materialized);
                 paths.Add(destination);
             }
             if (entry.Kind == ClipboardKind.Image && content.Files.Length == 0)
@@ -790,7 +782,7 @@ public sealed partial class ClipboardHistoryStore : IDisposable, IAsyncDisposabl
                 string destination = Path.Combine(export, "Image.png");
                 string imagePath = Path.Combine(EntryDirectory(entry), "image.png" + (entry.IsPersonal ? ".enc" : ""));
                 if (personalExport != null) personalExport.WriteFile(destination, output => _vault.CopyImage(imagePath, output));
-                else File.Copy(imagePath, destination);
+                else CopyPublicBlobToPlainFile(imagePath, destination);
                 paths.Add(destination);
             }
             if (personalExport != null)
@@ -816,6 +808,9 @@ public sealed partial class ClipboardHistoryStore : IDisposable, IAsyncDisposabl
         {
             if (entry.FullName.Contains(':') || entry.FullName.Contains('\0'))
                 throw new InvalidDataException("Archive contains an unsafe path.");
+            ReadOnlySpan<char> trimmedEntryName = entry.FullName.AsSpan().TrimEnd("/\\");
+            if (trimmedEntryName.IsEmpty || trimmedEntryName[^1] is '.' or ' ')
+                throw new IOException("Invalid archive path or extraction quota exceeded.");
             string path;
             try
             {
@@ -1033,13 +1028,31 @@ public sealed partial class ClipboardHistoryStore : IDisposable, IAsyncDisposabl
                 if (name.StartsWith("entry.", StringComparison.Ordinal) || name.StartsWith("content.", StringComparison.Ordinal)) continue;
                 if (name is "image.png" or "image.png.enc")
                 {
-                    byte[] bytes = File.ReadAllBytes(source);
-                    if (!personal) bytes = _vault.Open(bytes);
-                    try { File.WriteAllBytes(Path.Combine(staging, personal ? name + ".enc" : name[..^4]), personal ? _vault.Seal(bytes) : bytes); }
+                    byte[] bytes = personal ? ReadPublicBlobBytes(source) : _vault.Open(File.ReadAllBytes(source));
+                    try
+                    {
+                        if (personal) File.WriteAllBytes(Path.Combine(staging, name + ".enc"), _vault.Seal(bytes));
+                        else WritePublicBlobBytes(Path.Combine(staging, name[..^4]), bytes);
+                    }
                     finally { CryptographicOperations.ZeroMemory(bytes); }
                 }
-                else if (personal) _vault.TransformFile(source, Path.Combine(staging, name + ".enc"), true);
-                else _vault.TransformFile(source, Path.Combine(staging, name[..^4]), false);
+                else if (personal)
+                {
+                    using var input = OpenPublicBlobRead(source);
+                    string dest = Path.Combine(staging, name + ".enc");
+                    using var output = new FileStream(dest, FileMode.CreateNew, FileAccess.Write, FileShare.None);
+                    _vault.TransformFile(input, output, encrypt: true);
+                    output.Flush(true);
+                }
+                else
+                {
+                    WritePublicBlobFile(Path.Combine(staging, name[..^4]), plainOut =>
+                    {
+                        using var encIn = File.OpenRead(source);
+                        _vault.TransformFile(encIn, plainOut, encrypt: false);
+                        return 0L;
+                    });
+                }
             }
             WriteDocument(Path.Combine(staging, "content.json"), content with { Entry = moved }, personal);
             WriteDocument(Path.Combine(staging, "entry.json"), moved, personal);
@@ -1519,7 +1532,8 @@ public sealed partial class ClipboardHistoryStore : IDisposable, IAsyncDisposabl
             content = ReadContent(entry);
             entry = entry with
             {
-                IsSensitive = ClipboardSensitiveData.IsSensitive(content.Text, entry.SourceApp, entry.SourceExecutable)
+                IsSensitive = HasSensitiveFiles(content.Files)
+                || ClipboardSensitiveData.IsSensitive(content.Text, entry.SourceApp, entry.SourceExecutable)
                 || ClipboardSensitiveData.IsSensitive(content.Html, entry.SourceApp, entry.SourceExecutable)
                 || ClipboardSensitiveData.IsSensitive(content.Rtf, entry.SourceApp, entry.SourceExecutable)
             };
@@ -1730,34 +1744,42 @@ public sealed partial class ClipboardHistoryStore : IDisposable, IAsyncDisposabl
         using var decrypted = personal ? new MemoryStream() : null;
         try
         {
-            using var input = File.OpenRead(source);
-            if (decrypted != null) { _vault.TransformFile(input, decrypted, false); decrypted.Position = 0; }
-            Stream stream = decrypted ?? (Stream)input;
-            var decoder = System.Windows.Media.Imaging.BitmapDecoder.Create(stream,
-                System.Windows.Media.Imaging.BitmapCreateOptions.DelayCreation,
-                System.Windows.Media.Imaging.BitmapCacheOption.None);
-            var frame = decoder.Frames[0];
-            int width = frame.PixelWidth, height = frame.PixelHeight;
-            stream.Position = 0;
-            var bitmap = new System.Windows.Media.Imaging.BitmapImage();
-            bitmap.BeginInit();
-            bitmap.CacheOption = System.Windows.Media.Imaging.BitmapCacheOption.OnLoad;
-            if (width >= height) bitmap.DecodePixelWidth = Math.Min(width, 840);
-            else bitmap.DecodePixelHeight = Math.Min(height, 840);
-            bitmap.StreamSource = stream;
-            bitmap.EndInit();
-            bitmap.Freeze();
-            var encoder = new System.Windows.Media.Imaging.PngBitmapEncoder();
-            encoder.Frames.Add(System.Windows.Media.Imaging.BitmapFrame.Create(bitmap));
-            using var output = new MemoryStream();
-            encoder.Save(output);
+            Stream? publicStream = null;
+            using var input = personal ? File.OpenRead(source) : null;
             try
             {
-                var bytes = output.GetBuffer().AsSpan(0, checked((int)output.Length));
-                File.WriteAllBytes(Path.Combine(directory, "image.png" + (personal ? ".enc" : "")), personal ? _vault.Seal(bytes) : bytes.ToArray());
+                if (decrypted != null) { _vault.TransformFile(input!, decrypted, false); decrypted.Position = 0; }
+                else publicStream = OpenPublicBlobRead(source);
+                Stream stream = decrypted ?? publicStream!;
+                var decoder = System.Windows.Media.Imaging.BitmapDecoder.Create(stream,
+                    System.Windows.Media.Imaging.BitmapCreateOptions.DelayCreation,
+                    System.Windows.Media.Imaging.BitmapCacheOption.None);
+                var frame = decoder.Frames[0];
+                int width = frame.PixelWidth, height = frame.PixelHeight;
+                stream.Position = 0;
+                var bitmap = new System.Windows.Media.Imaging.BitmapImage();
+                bitmap.BeginInit();
+                bitmap.CacheOption = System.Windows.Media.Imaging.BitmapCacheOption.OnLoad;
+                if (width >= height) bitmap.DecodePixelWidth = Math.Min(width, 840);
+                else bitmap.DecodePixelHeight = Math.Min(height, 840);
+                bitmap.StreamSource = stream;
+                bitmap.EndInit();
+                bitmap.Freeze();
+                var encoder = new System.Windows.Media.Imaging.PngBitmapEncoder();
+                encoder.Frames.Add(System.Windows.Media.Imaging.BitmapFrame.Create(bitmap));
+                using var output = new MemoryStream();
+                encoder.Save(output);
+                try
+                {
+                    var bytes = output.GetBuffer().AsSpan(0, checked((int)output.Length));
+                    string previewPath = Path.Combine(directory, "image.png" + (personal ? ".enc" : ""));
+                    if (personal) File.WriteAllBytes(previewPath, _vault.Seal(bytes));
+                    else WritePublicBlobBytes(previewPath, bytes);
+                }
+                finally { CryptographicOperations.ZeroMemory(output.GetBuffer()); }
+                return true;
             }
-            finally { if (personal) CryptographicOperations.ZeroMemory(output.GetBuffer()); }
-            return true;
+            finally { publicStream?.Dispose(); }
         }
         catch (Exception ex) when (ex is IOException or NotSupportedException or InvalidOperationException or ArgumentException)
         {
@@ -1878,11 +1900,523 @@ public sealed partial class ClipboardHistoryStore : IDisposable, IAsyncDisposabl
         return FormatPrefixedHash(ReadOnlySpan<char>.Empty, hash);
     }
 
-    private static string FingerprintImageFile(string path)
+    private string FingerprintImageFile(string path)
     {
-        Span<byte> digest = stackalloc byte[32];
-        if (!NativeClipboardHash.TryHashImage(default, path, digest)) throw new IOException("Could not decode clipboard image.");
-        return FormatPrefixedHashBytes("image-v2:", digest);
+        byte[] bytes = ReadPublicBlobBytes(path);
+        try
+        {
+            Span<byte> digest = stackalloc byte[32];
+            if (!NativeClipboardHash.TryHashImage(bytes, null, digest)) throw new IOException("Could not decode clipboard image.");
+            return FormatPrefixedHashBytes("image-v2:", digest);
+        }
+        finally
+        {
+            CryptographicOperations.ZeroMemory(bytes);
+        }
+    }
+
+    private static bool HasSensitiveFiles(IReadOnlyList<ClipboardFile> files)
+    {
+        for (int i = 0; i < files.Count; i++)
+        {
+            if (ClipboardSensitiveData.IsSensitiveFileName(files[i].Name))
+                return true;
+        }
+        return false;
+    }
+
+    private static ReadOnlySpan<byte> PublicBlobMagic => "VNPBLOB1"u8;
+    private static readonly byte[] s_publicBlobEntropy = "VNotch.PublicBlob.v1"u8.ToArray();
+    private const int PublicBlobHeaderSize = 20;
+    private const int PublicBlobChunkSize = 64 * 1024;
+    private const int PublicBlobTagSize = 16;
+    private const int PublicBlobDiskChunkSize = PublicBlobChunkSize + PublicBlobTagSize;
+
+    private static void BuildPublicBlobNonceAndAad(
+        ReadOnlySpan<byte> streamId,
+        ulong chunkIndex,
+        int plainLen,
+        bool isFinal,
+        Span<byte> nonce,
+        Span<byte> aad)
+    {
+        streamId.CopyTo(nonce);
+        ulong low = BinaryPrimitives.ReadUInt64LittleEndian(nonce[4..12]);
+        BinaryPrimitives.WriteUInt64LittleEndian(nonce[4..12], low ^ chunkIndex);
+
+        PublicBlobMagic.CopyTo(aad[..8]);
+        streamId.CopyTo(aad.Slice(8, 12));
+        BinaryPrimitives.WriteUInt64LittleEndian(aad.Slice(20, 8), chunkIndex);
+        BinaryPrimitives.WriteInt32LittleEndian(aad.Slice(28, 4), plainLen);
+        aad[32] = isFinal ? (byte)1 : (byte)0;
+    }
+
+    private byte[] GetPublicBlobKey(bool allowCreate)
+    {
+        lock (_publicBlobKeyLock)
+        {
+            if (_publicBlobKey != null) return _publicBlobKey;
+            string keyPath = Path.Combine(_root, ".public-blob-key.dpapi");
+            if (File.Exists(keyPath))
+            {
+                byte[] existing = File.ReadAllBytes(keyPath);
+                if (existing.Length > 0)
+                {
+                    byte[] unprotected;
+                    try
+                    {
+                        unprotected = ProtectedData.Unprotect(existing, s_publicBlobEntropy, DataProtectionScope.CurrentUser);
+                    }
+                    catch (CryptographicException ex)
+                    {
+                        throw new IOException("Could not unprotect public clipboard blob key.", ex);
+                    }
+                    if (unprotected.Length != 32)
+                    {
+                        CryptographicOperations.ZeroMemory(unprotected);
+                        throw new IOException("Invalid public clipboard blob key length.");
+                    }
+                    _publicBlobKey = unprotected;
+                    return _publicBlobKey;
+                }
+                if (!allowCreate)
+                    throw new IOException("Public clipboard blob key is empty.");
+                File.SetAttributes(keyPath, FileAttributes.Normal);
+                File.Delete(keyPath);
+            }
+            if (!allowCreate)
+                throw new IOException("Missing public clipboard blob key.");
+            Directory.CreateDirectory(_root);
+            byte[] created = RandomNumberGenerator.GetBytes(32);
+            string temp = $"{keyPath}.{Guid.NewGuid():N}.tmp";
+            try
+            {
+                byte[] protectedBytes = ProtectedData.Protect(created, s_publicBlobEntropy, DataProtectionScope.CurrentUser);
+                using (var stream = new FileStream(temp, FileMode.CreateNew, FileAccess.Write, FileShare.None))
+                {
+                    stream.Write(protectedBytes);
+                    stream.Flush(true);
+                }
+                try
+                {
+                    File.Move(temp, keyPath, overwrite: false);
+                    try { File.SetAttributes(keyPath, FileAttributes.Hidden); } catch { }
+                    _publicBlobKey = created;
+                    created = [];
+                    return _publicBlobKey;
+                }
+                catch (IOException) when (File.Exists(keyPath))
+                {
+                    byte[] winner;
+                    try
+                    {
+                        winner = ProtectedData.Unprotect(File.ReadAllBytes(keyPath), s_publicBlobEntropy, DataProtectionScope.CurrentUser);
+                    }
+                    catch (CryptographicException ex)
+                    {
+                        throw new IOException("Could not unprotect public clipboard blob key.", ex);
+                    }
+                    if (winner.Length != 32)
+                    {
+                        CryptographicOperations.ZeroMemory(winner);
+                        throw new IOException("Invalid public clipboard blob key length.");
+                    }
+                    _publicBlobKey = winner;
+                    return _publicBlobKey;
+                }
+            }
+            finally
+            {
+                if (created.Length > 0) CryptographicOperations.ZeroMemory(created);
+                if (File.Exists(temp)) { try { File.Delete(temp); } catch { } }
+            }
+        }
+    }
+
+    private void WritePublicBlobBytes(string destination, ReadOnlySpan<byte> plain)
+    {
+        byte[] key = GetPublicBlobKey(allowCreate: true);
+        Directory.CreateDirectory(Path.GetDirectoryName(destination)!);
+        string temp = $"{destination}.{Guid.NewGuid():N}.tmp";
+        byte[]? cipherBuf = null;
+        try
+        {
+            using (var output = new FileStream(temp, FileMode.CreateNew, FileAccess.Write, FileShare.None))
+            using (var cipher = new AesGcm(key, PublicBlobTagSize))
+            {
+                Span<byte> header = stackalloc byte[PublicBlobHeaderSize];
+                PublicBlobMagic.CopyTo(header);
+                RandomNumberGenerator.Fill(header[8..]);
+                output.Write(header);
+                ReadOnlySpan<byte> streamId = header[8..];
+                Span<byte> nonce = stackalloc byte[12];
+                Span<byte> aad = stackalloc byte[33];
+                Span<byte> tag = stackalloc byte[PublicBlobTagSize];
+                if (plain.IsEmpty)
+                {
+                    BuildPublicBlobNonceAndAad(streamId, 0, 0, isFinal: true, nonce, aad);
+                    cipher.Encrypt(nonce, ReadOnlySpan<byte>.Empty, Span<byte>.Empty, tag, aad);
+                    output.Write(tag);
+                }
+                else
+                {
+                    cipherBuf = ArrayPool<byte>.Shared.Rent(Math.Min(PublicBlobChunkSize, plain.Length));
+                    ulong chunkIndex = 0;
+                    int offset = 0;
+                    while (offset < plain.Length)
+                    {
+                        int chunkLen = Math.Min(PublicBlobChunkSize, plain.Length - offset);
+                        bool isFinal = offset + chunkLen == plain.Length;
+                        BuildPublicBlobNonceAndAad(streamId, chunkIndex++, chunkLen, isFinal, nonce, aad);
+                        Span<byte> dst = cipherBuf.AsSpan(0, chunkLen);
+                        cipher.Encrypt(nonce, plain.Slice(offset, chunkLen), dst, tag, aad);
+                        output.Write(tag);
+                        output.Write(dst);
+                        offset += chunkLen;
+                    }
+                }
+                output.Flush(true);
+            }
+            File.Move(temp, destination, overwrite: true);
+            File.SetAttributes(destination, FileAttributes.Normal);
+        }
+        finally
+        {
+            if (cipherBuf != null)
+            {
+                CryptographicOperations.ZeroMemory(cipherBuf);
+                ArrayPool<byte>.Shared.Return(cipherBuf);
+            }
+            if (File.Exists(temp)) { try { File.Delete(temp); } catch { } }
+        }
+    }
+
+    private void WritePublicBlobFile(string destination, Func<Stream, long> write)
+    {
+        byte[] key = GetPublicBlobKey(allowCreate: true);
+        Directory.CreateDirectory(Path.GetDirectoryName(destination)!);
+        string temp = $"{destination}.{Guid.NewGuid():N}.tmp";
+        try
+        {
+            using (var output = new FileStream(temp, FileMode.CreateNew, FileAccess.Write, FileShare.None))
+            using (var encStream = new PublicBlobWriteStream(output, key))
+            {
+                _ = write(encStream);
+                encStream.Complete();
+                output.Flush(true);
+            }
+            File.Move(temp, destination, overwrite: true);
+            File.SetAttributes(destination, FileAttributes.Normal);
+        }
+        finally
+        {
+            if (File.Exists(temp)) { try { File.Delete(temp); } catch { } }
+        }
+    }
+
+    internal Stream OpenPublicBlobRead(string path)
+    {
+        var file = File.OpenRead(path);
+        try
+        {
+            if (file.Length >= 8)
+            {
+                Span<byte> magic = stackalloc byte[8];
+                file.ReadExactly(magic);
+                if (magic.SequenceEqual(PublicBlobMagic))
+                {
+                    byte[] key = GetPublicBlobKey(allowCreate: false);
+                    var stream = new PublicBlobReadStream(file, key);
+                    file = null!;
+                    return stream;
+                }
+            }
+            file.Position = 0;
+            var legacy = file;
+            file = null!;
+            return legacy;
+        }
+        finally
+        {
+            file?.Dispose();
+        }
+    }
+
+    private byte[] ReadPublicBlobBytes(string path, CancellationToken cancellation = default)
+    {
+        cancellation.ThrowIfCancellationRequested();
+        using var stream = OpenPublicBlobRead(path);
+        byte[]? bytes = null;
+        try
+        {
+            bytes = new byte[checked((int)stream.Length)];
+            for (int offset = 0; offset < bytes.Length;)
+            {
+                cancellation.ThrowIfCancellationRequested();
+                int read = stream.Read(bytes, offset, Math.Min(PublicBlobChunkSize, bytes.Length - offset));
+                if (read == 0) throw new EndOfStreamException();
+                offset += read;
+            }
+            cancellation.ThrowIfCancellationRequested();
+            return bytes;
+        }
+        catch
+        {
+            if (bytes != null) CryptographicOperations.ZeroMemory(bytes);
+            throw;
+        }
+    }
+
+    private void CopyPublicBlobToPlainFile(string source, string destination)
+    {
+        using var input = OpenPublicBlobRead(source);
+        using var output = new FileStream(destination, FileMode.CreateNew, FileAccess.Write, FileShare.None);
+        input.CopyTo(output, PublicBlobChunkSize);
+        output.Flush(true);
+    }
+
+    private sealed class PublicBlobWriteStream : Stream
+    {
+        private readonly Stream _output;
+        private readonly AesGcm _cipher;
+        private readonly byte[] _streamId = new byte[12];
+        private byte[]? _plainBuf;
+        private byte[]? _cipherBuf;
+        private int _buffered;
+        private ulong _chunkIndex;
+        private bool _completed;
+        private bool _disposed;
+
+        public PublicBlobWriteStream(Stream output, byte[] key)
+        {
+            _output = output;
+            _cipher = new AesGcm(key, PublicBlobTagSize);
+            _plainBuf = ArrayPool<byte>.Shared.Rent(PublicBlobChunkSize);
+            _cipherBuf = ArrayPool<byte>.Shared.Rent(PublicBlobChunkSize);
+            RandomNumberGenerator.Fill(_streamId);
+            Span<byte> header = stackalloc byte[PublicBlobHeaderSize];
+            PublicBlobMagic.CopyTo(header);
+            _streamId.CopyTo(header[8..]);
+            _output.Write(header);
+        }
+
+        public override bool CanRead => false;
+        public override bool CanSeek => false;
+        public override bool CanWrite => !_disposed && !_completed;
+        public override long Length => throw new NotSupportedException();
+        public override long Position { get => throw new NotSupportedException(); set => throw new NotSupportedException(); }
+        public override void Flush() => ObjectDisposedException.ThrowIf(_disposed, this);
+        public override int Read(byte[] buffer, int offset, int count) => throw new NotSupportedException();
+        public override long Seek(long offset, SeekOrigin origin) => throw new NotSupportedException();
+        public override void SetLength(long value) => throw new NotSupportedException();
+        public override void Write(byte[] buffer, int offset, int count) => Write(buffer.AsSpan(offset, count));
+
+        public override void Write(ReadOnlySpan<byte> source)
+        {
+            ObjectDisposedException.ThrowIf(_disposed, this);
+            if (_completed) throw new InvalidOperationException("Encrypted blob stream is already completed.");
+            while (!source.IsEmpty)
+            {
+                if (_buffered == PublicBlobChunkSize)
+                    FlushChunk(isFinal: false);
+                int take = Math.Min(PublicBlobChunkSize - _buffered, source.Length);
+                source[..take].CopyTo(_plainBuf.AsSpan(_buffered, take));
+                _buffered += take;
+                source = source[take..];
+            }
+        }
+
+        public void Complete()
+        {
+            ObjectDisposedException.ThrowIf(_disposed, this);
+            if (_completed) return;
+            FlushChunk(isFinal: true);
+            _completed = true;
+        }
+
+        private void FlushChunk(bool isFinal)
+        {
+            Span<byte> nonce = stackalloc byte[12];
+            Span<byte> aad = stackalloc byte[33];
+            Span<byte> tag = stackalloc byte[PublicBlobTagSize];
+            BuildPublicBlobNonceAndAad(_streamId, _chunkIndex++, _buffered, isFinal, nonce, aad);
+            Span<byte> dst = _cipherBuf.AsSpan(0, _buffered);
+            _cipher.Encrypt(nonce, _plainBuf.AsSpan(0, _buffered), dst, tag, aad);
+            _output.Write(tag);
+            if (_buffered > 0) _output.Write(dst);
+            _buffered = 0;
+        }
+
+        protected override void Dispose(bool disposing)
+        {
+            if (disposing && !_disposed)
+            {
+                _disposed = true;
+                _cipher.Dispose();
+                if (_plainBuf != null) { CryptographicOperations.ZeroMemory(_plainBuf); ArrayPool<byte>.Shared.Return(_plainBuf); _plainBuf = null; }
+                if (_cipherBuf != null) { CryptographicOperations.ZeroMemory(_cipherBuf); ArrayPool<byte>.Shared.Return(_cipherBuf); _cipherBuf = null; }
+            }
+            base.Dispose(disposing);
+        }
+    }
+
+    private sealed class PublicBlobReadStream : Stream
+    {
+        private readonly FileStream _file;
+        private readonly AesGcm _cipher;
+        private readonly byte[] _streamId = new byte[12];
+        private readonly long _totalChunks;
+        private readonly int _lastPlainLen;
+        private readonly long _plainLength;
+        private byte[]? _plainChunk;
+        private byte[]? _cipherChunk;
+        private long _cachedChunkIndex = -1;
+        private int _cachedPlainLen;
+        private long _position;
+        private bool _disposed;
+
+        public PublicBlobReadStream(FileStream file, byte[] key)
+        {
+            _file = file;
+            long fileLen = file.Length;
+            if (fileLen < PublicBlobHeaderSize + PublicBlobTagSize)
+                throw new IOException("Truncated encrypted clipboard attachment.");
+            long bodyLen = fileLen - PublicBlobHeaderSize;
+            if (bodyLen == PublicBlobTagSize)
+            {
+                _totalChunks = 1;
+                _lastPlainLen = 0;
+                _plainLength = 0;
+            }
+            else
+            {
+                long rem = bodyLen % PublicBlobDiskChunkSize;
+                if (rem is > 0 and <= PublicBlobTagSize)
+                    throw new IOException("Corrupt encrypted clipboard attachment length.");
+                if (rem == 0)
+                {
+                    _totalChunks = bodyLen / PublicBlobDiskChunkSize;
+                    _lastPlainLen = PublicBlobChunkSize;
+                }
+                else
+                {
+                    _totalChunks = bodyLen / PublicBlobDiskChunkSize + 1;
+                    _lastPlainLen = (int)(rem - PublicBlobTagSize);
+                }
+                _plainLength = (_totalChunks - 1) * PublicBlobChunkSize + _lastPlainLen;
+            }
+            _file.Position = 8;
+            _file.ReadExactly(_streamId);
+            _cipher = new AesGcm(key, PublicBlobTagSize);
+            try
+            {
+                _plainChunk = ArrayPool<byte>.Shared.Rent(PublicBlobChunkSize);
+                _cipherChunk = ArrayPool<byte>.Shared.Rent(PublicBlobChunkSize);
+                if (_plainLength == 0)
+                    LoadChunk(0);
+            }
+            catch
+            {
+                _cipher.Dispose();
+                if (_plainChunk != null) { CryptographicOperations.ZeroMemory(_plainChunk); ArrayPool<byte>.Shared.Return(_plainChunk); _plainChunk = null; }
+                if (_cipherChunk != null) { CryptographicOperations.ZeroMemory(_cipherChunk); ArrayPool<byte>.Shared.Return(_cipherChunk); _cipherChunk = null; }
+                throw;
+            }
+        }
+
+        public override bool CanRead => !_disposed;
+        public override bool CanSeek => !_disposed;
+        public override bool CanWrite => false;
+        public override long Length { get { ObjectDisposedException.ThrowIf(_disposed, this); return _plainLength; } }
+        public override long Position
+        {
+            get { ObjectDisposedException.ThrowIf(_disposed, this); return _position; }
+            set
+            {
+                ObjectDisposedException.ThrowIf(_disposed, this);
+                ArgumentOutOfRangeException.ThrowIfNegative(value);
+                _position = value;
+            }
+        }
+
+        public override void Flush() => ObjectDisposedException.ThrowIf(_disposed, this);
+        public override void SetLength(long value) => throw new NotSupportedException();
+        public override void Write(byte[] buffer, int offset, int count) => throw new NotSupportedException();
+        public override int Read(byte[] buffer, int offset, int count) => Read(buffer.AsSpan(offset, count));
+
+        public override int Read(Span<byte> destination)
+        {
+            ObjectDisposedException.ThrowIf(_disposed, this);
+            int totalRead = 0;
+            while (!destination.IsEmpty && _position < _plainLength)
+            {
+                long chunkIndex = _position / PublicBlobChunkSize;
+                int chunkOffset = (int)(_position % PublicBlobChunkSize);
+                if (_cachedChunkIndex != chunkIndex)
+                    LoadChunk(chunkIndex);
+                int available = _cachedPlainLen - chunkOffset;
+                int count = Math.Min(destination.Length, available);
+                _plainChunk.AsSpan(chunkOffset, count).CopyTo(destination);
+                _position += count;
+                totalRead += count;
+                destination = destination[count..];
+            }
+            return totalRead;
+        }
+
+        public override long Seek(long offset, SeekOrigin origin)
+        {
+            ObjectDisposedException.ThrowIf(_disposed, this);
+            long next = origin switch
+            {
+                SeekOrigin.Begin => offset,
+                SeekOrigin.Current => checked(_position + offset),
+                SeekOrigin.End => checked(_plainLength + offset),
+                _ => throw new ArgumentOutOfRangeException(nameof(origin))
+            };
+            if (next < 0) throw new IOException("Attempted to seek before the beginning of the stream.");
+            _position = next;
+            return _position;
+        }
+
+        private void LoadChunk(long chunkIndex)
+        {
+            bool isFinal = chunkIndex == _totalChunks - 1;
+            int plainLen = isFinal ? _lastPlainLen : PublicBlobChunkSize;
+            _file.Position = PublicBlobHeaderSize + chunkIndex * PublicBlobDiskChunkSize;
+            Span<byte> tag = stackalloc byte[PublicBlobTagSize];
+            _file.ReadExactly(tag);
+            if (plainLen > 0)
+                _file.ReadExactly(_cipherChunk.AsSpan(0, plainLen));
+            Span<byte> nonce = stackalloc byte[12];
+            Span<byte> aad = stackalloc byte[33];
+            BuildPublicBlobNonceAndAad(_streamId, (ulong)chunkIndex, plainLen, isFinal, nonce, aad);
+            try
+            {
+                _cipher.Decrypt(nonce, _cipherChunk.AsSpan(0, plainLen), tag, _plainChunk.AsSpan(0, plainLen), aad);
+            }
+            catch (CryptographicException ex)
+            {
+                CryptographicOperations.ZeroMemory(_plainChunk);
+                _cachedChunkIndex = -1;
+                throw new IOException("Clipboard attachment authentication failed.", ex);
+            }
+            _cachedChunkIndex = chunkIndex;
+            _cachedPlainLen = plainLen;
+        }
+
+        protected override void Dispose(bool disposing)
+        {
+            if (disposing && !_disposed)
+            {
+                _disposed = true;
+                _cipher.Dispose();
+                _file.Dispose();
+                if (_plainChunk != null) { CryptographicOperations.ZeroMemory(_plainChunk); ArrayPool<byte>.Shared.Return(_plainChunk); _plainChunk = null; }
+                if (_cipherChunk != null) { CryptographicOperations.ZeroMemory(_cipherChunk); ArrayPool<byte>.Shared.Return(_cipherChunk); _cipherChunk = null; }
+            }
+            base.Dispose(disposing);
+        }
     }
 
     private static string ImagePixelFingerprint(byte[] image)
@@ -1998,6 +2532,14 @@ public sealed partial class ClipboardHistoryStore : IDisposable, IAsyncDisposabl
         _imagePreviews.Clear();
         _imagePreviewBytes = 0;
         _vault.Dispose();
+        lock (_publicBlobKeyLock)
+        {
+            if (_publicBlobKey != null)
+            {
+                CryptographicOperations.ZeroMemory(_publicBlobKey);
+                _publicBlobKey = null;
+            }
+        }
         _publicRecords?.Dispose();
         lock (_entriesLock) _entries.Dispose();
         foreach (var lease in _exportLeases.Values) lease.Dispose();

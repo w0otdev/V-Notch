@@ -1,6 +1,7 @@
 #include "../vnotch_common.h"
 #include <psapi.h>
 #include <cstdint>
+#include <string_view>
 
 #pragma comment(lib, "psapi.lib")
 #pragma comment(lib, "shcore.lib")
@@ -831,10 +832,14 @@ VN_EXPORT int32_t __stdcall vn_win32_create_hard_link(
     if (!destination || !existing || destination_length <= 0 || existing_length <= 0 ||
         destination_length >= 32768 || existing_length >= 32768)
         return VN_ERR_INVALID_ARG;
+    std::wstring_view dest_view(reinterpret_cast<const wchar_t*>(destination), static_cast<size_t>(destination_length));
+    std::wstring_view src_view(reinterpret_cast<const wchar_t*>(existing), static_cast<size_t>(existing_length));
+    if (dest_view.find(L'\0') != std::wstring_view::npos || src_view.find(L'\0') != std::wstring_view::npos)
+        return VN_ERR_INVALID_ARG;
     if (out_last_error) *out_last_error = 0;
     try {
-        std::wstring dest(reinterpret_cast<const wchar_t*>(destination), static_cast<size_t>(destination_length));
-        std::wstring src(reinterpret_cast<const wchar_t*>(existing), static_cast<size_t>(existing_length));
+        std::wstring dest(dest_view);
+        std::wstring src(src_view);
         SetLastError(0);
         if (CreateHardLinkW(dest.c_str(), src.c_str(), nullptr)) return VN_OK;
         if (out_last_error) *out_last_error = static_cast<int32_t>(GetLastError());

@@ -1,5 +1,7 @@
+using System.Buffers;
 using System.IO;
 using System.Reflection;
+using System.Runtime.InteropServices;
 using System.Windows;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
@@ -10,9 +12,27 @@ using Detection = VNotch.Services.SmartThumbnailCropService.Detection;
 namespace VNotch.Tests;
 
 [Collection("Localization")]
-public sealed class SmartCropInferenceAndFramingTests
+public sealed partial class SmartCropInferenceAndFramingTests
 {
     private const BindingFlags Private = BindingFlags.NonPublic | BindingFlags.Instance;
+
+    [StructLayout(LayoutKind.Sequential, Pack = 1)]
+    private struct VnCropRect
+    {
+        public int X, Y, Width, Height;
+        public readonly Int32Rect ToRect() => new(X, Y, Width, Height);
+    }
+
+    [LibraryImport("VNotch.Native.dll")]
+    private static partial int vn_smartcrop_preprocess_bgra32(
+        ReadOnlySpan<byte> pixels, int length, int width, int height, int stride,
+        Span<float> tensor, int capacity, out float scale);
+
+    [LibraryImport("VNotch.Native.dll")]
+    private static partial int vn_smartcrop_try_detect_text_crop_rect(
+        ReadOnlySpan<byte> pixels, int w, int h, int stride,
+        int imgWidth, int imgHeight, int cropSize,
+        out VnCropRect outRect, out byte outFound);
 
     [Fact]
     public void BundledModelRunsOfflineAndReusesInferenceUntilItsIdleSessionIsReleased() => SharedStaTestRunner.RunAsync(async ct =>
@@ -88,10 +108,18 @@ public sealed class SmartCropInferenceAndFramingTests
     public void TextAnalysisDistinguishesFlatArtworkFromDenseContrastingEdges(bool edges) => SharedStaTestRunner.Run(() =>
     {
         var image = Image(256, 128, edges);
-        var method = typeof(SmartThumbnailCropService).GetMethod("TryDetectTextCropRect", BindingFlags.Static | BindingFlags.NonPublic)!;
-        var crop = (Int32Rect?)method.Invoke(null, [image, 256, 128, 128]);
-        Assert.Equal(edges, crop.HasValue);
-        if (crop.HasValue) AssertCrop(crop.Value, 256, 128);
+        Assert.True(ArtworkFrameDetector.RentDownscaledPixels(image, out byte[]? pixels, out int w, out int h, out int stride, 128.0));
+        try
+        {
+            Assert.Equal(0, vn_smartcrop_try_detect_text_crop_rect(pixels.AsSpan(0, h * stride), w, h, stride, 256, 128, 128, out var rect, out byte found));
+            Int32Rect? crop = found != 0 ? rect.ToRect() : null;
+            Assert.Equal(edges, crop.HasValue);
+            if (crop.HasValue) AssertCrop(crop.Value, 256, 128);
+        }
+        finally
+        {
+            ArrayPool<byte>.Shared.Return(pixels!);
+        }
     });
 
     [Theory]
@@ -100,9 +128,13 @@ public sealed class SmartCropInferenceAndFramingTests
     public void ModelInputKeepsBgrValuesAndUses114ForLetterboxedPixels(int width, int height) => SharedStaTestRunner.Run(() =>
     {
         var image = Image(width, height, false);
+        int stride = width * 4;
+        byte[] pixels = new byte[height * stride];
+        image.CopyPixels(pixels, stride, 0);
+
         const int plane = 416 * 416;
         float[] tensor = new float[3 * plane];
-        float scale = SmartThumbnailCropService.PreprocessImageFast(image, tensor);
+        Assert.Equal(0, vn_smartcrop_preprocess_bgra32(pixels, pixels.Length, width, height, stride, tensor, tensor.Length, out float scale));
         Assert.Equal(416f / Math.Max(width, height), scale, 5);
         Assert.Equal(30, tensor[0]);
         Assert.Equal(20, tensor[plane]);

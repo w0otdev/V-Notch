@@ -94,29 +94,49 @@ public partial class App : Application
         {
             RegisterExceptionHandlers();
 
-            bool specialStartup = IsSetupOrUninstall(e.Args) ||
-                e.Args.Contains("--test-integrity") || e.Args.Contains("--test-hash");
+            bool isSetupOrUninstall = IsSetupOrUninstall(e.Args);
+            bool specialStartup = isSetupOrUninstall;
+#if DEBUG
+            bool isDebugIntegrityTest = e.Args.Contains("--test-integrity") || e.Args.Contains("--test-hash");
+            specialStartup |= isDebugIntegrityTest;
+#endif
             if (!specialStartup && !EnsureSingleInstance(e)) return;
 
             System.Windows.Forms.Application.SetHighDpiMode(System.Windows.Forms.HighDpiMode.PerMonitorV2);
+
+            if (isSetupOrUninstall)
+            {
+                using var earlySettings = new SettingsService();
+                var loadedSettings = earlySettings.Load();
+                AccentTheme.Apply(loadedSettings.AccentColor);
+                WindowAnimationPolicy.SetInvisibleMode(loadedSettings.InvisibleMode);
+                WindowAnimationPolicy.SetShadowEnabled(loadedSettings.EnableShadow);
+                LocalizedPresentation.Initialize();
+                Loc.SetLanguage(loadedSettings.Language);
+                AnimationConfig.Configure(loadedSettings.AnimationFps, loadedSettings.AutoAnimationFps);
+                base.OnStartup(e);
+                RunSetupOrUninstallAsync(e, loadedSettings.Language).SafeFireAndForget("SETUP-STARTUP");
+                return;
+            }
 
             if (!specialStartup) AppPaths.MigrateLegacyLocalData();
             _ = MediaProtocolConfiguration.Current;
             var services = new ServiceCollection();
             ServiceConfigurator.ConfigureServices(services);
             SetServices(services.BuildServiceProvider());
-            var earlySettings = Services.GetRequiredService<ISettingsService>();
-            var loadedSettings = earlySettings.Load();
-            AccentTheme.Apply(loadedSettings.AccentColor);
-            NetworkPrivacy.Current.Apply(loadedSettings);
-            WindowTitleScanner.UpdateInspectionAllowed(loadedSettings.EnableBrowserUrlInspection);
-            WindowAnimationPolicy.SetInvisibleMode(loadedSettings.InvisibleMode);
-            WindowAnimationPolicy.SetShadowEnabled(loadedSettings.EnableShadow);
+            var mainSettingsService = Services.GetRequiredService<ISettingsService>();
+            var mainSettings = mainSettingsService.Load();
+            AccentTheme.Apply(mainSettings.AccentColor);
+            NetworkPrivacy.Current.Apply(mainSettings);
+            WindowTitleScanner.UpdateInspectionAllowed(mainSettings.EnableBrowserUrlInspection);
+            WindowAnimationPolicy.SetInvisibleMode(mainSettings.InvisibleMode);
+            WindowAnimationPolicy.SetShadowEnabled(mainSettings.EnableShadow);
             LocalizedPresentation.Initialize();
-            Loc.SetLanguage(loadedSettings.Language);
-            AnimationConfig.Configure(loadedSettings.AnimationFps, loadedSettings.AutoAnimationFps);
+            Loc.SetLanguage(mainSettings.Language);
+            AnimationConfig.Configure(mainSettings.AnimationFps, mainSettings.AutoAnimationFps);
 
-            if (e.Args.Contains("--test-integrity") || e.Args.Contains("--test-hash"))
+#if DEBUG
+            if (isDebugIntegrityTest)
             {
                 if (e.Args.Contains("--test-hash"))
                 {
@@ -133,17 +153,11 @@ public partial class App : Application
                 Shutdown(0);
                 return;
             }
+#endif
 
-            if (IsSetupOrUninstall(e.Args))
-            {
-                base.OnStartup(e);
-                RunSetupOrUninstallAsync(e).SafeFireAndForget("SETUP-STARTUP");
-                return;
-            }
-
-            ApplyProcessPriority(loadedSettings.ProcessPriority);
-            SettingsWindow.ApplyGpuPreference(SettingsWindow.GetEffectiveGpuPreference(loadedSettings));
-            InteractionSounds.Initialize(loadedSettings.EnableInteractionSounds, loadedSettings.InteractionSoundVolume);
+            ApplyProcessPriority(mainSettings.ProcessPriority);
+            SettingsWindow.ApplyGpuPreference(SettingsWindow.GetEffectiveGpuPreference(mainSettings));
+            InteractionSounds.Initialize(mainSettings.EnableInteractionSounds, mainSettings.InteractionSoundVolume);
 
             var mainWindow = Services.GetRequiredService<MainWindow>();
             mainWindow.Show();
@@ -154,17 +168,12 @@ public partial class App : Application
             await RuntimeLog.InitializeNewSessionAsync("vnotch-debug.log");
             RuntimeLog.Log("SYSTEM", $"Application startup. Log file: {RuntimeLog.LogPath}");
             Services.GetRequiredService<AppFileCleanupService>().Start();
-            if (loadedSettings.LastRunVersion != AppVersion.Current)
+            if (mainSettings.LastRunVersion != AppVersion.Current)
             {
-                loadedSettings.LastRunVersion = AppVersion.Current;
-                earlySettings.SaveAsync(loadedSettings).SafeFireAndForget("POST-UPDATE-SAVE");
+                mainSettings.LastRunVersion = AppVersion.Current;
+                mainSettingsService.SaveAsync(mainSettings).SafeFireAndForget("POST-UPDATE-SAVE");
             }
             ServicePrewarmer.Prewarm(Services).SafeFireAndForget("PREWARM");
-
-            if (loadedSettings.AutoCheckUpdates && !loadedSettings.EnableLocalOnlyMode)
-            {
-                _ = AppIntegrityService.StartBackgroundCheckAsync(settings: loadedSettings);
-            }
 
             base.OnStartup(e);
         }
@@ -177,16 +186,18 @@ public partial class App : Application
     internal static bool IsSetupOrUninstall(string[] args, string? processPath = null)
     {
         var exeName = System.IO.Path.GetFileNameWithoutExtension(processPath ?? Environment.ProcessPath ?? "");
-        return args.Contains("--setup") || args.Contains("--uninstall") ||
+        return args.Contains("--setup", StringComparer.OrdinalIgnoreCase) ||
+            args.Contains("--update", StringComparer.OrdinalIgnoreCase) ||
+            args.Contains("--uninstall", StringComparer.OrdinalIgnoreCase) ||
             !string.IsNullOrWhiteSpace(TryGetArgumentValue(args, "--setup-source")) ||
             exeName.Contains("Setup", StringComparison.OrdinalIgnoreCase);
     }
 
-    private async Task RunSetupOrUninstallAsync(StartupEventArgs e)
+    private async Task RunSetupOrUninstallAsync(StartupEventArgs e, string language)
     {
         try
         {
-            await HandleSetupOrUninstallAsync(e);
+            await HandleSetupOrUninstallAsync(e, language);
         }
         catch (Exception ex)
         {
@@ -210,11 +221,16 @@ public partial class App : Application
         Shutdown(1);
     }
 
-    private async Task<bool> HandleSetupOrUninstallAsync(StartupEventArgs e)
+    private async Task<bool> HandleSetupOrUninstallAsync(StartupEventArgs e, string language)
     {
+        await Task.Yield();
         var setupSource = TryGetArgumentValue(e.Args, "--setup-source");
         var exeName = System.IO.Path.GetFileNameWithoutExtension(Environment.ProcessPath ?? "");
-        var launchSetup = e.Args.Contains("--setup") || !string.IsNullOrWhiteSpace(setupSource) || exeName.Contains("Setup", StringComparison.OrdinalIgnoreCase);
+        bool isAutoUpdate = e.Args.Contains("--update", StringComparer.OrdinalIgnoreCase);
+        var launchSetup = e.Args.Contains("--setup", StringComparer.OrdinalIgnoreCase) ||
+            isAutoUpdate ||
+            !string.IsNullOrWhiteSpace(setupSource) ||
+            exeName.Contains("Setup", StringComparison.OrdinalIgnoreCase);
 
         if (launchSetup)
         {
@@ -237,45 +253,13 @@ public partial class App : Application
                 }
             }
 
-            // 2. Check SHA-256 integrity against GitHub Releases
-            try
-            {
-                string version = AppIntegrityService.GetAppVersion();
-                // Keep the WPF dispatcher running while hashing/downloading. A
-                // synchronous wait here can deadlock before any window is shown.
-                using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(4));
-                var status = await AppIntegrityService.VerifyChecksumAsync(
-                    installerPath, version, cancellationToken: timeout.Token);
-                if (status == IntegrityCheckStatus.HashMismatch)
-                {
-                    var options = new ConfirmationDialog.DialogOptions(
-                        Title: Loc.Get(IntegrityWarningTitleKey),
-                        ConfirmText: Loc.Get("integrity.openOfficialRepo"),
-                        CancelText: Loc.Get("integrity.ignore"),
-                        Icon: ConfirmationDialog.DialogIcon.Warning,
-                        Style: ConfirmationDialog.DialogStyle.Danger);
-
-                    if (ConfirmationDialog.Show(null, Loc.Get("integrity.hashMismatch", version), options))
-                    {
-                        SafeLauncher.TryOpenUrl(AppIntegrityService.OfficialReleasesUrl);
-                        Shutdown(0);
-                        return true;
-                    }
-                }
-            }
-            catch (Exception ex)
-            {
-                RuntimeLog.Warn("INTEGRITY", $"Setup checksum check skipped: {ex.Message}");
-            }
-
-            var setupWindow = new SetupWindow(setupSource,
-                Services.GetRequiredService<ISettingsService>().Load().Language);
+            var setupWindow = new SetupWindow(setupSource, language, isAutoUpdate: isAutoUpdate);
             setupWindow.ShowDialog();
             Shutdown(setupWindow.ResultExitCode);
             return true;
         }
 
-        if (e.Args.Contains("--uninstall"))
+        if (e.Args.Contains("--uninstall", StringComparer.OrdinalIgnoreCase))
         {
             bool silent = e.Args.Any(a =>
                 a.Equals("/S", StringComparison.OrdinalIgnoreCase) ||
@@ -435,30 +419,62 @@ public partial class App : Application
 
     public static void RestartApplication()
     {
+        var app = Current as App;
+        if (app != null && !app.Dispatcher.CheckAccess())
+        {
+            app.Dispatcher.Invoke(RestartApplication);
+            return;
+        }
+
+        var exePath = Environment.ProcessPath;
+        if (string.IsNullOrEmpty(exePath)) return;
+
+        if (app != null)
+        {
+            app._guard?.Dispose();
+            app._guard = null;
+        }
+
         try
         {
-            var exePath = Environment.ProcessPath;
-
-            if (!string.IsNullOrEmpty(exePath))
+            var startInfo = new ProcessStartInfo(exePath)
             {
-                var startInfo = new ProcessStartInfo(exePath)
-                {
-                    UseShellExecute = false,
-                    WorkingDirectory = AppContext.BaseDirectory
-                };
-                startInfo.ArgumentList.Add("--restart");
-                using var process = Process.Start(startInfo);
-                if (process == null) return;
+                UseShellExecute = false,
+                WorkingDirectory = AppContext.BaseDirectory
+            };
+            startInfo.ArgumentList.Add("--restart");
+            using var process = Process.Start(startInfo);
+            if (process == null)
+            {
+                ReacquireSingleInstanceGuard(app);
+                return;
             }
-            else return;
         }
         catch (Exception ex)
         {
             RuntimeLog.Error("APP", ex, "Restart failed");
+            ReacquireSingleInstanceGuard(app);
             return;
         }
 
         RequestShutdownAsync().SafeFireAndForget("APP-RESTART");
+    }
+
+    private static void ReacquireSingleInstanceGuard(App? app)
+    {
+        if (app == null || app._guard != null) return;
+        try
+        {
+            var guard = new SingleInstanceGuard(MutexName);
+            if (guard.TryAcquire())
+                app._guard = guard;
+            else
+                guard.Dispose();
+        }
+        catch (Exception ex)
+        {
+            RuntimeLog.Warn("APP", $"Could not re-acquire single-instance mutex after failed restart: {ex.Message}");
+        }
     }
 
     private static bool IsRecoverableException(Exception ex)

@@ -13,7 +13,7 @@ public partial class SpotlightWindow
 {
     private LiquidGlassController? _liquidGlass;
     private const string LiquidGlassStyleId = "liquidglass";
-    private LiquidGlassRefractionEffect? _glassRefractionEffect;
+    private LiquidGlassLensState? _glassRefractionEffect;
     private LiquidGlassInteractionController? _glassInteractionController;
     private BlurEffect? _glassHostBlur;
     private bool _gpuRefractionConfigured;
@@ -71,8 +71,7 @@ public partial class SpotlightWindow
         string.Equals(_settings.NotchStyle, LiquidGlassStyleId, StringComparison.OrdinalIgnoreCase);
 
     private bool UseGpuRefraction =>
-        !_gpuRefractionFailed && (_settings.LiquidGlass?.UseGpuRefraction ?? true) &&
-        LiquidGlassRefractionEffect.IsAvailable;
+        !_gpuRefractionFailed && (_settings.LiquidGlass?.UseGpuRefraction ?? true);
 
     internal void ApplySettings(NotchSettings settings)
     {
@@ -328,7 +327,7 @@ public partial class SpotlightWindow
 
         if (!UseGpuRefraction)
         {
-            if (_gpuRefractionConfigured || GlassBackdropImage.Effect != null)
+            if (_gpuRefractionConfigured)
             {
                 DetachGpuRefraction();
                 _liquidGlass.SetGpuMode(false, null);
@@ -344,8 +343,7 @@ public partial class SpotlightWindow
 
         try
         {
-            _glassRefractionEffect ??= new LiquidGlassRefractionEffect();
-            GlassBackdropImage.Effect = null;
+            _glassRefractionEffect ??= new LiquidGlassLensState();
 
             _glassInteractionController ??= new LiquidGlassInteractionController(Shell, Shell, _glassRefractionEffect);
 
@@ -400,7 +398,6 @@ public partial class SpotlightWindow
 
         if (GlassBackdropImage != null)
         {
-            GlassBackdropImage.Effect = null;
             GlassBackdropImage.Width = double.NaN;
             GlassBackdropImage.Height = double.NaN;
         }
@@ -424,7 +421,7 @@ public partial class SpotlightWindow
     private void ApplyGpuBlur(double blurAmount)
     {
         if (UseGpuRefraction)
-            _glassRefractionEffect ??= new LiquidGlassRefractionEffect();
+            _glassRefractionEffect ??= new LiquidGlassLensState();
         LiquidGlassSurfaceBinder.ApplyGpuBlur(GlassBackdropHost, ref _glassHostBlur, blurAmount, UseGpuRefraction, _glassRefractionEffect);
     }
 

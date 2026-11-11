@@ -209,6 +209,27 @@ internal static class Program
         DeleteSubKeyTree(Registry.CurrentUser, AppRegistryPath);
         DeleteSubKeyTree(Registry.CurrentUser, LegacyInnoUninstallKey);
         DeleteSubKeyTree(Registry.LocalMachine, LegacyInnoUninstallKey);
+
+        foreach (var hive in new[] { RegistryHive.CurrentUser, RegistryHive.LocalMachine })
+        {
+            foreach (var view in new[] { RegistryView.Registry64, RegistryView.Registry32 })
+            {
+                try
+                {
+                    using var baseKey = RegistryKey.OpenBaseKey(hive, view);
+                    DeleteSubKeyTree(baseKey, UninstallRegistryPath);
+                    DeleteSubKeyTree(baseKey, LegacyInnoUninstallKey);
+                    if (hive == RegistryHive.CurrentUser)
+                    {
+                        DeleteSubKeyTree(baseKey, AppRegistryPath);
+                    }
+                }
+                catch (Exception ex) when (ex is UnauthorizedAccessException or System.Security.SecurityException or IOException or ArgumentException)
+                {
+                    // Ignore inaccessible registry views during best-effort cleanup.
+                }
+            }
+        }
     }
 
     private static void DeleteSubKeyTree(RegistryKey root, string path)
@@ -217,13 +238,9 @@ internal static class Program
         {
             root.DeleteSubKeyTree(path, throwOnMissingSubKey: false);
         }
-        catch (UnauthorizedAccessException)
+        catch (Exception ex) when (ex is UnauthorizedAccessException or System.Security.SecurityException or IOException or ArgumentException)
         {
-            // Ignore HKLM keys when running without elevation.
-        }
-        catch (System.Security.SecurityException)
-        {
-            // Ignore HKLM keys when running without elevation.
+            // Ignore HKLM or missing keys when running without elevation.
         }
     }
 

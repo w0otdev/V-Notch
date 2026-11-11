@@ -70,7 +70,7 @@ internal static unsafe partial class Program
         File.WriteAllText(Path.Combine(_work, _resultFile), JsonSerializer.Serialize(new {
             Timestamp = DateTimeOffset.UtcNow.ToOffset(TimeSpan.FromHours(7)).ToString("O"), Environment = environment,
             Method = "Release .NET8; tiered JIT disabled; interleaved rotated variant order; preallocated native buffers; microkernel batches target 8 ms, 41 samples; inference uses 3 rotated rounds x 21 samples with independent sessions; disk writes include Flush(true) or native durability barriers.",
-            NativeAvx2 = _current.Avx() != 0, Measurements = Results, Details
+            NativeAvx2 = System.Runtime.Intrinsics.X86.Avx2.IsSupported, Measurements = Results, Details
         }, Json));
     }
 
@@ -118,14 +118,7 @@ internal static unsafe partial class Program
             Action old = () => { fixed (byte* p = pixels, o = oldPalette) NativeApi.Check(_baseline.Palette(p, side, side, side * 4, o)); };
             Action current = () => { fixed (byte* p = pixels, o = newPalette) NativeApi.Check(_current.Palette(p, side, side, side * 4, o)); };
             Add(Statistics.Compare("Palette", $"{side}x{side} opaque seeded pixels", [("HEAD HSV palette", old), ("current Oklab palette", current)]));
-            float[] scalar = new float[side * side * 3], simd = new float[scalar.Length];
-            Action plain = () => { fixed (byte* p = pixels) fixed (float* o = scalar) NativeApi.Check(_current.Oklab(p, pixels.Length, o, scalar.Length, 0)); };
-            Action vector = () => { fixed (byte* p = pixels) fixed (float* o = simd) NativeApi.Check(_current.Oklab(p, pixels.Length, o, simd.Length, 1)); };
-            plain(); vector();
-            double error = scalar.Zip(simd).Max(pair => Math.Abs(pair.First - pair.Second));
-            if (error > 1e-5) throw new InvalidOperationException($"Oklab error {error}");
-            Details.Add(new { Kind = "OklabValidation", Side = side, MaxAbsoluteError = error, PaletteOutputsDiffer = !oldPalette.SequenceEqual(newPalette) });
-            Add(Statistics.Compare("Oklab conversion", $"{side}x{side} same math", [("scalar cbrt", plain), ("AVX2/FMA", vector)]));
+            Details.Add(new { Kind = "PaletteValidation", Side = side, PaletteOutputsDiffer = !oldPalette.SequenceEqual(newPalette) });
         }
         var art = Artwork.Load(Path.Combine(_repo, "Tests", "Fixtures", "white-mat-artwork.png"));
         float[] oldTensor = new float[3 * 416 * 416], newTensor = new float[oldTensor.Length];
@@ -168,14 +161,8 @@ internal static unsafe partial class Program
         for (int i = 0; i < 512; ++i) pcmFloats[2*i] = pcmFloats[2*i+1] = .3f * MathF.Sin(2 * MathF.PI * 16 * i / 512) + .1f * MathF.Sin(2 * MathF.PI * 70 * i / 512);
         byte[] pcm = MemoryMarshal.AsBytes(pcmFloats.AsSpan()).ToArray();
         var legacy = new LegacyAudio(_baseline);
-        long created; NativeApi.Check(_current.CreateStream(44100, &created)); long handle = created;
-        try
-        {
-            float[] levels = new float[5];
-            Action current = () => { float beat, rms; fixed (byte* p = pcm) fixed (float* o = levels) NativeApi.Check(_current.Push(handle, p, pcm.Length, 2, 32, 1, o, &beat, &rms)); };
-            Add(Statistics.Compare("Audio DSP", "512 stereo float32 frames / 11.61 ms audio", [("HEAD PCM copy + managed coordination", () => legacy.Run(pcm)), ("native streaming DSP", current)]));
-        }
-        finally { _current.CloseStream(handle); }
+        var currentDsp = new LegacyAudio(_current);
+        Add(Statistics.Compare("Audio DSP", "512 stereo float32 frames / 11.61 ms audio", [("HEAD DSP kernels", () => legacy.Run(pcm)), ("current DSP kernels", () => currentDsp.Run(pcm))]));
     }
 
     private sealed record Document(string Id, string Title, string Text, int Kind, bool IsPinned, string CopiedUtc);

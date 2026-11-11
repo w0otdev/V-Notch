@@ -23,8 +23,7 @@ internal sealed partial class TranslationModelStore
     internal TranslationModelProfile Profile { get; }
     private Asset[] Assets => Profile.Assets;
     internal long TotalBytes => Assets.Sum(a => a.Size);
-    private static readonly HttpClient Client = new(NetworkPrivacy.Handler(NetworkFeature.TranslationModels,
-        new NativeWinHttpHandler { AllowAutoRedirect = false }))
+    private static readonly HttpClient Client = new(NetworkPrivacy.Handler(NetworkFeature.TranslationModels))
     { Timeout = Timeout.InfiniteTimeSpan };
     // The singleton constructor captures Client; initialize the transport first.
     internal static TranslationModelStore Shared { get; } = new();
@@ -185,11 +184,7 @@ internal sealed partial class TranslationModelStore
                 progress?.Report(completed / (double)TotalBytes);
             }
             await File.WriteAllTextAsync(Path.Combine(Root, "verified.txt"), Profile.Revision, ct).ConfigureAwait(false);
-            if (ReferenceEquals(_client, Client))
-            {
-                try { await TranslationNativeRuntime.EnsureVulkanRuntimeAsync(_client, ct).ConfigureAwait(false); }
-                catch (Exception ex) when (ex is not OperationCanceledException) { /* CPU avx2 fallback remains available */ }
-            }
+            await TryEnsureVulkanRuntimeAsync(ct).ConfigureAwait(false);
             details?.Report(new(TranslationDownloadStage.Completed, TotalBytes, TotalBytes));
         }
         finally { Gate.Release(); Changed?.Invoke(); }
@@ -266,8 +261,31 @@ internal sealed partial class TranslationModelStore
                 await InstallAsync(source, destination, asset, ct).ConfigureAwait(false);
             }
             await File.WriteAllTextAsync(Path.Combine(Root, "verified.txt"), Profile.Revision, ct).ConfigureAwait(false);
+            await TryEnsureVulkanRuntimeAsync(ct).ConfigureAwait(false);
         }
         finally { Gate.Release(); Changed?.Invoke(); }
+    }
+
+    internal async Task TryEnsureVulkanRuntimeAsync(CancellationToken ct)
+    {
+        if (!ReferenceEquals(_client, Client)) return;
+        if (TranslationNativeRuntime.HasBundledVulkanRuntime()) return;
+        if (await TranslationNativeRuntime.IsOnDemandVulkanValidAsync(ct).ConfigureAwait(false)) return;
+        if (!_privacy.IsAllowed(NetworkFeature.TranslationModels)) return;
+
+        try
+        {
+            using var permission = CancellationTokenSource.CreateLinkedTokenSource(ct, _privacy.Acquire(NetworkFeature.TranslationModels));
+            await TranslationNativeRuntime.EnsureVulkanRuntimeAsync(_client, permission.Token).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception)
+        {
+            // CPU avx2 fallback remains available when network or NuGet is unreachable.
+        }
     }
 
     internal async Task RemoveAsync(CancellationToken ct = default)

@@ -18,6 +18,7 @@ using VNotch.Models;
 using VNotch.Modules;
 using VNotch.Presenters;
 using VNotch.Services;
+using static VNotch.Services.VNotchNative;
 
 namespace VNotch;
 
@@ -42,27 +43,6 @@ public partial class SettingsWindow
         public int RowIndex;
         public int Score;
     }
-
-    [LibraryImport("VNotch.Native.dll", StringMarshalling = StringMarshalling.Utf16)]
-    private static partial int vn_settings_search_normalize(
-        ReadOnlySpan<char> inputPtr,
-        int inputLen,
-        Span<char> outBuf,
-        int outCap,
-        out int outLen);
-
-    [LibraryImport("VNotch.Native.dll", StringMarshalling = StringMarshalling.Utf16)]
-    private static partial int vn_settings_search_score_row(
-        ReadOnlySpan<char> normTitlePtr,
-        int normTitleLen,
-        ReadOnlySpan<char> normContentPtr,
-        int normContentLen,
-        ReadOnlySpan<char> normCombinedPtr,
-        int normCombinedLen,
-        ReadOnlySpan<char> normQueryPtr,
-        int normQueryLen,
-        byte allowFuzzy,
-        out int outScore);
 
     [LibraryImport("VNotch.Native.dll", StringMarshalling = StringMarshalling.Utf16)]
     private static partial int vn_settings_search_normalize_row(

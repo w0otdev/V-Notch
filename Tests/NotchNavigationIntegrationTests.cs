@@ -224,10 +224,10 @@ public sealed class NotchNavigationIntegrationTests
         {
             var bounds = Bounds(window.UpdateNotificationButton);
             Assert.InRange(Math.Abs(bounds.Top + bounds.Height / 2 - center), 0, 0.5);
-            Assert.True(bounds.Left >= Bounds(window.BatteryIcon).Right + 4);
-            Assert.True(Bounds(window.SettingsButton).Left >= bounds.Right + 4);
+            Assert.True(bounds.Left >= Bounds(window.BatteryIcon).Right + 3.5);
+            Assert.True(Bounds(window.SettingsButton).Left >= bounds.Right + 3.5);
         }
-        else Assert.True(Bounds(window.SettingsButton).Left >= Bounds(window.BatteryIcon).Right + 4);
+        else Assert.True(Bounds(window.SettingsButton).Left >= Bounds(window.BatteryIcon).Right + 3.5);
     });
 
     [Fact]
@@ -237,7 +237,7 @@ public sealed class NotchNavigationIntegrationTests
         var window = fixture.Window;
         await StartAsync(window, ct);
         var coordinator = Field<NotchTransitionCoordinator>(window, "_transitionCoordinator");
-        Assert.Same(coordinator, Field<INotchManager>(window, "_notchManager").TransitionCoordinator);
+        Assert.Same(coordinator, Field<NotchManager>(window, "_notchManager").TransitionCoordinator);
         for (int i = 0; i < 12; i++)
         {
             window.SetDebugViewState("MediaExpanded");

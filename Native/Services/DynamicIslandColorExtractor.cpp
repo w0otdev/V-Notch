@@ -621,28 +621,6 @@ private:
 
 extern "C" {
 
-VN_EXPORT int32_t __stdcall vn_dicolor_convert_oklab(const uint8_t* pixels, int32_t length,
-    float* lab, int32_t capacity, uint8_t prefer_avx) noexcept {
-    if (!pixels || !lab || length < 0 || length % 4 != 0 || static_cast<int64_t>(capacity) < static_cast<int64_t>(length / 4) * 3)
-        return VN_ERR_INVALID_ARG;
-    const int32_t count = length / 4;
-    int32_t i = 0;
-    if (prefer_avx && vnotch::cpu::SupportsX64V3()) {
-        alignas(32) float l[8], a[8], b[8];
-        for (; i + 8 <= count; i += 8) {
-            vnotch::kernels::avx2::OklabEight(pixels + 4 * i, vnotch::color::LinearSrgb().data(), l, a, b);
-            for (int32_t k = 0; k < 8; ++k) {
-                lab[3 * (i + k)] = l[k]; lab[3 * (i + k) + 1] = a[k]; lab[3 * (i + k) + 2] = b[k];
-            }
-        }
-    }
-    for (; i < count; ++i) {
-        const auto value = vnotch::color::FromBgra(pixels + 4 * i);
-        lab[3 * i] = value.l; lab[3 * i + 1] = value.a; lab[3 * i + 2] = value.b;
-    }
-    return VN_OK;
-}
-
 VN_EXPORT int32_t vn_dicolor_get_clamped_crop_rect(
     double left, double top, double right, double bottom, uint8_t is_empty,
     int32_t pixel_width, int32_t pixel_height,

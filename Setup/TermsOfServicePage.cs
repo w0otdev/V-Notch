@@ -2,12 +2,12 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Reflection;
-using System.Text.RegularExpressions;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Documents;
 using System.Windows.Input;
 using System.Windows.Media;
+using VNotch.Controls;
 using VNotch.Services;
 
 namespace VNotch;
@@ -27,7 +27,6 @@ public class TermsOfServicePage : UserControl, ISetupAnimatedPage
     private string _currentLoadedLanguage = string.Empty;
 
     private static readonly FontFamily SFProBold = SetupFonts.SFProDisplayFont;
-
 
     private static readonly SolidColorBrush BrushWhite = Freeze(new SolidColorBrush(VNotch.Services.UiPalette.PrimaryColor));
     private static readonly SolidColorBrush BrushDimWhite = Freeze(new SolidColorBrush(Color.FromRgb(173, 173, 173)));
@@ -351,434 +350,59 @@ public class TermsOfServicePage : UserControl, ISetupAnimatedPage
             : "# V-Notch - Terms of Use\n\nV-Notch is licensed under the Apache License 2.0. Under Apache-2.0 Section 4, you may use, modify, fork, redistribute, and sell copies of the software provided you retain copyright and license notices and state significant file changes; forks are not required to keep a specific product name. Modified builds must not misrepresent themselves as official w0otdev releases. Review the Privacy Policy and applicable third-party service terms before enabling optional network features.";
     }
 
+    private static readonly SolidColorBrush BrushRule = Freeze(new SolidColorBrush(Color.FromArgb(30, 255, 255, 255)));
+    private static readonly MarkdownPanelOptions TermsMarkdownOptions = new()
+    {
+        BodyFont = SFProBold,
+        InlineCodeFont = new FontFamily("Consolas"),
+        BodyFontSize = 13,
+        BodyLineHeight = 22,
+        BodyFontWeight = FontWeights.Bold,
+        ParagraphMargin = new Thickness(0, 0, 0, 12),
+        SoftBreakAsSpace = true,
+        BodyForeground = BrushDimWhite,
+        HeadingForeground = BrushWhite,
+        ResolveHeadingStyle = static level => level switch
+        {
+            1 => (18.0, FontWeights.Bold, new Thickness(0, 4, 0, 10)),
+            2 => (15.0, FontWeights.Bold, new Thickness(0, 24, 0, 8)),
+            3 => (13.5, FontWeights.Bold, new Thickness(0, 16, 0, 6)),
+            _ => (13.0, FontWeights.Bold, new Thickness(0, 12, 0, 4))
+        },
+        ListTextForeground = BrushDimWhite,
+        BulletForeground = BrushWhite,
+        OrderedMarkerForeground = BrushMuted,
+        CheckedTaskForeground = BrushGreen,
+        UncheckedTaskForeground = BrushMuted,
+        ListItemMargin = new Thickness(0, 0, 0, 8),
+        BulletColumnWidth = 14,
+        MarkerColumnWidth = 20,
+        QuoteBorderBrush = BrushContainerBorder,
+        QuoteForeground = BrushMuted,
+        QuotePadding = new Thickness(12, 4, 0, 4),
+        QuoteMargin = new Thickness(0, 0, 0, 10),
+        ThematicBreakBrush = BrushRule,
+        ThematicBreakMargin = new Thickness(0, 10, 0, 10),
+        InlineCodeForeground = BrushWhite,
+        InlineCodeBackground = null,
+        TableHeaderForeground = BrushWhite,
+        TableCellForeground = BrushDimWhite,
+        TableBorderBrush = BrushContainerBorder,
+        BoldForeground = BrushWhite,
+        ItalicForeground = BrushDimWhite,
+        LinkForeground = BrushWhite,
+        UnderlineLinks = true,
+        HttpsOnlyLinks = true
+    };
+
     private void RenderMarkdownToPanel(string markdown)
     {
         RenderMarkdownToPanel(_termsContentPanel, markdown);
     }
 
-    internal static void RenderMarkdownToPanel(StackPanel targetPanel, string markdown)
-    {
-        targetPanel.Children.Clear();
+    internal static void RenderMarkdownToPanel(StackPanel targetPanel, string markdown) =>
+        MarkdownWpfRenderer.RenderToPanel(targetPanel, markdown, TermsMarkdownOptions);
 
-        if (string.IsNullOrWhiteSpace(markdown))
-        {
-            return;
-        }
-
-        try
-        {
-            var currentParagraph = new List<string>();
-
-            void FlushParagraph()
-            {
-                if (currentParagraph.Count == 0) return;
-
-                string fullText = string.Join(" ", currentParagraph).Trim();
-                currentParagraph.Clear();
-
-                if (string.IsNullOrWhiteSpace(fullText)) return;
-
-                var tb = new TextBlock
-                {
-                    FontSize = 13,
-                    FontWeight = FontWeights.Bold,
-                    LineHeight = 22,
-                    Foreground = BrushDimWhite,
-                    FontFamily = SFProBold,
-                    TextWrapping = TextWrapping.Wrap,
-                    Margin = new Thickness(0, 0, 0, 12)
-                };
-                AddFormattedInlines(tb, fullText);
-                targetPanel.Children.Add(tb);
-            }
-
-            var blocks = VNotchNative.TokenizeMarkdownBlocks(markdown);
-            foreach (var block in blocks)
-            {
-                string textSlice = block.TextLen > 0
-                    ? markdown.Substring(block.TextStart, block.TextLen)
-                    : string.Empty;
-
-                switch (block.BlockKind)
-                {
-                    case VnMarkdownBlockKind.Empty:
-                        FlushParagraph();
-                        break;
-
-                    case VnMarkdownBlockKind.HorizontalRule:
-                        {
-                            FlushParagraph();
-                            var hr = new Border
-                            {
-                                Height = 1,
-                                Background = Freeze(new SolidColorBrush(Color.FromArgb(30, 255, 255, 255))),
-                                Margin = new Thickness(0, 10, 0, 10)
-                            };
-                            targetPanel.Children.Add(hr);
-                            break;
-                        }
-
-                    case VnMarkdownBlockKind.Heading:
-                        {
-                            FlushParagraph();
-                            double fontSize = block.Level switch
-                            {
-                                1 => 18,
-                                2 => 15,
-                                3 => 13.5,
-                                _ => 13
-                            };
-                            Thickness margin = block.Level switch
-                            {
-                                1 => new Thickness(0, 4, 0, 10),
-                                2 => new Thickness(0, 24, 0, 8),
-                                3 => new Thickness(0, 16, 0, 6),
-                                _ => new Thickness(0, 12, 0, 4)
-                            };
-                            var heading = new TextBlock
-                            {
-                                Text = textSlice,
-                                FontSize = fontSize,
-                                FontWeight = FontWeights.Bold,
-                                Foreground = BrushWhite,
-                                FontFamily = SFProBold,
-                                TextWrapping = TextWrapping.Wrap,
-                                Margin = margin
-                            };
-                            targetPanel.Children.Add(heading);
-                            break;
-                        }
-
-                    case VnMarkdownBlockKind.BulletItem:
-                        {
-                            FlushParagraph();
-                            var bulletGrid = new Grid
-                            {
-                                Margin = new Thickness(0, 0, 0, 8)
-                            };
-                            bulletGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(14) });
-                            bulletGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-
-                            var dot = new TextBlock
-                            {
-                                Text = "•",
-                                FontSize = 14,
-                                FontWeight = FontWeights.Bold,
-                                FontFamily = SFProBold,
-                                Foreground = BrushWhite,
-                                VerticalAlignment = VerticalAlignment.Top,
-                                Margin = new Thickness(0, -1, 0, 0)
-                            };
-                            Grid.SetColumn(dot, 0);
-                            bulletGrid.Children.Add(dot);
-
-                            var itemText = new TextBlock
-                            {
-                                FontSize = 13,
-                                FontWeight = FontWeights.Bold,
-                                LineHeight = 22,
-                                Foreground = BrushDimWhite,
-                                FontFamily = SFProBold,
-                                TextWrapping = TextWrapping.Wrap
-                            };
-                            AddFormattedInlines(itemText, textSlice);
-                            Grid.SetColumn(itemText, 1);
-                            bulletGrid.Children.Add(itemText);
-
-                            targetPanel.Children.Add(bulletGrid);
-                            break;
-                        }
-
-                    case VnMarkdownBlockKind.ChecklistItem:
-                        {
-                            FlushParagraph();
-                            var checkGrid = new Grid
-                            {
-                                Margin = new Thickness(0, 0, 0, 8)
-                            };
-                            checkGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(20) });
-                            checkGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-
-                            var checkMark = new TextBlock
-                            {
-                                Text = block.Checked ? "☑" : "☐",
-                                FontSize = 13,
-                                FontWeight = FontWeights.Bold,
-                                FontFamily = SFProBold,
-                                Foreground = block.Checked ? BrushGreen : BrushMuted,
-                                VerticalAlignment = VerticalAlignment.Top
-                            };
-                            Grid.SetColumn(checkMark, 0);
-                            checkGrid.Children.Add(checkMark);
-
-                            var itemText = new TextBlock
-                            {
-                                FontSize = 13,
-                                FontWeight = FontWeights.Bold,
-                                LineHeight = 22,
-                                Foreground = BrushDimWhite,
-                                FontFamily = SFProBold,
-                                TextWrapping = TextWrapping.Wrap
-                            };
-                            AddFormattedInlines(itemText, textSlice);
-                            Grid.SetColumn(itemText, 1);
-                            checkGrid.Children.Add(itemText);
-
-                            targetPanel.Children.Add(checkGrid);
-                            break;
-                        }
-
-                    case VnMarkdownBlockKind.NumberedItem:
-                        {
-                            FlushParagraph();
-                            string markerSlice = block.MarkerLen > 0
-                                ? markdown.Substring(block.MarkerStart, block.MarkerLen)
-                                : $"{block.Level}.";
-
-                            var numGrid = new Grid
-                            {
-                                Margin = new Thickness(0, 0, 0, 8)
-                            };
-                            numGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(20) });
-                            numGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-
-                            var num = new TextBlock
-                            {
-                                Text = markerSlice,
-                                FontSize = 13,
-                                FontWeight = FontWeights.Bold,
-                                FontFamily = SFProBold,
-                                Foreground = BrushMuted,
-                                VerticalAlignment = VerticalAlignment.Top
-                            };
-                            Grid.SetColumn(num, 0);
-                            numGrid.Children.Add(num);
-
-                            var itemText = new TextBlock
-                            {
-                                FontSize = 13,
-                                FontWeight = FontWeights.Bold,
-                                LineHeight = 22,
-                                Foreground = BrushDimWhite,
-                                FontFamily = SFProBold,
-                                TextWrapping = TextWrapping.Wrap
-                            };
-                            AddFormattedInlines(itemText, textSlice);
-                            Grid.SetColumn(itemText, 1);
-                            numGrid.Children.Add(itemText);
-
-                            targetPanel.Children.Add(numGrid);
-                            break;
-                        }
-
-                    case VnMarkdownBlockKind.Blockquote:
-                        {
-                            FlushParagraph();
-                            var quoteText = new TextBlock
-                            {
-                                FontSize = 13,
-                                FontWeight = FontWeights.Bold,
-                                LineHeight = 22,
-                                Foreground = BrushMuted,
-                                FontFamily = SFProBold,
-                                TextWrapping = TextWrapping.Wrap
-                            };
-                            AddFormattedInlines(quoteText, textSlice);
-
-                            var quoteBorder = new Border
-                            {
-                                BorderBrush = BrushContainerBorder,
-                                BorderThickness = new Thickness(3, 0, 0, 0),
-                                Padding = new Thickness(12, 4, 0, 4),
-                                Margin = new Thickness(0, 0, 0, 10),
-                                Child = quoteText
-                            };
-                            targetPanel.Children.Add(quoteBorder);
-                            break;
-                        }
-
-                    case VnMarkdownBlockKind.TableSeparator:
-                        FlushParagraph();
-                        break;
-
-                    case VnMarkdownBlockKind.TableRow:
-                        {
-                            FlushParagraph();
-                            ReadOnlySpan<char> rowSpan = markdown.AsSpan(block.TextStart, block.TextLen);
-                            var cells = VNotchNative.SplitMarkdownTableCells(rowSpan);
-                            if (cells.Length == 0)
-                            {
-                                break;
-                            }
-
-                            var rowGrid = new Grid
-                            {
-                                Margin = new Thickness(0, 0, 0, 6)
-                            };
-                            for (int c = 0; c < cells.Length; c++)
-                            {
-                                rowGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-                                string cellText = cells[c].Len > 0
-                                    ? rowSpan.Slice(cells[c].Start, cells[c].Len).ToString()
-                                    : string.Empty;
-
-                                var cellBlock = new TextBlock
-                                {
-                                    FontSize = 12.5,
-                                    FontWeight = FontWeights.Bold,
-                                    LineHeight = 20,
-                                    Foreground = BrushDimWhite,
-                                    FontFamily = SFProBold,
-                                    TextWrapping = TextWrapping.Wrap,
-                                    Margin = new Thickness(0, 0, 8, 0)
-                                };
-                                AddFormattedInlines(cellBlock, cellText);
-                                Grid.SetColumn(cellBlock, c);
-                                rowGrid.Children.Add(cellBlock);
-                            }
-                            targetPanel.Children.Add(rowGrid);
-                            break;
-                        }
-
-                    case VnMarkdownBlockKind.Paragraph:
-                    default:
-                        if (!string.IsNullOrEmpty(textSlice))
-                        {
-                            currentParagraph.Add(textSlice);
-                        }
-                        if (block.HasHardBreak)
-                        {
-                            FlushParagraph();
-                        }
-                        break;
-                }
-            }
-
-            FlushParagraph();
-        }
-        catch (RegexMatchTimeoutException)
-        {
-            targetPanel.Children.Clear();
-            targetPanel.Children.Add(new TextBlock
-            {
-                Text = markdown,
-                FontSize = 13,
-                FontWeight = FontWeights.Bold,
-                Foreground = BrushDimWhite,
-                FontFamily = SFProBold,
-                TextWrapping = TextWrapping.Wrap
-            });
-        }
-        catch (Exception)
-        {
-            targetPanel.Children.Clear();
-            targetPanel.Children.Add(new TextBlock
-            {
-                Text = markdown,
-                FontSize = 13,
-                FontWeight = FontWeights.Bold,
-                Foreground = BrushDimWhite,
-                FontFamily = SFProBold,
-                TextWrapping = TextWrapping.Wrap
-            });
-        }
-    }
-
-    internal static void AddFormattedInlines(TextBlock textBlock, string text)
-    {
-        if (string.IsNullOrEmpty(text))
-        {
-            return;
-        }
-
-        try
-        {
-            var tokens = VNotchNative.TokenizeMarkdownInlines(text);
-            foreach (var token in tokens)
-            {
-                if (token.TextLen <= 0)
-                {
-                    continue;
-                }
-
-                string partText = text.Substring(token.TextStart, token.TextLen);
-                switch (token.InlineKind)
-                {
-                    case VnMarkdownInlineKind.Bold:
-                        textBlock.Inlines.Add(new Run(partText)
-                        {
-                            FontWeight = FontWeights.Bold,
-                            Foreground = BrushWhite
-                        });
-                        break;
-
-                    case VnMarkdownInlineKind.Italic:
-                        textBlock.Inlines.Add(new Run(partText)
-                        {
-                            FontStyle = FontStyles.Italic,
-                            FontWeight = FontWeights.Bold,
-                            Foreground = BrushDimWhite
-                        });
-                        break;
-
-                    case VnMarkdownInlineKind.Code:
-                        textBlock.Inlines.Add(new Run(partText)
-                        {
-                            FontFamily = new FontFamily("Consolas"),
-                            FontWeight = FontWeights.Bold,
-                            Foreground = BrushWhite
-                        });
-                        break;
-
-                    case VnMarkdownInlineKind.Link:
-                    case VnMarkdownInlineKind.Url:
-                        {
-                            string targetUrl = token.InlineKind == VnMarkdownInlineKind.Url
-                                ? partText
-                                : (token.AuxLen > 0 ? text.Substring(token.AuxStart, token.AuxLen) : string.Empty);
-
-                            if (Uri.TryCreate(targetUrl, UriKind.Absolute, out var uri) &&
-                                uri.Scheme == Uri.UriSchemeHttps)
-                            {
-                                var link = new Hyperlink(new Run(partText) { FontWeight = FontWeights.Bold })
-                                {
-                                    NavigateUri = uri,
-                                    Foreground = BrushWhite,
-                                    ToolTip = uri.AbsoluteUri
-                                };
-                                link.RequestNavigate += (_, e) =>
-                                {
-                                    SafeLauncher.TryOpenUrl(e.Uri);
-                                    e.Handled = true;
-                                };
-                                textBlock.Inlines.Add(link);
-                            }
-                            else
-                            {
-                                textBlock.Inlines.Add(new Run(partText) { FontWeight = FontWeights.Bold });
-                            }
-                            break;
-                        }
-
-                    case VnMarkdownInlineKind.Text:
-                    default:
-                        textBlock.Inlines.Add(new Run(partText)
-                        {
-                            FontWeight = FontWeights.Bold
-                        });
-                        break;
-                }
-            }
-        }
-        catch (RegexMatchTimeoutException)
-        {
-            textBlock.Inlines.Clear();
-            textBlock.Inlines.Add(new Run(text) { FontWeight = FontWeights.Bold });
-        }
-        catch (Exception)
-        {
-            textBlock.Inlines.Clear();
-            textBlock.Inlines.Add(new Run(text) { FontWeight = FontWeights.Bold });
-        }
-    }
+    internal static void AddFormattedInlines(TextBlock textBlock, string text) =>
+        MarkdownWpfRenderer.PopulateInlines(textBlock.Inlines, text, TermsMarkdownOptions, clearFirst: false);
 }

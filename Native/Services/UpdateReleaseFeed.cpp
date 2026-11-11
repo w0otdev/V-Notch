@@ -43,6 +43,7 @@ VN_EXPORT int32_t __stdcall vn_update_parse_atom(const uint8_t* data, int32_t si
         if (FAILED(reader->SetInput(stream.Get()))) return VN_ERR_FAIL;
         std::wstring json = L"[", id, date, content, field;
         bool entry = false, first = true;
+        int32_t entry_depth = 0;
         XmlNodeType type;
         HRESULT status;
         while ((status = reader->Read(&type)) == S_OK) {
@@ -52,10 +53,25 @@ VN_EXPORT int32_t __stdcall vn_update_parse_atom(const uint8_t* data, int32_t si
                 if (FAILED(reader->GetLocalName(&value, &length))) return VN_ERR_FAIL;
                 std::wstring_view name(value, length);
                 if (type == XmlNodeType_Element) {
-                    if (name == L"entry") { entry = true; id.clear(); date.clear(); content.clear(); }
-                    field = name;
-                } else {
-                    if (name == L"entry" && entry) {
+                    const BOOL is_empty = reader->IsEmptyElement();
+                    if (!entry) {
+                        if (name == L"entry" && !is_empty) {
+                            entry = true;
+                            entry_depth = 0;
+                            id.clear();
+                            date.clear();
+                            content.clear();
+                            field.clear();
+                        }
+                    } else if (!is_empty) {
+                        ++entry_depth;
+                        if (entry_depth == 1) field = name;
+                        else field.clear();
+                    } else {
+                        field.clear();
+                    }
+                } else if (entry) {
+                    if (entry_depth == 0 && name == L"entry") {
                         auto slash = id.find_last_of(L'/');
                         auto tag = slash == std::wstring::npos ? id : id.substr(slash + 1);
                         if (!tag.empty() && !date.empty()) {
@@ -65,10 +81,12 @@ VN_EXPORT int32_t __stdcall vn_update_parse_atom(const uint8_t* data, int32_t si
                                 + L",\"body\":" + Quote(PlainText(content)) + L",\"assets\":[]}";
                         }
                         entry = false;
+                    } else if (entry_depth > 0) {
+                        --entry_depth;
                     }
                     field.clear();
                 }
-            } else if (entry && (type == XmlNodeType_Text || type == XmlNodeType_CDATA)) {
+            } else if (entry && entry_depth == 1 && (type == XmlNodeType_Text || type == XmlNodeType_CDATA)) {
                 if (FAILED(reader->GetValue(&value, &length))) return VN_ERR_FAIL;
                 if (field == L"id") id.append(value, length);
                 else if (field == L"updated") date.append(value, length);

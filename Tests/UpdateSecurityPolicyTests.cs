@@ -8,45 +8,26 @@ namespace VNotch.Tests;
 public sealed class UpdateSecurityPolicyTests
 {
     [Fact]
-    public void FromEnvironment_PreservesInternalSpacesInPublishers_AndTrims()
+    public void FromEnvironment_IgnoresUntrustedUpdaterEnvironmentVariables()
     {
         const string publishersVar = "VNOTCH_UPDATER_ALLOWED_PUBLISHERS";
-        var original = Environment.GetEnvironmentVariable(publishersVar);
+        const string thumbprintsVar = "VNOTCH_UPDATER_ALLOWED_THUMBPRINTS";
+        var originalPublishers = Environment.GetEnvironmentVariable(publishersVar);
+        var originalThumbprints = Environment.GetEnvironmentVariable(thumbprintsVar);
 
         try
         {
             Environment.SetEnvironmentVariable(publishersVar, "  Example Software Ltd ; Another Corporation   ");
-            var policy = UpdateSecurityPolicy.FromEnvironment();
-
-            Assert.Contains("Example Software Ltd", policy.AllowedPublisherNames);
-            Assert.Contains("example software ltd", policy.AllowedPublisherNames); // case-insensitive
-            Assert.Contains("Another Corporation", policy.AllowedPublisherNames);
-            Assert.DoesNotContain("EXAMPLESOFTWARELTD", policy.AllowedPublisherNames); // internal spaces must not be stripped
-        }
-        finally
-        {
-            Environment.SetEnvironmentVariable(publishersVar, original);
-        }
-    }
-
-    [Fact]
-    public void FromEnvironment_NormalizesThumbprints_RemovesSpacesAndUpperCases()
-    {
-        const string thumbprintsVar = "VNOTCH_UPDATER_ALLOWED_THUMBPRINTS";
-        var original = Environment.GetEnvironmentVariable(thumbprintsVar);
-
-        try
-        {
             Environment.SetEnvironmentVariable(thumbprintsVar, "  aa bb cc dd ; 11 22 33 44  ");
             var policy = UpdateSecurityPolicy.FromEnvironment();
 
-            Assert.Contains("AABBCCDD", policy.AllowedCertificateThumbprints);
-            Assert.Contains("aabbccdd", policy.AllowedCertificateThumbprints); // case-insensitive
-            Assert.Contains("11223344", policy.AllowedCertificateThumbprints);
+            Assert.Empty(policy.AllowedPublisherNames);
+            Assert.Empty(policy.AllowedCertificateThumbprints);
         }
         finally
         {
-            Environment.SetEnvironmentVariable(thumbprintsVar, original);
+            Environment.SetEnvironmentVariable(publishersVar, originalPublishers);
+            Environment.SetEnvironmentVariable(thumbprintsVar, originalThumbprints);
         }
     }
 

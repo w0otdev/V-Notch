@@ -50,30 +50,6 @@ public:
         return true;
     }
 
-    static void FillTensorFromBgra32(
-        const uint8_t* pixels, int32_t scaled_w, int32_t scaled_h, int32_t stride,
-        float* tensor_buffer) noexcept
-    {
-        if (!tensor_buffer || !IsValidPixelArgs(pixels, scaled_w, scaled_h, stride, 1)) return;
-        constexpr int32_t plane_size = kModelInputSize * kModelInputSize;
-        std::fill_n(tensor_buffer, 3 * plane_size, 114.0f);
-
-        int32_t max_y = std::min(scaled_h, kModelInputSize);
-        int32_t max_x = std::min(scaled_w, kModelInputSize);
-        for (int32_t y = 0; y < max_y; y++) {
-            int32_t row_offset = y * stride;
-            int32_t tensor_row_base = y * kModelInputSize;
-            for (int32_t x = 0; x < max_x; x++) {
-                int32_t pixel_idx = row_offset + x * 4;
-                int32_t tensor_idx = tensor_row_base + x;
-
-                tensor_buffer[tensor_idx] = static_cast<float>(pixels[pixel_idx]);
-                tensor_buffer[plane_size + tensor_idx] = static_cast<float>(pixels[pixel_idx + 1]);
-                tensor_buffer[2 * plane_size + tensor_idx] = static_cast<float>(pixels[pixel_idx + 2]);
-            }
-        }
-    }
-
     static std::vector<VnDetection> ApplyNms(std::span<const VnDetection> detections) {
         std::vector<VnDetection> sorted(detections.begin(), detections.end());
         std::stable_sort(sorted.begin(), sorted.end(), [](const VnDetection& a, const VnDetection& b) {
@@ -718,17 +694,6 @@ private:
 } // namespace vnotch::services
 
 extern "C" {
-
-VN_EXPORT int32_t vn_smartcrop_fill_tensor_from_bgra32(
-    const uint8_t* pixels, int32_t scaled_w, int32_t scaled_h, int32_t stride,
-    float* tensor_buffer) noexcept
-{
-    if (!tensor_buffer || !vnotch::services::SmartThumbnailCropService::IsValidPixelArgs(pixels, scaled_w, scaled_h, stride, 1)) {
-        return VN_ERR_INVALID_ARG;
-    }
-    vnotch::services::SmartThumbnailCropService::FillTensorFromBgra32(pixels, scaled_w, scaled_h, stride, tensor_buffer);
-    return VN_OK;
-}
 
 VN_EXPORT int32_t vn_smartcrop_apply_nms(
     const vnotch::services::VnDetection* in_detections, int32_t in_count,

@@ -51,8 +51,3 @@ namespace vnotch::cpu
         return supported;
     }
 }
-
-extern "C" __declspec(dllexport) int32_t __stdcall vn_cpu_supports_avx2() noexcept
-{
-    return vnotch::cpu::SupportsX64V3() ? 1 : 0;
-}

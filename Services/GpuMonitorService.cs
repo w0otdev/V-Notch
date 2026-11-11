@@ -3,7 +3,6 @@ using System.Runtime.InteropServices;
 using System.Threading;
 using System.Threading.Tasks;
 using VNotch.Models;
-using Vortice.DXGI;
 
 namespace VNotch.Services;
 
@@ -12,11 +11,11 @@ public sealed partial class GpuMonitorService : IDisposable, IAsyncDisposable
     private const string NativeDll = "VNotch.Native.dll";
 
     [LibraryImport(NativeDll, StringMarshalling = StringMarshalling.Utf16)]
-    private static partial int vn_gpu_monitor_score_adapter(
-        ReadOnlySpan<char> name,
-        int nameLen,
-        ulong vramBytes,
-        out long outScore);
+    private static partial int vn_gpu_monitor_find_best_adapter(
+        Span<char> outName,
+        int outNameCap,
+        out int outNameLen,
+        out ulong outDedicatedVram);
 
     [StructLayout(LayoutKind.Sequential, Pack = 1)]
     private struct VnSystemMetricsState
@@ -166,44 +165,19 @@ public sealed partial class GpuMonitorService : IDisposable, IAsyncDisposable
                 return (_gpuName, _dedicatedVramBytes);
             }
 
-            try
+            Span<char> nameBuf = stackalloc char[128];
+            int rc = vn_gpu_monitor_find_best_adapter(nameBuf, nameBuf.Length, out int nameLen, out ulong vram);
+            if (rc == 0)
             {
-                using var factory = DXGI.CreateDXGIFactory1<IDXGIFactory1>();
-                string? bestGpuName = null;
-                ulong bestVram = 0;
-                long bestScore = -1;
-
-                for (uint i = 0; factory.EnumAdapters1(i, out var adapter).Success; i++)
+                if (nameLen > 0)
                 {
-                    using (adapter)
-                    {
-                        var desc = adapter.Description1;
-                        if ((desc.Flags & AdapterFlags.Software) != 0) continue;
-
-                        string name = desc.Description.Trim();
-                        ulong vram = (ulong)desc.DedicatedVideoMemory;
-
-                        // Score GPUs by dedicated VRAM (MB) with discrete high-performance bonuses.
-                        _ = vn_gpu_monitor_score_adapter(name.AsSpan(), name.Length, vram, out long score);
-
-                        if (score > bestScore)
-                        {
-                            bestScore = score;
-                            bestGpuName = name;
-                            bestVram = vram;
-                        }
-                    }
-                }
-
-                if (!string.IsNullOrEmpty(bestGpuName))
-                {
-                    _gpuName = bestGpuName;
-                    _dedicatedVramBytes = bestVram;
+                    _gpuName = new string(nameBuf[..nameLen]);
+                    _dedicatedVramBytes = vram;
                 }
             }
-            catch (Exception ex)
+            else
             {
-                RuntimeLog.Log("GPU-MONITOR", $"Failed to query DXGI adapter: {ex.Message}");
+                RuntimeLog.Log("GPU-MONITOR", $"Failed to query DXGI adapter: status {rc}");
                 _gpuName = "DirectX Display Adapter";
             }
 

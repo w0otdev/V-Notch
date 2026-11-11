@@ -171,21 +171,6 @@ public sealed partial class NativeAuditHardeningTests
     }
 
     [StructLayout(LayoutKind.Sequential, Pack = 1)]
-    private struct VnNavTabMotionOut
-    {
-        public double TargetY;
-        public double TargetHeight;
-        public double PeakScaleY;
-        public double DipScaleX;
-        public double ReboundScaleY;
-        public double ReboundScaleX;
-        public double ContentShiftX;
-        public int PeakTimeMs;
-        public int ReboundTimeMs;
-        public int DurationMs;
-    }
-
-    [StructLayout(LayoutKind.Sequential, Pack = 1)]
     private struct VnQuickActionsSlideMotionOut
     {
         public double ResultsFromX;
@@ -254,15 +239,7 @@ public sealed partial class NativeAuditHardeningTests
         Span<int> outEnds,
         out int outLastBin);
 
-    // 5. vn_settings_double_equals & vn_settings_service_normalize_numeric
-    [LibraryImport(NativeDll, StringMarshalling = StringMarshalling.Utf16)]
-    [UnmanagedCallConv(CallConvs = [typeof(System.Runtime.CompilerServices.CallConvStdcall)])]
-    private static partial int vn_settings_double_equals(
-        double a,
-        double b,
-        byte allowNanEqual,
-        out byte outEqual);
-
+    // 5. vn_settings_service_normalize_numeric
     [LibraryImport(NativeDll, StringMarshalling = StringMarshalling.Utf16)]
     private static partial int vn_settings_service_normalize_numeric(
         ref VnSettingsNormalizationParams inoutParams,
@@ -418,23 +395,6 @@ public sealed partial class NativeAuditHardeningTests
         int length,
         float factor);
 
-    // 18. vn_http_create / vn_http_destroy / vn_http_get_headers
-    [LibraryImport(NativeDll, StringMarshalling = StringMarshalling.Utf16)]
-    [UnmanagedCallConv(CallConvs = [typeof(System.Runtime.CompilerServices.CallConvStdcall)])]
-    private static partial int vn_http_create(out long outHandle);
-
-    [LibraryImport(NativeDll, StringMarshalling = StringMarshalling.Utf16)]
-    [UnmanagedCallConv(CallConvs = [typeof(System.Runtime.CompilerServices.CallConvStdcall)])]
-    private static partial int vn_http_destroy(long handle);
-
-    [LibraryImport(NativeDll, StringMarshalling = StringMarshalling.Utf16)]
-    [UnmanagedCallConv(CallConvs = [typeof(System.Runtime.CompilerServices.CallConvStdcall)])]
-    private static partial int vn_http_get_headers(
-        long handle,
-        Span<char> buffer,
-        int capacity,
-        out int outLength);
-
     // 19. vn_ui_smooth_scroll_step & vn_ui_scheduled_timer_compute_due_timestamp
     [LibraryImport(NativeDll, StringMarshalling = StringMarshalling.Utf16)]
     [UnmanagedCallConv(CallConvs = [typeof(System.Runtime.CompilerServices.CallConvStdcall)])]
@@ -511,15 +471,6 @@ public sealed partial class NativeAuditHardeningTests
         byte isPressed,
         byte reducedMotion,
         out VnSettingsSwitchMotionOut outMotion);
-
-    [LibraryImport(NativeDll, StringMarshalling = StringMarshalling.Utf16)]
-    [UnmanagedCallConv(CallConvs = [typeof(System.Runtime.CompilerServices.CallConvStdcall)])]
-    private static partial int vn_animation_compute_nav_tab_motion(
-        double currentY,
-        double targetY,
-        double itemHeight,
-        byte reducedMotion,
-        out VnNavTabMotionOut outMotion);
 
     [LibraryImport(NativeDll, StringMarshalling = StringMarshalling.Utf16)]
     [UnmanagedCallConv(CallConvs = [typeof(System.Runtime.CompilerServices.CallConvStdcall)])]
@@ -779,15 +730,6 @@ public sealed partial class NativeAuditHardeningTests
     [Fact]
     public void Finding05_SettingsDoubleEqualsAndNormalizeNumeric_HandlesNaNCorrectly()
     {
-        Assert.Equal(VN_OK, vn_settings_double_equals(double.NaN, 1.0, 0, out byte eq1));
-        Assert.Equal(0, eq1);
-
-        Assert.Equal(VN_OK, vn_settings_double_equals(double.NaN, double.NaN, 0, out byte eq2));
-        Assert.Equal(0, eq2);
-
-        Assert.Equal(VN_OK, vn_settings_double_equals(double.NaN, double.NaN, 1, out byte eq3));
-        Assert.Equal(1, eq3);
-
         var normParams = new VnSettingsNormalizationParams
         {
             Width = 300,
@@ -1096,22 +1038,6 @@ public sealed partial class NativeAuditHardeningTests
     }
 
     [Fact]
-    public void Finding18_HttpGetHeaders_HugeCapacity_ReturnsInvalidArg()
-    {
-        Assert.Equal(VN_OK, vn_http_create(out long handle));
-        try
-        {
-            Span<char> buffer = stackalloc char[16];
-            int status = vn_http_get_headers(handle, buffer, capacity: 0x40000001, out _);
-            Assert.Equal(VN_ERR_INVALID_ARG, status);
-        }
-        finally
-        {
-            _ = vn_http_destroy(handle);
-        }
-    }
-
-    [Fact]
     public void Finding19_UiSmoothScrollStepAndComputeDueTimestamp_NonFiniteInputs_SettlesAndAvoidsOverflow()
     {
         int scrollStatus = vn_ui_smooth_scroll_step(
@@ -1182,12 +1108,9 @@ public sealed partial class NativeAuditHardeningTests
         Assert.Equal(VN_OK, vn_animation_compute_volume_hud_transition(1, 1, 1, double.NaN, -20.0, double.PositiveInfinity, out VnVolumeHudTransitionParamsOut hudTrans));
         Assert.True(double.IsFinite(hudTrans.TargetWidth) && hudTrans.TargetWidth > 0.0);
 
-        // Settings switch, nav tab, elastic slider, and quick actions motion with NaN/Infinity
+        // Settings switch, elastic slider, and quick actions motion with NaN/Infinity
         Assert.Equal(VN_OK, vn_animation_compute_settings_switch_motion(double.NaN, double.PositiveInfinity, double.NaN, 1, 1, 0, out VnSettingsSwitchMotionOut switchMotion));
         Assert.True(double.IsFinite(switchMotion.TargetX) && double.IsFinite(switchMotion.PeakScaleX));
-
-        Assert.Equal(VN_OK, vn_animation_compute_nav_tab_motion(double.NaN, double.PositiveInfinity, -10.0, 0, out VnNavTabMotionOut navMotion));
-        Assert.True(double.IsFinite(navMotion.PeakScaleY) && double.IsFinite(navMotion.DipScaleX));
 
         Assert.Equal(VN_OK, vn_animation_compute_elastic_slider_overscroll(double.NaN, double.PositiveInfinity, 0, out double overScaleX, out double overScaleY));
         Assert.True(double.IsFinite(overScaleX) && double.IsFinite(overScaleY));

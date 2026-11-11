@@ -365,7 +365,7 @@ public sealed class ClipboardHistoryController : IDisposable, IAsyncDisposable
                 SetTextFormats(data, content);
             }
             var current = Store.GetEntry(entry.Id) ?? throw new InvalidOperationException("Clipboard item is unavailable.");
-            await WriteClipboardAsync(data, entry.IsPersonal || current.IsPersonal, exported);
+            await WriteClipboardAsync(data, entry.IsPersonal || current.IsPersonal, exported, entry.IsSensitive || current.IsSensitive);
             // _clipboardExportPaths is set inside WriteClipboardAsync under _clipboardWriteGate.
             written = true;
         }
@@ -377,10 +377,12 @@ public sealed class ClipboardHistoryController : IDisposable, IAsyncDisposable
         var texts = new List<string>();
         ClipboardContent? singleText = null;
         bool personal = false;
+        bool sensitive = false;
         foreach (var entry in entries)
         {
             var current = Store.GetEntry(entry.Id) ?? throw new KeyNotFoundException("Clipboard item is unavailable.");
-            personal |= current.IsPersonal;
+            personal |= entry.IsPersonal | current.IsPersonal;
+            sensitive |= entry.IsSensitive | current.IsSensitive;
             if (entry.Kind is ClipboardKind.File or ClipboardKind.Image)
                 paths.AddRange(await Store.ExportFilesAsync(entry.Id));
             else
@@ -391,11 +393,13 @@ public sealed class ClipboardHistoryController : IDisposable, IAsyncDisposable
             }
             var latest = Store.GetEntry(entry.Id) ?? throw new KeyNotFoundException("Clipboard item is unavailable.");
             personal |= latest.IsPersonal;
+            sensitive |= latest.IsSensitive;
         }
         var data = new DataObject();
         if (paths.Count > 0) { var files = new StringCollection(); files.AddRange(paths.ToArray()); data.SetFileDropList(files); }
         if (singleText != null) SetTextFormats(data, singleText);
         else if (texts.Count > 0) data.SetData(DataFormats.UnicodeText, string.Join(Environment.NewLine + Environment.NewLine, texts));
+        if (personal || sensitive) SetPrivacyClipboardMarkers(data);
         return (data, personal);
     }
 
@@ -405,6 +409,13 @@ public sealed class ClipboardHistoryController : IDisposable, IAsyncDisposable
         data.SetData(DataFormats.UnicodeText, content.Text ?? string.Empty);
         if (!string.IsNullOrEmpty(content.Html)) data.SetData(DataFormats.Html, content.Html);
         if (!string.IsNullOrEmpty(content.Rtf)) data.SetData(DataFormats.Rtf, content.Rtf);
+    }
+
+    internal static void SetPrivacyClipboardMarkers(DataObject data)
+    {
+        data.SetData("ExcludeClipboardContentFromMonitorProcessing", new MemoryStream([1, 0, 0, 0]));
+        data.SetData("CanIncludeInClipboardHistory", new MemoryStream(new byte[4]));
+        data.SetData("CanUploadToCloudClipboard", new MemoryStream(new byte[4]));
     }
 
     public async Task CopyManyAsync(IReadOnlyList<ClipboardEntry> entries)
@@ -423,9 +434,9 @@ public sealed class ClipboardHistoryController : IDisposable, IAsyncDisposable
         finally { if (!written) await Store.ReleasePersonalExportsAsync(paths); }
     }
 
-    private async Task WriteClipboardAsync(DataObject data, bool personal, string[]? newExports = null)
+    private async Task WriteClipboardAsync(DataObject data, bool personal, string[]? newExports = null, bool sensitive = false)
     {
-        if (personal) data.SetData("ExcludeClipboardContentFromMonitorProcessing", new MemoryStream([1, 0, 0, 0]));
+        if (personal || sensitive) SetPrivacyClipboardMarkers(data);
         await _clipboardWriteGate.WaitAsync();
         try
         {
@@ -467,7 +478,7 @@ public sealed class ClipboardHistoryController : IDisposable, IAsyncDisposable
             data.SetData(EntryDragFormat, true);
             bool personal = selection.Personal;
             if (_disposed || personal && !Store.IsPersonalUnlocked) return;
-            if (personal) data.SetData("ExcludeClipboardContentFromMonitorProcessing", new MemoryStream([1, 0, 0, 0]));
+            if (personal) SetPrivacyClipboardMarkers(data);
             DragDrop.DoDragDrop(source, data, DragDropEffects.Copy);
         }
         finally

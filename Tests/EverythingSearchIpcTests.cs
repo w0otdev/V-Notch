@@ -138,6 +138,22 @@ public sealed class EverythingSearchIpcTests
         Assert.False(unavailable.IsAvailable);
     });
 
+    [Fact]
+    public void SpoofedSenderOrWrongNonceRepliesAreRejectedBeforeGenuineReplySucceeds() => SharedStaTestRunner.RunAsync(async ct =>
+    {
+        EnsureApplication();
+        using var spoofer = new Server([("spoofed.txt", @"C:\Fixture", false)]);
+        using var server = new Server([("report.txt", @"C:\Fixture", false)])
+        {
+            SpoofSenderHandle = spoofer.Handle
+        };
+        using var provider = new EverythingSearchProvider(() => server.Handle);
+        var results = await provider.SearchAsync("report", 5, ct);
+        Assert.NotEqual(0u, server.LastQueryId);
+        var match = Assert.Single(results);
+        Assert.Equal("report.txt", match.Title);
+    });
+
     private static void EnsureApplication() => _ = Application.Current ?? new Application { ShutdownMode = ShutdownMode.OnExplicitShutdown };
 
     private sealed class Server : IDisposable
@@ -146,6 +162,8 @@ public sealed class EverythingSearchIpcTests
         private readonly IReadOnlyList<(string Name, string Parent, bool Folder)> _rows;
         public IntPtr Handle => _window!.Handle;
         public bool DropReplies { get; set; }
+        public IntPtr SpoofSenderHandle { get; set; }
+        public uint LastQueryId { get; private set; }
         public TaskCompletionSource Received { get; set; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
         public uint Flags { get; private set; }
         public int MaximumResults { get; private set; }
@@ -164,29 +182,40 @@ public sealed class EverythingSearchIpcTests
             Assert.Equal(2, data.Id.ToInt32());
             IntPtr reply = new((long)(uint)Marshal.ReadInt32(data.Buffer, 0));
             uint id = (uint)Marshal.ReadInt32(data.Buffer, 4);
+            LastQueryId = id;
             Flags = (uint)Marshal.ReadInt32(data.Buffer, 8);
             Assert.Equal(0, Marshal.ReadInt32(data.Buffer, 12));
             MaximumResults = Marshal.ReadInt32(data.Buffer, 16);
             Query = Marshal.PtrToStringUni(data.Buffer + 20)!;
             QueryCount++;
             Received.TrySetResult();
-            if (!DropReplies) SendReply(reply, id);
+            if (!DropReplies)
+            {
+                if (SpoofSenderHandle != IntPtr.Zero)
+                {
+                    var spoofRows = new[] { ("report-spoof.txt", @"C:\Fixture", false) };
+                    Assert.Equal(IntPtr.Zero, SendReplyCore(reply, IntPtr.Zero, id, spoofRows));
+                    Assert.Equal(IntPtr.Zero, SendReplyCore(reply, SpoofSenderHandle, id, spoofRows));
+                    Assert.Equal(IntPtr.Zero, SendReplyCore(reply, Handle, id ^ 1u, spoofRows));
+                }
+                Assert.Equal(new IntPtr(1), SendReplyCore(reply, Handle, id, _rows));
+            }
             handled = true;
             return new(1);
         }
-        private void SendReply(IntPtr reply, uint id)
+        private static IntPtr SendReplyCore(IntPtr reply, IntPtr sender, uint id, IReadOnlyList<(string Name, string Parent, bool Folder)> rows)
         {
-            int length = 28 + _rows.Count * 12 + _rows.Sum(row => (row.Name.Length + row.Parent.Length + 2) * 2);
+            int length = 28 + rows.Count * 12 + rows.Sum(row => (row.Name.Length + row.Parent.Length + 2) * 2);
             IntPtr buffer = Marshal.AllocHGlobal(length);
             IntPtr header = Marshal.AllocHGlobal(Marshal.SizeOf<CopyData>());
             try
             {
                 Marshal.Copy(new byte[length], 0, buffer, length);
-                Marshal.WriteInt32(buffer, 20, _rows.Count);
-                int cursor = 28 + _rows.Count * 12;
-                for (int i = 0; i < _rows.Count; i++)
+                Marshal.WriteInt32(buffer, 20, rows.Count);
+                int cursor = 28 + rows.Count * 12;
+                for (int i = 0; i < rows.Count; i++)
                 {
-                    var row = _rows[i];
+                    var row = rows[i];
                     Marshal.WriteInt32(buffer, 28 + i * 12, row.Folder ? 1 : 0);
                     Marshal.WriteInt32(buffer, 32 + i * 12, cursor);
                     cursor = WriteString(buffer, cursor, row.Name);
@@ -194,7 +223,7 @@ public sealed class EverythingSearchIpcTests
                     cursor = WriteString(buffer, cursor, row.Parent);
                 }
                 Marshal.StructureToPtr(new CopyData { Id = new((long)id), Bytes = length, Buffer = buffer }, header, false);
-                Assert.Equal(new IntPtr(1), SendMessageW(reply, 0x4A, Handle, header));
+                return SendMessageW(reply, 0x4A, sender, header);
             }
             finally { Marshal.FreeHGlobal(header); Marshal.FreeHGlobal(buffer); }
         }

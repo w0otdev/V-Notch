@@ -20,7 +20,6 @@ internal sealed partial class SpotlightController : ISpotlightController, IAsync
     private const string LogTag = "SPOTLIGHT-HOTKEY";
     private const int HotkeyId = 0x564E;
 
-
     private readonly Func<SpotlightWindow> _windowFactory;
     private SpotlightWindow? _window;
     private Window? _host;
@@ -31,7 +30,6 @@ internal sealed partial class SpotlightController : ISpotlightController, IAsync
     private bool _nativeRegistered;
     private NotchSettings? _settings;
     private bool _disposed;
-    private bool _preparationQueued;
     private int _hostGeneration;
 
     public bool IsHotkeyRegistered => _nativeRegistered || _keyboardHook?.IsInstalled == true;
@@ -256,33 +254,6 @@ internal sealed partial class SpotlightController : ISpotlightController, IAsync
         UpdateKeyboardHook();
     }
 
-    private void QueuePreparation()
-    {
-        if (_preparationQueued || _host == null) return;
-        _preparationQueued = true;
-        int generation = _hostGeneration;
-        _host.Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.ContextIdle, (Action)(() =>
-        {
-            if (generation != _hostGeneration) return;
-            _preparationQueued = false;
-            if (_disposed || _host == null || _settings?.EnableSpotlight != true) return;
-            try
-            {
-                if (_window == null)
-                {
-                    _window = CreateWindow();
-                    _window.Owner = _host;
-                    _window.ApplySettings(_settings);
-                }
-                _window.PrepareGlassForOpening();
-            }
-            catch (Exception ex)
-            {
-                RuntimeLog.Log(LogTag, $"Spotlight idle preparation skipped: {ex.Message}");
-            }
-        }));
-    }
-
     private void DisableHotkey()
     {
         if (_nativeRegistered) UnregisterHotKey(_hwnd, HotkeyId);
@@ -295,7 +266,6 @@ internal sealed partial class SpotlightController : ISpotlightController, IAsync
     private void DetachHost()
     {
         ++_hostGeneration;
-        _preparationQueued = false;
         DisableHotkey();
         if (_source is { IsDisposed: false }) _source.RemoveHook(WndProc);
         _source = null;

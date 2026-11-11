@@ -143,13 +143,12 @@ public sealed class SpotlightNotchLocaleThumbnailTests
             string oversizedFile = Path.Combine(tempRoot, localeCode + ".json");
             using (var fs = new FileStream(oversizedFile, FileMode.Create, FileAccess.Write, FileShare.None))
             {
-                fs.SetLength(LocalizationService.MaxExternalLocaleFileBytes + 10);
+                fs.SetLength(Loc.MaxExternalLocaleFileBytes + 10);
             }
 
-            Assert.False(LocalizationService.IsValidExternalLocaleFile(oversizedFile));
             Assert.False(Loc.IsValidExternalLocaleFile(oversizedFile));
 
-            LocalizationService.DiscoverExternalDirectory(tempRoot);
+            Loc.DiscoverExternalDirectory(tempRoot);
 
             var available = Loc.GetAvailableLanguages();
             Assert.DoesNotContain(available, entry => string.Equals(entry.Code, localeCode, StringComparison.OrdinalIgnoreCase));

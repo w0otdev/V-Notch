@@ -16,7 +16,7 @@
 #include <windows.graphics.capture.interop.h>
 #include <windows.graphics.directx.direct3d11.interop.h>
 #include "vnotch_com.h"
-#include <mutex>
+#include <atomic>
 #include <chrono>
 
 #pragma comment(lib, "d3d11.lib")
@@ -220,6 +220,65 @@ public:
         lastUploadedHash = 0;
         sourceDirty = true;
     }
+    static HRESULT QueryBorderlessCaptureAccess() noexcept {
+        // 0 = unqueried, 1 = in progress, 2 = resolved
+        static std::atomic<int> accessState{ 0 };
+        static std::atomic<HRESULT> accessResult{ E_PENDING };
+
+        if (accessState.load(std::memory_order_acquire) == 2) {
+            return accessResult.load(std::memory_order_relaxed);
+        }
+
+        try {
+            if (!winrt::Windows::Foundation::Metadata::ApiInformation::IsPropertyPresent(
+                    L"Windows.Graphics.Capture.GraphicsCaptureSession", L"IsBorderRequired") ||
+                !winrt::Windows::Foundation::Metadata::ApiInformation::IsTypePresent(
+                    L"Windows.Graphics.Capture.GraphicsCaptureAccess")) {
+                accessResult.store(E_NOINTERFACE, std::memory_order_relaxed);
+                accessState.store(2, std::memory_order_release);
+                return E_NOINTERFACE;
+            }
+        } catch (...) {
+            const HRESULT hr = winrt::to_hresult();
+            const HRESULT stored = FAILED(hr) ? hr : E_FAIL;
+            accessResult.store(stored, std::memory_order_relaxed);
+            accessState.store(2, std::memory_order_release);
+            return stored;
+        }
+
+        int expected = 0;
+        if (!accessState.compare_exchange_strong(expected, 1, std::memory_order_acq_rel)) {
+            return accessState.load(std::memory_order_acquire) == 2
+                ? accessResult.load(std::memory_order_relaxed)
+                : E_PENDING;
+        }
+
+        HRESULT hr = E_ACCESSDENIED;
+        try {
+            const auto op = Capture::GraphicsCaptureAccess::RequestAccessAsync(
+                Capture::GraphicsCaptureAccessKind::Borderless);
+            if (op.wait_for(std::chrono::milliseconds(1500)) == winrt::Windows::Foundation::AsyncStatus::Completed) {
+                const auto status = op.GetResults();
+                hr = status == winrt::Windows::Security::Authorization::AppCapabilityAccess::AppCapabilityAccessStatus::Allowed
+                    ? S_OK
+                    : E_ACCESSDENIED;
+            } else {
+                op.Cancel();
+                hr = HRESULT_FROM_WIN32(ERROR_TIMEOUT);
+            }
+        } catch (...) {
+            hr = winrt::to_hresult();
+            if (SUCCEEDED(hr)) hr = E_FAIL;
+        }
+
+        accessResult.store(hr, std::memory_order_relaxed);
+        if (hr == HRESULT_FROM_WIN32(ERROR_TIMEOUT)) {
+            accessState.store(0, std::memory_order_release);
+        } else {
+            accessState.store(2, std::memory_order_release);
+        }
+        return hr;
+    }
     bool StartGraphicsCapture(HMONITOR wanted) {
         // Hybrid graphics can expose a monitor on the discrete adapter while
         // DuplicateOutput only works on the integrated adapter. WGC delivers a
@@ -229,6 +288,11 @@ public:
         vnotch::com::EnsureMta();
         if (!Capture::GraphicsCaptureSession::IsSupported()) throw DXGI_ERROR_UNSUPPORTED;
         ResetCapture();
+        borderlessResult = QueryBorderlessCaptureAccess();
+        if (borderlessResult != S_OK) {
+            captureResult = FAILED(borderlessResult) ? borderlessResult : E_ACCESSDENIED;
+            return false;
+        }
         struct Rollback {
             GpuGlass* self;
             ~Rollback() noexcept { if (self) self->ResetCapture(); }
@@ -246,21 +310,19 @@ public:
         captureSession = framePool.CreateCaptureSession(captureItem);
         ApplyCaptureInterval();
         captureSession.IsCursorCaptureEnabled(false);
-        if (winrt::Windows::Foundation::Metadata::ApiInformation::IsPropertyPresent(
-            L"Windows.Graphics.Capture.GraphicsCaptureSession", L"IsBorderRequired")) {
-            // Explicitly requested by the user: ask Windows once per process,
-            // before StartCapture so the first session also starts borderless.
-            static std::once_flag borderlessAccess;
-            static HRESULT borderlessRequest = E_PENDING;
-            std::call_once(borderlessAccess, [] {
-                try {
-                    auto status = Capture::GraphicsCaptureAccess::RequestAccessAsync(Capture::GraphicsCaptureAccessKind::Borderless).get();
-                    borderlessRequest = status == winrt::Windows::Security::Authorization::AppCapabilityAccess::AppCapabilityAccessStatus::Allowed ? S_OK : E_ACCESSDENIED;
-                }
-                catch (...) { borderlessRequest = winrt::to_hresult(); }
-            });
-            captureSession.IsBorderRequired(false);
-            borderlessResult = borderlessRequest;
+        auto session3 = captureSession.try_as<Capture::IGraphicsCaptureSession3>();
+        if (!session3) {
+            borderlessResult = E_NOINTERFACE;
+            captureResult = E_NOINTERFACE;
+            return false;
+        }
+        try {
+            session3.IsBorderRequired(false);
+        } catch (...) {
+            const HRESULT hr = winrt::to_hresult();
+            borderlessResult = FAILED(hr) ? hr : E_FAIL;
+            captureResult = borderlessResult;
+            return false;
         }
         captureSession.StartCapture();
         outputDesc.DesktopCoordinates = info.rcMonitor;
@@ -660,12 +722,6 @@ public:
         Check(hr);
         return hr == S_OK && ready ? S_OK : S_FALSE;
     }
-    HRESULT TakeReady(IDirect3DSurface9** surface) {
-        if (CompletionReady() != S_OK) return S_FALSE;
-        Check(output[nextOutput].surface.CopyTo(surface));
-        nextOutput ^= 1; pending = false;
-        return S_OK;
-    }
     HRESULT PresentReady(IDirect3DSurface9* destination) {
         if (CompletionReady() != S_OK) return S_FALSE;
         auto& target = output[nextOutput];
@@ -721,12 +777,6 @@ VN_EXPORT int32_t __stdcall vn_glass_gpu_render_pixels(int64_t handle, const Fra
     try { return pipeline->RenderPixels(*frame, pixels, static_cast<UINT>(stride)); }
     catch (HRESULT hr) { return pipeline->captureResult = hr; }
     catch (...) { return pipeline->captureResult = E_FAIL; }
-}
-VN_EXPORT int32_t __stdcall vn_glass_gpu_take_ready(int64_t handle, IDirect3DSurface9** surface) noexcept {
-    if (!surface) return E_INVALIDARG;
-    *surface = nullptr; auto pipeline = pipelines.Acquire(handle);
-    if (!pipeline) return E_INVALIDARG;
-    try { return pipeline->TakeReady(surface); } catch (HRESULT hr) { return hr; } catch (...) { return E_FAIL; }
 }
 VN_EXPORT void __stdcall vn_glass_gpu_destroy(int64_t handle) noexcept { pipelines.Remove(handle); }
 VN_EXPORT int32_t __stdcall vn_glass_gpu_wait_ready(int64_t handle, uint32_t timeoutMs) noexcept {

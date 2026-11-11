@@ -73,7 +73,7 @@ internal sealed partial class SpotlightAiService
         out byte outStatus,
         out byte outCompleted);
 
-    private static readonly HttpClient SharedClient = new(NetworkPrivacy.Handler(NetworkFeature.Ai, new NativeWinHttpHandler { AllowAutoRedirect = false }))
+    private static readonly HttpClient SharedClient = new(NetworkPrivacy.Handler(NetworkFeature.Ai))
     { Timeout = TimeSpan.FromSeconds(90), MaxResponseContentBufferSize = 2 * 1024 * 1024 };
     private readonly HttpClient _client;
     internal SpotlightAiService(HttpClient? client = null) => _client = client ?? SharedClient;

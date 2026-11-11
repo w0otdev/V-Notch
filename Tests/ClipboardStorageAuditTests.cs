@@ -345,6 +345,98 @@ public sealed class ClipboardStorageAuditTests
         Assert.Contains(unpinned[4].Id, remainingAfterBytePrune);
     }
 
+    [Fact]
+    public async Task PublicAttachmentsAndImagesAreEncryptedWithVnpblob1AndSupportLegacyPlaintextFallback()
+    {
+        using var fixture = new Fixture();
+        const string marker = "PUBLIC_BLOB_PLAINTEXT_MARKER_991827";
+        byte[] largePayload = Encoding.UTF8.GetBytes(string.Concat(Enumerable.Repeat(marker, 2200))); // > 64 KB
+        string srcFile = Path.Combine(fixture.Root, "payload.bin");
+        await File.WriteAllBytesAsync(srcFile, largePayload);
+
+        string srcDir = Path.Combine(fixture.Root, "bundle");
+        Directory.CreateDirectory(srcDir);
+        await File.WriteAllTextAsync(Path.Combine(srcDir, "inner.txt"), marker);
+
+        byte[] png = Convert.FromBase64String("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=");
+
+        Guid fileId, dirId, imgId;
+        await using (var store = new ClipboardHistoryStore(fixture.History))
+        {
+            await store.InitializeAsync();
+            Assert.False(store.HasPersonalPasscode);
+            fileId = (await store.ImportAsync(new ClipboardCapture { FilePaths = [srcFile] })).Entry!.Id;
+            dirId = (await store.ImportAsync(new ClipboardCapture { FilePaths = [srcDir] })).Entry!.Id;
+            imgId = (await store.ImportAsync(new ClipboardCapture { ImagePng = png })).Entry!.Id;
+
+            foreach ((Guid id, string name) in new[] { (fileId, "0.bin"), (dirId, "0.zip"), (imgId, "image.png") })
+            {
+                byte[] onDisk = await File.ReadAllBytesAsync(Path.Combine(fixture.History, "items", id.ToString("N"), name));
+                Assert.Equal("VNPBLOB1", Encoding.ASCII.GetString(onDisk, 0, 8));
+                Assert.DoesNotContain(marker, Encoding.UTF8.GetString(onDisk));
+            }
+        }
+
+        await using (var reopened = new ClipboardHistoryStore(fixture.History))
+        {
+            await reopened.InitializeAsync();
+            Assert.Equal(png, await reopened.GetImageAsync(imgId));
+            Assert.NotNull(await reopened.GetImagePreviewAsync(imgId));
+            Assert.Equal(largePayload, await File.ReadAllBytesAsync(Assert.Single(await reopened.ExportFilesAsync(fileId))));
+            string exportedDir = Assert.Single(await reopened.ExportFilesAsync(dirId));
+            Assert.Equal(marker, await File.ReadAllTextAsync(Path.Combine(exportedDir, "inner.txt")));
+        }
+
+        // Overwrite with legacy unencrypted files to verify transparent backward-compatible fallback.
+        await File.WriteAllBytesAsync(Path.Combine(fixture.History, "items", fileId.ToString("N"), "0.bin"), Encoding.UTF8.GetBytes("legacy-plain"));
+        await File.WriteAllBytesAsync(Path.Combine(fixture.History, "items", imgId.ToString("N"), "image.png"), png);
+
+        await using (var legacyStore = new ClipboardHistoryStore(fixture.History))
+        {
+            await legacyStore.InitializeAsync();
+            Assert.Equal(png, await legacyStore.GetImageAsync(imgId));
+            Assert.NotNull(await legacyStore.GetImagePreviewAsync(imgId));
+            Assert.Equal("legacy-plain", await File.ReadAllTextAsync(Assert.Single(await legacyStore.ExportFilesAsync(fileId))));
+        }
+    }
+
+    [Fact]
+    public void RawPepperIsRejectedAndArchiveTrailingDotOrSpaceSegmentsAreRejected()
+    {
+        using var fixture = new Fixture();
+        using (var vault = new ClipboardVault(fixture.History))
+        {
+            using var pin = Pin();
+            Assert.True(vault.Unlock(pin, create: true));
+        }
+
+        string configPath = Path.Combine(fixture.History, "personal-key.json");
+        string json = File.ReadAllText(configPath);
+        int encIdx = json.IndexOf("\"enc:", StringComparison.Ordinal);
+        Assert.True(encIdx >= 0);
+        string tampered = json.Replace("\"enc:", "\"raw:", StringComparison.Ordinal);
+        File.WriteAllText(configPath, tampered);
+
+        using (var reopened = new ClipboardVault(fixture.History))
+        {
+            using var pin = Pin();
+            Assert.False(reopened.Unlock(pin, create: false));
+        }
+
+        foreach (string unsafeEntry in new[] { "evil.txt.", "trailing /file.txt" })
+        {
+            using var zipBytes = new MemoryStream();
+            using (var zip = new ZipArchive(zipBytes, ZipArchiveMode.Create, leaveOpen: true))
+            {
+                using var writer = new StreamWriter(zip.CreateEntry(unsafeEntry).Open());
+                writer.Write("blocked");
+            }
+            zipBytes.Position = 0;
+            string extractDir = Path.Combine(fixture.Root, Guid.NewGuid().ToString("N"));
+            Assert.Throws<IOException>(() => ClipboardHistoryStore.ExtractArchiveDirectory(zipBytes, extractDir, null));
+        }
+    }
+
     private static void AssertEncryptedTree(string history, Guid id, string secret)
     {
         Assert.All(Directory.GetFiles(Path.Combine(history, "personal", id.ToString("N"))), path =>

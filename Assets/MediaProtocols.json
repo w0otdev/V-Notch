@@ -7,11 +7,9 @@
   "YouTubeInnertubeApiKey": "AIzaSyAO_FJ2SlqU8Q4STEHLGCilw_Y9_11qcW8",
   "PipedInstances": [
     "pipedapi.kavin.rocks",
-    "pipedapi.adminforge.de",
-    "pipedapi.in.projectsegfault.com"
+    "pipedapi.adminforge.de"
   ],
   "InvidiousInstances": [
-    "vid.puffyan.us",
     "invidious.fdn.fr",
     "invidious.nerdvpn.de"
   ],

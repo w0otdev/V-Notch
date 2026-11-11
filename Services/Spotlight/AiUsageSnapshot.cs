@@ -1,23 +1,14 @@
 using System.Globalization;
 using System.Net.Http;
 using System.Net.Http.Headers;
-using System.Runtime.InteropServices;
 using System.Text.Json;
 using VNotch.Models;
 
 namespace VNotch.Services.Spotlight;
 
-internal sealed partial record AiUsageSnapshot(long? Tokens = null, long? Remaining = null, long? Limit = null,
+internal sealed record AiUsageSnapshot(long? Tokens = null, long? Remaining = null, long? Limit = null,
     string? Reset = null, DateTimeOffset? Updated = null)
 {
-    [LibraryImport("VNotch.Native.dll")]
-    private static partial int vn_ai_usage_sum_claude_tokens(
-        long input,
-        long output,
-        long cacheRead,
-        long cacheCreated,
-        out long outTotal);
-
     internal static AiUsageSnapshot FromHeaders(HttpResponseMessage response, string provider)
     {
         string prefix = provider == "Claude" ? "anthropic-ratelimit-tokens-" : "x-ratelimit-";
@@ -46,14 +37,13 @@ internal sealed partial record AiUsageSnapshot(long? Tokens = null, long? Remain
         var output = Number(claude, "output_tokens") ?? Output;
         var cache = Number(claude, "cache_read_input_tokens") ?? CacheRead;
         var created = Number(claude, "cache_creation_input_tokens") ?? CacheCreated;
-        _ = vn_ai_usage_sum_claude_tokens(input, output, cache, created, out long total);
         return this with
         {
             Input = input,
             Output = output,
             CacheRead = cache,
             CacheCreated = created,
-            Tokens = total
+            Tokens = input + output + cache + created
         };
     }
 
@@ -65,12 +55,6 @@ internal sealed partial record AiUsageSnapshot(long? Tokens = null, long? Remain
 
 internal sealed partial class SpotlightAiService
 {
-    [LibraryImport("VNotch.Native.dll", StringMarshalling = StringMarshalling.Utf16)]
-    private static partial int vn_ai_usage_validate_credential_key(
-        ReadOnlySpan<char> keyPtr,
-        int keyLen,
-        out byte outValid);
-
     internal Task<string> GetBalanceAsync(NotchSettings settings, CancellationToken token = default)
     {
         ArgumentNullException.ThrowIfNull(settings);
@@ -89,7 +73,7 @@ internal sealed partial class SpotlightAiService
     private async Task<string> GetBalanceCoreAsync(string key, CancellationToken token)
     {
         key = key.Trim();
-        if (vn_ai_usage_validate_credential_key(key.AsSpan(), key.Length, out byte valid) != 0 || valid == 0)
+        if (vn_spotlight_ai_validate_api_key(key.AsSpan(), key.Length, out byte valid) != 0 || valid == 0)
             throw new InvalidOperationException("Invalid credential format.");
         const string balanceEndpoint = "api.deepseek.com/user/balance";
         using var request = new HttpRequestMessage(HttpMethod.Get, $"{Uri.UriSchemeHttps}://{balanceEndpoint}");

@@ -66,31 +66,6 @@ namespace anim = vnotch::services::animation;
 
 extern "C" {
 
-// VN_ERR_INVALID_ARG when damping_ratio is not finite or outside (0, 1].
-VN_EXPORT int32_t __stdcall vn_damped_spring_ease(double damping_ratio, double normalized_time, double* out_value) noexcept {
-    if (!out_value || !std::isfinite(damping_ratio) || damping_ratio <= 0.0 || damping_ratio > 1.0) return VN_ERR_INVALID_ARG;
-    *out_value = anim::DampedSpringCore(damping_ratio, normalized_time);
-    return VN_OK;
-}
-
-// Build the immutable easing table once. Hoist invariant spring coefficients
-// out of the sample loop; WPF can interpolate without native transitions per tick.
-VN_EXPORT int32_t __stdcall vn_damped_spring_sample_curve(
-    double damping_ratio, double* out_samples, int32_t sample_count) noexcept {
-    if (!out_samples || sample_count < 2 || !std::isfinite(damping_ratio) ||
-        damping_ratio <= 0.0 || damping_ratio > 1.0) return VN_ERR_INVALID_ARG;
-
-    const double frequency = anim::kNaturalFrequency * std::sqrt(std::max(0.0, 1.0 - damping_ratio * damping_ratio));
-    const double end_response = anim::StepResponse(damping_ratio, frequency, 1.0);
-    const double interval = 1.0 / static_cast<double>(sample_count - 1);
-    out_samples[0] = 0.0;
-    for (int32_t i = 1; i < sample_count - 1; ++i) {
-        out_samples[i] = 1.0 - anim::StepResponse(damping_ratio, frequency, 1.0 - i * interval) / end_response;
-    }
-    out_samples[sample_count - 1] = 1.0;
-    return VN_OK;
-}
-
 // Cubic Hermite coefficients preserve the analytic curve using a much smaller
 // immutable table. Each segment stores a + b*t + c*t^2 + d*t^3, t in [0, 1].
 VN_EXPORT int32_t __stdcall vn_damped_spring_build_segments(
@@ -543,50 +518,6 @@ VN_EXPORT int32_t __stdcall vn_animation_compute_settings_switch_motion(
     out_motion->peak_time_ms = 75;
     out_motion->rebound_time_ms = 175;
     out_motion->duration_ms = 250;
-    return VN_OK;
-}
-
-VN_EXPORT int32_t __stdcall vn_animation_compute_nav_tab_motion(
-    double current_y,
-    double target_y,
-    double item_height,
-    uint8_t reduced_motion,
-    VnNavTabMotionOut* out_motion) noexcept
-{
-    if (!out_motion) return VN_ERR_INVALID_ARG;
-
-    const double safe_h = (std::isfinite(item_height) && item_height > 24.0) ? std::min(item_height, 1e6) : 24.0;
-    const double safe_target_y = (std::isfinite(target_y) && target_y > 0.0) ? std::min(target_y, 1e6) : 0.0;
-    const double safe_current_y = std::isfinite(current_y) ? std::clamp(current_y, -1e6, 1e6) : safe_target_y;
-    out_motion->target_y = safe_target_y;
-    out_motion->target_height = safe_h;
-
-    if (reduced_motion != 0)
-    {
-        out_motion->peak_scale_y = 1.0;
-        out_motion->dip_scale_x = 1.0;
-        out_motion->rebound_scale_y = 1.0;
-        out_motion->rebound_scale_x = 1.0;
-        out_motion->content_shift_x = 0.0;
-        out_motion->peak_time_ms = 0;
-        out_motion->rebound_time_ms = 0;
-        out_motion->duration_ms = 0;
-        return VN_OK;
-    }
-
-    const double dist = std::abs(safe_target_y - safe_current_y);
-    const double slots = std::clamp(dist / safe_h, 0.0, 8.0);
-
-    out_motion->peak_scale_y = 1.0 + std::clamp(0.16 + slots * 0.065, 0.16, 0.60);
-    out_motion->dip_scale_x = 1.0 - std::clamp(0.020 + slots * 0.007, 0.020, 0.060);
-    out_motion->rebound_scale_y = 1.0;
-    out_motion->rebound_scale_x = 1.0;
-    out_motion->content_shift_x = 2.5;
-    // Stretch in the direction of travel, then contract into the destination
-    // without a separate bounce after the background has arrived.
-    out_motion->duration_ms = 280 + static_cast<int32_t>(std::min(slots, 6.0) * 12.0);
-    out_motion->peak_time_ms = out_motion->duration_ms / 3;
-    out_motion->rebound_time_ms = out_motion->duration_ms * 4 / 5;
     return VN_OK;
 }
 

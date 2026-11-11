@@ -737,7 +737,7 @@ VN_EXPORT int32_t __stdcall vn_visualizer_step_spring(
     return VN_OK;
 }
 
-VN_EXPORT int32_t __stdcall vn_visualizer_update_animation(
+static int32_t UpdateAnimation(
     int32_t state,
     double dt,
     double total_sec,
@@ -831,7 +831,7 @@ VN_EXPORT int32_t __stdcall vn_visualizer_update_animation(
     return VN_OK;
 }
 
-VN_EXPORT int32_t __stdcall vn_visualizer_prepare_draw_heights(
+static int32_t PrepareDrawHeights(
     double last_dt_ms,
     const double* current_heights,
     double* io_smoothed_heights,
@@ -887,10 +887,10 @@ VN_EXPORT int32_t __stdcall vn_visualizer_prepare_draw_heights(
 VN_EXPORT int32_t vn_visualizer_bar_frame(int32_t state, double dt, double total_sec,
     uint8_t fresh, double beat, const float* levels, const uint32_t* no_audio, const uint32_t* floor,
     double* opacity, double* heights, double* smoothed, double* sorted, double* draw, uint8_t* settled) noexcept {
-    int32_t rc = vn_visualizer_update_animation(state, dt, total_sec, fresh, beat,
+    int32_t rc = UpdateAnimation(state, dt, total_sec, fresh, beat,
         levels, no_audio, floor, opacity, heights, settled);
     if (rc != VN_OK) return rc;
-    return vn_visualizer_prepare_draw_heights(dt * 1000.0, heights, smoothed, sorted, draw);
+    return PrepareDrawHeights(dt * 1000.0, heights, smoothed, sorted, draw);
 }
 
 } // extern "C"

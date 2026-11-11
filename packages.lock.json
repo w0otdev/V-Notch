@@ -42,15 +42,6 @@
         "resolved": "0.27.0",
         "contentHash": "fZOfnsWKx/kaOqCMSkZ2w5ww++/YGq56T8PWst0KjtmXQBthNAuE11HIaxMK5TBD0EWqoCxqlC8oVCOssF4+MQ=="
       },
-      "LLamaSharp.Backend.Vulkan.Windows": {
-        "type": "Direct",
-        "requested": "[0.27.0, )",
-        "resolved": "0.27.0",
-        "contentHash": "eq2LNJLJ+rJmfFk5rSgFxV8Yer4ZGxNuYmGApUEk5illaj15hwYBmo2cWHq7UKVkbMQ5KZAGq5NkS3LJeMSiZw==",
-        "dependencies": {
-          "LLamaSharp.Backend.Cpu": "0.27.0"
-        }
-      },
       "Markdig": {
         "type": "Direct",
         "requested": "[0.41.3, )",
@@ -97,16 +88,6 @@
           "SharpGen.Runtime": "2.4.2-beta",
           "SharpGen.Runtime.COM": "2.4.2-beta",
           "Vortice.Mathematics": "2.1.0"
-        }
-      },
-      "Vortice.DXGI": {
-        "type": "Direct",
-        "requested": "[3.8.3, )",
-        "resolved": "3.8.3",
-        "contentHash": "MbAUnTeQ6WD99ctAdrj5CQO2I7oaax0Kt2eVdWSUj0bYP9Ed0726+s7dIHe4+tqhpmINW/dcPt0mNtc72o+E0w==",
-        "dependencies": {
-          "SharpGen.Runtime": "2.4.2-beta",
-          "Vortice.DirectX": "3.8.3"
         }
       },
       "CommunityToolkit.HighPerformance": {
@@ -231,16 +212,6 @@
         "dependencies": {
           "System.IO.Pipelines": "10.0.4",
           "System.Text.Encodings.Web": "10.0.4"
-        }
-      },
-      "Vortice.DirectX": {
-        "type": "Transitive",
-        "resolved": "3.8.3",
-        "contentHash": "nKwSavv0w5rDF7prSefqAVPDcTyqrfZxKFMVfttiXPfm62VdA/1d+b3PhCZpW4xO7jXczXDwjQdWgD1zGsvM8w==",
-        "dependencies": {
-          "SharpGen.Runtime": "2.4.2-beta",
-          "SharpGen.Runtime.COM": "2.4.2-beta",
-          "Vortice.Mathematics": "2.1.0"
         }
       },
       "Vortice.Mathematics": {

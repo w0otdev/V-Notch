@@ -19,7 +19,6 @@ public class ShellViewModelProgressTests
     {
         _vm = new ShellViewModel(
             _media,
-            new FakeSettingsService(),
             _volume,
             new FakeBatteryService(),
             new FakeDispatcherService());

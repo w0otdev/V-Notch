@@ -15,15 +15,6 @@ internal sealed partial class LyricsService : IDisposable
     private const string NativeDll = "VNotch.Native.dll";
 
     [LibraryImport(NativeDll, StringMarshalling = StringMarshalling.Utf16)]
-    private static partial int vn_lyrics_try_parse_lrc_line(
-        ReadOnlySpan<char> rawLine,
-        int rawLineLen,
-        out long outTicks,
-        out int outTextStart,
-        out int outTextLength,
-        out byte outOk);
-
-    [LibraryImport(NativeDll, StringMarshalling = StringMarshalling.Utf16)]
     private static partial int vn_lyrics_contains_whole_phrase(
         ReadOnlySpan<char> text,
         int textLen,
@@ -36,12 +27,6 @@ internal sealed partial class LyricsService : IDisposable
         ReadOnlySpan<char> artist,
         int artistLen,
         out byte outIsGeneric);
-
-    [LibraryImport(NativeDll, StringMarshalling = StringMarshalling.Utf16)]
-    private static partial int vn_lyrics_is_valid_sync_level(
-        ReadOnlySpan<char> syncLevel,
-        int syncLevelLen,
-        out byte outIsValid);
 
     [LibraryImport(NativeDll, StringMarshalling = StringMarshalling.Utf16)]
     private static partial int vn_lyrics_clean_artist_span(
@@ -79,6 +64,8 @@ internal sealed partial class LyricsService : IDisposable
     {
         var transport = new SocketsHttpHandler
         {
+            AllowAutoRedirect = false,
+            UseCookies = false,
             AutomaticDecompression = System.Net.DecompressionMethods.All,
             ConnectTimeout = TimeSpan.FromMilliseconds(1500),
             PooledConnectionLifetime = TimeSpan.FromMinutes(10)
@@ -418,7 +405,7 @@ internal sealed partial class LyricsService : IDisposable
             return null;
         }
 
-        using var doc = await ReadBoundedJsonAsync(response.Content, token);
+        using var doc = await SpotifyHttpResponseReader.ReadLimitedJsonAsync(response, MaxLyricsResponseBytes, token).ConfigureAwait(false);
         if (doc == null) return null;
         var lines = ExtractSyncedLines(doc.RootElement);
         if (lines is { Count: > 0 })
@@ -443,7 +430,7 @@ internal sealed partial class LyricsService : IDisposable
             return null;
         }
 
-        using var doc = await ReadBoundedJsonAsync(response.Content, token);
+        using var doc = await SpotifyHttpResponseReader.ReadLimitedJsonAsync(response, MaxLyricsResponseBytes, token).ConfigureAwait(false);
         if (doc == null) return null;
         if (doc.RootElement.ValueKind != JsonValueKind.Array)
             return null;
@@ -652,26 +639,6 @@ internal sealed partial class LyricsService : IDisposable
 
     internal static List<LyricLine> ParseLrc(string lrc) =>
         NativeLyricParser.Parse(MemoryMarshal.AsBytes(lrc.AsSpan()), 6, utf16: true);
-
-    private static async Task<JsonDocument?> ReadBoundedJsonAsync(HttpContent content, CancellationToken token)
-    {
-        if (content.Headers.ContentLength is > MaxLyricsResponseBytes)
-            return null;
-        await using var stream = await content.ReadAsStreamAsync(token);
-        using var ms = new System.IO.MemoryStream();
-        byte[] buf = new byte[8192];
-        int total = 0;
-        while (true)
-        {
-            int read = await stream.ReadAsync(buf, token);
-            if (read <= 0) break;
-            total += read;
-            if (total > MaxLyricsResponseBytes) return null;
-            await ms.WriteAsync(buf.AsMemory(0, read), token).ConfigureAwait(false);
-        }
-        ms.Position = 0;
-        return await JsonDocument.ParseAsync(ms, cancellationToken: token);
-    }
 
     public void Dispose()
     {

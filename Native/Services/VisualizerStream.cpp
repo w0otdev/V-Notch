@@ -1,8 +1,5 @@
 #include "../vnotch_native.h"
 #include "VisualizerStream.h"
-#include "../vnotch_handle_registry.h"
-#include <memory>
-#include <mutex>
 
 using namespace vnotch::services::visualizer;
 VN_EXPORT int32_t __stdcall vn_visualizer_read_sample(const uint8_t*, int32_t, int32_t, uint8_t, int32_t, float*) noexcept;
@@ -56,34 +53,4 @@ bool VisualizerStream::Process(const uint8_t* data, int32_t frames, int32_t chan
     if (!changed && now - last_publish < 400) return false;
     published = targets; beat = static_cast<float>(dsp.beat_accent); last_publish = now;
     return true;
-}
-
-namespace {
-struct StreamState { VisualizerStream stream; std::mutex gate; };
-vnotch::HandleRegistry<StreamState> streams;
-}
-VN_EXPORT int32_t __stdcall vn_visualizer_stream_create(int32_t sample_rate, int64_t* handle) noexcept {
-    if (!handle || sample_rate < 8000 || sample_rate > 384000) return VN_ERR_INVALID_ARG;
-    *handle = 0;
-    try {
-        auto state = std::make_unique<StreamState>(); state->stream.Reset(sample_rate);
-        *handle = streams.Add(std::move(state)); return VN_OK;
-    } catch (...) { return VN_ERR_FAIL; }
-}
-VN_EXPORT int32_t __stdcall vn_visualizer_stream_close(int64_t handle) noexcept {
-    streams.Remove(handle); return VN_OK;
-}
-VN_EXPORT int32_t __stdcall vn_visualizer_stream_push(int64_t handle, const uint8_t* data, int32_t length,
-    int32_t channels, int32_t bits, uint8_t is_float, float* levels, float* beat, float* rms) noexcept {
-    if (!data || length < 0 || channels < 1 || channels > 64 || !levels || !beat || !rms ||
-        (is_float ? (bits != 32 && bits != 64) : (bits != 8 && bits != 16 && bits != 24 && bits != 32))) return VN_ERR_INVALID_ARG;
-    try {
-        auto state = streams.Acquire(handle);
-        if (!state) return VN_ERR_INVALID_ARG;
-        std::lock_guard lock(state->gate);
-        state->stream.Process(data, length / (channels * (bits / 8)), channels, bits, is_float, channels * (bits / 8));
-        std::copy(state->stream.targets.begin(), state->stream.targets.end(), levels);
-        *beat = static_cast<float>(state->stream.dsp.beat_accent); *rms = state->stream.rms;
-        return VN_OK;
-    } catch (...) { return VN_ERR_FAIL; }
 }

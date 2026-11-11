@@ -98,7 +98,7 @@ public sealed partial class MediaMetadataLookupService : IMediaMetadataLookupSer
     private const string DurationPropertyName = "duration";
 
     private static readonly HttpClient SharedHttpClient = new(NetworkPrivacy.Handler(NetworkFeature.Artwork));
-    private static readonly HttpClient SharedKeyClient = new(NetworkPrivacy.Handler(NetworkFeature.Artwork, new NativeWinHttpHandler { AllowAutoRedirect = false, UseCookies = false }));
+    private static readonly HttpClient SharedKeyClient = new(NetworkPrivacy.Handler(NetworkFeature.Artwork));
     private readonly HttpClient _httpClient;
     private readonly HttpClient _keyClient;
     private readonly Func<bool> _artworkAllowed;
@@ -108,8 +108,9 @@ public sealed partial class MediaMetadataLookupService : IMediaMetadataLookupSer
     private readonly SpotifyCatalogClient _spotifyCatalog;
     private readonly SpotifyLocalMetadataReader? _spotifyLocalMetadata;
 
-    public MediaMetadataLookupService() : this(SharedHttpClient, SharedKeyClient, IsOnlineArtworkAllowed, GetYouTubeApiKey,
-        new SpotifyLocalMetadataReader())
+    public MediaMetadataLookupService(ISettingsService? settingsService = null)
+        : this(SharedHttpClient, SharedKeyClient, IsOnlineArtworkAllowed, () => GetYouTubeApiKey(settingsService),
+            new SpotifyLocalMetadataReader())
     {
         _spotifyLocalMetadata?.WarmUp();
         if (_artworkAllowed())
@@ -786,77 +787,22 @@ public sealed partial class MediaMetadataLookupService : IMediaMetadataLookupSer
     private static TimeSpan ParseIso8601Duration(string iso)
         => YouTubeMetadataParsing.ParseIso8601Duration(iso);
 
-    private static readonly object ApiKeyCacheGate = new();
-    private static string? _apiKeyCachePath;
-    private static DateTime _apiKeyCacheStampUtc;
-    private static string? _cachedApiKey;
-
-    private static string? GetYouTubeApiKey()
+    internal static string? GetYouTubeApiKey(ISettingsService? settingsService)
     {
-        var appDataPath = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
-        return GetCachedYouTubeApiKey(Path.Combine(appDataPath, "V-Notch", "settings.json"));
-    }
-
-    // Settings are saved with an atomic replace, so the write time changes whenever the
-    // key or its toggle can change. Re-read and decrypt only then, not on every lookup.
-    internal static string? GetCachedYouTubeApiKey(string settingsPath)
-    {
-        DateTime stampUtc;
+        if (settingsService == null)
+            return null;
         try
         {
-            stampUtc = File.Exists(settingsPath) ? File.GetLastWriteTimeUtc(settingsPath) : DateTime.MinValue;
-        }
-        catch (Exception ex)
-        {
-            RuntimeLog.Warn("YOUTUBE-API-KEY", $"Failed to stat settings: {ex.Message}");
-            return null;
-        }
-
-        lock (ApiKeyCacheGate)
-        {
-            if (_apiKeyCachePath == settingsPath && _apiKeyCacheStampUtc == stampUtc)
-                return _cachedApiKey;
-        }
-
-        // Read errors are not cached so a transient failure does not hide the key.
-        if (!TryReadYouTubeApiKey(settingsPath, out var key))
-            return null;
-
-        lock (ApiKeyCacheGate)
-        {
-            _apiKeyCachePath = settingsPath;
-            _apiKeyCacheStampUtc = stampUtc;
-            _cachedApiKey = key;
-        }
-        return key;
-    }
-
-    private static bool TryReadYouTubeApiKey(string settingsPath, out string? key)
-    {
-        key = null;
-        try
-        {
-            if (!File.Exists(settingsPath))
-                return true;
-
-            string json = File.ReadAllText(settingsPath);
-            using var doc = JsonDocument.Parse(json);
-            var root = doc.RootElement;
-
-            if (root.TryGetProperty("EnableYouTubeApi", out var enabledEl) &&
-                enabledEl.GetBoolean() &&
-                root.TryGetProperty("YouTubeApiKey", out var keyEl))
-            {
-                string? candidate = DataProtection.Unprotect(keyEl.GetString())?.Trim();
-                if (!string.IsNullOrEmpty(candidate) && candidate.Length > 10)
-                    key = candidate;
-            }
-            return true;
+            var settings = settingsService.Load();
+            if (!settings.EnableYouTubeApi)
+                return null;
+            string candidate = (settings.YouTubeApiKey ?? "").Trim();
+            return candidate.Length > 10 ? candidate : null;
         }
         catch (Exception ex)
         {
             RuntimeLog.Warn("YOUTUBE-API-KEY", $"Failed to read API key from settings: {ex.Message}");
-            return false;
+            return null;
         }
     }
 

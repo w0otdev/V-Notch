@@ -61,7 +61,7 @@ public sealed partial class UpdateService : IUpdateService, IDisposable
 
     private readonly bool _ownsHttpClient;
 
-    public UpdateService() : this(CreateHttpClient(), UpdateSecurityPolicy.FromEnvironment(),
+    public UpdateService() : this(CreateHttpClient(), new UpdateSecurityPolicy(),
         cachePath: Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "V-Notch", "update-cache.json"))
     { _ownsHttpClient = true; }
 
@@ -341,14 +341,21 @@ public sealed partial class UpdateService : IUpdateService, IDisposable
     {
         byte[] feed = await ReadLimitedBytesAsync(response, MaxReleaseResponseBytes, token).ConfigureAwait(false)
             ?? throw new InvalidDataException("Release feed response was empty or exceeded size limit.");
-        var buffer = new char[MaxReleaseResponseBytes];
-        if (ParseReleaseFeed(feed, feed.Length, buffer, buffer.Length, out int written) != 0)
-            throw new InvalidDataException("Invalid release feed.");
-        using var json = JsonDocument.Parse(new string(buffer, 0, written));
-        var releases = new List<UpdateInfo>();
-        foreach (var release in json.RootElement.EnumerateArray()) releases.Add(ReadRelease(release));
-        if (releases.Count == 0) throw new InvalidDataException("Empty release feed.");
-        return releases;
+        char[] buffer = System.Buffers.ArrayPool<char>.Shared.Rent(MaxReleaseResponseBytes);
+        try
+        {
+            if (ParseReleaseFeed(feed, feed.Length, buffer, buffer.Length, out int written) != 0)
+                throw new InvalidDataException("Invalid release feed.");
+            using var json = JsonDocument.Parse(buffer.AsMemory(0, written));
+            var releases = new List<UpdateInfo>();
+            foreach (var release in json.RootElement.EnumerateArray()) releases.Add(ReadRelease(release));
+            if (releases.Count == 0) throw new InvalidDataException("Empty release feed.");
+            return releases;
+        }
+        finally
+        {
+            System.Buffers.ArrayPool<char>.Shared.Return(buffer);
+        }
     }
 
     // ShellExecute, trust verification and temporary-file cleanup can block even
@@ -381,6 +388,7 @@ public sealed partial class UpdateService : IUpdateService, IDisposable
                 throw new InvalidOperationException("Invalid installer file name.");
             }
             directory = Path.Combine(Path.GetTempPath(), "V-Notch", Guid.NewGuid().ToString("N"));
+            SafeFileDeletion.ValidatePath(directory);
             cleanupLease = AppFileCleanupService.Protect(directory);
             Directory.CreateDirectory(directory);
             installerPath = Path.Combine(directory, safeInstallerName);
@@ -417,8 +425,8 @@ public sealed partial class UpdateService : IUpdateService, IDisposable
     internal static ProcessStartInfo CreateInstallerStartInfo(string installerPath, string directory) => new()
     {
         FileName = installerPath,
-        Arguments = "--update",
-        UseShellExecute = true,
+        ArgumentList = { "--update" },
+        UseShellExecute = false,
         WorkingDirectory = directory
     };
 
@@ -509,20 +517,8 @@ public sealed partial class UpdateService : IUpdateService, IDisposable
         using var request = new HttpRequestMessage(HttpMethod.Get, url);
         using var response = await SendHttpsAsync(request, token, requireReleaseOrigin: true).ConfigureAwait(false);
         response.EnsureSuccessStatusCode();
-        if (response.Content.Headers.ContentLength > limit)
-            throw new InvalidDataException("Update metadata exceeds its size limit.");
-        await using var input = await response.Content.ReadAsStreamAsync(token).ConfigureAwait(false);
-        using var output = new MemoryStream();
-        var buffer = new byte[4096];
-        while (true)
-        {
-            int count = await input.ReadAsync(buffer.AsMemory(), token).ConfigureAwait(false);
-            if (count == 0) break;
-            if (output.Length + count > limit)
-                throw new InvalidDataException("Update metadata exceeds its size limit.");
-            await output.WriteAsync(buffer.AsMemory(0, count), token).ConfigureAwait(false);
-        }
-        return output.ToArray();
+        return await ReadLimitedBytesAsync(response, limit, token, allowEmpty: true).ConfigureAwait(false)
+            ?? throw new InvalidDataException("Update metadata exceeds its size limit.");
     }
 
     internal async Task<HttpResponseMessage> SendHttpsAsync(HttpRequestMessage request, CancellationToken token,
@@ -611,19 +607,20 @@ public sealed partial class UpdateService : IUpdateService, IDisposable
         expected.Length == 64 && actual.Length == 64 &&
         CryptographicOperations.FixedTimeEquals(Convert.FromHexString(expected), Convert.FromHexString(actual));
     private static bool IsRedirect(HttpStatusCode status) => status is HttpStatusCode.Moved or HttpStatusCode.Redirect or HttpStatusCode.RedirectMethod or HttpStatusCode.TemporaryRedirect or HttpStatusCode.PermanentRedirect;
-    private static async Task<string> ComputeSha256Async(string path, CancellationToken token)
-    {
-        await using var file = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read,
-            bufferSize: 81920, options: FileOptions.Asynchronous | FileOptions.SequentialScan);
-        return await ComputeSha256Async(file, token).ConfigureAwait(false);
-    }
     internal static async Task<string> ComputeSha256Async(Stream stream, CancellationToken token)
     {
         ArgumentNullException.ThrowIfNull(stream);
         if (stream.CanSeek) stream.Position = 0;
         return Convert.ToHexString(await SHA256.HashDataAsync(stream, token).ConfigureAwait(false));
     }
-    private static HttpClient CreateHttpClient() => new(NetworkPrivacy.Handler(NetworkFeature.Updates, new NativeWinHttpHandler { AllowAutoRedirect = false })) { Timeout = TimeSpan.FromMinutes(10) };
+    private static HttpClient CreateHttpClient() => new(NetworkPrivacy.Handler(NetworkFeature.Updates, new SocketsHttpHandler
+    {
+        AllowAutoRedirect = false,
+        UseCookies = false,
+        PooledConnectionLifetime = TimeSpan.FromMinutes(5),
+        AutomaticDecompression = DecompressionMethods.GZip | DecompressionMethods.Deflate
+    }))
+    { Timeout = TimeSpan.FromMinutes(10) };
     private static void DeleteDirectory(string directory) { try { SafeFileDeletion.DeleteDirectory(directory); } catch (Exception ex) { RuntimeLog.Warn(LogCategory, $"Could not remove temporary update files: {ex.Message}"); } }
 
     internal static int CompareVersions(string left, string right)
@@ -657,12 +654,12 @@ public sealed partial class UpdateService : IUpdateService, IDisposable
         return true;
     }
 
-    private static async Task<byte[]?> ReadLimitedBytesAsync(HttpResponseMessage response, int maxBytes, CancellationToken token)
+    internal static async Task<byte[]?> ReadLimitedBytesAsync(HttpResponseMessage response, int maxBytes, CancellationToken token, bool allowEmpty = false)
     {
         var length = response.Content.Headers.ContentLength;
-        if (length.HasValue && length.Value > maxBytes) return null;
+        if (length.HasValue && (length.Value < 0 || length.Value > maxBytes)) return null;
         await using var stream = await response.Content.ReadAsStreamAsync(token).ConfigureAwait(false);
-        using var memory = new MemoryStream(length.HasValue ? (int)length.Value : 4096);
+        using var memory = new MemoryStream(length.HasValue ? (int)length.Value : Math.Min(maxBytes, 4096));
         byte[] buffer = System.Buffers.ArrayPool<byte>.Shared.Rent(4096);
         try
         {
@@ -670,13 +667,13 @@ public sealed partial class UpdateService : IUpdateService, IDisposable
             while (true)
             {
                 token.ThrowIfCancellationRequested();
-                int read = await stream.ReadAsync(buffer.AsMemory(0, Math.Min(buffer.Length, maxBytes - totalRead + 1)), token).ConfigureAwait(false);
+                int read = await stream.ReadAsync(buffer.AsMemory(0, (int)Math.Min(buffer.Length, Math.Max(1L, (long)maxBytes - totalRead + 1))), token).ConfigureAwait(false);
                 if (read == 0) break;
                 totalRead += read;
                 if (totalRead > maxBytes) return null;
                 await memory.WriteAsync(buffer.AsMemory(0, read), token).ConfigureAwait(false);
             }
-            return totalRead == 0 ? null : memory.ToArray();
+            return totalRead == 0 && !allowEmpty ? null : memory.ToArray();
         }
         finally { System.Buffers.ArrayPool<byte>.Shared.Return(buffer); }
     }

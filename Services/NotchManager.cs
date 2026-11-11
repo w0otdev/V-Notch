@@ -1,13 +1,12 @@
 using System.Runtime.InteropServices;
 using System.Windows;
 using System.Windows.Forms;
-using VNotch.Contracts;
 using VNotch.Controllers;
 using VNotch.Models;
 
 namespace VNotch.Services;
 
-public sealed partial class NotchManager : INotchManager
+public sealed partial class NotchManager : IDisposable
 {
     private const string NativeDll = "VNotch.Native.dll";
 

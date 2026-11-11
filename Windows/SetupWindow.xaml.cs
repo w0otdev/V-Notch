@@ -14,11 +14,6 @@ using IOPath = System.IO.Path;
 
 namespace VNotch;
 
-internal interface ISetupEntryAwarePage
-{
-    void OnPageEntryCompleted();
-}
-
 internal interface ISetupAnimatedPage
 {
     IReadOnlyList<UIElement> GetAnimatedElements();
@@ -57,6 +52,7 @@ public partial class SetupWindow : Window
     private int _currentPageIndex = 0;
     private readonly Func<UIElement>[] _pageFactories;
     private readonly bool _isUpgrade;
+    private readonly bool _isAutoUpdate;
     private readonly Func<SetupInstallOptions, Action<SetupProgressInfo>, Task> _install;
     private readonly IntroductionPage _introductionPage;
     private readonly DirectoryPage _directoryPage;
@@ -86,13 +82,13 @@ public partial class SetupWindow : Window
 
     private static void ShowWindow(IntPtr hWnd, int nCmdShow) => _ = Win32Interop.ShowWindow(hWnd, nCmdShow);
 
-    public SetupWindow(string? sourceDirectory = null, string initialLanguage = "en")
-        : this(sourceDirectory, initialLanguage, SetupOperations.InstallAsync)
+    public SetupWindow(string? sourceDirectory = null, string? initialLanguage = "en", bool isAutoUpdate = false)
+        : this(sourceDirectory, initialLanguage ?? "en", SetupOperations.InstallAsync, installDirectory: null, isAutoUpdate: isAutoUpdate)
     {
     }
 
     internal SetupWindow(string? sourceDirectory, string initialLanguage,
-        Func<SetupInstallOptions, Action<SetupProgressInfo>, Task> install, string? installDirectory = null)
+        Func<SetupInstallOptions, Action<SetupProgressInfo>, Task> install, string? installDirectory = null, bool isAutoUpdate = false)
     {
         _install = install;
         Loc.SetLanguage(initialLanguage);
@@ -104,6 +100,11 @@ public partial class SetupWindow : Window
         _languagePage = new LanguagePage(initialLanguage);
         _termsPage = new TermsOfServicePage();
         installDirectory ??= SetupOperations.GetDefaultInstallDirectory();
+        if (isAutoUpdate && TryPrepareAutoUpdateInstallDirectory(installDirectory, _sourceDirectory, out var validatedInstallDir))
+        {
+            installDirectory = validatedInstallDir;
+            _isAutoUpdate = true;
+        }
         _isUpgrade = File.Exists(IOPath.Combine(installDirectory, "V-Notch.exe"));
         _directoryPage = new DirectoryPage(installDirectory);
         _startupOptionsPage = new StartupOptionsPage(SetupOperations.GetInitialStartupPreference(installDirectory));
@@ -175,7 +176,7 @@ public partial class SetupWindow : Window
         for (int i = 0; i < steps.Length; i++)
         {
             var (element, key) = steps[i];
-            bool visible = !_isUpgrade || i is 2 or 6 or 7;
+            bool visible = _isAutoUpdate ? i is 6 or 7 : (!_isUpgrade || i is 2 or 6 or 7);
             element.Visibility = visible ? Visibility.Visible : Visibility.Collapsed;
             if (visible) visibleStep++;
             string label = Loc.Get("setup.step." + key);
@@ -191,6 +192,32 @@ public partial class SetupWindow : Window
                 : Loc.Get("setup.btn.continue");
             BackButton.Content = Loc.Get("setup.btn.back");
             CancelButton.Content = Loc.Get("setup.btn.cancel");
+        }
+    }
+
+    private static bool TryPrepareAutoUpdateInstallDirectory(string candidateInstallDirectory, string sourceDirectory, out string validatedDirectory)
+    {
+        validatedDirectory = candidateInstallDirectory;
+        if (string.IsNullOrWhiteSpace(candidateInstallDirectory))
+            return false;
+
+        try
+        {
+            string normalized = InstallDirectoryCleanup.ValidateInstallDirectory(candidateInstallDirectory);
+            if (!File.Exists(IOPath.Combine(normalized, "V-Notch.exe")))
+                return false;
+            if (SafeFileDeletion.PathsOverlap(IOPath.GetFullPath(sourceDirectory), normalized))
+                return false;
+            if (SetupOperations.RequiresAdministratorForInstallPath(normalized) &&
+                !SetupOperations.IsRunningAsAdministrator())
+                return false;
+
+            validatedDirectory = normalized;
+            return true;
+        }
+        catch (Exception)
+        {
+            return false;
         }
     }
 
@@ -210,10 +237,14 @@ public partial class SetupWindow : Window
         HeadlineText.Visibility = Visibility.Collapsed;
         BodyText.Visibility = Visibility.Collapsed;
         _isWelcomePage = false;
-        _currentPageIndex = _isUpgrade ? 2 : 0;
+        _currentPageIndex = _isAutoUpdate ? 6 : (_isUpgrade ? 2 : 0);
 
         _languagePage.RefreshLocalization();
         _termsPage.RefreshLocalization();
+        if (_isAutoUpdate)
+        {
+            _installProgressPage.RefreshLocalization();
+        }
         var firstPage = _pageFactories[_currentPageIndex]();
         ConfigurePageScrolling(firstPage);
         ContentPresenter.Content = firstPage;
@@ -221,6 +252,11 @@ public partial class SetupWindow : Window
         ContentPresenter.Opacity = 1;
         UpdateStepIndicators(_currentPageIndex);
         UpdateNavigationButtons(_currentPageIndex);
+
+        if (_isAutoUpdate)
+        {
+            _ = BeginInstallationAsync();
+        }
     }
 
     protected override void OnContentRendered(EventArgs e)
@@ -288,6 +324,11 @@ public partial class SetupWindow : Window
 
         if (_currentPageIndex > 0)
         {
+            if (_isAutoUpdate && _currentPageIndex == 4)
+            {
+                return;
+            }
+
             int targetIndex = _currentPageIndex == 6
                 ? 4
                 : (_isUpgrade && _currentPageIndex == 4 ? 2 : _currentPageIndex - 1);
@@ -468,7 +509,7 @@ public partial class SetupWindow : Window
             return;
         }
 
-        var showBack = index > 0 && index < _pageFactories.Length - 1 && (!_isUpgrade || index != 2);
+        var showBack = index > 0 && index < _pageFactories.Length - 1 && (!_isUpgrade || index != 2) && !(_isAutoUpdate && index == 4);
         var showCancel = index < _pageFactories.Length - 1;
         var showNext = true;
 
@@ -652,10 +693,7 @@ public partial class SetupWindow : Window
             {
                 completion = () =>
                 {
-                    if (ContentPresenter.Content is ISetupEntryAwarePage entryAwarePage)
-                    {
-                        entryAwarePage.OnPageEntryCompleted();
-                    }
+                    if (ContentPresenter.Content is FinishPage finishPage) finishPage.OnPageEntered();
 
                     onComplete?.Invoke();
                 };
@@ -1811,7 +1849,7 @@ public class InstallProgressPage : UserControl, ISetupAnimatedPage
     }
 }
 
-public class FinishPage : UserControl, ISetupEntryAwarePage, ISetupAnimatedPage
+public class FinishPage : UserControl, ISetupAnimatedPage
 {
     private readonly Grid _icon;
     private readonly Ellipse _glow;
@@ -1966,7 +2004,7 @@ public class FinishPage : UserControl, ISetupEntryAwarePage, ISetupAnimatedPage
 
     public bool LaunchAfterInstall => _checkbox.IsChecked == true;
 
-    public void OnPageEntryCompleted()
+    public void OnPageEntered()
     {
         StartFinishIconAnimation(_glow, _checkPath, _checkDashUnits);
     }

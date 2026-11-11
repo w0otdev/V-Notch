@@ -11,7 +11,7 @@ namespace vnotch::services
         {
             return (tag & 0xFFFF0FFFu) == 0x9000001Au || tag == 0x80000021u || tag == 0x80000015u;
         }
-        
+
         struct VnFileAttributeTagInfo
         {
             uint32_t file_attributes;
@@ -52,7 +52,7 @@ namespace vnotch::services
         {
             try
             {
-                if (out_error_kind == nullptr || out_win32_error == nullptr)
+                if (out_error_kind == nullptr || out_win32_error == nullptr || path_len <= 0 || path_ptr == nullptr)
                 {
                     return VN_ERR_INVALID_ARG;
                 }
@@ -60,6 +60,10 @@ namespace vnotch::services
                 *out_win32_error = 0;
 
                 std::u16string_view sv = make_u16_view(path_ptr, path_len);
+                if (sv.find(u'\0') != std::u16string_view::npos)
+                {
+                    return VN_ERR_INVALID_ARG;
+                }
                 std::wstring wpath(reinterpret_cast<const wchar_t*>(sv.data()), sv.size());
 
                 HANDLE h = CreateFileW(
@@ -192,6 +196,10 @@ namespace vnotch::services
                 }
 
                 std::u16string_view expected_sv = make_u16_view(expected_full_path_ptr, expected_full_path_len);
+                if (expected_sv.find(u'\0') != std::u16string_view::npos)
+                {
+                    return VN_ERR_INVALID_ARG;
+                }
                 std::u16string_view clean_final = strip_verbatim_prefix(final_sv);
                 std::u16string_view clean_expected = strip_verbatim_prefix(expected_sv);
 

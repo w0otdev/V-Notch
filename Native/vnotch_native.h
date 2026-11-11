@@ -122,7 +122,6 @@ struct VnAudioDeviceState {
 #pragma pack(pop)
 VN_EXPORT int32_t __stdcall vn_audio_get_sessions_batch(VnAudioSessionState*, int32_t, char16_t*, int32_t, int32_t*, int32_t*, int32_t*) noexcept;
 VN_EXPORT int32_t __stdcall vn_audio_resolve_session_metadata(uint32_t, const char16_t*, int32_t, VnAudioSessionState*, char16_t*, int32_t, int32_t*) noexcept;
-VN_EXPORT int32_t __stdcall vn_audio_get_devices_batch(int64_t, VnAudioDeviceState*, int32_t, char16_t*, int32_t, int32_t*, int32_t*) noexcept;
 VN_EXPORT int32_t __stdcall vn_audio_enumerate_devices_batch(int32_t, VnAudioDeviceState*, int32_t, char16_t*, int32_t, int32_t*, int32_t*, int32_t*) noexcept;
 
 #pragma pack(push, 1)
@@ -196,10 +195,8 @@ VN_EXPORT int32_t __stdcall vn_registry_watch_consume(int64_t, uint8_t*) noexcep
 VN_EXPORT int32_t __stdcall vn_registry_watch_close(int64_t) noexcept;
 VN_EXPORT int32_t __stdcall vn_media_title_watch_create(HANDLE, int64_t*) noexcept;
 VN_EXPORT int32_t __stdcall vn_media_title_watch_close(int64_t) noexcept;
-VN_EXPORT int32_t __stdcall vn_visualizer_stream_create(int32_t, int64_t*) noexcept;
-VN_EXPORT int32_t __stdcall vn_visualizer_stream_close(int64_t) noexcept;
-VN_EXPORT int32_t __stdcall vn_visualizer_stream_push(int64_t, const uint8_t*, int32_t, int32_t, int32_t, uint8_t, float*, float*, float*) noexcept;
-VN_EXPORT int32_t __stdcall vn_dicolor_convert_oklab(const uint8_t*, int32_t, float*, int32_t, uint8_t) noexcept;
+VN_EXPORT int32_t __stdcall vn_media_title_watch_set_target_pid(int64_t handle, uint32_t process_id) noexcept;
+VN_EXPORT int32_t __stdcall vn_media_title_watch_set_source(int64_t handle, const char16_t* source_app, int32_t source_app_len, uint8_t* out_active) noexcept;
 VN_EXPORT int32_t __stdcall vn_loopback_start_levels(const char16_t*, int32_t,
     void(__stdcall*)(int64_t, const float*, float), void(__stdcall*)(int64_t, int32_t), int64_t,
     int64_t*, vnotch::services::loopback::VnLoopbackFormat*, int32_t*) noexcept;
@@ -314,7 +311,6 @@ struct VnTimelineClassifierState
     uint8_t was_playing;
 };
 
-
 struct VnSystemPowerStatus
 {
     uint8_t ac_line_status;
@@ -324,7 +320,6 @@ struct VnSystemPowerStatus
     int32_t battery_life_time;
     int32_t battery_full_life_time;
 };
-
 
 struct VnSystemBatteryState
 {
@@ -441,23 +436,6 @@ struct VnSettingsSwitchMotionOut
     double press_scale_x;
     double press_scale_y;
     double press_shift_x;
-    int32_t peak_time_ms;
-    int32_t rebound_time_ms;
-    int32_t duration_ms;
-};
-#endif
-
-#ifndef VN_NAV_TAB_MOTION_DEFINED
-#define VN_NAV_TAB_MOTION_DEFINED
-struct VnNavTabMotionOut
-{
-    double target_y;
-    double target_height;
-    double peak_scale_y;
-    double dip_scale_x;
-    double rebound_scale_y;
-    double rebound_scale_x;
-    double content_shift_x;
     int32_t peak_time_ms;
     int32_t rebound_time_ms;
     int32_t duration_ms;
@@ -683,7 +661,6 @@ VN_EXPORT int32_t __stdcall vn_ui_compute_progressive_blur_cascade(
     int32_t out_cap,
     int32_t* out_written) noexcept;
 
-
 #pragma pack(push, 1)
 
 struct VnVolumeHudLayoutOut
@@ -798,8 +775,6 @@ VN_EXPORT int32_t __stdcall vn_animation_compute_volume_hud_transition(
     double collapsed_radius,
     VnVolumeHudTransitionParamsOut* out_params) noexcept;
 
-VN_EXPORT int32_t __stdcall vn_damped_spring_ease(double damping_ratio, double normalized_time, double* out_value) noexcept;
-VN_EXPORT int32_t __stdcall vn_damped_spring_sample_curve(double damping_ratio, double* out_samples, int32_t sample_count) noexcept;
 VN_EXPORT int32_t __stdcall vn_damped_spring_build_segments(double damping_ratio, double* out_coefficients, int32_t coefficient_count) noexcept;
 
 VN_EXPORT int32_t __stdcall vn_animation_compute_category_pill_motion(
@@ -818,13 +793,6 @@ VN_EXPORT int32_t __stdcall vn_animation_compute_settings_switch_motion(
     uint8_t is_pressed,
     uint8_t reduced_motion,
     VnSettingsSwitchMotionOut* out_motion) noexcept;
-
-VN_EXPORT int32_t __stdcall vn_animation_compute_nav_tab_motion(
-    double current_y,
-    double target_y,
-    double item_height,
-    uint8_t reduced_motion,
-    VnNavTabMotionOut* out_motion) noexcept;
 
 VN_EXPORT int32_t __stdcall vn_animation_step_nav_hover(
     VnNavHoverSpringState* state, double target_y, uint8_t visible, uint8_t selected,
@@ -899,87 +867,14 @@ VN_EXPORT int32_t __stdcall vn_yt_next_scrape_candidate(
 
 #ifndef VN_MARKDOWN_NATIVE_DEFINED
 #define VN_MARKDOWN_NATIVE_DEFINED
-
 #pragma pack(push, 1)
-
-enum VnMarkdownBlockKind : uint8_t
-{
-    VN_MD_BLOCK_EMPTY = 0,
-    VN_MD_BLOCK_HEADING = 1,
-    VN_MD_BLOCK_HORIZONTAL_RULE = 2,
-    VN_MD_BLOCK_TABLE_ROW = 3,
-    VN_MD_BLOCK_TABLE_SEPARATOR = 4,
-    VN_MD_BLOCK_BLOCKQUOTE = 5,
-    VN_MD_BLOCK_CHECKLIST_ITEM = 6,
-    VN_MD_BLOCK_BULLET_ITEM = 7,
-    VN_MD_BLOCK_NUMBERED_ITEM = 8,
-    VN_MD_BLOCK_PARAGRAPH = 9,
-};
-
-struct VnMarkdownBlockToken
-{
-    uint8_t kind;
-    uint8_t level;
-    uint8_t is_checked;
-    uint8_t hard_break;
-    int32_t text_start;
-    int32_t text_len;
-    int32_t marker_start;
-    int32_t marker_len;
-};
-
 struct VnMarkdownSlice
 {
     int32_t start;
     int32_t len;
 };
-
-enum VnMarkdownInlineKind : uint8_t
-{
-    VN_MD_INLINE_TEXT = 0,
-    VN_MD_INLINE_BOLD = 1,
-    VN_MD_INLINE_ITALIC = 2,
-    VN_MD_INLINE_CODE = 3,
-    VN_MD_INLINE_LINK = 4,
-    VN_MD_INLINE_URL = 5,
-};
-
-struct VnMarkdownInlineToken
-{
-    uint8_t kind;
-    int32_t text_start;
-    int32_t text_len;
-    int32_t aux_start;
-    int32_t aux_len;
-};
-
 #pragma pack(pop)
-
-VN_EXPORT int32_t __stdcall vn_markdown_tokenize_blocks(
-    const char16_t* text_ptr,
-    int32_t text_len,
-    VnMarkdownBlockToken* out_tokens,
-    int32_t token_cap,
-    int32_t* out_written) noexcept;
-
-VN_EXPORT int32_t __stdcall vn_markdown_split_table_cells(
-    const char16_t* line_ptr,
-    int32_t line_len,
-    VnMarkdownSlice* out_cells,
-    int32_t cell_cap,
-    int32_t* out_written) noexcept;
-
-VN_EXPORT int32_t __stdcall vn_markdown_tokenize_inlines(
-    const char16_t* text_ptr,
-    int32_t text_len,
-    VnMarkdownInlineToken* out_tokens,
-    int32_t token_cap,
-    int32_t* out_written) noexcept;
-
 #endif
-
-
-
 
 // ---------------------------------------------------------------------------
 // UI Motion, Particles, Morphing & Visualizer Bars (UiMotionAndParticles.cpp)
@@ -1087,17 +982,6 @@ VN_EXPORT int32_t __stdcall vn_clipboard_motion_compute_reflow_offset(
     double* out_offset_x,
     uint8_t* out_should_animate) noexcept;
 
-VN_EXPORT int32_t __stdcall vn_clipboard_motion_step_scroll_physics(
-    double* io_position,
-    double* io_velocity,
-    double min_bound,
-    double max_bound,
-    double dt,
-    double friction,
-    double spring_stiffness,
-    double spring_damping,
-    uint8_t* out_is_settled) noexcept;
-
 VN_EXPORT int32_t __stdcall vn_visualizer_step_bars(
     const double* current_heights,
     const double* smoothed_heights,
@@ -1193,6 +1077,10 @@ VN_EXPORT int32_t __stdcall vn_spotlight_search_compare_keys(
     int32_t id_b_len,
     int32_t* out_cmp) noexcept;
 
+VN_EXPORT int32_t __stdcall vn_spotlight_launcher_reveal_in_explorer(
+    const char16_t* path,
+    int32_t path_len) noexcept;
+
 // ---------------------------------------------------------------------------
 // Clipboard Store, Sensitive Data & Selection Extended Operations
 // ---------------------------------------------------------------------------
@@ -1284,11 +1172,6 @@ VN_EXPORT int32_t __stdcall vn_clipboard_sensitive_analyze(
     const char16_t* app_ptr, int32_t app_len,
     const char16_t* exe_ptr, int32_t exe_len,
     int32_t* out_reason, int32_t* out_confidence) noexcept;
-
-VN_EXPORT int32_t __stdcall vn_clipboard_sensitive_format_mask(
-    const char16_t* text_ptr, int32_t text_len,
-    char16_t* out_mask, int32_t out_cap,
-    int32_t* out_len) noexcept;
 
 VN_EXPORT int32_t __stdcall vn_clipboard_selection_scroll_speed(
     double x,
@@ -1405,19 +1288,8 @@ VN_EXPORT int32_t __stdcall vn_wtscanner_collect_visible_windows(
     int32_t entries_cap,
     int32_t* out_count) noexcept;
 
-#pragma pack(push, 1)
-struct VnNetEaseWordSpan {
-    int64_t start_ticks;
-    int64_t end_ticks;
-    int32_t text_offset;
-    int32_t text_length;
-};
-#pragma pack(pop)
-VN_EXPORT int32_t __stdcall vn_lyrics_score_netease_candidate(const char16_t*, int32_t, const char16_t*, int32_t, int32_t, const char16_t*, int32_t, const char16_t*, int32_t, int32_t, int32_t*, uint8_t*) noexcept;
 VN_EXPORT int32_t __stdcall vn_lyrics_is_credit_header_line(const char16_t*, int32_t, int64_t, uint8_t*) noexcept;
-VN_EXPORT int32_t __stdcall vn_lyrics_try_parse_yrc_line(const char16_t*, int32_t, int64_t*, char16_t*, int32_t, int32_t*, VnNetEaseWordSpan*, int32_t, int32_t*, uint8_t*) noexcept;
 VN_EXPORT int32_t __stdcall vn_lyrics_decode_krc_payload(const uint8_t*, int32_t, uint8_t*, int32_t*) noexcept;
-VN_EXPORT int32_t __stdcall vn_lyrics_try_parse_krc_line(const char16_t*, int32_t, int64_t*, char16_t*, int32_t, int32_t*, VnNetEaseWordSpan*, int32_t, int32_t*, uint8_t*) noexcept;
 VN_EXPORT int32_t __stdcall vn_lyrics_strip_title_extras(
     const char16_t* title_ptr,
     int32_t title_len,
@@ -1478,19 +1350,21 @@ VN_EXPORT int32_t __stdcall vn_media_metadata_score_youtube_track_match(
 // AI Streaming, Markdown Extended & Settings Search Batch
 // ---------------------------------------------------------------------------
 
-#ifndef VN_MARKDOWN_EXTENDED_DEFINED
-#define VN_MARKDOWN_EXTENDED_DEFINED
+#ifndef VN_MARKDOWN_BOUNDARY_SUMMARY_DEFINED
+#define VN_MARKDOWN_BOUNDARY_SUMMARY_DEFINED
 #pragma pack(push, 1)
-struct VnMarkdownSpanBoundarySummary
+struct VnMarkdownBoundarySummary
 {
     uint8_t has_unclosed_fence;
+    uint8_t fence_char;
+    uint8_t fence_count;
     uint8_t has_unclosed_inline_code;
+    uint8_t inline_code_ticks;
     uint8_t has_unclosed_bold;
+    uint8_t bold_char;
     uint8_t has_unclosed_italic;
-    int32_t fence_count;
-    int32_t inline_code_count;
-    int32_t bold_marker_count;
-    int32_t italic_marker_count;
+    uint8_t italic_char;
+    uint8_t bold_outer;
 };
 #pragma pack(pop)
 #endif
@@ -1545,10 +1419,7 @@ VN_EXPORT int32_t __stdcall vn_markdown_scan_word_spans(
 VN_EXPORT int32_t __stdcall vn_markdown_scan_span_boundaries(
     const char16_t* text_ptr,
     int32_t text_len,
-    VnMarkdownSpanBoundarySummary* out_summary,
-    VnMarkdownSlice* out_code_spans,
-    int32_t code_span_cap,
-    int32_t* out_code_span_count) noexcept;
+    VnMarkdownBoundarySummary* out_summary) noexcept;
 
 VN_EXPORT int32_t __stdcall vn_settings_search_normalize_row(
     const char16_t* title_ptr,
@@ -1757,14 +1628,6 @@ VN_EXPORT int32_t __stdcall vn_nav_tabs_calculate_neighbor_offset(
 VN_EXPORT int32_t __stdcall vn_nav_tabs_parse_unique_tokens(
     const wchar_t* raw_ptr, int32_t raw_len, VnNavTabTokenSlice* out_slices, int32_t slice_cap, int32_t* out_written) noexcept;
 
-VN_EXPORT int32_t __stdcall vn_app_integrity_is_valid_release_tag(
-    const wchar_t* tag_ptr, int32_t tag_len, uint8_t* out_valid) noexcept;
-VN_EXPORT int32_t __stdcall vn_app_integrity_matches_checksum_manifest(
-    const wchar_t* manifest_ptr, int32_t manifest_len,
-    const wchar_t* actual_hash_ptr, int32_t actual_hash_len,
-    const wchar_t* target_file_ptr, int32_t target_file_len,
-    uint8_t* out_matches) noexcept;
-
 VN_EXPORT int32_t __stdcall vn_tray_icons_match_source(
     const wchar_t* app_ptr, int32_t app_len, const wchar_t* exe_ptr, int32_t exe_len,
     int32_t* out_icon_kind, uint8_t* out_matched) noexcept;
@@ -1862,3 +1725,8 @@ VN_EXPORT int32_t __stdcall vn_appnotify_extract_initials(
     const wchar_t* app_name_ptr, int32_t app_name_len,
     wchar_t* out_buf, int32_t buf_cap,
     int32_t* out_len) noexcept;
+VN_EXPORT int32_t __stdcall vn_gpu_monitor_find_best_adapter(
+    wchar_t* out_name,
+    int32_t out_name_cap,
+    int32_t* out_name_len,
+    uint64_t* out_dedicated_vram) noexcept;

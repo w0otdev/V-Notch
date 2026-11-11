@@ -1,31 +1,23 @@
 using System.Reflection;
-using System.Runtime.InteropServices;
 using VNotch.Models;
 using Xunit;
 
 namespace VNotch.Tests;
 
-public sealed partial class SettingsScalarContractTests
+public sealed class SettingsScalarContractTests
 {
-    [LibraryImport("VNotch.Native.dll")]
-    private static partial int vn_settings_clamp_int(int value, int min, int max, out int result);
-    [LibraryImport("VNotch.Native.dll")]
-    private static partial int vn_settings_clamp_double(double value, double min, double max, double fallback, out double result);
-    [LibraryImport("VNotch.Native.dll")]
-    private static partial int vn_settings_double_equals(double left, double right, byte allowNan, out byte equal);
-
     private static T Helper<T>(string name) where T : Delegate => typeof(NotchSettings)
         .GetMethod(name, BindingFlags.Static | BindingFlags.NonPublic)!.CreateDelegate<T>();
 
     [Fact]
-    public void IntegerClampRetainsNativeBoundsAndFallbackBehavior()
+    public void IntegerClampRetainsBoundsAndFallbackBehavior()
     {
         var clamp = Helper<Func<int, int, int, int>>("ClampInt");
         foreach (int value in new[] { int.MinValue, -1, 0, 1, 100, int.MaxValue })
             foreach (var (min, max) in new[] { (0, 100), (32, 512), (0, 0), (1, 0), (int.MinValue, int.MaxValue) })
             {
-                int status = vn_settings_clamp_int(value, min, max, out int expected);
-                Assert.Equal(status == 0 ? expected : value, clamp(value, min, max));
+                int expected = min <= max ? Math.Clamp(value, min, max) : value;
+                Assert.Equal(expected, clamp(value, min, max));
             }
     }
 
@@ -36,13 +28,15 @@ public sealed partial class SettingsScalarContractTests
         foreach (double value in new[] { double.NaN, double.NegativeInfinity, double.PositiveInfinity, -1d, 0d, .55, 1d, 2d })
             foreach (var (min, max) in new[] { (0d, 1d), (1d, 0d), (double.NaN, 1d), (0d, double.PositiveInfinity), (0d, 0d) })
             {
-                int status = vn_settings_clamp_double(value, min, max, .55, out double expected);
-                Assert.Equal(status == 0 ? expected : .55, clamp(value, min, max, .55));
+                double expected = double.IsFinite(min) && double.IsFinite(max) && min <= max
+                    ? (double.IsFinite(value) ? Math.Clamp(value, min, max) : .55)
+                    : .55;
+                Assert.Equal(expected, clamp(value, min, max, .55));
             }
     }
 
     [Fact]
-    public void SettingsEqualityRetainsNativeToleranceNaNAndInfinityRules()
+    public void SettingsEqualityRetainsToleranceNaNAndInfinityRules()
     {
         var equals = Helper<Func<double, double, bool>>("DoubleEquals");
         double[] values = [double.NaN, double.NegativeInfinity, double.PositiveInfinity,
@@ -50,12 +44,14 @@ public sealed partial class SettingsScalarContractTests
         foreach (double left in values)
             foreach (double right in values)
             {
-                Assert.Equal(0, vn_settings_double_equals(left, right, 0, out byte expected));
-                Assert.Equal(expected != 0, equals(left, right));
+                bool expected = double.IsFinite(left) && double.IsFinite(right)
+                    ? Math.Abs(left - right) <= 0.0001
+                    : double.IsInfinity(left) && double.IsInfinity(right) && (left > 0.0) == (right > 0.0);
+                Assert.Equal(expected, equals(left, right));
                 var a = new NotchSettings { Opacity = left };
                 var b = a.Clone();
                 b.Opacity = right;
-                Assert.Equal(expected != 0, a.ValueEquals(b));
+                Assert.Equal(expected, a.ValueEquals(b));
             }
     }
 }

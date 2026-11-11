@@ -12,12 +12,6 @@ namespace VNotch.Tests;
 public sealed partial class SpringEasingPerformanceTests(ITestOutputHelper output)
 {
     [LibraryImport("VNotch.Native.dll")]
-    private static partial int vn_damped_spring_ease(double dampingRatio, double normalizedTime, out double value);
-
-    [LibraryImport("VNotch.Native.dll")]
-    private static partial int vn_damped_spring_sample_curve(double dampingRatio, Span<double> samples, int count);
-
-    [LibraryImport("VNotch.Native.dll")]
     private static partial int vn_damped_spring_build_segments(double dampingRatio, Span<double> coefficients, int count);
 
     [Theory]
@@ -29,9 +23,6 @@ public sealed partial class SpringEasingPerformanceTests(ITestOutputHelper outpu
     public void InvalidDampingIsRejectedBeforeSampling(double damping)
     {
         Assert.Throws<ArgumentOutOfRangeException>(() => new DampedSpringEase(damping));
-        double[] samples = [42, 43];
-        Assert.Equal(-1, vn_damped_spring_sample_curve(damping, samples, samples.Length));
-        Assert.Equal([42d, 43d], samples);
         double[] coefficients = [42, 43, 44, 45];
         Assert.Equal(-1, vn_damped_spring_build_segments(damping, coefficients, coefficients.Length));
         Assert.Equal([42d, 43d, 44d, 45d], coefficients);
@@ -47,7 +38,7 @@ public sealed partial class SpringEasingPerformanceTests(ITestOutputHelper outpu
         Assert.Equal(0, vn_damped_spring_build_segments(.82, coefficients, 8));
         Assert.Equal(42, coefficients[8]);
         Assert.Equal(0, coefficients[0]);
-        Assert.Equal(0, vn_damped_spring_ease(.82, .5, out double midpoint));
+        double midpoint = AnalyticSpringCore(.82, .5);
         Assert.Equal(midpoint, coefficients[4], 12);
         Assert.Equal(1, coefficients.Skip(4).Take(4).Sum(), 12);
     }
@@ -62,20 +53,6 @@ public sealed partial class SpringEasingPerformanceTests(ITestOutputHelper outpu
         Assert.Same(move, storage.GetValue(new DampedSpringEase(1)));
         Assert.InRange((bounce.Length + move.Length) * sizeof(double), 1, 16 * 1024);
         output.WriteLine($"Shared spring coefficient payload: {(bounce.Length + move.Length) * sizeof(double)} bytes; previous sample tables: {2 * 8193 * sizeof(double)} bytes.");
-    }
-
-    [Fact]
-    public void NativeSamplerRespectsItsBufferAndIncludesExactEndpoints()
-    {
-        double[] samples = [42, 43, 44, 45];
-        Assert.Equal(-1, vn_damped_spring_sample_curve(.82, samples, 1));
-        Assert.Equal(42, samples[0]);
-        Assert.Equal(0, vn_damped_spring_sample_curve(.82, samples, 3));
-        Assert.Equal(0, samples[0]);
-        Assert.Equal(1, samples[2]);
-        Assert.Equal(45, samples[3]);
-        Assert.Equal(0, vn_damped_spring_ease(.82, .5, out double middle));
-        Assert.Equal(middle, samples[1], 12);
     }
 
     [Theory]
@@ -119,7 +96,7 @@ public sealed partial class SpringEasingPerformanceTests(ITestOutputHelper outpu
         }
         Array.Sort(current);
         Array.Sort(previous);
-        output.WriteLine($"damping={damping}: scalar native={previous[10]:F1} ns/ease, current={current[10]:F1} ns/ease, ratio={previous[10] / current[10]:F2}x, max error={maxError:G6}, checksum={sum:F3}");
+        output.WriteLine($"damping={damping}: analytic={previous[10]:F1} ns/ease, current={current[10]:F1} ns/ease, ratio={previous[10] / current[10]:F2}x, max error={maxError:G6}, checksum={sum:F3}");
     }
 
     private static (double Nanoseconds, double Sum) Measure(IEasingFunction easing, int iterations)
@@ -130,11 +107,34 @@ public sealed partial class SpringEasingPerformanceTests(ITestOutputHelper outpu
         return (Stopwatch.GetElapsedTime(start).TotalNanoseconds / iterations, sum);
     }
 
-    // Previous per-frame implementation, retained as a differential/benchmark oracle.
+    private static double StepResponse(double dampingRatio, double dampedFrequency, double t)
+    {
+        const double naturalFrequency = 12.0;
+        if (dampingRatio >= 1.0 || dampedFrequency <= 1e-9)
+            return 1.0 - Math.Exp(-naturalFrequency * t) * (1.0 + naturalFrequency * t);
+        double decay = Math.Exp(-dampingRatio * naturalFrequency * t);
+        double phase = dampedFrequency * t;
+        return 1.0 - decay * (Math.Cos(phase) + dampingRatio * naturalFrequency / dampedFrequency * Math.Sin(phase));
+    }
+
+    private static double AnalyticSpringCore(double dampingRatio, double normalizedTime)
+    {
+        const double naturalFrequency = 12.0;
+        if (!double.IsFinite(normalizedTime)) return normalizedTime > 0.0 ? 1.0 : 0.0;
+        double time = Math.Clamp(normalizedTime, 0.0, 1.0);
+        if (time == 0.0 || time == 1.0) return time;
+        double dampedFrequency = naturalFrequency * Math.Sqrt(Math.Max(0.0, 1.0 - dampingRatio * dampingRatio));
+        double endResponse = StepResponse(dampingRatio, dampedFrequency, 1.0);
+        return 1.0 - StepResponse(dampingRatio, dampedFrequency, 1.0 - time) / endResponse;
+    }
+
+    // Analytic per-frame reference oracle.
     private sealed class ScalarSpringEase(double damping) : EasingFunctionBase
     {
         protected override double EaseInCore(double time) =>
-            vn_damped_spring_ease(damping, time, out double value) == 0 ? value : Math.Clamp(time, 0, 1);
+            double.IsFinite(damping) && damping > 0.0 && damping <= 1.0
+                ? AnalyticSpringCore(damping, time)
+                : Math.Clamp(time, 0, 1);
         protected override Freezable CreateInstanceCore() => new ScalarSpringEase(damping);
     }
 }

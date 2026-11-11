@@ -23,10 +23,6 @@ public:
         return std::clamp(parsed_fps, min_fps, max_fps);
     }
 
-    static constexpr bool IsSupportedSettingsVersion(int32_t version, int32_t current_version) noexcept {
-        return version >= 0 && version <= current_version;
-    }
-
     static constexpr bool ShouldRevokeSpotifyCanvasConsent(
         bool has_accepted,
         bool enable_canvas,
@@ -55,15 +51,6 @@ VN_EXPORT int32_t vn_settings_migrator_clamp_animation_fps(
     int32_t* out_fps) noexcept {
     if (!out_fps || min_fps > max_fps) return VN_E_INVALID_ARG;
     *out_fps = vnotch::services::SettingsMigrator::ClampAnimationFps(parsed_fps, min_fps, max_fps);
-    return VN_OK;
-}
-
-VN_EXPORT int32_t vn_settings_migrator_is_supported_version(
-    int32_t version,
-    int32_t current_version,
-    uint8_t* out_supported) noexcept {
-    if (!out_supported) return VN_E_INVALID_ARG;
-    *out_supported = vnotch::services::SettingsMigrator::IsSupportedSettingsVersion(version, current_version) ? 1u : 0u;
     return VN_OK;
 }
 

@@ -1,3 +1,4 @@
+using System.Collections.Frozen;
 using System.IO;
 using System.Xml.Linq;
 using VNotch.Services;
@@ -54,17 +55,19 @@ public sealed class SettingsSearchMatcherTests
     [Fact]
     public void NativeLocaleOverlayAndReverseLookupPreserveKeyAndLanguageOrder()
     {
-        using var a = new NativeLocaleTable();
-        using var b = new NativeLocaleTable();
-        a.Merge("""{"z":"Same","a":"SAME","blank":"","_meta":"ignored"}"""u8);
-        a.Merge("""{"z":" ","a":"a"}"""u8);
-        Assert.Throws<ArgumentException>(() => a.Merge("""{"a":"broken","z":}"""u8));
-        b.Merge("""{"a":"first","z":"last"}"""u8);
-        using var index = new NativeTranslationIndex([a, b], []);
-        Assert.Equal(new[] { "SAME", "first", "last" }, index.Find("same"));
-        Assert.Equal("", a.Get("blank"));
-        Assert.Null(a.Get("_meta"));
-        Assert.Equal(new[] { "unknown" }, index.Find("unknown"));
+        var a = new Dictionary<string, string>(StringComparer.Ordinal);
+        var b = new Dictionary<string, string>(StringComparer.Ordinal);
+        Loc.MergeLocaleJson(a, """{"z":"Same","a":"SAME","blank":"","_meta":"ignored"}"""u8);
+        Loc.MergeLocaleJson(a, """{"z":" ","a":"a"}"""u8);
+        Assert.Throws<ArgumentException>(() => Loc.MergeLocaleJson(a, """{"a":"broken","z":}"""u8));
+        Loc.MergeLocaleJson(b, """{"a":"first","z":"last"}"""u8);
+        var frozenA = a.ToFrozenDictionary(StringComparer.Ordinal);
+        var frozenB = b.ToFrozenDictionary(StringComparer.Ordinal);
+        var index = Loc.BuildTranslationIndex([frozenA, frozenB]);
+        Assert.Equal(new[] { "SAME", "first", "last" }, Loc.FindTranslations(index, "same"));
+        Assert.Equal("", frozenA["blank"]);
+        Assert.False(frozenA.ContainsKey("_meta"));
+        Assert.Equal(new[] { "unknown" }, Loc.FindTranslations(index, "unknown"));
     }
 
     [Fact]
@@ -153,7 +156,6 @@ public sealed class SettingsSearchMatcherTests
         Assert.DoesNotContain(systemPanel.Descendants(presentation + "CheckBox"),
             element => (string?)element.Attribute(xaml + "Name") == "EnableSpotlightCheck");
     }
-
 
     [Fact]
     public void SmartSearchSupportsShortPrefixCompoundAcronymAndSynonymQueries()

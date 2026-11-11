@@ -47,15 +47,6 @@ public:
         out_len = static_cast<int32_t>(resource_name.size() - kPrefix.size() - kSuffix.size());
         return out_len > 0;
     }
-
-    static constexpr bool ShouldStoreLocaleEntry(
-        std::u16string_view prop_name,
-        std::u16string_view text,
-        bool key_exists) noexcept {
-        if (prop_name.empty() || prop_name.front() == u'_') return false;
-        if (text == prop_name) return false;
-        return !vnotch::vn_trim(text).empty() || !key_exists;
-    }
 };
 
 } // namespace vnotch::services

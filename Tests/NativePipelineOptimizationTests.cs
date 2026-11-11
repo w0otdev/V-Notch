@@ -23,16 +23,7 @@ public sealed partial class NativePipelineOptimizationTests(ITestOutputHelper ou
     private static partial int vn_smartcrop_session_infer(long handle, ReadOnlySpan<byte> pixels, int length,
         int width, int height, int stride, Span<byte> detections, int capacity, out int count, out byte dml);
     [LibraryImport("VNotch.Native.dll")]
-    private static partial int vn_dicolor_convert_oklab(ReadOnlySpan<byte> pixels, int length, Span<float> lab, int capacity, byte avx);
-    [LibraryImport("VNotch.Native.dll")]
     private static partial int vn_dicolor_extract_advanced_palette(ReadOnlySpan<byte> pixels, int width, int height, int stride, Span<byte> result);
-    [LibraryImport("VNotch.Native.dll")]
-    private static partial int vn_visualizer_stream_create(int sampleRate, out long handle);
-    [LibraryImport("VNotch.Native.dll")]
-    private static partial int vn_visualizer_stream_push(long handle, ReadOnlySpan<byte> data, int length,
-        int channels, int bits, byte isFloat, Span<float> levels, out float beat, out float rms);
-    [LibraryImport("VNotch.Native.dll")]
-    private static partial int vn_visualizer_stream_close(long handle);
 
     [Theory]
     [InlineData(13, 416)] // AVX bulk and a five-pixel scalar tail.
@@ -102,21 +93,6 @@ public sealed partial class NativePipelineOptimizationTests(ITestOutputHelper ou
         finally { Assert.Equal(0, vn_smartcrop_session_destroy(handle)); }
     }
 
-    [Fact]
-    public void VectorOklabMatchesScalarReferenceForBlackWhitePrimariesAndRandomPixels()
-    {
-        byte[] pixels = new byte[1003 * 4];
-        new Random(71).NextBytes(pixels);
-        new byte[] { 0, 0, 0, 255, 255, 255, 255, 255, 0, 0, 255, 255, 255, 0, 0, 255 }.CopyTo(pixels, 0);
-        float[] scalar = new float[1003 * 3], vector = new float[1003 * 3];
-        Assert.Equal(0, vn_dicolor_convert_oklab(pixels, pixels.Length, scalar, scalar.Length, 0));
-        Assert.Equal(0, vn_dicolor_convert_oklab(pixels, pixels.Length, vector, vector.Length, 1));
-        Assert.InRange(vector[3], .9999f, 1.0001f);
-        Assert.InRange(Math.Abs(vector[4]), 0, .00001f);
-        Assert.InRange(Math.Abs(vector[5]), 0, .00001f);
-        for (int i = 0; i < vector.Length; ++i) Assert.InRange(Math.Abs(vector[i] - scalar[i]), 0, .00001f);
-    }
-
     [Theory]
     [InlineData(140, 140, 20)]
     [InlineData(220, 30, 80)]
@@ -183,33 +159,5 @@ public sealed partial class NativePipelineOptimizationTests(ITestOutputHelper ou
             }
         }
         finally { Registry.CurrentUser.DeleteSubKeyTree(path, throwOnMissingSubKey: false); }
-    }
-
-    [Fact]
-    public void NativeAudioAnalysisIsIndependentOfPacketBoundaries()
-    {
-        var samples = new float[16384];
-        for (int i = 0; i < samples.Length; ++i) samples[i] = .4f * MathF.Sin(2 * MathF.PI * 1000 * i / 44100);
-        byte[] pcm = MemoryMarshal.AsBytes(samples.AsSpan()).ToArray();
-        Assert.Equal(0, vn_visualizer_stream_create(44100, out long whole));
-        Assert.Equal(0, vn_visualizer_stream_create(44100, out long chunked));
-        try
-        {
-            float[] a = new float[5], b = new float[5];
-            Assert.Equal(0, vn_visualizer_stream_push(whole, pcm, pcm.Length, 1, 32, 1, a, out float beatA, out float rmsA));
-            float beatB = 0, rmsB = 0;
-            for (int offset = 0; offset < pcm.Length; offset += 788)
-            {
-                var chunk = pcm.AsSpan(offset, Math.Min(788, pcm.Length - offset));
-                Assert.Equal(0, vn_visualizer_stream_push(chunked, chunk, chunk.Length, 1, 32, 1, b, out beatB, out rmsB));
-            }
-            Assert.Equal(a, b); Assert.Equal(beatA, beatB); Assert.Equal(rmsA, rmsB);
-            Assert.Contains(a, value => value > .05f);
-            Assert.All(a, value => Assert.InRange(value, 0, 1));
-            Assert.Equal(0, vn_visualizer_stream_push(whole, new byte[pcm.Length * 4], pcm.Length * 4, 1, 32, 1, a, out _, out float silentRms));
-            Assert.Equal(0, silentRms);
-            Assert.All(a, value => Assert.InRange(value, 0, .005f)); // Beat envelopes release gradually.
-        }
-        finally { vn_visualizer_stream_close(whole); vn_visualizer_stream_close(chunked); }
     }
 }

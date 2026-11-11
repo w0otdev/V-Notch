@@ -1,13 +1,13 @@
+using Microsoft.Win32;
+using System.IO;
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
-using System.IO;
 using System.Runtime.InteropServices;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Threading;
-using Microsoft.Win32;
 
 namespace VNotch.Services;
 
@@ -65,14 +65,6 @@ public sealed partial class PrivacyIndicatorService : IDisposable
     }
 
     [LibraryImport(NativeDll, StringMarshalling = StringMarshalling.Utf16)]
-    private static partial int vn_privacy_indicator_scan_consent_store(
-        ReadOnlySpan<char> capability,
-        int capabilityLen,
-        Span<VnConsentStoreEntry> outEntries,
-        int entriesCap,
-        out int outCount);
-
-    [LibraryImport(NativeDll, StringMarshalling = StringMarshalling.Utf16)]
     private static partial int vn_privacy_indicator_merge_active_apps(
         ReadOnlySpan<VnActiveAppSlice> items,
         int itemCount,
@@ -97,14 +89,9 @@ public sealed partial class PrivacyIndicatorService : IDisposable
     private static readonly Func<CapabilityUsage, bool> s_notIgnoredMicRule =
         static usage => !IsIgnoredMicrophoneConsumer(usage.RawName);
 
-
-
-    private static readonly Lazy<IReadOnlySet<string>> ServiceExecutablePaths =
-        new(LoadServiceExecutablePaths);
-
     private readonly Dispatcher _dispatcher;
     private readonly TimeSpan _activeInterval;
-    private readonly Func<string, IReadOnlyList<CapabilityUsage>> _scanCapability;
+    private readonly Func<string, IReadOnlyList<CapabilityUsage>>? _scanCapability;
     private readonly Func<bool>? _registryChanged;
     private readonly MicrophoneActivityGate _microphoneActivityGate = new(
         MicrophoneSignalThreshold,
@@ -149,12 +136,12 @@ public sealed partial class PrivacyIndicatorService : IDisposable
     internal IReadOnlyList<CapabilityUsage> MicrophoneCandidates => _microphoneCandidates;
 
     public PrivacyIndicatorService(TimeSpan? pollInterval = null)
-        : this(pollInterval, ScanCapability, null, new ScreenRecordingProbe())
+        : this(pollInterval, null, null, new ScreenRecordingProbe())
     {
     }
 
     internal PrivacyIndicatorService(TimeSpan? pollInterval,
-        Func<string, IReadOnlyList<CapabilityUsage>> scanCapability,
+        Func<string, IReadOnlyList<CapabilityUsage>>? scanCapability,
         Func<bool>? registryChanged,
         ScreenRecordingProbe screenRecordingProbe)
     {
@@ -268,8 +255,8 @@ public sealed partial class PrivacyIndicatorService : IDisposable
             ? new RegistryChangeMonitor(Registry.CurrentUser, ConsentRoot, onChanged: Wake) : null;
         using var machineChanges = _registryChanged == null
             ? new RegistryChangeMonitor(Registry.LocalMachine, ConsentRoot, onChanged: Wake) : null;
-        var capabilityCache = new CapabilityUsageCache(_scanCapability);
-        using var nativeCache = _scanCapability == (Func<string, IReadOnlyList<CapabilityUsage>>)ScanCapability ? NativeConsentCache.Create() : null;
+        var capabilityCache = _scanCapability != null ? new CapabilityUsageCache(_scanCapability) : null;
+        using var nativeCache = _scanCapability == null ? NativeConsentCache.Create() : null;
         while (!token.IsCancellationRequested)
         {
             PrivacyScanResult? result = null;
@@ -294,9 +281,15 @@ public sealed partial class PrivacyIndicatorService : IDisposable
                         registryChanged = userChanged || machineChanged;
                     }
                     if (nativeCache != null)
+                    {
                         result = ExecuteNativeBackgroundScan(utcNow, nativeCache, registryChanged);
+                    }
                     else
-                        result = ExecuteBackgroundScan(utcNow, capabilityCache.GetSnapshot(registryChanged, Environment.TickCount64));
+                    {
+                        var capabilities = capabilityCache!.GetSnapshot(registryChanged, Environment.TickCount64);
+                        using var running = new ConsumerProcessProbe();
+                        result = BuildBackgroundScan(utcNow, capabilities[0], capabilities[1], capabilities[2], capabilities[3], capabilities[4], running);
+                    }
                 }
                 finally
                 {
@@ -330,18 +323,6 @@ public sealed partial class PrivacyIndicatorService : IDisposable
                 break;
             }
         }
-    }
-
-    private PrivacyScanResult ExecuteBackgroundScan(DateTime utcNow, IReadOnlyList<CapabilityUsage>[]? capabilities = null)
-    {
-        var micUsage = capabilities?[0] ?? _scanCapability("microphone");
-        var camUsage = capabilities?[1] ?? _scanCapability("webcam");
-        var programmaticCapture = capabilities?[2] ?? _scanCapability("graphicsCaptureProgrammatic");
-        var borderlessCapture = capabilities?[3] ?? _scanCapability("graphicsCaptureWithoutBorder");
-        var locationUsage = capabilities?[4] ?? _scanCapability("location");
-
-        using var running = new ConsumerProcessProbe();
-        return BuildBackgroundScan(utcNow, micUsage, camUsage, programmaticCapture, borderlessCapture, locationUsage, running);
     }
 
     private PrivacyScanResult BuildBackgroundScan(DateTime utcNow, IReadOnlyList<CapabilityUsage> micUsage,
@@ -633,8 +614,6 @@ public sealed partial class PrivacyIndicatorService : IDisposable
         return true;
     }
 
-
-
     internal sealed record PrivacyScanResult(
         IReadOnlyList<CapabilityUsage> MicrophoneCandidates,
         IReadOnlyList<string> MicrophoneCandidateNames,
@@ -711,19 +690,7 @@ public sealed partial class PrivacyIndicatorService : IDisposable
                 merged[i] = filtered[indices[i]];
             return merged;
         }
-
-        var latest = new Dictionary<string, CapabilityUsage>(filtered.Count, StringComparer.OrdinalIgnoreCase);
-        for (int i = 0; i < filtered.Count; i++)
-        {
-            var usage = filtered[i];
-            if (!latest.TryGetValue(usage.RawName, out var previous) ||
-                usage.LastStartFileTime > previous.LastStartFileTime)
-                latest[usage.RawName] = usage;
-        }
-
-        var result = new CapabilityUsage[latest.Count];
-        latest.Values.CopyTo(result, 0);
-        return result;
+        return Array.Empty<CapabilityUsage>();
     }
 
     internal static IReadOnlyList<string> GetConsumerNames(IReadOnlyList<CapabilityUsage> usages)
@@ -739,15 +706,7 @@ public sealed partial class PrivacyIndicatorService : IDisposable
                 sorted[i] = usages[indices[i]].DisplayName;
             return sorted;
         }
-
-        var seen = new HashSet<string>(count, StringComparer.OrdinalIgnoreCase);
-        for (int i = 0; i < count; i++)
-            seen.Add(usages[i].DisplayName);
-
-        var result = new string[seen.Count];
-        seen.CopyTo(result);
-        Array.Sort(result, StringComparer.OrdinalIgnoreCase);
-        return result;
+        return Array.Empty<string>();
     }
 
     private static bool TryMergeActiveApps(
@@ -819,47 +778,6 @@ public sealed partial class PrivacyIndicatorService : IDisposable
         return true;
     }
 
-    private static IReadOnlyList<CapabilityUsage> ScanCapability(string capability)
-    {
-        if (TryScanConsentStoreNative(capability, out var nativeUsages))
-            return nativeUsages;
-
-        var consumers = new List<CapabilityUsage>();
-
-        ScanCapabilityHive(Registry.CurrentUser, capability, consumers);
-        ScanCapabilityHive(Registry.LocalMachine, capability, consumers);
-
-        return consumers.Count == 0 ? Array.Empty<CapabilityUsage>() : consumers;
-    }
-
-    private static unsafe bool TryScanConsentStoreNative(string capability, out IReadOnlyList<CapabilityUsage> usages)
-    {
-        usages = Array.Empty<CapabilityUsage>();
-        if (string.IsNullOrWhiteSpace(capability)) return true;
-
-        Span<VnConsentStoreEntry> stackEntries = stackalloc VnConsentStoreEntry[32];
-        ReadOnlySpan<char> capSpan = capability.AsSpan();
-        int status = vn_privacy_indicator_scan_consent_store(capSpan, capSpan.Length, stackEntries, stackEntries.Length, out int count);
-        if (status == 0)
-        {
-            if (count <= 0) return true;
-            usages = BuildConsentUsages(stackEntries[..count]);
-            return true;
-        }
-        if (status == -2 && count > stackEntries.Length)
-        {
-            var heapEntries = new VnConsentStoreEntry[count];
-            status = vn_privacy_indicator_scan_consent_store(capSpan, capSpan.Length, heapEntries, heapEntries.Length, out count);
-            if (status == 0)
-            {
-                if (count <= 0) return true;
-                usages = BuildConsentUsages(heapEntries.AsSpan(0, Math.Min(count, heapEntries.Length)));
-                return true;
-            }
-        }
-        return false;
-    }
-
     private static unsafe CapabilityUsage[] BuildConsentUsages(ReadOnlySpan<VnConsentStoreEntry> entries)
     {
         var result = new CapabilityUsage[entries.Length];
@@ -877,59 +795,6 @@ public sealed partial class PrivacyIndicatorService : IDisposable
             result[i] = new CapabilityUsage(raw, display, entries[i].LastStartFileTime);
         }
         return result;
-    }
-
-    private static void ScanCapabilityHive(RegistryKey hive, string capability, List<CapabilityUsage> consumers)
-    {
-        try
-        {
-            using var capRoot = hive.OpenSubKey(
-                $"{ConsentRoot}\\{capability}", writable: false);
-            if (capRoot == null) return;
-
-            foreach (var subKeyName in capRoot.GetSubKeyNames())
-            {
-                using var subKey = capRoot.OpenSubKey(subKeyName, writable: false);
-                if (subKey == null) continue;
-
-                if (TryDetectInUse(subKey, out long lastStart))
-                {
-                    consumers.Add(new CapabilityUsage(
-                        subKeyName, NormalizeAppName(subKeyName), lastStart));
-                    continue;
-                }
-
-                if (string.Equals(subKeyName, "NonPackaged", StringComparison.OrdinalIgnoreCase))
-                {
-                    ScanNonPackagedKey(subKey, consumers);
-                }
-            }
-        }
-        catch (Exception ex)
-        {
-            RuntimeLog.Error("PRIVACY", ex, $"Scan {capability} ({hive.Name}) failed");
-        }
-    }
-
-    private static void ScanNonPackagedKey(RegistryKey nonPackagedKey, List<CapabilityUsage> consumers)
-    {
-        foreach (var npName in nonPackagedKey.GetSubKeyNames())
-        {
-            using var npKey = nonPackagedKey.OpenSubKey(npName, writable: false);
-            if (npKey != null && TryDetectInUse(npKey, out long lastStart))
-            {
-                consumers.Add(new CapabilityUsage(
-                    npName, NormalizeAppName(npName), lastStart));
-            }
-        }
-    }
-
-    private static bool TryDetectInUse(RegistryKey key, out long lastStart)
-    {
-        var startObj = key.GetValue("LastUsedTimeStart");
-        var stopObj = key.GetValue("LastUsedTimeStop");
-        lastStart = startObj is long start ? start : 0;
-        return IsActiveUsage(lastStart, stopObj is long stop ? stop : null);
     }
 
     internal static bool IsActiveUsage(long? lastStart, long? lastStop) =>
@@ -953,20 +818,7 @@ public sealed partial class PrivacyIndicatorService : IDisposable
     }
 
     internal static bool HasMinimumActiveDuration(long startFileTime, DateTime utcNow, TimeSpan minimum)
-    {
-        if (vn_privacy_indicator_has_min_active_duration(startFileTime, utcNow.Ticks, minimum.Ticks, out byte active) == 0)
-            return active != 0;
-        if (startFileTime <= 0 || minimum < TimeSpan.Zero) return false;
-        try
-        {
-            DateTime start = DateTime.FromFileTimeUtc(startFileTime);
-            return start <= utcNow && utcNow - start >= minimum;
-        }
-        catch (ArgumentOutOfRangeException)
-        {
-            return false;
-        }
-    }
+        => vn_privacy_indicator_has_min_active_duration(startFileTime, utcNow.Ticks, minimum.Ticks, out byte active) == 0 && active != 0;
 
     internal static bool IsIgnoredMicrophoneConsumer(
         string rawConsumer,
@@ -981,9 +833,9 @@ public sealed partial class PrivacyIndicatorService : IDisposable
         if (vn_privacy_indicator_is_ignored_mic_process(procSpan, procSpan.Length, out byte ignored) == 0 && ignored != 0)
             return true;
 
-        if (executablePath == null) return false;
-        var servicePaths = serviceExecutablePaths ?? ServiceExecutablePaths.Value;
-        return servicePaths.Contains(NormalizeExecutablePath(executablePath));
+        if (executablePath == null || serviceExecutablePaths == null || serviceExecutablePaths.Count == 0)
+            return false;
+        return serviceExecutablePaths.Contains(NormalizeExecutablePath(executablePath));
     }
 
     internal static string? TryDecodeDesktopConsumerPath(string rawConsumer)
@@ -1011,59 +863,6 @@ public sealed partial class PrivacyIndicatorService : IDisposable
                 expanded[12..]);
         }
         return Path.GetFullPath(expanded).TrimEnd(Path.DirectorySeparatorChar);
-    }
-
-    private static IReadOnlySet<string> LoadServiceExecutablePaths()
-    {
-        var paths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        try
-        {
-            using var services = Registry.LocalMachine.OpenSubKey(
-                @"SYSTEM\CurrentControlSet\Services", writable: false);
-            if (services == null) return paths;
-
-            foreach (string name in services.GetSubKeyNames())
-            {
-                using var service = services.OpenSubKey(name, writable: false);
-                if (service?.GetValue("ImagePath") is not string imagePath) continue;
-                string? executable = ExtractExecutablePath(imagePath);
-                if (executable != null) paths.Add(executable);
-            }
-        }
-        catch (Exception ex)
-        {
-            RuntimeLog.Error("PRIVACY", ex, "Service executable scan failed");
-        }
-        return paths;
-    }
-
-    private static string? ExtractExecutablePath(string commandLine)
-    {
-        if (string.IsNullOrWhiteSpace(commandLine)) return null;
-        string expanded = Environment.ExpandEnvironmentVariables(commandLine.Trim());
-        string candidate;
-
-        if (expanded[0] == '"')
-        {
-            int endQuote = expanded.IndexOf('"', 1);
-            if (endQuote <= 1) return null;
-            candidate = expanded[1..endQuote];
-        }
-        else
-        {
-            int exeEnd = expanded.IndexOf(".exe", StringComparison.OrdinalIgnoreCase);
-            if (exeEnd < 0) return null;
-            candidate = expanded[..(exeEnd + 4)];
-        }
-
-        try
-        {
-            return NormalizeExecutablePath(candidate);
-        }
-        catch
-        {
-            return null;
-        }
     }
 
     // Capture sessions, meters and endpoint notifications live in Native/Services/MicrophoneProbe.cpp. This class
@@ -1327,23 +1126,7 @@ public sealed partial class PrivacyIndicatorService : IDisposable
                 Interlocked.Exchange(ref _lastSignalUtcTicks, lastTicks);
                 return active != 0;
             }
-
-            if (!hasCandidate || !hasActiveSession)
-            {
-                Reset();
-                return false;
-            }
-
-            if (float.IsFinite(peakLevel) && peakLevel >= _signalThreshold)
-            {
-                lastTicks = utcNow.Ticks;
-                Interlocked.Exchange(ref _lastSignalUtcTicks, lastTicks);
-            }
-
-            if (lastTicks == DateTime.MinValue.Ticks || utcNow.Ticks < lastTicks)
-                return false;
-
-            return (utcNow.Ticks - lastTicks) <= _holdDuration.Ticks;
+            return false;
         }
 
         public void Reset() => Interlocked.Exchange(ref _lastSignalUtcTicks, DateTime.MinValue.Ticks);
@@ -1357,20 +1140,6 @@ public sealed partial class PrivacyIndicatorService : IDisposable
         {
             return start == 0 && len == raw.Length ? raw : raw.Substring(start, len);
         }
-
-        if (raw.Contains('#'))
-        {
-            var parts = raw.Split('#');
-            var last = parts[^1];
-            if (!string.IsNullOrWhiteSpace(last)) return last;
-        }
-
-        var underscore = raw.IndexOf('_');
-        if (underscore > 0)
-        {
-            return raw[..underscore];
-        }
-
         return raw;
     }
 }

@@ -64,17 +64,6 @@ public sealed partial class StrixSecurityAuditRegressionTests
         out int outH);
 
     [LibraryImport(NativeDll)]
-    private static partial int vn_glass_upload_delta_copy_changed_rows(
-        ReadOnlySpan<byte> source,
-        int sourceStride,
-        Span<byte> destination,
-        int destinationStride,
-        int rowBytes,
-        int height,
-        out int outTop,
-        out int outBottom);
-
-    [LibraryImport(NativeDll)]
     private static partial int vn_subject_blur_brighten(
         Span<byte> pixels,
         int bufLen,
@@ -223,10 +212,7 @@ public sealed partial class StrixSecurityAuditRegressionTests
         Assert.True(vn_media_artwork_detect_content_bounds(pixels, pixels.Length, 64, 16, 16, 100, 100, 0.0, 1.0, out _, out _, out _, out _) < 0);
         Assert.True(vn_media_artwork_detect_content_bounds(pixels, pixels.Length, 64, 16, 16, 100, 100, double.NaN, 1.0, out _, out _, out _, out _) < 0);
 
-        // GlassUploadDelta must reject stride < row_bytes
         byte[] dst = new byte[pixels.Length];
-        Assert.True(vn_glass_upload_delta_copy_changed_rows(pixels, 16, dst, 64, 64, 16, out _, out _) < 0);
-        Assert.True(vn_glass_upload_delta_copy_changed_rows(pixels, 64, dst, -64, 64, 16, out _, out _) < 0);
 
         // SubjectAwareBlurService must handle NaN factor/coordinates and reject stride < width * 4
         Assert.Equal(0, vn_subject_blur_brighten(dst, dst.Length, float.NaN));

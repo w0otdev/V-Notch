@@ -29,7 +29,6 @@
 
   <ItemGroup>
     <Compile Include="..\Services\LocalizationService.cs" Link="Services\LocalizationService.cs" />
-    <Compile Include="..\Services\NativeLocaleTable.cs" Link="Services\NativeLocaleTable.cs" />
     <Compile Include="..\Services\InstallDirectoryCleanup.cs" Link="Services\InstallDirectoryCleanup.cs" />
     <Compile Include="..\Services\SafeFileDeletion.cs" Link="Services\SafeFileDeletion.cs" />
     <Compile Include="..\Services\AppProcessShutdown.cs" Link="Services\AppProcessShutdown.cs" />

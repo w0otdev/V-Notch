@@ -8,6 +8,16 @@
         "resolved": "6.0.4",
         "contentHash": "lkhqpF8Pu2Y7IiN7OntbsTtdbpR1syMsm2F3IgX6ootA4ffRqWL5jF7XipHuZQTdVuWG/gVAAcf8mjk8Tz0xPg=="
       },
+      "Microsoft.ML.OnnxRuntime.DirectML": {
+        "type": "Direct",
+        "requested": "[1.24.4, )",
+        "resolved": "1.24.4",
+        "contentHash": "rXEy9biJdgr55TdDaHrhl35K0FRXRCbvyRUv4S4C3jTxyxrqSh8YcEp5bzw4S9UlcqQKNfpb3sE+VWvO2DZY6A==",
+        "dependencies": {
+          "Microsoft.AI.DirectML": "1.15.4",
+          "Microsoft.ML.OnnxRuntime.Managed": "1.24.4"
+        }
+      },
       "Microsoft.NET.Test.Sdk": {
         "type": "Direct",
         "requested": "[18.11.0, )",
@@ -89,14 +99,6 @@
         "resolved": "0.27.0",
         "contentHash": "fZOfnsWKx/kaOqCMSkZ2w5ww++/YGq56T8PWst0KjtmXQBthNAuE11HIaxMK5TBD0EWqoCxqlC8oVCOssF4+MQ=="
       },
-      "LLamaSharp.Backend.Vulkan.Windows": {
-        "type": "Transitive",
-        "resolved": "0.27.0",
-        "contentHash": "eq2LNJLJ+rJmfFk5rSgFxV8Yer4ZGxNuYmGApUEk5illaj15hwYBmo2cWHq7UKVkbMQ5KZAGq5NkS3LJeMSiZw==",
-        "dependencies": {
-          "LLamaSharp.Backend.Cpu": "0.27.0"
-        }
-      },
       "Markdig": {
         "type": "Transitive",
         "resolved": "0.41.3",
@@ -150,15 +152,6 @@
         "dependencies": {
           "Microsoft.Extensions.DependencyInjection.Abstractions": "10.0.5",
           "System.Diagnostics.DiagnosticSource": "10.0.5"
-        }
-      },
-      "Microsoft.ML.OnnxRuntime.DirectML": {
-        "type": "Transitive",
-        "resolved": "1.24.4",
-        "contentHash": "rXEy9biJdgr55TdDaHrhl35K0FRXRCbvyRUv4S4C3jTxyxrqSh8YcEp5bzw4S9UlcqQKNfpb3sE+VWvO2DZY6A==",
-        "dependencies": {
-          "Microsoft.AI.DirectML": "1.15.4",
-          "Microsoft.ML.OnnxRuntime.Managed": "1.24.4"
         }
       },
       "Microsoft.ML.OnnxRuntime.Managed": {
@@ -346,25 +339,6 @@
           "Vortice.Mathematics": "2.1.0"
         }
       },
-      "Vortice.DirectX": {
-        "type": "Transitive",
-        "resolved": "3.8.3",
-        "contentHash": "nKwSavv0w5rDF7prSefqAVPDcTyqrfZxKFMVfttiXPfm62VdA/1d+b3PhCZpW4xO7jXczXDwjQdWgD1zGsvM8w==",
-        "dependencies": {
-          "SharpGen.Runtime": "2.4.2-beta",
-          "SharpGen.Runtime.COM": "2.4.2-beta",
-          "Vortice.Mathematics": "2.1.0"
-        }
-      },
-      "Vortice.DXGI": {
-        "type": "Transitive",
-        "resolved": "3.8.3",
-        "contentHash": "MbAUnTeQ6WD99ctAdrj5CQO2I7oaax0Kt2eVdWSUj0bYP9Ed0726+s7dIHe4+tqhpmINW/dcPt0mNtc72o+E0w==",
-        "dependencies": {
-          "SharpGen.Runtime": "2.4.2-beta",
-          "Vortice.DirectX": "3.8.3"
-        }
-      },
       "Vortice.Mathematics": {
         "type": "Transitive",
         "resolved": "2.1.0",
@@ -417,20 +391,19 @@
           "Hardcodet.NotifyIcon.Wpf": "[2.0.1, )",
           "LLamaSharp": "[0.27.0, )",
           "LLamaSharp.Backend.Cpu": "[0.27.0, )",
-          "LLamaSharp.Backend.Vulkan.Windows": "[0.27.0, )",
           "LanguageDetection.Ai": "[1.1.0, )",
           "Markdig": "[0.41.3, )",
           "Microsoft.Extensions.DependencyInjection": "[8.0.1, )",
           "Microsoft.ML.OnnxRuntime.DirectML": "[1.24.4, )",
           "Microsoft.Web.WebView2": "[1.0.4078.44, )",
-          "Vortice.DXGI": "[3.8.3, )",
           "Vortice.Direct3D9": "[3.8.3, )"
         }
       }
     },
     "net8.0-windows10.0.19041/win-x64": {
       "Microsoft.ML.OnnxRuntime.DirectML": {
-        "type": "Transitive",
+        "type": "Direct",
+        "requested": "[1.24.4, )",
         "resolved": "1.24.4",
         "contentHash": "rXEy9biJdgr55TdDaHrhl35K0FRXRCbvyRUv4S4C3jTxyxrqSh8YcEp5bzw4S9UlcqQKNfpb3sE+VWvO2DZY6A==",
         "dependencies": {

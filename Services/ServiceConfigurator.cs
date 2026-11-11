@@ -16,7 +16,8 @@ public static class ServiceConfigurator
         services.AddSingleton<ISettingsService, SettingsService>();
         services.AddSingleton<IStartupManager, WindowsStartupManager>();
         services.AddSingleton<ISettingsApplicationService, SettingsApplicationService>();
-        services.AddSingleton<IMediaMetadataLookupService, MediaMetadataLookupService>();
+        services.AddSingleton<IMediaMetadataLookupService>(sp =>
+            new MediaMetadataLookupService(sp.GetRequiredService<ISettingsService>()));
         services.AddSingleton<IMediaArtworkService, MediaArtworkService>();
         services.AddSingleton<IWindowTitleScanner, WindowTitleScanner>();
         services.AddSingleton<IMediaDetectionService, MediaDetectionService>();

@@ -30,8 +30,7 @@ internal sealed partial class TranslationSelectionService : IDisposable
     private readonly TaskCompletionSource<Dispatcher> _ready = new(TaskCreationOptions.RunContinuationsAsynchronously);
     private long _manualRequestVersion;
     private UiScheduledTimer? _debounce;
-    private readonly AutomationEventHandler _selectionChanged;
-    private AutomationElement? _root, _eventElement;
+    private AutomationElement? _root;
     private NativeSelectionState? _nativeSelection;
     private TranslationSelection? _snapshot;
     private long _nextId;
@@ -111,7 +110,6 @@ internal sealed partial class TranslationSelectionService : IDisposable
     {
         _isBlocked = isBlocked;
         _automaticWatching = automaticWatching;
-        _selectionChanged = (sender, _) => { _eventElement = sender as AutomationElement; QueueCapture(); };
         _foregroundChanged = (_, hwnd) =>
         {
             if (hwnd == IntPtr.Zero || IsOwnWindow(hwnd)) return;
@@ -235,10 +233,8 @@ internal sealed partial class TranslationSelectionService : IDisposable
                 Publish(null, !manual);
                 _root = AutomationElement.FromHandle(window);
                 _watchedWindow = window;
-                try { if (_automaticWatching) Automation.AddAutomationEventHandler(TextPattern.TextSelectionChangedEvent, _root, TreeScope.Subtree, _selectionChanged); }
-                catch (Exception ex) when (ex is InvalidOperationException or COMException or ElementNotAvailableException) { /* Selection worker shutting down or UIA provider unavailable. */ }
             }
-            var result = SelectionTextReader.Read(window, _eventElement, manual, out bool protectedInput, rootElement: _root, previousSelection: _nativeSelection);
+            var result = SelectionTextReader.Read(window, null, manual, out bool protectedInput, rootElement: _root, previousSelection: _nativeSelection);
             if (Win32Interop.GetForegroundWindow() != window) { result?.Dispose(); return; }
             if (result == null)
             {
@@ -325,9 +321,8 @@ internal sealed partial class TranslationSelectionService : IDisposable
 
     private void DetachSelection()
     {
-        if (_root != null)
-            try { Automation.RemoveAutomationEventHandler(TextPattern.TextSelectionChangedEvent, _root, _selectionChanged); } catch (Exception) { /* Window or UIA element may have closed before handler removal. */ }
-        _root = null; _eventElement = null; _watchedWindow = IntPtr.Zero;
+        _root = null;
+        _watchedWindow = IntPtr.Zero;
         _nativeSelection?.Dispose(); _nativeSelection = null;
     }
 

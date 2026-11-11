@@ -1,11 +1,32 @@
+using System;
+using System.Collections.Generic;
+using System.Runtime.InteropServices;
 using VNotch.Services;
 using Xunit;
 using Detection = VNotch.Services.SmartThumbnailCropService.Detection;
 
 namespace VNotch.Tests;
 
-public sealed class SmartThumbnailCropTests
+public sealed partial class SmartThumbnailCropTests
 {
+    [LibraryImport("VNotch.Native.dll")]
+    private static unsafe partial int vn_smartcrop_apply_nms(
+        Detection* inDetections, int inCount,
+        Detection* outDetections, int outCap, out int outCount);
+
+    private static unsafe List<Detection> ApplyNms(List<Detection> detections)
+    {
+        ReadOnlySpan<Detection> inSpan = CollectionsMarshal.AsSpan(detections);
+        Detection* outPtr = stackalloc Detection[Math.Max(1, detections.Count)];
+        int outCount;
+        fixed (Detection* inPtr = inSpan)
+        {
+            Assert.Equal(0, vn_smartcrop_apply_nms(inPtr, inSpan.Length, outPtr, detections.Count, out outCount));
+        }
+        var result = new List<Detection>(outCount);
+        for (int i = 0; i < outCount; i++) result.Add(outPtr[i]);
+        return result;
+    }
     [Fact]
     public void PortraitFramingLeavesHairAndUpperTorsoSpace()
     {
@@ -41,7 +62,7 @@ public sealed class SmartThumbnailCropTests
             new() { X1 = 10, Y1 = 10, X2 = 110, Y2 = 110, Confidence = 0.8f, ClassId = 16 }
         };
 
-        Assert.Equal(2, SmartThumbnailCropService.ApplyNms(boxes).Count);
+        Assert.Equal(2, ApplyNms(boxes).Count);
     }
 
     [Fact]
@@ -54,7 +75,7 @@ public sealed class SmartThumbnailCropTests
         };
 
         for (int i = 0; i < 100; i++)
-            Assert.Equal(0.9f, Assert.Single(SmartThumbnailCropService.ApplyNms(boxes)).Confidence);
+            Assert.Equal(0.9f, Assert.Single(ApplyNms(boxes)).Confidence);
     }
 
     [Fact]

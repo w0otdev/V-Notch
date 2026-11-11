@@ -667,7 +667,7 @@ public:
 
     static std::u16string ExtractFeaturingFromTitle(
         std::u16string_view title,
-        std::u16string& out_stripped_title) noexcept {
+        std::u16string& out_stripped_title) {
         out_stripped_title.assign(title);
         std::u16string feat_artists;
         constexpr std::u16string_view markers[] = {
@@ -722,7 +722,7 @@ public:
         char16_t* out_buf,
         int32_t out_cap,
         int32_t& out_len,
-        int32_t& out_score) noexcept {
+        int32_t& out_score) {
         out_len = 0;
         out_score = 0;
         if (raw_artist.empty() || primary_artist.empty() || cand_title.empty() || exp_title.empty() || !out_buf || out_cap <= 0) {

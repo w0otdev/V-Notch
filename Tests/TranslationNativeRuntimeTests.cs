@@ -48,7 +48,7 @@ public sealed class TranslationNativeRuntimeTests
             ?.Attribute("Version")?.Value;
 
         Assert.False(string.IsNullOrWhiteSpace(llamaVersion));
-        Assert.Equal(llamaVersion, vulkanPkgVersion);
+        Assert.Null(vulkanPkgVersion);
         Assert.Contains($"/{llamaVersion}/llamasharp.backend.vulkan.windows.{llamaVersion}.nupkg", TranslationNativeRuntime.VulkanNupkgUrl, StringComparison.Ordinal);
     }
 }
