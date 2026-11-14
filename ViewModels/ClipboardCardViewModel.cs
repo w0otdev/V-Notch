@@ -17,7 +17,7 @@ public sealed partial class ClipboardCardViewModel : ObservableObject
         out int outBucket,
         out int outValue);
 
-    private static readonly FontFamily SharedContentFont = new(VNotch.Services.AppFonts.Location + "#SF Pro Display, Segoe UI");
+    private static readonly FontFamily SharedContentFont = VNotch.Services.AppFonts.Get();
     private static readonly Brush SharedCardBrush = CreateSurfaceBrush();
     private Brush? _cardBrush;
     private bool? _isMasked;

@@ -299,6 +299,51 @@ private:
         return true;
     }
 
+    static bool ExtractOpenAiDelta(
+        const vnotch::json::Value& delta_obj,
+        char16_t* out_delta_buf,
+        int32_t delta_cap,
+        int32_t& out_written)
+    {
+        bool ok = true;
+        delta_obj.each([&](vnotch::json::Value dkey, vnotch::json::Value dval) {
+            if (!KeyEquals(dkey, "content") || dval.bytes == "null")
+            {
+                return true;
+            }
+            if (!AppendJsonString(dval, out_delta_buf, delta_cap, out_written))
+            {
+                ok = false;
+                return false;
+            }
+            return true;
+        });
+        return ok;
+    }
+
+    static bool ExtractOpenAiFirstChoice(
+        const vnotch::json::Value& choice,
+        char16_t* out_delta_buf,
+        int32_t delta_cap,
+        int32_t& out_written)
+    {
+        if (!choice.is('{')) return false;
+        bool ok = true;
+        choice.each([&](vnotch::json::Value ckey, vnotch::json::Value cval) {
+            if (!KeyEquals(ckey, "delta") || cval.bytes == "null")
+            {
+                return true;
+            }
+            if (!cval.is('{') || !ExtractOpenAiDelta(cval, out_delta_buf, delta_cap, out_written))
+            {
+                ok = false;
+                return false;
+            }
+            return true;
+        });
+        return ok;
+    }
+
     static bool ExtractOpenAiRoot(
         const vnotch::json::Value& root,
         char16_t* out_delta_buf,
@@ -330,46 +375,61 @@ private:
                 }
                 int32_t idx = 0;
                 val.each([&](vnotch::json::Value, vnotch::json::Value choice) {
-                    if (idx++ > 0)
-                    {
-                        return true;
-                    }
-                    if (!choice.is('{'))
+                    if (idx++ > 0) return true;
+                    if (!ExtractOpenAiFirstChoice(choice, out_delta_buf, delta_cap, out_written))
                     {
                         ok = false;
                         return false;
                     }
-                    choice.each([&](vnotch::json::Value ckey, vnotch::json::Value cval) {
-                        if (!KeyEquals(ckey, "delta") || cval.bytes == "null")
-                        {
-                            return true;
-                        }
-                        if (!cval.is('{'))
-                        {
-                            ok = false;
-                            return false;
-                        }
-                        cval.each([&](vnotch::json::Value dkey, vnotch::json::Value dval) {
-                            if (!KeyEquals(dkey, "content") || dval.bytes == "null")
-                            {
-                                return true;
-                            }
-                            if (!AppendJsonString(dval, out_delta_buf, delta_cap, out_written))
-                            {
-                                ok = false;
-                                return false;
-                            }
-                            return true;
-                        });
-                        return ok;
-                    });
-                    return ok;
+                    return true;
                 });
                 return ok;
             }
             return true;
         });
         return ok;
+    }
+
+    static bool ExtractClaudeDeltaObject(
+        const vnotch::json::Value& delta_obj,
+        char16_t* out_delta_buf,
+        int32_t delta_cap,
+        int32_t& out_written)
+    {
+        if (!delta_obj.is('{')) return false;
+        bool ok = true;
+        bool is_text_delta = false;
+        const int32_t delta_start = out_written;
+        delta_obj.each([&](vnotch::json::Value dkey, vnotch::json::Value dval) {
+            if (KeyEquals(dkey, "type"))
+            {
+                if (!dval.is('"'))
+                {
+                    ok = false;
+                    return false;
+                }
+                if (dval.text() == u"text_delta")
+                {
+                    is_text_delta = true;
+                }
+            }
+            else if (KeyEquals(dkey, "text"))
+            {
+                if (dval.bytes != "null" &&
+                    !AppendJsonString(dval, out_delta_buf, delta_cap, out_written))
+                {
+                    ok = false;
+                    return false;
+                }
+            }
+            return true;
+        });
+        if (!ok) return false;
+        if (!is_text_delta)
+        {
+            out_written = delta_start;
+        }
+        return true;
     }
 
     static bool ExtractClaudeRoot(
@@ -401,48 +461,119 @@ private:
             }
             if (KeyEquals(key, "delta"))
             {
-                if (!val.is('{'))
+                if (!ExtractClaudeDeltaObject(val, out_delta_buf, delta_cap, out_written))
                 {
                     ok = false;
                     return false;
                 }
-                bool is_text_delta = false;
-                const int32_t delta_start = out_written;
-                val.each([&](vnotch::json::Value dkey, vnotch::json::Value dval) {
-                    if (KeyEquals(dkey, "type"))
-                    {
-                        if (!dval.is('"'))
-                        {
-                            ok = false;
-                            return false;
-                        }
-                        if (dval.text() == u"text_delta")
-                        {
-                            is_text_delta = true;
-                        }
-                    }
-                    else if (KeyEquals(dkey, "text"))
-                    {
-                        if (dval.bytes != "null" &&
-                            !AppendJsonString(dval, out_delta_buf, delta_cap, out_written))
-                        {
-                            ok = false;
-                            return false;
-                        }
-                    }
-                    return true;
-                });
-                if (!ok)
-                {
-                    return false;
-                }
-                if (!is_text_delta)
-                {
-                    out_written = delta_start;
-                }
-                return true;
             }
             return true;
+        });
+        return ok;
+    }
+
+    static bool ExtractGeminiPart(
+        const vnotch::json::Value& part,
+        char16_t* out_delta_buf,
+        int32_t delta_cap,
+        int32_t& out_written)
+    {
+        if (!part.is('{')) return false;
+        const int32_t part_start = out_written;
+        bool ok = true;
+        bool is_thought = false;
+        part.each([&](vnotch::json::Value pkey, vnotch::json::Value pval) {
+            if (KeyEquals(pkey, "text"))
+            {
+                if (!AppendJsonString(pval, out_delta_buf, delta_cap, out_written))
+                {
+                    ok = false;
+                    return false;
+                }
+            }
+            else if (KeyEquals(pkey, "thought"))
+            {
+                if (pval.bytes == "true")
+                {
+                    is_thought = true;
+                }
+                else if (pval.bytes != "false" && pval.bytes != "null")
+                {
+                    ok = false;
+                    return false;
+                }
+            }
+            return true;
+        });
+        if (!ok) return false;
+        if (is_thought)
+        {
+            out_written = part_start;
+        }
+        return true;
+    }
+
+    static bool ExtractGeminiContent(
+        const vnotch::json::Value& content_obj,
+        char16_t* out_delta_buf,
+        int32_t delta_cap,
+        int32_t& out_written)
+    {
+        if (!content_obj.is('{')) return false;
+        bool ok = true;
+        content_obj.each([&](vnotch::json::Value ctkey, vnotch::json::Value ctval) {
+            if (!KeyEquals(ctkey, "parts")) return true;
+            if (!ctval.is('['))
+            {
+                ok = false;
+                return false;
+            }
+            ctval.each([&](vnotch::json::Value, vnotch::json::Value part) {
+                if (!ExtractGeminiPart(part, out_delta_buf, delta_cap, out_written))
+                {
+                    ok = false;
+                    return false;
+                }
+                return true;
+            });
+            return ok;
+        });
+        return ok;
+    }
+
+    static bool ExtractGeminiCandidate(
+        const vnotch::json::Value& cand,
+        int32_t cur_idx,
+        char16_t* out_delta_buf,
+        int32_t delta_cap,
+        int32_t& out_written,
+        bool& out_completed)
+    {
+        if (!cand.is('{')) return false;
+        bool ok = true;
+        cand.each([&](vnotch::json::Value ckey, vnotch::json::Value cval) {
+            if (KeyEquals(ckey, "finishReason"))
+            {
+                if (cval.bytes == "null") return true;
+                if (!cval.is('"'))
+                {
+                    ok = false;
+                    return false;
+                }
+                if (cval.text() == u"STOP")
+                {
+                    out_completed = true;
+                }
+            }
+            else if (cur_idx == 0 && KeyEquals(ckey, "content"))
+            {
+                if (!ExtractGeminiContent(cval, out_delta_buf, delta_cap, out_written))
+                {
+                    ok = false;
+                    return false;
+                }
+            }
+            return ok;
         });
         return ok;
     }
@@ -470,93 +601,12 @@ private:
                 }
                 int32_t c_idx = 0;
                 val.each([&](vnotch::json::Value, vnotch::json::Value cand) {
-                    if (!cand.is('{'))
+                    if (!ExtractGeminiCandidate(cand, c_idx++, out_delta_buf, delta_cap, out_written, out_completed))
                     {
                         ok = false;
                         return false;
                     }
-                    const int32_t cur_idx = c_idx++;
-                    cand.each([&](vnotch::json::Value ckey, vnotch::json::Value cval) {
-                        if (KeyEquals(ckey, "finishReason"))
-                        {
-                            if (cval.bytes == "null")
-                            {
-                                return true;
-                            }
-                            if (!cval.is('"'))
-                            {
-                                ok = false;
-                                return false;
-                            }
-                            if (cval.text() == u"STOP")
-                            {
-                                out_completed = true;
-                            }
-                        }
-                        else if (cur_idx == 0 && KeyEquals(ckey, "content"))
-                        {
-                            if (!cval.is('{'))
-                            {
-                                ok = false;
-                                return false;
-                            }
-                            cval.each([&](vnotch::json::Value ctkey, vnotch::json::Value ctval) {
-                                if (!KeyEquals(ctkey, "parts"))
-                                {
-                                    return true;
-                                }
-                                if (!ctval.is('['))
-                                {
-                                    ok = false;
-                                    return false;
-                                }
-                                ctval.each([&](vnotch::json::Value, vnotch::json::Value part) {
-                                    if (!part.is('{'))
-                                    {
-                                        ok = false;
-                                        return false;
-                                    }
-                                    const int32_t part_start = out_written;
-                                    bool is_thought = false;
-                                    part.each([&](vnotch::json::Value pkey, vnotch::json::Value pval) {
-                                        if (KeyEquals(pkey, "text"))
-                                        {
-                                            if (!AppendJsonString(pval, out_delta_buf, delta_cap, out_written))
-                                            {
-                                                ok = false;
-                                                return false;
-                                            }
-                                        }
-                                        else if (KeyEquals(pkey, "thought"))
-                                        {
-                                            if (pval.bytes == "true")
-                                            {
-                                                is_thought = true;
-                                            }
-                                            else if (pval.bytes != "false" && pval.bytes != "null")
-                                            {
-                                                ok = false;
-                                                return false;
-                                            }
-                                        }
-                                        return true;
-                                    });
-                                    if (!ok)
-                                    {
-                                        return false;
-                                    }
-                                    if (is_thought)
-                                    {
-                                        out_written = part_start;
-                                    }
-                                    return true;
-                                });
-                                return ok;
-                            });
-                        }
-                        return ok;
-                    });
-                    return ok;
+                    return true;
                 });
                 return ok;
             }

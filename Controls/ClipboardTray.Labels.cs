@@ -41,23 +41,13 @@ public sealed partial class ClipboardTray
 
         Span<int> mergedIndices = desiredCount <= 256 ? stackalloc int[desiredCount] : new int[desiredCount];
         int mergedCount;
-        if (_optimisticCategoryOrder is { } optimistic && optimistic.Length > 0)
+        if (_optimisticCategoryOrder is { Length: > 0 } optimistic)
         {
             int optCount = optimistic.Length;
             Span<int> optToDesired = optCount <= 256 ? stackalloc int[optCount] : new int[optCount];
             for (int i = 0; i < optCount; i++)
             {
-                string optId = optimistic[i];
-                int foundIdx = -1;
-                for (int d = 0; d < desiredCount; d++)
-                {
-                    if (string.Equals(storeOrder[d], optId, StringComparison.Ordinal))
-                    {
-                        foundIdx = d;
-                        break;
-                    }
-                }
-                optToDesired[i] = foundIdx;
+                optToDesired[i] = IndexOfCategoryName(storeOrder, optimistic[i]);
             }
             Span<byte> scratchTaken = desiredCount <= 256 ? stackalloc byte[desiredCount] : new byte[desiredCount];
             _ = vn_clipboard_selection_merge_optimistic_order(
@@ -70,19 +60,8 @@ public sealed partial class ClipboardTray
                 mergedIndices[i] = i;
         }
 
-        if (_categoryItems.Length == mergedCount)
-        {
-            bool sameOrder = true;
-            for (int i = 0; i < mergedCount; i++)
-            {
-                if (!string.Equals(_categoryItems[i].Name, storeOrder[mergedIndices[i]], StringComparison.Ordinal))
-                {
-                    sameOrder = false;
-                    break;
-                }
-            }
-            if (sameOrder) return;
-        }
+        if (MatchesCurrentCategoryOrder(storeOrder, mergedIndices[..mergedCount]))
+            return;
 
         CancelCategoryReorder();
         var existingItems = _categoryItems;
@@ -91,18 +70,36 @@ public sealed partial class ClipboardTray
         for (int i = 0; i < mergedCount; i++)
         {
             string name = storeOrder[mergedIndices[i]];
-            var existing = FindExistingCategoryItem(existingItems, name);
-            if (existing != null)
-            {
-                nextItems[i] = existing;
-                continue;
-            }
-            nextItems[i] = ClipboardLabel.IsCustomId(name)
-                ? new ClipboardCategoryViewModel(TrayIconKind.Shopping, name, FindCustomLabelName(labels, name))
-                : new ClipboardCategoryViewModel(Enum.Parse<TrayIconKind>(name));
+            nextItems[i] = FindExistingCategoryItem(existingItems, name) ??
+                (ClipboardLabel.IsCustomId(name)
+                    ? new ClipboardCategoryViewModel(TrayIconKind.Shopping, name, FindCustomLabelName(labels, name))
+                    : new ClipboardCategoryViewModel(Enum.Parse<TrayIconKind>(name)));
         }
         _categoryItems = nextItems;
         CategoryPanel.ItemsSource = _categoryItems;
+    }
+
+    private static int IndexOfCategoryName(IReadOnlyList<string> storeOrder, string name)
+    {
+        for (int i = 0; i < storeOrder.Count; i++)
+        {
+            if (string.Equals(storeOrder[i], name, StringComparison.Ordinal))
+                return i;
+        }
+        return -1;
+    }
+
+    private bool MatchesCurrentCategoryOrder(IReadOnlyList<string> storeOrder, ReadOnlySpan<int> mergedIndices)
+    {
+        if (_categoryItems.Length != mergedIndices.Length)
+            return false;
+
+        for (int i = 0; i < mergedIndices.Length; i++)
+        {
+            if (!string.Equals(_categoryItems[i].Name, storeOrder[mergedIndices[i]], StringComparison.Ordinal))
+                return false;
+        }
+        return true;
     }
 
     private static ClipboardCategoryViewModel? FindExistingCategoryItem(ClipboardCategoryViewModel[] items, string name)
@@ -174,7 +171,12 @@ public sealed partial class ClipboardTray
         LabelNameBox.Clear();
         LabelEditorError.Text = "";
         TrayContentGrid.IsHitTestVisible = false;
-        TrayMotion.SetBlurRadius(TrayContentGrid, 12.0);
+        TrayContentGrid.Effect = null;
+        TrayContentGrid.BeginAnimation(OpacityProperty, new DoubleAnimation(0.38, TimeSpan.FromMilliseconds(220))
+        {
+            EasingFunction = new QuadraticEase { EasingMode = EasingMode.EaseOut }
+        });
+        TrayMotion.SetBlurRadius(TrayContentGrid, 0.0);
         ShowTransientLayer(LabelEditorPanel);
         AnimateLabelEditorBorder(entering: true);
         LabelNameBox.Focus();
@@ -188,6 +190,11 @@ public sealed partial class ClipboardTray
         if (!_deleteConfirmationOpen)
         {
             TrayContentGrid.IsHitTestVisible = true;
+            TrayContentGrid.Effect = null;
+            TrayContentGrid.BeginAnimation(OpacityProperty, new DoubleAnimation(1.0, TimeSpan.FromMilliseconds(immediately ? 0 : 220))
+            {
+                EasingFunction = new QuadraticEase { EasingMode = EasingMode.EaseOut }
+            });
             TrayMotion.SetBlurRadius(TrayContentGrid, 0.0);
         }
         if (!immediately && wasOpen && !_disposed && !_trayLeaving && IsVisible)

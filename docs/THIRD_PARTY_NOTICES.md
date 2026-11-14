@@ -29,6 +29,19 @@ is implied. Verify **each file** against its original source URL, creator, preci
 
 ## NuGet libraries
 
+### AI provider logos
+
+`Assets/Brands/claude.svg` uses the unmodified spark path from the inline Claude
+wordmark on [Claude's official website](https://claude.com/), rendered in monochrome.
+Claude and its spark are trademarks of Anthropic.
+
+`Assets/Brands/codex.svg` is the Codex cloud-terminal mark distributed by
+[Lobe Icons](https://github.com/lobehub/lobe-icons/blob/63c800e3db6427b3f156f7b88d426ccb3f7277a1/packages/static-svg/icons/codex.svg)
+under MIT. Its full upstream license is bundled as `licenses/LobeIcons-MIT.txt`.
+Codex and its mark remain trademarks of OpenAI. Source URLs, retrieval date, and
+SHA-256 hashes are recorded in `Assets/Brands/sources.json`. The marks identify
+the connected services; no sponsorship or endorsement is implied.
+
 | Library | License | Source |
 | --- | --- | --- |
 | CommunityToolkit.Mvvm 8.4.0 | MIT | <https://github.com/CommunityToolkit/dotnet> |

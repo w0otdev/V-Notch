@@ -42,6 +42,12 @@ internal static class AnimationPrimitives
     public static readonly CubicBezierEase _easeAppleIn =
         Freeze(new CubicBezierEase(0.4, 0.0, 1.0, 1.0) { EasingMode = EasingMode.EaseIn });
 
+    // The notch shell's springs. Both reach 90 % of the way after about 190 ms (opening) and 160 ms
+    // (closing), like the curves they replaced; opening overshoots by about 1.5 % so the island feels alive,
+    // closing settles without overshoot.
+    public static readonly SpringMotion ShellOpenSpring = new(TimeSpan.FromMilliseconds(400), 0.2);
+    public static readonly SpringMotion ShellCloseSpring = new(TimeSpan.FromMilliseconds(262), 0);
+
     private static T Freeze<T>(T easing) where T : Freezable
     {
         easing.Freeze();

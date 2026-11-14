@@ -14,7 +14,10 @@
         Background="Transparent"
         MouseLeftButtonDown="Window_MouseLeftButtonDown"
         TextElement.FontFamily="{fonts:AppFont Fallbacks='Nirmala UI, Segoe UI'}"
-        TextElement.FontSize="11.5">
+        TextElement.FontSize="11.5"
+        TextOptions.TextFormattingMode="Ideal"
+        TextOptions.TextRenderingMode="Grayscale"
+        TextOptions.TextHintingMode="Animated">
 
     <Window.Resources>
         <!-- ImGui/Inspector Style ComboBoxItem -->

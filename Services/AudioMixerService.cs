@@ -24,13 +24,6 @@ public sealed class AudioDeviceInfo
     public bool IsDefault { get; set; }
 }
 
-public enum SpatialAudioMode
-{
-    Off,
-    WindowsSonic,
-    DolbyAtmos
-}
-
 internal readonly record struct CachedSessionMetadata(string DisplayName, string? ExePath, ImageSource? Icon, bool IconResolved = false);
 
 public sealed partial class AudioMixerService : IDisposable
@@ -399,50 +392,7 @@ public sealed partial class AudioMixerService : IDisposable
         }
     }
 
-    public static SpatialAudioMode GetSpatialAudioMode()
-    {
-        try
-        {
-            string id = ListDevices(RenderFlow, "AUDIOMIXER-SPATIAL-DEVICES").FirstOrDefault(d => d.IsDefault)?.Id ?? string.Empty;
-            string guid = ExtractEndpointGuid(id);
-            if (string.IsNullOrEmpty(guid)) return SpatialAudioMode.Off;
-
-            string keyPath = $@"SOFTWARE\Microsoft\Windows\CurrentVersion\MMDevices\Audio\Render\{guid}\FxProperties";
-            using var key = Microsoft.Win32.Registry.LocalMachine.OpenSubKey(keyPath);
-            var value = key?.GetValue("{e4870e26-3cc5-4cd2-ba46-ca0a9a70ed04},6") as string;
-            if (string.IsNullOrWhiteSpace(value))
-                return SpatialAudioMode.Off;
-
-            _ = vn_audio_mixer_classify_spatial_audio_value(value.AsSpan(), value.Length, out int mode);
-            return mode switch
-            {
-                1 => SpatialAudioMode.WindowsSonic,
-                2 => SpatialAudioMode.DolbyAtmos,
-                _ => SpatialAudioMode.Off
-            };
-        }
-        catch (Exception ex)
-        {
-            RuntimeLog.Log("AUDIOMIXER-SPATIAL-GET", ex.Message);
-            return SpatialAudioMode.Off;
-        }
-    }
-
     private const string NativeDll = "VNotch.Native.dll";
-
-    [LibraryImport(NativeDll, StringMarshalling = StringMarshalling.Utf16)]
-    private static partial int vn_audio_mixer_extract_endpoint_guid(
-        ReadOnlySpan<char> deviceId,
-        int deviceIdLen,
-        out int outStart,
-        out int outLength,
-        out byte outFound);
-
-    [LibraryImport(NativeDll, StringMarshalling = StringMarshalling.Utf16)]
-    private static partial int vn_audio_mixer_classify_spatial_audio_value(
-        ReadOnlySpan<char> value,
-        int valueLen,
-        out int outMode);
 
     [LibraryImport(NativeDll, StringMarshalling = StringMarshalling.Utf16)]
     private static partial int vn_audio_set_default_endpoint(
@@ -451,17 +401,6 @@ public sealed partial class AudioMixerService : IDisposable
         out int outConsoleHr,
         out int outMultimediaHr,
         out int outCommunicationsHr);
-
-    private static string ExtractEndpointGuid(string deviceId)
-    {
-        if (string.IsNullOrEmpty(deviceId)) return "";
-        if (vn_audio_mixer_extract_endpoint_guid(deviceId.AsSpan(), deviceId.Length, out int start, out int length, out byte found) == 0 &&
-            found != 0 && start >= 0 && start + length <= deviceId.Length)
-        {
-            return deviceId.Substring(start, length);
-        }
-        return "";
-    }
 
     private static void ReleaseSessions()
     {

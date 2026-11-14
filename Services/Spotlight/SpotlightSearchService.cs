@@ -215,11 +215,15 @@ internal sealed partial class SpotlightSearchService
             ApplyUsageBoost(_usage?.GetRememberedItems(query) ?? Array.Empty<SpotlightSearchItem>(), normalizedForUsage)
         }, queryToken);
 
+        var allTasks = new Task[tasks.Length + 1];
+        Array.Copy(tasks, allTasks, tasks.Length);
+        allTasks[tasks.Length] = personalization;
+
         try
         {
             var groups = new IReadOnlyList<SpotlightSearchItem>[tasks.Length + 2];
             Array.Fill(groups, Array.Empty<SpotlightSearchItem>());
-            var pending = new List<Task>(tasks) { personalization };
+            var pending = new List<Task>(allTasks);
 
             while (pending.Count > 0)
             {
@@ -249,7 +253,7 @@ internal sealed partial class SpotlightSearchService
             queryCts.Cancel();
             // A superseded provider may still be inside native IPC. Observe its
             // eventual completion without keeping the replacement query waiting.
-            _ = Task.WhenAll(tasks.Cast<Task>().Append(personalization)).ContinueWith(completed => { _ = completed.Exception; },
+            _ = Task.WhenAll(allTasks).ContinueWith(completed => { _ = completed.Exception; },
                 CancellationToken.None, TaskContinuationOptions.OnlyOnFaulted | TaskContinuationOptions.ExecuteSynchronously,
                 TaskScheduler.Default);
         }

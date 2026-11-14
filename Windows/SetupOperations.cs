@@ -171,10 +171,24 @@ internal static class SetupOperations
             }
 
             SafeFileDeletion.ValidatePath(sourceDirectory);
-            var files = EnumeratePayloadFiles(sourceDirectory).Where(file =>
-                !Path.GetRelativePath(sourceDirectory, file).Equals(InstallDirectoryCleanup.ManifestFileName, StringComparison.OrdinalIgnoreCase)).ToArray();
-            var previousFiles = InstallDirectoryCleanup.ReadManifest(installDirectory)
-                .ToDictionary(file => file.Path, StringComparer.OrdinalIgnoreCase);
+            var payloadEntries = new List<(string SourcePath, string RelativePath)>();
+            foreach (var candidateFile in EnumeratePayloadFiles(sourceDirectory))
+            {
+                var relPath = Path.GetRelativePath(sourceDirectory, candidateFile);
+                if (!relPath.Equals(InstallDirectoryCleanup.ManifestFileName, StringComparison.OrdinalIgnoreCase))
+                {
+                    payloadEntries.Add((candidateFile, relPath));
+                }
+            }
+
+            var previousManifest = InstallDirectoryCleanup.ReadManifest(installDirectory);
+            var previousFiles = new Dictionary<string, InstallDirectoryCleanup.InstalledFile>(
+                StringComparer.OrdinalIgnoreCase);
+            foreach (var entry in previousManifest)
+            {
+                previousFiles[entry.Path] = entry;
+            }
+
             string backup = Path.Combine(recoveryRoot ?? Path.Combine(Path.GetTempPath(), "V-Notch"), Guid.NewGuid().ToString("N") + ".recovery");
             SafeFileDeletion.ValidatePath(backup);
             using var backupLease = AppFileCleanupService.Protect(backup);
@@ -191,15 +205,15 @@ internal static class SetupOperations
                 reportProgress(new SetupProgressInfo(VNotch.Services.Loc.Get("setup.install.preparingFolder"), IsIndeterminate: true));
                 Directory.CreateDirectory(installDirectory);
 
-                if (files.Length == 0)
+                int totalFiles = payloadEntries.Count;
+                if (totalFiles == 0)
                 {
                     throw new InvalidOperationException(Loc.Get("setup.install.payloadEmpty"));
                 }
 
-                for (int i = 0; i < files.Length; i++)
+                for (int i = 0; i < totalFiles; i++)
                 {
-                    var sourceFile = files[i];
-                    var relativePath = Path.GetRelativePath(sourceDirectory, sourceFile);
+                    var (sourceFile, relativePath) = payloadEntries[i];
                     var destinationFile = Path.Combine(installDirectory, relativePath);
                     var destinationFolder = Path.GetDirectoryName(destinationFile);
                     if (!string.IsNullOrEmpty(destinationFolder)) InstallDirectoryCleanup.ValidateDirectory(destinationFolder);
@@ -224,7 +238,7 @@ internal static class SetupOperations
                     reportProgress(new SetupProgressInfo(
                         VNotch.Services.Loc.Get("setup.install.installingFile", relativePath),
                         i + 1,
-                        files.Length));
+                        totalFiles));
                 }
 
                 string manifest = Path.Combine(installDirectory, InstallDirectoryCleanup.ManifestFileName);
@@ -234,15 +248,23 @@ internal static class SetupOperations
                     if (saved != null) File.Copy(manifest, saved);
                     originals.Add(manifest, saved);
                 }
-                var ownedFiles = files.Select(file => Path.GetRelativePath(sourceDirectory, file))
-                    .Select(path => new InstallDirectoryCleanup.InstalledFile(path, InstallDirectoryCleanup.HashFile(Path.Combine(installDirectory, path))))
-                    .ToDictionary(file => file.Path, StringComparer.OrdinalIgnoreCase);
-                File.WriteAllText(manifest, System.Text.Json.JsonSerializer.Serialize(new InstallDirectoryCleanup.InstallManifest(2, ownedFiles.Values.ToArray())));
+
+                var manifestFiles = new InstallDirectoryCleanup.InstalledFile[totalFiles];
+                var ownedPaths = new HashSet<string>(totalFiles, StringComparer.OrdinalIgnoreCase);
+                for (int i = 0; i < totalFiles; i++)
+                {
+                    string relPath = payloadEntries[i].RelativePath;
+                    manifestFiles[i] = new InstallDirectoryCleanup.InstalledFile(
+                        relPath,
+                        InstallDirectoryCleanup.HashFile(Path.Combine(installDirectory, relPath)));
+                    ownedPaths.Add(relPath);
+                }
+                File.WriteAllText(manifest, System.Text.Json.JsonSerializer.Serialize(new InstallDirectoryCleanup.InstallManifest(2, manifestFiles)));
                 committed = true;
 
                 foreach (var previous in previousFiles.Values)
                 {
-                    if (ownedFiles.ContainsKey(previous.Path))
+                    if (ownedPaths.Contains(previous.Path))
                         continue;
 
                     string stalePath = Path.Combine(installDirectory, previous.Path);
@@ -261,16 +283,16 @@ internal static class SetupOperations
                 }
 
                 var installedExePath = Path.Combine(installDirectory, AppExeName);
-                reportProgress(new SetupProgressInfo(VNotch.Services.Loc.Get("setup.install.creatingShortcuts"), files.Length, files.Length));
+                reportProgress(new SetupProgressInfo(VNotch.Services.Loc.Get("setup.install.creatingShortcuts"), totalFiles, totalFiles));
                 callbacks.CreateShortcuts(installedExePath, installDirectory);
 
-                reportProgress(new SetupProgressInfo(VNotch.Services.Loc.Get("setup.install.savingStartup"), files.Length, files.Length));
+                reportProgress(new SetupProgressInfo(VNotch.Services.Loc.Get("setup.install.savingStartup"), totalFiles, totalFiles));
                 callbacks.ConfigureStartup(installedExePath, options.StartWithWindows);
 
-                reportProgress(new SetupProgressInfo(VNotch.Services.Loc.Get("setup.install.registeringUninstall"), files.Length, files.Length));
+                reportProgress(new SetupProgressInfo(VNotch.Services.Loc.Get("setup.install.registeringUninstall"), totalFiles, totalFiles));
                 callbacks.RegisterUninstall(installedExePath, installDirectory);
 
-                reportProgress(new SetupProgressInfo(VNotch.Services.Loc.Get("setup.install.savingPreferences"), files.Length, files.Length));
+                reportProgress(new SetupProgressInfo(VNotch.Services.Loc.Get("setup.install.savingPreferences"), totalFiles, totalFiles));
                 callbacks.SaveSettings(options.Language);
             }
             catch (Exception installError) when (!committed)

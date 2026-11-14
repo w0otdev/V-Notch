@@ -235,7 +235,7 @@ public sealed class MainWindowVolumeInteractionTests
         var args = new MouseEventArgs(Mouse.PrimaryDevice, Environment.TickCount);
         Invoke(window, "MediaButton_MouseEnter", button, args);
         await WpfFrameWaiter.UntilAsync(() => Math.Abs(((ScaleTransform)button.RenderTransform).ScaleX - 1.18) < .0001, "media hover scale", ct);
-        Assert.NotNull(button.CacheMode);
+        Assert.Null(button.CacheMode);
         Invoke(window, "MediaButton_MouseLeave", button, args);
         await WpfFrameWaiter.UntilAsync(() => button.CacheMode == null, "media hover cleanup", ct);
         Assert.Equal(1, ((ScaleTransform)button.RenderTransform).ScaleX, 5);

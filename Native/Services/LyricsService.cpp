@@ -352,8 +352,11 @@ public:
         return true;
     }
 
-    [[nodiscard]] static constexpr bool TryParseKrcLine(
+    [[nodiscard]] static constexpr bool TryParseTimedWordLine(
         std::u16string_view raw_line,
+        char16_t open_tag,
+        char16_t close_tag,
+        bool word_times_relative,
         int64_t& out_line_ticks,
         char16_t* out_text_buf,
         int32_t out_text_cap,
@@ -384,157 +387,57 @@ public:
 
         size_t pos = close_bracket + 1;
         while (pos < line.size()) {
-            if (line[pos] == u'<') {
-                size_t close_angle = std::u16string_view::npos;
+            if (line[pos] == open_tag) {
+                size_t close_delim = std::u16string_view::npos;
                 size_t c1 = std::u16string_view::npos;
                 size_t c2 = std::u16string_view::npos;
                 for (size_t j = pos + 1; j < line.size(); ++j) {
                     if (line[j] == u',') {
                         if (c1 == std::u16string_view::npos) c1 = j;
                         else if (c2 == std::u16string_view::npos) c2 = j;
-                    } else if (line[j] == u'>') {
-                        close_angle = j;
+                    } else if (line[j] == close_tag) {
+                        close_delim = j;
                         break;
                     }
                 }
-                if (close_angle != std::u16string_view::npos && c1 != std::u16string_view::npos) {
-                    int32_t w_rel_ms = 0;
+                if (close_delim != std::u16string_view::npos && c1 != std::u16string_view::npos) {
+                    int32_t w_time_ms = 0;
                     int32_t w_dur_ms = 0;
-                    const size_t dur_end = (c2 != std::u16string_view::npos && c2 < close_angle) ? c2 : close_angle;
-                    if (TryParsePositiveInt(line.substr(pos + 1, c1 - (pos + 1)), w_rel_ms) &&
+                    const size_t dur_end = (c2 != std::u16string_view::npos && c2 < close_delim) ? c2 : close_delim;
+                    if (TryParsePositiveInt(line.substr(pos + 1, c1 - (pos + 1)), w_time_ms) &&
                         TryParsePositiveInt(line.substr(c1 + 1, dur_end - (c1 + 1)), w_dur_ms)) {
-                        size_t next_angle = close_angle + 1;
-                        while (next_angle < line.size() && line[next_angle] != u'<') ++next_angle;
-                        const std::u16string_view word_sv = line.substr(close_angle + 1, next_angle - (close_angle + 1));
+                        size_t next_open = close_delim + 1;
+                        while (next_open < line.size() && line[next_open] != open_tag) ++next_open;
+                        const std::u16string_view word_sv = line.substr(close_delim + 1, next_open - (close_delim + 1));
                         const int32_t word_offset = out_text_len;
                         for (size_t k = 0; k < word_sv.size(); ++k) {
                             if (out_text_len >= out_text_cap) return false;
                             out_text_buf[out_text_len++] = word_sv[k];
                         }
                         if (!word_sv.empty() && out_words && out_words_count < out_words_cap) {
-                            const int64_t ws_ms = static_cast<int64_t>(line_start_ms) + static_cast<int64_t>(w_rel_ms);
-                            const int64_t we_ms = ws_ms + static_cast<int64_t>(w_dur_ms > 0 ? w_dur_ms : 0);
-                            out_words[out_words_count++] = VnLyricWord{
-                                ws_ms * 10000LL,
-                                we_ms * 10000LL,
-                                word_offset,
-                                static_cast<int32_t>(word_sv.size())
-                            };
-                        }
-                        pos = next_angle;
-                        continue;
-                    }
-                }
-            }
-            if (out_text_len >= out_text_cap) return false;
-            out_text_buf[out_text_len++] = line[pos++];
-        }
-
-        int32_t trim_lead = 0;
-        while (trim_lead < out_text_len && vn_is_whitespace(out_text_buf[trim_lead])) ++trim_lead;
-        int32_t trim_end = out_text_len;
-        while (trim_end > trim_lead && vn_is_whitespace(out_text_buf[trim_end - 1])) --trim_end;
-        if (trim_end <= trim_lead) return false;
-
-        const int32_t final_len = trim_end - trim_lead;
-        if (trim_lead > 0) {
-            for (int32_t i = 0; i < final_len; ++i) {
-                out_text_buf[i] = out_text_buf[trim_lead + i];
-            }
-        }
-        out_text_len = final_len;
-
-        int32_t valid_words = 0;
-        for (int32_t i = 0; i < out_words_count; ++i) {
-            int32_t off = out_words[i].offset - trim_lead;
-            int32_t len = out_words[i].length;
-            if (off < 0) { len += off; off = 0; }
-            if (off + len > final_len) len = final_len - off;
-            if (len > 0 && off >= 0 && off + len <= final_len) {
-                out_words[valid_words] = out_words[i];
-                out_words[valid_words].offset = off;
-                out_words[valid_words].length = len;
-                ++valid_words;
-            }
-        }
-        out_words_count = valid_words;
-
-        if (IsCreditHeaderLine(std::u16string_view(out_text_buf, static_cast<size_t>(out_text_len)), out_line_ticks)) {
-            return false;
-        }
-        return true;
-    }
-
-    [[nodiscard]] static constexpr bool TryParseYrcLine(
-        std::u16string_view raw_line,
-        int64_t& out_line_ticks,
-        char16_t* out_text_buf,
-        int32_t out_text_cap,
-        int32_t& out_text_len,
-        VnLyricWord* out_words,
-        int32_t out_words_cap,
-        int32_t& out_words_count) noexcept {
-        out_line_ticks = 0;
-        out_text_len = 0;
-        out_words_count = 0;
-
-        const auto line = vn_trim(raw_line);
-        if (line.size() < 6 || line[0] != u'[') return false;
-
-        size_t close_bracket = std::u16string_view::npos;
-        size_t comma_pos = std::u16string_view::npos;
-        for (size_t i = 1; i < line.size(); ++i) {
-            if (comma_pos == std::u16string_view::npos && line[i] == u',') comma_pos = i;
-            if (line[i] == u']') { close_bracket = i; break; }
-        }
-        if (close_bracket == std::u16string_view::npos || comma_pos == std::u16string_view::npos || comma_pos >= close_bracket) {
-            return false;
-        }
-
-        int32_t line_start_ms = 0;
-        if (!TryParsePositiveInt(line.substr(1, comma_pos - 1), line_start_ms)) return false;
-        out_line_ticks = static_cast<int64_t>(line_start_ms) * 10000LL;
-
-        size_t pos = close_bracket + 1;
-        while (pos < line.size()) {
-            if (line[pos] == u'(') {
-                size_t close_paren = std::u16string_view::npos;
-                size_t c1 = std::u16string_view::npos;
-                size_t c2 = std::u16string_view::npos;
-                for (size_t j = pos + 1; j < line.size(); ++j) {
-                    if (line[j] == u',') {
-                        if (c1 == std::u16string_view::npos) c1 = j;
-                        else if (c2 == std::u16string_view::npos) c2 = j;
-                    } else if (line[j] == u')') {
-                        close_paren = j;
-                        break;
-                    }
-                }
-                if (close_paren != std::u16string_view::npos && c1 != std::u16string_view::npos) {
-                    int32_t w_start_ms = 0;
-                    int32_t w_dur_ms = 0;
-                    const size_t dur_end = (c2 != std::u16string_view::npos && c2 < close_paren) ? c2 : close_paren;
-                    if (TryParsePositiveInt(line.substr(pos + 1, c1 - (pos + 1)), w_start_ms) &&
-                        TryParsePositiveInt(line.substr(c1 + 1, dur_end - (c1 + 1)), w_dur_ms)) {
-                        size_t next_paren = close_paren + 1;
-                        while (next_paren < line.size() && line[next_paren] != u'(') ++next_paren;
-                        const std::u16string_view word_sv = line.substr(close_paren + 1, next_paren - (close_paren + 1));
-                        const int32_t word_offset = out_text_len;
-                        for (size_t k = 0; k < word_sv.size(); ++k) {
-                            if (out_text_len >= out_text_cap) return false;
-                            out_text_buf[out_text_len++] = word_sv[k];
-                        }
-                        if (!word_sv.empty() && out_words && out_words_count < out_words_cap) {
-                            const int64_t ws_ticks = static_cast<int64_t>(w_start_ms) * 10000LL;
-                            const int64_t we_ticks = static_cast<int64_t>(w_start_ms + (w_dur_ms > 0 ? w_dur_ms : 0)) * 10000LL;
+                            const int32_t clamped_dur_ms = w_dur_ms > 0 ? w_dur_ms : 0;
+                            int64_t ws_ticks = 0;
+                            int64_t we_ticks = 0;
+                            if (word_times_relative) {
+                                const int64_t ws_ms = static_cast<int64_t>(line_start_ms) + static_cast<int64_t>(w_time_ms);
+                                const int64_t we_ms = ws_ms + static_cast<int64_t>(clamped_dur_ms);
+                                ws_ticks = ws_ms * 10000LL;
+                                we_ticks = we_ms * 10000LL;
+                            } else {
+                                ws_ticks = static_cast<int64_t>(w_time_ms) * 10000LL;
+                                const int32_t end_ms_32 = static_cast<int32_t>(
+                                    static_cast<uint32_t>(w_time_ms) + static_cast<uint32_t>(clamped_dur_ms));
+                                const int64_t raw_we_ticks = static_cast<int64_t>(end_ms_32) * 10000LL;
+                                we_ticks = raw_we_ticks >= ws_ticks ? raw_we_ticks : ws_ticks;
+                            }
                             out_words[out_words_count++] = VnLyricWord{
                                 ws_ticks,
-                                we_ticks >= ws_ticks ? we_ticks : ws_ticks,
+                                we_ticks,
                                 word_offset,
                                 static_cast<int32_t>(word_sv.size())
                             };
                         }
-                        pos = next_paren;
+                        pos = next_open;
                         continue;
                     }
                 }
@@ -573,10 +476,37 @@ public:
         }
         out_words_count = valid_words;
 
-        if (IsCreditHeaderLine(std::u16string_view(out_text_buf, static_cast<size_t>(out_text_len)), out_line_ticks)) {
-            return false;
-        }
-        return true;
+        return !IsCreditHeaderLine(std::u16string_view(out_text_buf, static_cast<size_t>(out_text_len)), out_line_ticks);
+    }
+
+    [[nodiscard]] static constexpr bool TryParseKrcLine(
+        std::u16string_view raw_line,
+        int64_t& out_line_ticks,
+        char16_t* out_text_buf,
+        int32_t out_text_cap,
+        int32_t& out_text_len,
+        VnLyricWord* out_words,
+        int32_t out_words_cap,
+        int32_t& out_words_count) noexcept {
+        return TryParseTimedWordLine(
+            raw_line, u'<', u'>', true,
+            out_line_ticks, out_text_buf, out_text_cap, out_text_len,
+            out_words, out_words_cap, out_words_count);
+    }
+
+    [[nodiscard]] static constexpr bool TryParseYrcLine(
+        std::u16string_view raw_line,
+        int64_t& out_line_ticks,
+        char16_t* out_text_buf,
+        int32_t out_text_cap,
+        int32_t& out_text_len,
+        VnLyricWord* out_words,
+        int32_t out_words_cap,
+        int32_t& out_words_count) noexcept {
+        return TryParseTimedWordLine(
+            raw_line, u'(', u')', false,
+            out_line_ticks, out_text_buf, out_text_cap, out_text_len,
+            out_words, out_words_cap, out_words_count);
     }
 
     static constexpr int32_t StripTitleExtras(
@@ -680,7 +610,7 @@ public:
 
 extern "C" {
 
-VN_EXPORT int32_t vn_lyrics_try_parse_lrc_line(
+extern "C" int32_t vn_lyrics_try_parse_lrc_line(
     const char16_t* raw_line,
     int32_t raw_line_len,
     int64_t* out_ticks,

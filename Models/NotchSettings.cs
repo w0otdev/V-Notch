@@ -201,8 +201,12 @@ public partial class NotchSettings : IJsonOnDeserialized
     public string Language { get; set; } = "en";
 
     public string ExpandedWidget { get; set; } = "clock";
-    public string NavTabOrder { get; set; } = "Media,Secondary,Timer,AudioMixer,Camera";
-    public string VisibleNavTabs { get; set; } = "Media,Secondary,Timer,AudioMixer,Camera";
+    public bool EnableAiUsageMonitoring { get; set; } = false;
+    public bool TrackCodexUsage { get; set; } = true;
+    public bool TrackClaudeUsage { get; set; } = true;
+    public string CodexUsageExecutable { get; set; } = "";
+    public string NavTabOrder { get; set; } = "Media,Secondary,Timer,AudioMixer,Camera,AiUsage";
+    public string VisibleNavTabs { get; set; } = "Media,Secondary,Timer,AudioMixer,Camera,AiUsage";
     public string ClockPageStyle { get; set; } = "analog";
 
     public string ProcessPriority { get; set; } = "Normal";

@@ -53,7 +53,8 @@ public partial class MainWindow
         if (activeTabs.Count <= 1) return;
 
         NotchView currentView = NotchView.Media;
-        if (_isCameraView) currentView = NotchView.Camera;
+        if (_isAiUsageView) currentView = NotchView.AiUsage;
+        else if (_isCameraView) currentView = NotchView.Camera;
         else if (_isAudioView)
         {
             currentView = NotchView.AudioMixer;
@@ -118,7 +119,7 @@ public partial class MainWindow
     private void HomeIconButton_Click(object sender, MouseButtonEventArgs e)
     {
         e.Handled = true;
-        if (_isCameraView && !_isAnimating) { SwitchToPrimaryView(); return; }
+        if ((_isCameraView || _isAiUsageView) && !_isAnimating) { SwitchToPrimaryView(); return; }
         if (_isAudioView && !_isAnimating)
         {
             SwitchFromAudioToPrimaryView();
@@ -140,6 +141,20 @@ public partial class MainWindow
         if (!_isSecondaryView && !_isAnimating)
         {
             SwitchToSecondaryView();
+        }
+    }
+
+    private void AiUsageIconButton_Click(object sender, MouseButtonEventArgs e)
+    {
+        e.Handled = true;
+        SwitchToAiUsageView();
+    }
+
+    internal void SwitchToAiUsageView()
+    {
+        if (!_isAiUsageView && !_isAnimating)
+        {
+            _transitionCoordinator.RequestView(NotchView.AiUsage, "SwitchToAiUsageView");
         }
     }
 
@@ -191,7 +206,8 @@ public partial class MainWindow
 
 
         NotchView fallbackView = NotchView.Media;
-        if (_isCameraView) fallbackView = NotchView.Camera;
+        if (_isAiUsageView) fallbackView = NotchView.AiUsage;
+        else if (_isCameraView) fallbackView = NotchView.Camera;
         else if (_isAudioView) fallbackView = NotchView.AudioMixer;
         else if (_isTimerView) fallbackView = NotchView.Timer;
         else if (_isSecondaryView) fallbackView = NotchView.Secondary;
@@ -201,6 +217,7 @@ public partial class MainWindow
         double timerTarget = target == NotchView.Timer ? 1 : 0.45;
         double audioTarget = target == NotchView.AudioMixer ? 1 : 0.45;
         if (_navDragItem != CameraIconButton) AnimateNavIconOpacity(CameraIconButton, target == NotchView.Camera ? 1 : 0.45, animate);
+        if (_navDragItem != AiUsageIconButton) AnimateNavIconOpacity(AiUsageIconButton, target == NotchView.AiUsage ? 1 : 0.45, animate);
 
         // Only update opacity on items not currently being dragged by the user
         if (_navDragItem != HomeIconButton) AnimateNavIconOpacity(HomeIconButton, homeTarget, animate);

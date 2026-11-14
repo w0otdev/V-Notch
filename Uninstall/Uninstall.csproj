@@ -15,9 +15,14 @@
     <RuntimeIdentifier>win-x64</RuntimeIdentifier>
     <PublishSingleFile>true</PublishSingleFile>
     <IncludeNativeLibrariesForSelfExtract>false</IncludeNativeLibrariesForSelfExtract>
+    <PublishTrimmed Condition="'$(SelfContained)' == 'true'">true</PublishTrimmed>
     <EnableCompressionInSingleFile Condition="'$(Configuration)' == 'Release' And '$(SelfContained)' == 'true'">true</EnableCompressionInSingleFile>
     <PublishReferencesDocumentationFiles>false</PublishReferencesDocumentationFiles>
-    <SelfContained>false</SelfContained>
+    <SelfContained Condition="'$(SelfContained)' == ''">false</SelfContained>
+    <DebugType Condition="'$(Configuration)' == 'Release'">none</DebugType>
+    <DebugType Condition="'$(Configuration)' != 'Release'">portable</DebugType>
+    <DebugSymbols Condition="'$(Configuration)' == 'Release'">false</DebugSymbols>
+    <DebugSymbols Condition="'$(Configuration)' != 'Release'">true</DebugSymbols>
 
     <Authors>w0otdev, viper1aa</Authors>
     <Company>V-Notch</Company>
@@ -33,7 +38,240 @@
     <Compile Include="..\Services\SafeFileDeletion.cs" Link="Services\SafeFileDeletion.cs" />
     <Compile Include="..\Services\AppProcessShutdown.cs" Link="Services\AppProcessShutdown.cs" />
     <Compile Include="..\Services\SetupDialogs.cs" Link="Services\SetupDialogs.cs" />
-    <EmbeddedResource Include="..\Locales\*.json" LogicalName="VNotch.Locales.%(Filename)%(Extension)" />
+    <Compile Include="..\Services\AppPaths.cs" Link="Services\AppPaths.cs" />
+    <Compile Include="..\Services\AiUsage\AiUsageFiles.cs" Link="Services\AiUsage\AiUsageFiles.cs" />
+    <Compile Include="..\Services\AiUsage\ClaudeUsageBridge.cs" Link="Services\AiUsage\ClaudeUsageBridge.cs" />
   </ItemGroup>
+
+  <UsingTask TaskName="FilterUninstallLocaleJsonTask" TaskFactory="RoslynCodeTaskFactory" AssemblyFile="$(MSBuildToolsPath)\Microsoft.Build.Tasks.Core.dll">
+    <ParameterGroup>
+      <SourceFiles ParameterType="Microsoft.Build.Framework.ITaskItem[]" Required="true" />
+      <LocaleFiles ParameterType="Microsoft.Build.Framework.ITaskItem[]" Required="true" />
+      <OutputDirectory ParameterType="System.String" Required="true" />
+      <FilteredFiles ParameterType="Microsoft.Build.Framework.ITaskItem[]" Output="true" />
+    </ParameterGroup>
+    <Task>
+      <Code Type="Class" Language="cs"><![CDATA[
+using System;
+using System.Collections.Generic;
+using System.IO;
+using System.Text;
+using Microsoft.Build.Framework;
+using Microsoft.Build.Utilities;
+
+public sealed class FilterUninstallLocaleJsonTask : Task
+{
+    [Required] public ITaskItem[] SourceFiles { get; set; }
+    [Required] public ITaskItem[] LocaleFiles { get; set; }
+    [Required] public string OutputDirectory { get; set; }
+    [Output] public ITaskItem[] FilteredFiles { get; set; }
+
+    public override bool Execute()
+    {
+        var allowedKeys = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var srcItem in SourceFiles)
+        {
+            string fullPath = srcItem.GetMetadata("FullPath");
+            if (!File.Exists(fullPath)) continue;
+            string content = File.ReadAllText(fullPath, Encoding.UTF8);
+            int pos = 0;
+            while ((pos = content.IndexOf("Loc.Get(", pos, StringComparison.Ordinal)) >= 0)
+            {
+                pos += 8;
+                while (pos < content.Length && char.IsWhiteSpace(content[pos])) pos++;
+                if (pos < content.Length && content[pos] == '"')
+                {
+                    string key;
+                    ReadStringRaw(content, ref pos, out key);
+                    if (key.Length > 0) allowedKeys.Add(key);
+                }
+            }
+        }
+
+        if (allowedKeys.Count == 0)
+        {
+            Log.LogError("FilterUninstallLocaleJsonTask found zero Loc.Get(...) keys across compiled source files.");
+            return false;
+        }
+
+        Directory.CreateDirectory(OutputDirectory);
+        var utf8NoBom = new UTF8Encoding(false);
+        var results = new List<ITaskItem>(LocaleFiles.Length);
+
+        foreach (var localeItem in LocaleFiles)
+        {
+            string srcPath = localeItem.GetMetadata("FullPath");
+            string fileName = Path.GetFileName(srcPath);
+            string filtered = FilterJsonObject(File.ReadAllText(srcPath, Encoding.UTF8), allowedKeys);
+            string destPath = Path.Combine(OutputDirectory, fileName);
+            if (!File.Exists(destPath) || !string.Equals(File.ReadAllText(destPath, Encoding.UTF8), filtered, StringComparison.Ordinal))
+            {
+                File.WriteAllText(destPath, filtered, utf8NoBom);
+            }
+
+            var outItem = new TaskItem(destPath);
+            outItem.SetMetadata("LogicalName", "VNotch.Locales." + fileName);
+            results.Add(outItem);
+        }
+
+        FilteredFiles = results.ToArray();
+        return true;
+    }
+
+    private static string FilterJsonObject(string s, HashSet<string> allowedKeys)
+    {
+        int i = 0;
+        SkipWs(s, ref i);
+        if (i >= s.Length || s[i] != '{') throw new InvalidDataException("Expected JSON root object.");
+        i++;
+        var outSb = new StringBuilder(2048);
+        outSb.Append('{');
+        bool firstProp = true;
+        while (true)
+        {
+            SkipWs(s, ref i);
+            if (i >= s.Length) throw new InvalidDataException("Unterminated JSON root object.");
+            if (s[i] == '}')
+            {
+                i++;
+                break;
+            }
+            string key;
+            string rawKey = ReadStringRaw(s, ref i, out key);
+            SkipWs(s, ref i);
+            if (i >= s.Length || s[i] != ':') throw new InvalidDataException("Expected ':' after property name.");
+            i++;
+            string rawVal = ReadValueMinified(s, ref i);
+            if (key.StartsWith("_", StringComparison.Ordinal) || allowedKeys.Contains(key))
+            {
+                if (!firstProp) outSb.Append(',');
+                firstProp = false;
+                outSb.Append(rawKey).Append(':').Append(rawVal);
+            }
+            SkipWs(s, ref i);
+            if (i < s.Length && s[i] == ',') i++;
+        }
+        outSb.Append('}');
+        return outSb.ToString();
+    }
+
+    private static void SkipWs(string s, ref int i)
+    {
+        while (i < s.Length)
+        {
+            char c = s[i];
+            if (c == ' ' || c == '\t' || c == '\r' || c == '\n' || c == '\uFEFF') i++;
+            else break;
+        }
+    }
+
+    private static string ReadStringRaw(string s, ref int i, out string unescaped)
+    {
+        int start = i;
+        if (i >= s.Length || s[i] != '"') throw new InvalidDataException("Expected JSON string.");
+        i++;
+        var sb = new StringBuilder();
+        while (i < s.Length)
+        {
+            char c = s[i++];
+            if (c == '"')
+            {
+                unescaped = sb.ToString();
+                return s.Substring(start, i - start);
+            }
+            if (c == '\\')
+            {
+                if (i >= s.Length) throw new InvalidDataException("Unterminated string escape.");
+                char esc = s[i++];
+                switch (esc)
+                {
+                    case '"': sb.Append('"'); break;
+                    case '\\': sb.Append('\\'); break;
+                    case '/': sb.Append('/'); break;
+                    case 'b': sb.Append('\b'); break;
+                    case 'f': sb.Append('\f'); break;
+                    case 'n': sb.Append('\n'); break;
+                    case 'r': sb.Append('\r'); break;
+                    case 't': sb.Append('\t'); break;
+                    case 'u':
+                        if (i + 4 > s.Length) throw new InvalidDataException("Invalid unicode escape.");
+                        sb.Append((char)Convert.ToInt32(s.Substring(i, 4), 16));
+                        i += 4;
+                        break;
+                    default: sb.Append(esc); break;
+                }
+            }
+            else
+            {
+                sb.Append(c);
+            }
+        }
+        throw new InvalidDataException("Unterminated JSON string.");
+    }
+
+    private static string ReadValueMinified(string s, ref int i)
+    {
+        SkipWs(s, ref i);
+        if (i >= s.Length) throw new InvalidDataException("Unexpected end of JSON value.");
+        char first = s[i];
+        if (first == '"')
+        {
+            string unused;
+            return ReadStringRaw(s, ref i, out unused);
+        }
+        if (first == '{' || first == '[')
+        {
+            var sb = new StringBuilder();
+            int depth = 0;
+            bool inStr = false;
+            while (i < s.Length)
+            {
+                char c = s[i++];
+                if (inStr)
+                {
+                    sb.Append(c);
+                    if (c == '\\' && i < s.Length) sb.Append(s[i++]);
+                    else if (c == '"') inStr = false;
+                }
+                else
+                {
+                    if (c == ' ' || c == '\t' || c == '\r' || c == '\n') continue;
+                    sb.Append(c);
+                    if (c == '"') inStr = true;
+                    else if (c == '{' || c == '[') depth++;
+                    else if (c == '}' || c == ']')
+                    {
+                        depth--;
+                        if (depth == 0) return sb.ToString();
+                    }
+                }
+            }
+            throw new InvalidDataException("Unterminated JSON container.");
+        }
+        int valStart = i;
+        while (i < s.Length)
+        {
+            char c = s[i];
+            if (c == ',' || c == '}' || c == ']' || c == ' ' || c == '\t' || c == '\r' || c == '\n') break;
+            i++;
+        }
+        return s.Substring(valStart, i - valStart);
+    }
+}
+      ]]></Code>
+    </Task>
+  </UsingTask>
+
+  <Target Name="FilterUninstallLocalesForEmbed" BeforeTargets="AssignTargetPaths;PrepareResourceNames;PrepareResources" Condition="'$(DesignTimeBuild)' != 'true'">
+    <ItemGroup>
+      <_RawUninstallLocales Include="$(MSBuildThisFileDirectory)..\Locales\*.json" />
+    </ItemGroup>
+    <FilterUninstallLocaleJsonTask SourceFiles="@(Compile)" LocaleFiles="@(_RawUninstallLocales)" OutputDirectory="$([MSBuild]::NormalizeDirectory('$(MSBuildProjectDirectory)', '$(IntermediateOutputPath)', 'Locales-uninstall'))">
+      <Output TaskParameter="FilteredFiles" ItemName="_FilteredUninstallLocales" />
+    </FilterUninstallLocaleJsonTask>
+    <ItemGroup>
+      <EmbeddedResource Include="@(_FilteredUninstallLocales)" />
+    </ItemGroup>
+  </Target>
 
 </Project>

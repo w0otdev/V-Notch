@@ -3,7 +3,7 @@
 
 VN_EXPORT int32_t vn_platform_extract_title_from_window(const char16_t*, int32_t, const char16_t*, int32_t, char16_t*, int32_t, int32_t*) noexcept;
 VN_EXPORT int32_t vn_platform_parse_soundcloud_title(const char16_t*, int32_t, char16_t*, int32_t, int32_t*, char16_t*, int32_t, int32_t*) noexcept;
-VN_EXPORT int32_t vn_media_detection_parse_youtube_window_title(const char16_t*, int32_t, char16_t*, int32_t, int32_t*, char16_t*, int32_t, int32_t*) noexcept;
+extern "C" int32_t __stdcall vn_media_detection_parse_youtube_window_title(const char16_t*, int32_t, char16_t*, int32_t, int32_t*, char16_t*, int32_t, int32_t*) noexcept;
 
 namespace {
 struct Match {

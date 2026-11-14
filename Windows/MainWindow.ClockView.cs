@@ -32,6 +32,7 @@ public partial class MainWindow : IClockWidgetHost
             DigitalClockWidget = DigitalClockWidget,
             WeatherWidgetContent = WeatherWidgetView,
             SystemMonitorWidgetContent = SystemMonitorWidgetContent,
+            AiUsageWidgetContent = AiUsageWidgetView,
             CalendarStripContainer = CalendarStripContainer,
             MonthText = MonthText,
             DayText = DayText,
@@ -120,11 +121,17 @@ public partial class MainWindow : IClockWidgetHost
     Brush IClockWidgetHost.WhiteBrush => VNotch.Services.UiPalette.PrimaryBrush;
 
     void IClockWidgetHost.SwitchToTimerView() => SwitchToTimerView();
+    void IClockWidgetHost.SwitchToAiUsageView() => SwitchToAiUsageView();
     void IClockWidgetHost.CollapseNotch() => CollapseNotch();
     void IClockWidgetHost.OpenWeatherSettings()
     {
         OpenAppSettings();
         _activeSettingsWindow?.NavigateToSection(!_settings.EnableWeather ? "System" : "Privacy");
+    }
+    void IClockWidgetHost.OpenAiUsageSettings()
+    {
+        OpenAppSettings();
+        _activeSettingsWindow?.NavigateToAiUsage();
     }
 
     IntPtr IClockWidgetHost.Hwnd => _hwnd;

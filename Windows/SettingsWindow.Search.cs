@@ -664,11 +664,11 @@ public partial class SettingsWindow
             {
                 if (rc == 0)
                 {
-                    NormalizedTitleText = span.TitleLen > 0 ? new string(arenaBuf.Slice(span.TitleOffset, span.TitleLen)) : string.Empty;
-                    NormalizedSearchText = span.ContentLen > 0 ? new string(arenaBuf.Slice(span.ContentOffset, span.ContentLen)) : string.Empty;
-                    NormalizedCombinedText = span.CombinedLen > 0 ? new string(arenaBuf.Slice(span.CombinedOffset, span.CombinedLen)) : string.Empty;
+                    NormalizedTitleText = ReuseOrAllocate(NormalizedTitleText, arenaBuf, span.TitleOffset, span.TitleLen);
+                    NormalizedSearchText = ReuseOrAllocate(NormalizedSearchText, arenaBuf, span.ContentOffset, span.ContentLen);
+                    NormalizedCombinedText = ReuseOrAllocate(NormalizedCombinedText, arenaBuf, span.CombinedOffset, span.CombinedLen);
                     int sectionLen = Math.Max(0, span.CombinedLen - span.ContentLen - 1);
-                    NormalizedSectionText = sectionLen > 0 ? new string(arenaBuf.Slice(span.CombinedOffset, sectionLen)) : string.Empty;
+                    NormalizedSectionText = ReuseOrAllocate(NormalizedSectionText, arenaBuf, span.CombinedOffset, sectionLen);
                 }
             }
             finally
@@ -678,6 +678,14 @@ public partial class SettingsWindow
                     ArrayPool<char>.Shared.Return(rented);
                 }
             }
+        }
+
+        // Repeated queries keep the same strings so unchanged rows stay stable.
+        private static string ReuseOrAllocate(string? existing, ReadOnlySpan<char> arena, int offset, int length)
+        {
+            if (length <= 0) return string.Empty;
+            var text = arena.Slice(offset, length);
+            return existing != null && text.SequenceEqual(existing.AsSpan()) ? existing : new string(text);
         }
     }
 

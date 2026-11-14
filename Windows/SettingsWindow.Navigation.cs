@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
@@ -62,6 +62,7 @@ public partial class SettingsWindow
         _navPanels[NavSectionSystem] = PanelSystem;
         _navPanels[NavSectionPrivacy] = PanelPrivacy;
         _navPanels[NavSectionSpotlight] = PanelSpotlight;
+        _navPanels[NavSectionAiUsage] = PanelAiUsage;
         _navPanels["Translation"] = PanelTranslation;
         _navPanels[NavSectionFileTray] = PanelFileTray;
         _navPanels[NavSectionAdvanced] = PanelAdvanced;
@@ -77,6 +78,7 @@ public partial class SettingsWindow
         _navButtons[NavSectionSystem] = NavSystem;
         _navButtons[NavSectionPrivacy] = NavPrivacy;
         _navButtons[NavSectionSpotlight] = NavSpotlight;
+        _navButtons[NavSectionAiUsage] = NavAiUsage;
         _navButtons["Translation"] = NavTranslation;
         _navButtons[NavSectionFileTray] = NavFileTray;
         _navButtons[NavSectionAdvanced] = NavAdvanced;
@@ -223,7 +225,7 @@ public partial class SettingsWindow
     private static readonly string[] _navOrder =
     {
         NavSectionSearching, NavSectionAppearance, NavSectionSkins, NavSectionBehavior, NavSectionDevices,
-        NavSectionSystem, NavSectionPrivacy, NavSectionSpotlight, "Translation", NavSectionFileTray, NavSectionAdvanced, NavSectionPerformance, NavSectionDonating, NavSectionUpdates
+        NavSectionSystem, NavSectionPrivacy, NavSectionSpotlight, NavSectionAiUsage, "Translation", NavSectionFileTray, NavSectionAdvanced, NavSectionPerformance, NavSectionDonating, NavSectionUpdates
     };
 
     private int _navTransitionVersion;
@@ -337,6 +339,7 @@ public partial class SettingsWindow
             NavSectionSystem => SystemCard,
             NavSectionPrivacy => PrivacyCard,
             NavSectionSpotlight => SpotlightCard,
+            NavSectionAiUsage => AiUsageCard,
             "Translation" => TranslationCard,
             NavSectionFileTray => FileTrayCard,
             NavSectionAdvanced => AdvancedCard,
@@ -356,6 +359,7 @@ public partial class SettingsWindow
             NavSectionSystem => SystemCardTranslate,
             NavSectionPrivacy => PrivacyCardTranslate,
             NavSectionSpotlight => SpotlightCardTranslate,
+            NavSectionAiUsage => AiUsageCardTranslate,
             "Translation" => TranslationCardTranslate,
             NavSectionFileTray => FileTrayCardTranslate,
             NavSectionAdvanced => AdvancedCardTranslate,
@@ -417,6 +421,7 @@ public partial class SettingsWindow
                 BackupCard.BeginAnimation(OpacityProperty, tabFade);
                 BackupCardTranslate.BeginAnimation(TranslateTransform.YProperty, tabSlide);
             }
+            RevealSettingsRows(card, section == NavSectionSystem ? BackupCard : null);
             return;
         }
 
@@ -491,6 +496,22 @@ public partial class SettingsWindow
         return targets;
     }
 
+    // Page changes and newly opened settings groups share the window's label cascade.
+    private void RevealSettingsRows(FrameworkElement content, FrameworkElement? additionalContent = null)
+    {
+        if (!IsLoaded || !content.IsVisible) return;
+        if (!SystemParameters.ClientAreaAnimation || AnimationConfig.ReduceMotion)
+        {
+            ResetProgressiveBlurElements(isMenuList: false);
+            return;
+        }
+        var targets = content is Panel ? new List<UIElement>() : CollectPanelProgressiveBlurTargets(content);
+        if (content is Panel children) CollectPanelChildrenRecursive(children, targets, 24);
+        if (additionalContent?.IsVisible == true)
+            targets.AddRange(CollectPanelProgressiveBlurTargets(additionalContent));
+        ApplyProgressiveBlurCascade(targets, 0, -1, isMenuList: false, Math.Min(60, AnimationConfig.TargetFps));
+    }
+
     private static void CollectPanelChildrenRecursive(Panel panel, List<UIElement> targets, int maxCount)
     {
         int count = panel.Children.Count;
@@ -498,6 +519,13 @@ public partial class SettingsWindow
         {
             if (panel.Children[i] is not UIElement child || child.Visibility != Visibility.Visible)
             {
+                continue;
+            }
+
+            // Keep connectors and their rows in the same coordinate system during motion.
+            if (child is SettingsTreePanel tree)
+            {
+                AddOrResetCascadeTarget(tree, targets, maxCount);
                 continue;
             }
 

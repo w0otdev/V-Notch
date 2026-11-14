@@ -41,30 +41,27 @@ namespace
             _mm256_add_epi16(_mm256_add_epi16(t, _mm256_set1_epi16(1)), _mm256_srli_epi16(t, 8)), 8);
         return _mm256_blend_epi16(q, channels, 0x88);
     }
-}
-
-namespace vnotch::kernels::avx2
-{
-    int32_t WebcamRgbInPlaceBulk(uint8_t* pixels, int32_t length, uint8_t is_rgba, int32_t alpha_mode) noexcept
+    template <bool SwapRb, int AlphaMode>
+    __forceinline int32_t RunRgbInPlaceLoop(uint8_t* pixels, int32_t length) noexcept
     {
         int32_t i = 0;
-        const __m256i swap_rb = _mm256_setr_epi8(
+        [[maybe_unused]] const __m256i swap_rb = _mm256_setr_epi8(
             2, 1, 0, 3, 6, 5, 4, 7, 10, 9, 8, 11, 14, 13, 12, 15,
             2, 1, 0, 3, 6, 5, 4, 7, 10, 9, 8, 11, 14, 13, 12, 15);
-        const __m256i opaque_alpha = _mm256_set1_epi32(static_cast<int32_t>(0xFF000000u));
-        const __m256i zero = _mm256_setzero_si256();
-        for (; i + 32 <= length; i += 32)
+        [[maybe_unused]] const __m256i opaque_alpha = _mm256_set1_epi32(static_cast<int32_t>(0xFF000000u));
+        [[maybe_unused]] const __m256i zero = _mm256_setzero_si256();
+        for (; i <= length - 32; i += 32)
         {
             __m256i block = _mm256_loadu_si256(reinterpret_cast<const __m256i*>(pixels + i));
-            if (is_rgba != 0)
+            if constexpr (SwapRb)
             {
                 block = _mm256_shuffle_epi8(block, swap_rb);
             }
-            if (alpha_mode == 2)
+            if constexpr (AlphaMode == 2)
             {
                 block = _mm256_or_si256(block, opaque_alpha);
             }
-            else if (alpha_mode == 1)
+            else if constexpr (AlphaMode == 1)
             {
                 const __m256i lo = Premultiply16(_mm256_unpacklo_epi8(block, zero));
                 const __m256i hi = Premultiply16(_mm256_unpackhi_epi8(block, zero));
@@ -73,6 +70,23 @@ namespace vnotch::kernels::avx2
             _mm256_storeu_si256(reinterpret_cast<__m256i*>(pixels + i), block);
         }
         return i;
+    }
+}
+
+namespace vnotch::kernels::avx2
+{
+    int32_t WebcamRgbInPlaceBulk(uint8_t* pixels, int32_t length, uint8_t is_rgba, int32_t alpha_mode) noexcept
+    {
+        if (length < 32) return 0;
+        if (is_rgba != 0)
+        {
+            if (alpha_mode == 2) return RunRgbInPlaceLoop<true, 2>(pixels, length);
+            if (alpha_mode == 1) return RunRgbInPlaceLoop<true, 1>(pixels, length);
+            return RunRgbInPlaceLoop<true, 0>(pixels, length);
+        }
+        if (alpha_mode == 2) return RunRgbInPlaceLoop<false, 2>(pixels, length);
+        if (alpha_mode == 1) return RunRgbInPlaceLoop<false, 1>(pixels, length);
+        return length & ~31;
     }
 
     int32_t WebcamGray8Bulk(const uint8_t* src, int32_t pixel_count, uint8_t* dst) noexcept

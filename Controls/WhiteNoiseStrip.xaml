@@ -7,7 +7,20 @@
         <fonts:AppFont x:Key="WhiteNoiseFont" Fallbacks="Nirmala UI, Segoe UI" />
     </UserControl.Resources>
     <StackPanel>
-        <UniformGrid x:Name="ChipHost" Rows="1"/>
+        <Grid x:Name="ChipTrack">
+            <Border x:Name="ChipSelection" Width="1" Height="26" HorizontalAlignment="Left" VerticalAlignment="Center"
+                    CornerRadius="13" Background="{DynamicResource AccentBrush}" BorderThickness="0"
+                    RenderTransformOrigin="0,0.5" IsHitTestVisible="False" Opacity="0">
+                <Border.RenderTransform>
+                    <TransformGroup>
+                        <ScaleTransform x:Name="ChipSelectionScale" ScaleX="1" ScaleY="1"/>
+                        <TranslateTransform x:Name="ChipSelectionOffset"/>
+                    </TransformGroup>
+                </Border.RenderTransform>
+                <Border x:Name="ChipSelectionPulse" CornerRadius="13" Background="#22FFFFFF" BorderThickness="0" Opacity="0" IsHitTestVisible="False"/>
+            </Border>
+            <UniformGrid x:Name="ChipHost" Rows="1" LayoutUpdated="ChipHost_LayoutUpdated"/>
+        </Grid>
         <Grid x:Name="ControlRow" Height="26" Margin="2,8,2,0">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="Auto"/>

@@ -280,28 +280,6 @@ VN_EXPORT int32_t vn_artwork_frame_detect_white(
     } catch (...) { return VN_ERR_FAIL; }
 }
 
-VN_EXPORT int32_t vn_artwork_frame_detect_dark_textured(
-    const uint8_t* pixels,
-    int32_t w,
-    int32_t h,
-    int32_t width,
-    int32_t height,
-    int32_t* out_x,
-    int32_t* out_y,
-    int32_t* out_w,
-    int32_t* out_h,
-    uint8_t* out_found) noexcept
-{
-    if (!pixels || w < 8 || h < 8 || w > 16384 || h > 16384 || width <= 0 || height <= 0 || !out_x || !out_y || !out_w || !out_h || !out_found)
-        return VN_ERR_INVALID_ARG;
-    *out_x = *out_y = *out_w = *out_h = 0;
-    try {
-        *out_found = vnotch::services::ArtworkFrameDetector::DetectDarkTexturedFrameCore(
-            pixels, w, h, width, height, *out_x, *out_y, *out_w, *out_h) ? 1u : 0u;
-        return VN_OK;
-    } catch (...) { return VN_ERR_FAIL; }
-}
-
 VN_EXPORT int32_t vn_artwork_frame_detect_any(
     const uint8_t* pixels,
     int32_t w,

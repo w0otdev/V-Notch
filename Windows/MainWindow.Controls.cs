@@ -187,7 +187,7 @@ public partial class MainWindow
     {
         if (sender is Border button && button.RenderTransform is ScaleTransform transform)
         {
-            button.CacheMode ??= new System.Windows.Media.BitmapCache(1.5);
+            button.CacheMode = null;
 
             var animX = new DoubleAnimation(transform.ScaleX, 1.18, _dur150) { EasingFunction = _easeQuadOut };
             var animY = new DoubleAnimation(transform.ScaleY, 1.18, _dur150) { EasingFunction = _easeQuadOut };
@@ -329,7 +329,6 @@ public partial class MainWindow
     private Color _volumeHudMediaColor = Colors.White;
     private bool _hasVolumeHudMediaTint;
     private int _lastVolumeHudActiveTicks = -1;
-    private BlurEffect? _volumeIndicatorTransitionBlur;
     private int _volumeIndicatorTransitionVersion;
 
     [StructLayout(LayoutKind.Sequential, Pack = 1)]
@@ -415,11 +414,6 @@ public partial class MainWindow
     private void ClearVolumeIndicatorTransitionEffects()
     {
         if (VolumeIndicatorContainer == null) return;
-        if (_volumeIndicatorTransitionBlur != null)
-        {
-            _volumeIndicatorTransitionBlur.BeginAnimation(BlurEffect.RadiusProperty, null);
-            _volumeIndicatorTransitionBlur.Radius = 0;
-        }
         VolumeIndicatorContainer.Effect = null;
         VolumeIndicatorContainer.CacheMode = null;
     }
@@ -972,26 +966,7 @@ public partial class MainWindow
                     var slideInY = MakeAnim(trans.HudFromTranslateY, trans.HudToTranslateY, morphDur, _easeExpOut6);
                     VolumeIndicatorContentTranslate.BeginAnimation(TranslateTransform.YProperty, slideInY);
                 }
-                if (enableBlur && trans.HudFromBlur > 0.1)
-                {
-                    _volumeIndicatorTransitionBlur ??= new BlurEffect { RenderingBias = RenderingBias.Performance };
-                    _volumeIndicatorTransitionBlur.BeginAnimation(BlurEffect.RadiusProperty, null);
-                    _volumeIndicatorTransitionBlur.Radius = trans.HudFromBlur;
-                    VolumeIndicatorContainer.Effect = _volumeIndicatorTransitionBlur;
-                    var blurIn = MakeAnim(trans.HudFromBlur, 0.0, _dur250, _easeExpOut6, VNotch.Services.AnimationConfig.TargetFps);
-                    blurIn.Completed += (_, _) =>
-                    {
-                        if (transitionVersion == _volumeIndicatorTransitionVersion)
-                        {
-                            ClearVolumeIndicatorTransitionEffects();
-                        }
-                    };
-                    _volumeIndicatorTransitionBlur.BeginAnimation(BlurEffect.RadiusProperty, blurIn);
-                }
-                else
-                {
-                    ClearVolumeIndicatorTransitionEffects();
-                }
+                ClearVolumeIndicatorTransitionEffects();
 
                 EnsureVolumeIndicatorTicks();
                 if (_volumeHudTickScales != null)
@@ -1115,15 +1090,7 @@ public partial class MainWindow
                 var outTy = MakeAnim(trans.HudFromTranslateY, trans.HudToTranslateY, fadeDur, _easeQuadOut);
                 VolumeIndicatorContentTranslate.BeginAnimation(TranslateTransform.YProperty, outTy);
             }
-            if (enableBlur && trans.HudToBlur > 0.1)
-            {
-                _volumeIndicatorTransitionBlur ??= new BlurEffect { RenderingBias = RenderingBias.Performance };
-                _volumeIndicatorTransitionBlur.BeginAnimation(BlurEffect.RadiusProperty, null);
-                _volumeIndicatorTransitionBlur.Radius = 0.0;
-                VolumeIndicatorContainer.Effect = _volumeIndicatorTransitionBlur;
-                var blurOut = MakeAnim(0.0, trans.HudToBlur, fadeDur, _easeQuadOut, VNotch.Services.AnimationConfig.TargetFps);
-                _volumeIndicatorTransitionBlur.BeginAnimation(BlurEffect.RadiusProperty, blurOut);
-            }
+            VolumeIndicatorContainer.Effect = null;
         }
 
         VolumeIndicatorContainer.BeginAnimation(OpacityProperty, null);
@@ -1234,15 +1201,7 @@ public partial class MainWindow
                         VolumeIndicatorContentScale.BeginAnimation(ScaleTransform.ScaleXProperty, outSx);
                         VolumeIndicatorContentScale.BeginAnimation(ScaleTransform.ScaleYProperty, outSy);
                     }
-                    if (_settings.EnableBlurEffects)
-                    {
-                        _volumeIndicatorTransitionBlur ??= new BlurEffect { RenderingBias = RenderingBias.Performance };
-                        _volumeIndicatorTransitionBlur.BeginAnimation(BlurEffect.RadiusProperty, null);
-                        _volumeIndicatorTransitionBlur.Radius = 0.0;
-                        VolumeIndicatorContainer.Effect = _volumeIndicatorTransitionBlur;
-                        var blurOut = MakeAnim(0.0, 8.0, _dur200, _easeQuadOut, VNotch.Services.AnimationConfig.TargetFps);
-                        _volumeIndicatorTransitionBlur.BeginAnimation(BlurEffect.RadiusProperty, blurOut);
-                    }
+                    VolumeIndicatorContainer.Effect = null;
                 }
                 var fadeOut = MakeAnim(liveOpacity, 0.0, _dur250, _easeQuadOut);
                 fadeOut.Completed += (_, _) =>

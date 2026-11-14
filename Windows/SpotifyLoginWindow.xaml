@@ -13,7 +13,7 @@
         AllowsTransparency="True"
         Background="Transparent"
         Closed="Window_Closed"
-        FontFamily="{fonts:AppFont Fallbacks='Nirmala UI, Segoe UI'}">
+        FontFamily="{fonts:AppFont Fallbacks='Nirmala UI, Segoe UI'}" TextOptions.TextFormattingMode="Ideal" TextOptions.TextRenderingMode="Grayscale" TextOptions.TextHintingMode="Animated">
     <Window.Resources>
         <fonts:AppFont x:Key="SettingsFont" Fallbacks="Nirmala UI, Segoe UI" />
         <SolidColorBrush x:Key="PanelBg" Color="#F4020202"/>
@@ -37,7 +37,7 @@
             <Setter Property="FontWeight" Value="Bold"/>
             <Setter Property="FontFamily" Value="{StaticResource SettingsFont}"/>
             <Setter Property="TextOptions.TextFormattingMode" Value="Ideal"/>
-            <Setter Property="TextOptions.TextRenderingMode" Value="ClearType"/>
+            <Setter Property="TextOptions.TextRenderingMode" Value="Grayscale"/>
             <Setter Property="TextOptions.TextHintingMode" Value="Animated"/>
         </Style>
 

@@ -12,7 +12,6 @@
 
 namespace vnotch::services::sysinterop {
 
-constexpr int32_t kErrNotPackaged = -5;
 constexpr size_t kStackPathChars = 1024;
 constexpr size_t kMaxPathChars = 32768;
 
@@ -174,27 +173,6 @@ VN_EXPORT int32_t __stdcall vn_process_image_path_equals(
     return VN_OK;
 }
 
-// Package family name of the process. VN_ERR_FAIL = cannot open, -5 = not packaged,
-// VN_ERR_BUFFER_TOO_SMALL = out_length holds the required size (including the terminator).
-VN_EXPORT int32_t __stdcall vn_process_package_family_name(
-    uint32_t process_id, char16_t* buffer, int32_t capacity, int32_t* out_length) noexcept {
-    if (out_length) *out_length = 0;
-    if (!buffer || capacity <= 0 || !out_length) return VN_ERR_INVALID_ARG;
-    sys::ProcessHandle process(process_id);
-    if (!process) return VN_ERR_FAIL;
-    UINT32 length = static_cast<UINT32>(capacity);
-    const LONG result = GetPackageFamilyName(process.handle, &length, reinterpret_cast<PWSTR>(buffer));
-    if (result == ERROR_SUCCESS && length > 1) {
-        *out_length = static_cast<int32_t>(length - 1);
-        return VN_OK;
-    }
-    if (result == ERROR_INSUFFICIENT_BUFFER) {
-        *out_length = static_cast<int32_t>(length);
-        return VN_ERR_BUFFER_TOO_SMALL;
-    }
-    return sys::kErrNotPackaged;
-}
-
 // Compares the process application user model id (case-insensitive) with expected.
 VN_EXPORT int32_t __stdcall vn_process_app_user_model_id_equals(
     int64_t process_handle, const char16_t* expected, int32_t expected_length, uint8_t* out_equal) noexcept {
@@ -228,16 +206,6 @@ VN_EXPORT int32_t __stdcall vn_process_app_user_model_id_equals(
 }
 
 // ---------------------------------------------------------------- registry / files / trust
-
-// Arms an asynchronous change notification on an open key, signalled through event_handle.
-VN_EXPORT int32_t __stdcall vn_registry_notify_change(
-    int64_t key_handle, uint8_t watch_subtree, uint32_t filter, int64_t event_handle, int32_t* out_status) noexcept {
-    const LSTATUS status = RegNotifyChangeKeyValue(
-        reinterpret_cast<HKEY>(static_cast<intptr_t>(key_handle)), watch_subtree != 0, filter,
-        reinterpret_cast<HANDLE>(static_cast<intptr_t>(event_handle)), TRUE);
-    if (out_status) *out_status = static_cast<int32_t>(status);
-    return status == ERROR_SUCCESS ? VN_OK : VN_ERR_FAIL;
-}
 
 // CREATE_NEW read handle that deletes the file when the last handle closes. Caller owns the handle.
 VN_EXPORT int32_t __stdcall vn_file_create_delete_on_close(

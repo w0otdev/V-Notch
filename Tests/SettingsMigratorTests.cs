@@ -20,6 +20,8 @@ public class SettingsMigratorTests
     [InlineData(13, 1)] // Even an injected consent field in a legacy file is reset.
     [InlineData(14, 0)]
     [InlineData(14, 2)]
+    [InlineData(15, 0)]
+    [InlineData(15, 2)]
     public void MigrationNeverInfersConsentFromEnabledFlags(int version, int consentVersion)
     {
         string json = $$"""
@@ -217,5 +219,43 @@ public class SettingsMigratorTests
         var (settings, migrated) = SettingsMigrator.Migrate(rawJson);
         Assert.False(migrated);
         Assert.Equal(310, settings.DynamicIslandWidth);
+    }
+
+    [Fact]
+    public void Migrate_Version14_AppendsAiUsageTabAndKeepsAiUsageWidget()
+    {
+        const string rawJson = """
+            {
+              "SettingsVersion": 14,
+              "NavTabOrder": "Media,Secondary,Timer,AudioMixer,Camera",
+              "VisibleNavTabs": "Media,Secondary,Timer,AudioMixer,Camera",
+              "ExpandedWidget": "aiusage"
+            }
+            """;
+
+        var (settings, migrated) = SettingsMigrator.Migrate(rawJson);
+
+        Assert.True(migrated);
+        Assert.Equal(SettingsMigrator.CurrentVersion, settings.SettingsVersion);
+        Assert.Equal("Media,Secondary,Timer,AudioMixer,Camera,AiUsage", settings.NavTabOrder);
+        Assert.Equal("Media,Secondary,Timer,AudioMixer,Camera,AiUsage", settings.VisibleNavTabs);
+        Assert.Equal("aiusage", settings.ExpandedWidget);
+    }
+
+    [Fact]
+    public void CurrentSettings_PreserveExplicitAiUsageTabOptOut()
+    {
+        string rawJson = $$"""
+            {
+              "SettingsVersion": {{SettingsMigrator.CurrentVersion}},
+              "NavTabOrder": "Media,Secondary,Timer,AudioMixer,Camera,AiUsage",
+              "VisibleNavTabs": "Media,Secondary,Timer"
+            }
+            """;
+
+        var (settings, migrated) = SettingsMigrator.Migrate(rawJson);
+
+        Assert.False(migrated);
+        Assert.Equal("Media,Secondary,Timer", settings.VisibleNavTabs);
     }
 }

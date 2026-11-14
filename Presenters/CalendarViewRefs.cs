@@ -24,7 +24,7 @@ public sealed class CalendarViewRefs
     public required UIElement BatterySection { get; init; }
     public required UIElement SettingsButton { get; init; }
     public required UIElement GreetingSection { get; init; }
-    public required BlurEffect CalendarGreetingContextBlur { get; init; }
+    public BlurEffect? CalendarGreetingContextBlur { get; init; }
 
     public required ScaleTransform CalendarWidgetScale { get; init; }
     public required TranslateTransform CalendarWidgetTranslate { get; init; }

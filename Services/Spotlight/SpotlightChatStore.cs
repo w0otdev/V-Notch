@@ -99,15 +99,20 @@ internal sealed class SpotlightChatStore
 
     internal Task<bool> SaveAsync(List<SpotlightSavedChat> chats)
     {
-        var snapshot = chats.Select(chat => new SpotlightSavedChat
+        var snapshot = new List<SpotlightSavedChat>(chats.Count);
+        for (int i = 0; i < chats.Count; i++)
         {
-            Id = chat.Id,
-            Provider = chat.Provider,
-            Model = chat.Model,
-            Draft = chat.Draft,
-            UpdatedUtc = chat.UpdatedUtc,
-            Messages = chat.Messages.ToList()
-        }).ToList();
+            var chat = chats[i];
+            snapshot.Add(new SpotlightSavedChat
+            {
+                Id = chat.Id,
+                Provider = chat.Provider,
+                Model = chat.Model,
+                Draft = chat.Draft,
+                UpdatedUtc = chat.UpdatedUtc,
+                Messages = new List<SpotlightAiMessage>(chat.Messages)
+            });
+        }
         lock (_saveGate)
         {
             _pendingChats = snapshot;

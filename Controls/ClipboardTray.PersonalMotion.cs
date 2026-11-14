@@ -5,6 +5,7 @@ using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Media.Animation;
 using VNotch.Services;
+using VNotch.ViewModels;
 
 namespace VNotch.Controls;
 
@@ -41,7 +42,7 @@ public sealed partial class ClipboardTray
     {
         if (_categoryReordering) { CategorySelection.Opacity = 0; return; }
         if (_disposed || !IsVisible || !CategoryPanel.IsArrangeValid) return;
-        var selected = _categoryItems.FirstOrDefault(item => item.IsSelected);
+        var selected = FindSelectedCategoryItem();
         if (selected == null || CategoryPanel.ItemContainerGenerator.ContainerFromItem(selected) is not ContentPresenter presenter ||
             VisualTreeHelper.GetChildrenCount(presenter) == 0 || VisualTreeHelper.GetChild(presenter, 0) is not Button button ||
             button.ActualWidth <= 0) return;
@@ -134,11 +135,30 @@ public sealed partial class ClipboardTray
         }
     }
 
+    private ClipboardCategoryViewModel? FindSelectedCategoryItem()
+    {
+        var items = _categoryItems;
+        for (int i = 0; i < items.Length; i++)
+        {
+            if (items[i].IsSelected) return items[i];
+        }
+        return null;
+    }
+
+    private static ScaleTransform? FindFirstScaleTransform(TransformCollection children)
+    {
+        for (int i = 0; i < children.Count; i++)
+        {
+            if (children[i] is ScaleTransform scale) return scale;
+        }
+        return null;
+    }
+
     private static void AnimateSelectedCategoryContent(Button button, double peakScale, bool animate)
     {
         if (button.Template?.FindName("ContentHost", button) is not FrameworkElement contentHost) return;
         if (contentHost.RenderTransform is not TransformGroup group || group.IsFrozen ||
-            group.Children.OfType<ScaleTransform>().FirstOrDefault() is not { } scale)
+            FindFirstScaleTransform(group.Children) is not { } scale)
         {
             return;
         }
@@ -215,7 +235,7 @@ public sealed partial class ClipboardTray
         {
             AutoReverse = true,
             RepeatBehavior = RepeatBehavior.Forever,
-            EasingFunction = new SineEase { EasingMode = EasingMode.EaseInOut }
+            EasingFunction = AnimationPrimitives._easeSineInOut
         };
         Timeline.SetDesiredFrameRate(blink, AnimationConfig.TargetFps);
         PinCaret.BeginAnimation(OpacityProperty, blink);

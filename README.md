@@ -166,6 +166,10 @@ In **Settings → Spotlight**, choose a default opening mode (Search or AI). Pre
 Opening AI mode does not send a request; sending a message transmits it and recent conversation context directly to the selected provider.
 API keys are encrypted in local settings with Windows DPAPI and excluded from settings exports. AI conversations are also encrypted locally; see the [Privacy Policy](docs/PRIVACY_POLICY.md#48-spotlight-ai-opt-in) for storage, recipients, and deletion details.
 
+### AI account limits
+
+In **Settings → Appearance**, enable account-limit tracking and choose **AI account limits** as the expanded widget. View remaining Codex and Claude Code allowances and their reset times directly in the notch. Codex uses your existing CLI sign-in; Claude Code connects through a local status-line bridge. See the [setup guide](docs/AI_ACCOUNT_USAGE.md) for supported sources, privacy controls, and stale-data behavior.
+
 <div id="installation"></div>
 
 ## Installation

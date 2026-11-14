@@ -41,19 +41,6 @@ public sealed partial class WindowTitleScanner : IWindowTitleScanner, IDisposabl
         ReadOnlySpan<ushort> procName, int procLen, out byte outIsBrowser);
 
     [LibraryImport("VNotch.Native.dll")]
-    private static partial int vn_wtscanner_is_address_bar_value(
-        ReadOnlySpan<ushort> val, int valLen, out byte outIsAddr);
-
-    [LibraryImport("VNotch.Native.dll")]
-    private static partial int vn_wtscanner_looks_like_url(
-        ReadOnlySpan<ushort> str, int strLen, out byte outLooksLike);
-
-    [LibraryImport("VNotch.Native.dll")]
-    private static partial int vn_wtscanner_normalize_url(
-        ReadOnlySpan<ushort> str, int strLen,
-        Span<ushort> outBuf, int outCap, out int outLen);
-
-    [LibraryImport("VNotch.Native.dll")]
     private static partial int vn_wtscanner_is_media_url(
         ReadOnlySpan<ushort> url, int urlLen, out byte outIsMedia);
 
@@ -107,44 +94,37 @@ public sealed partial class WindowTitleScanner : IWindowTitleScanner, IDisposabl
             }
 
             var titles = new List<string>();
+            uint currentPid = (uint)Environment.ProcessId;
 
             if (WindowEnumerator != null)
             {
-                WindowEnumerator(hWnd =>
-                {
-                    if (!IsWindowVisible(hWnd)) return true;
-                    GetWindowThreadProcessId(hWnd, out uint processId);
-                    if (processId == 0 || processId == (uint)Environment.ProcessId) return true;
-                    AddMatchingWindowTitle(hWnd, titles);
-                    return true;
-                });
+                WindowEnumerator(hWnd => TryCollectForeignVisibleWindowTitle(hWnd, currentPid, titles));
             }
-            else if (!TryCollectPlatformWindowTitlesNative((uint)Environment.ProcessId, titles))
+            else if (!TryCollectPlatformWindowTitlesNative(currentPid, titles))
             {
-                EnumWindows((hWnd, _) =>
-                {
-                    if (!IsWindowVisible(hWnd))
-                    {
-                        return true;
-                    }
-
-                    // USER32 reads foreign-process captions without WM_GETTEXT.
-                    // Our own windows can synchronously message a UI thread while
-                    // this background scanner holds the cache lock.
-                    GetWindowThreadProcessId(hWnd, out uint processId);
-                    if (processId == 0 || processId == (uint)Environment.ProcessId)
-                        return true;
-
-                    AddMatchingWindowTitle(hWnd, titles);
-
-                    return true;
-                }, IntPtr.Zero);
+                EnumWindows((hWnd, _) => TryCollectForeignVisibleWindowTitle(hWnd, currentPid, titles), IntPtr.Zero);
             }
 
             _cachedWindowTitles = titles;
             _lastWindowEnumTime = DateTime.UtcNow;
             return new List<string>(titles);
         }
+    }
+
+    private bool TryCollectForeignVisibleWindowTitle(IntPtr hWnd, uint excludePid, List<string> titles)
+    {
+        if (!IsWindowVisible(hWnd))
+            return true;
+
+        // USER32 reads foreign-process captions without WM_GETTEXT.
+        // Our own windows can synchronously message a UI thread while
+        // this background scanner holds the cache lock.
+        GetWindowThreadProcessId(hWnd, out uint processId);
+        if (processId == 0 || processId == excludePid)
+            return true;
+
+        AddMatchingWindowTitle(hWnd, titles);
+        return true;
     }
 
     private static unsafe bool TryCollectPlatformWindowTitlesNative(uint excludePid, List<string> titles)
@@ -339,6 +319,24 @@ public sealed partial class WindowTitleScanner : IWindowTitleScanner, IDisposabl
         }
     }
 
+    // Must be called under _cacheLock.
+    private void ScheduleWorkerScanLocked(ref bool scanActive, ref int scanGen, ref bool pendingFlag)
+    {
+        if (!scanActive)
+        {
+            scanActive = true;
+            scanGen = _generation;
+            pendingFlag = true;
+            WakeWorker();
+        }
+        else if (scanGen != _generation)
+        {
+            scanGen = _generation;
+            pendingFlag = true;
+            WakeWorker();
+        }
+    }
+
     public string? TryGetBrowserUrl()
     {
         if (!CanInspectBrowser())
@@ -350,20 +348,7 @@ public sealed partial class WindowTitleScanner : IWindowTitleScanner, IDisposabl
             if ((DateTime.UtcNow - _lastBrowserUrlTime).TotalMilliseconds < 1000)
                 return _cachedBrowserUrl;
 
-            if (!_browserUrlScanActive)
-            {
-                _browserUrlScanActive = true;
-                _browserUrlScanGen = _generation;
-                _pendingBrowserUrlScan = true;
-                WakeWorker();
-            }
-            else if (_browserUrlScanGen != _generation)
-            {
-                _browserUrlScanGen = _generation;
-                _pendingBrowserUrlScan = true;
-                WakeWorker();
-            }
-
+            ScheduleWorkerScanLocked(ref _browserUrlScanActive, ref _browserUrlScanGen, ref _pendingBrowserUrlScan);
             return _cachedBrowserUrl;
         }
     }
@@ -380,20 +365,7 @@ public sealed partial class WindowTitleScanner : IWindowTitleScanner, IDisposabl
             if ((DateTime.UtcNow - _lastAnyBrowserMediaUrlTime).TotalMilliseconds < ttlMs)
                 return _cachedAnyBrowserMediaUrl;
 
-            if (!_anyBrowserScanActive)
-            {
-                _anyBrowserScanActive = true;
-                _anyBrowserScanGen = _generation;
-                _pendingAnyBrowserScan = true;
-                WakeWorker();
-            }
-            else if (_anyBrowserScanGen != _generation)
-            {
-                _anyBrowserScanGen = _generation;
-                _pendingAnyBrowserScan = true;
-                WakeWorker();
-            }
-
+            ScheduleWorkerScanLocked(ref _anyBrowserScanActive, ref _anyBrowserScanGen, ref _pendingAnyBrowserScan);
             return _cachedAnyBrowserMediaUrl;
         }
     }
@@ -513,20 +485,7 @@ public sealed partial class WindowTitleScanner : IWindowTitleScanner, IDisposabl
             if ((DateTime.UtcNow - _lastSpotifyWebPlayerTime).TotalMilliseconds < ttlMs)
                 return _cachedSpotifyWebPlayerOpen;
 
-            if (!_spotifyScanActive)
-            {
-                _spotifyScanActive = true;
-                _spotifyScanGen = _generation;
-                _pendingSpotifyScan = true;
-                WakeWorker();
-            }
-            else if (_spotifyScanGen != _generation)
-            {
-                _spotifyScanGen = _generation;
-                _pendingSpotifyScan = true;
-                WakeWorker();
-            }
-
+            ScheduleWorkerScanLocked(ref _spotifyScanActive, ref _spotifyScanGen, ref _pendingSpotifyScan);
             return _cachedSpotifyWebPlayerOpen;
         }
     }
@@ -547,6 +506,39 @@ public sealed partial class WindowTitleScanner : IWindowTitleScanner, IDisposabl
             // UIA may be slow to return. Disposal never blocks the UI waiting for
             // COM; the worker releases its wait handle after its final call exits.
             lock (_cacheLock) { _wakeWorkerEvent.Dispose(); }
+        }
+    }
+
+    private T? RunExtractorSafe<T>(string scanName, Func<T> extractor)
+    {
+        try
+        {
+            return InspectionAllowed ? extractor() : default;
+        }
+        catch (Exception ex)
+        {
+            RuntimeLog.Debug("UIA-SCANNER", () => $"{scanName} scan failed: {ex.Message}");
+            return default;
+        }
+    }
+
+    private void CompleteWorkerScan<T>(
+        int capturedGen,
+        ref int scanGen,
+        ref bool scanActive,
+        ref T cachedValue,
+        ref DateTime lastScanTime,
+        T value)
+    {
+        lock (_cacheLock)
+        {
+            if (scanGen == capturedGen)
+                scanActive = false;
+            if (_generation == capturedGen && InspectionAllowed)
+            {
+                cachedValue = value;
+                lastScanTime = DateTime.UtcNow;
+            }
         }
     }
 
@@ -572,7 +564,7 @@ public sealed partial class WindowTitleScanner : IWindowTitleScanner, IDisposabl
             while (!_disposed)
             {
                 ScanType nextScan = ScanType.None;
-                int capturedGen = 0;
+                int capturedGen;
 
                 lock (_cacheLock)
                 {
@@ -601,85 +593,34 @@ public sealed partial class WindowTitleScanner : IWindowTitleScanner, IDisposabl
                 switch (nextScan)
                 {
                     case ScanType.BrowserUrl:
-                        {
-                            string? url = null;
-                            try
-                            {
-                                if (InspectionAllowed) url = BrowserUrlExtractor();
-                            }
-                            catch (Exception ex)
-                            {
-                                RuntimeLog.Debug("UIA-SCANNER", () => $"BrowserUrl scan failed: {ex.Message}");
-                            }
-
-                            lock (_cacheLock)
-                            {
-                                if (_browserUrlScanGen == capturedGen)
-                                {
-                                    _browserUrlScanActive = false;
-                                }
-                                if (_generation == capturedGen && InspectionAllowed)
-                                {
-                                    _cachedBrowserUrl = url;
-                                    _lastBrowserUrlTime = DateTime.UtcNow;
-                                }
-                            }
-                            break;
-                        }
+                        CompleteWorkerScan(
+                            capturedGen,
+                            ref _browserUrlScanGen,
+                            ref _browserUrlScanActive,
+                            ref _cachedBrowserUrl,
+                            ref _lastBrowserUrlTime,
+                            RunExtractorSafe("BrowserUrl", BrowserUrlExtractor));
+                        break;
 
                     case ScanType.AnyBrowserMediaUrl:
-                        {
-                            string? url = null;
-                            try
-                            {
-                                if (InspectionAllowed) url = AnyBrowserMediaUrlExtractor();
-                            }
-                            catch (Exception ex)
-                            {
-                                RuntimeLog.Debug("UIA-SCANNER", () => $"AnyBrowserMediaUrl scan failed: {ex.Message}");
-                            }
-
-                            lock (_cacheLock)
-                            {
-                                if (_anyBrowserScanGen == capturedGen)
-                                {
-                                    _anyBrowserScanActive = false;
-                                }
-                                if (_generation == capturedGen && InspectionAllowed)
-                                {
-                                    _cachedAnyBrowserMediaUrl = url;
-                                    _lastAnyBrowserMediaUrlTime = DateTime.UtcNow;
-                                }
-                            }
-                            break;
-                        }
+                        CompleteWorkerScan(
+                            capturedGen,
+                            ref _anyBrowserScanGen,
+                            ref _anyBrowserScanActive,
+                            ref _cachedAnyBrowserMediaUrl,
+                            ref _lastAnyBrowserMediaUrlTime,
+                            RunExtractorSafe("AnyBrowserMediaUrl", AnyBrowserMediaUrlExtractor));
+                        break;
 
                     case ScanType.Spotify:
-                        {
-                            bool isSpotify = false;
-                            try
-                            {
-                                if (InspectionAllowed) isSpotify = SpotifyWebPlayerDetector();
-                            }
-                            catch (Exception ex)
-                            {
-                                RuntimeLog.Debug("UIA-SCANNER", () => $"Spotify scan failed: {ex.Message}");
-                            }
-
-                            lock (_cacheLock)
-                            {
-                                if (_spotifyScanGen == capturedGen)
-                                {
-                                    _spotifyScanActive = false;
-                                }
-                                if (_generation == capturedGen && InspectionAllowed)
-                                {
-                                    _cachedSpotifyWebPlayerOpen = isSpotify;
-                                    _lastSpotifyWebPlayerTime = DateTime.UtcNow;
-                                }
-                            }
-                            break;
-                        }
+                        CompleteWorkerScan(
+                            capturedGen,
+                            ref _spotifyScanGen,
+                            ref _spotifyScanActive,
+                            ref _cachedSpotifyWebPlayerOpen,
+                            ref _lastSpotifyWebPlayerTime,
+                            RunExtractorSafe("Spotify", SpotifyWebPlayerDetector));
+                        break;
                 }
             }
         }

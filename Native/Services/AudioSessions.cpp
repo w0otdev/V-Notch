@@ -12,6 +12,7 @@
 #include <memory>
 #include <mutex>
 #include <string>
+#include <string_view>
 #include <vector>
 
 #pragma comment(lib, "ole32.lib")
@@ -419,52 +420,90 @@ struct MixerMetadata {
 };
 std::mutex mixer_metadata_mutex;
 std::vector<MixerMetadata> mixer_metadata;
-MixerMetadata ReadMixerMetadata(DWORD pid, const std::wstring& fallback) {
-    vnotch::UniqueHandle process(OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, FALSE, pid));
-    FILETIME created{}, exited{}, kernel{}, user{};
-    uint64_t started = 0;
-    if (process.valid() && GetProcessTimes(process.get(), &created, &exited, &kernel, &user))
-        started = (uint64_t{created.dwHighDateTime} << 32) | created.dwLowDateTime;
-    { std::lock_guard<std::mutex> lock(mixer_metadata_mutex); for (auto& cached : mixer_metadata)
-        if (started && cached.pid == pid && cached.started == started) return cached; }
-    MixerMetadata value{pid, started, {}, {}};
-    wchar_t path[32768];
-    DWORD length = ARRAYSIZE(path);
-    if (process.valid() && QueryFullProcessImageNameW(process.get(), 0, path, &length)) {
-        value.path.assign(path, length);
-        const auto slash = value.path.find_last_of(L"\\/");
-        value.name = value.path.substr(slash == std::wstring::npos ? 0 : slash + 1);
-        const auto dot = value.name.find_last_of(L'.');
-        if (dot != std::wstring::npos) value.name.resize(dot);
-        DWORD unused = 0;
-        const DWORD size = GetFileVersionInfoSizeW(value.path.c_str(), &unused);
-        if (size && size <= 4 * 1024 * 1024) {
-            std::vector<uint8_t> version(size);
-            if (GetFileVersionInfoW(value.path.c_str(), 0, size, version.data())) {
-                struct Translation { WORD language, codepage; };
-                Translation* translations = nullptr;
-                UINT bytes = 0;
-                if (VerQueryValueW(version.data(), L"\\VarFileInfo\\Translation", reinterpret_cast<void**>(&translations), &bytes)) {
-                    for (UINT i = 0; i < bytes / sizeof(Translation); ++i) {
-                        wchar_t key[80];
-                        swprintf_s(key, L"\\StringFileInfo\\%04x%04x\\FileDescription", translations[i].language, translations[i].codepage);
-                        wchar_t* description = nullptr;
-                        UINT chars = 0;
-                        if (VerQueryValueW(version.data(), key, reinterpret_cast<void**>(&description), &chars) && description && chars > 1) {
-                            const auto trimmed = vnotch::trim_view(std::u16string_view(reinterpret_cast<char16_t*>(description), chars - 1));
-                            if (!trimmed.empty()) { value.name.assign(reinterpret_cast<const wchar_t*>(trimmed.data()), trimmed.size()); break; }
-                        }
-                    }
-                }
+void ExtractVersionDescription(const wchar_t* exe_path, std::wstring& inout_name) {
+    DWORD unused = 0;
+    const DWORD size = GetFileVersionInfoSizeW(exe_path, &unused);
+    if (!size || size > 4 * 1024 * 1024) return;
+
+    uint8_t stack_buf[4096];
+    std::vector<uint8_t> heap_buf;
+    uint8_t* ver_data = stack_buf;
+    if (size > sizeof(stack_buf)) {
+        heap_buf.resize(size);
+        ver_data = heap_buf.data();
+    }
+    if (!GetFileVersionInfoW(exe_path, 0, size, ver_data)) return;
+
+    struct Translation { WORD language, codepage; };
+    Translation* translations = nullptr;
+    UINT bytes = 0;
+    if (!VerQueryValueW(ver_data, L"\\VarFileInfo\\Translation", reinterpret_cast<void**>(&translations), &bytes) || !translations) {
+        return;
+    }
+    for (UINT i = 0; i < bytes / sizeof(Translation); ++i) {
+        wchar_t key[80];
+        swprintf_s(key, L"\\StringFileInfo\\%04x%04x\\FileDescription", translations[i].language, translations[i].codepage);
+        wchar_t* description = nullptr;
+        UINT chars = 0;
+        if (VerQueryValueW(ver_data, key, reinterpret_cast<void**>(&description), &chars) && description && chars > 1) {
+            const auto trimmed = vnotch::trim_view(std::u16string_view(reinterpret_cast<char16_t*>(description), chars - 1));
+            if (!trimmed.empty()) {
+                inout_name.assign(reinterpret_cast<const wchar_t*>(trimmed.data()), trimmed.size());
+                return;
             }
         }
     }
-    if (value.name.empty() && !fallback.empty() && fallback.front() != L'@') value.name = fallback;
+}
+
+__declspec(noinline) MixerMetadata QueryUncachedMixerMetadata(
+    HANDLE process, DWORD pid, uint64_t started, std::wstring_view fallback) {
+    MixerMetadata value{pid, started, {}, {}};
+    if (process) {
+        wchar_t short_path[MAX_PATH];
+        DWORD length = ARRAYSIZE(short_path);
+        if (QueryFullProcessImageNameW(process, 0, short_path, &length)) {
+            value.path.assign(short_path, length);
+        } else if (GetLastError() == ERROR_INSUFFICIENT_BUFFER) {
+            std::wstring long_path(32768, L'\0');
+            length = static_cast<DWORD>(long_path.size());
+            if (QueryFullProcessImageNameW(process, 0, long_path.data(), &length)) {
+                long_path.resize(length);
+                value.path = std::move(long_path);
+            }
+        }
+        if (!value.path.empty()) {
+            const auto slash = value.path.find_last_of(L"\\/");
+            value.name = value.path.substr(slash == std::wstring::npos ? 0 : slash + 1);
+            const auto dot = value.name.find_last_of(L'.');
+            if (dot != std::wstring::npos) value.name.resize(dot);
+            ExtractVersionDescription(value.path.c_str(), value.name);
+        }
+    }
+    if (value.name.empty() && !fallback.empty() && fallback.front() != L'@') {
+        value.name.assign(fallback);
+    }
     if (started) {
-        std::lock_guard<std::mutex> lock(mixer_metadata_mutex); if (mixer_metadata.size() >= 128) mixer_metadata.erase(mixer_metadata.begin());
+        std::lock_guard<std::mutex> lock(mixer_metadata_mutex);
+        if (mixer_metadata.size() >= 128) mixer_metadata.erase(mixer_metadata.begin());
         mixer_metadata.push_back(value);
     }
     return value;
+}
+
+MixerMetadata ReadMixerMetadata(DWORD pid, std::wstring_view fallback) {
+    vnotch::UniqueHandle process(OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, FALSE, pid));
+    FILETIME created{}, exited{}, kernel{}, user{};
+    uint64_t started = 0;
+    if (process.valid() && GetProcessTimes(process.get(), &created, &exited, &kernel, &user)) {
+        started = (uint64_t{created.dwHighDateTime} << 32) | created.dwLowDateTime;
+    }
+    if (started) {
+        std::lock_guard<std::mutex> lock(mixer_metadata_mutex);
+        for (const auto& cached : mixer_metadata) {
+            if (cached.pid == pid && cached.started == started) return cached;
+        }
+    }
+    return QueryUncachedMixerMetadata(process.valid() ? process.get() : nullptr, pid, started, fallback);
 }
 }
 
@@ -474,7 +513,8 @@ VN_EXPORT int32_t __stdcall vn_audio_resolve_session_metadata(uint32_t pid, cons
     if (!output || !required || raw_length < 0 || (raw_length && !raw) || capacity < 0 || (capacity && !text)) return VN_ERR_INVALID_ARG;
     *output = {}; *required = 0;
     try {
-        const auto metadata = ReadMixerMetadata(pid, std::wstring(reinterpret_cast<const wchar_t*>(raw ? raw : u""), raw_length));
+        const std::wstring_view fallback(reinterpret_cast<const wchar_t*>(raw ? raw : u""), static_cast<size_t>(raw_length));
+        const auto metadata = ReadMixerMetadata(pid, fallback);
         const auto size = metadata.name.size() + metadata.path.size();
         if (size > INT32_MAX) return VN_ERR_FAIL;
         *required = static_cast<int32_t>(size);

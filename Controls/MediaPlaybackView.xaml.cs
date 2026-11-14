@@ -191,13 +191,12 @@ public sealed partial class MediaPlaybackView : UserControl, IDisposable
     private static void AnimateTransportHover(object sender, bool hovered)
     {
         if (sender is not Border button || button.RenderTransform is not ScaleTransform transform) return;
-        if (hovered) button.CacheMode ??= new BitmapCache(1.5);
+        button.CacheMode = null;
         var animation = new DoubleAnimation(hovered ? 1.18 : 1.0, hovered ? _dur150 : _dur200)
         {
             EasingFunction = _easeQuadOut
         };
         Timeline.SetDesiredFrameRate(animation, AnimationConfig.TargetFps);
-        if (!hovered) animation.Completed += (_, _) => { if (!button.IsMouseOver) button.CacheMode = null; };
         transform.BeginAnimation(ScaleTransform.ScaleXProperty, animation);
         transform.BeginAnimation(ScaleTransform.ScaleYProperty, animation);
     }
@@ -346,6 +345,15 @@ public sealed partial class MediaPlaybackView : UserControl, IDisposable
     }
 
 
+    private static readonly CubicEase HoverExitCubicEase = CreateFrozenCubicOut();
+
+    private static CubicEase CreateFrozenCubicOut()
+    {
+        var ease = new CubicEase { EasingMode = EasingMode.EaseOut };
+        ease.Freeze();
+        return ease;
+    }
+
     private BlurEffect? _mediaControlsHoverBlur;
     private TransformGroup? _currentTimeHoverTransform;
     private TransformGroup? _remainingTimeHoverTransform;
@@ -362,53 +370,27 @@ public sealed partial class MediaPlaybackView : UserControl, IDisposable
         double timeScale = isHovered ? 1.22 : 1.0;
         double timeTranslateY = isHovered ? 3.0 : 0.0;
 
-        var duration = TimeSpan.FromMilliseconds(isHovered ? 350 : 250);
-        var easing = (IEasingFunction)(isHovered
-            ? new ExponentialEase { Exponent = 6, EasingMode = EasingMode.EaseOut }
-            : new CubicEase { EasingMode = EasingMode.EaseOut });
+        var duration = new Duration(TimeSpan.FromMilliseconds(isHovered ? 350 : 250));
+        IEasingFunction easing = isHovered ? _easeExpOut6 : HoverExitCubicEase;
         int fps = VNotch.Services.AnimationConfig.TargetFps;
 
         ProgressBarContainer.BeginAnimation(MarginProperty, null);
         double barHeight = isHovered ? 10 : 4;
-        var heightAnim = new DoubleAnimation { To = barHeight, Duration = duration, EasingFunction = easing };
-        var scaleXAnim = new DoubleAnimation { To = scaleX, Duration = duration, EasingFunction = easing };
-        Timeline.SetDesiredFrameRate(heightAnim, fps);
-        Timeline.SetDesiredFrameRate(scaleXAnim, fps);
+        var heightAnim = CreateHoverAnimation(barHeight, duration, easing, fps);
+        var scaleXAnim = CreateHoverAnimation(scaleX, duration, easing, fps);
         ProgressBarBg.BeginAnimation(HeightProperty, heightAnim);
         ProgressBar.BeginAnimation(HeightProperty, heightAnim);
         ProgressBarMainScale.BeginAnimation(ScaleTransform.ScaleXProperty, scaleXAnim);
 
-        double barRadius = barHeight / 2.0;
-        var clipRadiusAnim = new DoubleAnimation { To = barRadius, Duration = duration, EasingFunction = easing };
-        Timeline.SetDesiredFrameRate(clipRadiusAnim, fps);
+        var clipRadiusAnim = CreateHoverAnimation(barHeight / 2.0, duration, easing, fps);
         ProgressBarClip.BeginAnimation(RectangleGeometry.RadiusXProperty, clipRadiusAnim);
         ProgressBarClip.BeginAnimation(RectangleGeometry.RadiusYProperty, clipRadiusAnim);
 
-        if (_currentTimeHoverTransform == null)
-        {
-            _currentTimeHoverScale = new ScaleTransform(1, 1);
-            _currentTimeHoverTranslate = new TranslateTransform(0, 0);
-            _currentTimeHoverTransform = new TransformGroup();
-            _currentTimeHoverTransform.Children.Add(_currentTimeHoverScale);
-            _currentTimeHoverTransform.Children.Add(_currentTimeHoverTranslate);
-            CurrentTimeText.RenderTransformOrigin = new Point(0, 0.5);
-            CurrentTimeText.RenderTransform = _currentTimeHoverTransform;
-        }
-        if (_remainingTimeHoverTransform == null)
-        {
-            _remainingTimeHoverScale = new ScaleTransform(1, 1);
-            _remainingTimeHoverTranslate = new TranslateTransform(0, 0);
-            _remainingTimeHoverTransform = new TransformGroup();
-            _remainingTimeHoverTransform.Children.Add(_remainingTimeHoverScale);
-            _remainingTimeHoverTransform.Children.Add(_remainingTimeHoverTranslate);
-            RemainingTimeText.RenderTransformOrigin = new Point(1, 0.5);
-            RemainingTimeText.RenderTransform = _remainingTimeHoverTransform;
-        }
+        EnsureTimeHoverTransform(CurrentTimeText, 0, ref _currentTimeHoverTransform, ref _currentTimeHoverScale, ref _currentTimeHoverTranslate);
+        EnsureTimeHoverTransform(RemainingTimeText, 1, ref _remainingTimeHoverTransform, ref _remainingTimeHoverScale, ref _remainingTimeHoverTranslate);
 
-        var timeScaleAnim = new DoubleAnimation { To = timeScale, Duration = duration, EasingFunction = easing };
-        var timeTranslateAnim = new DoubleAnimation { To = timeTranslateY, Duration = duration, EasingFunction = easing };
-        Timeline.SetDesiredFrameRate(timeScaleAnim, fps);
-        Timeline.SetDesiredFrameRate(timeTranslateAnim, fps);
+        var timeScaleAnim = CreateHoverAnimation(timeScale, duration, easing, fps);
+        var timeTranslateAnim = CreateHoverAnimation(timeTranslateY, duration, easing, fps);
 
         _currentTimeHoverScale!.BeginAnimation(ScaleTransform.ScaleXProperty, timeScaleAnim);
         _currentTimeHoverScale.BeginAnimation(ScaleTransform.ScaleYProperty, timeScaleAnim);
@@ -417,10 +399,8 @@ public sealed partial class MediaPlaybackView : UserControl, IDisposable
         _remainingTimeHoverScale.BeginAnimation(ScaleTransform.ScaleYProperty, timeScaleAnim);
         _remainingTimeHoverTranslate!.BeginAnimation(TranslateTransform.YProperty, timeTranslateAnim);
 
-        var blurAnim = new DoubleAnimation { To = blurRadius, Duration = duration, EasingFunction = easing };
-        var dimAnim = new DoubleAnimation { To = surroundOpacity, Duration = duration, EasingFunction = easing };
-        Timeline.SetDesiredFrameRate(blurAnim, fps);
-        Timeline.SetDesiredFrameRate(dimAnim, fps);
+        var blurAnim = CreateHoverAnimation(blurRadius, duration, easing, fps);
+        var dimAnim = CreateHoverAnimation(surroundOpacity, duration, easing, fps);
 
         if (EnableBlurEffects)
         {
@@ -434,6 +414,30 @@ public sealed partial class MediaPlaybackView : UserControl, IDisposable
             MediaControls.Effect = null;
         }
         MediaControls.BeginAnimation(OpacityProperty, dimAnim);
+    }
+
+    private static DoubleAnimation CreateHoverAnimation(double to, Duration duration, IEasingFunction easing, int fps)
+    {
+        var anim = new DoubleAnimation { To = to, Duration = duration, EasingFunction = easing };
+        Timeline.SetDesiredFrameRate(anim, fps);
+        return anim;
+    }
+
+    private static void EnsureTimeHoverTransform(
+        TextBlock target,
+        double originX,
+        ref TransformGroup? group,
+        ref ScaleTransform? scale,
+        ref TranslateTransform? translate)
+    {
+        if (group != null) return;
+        scale = new ScaleTransform(1, 1);
+        translate = new TranslateTransform(0, 0);
+        group = new TransformGroup();
+        group.Children.Add(scale);
+        group.Children.Add(translate);
+        target.RenderTransformOrigin = new Point(originX, 0.5);
+        target.RenderTransform = group;
     }
 
 
@@ -559,6 +563,11 @@ public sealed partial class MediaPlaybackView : UserControl, IDisposable
     private DateTimeOffset _lastProgressTimelineUpdated = DateTimeOffset.MinValue;
     private bool _lastProgressIsPlaying;
     private long _trackChangeSequence = 0;
+    private Action? _renderProgressBarAction;
+
+    private static bool HasRealTrack(string? track) =>
+        !string.IsNullOrWhiteSpace(track) &&
+        !string.Equals(track, "No media playing", StringComparison.OrdinalIgnoreCase);
 
     internal void UpdateProgressTracking(MediaInfo info)
     {
@@ -576,242 +585,239 @@ public sealed partial class MediaPlaybackView : UserControl, IDisposable
         ProgressSection.Visibility = Visibility.Visible;
         ProgressSection.Opacity = 1;
 
-        bool hasRealTrack = !string.IsNullOrWhiteSpace(info.CurrentTrack) &&
-                            !string.Equals(info.CurrentTrack, "No media playing", StringComparison.OrdinalIgnoreCase);
-        if (hasRealTrack)
+        if (!HasRealTrack(info.CurrentTrack))
         {
-            if (_isDraggingProgress && info.HasTimeline)
+            HandleNoTrackProgress();
+            return;
+        }
+
+        if (_isDraggingProgress && info.HasTimeline)
+        {
+            if (!info.IsPlaying)
             {
-                if (!info.IsPlaying)
-                {
-                    _progressEngine.NotifyUserPlayPause(false);
-                }
-                return;
+                _progressEngine.NotifyUserPlayPause(false);
             }
+            return;
+        }
 
-            string newSignature = $"{info.SourceAppId}|{info.CurrentTrack}|{info.CurrentArtist}";
-            bool isTrackChanged = newSignature != _lastProgressSignature;
-            bool isSessionSwitch = MediaProgressHelpers.HasLogicalSessionChanged(
-                _lastSessionId,
-                _lastProgressSessionInstanceKey,
-                info.SourceAppId,
-                info.SessionInstanceKey);
-            bool isFirstEverTrack = string.IsNullOrEmpty(_lastProgressSignature);
+        string newSignature = $"{info.SourceAppId}|{info.CurrentTrack}|{info.CurrentArtist}";
+        bool isTrackChanged = newSignature != _lastProgressSignature;
+        bool isSessionSwitch = MediaProgressHelpers.HasLogicalSessionChanged(
+            _lastSessionId,
+            _lastProgressSessionInstanceKey,
+            info.SourceAppId,
+            info.SessionInstanceKey);
+        bool isFirstEverTrack = string.IsNullOrEmpty(_lastProgressSignature);
 
-            if (isTrackChanged && !isFirstEverTrack && !isSessionSwitch && info.IsPlaying && info.Position > TimeSpan.Zero)
+        if (isTrackChanged && !isFirstEverTrack && !isSessionSwitch && info.IsPlaying && info.Position > TimeSpan.Zero)
+        {
+            string trackPrefix = $"{info.SourceAppId}|{info.CurrentTrack}|";
+            if (_lastProgressSignature.StartsWith(trackPrefix, StringComparison.Ordinal))
             {
-                string trackPrefix = $"{info.SourceAppId}|{info.CurrentTrack}|";
-                if (_lastProgressSignature.StartsWith(trackPrefix, StringComparison.Ordinal))
-                {
-                    string oldArtist = _lastProgressSignature.Substring(trackPrefix.Length);
-                    _lastProgressSignature = newSignature;
-                    isTrackChanged = false;
-                    RuntimeLog.Debug("PROGRESS-TRACK", () =>
-                        $"Artist-only stabilization, skipping reset: '{oldArtist}' → '{info.CurrentArtist}' pos={info.Position.TotalSeconds:F1}s");
-                }
-            }
-
-            if (isTrackChanged)
-            {
+                string oldArtist = _lastProgressSignature.Substring(trackPrefix.Length);
                 _lastProgressSignature = newSignature;
-                double visibleRatio = Math.Clamp(ProgressBarScale.ScaleX, 0, 1);
+                isTrackChanged = false;
+                RuntimeLog.Debug("PROGRESS-TRACK", () =>
+                    $"Artist-only stabilization, skipping reset: '{oldArtist}' → '{info.CurrentArtist}' pos={info.Position.TotalSeconds:F1}s");
+            }
+        }
 
+        if (isTrackChanged)
+        {
+            HandleTrackChangeProgressReset(info, newSignature, isFirstEverTrack);
+        }
+        else if (isSessionSwitch)
+        {
+            _progressEngine.Reset();
+            _progressSnapshotSequence = 0;
+            _lastProgressTimelineUpdated = DateTimeOffset.MinValue;
+            _lastProgressIsPlaying = false;
+            _allowProgressBackwardRenderUntil = DateTime.UtcNow.AddSeconds(3);
+            RuntimeLog.Debug("PROGRESS-SESSION", () =>
+                $"Logical session changed for same track: " +
+                $"'{_lastProgressSessionInstanceKey}' -> '{info.SessionInstanceKey}'");
+        }
+
+        _lastSessionId = info.SourceAppId ?? "";
+        _lastProgressSessionInstanceKey = info.SessionInstanceKey ?? "";
+
+        if (info.IsTimelineIndeterminate)
+        {
+            StopCatchUpAnimation();
+            CancelRewindForNavigation();
+            StopSpringRenderLoop();
+            ProgressBarScale.BeginAnimation(ScaleTransform.ScaleXProperty, null);
+            _isDraggingProgress = false;
+            _isClickSeekPending = false;
+            if (ProgressBarContainer.IsMouseCaptured) ProgressBarContainer.ReleaseMouseCapture();
+            BufferingChanged?.Invoke(false);
+        }
+
+        string timelineKey = $"{info.SourceAppId}|{info.SessionInstanceKey}|{info.CurrentTrack}|{info.CurrentArtist}|{info.IsTimelineIndeterminate}";
+        if (timelineKey != _lastProgressTimelineKey)
+        {
+            _lastProgressTimelineKey = timelineKey;
+            _lastProgressTimelineUpdated = DateTimeOffset.MinValue;
+            _lastProgressIsPlaying = false;
+        }
+
+        if (_lastProgressTimelineUpdated != DateTimeOffset.MinValue &&
+            timelineKey == _lastProgressTimelineKey &&
+            info.IsPlaying &&
+            _lastProgressIsPlaying &&
+            info.LastUpdated.ToUniversalTime() < _lastProgressTimelineUpdated.ToUniversalTime())
+        {
+            UpdateProgressTimerState();
+            if (IsVisible) RenderProgressBar();
+            return;
+        }
+
+        var snapshot = new ProgressSnapshot
+        {
+            Position = info.Position,
+            Duration = info.Duration,
+            IsPlaying = info.IsPlaying,
+            IsYouTube = IsLikelyBrowserProgressSource(info),
+            PlaybackRate = info.PlaybackRate,
+            IsSeekEnabled = info.IsSeekEnabled,
+            IsIndeterminate = info.IsTimelineIndeterminate,
+            Timestamp = info.LastUpdated.UtcDateTime,
+            SequenceNumber = System.Threading.Interlocked.Increment(ref _progressSnapshotSequence)
+        };
+
+        _progressEngine.OnMediaSnapshot(snapshot);
+        if (info.LastUpdated > _lastProgressTimelineUpdated || info.IsPlaying != _lastProgressIsPlaying)
+        {
+            _lastProgressTimelineUpdated = info.LastUpdated;
+        }
+        _lastProgressIsPlaying = info.IsPlaying;
+
+        ProgressBarContainer.Cursor = info.CanSeekTimeline ? Cursors.Hand : Cursors.Arrow;
+        UpdateProgressTimerState();
+
+        if (IsVisible)
+        {
+            RenderProgressBar();
+            Dispatcher.BeginInvoke(_renderProgressBarAction ??= RenderProgressBar, DispatcherPriority.Render);
+        }
+    }
+
+    private void HandleTrackChangeProgressReset(MediaInfo info, string newSignature, bool isFirstEverTrack)
+    {
+        _lastProgressSignature = newSignature;
+        double fromRatio = Math.Clamp(ProgressBarScale.ScaleX, 0, 1);
+
+        _trackChangeSequence++;
+
+        _progressEngine.Reset();
+        StopCatchUpAnimation();
+        StopRewindTextAnimation();
+
+        _isRewindAnimating = false;
+        ProgressBarScale.BeginAnimation(ScaleTransform.ScaleXProperty, null);
+        _progressVelocity = 0;
+        _springSettleFrames = 0;
+        _isSeekSpringActive = false;
+
+        LastDisplayedSecond = -1;
+        _progressSnapshotSequence = 0;
+        _lastProgressTimelineUpdated = DateTimeOffset.MinValue;
+        _lastProgressIsPlaying = false;
+        StopSpringRenderLoop();
+
+        DisplayRatio = fromRatio;
+        _progressTargetRatio = 0;
+        _progressSpringTargetRatio = 0;
+        _lastRenderedRatio = 0;
+        RemainingTimeText.Text = FormatDuration(info.Duration);
+
+        if (isFirstEverTrack)
+        {
+            if (info.IsPlaying && info.Position > TimeSpan.Zero && info.HasTimeline)
+            {
+                double initialRatio = Math.Clamp(info.Position.TotalSeconds / info.Duration.TotalSeconds, 0, 1);
+                DisplayRatio = initialRatio;
+                _progressTargetRatio = initialRatio;
+                _progressSpringTargetRatio = initialRatio;
+                _lastRenderedRatio = initialRatio;
+                ProgressBarScale.ScaleX = initialRatio;
+                CurrentTimeText.Text = FormatTime(info.Position);
+                RemainingTimeText.Text = FormatDuration(info.Duration);
+                RuntimeLog.Debug("PROGRESS-BOOT", () =>
+                    $"First track init at pos={info.Position.TotalSeconds:F1}s ratio={initialRatio:F4}");
+            }
+            else
+            {
+                DisplayRatio = 0;
+                ProgressBarScale.ScaleX = 0;
+                CurrentTimeText.Text = "0:00";
+            }
+        }
+        else if (IsVisible && info.HasTimeline)
+        {
+            AnimateTrackChangeRewindToZero(fromRatio, info.Duration);
+        }
+        else
+        {
+            DisplayRatio = 0;
+            ProgressBarScale.ScaleX = 0;
+            CurrentTimeText.Text = "0:00";
+        }
+
+        _suppressExternalSeekDetectionUntil = DateTime.UtcNow.AddSeconds(2);
+    }
+
+    private void HandleNoTrackProgress()
+    {
+        UpdateProgressTimerState();
+        _lastSessionId = "";
+        _lastProgressSessionInstanceKey = "";
+
+        IndeterminateProgress.Visibility = Visibility.Collapsed;
+        IndeterminateProgress.BeginAnimation(OpacityProperty, null);
+        ProgressBar.Visibility = Visibility.Visible;
+        ProgressBarContainer.Cursor = Cursors.Arrow;
+
+        _progressEngine.Reset();
+        _lastProgressTimelineKey = "";
+        _lastProgressTimelineUpdated = DateTimeOffset.MinValue;
+
+        double fromRatio = Math.Clamp(ProgressBarScale.ScaleX, 0, 1);
+        if (fromRatio <= 0.005) fromRatio = Math.Clamp(DisplayRatio, 0, 1);
+
+        if (fromRatio > 0.005 && IsVisible)
+        {
+            if (!_isRewindAnimating)
+            {
                 _trackChangeSequence++;
-
-                _progressEngine.Reset();
                 StopCatchUpAnimation();
                 StopRewindTextAnimation();
 
-                _isRewindAnimating = false;
-                ProgressBarScale.BeginAnimation(ScaleTransform.ScaleXProperty, null);
                 _progressVelocity = 0;
                 _springSettleFrames = 0;
                 _isSeekSpringActive = false;
 
                 LastDisplayedSecond = -1;
                 _progressSnapshotSequence = 0;
-                _lastProgressTimelineUpdated = DateTimeOffset.MinValue;
-                _lastProgressIsPlaying = false;
                 StopSpringRenderLoop();
 
-                double fromRatio = visibleRatio;
                 DisplayRatio = fromRatio;
                 _progressTargetRatio = 0;
                 _progressSpringTargetRatio = 0;
                 _lastRenderedRatio = 0;
-                RemainingTimeText.Text = FormatDuration(info.Duration);
+                RemainingTimeText.Text = "0:00";
 
-                if (isFirstEverTrack)
-                {
-                    if (info.IsPlaying && info.Position > TimeSpan.Zero && info.HasTimeline)
-                    {
-                        double initialRatio = Math.Clamp(info.Position.TotalSeconds / info.Duration.TotalSeconds, 0, 1);
-                        DisplayRatio = initialRatio;
-                        _progressTargetRatio = initialRatio;
-                        _progressSpringTargetRatio = initialRatio;
-                        _lastRenderedRatio = initialRatio;
-                        ProgressBarScale.ScaleX = initialRatio;
-                        CurrentTimeText.Text = FormatTime(info.Position);
-                        RemainingTimeText.Text = FormatDuration(info.Duration);
-                        RuntimeLog.Debug("PROGRESS-BOOT", () =>
-                            $"First track init at pos={info.Position.TotalSeconds:F1}s ratio={initialRatio:F4}");
-                    }
-                    else
-                    {
-                        DisplayRatio = 0;
-                        ProgressBarScale.ScaleX = 0;
-                        CurrentTimeText.Text = "0:00";
-                    }
-                }
-                else if (IsVisible && info.HasTimeline)
-                {
-                    AnimateTrackChangeRewindToZero(fromRatio, info.Duration);
-                }
-                else
-                {
-                    DisplayRatio = 0;
-                    ProgressBarScale.ScaleX = 0;
-                    CurrentTimeText.Text = "0:00";
-                }
-
-                _suppressExternalSeekDetectionUntil = DateTime.UtcNow.AddSeconds(2);
-            }
-            else if (isSessionSwitch)
-            {
-                _progressEngine.Reset();
-                _progressSnapshotSequence = 0;
-                _lastProgressTimelineUpdated = DateTimeOffset.MinValue;
-                _lastProgressIsPlaying = false;
-                _allowProgressBackwardRenderUntil = DateTime.UtcNow.AddSeconds(3);
-                RuntimeLog.Debug("PROGRESS-SESSION", () =>
-                    $"Logical session changed for same track: " +
-                    $"'{_lastProgressSessionInstanceKey}' -> '{info.SessionInstanceKey}'");
-            }
-
-            _lastSessionId = info.SourceAppId ?? "";
-            _lastProgressSessionInstanceKey = info.SessionInstanceKey ?? "";
-
-            if (info.IsTimelineIndeterminate)
-            {
-                StopCatchUpAnimation();
-                CancelRewindForNavigation();
-                StopSpringRenderLoop();
-                ProgressBarScale.BeginAnimation(ScaleTransform.ScaleXProperty, null);
-                _isDraggingProgress = false;
-                _isClickSeekPending = false;
-                if (ProgressBarContainer.IsMouseCaptured) ProgressBarContainer.ReleaseMouseCapture();
-                BufferingChanged?.Invoke(false);
-            }
-
-            string timelineKey = $"{info.SourceAppId}|{info.SessionInstanceKey}|{info.CurrentTrack}|{info.CurrentArtist}|{info.IsTimelineIndeterminate}";
-            if (timelineKey != _lastProgressTimelineKey)
-            {
-                _lastProgressTimelineKey = timelineKey;
-                _lastProgressTimelineUpdated = DateTimeOffset.MinValue;
-                _lastProgressIsPlaying = false;
-            }
-
-            if (_lastProgressTimelineUpdated != DateTimeOffset.MinValue &&
-                timelineKey == _lastProgressTimelineKey &&
-                info.IsPlaying &&
-                _lastProgressIsPlaying)
-            {
-
-                var infoUpdatedUtc = info.LastUpdated.ToUniversalTime();
-                var lastUpdatedUtc = _lastProgressTimelineUpdated.ToUniversalTime();
-
-                if (infoUpdatedUtc < lastUpdatedUtc)
-                {
-                    UpdateProgressTimerState();
-                    if (IsVisible) RenderProgressBar();
-                    return;
-                }
-            }
-
-            var snapshot = new ProgressSnapshot
-            {
-                Position = info.Position,
-                Duration = info.Duration,
-                IsPlaying = info.IsPlaying,
-
-                IsYouTube = IsLikelyBrowserProgressSource(info),
-                PlaybackRate = info.PlaybackRate,
-                IsSeekEnabled = info.IsSeekEnabled,
-                IsIndeterminate = info.IsTimelineIndeterminate,
-                Timestamp = info.LastUpdated.UtcDateTime,
-                SequenceNumber = System.Threading.Interlocked.Increment(ref _progressSnapshotSequence)
-            };
-
-            _progressEngine.OnMediaSnapshot(snapshot);
-            if (info.LastUpdated > _lastProgressTimelineUpdated || info.IsPlaying != _lastProgressIsPlaying)
-            {
-                _lastProgressTimelineUpdated = info.LastUpdated;
-            }
-            _lastProgressIsPlaying = info.IsPlaying;
-
-            bool canSeek = info.CanSeekTimeline;
-            ProgressBarContainer.Cursor = canSeek ? Cursors.Hand : Cursors.Arrow;
-
-            UpdateProgressTimerState();
-
-            if (IsVisible)
-            {
-                RenderProgressBar();
-                Dispatcher.BeginInvoke(new Action(RenderProgressBar), DispatcherPriority.Render);
-            }
-        }
-        else
-        {
-            UpdateProgressTimerState();
-            _lastSessionId = "";
-            _lastProgressSessionInstanceKey = "";
-
-            IndeterminateProgress.Visibility = Visibility.Collapsed;
-            IndeterminateProgress.BeginAnimation(OpacityProperty, null);
-            ProgressBar.Visibility = Visibility.Visible;
-            ProgressBarContainer.Cursor = Cursors.Arrow;
-
-            _progressEngine.Reset();
-            _lastProgressTimelineKey = "";
-            _lastProgressTimelineUpdated = DateTimeOffset.MinValue;
-
-            double fromRatio = Math.Clamp(ProgressBarScale.ScaleX, 0, 1);
-            if (fromRatio <= 0.005) fromRatio = Math.Clamp(DisplayRatio, 0, 1);
-
-            if (fromRatio > 0.005 && IsVisible)
-            {
-                if (!_isRewindAnimating)
-                {
-                    _trackChangeSequence++;
-                    StopCatchUpAnimation();
-                    StopRewindTextAnimation();
-
-                    _progressVelocity = 0;
-                    _springSettleFrames = 0;
-                    _isSeekSpringActive = false;
-
-                    LastDisplayedSecond = -1;
-                    _progressSnapshotSequence = 0;
-                    StopSpringRenderLoop();
-
-                    DisplayRatio = fromRatio;
-                    _progressTargetRatio = 0;
-                    _progressSpringTargetRatio = 0;
-                    _lastRenderedRatio = 0;
-                    RemainingTimeText.Text = "0:00";
-
-                    _lastProgressSignature = "";
-                    AnimateTrackChangeRewindToZero(fromRatio, TimeSpan.Zero);
-                }
-            }
-            else if (!_isRewindAnimating)
-            {
                 _lastProgressSignature = "";
-                ResetProgressUI();
+                AnimateTrackChangeRewindToZero(fromRatio, TimeSpan.Zero);
             }
-
-            if (IsVisible && !_isRewindAnimating) RenderProgressBar();
         }
+        else if (!_isRewindAnimating)
+        {
+            _lastProgressSignature = "";
+            ResetProgressUI();
+        }
+
+        if (IsVisible && !_isRewindAnimating) RenderProgressBar();
     }
 
     private static void NormalizeStartupSnapshotTimestamp(MediaInfo info) =>
@@ -899,12 +905,9 @@ public sealed partial class MediaPlaybackView : UserControl, IDisposable
 
     internal void RenderProgressBar()
     {
-        if (_isDraggingProgress || _currentMediaInfo == null) return;
-        if (_isRewindAnimating) return;
+        if (_isDraggingProgress || _currentMediaInfo == null || _isRewindAnimating) return;
 
-        bool hasRealTrack = !string.IsNullOrWhiteSpace(_currentMediaInfo.CurrentTrack) &&
-                            !string.Equals(_currentMediaInfo.CurrentTrack, "No media playing", StringComparison.OrdinalIgnoreCase);
-        if (!hasRealTrack)
+        if (!HasRealTrack(_currentMediaInfo.CurrentTrack))
         {
             CurrentTimeText.Text = "0:00";
             RemainingTimeText.Text = "0:00";
@@ -917,7 +920,6 @@ public sealed partial class MediaPlaybackView : UserControl, IDisposable
             _springSettleFrames = 0;
             _isSeekSpringActive = false;
             StopSpringRenderLoop();
-
             LastDisplayedSecond = -1;
             return;
         }
@@ -929,68 +931,22 @@ public sealed partial class MediaPlaybackView : UserControl, IDisposable
 
         if (frame.ShowIndeterminate || frame.Duration <= TimeSpan.Zero)
         {
-            if (frame.ShowIndeterminate)
-            {
-                CurrentTimeText.Text = "";
-                RemainingTimeText.Text = _currentMediaInfo.IsTimelinePending ? "--:--" : "LIVE";
-            }
-            else
-            {
-                CurrentTimeText.Text = "0:00";
-                RemainingTimeText.Text = "0:00";
-            }
-            StopSpringRenderLoop();
-            ProgressBarScale.BeginAnimation(ScaleTransform.ScaleXProperty, null);
-            ProgressBarScale.ScaleX = 0;
-            DisplayRatio = 0;
-            _progressTargetRatio = 0;
-            _progressSpringTargetRatio = 0;
-            _progressVelocity = 0;
-            _springSettleFrames = 0;
-            _isSeekSpringActive = false;
-
-            LastDisplayedSecond = -1;
-            UpdateProgressTimerState();
+            ResetZeroTimelineBar(frame.ShowIndeterminate);
             return;
         }
 
-        double engineRatio = 0;
-        if (frame.Duration.TotalSeconds > 0)
-        {
-            engineRatio = frame.Position.TotalSeconds / frame.Duration.TotalSeconds;
-            engineRatio = Math.Clamp(engineRatio, 0, 1);
-        }
+        double engineRatio = frame.Duration.TotalSeconds > 0
+            ? Math.Clamp(frame.Position.TotalSeconds / frame.Duration.TotalSeconds, 0, 1)
+            : 0;
 
-        if (_isCatchUpAnimating)
-        {
-            double ratioDiff = Math.Abs(engineRatio - _lastRenderedRatio);
-            if (ratioDiff > 0.01)
-            {
-                StopCatchUpAnimation();
-
-                _progressTargetRatio = engineRatio;
-                _progressSpringTargetRatio = DisplayRatio;
-                _progressVelocity = 0;
-                _springSettleFrames = 0;
-                _isSeekSpringActive = true;
-                _protectSpringTargetUntil = renderNow.AddSeconds(1.5);
-                StartSpringRenderLoop();
-                CurrentTimeText.Text = FormatTime(frame.Position);
-                _lastRenderedRatio = engineRatio;
-            }
-            else
-            {
-                _lastRenderedRatio = engineRatio;
-                return;
-            }
-        }
+        if (_isCatchUpAnimating && TryAdvanceCatchUpFrame(in frame, engineRatio, renderNow))
+            return;
 
         _lastRenderedRatio = engineRatio;
 
         if (frame.DurationJustChanged)
         {
             ProgressBarBg.Visibility = frame.Duration.TotalSeconds > 0 ? Visibility.Visible : Visibility.Collapsed;
-
             _isSeekSpringActive = false;
             _springSettleFrames = 0;
             _progressVelocity = 0;
@@ -1000,59 +956,10 @@ public sealed partial class MediaPlaybackView : UserControl, IDisposable
             _progressTargetRatio = engineRatio;
             _progressSpringTargetRatio = engineRatio;
             ProgressBarScale.ScaleX = engineRatio;
-
         }
-        else if (_isSeekSpringActive)
+        else if (_isSeekSpringActive && TryAdvanceSeekSpringFrame(in frame, engineRatio, renderNow))
         {
-            if (!Spring.IsActive)
-            {
-                _isSeekSpringActive = false;
-                DisplayRatio = Spring.DisplayRatio;
-                _progressVelocity = 0;
-                _springSettleFrames = 0;
-                UpdateProgressTimerState();
-                RuntimeLog.Debug("PROGRESS-SPRING", () => $"settled at ratio={DisplayRatio:F4} engineRatio={engineRatio:F4}");
-
-                if (_isClickSeekPending)
-                {
-                    DisplayRatio = _progressTargetRatio;
-                    ProgressBarScale.ScaleX = _progressTargetRatio;
-                    CurrentTimeText.Text = FormatTime(_dragSeekPosition);
-                    return;
-                }
-
-                DisplayRatio = engineRatio;
-                ProgressBarScale.ScaleX = engineRatio;
-                _suppressExternalSeekDetectionUntil = renderNow.AddSeconds(1.5);
-            }
-            else
-            {
-                if (!Spring.IsHooked)
-                {
-                    StartSpringRenderLoop();
-                }
-
-                if (!_isClickSeekPending && renderNow >= _protectSpringTargetUntil)
-                {
-                    _progressTargetRatio = engineRatio;
-                }
-                if (_isClickSeekPending)
-                {
-                    CurrentTimeText.Text = FormatTime(_dragSeekPosition);
-                }
-                else if (frame.Duration.TotalSeconds > 0)
-                {
-                    var pos = TimeSpan.FromSeconds(DisplayRatio * frame.Duration.TotalSeconds);
-                    int sec = (int)pos.TotalSeconds;
-                    if (sec != LastDisplayedSecond)
-                    {
-                        LastDisplayedSecond = sec;
-                        CurrentTimeText.Text = FormatTime(pos);
-                        RemainingTimeText.Text = FormatDuration(frame.Duration);
-                    }
-                }
-                return;
-            }
+            return;
         }
 
         if (_isClickSeekPending)
@@ -1063,164 +970,11 @@ public sealed partial class MediaPlaybackView : UserControl, IDisposable
 
         if (!_isSeekSpringActive)
         {
-
-
-
-            bool isRealtimeProgressing = frame.State == ProgressState.Playing || frame.State == ProgressState.Seeking;
-            double rawTargetRatio = engineRatio;
-            double rawRatioDiff = Math.Abs(rawTargetRatio - DisplayRatio);
-            double rawDiffSeconds = rawRatioDiff * frame.Duration.TotalSeconds;
-
-            if (!_isDraggingProgress &&
-                !_isRewindAnimating &&
-                !_isCatchUpAnimating &&
-                !_isClickSeekPending &&
-                !_isSeekSpringActive &&
-                frame.Duration.TotalSeconds > 0 &&
-                DisplayRatio > 0.005 &&
-                renderNow >= _suppressExternalSeekDetectionUntil)
-            {
-                bool playing = frame.State == ProgressState.Playing ||
-                               frame.State == ProgressState.Seeking;
-                bool forwardJump = rawTargetRatio > DisplayRatio &&
-                                   rawDiffSeconds >= 1.2;
-                bool backwardJump = rawTargetRatio < DisplayRatio &&
-                                    rawDiffSeconds >= 0.6;
-
-                bool isLikelyTrackSkip = DisplayRatio > 0.92 &&
-                                         rawTargetRatio < 0.05;
-
-                bool isFalseZeroReport = rawTargetRatio < 0.001 &&
-                                         DisplayRatio > 0.05 &&
-                                         playing;
-
-                bool isSuspiciousBackward = backwardJump && playing &&
-                                            rawDiffSeconds > 30.0 &&
-                                            DisplayRatio > 0.10;
-
-                if (rawDiffSeconds >= 0.6)
-                {
-                    RuntimeLog.Log(ProgressSeekLogTag,
-                        $"check from={DisplayRatio:F4} to={rawTargetRatio:F4} " +
-                        $"diffSec={rawDiffSeconds:F2} state={frame.State} playing={playing} " +
-                        $"forward={forwardJump} backward={backwardJump} likelySkip={isLikelyTrackSkip} " +
-                        $"falseZero={isFalseZeroReport} suspiciousBack={isSuspiciousBackward}");
-                }
-
-                if (playing && (forwardJump || backwardJump) && !isLikelyTrackSkip && !isFalseZeroReport && !isSuspiciousBackward)
-                {
-                    AnimateExternalSeekTo(rawTargetRatio);
-                    _suppressExternalSeekDetectionUntil = renderNow.AddMilliseconds(800);
-
-                    return;
-                }
-
-                if (isFalseZeroReport || isSuspiciousBackward)
-                {
-
-                    return;
-                }
-            }
-
-            if (rawDiffSeconds >= SOURCE_SMOOTH_SECONDS)
-            {
-                RuntimeLog.Debug("PROGRESS-RENDER-JUMP", () =>
-                    $"*** LARGE-RENDER-SNAP: display={DisplayRatio:F4} -> target={rawTargetRatio:F4} " +
-                    $"diffSec={rawDiffSeconds:F2}s direction={(rawTargetRatio < DisplayRatio ? "BACKWARD" : "forward")} " +
-                    $"state={frame.State} pos={frame.Position.TotalSeconds:F2}s dur={frame.Duration.TotalSeconds:F1}s");
-                DisplayRatio = rawTargetRatio;
-                _progressTargetRatio = rawTargetRatio;
-                _progressSpringTargetRatio = rawTargetRatio;
-                _progressVelocity = 0;
-                ProgressBarScale.ScaleX = DisplayRatio;
-            }
-            else
-            {
-                _progressTargetRatio = rawTargetRatio;
-
-                double backwardThreshold = 0.5;
-                if (_currentMediaInfo != null)
-                {
-                    bool isBrowserSource = IsBrowserProgressSource();
-
-                    if (isBrowserSource)
-                    {
-                        backwardThreshold = 1.5;
-                    }
-                }
-
-                bool isUserSeekWindow = frame.State == ProgressState.Seeking || renderNow < _allowProgressBackwardRenderUntil;
-                bool isPostSeekStabilization = renderNow < _blockBackwardAfterSeekUntil;
-
-                if (_progressTargetRatio < DisplayRatio)
-                {
-                    double backwardSeconds = (DisplayRatio - _progressTargetRatio) * frame.Duration.TotalSeconds;
-
-                    if (isUserSeekWindow)
-                    {
-                        RuntimeLog.Debug(ProgressRenderBackwardLogTag, () =>
-                            $"allowed (user-seek): display={DisplayRatio:F4} target={_progressTargetRatio:F4} backSec={backwardSeconds:F2}s");
-                    }
-                    else if (isPostSeekStabilization)
-                    {
-                        _progressTargetRatio = DisplayRatio;
-                    }
-                    else if (isRealtimeProgressing)
-                    {
-                        bool isBrowserSourceForBackward = _currentMediaInfo != null &&
-                            _currentMediaInfo.Platform is MediaPlatform.Browser or MediaPlatform.YouTube or MediaPlatform.SoundCloud;
-
-                        double allowedBackward = isBrowserSourceForBackward ? 0.5 : 0.08;
-                        if (backwardSeconds > allowedBackward)
-                        {
-                            RuntimeLog.Debug(ProgressRenderBackwardLogTag, () =>
-                                $"BLOCKED (playback): display={DisplayRatio:F4} target={_progressTargetRatio:F4} " +
-                                $"backSec={backwardSeconds:F2}s > allowed={allowedBackward:F2}s isBrowser={isBrowserSourceForBackward}");
-                            _progressTargetRatio = DisplayRatio;
-                        }
-                        else
-                        {
-                            RuntimeLog.Debug(ProgressRenderBackwardLogTag, () =>
-                                $"allowed (small): display={DisplayRatio:F4} target={_progressTargetRatio:F4} " +
-                                $"backSec={backwardSeconds:F2}s <= allowed={allowedBackward:F2}s");
-                        }
-                    }
-                    else if (backwardSeconds > backwardThreshold)
-                    {
-                        double maxBackwardStepSeconds = 0.22;
-                        double maxBackwardRatioStep = maxBackwardStepSeconds / frame.Duration.TotalSeconds;
-                        double cappedTarget = Math.Max(_progressTargetRatio, DisplayRatio - maxBackwardRatioStep);
-                        RuntimeLog.Debug(ProgressRenderBackwardLogTag, () =>
-                            $"capped (paused): display={DisplayRatio:F4} target={_progressTargetRatio:F4} " +
-                            $"backSec={backwardSeconds:F2}s capped={cappedTarget:F4}");
-                        _progressTargetRatio = cappedTarget;
-                    }
-                }
-
-                DisplayRatio = _progressTargetRatio;
-            }
-
-            DisplayRatio = Math.Clamp(DisplayRatio, 0, 1);
-            ProgressBarScale.ScaleX = DisplayRatio;
+            if (TryApplyDirectProgressFrame(in frame, engineRatio, renderNow))
+                return;
         }
 
-        if (!_isDraggingProgress && frame.Duration.TotalSeconds > 0 && frame.State == ProgressState.Playing)
-        {
-            if (_lastProgressMovementRatio < 0 || Math.Abs(DisplayRatio - _lastProgressMovementRatio) > 0.0015)
-            {
-                _lastProgressMovementRatio = DisplayRatio;
-                _lastProgressMovementUtc = renderNow;
-            }
-            else
-            {
-                var stuckFor = renderNow - _lastProgressMovementUtc;
-                var visualDrift = Math.Abs(engineRatio - DisplayRatio);
-                if (stuckFor.TotalMilliseconds > 900 && visualDrift > 0.02)
-                {
-                    _lastProgressMovementUtc = renderNow;
-                }
-            }
-        }
+        UpdateStuckMovementTracking(in frame, engineRatio, renderNow);
 
         int currentSecond = (int)frame.Position.TotalSeconds;
         if (currentSecond != LastDisplayedSecond)
@@ -1231,23 +985,277 @@ public sealed partial class MediaPlaybackView : UserControl, IDisposable
         }
     }
 
+    private void ResetZeroTimelineBar(bool showIndeterminate)
+    {
+        if (showIndeterminate)
+        {
+            CurrentTimeText.Text = "";
+            RemainingTimeText.Text = _currentMediaInfo!.IsTimelinePending ? "--:--" : "LIVE";
+        }
+        else
+        {
+            CurrentTimeText.Text = "0:00";
+            RemainingTimeText.Text = "0:00";
+        }
+        StopSpringRenderLoop();
+        ProgressBarScale.BeginAnimation(ScaleTransform.ScaleXProperty, null);
+        ProgressBarScale.ScaleX = 0;
+        DisplayRatio = 0;
+        _progressTargetRatio = 0;
+        _progressSpringTargetRatio = 0;
+        _progressVelocity = 0;
+        _springSettleFrames = 0;
+        _isSeekSpringActive = false;
+
+        LastDisplayedSecond = -1;
+        UpdateProgressTimerState();
+    }
+
+    private bool TryAdvanceCatchUpFrame(in UiProgressFrame frame, double engineRatio, DateTime renderNow)
+    {
+        if (Math.Abs(engineRatio - _lastRenderedRatio) <= 0.01)
+        {
+            _lastRenderedRatio = engineRatio;
+            return true;
+        }
+
+        StopCatchUpAnimation();
+        _progressTargetRatio = engineRatio;
+        _progressSpringTargetRatio = DisplayRatio;
+        _progressVelocity = 0;
+        _springSettleFrames = 0;
+        _isSeekSpringActive = true;
+        _protectSpringTargetUntil = renderNow.AddSeconds(1.5);
+        StartSpringRenderLoop();
+        CurrentTimeText.Text = FormatTime(frame.Position);
+        _lastRenderedRatio = engineRatio;
+        return false;
+    }
+
+    private bool TryAdvanceSeekSpringFrame(in UiProgressFrame frame, double engineRatio, DateTime renderNow)
+    {
+        if (!Spring.IsActive)
+        {
+            _isSeekSpringActive = false;
+            DisplayRatio = Spring.DisplayRatio;
+            _progressVelocity = 0;
+            _springSettleFrames = 0;
+            UpdateProgressTimerState();
+            RuntimeLog.Debug("PROGRESS-SPRING", () => $"settled at ratio={DisplayRatio:F4} engineRatio={engineRatio:F4}");
+
+            if (_isClickSeekPending)
+            {
+                DisplayRatio = _progressTargetRatio;
+                ProgressBarScale.ScaleX = _progressTargetRatio;
+                CurrentTimeText.Text = FormatTime(_dragSeekPosition);
+                return true;
+            }
+
+            DisplayRatio = engineRatio;
+            ProgressBarScale.ScaleX = engineRatio;
+            _suppressExternalSeekDetectionUntil = renderNow.AddSeconds(1.5);
+            return false;
+        }
+
+        if (!Spring.IsHooked)
+        {
+            StartSpringRenderLoop();
+        }
+
+        if (!_isClickSeekPending && renderNow >= _protectSpringTargetUntil)
+        {
+            _progressTargetRatio = engineRatio;
+        }
+
+        if (_isClickSeekPending)
+        {
+            CurrentTimeText.Text = FormatTime(_dragSeekPosition);
+        }
+        else if (frame.Duration.TotalSeconds > 0)
+        {
+            var pos = TimeSpan.FromSeconds(DisplayRatio * frame.Duration.TotalSeconds);
+            int sec = (int)pos.TotalSeconds;
+            if (sec != LastDisplayedSecond)
+            {
+                LastDisplayedSecond = sec;
+                CurrentTimeText.Text = FormatTime(pos);
+                RemainingTimeText.Text = FormatDuration(frame.Duration);
+            }
+        }
+        return true;
+    }
+
+    private bool TryApplyDirectProgressFrame(in UiProgressFrame frame, double rawTargetRatio, DateTime renderNow)
+    {
+        bool isRealtimeProgressing = frame.State == ProgressState.Playing || frame.State == ProgressState.Seeking;
+        double rawRatioDiff = Math.Abs(rawTargetRatio - DisplayRatio);
+        double rawDiffSeconds = rawRatioDiff * frame.Duration.TotalSeconds;
+
+        if (!_isCatchUpAnimating &&
+            frame.Duration.TotalSeconds > 0 &&
+            DisplayRatio > 0.005 &&
+            renderNow >= _suppressExternalSeekDetectionUntil &&
+            TryHandleExternalSeekOrAnomaly(in frame, rawTargetRatio, rawDiffSeconds, isRealtimeProgressing, renderNow))
+        {
+            return true;
+        }
+
+        if (rawDiffSeconds >= SOURCE_SMOOTH_SECONDS)
+        {
+            var snapState = frame.State;
+            double snapPosSeconds = frame.Position.TotalSeconds;
+            double snapDurSeconds = frame.Duration.TotalSeconds;
+            RuntimeLog.Debug("PROGRESS-RENDER-JUMP", () =>
+                $"*** LARGE-RENDER-SNAP: display={DisplayRatio:F4} -> target={rawTargetRatio:F4} " +
+                $"diffSec={rawDiffSeconds:F2}s direction={(rawTargetRatio < DisplayRatio ? "BACKWARD" : "forward")} " +
+                $"state={snapState} pos={snapPosSeconds:F2}s dur={snapDurSeconds:F1}s");
+            DisplayRatio = rawTargetRatio;
+            _progressTargetRatio = rawTargetRatio;
+            _progressSpringTargetRatio = rawTargetRatio;
+            _progressVelocity = 0;
+            ProgressBarScale.ScaleX = DisplayRatio;
+        }
+        else
+        {
+            _progressTargetRatio = ResolveClampedTargetRatio(in frame, rawTargetRatio, isRealtimeProgressing, renderNow);
+            DisplayRatio = _progressTargetRatio;
+        }
+
+        DisplayRatio = Math.Clamp(DisplayRatio, 0, 1);
+        ProgressBarScale.ScaleX = DisplayRatio;
+        return false;
+    }
+
+    private bool TryHandleExternalSeekOrAnomaly(
+        in UiProgressFrame frame,
+        double rawTargetRatio,
+        double rawDiffSeconds,
+        bool playing,
+        DateTime renderNow)
+    {
+        bool forwardJump = rawTargetRatio > DisplayRatio && rawDiffSeconds >= 1.2;
+        bool backwardJump = rawTargetRatio < DisplayRatio && rawDiffSeconds >= 0.6;
+        bool isLikelyTrackSkip = DisplayRatio > 0.92 && rawTargetRatio < 0.05;
+        bool isFalseZeroReport = rawTargetRatio < 0.001 && DisplayRatio > 0.05 && playing;
+        bool isSuspiciousBackward = backwardJump && playing && rawDiffSeconds > 30.0 && DisplayRatio > 0.10;
+
+        if (rawDiffSeconds >= 0.6)
+        {
+            var state = frame.State;
+            RuntimeLog.Log(ProgressSeekLogTag,
+                $"check from={DisplayRatio:F4} to={rawTargetRatio:F4} " +
+                $"diffSec={rawDiffSeconds:F2} state={state} playing={playing} " +
+                $"forward={forwardJump} backward={backwardJump} likelySkip={isLikelyTrackSkip} " +
+                $"falseZero={isFalseZeroReport} suspiciousBack={isSuspiciousBackward}");
+        }
+
+        if (playing && (forwardJump || backwardJump) && !isLikelyTrackSkip && !isFalseZeroReport && !isSuspiciousBackward)
+        {
+            AnimateExternalSeekTo(rawTargetRatio);
+            _suppressExternalSeekDetectionUntil = renderNow.AddMilliseconds(800);
+            return true;
+        }
+
+        return isFalseZeroReport || isSuspiciousBackward;
+    }
+
+    private double ResolveClampedTargetRatio(
+        in UiProgressFrame frame,
+        double targetRatio,
+        bool isRealtimeProgressing,
+        DateTime renderNow)
+    {
+        if (targetRatio >= DisplayRatio) return targetRatio;
+
+        double backwardThreshold = _currentMediaInfo != null && IsBrowserProgressSource() ? 1.5 : 0.5;
+        bool isUserSeekWindow = frame.State == ProgressState.Seeking || renderNow < _allowProgressBackwardRenderUntil;
+        bool isPostSeekStabilization = renderNow < _blockBackwardAfterSeekUntil;
+        double backwardSeconds = (DisplayRatio - targetRatio) * frame.Duration.TotalSeconds;
+
+        if (isUserSeekWindow)
+        {
+            RuntimeLog.Debug(ProgressRenderBackwardLogTag, () =>
+                $"allowed (user-seek): display={DisplayRatio:F4} target={targetRatio:F4} backSec={backwardSeconds:F2}s");
+            return targetRatio;
+        }
+
+        if (isPostSeekStabilization)
+        {
+            return DisplayRatio;
+        }
+
+        if (isRealtimeProgressing)
+        {
+            bool isBrowserSourceForBackward = _currentMediaInfo != null &&
+                _currentMediaInfo.Platform is MediaPlatform.Browser or MediaPlatform.YouTube or MediaPlatform.SoundCloud;
+
+            double allowedBackward = isBrowserSourceForBackward ? 0.5 : 0.08;
+            if (backwardSeconds > allowedBackward)
+            {
+                RuntimeLog.Debug(ProgressRenderBackwardLogTag, () =>
+                    $"BLOCKED (playback): display={DisplayRatio:F4} target={targetRatio:F4} " +
+                    $"backSec={backwardSeconds:F2}s > allowed={allowedBackward:F2}s isBrowser={isBrowserSourceForBackward}");
+                return DisplayRatio;
+            }
+
+            RuntimeLog.Debug(ProgressRenderBackwardLogTag, () =>
+                $"allowed (small): display={DisplayRatio:F4} target={targetRatio:F4} " +
+                $"backSec={backwardSeconds:F2}s <= allowed={allowedBackward:F2}s");
+            return targetRatio;
+        }
+
+        if (backwardSeconds > backwardThreshold)
+        {
+            double maxBackwardRatioStep = 0.22 / frame.Duration.TotalSeconds;
+            double cappedTarget = Math.Max(targetRatio, DisplayRatio - maxBackwardRatioStep);
+            RuntimeLog.Debug(ProgressRenderBackwardLogTag, () =>
+                $"capped (paused): display={DisplayRatio:F4} target={targetRatio:F4} " +
+                $"backSec={backwardSeconds:F2}s capped={cappedTarget:F4}");
+            return cappedTarget;
+        }
+
+        return targetRatio;
+    }
+
+    private void UpdateStuckMovementTracking(in UiProgressFrame frame, double engineRatio, DateTime renderNow)
+    {
+        if (_isDraggingProgress || frame.Duration.TotalSeconds <= 0 || frame.State != ProgressState.Playing)
+            return;
+
+        if (_lastProgressMovementRatio < 0 || Math.Abs(DisplayRatio - _lastProgressMovementRatio) > 0.0015)
+        {
+            _lastProgressMovementRatio = DisplayRatio;
+            _lastProgressMovementUtc = renderNow;
+            return;
+        }
+
+        var stuckFor = renderNow - _lastProgressMovementUtc;
+        var visualDrift = Math.Abs(engineRatio - DisplayRatio);
+        if (stuckFor.TotalMilliseconds > 900 && visualDrift > 0.02)
+        {
+            _lastProgressMovementUtc = renderNow;
+        }
+    }
+
     private static string FormatTime(TimeSpan time) => MediaProgressHelpers.FormatTime(time);
     private static string FormatDuration(TimeSpan duration) => duration.TotalSeconds > 0 ? FormatTime(duration) : "--:--";
 
     internal static TimeSpan ParseCurrentTime(string? text)
     {
         if (string.IsNullOrWhiteSpace(text)) return TimeSpan.Zero;
-        var parts = text.Trim().Split(':');
-        if (parts.Length == 2 &&
-            int.TryParse(parts[0], out int m) &&
-            double.TryParse(parts[1], out double s))
+        ReadOnlySpan<char> span = text.AsSpan().Trim();
+        Span<Range> parts = stackalloc Range[4];
+        int count = span.Split(parts, ':');
+        if (count == 2 &&
+            int.TryParse(span[parts[0]], out int m) &&
+            double.TryParse(span[parts[1]], out double s))
         {
             return TimeSpan.FromSeconds(m * 60 + s);
         }
-        if (parts.Length == 3 &&
-            int.TryParse(parts[0], out int h) &&
-            int.TryParse(parts[1], out int m2) &&
-            double.TryParse(parts[2], out double s2))
+        if (count == 3 &&
+            int.TryParse(span[parts[0]], out int h) &&
+            int.TryParse(span[parts[1]], out int m2) &&
+            double.TryParse(span[parts[2]], out double s2))
         {
             return TimeSpan.FromSeconds(h * 3600 + m2 * 60 + s2);
         }
@@ -1649,31 +1657,11 @@ public sealed partial class MediaPlaybackView : UserControl, IDisposable
         StopRewindTextAnimation();
         if (startSeconds > 0)
         {
-            var startTime = DateTime.UtcNow;
-            var totalMs = duration.TotalMilliseconds;
-            _rewindTextTimer = new UiScheduledTimer(DispatcherPriority.Render)
-            {
-                Interval = TimeSpan.FromMilliseconds(16)
-            };
-            _rewindTextTimer.Tick += (s, e) =>
-            {
-                if (_trackChangeSequence != seqAtStart)
-                {
-                    StopRewindTextAnimation();
-                    return;
-                }
-                double t = (DateTime.UtcNow - startTime).TotalMilliseconds / totalMs;
-                if (t >= 1.0)
-                {
-                    CurrentTimeText.Text = "0:00";
-                    StopRewindTextAnimation();
-                    return;
-                }
-                double eased = 1.0 - Math.Pow(2.0, -6.0 * t);
-                double currentSec = Math.Max(0, startSeconds * (1.0 - eased));
-                CurrentTimeText.Text = FormatTime(TimeSpan.FromSeconds(currentSec));
-            };
-            _rewindTextTimer.Start();
+            StartRewindTextTimer(
+                seqAtStart,
+                duration,
+                eased => CurrentTimeText.Text = FormatTime(TimeSpan.FromSeconds(Math.Max(0, startSeconds * (1.0 - eased)))),
+                () => CurrentTimeText.Text = "0:00");
         }
         else
         {
@@ -1738,8 +1726,9 @@ public sealed partial class MediaPlaybackView : UserControl, IDisposable
             _progressTargetRatio = targetRatio;
             _progressSpringTargetRatio = targetRatio;
             _lastRenderedRatio = targetRatio;
-            LastDisplayedSecond = (int)GetPositionForRatio(targetRatio).TotalSeconds;
-            CurrentTimeText.Text = FormatTime(GetPositionForRatio(targetRatio));
+            var settledPos = GetPositionForRatio(targetRatio);
+            LastDisplayedSecond = (int)settledPos.TotalSeconds;
+            CurrentTimeText.Text = FormatTime(settledPos);
             StopRewindTextAnimation();
             _isRewindAnimating = false;
 
@@ -1754,13 +1743,22 @@ public sealed partial class MediaPlaybackView : UserControl, IDisposable
         ProgressBarScale.ScaleX = fromRatio;
         ProgressBarScale.BeginAnimation(ScaleTransform.ScaleXProperty, anim);
 
+        StartRewindTextTimer(
+            seqAtStart,
+            duration,
+            eased => CurrentTimeText.Text = FormatTime(GetPositionForRatio(fromRatio + (targetRatio - fromRatio) * eased)),
+            () => CurrentTimeText.Text = FormatTime(GetPositionForRatio(targetRatio)));
+    }
+
+    private void StartRewindTextTimer(long seqAtStart, TimeSpan duration, Action<double> applyEased, Action applyFinal)
+    {
         var startTime = DateTime.UtcNow;
-        var totalMs = duration.TotalMilliseconds;
+        double totalMs = duration.TotalMilliseconds;
         _rewindTextTimer = new UiScheduledTimer(DispatcherPriority.Render)
         {
             Interval = TimeSpan.FromMilliseconds(16)
         };
-        _rewindTextTimer.Tick += (s, e) =>
+        _rewindTextTimer.Tick += (_, _) =>
         {
             if (_trackChangeSequence != seqAtStart)
             {
@@ -1770,13 +1768,11 @@ public sealed partial class MediaPlaybackView : UserControl, IDisposable
             double t = (DateTime.UtcNow - startTime).TotalMilliseconds / totalMs;
             if (t >= 1.0)
             {
-                CurrentTimeText.Text = FormatTime(GetPositionForRatio(targetRatio));
+                applyFinal();
                 StopRewindTextAnimation();
                 return;
             }
-            double eased = 1.0 - Math.Pow(2.0, -6.0 * t);
-            double current = fromRatio + (targetRatio - fromRatio) * eased;
-            CurrentTimeText.Text = FormatTime(GetPositionForRatio(current));
+            applyEased(1.0 - Math.Pow(2.0, -6.0 * t));
         };
         _rewindTextTimer.Start();
     }

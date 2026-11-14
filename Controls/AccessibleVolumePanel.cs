@@ -67,11 +67,29 @@ public sealed class AccessibleVolumePanel : Grid
         InvalidateVisual();
     }
 
+    private static Pen? s_focusPen;
+    private static Color s_focusPenColor;
+
+    private static Pen GetFocusPen()
+    {
+        Color highlightColor = SystemColors.HighlightColor;
+        if (s_focusPen != null && s_focusPenColor == highlightColor)
+            return s_focusPen;
+
+        var brush = new SolidColorBrush(highlightColor);
+        brush.Freeze();
+        var pen = new Pen(brush, 1);
+        pen.Freeze();
+        s_focusPenColor = highlightColor;
+        s_focusPen = pen;
+        return pen;
+    }
+
     protected override void OnRender(DrawingContext dc)
     {
         base.OnRender(dc);
         if (IsKeyboardFocused && ActualWidth > 2 && ActualHeight > 2)
-            dc.DrawRectangle(null, new Pen(SystemColors.HighlightBrush, 1), new Rect(1, 1, ActualWidth - 2, ActualHeight - 2));
+            dc.DrawRectangle(null, GetFocusPen(), new Rect(1, 1, ActualWidth - 2, ActualHeight - 2));
     }
 
     protected override AutomationPeer OnCreateAutomationPeer() => new VolumePeer(this);

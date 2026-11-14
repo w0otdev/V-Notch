@@ -66,10 +66,16 @@ public partial class AudioMixerViewModel : ObservableObject
 
     public void CacheSessionVolume(uint processId, float volume)
     {
-        var session = Snapshot?.Sessions.Find(x => x.ProcessId == processId);
-        if (session == null) return;
-        session.Volume = Math.Clamp(volume, 0, 1);
-        if (session.Volume > 0.0001f) session.IsMuted = false;
+        var sessions = Snapshot?.Sessions;
+        if (sessions == null) return;
+        for (int i = 0; i < sessions.Count; i++)
+        {
+            var session = sessions[i];
+            if (session.ProcessId != processId) continue;
+            session.Volume = Math.Clamp(volume, 0, 1);
+            if (session.Volume > 0.0001f) session.IsMuted = false;
+            return;
+        }
     }
 }
 
@@ -85,10 +91,21 @@ public sealed class AudioMixerSnapshot
     {
         get
         {
-            var apps = string.Join(",", Sessions.Where(x => !x.IsSystemSounds)
-                .Select(x => x.ProcessId).OrderBy(x => x));
-            string outputId = Output.Find(x => x.IsDefault)?.Id ?? "";
-            string inputId = Input.Find(x => x.IsDefault)?.Id ?? "";
+            int sessionCount = Sessions.Count;
+            Span<uint> pids = sessionCount <= 64 ? stackalloc uint[sessionCount] : new uint[sessionCount];
+            int pidCount = 0;
+            for (int i = 0; i < sessionCount; i++)
+            {
+                var session = Sessions[i];
+                if (!session.IsSystemSounds)
+                    pids[pidCount++] = session.ProcessId;
+            }
+            var activePids = pids[..pidCount];
+            activePids.Sort();
+
+            string apps = FormatSortedPids(activePids);
+            string outputId = FindDefaultDevice(Output)?.Id ?? "";
+            string inputId = FindDefaultDevice(Input)?.Id ?? "";
             return $"{apps}|{outputId}|{inputId}|{Output.Count}|{Input.Count}";
         }
     }
@@ -100,6 +117,29 @@ public sealed class AudioMixerSnapshot
         GetDefaultName(Input, fallback ?? Loc.Get("audio.microphone"));
 
     private static string GetDefaultName(List<AudioDeviceInfo> devices, string fallback) =>
-        devices.Find(x => x.IsDefault)?.FriendlyName ??
+        FindDefaultDevice(devices)?.FriendlyName ??
         (devices.Count > 0 ? devices[0].FriendlyName : fallback);
+
+    private static AudioDeviceInfo? FindDefaultDevice(List<AudioDeviceInfo> devices)
+    {
+        for (int i = 0; i < devices.Count; i++)
+        {
+            if (devices[i].IsDefault) return devices[i];
+        }
+        return null;
+    }
+
+    private static string FormatSortedPids(ReadOnlySpan<uint> pids)
+    {
+        if (pids.Length == 0) return string.Empty;
+        if (pids.Length == 1) return pids[0].ToString(System.Globalization.CultureInfo.InvariantCulture);
+
+        var sb = new System.Text.StringBuilder(pids.Length * 6);
+        for (int i = 0; i < pids.Length; i++)
+        {
+            if (i > 0) sb.Append(',');
+            sb.Append(pids[i]);
+        }
+        return sb.ToString();
+    }
 }

@@ -538,49 +538,6 @@ public:
         return false;
     }
 
-    static constexpr int32_t NormalizeTrackTokens(
-        std::u16string_view src,
-        char16_t* dst,
-        int32_t cap) noexcept {
-        int32_t len = 0;
-        bool pending_space = false;
-        for (size_t i = 0; i < src.size() && len < cap; ++i) {
-            const char16_t ch = src[i];
-            if (ch == u'(' || ch == u'[') {
-                size_t close_idx = std::u16string_view::npos;
-                for (size_t j = i + 1; j < src.size(); ++j) {
-                    if (src[j] == u')' || src[j] == u']') {
-                        close_idx = j;
-                        break;
-                    }
-                }
-                if (close_idx != std::u16string_view::npos) {
-                    i = close_idx;
-                    pending_space = (len > 0);
-                    continue;
-                }
-            }
-            const char16_t lower = (ch >= u'A' && ch <= u'Z')
-                ? static_cast<char16_t>(ch + (u'a' - u'A'))
-                : ch;
-            const bool is_alnum = (lower >= u'a' && lower <= u'z') ||
-                                  (lower >= u'0' && lower <= u'9') ||
-                                  (lower > 127 && !vnotch::is_unicode_whitespace(lower));
-            if (is_alnum) {
-                if (pending_space && len < cap - 1) {
-                    dst[len++] = u' ';
-                }
-                if (len < cap) {
-                    dst[len++] = lower;
-                }
-                pending_space = false;
-            } else if (len > 0) {
-                pending_space = true;
-            }
-        }
-        return len;
-    }
-
     static constexpr bool ContainsWholePhraseNormalized(
         std::u16string_view text,
         std::u16string_view phrase) noexcept {
@@ -599,77 +556,14 @@ public:
         return false;
     }
 
-    static constexpr void ScoreYouTubeTrackMatch(
-        std::u16string_view candidate_title,
-        std::u16string_view target_title,
-        int64_t candidate_duration_sec,
-        int64_t target_duration_sec,
-        int32_t& out_score,
-        int32_t& out_duration_delta,
-        uint8_t& out_is_match) noexcept {
-        out_score = 0;
-        out_duration_delta = 1073741823;
-        out_is_match = 0;
-
-        char16_t cand_buf[512];
-        char16_t targ_buf[512];
-        const int32_t cand_len = NormalizeTrackTokens(candidate_title, cand_buf, 512);
-        const int32_t targ_len = NormalizeTrackTokens(target_title, targ_buf, 512);
-        const std::u16string_view cand_norm(cand_buf, static_cast<size_t>(cand_len));
-        const std::u16string_view targ_norm(targ_buf, static_cast<size_t>(targ_len));
-
-        int32_t title_score = 0;
-        if (targ_norm.empty() || cand_norm.empty()) {
-            title_score = (targ_norm.empty() && cand_norm.empty()) ? 50 : 0;
-        } else if (cand_norm == targ_norm) {
-            title_score = 100;
-        } else if (ContainsWholePhraseNormalized(cand_norm, targ_norm) ||
-                   ContainsWholePhraseNormalized(targ_norm, cand_norm)) {
-            title_score = 80;
-        } else {
-            int32_t total_words = 0;
-            int32_t matched_words = 0;
-            size_t pos = 0;
-            while (pos < targ_norm.size()) {
-                size_t space = targ_norm.find(u' ', pos);
-                if (space == std::u16string_view::npos) space = targ_norm.size();
-                const std::u16string_view word = targ_norm.substr(pos, space - pos);
-                if (word.size() >= 2) {
-                    ++total_words;
-                    if (ContainsWholePhraseNormalized(cand_norm, word) || cand_norm == word) {
-                        ++matched_words;
-                    }
-                }
-                pos = space + 1;
-            }
-            if (total_words > 0 && matched_words * 10 >= total_words * 6) {
-                title_score = 60;
-            }
-        }
-
-        if (candidate_duration_sec > 0 && target_duration_sec > 0) {
-            const int64_t diff = candidate_duration_sec >= target_duration_sec
-                ? (candidate_duration_sec - target_duration_sec)
-                : (target_duration_sec - candidate_duration_sec);
-            out_duration_delta = diff > 1073741823LL ? 1073741823 : static_cast<int32_t>(diff);
-        }
-
-        int32_t total_score = title_score;
-        if (title_score > 0 && candidate_duration_sec > 0 && target_duration_sec > 0) {
-            if (out_duration_delta <= 2) total_score += 20;
-            else if (out_duration_delta <= 5) total_score += 10;
-            else if (out_duration_delta > 15) total_score -= 30;
-        }
-
-        out_score = std::max(0, total_score);
-        out_is_match = (title_score >= 60 && (candidate_duration_sec <= 0 || target_duration_sec <= 0 || out_duration_delta <= 15)) ? 1u : 0u;
-    }
-
     static std::u16string ExtractFeaturingFromTitle(
         std::u16string_view title,
         std::u16string& out_stripped_title) {
         out_stripped_title.assign(title);
         std::u16string feat_artists;
+        if (title.find_first_of(u"([") == std::u16string_view::npos) {
+            return feat_artists;
+        }
         constexpr std::u16string_view markers[] = {
             u"(feat. ", u"[feat. ", u"(ft. ", u"[ft. ", u"(with ", u"[with "
         };
@@ -729,6 +623,13 @@ public:
             return;
         }
 
+        int32_t duration_bonus = 0;
+        if (cand_dur_ms > 0 && exp_dur_ms > 0) {
+            const int64_t diff_ms = cand_dur_ms >= exp_dur_ms ? (cand_dur_ms - exp_dur_ms) : (exp_dur_ms - cand_dur_ms);
+            if (diff_ms > 4000) return;
+            duration_bonus = (diff_ms <= 1500) ? 25 : 10;
+        }
+
         std::u16string stripped_cand_title;
         std::u16string title_feat = ExtractFeaturingFromTitle(cand_title, stripped_cand_title);
 
@@ -749,14 +650,7 @@ public:
             return;
         }
 
-        int32_t title_score = (norm_cand_full == norm_exp_full) ? 105 : 100;
-
-        if (cand_dur_ms > 0 && exp_dur_ms > 0) {
-            const int64_t diff_ms = cand_dur_ms >= exp_dur_ms ? (cand_dur_ms - exp_dur_ms) : (exp_dur_ms - cand_dur_ms);
-            if (diff_ms > 4000) return;
-            if (diff_ms <= 1500) title_score += 25;
-            else title_score += 10;
-        }
+        const int32_t title_score = ((norm_cand_full == norm_exp_full) ? 105 : 100) + duration_bonus;
 
         const std::u16string norm_raw_artist = vnotch::normalize_for_loose_match_impl(raw_artist);
         const std::u16string norm_primary = vnotch::normalize_for_loose_match_impl(primary_artist);
@@ -925,29 +819,6 @@ VN_EXPORT int32_t __stdcall vn_media_metadata_extract_youtube_video_id(
     const std::u16string_view sv(input ? input : u"", static_cast<size_t>(input_len));
     *out_found = vnotch::services::MediaMetadataLookupService::TryExtractYouTubeVideoIdFromUrl(
         sv, mode, *out_start, *out_len) ? 1u : 0u;
-    return VN_OK;
-}
-
-VN_EXPORT int32_t __stdcall vn_media_metadata_score_youtube_track_match(
-    const char16_t* candidate_title,
-    int32_t candidate_title_len,
-    const char16_t* target_title,
-    int32_t target_title_len,
-    int64_t candidate_duration_sec,
-    int64_t target_duration_sec,
-    int32_t* out_score,
-    int32_t* out_duration_delta,
-    uint8_t* out_is_match) noexcept {
-    if (!out_score || !out_duration_delta || !out_is_match ||
-        candidate_title_len < 0 || (!candidate_title && candidate_title_len > 0) ||
-        target_title_len < 0 || (!target_title && target_title_len > 0)) {
-        return VN_E_INVALID_ARG;
-    }
-    const std::u16string_view cand_sv(candidate_title ? candidate_title : u"", static_cast<size_t>(candidate_title_len));
-    const std::u16string_view targ_sv(target_title ? target_title : u"", static_cast<size_t>(target_title_len));
-    vnotch::services::MediaMetadataLookupService::ScoreYouTubeTrackMatch(
-        cand_sv, targ_sv, candidate_duration_sec, target_duration_sec,
-        *out_score, *out_duration_delta, *out_is_match);
     return VN_OK;
 }
 

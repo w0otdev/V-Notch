@@ -734,6 +734,7 @@ public partial class MainWindow
         NavIconsBackground.IsHitTestVisible = showBackground;
         if (show)
         {
+            PlaceSharedStatusBar(targetView);
             bool movedSettingsHost = PlaceSharedSettingsButton(targetView);
             BatterySection.Visibility = showBattery ? Visibility.Visible : Visibility.Collapsed;
             NavIconsPanel.Visibility = Visibility.Visible;
@@ -805,6 +806,25 @@ public partial class MainWindow
             beginTime: updateDelay);
     }
 
+    private void PlaceSharedStatusBar(VNotch.Models.NotchView targetView)
+    {
+        if (StatusBar == null || ExpandedStatusBarHost == null || AiUsageStatusBarHost == null) return;
+        bool inAiUsage = targetView == VNotch.Models.NotchView.AiUsage;
+        var desiredHost = inAiUsage ? AiUsageStatusBarHost : ExpandedStatusBarHost;
+        if (!ReferenceEquals(desiredHost.Content, StatusBar))
+        {
+            if (ReferenceEquals(ExpandedStatusBarHost.Content, StatusBar))
+                ExpandedStatusBarHost.Content = null;
+            if (ReferenceEquals(AiUsageStatusBarHost.Content, StatusBar))
+                AiUsageStatusBarHost.Content = null;
+            desiredHost.Content = StatusBar;
+        }
+        if (StatusBarTranslate != null)
+        {
+            StatusBarTranslate.Y = inAiUsage ? 0 : -ExpandedContentRestY;
+        }
+    }
+
     private void RetargetChromeValue(IAnimatable target, DependencyProperty property,
         double to, Duration duration, bool animate, Action? completed = null,
         IEasingFunction? easing = null, TimeSpan? beginTime = null)
@@ -838,120 +858,74 @@ public partial class MainWindow
     #endregion
 
     #region Settings Absorb Animation
-    public void PlaySettingsEjectAnimation()
+    private void ResetNotchScaleAndSizeAnimations()
     {
-        if (_isExpanded || _isAnimating) return;
-
-        int fps = VNotch.Services.AnimationConfig.TargetFps;
-
         NotchScale.BeginAnimation(ScaleTransform.ScaleXProperty, null);
         NotchScale.BeginAnimation(ScaleTransform.ScaleYProperty, null);
         NotchShadowScale.BeginAnimation(ScaleTransform.ScaleXProperty, null);
         NotchShadowScale.BeginAnimation(ScaleTransform.ScaleYProperty, null);
         NotchBorder.BeginAnimation(WidthProperty, null);
         NotchBorder.BeginAnimation(HeightProperty, null);
+    }
+
+    private DoubleAnimationUsingKeyFrames MakeTwoStageSpringPulse(
+        double peakValue,
+        TimeSpan peakKeyTime,
+        double restValue,
+        TimeSpan restKeyTime,
+        int fps,
+        TimeSpan? beginTime = null)
+    {
+        var anim = new DoubleAnimationUsingKeyFrames();
+        if (beginTime.HasValue) anim.BeginTime = beginTime.Value;
+        anim.KeyFrames.Add(new EasingDoubleKeyFrame(peakValue, KeyTime.FromTimeSpan(peakKeyTime), _easeQuadOut));
+        anim.KeyFrames.Add(new EasingDoubleKeyFrame(restValue, KeyTime.FromTimeSpan(restKeyTime), _easeSoftSpring));
+        Timeline.SetDesiredFrameRate(anim, fps);
+        return anim;
+    }
+
+    public void PlaySettingsEjectAnimation()
+    {
+        if (_isExpanded || _isAnimating) return;
+
+        int fps = VNotch.Services.AnimationConfig.TargetFps;
+        ResetNotchScaleAndSizeAnimations();
 
         var ejectDur = TimeSpan.FromMilliseconds(150);
-        var springDur = TimeSpan.FromMilliseconds(600);
+        var settleTime = ejectDur + TimeSpan.FromMilliseconds(600);
 
         double currentWidth = _collapsedWidth;
-        double peakWidth = currentWidth + 40;
-
-        var widthAnim = new DoubleAnimationUsingKeyFrames();
-        widthAnim.KeyFrames.Add(new EasingDoubleKeyFrame(peakWidth,
-            KeyTime.FromTimeSpan(ejectDur),
-            _easeQuadOut));
-        widthAnim.KeyFrames.Add(new EasingDoubleKeyFrame(currentWidth,
-            KeyTime.FromTimeSpan(ejectDur + springDur),
-            _easeSoftSpring));
-        Timeline.SetDesiredFrameRate(widthAnim, fps);
-
         double currentHeight = _collapsedHeight;
-        double peakHeight = currentHeight + 8;
 
-        var heightAnim = new DoubleAnimationUsingKeyFrames();
-        heightAnim.KeyFrames.Add(new EasingDoubleKeyFrame(peakHeight,
-            KeyTime.FromTimeSpan(ejectDur),
-            _easeQuadOut));
-        heightAnim.KeyFrames.Add(new EasingDoubleKeyFrame(currentHeight,
-            KeyTime.FromTimeSpan(ejectDur + springDur),
-            _easeSoftSpring));
-        Timeline.SetDesiredFrameRate(heightAnim, fps);
-
-        var scaleY = new DoubleAnimationUsingKeyFrames();
-        scaleY.KeyFrames.Add(new EasingDoubleKeyFrame(1.15,
-            KeyTime.FromTimeSpan(ejectDur),
-            _easeQuadOut));
-        scaleY.KeyFrames.Add(new EasingDoubleKeyFrame(1.0,
-            KeyTime.FromTimeSpan(ejectDur + springDur),
-            _easeSoftSpring));
-        Timeline.SetDesiredFrameRate(scaleY, fps);
+        var widthAnim = MakeTwoStageSpringPulse(currentWidth + 40, ejectDur, currentWidth, settleTime, fps);
+        var heightAnim = MakeTwoStageSpringPulse(currentHeight + 8, ejectDur, currentHeight, settleTime, fps);
+        var scaleY = MakeTwoStageSpringPulse(1.15, ejectDur, 1.0, settleTime, fps);
 
         NotchBorder.BeginAnimation(WidthProperty, widthAnim);
         NotchBorder.BeginAnimation(HeightProperty, heightAnim);
         NotchScale.BeginAnimation(ScaleTransform.ScaleYProperty, scaleY);
         NotchShadowScale.BeginAnimation(ScaleTransform.ScaleYProperty, scaleY);
     }
+
     public void PlaySettingsAbsorbAnimation()
     {
         if (_isExpanded || _isAnimating) return;
 
         int fps = VNotch.Services.AnimationConfig.TargetFps;
+        ResetNotchScaleAndSizeAnimations();
 
-        NotchScale.BeginAnimation(ScaleTransform.ScaleXProperty, null);
-        NotchScale.BeginAnimation(ScaleTransform.ScaleYProperty, null);
-        NotchShadowScale.BeginAnimation(ScaleTransform.ScaleXProperty, null);
-        NotchShadowScale.BeginAnimation(ScaleTransform.ScaleYProperty, null);
-        NotchBorder.BeginAnimation(WidthProperty, null);
-        NotchBorder.BeginAnimation(HeightProperty, null);
         var absorbDelay = TimeSpan.FromMilliseconds(480);
         var openDur = TimeSpan.FromMilliseconds(200);
-        var springDur = TimeSpan.FromMilliseconds(700);
+        var settleTime = openDur + TimeSpan.FromMilliseconds(700);
 
         double currentWidth = _collapsedWidth;
-        double peakWidth = currentWidth + 60;
-
-        var widthAnim = new DoubleAnimationUsingKeyFrames { BeginTime = absorbDelay };
-        widthAnim.KeyFrames.Add(new EasingDoubleKeyFrame(peakWidth,
-            KeyTime.FromTimeSpan(openDur),
-            _easeQuadOut));
-        widthAnim.KeyFrames.Add(new EasingDoubleKeyFrame(currentWidth,
-            KeyTime.FromTimeSpan(openDur + springDur),
-            _easeSoftSpring));
-        Timeline.SetDesiredFrameRate(widthAnim, fps);
-
         double currentHeight = _collapsedHeight;
-        double peakHeight = currentHeight + 10;
-
-        var heightAnim = new DoubleAnimationUsingKeyFrames { BeginTime = absorbDelay };
-        heightAnim.KeyFrames.Add(new EasingDoubleKeyFrame(peakHeight,
-            KeyTime.FromTimeSpan(openDur),
-            _easeQuadOut));
-        heightAnim.KeyFrames.Add(new EasingDoubleKeyFrame(currentHeight,
-            KeyTime.FromTimeSpan(openDur + springDur),
-            _easeSoftSpring));
-        Timeline.SetDesiredFrameRate(heightAnim, fps);
-
         double currentRadius = _cornerRadiusCollapsed;
-        double peakRadius = currentRadius + 6;
 
-        var radiusAnim = new DoubleAnimationUsingKeyFrames { BeginTime = absorbDelay };
-        radiusAnim.KeyFrames.Add(new EasingDoubleKeyFrame(peakRadius,
-            KeyTime.FromTimeSpan(openDur),
-            _easeQuadOut));
-        radiusAnim.KeyFrames.Add(new EasingDoubleKeyFrame(currentRadius,
-            KeyTime.FromTimeSpan(openDur + springDur),
-            _easeSoftSpring));
-        Timeline.SetDesiredFrameRate(radiusAnim, fps);
-
-        var scaleY = new DoubleAnimationUsingKeyFrames { BeginTime = absorbDelay };
-        scaleY.KeyFrames.Add(new EasingDoubleKeyFrame(1.12,
-            KeyTime.FromTimeSpan(openDur),
-            _easeQuadOut));
-        scaleY.KeyFrames.Add(new EasingDoubleKeyFrame(1.0,
-            KeyTime.FromTimeSpan(openDur + springDur),
-            _easeSoftSpring));
-        Timeline.SetDesiredFrameRate(scaleY, fps);
+        var widthAnim = MakeTwoStageSpringPulse(currentWidth + 60, openDur, currentWidth, settleTime, fps, absorbDelay);
+        var heightAnim = MakeTwoStageSpringPulse(currentHeight + 10, openDur, currentHeight, settleTime, fps, absorbDelay);
+        var radiusAnim = MakeTwoStageSpringPulse(currentRadius + 6, openDur, currentRadius, settleTime, fps, absorbDelay);
+        var scaleY = MakeTwoStageSpringPulse(1.12, openDur, 1.0, settleTime, fps, absorbDelay);
 
         NotchBorder.BeginAnimation(WidthProperty, widthAnim);
         NotchBorder.BeginAnimation(HeightProperty, heightAnim);

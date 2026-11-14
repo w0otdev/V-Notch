@@ -378,6 +378,11 @@ public sealed class CalendarPresenter : IDisposable
 
     private void AnimateCalendarWidgetHover(bool isHovered)
     {
+        if (string.Equals(_refs.SettingsProvider().ExpandedWidget, "aiusage", StringComparison.OrdinalIgnoreCase))
+        {
+            ResetWidgetHoverMotion();
+            return;
+        }
         double targetScale = isHovered ? 1.035 : 1.0;
         double targetLiftY = isHovered ? -3.0 : 0.0;
 
@@ -410,8 +415,10 @@ public sealed class CalendarPresenter : IDisposable
         if (_refs.CalendarGreetingContextBlur != null)
         {
             _refs.CalendarGreetingContextBlur.BeginAnimation(BlurEffect.RadiusProperty, null);
-            _refs.CalendarGreetingContextBlur.Radius = _refs.SettingsProvider().EnableBlurEffects && isFocused ? 3.0 : 0.0;
+            _refs.CalendarGreetingContextBlur.Radius = 0.0;
         }
+        // Subtle opacity dim preserves focus hierarchy without attaching an offscreen BlurEffect to text.
+        _refs.GreetingSection.Opacity = isFocused ? 0.85 : 1.0;
     }
 
     private static void AnimateOpacity(UIElement element, double to, Duration duration, IEasingFunction easing)
@@ -429,6 +436,15 @@ public sealed class CalendarPresenter : IDisposable
 
     public void ResetHoverFocusVisualState()
     {
+        ResetWidgetHoverMotion();
+
+        ResetCalendarContextElement(_refs.BatterySection, null);
+        ResetCalendarContextElement(_refs.SettingsButton, null);
+        ResetCalendarContextElement(_refs.GreetingSection, null);
+    }
+
+    private void ResetWidgetHoverMotion()
+    {
         _refs.CalendarWidgetScale.BeginAnimation(ScaleTransform.ScaleXProperty, null);
         _refs.CalendarWidgetScale.BeginAnimation(ScaleTransform.ScaleYProperty, null);
         _refs.CalendarWidgetTranslate.BeginAnimation(TranslateTransform.YProperty, null);
@@ -436,9 +452,6 @@ public sealed class CalendarPresenter : IDisposable
         _refs.CalendarWidgetScale.ScaleY = 1.0;
         _refs.CalendarWidgetTranslate.Y = 0.0;
 
-        ResetCalendarContextElement(_refs.BatterySection, null);
-        ResetCalendarContextElement(_refs.SettingsButton, null);
-        ResetCalendarContextElement(_refs.GreetingSection, _refs.CalendarGreetingContextBlur);
     }
 
     private static void ResetCalendarContextElement(UIElement element, BlurEffect? effect)

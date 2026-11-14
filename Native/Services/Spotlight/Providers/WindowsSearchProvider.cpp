@@ -224,31 +224,6 @@ namespace vnotch::services
             return vnotch::write_u16_out(sanitized, out_buf, out_cap, out_len);
         }
 
-        static int32_t vn_windows_search_escape_like_pattern_impl(
-            const char16_t* query_ptr, int32_t query_len,
-            char16_t* out_buf, int32_t out_cap, int32_t* out_len)
-        {
-            if (!out_len || query_len < 0 || (!query_ptr && query_len > 0)) return VN_ERR_INVALID_ARG;
-            std::u16string_view view = vnotch::make_view(query_ptr, std::min<int32_t>(query_len, 256));
-            std::u16string res = escape_like_pattern_impl(view);
-            return vnotch::write_u16_out(res, out_buf, out_cap, out_len);
-        }
-
-        static int32_t vn_windows_search_build_name_predicate_impl(
-            const char16_t* sanitized_ptr, int32_t sanitized_len,
-            char16_t* out_buf, int32_t out_cap, int32_t* out_len)
-        {
-            if (!out_len || sanitized_len < 0 || (!sanitized_ptr && sanitized_len > 0)) return VN_ERR_INVALID_ARG;
-            std::u16string clean = sanitize_query_str(vnotch::make_view(sanitized_ptr, sanitized_len));
-            if (clean.empty())
-            {
-                *out_len = 0;
-                return VN_ERR_INVALID_ARG;
-            }
-            std::u16string out = build_name_predicate_str(clean);
-            return vnotch::write_u16_out(out, out_buf, out_cap, out_len);
-        }
-
         static int32_t vn_windows_search_build_query_sql_impl(
             const char16_t* sanitized_ptr, int32_t sanitized_len,
             const char16_t* original_ptr, int32_t original_len,
@@ -462,20 +437,6 @@ VN_EXPORT int32_t vn_windows_search_sanitize_query(
     char16_t* out_buf, int32_t out_cap, int32_t* out_len) noexcept
 {
     try { return vnotch::services::WindowsSearchProvider::vn_windows_search_sanitize_query_impl(query_ptr, query_len, out_buf, out_cap, out_len); } catch (...) { return VN_ERR_FAIL; }
-}
-
-VN_EXPORT int32_t vn_windows_search_escape_like_pattern(
-    const char16_t* query_ptr, int32_t query_len,
-    char16_t* out_buf, int32_t out_cap, int32_t* out_len) noexcept
-{
-    try { return vnotch::services::WindowsSearchProvider::vn_windows_search_escape_like_pattern_impl(query_ptr, query_len, out_buf, out_cap, out_len); } catch (...) { return VN_ERR_FAIL; }
-}
-
-VN_EXPORT int32_t vn_windows_search_build_name_predicate(
-    const char16_t* sanitized_ptr, int32_t sanitized_len,
-    char16_t* out_buf, int32_t out_cap, int32_t* out_len) noexcept
-{
-    try { return vnotch::services::WindowsSearchProvider::vn_windows_search_build_name_predicate_impl(sanitized_ptr, sanitized_len, out_buf, out_cap, out_len); } catch (...) { return VN_ERR_FAIL; }
 }
 
 VN_EXPORT int32_t __stdcall vn_windows_search_build_query_sql(

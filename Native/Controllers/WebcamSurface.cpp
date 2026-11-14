@@ -32,14 +32,29 @@ VN_EXPORT HRESULT vn_webcam_write_surface(IUnknown* source, uint8_t* target, int
         if (!pixels || plane.Width < width || plane.Height < height || plane.StartIndex < 0 || last < 0 ||
             std::abs(int64_t(plane.Stride)) < row_bytes ||
             std::max<int64_t>(last, plane.StartIndex) + row_bytes > capacity) return E_INVALIDARG;
+        const int dst_row_bytes = width * 4;
+        const bool is_gray = format == BitmapPixelFormat::Gray8;
+        const uint8_t is_rgba = format == BitmapPixelFormat::Rgba8 ? 1u : 0u;
+        const int64_t total_src_bytes = int64_t(row_bytes) * height;
+        if (plane.Stride == row_bytes && pitch == dst_row_bytes && int64_t(dst_row_bytes) * height <= INT_MAX) {
+            const uint8_t* src_base = pixels + plane.StartIndex;
+            if (is_gray) {
+                vn_webcam_convert_gray8_to_bgra8(src_base, width * height, target);
+            } else {
+                memcpy(target, src_base, static_cast<size_t>(total_src_bytes));
+                if (is_rgba || alpha != 0)
+                    vn_webcam_convert_rgb_in_place(target, static_cast<int32_t>(total_src_bytes), is_rgba, alpha);
+            }
+            return S_OK;
+        }
         for (int y = 0; y < height; ++y) {
             const auto src = pixels + plane.StartIndex + int64_t(y) * plane.Stride;
             auto dst = target + int64_t(y) * pitch;
-            if (format == BitmapPixelFormat::Gray8) vn_webcam_convert_gray8_to_bgra8(src, width, dst);
+            if (is_gray) vn_webcam_convert_gray8_to_bgra8(src, width, dst);
             else {
                 memcpy(dst, src, row_bytes);
-                if (format == BitmapPixelFormat::Rgba8 || alpha != 0)
-                    vn_webcam_convert_rgb_in_place(dst, row_bytes, format == BitmapPixelFormat::Rgba8, alpha);
+                if (is_rgba || alpha != 0)
+                    vn_webcam_convert_rgb_in_place(dst, row_bytes, is_rgba, alpha);
             }
         }
         return S_OK;

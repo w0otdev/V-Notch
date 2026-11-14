@@ -28,6 +28,9 @@ public sealed class NotchShellPresenter : IDisposable
     private long _activeSessionId;
     private long _animationVersion;
     private bool _disposed;
+    // The springs last sent to width and height, so the next transition can take over their momentum.
+    private SpringDoubleAnimation? _widthSpring, _heightSpring;
+    private long _springStartedAt;
 
     public NotchShellPresenter(NotchShellViewRefs refs)
     {
@@ -53,6 +56,12 @@ public sealed class NotchShellPresenter : IDisposable
         // 1. Ghi nhận giá trị hình ảnh hiện tại
         double currentWidth = ReadExtent(border.Width, border.ActualWidth, plan.TargetWidth);
         double currentHeight = ReadExtent(border.Height, border.ActualHeight, plan.TargetHeight);
+
+        // A spring still under way hands its speed to the next one (the caller may already have stopped it).
+        double springSeconds = System.Diagnostics.Stopwatch.GetElapsedTime(_springStartedAt).TotalSeconds;
+        double widthVelocity = _widthSpring?.VelocityAt(springSeconds) ?? 0;
+        double heightVelocity = _heightSpring?.VelocityAt(springSeconds) ?? 0;
+        _widthSpring = _heightSpring = null;
 
         // 2 & 3. Dừng animation clock mà phiên cũ sở hữu
         border.BeginAnimation(FrameworkElement.WidthProperty, null);
@@ -92,18 +101,27 @@ public sealed class NotchShellPresenter : IDisposable
         // 5. Bắt đầu animation mới từ hình ảnh hiện tại
         int fps = plan.Motion.TargetFps > 0 ? plan.Motion.TargetFps : AnimationConfig.TargetFps;
 
-        var widthAnim = new DoubleAnimation(currentWidth, plan.TargetWidth, plan.Motion.Duration)
+        AnimationTimeline widthAnim, heightAnim;
+        if (plan.Motion.Spring is { } spring)
         {
-            EasingFunction = plan.Motion.Easing,
-            FillBehavior = FillBehavior.HoldEnd
-        };
+            widthAnim = _widthSpring = spring.Animate(currentWidth, plan.TargetWidth, widthVelocity);
+            heightAnim = _heightSpring = spring.Animate(currentHeight, plan.TargetHeight, heightVelocity);
+            _springStartedAt = System.Diagnostics.Stopwatch.GetTimestamp();
+        }
+        else
+        {
+            widthAnim = new DoubleAnimation(currentWidth, plan.TargetWidth, plan.Motion.Duration)
+            {
+                EasingFunction = plan.Motion.Easing,
+                FillBehavior = FillBehavior.HoldEnd
+            };
+            heightAnim = new DoubleAnimation(currentHeight, plan.TargetHeight, plan.Motion.Duration)
+            {
+                EasingFunction = plan.Motion.Easing,
+                FillBehavior = FillBehavior.HoldEnd
+            };
+        }
         Timeline.SetDesiredFrameRate(widthAnim, fps);
-
-        var heightAnim = new DoubleAnimation(currentHeight, plan.TargetHeight, plan.Motion.Duration)
-        {
-            EasingFunction = plan.Motion.Easing,
-            FillBehavior = FillBehavior.HoldEnd
-        };
         Timeline.SetDesiredFrameRate(heightAnim, fps);
 
         int completedCount = 0;
@@ -141,6 +159,7 @@ public sealed class NotchShellPresenter : IDisposable
     public void SnapTo(double width, double height, double cornerRadius)
     {
         if (_disposed) return;
+        _widthSpring = _heightSpring = null;
         ++_animationVersion;
         _activeSessionId++;
         var border = _refs.NotchBorder;

@@ -78,12 +78,43 @@ public sealed class TextRenderingTests
             renderer.RaiseEvent(new RoutedEventArgs(FrameworkElement.LoadedEvent));
             Assert.Equal(TextRenderingMode.Grayscale, TextOptions.GetTextRenderingMode(renderer));
             Assert.Equal(TextHintingMode.Animated, TextOptions.GetTextHintingMode(renderer));
-            if (renderer is TextBlock or AccessText)
+            if (renderer is TextBlock or AccessText or TextBoxBase or PasswordBox)
             {
                 Assert.False(renderer.UseLayoutRounding);
                 Assert.False(renderer.SnapsToDevicePixels);
             }
         }
+    });
+
+    [Fact]
+    public void BundledFontsSnapSyntheticWeightsAndOrderVectorFallbacksCleanly() => SharedStaTestRunner.Run(() =>
+    {
+        FontFamily family = AppFonts.Get("Nirmala UI, Segoe UI");
+        string source = family.Source;
+        int segoeIdx = source.IndexOf("Segoe UI", StringComparison.OrdinalIgnoreCase);
+        int nirmalaIdx = source.IndexOf("Nirmala UI", StringComparison.OrdinalIgnoreCase);
+        Assert.True(segoeIdx > 0 && nirmalaIdx > segoeIdx, $"Expected Segoe UI before Nirmala UI in '{source}'.");
+        Assert.Contains("Yu Gothic UI", source, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("Segoe UI Emoji", source, StringComparison.OrdinalIgnoreCase);
+
+        var extraBold = new TextBlock { FontFamily = family, FontWeight = FontWeights.ExtraBold };
+        var thin = new TextBlock { FontFamily = family, FontWeight = FontWeights.Light };
+        var systemExtraBold = new TextBlock { FontFamily = new FontFamily("Segoe UI"), FontWeight = FontWeights.ExtraBold };
+        extraBold.RaiseEvent(new RoutedEventArgs(FrameworkElement.LoadedEvent));
+        thin.RaiseEvent(new RoutedEventArgs(FrameworkElement.LoadedEvent));
+        systemExtraBold.RaiseEvent(new RoutedEventArgs(FrameworkElement.LoadedEvent));
+
+        Assert.Equal(FontWeights.Bold, extraBold.FontWeight);
+        Assert.Equal(FontWeights.Normal, thin.FontWeight);
+        Assert.Equal(FontWeights.ExtraBold, systemExtraBold.FontWeight);
+
+        var doc = new FlowDocument(new Paragraph(new Run("Mượt & dịu mắt")));
+        TextRenderingPolicy.ApplyDocumentDefaults(doc);
+        Assert.Equal(TextFormattingMode.Ideal, TextOptions.GetTextFormattingMode(doc));
+        Assert.Equal(TextRenderingMode.Grayscale, TextOptions.GetTextRenderingMode(doc));
+        Assert.Equal(TextHintingMode.Animated, TextOptions.GetTextHintingMode(doc));
+        Assert.Equal(LineStackingStrategy.BlockLineHeight, doc.LineStackingStrategy);
+        Assert.True(Typography.GetKerning(doc));
     });
 
     [Theory]

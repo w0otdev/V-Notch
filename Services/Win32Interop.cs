@@ -218,22 +218,6 @@ internal static unsafe partial class Win32Interop
     [LibraryImport(NativeDll, EntryPoint = "vn_win32_get_monitor_dpi_for_window")]
     private static partial int NativeGetMonitorDpiForWindow(long hwnd, uint monitorFlags, out uint dpiX, out uint dpiY);
 
-    [LibraryImport(NativeDll, EntryPoint = "vn_win32_window_class_contains", StringMarshalling = StringMarshalling.Utf16)]
-    private static partial int NativeWindowClassContains(long hwnd, ReadOnlySpan<char> needle, int needleLength, out byte matches);
-
-    [LibraryImport(NativeDll, EntryPoint = "vn_win32_enum_large_visible_windows", StringMarshalling = StringMarshalling.Utf16)]
-    private static partial int NativeEnumLargeVisibleWindows(
-        int minSize, ReadOnlySpan<char> classNeedle, int classNeedleLength,
-        VnLargeWindow* buffer, int capacity, out int written);
-
-    [StructLayout(LayoutKind.Sequential, Pack = 1)]
-    internal struct VnLargeWindow
-    {
-        public long Hwnd;
-        public uint ProcessId;
-        public byte ClassMatches;
-    }
-
     public static bool IsWindowVisible(IntPtr hWnd) => NativeIsWindowVisible(hWnd, out byte visible) == 0 && visible != 0;
 
     public static bool IsIconic(IntPtr hWnd) => NativeIsIconic(hWnd, out byte iconic) == 0 && iconic != 0;
@@ -250,25 +234,6 @@ internal static unsafe partial class Win32Interop
     /// <summary>Effective horizontal DPI of the monitor nearest to the window, or 0 when unavailable.</summary>
     public static uint GetMonitorDpiForWindow(IntPtr hwnd, uint monitorFlags = MONITOR_DEFAULTTONEAREST) =>
         NativeGetMonitorDpiForWindow(hwnd, monitorFlags, out uint dpiX, out _) == 0 ? dpiX : 0;
-
-    /// <summary>True when the window class name contains <paramref name="needle"/> (ordinal, ignore case).</summary>
-    public static bool WindowClassContains(IntPtr hwnd, string needle) =>
-        NativeWindowClassContains(hwnd, needle, needle.Length, out byte matches) == 0 && matches != 0;
-
-    /// <summary>
-    /// Visible top-level windows at least <paramref name="minSize"/> pixels in both dimensions.
-    /// Returns the number of entries written to <paramref name="buffer"/>.
-    /// </summary>
-    internal static int EnumLargeVisibleWindows(int minSize, string classNeedle, Span<VnLargeWindow> buffer)
-    {
-        if (buffer.IsEmpty) return 0;
-        fixed (VnLargeWindow* pinned = buffer)
-        {
-            return NativeEnumLargeVisibleWindows(minSize, classNeedle, classNeedle.Length, pinned, buffer.Length, out int written) == 0
-                ? written
-                : 0;
-        }
-    }
 
     #endregion
 
@@ -387,9 +352,6 @@ internal static unsafe partial class Win32Interop
     [LibraryImport(NativeDll, EntryPoint = "vn_win32_monitor_from_point")]
     private static partial int NativeMonitorFromPoint(int x, int y, uint flags, out long monitor);
 
-    [LibraryImport(NativeDll, EntryPoint = "vn_win32_monitor_from_window")]
-    private static partial int NativeMonitorFromWindow(long hwnd, uint flags, out long monitor);
-
     [LibraryImport(NativeDll, EntryPoint = "vn_win32_get_monitor_info")]
     private static partial int NativeGetMonitorInfo(long monitor, out MONITORINFO info);
 
@@ -433,9 +395,6 @@ internal static unsafe partial class Win32Interop
 
     public static IntPtr MonitorFromPoint(POINT pt, uint dwFlags) =>
         NativeMonitorFromPoint(pt.X, pt.Y, dwFlags, out long monitor) == 0 ? (IntPtr)monitor : IntPtr.Zero;
-
-    public static IntPtr MonitorFromWindow(IntPtr hwnd, uint dwFlags) =>
-        NativeMonitorFromWindow(hwnd, dwFlags, out long monitor) == 0 ? (IntPtr)monitor : IntPtr.Zero;
 
     public static bool GetMonitorInfo(IntPtr hMonitor, ref MONITORINFO lpmi)
     {

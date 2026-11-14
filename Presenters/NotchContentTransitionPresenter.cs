@@ -14,6 +14,7 @@ public sealed class NotchContentViewRefs
 {
     public required FrameworkElement ExpandedContent { get; init; }
     public FrameworkElement? CameraContent { get; init; }
+    public FrameworkElement? AiUsageContent { get; init; }
     public FrameworkElement? TimerContent { get; init; }
     public FrameworkElement? AudioContent { get; init; }
     public FrameworkElement? AudioScrollViewer { get; init; }
@@ -35,6 +36,15 @@ public sealed class NotchContentTransitionPresenter : IDisposable
     public NotchContentTransitionPresenter(NotchContentViewRefs refs)
     {
         _refs = refs ?? throw new ArgumentNullException(nameof(refs));
+    }
+
+    private static readonly CubicEase ExpandedSwitchEnterEase = CreateFrozenCubicInOut();
+
+    private static CubicEase CreateFrozenCubicInOut()
+    {
+        var ease = new CubicEase { EasingMode = EasingMode.EaseInOut };
+        ease.Freeze();
+        return ease;
     }
 
     public void TransitionContent(TransitionPlan plan, Action<TransitionExecutionResult> onCompleted)
@@ -67,37 +77,15 @@ public sealed class NotchContentTransitionPresenter : IDisposable
         }
 
         // Đảm bảo control con AudioScrollViewer bên trong AudioContent luôn hiển thị khi target là AudioMixer
-        if (plan.TargetView == NotchView.AudioMixer && _refs.AudioScrollViewer != null)
+        if (plan.TargetView == NotchView.AudioMixer)
         {
-            _refs.AudioScrollViewer.BeginAnimation(UIElement.OpacityProperty, null);
-            _refs.AudioScrollViewer.Visibility = Visibility.Visible;
-            _refs.AudioScrollViewer.Opacity = 1.0;
-            ClearTemporaryAnimationTransforms(_refs.AudioScrollViewer);
+            ShowAudioScrollViewer(requireDetachedFromAudioContent: false);
         }
 
         // Chuyển tới một expanded content view
         if (plan.Motion.ReduceMotion || plan.Motion.Duration.TimeSpan <= TimeSpan.Zero)
         {
-            foreach (var el in allElements)
-            {
-                if (ReferenceEquals(el, targetElement))
-                {
-                    el.BeginAnimation(UIElement.OpacityProperty, null);
-                    el.Visibility = Visibility.Visible;
-                    el.Opacity = 1.0;
-                    ReleasePageOffset(el);
-                    ClearTemporaryAnimationTransforms(el);
-                    el.IsHitTestVisible = true;
-                }
-                else
-                {
-                    ResetContentVisualState(el);
-                }
-            }
-            if (IsCurrent(sessionId, version) && plan.TargetView != NotchView.AudioMixer && _refs.AudioScrollViewer != null && !ReferenceEquals(_refs.AudioScrollViewer, _refs.AudioContent))
-            {
-                ResetElementVisualState(_refs.AudioScrollViewer);
-            }
+            ApplyImmediateExpandedTransition(plan, targetElement, allElements, sessionId, version);
             onCompleted(new TransitionExecutionResult(sessionId, TransitionExecutionStatus.Completed));
             return;
         }
@@ -132,7 +120,7 @@ public sealed class NotchContentTransitionPresenter : IDisposable
 
         var fadeIn = new DoubleAnimation(targetStartOpacity, 1.0, enterDuration)
         {
-            EasingFunction = switchingExpandedView ? new CubicEase { EasingMode = EasingMode.EaseInOut } : plan.Motion.Easing,
+            EasingFunction = switchingExpandedView ? ExpandedSwitchEnterEase : plan.Motion.Easing,
             FillBehavior = FillBehavior.HoldEnd
         };
         Timeline.SetDesiredFrameRate(fadeIn, fps);
@@ -147,7 +135,6 @@ public sealed class NotchContentTransitionPresenter : IDisposable
             ReleasePageOffset(targetElement);
             targetElement.IsHitTestVisible = true;
 
-            // Ẩn các element khác và dọn dẹp transform/effect
             foreach (var el in allElements)
             {
                 if (!ReferenceEquals(el, targetElement))
@@ -156,60 +143,116 @@ public sealed class NotchContentTransitionPresenter : IDisposable
                 }
             }
 
-            if (plan.TargetView == NotchView.AudioMixer && _refs.AudioScrollViewer != null && !ReferenceEquals(_refs.AudioScrollViewer, _refs.AudioContent))
+            if (plan.TargetView == NotchView.AudioMixer)
             {
-                _refs.AudioScrollViewer.BeginAnimation(UIElement.OpacityProperty, null);
-                _refs.AudioScrollViewer.Visibility = Visibility.Visible;
-                _refs.AudioScrollViewer.Opacity = 1.0;
-                ClearTemporaryAnimationTransforms(_refs.AudioScrollViewer);
+                ShowAudioScrollViewer(requireDetachedFromAudioContent: true);
             }
-            else if (plan.TargetView != NotchView.AudioMixer && _refs.AudioScrollViewer != null && !ReferenceEquals(_refs.AudioScrollViewer, _refs.AudioContent))
+            else
             {
-                ResetElementVisualState(_refs.AudioScrollViewer);
+                ResetDetachedAudioScrollViewer();
             }
 
             onCompleted(new TransitionExecutionResult(sessionId, TransitionExecutionStatus.Completed));
         };
 
-        // Fade out các element còn lại theo Rule D3: Lấy opacity hiện tại TRƯỚC KHI dừng animation clock
+        BeginOutgoingElementTransitions(
+            plan, targetElement, allElements, sessionId, version, switchingExpandedView, exitDuration, fps);
+
+        targetElement.BeginAnimation(UIElement.OpacityProperty, fadeIn);
+    }
+
+    private void ApplyImmediateExpandedTransition(
+        TransitionPlan plan,
+        FrameworkElement targetElement,
+        List<FrameworkElement> allElements,
+        long sessionId,
+        long version)
+    {
         foreach (var el in allElements)
         {
-            if (ReferenceEquals(el, targetElement)) continue;
-
-            if (el.Visibility == Visibility.Visible && el.Opacity > 0.01)
+            if (ReferenceEquals(el, targetElement))
             {
-                double currentElOpacity = el.Opacity;
                 el.BeginAnimation(UIElement.OpacityProperty, null);
-                el.Opacity = currentElOpacity;
-                if (switchingExpandedView)
-                {
-                    el.IsHitTestVisible = false;
-                    AnimatePageOffset(el, 0, -14 * plan.NavigationDirection, exitDuration, fps);
-                }
-
-                var fadeOut = new DoubleAnimation(currentElOpacity, 0.0, exitDuration)
-                {
-                    EasingFunction = switchingExpandedView ? AnimationPrimitives._easeQuadInOut : plan.Motion.Easing
-                };
-                Timeline.SetDesiredFrameRate(fadeOut, fps);
-                fadeOut.Completed += (_, _) =>
-                {
-                    if (!IsCurrent(sessionId, version)) return;
-                    ResetContentVisualState(el);
-                    if (ReferenceEquals(el, _refs.AudioContent) && _refs.AudioScrollViewer != null && !ReferenceEquals(_refs.AudioScrollViewer, _refs.AudioContent))
-                    {
-                        ResetElementVisualState(_refs.AudioScrollViewer);
-                    }
-                };
-                el.BeginAnimation(UIElement.OpacityProperty, fadeOut);
+                el.Visibility = Visibility.Visible;
+                el.Opacity = 1.0;
+                ReleasePageOffset(el);
+                ClearTemporaryAnimationTransforms(el);
+                el.IsHitTestVisible = true;
             }
             else
             {
                 ResetContentVisualState(el);
             }
         }
+        if (IsCurrent(sessionId, version) && plan.TargetView != NotchView.AudioMixer)
+        {
+            ResetDetachedAudioScrollViewer();
+        }
+    }
 
-        targetElement.BeginAnimation(UIElement.OpacityProperty, fadeIn);
+    private void BeginOutgoingElementTransitions(
+        TransitionPlan plan,
+        FrameworkElement targetElement,
+        List<FrameworkElement> allElements,
+        long sessionId,
+        long version,
+        bool switchingExpandedView,
+        Duration exitDuration,
+        int fps)
+    {
+        foreach (var el in allElements)
+        {
+            if (ReferenceEquals(el, targetElement)) continue;
+
+            if (el.Visibility != Visibility.Visible || el.Opacity <= 0.01)
+            {
+                ResetContentVisualState(el);
+                continue;
+            }
+
+            double currentElOpacity = el.Opacity;
+            el.BeginAnimation(UIElement.OpacityProperty, null);
+            el.Opacity = currentElOpacity;
+            if (switchingExpandedView)
+            {
+                el.IsHitTestVisible = false;
+                AnimatePageOffset(el, 0, -14 * plan.NavigationDirection, exitDuration, fps);
+            }
+
+            var fadeOut = new DoubleAnimation(currentElOpacity, 0.0, exitDuration)
+            {
+                EasingFunction = switchingExpandedView ? AnimationPrimitives._easeQuadInOut : plan.Motion.Easing
+            };
+            Timeline.SetDesiredFrameRate(fadeOut, fps);
+            fadeOut.Completed += (_, _) =>
+            {
+                if (!IsCurrent(sessionId, version)) return;
+                ResetContentVisualState(el);
+                if (ReferenceEquals(el, _refs.AudioContent))
+                {
+                    ResetDetachedAudioScrollViewer();
+                }
+            };
+            el.BeginAnimation(UIElement.OpacityProperty, fadeOut);
+        }
+    }
+
+    private void ShowAudioScrollViewer(bool requireDetachedFromAudioContent)
+    {
+        if (_refs.AudioScrollViewer == null) return;
+        if (requireDetachedFromAudioContent && ReferenceEquals(_refs.AudioScrollViewer, _refs.AudioContent)) return;
+        _refs.AudioScrollViewer.BeginAnimation(UIElement.OpacityProperty, null);
+        _refs.AudioScrollViewer.Visibility = Visibility.Visible;
+        _refs.AudioScrollViewer.Opacity = 1.0;
+        ClearTemporaryAnimationTransforms(_refs.AudioScrollViewer);
+    }
+
+    private void ResetDetachedAudioScrollViewer()
+    {
+        if (_refs.AudioScrollViewer != null && !ReferenceEquals(_refs.AudioScrollViewer, _refs.AudioContent))
+        {
+            ResetElementVisualState(_refs.AudioScrollViewer);
+        }
     }
 
     private void AnimatePageOffset(FrameworkElement element, double initialX, double targetX, Duration duration, int fps)
@@ -437,9 +480,9 @@ public sealed class NotchContentTransitionPresenter : IDisposable
             {
                 ResetContentVisualState(el);
             }
-            if (IsCurrent(sessionId, version) && _refs.AudioScrollViewer != null && !ReferenceEquals(_refs.AudioScrollViewer, _refs.AudioContent))
+            if (IsCurrent(sessionId, version))
             {
-                ResetElementVisualState(_refs.AudioScrollViewer);
+                ResetDetachedAudioScrollViewer();
             }
             onCompleted();
             return;
@@ -448,42 +491,38 @@ public sealed class NotchContentTransitionPresenter : IDisposable
         int pendingCount = 0;
         foreach (var el in elements)
         {
-            if (el.Visibility == Visibility.Visible && el.Opacity > 0.01)
-            {
-                double currentElOpacity = el.Opacity;
-                el.BeginAnimation(UIElement.OpacityProperty, null);
-                el.Opacity = currentElOpacity;
-
-                pendingCount++;
-                var fade = new DoubleAnimation(currentElOpacity, 0.0, duration) { EasingFunction = easing };
-                Timeline.SetDesiredFrameRate(fade, fps);
-                fade.Completed += (_, _) =>
-                {
-                    if (!IsCurrent(sessionId, version)) return;
-                    ResetContentVisualState(el);
-                    pendingCount--;
-                    if (pendingCount <= 0)
-                    {
-                        if (_refs.AudioScrollViewer != null && !ReferenceEquals(_refs.AudioScrollViewer, _refs.AudioContent))
-                        {
-                            ResetElementVisualState(_refs.AudioScrollViewer);
-                        }
-                        onCompleted();
-                    }
-                };
-                el.BeginAnimation(UIElement.OpacityProperty, fade);
-            }
-            else
+            if (el.Visibility != Visibility.Visible || el.Opacity <= 0.01)
             {
                 ResetContentVisualState(el);
+                continue;
             }
+
+            double currentElOpacity = el.Opacity;
+            el.BeginAnimation(UIElement.OpacityProperty, null);
+            el.Opacity = currentElOpacity;
+
+            pendingCount++;
+            var fade = new DoubleAnimation(currentElOpacity, 0.0, duration) { EasingFunction = easing };
+            Timeline.SetDesiredFrameRate(fade, fps);
+            fade.Completed += (_, _) =>
+            {
+                if (!IsCurrent(sessionId, version)) return;
+                ResetContentVisualState(el);
+                pendingCount--;
+                if (pendingCount <= 0)
+                {
+                    ResetDetachedAudioScrollViewer();
+                    onCompleted();
+                }
+            };
+            el.BeginAnimation(UIElement.OpacityProperty, fade);
         }
 
         if (pendingCount == 0)
         {
-            if (IsCurrent(sessionId, version) && _refs.AudioScrollViewer != null && !ReferenceEquals(_refs.AudioScrollViewer, _refs.AudioContent))
+            if (IsCurrent(sessionId, version))
             {
-                ResetElementVisualState(_refs.AudioScrollViewer);
+                ResetDetachedAudioScrollViewer();
             }
             onCompleted();
         }
@@ -497,6 +536,7 @@ public sealed class NotchContentTransitionPresenter : IDisposable
             NotchView.Timer => _refs.TimerContent,
             NotchView.AudioMixer => _refs.AudioContent ?? _refs.AudioScrollViewer,
             NotchView.Camera => _refs.CameraContent,
+            NotchView.AiUsage => _refs.AiUsageContent,
             NotchView.Secondary => _refs.SecondaryContent,
             _ => null
         };
@@ -506,6 +546,7 @@ public sealed class NotchContentTransitionPresenter : IDisposable
     {
         var list = new List<FrameworkElement> { _refs.ExpandedContent };
         if (_refs.CameraContent != null) list.Add(_refs.CameraContent);
+        if (_refs.AiUsageContent != null) list.Add(_refs.AiUsageContent);
         if (_refs.TimerContent != null) list.Add(_refs.TimerContent);
         if (_refs.AudioContent != null) list.Add(_refs.AudioContent);
         else if (_refs.AudioScrollViewer != null) list.Add(_refs.AudioScrollViewer);

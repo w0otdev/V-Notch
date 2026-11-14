@@ -36,9 +36,6 @@ internal static partial class WhiteNoiseService
     private static partial int vn_noise_set_volume(float volume);
 
     [LibraryImport("VNotch.Native.dll")]
-    private static partial int vn_noise_stop();
-
-    [LibraryImport("VNotch.Native.dll")]
     private static partial int vn_noise_stop_fade(float seconds);
 
     [LibraryImport("VNotch.Native.dll")]

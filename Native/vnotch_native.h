@@ -1835,6 +1835,16 @@ VN_EXPORT int32_t __stdcall vn_text_snap_bundled_weight(
     uint8_t is_bundled_sf_pro,
     int32_t* out_weight) noexcept;
 
+VN_EXPORT int32_t __stdcall vn_text_resolve_rendering_policy(
+    int32_t element_role,
+    uint8_t has_explicit_rendering_mode,
+    int32_t current_rendering_mode,
+    int32_t* out_formatting_mode,
+    int32_t* out_rendering_mode,
+    int32_t* out_hinting_mode,
+    uint8_t* out_use_layout_rounding,
+    uint8_t* out_snaps_to_device_pixels) noexcept;
+
 #include "vnotch_ext_core.h"
 #include "vnotch_ext_sub.h"
 #include "vnotch_ext_ui.h"

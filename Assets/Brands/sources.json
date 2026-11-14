@@ -1,0 +1,16 @@
+{
+  "retrieved": "2026-11-12",
+  "claude": {
+    "owner": "Anthropic",
+    "source": "https://claude.com/",
+    "note": "Spark path extracted from the official inline Claude wordmark SVG; path coordinates unchanged. Monochrome currentColor rendering.",
+    "sha256": "b2c5ed603e536c5a1b8668b06f007d286e388f8b34f82d168d48c70bb18857fe"
+  },
+  "codex": {
+    "owner": "OpenAI",
+    "source": "https://raw.githubusercontent.com/lobehub/lobe-icons/63c800e3db6427b3f156f7b88d426ccb3f7277a1/packages/static-svg/icons/codex.svg",
+    "upstream": "https://openai.com/codex/",
+    "note": "Codex cloud-terminal mark, distributed by Lobe Icons under MIT; trademark remains OpenAI property. SVG unchanged.",
+    "sha256": "d08b4e824cd6727e89617f59e4737273ff53e44c1da849d016dd64dfd08b33e1"
+  }
+}

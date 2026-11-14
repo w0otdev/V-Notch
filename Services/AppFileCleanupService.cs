@@ -166,9 +166,11 @@ public sealed partial class AppFileCleanupService : IDisposable, IAsyncDisposabl
             if (!budget.Available) break;
             string root = Path.GetFullPath(policy.Root);
             if (!IsSafePath(root, root) || !Directory.Exists(root)) continue;
-            var candidates = new List<Snapshot>();
+            var candidates = new List<(Snapshot Item, int Order)>();
+            long total = 0;
             try
             {
+                int order = 0;
                 foreach (string path in Directory.EnumerateFileSystemEntries(root))
                 {
                     if (!budget.Visit()) break;
@@ -176,26 +178,36 @@ public sealed partial class AppFileCleanupService : IDisposable, IAsyncDisposabl
                     bool directory = (File.GetAttributes(path) & FileAttributes.Directory) != 0;
                     if (directory != policy.Directories) continue;
                     var snapshot = ReadSnapshot(root, path, budget);
-                    if (snapshot != null) candidates.Add(snapshot);
+                    if (snapshot != null)
+                    {
+                        candidates.Add((snapshot, order++));
+                        total += snapshot.Bytes;
+                    }
                 }
             }
             catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { /* Ignore locked/inaccessible entry */ }
 
-            long total = candidates.Sum(candidate => candidate.Bytes);
+            candidates.Sort(static (a, b) =>
+            {
+                int cmp = a.Item.LastActivity.CompareTo(b.Item.LastActivity);
+                return cmp != 0 ? cmp : a.Order.CompareTo(b.Order);
+            });
+
             long minAgeTicks = (policy.MinimumAge ?? policy.Retention).Ticks;
             long retentionTicks = policy.Retention.Ticks;
-            foreach (var candidate in candidates.OrderBy(candidate => candidate.LastActivity))
+            for (int c = 0; c < candidates.Count; c++)
             {
                 if (!budget.Available) break;
+                var candidate = candidates[c].Item;
                 var age = nowUtc - candidate.LastActivity;
                 vn_app_file_cleanup_should_delete_candidate(
                     age.Ticks, minAgeTicks, retentionTicks, total, policy.MaxBytes, out byte shouldDelete);
                 if (shouldDelete == 0 || IsProtected(candidate.Path)) continue;
                 // Recheck before deleting: a producer may have touched an artifact since enumeration.
-                if (candidate.Files.Any(file => !Unchanged(root, file)) ||
-                    candidate.Directories.Any(dir => !IsSafePath(root, dir))) continue;
-                foreach (var file in candidate.Files)
+                if (!AreCandidateEntriesUnchangedAndSafe(root, candidate)) continue;
+                for (int f = 0; f < candidate.Files.Count; f++)
                 {
+                    var file = candidate.Files[f];
                     if (!budget.Available || IsProtected(candidate.Path) || !Unchanged(root, file)) break;
                     try
                     {
@@ -208,9 +220,10 @@ public sealed partial class AppFileCleanupService : IDisposable, IAsyncDisposabl
                     }
                     catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { /* Ignore locked/inaccessible entry */ }
                 }
-                foreach (string dir in candidate.Directories.AsEnumerable().Reverse())
+                for (int d = candidate.Directories.Count - 1; d >= 0; d--)
                 {
                     if (!budget.Available || IsProtected(candidate.Path)) break;
+                    string dir = candidate.Directories[d];
                     try
                     {
                         // Non-recursive deletion cannot follow links or remove new/locked contents.
@@ -221,6 +234,21 @@ public sealed partial class AppFileCleanupService : IDisposable, IAsyncDisposabl
             }
         }
         return new(deleted, reclaimed);
+    }
+
+    private static bool AreCandidateEntriesUnchangedAndSafe(string root, Snapshot candidate)
+    {
+        for (int i = 0; i < candidate.Files.Count; i++)
+        {
+            if (!Unchanged(root, candidate.Files[i]))
+                return false;
+        }
+        for (int i = 0; i < candidate.Directories.Count; i++)
+        {
+            if (!IsSafePath(root, candidate.Directories[i]))
+                return false;
+        }
+        return true;
     }
 
     private static Snapshot? ReadSnapshot(string root, string path, ScanBudget budget)

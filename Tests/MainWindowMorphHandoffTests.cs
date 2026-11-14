@@ -43,8 +43,8 @@ public sealed class MainWindowMorphHandoffTests
             Assert.False(window.NotchWrapper.IsHitTestVisible);
             if (!reducedMotion && milliseconds > 0)
             {
-                Assert.IsType<BlurEffect>(window.SpotlightReturnContentHost.Effect);
-                await WpfFrameWaiter.UntilAsync(() => Math.Abs(((BlurEffect)window.SpotlightReturnContentHost.Effect).Radius) < 1e-6 && Math.Abs(window.SpotlightReturnContentHost.Opacity - 1) < 1e-6, "Spotlight return content sharpening", ct);
+                Assert.Null(window.SpotlightReturnContentHost.Effect);
+                await WpfFrameWaiter.UntilAsync(() => Math.Abs(window.SpotlightReturnContentHost.Opacity - 1) < 1e-6, "Spotlight return content fading in", ct);
             }
             window.SetSpotlightMorphActive(false);
             window.SetSpotlightMorphSessionActive(false);
@@ -119,7 +119,7 @@ public sealed class MainWindowMorphHandoffTests
         Invoke(window, "SettingsButton_MouseEnter", window, mouse);
         Invoke(window, "AnimateBatteryHover", true);
         await WpfFrameWaiter.UntilAsync(() => Math.Abs(window.SettingsRotate.Angle - 132) < .00001 && Math.Abs(window.BatterySectionScale.ScaleX - 1.1) < .00001, "settings and battery hover", ct);
-        Assert.NotNull(window.SettingsButton.CacheMode);
+        Assert.Null(window.SettingsButton.CacheMode);
         Invoke(window, "SettingsButton_MouseLeave", window, mouse);
         Invoke(window, "AnimateBatteryHover", false);
         await WpfFrameWaiter.UntilAsync(() => Math.Abs(window.SettingsRotate.Angle - 45) < .00001 && Math.Abs(window.SettingsScale.ScaleX - 1) < .00001 && Math.Abs(window.BatterySectionScale.ScaleY - 1) < .00001, "settings and battery resting state", ct);

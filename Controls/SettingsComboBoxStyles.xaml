@@ -21,7 +21,14 @@
                                     CornerRadius="8"
                                     Opacity="0"
                                     IsHitTestVisible="False"/>
-                            <ContentPresenter Margin="{TemplateBinding Padding}" VerticalAlignment="Center"/>
+                            <ContentPresenter Margin="{TemplateBinding Padding}" VerticalAlignment="Center">
+                                <ContentPresenter.Resources>
+                                    <Style TargetType="TextBlock" BasedOn="{StaticResource {x:Type TextBlock}}">
+                                        <Setter Property="FontFamily" Value="{Binding FontFamily, RelativeSource={RelativeSource AncestorType=ComboBoxItem}}"/>
+                                        <Setter Property="FontWeight" Value="{Binding FontWeight, RelativeSource={RelativeSource AncestorType=ComboBoxItem}}"/>
+                                    </Style>
+                                </ContentPresenter.Resources>
+                            </ContentPresenter>
                         </Grid>
                         <ControlTemplate.Triggers>
                             <Trigger Property="IsMouseOver" Value="True">
@@ -99,7 +106,16 @@
                                                                   ContentTemplate="{Binding SelectionBoxItemTemplate, RelativeSource={RelativeSource AncestorType=ComboBox}}"
                                                                   VerticalAlignment="Center"
                                                                   HorizontalAlignment="Left"
-                                                                  TextElement.Foreground="{DynamicResource SettingsTextBrush}"/>
+                                                                  TextElement.FontFamily="{Binding FontFamily, RelativeSource={RelativeSource AncestorType=ComboBox}}"
+                                                                  TextElement.FontWeight="{Binding FontWeight, RelativeSource={RelativeSource AncestorType=ComboBox}}"
+                                                                  TextElement.Foreground="{DynamicResource SettingsTextBrush}">
+                                                    <ContentPresenter.Resources>
+                                                        <Style TargetType="TextBlock" BasedOn="{StaticResource {x:Type TextBlock}}">
+                                                            <Setter Property="FontFamily" Value="{Binding FontFamily, RelativeSource={RelativeSource AncestorType=ComboBox}}"/>
+                                                            <Setter Property="FontWeight" Value="{Binding FontWeight, RelativeSource={RelativeSource AncestorType=ComboBox}}"/>
+                                                        </Style>
+                                                    </ContentPresenter.Resources>
+                                                </ContentPresenter>
                                                 <Path x:Name="ChevronPath"
                                                       Data="M 0 0 L 4 4 L 8 0"
                                                       Stroke="#C8D1DD"
@@ -210,6 +226,8 @@
                                         CornerRadius="12"
                                         Margin="0,4,0,0"
                                         Padding="0,4"
+                                        TextElement.FontFamily="{TemplateBinding FontFamily}"
+                                        TextElement.FontWeight="{TemplateBinding FontWeight}"
                                         MinWidth="{TemplateBinding ActualWidth}"
                                         RenderTransformOrigin="0.5,0"
                                         Effect="{x:Null}">

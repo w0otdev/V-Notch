@@ -844,6 +844,25 @@
         </ResourceDictionary>
     </Window.Resources>
 
+    <Grid SnapsToDevicePixels="False" UseLayoutRounding="False">
+        <Border x:Name="MainShellShadow"
+                Margin="18"
+                CornerRadius="{Binding CornerRadius, ElementName=MainShell}"
+                Background="{StaticResource WindowGlow}"
+                Opacity="{Binding Opacity, ElementName=MainShell}"
+                Visibility="{Binding Visibility, ElementName=MainShell}"
+                RenderTransformOrigin="{Binding RenderTransformOrigin, ElementName=MainShell}"
+                IsHitTestVisible="False"
+                SnapsToDevicePixels="False"
+                UseLayoutRounding="False">
+            <Border.RenderTransform>
+                <TransformGroup>
+                    <ScaleTransform ScaleX="{Binding ScaleX, ElementName=ShellScale}" ScaleY="{Binding ScaleY, ElementName=ShellScale}"/>
+                    <TranslateTransform X="{Binding X, ElementName=ShellTranslate}" Y="{Binding Y, ElementName=ShellTranslate}"/>
+                </TransformGroup>
+            </Border.RenderTransform>
+        </Border>
+
     <Border x:Name="MainShell"
             Margin="18"
             CornerRadius="24"
@@ -4187,4 +4206,5 @@
             </Border>
         </Grid>
     </Border>
+    </Grid>
 </Window>

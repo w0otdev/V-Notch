@@ -500,12 +500,15 @@ namespace VNotch.Controls
             var original = GetBarGradientBrush();
             _playbackMorphBrush ??= original.Clone();
             float mix = (float)Math.Clamp(_iconMix, 0, 1);
-            for (int i = 0; i < original.GradientStops.Count; i++)
+            var srcStops = original.GradientStops;
+            var dstStops = _playbackMorphBrush.GradientStops;
+            int stopCount = srcStops.Count;
+            for (int i = 0; i < stopCount; i++)
             {
-                Color color = original.GradientStops[i].Color;
+                Color color = srcStops[i].Color;
                 // Blend in linear light, following the same spring as the geometry.
                 // At rest this exactly matches each visualizer bar's original gradient.
-                _playbackMorphBrush.GradientStops[i].Color = Color.FromScRgb(
+                dstStops[i].Color = Color.FromScRgb(
                     color.ScA + (1 - color.ScA) * mix,
                     color.ScR + (1 - color.ScR) * mix,
                     color.ScG + (1 - color.ScG) * mix,
@@ -554,7 +557,9 @@ namespace VNotch.Controls
         private DrawingGroup? _barsDrawing;
         private DrawingGroup? _morphDrawing;
         private StreamGeometry? _morphGeometry;
+        private GeometryDrawing? _morphGeometryDrawing;
         private readonly RectangleGeometry[] _barGeometries = new RectangleGeometry[BarCount];
+        private readonly GeometryDrawing[] _barDrawings = new GeometryDrawing[BarCount];
         private readonly Dictionary<Rect, object> _boxedBarBounds = new();
         private (double Width, double Height, double DpiX, double DpiY) _barBoundsLayout;
         private Brush? _retainedBarBrush, _retainedMorphBrush;
@@ -568,10 +573,14 @@ namespace VNotch.Controls
             _morphGeometry = new StreamGeometry { FillRule = FillRule.Nonzero };
             for (int i = 0; i < BarCount; i++)
             {
-                _barGeometries[i] = new RectangleGeometry();
-                _barsDrawing.Children.Add(new GeometryDrawing(null, null, _barGeometries[i]));
+                var geometry = new RectangleGeometry();
+                var drawing = new GeometryDrawing(null, null, geometry);
+                _barGeometries[i] = geometry;
+                _barDrawings[i] = drawing;
+                _barsDrawing.Children.Add(drawing);
             }
-            _morphDrawing.Children.Add(new GeometryDrawing(null, null, _morphGeometry));
+            _morphGeometryDrawing = new GeometryDrawing(null, null, _morphGeometry);
+            _morphDrawing.Children.Add(_morphGeometryDrawing);
             _frameDrawing.Children.Add(_morphDrawing);
             _frameDrawing.Children.Add(_barsDrawing);
         }
@@ -644,20 +653,20 @@ namespace VNotch.Controls
 
             if (width < 1 || height < 1 || ActiveBrush == null)
             {
-                _frameDrawing!.Opacity = 0;
+                if (_frameDrawing!.Opacity != 0) _frameDrawing.Opacity = 0;
                 return false;
             }
 
             DpiScale dpi = frame.Dpi;
-            _frameDrawing!.Opacity = frame.Opacity;
-            _morphDrawing!.Opacity = frame.MorphOpacity;
-            _barsDrawing!.Opacity = frame.BarsOpacity;
+            SetDrawingOpacity(_frameDrawing!, frame.Opacity);
+            SetDrawingOpacity(_morphDrawing!, frame.MorphOpacity);
+            SetDrawingOpacity(_barsDrawing!, frame.BarsOpacity);
 
             if (frame.MorphOpacity > 0)
             {
                 var morphBrush = GetPlaybackMorphBrush();
                 if (!ReferenceEquals(_retainedMorphBrush, morphBrush))
-                    ((GeometryDrawing)_morphDrawing.Children[0]).Brush = _retainedMorphBrush = morphBrush;
+                    _morphGeometryDrawing!.Brush = _retainedMorphBrush = morphBrush;
                 UpdatePlaybackMorph(width, height, barRects);
             }
             if (frame.MorphOpacity >= 1)
@@ -688,7 +697,7 @@ namespace VNotch.Controls
                 }
                 if (Math.Abs(geometry.RadiusX - frame.Radius) > 1e-6) geometry.RadiusX = frame.Radius;
                 if (Math.Abs(geometry.RadiusY - frame.Radius) > 1e-6) geometry.RadiusY = frame.Radius;
-                if (brushChanged) ((GeometryDrawing)_barsDrawing.Children[i]).Brush = gradientBrush;
+                if (brushChanged) _barDrawings[i].Brush = gradientBrush;
             }
             _hasRenderedBars = frame.MorphOpacity == 0;
             _renderedWidth = width;
@@ -697,6 +706,12 @@ namespace VNotch.Controls
             _renderedDpi = dpi;
             _renderedBaseColor = _cachedGradientBaseColor;
             return true;
+        }
+
+        private static void SetDrawingOpacity(DrawingGroup group, double opacity)
+        {
+            if (Math.Abs(group.Opacity - opacity) > 1e-6)
+                group.Opacity = opacity;
         }
 
         #region Audio Loopback Capture

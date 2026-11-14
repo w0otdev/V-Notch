@@ -45,9 +45,8 @@ internal static partial class AiMarkdown
         int textLen,
         out VnMarkdownBoundarySummary outSummary);
 
-    private static readonly Uri FontsBaseUri = VNotch.Services.AppFonts.BaseUri;
-    private static readonly FontFamily FallbackBodyFont = new(FontsBaseUri, "./#SF Pro Display, Segoe UI Emoji, Segoe UI, Arial");
-    private static readonly MarkdownFlowOptions CachedBoldOptions = CreateAiFlowOptions(FallbackBodyFont, normalBody: false);
+    private static readonly FontFamily FallbackBodyFont = VNotch.Services.AppFonts.Get();
+    private static readonly MarkdownFlowOptions CachedMediumOptions = CreateAiFlowOptions(FallbackBodyFont, normalBody: false);
     private static readonly MarkdownFlowOptions CachedNormalOptions = CreateAiFlowOptions(FallbackBodyFont, normalBody: true);
 
     [ThreadStatic]
@@ -72,7 +71,7 @@ internal static partial class AiMarkdown
         new()
         {
             BodyFont = font,
-            BodyFontWeight = normalBody ? FontWeights.Normal : FontWeights.Bold,
+            BodyFontWeight = normalBody ? FontWeights.Normal : FontWeights.Medium,
             LinkMode = MarkdownLinkMode.LabelWithUrlSuffix
         };
 
@@ -94,7 +93,7 @@ internal static partial class AiMarkdown
             ?? FallbackBodyFont;
 
         MarkdownFlowOptions options = ReferenceEquals(font, FallbackBodyFont)
-            ? (normalBody ? CachedNormalOptions : CachedBoldOptions)
+            ? (normalBody ? CachedNormalOptions : CachedMediumOptions)
             : CreateAiFlowOptions(font, normalBody);
 
         return MarkdownWpfRenderer.RenderFlowDocument(GetOrParseDocument(markdown), options);

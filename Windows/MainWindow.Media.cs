@@ -543,27 +543,11 @@ public partial class MainWindow
                 LyricsBlurImage.BeginAnimation(OpacityProperty, null);
                 LyricsBlurImage.Opacity = 1;
             }
-            ThumbnailImageNext.Source = null;
-            CompactThumbnailNext.Source = null;
-            ThumbnailImageNext.Visibility = Visibility.Collapsed;
-            CompactThumbnailNext.Visibility = Visibility.Collapsed;
-
+            ClearThumbnailNextOverlay();
             ThumbnailImage.Opacity = 1.0;
             CompactThumbnail.Opacity = 1.0;
-            ThumbnailImageNext.Opacity = 0.0;
-            CompactThumbnailNext.Opacity = 0.0;
-            ThumbnailOutScale.ScaleX = 1.0;
-            ThumbnailOutScale.ScaleY = 1.0;
-            CompactThumbnailOutScale.ScaleX = 1.0;
-            CompactThumbnailOutScale.ScaleY = 1.0;
-            ThumbnailNextScale.ScaleX = 1.0;
-            ThumbnailNextScale.ScaleY = 1.0;
-            CompactThumbnailNextScale.ScaleX = 1.0;
-            CompactThumbnailNextScale.ScaleY = 1.0;
-            ThumbnailOutBlur.Radius = 0.0;
-            ThumbnailNextBlur.Radius = 0.0;
-            CompactThumbnailOutBlur.Radius = 0.0;
-            CompactThumbnailNextBlur.Radius = 0.0;
+            ResetExpandedThumbnailTransforms();
+            ResetCompactThumbnailTransforms();
 
             if (_isMusicCompactMode && _currentMediaInfo?.IsPlaying == true
                 && !_isClipboardPeekActive && !_isVolumeIndicatorActive)
@@ -592,11 +576,8 @@ public partial class MainWindow
     }
 #pragma warning restore S3776
 
-    private void CancelThumbnailSwitchAnimations(ImageSource? targetThumb = null)
+    private void CancelExpandedThumbnailAnimations()
     {
-        ++_thumbnailSwitchGeneration;
-        _isThumbnailSwitchActive = false;
-
         ThumbnailImage.BeginAnimation(OpacityProperty, null);
         ThumbnailImage.BeginAnimation(Image.SourceProperty, null);
         ThumbnailOutScale.BeginAnimation(ScaleTransform.ScaleXProperty, null);
@@ -607,6 +588,61 @@ public partial class MainWindow
         ThumbnailNextScale.BeginAnimation(ScaleTransform.ScaleXProperty, null);
         ThumbnailNextScale.BeginAnimation(ScaleTransform.ScaleYProperty, null);
         ThumbnailNextBlur.BeginAnimation(BlurEffect.RadiusProperty, null);
+    }
+
+    private void ResetExpandedThumbnailTransforms()
+    {
+        ThumbnailOutScale.ScaleX = 1.0;
+        ThumbnailOutScale.ScaleY = 1.0;
+        ThumbnailNextScale.ScaleX = 1.0;
+        ThumbnailNextScale.ScaleY = 1.0;
+        ThumbnailOutBlur.Radius = 0.0;
+        ThumbnailNextBlur.Radius = 0.0;
+    }
+
+    private void ResetCompactThumbnailTransforms()
+    {
+        CompactThumbnailOutScale.ScaleX = 1.0;
+        CompactThumbnailOutScale.ScaleY = 1.0;
+        CompactThumbnailNextScale.ScaleX = 1.0;
+        CompactThumbnailNextScale.ScaleY = 1.0;
+        CompactThumbnailOutBlur.Radius = 0.0;
+        CompactThumbnailNextBlur.Radius = 0.0;
+    }
+
+    private void ClearThumbnailNextOverlay()
+    {
+        ThumbnailImageNext.Source = null;
+        CompactThumbnailNext.Source = null;
+        ThumbnailImageNext.Visibility = Visibility.Collapsed;
+        CompactThumbnailNext.Visibility = Visibility.Collapsed;
+        ThumbnailImageNext.Opacity = 0.0;
+        CompactThumbnailNext.Opacity = 0.0;
+    }
+
+    private void ResolveAndCommitActiveThumbnail(ImageSource? targetThumb)
+    {
+        var overlayTarget = ThumbnailImageNext.Source ?? CompactThumbnailNext.Source;
+        var resolvedThumb = targetThumb ?? overlayTarget
+                            ?? ThumbnailImage.Source ?? CompactThumbnail.Source;
+        if (!_showingEmptyThumbnail && resolvedThumb != null)
+        {
+            ThumbnailImage.Source = resolvedThumb;
+            CompactThumbnail.Source = resolvedThumb;
+            ThumbnailImage.Visibility = Visibility.Visible;
+            ThumbnailFallback.Visibility = Visibility.Collapsed;
+        }
+
+        ClearThumbnailNextOverlay();
+        ThumbnailImage.Opacity = 1.0;
+    }
+
+    private void CancelThumbnailSwitchAnimations(ImageSource? targetThumb = null)
+    {
+        ++_thumbnailSwitchGeneration;
+        _isThumbnailSwitchActive = false;
+
+        CancelExpandedThumbnailAnimations();
 
         CompactThumbnail.BeginAnimation(OpacityProperty, null);
         CompactThumbnail.BeginAnimation(Image.SourceProperty, null);
@@ -619,37 +655,9 @@ public partial class MainWindow
         CompactThumbnailNextScale.BeginAnimation(ScaleTransform.ScaleYProperty, null);
         CompactThumbnailNextBlur.BeginAnimation(BlurEffect.RadiusProperty, null);
 
-        ThumbnailOutScale.ScaleX = 1.0;
-        ThumbnailOutScale.ScaleY = 1.0;
-        CompactThumbnailOutScale.ScaleX = 1.0;
-        CompactThumbnailOutScale.ScaleY = 1.0;
-        ThumbnailNextScale.ScaleX = 1.0;
-        ThumbnailNextScale.ScaleY = 1.0;
-        CompactThumbnailNextScale.ScaleX = 1.0;
-        CompactThumbnailNextScale.ScaleY = 1.0;
-        ThumbnailOutBlur.Radius = 0.0;
-        ThumbnailNextBlur.Radius = 0.0;
-        CompactThumbnailOutBlur.Radius = 0.0;
-        CompactThumbnailNextBlur.Radius = 0.0;
-
-        var overlayTarget = ThumbnailImageNext.Source ?? CompactThumbnailNext.Source;
-        var resolvedThumb = targetThumb ?? overlayTarget
-                            ?? ThumbnailImage.Source ?? CompactThumbnail.Source;
-        if (!_showingEmptyThumbnail && resolvedThumb != null)
-        {
-            ThumbnailImage.Source = resolvedThumb;
-            CompactThumbnail.Source = resolvedThumb;
-            ThumbnailImage.Visibility = Visibility.Visible;
-            ThumbnailFallback.Visibility = Visibility.Collapsed;
-        }
-
-        ThumbnailImageNext.Source = null;
-        CompactThumbnailNext.Source = null;
-        ThumbnailImageNext.Visibility = Visibility.Collapsed;
-        CompactThumbnailNext.Visibility = Visibility.Collapsed;
-        ThumbnailImageNext.Opacity = 0.0;
-        CompactThumbnailNext.Opacity = 0.0;
-        ThumbnailImage.Opacity = 1.0;
+        ResetExpandedThumbnailTransforms();
+        ResetCompactThumbnailTransforms();
+        ResolveAndCommitActiveThumbnail(targetThumb);
         CompactThumbnail.Opacity = 1.0;
     }
 
@@ -658,17 +666,7 @@ public partial class MainWindow
         ++_thumbnailSwitchGeneration;
         _isThumbnailSwitchActive = false;
 
-        ThumbnailImage.BeginAnimation(OpacityProperty, null);
-        ThumbnailImage.BeginAnimation(Image.SourceProperty, null);
-        ThumbnailOutScale.BeginAnimation(ScaleTransform.ScaleXProperty, null);
-        ThumbnailOutScale.BeginAnimation(ScaleTransform.ScaleYProperty, null);
-        ThumbnailOutBlur.BeginAnimation(BlurEffect.RadiusProperty, null);
-        ThumbnailImageNext.BeginAnimation(OpacityProperty, null);
-        ThumbnailImageNext.BeginAnimation(Image.SourceProperty, null);
-        ThumbnailNextScale.BeginAnimation(ScaleTransform.ScaleXProperty, null);
-        ThumbnailNextScale.BeginAnimation(ScaleTransform.ScaleYProperty, null);
-        ThumbnailNextBlur.BeginAnimation(BlurEffect.RadiusProperty, null);
-
+        CancelExpandedThumbnailAnimations();
         CompactThumbnail.BeginAnimation(Image.SourceProperty, null);
 
         double compactOutScaleX = CompactThumbnailOutScale.ScaleX;
@@ -691,31 +689,8 @@ public partial class MainWindow
         CompactThumbnail.BeginAnimation(OpacityProperty, null);
         CompactThumbnail.Opacity = compactThumbOpacity;
 
-        ThumbnailOutScale.ScaleX = 1.0;
-        ThumbnailOutScale.ScaleY = 1.0;
-        ThumbnailNextScale.ScaleX = 1.0;
-        ThumbnailNextScale.ScaleY = 1.0;
-        ThumbnailOutBlur.Radius = 0.0;
-        ThumbnailNextBlur.Radius = 0.0;
-
-        var overlayTarget = ThumbnailImageNext.Source ?? CompactThumbnailNext.Source;
-        var resolvedThumb = overlayTarget
-                            ?? ThumbnailImage.Source ?? CompactThumbnail.Source;
-        if (!_showingEmptyThumbnail && resolvedThumb != null)
-        {
-            ThumbnailImage.Source = resolvedThumb;
-            CompactThumbnail.Source = resolvedThumb;
-            ThumbnailImage.Visibility = Visibility.Visible;
-            ThumbnailFallback.Visibility = Visibility.Collapsed;
-        }
-
-        ThumbnailImageNext.Source = null;
-        CompactThumbnailNext.Source = null;
-        ThumbnailImageNext.Visibility = Visibility.Collapsed;
-        CompactThumbnailNext.Visibility = Visibility.Collapsed;
-        ThumbnailImageNext.Opacity = 0.0;
-        CompactThumbnailNext.Opacity = 0.0;
-        ThumbnailImage.Opacity = 1.0;
+        ResetExpandedThumbnailTransforms();
+        ResolveAndCommitActiveThumbnail(null);
     }
 
     private void ResetCompactThumbnailNextLayer()

@@ -18,11 +18,6 @@ internal static partial class ArtworkFrameDetector
         out int outX, out int outY, out int outW, out int outH, out byte outFound);
 
     [LibraryImport("VNotch.Native.dll")]
-    private static unsafe partial int vn_artwork_frame_detect_dark_textured(
-        byte* pixels, int w, int h, int width, int height,
-        out int outX, out int outY, out int outW, out int outH, out byte outFound);
-
-    [LibraryImport("VNotch.Native.dll")]
     private static unsafe partial int vn_artwork_frame_detect_white(
         byte* pixels, int w, int h, int width, int height,
         out int outX, out int outY, out int outW, out int outH, out byte outFound);
@@ -53,25 +48,6 @@ internal static partial class ArtworkFrameDetector
 
     internal static unsafe Int32Rect? DetectFrameFromPixels(byte[] pixels, int w, int h, int stride) =>
         DetectFrameFromPixels(pixels, w, h, w, h);
-
-    internal static unsafe Int32Rect? DetectDarkTexturedFrame(BitmapSource source)
-    {
-        int width = source.PixelWidth, height = source.PixelHeight;
-        if (Math.Min(width, height) < 64) return null;
-        var (pixels, w, h) = RentDownscaledPixels(source, width, height);
-        try
-        {
-            fixed (byte* p = pixels)
-            {
-                _ = vn_artwork_frame_detect_dark_textured(p, w, h, width, height, out int rx, out int ry, out int rw, out int rh, out byte found);
-                return found != 0 ? new Int32Rect(rx, ry, rw, rh) : null;
-            }
-        }
-        finally
-        {
-            ArrayPool<byte>.Shared.Return(pixels);
-        }
-    }
 
     internal static unsafe Int32Rect? DetectWhiteFrame(BitmapSource source)
     {

@@ -388,7 +388,7 @@ VN_EXPORT int32_t vn_privacy_indicator_evaluate_mic_gate(
     return VN_OK;
 }
 
-VN_EXPORT int32_t __stdcall vn_privacy_indicator_scan_consent_store(
+extern "C" int32_t __stdcall vn_privacy_indicator_scan_consent_store(
     const char16_t* capability,
     int32_t capability_len,
     VnConsentStoreEntry* out_entries,

@@ -110,6 +110,28 @@
         </Style>
     </Window.Resources>
 
+    <Grid SnapsToDevicePixels="False" UseLayoutRounding="False">
+        <Border x:Name="MainShellShadow"
+                Background="{StaticResource WindowGlow}"
+                CornerRadius="24"
+                Margin="18"
+                Opacity="{Binding Opacity, ElementName=MainShell}"
+                Visibility="{Binding Visibility, ElementName=MainShell}"
+                RenderTransformOrigin="{Binding RenderTransformOrigin, ElementName=MainShell}"
+                IsHitTestVisible="False"
+                SnapsToDevicePixels="False"
+                UseLayoutRounding="False">
+            <Border.RenderTransform>
+                <TransformGroup>
+                    <ScaleTransform ScaleX="{Binding ScaleX, ElementName=ShellScale}" ScaleY="{Binding ScaleY, ElementName=ShellScale}"/>
+                    <TranslateTransform X="{Binding X, ElementName=ShellTranslate}" Y="{Binding Y, ElementName=ShellTranslate}"/>
+                </TransformGroup>
+            </Border.RenderTransform>
+            <Border.Effect>
+                <DropShadowEffect Color="Black" Direction="270" ShadowDepth="8" Opacity="0.5" BlurRadius="24"/>
+            </Border.Effect>
+        </Border>
+
     <Border x:Name="MainShell"
             Background="{StaticResource WindowGlow}" 
             BorderBrush="#18FFFFFF" 
@@ -117,6 +139,8 @@
             CornerRadius="24"
             Margin="18"
             Opacity="0"
+            SnapsToDevicePixels="False"
+            UseLayoutRounding="False"
             RenderTransformOrigin="0.5,0.5">
         
         <Border.RenderTransform>
@@ -125,10 +149,6 @@
                 <TranslateTransform x:Name="ShellTranslate" Y="20"/>
             </TransformGroup>
         </Border.RenderTransform>
-        
-        <Border.Effect>
-            <DropShadowEffect Color="Black" Direction="270" ShadowDepth="8" Opacity="0.5" BlurRadius="24"/>
-        </Border.Effect>
 
         <Grid>
             <Grid.RowDefinitions>
@@ -252,4 +272,5 @@
             </Grid>
         </Grid>
     </Border>
+    </Grid>
 </Window>

@@ -16,7 +16,12 @@
         Closing="Window_Closing"
         KeyDown="Window_KeyDown"
         FontFamily="{fonts:AppFont Fallbacks='Nirmala UI, Segoe UI'}"
-        FontWeight="Bold">
+        FontWeight="Medium"
+        UseLayoutRounding="False"
+        SnapsToDevicePixels="False"
+        TextOptions.TextFormattingMode="Ideal"
+        TextOptions.TextRenderingMode="Grayscale"
+        TextOptions.TextHintingMode="Animated">
 
     <Window.Resources>
         <fonts:AppFont x:Key="SettingsFont" Fallbacks="Nirmala UI, Segoe UI" />

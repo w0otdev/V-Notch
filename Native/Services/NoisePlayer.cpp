@@ -386,21 +386,6 @@ VN_EXPORT int32_t __stdcall vn_noise_set_volume(float volume) noexcept {
     return VN_OK;
 }
 
-VN_EXPORT int32_t __stdcall vn_noise_stop() noexcept {
-    g.wantOn.store(false, std::memory_order_release);
-    std::thread toJoin;
-    {
-        std::lock_guard lock(g.mutex);
-        if (g.thread.joinable() && g.thread.get_id() != std::this_thread::get_id()) {
-            toJoin = std::move(g.thread);
-        }
-    }
-    if (toJoin.joinable()) {
-        toJoin.join();
-    }
-    return VN_OK;
-}
-
 VN_EXPORT int32_t __stdcall vn_noise_stop_fade(float seconds) noexcept {
     g.fadeOutSeconds = std::clamp(seconds, 0.05f, 10.0f);
     g.wantOn = false;

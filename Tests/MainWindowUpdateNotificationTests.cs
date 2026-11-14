@@ -39,7 +39,7 @@ public sealed class MainWindowUpdateNotificationTests
         await WpfFrameWaiter.UntilAsync(() => Math.Abs(window.UpdateInlineTooltip.Opacity - 1) < 1e-6, "update tooltip shown", ct);
         Assert.True(Field<bool>(window, "_isUpdateTooltipOpen"));
         Assert.Contains("9.5.1", window.UpdateInlineStatusText.Text);
-        Assert.NotNull(window.UpdateNotificationButton.CacheMode);
+        Assert.Null(window.UpdateNotificationButton.CacheMode);
         Invoke(window, "UpdateNotification_MouseLeave", window, new MouseEventArgs(Mouse.PrimaryDevice, 0));
         await WpfFrameWaiter.UntilAsync(() => window.UpdateInlineTooltip.Visibility == Visibility.Collapsed && window.UpdateNotificationButton.CacheMode == null, "update hover dismissed", ct);
         Assert.False(Field<bool>(window, "_isUpdateTooltipOpen"));

@@ -36,6 +36,7 @@ public partial class App : Application
         try
         {
             if (MainWindow is MainWindow window) await window.CleanupAsync();
+            await VNotch.Services.AiUsage.AiAccountUsageMonitor.Shared.DisposeAsync();
             if (Services?.GetService<IMediaDetectionService>() is MediaDetectionService media)
                 await media.DrainShutdownAsync();
             if (Services is IAsyncDisposable asyncDisposable)

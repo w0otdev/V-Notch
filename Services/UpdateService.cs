@@ -205,6 +205,16 @@ public sealed partial class UpdateService : IUpdateService, IDisposable
         return await GetReleaseFeedFallbackAsync().ConfigureAwait(false);
     }
 
+    private static readonly string[] CandidateSetupInstallers = [SelfContainedSetupName, SetupName];
+
+    private static List<UpdateInfo> CloneReleaseList(IReadOnlyList<UpdateInfo> source)
+    {
+        var copy = new List<UpdateInfo>(source.Count);
+        for (int i = 0; i < source.Count; i++)
+            copy.Add(Clone(source[i]));
+        return copy;
+    }
+
     private async Task<UpdateInfo?> CheckReleaseFeedAsync(bool includePrereleases)
     {
         var cached = Volatile.Read(ref _cachedLatestRelease);
@@ -243,20 +253,35 @@ public sealed partial class UpdateService : IUpdateService, IDisposable
             _cachedAllReleases = allReleases;
             _lastAllReleasesCheckUtc = now;
 
-            var releases = allReleases
-                .Where(release => TryParseReleaseVersion(release.Version, out _, out _) &&
-                    (includePrereleases || !release.IsPrerelease))
-                .OrderByDescending(release => release.Version, Comparer<string>.Create(CompareVersions)).ToList();
-            UpdateInfo? update = releases.FirstOrDefault();
+            var candidates = new List<(UpdateInfo Release, int Order)>(allReleases.Count);
+            for (int i = 0; i < allReleases.Count; i++)
+            {
+                var rel = allReleases[i];
+                if (TryParseReleaseVersion(rel.Version, out _, out _) && (includePrereleases || !rel.IsPrerelease))
+                    candidates.Add((rel, i));
+            }
+            candidates.Sort(static (a, b) =>
+            {
+                int cmp = CompareVersions(b.Release.Version, a.Release.Version);
+                return cmp != 0 ? cmp : a.Order.CompareTo(b.Order);
+            });
+
+            UpdateInfo? update = candidates.Count > 0 ? candidates[0].Release : null;
             if (update != null && CompareVersions(update.Version, CurrentVersion) > 0)
             {
                 update = null;
-                foreach (var release in releases.Where(release => CompareVersions(release.Version, CurrentVersion) > 0).Take(MaxReleasePages))
+                int probedPages = 0;
+                for (int i = 0; i < candidates.Count && probedPages < MaxReleasePages; i++)
                 {
-                    foreach (string installer in new[] { SelfContainedSetupName, SetupName })
+                    var release = candidates[i].Release;
+                    if (CompareVersions(release.Version, CurrentVersion) <= 0)
+                        break;
+                    probedPages++;
+                    string root = "https://github.com/w0otdev/V-Notch/releases/download/" + Uri.EscapeDataString("v" + release.Version) + "/";
+                    for (int j = 0; j < CandidateSetupInstallers.Length; j++)
                     {
+                        string installer = CandidateSetupInstallers[j];
                         var candidate = Clone(release);
-                        string root = "https://github.com/w0otdev/V-Notch/releases/download/" + Uri.EscapeDataString("v" + release.Version) + "/";
                         candidate.InstallerName = installer;
                         candidate.DownloadUrl = root + installer;
                         candidate.ManifestUrl = candidate.DownloadUrl + SignedUpdateManifest.ManifestSuffix;
@@ -311,19 +336,19 @@ public sealed partial class UpdateService : IUpdateService, IDisposable
                 await SaveCheckCacheAsync().ConfigureAwait(false);
                 RuntimeLog.Warn(LogCategory, $"GetAllReleases feed rate limited; next check after {_retryAfterUtc:O}");
                 if (requireFresh) throw new HttpRequestException("Release feed rate limited.");
-                return _cachedAllReleases != null ? _cachedAllReleases.Select(Clone).ToList() : Array.Empty<UpdateInfo>();
+                return _cachedAllReleases != null ? CloneReleaseList(_cachedAllReleases) : Array.Empty<UpdateInfo>();
             }
             response.EnsureSuccessStatusCode();
             var releases = await ReadReleaseFeedAsync(response, token).ConfigureAwait(false);
             _cachedAllReleases = releases;
             _lastAllReleasesCheckUtc = DateTime.UtcNow;
-            return releases.Select(Clone).ToList();
+            return CloneReleaseList(releases);
         }
         catch (Exception ex)
         {
             RuntimeLog.Error(LogCategory, ex, "Release feed fallback failed");
             if (requireFresh) throw;
-            return _cachedAllReleases != null ? _cachedAllReleases.Select(Clone).ToList() : Array.Empty<UpdateInfo>();
+            return _cachedAllReleases != null ? CloneReleaseList(_cachedAllReleases) : Array.Empty<UpdateInfo>();
         }
     }
 

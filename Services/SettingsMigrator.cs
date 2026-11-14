@@ -31,7 +31,18 @@ public static partial class SettingsMigrator
         int consentVersion,
         out byte outRevoke);
 
-    public const int CurrentVersion = 14;
+    [LibraryImport(NativeDll)]
+    private static unsafe partial int vn_settings_migrator_append_csv_token_if_missing(
+        char* csvPtr,
+        int csvLen,
+        char* tokenPtr,
+        int tokenLen,
+        char* outBuf,
+        int outCap,
+        out int outLen);
+
+
+    public const int CurrentVersion = 15;
 
     private static readonly IReadOnlyDictionary<int, Func<JsonObject, JsonObject>> _migrations =
         new Dictionary<int, Func<JsonObject, JsonObject>>
@@ -50,6 +61,7 @@ public static partial class SettingsMigrator
             [11] = MigrateV11,
             [12] = MigrateV12,
             [13] = MigrateV13,
+            [14] = MigrateV14,
         };
 
     private static void EnsureProperty(JsonObject root, string propertyName, JsonNode? defaultValue)
@@ -174,6 +186,58 @@ public static partial class SettingsMigrator
         root[nameof(NotchSettings.SpotifyCanvasConsentVersion)] = 0;
         return root;
     }
+
+    private static JsonObject MigrateV14(JsonObject root)
+    {
+        if (root.TryGetPropertyValue(nameof(NotchSettings.NavTabOrder), out var orderNode)
+            && orderNode is JsonValue orderVal
+            && orderVal.TryGetValue<string>(out var navOrder)
+            && navOrder is not null)
+        {
+            root[nameof(NotchSettings.NavTabOrder)] = AppendCsvTokenIfMissing(navOrder, "AiUsage");
+        }
+
+        if (root.TryGetPropertyValue(nameof(NotchSettings.VisibleNavTabs), out var visibleNode)
+            && visibleNode is JsonValue visibleVal
+            && visibleVal.TryGetValue<string>(out var visibleTabs)
+            && visibleTabs is not null)
+        {
+            root[nameof(NotchSettings.VisibleNavTabs)] = AppendCsvTokenIfMissing(visibleTabs, "AiUsage");
+        }
+
+        return root;
+    }
+
+    public static unsafe string AppendCsvTokenIfMissing(string csv, string token)
+    {
+        if (string.IsNullOrEmpty(token)) return csv ?? string.Empty;
+        ReadOnlySpan<char> csvSpan = csv.AsSpan();
+        ReadOnlySpan<char> tokenSpan = token.AsSpan();
+        int cap = csvSpan.Length + tokenSpan.Length + 2;
+        Span<char> buf = cap <= 256 ? stackalloc char[cap] : new char[cap];
+
+        fixed (char* pCsv = csvSpan)
+        fixed (char* pToken = tokenSpan)
+        fixed (char* pOut = buf)
+        {
+            char dummy = '\0';
+            int rc = vn_settings_migrator_append_csv_token_if_missing(
+                csvSpan.IsEmpty ? &dummy : pCsv,
+                csvSpan.Length,
+                pToken,
+                tokenSpan.Length,
+                pOut,
+                buf.Length,
+                out int outLen);
+            if (rc == 0 && outLen >= 0 && outLen <= buf.Length)
+            {
+                return new string(buf[..outLen]);
+            }
+        }
+
+        return string.IsNullOrWhiteSpace(csv) ? token : $"{csv},{token}";
+    }
+
 
     public static (NotchSettings settings, bool migrated) Migrate(string rawJson)
     {

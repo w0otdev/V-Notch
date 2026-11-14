@@ -41,6 +41,34 @@ class GlassBoxBlur final
     static constexpr int32_t kMaxRadius = 1 << 20;
     static constexpr int32_t kMaxDimension = 1 << 24;
 
+    static __forceinline void StoreAveragePixel(
+        uint8_t* dst,
+        const ExactByteAverage& divisor,
+        int32_t sum_b,
+        int32_t sum_g,
+        int32_t sum_r,
+        int32_t sum_a) noexcept
+    {
+        dst[0] = divisor.divide(sum_b);
+        dst[1] = divisor.divide(sum_g);
+        dst[2] = divisor.divide(sum_r);
+        dst[3] = divisor.divide(sum_a);
+    }
+
+    static __forceinline void SlideWindowPixel(
+        const uint8_t* px_in,
+        const uint8_t* px_out,
+        int32_t& sum_b,
+        int32_t& sum_g,
+        int32_t& sum_r,
+        int32_t& sum_a) noexcept
+    {
+        sum_b += static_cast<int32_t>(px_in[0]) - static_cast<int32_t>(px_out[0]);
+        sum_g += static_cast<int32_t>(px_in[1]) - static_cast<int32_t>(px_out[1]);
+        sum_r += static_cast<int32_t>(px_in[2]) - static_cast<int32_t>(px_out[2]);
+        sum_a += static_cast<int32_t>(px_in[3]) - static_cast<int32_t>(px_out[3]);
+    }
+
     static int32_t HorizontalScalar(
         const uint8_t* src,
         uint8_t* dst,
@@ -49,73 +77,64 @@ class GlassBoxBlur final
         int32_t y0,
         int32_t y1) noexcept
     {
-        ExactByteAverage divisor(2 * radius + 1);
-        int32_t left_end = std::min(w, radius);
-        int32_t right_start = std::max(left_end, w - radius - 1);
+        const ExactByteAverage divisor(2 * radius + 1);
+        const int32_t left_end = std::min(w, radius);
+        const int32_t right_start = std::max(left_end, w - radius - 1);
+        const int32_t init_clamped_right = std::max(0, radius - (w - 1));
+        const int32_t init_interior_end = std::min(radius, w - 1);
+        const size_t row_bytes = static_cast<size_t>(w) * 4u;
 
         for (int32_t y = y0; y < y1; ++y)
         {
-            const size_t row_base = static_cast<size_t>(y) * static_cast<size_t>(w) * 4u;
-            int32_t sum_b = 0, sum_g = 0, sum_r = 0, sum_a = 0;
-            for (int32_t dx = -radius; dx <= radius; ++dx)
+            const uint8_t* srow = src + static_cast<size_t>(y) * row_bytes;
+            uint8_t* drow = dst + static_cast<size_t>(y) * row_bytes;
+            const uint8_t* first_px = srow;
+            const uint8_t* last_px = srow + static_cast<size_t>(w - 1) * 4u;
+
+            int32_t sum_b = static_cast<int32_t>(first_px[0]) * (radius + 1);
+            int32_t sum_g = static_cast<int32_t>(first_px[1]) * (radius + 1);
+            int32_t sum_r = static_cast<int32_t>(first_px[2]) * (radius + 1);
+            int32_t sum_a = static_cast<int32_t>(first_px[3]) * (radius + 1);
+
+            for (int32_t dx = 1; dx <= init_interior_end; ++dx)
             {
-                const size_t o = row_base + static_cast<size_t>(std::clamp(dx, 0, w - 1)) * 4u;
-                sum_b += src[o];
-                sum_g += src[o + 1];
-                sum_r += src[o + 2];
-                sum_a += src[o + 3];
+                const uint8_t* px = srow + static_cast<size_t>(dx) * 4u;
+                sum_b += px[0];
+                sum_g += px[1];
+                sum_r += px[2];
+                sum_a += px[3];
+            }
+            if (init_clamped_right > 0)
+            {
+                sum_b += static_cast<int32_t>(last_px[0]) * init_clamped_right;
+                sum_g += static_cast<int32_t>(last_px[1]) * init_clamped_right;
+                sum_r += static_cast<int32_t>(last_px[2]) * init_clamped_right;
+                sum_a += static_cast<int32_t>(last_px[3]) * init_clamped_right;
             }
 
             int32_t x = 0;
             for (; x < left_end; ++x)
             {
-                const size_t t = row_base + static_cast<size_t>(x) * 4u;
-                dst[t] = divisor.divide(sum_b);
-                dst[t + 1] = divisor.divide(sum_g);
-                dst[t + 2] = divisor.divide(sum_r);
-                dst[t + 3] = divisor.divide(sum_a);
-
+                StoreAveragePixel(drow + static_cast<size_t>(x) * 4u, divisor, sum_b, sum_g, sum_r, sum_a);
                 const int32_t in_x = std::min(w - 1, x + 1 + radius);
-                const size_t o_out = row_base;
-                const size_t o_in = row_base + static_cast<size_t>(in_x) * 4u;
-                sum_b += src[o_in] - src[o_out];
-                sum_g += src[o_in + 1] - src[o_out + 1];
-                sum_r += src[o_in + 2] - src[o_out + 2];
-                sum_a += src[o_in + 3] - src[o_out + 3];
+                SlideWindowPixel(srow + static_cast<size_t>(in_x) * 4u, first_px, sum_b, sum_g, sum_r, sum_a);
             }
 
             for (; x < right_start; ++x)
             {
-                const size_t t = row_base + static_cast<size_t>(x) * 4u;
-                dst[t] = divisor.divide(sum_b);
-                dst[t + 1] = divisor.divide(sum_g);
-                dst[t + 2] = divisor.divide(sum_r);
-                dst[t + 3] = divisor.divide(sum_a);
-
-                const size_t o_out = t - static_cast<size_t>(radius) * 4u;
-                const size_t o_in = t + (static_cast<size_t>(radius) + 1u) * 4u;
-                sum_b += src[o_in] - src[o_out];
-                sum_g += src[o_in + 1] - src[o_out + 1];
-                sum_r += src[o_in + 2] - src[o_out + 2];
-                sum_a += src[o_in + 3] - src[o_out + 3];
+                const size_t px_offset = static_cast<size_t>(x) * 4u;
+                StoreAveragePixel(drow + px_offset, divisor, sum_b, sum_g, sum_r, sum_a);
+                SlideWindowPixel(
+                    srow + px_offset + (static_cast<size_t>(radius) + 1u) * 4u,
+                    srow + px_offset - static_cast<size_t>(radius) * 4u,
+                    sum_b, sum_g, sum_r, sum_a);
             }
 
-            const size_t last_pixel_offset = row_base + static_cast<size_t>(w - 1) * 4u;
             for (; x < w; ++x)
             {
-                const size_t t = row_base + static_cast<size_t>(x) * 4u;
-                dst[t] = divisor.divide(sum_b);
-                dst[t + 1] = divisor.divide(sum_g);
-                dst[t + 2] = divisor.divide(sum_r);
-                dst[t + 3] = divisor.divide(sum_a);
-
+                StoreAveragePixel(drow + static_cast<size_t>(x) * 4u, divisor, sum_b, sum_g, sum_r, sum_a);
                 const int32_t out_x = std::max(0, x - radius);
-                const size_t o_out = row_base + static_cast<size_t>(out_x) * 4u;
-                const size_t o_in = last_pixel_offset;
-                sum_b += src[o_in] - src[o_out];
-                sum_g += src[o_in + 1] - src[o_out + 1];
-                sum_r += src[o_in + 2] - src[o_out + 2];
-                sum_a += src[o_in + 3] - src[o_out + 3];
+                SlideWindowPixel(last_px, srow + static_cast<size_t>(out_x) * 4u, sum_b, sum_g, sum_r, sum_a);
             }
         }
 
@@ -135,6 +154,21 @@ public:
             || radius < 0 || radius > kMaxRadius || y0 < 0 || y1 < y0)
         {
             return VN_ERR_INVALID_ARG;
+        }
+        if (y0 == y1)
+        {
+            return VN_OK;
+        }
+        if (radius == 0)
+        {
+            const size_t row_bytes = static_cast<size_t>(w) * 4u;
+            const size_t offset = static_cast<size_t>(y0) * row_bytes;
+            const size_t byte_count = static_cast<size_t>(y1 - y0) * row_bytes;
+            if (src != dst)
+            {
+                std::memmove(dst + offset, src + offset, byte_count);
+            }
+            return VN_OK;
         }
 
         if (2 * radius + 1 <= kMaxFloatWindow && vnotch::cpu::SupportsX64V3())
@@ -159,30 +193,77 @@ public:
         {
             return VN_ERR_INVALID_ARG;
         }
+        if (x0 == x1)
+        {
+            return VN_OK;
+        }
 
         const int32_t window = 2 * radius + 1;
         const size_t stride = static_cast<size_t>(w) * 4u;
         int32_t column = x0 * 4;
         const int32_t end = x1 * 4;
 
+        if (radius == 0)
+        {
+            if (src != dst)
+            {
+                const size_t col_offset = static_cast<size_t>(column);
+                const size_t span_bytes = static_cast<size_t>(end - column);
+                for (int32_t y = 0; y < h; ++y)
+                {
+                    const size_t row_off = static_cast<size_t>(y) * stride + col_offset;
+                    std::memmove(dst + row_off, src + row_off, span_bytes);
+                }
+            }
+            return VN_OK;
+        }
+
         if (window <= kMaxFloatWindow && vnotch::cpu::SupportsX64V3())
         {
             column = vnotch::kernels::avx2::GlassBoxBlurVerticalBulk(src, dst, w, h, radius, column, end);
         }
 
-        ExactByteAverage scalar_divisor(window);
+        const ExactByteAverage scalar_divisor(window);
+        const int32_t top_end = std::min(h, radius);
+        const int32_t bottom_start = std::max(top_end, h - radius - 1);
+        const int32_t init_interior_end = std::min(radius, h - 1);
+        const int32_t init_clamped_bottom = std::max(0, radius - (h - 1));
+        const size_t last_row_offset = static_cast<size_t>(h - 1) * stride;
+
         for (; column < end; ++column)
         {
-            int32_t sum = 0;
-            for (int32_t dy = -radius; dy <= radius; ++dy)
+            const uint8_t* scol = src + static_cast<size_t>(column);
+            uint8_t* dcol = dst + static_cast<size_t>(column);
+            const int32_t top_val = scol[0];
+            const int32_t bot_val = scol[last_row_offset];
+
+            int32_t sum = top_val * (radius + 1);
+            for (int32_t dy = 1; dy <= init_interior_end; ++dy)
             {
-                sum += src[static_cast<size_t>(std::clamp(dy, 0, h - 1)) * stride + static_cast<size_t>(column)];
+                sum += scol[static_cast<size_t>(dy) * stride];
             }
-            for (int32_t y = 0; y < h; ++y)
+            if (init_clamped_bottom > 0)
             {
-                dst[static_cast<size_t>(y) * stride + static_cast<size_t>(column)] = scalar_divisor.divide(sum);
-                sum += src[static_cast<size_t>(std::min(h - 1, y + radius + 1)) * stride + static_cast<size_t>(column)]
-                     - src[static_cast<size_t>(std::max(0, y - radius)) * stride + static_cast<size_t>(column)];
+                sum += bot_val * init_clamped_bottom;
+            }
+
+            int32_t y = 0;
+            for (; y < top_end; ++y)
+            {
+                dcol[static_cast<size_t>(y) * stride] = scalar_divisor.divide(sum);
+                sum += static_cast<int32_t>(scol[static_cast<size_t>(std::min(h - 1, y + radius + 1)) * stride]) - top_val;
+            }
+            for (; y < bottom_start; ++y)
+            {
+                const size_t row_off = static_cast<size_t>(y) * stride;
+                dcol[row_off] = scalar_divisor.divide(sum);
+                sum += static_cast<int32_t>(scol[row_off + static_cast<size_t>(radius + 1) * stride])
+                     - static_cast<int32_t>(scol[row_off - static_cast<size_t>(radius) * stride]);
+            }
+            for (; y < h; ++y)
+            {
+                dcol[static_cast<size_t>(y) * stride] = scalar_divisor.divide(sum);
+                sum += bot_val - static_cast<int32_t>(scol[static_cast<size_t>(std::max(0, y - radius)) * stride]);
             }
         }
 

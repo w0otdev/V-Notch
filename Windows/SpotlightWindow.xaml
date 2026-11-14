@@ -19,6 +19,8 @@
         Opacity="0"
         FontFamily="{DynamicResource SFProDisplay}"
         FontWeight="Bold"
+        UseLayoutRounding="False"
+        SnapsToDevicePixels="False"
         TextOptions.TextFormattingMode="Ideal"
         TextOptions.TextRenderingMode="Grayscale"
         TextOptions.TextHintingMode="Animated"
@@ -30,8 +32,8 @@
         <fonts:AppFont x:Key="SFProText" Fallbacks="Segoe UI, Arial" />
         <controls:SpotlightHotkeyConverter x:Key="HotkeyConverter"/>
 
-        <SolidColorBrush x:Key="PrimaryTextBrush" Color="#F4FFFFFF"/>
-        <SolidColorBrush x:Key="TitleTextBrush" Color="#EDFFFFFF"/>
+        <SolidColorBrush x:Key="PrimaryTextBrush" Color="#ECFFFFFF"/>
+        <SolidColorBrush x:Key="TitleTextBrush" Color="#E6FFFFFF"/>
         <SolidColorBrush x:Key="SecondaryTextBrush" Color="#8AFFFFFF"/>
         <SolidColorBrush x:Key="TertiaryTextBrush" Color="#8AFFFFFF"/>
         <!-- Fully opaque OLED black to match the notch; any translucency lets

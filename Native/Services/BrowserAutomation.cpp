@@ -8,15 +8,15 @@
 #pragma comment(lib, "uiautomationcore.lib")
 #pragma comment(lib, "oleaut32.lib")
 
-VN_EXPORT int32_t vn_wtscanner_is_address_bar_value(const char16_t*, int32_t, uint8_t*) noexcept;
-VN_EXPORT int32_t vn_wtscanner_looks_like_url(const char16_t*, int32_t, uint8_t*) noexcept;
+extern "C" int32_t vn_wtscanner_is_address_bar_value(const char16_t*, int32_t, uint8_t*) noexcept;
+extern "C" int32_t vn_wtscanner_looks_like_url(const char16_t*, int32_t, uint8_t*) noexcept;
 VN_EXPORT int32_t vn_wtscanner_is_media_url(const char16_t*, int32_t, uint8_t*) noexcept;
-VN_EXPORT int32_t vn_wtscanner_normalize_url(const char16_t*, int32_t, char16_t*, int32_t, int32_t*) noexcept;
+extern "C" int32_t vn_wtscanner_normalize_url(const char16_t*, int32_t, char16_t*, int32_t, int32_t*) noexcept;
 VN_EXPORT int32_t vn_mediaactivator_score_tab_item(const char16_t*, int32_t, const char16_t*, int32_t,
     const char16_t*, int32_t, const char16_t*, int32_t, const char16_t*, int32_t,
     const char16_t*, int32_t, const char16_t*, int32_t, int32_t, int32_t*) noexcept;
 VN_EXPORT int32_t vn_mediaactivator_normalize_title(const char16_t*, int32_t, char16_t*, int32_t, int32_t*) noexcept;
-VN_EXPORT int32_t vn_mediaactivator_normalize_media_title(const char16_t*, int32_t, const char16_t*, int32_t, char16_t*, int32_t, int32_t*) noexcept;
+extern "C" int32_t vn_mediaactivator_normalize_media_title(const char16_t*, int32_t, const char16_t*, int32_t, char16_t*, int32_t, int32_t*) noexcept;
 VN_EXPORT int32_t vn_mediaactivator_try_activate_window(intptr_t, uint8_t*) noexcept;
 VN_EXPORT int32_t vn_mediaactivator_is_chromium_window(intptr_t, uint8_t*) noexcept;
 

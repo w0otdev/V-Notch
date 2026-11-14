@@ -936,16 +936,21 @@ namespace vnotch::services
             std::u16string_view p1,
             std::u16string_view p2) noexcept
         {
-            uint8_t header_buf[12288];
-            uint8_t payload_buf[12288];
-            uint8_t sig_buf[12288];
-            size_t h_len = 0, p_len = 0, s_len = 0;
-            return decode_base64url(p0, header_buf, sizeof(header_buf), h_len) &&
-                   decode_base64url(p1, payload_buf, sizeof(payload_buf), p_len) &&
-                   decode_base64url(p2, sig_buf, sizeof(sig_buf), s_len) &&
-                   s_len > 0 &&
-                   is_valid_json_object(header_buf, h_len, true) &&
-                   is_valid_json_object(payload_buf, p_len, false);
+            uint8_t scratch_buf[12288];
+            size_t decoded_len = 0;
+            if (!decode_base64url(p0, scratch_buf, sizeof(scratch_buf), decoded_len) ||
+                !is_valid_json_object(scratch_buf, decoded_len, true))
+            {
+                return false;
+            }
+            decoded_len = 0;
+            if (!decode_base64url(p1, scratch_buf, sizeof(scratch_buf), decoded_len) ||
+                !is_valid_json_object(scratch_buf, decoded_len, false))
+            {
+                return false;
+            }
+            decoded_len = 0;
+            return decode_base64url(p2, scratch_buf, sizeof(scratch_buf), decoded_len) && decoded_len > 0;
         }
 
         static bool ContainsJwt(std::u16string_view text) noexcept
@@ -1016,6 +1021,106 @@ namespace vnotch::services
             return true;
         }
 
+        static bool MatchesPemPrivateKeyAt(std::u16string_view text, size_t i) noexcept
+        {
+            const size_t n = text.size();
+            if (i + 27 > n || !starts_with_ignore_case(text.substr(i), secret_patterns::kPemBeginPrefix))
+            {
+                return false;
+            }
+            size_t p = i + secret_patterns::kPemBeginPrefix.size();
+            while (p < n)
+            {
+                const std::u16string_view rem = text.substr(p);
+                if (starts_with_ignore_case(rem, secret_patterns::kPemPrivateKeyClose) ||
+                    starts_with_ignore_case(rem, secret_patterns::kPemPrivateKeyBlockClose))
+                {
+                    return true;
+                }
+                size_t w = p;
+                while (w < n && is_alnum_dash_under(text[w])) ++w;
+                if (w == p || w >= n || text[w] != u' ') break;
+                p = w + 1;
+            }
+            return false;
+        }
+
+        static bool MatchesWifiPasswordAt(std::u16string_view text, size_t i) noexcept
+        {
+            const size_t n = text.size();
+            if (i + 8 > n || !starts_with_ignore_case(text.substr(i), secret_patterns::kPrefixWifi))
+            {
+                return false;
+            }
+            size_t p = i + secret_patterns::kPrefixWifi.size();
+            while (p < n)
+            {
+                size_t semi = p;
+                while (semi < n && text[semi] != u';') ++semi;
+                if (semi >= n) break;
+                const std::u16string_view seg = text.substr(p, semi - p);
+                if (seg.size() >= 3 && (seg[0] == u'P' || seg[0] == u'p') && seg[1] == u':')
+                {
+                    return true;
+                }
+                p = semi + 1;
+            }
+            return false;
+        }
+
+        static bool MatchesSendGridTokenAt(std::u16string_view text, size_t i, std::u16string_view rem) noexcept
+        {
+            const size_t n = text.size();
+            if (rem.size() < 69 || !starts_with_ignore_case(rem, secret_patterns::kPrefixSendGrid))
+            {
+                return false;
+            }
+            size_t p1 = i + secret_patterns::kPrefixSendGrid.size();
+            while (p1 < n && p1 < i + 25 && is_alnum_dash_under(text[p1])) ++p1;
+            return p1 == i + 25 && p1 < n && text[p1] == u'.' &&
+                   match_greedy_with_word_boundary(text, p1 + 1, 43, 43, is_alnum_dash_under);
+        }
+
+        static bool MatchesDiscordTokenAt(std::u16string_view text, size_t i, std::u16string_view rem) noexcept
+        {
+            const size_t n = text.size();
+            if (rem.size() < 59 || (rem[0] != u'M' && rem[0] != u'm' && rem[0] != u'N' && rem[0] != u'n'))
+            {
+                return false;
+            }
+            size_t p1 = i + 1;
+            while (p1 < n && is_ascii_alnum(text[p1])) ++p1;
+            if (p1 - (i + 1) < 23 || p1 + 8 >= n || text[p1] != u'.')
+            {
+                return false;
+            }
+            size_t p2 = p1 + 1;
+            while (p2 < n && p2 < p1 + 7 && is_alnum_dash_under(text[p2])) ++p2;
+            return p2 == p1 + 7 && p2 < n && text[p2] == u'.' &&
+                   match_greedy_with_word_boundary(text, p2 + 1, 27, static_cast<size_t>(-1), is_alnum_dash_under);
+        }
+
+        static bool MatchesUrlWithCredentialsAt(std::u16string_view text, size_t i) noexcept
+        {
+            const size_t n = text.size();
+            size_t p = i + 1;
+            while (p < n && (is_ascii_alnum(text[p]) || text[p] == u'+' || text[p] == u'.' || text[p] == u'-')) ++p;
+            if (p + 3 >= n || text[p] != u':' || text[p + 1] != u'/' || text[p + 2] != u'/')
+            {
+                return false;
+            }
+            p += 3;
+            auto is_url_cred_char = [](char16_t ch) noexcept {
+                return ch != u'/' && ch != u':' && ch != u'@' && !is_unicode_whitespace(ch);
+            };
+            while (p < n && is_url_cred_char(text[p])) ++p;
+            if (p >= n || text[p] != u':') return false;
+            ++p;
+            const size_t pw_start = p;
+            while (p < n && is_url_cred_char(text[p])) ++p;
+            return p > pw_start && p + 1 < n && text[p] == u'@' && is_url_cred_char(text[p + 1]);
+        }
+
         static bool ContainsCredentialFormat(std::u16string_view text) noexcept
         {
             if (MatchesEmailCredentialWhole(text)) return true;
@@ -1026,41 +1131,10 @@ namespace vnotch::services
                 const char16_t c = text[i];
 
                 // 1. Private Keys: -----BEGIN (?:[A-Z0-9_-]+ )*PRIVATE KEY(?: BLOCK)?-----
-                if (c == u'-' && i + 27 <= n && starts_with_ignore_case(text.substr(i), secret_patterns::kPemBeginPrefix))
-                {
-                    size_t p = i + secret_patterns::kPemBeginPrefix.size();
-                    while (p < n)
-                    {
-                        const std::u16string_view rem = text.substr(p);
-                        if (starts_with_ignore_case(rem, secret_patterns::kPemPrivateKeyClose) ||
-                            starts_with_ignore_case(rem, secret_patterns::kPemPrivateKeyBlockClose))
-                        {
-                            return true;
-                        }
-                        size_t w = p;
-                        while (w < n && is_alnum_dash_under(text[w])) ++w;
-                        if (w == p || w >= n || text[w] != u' ') break;
-                        p = w + 1;
-                    }
-                }
+                if (c == u'-' && MatchesPemPrivateKeyAt(text, i)) return true;
 
                 // 9. WIFI:(?:[^;]*;)*P:[^;]+;
-                if ((c == u'W' || c == u'w') && i + 8 <= n && starts_with_ignore_case(text.substr(i), secret_patterns::kPrefixWifi))
-                {
-                    size_t p = i + secret_patterns::kPrefixWifi.size();
-                    while (p < n)
-                    {
-                        size_t semi = p;
-                        while (semi < n && text[semi] != u';') ++semi;
-                        if (semi >= n) break;
-                        const std::u16string_view seg = text.substr(p, semi - p);
-                        if (seg.size() >= 3 && (seg[0] == u'P' || seg[0] == u'p') && seg[1] == u':')
-                        {
-                            return true;
-                        }
-                        p = semi + 1;
-                    }
-                }
+                if ((c == u'W' || c == u'w') && MatchesWifiPasswordAt(text, i)) return true;
 
                 if (!is_word_boundary(text, i)) continue;
                 const std::u16string_view rem = text.substr(i);
@@ -1128,33 +1202,10 @@ namespace vnotch::services
                 }
 
                 // 5b. SG\.[A-Za-z0-9_-]{22}\.[A-Za-z0-9_-]{43}\b
-                if (rem.size() >= 69 && starts_with_ignore_case(rem, secret_patterns::kPrefixSendGrid))
-                {
-                    size_t p1 = i + secret_patterns::kPrefixSendGrid.size();
-                    while (p1 < n && p1 < i + 25 && is_alnum_dash_under(text[p1])) ++p1;
-                    if (p1 == i + 25 && p1 < n && text[p1] == u'.' &&
-                        match_greedy_with_word_boundary(text, p1 + 1, 43, 43, is_alnum_dash_under))
-                    {
-                        return true;
-                    }
-                }
+                if (MatchesSendGridTokenAt(text, i, rem)) return true;
 
                 // 6. \b[MN][A-Za-z0-9]{23,}\.[A-Za-z0-9_-]{6}\.[A-Za-z0-9_-]{27,}\b
-                if (rem.size() >= 59 && (rem[0] == u'M' || rem[0] == u'm' || rem[0] == u'N' || rem[0] == u'n'))
-                {
-                    size_t p1 = i + 1;
-                    while (p1 < n && is_ascii_alnum(text[p1])) ++p1;
-                    if (p1 - (i + 1) >= 23 && p1 + 8 < n && text[p1] == u'.')
-                    {
-                        size_t p2 = p1 + 1;
-                        while (p2 < n && p2 < p1 + 7 && is_alnum_dash_under(text[p2])) ++p2;
-                        if (p2 == p1 + 7 && p2 < n && text[p2] == u'.' &&
-                            match_greedy_with_word_boundary(text, p2 + 1, 27, static_cast<size_t>(-1), is_alnum_dash_under))
-                        {
-                            return true;
-                        }
-                    }
-                }
+                if (MatchesDiscordTokenAt(text, i, rem)) return true;
 
                 // 7. \bBearer\s+[A-Za-z0-9._~+/-]{20,}\b
                 if (rem.size() >= 27 &&
@@ -1170,29 +1221,7 @@ namespace vnotch::services
                 }
 
                 // 8. \b[a-zA-Z][a-zA-Z0-9+.-]*://[^/\s:@]*:[^/\s:@]+@[^/\s:@]+
-                if (is_ascii_alpha(c))
-                {
-                    size_t p = i + 1;
-                    while (p < n && (is_ascii_alnum(text[p]) || text[p] == u'+' || text[p] == u'.' || text[p] == u'-')) ++p;
-                    if (p + 3 < n && text[p] == u':' && text[p + 1] == u'/' && text[p + 2] == u'/')
-                    {
-                        p += 3;
-                        auto is_url_cred_char = [](char16_t ch) noexcept {
-                            return ch != u'/' && ch != u':' && ch != u'@' && !is_unicode_whitespace(ch);
-                        };
-                        while (p < n && is_url_cred_char(text[p])) ++p;
-                        if (p < n && text[p] == u':')
-                        {
-                            ++p;
-                            const size_t pw_start = p;
-                            while (p < n && is_url_cred_char(text[p])) ++p;
-                            if (p > pw_start && p + 1 < n && text[p] == u'@' && is_url_cred_char(text[p + 1]))
-                            {
-                                return true;
-                            }
-                        }
-                    }
-                }
+                if (is_ascii_alpha(c) && MatchesUrlWithCredentialsAt(text, i)) return true;
             }
             return false;
         }
@@ -1231,18 +1260,12 @@ namespace vnotch::services
             if (pos >= n) return false;
 
             std::u16string_view val{};
-            if (text[pos] == u'"')
+            const char16_t quote = text[pos];
+            if (quote == u'"' || quote == u'\'')
             {
                 size_t close = pos + 1;
-                while (close < n && text[close] != u'"' && text[close] != u'\r' && text[close] != u'\n') ++close;
-                if (close >= n || text[close] != u'"' || close == pos + 1) return false;
-                val = text.substr(pos + 1, close - (pos + 1));
-            }
-            else if (text[pos] == u'\'')
-            {
-                size_t close = pos + 1;
-                while (close < n && text[close] != u'\'' && text[close] != u'\r' && text[close] != u'\n') ++close;
-                if (close >= n || text[close] != u'\'' || close == pos + 1) return false;
+                while (close < n && text[close] != quote && text[close] != u'\r' && text[close] != u'\n') ++close;
+                if (close >= n || text[close] != quote || close == pos + 1) return false;
                 val = text.substr(pos + 1, close - (pos + 1));
             }
             else
@@ -1274,15 +1297,9 @@ namespace vnotch::services
             while (p > 0)
             {
                 const char16_t c = text[p - 1];
-                if (is_ascii_alnum(c) || c == u'_' || c == u'.' || c == u'-')
-                {
-                    --p;
-                    if (is_word_boundary(text, p)) return true;
-                }
-                else
-                {
-                    break;
-                }
+                if (!is_ascii_alnum(c) && c != u'_' && c != u'.' && c != u'-') break;
+                --p;
+                if (is_word_boundary(text, p)) return true;
             }
             return is_word_boundary(text, p);
         }

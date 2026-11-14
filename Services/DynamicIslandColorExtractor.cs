@@ -160,27 +160,9 @@ internal static partial class DynamicIslandColorExtractor
         return result.Primary != default ? result.Primary : Color.FromRgb(30, 30, 30);
     }
 
-    public static Color EnsureBrightColor(Color c)
-    {
-        vn_dicolor_ensure_bright(c.R, c.G, c.B, out byte r, out byte g, out byte b);
-        return Color.FromRgb(r, g, b);
-    }
-
-    public static Color GetVibrantColor(Color c)
-    {
-        vn_dicolor_get_vibrant(c.R, c.G, c.B, out byte r, out byte g, out byte b);
-        return Color.FromRgb(r, g, b);
-    }
-
     public static double GetAdaptiveBlurOpacity(double luminance, double brightnessBoost = 1.0)
     {
         vn_dicolor_get_adaptive_blur_opacity(luminance, brightnessBoost, out double opacity);
-        return opacity;
-    }
-
-    public static double GetAdaptiveBlurImageOpacity(double luminance)
-    {
-        vn_dicolor_get_adaptive_blur_image_opacity(luminance, out double opacity);
         return opacity;
     }
 
@@ -319,12 +301,6 @@ internal static partial class DynamicIslandColorExtractor
         return ratio;
     }
 
-    public static double ColorDistance(Color a, Color b)
-    {
-        vn_dicolor_color_distance(a.R, a.G, a.B, b.R, b.G, b.B, out double dist);
-        return dist;
-    }
-
     public static Color EnsureTextOnDarkBackground(Color color, Color background, double minRatio)
     {
         vn_dicolor_ensure_text_on_dark_bg(
@@ -377,20 +353,8 @@ internal static partial class DynamicIslandColorExtractor
         out int out_x, out int out_y, out int out_w, out int out_h, out byte out_valid);
 
     [LibraryImport("VNotch.Native.dll")]
-    private static partial int vn_dicolor_ensure_bright(
-        byte r, byte g, byte b, out byte out_r, out byte out_g, out byte out_b);
-
-    [LibraryImport("VNotch.Native.dll")]
-    private static partial int vn_dicolor_get_vibrant(
-        byte r, byte g, byte b, out byte out_r, out byte out_g, out byte out_b);
-
-    [LibraryImport("VNotch.Native.dll")]
     private static partial int vn_dicolor_get_adaptive_blur_opacity(
         double luminance, double brightness_boost, out double out_opacity);
-
-    [LibraryImport("VNotch.Native.dll")]
-    private static partial int vn_dicolor_get_adaptive_blur_image_opacity(
-        double luminance, out double out_opacity);
 
     [LibraryImport("VNotch.Native.dll")]
     private static unsafe partial int vn_dicolor_compute_brightness_dim(
@@ -415,10 +379,6 @@ internal static partial class DynamicIslandColorExtractor
     [LibraryImport("VNotch.Native.dll")]
     private static partial int vn_dicolor_get_contrast_ratio(
         byte r1, byte g1, byte b1, byte r2, byte g2, byte b2, out double out_ratio);
-
-    [LibraryImport("VNotch.Native.dll")]
-    private static partial int vn_dicolor_color_distance(
-        byte r1, byte g1, byte b1, byte r2, byte g2, byte b2, out double out_dist);
 
     [LibraryImport("VNotch.Native.dll")]
     private static partial int vn_dicolor_ensure_text_on_dark_bg(

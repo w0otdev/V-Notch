@@ -44,6 +44,7 @@ public partial class MainWindow
     private bool _isSecondaryView { get; set; }
 
     private bool _isCameraView;
+    private bool _isAiUsageView;
     private DateTime _lastViewSwitchUtc = DateTime.MinValue;
     private static readonly TimeSpan ViewSwitchCooldown = TimeSpan.FromMilliseconds(600);
     private bool _isScrollSessionLocked;
@@ -58,6 +59,7 @@ public partial class MainWindow
     }
     private const double ClipboardTrayHeight = 268;
     private const double CameraViewWidth = 520;
+    private const double AiUsageViewWidth = 480;
     private const double CameraViewHeight = 328;
 
     private void InitializeClipboardHistory(VNotch.Services.Clipboard.ClipboardHistoryStore? store)

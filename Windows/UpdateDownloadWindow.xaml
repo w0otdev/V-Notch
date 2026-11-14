@@ -15,15 +15,21 @@
         TextOptions.TextFormattingMode="Ideal"
         TextOptions.TextRenderingMode="Grayscale"
         TextOptions.TextHintingMode="Animated">
-    <Grid>
+    <Grid SnapsToDevicePixels="False" UseLayoutRounding="False">
+        <Border CornerRadius="14"
+                Background="#F0050505"
+                IsHitTestVisible="False">
+            <Border.Effect>
+                <DropShadowEffect BlurRadius="22" Opacity="0.58" ShadowDepth="0" Color="Black"/>
+            </Border.Effect>
+        </Border>
         <Border CornerRadius="14"
                 Background="#F0050505"
                 BorderBrush="#26FFFFFF"
                 BorderThickness="1"
-                Padding="16">
-            <Border.Effect>
-                <DropShadowEffect BlurRadius="22" Opacity="0.58" ShadowDepth="0" Color="Black"/>
-            </Border.Effect>
+                Padding="16"
+                SnapsToDevicePixels="False"
+                UseLayoutRounding="False">
             <Grid>
                 <Grid.RowDefinitions>
                     <RowDefinition Height="Auto"/>

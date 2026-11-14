@@ -66,6 +66,7 @@ internal static class Program
         TrySilently(RemoveStartupEntry, errors, Loc.Get("uninstall.action.removeStartup"));
         TrySilently(RemoveRegistryKeys, errors, Loc.Get("uninstall.action.removeRegistry"));
         TrySilently(RemoveShortcuts, errors, Loc.Get("uninstall.action.removeShortcuts"));
+        TrySilently(() => new VNotch.Services.AiUsage.ClaudeUsageBridge().Remove(), errors, Loc.Get("aiUsage.remove"));
         TrySilently(() => RemoveAppData(installDirectory!), errors, Loc.Get("uninstall.action.removeData"));
 
         // Hand final deletion to a helper that waits for this process to exit.

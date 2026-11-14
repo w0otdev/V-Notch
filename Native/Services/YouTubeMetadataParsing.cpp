@@ -120,8 +120,8 @@ VN_EXPORT int32_t vn_youtube_parse_iso8601_duration_ticks(const char16_t* iso_pt
 VN_EXPORT int32_t vn_youtube_title_matches(const char16_t*, int32_t, const char16_t*, int32_t, uint8_t*) noexcept;
 VN_EXPORT int32_t vn_youtube_subtitle_determine_is_auto_generated(const char16_t*, int32_t, const char16_t*, int32_t,
     const char16_t*, int32_t, const char16_t*, int32_t, uint8_t, uint8_t, uint8_t*) noexcept;
-VN_EXPORT int32_t vn_youtube_subtitle_normalize_cue_text(const char16_t*, int32_t, uint8_t, char16_t*, int32_t, int32_t*) noexcept;
-VN_EXPORT int32_t vn_youtube_subtitle_clamp_timestamp_ticks(int64_t, double, uint8_t, int64_t*, uint8_t*) noexcept;
+extern "C" int32_t __stdcall vn_youtube_subtitle_normalize_cue_text(const char16_t*, int32_t, uint8_t, char16_t*, int32_t, int32_t*) noexcept;
+extern "C" int32_t __stdcall vn_youtube_subtitle_clamp_timestamp_ticks(int64_t, double, uint8_t, int64_t*, uint8_t*) noexcept;
 
 namespace {
 using Json = vnotch::json::Value;

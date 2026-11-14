@@ -32,13 +32,6 @@ internal sealed partial class EverythingSearchProvider : ISpotlightProvider, IDi
         out double outScore);
 
     [LibraryImport(NativeDll)]
-    private static partial int vn_everything_provider_parse_bounded_utf16_len(
-        IntPtr basePtr,
-        int offset,
-        int totalBytes,
-        out int outCharLen);
-
-    [LibraryImport(NativeDll)]
     private static partial int vn_everything_provider_read_reply_item_count(
         IntPtr listPtr,
         int byteCount,
@@ -83,7 +76,6 @@ internal sealed partial class EverythingSearchProvider : ISpotlightProvider, IDi
     private HwndSource? _replyWindow;
     private TaskCompletionSource<IReadOnlyList<(string Name, string Parent, bool IsFolder)>>? _pendingReply;
     private uint _pendingReplyId;
-    private IntPtr _pendingEverythingHwnd;
     private static readonly TimeSpan RetryCooldown = TimeSpan.FromSeconds(15);
     private volatile bool _disposed;
     private volatile bool _ipcFailed;
@@ -167,7 +159,6 @@ internal sealed partial class EverythingSearchProvider : ISpotlightProvider, IDi
                 if (_disposed) return Array.Empty<SpotlightSearchItem>();
                 _pendingReply = completion;
                 _pendingReplyId = id;
-                _pendingEverythingHwnd = everythingWindow;
             }
 
             try
@@ -197,7 +188,6 @@ internal sealed partial class EverythingSearchProvider : ISpotlightProvider, IDi
                     if (ReferenceEquals(_pendingReply, completion))
                     {
                         _pendingReply = null;
-                        _pendingEverythingHwnd = IntPtr.Zero;
                     }
                 }
             }
@@ -330,18 +320,18 @@ internal sealed partial class EverythingSearchProvider : ISpotlightProvider, IDi
 
     private IntPtr ReplyWndProc(IntPtr hwnd, int msg, IntPtr wParam, IntPtr lParam, ref bool handled)
     {
-        if (msg != WmCopyData || lParam == IntPtr.Zero || wParam == IntPtr.Zero) return IntPtr.Zero;
+        if (msg != WmCopyData || lParam == IntPtr.Zero) return IntPtr.Zero;
 
+        // Everything replies from its own worker window (or wParam 0), so the
+        // random per-query id in dwData is the only reliable reply check.
         TaskCompletionSource<IReadOnlyList<(string, string, bool)>>? completion;
         uint expectedId;
-        IntPtr expectedSender;
         lock (_replyGate)
         {
             completion = _pendingReply;
             expectedId = _pendingReplyId;
-            expectedSender = _pendingEverythingHwnd;
         }
-        if (completion == null || expectedSender == IntPtr.Zero || wParam != expectedSender) return IntPtr.Zero;
+        if (completion == null) return IntPtr.Zero;
 
         try
         {
@@ -390,13 +380,6 @@ internal sealed partial class EverythingSearchProvider : ISpotlightProvider, IDi
         }
 
         return rows;
-    }
-
-    private static unsafe string ReadBoundedUniString(IntPtr basePtr, int offset, int totalBytes)
-    {
-        if (vn_everything_provider_parse_bounded_utf16_len(basePtr, offset, totalBytes, out int charLen) != 0 || charLen <= 0)
-            return string.Empty;
-        return new string((char*)(basePtr + offset), 0, charLen);
     }
 
     private static bool SendQuery(
@@ -467,7 +450,6 @@ internal sealed partial class EverythingSearchProvider : ISpotlightProvider, IDi
             _disposed = true;
             _pendingReply?.TrySetCanceled();
             _pendingReply = null;
-            _pendingEverythingHwnd = IntPtr.Zero;
             window = Interlocked.Exchange(ref _replyWindow, null);
         }
         // A native IPC call may still own the semaphore. Leave this managed

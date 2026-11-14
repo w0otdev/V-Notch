@@ -693,21 +693,23 @@ VN_EXPORT int32_t __stdcall vn_visualizer_compute_hashes(
     uint32_t* out_floor_hash) noexcept {
     if (!out_no_audio_hash || !out_floor_hash || sid_len < 0) return VN_ERR_INVALID_ARG;
 
-    uint32_t base_hash = 2166136261u;
-    if (sid != nullptr) {
-        for (int32_t i = 0; i < sid_len; ++i) {
-            base_hash = (base_hash ^ static_cast<uint32_t>(sid[i])) * 16777619u;
+    constexpr uint32_t kFnvOffset = 2166136261u;
+    constexpr uint32_t kFnvPrime = 16777619u;
+    constexpr uint32_t kFloorPrefixHash = []() constexpr noexcept {
+        uint32_t h = kFnvOffset;
+        for (char16_t c : std::u16string_view{ u"floor:" }) {
+            h = (h ^ static_cast<uint32_t>(c)) * kFnvPrime;
         }
-    }
+        return h;
+    }();
 
-    constexpr std::array<char16_t, 6> kFloorPrefix = { u'f', u'l', u'o', u'o', u'r', u':' };
-    uint32_t floor_base_hash = 2166136261u;
-    for (char16_t c : kFloorPrefix) {
-        floor_base_hash = (floor_base_hash ^ static_cast<uint32_t>(c)) * 16777619u;
-    }
+    uint32_t base_hash = kFnvOffset;
+    uint32_t floor_base_hash = kFloorPrefixHash;
     if (sid != nullptr) {
         for (int32_t i = 0; i < sid_len; ++i) {
-            floor_base_hash = (floor_base_hash ^ static_cast<uint32_t>(sid[i])) * 16777619u;
+            const uint32_t ch = static_cast<uint32_t>(sid[i]);
+            base_hash = (base_hash ^ ch) * kFnvPrime;
+            floor_base_hash = (floor_base_hash ^ ch) * kFnvPrime;
         }
     }
 
@@ -758,7 +760,8 @@ static int32_t UpdateAnimation(
     if (state == 2) target_opacity = 0.5;
     else if (state == 1 || state == 3) target_opacity = 1.0;
 
-    *io_current_opacity += (target_opacity - *io_current_opacity) * (1.0 - std::exp(-dt * 1000.0 / vz::kTauOpacity));
+    const double dt_ms = dt * 1000.0;
+    *io_current_opacity += (target_opacity - *io_current_opacity) * (1.0 - std::exp(-dt_ms / vz::kTauOpacity));
 
     double audio_energy = 0.0;
     for (int32_t i = 0; i < vz::kBarCount; ++i) {
@@ -768,61 +771,66 @@ static int32_t UpdateAnimation(
 
     const bool has_audible_energy = (has_fresh_audio != 0) && (audio_energy > vz::kAudioPresenceThreshold);
     const bool can_drive_from_audio = has_audible_energy && (state == 1 || state == 2);
+    const bool pulse_when_silent = !can_drive_from_audio && (state == 1 || state == 3);
+
+    const double cross_band_lift = std::clamp(audio_energy * vz::kAudioReactiveCrossBandLift, 0.0, 0.16);
+    const double rhythm_mix_base = vz::kLegacyRhythmMinMix + ((1.0 - audio_energy) * (vz::kLegacyRhythmMaxMix - vz::kLegacyRhythmMinMix));
+    const double rhythm_mix = std::clamp(
+        rhythm_mix_base + (vz::kAudioReactiveRhythmPush * (0.35 + audio_energy)),
+        0.0,
+        0.30);
+    const double audio_mix = 1.0 - rhythm_mix;
+    const double rhythm_mod_scale = 0.08 + (audio_energy * 0.08);
+    const double dynamic_release = std::max(0.50, vz::kAlphaRelease - (beat_accent * 0.08));
+    const double frame_exp = dt_ms / vz::kReferenceFrameMs;
+    const double attack_alpha = std::pow(vz::kAlphaAttack, frame_exp);
+    const double pause_alpha = (state == 2) ? std::pow(vz::kAlphaPauseRelease, frame_exp) : 0.0;
 
     for (int32_t i = 0; i < vz::kBarCount; ++i) {
         double target_h = vz::kMinHeightRatio;
 
         if (can_drive_from_audio) {
             const double band = std::clamp(static_cast<double>(levels[i]), 0.0, 1.0);
-            const double cross_band_lift = std::clamp(audio_energy * vz::kAudioReactiveCrossBandLift, 0.0, 0.16);
             const double audio_shaped = std::pow(std::clamp(band + cross_band_lift, 0.0, 1.0), 0.88);
             const double rhythm = vz::GetAudioReactiveRhythmAt(no_audio_hash[i], total_sec, audio_energy);
-            const double rhythm_mix_base = vz::kLegacyRhythmMinMix + ((1.0 - audio_energy) * (vz::kLegacyRhythmMaxMix - vz::kLegacyRhythmMinMix));
-            const double rhythm_mix = std::clamp(
-                rhythm_mix_base + (vz::kAudioReactiveRhythmPush * (0.35 + audio_energy)),
-                0.0,
-                0.30);
-            double normalized = (audio_shaped * (1.0 - rhythm_mix)) + (rhythm * rhythm_mix);
-            normalized += (rhythm - 0.5) * (0.08 + (audio_energy * 0.08));
+            double normalized = (audio_shaped * audio_mix) + (rhythm * rhythm_mix);
+            normalized += (rhythm - 0.5) * rhythm_mod_scale;
             normalized = std::max(normalized, vz::GetAudioReactiveFloor(i, floor_hash[i], total_sec, audio_energy, beat_accent));
             normalized = std::clamp(normalized + (beat_accent * vz::GetBeatLiftWeight(i) * 0.42), 0.0, 1.0);
             normalized = vz::ApplyBarPersonality(i, normalized, audio_energy);
             normalized = vz::ApplyMotionContrast(normalized);
             target_h = vz::MapNormalizedToHeight(normalized);
-        } else if (state == 1 || state == 3) {
+        } else if (pulse_when_silent) {
             const double normalized = vz::ApplyMotionContrast(vz::GetNoAudioPulseAt(no_audio_hash[i], total_sec));
             target_h = vz::MapNormalizedToHeight(normalized);
         }
 
-        const double dynamic_release = std::max(0.50, vz::kAlphaRelease - (beat_accent * 0.08));
-        double base_alpha = vz::kAlphaAttack;
-        if (target_h <= io_current_heights[i]) {
+        const double cur_h = io_current_heights[i];
+        double alpha = attack_alpha;
+        if (target_h <= cur_h) {
             if (state == 2) {
-                base_alpha = vz::kAlphaPauseRelease;
+                alpha = pause_alpha;
             } else {
                 const double fall_ratio = std::clamp(
-                    (io_current_heights[i] - target_h) / (vz::kMaxHeightRatio - vz::kMinHeightRatio),
+                    (cur_h - target_h) / (vz::kMaxHeightRatio - vz::kMinHeightRatio),
                     0.0, 1.0);
-                base_alpha = std::max(vz::kMinReleaseAlpha, dynamic_release - (fall_ratio * vz::kDownwardDropBoost));
+                const double base_alpha = std::max(vz::kMinReleaseAlpha, dynamic_release - (fall_ratio * vz::kDownwardDropBoost));
+                alpha = std::pow(base_alpha, frame_exp);
             }
         }
 
-        const double small_bar_ref = std::max(io_current_heights[i], target_h);
+        const double small_bar_ref = std::max(cur_h, target_h);
         if (small_bar_ref < vz::kSmallBarHeightThreshold && state != 2) {
             const double smallness = 1.0 - (small_bar_ref / vz::kSmallBarHeightThreshold);
-            if (std::abs(target_h - io_current_heights[i]) < vz::kSmallBarTargetDeadzone * (1.0 + smallness)) {
-                target_h = io_current_heights[i];
+            if (std::abs(target_h - cur_h) < vz::kSmallBarTargetDeadzone * (1.0 + smallness)) {
+                target_h = cur_h;
             }
         }
 
-        const double dt_ms = dt * 1000.0;
-        const double alpha = std::pow(base_alpha, dt_ms / vz::kReferenceFrameMs);
-
-        const double old_h = io_current_heights[i];
-        const double new_h = (io_current_heights[i] * alpha) + (target_h * (1.0 - alpha));
+        const double new_h = (cur_h * alpha) + (target_h * (1.0 - alpha));
         io_current_heights[i] = (std::abs(target_h - new_h) <= vz::kMinHeightChangeThreshold) ? target_h : new_h;
 
-        if (std::abs(io_current_heights[i] - old_h) > 0.001) {
+        if (std::abs(io_current_heights[i] - cur_h) > 0.001) {
             is_settled = false;
         }
     }

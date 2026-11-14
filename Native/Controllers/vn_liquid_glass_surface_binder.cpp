@@ -94,36 +94,6 @@ VN_EXPORT int32_t __stdcall vn_glass_binder_compute_cpu_rim_opacities(
     return VN_OK;
 }
 
-VN_EXPORT int32_t __stdcall vn_glass_binder_build_fresnel_tint(
-    uint8_t red,
-    uint8_t green,
-    uint8_t blue,
-    uint8_t* out_r,
-    uint8_t* out_g,
-    uint8_t* out_b) noexcept
-{
-    if (!out_r || !out_g || !out_b) return VN_ERR_INVALID_ARG;
-    build_fresnel_tint_core(red, green, blue, *out_r, *out_g, *out_b);
-    return VN_OK;
-}
-
-VN_EXPORT int32_t __stdcall vn_glass_binder_interpolate_color(
-    uint8_t from_r,
-    uint8_t from_g,
-    uint8_t from_b,
-    uint8_t to_r,
-    uint8_t to_g,
-    uint8_t to_b,
-    double amount,
-    uint8_t* out_r,
-    uint8_t* out_g,
-    uint8_t* out_b) noexcept
-{
-    if (!out_r || !out_g || !out_b) return VN_ERR_INVALID_ARG;
-    interpolate_color_core(from_r, from_g, from_b, to_r, to_g, to_b, amount, *out_r, *out_g, *out_b);
-    return VN_OK;
-}
-
 VN_EXPORT int32_t __stdcall vn_glass_binder_step_dynamic_fresnel(
     int64_t now_ticks,
     int64_t last_ticks,

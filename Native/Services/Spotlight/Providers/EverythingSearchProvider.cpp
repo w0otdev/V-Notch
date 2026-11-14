@@ -212,17 +212,6 @@ VN_EXPORT int32_t vn_everything_provider_compute_final_score(
     return VN_OK;
 }
 
-VN_EXPORT int32_t vn_everything_provider_parse_bounded_utf16_len(
-    const uint8_t* base_ptr,
-    int32_t offset,
-    int32_t total_bytes,
-    int32_t* out_char_len) noexcept {
-    if (!out_char_len) return VN_E_INVALID_ARG;
-    *out_char_len = vnotch::services::spotlight::providers::EverythingSearchProvider::ParseBoundedUtf16Length(
-        base_ptr, offset, total_bytes);
-    return VN_OK;
-}
-
 VN_EXPORT int32_t __stdcall vn_everything_provider_read_reply_item_count(
     const uint8_t* list_ptr,
     int32_t byte_count,

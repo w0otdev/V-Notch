@@ -11,9 +11,9 @@
 #pragma comment(lib, "xmllite.lib")
 #pragma comment(lib, "shlwapi.lib")
 
-VN_EXPORT int32_t vn_youtube_subtitle_normalize_cue_text(const char16_t*, int32_t, uint8_t, char16_t*, int32_t, int32_t*) noexcept;
-VN_EXPORT int32_t vn_youtube_subtitle_clamp_timestamp_ticks(int64_t, double, uint8_t, int64_t*, uint8_t*) noexcept;
-VN_EXPORT int32_t vn_lyrics_try_parse_lrc_line(const char16_t*, int32_t, int64_t*, int32_t*, int32_t*, uint8_t*) noexcept;
+extern "C" int32_t __stdcall vn_youtube_subtitle_normalize_cue_text(const char16_t*, int32_t, uint8_t, char16_t*, int32_t, int32_t*) noexcept;
+extern "C" int32_t __stdcall vn_youtube_subtitle_clamp_timestamp_ticks(int64_t, double, uint8_t, int64_t*, uint8_t*) noexcept;
+extern "C" int32_t vn_lyrics_try_parse_lrc_line(const char16_t*, int32_t, int64_t*, int32_t*, int32_t*, uint8_t*) noexcept;
 
 namespace {
 using Text = std::u16string;

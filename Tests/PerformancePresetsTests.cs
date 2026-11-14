@@ -165,7 +165,8 @@ public sealed class PerformancePresetsTests
             {
                 Directory.CreateDirectory(dir);
             }
-            File.WriteAllText(filePath, SettingsService.ExportSettingsToString(settings));
+            using var svc = new SettingsService(filePath);
+            File.WriteAllText(filePath, svc.ExportSettingsToString(settings));
         }
 
         public bool IsAutoStartEnabled() => false;

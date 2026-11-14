@@ -22,6 +22,73 @@ public sealed class NotchNavigationIntegrationTests
     [InlineData(false, true)]
     [InlineData(true, false)]
     [InlineData(true, true)]
+    public void AiViewMeasuresCurrentQuotasBeforeItsFirstVisibleFrame(bool fromMedia, bool island) => SharedStaTestRunner.RunAsync(async ct =>
+    {
+        var monitor = Services.AiUsage.AiAccountUsageMonitor.Shared;
+        var originalCodex = monitor.Codex;
+        var originalClaude = monitor.Claude;
+        bool reduced = AnimationConfig.ReduceMotion;
+        await using var fixture = new GreetingAcceptanceTests.MainWindowFixture("en", greeting: false,
+            settings =>
+            {
+                settings.EnableLocalOnlyMode = true;
+                settings.EnableAiUsageMonitoring = false;
+                settings.DisableMouseLeaveAutoClose = true;
+                settings.EnableDynamicIslandMode = island;
+                settings.AiUsageMotionIntensity = 0;
+            }, services => services.AddSingleton<IMediaDetectionService>(new Fakes.FakeMediaDetectionService()));
+        var window = fixture.Window;
+        void SetSnapshot(string provider, AiAccountUsage snapshot) => monitor.GetType()
+            .GetProperty(provider, Private)!.SetValue(monitor, snapshot);
+        try
+        {
+            AnimationConfig.SetReduceMotion(false);
+            await StartAsync(window, ct);
+            var coordinator = Field<NotchTransitionCoordinator>(window, "_transitionCoordinator");
+            if (fromMedia)
+            {
+                Assert.True(coordinator.RequestView(NotchView.Media, "AiPreflightSource"));
+                await WpfFrameWaiter.UntilAsync(() => !coordinator.IsTransitionActive && !IsAnimating(window), "media source", ct);
+            }
+            Assert.False(window.AiUsageViewControl.IsVisible);
+            // Simulate the snapshot arriving while the AI tab is hidden.
+            window.AiUsageViewControl.Present(new("Codex", AiUsageState.Loading), new("Claude", AiUsageState.Disabled));
+            DateTimeOffset now = DateTimeOffset.UtcNow;
+            var codex = new AiAccountUsage("Codex", AiUsageState.Ready, now,
+                [new("aiUsage.primary", 90, 300, now.AddMinutes(137)), new("aiUsage.secondary", 33, 10080, now.AddDays(3))], "plus");
+            var claude = new AiAccountUsage("Claude", AiUsageState.Disabled);
+            SetSnapshot("Codex", codex);
+            SetSnapshot("Claude", claude);
+            var expected = new Controls.AiUsageNotchView();
+            expected.Present(codex, claude, now);
+            expected.Measure(new Size(464, double.PositiveInfinity));
+            double outerMargin = window.AiUsageContent.Margin.Top + window.AiUsageContent.Margin.Bottom;
+            double expectedHeight = Math.Ceiling(Math.Max(Property<double>(window, "_expandedHeight"), expected.DesiredSize.Height + outerMargin));
+
+            Assert.True(coordinator.RequestView(NotchView.AiUsage, "AiPreflight"));
+            ExecutePendingTransition(window);
+            Assert.Equal(expectedHeight, window.AiUsageContent.Height + outerMargin, precision: 2);
+            await WpfFrameWaiter.UntilAsync(() => !coordinator.IsTransitionActive && !IsAnimating(window), "AI expansion", ct);
+            Assert.Equal(expectedHeight, window.NotchBorder.Height, precision: 2);
+            for (int i = 0; i < 3; i++)
+            {
+                await WpfFrameWaiter.NextAsync(ct);
+                Assert.Equal(expectedHeight, window.NotchBorder.Height, precision: 2);
+            }
+        }
+        finally
+        {
+            SetSnapshot("Codex", originalCodex);
+            SetSnapshot("Claude", originalClaude);
+            AnimationConfig.SetReduceMotion(reduced);
+        }
+    });
+
+    [Theory]
+    [InlineData(false, false)]
+    [InlineData(false, true)]
+    [InlineData(true, false)]
+    [InlineData(true, true)]
     public void EveryExpandedViewCanNavigateToEveryOtherViewAndCollapse(bool blurEnabled, bool island) => SharedStaTestRunner.RunAsync(async ct =>
     {
         bool previousReducedMotion = AnimationConfig.ReduceMotion;
@@ -43,7 +110,7 @@ public sealed class NotchNavigationIntegrationTests
             await StartAsync(window, ct);
             var coordinator = Field<NotchTransitionCoordinator>(window, "_transitionCoordinator");
             Assert.False(window.SettingsButton.IsHitTestVisible);
-            var views = new[] { NotchView.Media, NotchView.Secondary, NotchView.Timer, NotchView.AudioMixer, NotchView.Camera };
+            var views = new[] { NotchView.Media, NotchView.Secondary, NotchView.Timer, NotchView.AudioMixer, NotchView.Camera, NotchView.AiUsage };
             bool capturedHeader = false;
             async Task Navigate(NotchView view)
             {
@@ -134,9 +201,15 @@ public sealed class NotchNavigationIntegrationTests
                         NotchView.Secondary => window.SecondaryContent,
                         NotchView.Timer => window.TimerContent,
                         NotchView.Camera => window.CameraContent,
+                        NotchView.AiUsage => window.AiUsageContent,
                         _ => window.AudioContent
                     };
                     Assert.Equal(Visibility.Visible, content.Visibility);
+                    if (to == NotchView.AiUsage)
+                    {
+                        Assert.Same(window.StatusBar, window.AiUsageStatusBarHost.Content);
+                        Assert.Equal(480, window.NotchBorder.ActualWidth, precision: 1);
+                    }
                 }
                 AnimationConfig.SetReduceMotion(pairIndex > 4);
                 await Navigate(NotchView.Compact);

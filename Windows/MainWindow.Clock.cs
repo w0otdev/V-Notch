@@ -25,7 +25,10 @@ public partial class MainWindow
 
     private bool IsAnyClockWidgetMode => IsClockWidgetMode || IsWordClockWidgetMode || IsDigitalClockWidgetMode;
 
-    private bool IsNonCalendarWidgetMode => IsAnyClockWidgetMode || IsWeatherWidgetMode || IsSystemMonitorWidgetMode;
+    private bool IsAiUsageWidgetMode =>
+        string.Equals(_settings.ExpandedWidget, "aiusage", StringComparison.OrdinalIgnoreCase);
+
+    private bool IsNonCalendarWidgetMode => IsAnyClockWidgetMode || IsWeatherWidgetMode || IsSystemMonitorWidgetMode || IsAiUsageWidgetMode;
 
     private bool IsNoWidgetMode => string.Equals(_settings.ExpandedWidget, "none", StringComparison.OrdinalIgnoreCase);
     private bool ShouldShowMediaBlurBackground => _isLyricsActive;

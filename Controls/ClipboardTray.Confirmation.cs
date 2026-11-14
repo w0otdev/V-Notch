@@ -44,7 +44,12 @@ public sealed partial class ClipboardTray
             _emptyTrayConfirmation = emptyTray;
             UpdateDeleteConfirmationText();
             TrayContentGrid.IsHitTestVisible = false;
-            TrayMotion.SetBlurRadius(TrayContentGrid, 12.0);
+            TrayContentGrid.Effect = null;
+            TrayContentGrid.BeginAnimation(OpacityProperty, new DoubleAnimation(0.38, TimeSpan.FromMilliseconds(220))
+            {
+                EasingFunction = new QuadraticEase { EasingMode = EasingMode.EaseOut }
+            });
+            TrayMotion.SetBlurRadius(TrayContentGrid, 0.0);
             ShowTransientLayer(DeleteConfirmationPanel);
             AnimateDeleteConfirmationBorder();
             CancelDeleteButton.Focus();
@@ -56,6 +61,11 @@ public sealed partial class ClipboardTray
             if (_deleteDecision != null) ResolveDeleteConfirmation(false);
             _deleteConfirmationOpen = false;
             TrayContentGrid.IsHitTestVisible = true;
+            TrayContentGrid.Effect = null;
+            TrayContentGrid.BeginAnimation(OpacityProperty, new DoubleAnimation(1.0, TimeSpan.FromMilliseconds(220))
+            {
+                EasingFunction = new QuadraticEase { EasingMode = EasingMode.EaseOut }
+            });
             TrayMotion.SetBlurRadius(TrayContentGrid, 0.0);
         }
 
@@ -84,6 +94,11 @@ public sealed partial class ClipboardTray
             !_disposed && !_trayLeaving && IsLoaded && IsVisible;
         DismissTransientLayer(DeleteConfirmationPanel, immediately: immediately);
         TrayContentGrid.IsHitTestVisible = true;
+        TrayContentGrid.Effect = null;
+        TrayContentGrid.BeginAnimation(OpacityProperty, new DoubleAnimation(1.0, TimeSpan.FromMilliseconds(220))
+        {
+            EasingFunction = new QuadraticEase { EasingMode = EasingMode.EaseOut }
+        });
         TrayMotion.SetBlurRadius(TrayContentGrid, 0.0);
         _deleteDecision?.TrySetResult(confirmed);
         _deleteDecision = null;

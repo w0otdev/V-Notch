@@ -993,7 +993,9 @@ public sealed partial class PrivacyIndicatorService : IDisposable
                 }
 
                 // Keep only sessions that belong to one of the consumers reported by the capability store.
-                var keep = new List<uint>(Math.Max(0, count));
+                int capacity = Math.Max(0, count);
+                Span<uint> keepSpan = capacity <= 64 ? stackalloc uint[capacity] : new uint[capacity];
+                int keepCount = 0;
                 for (int i = 0; i < count; i++)
                 {
                     if (NativeGetProcessId(_probeHandle, i, out uint processId) != 0) continue;
@@ -1001,26 +1003,21 @@ public sealed partial class PrivacyIndicatorService : IDisposable
                     {
                         if (processProbe.MatchesProcess(candidates[c].RawName, processId))
                         {
-                            keep.Add(processId);
+                            keepSpan[keepCount++] = processId;
                             break;
                         }
                     }
                 }
 
-                if (keep.Count == 0)
+                if (keepCount == 0)
                 {
-                    NativeKeep(_probeHandle, null, 0, out int remaining);
-                    _meterCount = remaining;
+                    NativeKeep(_probeHandle, null, 0, out _meterCount);
                 }
                 else
                 {
-                    Span<uint> keepSpan = keep.Count <= 64 ? stackalloc uint[keep.Count] : new uint[keep.Count];
-                    for (int i = 0; i < keep.Count; i++)
-                        keepSpan[i] = keep[i];
                     fixed (uint* pinned = keepSpan)
                     {
-                        NativeKeep(_probeHandle, pinned, keepSpan.Length, out int remaining);
-                        _meterCount = remaining;
+                        NativeKeep(_probeHandle, pinned, keepCount, out _meterCount);
                     }
                 }
 

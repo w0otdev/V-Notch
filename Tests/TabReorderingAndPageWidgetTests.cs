@@ -16,8 +16,8 @@ public sealed class TabReorderingAndPageWidgetTests
     {
         var settings = new NotchSettings();
 
-        Assert.Equal("Media,Secondary,Timer,AudioMixer,Camera", settings.NavTabOrder);
-        Assert.Equal("Media,Secondary,Timer,AudioMixer,Camera", settings.VisibleNavTabs);
+        Assert.Equal("Media,Secondary,Timer,AudioMixer,Camera,AiUsage", settings.NavTabOrder);
+        Assert.Equal("Media,Secondary,Timer,AudioMixer,Camera,AiUsage", settings.VisibleNavTabs);
         Assert.False(settings.HideCamera);
         Assert.Empty(settings.ClipboardHotkey);
         Assert.Equal("analog", settings.ClockPageStyle);
@@ -90,7 +90,10 @@ public sealed class TabReorderingAndPageWidgetTests
             "settings.clockPageStyle.analog",
             "settings.clockPageStyle.digital",
             "settings.clockPageStyle.wordclock",
-            "settings.widget.none"
+            "settings.widget.none",
+            "nav.aiUsage",
+            "aiUsage.openSettings",
+            "aiUsage.preview"
         };
 
         foreach (var lang in Languages)

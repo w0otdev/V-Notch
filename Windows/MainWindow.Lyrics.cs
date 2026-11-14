@@ -90,7 +90,7 @@ public partial class MainWindow
     private SyncedTextSource _syncedTextSource = SyncedTextSource.None;
     private string? _subtitleRequestKey;
     private bool CanFetchSyncedText => _isExpanded && !_cleanedUp &&
-        !_isTimerView && !_isAudioView && !_isSecondaryView && !_isCameraView;
+        !_isTimerView && !_isAudioView && !_isSecondaryView && !_isCameraView && !_isAiUsageView;
 
     private void PrefetchSpotifyLyrics(MediaInfo info)
     {
@@ -146,14 +146,14 @@ public partial class MainWindow
         int durationSec = (int)info.Duration.TotalSeconds;
 
         LyricsResult? presented = null;
-        bool IsCurrentRequest() => generation == _lyricsFetchGeneration && trackKey == _lyricsTrackKey &&
-            _settings.EnableSpotifyLyrics && _settings.EnableOnlineLyrics && !_settings.EnableLocalOnlyMode && CanFetchSyncedText;
+        bool IsActiveTrackScope() => generation == _lyricsFetchGeneration && trackKey == _lyricsTrackKey &&
+            _settings.EnableSpotifyLyrics && _settings.EnableOnlineLyrics && !_settings.EnableLocalOnlyMode;
+        bool IsCurrentRequest() => IsActiveTrackScope() && CanFetchSyncedText;
         void PresentAvailable(LyricsResult result)
         {
             if (!IsCurrentRequest() || ReferenceEquals(presented, result)) return;
             // A queued line preview must never replace a completed word result.
-            if (presented?.Lines.Any(line => line.Words is { Length: > 0 }) == true &&
-                !result.Lines.Any(line => line.Words is { Length: > 0 })) return;
+            if (presented != null && HasWordSyncedLines(presented.Lines) && !HasWordSyncedLines(result.Lines)) return;
             presented = result;
             ApplySyncedLines(result.Lines, info, provider: result.Provider);
         }
@@ -162,12 +162,20 @@ public partial class MainWindow
             info.CurrentTrack, info.CurrentArtist, durationSec, _settings.LyricsProviderPriority,
             onLyricsAvailable: result => Dispatcher.BeginInvoke(new Action(() => PresentAvailable(result))));
 
-        if (generation != _lyricsFetchGeneration || trackKey != _lyricsTrackKey ||
-            !_settings.EnableSpotifyLyrics || !_settings.EnableOnlineLyrics || _settings.EnableLocalOnlyMode) return;
+        if (!IsActiveTrackScope()) return;
         if (!CanFetchSyncedText) { _lyricsTrackKey = ""; return; }
 
         if (lyrics != null) PresentAvailable(lyrics);
         else if (presented == null) ApplySyncedLines(null, info);
+    }
+
+    private static bool HasWordSyncedLines(System.Collections.Generic.IReadOnlyList<LyricLine> lines)
+    {
+        for (int i = 0; i < lines.Count; i++)
+        {
+            if (lines[i].Words is { Length: > 0 }) return true;
+        }
+        return false;
     }
 
     private void StartSpotifyCanvasFetch(MediaInfo info, string trackKey)
@@ -208,7 +216,7 @@ public partial class MainWindow
                          !_isAnimating &&
                          !_isTimerView &&
                          !_isAudioView &&
-                         !_isSecondaryView && !_isCameraView;
+                         !_isSecondaryView && !_isCameraView && !_isAiUsageView;
 
         bool blurFallbackEnabled = _settings.EnableBlurEffects && !IsLiquidGlassEnabled;
 
@@ -1108,6 +1116,32 @@ public partial class MainWindow
         inTransform.BeginAnimation(TranslateTransform.YProperty, slideIn);
     }
 
+    private static readonly ExponentialEase LyricsFadeOutEaseExp4In = CreateFrozenExponentialEase(4, EasingMode.EaseIn);
+    private static readonly ExponentialEase LyricsRevealEaseExp6Out = CreateFrozenExponentialEase(6, EasingMode.EaseOut);
+
+    private static ExponentialEase CreateFrozenExponentialEase(double exponent, EasingMode mode)
+    {
+        var ease = new ExponentialEase { Exponent = exponent, EasingMode = mode };
+        ease.Freeze();
+        return ease;
+    }
+
+    private void ResetLyricsWidgetTransforms()
+    {
+        if (LyricsWidgetTranslate != null)
+        {
+            LyricsWidgetTranslate.BeginAnimation(TranslateTransform.YProperty, null);
+            LyricsWidgetTranslate.Y = 0;
+        }
+        if (LyricsWidgetScale != null)
+        {
+            LyricsWidgetScale.BeginAnimation(ScaleTransform.ScaleXProperty, null);
+            LyricsWidgetScale.BeginAnimation(ScaleTransform.ScaleYProperty, null);
+            LyricsWidgetScale.ScaleX = 1.0;
+            LyricsWidgetScale.ScaleY = 1.0;
+        }
+    }
+
     private void ShowLyricsWidget()
     {
         bool alreadyActive = _isLyricsActive;
@@ -1116,6 +1150,7 @@ public partial class MainWindow
 
         Dispatcher.Invoke(() =>
         {
+            int fps = VNotch.Services.AnimationConfig.TargetFps;
             // Enforce CalendarWidget hidden and LyricsWidget visible to resolve
             // uncommitted visual states during in-flight animations.
             if (CalendarWidget.Visibility != Visibility.Collapsed || CalendarWidget.Opacity > 0.01)
@@ -1126,7 +1161,7 @@ public partial class MainWindow
                     // Animate fade-out when transitioning for the first time
                     var fadeOutCalendar = new DoubleAnimation(CalendarWidget.Opacity, 0, new Duration(TimeSpan.FromMilliseconds(250)))
                     {
-                        EasingFunction = new ExponentialEase { Exponent = 4, EasingMode = EasingMode.EaseIn }
+                        EasingFunction = LyricsFadeOutEaseExp4In
                     };
                     fadeOutCalendar.Completed += (s, e) =>
                     {
@@ -1134,7 +1169,7 @@ public partial class MainWindow
                         CalendarWidget.Visibility = Visibility.Collapsed;
                         CalendarWidget.BeginAnimation(OpacityProperty, null);
                     };
-                    System.Windows.Media.Animation.Timeline.SetDesiredFrameRate(fadeOutCalendar, VNotch.Services.AnimationConfig.TargetFps);
+                    System.Windows.Media.Animation.Timeline.SetDesiredFrameRate(fadeOutCalendar, fps);
                     CalendarWidget.BeginAnimation(OpacityProperty, fadeOutCalendar);
                 }
                 else
@@ -1149,7 +1184,7 @@ public partial class MainWindow
             {
                 var fadeOutGreeting = new DoubleAnimation(GreetingSection.Opacity, 0, new Duration(TimeSpan.FromMilliseconds(250)))
                 {
-                    EasingFunction = new ExponentialEase { Exponent = 4, EasingMode = EasingMode.EaseIn }
+                    EasingFunction = LyricsFadeOutEaseExp4In
                 };
                 fadeOutGreeting.Completed += (s, e) =>
                 {
@@ -1157,7 +1192,7 @@ public partial class MainWindow
                     GreetingSection.Visibility = Visibility.Collapsed;
                     GreetingSection.BeginAnimation(OpacityProperty, null);
                 };
-                System.Windows.Media.Animation.Timeline.SetDesiredFrameRate(fadeOutGreeting, VNotch.Services.AnimationConfig.TargetFps);
+                System.Windows.Media.Animation.Timeline.SetDesiredFrameRate(fadeOutGreeting, fps);
                 GreetingSection.BeginAnimation(OpacityProperty, fadeOutGreeting);
             }
 
@@ -1173,15 +1208,14 @@ public partial class MainWindow
                     LyricsWidget.BeginAnimation(OpacityProperty, null);
                     LyricsWidget.Opacity = startOpacity;
                     var dur = new Duration(TimeSpan.FromMilliseconds(420));
-                    var easeOut = new ExponentialEase { Exponent = 6, EasingMode = EasingMode.EaseOut };
-                    var fadeIn = new DoubleAnimation(startOpacity, 1, dur) { EasingFunction = easeOut };
+                    var fadeIn = new DoubleAnimation(startOpacity, 1, dur) { EasingFunction = LyricsRevealEaseExp6Out };
                     fadeIn.Completed += (s, e) =>
                     {
                         if (!_isLyricsActive) return;
                         LyricsWidget.BeginAnimation(OpacityProperty, null);
                         LyricsWidget.Opacity = 1.0;
                     };
-                    System.Windows.Media.Animation.Timeline.SetDesiredFrameRate(fadeIn, VNotch.Services.AnimationConfig.TargetFps);
+                    System.Windows.Media.Animation.Timeline.SetDesiredFrameRate(fadeIn, fps);
                     LyricsWidget.BeginAnimation(OpacityProperty, fadeIn);
 
                     if (LyricsWidgetTranslate != null && LyricsWidgetScale != null)
@@ -1193,19 +1227,14 @@ public partial class MainWindow
                         LyricsWidgetScale.ScaleX = 0.96;
                         LyricsWidgetScale.ScaleY = 0.96;
 
-                        var slideIn = new DoubleAnimation(10, 0, dur) { EasingFunction = easeOut };
-                        var scaleIn = new DoubleAnimation(0.96, 1.0, dur) { EasingFunction = easeOut };
-                        System.Windows.Media.Animation.Timeline.SetDesiredFrameRate(slideIn, VNotch.Services.AnimationConfig.TargetFps);
-                        System.Windows.Media.Animation.Timeline.SetDesiredFrameRate(scaleIn, VNotch.Services.AnimationConfig.TargetFps);
+                        var slideIn = new DoubleAnimation(10, 0, dur) { EasingFunction = LyricsRevealEaseExp6Out };
+                        var scaleIn = new DoubleAnimation(0.96, 1.0, dur) { EasingFunction = LyricsRevealEaseExp6Out };
+                        System.Windows.Media.Animation.Timeline.SetDesiredFrameRate(slideIn, fps);
+                        System.Windows.Media.Animation.Timeline.SetDesiredFrameRate(scaleIn, fps);
                         slideIn.Completed += (s, e) =>
                         {
                             if (!_isLyricsActive) return;
-                            LyricsWidgetTranslate.BeginAnimation(TranslateTransform.YProperty, null);
-                            LyricsWidgetScale.BeginAnimation(ScaleTransform.ScaleXProperty, null);
-                            LyricsWidgetScale.BeginAnimation(ScaleTransform.ScaleYProperty, null);
-                            LyricsWidgetTranslate.Y = 0;
-                            LyricsWidgetScale.ScaleX = 1.0;
-                            LyricsWidgetScale.ScaleY = 1.0;
+                            ResetLyricsWidgetTransforms();
                         };
                         LyricsWidgetTranslate.BeginAnimation(TranslateTransform.YProperty, slideIn);
                         LyricsWidgetScale.BeginAnimation(ScaleTransform.ScaleXProperty, scaleIn);
@@ -1216,18 +1245,7 @@ public partial class MainWindow
                 {
                     LyricsWidget.BeginAnimation(OpacityProperty, null);
                     LyricsWidget.Opacity = 1.0;
-                    if (LyricsWidgetTranslate != null)
-                    {
-                        LyricsWidgetTranslate.BeginAnimation(TranslateTransform.YProperty, null);
-                        LyricsWidgetTranslate.Y = 0;
-                    }
-                    if (LyricsWidgetScale != null)
-                    {
-                        LyricsWidgetScale.BeginAnimation(ScaleTransform.ScaleXProperty, null);
-                        LyricsWidgetScale.BeginAnimation(ScaleTransform.ScaleYProperty, null);
-                        LyricsWidgetScale.ScaleX = 1.0;
-                        LyricsWidgetScale.ScaleY = 1.0;
-                    }
+                    ResetLyricsWidgetTransforms();
                 }
             }
 
@@ -1263,11 +1281,12 @@ public partial class MainWindow
 
         Dispatcher.Invoke(() =>
         {
+            int fps = VNotch.Services.AnimationConfig.TargetFps;
             HideLyricsSearchState(immediate: true);
 
             var fadeOutLyrics = new DoubleAnimation(LyricsWidget.Opacity, 0, new Duration(TimeSpan.FromMilliseconds(300)))
             {
-                EasingFunction = new ExponentialEase { Exponent = 4, EasingMode = EasingMode.EaseIn }
+                EasingFunction = LyricsFadeOutEaseExp4In
             };
             fadeOutLyrics.Completed += (s, e) =>
             {
@@ -1293,7 +1312,7 @@ public partial class MainWindow
                 }
                 UpdateSpotifyCanvasPresentationContext();
             };
-            System.Windows.Media.Animation.Timeline.SetDesiredFrameRate(fadeOutLyrics, VNotch.Services.AnimationConfig.TargetFps);
+            System.Windows.Media.Animation.Timeline.SetDesiredFrameRate(fadeOutLyrics, fps);
             LyricsWidget.BeginAnimation(OpacityProperty, fadeOutLyrics);
 
             // The returning widget must never inherit the lyrics backdrop.
@@ -1306,26 +1325,19 @@ public partial class MainWindow
                 MediaRightColumn.Visibility = IsNoWidgetMode && !_isLyricsActive ? Visibility.Collapsed : Visibility.Visible;
             CalendarWidget.Visibility = IsNoWidgetMode ? Visibility.Collapsed : Visibility.Visible;
             CalendarWidget.Opacity = 0;
-            var fadeInCalendar = new DoubleAnimation(0, 1, new Duration(TimeSpan.FromMilliseconds(350)))
+            var fadeInCompanion = new DoubleAnimation(0, 1, new Duration(TimeSpan.FromMilliseconds(350)))
             {
-                EasingFunction = new ExponentialEase { Exponent = 6, EasingMode = EasingMode.EaseOut },
+                EasingFunction = LyricsRevealEaseExp6Out,
                 BeginTime = TimeSpan.FromMilliseconds(150)
             };
-            System.Windows.Media.Animation.Timeline.SetDesiredFrameRate(fadeInCalendar, VNotch.Services.AnimationConfig.TargetFps);
-            CalendarWidget.BeginAnimation(OpacityProperty, fadeInCalendar);
-
+            System.Windows.Media.Animation.Timeline.SetDesiredFrameRate(fadeInCompanion, fps);
+            CalendarWidget.BeginAnimation(OpacityProperty, fadeInCompanion);
 
             if (ShouldShowGreetingSection)
             {
                 GreetingSection.Visibility = Visibility.Visible;
                 GreetingSection.Opacity = 0;
-                var fadeInGreeting = new DoubleAnimation(0, 1, new Duration(TimeSpan.FromMilliseconds(350)))
-                {
-                    EasingFunction = new ExponentialEase { Exponent = 6, EasingMode = EasingMode.EaseOut },
-                    BeginTime = TimeSpan.FromMilliseconds(150)
-                };
-                System.Windows.Media.Animation.Timeline.SetDesiredFrameRate(fadeInGreeting, VNotch.Services.AnimationConfig.TargetFps);
-                GreetingSection.BeginAnimation(OpacityProperty, fadeInGreeting);
+                GreetingSection.BeginAnimation(OpacityProperty, fadeInCompanion);
             }
             else
             {

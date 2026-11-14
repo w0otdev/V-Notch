@@ -567,6 +567,7 @@ extern "C" VN_EXPORT int32_t __stdcall vn_visualizer_step_bars(
             if (std::abs(smoothed_heights[i] - current_heights[i]) > 0.0012)
             {
                 settled = 0u;
+                break;
             }
         }
     }
@@ -595,12 +596,14 @@ extern "C" VN_EXPORT int32_t __stdcall vn_visualizer_step_bars(
 
     if (out_bar_rects_xywh && draw_heights)
     {
+        const double step_x = bar_width + spacing;
+        const double half_h_container = height / 2.0;
         for (int32_t i = 0; i < bar_count; ++i)
         {
-            const double x = start_x + i * (bar_width + spacing);
+            const double x = start_x + i * step_x;
             const double half_height = draw_heights[i] * height / 2.0;
-            const double top = std::rint((height / 2.0 - half_height) * safe_dpi_y) / safe_dpi_y;
-            const double bottom = std::rint((height / 2.0 + half_height) * safe_dpi_y) / safe_dpi_y;
+            const double top = std::rint((half_h_container - half_height) * safe_dpi_y) / safe_dpi_y;
+            const double bottom = std::rint((half_h_container + half_height) * safe_dpi_y) / safe_dpi_y;
             const double rx = std::rint(x * safe_dpi_x) / safe_dpi_x;
             const double rh = std::max(0.0, bottom - top);
 
@@ -635,6 +638,13 @@ extern "C" VN_EXPORT int32_t __stdcall vn_visualizer_compute_morph_quads(
     const double offset_x = (width - size) / 2.0;
     const double offset_y = (height - size) / 2.0;
     const double scale = size / 24.0;
+    const double bar_count_d = static_cast<double>(bar_count);
+
+    struct EdgeHoriz {
+        double icon_x;
+        double play_half_height;
+        double check_y_base;
+    };
 
     for (int32_t i = 0; i < bar_count; ++i)
     {
@@ -643,43 +653,49 @@ extern "C" VN_EXPORT int32_t __stdcall vn_visualizer_compute_morph_quads(
         const double bar_right = bar_left + bar_rects_xywh[i * 4 + 2];
         const double bar_bottom = bar_top + bar_rects_xywh[i * 4 + 3];
 
+        const int32_t slice = i < 3 ? i : (i - 3);
+        const double slices_d = i < 3 ? 3.0 : 2.0;
+        const double pause_base = i < 3 ? 6.0 : 14.0;
+        const bool left_arm = i < 2;
+        const int32_t check_slice = left_arm ? i : (i - 2);
+
+        EdgeHoriz edges[2]{};
+        for (int32_t r = 0; r < 2; ++r)
+        {
+            const double play_x = 7.0 + 13.0 * static_cast<double>(i + r) / bar_count_d;
+            const double play_half_height = 8.0 * (20.0 - play_x) / 13.0;
+            const double pause_x = pause_base + 4.0 * static_cast<double>(slice + r) / slices_d;
+            double ix = pause_x + (play_x - pause_x) * play_mix;
+
+            const double check_x = left_arm
+                ? (3.0 + 6.0 * static_cast<double>(check_slice + r) / 2.0)
+                : (9.0 + 12.0 * static_cast<double>(check_slice + r) / 3.0);
+            const double check_y_base = left_arm ? (check_x + 9.0) : (27.0 - check_x);
+
+            ix += (check_x - ix) * check_mix;
+            ix = offset_x + ix * scale;
+            edges[r] = EdgeHoriz{ ix, play_half_height, check_y_base };
+        }
+
         for (int32_t corner = 0; corner < 4; ++corner)
         {
             const bool right = (corner == 1 || corner == 2);
             const bool bottom = (corner >= 2);
-            const int32_t right_offset = right ? 1 : 0;
+            const EdgeHoriz& edge = edges[right ? 1 : 0];
 
-            const double play_x = 7.0 + 13.0 * static_cast<double>(i + right_offset) / static_cast<double>(bar_count);
-            const double play_half_height = 8.0 * (20.0 - play_x) / 13.0;
-            const double play_y = 12.0 + (bottom ? play_half_height : -play_half_height);
-
-            const int32_t slice = i < 3 ? i : (i - 3);
-            const int32_t slices = i < 3 ? 3 : 2;
-            const double pause_x = (i < 3 ? 6.0 : 14.0) + 4.0 * static_cast<double>(slice + right_offset) / static_cast<double>(slices);
+            const double play_y = 12.0 + (bottom ? edge.play_half_height : -edge.play_half_height);
             const double pause_y = bottom ? 20.0 : 4.0;
-
-            double icon_x = pause_x + (play_x - pause_x) * play_mix;
             double icon_y = pause_y + (play_y - pause_y) * play_mix;
+            const double check_y = edge.check_y_base + (bottom ? 1.7 : -1.7);
 
-            const bool left_arm = i < 2;
-            const int32_t check_slice = left_arm ? i : (i - 2);
-            const double check_x = left_arm
-                ? (3.0 + 6.0 * static_cast<double>(check_slice + right_offset) / 2.0)
-                : (9.0 + 12.0 * static_cast<double>(check_slice + right_offset) / 3.0);
-            const double check_y_base = left_arm ? (check_x + 9.0) : (27.0 - check_x);
-            const double check_y = check_y_base + (bottom ? 1.7 : -1.7);
-
-            icon_x += (check_x - icon_x) * check_mix;
             icon_y += (check_y - icon_y) * check_mix;
-
-            icon_x = offset_x + icon_x * scale;
             icon_y = offset_y + icon_y * scale;
 
             const double bar_cx = right ? bar_right : bar_left;
             const double bar_cy = bottom ? bar_bottom : bar_top;
 
             const int32_t idx = (i * 4 + corner) * 2;
-            out_quad_points_xy[idx] = bar_cx + (icon_x - bar_cx) * icon_mix;
+            out_quad_points_xy[idx] = bar_cx + (edge.icon_x - bar_cx) * icon_mix;
             out_quad_points_xy[idx + 1] = bar_cy + (icon_y - bar_cy) * icon_mix;
         }
     }

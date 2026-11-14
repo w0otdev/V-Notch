@@ -70,11 +70,33 @@ public:
             const char16_t first_hi = (needle[0] >= u'a' && needle[0] <= u'z')
                 ? static_cast<char16_t>(needle[0] - 32)
                 : needle[0];
+            if (needle.size() == 1) {
+                if (first_lo == first_hi) {
+                    return haystack.find(first_lo) != std::u16string_view::npos;
+                }
+                for (char16_t c : haystack) {
+                    if (c == first_lo || c == first_hi) return true;
+                }
+                return false;
+            }
+            const size_t last_idx = needle.size() - 1;
+            const char16_t last_lo = (needle[last_idx] >= u'A' && needle[last_idx] <= u'Z')
+                ? static_cast<char16_t>(needle[last_idx] + 32)
+                : needle[last_idx];
             for (size_t i = 0; i <= limit; ++i) {
-                const char16_t c = haystack[i];
-                if (c != first_lo && c != first_hi) continue;
+                if (first_lo == first_hi) {
+                    const size_t found = haystack.find(first_lo, i);
+                    if (found == std::u16string_view::npos || found > limit) return false;
+                    i = found;
+                } else {
+                    const char16_t c = haystack[i];
+                    if (c != first_lo && c != first_hi) continue;
+                }
+                char16_t hc_last = haystack[i + last_idx];
+                if (hc_last >= u'A' && hc_last <= u'Z') hc_last = static_cast<char16_t>(hc_last + 32);
+                if (hc_last != last_lo) continue;
                 bool match = true;
-                for (size_t j = 1; j < needle.size(); ++j) {
+                for (size_t j = 1; j < last_idx; ++j) {
                     char16_t hc = haystack[i + j];
                     char16_t nc = needle[j];
                     if (hc >= u'A' && hc <= u'Z') hc = static_cast<char16_t>(hc + 32);
@@ -323,6 +345,68 @@ public:
         return false;
     }
 
+    enum class CategoryFilter : uint8_t {
+        All = 0,
+        Archive,
+        Pin,
+        Personal,
+        Text,
+        Code,
+        Link,
+        Image,
+        Color,
+        File,
+        CustomGroup
+    };
+
+    [[nodiscard]] static constexpr CategoryFilter ParseCategoryFilter(std::u16string_view category) noexcept {
+        if (category.empty() || vn_equals_icase_ascii(category, u"all")) return CategoryFilter::All;
+        if (vn_equals_icase_ascii(category, u"archive")) return CategoryFilter::Archive;
+        if (vn_equals_icase_ascii(category, u"pin") || vn_equals_icase_ascii(category, u"pinned")) return CategoryFilter::Pin;
+        if (vn_equals_icase_ascii(category, u"personal")) return CategoryFilter::Personal;
+        if (vn_equals_icase_ascii(category, u"text")) return CategoryFilter::Text;
+        if (vn_equals_icase_ascii(category, u"code")) return CategoryFilter::Code;
+        if (vn_equals_icase_ascii(category, u"link") || vn_equals_icase_ascii(category, u"links")) return CategoryFilter::Link;
+        if (vn_equals_icase_ascii(category, u"image") || vn_equals_icase_ascii(category, u"images")) return CategoryFilter::Image;
+        if (vn_equals_icase_ascii(category, u"color") || vn_equals_icase_ascii(category, u"colors")) return CategoryFilter::Color;
+        if (vn_equals_icase_ascii(category, u"file") || vn_equals_icase_ascii(category, u"files")) return CategoryFilter::File;
+        return CategoryFilter::CustomGroup;
+    }
+
+    [[nodiscard]] static constexpr int32_t MatchesParsedCategory(
+        bool is_personal,
+        bool is_archived,
+        bool is_pinned,
+        int32_t kind,
+        bool include_archived,
+        CategoryFilter filter) noexcept {
+        switch (filter) {
+            case CategoryFilter::All:
+                return (!is_personal && !is_archived) ? 1 : 0;
+            case CategoryFilter::Archive:
+                return (is_archived && !is_personal) ? 1 : 0;
+            case CategoryFilter::Pin:
+                return (is_pinned && !is_personal) ? 1 : 0;
+            case CategoryFilter::Personal:
+                return is_personal ? 1 : 0;
+            case CategoryFilter::Text:
+                return ((include_archived || !is_archived) && kind == 0) ? 1 : 0;
+            case CategoryFilter::Code:
+                return ((include_archived || !is_archived) && kind == 1) ? 1 : 0;
+            case CategoryFilter::Link:
+                return ((include_archived || !is_archived) && kind == 2) ? 1 : 0;
+            case CategoryFilter::Image:
+                return ((include_archived || !is_archived) && kind == 3) ? 1 : 0;
+            case CategoryFilter::Color:
+                return ((include_archived || !is_archived) && kind == 4) ? 1 : 0;
+            case CategoryFilter::File:
+                return ((include_archived || !is_archived) && kind == 5) ? 1 : 0;
+            case CategoryFilter::CustomGroup:
+            default:
+                return (include_archived || !is_archived) ? -1 : 0;
+        }
+    }
+
     // ClipboardKind: Text=0, Code=1, Link=2, Image=3, Color=4, File=5
     // Returns: 1 = matches, 0 = does not match, -1 = check custom Groups (when include_archived || !is_archived)
     [[nodiscard]] static constexpr int32_t MatchesCategoryCore(
@@ -332,38 +416,8 @@ public:
         int32_t kind,
         bool include_archived,
         std::u16string_view category) noexcept {
-        if (category.empty() || vn_equals_icase_ascii(category, u"all")) {
-            return (!is_personal && !is_archived) ? 1 : 0;
-        }
-        if (vn_equals_icase_ascii(category, u"archive")) {
-            return (is_archived && !is_personal) ? 1 : 0;
-        }
-        if (vn_equals_icase_ascii(category, u"pin") || vn_equals_icase_ascii(category, u"pinned")) {
-            return (is_pinned && !is_personal) ? 1 : 0;
-        }
-        if (vn_equals_icase_ascii(category, u"personal")) {
-            return is_personal ? 1 : 0;
-        }
-        const bool archive_ok = include_archived || !is_archived;
-        if (vn_equals_icase_ascii(category, u"text")) {
-            return (archive_ok && kind == 0) ? 1 : 0;
-        }
-        if (vn_equals_icase_ascii(category, u"code")) {
-            return (archive_ok && kind == 1) ? 1 : 0;
-        }
-        if (vn_equals_icase_ascii(category, u"link") || vn_equals_icase_ascii(category, u"links")) {
-            return (archive_ok && kind == 2) ? 1 : 0;
-        }
-        if (vn_equals_icase_ascii(category, u"image") || vn_equals_icase_ascii(category, u"images")) {
-            return (archive_ok && kind == 3) ? 1 : 0;
-        }
-        if (vn_equals_icase_ascii(category, u"color") || vn_equals_icase_ascii(category, u"colors")) {
-            return (archive_ok && kind == 4) ? 1 : 0;
-        }
-        if (vn_equals_icase_ascii(category, u"file") || vn_equals_icase_ascii(category, u"files")) {
-            return (archive_ok && kind == 5) ? 1 : 0;
-        }
-        return archive_ok ? -1 : 0;
+        return MatchesParsedCategory(
+            is_personal, is_archived, is_pinned, kind, include_archived, ParseCategoryFilter(category));
     }
 
     [[nodiscard]] static constexpr bool IsScreenshotFileName(std::u16string_view name) noexcept {
@@ -922,22 +976,30 @@ VN_EXPORT int32_t __stdcall vn_clipboard_store_filter_entries_batch(const VnClip
     int32_t starts[256]{}, lengths[256]{};
     const std::u16string_view query_view(query ? query : u"", query_length);
     const int32_t token_count = Store::TokenizeQuery(query_view, starts, lengths, 256);
+    Store::CategoryFilter token_filters[256]{};
+    for (int32_t t = 0; t < token_count; ++t) {
+        const auto tok = query_view.substr(starts[t], lengths[t]);
+        if (tok.front() == u'@') {
+            token_filters[t] = Store::ParseCategoryFilter(tok.substr(1));
+        }
+    }
     const std::u16string_view category_view(category ? category : u"", category_length);
-    auto in_category = [&](const VnClipboardSearchEntry& e, std::u16string_view value, bool archived) {
-        const auto result = Store::MatchesCategoryCore(e.personal != 0, e.archived != 0, e.pinned != 0, e.kind, archived, value);
+    const Store::CategoryFilter category_filter = Store::ParseCategoryFilter(category_view);
+    auto in_category = [&](const VnClipboardSearchEntry& e, Store::CategoryFilter filter, std::u16string_view raw_value, bool archived) {
+        const auto result = Store::MatchesParsedCategory(e.personal != 0, e.archived != 0, e.pinned != 0, e.kind, archived, filter);
         if (result >= 0) return result != 0;
-        for (int32_t g = 0; g < e.group_count; ++g) if (Store::EqualsOrdinalIgnoreCase(view(groups[e.group_start + g]), value)) return true;
+        for (int32_t g = 0; g < e.group_count; ++g) if (Store::EqualsOrdinalIgnoreCase(view(groups[e.group_start + g]), raw_value)) return true;
         return false;
     };
     for (int32_t i = 0; i < count; ++i) {
         const auto& e = entries[i];
         matches[i] = 0;
-        if ((e.personal != 0) != (personal != 0) || !in_category(e, category_view, false)) continue;
+        if ((e.personal != 0) != (personal != 0) || !in_category(e, category_filter, category_view, false)) continue;
         uint8_t result = 1;
         for (int32_t t = 0; t < token_count; ++t) {
             auto token = query_view.substr(starts[t], lengths[t]);
             if (token.front() == u'@') {
-                if (!in_category(e, token.substr(1), true)) { result = 0; break; }
+                if (!in_category(e, token_filters[t], token.substr(1), true)) { result = 0; break; }
                 continue;
             }
             bool match = Store::EntryMatchesMetadataToken(e.sensitive != 0, view(e.title), view(e.preview), view(e.source), token);

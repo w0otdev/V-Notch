@@ -160,10 +160,15 @@ public partial class MainWindow
         System.Windows.Media.Animation.Timeline.SetDesiredFrameRate(opacityAnim, VNotch.Services.AnimationConfig.TargetFps);
         MediaBackground.BeginAnimation(OpacityProperty, opacityAnim);
         MediaBackground2.BeginAnimation(OpacityProperty, opacityAnim);
-        EnsureUnfrozen(MediaPlayback.IndeterminateProgress.Background, c => MediaPlayback.IndeterminateProgress.Background = new SolidColorBrush(c ?? VNotch.Services.UiPalette.PrimaryColor));
-        EnsureUnfrozen(MediaPlayback.CurrentTimeText.Foreground, c => MediaPlayback.CurrentTimeText.Foreground = new SolidColorBrush(c ?? UiPalette.SecondaryColor));
-        EnsureUnfrozen(MediaPlayback.RemainingTimeText.Foreground, c => MediaPlayback.RemainingTimeText.Foreground = new SolidColorBrush(c ?? UiPalette.SecondaryColor));
-        EnsureUnfrozen(CompactTitleMarquee.Foreground, c => CompactTitleMarquee.Foreground = new SolidColorBrush(c ?? VNotch.Services.UiPalette.PrimaryColor));
+
+        var ipb = EnsureUnfrozenBrush(MediaPlayback.IndeterminateProgress.Background, VNotch.Services.UiPalette.PrimaryColor);
+        MediaPlayback.IndeterminateProgress.Background = ipb;
+        var ctf = EnsureUnfrozenBrush(MediaPlayback.CurrentTimeText.Foreground, UiPalette.SecondaryColor);
+        MediaPlayback.CurrentTimeText.Foreground = ctf;
+        var rtf = EnsureUnfrozenBrush(MediaPlayback.RemainingTimeText.Foreground, UiPalette.SecondaryColor);
+        MediaPlayback.RemainingTimeText.Foreground = rtf;
+        var cmt = EnsureUnfrozenBrush(CompactTitleMarquee.Foreground, VNotch.Services.UiPalette.PrimaryColor);
+        CompactTitleMarquee.Foreground = cmt;
 
         var progressDarkColor = Color.FromArgb(
             vibrantTargetColor.A,
@@ -171,35 +176,22 @@ public partial class MainWindow
             (byte)(vibrantTargetColor.G * 0.65),
             (byte)(vibrantTargetColor.B * 0.65));
 
-        var progressStartAnim = new ColorAnimation
-        {
-            To = vibrantTargetColor,
-            Duration = TimeSpan.FromMilliseconds(420),
-            EasingFunction = _easeQuadOut
-        };
-        var progressEndAnim = new ColorAnimation
+        var darkColorAnim = new ColorAnimation
         {
             To = progressDarkColor,
             Duration = TimeSpan.FromMilliseconds(420),
             EasingFunction = _easeQuadOut
         };
-        System.Windows.Media.Animation.Timeline.SetDesiredFrameRate(progressStartAnim, VNotch.Services.AnimationConfig.TargetFps);
-        MediaPlayback.ProgressBarGradientStart.BeginAnimation(GradientStop.ColorProperty, progressStartAnim);
-        System.Windows.Media.Animation.Timeline.SetDesiredFrameRate(progressEndAnim, VNotch.Services.AnimationConfig.TargetFps);
-        MediaPlayback.ProgressBarGradientEnd.BeginAnimation(GradientStop.ColorProperty, progressEndAnim);
-
         System.Windows.Media.Animation.Timeline.SetDesiredFrameRate(uiColorAnim, VNotch.Services.AnimationConfig.TargetFps);
-        if (MediaPlayback.IndeterminateProgress.Background is SolidColorBrush ipb && !ipb.IsFrozen)
-            ipb.BeginAnimation(SolidColorBrush.ColorProperty, uiColorAnim);
+        System.Windows.Media.Animation.Timeline.SetDesiredFrameRate(darkColorAnim, VNotch.Services.AnimationConfig.TargetFps);
 
-        if (MediaPlayback.CurrentTimeText.Foreground is SolidColorBrush ctf && !ctf.IsFrozen)
-            ctf.BeginAnimation(SolidColorBrush.ColorProperty, uiColorAnim);
+        MediaPlayback.ProgressBarGradientStart.BeginAnimation(GradientStop.ColorProperty, uiColorAnim);
+        MediaPlayback.ProgressBarGradientEnd.BeginAnimation(GradientStop.ColorProperty, darkColorAnim);
 
-        if (MediaPlayback.RemainingTimeText.Foreground is SolidColorBrush rtf && !rtf.IsFrozen)
-            rtf.BeginAnimation(SolidColorBrush.ColorProperty, uiColorAnim);
-
-        if (CompactTitleMarquee.Foreground is SolidColorBrush cmt && !cmt.IsFrozen)
-            cmt.BeginAnimation(SolidColorBrush.ColorProperty, uiColorAnim);
+        ipb.BeginAnimation(SolidColorBrush.ColorProperty, uiColorAnim);
+        ctf.BeginAnimation(SolidColorBrush.ColorProperty, uiColorAnim);
+        rtf.BeginAnimation(SolidColorBrush.ColorProperty, uiColorAnim);
+        cmt.BeginAnimation(SolidColorBrush.ColorProperty, uiColorAnim);
 
         AnimateTitleGradient(vibrantTargetColor);
 
@@ -208,45 +200,47 @@ public partial class MainWindow
             visualizerBrush.BeginAnimation(SolidColorBrush.ColorProperty, uiColorAnim);
         }
 
-        EnsureUnfrozen(VolumeIcon.Foreground, c => VolumeIcon.Foreground = new SolidColorBrush(c ?? UiPalette.TertiaryColor));
-        ((SolidColorBrush)VolumeIcon.Foreground).BeginAnimation(SolidColorBrush.ColorProperty, iconInkAnim);
+        var volIconBrush = EnsureUnfrozenBrush(VolumeIcon.Foreground, UiPalette.TertiaryColor);
+        VolumeIcon.Foreground = volIconBrush;
+        volIconBrush.BeginAnimation(SolidColorBrush.ColorProperty, iconInkAnim);
 
-        var volStartAnim = new ColorAnimation
-        {
-            To = vibrantTargetColor,
-            Duration = TimeSpan.FromMilliseconds(420),
-            EasingFunction = _easeQuadOut
-        };
-        var volEndAnim = new ColorAnimation
-        {
-            To = progressDarkColor,
-            Duration = TimeSpan.FromMilliseconds(420),
-            EasingFunction = _easeQuadOut
-        };
-        System.Windows.Media.Animation.Timeline.SetDesiredFrameRate(volStartAnim, VNotch.Services.AnimationConfig.TargetFps);
-        VolumeBarGradientStart.BeginAnimation(GradientStop.ColorProperty, volStartAnim);
-        System.Windows.Media.Animation.Timeline.SetDesiredFrameRate(volEndAnim, VNotch.Services.AnimationConfig.TargetFps);
-        VolumeBarGradientEnd.BeginAnimation(GradientStop.ColorProperty, volEndAnim);
+        VolumeBarGradientStart.BeginAnimation(GradientStop.ColorProperty, uiColorAnim);
+        VolumeBarGradientEnd.BeginAnimation(GradientStop.ColorProperty, darkColorAnim);
         SetVolumeHudMediaTint(vibrantTargetColor, true);
 
+        AnimateShapeFill(InlinePrevArrow0, iconInkAnim);
+        AnimateShapeFill(InlinePrevArrow1, iconInkAnim);
+        AnimateShapeFill(InlinePrevArrow2, iconInkAnim);
+        AnimateShapeFill(InlinePauseIconPath, iconInkAnim);
+        AnimateShapeFill(InlinePlayIconPath, iconInkAnim);
+        AnimateShapeFill(InlineNextArrow0, iconInkAnim);
+        AnimateShapeFill(InlineNextArrow1, iconInkAnim);
+        AnimateShapeFill(InlineNextArrow2, iconInkAnim);
+    }
 
-
-        void EnsureUnfrozenFill(System.Windows.Shapes.Shape shape)
+    private static SolidColorBrush EnsureUnfrozenBrush(Brush? brush, Color fallback)
+    {
+        if (brush is SolidColorBrush sb)
         {
-            var brush = shape.Fill as SolidColorBrush;
-            if (brush == null || brush.IsFrozen) shape.Fill = new SolidColorBrush(brush?.Color ?? VNotch.Services.UiPalette.PrimaryColor);
-            ((SolidColorBrush)shape.Fill).BeginAnimation(SolidColorBrush.ColorProperty, iconInkAnim);
+            return sb.IsFrozen ? new SolidColorBrush(sb.Color) : sb;
         }
+        return new SolidColorBrush(fallback);
+    }
 
-        EnsureUnfrozenFill(InlinePrevArrow0);
-        EnsureUnfrozenFill(InlinePrevArrow1);
-        EnsureUnfrozenFill(InlinePrevArrow2);
-        EnsureUnfrozenFill(InlinePauseIconPath);
-        EnsureUnfrozenFill(InlinePlayIconPath);
-        EnsureUnfrozenFill(InlineNextArrow0);
-        EnsureUnfrozenFill(InlineNextArrow1);
-        EnsureUnfrozenFill(InlineNextArrow2);
+    private static void AnimateShapeFill(System.Windows.Shapes.Shape shape, ColorAnimation anim)
+    {
+        var fill = EnsureUnfrozenBrush(shape.Fill, VNotch.Services.UiPalette.PrimaryColor);
+        shape.Fill = fill;
+        fill.BeginAnimation(SolidColorBrush.ColorProperty, anim);
+    }
 
+    private static readonly CubicEase BlurTrackFadeOutEase = CreateBlurTrackFadeOutEase();
+
+    private static CubicEase CreateBlurTrackFadeOutEase()
+    {
+        var ease = new CubicEase { EasingMode = EasingMode.EaseIn };
+        ease.Freeze();
+        return ease;
     }
 
     private static void EnsureUnfrozen(Brush? brush, Action<Color?> replace)
@@ -294,7 +288,7 @@ public partial class MainWindow
             From = currentOpacity,
             To = 0.0,
             Duration = TimeSpan.FromMilliseconds(400),
-            EasingFunction = new CubicEase { EasingMode = EasingMode.EaseIn }
+            EasingFunction = BlurTrackFadeOutEase
         };
         Timeline.SetDesiredFrameRate(fadeOut, VNotch.Services.AnimationConfig.TargetFps);
 
@@ -321,7 +315,7 @@ public partial class MainWindow
         ClearGlassMediaTint();
         HideMediaBackgroundOverlay();
 
-        if (_isTimerView || _isAudioView || _isSecondaryView || _isCameraView) return;
+        if (_isTimerView || _isAudioView || _isSecondaryView || _isCameraView || _isAiUsageView) return;
         _lastDominantColor = Colors.Transparent;
 
         var defaultColorAnim = new ColorAnimation

@@ -233,7 +233,7 @@ public partial class SpotlightWindow
     private void ApplyLiquidGlassConfig()
     {
         if (GlassBackdropHost == null) return;
-        var cfg = _settings.LiquidGlass ?? new LiquidGlassConfig();
+        var cfg = _settings.LiquidGlass ?? MainWindow.DefaultLiquidGlassConfig;
         _lastGpuGeometry = null;
         _lastAppliedGpuOptics = null;
 
@@ -289,34 +289,11 @@ public partial class SpotlightWindow
             dse.BlurRadius = Math.Clamp(cfg.ShadowSpread, 0, 60);
         }
 
-        _liquidGlass?.SetParams(new LiquidGlassController.GlassParams
-        {
-            PowerFactor = cfg.PowerFactor,
-            RefractionA = cfg.RefractionA,
-            RefractionB = cfg.RefractionB,
-            RefractionC = cfg.RefractionC,
-            RefractionD = cfg.RefractionD,
-            FPower = cfg.FPower,
-            Noise = cfg.Noise,
-            GlowWeight = cfg.GlowWeight,
-            GlowBias = cfg.GlowBias,
-            GlowEdge0 = cfg.GlowEdge0,
-            GlowEdge1 = cfg.GlowEdge1,
-            Refraction = cfg.Refraction,
-            EdgeBend = cfg.EdgeBend,
-            ChromaticAberration = cfg.ChromaticAberration,
-            Distortion = cfg.Distortion,
-            ZRadius = cfg.ZRadius,
-            Saturation = cfg.Saturation,
-            Brightness = cfg.Brightness,
-            BevelMode = cfg.BevelMode,
-            EdgeHighlight = cfg.EdgeHighlight,
-            Specular = cfg.Specular,
-            Fresnel = cfg.Fresnel,
-            Variant = cfg.Variant,
-            TopCornerRadius = Shell.CornerRadius.TopLeft,
-            BottomCornerRadius = Shell.CornerRadius.BottomLeft
-        });
+        _liquidGlass?.SetParams(MainWindow.BuildLiquidGlassParams(
+            cfg,
+            cfg.Distortion,
+            Shell.CornerRadius.TopLeft,
+            Shell.CornerRadius.BottomLeft));
 
         UpdateShaderGeometryPerFrame();
     }
@@ -463,6 +440,17 @@ public partial class SpotlightWindow
     private void UpdateDynamicFresnel(LiquidGlassController.BackdropOptics optics) =>
         GlassSurface.UpdateDynamicFresnel(optics, UseGpuRefraction);
 
+    private (double Width, double Height) GetShellDipSize()
+    {
+        double shellW = GlassBackdropHost.ActualWidth;
+        double shellH = GlassBackdropHost.ActualHeight;
+        if (!double.IsFinite(shellW) || shellW <= 0) shellW = Shell.Width;
+        if (!double.IsFinite(shellH) || shellH <= 0) shellH = Shell.Height;
+        if (!double.IsFinite(shellW) || shellW <= 0) shellW = 720;
+        if (!double.IsFinite(shellH) || shellH <= 0) shellH = 64;
+        return (shellW, shellH);
+    }
+
     private void UpdateShaderGeometryPerFrame()
     {
         var fx = _glassRefractionEffect;
@@ -472,13 +460,7 @@ public partial class SpotlightWindow
         double dpiScale = GetGlassDpiScale();
         if (!double.IsFinite(dpiScale) || dpiScale <= 0) dpiScale = 1.0;
 
-        double shellW = GlassBackdropHost.ActualWidth;
-        double shellH = GlassBackdropHost.ActualHeight;
-        if (!double.IsFinite(shellW) || shellW <= 0) shellW = Shell.Width;
-        if (!double.IsFinite(shellH) || shellH <= 0) shellH = Shell.Height;
-        if (!double.IsFinite(shellW) || shellW <= 0) shellW = 720;
-        if (!double.IsFinite(shellH) || shellH <= 0) shellH = 64;
-
+        var (shellW, shellH) = GetShellDipSize();
         double exactW = shellW * dpiScale;
         double exactH = shellH * dpiScale;
         var (screenLeft, screenTop) = GetShellScreenPosition(exactW, dpiScale);
@@ -498,85 +480,24 @@ public partial class SpotlightWindow
         if (Math.Abs(GlassBackdropImage.Height - sourceH / dpiScale) > 0.01)
             GlassBackdropImage.Height = sourceH / dpiScale;
 
-        int captureOriginX = lg.LastPresentedCaptureOriginX;
-        int captureOriginY = lg.LastPresentedCaptureOriginY;
-        double offX, offY;
-        if (captureOriginX != int.MinValue && captureOriginY != int.MinValue)
-        {
-            offX = screenLeft - captureOriginX;
-            offY = screenTop - captureOriginY;
-        }
-        else if (_lastGpuGeometry is { } lastGeom)
-        {
-            offX = screenLeft - lastGeom.CaptureOriginX;
-            offY = screenTop - lastGeom.CaptureOriginY;
-        }
-        else
-        {
-            offX = _lastGpuGeometry?.OffX ?? 0;
-            offY = _lastGpuGeometry?.OffY ?? 0;
-        }
-
-        if (Math.Abs(fx.SrcW - sourceW) > 0.01) fx.SrcW = sourceW;
-        if (Math.Abs(fx.SrcH - sourceH) > 0.01) fx.SrcH = sourceH;
-        if (Math.Abs(fx.NotchW - exactW) > 0.01) fx.NotchW = exactW;
-        if (Math.Abs(fx.NotchH - exactH) > 0.01) fx.NotchH = exactH;
-        if (Math.Abs(fx.OffX - offX) > 1e-4) fx.OffX = offX;
-        if (Math.Abs(fx.OffY - offY) > 1e-4) fx.OffY = offY;
         double topR = Shell.CornerRadius.TopLeft * dpiScale;
         double bottomR = Shell.CornerRadius.BottomLeft * dpiScale;
-        if (Math.Abs(fx.TopCornerR - topR) > 0.01) fx.TopCornerR = topR;
-        if (Math.Abs(fx.BottomCornerR - bottomR) > 0.01) fx.BottomCornerR = bottomR;
-
-        var cfg = _settings.LiquidGlass ?? new LiquidGlassConfig();
-        if (_lastGpuGeometry is { } g)
-        {
-            if (_lastAppliedGpuOptics == null || !_lastAppliedGpuOptics.Value.Equals(g))
-            {
-                _lastAppliedGpuOptics = g;
-                if (Math.Abs(fx.PowerFactor - g.PowerFactor) > 1e-4) fx.PowerFactor = g.PowerFactor;
-                if (Math.Abs(fx.A - g.A) > 1e-4) fx.A = g.A;
-                if (Math.Abs(fx.B - g.B) > 1e-4) fx.B = g.B;
-                if (Math.Abs(fx.C - g.C) > 1e-4) fx.C = g.C;
-                if (Math.Abs(fx.D - g.D) > 1e-4) fx.D = g.D;
-                if (Math.Abs(fx.FPower - g.FPower) > 1e-4) fx.FPower = g.FPower;
-                if (Math.Abs(fx.Noise - g.Noise) > 1e-4) fx.Noise = g.Noise;
-                if (Math.Abs(fx.GlowWeight - g.GlowWeight) > 1e-4) fx.GlowWeight = g.GlowWeight;
-                if (Math.Abs(fx.GlowBias - g.GlowBias) > 1e-4) fx.GlowBias = g.GlowBias;
-                if (Math.Abs(fx.GlowEdge0 - g.GlowEdge0) > 1e-4) fx.GlowEdge0 = g.GlowEdge0;
-                if (Math.Abs(fx.GlowEdge1 - g.GlowEdge1) > 1e-4) fx.GlowEdge1 = g.GlowEdge1;
-                if (Math.Abs(fx.Chroma - g.Chroma) > 1e-4) fx.Chroma = g.Chroma;
-                if (Math.Abs(fx.EdgeBend - g.EdgeBend) > 1e-4) fx.EdgeBend = g.EdgeBend;
-                if (Math.Abs(fx.BevelMode - g.BevelMode) > 1e-4) fx.BevelMode = g.BevelMode;
-                if (Math.Abs(fx.SatFactor - g.SatFactor) > 1e-4) fx.SatFactor = g.SatFactor;
-                if (Math.Abs(fx.BrightAdd - g.BrightAdd) > 1e-4) fx.BrightAdd = g.BrightAdd;
-            }
-        }
-        else
-        {
-            if (Math.Abs(fx.PowerFactor - cfg.PowerFactor) > 1e-4) fx.PowerFactor = cfg.PowerFactor;
-            if (Math.Abs(fx.A - cfg.RefractionA) > 1e-4) fx.A = cfg.RefractionA;
-            if (Math.Abs(fx.B - cfg.RefractionB) > 1e-4) fx.B = cfg.RefractionB;
-            if (Math.Abs(fx.C - cfg.RefractionC) > 1e-4) fx.C = cfg.RefractionC;
-            if (Math.Abs(fx.D - cfg.RefractionD) > 1e-4) fx.D = cfg.RefractionD;
-            if (Math.Abs(fx.FPower - cfg.FPower) > 1e-4) fx.FPower = cfg.FPower;
-            if (Math.Abs(fx.Noise - cfg.Noise) > 1e-4) fx.Noise = cfg.Noise;
-            if (Math.Abs(fx.GlowWeight - cfg.GlowWeight) > 1e-4) fx.GlowWeight = cfg.GlowWeight;
-            if (Math.Abs(fx.GlowBias - cfg.GlowBias) > 1e-4) fx.GlowBias = cfg.GlowBias;
-            if (Math.Abs(fx.GlowEdge0 - cfg.GlowEdge0) > 1e-4) fx.GlowEdge0 = cfg.GlowEdge0;
-            if (Math.Abs(fx.GlowEdge1 - cfg.GlowEdge1) > 1e-4) fx.GlowEdge1 = cfg.GlowEdge1;
-            if (Math.Abs(fx.Chroma - cfg.ChromaticAberration) > 1e-4) fx.Chroma = cfg.ChromaticAberration;
-            if (Math.Abs(fx.SatFactor - (1.0 + cfg.Saturation)) > 1e-4) fx.SatFactor = 1.0 + cfg.Saturation;
-            if (Math.Abs(fx.BrightAdd - cfg.Brightness) > 1e-4) fx.BrightAdd = cfg.Brightness;
-            if (Math.Abs(fx.EdgeBend - cfg.EdgeBend) > 1e-4) fx.EdgeBend = cfg.EdgeBend;
-            if (Math.Abs(fx.BevelMode - cfg.BevelMode) > 1e-4) fx.BevelMode = cfg.BevelMode;
-        }
-        if (Math.Abs(_lastAppliedTouchLight - cfg.TouchLight) > 1e-4)
-        {
-            _lastAppliedTouchLight = cfg.TouchLight;
-            fx.HighlightStrength = cfg.TouchLight;
-        }
-        lg.UpdateGpuLens(fx, screenLeft, screenTop);
+        var cfg = _settings.LiquidGlass ?? MainWindow.DefaultLiquidGlassConfig;
+        MainWindow.SyncLiquidGlassShaderLens(
+            fx,
+            lg,
+            cfg,
+            _lastGpuGeometry,
+            ref _lastAppliedGpuOptics,
+            ref _lastAppliedTouchLight,
+            sourceW,
+            sourceH,
+            exactW,
+            exactH,
+            screenLeft,
+            screenTop,
+            topR,
+            bottomR);
     }
 
     private (double ScreenLeft, double ScreenTop) GetShellScreenPosition(double exactW, double dpiScale)
@@ -636,12 +557,7 @@ public partial class SpotlightWindow
             }
         }
 
-        double shellW = GlassBackdropHost.ActualWidth;
-        double shellH = GlassBackdropHost.ActualHeight;
-        if (!double.IsFinite(shellW) || shellW <= 0) shellW = Shell.Width;
-        if (!double.IsFinite(shellH) || shellH <= 0) shellH = Shell.Height;
-        if (!double.IsFinite(shellW) || shellW <= 0) shellW = 720;
-        if (!double.IsFinite(shellH) || shellH <= 0) shellH = 64;
+        var (shellW, shellH) = GetShellDipSize();
 
         exactW = shellW * dpiScale;
         exactH = shellH * dpiScale;
@@ -733,6 +649,18 @@ public partial class SpotlightWindow
         SyncLiveGlassFrame(updateDynamicFresnel: true, renderingTime: (e as RenderingEventArgs)?.RenderingTime);
     }
 
+    private static readonly System.Windows.Media.Animation.CubicEase GlassReadabilityEase = CreateGlassReadabilityEase();
+
+    private static System.Windows.Media.Animation.CubicEase CreateGlassReadabilityEase()
+    {
+        var ease = new System.Windows.Media.Animation.CubicEase
+        {
+            EasingMode = System.Windows.Media.Animation.EasingMode.EaseInOut
+        };
+        ease.Freeze();
+        return ease;
+    }
+
     private void AnimateGlassReadability(bool opened, bool animate = true)
     {
         if (GlassDarkOverlay == null) return;
@@ -745,10 +673,7 @@ public partial class SpotlightWindow
 
         GlassDarkOverlay.BeginAnimation(OpacityProperty, CreateAnimation(
             from, target, TimeSpan.FromMilliseconds(opened ? 360 : 280),
-            new System.Windows.Media.Animation.CubicEase
-            {
-                EasingMode = System.Windows.Media.Animation.EasingMode.EaseInOut
-            }));
+            GlassReadabilityEase));
     }
 
     internal void UpdateGlassClip()

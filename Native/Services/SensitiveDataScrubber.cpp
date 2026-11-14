@@ -521,81 +521,89 @@ inline bool try_read_scrub_jwt(std::u16string_view input, int32_t separator, int
 inline bool try_read_scrub_standalone_token(std::u16string_view input, int32_t index, int32_t cursor, ScrubberSecretStart& start) noexcept
 {
     start = { 0, ScrubberSecretKind::Token, -1 };
-    std::u16string_view text = input.substr(static_cast<size_t>(index));
-    int32_t value = 0;
-    char16_t ch = input[static_cast<size_t>(index)];
-    if (ch == u'-')
+    const std::u16string_view text = input.substr(static_cast<size_t>(index));
+    int32_t value = -1;
+    switch (input[static_cast<size_t>(index)])
     {
-        if (try_read_scrub_pem_private_key(input, index, start))
-        {
-            return true;
-        }
-        if (index - 2 >= cursor &&
-            equals_ordinal(input.substr(static_cast<size_t>(index - 2), 2), secret_patterns::kPrefixOpenAiSkShort) &&
-            is_scrub_word_start(input, index - 2) && has_scrub_token_alphabet(text.substr(1), 8, false))
-        {
-            value = index - 2;
-        }
-        else
-        {
+        case u'-':
+            if (try_read_scrub_pem_private_key(input, index, start))
+            {
+                return true;
+            }
+            if (index - 2 >= cursor &&
+                equals_ordinal(input.substr(static_cast<size_t>(index - 2), 2), secret_patterns::kPrefixOpenAiSkShort) &&
+                is_scrub_word_start(input, index - 2) &&
+                has_scrub_token_alphabet(text.substr(1), 8, false))
+            {
+                value = index - 2;
+            }
+            break;
+
+        case u'A':
+            if (!is_scrub_word_start(input, index)) return false;
+            if (secret_patterns::has_aws_access_key_prefix(text, true, false) && has_aws_access_key_body(text))
+            {
+                start = { index, ScrubberSecretKind::Token, index + static_cast<int32_t>(secret_patterns::kAwsAccessKeyTotalLen) };
+                return true;
+            }
+            if (starts_with_ordinal(text, secret_patterns::kPrefixGoogleApiKey) &&
+                has_scrub_token_alphabet(text.substr(secret_patterns::kPrefixGoogleApiKey.size()), 16, false))
+            {
+                value = index + static_cast<int32_t>(secret_patterns::kPrefixGoogleApiKey.size());
+            }
+            break;
+
+        case u'g':
+            if (is_scrub_word_start(input, index) && has_github_token_prefix(text))
+            {
+                value = index;
+            }
+            break;
+
+        case u'r':
+            if (is_scrub_word_start(input, index) && has_stripe_token_prefix(text))
+            {
+                value = index;
+            }
+            break;
+
+        case u's':
+            if (!is_scrub_word_start(input, index)) return false;
+            if (has_stripe_token_prefix(text) ||
+                (starts_with_ordinal(text, secret_patterns::kPrefixOpenAiSk) &&
+                 has_scrub_token_alphabet(text.substr(secret_patterns::kPrefixOpenAiSk.size()), 8, false)))
+            {
+                value = index;
+            }
+            break;
+
+        case u'x':
+            if (is_scrub_word_start(input, index) && has_slack_token_prefix(text))
+            {
+                value = index;
+            }
+            break;
+
+        case u':':
+            if (index - 3 >= cursor &&
+                equals_ordinal(input.substr(static_cast<size_t>(index - 3), 3), secret_patterns::kPrefixEncrypted) &&
+                has_scrub_token_alphabet(text.substr(1), 16, true))
+            {
+                value = index + 1;
+            }
+            break;
+
+        case u'.':
+            return try_read_scrub_jwt(input, index, cursor, start);
+
+        default:
             return false;
-        }
-    }
-    else if (ch == u'A')
-    {
-        if (is_scrub_word_start(input, index) &&
-            secret_patterns::has_aws_access_key_prefix(text, true, false) &&
-            has_aws_access_key_body(text))
-        {
-            start = { index, ScrubberSecretKind::Token, index + static_cast<int32_t>(secret_patterns::kAwsAccessKeyTotalLen) };
-            return true;
-        }
-        if (is_scrub_word_start(input, index) &&
-            starts_with_ordinal(text, secret_patterns::kPrefixGoogleApiKey) &&
-            has_scrub_token_alphabet(text.substr(secret_patterns::kPrefixGoogleApiKey.size()), 16, false))
-        {
-            value = index + static_cast<int32_t>(secret_patterns::kPrefixGoogleApiKey.size());
-        }
-        else
-        {
-            return false;
-        }
-    }
-    else if (ch == u'g' && is_scrub_word_start(input, index) && has_github_token_prefix(text))
-    {
-        value = index;
-    }
-    else if ((ch == u's' || ch == u'r') && is_scrub_word_start(input, index) && has_stripe_token_prefix(text))
-    {
-        value = index;
-    }
-    else if (ch == u's' && is_scrub_word_start(input, index) &&
-             starts_with_ordinal(text, secret_patterns::kPrefixOpenAiSk) &&
-             has_scrub_token_alphabet(text.substr(secret_patterns::kPrefixOpenAiSk.size()), 8, false))
-    {
-        value = index;
-    }
-    else if (ch == u'x' && is_scrub_word_start(input, index) && has_slack_token_prefix(text))
-    {
-        value = index;
-    }
-    else if (ch == u':' && index - 3 >= cursor &&
-             equals_ordinal(input.substr(static_cast<size_t>(index - 3), 3), secret_patterns::kPrefixEncrypted) &&
-             has_scrub_token_alphabet(text.substr(1), 16, true))
-    {
-        value = index + 1;
-    }
-    else if (ch == u'.')
-    {
-        return try_read_scrub_jwt(input, index, cursor, start);
-    }
-    else
-    {
-        return false;
     }
 
+    if (value < 0) return false;
+
     int32_t end = value;
-    int32_t len = static_cast<int32_t>(input.size());
+    const int32_t len = static_cast<int32_t>(input.size());
     while (end < len && !is_scrub_token_boundary(input[static_cast<size_t>(end)]))
     {
         ++end;

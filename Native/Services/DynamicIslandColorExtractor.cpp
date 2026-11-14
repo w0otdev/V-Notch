@@ -66,48 +66,6 @@ public:
         return true;
     }
 
-    static void EnsureBrightColor(uint8_t r, uint8_t g, uint8_t b, uint8_t* out_r, uint8_t* out_g, uint8_t* out_b) noexcept {
-        double luminance = (0.2126 * r + 0.7152 * g + 0.0722 * b) / 255.0;
-        if (luminance < 0.5) {
-            constexpr double factor = 0.7;
-            *out_r = static_cast<uint8_t>(r + (255 - r) * factor);
-            *out_g = static_cast<uint8_t>(g + (255 - g) * factor);
-            *out_b = static_cast<uint8_t>(b + (255 - b) * factor);
-            return;
-        }
-        *out_r = r;
-        *out_g = g;
-        *out_b = b;
-    }
-
-    static void GetVibrantColor(uint8_t cr, uint8_t cg, uint8_t cb, uint8_t* out_r, uint8_t* out_g, uint8_t* out_b) noexcept {
-        double r = cr / 255.0, g = cg / 255.0, b = cb / 255.0;
-        double max_c = std::max(r, std::max(g, b));
-        double min_c = std::min(r, std::min(g, b));
-        double h = 0.0, s = 0.0, l = (max_c + min_c) / 2.0;
-        double d = max_c - min_c;
-        if (d > 0.0) {
-            s = l > 0.5 ? d / (2.0 - max_c - min_c) : d / (max_c + min_c);
-            if (std::abs(max_c - r) < 0.0001) h = ((g - b) / d + (g < b ? 6.0 : 0.0)) / 6.0;
-            else if (std::abs(max_c - g) < 0.0001) h = ((b - r) / d + 2.0) / 6.0;
-            else h = ((r - g) / d + 4.0) / 6.0;
-            s = std::min(s, 0.90);
-        }
-
-        if (s < 0.16) {
-            uint8_t gray = static_cast<uint8_t>(std::clamp(0.2126 * cr + 0.7152 * cg + 0.0722 * cb, 0.0, 255.0));
-            uint8_t lifted = static_cast<uint8_t>(std::clamp(gray + (255 - gray) * 0.18, 0.0, 255.0));
-            *out_r = lifted;
-            *out_g = lifted;
-            *out_b = lifted;
-            return;
-        }
-
-        l = std::max(l, 0.65);
-        l = std::min(l, 0.85);
-        HslToColor(h, s, l, out_r, out_g, out_b);
-    }
-
     static double GetAdaptiveBlurOpacity(double luminance, double brightness_boost) noexcept {
         if (!std::isfinite(luminance)) luminance = 0.0;
         if (!std::isfinite(brightness_boost)) brightness_boost = 1.0;
@@ -121,13 +79,6 @@ public:
             base_opacity = full_base - t * 0.10;
         }
         return std::clamp(base_opacity, 0.0, 1.0);
-    }
-
-    static double GetAdaptiveBlurImageOpacity(double luminance) noexcept {
-        if (!std::isfinite(luminance)) luminance = 0.0;
-        if (luminance <= 0.70) return 0.90;
-        double t = std::clamp((luminance - 0.70) / 0.30, 0.0, 1.0);
-        return 0.90 - t * 0.15;
     }
 
     static double ComputeBrightnessDim(std::span<const uint8_t> pixels, int32_t pixel_count) noexcept {
@@ -199,9 +150,11 @@ public:
         for (int32_t y = 0; y < height; y++) {
             const float dy = (y - center_y) / center_y;
             const float dy_squared = dy * dy;
+            const int64_t row_offset = static_cast<int64_t>(y) * stride;
             for (int32_t x = 0; x < width; x++) {
-                int64_t i = static_cast<int64_t>(y) * stride + static_cast<int64_t>(x) * 4LL;
-                if (avx && x % 8 == 0) {
+                const int64_t i = row_offset + static_cast<int64_t>(x) * 4LL;
+                const int32_t lane = x & 7;
+                if (avx && lane == 0) {
                     const uint8_t* block = pixels + i;
                     if (x + 8 > width) {
                         // A bounded copy keeps narrow images and the 36 px UI sample
@@ -213,16 +166,15 @@ public:
                 }
                 uint8_t a = pixels[i + 3];
                 if (a < 80) continue;
-                const bool vector_pixel = avx;
-                const auto lab = vector_pixel ? vnotch::color::Oklab{lab_l[x % 8], 0, 0} : vnotch::color::FromBgra(pixels + i);
-                const float chroma = vector_pixel ? chromas[x % 8] : std::sqrt(lab.a * lab.a + lab.b * lab.b);
+                const auto lab = avx ? vnotch::color::Oklab{lab_l[lane], 0, 0} : vnotch::color::FromBgra(pixels + i);
+                const float chroma = avx ? chromas[lane] : std::sqrt(lab.a * lab.a + lab.b * lab.b);
                 total_pixels++;
                 if (lab.l < 0.10f || chroma < 0.025f) continue;
                 total_color_pixels++;
                 int32_t bucket;
                 float zone_weight;
-                if (vector_pixel) {
-                    bucket = buckets[x % 8]; zone_weight = weights[x % 8];
+                if (avx) {
+                    bucket = buckets[lane]; zone_weight = weights[lane];
                 } else {
                     float h = std::atan2(lab.b, lab.a) / 6.28318530718f;
                     if (h < 0) h += 1.0f;
@@ -250,11 +202,17 @@ public:
             return;
         }
 
+        auto hue_bucket_dist = [](int32_t a_idx, int32_t b_idx) constexpr noexcept -> int32_t {
+            const int32_t diff = a_idx >= b_idx ? (a_idx - b_idx) : (b_idx - a_idx);
+            return std::min(diff, NUM_BUCKETS - diff);
+        };
+
         float best_score = -1.0f, second_score = -1.0f;
         int32_t best_bucket = -1, second_bucket = -1;
         float best_non_indigo_score = -1.0f;
         int32_t best_non_indigo_bucket = -1;
         const int32_t min_alt_pixels = std::max(1, total_color_pixels / 20);
+        const float inv_color_pixels = 1.0f / static_cast<float>(std::max(total_color_pixels, 1));
 
         for (int32_t i = 0; i < NUM_BUCKETS; i++) {
             if (bucket_count[i] == 0) continue;
@@ -265,7 +223,7 @@ public:
             bucket_peak_h[i] = h; bucket_peak_v[i] = std::max(v, 0.4f);
             bucket_peak_s[i] = s * std::max(v, 0.3f);
 
-            float area = static_cast<float>(bucket_count[i]) / std::max(total_color_pixels, 1);
+            float area = static_cast<float>(bucket_count[i]) * inv_color_pixels;
             float avg_sat = bucket_sat_sum[i] / bucket_weight[i];
             float avg_val = bucket_val_sum[i] / bucket_weight[i];
 
@@ -278,23 +236,15 @@ public:
             }
 
             if (score > best_score) {
-                if (best_bucket >= 0) {
-                    int32_t diff = std::abs(i - best_bucket);
-                    int32_t hue_dist = std::min(diff, NUM_BUCKETS - diff);
-                    if (hue_dist >= 4 && best_score > second_score) {
-                        second_score = best_score;
-                        second_bucket = best_bucket;
-                    }
+                if (best_bucket >= 0 && hue_bucket_dist(i, best_bucket) >= 4 && best_score > second_score) {
+                    second_score = best_score;
+                    second_bucket = best_bucket;
                 }
                 best_score = score;
                 best_bucket = i;
-            } else if (score > second_score) {
-                int32_t diff = std::abs(i - best_bucket);
-                int32_t hue_dist = std::min(diff, NUM_BUCKETS - diff);
-                if (hue_dist >= 4) {
-                    second_score = score;
-                    second_bucket = i;
-                }
+            } else if (score > second_score && hue_bucket_dist(i, best_bucket) >= 4) {
+                second_score = score;
+                second_bucket = i;
             }
         }
 
@@ -307,24 +257,22 @@ public:
             best_score = best_non_indigo_score;
         }
 
+        auto bucket_peak_to_rgb = [&](int32_t bucket_idx, uint8_t* out_r, uint8_t* out_g, uint8_t* out_b) noexcept {
+            const float p_h = bucket_peak_h[bucket_idx];
+            const float p_v_raw = bucket_peak_v[bucket_idx];
+            const float p_s = std::max(std::min(bucket_peak_s[bucket_idx] / std::max(p_v_raw, 0.3f), 1.0f), 0.50f);
+            const float p_v = std::max(p_v_raw, 0.45f);
+            HsvToColor(p_h, p_s, p_v, out_r, out_g, out_b);
+        };
+
         uint8_t pr = 30, pg = 30, pb = 30, pa = 255;
         if (best_bucket >= 0) {
-            float p_h = bucket_peak_h[best_bucket];
-            float p_s = std::min(bucket_peak_s[best_bucket] / std::max(bucket_peak_v[best_bucket], 0.3f), 1.0f);
-            float p_v = bucket_peak_v[best_bucket];
-            p_v = std::max(p_v, 0.45f);
-            p_s = std::max(p_s, 0.50f);
-            HsvToColor(p_h, p_s, p_v, &pr, &pg, &pb);
+            bucket_peak_to_rgb(best_bucket, &pr, &pg, &pb);
         }
 
         uint8_t sr = 0, sg = 0, sb = 0, sa = 0;
         if (second_bucket >= 0) {
-            float p_h = bucket_peak_h[second_bucket];
-            float p_s = std::min(bucket_peak_s[second_bucket] / std::max(bucket_peak_v[second_bucket], 0.3f), 1.0f);
-            float p_v = bucket_peak_v[second_bucket];
-            p_v = std::max(p_v, 0.45f);
-            p_s = std::max(p_s, 0.50f);
-            HsvToColor(p_h, p_s, p_v, &sr, &sg, &sb);
+            bucket_peak_to_rgb(second_bucket, &sr, &sg, &sb);
             sa = 255;
         }
 
@@ -419,13 +367,6 @@ public:
         double l2 = GetRelativeLuminance(r2, g2, b2);
         if (l1 < l2) std::swap(l1, l2);
         return (l1 + 0.05) / (l2 + 0.05);
-    }
-
-    static double ColorDistance(uint8_t r1, uint8_t g1, uint8_t b1, uint8_t r2, uint8_t g2, uint8_t b2) noexcept {
-        int32_t dr = static_cast<int32_t>(r1) - static_cast<int32_t>(r2);
-        int32_t dg = static_cast<int32_t>(g1) - static_cast<int32_t>(g2);
-        int32_t db = static_cast<int32_t>(b1) - static_cast<int32_t>(b2);
-        return std::sqrt(static_cast<double>(dr * dr + dg * dg + db * db));
     }
 
     static void EnsureTextOnDarkBackground(
@@ -633,35 +574,11 @@ VN_EXPORT int32_t vn_dicolor_get_clamped_crop_rect(
     return VN_OK;
 }
 
-VN_EXPORT int32_t vn_dicolor_ensure_bright(
-    uint8_t r, uint8_t g, uint8_t b, uint8_t* out_r, uint8_t* out_g, uint8_t* out_b) noexcept
-{
-    if (!out_r || !out_g || !out_b) return VN_ERR_INVALID_ARG;
-    vnotch::services::DynamicIslandColorExtractor::EnsureBrightColor(r, g, b, out_r, out_g, out_b);
-    return VN_OK;
-}
-
-VN_EXPORT int32_t vn_dicolor_get_vibrant(
-    uint8_t r, uint8_t g, uint8_t b, uint8_t* out_r, uint8_t* out_g, uint8_t* out_b) noexcept
-{
-    if (!out_r || !out_g || !out_b) return VN_ERR_INVALID_ARG;
-    vnotch::services::DynamicIslandColorExtractor::GetVibrantColor(r, g, b, out_r, out_g, out_b);
-    return VN_OK;
-}
-
 VN_EXPORT int32_t vn_dicolor_get_adaptive_blur_opacity(
     double luminance, double brightness_boost, double* out_opacity) noexcept
 {
     if (!out_opacity) return VN_ERR_INVALID_ARG;
     *out_opacity = vnotch::services::DynamicIslandColorExtractor::GetAdaptiveBlurOpacity(luminance, brightness_boost);
-    return VN_OK;
-}
-
-VN_EXPORT int32_t vn_dicolor_get_adaptive_blur_image_opacity(
-    double luminance, double* out_opacity) noexcept
-{
-    if (!out_opacity) return VN_ERR_INVALID_ARG;
-    *out_opacity = vnotch::services::DynamicIslandColorExtractor::GetAdaptiveBlurImageOpacity(luminance);
     return VN_OK;
 }
 
@@ -716,14 +633,6 @@ VN_EXPORT int32_t vn_dicolor_get_contrast_ratio(
 {
     if (!out_ratio) return VN_ERR_INVALID_ARG;
     *out_ratio = vnotch::services::DynamicIslandColorExtractor::GetContrastRatio(r1, g1, b1, r2, g2, b2);
-    return VN_OK;
-}
-
-VN_EXPORT int32_t vn_dicolor_color_distance(
-    uint8_t r1, uint8_t g1, uint8_t b1, uint8_t r2, uint8_t g2, uint8_t b2, double* out_dist) noexcept
-{
-    if (!out_dist) return VN_ERR_INVALID_ARG;
-    *out_dist = vnotch::services::DynamicIslandColorExtractor::ColorDistance(r1, g1, b1, r2, g2, b2);
     return VN_OK;
 }
 

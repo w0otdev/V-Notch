@@ -112,15 +112,7 @@ public partial class MainWindow
         var slideUp = MakeAnim(ExpandedContentRestY, ExpandedContentRestY - 10, durOut, _easeAppleIn);
         Timeline.SetDesiredFrameRate(slideUp, fps);
 
-        bool useContentBlur = _settings.EnableBlurEffects && !IsLiquidGlassEnabled;
-        BlurEffect? expandedBlur = null;
-        DoubleAnimation? blurOutAnim = null;
-        if (useContentBlur)
-        {
-            expandedBlur = ExpandedContent.Effect as BlurEffect ?? new BlurEffect { Radius = 0, RenderingBias = RenderingBias.Performance };
-            ExpandedContent.Effect = expandedBlur;
-            blurOutAnim = MakeAnim(0, 6, durOut, _easeAppleIn);
-        }
+        ExpandedContent.Effect = null;
 
         fadeOut.Completed += (s, ev) =>
         {
@@ -128,13 +120,10 @@ public partial class MainWindow
             ExpandedContent.Visibility = Visibility.Collapsed;
             ExpandedContent.RenderTransform = null;
             ExpandedContent.Effect = null;
-            if (expandedBlur != null) expandedBlur.Radius = 0;
         };
 
         ExpandedContent.BeginAnimation(OpacityProperty, fadeOut);
         primaryTranslate.BeginAnimation(TranslateTransform.YProperty, slideUp);
-        if (expandedBlur != null && blurOutAnim != null)
-            expandedBlur.BeginAnimation(BlurEffect.RadiusProperty, blurOutAnim);
 
         AnimateClockViewNotchResize(
             NotchBorder.ActualWidth > 0 ? NotchBorder.ActualWidth : _expandedWidth,
@@ -1241,12 +1230,7 @@ public partial class MainWindow
             SecondaryContent.Visibility = Visibility.Collapsed;
             SecondaryContent.Opacity = 0;
             SecondaryContent.RenderTransform = null;
-            NavIconsPanel.BeginAnimation(OpacityProperty, null);
-            NavIconsPanel.Opacity = 0;
-            NavIconsPanel.Visibility = Visibility.Collapsed;
-            NavIconsBackground.BeginAnimation(OpacityProperty, null);
-            NavIconsBackground.Opacity = 0;
-            NavIconsBackground.Visibility = Visibility.Collapsed;
+            CollapseNavIconsImmediate();
             DisableKeyboardInput();
 
             if (_isMusicCompactMode)

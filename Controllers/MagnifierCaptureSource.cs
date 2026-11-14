@@ -46,9 +46,6 @@ public sealed partial class MagnifierCaptureSource : IDisposable
     [LibraryImport(NativeDll, EntryPoint = "vn_magcap_has_usable_frame")]
     private static partial int NativeHasUsableFrame(int handle, int x, int y, int width, int height, out byte usable);
 
-    [LibraryImport(NativeDll, EntryPoint = "vn_magcap_wait_unfiltered_frame")]
-    private static partial int NativeWaitUnfilteredFrame(int handle, uint timeoutMs, out byte received);
-
     [LibraryImport(NativeDll, EntryPoint = "vn_magcap_debug_status")]
     private static unsafe partial int NativeDebugStatus(int handle, int x, int y, int width, int height, char* buffer, int capacity, out int length);
 
@@ -59,6 +56,26 @@ public sealed partial class MagnifierCaptureSource : IDisposable
     [LibraryImport(NativeDll, EntryPoint = "vn_magcap_test_install_frame")]
     private static unsafe partial int NativeTestInstallFrame(
         int handle, byte ready, byte running, int width, int height, byte* pixels, int pixelBytes, long frameAgeMs);
+
+    [LibraryImport(NativeDll, EntryPoint = "vn_backdrop_composite")]
+    private static partial int NativeBackdropComposite(int x, int y, int width, int height, IntPtr destination, out byte ok);
+
+    /// <summary>
+    /// Rebuilds the desktop under a screen rect from the wallpaper and the windows below it,
+    /// skipping this process's windows. Used when Magnifier frames are empty outside Ghost Mode.
+    /// </summary>
+    internal static bool TryCompositeDesktop(int x, int y, int width, int height, IntPtr destination)
+    {
+        if (destination == IntPtr.Zero || width <= 0 || height <= 0) return false;
+        try
+        {
+            return NativeBackdropComposite(x, y, width, height, destination, out byte ok) == 0 && ok != 0;
+        }
+        catch (Exception ex) when (ex is DllNotFoundException or EntryPointNotFoundException)
+        {
+            return false;
+        }
+    }
 
     private static readonly string[] InitFailureMessages =
     [
@@ -164,21 +181,6 @@ public sealed partial class MagnifierCaptureSource : IDisposable
             DisposeRetiredInstances();
             _sharedInstance = null;
             _sharedRefCount = 0;
-        }
-    }
-
-    public static bool PrewarmUnfilteredDesktopFrame(TimeSpan timeout)
-    {
-        MagnifierCaptureSource source = AcquireShared(IntPtr.Zero);
-        try
-        {
-            uint timeoutMs = (uint)Math.Clamp(timeout.TotalMilliseconds, 0, int.MaxValue);
-            return source._handle > 0 &&
-                   NativeWaitUnfilteredFrame(source._handle, timeoutMs, out byte received) == 0 && received != 0;
-        }
-        finally
-        {
-            ReleaseShared(IntPtr.Zero);
         }
     }
 

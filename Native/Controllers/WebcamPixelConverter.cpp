@@ -34,8 +34,9 @@ public:
         {
             return VN_ERR_INVALID_ARG;
         }
-        // BitmapAlphaMode: Premultiplied = 0, Straight = 1, Ignore = 2
-        if (is_rgba == 0 && alpha_mode == 0)
+        // BitmapAlphaMode: Premultiplied = 0, Straight = 1, Ignore = 2.
+        // When channels do not swap and alpha is neither Straight nor Ignore, buffer is unchanged.
+        if (is_rgba == 0 && alpha_mode != 1 && alpha_mode != 2)
         {
             return VN_OK;
         }
@@ -50,7 +51,7 @@ public:
         {
             if (is_rgba != 0)
             {
-                uint8_t tmp = pixels[i];
+                const uint8_t tmp = pixels[i];
                 pixels[i] = pixels[i + 2];
                 pixels[i + 2] = tmp;
             }
@@ -60,7 +61,7 @@ public:
             }
             else if (alpha_mode == 1)
             {
-                int32_t alpha = pixels[i + 3];
+                const int32_t alpha = pixels[i + 3];
                 pixels[i] = static_cast<uint8_t>((pixels[i] * alpha + 127) / 255);
                 pixels[i + 1] = static_cast<uint8_t>((pixels[i + 1] * alpha + 127) / 255);
                 pixels[i + 2] = static_cast<uint8_t>((pixels[i + 2] * alpha + 127) / 255);
@@ -87,7 +88,7 @@ public:
         for (; i < pixel_count; ++i)
         {
             const size_t offset = static_cast<size_t>(i) * 4u;
-            uint8_t v = src[i];
+            const uint8_t v = src[i];
             dst[offset] = v;
             dst[offset + 1] = v;
             dst[offset + 2] = v;
@@ -109,27 +110,22 @@ public:
             return VN_ERR_INVALID_ARG;
         }
         const bool use_avx2 = vnotch::cpu::SupportsX64V3();
-        const size_t pixels = static_cast<size_t>(width) * static_cast<size_t>(height);
+        const size_t row_stride = static_cast<size_t>(width);
+        const uint8_t* uv_plane = src + row_stride * static_cast<size_t>(height);
         for (int32_t y = 0; y < height; ++y)
         {
-            const size_t y_row = static_cast<size_t>(y) * static_cast<size_t>(width);
-            const size_t uv_row = pixels + static_cast<size_t>(y / 2) * static_cast<size_t>(width);
-            int32_t x = 0;
-            if (use_avx2)
-            {
-                x = vnotch::kernels::avx2::WebcamNv12RowBulk(src + y_row, src + uv_row, width, dst + y_row * 4u);
-            }
+            const size_t y_row = static_cast<size_t>(y) * row_stride;
+            const uint8_t* luma_row = src + y_row;
+            const uint8_t* chroma_row = uv_plane + static_cast<size_t>(y >> 1) * row_stride;
+            uint8_t* dst_row = dst + y_row * 4u;
+
+            int32_t x = use_avx2 ? vnotch::kernels::avx2::WebcamNv12RowBulk(luma_row, chroma_row, width, dst_row) : 0;
             for (; x < width; x += 2)
             {
-                const size_t idx = y_row + static_cast<size_t>(x);
-                const size_t uv = uv_row + static_cast<size_t>(x);
-                int32_t u = src[uv];
-                int32_t v = src[uv + 1];
-                WriteYuvBt601(dst, idx * 4u, src[idx], u, v);
-                if (x + 1 < width)
-                {
-                    WriteYuvBt601(dst, (idx + 1u) * 4u, src[idx + 1], u, v);
-                }
+                const int32_t u = chroma_row[x];
+                const int32_t v = chroma_row[x + 1];
+                WriteYuvBt601(dst_row, static_cast<size_t>(x) * 4u, luma_row[x], u, v);
+                WriteYuvBt601(dst_row, static_cast<size_t>(x + 1) * 4u, luma_row[x + 1], u, v);
             }
         }
         return VN_OK;

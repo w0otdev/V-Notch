@@ -438,7 +438,8 @@ public partial class MainWindow
             (_isTimerView && item == TimerIconButton) ||
             (_isSecondaryView && item == ClipboardIconButton) ||
             (_isCameraView && item == CameraIconButton) ||
-            (!_isAudioView && !_isTimerView && !_isSecondaryView && item == HomeIconButton))
+            (_isAiUsageView && item == AiUsageIconButton) ||
+            (!_isAudioView && !_isTimerView && !_isSecondaryView && !_isCameraView && !_isAiUsageView && item == HomeIconButton))
         {
             targetOpacity = 1.0;
         }
@@ -631,7 +632,9 @@ public partial class MainWindow
         // If the active view's tab was just disabled, return gracefully to Home
         if ((_isAudioView && !visibleTokens.Contains("AudioMixer")) ||
             (_isTimerView && !visibleTokens.Contains("Timer")) ||
-            (_isSecondaryView && !visibleTokens.Contains("Secondary")) || (_isCameraView && !visibleTokens.Contains("Camera")))
+            (_isSecondaryView && !visibleTokens.Contains("Secondary")) ||
+            (_isCameraView && !visibleTokens.Contains("Camera")) ||
+            (_isAiUsageView && !visibleTokens.Contains("AiUsage")))
         {
             NavigateToNotchView(NotchView.Media);
         }

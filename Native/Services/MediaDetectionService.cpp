@@ -462,7 +462,7 @@ VN_EXPORT int32_t __stdcall vn_media_detection_get_spotify_window_title(
     }
 }
 
-VN_EXPORT int32_t __stdcall vn_media_detection_parse_youtube_window_title(
+extern "C" int32_t __stdcall vn_media_detection_parse_youtube_window_title(
     const char16_t* extracted_title,
     int32_t extracted_title_len,
     char16_t* out_track,

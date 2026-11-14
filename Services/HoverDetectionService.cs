@@ -40,12 +40,6 @@ public sealed partial class HoverDetectionService : IDisposable
         int hoverZoneMargin, double px, double py,
         out byte outInZone);
 
-    [LibraryImport("VNotch.Native.dll")]
-    private static partial int vn_hover_get_distance_to_notch(
-        double notchLeft, double notchTop, double notchWidth, double notchHeight,
-        double px, double py,
-        out double outDist);
-
     public bool IsHovering => _isHovering;
 
     public HoverDetectionService(int hoverZoneMargin = 50, Window? inputWindow = null)
@@ -233,14 +227,6 @@ public sealed partial class HoverDetectionService : IDisposable
     public bool IsPointInHoverZone(Point point)
     {
         return !_hoverZone.IsEmpty && _hoverZone.Contains(point);
-    }
-
-    public double GetDistanceToNotch(Point point)
-    {
-        vn_hover_get_distance_to_notch(
-            _notchBounds.Left, _notchBounds.Top, _notchBounds.Width, _notchBounds.Height,
-            point.X, point.Y, out double dist);
-        return dist;
     }
 
     public void ResetHoverState()

@@ -36,21 +36,6 @@ public:
         }
         return false;
     }
-
-    // 0 = Off, 1 = WindowsSonic, 2 = DolbyAtmos
-    [[nodiscard]] static constexpr int32_t ClassifySpatialAudioValue(std::u16string_view value) noexcept {
-        const auto trimmed = vn_trim(value);
-        if (trimmed.empty()) {
-            return 0;
-        }
-        if (vn_contains_icase_ascii(trimmed, u"a44d5fd2")) {
-            return 1;
-        }
-        if (vn_contains_icase_ascii(trimmed, u"265d4a5e") || vn_contains_icase_ascii(trimmed, u"dolby")) {
-            return 2;
-        }
-        return 0;
-    }
 };
 
 } // namespace vnotch::services
@@ -73,18 +58,6 @@ VN_EXPORT int32_t vn_audio_mixer_extract_endpoint_guid(
     *out_start = start;
     *out_length = length;
     *out_found = found ? 1 : 0;
-    return VN_OK;
-}
-
-VN_EXPORT int32_t vn_audio_mixer_classify_spatial_audio_value(
-    const char16_t* value,
-    int32_t value_len,
-    int32_t* out_mode) noexcept {
-    if (!out_mode || (!value && value_len > 0) || value_len < 0) {
-        return VN_E_INVALID_ARG;
-    }
-    const std::u16string_view sv(value ? value : u"", static_cast<size_t>(value_len));
-    *out_mode = vnotch::services::AudioMixerService::ClassifySpatialAudioValue(sv);
     return VN_OK;
 }
 

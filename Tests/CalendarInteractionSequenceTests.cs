@@ -1,4 +1,6 @@
 using System.Reflection;
+using System.Windows.Media;
+using System.Windows.Media.Animation;
 using System.Windows.Input;
 using Microsoft.Extensions.DependencyInjection;
 using VNotch.Presenters;
@@ -11,6 +13,32 @@ namespace VNotch.Tests;
 [Collection("Localization")]
 public sealed class CalendarInteractionSequenceTests
 {
+    [Fact]
+    public void AiWidgetHoverKeepsItsIconsFixedAndClearsPreviousCalendarMotion() => SharedStaTestRunner.RunAsync(async () =>
+    {
+        await using var fixture = new GreetingAcceptanceTests.MainWindowFixture("en", false,
+            s => { s.EnableLocalOnlyMode = true; s.ExpandedWidget = "aiusage"; },
+            services => services.AddSingleton<IMediaDetectionService>(new FakeMediaDetectionService()));
+        fixture.Window.InitializeCalendarPresenter();
+        var presenter = (CalendarPresenter)typeof(MainWindow).GetField("_calendarPresenter", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(fixture.Window)!;
+        var scale = fixture.Window.CalendarWidgetScale;
+        var offset = fixture.Window.CalendarWidgetTranslate;
+        scale.BeginAnimation(ScaleTransform.ScaleXProperty, new DoubleAnimation(1.035, TimeSpan.FromMilliseconds(350)));
+        scale.BeginAnimation(ScaleTransform.ScaleYProperty, new DoubleAnimation(1.035, TimeSpan.FromMilliseconds(350)));
+        offset.BeginAnimation(TranslateTransform.YProperty, new DoubleAnimation(-3, TimeSpan.FromMilliseconds(350)));
+        presenter.HandleMouseEnter();
+        Assert.False(scale.HasAnimatedProperties);
+        Assert.False(offset.HasAnimatedProperties);
+        Assert.Equal(1, scale.ScaleX);
+        Assert.Equal(1, scale.ScaleY);
+        Assert.Equal(0, offset.Y);
+        presenter.HandleMouseLeave();
+        Assert.False(scale.HasAnimatedProperties);
+        Assert.False(offset.HasAnimatedProperties);
+        Assert.Equal(1, scale.ScaleX);
+        Assert.Equal(0, offset.Y);
+    });
+
     [Theory]
     [InlineData(120, 4)]
     [InlineData(-120, 6)]

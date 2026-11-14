@@ -96,12 +96,10 @@ public sealed partial class ClipboardTray
         bool hasText = SearchBox.Text.Length != 0;
         bool changed = hasText != _searchHasText;
         _searchHasText = hasText;
-        SearchHint.Visibility = hasText ? Visibility.Collapsed : Visibility.Visible;
         if (hasText) ShowTransientLayer(ClearSearchButton);
         else DismissTransientLayer(ClearSearchButton);
         if (!changed || !IsLoaded || !IsVisible || _trayLeaving) return;
-        // Animate only entering/leaving a query, keeping the caret steady while typing.
-        AnimateLayer(SearchTextSurface, true, 0, true, MotionStandard, 3);
+        // Keep the input and caret steady when a query starts or clears.
         if (hasText) AnimateLayer(ClearSearchButton, true, 0, true, MotionStandard, 3);
     }
 

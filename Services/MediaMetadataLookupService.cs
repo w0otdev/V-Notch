@@ -62,18 +62,6 @@ public sealed partial class MediaMetadataLookupService : IMediaMetadataLookupSer
         out byte outFound);
 
     [LibraryImport(NativeDll, StringMarshalling = StringMarshalling.Utf16)]
-    private static partial int vn_media_metadata_score_youtube_track_match(
-        ReadOnlySpan<char> candidateTitle,
-        int candidateTitleLen,
-        ReadOnlySpan<char> targetTitle,
-        int targetTitleLen,
-        long candidateDurationSec,
-        long targetDurationSec,
-        out int outScore,
-        out int outDurationDelta,
-        out byte outIsMatch);
-
-    [LibraryImport(NativeDll, StringMarshalling = StringMarshalling.Utf16)]
     private static partial int vn_media_metadata_format_spotify_artists(
         ReadOnlySpan<char> rawArtist,
         int rawArtistLen,
@@ -183,29 +171,6 @@ public sealed partial class MediaMetadataLookupService : IMediaMetadataLookupSer
             videoId = input.Substring(start, len);
             return true;
         }
-        return false;
-    }
-
-    internal static bool ScoreYouTubeTrackMatch(
-        string? candidateTitle,
-        string? targetTitle,
-        long candidateDurationSec,
-        long targetDurationSec,
-        out int score,
-        out int durationDelta)
-    {
-        ReadOnlySpan<char> candSpan = candidateTitle is not null ? candidateTitle.AsSpan() : ReadOnlySpan<char>.Empty;
-        ReadOnlySpan<char> targSpan = targetTitle is not null ? targetTitle.AsSpan() : ReadOnlySpan<char>.Empty;
-        if (vn_media_metadata_score_youtube_track_match(
-                candSpan, candSpan.Length,
-                targSpan, targSpan.Length,
-                candidateDurationSec, targetDurationSec,
-                out score, out durationDelta, out byte isMatch) == 0)
-        {
-            return isMatch != 0;
-        }
-        score = 0;
-        durationDelta = int.MaxValue / 2;
         return false;
     }
 
@@ -859,26 +824,16 @@ public sealed partial class MediaMetadataLookupService : IMediaMetadataLookupSer
             }
 
             var combinedScores = new Dictionary<string, (int Score, int FirstIndex)>(StringComparer.OrdinalIgnoreCase);
-            string[] searchUrls =
-            {
-                $"https://m.soundcloud.com/search/sounds?q={Uri.EscapeDataString(query)}",
-                $"https://soundcloud.com/search/sounds?q={Uri.EscapeDataString(query)}"
-            };
+            string escapedQuery = Uri.EscapeDataString(query);
+            var searchHtmls = await Task.WhenAll(
+                GetStringWithTimeoutAsync($"https://m.soundcloud.com/search/sounds?q={escapedQuery}", 1200, ct),
+                GetStringWithTimeoutAsync($"https://soundcloud.com/search/sounds?q={escapedQuery}", 1200, ct));
 
-            var searchTasks = new List<Task<string?>>(searchUrls.Length);
-            foreach (var searchUrl in searchUrls)
-            {
-                searchTasks.Add(GetStringWithTimeoutAsync(searchUrl, 1200, ct));
-            }
-
-            var searchHtmls = await Task.WhenAll(searchTasks);
             int nextIndex = 0;
             foreach (var html in searchHtmls)
             {
                 if (string.IsNullOrWhiteSpace(html))
-                {
                     continue;
-                }
 
                 var found = ExtractSoundCloudTrackUrlsFromSearchHtml(html, title, artist);
                 foreach (var candidate in found)
@@ -886,9 +841,7 @@ public sealed partial class MediaMetadataLookupService : IMediaMetadataLookupSer
                     if (combinedScores.TryGetValue(candidate.Url, out var existing))
                     {
                         if (candidate.Score > existing.Score)
-                        {
                             combinedScores[candidate.Url] = (candidate.Score, existing.FirstIndex);
-                        }
                     }
                     else
                     {
@@ -898,38 +851,31 @@ public sealed partial class MediaMetadataLookupService : IMediaMetadataLookupSer
             }
 
             if (combinedScores.Count == 0)
-            {
                 return null;
-            }
 
             var candidates = new List<(string Url, int Score, int FirstIndex)>(combinedScores.Count);
             foreach (var item in combinedScores)
-            {
                 candidates.Add((item.Key, item.Value.Score, item.Value.FirstIndex));
-            }
+
             candidates.Sort(static (a, b) =>
             {
                 int cmp = b.Score.CompareTo(a.Score);
                 return cmp != 0 ? cmp : a.FirstIndex.CompareTo(b.FirstIndex);
             });
 
-            if (candidates.Count > 3)
-            {
-                candidates = candidates.GetRange(0, 3);
-            }
-
-            var probeTasks = new List<Task<SoundCloudCandidateProbe>>(candidates.Count);
-            for (int i = 0; i < candidates.Count; i++)
+            int probeCount = Math.Min(3, candidates.Count);
+            var probeTasks = new Task<SoundCloudCandidateProbe>[probeCount];
+            for (int i = 0; i < probeCount; i++)
             {
                 var candidate = candidates[i];
-                probeTasks.Add(ProbeSoundCloudCandidateAsync(
+                probeTasks[i] = ProbeSoundCloudCandidateAsync(
                     candidate.Url,
                     candidate.Score,
                     i,
                     title,
                     artist,
                     requireStrongMatch,
-                    ct));
+                    ct);
             }
 
             var probes = await Task.WhenAll(probeTasks);
@@ -939,9 +885,7 @@ public sealed partial class MediaMetadataLookupService : IMediaMetadataLookupSer
             {
                 var probe = probes[i];
                 if (probe.IsMatch && !string.IsNullOrWhiteSpace(probe.ThumbnailUrl))
-                {
                     return probe.ThumbnailUrl;
-                }
             }
 
             return null;

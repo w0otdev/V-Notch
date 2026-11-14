@@ -300,6 +300,12 @@ public sealed partial class ClipboardTray : UserControl, IDisposable
         SearchBox.Focus();
         UpdateSearchEdgeFade();
     }
+    private void Search_PreviewKeyDown(object sender, KeyEventArgs e)
+    {
+        if (e.Key != Key.Escape || SearchBox.Text.Length == 0) return;
+        SearchBox.Clear();
+        e.Handled = true;
+    }
     private bool _queryDirty = true;
     private void CancelSearch()
     {
@@ -469,53 +475,7 @@ public sealed partial class ClipboardTray : UserControl, IDisposable
 
             if (changes > 32)
             {
-                ClipboardCardViewModel[] selected;
-                if (Cards.SelectedItems.Count == 0)
-                {
-                    selected = [];
-                }
-                else
-                {
-                    var survivingSelected = new List<ClipboardCardViewModel>(Cards.SelectedItems.Count);
-                    foreach (var obj in Cards.SelectedItems)
-                    {
-                        if (obj is ClipboardCardViewModel selCard &&
-                            selCard.SlotIndex >= 0 &&
-                            selCard.SlotIndex < existingCount &&
-                            existingSurvivorMask[selCard.SlotIndex] != 0)
-                        {
-                            survivingSelected.Add(selCard);
-                        }
-                    }
-                    selected = survivingSelected.Count == 0 ? [] : survivingSelected.ToArray();
-                }
-
-                var scroll = FindScrollViewer(Cards);
-                double offset = scroll?.HorizontalOffset ?? 0;
-                for (int i = 0; i < existingCount; i++)
-                {
-                    if (existingSurvivorMask[i] == 0)
-                        ReleaseRemovedCard(_cards[i]);
-                }
-                var replacement = new ClipboardCardViewModel[desiredCount];
-                for (int i = 0; i < desiredCount; i++)
-                {
-                    var entry = entries[i];
-                    int oldIdx = desiredToExistingIndex[i];
-                    if (oldIdx >= 0 && oldIdx < existingCount)
-                    {
-                        var card = _cards[oldIdx];
-                        card.UpdatePreparedEntry(entry, MaskFor(entry));
-                        replacement[i] = card;
-                    }
-                    else
-                    {
-                        replacement[i] = new ClipboardCardViewModel(entry, MaskFor(entry));
-                    }
-                }
-                _cards.ReplaceAll(replacement);
-                Cards.ApplySelection(selected);
-                scroll?.ScrollToHorizontalOffset(offset);
+                ReplaceAllPreparedCards(entries, masking, desiredToExistingIndex, existingSurvivorMask, existingCount);
                 return;
             }
 
@@ -546,6 +506,67 @@ public sealed partial class ClipboardTray : UserControl, IDisposable
             if (rentedIndices != null) ArrayPool<int>.Shared.Return(rentedIndices);
             if (rentedMask != null) ArrayPool<byte>.Shared.Return(rentedMask);
         }
+    }
+
+    private void ReplaceAllPreparedCards(
+        IReadOnlyList<ClipboardEntry> entries,
+        IReadOnlyDictionary<Guid, bool>? masking,
+        ReadOnlySpan<int> desiredToExistingIndex,
+        ReadOnlySpan<byte> existingSurvivorMask,
+        int existingCount)
+    {
+        bool? MaskFor(ClipboardEntry entry) => masking != null && masking.TryGetValue(entry.Id, out bool masked) ? masked : null;
+
+        ClipboardCardViewModel[] selected = CollectSurvivingSelectedCards(existingSurvivorMask, existingCount);
+        var scroll = FindScrollViewer(Cards);
+        double offset = scroll?.HorizontalOffset ?? 0;
+
+        for (int i = 0; i < existingCount; i++)
+        {
+            if (existingSurvivorMask[i] == 0)
+                ReleaseRemovedCard(_cards[i]);
+        }
+
+        int desiredCount = entries.Count;
+        var replacement = new ClipboardCardViewModel[desiredCount];
+        for (int i = 0; i < desiredCount; i++)
+        {
+            var entry = entries[i];
+            int oldIdx = desiredToExistingIndex[i];
+            if (oldIdx >= 0 && oldIdx < existingCount)
+            {
+                var card = _cards[oldIdx];
+                card.UpdatePreparedEntry(entry, MaskFor(entry));
+                replacement[i] = card;
+            }
+            else
+            {
+                replacement[i] = new ClipboardCardViewModel(entry, MaskFor(entry));
+            }
+        }
+
+        _cards.ReplaceAll(replacement);
+        Cards.ApplySelection(selected);
+        scroll?.ScrollToHorizontalOffset(offset);
+    }
+
+    private ClipboardCardViewModel[] CollectSurvivingSelectedCards(ReadOnlySpan<byte> existingSurvivorMask, int existingCount)
+    {
+        int selectedCount = Cards.SelectedItems.Count;
+        if (selectedCount == 0) return [];
+
+        var survivingSelected = new List<ClipboardCardViewModel>(selectedCount);
+        foreach (var obj in Cards.SelectedItems)
+        {
+            if (obj is ClipboardCardViewModel selCard &&
+                selCard.SlotIndex >= 0 &&
+                selCard.SlotIndex < existingCount &&
+                existingSurvivorMask[selCard.SlotIndex] != 0)
+            {
+                survivingSelected.Add(selCard);
+            }
+        }
+        return survivingSelected.Count == 0 ? [] : survivingSelected.ToArray();
     }
 
     private static bool ContainsEntryId(IReadOnlyList<ClipboardEntry> entries, Guid id)
@@ -910,7 +931,7 @@ public sealed partial class ClipboardTray : UserControl, IDisposable
             From = 0.0,
             To = 1.0,
             Duration = TimeSpan.FromMilliseconds(160),
-            EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut }
+            EasingFunction = PinDotInCubicOutEase
         };
         dot.BeginAnimation(UIElement.OpacityProperty, opacityAnim);
 
@@ -925,6 +946,16 @@ public sealed partial class ClipboardTray : UserControl, IDisposable
         };
         st.BeginAnimation(ScaleTransform.ScaleXProperty, scaleAnim);
         st.BeginAnimation(ScaleTransform.ScaleYProperty, scaleAnim);
+    }
+
+    private static readonly CubicEase PinDotInCubicOutEase = CreateFrozenPinCubicEase(EasingMode.EaseOut);
+    private static readonly CubicEase PinDotOutCubicInEase = CreateFrozenPinCubicEase(EasingMode.EaseIn);
+
+    private static CubicEase CreateFrozenPinCubicEase(EasingMode mode)
+    {
+        var ease = new CubicEase { EasingMode = mode };
+        ease.Freeze();
+        return ease;
     }
 
     private static void AnimatePinDotOut(Border dot, bool reduced)
@@ -951,7 +982,7 @@ public sealed partial class ClipboardTray : UserControl, IDisposable
         {
             To = 0.0,
             Duration = TimeSpan.FromMilliseconds(140),
-            EasingFunction = new CubicEase { EasingMode = EasingMode.EaseIn }
+            EasingFunction = PinDotOutCubicInEase
         };
         dot.BeginAnimation(UIElement.OpacityProperty, opacityAnim);
 
@@ -959,7 +990,7 @@ public sealed partial class ClipboardTray : UserControl, IDisposable
         {
             To = 0.15,
             Duration = TimeSpan.FromMilliseconds(140),
-            EasingFunction = new CubicEase { EasingMode = EasingMode.EaseIn }
+            EasingFunction = PinDotOutCubicInEase
         };
         st.BeginAnimation(ScaleTransform.ScaleXProperty, scaleAnim);
         st.BeginAnimation(ScaleTransform.ScaleYProperty, scaleAnim);

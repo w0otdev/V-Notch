@@ -254,7 +254,7 @@ VN_EXPORT int32_t vn_mediaactivator_normalize_title(
     }
 }
 
-VN_EXPORT int32_t vn_mediaactivator_normalize_media_title(
+extern "C" int32_t vn_mediaactivator_normalize_media_title(
     const char16_t* val, int32_t val_len,
     const char16_t* src, int32_t src_len,
     char16_t* out_buf, int32_t out_cap, int32_t* out_len) noexcept

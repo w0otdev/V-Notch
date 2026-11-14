@@ -380,8 +380,8 @@ public partial class MainWindow
 
     private void AnimateUpdateNotificationHover(bool isEnter)
     {
-        if (isEnter)
-            UpdateNotificationButton.CacheMode ??= new System.Windows.Media.BitmapCache(1.5);
+        if (UpdateNotificationButton.CacheMode != null)
+            UpdateNotificationButton.CacheMode = null;
 
         int fps = VNotch.Services.AnimationConfig.TargetFps;
         var scaleAnim = new DoubleAnimation

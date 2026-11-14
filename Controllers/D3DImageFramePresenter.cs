@@ -481,6 +481,9 @@ internal sealed partial class D3DImageFramePresenter : IDisposable
         }
     }
 
+    private static readonly Duration ZeroLockDuration = new(TimeSpan.Zero);
+    private static readonly Duration OneMsLockDuration = new(TimeSpan.FromMilliseconds(1));
+
     internal void PresentPendingFrame()
     {
         if (_disposed || _failed)
@@ -488,104 +491,23 @@ internal sealed partial class D3DImageFramePresenter : IDisposable
 
         try
         {
-            bool presented = false;
             // Never stall the UI while the worker copies a desktop texture.
-            bool acquiredSync = Monitor.TryEnter(_surfaceSync);
-            if (!acquiredSync)
+            if (!Monitor.TryEnter(_surfaceSync))
             {
                 ScheduleRetry();
                 return;
             }
 
+            bool presented = false;
             try
             {
                 _presentQueued = false;
-                if (!_acceptingFrames || !_pendingFrame || !_image.IsFrontBufferAvailable || _device == null)
+                if (!CanPresentPendingFrame(out int frameWidth, out int frameHeight))
                     return;
 
-                int frameWidth = _frameWidth;
-                int frameHeight = _frameHeight;
-                if (frameWidth <= 0 || frameHeight <= 0)
-                    return;
-
-                if (!_useGpuCapture && (_renderSurface == null || _uploadSurface == null))
-                    return;
-
-                // WPF D3DImage.LockImpl increments its lock count even on timeout.
-                // Every non-throwing TryLock needs Unlock; false only forbids writes.
-                // Otherwise one busy compositor frame permanently blocks presentation.
-                // A zero-time probe can miss the compositor releasing its copy
-                // by a fraction of a millisecond and lose an entire display tick.
-                // Bound that handoff to 1 ms; retain nonblocking CPU uploads.
-                bool imageWritable = _image.TryLock(new Duration(_useGpuCapture ? TimeSpan.FromMilliseconds(1) : TimeSpan.Zero));
-                try
-                {
-                    if (!imageWritable)
-                    {
-                        ImageBusyRetries++;
-                        ScheduleRetry();
-                        return;
-                    }
-                    if (_useGpuCapture && !TakeReadyGpuSurface()) return;
-                    // Transfer full visible region on resize/recovery; otherwise transfer
-                    // only rows modified since the last successful present.
-                    bool fullDirty = frameWidth != _lastDirtyWidth || frameHeight != _lastDirtyHeight;
-                    var dirtyRows = NormalizeDirtyRows(_pendingDirtyRows, frameHeight, fullDirty);
-                    int dirtyTop = dirtyRows.Top;
-                    int dirtyBottom = dirtyRows.Bottom;
-                    var frameRect = new Vortice.Direct3D9.Rect(
-                        0, dirtyTop, frameWidth, dirtyBottom);
-                    if (_webcam)
-                    {
-                        (_renderSurface, _uploadSurface) = (_uploadSurface, _renderSurface);
-                        _hasWebcamBackBuffer = true;
-                    }
-                    else if (!_useGpuCapture)
-                    {
-                        _device.UpdateSurface(_uploadSurface!, frameRect, _renderSurface!, new Int2(0, dirtyTop));
-                        Interlocked.Add(ref _transferredBytes, (long)frameWidth * (dirtyBottom - dirtyTop) * 4);
-                    }
-
-                    if (!ReferenceEquals(_attachedSurface, _renderSurface))
-                    {
-                        _image.SetBackBuffer(
-                            D3DResourceType.IDirect3DSurface9,
-                            _renderSurface!.NativePointer,
-                            enableSoftwareFallback: true);
-                        if (_useGpuCapture) _attachedSurface?.Dispose();
-                        _attachedSurface = _renderSurface;
-                    }
-
-                    int dirtyWidth = Math.Max(frameWidth, _lastDirtyWidth);
-                    int dirtyHeight = Math.Max(frameHeight, _lastDirtyHeight);
-                    _image.AddDirtyRect(fullDirty
-                        ? new Int32Rect(0, 0, dirtyWidth, dirtyHeight)
-                        : new Int32Rect(0, dirtyTop, frameWidth, dirtyBottom - dirtyTop));
-                    _lastDirtyWidth = frameWidth;
-                    _lastDirtyHeight = frameHeight;
-
-                    _pendingFrame = false;
-                    _pendingForcePresent = false;
-                    _pendingDirtyRows = default;
-                    _presentedTag = _uploadTag;
-                    SubmittedGpuRenderMs = LastGpuRenderMs;
-                    SubmittedGpuWaitMs = LastGpuWaitMs;
-                    presented = true;
-                }
-                finally
-                {
-                    _image.Unlock();
-                }
+                presented = TryLockAndPresentSurface(frameWidth, frameHeight);
                 if (presented)
-                {
-                    // Unlock publishes the dirty surface to WPF. Include its
-                    // handoff cost in the submission latency shown by diagnostics.
-                    long submitNow = Stopwatch.GetTimestamp();
-                    Volatile.Write(ref _lastSubmitTicks, submitNow);
-                    Interlocked.Add(ref _queueTicks, submitNow - _lastUploadTicks);
-                    Interlocked.Increment(ref _submittedFrames);
-                    Volatile.Write(ref _lastQueueMs, (submitNow - _lastUploadTicks) * 1000.0 / Stopwatch.Frequency);
-                }
+                    RecordSubmittedFrameLatency();
             }
             finally
             {
@@ -599,6 +521,96 @@ internal sealed partial class D3DImageFramePresenter : IDisposable
         {
             ReportFailure(ex);
         }
+    }
+
+    private bool CanPresentPendingFrame(out int frameWidth, out int frameHeight)
+    {
+        frameWidth = _frameWidth;
+        frameHeight = _frameHeight;
+        if (!_acceptingFrames || !_pendingFrame || !_image.IsFrontBufferAvailable || _device == null)
+            return false;
+        if (frameWidth <= 0 || frameHeight <= 0)
+            return false;
+        return _useGpuCapture || (_renderSurface != null && _uploadSurface != null);
+    }
+
+    private bool TryLockAndPresentSurface(int frameWidth, int frameHeight)
+    {
+        // WPF D3DImage.LockImpl increments its lock count even on timeout.
+        // Every non-throwing TryLock needs Unlock; false only forbids writes.
+        // Bound GPU handoff to 1 ms; retain nonblocking CPU uploads.
+        bool imageWritable = _image.TryLock(_useGpuCapture ? OneMsLockDuration : ZeroLockDuration);
+        try
+        {
+            if (!imageWritable)
+            {
+                ImageBusyRetries++;
+                ScheduleRetry();
+                return false;
+            }
+            if (_useGpuCapture && !TakeReadyGpuSurface())
+                return false;
+
+            // Transfer full visible region on resize/recovery; otherwise transfer
+            // only rows modified since the last successful present.
+            bool fullDirty = frameWidth != _lastDirtyWidth || frameHeight != _lastDirtyHeight;
+            var dirtyRows = NormalizeDirtyRows(_pendingDirtyRows, frameHeight, fullDirty);
+            int dirtyTop = dirtyRows.Top;
+            int dirtyBottom = dirtyRows.Bottom;
+
+            if (_webcam)
+            {
+                (_renderSurface, _uploadSurface) = (_uploadSurface, _renderSurface);
+                _hasWebcamBackBuffer = true;
+            }
+            else if (!_useGpuCapture)
+            {
+                var frameRect = new Vortice.Direct3D9.Rect(0, dirtyTop, frameWidth, dirtyBottom);
+                _device!.UpdateSurface(_uploadSurface!, frameRect, _renderSurface!, new Int2(0, dirtyTop));
+                Interlocked.Add(ref _transferredBytes, (long)frameWidth * (dirtyBottom - dirtyTop) * 4);
+            }
+
+            if (!ReferenceEquals(_attachedSurface, _renderSurface))
+            {
+                _image.SetBackBuffer(
+                    D3DResourceType.IDirect3DSurface9,
+                    _renderSurface!.NativePointer,
+                    enableSoftwareFallback: true);
+                if (_useGpuCapture) _attachedSurface?.Dispose();
+                _attachedSurface = _renderSurface;
+            }
+
+            int dirtyWidth = Math.Max(frameWidth, _lastDirtyWidth);
+            int dirtyHeight = Math.Max(frameHeight, _lastDirtyHeight);
+            _image.AddDirtyRect(fullDirty
+                ? new Int32Rect(0, 0, dirtyWidth, dirtyHeight)
+                : new Int32Rect(0, dirtyTop, frameWidth, dirtyBottom - dirtyTop));
+            _lastDirtyWidth = frameWidth;
+            _lastDirtyHeight = frameHeight;
+
+            _pendingFrame = false;
+            _pendingForcePresent = false;
+            _pendingDirtyRows = default;
+            _presentedTag = _uploadTag;
+            SubmittedGpuRenderMs = LastGpuRenderMs;
+            SubmittedGpuWaitMs = LastGpuWaitMs;
+            return true;
+        }
+        finally
+        {
+            _image.Unlock();
+        }
+    }
+
+    private void RecordSubmittedFrameLatency()
+    {
+        // Unlock publishes the dirty surface to WPF. Include its
+        // handoff cost in the submission latency shown by diagnostics.
+        long submitNow = Stopwatch.GetTimestamp();
+        Volatile.Write(ref _lastSubmitTicks, submitNow);
+        Interlocked.Add(ref _queueTicks, submitNow - _lastUploadTicks);
+        Interlocked.Increment(ref _submittedFrames);
+        Volatile.Write(ref _lastQueueMs, (submitNow - _lastUploadTicks) * 1000.0 / Stopwatch.Frequency);
     }
 
     private void ScheduleRetry()

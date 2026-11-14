@@ -16,6 +16,7 @@ using MdTable = Markdig.Extensions.Tables.Table;
 using MdTableCell = Markdig.Extensions.Tables.TableCell;
 using MdTableRow = Markdig.Extensions.Tables.TableRow;
 using WpfBlock = System.Windows.Documents.Block;
+using WpfInline = System.Windows.Documents.Inline;
 using WpfTable = System.Windows.Documents.Table;
 using WpfTableCell = System.Windows.Documents.TableCell;
 using WpfTableRow = System.Windows.Documents.TableRow;
@@ -30,9 +31,9 @@ internal enum MarkdownLinkMode
 
 internal sealed class MarkdownFlowOptions
 {
-    private static readonly FontFamily DefaultBodyFont = new(AppFonts.BaseUri, "./#SF Pro Display, Segoe UI Emoji, Segoe UI, Arial");
-    private static readonly FontFamily DefaultCodeFont = new("Consolas, SF Mono, Menlo, monospace");
-    private static readonly SolidColorBrush DefaultBodyForeground = Freeze(Color.FromRgb(200, 200, 200));
+    private static readonly FontFamily DefaultBodyFont = AppFonts.Get();
+    private static readonly FontFamily DefaultCodeFont = new("Cascadia Mono, Cascadia Code, Consolas, monospace");
+    private static readonly SolidColorBrush DefaultBodyForeground = Freeze(Color.FromRgb(218, 222, 228));
     private static readonly SolidColorBrush DefaultCodeForeground = Freeze(Color.FromRgb(226, 232, 240));
     private static readonly SolidColorBrush DefaultCodeBackground = Freeze(Color.FromArgb(200, 20, 20, 26));
     private static readonly SolidColorBrush DefaultCodeBorder = Freeze(Color.FromArgb(40, 255, 255, 255));
@@ -176,6 +177,7 @@ internal static class MarkdownWpfRenderer
             Foreground = opt.BodyForeground,
             Background = Brushes.Transparent
         };
+        TextRenderingPolicy.ApplyDocumentDefaults(doc);
 
         foreach (var block in document)
         {
@@ -282,115 +284,50 @@ internal static class MarkdownWpfRenderer
 
     private static WpfBlock RenderFlowBlock(Markdig.Syntax.Block block, MarkdownFlowOptions opt)
     {
-        if (block is CodeBlock code)
+        switch (block)
         {
-            return new Paragraph(new Run(code.Lines.ToString()))
-            {
-                FontFamily = opt.CodeFont,
-                FontSize = 12.5,
-                FontWeight = FontWeights.Normal,
-                Foreground = opt.CodeForeground,
-                Background = opt.CodeBackground,
-                BorderBrush = opt.CodeBorder,
-                BorderThickness = new Thickness(1),
-                Padding = new Thickness(12, 10, 12, 10),
-                Margin = new Thickness(0, 6, 0, 10)
-            };
-        }
-
-        if (block is ListBlock list)
-        {
-            var result = new System.Windows.Documents.List
-            {
-                FontFamily = opt.BodyFont,
-                FontWeight = opt.BodyFontWeight,
-                MarkerStyle = list.IsOrdered ? TextMarkerStyle.Decimal : TextMarkerStyle.Disc,
-                Margin = new Thickness(0, 4, 0, 8),
-                Padding = new Thickness(22, 0, 0, 0)
-            };
-            if (list.IsOrdered &&
-                ushort.TryParse(list.OrderedStart, NumberStyles.None, CultureInfo.InvariantCulture, out ushort orderedNumber) &&
-                orderedNumber > 0)
-            {
-                result.StartIndex = orderedNumber;
-            }
-
-            for (int i = 0; i < list.Count; i++)
-            {
-                if (list[i] is not ListItemBlock item) continue;
-                var li = new ListItem { FontFamily = opt.BodyFont, FontWeight = opt.BodyFontWeight };
-                foreach (var child in item)
+            case CodeBlock code:
+                return new Paragraph(new Run(code.Lines.ToString()))
                 {
-                    li.Blocks.Add(RenderFlowBlock(child, opt));
-                }
-                result.ListItems.Add(li);
-            }
-            return result;
-        }
+                    FontFamily = opt.CodeFont,
+                    FontSize = 12.5,
+                    FontWeight = FontWeights.Normal,
+                    Foreground = opt.CodeForeground,
+                    Background = opt.CodeBackground,
+                    BorderBrush = opt.CodeBorder,
+                    BorderThickness = new Thickness(1),
+                    Padding = new Thickness(12, 10, 12, 10),
+                    Margin = new Thickness(0, 6, 0, 10)
+                };
 
-        if (block is MdTable table)
-        {
-            var result = new WpfTable
-            {
-                FontFamily = opt.BodyFont,
-                FontWeight = opt.BodyFontWeight,
-                CellSpacing = 0,
-                Margin = new Thickness(0, 6, 0, 10)
-            };
-            var rows = new TableRowGroup();
-            result.RowGroups.Add(rows);
-            for (int r = 0; r < table.Count; r++)
-            {
-                if (table[r] is not MdTableRow row) continue;
-                var rendered = new WpfTableRow();
-                for (int c = 0; c < row.Count; c++)
+            case ListBlock list:
+                return RenderFlowList(list, opt);
+
+            case MdTable table:
+                return RenderFlowTable(table, opt);
+
+            case ThematicBreakBlock:
+                return new Paragraph
                 {
-                    if (row[c] is not MdTableCell cell) continue;
-                    var target = new WpfTableCell
-                    {
-                        FontFamily = opt.BodyFont,
-                        Padding = new Thickness(6),
-                        BorderBrush = opt.TableCellBorder,
-                        BorderThickness = new Thickness(0.5),
-                        FontWeight = row.IsHeader ? FontWeights.Bold : opt.BodyFontWeight,
-                        TextAlignment = ResolveColumnAlignment(table, c)
-                    };
-                    foreach (var child in cell)
-                    {
-                        target.Blocks.Add(RenderFlowBlock(child, opt));
-                    }
-                    rendered.Cells.Add(target);
+                    BorderBrush = opt.CodeBorder,
+                    BorderThickness = new Thickness(0, 0, 0, 1),
+                    Margin = new Thickness(0, 8, 0, 8)
+                };
+
+            case ContainerBlock container:
+                var section = new Section { FontFamily = opt.BodyFont, FontWeight = opt.BodyFontWeight };
+                if (block is QuoteBlock)
+                {
+                    section.BorderBrush = opt.QuoteBorder;
+                    section.BorderThickness = new Thickness(3, 0, 0, 0);
+                    section.Padding = new Thickness(12, 4, 4, 4);
+                    section.Foreground = opt.QuoteForeground;
                 }
-                rows.Rows.Add(rendered);
-            }
-            return result;
-        }
-
-        if (block is ThematicBreakBlock)
-        {
-            return new Paragraph
-            {
-                BorderBrush = opt.CodeBorder,
-                BorderThickness = new Thickness(0, 0, 0, 1),
-                Margin = new Thickness(0, 8, 0, 8)
-            };
-        }
-
-        if (block is ContainerBlock container)
-        {
-            var section = new Section { FontFamily = opt.BodyFont, FontWeight = opt.BodyFontWeight };
-            if (block is QuoteBlock)
-            {
-                section.BorderBrush = opt.QuoteBorder;
-                section.BorderThickness = new Thickness(3, 0, 0, 0);
-                section.Padding = new Thickness(12, 4, 4, 4);
-                section.Foreground = opt.QuoteForeground;
-            }
-            foreach (var child in container)
-            {
-                section.Blocks.Add(RenderFlowBlock(child, opt));
-            }
-            return section;
+                foreach (var child in container)
+                {
+                    section.Blocks.Add(RenderFlowBlock(child, opt));
+                }
+                return section;
         }
 
         var paragraph = new Paragraph
@@ -423,6 +360,83 @@ internal static class MarkdownWpfRenderer
         return paragraph;
     }
 
+    private static System.Windows.Documents.List RenderFlowList(ListBlock list, MarkdownFlowOptions opt)
+    {
+        var result = new System.Windows.Documents.List
+        {
+            FontFamily = opt.BodyFont,
+            FontWeight = opt.BodyFontWeight,
+            MarkerStyle = list.IsOrdered ? TextMarkerStyle.Decimal : TextMarkerStyle.Disc,
+            Margin = new Thickness(0, 4, 0, 8),
+            Padding = new Thickness(22, 0, 0, 0)
+        };
+        if (list.IsOrdered &&
+            ushort.TryParse(list.OrderedStart, NumberStyles.None, CultureInfo.InvariantCulture, out ushort orderedNumber) &&
+            orderedNumber > 0)
+        {
+            result.StartIndex = orderedNumber;
+        }
+
+        for (int i = 0; i < list.Count; i++)
+        {
+            if (list[i] is not ListItemBlock item) continue;
+            var li = new ListItem { FontFamily = opt.BodyFont, FontWeight = opt.BodyFontWeight };
+            foreach (var child in item)
+            {
+                li.Blocks.Add(RenderFlowBlock(child, opt));
+            }
+            result.ListItems.Add(li);
+        }
+        return result;
+    }
+
+    private static WpfTable RenderFlowTable(MdTable table, MarkdownFlowOptions opt)
+    {
+        var result = new WpfTable
+        {
+            FontFamily = opt.BodyFont,
+            FontWeight = opt.BodyFontWeight,
+            CellSpacing = 0,
+            Margin = new Thickness(0, 6, 0, 10)
+        };
+        var rows = new TableRowGroup();
+        result.RowGroups.Add(rows);
+        for (int r = 0; r < table.Count; r++)
+        {
+            if (table[r] is not MdTableRow row) continue;
+            var rendered = new WpfTableRow();
+            for (int c = 0; c < row.Count; c++)
+            {
+                if (row[c] is not MdTableCell cell) continue;
+                var target = new WpfTableCell
+                {
+                    FontFamily = opt.BodyFont,
+                    Padding = new Thickness(6),
+                    BorderBrush = opt.TableCellBorder,
+                    BorderThickness = new Thickness(0.5),
+                    FontWeight = row.IsHeader ? FontWeights.Bold : opt.BodyFontWeight,
+                    TextAlignment = ResolveColumnAlignment(table, c)
+                };
+                foreach (var child in cell)
+                {
+                    target.Blocks.Add(RenderFlowBlock(child, opt));
+                }
+                rendered.Cells.Add(target);
+            }
+            rows.Rows.Add(rendered);
+        }
+        return result;
+    }
+
+    private static string TrimLeadingTaskSpace(LiteralInline literal)
+    {
+        var slice = literal.Content;
+        if (slice.Length <= 0 || slice.Text == null) return string.Empty;
+        if (slice.Text[slice.Start] == ' ')
+            return slice.Length == 1 ? string.Empty : slice.Text.Substring(slice.Start + 1, slice.Length - 1);
+        return slice.ToString();
+    }
+
     private static void AddFlowInlines(InlineCollection target, ContainerInline container, MarkdownFlowOptions opt)
     {
         bool trimNextSpace = false;
@@ -431,11 +445,7 @@ internal static class MarkdownWpfRenderer
             if (trimNextSpace && inline is LiteralInline trimmedLiteral)
             {
                 trimNextSpace = false;
-                string s = trimmedLiteral.Content.ToString();
-                if (s.Length > 0 && s[0] == ' ')
-                {
-                    s = s[1..];
-                }
+                string s = TrimLeadingTaskSpace(trimmedLiteral);
                 if (s.Length > 0)
                 {
                     target.Add(new Run(s));
@@ -487,52 +497,18 @@ internal static class MarkdownWpfRenderer
                     break;
 
                 case LineBreakInline lineBreak:
-                    if (!lineBreak.IsHard && opt.SoftBreakAsSpace)
-                    {
-                        target.Add(new Run(" "));
-                    }
-                    else
-                    {
-                        target.Add(new LineBreak());
-                    }
+                    target.Add(!lineBreak.IsHard && opt.SoftBreakAsSpace ? new Run(" ") : new LineBreak());
                     break;
 
                 case EmphasisInline emphasis:
-                    var span = new Span();
+                    var span = CreateEmphasisSpan(emphasis, out var leaf);
                     ApplyEmphasisStyle(span, emphasis, boldForeground: null, italicForeground: null);
-                    AddFlowInlines(span.Inlines, emphasis, opt);
+                    AddFlowInlines(leaf.Inlines, emphasis, opt);
                     target.Add(span);
                     break;
 
                 case LinkInline link:
-                    if (link.IsImage || opt.LinkMode == MarkdownLinkMode.LabelWithUrlSuffix)
-                    {
-                        var label = new Span { Foreground = opt.BodyForeground };
-                        AddFlowInlines(label.Inlines, link, opt);
-                        if (!link.IsImage &&
-                            !string.IsNullOrEmpty(link.Url) &&
-                            !TranslationStructuredText.IsSocialIcon(link))
-                        {
-                            label.Inlines.Add(new Run(" (" + link.Url + ")"));
-                        }
-                        target.Add(label);
-                    }
-                    else if (TryResolveSafeUri(link.Url, opt.HttpsOnlyLinks, out var safeUri))
-                    {
-                        var hyperlink = CreateSafeHyperlink(inlineChild: null, safeUri, opt.LinkForeground, underline: true);
-                        AddFlowInlines(hyperlink.Inlines, link, opt);
-                        if (hyperlink.Inlines.Count == 0)
-                        {
-                            hyperlink.Inlines.Add(new Run(safeUri.AbsoluteUri));
-                        }
-                        target.Add(hyperlink);
-                    }
-                    else
-                    {
-                        var plain = new Span { Foreground = opt.BodyForeground };
-                        AddFlowInlines(plain.Inlines, link, opt);
-                        target.Add(plain);
-                    }
+                    target.Add(RenderFlowLinkInline(link, opt));
                     break;
 
                 case ContainerInline nested:
@@ -542,34 +518,44 @@ internal static class MarkdownWpfRenderer
         }
     }
 
+    private static WpfInline RenderFlowLinkInline(LinkInline link, MarkdownFlowOptions opt)
+    {
+        if (link.IsImage || opt.LinkMode == MarkdownLinkMode.LabelWithUrlSuffix)
+        {
+            var label = new Span { Foreground = opt.BodyForeground };
+            AddFlowInlines(label.Inlines, link, opt);
+            if (!link.IsImage &&
+                !string.IsNullOrEmpty(link.Url) &&
+                !TranslationStructuredText.IsSocialIcon(link))
+            {
+                label.Inlines.Add(new Run(" (" + link.Url + ")"));
+            }
+            return label;
+        }
+
+        if (TryResolveSafeUri(link.Url, opt.HttpsOnlyLinks, out var safeUri))
+        {
+            var hyperlink = CreateSafeHyperlink(inlineChild: null, safeUri, opt.LinkForeground, underline: true);
+            AddFlowInlines(hyperlink.Inlines, link, opt);
+            if (hyperlink.Inlines.Count == 0)
+            {
+                hyperlink.Inlines.Add(new Run(safeUri.AbsoluteUri));
+            }
+            return hyperlink;
+        }
+
+        var plain = new Span { Foreground = opt.BodyForeground };
+        AddFlowInlines(plain.Inlines, link, opt);
+        return plain;
+    }
+
     private static void AppendBlockToPanel(Panel targetPanel, Markdig.Syntax.Block block, MarkdownPanelOptions opt, int listDepth)
     {
         switch (block)
         {
             case HeadingBlock heading:
-                {
-                    var (size, weight, margin) = opt.ResolveHeadingStyle != null
-                        ? opt.ResolveHeadingStyle(heading.Level)
-                        : DefaultHeadingStyle(heading.Level);
-                    var tb = new TextBlock
-                    {
-                        FontSize = size,
-                        FontWeight = weight,
-                        Foreground = opt.HeadingForeground,
-                        TextWrapping = TextWrapping.Wrap,
-                        Margin = IndentMargin(margin, listDepth)
-                    };
-                    if (opt.BodyFont != null)
-                    {
-                        tb.FontFamily = opt.BodyFont;
-                    }
-                    if (heading.Inline != null)
-                    {
-                        AddPanelInlines(tb.Inlines, heading.Inline, opt, skipLeadingTaskList: false);
-                    }
-                    targetPanel.Children.Add(tb);
-                    return;
-                }
+                AppendHeadingToPanel(targetPanel, heading, opt, listDepth);
+                return;
 
             case ThematicBreakBlock:
                 targetPanel.Children.Add(new Border
@@ -581,89 +567,35 @@ internal static class MarkdownWpfRenderer
                 return;
 
             case CodeBlock code:
-                {
-                    var codeText = new TextBlock
-                    {
-                        Text = code.Lines.ToString().TrimEnd('\r', '\n'),
-                        FontFamily = opt.CodeBlockFont,
-                        FontSize = 12.5,
-                        FontWeight = FontWeights.Normal,
-                        Foreground = opt.CodeBlockForeground,
-                        TextWrapping = TextWrapping.Wrap
-                    };
-                    targetPanel.Children.Add(new Border
-                    {
-                        Background = opt.CodeBlockBackground,
-                        BorderBrush = opt.CodeBlockBorderBrush,
-                        BorderThickness = new Thickness(1),
-                        CornerRadius = new CornerRadius(6),
-                        Padding = new Thickness(12, 10, 12, 10),
-                        Margin = IndentMargin(new Thickness(0, 4, 0, 10), listDepth),
-                        Child = codeText
-                    });
-                    return;
-                }
+                AppendCodeBlockToPanel(targetPanel, code, opt, listDepth);
+                return;
 
             case ListBlock list:
                 AppendListToPanel(targetPanel, list, opt, listDepth);
                 return;
 
             case QuoteBlock quote:
-                {
-                    UIElement childElement;
-                    if (quote.Count == 1 && quote[0] is ParagraphBlock singlePara)
-                    {
-                        var tb = CreatePanelTextBlock(opt, opt.QuoteForeground, new Thickness(0));
-                        if (singlePara.Inline != null)
-                        {
-                            AddPanelInlines(tb.Inlines, singlePara.Inline, opt, skipLeadingTaskList: false);
-                        }
-                        childElement = tb;
-                    }
-                    else
-                    {
-                        var quoteStack = new StackPanel();
-                        foreach (var child in quote)
-                        {
-                            AppendBlockToPanel(quoteStack, child, opt, 0);
-                        }
-                        childElement = quoteStack;
-                    }
-
-                    targetPanel.Children.Add(new Border
-                    {
-                        BorderBrush = opt.QuoteBorderBrush,
-                        BorderThickness = new Thickness(3, 0, 0, 0),
-                        Padding = opt.QuotePadding,
-                        Margin = IndentMargin(opt.QuoteMargin, listDepth),
-                        Child = childElement
-                    });
-                    return;
-                }
+                AppendQuoteToPanel(targetPanel, quote, opt, listDepth);
+                return;
 
             case MdTable table:
+                if (CreatePanelTable(table, opt, listDepth) is { } tableElement)
                 {
-                    var tableElement = CreatePanelTable(table, opt, listDepth);
-                    if (tableElement != null)
-                    {
-                        targetPanel.Children.Add(tableElement);
-                    }
-                    return;
+                    targetPanel.Children.Add(tableElement);
                 }
+                return;
 
             case ParagraphBlock paragraph:
+                var tb = CreatePanelTextBlock(opt, opt.BodyForeground, IndentMargin(opt.ParagraphMargin, listDepth));
+                if (paragraph.Inline != null)
                 {
-                    var tb = CreatePanelTextBlock(opt, opt.BodyForeground, IndentMargin(opt.ParagraphMargin, listDepth));
-                    if (paragraph.Inline != null)
-                    {
-                        AddPanelInlines(tb.Inlines, paragraph.Inline, opt, skipLeadingTaskList: false);
-                    }
-                    if (tb.Inlines.Count > 0)
-                    {
-                        targetPanel.Children.Add(tb);
-                    }
-                    return;
+                    AddPanelInlines(tb.Inlines, paragraph.Inline, opt, skipLeadingTaskList: false);
                 }
+                if (tb.Inlines.Count > 0)
+                {
+                    targetPanel.Children.Add(tb);
+                }
+                return;
 
             case ContainerBlock container:
                 foreach (var child in container)
@@ -673,25 +605,107 @@ internal static class MarkdownWpfRenderer
                 return;
 
             case LeafBlock leaf:
-                {
-                    string raw = leaf.Lines.ToString().TrimEnd('\r', '\n');
-                    if (string.IsNullOrWhiteSpace(raw) && leaf.Inline == null)
-                    {
-                        return;
-                    }
-                    var tb = CreatePanelTextBlock(opt, opt.BodyForeground, IndentMargin(opt.ParagraphMargin, listDepth));
-                    if (leaf.Inline != null)
-                    {
-                        AddPanelInlines(tb.Inlines, leaf.Inline, opt, skipLeadingTaskList: false);
-                    }
-                    else
-                    {
-                        tb.Inlines.Add(CreatePanelRun(raw, opt));
-                    }
-                    targetPanel.Children.Add(tb);
-                    return;
-                }
+                AppendLeafBlockToPanel(targetPanel, leaf, opt, listDepth);
+                return;
         }
+    }
+
+    private static void AppendHeadingToPanel(Panel targetPanel, HeadingBlock heading, MarkdownPanelOptions opt, int listDepth)
+    {
+        var (size, weight, margin) = opt.ResolveHeadingStyle != null
+            ? opt.ResolveHeadingStyle(heading.Level)
+            : DefaultHeadingStyle(heading.Level);
+        var tb = new TextBlock
+        {
+            FontSize = size,
+            FontWeight = weight,
+            Foreground = opt.HeadingForeground,
+            TextWrapping = TextWrapping.Wrap,
+            Margin = IndentMargin(margin, listDepth)
+        };
+        if (opt.BodyFont != null)
+        {
+            tb.FontFamily = opt.BodyFont;
+        }
+        if (heading.Inline != null)
+        {
+            AddPanelInlines(tb.Inlines, heading.Inline, opt, skipLeadingTaskList: false);
+        }
+        targetPanel.Children.Add(tb);
+    }
+
+    private static void AppendCodeBlockToPanel(Panel targetPanel, CodeBlock code, MarkdownPanelOptions opt, int listDepth)
+    {
+        var codeText = new TextBlock
+        {
+            Text = code.Lines.ToString().TrimEnd('\r', '\n'),
+            FontFamily = opt.CodeBlockFont,
+            FontSize = 12.5,
+            FontWeight = FontWeights.Normal,
+            Foreground = opt.CodeBlockForeground,
+            TextWrapping = TextWrapping.Wrap
+        };
+        targetPanel.Children.Add(new Border
+        {
+            Background = opt.CodeBlockBackground,
+            BorderBrush = opt.CodeBlockBorderBrush,
+            BorderThickness = new Thickness(1),
+            CornerRadius = new CornerRadius(6),
+            Padding = new Thickness(12, 10, 12, 10),
+            Margin = IndentMargin(new Thickness(0, 4, 0, 10), listDepth),
+            Child = codeText
+        });
+    }
+
+    private static void AppendQuoteToPanel(Panel targetPanel, QuoteBlock quote, MarkdownPanelOptions opt, int listDepth)
+    {
+        UIElement childElement;
+        if (quote.Count == 1 && quote[0] is ParagraphBlock singlePara)
+        {
+            var tb = CreatePanelTextBlock(opt, opt.QuoteForeground, new Thickness(0));
+            if (singlePara.Inline != null)
+            {
+                AddPanelInlines(tb.Inlines, singlePara.Inline, opt, skipLeadingTaskList: false);
+            }
+            childElement = tb;
+        }
+        else
+        {
+            var quoteStack = new StackPanel();
+            foreach (var child in quote)
+            {
+                AppendBlockToPanel(quoteStack, child, opt, 0);
+            }
+            childElement = quoteStack;
+        }
+
+        targetPanel.Children.Add(new Border
+        {
+            BorderBrush = opt.QuoteBorderBrush,
+            BorderThickness = new Thickness(3, 0, 0, 0),
+            Padding = opt.QuotePadding,
+            Margin = IndentMargin(opt.QuoteMargin, listDepth),
+            Child = childElement
+        });
+    }
+
+    private static void AppendLeafBlockToPanel(Panel targetPanel, LeafBlock leaf, MarkdownPanelOptions opt, int listDepth)
+    {
+        string raw = leaf.Lines.ToString().TrimEnd('\r', '\n');
+        if (string.IsNullOrWhiteSpace(raw) && leaf.Inline == null)
+        {
+            return;
+        }
+        var tb = CreatePanelTextBlock(opt, opt.BodyForeground, IndentMargin(opt.ParagraphMargin, listDepth));
+        if (leaf.Inline != null)
+        {
+            AddPanelInlines(tb.Inlines, leaf.Inline, opt, skipLeadingTaskList: false);
+        }
+        else
+        {
+            tb.Inlines.Add(CreatePanelRun(raw, opt));
+        }
+        targetPanel.Children.Add(tb);
     }
 
     private static void AppendListToPanel(Panel targetPanel, ListBlock list, MarkdownPanelOptions opt, int depth)
@@ -911,11 +925,7 @@ internal static class MarkdownWpfRenderer
             if (trimNextSpace && inline is LiteralInline trimmedLiteral)
             {
                 trimNextSpace = false;
-                string s = trimmedLiteral.Content.ToString();
-                if (s.Length > 0 && s[0] == ' ')
-                {
-                    s = s[1..];
-                }
+                string s = TrimLeadingTaskSpace(trimmedLiteral);
                 if (s.Length > 0)
                 {
                     target.Add(CreatePanelRun(s, opt));
@@ -981,9 +991,9 @@ internal static class MarkdownWpfRenderer
                     break;
 
                 case EmphasisInline emphasis:
-                    var span = new Span();
+                    var span = CreateEmphasisSpan(emphasis, out var leaf);
                     ApplyEmphasisStyle(span, emphasis, opt.BoldForeground, opt.ItalicForeground);
-                    AddPanelInlines(span.Inlines, emphasis, opt, skipLeadingTaskList: false);
+                    AddPanelInlines(leaf.Inlines, emphasis, opt, skipLeadingTaskList: false);
                     target.Add(span);
                     break;
 
@@ -1011,6 +1021,31 @@ internal static class MarkdownWpfRenderer
                     break;
             }
         }
+    }
+
+    // Bold/Italic subclasses keep the document semantic for copy and tests.
+    private static Span CreateEmphasisSpan(EmphasisInline emphasis, out Span leaf)
+    {
+        if (emphasis.DelimiterChar is not ('*' or '_'))
+        {
+            leaf = new Span();
+            return leaf;
+        }
+
+        if (emphasis.DelimiterCount == 1)
+        {
+            leaf = new Italic();
+            return leaf;
+        }
+
+        var bold = new Bold();
+        leaf = bold;
+        if (emphasis.DelimiterCount >= 3)
+        {
+            leaf = new Italic();
+            bold.Inlines.Add(leaf);
+        }
+        return bold;
     }
 
     private static void ApplyEmphasisStyle(

@@ -199,6 +199,34 @@ public sealed partial class AudioMixerView : UserControl, IDisposable
     private static readonly Brush AudioComboBorder = Frozen("#26FFFFFF");
     private static readonly Brush AudioComboHover = Frozen("#1FFFFFFF");
     private static readonly Brush AudioHeaderText = Frozen("#8A8A8A");
+    private static readonly Brush DeviceMenuBgBrush = Frozen("#F21C1C1C");
+
+    private static readonly Geometry DeviceComboCaretGeometry = MakeFrozenGeometry("M0,0 L4,4 L8,0 M0,6 L4,2 L8,6");
+    private static readonly CubicEase CubicOutEase = CreateFrozenCubicEase(EasingMode.EaseOut);
+    private static readonly CubicEase SectionToggleEase = CreateFrozenCubicEase(EasingMode.EaseInOut);
+    private static readonly System.Windows.Media.Effects.DropShadowEffect DeviceMenuShadow = CreateFrozenDeviceMenuShadow();
+
+    private static CubicEase CreateFrozenCubicEase(EasingMode mode)
+    {
+        var ease = new CubicEase { EasingMode = mode };
+        ease.Freeze();
+        return ease;
+    }
+
+    private static System.Windows.Media.Effects.DropShadowEffect CreateFrozenDeviceMenuShadow()
+    {
+        var effect = new System.Windows.Media.Effects.DropShadowEffect
+        {
+            BlurRadius = 18,
+            ShadowDepth = 4,
+            Opacity = 0.5,
+            Color = Colors.Black,
+            Direction = 270,
+            RenderingBias = System.Windows.Media.Effects.RenderingBias.Performance
+        };
+        effect.Freeze();
+        return effect;
+    }
 
     private static readonly Geometry OutputIconGeometry = MakeFrozenGeometry(
         "M411.16,97.46C368.43,55.86,311.88,32,256,32S143.57,55.86,100.84,97.46C56.45,140.67,32,197,32,256c0,26.67,8.75,61.09,32.88,125.55S137,473,157.27,477.41c5.81,1.27,12.62,2.59,18.73,2.59a60.06,60.06,0,0,0,30-8l14-8c15.07-8.82,19.47-28.13,10.8-43.35L143.88,268.08a31.73,31.73,0,0,0-43.57-11.76l-13.69,8a56.49,56.49,0,0,0-14,11.59,4,4,0,0,1-7-2A114.68,114.68,0,0,1,64,256c0-50.31,21-98.48,59.16-135.61C160,84.55,208.39,64,256,64s96,20.55,132.84,56.39C427,157.52,448,205.69,448,256a114.68,114.68,0,0,1-1.68,17.91,4,4,0,0,1-7,2,56.49,56.49,0,0,0-14-11.59l-13.69-8a31.73,31.73,0,0,0-43.57,11.76L281.2,420.65c-8.67,15.22-4.27,34.53,10.8,43.35l14,8a60.06,60.06,0,0,0,30,8c6.11,0,12.92-1.32,18.73-2.59C375,473,423,446,447.12,381.55S480,282.67,480,256C480,197,455.55,140.67,411.16,97.46Z");
@@ -307,8 +335,8 @@ public sealed partial class AudioMixerView : UserControl, IDisposable
         }
 
         int fps = AnimationConfig.TargetFps;
-        var exitEase = new CubicEase { EasingMode = EasingMode.EaseIn };
-        var enterEase = new ExponentialEase { Exponent = 5, EasingMode = EasingMode.EaseOut };
+        var exitEase = AnimationPrimitives._easeCubicIn;
+        var enterEase = AnimationPrimitives._easeExpOut5;
         var loadingDuration = new Duration(TimeSpan.FromMilliseconds(180));
         var contentDuration = new Duration(TimeSpan.FromMilliseconds(360));
         var contentDelay = TimeSpan.FromMilliseconds(55);
@@ -571,6 +599,8 @@ public sealed partial class AudioMixerView : UserControl, IDisposable
     private void CacheSessionVolume(uint pid, float v)
         => _viewModel.CacheSessionVolume(pid, v);
 
+    private readonly HashSet<uint> _polledPids = new();
+
     private void PollAudioVolumes()
     {
         if (_disposed || !_isAudioView || _isAnimating) return;
@@ -585,54 +615,91 @@ public sealed partial class AudioMixerView : UserControl, IDisposable
 
             try
             {
-                Dispatcher.BeginInvoke(new Action(() =>
-                {
-                    try
-                    {
-                        if (_disposed || !_isAudioView || _isAnimating) return;
-
-                        var pids = new HashSet<uint>(sessions.Where(x => !x.IsSystemSounds).Select(x => x.ProcessId));
-                        bool sameSet = _appRows.Count == pids.Count && pids.All(_appRows.ContainsKey);
-
-                        if (sameSet)
-                        {
-                            _outputSetVol?.Invoke(master);
-                            _inputSetVol?.Invoke(capture);
-                            foreach (var s in sessions)
-                            {
-                                if (s.IsSystemSounds) continue;
-                                if (_appRows.TryGetValue(s.ProcessId, out var h))
-                                    h.SetVol(s.IsMuted ? 0 : s.Volume);
-                            }
-
-                            if (_lastAudioSnapshot != null)
-                            {
-                                _lastAudioSnapshot.Master = master;
-                                _lastAudioSnapshot.Capture = capture;
-                                foreach (var s in sessions)
-                                {
-                                    if (s.IsSystemSounds) continue;
-                                    var c = _lastAudioSnapshot.Sessions.Find(x => x.ProcessId == s.ProcessId);
-                                    if (c != null) { c.Volume = s.Volume; c.IsMuted = s.IsMuted; }
-                                }
-                            }
-                        }
-                        else
-                        {
-                            Refresh();
-                        }
-                    }
-                    finally
-                    {
-                        System.Threading.Volatile.Write(ref _audioPollInFlight, 0);
-                    }
-                }), System.Windows.Threading.DispatcherPriority.Background);
+                Dispatcher.BeginInvoke(
+                    new Action(() => ApplyPolledAudioVolumes(sessions, master, capture)),
+                    System.Windows.Threading.DispatcherPriority.Background);
             }
             catch
             {
                 System.Threading.Volatile.Write(ref _audioPollInFlight, 0);
             }
         }, System.Threading.CancellationToken.None);
+    }
+
+    private void ApplyPolledAudioVolumes(List<AudioSessionInfo> sessions, float master, float capture)
+    {
+        try
+        {
+            if (_disposed || !_isAudioView || _isAnimating) return;
+
+            if (!HasSameActiveSessionPids(sessions))
+            {
+                Refresh();
+                return;
+            }
+
+            _outputSetVol?.Invoke(master);
+            _inputSetVol?.Invoke(capture);
+            foreach (var s in sessions)
+            {
+                if (s.IsSystemSounds) continue;
+                if (_appRows.TryGetValue(s.ProcessId, out var h))
+                    h.SetVol(s.IsMuted ? 0 : s.Volume);
+            }
+
+            var lastSnapshot = _lastAudioSnapshot;
+            if (lastSnapshot == null) return;
+
+            lastSnapshot.Master = master;
+            lastSnapshot.Capture = capture;
+            var cachedSessions = lastSnapshot.Sessions;
+            foreach (var s in sessions)
+            {
+                if (s.IsSystemSounds) continue;
+                var c = FindSessionByProcessId(cachedSessions, s.ProcessId);
+                if (c != null)
+                {
+                    c.Volume = s.Volume;
+                    c.IsMuted = s.IsMuted;
+                }
+            }
+        }
+        finally
+        {
+            System.Threading.Volatile.Write(ref _audioPollInFlight, 0);
+        }
+    }
+
+    private bool HasSameActiveSessionPids(List<AudioSessionInfo> sessions)
+    {
+        _polledPids.Clear();
+        for (int i = 0; i < sessions.Count; i++)
+        {
+            var s = sessions[i];
+            if (!s.IsSystemSounds)
+                _polledPids.Add(s.ProcessId);
+        }
+
+        if (_appRows.Count != _polledPids.Count)
+            return false;
+
+        foreach (uint pid in _polledPids)
+        {
+            if (!_appRows.ContainsKey(pid))
+                return false;
+        }
+        return true;
+    }
+
+    private static AudioSessionInfo? FindSessionByProcessId(List<AudioSessionInfo> sessions, uint processId)
+    {
+        for (int i = 0; i < sessions.Count; i++)
+        {
+            var candidate = sessions[i];
+            if (candidate.ProcessId == processId)
+                return candidate;
+        }
+        return null;
     }
 
     private void PatchInPlace(AudioMixerSnapshot snap)
@@ -813,7 +880,7 @@ public sealed partial class AudioMixerView : UserControl, IDisposable
     private void AnimateSectionToggle(StackPanel rows, RotateTransform chevron, List<FrameworkElement> columnLabels, bool expand)
     {
         int fps = AnimationConfig.TargetFps;
-        var ease = new System.Windows.Media.Animation.CubicEase { EasingMode = System.Windows.Media.Animation.EasingMode.EaseInOut };
+        var ease = SectionToggleEase;
         var dur = new Duration(TimeSpan.FromMilliseconds(260));
         int generation = _audioSectionAnimationGenerations.TryGetValue(rows, out int previousGeneration)
             ? previousGeneration + 1
@@ -830,97 +897,92 @@ public sealed partial class AudioMixerView : UserControl, IDisposable
 
         if (columnLabels != null)
         {
-            foreach (var lbl in columnLabels)
-            {
-                bool wasVisible = lbl.Visibility == Visibility.Visible;
-                double labelOpacity = wasVisible ? Math.Clamp(lbl.Opacity, 0.0, 1.0) : 0.0;
-                lbl.BeginAnimation(OpacityProperty, null);
-                lbl.Opacity = labelOpacity;
-                if (expand) lbl.Visibility = Visibility.Visible;
-                var lblFade = new DoubleAnimation(labelOpacity, expand ? 1 : 0, dur) { EasingFunction = ease };
-                Timeline.SetDesiredFrameRate(lblFade, fps);
-                var captured = lbl;
-                lblFade.Completed += (_, _) =>
-                {
-                    if (!_audioSectionAnimationGenerations.TryGetValue(rows, out int currentGeneration) ||
-                        currentGeneration != generation)
-                    {
-                        return;
-                    }
-
-                    captured.BeginAnimation(OpacityProperty, null);
-                    captured.Opacity = expand ? 1 : 0;
-                    if (!expand) captured.Visibility = Visibility.Collapsed;
-                };
-                lbl.BeginAnimation(OpacityProperty, lblFade, HandoffBehavior.SnapshotAndReplace);
-            }
+            AnimateSectionColumnLabels(rows, columnLabels, expand, dur, ease, fps, generation);
         }
 
         bool rowsWereVisible = rows.Visibility == Visibility.Visible;
-        double currentHeight = rowsWereVisible
-            ? Math.Max(0.0, rows.ActualHeight)
-            : 0.0;
-        double rowsOpacity = rowsWereVisible
-            ? Math.Clamp(rows.Opacity, 0.0, 1.0)
-            : 0.0;
+        double currentHeight = rowsWereVisible ? Math.Max(0.0, rows.ActualHeight) : 0.0;
+        double rowsOpacity = rowsWereVisible ? Math.Clamp(rows.Opacity, 0.0, 1.0) : 0.0;
 
         rows.BeginAnimation(HeightProperty, null);
         rows.BeginAnimation(OpacityProperty, null);
         rows.Height = currentHeight;
         rows.Opacity = rowsOpacity;
 
+        double targetHeight = 0;
         double newFit;
 
         if (expand)
         {
             rows.Visibility = Visibility.Visible;
-
             double availableWidth = rows.ActualWidth > 0
                 ? rows.ActualWidth
                 : (AudioScrollViewer?.ActualWidth ?? (_audioViewWidth - 38));
             rows.Height = double.NaN;
             rows.Measure(new Size(availableWidth, double.PositiveInfinity));
-            double target = rows.DesiredSize.Height;
+            targetHeight = rows.DesiredSize.Height;
 
             newFit = MeasureAudioFitHeight();
             if (AudioScrollViewer != null)
                 AudioScrollViewer.Height = Math.Max(0, newFit - _audioViewChrome);
-
-            rows.Height = currentHeight;
-            rows.Opacity = rowsOpacity;
-
-            var hAnim = new DoubleAnimation(currentHeight, target, dur) { EasingFunction = ease };
-            var oAnim = new DoubleAnimation(rowsOpacity, 1, dur) { EasingFunction = ease };
-            Timeline.SetDesiredFrameRate(hAnim, fps);
-            Timeline.SetDesiredFrameRate(oAnim, fps);
-            hAnim.Completed += (_, _) =>
-            {
-                if (!_audioSectionAnimationGenerations.TryGetValue(rows, out int currentGeneration) ||
-                    currentGeneration != generation)
-                {
-                    return;
-                }
-
-                rows.BeginAnimation(HeightProperty, null);
-                rows.Height = double.NaN;
-                rows.BeginAnimation(OpacityProperty, null);
-                rows.Opacity = 1;
-            };
-            rows.BeginAnimation(HeightProperty, hAnim, HandoffBehavior.SnapshotAndReplace);
-            rows.BeginAnimation(OpacityProperty, oAnim, HandoffBehavior.SnapshotAndReplace);
         }
         else
         {
             rows.Height = 0;
             newFit = MeasureAudioFitHeight();
-            rows.Height = currentHeight;
-            rows.Opacity = rowsOpacity;
+        }
 
-            var hAnim = new DoubleAnimation(currentHeight, 0, dur) { EasingFunction = ease };
-            var oAnim = new DoubleAnimation(rowsOpacity, 0, dur) { EasingFunction = ease };
-            Timeline.SetDesiredFrameRate(hAnim, fps);
-            Timeline.SetDesiredFrameRate(oAnim, fps);
-            hAnim.Completed += (_, _) =>
+        rows.Height = currentHeight;
+        rows.Opacity = rowsOpacity;
+
+        var hAnim = new DoubleAnimation(currentHeight, targetHeight, dur) { EasingFunction = ease };
+        var oAnim = new DoubleAnimation(rowsOpacity, expand ? 1 : 0, dur) { EasingFunction = ease };
+        Timeline.SetDesiredFrameRate(hAnim, fps);
+        Timeline.SetDesiredFrameRate(oAnim, fps);
+        hAnim.Completed += (_, _) =>
+        {
+            if (!_audioSectionAnimationGenerations.TryGetValue(rows, out int currentGeneration) ||
+                currentGeneration != generation)
+            {
+                return;
+            }
+
+            if (!expand)
+                rows.Visibility = Visibility.Collapsed;
+            rows.BeginAnimation(HeightProperty, null);
+            rows.Height = double.NaN;
+            rows.BeginAnimation(OpacityProperty, null);
+            rows.Opacity = 1;
+            if (!expand && AudioScrollViewer != null)
+                AudioScrollViewer.Height = Math.Max(0, newFit - _audioViewChrome);
+        };
+        rows.BeginAnimation(HeightProperty, hAnim, HandoffBehavior.SnapshotAndReplace);
+        rows.BeginAnimation(OpacityProperty, oAnim, HandoffBehavior.SnapshotAndReplace);
+
+        _audioViewHeight = newFit;
+        FitHeightRequested?.Invoke(newFit, dur, ease);
+    }
+
+    private void AnimateSectionColumnLabels(
+        StackPanel rows,
+        List<FrameworkElement> columnLabels,
+        bool expand,
+        Duration dur,
+        IEasingFunction ease,
+        int fps,
+        int generation)
+    {
+        foreach (var lbl in columnLabels)
+        {
+            bool wasVisible = lbl.Visibility == Visibility.Visible;
+            double labelOpacity = wasVisible ? Math.Clamp(lbl.Opacity, 0.0, 1.0) : 0.0;
+            lbl.BeginAnimation(OpacityProperty, null);
+            lbl.Opacity = labelOpacity;
+            if (expand) lbl.Visibility = Visibility.Visible;
+            var lblFade = new DoubleAnimation(labelOpacity, expand ? 1 : 0, dur) { EasingFunction = ease };
+            Timeline.SetDesiredFrameRate(lblFade, fps);
+            var captured = lbl;
+            lblFade.Completed += (_, _) =>
             {
                 if (!_audioSectionAnimationGenerations.TryGetValue(rows, out int currentGeneration) ||
                     currentGeneration != generation)
@@ -928,20 +990,12 @@ public sealed partial class AudioMixerView : UserControl, IDisposable
                     return;
                 }
 
-                rows.Visibility = Visibility.Collapsed;
-                rows.BeginAnimation(HeightProperty, null);
-                rows.Height = double.NaN;
-                rows.BeginAnimation(OpacityProperty, null);
-                rows.Opacity = 1;
-                if (AudioScrollViewer != null)
-                    AudioScrollViewer.Height = Math.Max(0, newFit - _audioViewChrome);
+                captured.BeginAnimation(OpacityProperty, null);
+                captured.Opacity = expand ? 1 : 0;
+                if (!expand) captured.Visibility = Visibility.Collapsed;
             };
-            rows.BeginAnimation(HeightProperty, hAnim, HandoffBehavior.SnapshotAndReplace);
-            rows.BeginAnimation(OpacityProperty, oAnim, HandoffBehavior.SnapshotAndReplace);
+            lbl.BeginAnimation(OpacityProperty, lblFade, HandoffBehavior.SnapshotAndReplace);
         }
-
-        _audioViewHeight = newFit;
-        FitHeightRequested?.Invoke(newFit, dur, ease);
     }
 
     private static T? SafeCall<T>(Func<T> fn)
@@ -1314,8 +1368,8 @@ public sealed partial class AudioMixerView : UserControl, IDisposable
             int hoverFps = AnimationConfig.TargetFps;
             var dur = TimeSpan.FromMilliseconds(on ? 350 : 250);
             IEasingFunction ease = on
-                ? new ExponentialEase { Exponent = 6, EasingMode = EasingMode.EaseOut }
-                : new CubicEase { EasingMode = EasingMode.EaseOut };
+                ? AnimationPrimitives._easeExpOut6
+                : CubicOutEase;
 
             double barScaleY = on ? 1.75 : 1.0;
             var barScaleAnim = new DoubleAnimation { To = barScaleY, Duration = dur, EasingFunction = ease };
@@ -1407,7 +1461,7 @@ public sealed partial class AudioMixerView : UserControl, IDisposable
         {
             var caret = new System.Windows.Shapes.Path
             {
-                Data = Geometry.Parse("M0,0 L4,4 L8,0 M0,6 L4,2 L8,6"),
+                Data = DeviceComboCaretGeometry,
                 Stroke = AudioMuted,
                 StrokeThickness = 1.3,
                 Width = 8,
@@ -1451,7 +1505,7 @@ public sealed partial class AudioMixerView : UserControl, IDisposable
         var list = new StackPanel();
         var container = new Border
         {
-            Background = Frozen("#F21C1C1C"),
+            Background = DeviceMenuBgBrush,
             BorderBrush = AudioComboBorder,
             BorderThickness = new Thickness(1),
             CornerRadius = new CornerRadius(9),
@@ -1460,15 +1514,7 @@ public sealed partial class AudioMixerView : UserControl, IDisposable
             HorizontalAlignment = HorizontalAlignment.Left,
             VerticalAlignment = VerticalAlignment.Top,
             Child = list,
-            Effect = new System.Windows.Media.Effects.DropShadowEffect
-            {
-                BlurRadius = 18,
-                ShadowDepth = 4,
-                Opacity = 0.5,
-                Color = Colors.Black,
-                Direction = 270,
-                RenderingBias = System.Windows.Media.Effects.RenderingBias.Performance
-            }
+            Effect = DeviceMenuShadow
         };
         container.MouseLeftButtonDown += (_, e) => e.Handled = true;
 
@@ -1550,7 +1596,7 @@ public sealed partial class AudioMixerView : UserControl, IDisposable
         var slide = new TranslateTransform(0, -8);
         container.RenderTransform = slide;
         int fps = AnimationConfig.TargetFps;
-        var ease = new CubicEase { EasingMode = EasingMode.EaseOut };
+        var ease = CubicOutEase;
         var dur = new Duration(TimeSpan.FromMilliseconds(160));
         var fade = new DoubleAnimation(0, 1, dur) { EasingFunction = ease };
         var drop = new DoubleAnimation(-8, 0, dur) { EasingFunction = ease };

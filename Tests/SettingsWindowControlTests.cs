@@ -6,6 +6,7 @@ using System.Windows.Controls.Primitives;
 using System.Windows.Media;
 using VNotch.Models;
 using VNotch.Services;
+using VNotch.Services.AiUsage;
 using VNotch.Services.Translation;
 using Xunit;
 
@@ -14,6 +15,350 @@ namespace VNotch.Tests;
 [Collection("Localization")]
 public sealed class SettingsWindowControlTests
 {
+    [Fact]
+    public void NestedSettingsTreesSurviveSearchAndKeepIndependentFeatureSwitches() => SharedStaTestRunner.RunAsync(async () =>
+    {
+        using var fixture = new Fixture();
+        var window = fixture.Window;
+        window.Show();
+        await window.Dispatcher.InvokeAsync(() => { }, System.Windows.Threading.DispatcherPriority.ApplicationIdle);
+        string[] names =
+        [
+            "DynamicIslandWidthSlider", "InteractionSoundVolumeSlider", "HoverDelaySlider", "IdleAutoHideDelaySlider",
+            "AutoDismissNotifyCheck", "NotificationDurationSlider", "SubjectBlurRow",
+            "ManualCityTextBox", "SpotlightDefaultModeCombo", "TranslationModelCombo",
+            "TranslationCurrencyCombo", "LyricsProviderPanel", "SpotifyCanvasBrightnessSlider",
+            "IgnoreYouTubeAutoSubtitlesCheck", "SubtitlePriorityRow", "YouTubeApiKeyRow", "AnimationFpsSlider"
+        ];
+        var controls = names.Select(name => Assert.IsAssignableFrom<FrameworkElement>(window.FindName(name))).ToArray();
+        var parents = controls.Select(control => control.Parent).ToArray();
+        foreach (var control in controls) Assert.True(TreeDepth(control) > 0, control.Name);
+        Assert.Equal(2, TreeDepth(window.NotificationDurationSlider));
+        Assert.Equal(2, TreeDepth(window.SpotifyCanvasBrightnessSlider));
+
+        window.EnableYouTubeSubtitlesCheck.IsChecked = true;
+        window.EnableSpotifyLyricsCheck.IsChecked = false;
+        Assert.True(window.EnableYouTubeSubtitlesCheck.IsEnabled);
+        Assert.True(window.IgnoreYouTubeAutoSubtitlesCheck.IsEnabled);
+        foreach (string query in new[] { "notification", "Spotify", "subtitles", "volume", "currency" })
+        {
+            Invoke(window, "ExecuteSearch", query);
+            Invoke(window, "ExitSearchMode");
+            for (int i = 0; i < controls.Length; i++) Assert.Same(parents[i], controls[i].Parent);
+        }
+
+        string? directory = Environment.GetEnvironmentVariable("VNOTCH_SETTINGS_TREE_FRAMES");
+        if (!string.IsNullOrWhiteSpace(directory))
+        {
+            System.IO.Directory.CreateDirectory(directory);
+            foreach (string section in new[] { "Appearance", "Behavior", "Advanced", "Spotlight", "Translation", "Skins" })
+            {
+                window.NavigateToSection(section);
+                await window.Dispatcher.InvokeAsync(() => { }, System.Windows.Threading.DispatcherPriority.ApplicationIdle);
+                window.ResetProgressiveBlurElements(isMenuList: false);
+                var card = Assert.IsType<Border>(window.FindName(section == "Skins" ? "SkinCard" : section + "Card"));
+                card.BeginAnimation(UIElement.OpacityProperty, null);
+                card.Opacity = 1;
+                card.RenderTransform = Transform.Identity;
+                card.Measure(new Size(600, double.PositiveInfinity));
+                card.Arrange(new Rect(0, 0, 600, card.DesiredSize.Height));
+                card.UpdateLayout();
+                await window.Dispatcher.InvokeAsync(() => { }, System.Windows.Threading.DispatcherPriority.ApplicationIdle);
+                var bitmap = new System.Windows.Media.Imaging.RenderTargetBitmap(1200,
+                    Math.Max(1, (int)Math.Ceiling(card.ActualHeight * 2)), 192, 192, PixelFormats.Pbgra32);
+                bitmap.Render(card);
+                var encoder = new System.Windows.Media.Imaging.PngBitmapEncoder();
+                encoder.Frames.Add(System.Windows.Media.Imaging.BitmapFrame.Create(bitmap));
+                using var file = System.IO.File.Create(System.IO.Path.Combine(directory, section + ".png"));
+                encoder.Save(file);
+            }
+        }
+
+        static int TreeDepth(FrameworkElement control)
+        {
+            int depth = 0;
+            for (DependencyObject? node = control; node != null; node = VisualTreeHelper.GetParent(node))
+                if (node is VNotch.Controls.SettingsTreePanel) depth++;
+            return depth;
+        }
+    });
+
+    [Fact]
+    public void AiSubscriptionsCustomizationControlsSaveAllOfTheirSelectedValues() => SharedStaTestRunner.RunAsync(async () =>
+    {
+        var appearance = AiUsageAppearance.Current;
+        try
+        {
+            using var fixture = new Fixture();
+            var window = fixture.Window;
+            foreach (string name in new[] { "AiUsageShowCodexCheck", "AiUsageWeeklyCheck", "AiUsageResetsCheck", "AiUsagePlanCheck", "AiUsageLogosCheck", "AiUsageAccountCheck" })
+                Assert.IsType<CheckBox>(window.FindName(name)).IsChecked = false;
+            foreach (string name in new[] { "AiUsageClaudeFirstChoice", "AiUsageCompactChoice", "AiUsageUsedChoice", "AiUsageCustomColorsChoice" })
+                Assert.IsType<RadioButton>(window.FindName(name)).IsChecked = true;
+            Assert.IsType<VNotch.Controls.ElasticSlider>(window.FindName("AiUsageBarHeightSlider")).Value = 9;
+            Assert.IsType<VNotch.Controls.ElasticSlider>(window.FindName("AiUsageMotionSlider")).Value = 0;
+            foreach (var (name, color) in new[] { ("AiUsageCodexColorInput", "#ABCDEF"), ("AiUsageClaudeColorInput", "#326BFF") })
+            {
+                var input = Assert.IsType<TextBox>(window.FindName(name));
+                input.Text = color;
+                Invoke(window, "AiUsageColor_Blur", input,
+                    new KeyboardFocusChangedEventArgs(Keyboard.PrimaryDevice, 0, input, window));
+            }
+            Invoke(window, "AiUsageCustomize_Changed", window, new RoutedEventArgs());
+            await window.ApplyWithoutClosingAsync();
+            var saved = fixture.Service.Applied!;
+            Assert.Equal(AiUsageAppearance.From(window.ReadSettingsFromUi()), AiUsageAppearance.From(saved));
+            Assert.False(saved.AiUsageShowCodex);
+            Assert.True(saved.AiUsageShowClaude);
+            Assert.True(saved.AiUsageClaudeFirst);
+            Assert.True(saved.AiUsageCompact);
+            Assert.True(saved.AiUsageShowUsedPercent);
+            Assert.False(saved.AiUsageStatusColors);
+            Assert.Equal("#ABCDEF", saved.AiUsageCodexColor);
+            Assert.Equal("#326BFF", saved.AiUsageClaudeColor);
+            Assert.Equal(9, saved.AiUsageBarHeight);
+            Assert.Equal(0, saved.AiUsageMotionIntensity);
+            Invoke(window, "LoadAiUsageCustomization", saved);
+            Assert.Equal("#ABCDEF", window.AiUsageCodexColorInput.Text);
+            Assert.Equal("#326BFF", window.AiUsageClaudeColorInput.Text);
+        }
+        finally { AiUsageAppearance.Apply(appearance); }
+    });
+
+    [Fact]
+    public void AiSubscriptionsCancelRestoresAnImmediatePreviewBeforeTheDebounceRuns() => SharedStaTestRunner.Run(() =>
+    {
+        var appearance = AiUsageAppearance.Current;
+        try
+        {
+            using var fixture = new Fixture();
+            var window = fixture.Window;
+            var baseline = window.ReadSettingsFromUi();
+            Assert.IsType<CheckBox>(window.FindName("AiUsageShowCodexCheck")).IsChecked = false;
+            Assert.False(AiUsageAppearance.Current.ShowCodex);
+            var hasChanges = typeof(SettingsWindow).GetMethod("HasUncommittedLivePreview", BindingFlags.Instance | BindingFlags.NonPublic)!;
+            Assert.True((bool)hasChanges.Invoke(window, null)!);
+            Invoke(window, "RevertLivePreviewIfNeeded");
+            Assert.Equal(AiUsageAppearance.From(baseline), AiUsageAppearance.Current);
+            Assert.False((bool)hasChanges.Invoke(window, null)!);
+        }
+        finally { AiUsageAppearance.Apply(appearance); }
+    });
+
+    [Fact]
+    public void AiSubscriptionsInlineChoicesUseTheBundledBoldFaceWithoutDropDowns() => SharedStaTestRunner.RunAsync(async ct =>
+    {
+        using var fixture = new Fixture();
+        var window = fixture.Window;
+        window.Show();
+        window.NavigateToAiUsage();
+        await window.Dispatcher.InvokeAsync(() => { }, System.Windows.Threading.DispatcherPriority.ApplicationIdle);
+        var card = Assert.IsType<Border>(window.FindName("AiUsageCard"));
+        AssertAiSubscriptionFont(card);
+        Assert.DoesNotContain(AiSettingsVisuals(card), node => node is ComboBox or Expander);
+        var choices = AiSettingsVisuals(card).OfType<RadioButton>().ToArray();
+        Assert.Equal(8, choices.Length);
+        window.AiUsageRemainingChoice.IsChecked = true;
+        window.AiUsageRemainingChoice.ApplyTemplate();
+        window.AiUsageRemainingChoice.Focus();
+        var choiceSurface = Assert.IsType<Border>(window.AiUsageRemainingChoice.Template.FindName("ChoiceSurface", window.AiUsageRemainingChoice));
+        Assert.Equal(new Thickness(0), choiceSurface.BorderThickness);
+        Assert.Null(choiceSurface.BorderBrush);
+        Assert.Equal(Colors.Transparent, Assert.IsType<SolidColorBrush>(choiceSurface.Background).Color);
+        var face = new Typeface(AppFonts.Get(), FontStyles.Normal, FontWeights.Bold, FontStretches.Normal);
+        Assert.True(face.TryGetGlyphTypeface(out var glyph));
+        Assert.Equal(FontWeights.Bold, glyph.Weight);
+        Assert.Contains("Bold", glyph.FontUri.ToString(), StringComparison.OrdinalIgnoreCase);
+        ct.ThrowIfCancellationRequested();
+    });
+
+    [Fact]
+    public void AiUsageTypographyApplyDoesNotMutateSealedStyleOnLiveSubtree() => SharedStaTestRunner.Run(() =>
+    {
+        var outer = new Border();
+        outer.Resources[typeof(TextBlock)] = new Style(typeof(TextBlock));
+        var label = new TextBlock { Text = "Claude" };
+        var card = new Border { Child = label };
+        outer.Child = card;
+        outer.Measure(new Size(200, 60));
+
+        VNotch.Controls.AiUsageTypography.Apply(card, new Thickness(0, 1, 0, 2));
+
+        Assert.Equal(FontWeights.Bold, label.FontWeight);
+        Assert.False(label.UseLayoutRounding);
+        Assert.False(label.SnapsToDevicePixels);
+        Assert.Equal(new Thickness(0, 1, 0, 2), label.Padding);
+    });
+
+    private static IEnumerable<DependencyObject> AiSettingsVisuals(DependencyObject root)
+    {
+        for (int i = 0; i < VisualTreeHelper.GetChildrenCount(root); i++)
+        {
+            var child = VisualTreeHelper.GetChild(root, i);
+            yield return child;
+            foreach (var nested in AiSettingsVisuals(child)) yield return nested;
+        }
+    }
+
+    private static void AssertAiSubscriptionFont(DependencyObject root)
+    {
+        if (root is TextBlock { Text.Length: > 0 } text)
+        {
+            Assert.True(text.FontWeight == FontWeights.Bold, $"{text.Name} '{text.Text}' uses {text.FontWeight} ({text.FontFamily.Source})");
+            Assert.Contains("SF Pro Display", text.FontFamily.Source, StringComparison.OrdinalIgnoreCase);
+        }
+        for (int i = 0; i < VisualTreeHelper.GetChildrenCount(root); i++) AssertAiSubscriptionFont(VisualTreeHelper.GetChild(root, i));
+    }
+
+    [Fact]
+    public void AiSubscriptionsTreeChoicesStayExclusiveAndSurviveLocalizationAndSearch() => SharedStaTestRunner.Run(() =>
+    {
+        var appearance = AiUsageAppearance.Current;
+        try
+        {
+            using var fixture = new Fixture();
+            var window = fixture.Window;
+            window.NavigateToAiUsage();
+            Assert.IsType<VNotch.Controls.SettingsTreePanel>(window.FindName("AiUsageCustomizationTree"));
+            Assert.Equal(Visibility.Visible, window.AiUsageAppearancePanel.Visibility);
+            Assert.Equal(Visibility.Visible, window.AiUsageConnectionsPanel.Visibility);
+            window.AiUsageClaudeFirstChoice.IsChecked = true;
+            window.AiUsageCompactChoice.IsChecked = true;
+            window.AiUsageUsedChoice.IsChecked = true;
+            Assert.False(window.AiUsageCodexFirstChoice.IsChecked);
+            Assert.False(window.AiUsageComfortableChoice.IsChecked);
+            Assert.False(window.AiUsageRemainingChoice.IsChecked);
+            Assert.False(window.AiUsageCustomColorsPanel.IsEnabled);
+            Assert.Equal(Visibility.Visible, window.AiUsageCustomColorsPanel.Visibility);
+            window.AiUsageCustomColorsChoice.IsChecked = true;
+            Assert.False(window.AiUsageStatusColorsChoice.IsChecked);
+            Assert.True(window.AiUsageCustomColorsPanel.IsEnabled);
+            window.AiUsageWeeklyCheck.IsChecked = false;
+            window.AiUsageMotionSlider.Value = 35;
+            Loc.SetLanguage("vi");
+            Invoke(window, "ApplyLocalization");
+            Assert.Equal(Loc.Get("aiUsage.compact"), window.AiUsageCompactChoice.Content);
+            Invoke(window, "ExecuteSearch", "Codex");
+            Invoke(window, "ExitSearchMode");
+            var snapshot = window.ReadSettingsFromUi();
+            Assert.False(snapshot.AiUsageShowWeekly);
+            Assert.True(snapshot.AiUsageClaudeFirst);
+            Assert.True(snapshot.AiUsageCompact);
+            Assert.True(snapshot.AiUsageShowUsedPercent);
+            Assert.False(snapshot.AiUsageStatusColors);
+            Assert.Equal(35, snapshot.AiUsageMotionIntensity);
+            Assert.False(snapshot.EnableAiUsageMonitoring);
+        }
+        finally { AiUsageAppearance.Apply(appearance); }
+    });
+
+    [Fact]
+    public void AiSubscriptionsAppearanceResetKeepsAccountSetupAndRendersTheSettingsTree() => SharedStaTestRunner.RunAsync(async ct =>
+    {
+        var appearance = AiUsageAppearance.Current;
+        try
+        {
+            using var fixture = new Fixture();
+            var window = fixture.Window;
+            window.EnableAiUsageCheck.IsChecked = true;
+            Field<NotchSettings>(window, "_settings").CodexUsageExecutable = @"C:\Trusted\codex.exe";
+            window.AiUsageWeeklyCheck.IsChecked = false;
+            window.AiUsageMotionSlider.Value = 25;
+            Invoke(window, "AiUsageResetAppearance_Click", window, new RoutedEventArgs());
+            var reset = window.ReadSettingsFromUi();
+            Assert.True(reset.EnableAiUsageMonitoring);
+            Assert.Equal(@"C:\Trusted\codex.exe", reset.CodexUsageExecutable);
+            Assert.True(reset.AiUsageShowWeekly);
+            Assert.Equal(75, reset.AiUsageMotionIntensity);
+            window.Show();
+            window.NavigateToAiUsage();
+            window.AiUsageCustomColorsChoice.IsChecked = true;
+            await window.Dispatcher.InvokeAsync(() => { }, System.Windows.Threading.DispatcherPriority.ApplicationIdle);
+            window.ResetProgressiveBlurElements(isMenuList: false);
+            var card = window.AiUsageCard;
+            card.BeginAnimation(UIElement.OpacityProperty, null);
+            card.Opacity = 1;
+            card.RenderTransform = Transform.Identity;
+            card.Measure(new Size(620, double.PositiveInfinity));
+            card.Arrange(new Rect(0, 0, 620, card.DesiredSize.Height));
+            card.UpdateLayout();
+            await window.Dispatcher.InvokeAsync(() => { }, System.Windows.Threading.DispatcherPriority.ApplicationIdle);
+            var bitmap = new System.Windows.Media.Imaging.RenderTargetBitmap(1240,
+                Math.Max(1, (int)Math.Ceiling(card.ActualHeight * 2)), 192, 192, PixelFormats.Pbgra32);
+            bitmap.Render(card);
+            var encoder = new System.Windows.Media.Imaging.PngBitmapEncoder();
+            encoder.Frames.Add(System.Windows.Media.Imaging.BitmapFrame.Create(bitmap));
+            string directory = Environment.GetEnvironmentVariable("VNOTCH_AI_DESIGN_FRAMES")
+                ?? System.IO.Path.Combine(AppContext.BaseDirectory, "artifacts", "ai-subscriptions");
+            System.IO.Directory.CreateDirectory(directory);
+            using var file = System.IO.File.Create(System.IO.Path.Combine(directory, "settings-tree.png"));
+            encoder.Save(file);
+            ct.ThrowIfCancellationRequested();
+        }
+        finally { AiUsageAppearance.Apply(appearance); }
+    });
+
+    [Fact]
+    public void AiUsageSetupGroupsAccountsAndKeepsAdvancedToolsVisibleInTheTree() => SharedStaTestRunner.Run(() =>
+    {
+        using var fixture = new Fixture();
+        var window = fixture.Window;
+        window.NavigateToAiUsage();
+        Assert.IsType<CheckBox>(window.FindName("EnableAiUsageCheck")).IsChecked = true;
+        window.PresentAiUsageConnections(new("Codex", AiUsageState.Ready, DateTimeOffset.UtcNow,
+            Plan: "plus", AccountLabel: "user@example.test"), new("Claude", AiUsageState.Waiting), new(true, true, true, true), true);
+        Assert.Equal(Visibility.Visible, window.AiUsageConnectionsPanel.Visibility);
+        string codex = Assert.IsType<TextBlock>(window.FindName("AiUsageCodexStatus")).Text;
+        Assert.Contains("user@example.test", codex);
+        Assert.Contains("plus", codex);
+        Assert.Equal(Loc.Get("aiUsage.claudeCustomEndpoint"), Assert.IsType<TextBlock>(window.FindName("AiUsageClaudeStatus")).Text);
+        var connect = Assert.IsType<Button>(window.FindName("AiUsageClaudeConnectButton"));
+        Assert.False(connect.IsEnabled);
+        Assert.Equal(Loc.Get("aiUsage.statusConnected"), connect.Content);
+        Assert.True(Assert.IsType<Button>(window.FindName("AiUsageClaudeRemoveButton")).IsEnabled);
+    });
+
+    [Fact]
+    public void AiUsageSetupOffersConnectionAndDisablesRefreshUntilMonitoringIsEnabled() => SharedStaTestRunner.Run(() =>
+    {
+        using var fixture = new Fixture();
+        var window = fixture.Window;
+        Assert.IsType<CheckBox>(window.FindName("EnableAiUsageCheck")).IsChecked = false;
+        window.PresentAiUsageConnections(new("Codex", AiUsageState.Disabled), new("Claude", AiUsageState.Disabled), default, true);
+        Assert.True(Assert.IsType<Button>(window.FindName("AiUsageClaudeConnectButton")).IsEnabled);
+        Assert.False(Assert.IsType<Button>(window.FindName("AiUsageClaudeRemoveButton")).IsEnabled);
+        Assert.False(Assert.IsType<Button>(window.FindName("AiUsageRefreshButton")).IsEnabled);
+        Assert.Equal(Loc.Get("aiUsage.state.Disabled"), Assert.IsType<TextBlock>(window.FindName("AiUsageClaudeStatus")).Text);
+    });
+
+    [Fact]
+    public void AiAccountLimitsAreSelectableAndKeepTheirSettingsAcrossLocalization() => SharedStaTestRunner.Run(() =>
+    {
+        using var fixture = new Fixture();
+        var window = fixture.Window;
+        var combo = Assert.IsType<ComboBox>(window.FindName("WidgetCombo"));
+        Assert.Contains(combo.Items.Cast<ComboBoxItem>(), item => item.Tag as string == "aiusage");
+        window.NavigateToAiUsage();
+        Assert.Equal(Visibility.Visible, Assert.IsType<StackPanel>(window.FindName("PanelAiUsage")).Visibility);
+        Assert.Equal(Visibility.Collapsed, Assert.IsType<StackPanel>(window.FindName("PanelAppearance")).Visibility);
+        Assert.IsType<CheckBox>(window.FindName("EnableAiUsageCheck")).IsChecked = true;
+        Assert.IsType<CheckBox>(window.FindName("TrackCodexUsageCheck")).IsChecked = false;
+        Assert.IsType<CheckBox>(window.FindName("TrackClaudeUsageCheck")).IsChecked = true;
+        var settings = window.ReadSettingsFromUi();
+        Assert.NotEqual("aiusage", settings.ExpandedWidget);
+        Assert.True(settings.EnableAiUsageMonitoring);
+        Assert.False(settings.TrackCodexUsage);
+        Assert.True(settings.TrackClaudeUsage);
+        Loc.SetLanguage("vi");
+        Invoke(window, "ApplyLocalization");
+        Assert.Equal(Loc.Get("nav.aiUsage"), Assert.IsType<TextBlock>(window.FindName("NavAiUsageText")).Text);
+        Assert.Equal(Loc.Get("aiUsage.customize"), window.AiUsageCustomizeTitle.Text);
+        Assert.True(window.ReadSettingsFromUi().EnableAiUsageMonitoring);
+        Field<NotchSettings>(window, "_settings").CodexUsageExecutable = @"C:\Previous\codex.exe";
+        Invoke(window, "AiUsageCodexAuto_Click", window, new RoutedEventArgs());
+        Assert.Empty(window.ReadSettingsFromUi().CodexUsageExecutable);
+    });
+
     [Fact]
     public void BatterySourceIsEditableAndSurvivesLocalizationAndApply() => SharedStaTestRunner.RunAsync(async _ =>
     {
@@ -780,10 +1125,9 @@ public sealed class SettingsWindowControlTests
                 IsEnabled = index != 7
             }).ToArray();
             fixture.Window.ApplyProgressiveBlurCascade(items, 0, menu ? -1 : 1, menu, 60);
-            Assert.All(items.Take(6), item => Assert.IsType<System.Windows.Media.Effects.BlurEffect>(item.Effect));
-            Assert.All(items.Skip(6), item => Assert.Null(item.Effect));
+            Assert.All(items, item => Assert.Null(item.Effect));
             await WpfFrameWaiter.UntilAsync(() => items.All(item => !item.HasAnimatedProperties &&
-                !item.RenderTransform.HasAnimatedProperties && item.Effect == null), "cascade releases blur and motion clocks", ct);
+                !item.RenderTransform.HasAnimatedProperties && item.Effect == null), "cascade releases motion clocks without blur", ct);
             Assert.All(items.Take(7), item => Assert.Equal(1, item.Opacity));
             Assert.Equal(.4, items[7].Opacity);
             fixture.Window.ResetProgressiveBlurElements(menu);
@@ -811,7 +1155,9 @@ public sealed class SettingsWindowControlTests
         Assert.Equal(1, window.SocialFacebook.Opacity);
         Assert.Equal(1, window.SocialDiscord.Opacity);
         Assert.Equal(new CornerRadius(24), window.MainShell.CornerRadius);
-        await WpfFrameWaiter.UntilAsync(() => window.MainShell.Effect is System.Windows.Media.Effects.DropShadowEffect { Opacity: 0.42 }, "settings entrance shadow", ct);
+        Assert.Null(window.MainShell.Effect);
+        await WpfFrameWaiter.UntilAsync(() => window.MainShellShadow.Effect is System.Windows.Media.Effects.DropShadowEffect { Opacity: 0.42 }, "settings entrance shadow", ct);
+        Assert.Null(window.MainShell.Effect);
     });
 
     [Fact]

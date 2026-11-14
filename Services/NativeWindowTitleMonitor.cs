@@ -19,9 +19,6 @@ internal sealed partial class NativeWindowTitleMonitor : IDisposable
     [LibraryImport("VNotch.Native.dll")]
     private static partial int vn_media_title_watch_create(nint signal, out long handle);
 
-    [LibraryImport("VNotch.Native.dll")]
-    private static partial int vn_media_title_watch_set_target_pid(long handle, uint processId);
-
     [LibraryImport("VNotch.Native.dll", StringMarshalling = StringMarshalling.Utf16)]
     private static partial int vn_media_title_watch_set_source(
         long handle,
@@ -37,18 +34,6 @@ internal sealed partial class NativeWindowTitleMonitor : IDisposable
         if (vn_media_title_watch_create(_signal.SafeWaitHandle.DangerousGetHandle(), out _handle) == 0)
             _wait = ThreadPool.RegisterWaitForSingleObject(_signal, static (state, _) => ((Action)state!).Invoke(),
                 changed, Timeout.Infinite, false);
-    }
-
-    internal bool SetTargetPid(uint processId)
-    {
-        lock (_sync)
-        {
-            if (_handle == 0) return false;
-            _lastSourceApp = null;
-            bool ok = vn_media_title_watch_set_target_pid(_handle, processId) == 0 && processId != 0;
-            Volatile.Write(ref _hookActive, ok);
-            return ok;
-        }
     }
 
     internal bool UpdateSource(string? sourceApp, out bool changed)

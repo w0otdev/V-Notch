@@ -75,12 +75,6 @@ struct VnDibSurface {
     int32_t height;
 };
 
-struct VnLargeWindow {
-    int64_t hwnd;
-    uint32_t process_id;
-    uint8_t class_matches;
-};
-
 struct VnKeyboardHookEvent {
     uint32_t vk_code;
     uint32_t scan_code;
@@ -141,37 +135,6 @@ HWND GetCachedDesktopHost() noexcept {
     }
     ReleaseSRWLockExclusive(&g_desktop_lock);
     return result;
-}
-
-struct LargeWindowScan {
-    int32_t min_size;
-    std::u16string_view class_needle;
-    VnLargeWindow* buffer;
-    int32_t capacity;
-    int32_t written;
-};
-
-bool ClassNameContains(HWND hwnd, std::u16string_view needle) noexcept {
-    if (needle.empty()) return false;
-    wchar_t name[256];
-    const int length = GetClassNameW(hwnd, name, static_cast<int>(std::size(name)));
-    if (length <= 0) return false;
-    return contains_ignore_case(
-        std::u16string_view(reinterpret_cast<const char16_t*>(name), static_cast<size_t>(length)),
-        needle);
-}
-
-BOOL CALLBACK CollectLargeWindowProc(HWND hwnd, LPARAM param) noexcept {
-    auto& scan = *reinterpret_cast<LargeWindowScan*>(param);
-    if (scan.written >= scan.capacity) return FALSE;
-    RECT rect{};
-    if (!IsWindowVisible(hwnd) || !GetWindowRect(hwnd, &rect)) return TRUE;
-    if (rect.right - rect.left < scan.min_size || rect.bottom - rect.top < scan.min_size) return TRUE;
-    DWORD process_id = 0;
-    GetWindowThreadProcessId(hwnd, &process_id);
-    scan.buffer[scan.written++] = VnLargeWindow{
-        FromHandle(hwnd), process_id, static_cast<uint8_t>(ClassNameContains(hwnd, scan.class_needle) ? 1 : 0)};
-    return TRUE;
 }
 
 inline HWND NotTopmost() noexcept {
@@ -422,29 +385,6 @@ VN_EXPORT int32_t __stdcall vn_win32_get_monitor_dpi_for_window(
     return SUCCEEDED(GetDpiForMonitor(monitor, MDT_EFFECTIVE_DPI, out_dpi_x, out_dpi_y)) ? VN_OK : VN_ERR_FAIL;
 }
 
-// True when the window class name contains needle (ordinal ignore-case).
-VN_EXPORT int32_t __stdcall vn_win32_window_class_contains(
-    int64_t hwnd, const char16_t* needle, int32_t needle_length, uint8_t* out_matches) noexcept {
-    if (!out_matches || !needle || needle_length <= 0) return VN_ERR_INVALID_ARG;
-    *out_matches = svc::win32::ClassNameContains(
-        w32::ToHwnd(hwnd), std::u16string_view(needle, static_cast<size_t>(needle_length))) ? 1 : 0;
-    return VN_OK;
-}
-
-// Visible top-level windows at least min_size in both dimensions (screen-capture tool detection).
-VN_EXPORT int32_t __stdcall vn_win32_enum_large_visible_windows(
-    int32_t min_size, const char16_t* class_needle, int32_t class_needle_length,
-    svc::VnLargeWindow* buffer, int32_t capacity, int32_t* out_written) noexcept {
-    if (!buffer || capacity <= 0 || !out_written || class_needle_length < 0) return VN_ERR_INVALID_ARG;
-    svc::win32::LargeWindowScan scan{
-        min_size,
-        class_needle ? std::u16string_view(class_needle, static_cast<size_t>(class_needle_length)) : std::u16string_view(),
-        buffer, capacity, 0};
-    EnumWindows(svc::win32::CollectLargeWindowProc, reinterpret_cast<LPARAM>(&scan));
-    *out_written = scan.written;
-    return VN_OK;
-}
-
 // ---------------------------------------------------------------- timers, DWM and GDI capture
 
 VN_EXPORT int32_t __stdcall vn_win32_time_begin_period(uint32_t period_ms, uint32_t* out_result) noexcept {
@@ -678,12 +618,6 @@ VN_EXPORT int32_t __stdcall vn_win32_monitor_from_point(int32_t x, int32_t y, ui
     return VN_OK;
 }
 
-VN_EXPORT int32_t __stdcall vn_win32_monitor_from_window(int64_t hwnd, uint32_t flags, int64_t* out_monitor) noexcept {
-    if (!out_monitor) return VN_ERR_INVALID_ARG;
-    *out_monitor = w32::FromHandle(MonitorFromWindow(w32::ToHwnd(hwnd), flags));
-    return VN_OK;
-}
-
 VN_EXPORT int32_t __stdcall vn_win32_get_monitor_info(int64_t monitor, svc::VnMonitorInfo* info) noexcept {
     if (!info) return VN_ERR_INVALID_ARG;
     MONITORINFO native{};
@@ -832,11 +766,25 @@ VN_EXPORT int32_t __stdcall vn_win32_create_hard_link(
     if (!destination || !existing || destination_length <= 0 || existing_length <= 0 ||
         destination_length >= 32768 || existing_length >= 32768)
         return VN_ERR_INVALID_ARG;
-    std::wstring_view dest_view(reinterpret_cast<const wchar_t*>(destination), static_cast<size_t>(destination_length));
-    std::wstring_view src_view(reinterpret_cast<const wchar_t*>(existing), static_cast<size_t>(existing_length));
+    const std::wstring_view dest_view(reinterpret_cast<const wchar_t*>(destination), static_cast<size_t>(destination_length));
+    const std::wstring_view src_view(reinterpret_cast<const wchar_t*>(existing), static_cast<size_t>(existing_length));
     if (dest_view.find(L'\0') != std::wstring_view::npos || src_view.find(L'\0') != std::wstring_view::npos)
         return VN_ERR_INVALID_ARG;
     if (out_last_error) *out_last_error = 0;
+
+    if (destination_length < MAX_PATH && existing_length < MAX_PATH) {
+        wchar_t dest_buf[MAX_PATH];
+        wchar_t src_buf[MAX_PATH];
+        std::char_traits<wchar_t>::copy(dest_buf, dest_view.data(), dest_view.size());
+        dest_buf[dest_view.size()] = L'\0';
+        std::char_traits<wchar_t>::copy(src_buf, src_view.data(), src_view.size());
+        src_buf[src_view.size()] = L'\0';
+        SetLastError(0);
+        if (CreateHardLinkW(dest_buf, src_buf, nullptr)) return VN_OK;
+        if (out_last_error) *out_last_error = static_cast<int32_t>(GetLastError());
+        return VN_ERR_FAIL;
+    }
+
     try {
         std::wstring dest(dest_view);
         std::wstring src(src_view);
@@ -897,21 +845,34 @@ VN_EXPORT int32_t __stdcall vn_win32_send_unicode_text(
     if (!text || length <= 0 || length > 65536 || !out_sent || !out_expected) return VN_ERR_INVALID_ARG;
     *out_sent = 0;
     *out_expected = 0;
-    try {
-        std::vector<INPUT> inputs;
-        inputs.reserve(static_cast<size_t>(length) * 2);
-        for (int32_t i = 0; i < length; ++i) {
-            INPUT down{};
+
+    auto fill_pairs = [](const char16_t* src, int32_t len, INPUT* dst) noexcept {
+        for (int32_t i = 0; i < len; ++i) {
+            INPUT& down = dst[static_cast<size_t>(i) * 2];
+            down = {};
             down.type = INPUT_KEYBOARD;
-            down.ki.wScan = text[i];
+            down.ki.wScan = src[i];
             down.ki.dwFlags = KEYEVENTF_UNICODE;
-            INPUT up = down;
+            INPUT& up = dst[static_cast<size_t>(i) * 2 + 1];
+            up = down;
             up.ki.dwFlags = KEYEVENTF_UNICODE | KEYEVENTF_KEYUP;
-            inputs.push_back(down);
-            inputs.push_back(up);
         }
-        *out_expected = static_cast<int32_t>(inputs.size());
-        *out_sent = static_cast<int32_t>(SendInput(static_cast<UINT>(inputs.size()), inputs.data(), sizeof(INPUT)));
+    };
+
+    const int32_t total_inputs = length * 2;
+    if (length <= 64) {
+        INPUT stack_inputs[128];
+        fill_pairs(text, length, stack_inputs);
+        *out_expected = total_inputs;
+        *out_sent = static_cast<int32_t>(SendInput(static_cast<UINT>(total_inputs), stack_inputs, sizeof(INPUT)));
+        return *out_sent == *out_expected ? VN_OK : VN_ERR_FAIL;
+    }
+
+    try {
+        std::vector<INPUT> inputs(static_cast<size_t>(total_inputs));
+        fill_pairs(text, length, inputs.data());
+        *out_expected = total_inputs;
+        *out_sent = static_cast<int32_t>(SendInput(static_cast<UINT>(total_inputs), inputs.data(), sizeof(INPUT)));
         return *out_sent == *out_expected ? VN_OK : VN_ERR_FAIL;
     } catch (...) {
         return VN_ERR_FAIL;

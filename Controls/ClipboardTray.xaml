@@ -6,9 +6,9 @@
  xmlns:primitives="clr-namespace:System.Windows.Controls.Primitives;assembly=PresentationFramework"
  xmlns:svc="clr-namespace:VNotch.Services"
  Focusable="False" Background="Transparent" Foreground="White" PreviewKeyDown="Tray_PreviewKeyDown"
- UseLayoutRounding="True" SnapsToDevicePixels="True" TextOptions.TextFormattingMode="Ideal"
+ UseLayoutRounding="False" SnapsToDevicePixels="False" TextOptions.TextFormattingMode="Ideal"
  TextOptions.TextRenderingMode="Grayscale" TextOptions.TextHintingMode="Animated"
- RenderOptions.BitmapScalingMode="HighQuality" RenderOptions.ClearTypeHint="Enabled"
+ RenderOptions.BitmapScalingMode="HighQuality" RenderOptions.ClearTypeHint="Auto"
  FontFamily="{StaticResource SFProDisplay}" FontWeight="Bold">
  <UserControl.Resources>
   <!-- The surface supplies entrance motion; the native popup supplies dismissal. -->
@@ -219,7 +219,7 @@
    <Setter Property="Template">
     <Setter.Value>
      <ControlTemplate TargetType="Button">
-      <Grid Background="Transparent" SnapsToDevicePixels="True">
+      <Grid Background="Transparent" SnapsToDevicePixels="False">
        <!-- Base muted text -->
        <TextBlock x:Name="BaseText" Text="{TemplateBinding Content}"
                   FontFamily="{TemplateBinding FontFamily}" FontWeight="{TemplateBinding FontWeight}"
@@ -574,13 +574,13 @@
    <Setter Property="FontFamily" Value="{StaticResource SFProText}"/>
    <Setter Property="FontWeight" Value="SemiBold"/>
    <Setter Property="HasDropShadow" Value="False"/>
-   <Setter Property="SnapsToDevicePixels" Value="True"/>
-   <Setter Property="UseLayoutRounding" Value="True"/>
+   <Setter Property="SnapsToDevicePixels" Value="False"/>
+   <Setter Property="UseLayoutRounding" Value="False"/>
    <Setter Property="Template"><Setter.Value><ControlTemplate TargetType="ContextMenu">
-    <Grid Margin="10,8,10,12">
+    <Grid Margin="10,8,10,12" UseLayoutRounding="False" SnapsToDevicePixels="False">
      <Border x:Name="MenuSurface" Style="{StaticResource TrayMenuSurface}" MinWidth="220">
       <local:FluidMenuSurface x:Name="MenuHighlightHost">
-       <StackPanel IsItemsHost="True" KeyboardNavigation.DirectionalNavigation="Cycle"/>
+       <StackPanel IsItemsHost="True" KeyboardNavigation.DirectionalNavigation="Cycle" UseLayoutRounding="False" SnapsToDevicePixels="False"/>
       </local:FluidMenuSurface>
      </Border>
     </Grid>
@@ -661,27 +661,51 @@
      CornerRadius="14" BorderThickness="1" Cursor="IBeam" MouseLeftButtonDown="SearchSurface_MouseLeftButtonDown">
      <Border.Style>
       <Style TargetType="Border">
-       <Setter Property="Background" Value="#1EFFFFFF"/>
-       <Setter Property="BorderBrush" Value="#38FFFFFF"/>
+       <Setter Property="Background" Value="#12FFFFFF"/>
+       <Setter Property="BorderBrush" Value="{DynamicResource AccentNavHoverBorderBrush}"/>
        <Style.Triggers>
         <Trigger Property="IsMouseOver" Value="True">
-         <Setter Property="Background" Value="#26FFFFFF"/>
-         <Setter Property="BorderBrush" Value="#54FFFFFF"/>
+         <Setter Property="Background" Value="{DynamicResource AccentNavHoverBrush}"/>
+         <Setter Property="BorderBrush" Value="{DynamicResource AccentBrush}"/>
         </Trigger>
         <Trigger Property="IsKeyboardFocusWithin" Value="True">
-         <Setter Property="Background" Value="#2AFFFFFF"/>
-         <Setter Property="BorderBrush" Value="#88FFFFFF"/>
+         <Setter Property="Background" Value="{DynamicResource AccentSubtleBrush}"/>
+         <Setter Property="BorderBrush" Value="{DynamicResource AccentBrush}"/>
         </Trigger>
        </Style.Triggers>
       </Style>
      </Border.Style>
      <Grid Background="Transparent">
-      <local:TrayIcon Kind="Search" Width="13.5" Height="13.5" Margin="13,0,0,0" HorizontalAlignment="Left" VerticalAlignment="Center" Foreground="#C8FFFFFF" IsHitTestVisible="False"/>
+      <local:TrayIcon Kind="Search" Width="13.5" Height="13.5" Margin="13,0,0,0" HorizontalAlignment="Left" VerticalAlignment="Center" Foreground="{DynamicResource AccentBrush}" IsHitTestVisible="False"/>
       <Grid x:Name="SearchTextSurface" Margin="33,0,32,0">
-       <TextBox x:Name="SearchBox" AutomationProperties.Name="Search clipboard" Background="Transparent" BorderThickness="0" Foreground="White" CaretBrush="White"
-        SelectionBrush="#48FFFFFF" SelectionOpacity="1" FontSize="12.5" VerticalAlignment="Stretch"
-        FontFamily="{StaticResource SFProDisplay}" FontWeight="Bold" VerticalContentAlignment="Center" TextChanged="Search_Changed"/>
-       <TextBlock x:Name="SearchHint" IsHitTestVisible="False" VerticalAlignment="Center" FontSize="12.5" FontFamily="{StaticResource SFProDisplay}" FontWeight="Bold" Foreground="#B4FFFFFF"/>
+       <TextBox x:Name="SearchBox" AutomationProperties.Name="Search clipboard" Background="Transparent" BorderThickness="0" Foreground="White" CaretBrush="{DynamicResource AccentBrush}"
+        SelectionBrush="{DynamicResource AccentBrush}" SelectionOpacity="0.35" FontSize="12.5" VerticalAlignment="Stretch" Padding="0" FocusVisualStyle="{x:Null}"
+        FontFamily="{StaticResource SFProDisplay}" FontWeight="SemiBold" VerticalContentAlignment="Center" TextChanged="Search_Changed" PreviewKeyDown="Search_PreviewKeyDown">
+        <TextBox.Template>
+         <ControlTemplate TargetType="TextBox">
+          <Border Background="{TemplateBinding Background}" Padding="{TemplateBinding Padding}">
+           <ScrollViewer x:Name="PART_ContentHost" Focusable="False" VerticalAlignment="{TemplateBinding VerticalContentAlignment}"
+            HorizontalScrollBarVisibility="Hidden" VerticalScrollBarVisibility="Hidden"/>
+          </Border>
+         </ControlTemplate>
+        </TextBox.Template>
+       </TextBox>
+       <TextBlock x:Name="SearchHint" IsHitTestVisible="False" VerticalAlignment="Center" FontSize="12.5" FontFamily="{StaticResource SFProDisplay}" FontWeight="SemiBold" Foreground="#B4FFFFFF">
+        <TextBlock.Style>
+         <Style TargetType="TextBlock" BasedOn="{StaticResource {x:Type TextBlock}}">
+          <Setter Property="Visibility" Value="Collapsed"/>
+          <Style.Triggers>
+           <MultiDataTrigger>
+            <MultiDataTrigger.Conditions>
+             <Condition Binding="{Binding Text.Length, ElementName=SearchBox}" Value="0"/>
+             <Condition Binding="{Binding IsKeyboardFocusWithin, ElementName=SearchBox}" Value="False"/>
+            </MultiDataTrigger.Conditions>
+            <Setter Property="Visibility" Value="Visible"/>
+           </MultiDataTrigger>
+          </Style.Triggers>
+         </Style>
+        </TextBlock.Style>
+       </TextBlock>
        <!-- Left Edge Black Fade -->
        <Border x:Name="SearchFadeLeft" Width="20" HorizontalAlignment="Left" IsHitTestVisible="False" Opacity="0">
         <Border.Background>
@@ -839,7 +863,7 @@
         do not propagate pixel-snapping guidelines or force ClearType into them. -->
    <local:ClipboardCardListBox x:Name="Cards" Background="Transparent" BorderThickness="0" Padding="0" ScrollViewer.HorizontalScrollBarVisibility="Hidden" SnapsToDevicePixels="False" UseLayoutRounding="False" TextOptions.TextRenderingMode="Grayscale"
     ScrollViewer.VerticalScrollBarVisibility="Disabled" ScrollViewer.CanContentScroll="True" VirtualizingPanel.IsVirtualizing="True"
-    VirtualizingPanel.VirtualizationMode="Recycling" VirtualizingPanel.ScrollUnit="Pixel" VirtualizingPanel.CacheLength="0.5" VirtualizingPanel.CacheLengthUnit="Page" TextOptions.TextFormattingMode="Display" RenderOptions.ClearTypeHint="Auto" PreviewMouseWheel="Cards_Wheel"
+    VirtualizingPanel.VirtualizationMode="Recycling" VirtualizingPanel.ScrollUnit="Pixel" VirtualizingPanel.CacheLength="0.5" VirtualizingPanel.CacheLengthUnit="Page" TextOptions.TextFormattingMode="Ideal" RenderOptions.ClearTypeHint="Auto" PreviewMouseWheel="Cards_Wheel"
     ScrollViewer.ScrollChanged="TrayScroll_Changed" SizeChanged="TrayScroll_SizeChanged" PreviewKeyDown="Cards_KeyDown" SelectionChanged="Cards_SelectionChanged" SelectionMode="Extended" Margin="6,12,6,12">
     
     <ListBox.ItemsPanel><ItemsPanelTemplate><VirtualizingStackPanel Orientation="Horizontal"/></ItemsPanelTemplate></ListBox.ItemsPanel>
@@ -853,14 +877,24 @@
     </Style></ListBox.ItemContainerStyle>
     <ListBox.ItemTemplate><DataTemplate DataType="{x:Type vm:ClipboardCardViewModel}">
      <!-- Flagship Card Container (Exact 210 Width Required by Interaction Tests) -->
-     <Border Width="210" CornerRadius="{StaticResource TrayRadiusLarge}" Background="Transparent" BorderThickness="0" Cursor="Hand" SnapsToDevicePixels="False" UseLayoutRounding="True"
+     <Border Width="210" CornerRadius="{StaticResource TrayRadiusLarge}" Background="Transparent" BorderThickness="0" Cursor="Hand" SnapsToDevicePixels="False" UseLayoutRounding="False"
       ContextMenuOpening="Card_ContextMenu" Loaded="Card_Loaded" Unloaded="Card_Unloaded" DataContextChanged="Card_DataContextChanged" SizeChanged="Card_SizeChanged" PreviewMouseLeftButtonDown="Card_Down" PreviewMouseLeftButtonUp="Card_Up" PreviewMouseMove="Card_Move" MouseLeave="Card_MouseLeave" IsVisibleChanged="Card_VisibilityChanged">
       <Border.ContextMenu><ContextMenu/></Border.ContextMenu>
       <local:ClipboardCardPresentation x:Name="CardPresentation">
        <!-- Fade the surface with its content; the hit-test shell must not leave a blank tile behind. -->
        <Border CornerRadius="{StaticResource TrayRadiusLarge}" Background="{Binding CardBrush}" IsHitTestVisible="False"/>
-       <!-- Card Visual Content (Blurred when copied) -->
-       <Grid x:Name="CardContentGrid" local:TrayMotion.BlurRadius="{Binding IsCopied, Converter={StaticResource BoolBlur}}">
+       <!-- Card Visual Content (dimmed cleanly when copied without toggling offscreen BlurEffect on text) -->
+       <Grid x:Name="CardContentGrid">
+        <Grid.Style>
+         <Style TargetType="Grid">
+          <Setter Property="Opacity" Value="1"/>
+          <Style.Triggers>
+           <DataTrigger Binding="{Binding IsCopied}" Value="True">
+            <Setter Property="Opacity" Value="0.45"/>
+           </DataTrigger>
+          </Style.Triggers>
+         </Style>
+        </Grid.Style>
         <Control Focusable="False" IsTabStop="False">
          <Control.Style>
           <Style TargetType="Control">
@@ -1014,9 +1048,7 @@
         <Border.RenderTransform>
          <ScaleTransform ScaleX="0.70" ScaleY="0.70"/>
         </Border.RenderTransform>
-        <TextBlock x:Name="CopiedLabel" Text="{Binding CopiedLabel}" FontSize="12" FontFamily="{StaticResource SFProDisplay}" FontWeight="Bold" Foreground="White" VerticalAlignment="Center" HorizontalAlignment="Center">
-         <TextBlock.Effect><DropShadowEffect Color="Black" BlurRadius="5" ShadowDepth="1" Opacity="0.85" RenderingBias="Performance"/></TextBlock.Effect>
-        </TextBlock>
+        <TextBlock x:Name="CopiedLabel" Text="{Binding CopiedLabel}" FontSize="12" FontFamily="{StaticResource SFProDisplay}" FontWeight="Bold" Foreground="White" VerticalAlignment="Center" HorizontalAlignment="Center"/>
        </Border>
       </local:ClipboardCardPresentation>
      </Border>

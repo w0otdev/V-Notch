@@ -376,6 +376,7 @@ public partial class SettingsWindow
         MainShell.RenderTransformOrigin = new Point(0.5, 0.0);
 
         MainShell.Effect = null;
+        if (MainShellShadow != null) MainShellShadow.Effect = null;
 
         MainShell.SnapsToDevicePixels = false;
         MainShell.UseLayoutRounding = false;

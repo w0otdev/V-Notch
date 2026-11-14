@@ -29,8 +29,8 @@ public sealed partial class AiUsageStatWidget : UserControl
     public AiUsageStatWidget()
     {
         AiUsageTypography.Apply(this);
-        SnapsToDevicePixels = true;
-        UseLayoutRounding = true;
+        SnapsToDevicePixels = false;
+        UseLayoutRounding = false;
         Content = _root;
         _motion = new AiUsageMotion(this);
         Background = Brushes.Transparent;

@@ -3,6 +3,7 @@
        Tools/** holds benchmarks and probes that are built on demand, so they keep
        their own warning policy. -->
   <PropertyGroup>
+    <SatelliteResourceLanguages>en</SatelliteResourceLanguages>
     <_VNotchRelativeProjectDir>$([MSBuild]::MakeRelative('$(MSBuildThisFileDirectory)', '$(MSBuildProjectDirectory)'))</_VNotchRelativeProjectDir>
     <_VNotchIsToolProject Condition="$(_VNotchRelativeProjectDir.ToLowerInvariant().StartsWith('tools'))">true</_VNotchIsToolProject>
   </PropertyGroup>

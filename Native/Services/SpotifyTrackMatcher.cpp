@@ -98,7 +98,7 @@ VN_EXPORT int32_t vn_spotify_normalize_for_match(
     }
 }
 
-VN_EXPORT int32_t vn_spotify_match_normalized_score(
+extern "C" int32_t vn_spotify_match_normalized_score(
     const char16_t* cand_ptr, int32_t cand_len,
     const char16_t* exp_ptr, int32_t exp_len,
     int32_t exact, int32_t contains,
@@ -112,7 +112,7 @@ VN_EXPORT int32_t vn_spotify_match_normalized_score(
     return VN_OK;
 }
 
-VN_EXPORT int32_t vn_spotify_extract_track_id(
+extern "C" int32_t vn_spotify_extract_track_id(
     const char16_t* val_ptr, int32_t val_len,
     char16_t* out_buf, int32_t out_cap, int32_t* out_len,
     uint8_t* out_found) noexcept
@@ -130,7 +130,7 @@ VN_EXPORT int32_t vn_spotify_extract_track_id(
     return VN_OK;
 }
 
-VN_EXPORT int32_t vn_spotify_calculate_duration_score_delta(
+extern "C" int32_t vn_spotify_calculate_duration_score_delta(
     int64_t cand_ticks,
     int64_t exp_ticks,
     int32_t* out_delta) noexcept

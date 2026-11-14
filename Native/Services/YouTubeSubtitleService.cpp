@@ -400,21 +400,6 @@ public:
 
 extern "C" {
 
-VN_EXPORT int32_t vn_youtube_subtitle_language_code_matches(
-    const char16_t* code1,
-    int32_t code1_len,
-    const char16_t* code2,
-    int32_t code2_len,
-    uint8_t* out_matches) noexcept {
-    if (!out_matches || (!code1 && code1_len > 0) || code1_len < 0 || (!code2 && code2_len > 0) || code2_len < 0) {
-        return VN_E_INVALID_ARG;
-    }
-    const std::u16string_view c1(code1 ? code1 : u"", static_cast<size_t>(code1_len));
-    const std::u16string_view c2(code2 ? code2 : u"", static_cast<size_t>(code2_len));
-    *out_matches = vnotch::services::YouTubeSubtitleService::LanguageCodeMatches(c1, c2) ? 1 : 0;
-    return VN_OK;
-}
-
 VN_EXPORT int32_t vn_youtube_subtitle_is_placeholder_lyric(
     const char16_t* text,
     int32_t text_len,
@@ -453,7 +438,7 @@ VN_EXPORT int32_t vn_youtube_subtitle_determine_is_auto_generated(
     return VN_OK;
 }
 
-VN_EXPORT int32_t __stdcall vn_youtube_subtitle_normalize_cue_text(
+extern "C" int32_t __stdcall vn_youtube_subtitle_normalize_cue_text(
     const char16_t* raw_text,
     int32_t raw_len,
     uint8_t strip_xml_tags,
@@ -468,7 +453,7 @@ VN_EXPORT int32_t __stdcall vn_youtube_subtitle_normalize_cue_text(
         sv, strip_xml_tags != 0, out_buf, out_cap, *out_written);
 }
 
-VN_EXPORT int32_t __stdcall vn_youtube_subtitle_clamp_timestamp_ticks(
+extern "C" int32_t __stdcall vn_youtube_subtitle_clamp_timestamp_ticks(
     int64_t raw_ms,
     double raw_seconds,
     uint8_t use_seconds,

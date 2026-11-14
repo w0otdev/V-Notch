@@ -8,7 +8,6 @@ namespace
 {
     constexpr int32_t MinI32(int32_t a, int32_t b) noexcept { return a < b ? a : b; }
     constexpr int32_t MaxI32(int32_t a, int32_t b) noexcept { return a > b ? a : b; }
-    constexpr int32_t ClampI32(int32_t v, int32_t lo, int32_t hi) noexcept { return v < lo ? lo : (v > hi ? hi : v); }
 
     __forceinline void widen_u8x32_to_i32x8(
         const uint8_t* ptr,
@@ -83,51 +82,53 @@ namespace vnotch::kernels::avx2
         int32_t y1) noexcept
     {
         const size_t row_bytes = static_cast<size_t>(w) * 4u;
-        const auto src_px = [src, row_bytes](int32_t y, int32_t x) noexcept
-        {
-            return src + static_cast<size_t>(y) * row_bytes + static_cast<size_t>(x) * 4u;
-        };
-        const auto dst_px = [dst, row_bytes](int32_t y, int32_t x) noexcept
-        {
-            return dst + static_cast<size_t>(y) * row_bytes + static_cast<size_t>(x) * 4u;
-        };
-
         const __m128 divisor = _mm_set1_ps(static_cast<float>(2 * radius + 1));
         const int32_t left_end = MinI32(w, radius);
         const int32_t right_start = MaxI32(left_end, w - radius - 1);
+        const int32_t init_interior_end = MinI32(radius, w - 1);
+        const int32_t init_clamped_right = MaxI32(0, radius - (w - 1));
+        const __m128i left_weight = _mm_set1_epi32(radius + 1);
+        const __m128i right_weight = _mm_set1_epi32(init_clamped_right);
 
         for (int32_t y = y0; y < y1; ++y)
         {
-            __m128i sum = _mm_setzero_si128();
-            for (int32_t dx = -radius; dx <= radius; ++dx)
+            const uint8_t* srow = src + static_cast<size_t>(y) * row_bytes;
+            uint8_t* drow = dst + static_cast<size_t>(y) * row_bytes;
+            const __m128i first = load_px_i32x4(srow);
+            const __m128i last = load_px_i32x4(srow + static_cast<size_t>(w - 1) * 4u);
+
+            __m128i sum = _mm_mullo_epi32(first, left_weight);
+            for (int32_t dx = 1; dx <= init_interior_end; ++dx)
             {
-                sum = _mm_add_epi32(sum, load_px_i32x4(src_px(y, ClampI32(dx, 0, w - 1))));
+                sum = _mm_add_epi32(sum, load_px_i32x4(srow + static_cast<size_t>(dx) * 4u));
+            }
+            if (init_clamped_right > 0)
+            {
+                sum = _mm_add_epi32(sum, _mm_mullo_epi32(last, right_weight));
             }
 
-            const __m128i first = load_px_i32x4(src_px(y, 0));
             int32_t x = 0;
             for (; x < left_end; ++x)
             {
-                store_px_i32x4(dst_px(y, x), sum, divisor);
+                store_px_i32x4(drow + static_cast<size_t>(x) * 4u, sum, divisor);
                 sum = _mm_sub_epi32(
-                    _mm_add_epi32(sum, load_px_i32x4(src_px(y, MinI32(w - 1, x + 1 + radius)))),
+                    _mm_add_epi32(sum, load_px_i32x4(srow + static_cast<size_t>(MinI32(w - 1, x + 1 + radius)) * 4u)),
                     first);
             }
             for (; x < right_start; ++x)
             {
-                store_px_i32x4(dst_px(y, x), sum, divisor);
+                const size_t px_off = static_cast<size_t>(x) * 4u;
+                store_px_i32x4(drow + px_off, sum, divisor);
                 sum = _mm_sub_epi32(
-                    _mm_add_epi32(sum, load_px_i32x4(src_px(y, x + radius + 1))),
-                    load_px_i32x4(src_px(y, x - radius)));
+                    _mm_add_epi32(sum, load_px_i32x4(srow + px_off + static_cast<size_t>(radius + 1) * 4u)),
+                    load_px_i32x4(srow + px_off - static_cast<size_t>(radius) * 4u));
             }
-
-            const __m128i last = load_px_i32x4(src_px(y, w - 1));
             for (; x < w; ++x)
             {
-                store_px_i32x4(dst_px(y, x), sum, divisor);
+                store_px_i32x4(drow + static_cast<size_t>(x) * 4u, sum, divisor);
                 sum = _mm_sub_epi32(
                     _mm_add_epi32(sum, last),
-                    load_px_i32x4(src_px(y, MaxI32(0, x - radius))));
+                    load_px_i32x4(srow + static_cast<size_t>(MaxI32(0, x - radius)) * 4u));
             }
         }
     }
@@ -144,31 +145,42 @@ namespace vnotch::kernels::avx2
         const ptrdiff_t stride = static_cast<ptrdiff_t>(w) * 4;
         const int32_t top_end = MinI32(h, radius);
         const int32_t bottom_start = MaxI32(top_end, h - radius - 1);
+        const int32_t init_interior_end = MinI32(radius, h - 1);
+        const int32_t init_clamped_bottom = MaxI32(0, radius - (h - 1));
         const ptrdiff_t last_row_offset = static_cast<ptrdiff_t>(h - 1) * stride;
         const __m256 divisor = _mm256_set1_ps(static_cast<float>(2 * radius + 1));
+        const __m256i top_weight = _mm256_set1_epi32(radius + 1);
+        const __m256i bot_weight = _mm256_set1_epi32(init_clamped_bottom);
 
         int32_t column = column_start;
         for (; column <= column_end - 32; column += 32)
         {
-            __m256i s0 = _mm256_setzero_si256();
-            __m256i s1 = s0;
-            __m256i s2 = s0;
-            __m256i s3 = s0;
+            __m256i top_a, top_b, top_c, top_d;
+            __m256i bot_a, bot_b, bot_c, bot_d;
+            widen_u8x32_to_i32x8(src + column, top_a, top_b, top_c, top_d);
+            widen_u8x32_to_i32x8(src + last_row_offset + column, bot_a, bot_b, bot_c, bot_d);
 
-            for (int32_t dy = -radius; dy <= radius; ++dy)
+            __m256i s0 = _mm256_mullo_epi32(top_a, top_weight);
+            __m256i s1 = _mm256_mullo_epi32(top_b, top_weight);
+            __m256i s2 = _mm256_mullo_epi32(top_c, top_weight);
+            __m256i s3 = _mm256_mullo_epi32(top_d, top_weight);
+
+            for (int32_t dy = 1; dy <= init_interior_end; ++dy)
             {
                 __m256i a, b, c, d;
-                widen_u8x32_to_i32x8(src + static_cast<ptrdiff_t>(ClampI32(dy, 0, h - 1)) * stride + column, a, b, c, d);
+                widen_u8x32_to_i32x8(src + static_cast<ptrdiff_t>(dy) * stride + column, a, b, c, d);
                 s0 = _mm256_add_epi32(s0, a);
                 s1 = _mm256_add_epi32(s1, b);
                 s2 = _mm256_add_epi32(s2, c);
                 s3 = _mm256_add_epi32(s3, d);
             }
-
-            __m256i top_a, top_b, top_c, top_d;
-            __m256i bot_a, bot_b, bot_c, bot_d;
-            widen_u8x32_to_i32x8(src + column, top_a, top_b, top_c, top_d);
-            widen_u8x32_to_i32x8(src + last_row_offset + column, bot_a, bot_b, bot_c, bot_d);
+            if (init_clamped_bottom > 0)
+            {
+                s0 = _mm256_add_epi32(s0, _mm256_mullo_epi32(bot_a, bot_weight));
+                s1 = _mm256_add_epi32(s1, _mm256_mullo_epi32(bot_b, bot_weight));
+                s2 = _mm256_add_epi32(s2, _mm256_mullo_epi32(bot_c, bot_weight));
+                s3 = _mm256_add_epi32(s3, _mm256_mullo_epi32(bot_d, bot_weight));
+            }
 
             int32_t y = 0;
             for (; y < top_end; ++y)

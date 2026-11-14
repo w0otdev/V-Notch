@@ -12,7 +12,7 @@ namespace VNotch.Tests;
 public sealed class AccentControlCoverageTests
 {
     [Fact]
-    public void WhiteNoiseChipsAndVolumeFollowAccentWhileAChipIsAlreadyActive() => SharedStaTestRunner.Run(() =>
+    public void WhiteNoiseChipsAndVolumeFollowAccentWhileAChipIsAlreadyActive() => SharedStaTestRunner.RunAsync(async ct =>
     {
         int previousKind = WhiteNoiseService.PlayingKind;
         WhiteNoiseService.SetPlayingKindForTest(0);
@@ -20,16 +20,41 @@ public sealed class AccentControlCoverageTests
         var window = new Window { Content = strip };
         try
         {
-            var chips = strip.ChipHost.Children.OfType<Border>().ToArray();
+            window.Show();
+            await Task.Delay(50, ct);
+            window.Measure(new Size(640, 120));
+            window.Arrange(new Rect(0, 0, 640, 120));
+            window.UpdateLayout();
+
+            static TextBlock GetChipLabel(Grid chipRoot)
+            {
+                var surface = Assert.IsType<Border>(chipRoot.Children[0]);
+                var contentHost = Assert.IsType<Grid>(surface.Child);
+                return Assert.IsType<TextBlock>(contentHost.Children[0]);
+            }
+
+            var chip0 = Assert.IsType<Grid>(strip.ChipHost.Children[0]);
+            var chip1 = Assert.IsType<Grid>(strip.ChipHost.Children[1]);
+            var chip2 = Assert.IsType<Grid>(strip.ChipHost.Children[2]);
+            double initialX = strip.ChipSelectionOffset.X;
+            Assert.Equal(1.0, strip.ChipSelection.Opacity, 3);
+            Assert.True(strip.ChipSelection.Width > 0);
+
             foreach (string id in new[] { "purple", "green", "orange", "default" })
             {
                 AccentTheme.Apply(id);
                 var swatch = AccentTheme.GetSwatch(id);
                 Assert.Equal(swatch.Color, Assert.IsType<SolidColorBrush>(strip.VolumeFill.Background).Color);
-                Assert.Equal(swatch.Color, Assert.IsType<SolidColorBrush>(chips[0].Background).Color);
-                Assert.Equal(AccentTheme.ForegroundColor, Assert.IsType<SolidColorBrush>(((TextBlock)chips[0].Child).Foreground).Color);
-                Assert.Equal(swatch.Strong, Assert.IsType<SolidColorBrush>(((TextBlock)chips[1].Child).Foreground).Color);
+                Assert.Equal(swatch.Color, Assert.IsType<SolidColorBrush>(strip.ChipSelection.Background).Color);
+                Assert.Equal(AccentTheme.ForegroundColor, Assert.IsType<SolidColorBrush>(GetChipLabel(chip0).Foreground).Color);
+                Assert.Equal(swatch.Strong, Assert.IsType<SolidColorBrush>(GetChipLabel(chip1).Foreground).Color);
             }
+
+            WhiteNoiseService.SetPlayingKindForTest(2);
+            strip.RefreshForTest();
+            await Task.Delay(320, ct);
+            Assert.True(strip.ChipSelectionOffset.X > initialX);
+            Assert.Equal(AccentTheme.ForegroundColor, Assert.IsType<SolidColorBrush>(GetChipLabel(chip2).Foreground).Color);
         }
         finally
         {

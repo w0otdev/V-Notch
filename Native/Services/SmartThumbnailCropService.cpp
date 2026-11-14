@@ -50,28 +50,37 @@ public:
         return true;
     }
 
-    static std::vector<VnDetection> ApplyNms(std::span<const VnDetection> detections) {
-        std::vector<VnDetection> sorted(detections.begin(), detections.end());
-        std::stable_sort(sorted.begin(), sorted.end(), [](const VnDetection& a, const VnDetection& b) {
+    static void ApplyNmsInPlace(std::vector<VnDetection>& detections) noexcept {
+        if (detections.size() <= 1) return;
+        std::stable_sort(detections.begin(), detections.end(), [](const VnDetection& a, const VnDetection& b) noexcept {
             if (!std::isfinite(a.confidence)) return false;
             if (!std::isfinite(b.confidence)) return true;
             return a.confidence > b.confidence;
         });
 
-        std::vector<VnDetection> result;
-        result.reserve(sorted.size());
-        std::vector<uint8_t> suppressed(sorted.size(), 0);
-
-        for (size_t i = 0; i < sorted.size(); i++) {
-            if (suppressed[i]) continue;
-            result.push_back(sorted[i]);
-            for (size_t j = i + 1; j < sorted.size(); j++) {
-                if (suppressed[j]) continue;
-                if (sorted[i].class_id == sorted[j].class_id && IoU(sorted[i], sorted[j]) > kNmsThreshold) {
-                    suppressed[j] = 1;
+        size_t kept = 0;
+        for (size_t i = 0; i < detections.size(); ++i) {
+            bool is_suppressed = false;
+            for (size_t k = 0; k < kept; ++k) {
+                if (detections[k].class_id == detections[i].class_id &&
+                    IoU(detections[k], detections[i]) > kNmsThreshold) {
+                    is_suppressed = true;
+                    break;
                 }
             }
+            if (!is_suppressed) {
+                if (kept != i) {
+                    detections[kept] = detections[i];
+                }
+                ++kept;
+            }
         }
+        detections.resize(kept);
+    }
+
+    static std::vector<VnDetection> ApplyNms(std::span<const VnDetection> detections) {
+        std::vector<VnDetection> result(detections.begin(), detections.end());
+        ApplyNmsInPlace(result);
         return result;
     }
 
@@ -102,7 +111,8 @@ public:
         }
 
         if (out_raw_count) *out_raw_count = static_cast<int32_t>(detections.size());
-        return detections.size() > 1 ? ApplyNms(detections) : detections;
+        ApplyNmsInPlace(detections);
+        return detections;
     }
 
     static bool FindBestSubjectBounds(

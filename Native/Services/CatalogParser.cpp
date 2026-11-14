@@ -5,9 +5,9 @@
 #include <charconv>
 #include <functional>
 
-VN_EXPORT int32_t vn_spotify_extract_track_id(const char16_t*, int32_t, char16_t*, int32_t, int32_t*, uint8_t*) noexcept;
-VN_EXPORT int32_t vn_spotify_match_normalized_score(const char16_t*, int32_t, const char16_t*, int32_t, int32_t, int32_t, int32_t*) noexcept;
-VN_EXPORT int32_t vn_spotify_calculate_duration_score_delta(int64_t, int64_t, int32_t*) noexcept;
+extern "C" int32_t vn_spotify_extract_track_id(const char16_t*, int32_t, char16_t*, int32_t, int32_t*, uint8_t*) noexcept;
+extern "C" int32_t vn_spotify_match_normalized_score(const char16_t*, int32_t, const char16_t*, int32_t, int32_t, int32_t, int32_t*) noexcept;
+extern "C" int32_t vn_spotify_calculate_duration_score_delta(int64_t, int64_t, int32_t*) noexcept;
 // These calls stay entirely inside the DLL, sharing the existing scoring rules.
 namespace {
 using Text = std::u16string;

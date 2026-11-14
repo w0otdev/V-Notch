@@ -6,10 +6,6 @@ namespace VNotch.Services;
 // Process, registry, file and trust queries. Native side: Native/Services/SystemInterop.cpp.
 internal static unsafe partial class Win32Interop
 {
-    internal const int ProcessPackageFamilyOpenFailed = -3;
-    internal const int ProcessPackageFamilyNotPackaged = -5;
-    private const int NativeBufferTooSmall = -2;
-
     [StructLayout(LayoutKind.Sequential, Pack = 1)]
     internal struct VnProcessEntry
     {
@@ -24,14 +20,8 @@ internal static unsafe partial class Win32Interop
     [LibraryImport(NativeDll, EntryPoint = "vn_process_image_path_equals", StringMarshalling = StringMarshalling.Utf16)]
     private static partial int NativeProcessImagePathEquals(uint processId, string expected, int expectedLength, out byte equal);
 
-    [LibraryImport(NativeDll, EntryPoint = "vn_process_package_family_name")]
-    private static partial int NativeProcessPackageFamilyName(uint processId, char* buffer, int capacity, out int length);
-
     [LibraryImport(NativeDll, EntryPoint = "vn_process_app_user_model_id_equals", StringMarshalling = StringMarshalling.Utf16)]
     private static partial int NativeProcessAppUserModelIdEquals(long processHandle, string expected, int expectedLength, out byte equal);
-
-    [LibraryImport(NativeDll, EntryPoint = "vn_registry_notify_change")]
-    private static partial int NativeRegistryNotifyChange(long keyHandle, byte watchSubtree, uint filter, long eventHandle, out int status);
 
     [LibraryImport(NativeDll, EntryPoint = "vn_file_create_delete_on_close", StringMarshalling = StringMarshalling.Utf16)]
     private static partial int NativeFileCreateDeleteOnClose(string path, int pathLength, out long handle, out int lastError);
@@ -58,31 +48,8 @@ internal static unsafe partial class Win32Interop
     internal static bool ProcessImagePathEquals(uint processId, string expectedPath) =>
         NativeProcessImagePathEquals(processId, expectedPath, expectedPath.Length, out byte equal) == 0 && equal != 0;
 
-    /// <summary>
-    /// Package family name of the process, or null. <paramref name="failure"/> is 0, <see cref="ProcessPackageFamilyOpenFailed"/>
-    /// or <see cref="ProcessPackageFamilyNotPackaged"/>.
-    /// </summary>
-    internal static string? GetProcessPackageFamilyName(uint processId, out int failure)
-    {
-        char* buffer = stackalloc char[128];
-        int status = NativeProcessPackageFamilyName(processId, buffer, 128, out int length);
-        if (status == NativeBufferTooSmall && length > 128 && length <= 1024)
-        {
-            char* large = stackalloc char[length];
-            status = NativeProcessPackageFamilyName(processId, large, length, out length);
-            buffer = large;
-        }
-
-        failure = status == 0 ? 0 : status;
-        return status == 0 ? new string(buffer, 0, length) : null;
-    }
-
     internal static bool ProcessAppUserModelIdEquals(IntPtr processHandle, string expected) =>
         NativeProcessAppUserModelIdEquals(processHandle, expected, expected.Length, out byte equal) == 0 && equal != 0;
-
-    /// <summary>Arms a one-shot change notification; returns false when the registry call fails.</summary>
-    internal static bool RegistryNotifyChange(IntPtr keyHandle, bool watchSubtree, uint filter, IntPtr eventHandle) =>
-        NativeRegistryNotifyChange(keyHandle, watchSubtree ? (byte)1 : (byte)0, filter, eventHandle, out _) == 0;
 
     /// <summary>CREATE_NEW read handle that deletes the file once every handle is closed; null on failure (last error set).</summary>
     internal static SafeFileHandle? CreateDeleteOnCloseFile(string path)

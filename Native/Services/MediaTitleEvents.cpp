@@ -167,7 +167,7 @@ struct TitleWatch {
     uint64_t applied_gen = 0;
     uint32_t active_hook_count = 0;
 
-    // Resolver cache (guarded by resolver_mutex so SetSource/SetTargetPid never contend with Changed).
+    // Resolver cache (guarded by resolver_mutex so SetSource never contends with Changed).
     std::mutex resolver_mutex;
     std::array<PidKindCacheEntry, 32> pid_cache{};
     size_t next_pid_slot = 0;
@@ -432,24 +432,6 @@ VN_EXPORT int32_t __stdcall vn_media_title_watch_create(HANDLE signal, int64_t* 
         if (!watch->installed) return VN_ERR_FAIL;
         *handle = watches.Add(std::move(watch));
         return VN_OK;
-    } catch (...) {
-        return VN_ERR_FAIL;
-    }
-}
-
-VN_EXPORT int32_t __stdcall vn_media_title_watch_set_target_pid(int64_t handle, uint32_t process_id) noexcept {
-    auto watch = watches.Acquire(handle);
-    if (!watch) return VN_ERR_INVALID_ARG;
-    try {
-        TargetSet targets{};
-        if (process_id != 0 && process_id != GetCurrentProcessId()) {
-            const MediaExeKind kind = watch->GetProcessMediaKind(process_id);
-            targets.entries[0] = { process_id, kind == MediaExeKind::Spotify };
-            targets.count = 1;
-        }
-        uint32_t hooked = 0;
-        if (!watch->PublishTargets(targets, hooked)) return VN_ERR_FAIL;
-        return (process_id == 0 || hooked > 0) ? VN_OK : VN_ERR_FAIL;
     } catch (...) {
         return VN_ERR_FAIL;
     }

@@ -261,7 +261,7 @@ VN_EXPORT int32_t vn_wtscanner_is_browser_process(
     return VN_OK;
 }
 
-VN_EXPORT int32_t vn_wtscanner_is_address_bar_value(
+extern "C" int32_t vn_wtscanner_is_address_bar_value(
     const char16_t* val, int32_t val_len, uint8_t* out_is_addr) noexcept
 {
     if (!out_is_addr) return VN_ERR_INVALID_ARG;
@@ -270,7 +270,7 @@ VN_EXPORT int32_t vn_wtscanner_is_address_bar_value(
     return VN_OK;
 }
 
-VN_EXPORT int32_t vn_wtscanner_looks_like_url(
+extern "C" int32_t vn_wtscanner_looks_like_url(
     const char16_t* str, int32_t str_len, uint8_t* out_looks_like) noexcept
 {
     if (!out_looks_like) return VN_ERR_INVALID_ARG;
@@ -279,7 +279,7 @@ VN_EXPORT int32_t vn_wtscanner_looks_like_url(
     return VN_OK;
 }
 
-VN_EXPORT int32_t vn_wtscanner_normalize_url(
+extern "C" int32_t vn_wtscanner_normalize_url(
     const char16_t* str, int32_t str_len,
     char16_t* out_buf, int32_t out_cap, int32_t* out_len) noexcept
 {

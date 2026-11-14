@@ -50,9 +50,12 @@ int64_t QueryCounter() noexcept {
 }
 
 int64_t QueryFrequency() noexcept {
-    LARGE_INTEGER value{};
-    QueryPerformanceFrequency(&value);
-    return value.QuadPart > 0 ? value.QuadPart : 1;
+    static const int64_t cached = []() noexcept -> int64_t {
+        LARGE_INTEGER value{};
+        QueryPerformanceFrequency(&value);
+        return value.QuadPart > 0 ? value.QuadPart : 1;
+    }();
+    return cached;
 }
 
 constexpr uint64_t FileTimeValue(const FILETIME& ft) noexcept {
@@ -124,9 +127,9 @@ bool ReadNetworkTotals(NetworkTotals& totals) noexcept {
 
 int32_t SampleNetwork(VnSystemMonitorState& state) noexcept {
     const int64_t now = QueryCounter();
-    const double frequency = static_cast<double>(QueryFrequency());
     const int64_t last = state.last_net_qpc;
-    if (last > 0 && static_cast<double>(now - last) / frequency <= kMinNetSampleSeconds) return VN_OK;
+    const double elapsed = last > 0 ? static_cast<double>(now - last) / static_cast<double>(QueryFrequency()) : 0.0;
+    if (last > 0 && elapsed <= kMinNetSampleSeconds) return VN_OK;
 
     NetworkTotals totals{};
     if (!ReadNetworkTotals(totals)) {
@@ -145,13 +148,10 @@ int32_t SampleNetwork(VnSystemMonitorState& state) noexcept {
     }
 
     if (last > 0) {
-        const double elapsed = static_cast<double>(now - last) / frequency;
-        if (elapsed > kMinNetSampleSeconds) {
-            const uint64_t delta_recv = totals.received > state.last_recv_bytes ? totals.received - state.last_recv_bytes : 0;
-            const uint64_t delta_sent = totals.sent > state.last_sent_bytes ? totals.sent - state.last_sent_bytes : 0;
-            state.down_bytes_per_sec = static_cast<double>(delta_recv) / elapsed;
-            state.up_bytes_per_sec = static_cast<double>(delta_sent) / elapsed;
-        }
+        const uint64_t delta_recv = totals.received > state.last_recv_bytes ? totals.received - state.last_recv_bytes : 0;
+        const uint64_t delta_sent = totals.sent > state.last_sent_bytes ? totals.sent - state.last_sent_bytes : 0;
+        state.down_bytes_per_sec = static_cast<double>(delta_recv) / elapsed;
+        state.up_bytes_per_sec = static_cast<double>(delta_sent) / elapsed;
     }
 
     state.last_recv_bytes = totals.received;
