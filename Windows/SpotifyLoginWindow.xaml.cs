@@ -79,22 +79,33 @@ public partial class SpotifyLoginWindow : Window
             regionBounds.CornerDiameter);
     }
 
+    [StructLayout(LayoutKind.Sequential, Pack = 1)]
+    private struct VnRoundedWindowRegion
+    {
+        public int Left;
+        public int Top;
+        public int Right;
+        public int Bottom;
+        public int CornerDiameter;
+    }
+
+    [LibraryImport("VNotch.Native.dll")]
+    private static partial int vn_window_calc_rounded_region(
+        double widthDip,
+        double heightDip,
+        double marginDip,
+        double cornerRadiusDip,
+        double dpiScale,
+        out VnRoundedWindowRegion outRegion);
+
     internal static RoundedWindowRegion CalculateRoundedWindowRegion(
         double widthDip,
         double heightDip,
         double dpiScale)
     {
-        dpiScale = dpiScale > 0 && double.IsFinite(dpiScale) ? dpiScale : 1.0;
-
-        int left = (int)Math.Round(ShellMarginDip * dpiScale);
-        int top = left;
-        int right = Math.Max(left + 1,
-            (int)Math.Round((Math.Max(widthDip, ShellMarginDip * 2 + 1) - ShellMarginDip) * dpiScale));
-        int bottom = Math.Max(top + 1,
-            (int)Math.Round((Math.Max(heightDip, ShellMarginDip * 2 + 1) - ShellMarginDip) * dpiScale));
-        int cornerDiameter = Math.Max(1, (int)Math.Round(ShellCornerRadiusDip * 2 * dpiScale));
-
-        return new RoundedWindowRegion(left, top, right, bottom, cornerDiameter);
+        _ = vn_window_calc_rounded_region(
+            widthDip, heightDip, ShellMarginDip, ShellCornerRadiusDip, dpiScale, out var r);
+        return new RoundedWindowRegion(r.Left, r.Top, r.Right, r.Bottom, r.CornerDiameter);
     }
 
     internal readonly record struct RoundedWindowRegion(

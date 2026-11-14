@@ -128,6 +128,264 @@ public sealed partial class LiquidGlassController : IDisposable
         byte ultimateGpu,
         out double outIntervalMs);
 
+    private const int VnErrOverflow = -4;
+
+    [StructLayout(LayoutKind.Sequential, Pack = 1)]
+    private struct VnLiquidGlassFrameDimsInput
+    {
+        public int RegionX;
+        public int RegionY;
+        public int DisplayW;
+        public int DisplayH;
+        public int MaxRegionW;
+        public int SurfaceW;
+        public int SurfaceH;
+        public int BevelMode;
+        public double BitmapDpi;
+        public double ZRadius;
+        public double Refraction;
+        public double ChromaticAberration;
+        public double Distortion;
+        public double EdgeBend;
+        public byte GpuMode;
+        public byte FullSurface;
+        public byte HasPrevBounds;
+        public byte Reserved;
+        public int PrevBoundsX;
+        public int PrevBoundsY;
+        public int PrevBoundsW;
+        public int PrevBoundsH;
+    }
+
+    [StructLayout(LayoutKind.Sequential, Pack = 1)]
+    private struct VnLiquidGlassFrameDimsOut
+    {
+        public int OutW;
+        public int OutH;
+        public double OutScale;
+        public int BufW;
+        public int BufH;
+        public int NotchOffX;
+        public int NotchOffY;
+        public double MinHalf;
+        public int Margin;
+        public int SrcW;
+        public int SrcH;
+        public int PhysSrcW;
+        public int PhysSrcH;
+        public int SrcX;
+        public int SrcY;
+        public int CaptureShiftX;
+        public int CaptureShiftY;
+        public int MapCaptureShiftY;
+        public byte HasNextBounds;
+        public byte Pad0;
+        public byte Pad1;
+        public byte Pad2;
+        public int NextBoundsX;
+        public int NextBoundsY;
+        public int NextBoundsW;
+        public int NextBoundsH;
+    }
+
+    [StructLayout(LayoutKind.Sequential, Pack = 1)]
+    private struct VnLiquidGlassGpuGeometryInput
+    {
+        public int RegionX;
+        public int RegionY;
+        public int SrcX;
+        public int SrcY;
+        public int SrcW;
+        public int SrcH;
+        public int OutW;
+        public int OutH;
+        public int BevelMode;
+        public double SubX;
+        public double SubY;
+        public double OutScale;
+        public double MinHalf;
+        public double TopCornerRadius;
+        public double BottomCornerRadius;
+        public double PowerFactor;
+        public double RefractionA;
+        public double RefractionB;
+        public double RefractionC;
+        public double RefractionD;
+        public double FPower;
+        public double Noise;
+        public double GlowWeight;
+        public double GlowBias;
+        public double GlowEdge1;
+        public double Refraction;
+        public double EdgeBend;
+        public double ChromaticAberration;
+        public double Distortion;
+        public double ZRadius;
+        public double Saturation;
+        public double Brightness;
+        public double EdgeHighlight;
+        public double Specular;
+        public double Fresnel;
+    }
+
+    [StructLayout(LayoutKind.Sequential, Pack = 1)]
+    private struct VnLiquidGlassGpuGeometryOut
+    {
+        public double SrcW;
+        public double SrcH;
+        public double NotchW;
+        public double NotchH;
+        public double OffX;
+        public double OffY;
+        public double TopCornerR;
+        public double BottomCornerR;
+        public double PowerFactor;
+        public double A;
+        public double B;
+        public double C;
+        public double D;
+        public double FPower;
+        public double Noise;
+        public double GlowWeight;
+        public double GlowBias;
+        public double GlowEdge0;
+        public double GlowEdge1;
+        public double Chroma;
+        public double EdgeBend;
+        public double SatFactor;
+        public double BrightAdd;
+        public double BevelMode;
+        public int CaptureOriginX;
+        public int CaptureOriginY;
+    }
+
+    [LibraryImport("VNotch.Native.dll", EntryPoint = "vn_liquid_glass_build_optical_lut")]
+    private static partial int NativeBuildOpticalLut(
+        float refractionAmount,
+        float rimWidth,
+        Span<float> outLut1024);
+
+    [LibraryImport("VNotch.Native.dll", EntryPoint = "vn_liquid_glass_compute_frame_dims")]
+    private static partial int NativeComputeFrameDims(
+        in VnLiquidGlassFrameDimsInput input,
+        out VnLiquidGlassFrameDimsOut outDims);
+
+    [LibraryImport("VNotch.Native.dll", EntryPoint = "vn_liquid_glass_create_gpu_geometry")]
+    private static partial int NativeCreateGpuGeometry(
+        in VnLiquidGlassGpuGeometryInput input,
+        out VnLiquidGlassGpuGeometryOut outGeom);
+
+    [LibraryImport("VNotch.Native.dll", EntryPoint = "vn_liquid_glass_grow_present_capacity")]
+    private static partial int NativeGrowPresentCapacity(
+        int currentCap,
+        int required,
+        int slack,
+        out int outCap);
+
+    [LibraryImport("VNotch.Native.dll", EntryPoint = "vn_liquid_glass_grow_pixel_buffer_capacity")]
+    private static partial int NativeGrowPixelBufferCapacity(
+        int currentCap,
+        int required,
+        out int outCap);
+
+    [LibraryImport("VNotch.Native.dll", EntryPoint = "vn_liquid_glass_clamp_capture_origin")]
+    private static partial int NativeClampCaptureOrigin(
+        int requested,
+        int captureLen,
+        int desktopOrigin,
+        int desktopLen,
+        out int outOrigin);
+
+    [LibraryImport("VNotch.Native.dll", EntryPoint = "vn_liquid_glass_compute_rim_width")]
+    private static partial int NativeComputeRimWidth(
+        double normalizedRadius,
+        double outputScale,
+        double minHalf,
+        out double outRimWidth);
+
+    [LibraryImport("VNotch.Native.dll", EntryPoint = "vn_liquid_glass_lens_profile")]
+    private static partial int NativeLensProfile(
+        double normalizedDistance,
+        byte broad,
+        out double outProfile);
+
+    [LibraryImport("VNotch.Native.dll", EntryPoint = "vn_liquid_glass_refraction_amplitude")]
+    private static partial int NativeRefractionAmplitude(
+        double rimWidth,
+        double refraction,
+        int bevelMode,
+        double edgeBend,
+        out double outAmplitude);
+
+    [LibraryImport("VNotch.Native.dll", EntryPoint = "vn_liquid_glass_edge_bend_gain")]
+    private static partial int NativeEdgeBendGain(
+        double edgeBend,
+        out double outGain);
+
+    [LibraryImport("VNotch.Native.dll", EntryPoint = "vn_liquid_glass_directional_lens_width")]
+    private static partial int NativeDirectionalLensWidth(
+        double rimWidth,
+        double inwardNormalX,
+        double edgeBend,
+        out double outWidth);
+
+    [LibraryImport("VNotch.Native.dll", EntryPoint = "vn_liquid_glass_is_gpu_geometry_valid")]
+    private static partial int NativeIsGpuGeometryValid(
+        double srcW,
+        double srcH,
+        double notchW,
+        double notchH,
+        out byte outValid);
+
+    [LibraryImport("VNotch.Native.dll", EntryPoint = "vn_liquid_glass_compute_sampling_margin")]
+    private static partial int NativeComputeSamplingMargin(
+        double rimWidth,
+        double refraction,
+        double chroma,
+        double distortion,
+        int bevelMode,
+        double edgeBend,
+        out int outMargin);
+
+    [LibraryImport("VNotch.Native.dll", EntryPoint = "vn_liquid_glass_exponential_refract")]
+    private static partial int NativeExponentialRefract(
+        double x,
+        double a,
+        double b,
+        double c,
+        double d,
+        out double outValue);
+
+    [LibraryImport("VNotch.Native.dll", EntryPoint = "vn_liquid_glass_choose_frame_interval_ms")]
+    private static partial int NativeChooseFrameIntervalMs(
+        double activeIntervalMs,
+        byte idle,
+        byte animating,
+        byte hasFrame,
+        long unchangedMs,
+        byte forceRefresh,
+        out double outIntervalMs);
+
+    [LibraryImport("VNotch.Native.dll", EntryPoint = "vn_liquid_glass_choose_processing_interval_ms")]
+    private static partial int NativeChooseProcessingIntervalMs(
+        double intervalMs,
+        double workMs,
+        byte gpuMode,
+        out double outIntervalMs);
+
+    [LibraryImport("VNotch.Native.dll", EntryPoint = "vn_liquid_glass_blur_amount_to_sigma")]
+    private static partial int NativeBlurAmountToSigma(
+        double amount,
+        double dpiScale,
+        out double outSigma);
+
+    [LibraryImport("VNotch.Native.dll", EntryPoint = "vn_liquid_glass_compute_next_deadline_ms")]
+    private static partial int NativeComputeNextDeadlineMs(
+        double prevDeadlineMs,
+        double intervalMs,
+        double nowMs,
+        out double outDeadlineMs);
+
     public const int MaxTargetFps = 1000;
 
     public readonly record struct CaptureRegion(int X, int Y, int Width, int Height,
@@ -725,7 +983,7 @@ public sealed partial class LiquidGlassController : IDisposable
         Volatile.Write(ref _bitmapDpi, nextDpi);
         _mapsDirty = true;
         Interlocked.Increment(ref _refreshVersion);
-        if (updateHostDimensions && _gpuMode && _d3dPresenter != null)
+        if (updateHostDimensions && _gpuMode && _d3dPresenter != null && !CropGpuPresentationToCapture)
         {
             void SyncHostDimensions()
             {
@@ -777,12 +1035,24 @@ public sealed partial class LiquidGlassController : IDisposable
     }
 
     internal static double ChooseFrameIntervalMs(double activeIntervalMs, bool idle, bool animating,
-        bool hasFrame, long unchangedMilliseconds, bool forceRefresh = false) =>
-        idle && !animating && hasFrame && unchangedMilliseconds >= 250 && !forceRefresh
-            ? Math.Max(100, activeIntervalMs) : activeIntervalMs;
+        bool hasFrame, long unchangedMilliseconds, bool forceRefresh = false)
+    {
+        _ = NativeChooseFrameIntervalMs(
+            activeIntervalMs,
+            idle ? (byte)1 : (byte)0,
+            animating ? (byte)1 : (byte)0,
+            hasFrame ? (byte)1 : (byte)0,
+            unchangedMilliseconds,
+            forceRefresh ? (byte)1 : (byte)0,
+            out double intervalMs);
+        return intervalMs;
+    }
 
-    internal static double ChooseProcessingIntervalMs(double intervalMs, double workMs, bool gpuMode) =>
-        gpuMode ? intervalMs : Math.Max(intervalMs, Math.Min(100, workMs * 1.25));
+    internal static double ChooseProcessingIntervalMs(double intervalMs, double workMs, bool gpuMode)
+    {
+        _ = NativeChooseProcessingIntervalMs(intervalMs, workMs, gpuMode ? (byte)1 : (byte)0, out double result);
+        return result;
+    }
 
     public void SetPresentationPaused(bool paused)
     {
@@ -873,9 +1143,8 @@ public sealed partial class LiquidGlassController : IDisposable
 
     internal static double BlurAmountToSigma(double amount, double dpiScale = 1.0)
     {
-        double normalized = double.IsFinite(amount) ? Math.Clamp(amount, 0, 1) : 0;
-        // Fine control for clear glass near zero; retain the maximum frosting.
-        return 28.0 * normalized * normalized * Math.Clamp(dpiScale, 0.5, 4.0);
+        _ = NativeBlurAmountToSigma(amount, dpiScale, out double sigma);
+        return sigma;
     }
 
     public void SetBlur(double gaussianSigma)
@@ -1427,8 +1696,11 @@ public sealed partial class LiquidGlassController : IDisposable
         return nextFrameAtMs;
     }
 
-    internal static double ComputeNextFrameDeadline(double previousDeadlineMs, double intervalMs, double nowMs) =>
-        Math.Min(previousDeadlineMs + intervalMs, nowMs + intervalMs);
+    internal static double ComputeNextFrameDeadline(double previousDeadlineMs, double intervalMs, double nowMs)
+    {
+        _ = NativeComputeNextDeadlineMs(previousDeadlineMs, intervalMs, nowMs, out double deadlineMs);
+        return deadlineMs;
+    }
 
     private CaptureRegion? _cachedRegion;
     private double _lastRegionFetchMs = double.NegativeInfinity;
@@ -1651,6 +1923,9 @@ public sealed partial class LiquidGlassController : IDisposable
         Math.Max(1, (long)Math.Round(milliseconds * Stopwatch.Frequency / 1000.0));
 
     private int _regionQueryQueued;
+    private int _queuedRegionQueryGeneration;
+    private long _queuedRegionQueryRevision;
+    private Action? _executeRegionQueryAction;
     private CaptureRegion? _queriedRegion;
     private int _queriedRegionGeneration = -1;
     private bool _regionQueryCompleted;
@@ -1662,29 +1937,13 @@ public sealed partial class LiquidGlassController : IDisposable
         lock (_liveRegionSync) revision = _liveRegionRevision;
         if (Interlocked.CompareExchange(ref _regionQueryQueued, 1, 0) == 0)
         {
+            _queuedRegionQueryGeneration = generation;
+            _queuedRegionQueryRevision = revision;
             try
             {
-                _dispatcher.BeginInvoke(DispatcherPriority.Background, (Action)(() =>
-                {
-                    try
-                    {
-                        if (!_isActive || generation != Volatile.Read(ref _renderGeneration)) return;
-                        var region = _regionProvider();
-                        lock (_liveRegionSync)
-                        {
-                            if (revision != _liveRegionRevision) return;
-                            _queriedRegion = region;
-                            _queriedRegionGeneration = generation;
-                            _regionQueryCompleted = true;
-                        }
-                        SignalWakeEventSafe();
-                    }
-                    catch (Exception ex)
-                    {
-                        RuntimeLog.Log(LogCategory, $"Region query failed: {ex.Message}");
-                    }
-                    finally { Interlocked.Exchange(ref _regionQueryQueued, 0); }
-                }));
+                _dispatcher.BeginInvoke(
+                    DispatcherPriority.Background,
+                    _executeRegionQueryAction ??= ExecuteQueuedRegionQuery);
             }
             catch (InvalidOperationException)
             {
@@ -1693,6 +1952,33 @@ public sealed partial class LiquidGlassController : IDisposable
         }
         lock (_liveRegionSync)
             return _cachedRegion;
+    }
+
+    private void ExecuteQueuedRegionQuery()
+    {
+        try
+        {
+            int generation = _queuedRegionQueryGeneration;
+            long revision = _queuedRegionQueryRevision;
+            if (!_isActive || generation != Volatile.Read(ref _renderGeneration)) return;
+            var region = _regionProvider();
+            lock (_liveRegionSync)
+            {
+                if (revision != _liveRegionRevision) return;
+                _queriedRegion = region;
+                _queriedRegionGeneration = generation;
+                _regionQueryCompleted = true;
+            }
+            SignalWakeEventSafe();
+        }
+        catch (Exception ex)
+        {
+            RuntimeLog.Log(LogCategory, $"Region query failed: {ex.Message}");
+        }
+        finally
+        {
+            Interlocked.Exchange(ref _regionQueryQueued, 0);
+        }
     }
 
     private readonly record struct FrameDimensions(
@@ -1801,92 +2087,49 @@ public sealed partial class LiquidGlassController : IDisposable
     {
         _ = useMag;
         RefreshBitmapDpi(updateHostDimensions: true);
-        double bitmapDpi = Volatile.Read(ref _bitmapDpi);
-        if (bitmapDpi <= 0) bitmapDpi = 96.0;
-        // A GPU-native lens renders the active crop; pooled capacity handles growth.
-        // Full-surface capture remains for the legacy presentation path.
         bool fullSurface = gpuMode && CaptureFullSurface && !UsesNativeRefraction;
-        double scale = 1.0;
-        int outW = Math.Max(8, (int)Math.Round(displayW * scale));
-        int outH = Math.Max(8, (int)Math.Round(displayH * scale));
-        double outScale = displayW > 0 ? (double)outW / displayW * (bitmapDpi / 96.0) : 1.0;
+        var prevBounds = _fullSurfaceCaptureBounds;
 
-        int overscan = gpuMode
-            ? 0
-            : Math.Clamp((int)Math.Round(80 * (bitmapDpi / 96.0)), 64, 150);
-        int bufW = outW + overscan * 2;
-        int bufH = outH + overscan;
-        int notchOffX = overscan;
-        int notchOffY = 0;
-
-        double minHalf = Math.Min(outW, outH) * 0.5;
-        double rimWidth = ComputeRimWidth(p.ZRadius, outScale, minHalf);
-        int requiredMargin = ComputeSamplingMargin(
-            rimWidth, p.Refraction, p.ChromaticAberration, p.Distortion,
-            p.BevelMode, p.EdgeBend);
-
-        int margin = requiredMargin;
-        if (gpuMode)
+        var input = new VnLiquidGlassFrameDimsInput
         {
-            margin = fullSurface
-                ? GpuSamplingMarginLimit
-                : Math.Clamp(requiredMargin + 32, 32, GpuSamplingMarginLimit);
-        }
+            RegionX = region.X,
+            RegionY = region.Y,
+            DisplayW = displayW,
+            DisplayH = displayH,
+            MaxRegionW = _maxRegionW,
+            SurfaceW = SurfaceWidth,
+            SurfaceH = SurfaceHeight,
+            BevelMode = p.BevelMode,
+            BitmapDpi = Volatile.Read(ref _bitmapDpi),
+            ZRadius = p.ZRadius,
+            Refraction = p.Refraction,
+            ChromaticAberration = p.ChromaticAberration,
+            Distortion = p.Distortion,
+            EdgeBend = p.EdgeBend,
+            GpuMode = gpuMode ? (byte)1 : (byte)0,
+            FullSurface = fullSurface ? (byte)1 : (byte)0,
+            HasPrevBounds = prevBounds.HasValue ? (byte)1 : (byte)0,
+            PrevBoundsX = prevBounds?.X ?? 0,
+            PrevBoundsY = prevBounds?.Y ?? 0,
+            PrevBoundsW = prevBounds?.Width ?? 0,
+            PrevBoundsH = prevBounds?.Height ?? 0
+        };
 
-        int srcW = (fullSurface) ? SurfaceWidth : bufW + margin * 2;
-        int srcH = (fullSurface) ? SurfaceHeight : bufH + margin * 2;
-
-        double inv = 1.0 / scale;
-        int physMargin = (int)Math.Round(margin * inv);
-        int physNotchOffX = (int)Math.Round(notchOffX * inv);
-        int physSrcW = (int)Math.Round(srcW * inv);
-        int physSrcH = (int)Math.Round(srcH * inv);
-
-        int requestedSrcX = region.X - physNotchOffX - physMargin;
-        if (fullSurface)
-            requestedSrcX -= (_maxRegionW - displayW) / 2;
-        int requestedSrcY = region.Y - physMargin;
-        int srcX = ClampCaptureOriginToVirtualDesktop(requestedSrcX, physSrcW, horizontal: true);
-        int srcY = ClampCaptureOriginToVirtualDesktop(requestedSrcY, physSrcH, horizontal: false);
-        if (fullSurface)
-        {
-            int samplingPad = Math.Min(requiredMargin, margin);
-            int neededLeft = ClampCaptureOriginToVirtualDesktop(
-                region.X - samplingPad, displayW + samplingPad * 2, horizontal: true);
-            int neededTop = ClampCaptureOriginToVirtualDesktop(
-                region.Y - samplingPad, displayH + samplingPad * 2, horizontal: false);
-            if (_fullSurfaceCaptureBounds is { } previous &&
-                previous.Width == physSrcW && previous.Height == physSrcH &&
-                ClampCaptureOriginToVirtualDesktop(previous.X, physSrcW, horizontal: true) == previous.X &&
-                ClampCaptureOriginToVirtualDesktop(previous.Y, physSrcH, horizontal: false) == previous.Y &&
-                neededLeft >= previous.X && neededTop >= previous.Y &&
-                neededLeft + displayW + samplingPad * 2 <= previous.X + physSrcW &&
-                neededTop + displayH + samplingPad * 2 <= previous.Y + physSrcH)
-            {
-                srcX = previous.X;
-                srcY = previous.Y;
-            }
-            _fullSurfaceCaptureBounds = (srcX, srcY, physSrcW, physSrcH);
-        }
-        else
-        {
-            _fullSurfaceCaptureBounds = null;
-        }
-        int captureShiftX = srcX - requestedSrcX;
-        int captureShiftY = srcY - requestedSrcY;
-
-        int mapCaptureShiftY = captureShiftY;
+        _ = NativeComputeFrameDims(in input, out var d);
+        _fullSurfaceCaptureBounds = d.HasNextBounds != 0
+            ? (d.NextBoundsX, d.NextBoundsY, d.NextBoundsW, d.NextBoundsH)
+            : null;
 
         return new FrameDimensions(
-            outW, outH, outScale,
-            bufW, bufH,
-            notchOffX, notchOffY,
-            minHalf, margin,
-            srcW, srcH,
-            physSrcW, physSrcH,
-            srcX, srcY,
-            captureShiftX, captureShiftY,
-            mapCaptureShiftY);
+            d.OutW, d.OutH, d.OutScale,
+            d.BufW, d.BufH,
+            d.NotchOffX, d.NotchOffY,
+            d.MinHalf, d.Margin,
+            d.SrcW, d.SrcH,
+            d.PhysSrcW, d.PhysSrcH,
+            d.SrcX, d.SrcY,
+            d.CaptureShiftX, d.CaptureShiftY,
+            d.MapCaptureShiftY);
     }
 
     private bool ExecuteFrameRender(
@@ -1974,10 +2217,12 @@ public sealed partial class LiquidGlassController : IDisposable
         }
 
         // Without capture exclusion, BitBlt would capture the notch itself.
-        // Sampling below it avoids feedback but displays unrelated desktop pixels
-        // at the notch's coordinates. Keep a plain material until Magnifier recovers.
+        // Rebuild the desktop from the wallpaper and the windows below the notch
+        // instead, and keep a plain material only if that also fails.
         if (!_exactBitBltCapture)
         {
+            if (MagnifierCaptureSource.TryCompositeDesktop(cp.SrcX, cp.SrcY, cp.SrcW, cp.SrcH, _dibBits))
+                return true;
             isSyntheticBackdrop = true;
             return FillUnavailableBackdrop(cp.SrcW, cp.SrcH);
         }
@@ -2010,31 +2255,54 @@ public sealed partial class LiquidGlassController : IDisposable
 
     private GpuGeometry CreateGpuGeometry(GlassParams p, CaptureRegion region, FrameDimensions dims)
     {
-        double topR = Math.Clamp(p.TopCornerRadius * _outScale, 0.0, dims.MinHalf);
-        double bottomR = Math.Clamp(p.BottomCornerRadius * _outScale, 0.0, dims.MinHalf);
+        var input = new VnLiquidGlassGpuGeometryInput
+        {
+            RegionX = region.X,
+            RegionY = region.Y,
+            SrcX = dims.SrcX,
+            SrcY = dims.SrcY,
+            SrcW = dims.SrcW,
+            SrcH = dims.SrcH,
+            OutW = dims.OutW,
+            OutH = dims.OutH,
+            BevelMode = p.BevelMode,
+            SubX = region.SubX,
+            SubY = region.SubY,
+            OutScale = _outScale,
+            MinHalf = dims.MinHalf,
+            TopCornerRadius = p.TopCornerRadius,
+            BottomCornerRadius = p.BottomCornerRadius,
+            PowerFactor = p.PowerFactor,
+            RefractionA = p.RefractionA,
+            RefractionB = p.RefractionB,
+            RefractionC = p.RefractionC,
+            RefractionD = p.RefractionD,
+            FPower = p.FPower,
+            Noise = p.Noise,
+            GlowWeight = p.GlowWeight,
+            GlowBias = p.GlowBias,
+            GlowEdge1 = p.GlowEdge1,
+            Refraction = p.Refraction,
+            EdgeBend = p.EdgeBend,
+            ChromaticAberration = p.ChromaticAberration,
+            Distortion = p.Distortion,
+            ZRadius = p.ZRadius,
+            Saturation = p.Saturation,
+            Brightness = p.Brightness,
+            EdgeHighlight = p.EdgeHighlight,
+            Specular = p.Specular,
+            Fresnel = p.Fresnel
+        };
 
-        // The origin can be clamped to a monitor edge or retained across a resize.
-        // A padding value alone is not the offset into that captured desktop frame.
-        double offX = region.X - dims.SrcX + region.SubX;
-        double offY = region.Y - dims.SrcY + region.SubY;
-
+        _ = NativeCreateGpuGeometry(in input, out var g);
         return new GpuGeometry(
-            dims.SrcW, dims.SrcH, dims.OutW, dims.OutH, offX, offY,
-            topR, bottomR,
-            p.PowerFactor, p.RefractionA,
-            p.RefractionB * (p.Refraction > 1e-4 ? (0.15 + 1.15 * Math.Clamp(p.Refraction, 0.0, 3.0)) : 0.0),
-            p.RefractionC,
-            Math.Clamp(p.RefractionD * (0.25 / Math.Clamp(double.IsFinite(p.ZRadius) ? p.ZRadius : 0.25, 0.04, 1.0)), 1.2, 24.0),
-            p.FPower, p.Noise,
-            Math.Clamp(p.Specular * 1.15 + p.EdgeHighlight * 0.65 + p.GlowWeight * 0.12, 0.0, 2.5),
-            Math.Clamp(p.Fresnel * 1.15 + p.EdgeHighlight * 0.40 + Math.Max(0.0, p.GlowBias), 0.0, 2.5),
-            Math.Clamp(p.Distortion, 0.0, 2.0),
-            p.GlowEdge1,
-            Math.Clamp(p.ChromaticAberration, 0.0, 2.0),
-            (double.IsFinite(p.EdgeBend) ? Math.Max(0.0, p.EdgeBend) : 0.0) * (p.Refraction > 1e-4 ? (0.25 + 0.95 * Math.Clamp(p.Refraction, 0.0, 3.0)) : 0.0),
-            1.0 + p.Saturation, p.Brightness,
-            p.BevelMode >= 1 ? 1.0 : 0.0,
-            dims.SrcX, dims.SrcY);
+            g.SrcW, g.SrcH, g.NotchW, g.NotchH, g.OffX, g.OffY,
+            g.TopCornerR, g.BottomCornerR,
+            g.PowerFactor, g.A, g.B, g.C, g.D,
+            g.FPower, g.Noise, g.GlowWeight, g.GlowBias,
+            g.GlowEdge0, g.GlowEdge1, g.Chroma, g.EdgeBend,
+            g.SatFactor, g.BrightAdd, g.BevelMode,
+            g.CaptureOriginX, g.CaptureOriginY);
     }
 
     private bool ProcessCpuFrame(
@@ -2067,75 +2335,64 @@ public sealed partial class LiquidGlassController : IDisposable
         return true;
     }
 
-    private static int ClampCaptureOriginToVirtualDesktop(int requested, int captureLength, bool horizontal)
+    internal static void BuildOpticalLut(float refractionAmount, float rimWidth, Span<float> outLut1024)
     {
-        int desktopOrigin = GetSystemMetrics(horizontal ? SM_XVIRTUALSCREEN : SM_YVIRTUALSCREEN);
-        int desktopLength = GetSystemMetrics(horizontal ? SM_CXVIRTUALSCREEN : SM_CYVIRTUALSCREEN);
-        return ClampCaptureOrigin(requested, captureLength, desktopOrigin, desktopLength);
+        if (outLut1024.Length < 1024)
+            throw new ArgumentException("Optical LUT requires at least 1024 floats.", nameof(outLut1024));
+        _ = NativeBuildOpticalLut(refractionAmount, rimWidth, outLut1024);
     }
 
     internal static int ClampCaptureOrigin(
         int requested, int captureLength, int desktopOrigin, int desktopLength)
     {
-        if (captureLength <= 0 || desktopLength <= 0) return requested;
-        if (captureLength >= desktopLength) return desktopOrigin;
-
-        long max = (long)desktopOrigin + desktopLength - captureLength;
-        return (int)Math.Clamp((long)requested, desktopOrigin, max);
+        _ = NativeClampCaptureOrigin(requested, captureLength, desktopOrigin, desktopLength, out int origin);
+        return origin;
     }
 
-    internal static double ComputeRimWidth(double normalizedRadius, double outputScale, double minHalf) =>
-        Math.Clamp(Math.Clamp(normalizedRadius, 0.02, 0.95) * 100.0 * outputScale, 3.0, minHalf);
+    internal static double ComputeRimWidth(double normalizedRadius, double outputScale, double minHalf)
+    {
+        int rc = NativeComputeRimWidth(normalizedRadius, outputScale, minHalf, out double rimWidth);
+        if (rc != 0) throw new ArgumentException("minHalf must be at least 3.0.", nameof(minHalf));
+        return rimWidth;
+    }
 
     internal static double LensProfile(double normalizedDistance, bool broad = false)
     {
-        double s = Smoother01(normalizedDistance);
-        // Apple-like edge lens: the optical slope peaks in the outer portion of
-        double oneMinusS = 1.0 - s;
-        double profile = (256.0 / 27.0) * s * oneMinusS * oneMinusS * oneMinusS;
-        return broad ? Math.Sqrt(profile) : profile;
+        _ = NativeLensProfile(normalizedDistance, broad ? (byte)1 : (byte)0, out double profile);
+        return profile;
     }
 
     internal static double RefractionAmplitude(
         double rimWidth, double refraction, int bevelMode = 0, double edgeBend = 1.0)
     {
-        double r = Math.Max(refraction, 0.0);
-        double response = r / Math.Max(0.65 + 0.35 * r, 0.001);
-        double travelRatio = EdgeBendGain(edgeBend) * response *
-            (bevelMode >= 1 ? 1.08 : 1.0);
-
-        // Extreme mode intentionally allows the ray to travel beyond the optical
-        return rimWidth * travelRatio;
+        _ = NativeRefractionAmplitude(rimWidth, refraction, bevelMode, edgeBend, out double amplitude);
+        return amplitude;
     }
 
     internal static double EdgeBendGain(double edgeBend)
     {
-        // Super-linear and intentionally uncapped: values above the former 300%
-        double bend = double.IsFinite(edgeBend) ? Math.Max(edgeBend, 0.0) : 0.0;
-        return 0.58 * Math.Pow(bend, 1.5);
+        _ = NativeEdgeBendGain(edgeBend, out double gain);
+        return gain;
     }
 
     internal static double DirectionalLensWidth(
         double rimWidth, double inwardNormalX, double edgeBend)
     {
-        double bend = double.IsFinite(edgeBend) ? Math.Max(edgeBend, 0.0) : 0.0;
-        // A capsule's side caps need a longer optical run than its flat top and
-        double sideAxis = Math.Pow(Math.Clamp(Math.Abs(inwardNormalX), 0.0, 1.0), 2.6);
-        return rimWidth * (1.0 + 0.5 * bend * sideAxis);
+        _ = NativeDirectionalLensWidth(rimWidth, inwardNormalX, edgeBend, out double width);
+        return width;
     }
 
-    internal static bool IsGpuGeometryValid(double srcW, double srcH, double notchW, double notchH) =>
-        srcW >= 1.0 && srcH >= 1.0 && notchW >= 1.0 && notchH >= 1.0 &&
-        srcW + 1.5 >= notchW && srcH + 1.5 >= notchH;
+    internal static bool IsGpuGeometryValid(double srcW, double srcH, double notchW, double notchH)
+    {
+        _ = NativeIsGpuGeometryValid(srcW, srcH, notchW, notchH, out byte valid);
+        return valid != 0;
+    }
 
     internal static int ComputeSamplingMargin(double rimWidth, double refraction, double chroma,
         double distortion, int bevelMode, double edgeBend = 1.0)
     {
-        double amplitude = RefractionAmplitude(
-            rimWidth, Math.Clamp(refraction, 0.0, 3.0), bevelMode, edgeBend);
-        double chromaOffset = Math.Min(Math.Clamp(chroma, 0.0, 2.0) * (1.25 + rimWidth * 0.085), 8.0);
-        double fluidOffset = Math.Clamp(distortion, 0.0, 2.0) * 2.25;
-        return Math.Clamp((int)Math.Ceiling(amplitude + chromaOffset + fluidOffset + 3.0), 12, 512);
+        _ = NativeComputeSamplingMargin(rimWidth, refraction, chroma, distortion, bevelMode, edgeBend, out int margin);
+        return margin;
     }
 
     private void Present(int generation)
@@ -2221,15 +2478,9 @@ public sealed partial class LiquidGlassController : IDisposable
 
     internal static int GrowPresentCapacity(int current, int required, int slack)
     {
-        if (required <= 0) return 0;
-        if (current > checked(required * 4)) current = 0;
-        if (current >= required) return current;
-
-        int target = current > 0
-            ? Math.Max(required, checked(current + slack))
-            : checked(required + slack);
-        const int quantum = 64;
-        return checked(((target + quantum - 1) / quantum) * quantum);
+        int rc = NativeGrowPresentCapacity(current, required, slack, out int cap);
+        if (rc == VnErrOverflow) throw new OverflowException();
+        return cap;
     }
 
     internal static ulong ComputeSourceHash(IntPtr dibBits, int srcW, int srcH) =>
@@ -2563,26 +2814,15 @@ public sealed partial class LiquidGlassController : IDisposable
 
     internal static int GrowPixelBufferCapacity(int current, int required)
     {
-        // Retain capacity across collapse/expand cycles to prevent LOH thrashing.
-        if (current >= required) return current;
-        // Amortize LOH allocations through expansion. Bound unused capacity to
-        // 64K pixels per buffer instead of retaining another full-sized frame.
-        int slack = Math.Clamp(current / 4, 4096, 65536);
-        return Math.Max(required, checked(current + slack));
-    }
-
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static double Smoother01(double x)
-    {
-        double t = Math.Clamp(x, 0.0, 1.0);
-        return t * t * t * (t * (t * 6.0 - 15.0) + 10.0);
+        int rc = NativeGrowPixelBufferCapacity(current, required, out int cap);
+        if (rc == VnErrOverflow) throw new OverflowException();
+        return cap;
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     internal static double ExponentialRefract(double x, double a, double b, double c, double d)
     {
-        double exponent = -d * x - a;
-        double baseVal = Math.Max(c * 2.718281828459045, 0.0001);
-        return 1.0 - b * Math.Pow(baseVal, exponent);
+        _ = NativeExponentialRefract(x, a, b, c, d, out double value);
+        return value;
     }
 }

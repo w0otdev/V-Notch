@@ -50,22 +50,55 @@ internal static partial class InstallDirectoryCleanup
         if (!File.Exists(manifest)) return [];
         if (new FileInfo(manifest).Length > 16 * 1024 * 1024) throw new IOException("Installation manifest is too large.");
         using var document = JsonDocument.Parse(File.ReadAllText(manifest));
+        var root = document.RootElement;
         // shortcut: paths-only manifests cannot prove ownership, retain legacy files until a verified upgrade.
-        if (document.RootElement.ValueKind == JsonValueKind.Array) return [];
-        var value = document.Deserialize<InstallManifest>() ?? throw new IOException("Invalid installation manifest.");
-        if (value.Version != 2 || value.Files == null || value.Files.Length > 100_000)
+        if (root.ValueKind == JsonValueKind.Array) return [];
+        if (root.ValueKind != JsonValueKind.Object ||
+            !root.TryGetProperty("Version", out var versionElement) ||
+            versionElement.ValueKind != JsonValueKind.Number ||
+            !versionElement.TryGetInt32(out int version) ||
+            version != 2 ||
+            !root.TryGetProperty("Files", out var filesElement) ||
+            filesElement.ValueKind != JsonValueKind.Array)
             throw new IOException("Invalid installation manifest.");
-        foreach (var file in value.Files)
+
+        int count = filesElement.GetArrayLength();
+        if (count > 100_000)
+            throw new IOException("Invalid installation manifest.");
+
+        var files = new InstalledFile[count];
+        int index = 0;
+        foreach (var item in filesElement.EnumerateArray())
         {
-            if (file == null || string.IsNullOrWhiteSpace(file.Path) || Path.IsPathRooted(file.Path) ||
-                file.Path.Split(['/', '\\']).Any(part => part is "" or "." or ".." || part.Contains(':')) ||
-                file.Sha256 == null || file.Sha256.Length != 64 || !file.Sha256.All(Uri.IsHexDigit) ||
-                file.Path.Equals(ManifestFileName, StringComparison.OrdinalIgnoreCase))
+            if (item.ValueKind != JsonValueKind.Object)
                 throw new IOException("Invalid installation manifest entry.");
-            SafeFileDeletion.ValidatePath(Path.Combine(directory, file.Path));
+            string? itemPath = item.TryGetProperty("Path", out var pathProp) && pathProp.ValueKind == JsonValueKind.String
+                ? pathProp.GetString()
+                : null;
+            string? itemSha = item.TryGetProperty("Sha256", out var shaProp) && shaProp.ValueKind == JsonValueKind.String
+                ? shaProp.GetString()
+                : null;
+            if (itemPath == null || itemSha == null ||
+                vn_install_cleanup_validate_manifest_entry(
+                    itemPath, itemPath.Length,
+                    itemSha, itemSha.Length,
+                    out byte entryValid) != 0 ||
+                entryValid == 0)
+                throw new IOException("Invalid installation manifest entry.");
+            SafeFileDeletion.ValidatePath(Path.Combine(directory, itemPath));
+            files[index++] = new InstalledFile(itemPath, itemSha);
         }
-        return value.Files;
+        return files;
     }
+
+    [LibraryImport("VNotch.Native.dll", StringMarshalling = StringMarshalling.Utf16)]
+    private static partial int vn_install_cleanup_validate_manifest_entry(
+        ReadOnlySpan<char> relPath,
+        int pathLen,
+        ReadOnlySpan<char> sha256,
+        int shaLen,
+        out byte outValid);
+
     [LibraryImport("VNotch.Native.dll", StringMarshalling = StringMarshalling.Utf16)]
     private static partial int vn_install_cleanup_has_valid_input_syntax(
         ReadOnlySpan<char> dirPtr,

@@ -1,4 +1,5 @@
 using System;
+using System.Runtime.InteropServices;
 using System.Windows;
 using System.Windows.Input;
 using System.Windows.Media;
@@ -9,6 +10,45 @@ namespace VNotch;
 
 public partial class MainWindow
 {
+    [StructLayout(LayoutKind.Sequential, Pack = 1)]
+    private struct VnAppNotifyDragState
+    {
+        public double LastX;
+        public double LastY;
+        public long LastTimestamp;
+        public double Velocity;
+        public byte IsDragging;
+        public byte Reserved0;
+        public byte Reserved1;
+        public byte Reserved2;
+    }
+
+    [LibraryImport("VNotch.Native.dll")]
+    private static partial int vn_appnotify_step_drag_interaction(
+        ref VnAppNotifyDragState ioState,
+        double pointX,
+        double pointY,
+        double originX,
+        double originY,
+        long timestamp,
+        out double outTranslateX,
+        out double outTranslateY,
+        out double outOpacity,
+        out byte outMoved,
+        out byte outStartedDragging);
+
+    [LibraryImport("VNotch.Native.dll")]
+    private static partial int vn_appnotify_eval_drag_release(
+        double pointX,
+        double originX,
+        long lastTimestamp,
+        long timestamp,
+        double velocity,
+        byte isDragging,
+        out byte outDismiss,
+        out int outDismissDirection,
+        out byte outIsClick);
+
     private bool _appNotificationPointerDown;
     private bool _appNotificationDragging;
     private Point _appNotificationPointerOrigin;
@@ -31,45 +71,79 @@ public partial class MainWindow
     internal void UpdateAppNotificationInteraction(Point point, long timestamp)
     {
         if (!_appNotificationPointerDown) return;
-        Vector delta = point - _appNotificationPointerOrigin;
-        if (!_appNotificationDragging && Math.Abs(delta.X) < 5 && Math.Abs(delta.Y) < 5) return;
-        if (!_appNotificationDragging)
+
+        var dragState = new VnAppNotifyDragState
+        {
+            LastX = _appNotificationLastPointer.X,
+            LastY = _appNotificationLastPointer.Y,
+            LastTimestamp = _appNotificationLastPointerTime,
+            Velocity = _appNotificationPointerVelocity,
+            IsDragging = _appNotificationDragging ? (byte)1 : (byte)0
+        };
+
+        if (vn_appnotify_step_drag_interaction(
+                ref dragState,
+                point.X,
+                point.Y,
+                _appNotificationPointerOrigin.X,
+                _appNotificationPointerOrigin.Y,
+                timestamp,
+                out double x,
+                out double y,
+                out double opacity,
+                out byte moved,
+                out byte startedDragging) != 0 ||
+            moved == 0)
+        {
+            return;
+        }
+
+        if (startedDragging != 0)
         {
             _appNotificationDragging = true;
             SetAppNotificationValue(AppNotificationBannerTranslate, TranslateTransform.YProperty, AppNotificationBannerTranslate.Y);
             AnimateAppNotificationHoverFeedback();
         }
-        long elapsed = Math.Max(1, timestamp - _appNotificationLastPointerTime);
-        _appNotificationPointerVelocity = (point.X - _appNotificationLastPointer.X) / elapsed;
-        _appNotificationLastPointer = point;
-        _appNotificationLastPointerTime = timestamp;
-        double x = delta.X / (1 + Math.Abs(delta.X) / 280);
-        double y = Math.Clamp(delta.Y * .12, -12, 12);
+        else
+        {
+            _appNotificationDragging = dragState.IsDragging != 0;
+        }
+
+        _appNotificationPointerVelocity = dragState.Velocity;
+        _appNotificationLastPointer = new Point(dragState.LastX, dragState.LastY);
+        _appNotificationLastPointerTime = dragState.LastTimestamp;
         SetAppNotificationValue(AppNotificationShellTranslate, TranslateTransform.XProperty, x);
         SetAppNotificationValue(AppNotificationShadowTranslate, TranslateTransform.XProperty, x);
         SetAppNotificationValue(AppNotificationShellTranslate, TranslateTransform.YProperty, y);
         SetAppNotificationValue(AppNotificationShadowTranslate, TranslateTransform.YProperty, y);
-        SetAppNotificationOpacity(AppNotificationBanner, Math.Clamp(1 - Math.Abs(delta.X) / 360, .45, 1));
+        SetAppNotificationOpacity(AppNotificationBanner, opacity);
         _liquidGlass?.SetLiveRegion(GetGlassCaptureRegion());
     }
 
     internal bool EndAppNotificationInteraction(Point point, long timestamp)
     {
         if (!_appNotificationPointerDown) return false;
-        double delta = point.X - _appNotificationPointerOrigin.X;
-        double velocity = timestamp - _appNotificationLastPointerTime <= 100 ? _appNotificationPointerVelocity : 0;
-        bool dragging = _appNotificationDragging;
-        bool dismiss = dragging && (Math.Abs(delta) >= 72 ||
-            (Math.Abs(delta) >= 16 && Math.Abs(velocity) >= .65 && Math.Sign(delta) == Math.Sign(velocity)));
+
+        _ = vn_appnotify_eval_drag_release(
+            point.X,
+            _appNotificationPointerOrigin.X,
+            _appNotificationLastPointerTime,
+            timestamp,
+            _appNotificationPointerVelocity,
+            _appNotificationDragging ? (byte)1 : (byte)0,
+            out byte dismissByte,
+            out int dismissDirection,
+            out byte isClickByte);
+
         ResetAppNotificationPointer();
-        if (dismiss) BeginAppNotificationDismiss(Math.Sign(delta));
+        if (dismissByte != 0) BeginAppNotificationDismiss(dismissDirection);
         else
         {
             SnapAppNotificationBack();
             if (!_isAppNotificationHovered && _settings.AutoDismissNotifications)
                 ScheduleAppNotificationDismiss(_appNotificationRemainingMs, _appNotificationGeneration);
         }
-        return !dragging;
+        return isClickByte != 0;
     }
 
     private void SnapAppNotificationBack()

@@ -1,5 +1,7 @@
+using System;
 using System.Buffers;
 using System.IO;
+using System.Runtime.InteropServices;
 using System.Windows;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
@@ -9,6 +11,49 @@ namespace VNotch.Services;
 public sealed partial class AppNotificationService
 {
     private const int AppIconDecodeSize = 128;
+
+    [StructLayout(LayoutKind.Sequential, Pack = 1)]
+    private struct VnIconCropRect
+    {
+        public int X;
+        public int Y;
+        public int Width;
+        public int Height;
+    }
+
+    [LibraryImport("VNotch.Native.dll")]
+    private static partial int vn_appnotify_compute_icon_crop_bounds(
+        ReadOnlySpan<byte> bgra,
+        int width,
+        int height,
+        int stride,
+        byte alphaThreshold,
+        out VnIconCropRect outCrop,
+        out byte outHasOpaque,
+        out byte outShouldCrop);
+
+    internal static bool TryComputeIconCropBounds(
+        ReadOnlySpan<byte> bgra,
+        int width,
+        int height,
+        int stride,
+        out Int32Rect cropRect,
+        out bool shouldCrop)
+    {
+        cropRect = default;
+        shouldCrop = false;
+        if (vn_appnotify_compute_icon_crop_bounds(
+                bgra, width, height, stride, 8,
+                out var rect, out byte hasOpaque, out byte nativeShouldCrop) != 0 ||
+            hasOpaque == 0)
+        {
+            return false;
+        }
+
+        cropRect = new Int32Rect(rect.X, rect.Y, rect.Width, rect.Height);
+        shouldCrop = nativeShouldCrop != 0;
+        return true;
+    }
 
     internal static ImageSource? NormalizeAppIcon(ImageSource? icon)
     {
@@ -41,29 +86,21 @@ public sealed partial class AppNotificationService
         try
         {
             sample.CopyPixels(pixels, stride, 0);
-            int left = width, top = height, right = -1, bottom = -1;
-            for (int y = 0; y < height; y++)
-                for (int x = 0; x < width; x++)
-                {
-                    if (pixels[y * stride + x * 4 + 3] <= 8) continue;
-                    left = Math.Min(left, x);
-                    top = Math.Min(top, y);
-                    right = Math.Max(right, x);
-                    bottom = Math.Max(bottom, y);
-                }
-            if (right < left) return null;
+            if (!TryComputeIconCropBounds(
+                    pixels.AsSpan(0, stride * height),
+                    width,
+                    height,
+                    stride,
+                    out var cropRect,
+                    out bool shouldCrop))
+            {
+                return null;
+            }
 
-            // AppDisplayInfo can return a tile with a small logo in its center.
-            // Keep a little breathing room, rather than scaling the entire tile to 16 DIP.
-            int padding = Math.Max(1, (int)Math.Ceiling(Math.Max(right - left + 1, bottom - top + 1) * .04));
-            left = Math.Max(0, left - padding);
-            top = Math.Max(0, top - padding);
-            right = Math.Min(width - 1, right + padding);
-            bottom = Math.Min(height - 1, bottom + padding);
-            if (left == 0 && top == 0 && right == width - 1 && bottom == height - 1)
+            if (!shouldCrop)
                 return source;
 
-            var cropped = new CroppedBitmap(source, new Int32Rect(left, top, right - left + 1, bottom - top + 1));
+            var cropped = new CroppedBitmap(source, cropRect);
             cropped.Freeze();
             return cropped;
         }

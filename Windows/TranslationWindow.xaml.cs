@@ -1,3 +1,4 @@
+using System.Runtime.InteropServices;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
@@ -428,12 +429,28 @@ public partial class TranslationWindow : Window
         else rotation.BeginAnimation(RotateTransform.AngleProperty, Motion(rotation.Angle, target, 180));
     }
 
+    [LibraryImport("VNotch.Native.dll")]
+    private static partial int vn_translation_clamp_placement(
+        double selLeft,
+        double selTop,
+        double selBottom,
+        double workLeft,
+        double workTop,
+        double workRight,
+        double workBottom,
+        double width,
+        double height,
+        out double outX,
+        out double outY);
+
     internal static Point ClampPlacement(Rect selection, Rect work, double width, double height)
     {
-        double x = Math.Clamp(selection.Left, work.Left, Math.Max(work.Left, work.Right - width));
-        double y = selection.Bottom + 8;
-        if (y + height > work.Bottom) y = selection.Top - height - 8;
-        return new(x, Math.Clamp(y, work.Top, Math.Max(work.Top, work.Bottom - height)));
+        _ = vn_translation_clamp_placement(
+            selection.Left, selection.Top, selection.Bottom,
+            work.Left, work.Top, work.Right, work.Bottom,
+            width, height,
+            out double x, out double y);
+        return new(x, y);
     }
 
     internal void Expand()

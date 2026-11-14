@@ -14,6 +14,17 @@ internal static partial class SpotifyCanvasProtocol
     private static unsafe partial int vn_spotify_canvas_extract_next_candidate(
         byte* protobufPtr, int protobufLen, ref int ioOuterOffset, out int outUrlOffset, out int outUrlLen, out byte outFound);
 
+    [LibraryImport("VNotch.Native.dll")]
+    private static unsafe partial int vn_spotify_canvas_may_be_mp4_utf8(
+        byte* utf8, int len, out byte outMaybe);
+
+    [LibraryImport("VNotch.Native.dll", StringMarshalling = StringMarshalling.Utf16)]
+    private static partial int vn_spotify_canvas_is_trusted_uri_parts(
+        ReadOnlySpan<char> scheme, int schemeLen,
+        ReadOnlySpan<char> host, int hostLen,
+        ReadOnlySpan<char> absPath, int absPathLen,
+        out byte outTrusted);
+
     internal static unsafe byte[] BuildCanvasRequest(string trackId)
     {
         ReadOnlySpan<char> chars = (trackId ?? string.Empty).AsSpan();
@@ -55,6 +66,9 @@ internal static partial class SpotifyCanvasProtocol
                 if (status != 0 || found == 0)
                     break;
 
+                if (vn_spotify_canvas_may_be_mp4_utf8(ptr + urlOffset, urlLen, out byte maybe) != 0 || maybe == 0)
+                    continue;
+
                 string candidateStr = Encoding.UTF8.GetString(protobuf.Slice(urlOffset, urlLen));
                 if (TryCreateCanvasUri(candidateStr, out var uri))
                     return uri;
@@ -66,14 +80,21 @@ internal static partial class SpotifyCanvasProtocol
     internal static bool TryCreateCanvasUri(string? value, out Uri? uri)
     {
         uri = null;
-        if (!Uri.TryCreate(value, UriKind.Absolute, out var candidate) || candidate.Scheme != Uri.UriSchemeHttps)
+        if (!Uri.TryCreate(value, UriKind.Absolute, out var candidate))
             return false;
 
-        bool trustedHost = candidate.Host.Equals("scdn.co", StringComparison.OrdinalIgnoreCase) ||
-                           candidate.Host.EndsWith(".scdn.co", StringComparison.OrdinalIgnoreCase);
-        bool isMp4 = candidate.AbsolutePath.EndsWith(".mp4", StringComparison.OrdinalIgnoreCase);
-        if (!trustedHost || !isMp4)
+        ReadOnlySpan<char> scheme = candidate.Scheme.AsSpan();
+        ReadOnlySpan<char> host = candidate.Host.AsSpan();
+        ReadOnlySpan<char> absPath = candidate.AbsolutePath.AsSpan();
+        if (vn_spotify_canvas_is_trusted_uri_parts(
+                scheme, scheme.Length,
+                host, host.Length,
+                absPath, absPath.Length,
+                out byte trusted) != 0 ||
+            trusted == 0)
+        {
             return false;
+        }
 
         uri = candidate;
         return true;

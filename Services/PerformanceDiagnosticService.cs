@@ -24,6 +24,22 @@ public sealed partial class PerformanceDiagnosticService
         out double outSmoothedProcCpu);
 
     [LibraryImport(NativeDll)]
+    private static partial int vn_perf_diag_sample_thread_and_handle_counts(
+        long nowTicks,
+        ref long ioLastThreadTicks,
+        ref int ioCachedThreadCount,
+        long stopwatchFreq,
+        out int outThreadCount,
+        out int outHandleCount);
+
+    [LibraryImport(NativeDll)]
+    private static partial int vn_perf_diag_sample_global_memory(
+        out ulong outRamUsed,
+        out ulong outRamTotal,
+        out ulong outRamAvail,
+        out double outRamPercent);
+
+    [LibraryImport(NativeDll)]
     private static partial int vn_perf_diag_compute_global_cpu(
         ulong idle,
         ulong lastSysIdle,
@@ -419,63 +435,37 @@ public sealed partial class PerformanceDiagnosticService
         gen2 = GC.CollectionCount(2);
     }
 
-    private void SampleThreadAndHandleCounts(long nowTicks, out int threadCount, out int handleCount)
+    internal void SampleThreadAndHandleCounts(long nowTicks, out int threadCount, out int handleCount)
     {
-        if (_lastThreadCountTicks == 0 || (double)(nowTicks - _lastThreadCountTicks) / Stopwatch.Frequency >= 2.0)
+        if (vn_perf_diag_sample_thread_and_handle_counts(
+                nowTicks,
+                ref _lastThreadCountTicks,
+                ref _cachedThreadCount,
+                Stopwatch.Frequency,
+                out threadCount,
+                out handleCount) != 0)
         {
-            try
-            {
-                using var proc = Process.GetCurrentProcess();
-                var threads = proc.Threads;
-                _cachedThreadCount = threads.Count;
-                foreach (ProcessThread pt in threads) pt.Dispose();
-            }
-            catch (Exception)
-            {
-                // Best-effort thread count sampling; ignore process inspection errors
-            }
-            _lastThreadCountTicks = nowTicks;
-        }
-        threadCount = _cachedThreadCount;
-
-        handleCount = 0;
-        try
-        {
-            if (Win32Interop.GetProcessHandleCount(_currentProcessHandle, out uint hCount))
-            {
-                handleCount = (int)hCount;
-            }
-        }
-        catch (Exception)
-        {
-            // Best-effort handle count sampling; ignore query errors
+            threadCount = _cachedThreadCount;
+            handleCount = 0;
         }
     }
 
-    private static void SampleGlobalMemory(
+    internal static void SampleGlobalMemory(
         out ulong globalRamUsed,
         out ulong globalRamTotal,
         out ulong globalRamAvail,
         out double globalRamPercent)
     {
-        globalRamUsed = 0;
-        globalRamTotal = 0;
-        globalRamAvail = 0;
-        globalRamPercent = 0;
-        try
+        if (vn_perf_diag_sample_global_memory(
+                out globalRamUsed,
+                out globalRamTotal,
+                out globalRamAvail,
+                out globalRamPercent) != 0)
         {
-            var memStatus = new Win32Interop.MEMORYSTATUSEX_METRICS { dwLength = MemStatusCb };
-            if (Win32Interop.GlobalMemoryStatusEx(ref memStatus))
-            {
-                globalRamTotal = memStatus.ullTotalPhys;
-                globalRamAvail = memStatus.ullAvailPhys;
-                globalRamUsed = memStatus.ullTotalPhys > memStatus.ullAvailPhys ? memStatus.ullTotalPhys - memStatus.ullAvailPhys : 0;
-                globalRamPercent = Math.Clamp(memStatus.dwMemoryLoad, 0, 100);
-            }
-        }
-        catch (Exception)
-        {
-            // Best-effort global memory status query; ignore system info errors
+            globalRamUsed = 0;
+            globalRamTotal = 0;
+            globalRamAvail = 0;
+            globalRamPercent = 0;
         }
     }
 

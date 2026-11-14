@@ -1,10 +1,21 @@
+using System;
 using System.Buffers;
+using System.Runtime.InteropServices;
 using System.Windows.Documents;
 
 namespace VNotch.Controls;
 
 internal static partial class AiMarkdown
 {
+    [LibraryImport("VNotch.Native.dll", StringMarshalling = StringMarshalling.Utf16)]
+    private static partial int vn_ai_markdown_close_stream_spans(
+        ReadOnlySpan<char> md,
+        int len,
+        in VnMarkdownBoundarySummary summary,
+        out int outInsertPos,
+        Span<char> outCloser,
+        int cap,
+        out int outLen);
     internal sealed class StreamRenderer
     {
         internal FlowDocument Document { get; } = Render("");
@@ -68,44 +79,17 @@ internal static partial class AiMarkdown
         if (string.IsNullOrEmpty(markdown)) return markdown;
 
         var summary = ScanSpanBoundaries(markdown);
-        if (summary.HasUnclosedFence != 0)
-        {
-            char fenceChar = summary.FenceChar != 0 ? (char)summary.FenceChar : '`';
-            int fenceCount = Math.Max(3, (int)summary.FenceCount);
-            return markdown + "\n" + new string(fenceChar, fenceCount);
-        }
-
-        if (summary.HasUnclosedInlineCode != 0)
-        {
-            int ticks = Math.Max(1, (int)summary.InlineCodeTicks);
-            string closer = new string('`', ticks);
-            return markdown[^1] == '`' ? markdown + " " + closer : markdown + closer;
-        }
-
-        if (summary.HasUnclosedBold == 0 && summary.HasUnclosedItalic == 0)
+        Span<char> closer = stackalloc char[264];
+        if (vn_ai_markdown_close_stream_spans(
+                markdown, markdown.Length, in summary,
+                out int insertPos, closer, closer.Length, out int closerLen) != 0 ||
+            closerLen <= 0)
         {
             return markdown;
         }
 
-        string boldCloser = summary.HasUnclosedBold != 0
-            ? new string(summary.BoldChar != 0 ? (char)summary.BoldChar : '*', 2)
-            : string.Empty;
-        string italicCloser = summary.HasUnclosedItalic != 0
-            ? new string(summary.ItalicChar != 0 ? (char)summary.ItalicChar : '*', 1)
-            : string.Empty;
-        string emphasisCloser = summary.BoldOuter != 0
-            ? italicCloser + boldCloser
-            : boldCloser + italicCloser;
-
-        int trimEnd = markdown.Length;
-        while (trimEnd > 0 && char.IsWhiteSpace(markdown[trimEnd - 1]))
-        {
-            trimEnd--;
-        }
-
-        if (trimEnd == 0) return markdown;
-        return trimEnd == markdown.Length
-            ? markdown + emphasisCloser
-            : string.Concat(markdown.AsSpan(0, trimEnd), emphasisCloser, markdown.AsSpan(trimEnd));
+        return insertPos == markdown.Length
+            ? string.Concat(markdown, closer[..closerLen])
+            : string.Concat(markdown.AsSpan(0, insertPos), closer[..closerLen], markdown.AsSpan(insertPos));
     }
 }

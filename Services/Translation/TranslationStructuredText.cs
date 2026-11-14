@@ -3,7 +3,6 @@ using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
 using System.Runtime.InteropServices;
-using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
 using Markdig;
@@ -16,7 +15,13 @@ internal static partial class TranslationStructuredText
 {
     private static readonly MarkdownPipeline Pipeline = new MarkdownPipelineBuilder()
         .UsePipeTables().UseEmphasisExtras().UseTaskLists().UsePreciseSourceLocation().Build();
-    private static readonly Regex Shortcode = new(@":[A-Za-z_][A-Za-z0-9_+-]*:", RegexOptions.CultureInvariant, TimeSpan.FromMilliseconds(50));
+
+    [StructLayout(LayoutKind.Sequential, Pack = 1)]
+    private struct VnSubTextSlice
+    {
+        public int offset;
+        public int length;
+    }
 
     internal static bool HasMarkdown(string text) => Markdown.Parse(text, Pipeline).Descendants().Any(node =>
         node is not (ParagraphBlock or LiteralInline or ContainerInline or LineBreakInline) ||
@@ -95,8 +100,14 @@ internal static partial class TranslationStructuredText
         var document = Markdown.Parse(text, Pipeline);
         bool hasProse = document.Descendants<LiteralInline>().Any(l =>
             l.Parent is not LinkInline { IsAutoLink: true } &&
-            Shortcode.Replace(l.Content.ToString(), "").Any(char.IsLetter));
+            HasLetterOutsideShortcodes(l.Content.ToString().AsSpan()));
         return hasProse ? Signature(text, document) : null;
+    }
+
+    private static bool HasLetterOutsideShortcodes(ReadOnlySpan<char> text)
+    {
+        if (text.IsEmpty) return false;
+        return vn_translation_structured_has_letter_outside_shortcodes(text, text.Length, out byte has) == 0 && has != 0;
     }
 
     private static string[] Signature(string text, MarkdownDocument? document = null)
@@ -128,8 +139,24 @@ internal static partial class TranslationStructuredText
             if (ContainsEmoji(element)) parts.Add(string.Concat("emoji:".AsSpan(), element));
             index += length;
         }
-        foreach (Match match in Shortcode.Matches(text))
-            parts.Add("shortcode:" + match.Value);
+        ReadOnlySpan<char> textSpan = text.AsSpan();
+        Span<VnSubTextSlice> stackSlices = stackalloc VnSubTextSlice[16];
+        VnSubTextSlice[]? heapSlices = null;
+        int rc = vn_translation_structured_find_shortcodes(textSpan, textSpan.Length, stackSlices, stackSlices.Length, out int count);
+        if (rc == -2 && count > stackSlices.Length)
+        {
+            heapSlices = new VnSubTextSlice[count];
+            rc = vn_translation_structured_find_shortcodes(textSpan, textSpan.Length, heapSlices, heapSlices.Length, out count);
+        }
+        if (rc == 0 && count > 0)
+        {
+            ReadOnlySpan<VnSubTextSlice> slices = heapSlices != null ? heapSlices.AsSpan(0, count) : stackSlices[..count];
+            for (int i = 0; i < slices.Length; i++)
+            {
+                VnSubTextSlice s = slices[i];
+                parts.Add(string.Concat("shortcode:".AsSpan(), textSpan.Slice(s.offset, s.length)));
+            }
+        }
         parts.Sort(StringComparer.Ordinal);
         return parts.ToArray();
     }
@@ -137,4 +164,18 @@ internal static partial class TranslationStructuredText
     [LibraryImport("VNotch.Native.dll")]
     private static unsafe partial int vn_translation_structured_contains_emoji(
         char* elem_ptr, int elem_len, out byte out_contains);
+
+    [LibraryImport("VNotch.Native.dll", StringMarshalling = StringMarshalling.Utf16)]
+    private static partial int vn_translation_structured_find_shortcodes(
+        ReadOnlySpan<char> textPtr,
+        int textLen,
+        Span<VnSubTextSlice> outSlices,
+        int sliceCap,
+        out int outCount);
+
+    [LibraryImport("VNotch.Native.dll", StringMarshalling = StringMarshalling.Utf16)]
+    private static partial int vn_translation_structured_has_letter_outside_shortcodes(
+        ReadOnlySpan<char> textPtr,
+        int textLen,
+        out byte outHasLetter);
 }

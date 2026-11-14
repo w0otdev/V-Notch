@@ -1,9 +1,9 @@
+using System.Buffers;
 using System.IO;
 using System.Net;
 using System.Net.Http;
 using System.Net.Sockets;
 using System.Runtime.InteropServices;
-using System.Text.RegularExpressions;
 using System.Windows;
 using System.Windows.Media.Imaging;
 using VNotch.Models;
@@ -34,6 +34,34 @@ internal static partial class ClipboardDropReader
         Span<char> outBuf,
         int outCap,
         out int outLen);
+
+    [LibraryImport("VNotch.Native.dll")]
+    private static partial int vn_clipboard_is_public_ip_bytes(
+        ReadOnlySpan<byte> addrPtr,
+        int addrLen,
+        out byte outIsPublic);
+
+    [LibraryImport("VNotch.Native.dll", StringMarshalling = StringMarshalling.Utf16)]
+    private static partial int vn_clipboard_drop_is_blocked_device_path(
+        ReadOnlySpan<char> pathPtr,
+        int pathLen,
+        out byte outBlocked);
+
+    [LibraryImport("VNotch.Native.dll", StringMarshalling = StringMarshalling.Utf16)]
+    private static partial int vn_clipboard_drop_extract_html_img_src(
+        ReadOnlySpan<char> htmlPtr,
+        int htmlLen,
+        out int outOffset,
+        out int outLength,
+        out byte outFound);
+
+    [LibraryImport("VNotch.Native.dll", StringMarshalling = StringMarshalling.Utf16)]
+    private static partial int vn_clipboard_drop_extract_source_url(
+        ReadOnlySpan<char> htmlPtr,
+        int htmlLen,
+        out int outOffset,
+        out int outLength,
+        out byte outFound);
 
     internal sealed record Payload(ClipboardCapture Capture, Uri? ImageUrl = null, BitmapSource? Bitmap = null)
     {
@@ -77,14 +105,9 @@ internal static partial class ClipboardDropReader
     internal static bool IsPublicAddress(IPAddress address)
     {
         if (address.IsIPv4MappedToIPv6) address = address.MapToIPv4();
-        byte[] b = address.GetAddressBytes();
-        if (b.Length == 4)
-            return b[0] != 0 && b[0] != 10 && b[0] != 127 && b[0] < 224 &&
-                !(b[0] == 100 && b[1] is >= 64 and <= 127) &&
-                !(b[0] == 169 && b[1] == 254) && !(b[0] == 172 && b[1] is >= 16 and <= 31) &&
-                !(b[0] == 192 && (b[1] == 168 || b[1] == 0)) && !(b[0] == 198 && b[1] is 18 or 19);
-        return (b[0] & 0xe0) == 0x20 && !(b[0] == 0x20 && b[1] == 2) &&
-            !(b[0] == 0x20 && b[1] == 1 && b[2] == 0 && b[3] == 0);
+        Span<byte> b = stackalloc byte[16];
+        if (!address.TryWriteBytes(b, out int len)) return false;
+        return vn_clipboard_is_public_ip_bytes(b[..len], len, out byte isPublic) == 0 && isPublic != 0;
     }
 
     private static async Task<HttpResponseMessage> DownloadAsync(Uri uri, HttpClient client, CancellationToken token)
@@ -103,14 +126,47 @@ internal static partial class ClipboardDropReader
         throw new InvalidDataException("Too many image redirects.");
     }
 
+    private static readonly string[] SupportedDropFormats =
+    [
+        DataFormats.FileDrop,
+        DataFormats.Bitmap,
+        DataFormats.UnicodeText,
+        DataFormats.Text,
+        DataFormats.Html,
+        "PNG",
+        "DownloadURL",
+        "text/uri-list",
+    ];
+
     internal static bool Supports(IDataObject data)
     {
         try
         {
-            return new[] { DataFormats.FileDrop, DataFormats.Bitmap, DataFormats.UnicodeText, DataFormats.Text,
-                DataFormats.Html, "PNG", "DownloadURL", "text/uri-list" }.Any(data.GetDataPresent);
+            for (int i = 0; i < SupportedDropFormats.Length; i++)
+            {
+                if (data.GetDataPresent(SupportedDropFormats[i]))
+                    return true;
+            }
+            return false;
         }
         catch (System.Runtime.InteropServices.COMException) { return false; }
+    }
+
+    internal static bool IsBlockedDevicePath(string? path)
+    {
+        if (string.IsNullOrEmpty(path)) return false;
+        ReadOnlySpan<char> span = path.AsSpan();
+        return vn_clipboard_drop_is_blocked_device_path(span, span.Length, out byte blocked) == 0 && blocked != 0;
+    }
+
+    private static bool AreAllPathsLocal(string[] paths)
+    {
+        for (int i = 0; i < paths.Length; i++)
+        {
+            if (IsBlockedDevicePath(paths[i]) || !ClipboardImportPaths.IsLocal(paths[i]))
+                return false;
+        }
+        return true;
     }
 
     // Read the OLE object before leaving the Drop event; it may expire after the first await.
@@ -119,7 +175,7 @@ internal static partial class ClipboardDropReader
         if (data.GetDataPresent(DataFormats.FileDrop))
         {
             if (data.GetData(DataFormats.FileDrop) is not string[] { Length: > 0 } paths ||
-                paths.Length > ClipboardHistoryStore.MaxImportItems || paths.Any(p => !ClipboardImportPaths.IsLocal(p))) return null;
+                paths.Length > ClipboardHistoryStore.MaxImportItems || !AreAllPathsLocal(paths)) return null;
             return new(new ClipboardCapture { FilePaths = paths });
         }
         string text = ReadText(data, DataFormats.UnicodeText) ?? ReadText(data, DataFormats.Text) ?? "";
@@ -141,35 +197,46 @@ internal static partial class ClipboardDropReader
         string? image = null;
         if (ReadText(data, "DownloadURL") is string download && vn_clipboard_drop_extract_download_url_image(download.AsSpan(), download.Length, out byte found, out int startIdx) == 0 && found != 0)
         {
-
             image = download[startIdx..];
         }
         if (image == null && (string.IsNullOrWhiteSpace(text) || Uri.TryCreate(text.Trim(), UriKind.Absolute, out _)))
         {
-            var match = ImageSourcePattern().Match(html);
-            if (match.Success)
+            ReadOnlySpan<char> htmlSpan = html.AsSpan();
+            if (vn_clipboard_drop_extract_html_img_src(htmlSpan, htmlSpan.Length, out int imgOff, out int imgLen, out byte imgFound) == 0 &&
+                imgFound != 0)
             {
-                string rawImage = match.Groups[1].Success ? match.Groups[1].Value : match.Groups[3].Value;
-                if (match.Groups[2].Success) rawImage = match.Groups[2].Value;
-                image = WebUtility.HtmlDecode(rawImage);
+                image = WebUtility.HtmlDecode(html.Substring(imgOff, imgLen));
             }
         }
         if (image != null)
         {
             if (!Uri.TryCreate(image, UriKind.Absolute, out var uri))
             {
-                var source = SourcePattern().Match(html);
-                if (source.Success && Uri.TryCreate(source.Groups[1].Value.Trim(), UriKind.Absolute, out var page))
+                ReadOnlySpan<char> htmlSpan = html.AsSpan();
+                if (vn_clipboard_drop_extract_source_url(htmlSpan, htmlSpan.Length, out int srcOff, out int srcLen, out byte srcFound) == 0 &&
+                    srcFound != 0 &&
+                    Uri.TryCreate(htmlSpan.Slice(srcOff, srcLen).Trim().ToString(), UriKind.Absolute, out var page))
+                {
                     Uri.TryCreate(page, image, out uri);
+                }
             }
             if (uri?.Scheme is "http" or "https" or "data") return new(capture, uri);
         }
         if (string.IsNullOrWhiteSpace(text)) text = ReadText(data, "text/uri-list") ?? "";
         if (string.IsNullOrWhiteSpace(text) && html.Length > 0)
         {
-            char[] buf = new char[html.Length];
-            if (vn_clipboard_drop_strip_html_fragment_tags(html.AsSpan(), html.Length, buf, buf.Length, out int strippedLen) == 0)
-                text = WebUtility.HtmlDecode(new string(buf, 0, strippedLen)).Trim();
+            char[]? rented = html.Length > 1024 ? ArrayPool<char>.Shared.Rent(html.Length) : null;
+            Span<char> buf = rented != null ? rented.AsSpan(0, html.Length) : stackalloc char[html.Length];
+            try
+            {
+                if (vn_clipboard_drop_strip_html_fragment_tags(html.AsSpan(), html.Length, buf, buf.Length, out int strippedLen) == 0)
+                    text = WebUtility.HtmlDecode(new string(buf[..strippedLen])).Trim();
+            }
+            finally
+            {
+                if (rented != null)
+                    ArrayPool<char>.Shared.Return(rented);
+            }
         }
         return string.IsNullOrWhiteSpace(text) ? null : new(capture with { Text = text });
     }
@@ -256,8 +323,4 @@ internal static partial class ClipboardDropReader
             output.Write(buffer, 0, read);
         }
     }
-    [GeneratedRegex("<img\\b[^>]*?\\bsrc\\s*=\\s*(?:\"([^\"]+)\"|'([^']+)'|([^\\s>]+))", RegexOptions.IgnoreCase)]
-    private static partial Regex ImageSourcePattern();
-    [GeneratedRegex(@"(?m)^SourceURL:([^\r\n]+)", RegexOptions.IgnoreCase)]
-    private static partial Regex SourcePattern();
 }

@@ -44,6 +44,9 @@ public sealed partial class SmartThumbnailCropService : IDisposable
         public float Height;
         public float Confidence;
         public int ClassId;
+
+        public readonly SubjectBounds ToSubjectBounds() =>
+            new(CenterX, CenterY, Width, Height, Confidence, ClassId);
     }
 
     [StructLayout(LayoutKind.Sequential, Pack = 1)]
@@ -110,6 +113,30 @@ public sealed partial class SmartThumbnailCropService : IDisposable
         ReadOnlySpan<byte> pixels, int w, int h, int stride,
         int imgWidth, int imgHeight, int targetSize,
         out VnCropRect outRect);
+
+    [LibraryImport("VNotch.Native.dll")]
+    private static partial int vn_smartcrop_select_single_prominent_person(
+        ReadOnlySpan<Detection> detections, int count,
+        out Detection outPerson, out byte outFound);
+
+    [LibraryImport("VNotch.Native.dll")]
+    private static partial int vn_smartcrop_translate_crop_detections(
+        ReadOnlySpan<Detection> src, int srcCount,
+        int cropX, int cropY, int cropWidth, int cropHeight,
+        Span<Detection> outDst, int dstCap, out int outWritten);
+
+    [LibraryImport("VNotch.Native.dll")]
+    private static partial int vn_smartcrop_partition_hybrid_candidates(
+        ReadOnlySpan<Detection> src, int srcCount,
+        Span<Detection> outCandidates, int cap,
+        out int outPersonCount, out int outObjectCount,
+        out int outKeptCount, out byte outIsPersonMode);
+
+    [LibraryImport("VNotch.Native.dll")]
+    private static partial int vn_smartcrop_select_portrait_face(
+        ReadOnlySpan<VnCropRect> faceBoxes, int faceCount,
+        double scale, in Detection person,
+        out Detection outBestFace, out byte outFound);
 
     [LibraryImport("VNotch.Native.dll")]
     private static partial int vn_smartcrop_compute_saliency_subject_bounds(
@@ -206,23 +233,22 @@ public sealed partial class SmartThumbnailCropService : IDisposable
                     .GetValue(source, static bitmap => new FingerprintHolder(ArtworkFingerprint.Create(bitmap)))
                     .Value;
 
+                Detection[]? candidateDetections = null;
                 if (_inferenceCache.TryGetValue(fingerprint, out var cached))
                 {
                     cached.LastAccess = ++_inferenceCacheAccess;
-                    if (cached.Detections.Length > 0 &&
-                        vn_smartcrop_find_best_subject_bounds(cached.Detections, cached.Detections.Length, imgWidth, imgHeight, out var cachedBounds, out byte cachedFound) == 0 &&
-                        cachedFound != 0)
-                    {
-                        return new SubjectBounds(cachedBounds.CenterX, cachedBounds.CenterY, cachedBounds.Width, cachedBounds.Height, cachedBounds.Confidence, cachedBounds.ClassId);
-                    }
+                    candidateDetections = cached.Detections;
                 }
-                else if (source is CroppedBitmap crop && TryGetCachedCropDetections(crop, out var croppedDetections) && croppedDetections.Length > 0)
+                else if (source is CroppedBitmap crop && TryGetCachedCropDetections(crop, out var croppedDetections))
                 {
-                    if (vn_smartcrop_find_best_subject_bounds(croppedDetections, croppedDetections.Length, imgWidth, imgHeight, out var cropBounds, out byte cropFound) == 0 &&
-                        cropFound != 0)
-                    {
-                        return new SubjectBounds(cropBounds.CenterX, cropBounds.CenterY, cropBounds.Width, cropBounds.Height, cropBounds.Confidence, cropBounds.ClassId);
-                    }
+                    candidateDetections = croppedDetections;
+                }
+
+                if (candidateDetections is { Length: > 0 } &&
+                    vn_smartcrop_find_best_subject_bounds(candidateDetections, candidateDetections.Length, imgWidth, imgHeight, out var cachedBounds, out byte cachedFound) == 0 &&
+                    cachedFound != 0)
+                {
+                    return cachedBounds.ToSubjectBounds();
                 }
             }
             catch (Exception ex)
@@ -242,7 +268,7 @@ public sealed partial class SmartThumbnailCropService : IDisposable
                 vn_smartcrop_compute_saliency_subject_bounds(pixels.AsSpan(0, h * stride), w, h, stride, out var salBounds, out byte salFound) == 0 &&
                 salFound != 0)
             {
-                return new SubjectBounds(salBounds.CenterX, salBounds.CenterY, salBounds.Width, salBounds.Height, salBounds.Confidence, salBounds.ClassId);
+                return salBounds.ToSubjectBounds();
             }
             return null;
         }
@@ -331,22 +357,29 @@ public sealed partial class SmartThumbnailCropService : IDisposable
             cancellationToken.ThrowIfCancellationRequested();
             int width = bitmap.PixelWidth, height = bitmap.PixelHeight;
             if (!fallback.HasValue || !useObjectDetection || targetSquareSize <= 96) return fallback;
-            Detection[] persons;
+            Detection[] detections;
             lock (_lock)
             {
                 if (_disposed) return null;
                 var fingerprint = _fingerprintCache.GetValue(bitmap,
                     static value => new FingerprintHolder(ArtworkFingerprint.Create(value))).Value;
                 if (!_inferenceCache.TryGetValue(fingerprint, out var cached)) return fallback;
-                persons = cached.Detections.Where(static d => d.ClassId == 0).ToArray();
+                detections = cached.Detections;
             }
-            if (persons.Length == 0) return fallback;
-            float bestConfidence = persons.Max(static p => p.Confidence);
-            persons = persons.Where(p => p.Confidence >= bestConfidence * 0.5f).ToArray();
-            if (persons.Length != 1) return fallback;
-            return await TryGetPortraitCropAsync(bitmap, persons[0], width, height, cancellationToken)
+            if (!TrySelectSingleProminentPerson(detections, out var person)) return fallback;
+            return await TryGetPortraitCropAsync(bitmap, person, width, height, cancellationToken)
                 .ConfigureAwait(false) ?? fallback;
         }, cancellationToken).ConfigureAwait(false);
+    }
+
+    private static bool TrySelectSingleProminentPerson(ReadOnlySpan<Detection> detections, out Detection person)
+    {
+        if (vn_smartcrop_select_single_prominent_person(detections, detections.Length, out person, out byte found) != 0 || found == 0)
+        {
+            person = default;
+            return false;
+        }
+        return true;
     }
 
     private Int32Rect? ComputeSmartCropRectCore(BitmapSource source, int targetSquareSize)
@@ -475,17 +508,23 @@ public sealed partial class SmartThumbnailCropService : IDisposable
 
         var rect = crop.SourceRect;
         if (rect.IsEmpty) rect = new Int32Rect(0, 0, original.PixelWidth, original.PixelHeight);
-        var mapped = new List<Detection>(sourceDetections.Length);
-        foreach (var detection in sourceDetections)
+        int srcLen = sourceDetections.Length;
+        if (srcLen == 0)
         {
-            var translated = detection;
-            translated.X1 = Math.Clamp(detection.X1 - rect.X, 0, rect.Width);
-            translated.X2 = Math.Clamp(detection.X2 - rect.X, 0, rect.Width);
-            translated.Y1 = Math.Clamp(detection.Y1 - rect.Y, 0, rect.Height);
-            translated.Y2 = Math.Clamp(detection.Y2 - rect.Y, 0, rect.Height);
-            if (translated.X2 > translated.X1 && translated.Y2 > translated.Y1) mapped.Add(translated);
+            detections = Array.Empty<Detection>();
+            return true;
         }
-        detections = mapped.ToArray();
+
+        Span<Detection> translatedBuf = srcLen <= 64 ? stackalloc Detection[srcLen] : new Detection[srcLen];
+        if (vn_smartcrop_translate_crop_detections(
+                sourceDetections, srcLen, rect.X, rect.Y, rect.Width, rect.Height,
+                translatedBuf, translatedBuf.Length, out int written) != 0 || written <= 0)
+        {
+            detections = Array.Empty<Detection>();
+            return true;
+        }
+
+        detections = translatedBuf[..written].ToArray();
         return true;
     }
 
@@ -518,32 +557,29 @@ public sealed partial class SmartThumbnailCropService : IDisposable
         int maxCropSize = Math.Min(imgWidth, imgHeight);
         int cropSize = Math.Min(targetSize, maxCropSize);
 
-        var persons = new List<Detection>();
-        var objects = new List<Detection>();
+        int totalCount = detections.Count;
+        Span<Detection> srcSpan = totalCount <= 64 ? stackalloc Detection[totalCount] : new Detection[totalCount];
+        for (int i = 0; i < totalCount; i++)
+            srcSpan[i] = detections[i];
 
-        foreach (var d in detections)
-        {
-            if (d.ClassId == 0)
-                persons.Add(d);
-            else
-                objects.Add(d);
-        }
+        Span<Detection> buffer = totalCount <= 64 ? stackalloc Detection[totalCount] : new Detection[totalCount];
+        vn_smartcrop_partition_hybrid_candidates(
+            srcSpan, totalCount, buffer, buffer.Length,
+            out int personCount, out int objectCount, out int keptCount, out byte isPersonMode);
 
         VNotch.Services.RuntimeLog.Log(LogCategory,
-            $"img={imgWidth}x{imgHeight} detections total={detections.Count} persons={persons.Count} objects={objects.Count}");
+            $"img={imgWidth}x{imgHeight} detections total={totalCount} persons={personCount} objects={objectCount}");
 
-        if (persons.Count >= 1)
+        if (isPersonMode != 0)
         {
-            float bestConfidence = persons.Max(static p => p.Confidence);
-            persons.RemoveAll(p => p.Confidence < bestConfidence * 0.5f);
             VNotch.Services.RuntimeLog.Log(LogCategory,
-                $"person path: {persons.Count} person(s) -> centered crop");
-            return GetPersonCropRect(persons, imgWidth, imgHeight, targetSize);
+                $"person path: {keptCount} person(s) -> centered crop");
+            return GetPersonCropRect(buffer[..keptCount], imgWidth, imgHeight, targetSize);
         }
 
-        if (objects.Count > 0)
+        if (objectCount > 0)
         {
-            vn_smartcrop_get_best_object_crop_rect(CollectionsMarshal.AsSpan(objects), objects.Count, imgWidth, imgHeight, targetSize, out var objRect);
+            vn_smartcrop_get_best_object_crop_rect(buffer[..keptCount], keptCount, imgWidth, imgHeight, targetSize, out var objRect);
             return objRect.ToRect();
         }
 
@@ -578,9 +614,9 @@ public sealed partial class SmartThumbnailCropService : IDisposable
         return new Int32Rect(cropX, cropY, cropSize, cropSize);
     }
 
-    private static Int32Rect GetPersonCropRect(List<Detection> persons, int imgWidth, int imgHeight, int targetSize)
+    private static Int32Rect GetPersonCropRect(ReadOnlySpan<Detection> persons, int imgWidth, int imgHeight, int targetSize)
     {
-        return persons.Count == 1
+        return persons.Length == 1
             ? GetSinglePersonCropRect(persons[0], imgWidth, imgHeight, targetSize)
             : GetGroupPersonCropRect(persons, imgWidth, imgHeight, targetSize);
     }
@@ -605,26 +641,7 @@ public sealed partial class SmartThumbnailCropService : IDisposable
                 bitmap.CopyFromBuffer(pixels.AsBuffer(0, length));
                 var detector = await global::Windows.Media.FaceAnalysis.FaceDetector.CreateAsync().AsTask(cancellationToken).ConfigureAwait(false);
                 var faces = await detector.DetectFacesAsync(bitmap).AsTask(cancellationToken).ConfigureAwait(false);
-                Detection? best = null;
-                float bestArea = 0;
-                foreach (var face in faces)
-                {
-                    var box = face.FaceBox;
-                    var candidate = new Detection
-                    {
-                        X1 = (float)(box.X / scale),
-                        Y1 = (float)(box.Y / scale),
-                        X2 = (float)((box.X + box.Width) / scale),
-                        Y2 = (float)((box.Y + box.Height) / scale)
-                    };
-                    float cx = (candidate.X1 + candidate.X2) / 2;
-                    float cy = (candidate.Y1 + candidate.Y2) / 2;
-                    float area = (candidate.X2 - candidate.X1) * (candidate.Y2 - candidate.Y1);
-                    if (cx < person.X1 || cx > person.X2 || cy < person.Y1 || cy > person.Y2 || area <= bestArea) continue;
-                    best = candidate;
-                    bestArea = area;
-                }
-                return best is Detection detected ? GetPortraitCropRect(detected, width, height) : null;
+                return SelectPortraitCrop(faces, scale, in person, width, height);
             }
             finally
             {
@@ -636,6 +653,32 @@ public sealed partial class SmartThumbnailCropService : IDisposable
             RuntimeLog.Debug(LogCategory, () => $"Face framing unavailable: {ex.Message}");
             return null;
         }
+    }
+
+    private static Int32Rect? SelectPortraitCrop(
+        System.Collections.Generic.IList<global::Windows.Media.FaceAnalysis.DetectedFace> faces,
+        double scale,
+        in Detection person,
+        int width,
+        int height)
+    {
+        int faceCount = faces.Count;
+        if (faceCount == 0) return null;
+        Span<VnCropRect> faceBoxes = faceCount <= 32 ? stackalloc VnCropRect[faceCount] : new VnCropRect[faceCount];
+        for (int i = 0; i < faceCount; i++)
+        {
+            var box = faces[i].FaceBox;
+            faceBoxes[i] = new VnCropRect
+            {
+                X = (int)box.X,
+                Y = (int)box.Y,
+                Width = (int)box.Width,
+                Height = (int)box.Height
+            };
+        }
+        return vn_smartcrop_select_portrait_face(faceBoxes, faceCount, scale, in person, out var detected, out byte foundFace) == 0 && foundFace != 0
+            ? GetPortraitCropRect(detected, width, height)
+            : null;
     }
 
     internal static Int32Rect GetPortraitCropRect(Detection face, int width, int height)
@@ -650,9 +693,9 @@ public sealed partial class SmartThumbnailCropService : IDisposable
         return rect.ToRect();
     }
 
-    private static Int32Rect GetGroupPersonCropRect(List<Detection> persons, int imgWidth, int imgHeight, int targetSize)
+    private static Int32Rect GetGroupPersonCropRect(ReadOnlySpan<Detection> persons, int imgWidth, int imgHeight, int targetSize)
     {
-        vn_smartcrop_get_group_person_crop_rect(CollectionsMarshal.AsSpan(persons), persons.Count, imgWidth, imgHeight, targetSize, out var rect);
+        vn_smartcrop_get_group_person_crop_rect(persons, persons.Length, imgWidth, imgHeight, targetSize, out var rect);
         return rect.ToRect();
     }
 

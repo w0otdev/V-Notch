@@ -1,4 +1,5 @@
 using System;
+using System.Runtime.InteropServices;
 using System.Windows;
 using System.Windows.Media;
 using System.Windows.Media.Animation;
@@ -243,52 +244,16 @@ public partial class MainWindow
             : Task.Run(() => ProbeNotchObscuredByAnyWindow(notchHwnd));
     }
 
-    private static bool ProbeNotchObscuredByAnyWindow(IntPtr notchHwnd)
+    [LibraryImport("VNotch.Native.dll")]
+    private static partial int vn_desktop_edge_probe_notch_obscured(
+        IntPtr selfHwnd,
+        out byte outObscured);
+
+    internal static bool ProbeNotchObscuredByAnyWindow(IntPtr notchHwnd)
     {
-        if (!GetWindowRect(notchHwnd, out var notchRect))
+        if (notchHwnd == IntPtr.Zero)
             return false;
-
-        if (notchRect.Right <= notchRect.Left || notchRect.Bottom <= notchRect.Top)
-            return false;
-
-        GetWindowThreadProcessId(notchHwnd, out uint myPid);
-
-        bool isObscured = false;
-
-        EnumWindows((hwnd, _) =>
-        {
-            if (hwnd == notchHwnd) return true;
-
-            GetWindowThreadProcessId(hwnd, out uint pid);
-            if (pid == myPid) return true;
-
-            if (!IsWindowVisible(hwnd) || IsIconic(hwnd) || FullscreenDetector.IsWindowCloaked(hwnd))
-                return true;
-
-            if (FullscreenDetector.IsBlockedClass(hwnd))
-                return true;
-
-            int exStyle = GetWindowLong(hwnd, GWL_EXSTYLE);
-            if ((exStyle & WS_EX_TOOLWINDOW) != 0 && (exStyle & WS_EX_APPWINDOW) == 0)
-                return true;
-
-            if ((exStyle & WS_EX_TRANSPARENT) != 0)
-                return true;
-
-            if (FullscreenDetector.TryGetWindowBounds(hwnd, out var winRect) &&
-                winRect.Left < notchRect.Right &&
-                winRect.Right > notchRect.Left &&
-                winRect.Top < notchRect.Bottom &&
-                winRect.Bottom > notchRect.Top)
-            {
-                isObscured = true;
-                return false;
-            }
-
-            return true;
-        }, IntPtr.Zero);
-
-        return isObscured;
+        return vn_desktop_edge_probe_notch_obscured(notchHwnd, out byte obscured) == 0 && obscured != 0;
     }
 
     private void PromoteFromDesktopLayer()

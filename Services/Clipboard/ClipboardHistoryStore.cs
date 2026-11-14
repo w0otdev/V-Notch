@@ -433,37 +433,13 @@ public sealed partial class ClipboardHistoryStore : IDisposable, IAsyncDisposabl
             }
             capture = capture with { FilePaths = normalizedPaths };
         }
-        if (!approved && (capture.FilePaths.Length > 0 || size > ApprovalThreshold) && size > ApprovalThreshold)
+        if (!approved && size > ApprovalThreshold)
             return new ClipboardImportResult(null, true, size);
         if (size == 0 && capture.FilePaths.Length == 0) return new ClipboardImportResult(null);
         EnsureDiskSpace(checked(size * (personal ? 2 : 1) + (capture.ImagePng?.LongLength ?? 0) + measuredItems * 1024L));
 
         if (capture.SeparateFiles && capture.FilePaths.Length > 1)
-        {
-            // Preflight the whole drop above before splitting it, preserving the
-            // aggregate approval, disk-space and directory-content limits.
-            var entries = new List<ClipboardEntry>(capture.FilePaths.Length);
-            int imported = 0, failed = 0;
-            bool needsApproval = false;
-            long approvalSize = 0;
-            for (int i = 0; i < capture.FilePaths.Length; i++)
-            {
-                var result = ImportCore(capture with { FilePaths = [capture.FilePaths[i]], SeparateFiles = false }, approved, batchChild: true);
-                if (result.Entry != null) entries.Add(result.Entry);
-                imported += result.ImportedCount;
-                failed += result.FailedCount;
-                needsApproval |= result.NeedsApproval;
-                approvalSize = checked(approvalSize + (result.NeedsApproval ? result.ByteSize : result.Entry?.ByteSize ?? 0));
-                progress?.Report((double)(i + 1) / capture.FilePaths.Length);
-            }
-            if (entries.Count > 0)
-            {
-                PruneCore(DateTime.UtcNow);
-                Changed?.Invoke();
-            }
-            return new ClipboardImportResult(entries.Count > 0 ? entries[0] : null, needsApproval, approvalSize, imported, failed)
-            { Entries = entries };
-        }
+            return ImportSeparateFilesBatch(capture, approved, progress);
 
         Guid id = Guid.NewGuid();
         string staging = Path.Combine(_root, "staging", id.ToString("N"));
@@ -557,24 +533,7 @@ public sealed partial class ClipboardHistoryStore : IDisposable, IAsyncDisposabl
                 if (!hasPreview)
                     kind = ClipboardKind.File;
             }
-            string title;
-            if (files.Count != 0)
-            {
-                if (files.Count == 1 && IsScreenshotFileName(files[0].Name))
-                {
-                    title = "Screenshot";
-                }
-                else
-                {
-                    var names = new string[files.Count];
-                    for (int i = 0; i < files.Count; i++) names[i] = files[i].Name;
-                    title = string.Join(", ", names);
-                }
-            }
-            else
-            {
-                title = kind == ClipboardKind.Image ? "Image" : capture.Text.Trim();
-            }
+            string title = ResolveImportTitle(files, kind, capture.Text);
             bool sensitive = HasSensitiveFiles(files)
                 || ClipboardSensitiveData.IsSensitive(capture.Text, capture.SourceApp, capture.SourceExecutable)
                 || ClipboardSensitiveData.IsSensitive(capture.Html, capture.SourceApp, capture.SourceExecutable)
@@ -585,64 +544,15 @@ public sealed partial class ClipboardHistoryStore : IDisposable, IAsyncDisposabl
             // A failed copy may already have fed bytes into the streaming hash.
             // Replay only committed attachments using the framed v2 format.
             if (failedCount > 0)
-            {
-                fileHash.GetHashAndReset();
-                AppendCaptureFingerprint(fileHash, capture);
-                foreach (var file in files)
-                {
-                    AppendUtf8String(fileHash, (file.IsDirectory ? "directory:" : "file:") + file.Name, includeLengthPrefix: true);
-                    string committedPath = Path.Combine(staging, file.StoredName + (personal ? ".enc" : ""));
-                    using var attachmentHash = NativeClipboardHash.Create();
-                    using var hashing = new ClipboardHashingStream(Stream.Null, attachmentHash);
-                    if (personal)
-                    {
-                        using var input = File.OpenRead(committedPath);
-                        _vault.TransformFile(input, hashing, encrypt: false);
-                    }
-                    else
-                    {
-                        using var input = OpenPublicBlobRead(committedPath);
-                        input.CopyTo(hashing);
-                    }
-                    fileHash.AppendData(attachmentHash.GetHashAndReset());
-                }
-            }
+                RehashCommittedAttachments(fileHash, capture, files, staging, personal);
             // shortcut: legacy attachment hashes stay unchanged, rehash stored files if cross-version deduplication is required.
             string fingerprint = files.Count == 0 ? Fingerprint(capture)
                 : FormatPrefixedHash("files-v2:", fileHash);
             var duplicate = FindDuplicate(fingerprint, personal);
             if (duplicate == null && kind == ClipboardKind.Image && !personal)
-            {
                 duplicate = FindProbableDuplicateImage(staging, capture);
-            }
             if (duplicate != null)
-            {
-                if (duplicate.IsPersonal && !IsPersonalUnlocked) return new ClipboardImportResult(null);
-                bool duplicateSensitive = sensitive || duplicate.IsSensitive;
-                string duplicatePreview = kind == ClipboardKind.Color ? preview : duplicate.Preview;
-                var updated = duplicate with
-                {
-                    IsSensitive = duplicateSensitive,
-                    Title = duplicateSensitive ? ClipboardSensitiveData.Mask : duplicate.Title,
-                    FileCount = duplicate.FileCount,
-                    PrimaryExtension = duplicate.PrimaryExtension,
-                    CopiedUtc = capture.CopiedUtc,
-                    Kind = kind == ClipboardKind.Color ? kind : duplicate.Kind,
-                    Preview = duplicateSensitive ? ClipboardSensitiveData.Mask : duplicatePreview,
-                    MaskedPreview = duplicateSensitive ? ClipboardSensitiveData.Mask : "",
-                    SensitivityVersion = ClipboardSensitiveData.DetectorVersion,
-                    SourceApp = capture.SourceApp.Length == 0 ? duplicate.SourceApp : capture.SourceApp,
-                    SourceExecutable = capture.SourceExecutable.Length == 0 ? duplicate.SourceExecutable : capture.SourceExecutable
-                };
-                WriteEntry(updated);
-                PutEntry(updated);
-                if (!batchChild)
-                {
-                    PruneCore(DateTime.UtcNow);
-                    Changed?.Invoke();
-                }
-                return new ClipboardImportResult(updated, ImportedCount: files.Count, FailedCount: failedCount);
-            }
+                return CommitDuplicateImport(duplicate, capture, kind, sensitive, preview, files.Count, failedCount, batchChild);
             string displayTitle = title.Length > 120 ? title[..120] : title;
             var entry = new ClipboardEntry
             {
@@ -681,6 +591,128 @@ public sealed partial class ClipboardHistoryStore : IDisposable, IAsyncDisposabl
             return new ClipboardImportResult(entry, ImportedCount: files.Count, FailedCount: failedCount);
         }
         finally { TryDeleteDirectory(staging); }
+    }
+
+    private ClipboardImportResult ImportSeparateFilesBatch(ClipboardCapture capture, bool approved, IProgress<double>? progress)
+    {
+        // Preflight of the whole drop already ran in ImportCore before splitting it,
+        // preserving aggregate approval, disk-space and directory-content limits.
+        var entries = new List<ClipboardEntry>(capture.FilePaths.Length);
+        int imported = 0, failed = 0;
+        bool needsApproval = false;
+        long approvalSize = 0;
+        for (int i = 0; i < capture.FilePaths.Length; i++)
+        {
+            var result = ImportCore(capture with { FilePaths = [capture.FilePaths[i]], SeparateFiles = false }, approved, batchChild: true);
+            if (result.Entry != null) entries.Add(result.Entry);
+            imported += result.ImportedCount;
+            failed += result.FailedCount;
+            needsApproval |= result.NeedsApproval;
+            approvalSize = checked(approvalSize + (result.NeedsApproval ? result.ByteSize : result.Entry?.ByteSize ?? 0));
+            progress?.Report((double)(i + 1) / capture.FilePaths.Length);
+        }
+        if (entries.Count > 0)
+        {
+            PruneCore(DateTime.UtcNow);
+            Changed?.Invoke();
+        }
+        return new ClipboardImportResult(entries.Count > 0 ? entries[0] : null, needsApproval, approvalSize, imported, failed)
+        { Entries = entries };
+    }
+
+    private static string ResolveImportTitle(List<ClipboardFile> files, ClipboardKind kind, string text)
+    {
+        if (files.Count == 0)
+            return kind == ClipboardKind.Image ? "Image" : text.Trim();
+        if (files.Count == 1)
+            return IsScreenshotFileName(files[0].Name) ? "Screenshot" : files[0].Name;
+
+        int totalLen = (files.Count - 1) * 2;
+        for (int i = 0; i < files.Count; i++)
+            totalLen = checked(totalLen + files[i].Name.Length);
+
+        return string.Create(totalLen, files, static (span, list) =>
+        {
+            int pos = 0;
+            for (int i = 0; i < list.Count; i++)
+            {
+                if (i > 0)
+                {
+                    span[pos++] = ',';
+                    span[pos++] = ' ';
+                }
+                ReadOnlySpan<char> name = list[i].Name.AsSpan();
+                name.CopyTo(span[pos..]);
+                pos += name.Length;
+            }
+        });
+    }
+
+    private void RehashCommittedAttachments(
+        NativeClipboardHash fileHash,
+        ClipboardCapture capture,
+        List<ClipboardFile> files,
+        string staging,
+        bool personal)
+    {
+        fileHash.GetHashAndReset();
+        AppendCaptureFingerprint(fileHash, capture);
+        for (int i = 0; i < files.Count; i++)
+        {
+            var file = files[i];
+            AppendUtf8String(fileHash, (file.IsDirectory ? "directory:" : "file:") + file.Name, includeLengthPrefix: true);
+            string committedPath = Path.Combine(staging, file.StoredName + (personal ? ".enc" : ""));
+            using var attachmentHash = NativeClipboardHash.Create();
+            using var hashing = new ClipboardHashingStream(Stream.Null, attachmentHash);
+            if (personal)
+            {
+                using var input = File.OpenRead(committedPath);
+                _vault.TransformFile(input, hashing, encrypt: false);
+            }
+            else
+            {
+                using var input = OpenPublicBlobRead(committedPath);
+                input.CopyTo(hashing);
+            }
+            fileHash.AppendData(attachmentHash.GetHashAndReset());
+        }
+    }
+
+    private ClipboardImportResult CommitDuplicateImport(
+        ClipboardEntry duplicate,
+        ClipboardCapture capture,
+        ClipboardKind kind,
+        bool sensitive,
+        string preview,
+        int importedCount,
+        int failedCount,
+        bool batchChild)
+    {
+        if (duplicate.IsPersonal && !IsPersonalUnlocked) return new ClipboardImportResult(null);
+        bool duplicateSensitive = sensitive || duplicate.IsSensitive;
+        string duplicatePreview = kind == ClipboardKind.Color ? preview : duplicate.Preview;
+        var updated = duplicate with
+        {
+            IsSensitive = duplicateSensitive,
+            Title = duplicateSensitive ? ClipboardSensitiveData.Mask : duplicate.Title,
+            FileCount = duplicate.FileCount,
+            PrimaryExtension = duplicate.PrimaryExtension,
+            CopiedUtc = capture.CopiedUtc,
+            Kind = kind == ClipboardKind.Color ? kind : duplicate.Kind,
+            Preview = duplicateSensitive ? ClipboardSensitiveData.Mask : duplicatePreview,
+            MaskedPreview = duplicateSensitive ? ClipboardSensitiveData.Mask : "",
+            SensitivityVersion = ClipboardSensitiveData.DetectorVersion,
+            SourceApp = capture.SourceApp.Length == 0 ? duplicate.SourceApp : capture.SourceApp,
+            SourceExecutable = capture.SourceExecutable.Length == 0 ? duplicate.SourceExecutable : capture.SourceExecutable
+        };
+        WriteEntry(updated);
+        PutEntry(updated);
+        if (!batchChild)
+        {
+            PruneCore(DateTime.UtcNow);
+            Changed?.Invoke();
+        }
+        return new ClipboardImportResult(updated, ImportedCount: importedCount, FailedCount: failedCount);
     }
 
     public Task<IReadOnlyList<ClipboardEntry>> SearchAsync(string query, string category, CancellationToken cancellation = default)
@@ -939,6 +971,8 @@ public sealed partial class ClipboardHistoryStore : IDisposable, IAsyncDisposabl
         var targetIds = DeduplicateIds(ids);
         return Run(() =>
         {
+            string[]? prefilteredGroups = groups != null ? FilterValidGroups(groups, Array.Empty<string>()) : null;
+            bool canAddGroup = prefilteredGroups == null && !string.IsNullOrEmpty(addGroup) && IsLabel(addGroup);
             bool changed = false;
             for (int i = 0; i < targetIds.Length; i++)
             {
@@ -951,28 +985,13 @@ public sealed partial class ClipboardHistoryStore : IDisposable, IAsyncDisposabl
                     continue;
 
                 string[] updatedGroups = entry.Groups;
-                if (groups != null)
+                if (prefilteredGroups != null)
                 {
-                    updatedGroups = FilterValidGroups(groups, entry.Groups);
+                    updatedGroups = prefilteredGroups;
                 }
-                else if (!string.IsNullOrEmpty(addGroup) && IsLabel(addGroup))
+                else if (canAddGroup && !ContainsGroupOrdinalIgnoreCase(entry.Groups, addGroup!))
                 {
-                    bool alreadyHas = false;
-                    for (int g = 0; g < entry.Groups.Length; g++)
-                    {
-                        if (string.Equals(entry.Groups[g], addGroup, StringComparison.OrdinalIgnoreCase))
-                        {
-                            alreadyHas = true;
-                            break;
-                        }
-                    }
-                    if (!alreadyHas)
-                    {
-                        var nextGroups = new string[entry.Groups.Length + 1];
-                        Array.Copy(entry.Groups, nextGroups, entry.Groups.Length);
-                        nextGroups[^1] = addGroup;
-                        updatedGroups = FilterValidGroups(nextGroups, entry.Groups);
-                    }
+                    updatedGroups = AppendValidGroup(entry.Groups, addGroup!);
                 }
 
                 bool nextPinned = pinned ?? entry.IsPinned;
@@ -993,6 +1012,31 @@ public sealed partial class ClipboardHistoryStore : IDisposable, IAsyncDisposabl
             if (changed) Changed?.Invoke();
             return true;
         });
+    }
+
+    private static bool ContainsGroupOrdinalIgnoreCase(string[] groups, string target)
+    {
+        for (int i = 0; i < groups.Length; i++)
+        {
+            if (string.Equals(groups[i], target, StringComparison.OrdinalIgnoreCase))
+                return true;
+        }
+        return false;
+    }
+
+    private string[] AppendValidGroup(string[] existingGroups, string groupToAdd)
+    {
+        var filtered = new List<string>(existingGroups.Length + 1);
+        var seen = new HashSet<string>(existingGroups.Length + 1, StringComparer.OrdinalIgnoreCase);
+        for (int i = 0; i < existingGroups.Length; i++)
+        {
+            string g = existingGroups[i];
+            if (IsLabel(g) && seen.Add(g))
+                filtered.Add(g);
+        }
+        if (seen.Add(groupToAdd))
+            filtered.Add(groupToAdd);
+        return filtered.Count == 0 ? Array.Empty<string>() : filtered.ToArray();
     }
 
     private string[] FilterValidGroups(string[]? candidateGroups, string[] fallbackGroups)
@@ -1932,7 +1976,27 @@ public sealed partial class ClipboardHistoryStore : IDisposable, IAsyncDisposabl
     private const int PublicBlobTagSize = 16;
     private const int PublicBlobDiskChunkSize = PublicBlobChunkSize + PublicBlobTagSize;
 
-    private static void BuildPublicBlobNonceAndAad(
+    [LibraryImport(NativeDll)]
+    private static partial int vn_clipboard_blob_build_nonce_aad(
+        ReadOnlySpan<byte> streamIdPtr,
+        int streamIdLen,
+        ulong chunkIndex,
+        int plainLen,
+        byte isFinal,
+        Span<byte> outNonce,
+        int nonceCap,
+        Span<byte> outAad,
+        int aadCap);
+
+    [LibraryImport(NativeDll)]
+    private static partial int vn_clipboard_blob_compute_geometry(
+        long fileLen,
+        out long outTotalChunks,
+        out int outLastPlainLen,
+        out long outPlainLength,
+        out int outErrorKind);
+
+    internal static void BuildPublicBlobNonceAndAad(
         ReadOnlySpan<byte> streamId,
         ulong chunkIndex,
         int plainLen,
@@ -1940,15 +2004,11 @@ public sealed partial class ClipboardHistoryStore : IDisposable, IAsyncDisposabl
         Span<byte> nonce,
         Span<byte> aad)
     {
-        streamId.CopyTo(nonce);
-        ulong low = BinaryPrimitives.ReadUInt64LittleEndian(nonce[4..12]);
-        BinaryPrimitives.WriteUInt64LittleEndian(nonce[4..12], low ^ chunkIndex);
-
-        PublicBlobMagic.CopyTo(aad[..8]);
-        streamId.CopyTo(aad.Slice(8, 12));
-        BinaryPrimitives.WriteUInt64LittleEndian(aad.Slice(20, 8), chunkIndex);
-        BinaryPrimitives.WriteInt32LittleEndian(aad.Slice(28, 4), plainLen);
-        aad[32] = isFinal ? (byte)1 : (byte)0;
+        vn_clipboard_blob_build_nonce_aad(
+            streamId, streamId.Length,
+            chunkIndex, plainLen, isFinal ? (byte)1 : (byte)0,
+            nonce, nonce.Length,
+            aad, aad.Length);
     }
 
     private byte[] GetPublicBlobKey(bool allowCreate)
@@ -2278,33 +2338,16 @@ public sealed partial class ClipboardHistoryStore : IDisposable, IAsyncDisposabl
         public PublicBlobReadStream(FileStream file, byte[] key)
         {
             _file = file;
-            long fileLen = file.Length;
-            if (fileLen < PublicBlobHeaderSize + PublicBlobTagSize)
+            vn_clipboard_blob_compute_geometry(
+                file.Length,
+                out _totalChunks,
+                out _lastPlainLen,
+                out _plainLength,
+                out int errorKind);
+            if (errorKind == 1)
                 throw new IOException("Truncated encrypted clipboard attachment.");
-            long bodyLen = fileLen - PublicBlobHeaderSize;
-            if (bodyLen == PublicBlobTagSize)
-            {
-                _totalChunks = 1;
-                _lastPlainLen = 0;
-                _plainLength = 0;
-            }
-            else
-            {
-                long rem = bodyLen % PublicBlobDiskChunkSize;
-                if (rem is > 0 and <= PublicBlobTagSize)
-                    throw new IOException("Corrupt encrypted clipboard attachment length.");
-                if (rem == 0)
-                {
-                    _totalChunks = bodyLen / PublicBlobDiskChunkSize;
-                    _lastPlainLen = PublicBlobChunkSize;
-                }
-                else
-                {
-                    _totalChunks = bodyLen / PublicBlobDiskChunkSize + 1;
-                    _lastPlainLen = (int)(rem - PublicBlobTagSize);
-                }
-                _plainLength = (_totalChunks - 1) * PublicBlobChunkSize + _lastPlainLen;
-            }
+            if (errorKind != 0)
+                throw new IOException("Corrupt encrypted clipboard attachment length.");
             _file.Position = 8;
             _file.ReadExactly(_streamId);
             _cipher = new AesGcm(key, PublicBlobTagSize);

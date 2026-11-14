@@ -1,20 +1,36 @@
 using System.Diagnostics;
+using System.Runtime.InteropServices;
 
 namespace VNotch.Services;
 
 // Keep the deadline's phase when the display and target rates do not divide evenly.
-internal struct AnimationFrameClock
+internal partial struct AnimationFrameClock
 {
-    private long _lastTick;
-    private double _nextTick;
-    private double _targetFps;
+    [StructLayout(LayoutKind.Sequential, Pack = 1)]
+    private struct VnCoreAnimClockState
+    {
+        public long LastTick;
+        public double NextTick;
+        public double TargetFps;
+    }
+
+    [LibraryImport("VNotch.Native.dll")]
+    private static partial int vn_anim_clock_try_advance(
+        ref VnCoreAnimClockState ioState,
+        long nowTick,
+        long stopwatchFreq,
+        double targetFps,
+        out double outSeconds,
+        out byte outAdvanced);
+
+    private VnCoreAnimClockState _state;
     private TimeSpan _renderingTime;
 
     internal void Reset(long now)
     {
-        _lastTick = now;
-        _nextTick = now;
-        _targetFps = 0;
+        _state.LastTick = now;
+        _state.NextTick = now;
+        _state.TargetFps = 0;
         _renderingTime = TimeSpan.MinValue;
     }
 
@@ -31,20 +47,6 @@ internal struct AnimationFrameClock
 
     internal bool TryAdvance(long now, double targetFps, out double seconds)
     {
-        seconds = 0;
-        targetFps = double.IsFinite(targetFps) ? Math.Max(1, targetFps) : 60;
-        double interval = Stopwatch.Frequency / (double)targetFps;
-        if (_targetFps != targetFps)
-        {
-            _targetFps = targetFps;
-            _nextTick = _lastTick + interval;
-        }
-        if (now <= _lastTick || now + Stopwatch.Frequency * .0001 < _nextTick) return false;
-
-        seconds = Math.Clamp((now - _lastTick) / (double)Stopwatch.Frequency, 0, .05);
-        _lastTick = now;
-        // Drop missed deadlines after a stall; never queue catch-up frames.
-        _nextTick += Math.Max(1, Math.Floor((now - _nextTick) / interval) + 1) * interval;
-        return true;
+        return vn_anim_clock_try_advance(ref _state, now, Stopwatch.Frequency, targetFps, out seconds, out byte advanced) == 0 && advanced != 0;
     }
 }

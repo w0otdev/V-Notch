@@ -437,6 +437,15 @@ internal sealed partial class QwenTranslationEngine : ILocalTranslationEngine
         _ => ""
     };
 
+    [LibraryImport(NativeDll, StringMarshalling = StringMarshalling.Utf16)]
+    private static partial int vn_qwen_translation_try_read_output(
+        ReadOnlySpan<char> jsonPtr,
+        int jsonLen,
+        Span<char> outBuf,
+        int outCap,
+        out int outLen,
+        out byte outOk);
+
     internal static string ReadOutput(string output)
     {
         if (TryReadOutput(output, out string translation)) return translation;
@@ -446,15 +455,25 @@ internal sealed partial class QwenTranslationEngine : ILocalTranslationEngine
     internal static bool TryReadOutput(string output, out string translation)
     {
         translation = "";
-        try
+        if (string.IsNullOrEmpty(output)) return false;
+        ReadOnlySpan<char> span = output.AsSpan();
+        Span<char> stackBuf = stackalloc char[512];
+        int rc = vn_qwen_translation_try_read_output(span, span.Length, stackBuf, stackBuf.Length, out int written, out byte ok);
+        if (ok == 0) return false;
+        if (rc == 0)
         {
-            using var json = JsonDocument.Parse(output);
-            var root = json.RootElement;
-            if (root.ValueKind == JsonValueKind.Object && root.TryGetProperty("translation", out var text) && text.ValueKind == JsonValueKind.String &&
-                root.EnumerateObject().Count() == 1)
-            { translation = text.GetString()!.Trim(); return true; }
+            translation = written > 0 ? new string(stackBuf[..written]) : "";
+            return true;
         }
-        catch (JsonException) { /* Non-JSON output is handled by the caller. */ }
+        if (rc == -2 && written > 0)
+        {
+            char[] heapBuf = new char[written];
+            if (vn_qwen_translation_try_read_output(span, span.Length, heapBuf, heapBuf.Length, out written, out ok) == 0 && ok != 0)
+            {
+                translation = new string(heapBuf, 0, written);
+                return true;
+            }
+        }
         return false;
     }
 

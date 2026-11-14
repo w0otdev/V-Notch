@@ -52,6 +52,12 @@ internal static partial class FileIconProvider
         int maxCacheSize,
         out int outRemoveCount);
 
+    [LibraryImport(NativeDll, StringMarshalling = StringMarshalling.Utf16)]
+    private static partial int vn_file_icon_can_probe_local_path(
+        ReadOnlySpan<char> path,
+        int len,
+        out byte outCanProbe);
+
     private sealed class CacheEntry
     {
         public ImageSource? Icon;
@@ -84,27 +90,13 @@ internal static partial class FileIconProvider
 
     // The Shell associates every .msc with a generic document icon. Each MMC
     // console declares its real artwork in its XML (<Icon Index File>).
-    private static bool CanProbeLocalFilesystemPath(string? path)
+    internal static bool CanProbeLocalFilesystemPath(string? path)
     {
-        if (string.IsNullOrWhiteSpace(path))
+        if (string.IsNullOrEmpty(path))
             return false;
 
-        string trimmed = path.Trim();
-        if (trimmed.StartsWith(@"\\", StringComparison.Ordinal) ||
-            trimmed.StartsWith("//", StringComparison.Ordinal) ||
-            LocalPathPolicy.IsUncPath(trimmed))
-        {
-            return false;
-        }
-
-        if (Uri.TryCreate(trimmed, UriKind.Absolute, out var uri) && (!uri.IsFile || uri.IsUnc))
-            return false;
-
-        return Path.IsPathFullyQualified(trimmed) &&
-               trimmed.Length >= 3 &&
-               char.IsAsciiLetter(trimmed[0]) &&
-               trimmed[1] == ':' &&
-               (trimmed[2] == '\\' || trimmed[2] == '/');
+        ReadOnlySpan<char> span = path.AsSpan();
+        return vn_file_icon_can_probe_local_path(span, span.Length, out byte canProbe) == 0 && canProbe != 0;
     }
 
     internal static ImageSource? TryGetMscIcon(string mscPath, bool small = false)

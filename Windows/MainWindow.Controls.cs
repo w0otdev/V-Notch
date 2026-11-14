@@ -252,55 +252,65 @@ public partial class MainWindow
         _isCompactVolumeWheelActive = false;
     }
 
+    [StructLayout(LayoutKind.Sequential, Pack = 1)]
+    private struct VnVolumeWheelState
+    {
+        public double Accumulator;
+        public long LastWheelUtcTicks;
+        public long SuppressUntilUtcTicks;
+        public byte IsWheelActive;
+        public byte Reserved0;
+        public byte Reserved1;
+        public byte Reserved2;
+    }
+
+    [LibraryImport("VNotch.Native.dll")]
+    private static partial int vn_mainwindow_step_volume_wheel(
+        ref VnVolumeWheelState ioState,
+        int rawDelta,
+        long nowUtcTicks,
+        byte isIndicatorActive,
+        out int outVolumeDelta,
+        out byte outAccepted,
+        out byte outSuppressed);
+
     private bool TryGetCompactVolumeWheelDelta(int rawDelta, out int volumeDelta)
     {
         volumeDelta = 0;
         if (rawDelta == 0) return false;
 
-        var now = DateTime.UtcNow;
-        if (now < _suppressCompactVolumeWheelUntilUtc)
+        var state = new VnVolumeWheelState
+        {
+            Accumulator = _compactVolumeWheelAccumulator,
+            LastWheelUtcTicks = _lastCompactVolumeWheelUtc.Ticks,
+            SuppressUntilUtcTicks = _suppressCompactVolumeWheelUntilUtc.Ticks,
+            IsWheelActive = _isCompactVolumeWheelActive ? (byte)1 : (byte)0
+        };
+
+        if (vn_mainwindow_step_volume_wheel(
+                ref state,
+                rawDelta,
+                DateTime.UtcNow.Ticks,
+                _isVolumeIndicatorActive ? (byte)1 : (byte)0,
+                out volumeDelta,
+                out byte accepted,
+                out byte suppressed) != 0)
+        {
+            return false;
+        }
+
+        if (suppressed != 0)
         {
             ResetCompactVolumeWheelIntent();
             return false;
         }
 
-        if ((now - _lastCompactVolumeWheelUtc).TotalMilliseconds > CompactVolumeWheelSessionResetMs)
-        {
-            _compactVolumeWheelAccumulator = 0;
-            _isCompactVolumeWheelActive = false;
-        }
-        _lastCompactVolumeWheelUtc = now;
-
-        if (_isVolumeIndicatorActive || _isCompactVolumeWheelActive)
-        {
-            _isCompactVolumeWheelActive = true;
-            volumeDelta = rawDelta;
-            return true;
-        }
-
-        if (Math.Abs(rawDelta) >= CompactVolumeImmediateWheelDelta)
-        {
-            _isCompactVolumeWheelActive = true;
-            volumeDelta = rawDelta;
-            return true;
-        }
-
-        if (_compactVolumeWheelAccumulator != 0 &&
-            Math.Sign(_compactVolumeWheelAccumulator) != Math.Sign(rawDelta))
-        {
-            _compactVolumeWheelAccumulator = 0;
-        }
-
-        _compactVolumeWheelAccumulator += rawDelta;
-        if (Math.Abs(_compactVolumeWheelAccumulator) < CompactVolumeSmoothActivationDelta)
-        {
-            return false;
-        }
-
-        _compactVolumeWheelAccumulator = 0;
-        _isCompactVolumeWheelActive = true;
-        volumeDelta = Math.Sign(rawDelta) * (int)CompactVolumeImmediateWheelDelta;
-        return true;
+        _compactVolumeWheelAccumulator = state.Accumulator;
+        _lastCompactVolumeWheelUtc = state.LastWheelUtcTicks <= 0
+            ? DateTime.MinValue
+            : new DateTime(state.LastWheelUtcTicks, DateTimeKind.Utc);
+        _isCompactVolumeWheelActive = state.IsWheelActive != 0;
+        return accepted != 0;
     }
 
     private bool _volumeBaselinePending;
@@ -673,26 +683,15 @@ public partial class MainWindow
 
         if (VolumeIndicatorContentScale != null)
         {
-            var sx = new DoubleAnimationUsingKeyFrames();
-            sx.KeyFrames.Add(new EasingDoubleKeyFrame(over.ScaleX, KeyTime.FromTimeSpan(durPeak), _easeQuadOut));
-            sx.KeyFrames.Add(new EasingDoubleKeyFrame(1.0, KeyTime.FromTimeSpan(durSettle), _easeSoftSpring));
-            Timeline.SetDesiredFrameRate(sx, fps);
-
-            var sy = new DoubleAnimationUsingKeyFrames();
-            sy.KeyFrames.Add(new EasingDoubleKeyFrame(over.ScaleY, KeyTime.FromTimeSpan(durPeak), _easeQuadOut));
-            sy.KeyFrames.Add(new EasingDoubleKeyFrame(1.0, KeyTime.FromTimeSpan(durSettle), _easeSoftSpring));
-            Timeline.SetDesiredFrameRate(sy, fps);
-
+            var sx = MakeTwoStageSpringPulse(over.ScaleX, durPeak, 1.0, durSettle, fps);
+            var sy = MakeTwoStageSpringPulse(over.ScaleY, durPeak, 1.0, durSettle, fps);
             VolumeIndicatorContentScale.BeginAnimation(ScaleTransform.ScaleXProperty, sx);
             VolumeIndicatorContentScale.BeginAnimation(ScaleTransform.ScaleYProperty, sy);
         }
 
         if (VolumeIndicatorContentTranslate != null)
         {
-            var tx = new DoubleAnimationUsingKeyFrames();
-            tx.KeyFrames.Add(new EasingDoubleKeyFrame(over.TranslateX, KeyTime.FromTimeSpan(durPeak), _easeQuadOut));
-            tx.KeyFrames.Add(new EasingDoubleKeyFrame(0.0, KeyTime.FromTimeSpan(durSettle), _easeSoftSpring));
-            Timeline.SetDesiredFrameRate(tx, fps);
+            var tx = MakeTwoStageSpringPulse(over.TranslateX, durPeak, 0.0, durSettle, fps);
             VolumeIndicatorContentTranslate.BeginAnimation(TranslateTransform.XProperty, tx);
         }
 
@@ -700,15 +699,8 @@ public partial class MainWindow
         {
             double pillScaleX = 1.0 + (over.ScaleX - 1.0) * 0.55;
             double pillScaleY = 1.0 + (over.ScaleY - 1.0) * 0.55;
-            var psx = new DoubleAnimationUsingKeyFrames();
-            psx.KeyFrames.Add(new EasingDoubleKeyFrame(pillScaleX, KeyTime.FromTimeSpan(durPeak), _easeQuadOut));
-            psx.KeyFrames.Add(new EasingDoubleKeyFrame(1.0, KeyTime.FromTimeSpan(durSettle), _easeSoftSpring));
-            Timeline.SetDesiredFrameRate(psx, fps);
-
-            var psy = new DoubleAnimationUsingKeyFrames();
-            psy.KeyFrames.Add(new EasingDoubleKeyFrame(pillScaleY, KeyTime.FromTimeSpan(durPeak), _easeQuadOut));
-            psy.KeyFrames.Add(new EasingDoubleKeyFrame(1.0, KeyTime.FromTimeSpan(durSettle), _easeSoftSpring));
-            Timeline.SetDesiredFrameRate(psy, fps);
+            var psx = MakeTwoStageSpringPulse(pillScaleX, durPeak, 1.0, durSettle, fps);
+            var psy = MakeTwoStageSpringPulse(pillScaleY, durPeak, 1.0, durSettle, fps);
 
             NotchScale.BeginAnimation(ScaleTransform.ScaleXProperty, psx);
             NotchScale.BeginAnimation(ScaleTransform.ScaleYProperty, psy);
@@ -905,30 +897,21 @@ public partial class MainWindow
 
             double fallbackFromHeight = double.IsFinite(NotchBorder.Height) && NotchBorder.Height > 0 ? NotchBorder.Height : _collapsedHeight;
             double fromHeight = NotchBorder.ActualHeight > 0 ? NotchBorder.ActualHeight : fallbackFromHeight;
+            var activeMorphDur = _isCompactThumbnailHovered ? _dur400 : morphDur;
             if (_isCompactThumbnailHovered)
             {
                 _isCompactThumbnailHovered = false;
-
-                NotchBorder.BeginAnimation(HeightProperty, null);
-                AnimateCompactWidth(trans.TargetWidth, _dur400, _easeExpOut6, _volumeIndicatorToken);
-                var heightAnim = MakeAnim(fromHeight, targetHeight, _dur400, _easeExpOut6, VNotch.Services.AnimationConfig.TargetFps);
-                NotchBorder.BeginAnimation(HeightProperty, heightAnim);
-
                 CompactHoverInfo.BeginAnimation(OpacityProperty, null);
                 var hoverFadeOut = MakeAnim(0.0, _dur200, _easeQuadOut);
                 hoverFadeOut.Completed += (s, e) => CompactHoverInfo.Visibility = Visibility.Collapsed;
                 CompactHoverInfo.BeginAnimation(OpacityProperty, hoverFadeOut);
+            }
 
-                AnimateCornerRadius(trans.TargetCornerRadius, TimeSpan.FromMilliseconds(400));
-            }
-            else
-            {
-                AnimateCompactWidth(trans.TargetWidth, morphDur, _easeExpOut6, _volumeIndicatorToken);
-                NotchBorder.BeginAnimation(HeightProperty, null);
-                var heightAnim = MakeAnim(fromHeight, targetHeight, morphDur, _easeExpOut6, VNotch.Services.AnimationConfig.TargetFps);
-                NotchBorder.BeginAnimation(HeightProperty, heightAnim);
-                AnimateCornerRadius(trans.TargetCornerRadius, morphDur.TimeSpan);
-            }
+            AnimateCompactWidth(trans.TargetWidth, activeMorphDur, _easeExpOut6, _volumeIndicatorToken);
+            NotchBorder.BeginAnimation(HeightProperty, null);
+            var heightAnim = MakeAnim(fromHeight, targetHeight, activeMorphDur, _easeExpOut6, VNotch.Services.AnimationConfig.TargetFps);
+            NotchBorder.BeginAnimation(HeightProperty, heightAnim);
+            AnimateCornerRadius(trans.TargetCornerRadius, activeMorphDur.TimeSpan);
 
             MusicViz.BeginAnimation(OpacityProperty, null);
             var vizOut = MakeAnim(1.0, 0.0, _dur200, _easeQuadOut);

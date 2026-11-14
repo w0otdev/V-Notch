@@ -1,7 +1,4 @@
 using System;
-using System.Collections.Frozen;
-using System.Collections.Generic;
-using System.IO;
 using System.Runtime.InteropServices;
 
 namespace VNotch.Services.Clipboard;
@@ -28,25 +25,20 @@ internal static partial class ClipboardSensitiveData
     internal const int DetectorVersion = 2;
     internal const string Mask = "••••••••";
 
-    private static readonly FrozenSet<string> s_secretExtensions = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
-    {
-        ".pem", ".key", ".pfx", ".p12", ".kdbx", ".env", ".ppk", ".ovpn"
-    }.ToFrozenSet(StringComparer.OrdinalIgnoreCase);
-
-    private static readonly FrozenSet<string> s_secretFileNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
-    {
-        "id_rsa", "id_ed25519", "id_ecdsa", "id_dsa", ".npmrc", ".netrc", "credentials", ".env"
-    }.ToFrozenSet(StringComparer.OrdinalIgnoreCase);
-
     internal static string CreateLayoutMask(string text) => string.IsNullOrEmpty(text) ? string.Empty : Mask;
 
     internal static bool IsSensitiveFileName(string? pathOrName)
     {
         if (string.IsNullOrWhiteSpace(pathOrName)) return false;
-        string fileName = Path.GetFileName(pathOrName);
-        if (fileName.Length == 0) return false;
-        return s_secretFileNames.Contains(fileName) || s_secretExtensions.Contains(Path.GetExtension(fileName));
+        ReadOnlySpan<char> span = pathOrName.AsSpan();
+        return vn_clipboard_is_secret_filename(span, span.Length, out byte isSecret) == 0 && isSecret != 0;
     }
+
+    [LibraryImport(NativeDll, StringMarshalling = StringMarshalling.Utf16)]
+    private static partial int vn_clipboard_is_secret_filename(
+        ReadOnlySpan<char> pathPtr,
+        int pathLen,
+        out byte outIsSecret);
 
     [LibraryImport(NativeDll, StringMarshalling = StringMarshalling.Utf16)]
     private static partial int vn_clipboard_sensitive_analyze(

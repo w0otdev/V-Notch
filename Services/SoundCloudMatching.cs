@@ -68,15 +68,20 @@ internal static partial class SoundCloudMatching
         int outCap,
         out int outLen);
 
+    [StructLayout(LayoutKind.Sequential, Pack = 1)]
+    private struct VnCoreTextSlice
+    {
+        public int Offset;
+        public int Length;
+    }
+
     [LibraryImport(NativeDll, StringMarshalling = StringMarshalling.Utf16)]
-    private static partial int vn_soundcloud_find_next_anchor_href(
+    private static partial int vn_soundcloud_extract_anchor_hrefs(
         ReadOnlySpan<char> htmlPtr,
         int htmlLen,
-        int startPos,
-        out int outHrefStart,
-        out int outHrefLen,
-        out int outNextPos,
-        out byte outFound);
+        Span<VnCoreTextSlice> outSlices,
+        int sliceCap,
+        out int outTotalCount);
 
     public static bool IsValidTrackCandidate(string user, string slug)
     {
@@ -128,23 +133,33 @@ internal static partial class SoundCloudMatching
         var origin = new Uri("https://soundcloud.com/");
 #pragma warning restore S1075
         ReadOnlySpan<char> htmlSpan = html.AsSpan();
-        int pos = 0;
-        while (pos < htmlSpan.Length &&
-               vn_soundcloud_find_next_anchor_href(htmlSpan, htmlSpan.Length, pos, out int hrefStart, out int hrefLen, out int nextPos, out byte found) == 0 &&
-               found != 0)
+        Span<VnCoreTextSlice> stackSlices = stackalloc VnCoreTextSlice[128];
+        Span<VnCoreTextSlice> slices = stackSlices;
+        int rc = vn_soundcloud_extract_anchor_hrefs(htmlSpan, htmlSpan.Length, slices, slices.Length, out int sliceCount);
+        if (rc == -2 && sliceCount > slices.Length)
         {
-            pos = nextPos > pos ? nextPos : pos + 1;
-            if (hrefLen <= 0) continue;
-            string href = WebUtility.HtmlDecode(html.Substring(hrefStart, hrefLen));
-            if (string.IsNullOrWhiteSpace(href) || !Uri.TryCreate(origin, href, out var uri) ||
-                (uri.Scheme != Uri.UriSchemeHttps && uri.Scheme != Uri.UriSchemeHttp) ||
-                (uri.Host != "soundcloud.com" && uri.Host != "www.soundcloud.com" && uri.Host != "m.soundcloud.com"))
-                continue;
+            slices = new VnCoreTextSlice[sliceCount];
+            rc = vn_soundcloud_extract_anchor_hrefs(htmlSpan, htmlSpan.Length, slices, slices.Length, out sliceCount);
+        }
 
-            var segments = uri.AbsolutePath.Trim('/').Split('/');
-            if (segments.Length != 2) continue;
+        if (rc == 0 && sliceCount > 0)
+        {
+            for (int i = 0; i < sliceCount; i++)
+            {
+                int hrefStart = slices[i].Offset;
+                int hrefLen = slices[i].Length;
+                if (hrefLen <= 0) continue;
+                string href = WebUtility.HtmlDecode(html.Substring(hrefStart, hrefLen));
+                if (string.IsNullOrWhiteSpace(href) || !Uri.TryCreate(origin, href, out var uri) ||
+                    (uri.Scheme != Uri.UriSchemeHttps && uri.Scheme != Uri.UriSchemeHttp) ||
+                    (uri.Host != "soundcloud.com" && uri.Host != "www.soundcloud.com" && uri.Host != "m.soundcloud.com"))
+                    continue;
 
-            AddCandidate(scoreMap, segments[0], segments[1], normalizedTitle, normalizedArtist, orderIndex++);
+                var segments = uri.AbsolutePath.Trim('/').Split('/');
+                if (segments.Length != 2) continue;
+
+                AddCandidate(scoreMap, segments[0], segments[1], normalizedTitle, normalizedArtist, orderIndex++);
+            }
         }
 
         var sorted = new List<KeyValuePair<string, (int Score, int FirstIndex)>>(scoreMap);

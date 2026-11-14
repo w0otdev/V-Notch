@@ -5,7 +5,6 @@ using System.Globalization;
 using System.Linq;
 using System.Runtime.InteropServices;
 using System.Text;
-using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
 using LanguageDetection;
@@ -97,31 +96,55 @@ internal static partial class TranslationLanguages
         finally { PassthroughGate.Release(); }
     }
 
+    [StructLayout(LayoutKind.Sequential, Pack = 1)]
+    private struct VnSubTextSlice
+    {
+        public int offset;
+        public int length;
+    }
+
     private static string? DetectForPassthroughCore(string text, CancellationToken ct)
     {
         ct.ThrowIfCancellationRequested();
         string? language = ConfidentLanguage(text);
         ct.ThrowIfCancellationRequested();
         if (language == null) return null;
-        foreach (string sentence in PassthroughSentences().Split(text))
+
+        ReadOnlySpan<char> textSpan = text.AsSpan();
+        Span<VnSubTextSlice> stackSlices = stackalloc VnSubTextSlice[16];
+        VnSubTextSlice[]? heapSlices = null;
+        int rc = vn_translation_lang_split_passthrough_sentences(textSpan, textSpan.Length, stackSlices, stackSlices.Length, out int count);
+        if (rc == -2 && count > stackSlices.Length)
+        {
+            heapSlices = new VnSubTextSlice[count];
+            rc = vn_translation_lang_split_passthrough_sentences(textSpan, textSpan.Length, heapSlices, heapSlices.Length, out count);
+        }
+        if (rc != 0 || count <= 0) return language;
+
+        ReadOnlySpan<VnSubTextSlice> slices = heapSlices != null ? heapSlices.AsSpan(0, count) : stackSlices[..count];
+        for (int i = 0; i < slices.Length; i++)
         {
             ct.ThrowIfCancellationRequested();
-            if (sentence.Length == text.Length) continue;
-            if (HasAtLeastLetters(sentence, 12) && ConfidentLanguage(sentence) != language)
+            VnSubTextSlice s = slices[i];
+            if (s.length == text.Length) continue;
+            if (HasAtLeastLettersSpan(textSpan.Slice(s.offset, s.length), 12) &&
+                ConfidentLanguage(text.Substring(s.offset, s.length)) != language)
+            {
                 return null;
+            }
         }
         return language;
     }
 
-    [GeneratedRegex(@"[\r\n。！？]+|(?<=[.!?])\s+")]
-    private static partial Regex PassthroughSentences();
+    private static bool HasAtLeastLetters(string text, int minimum) =>
+        string.IsNullOrEmpty(text) ? minimum <= 0 : HasAtLeastLettersSpan(text.AsSpan(), minimum);
 
-    private static unsafe bool HasAtLeastLetters(string text, int minimum)
+    private static unsafe bool HasAtLeastLettersSpan(ReadOnlySpan<char> span, int minimum)
     {
-        if (string.IsNullOrEmpty(text)) return minimum <= 0;
-        fixed (char* ptr = text)
+        if (span.IsEmpty) return minimum <= 0;
+        fixed (char* ptr = span)
         {
-            vn_translation_lang_has_at_least_letters(ptr, text.Length, minimum, out byte has);
+            vn_translation_lang_has_at_least_letters(ptr, span.Length, minimum, out byte has);
             return has != 0;
         }
     }
@@ -155,4 +178,12 @@ internal static partial class TranslationLanguages
     private static unsafe partial int vn_translation_lang_detect_unambiguous_script(
         char* text_ptr, int text_len,
         char* out_buf, int out_cap, out int out_len);
+
+    [LibraryImport("VNotch.Native.dll", StringMarshalling = StringMarshalling.Utf16)]
+    private static partial int vn_translation_lang_split_passthrough_sentences(
+        ReadOnlySpan<char> textPtr,
+        int textLen,
+        Span<VnSubTextSlice> outSlices,
+        int sliceCap,
+        out int outCount);
 }

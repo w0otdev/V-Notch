@@ -2,7 +2,6 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Runtime.InteropServices;
-using System.Text.RegularExpressions;
 using VNotch.Models;
 
 namespace VNotch.Services.Clipboard;
@@ -32,6 +31,13 @@ public static partial class ClipboardClassifier
     [LibraryImport(NativeDll, StringMarshalling = StringMarshalling.Utf16)]
     private static partial int vn_clipboard_classify_groups(ReadOnlySpan<char> textPtr, int textLen, out uint outGroupMask);
 
+    [LibraryImport(NativeDll, StringMarshalling = StringMarshalling.Utf16)]
+    private static partial int vn_clipboard_classify_text_traits(
+        ReadOnlySpan<char> textPtr,
+        int textLen,
+        out byte outHasEmail,
+        out byte outLooksLikeCode);
+
     public static ClipboardKind Detect(ClipboardCapture capture)
     {
         if (capture.FilePaths.Length != 0)
@@ -42,7 +48,9 @@ public static partial class ClipboardClassifier
         if (Uri.TryCreate(text, UriKind.Absolute, out var uri) && uri.Scheme is "https" or "http" or "mailto")
             return ClipboardKind.Link;
         if (TryExtractHexColor(text, out _)) return ClipboardKind.Color;
-        if (CodePattern().IsMatch(text)) return ClipboardKind.Code;
+        ReadOnlySpan<char> span = text.AsSpan();
+        if (vn_clipboard_classify_text_traits(span, span.Length, out _, out byte isCode) == 0 && isCode != 0)
+            return ClipboardKind.Code;
         return ClipboardKind.Text;
     }
 
@@ -71,7 +79,9 @@ public static partial class ClipboardClassifier
             }
         }
 
-        if (text.Contains('@') && EmailPattern().IsMatch(text))
+        if (text.Contains('@') &&
+            vn_clipboard_classify_text_traits(span, span.Length, out byte hasEmail, out _) == 0 &&
+            hasEmail != 0)
         {
             if (groups == null) return ["Email"];
             if (!groups.Contains("Email")) groups.Add("Email");
@@ -100,26 +110,4 @@ public static partial class ClipboardClassifier
         hex = new string(buf[..len]);
         return true;
     }
-
-    // Punctuation alone is common in prose. Require a declaration, a call or another syntax signal.
-    [GeneratedRegex("""
-        (?m)(
-            ^[ \t]*(
-                using\s+[\w.]+;
-                | import\s
-                | from\s+\w+\s+import
-                | (?:public|private|internal)\s+(?:static\s+)?(?:class|void|Task)\b
-                | (?:const|let|var|int|long|float|double|decimal|bool|string|char|byte)\s+\w+\s*=
-                | def\s+\w+\(
-                | function\s+\w+\(
-                | SELECT\s+.+\s+FROM\b
-                | <\/?(?:div|html|script|style|body)\b
-                | (?:\w+\.)*\w+\([^\r\n]*\);[ \t]*$
-            )
-            | =>\s*\{
-        )
-        """, RegexOptions.IgnoreCase | RegexOptions.CultureInvariant | RegexOptions.IgnorePatternWhitespace)]
-    private static partial Regex CodePattern();
-    [GeneratedRegex(@"\b[\w.+-]+@[\w.-]+\.[A-Za-z]{2,}\b", RegexOptions.CultureInvariant)]
-    private static partial Regex EmailPattern();
 }
