@@ -224,13 +224,29 @@ public partial class ElasticSlider : Slider
 
     private void UpdateInteractiveStateVisuals()
     {
-        bool hovered = _rootBorder?.IsMouseOver == true || IsMouseOver;
-        double targetOverlayOpacity = _isDragging ? 1.0 : (hovered ? 0.65 : 0.0);
-        AnimateElementOpacity(_hoverOverlay, targetOverlayOpacity, hovered || _isDragging ? 160 : 220);
+        bool enabled = IsEnabled;
+        bool hovered = enabled && (_rootBorder?.IsMouseOver == true || IsMouseOver);
+        bool dragging = enabled && _isDragging;
+        double targetOverlayOpacity = dragging ? 1.0 : (hovered ? 0.65 : 0.0);
+        AnimateElementOpacity(_hoverOverlay, targetOverlayOpacity, hovered || dragging ? 160 : 220);
 
-        double indScaleX = _isDragging ? 1.18 : (hovered ? 1.08 : 1.0);
-        double indScaleY = _isDragging ? 1.16 : (hovered ? 1.08 : 1.0);
+        double indScaleX = dragging ? 1.18 : (hovered ? 1.08 : 1.0);
+        double indScaleY = dragging ? 1.16 : (hovered ? 1.08 : 1.0);
         AnimateScaleTransform(_indicatorScale, indScaleX, indScaleY, 160);
+    }
+
+    protected override void OnPropertyChanged(DependencyPropertyChangedEventArgs e)
+    {
+        base.OnPropertyChanged(e);
+        if (e.Property != IsEnabledProperty || IsEnabled) return;
+
+        bool wasDragging = _isDragging;
+        _isDragging = false;
+        if (IsMouseCaptured) ReleaseMouseCapture();
+        if (wasDragging && Math.Abs(_dragOverflow) > 0.5)
+            AnimateRubberBandRelease();
+        _dragOverflow = 0;
+        UpdateInteractiveStateVisuals();
     }
 
     private static void AnimateElementOpacity(UIElement? element, double targetOpacity, int durationMs)
@@ -539,6 +555,7 @@ public partial class ElasticSlider : Slider
 
     protected override void OnPreviewMouseLeftButtonDown(MouseButtonEventArgs e)
     {
+        if (!IsEnabled) return;
         base.OnPreviewMouseLeftButtonDown(e);
 
         if (_rootBorder != null)
@@ -560,6 +577,7 @@ public partial class ElasticSlider : Slider
 
     protected override void OnPreviewMouseMove(MouseEventArgs e)
     {
+        if (!IsEnabled) return;
         base.OnPreviewMouseMove(e);
         if (!_isDragging) return;
         SetValueFromMouse(e);
@@ -707,6 +725,7 @@ public partial class ElasticSlider : Slider
 
     protected override void OnPreviewKeyDown(KeyEventArgs e)
     {
+        if (!IsEnabled) return;
         double step = GetEffectiveTickStep();
 
         bool handled = false;

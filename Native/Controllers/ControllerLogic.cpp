@@ -179,40 +179,6 @@ inline double ValueNoise(double px, double py) noexcept
     return top + (bottom - top) * fy;
 }
 
-inline void QuantizeSampleAxis(
-    double coord,
-    int32_t max_coord,
-    int32_t& out_index,
-    int32_t& out_weight) noexcept
-{
-    const double safe = std::isfinite(coord)
-        ? std::clamp(coord, -1.0, static_cast<double>(std::max(0, max_coord)) + 1.0)
-        : 0.0;
-    const int32_t idx = static_cast<int32_t>(std::floor(safe));
-    if (idx < 0)
-    {
-        out_index = 0;
-        out_weight = 0;
-        return;
-    }
-    if (idx >= max_coord)
-    {
-        if (max_coord > 0)
-        {
-            out_index = max_coord - 1;
-            out_weight = 256;
-        }
-        else
-        {
-            out_index = 0;
-            out_weight = 0;
-        }
-        return;
-    }
-    out_index = idx;
-    out_weight = std::clamp(static_cast<int32_t>(std::nearbyint((safe - idx) * 256.0)), 0, 256);
-}
-
 inline void PackSampleCoord(
     double sx,
     double sy,
@@ -222,46 +188,68 @@ inline void PackSampleCoord(
     int32_t* out_idx,
     int32_t* out_aux) noexcept
 {
-    int32_t ix = 0, wx = 0;
-    int32_t iy = 0, wy = 0;
-    QuantizeSampleAxis(sx, max_x, ix, wx);
-    QuantizeSampleAxis(sy, max_y, iy, wy);
+    const double safe_sx = std::isfinite(sx)
+        ? std::clamp(sx, -1.0, static_cast<double>(std::max(0, max_x)) + 1.0)
+        : 0.0;
+    const double safe_sy = std::isfinite(sy)
+        ? std::clamp(sy, -1.0, static_cast<double>(std::max(0, max_y)) + 1.0)
+        : 0.0;
+    int32_t ix = static_cast<int32_t>(std::floor(safe_sx));
+    int32_t iy = static_cast<int32_t>(std::floor(safe_sy));
+    const double fx = safe_sx - ix;
+    const double fy = safe_sy - iy;
+
+    int32_t wx;
+    if (ix < 0)
+    {
+        ix = 0;
+        wx = 0;
+    }
+    else if (ix >= max_x)
+    {
+        if (max_x > 0)
+        {
+            ix = max_x - 1;
+            wx = 256;
+        }
+        else
+        {
+            ix = 0;
+            wx = 0;
+        }
+    }
+    else
+    {
+        wx = std::clamp(static_cast<int32_t>(std::nearbyint(fx * 256.0)), 0, 256);
+    }
+
+    int32_t wy;
+    if (iy < 0)
+    {
+        iy = 0;
+        wy = 0;
+    }
+    else if (iy >= max_y)
+    {
+        if (max_y > 0)
+        {
+            iy = max_y - 1;
+            wy = 256;
+        }
+        else
+        {
+            iy = 0;
+            wy = 0;
+        }
+    }
+    else
+    {
+        wy = std::clamp(static_cast<int32_t>(std::nearbyint(fy * 256.0)), 0, 256);
+    }
 
     const int32_t flags = (max_x > 0 ? 1 : 0) | (max_y > 0 ? 2 : 0);
     *out_idx = (iy * src_w + ix) << 2;
     *out_aux = flags | (wx << 2) | (wy << 12);
-}
-
-inline void PackUniformSampleCell(
-    double bx,
-    double by,
-    int32_t src_w,
-    int32_t max_x,
-    int32_t max_y,
-    int32_t* cell) noexcept
-{
-    int32_t s_idx = 0, s_aux = 0;
-    PackSampleCoord(bx, by, src_w, max_x, max_y, &s_idx, &s_aux);
-    cell[0] = s_idx; cell[1] = s_aux;
-    cell[2] = s_idx; cell[3] = s_aux;
-    cell[4] = s_idx; cell[5] = s_aux;
-}
-
-inline bool AreGlassMapParamsFinite(const VnGlassMapParams& p) noexcept
-{
-    return std::isfinite(p.out_scale) &&
-           std::isfinite(p.top_corner_radius) &&
-           std::isfinite(p.bottom_corner_radius) &&
-           std::isfinite(p.edge_bend) &&
-           std::isfinite(p.chromatic_aberration) &&
-           std::isfinite(p.distortion) &&
-           std::isfinite(p.f_power) &&
-           std::isfinite(p.refraction_a) &&
-           std::isfinite(p.refraction_b) &&
-           std::isfinite(p.refraction_c) &&
-           std::isfinite(p.refraction_d) &&
-           std::isfinite(p.refraction) &&
-           std::isfinite(p.z_radius);
 }
 
 inline int32_t BilerpChannelFast(
@@ -679,7 +667,19 @@ VN_EXPORT int32_t __stdcall vn_glass_build_refraction_rows(
         params->src_w <= 0 || params->src_h <= 0 ||
         static_cast<int64_t>(params->src_w) * static_cast<int64_t>(params->src_h) > (INT32_MAX / 4) ||
         static_cast<int64_t>(params->out_w) * static_cast<int64_t>(params->out_h) > (INT32_MAX / 6) ||
-        !vnotch::controllers::AreGlassMapParamsFinite(*params))
+        !std::isfinite(params->out_scale) ||
+        !std::isfinite(params->top_corner_radius) ||
+        !std::isfinite(params->bottom_corner_radius) ||
+        !std::isfinite(params->edge_bend) ||
+        !std::isfinite(params->chromatic_aberration) ||
+        !std::isfinite(params->distortion) ||
+        !std::isfinite(params->f_power) ||
+        !std::isfinite(params->refraction_a) ||
+        !std::isfinite(params->refraction_b) ||
+        !std::isfinite(params->refraction_c) ||
+        !std::isfinite(params->refraction_d) ||
+        !std::isfinite(params->refraction) ||
+        !std::isfinite(params->z_radius))
     {
         return VN_ERR_INVALID_ARG;
     }
@@ -704,8 +704,7 @@ VN_EXPORT int32_t __stdcall vn_glass_build_refraction_rows(
     const double refract_strength = std::clamp(params->refraction, 0.0, 3.0);
     const double z_rad = std::clamp(params->z_radius, 0.04, 1.0);
     const double depth_reach = std::clamp(z_rad / 0.25, 0.20, 2.8) * (params->bevel_mode >= 1 ? 1.45 : 1.0);
-    const double dome_shelf = 0.18 + (params->bevel_mode >= 1 ? 0.22 : 0.0);
-    const double min_refract_18 = std::min(refract_strength, 1.8);
+    const double bevel_shelf = params->bevel_mode >= 1 ? 0.22 : 0.0;
     const double aspect = std::clamp(
         static_cast<double>(params->notch_h) / std::max(static_cast<double>(params->notch_w), 1.0) * 2.5,
         0.0,
@@ -718,34 +717,33 @@ VN_EXPORT int32_t __stdcall vn_glass_build_refraction_rows(
     const double inv_min_half = 1.0 / std::max(min_half, 1.0);
     const double lut_scale = static_cast<double>(lut_len - 1);
     const int32_t lut_max_idx = lut_len - 1;
-    const double margin_d = static_cast<double>(params->margin);
-    const double shift_x_d = static_cast<double>(params->capture_shift_x);
-    const double shift_y_d = static_cast<double>(params->capture_shift_y);
 
     for (int32_t y = y0; y < y1; ++y)
     {
         const double ly = static_cast<double>(y) - cy;
-        const double py_norm = ly * inv_half_y;
-        const double noise_ly = ly * 0.055;
-        const double noise_ly_shifted = noise_ly + 43.1;
-        const double row_base_y = static_cast<double>(y) + margin_d - shift_y_d;
+        const double row_base_y = static_cast<double>(y) + static_cast<double>(params->margin) - static_cast<double>(params->capture_shift_y);
         int32_t* dst_row = out_map + static_cast<size_t>(y) * static_cast<size_t>(out_w) * 6;
 
         for (int32_t x = 0; x < out_w; ++x)
         {
             const double lx = static_cast<double>(x) - cx;
-            double base_x = static_cast<double>(x) + margin_d - shift_x_d;
+            double base_x = static_cast<double>(x) + static_cast<double>(params->margin) - static_cast<double>(params->capture_shift_x);
             double base_y = row_base_y;
             int32_t* cell = dst_row + static_cast<size_t>(x) * 6;
 
             const double inside = -vnotch::controllers::RoundedRectSdf(lx, ly, half_x, half_y, top_r, bottom_r);
             if (!std::isfinite(inside) || inside <= 0.0)
             {
-                vnotch::controllers::PackUniformSampleCell(base_x, base_y, src_w, max_x, max_y, cell);
+                int32_t s_idx = 0, s_aux = 0;
+                vnotch::controllers::PackSampleCoord(base_x, base_y, src_w, max_x, max_y, &s_idx, &s_aux);
+                cell[0] = s_idx; cell[1] = s_aux;
+                cell[2] = s_idx; cell[3] = s_aux;
+                cell[4] = s_idx; cell[5] = s_aux;
                 continue;
             }
 
             const double px_norm = lx * inv_half_x;
+            const double py_norm = ly * inv_half_y;
             const double raw_dist = inside * inv_min_half;
             const double dist_norm = std::isfinite(raw_dist) ? std::clamp(raw_dist, 0.0, 1.0) : 0.0;
             const double scaled_dist = std::clamp(dist_norm / depth_reach, 0.0, 1.0);
@@ -755,12 +753,13 @@ VN_EXPORT int32_t __stdcall vn_glass_build_refraction_rows(
             const double lut_pos = std::isfinite(raw_lut_pos)
                 ? std::clamp(raw_lut_pos, 0.0, static_cast<double>(lut_max_idx - 1))
                 : 0.0;
-            const int32_t lut_idx = std::clamp(static_cast<int32_t>(lut_pos), 0, lut_max_idx - 1);
+            int32_t lut_idx = static_cast<int32_t>(lut_pos);
+            lut_idx = std::clamp(lut_idx, 0, lut_max_idx - 1);
             const double lut0 = std::isfinite(lut[lut_idx]) ? lut[lut_idx] : 1.0;
             const double lut1 = std::isfinite(lut[lut_idx + 1]) ? lut[lut_idx + 1] : lut0;
-            const double frac = std::clamp(raw_lut_pos - static_cast<double>(lut_idx), 0.0, 1.0);
+            const double frac = std::clamp((scaled_dist * lut_scale) - static_cast<double>(lut_idx), 0.0, 1.0);
             const double base_refract = lut0 + (lut1 - lut0) * frac;
-            const double dome_pull = (one_minus_dist * one_minus_dist) * dome_shelf * min_refract_18;
+            const double dome_pull = (one_minus_dist * one_minus_dist) * (0.18 + bevel_shelf) * std::min(refract_strength, 1.8);
             const double refract_factor = std::clamp(base_refract - dome_pull, 0.05, 1.25);
 
             double disp_x = (px_norm * refract_factor - px_norm) * half_x * bend;
@@ -768,9 +767,8 @@ VN_EXPORT int32_t __stdcall vn_glass_build_refraction_rows(
 
             if (distort > 0.0)
             {
-                const double noise_lx = lx * 0.055;
-                const double noise_x = vnotch::controllers::ValueNoise(noise_lx, noise_ly) * 2.0 - 1.0;
-                const double noise_y = vnotch::controllers::ValueNoise(noise_lx + 19.7, noise_ly_shifted) * 2.0 - 1.0;
+                const double noise_x = vnotch::controllers::ValueNoise(lx * 0.055, ly * 0.055) * 2.0 - 1.0;
+                const double noise_y = vnotch::controllers::ValueNoise(lx * 0.055 + 19.7, ly * 0.055 + 43.1) * 2.0 - 1.0;
                 const double distort_scale = distort * 14.0 * (0.35 + 0.65 * one_minus_dist);
                 disp_x += noise_x * distort_scale;
                 disp_y += noise_y * vertical_balance * distort_scale;
@@ -782,7 +780,11 @@ VN_EXPORT int32_t __stdcall vn_glass_build_refraction_rows(
             const double ca_s = std::min(u_chroma * (0.30 + 0.70 * one_minus_dist) * 9.5, 14.0);
             if (ca_s <= 0.0)
             {
-                vnotch::controllers::PackUniformSampleCell(base_x, base_y, src_w, max_x, max_y, cell);
+                int32_t s_idx = 0, s_aux = 0;
+                vnotch::controllers::PackSampleCoord(base_x, base_y, src_w, max_x, max_y, &s_idx, &s_aux);
+                cell[0] = s_idx; cell[1] = s_aux;
+                cell[2] = s_idx; cell[3] = s_aux;
+                cell[4] = s_idx; cell[5] = s_aux;
                 continue;
             }
 
@@ -827,13 +829,48 @@ VN_EXPORT int32_t __stdcall vn_glass_refract_gather(
         for (int32_t i = start_pixel; i < end_pixel; ++i)
         {
             const int32_t* m = refract_map + static_cast<size_t>(i) * 6;
-            int32_t b = 0, g = 0, r = 0;
-            vnotch::controllers::SampleRefractedBgr(src, m, src_stride, b, g, r);
+            const int32_t idx_b = m[0];
+            const int32_t aux_b = m[1];
+            const int32_t idx_r = m[4];
+            const int32_t aux_r = m[5];
             uint8_t* out_px = dst + (static_cast<size_t>(i) << 2);
-            out_px[0] = static_cast<uint8_t>(b);
-            out_px[1] = static_cast<uint8_t>(g);
-            out_px[2] = static_cast<uint8_t>(r);
-            out_px[3] = 255;
+
+            if (idx_b == idx_r && aux_b == aux_r)
+            {
+                if ((aux_b >> 2) == 0)
+                {
+                    const uint8_t* p00 = src + idx_b;
+                    out_px[0] = p00[0];
+                    out_px[1] = p00[1];
+                    out_px[2] = p00[2];
+                    out_px[3] = 255;
+                    continue;
+                }
+
+                const int32_t step_x = (aux_b & 1) != 0 ? 4 : 0;
+                const int32_t step_y = (aux_b & 2) != 0 ? src_stride : 0;
+                const int32_t wx = (aux_b >> 2) & 0x1FF;
+                const int32_t wy = (aux_b >> 12) & 0x1FF;
+                const int32_t inv_wx = 256 - wx;
+                const int32_t inv_wy = 256 - wy;
+
+                const uint8_t* p00 = src + idx_b;
+                const uint8_t* p10 = p00 + step_x;
+                const uint8_t* p01 = p00 + step_y;
+                const uint8_t* p11 = p01 + step_x;
+
+                out_px[0] = static_cast<uint8_t>(((p00[0] * inv_wx + p10[0] * wx) * inv_wy + (p01[0] * inv_wx + p11[0] * wx) * wy) >> 16);
+                out_px[1] = static_cast<uint8_t>(((p00[1] * inv_wx + p10[1] * wx) * inv_wy + (p01[1] * inv_wx + p11[1] * wx) * wy) >> 16);
+                out_px[2] = static_cast<uint8_t>(((p00[2] * inv_wx + p10[2] * wx) * inv_wy + (p01[2] * inv_wx + p11[2] * wx) * wy) >> 16);
+                out_px[3] = 255;
+            }
+            else
+            {
+                out_px[0] = static_cast<uint8_t>(vnotch::controllers::BilerpChannel(src, idx_b, aux_b, src_stride, 0));
+                out_px[1] = static_cast<uint8_t>(vnotch::controllers::BilerpChannel(src, m[2], m[3], src_stride, 1));
+                out_px[2] = static_cast<uint8_t>(vnotch::controllers::BilerpChannel(src, idx_r, aux_r, src_stride, 2));
+                out_px[3] = 255;
+            }
         }
         return VN_OK;
     }
@@ -844,8 +881,46 @@ VN_EXPORT int32_t __stdcall vn_glass_refract_gather(
     for (int32_t i = start_pixel; i < end_pixel; ++i)
     {
         const int32_t* m = refract_map + static_cast<size_t>(i) * 6;
-        int32_t b = 0, g = 0, r = 0;
-        vnotch::controllers::SampleRefractedBgr(src, m, src_stride, b, g, r);
+        const int32_t idx_b = m[0];
+        const int32_t aux_b = m[1];
+        const int32_t idx_r = m[4];
+        const int32_t aux_r = m[5];
+
+        int32_t b, g, r;
+        if (idx_b == idx_r && aux_b == aux_r)
+        {
+            if ((aux_b >> 2) == 0)
+            {
+                const uint8_t* p00 = src + idx_b;
+                b = p00[0];
+                g = p00[1];
+                r = p00[2];
+            }
+            else
+            {
+                const int32_t step_x = (aux_b & 1) != 0 ? 4 : 0;
+                const int32_t step_y = (aux_b & 2) != 0 ? src_stride : 0;
+                const int32_t wx = (aux_b >> 2) & 0x1FF;
+                const int32_t wy = (aux_b >> 12) & 0x1FF;
+                const int32_t inv_wx = 256 - wx;
+                const int32_t inv_wy = 256 - wy;
+
+                const uint8_t* p00 = src + idx_b;
+                const uint8_t* p10 = p00 + step_x;
+                const uint8_t* p01 = p00 + step_y;
+                const uint8_t* p11 = p01 + step_x;
+
+                b = ((p00[0] * inv_wx + p10[0] * wx) * inv_wy + (p01[0] * inv_wx + p11[0] * wx) * wy) >> 16;
+                g = ((p00[1] * inv_wx + p10[1] * wx) * inv_wy + (p01[1] * inv_wx + p11[1] * wx) * wy) >> 16;
+                r = ((p00[2] * inv_wx + p10[2] * wx) * inv_wy + (p01[2] * inv_wx + p11[2] * wx) * wy) >> 16;
+            }
+        }
+        else
+        {
+            b = vnotch::controllers::BilerpChannel(src, idx_b, aux_b, src_stride, 0);
+            g = vnotch::controllers::BilerpChannel(src, m[2], m[3], src_stride, 1);
+            r = vnotch::controllers::BilerpChannel(src, idx_r, aux_r, src_stride, 2);
+        }
 
         const float lum = (static_cast<float>(77 * r + 150 * g + 29 * b) * (1.0f / 256.0f)) * one_minus_sat + safe_bright;
         uint8_t* out_px = dst + (static_cast<size_t>(i) << 2);
@@ -884,6 +959,23 @@ VN_EXPORT int32_t __stdcall vn_glass_analyze_backdrop_samples(
     }
     const int32_t count = static_cast<int32_t>(count64);
 
+    double stack_lum[256];
+    std::vector<double> heap_lum;
+    double* luminance = stack_lum;
+    if (count > 256)
+    {
+        try
+        {
+            heap_lum.resize(static_cast<size_t>(count));
+            luminance = heap_lum.data();
+        }
+        catch (...)
+        {
+            *out_optics = VnGlassBackdropOpticsOut{128, 128, 128, 0, 0.0, 0.0, 0.0, 0};
+            return VN_ERR_FAIL;
+        }
+    }
+
     double sum_r = 0.0, sum_g = 0.0, sum_b = 0.0, sum_l = 0.0;
     double min_l = 255.0, max_l = 0.0;
     for (int32_t i = 0; i < count; ++i)
@@ -893,6 +985,7 @@ VN_EXPORT int32_t __stdcall vn_glass_analyze_backdrop_samples(
         const int32_t g = (rgb >> 8) & 0xFF;
         const int32_t b = rgb & 0xFF;
         const double l = 0.299 * r + 0.587 * g + 0.114 * b;
+        luminance[i] = l;
         sum_r += r;
         sum_g += g;
         sum_b += b;
@@ -906,10 +999,9 @@ VN_EXPORT int32_t __stdcall vn_glass_analyze_backdrop_samples(
     for (int32_t y = 0; y < rows; ++y)
     {
         const double ny = rows == 1 ? 0.0 : (y * 2.0 / (rows - 1) - 1.0);
-        const int32_t* row_samples = rgb_samples + y * columns;
         for (int32_t x = 0; x < columns; ++x)
         {
-            const double highlight = std::max(vnotch::controllers::SampleRgbLuminance(row_samples[x]) - mean_l, 0.0);
+            const double highlight = std::max(luminance[y * columns + x] - mean_l, 0.0);
             const double weight = highlight * highlight;
             if (weight <= 1e-6) continue;
             const double nx = columns == 1 ? 0.0 : (x * 2.0 / (columns - 1) - 1.0);

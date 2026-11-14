@@ -59,44 +59,6 @@ public sealed class CoreSafeConversionsTests
     });
 
     [Fact]
-    public void GlassGrainBrush_GeneratesDeterministicValidPremultipliedPixels() => SharedStaTestRunner.Run(() =>
-    {
-        int[] first = new int[4096];
-        int[] second = new int[4096];
-        int[] otherSeed = new int[4096];
-
-        GlassGrainBrush.GenerateGrainPixels(first, 1337u);
-        GlassGrainBrush.GenerateGrainPixels(second, 1337u);
-        GlassGrainBrush.GenerateGrainPixels(otherSeed, 42u);
-
-        Assert.Equal(first, second);
-        Assert.NotEqual(first, otherSeed);
-
-        bool sawHighlight = false;
-        bool sawShadow = false;
-        foreach (int raw in first)
-        {
-            uint px = unchecked((uint)raw);
-            uint a = (px >> 24) & 0xFFu;
-            uint r = (px >> 16) & 0xFFu;
-            uint g = (px >> 8) & 0xFFu;
-            uint b = px & 0xFFu;
-
-            Assert.True(a < 55u);
-            Assert.True(r <= a && g <= a && b <= a);
-            if (a > 0 && r == a && g == a && b == a) sawHighlight = true;
-            if (a > 0 && r == 0 && g == 0 && b == 0) sawShadow = true;
-        }
-
-        Assert.True(sawHighlight);
-        Assert.True(sawShadow);
-
-        ImageBrush brush = GlassGrainBrush.Instance;
-        Assert.NotNull(brush);
-        Assert.True(brush.IsFrozen);
-    });
-
-    [Fact]
     public void LyricsProviderOrder_Normalize_PreservesSixProvidersLegacyMigrationAndOrdinalCase()
     {
         string[] expectedDefault =

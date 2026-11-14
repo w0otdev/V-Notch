@@ -9,134 +9,13 @@ constexpr int32_t VN_ERR_OVERFLOW = -4;
 
 #pragma pack(push, 1)
 
-struct VnLiquidGlassFrameDimsInput
-{
-    int32_t region_x;
-    int32_t region_y;
-    int32_t display_w;
-    int32_t display_h;
-    int32_t max_region_w;
-    int32_t surface_w;
-    int32_t surface_h;
-    int32_t bevel_mode;
-    double bitmap_dpi;
-    double z_radius;
-    double refraction;
-    double chromatic_aberration;
-    double distortion;
-    double edge_bend;
-    uint8_t gpu_mode;
-    uint8_t full_surface;
-    uint8_t has_prev_bounds;
-    uint8_t reserved;
-    int32_t prev_bounds_x;
-    int32_t prev_bounds_y;
-    int32_t prev_bounds_w;
-    int32_t prev_bounds_h;
-};
-static_assert(sizeof(VnLiquidGlassFrameDimsInput) == 100);
 
-struct VnLiquidGlassFrameDimsOut
-{
-    int32_t out_w;
-    int32_t out_h;
-    double out_scale;
-    int32_t buf_w;
-    int32_t buf_h;
-    int32_t notch_off_x;
-    int32_t notch_off_y;
-    double min_half;
-    int32_t margin;
-    int32_t src_w;
-    int32_t src_h;
-    int32_t phys_src_w;
-    int32_t phys_src_h;
-    int32_t src_x;
-    int32_t src_y;
-    int32_t capture_shift_x;
-    int32_t capture_shift_y;
-    int32_t map_capture_shift_y;
-    uint8_t has_next_bounds;
-    uint8_t pad0;
-    uint8_t pad1;
-    uint8_t pad2;
-    int32_t next_bounds_x;
-    int32_t next_bounds_y;
-    int32_t next_bounds_w;
-    int32_t next_bounds_h;
-};
-static_assert(sizeof(VnLiquidGlassFrameDimsOut) == 100);
 
-struct VnLiquidGlassGpuGeometryInput
-{
-    int32_t region_x;
-    int32_t region_y;
-    int32_t src_x;
-    int32_t src_y;
-    int32_t src_w;
-    int32_t src_h;
-    int32_t out_w;
-    int32_t out_h;
-    int32_t bevel_mode;
-    double sub_x;
-    double sub_y;
-    double out_scale;
-    double min_half;
-    double top_corner_radius;
-    double bottom_corner_radius;
-    double power_factor;
-    double refraction_a;
-    double refraction_b;
-    double refraction_c;
-    double refraction_d;
-    double f_power;
-    double noise;
-    double glow_weight;
-    double glow_bias;
-    double glow_edge1;
-    double refraction;
-    double edge_bend;
-    double chromatic_aberration;
-    double distortion;
-    double z_radius;
-    double saturation;
-    double brightness;
-    double edge_highlight;
-    double specular;
-    double fresnel;
-};
-static_assert(sizeof(VnLiquidGlassGpuGeometryInput) == 244);
 
-struct VnLiquidGlassGpuGeometryOut
-{
-    double src_w;
-    double src_h;
-    double notch_w;
-    double notch_h;
-    double off_x;
-    double off_y;
-    double top_corner_r;
-    double bottom_corner_r;
-    double power_factor;
-    double a;
-    double b;
-    double c;
-    double d;
-    double f_power;
-    double noise;
-    double glow_weight;
-    double glow_bias;
-    double glow_edge0;
-    double glow_edge1;
-    double chroma;
-    double edge_bend;
-    double sat_factor;
-    double bright_add;
-    double bevel_mode;
-    int32_t capture_origin_x;
-    int32_t capture_origin_y;
-};
-static_assert(sizeof(VnLiquidGlassGpuGeometryOut) == 200);
+
+
+
+
 
 struct VnAiUsageWindowEntry
 {
@@ -189,114 +68,41 @@ static_assert(sizeof(VnRoundedWindowRegion) == 20);
 // LiquidGlass Optical, Geometry, Pacing & Capacity Exports
 // ---------------------------------------------------------------------------
 
-VN_EXPORT int32_t __stdcall vn_liquid_glass_build_optical_lut(
-    float refraction_amount,
-    float rim_width,
-    float* out_lut1024) noexcept;
 
-VN_EXPORT int32_t __stdcall vn_liquid_glass_compute_frame_dims(
-    const VnLiquidGlassFrameDimsInput* input,
-    VnLiquidGlassFrameDimsOut* out_dims) noexcept;
 
-VN_EXPORT int32_t __stdcall vn_liquid_glass_create_gpu_geometry(
-    const VnLiquidGlassGpuGeometryInput* input,
-    VnLiquidGlassGpuGeometryOut* out_geom) noexcept;
 
-VN_EXPORT int32_t __stdcall vn_liquid_glass_grow_present_capacity(
-    int32_t current_cap,
-    int32_t required,
-    int32_t slack,
-    int32_t* out_cap) noexcept;
 
-VN_EXPORT int32_t __stdcall vn_liquid_glass_grow_pixel_buffer_capacity(
-    int32_t current_cap,
-    int32_t required,
-    int32_t* out_cap) noexcept;
 
-VN_EXPORT int32_t __stdcall vn_liquid_glass_clamp_capture_origin(
-    int32_t requested,
-    int32_t capture_len,
-    int32_t desktop_origin,
-    int32_t desktop_len,
-    int32_t* out_origin) noexcept;
 
-VN_EXPORT int32_t __stdcall vn_liquid_glass_compute_rim_width(
-    double normalized_radius,
-    double output_scale,
-    double min_half,
-    double* out_rim_width) noexcept;
 
-VN_EXPORT int32_t __stdcall vn_liquid_glass_lens_profile(
-    double normalized_distance,
-    uint8_t broad,
-    double* out_profile) noexcept;
 
-VN_EXPORT int32_t __stdcall vn_liquid_glass_refraction_amplitude(
-    double rim_width,
-    double refraction,
-    int32_t bevel_mode,
-    double edge_bend,
-    double* out_amplitude) noexcept;
 
-VN_EXPORT int32_t __stdcall vn_liquid_glass_edge_bend_gain(
-    double edge_bend,
-    double* out_gain) noexcept;
 
-VN_EXPORT int32_t __stdcall vn_liquid_glass_directional_lens_width(
-    double rim_width,
-    double inward_normal_x,
-    double edge_bend,
-    double* out_width) noexcept;
 
-VN_EXPORT int32_t __stdcall vn_liquid_glass_is_gpu_geometry_valid(
-    double src_w,
-    double src_h,
-    double notch_w,
-    double notch_h,
-    uint8_t* out_valid) noexcept;
 
-VN_EXPORT int32_t __stdcall vn_liquid_glass_compute_sampling_margin(
-    double rim_width,
-    double refraction,
-    double chroma,
-    double distortion,
-    int32_t bevel_mode,
-    double edge_bend,
-    int32_t* out_margin) noexcept;
 
-VN_EXPORT int32_t __stdcall vn_liquid_glass_exponential_refract(
-    double x,
-    double a,
-    double b,
-    double c,
-    double d,
-    double* out_value) noexcept;
 
-VN_EXPORT int32_t __stdcall vn_liquid_glass_choose_frame_interval_ms(
-    double active_interval_ms,
-    uint8_t idle,
-    uint8_t animating,
-    uint8_t has_frame,
-    int64_t unchanged_ms,
-    uint8_t force_refresh,
-    double* out_interval_ms) noexcept;
 
-VN_EXPORT int32_t __stdcall vn_liquid_glass_choose_processing_interval_ms(
-    double interval_ms,
-    double work_ms,
-    uint8_t gpu_mode,
-    double* out_interval_ms) noexcept;
 
-VN_EXPORT int32_t __stdcall vn_liquid_glass_blur_amount_to_sigma(
-    double amount,
-    double dpi_scale,
-    double* out_sigma) noexcept;
 
-VN_EXPORT int32_t __stdcall vn_liquid_glass_compute_next_deadline_ms(
-    double prev_deadline_ms,
-    double interval_ms,
-    double now_ms,
-    double* out_deadline_ms) noexcept;
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 // ---------------------------------------------------------------------------
 // Controls: WordClock, AiMarkdown Stream Closer, AiUsage Window Resolver

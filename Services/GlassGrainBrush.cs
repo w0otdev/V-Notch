@@ -1,27 +1,14 @@
 using System;
-using System.Runtime.InteropServices;
 using System.Windows;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
 
 namespace VNotch.Services;
 
-public static partial class GlassGrainBrush
+public static class GlassGrainBrush
 {
     private static ImageBrush? _cachedBrush;
     private static readonly object _sync = new();
-
-    [LibraryImport("VNotch.Native.dll")]
-    private static partial int vn_glass_generate_grain_pbgra32(
-        Span<int> outPixels,
-        int pixelCount,
-        uint seed);
-
-    internal static void GenerateGrainPixels(Span<int> pixels, uint seed = 1337u)
-    {
-        if (!pixels.IsEmpty)
-            _ = vn_glass_generate_grain_pbgra32(pixels, pixels.Length, seed);
-    }
 
     public static ImageBrush Instance
     {
@@ -41,8 +28,22 @@ public static partial class GlassGrainBrush
     {
         const int size = 256;
         var wb = new WriteableBitmap(size, size, 96, 96, PixelFormats.Pbgra32, null);
-        int[] pixels = GC.AllocateUninitializedArray<int>(size * size);
-        GenerateGrainPixels(pixels, 1337u);
+        int[] pixels = new int[size * size];
+
+#pragma warning disable S2245 // Pseudo-random generator is used solely for deterministic visual noise texture generation, not security or cryptography
+        var rng = new Random(1337);
+#pragma warning restore S2245
+        for (int i = 0; i < pixels.Length; i++)
+        {
+            // Triangular zero-mean micro-grain distribution (avoids harsh binary clumping)
+            double u1 = rng.NextDouble();
+            double t = u1 - rng.NextDouble();
+            byte alpha = (byte)(Math.Abs(t) * 55.0);
+            // Premultiplied Pbgra32: white highlight grain uses (a, a, a, a), dark shadow grain uses (a, 0, 0, 0)
+            pixels[i] = t >= 0
+                ? (alpha << 24) | (alpha << 16) | (alpha << 8) | alpha
+                : alpha << 24;
+        }
 
         wb.WritePixels(new Int32Rect(0, 0, size, size), pixels, size * 4, 0);
         wb.Freeze();

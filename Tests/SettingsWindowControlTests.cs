@@ -15,6 +15,59 @@ namespace VNotch.Tests;
 [Collection("Localization")]
 public sealed class SettingsWindowControlTests
 {
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void PerformancePresetFocusAndHoverKeepTextBoundsStable(bool reducedMotion) => SharedStaTestRunner.RunAsync(async ct =>
+    {
+        bool previousMotion = AnimationConfig.ReduceMotion;
+        AnimationConfig.SetReduceMotion(reducedMotion);
+        using var fixture = new Fixture();
+        var text = new TextBlock
+        {
+            Text = "Low-End & Battery Saver\nFor older PCs or 4 to 8 GB RAM. Caps 60 FPS and turns off blur and shadow.",
+            TextWrapping = TextWrapping.Wrap,
+            FontSize = 13.5
+        };
+        var button = new Button
+        {
+            Style = (Style)fixture.Window.FindResource("PerformancePresetRowButtonStyle"),
+            Uid = "Idle",
+            Content = text
+        };
+        var host = new BackgroundWindow { Content = button, Width = 520, Height = 160 };
+        try
+        {
+            host.Show();
+            await System.Windows.Threading.Dispatcher.Yield(System.Windows.Threading.DispatcherPriority.ApplicationIdle);
+            var before = text.TransformToAncestor(button).TransformBounds(new Rect(text.RenderSize));
+            var ring = (Border)button.Template.FindName("RowFocusRing", button);
+            var hover = (Border)button.Template.FindName("RowHoverFeedback", button);
+            var focusKey = (DependencyPropertyKey)typeof(UIElement)
+                .GetField("IsKeyboardFocusedPropertyKey", BindingFlags.Static | BindingFlags.NonPublic)!.GetValue(null)!;
+            var hoverKey = (DependencyPropertyKey)typeof(UIElement)
+                .GetField("IsMouseOverPropertyKey", BindingFlags.Static | BindingFlags.NonPublic)!.GetValue(null)!;
+            foreach (bool focused in new[] { true, false, true, false })
+            {
+                button.SetValue(focusKey, focused);
+                button.SetValue(hoverKey, !focused);
+                await WpfFrameWaiter.UntilAsync(() =>
+                {
+                    button.UpdateLayout();
+                    Assert.Equal(before, text.TransformToAncestor(button).TransformBounds(new Rect(text.RenderSize)));
+                    Assert.Equal(1, text.Opacity);
+                    Assert.Equal(1, button.Opacity);
+                    return ring.Opacity == (focused ? 1 : 0) && hover.Opacity == (focused ? 0 : 1);
+                }, "preset feedback settles without moving or fading its text", ct);
+            }
+        }
+        finally
+        {
+            host.Close();
+            AnimationConfig.SetReduceMotion(previousMotion);
+        }
+    });
+
     [Fact]
     public void NestedSettingsTreesSurviveSearchAndKeepIndependentFeatureSwitches() => SharedStaTestRunner.RunAsync(async () =>
     {

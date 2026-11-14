@@ -69,7 +69,14 @@ public partial class MainWindow
         SetAppNotificationOpacity(AppNotificationBanner, replacing ? .5 : 0);
         SetAppNotificationValue(AppNotificationBannerTranslate, TranslateTransform.YProperty,
             replacing || AnimationConfig.ReduceMotion ? 0 : 6);
-        TransitionAppNotificationBlurCover(entering: true);
+        if (_isAiQuotaNotification && !AnimationConfig.ReduceMotion)
+        {
+            SetAppNotificationValue(AppNotificationBannerScale, ScaleTransform.ScaleXProperty, .98);
+            SetAppNotificationValue(AppNotificationBannerScale, ScaleTransform.ScaleYProperty, .96);
+            AnimateAppNotificationValue(AppNotificationBannerScale, ScaleTransform.ScaleXProperty, 1, 360, easing: _easeSoftSpring);
+            AnimateAppNotificationValue(AppNotificationBannerScale, ScaleTransform.ScaleYProperty, 1, 360, easing: _easeSoftSpring);
+        }
+        if (!_isAiQuotaNotification) TransitionAppNotificationBlurCover(entering: true);
         AnimateAppNotificationOpacity(AppNotificationBanner, 1, NotificationTransitionMs, easing: _easeAppleOut);
         AnimateAppNotificationValue(AppNotificationBannerTranslate, TranslateTransform.YProperty, 0,
             NotificationTransitionMs, easing: _easeAppleOut);
@@ -130,8 +137,10 @@ public partial class MainWindow
         _isAppNotificationHovered = false;
         int generation = ++_appNotificationGeneration;
         AppNotificationBanner.IsHitTestVisible = false;
-        if (!immediate) TransitionAppNotificationBlurCover(entering: false);
-        AnimateAppNotificationOpacity(AppNotificationBanner, 0, immediate ? 0 : 180, easing: _easeQuadIn);
+        if (_isAiQuotaNotification) AiQuotaBannerContent.PlayExit(immediate);
+        if (!immediate && !_isAiQuotaNotification) TransitionAppNotificationBlurCover(entering: false);
+        AnimateAppNotificationOpacity(AppNotificationBanner, 0, immediate ? 0 : _isAiQuotaNotification ? 160 : 180,
+            easing: _isAiQuotaNotification ? _easeAppleOut : _easeQuadIn);
         AnimateAppNotificationHoverFeedback();
         AnimateAppNotificationValue(AppNotificationBannerTranslate, TranslateTransform.YProperty, direction == 0 ? -3 : 0,
             180, easing: _easeQuadIn);

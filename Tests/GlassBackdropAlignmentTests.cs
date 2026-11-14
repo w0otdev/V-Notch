@@ -45,7 +45,10 @@ public sealed class GlassBackdropAlignmentTests
     [Fact]
     public void MissingExactCaptureUsesPlainMaterialInsteadOfPixelsFromAnotherLocation() => SharedStaTestRunner.Run(() =>
     {
-        using var controller = new LiquidGlassController(new Image(), () => IntPtr.Zero, () => null);
+        using var controller = new LiquidGlassController(new Image(), () => IntPtr.Zero, () => null)
+        {
+            CompositeBackdropCapture = static (_, _, _, _, _) => false
+        };
         var bits = Marshal.AllocHGlobal(4 * 8 * 6);
         var dib = typeof(LiquidGlassController).GetField("_dibBits", Private)!;
         try
@@ -60,6 +63,41 @@ public sealed class GlassBackdropAlignmentTests
             Assert.True((bool)arguments[1]!);
             for (int i = 0; i < 8 * 6; i++)
                 Assert.Equal(unchecked((int)0xFF203040), Marshal.ReadInt32(bits, i * 4));
+        }
+        finally
+        {
+            dib.SetValue(controller, IntPtr.Zero);
+            Marshal.FreeHGlobal(bits);
+        }
+    });
+
+    [Fact]
+    public void MissingMagnifierUsesTheExactCompositeBackdropBeforeTheGreyMaterial() => SharedStaTestRunner.Run(() =>
+    {
+        bool composed = false;
+        using var controller = new LiquidGlassController(new Image(), () => IntPtr.Zero, () => null)
+        {
+            CompositeBackdropCapture = (x, y, width, height, destination) =>
+            {
+                Assert.Equal((100, 10, 8, 6), (x, y, width, height));
+                for (int i = 0; i < width * height; i++)
+                    Marshal.WriteInt32(destination, i * 4, unchecked((int)0xFF446688));
+                composed = true;
+                return true;
+            }
+        };
+        var bits = Marshal.AllocHGlobal(4 * 8 * 6);
+        var dib = typeof(LiquidGlassController).GetField("_dibBits", Private)!;
+        try
+        {
+            dib.SetValue(controller, bits);
+            var captureType = typeof(LiquidGlassController).GetNestedType("BackdropCaptureParams", BindingFlags.NonPublic)!;
+            var capture = Activator.CreateInstance(captureType, [100, 10, 8, 6, 8, 6, 10, 40, false, IntPtr.Zero]);
+            object?[] arguments = [capture, false];
+            Assert.True((bool)typeof(LiquidGlassController).GetMethod("CaptureBackdrop", Private)!.Invoke(controller, arguments)!);
+            Assert.True(composed);
+            Assert.False((bool)arguments[1]!);
+            Assert.Equal(unchecked((int)0xFF446688), Marshal.ReadInt32(bits));
         }
         finally
         {

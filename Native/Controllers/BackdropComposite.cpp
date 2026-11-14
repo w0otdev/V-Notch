@@ -30,9 +30,9 @@ namespace {
 
 constexpr int kMaxWindows = 8;
 constexpr int kMaxSelf = 8;
-constexpr int kStripMinHeight = 1000;
+constexpr int kStripMinHeight = 340;
 constexpr int kMismatchThreshold = 40;
-constexpr ULONGLONG kLiveTtlMs = 33;
+constexpr ULONGLONG kLiveTtlMs = 4;
 constexpr ULONGLONG kStaticTtlMs = 500;
 
 struct Layer { HWND hwnd; RECT window; RECT visible; };
@@ -133,7 +133,12 @@ struct Scratch {
     Dib target;
     Dib window;
     std::vector<HWND> bad; // windows that printed opaque but are not visible on screen
+    std::vector<HWND> verified; // windows already verified against screen pixels
 };
+
+constexpr bool Contains(const RECT& outer, const RECT& inner) noexcept {
+    return inner.left >= outer.left && inner.top >= outer.top && inner.right <= outer.right && inner.bottom <= outer.bottom;
+}
 
 constexpr bool PointInRect(const RECT& r, int x, int y) noexcept {
     return x >= r.left && x < r.right && y >= r.top && y < r.bottom;
@@ -158,11 +163,13 @@ bool PixelDiffExceedsThreshold(uint32_t mine, COLORREF real) noexcept {
 
 // Returns the hwnd of a layer whose composited pixels disagree with the real
 // screen at points no higher layer or window of this process covers, or null.
-HWND FindMismatchedLayer(HDC screen, const Dib& target, const RECT& area, const EnumState& state) noexcept {
+HWND FindMismatchedLayer(HDC screen, const Dib& target, const RECT& area, const EnumState& state, Scratch& scratch) {
     const int width = area.right - area.left;
     const auto* pixels = static_cast<const uint32_t*>(target.bits);
     for (int i = 0; i < state.count; ++i) {
         const Layer& layer = state.layers[i];
+        if (std::find(scratch.verified.begin(), scratch.verified.end(), layer.hwnd) != scratch.verified.end())
+            continue;
         RECT hit{};
         if (!IntersectRect(&hit, &layer.visible, &area)) continue;
         int samples = 0, mismatches = 0;
@@ -180,26 +187,50 @@ HWND FindMismatchedLayer(HDC screen, const Dib& target, const RECT& area, const 
             }
         }
         if (samples > 0 && mismatches * 2 >= samples) return layer.hwnd;
+        if (samples > 0) scratch.verified.push_back(layer.hwnd);
     }
     return nullptr;
 }
 
 struct HitPixelSummary {
     bool any_pixel = false;
-    bool any_alpha = false;
+    bool needs_blend = false;
+    bool all_opaque = true;
 };
 
 HitPixelSummary InspectLayerHit(const uint32_t* wpx, int ww, int ox, int oy, int hw, int hh) noexcept {
     HitPixelSummary summary{};
+    bool saw_alpha = false;
+    bool saw_zero_alpha = false;
     for (int row = 0; row < hh; ++row) {
         const uint32_t* line = wpx + static_cast<size_t>(oy + row) * ww + ox;
         for (int col = 0; col < hw; ++col) {
             const uint32_t px = line[col];
-            if (px == 0) continue;
+            if (px == 0) {
+                saw_zero_alpha = true;
+                summary.all_opaque = false;
+                if (saw_alpha) {
+                    summary.needs_blend = true;
+                    return summary;
+                }
+                continue;
+            }
             summary.any_pixel = true;
-            if (px >> 24) {
-                summary.any_alpha = true;
-                return summary;
+            const uint32_t a = px >> 24;
+            if (a == 0) {
+                saw_zero_alpha = true;
+                if (saw_alpha) {
+                    summary.all_opaque = false;
+                    summary.needs_blend = true;
+                    return summary;
+                }
+            } else {
+                saw_alpha = true;
+                if (a < 255u || saw_zero_alpha) {
+                    summary.all_opaque = false;
+                    summary.needs_blend = true;
+                    return summary;
+                }
             }
         }
     }
@@ -240,7 +271,7 @@ void BlendPremultipliedHit(
     }
 }
 
-bool CompositeWindowLayer(Scratch& scratch, HDC screen, HDC dc, const RECT& area, int width, const Layer& layer) noexcept {
+bool CompositeWindowLayer(Scratch& scratch, HDC screen, HDC dc, const RECT& area, int width, const Layer& layer, bool* out_all_opaque = nullptr) noexcept {
     // Copy only the visible frame; the invisible resize border prints black.
     RECT hit{};
     if (!IntersectRect(&hit, &layer.visible, &area)) return false;
@@ -248,23 +279,28 @@ bool CompositeWindowLayer(Scratch& scratch, HDC screen, HDC dc, const RECT& area
     const int wh = layer.window.bottom - layer.window.top;
     if (ww <= 0 || wh <= 0) return false;
     if (!scratch.window.Ensure(screen, ww, wh)) return false;
-    std::memset(scratch.window.bits, 0, static_cast<size_t>(ww) * wh * sizeof(uint32_t));
+    const int ox = hit.left - layer.window.left;
+    const int oy = hit.top - layer.window.top;
+    const int hw = hit.right - hit.left;
+    const int hh = hit.bottom - hit.top;
+    if (ox < 0 || oy < 0 || ox + hw > ww || oy + hh > wh) return false;
+    std::memset(
+        static_cast<uint8_t*>(scratch.window.bits) + static_cast<size_t>(oy) * ww * sizeof(uint32_t),
+        0,
+        static_cast<size_t>(hh) * ww * sizeof(uint32_t));
     if (!PrintWindow(layer.hwnd, scratch.window.dc, PW_RENDERFULLCONTENT)) return false;
     GdiFlush();
 
     // Windows that draw with alpha (or nothing at all) print as black in the
     // transparent parts, so inspect the pixels instead of copying blindly.
     const auto* wpx = static_cast<const uint32_t*>(scratch.window.bits);
-    const int ox = hit.left - layer.window.left;
-    const int oy = hit.top - layer.window.top;
-    const int hw = hit.right - hit.left;
-    const int hh = hit.bottom - hit.top;
     const HitPixelSummary summary = InspectLayerHit(wpx, ww, ox, oy, hw, hh);
     if (!summary.any_pixel) return false; // fully transparent window
+    if (out_all_opaque) *out_all_opaque = summary.all_opaque;
 
     const int dst_x = hit.left - area.left;
     const int dst_y = hit.top - area.top;
-    if (!summary.any_alpha) {
+    if (!summary.needs_blend) {
         BitBlt(dc, dst_x, dst_y, hw, hh, scratch.window.dc, ox, oy, SRCCOPY);
     } else {
         BlendPremultipliedHit(wpx, ww, ox, oy, static_cast<uint32_t*>(scratch.target.bits), width, dst_x, dst_y, hw, hh);
@@ -284,31 +320,54 @@ bool Compose(Scratch& scratch, const RECT& area, std::vector<uint32_t>& out, boo
 
     // Drop forgotten windows so a recycled handle is judged again.
     scratch.bad.erase(std::remove_if(scratch.bad.begin(), scratch.bad.end(), [](HWND h) { return !IsWindow(h); }), scratch.bad.end());
+    scratch.verified.erase(std::remove_if(scratch.verified.begin(), scratch.verified.end(), [](HWND h) { return !IsWindow(h); }), scratch.verified.end());
 
     const DWORD self_pid = GetCurrentProcessId();
     for (int attempt = 0; attempt < 3; ++attempt) {
         static_only = true;
-        // PaintDesktop treats DC coordinates as screen coordinates.
-        SetViewportOrgEx(dc, -area.left, -area.top, nullptr);
-        bool ok = PaintDesktop(dc) != FALSE;
-        SetViewportOrgEx(dc, 0, 0, nullptr);
-
         EnumState state;
         state.area = area;
         state.self_pid = self_pid;
         state.bad = &scratch.bad;
         EnumWindows(CollectLayer, reinterpret_cast<LPARAM>(&state));
-        for (int i = state.count - 1; i >= 0; --i) {
-            if (CompositeWindowLayer(scratch, screen, dc, area, width, state.layers[i])) {
+
+        // Fast single-layer shortcut when the topmost window completely covers `area`:
+        // avoids PaintDesktop + PrintWindow on buried background windows underneath it.
+        bool covered = false;
+        if (state.count > 0 && Contains(state.layers[0].visible, area)) {
+            bool top_opaque = false;
+            if (CompositeWindowLayer(scratch, screen, dc, area, width, state.layers[0], &top_opaque) && top_opaque) {
                 static_only = false;
-                ok = true;
+                covered = true;
+            }
+        }
+
+        bool ok = covered;
+        if (!covered) {
+            // PaintDesktop treats DC coordinates as screen coordinates.
+            SetViewportOrgEx(dc, -area.left, -area.top, nullptr);
+            ok = PaintDesktop(dc) != FALSE;
+            SetViewportOrgEx(dc, 0, 0, nullptr);
+
+            int start_idx = state.count - 1;
+            for (int i = 0; i < state.count; ++i) {
+                if (Contains(state.layers[i].visible, area)) {
+                    start_idx = i;
+                    break;
+                }
+            }
+            for (int i = start_idx; i >= 0; --i) {
+                if (CompositeWindowLayer(scratch, screen, dc, area, width, state.layers[i])) {
+                    static_only = false;
+                    ok = true;
+                }
             }
         }
         if (!ok) return false;
         GdiFlush();
 
         if (state.count > 0) {
-            if (HWND bad = FindMismatchedLayer(screen, scratch.target, area, state)) {
+            if (HWND bad = FindMismatchedLayer(screen, scratch.target, area, state, scratch)) {
                 scratch.bad.push_back(bad);
                 continue; // compose again without it
             }
@@ -321,10 +380,6 @@ bool Compose(Scratch& scratch, const RECT& area, std::vector<uint32_t>& out, boo
     const auto* src = static_cast<const uint32_t*>(scratch.target.bits);
     for (size_t p = 0; p < total; ++p) out[p] = src[p] | 0xFF000000u;
     return true;
-}
-
-bool Contains(const RECT& outer, const RECT& inner) noexcept {
-    return inner.left >= outer.left && inner.top >= outer.top && inner.right <= outer.right && inner.bottom <= outer.bottom;
 }
 
 // A wide strip of the monitor top so notch resizes stay inside one composition.

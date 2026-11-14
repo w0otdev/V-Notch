@@ -331,8 +331,27 @@ internal sealed partial class D3DImageFramePresenter : IDisposable
                 LockedRectangle locked = _uploadSurface.LockRect(LockFlags.None);
                 try
                 {
-                    CopyRows(source, sourceStride, locked.DataPointer, locked.Pitch, rowBytes, height);
-                    var dirtyRows = new GlassDirtyRows(0, height);
+                    GlassDirtyRows dirtyRows;
+                    if (_frameWidth != width || _frameHeight != height)
+                    {
+                        // Initialize every pixel when the capture extent changes.
+                        CopyRows(source, sourceStride, locked.DataPointer, locked.Pitch, rowBytes, height);
+                        dirtyRows = new GlassDirtyRows(0, height);
+                    }
+                    else
+                    {
+                        dirtyRows = GlassUploadDelta.CopyChangedRows(source, sourceStride, locked.DataPointer,
+                            locked.Pitch, rowBytes, height);
+                    }
+                    if (dirtyRows.IsEmpty && !forcePresent)
+                    {
+                        // Pending pixels already represent this frame. Leave their
+                        // scheduling/tag intact until WPF consumes them.
+                        return true;
+                    }
+                    // Geometry changes/explicit recovery still submit a frame; only
+                    // expand to full height when no specific dirty rows were detected.
+                    if (dirtyRows.IsEmpty && forcePresent) dirtyRows = new GlassDirtyRows(0, height);
                     _pendingDirtyRows = _pendingDirtyRows.Union(dirtyRows);
                 }
                 finally
@@ -982,14 +1001,3 @@ internal sealed partial class D3DImageFramePresenter : IDisposable
     }
 }
 
-internal readonly record struct GlassDirtyRows(int Top, int Bottom)
-{
-    public bool IsEmpty => Bottom <= Top;
-
-    public GlassDirtyRows Union(GlassDirtyRows other)
-    {
-        if (other.IsEmpty) return this;
-        if (IsEmpty) return other;
-        return new GlassDirtyRows(Math.Min(Top, other.Top), Math.Max(Bottom, other.Bottom));
-    }
-}

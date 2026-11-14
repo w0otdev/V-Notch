@@ -5,6 +5,7 @@
 #include <d3d11.h>
 #include <d3d11_4.h>
 #include <dxgi1_5.h>
+#include <d3dcompiler.h>
 #include <wrl/client.h>
 #include <array>
 #include <memory>
@@ -16,11 +17,12 @@
 #include <windows.graphics.capture.interop.h>
 #include <windows.graphics.directx.direct3d11.interop.h>
 #include "vnotch_com.h"
-#include <atomic>
+#include <mutex>
 #include <chrono>
 
 #pragma comment(lib, "d3d11.lib")
 #pragma comment(lib, "dxgi.lib")
+#pragma comment(lib, "d3dcompiler.lib")
 #pragma comment(lib, "windowsapp.lib")
 
 namespace {
@@ -109,8 +111,6 @@ public:
     bool desktopChanged = false;
     bool sourceDirty = true;
     bool hasRenderedFrame = false;
-    bool hasUploadedHash = false;
-    uint64_t lastUploadedHash = 0;
     Frame lastFrame{};
     ULONGLONG retryAt = 0;
     HRESULT captureResult = S_FALSE;
@@ -123,9 +123,18 @@ public:
     std::vector<DXGI_OUTDUPL_MOVE_RECT> moveRects;
     ULONGLONG smallSince = 0;
 
-    template<size_t Size>
-    void PixelShader(const unsigned char (&bytecode)[Size], ComPtr<ID3D11PixelShader>& shader) {
-        Check(device->CreatePixelShader(bytecode, Size, nullptr, &shader));
+    ComPtr<ID3DBlob> Compile(const char* entry, const char* profile) {
+        ComPtr<ID3DBlob> blob, errors;
+        HRESULT hr = D3DCompile(kGlassGpuShader, sizeof(kGlassGpuShader) - 1, "GlassGpu", nullptr,
+            nullptr, entry, profile, D3DCOMPILE_OPTIMIZATION_LEVEL3 | D3DCOMPILE_ENABLE_STRICTNESS,
+            0, &blob, &errors);
+        if (FAILED(hr) && errors) OutputDebugStringA(static_cast<const char*>(errors->GetBufferPointer()));
+        Check(hr);
+        return blob;
+    }
+    void PixelShader(const char* entry, ComPtr<ID3D11PixelShader>& shader) {
+        auto blob = Compile(entry, "ps_4_0");
+        Check(device->CreatePixelShader(blob->GetBufferPointer(), blob->GetBufferSize(), nullptr, &shader));
     }
     void Initialize(IDirect3DDevice9Ex* device9, int w, int h) {
         presentationDevice = device9;
@@ -166,10 +175,11 @@ public:
             Check(device->CreateRenderTargetView(target.texture.Get(), nullptr, &target.rtv));
             Check(device9->CreateQuery(D3DQUERYTYPE_EVENT, &target.consumed));
         }
-        Check(device->CreateVertexShader(kGlassGpuFullscreenVs, sizeof(kGlassGpuFullscreenVs), nullptr, &vertex));
-        PixelShader(kGlassGpuCropPs, crop); PixelShader(kGlassGpuDownPs, down); PixelShader(kGlassGpuUpPs, up);
-        PixelShader(kGlassGpuResolvePs, resolve);
-        PixelShader(kGlassGpuCopyPs, copy); PixelShader(kGlassGpuRefractPs, refraction);
+        auto blob = Compile("fullscreenVs", "vs_4_0");
+        Check(device->CreateVertexShader(blob->GetBufferPointer(), blob->GetBufferSize(), nullptr, &vertex));
+        PixelShader("cropPs", crop); PixelShader("downPs", down); PixelShader("upPs", up);
+        PixelShader("resolvePs", resolve);
+        PixelShader("copyPs", copy); PixelShader("refractPs", refraction);
         D3D11_SAMPLER_DESC sample{};
         sample.Filter = D3D11_FILTER_MIN_MAG_MIP_LINEAR;
         sample.AddressU = sample.AddressV = sample.AddressW = D3D11_TEXTURE_ADDRESS_CLAMP;
@@ -216,68 +226,7 @@ public:
         duplication.Reset(); desktopView.Reset(); desktopTexture.Reset(); monitor = nullptr;
         uploadedBackdrop = {}; usingUploadedBackdrop = false;
         hasRenderedFrame = false;
-        hasUploadedHash = false;
-        lastUploadedHash = 0;
         sourceDirty = true;
-    }
-    static HRESULT QueryBorderlessCaptureAccess() noexcept {
-        // 0 = unqueried, 1 = in progress, 2 = resolved
-        static std::atomic<int> accessState{ 0 };
-        static std::atomic<HRESULT> accessResult{ E_PENDING };
-
-        if (accessState.load(std::memory_order_acquire) == 2) {
-            return accessResult.load(std::memory_order_relaxed);
-        }
-
-        try {
-            if (!winrt::Windows::Foundation::Metadata::ApiInformation::IsPropertyPresent(
-                    L"Windows.Graphics.Capture.GraphicsCaptureSession", L"IsBorderRequired") ||
-                !winrt::Windows::Foundation::Metadata::ApiInformation::IsTypePresent(
-                    L"Windows.Graphics.Capture.GraphicsCaptureAccess")) {
-                accessResult.store(E_NOINTERFACE, std::memory_order_relaxed);
-                accessState.store(2, std::memory_order_release);
-                return E_NOINTERFACE;
-            }
-        } catch (...) {
-            const HRESULT hr = winrt::to_hresult();
-            const HRESULT stored = FAILED(hr) ? hr : E_FAIL;
-            accessResult.store(stored, std::memory_order_relaxed);
-            accessState.store(2, std::memory_order_release);
-            return stored;
-        }
-
-        int expected = 0;
-        if (!accessState.compare_exchange_strong(expected, 1, std::memory_order_acq_rel)) {
-            return accessState.load(std::memory_order_acquire) == 2
-                ? accessResult.load(std::memory_order_relaxed)
-                : E_PENDING;
-        }
-
-        HRESULT hr = E_ACCESSDENIED;
-        try {
-            const auto op = Capture::GraphicsCaptureAccess::RequestAccessAsync(
-                Capture::GraphicsCaptureAccessKind::Borderless);
-            if (op.wait_for(std::chrono::milliseconds(1500)) == winrt::Windows::Foundation::AsyncStatus::Completed) {
-                const auto status = op.GetResults();
-                hr = status == winrt::Windows::Security::Authorization::AppCapabilityAccess::AppCapabilityAccessStatus::Allowed
-                    ? S_OK
-                    : E_ACCESSDENIED;
-            } else {
-                op.Cancel();
-                hr = HRESULT_FROM_WIN32(ERROR_TIMEOUT);
-            }
-        } catch (...) {
-            hr = winrt::to_hresult();
-            if (SUCCEEDED(hr)) hr = E_FAIL;
-        }
-
-        accessResult.store(hr, std::memory_order_relaxed);
-        if (hr == HRESULT_FROM_WIN32(ERROR_TIMEOUT)) {
-            accessState.store(0, std::memory_order_release);
-        } else {
-            accessState.store(2, std::memory_order_release);
-        }
-        return hr;
     }
     bool StartGraphicsCapture(HMONITOR wanted) {
         // Hybrid graphics can expose a monitor on the discrete adapter while
@@ -288,9 +237,6 @@ public:
         vnotch::com::EnsureMta();
         if (!Capture::GraphicsCaptureSession::IsSupported()) throw DXGI_ERROR_UNSUPPORTED;
         ResetCapture();
-        // Unpackaged builds are usually denied borderless access. Capture still
-        // works with the yellow border, so the result is diagnostic only.
-        borderlessResult = QueryBorderlessCaptureAccess();
         struct Rollback {
             GpuGlass* self;
             ~Rollback() noexcept { if (self) self->ResetCapture(); }
@@ -308,15 +254,21 @@ public:
         captureSession = framePool.CreateCaptureSession(captureItem);
         ApplyCaptureInterval();
         captureSession.IsCursorCaptureEnabled(false);
-        if (auto session3 = captureSession.try_as<Capture::IGraphicsCaptureSession3>()) {
-            try {
-                session3.IsBorderRequired(false);
-            } catch (...) {
-                const HRESULT hr = winrt::to_hresult();
-                borderlessResult = FAILED(hr) ? hr : E_FAIL;
-            }
-        } else {
-            borderlessResult = E_NOINTERFACE;
+        if (winrt::Windows::Foundation::Metadata::ApiInformation::IsPropertyPresent(
+            L"Windows.Graphics.Capture.GraphicsCaptureSession", L"IsBorderRequired")) {
+            // Explicitly requested by the user: ask Windows once per process,
+            // before StartCapture so the first session also starts borderless.
+            static std::once_flag borderlessAccess;
+            static HRESULT borderlessRequest = E_PENDING;
+            std::call_once(borderlessAccess, [] {
+                try {
+                    auto status = Capture::GraphicsCaptureAccess::RequestAccessAsync(Capture::GraphicsCaptureAccessKind::Borderless).get();
+                    borderlessRequest = status == winrt::Windows::Security::Authorization::AppCapabilityAccess::AppCapabilityAccessStatus::Allowed ? S_OK : E_ACCESSDENIED;
+                }
+                catch (...) { borderlessRequest = winrt::to_hresult(); }
+            });
+            captureSession.IsBorderRequired(false);
+            borderlessResult = borderlessRequest;
         }
         captureSession.StartCapture();
         outputDesc.DesktopCoordinates = info.rcMonitor;
@@ -374,134 +326,123 @@ public:
         // WGC also handles a window moved to a monitor on another adapter.
         return StartGraphicsCapture(wanted);
     }
-    void EnsureDesktopShaderTexture(ID3D11Texture2D* sourceTexture) {
-        if (desktopTexture) return;
-        D3D11_TEXTURE2D_DESC desc{};
-        sourceTexture->GetDesc(&desc);
-        desc.Usage = D3D11_USAGE_DEFAULT;
-        desc.CPUAccessFlags = 0;
-        desc.MiscFlags = 0;
-        desc.BindFlags = D3D11_BIND_SHADER_RESOURCE;
-        Check(device->CreateTexture2D(&desc, nullptr, &desktopTexture));
-        Check(device->CreateShaderResourceView(desktopTexture.Get(), nullptr, &desktopView));
-    }
-    bool AcquireWgcFrame() {
-        auto frame = framePool.TryGetNextFrame();
-        if (!frame) return desktopTexture != nullptr;
-        // The two-buffer pool can contain a delayed frame after UI/GPU
-        // contention. Consume the newest complete frame for the current lens.
-        if (auto newer = framePool.TryGetNextFrame()) { frame.Close(); frame = newer; }
-        const auto size = frame.ContentSize();
-        if (size.Width <= 0 || size.Height <= 0) { frame.Close(); return desktopTexture != nullptr; }
-        if (size.Width != captureSize.Width || size.Height != captureSize.Height) {
-            frame.Close();
-            ResetCapture();
-            return false;
-        }
-        auto access = frame.Surface().as<::Windows::Graphics::DirectX::Direct3D11::IDirect3DDxgiInterfaceAccess>();
-        ComPtr<ID3D11Texture2D> acquired;
-        Check(access->GetInterface(IID_PPV_ARGS(&acquired)));
-        D3D11_TEXTURE2D_DESC acquiredDesc{};
-        acquired->GetDesc(&acquiredDesc);
-        if (acquiredDesc.Width != static_cast<UINT>(size.Width) || acquiredDesc.Height != static_cast<UINT>(size.Height)) {
-            // WGC can return an old-sized allocation during a display resize.
-            // Keep the last good image instead of copying an invalid surface.
-            frame.Close();
-            return desktopTexture != nullptr;
-        }
-        if (acquiredDesc.BindFlags & D3D11_BIND_SHADER_RESOURCE) {
-            // Keep the WGC frame leased until all draws reading it complete.
-            // Reuse SRVs for the bounded frame-pool textures; no desktop copy.
-            if (capturedFrame) capturedFrame.Close();
-            capturedFrame = frame;
-            desktopTexture = acquired;
-            auto found = std::find_if(captureViews.begin(), captureViews.end(),
-                [&](const auto& entry) { return entry.first.Get() == acquired.Get(); });
-            if (found == captureViews.end()) {
-                ComPtr<ID3D11ShaderResourceView> view;
-                Check(device->CreateShaderResourceView(acquired.Get(), nullptr, &view));
-                if (captureViews.size() >= 4) captureViews.clear();
-                captureViews.emplace_back(acquired, view);
-                desktopView = view;
-            } else {
-                desktopView = found->second;
+    bool AcquireDesktop(const Frame& requested) {
+        desktopChanged = false;
+        if (framePool) {
+            auto frame = framePool.TryGetNextFrame();
+            if (!frame) {
+                return desktopTexture != nullptr;
             }
+            // The two-buffer pool can contain a delayed frame after UI/GPU
+            // contention. Consume the newest complete frame for the current lens.
+            if (auto newer = framePool.TryGetNextFrame()) { frame.Close(); frame = newer; }
+            const auto size = frame.ContentSize();
+            if (size.Width <= 0 || size.Height <= 0) { frame.Close(); return desktopTexture != nullptr; }
+            if (size.Width != captureSize.Width || size.Height != captureSize.Height) {
+                frame.Close();
+                ResetCapture();
+                return false;
+            }
+            auto access = frame.Surface().as<::Windows::Graphics::DirectX::Direct3D11::IDirect3DDxgiInterfaceAccess>();
+            ComPtr<ID3D11Texture2D> acquired;
+            Check(access->GetInterface(IID_PPV_ARGS(&acquired)));
+            D3D11_TEXTURE2D_DESC acquiredDesc{}; acquired->GetDesc(&acquiredDesc);
+            if (acquiredDesc.Width != static_cast<UINT>(size.Width) || acquiredDesc.Height != static_cast<UINT>(size.Height)) {
+                // WGC can return an old-sized allocation during a display resize.
+                // Keep the last good image instead of copying an invalid surface.
+                frame.Close(); return desktopTexture != nullptr;
+            }
+            if (acquiredDesc.BindFlags & D3D11_BIND_SHADER_RESOURCE) {
+                // Keep the WGC frame leased until all draws reading it complete.
+                // Reuse SRVs for the bounded frame-pool textures; no desktop copy.
+                if (capturedFrame) capturedFrame.Close();
+                capturedFrame = frame;
+                desktopTexture = acquired;
+                auto found = std::find_if(captureViews.begin(), captureViews.end(),
+                    [&](const auto& entry) { return entry.first.Get() == acquired.Get(); });
+                if (found == captureViews.end()) {
+                    ComPtr<ID3D11ShaderResourceView> view;
+                    Check(device->CreateShaderResourceView(acquired.Get(), nullptr, &view));
+                    if (captureViews.size() >= 4) captureViews.clear();
+                    captureViews.emplace_back(acquired, view);
+                    desktopView = view;
+                } else desktopView = found->second;
+                ++captureFrames; desktopChanged = true; captureResult = S_OK;
+                return true;
+            }
+            if (!desktopTexture) {
+                D3D11_TEXTURE2D_DESC desc = acquiredDesc;
+                desc.Usage = D3D11_USAGE_DEFAULT; desc.CPUAccessFlags = 0; desc.MiscFlags = 0;
+                desc.BindFlags = D3D11_BIND_SHADER_RESOURCE;
+                Check(device->CreateTexture2D(&desc, nullptr, &desktopTexture));
+                Check(device->CreateShaderResourceView(desktopTexture.Get(), nullptr, &desktopView));
+            }
+            context->CopyResource(desktopTexture.Get(), acquired.Get());
+            frame.Close();
             ++captureFrames;
-            desktopChanged = true;
-            captureResult = S_OK;
+            desktopChanged = true; captureResult = S_OK;
             return true;
         }
-        EnsureDesktopShaderTexture(acquired.Get());
-        context->CopyResource(desktopTexture.Get(), acquired.Get());
-        frame.Close();
-        ++captureFrames;
-        desktopChanged = true;
-        captureResult = S_OK;
-        return true;
-    }
-    bool AcquireDuplicationFrame(const Frame& requested) {
         ComPtr<IDXGIResource> resource;
         DXGI_OUTDUPL_FRAME_INFO info{};
-        const HRESULT hr = duplication->AcquireNextFrame(0, &info, &resource);
+        HRESULT hr = duplication->AcquireNextFrame(0, &info, &resource);
         captureResult = hr;
         if (hr == DXGI_ERROR_WAIT_TIMEOUT) return desktopTexture != nullptr;
         if (hr == DXGI_ERROR_ACCESS_LOST) { ResetCapture(); return false; }
         Check(hr);
         // ReleaseFrame on every successful acquisition, including allocation failures.
-        struct Release { IDXGIOutputDuplication* value; ~Release() noexcept { value->ReleaseFrame(); } } release{ duplication.Get() };
+        struct Release { IDXGIOutputDuplication* value; ~Release() { value->ReleaseFrame(); } } release{ duplication.Get() };
         ComPtr<ID3D11Texture2D> acquired;
         Check(resource.As(&acquired));
-        EnsureDesktopShaderTexture(acquired.Get());
+        if (!desktopTexture) {
+            D3D11_TEXTURE2D_DESC desc{}; acquired->GetDesc(&desc);
+            desc.Usage = D3D11_USAGE_DEFAULT; desc.CPUAccessFlags = 0; desc.MiscFlags = 0;
+            desc.BindFlags = D3D11_BIND_SHADER_RESOURCE;
+            Check(device->CreateTexture2D(&desc, nullptr, &desktopTexture));
+            Check(device->CreateShaderResourceView(desktopTexture.Get(), nullptr, &desktopView));
+        }
         // Pointer-only desktop updates do not invalidate the backdrop.
-        if (info.LastPresentTime.QuadPart == 0 && hasRenderedFrame) return true;
-
-        ++captureFrames;
-        bool fullCopy = !hasRenderedFrame || info.TotalMetadataBufferSize == 0;
-        UINT dirtyBytes = 0, moveBytes = 0;
-        if (!fullCopy) {
-            dirtyRects.resize(info.TotalMetadataBufferSize / sizeof(RECT) + 1);
-            moveRects.resize(info.TotalMetadataBufferSize / sizeof(DXGI_OUTDUPL_MOVE_RECT) + 1);
-            fullCopy = FAILED(duplication->GetFrameDirtyRects(static_cast<UINT>(dirtyRects.size() * sizeof(RECT)), dirtyRects.data(), &dirtyBytes)) ||
-                FAILED(duplication->GetFrameMoveRects(static_cast<UINT>(moveRects.size() * sizeof(DXGI_OUTDUPL_MOVE_RECT)), moveRects.data(), &moveBytes));
+        if (info.LastPresentTime.QuadPart != 0 || !hasRenderedFrame) {
+            ++captureFrames;
+            bool fullCopy = !hasRenderedFrame || info.TotalMetadataBufferSize == 0;
+            UINT dirtyBytes = 0, moveBytes = 0;
+            if (!fullCopy) {
+                dirtyRects.resize(info.TotalMetadataBufferSize / sizeof(RECT) + 1);
+                moveRects.resize(info.TotalMetadataBufferSize / sizeof(DXGI_OUTDUPL_MOVE_RECT) + 1);
+                fullCopy = FAILED(duplication->GetFrameDirtyRects(static_cast<UINT>(dirtyRects.size() * sizeof(RECT)), dirtyRects.data(), &dirtyBytes)) ||
+                    FAILED(duplication->GetFrameMoveRects(static_cast<UINT>(moveRects.size() * sizeof(DXGI_OUTDUPL_MOVE_RECT)), moveRects.data(), &moveBytes));
+            }
+            if (fullCopy) {
+                context->CopyResource(desktopTexture.Get(), acquired.Get());
+                desktopChanged = true;
+            } else {
+                RECT region{ requested.x - outputDesc.DesktopCoordinates.left, requested.y - outputDesc.DesktopCoordinates.top,
+                    requested.x - outputDesc.DesktopCoordinates.left + requested.width,
+                    requested.y - outputDesc.DesktopCoordinates.top + requested.height };
+                auto copyRect = [&](RECT rect) {
+                    D3D11_BOX box{ static_cast<UINT>(rect.left), static_cast<UINT>(rect.top), 0,
+                        static_cast<UINT>(rect.right), static_cast<UINT>(rect.bottom), 1 };
+                    if (rect.right <= rect.left || rect.bottom <= rect.top) return;
+                    context->CopySubresourceRegion(desktopTexture.Get(), 0, box.left, box.top, 0, acquired.Get(), 0, &box);
+                    RECT intersection{};
+                    // Rotation changes the metadata coordinate system. Copy the
+                    // changed regions but conservatively refresh the rotated lens.
+                    desktopChanged |= outputDesc.Rotation != DXGI_MODE_ROTATION_IDENTITY || IntersectRect(&intersection, &region, &rect);
+                };
+                for (UINT i = 0; i < dirtyBytes / sizeof(RECT); ++i) copyRect(dirtyRects[i]);
+                for (UINT i = 0; i < moveBytes / sizeof(DXGI_OUTDUPL_MOVE_RECT); ++i) copyRect(moveRects[i].DestinationRect);
+            }
         }
-        if (fullCopy) {
-            context->CopyResource(desktopTexture.Get(), acquired.Get());
-            desktopChanged = true;
-            return true;
-        }
-        const RECT region{
-            requested.x - outputDesc.DesktopCoordinates.left,
-            requested.y - outputDesc.DesktopCoordinates.top,
-            requested.x - outputDesc.DesktopCoordinates.left + requested.width,
-            requested.y - outputDesc.DesktopCoordinates.top + requested.height };
-        auto copyRect = [&](RECT rect) {
-            if (rect.right <= rect.left || rect.bottom <= rect.top) return;
-            const D3D11_BOX box{ static_cast<UINT>(rect.left), static_cast<UINT>(rect.top), 0,
-                static_cast<UINT>(rect.right), static_cast<UINT>(rect.bottom), 1 };
-            context->CopySubresourceRegion(desktopTexture.Get(), 0, box.left, box.top, 0, acquired.Get(), 0, &box);
-            RECT intersection{};
-            // Rotation changes the metadata coordinate system. Copy the
-            // changed regions but conservatively refresh the rotated lens.
-            desktopChanged |= outputDesc.Rotation != DXGI_MODE_ROTATION_IDENTITY || IntersectRect(&intersection, &region, &rect);
-        };
-        for (UINT i = 0; i < dirtyBytes / sizeof(RECT); ++i) copyRect(dirtyRects[i]);
-        for (UINT i = 0; i < moveBytes / sizeof(DXGI_OUTDUPL_MOVE_RECT); ++i) copyRect(moveRects[i].DestinationRect);
         return true;
     }
-    bool AcquireDesktop(const Frame& requested) {
-        desktopChanged = false;
-        return framePool ? AcquireWgcFrame() : AcquireDuplicationFrame(requested);
-    }
     void Draw(TextureInput source, ID3D11RenderTargetView* dest, UINT w, UINT h,
-              ID3D11PixelShader* shader, Constants& data, TextureInput detail = {}) {
-        auto region = [](float* out, TextureInput input) noexcept {
+              ID3D11PixelShader* shader, Constants data, TextureInput detail = {}) {
+        auto region = [](float* out, TextureInput input) {
             out[0] = static_cast<float>(input.activeWidth) / input.width;
             out[1] = static_cast<float>(input.activeHeight) / input.height;
-            out[2] = 0.5f / input.width;
-            out[3] = 0.5f / input.height;
+            out[2] = 0.5f / input.width; out[3] = 0.5f / input.height;
         };
-        region(data.sourceRegion, source);
-        region(data.detailRegion, detail);
+        region(data.sourceRegion, source); region(data.detailRegion, detail);
         context->UpdateSubresource(constants.Get(), 0, nullptr, &data, 0, 0);
         ID3D11Buffer* cb = constants.Get(); context->PSSetConstantBuffers(0, 1, &cb);
         ID3D11SamplerState* smp = sampler.Get(); context->PSSetSamplers(0, 1, &smp);
@@ -515,32 +456,10 @@ public:
         ID3D11ShaderResourceView* empty[2]{}; context->PSSetShaderResources(0, 2, empty);
         context->OMSetRenderTargets(0, nullptr, nullptr);
     }
-    void ShrinkWorkTargetsIfIdleSmall(const Frame& f, bool releaseUploadedBackdrop) noexcept {
-        if (workWidth && static_cast<uint64_t>(f.width) * f.height * 2 < static_cast<uint64_t>(workWidth) * workHeight) {
-            const ULONGLONG now = GetTickCount64();
-            if (!smallSince) smallSince = now;
-            if (now - smallSince >= 1000) {
-                workWidth = workHeight = 0;
-                if (releaseUploadedBackdrop) {
-                    uploadedBackdrop = {};
-                    desktopTexture.Reset();
-                    desktopView.Reset();
-                    hasUploadedHash = false;
-                }
-                pyramid.clear();
-                reconstruction.clear();
-                resolved = {};
-                sourceDirty = true;
-                smallSince = 0;
-            }
-        } else {
-            smallSince = 0;
-        }
-    }
     HRESULT Render(const Frame& f) {
         struct DpiScope {
             DPI_AWARENESS_CONTEXT previous = SetThreadDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
-            ~DpiScope() noexcept { if (previous) SetThreadDpiAwarenessContext(previous); }
+            ~DpiScope() { if (previous) SetThreadDpiAwarenessContext(previous); }
         } dpi;
         if (pending) return S_FALSE;
         if (!EnsureOutput(f) || !AcquireDesktop(f)) {
@@ -555,7 +474,14 @@ public:
         }
         captureWaitStarted = 0;
         sourceDirty |= desktopChanged;
-        ShrinkWorkTargetsIfIdleSmall(f, false);
+        if (workWidth && static_cast<uint64_t>(f.width) * f.height * 2 < static_cast<uint64_t>(workWidth) * workHeight) {
+            if (!smallSince) smallSince = GetTickCount64();
+            if (GetTickCount64() - smallSince >= 1000) {
+                workWidth = workHeight = 0;
+                pyramid.clear(); reconstruction.clear(); resolved = {};
+                sourceDirty = true; smallSince = 0;
+            }
+        } else smallSince = 0;
         Frame normalized = f; normalized.refract &= 1;
         if (hasRenderedFrame && !sourceDirty && !(f.refract & 2) &&
             memcmp(&normalized, &lastFrame, sizeof(Frame)) == 0) return S_FALSE;
@@ -565,37 +491,10 @@ public:
         if (hr == S_OK) { lastFrame = normalized; hasRenderedFrame = true; sourceDirty = false; }
         return hr;
     }
-    static uint64_t HashPixels(const uint8_t* pixels, int width, int height, UINT stride) noexcept {
-        const size_t rowBytes = static_cast<size_t>(width) * 4;
-        uint64_t hash = 14695981039346656037ull ^
-            ((static_cast<uint64_t>(static_cast<uint32_t>(width)) << 32) | static_cast<uint32_t>(height));
-        for (int y = 0; y < height; ++y) {
-            const uint8_t* row = pixels + static_cast<size_t>(y) * stride;
-            size_t i = 0;
-            for (; i + 8 <= rowBytes; i += 8) {
-                uint64_t word = 0;
-                memcpy(&word, row + i, sizeof(word));
-                hash = (hash ^ word) * 1099511628211ull;
-            }
-            for (; i < rowBytes; ++i) {
-                hash = (hash ^ row[i]) * 1099511628211ull;
-            }
-        }
-        return hash;
-    }
     HRESULT RenderPixels(const Frame& f, const uint8_t* pixels, UINT stride) {
         if (pending) return S_FALSE;
         if (!usingUploadedBackdrop) ResetCapture();
         usingUploadedBackdrop = true;
-        ShrinkWorkTargetsIfIdleSmall(f, true);
-        const uint64_t pixelHash = HashPixels(pixels, f.width, f.height, stride);
-        const bool pixelsChanged = !hasUploadedHash || pixelHash != lastUploadedHash;
-        Frame normalized = f; normalized.refract &= 1;
-        if (hasRenderedFrame && !sourceDirty && !pixelsChanged && !(f.refract & 2) &&
-            memcmp(&normalized, &lastFrame, sizeof(Frame)) == 0) {
-            captureResult = S_OK;
-            return S_FALSE;
-        }
         if (static_cast<UINT>(f.width) > uploadedBackdrop.width || static_cast<UINT>(f.height) > uploadedBackdrop.height) {
             const UINT w = std::min(static_cast<UINT>(width), std::max(uploadedBackdrop.width, (static_cast<UINT>(f.width) + 127) / 128 * 128));
             const UINT h = std::min(static_cast<UINT>(height), std::max(uploadedBackdrop.height, (static_cast<UINT>(f.height) + 63) / 64 * 64));
@@ -608,15 +507,7 @@ public:
         outputDesc.Rotation = DXGI_MODE_ROTATION_IDENTITY;
         captureResult = S_OK;
         ++captureFrames;
-        const HRESULT hr = RenderCaptured(f);
-        if (hr == S_OK) {
-            lastFrame = normalized;
-            lastUploadedHash = pixelHash;
-            hasUploadedHash = true;
-            hasRenderedFrame = true;
-            sourceDirty = false;
-        }
-        return hr;
+        return RenderCaptured(f);
     }
     HRESULT RenderCaptured(const Frame& f, bool rebuildSource = true) {
         auto& target = output[nextOutput];
@@ -733,6 +624,12 @@ public:
         Check(hr);
         return hr == S_OK && ready ? S_OK : S_FALSE;
     }
+    HRESULT TakeReady(IDirect3DSurface9** surface) {
+        if (CompletionReady() != S_OK) return S_FALSE;
+        Check(output[nextOutput].surface.CopyTo(surface));
+        nextOutput ^= 1; pending = false;
+        return S_OK;
+    }
     HRESULT PresentReady(IDirect3DSurface9* destination) {
         if (CompletionReady() != S_OK) return S_FALSE;
         auto& target = output[nextOutput];
@@ -754,13 +651,6 @@ public:
     }
 };
 vnotch::HandleRegistry<GpuGlass> pipelines;
-template <typename LeaseT>
-bool IsValidRenderFrame(const LeaseT& pipeline, const Frame* frame) noexcept {
-    return pipeline && frame &&
-           frame->width > 0 && frame->height > 0 &&
-           frame->width <= pipeline->width && frame->height <= pipeline->height &&
-           std::isfinite(frame->blur) && frame->blur >= 0.0f && frame->blur <= 60.0f;
-}
 }
 
 VN_EXPORT int32_t __stdcall vn_glass_gpu_create(IDirect3DDevice9Ex* device9, int32_t w, int32_t h, int64_t* handle) noexcept {
@@ -773,7 +663,9 @@ VN_EXPORT int32_t __stdcall vn_glass_gpu_create(IDirect3DDevice9Ex* device9, int
 }
 VN_EXPORT int32_t __stdcall vn_glass_gpu_render(int64_t handle, const Frame* frame) noexcept {
     auto pipeline = pipelines.Acquire(handle);
-    if (!IsValidRenderFrame(pipeline, frame))
+    if (!pipeline || !frame || frame->width <= 0 || frame->height <= 0 ||
+        frame->width > pipeline->width || frame->height > pipeline->height ||
+        !std::isfinite(frame->blur) || frame->blur < 0 || frame->blur > 60)
         return E_INVALIDARG;
     try { return pipeline->Render(*frame); }
     catch (const winrt::hresult_error& error) { return pipeline->captureResult = error.code(); }
@@ -784,13 +676,21 @@ VN_EXPORT int32_t __stdcall vn_glass_gpu_render(int64_t handle, const Frame* fra
 VN_EXPORT int32_t __stdcall vn_glass_gpu_render_pixels(int64_t handle, const Frame* frame,
     const uint8_t* pixels, int32_t length, int32_t stride) noexcept {
     auto pipeline = pipelines.Acquire(handle);
-    if (!IsValidRenderFrame(pipeline, frame) || !pixels ||
+    if (!pipeline || !frame || !pixels || frame->width <= 0 || frame->height <= 0 ||
+        frame->width > pipeline->width || frame->height > pipeline->height ||
+        !std::isfinite(frame->blur) || frame->blur < 0 || frame->blur > 60 ||
         stride < static_cast<int64_t>(frame->width) * 4 ||
         length < static_cast<int64_t>(frame->height - 1) * stride + static_cast<int64_t>(frame->width) * 4)
         return E_INVALIDARG;
     try { return pipeline->RenderPixels(*frame, pixels, static_cast<UINT>(stride)); }
     catch (HRESULT hr) { return pipeline->captureResult = hr; }
     catch (...) { return pipeline->captureResult = E_FAIL; }
+}
+VN_EXPORT int32_t __stdcall vn_glass_gpu_take_ready(int64_t handle, IDirect3DSurface9** surface) noexcept {
+    if (!surface) return E_INVALIDARG;
+    *surface = nullptr; auto pipeline = pipelines.Acquire(handle);
+    if (!pipeline) return E_INVALIDARG;
+    try { return pipeline->TakeReady(surface); } catch (HRESULT hr) { return hr; } catch (...) { return E_FAIL; }
 }
 VN_EXPORT void __stdcall vn_glass_gpu_destroy(int64_t handle) noexcept { pipelines.Remove(handle); }
 VN_EXPORT int32_t __stdcall vn_glass_gpu_wait_ready(int64_t handle, uint32_t timeoutMs) noexcept {

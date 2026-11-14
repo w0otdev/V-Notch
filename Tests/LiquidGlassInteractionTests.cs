@@ -16,7 +16,7 @@ public sealed class LiquidGlassInteractionTests
     {
         bool previousMotion = AnimationConfig.ReduceMotion;
         var source = new Border();
-        var effect = new LiquidGlassLensState();
+        var effect = new LiquidGlassRefractionEffect();
         var window = new BackgroundWindow
         {
             Width = 100,
@@ -71,7 +71,7 @@ public sealed class LiquidGlassInteractionTests
         SharedStaTestRunner.Run(() =>
         {
             var source = new Border();
-            using var controller = new LiquidGlassInteractionController(source, source, new LiquidGlassLensState());
+            using var controller = new LiquidGlassInteractionController(source, source, new LiquidGlassRefractionEffect());
             Assert.False(controller.IsRenderingSubscribed);
         });
     }

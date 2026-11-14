@@ -65,6 +65,11 @@ public partial class SettingsWindow
         return FindVisualChildren<ComboBox>(this).Any(c => c.IsDropDownOpen);
     }
 
+    private void SettingsScrollViewer_ScrollChanged(object sender, ScrollChangedEventArgs e)
+    {
+        UpdateAiUsageStickyPreview();
+    }
+
     private void SettingsScrollViewer_PreviewMouseWheel(object sender, MouseWheelEventArgs e)
     {
         if (IsAnyComboBoxDropDownOpen())

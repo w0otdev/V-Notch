@@ -1,0 +1,24 @@
+#!/bin/sh
+set -eu
+
+zero_sha="0000000000000000000000000000000000000000"
+has_push=0
+while read -r local_ref local_sha remote_ref remote_sha; do
+    if [ "$local_sha" != "$zero_sha" ]; then
+        has_push=1
+        break
+    fi
+done
+
+if [ "$has_push" -eq 0 ]; then
+    exit 0
+fi
+
+if command -v pwsh >/dev/null 2>&1; then
+    exec pwsh -NoProfile -ExecutionPolicy Bypass -File Tools/Test-PrePush.ps1
+elif command -v powershell.exe >/dev/null 2>&1; then
+    exec powershell.exe -NoProfile -ExecutionPolicy Bypass -File Tools/Test-PrePush.ps1
+else
+    echo "PowerShell (pwsh or powershell.exe) is required for pre-push checks." >&2
+    exit 1
+fi

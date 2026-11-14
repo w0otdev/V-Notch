@@ -37,10 +37,10 @@ class LiquidGlassInteractionState final
 
     static __forceinline void Spring(
         double& value, double& velocity, double target,
-        double stiffness, double decay, double dt) noexcept
+        double stiffness, double damping, double dt) noexcept
     {
         velocity += (target - value) * stiffness * dt;
-        velocity *= decay;
+        velocity *= std::exp(-damping * dt);
         value += velocity * dt;
     }
 
@@ -60,20 +60,16 @@ public:
             return VN_ERR_INVALID_ARG;
         }
 
-        const double dt = std::clamp(delta_time, 0.0, 1.0 / 20.0);
-        const double decay18 = std::exp(-18.0 * dt);
-        const double decay15 = std::exp(-15.0 * dt);
-        const double decay14 = std::exp(-14.0 * dt);
+        double dt = std::clamp(delta_time, 0.0, 1.0 / 20.0);
+        Spring(state->x, state->velocity_x, state->target_x, 150.0, 18.0, dt);
+        Spring(state->y, state->velocity_y, state->target_y, 150.0, 18.0, dt);
+        Spring(state->active, state->active_velocity, state->active_target, 95.0, 15.0, dt);
+        Spring(state->press, state->press_velocity, state->press_target, 210.0, 18.0, dt);
 
-        Spring(state->x, state->velocity_x, state->target_x, 150.0, decay18, dt);
-        Spring(state->y, state->velocity_y, state->target_y, 150.0, decay18, dt);
-        Spring(state->active, state->active_velocity, state->active_target, 95.0, decay15, dt);
-        Spring(state->press, state->press_velocity, state->press_target, 210.0, decay18, dt);
-
-        const double light_target_x = kRestLightX + (state->x - kRestLightX) * state->press;
-        const double light_target_y = kRestLightY + (state->y - kRestLightY) * state->press;
-        Spring(state->light_x, state->light_velocity_x, light_target_x, 75.0, decay14, dt);
-        Spring(state->light_y, state->light_velocity_y, light_target_y, 75.0, decay14, dt);
+        double light_target_x = kRestLightX + (state->x - kRestLightX) * state->press;
+        double light_target_y = kRestLightY + (state->y - kRestLightY) * state->press;
+        Spring(state->light_x, state->light_velocity_x, light_target_x, 75.0, 14.0, dt);
+        Spring(state->light_y, state->light_velocity_y, light_target_y, 75.0, 14.0, dt);
 
         bool is_settled =
             Settled(state->x, state->velocity_x, state->target_x) &&

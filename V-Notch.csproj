@@ -11,7 +11,7 @@
     <!-- Audit snapshots are not application source, XAML pages, or resources. -->
     <DefaultItemExcludes>$(DefaultItemExcludes);artifacts\**\*;.cache\**\*;Tests\**\*;Tools\**\*;Uninstall\**\*</DefaultItemExcludes>
 
-    <CETCompat>true</CETCompat>
+    <CETCompat>false</CETCompat>
 
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <AssemblyName>V-Notch</AssemblyName>
@@ -236,6 +236,7 @@ public sealed class MinifyLocaleJsonTask : Task
     <Resource Include="Assets\QR.PNG" />
     <Resource Include="Assets\vertex_logo.png" />
     <Resource Include="Assets\scrollv_logo.png" />
+    <Resource Include="Shaders\LiquidGlassRefraction.ps" />
     <Resource Include="Assets\Flags\flag_en.png" />
     <Resource Include="Assets\Flags\flag_vi.png" />
     <Resource Include="Assets\Flags\flag_es.png" />
@@ -255,12 +256,46 @@ public sealed class MinifyLocaleJsonTask : Task
     <Resource Include="Assets\Flags\flag_id.png" />
   </ItemGroup>
 
+  <!-- Recompiles the committed LiquidGlass pixel shader only when the HLSL source is newer
+       than the .ps output (Inputs/Outputs). Override the compiler with -p:FxcPath=...,
+       or skip the step with -p:SkipShaderCompile=true. A failed compile keeps the committed
+       .ps and emits a warning, which -warnaserror turns into a build failure. -->
+  <PropertyGroup>
+    <_LiquidGlassShaderSource>$(MSBuildThisFileDirectory)Shaders\LiquidGlassRefraction.hlsl</_LiquidGlassShaderSource>
+    <_LiquidGlassShaderOutput>$(MSBuildThisFileDirectory)Shaders\LiquidGlassRefraction.ps</_LiquidGlassShaderOutput>
+    <_WindowsKitsRoot Condition="'$(_WindowsKitsRoot)' == '' And '$(WindowsSdkDir)' != ''">$(WindowsSdkDir)</_WindowsKitsRoot>
+    <_WindowsKitsRoot Condition="'$(_WindowsKitsRoot)' == '' And '$(MSBuildProgramFiles32)' != ''">$(MSBuildProgramFiles32)\Windows Kits\10\</_WindowsKitsRoot>
+  </PropertyGroup>
+  <Target Name="CompileLiquidGlassShader" BeforeTargets="BeforeBuild" Condition="'$(SkipShaderCompile)' != 'true' And '$(DesignTimeBuild)' != 'true' And !$(MSBuildProjectName.EndsWith('_wpftmp'))" Inputs="$(_LiquidGlassShaderSource)" Outputs="$(_LiquidGlassShaderOutput)">
+    <ItemGroup Condition="'$(FxcPath)' == ''">
+      <!-- Versioned SDK folders enumerate in name order, so the last match is the newest SDK. -->
+      <_FxcCandidate Include="$(WindowsSdkVerBinPath)x64\fxc.exe" Condition="'$(WindowsSdkVerBinPath)' != '' And Exists('$(WindowsSdkVerBinPath)x64\fxc.exe')" />
+      <_FxcCandidate Include="$(_WindowsKitsRoot)bin\10.*\x64\fxc.exe" Condition="'@(_FxcCandidate)' == '' And '$(_WindowsKitsRoot)' != ''" />
+    </ItemGroup>
+    <PropertyGroup Condition="'$(FxcPath)' == ''">
+      <FxcPath Condition="'@(_FxcCandidate)' != ''">%(_FxcCandidate.FullPath)</FxcPath>
+    </PropertyGroup>
+    <PropertyGroup>
+      <_ShaderCompileExitCode>0</_ShaderCompileExitCode>
+      <_UseFxc Condition="'$(FxcPath)' != '' And Exists('$(FxcPath)')">true</_UseFxc>
+    </PropertyGroup>
+
+    <Exec Condition="'$(_UseFxc)' == 'true'" Command="&quot;$(FxcPath)&quot; /nologo /T ps_3_0 /O3 /E main /Fo &quot;$(_LiquidGlassShaderOutput)&quot; &quot;$(_LiquidGlassShaderSource)&quot;" IgnoreExitCode="true" IgnoreStandardErrorWarningFormat="true">
+      <Output TaskParameter="ExitCode" PropertyName="_ShaderCompileExitCode" />
+    </Exec>
+    <Message Condition="'$(_UseFxc)' != 'true'" Importance="high" Text="fxc.exe not found (set FxcPath to override). Falling back to Tools\ShaderCompiler." />
+    <Exec Condition="'$(_UseFxc)' != 'true'" Command="dotnet run --project &quot;$(MSBuildThisFileDirectory)Tools\ShaderCompiler\ShaderCompiler.csproj&quot; -- &quot;$(_LiquidGlassShaderSource)&quot; &quot;$(_LiquidGlassShaderOutput)&quot;" IgnoreExitCode="true" IgnoreStandardErrorWarningFormat="true">
+      <Output TaskParameter="ExitCode" PropertyName="_ShaderCompileExitCode" />
+    </Exec>
+    <Warning Condition="'$(_ShaderCompileExitCode)' != '0'" Code="VNOTCH001" Text="LiquidGlass shader compile failed with exit code $(_ShaderCompileExitCode). The committed Shaders\LiquidGlassRefraction.ps was kept and may be stale." />
+  </Target>
+
   <PropertyGroup>
     <_VNotchNativeDll>$(MSBuildThisFileDirectory)Native\out\VNotch.Native.dll</_VNotchNativeDll>
     <_VNotchNativeObjDir>$(MSBuildThisFileDirectory)obj\native</_VNotchNativeObjDir>
   </PropertyGroup>
   <ItemGroup>
-    <_VNotchGpuShaderInputs Include="$(MSBuildThisFileDirectory)Shaders\GlassGpu.hlsl;$(MSBuildThisFileDirectory)Shaders\LiquidGlassRefraction.hlsl;$(MSBuildThisFileDirectory)scripts\Generate-GlassShaders.ps1;$(MSBuildThisFileDirectory)Tools\ShaderCompiler\Program.cs;$(MSBuildThisFileDirectory)Tools\ShaderCompiler\ShaderCompiler.csproj" />
+    <_VNotchGpuShaderInputs Include="$(MSBuildThisFileDirectory)Shaders\GlassGpu.hlsl;$(MSBuildThisFileDirectory)Shaders\LiquidGlassRefraction.hlsl;$(MSBuildThisFileDirectory)scripts\Generate-GlassShaders.ps1" />
     <_VNotchNativeHeaders Include="$(MSBuildThisFileDirectory)Native\**\*.h" />
     <_VNotchNativeHeaders Include="$(PkgMicrosoft_ML_OnnxRuntime_DirectML)\build\native\include\*.h" />
     <_VNotchNativeSources Include="$(MSBuildThisFileDirectory)Native\**\*.cpp" />
@@ -282,7 +317,11 @@ public sealed class MinifyLocaleJsonTask : Task
     <_VNotchNativeColdBaselineSources Include="$(MSBuildThisFileDirectory)Native\**\*.cpp" Exclude="$(MSBuildThisFileDirectory)Native\**\*.avx2.cpp" />
     <_VNotchNativeColdBaselineSources Remove="@(_VNotchNativeHotBaselineSources)" />
   </ItemGroup>
-  <Target Name="CompileVNotchNative" BeforeTargets="BeforeBuild" Condition="'$(SkipNativeCompile)' != 'true' And '$(DesignTimeBuild)' != 'true' And !$(MSBuildProjectName.EndsWith('_wpftmp'))" Inputs="@(_VNotchNativeSources);@(_VNotchNativeHeaders);@(_VNotchGpuShaderInputs);$(MSBuildThisFileFullPath)" Outputs="$(_VNotchNativeDll)">
+  <Target Name="GenerateVNotchGlassShaders" BeforeTargets="CompileVNotchNative" Condition="'$(SkipNativeCompile)' != 'true' And '$(DesignTimeBuild)' != 'true' And !$(MSBuildProjectName.EndsWith('_wpftmp'))" Inputs="@(_VNotchGpuShaderInputs)" Outputs="$(_VNotchNativeObjDir)\GlassShaders.g.h">
+    <MakeDir Directories="$(_VNotchNativeObjDir)" />
+    <Exec Command="powershell.exe -NoProfile -ExecutionPolicy Bypass -File &quot;$(MSBuildThisFileDirectory)scripts\Generate-GlassShaders.ps1&quot; -Root &quot;$(MSBuildProjectDirectory)&quot; -Output &quot;$(_VNotchNativeObjDir)\GlassShaders.g.h&quot;" />
+  </Target>
+  <Target Name="CompileVNotchNative" BeforeTargets="BeforeBuild" DependsOnTargets="GenerateVNotchGlassShaders" Condition="'$(SkipNativeCompile)' != 'true' And '$(DesignTimeBuild)' != 'true' And !$(MSBuildProjectName.EndsWith('_wpftmp'))" Inputs="@(_VNotchNativeSources);@(_VNotchNativeHeaders);@(_VNotchGpuShaderInputs);$(MSBuildThisFileFullPath)" Outputs="$(_VNotchNativeDll)">
     <PropertyGroup Condition="'$(VcVars64Path)' == ''">
       <_VcVarsCacheFile>$(_VNotchNativeObjDir)\vcvars64.cache</_VcVarsCacheFile>
       <VcVars64Path Condition="Exists('$(_VcVarsCacheFile)')">$([System.IO.File]::ReadAllText('$(_VcVarsCacheFile)').Trim())</VcVars64Path>
@@ -306,20 +345,12 @@ public sealed class MinifyLocaleJsonTask : Task
     </PropertyGroup>
     <Error Condition="'$(VcVars64Path)' == '' Or !Exists('$(VcVars64Path)')" Text="vcvars64.bat was not found. Install the Visual Studio C++ x64 build tools or pass -p:VcVars64Path=..." />
     <MakeDir Directories="$(MSBuildThisFileDirectory)Native\out;$(_VNotchNativeObjDir);$(_VNotchNativeObjDir)\hot;$(_VNotchNativeObjDir)\cold;$(_VNotchNativeObjDir)\avx2" />
-    <Exec Command="powershell.exe -NoProfile -ExecutionPolicy Bypass -File &quot;$(MSBuildThisFileDirectory)scripts\Generate-GlassShaders.ps1&quot; -Root &quot;$(MSBuildProjectDirectory)&quot; -Output &quot;$(_VNotchNativeObjDir)\GlassShaders.g.h&quot;" />
     <WriteLinesToFile Condition="'$(_VcVarsCacheFile)' != '' And !Exists('$(_VcVarsCacheFile)')" File="$(_VcVarsCacheFile)" Lines="$(VcVars64Path)" Overwrite="true" />
     <!--
       Baseline x64 (SSE2) for everything except *.avx2.cpp: hot render/audio/capture/inference TUs keep /O2 /Ot,
       cold Win32/parser/settings TUs use /O1 (/Os) for compact code size. The AVX2 kernels are compiled with
       /arch:AVX2 and WITHOUT /GL so LTCG never hoists AVX2 instructions above Native\vnotch_cpu.h CPUID guards.
     -->
-    <ItemGroup>
-      <_VNotchNativeStaleObj Include="$(_VNotchNativeObjDir)\**\*.obj" />
-    </ItemGroup>
-    <Delete Files="@(_VNotchNativeStaleObj)" Condition="'$(VcVars64Path)' != '' And Exists('$(VcVars64Path)')" />
-    <WriteLinesToFile File="$(_VNotchNativeObjDir)\baseline-hot.rsp" Lines="@(_VNotchNativeHotBaselineSources -> '&quot;%(FullPath)&quot;')" Overwrite="true" />
-    <WriteLinesToFile File="$(_VNotchNativeObjDir)\baseline-cold.rsp" Lines="@(_VNotchNativeColdBaselineSources -> '&quot;%(FullPath)&quot;')" Overwrite="true" />
-    <WriteLinesToFile File="$(_VNotchNativeObjDir)\avx2.rsp" Lines="@(_VNotchNativeAvx2Sources -> '&quot;%(FullPath)&quot;')" Overwrite="true" />
     <PropertyGroup>
       <_OnnxRuntimePkgRoot>$(PkgMicrosoft_ML_OnnxRuntime_DirectML)</_OnnxRuntimePkgRoot>
       <_OnnxRuntimePkgRoot Condition="'$(_OnnxRuntimePkgRoot)' == '' And '$(NuGetPackageRoot)' != ''">$(NuGetPackageRoot)microsoft.ml.onnxruntime.directml\1.24.4</_OnnxRuntimePkgRoot>
@@ -333,13 +364,15 @@ public sealed class MinifyLocaleJsonTask : Task
       <_NativeLinkOptFlags Condition="'$(NativeFastCompile)' == 'true'">/OPT:REF /OPT:ICF</_NativeLinkOptFlags>
       <_NativeLinkOptFlags Condition="'$(NativeFastCompile)' != 'true'">/LTCG /OPT:REF /OPT:ICF</_NativeLinkOptFlags>
     </PropertyGroup>
+    <WriteLinesToFile File="$(_VNotchNativeObjDir)\all-hot.rsp" Lines="@(_VNotchNativeHotBaselineSources -> '&quot;%(FullPath)&quot;')" Overwrite="true" />
+    <WriteLinesToFile File="$(_VNotchNativeObjDir)\all-cold.rsp" Lines="@(_VNotchNativeColdBaselineSources -> '&quot;%(FullPath)&quot;')" Overwrite="true" />
+    <WriteLinesToFile File="$(_VNotchNativeObjDir)\all-avx2.rsp" Lines="@(_VNotchNativeAvx2Sources -> '&quot;%(FullPath)&quot;')" Overwrite="true" />
+    <WriteLinesToFile File="$(_VNotchNativeObjDir)\all-deps.rsp" Lines="@(_VNotchNativeHeaders -> '&quot;%(FullPath)&quot;');@(_VNotchGpuShaderInputs -> '&quot;%(FullPath)&quot;');&quot;$(MSBuildThisFileFullPath)&quot;" Overwrite="true" />
+    <Exec Command="powershell.exe -NoProfile -ExecutionPolicy Bypass -File &quot;$(MSBuildThisFileDirectory)scripts\Prepare-VNotchNative.ps1&quot; -ObjDir &quot;$(_VNotchNativeObjDir)&quot; -FlagsSignature &quot;$(_NativeHotOptFlags)|$(_NativeColdOptFlags)|$(_NativeLinkOptFlags)|$(VcVars64Path)&quot; -VcVars64Path &quot;$(VcVars64Path)&quot; -RequestedJobs &quot;$(NativeCompileJobs)&quot;" ConsoleToMSBuild="true" EchoOff="true" StandardOutputImportance="Low">
+      <Output TaskParameter="ConsoleOutput" PropertyName="_NativeMpFlag" />
+    </Exec>
     <Exec Condition="!Exists('$(_OnnxRuntimeIncludeDir)\onnxruntime_cxx_api.h')" Command="dotnet restore &quot;$(MSBuildThisFileFullPath)&quot; --locked-mode -nologo -v:q" />
-    <Exec Command="call &quot;$(VcVars64Path)&quot; &gt;nul &amp;&amp; cl.exe /nologo /c /std:c++latest $(_NativeHotOptFlags) /GR- /MT /EHsc /MP /W4 /utf-8 /I&quot;$(MSBuildThisFileDirectory)Native&quot; /I&quot;$(_VNotchNativeObjDir)&quot; /I&quot;$(_OnnxRuntimeIncludeDir)&quot; /Fo&quot;$(_VNotchNativeObjDir)\hot\\&quot; @&quot;$(_VNotchNativeObjDir)\baseline-hot.rsp&quot; &amp;&amp; cl.exe /nologo /c /std:c++latest $(_NativeColdOptFlags) /GR- /MT /EHsc /MP /W4 /utf-8 /I&quot;$(MSBuildThisFileDirectory)Native&quot; /I&quot;$(_VNotchNativeObjDir)&quot; /I&quot;$(_OnnxRuntimeIncludeDir)&quot; /Fo&quot;$(_VNotchNativeObjDir)\cold\\&quot; @&quot;$(_VNotchNativeObjDir)\baseline-cold.rsp&quot; &amp;&amp; cl.exe /nologo /c /std:c++latest /O2 /Oi /Ot /Gy /Gw /GR- /arch:AVX2 /MT /EHsc /MP /W4 /utf-8 /I&quot;$(MSBuildThisFileDirectory)Native&quot; /Fo&quot;$(_VNotchNativeObjDir)\avx2\\&quot; @&quot;$(_VNotchNativeObjDir)\avx2.rsp&quot;" IgnoreStandardErrorWarningFormat="true" />
-    <ItemGroup>
-      <_VNotchNativeObj Include="$(_VNotchNativeObjDir)\hot\*.obj;$(_VNotchNativeObjDir)\cold\*.obj;$(_VNotchNativeObjDir)\avx2\*.obj" />
-    </ItemGroup>
-    <WriteLinesToFile File="$(_VNotchNativeObjDir)\link.rsp" Lines="@(_VNotchNativeObj -> '&quot;%(FullPath)&quot;')" Overwrite="true" />
-    <Exec Command="call &quot;$(VcVars64Path)&quot; &gt;nul &amp;&amp; link.exe /nologo /DLL $(_NativeLinkOptFlags) /BREPRO /NOCOFFGRPINFO /MERGE:.fptable=.rdata /NODEFAULTLIB:libucrt.lib /DEFAULTLIB:ucrt.lib /CETCOMPAT /OUT:&quot;$(_VNotchNativeDll)&quot; /IMPLIB:&quot;$(_VNotchNativeObjDir)\VNotch.Native.lib&quot; @&quot;$(_VNotchNativeObjDir)\link.rsp&quot;" IgnoreStandardErrorWarningFormat="true" />
+    <Exec Command="call &quot;$(_VNotchNativeObjDir)\vcvars64.env.cmd&quot; &amp;&amp; ver &gt;nul &amp;&amp; (for %%R in (&quot;$(_VNotchNativeObjDir)\baseline-hot.rsp&quot;) do if %%~zR gtr 0 cl.exe /nologo /c /std:c++latest $(_NativeHotOptFlags) /GR- /MT /EHsc $(_NativeMpFlag) /W4 /utf-8 /I&quot;$(MSBuildThisFileDirectory)Native&quot; /I&quot;$(_VNotchNativeObjDir)&quot; /I&quot;$(_OnnxRuntimeIncludeDir)&quot; /Fo&quot;$(_VNotchNativeObjDir)\hot\\&quot; @&quot;%%~R&quot;) &amp;&amp; (for %%R in (&quot;$(_VNotchNativeObjDir)\baseline-cold.rsp&quot;) do if %%~zR gtr 0 cl.exe /nologo /c /std:c++latest $(_NativeColdOptFlags) /GR- /MT /EHsc $(_NativeMpFlag) /W4 /utf-8 /I&quot;$(MSBuildThisFileDirectory)Native&quot; /I&quot;$(_VNotchNativeObjDir)&quot; /I&quot;$(_OnnxRuntimeIncludeDir)&quot; /Fo&quot;$(_VNotchNativeObjDir)\cold\\&quot; @&quot;%%~R&quot;) &amp;&amp; (for %%R in (&quot;$(_VNotchNativeObjDir)\avx2.rsp&quot;) do if %%~zR gtr 0 cl.exe /nologo /c /std:c++latest /O2 /Oi /Ot /Gy /Gw /GR- /arch:AVX2 /MT /EHsc $(_NativeMpFlag) /W4 /utf-8 /I&quot;$(MSBuildThisFileDirectory)Native&quot; /Fo&quot;$(_VNotchNativeObjDir)\avx2\\&quot; @&quot;%%~R&quot;) &amp;&amp; link.exe /nologo /DLL $(_NativeLinkOptFlags) /BREPRO /NOCOFFGRPINFO /MERGE:.fptable=.rdata /NODEFAULTLIB:libucrt.lib /DEFAULTLIB:ucrt.lib /CETCOMPAT /OUT:&quot;$(_VNotchNativeDll)&quot; /IMPLIB:&quot;$(_VNotchNativeObjDir)\VNotch.Native.lib&quot; @&quot;$(_VNotchNativeObjDir)\link.rsp&quot;" IgnoreStandardErrorWarningFormat="true" />
   </Target>
   <Target Name="BuildNativeDll" DependsOnTargets="CompileVNotchNative" />
 

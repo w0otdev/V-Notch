@@ -1787,6 +1787,17 @@ VN_EXPORT int32_t __stdcall vn_perf_preset_decide_selection(
 VN_EXPORT int32_t __stdcall vn_perf_preset_recommend_hardware_tier(
     int32_t* out_preset_id) noexcept;
 
+VN_EXPORT int32_t __stdcall vn_ai_quota_notifications_create(void** out_tracker) noexcept;
+VN_EXPORT int32_t __stdcall vn_ai_quota_notifications_destroy(void* tracker) noexcept;
+VN_EXPORT int32_t __stdcall vn_ai_quota_notifications_evaluate(
+    void* tracker, int32_t provider, int32_t state,
+    const wchar_t* account_ptr, int32_t account_len,
+    const wchar_t* bucket_ptr, int32_t bucket_len,
+    const wchar_t* label_ptr, int32_t label_len,
+    int32_t duration_minutes, double used_percent,
+    int64_t reset_utc_ticks, int64_t updated_utc_ticks, int64_t now_utc_ticks,
+    int32_t* out_threshold) noexcept;
+
 VN_EXPORT int32_t __stdcall vn_ai_usage_compute_window_visual(
     double used_percent,
     int32_t duration_minutes,
@@ -1851,3 +1862,10 @@ VN_EXPORT int32_t __stdcall vn_text_resolve_rendering_policy(
 
 
 
+
+// Liquid Glass release 2.3.1 ABI.
+VN_EXPORT int32_t __stdcall vn_glass_binder_build_fresnel_tint(
+    uint8_t red, uint8_t green, uint8_t blue, uint8_t* out_r, uint8_t* out_g, uint8_t* out_b) noexcept;
+VN_EXPORT int32_t __stdcall vn_glass_binder_interpolate_color(
+    uint8_t from_r, uint8_t from_g, uint8_t from_b, uint8_t to_r, uint8_t to_g, uint8_t to_b,
+    double amount, uint8_t* out_r, uint8_t* out_g, uint8_t* out_b) noexcept;

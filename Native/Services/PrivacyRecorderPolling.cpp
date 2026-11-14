@@ -14,15 +14,61 @@ namespace {
 uint64_t file_time(FILETIME value) noexcept { return (uint64_t{value.dwHighDateTime} << 32) | value.dwLowDateTime; }
 struct Recorder { DWORD pid; uint64_t started; int kind; std::wstring executable; };
 
-bool is_locked_for_write(const wchar_t* path) noexcept {
+bool is_locked_for_write(const wchar_t* path, DWORD flags = FILE_ATTRIBUTE_NORMAL) noexcept {
     if (!path || !*path) return false;
     HANDLE handle = CreateFileW(path, GENERIC_READ, FILE_SHARE_READ, nullptr,
-        OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
+        OPEN_EXISTING, flags, nullptr);
     if (handle == INVALID_HANDLE_VALUE) {
         return GetLastError() == ERROR_SHARING_VIOLATION;
     }
     CloseHandle(handle);
     return false;
+}
+
+bool resolve_bandicam_recording_path(const wchar_t* path, std::wstring& canonical) {
+    canonical.clear();
+    if (!path || !*path) return false;
+    size_t length = 0;
+    while (length < 32768 && path[length] != L'\0') ++length;
+    if (length == 0 || length >= 32768) return false;
+
+    uint8_t supported = 0;
+    if (vn_bandicam_is_supported_output_path(reinterpret_cast<const char16_t*>(path), static_cast<int32_t>(length), &supported) != VN_OK || !supported) {
+        return false;
+    }
+
+    const wchar_t drive_root[4]{path[0], L':', L'\\', L'\0'};
+    const UINT drive_type = GetDriveTypeW(drive_root);
+    if (drive_type != DRIVE_FIXED && drive_type != DRIVE_REMOVABLE && drive_type != DRIVE_RAMDISK) {
+        return false;
+    }
+
+    std::array<wchar_t, 512> buffer{};
+    wchar_t* file_part = nullptr;
+    DWORD written = GetFullPathNameW(path, static_cast<DWORD>(buffer.size()), buffer.data(), &file_part);
+    if (written == 0 || written >= 32768) return false;
+    if (written < buffer.size()) {
+        if (!file_part || !*file_part) return false;
+        canonical.assign(buffer.data(), written);
+    } else {
+        std::vector<wchar_t> large(static_cast<size_t>(written) + 1);
+        written = GetFullPathNameW(path, static_cast<DWORD>(large.size()), large.data(), &file_part);
+        if (written == 0 || written >= large.size() || !file_part || !*file_part) return false;
+        canonical.assign(large.data(), written);
+    }
+
+    if (CompareStringOrdinal(path, static_cast<int>(length), canonical.data(), static_cast<int>(canonical.size()), TRUE) != CSTR_EQUAL) {
+        canonical.clear();
+        return false;
+    }
+
+    const DWORD attrs = GetFileAttributesW(canonical.c_str());
+    if (attrs == INVALID_FILE_ATTRIBUTES ||
+        (attrs & (FILE_ATTRIBUTE_DIRECTORY | FILE_ATTRIBUTE_REPARSE_POINT | FILE_ATTRIBUTE_DEVICE | FILE_ATTRIBUTE_OFFLINE)) != 0) {
+        canonical.clear();
+        return false;
+    }
+    return true;
 }
 
 struct ObsLog {
@@ -188,9 +234,10 @@ bool poll(const VnPrivacyProcessEntry* entries, int32_t count, bool capture) {
                 wchar_t path[32768]{}; DWORD bytes = sizeof(path);
                 if (RegGetValueW(HKEY_CURRENT_USER, L"Software\\BANDISOFT\\BANDICAM\\OPTION", L"sLatestRecordingFile",
                     RRF_RT_REG_SZ, nullptr, path, &bytes) == ERROR_SUCCESS) {
-                    uint8_t supported = 0;
-                    vn_bandicam_is_supported_output_path(reinterpret_cast<char16_t*>(path), static_cast<int32_t>(wcslen(path)), &supported);
-                    if (supported) active |= is_locked_for_write(path);
+                    std::wstring canonical;
+                    if (resolve_bandicam_recording_path(path, canonical)) {
+                        active |= is_locked_for_write(canonical.c_str(), FILE_ATTRIBUTE_NORMAL | FILE_FLAG_OPEN_REPARSE_POINT);
+                    }
                 }
             } else if (recorder.kind == 2) {
                 wchar_t roaming[32768];

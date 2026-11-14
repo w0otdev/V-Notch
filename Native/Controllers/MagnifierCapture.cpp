@@ -1,5 +1,4 @@
 #include "../vnotch_common.h"
-#include "../vnotch_handle_registry.h"
 #include <magnification.h>
 #include <algorithm>
 #include <cstdio>
@@ -63,36 +62,14 @@ const MagApi& Api() noexcept {
 
 struct CaptureRequest {
     int32_t x = 0, y = 0, width = 0, height = 0;
-    constexpr bool operator==(const CaptureRequest&) const noexcept = default;
 };
-
-struct VirtualScreenBounds {
-    int left;
-    int top;
-    int right;
-    int bottom;
-};
-
-VirtualScreenBounds QueryVirtualScreenBounds() noexcept {
-    const int vx = GetSystemMetrics(SM_XVIRTUALSCREEN);
-    const int vy = GetSystemMetrics(SM_YVIRTUALSCREEN);
-    return { vx, vy, vx + GetSystemMetrics(SM_CXVIRTUALSCREEN), vy + GetSystemMetrics(SM_CYVIRTUALSCREEN) };
-}
-
-void DrainThreadMessages() noexcept {
-    MSG msg;
-    while (PeekMessageW(&msg, nullptr, 0, 0, PM_REMOVE)) {
-        TranslateMessage(&msg);
-        DispatchMessageW(&msg);
-    }
-}
 
 struct ScopedLock {
     SRWLOCK* lock;
     explicit ScopedLock(SRWLOCK* l) noexcept : lock(l) { AcquireSRWLockExclusive(lock); }
     ScopedLock(const ScopedLock&) = delete;
     ScopedLock& operator=(const ScopedLock&) = delete;
-    ~ScopedLock() noexcept { ReleaseSRWLockExclusive(lock); }
+    ~ScopedLock() { ReleaseSRWLockExclusive(lock); }
 };
 
 bool IsCompleteFrame(int32_t requested_w, int32_t requested_h, int32_t received_w, int32_t received_h,
@@ -233,32 +210,29 @@ public:
         completed.shrink_to_fit();
     }
 
-    bool HasValidFrameBufferLocked() const noexcept {
-        return completed_width > 0 && completed_height > 0 &&
-               static_cast<int64_t>(completed_width) * completed_height * 4 <= static_cast<int64_t>(completed.size());
-    }
-
     bool IsUninitializedZeroCrop(int32_t x, int32_t y, int32_t width, int32_t height) const noexcept {
-        if (!HasValidFrameBufferLocked()) return true;
+        if (completed_width <= 0 || completed_height <= 0 ||
+            static_cast<int64_t>(completed_width) * completed_height * 4 > static_cast<int64_t>(completed.size()))
+            return true;
         // Only all-zero BGRA (uninitialized DWM output) is rejected; opaque black has A=255.
         constexpr int kSamples = 6;
-        const auto* pixels = reinterpret_cast<const uint32_t*>(completed.data());
         for (int row = 0; row < kSamples; ++row) {
             const int sy = std::clamp(y - completed_y + (height - 1) * row / (kSamples - 1), 0, completed_height - 1);
-            const uint32_t* row_pixels = pixels + static_cast<size_t>(sy) * completed_width;
             for (int col = 0; col < kSamples; ++col) {
                 const int sx = std::clamp(x - completed_x + (width - 1) * col / (kSamples - 1), 0, completed_width - 1);
-                if (row_pixels[sx] != 0u) return false;
+                const size_t offset = (static_cast<size_t>(sy) * completed_width + sx) * 4;
+                if (completed[offset] | completed[offset + 1] | completed[offset + 2] | completed[offset + 3]) return false;
             }
         }
         return true;
     }
 
     bool HasUsableFrameLocked(int32_t x, int32_t y, int32_t width, int32_t height) const noexcept {
-        const VirtualScreenBounds vs = QueryVirtualScreenBounds();
-        if (std::max(x, vs.left) < completed_x || std::max(y, vs.top) < completed_y ||
-            std::min(x + width, vs.right) > completed_x + completed_width ||
-            std::min(y + height, vs.bottom) > completed_y + completed_height) return false;
+        const int vx = GetSystemMetrics(SM_XVIRTUALSCREEN), vy = GetSystemMetrics(SM_YVIRTUALSCREEN);
+        const int vr = vx + GetSystemMetrics(SM_CXVIRTUALSCREEN), vb = vy + GetSystemMetrics(SM_CYVIRTUALSCREEN);
+        if (std::max(x, vx) < completed_x || std::max(y, vy) < completed_y ||
+            std::min(x + width, vr) > completed_x + completed_width ||
+            std::min(y + height, vb) > completed_y + completed_height) return false;
         return has_completed && completed_filter_version == filter_version.load() &&
                static_cast<int64_t>(GetTickCount64()) - completed_tick <= kFrameFreshMs &&
                !IsUninitializedZeroCrop(x, y, width, height);
@@ -266,29 +240,23 @@ public:
 
     // Copies a crop of the desktop frame, extending edge pixels where the margin leaves the virtual desktop.
     bool CopyCropLocked(int32_t x, int32_t y, int32_t width, int32_t height, uint32_t* destination) const noexcept {
-        if (!destination || width <= 0 || height <= 0 || !HasValidFrameBufferLocked())
+        if (!destination || completed_width <= 0 || completed_height <= 0 || width <= 0 || height <= 0 ||
+            static_cast<int64_t>(completed_width) * completed_height * 4 > static_cast<int64_t>(completed.size()))
             return false;
         const auto* src = reinterpret_cast<const uint32_t*>(completed.data());
         const int64_t offset_x = static_cast<int64_t>(x) - completed_x;
         const int64_t offset_y = static_cast<int64_t>(y) - completed_y;
-        const int32_t left_pad = static_cast<int32_t>(std::clamp<int64_t>(-offset_x, 0, width));
-        const int64_t src_x = std::max<int64_t>(offset_x, 0);
-        const int64_t avail_w = std::max<int64_t>(0, static_cast<int64_t>(completed_width) - src_x);
-        const int32_t mid_count = static_cast<int32_t>(std::min<int64_t>(static_cast<int64_t>(width) - left_pad, avail_w));
-        const int32_t right_pad = width - left_pad - mid_count;
-
         for (int32_t row = 0; row < height; ++row) {
             const int32_t sy = static_cast<int32_t>(std::clamp<int64_t>(offset_y + row, 0, completed_height - 1));
             uint32_t* dst_row = destination + static_cast<size_t>(row) * width;
             const uint32_t* src_row = src + static_cast<size_t>(sy) * completed_width;
-            if (left_pad > 0) {
-                std::fill_n(dst_row, left_pad, src_row[0]);
-            }
-            if (mid_count > 0) {
-                std::memcpy(dst_row + left_pad, src_row + src_x, static_cast<size_t>(mid_count) * sizeof(uint32_t));
-            }
-            if (right_pad > 0) {
-                std::fill_n(dst_row + left_pad + mid_count, right_pad, src_row[completed_width - 1]);
+            if (offset_x >= 0 && offset_x + width <= completed_width) {
+                std::memcpy(dst_row, src_row + offset_x, static_cast<size_t>(width) * 4);
+            } else {
+                for (int32_t col = 0; col < width; ++col) {
+                    const int32_t sx = static_cast<int32_t>(std::clamp<int64_t>(offset_x + col, 0, completed_width - 1));
+                    dst_row[col] = src_row[sx];
+                }
             }
         }
         return true;
@@ -314,7 +282,7 @@ public:
             {
                 ScopedLock guard(&frame_lock);
                 if (!capture_enabled.load()) return false;
-                if (completed.size() < needed) completed.resize(needed);
+                if (completed.size() < needed) completed.assign(needed, 0);
                 if (src_stride == dst_stride) {
                     std::memcpy(completed.data(), src, needed);
                 } else {
@@ -366,66 +334,13 @@ public:
     static BOOL CALLBACK ScalingTrampoline(HWND, void* srcdata, MAGIMAGEHEADER srcheader, void*, MAGIMAGEHEADER,
                                            RECT, RECT, HRGN) noexcept;
 
-    void HandleCaptureDisabled(bool& host_shown) noexcept {
-        if (host_shown) {
-            ShowWindow(host, SW_HIDE);
-            host_shown = false;
-        }
-        // Release desktop-sized buffers while no consumer is active.
-        ScopedLock guard(&frame_lock);
-        ClearFrameLocked();
-        ResetEvent(frame_received);
-        ResetEvent(unfiltered_received);
-    }
-
-    void HandleCaptureRequest(const MagApi& api, bool& host_shown, int& mag_w, int& mag_h) noexcept {
-        if (!host_shown) {
-            ShowWindow(host, SW_SHOWNA);
-            host_shown = true;
-        }
-        ApplyFiltersIfDirty();
-
-        CaptureRequest req;
-        {
-            ScopedLock guard(&frame_lock);
-            req = requested;
-        }
-        if (req.width <= 0 || req.height <= 0) return;
-
-        if (!(active == req)) {
-            ScopedLock guard(&frame_lock);
-            has_completed = false;
-        }
-        active = req;
-        SetWindowPos(host, nullptr, req.x, req.y, req.width, req.height, SWP_NOACTIVATE | SWP_NOZORDER);
-        SetWindowPos(mag, nullptr, 0, 0, req.width, req.height, SWP_NOACTIVATE | SWP_NOZORDER);
-        if (req.width != mag_w || req.height != mag_h) {
-            mag_w = req.width;
-            mag_h = req.height;
-            MoveWindow(host, req.x, req.y, mag_w, mag_h, FALSE);
-            MoveWindow(mag, 0, 0, mag_w, mag_h, FALSE);
-        }
-        const RECT rect{req.x, req.y, req.x + req.width, req.y + req.height};
-        if (!api.set_window_source(mag, rect)) {
-            source_fail_count.fetch_add(1);
-        } else {
-            InvalidateRect(mag, nullptr, FALSE);
-            UpdateWindow(mag);
-        }
-        if (filter_dirty.load()) {
-            SetEvent(request);
-        }
-    }
-
     void Pump() noexcept {
         (void)CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
-        struct ComUninitGuard {
-            ~ComUninitGuard() noexcept { CoUninitialize(); }
-        } com_guard;
         t_current = this;
         const MagApi& api = Api();
         if (!api.Complete() || !api.initialize()) {
             Fail(kInitMagInitializeFailed);
+            CoUninitialize();
             return;
         }
         mag_initialized = true;
@@ -437,25 +352,31 @@ public:
         wc.lpszClassName = kHostClass;
         RegisterClassW(&wc); // harmless when already registered
 
-        const VirtualScreenBounds vs = QueryVirtualScreenBounds();
+        int screen_x = GetSystemMetrics(SM_XVIRTUALSCREEN);
+        int screen_y = GetSystemMetrics(SM_YVIRTUALSCREEN);
+        int screen_w = GetSystemMetrics(SM_CXVIRTUALSCREEN);
+        int screen_h = GetSystemMetrics(SM_CYVIRTUALSCREEN);
+        if (screen_w <= 0) screen_w = GetSystemMetrics(SM_CXSCREEN);
+        if (screen_h <= 0) screen_h = GetSystemMetrics(SM_CYSCREEN);
         int mag_w = 1;
         int mag_h = 1;
 
         host = CreateWindowExW(WS_EX_LAYERED | WS_EX_TRANSPARENT | WS_EX_TOOLWINDOW, kHostClass, L"VNotchMagHost", WS_POPUP,
-                               vs.left, vs.top, mag_w, mag_h, nullptr, nullptr, instance, nullptr);
-        if (!host) { Fail(kInitHostCreateFailed); return; }
+                               screen_x, screen_y, mag_w, mag_h, nullptr, nullptr, instance, nullptr);
+        if (!host) { Fail(kInitHostCreateFailed); CoUninitialize(); return; }
 
         // Alpha 1 is practically invisible yet keeps DWM composing at the monitor refresh rate.
         SetLayeredWindowAttributes(host, 0, 1, LWA_ALPHA);
         ShowWindow(host, SW_SHOWNA);
 
         mag = CreateWindowExW(0, L"Magnifier", L"VNotchMag", WS_CHILD | WS_VISIBLE, 0, 0, mag_w, mag_h, host, nullptr, instance, nullptr);
-        if (!mag) { Fail(kInitControlCreateFailed); return; }
+        if (!mag) { Fail(kInitControlCreateFailed); CoUninitialize(); return; }
 
         ApplyFiltersIfDirty();
 
         if (!api.set_image_scaling_callback(mag, reinterpret_cast<MagImageScalingCallback>(&Source::ScalingTrampoline))) {
             Fail(kInitCallbackUnsupported);
+            CoUninitialize();
             return;
         }
 
@@ -463,20 +384,66 @@ public:
         SetEvent(init_done);
 
         bool host_shown = true;
-        DrainThreadMessages();
+        MSG msg;
+        while (PeekMessageW(&msg, nullptr, 0, 0, PM_REMOVE)) {
+            TranslateMessage(&msg);
+            DispatchMessageW(&msg);
+        }
         while (running.load()) {
             const DWORD wait_res = MsgWaitForMultipleObjects(1, &request, FALSE, INFINITE, QS_ALLINPUT);
             if (!running.load()) break;
             if (wait_res == WAIT_OBJECT_0) {
                 if (!capture_enabled.load()) {
-                    HandleCaptureDisabled(host_shown);
+                    if (host_shown) ShowWindow(host, SW_HIDE);
+                    host_shown = false;
+                    // Release desktop-sized buffers while no consumer is active.
+                    ScopedLock guard(&frame_lock);
+                    ClearFrameLocked();
+                    ResetEvent(frame_received);
+                    ResetEvent(unfiltered_received);
                 } else {
-                    HandleCaptureRequest(api, host_shown, mag_w, mag_h);
+                    if (!host_shown) ShowWindow(host, SW_SHOWNA);
+                    host_shown = true;
+                    ApplyFiltersIfDirty();
+
+                    CaptureRequest req;
+                    { ScopedLock guard(&frame_lock); req = requested; }
+                    if (req.width > 0 && req.height > 0) {
+                        const bool changed = memcmp(&active, &req, sizeof(req)) != 0;
+                        if (changed) {
+                            ScopedLock guard(&frame_lock);
+                            has_completed = false;
+                        }
+                        active = req;
+                        SetWindowPos(host, nullptr, req.x, req.y, req.width, req.height, SWP_NOACTIVATE | SWP_NOZORDER);
+                        SetWindowPos(mag, nullptr, 0, 0, req.width, req.height, SWP_NOACTIVATE | SWP_NOZORDER);
+                        if (req.width != mag_w || req.height != mag_h) {
+                            mag_w = req.width;
+                            mag_h = req.height;
+                            MoveWindow(host, req.x, req.y, mag_w, mag_h, FALSE);
+                            MoveWindow(mag, 0, 0, mag_w, mag_h, FALSE);
+                        }
+                        const RECT rect{req.x, req.y, req.x + req.width, req.y + req.height};
+                        if (!api.set_window_source(mag, rect)) {
+                            source_fail_count.fetch_add(1);
+                        } else {
+                            InvalidateRect(mag, nullptr, FALSE);
+                            UpdateWindow(mag);
+                        }
+                        if (filter_dirty.load()) {
+                            SetEvent(request);
+                        }
+                    }
                 }
             }
-            DrainThreadMessages();
+
+            while (PeekMessageW(&msg, nullptr, 0, 0, PM_REMOVE)) {
+                TranslateMessage(&msg);
+                DispatchMessageW(&msg);
+            }
         }
         Cleanup();
+        CoUninitialize();
     }
 
     static DWORD WINAPI PumpMain(LPVOID param) noexcept {
@@ -547,55 +514,49 @@ BOOL CALLBACK Source::ScalingTrampoline(HWND, void* srcdata, MAGIMAGEHEADER srch
     return (source != nullptr && source->OnScalingCallback(srcdata, srcheader)) ? TRUE : FALSE;
 }
 
-using SourceLease = vnotch::HandleRegistry<Source>::Lease;
+struct SourceSlot {
+    std::unique_ptr<Source> object;
+    int32_t leases = 0;
+    bool retired = false;
+};
 
-vnotch::HandleRegistry<Source> g_sources;
-SRWLOCK g_epoch_lock = SRWLOCK_INIT;
-std::vector<uint32_t> g_slot_epochs;
+SRWLOCK g_registry_lock = SRWLOCK_INIT;
+std::vector<SourceSlot> g_sources;
 
-int32_t Register(std::unique_ptr<Source> source) {
-    const int64_t raw = g_sources.Add(std::move(source));
-    const uint32_t slot = static_cast<uint32_t>(static_cast<uint64_t>(raw) & 0xFFFFFFFFull);
-    const uint32_t gen = static_cast<uint32_t>(static_cast<uint64_t>(raw) >> 32);
-    if (slot == 0u || slot > 0xFFFFu || gen == 0u) {
-        g_sources.Remove(raw);
-        return 0;
-    }
-    const uint32_t gen15 = ((gen - 1u) % 0x7FFFu) + 1u;
+void ReleaseSourceLease(size_t index) noexcept {
+    std::unique_ptr<Source> doomed;
     {
-        ScopedLock guard(&g_epoch_lock);
-        if (g_slot_epochs.size() < slot) {
-            g_slot_epochs.resize(slot, 0u);
+        ScopedLock guard(&g_registry_lock);
+        SourceSlot& slot = g_sources[index];
+        if (--slot.leases == 0 && slot.retired) {
+            doomed = std::move(slot.object);
+            slot.retired = false;
         }
-        g_slot_epochs[slot - 1u] = gen - gen15;
     }
-    return static_cast<int32_t>((gen15 << 16) | slot);
 }
 
-int64_t UnpackHandle(int32_t handle) noexcept {
-    if (handle <= 0) return 0;
-    const uint32_t u = static_cast<uint32_t>(handle);
-    const uint32_t slot = u & 0xFFFFu;
-    const uint32_t gen15 = (u >> 16) & 0x7FFFu;
-    if (slot == 0u || gen15 == 0u) return 0;
-    uint32_t epoch = 0u;
-    {
-        ScopedLock guard(&g_epoch_lock);
-        if (slot > g_slot_epochs.size()) return 0;
-        epoch = g_slot_epochs[slot - 1u];
-    }
-    const uint32_t gen = epoch + gen15;
-    return (static_cast<int64_t>(gen) << 32) | static_cast<int64_t>(slot);
-}
+struct SourceLease {
+    size_t index = 0;
+    Source* ptr = nullptr;
+    SourceLease() noexcept = default;
+    SourceLease(size_t idx, Source* p) noexcept : index(idx), ptr(p) {}
+    SourceLease(const SourceLease&) = delete;
+    SourceLease& operator=(const SourceLease&) = delete;
+    SourceLease(SourceLease&& o) noexcept : index(o.index), ptr(std::exchange(o.ptr, nullptr)) {}
+    void Reset() noexcept { if (ptr) { ReleaseSourceLease(index); ptr = nullptr; } }
+    ~SourceLease() { Reset(); }
+    Source* operator->() const noexcept { return ptr; }
+    explicit operator bool() const noexcept { return ptr != nullptr; }
+};
 
 SourceLease Find(int32_t handle) noexcept {
-    const int64_t raw = UnpackHandle(handle);
-    return raw > 0 ? g_sources.Acquire(raw) : SourceLease();
-}
-
-void Remove(int32_t handle) noexcept {
-    const int64_t raw = UnpackHandle(handle);
-    if (raw > 0) g_sources.Remove(raw);
+    ScopedLock guard(&g_registry_lock);
+    if (handle <= 0 || static_cast<size_t>(handle) > g_sources.size()) return {};
+    size_t idx = static_cast<size_t>(handle) - 1;
+    SourceSlot& slot = g_sources[idx];
+    if (!slot.object || slot.retired) return {};
+    ++slot.leases;
+    return SourceLease(idx, slot.object.get());
 }
 
 HWND ToHwnd(int64_t value) noexcept {
@@ -610,11 +571,18 @@ extern "C" {
 
 VN_EXPORT int32_t __stdcall vn_magcap_create(int32_t* out_handle) noexcept {
     if (!out_handle) return VN_ERR_INVALID_ARG;
-    *out_handle = 0;
     try {
-        const int32_t handle = mc::Register(std::make_unique<mc::Source>());
-        if (handle <= 0) return VN_ERR_FAIL;
-        *out_handle = handle;
+        auto source = std::make_unique<mc::Source>();
+        mc::ScopedLock guard(&mc::g_registry_lock);
+        for (size_t i = 0; i < mc::g_sources.size(); ++i) {
+            if (!mc::g_sources[i].object && mc::g_sources[i].leases == 0 && !mc::g_sources[i].retired) {
+                mc::g_sources[i].object = std::move(source);
+                *out_handle = static_cast<int32_t>(i) + 1;
+                return VN_OK;
+            }
+        }
+        mc::g_sources.push_back(mc::SourceSlot{std::move(source), 0, false});
+        *out_handle = static_cast<int32_t>(mc::g_sources.size());
         return VN_OK;
     } catch (...) {
         return VN_ERR_FAIL;
@@ -659,38 +627,37 @@ VN_EXPORT int32_t __stdcall vn_magcap_destroy(int32_t handle, uint8_t* out_relea
         // Keep a lease until it exits, then retire it without leaking the buffers.
         if (!source->teardown_queued.exchange(true)) {
             struct Reap {
-                int32_t handle;
-                mc::SourceLease source;
-                HANDLE waitThread;
-                Reap(int32_t h, mc::SourceLease&& s, HANDLE w) noexcept
-                    : handle(h), source(std::move(s)), waitThread(w) {}
+                int32_t handle; mc::SourceLease source; HANDLE waitThread;
                 ~Reap() { if (waitThread) CloseHandle(waitThread); }
             };
             HANDLE waitThread = source->DuplicateThreadForCleanup();
             if (!waitThread) { source->teardown_queued = false; return VN_OK; }
-            try {
-                auto reap = std::make_unique<Reap>(handle, std::move(source), waitThread);
-                if (QueueUserWorkItem([](void* parameter) -> DWORD {
-                    std::unique_ptr<Reap> item(static_cast<Reap*>(parameter));
-                    WaitForSingleObject(item->waitThread, INFINITE);
-                    item->source.Reset();
-                    uint8_t released = 0;
-                    vn_magcap_destroy(item->handle, &released);
-                    return 0;
-                }, reap.get(), WT_EXECUTELONGFUNCTION)) {
-                    (void)reap.release();
-                    return VN_OK;
-                }
-                reap->source->teardown_queued = false;
-            } catch (...) {
-                if (source) source->teardown_queued = false;
-                CloseHandle(waitThread);
-            }
+            auto* reap = new (std::nothrow) Reap{ handle, std::move(source), waitThread };
+            if (!reap) { source->teardown_queued = false; CloseHandle(waitThread); return VN_OK; }
+            if (reap && QueueUserWorkItem([](void* parameter) -> DWORD {
+                std::unique_ptr<Reap> item(static_cast<Reap*>(parameter));
+                WaitForSingleObject(item->waitThread, INFINITE);
+                uint8_t released = 0;
+                vn_magcap_destroy(item->handle, &released);
+                return 0;
+            }, reap, WT_EXECUTELONGFUNCTION)) return VN_OK;
+            if (reap) { reap->source->teardown_queued = false; delete reap; }
         }
         return VN_OK;
     }
     source.Reset();
-    mc::Remove(handle);
+    std::unique_ptr<mc::Source> doomed;
+    {
+        mc::ScopedLock guard(&mc::g_registry_lock);
+        if (handle > 0 && static_cast<size_t>(handle) <= mc::g_sources.size()) {
+            mc::SourceSlot& slot = mc::g_sources[static_cast<size_t>(handle) - 1];
+            slot.retired = true;
+            if (slot.leases == 0) {
+                doomed = std::move(slot.object);
+                slot.retired = false;
+            }
+        }
+    }
     *out_released = 1;
     return VN_OK;
 }
@@ -737,38 +704,30 @@ VN_EXPORT int32_t __stdcall vn_magcap_capture_into(
     *out_ok = 0;
     if (!source->ready.load() || !source->running.load() || !destination || width <= 0 || height <= 0) return VN_OK;
 
-    const mc::VirtualScreenBounds vs = mc::QueryVirtualScreenBounds();
-    const int left = std::clamp(x, vs.left, vs.right - 1);
-    const int top = std::clamp(y, vs.top, vs.bottom - 1);
-    const mc::CaptureRequest req{
-        left,
-        top,
-        std::max(1, std::min(x + width, vs.right) - left),
-        std::max(1, std::min(y + height, vs.bottom) - top)
-    };
-
     uint64_t previous;
     {
         mc::ScopedLock guard(&source->frame_lock);
         previous = source->frame_counter;
-        source->requested = req;
+        const int vx = GetSystemMetrics(SM_XVIRTUALSCREEN), vy = GetSystemMetrics(SM_YVIRTUALSCREEN);
+        const int vr = vx + GetSystemMetrics(SM_CXVIRTUALSCREEN), vb = vy + GetSystemMetrics(SM_CYVIRTUALSCREEN);
+        int left = std::clamp(x, vx, vr - 1), top = std::clamp(y, vy, vb - 1);
+        source->requested = { left, top, std::max(1, std::min(x + width, vr) - left), std::max(1, std::min(y + height, vb) - top) };
     }
     ResetEvent(source->frame_received);
     SetEvent(source->request);
-
-    DWORD wait_ms = 0;
+    bool frame_ready;
     {
         mc::ScopedLock guard(&source->frame_lock);
-        const bool has_matching_frame =
-            source->has_completed && source->completed_filter_version == source->filter_version.load();
-        if (!has_matching_frame) {
-            wait_ms = 12;
-        } else if (source->frame_counter == previous) {
-            wait_ms = 2;
-        }
+        frame_ready = source->has_completed && source->completed_filter_version == source->filter_version.load();
     }
-    if (wait_ms > 0) {
-        WaitForSingleObject(source->frame_received, wait_ms);
+    if (!frame_ready) {
+        WaitForSingleObject(source->frame_received, 12);
+    } else {
+        {
+            mc::ScopedLock guard(&source->frame_lock);
+            frame_ready = source->frame_counter != previous;
+        }
+        if (!frame_ready) WaitForSingleObject(source->frame_received, 2);
     }
 
     mc::ScopedLock guard(&source->frame_lock);
@@ -787,6 +746,23 @@ VN_EXPORT int32_t __stdcall vn_magcap_has_usable_frame(
     SetEvent(source->request);
     mc::ScopedLock guard(&source->frame_lock);
     *out_usable = source->HasUsableFrameLocked(x, y, width, height) ? 1 : 0;
+    return VN_OK;
+}
+
+// Waits for a frame captured with no exclusion list. out_received = 1 when one is available.
+VN_EXPORT int32_t __stdcall vn_magcap_wait_unfiltered_frame(int32_t handle, uint32_t timeout_ms, uint8_t* out_received) noexcept {
+    auto source = mc::Find(handle);
+    if (!source || !out_received) return VN_ERR_INVALID_ARG;
+    {
+        mc::ScopedLock guard(&source->frame_lock);
+        if (source->has_unfiltered) {
+            *out_received = 1;
+            return VN_OK;
+        }
+        ResetEvent(source->unfiltered_received);
+    }
+    SetEvent(source->request);
+    *out_received = WaitForSingleObject(source->unfiltered_received, timeout_ms) == WAIT_OBJECT_0 ? 1 : 0;
     return VN_OK;
 }
 

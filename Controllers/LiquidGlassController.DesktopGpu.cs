@@ -5,15 +5,15 @@ public sealed partial class LiquidGlassController
     private D3DImageFramePresenter.GpuFrame _gpuLens;
     private bool _hasGpuLens;
     private double _gpuLensScreenX, _gpuLensScreenY;
-    private LiquidGlassLensState? _gpuLensEffect;
+    private LiquidGlassRefractionEffect? _gpuLensEffect;
     private bool _gpuLensUpdateQueued;
     internal bool UsesNativeRefraction { get; private set; }
 
     internal void EnableNativeRefraction() => UsesNativeRefraction = true;
 
-    // Snapshot lens properties on the UI thread; the capture worker reads the
-    // plain value snapshot under lock. Screen coordinates survive capture-origin changes.
-    internal void UpdateGpuLens(LiquidGlassLensState fx, double screenX, double screenY)
+    // Snapshot dependency properties on the UI thread; the capture worker never
+    // touches a DispatcherObject. Screen coordinates survive capture-origin changes.
+    internal void UpdateGpuLens(LiquidGlassRefractionEffect fx, double screenX, double screenY)
     {
         if (!ReferenceEquals(_gpuLensEffect, fx))
         {

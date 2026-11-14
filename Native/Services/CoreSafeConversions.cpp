@@ -484,41 +484,7 @@ VN_EXPORT int32_t __stdcall vn_appnotify_compute_icon_crop_bounds(
     return VN_OK;
 }
 
-VN_EXPORT int32_t __stdcall vn_glass_generate_grain_pbgra32(
-    int32_t* out_pixels,
-    int32_t pixel_count,
-    uint32_t seed) noexcept
-{
-    if (pixel_count < 0 || (pixel_count > 0 && !out_pixels))
-        return VN_ERR_INVALID_ARG;
-    if (pixel_count == 0)
-        return VN_OK;
 
-    uint64_t state = seed != 0 ? static_cast<uint64_t>(seed) : 1337ULL;
-    auto next_unit = [&state]() noexcept -> double
-    {
-        state += 0x9E3779B97F4A7C15ULL;
-        uint64_t z = state;
-        z = (z ^ (z >> 30)) * 0xBF58476D1CE4E5B9ULL;
-        z = (z ^ (z >> 27)) * 0x94D049BB133111EBULL;
-        z ^= (z >> 31);
-        return static_cast<double>(z >> 11) * (1.0 / 9007199254740992.0);
-    };
-
-    for (int32_t i = 0; i < pixel_count; ++i)
-    {
-        const double u1 = next_unit();
-        const double u2 = next_unit();
-        const double t = u1 - u2;
-        const uint32_t alpha = static_cast<uint32_t>(static_cast<uint8_t>(std::abs(t) * 55.0));
-        const uint32_t pixel = (t >= 0.0)
-            ? ((alpha << 24) | (alpha << 16) | (alpha << 8) | alpha)
-            : (alpha << 24);
-        out_pixels[i] = static_cast<int32_t>(pixel);
-    }
-
-    return VN_OK;
-}
 
 VN_EXPORT int32_t __stdcall vn_lyrics_provider_order_parse(
     const wchar_t* raw,

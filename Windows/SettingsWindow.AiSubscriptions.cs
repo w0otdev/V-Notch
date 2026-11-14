@@ -3,6 +3,8 @@ using System.Windows.Controls;
 using System.Windows.Automation;
 using System.Windows.Automation.Peers;
 using System.Windows.Input;
+using System.Windows.Media;
+using System.Windows.Media.Animation;
 using VNotch.Controls;
 using VNotch.Models;
 using VNotch.Services;
@@ -12,6 +14,8 @@ namespace VNotch;
 
 public partial class SettingsWindow
 {
+    private static readonly Color AiUsagePreviewRestBorderColor = Color.FromArgb(0x18, 0xFF, 0xFF, 0xFF);
+
     private bool _aiUsageCustomizationReady;
     private bool _updatingAiUsageCustomization;
     private bool _hasAiUsageAppearancePreview;
@@ -98,9 +102,16 @@ public partial class SettingsWindow
         foreach (var (input, error) in new[] { (AiUsageCodexColorInput, AiUsageCodexColorError), (AiUsageClaudeColorInput, AiUsageClaudeColorError) })
             if (error.Visibility == Visibility.Visible) ShowAiUsageColorError(input, error);
         AiUsageCustomizationPreview.PresentExample();
+        SyncAiUsageSampleDetails(animate: false);
     }
 
-    private void PublishAiUsageCustomization()
+    private void PublishAiUsageCustomization(FrameworkElement? anchor = null)
+    {
+        if (_isLoadingSettings || !_aiUsageCustomizationReady || _updatingAiUsageCustomization) return;
+        RunWithAiUsageScrollAnchor(anchor, ApplyAndPresentAiUsageCustomization);
+    }
+
+    private void ApplyAndPresentAiUsageCustomization()
     {
         if (_isLoadingSettings || !_aiUsageCustomizationReady || _updatingAiUsageCustomization) return;
         var snapshot = ReadSettingsFromUi();
@@ -108,19 +119,136 @@ public partial class SettingsWindow
         _hasAiUsageAppearancePreview = AiUsageAppearance.From(snapshot) != AiUsageAppearance.From(_editSession.Baseline);
         AiUsageCustomizationPreview.PresentExample();
         AiUsageSettingsPreview.Present();
+        TriggerAiUsagePreviewFeedback();
         PushLivePreview();
+    }
+
+    private void RunWithAiUsageScrollAnchor(FrameworkElement? anchor, Action update)
+    {
+        FrameworkElement? target = anchor is { IsVisible: true } ? anchor
+            : (AiUsageCustomizationTree is { IsVisible: true } ? AiUsageCustomizationTree : null);
+        bool canAnchor = target != null
+            && SettingsScrollViewer != null
+            && IsLoaded
+            && SettingsScrollViewer.IsAncestorOf(target);
+
+        double beforeY = canAnchor ? target!.TranslatePoint(new Point(0, 0), SettingsScrollViewer!).Y : 0;
+
+        update();
+
+        if (!canAnchor)
+        {
+            UpdateAiUsageStickyPreview();
+            return;
+        }
+
+        SettingsScrollViewer!.UpdateLayout();
+        if (target!.IsVisible && SettingsScrollViewer.IsAncestorOf(target))
+        {
+            double deltaY = target.TranslatePoint(new Point(0, 0), SettingsScrollViewer).Y - beforeY;
+            if (Math.Abs(deltaY) > 0.25)
+            {
+                double maxScroll = SettingsScrollViewer.ScrollableHeight;
+                double adjusted = Math.Clamp(SettingsScrollViewer.VerticalOffset + deltaY, 0, maxScroll);
+                if (_isScrollAnimating)
+                    _scrollTarget = Math.Clamp(_scrollTarget + deltaY, 0, maxScroll);
+                SettingsScrollViewer.ScrollToVerticalOffset(adjusted);
+                SettingsScrollViewer.UpdateLayout();
+            }
+        }
+
+        UpdateAiUsageStickyPreview();
+    }
+
+    private void UpdateAiUsageStickyPreview()
+    {
+        if (AiUsagePreviewStickyTransform == null || AiUsageStudioGrid == null ||
+            AiUsageCustomizationPreviewCard == null || SettingsScrollViewer == null)
+            return;
+
+        bool active = IsLoaded && PanelAiUsage?.IsVisible == true &&
+            AiUsageStudioGrid.IsVisible && SettingsScrollViewer.IsAncestorOf(AiUsageStudioGrid);
+        if (!active)
+        {
+            AiUsagePreviewStickyTransform.Y = 0;
+            return;
+        }
+
+        const double StickyTopInset = 12.0;
+        double gridTopInViewport = AiUsageStudioGrid.TranslatePoint(new Point(0, 0), SettingsScrollViewer).Y;
+        double naturalCardTopInGrid = AiUsageCustomizationPreviewCard.Margin.Top;
+        double naturalCardTopInViewport = gridTopInViewport + naturalCardTopInGrid;
+        double maxStickyTravel = Math.Max(0,
+            AiUsageStudioGrid.ActualHeight - naturalCardTopInGrid - AiUsageCustomizationPreviewCard.ActualHeight);
+
+        AiUsagePreviewStickyTransform.Y = Math.Clamp(StickyTopInset - naturalCardTopInViewport, 0, maxStickyTravel);
+    }
+
+    private void SyncAiUsageSampleDetails(bool animate)
+    {
+        if (AiUsageSampleDetailsText == null || AiUsageCustomizationPreview == null) return;
+        string summary = AiUsageCustomizationPreview.PreviewTooltipSummary;
+        bool changed = !string.Equals(AiUsageSampleDetailsText.Text, summary, StringComparison.Ordinal);
+        AiUsageSampleDetailsText.Text = summary;
+        AiUsageSampleDetailsText.Visibility = string.IsNullOrEmpty(summary) ? Visibility.Collapsed : Visibility.Visible;
+
+        if (!changed || !animate || string.IsNullOrEmpty(summary) ||
+            AnimationConfig.ReduceMotion || !SystemParameters.ClientAreaAnimation ||
+            AiUsageAppearance.Current.MotionIntensity <= 0)
+        {
+            return;
+        }
+
+        var ease = TryFindResource("InteractiveEaseOut") as IEasingFunction ?? new CubicEase { EasingMode = EasingMode.EaseOut };
+        var dur = TimeSpan.FromMilliseconds(220);
+
+        var fade = new DoubleAnimation(0.3, 0.82, dur) { EasingFunction = ease };
+        Timeline.SetDesiredFrameRate(fade, AnimationConfig.TargetFps);
+        AiUsageSampleDetailsText.BeginAnimation(OpacityProperty, fade, HandoffBehavior.SnapshotAndReplace);
+
+        if (AiUsageSampleDetailsTranslate != null)
+        {
+            var slide = new DoubleAnimation(4, 0, dur) { EasingFunction = ease };
+            Timeline.SetDesiredFrameRate(slide, AnimationConfig.TargetFps);
+            AiUsageSampleDetailsTranslate.BeginAnimation(TranslateTransform.YProperty, slide, HandoffBehavior.SnapshotAndReplace);
+        }
+    }
+
+    private void TriggerAiUsagePreviewFeedback()
+    {
+        SyncAiUsageSampleDetails(animate: true);
+        if (AiUsagePreviewCardBorder == null || AnimationConfig.ReduceMotion || !SystemParameters.ClientAreaAnimation ||
+            AiUsageAppearance.Current.MotionIntensity <= 0)
+            return;
+
+        Color accent = TryFindResource("AccentBrushStrong") is SolidColorBrush b
+            ? Color.FromArgb(0x90, b.Color.R, b.Color.G, b.Color.B)
+            : Color.FromArgb(0x55, 0xFF, 0xFF, 0xFF);
+
+        var ease = TryFindResource("InteractiveEaseOut") as IEasingFunction ?? new CubicEase { EasingMode = EasingMode.EaseOut };
+        var anim = new ColorAnimation(accent, AiUsagePreviewRestBorderColor, TimeSpan.FromMilliseconds(420)) { EasingFunction = ease };
+        Timeline.SetDesiredFrameRate(anim, AnimationConfig.TargetFps);
+        AiUsagePreviewCardBorder.BeginAnimation(SolidColorBrush.ColorProperty, anim, HandoffBehavior.SnapshotAndReplace);
     }
 
     private void AiUsageCustomize_Changed(object sender, RoutedEventArgs e)
     {
-        if (_aiUsageCustomizationReady) UpdateAiUsageColorAvailability();
-        PublishAiUsageCustomization();
+        if (_isLoadingSettings || _updatingAiUsageCustomization) return;
+        RunWithAiUsageScrollAnchor(sender as FrameworkElement, () =>
+        {
+            if (_aiUsageCustomizationReady) UpdateAiUsageColorAvailability();
+            ApplyAndPresentAiUsageCustomization();
+        });
     }
-    private void AiUsageCustomizationSlider_Changed(object sender, RoutedPropertyChangedEventArgs<double> e) => PublishAiUsageCustomization();
+    private void AiUsageCustomizationSlider_Changed(object sender, RoutedPropertyChangedEventArgs<double> e)
+        => PublishAiUsageCustomization(sender as FrameworkElement);
     private void AiUsageResetAppearance_Click(object sender, RoutedEventArgs e)
     {
-        LoadAiUsageCustomization(new NotchSettings());
-        PublishAiUsageCustomization();
+        RunWithAiUsageScrollAnchor(sender as FrameworkElement, () =>
+        {
+            LoadAiUsageCustomization(new NotchSettings());
+            ApplyAndPresentAiUsageCustomization();
+        });
     }
 
     private void UpdateAiUsageColorAvailability()
@@ -152,7 +280,7 @@ public partial class SettingsWindow
         ClearAiUsageColorError(input, error);
         if (codex) _aiUsageCodexColor = input.Text;
         else _aiUsageClaudeColor = input.Text;
-        PublishAiUsageCustomization();
+        PublishAiUsageCustomization(input);
     }
 
     private static void ShowAiUsageColorError(TextBox input, TextBlock error)

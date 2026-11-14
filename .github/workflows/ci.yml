@@ -139,12 +139,60 @@ jobs:
           if-no-files-found: error
           retention-days: 7
 
-  windows-validation:
-    name: Windows validation
+  windows-test:
+    name: Windows tests (shard ${{ matrix.shard }}/4)
     needs: preflight
     if: needs.preflight.outputs.windows == 'true'
     runs-on: windows-latest
-    timeout-minutes: 40
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [0, 1, 2, 3]
+    env:
+      NUGET_PACKAGES: ${{ github.workspace }}/.nuget/packages
+      DOTNET_SKIP_FIRST_TIME_EXPERIENCE: '1'
+      DOTNET_NOLOGO: '1'
+      DOTNET_CLI_TELEMETRY_OPTOUT: '1'
+    steps:
+      # actions/checkout@v4.2.2
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+
+      # actions/setup-dotnet@v4.3.1
+      - uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9
+        with:
+          global-json-file: global.json
+          cache: true
+          cache-dependency-path: |
+            packages.lock.json
+            Tests/packages.lock.json
+
+      - name: Restore test project
+        run: dotnet restore Tests/VNotch.Tests.csproj --locked-mode -nologo -v:q
+
+      - name: Build test project
+        run: dotnet build Tests/VNotch.Tests.csproj --configuration Release --no-restore -warnaserror -nologo -v:q -clp:NoSummary -m -p:SkipNativeCompile=true
+
+      - name: Run unit test shard ${{ matrix.shard }}
+        shell: pwsh
+        run: pwsh -NoProfile -File Tools/Invoke-TestShard.ps1 -ShardIndex ${{ matrix.shard }} -TotalShards 4 -ResultsDirectory TestResults/Coverage -CollectCoverage
+
+      - name: Upload shard coverage
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: coverage-shard-${{ matrix.shard }}
+          path: TestResults/Coverage/**/*.cobertura.xml
+          if-no-files-found: error
+          retention-days: 1
+
+  windows-validation:
+    name: Windows validation
+    needs: [preflight, windows-test]
+    if: needs.preflight.outputs.windows == 'true'
+    runs-on: windows-latest
+    timeout-minutes: 25
     env:
       NUGET_PACKAGES: ${{ github.workspace }}/.nuget/packages
       DOTNET_SKIP_FIRST_TIME_EXPERIENCE: '1'
@@ -180,13 +228,13 @@ jobs:
       - name: Build
         run: dotnet build V-Notch.sln --configuration Release --no-restore -warnaserror -nologo -v:q -clp:NoSummary -m -p:SkipNativeCompile=true
 
-      - name: Run unit tests
-        shell: pwsh
-        run: >-
-          dotnet test Tests/VNotch.Tests.csproj --configuration Release --no-build --no-restore
-          --filter "Category!=DesktopIntegration" --blame-hang-timeout 60s
-          --collect:"XPlat Code Coverage" --results-directory TestResults/Coverage
-          --logger "trx;LogFileName=unit-tests.trx" --logger "console;verbosity=minimal"
+      # actions/download-artifact@v4.3.0
+      - name: Download sharded coverage reports
+        uses: actions/download-artifact@d3f86a106a0bac45b975a628896c90dbdf5c8093
+        with:
+          pattern: coverage-shard-*
+          path: TestResults/Coverage
+          merge-multiple: true
 
       - name: Assert code coverage
         shell: pwsh
@@ -228,7 +276,7 @@ jobs:
 
   # Preserve the original required-check name while aggregating every gate.
   validate:
-    needs: [preflight, sast, windows-validation]
+    needs: [preflight, sast, windows-test, windows-validation]
     if: ${{ always() && !cancelled() }}
     runs-on: ubuntu-latest
     timeout-minutes: 2
@@ -240,6 +288,7 @@ jobs:
           PREFLIGHT: ${{ needs.preflight.result }}
           WINDOWS_REQUIRED: ${{ needs.preflight.outputs.windows }}
           SAST: ${{ needs.sast.result }}
+          TEST: ${{ needs.windows-test.result }}
           BUILD: ${{ needs.windows-validation.result }}
         run: |
           if [[ "$PREFLIGHT" != 'success' ]]; then
@@ -247,13 +296,13 @@ jobs:
             exit 1
           fi
           if [[ "$WINDOWS_REQUIRED" == 'true' ]]; then
-            for result in "$SAST" "$BUILD"; do
+            for result in "$SAST" "$TEST" "$BUILD"; do
               if [[ "$result" != 'success' ]]; then
-                echo 'A required security or Windows gate failed.' >&2
+                echo 'A required security, test, or Windows gate failed.' >&2
                 exit 1
               fi
             done
-          elif [[ "$WINDOWS_REQUIRED" != 'false' || "$SAST" != 'skipped' || "$BUILD" != 'skipped' ]]; then
+          elif [[ "$WINDOWS_REQUIRED" != 'false' || "$SAST" != 'skipped' || "$TEST" != 'skipped' || "$BUILD" != 'skipped' ]]; then
             echo 'Invalid documentation-only validation state.' >&2
             exit 1
           fi

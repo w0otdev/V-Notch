@@ -17,7 +17,7 @@ public sealed partial class TextShiftRegressionPolicyTests
     [Fact]
     public void LoadedContainersAndControlsNormalizeFormattingHintingAndLayoutRounding() => SharedStaTestRunner.Run(() =>
     {
-        TextRenderingPolicy.Register();
+        TextRenderingPolicy.Initialize();
 
         var explicitClearType = new TextBlock { Text = "ClearType" };
         TextOptions.SetTextRenderingMode(explicitClearType, TextRenderingMode.ClearType);
@@ -73,7 +73,7 @@ public sealed partial class TextShiftRegressionPolicyTests
     [Fact]
     public void SettledTransformAnimationMatchesStaticSubpixelRenderByteForByte() => SharedStaTestRunner.RunAsync(async ct =>
     {
-        TextRenderingPolicy.Register();
+        TextRenderingPolicy.Initialize();
 
         static Grid BuildSampleSurface(out ScaleTransform scale, out TranslateTransform translate)
         {

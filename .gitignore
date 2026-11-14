@@ -104,6 +104,8 @@ update_settings.ps1
 !/Tools/Assert-ModelAssets.ps1
 !/Tools/Assert-PackageAudit.ps1
 !/Tools/Assert-UpdateCompatibility.ps1
+!/Tools/Invoke-TestShard.ps1
+!/Tools/Test-PrePush.ps1
 !/Tools/validate_locales.py
 !/Tools/TestSupport/
 !/Tools/UpdateCompatibility/

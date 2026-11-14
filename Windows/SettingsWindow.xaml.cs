@@ -275,7 +275,7 @@ public partial class SettingsWindow : Window
         InteractionSoundsCheck.IsChecked = _settings.EnableInteractionSounds;
         InteractionSoundVolumeSlider.Value = _settings.InteractionSoundVolume * 100;
         UpdateInteractionSoundControls();
-        AnimationFpsSlider.IsEnabled = !_settings.AutoAnimationFps;
+        UpdateAnimationFpsDependentControls();
         EnableBlurEffectsCheck.IsChecked = _settings.EnableBlurEffects;
         MediaArtBackgroundCheck.IsChecked = _settings.ShowMediaArtBackground;
 

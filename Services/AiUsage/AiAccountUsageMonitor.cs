@@ -10,6 +10,7 @@ internal sealed class AiAccountUsageMonitor : IAsyncDisposable
     private readonly Func<DateTimeOffset> _utcNow;
     private readonly object _gate = new();
     private readonly SemaphoreSlim _refresh = new(1, 1);
+    private readonly AiQuotaNotifications _quotaNotifications = new();
     private CancellationTokenSource? _lifetime;
     private Task _loop = Task.CompletedTask;
     private readonly List<Task> _retired = [];
@@ -24,6 +25,7 @@ internal sealed class AiAccountUsageMonitor : IAsyncDisposable
     internal AiAccountUsage Codex { get; private set; } = new("Codex", AiUsageState.Disabled);
     internal AiAccountUsage Claude { get; private set; } = new("Claude", AiUsageState.Disabled);
     internal event EventHandler? Updated;
+    internal event Action<IReadOnlyList<AiQuotaAlert>>? QuotaLow;
 
     internal void ApplySettings(NotchSettings settings)
     {
@@ -106,12 +108,22 @@ internal sealed class AiAccountUsageMonitor : IAsyncDisposable
                     UnauthorizedAccessException or System.Text.Json.JsonException or InvalidOperationException or System.Net.Http.HttpRequestException)
                 { codex = new("Codex", AiUsageState.Unavailable); }
             }
+            List<AiQuotaAlert> alerts = [];
             lock (_gate)
             {
                 if (linked.IsCancellationRequested || _disposed || options != _options) return;
-                if (claude != null) Claude = claude;
-                if (codex != null) Codex = codex;
+                if (claude != null)
+                {
+                    Claude = claude;
+                    _quotaNotifications.Evaluate(claude, _utcNow(), alerts);
+                }
+                if (codex != null)
+                {
+                    Codex = codex;
+                    _quotaNotifications.Evaluate(codex, _utcNow(), alerts);
+                }
             }
+            if (alerts.Count > 0) QuotaLow?.Invoke(alerts);
             Updated?.Invoke(this, EventArgs.Empty);
         }
         finally { _refresh.Release(); }
@@ -130,6 +142,7 @@ internal sealed class AiAccountUsageMonitor : IAsyncDisposable
         }
         source?.Cancel();
         await Task.WhenAll(tasks).ConfigureAwait(false);
+        lock (_gate) _quotaNotifications.Dispose();
         _lifetime?.Dispose();
     }
 }
