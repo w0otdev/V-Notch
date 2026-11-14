@@ -78,7 +78,6 @@ public sealed class AiQuotaBanner : UserControl
             row.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
             row.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
             row.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
-            row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(44) });
             row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
             row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(64) });
             var slide = new TranslateTransform();
@@ -86,6 +85,11 @@ public sealed class AiQuotaBanner : UserControl
             ScaleTransform? logoScale = null;
             if (showProvider)
             {
+                var header = new StackPanel
+                {
+                    Orientation = Orientation.Horizontal,
+                    Margin = new Thickness(0, shownProviders.Count > 1 ? 12 : 0, 0, 8)
+                };
                 logoScale = new ScaleTransform(1, 1);
                 var logo = new Image
                 {
@@ -94,8 +98,14 @@ public sealed class AiQuotaBanner : UserControl
                     Stretch = Stretch.Uniform, VerticalAlignment = VerticalAlignment.Center,
                     RenderTransformOrigin = new Point(0.5, 0.5), RenderTransform = logoScale
                 };
-                Grid.SetRowSpan(logo, 2);
-                row.Children.Add(logo);
+                header.Children.Add(logo);
+                header.Children.Add(new TextBlock
+                {
+                    Text = alert.Provider, FontSize = 14, FontWeight = FontWeights.SemiBold,
+                    Foreground = UiPalette.PrimaryBrush, VerticalAlignment = VerticalAlignment.Center,
+                    Margin = new Thickness(10, 0, 0, 0)
+                });
+                _rows.Children.Add(header);
             }
 
             string windowLabel = Loc.Get(alert.Window.DurationMinutes switch
@@ -104,34 +114,22 @@ public sealed class AiQuotaBanner : UserControl
                 10080 => "aiUsage.sevenDay",
                 _ => alert.Window.LabelKey
             });
-            if (!string.IsNullOrEmpty(alert.Window.Bucket)) windowLabel += " · " + alert.Window.Bucket;
-            var identity = new Grid { Margin = new Thickness(0, 0, 10, 0) };
-            identity.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-            identity.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-            if (showProvider)
-                identity.Children.Add(new TextBlock
-                {
-                    Text = alert.Provider, FontSize = 14, FontWeight = FontWeights.SemiBold,
-                    Foreground = UiPalette.PrimaryBrush, VerticalAlignment = VerticalAlignment.Center
-                });
+            if (!string.IsNullOrEmpty(alert.Window.Bucket) &&
+                !string.Equals(alert.Window.Bucket, alert.Provider, StringComparison.OrdinalIgnoreCase))
+                windowLabel += " · " + alert.Window.Bucket;
             var cycle = new TextBlock
             {
-                Text = windowLabel, FontSize = 11.5, Foreground = UiPalette.SecondaryBrush,
-                Margin = new Thickness(showProvider ? 8 : 0, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center,
+                Text = windowLabel, FontSize = 13, FontWeight = FontWeights.SemiBold, Foreground = UiPalette.PrimaryBrush,
+                Margin = new Thickness(0, 0, 10, 0), VerticalAlignment = VerticalAlignment.Center,
                 TextTrimming = TextTrimming.CharacterEllipsis
             };
-            Grid.SetColumn(cycle, 1);
-            identity.Children.Add(cycle);
-            Grid.SetColumn(identity, 1);
-            row.Children.Add(identity);
+            row.Children.Add(cycle);
 
-            string caption = Loc.Get("aiUsage.quotaAlertCaption", alert.ThresholdPercent);
             var context = new TextBlock
             {
-                Text = caption, FontSize = 11.5, Foreground = UiPalette.SecondaryBrush,
+                Text = Loc.Get("aiUsage.remaining"), FontSize = 11.5, Foreground = UiPalette.SecondaryBrush,
                 Margin = new Thickness(0, 3, 8, 0), TextWrapping = TextWrapping.Wrap
             };
-            Grid.SetColumn(context, 1);
             Grid.SetRow(context, 1);
             row.Children.Add(context);
             var track = new Border
@@ -145,7 +143,6 @@ public sealed class AiQuotaBanner : UserControl
             var fill = new RoundedQuotaFill(accent);
             fill.SetValue(RoundedQuotaFill.ProgressProperty, alert.Window.RemainingPercent / 100);
             track.Child = fill;
-            Grid.SetColumn(track, 1);
             Grid.SetColumnSpan(track, 2);
             Grid.SetRow(track, 2);
             row.Children.Add(track);
@@ -157,11 +154,11 @@ public sealed class AiQuotaBanner : UserControl
                 HorizontalAlignment = HorizontalAlignment.Right
             };
             value.SetValue(PercentageText.PercentageProperty, alert.Window.RemainingPercent);
-            Grid.SetColumn(value, 2);
+            Grid.SetColumn(value, 1);
             Grid.SetRowSpan(value, 2);
             row.Children.Add(value);
             AutomationProperties.SetName(row, alert.Provider + ", " + windowLabel + ", " +
-                Loc.Get("aiUsage.left", alert.Window.RemainingPercent.ToString("0.#", Loc.GetCulture())) + ", " + caption);
+                Loc.Get("aiUsage.left", alert.Window.RemainingPercent.ToString("0.#", Loc.GetCulture())));
             _rows.Children.Add(row);
             _motionRows.Add(new(row, slide, logoScale, fill, value, alert.Window.RemainingPercent));
         }
