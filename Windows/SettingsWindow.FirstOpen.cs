@@ -139,6 +139,7 @@ public partial class SettingsWindow
         if (_backgroundInitializationStarted || IsDeferringBackgroundInitialization) return;
         _backgroundInitializationStarted = true;
 
+        LoadPerformancePresetsUi();
         LoadCameraDevices().SafeFireAndForget("SETTINGS-CAMERA-DEVICES");
         if (!_translationHardwareStarted)
         {

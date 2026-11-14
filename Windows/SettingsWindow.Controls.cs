@@ -606,6 +606,8 @@ public partial class SettingsWindow
         WidgetCombo.Items.Add(new System.Windows.Controls.ComboBoxItem { Content = Loc.Get("settings.widget.digitalclock"), Tag = "digitalclock" });
         WidgetCombo.Items.Add(new System.Windows.Controls.ComboBoxItem { Content = Loc.Get("settings.widget.weather"), Tag = WidgetWeather });
         WidgetCombo.Items.Add(new System.Windows.Controls.ComboBoxItem { Content = Loc.Get("settings.widget.sysmon"), Tag = WidgetSysMon });
+        // Dedicated NotchView.AiUsage replaces the legacy expanded widget option.
+        WidgetCombo.Items.Add(new System.Windows.Controls.ComboBoxItem { Content = Loc.Get("settings.widget.aiusage"), Tag = "aiusage" });
         WidgetCombo.Items.Add(new System.Windows.Controls.ComboBoxItem { Content = Loc.Get("settings.widget.none"), Tag = "none" });
         WidgetCombo.SelectedIndex = _settings.ExpandedWidget switch
         {
@@ -614,7 +616,8 @@ public partial class SettingsWindow
             "digitalclock" => 3,
             WidgetWeather => 4,
             WidgetSysMon => 5,
-            "none" => 6,
+"aiusage" => 6,
+"none" => 7,
             _ => 0
         };
     }
@@ -744,6 +747,7 @@ public partial class SettingsWindow
         {
             _settings.ProcessPriority = ProcessPriorityPolicy.Normalize(tag);
             ProcessPriorityPolicy.Apply(tag);
+            RefreshPerformancePresetSelectionUi(_settings);
 
             if (!string.Equals(_settings.ProcessPriority, _editSession.Baseline.ProcessPriority, StringComparison.OrdinalIgnoreCase))
             {
@@ -759,6 +763,7 @@ public partial class SettingsWindow
         {
             _settings.GpuPreference = val;
             ApplyEffectiveGpuPreference();
+            RefreshPerformancePresetSelectionUi(_settings);
         }
     }
 

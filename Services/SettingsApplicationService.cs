@@ -14,6 +14,11 @@ public sealed class SettingsApplicationService : ISettingsApplicationService
     private readonly IStartupManager _startupManager;
     private readonly SemaphoreSlim _applyGate = new(1, 1);
 
+    internal string? PresetBackupDirectory =>
+        (_settingsService as SettingsService)?.AppFolder is { Length: > 0 } appFolder
+            ? System.IO.Path.Combine(appFolder, "Presets")
+            : null;
+
     public event EventHandler<NotchSettings>? SettingsApplied;
 
     public SettingsApplicationService(ISettingsService settingsService, IStartupManager? startupManager = null)

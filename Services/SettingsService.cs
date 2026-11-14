@@ -190,6 +190,7 @@ public sealed partial class SettingsService : ISettingsService, IAsyncDisposable
 
     private readonly string _settingsPath;
     private readonly string _appFolder;
+    internal string AppFolder => _appFolder;
     private readonly Action<string> _apiKeySaveWarning;
     private readonly object _loadLock = new();
     private readonly object _cacheLock = new();
@@ -354,7 +355,7 @@ public sealed partial class SettingsService : ISettingsService, IAsyncDisposable
             bool isForwardVersion = settings.SettingsVersion > SettingsMigrator.CurrentVersion;
             bool migrationSaved = true;
 
-            if (!isForwardVersion && (migrated || normalized))
+            if ((!isForwardVersion && migrated) || normalized)
             {
                 RuntimeLog.Log(
                     LogCategoryLoad,
@@ -610,29 +611,31 @@ public sealed partial class SettingsService : ISettingsService, IAsyncDisposable
         System.Windows.MessageBox.Show(message, Loc.Get("error.settingsNotSavedTitle"),
             System.Windows.MessageBoxButton.OK, System.Windows.MessageBoxImage.Warning);
 
+    private static readonly string[] ProtectedCredentialKeys =
+    [
+        nameof(NotchSettings.YouTubeApiKey),
+        nameof(NotchSettings.SpotlightOpenAIApiKey),
+        nameof(NotchSettings.SpotlightGeminiApiKey),
+        nameof(NotchSettings.SpotlightClaudeApiKey),
+        nameof(NotchSettings.SpotlightDeepSeekApiKey),
+        nameof(NotchSettings.SpotifySpDc),
+        "PaxSenixApiKey",
+    ];
+
     private void RemovePlaintextKeySettingsFiles()
     {
         // Preserve recovery content and unknown fields; only protect plaintext credentials.
-        foreach (var path in Directory.GetFiles(_appFolder, "settings*.json"))
+        string fullSettingsPath = Path.GetFullPath(_settingsPath);
+        foreach (var path in Directory.EnumerateFiles(_appFolder, "settings*.json"))
         {
             try
             {
-                if (string.Equals(Path.GetFullPath(path), Path.GetFullPath(_settingsPath), StringComparison.OrdinalIgnoreCase)) continue;
+                if (string.Equals(Path.GetFullPath(path), fullSettingsPath, StringComparison.OrdinalIgnoreCase)) continue;
                 if (!IsGeneratedSettingsBackup(path) && Path.GetFileName(path) != "settings.bak-legacy.json") continue;
                 SafeFileDeletion.ValidatePath(path);
                 if (JsonNode.Parse(File.ReadAllText(path)) is not JsonObject document) continue;
                 bool changed = false;
-                foreach (string keyName in new[]
-                {
-                    nameof(NotchSettings.YouTubeApiKey),
-                    nameof(NotchSettings.SpotlightOpenAIApiKey),
-                    nameof(NotchSettings.SpotlightGeminiApiKey),
-                    nameof(NotchSettings.SpotlightClaudeApiKey),
-                    nameof(NotchSettings.SpotlightDeepSeekApiKey),
-
-                    nameof(NotchSettings.SpotifySpDc),
-                    "PaxSenixApiKey",
-                })
+                foreach (string keyName in ProtectedCredentialKeys)
                 {
                     if (document[keyName] is JsonValue key && key.TryGetValue<string>(out var value) &&
                         !string.IsNullOrEmpty(value) && !DataProtection.IsEncrypted(value))
@@ -641,17 +644,16 @@ public sealed partial class SettingsService : ISettingsService, IAsyncDisposable
                         changed = true;
                     }
                 }
-                if (changed)
+                if (!changed) continue;
+
+                string temporary = path + "." + Guid.NewGuid().ToString("N") + ".tmp";
+                try
                 {
-                    string temporary = path + "." + Guid.NewGuid().ToString("N") + ".tmp";
-                    try
-                    {
-                        File.WriteAllText(temporary, document.ToJsonString());
-                        SafeFileDeletion.ValidatePath(path);
-                        File.Replace(temporary, path, null);
-                    }
-                    finally { SafeFileDeletion.DeleteFile(temporary); }
+                    File.WriteAllText(temporary, document.ToJsonString());
+                    SafeFileDeletion.ValidatePath(path);
+                    File.Replace(temporary, path, null);
                 }
+                finally { SafeFileDeletion.DeleteFile(temporary); }
             }
             catch (JsonException)
             {
@@ -666,14 +668,29 @@ public sealed partial class SettingsService : ISettingsService, IAsyncDisposable
 
     private const int MaxSettingsBackups = 10;
 
-    private static bool IsGeneratedSettingsBackup(string path)
+    [LibraryImport(NativeDll, StringMarshalling = StringMarshalling.Utf16)]
+    private static partial int vn_settings_is_generated_backup_name(
+        ReadOnlySpan<char> name,
+        int len,
+        out byte outValid);
+
+    internal static bool IsGeneratedSettingsBackup(string path)
     {
-        string name = Path.GetFileName(path);
-        if (!name.StartsWith("settings.bak-", StringComparison.Ordinal) || !name.EndsWith(".json", StringComparison.Ordinal)) return false;
-        string stamp = name[13..^5];
-        if (stamp.Length == 52 && stamp[19] == '-' && Guid.TryParseExact(stamp[20..], "N", out _)) stamp = stamp[..19];
-        return DateTime.TryParseExact(stamp, "yyyyMMdd-HHmmss-fff", System.Globalization.CultureInfo.InvariantCulture,
-            System.Globalization.DateTimeStyles.None, out _);
+        if (string.IsNullOrEmpty(path)) return false;
+        ReadOnlySpan<char> name = Path.GetFileName(path.AsSpan());
+        return vn_settings_is_generated_backup_name(name, name.Length, out byte valid) == 0 && valid != 0;
+    }
+
+    private List<string> GetSortedSettingsBackups()
+    {
+        var backups = new List<string>();
+        foreach (string path in Directory.EnumerateFiles(_appFolder, "settings.bak-*.json"))
+        {
+            if (IsGeneratedSettingsBackup(path))
+                backups.Add(path);
+        }
+        backups.Sort(StringComparer.OrdinalIgnoreCase);
+        return backups;
     }
 
     private void BackupExistingSettings()
@@ -683,10 +700,8 @@ public sealed partial class SettingsService : ISettingsService, IAsyncDisposable
             string current = File.ReadAllText(_settingsPath);
             if (string.IsNullOrWhiteSpace(current)) return;
 
-            var existing = Directory.GetFiles(_appFolder, "settings.bak-*.json").Where(IsGeneratedSettingsBackup).ToArray();
-            Array.Sort(existing, StringComparer.OrdinalIgnoreCase);
-
-            if (existing.Length > 0)
+            var existing = GetSortedSettingsBackups();
+            if (existing.Count > 0)
             {
                 try
                 {
@@ -718,20 +733,17 @@ public sealed partial class SettingsService : ISettingsService, IAsyncDisposable
     {
         try
         {
-            var existing = Directory.GetFiles(_appFolder, "settings.bak-*.json").Where(IsGeneratedSettingsBackup).ToArray();
-            if (existing.Length > MaxSettingsBackups)
+            var existing = GetSortedSettingsBackups();
+            int excess = existing.Count - MaxSettingsBackups;
+            for (int i = 0; i < excess; i++)
             {
-                Array.Sort(existing, StringComparer.OrdinalIgnoreCase);
-                for (int i = 0; i < existing.Length - MaxSettingsBackups; i++)
+                try
                 {
-                    try
-                    {
-                        SafeFileDeletion.DeleteFile(existing[i]);
-                    }
-                    catch (Exception)
-                    {
-                        // Best effort cleanup of old backups
-                    }
+                    SafeFileDeletion.DeleteFile(existing[i]);
+                }
+                catch (Exception)
+                {
+                    // Best effort cleanup of old backups
                 }
             }
         }
@@ -888,6 +900,8 @@ public sealed partial class SettingsService : ISettingsService, IAsyncDisposable
         clone.SettingsVersion = SettingsMigrator.CurrentVersion;
 
         clone.SpotlightOpenAIApiKey = "";
+        clone.EnableAiUsageMonitoring = false;
+        clone.CodexUsageExecutable = "";
         clone.SpotlightGeminiApiKey = "";
         clone.SpotlightClaudeApiKey = "";
         clone.SpotlightDeepSeekApiKey = "";
@@ -904,6 +918,7 @@ public sealed partial class SettingsService : ISettingsService, IAsyncDisposable
         // Exclude sensitive credentials from export to prevent accidental leakage;
         // users re-authenticate on destination machines.
         settingsObj.Remove(nameof(NotchSettings.SpotlightOpenAIApiKey));
+        settingsObj.Remove(nameof(NotchSettings.CodexUsageExecutable));
         settingsObj.Remove(nameof(NotchSettings.SpotlightGeminiApiKey));
         settingsObj.Remove(nameof(NotchSettings.SpotlightClaudeApiKey));
         settingsObj.Remove(nameof(NotchSettings.SpotlightDeepSeekApiKey));
@@ -961,6 +976,9 @@ public sealed partial class SettingsService : ISettingsService, IAsyncDisposable
 
         // Security requirement: Treat imported settings as untrusted. Never import credentials.
         // Keep the local user's existing credentials intact.
+        // An imported path must never turn settings import into arbitrary program execution.
+        settings.EnableAiUsageMonitoring = currentSettings?.EnableAiUsageMonitoring ?? false;
+        settings.CodexUsageExecutable = currentSettings?.CodexUsageExecutable ?? "";
         settings.SpotlightOpenAIApiKey = currentSettings?.SpotlightOpenAIApiKey ?? "";
         settings.SpotlightGeminiApiKey = currentSettings?.SpotlightGeminiApiKey ?? "";
         settings.SpotlightClaudeApiKey = currentSettings?.SpotlightClaudeApiKey ?? "";

@@ -195,7 +195,6 @@ VN_EXPORT int32_t __stdcall vn_registry_watch_consume(int64_t, uint8_t*) noexcep
 VN_EXPORT int32_t __stdcall vn_registry_watch_close(int64_t) noexcept;
 VN_EXPORT int32_t __stdcall vn_media_title_watch_create(HANDLE, int64_t*) noexcept;
 VN_EXPORT int32_t __stdcall vn_media_title_watch_close(int64_t) noexcept;
-VN_EXPORT int32_t __stdcall vn_media_title_watch_set_target_pid(int64_t handle, uint32_t process_id) noexcept;
 VN_EXPORT int32_t __stdcall vn_media_title_watch_set_source(int64_t handle, const char16_t* source_app, int32_t source_app_len, uint8_t* out_active) noexcept;
 VN_EXPORT int32_t __stdcall vn_loopback_start_levels(const char16_t*, int32_t,
     void(__stdcall*)(int64_t, const float*, float), void(__stdcall*)(int64_t, int32_t), int64_t,
@@ -1264,7 +1263,7 @@ struct VnCaptionTrackMeta {
 #pragma pack(pop)
 #endif
 
-VN_EXPORT int32_t __stdcall vn_privacy_indicator_scan_consent_store(
+extern "C" int32_t __stdcall vn_privacy_indicator_scan_consent_store(
     const char16_t* capability,
     int32_t capability_len,
     VnConsentStoreEntry* out_entries,
@@ -1298,7 +1297,7 @@ VN_EXPORT int32_t __stdcall vn_lyrics_strip_title_extras(
     int32_t out_cap,
     int32_t* out_written) noexcept;
 
-VN_EXPORT int32_t __stdcall vn_youtube_subtitle_normalize_cue_text(
+extern "C" int32_t __stdcall vn_youtube_subtitle_normalize_cue_text(
     const char16_t* raw_text,
     int32_t raw_len,
     uint8_t strip_xml_tags,
@@ -1306,7 +1305,7 @@ VN_EXPORT int32_t __stdcall vn_youtube_subtitle_normalize_cue_text(
     int32_t out_cap,
     int32_t* out_written) noexcept;
 
-VN_EXPORT int32_t __stdcall vn_youtube_subtitle_clamp_timestamp_ticks(
+extern "C" int32_t __stdcall vn_youtube_subtitle_clamp_timestamp_ticks(
     int64_t raw_ms,
     double raw_seconds,
     uint8_t use_seconds,
@@ -1334,17 +1333,6 @@ VN_EXPORT int32_t __stdcall vn_media_metadata_extract_youtube_video_id(
     int32_t* out_start,
     int32_t* out_len,
     uint8_t* out_found) noexcept;
-
-VN_EXPORT int32_t __stdcall vn_media_metadata_score_youtube_track_match(
-    const char16_t* candidate_title,
-    int32_t candidate_title_len,
-    const char16_t* target_title,
-    int32_t target_title_len,
-    int64_t candidate_duration_sec,
-    int64_t target_duration_sec,
-    int32_t* out_score,
-    int32_t* out_duration_delta,
-    uint8_t* out_is_match) noexcept;
 
 // ---------------------------------------------------------------------------
 // AI Streaming, Markdown Extended & Settings Search Batch
@@ -1584,11 +1572,6 @@ struct VnDynamicFresnelStep
 #pragma pack(pop)
 VN_EXPORT int32_t __stdcall vn_glass_binder_compute_cpu_rim_opacities(
     double edge_highlight, double specular, double fresnel, double chroma, VnCpuRimOpacities* out_opacities) noexcept;
-VN_EXPORT int32_t __stdcall vn_glass_binder_build_fresnel_tint(
-    uint8_t red, uint8_t green, uint8_t blue, uint8_t* out_r, uint8_t* out_g, uint8_t* out_b) noexcept;
-VN_EXPORT int32_t __stdcall vn_glass_binder_interpolate_color(
-    uint8_t from_r, uint8_t from_g, uint8_t from_b, uint8_t to_r, uint8_t to_g, uint8_t to_b,
-    double amount, uint8_t* out_r, uint8_t* out_g, uint8_t* out_b) noexcept;
 VN_EXPORT int32_t __stdcall vn_glass_binder_step_dynamic_fresnel(
     int64_t now_ticks, int64_t last_ticks, double active_fresnel_level,
     double light_x, double light_y, double contrast,
@@ -1730,3 +1713,126 @@ VN_EXPORT int32_t __stdcall vn_gpu_monitor_find_best_adapter(
     int32_t out_name_cap,
     int32_t* out_name_len,
     uint64_t* out_dedicated_vram) noexcept;
+
+#pragma pack(push, 1)
+struct VnAiQuotaWindowVisualOut
+{
+    double clamped_used_percent;
+    double clamped_remaining_percent;
+    double row_opacity;
+    uint8_t is_expired;
+    uint8_t is_stale;
+    uint8_t severity_tier;
+    uint8_t reset_mode;
+    int32_t reset_hours;
+    int32_t reset_minutes;
+};
+
+struct VnAiProviderCardSummaryOut
+{
+    uint8_t show_quota_rows;
+    int32_t visible_window_count;
+    uint8_t is_stale;
+    uint8_t action_kind;
+};
+
+struct VnPerformancePresetState
+{
+    uint8_t auto_animation_fps;
+    int32_t animation_fps;
+    uint8_t enable_blur_effects;
+    uint8_t enable_subject_blur;
+    uint8_t enable_smart_crop;
+    uint8_t show_media_art_background;
+    uint8_t enable_shadow;
+    uint8_t is_liquid_glass;
+    uint8_t use_gpu_refraction;
+    uint8_t use_ultimate_gpu;
+    int32_t glass_target_fps;
+    int32_t gpu_preference;
+    int32_t process_priority;
+};
+static_assert(sizeof(VnPerformancePresetState) == 25);
+#pragma pack(pop)
+
+enum VnPerformancePresetId : int32_t
+{
+    VN_PERF_SELECTION_BACKUP = -2,
+    VN_PERF_SELECTION_CUSTOM = -1,
+    VN_PERF_PRESET_ECO = 0,
+    VN_PERF_PRESET_EVERYDAY = 1,
+    VN_PERF_PRESET_BALANCED = 2,
+    VN_PERF_PRESET_HIGH_END = 3,
+    VN_PERF_PRESET_COUNT = 4,
+};
+
+VN_EXPORT int32_t __stdcall vn_perf_preset_apply(
+    int32_t preset_id,
+    const VnPerformancePresetState* current_state,
+    VnPerformancePresetState* out_state) noexcept;
+
+VN_EXPORT int32_t __stdcall vn_perf_preset_match(
+    const VnPerformancePresetState* state,
+    int32_t* out_preset_id) noexcept;
+
+VN_EXPORT int32_t __stdcall vn_perf_preset_decide_selection(
+    const VnPerformancePresetState* current_state,
+    uint8_t has_backup,
+    uint8_t matches_backup_full,
+    uint8_t matches_last_preset_full,
+    int32_t preferred_selection,
+    int32_t* out_active_item,
+    uint8_t* out_should_backup_on_preset_select) noexcept;
+
+VN_EXPORT int32_t __stdcall vn_perf_preset_recommend_hardware_tier(
+    int32_t* out_preset_id) noexcept;
+
+VN_EXPORT int32_t __stdcall vn_ai_usage_compute_window_visual(
+    double used_percent,
+    int32_t duration_minutes,
+    uint8_t has_resets_at,
+    int64_t resets_at_utc_ticks,
+    uint8_t has_updated_at,
+    int64_t updated_at_utc_ticks,
+    int64_t now_utc_ticks,
+    VnAiQuotaWindowVisualOut* out_visual) noexcept;
+
+VN_EXPORT int32_t __stdcall vn_ai_usage_compute_card_summary(
+    int32_t state,
+    int32_t window_count,
+    uint8_t has_updated_at,
+    int64_t updated_at_utc_ticks,
+    int64_t now_utc_ticks,
+    VnAiProviderCardSummaryOut* out_summary) noexcept;
+
+VN_EXPORT int32_t __stdcall vn_ai_usage_resolve_claude_setup_state(
+    int32_t usage_state,
+    uint8_t has_settings_file,
+    uint8_t has_status_line,
+    uint8_t matches_bridge_command,
+    uint8_t has_custom_api_endpoint,
+    uint8_t* out_action_kind,
+    int32_t* out_prompt_mode) noexcept;
+
+VN_EXPORT int32_t __stdcall vn_settings_migrator_append_csv_token_if_missing(
+    const wchar_t* csv_ptr,
+    int32_t csv_len,
+    const wchar_t* token_ptr,
+    int32_t token_len,
+    wchar_t* out_buf,
+    int32_t out_cap,
+    int32_t* out_len) noexcept;
+
+VN_EXPORT int32_t __stdcall vn_text_build_font_spec(
+    const wchar_t* fallbacks_ptr,
+    int32_t fallbacks_len,
+    wchar_t* out_buf,
+    int32_t out_cap,
+    int32_t* out_len) noexcept;
+
+VN_EXPORT int32_t __stdcall vn_text_snap_bundled_weight(
+    int32_t requested_weight,
+    uint8_t is_bundled_sf_pro,
+    int32_t* out_weight) noexcept;
+
+

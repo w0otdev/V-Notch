@@ -17,6 +17,7 @@ using VNotch.Models;
 using VNotch.Modules;
 using VNotch.Presenters;
 using VNotch.Services;
+using VNotch.Services.AiUsage;
 
 namespace VNotch;
 
@@ -129,7 +130,8 @@ public partial class SettingsWindow
     private bool HasUncommittedLivePreview()
     {
         var baseline = _editSession.Baseline;
-        return !baseline.ValueEquals(_editSession.Applied)
+        return (_hasAiUsageAppearancePreview && AiUsageAppearance.Current != AiUsageAppearance.From(baseline))
+            || !baseline.ValueEquals(_editSession.Applied)
             || !baseline.ValueEquals(_settings)
             || !string.Equals(Loc.CurrentLanguage, baseline.Language, StringComparison.OrdinalIgnoreCase);
     }
@@ -140,6 +142,8 @@ public partial class SettingsWindow
         _hasRevertedLivePreview = true;
         var baseline = _editSession.Revert();
         _settings = baseline.Clone();
+        AiUsageAppearance.Apply(baseline);
+        _hasAiUsageAppearancePreview = false;
         AccentTheme.Apply(baseline.AccentColor, animate: IsLoaded);
         ApplyGpuPreference(GetEffectiveGpuPreference(baseline));
         InteractionSounds.Configure(baseline.EnableInteractionSounds, baseline.InteractionSoundVolume);
@@ -599,6 +603,7 @@ public partial class SettingsWindow
         snapshot.EnableHelloGreeting = HelloGreetingCheck.IsChecked ?? true;
         snapshot.EnableSpotlight = EnableSpotlightCheck.IsChecked ?? true;
         ReadSpotlightAiSettings(snapshot);
+        ReadAiUsageSettings(snapshot);
         ReadTranslationSettings(snapshot);
         snapshot.EnableDebugMode = EnableDebugModeCheck.IsChecked ?? false;
         snapshot.HideOnExclusiveFullscreen = HideOnExclusiveFullscreenCheck.IsChecked ?? true;
@@ -680,6 +685,7 @@ public partial class SettingsWindow
 
         bool hasChanges = _editSession.Preview(snapshot);
         _settings = snapshot.Clone();
+        RefreshPerformancePresetSelectionUi(_settings);
 
         if (hasChanges)
         {

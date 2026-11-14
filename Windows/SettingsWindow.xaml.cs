@@ -44,7 +44,7 @@ public partial class SettingsWindow : Window
     }
 
     private const string LogCategory = "SETTINGS";
-    private const string DefaultNavTabs = "Media,Secondary,Timer,AudioMixer,Camera";
+    private const string DefaultNavTabs = "Media,Secondary,Timer,AudioMixer,Camera,AiUsage";
     private const string SubtitlePriorityDataFormat = "SubtitlePriorityItem";
     private const string NavTabMedia = "Media";
     private const string WidgetClock = "clock";
@@ -66,6 +66,7 @@ public partial class SettingsWindow : Window
     private const string NavSectionSystem = "System";
     private const string NavSectionPrivacy = "Privacy";
     private const string NavSectionSpotlight = "Spotlight";
+    private const string NavSectionAiUsage = "AiUsage";
     private const string NavSectionFileTray = "FileTray";
     private const string NavSectionAdvanced = "Advanced";
     private const string NavSectionPerformance = "Performance";
@@ -127,6 +128,7 @@ public partial class SettingsWindow : Window
         _settings = settings.Clone();
         _editSession = new SettingsEditSession(settings);
         _settingsAppService = settingsAppService ?? throw new ArgumentNullException(nameof(settingsAppService));
+        CaptureProcessStartupPerformanceBaseline(settings);
         _isSpotlightHotkeyRegistered = isSpotlightHotkeyRegistered;
         _lastAppliedFps = settings.AnimationFps;
         _updatePresenter = new SettingsUpdatePresenter(updateService ?? new UpdateService(),
@@ -336,6 +338,7 @@ public partial class SettingsWindow : Window
         NotificationDurationSlider.Opacity = autoDismissEnabled ? 1.0 : 0.4;
         EnableSpotlightCheck.IsChecked = _settings.EnableSpotlight;
         LoadSpotlightAiSettings(_settings);
+        LoadAiUsageSettings();
         LoadTranslationSettings();
         EnableDebugModeCheck.IsChecked = _settings.EnableDebugMode;
         UpdateSpotlightHotkeyWarning();
@@ -380,6 +383,7 @@ public partial class SettingsWindow : Window
         _settings.ProcessPriority = ProcessPriorityPolicy.Normalize(_settings.ProcessPriority);
         ProcessPriorityCombo.SelectedItem = ProcessPriorityCombo.Items.OfType<System.Windows.Controls.ComboBoxItem>().FirstOrDefault(i => (string)i.Tag == _settings.ProcessPriority) ?? ProcessPriorityCombo.Items[0];
         GpuPreferenceCombo.SelectedItem = GpuPreferenceCombo.Items.OfType<System.Windows.Controls.ComboBoxItem>().FirstOrDefault(i => (string)i.Tag == _settings.GpuPreference.ToString()) ?? GpuPreferenceCombo.Items[0];
+        LoadPerformancePresetsUi();
 
         LocalOnlyModeCheck.IsChecked = _settings.EnableLocalOnlyMode;
         AutoCheckUpdatesCheck.IsChecked = _settings.AutoCheckUpdates;
@@ -513,6 +517,7 @@ public partial class SettingsWindow : Window
         EnableSpotlightCheck.Content = Loc.Get("settings.enableSpotlight");
         EnableSpotlightHint.Text = Loc.Get("settings.enableSpotlight.hint");
         LocalizeSpotlightAiSettings();
+        LocalizeAiUsageSettings();
         LocalizeTranslationSettings();
         if (TranslationModelProgress != null)
         {
@@ -534,6 +539,7 @@ public partial class SettingsWindow : Window
         NavSystemText.Text = Loc.Get("settings.nav.system");
         NavPrivacyText.Text = Loc.Get("settings.nav.privacy");
         NavSpotlightText.Text = Loc.Get("settings.nav.spotlight");
+        NavAiUsageText.Text = Loc.Get("nav.aiUsage");
         NavAdvancedText.Text = Loc.Get("settings.nav.advanced");
         NavPerformanceText.Text = Loc.Get("settings.nav.performance");
         NavDonatingText.Text = Loc.Get("settings.nav.donating");
@@ -1206,6 +1212,7 @@ public partial class SettingsWindow : Window
 
     private void ApplyGpuAndProcessLocalization()
     {
+        ApplyPerformancePresetsLocalization();
         if (GpuPreferenceLabel != null) GpuPreferenceLabel.Text = Loc.Get("settings.gpuPreference");
         if (GpuPreferenceHint != null) GpuPreferenceHint.Text = Loc.Get("settings.gpuPreference.hint");
         if (GpuPreferenceRestartNote != null) GpuPreferenceRestartNote.Text = Loc.Get("settings.gpuPreference.restart");
