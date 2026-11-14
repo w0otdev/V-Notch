@@ -58,6 +58,11 @@ bool IsDesktopShell(HWND hwnd) noexcept {
     return wcscmp(cls, L"Progman") == 0 || wcscmp(cls, L"WorkerW") == 0;
 }
 
+constexpr bool IsUnredirectedToolOverlay(LONG_PTR extendedStyle) noexcept {
+    const LONG_PTR overlay = WS_EX_TOOLWINDOW | WS_EX_NOREDIRECTIONBITMAP;
+    return (extendedStyle & overlay) == overlay;
+}
+
 // EnumWindows walks top to bottom, so layers[0] is the topmost window.
 BOOL CALLBACK CollectLayer(HWND hwnd, LPARAM param) noexcept {
     auto& state = *reinterpret_cast<EnumState*>(param);
@@ -168,7 +173,10 @@ HWND FindMismatchedLayer(HDC screen, const Dib& target, const RECT& area, const 
     const auto* pixels = static_cast<const uint32_t*>(target.bits);
     for (int i = 0; i < state.count; ++i) {
         const Layer& layer = state.layers[i];
-        if (std::find(scratch.verified.begin(), scratch.verified.end(), layer.hwnd) != scratch.verified.end())
+        const bool liveOverlay = IsUnredirectedToolOverlay(GetWindowLongPtrW(layer.hwnd, GWL_EXSTYLE));
+        // Shell materials can switch between opaque and transparent without a
+        // new HWND. A previous successful comparison is not valid for this frame.
+        if (!liveOverlay && std::find(scratch.verified.begin(), scratch.verified.end(), layer.hwnd) != scratch.verified.end())
             continue;
         RECT hit{};
         if (!IntersectRect(&hit, &layer.visible, &area)) continue;
@@ -186,8 +194,8 @@ HWND FindMismatchedLayer(HDC screen, const Dib& target, const RECT& area, const 
                 if (PixelDiffExceedsThreshold(mine, real)) ++mismatches;
             }
         }
-        if (samples > 0 && mismatches * 2 >= samples) return layer.hwnd;
-        if (samples > 0) scratch.verified.push_back(layer.hwnd);
+        if ((samples > 0 && mismatches * 2 >= samples) || (liveOverlay && samples == 0)) return layer.hwnd;
+        if (samples > 0 && !liveOverlay) scratch.verified.push_back(layer.hwnd);
     }
     return nullptr;
 }
@@ -318,9 +326,13 @@ bool Compose(Scratch& scratch, const RECT& area, std::vector<uint32_t>& out, boo
     if (!scratch.target.Ensure(screen, width, height)) return false;
     HDC dc = scratch.target.dc;
 
-    // Drop forgotten windows so a recycled handle is judged again.
-    scratch.bad.erase(std::remove_if(scratch.bad.begin(), scratch.bad.end(), [](HWND h) { return !IsWindow(h); }), scratch.bad.end());
-    scratch.verified.erase(std::remove_if(scratch.verified.begin(), scratch.verified.end(), [](HWND h) { return !IsWindow(h); }), scratch.verified.end());
+    // Never keep shell overlays permanently accepted or rejected: their material
+    // changes when a window is maximized or the desktop is revealed.
+    const auto forget = [](HWND h) {
+        return !IsWindow(h) || IsUnredirectedToolOverlay(GetWindowLongPtrW(h, GWL_EXSTYLE));
+    };
+    scratch.bad.erase(std::remove_if(scratch.bad.begin(), scratch.bad.end(), forget), scratch.bad.end());
+    scratch.verified.erase(std::remove_if(scratch.verified.begin(), scratch.verified.end(), forget), scratch.verified.end());
 
     const DWORD self_pid = GetCurrentProcessId();
     for (int attempt = 0; attempt < 3; ++attempt) {

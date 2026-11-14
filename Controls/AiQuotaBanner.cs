@@ -16,7 +16,7 @@ public sealed class AiQuotaBanner : UserControl
     private readonly List<MotionRow> _motionRows = [];
     private int _motionVersion;
 
-    private sealed record MotionRow(Grid View, TranslateTransform Slide, ScaleTransform LogoScale,
+    private sealed record MotionRow(Grid View, TranslateTransform Slide, ScaleTransform? LogoScale,
         RoundedQuotaFill Fill, PercentageText Percentage, double Target);
 
     private sealed class RoundedQuotaFill(Brush brush) : FrameworkElement
@@ -67,8 +67,10 @@ public sealed class AiQuotaBanner : UserControl
         CompleteMotion();
         _motionRows.Clear();
         _rows.Children.Clear();
-        foreach (var alert in alerts)
+        var shownProviders = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var alert in alerts.GroupBy(alert => alert.Provider, StringComparer.OrdinalIgnoreCase).SelectMany(group => group))
         {
+            bool showProvider = shownProviders.Add(alert.Provider);
             var color = alert.ThresholdPercent == 20 ? Color.FromRgb(0xF0, 0x7C, 0x7C) : Color.FromRgb(0xF5, 0xB8, 0x4B);
             var accent = new SolidColorBrush(color);
             accent.Freeze();
@@ -81,16 +83,20 @@ public sealed class AiQuotaBanner : UserControl
             row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(64) });
             var slide = new TranslateTransform();
             row.RenderTransform = slide;
-            var logoScale = new ScaleTransform(1, 1);
-            var logo = new Image
+            ScaleTransform? logoScale = null;
+            if (showProvider)
             {
-                Source = AiProviderBrand.For(alert.Provider), Width = 28, Height = 28,
-                HorizontalAlignment = HorizontalAlignment.Left,
-                Stretch = Stretch.Uniform, VerticalAlignment = VerticalAlignment.Center,
-                RenderTransformOrigin = new Point(0.5, 0.5), RenderTransform = logoScale
-            };
-            Grid.SetRowSpan(logo, 2);
-            row.Children.Add(logo);
+                logoScale = new ScaleTransform(1, 1);
+                var logo = new Image
+                {
+                    Source = AiProviderBrand.For(alert.Provider), Width = 28, Height = 28,
+                    HorizontalAlignment = HorizontalAlignment.Left,
+                    Stretch = Stretch.Uniform, VerticalAlignment = VerticalAlignment.Center,
+                    RenderTransformOrigin = new Point(0.5, 0.5), RenderTransform = logoScale
+                };
+                Grid.SetRowSpan(logo, 2);
+                row.Children.Add(logo);
+            }
 
             string windowLabel = Loc.Get(alert.Window.DurationMinutes switch
             {
@@ -102,15 +108,16 @@ public sealed class AiQuotaBanner : UserControl
             var identity = new Grid { Margin = new Thickness(0, 0, 10, 0) };
             identity.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
             identity.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-            identity.Children.Add(new TextBlock
-            {
-                Text = alert.Provider, FontSize = 14, FontWeight = FontWeights.SemiBold,
-                Foreground = UiPalette.PrimaryBrush, VerticalAlignment = VerticalAlignment.Center
-            });
+            if (showProvider)
+                identity.Children.Add(new TextBlock
+                {
+                    Text = alert.Provider, FontSize = 14, FontWeight = FontWeights.SemiBold,
+                    Foreground = UiPalette.PrimaryBrush, VerticalAlignment = VerticalAlignment.Center
+                });
             var cycle = new TextBlock
             {
                 Text = windowLabel, FontSize = 11.5, Foreground = UiPalette.SecondaryBrush,
-                Margin = new Thickness(8, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center,
+                Margin = new Thickness(showProvider ? 8 : 0, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center,
                 TextTrimming = TextTrimming.CharacterEllipsis
             };
             Grid.SetColumn(cycle, 1);
@@ -171,8 +178,11 @@ public sealed class AiQuotaBanner : UserControl
             int delay = 50 + Math.Min(i, 5) * 30;
             Animate(row.View, OpacityProperty, 0, 1, 180, delay, _easeAppleOut, version);
             Animate(row.Slide, TranslateTransform.YProperty, 4, 0, 300, delay, _easeAppleOut, version);
-            Animate(row.LogoScale, ScaleTransform.ScaleXProperty, .92, 1, 360, delay, _easeSoftSpring, version);
-            Animate(row.LogoScale, ScaleTransform.ScaleYProperty, .92, 1, 360, delay, _easeSoftSpring, version);
+            if (row.LogoScale is { } logoScale)
+            {
+                Animate(logoScale, ScaleTransform.ScaleXProperty, .92, 1, 360, delay, _easeSoftSpring, version);
+                Animate(logoScale, ScaleTransform.ScaleYProperty, .92, 1, 360, delay, _easeSoftSpring, version);
+            }
             // Fill and number use the same curve so the allowance always reads as one movement.
             Animate(row.Fill, RoundedQuotaFill.ProgressProperty, 0, row.Target / 100, 420, delay + 45, _easeAppleOut, version);
             Animate(row.Percentage, PercentageText.PercentageProperty, 0, row.Target, 420, delay + 45, _easeAppleOut, version);
@@ -228,9 +238,12 @@ public sealed class AiQuotaBanner : UserControl
             row.View.Opacity = 1;
             row.Slide.BeginAnimation(TranslateTransform.YProperty, null);
             row.Slide.Y = 0;
-            row.LogoScale.BeginAnimation(ScaleTransform.ScaleXProperty, null);
-            row.LogoScale.BeginAnimation(ScaleTransform.ScaleYProperty, null);
-            row.LogoScale.ScaleX = row.LogoScale.ScaleY = 1;
+            if (row.LogoScale is { } logoScale)
+            {
+                logoScale.BeginAnimation(ScaleTransform.ScaleXProperty, null);
+                logoScale.BeginAnimation(ScaleTransform.ScaleYProperty, null);
+                logoScale.ScaleX = logoScale.ScaleY = 1;
+            }
             row.Fill.BeginAnimation(RoundedQuotaFill.ProgressProperty, null);
             row.Fill.SetValue(RoundedQuotaFill.ProgressProperty, row.Target / 100);
             row.Percentage.BeginAnimation(PercentageText.PercentageProperty, null);

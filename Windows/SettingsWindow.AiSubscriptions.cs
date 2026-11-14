@@ -81,7 +81,7 @@ public partial class SettingsWindow
     {
         foreach (var (control, key) in new (TextBlock, string)[]
         {
-            (AiUsageConnectionsTitle, "connections"), (AiUsageCustomizeHint, "customizeHint"), (AiUsageSampleLabel, "samplePreview"),
+            (AiUsageConnectionsTitle, "connections"), (AiUsageCustomizeHint, "customizeHint"),
             (AiUsageOrderLabel, "order"), (AiUsageDensityLabel, "density"), (AiUsageMetricLabel, "metric"),
             (AiUsagePaletteLabel, "palette"), (AiUsageBarHeightLabel, "barHeight"), (AiUsageMotionLabel, "motion"),
             (AiUsageDetailsTitle, "visibleDetails"), (AiUsageColorsTitle, "colorsAndBars"), (AiUsageCustomizeTitle, "customize")
@@ -102,7 +102,6 @@ public partial class SettingsWindow
         foreach (var (input, error) in new[] { (AiUsageCodexColorInput, AiUsageCodexColorError), (AiUsageClaudeColorInput, AiUsageClaudeColorError) })
             if (error.Visibility == Visibility.Visible) ShowAiUsageColorError(input, error);
         AiUsageCustomizationPreview.PresentExample();
-        SyncAiUsageSampleDetails(animate: false);
     }
 
     private void PublishAiUsageCustomization(FrameworkElement? anchor = null)
@@ -184,39 +183,8 @@ public partial class SettingsWindow
         AiUsagePreviewStickyTransform.Y = Math.Clamp(StickyTopInset - naturalCardTopInViewport, 0, maxStickyTravel);
     }
 
-    private void SyncAiUsageSampleDetails(bool animate)
-    {
-        if (AiUsageSampleDetailsText == null || AiUsageCustomizationPreview == null) return;
-        string summary = AiUsageCustomizationPreview.PreviewTooltipSummary;
-        bool changed = !string.Equals(AiUsageSampleDetailsText.Text, summary, StringComparison.Ordinal);
-        AiUsageSampleDetailsText.Text = summary;
-        AiUsageSampleDetailsText.Visibility = string.IsNullOrEmpty(summary) ? Visibility.Collapsed : Visibility.Visible;
-
-        if (!changed || !animate || string.IsNullOrEmpty(summary) ||
-            AnimationConfig.ReduceMotion || !SystemParameters.ClientAreaAnimation ||
-            AiUsageAppearance.Current.MotionIntensity <= 0)
-        {
-            return;
-        }
-
-        var ease = TryFindResource("InteractiveEaseOut") as IEasingFunction ?? new CubicEase { EasingMode = EasingMode.EaseOut };
-        var dur = TimeSpan.FromMilliseconds(220);
-
-        var fade = new DoubleAnimation(0.3, 0.82, dur) { EasingFunction = ease };
-        Timeline.SetDesiredFrameRate(fade, AnimationConfig.TargetFps);
-        AiUsageSampleDetailsText.BeginAnimation(OpacityProperty, fade, HandoffBehavior.SnapshotAndReplace);
-
-        if (AiUsageSampleDetailsTranslate != null)
-        {
-            var slide = new DoubleAnimation(4, 0, dur) { EasingFunction = ease };
-            Timeline.SetDesiredFrameRate(slide, AnimationConfig.TargetFps);
-            AiUsageSampleDetailsTranslate.BeginAnimation(TranslateTransform.YProperty, slide, HandoffBehavior.SnapshotAndReplace);
-        }
-    }
-
     private void TriggerAiUsagePreviewFeedback()
     {
-        SyncAiUsageSampleDetails(animate: true);
         if (AiUsagePreviewCardBorder == null || AnimationConfig.ReduceMotion || !SystemParameters.ClientAreaAnimation ||
             AiUsageAppearance.Current.MotionIntensity <= 0)
             return;

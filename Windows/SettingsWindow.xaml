@@ -3018,13 +3018,6 @@
                                                     </Border.RenderTransform>
                                                     <StackPanel>
                                                         <controls:AiUsageStatWidget x:Name="AiUsageCustomizationPreview" IsPreview="True" IsHitTestVisible="False" Focusable="False" KeyboardNavigation.IsTabStop="False" HorizontalAlignment="Center"/>
-                                                        <Rectangle Height="1" Fill="#14FFFFFF" Margin="0,14,0,10"/>
-                                                        <TextBlock x:Name="AiUsageSampleLabel" Style="{StaticResource SettingHintText}" TextWrapping="Wrap" TextAlignment="Center" Margin="0" FontFamily="{fonts:AppFont}" FontWeight="Bold"/>
-                                                        <TextBlock x:Name="AiUsageSampleDetailsText" Style="{StaticResource SettingHintText}" Opacity="0.82" Margin="0,4,0,0" TextWrapping="Wrap" TextAlignment="Center" FontSize="11" FontFamily="{fonts:AppFont}" FontWeight="SemiBold">
-                                                            <TextBlock.RenderTransform>
-                                                                <TranslateTransform x:Name="AiUsageSampleDetailsTranslate"/>
-                                                            </TextBlock.RenderTransform>
-                                                        </TextBlock>
                                                     </StackPanel>
                                                 </Border>
                                             </Grid>

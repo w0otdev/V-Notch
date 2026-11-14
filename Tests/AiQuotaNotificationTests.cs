@@ -22,15 +22,32 @@ public sealed class AiQuotaNotificationTests
     }
 
     [Theory]
+    [InlineData(59)]
+    [InlineData(90)]
+    public void StartupBaselineDoesNotRepeatExistingLowQuotaAlerts(double used)
+    {
+        // Restarting creates a fresh tracker, but must not replay existing low quota.
+        for (int restart = 0; restart < 2; restart++)
+        {
+            using var tracker = new AiQuotaNotifications();
+            Assert.Empty(Evaluate(tracker, Usage(used)));
+            Assert.Empty(Evaluate(tracker, Usage(used)));
+            if (used < 80)
+                Assert.Equal(20, Assert.Single(Evaluate(tracker, Usage(81))).ThresholdPercent);
+        }
+    }
+
+    [Theory]
     [InlineData(0, 0)]
     [InlineData(50, 0)]
     [InlineData(50.01, 50)]
     [InlineData(80, 50)]
     [InlineData(80.01, 20)]
     [InlineData(100, 20)]
-    public void FirstFreshSampleUsesStrictRemainingThresholds(double used, int threshold)
+    public void FreshThresholdCrossingsUseStrictRemainingPercentages(double used, int threshold)
     {
         using var tracker = new AiQuotaNotifications();
+        Assert.Empty(Evaluate(tracker, Usage(0)));
         var alerts = Evaluate(tracker, Usage(used));
         if (threshold == 0) Assert.Empty(alerts);
         else Assert.Equal(threshold, Assert.Single(alerts).ThresholdPercent);
@@ -70,6 +87,7 @@ public sealed class AiQuotaNotificationTests
     public void InvalidPercentagesDoNotConsumeAlerts(double used)
     {
         using var tracker = new AiQuotaNotifications();
+        Assert.Empty(Evaluate(tracker, Usage(0)));
         Assert.Empty(Evaluate(tracker, Usage(used)));
         Assert.Equal(20, Assert.Single(Evaluate(tracker, Usage(95))).ThresholdPercent);
     }
@@ -78,6 +96,7 @@ public sealed class AiQuotaNotificationTests
     public void StaleMissingFutureExpiredAndNonReadySamplesDoNotConsumeAlerts()
     {
         using var tracker = new AiQuotaNotifications();
+        Assert.Empty(Evaluate(tracker, Usage(0)));
         var usage = Usage(90);
         Assert.Empty(Evaluate(tracker, usage with { UpdatedAt = Now.AddMinutes(-11) }));
         Assert.Empty(Evaluate(tracker, usage with { UpdatedAt = null }));
@@ -92,6 +111,7 @@ public sealed class AiQuotaNotificationTests
     public void NewCycleRearmsOnlyAfterFreshProviderDataArrives()
     {
         using var tracker = new AiQuotaNotifications();
+        Assert.Empty(Evaluate(tracker, Usage(0)));
         var usage = Usage(90);
         Assert.Equal(20, Assert.Single(Evaluate(tracker, usage)).ThresholdPercent);
         var later = Now.AddHours(2);
@@ -104,6 +124,7 @@ public sealed class AiQuotaNotificationTests
     public void ResetlessProvidersRearmAfterFreshRecovery()
     {
         using var tracker = new AiQuotaNotifications();
+        Assert.Empty(Evaluate(tracker, Usage(0, hasReset: false)));
         Assert.Equal(20, Assert.Single(Evaluate(tracker, Usage(90, hasReset: false))).ThresholdPercent);
         Assert.Empty(Evaluate(tracker, Usage(90, hasReset: false)));
         Assert.Empty(Evaluate(tracker, Usage(40, hasReset: false)));
@@ -115,19 +136,25 @@ public sealed class AiQuotaNotificationTests
     {
         using var tracker = new AiQuotaNotifications();
         var usage = Usage(90);
-        Assert.Single(Evaluate(tracker, usage));
-        Assert.Single(Evaluate(tracker, usage with { Provider = "Claude" }));
-        Assert.Single(Evaluate(tracker, usage with { AccountLabel = "second@example.test" }));
-        Assert.Single(Evaluate(tracker, usage with { Windows = [usage.Windows![0] with { Bucket = "codex-mini" }] }));
-        Assert.Single(Evaluate(tracker, usage with
-        { Windows = [usage.Windows![0] with { LabelKey = "aiUsage.secondary", DurationMinutes = 10080 }] }));
-        Assert.Empty(Evaluate(tracker, usage));
+        AiAccountUsage[] histories =
+        [
+            usage,
+            usage with { Provider = "Claude" },
+            usage with { AccountLabel = "second@example.test" },
+            usage with { Windows = [usage.Windows![0] with { Bucket = "codex-mini" }] },
+            usage with { Windows = [usage.Windows![0] with { LabelKey = "aiUsage.secondary", DurationMinutes = 10080 }] }
+        ];
+        foreach (var sample in histories)
+            Assert.Empty(Evaluate(tracker, sample with { Windows = [sample.Windows![0] with { UsedPercent = 0 }] }));
+        foreach (var sample in histories) Assert.Single(Evaluate(tracker, sample));
+        foreach (var sample in histories) Assert.Empty(Evaluate(tracker, sample));
     }
 
     [Fact]
     public void OlderSamplesCannotRearmOrConsumeANewerCycle()
     {
         using var tracker = new AiQuotaNotifications();
+        Assert.Empty(Evaluate(tracker, Usage(0)));
         Assert.Single(Evaluate(tracker, Usage(90, Now.AddSeconds(20)), Now.AddSeconds(20)));
         Assert.Empty(Evaluate(tracker, Usage(40), Now.AddSeconds(20)));
         Assert.Empty(Evaluate(tracker, Usage(90, Now.AddSeconds(30)), Now.AddSeconds(30)));
@@ -139,15 +166,21 @@ public sealed class AiQuotaNotificationTests
         var usage = Usage(90) with
         {
             Provider = "Claude",
-            Windows = [Usage(90).Windows![0], new("aiUsage.sevenDay", 60, 10080, Now.AddDays(1))]
+            Windows = [Usage(0).Windows![0], new("aiUsage.sevenDay", 0, 10080, Now.AddDays(1))]
         };
         await using var monitor = new AiAccountUsageMonitor(new FakeCodex(_ => Task.FromResult(Usage(90))), () => usage, () => Now);
         var received = new TaskCompletionSource<IReadOnlyList<AiQuotaAlert>>(TaskCreationOptions.RunContinuationsAsynchronously);
         var batches = new ConcurrentQueue<IReadOnlyList<AiQuotaAlert>>();
+        var initialized = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        monitor.Updated += (_, _) => { if (monitor.Claude.State == AiUsageState.Ready) initialized.TrySetResult(); };
         monitor.QuotaLow += alerts => { batches.Enqueue(alerts); received.TrySetResult(alerts); };
         await monitor.RefreshAsync();
         Assert.Empty(batches);
         monitor.ApplySettings(new() { EnableAiUsageMonitoring = true, EnableLocalOnlyMode = true });
+        await initialized.Task.WaitAsync(TimeSpan.FromSeconds(3));
+        Assert.Empty(batches);
+        usage = usage with { Windows = [Usage(90).Windows![0], new("aiUsage.sevenDay", 60, 10080, Now.AddDays(1))] };
+        await monitor.RefreshAsync();
         var alerts = await received.Task.WaitAsync(TimeSpan.FromSeconds(3));
         Assert.Equal(new[] { 20, 50 }, alerts.Select(alert => alert.ThresholdPercent));
         Assert.All(alerts, alert => Assert.Equal("Claude", alert.Provider));
@@ -156,6 +189,31 @@ public sealed class AiQuotaNotificationTests
         monitor.ApplySettings(new());
         await monitor.RefreshAsync();
         Assert.Single(batches);
+    }
+
+    [Fact]
+    public async Task StartingMonitorAtFortyOnePercentIsQuietButLaterCrossingsStillNotify()
+    {
+        var now = Now;
+        var usage = Usage(59) with
+        {
+            Windows = [Usage(59).Windows![0], new("aiUsage.sevenDay", 59, 10080, Now.AddDays(1), "codex")]
+        };
+        await using var monitor = new AiAccountUsageMonitor(new FakeCodex(_ => Task.FromResult(usage)), utcNow: () => now);
+        var initialized = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var batches = new ConcurrentQueue<IReadOnlyList<AiQuotaAlert>>();
+        monitor.QuotaLow += batches.Enqueue;
+        monitor.Updated += (_, _) => { if (monitor.Codex.State == AiUsageState.Ready) initialized.TrySetResult(); };
+        monitor.ApplySettings(new() { EnableAiUsageMonitoring = true, TrackClaudeUsage = false });
+        await initialized.Task.WaitAsync(TimeSpan.FromSeconds(3));
+        Assert.Empty(batches);
+
+        now = now.AddMinutes(3);
+        usage = usage with { UpdatedAt = now, Windows = [usage.Windows![0] with { UsedPercent = 81 }, usage.Windows[1]] };
+        await monitor.RefreshAsync();
+        var alert = Assert.Single(Assert.Single(batches));
+        Assert.Equal(20, alert.ThresholdPercent);
+        Assert.Equal("aiUsage.primary", alert.Window.LabelKey);
     }
 
     [Fact]

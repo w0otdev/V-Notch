@@ -89,8 +89,11 @@ VN_EXPORT int32_t __stdcall vn_ai_quota_notifications_evaluate(
                 { return entry.reset != 0 && entry.reset <= now_utc_ticks; });
                 if (entries.size() >= kMaxEntries) return VN_OK;
             }
+            // The first fresh sample is a baseline, not a threshold crossing.
+            // Opening the app must not replay quota that was already low.
+            const uint8_t initial_levels = static_cast<uint8_t>(used_percent > 80 ? 3 : used_percent > 50 ? 1 : 0);
             entries.push_back({ provider, std::wstring(account), std::wstring(bucket), std::wstring(label),
-                duration_minutes, reset_utc_ticks, updated_utc_ticks, 0 });
+                duration_minutes, reset_utc_ticks, updated_utc_ticks, initial_levels });
             it = entries.end() - 1;
         }
         if (updated_utc_ticks < it->observed) return VN_OK;
