@@ -568,7 +568,6 @@ public partial class MainWindow
             {
                 VolumeIndicatorPercentText.Text = pctText;
                 VolumeIndicatorPercentText.Measure(new Size(double.PositiveInfinity, double.PositiveInfinity));
-
             }
             double desiredLabelW = VolumeIndicatorPercentText.DesiredSize.Width > 0 ? VolumeIndicatorPercentText.DesiredSize.Width : approxLabelWidth;
             double measuredLabelW = VolumeIndicatorPercentText.ActualWidth > 0 ? VolumeIndicatorPercentText.ActualWidth : desiredLabelW;

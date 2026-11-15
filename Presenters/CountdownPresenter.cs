@@ -90,33 +90,6 @@ public sealed class CountdownPresenter : IDisposable
         _repeatCount = 0;
     }
 
-    public void AnimateDigitBump(double magnitude = 1.0)
-    {
-        if (_disposed || AnimationConfig.ReduceMotion) return;
-
-        _refs.DisplayScale.BeginAnimation(ScaleTransform.ScaleXProperty, null);
-        _refs.DisplayScale.BeginAnimation(ScaleTransform.ScaleYProperty, null);
-        _refs.DisplayScale.ScaleX = 1.0;
-        _refs.DisplayScale.ScaleY = 1.0;
-
-        double targetScale = 1.0 + 0.05 * Math.Clamp(magnitude, 0.4, 2.5);
-        var durUp = TimeSpan.FromMilliseconds(65);
-        var durDown = TimeSpan.FromMilliseconds(160);
-
-        var upX = MakeAnim(1.0, targetScale, new Duration(durUp), _easeQuadOut);
-        var upY = MakeAnim(1.0, targetScale, new Duration(durUp), _easeQuadOut);
-        var settle = MakeAnim(targetScale, 1.0, new Duration(durDown), _easeQuadOut);
-
-        upX.Completed += (_, _) => _refs.DisplayScale.BeginAnimation(ScaleTransform.ScaleXProperty, settle);
-        upY.Completed += (_, _) => _refs.DisplayScale.BeginAnimation(ScaleTransform.ScaleYProperty, settle);
-
-        _refs.DisplayScale.BeginAnimation(ScaleTransform.ScaleXProperty, upX);
-        _refs.DisplayScale.BeginAnimation(ScaleTransform.ScaleYProperty, upY);
-
-        AnimateDigitFlash();
-        AnimatePanelBorderFlash();
-    }
-
     public void AnimateDigitFlash()
     {
         if (_disposed || AnimationConfig.ReduceMotion) return;

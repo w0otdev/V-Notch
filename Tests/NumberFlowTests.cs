@@ -48,7 +48,44 @@ public sealed class NumberFlowTests
         Assert.All(parts.Where(p => p.Digit >= 0), p => Assert.Equal(-1, p.Trend));
         Assert.Equal(6, parts[3].Radix);
         Assert.Equal(-1, NumberFlowValue.Destination(0, 5, -1, parts[3].Radix));
+        var stacked = NumberFlowValue.Split("13\n00", "12\n59");
+        Assert.All(stacked.Where(p => p.Digit >= 0), p => Assert.Equal(1, p.Trend));
+        Assert.Equal(6, stacked[3].Radix);
     }
+
+    [Fact]
+    public void RebuiltQuotaRowsCarryValuesWithoutReplacingTextOrInlineFormatting() => SharedStaTestRunner.RunAsync(async () =>
+    {
+        bool reduce = AnimationConfig.ReduceMotion;
+        var system = AnimationConfig.ClientAreaAnimationOverride;
+        AnimationConfig.SetReduceMotion(false);
+        AnimationConfig.ClientAreaAnimationOverride = true;
+        var panel = new StackPanel();
+        var old = new NumberFlowText { Name = "Quota", Text = "82% left", FontSize = 14 };
+        panel.Children.Add(old);
+        var window = new Window { Content = new AdornerDecorator { Child = panel }, Width = 300, Height = 160, ShowInTaskbar = false };
+        try
+        {
+            window.Show(); await Task.Delay(50);
+            var snapshot = new NumberFlowSnapshot();
+            snapshot.Capture(panel);
+            panel.Children.Clear();
+            var next = new NumberFlowText { Name = "Quota", Text = "79% left", FontSize = 14 };
+            AiUsageTypography.EmphasizePercent(next, next.Text, 79, 26);
+            var numberRun = next.Inlines.FirstInline;
+            panel.Children.Add(next);
+            snapshot.Restore(panel);
+            await Task.Delay(70);
+            Assert.True(next.IsAnimating);
+            Assert.Equal("79% left", next.Text);
+            Assert.Same(numberRun, next.Inlines.FirstInline);
+            Assert.Equal(26, numberRun.FontSize);
+            await Task.Delay(550);
+            Assert.False(next.IsAnimating);
+            Assert.Null(next.OpacityMask);
+        }
+        finally { window.Close(); AnimationConfig.SetReduceMotion(reduce); AnimationConfig.ClientAreaAnimationOverride = system; }
+    });
 
     [Fact]
     public void BindingAutomationInterruptionAndLifetimeUseTheFinalValue() => SharedStaTestRunner.RunAsync(async () =>

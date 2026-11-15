@@ -781,7 +781,7 @@
                                     <Grid x:Name="AiModelPill" Grid.Column="1" VerticalAlignment="Center">
                                         <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
                                         <Image x:Name="AiProviderLogo" Width="15" Height="15" Stretch="Uniform" Margin="0,0,7,0"/>
-                                        <TextBlock x:Name="AiModeLabel" Grid.Column="1" Foreground="{StaticResource AiPrimaryBrush}" FontFamily="{StaticResource SFProDisplay}" FontWeight="SemiBold" FontSize="12" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" TextWrapping="NoWrap"/>
+                                        <flow:NumberFlowText x:Name="AiModeLabel" Grid.Column="1" Foreground="{StaticResource AiPrimaryBrush}" FontFamily="{StaticResource SFProDisplay}" FontWeight="SemiBold" FontSize="12" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" TextWrapping="NoWrap"/>
                                     </Grid>
                                 </Grid>
 

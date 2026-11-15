@@ -8,7 +8,7 @@ internal static partial class NumberFlowValue
 {
     internal readonly record struct Part(string Key, int Index, char Character, int Digit, int Trend, int Radix = 10);
 
-    [GeneratedRegex(@"^\d{1,3}:\d{2}(?::\d{2})?$")]
+    [GeneratedRegex(@"^[0-9]{1,3}[:\n][0-9]{2}(?::[0-9]{2})?$")]
     private static partial Regex Clock();
 
     [GeneratedRegex(@"[\p{Nd}]+(?:[.,\u066b\u066c][\p{Nd}]+)*")]
@@ -21,7 +21,7 @@ internal static partial class NumberFlowValue
         var old = Numbers().Matches(previous);
         var current = Numbers().Matches(text);
         bool clock = Clock().IsMatch(text) && Clock().IsMatch(previous);
-        static long ClockValue(string value) => value.Split(':').Aggregate(0L, (total, part) => total * 60 + long.Parse(part, CultureInfo.InvariantCulture));
+        static long ClockValue(string value) => value.Replace('\n', ':').Split(':').Aggregate(0L, (total, part) => total * 60 + long.Parse(part, CultureInfo.InvariantCulture));
         int clockTrend = clock ? ClockValue(text).CompareTo(ClockValue(previous)) : 0;
         int end = 0;
         for (int group = 0; group < current.Count; group++)

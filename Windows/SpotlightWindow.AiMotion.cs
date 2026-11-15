@@ -28,7 +28,8 @@ public partial class SpotlightWindow
                 Margin = new Thickness(64, 4, 0, 16),
                 MaxWidth = 520,
                 CornerRadius = new CornerRadius(18),
-                Padding = new Thickness(16, 12, 16, 12)
+                // Balance the visible glyphs around SF Pro's baseline, not just the line box.
+                Padding = new Thickness(16, 10, 16, 14)
             };
             userContainer.SetResourceReference(Border.BackgroundProperty, "AccentChatBubbleBrush");
 
@@ -41,6 +42,8 @@ public partial class SpotlightWindow
                 Foreground = Controls.SpotlightChatPalette.Primary,
                 TextWrapping = TextWrapping.Wrap,
                 LineHeight = 22,
+                LineStackingStrategy = LineStackingStrategy.BlockLineHeight,
+                VerticalAlignment = VerticalAlignment.Center,
                 TextAlignment = TextAlignment.Left
             };
             System.Windows.Automation.AutomationProperties.SetName(textBlock, Loc.Get("spotlight.ai.you") + ": " + message.Content);

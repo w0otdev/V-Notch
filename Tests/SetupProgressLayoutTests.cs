@@ -16,7 +16,7 @@ public sealed class SetupProgressLayoutTests
         var page = new InstallProgressPage();
         var elements = page.GetAnimatedElements();
         var heading = Assert.IsType<TextBlock>(elements[0]);
-        var status = Assert.IsType<TextBlock>(elements[1]);
+        var status = Assert.IsAssignableFrom<TextBlock>(elements[1]);
         var progress = Assert.IsType<ProgressBar>(elements[2]);
         foreach (string text in new[] { "Preparing...", "Installing runtimes/win-x64/native/vulkan/ggml-vulkan.dll..." })
         {
@@ -34,7 +34,7 @@ public sealed class SetupProgressLayoutTests
         BackgroundTestWindows.EnsureApplicationResources();
         var page = new InstallProgressPage();
         var elements = page.GetAnimatedElements();
-        var status = Assert.IsType<TextBlock>(elements[1]);
+        var status = Assert.IsAssignableFrom<TextBlock>(elements[1]);
         var progress = Assert.IsType<ProgressBar>(elements[2]);
         page.ShowIndeterminate("Preparing...");
         Arrange(page, 544);

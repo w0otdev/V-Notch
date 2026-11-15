@@ -151,13 +151,6 @@ public sealed partial class CountdownView : UserControl, IDisposable
         PlayButtonPressAnimation(button);
     }
 
-    // Trigger digit scale bump on soft spring, glyph amber flash, and capsule
-    // border pulse on state changes.
-    private void AnimateCountdownDigitBump(double magnitude = 1.0)
-    {
-        CountdownPresenter.AnimateDigitBump(magnitude);
-    }
-
     private void AnimateCountdownDigitFlash()
     {
         CountdownPresenter.AnimateDigitFlash();
@@ -228,7 +221,7 @@ public sealed partial class CountdownView : UserControl, IDisposable
         if (CountdownController.AdjustDuration(direction))
         {
             SetCountdownProgress(animate: true);
-            AnimateCountdownDigitBump();
+            AnimateCountdownPanelBorderFlash();
         }
     }
 
@@ -293,7 +286,7 @@ public sealed partial class CountdownView : UserControl, IDisposable
         CountdownController.Reset();
         SetCountdownStartVisual(false);
         SetCountdownProgress(animate: true);
-        AnimateCountdownDigitBump(1.2);
+        AnimateCountdownPanelBorderFlash();
     }
 
     private void UpdateTimerDisplay()
