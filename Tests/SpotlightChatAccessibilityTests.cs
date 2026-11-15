@@ -3,6 +3,7 @@ using System.Reflection;
 using System.Windows;
 using System.Windows.Automation;
 using System.Windows.Controls;
+using System.Windows.Documents;
 using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
@@ -27,9 +28,10 @@ public sealed class SpotlightChatAccessibilityTests
         foreach (var background in new[] { Colors.Black, brightestGlass, SpotlightChatPalette.Surface.Color,
                      SpotlightChatPalette.Hover.Color, SpotlightChatPalette.Pressed.Color })
         foreach (var brush in new[] { SpotlightChatPalette.Primary, SpotlightChatPalette.Secondary,
-                     SpotlightChatPalette.Error, SpotlightChatPalette.Link })
+                     SpotlightChatPalette.Link })
             Assert.True(Contrast(brush.Color, background) >= 4.5,
                 $"{brush.Color} on {background}: {Contrast(brush.Color, background):F2}:1");
+        Assert.True(Contrast(SpotlightChatPalette.Error.Color, SpotlightChatPalette.Surface.Color) >= 4.5);
     }
 
     [Fact]
@@ -45,6 +47,12 @@ public sealed class SpotlightChatAccessibilityTests
             Invoke(window, "ToggleAiMode");
             Assert.False(window.AiCopyButton.IsEnabled);
             Assert.Same(SpotlightChatPalette.Secondary, window.PlaceholderText.Foreground);
+            Assert.Equal(FontWeights.Bold, window.SearchBox.FontWeight);
+            Assert.Equal(FontWeights.Bold, window.PlaceholderText.FontWeight);
+            Assert.Equal(FontWeights.Bold, window.AiModeLabel.FontWeight);
+            Assert.Equal(FontWeights.Bold, window.AiMetadata.FontWeight);
+            Assert.Equal(FontWeights.Bold, window.AiUsageText.FontWeight);
+            AssertBoldTypography(window.AiPanel);
             Assert.True(Contrast(((SolidColorBrush)window.SearchBox.SelectionTextBrush).Color,
                 ((SolidColorBrush)window.SearchBox.SelectionBrush).Color) >= 4.5);
             Capture(window, "welcome");
@@ -59,6 +67,15 @@ public sealed class SpotlightChatAccessibilityTests
             window.UpdateLayout();
             window.AiTranscriptScroll.ScrollToTop();
             Capture(window, "conversation");
+            AssertBoldTypography(window.AiPanel);
+            foreach (var view in Descendants<RichTextBox>(window.AiTranscript))
+                AssertBoldTypography(view.Document);
+            // Streaming and final Markdown must agree, including code, tables and quotes.
+            const string markdown = "# Heading\n\nBody **bold** and `inline code`.\n\n```csharp\nvar x = 1;\n```\n\n> Quote\n\n- List item\n\n| Name | Value |\n| --- | --- |\n| A | B |";
+            var renderer = new AiMarkdown.StreamRenderer(uniformBold: true);
+            while (!renderer.Advance(markdown, 3, 0)) AssertBoldTypography(renderer.Document);
+            AssertBoldTypography(renderer.Document);
+            AssertBoldTypography(AiMarkdown.Render(markdown, uniformBold: true));
             var copy = Descendants<Button>(window.AiTranscript).Single();
             Assert.Equal(Loc.Get("spotlight.ai.copy"), AutomationProperties.GetName(copy));
             FocusManager.SetFocusedElement(window, window.AiNewChatButton);
@@ -76,6 +93,7 @@ public sealed class SpotlightChatAccessibilityTests
             window.ShowAiHistoryPanel();
             window.UpdateLayout();
             Capture(window, "history");
+            AssertBoldTypography(window.AiHistoryItems);
             var open = Descendants<Button>(window.AiHistoryItems).Single(button =>
                 AutomationProperties.GetName(button) == chat.Title);
             FocusManager.SetFocusedElement(window, window.AiNewChatButton);
@@ -92,8 +110,13 @@ public sealed class SpotlightChatAccessibilityTests
             window.Shell.Background = new SolidColorBrush(Color.FromRgb(92, 92, 92));
             Invoke(window, "SetAiStatus", "spotlight.ai.networkError", Array.Empty<object>());
             Capture(window, "bright-backdrop-error");
+            Assert.Same(SpotlightChatPalette.Error, window.AiStatus.Foreground);
+            Assert.Same(SpotlightChatPalette.Surface, window.AiStatus.Background);
             Assert.True(Contrast(((SolidColorBrush)window.AiStatus.Foreground).Color,
-                ((SolidColorBrush)window.Shell.Background).Color) >= 4.5);
+                ((SolidColorBrush)window.AiStatus.Background).Color) >= 4.5);
+            Invoke(window, "SetAiStatus", "spotlight.ai.hint", Array.Empty<object>());
+            Assert.Null(window.AiStatus.Background);
+            Assert.Equal(new Thickness(0), window.AiStatus.Padding);
         }
         finally { AnimationConfig.SetReduceMotion(previous); }
     });
@@ -161,6 +184,21 @@ public sealed class SpotlightChatAccessibilityTests
         { RoutedEvent = Keyboard.PreviewKeyDownEvent };
         Invoke(window, "Window_PreviewKeyDown", window, e);
         return e;
+    }
+
+    private static void AssertBoldTypography(DependencyObject root)
+    {
+        var font = (FontFamily)Application.Current.FindResource("SFProDisplay");
+        foreach (var text in Descendants<TextBlock>(root))
+        {
+            Assert.Equal(FontWeights.Bold, text.FontWeight);
+            Assert.Equal(font.Source, text.FontFamily.Source);
+        }
+        foreach (var text in Descendants<TextElement>(root))
+        {
+            Assert.Equal(FontWeights.Bold, text.FontWeight);
+            Assert.Equal(font.Source, text.FontFamily.Source);
+        }
     }
 
     private static double Contrast(Color first, Color second)

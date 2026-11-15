@@ -56,7 +56,7 @@
         <Style x:Key="AiActionStyle" TargetType="Button">
             <Setter Property="FontFamily" Value="{StaticResource SFProDisplay}"/>
             <Setter Property="FontSize" Value="12"/>
-            <Setter Property="FontWeight" Value="Medium"/>
+            <Setter Property="FontWeight" Value="Bold"/>
             <Setter Property="Foreground" Value="{StaticResource AiPrimaryBrush}"/>
             <Setter Property="Background" Value="{StaticResource AiSurfaceBrush}"/>
             <Setter Property="BorderBrush" Value="{StaticResource AiBorderBrush}"/>
@@ -649,7 +649,7 @@
                                 <Setter Property="SelectionOpacity" Value="0.35"/>
                                 <Style.Triggers>
                                     <DataTrigger Binding="{Binding Visibility, ElementName=AiPanel}" Value="Visible">
-                                        <Setter Property="FontWeight" Value="Medium"/>
+                                        <Setter Property="FontWeight" Value="Bold"/>
                                         <Setter Property="SelectionBrush" Value="{StaticResource AiPrimaryBrush}"/>
                                         <Setter Property="SelectionTextBrush" Value="{StaticResource AiSurfaceBrush}"/>
                                         <Setter Property="SelectionOpacity" Value="1"/>
@@ -697,7 +697,7 @@
                                 <Setter Property="Foreground" Value="#85FFFFFF"/>
                                 <Style.Triggers>
                                     <DataTrigger Binding="{Binding Visibility, ElementName=AiPanel}" Value="Visible">
-                                        <Setter Property="FontWeight" Value="Medium"/>
+                                        <Setter Property="FontWeight" Value="Bold"/>
                                         <Setter Property="Foreground" Value="{StaticResource AiSecondaryBrush}"/>
                                     </DataTrigger>
                                 </Style.Triggers>
@@ -763,7 +763,7 @@
                     </Grid.RowDefinitions>
 
                     <Grid Grid.Row="0" Margin="0,6,0,7" ClipToBounds="True">
-                        <StackPanel x:Name="AiPanel" Visibility="Collapsed" Margin="24,12,24,4" TextElement.FontFamily="{StaticResource SFProDisplay}" TextElement.FontWeight="Normal">
+                        <StackPanel x:Name="AiPanel" Visibility="Collapsed" Margin="24,12,24,4" TextElement.FontFamily="{StaticResource SFProDisplay}" TextElement.FontWeight="Bold">
                             <!-- Compact model identity and conversation actions. -->
                             <Grid x:Name="AiHeader" Margin="0,0,0,16">
                                 <Grid.ColumnDefinitions>
@@ -781,13 +781,13 @@
                                     <Grid x:Name="AiModelPill" Grid.Column="1" VerticalAlignment="Center">
                                         <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
                                         <Image x:Name="AiProviderLogo" Width="15" Height="15" Stretch="Uniform" Margin="0,0,7,0"/>
-                                        <flow:NumberFlowText x:Name="AiModeLabel" Grid.Column="1" Foreground="{StaticResource AiPrimaryBrush}" FontFamily="{StaticResource SFProDisplay}" FontWeight="SemiBold" FontSize="12" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" TextWrapping="NoWrap"/>
+                                        <flow:NumberFlowText x:Name="AiModeLabel" Grid.Column="1" Foreground="{StaticResource AiPrimaryBrush}" FontFamily="{StaticResource SFProDisplay}" FontWeight="Bold" FontSize="12" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" TextWrapping="NoWrap"/>
                                     </Grid>
                                 </Grid>
 
                                 <!-- Right: Metadata + Action buttons -->
                                 <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center">
-                                    <flow:NumberFlowText x:Name="AiMetadata" Foreground="{StaticResource AiSecondaryBrush}" FontFamily="{StaticResource SFProDisplay}" FontWeight="Normal" FontSize="11" VerticalAlignment="Center" Margin="0,0,12,0"/>
+                                    <flow:NumberFlowText x:Name="AiMetadata" Foreground="{StaticResource AiSecondaryBrush}" FontFamily="{StaticResource SFProDisplay}" FontWeight="Bold" FontSize="11" VerticalAlignment="Center" Margin="0,0,12,0"/>
                                     <Button x:Name="AiCopyButton" Style="{StaticResource AiToolbarStyle}" Click="AiCopy_Click" IsEnabled="False" Margin="0,0,4,0">
                                         <Path Data="{x:Static local:SpotlightWindow.AiCopyGeometry}" Fill="{x:Static local:SpotlightWindow.ChatIconBrush}" Stretch="Uniform" Width="13" Height="13"/>
                                     </Button>
@@ -804,8 +804,8 @@
                             <Border x:Name="AiWelcome" Padding="24,20,24,16" Margin="0,0,0,6" Background="Transparent">
                                 <StackPanel>
                                     <Image x:Name="AiWelcomeLogo" Width="32" Height="32" Stretch="Uniform" HorizontalAlignment="Center" Margin="0,4,0,14"/>
-                                    <TextBlock x:Name="AiWelcomeTitle" FontFamily="{StaticResource SFProDisplay}" Foreground="{StaticResource AiPrimaryBrush}" FontSize="17" FontWeight="SemiBold" HorizontalAlignment="Center"/>
-                                    <TextBlock x:Name="AiWelcomeHint" FontFamily="{StaticResource SFProDisplay}" FontWeight="Normal" Foreground="{StaticResource AiSecondaryBrush}" FontSize="12.5" LineHeight="20" Margin="0,8,0,20" TextAlignment="Center" TextWrapping="Wrap"/>
+                                    <TextBlock x:Name="AiWelcomeTitle" FontFamily="{StaticResource SFProDisplay}" Foreground="{StaticResource AiPrimaryBrush}" FontSize="17" FontWeight="Bold" HorizontalAlignment="Center"/>
+                                    <TextBlock x:Name="AiWelcomeHint" FontFamily="{StaticResource SFProDisplay}" FontWeight="Bold" Foreground="{StaticResource AiSecondaryBrush}" FontSize="12.5" LineHeight="20" Margin="0,8,0,20" TextAlignment="Center" TextWrapping="Wrap"/>
                                     <WrapPanel HorizontalAlignment="Center">
                                         <Button x:Name="AiPromptOne" Style="{StaticResource AiSuggestionStyle}" Click="AiSuggestion_Click" Margin="0,0,8,6"/>
                                         <Button x:Name="AiPromptTwo" Style="{StaticResource AiSuggestionStyle}" Click="AiSuggestion_Click" Margin="0,0,0,6"/>
@@ -842,13 +842,15 @@
                                                               VerticalAlignment="Center" Visibility="Collapsed"/>
 
                                         <!-- Status stays visible when streaming or when failed prompt is restored to the input -->
-                                        <TextBlock x:Name="AiStatus" TextWrapping="Wrap" HorizontalAlignment="Left" TextAlignment="Left" FontFamily="{StaticResource SFProDisplay}" FontWeight="Normal" FontSize="11" VerticalAlignment="Center" Margin="0,0,10,0" Visibility="Collapsed" AutomationProperties.LiveSetting="Polite">
+                                        <TextBlock x:Name="AiStatus" TextWrapping="Wrap" HorizontalAlignment="Left" TextAlignment="Left" FontFamily="{StaticResource SFProDisplay}" FontWeight="Bold" FontSize="11" VerticalAlignment="Center" Margin="0,0,10,0" Visibility="Collapsed" AutomationProperties.LiveSetting="Polite">
                                             <TextBlock.Style>
                                                 <Style TargetType="TextBlock">
                                                     <Setter Property="Foreground" Value="{StaticResource AiSecondaryBrush}"/>
                                                     <Style.Triggers>
                                                         <Trigger Property="Tag" Value="error">
                                                             <Setter Property="Foreground" Value="{StaticResource AiErrorBrush}"/>
+                                                            <Setter Property="Background" Value="{StaticResource AiSurfaceBrush}"/>
+                                                            <Setter Property="Padding" Value="6,3"/>
                                                         </Trigger>
                                                     </Style.Triggers>
                                                 </Style>
@@ -859,7 +861,7 @@
                                         <Grid x:Name="AiUsageRow" VerticalAlignment="Center" Margin="0,0,0,0" Visibility="Collapsed">
                                             <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
                                             <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                                                <flow:NumberFlowText x:Name="AiUsageText" FontFamily="{StaticResource SFProDisplay}" FontWeight="Normal" FontSize="11" Foreground="{StaticResource AiSecondaryBrush}" VerticalAlignment="Center" TextWrapping="Wrap"/>
+                                                <flow:NumberFlowText x:Name="AiUsageText" FontFamily="{StaticResource SFProDisplay}" FontWeight="Bold" FontSize="11" Foreground="{StaticResource AiSecondaryBrush}" VerticalAlignment="Center" TextWrapping="Wrap"/>
                                                 <ProgressBar x:Name="AiQuotaBar" Width="40" Height="3" Margin="8,0,0,0" Minimum="0" Maximum="100" Foreground="{StaticResource AiPrimaryBrush}" Background="#252525" VerticalAlignment="Center" Visibility="Collapsed"/>
                                             </StackPanel>
                                             <Button x:Name="AiUsageRefresh" Grid.Column="1" Style="{StaticResource AiToolbarStyle}" Click="AiUsageRefresh_Click" Content="↻" Foreground="{StaticResource AiPrimaryBrush}" Margin="4,0,0,0" VerticalAlignment="Center"/>

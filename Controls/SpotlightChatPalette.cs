@@ -14,7 +14,8 @@ internal static class SpotlightChatPalette
     public static SolidColorBrush Pressed { get; } = Freeze(0x36, 0x3A, 0x43);
     public static SolidColorBrush Border { get; } = Freeze(0x45, 0x49, 0x52);
     public static SolidColorBrush Focus { get; } = Secondary;
-    public static SolidColorBrush Error { get; } = Freeze(0xFF, 0xCC, 0xCC);
+    // Vivid red uses the opaque status surface to stay legible over bright glass.
+    public static SolidColorBrush Error { get; } = Freeze(0xFF, 0x5C, 0x64);
     public static SolidColorBrush Link { get; } = Freeze(0xC3, 0xD9, 0xFF);
 
     internal static Color UserBubbleColor(Color accent)

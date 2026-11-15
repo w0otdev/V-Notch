@@ -48,6 +48,7 @@ internal sealed class MarkdownFlowOptions
 
     public FontFamily BodyFont { get; init; } = DefaultBodyFont;
     public FontFamily CodeFont { get; init; } = DefaultCodeFont;
+    public FontWeight CodeFontWeight { get; init; } = FontWeights.Normal;
     public double BodyFontSize { get; init; } = 13.5;
     public double BodyLineHeight { get; init; } = 22;
     public FontWeight BodyFontWeight { get; init; } = FontWeights.Normal;
@@ -291,7 +292,7 @@ internal static class MarkdownWpfRenderer
                 {
                     FontFamily = opt.CodeFont,
                     FontSize = 12.5,
-                    FontWeight = FontWeights.Normal,
+                    FontWeight = opt.CodeFontWeight,
                     Foreground = opt.CodeForeground,
                     Background = opt.CodeBackground,
                     BorderBrush = opt.CodeBorder,

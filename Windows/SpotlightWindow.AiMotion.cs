@@ -38,7 +38,7 @@ public partial class SpotlightWindow
                 Text = message.Content,
                 FontFamily = sfPro,
                 FontSize = 13.5,
-                FontWeight = FontWeights.SemiBold,
+                FontWeight = FontWeights.Bold,
                 Foreground = Controls.SpotlightChatPalette.Primary,
                 TextWrapping = TextWrapping.Wrap,
                 LineHeight = 22,
@@ -56,7 +56,7 @@ public partial class SpotlightWindow
         // Assistant Message - Flat Surface (NO FLOAT CARD DESIGN)
         var view = CreateMarkdownView(message.Content);
         view.FontFamily = sfPro;
-        view.FontWeight = FontWeights.Normal;
+        view.FontWeight = FontWeights.Bold;
 
         var card = new Border
         {
@@ -89,7 +89,7 @@ public partial class SpotlightWindow
             TextWrapping = TextWrapping.NoWrap,
             FontFamily = sfPro,
             FontSize = 12,
-            FontWeight = FontWeights.SemiBold,
+            FontWeight = FontWeights.Bold,
             Foreground = Controls.SpotlightChatPalette.Primary,
             VerticalAlignment = VerticalAlignment.Center
         };
@@ -172,7 +172,7 @@ public partial class SpotlightWindow
             Text = Loc.Get("spotlight.ai.thinking"),
             FontFamily = (FontFamily)FindResource("SFProDisplay"),
             FontSize = 12,
-            FontWeight = FontWeights.Medium,
+            FontWeight = FontWeights.Bold,
             Foreground = Controls.SpotlightChatPalette.Secondary,
             VerticalAlignment = VerticalAlignment.Center
         });

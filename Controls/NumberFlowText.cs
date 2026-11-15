@@ -284,7 +284,8 @@ public class NumberFlowText : TextBlock
 
     private List<Glyph> BuildLayout(string text, string previous)
     {
-        if (string.IsNullOrEmpty(text) || ActualWidth <= 0 || ActualHeight <= 0) return [];
+        if (string.IsNullOrEmpty(text) || text.Length >= 512 || !text.Any(char.IsDigit) ||
+            ActualWidth <= 0 || ActualHeight <= 0) return [];
         var culture = Language.GetEquivalentCulture();
         double dpi = VisualTreeHelper.GetDpi(this).PixelsPerDip;
         var typeface = new Typeface(FontFamily, FontStyle, FontWeight, FontStretch);

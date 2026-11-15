@@ -174,7 +174,7 @@ public partial class SpotlightWindow
                 {
                     Text = chat.Title,
                     FontFamily = sfProDisplay,
-                    FontWeight = FontWeights.SemiBold,
+                    FontWeight = FontWeights.Bold,
                     FontSize = 13,
                     Foreground = Controls.SpotlightChatPalette.Primary,
                     TextTrimming = TextTrimming.CharacterEllipsis,
@@ -189,7 +189,7 @@ public partial class SpotlightWindow
                     ToolTip = chat.Provider + " · " + chat.Model,
                     FontFamily = sfProDisplay,
                     FontSize = 11,
-                    FontWeight = FontWeights.Normal,
+                    FontWeight = FontWeights.Bold,
                     Foreground = Controls.SpotlightChatPalette.Secondary,
                     TextTrimming = TextTrimming.CharacterEllipsis,
                     TextWrapping = TextWrapping.NoWrap,
@@ -269,7 +269,7 @@ public partial class SpotlightWindow
                             Text = Loc.Get("spotlight.ai.noHistory"),
                             Foreground = AiHistoryEmptyBrush,
                             FontFamily = sfProDisplay,
-                            FontWeight = FontWeights.Normal,
+                            FontWeight = FontWeights.Bold,
                             FontSize = 12,
                             Margin = new Thickness(12, 16, 12, 16),
                             HorizontalAlignment = HorizontalAlignment.Center
@@ -320,7 +320,7 @@ public partial class SpotlightWindow
                     Text = Loc.Get("spotlight.ai.noHistory"),
                     Foreground = AiHistoryEmptyBrush,
                     FontFamily = sfProDisplay,
-                    FontWeight = FontWeights.Normal,
+                    FontWeight = FontWeights.Bold,
                     FontSize = 12,
                     Margin = new Thickness(12, 16, 12, 16),
                     HorizontalAlignment = HorizontalAlignment.Center

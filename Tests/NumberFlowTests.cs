@@ -185,7 +185,7 @@ public sealed class NumberFlowTests
             }
             await Task.Delay(35);
             Assert.Equal("79% left", readouts[4].Text);
-            Assert.All(readouts, n => Assert.True(n.IsAnimating, $"Text={n.Text}; last={typeof(NumberFlowText).GetField("_lastText", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!.GetValue(n)}; pending={typeof(NumberFlowText).GetField("_pending", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!.GetValue(n)}"));
+            Assert.All(readouts, n => Assert.True(n.IsAnimating, n.Text));
             for (int frame = 1; frame <= 22; frame++) { Capture(frame); await Task.Delay(30); }
             Assert.All(readouts, n => Assert.False(n.IsAnimating));
             Assert.All(readouts, n => Assert.Null(n.OpacityMask));

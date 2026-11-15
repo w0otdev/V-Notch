@@ -275,7 +275,7 @@ public partial class SpotlightWindow
             ?? new System.Windows.Media.FontFamily(VNotch.Services.AppFonts.Location + "#SF Pro Display, Segoe UI, Arial");
         return new System.Windows.Controls.RichTextBox
         {
-            Document = VNotch.Controls.AiMarkdown.Render(text, font),
+            Document = VNotch.Controls.AiMarkdown.Render(text, font, uniformBold: true),
             IsReadOnly = true,
             IsDocumentEnabled = false,
             Background = System.Windows.Media.Brushes.Transparent,
@@ -285,7 +285,7 @@ public partial class SpotlightWindow
             BorderThickness = new Thickness(0),
             Padding = new Thickness(0),
             FontFamily = font,
-            FontWeight = FontWeights.Normal,
+            FontWeight = FontWeights.Bold,
             VerticalScrollBarVisibility = System.Windows.Controls.ScrollBarVisibility.Disabled
         };
     }
@@ -345,7 +345,7 @@ public partial class SpotlightWindow
         progressTimer.Start();
         System.Windows.Controls.RichTextBox? liveView = null;
         string receivedText = "";
-        var streamRenderer = new VNotch.Controls.AiMarkdown.StreamRenderer();
+        var streamRenderer = new VNotch.Controls.AiMarkdown.StreamRenderer(uniformBold: true);
         bool revealCaughtUp = false;
         AiUsageSnapshot? receivedUsage = null;
         var revealTimer = new UiScheduledTimer
@@ -357,7 +357,7 @@ public partial class SpotlightWindow
             bool follow = AiTranscriptScroll.ScrollableHeight - AiTranscriptScroll.VerticalOffset < 32;
             if (finish || AnimationConfig.ReduceMotion)
             {
-                liveView.Document = VNotch.Controls.AiMarkdown.Render(receivedText);
+                liveView.Document = VNotch.Controls.AiMarkdown.Render(receivedText, uniformBold: true);
                 revealCaughtUp = true;
             }
             else
