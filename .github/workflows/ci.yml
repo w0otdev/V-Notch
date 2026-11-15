@@ -178,7 +178,12 @@ jobs:
 
       - name: Run unit test shard ${{ matrix.shard }}
         shell: pwsh
-        run: pwsh -NoProfile -File Tools/Invoke-TestShard.ps1 -ShardIndex ${{ matrix.shard }} -TotalShards 4 -ResultsDirectory TestResults/Coverage -CollectCoverage
+        run: pwsh -NoProfile -File Tools/Invoke-TestShard.ps1 -ShardIndex ${{ matrix.shard }} -TotalShards 4 -ResultsDirectory TestResults/Coverage -CollectCoverage -BaseFilter 'Category!=DesktopIntegration&Category!=Performance'
+
+      - name: Check performance budgets without coverage instrumentation
+        if: matrix.shard == 0
+        # Measure latency and allocations without instrumentation; keep the original budgets.
+        run: dotnet test Tests/VNotch.Tests.csproj --configuration Release --no-build --no-restore --filter 'Category=Performance' --blame-hang-timeout 60s --logger 'console;verbosity=normal'
 
       - name: Upload shard coverage
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02

@@ -148,6 +148,7 @@ public class MarkdownNativeParserTests
     }
 
     [Fact]
+    [Trait("Category", "Performance")]
     public void RenderMarkdown_TermsOfServiceAndChangelog_RendersToWpfWithoutThrowing()
     {
         const string doc =

@@ -18,6 +18,7 @@ public sealed class FirstOpenLatencyTests(ITestOutputHelper output)
     private const BindingFlags Private = BindingFlags.Instance | BindingFlags.NonPublic;
 
     [Fact]
+    [Trait("Category", "Performance")]
     public void FirstSettingsOpenKeepsTheUiDispatcherResponsive() => SharedStaTestRunner.RunAsync(async ct =>
     {
         await using var fixture = Create();
@@ -63,6 +64,7 @@ public sealed class FirstOpenLatencyTests(ITestOutputHelper output)
     });
 
     [Fact]
+    [Trait("Category", "Performance")]
     public void FirstNotchExpansionKeepsTheUiDispatcherResponsive() => SharedStaTestRunner.RunAsync(async ct =>
     {
         await using var fixture = Create();
@@ -95,6 +97,57 @@ public sealed class FirstOpenLatencyTests(ITestOutputHelper output)
             await WpfFrameWaiter.UntilAsync(() => !Animating(window) && coordinator.CurrentView == NotchView.Compact, "notch collapse completes", ct);
         }
         Assert.True(pauses[0] < 100, $"First notch click stalled the UI for {pauses[0]:F1} ms (second: {pauses[1]:F1} ms).");
+    });
+
+    [Theory]
+    [InlineData(false, false)]
+    [InlineData(true, false)]
+    [InlineData(false, true)]
+    [InlineData(true, true)]
+    public void SettingsPreparationYieldsToAnimationAndHonorsCancellation(bool pauseAfterConstruction, bool cancel) => SharedStaTestRunner.RunAsync(async ct =>
+    {
+        await using var fixture = Create();
+        var window = fixture.Window;
+        var animating = typeof(MainWindow).GetProperty("_isAnimating", Private)!;
+        var preparedField = typeof(MainWindow).GetField("_preparedSettingsWindow", Private)!;
+        // Keep the production startup scheduler from launching a second preparation.
+        typeof(MainWindow).GetField("_settingsPreparationScheduled", Private)!.SetValue(window, true);
+        window.Show();
+        await WpfFrameWaiter.UntilAsync(() => !Animating(window), "notch startup settles", ct);
+        void Capture(string message)
+        {
+            if (pauseAfterConstruction && message.Contains("Settings snapshot", StringComparison.Ordinal))
+                animating.SetValue(window, true);
+        }
+        SettingsWindow.FirstOpenProbe += Capture;
+        animating.SetValue(window, !pauseAfterConstruction);
+        Task? preparation = null;
+        try
+        {
+            preparation = (Task)typeof(MainWindow).GetMethod("PrepareSettingsFirstOpenAsync", Private)!.Invoke(window, [0])!;
+            await window.Dispatcher.InvokeAsync(static () => { }, DispatcherPriority.ContextIdle);
+            Assert.False(preparation.IsCompleted);
+            if (pauseAfterConstruction)
+                Assert.False(Assert.IsType<SettingsWindow>(preparedField.GetValue(window)).IsLoaded);
+            else
+                Assert.Null(preparedField.GetValue(window));
+
+            if (cancel)
+                typeof(MainWindow).GetMethod("DiscardPreparedSettingsWindow", Private)!.Invoke(window, null);
+            animating.SetValue(window, false);
+            await preparation.WaitAsync(ct);
+
+            if (cancel)
+                Assert.Null(preparedField.GetValue(window));
+            else
+                Assert.True(preparedField.GetValue(window) is SettingsWindow { IsLoaded: true, IsVisible: false });
+        }
+        finally
+        {
+            SettingsWindow.FirstOpenProbe -= Capture;
+            animating.SetValue(window, false);
+            if (preparation != null) await preparation.WaitAsync(ct);
+        }
     });
 
     [Fact]
