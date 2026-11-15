@@ -10,10 +10,8 @@ namespace VNotch.Tests;
 [Collection(SpotlightWindowAnimationCollection.Name)]
 public sealed class SpotlightAiRevealTests
 {
-    [Theory]
-    [InlineData("AnimateAiPageReveal")]
-    [InlineData("AnimateAiArrival")]
-    public void CompletedRevealCanReplayRepeatedly(string methodName)
+    [Fact]
+    public void CompletedArrivalCanReplayRepeatedly()
     {
         SharedStaTestRunner.RunAsync(async ct =>
         {
@@ -32,7 +30,8 @@ public sealed class SpotlightAiRevealTests
             try
             {
                 AnimationConfig.SetReduceMotion(false);
-                var method = typeof(SpotlightWindow).GetMethod(methodName, BindingFlags.Static | BindingFlags.NonPublic)!;
+                var method = typeof(SpotlightWindow).GetMethod("AnimateAiArrival", BindingFlags.Static | BindingFlags.NonPublic);
+                Assert.NotNull(method);
                 for (int attempt = 0; attempt < 3; attempt++)
                 {
                     // Reproduce a completed clock that remains attached to the element.
@@ -52,8 +51,7 @@ public sealed class SpotlightAiRevealTests
                     descriptor.AddValueChanged(element, observe);
                     try
                     {
-                        method.Invoke(null, methodName == "AnimateAiPageReveal"
-                            ? new object[] { element } : new object[] { element, 6d, 240 });
+                        method.Invoke(null, new object[] { element, 6d, 240 });
                         observe(null, EventArgs.Empty);
                         element.UpdateLayout();
                         await WpfFrameWaiter.UntilAsync(

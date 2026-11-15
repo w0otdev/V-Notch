@@ -173,7 +173,8 @@ jobs:
         run: dotnet restore Tests/VNotch.Tests.csproj --locked-mode -nologo -v:q
 
       - name: Build test project
-        run: dotnet build Tests/VNotch.Tests.csproj --configuration Release --no-restore -warnaserror -nologo -v:q -clp:NoSummary -m -p:SkipNativeCompile=true
+        # Coverage needs application symbols; published Release builds intentionally omit them.
+        run: dotnet build Tests/VNotch.Tests.csproj --configuration Release --no-restore -warnaserror -nologo -v:q -clp:NoSummary -m -p:SkipNativeCompile=true -p:DebugType=portable -p:DebugSymbols=true
 
       - name: Run unit test shard ${{ matrix.shard }}
         shell: pwsh
