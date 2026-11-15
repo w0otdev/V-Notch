@@ -246,7 +246,7 @@ VN_EXPORT int32_t __stdcall vn_text_resolve_rendering_policy(
     // Ideal formatting + Animated hinting + fractional layout across containers
     // keeps glyph metrics and origins identical during and after animations.
     *out_formatting_mode = 0; // TextFormattingMode.Ideal
-    *out_rendering_mode = has_explicit_rendering_mode != 0 ? current_rendering_mode : 1; // Grayscale default
+    *out_rendering_mode = has_explicit_rendering_mode != 0 ? current_rendering_mode : 2; // TextRenderingMode.Grayscale
     *out_hinting_mode = 2; // TextHintingMode.Animated
     *out_use_layout_rounding = 0;
     *out_snaps_to_device_pixels = 0;

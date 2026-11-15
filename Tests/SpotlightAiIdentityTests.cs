@@ -54,7 +54,9 @@ public sealed class SpotlightAiIdentityTests
                 Assert.Same(AiProviderBrand.For(provider), window.AiProviderLogo.Source);
                 Assert.Same(AiProviderBrand.For(provider), window.AiWelcomeLogo.Source);
                 Assert.Same(AiProviderBrand.GeometryFor(provider), Invoke(window, "GetChatIconGeometry"));
-                Assert.Equal(provider + " · " + model, window.AiModelPill.ToolTip);
+                string identity = provider + " · " + model;
+                Assert.Equal(Loc.Get("spotlight.ai.switchProvider") + "\n" + identity, window.AiModelPill.ToolTip);
+                Assert.Equal(identity, System.Windows.Automation.AutomationProperties.GetName(window.AiModelPill));
 
                 Set(window, "_aiConversationProvider", provider);
                 Set(window, "_aiConversationModel", model);

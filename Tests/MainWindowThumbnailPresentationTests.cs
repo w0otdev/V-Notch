@@ -212,7 +212,9 @@ public sealed class MainWindowThumbnailPresentationTests
         Assert.True(coldTarget.HasValue);
 
         window.SetDebugViewState("MediaExpanded");
-        await WpfFrameWaiter.UntilAsync(() => !Property<bool>(window, "_isAnimating"), "media expanded layout", ct);
+        await WpfFrameWaiter.UntilAsync(() => !Property<bool>(window, "_isAnimating") &&
+            !Field<bool>(window, "_isMediaWidthAnimating") && !Field<bool>(window, "_isThumbnailExpandAnimating"),
+            "media expanded layout and thumbnail settled", ct);
         window.UpdateLayout();
 
         var parameters = new object?[] { default((double X, double Y)) };
