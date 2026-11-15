@@ -163,17 +163,7 @@ public partial class SpotlightWindow
                 grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
                 grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
 
-                // Chat icon
-                var icon = new System.Windows.Shapes.Path
-                {
-                    Data = AiChatGeometry,
-                    Fill = ChatIconBrush,
-                    Stretch = Stretch.Uniform,
-                    Width = 13,
-                    Height = 13,
-                    VerticalAlignment = VerticalAlignment.Center,
-                    Margin = new Thickness(0, 0, 10, 0)
-                };
+                var icon = CreateAiBrandImage(chat.Provider, 16);
                 grid.Children.Add(icon);
 
                 // Title + Subtitle
@@ -199,7 +189,8 @@ public partial class SpotlightWindow
                 };
                 var subtitleBlock = new TextBlock
                 {
-                    Text = chat.Provider + " · " + chat.UpdatedUtc.ToLocalTime().ToString("g", culture),
+                    Text = SpotlightAiModelName.Format(chat.Model, chat.Provider) + " · " + chat.UpdatedUtc.ToLocalTime().ToString("g", culture),
+                    ToolTip = chat.Provider + " · " + chat.Model,
                     FontFamily = sfProDisplay,
                     FontSize = 10.5,
                     FontWeight = FontWeights.Bold,

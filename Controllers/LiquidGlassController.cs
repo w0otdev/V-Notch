@@ -552,6 +552,7 @@ public sealed partial class LiquidGlassController : IDisposable
             _hasPresentedGpuGeometry = false;
         }
         _hasUploadedGpuFrame = false;
+        _hasLastSubmittedGpuFrame = false;
         _hasPresentedCpuFrame = false;
         _hasVisibleFrame = false;
         Interlocked.Increment(ref _refreshVersion);
@@ -730,7 +731,7 @@ public sealed partial class LiquidGlassController : IDisposable
     {
         if (_idle == idle) return;
         _idle = idle;
-        ForceRefresh();
+        if (!idle) ForceRefresh();
     }
 
     internal static double ChooseFrameIntervalMs(double activeIntervalMs, bool idle, bool animating,
@@ -758,7 +759,8 @@ public sealed partial class LiquidGlassController : IDisposable
     public void ForceRefresh()
     {
         Interlocked.Increment(ref _refreshVersion);
-        SignalWakeEventSafe();
+        if (!_waitingForGpuPresentation)
+            SignalWakeEventSafe();
     }
 
     private void SignalWakeEventSafe()
@@ -853,6 +855,7 @@ public sealed partial class LiquidGlassController : IDisposable
         _presentationPaused = false;
         _presentInFlight = false;
         _hasUploadedGpuFrame = false;
+        _hasLastSubmittedGpuFrame = false;
         _hasPresentedCpuFrame = false;
         Interlocked.Increment(ref _refreshVersion);
         SignalWakeEventSafe();
@@ -1133,7 +1136,11 @@ public sealed partial class LiquidGlassController : IDisposable
             return true;
         }
 
-        lastCaptureAtMs = frameStart;
+        double targetIntervalMs = _gpuMode ? frameIntervalMs : activeIntervalMs;
+        double scheduledStartMs = lastCaptureAtMs + targetIntervalMs;
+        lastCaptureAtMs = double.IsFinite(scheduledStartMs)
+            ? Math.Max(frameStart - 0.5, scheduledStartMs)
+            : frameStart;
         TryRenderRegion(region.Value, generation);
         if (!ShouldContinueWorker(generation)) return false;
 
@@ -1156,7 +1163,7 @@ public sealed partial class LiquidGlassController : IDisposable
 
     private bool IsPresentationBlocked(double frameIntervalMs, ref double nextFrameAtMs, Stopwatch clock)
     {
-        if ((_gpuMode && _d3dPresenter?.HasPendingFrame == true) || (!_gpuMode && _presentInFlight))
+        if (!_gpuMode && _presentInFlight)
         {
             // Do not keep capturing/uploading over a frame the UI has not consumed.
             WaitForIdleOrEvent(2);
@@ -1189,6 +1196,7 @@ public sealed partial class LiquidGlassController : IDisposable
         if (generation == Volatile.Read(ref _renderGeneration))
         {
             _hasUploadedGpuFrame = false;
+            _hasLastSubmittedGpuFrame = false;
             _hasPresentedCpuFrame = false;
             _cachedRegion = null;
             _lastRegionFetchMs = double.NegativeInfinity;

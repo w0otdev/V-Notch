@@ -21,6 +21,16 @@ internal sealed partial class D3DImageFramePresenter
             float scalar = (float)value;
             Lens[register * 4] = float.IsFinite(scalar) ? scalar : 0;
         }
+
+        public readonly bool LensEquals(in GpuFrame other)
+        {
+            fixed (float* a = Lens, b = other.Lens)
+                return new ReadOnlySpan<byte>(a, 128 * sizeof(float)).SequenceEqual(new ReadOnlySpan<byte>(b, 128 * sizeof(float)));
+        }
+
+        public readonly bool FrameEquals(in GpuFrame other) =>
+            X == other.X && Y == other.Y && Width == other.Width && Height == other.Height &&
+            Blur == other.Blur && (Refract & 1) == (other.Refract & 1) && LensEquals(in other);
     }
 
     private sealed class GpuHandle : SafeHandleZeroOrMinusOneIsInvalid

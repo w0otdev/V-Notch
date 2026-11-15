@@ -100,6 +100,10 @@ public:
     std::vector<Target> reconstruction;
     Target resolved;
     Target uploadedBackdrop;
+    uint64_t uploadedPixelsHash = 0;
+    UINT uploadedPixelsWidth = 0, uploadedPixelsHeight = 0;
+    bool hasUploadedPixelsHash = false;
+    bool uploadedDirty = true;
     bool usingUploadedBackdrop = false;
     UINT workWidth = 0, workHeight = 0;
     DXGI_OUTPUT_DESC outputDesc{};
@@ -224,7 +228,9 @@ public:
         try { if (framePool) framePool.Close(); } catch (...) { }
         captureSession = nullptr; framePool = nullptr; captureItem = nullptr; captureDevice = nullptr;
         duplication.Reset(); desktopView.Reset(); desktopTexture.Reset(); monitor = nullptr;
-        uploadedBackdrop = {}; usingUploadedBackdrop = false;
+        uploadedBackdrop = {}; uploadedPixelsHash = 0; hasUploadedPixelsHash = false;
+        uploadedPixelsWidth = uploadedPixelsHeight = 0; uploadedDirty = true;
+        usingUploadedBackdrop = false;
         hasRenderedFrame = false;
         sourceDirty = true;
     }
@@ -250,7 +256,7 @@ public:
         captureDevice = inspectable.as<DirectX::Direct3D11::IDirect3DDevice>();
         captureSize = captureItem.Size();
         framePool = Capture::Direct3D11CaptureFramePool::CreateFreeThreaded(
-            captureDevice, DirectX::DirectXPixelFormat::B8G8R8A8UIntNormalized, 2, captureSize);
+            captureDevice, DirectX::DirectXPixelFormat::B8G8R8A8UIntNormalized, 3, captureSize);
         captureSession = framePool.CreateCaptureSession(captureItem);
         ApplyCaptureInterval();
         captureSession.IsCursorCaptureEnabled(false);
@@ -278,11 +284,16 @@ public:
         rollback.self = nullptr;
         return true;
     }
-    void ApplyCaptureInterval() {
-        if (captureSession) {
-            if (auto pacing = captureSession.try_as<Capture::IGraphicsCaptureSession5>())
-                pacing.MinUpdateInterval(winrt::Windows::Foundation::TimeSpan{ captureIntervalTicks });
-        }
+    void ApplyCaptureInterval() noexcept {
+        // The worker enforces the user's FPS cap. WGC's default ~16 ms interval
+        // can miss two out of three vblanks at 144 Hz; a full frame budget here
+        // also drops alternate frames under phase jitter. Use the supported
+        // 1 ms minimum (zero/sub-ms values fail on some Windows builds).
+        try {
+            if (captureSession && winrt::Windows::Foundation::Metadata::ApiInformation::IsPropertyPresent(
+                L"Windows.Graphics.Capture.GraphicsCaptureSession", L"MinUpdateInterval"))
+                captureSession.MinUpdateInterval(std::chrono::milliseconds(1));
+        } catch (...) { }
     }
     void SetCaptureInterval(double ms) {
         const int64_t ticks = std::clamp(static_cast<int64_t>(std::llround(ms * 10000.0)), int64_t{10000}, int64_t{10000000});
@@ -330,16 +341,22 @@ public:
         desktopChanged = false;
         if (framePool) {
             auto frame = framePool.TryGetNextFrame();
+            struct Close { Capture::Direct3D11CaptureFrame& f; ~Close() noexcept { try { if (f) f.Close(); } catch (...) { } } } close{ frame };
             if (!frame) {
                 return desktopTexture != nullptr;
             }
-            // The two-buffer pool can contain a delayed frame after UI/GPU
-            // contention. Consume the newest complete frame for the current lens.
-            if (auto newer = framePool.TryGetNextFrame()) { frame.Close(); frame = newer; }
-            const auto size = frame.ContentSize();
-            if (size.Width <= 0 || size.Height <= 0) { frame.Close(); return desktopTexture != nullptr; }
-            if (size.Width != captureSize.Width || size.Height != captureSize.Height) {
+            // Drain queued frames after UI/GPU contention so the current lens
+            // always renders the newest completed desktop snapshot.
+            for (int i = 0; i < 3; ++i) {
+                auto newer = framePool.TryGetNextFrame();
+                if (!newer) break;
                 frame.Close();
+                frame = newer;
+            }
+            const auto size = frame.ContentSize();
+            if (size.Width <= 0 || size.Height <= 0) { frame.Close(); frame = nullptr; return desktopTexture != nullptr; }
+            if (size.Width != captureSize.Width || size.Height != captureSize.Height) {
+                frame.Close(); frame = nullptr;
                 ResetCapture();
                 return false;
             }
@@ -350,27 +367,14 @@ public:
             if (acquiredDesc.Width != static_cast<UINT>(size.Width) || acquiredDesc.Height != static_cast<UINT>(size.Height)) {
                 // WGC can return an old-sized allocation during a display resize.
                 // Keep the last good image instead of copying an invalid surface.
-                frame.Close(); return desktopTexture != nullptr;
+                frame.Close(); frame = nullptr; return desktopTexture != nullptr;
             }
-            if (acquiredDesc.BindFlags & D3D11_BIND_SHADER_RESOURCE) {
-                // Keep the WGC frame leased until all draws reading it complete.
-                // Reuse SRVs for the bounded frame-pool textures; no desktop copy.
-                if (capturedFrame) capturedFrame.Close();
-                capturedFrame = frame;
-                desktopTexture = acquired;
-                auto found = std::find_if(captureViews.begin(), captureViews.end(),
-                    [&](const auto& entry) { return entry.first.Get() == acquired.Get(); });
-                if (found == captureViews.end()) {
-                    ComPtr<ID3D11ShaderResourceView> view;
-                    Check(device->CreateShaderResourceView(acquired.Get(), nullptr, &view));
-                    if (captureViews.size() >= 4) captureViews.clear();
-                    captureViews.emplace_back(acquired, view);
-                    desktopView = view;
-                } else desktopView = found->second;
-                ++captureFrames; desktopChanged = true; captureResult = S_OK;
-                return true;
-            }
-            if (!desktopTexture) {
+            if (capturedFrame) { capturedFrame.Close(); capturedFrame = nullptr; }
+            D3D11_TEXTURE2D_DESC currentDesc{};
+            if (desktopTexture) desktopTexture->GetDesc(&currentDesc);
+            if (!desktopTexture || currentDesc.Width != acquiredDesc.Width || currentDesc.Height != acquiredDesc.Height || currentDesc.Format != acquiredDesc.Format) {
+                desktopView.Reset();
+                desktopTexture.Reset();
                 D3D11_TEXTURE2D_DESC desc = acquiredDesc;
                 desc.Usage = D3D11_USAGE_DEFAULT; desc.CPUAccessFlags = 0; desc.MiscFlags = 0;
                 desc.BindFlags = D3D11_BIND_SHADER_RESOURCE;
@@ -378,7 +382,7 @@ public:
                 Check(device->CreateShaderResourceView(desktopTexture.Get(), nullptr, &desktopView));
             }
             context->CopyResource(desktopTexture.Get(), acquired.Get());
-            frame.Close();
+            frame.Close(); frame = nullptr;
             ++captureFrames;
             desktopChanged = true; captureResult = S_OK;
             return true;
@@ -491,23 +495,73 @@ public:
         if (hr == S_OK) { lastFrame = normalized; hasRenderedFrame = true; sourceDirty = false; }
         return hr;
     }
+    static uint64_t HashPixelRows(const uint8_t* pixels, int width, int height, UINT stride) noexcept {
+        uint64_t h = 0x9E3779B97F4A7C15ull ^ (static_cast<uint64_t>(width) << 32) ^ static_cast<uint64_t>(height);
+        const size_t rowWords64 = static_cast<size_t>(width) / 2;
+        const bool tailPixel = (width & 1) != 0;
+        for (int row = 0; row < height; ++row) {
+            const uint8_t* line = pixels + static_cast<size_t>(row) * stride;
+            const auto* words = reinterpret_cast<const uint64_t*>(line);
+            for (size_t i = 0; i < rowWords64; ++i) {
+                uint64_t v = words[i];
+                h ^= v;
+                h *= 0xBF58476D1CE4E5B9ull;
+            }
+            if (tailPixel) {
+                uint32_t tail = 0;
+                memcpy(&tail, line + rowWords64 * 8, 4);
+                h ^= tail;
+                h *= 0x94D049BB133111EBull;
+            }
+        }
+        return h ^ (h >> 31);
+    }
+
     HRESULT RenderPixels(const Frame& f, const uint8_t* pixels, UINT stride) {
         if (pending) return S_FALSE;
         if (!usingUploadedBackdrop) ResetCapture();
         usingUploadedBackdrop = true;
+        if (f.width <= 0 || f.height <= 0 || !pixels) return E_INVALIDARG;
+        const size_t rowBytes = static_cast<size_t>(f.width) * 4;
+        if (stride < rowBytes) return E_INVALIDARG;
+        const uint64_t hash = HashPixelRows(pixels, f.width, f.height, stride);
+        const bool sizeChanged = static_cast<UINT>(f.width) != uploadedPixelsWidth ||
+            static_cast<UINT>(f.height) != uploadedPixelsHeight ||
+            !hasUploadedPixelsHash || !uploadedBackdrop.texture;
+        bool pixelsDiffer = sizeChanged || hash != uploadedPixelsHash;
         if (static_cast<UINT>(f.width) > uploadedBackdrop.width || static_cast<UINT>(f.height) > uploadedBackdrop.height) {
             const UINT w = std::min(static_cast<UINT>(width), std::max(uploadedBackdrop.width, (static_cast<UINT>(f.width) + 127) / 128 * 128));
             const UINT h = std::min(static_cast<UINT>(height), std::max(uploadedBackdrop.height, (static_cast<UINT>(f.height) + 63) / 64 * 64));
             uploadedBackdrop = MakeTarget(w, h);
+            pixelsDiffer = true;
         }
-        const D3D11_BOX region{ 0, 0, 0, static_cast<UINT>(f.width), static_cast<UINT>(f.height), 1 };
-        context->UpdateSubresource(uploadedBackdrop.texture.Get(), 0, &region, pixels, stride, 0);
+        if (pixelsDiffer) {
+            const D3D11_BOX region{ 0, 0, 0, static_cast<UINT>(f.width), static_cast<UINT>(f.height), 1 };
+            context->UpdateSubresource(uploadedBackdrop.texture.Get(), 0, &region, pixels, stride, 0);
+            uploadedPixelsHash = hash;
+            hasUploadedPixelsHash = true;
+            uploadedPixelsWidth = static_cast<UINT>(f.width);
+            uploadedPixelsHeight = static_cast<UINT>(f.height);
+            uploadedDirty = true;
+            ++captureFrames;
+        }
         desktopTexture = uploadedBackdrop.texture; desktopView = uploadedBackdrop.srv;
         outputDesc.DesktopCoordinates = { f.x, f.y, f.x + f.width, f.y + f.height };
         outputDesc.Rotation = DXGI_MODE_ROTATION_IDENTITY;
         captureResult = S_OK;
-        ++captureFrames;
-        return RenderCaptured(f);
+        Frame normalized = f; normalized.refract &= 1;
+        if (hasRenderedFrame && !uploadedDirty && !(f.refract & 2) &&
+            memcmp(&normalized, &lastFrame, sizeof(Frame)) == 0) return S_FALSE;
+        const bool rebuildSource = !hasRenderedFrame || uploadedDirty || f.x != lastFrame.x || f.y != lastFrame.y ||
+            f.width != lastFrame.width || f.height != lastFrame.height || f.blur != lastFrame.blur;
+        const HRESULT hr = RenderCaptured(f, rebuildSource);
+        if (hr == S_OK) {
+            lastFrame = normalized;
+            hasRenderedFrame = true;
+            sourceDirty = false;
+            uploadedDirty = false;
+        }
+        return hr;
     }
     HRESULT RenderCaptured(const Frame& f, bool rebuildSource = true) {
         auto& target = output[nextOutput];

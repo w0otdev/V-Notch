@@ -415,13 +415,15 @@ public:
                             has_completed = false;
                         }
                         active = req;
-                        SetWindowPos(host, nullptr, req.x, req.y, req.width, req.height, SWP_NOACTIVATE | SWP_NOZORDER);
-                        SetWindowPos(mag, nullptr, 0, 0, req.width, req.height, SWP_NOACTIVATE | SWP_NOZORDER);
-                        if (req.width != mag_w || req.height != mag_h) {
-                            mag_w = req.width;
-                            mag_h = req.height;
-                            MoveWindow(host, req.x, req.y, mag_w, mag_h, FALSE);
-                            MoveWindow(mag, 0, 0, mag_w, mag_h, FALSE);
+                        if (changed) {
+                            SetWindowPos(host, nullptr, req.x, req.y, req.width, req.height, SWP_NOACTIVATE | SWP_NOZORDER | SWP_NOREDRAW);
+                            SetWindowPos(mag, nullptr, 0, 0, req.width, req.height, SWP_NOACTIVATE | SWP_NOZORDER | SWP_NOREDRAW);
+                            if (req.width != mag_w || req.height != mag_h) {
+                                mag_w = req.width;
+                                mag_h = req.height;
+                                MoveWindow(host, req.x, req.y, mag_w, mag_h, FALSE);
+                                MoveWindow(mag, 0, 0, mag_w, mag_h, FALSE);
+                            }
                         }
                         const RECT rect{req.x, req.y, req.x + req.width, req.y + req.height};
                         if (!api.set_window_source(mag, rect)) {

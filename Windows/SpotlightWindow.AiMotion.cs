@@ -13,9 +13,8 @@ namespace VNotch;
 
 public partial class SpotlightWindow
 {
-    private bool _aiActivityAnimating;
+    private VNotch.Controls.ThinkingOrb? _aiThinkingOrb;
     private Border? _aiThinkingCard;
-    private LinearGradientBrush? _aiThinkingShimmer;
 
     private RichTextBox? AddAiMessage(SpotlightAiMessage message, bool animate)
     {
@@ -79,35 +78,31 @@ public partial class SpotlightWindow
 
         var stack = new StackPanel();
 
-        // Header: Clean inline \u2726 glyph + Model Name (NO BADGE CONTAINER) + copy button
+        // Keep the selected brand and model visible beside each assistant response.
         var headerGrid = new Grid { Margin = new Thickness(0, 0, 0, 8) };
-        headerGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
         headerGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
         headerGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        headerGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
 
-        var brandStack = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center };
-
-        var sparkText = new TextBlock
-        {
-            Text = "\u2726",
-            FontFamily = sfPro,
-            FontSize = 11.5,
-            FontWeight = FontWeights.Bold,
-            Foreground = ChatIconBrush,
-            VerticalAlignment = VerticalAlignment.Center,
-            Margin = new Thickness(0, 0, 6, 0)
-        };
-        brandStack.Children.Add(sparkText);
+        var (provider, model) = CurrentAiIdentity();
+        var brandStack = new Grid { VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 8, 0) };
+        brandStack.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        brandStack.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        brandStack.Children.Add(CreateAiBrandImage(provider, 14));
 
         var modelTitle = new TextBlock
         {
-            Text = string.IsNullOrEmpty(_aiConversationProvider) ? _settings.SpotlightAiProvider : _aiConversationProvider,
+            Text = SpotlightAiModelName.Format(model, provider),
+            ToolTip = provider + " · " + model,
+            TextTrimming = TextTrimming.CharacterEllipsis,
+            TextWrapping = TextWrapping.NoWrap,
             FontFamily = sfPro,
             FontSize = 11.5,
             FontWeight = FontWeights.Bold,
             Foreground = new SolidColorBrush(Color.FromRgb(200, 200, 200)),
             VerticalAlignment = VerticalAlignment.Center
         };
+        Grid.SetColumn(modelTitle, 1);
         brandStack.Children.Add(modelTitle);
         headerGrid.Children.Add(brandStack);
 
@@ -172,94 +167,41 @@ public partial class SpotlightWindow
     private void ShowAiThinking()
     {
         if (_aiThinkingCard != null) return;
-        var sfPro = (FontFamily)FindResource("SFProDisplay");
-        var thinkingText = Loc.Get("spotlight.ai.thinking");
-
-        var card = new Border
-        {
-            Background = Brushes.Transparent,
-            BorderThickness = new Thickness(0),
-            Padding = new Thickness(0, 6, 0, 6),
-            Margin = new Thickness(0, 2, 0, 8),
-            HorizontalAlignment = HorizontalAlignment.Stretch
-        };
-
         var row = new StackPanel { Orientation = Orientation.Horizontal };
-
-        // Shimmer brush â€” same technique as lyrics search shimmer
-        var shimmerBrush = new LinearGradientBrush
+        _aiThinkingOrb = new VNotch.Controls.ThinkingOrb
         {
-            StartPoint = new Point(0, 0.5),
-            EndPoint = new Point(1, 0.5),
-            MappingMode = BrushMappingMode.RelativeToBoundingBox
-        };
-        var stop0 = new GradientStop(Color.FromArgb(110, 140, 149, 158), -0.45);
-        var stop1 = new GradientStop(Color.FromArgb(240, 200, 200, 200), -0.20);
-        var stop2 = new GradientStop(Color.FromArgb(110, 140, 149, 158), 0.05);
-        shimmerBrush.GradientStops.Add(stop0);
-        shimmerBrush.GradientStops.Add(stop1);
-        shimmerBrush.GradientStops.Add(stop2);
-        _aiThinkingShimmer = shimmerBrush;
-
-        var sparkText = new TextBlock
-        {
-            Text = "\u2726",
-            FontFamily = sfPro,
-            FontSize = 11.5,
-            FontWeight = FontWeights.Bold,
-            Foreground = ChatIconBrush,
-            VerticalAlignment = VerticalAlignment.Center,
-            Margin = new Thickness(0, 0, 7, 0)
-        };
-        row.Children.Add(sparkText);
-
-        var textBlock = new TextBlock
-        {
-            Text = thinkingText,
-            FontFamily = sfPro,
-            FontSize = 11.5,
-            FontWeight = FontWeights.Bold,
-            Foreground = shimmerBrush,
+            Width = 28,
+            Height = 28,
+            State = VNotch.Controls.ThinkingOrbState.Working,
+            Margin = new Thickness(0, 0, 8, 0),
             VerticalAlignment = VerticalAlignment.Center
         };
-        row.Children.Add(textBlock);
-
-        card.Child = row;
-
-        _aiThinkingCard = card;
-        AiTranscript.Children.Add(card);
-        AnimateAiArrival(card, 6, 220);
-        AiTranscriptScroll.ScrollToEnd();
-
-        if (AnimationConfig.ReduceMotion) return;
-
-        // Animate shimmer â€” sweep GradientStop offsets across the text
-        var shimmerDuration = TimeSpan.FromMilliseconds(1600);
-
-        void AnimateStop(GradientStop stop, double from, double to)
+        row.Children.Add(_aiThinkingOrb);
+        row.Children.Add(new TextBlock
         {
-            var anim = new DoubleAnimation(from, to, shimmerDuration)
-            {
-                RepeatBehavior = RepeatBehavior.Forever,
-                EasingFunction = null
-            };
-            Timeline.SetDesiredFrameRate(anim, AnimationConfig.TargetFps);
-            stop.BeginAnimation(GradientStop.OffsetProperty, anim);
-        }
-
-        AnimateStop(stop0, -0.45, 1.05);
-        AnimateStop(stop1, -0.20, 1.30);
-        AnimateStop(stop2, 0.05, 1.55);
+            Text = Loc.Get("spotlight.ai.thinking"),
+            FontFamily = (FontFamily)FindResource("SFProDisplay"),
+            FontSize = 11.5,
+            FontWeight = FontWeights.Bold,
+            Foreground = new SolidColorBrush(Color.FromRgb(168, 172, 182)),
+            VerticalAlignment = VerticalAlignment.Center
+        });
+        _aiThinkingCard = new Border
+        {
+            Background = Brushes.Transparent,
+            Padding = new Thickness(0, 4, 0, 4),
+            Margin = new Thickness(0, 2, 0, 8),
+            Child = row
+        };
+        AiTranscript.Children.Add(_aiThinkingCard);
+        AnimateAiArrival(_aiThinkingCard, 6, 220);
+        AiTranscriptScroll.ScrollToEnd();
     }
 
     private void HideAiThinking()
     {
-        if (_aiThinkingShimmer != null)
-        {
-            foreach (var stop in _aiThinkingShimmer.GradientStops)
-                stop.BeginAnimation(GradientStop.OffsetProperty, null);
-            _aiThinkingShimmer = null;
-        }
+        if (_aiThinkingOrb != null) _aiThinkingOrb.IsActive = false;
+        _aiThinkingOrb = null;
         if (_aiThinkingCard == null) return;
         AiTranscript.Children.Remove(_aiThinkingCard);
         _aiThinkingCard = null;
@@ -392,48 +334,24 @@ public partial class SpotlightWindow
 
     private void UpdateAiActivity()
     {
-        if (_aiRequest == null || AnimationConfig.ReduceMotion || !IsSpotlightOpen || _isClosing)
+        if (_aiRequest == null || !_aiMode || !IsSpotlightOpen || _isClosing)
         {
             StopAiActivity();
             return;
         }
-        if (_aiActivityAnimating) return;
-        _aiActivityAnimating = true;
-
-        // Activity Halo expanding pulse
-        AiActivityHalo.Opacity = 0.7;
-        var haloScale = new DoubleAnimation(1.0, 1.8, TimeSpan.FromMilliseconds(950))
-        {
-            AutoReverse = true,
-            RepeatBehavior = RepeatBehavior.Forever,
-            EasingFunction = new SineEase { EasingMode = EasingMode.EaseInOut }
-        };
-        var haloFade = new DoubleAnimation(0.7, 0.15, TimeSpan.FromMilliseconds(950))
-        {
-            AutoReverse = true,
-            RepeatBehavior = RepeatBehavior.Forever,
-            EasingFunction = new SineEase { EasingMode = EasingMode.EaseInOut }
-        };
-        Timeline.SetDesiredFrameRate(haloScale, AnimationConfig.TargetFps);
-        Timeline.SetDesiredFrameRate(haloFade, AnimationConfig.TargetFps);
-        AiActivityHaloScale.BeginAnimation(ScaleTransform.ScaleXProperty, haloScale);
-        AiActivityHaloScale.BeginAnimation(ScaleTransform.ScaleYProperty, haloScale);
-        AiActivityHalo.BeginAnimation(OpacityProperty, haloFade);
-
-        // Dot color shift to clean white on active
-        AiActivityDot.Fill = UiPalette.PrimaryBrush;
-        AiActivityDot.Opacity = 1.0;
+        // One orb at a time: working beside the thinking label, then composing
+        // beside the streaming status until the last word has been revealed.
+        if (_aiThinkingOrb != null) _aiThinkingOrb.IsActive = true;
+        bool composing = _aiThinkingCard == null;
+        AiActivityOrb.Visibility = composing ? Visibility.Visible : Visibility.Collapsed;
+        AiActivityOrb.IsActive = composing;
     }
 
     private void StopAiActivity()
     {
-        _aiActivityAnimating = false;
-        AiActivityHalo.BeginAnimation(OpacityProperty, null);
-        AiActivityHaloScale.BeginAnimation(ScaleTransform.ScaleXProperty, null);
-        AiActivityHaloScale.BeginAnimation(ScaleTransform.ScaleYProperty, null);
-        AiActivityHalo.Opacity = 0;
-        AiActivityDot.Fill = new SolidColorBrush(Color.FromRgb(119, 119, 119));
-        AiActivityDot.Opacity = 0.45;
+        if (_aiThinkingOrb != null) _aiThinkingOrb.IsActive = false;
+        AiActivityOrb.IsActive = false;
+        AiActivityOrb.Visibility = Visibility.Collapsed;
     }
 
     private int _aiGlowVersion;
@@ -493,7 +411,7 @@ public partial class SpotlightWindow
 
     private static Geometry GetLookupIconGeometry() => AiMagnifierGeometry;
 
-    private static Geometry GetChatIconGeometry() => AiChatGeometry;
+    private Geometry GetChatIconGeometry() => VNotch.Controls.AiProviderBrand.GeometryFor(CurrentAiIdentity().Provider);
 
     private void SyncSearchIconState(bool animate = false)
     {
@@ -516,7 +434,7 @@ public partial class SpotlightWindow
             return;
         }
 
-        // Fluid vector shape morphing between lookup and chat icons just like in Settings
+        // Morph between the lookup icon and the selected provider's brand mark.
         SearchIcon.MorphTo(targetGeom, animate: true, duration: TimeSpan.FromMilliseconds(380),
             easing: new CubicEase { EasingMode = EasingMode.EaseOut });
 

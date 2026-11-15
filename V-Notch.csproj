@@ -185,6 +185,7 @@ public sealed class MinifyLocaleJsonTask : Task
     <None Update="Assets\Brands\LICENSE-Lobe-Icons.txt" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" Link="licenses\LobeIcons-MIT.txt" />
     <None Update="docs\THIRD_PARTY_NOTICES.md" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" Link="THIRD_PARTY_NOTICES.md" />
     <None Update="docs\licenses\Hardcodet.NotifyIcon.Wpf-MIT.txt" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" Link="licenses\Hardcodet.NotifyIcon.Wpf-MIT.txt" />
+    <None Update="docs\licenses\ThinkingOrbs-MIT.txt" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" Link="licenses\ThinkingOrbs-MIT.txt" />
     <None Update="docs\licenses\OnnxRuntime-1.24.4.txt;docs\licenses\DirectML-1.15.4.txt" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" ExcludeFromSingleFile="true" Link="licenses\%(Filename)%(Extension)" />
     <None Update="Introduction\**\*" CopyToOutputDirectory="Never" CopyToPublishDirectory="Never" />
     <None Update="Assets\Translation\**\*" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" ExcludeFromSingleFile="true" />

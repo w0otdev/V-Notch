@@ -15,6 +15,12 @@ using VNotch.Controllers;
 internal static class BackdropFreshnessProbe
 {
     private const BindingFlags Private = BindingFlags.Instance | BindingFlags.NonPublic;
+    [DllImport("user32.dll", EntryPoint = "GetWindowLongPtrW")]
+    private static extern IntPtr GetWindowLongPtr(IntPtr hwnd, int index);
+    [DllImport("user32.dll")]
+    private static extern bool GetLayeredWindowAttributes(IntPtr hwnd, out uint key, out byte alpha, out uint flags);
+    [DllImport("VNotch.Native.dll")]
+    private static extern int vn_backdrop_freshness_debug(IntPtr hwnd, [Out] int[] values);
 
     internal static int RunSource()
     {
@@ -22,7 +28,7 @@ internal static class BackdropFreshnessProbe
         var view = new WebView2();
         var window = new Window
         {
-            Left = 0, Top = 0, Width = SystemParameters.PrimaryScreenWidth,
+            Left = 0, Top = SystemParameters.WorkArea.Top, Width = SystemParameters.PrimaryScreenWidth,
             Height = 650, WindowStyle = WindowStyle.None, ResizeMode = ResizeMode.NoResize,
             ShowActivated = false, ShowInTaskbar = false, Topmost = true, Content = view
         };
@@ -33,15 +39,17 @@ internal static class BackdropFreshnessProbe
                 string profile = BenchmarkProbe.ResultPath("freshness-webview-profile");
                 var environment = await CoreWebView2Environment.CreateAsync(null, profile);
                 await view.EnsureCoreWebView2Async(environment);
+                Console.WriteLine(JsonSerializer.Serialize(new { hwnd = new WindowInteropHelper(window).Handle.ToInt64() }));
                 view.CoreWebView2.WebMessageReceived += (_, e) => Console.WriteLine(e.WebMessageAsJson);
                 view.NavigateToString("""
                     <!doctype html><html><head><style>
                     html,body { margin:0;width:100%;height:100%;overflow:hidden;background:rgb(32,96,160) }
                     </style></head><body><script>
-                    let frame=0;
+                    let frame=0, started=performance.now();
                     function tick() {
                       frame++;
-                      document.body.style.backgroundColor=`rgb(${32+frame%192},96,160)`;
+                      const red=performance.now()-started<2000 ? 32 : 32+(frame*47)%192;
+                      document.body.style.backgroundColor=`rgb(${red},96,160)`;
                       chrome.webview.postMessage({frame});
                       requestAnimationFrame(tick);
                     }
@@ -55,10 +63,11 @@ internal static class BackdropFreshnessProbe
         return app.Run();
     }
 
-    internal static int Run()
+    internal static int Run(int targetFps = 144, int top = 0)
     {
         var app = new Application { ShutdownMode = ShutdownMode.OnExplicitShutdown };
         int sourceFrame = 0;
+        long sourceHwnd = 0;
         string? sourceError = null;
         using var source = Process.Start(new ProcessStartInfo(Environment.ProcessPath!)
         {
@@ -71,6 +80,7 @@ internal static class BackdropFreshnessProbe
             {
                 using var message = JsonDocument.Parse(line);
                 if (message.RootElement.TryGetProperty("frame", out var frame)) Volatile.Write(ref sourceFrame, frame.GetInt32());
+                if (message.RootElement.TryGetProperty("hwnd", out var handle)) Volatile.Write(ref sourceHwnd, handle.GetInt64());
                 if (message.RootElement.TryGetProperty("error", out var error)) sourceError = error.GetString();
             }
         });
@@ -79,7 +89,7 @@ internal static class BackdropFreshnessProbe
         canvas.Children.Add(image);
         var window = new Window
         {
-            Left = 320, Top = 160, Width = 320, Height = 64,
+            Left = (SystemParameters.PrimaryScreenWidth - 320) / 2, Top = top, Width = 320, Height = 64,
             ShowActivated = false, ShowInTaskbar = false, WindowStyle = WindowStyle.None,
             AllowsTransparency = true, Topmost = true, Background = Brushes.Transparent, Content = canvas
         };
@@ -88,11 +98,12 @@ internal static class BackdropFreshnessProbe
         int x = (int)(window.Left * dpi), y = (int)(window.Top * dpi);
         int width = (int)(window.Width * dpi), height = (int)(window.Height * dpi);
         using var glass = new LiquidGlassController(image, () => hwnd, () => new(x, y, width, height),
-            activeFps: 144, maxRegionWidth: 1600, maxRegionHeight: 600) { CropGpuPresentationToCapture = true };
+            activeFps: targetFps, maxRegionWidth: 1600, maxRegionHeight: 600) { CropGpuPresentationToCapture = true };
         bool measuring = false;
         int submissions = 0, changed = 0, validCaptures = 0, uploadedPixel = 0, previousPixel = 0;
         long lastChanged = 0;
         var gaps = new List<double>();
+        var invalidPixels = new Dictionary<int, int>();
         Exception? failure = null;
         try
         {
@@ -101,6 +112,11 @@ internal static class BackdropFreshnessProbe
                 BenchmarkProbe.Pump(20);
             if (sourceError != null) throw new InvalidOperationException(sourceError);
             if (Volatile.Read(ref sourceFrame) < 20) throw new TimeoutException("No controlled Chromium frames");
+            // Let the native source-window entrance fade finish before using
+            // visible screen pixels to validate its captured backing surface.
+            BenchmarkProbe.Pump(700);
+            var captureDebug = new int[28];
+            vn_backdrop_freshness_debug((IntPtr)Volatile.Read(ref sourceHwnd), captureDebug);
             window.Show();
             if (!glass.SetGpuMode(true, g =>
             {
@@ -127,6 +143,7 @@ internal static class BackdropFreshnessProbe
                 submissions++;
                 int pixel = Volatile.Read(ref uploadedPixel);
                 if (Math.Abs(((pixel >> 8) & 255) - 96) <= 3 && Math.Abs((pixel & 255) - 160) <= 3) validCaptures++;
+                else invalidPixels[pixel] = invalidPixels.GetValueOrDefault(pixel) + 1;
                 if (pixel == previousPixel) return;
                 previousPixel = pixel;
                 changed++;
@@ -149,15 +166,24 @@ internal static class BackdropFreshnessProbe
             if (failure != null) throw failure;
             gaps.Sort();
             double p95 = gaps.Count == 0 ? 0 : gaps[(int)((gaps.Count - 1) * .95)];
+            var sourceHandle = (IntPtr)Volatile.Read(ref sourceHwnd);
+            bool layered = GetLayeredWindowAttributes(sourceHandle, out _, out byte alpha, out uint flags);
+            vn_backdrop_freshness_debug(sourceHandle, captureDebug);
             var result = new
             {
+                TargetFps = targetFps, HostTopDip = top,
                 SourceFps = sourceFrames / seconds, SubmittedFps = submissions / seconds,
                 ChangedBackdropFps = changed / seconds, ChangedGapP95Ms = p95,
                 ChangedGapMaxMs = gaps.Count == 0 ? 0 : gaps[^1],
                 RetainedPercent = sourceFrames == 0 ? 0 : changed * 100.0 / sourceFrames,
                 LastPixel = $"{previousPixel:X8}",
+                SourceExtendedStyle = $"{GetWindowLongPtr(sourceHandle, -20).ToInt64():X8}",
+                LayeredAttributes = new { Available = layered, Alpha = alpha, Flags = flags },
+                CaptureDebug = captureDebug,
                 ValidCapturePercent = submissions == 0 ? 0 : validCaptures * 100.0 / submissions,
-                Passed = sourceFrames >= 90 && validCaptures >= submissions * .95 && changed >= sourceFrames * .85 && p95 < 25
+                InvalidPixels = invalidPixels.OrderByDescending(p => p.Value).Take(5).Select(p => new { Pixel = $"{p.Key:X8}", Count = p.Value }).ToArray(),
+                Passed = sourceFrames >= 90 && validCaptures >= submissions * .95 &&
+                    changed >= Math.Min(sourceFrames, targetFps * seconds) * .85 && p95 < Math.Max(25, 1500.0 / targetFps)
             };
             string json = JsonSerializer.Serialize(result, new JsonSerializerOptions { WriteIndented = true });
             Console.WriteLine(json);

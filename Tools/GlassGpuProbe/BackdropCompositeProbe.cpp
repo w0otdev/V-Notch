@@ -11,11 +11,21 @@ bool useFixedScreenPixel = false;
 COLORREF WINAPI ProbeGetPixel(HDC dc, int x, int y) {
     return useFixedScreenPixel ? RGB(32, 32, 32) : ::GetPixel(dc, x, y);
 }
+BOOL WINAPI ProbeBitBlt(HDC target, int x, int y, int width, int height, HDC source, int source_x, int source_y, DWORD flags) {
+    if (!useFixedScreenPixel) return ::BitBlt(target, x, y, width, height, source, source_x, source_y, flags);
+    const RECT rect{x, y, x + width, y + height};
+    HBRUSH brush = CreateSolidBrush(RGB(32, 32, 32));
+    const BOOL result = FillRect(target, &rect, brush);
+    DeleteObject(brush);
+    return result;
+}
 #define GetCurrentProcessId ProbeOwnerPid
 #define GetPixel ProbeGetPixel
+#define BitBlt ProbeBitBlt
 #include "../../Native/Controllers/BackdropComposite.cpp"
 #undef GetCurrentProcessId
 #undef GetPixel
+#undef BitBlt
 
 int main(int argc, char** argv) {
     if (argc < 3 || argc > 4 || (argc == 4 && std::string(argv[3]) != "--verify-overlays")) return 2;
@@ -32,6 +42,7 @@ int main(int argc, char** argv) {
     if (!screen) return 1;
     struct ScreenLease { HDC dc; ~ScreenLease() { ReleaseDC(nullptr, dc); } } lease{screen};
     bd::Scratch scratch;
+    scratch.use_window_capture = false;
     if (!scratch.target.Ensure(screen, area.right, area.bottom)) return 1;
     HWND overlay = nullptr;
     int overlayIndex = -1;

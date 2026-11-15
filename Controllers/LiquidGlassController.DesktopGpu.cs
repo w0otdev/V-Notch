@@ -3,7 +3,9 @@ namespace VNotch.Controllers;
 public sealed partial class LiquidGlassController
 {
     private D3DImageFramePresenter.GpuFrame _gpuLens;
+    private D3DImageFramePresenter.GpuFrame _lastSubmittedGpuFrame;
     private bool _hasGpuLens;
+    private bool _hasLastSubmittedGpuFrame;
     private double _gpuLensScreenX, _gpuLensScreenY;
     private LiquidGlassRefractionEffect? _gpuLensEffect;
     private bool _gpuLensUpdateQueued;
@@ -13,7 +15,7 @@ public sealed partial class LiquidGlassController
 
     // Snapshot dependency properties on the UI thread; the capture worker never
     // touches a DispatcherObject. Screen coordinates survive capture-origin changes.
-    internal void UpdateGpuLens(LiquidGlassRefractionEffect fx, double screenX, double screenY)
+    internal bool UpdateGpuLens(LiquidGlassRefractionEffect fx, double screenX, double screenY)
     {
         if (!ReferenceEquals(_gpuLensEffect, fx))
         {
@@ -30,9 +32,14 @@ public sealed partial class LiquidGlassController
         frame.Set(28, fx.LightX); frame.Set(29, fx.LightY);
         lock (_sync)
         {
+            bool unchanged = _hasGpuLens &&
+                Math.Abs(_gpuLensScreenX - screenX) < 1e-4 &&
+                Math.Abs(_gpuLensScreenY - screenY) < 1e-4 &&
+                _gpuLens.LensEquals(in frame);
             _gpuLens = frame;
             _gpuLensScreenX = screenX; _gpuLensScreenY = screenY;
             _hasGpuLens = true;
+            return !unchanged;
         }
     }
 
@@ -46,8 +53,8 @@ public sealed partial class LiquidGlassController
         {
             _gpuLensUpdateQueued = false;
             if (_gpuLensEffect is not { } fx) return;
-            UpdateGpuLens(fx, _gpuLensScreenX, _gpuLensScreenY);
-            if (_isActive && _gpuMode) ForceRefresh();
+            if (UpdateGpuLens(fx, _gpuLensScreenX, _gpuLensScreenY) && _isActive && _gpuMode)
+                ForceRefresh();
         }));
     }
 
@@ -99,11 +106,25 @@ public sealed partial class LiquidGlassController
         frame.Set(18, 0); // Dual-Kawase already blurred the source.
         frame.Set(19, g.Chroma); frame.Set(20, g.SatFactor); frame.Set(21, g.BrightAdd);
         frame.Set(30, g.EdgeBend); frame.Set(31, g.BevelMode);
+        bool forceRefresh = (frame.Refract & 2) != 0;
+        bool hasPixelBuffer = backdropPixels != IntPtr.Zero;
+        if (hasPixelBuffer)
+        {
+            bool sourceUnchanged = _frameHistory.IsUnchanged(backdropPixels, dims.SrcW, dims.SrcH);
+            if (_hasUploadedGpuFrame && !forceRefresh && sourceUnchanged &&
+                _hasLastSubmittedGpuFrame && _lastSubmittedGpuFrame.FrameEquals(in frame))
+            {
+                return false;
+            }
+        }
         if (presenter.CaptureGpuFrame(in frame, g, generation, out bool submitted, backdropPixels,
                 checked(dims.SrcW * 4), checked(dims.SrcW * dims.SrcH * 4)) && submitted &&
             ShouldContinueWorker(generation) && ReferenceEquals(presenter, _d3dPresenter))
         {
             _hasUploadedGpuFrame = true;
+            if (hasPixelBuffer) _frameHistory.CommitCheckedFrame();
+            _lastSubmittedGpuFrame = frame;
+            _hasLastSubmittedGpuFrame = true;
             CompleteRefresh(refreshVersion);
             _lastPresentTicks = Environment.TickCount64;
             OnGpuFrameUploaded?.Invoke();

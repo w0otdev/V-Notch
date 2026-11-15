@@ -30,7 +30,19 @@ internal static class Program
         }
         args = options.ToArray();
         if (args.Contains("--freshness-source")) return BackdropFreshnessProbe.RunSource();
-        if (args.Contains("--freshness")) return BackdropFreshnessProbe.Run();
+        if (args.Contains("--freshness"))
+        {
+            int ReadFreshnessOption(string name, int fallback, int minimum, int maximum)
+            {
+                int index = Array.IndexOf(args, name);
+                if (index < 0) return fallback;
+                if (index + 1 >= args.Length || !int.TryParse(args[index + 1], out int value) || value < minimum || value > maximum)
+                    throw new ArgumentException($"{name} requires a value between {minimum} and {maximum}.");
+                return value;
+            }
+            return BackdropFreshnessProbe.Run(ReadFreshnessOption("--fps", 144, 30, 240),
+                ReadFreshnessOption("--top", 0, 0, (int)SystemParameters.PrimaryScreenHeight - 64));
+        }
         if (args.Contains("--host-alpha-probe")) return DwmProbeHost.Run();
         if (args.Contains("--benchmark-self-check")) { BenchmarkChecks.SelfCheck(); return 0; }
         if (args.Contains("--benchmark") || args.Contains("--benchmark-focused") || args.Contains("--benchmark-resize"))

@@ -159,7 +159,7 @@ public partial class SpotlightWindow
         EscBadgeText.Text = "TAB · " + (_aiMode ? Loc.Get("spotlight.searchMode") : "AI");
         PlaceholderText.Text = Loc.Get(_aiMode ? "spotlight.ai.placeholder" : "spotlight.placeholder");
         System.Windows.Automation.AutomationProperties.SetName(SearchBox, PlaceholderText.Text);
-        AiModeLabel.Text = Loc.Get("spotlight.ai.agent", _aiHistory.Count > 0 ? _aiConversationProvider : _settings.SpotlightAiProvider);
+        UpdateAiIdentity();
         SetAiToolLabel(AiNewChatButton, "spotlight.ai.newChat");
         SetAiToolLabel(AiBackButton, "spotlight.ai.back");
         SetAiToolLabel(AiCopyButton, "spotlight.ai.copy");
@@ -242,13 +242,14 @@ public partial class SpotlightWindow
         if (shown) ScheduleContentResize();
         UpdateAiWelcome();
         UpdateAiScrollEdges();
-        AiModeLabel.Text = Loc.Get("spotlight.ai.agent", _aiHistory.Count > 0 ? _aiConversationProvider : _settings.SpotlightAiProvider);
+        UpdateAiIdentity();
         SetEscBadgeVisible(true);
         EscBadgeText.Text = "TAB · " + Loc.Get("spotlight.searchMode");
     }
 
     private void RenderAiHistory()
     {
+        UpdateAiIdentity();
         UpdateAiWelcome();
         UpdateAiMetadata();
         AiTranscript.Children.Clear();
@@ -395,6 +396,7 @@ public partial class SpotlightWindow
                     HideAiThinking();
                     _aiHistory.Add(new SpotlightAiMessage(AssistantRole, "") { IsIncomplete = true });
                     liveView = AddAiMessage(new SpotlightAiMessage(AssistantRole, ""), animate: true);
+                    UpdateAiActivity();
                 }
                 string currentResponse = response.ToString();
                 _aiHistory[^1] = new SpotlightAiMessage(AssistantRole, currentResponse) { IsIncomplete = true };

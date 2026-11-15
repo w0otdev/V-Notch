@@ -736,20 +736,23 @@
                             <!-- Unified macOS Header Toolbar -->
                             <Grid x:Name="AiHeader" Margin="0,0,0,10">
                                 <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="Auto"/>
                                     <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="Auto"/>
                                     <ColumnDefinition Width="Auto"/>
                                 </Grid.ColumnDefinitions>
 
                                 <!-- Left: Back button + Model Pill -->
-                                <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                <Grid VerticalAlignment="Center" Margin="0,0,12,0">
+                                    <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
                                     <Button x:Name="AiBackButton" Style="{StaticResource AiToolbarStyle}" Click="AiBack_Click" Margin="0,0,10,0">
                                         <Path Data="{x:Static local:SpotlightWindow.AiArrowLeftGeometry}" Fill="{x:Static local:SpotlightWindow.ChatIconBrush}" Stretch="Uniform" Width="11" Height="11"/>
                                     </Button>
-                                    <StackPanel x:Name="AiModelPill" Orientation="Horizontal" VerticalAlignment="Center">
-                                        <TextBlock x:Name="AiModeLabel" Foreground="#C8C8C8" FontFamily="{StaticResource SFProDisplay}" FontWeight="Bold" FontSize="11.5" VerticalAlignment="Center"/>
-                                    </StackPanel>
-                                </StackPanel>
+                                    <Grid x:Name="AiModelPill" Grid.Column="1" VerticalAlignment="Center">
+                                        <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                                        <Image x:Name="AiProviderLogo" Width="15" Height="15" Stretch="Uniform" Margin="0,0,7,0"/>
+                                        <TextBlock x:Name="AiModeLabel" Grid.Column="1" Foreground="#C8C8C8" FontFamily="{StaticResource SFProDisplay}" FontWeight="Bold" FontSize="11.5" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" TextWrapping="NoWrap"/>
+                                    </Grid>
+                                </Grid>
 
                                 <!-- Right: Metadata + Action buttons -->
                                 <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center">
@@ -769,7 +772,7 @@
                             <!-- Welcome Screen (Monochrome Gray Aesthetic) -->
                             <Border x:Name="AiWelcome" Padding="22,22" Margin="0,0,0,6" Background="Transparent">
                                 <StackPanel>
-                                    <TextBlock Text="✦" FontFamily="{StaticResource SFProDisplay}" FontSize="28" FontWeight="Bold" Foreground="{x:Static local:SpotlightWindow.ChatIconBrush}" HorizontalAlignment="Center" Margin="0,4,0,14"/>
+                                    <Image x:Name="AiWelcomeLogo" Width="32" Height="32" Stretch="Uniform" HorizontalAlignment="Center" Margin="0,4,0,14"/>
                                     <TextBlock x:Name="AiWelcomeTitle" FontFamily="{StaticResource SFProDisplay}" Foreground="#C8C8C8" FontSize="15" FontWeight="Bold" HorizontalAlignment="Center"/>
                                     <TextBlock x:Name="AiWelcomeHint" FontFamily="{StaticResource SFProDisplay}" FontWeight="Bold" Foreground="#8C959E" FontSize="12" Margin="0,6,0,16" TextAlignment="Center" TextWrapping="Wrap"/>
                                     <WrapPanel HorizontalAlignment="Center">
@@ -803,15 +806,9 @@
 
                                     <!-- Left Column: Status, Usage, and Activity Tracking -->
                                     <WrapPanel VerticalAlignment="Center" Margin="0,0,12,0">
-                                        <!-- Hidden activity elements (used by code-behind for state tracking) -->
-                                        <Grid Width="0" Height="0" Visibility="Collapsed">
-                                            <Ellipse x:Name="AiActivityHalo" Width="14" Height="14" Fill="#20FFFFFF" Opacity="0" RenderTransformOrigin="0.5,0.5">
-                                                <Ellipse.RenderTransform>
-                                                    <ScaleTransform x:Name="AiActivityHaloScale" ScaleX="1" ScaleY="1"/>
-                                                </Ellipse.RenderTransform>
-                                            </Ellipse>
-                                            <Ellipse x:Name="AiActivityDot" Width="6" Height="6" Fill="#90959E" HorizontalAlignment="Center" VerticalAlignment="Center"/>
-                                        </Grid>
+                                        <controls:ThinkingOrb x:Name="AiActivityOrb" Width="24" Height="24"
+                                                              State="Composing" Margin="0,0,7,0"
+                                                              VerticalAlignment="Center" Visibility="Collapsed"/>
 
                                         <!-- Status stays visible when streaming or when failed prompt is restored to the input -->
                                         <TextBlock x:Name="AiStatus" TextWrapping="Wrap" HorizontalAlignment="Left" TextAlignment="Left" FontFamily="{StaticResource SFProDisplay}" FontWeight="Bold" FontSize="11" VerticalAlignment="Center" Margin="0,0,10,0" Visibility="Collapsed" AutomationProperties.LiveSetting="Polite">
