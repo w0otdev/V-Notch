@@ -5,14 +5,14 @@ namespace VNotch.Services;
 // Keep the deadline's phase when the display and target rates do not divide evenly.
 internal struct AnimationFrameClock
 {
-    private struct VnCoreAnimClockState
+    private struct ClockState
     {
         public long LastTick;
         public double NextTick;
         public double TargetFps;
     }
 
-    private VnCoreAnimClockState _state;
+    private ClockState _state;
     private TimeSpan _renderingTime;
 
     internal void Reset(long now)

@@ -382,7 +382,9 @@ public partial class SpotlightWindow
     internal void UpdateAiScrollEdges()
     {
         if (AiTopEdge == null || AiBottomEdge == null) return;
-        if (AiHistoryPanel.Visibility == Visibility.Visible)
+        // A dark scroll overlay belongs to the opaque skin. Over live glass it
+        // paints two rectangular bars across the captured backdrop.
+        if (IsLiquidGlassEnabled || AiHistoryPanel.Visibility == Visibility.Visible)
         {
             AiTopEdge.Visibility = Visibility.Collapsed;
             AiBottomEdge.Visibility = Visibility.Collapsed;

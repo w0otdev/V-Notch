@@ -20,13 +20,6 @@ internal sealed partial class SpotlightSearchService
         out int outLimit);
 
     [LibraryImport("VNotch.Native.dll", StringMarshalling = StringMarshalling.Utf16)]
-    private static partial int vn_spotlight_search_compute_boosted_score(
-        double baseScore,
-        double usageBoost,
-        byte isPinned,
-        out double outScore);
-
-    [LibraryImport("VNotch.Native.dll", StringMarshalling = StringMarshalling.Utf16)]
     internal static partial int vn_spotlight_search_compare_keys(
         double scoreA,
         ReadOnlySpan<char> titleAPtr,

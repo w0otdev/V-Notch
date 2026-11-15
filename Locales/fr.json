@@ -693,6 +693,8 @@
   "spotlight.ai.emptyError": "Le fournisseur n’a renvoyé aucun texte lisible. Essayez une autre question ou un autre modèle.",
   "spotlight.ai.hint": "",
   "spotlight.ai.history": "Historique des discussions",
+  "spotlight.ai.switchProvider": "Changer de fournisseur",
+  "spotlight.ai.providerNotConfigured": "Configurer dans les paramètres",
   "spotlight.ai.metadata": "{0} messages · {1:N0} caractères",
   "spotlight.ai.modelError": "Requête refusée. Vérifiez l’identifiant du modèle et sa disponibilité pour votre compte API.",
   "spotlight.ai.networkError": "Impossible de terminer la requête. Vérifiez votre connexion et réessayez.",

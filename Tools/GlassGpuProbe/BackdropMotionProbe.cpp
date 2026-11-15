@@ -120,7 +120,13 @@ int main() {
         if (vn_backdrop_composite(80, 80, width, height, pixels.data(), &ok) != VN_OK || !ok) return false;
         return true;
     };
-    if (!capture()) return 2;
+    // The public compositor queues cold captures on its worker. Keep this
+    // source window pumping messages while WGC/PrintWindow warms up.
+    bool warmed = false;
+    const auto warmup = std::chrono::steady_clock::now() + std::chrono::seconds(5);
+    while (!(warmed = capture()) && std::chrono::steady_clock::now() < warmup)
+        PumpUntil(std::chrono::steady_clock::now() + std::chrono::milliseconds(10));
+    if (!warmed) { printf("FAIL: asynchronous capture did not warm up.\n"); DestroyWindow(source); return 2; }
     PumpUntil(std::chrono::steady_clock::now() + std::chrono::milliseconds(100));
     if (!capture() || pixels[width * height / 2] != 0xFF2060A0u) {
         printf("FAIL: controlled source is not visible in the production capture.\n");
@@ -144,7 +150,7 @@ int main() {
     }
     const double seconds = std::chrono::duration<double>(std::chrono::steady_clock::now() - start).count();
     printf("Elapsed: %.3f s; PrintWindow calls: %u; mean PrintWindow: %.2f ms.\n",
-        seconds, printCalls.load(), printMicroseconds.load() / 1000.0 / printCalls.load());
+        seconds, printCalls.load(), printCalls.load() ? printMicroseconds.load() / 1000.0 / printCalls.load() : 0.0);
     DestroyWindow(source);
     printf("Source: %d frames at 144 Hz; distinct captured frames: %u (%.1f%%).\n",
         samples, changes, changes * 100.0 / samples);

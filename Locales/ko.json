@@ -693,6 +693,8 @@
   "spotlight.ai.emptyError": "제공업체가 읽을 수 있는 텍스트를 반환하지 않았습니다. 다른 질문이나 모델을 사용해 보세요.",
   "spotlight.ai.hint": "",
   "spotlight.ai.history": "채팅 기록",
+  "spotlight.ai.switchProvider": "제공업체 전환",
+  "spotlight.ai.providerNotConfigured": "설정에서 구성",
   "spotlight.ai.metadata": "메시지 {0}개 · {1:N0}자",
   "spotlight.ai.modelError": "요청이 거부되었습니다. 모델 ID와 API 계정에서의 사용 가능 여부를 확인하세요.",
   "spotlight.ai.networkError": "요청을 완료할 수 없습니다. 연결을 확인하고 다시 시도하세요.",

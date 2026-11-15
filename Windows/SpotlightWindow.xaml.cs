@@ -211,6 +211,10 @@ public partial class SpotlightWindow : Window
         int generation = ++_animationGeneration;
         InvalidateLaunchAttempt();
         ResetMorphVisuals();
+        // Content may have updated while hidden. Clear its layout before the
+        // entrance defers visibility changes, so an empty search cannot retain
+        // the previous region's border and margins on its first visible frame.
+        ResetContentRegion();
         // A restored query can publish instant results synchronously from the
         _entranceActive = !AnimationConfig.ReduceMotion;
         _viewModel.Reset();
@@ -366,9 +370,8 @@ public partial class SpotlightWindow : Window
             _freshEntranceOperation = null;
             if (generation != _animationGeneration || !IsSpotlightOpen || _isClosing) return;
 
-            if (IsLiquidGlassEnabled && _liquidGlass?.HasPresentedFrame != true)
-                Shell.Background = (Brush)FindResource("ShellBrush");
-
+            // Keep the translucent material while capture warms up. An opaque
+            // fallback flashes black on cold opens and after resource expiry.
             Opacity = 1;
             startEntrance();
             FocusSearchBox(generation);

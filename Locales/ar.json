@@ -693,6 +693,8 @@
   "spotlight.ai.emptyError": "لم يُرجع المزوّد نصًا قابلًا للقراءة. جرّب سؤالًا أو نموذجًا آخر.",
   "spotlight.ai.hint": "",
   "spotlight.ai.history": "سجل المحادثات",
+  "spotlight.ai.switchProvider": "تبديل مزوّد الخدمة",
+  "spotlight.ai.providerNotConfigured": "الإعداد من الإعدادات",
   "spotlight.ai.metadata": "{0} رسالة · {1:N0} حرف",
   "spotlight.ai.modelError": "تم رفض الطلب. تحقق من معرّف النموذج وتوفّره لحساب API الخاص بك.",
   "spotlight.ai.networkError": "تعذر إكمال الطلب. تحقق من الاتصال وحاول مجددًا.",

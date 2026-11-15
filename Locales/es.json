@@ -693,6 +693,8 @@
   "spotlight.ai.emptyError": "El proveedor no devolvió texto legible. Prueba otra pregunta u otro modelo.",
   "spotlight.ai.hint": "",
   "spotlight.ai.history": "Historial de chats",
+  "spotlight.ai.switchProvider": "Cambiar de proveedor",
+  "spotlight.ai.providerNotConfigured": "Configurar en Ajustes",
   "spotlight.ai.metadata": "{0} mensajes · {1:N0} caracteres",
   "spotlight.ai.modelError": "Solicitud rechazada. Comprueba el ID del modelo y su disponibilidad para tu cuenta API.",
   "spotlight.ai.networkError": "No se pudo completar la solicitud. Comprueba la conexión e inténtalo de nuevo.",

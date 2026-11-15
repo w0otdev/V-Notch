@@ -70,6 +70,13 @@ public sealed partial class LiquidGlassController : IDisposable
             _outScale = gpuDims.OutScale;
             return ProcessDesktopGpuFrame(p, region, gpuDims, generation, blurSigma, refreshVersion);
         }
+        if (gpuMode && !WindowAnimationPolicy.InvisibleMode)
+        {
+            var gpuDims = ComputeFrameDimensions(region, p, true, false, displayW, displayH);
+            _outScale = gpuDims.OutScale;
+            if (ProcessDesktopGpuFrame(p, region, gpuDims, generation, blurSigma, refreshVersion, exactWindows: true))
+                return false;
+        }
         // Keep the plain material (or Ghost-mode BitBlt) until Magnifier has a usable crop.
         // IsReady only means initialization succeeded; promoting it blindly every
         // three seconds used to freeze presentation for another 60 failed captures.

@@ -59,6 +59,9 @@ class WindowCaptureCache final {
         wc::Direct3D11CaptureFramePool pool{nullptr};
         wc::GraphicsCaptureSession session{nullptr};
         winrt::Windows::Graphics::SizeInt32 size{};
+        wc::Direct3D11CaptureFrame gpu_frame{nullptr};
+        ComPtr<ID3D11Texture2D> gpu_texture;
+        ComPtr<ID3D11ShaderResourceView> gpu_view;
         ComPtr<ID3D11Texture2D> staging;
         RECT copied{};
         std::vector<uint32_t> pixels;
@@ -66,6 +69,7 @@ class WindowCaptureCache final {
         ULONGLONG recreate_cooldown_until = 0;
 
         ~Entry() noexcept {
+            try { if (gpu_frame) gpu_frame.Close(); } catch (...) { }
             try { if (session) session.Close(); } catch (...) { }
             try { if (pool) pool.Close(); } catch (...) { }
         }
@@ -314,6 +318,64 @@ class WindowCaptureCache final {
     }
 
 public:
+    // GPU clients serialize this cache with their device command lock and only
+    // call again after their completion query. Thus a pool frame is never closed
+    // while a composition command still samples it.
+    void BindDevice(ID3D11Device* shared) {
+        vnotch::com::EnsureMta();
+        if (device.Get() == shared) return;
+        entries.clear(); capture_device = nullptr;
+        device = shared; device->GetImmediateContext(&context);
+        ComPtr<IDXGIDevice> dxgi; winrt::check_hresult(device.As(&dxgi));
+        winrt::com_ptr<IInspectable> inspectable;
+        winrt::check_hresult(CreateDirect3D11DeviceFromDXGIDevice(dxgi.Get(), inspectable.put()));
+        capture_device = inspectable.as<wx::Direct3D11::IDirect3DDevice>();
+    }
+    struct TextureRegion {
+        ComPtr<ID3D11ShaderResourceView> view;
+        RECT crop{};
+        UINT width = 0, height = 0;
+        bool fresh = false;
+    };
+    bool AcquireTexture(HWND hwnd, const RECT& hit, const RECT& visible, const RECT& window, TextureRegion& out) {
+        DWORD pid = 0;
+        const DWORD thread = GetWindowThreadProcessId(hwnd, &pid);
+        if (!thread || pid == GetCurrentProcessId()) return false;
+        auto& entry = Get(hwnd, pid, thread);
+        auto newest = entry.pool.TryGetNextFrame();
+        if (newest) {
+            for (int i = 0; i < FramePoolBuffers; ++i) {
+                auto next = entry.pool.TryGetNextFrame();
+                if (!next) break;
+                newest.Close(); newest = next;
+            }
+            if (entry.gpu_frame) entry.gpu_frame.Close();
+            entry.gpu_frame = newest; entry.gpu_texture.Reset(); entry.gpu_view.Reset();
+            const auto size = newest.ContentSize();
+            if (size.Width != entry.size.Width || size.Height != entry.size.Height) {
+                entry.gpu_frame.Close(); entry.gpu_frame = nullptr; entry.size = size;
+                if (size.Width > 0 && size.Height > 0)
+                    entry.pool.Recreate(capture_device, wx::DirectXPixelFormat::B8G8R8A8UIntNormalized, FramePoolBuffers, size);
+                return false;
+            }
+            auto access = newest.Surface().as<::Windows::Graphics::DirectX::Direct3D11::IDirect3DDxgiInterfaceAccess>();
+            winrt::check_hresult(access->GetInterface(IID_PPV_ARGS(&entry.gpu_texture)));
+            winrt::check_hresult(device->CreateShaderResourceView(entry.gpu_texture.Get(), nullptr, &entry.gpu_view));
+            out.fresh = true;
+        }
+        if (!entry.gpu_view) return false;
+        RECT bounds{};
+        if (entry.size.Width == visible.right - visible.left && entry.size.Height == visible.bottom - visible.top) bounds = visible;
+        else if (entry.size.Width == window.right - window.left && entry.size.Height == window.bottom - window.top) bounds = window;
+        else return false;
+        out.crop = {hit.left - bounds.left, hit.top - bounds.top, hit.right - bounds.left, hit.bottom - bounds.top};
+        D3D11_TEXTURE2D_DESC desc{}; entry.gpu_texture->GetDesc(&desc);
+        if (out.crop.left < 0 || out.crop.top < 0 || out.crop.right > static_cast<LONG>(desc.Width) ||
+            out.crop.bottom > static_cast<LONG>(desc.Height)) return false;
+        out.view = entry.gpu_view; out.width = desc.Width; out.height = desc.Height;
+        return true;
+    }
+
     void SetFrameWakeEvent(HANDLE wake) noexcept { notification->wake = wake; }
     uint64_t FrameVersion() const noexcept { return notification->version.load(std::memory_order_acquire); }
     bool HasEntries() const noexcept { return !entries.empty() || desktop_duplication != nullptr || desktop_capture != nullptr; }

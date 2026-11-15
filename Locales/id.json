@@ -693,6 +693,8 @@
   "spotlight.ai.emptyError": "Penyedia tidak mengembalikan teks yang dapat dibaca. Coba pertanyaan atau model lain.",
   "spotlight.ai.hint": "",
   "spotlight.ai.history": "Riwayat chat",
+  "spotlight.ai.switchProvider": "Ganti penyedia",
+  "spotlight.ai.providerNotConfigured": "Siapkan di Pengaturan",
   "spotlight.ai.metadata": "{0} pesan · {1:N0} karakter",
   "spotlight.ai.modelError": "Permintaan ditolak. Periksa ID model dan ketersediaannya untuk akun API Anda.",
   "spotlight.ai.networkError": "Tidak dapat menyelesaikan permintaan. Periksa koneksi Anda dan coba lagi.",

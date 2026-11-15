@@ -181,15 +181,15 @@ internal sealed class CodexAccountUsageReader : ICodexAccountUsageReader
 
         static (AiUsageState State, string? Plan, string? Email) ReadIdentity(JsonElement account)
         {
-        if (!account.TryGetProperty("account", out var identity) || identity.ValueKind == JsonValueKind.Null)
-            return (AiUsageState.SignedOut, null, null);
-        if (identity.ValueKind != JsonValueKind.Object || !identity.TryGetProperty("type", out var type) ||
-            type.ValueKind != JsonValueKind.String ||
-            type.GetString() is not ("chatgpt" or "chatgptAuthTokens")) return (AiUsageState.Unsupported, null, null);
-        string? plan = identity.TryGetProperty("planType", out var p) && p.ValueKind == JsonValueKind.String ? p.GetString() : null;
-        string? email = identity.TryGetProperty("email", out var e) && e.ValueKind == JsonValueKind.String ? e.GetString() : null;
-        if (email is { Length: > 254 } || (email != null && ContainsControlChar(email))) email = null;
-        return (AiUsageState.Ready, plan, email);
+            if (!account.TryGetProperty("account", out var identity) || identity.ValueKind == JsonValueKind.Null)
+                return (AiUsageState.SignedOut, null, null);
+            if (identity.ValueKind != JsonValueKind.Object || !identity.TryGetProperty("type", out var type) ||
+                type.ValueKind != JsonValueKind.String ||
+                type.GetString() is not ("chatgpt" or "chatgptAuthTokens")) return (AiUsageState.Unsupported, null, null);
+            string? plan = identity.TryGetProperty("planType", out var p) && p.ValueKind == JsonValueKind.String ? p.GetString() : null;
+            string? email = identity.TryGetProperty("email", out var e) && e.ValueKind == JsonValueKind.String ? e.GetString() : null;
+            if (email is { Length: > 254 } || (email != null && ContainsControlChar(email))) email = null;
+            return (AiUsageState.Ready, plan, email);
         }
 
         async Task<T> Call<T>(int id, string method, object parameters, Func<JsonElement, T> read)

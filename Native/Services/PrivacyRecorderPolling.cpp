@@ -192,25 +192,25 @@ bool scan_obs_folder(const std::wstring& folder, const Recorder& recorder) {
 
     if (cached->changes.Changed(folder, FILE_NOTIFY_CHANGE_FILE_NAME | FILE_NOTIFY_CHANGE_LAST_WRITE |
         FILE_NOTIFY_CHANGE_SIZE | FILE_NOTIFY_CHANGE_CREATION, false)) {
-    newest = {};
-    WIN32_FIND_DATAW data{};
-    const auto pattern = folder + L"\\*.txt";
-    HANDLE find = FindFirstFileW(pattern.c_str(), &data);
-    if (find == INVALID_HANDLE_VALUE) return false;
-    struct FindGuard { HANDLE handle; ~FindGuard() { FindClose(handle); } } guard{find};
-    do {
-        if (data.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) continue;
-        const uint64_t created = file_time(data.ftCreationTime);
-        const uint64_t written = file_time(data.ftLastWriteTime);
-        if (written < min_written) continue;
-        for (size_t i = 0; i < newest.size(); ++i) {
-            if (newest[i].path.empty() || written > newest[i].written) {
-                for (size_t j = newest.size() - 1; j > i; --j) newest[j] = std::move(newest[j - 1]);
-                newest[i] = {created, written, folder + L"\\" + data.cFileName, false};
-                break;
+        newest = {};
+        WIN32_FIND_DATAW data{};
+        const auto pattern = folder + L"\\*.txt";
+        HANDLE find = FindFirstFileW(pattern.c_str(), &data);
+        if (find == INVALID_HANDLE_VALUE) return false;
+        struct FindGuard { HANDLE handle; ~FindGuard() { FindClose(handle); } } guard{find};
+        do {
+            if (data.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) continue;
+            const uint64_t created = file_time(data.ftCreationTime);
+            const uint64_t written = file_time(data.ftLastWriteTime);
+            if (written < min_written) continue;
+            for (size_t i = 0; i < newest.size(); ++i) {
+                if (newest[i].path.empty() || written > newest[i].written) {
+                    for (size_t j = newest.size() - 1; j > i; --j) newest[j] = std::move(newest[j - 1]);
+                    newest[i] = {created, written, folder + L"\\" + data.cFileName, false};
+                    break;
+                }
             }
-        }
-    } while (FindNextFileW(find, &data));
+        } while (FindNextFileW(find, &data));
     }
 
     bool any_locked = false;

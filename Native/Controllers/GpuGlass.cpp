@@ -1,6 +1,9 @@
 #include "vnotch_native.h"
 #include "vnotch_handle_registry.h"
-#include "GlassShaders.g.h"
+#include "Graphics/GlassDevice.h"
+#include "WindowBackdropCapture.h"
+#include "BackdropLayers.h"
+#include "Graphics/WindowBackdrop.h"
 #include <d3d9.h>
 #include <d3d11.h>
 #include <d3d11_4.h>
@@ -28,30 +31,7 @@ using Microsoft::WRL::ComPtr;
 namespace Capture = winrt::Windows::Graphics::Capture;
 namespace DirectX = winrt::Windows::Graphics::DirectX;
 void Check(HRESULT hr) { if (FAILED(hr)) throw hr; }
-struct Frame {
-    int32_t x, y, width, height;
-    float blur;
-    int32_t refract;
-    float lens[32][4];
-};
-struct Constants {
-    float lens[32][4]{};
-    float crop[4]{};
-    float desktop[4]{};
-    float pass[4]{};
-    float sourceRegion[4]{}, detailRegion[4]{};
-};
-struct TextureInput {
-    ID3D11ShaderResourceView* view = nullptr;
-    UINT width = 1, height = 1, activeWidth = 1, activeHeight = 1;
-};
-struct Target {
-    ComPtr<ID3D11Texture2D> texture;
-    ComPtr<ID3D11ShaderResourceView> srv;
-    ComPtr<ID3D11RenderTargetView> rtv;
-    UINT width = 0, height = 0;
-    TextureInput Input(UINT w, UINT h) const { return { srv.Get(), width, height, w, h }; }
-};
+using namespace vnotch::graphics;
 struct SharedTarget {
     ComPtr<IDirect3DTexture9> texture9;
     ComPtr<IDirect3DSurface9> surface;
@@ -66,6 +46,7 @@ struct SharedTarget {
 // also keep resources alive if shutdown races an in-flight P/Invoke.
 class GpuGlass {
 public:
+    std::shared_ptr<vnotch::graphics::GlassDevice> sharedDevice;
     ComPtr<ID3D11Device> device;
     ComPtr<IDirect3DDevice9Ex> presentationDevice;
     ComPtr<ID3D11DeviceContext> context;
@@ -98,6 +79,7 @@ public:
     std::vector<Target> reconstruction;
     Target resolved;
     Target uploadedBackdrop;
+    std::unique_ptr<WindowBackdrop> windowBackdrop;
     uint64_t uploadedPixelsHash = 0;
     UINT uploadedPixelsWidth = 0, uploadedPixelsHeight = 0;
     bool hasUploadedPixelsHash = false;
@@ -125,10 +107,6 @@ public:
     std::vector<DXGI_OUTDUPL_MOVE_RECT> moveRects;
     ULONGLONG smallSince = 0;
 
-    template<size_t N>
-    void PixelShader(const unsigned char (&bytecode)[N], ComPtr<ID3D11PixelShader>& shader) {
-        Check(device->CreatePixelShader(bytecode, N, nullptr, &shader));
-    }
     void Initialize(IDirect3DDevice9Ex* device9, int w, int h) {
         presentationDevice = device9;
         width = w; height = h;
@@ -152,13 +130,12 @@ public:
             }
         }
         if (!adapter) throw DXGI_ERROR_NOT_FOUND;
-        const D3D_FEATURE_LEVEL levels[] = { D3D_FEATURE_LEVEL_11_0, D3D_FEATURE_LEVEL_10_1, D3D_FEATURE_LEVEL_10_0 };
-        Check(D3D11CreateDevice(adapter.Get(), D3D_DRIVER_TYPE_UNKNOWN, nullptr, D3D11_CREATE_DEVICE_BGRA_SUPPORT,
-            levels, ARRAYSIZE(levels), D3D11_SDK_VERSION, &device, nullptr, &context));
-        // WGC can access this device from its own worker while we run the shaders.
-        ComPtr<ID3D11Multithread> multithread;
-        Check(context.As(&multithread));
-        multithread->SetMultithreadProtected(TRUE);
+        sharedDevice = vnotch::graphics::GlassDevice::Acquire(adapter.Get());
+        device = sharedDevice->device; context = sharedDevice->context;
+        vertex = sharedDevice->vertex; crop = sharedDevice->crop;
+        down = sharedDevice->down; up = sharedDevice->up; resolve = sharedDevice->resolve;
+        copy = sharedDevice->copy; refraction = sharedDevice->refraction;
+        sampler = sharedDevice->sampler; rasterizer = sharedDevice->rasterizer;
         for (auto& target : output) {
             HANDLE shared = nullptr; // Legacy shared handles belong to the resource; never CloseHandle.
             Check(device9->CreateTexture(w, h, 1, D3DUSAGE_RENDERTARGET, D3DFMT_A8R8G8B8,
@@ -168,19 +145,6 @@ public:
             Check(device->CreateRenderTargetView(target.texture.Get(), nullptr, &target.rtv));
             Check(device9->CreateQuery(D3DQUERYTYPE_EVENT, &target.consumed));
         }
-        using namespace vnotch::graphics::shaders;
-        Check(device->CreateVertexShader(fullscreenVs, sizeof(fullscreenVs), nullptr, &vertex));
-        PixelShader(cropPs, crop); PixelShader(downPs, down); PixelShader(upPs, up);
-        PixelShader(resolvePs, resolve);
-        PixelShader(copyPs, copy); PixelShader(refractPs, refraction);
-        D3D11_SAMPLER_DESC sample{};
-        sample.Filter = D3D11_FILTER_MIN_MAG_MIP_LINEAR;
-        sample.AddressU = sample.AddressV = sample.AddressW = D3D11_TEXTURE_ADDRESS_CLAMP;
-        sample.MaxLOD = D3D11_FLOAT32_MAX;
-        Check(device->CreateSamplerState(&sample, &sampler));
-        D3D11_RASTERIZER_DESC raster{};
-        raster.FillMode = D3D11_FILL_SOLID; raster.CullMode = D3D11_CULL_NONE; raster.DepthClipEnable = TRUE;
-        Check(device->CreateRasterizerState(&raster, &rasterizer));
         D3D11_BUFFER_DESC buffer{};
         buffer.ByteWidth = sizeof(Constants); buffer.Usage = D3D11_USAGE_DEFAULT;
         buffer.BindFlags = D3D11_BIND_CONSTANT_BUFFER;
@@ -211,6 +175,7 @@ public:
     }
     ~GpuGlass() { ResetCapture(); }
     void ResetCapture() noexcept {
+        windowBackdrop.reset();
         if (capturedFrame) { try { capturedFrame.Close(); } catch (...) { } capturedFrame = nullptr; }
         captureViews.clear();
         try { if (captureSession) captureSession.Close(); } catch (...) { }
@@ -429,7 +394,8 @@ public:
         return true;
     }
     void Draw(TextureInput source, ID3D11RenderTargetView* dest, UINT w, UINT h,
-              ID3D11PixelShader* shader, Constants data, TextureInput detail = {}) {
+              ID3D11PixelShader* shader, Constants data, TextureInput detail = {}, float x = 0, float y = 0) {
+        std::lock_guard commandLock(sharedDevice->commands);
         auto region = [](float* out, TextureInput input) {
             out[0] = static_cast<float>(input.activeWidth) / input.width;
             out[1] = static_cast<float>(input.activeHeight) / input.height;
@@ -439,8 +405,12 @@ public:
         context->UpdateSubresource(constants.Get(), 0, nullptr, &data, 0, 0);
         ID3D11Buffer* cb = constants.Get(); context->PSSetConstantBuffers(0, 1, &cb);
         ID3D11SamplerState* smp = sampler.Get(); context->PSSetSamplers(0, 1, &smp);
+        context->OMSetBlendState(nullptr, nullptr, 0xFFFFFFFF);
+        context->OMSetDepthStencilState(nullptr, 0);
+        context->GSSetShader(nullptr, nullptr, 0);
+        context->HSSetShader(nullptr, nullptr, 0); context->DSSetShader(nullptr, nullptr, 0);
         context->OMSetRenderTargets(1, &dest, nullptr);
-        D3D11_VIEWPORT vp{ 0, 0, static_cast<float>(w), static_cast<float>(h), 0, 1 };
+        D3D11_VIEWPORT vp{ x, y, static_cast<float>(w), static_cast<float>(h), 0, 1 };
         context->RSSetViewports(1, &vp); context->RSSetState(rasterizer.Get());
         context->IASetInputLayout(nullptr); context->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
         context->VSSetShader(vertex.Get(), nullptr, 0); context->PSSetShader(shader, nullptr, 0);
@@ -450,6 +420,7 @@ public:
         context->OMSetRenderTargets(0, nullptr, nullptr);
     }
     HRESULT Render(const Frame& f) {
+        std::lock_guard commandLock(sharedDevice->commands);
         struct DpiScope {
             DPI_AWARENESS_CONTEXT previous = SetThreadDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
             ~DpiScope() { if (previous) SetThreadDpiAwarenessContext(previous); }
@@ -484,6 +455,39 @@ public:
         if (hr == S_OK) { lastFrame = normalized; hasRenderedFrame = true; sourceDirty = false; }
         return hr;
     }
+    // S_OK submitted; S_FALSE unchanged/busy; E_PENDING requests the CPU path.
+    HRESULT RenderWindows(const Frame& f) {
+        std::lock_guard commandLock(sharedDevice->commands);
+        if (pending) return S_FALSE;
+        if (!usingUploadedBackdrop) { ResetCapture(); usingUploadedBackdrop = true; }
+        if (!windowBackdrop) windowBackdrop = std::make_unique<WindowBackdrop>();
+        Target composed;
+        bool changed = false;
+        const bool captured = windowBackdrop->Capture(f, device.Get(), context.Get(),
+            [&](UINT w, UINT h) { return MakeTarget(std::min<UINT>(width, (w + 127) / 128 * 128), std::min<UINT>(height, (h + 63) / 64 * 64)); },
+            [&](const auto& source, ID3D11RenderTargetView* destination, const RECT& hit, const RECT& area) {
+                Constants data{};
+                data.crop[0] = static_cast<float>(source.crop.left); data.crop[1] = static_cast<float>(source.crop.top);
+                data.crop[2] = static_cast<float>(source.crop.right - source.crop.left);
+                data.crop[3] = static_cast<float>(source.crop.bottom - source.crop.top);
+                data.desktop[0] = static_cast<float>(source.width); data.desktop[1] = static_cast<float>(source.height);
+                Draw({source.view.Get(), source.width, source.height, source.width, source.height}, destination,
+                    hit.right - hit.left, hit.bottom - hit.top, sharedDevice->opaqueWindow.Get(), data, {},
+                    static_cast<float>(hit.left - area.left), static_cast<float>(hit.top - area.top));
+            }, composed, changed);
+        if (!captured) return E_PENDING;
+        const bool sourceChanged = desktopTexture.Get() != composed.texture.Get() || changed;
+        desktopTexture = composed.texture; desktopView = composed.srv;
+        usingUploadedBackdrop = true;
+        outputDesc.DesktopCoordinates = {f.x, f.y, f.x + f.width, f.y + f.height};
+        outputDesc.Rotation = DXGI_MODE_ROTATION_IDENTITY;
+        Frame normalized = f; normalized.refract &= 1;
+        if (hasRenderedFrame && !sourceChanged && !(f.refract & 2) && memcmp(&normalized, &lastFrame, sizeof(Frame)) == 0) return S_FALSE;
+        HRESULT hr = RenderCaptured(f, sourceChanged || !hasRenderedFrame || f.blur != lastFrame.blur ||
+            f.width != lastFrame.width || f.height != lastFrame.height);
+        if (hr == S_OK) { lastFrame = normalized; hasRenderedFrame = true; ++captureFrames; }
+        return hr;
+    }
     static uint64_t HashPixelRows(const uint8_t* pixels, int width, int height, UINT stride) noexcept {
         uint64_t h = 0x9E3779B97F4A7C15ull ^ (static_cast<uint64_t>(width) << 32) ^ static_cast<uint64_t>(height);
         const size_t rowWords64 = static_cast<size_t>(width) / 2;
@@ -507,6 +511,7 @@ public:
     }
 
     HRESULT RenderPixels(const Frame& f, const uint8_t* pixels, UINT stride) {
+        std::lock_guard commandLock(sharedDevice->commands);
         if (pending) return S_FALSE;
         if (!usingUploadedBackdrop) ResetCapture();
         usingUploadedBackdrop = true;
@@ -534,6 +539,7 @@ public:
             uploadedDirty = true;
             ++captureFrames;
         }
+        uploadedDirty |= desktopTexture.Get() != uploadedBackdrop.texture.Get();
         desktopTexture = uploadedBackdrop.texture; desktopView = uploadedBackdrop.srv;
         outputDesc.DesktopCoordinates = { f.x, f.y, f.x + f.width, f.y + f.height };
         outputDesc.Rotation = DXGI_MODE_ROTATION_IDENTITY;
@@ -553,6 +559,7 @@ public:
         return hr;
     }
     HRESULT RenderCaptured(const Frame& f, bool rebuildSource = true) {
+        std::lock_guard commandLock(sharedDevice->commands);
         auto& target = output[nextOutput];
         if (target.awaitingConsumer) {
             // D3D11 must not recycle a shared source while D3D9 still copies it.
@@ -562,7 +569,7 @@ public:
             if (hr == S_FALSE || !consumed) { ++consumerStalls; return S_FALSE; }
             target.awaitingConsumer = false;
         }
-        const float effectiveBlur = f.blur <= 0.0f ? 0.0f : std::clamp(std::pow(f.blur / 28.0f, 0.55f) * 28.0f, 0.0f, 60.0f);
+        const float effectiveBlur = f.blur < 1.0f ? f.blur * f.blur * (std::pow(1.0f / 28.0f, 0.55f) * 28.0f) : std::clamp(std::pow(f.blur / 28.0f, 0.55f) * 28.0f, 0.0f, 60.0f);
         int levels = effectiveBlur == 0.0f ? 0 : std::clamp(static_cast<int>(std::ceil(std::log2(std::max(1.0f, effectiveBlur)))), 1, 5);
         if (static_cast<UINT>(f.width) > workWidth || static_cast<UINT>(f.height) > workHeight) {
             // Grow in bounded buckets, retain the peak capacity across view
@@ -654,6 +661,7 @@ public:
         }
     }
     HRESULT CompletionReady() {
+        std::lock_guard commandLock(sharedDevice->commands);
         if (!pending) return S_FALSE;
         // A completed fence is authoritative. EVENT query results can remain
         // unavailable in the driver's CPU cache for another compositor tick.
@@ -713,6 +721,14 @@ VN_EXPORT int32_t __stdcall vn_glass_gpu_render(int64_t handle, const Frame* fra
     try { return pipeline->Render(*frame); }
     catch (const winrt::hresult_error& error) { return pipeline->captureResult = error.code(); }
     catch (HRESULT hr) { return pipeline->captureResult = hr; } catch (...) { return pipeline->captureResult = E_FAIL; }
+}
+VN_EXPORT int32_t __stdcall vn_glass_gpu_render_windows(int64_t handle, const Frame* frame) noexcept {
+    auto pipeline = pipelines.Acquire(handle);
+    if (!pipeline || !frame || frame->width <= 0 || frame->height <= 0 ||
+        frame->width > pipeline->width || frame->height > pipeline->height ||
+        !std::isfinite(frame->blur) || frame->blur < 0 || frame->blur > 60) return E_INVALIDARG;
+    try { return pipeline->RenderWindows(*frame); }
+    catch (...) { return E_PENDING; } // Exact CPU fallback owns unsupported cases.
 }
 // The Magnifier backend supplies an exact crop with a private window-exclusion
 // list. Upload that crop while keeping blur, refraction and presentation on GPU.

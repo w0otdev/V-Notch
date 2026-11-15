@@ -78,21 +78,21 @@ internal sealed partial class LocalFileSearchProvider : ISpotlightProvider
         char[] arena = ArrayPool<char>.Shared.Rent(textLength);
         try
         {
-        if (CopyResults(handle, records, records.Length, arena, arena.Length, out count, out _) != 0)
-            return Array.Empty<SpotlightSearchItem>();
-        var results = new List<SpotlightSearchItem>(count);
-        for (int index = 0; index < count; index++)
-        {
-            token.ThrowIfCancellationRequested();
-            var record = records[index];
-            string path = new(arena, record.Offset, record.Length);
-            int kind = record.Kind;
-            if (IsExcluded?.Invoke(path) == true) continue;
-            var resultKind = kind switch { 0 => SpotlightResultKind.Application, 2 => SpotlightResultKind.Folder, _ => SpotlightResultKind.File };
-            string prefix = kind switch { 0 => "app", 2 => "folder", _ => "file" };
-            results.Add(new SpotlightSearchItem($"{prefix}:{path}", resultKind, Path.GetFileName(Path.TrimEndingDirectorySeparator(path)), path, path, path) { Score = record.Score });
-        }
-        return results;
+            if (CopyResults(handle, records, records.Length, arena, arena.Length, out count, out _) != 0)
+                return Array.Empty<SpotlightSearchItem>();
+            var results = new List<SpotlightSearchItem>(count);
+            for (int index = 0; index < count; index++)
+            {
+                token.ThrowIfCancellationRequested();
+                var record = records[index];
+                string path = new(arena, record.Offset, record.Length);
+                int kind = record.Kind;
+                if (IsExcluded?.Invoke(path) == true) continue;
+                var resultKind = kind switch { 0 => SpotlightResultKind.Application, 2 => SpotlightResultKind.Folder, _ => SpotlightResultKind.File };
+                string prefix = kind switch { 0 => "app", 2 => "folder", _ => "file" };
+                results.Add(new SpotlightSearchItem($"{prefix}:{path}", resultKind, Path.GetFileName(Path.TrimEndingDirectorySeparator(path)), path, path, path) { Score = record.Score });
+            }
+            return results;
         }
         finally { ArrayPool<char>.Shared.Return(arena, clearArray: true); }
     }

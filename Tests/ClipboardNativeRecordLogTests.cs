@@ -236,6 +236,52 @@ public sealed class ClipboardNativeRecordLogTests
         Assert.False(File.Exists(System.IO.Path.Combine(fixture.Root, ".history-key.dpapi")));
     }
 
+    [Fact]
+    public void StartupBatchMigratesOnceAndIsolatesOversizedMissingAndCorruptEntries()
+    {
+        using var fixture = new Fixture();
+        using var records = new NativeClipboardRecordStore(fixture.Root);
+        string[] directories = Enumerable.Range(0, 32).Select(i => System.IO.Path.Combine(fixture.Root, i.ToString())).ToArray();
+        for (int i = 0; i < directories.Length; i++)
+        {
+            Directory.CreateDirectory(directories[i]);
+            string path = System.IO.Path.Combine(directories[i], "entry.json");
+            if (i == 30) continue;
+            byte[] payload = JsonSerializer.SerializeToUtf8Bytes(new { text = i == 29 ? new string('a', 8192) : $"entry-{i}" });
+            if (i % 2 == 0) File.WriteAllBytes(path, payload);
+            else records.Append(path, payload);
+            File.WriteAllText(System.IO.Path.Combine(directories[i], "content.json"), "{\"text\":\"legacy\"}");
+            if (i == 31)
+            {
+                byte[] bytes = File.ReadAllBytes(path);
+                int offset = checked((int)BinaryPrimitives.ReadUInt64LittleEndian(bytes.AsSpan(8192 + 8, 8)));
+                bytes[offset + 48] ^= 1;
+                File.WriteAllBytes(path, bytes);
+            }
+        }
+        int seen = 0;
+        records.ReadStartupBatch(directories, (directory, json, fallback, deferred) =>
+        {
+            int i = Array.IndexOf(directories, directory);
+            Assert.Equal(i >= 29, fallback);
+            if (i < 29)
+            {
+                Assert.Equal($"entry-{i}", JsonSerializer.Deserialize<Dictionary<string, string>>(json)!["text"]);
+                Assert.False(deferred);
+                Assert.Equal("{\"text\":\"legacy\"}", Encoding.UTF8.GetString(records.Read(System.IO.Path.Combine(directory, "content.json"))!));
+            }
+            seen++;
+        });
+        Assert.Equal(32, seen);
+        Assert.Equal(new string('a', 8192), JsonSerializer.Deserialize<Dictionary<string, string>>(records.Read(System.IO.Path.Combine(directories[29], "entry.json"))!)!["text"]);
+        Assert.Throws<IOException>(() => records.Read(System.IO.Path.Combine(directories[31], "entry.json")));
+        records.ReadStartupBatch([directories[0]], (_, json, fallback, _) =>
+        {
+            Assert.False(fallback);
+            Assert.Equal("entry-0", JsonSerializer.Deserialize<Dictionary<string, string>>(json)!["text"]);
+        });
+    }
+
     private sealed class Fixture : IDisposable
     {
         internal string Root { get; } = System.IO.Path.Combine(System.IO.Path.GetTempPath(), "VNotch.RecordTests", Guid.NewGuid().ToString("N"));

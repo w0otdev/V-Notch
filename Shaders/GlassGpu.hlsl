@@ -67,3 +67,12 @@ float4 resolvePs(VertexOutput i) : SV_Target
     return float4(saturate(c + dither), 1);
 }
 float4 copyPs(VertexOutput i) : SV_Target { return sampleSource(i.uv); }
+
+// GPU window composition: reject empty/transparent WGC frames without readback.
+float4 opaqueWindowPs(VertexOutput i) : SV_Target
+{
+    float2 uv = (cropRect.xy + i.uv * cropRect.zw) / desktopInfo.xy;
+    float4 pixel = sourceTexture.Sample(linearSampler, uv);
+    clip(pixel.a - 0.999);
+    return float4(pixel.rgb, 1);
+}

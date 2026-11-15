@@ -111,7 +111,11 @@ void VerifyLiveCapture(GpuGlass& gpu, Frame& frame, HWND hwnd, bool forceWgc) {
     }
 }
 
+#include "GpuPipelineChecks.h"
+#include "ExactWindowChecks.h"
+
 int main(int argc, char** argv) {
+    if (argc > 1 && strcmp(argv[1], "--exact-window-host") == 0) return RunExactWindowHost();
     useUploadedFixtures = argc > 1 && strcmp(argv[1], "--uploaded-backdrop") == 0;
     HWND hwnd = CreateWindowExW(0, L"STATIC", L"VNotch GPU probe", WS_POPUP, -32000, -32000, 1, 1, nullptr, nullptr, nullptr, nullptr);
     try {
@@ -153,7 +157,13 @@ int main(int argc, char** argv) {
             Require(resizing.targetAllocations - initial <= 8, "View transitions recreated warmed blur textures");
             DestroyWindow(hwnd); return 0;
         }
+        const auto initBegin = std::chrono::steady_clock::now();
         GpuGlass gpu; gpu.Initialize(device9.Get(), 128, 96);
+        printf("First presenter init: %.2f ms (precompiled shaders).\n", std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - initBegin).count());
+        VerifySharedDevice(gpu, device9.Get());
+        VerifyOpaqueWindowShader(gpu);
+        VerifyCameraGpu(gpu, device9.Get());
+        if (argc > 1 && strcmp(argv[1], "--exact-wgc") == 0) { VerifyExactWindows(gpu, hwnd); DestroyWindow(hwnd); return 0; }
         int64_t validationHandle = 0;
         Check(vn_glass_gpu_create(device9.Get(), 128, 96, &validationHandle));
         Frame invalid{}; invalid.width = 8; invalid.height = 4;

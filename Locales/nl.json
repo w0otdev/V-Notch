@@ -693,6 +693,8 @@
   "spotlight.ai.emptyError": "De aanbieder heeft geen leesbare tekst teruggestuurd. Probeer een andere vraag of een ander model.",
   "spotlight.ai.hint": "",
   "spotlight.ai.history": "Chatgeschiedenis",
+  "spotlight.ai.switchProvider": "Van aanbieder wisselen",
+  "spotlight.ai.providerNotConfigured": "Instellen via Instellingen",
   "spotlight.ai.metadata": "{0} berichten · {1:N0} tekens",
   "spotlight.ai.modelError": "Aanvraag geweigerd. Controleer het model-ID en de beschikbaarheid voor je API-account.",
   "spotlight.ai.networkError": "Kan de aanvraag niet voltooien. Controleer je verbinding en probeer het opnieuw.",

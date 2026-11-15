@@ -693,6 +693,8 @@
   "spotlight.ai.emptyError": "Sağlayıcı okunabilir metin döndürmedi. Başka bir soru veya model deneyin.",
   "spotlight.ai.hint": "",
   "spotlight.ai.history": "Sohbet geçmişi",
+  "spotlight.ai.switchProvider": "Sağlayıcıyı değiştir",
+  "spotlight.ai.providerNotConfigured": "Ayarlar'da yapılandır",
   "spotlight.ai.metadata": "{0} mesaj · {1:N0} karakter",
   "spotlight.ai.modelError": "İstek reddedildi. Model kimliğini ve API hesabınızda kullanılabilirliğini kontrol edin.",
   "spotlight.ai.networkError": "İstek tamamlanamadı. Bağlantınızı kontrol edip yeniden deneyin.",

@@ -6,6 +6,7 @@ public sealed partial class LiquidGlassController
     private D3DImageFramePresenter.GpuFrame _lastSubmittedGpuFrame;
     private bool _hasGpuLens;
     private bool _hasLastSubmittedGpuFrame;
+    private bool _lastGpuWasExactWindows;
     private double _gpuLensScreenX, _gpuLensScreenY;
     private LiquidGlassRefractionEffect? _gpuLensEffect;
     private bool _gpuLensUpdateQueued;
@@ -71,7 +72,7 @@ public sealed partial class LiquidGlassController
     }
 
     private bool ProcessDesktopGpuFrame(GlassParams p, CaptureRegion region, FrameDimensions dims, int generation, double blurSigma, long refreshVersion,
-        IntPtr backdropPixels = default)
+        IntPtr backdropPixels = default, bool exactWindows = false)
     {
         if (_presentationPaused || !_isActive || !_gpuMode || generation != Volatile.Read(ref _renderGeneration)) return false;
         var presenter = _d3dPresenter;
@@ -111,17 +112,19 @@ public sealed partial class LiquidGlassController
         if (hasPixelBuffer)
         {
             bool sourceUnchanged = _frameHistory.IsUnchanged(backdropPixels, dims.SrcW, dims.SrcH);
-            if (_hasUploadedGpuFrame && !forceRefresh && sourceUnchanged &&
+            if (_hasUploadedGpuFrame && !_lastGpuWasExactWindows && !forceRefresh && sourceUnchanged &&
                 _hasLastSubmittedGpuFrame && _lastSubmittedGpuFrame.FrameEquals(in frame))
             {
                 return false;
             }
         }
-        if (presenter.CaptureGpuFrame(in frame, g, generation, out bool submitted, backdropPixels,
-                checked(dims.SrcW * 4), checked(dims.SrcW * dims.SrcH * 4)) && submitted &&
+        bool accepted = presenter.CaptureGpuFrame(in frame, g, generation, out bool submitted, backdropPixels,
+                checked(dims.SrcW * 4), checked(dims.SrcW * dims.SrcH * 4), exactWindows);
+        if (accepted && submitted &&
             ShouldContinueWorker(generation) && ReferenceEquals(presenter, _d3dPresenter))
         {
             _hasUploadedGpuFrame = true;
+            _lastGpuWasExactWindows = exactWindows;
             if (hasPixelBuffer) _frameHistory.CommitCheckedFrame();
             _lastSubmittedGpuFrame = frame;
             _hasLastSubmittedGpuFrame = true;
@@ -129,6 +132,6 @@ public sealed partial class LiquidGlassController
             _lastPresentTicks = Environment.TickCount64;
             OnGpuFrameUploaded?.Invoke();
         }
-        return false;
+        return exactWindows && accepted;
     }
 }

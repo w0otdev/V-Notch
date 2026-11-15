@@ -693,6 +693,8 @@
   "spotlight.ai.emptyError": "प्रदाता ने पढ़ने योग्य पाठ नहीं लौटाया। कोई दूसरा प्रश्न या मॉडल आज़माएँ।",
   "spotlight.ai.hint": "",
   "spotlight.ai.history": "चैट इतिहास",
+  "spotlight.ai.switchProvider": "प्रदाता बदलें",
+  "spotlight.ai.providerNotConfigured": "सेटिंग्स में सेट अप करें",
   "spotlight.ai.metadata": "{0} संदेश · {1:N0} अक्षर",
   "spotlight.ai.modelError": "अनुरोध अस्वीकृत। मॉडल आईडी और अपने API खाते में उसकी उपलब्धता जाँचें।",
   "spotlight.ai.networkError": "अनुरोध पूरा नहीं हो सका। अपना कनेक्शन जाँचें और फिर कोशिश करें।",

@@ -27,8 +27,10 @@ public sealed partial class LiquidGlassController : IDisposable
         byte[] buffer = _outBuffer;
         double presentDpi = _bitmapDpi < 1.0 ? 96.0 : _bitmapDpi;
         double dpiScale = _bitmapDpi > 0 ? _bitmapDpi / 96.0 : 1.0;
-        double txDip = -_presentSubX / dpiScale;
-        double tyDip = -_presentSubY / dpiScale;
+        // Canvas does not honor child alignment. Position the lens origin
+        // explicitly, removing CPU overscan as well as the subpixel offset.
+        double txDip = -(_mapNotchOffX + _presentSubX) / dpiScale;
+        double tyDip = -(_mapNotchOffY + _presentSubY) / dpiScale;
 
         _presentInFlight = true;
         try
@@ -79,26 +81,26 @@ public sealed partial class LiquidGlassController : IDisposable
         int frameX = (bitmap.PixelWidth - w) / 2;
         bitmap.WritePixels(new Int32Rect(frameX, 0, w, h), buffer, w * 4, 0);
 
-        ConfigureHostForBitmap(bitmap, txDip, tyDip);
+        // The frame is centered within pooled capacity, which can survive a
+        // resize. Its storage offset must not shift the visible desktop crop.
+        ConfigureHostForBitmap(bitmap, txDip - frameX * 96.0 / presentDpi, tyDip);
     }
 
     private void ConfigureHostForBitmap(WriteableBitmap bitmap, double txDip, double tyDip)
     {
-        if (!ReferenceEquals(_host.Source, bitmap))
-        {
-            _host.Stretch = Stretch.None;
-            _host.HorizontalAlignment = HorizontalAlignment.Center;
-            _host.VerticalAlignment = VerticalAlignment.Top;
-            RenderOptions.SetBitmapScalingMode(_host, BitmapScalingMode.Linear);
-            _hostTransform ??= new TranslateTransform();
-            _host.RenderTransform = _hostTransform;
-            _host.Source = bitmap;
-        }
-        if (_hostTransform != null)
-        {
-            _hostTransform.X = txDip;
-            _hostTransform.Y = tyDip;
-        }
+        _host.Stretch = Stretch.None;
+        _host.HorizontalAlignment = HorizontalAlignment.Left;
+        _host.VerticalAlignment = VerticalAlignment.Top;
+        // Restore pixel density even when a GPU attempt left explicit sizes
+        // on the same Image without replacing the last CPU source.
+        _host.Width = bitmap.Width;
+        _host.Height = bitmap.Height;
+        RenderOptions.SetBitmapScalingMode(_host, BitmapScalingMode.Linear);
+        _hostTransform ??= new TranslateTransform();
+        _hostTransform.X = txDip;
+        _hostTransform.Y = tyDip;
+        _host.RenderTransform = _hostTransform;
+        if (!ReferenceEquals(_host.Source, bitmap)) _host.Source = bitmap;
     }
 
     internal static int GrowPresentCapacity(int current, int required, int slack)

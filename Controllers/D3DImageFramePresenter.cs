@@ -579,6 +579,7 @@ internal sealed partial class D3DImageFramePresenter : IDisposable
 
             if (_webcam)
             {
+                if (!TakeReadyWebcamSurface()) return false;
                 (_renderSurface, _uploadSurface) = (_uploadSurface, _renderSurface);
                 _hasWebcamBackBuffer = true;
             }
@@ -680,6 +681,7 @@ internal sealed partial class D3DImageFramePresenter : IDisposable
         {
             _acceptingFrames = false;
             if (_gpuHandle != null) NativeGpuReset(_gpuHandle);
+            DisposeWebcamGpu();
             _pendingFrame = false;
             _pendingForcePresent = false;
             _pendingDirtyRows = default;
@@ -790,6 +792,7 @@ internal sealed partial class D3DImageFramePresenter : IDisposable
         if (_renderSurface != null && !ReferenceEquals(_renderSurface, _attachedSurface))
             _renderSurface.Dispose();
         _attachedSurface?.Dispose();
+        DisposeWebcamGpu();
         _gpuHandle?.Dispose();
         _uploadSurface = null;
         _renderSurface = null;
@@ -982,6 +985,7 @@ internal sealed partial class D3DImageFramePresenter : IDisposable
             if (_renderSurface != null && !ReferenceEquals(_renderSurface, _attachedSurface))
                 _renderSurface.Dispose();
             _attachedSurface?.Dispose();
+            DisposeWebcamGpu();
             _gpuHandle?.Dispose();
             _gpuHandle = null;
             _device?.Dispose();

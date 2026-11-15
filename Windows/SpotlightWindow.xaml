@@ -426,8 +426,8 @@
          Keep the HWND fixed while the shell resizes to avoid surface uploads. -->
     <AdornerDecorator>
     <Grid>
-        <!-- Match NotchShadowWrapper: a solid silhouette behind the shell,
-             with the shadow on its wrapper and no exclusion clip. -->
+        <!-- Clip outside the effect so liquid glass keeps only the exterior
+             shadow, without the opaque casting silhouette beneath the glass. -->
         <Grid x:Name="ShellShadowHost"
                 Width="{Binding ActualWidth, ElementName=Shell}"
                 Height="{Binding ActualHeight, ElementName=Shell}"
@@ -439,16 +439,18 @@
                 HorizontalAlignment="Center"
                 VerticalAlignment="Top"
                 IsHitTestVisible="False">
-            <Grid.Effect>
-                <DropShadowEffect x:Name="ShellShadowEffect" Color="#000000"
-                                  BlurRadius="20"
-                                  ShadowDepth="4"
-                                  Direction="270"
-                                  Opacity="0.6"
-                                  RenderingBias="Performance"/>
-            </Grid.Effect>
-            <Border x:Name="ShellShadowBorder" Background="Black"
-                    CornerRadius="{Binding CornerRadius, ElementName=Shell}"/>
+            <Grid>
+                <Grid.Effect>
+                    <DropShadowEffect x:Name="ShellShadowEffect" Color="#000000"
+                                      BlurRadius="20"
+                                      ShadowDepth="4"
+                                      Direction="270"
+                                      Opacity="0.6"
+                                      RenderingBias="Performance"/>
+                </Grid.Effect>
+                <controls:GlassContourBorder x:Name="ShellShadowBorder" Background="Black"
+                        CornerRadius="{Binding CornerRadius, ElementName=Shell}"/>
+            </Grid>
         </Grid>
     <Border x:Name="Shell"
             Margin="124,16,124,0"
@@ -499,7 +501,7 @@
                   IsHitTestVisible="False"
                   LayoutUpdated="GlassMaterialClipHost_LayoutUpdated"
                   SizeChanged="GlassMaterialClipHost_SizeChanged">
-                <Border x:Name="GlassBackdropHost"
+                <controls:GlassContourBorder x:Name="GlassBackdropHost"
                         IsHitTestVisible="False"
                         ClipToBounds="True"
                         Visibility="Collapsed"
@@ -512,28 +514,28 @@
                            Margin="0"
                            RenderOptions.BitmapScalingMode="HighQuality"/>
                     </Canvas>
-                </Border>
+                </controls:GlassContourBorder>
 
-                <Border x:Name="GlassGrainOverlay"
+                <controls:GlassContourBorder x:Name="GlassGrainOverlay"
                         IsHitTestVisible="False"
                         Visibility="Collapsed"
                         Opacity="0"
                         CornerRadius="14"/>
 
-                <Border x:Name="GlassTintOverlay"
+                <controls:GlassContourBorder x:Name="GlassTintOverlay"
                         IsHitTestVisible="False"
                         Visibility="Collapsed"
                         CornerRadius="14">
-                    <Border.Background>
+                    <controls:GlassContourBorder.Background>
                         <LinearGradientBrush StartPoint="0,0" EndPoint="0,1" po:Freeze="True">
                             <GradientStop Color="#0CFFFFFF" Offset="0"/>
                             <GradientStop Color="#06FFFFFF" Offset="0.5"/>
                             <GradientStop Color="#160A0E14" Offset="1"/>
                         </LinearGradientBrush>
-                    </Border.Background>
-                </Border>
+                    </controls:GlassContourBorder.Background>
+                </controls:GlassContourBorder>
 
-                <Border x:Name="GlassDarkOverlay"
+                <controls:GlassContourBorder x:Name="GlassDarkOverlay"
                         IsHitTestVisible="False"
                         Visibility="Collapsed"
                         Opacity="0"
@@ -542,29 +544,29 @@
 
                 <!-- Optical rim stack: depth, spectral split, Fresnel,
                      broken edge reflection and a focused specular glint. -->
-                <Border x:Name="GlassDepthRimBorder"
+                <controls:GlassContourBorder x:Name="GlassDepthRimBorder"
                         IsHitTestVisible="False"
                         Visibility="Collapsed"
                         Opacity="0"
                         BorderThickness="1.2"
                         CornerRadius="14">
-                    <Border.BorderBrush>
+                    <controls:GlassContourBorder.BorderBrush>
                         <LinearGradientBrush StartPoint="0,0" EndPoint="1,1" po:Freeze="True">
                             <GradientStop Color="#00000000" Offset="0"/>
                             <GradientStop Color="#08000000" Offset="0.42"/>
                             <GradientStop Color="#B8000000" Offset="0.78"/>
                             <GradientStop Color="#54000000" Offset="1"/>
                         </LinearGradientBrush>
-                    </Border.BorderBrush>
-                </Border>
+                    </controls:GlassContourBorder.BorderBrush>
+                </controls:GlassContourBorder>
 
-                <Border x:Name="GlassCoolRimBorder"
+                <controls:GlassContourBorder x:Name="GlassCoolRimBorder"
                         IsHitTestVisible="False"
                         Visibility="Collapsed"
                         Opacity="0"
                         BorderThickness="1.8"
                         CornerRadius="14">
-                    <Border.BorderBrush>
+                    <controls:GlassContourBorder.BorderBrush>
                         <RadialGradientBrush Center="0.14,0.72"
                                                GradientOrigin="0.14,0.72"
                                                RadiusX="0.68" RadiusY="0.82"
@@ -574,16 +576,16 @@
                             <GradientStop Color="#247BDFFF" Offset="0.58"/>
                             <GradientStop Color="#007BDFFF" Offset="1"/>
                         </RadialGradientBrush>
-                    </Border.BorderBrush>
-                </Border>
+                    </controls:GlassContourBorder.BorderBrush>
+                </controls:GlassContourBorder>
 
-                <Border x:Name="GlassWarmRimBorder"
+                <controls:GlassContourBorder x:Name="GlassWarmRimBorder"
                         IsHitTestVisible="False"
                         Visibility="Collapsed"
                         Opacity="0"
                         BorderThickness="1.65"
                         CornerRadius="14">
-                    <Border.BorderBrush>
+                    <controls:GlassContourBorder.BorderBrush>
                         <RadialGradientBrush Center="0.9,0.2"
                                                GradientOrigin="0.9,0.2"
                                                RadiusX="0.58" RadiusY="0.76"
@@ -593,24 +595,24 @@
                             <GradientStop Color="#18FF9348" Offset="0.64"/>
                             <GradientStop Color="#00FF9348" Offset="1"/>
                         </RadialGradientBrush>
-                    </Border.BorderBrush>
-                </Border>
+                    </controls:GlassContourBorder.BorderBrush>
+                </controls:GlassContourBorder>
 
-                <Border x:Name="GlassFresnelBloomBorder"
+                <controls:GlassContourBorder x:Name="GlassFresnelBloomBorder"
                         IsHitTestVisible="False"
                         Visibility="Collapsed"
                         Opacity="0"
                         BorderThickness="3.2"
                         CornerRadius="14"
                         BorderBrush="Transparent">
-                    <Border.Effect>
+                    <controls:GlassContourBorder.Effect>
                         <BlurEffect Radius="3.2"
                                     KernelType="Gaussian"
                                     RenderingBias="Quality"/>
-                    </Border.Effect>
-                </Border>
+                    </controls:GlassContourBorder.Effect>
+                </controls:GlassContourBorder>
 
-                <Border x:Name="GlassFresnelBorder"
+                <controls:GlassContourBorder x:Name="GlassFresnelBorder"
                         IsHitTestVisible="False"
                         Visibility="Collapsed"
                         Opacity="0"
@@ -618,7 +620,7 @@
                         CornerRadius="14"
                         BorderBrush="Transparent"/>
 
-                <Border x:Name="GlassInnerFresnelBorder"
+                <controls:GlassContourBorder x:Name="GlassInnerFresnelBorder"
                         IsHitTestVisible="False"
                         Visibility="Collapsed"
                         Opacity="0"
@@ -627,13 +629,13 @@
                         CornerRadius="13"
                         BorderBrush="Transparent"/>
 
-                <Border x:Name="GlassRimBorder"
+                <controls:GlassContourBorder x:Name="GlassRimBorder"
                         IsHitTestVisible="False"
                         Visibility="Collapsed"
                         Opacity="0"
                         BorderThickness="0.75"
                         CornerRadius="14">
-                    <Border.BorderBrush>
+                    <controls:GlassContourBorder.BorderBrush>
                         <LinearGradientBrush StartPoint="0.04,0" EndPoint="0.96,1" po:Freeze="True">
                             <GradientStop Color="#FFFFFFFF" Offset="0"/>
                             <GradientStop Color="#B8E9F7FF" Offset="0.16"/>
@@ -643,16 +645,16 @@
                             <GradientStop Color="#48FFFFFF" Offset="0.91"/>
                             <GradientStop Color="#D8FFFFFF" Offset="1"/>
                         </LinearGradientBrush>
-                    </Border.BorderBrush>
-                </Border>
+                    </controls:GlassContourBorder.BorderBrush>
+                </controls:GlassContourBorder>
 
-                <Border x:Name="GlassSpecularBorder"
+                <controls:GlassContourBorder x:Name="GlassSpecularBorder"
                         IsHitTestVisible="False"
                         Visibility="Collapsed"
                         Opacity="0"
                         BorderThickness="1.15"
                         CornerRadius="14">
-                    <Border.BorderBrush>
+                    <controls:GlassContourBorder.BorderBrush>
                         <RadialGradientBrush Center="0.22,0.08"
                                                GradientOrigin="0.18,0.02"
                                                RadiusX="0.38" RadiusY="0.62"
@@ -663,8 +665,8 @@
                             <GradientStop Color="#10FFFFFF" Offset="0.68"/>
                             <GradientStop Color="#00FFFFFF" Offset="1"/>
                         </RadialGradientBrush>
-                    </Border.BorderBrush>
-                </Border>
+                    </controls:GlassContourBorder.BorderBrush>
+                </controls:GlassContourBorder>
             </controls:GlassClipGrid>
 
             </Canvas>
@@ -924,8 +926,22 @@
                                 <ScrollViewer.Resources><Style TargetType="ScrollBar" BasedOn="{StaticResource ThinScrollBar}"/></ScrollViewer.Resources>
                                 <StackPanel x:Name="AiTranscript" Margin="0,0,8,0"/>
                             </ScrollViewer>
-                            <Border x:Name="AiTopEdge" Height="22" VerticalAlignment="Top" IsHitTestVisible="False" Opacity="0" Background="#CC121216"/>
-                            <Border x:Name="AiBottomEdge" Height="22" VerticalAlignment="Bottom" IsHitTestVisible="False" Opacity="0" Background="#CC121216"/>
+                            <Border x:Name="AiTopEdge" Height="22" VerticalAlignment="Top" IsHitTestVisible="False" Opacity="0">
+                                <Border.Background>
+                                    <LinearGradientBrush StartPoint="0,0" EndPoint="0,1" po:Freeze="True">
+                                        <GradientStop Color="#CC121216" Offset="0"/>
+                                        <GradientStop Color="#00121216" Offset="1"/>
+                                    </LinearGradientBrush>
+                                </Border.Background>
+                            </Border>
+                            <Border x:Name="AiBottomEdge" Height="22" VerticalAlignment="Bottom" IsHitTestVisible="False" Opacity="0">
+                                <Border.Background>
+                                    <LinearGradientBrush StartPoint="0,0" EndPoint="0,1" po:Freeze="True">
+                                        <GradientStop Color="#00121216" Offset="0"/>
+                                        <GradientStop Color="#CC121216" Offset="1"/>
+                                    </LinearGradientBrush>
+                                </Border.Background>
+                            </Border>
                             </Grid>
 
                             <!-- Unified Bottom Status and Action Row (Cancel button, status, and token usage on 1 line) -->

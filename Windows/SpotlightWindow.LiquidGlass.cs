@@ -128,11 +128,38 @@ public partial class SpotlightWindow
             ShellShadowEffect.Opacity = enabled ? 0.6 : 0.0;
         if (!enabled && Shell?.Effect is DropShadowEffect)
             Shell.Effect = null;
+        UpdateGlassShadowClip();
+    }
+
+    private Geometry? _shadowGlassSilhouette;
+
+    private void UpdateGlassShadowClip()
+    {
+        if (ShellShadowHost == null) return;
+        Geometry? silhouette = IsLiquidGlassEnabled ? GlassMaterialClipHost?.Clip : null;
+        ShellShadowBorder.PowerFactor = IsLiquidGlassEnabled ? _settings.LiquidGlass?.PowerFactor ?? 3 : 2;
+        if (silhouette == null)
+        {
+            ShellShadowHost.Clip = null;
+            _shadowGlassSilhouette = null;
+            return;
+        }
+        if (ReferenceEquals(_shadowGlassSilhouette, silhouette)) return;
+
+        Rect outer = silhouette.Bounds;
+        outer.Inflate(NotchShadowBlurRadius + NotchShadowDepth,
+            NotchShadowBlurRadius + NotchShadowDepth);
+        var clip = new CombinedGeometry(GeometryCombineMode.Exclude,
+            new RectangleGeometry(outer), silhouette);
+        clip.Freeze();
+        ShellShadowHost.Clip = clip;
+        _shadowGlassSilhouette = silhouette;
     }
 
     internal void ApplyLiquidGlassSkin()
     {
         ApplyWindowShadow(_settings.EnableShadow);
+        UpdateAiScrollEdges();
         if (GlassBackdropHost == null) return;
 
         if (IsLiquidGlassEnabled)
@@ -707,9 +734,6 @@ public partial class SpotlightWindow
     {
         if (_liquidGlass == null || !IsLiquidGlassEnabled || !IsSpotlightOpen) return;
 
-        if (_liquidGlass.HasPresentedFrame && Shell.Background != Brushes.Transparent)
-            Shell.Background = Brushes.Transparent;
-
         UpdateGlassCaptureExtent();
         var region = GetGlassCaptureRegion(out double dpiScale, out double exactW, out double exactH, out double screenLeft, out double screenTop);
         bool isAnimating = _entranceActive || _isClosing || _preparingGlassEntrance;
@@ -766,6 +790,7 @@ public partial class SpotlightWindow
         var size = new Size(w, h);
         var cr = Shell.CornerRadius;
         double powerFactor = _settings.LiquidGlass?.PowerFactor ?? 3;
+        GlassMaterialClipHost.SetValue(Controls.GlassContourBorder.PowerFactorProperty, powerFactor);
 
         if (GlassMaterialClipHost.Clip != null
             && Math.Abs(_lastClipSize.Width - size.Width) <= 0.01
@@ -782,6 +807,7 @@ public partial class SpotlightWindow
 
         var geometry = GlassClipBuilder.CreateClip(size, cr, powerFactor);
         GlassMaterialClipHost.Clip = geometry;
+        UpdateGlassShadowClip();
     }
 
     private void GlassMaterialClipHost_SizeChanged(object sender, SizeChangedEventArgs e)

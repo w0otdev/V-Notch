@@ -693,6 +693,8 @@
   "spotlight.ai.emptyError": "Поставщик не вернул читаемый текст. Попробуйте другой вопрос или модель.",
   "spotlight.ai.hint": "",
   "spotlight.ai.history": "История чатов",
+  "spotlight.ai.switchProvider": "Сменить провайдера",
+  "spotlight.ai.providerNotConfigured": "Настроить в настройках",
   "spotlight.ai.metadata": "Сообщений: {0} · Символов: {1:N0}",
   "spotlight.ai.modelError": "Запрос отклонён. Проверьте идентификатор модели и её доступность для вашей учётной записи API.",
   "spotlight.ai.networkError": "Не удалось завершить запрос. Проверьте подключение и повторите попытку.",

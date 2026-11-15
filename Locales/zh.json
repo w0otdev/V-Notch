@@ -693,6 +693,8 @@
   "spotlight.ai.emptyError": "服务商未返回可读文本。请尝试其他问题或模型。",
   "spotlight.ai.hint": "",
   "spotlight.ai.history": "聊天历史",
+  "spotlight.ai.switchProvider": "切换提供商",
+  "spotlight.ai.providerNotConfigured": "在设置中配置",
   "spotlight.ai.metadata": "{0} 条消息 · {1:N0} 个字符",
   "spotlight.ai.modelError": "请求被拒绝。请检查模型 ID 及其是否对你的 API 账户可用。",
   "spotlight.ai.networkError": "无法完成请求。请检查网络连接后重试。",

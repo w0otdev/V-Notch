@@ -3,7 +3,7 @@
 #include <cstdio>
 #include <fstream>
 
-// Run with OWNER_PID OUTPUT.bmp [--verify-overlays]. Match the app's physical
+// Run with OWNER_PID OUTPUT.bmp [--verify-overlays|--verify-wgc-overlays]. Match the app's physical
 // coordinates and exclusion identity while testing the real capture code.
 DWORD probeOwnerPid = 0;
 DWORD WINAPI ProbeOwnerPid() { return probeOwnerPid ? probeOwnerPid : ::GetCurrentProcessId(); }
@@ -28,7 +28,9 @@ BOOL WINAPI ProbeBitBlt(HDC target, int x, int y, int width, int height, HDC sou
 #undef BitBlt
 
 int main(int argc, char** argv) {
-    if (argc < 3 || argc > 4 || (argc == 4 && std::string(argv[3]) != "--verify-overlays")) return 2;
+    if (argc < 3 || argc > 4) return 2;
+    const bool verifyWgc = argc == 4 && std::string(argv[3]) == "--verify-wgc-overlays";
+    if (argc == 4 && !verifyWgc && std::string(argv[3]) != "--verify-overlays") return 2;
     SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
     probeOwnerPid = std::stoul(argv[1]);
     if (!bd::IsUnredirectedToolOverlay(WS_EX_TOOLWINDOW | WS_EX_NOREDIRECTIONBITMAP) ||
@@ -42,7 +44,7 @@ int main(int argc, char** argv) {
     if (!screen) return 1;
     struct ScreenLease { HDC dc; ~ScreenLease() { ReleaseDC(nullptr, dc); } } lease{screen};
     bd::Scratch scratch;
-    scratch.use_window_capture = false;
+    scratch.use_window_capture = verifyWgc;
     if (!scratch.target.Ensure(screen, area.right, area.bottom)) return 1;
     HWND overlay = nullptr;
     int overlayIndex = -1;
@@ -54,6 +56,10 @@ int main(int argc, char** argv) {
         if (!overlay && bd::IsUnredirectedToolOverlay(GetWindowLongPtrW(layer.hwnd, GWL_EXSTYLE))) {
             overlay = layer.hwnd; overlayIndex = i;
         }
+    }
+    if (verifyWgc && !overlay) {
+        printf("FAIL: a visible DirectComposition tool overlay (such as MyDockFinder) is required.\n");
+        return 1;
     }
     if (overlay) {
         // Simulate an overlay that was accepted while opaque, but has changed
@@ -85,8 +91,19 @@ int main(int argc, char** argv) {
         scratch.bad.push_back(overlay);
     }
     std::vector<uint32_t> pixels;
-    bool staticOnly = false;
-    if (!bd::Compose(scratch, area, pixels, staticOnly)) return 1;
+    bd::ComposeMetrics metrics{};
+    bool composed = false;
+    const ULONGLONG deadline = GetTickCount64() + 6000;
+    do {
+        composed = bd::Compose(scratch, area, pixels, metrics);
+        if (composed && (!verifyWgc || (metrics.any_live_wgc && scratch.window_capture.HasWindow(overlay)))) break;
+        if (!verifyWgc) return 1;
+        Sleep(10);
+    } while (GetTickCount64() < deadline);
+    if (!composed || (verifyWgc && (!metrics.any_live_wgc || !scratch.window_capture.HasWindow(overlay)))) {
+        printf("FAIL: the tool overlay never entered live Windows Graphics Capture.\n");
+        return 1;
+    }
     int compared = 0, mismatched = 0;
     if (overlay) {
         RECT hit{}; IntersectRect(&hit, &area, &state.layers[overlayIndex].visible);

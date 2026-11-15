@@ -693,6 +693,8 @@
   "spotlight.ai.emptyError": "Dostawca nie zwrócił czytelnego tekstu. Spróbuj innego pytania lub modelu.",
   "spotlight.ai.hint": "",
   "spotlight.ai.history": "Historia czatów",
+  "spotlight.ai.switchProvider": "Zmień dostawcę",
+  "spotlight.ai.providerNotConfigured": "Skonfiguruj w ustawieniach",
   "spotlight.ai.metadata": "Wiadomości: {0} · Znaki: {1:N0}",
   "spotlight.ai.modelError": "Żądanie odrzucono. Sprawdź identyfikator modelu i jego dostępność dla Twojego konta API.",
   "spotlight.ai.networkError": "Nie udało się ukończyć żądania. Sprawdź połączenie i spróbuj ponownie.",

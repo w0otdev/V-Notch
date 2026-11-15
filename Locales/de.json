@@ -693,6 +693,8 @@
   "spotlight.ai.emptyError": "Der Anbieter hat keinen lesbaren Text geliefert. Versuche eine andere Frage oder ein anderes Modell.",
   "spotlight.ai.hint": "",
   "spotlight.ai.history": "Chatverlauf",
+  "spotlight.ai.switchProvider": "Anbieter wechseln",
+  "spotlight.ai.providerNotConfigured": "In den Einstellungen einrichten",
   "spotlight.ai.metadata": "{0} Nachrichten · {1:N0} Zeichen",
   "spotlight.ai.modelError": "Anfrage abgelehnt. Prüfe die Modell-ID und deren Verfügbarkeit für dein API-Konto.",
   "spotlight.ai.networkError": "Anfrage konnte nicht abgeschlossen werden. Prüfe die Verbindung und versuche es erneut.",
