@@ -1,29 +1,18 @@
 using System.Diagnostics;
-using System.Runtime.InteropServices;
 
 namespace VNotch.Services;
 
 // Keep the deadline's phase when the display and target rates do not divide evenly.
-internal partial struct AnimationFrameClock
+internal struct AnimationFrameClock
 {
-    [StructLayout(LayoutKind.Sequential, Pack = 1)]
-    private struct VnCoreAnimClockState
+    private struct ClockState
     {
         public long LastTick;
         public double NextTick;
         public double TargetFps;
     }
 
-    [LibraryImport("VNotch.Native.dll")]
-    private static partial int vn_anim_clock_try_advance(
-        ref VnCoreAnimClockState ioState,
-        long nowTick,
-        long stopwatchFreq,
-        double targetFps,
-        out double outSeconds,
-        out byte outAdvanced);
-
-    private VnCoreAnimClockState _state;
+    private ClockState _state;
     private TimeSpan _renderingTime;
 
     internal void Reset(long now)
@@ -47,6 +36,21 @@ internal partial struct AnimationFrameClock
 
     internal bool TryAdvance(long now, double targetFps, out double seconds)
     {
-        return vn_anim_clock_try_advance(ref _state, now, Stopwatch.Frequency, targetFps, out seconds, out byte advanced) == 0 && advanced != 0;
+        // This scalar scheduler owns managed state; crossing P/Invoke for each
+        // overlay/frame costs more work than the arithmetic itself.
+        seconds = 0;
+        targetFps = double.IsFinite(targetFps) ? Math.Max(1, targetFps) : 60;
+        double frequency = Stopwatch.Frequency;
+        double interval = frequency / targetFps;
+        if (_state.TargetFps != targetFps)
+        {
+            _state.TargetFps = targetFps;
+            _state.NextTick = _state.LastTick + interval;
+        }
+        if (now <= _state.LastTick || now + frequency * .0001 < _state.NextTick) return false;
+        seconds = Math.Clamp((now - _state.LastTick) / frequency, 0, .05);
+        _state.LastTick = now;
+        _state.NextTick += Math.Max(1, Math.Floor((now - _state.NextTick) / interval) + 1) * interval;
+        return true;
     }
 }

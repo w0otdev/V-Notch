@@ -149,7 +149,7 @@ public partial class ChangelogWindow : Window
 
             var stack = new StackPanel();
 
-            var versionText = new TextBlock
+            var versionText = new VNotch.Controls.NumberFlowText
             {
                 Text = $"v{entry.Version}",
                 FontWeight = FontWeights.SemiBold,
@@ -182,7 +182,7 @@ public partial class ChangelogWindow : Window
                 stack.Children.Add(badge);
             }
 
-            var dateText = new TextBlock
+            var dateText = new VNotch.Controls.NumberFlowText
             {
                 Text = entry.Date.ToString("d", Loc.GetCulture()),
                 FontSize = 11,
@@ -242,7 +242,7 @@ public partial class ChangelogWindow : Window
         };
         headerStack.Children.Add(versionTitle);
 
-        var dateText = new TextBlock
+        var dateText = new VNotch.Controls.NumberFlowText
         {
             Text = entry.Date.ToString("D", Loc.GetCulture()),
             FontSize = 13,

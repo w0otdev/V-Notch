@@ -70,14 +70,10 @@ public partial class MainWindow
 
             GpuMonitorService.Instance.Start();
 
-            if (!_systemMonitorModule.IsRunning)
-            {
-                _systemMonitorModule.Start();
-            }
-            else
-            {
+            bool alreadySampling = _systemMonitorModule.IsRunning;
+            UpdateSystemMonitorActivity();
+            if (alreadySampling)
                 _systemMonitorModule.Tick();
-            }
         }
         else
         {
@@ -88,10 +84,7 @@ public partial class MainWindow
 
             GpuMonitorService.Instance.Stop();
 
-            if (!IsSystemMonitorWidgetMode && _systemMonitorModule.IsRunning)
-            {
-                _systemMonitorModule.Stop();
-            }
+            UpdateSystemMonitorActivity();
         }
 
         _collapsedWidth = GetCollapsedWidth();

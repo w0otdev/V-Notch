@@ -124,7 +124,7 @@ public sealed class AiUsageWidgetTests
         }
         var claude = Assert.IsType<StackPanel>(root.Children[1]);
         var header = Assert.IsType<Grid>(claude.Children[0]);
-        Assert.Equal("—", Assert.IsType<TextBlock>(header.Children[1]).Text);
+        Assert.Equal("—", Assert.IsAssignableFrom<TextBlock>(header.Children[1]).Text);
         Assert.Equal(Loc.Get(label), AiUsageWidgetTestUi.Text(claude, "SubscriptionPlan"));
         var track = Assert.IsType<Border>(claude.Children[1]);
         var unavailableFill = Assert.IsType<Border>(track.Child);
@@ -191,7 +191,7 @@ public sealed class AiUsageWidgetTests
         {
             var block = Assert.IsType<StackPanel>(root.Children[i]);
             var header = Assert.IsType<Grid>(block.Children[0]);
-            Assert.Equal(remaining + "% left", Assert.IsType<TextBlock>(header.Children[1]).Text);
+            Assert.Equal(remaining + "% left", Assert.IsAssignableFrom<TextBlock>(header.Children[1]).Text);
             var track = Assert.IsType<Border>(block.Children[1]);
             var fill = Assert.IsType<Border>(track.Child);
             Assert.InRange(Math.Abs(track.ActualWidth * remaining / 100 - fill.ActualWidth),
@@ -229,7 +229,7 @@ public sealed class AiUsageWidgetTests
             var body = Assert.IsType<StackPanel>(pane.Children[1]);
             var row = Assert.IsType<StackPanel>(body.Children[0]);
             var line = Assert.IsType<Grid>(row.Children[0]);
-            Assert.Equal(text, Assert.IsType<TextBlock>(line.Children[2]).Text);
+            Assert.Equal(text, Assert.IsAssignableFrom<TextBlock>(line.Children[2]).Text);
             var track = Assert.IsType<Border>(row.Children[1]);
             Assert.Equal(fill, Assert.IsType<Grid>(track.Child).ColumnDefinitions[0].Width.Value);
         }
@@ -348,7 +348,7 @@ public sealed class AiUsageWidgetTests
         card.UpdateLayout();
         var panel = Assert.IsType<StackPanel>(card.Child);
         var row = Assert.IsType<StackPanel>(panel.Children[1]);
-        Assert.Equal("—", Assert.IsType<TextBlock>(row.Children[2]).Text);
+        Assert.Equal("—", Assert.IsAssignableFrom<TextBlock>(row.Children[2]).Text);
         var track = Assert.IsType<Border>(row.Children[1]);
         Assert.Equal(0, Assert.IsType<Grid>(track.Child).ColumnDefinitions[0].Width.Value);
         Assert.Contains(Loc.Get("aiUsage.expired"), card.ToolTip!.ToString());
@@ -370,17 +370,17 @@ public sealed class AiUsageWidgetTests
             var header = Assert.IsType<StackPanel>(panel.Children[0]);
             var logo = Assert.IsType<Image>(header.Children[0]);
             Assert.Same(AiProviderBrand.For(provider), logo.Source);
-            Assert.Equal(provider + " Usage", Assert.IsType<TextBlock>(header.Children[1]).Text);
+            Assert.Equal(provider + " Usage", Assert.IsAssignableFrom<TextBlock>(header.Children[1]).Text);
             var first = Assert.IsType<StackPanel>(panel.Children[1]);
-            Assert.Equal("27% left", Assert.IsType<TextBlock>(first.Children[2]).Text);
+            Assert.Equal("27% left", Assert.IsAssignableFrom<TextBlock>(first.Children[2]).Text);
             var line = Assert.IsType<Grid>(first.Children[0]);
-            Assert.Equal("Resets in 51 min", Assert.IsType<TextBlock>(line.Children[1]).Text);
+            Assert.Equal("Resets in 51 min", Assert.IsAssignableFrom<TextBlock>(line.Children[1]).Text);
             var track = Assert.IsType<Border>(first.Children[1]);
             var fillGrid = Assert.IsType<Grid>(track.Child);
             Assert.Equal(27, fillGrid.ColumnDefinitions[0].Width.Value);
             Assert.Equal(Color.FromRgb(255, 77, 8), Assert.IsType<SolidColorBrush>(Assert.IsType<Border>(fillGrid.Children[0]).Background).Color);
             var secondary = Assert.IsType<StackPanel>(panel.Children[2]);
-            Assert.Equal("93% left", Assert.IsType<TextBlock>(secondary.Children[2]).Text);
+            Assert.Equal("93% left", Assert.IsAssignableFrom<TextBlock>(secondary.Children[2]).Text);
             SaveCard(card, provider.ToLowerInvariant() + "-usage-card.png");
         }
         Assert.NotSame(AiProviderBrand.For("Claude"), AiProviderBrand.For("Codex"));

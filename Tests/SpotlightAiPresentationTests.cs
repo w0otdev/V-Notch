@@ -8,6 +8,7 @@ using System.Windows.Documents;
 using System.Windows.Input;
 using System.Windows.Media;
 using VNotch.Models;
+using VNotch.Controls;
 using VNotch.Services;
 using VNotch.Services.Spotlight;
 using Xunit;
@@ -50,6 +51,8 @@ public sealed class SpotlightAiPresentationTests
         Assert.Equal(Visibility.Collapsed, window.AiWelcome.Visibility);
         Assert.True(window.AiCopyButton.IsEnabled);
         Assert.Null(Field<object?>(window, "_aiRequest"));
+        Assert.False(window.AiActivityOrb.IsActive);
+        Assert.Equal(Visibility.Collapsed, window.AiActivityOrb.Visibility);
         await WpfFrameWaiter.UntilAsync(() => window.AiStopButton.Visibility == Visibility.Collapsed,
             "Stop button fades out after completion", ct);
         Assert.Equal(Visibility.Collapsed, window.AiStopButton.Visibility);
@@ -89,6 +92,8 @@ public sealed class SpotlightAiPresentationTests
         Assert.Equal("Retry me", window.SearchBox.Text);
         Assert.Equal(error, Field<string>(window, "_aiStatusKey"));
         Assert.Equal("error", window.AiStatus.Tag);
+        Assert.False(window.AiActivityOrb.IsActive);
+        Assert.Null(Field<ThinkingOrb?>(window, "_aiThinkingOrb"));
         Assert.Equal(Visibility.Visible, window.AiWelcome.Visibility);
         await (Task)Invoke(window, "SendAiAsync")!;
         Assert.Equal(2, attempts);
@@ -127,7 +132,11 @@ public sealed class SpotlightAiPresentationTests
         Invoke(window, "ShowAiThinking");
         Assert.Equal(2, window.AiTranscript.Children.Count);
         Invoke(window, "UpdateAiActivity");
-        Assert.Equal(!reducedMotion, Field<bool>(window, "_aiActivityAnimating"));
+        var orb = Field<ThinkingOrb>(window, "_aiThinkingOrb");
+        Assert.True(orb.IsActive);
+        await WpfFrameWaiter.UntilAsync(() => orb.IsLoaded, "working orb loaded", ct);
+        Assert.Equal(!reducedMotion, orb.IsAnimating);
+        Assert.Equal(Visibility.Collapsed, window.AiActivityOrb.Visibility);
         Invoke(window, "AiStop_Click", window.AiStopButton, new RoutedEventArgs());
         await sending;
         Assert.True(cancelled);
@@ -137,7 +146,8 @@ public sealed class SpotlightAiPresentationTests
         Assert.Equal("Pending draft", window.SearchBox.Text);
         Assert.Empty(Field<List<SpotlightAiMessage>>(window, "_aiHistory"));
         Assert.Null(Field<Border?>(window, "_aiThinkingCard"));
-        Assert.False(Field<bool>(window, "_aiActivityAnimating"));
+        Assert.False(orb.IsAnimating);
+        Assert.False(window.AiActivityOrb.IsActive);
         Assert.True(Field<bool>(window, "_aiMode"));
         Invoke(window, "EscapeAiMode");
         await WpfFrameWaiter.UntilAsync(() => !window.IsSpotlightOpen, "Escape dismisses Spotlight", ct);
@@ -171,7 +181,7 @@ public sealed class SpotlightAiPresentationTests
         var card = Assert.IsType<Border>(Assert.Single(window.AiHistoryItems.Children.Cast<UIElement>()));
         Assert.Contains(Descendants<TextBlock>(card), t => t.Text == "First question");
         card.RaiseEvent(new MouseEventArgs(Mouse.PrimaryDevice, 0) { RoutedEvent = Mouse.MouseEnterEvent });
-        Assert.Equal(Color.FromRgb(32, 32, 32), Assert.IsType<SolidColorBrush>(card.Background).Color);
+        Assert.Same(SpotlightChatPalette.Hover, card.Background);
         card.RaiseEvent(new MouseEventArgs(Mouse.PrimaryDevice, 0) { RoutedEvent = Mouse.MouseLeaveEvent });
         card.RaiseEvent(new MouseButtonEventArgs(Mouse.PrimaryDevice, 0, MouseButton.Left) { RoutedEvent = UIElement.MouseLeftButtonUpEvent });
         await WpfFrameWaiter.UntilAsync(() => window.AiHistoryPanel.Visibility == Visibility.Collapsed, "saved chat selected", ct);
@@ -181,7 +191,9 @@ public sealed class SpotlightAiPresentationTests
         Assert.Equal("saved-model", Field<string>(window, "_aiConversationModel"));
         Invoke(window, "ToggleAiHistoryPage");
         card = Assert.IsType<Border>(Assert.Single(window.AiHistoryItems.Children.Cast<UIElement>()));
-        Descendants<Button>(card).Single().RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+        Descendants<Button>(card).Single(button =>
+            System.Windows.Automation.AutomationProperties.GetName(button) == Loc.Get("spotlight.ai.delete"))
+            .RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
         await WpfFrameWaiter.UntilAsync(() => Field<List<SpotlightSavedChat>>(window, "_savedChats").Count == 0 &&
             window.AiHistoryItems.Children.OfType<TextBlock>().Any(), "deleted chat empty state", ct);
         Assert.Empty(Field<List<SpotlightAiMessage>>(window, "_aiHistory"));
@@ -309,6 +321,84 @@ public sealed class SpotlightAiPresentationTests
         await window.FlushPersistenceAsync();
         Assert.Equal(history, new SpotlightChatStore(System.IO.Path.Combine(fixture.DirectoryPath, "chats.enc")).Load().Single().Messages);
     });
+
+    [Fact]
+    public void OrbsFollowWaitingStreamingMotionPreferenceAndVisibility() => Run(false, async ct =>
+    {
+        var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        using var client = new HttpClient(new Handler(async (_, token) =>
+        {
+            await release.Task.WaitAsync(token);
+            return Stream(string.Join(" ", Enumerable.Repeat("The orb follows the response as it is composed.", 8)));
+        }));
+        var settings = Settings();
+        settings.SpotlightAiWordsPerSecond = 30;
+        settings.HasSeenSpotlightIntro = true;
+        using var fixture = new SpotlightWindowFixture(settings, new SpotlightAiService(client));
+        var window = fixture.Window;
+        window.ShowSpotlight();
+        Invoke(window, "ToggleAiMode");
+        window.SearchBox.Text = "Explain how the thinking orb works";
+        var sending = (Task)Invoke(window, "SendAiAsync")!;
+        var working = Field<ThinkingOrb>(window, "_aiThinkingOrb");
+        await WpfFrameWaiter.UntilAsync(() => working.IsAnimating && window.ContentRegion.Opacity > .99 &&
+            !Field<bool>(window, "_entranceActive") && !window.ContentRegion.ClipToBounds &&
+            window.ContentRegion.ActualHeight >= window.AiPanel.ActualHeight,
+            "working orb visible after content expansion", ct);
+        Assert.Equal(ThinkingOrbState.Working, working.State);
+        CaptureOrbPreview(window, "working");
+
+        AnimationConfig.SetReduceMotion(true);
+        Assert.True(working.IsActive);
+        Assert.False(working.IsAnimating);
+        AnimationConfig.SetReduceMotion(false);
+        Assert.True(working.IsAnimating);
+        window.HideSpotlight();
+        Assert.False(working.IsAnimating);
+        await WpfFrameWaiter.UntilAsync(() => !window.IsSpotlightOpen, "orb window hidden", ct);
+        window.ShowSpotlight();
+        await WpfFrameWaiter.UntilAsync(() => working.IsAnimating && !Field<bool>(window, "_entranceActive"),
+            "working orb resumed", ct);
+
+        release.SetResult();
+        await WpfFrameWaiter.UntilAsync(() => window.AiActivityOrb.IsAnimating &&
+            Field<string>(window, "_aiStatusKey") == "spotlight.ai.streaming", "composing orb visible", ct);
+        Assert.False(working.IsAnimating);
+        Assert.Null(Field<ThinkingOrb?>(window, "_aiThinkingOrb"));
+        Assert.Equal(ThinkingOrbState.Composing, window.AiActivityOrb.State);
+        await WpfFrameWaiter.UntilAsync(() => Descendants<RichTextBox>(window.AiTranscript).Any(view =>
+            new TextRange(view.Document.ContentStart, view.Document.ContentEnd).Text.Contains("orb follows")),
+            "response text revealed beside composing orb", ct);
+        CaptureOrbPreview(window, "composing");
+        AnimationConfig.SetReduceMotion(true);
+        Assert.False(window.AiActivityOrb.IsAnimating);
+        Assert.Equal(Visibility.Visible, window.AiActivityOrb.Visibility);
+        AnimationConfig.SetReduceMotion(false);
+        Assert.True(window.AiActivityOrb.IsAnimating);
+        await sending.WaitAsync(ct);
+        Assert.False(window.AiActivityOrb.IsAnimating);
+        Assert.False(window.AiActivityOrb.IsActive);
+        Assert.Equal(Visibility.Collapsed, window.AiActivityOrb.Visibility);
+    });
+
+    private static void CaptureOrbPreview(SpotlightWindow window, string state)
+    {
+        if (Environment.GetEnvironmentVariable("VNOTCH_ORB_PREVIEW") is not { Length: > 0 } directory) return;
+        System.IO.Directory.CreateDirectory(directory);
+        window.UpdateLayout();
+        var bitmap = new System.Windows.Media.Imaging.RenderTargetBitmap(
+            (int)Math.Ceiling(window.Shell.ActualWidth), (int)Math.Ceiling(window.Shell.ActualHeight),
+            96, 96, PixelFormats.Pbgra32);
+        var drawing = new DrawingVisual();
+        using (var context = drawing.RenderOpen())
+            context.DrawRectangle(new VisualBrush(window.Shell), null,
+                new Rect(0, 0, window.Shell.ActualWidth, window.Shell.ActualHeight));
+        bitmap.Render(drawing);
+        var encoder = new System.Windows.Media.Imaging.PngBitmapEncoder();
+        encoder.Frames.Add(System.Windows.Media.Imaging.BitmapFrame.Create(bitmap));
+        using var file = System.IO.File.Create(System.IO.Path.Combine(directory, state + ".png"));
+        encoder.Save(file);
+    }
 
     private static NotchSettings Settings()
     {

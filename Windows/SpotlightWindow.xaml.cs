@@ -20,8 +20,8 @@ namespace VNotch;
 
 public partial class SpotlightWindow : Window
 {
-    public static Brush ChatIconBrush => UiPalette.PrimaryBrush;
-    public static Brush ChatActiveIconBrush => UiPalette.PrimaryBrush;
+    public static Brush ChatIconBrush => Controls.SpotlightChatPalette.Icon;
+    public static Brush ChatActiveIconBrush => Controls.SpotlightChatPalette.Primary;
 
     private const double ExpandedCornerRadius = 14;
     private const double NotchShadowBlurRadius = 20;
@@ -122,6 +122,7 @@ public partial class SpotlightWindow : Window
         {
             if (!_isParked
                 && !_isClosing
+                && _aiProviderMenu is not { IsOpen: true }
                 && SearchBox.IsEnabled
                 && !SearchBox.IsKeyboardFocused)
             {
@@ -168,7 +169,6 @@ public partial class SpotlightWindow : Window
 
     internal void RefreshLocalization()
     {
-        RefreshSpotlightIntro();
         Language = System.Windows.Markup.XmlLanguage.GetLanguage(Loc.GetCulture().IetfLanguageTag);
         if (PlaceholderText != null)
         {
@@ -211,6 +211,10 @@ public partial class SpotlightWindow : Window
         int generation = ++_animationGeneration;
         InvalidateLaunchAttempt();
         ResetMorphVisuals();
+        // Content may have updated while hidden. Clear its layout before the
+        // entrance defers visibility changes, so an empty search cannot retain
+        // the previous region's border and margins on its first visible frame.
+        ResetContentRegion();
         // A restored query can publish instant results synchronously from the
         _entranceActive = !AnimationConfig.ReduceMotion;
         _viewModel.Reset();
@@ -366,9 +370,8 @@ public partial class SpotlightWindow : Window
             _freshEntranceOperation = null;
             if (generation != _animationGeneration || !IsSpotlightOpen || _isClosing) return;
 
-            if (IsLiquidGlassEnabled && _liquidGlass?.HasPresentedFrame != true)
-                Shell.Background = (Brush)FindResource("ShellBrush");
-
+            // Keep the translucent material while capture warms up. An opaque
+            // fallback flashes black on cold opens and after resource expiry.
             Opacity = 1;
             startEntrance();
             FocusSearchBox(generation);
@@ -496,6 +499,7 @@ public partial class SpotlightWindow : Window
         if (!IsSpotlightOpen || _isClosing) return;
         PlaySpotlightClickSfx();
         CloseResultContextMenu();
+        CloseAiProviderMenu();
         SaveAiHistory();
         StopAiActivity();
         _lastDismissedQuery = SearchBox.Text;
@@ -519,6 +523,7 @@ public partial class SpotlightWindow : Window
     {
         ++_animationGeneration;
         _allowClose = true;
+        CloseAiProviderMenu();
         CancelAiRequest();
         SaveAiHistory();
         StopAiActivity();
@@ -644,6 +649,8 @@ public partial class SpotlightWindow : Window
 
     private async void SearchBox_TextChanged(object sender, TextChangedEventArgs e)
     {
+        // Editing or sending takes precedence over a suggestion's presentation animation.
+        ResetAiPromptReveal();
         // CompleteHide clears the input while closing. Reset its overlays even
         // then: reopening with an already-empty input raises no TextChanged.
         PlaceholderText.Visibility = string.IsNullOrEmpty(SearchBox.Text)
@@ -723,7 +730,11 @@ public partial class SpotlightWindow : Window
 
     private void SearchBox_LostFocus(object sender, RoutedEventArgs e) => GlowingCaret.Visibility = Visibility.Collapsed;
 
-    private void SearchBox_SelectionChanged(object sender, RoutedEventArgs e) => UpdateGlowingCaret();
+    private void SearchBox_SelectionChanged(object sender, RoutedEventArgs e)
+    {
+        if (SearchBox.SelectionLength > 0) ResetAiPromptReveal();
+        UpdateGlowingCaret();
+    }
 
     private void UpdateGlowingCaret()
     {
@@ -1449,7 +1460,8 @@ public partial class SpotlightWindow : Window
         int generation = _animationGeneration;
         Dispatcher.BeginInvoke(() =>
         {
-            if (generation != _animationGeneration || !IsSpotlightOpen || _isClosing || _personalizationOpen || _resultMenuOpen) return;
+            if (generation != _animationGeneration || !IsSpotlightOpen || IsActive || _isClosing || _personalizationOpen || _resultMenuOpen
+                || _aiProviderMenu is { IsOpen: true }) return;
             HideSpotlight();
         }, DispatcherPriority.Input);
     }

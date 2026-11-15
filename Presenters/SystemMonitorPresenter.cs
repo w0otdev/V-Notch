@@ -16,6 +16,7 @@ public sealed record SystemMonitorViewRefs(
     TextBlock NetDownText,
     TextBlock NetUpText)
 {
+    public FrameworkElement? Section { get; init; }
     public SystemMonitorShelfViewRefs? Shelf { get; init; }
 }
 
@@ -56,6 +57,8 @@ public sealed class SystemMonitorPresenter : IDisposable
         _refs = refs ?? throw new ArgumentNullException(nameof(refs));
 
         _module.StatsUpdated += OnStatsUpdated;
+        if (refs.Section != null) refs.Section.IsVisibleChanged += OnVisibilityChanged;
+        if (refs.Shelf != null) refs.Shelf.Section.IsVisibleChanged += OnVisibilityChanged;
     }
 
     private void OnStatsUpdated(object? sender, SystemMonitorInfo e)
@@ -78,8 +81,10 @@ public sealed class SystemMonitorPresenter : IDisposable
         LastNetDownBytesPerSec = stats.NetDownBytesPerSec;
         LastNetUpBytesPerSec = stats.NetUpBytesPerSec;
 
-        refs.CpuValueText.Text = $"{Math.Round(stats.CpuPercent)}%";
-        SetUsageBar(refs.CpuBar, stats.CpuPercent);
+        bool primaryVisible = refs.Section?.IsVisible ?? true;
+        bool shelfVisible = refs.Shelf?.Section.IsVisible == true;
+        if (!primaryVisible && !shelfVisible) return;
+        string cpuText = $"{Math.Round(stats.CpuPercent)}%";
 
         string? usedGb = null;
         if (stats.RamTotalBytes > 0)
@@ -90,26 +95,50 @@ public sealed class SystemMonitorPresenter : IDisposable
                 _cachedRamTotalBytes = stats.RamTotalBytes;
                 _cachedRamTotalGb = FormatGb(stats.RamTotalBytes);
             }
-            refs.RamValueText.Text = $"{usedGb} / {_cachedRamTotalGb} GB";
         }
-        else
+        string downText = FormatRate(stats.NetDownBytesPerSec);
+        string upText = FormatRate(stats.NetUpBytesPerSec);
+        if (primaryVisible)
         {
-            refs.RamValueText.Text = "—";
+            refs.CpuValueText.Text = cpuText;
+            SetUsageBar(refs.CpuBar, stats.CpuPercent);
+            refs.RamValueText.Text = usedGb != null ? $"{usedGb} / {_cachedRamTotalGb} GB" : "—";
+            SetUsageBar(refs.RamBar, stats.RamPercent);
+            refs.NetDownText.Text = downText;
+            refs.NetUpText.Text = upText;
         }
-        SetUsageBar(refs.RamBar, stats.RamPercent);
 
-        refs.NetDownText.Text = FormatRate(stats.NetDownBytesPerSec);
-        refs.NetUpText.Text = FormatRate(stats.NetUpBytesPerSec);
-
-        if (refs.Shelf is { Section.Visibility: Visibility.Visible } shelf)
+        if (shelfVisible && refs.Shelf is { } shelf)
         {
-            shelf.CpuValueText.Text = refs.CpuValueText.Text;
+            shelf.CpuValueText.Text = cpuText;
             SetUsageBar(shelf.CpuBar, stats.CpuPercent);
             shelf.RamValueText.Text = usedGb != null ? $"{usedGb} GB" : "—";
             SetUsageBar(shelf.RamBar, stats.RamPercent);
-            shelf.NetDownText.Text = $"↓ {refs.NetDownText.Text}";
-            shelf.NetUpText.Text = $"↑ {refs.NetUpText.Text}";
+            shelf.NetDownText.Text = $"↓ {downText}";
+            shelf.NetUpText.Text = $"↑ {upText}";
         }
+    }
+
+    private void OnVisibilityChanged(object sender, DependencyPropertyChangedEventArgs e)
+    {
+        if (e.NewValue is true || _refs is not { } refs) return;
+        if (ReferenceEquals(sender, refs.Section))
+        {
+            StopUsageBar(refs.CpuBar);
+            StopUsageBar(refs.RamBar);
+        }
+        if (refs.Shelf is { } shelf && ReferenceEquals(sender, shelf.Section))
+        {
+            StopUsageBar(shelf.CpuBar);
+            StopUsageBar(shelf.RamBar);
+        }
+    }
+
+    private static void StopUsageBar(FrameworkElement bar)
+    {
+        double width = bar.Width;
+        bar.BeginAnimation(FrameworkElement.WidthProperty, null);
+        bar.Width = width;
     }
 
     private static void SetUsageBar(FrameworkElement? bar, double percent)
@@ -168,10 +197,12 @@ public sealed class SystemMonitorPresenter : IDisposable
         var refs = _refs;
         _refs = null;
         if (refs == null) return;
+        if (refs.Section != null) refs.Section.IsVisibleChanged -= OnVisibilityChanged;
         refs.CpuBar.BeginAnimation(FrameworkElement.WidthProperty, null);
         refs.RamBar.BeginAnimation(FrameworkElement.WidthProperty, null);
         if (refs.Shelf is { } shelf)
         {
+            shelf.Section.IsVisibleChanged -= OnVisibilityChanged;
             shelf.CpuBar.BeginAnimation(FrameworkElement.WidthProperty, null);
             shelf.RamBar.BeginAnimation(FrameworkElement.WidthProperty, null);
         }

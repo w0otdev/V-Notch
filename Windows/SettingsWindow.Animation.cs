@@ -47,8 +47,8 @@ public partial class SettingsWindow
         int outCap,
         out int outWritten);
 
-    private readonly List<(UIElement Element, double TargetOpacity)> _activeBlurredElements = new();
-    private readonly List<(UIElement Element, double TargetOpacity)> _activeMenuBlurredElements = new();
+    private readonly List<UIElement> _activeBlurredElements = new();
+    private readonly List<UIElement> _activeMenuBlurredElements = new();
     private int _progressiveContentBlurVersion;
     private int _progressiveMenuBlurVersion;
 
@@ -336,9 +336,8 @@ public partial class SettingsWindow
         var list = isMenuList ? _activeMenuBlurredElements : _activeBlurredElements;
         for (int i = 0; i < list.Count; i++)
         {
-            var (el, targetOpacity) = list[i];
+            var el = list[i];
             el.BeginAnimation(OpacityProperty, null);
-            el.Opacity = targetOpacity;
             if (el.Effect is BlurEffect blur && !blur.IsFrozen)
             {
                 blur.BeginAnimation(BlurEffect.RadiusProperty, null);
@@ -351,14 +350,24 @@ public partial class SettingsWindow
         list.Clear();
     }
 
-    internal static double ResolveElementRestingOpacity(UIElement el)
+    internal static double ResolveElementRestingOpacity(UIElement el) =>
+        (double)el.GetAnimationBaseValue(OpacityProperty);
+
+    private void AnimateSettingsOpacity(UIElement element, double targetOpacity, bool animate, int durationMs = 240)
     {
-        double current = el.Opacity;
-        if (current > 0.05 && current < 0.99)
+        double from = element.Opacity;
+        element.BeginAnimation(OpacityProperty, null);
+        // Persist the latest feature state before any reveal can replace this clock.
+        element.Opacity = targetOpacity;
+        if (!animate || _isLoadingSettings || AnimationConfig.ReduceMotion || from == targetOpacity) return;
+
+        var fade = new DoubleAnimation(from, targetOpacity, TimeSpan.FromMilliseconds(durationMs))
         {
-            return current;
-        }
-        return !el.IsEnabled ? 0.4 : 1.0;
+            EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut },
+            FillBehavior = FillBehavior.Stop
+        };
+        Timeline.SetDesiredFrameRate(fade, AnimationConfig.TargetFps);
+        element.BeginAnimation(OpacityProperty, fade);
     }
 
     internal unsafe void ApplyProgressiveBlurCascade(
@@ -375,9 +384,7 @@ public partial class SettingsWindow
         {
             for (int i = 0; i < items.Count; i++)
             {
-                double rest = ResolveElementRestingOpacity(items[i]);
                 items[i].BeginAnimation(OpacityProperty, null);
-                items[i].Opacity = rest;
                 items[i].Effect = null;
             }
             return;
@@ -407,22 +414,27 @@ public partial class SettingsWindow
             UIElement el = items[i];
             VnProgressiveBlurStep step = steps[i];
             double targetOpacity = ResolveElementRestingOpacity(el);
-            trackedList.Add((el, targetOpacity));
+            trackedList.Add(el);
 
             var translate = EnsureElementTranslateTransform(el);
             el.BeginAnimation(OpacityProperty, null);
             translate.BeginAnimation(TranslateTransform.YProperty, null);
-            el.Opacity = step.StartOpacity;
             translate.Y = step.StartTranslateY;
 
             el.Effect = null;
 
             var delay = TimeSpan.FromMilliseconds(step.DelayMs);
-            var fadeAnim = new DoubleAnimation(step.StartOpacity, targetOpacity, TimeSpan.FromMilliseconds(step.FadeDurationMs))
+            // Keep the underlying opacity owned by its binding/style. A local value
+            // would pin disabled feature groups at their old dimmed state.
+            // The initial keyframes hold the start value throughout the stagger delay.
+            var fadeAnim = new DoubleAnimationUsingKeyFrames
             {
-                BeginTime = delay,
-                EasingFunction = ease
+                FillBehavior = FillBehavior.Stop
             };
+            fadeAnim.KeyFrames.Add(new DiscreteDoubleKeyFrame(step.StartOpacity, KeyTime.FromTimeSpan(TimeSpan.Zero)));
+            fadeAnim.KeyFrames.Add(new DiscreteDoubleKeyFrame(step.StartOpacity, KeyTime.FromTimeSpan(delay)));
+            fadeAnim.KeyFrames.Add(new EasingDoubleKeyFrame(targetOpacity,
+                KeyTime.FromTimeSpan(delay + TimeSpan.FromMilliseconds(step.FadeDurationMs)), ease));
             var slideAnim = new DoubleAnimation(step.StartTranslateY, 0.0, TimeSpan.FromMilliseconds(step.SlideDurationMs))
             {
                 BeginTime = delay,
@@ -432,14 +444,13 @@ public partial class SettingsWindow
             Timeline.SetDesiredFrameRate(fadeAnim, fps);
             Timeline.SetDesiredFrameRate(slideAnim, fps);
 
-            var completion = step.SlideDurationMs >= step.FadeDurationMs ? slideAnim : fadeAnim;
+            Timeline completion = step.SlideDurationMs >= step.FadeDurationMs ? slideAnim : fadeAnim;
             completion.Completed += (_, _) =>
             {
                 int currentVer = isMenuList ? _progressiveMenuBlurVersion : _progressiveContentBlurVersion;
                 if (version != currentVer) return;
 
                 el.BeginAnimation(OpacityProperty, null);
-                el.Opacity = targetOpacity;
                 translate.BeginAnimation(TranslateTransform.YProperty, null);
                 translate.Y = 0.0;
                 el.Effect = null;
@@ -451,9 +462,7 @@ public partial class SettingsWindow
 
         for (int i = written; i < items.Count; i++)
         {
-            double rest = ResolveElementRestingOpacity(items[i]);
             items[i].BeginAnimation(OpacityProperty, null);
-            items[i].Opacity = rest;
             items[i].Effect = null;
         }
     }

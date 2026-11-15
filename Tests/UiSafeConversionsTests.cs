@@ -140,21 +140,6 @@ public sealed class UiSafeConversionsTests
     }
 
     [Fact]
-    public void LiquidGlass_NativeCapacityAndOpticalHelpersMatchCheckedContracts()
-    {
-        Assert.Equal(0, LiquidGlassController.GrowPresentCapacity(256, 0, 64));
-        Assert.Equal(256, LiquidGlassController.GrowPresentCapacity(0, 180, 64));
-        Assert.Throws<OverflowException>(() => LiquidGlassController.GrowPresentCapacity(0, int.MaxValue, 64));
-        Assert.Throws<OverflowException>(() => LiquidGlassController.GrowPixelBufferCapacity(int.MaxValue - 100, int.MaxValue));
-
-        Span<float> lut = stackalloc float[1024];
-        LiquidGlassController.BuildOpticalLut(1.0f, 24.0f, lut);
-        Assert.Equal(0.0f, lut[0], 5);
-        Assert.Equal(0.0f, lut[1023], 5);
-        Assert.True(lut[256] > 0.0f);
-    }
-
-    [Fact]
     public void WindowPlacementAndManifestEntryValidatorsMatchParity()
     {
         var region = SpotifyLoginWindow.CalculateRoundedWindowRegion(420, 640, 1.5);

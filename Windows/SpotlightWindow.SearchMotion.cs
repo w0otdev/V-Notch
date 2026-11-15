@@ -57,6 +57,7 @@ public partial class SpotlightWindow
         }
         if (AnimationConfig.ReduceMotion)
         {
+            ResetAiPromptReveal();
             StatusPanel.BeginAnimation(OpacityProperty, null);
             StatusPanel.Opacity = 1;
         }

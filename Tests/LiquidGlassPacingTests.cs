@@ -202,7 +202,8 @@ public sealed class LiquidGlassPacingTests
                 host.UpdateLayout();
                 double dpi = VisualTreeHelper.GetDpi(host).DpiScaleX;
                 var hwnd = new WindowInteropHelper(host).Handle;
-                var effect = new LiquidGlassLensState { Noise = 0, HighlightStrength = 0, Chroma = 0 };
+                var effect = new LiquidGlassRefractionEffect { Noise = 0, HighlightStrength = 0, Chroma = 0 };
+                image.Effect = effect;
 
                 controller = new LiquidGlassController(image, () => hwnd, () =>
                 {
@@ -472,6 +473,7 @@ public sealed class LiquidGlassPacingTests
             if (!animating)
             {
                 if (remainingMs <= 1.0) return;
+
 
                 if (SetWaitableTimerRelative(timer, remainingMs))
                 {

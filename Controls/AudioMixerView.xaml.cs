@@ -1193,7 +1193,7 @@ public sealed partial class AudioMixerView : UserControl, IDisposable
 
     private Action<double> AddVolumeColumns(Grid grid, double ratio, Action<double> onVol)
     {
-        var percent = new TextBlock
+        var percent = new NumberFlowText
         {
             // White on the liquid glass skin so the percentages stay legible over
             // the refracted backdrop; muted grey on the default skin.

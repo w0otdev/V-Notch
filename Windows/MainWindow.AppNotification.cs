@@ -24,6 +24,8 @@ public partial class MainWindow
     private UiScheduledTimer? _appNotificationDismissTimer;
     private long _appNotificationDismissDeadline;
     private int _appNotificationRemainingMs;
+    private bool _isAiQuotaNotification;
+    private bool AutoDismissAppNotification => _isAiQuotaNotification || _settings.AutoDismissNotifications;
 
     internal bool IsAppNotificationBannerActive => _isAppNotificationBannerVisible;
 
@@ -53,10 +55,15 @@ public partial class MainWindow
     }
 
     internal void ShowAppNotification(AppNotificationInfo? notification)
+        => PresentAppNotificationBanner(notification, isQuotaAlert: false);
+
+    private void PresentAppNotificationBanner(AppNotificationInfo? notification, bool isQuotaAlert,
+        System.Collections.Generic.IReadOnlyList<VNotch.Services.AiUsage.AiQuotaAlert>? quotaAlerts = null)
     {
-        if (notification == null || _cleanedUp || !_settings.ShowSystemNotifications) return;
+        if (notification == null || _cleanedUp || (!isQuotaAlert && !_settings.ShowSystemNotifications)) return;
         if (!_isNotchVisible || _isGreetingActive || _isExpanded || _isAnimating || IsCountdownCompletionVisualActive) return;
 
+        _isAiQuotaNotification = isQuotaAlert;
         WakeFromIdle();
         int generation = ++_appNotificationGeneration;
         bool replacing = _isAppNotificationBannerVisible && !_isAppNotificationBannerExiting;
@@ -87,29 +94,53 @@ public partial class MainWindow
         MusicCompactContent.Opacity = 0;
         MusicCompactContent.Visibility = Visibility.Collapsed;
 
-        ApplyAppNotificationContent(notification);
-        var metrics = AppNotificationService.ComputeBannerMetrics(
-            _collapsedWidth > 0 ? _collapsedWidth : GetCollapsedWidth(),
-            _collapsedHeight > 0 ? _collapsedHeight : GetCollapsedHeight(),
-            _expandedWidth, _cornerRadiusCollapsed, _cornerRadiusExpanded,
-            _settings.EnableDynamicIslandMode, AnimationConfig.ReduceMotion,
-            _settings.NotificationDuration, AppNotificationTitleText.Text, AppNotificationBodyText.Text);
-        _appNotificationBaseWidth = metrics.TargetWidth;
-        _appNotificationBaseCornerRadius = metrics.TargetCornerRadius;
-        AppNotificationBanner.Width = Math.Max(220, metrics.TargetWidth - 36);
+        AppNotificationContent.Visibility = isQuotaAlert ? Visibility.Collapsed : Visibility.Visible;
+        AiQuotaBannerContent.Visibility = isQuotaAlert ? Visibility.Visible : Visibility.Collapsed;
+        AppNotificationBanner.Focusable = !isQuotaAlert;
+        AppNotificationBanner.Cursor = isQuotaAlert ? Cursors.Arrow : Cursors.Hand;
         AppNotificationBanner.Visibility = Visibility.Visible;
-        AppNotificationProgressTrack.Visibility = _settings.AutoDismissNotifications ? Visibility.Visible : Visibility.Collapsed;
-        AppNotificationBanner.Measure(new Size(metrics.TargetWidth, double.PositiveInfinity));
-        _appNotificationBaseHeight = Math.Max(metrics.TargetHeight, AppNotificationBanner.DesiredSize.Height + 4);
+        int dismissDurationMs;
+        if (isQuotaAlert)
+        {
+            AiQuotaBannerContent.Present(quotaAlerts ?? []);
+            _appNotificationBaseWidth = Math.Max(380, GetCollapsedWidth());
+            _appNotificationBaseCornerRadius = _settings.EnableDynamicIslandMode ? 22 : _cornerRadiusCollapsed;
+            AppNotificationBanner.Width = _appNotificationBaseWidth - 36;
+            double top = _settings.EnableDynamicIslandMode ? 8 : Math.Max(14, GetCollapsedHeight() - 6);
+            AppNotificationBanner.Margin = new Thickness(0, top, 0, 10);
+            AppNotificationBanner.Measure(new Size(AppNotificationBanner.Width, double.PositiveInfinity));
+            _appNotificationBaseHeight = Math.Max(GetCollapsedHeight(), AppNotificationBanner.DesiredSize.Height);
+            dismissDurationMs = 5000;
+        }
+        else
+        {
+            ApplyAppNotificationContent(notification);
+            var metrics = AppNotificationService.ComputeBannerMetrics(
+                _collapsedWidth > 0 ? _collapsedWidth : GetCollapsedWidth(),
+                _collapsedHeight > 0 ? _collapsedHeight : GetCollapsedHeight(),
+                _expandedWidth, _cornerRadiusCollapsed, _cornerRadiusExpanded,
+                _settings.EnableDynamicIslandMode, AnimationConfig.ReduceMotion,
+                _settings.NotificationDuration, AppNotificationTitleText.Text, AppNotificationBodyText.Text);
+            _appNotificationBaseWidth = metrics.TargetWidth;
+            _appNotificationBaseCornerRadius = metrics.TargetCornerRadius;
+            AppNotificationBanner.Width = Math.Max(220, metrics.TargetWidth - 36);
+            AppNotificationBanner.Measure(new Size(metrics.TargetWidth, double.PositiveInfinity));
+            _appNotificationBaseHeight = Math.Max(metrics.TargetHeight, AppNotificationBanner.DesiredSize.Height + 4);
+            dismissDurationMs = metrics.DismissDurationMs;
+        }
+        AppNotificationBanner.Visibility = Visibility.Visible;
+        AppNotificationProgressTrack.Visibility = !isQuotaAlert && AutoDismissAppNotification ? Visibility.Visible : Visibility.Collapsed;
         if (Height < _appNotificationBaseHeight + 32) ResizeHostWindowHeight(_appNotificationBaseHeight);
 
         AppNotificationBanner.IsHitTestVisible = true;
         PresentAppNotification(replacing);
         AnimateAppNotificationShell(
             _appNotificationBaseWidth, _appNotificationBaseHeight,
-            _appNotificationBaseCornerRadius, NotificationOpenMs);
-        _appNotificationRemainingMs = metrics.DismissDurationMs;
-        if (!_isAppNotificationHovered && _settings.AutoDismissNotifications)
+            _appNotificationBaseCornerRadius, isQuotaAlert ? 420 : NotificationOpenMs,
+            easing: isQuotaAlert ? _easeSoftSpring : null);
+        if (isQuotaAlert) AiQuotaBannerContent.PlayEntrance();
+        _appNotificationRemainingMs = dismissDurationMs;
+        if (!_isAppNotificationHovered && AutoDismissAppNotification)
             ScheduleAppNotificationDismiss(_appNotificationRemainingMs, generation);
     }
 
@@ -163,7 +194,7 @@ public partial class MainWindow
         if (!_isAppNotificationBannerVisible || _isAppNotificationBannerExiting) return;
         _isAppNotificationHovered = isHovered;
         if (isHovered) PauseAppNotificationDismiss();
-        else if (!_appNotificationPointerDown && _settings.AutoDismissNotifications)
+        else if (!_appNotificationPointerDown && AutoDismissAppNotification)
             ScheduleAppNotificationDismiss(_appNotificationRemainingMs, _appNotificationGeneration);
 
         AnimateAppNotificationHoverFeedback();
@@ -205,7 +236,7 @@ public partial class MainWindow
 
     private void ScheduleAppNotificationDismiss(int durationMs, int generation)
     {
-        if (!_settings.AutoDismissNotifications || _isAppNotificationHovered || _appNotificationPointerDown ||
+        if (!AutoDismissAppNotification || _isAppNotificationHovered || _appNotificationPointerDown ||
             !_isAppNotificationBannerVisible || _isAppNotificationBannerExiting || _appNotificationDismissTimer != null) return;
         int remaining = Math.Clamp(durationMs, 1, 15000);
         _appNotificationRemainingMs = remaining;
@@ -221,7 +252,7 @@ public partial class MainWindow
             _appNotificationDismissDeadline = 0;
             DismissAppNotificationBanner();
         };
-        if (!AnimationConfig.ReduceMotion)
+        if (!AnimationConfig.ReduceMotion && !_isAiQuotaNotification)
             AnimateAppNotificationValue(AppNotificationProgressScale, ScaleTransform.ScaleXProperty, 0, remaining, linear: true);
         timer.Start();
     }

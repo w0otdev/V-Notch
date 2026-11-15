@@ -9,6 +9,7 @@
         Foreground="#EAECEF" UseLayoutRounding="False" SnapsToDevicePixels="False" TextOptions.TextFormattingMode="Ideal" TextOptions.TextRenderingMode="Grayscale" TextOptions.TextHintingMode="Animated">
     <Window.Resources>
         <Style x:Key="DialogButton" TargetType="Button">
+            <Setter Property="FocusVisualStyle" Value="{x:Null}"/>
             <Setter Property="MinHeight" Value="42"/>
             <Setter Property="MinWidth" Value="96"/>
             <Setter Property="Padding" Value="18,10"/>
@@ -35,7 +36,7 @@
                                 <Setter TargetName="Surface" Property="Opacity" Value="0.65"/>
                             </Trigger>
                             <Trigger Property="IsKeyboardFocused" Value="True">
-                                <Setter TargetName="Surface" Property="BorderBrush" Value="#FFFFFF"/>
+                                <Setter TargetName="Surface" Property="Opacity" Value="0.82"/>
                             </Trigger>
                             <Trigger Property="IsEnabled" Value="False">
                                 <Setter TargetName="Surface" Property="Opacity" Value="0.4"/>
@@ -46,6 +47,7 @@
             </Setter>
         </Style>
         <Style x:Key="EditorStyle" TargetType="TextBox">
+            <Setter Property="FocusVisualStyle" Value="{x:Null}"/>
             <Setter Property="Background" Value="#141414"/>
             <Setter Property="Foreground" Value="#F2F2F2"/>
             <Setter Property="CaretBrush" Value="#FFFFFF"/>
@@ -65,10 +67,10 @@
                         </Border>
                         <ControlTemplate.Triggers>
                             <Trigger Property="IsMouseOver" Value="True">
-                                <Setter TargetName="Surface" Property="BorderBrush" Value="#505050"/>
+                                <Setter TargetName="Surface" Property="Background" Value="#1D1D1D"/>
                             </Trigger>
                             <Trigger Property="IsKeyboardFocusWithin" Value="True">
-                                <Setter TargetName="Surface" Property="BorderBrush" Value="#B8B8B8"/>
+                                <Setter TargetName="Surface" Property="Background" Value="#242424"/>
                             </Trigger>
                         </ControlTemplate.Triggers>
                     </ControlTemplate>

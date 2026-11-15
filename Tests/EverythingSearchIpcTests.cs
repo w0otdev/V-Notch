@@ -138,18 +138,27 @@ public sealed class EverythingSearchIpcTests
         Assert.False(unavailable.IsAvailable);
     });
 
-    [Fact]
-    public void SpoofedSenderOrWrongNonceRepliesAreRejectedBeforeGenuineReplySucceeds() => SharedStaTestRunner.RunAsync(async ct =>
+    [Theory]
+    [InlineData(0)]
+    [InlineData(1)]
+    [InlineData(2)]
+    public void WrongNonceRepliesAreRejectedAndMatchingRepliesSupportEverythingSenders(int senderKind) => SharedStaTestRunner.RunAsync(async ct =>
     {
         EnsureApplication();
-        using var spoofer = new Server([("spoofed.txt", @"C:\Fixture", false)]);
+        using var worker = new Server([]);
         using var server = new Server([("report.txt", @"C:\Fixture", false)])
         {
-            SpoofSenderHandle = spoofer.Handle
+            // The SDK correlates replies by dwData, not by the sending window.
+            // https://www.voidtools.com/support/everything/sdk/everything_isqueryreply/
+            ReplySenderHandle = senderKind switch { 0 => IntPtr.Zero, 1 => worker.Handle, _ => null },
+            SendWrongNonceReplies = true
         };
         using var provider = new EverythingSearchProvider(() => server.Handle);
         var results = await provider.SearchAsync("report", 5, ct);
         Assert.NotEqual(0u, server.LastQueryId);
+        Assert.Equal(2, server.WrongNonceResults.Count);
+        Assert.All(server.WrongNonceResults, result => Assert.Equal(IntPtr.Zero, result));
+        Assert.Equal(new IntPtr(1), server.LastReplyResult);
         var match = Assert.Single(results);
         Assert.Equal("report.txt", match.Title);
     });
@@ -162,7 +171,10 @@ public sealed class EverythingSearchIpcTests
         private readonly IReadOnlyList<(string Name, string Parent, bool Folder)> _rows;
         public IntPtr Handle => _window!.Handle;
         public bool DropReplies { get; set; }
-        public IntPtr SpoofSenderHandle { get; set; }
+        public IntPtr? ReplySenderHandle { get; set; }
+        public bool SendWrongNonceReplies { get; set; }
+        public List<IntPtr> WrongNonceResults { get; } = [];
+        public IntPtr LastReplyResult { get; private set; }
         public uint LastQueryId { get; private set; }
         public TaskCompletionSource Received { get; set; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
         public uint Flags { get; private set; }
@@ -191,14 +203,14 @@ public sealed class EverythingSearchIpcTests
             Received.TrySetResult();
             if (!DropReplies)
             {
-                if (SpoofSenderHandle != IntPtr.Zero)
+                IntPtr replySender = ReplySenderHandle ?? Handle;
+                if (SendWrongNonceReplies)
                 {
                     var spoofRows = new[] { ("report-spoof.txt", @"C:\Fixture", false) };
-                    Assert.Equal(IntPtr.Zero, SendReplyCore(reply, IntPtr.Zero, id, spoofRows));
-                    Assert.Equal(IntPtr.Zero, SendReplyCore(reply, SpoofSenderHandle, id, spoofRows));
-                    Assert.Equal(IntPtr.Zero, SendReplyCore(reply, Handle, id ^ 1u, spoofRows));
+                    WrongNonceResults.Add(SendReplyCore(reply, replySender, 0, spoofRows));
+                    WrongNonceResults.Add(SendReplyCore(reply, replySender, id ^ 1u, spoofRows));
                 }
-                Assert.Equal(new IntPtr(1), SendReplyCore(reply, Handle, id, _rows));
+                LastReplyResult = SendReplyCore(reply, replySender, id, _rows);
             }
             handled = true;
             return new(1);

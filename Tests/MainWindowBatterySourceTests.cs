@@ -36,19 +36,4 @@ public sealed class MainWindowBatterySourceTests
         }
         finally { AnimationConfig.SetReduceMotion(reducedMotion); }
     });
-
-    [Fact]
-    public void IntroAcknowledgementPersistsWithoutSavingLivePreview() => SharedStaTestRunner.RunAsync(async () =>
-    {
-        await using var fixture = new GreetingAcceptanceTests.MainWindowFixture("en", false,
-            settings => settings.EnableLocalOnlyMode = true,
-            services => services.AddSingleton<IMediaDetectionService>(new FakeMediaDetectionService()));
-        var window = fixture.Window;
-        var service = (ISettingsService)typeof(MainWindow).GetField("_settingsService", Private)!.GetValue(window)!;
-        int committedWidth = service.Load().Width;
-        ((NotchSettings)typeof(MainWindow).GetField("_settings", Private)!.GetValue(window)!).Width += 50;
-        await window.MarkSpotlightIntroSeenAsync();
-        Assert.True(service.Load().HasSeenSpotlightIntro);
-        Assert.Equal(committedWidth, service.Load().Width);
-    });
 }

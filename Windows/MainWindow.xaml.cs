@@ -366,6 +366,7 @@ public partial class MainWindow : Window
         _privacyModule.StateChanged += PrivacyModule_StateChanged;
 
         _weatherModule = weatherModule;
+        VNotch.Services.AiUsage.AiAccountUsageMonitor.Shared.QuotaLow += OnAiQuotaLow;
         VNotch.Services.AiUsage.AiAccountUsageMonitor.Shared.ApplySettings(_settings);
         WeatherWidgetView.Attach(_weatherModule,
             _settings.EnableWeather && !_settings.EnableLocalOnlyMode && _settings.AllowOnlineWeather);
@@ -533,6 +534,7 @@ public partial class MainWindow : Window
         InitializeLiveTranslation();
         _clipboardListener.Start();
         InitializeAppNotificationBanner();
+        InitializeAiQuotaPreview();
 
         try
         {
@@ -730,11 +732,14 @@ public partial class MainWindow : Window
         _liveTranslation?.Dispose();
         _liveTranslation = null;
         _clipboardListener.Dispose();
+        DisposeAiQuotaPreview();
         _overlayWindow.Dispose();
         StopZOrderWatchdog();
         StopTitleGradientShift();
         StopChargingNotificationDismissTimer();
         DisposeAppNotificationBanner();
+        VNotch.Services.AiUsage.AiAccountUsageMonitor.Shared.QuotaLow -= OnAiQuotaLow;
+        DisposeAiQuotaNotifications();
         StopClipboardRevertTimer();
         MediaPlayback.Dispose();
         System.Windows.Input.InputManager.Current.PreProcessInput -= BlockGreetingInput;

@@ -22,7 +22,7 @@ public sealed class LiquidGlassGpuSnapshotTests
     public void LensUpdatesPublishCompleteGeometryAfterTheUiPass() => SharedStaTestRunner.Run(() =>
     {
         using var controller = new LiquidGlassController(new Image(), () => IntPtr.Zero, () => null);
-        var effect = new LiquidGlassLensState { NotchW = 200, NotchH = 40 };
+        var effect = new LiquidGlassRefractionEffect { NotchW = 200, NotchH = 40 };
         controller.UpdateGpuLens(effect, 15, 20);
 
         effect.NotchW = 600;

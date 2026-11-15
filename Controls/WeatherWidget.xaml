@@ -2,6 +2,7 @@
         x:Class="VNotch.Controls.WeatherWidget"
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:flow="clr-namespace:VNotch.Controls"
              xmlns:svc="clr-namespace:VNotch.Services">
     <UserControl.Resources>
         <fonts:AppFont x:Key="WeatherSystemFont" Fallbacks="Nirmala UI, Segoe UI" />
@@ -69,7 +70,7 @@
             </Viewbox>
         </StackPanel>
 
-        <TextBlock x:Name="WeatherTempText"
+        <flow:NumberFlowText x:Name="WeatherTempText"
                    Text=""
                    FontFamily="{StaticResource WeatherSystemFont}"
                    FontSize="31"
@@ -95,7 +96,7 @@
                    TextOptions.TextRenderingMode="Grayscale"
                    TextOptions.TextHintingMode="Animated"/>
 
-        <TextBlock x:Name="WeatherHiLoText"
+        <flow:NumberFlowText x:Name="WeatherHiLoText"
                    Text=""
                    FontFamily="{StaticResource WeatherSystemFont}"
                    FontSize="10.5"

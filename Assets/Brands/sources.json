@@ -12,5 +12,26 @@
     "upstream": "https://openai.com/codex/",
     "note": "Codex cloud-terminal mark, distributed by Lobe Icons under MIT; trademark remains OpenAI property. SVG unchanged.",
     "sha256": "d08b4e824cd6727e89617f59e4737273ff53e44c1da849d016dd64dfd08b33e1"
+  },
+  "openai": {
+    "owner": "OpenAI",
+    "source": "https://raw.githubusercontent.com/lobehub/lobe-icons/63c800e3db6427b3f156f7b88d426ccb3f7277a1/packages/static-svg/icons/openai.svg",
+    "retrieved": "2026-11-15",
+    "note": "Unmodified monochrome brand mark distributed by Lobe Icons under MIT; trademark remains its owner property.",
+    "sha256": "a595df6b423920c67a7f8f73c063e4bfb72d415948097b6cac063a2366bb5186"
+  },
+  "gemini": {
+    "owner": "Google",
+    "source": "https://raw.githubusercontent.com/lobehub/lobe-icons/63c800e3db6427b3f156f7b88d426ccb3f7277a1/packages/static-svg/icons/gemini.svg",
+    "retrieved": "2026-11-15",
+    "note": "Unmodified monochrome brand mark distributed by Lobe Icons under MIT; trademark remains its owner property.",
+    "sha256": "87d5b3c4be75a66f54c1936482a263df68185545b741129badd1b7c2449c18d3"
+  },
+  "deepseek": {
+    "owner": "DeepSeek",
+    "source": "https://raw.githubusercontent.com/lobehub/lobe-icons/63c800e3db6427b3f156f7b88d426ccb3f7277a1/packages/static-svg/icons/deepseek.svg",
+    "retrieved": "2026-11-15",
+    "note": "Unmodified monochrome brand mark distributed by Lobe Icons under MIT; trademark remains its owner property.",
+    "sha256": "8f9443e351b6dacce71871790201b799d92e8bf96a45ef79aeb5e9bf4db423e2"
   }
 }

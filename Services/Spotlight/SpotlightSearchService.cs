@@ -20,13 +20,6 @@ internal sealed partial class SpotlightSearchService
         out int outLimit);
 
     [LibraryImport("VNotch.Native.dll", StringMarshalling = StringMarshalling.Utf16)]
-    private static partial int vn_spotlight_search_compute_boosted_score(
-        double baseScore,
-        double usageBoost,
-        byte isPinned,
-        out double outScore);
-
-    [LibraryImport("VNotch.Native.dll", StringMarshalling = StringMarshalling.Utf16)]
     internal static partial int vn_spotlight_search_compare_keys(
         double scoreA,
         ReadOnlySpan<char> titleAPtr,
@@ -300,12 +293,10 @@ internal sealed partial class SpotlightSearchService
 
             bool pinned = prefs.IsPinned(item.Target);
             double usageBoost = _usage.GetBoostNormalized(item.Id, normalizedQuery);
-            _ = vn_spotlight_search_compute_boosted_score(
-                item.Score, usageBoost, pinned ? (byte)1 : (byte)0, out double boosted);
             output.Add(item with
             {
                 IsPinned = pinned,
-                Score = boosted
+                Score = item.Score + usageBoost + (pinned ? 150 : 0)
             });
         }
 

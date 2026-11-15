@@ -15,9 +15,31 @@ internal interface ICodexAccountUsageReader
 // Never start a thread/turn, read auth.json, or log the child's stdout/stderr.
 internal sealed class CodexAccountUsageReader : ICodexAccountUsageReader
 {
+    private readonly object _discoveryGate = new();
+    private (string Configured, string? SearchPath, string File, string[] Arguments, long Expires)? _discovery;
+
+    private ProcessStartInfo? ResolveExecutable(string configured)
+    {
+        lock (_discoveryGate)
+        {
+            string? searchPath = Environment.GetEnvironmentVariable("PATH");
+            if (_discovery is { } cached && cached.Configured == configured && cached.SearchPath == searchPath &&
+                Environment.TickCount64 < cached.Expires && File.Exists(cached.File) && cached.Arguments.All(File.Exists))
+            {
+                var result = new ProcessStartInfo(cached.File);
+                foreach (string argument in cached.Arguments) result.ArgumentList.Add(argument);
+                return result;
+            }
+            var found = FindExecutable(configured);
+            _discovery = found == null ? null : (configured, searchPath, found.FileName,
+                found.ArgumentList.ToArray(), Environment.TickCount64 + 300_000);
+            return found;
+        }
+    }
+
     public async Task<AiAccountUsage> ReadAsync(string executable, CancellationToken token)
     {
-        var start = FindExecutable(executable);
+        var start = ResolveExecutable(executable);
         if (start == null) return new("Codex", AiUsageState.NotInstalled);
         Directory.CreateDirectory(AppPaths.LocalAppDataRoot);
         start.WorkingDirectory = AppPaths.LocalAppDataRoot;
@@ -149,22 +171,28 @@ internal sealed class CodexAccountUsageReader : ICodexAccountUsageReader
     internal static async Task<AiAccountUsage> ReadSessionAsync(TextReader output, TextWriter input, DateTimeOffset now, CancellationToken token)
     {
         var reader = new BoundedLineReader(output);
-        await Call(1, "initialize", new { clientInfo = new { name = "v_notch_usage", title = "V-Notch", version = "1.0" } });
+        await Call(1, "initialize", new { clientInfo = new { name = "v_notch_usage", title = "V-Notch", version = "1.0" } }, _ => true);
         await input.WriteLineAsync("{\"method\":\"initialized\",\"params\":{}}".AsMemory(), token);
         await input.FlushAsync(token);
-        var account = await Call(2, "account/read", new { refreshToken = false });
-        if (!account.TryGetProperty("account", out var identity) || identity.ValueKind == JsonValueKind.Null)
-            return new("Codex", AiUsageState.SignedOut);
-        if (identity.ValueKind != JsonValueKind.Object || !identity.TryGetProperty("type", out var type) ||
-            type.ValueKind != JsonValueKind.String ||
-            type.GetString() is not ("chatgpt" or "chatgptAuthTokens")) return new("Codex", AiUsageState.Unsupported);
-        string? plan = identity.TryGetProperty("planType", out var p) && p.ValueKind == JsonValueKind.String ? p.GetString() : null;
-        string? email = identity.TryGetProperty("email", out var e) && e.ValueKind == JsonValueKind.String ? e.GetString() : null;
-        if (email is { Length: > 254 } || (email != null && ContainsControlChar(email))) email = null;
-        var limits = await Call(3, "account/rateLimits/read", new { });
-        return AiUsageParsing.Codex(limits, now, plan, email);
+        var account = await Call(2, "account/read", new { refreshToken = false }, ReadIdentity);
+        if (account.State != AiUsageState.Ready) return new("Codex", account.State);
+        return await Call(3, "account/rateLimits/read", new { },
+            limits => AiUsageParsing.Codex(limits, now, account.Plan, account.Email));
 
-        async Task<JsonElement> Call(int id, string method, object parameters)
+        static (AiUsageState State, string? Plan, string? Email) ReadIdentity(JsonElement account)
+        {
+            if (!account.TryGetProperty("account", out var identity) || identity.ValueKind == JsonValueKind.Null)
+                return (AiUsageState.SignedOut, null, null);
+            if (identity.ValueKind != JsonValueKind.Object || !identity.TryGetProperty("type", out var type) ||
+                type.ValueKind != JsonValueKind.String ||
+                type.GetString() is not ("chatgpt" or "chatgptAuthTokens")) return (AiUsageState.Unsupported, null, null);
+            string? plan = identity.TryGetProperty("planType", out var p) && p.ValueKind == JsonValueKind.String ? p.GetString() : null;
+            string? email = identity.TryGetProperty("email", out var e) && e.ValueKind == JsonValueKind.String ? e.GetString() : null;
+            if (email is { Length: > 254 } || (email != null && ContainsControlChar(email))) email = null;
+            return (AiUsageState.Ready, plan, email);
+        }
+
+        async Task<T> Call<T>(int id, string method, object parameters, Func<JsonElement, T> read)
         {
             await input.WriteLineAsync(JsonSerializer.Serialize(new { id, method, @params = parameters }).AsMemory(), token);
             await input.FlushAsync(token);
@@ -186,7 +214,7 @@ internal sealed class CodexAccountUsageReader : ICodexAccountUsageReader
                 if (root.TryGetProperty("error", out _)) throw new IOException("Codex usage RPC unavailable.");
                 if (!root.TryGetProperty("result", out var result) || result.ValueKind != JsonValueKind.Object)
                     throw new IOException("Invalid Codex usage response.");
-                return result.Clone();
+                return read(result);
             }
             throw new IOException("Codex usage response limit exceeded.");
         }

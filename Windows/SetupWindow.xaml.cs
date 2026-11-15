@@ -1767,7 +1767,7 @@ public class InstallProgressPage : UserControl, ISetupAnimatedPage
         _headline = SetupPageUi.CreateHeadline(Loc.Get("setup.install.headline"), wrap: true);
         grid.Children.Add(_headline);
 
-        _status = new TextBlock
+        _status = new VNotch.Controls.NumberFlowText
         {
             Text = Loc.Get("setup.install.copying"),
             FontSize = 14,

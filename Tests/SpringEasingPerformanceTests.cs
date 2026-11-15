@@ -61,6 +61,7 @@ public sealed partial class SpringEasingPerformanceTests(ITestOutputHelper outpu
     [InlineData(.001)]
     [InlineData(.5)]
     [InlineData(.999999)]
+    [Trait("Category", "Performance")]
     public void EasingMatchesNativeCurveWithoutSteadyStateAllocations(double damping)
     {
         var easing = new DampedSpringEase(damping);

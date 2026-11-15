@@ -1,7 +1,8 @@
-﻿using System.ComponentModel;
+using System.ComponentModel;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Data;
+using System.Windows.Documents;
 using System.Windows.Media;
 using System.Windows.Media.Animation;
 using VNotch.Services;
@@ -10,7 +11,7 @@ using VNotch.Services.AiUsage;
 namespace VNotch.Controls;
 
 // Motion stays local to the quota surfaces; hidden/unloaded views own no running clocks.
-internal sealed class AiUsageMotion
+internal sealed partial class AiUsageMotion
 {
     private readonly FrameworkElement _owner;
     private readonly Dictionary<string, Border> _bars = new();
@@ -20,12 +21,22 @@ internal sealed class AiUsageMotion
     private bool _reveal;
     private static readonly DependencyProperty BarProgressProperty = DependencyProperty.RegisterAttached(
         "BarProgress", typeof(double), typeof(AiUsageMotion), new PropertyMetadata(0.0));
+    private static readonly KeySpline SpringSpline = CreateSpline(0.18, 1.24, 0.36, 1.0);
+    private static readonly KeySpline SnappySpline = CreateSpline(0.16, 1.0, 0.30, 1.0);
     private static readonly BarWidthConverter WidthConverter = new();
+
+    private static KeySpline CreateSpline(double x1, double y1, double x2, double y2)
+    {
+        var spline = new KeySpline(x1, y1, x2, y2);
+        spline.Freeze();
+        return spline;
+    }
 
     internal static bool MotionEnabled => AiUsageAppearance.Current.MotionIntensity > 0 && !AnimationConfig.ReduceMotion && AnimationConfig.ClientAreaAnimation && !SystemParameters.HighContrast;
     private static double Strength => AiUsageAppearance.Current.MotionIntensity / 100.0;
     private bool CanAnimate => MotionEnabled && _owner.IsLoaded && _owner.IsVisible &&
-        _owner is not AiUsageStatWidget { IsPreview: true } && _owner is not AiUsageNotchView { IsPreview: true };
+        _owner is not AiUsageNotchView { IsPreview: true };
+    internal bool CanAnimateNow => CanAnimate;
 
     internal AiUsageMotion(FrameworkElement owner)
     {
@@ -95,21 +106,154 @@ internal sealed class AiUsageMotion
         width.Bindings.Add(new Binding { Source = fill, Path = new PropertyPath(BarProgressProperty) });
         fill.SetBinding(FrameworkElement.WidthProperty, width);
         if (available) _bars[key] = fill;
-        double from = _reveal ? 1 : _previous.TryGetValue(key, out double previous) ? previous : 1;
+        // The details entrance starts each meter with its own quota row.
+        if (_reveal && _owner is AiUsageNotchView && CanAnimate) return;
+        double from = _reveal ? 1 : _previous.TryGetValue(key, out double previous) ? previous : (_owner is AiUsageStatWidget { IsPreview: true } ? target : 1);
         if (!CanAnimate || !available || Math.Abs(from - target) < 0.001) return;
-        fill.BeginAnimation(BarProgressProperty, Tween(from, target, 280));
+        int scaled = ScaleDuration(300);
+        fill.BeginAnimation(BarProgressProperty, SplineTween(from, target, scaled, SnappySpline));
+        AttachBarFlash(fill, scaled, 0.24);
+    }
 
+    internal void PulseBar(Border fill, double? fromProgress = null, int durationMs = 300, int delayMs = 0)
+    {
+        if (!CanAnimate) return;
+        int scaled = ScaleDuration(durationMs);
+        double target = (double)fill.GetValue(BarProgressProperty);
+        if (target <= 0.001) return;
+        if (fromProgress is { } from && Math.Abs(from - target) > 0.005)
+            fill.BeginAnimation(BarProgressProperty, SplineTween(Math.Clamp(from, 0, 1), target, scaled, SnappySpline, delayMs));
+        AttachBarFlash(fill, scaled, 0.30, delayMs);
+    }
+
+    internal void AnimateSpringTransform(FrameworkElement element, double fromX, double fromY,
+        double fromScale = 1.0, double fromOpacity = 1.0, double fromAngle = 0.0,
+        int durationMs = 300, int delayMs = 0, bool scaleFromTop = false, double fromScaleY = 1.0,
+        bool scaleFlipDelta = false)
+    {
+        if (!CanAnimate) return;
+        int scaled = ScaleDuration(durationMs);
+        double motionScale = 0.35 + 0.65 * Strength;
+        if (scaleFlipDelta)
+        {
+            fromX *= motionScale;
+            fromY *= motionScale;
+        }
+        fromScale = 1.0 + (fromScale - 1.0) * motionScale;
+        fromScaleY = 1.0 + (fromScaleY - 1.0) * motionScale;
+        fromAngle *= motionScale;
+
+        var scale = new ScaleTransform(1.0, 1.0);
+        var rotate = new RotateTransform(0.0);
+        var translate = new TranslateTransform(0.0, 0.0);
+        var group = new TransformGroup();
+        group.Children.Add(scale);
+        group.Children.Add(rotate);
+        group.Children.Add(translate);
+        element.RenderTransformOrigin = scaleFromTop ? new Point(0.5, 0.0) : new Point(0.5, 0.5);
+        element.RenderTransform = group;
+
+        var activeSpline = Strength >= 0.3 ? SpringSpline : SnappySpline;
+        if (Math.Abs(fromX) > 0.1)
+            translate.BeginAnimation(TranslateTransform.XProperty, SplineTween(fromX, 0, scaled, activeSpline, delayMs));
+        if (Math.Abs(fromY) > 0.1)
+            translate.BeginAnimation(TranslateTransform.YProperty, SplineTween(fromY, 0, scaled, activeSpline, delayMs));
+        if (Math.Abs(fromScale - 1.0) > 0.005)
+        {
+            scale.BeginAnimation(ScaleTransform.ScaleXProperty, SplineTween(fromScale, 1.0, scaled, activeSpline, delayMs));
+            scale.BeginAnimation(ScaleTransform.ScaleYProperty, SplineTween(fromScale, 1.0, scaled, activeSpline, delayMs));
+        }
+        else if (Math.Abs(fromScaleY - 1.0) > 0.005)
+        {
+            scale.BeginAnimation(ScaleTransform.ScaleYProperty, SplineTween(Math.Clamp(fromScaleY, 0.3, 2.6), 1.0, scaled, activeSpline, delayMs));
+        }
+        if (Math.Abs(fromAngle) > 0.1)
+            rotate.BeginAnimation(RotateTransform.AngleProperty, SplineTween(fromAngle, 0, scaled, activeSpline, delayMs));
+        if (fromOpacity < 0.99)
+        {
+            double targetOpacity = element.Opacity;
+            element.BeginAnimation(UIElement.OpacityProperty,
+                SplineTween(fromOpacity * targetOpacity, targetOpacity, Math.Max(120, scaled - 40), SnappySpline, delayMs));
+        }
+
+        _stopTransient.Add(() =>
+        {
+            translate.BeginAnimation(TranslateTransform.XProperty, null);
+            translate.BeginAnimation(TranslateTransform.YProperty, null);
+            scale.BeginAnimation(ScaleTransform.ScaleXProperty, null);
+            scale.BeginAnimation(ScaleTransform.ScaleYProperty, null);
+            rotate.BeginAnimation(RotateTransform.AngleProperty, null);
+            element.BeginAnimation(UIElement.OpacityProperty, null);
+        });
+    }
+
+    internal void AnimateColorBrush(Border target, Color fromColor, Color toColor, Action restoreBinding, int durationMs = 320)
+    {
+        if (!CanAnimate || fromColor == toColor) return;
+        bool canceled = false;
+        var brush = new SolidColorBrush(toColor);
+        target.Background = brush;
+        var anim = new ColorAnimation(fromColor, toColor, TimeSpan.FromMilliseconds(ScaleDuration(durationMs)))
+        {
+            EasingFunction = AnimationPrimitives._easeAppleOut,
+            FillBehavior = FillBehavior.Stop
+        };
+        Timeline.SetDesiredFrameRate(anim, AnimationConfig.TargetFps);
+        anim.Completed += (_, _) =>
+        {
+            if (!canceled) restoreBinding();
+        };
+        brush.BeginAnimation(SolidColorBrush.ColorProperty, anim);
+        _stopTransient.Add(() =>
+        {
+            canceled = true;
+            brush.BeginAnimation(SolidColorBrush.ColorProperty, null);
+            restoreBinding();
+        });
+    }
+
+    internal void AnimateNumber(DependencyObject target, double fromValue, double toValue,
+        Func<double, string> formatter, string finalText, int durationMs = 320, int delayMs = 0)
+    {
+        if (!CanAnimate || Math.Abs(fromValue - toValue) < 0.05) return;
+        var flow = target as NumberFlowText ?? (target as Run)?.Parent as NumberFlowText;
+        if (flow != null)
+        {
+            string previous = target is Run run
+                ? flow.Text.Replace(run.Text, formatter(fromValue), StringComparison.Ordinal)
+                : formatter(fromValue);
+            flow.AnimateFrom(previous);
+            _stopTransient.Add(flow.Finish);
+        }
+    }
+
+    private void AttachBarFlash(Border fill, int durationMs, double peakOpacity, int delayMs = 0)
+    {
         // One solid highlight marks a quota update; there is no idle animation.
         var light = new Border { Background = Brushes.White, CornerRadius = fill.CornerRadius, Opacity = 0, IsHitTestVisible = false };
         fill.Child = light;
-        var flash = new DoubleAnimationUsingKeyFrames { Duration = TimeSpan.FromMilliseconds(280), FillBehavior = FillBehavior.Stop };
+        var flash = new DoubleAnimationUsingKeyFrames { Duration = TimeSpan.FromMilliseconds(durationMs), FillBehavior = FillBehavior.Stop };
         flash.KeyFrames.Add(new LinearDoubleKeyFrame(0, KeyTime.FromPercent(0)));
-        flash.KeyFrames.Add(new LinearDoubleKeyFrame(0.2, KeyTime.FromPercent(0.35)));
+        flash.KeyFrames.Add(new LinearDoubleKeyFrame(peakOpacity, KeyTime.FromPercent(0.32)));
         flash.KeyFrames.Add(new LinearDoubleKeyFrame(0, KeyTime.FromPercent(1)));
+        if (delayMs > 0) flash.BeginTime = TimeSpan.FromMilliseconds(delayMs);
         Timeline.SetDesiredFrameRate(flash, AnimationConfig.TargetFps);
         light.BeginAnimation(UIElement.OpacityProperty, flash);
         _stopTransient.Add(() => light.BeginAnimation(UIElement.OpacityProperty, null));
     }
+
+    private static DoubleAnimationUsingKeyFrames SplineTween(double from, double to, int milliseconds, KeySpline spline, int delayMs = 0)
+    {
+        var anim = new DoubleAnimationUsingKeyFrames { FillBehavior = FillBehavior.Stop };
+        anim.KeyFrames.Add(new DiscreteDoubleKeyFrame(from, KeyTime.FromTimeSpan(TimeSpan.Zero)));
+        anim.KeyFrames.Add(new SplineDoubleKeyFrame(to, KeyTime.FromTimeSpan(TimeSpan.FromMilliseconds(milliseconds)), spline));
+        if (delayMs > 0) anim.BeginTime = TimeSpan.FromMilliseconds(delayMs);
+        Timeline.SetDesiredFrameRate(anim, AnimationConfig.TargetFps);
+        return anim;
+    }
+
+    private static int ScaleDuration(int baseMs) =>
+        Math.Clamp((int)Math.Round(baseMs * (0.65 + 0.35 * Strength)), 90, baseMs);
 
     internal void Reveal(FrameworkElement element, int order)
     {

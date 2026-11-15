@@ -2,6 +2,7 @@
 
 #include "vnotch_native.h"
 #include <objbase.h>
+#include <utility>
 
 // Small COM helpers shared by the Core Audio translation units.
 
@@ -75,6 +76,14 @@ struct UniqueHandle {
     explicit UniqueHandle(HANDLE handle) noexcept : h(handle) {}
     UniqueHandle(const UniqueHandle&) = delete;
     UniqueHandle& operator=(const UniqueHandle&) = delete;
+    UniqueHandle(UniqueHandle&& other) noexcept : h(std::exchange(other.h, nullptr)) {}
+    UniqueHandle& operator=(UniqueHandle&& other) noexcept {
+        if (this != &other) {
+            if (valid()) ::CloseHandle(h);
+            h = std::exchange(other.h, nullptr);
+        }
+        return *this;
+    }
     ~UniqueHandle() noexcept {
         if (valid()) {
             ::CloseHandle(h);

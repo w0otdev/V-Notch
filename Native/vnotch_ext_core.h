@@ -110,10 +110,7 @@ VN_EXPORT int32_t __stdcall vn_appnotify_compute_icon_crop_bounds(
     uint8_t* out_should_crop) noexcept;
 
 // GlassGrainBrush
-VN_EXPORT int32_t __stdcall vn_glass_generate_grain_pbgra32(
-    int32_t* out_pixels,
-    int32_t pixel_count,
-    uint32_t seed) noexcept;
+
 
 // LyricsProviderOrder
 VN_EXPORT int32_t __stdcall vn_lyrics_provider_order_parse(

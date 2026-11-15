@@ -8,6 +8,16 @@
         <ResourceDictionary.MergedDictionaries>
             <ResourceDictionary Source="/V-Notch;component/Controls/AccentThemeResources.xaml"/>
         </ResourceDictionary.MergedDictionaries>
+        <!-- Keyboard feedback uses a soft surface instead of the system outline. -->
+        <Style x:Key="{x:Static SystemParameters.FocusVisualStyleKey}" TargetType="Control">
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Control">
+                        <Border Background="#14FFFFFF" CornerRadius="8" IsHitTestVisible="False"/>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
         <!-- Embedded SF Pro Display font - works on all machines without SF Pro installed -->
         <fonts:AppFont x:Key="SFProDisplay" Fallbacks="Segoe UI Emoji, Segoe UI, Arial" />
         <!-- SF Pro Text maps to Display since we only ship Display weights -->

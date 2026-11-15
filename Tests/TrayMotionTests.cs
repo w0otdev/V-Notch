@@ -31,6 +31,71 @@ public sealed class TrayMotionTests
         finally { window.Close(); }
     });
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void SearchDimmingFollowsEnabledStateAfterEntranceAndExit(bool reducedMotion) => SharedStaTestRunner.RunAsync(async () =>
+    {
+        bool previous = VNotch.Services.AnimationConfig.ReduceMotion;
+        VNotch.Services.AnimationConfig.SetReduceMotion(reducedMotion);
+        using var tray = new ClipboardTray();
+        var window = new BackgroundWindow { Content = tray, Width = 800, Height = 400 };
+        try
+        {
+            window.Show();
+            await System.Windows.Threading.Dispatcher.Yield(System.Windows.Threading.DispatcherPriority.ApplicationIdle);
+            var search = (FrameworkElement)tray.FindName("SearchSurface");
+            search.IsEnabled = false;
+            tray.BeginEntrance();
+            await Task.Delay(450);
+            await WpfFrameWaiter.NextAsync();
+            Assert.Equal(.45, search.Opacity);
+            search.IsEnabled = true;
+            Assert.Equal(1, search.Opacity);
+            tray.BeginExit();
+            search.IsEnabled = false;
+            tray.BeginEntrance();
+            await Task.Delay(450);
+            await WpfFrameWaiter.NextAsync();
+            Assert.Equal(.45, search.Opacity);
+            search.IsEnabled = true;
+            Assert.Equal(1, search.Opacity);
+        }
+        finally { window.Close(); VNotch.Services.AnimationConfig.SetReduceMotion(previous); }
+    });
+
+    [Fact]
+    public void LayerMotionPreservesOpacityBindingThroughAFullExit() => SharedStaTestRunner.RunAsync(async () =>
+    {
+        var state = new Border { Opacity = .45 };
+        var layer = new Border();
+        layer.SetBinding(UIElement.OpacityProperty, new Binding(nameof(UIElement.Opacity)) { Source = state });
+        var window = new BackgroundWindow { Content = layer, Width = 100, Height = 100 };
+        var animate = typeof(ClipboardTray).GetMethod("AnimateLayer",
+            System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.NonPublic)!;
+        try
+        {
+            window.Show();
+            animate.Invoke(null, [layer, true, 0, true, 40, 6d, null]);
+            state.Opacity = 1;
+            await Task.Delay(180);
+            await WpfFrameWaiter.NextAsync();
+            Assert.Equal(1, layer.Opacity);
+            Assert.True(BindingOperations.IsDataBound(layer, UIElement.OpacityProperty));
+            animate.Invoke(null, [layer, false, 0, false, 40, 6d, null]);
+            await Task.Delay(180);
+            await WpfFrameWaiter.NextAsync();
+            Assert.Equal(0, layer.Opacity);
+            state.Opacity = .45;
+            animate.Invoke(null, [layer, true, 0, false, 40, 6d, null]);
+            await Task.Delay(180);
+            await WpfFrameWaiter.NextAsync();
+            Assert.Equal(.45, layer.Opacity);
+            Assert.True(BindingOperations.IsDataBound(layer, UIElement.OpacityProperty));
+        }
+        finally { window.Close(); }
+    });
+
     [Fact]
     public void BrushFeedbackPreservesBindingAndDoesNotMutateSharedBrushes() => SharedStaTestRunner.Run(() =>
     {

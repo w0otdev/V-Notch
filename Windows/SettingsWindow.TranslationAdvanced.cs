@@ -47,27 +47,19 @@ public partial class SettingsWindow
                 };
                 if (group != null)
                 {
-                    var heading = new TextBlock { Style = (Style)FindResource("SettingTitleText"), Margin = new Thickness(0, 20, 0, 8) };
+                    var heading = new TextBlock { Style = (Style)FindResource("SettingTitleText"), Margin = new Thickness(0, 24, 0, 12) };
                     _translationAdvancedGroups[group] = heading;
                     TranslationAdvancedFields.Children.Add(heading);
                 }
-                var row = new DockPanel { Margin = new Thickness(0, 0, 0, 8), LastChildFill = true };
+                var row = new DockPanel { Margin = new Thickness(0, 0, 0, 12), LastChildFill = true };
                 var input = new TextBox
                 {
+                    Style = (Style)FindResource("SettingsTextInput"),
                     Width = 96,
-                    MinHeight = 36,
-                    Padding = new Thickness(10, 6, 10, 6),
-                    VerticalContentAlignment = VerticalAlignment.Center,
-                    HorizontalContentAlignment = HorizontalAlignment.Right,
-                    FontSize = 13,
-                    BorderThickness = new Thickness(1)
+                    HorizontalContentAlignment = HorizontalAlignment.Right
                 };
-                input.SetResourceReference(Control.BackgroundProperty, "SurfaceBrush");
-                input.SetResourceReference(Control.ForegroundProperty, "SoftText");
-                input.SetResourceReference(Control.BorderBrushProperty, "CardBorder");
-                input.SetResourceReference(TextBox.CaretBrushProperty, "SoftText");
                 DockPanel.SetDock(input, Dock.Right);
-                var label = new TextBlock { Style = (Style)FindResource("SettingHintText"), TextWrapping = TextWrapping.Wrap, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 12, 0) };
+                var label = new TextBlock { Style = (Style)FindResource("SettingHintText"), TextWrapping = TextWrapping.Wrap, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 16, 0) };
                 row.Children.Add(input); row.Children.Add(label);
                 TranslationAdvancedFields.Children.Add(row);
                 _translationAdvancedInputs[name] = (label, input);

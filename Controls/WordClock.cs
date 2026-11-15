@@ -6,7 +6,7 @@ using VNotch.Services;
 
 namespace VNotch.Controls;
 
-public partial class WordClock : TextBlock
+public partial class WordClock : NumberFlowText
 {
     private const string OClockLocKey = "wordClock.oclock";
 

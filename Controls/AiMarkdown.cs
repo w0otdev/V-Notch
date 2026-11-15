@@ -48,6 +48,7 @@ internal static partial class AiMarkdown
     private static readonly FontFamily FallbackBodyFont = VNotch.Services.AppFonts.Get();
     private static readonly MarkdownFlowOptions CachedMediumOptions = CreateAiFlowOptions(FallbackBodyFont, normalBody: false);
     private static readonly MarkdownFlowOptions CachedNormalOptions = CreateAiFlowOptions(FallbackBodyFont, normalBody: true);
+    private static readonly MarkdownFlowOptions CachedBoldOptions = CreateAiFlowOptions(FallbackBodyFont, normalBody: false, uniformBold: true);
 
     [ThreadStatic]
     private static string? _cachedMarkdownText;
@@ -67,13 +68,25 @@ internal static partial class AiMarkdown
         return summary;
     }
 
-    private static MarkdownFlowOptions CreateAiFlowOptions(FontFamily font, bool normalBody) =>
-        new()
+    private static MarkdownFlowOptions CreateAiFlowOptions(FontFamily font, bool normalBody, bool uniformBold = false)
+    {
+        var defaults = MarkdownFlowOptions.Default;
+        return new()
         {
             BodyFont = font,
-            BodyFontWeight = normalBody ? FontWeights.Normal : FontWeights.Medium,
+            BodyFontWeight = uniformBold ? FontWeights.Bold : normalBody ? FontWeights.Normal : FontWeights.Medium,
+            CodeFont = uniformBold ? font : defaults.CodeFont,
+            CodeFontWeight = uniformBold ? FontWeights.Bold : defaults.CodeFontWeight,
+            BodyForeground = SpotlightChatPalette.Primary,
+            CodeForeground = SpotlightChatPalette.Primary,
+            CodeBackground = SpotlightChatPalette.Surface,
+            InlineCodeForeground = SpotlightChatPalette.Primary,
+            InlineCodeBackground = SpotlightChatPalette.Surface,
+            QuoteForeground = SpotlightChatPalette.Secondary,
+            LinkForeground = SpotlightChatPalette.Link,
             LinkMode = MarkdownLinkMode.LabelWithUrlSuffix
         };
+    }
 
     private static MarkdownDocument GetOrParseDocument(string markdown)
     {
@@ -86,27 +99,29 @@ internal static partial class AiMarkdown
         return parsed;
     }
 
-    internal static FlowDocument Render(string markdown, FontFamily? fontFamily = null, bool normalBody = false)
+    internal static FlowDocument Render(string markdown, FontFamily? fontFamily = null, bool normalBody = false,
+        bool uniformBold = false)
     {
         var font = fontFamily
             ?? (FontFamily?)Application.Current?.TryFindResource("SFProDisplay")
             ?? FallbackBodyFont;
 
         MarkdownFlowOptions options = ReferenceEquals(font, FallbackBodyFont)
-            ? (normalBody ? CachedNormalOptions : CachedMediumOptions)
-            : CreateAiFlowOptions(font, normalBody);
+            ? (uniformBold ? CachedBoldOptions : normalBody ? CachedNormalOptions : CachedMediumOptions)
+            : CreateAiFlowOptions(font, normalBody, uniformBold);
 
         return MarkdownWpfRenderer.RenderFlowDocument(GetOrParseDocument(markdown), options);
     }
 
     // Parse first, then trim the formatted document: Markdown delimiters never become printed text.
     internal static FlowDocument RenderWords(string markdown, int wordLimit, out int shown,
-        out bool caughtUp, double fadeMilliseconds, List<double>? revealTimes = null, double nowMilliseconds = 0)
+        out bool caughtUp, double fadeMilliseconds, List<double>? revealTimes = null, double nowMilliseconds = 0,
+        bool uniformBold = false)
     {
         // Temporarily close common unfinished spans while the next network chunk is pending.
         // These closers are presentation-only and never change the saved response.
         markdown = CloseSpans(markdown);
-        var doc = Render(markdown);
+        var doc = Render(markdown, uniformBold: uniformBold);
         shown = 0;
         TextPointer? lastStart = null;
         TextPointer? cutoff = null;

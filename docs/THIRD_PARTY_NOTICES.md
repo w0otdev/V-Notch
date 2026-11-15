@@ -20,6 +20,15 @@ The former Ultralytics `yolo11n.onnx` has been removed from the current tree and
 installer payload. Earlier Git history/releases remain a separate review item.
 Removal does not retroactively resolve obligations for previous distributions.
 
+## Thinking Orbs
+
+`Controls/ThinkingOrbGeometry.cs` adapts the Working and Composing particle
+geometry and small-size presets from [Thinking Orbs by Jakub Antalik](https://github.com/Jakubantalik/thinking-orbs/tree/de85557ca220332586d070d8788c0e1d6e877a0d),
+as demonstrated in [Details.so Orb 01](https://www.details.so/vault/orb-01).
+The renderer is adapted for WPF, with visibility-aware scheduling and reduced
+motion support. Copyright (c) 2026 Jakub Antalik, MIT; the full license is bundled
+as `licenses/ThinkingOrbs-MIT.txt`.
+
 ## SVG and icon assets
 
 `Assets/*.svg` and `Services/icons/*.svg` include locally modified vector
@@ -41,6 +50,12 @@ under MIT. Its full upstream license is bundled as `licenses/LobeIcons-MIT.txt`.
 Codex and its mark remain trademarks of OpenAI. Source URLs, retrieval date, and
 SHA-256 hashes are recorded in `Assets/Brands/sources.json`. The marks identify
 the connected services; no sponsorship or endorsement is implied.
+
+Spotlight also bundles the unmodified monochrome `openai.svg`, `gemini.svg`,
+and `deepseek.svg` marks from the same pinned Lobe Icons revision under MIT.
+The existing `licenses/LobeIcons-MIT.txt` covers these assets. Their source URLs,
+retrieval dates and SHA-256 hashes are recorded in `Assets/Brands/sources.json`.
+OpenAI, Gemini and DeepSeek remain trademarks of their respective owners.
 
 | Library | License | Source |
 | --- | --- | --- |

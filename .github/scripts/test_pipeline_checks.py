@@ -1,11 +1,13 @@
 import json
 import contextlib
 import io
+import os
 from pathlib import Path
 import sys
 import tempfile
 import subprocess
 import unittest
+from unittest.mock import patch
 
 from check_sarif import check
 from ci_scope import needs_windows, release_eligible, scope
@@ -52,7 +54,15 @@ class PipelineChecks(unittest.TestCase):
         self.assertTrue(scope("a" * 40, "b" * 40, "refs/heads/master"))
 
     def test_actual_git_diff_cannot_hide_source_deletion_as_a_docs_rename(self):
-        with tempfile.TemporaryDirectory(prefix="vnotch-scope-test-") as temporary:
+        # Hooks export repository-local variables. A nested fixture repository
+        # must not inherit them, or even `git init` can reconfigure the caller.
+        git_environment = os.environ.copy()
+        local_variables = subprocess.run(
+            ["git", "rev-parse", "--local-env-vars"], check=True, capture_output=True,
+            text=True, creationflags=CREATE_NO_WINDOW).stdout.splitlines()
+        for name in local_variables:
+            git_environment.pop(name, None)
+        with patch.dict(os.environ, git_environment, clear=True), tempfile.TemporaryDirectory(prefix="vnotch-scope-test-") as temporary:
             root = Path(temporary).resolve()
             self.assertTrue(root.is_relative_to(Path(tempfile.gettempdir()).resolve()))
             def git(*args):

@@ -13,13 +13,13 @@ namespace VNotch.Tests;
 public sealed class SettingsLivePreviewAndTabOrderTests
 {
     [Fact]
-    public void ResolveFullNavTabOrder_AppendsMissingCameraToLegacyFourTabString()
+    public void ResolveFullNavTabOrder_AppendsMissingCameraAndAiUsageToLegacyFourTabString()
     {
         const string legacyOrder = "Media,Secondary,Timer,AudioMixer";
 
         List<string> resolved = SettingsWindow.ResolveFullNavTabOrder(legacyOrder);
 
-        Assert.Equal(new[] { "Media", "Secondary", "Timer", "AudioMixer", "Camera" }, resolved);
+        Assert.Equal(new[] { "Media", "Secondary", "Timer", "AudioMixer", "Camera", "AiUsage" }, resolved);
     }
 
     [Fact]
@@ -38,18 +38,17 @@ public sealed class SettingsLivePreviewAndTabOrderTests
         orderTokens.Insert(targetSlot, movedToken);
         string updatedOrder = string.Join(",", orderTokens);
 
-        Assert.Equal("Media,Camera,Secondary,Timer,AudioMixer", updatedOrder);
+        Assert.Equal("Media,Camera,Secondary,Timer,AudioMixer,AiUsage", updatedOrder);
     }
 
     [Fact]
     public void ResolveFullNavTabOrder_DeduplicatesCaseInsensitivelyAndHandlesNull()
     {
         List<string> fromNull = SettingsWindow.ResolveFullNavTabOrder(null);
-        Assert.Equal(5, fromNull.Count);
-        Assert.Contains("Camera", fromNull, StringComparer.OrdinalIgnoreCase);
+        Assert.Equal(new[] { "Media", "Secondary", "Timer", "AudioMixer", "Camera", "AiUsage" }, fromNull);
 
-        List<string> deduplicated = SettingsWindow.ResolveFullNavTabOrder("Media,camera,Timer,CAMERA,Secondary");
-        Assert.Equal(new[] { "Media", "camera", "Timer", "Secondary", "AudioMixer" }, deduplicated);
+        List<string> deduplicated = SettingsWindow.ResolveFullNavTabOrder("Media,camera,Timer,CAMERA,Secondary,aiusage,AIUSAGE");
+        Assert.Equal(new[] { "Media", "camera", "Timer", "Secondary", "aiusage", "AudioMixer" }, deduplicated);
     }
 
     [Fact]

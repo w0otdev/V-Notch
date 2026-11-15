@@ -2,6 +2,7 @@ using System;
 using System.IO;
 using System.Reflection;
 using System.Windows.Media;
+using System.Xml.Linq;
 using VNotch.Presenters;
 using VNotch.ViewModels;
 using Xunit;
@@ -81,12 +82,11 @@ public sealed class GradientAndAnimationGuardTests
         string xaml = File.ReadAllText(Path.Combine(repoRoot, "Windows", "SettingsWindow.xaml"));
         string codeBehind = File.ReadAllText(Path.Combine(repoRoot, "Windows", "SettingsWindow.xaml.cs"));
 
-        int manualCityStart = xaml.IndexOf("x:Name=\"ManualCityTextBox\"", StringComparison.Ordinal);
-        int manualCityEnd = xaml.IndexOf("</TextBox>", manualCityStart, StringComparison.Ordinal);
-        Assert.True(manualCityStart >= 0 && manualCityEnd > manualCityStart);
-
-        string manualCityBlock = xaml.Substring(manualCityStart, manualCityEnd - manualCityStart);
-        Assert.Contains("TextChanged=\"ManualCityTextBox_TextChanged\"", manualCityBlock, StringComparison.Ordinal);
+        XNamespace presentation = "http://schemas.microsoft.com/winfx/2006/xaml/presentation";
+        XNamespace x = "http://schemas.microsoft.com/winfx/2006/xaml";
+        var manualCity = Assert.Single(XDocument.Parse(xaml).Descendants(presentation + "TextBox"),
+            element => (string?)element.Attribute(x + "Name") == "ManualCityTextBox");
+        Assert.Equal("ManualCityTextBox_TextChanged", (string?)manualCity.Attribute("TextChanged"));
 
         Assert.DoesNotContain("AutomationProperties.Name=\"Model download progress\"", xaml, StringComparison.Ordinal);
         Assert.Contains("Loc.Get(\"settings.translation.modelDownloadProgress\")", codeBehind, StringComparison.Ordinal);

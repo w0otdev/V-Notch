@@ -12,11 +12,18 @@ public partial class SettingsWindow
 
     private void AiUsageSettings_Loaded(object sender, RoutedEventArgs e)
     {
-        if (_aiUsageSubscribed) return;
-        _aiUsageSubscribed = true;
-        AiAccountUsageMonitor.Shared.Updated += AiUsageMonitor_Updated;
+        if (!_aiUsageSubscribed)
+        {
+            _aiUsageSubscribed = true;
+            AiAccountUsageMonitor.Shared.Updated += AiUsageMonitor_Updated;
+        }
         UpdateAiUsageStatusSummary();
+        UpdateAiUsageStickyPreview();
     }
+
+    private void AiUsagePanel_IsVisibleChanged(object sender, DependencyPropertyChangedEventArgs e) => UpdateAiUsageStickyPreview();
+
+    private void AiUsageStickyLayout_SizeChanged(object sender, SizeChangedEventArgs e) => UpdateAiUsageStickyPreview();
 
     private void AiUsageSettings_Unloaded(object sender, RoutedEventArgs e)
     {
@@ -122,18 +129,21 @@ public partial class SettingsWindow
     private void AiUsageOption_Changed(object sender, RoutedEventArgs e)
     {
         if (_isLoadingSettings) return;
-        if (ReferenceEquals(sender, EnableAiUsageCheck) && EnableAiUsageCheck.IsChecked == true)
+        RunWithAiUsageScrollAnchor(sender as FrameworkElement, () =>
         {
-            string updated = SettingsMigrator.AppendCsvTokenIfMissing(_settings.VisibleNavTabs, "AiUsage");
-            if (!string.Equals(updated, _settings.VisibleNavTabs, System.StringComparison.Ordinal))
+            if (ReferenceEquals(sender, EnableAiUsageCheck) && EnableAiUsageCheck.IsChecked == true)
             {
-                _settings.VisibleNavTabs = updated;
-                PopulateNavTabsSettings();
-                (Application.Current?.MainWindow as MainWindow)?.ApplyNavTabOrderAndVisibility();
+                string updated = SettingsMigrator.AppendCsvTokenIfMissing(_settings.VisibleNavTabs, "AiUsage");
+                if (!string.Equals(updated, _settings.VisibleNavTabs, System.StringComparison.Ordinal))
+                {
+                    _settings.VisibleNavTabs = updated;
+                    PopulateNavTabsSettings();
+                    (Application.Current?.MainWindow as MainWindow)?.ApplyNavTabOrderAndVisibility();
+                }
             }
-        }
-        PushLivePreview();
-        UpdateAiUsageStatusSummary();
+            PushLivePreview();
+            UpdateAiUsageStatusSummary();
+        });
     }
 
     private async void AiUsageRefresh_Click(object sender, RoutedEventArgs e)

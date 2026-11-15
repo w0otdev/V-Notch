@@ -138,10 +138,16 @@ public partial class SettingsWindow
 
     private void AutoAnimationFps_Changed(object sender, RoutedEventArgs e)
     {
-        if (AnimationFpsSlider != null)
-            AnimationFpsSlider.IsEnabled = AutoAnimationFpsCheck.IsChecked != true;
+        UpdateAnimationFpsDependentControls(animate: !_isLoadingSettings);
         if (_isLoadingSettings) return;
         PushLivePreview();
+    }
+
+    private void UpdateAnimationFpsDependentControls(bool animate = false)
+    {
+        if (AnimationFpsSlider == null || AutoAnimationFpsCheck == null) return;
+        bool manualFpsEnabled = AutoAnimationFpsCheck.IsChecked != true;
+        AnimateDependentElement(AnimationFpsSlider, manualFpsEnabled, 0.4, animate);
     }
 
     private void AnimationFpsSlider_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
@@ -316,9 +322,15 @@ public partial class SettingsWindow
         AnimateDependentElement(BlurDarkOverlaySlider, lyricsEnabled, 0.45, animate);
     }
 
-    private const string LyricsProviderDragFormat = "VNotch.LyricsProviderItem";
+    private FrameworkElement? _lyricsProviderDragRow;
     private Point _lyricsProviderDragStart;
     private bool _lyricsProviderIsDragging;
+    private bool _hasCapturedLyricsProviderMouse;
+    private bool _isLyricsProviderSwapping;
+    private int _lyricsProviderInitialSlot = -1;
+    private int _lyricsProviderTargetSlot = -1;
+    private double _lyricsProviderRowPitch = 64.0;
+    private readonly Dictionary<FrameworkElement, double> _lyricsProviderNeighborOffsets = new();
 
     internal void UpdateLyricsProviderButtonStates()
     {
@@ -331,9 +343,134 @@ public partial class SettingsWindow
         LyricsProviderDown.Opacity = canMoveDown ? 1.0 : 0.38;
     }
 
+    private void LyricsProviderList_Loaded(object sender, RoutedEventArgs e)
+    {
+        Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.Loaded, () =>
+        {
+            SyncLyricsProviderSelectionIndicator(animate: false);
+        });
+    }
+
+    private void LyricsProviderList_IsVisibleChanged(object sender, DependencyPropertyChangedEventArgs e)
+    {
+        if (e.NewValue is true)
+        {
+            Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.Loaded, () =>
+            {
+                SyncLyricsProviderSelectionIndicator(animate: false);
+            });
+        }
+    }
+
     private void LyricsProviderList_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
         UpdateLyricsProviderButtonStates();
+        if (_isLyricsProviderSwapping || _lyricsProviderIsDragging) return;
+
+        bool animate = IsLoaded && LyricsProviderList.IsVisible && !_isLoadingSettings;
+        SyncLyricsProviderSelectionIndicator(animate);
+    }
+
+    private void SyncLyricsProviderSelectionIndicator(bool animate, double? fromYOverride = null, int durationMs = 240)
+    {
+        if (LyricsProviderList == null || LyricsProviderSelectionIndicator == null || LyricsProviderSelectionTranslate == null)
+            return;
+
+        int index = LyricsProviderList.SelectedIndex;
+        if (index < 0)
+        {
+            FadeLyricsProviderSelectionIndicator(0.0, animate ? 140 : 0);
+            return;
+        }
+
+        if (LyricsProviderList.ItemContainerGenerator.ContainerFromIndex(index) is not FrameworkElement container ||
+            container.ActualHeight <= 0 || !LyricsProviderList.IsVisible)
+        {
+            if (LyricsProviderList.IsVisible)
+            {
+                Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.Loaded, () =>
+                {
+                    SyncLyricsProviderSelectionIndicator(animate: false);
+                });
+            }
+            return;
+        }
+
+        double targetY = container.TranslatePoint(new Point(0, 0), LyricsProviderList).Y;
+        double targetHeight = container.ActualHeight;
+        bool shouldAnimate = animate && !AnimationConfig.ReduceMotion && SystemParameters.ClientAreaAnimation;
+        bool isCurrentlyHidden = LyricsProviderSelectionIndicator.Opacity < 0.05 && fromYOverride == null;
+
+        if (!shouldAnimate)
+        {
+            LyricsProviderSelectionTranslate.BeginAnimation(TranslateTransform.YProperty, null);
+            LyricsProviderSelectionIndicator.BeginAnimation(HeightProperty, null);
+            LyricsProviderSelectionIndicator.BeginAnimation(OpacityProperty, null);
+            LyricsProviderSelectionTranslate.Y = targetY;
+            LyricsProviderSelectionIndicator.Height = targetHeight;
+            LyricsProviderSelectionIndicator.Opacity = 1.0;
+            return;
+        }
+
+        if (isCurrentlyHidden)
+        {
+            LyricsProviderSelectionTranslate.BeginAnimation(TranslateTransform.YProperty, null);
+            LyricsProviderSelectionIndicator.BeginAnimation(HeightProperty, null);
+            LyricsProviderSelectionTranslate.Y = targetY;
+            LyricsProviderSelectionIndicator.Height = targetHeight;
+            FadeLyricsProviderSelectionIndicator(1.0, 160);
+            return;
+        }
+
+        var ease = new CubicEase { EasingMode = EasingMode.EaseOut };
+        var duration = new Duration(TimeSpan.FromMilliseconds(durationMs));
+
+        if (fromYOverride.HasValue)
+        {
+            LyricsProviderSelectionTranslate.BeginAnimation(TranslateTransform.YProperty, null);
+            LyricsProviderSelectionTranslate.Y = fromYOverride.Value;
+        }
+
+        var animY = new DoubleAnimation
+        {
+            To = targetY,
+            Duration = duration,
+            EasingFunction = ease
+        };
+        Timeline.SetDesiredFrameRate(animY, AnimationConfig.TargetFps);
+        LyricsProviderSelectionTranslate.BeginAnimation(TranslateTransform.YProperty, animY);
+
+        var animH = new DoubleAnimation
+        {
+            To = targetHeight,
+            Duration = duration,
+            EasingFunction = ease
+        };
+        Timeline.SetDesiredFrameRate(animH, AnimationConfig.TargetFps);
+        LyricsProviderSelectionIndicator.BeginAnimation(HeightProperty, animH);
+
+        FadeLyricsProviderSelectionIndicator(1.0, 160);
+    }
+
+    private void FadeLyricsProviderSelectionIndicator(double targetOpacity, int durationMs)
+    {
+        if (LyricsProviderSelectionIndicator == null) return;
+
+        if (durationMs <= 0 || AnimationConfig.ReduceMotion || !SystemParameters.ClientAreaAnimation)
+        {
+            LyricsProviderSelectionIndicator.BeginAnimation(OpacityProperty, null);
+            LyricsProviderSelectionIndicator.Opacity = targetOpacity;
+            return;
+        }
+
+        var anim = new DoubleAnimation
+        {
+            To = targetOpacity,
+            Duration = new Duration(TimeSpan.FromMilliseconds(durationMs)),
+            EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut }
+        };
+        Timeline.SetDesiredFrameRate(anim, AnimationConfig.TargetFps);
+        LyricsProviderSelectionIndicator.BeginAnimation(OpacityProperty, anim);
     }
 
     private void LyricsProviderMove_Click(object sender, RoutedEventArgs e)
@@ -373,78 +510,348 @@ public partial class SettingsWindow
 
     private void LyricsProviderList_PreviewMouseLeftButtonDown(object sender, System.Windows.Input.MouseButtonEventArgs e)
     {
+        if (_isLoadingSettings) return;
+
+        var container = FindVisualParent<ListBoxItem>(e.OriginalSource as DependencyObject);
+        if (container == null) return;
+
+        int index = LyricsProviderList.ItemContainerGenerator.IndexFromContainer(container);
+        if (index < 0) return;
+
+        var group = EnsureLyricsProviderRowTransform(container);
+        var translate = FindSettingsRowTranslateTransform(group);
+        translate?.BeginAnimation(TranslateTransform.YProperty, null);
+
+        AnimateLyricsProviderRowScale(container, 0.988, 80);
+
+        if (LyricsProviderList.Items.Count < 2) return;
+
+        _lyricsProviderDragRow = container;
         _lyricsProviderDragStart = e.GetPosition(LyricsProviderList);
         _lyricsProviderIsDragging = false;
+        _hasCapturedLyricsProviderMouse = false;
+        _lyricsProviderInitialSlot = index;
+        _lyricsProviderTargetSlot = index;
+        _lyricsProviderNeighborOffsets.Clear();
     }
 
     private void LyricsProviderList_PreviewMouseMove(object sender, System.Windows.Input.MouseEventArgs e)
     {
-        if (e.LeftButton != System.Windows.Input.MouseButtonState.Pressed || _lyricsProviderIsDragging) return;
-        if (LyricsProviderList.SelectedIndex < 0) return;
+        if (_lyricsProviderDragRow == null || e.LeftButton != System.Windows.Input.MouseButtonState.Pressed) return;
 
         Point pos = e.GetPosition(LyricsProviderList);
-        if (Math.Abs(pos.X - _lyricsProviderDragStart.X) > SystemParameters.MinimumHorizontalDragDistance ||
-            Math.Abs(pos.Y - _lyricsProviderDragStart.Y) > SystemParameters.MinimumVerticalDragDistance)
+        double deltaY = pos.Y - _lyricsProviderDragStart.Y;
+
+        if (!_lyricsProviderIsDragging && Math.Abs(deltaY) > 3)
         {
-            _lyricsProviderIsDragging = true;
-            try
+            BeginLyricsProviderDrag();
+        }
+
+        if (_lyricsProviderIsDragging)
+        {
+            e.Handled = true;
+            if (_lyricsProviderDragRow.RenderTransform is TransformGroup group)
             {
-                if (LyricsProviderList.SelectedItem is string item)
+                var translate = FindSettingsRowTranslateTransform(group);
+                if (translate != null)
                 {
-                    var data = new DataObject(LyricsProviderDragFormat, item);
-                    DragDrop.DoDragDrop(LyricsProviderList, data, DragDropEffects.Move);
+                    translate.Y = deltaY;
                 }
             }
-            finally
-            {
-                _lyricsProviderIsDragging = false;
-            }
+
+            UpdateLyricsProviderNeighborDisplacements();
         }
     }
 
-    private void LyricsProviderList_DragOver(object sender, DragEventArgs e)
+    private void BeginLyricsProviderDrag()
     {
-        e.Effects = e.Data.GetDataPresent(LyricsProviderDragFormat) ? DragDropEffects.Move : DragDropEffects.None;
-        e.Handled = true;
+        if (_lyricsProviderDragRow == null) return;
+
+        _lyricsProviderIsDragging = true;
+        _hasCapturedLyricsProviderMouse = LyricsProviderList.CaptureMouse();
+        Panel.SetZIndex(_lyricsProviderDragRow, 100);
+
+        _lyricsProviderRowPitch = MeasureLyricsProviderRowPitch(_lyricsProviderDragRow);
+        FadeLyricsProviderSelectionIndicator(0.0, 100);
+        AnimateLyricsProviderRowScale(_lyricsProviderDragRow, 1.025, 150);
+
+        System.Windows.Input.Mouse.OverrideCursor = System.Windows.Input.Cursors.SizeNS;
     }
 
-    private void LyricsProviderList_Drop(object sender, DragEventArgs e)
+    private double MeasureLyricsProviderRowPitch(FrameworkElement row)
     {
-        if (!e.Data.GetDataPresent(LyricsProviderDragFormat)) return;
-        if (e.Data.GetData(LyricsProviderDragFormat) is not string draggedItem) return;
-
-        int count = LyricsProviderList.Items.Count;
-        int oldIndex = -1;
-        for (int i = 0; i < count; i++)
+        if (LyricsProviderList.Items.Count >= 2 &&
+            LyricsProviderList.ItemContainerGenerator.ContainerFromIndex(0) is FrameworkElement first &&
+            LyricsProviderList.ItemContainerGenerator.ContainerFromIndex(1) is FrameworkElement second)
         {
-            if (string.Equals(LyricsProviderList.Items[i] as string, draggedItem, StringComparison.Ordinal))
+            double delta = second.TranslatePoint(new Point(0, 0), LyricsProviderList).Y -
+                           first.TranslatePoint(new Point(0, 0), LyricsProviderList).Y;
+            if (delta > 8.0) return delta;
+        }
+
+        double fallback = row.ActualHeight + row.Margin.Top + row.Margin.Bottom;
+        return fallback > 8.0 ? fallback : 64.0;
+    }
+
+    private void UpdateLyricsProviderNeighborDisplacements()
+    {
+        if (_lyricsProviderDragRow == null) return;
+
+        int totalRows = LyricsProviderList.Items.Count;
+        if (totalRows <= 1 || _lyricsProviderInitialSlot < 0) return;
+
+        double currentTranslateY = 0.0;
+        if (_lyricsProviderDragRow.RenderTransform is TransformGroup group)
+        {
+            var translate = FindSettingsRowTranslateTransform(group);
+            if (translate != null)
             {
-                oldIndex = i;
-                break;
+                currentTranslateY = translate.Y;
             }
         }
-        if (oldIndex < 0) return;
 
-        Point dropPos = e.GetPosition(LyricsProviderList);
-        int newIndex = GetLyricsProviderDropIndex(dropPos, count);
-        MoveLyricsProviderItem(oldIndex, newIndex);
-        e.Handled = true;
-    }
+        double visualY = (_lyricsProviderInitialSlot * _lyricsProviderRowPitch) + currentTranslateY;
+        int targetSlot = CalculateSettingsTargetSlotWithHysteresis(_lyricsProviderTargetSlot, visualY, _lyricsProviderRowPitch, totalRows);
+        _lyricsProviderTargetSlot = targetSlot;
 
-    private int GetLyricsProviderDropIndex(Point dropPoint, int count)
-    {
-        double y = 0;
-        for (int i = 0; i < count; i++)
+        for (int i = 0; i < totalRows; i++)
         {
-            if (LyricsProviderList.ItemContainerGenerator.ContainerFromIndex(i) is not FrameworkElement container)
+            if (LyricsProviderList.ItemContainerGenerator.ContainerFromIndex(i) is not FrameworkElement child ||
+                child == _lyricsProviderDragRow)
+            {
                 continue;
+            }
 
-            double itemHeight = container.ActualHeight;
-            if (dropPoint.Y < y + itemHeight * 0.5)
-                return i;
-            y += itemHeight;
+            double desiredOffset = CalculateNeighborDesiredOffset(i, _lyricsProviderInitialSlot, targetSlot, _lyricsProviderRowPitch);
+            AnimateLyricsProviderNeighborToY(child, desiredOffset);
         }
-        return count > 0 ? count - 1 : 0;
+    }
+
+    private void AnimateLyricsProviderNeighborToY(FrameworkElement element, double targetY)
+    {
+        var group = EnsureLyricsProviderRowTransform(element);
+        var translate = FindSettingsRowTranslateTransform(group);
+        if (translate == null) return;
+
+        if (_lyricsProviderNeighborOffsets.TryGetValue(element, out double currentTarget) &&
+            Math.Abs(currentTarget - targetY) < 0.5)
+        {
+            return;
+        }
+
+        _lyricsProviderNeighborOffsets[element] = targetY;
+
+        var anim = new DoubleAnimation
+        {
+            To = targetY,
+            Duration = new Duration(TimeSpan.FromMilliseconds(200)),
+            EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut }
+        };
+        Timeline.SetDesiredFrameRate(anim, AnimationConfig.TargetFps);
+        translate.BeginAnimation(TranslateTransform.YProperty, anim);
+    }
+
+    private void LyricsProviderList_PreviewMouseLeftButtonUp(object sender, System.Windows.Input.MouseButtonEventArgs e)
+    {
+        if (_lyricsProviderIsDragging)
+        {
+            e.Handled = true;
+            EndLyricsProviderDrag();
+        }
+        else if (_lyricsProviderDragRow != null)
+        {
+            AnimateLyricsProviderRowScale(_lyricsProviderDragRow, 1.0, 160);
+            _lyricsProviderDragRow = null;
+        }
+    }
+
+    private void LyricsProviderList_MouseLeave(object sender, System.Windows.Input.MouseEventArgs e)
+    {
+        if (!_lyricsProviderIsDragging && _lyricsProviderDragRow != null)
+        {
+            AnimateLyricsProviderRowScale(_lyricsProviderDragRow, 1.0, 160);
+            _lyricsProviderDragRow = null;
+        }
+    }
+
+    private void LyricsProviderList_LostMouseCapture(object sender, System.Windows.Input.MouseEventArgs e)
+    {
+        if (_lyricsProviderIsDragging)
+        {
+            EndLyricsProviderDrag();
+        }
+    }
+
+    private void EndLyricsProviderDrag()
+    {
+        var row = _lyricsProviderDragRow;
+        bool wasDragging = _lyricsProviderIsDragging;
+        int initialSlot = _lyricsProviderInitialSlot;
+        int targetSlot = _lyricsProviderTargetSlot;
+
+        _lyricsProviderIsDragging = false;
+        _lyricsProviderDragRow = null;
+
+        if (_hasCapturedLyricsProviderMouse)
+        {
+            _hasCapturedLyricsProviderMouse = false;
+            try { LyricsProviderList.ReleaseMouseCapture(); }
+            catch (Exception) { }
+        }
+
+        System.Windows.Input.Mouse.OverrideCursor = null;
+
+        if (row == null)
+        {
+            ResetAllLyricsProviderRowTransforms();
+            SyncLyricsProviderSelectionIndicator(animate: false);
+            return;
+        }
+
+        double settleY = (wasDragging && targetSlot >= 0 && initialSlot >= 0 && targetSlot != initialSlot)
+            ? (targetSlot - initialSlot) * _lyricsProviderRowPitch
+            : 0.0;
+
+        AnimateSettingsRowDropSettle(row, settleY, onCompleted: () =>
+        {
+            ResetAllLyricsProviderRowTransforms();
+            if (wasDragging && targetSlot >= 0 && initialSlot >= 0 && targetSlot != initialSlot)
+            {
+                CommitLyricsProviderReorder(initialSlot, targetSlot);
+            }
+            Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.Loaded, () =>
+            {
+                if (LyricsProviderSelectionIndicator != null)
+                {
+                    LyricsProviderSelectionIndicator.BeginAnimation(OpacityProperty, null);
+                    LyricsProviderSelectionIndicator.Opacity = 0;
+                }
+                SyncLyricsProviderSelectionIndicator(animate: true);
+            });
+        });
+    }
+
+    private void CommitLyricsProviderReorder(int index, int target)
+    {
+        int count = LyricsProviderList.Items.Count;
+        if (index < 0 || index >= count || target < 0 || target >= count || index == target) return;
+
+        var providers = new string[count];
+        for (int i = 0; i < count; i++)
+        {
+            providers[i] = LyricsProviderList.Items[i]?.ToString() ?? string.Empty;
+        }
+
+        string moved = providers[index];
+        if (index < target)
+        {
+            for (int i = index; i < target; i++)
+                providers[i] = providers[i + 1];
+        }
+        else
+        {
+            for (int i = index; i > target; i--)
+                providers[i] = providers[i - 1];
+        }
+        providers[target] = moved;
+
+        _isLyricsProviderSwapping = true;
+        try
+        {
+            LyricsProviderList.ItemsSource = providers;
+            LyricsProviderList.SelectedIndex = target;
+            UpdateLyricsProviderButtonStates();
+        }
+        finally
+        {
+            _isLyricsProviderSwapping = false;
+        }
+
+        PushLivePreview();
+    }
+
+    private void ResetAllLyricsProviderRowTransforms()
+    {
+        int count = LyricsProviderList.Items.Count;
+        for (int i = 0; i < count; i++)
+        {
+            if (LyricsProviderList.ItemContainerGenerator.ContainerFromIndex(i) is not FrameworkElement child) continue;
+            Panel.SetZIndex(child, 0);
+            if (child.RenderTransform is TransformGroup group)
+            {
+                var translate = FindSettingsRowTranslateTransform(group);
+                if (translate != null)
+                {
+                    translate.BeginAnimation(TranslateTransform.YProperty, null);
+                    translate.Y = 0;
+                }
+
+                var scale = FindSettingsRowScaleTransform(group);
+                if (scale != null)
+                {
+                    scale.BeginAnimation(ScaleTransform.ScaleXProperty, null);
+                    scale.BeginAnimation(ScaleTransform.ScaleYProperty, null);
+                    scale.ScaleX = 1.0;
+                    scale.ScaleY = 1.0;
+                }
+            }
+        }
+        _lyricsProviderNeighborOffsets.Clear();
+    }
+
+    private static void AnimateLyricsProviderRowScale(FrameworkElement row, double targetScale, int durationMs)
+    {
+        var group = EnsureLyricsProviderRowTransform(row);
+        var scale = FindSettingsRowScaleTransform(group);
+        if (scale == null) return;
+
+        if (AnimationConfig.ReduceMotion || !SystemParameters.ClientAreaAnimation)
+        {
+            scale.BeginAnimation(ScaleTransform.ScaleXProperty, null);
+            scale.BeginAnimation(ScaleTransform.ScaleYProperty, null);
+            scale.ScaleX = targetScale;
+            scale.ScaleY = targetScale;
+            return;
+        }
+
+        var anim = new DoubleAnimation
+        {
+            To = targetScale,
+            Duration = new Duration(TimeSpan.FromMilliseconds(durationMs)),
+            EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut }
+        };
+        Timeline.SetDesiredFrameRate(anim, AnimationConfig.TargetFps);
+        scale.BeginAnimation(ScaleTransform.ScaleXProperty, anim);
+        scale.BeginAnimation(ScaleTransform.ScaleYProperty, anim);
+    }
+
+    private static TransformGroup EnsureLyricsProviderRowTransform(FrameworkElement row)
+    {
+        if (row.RenderTransform is TransformGroup existing && !existing.IsFrozen &&
+            FindSettingsRowTranslateTransform(existing) != null &&
+            FindSettingsRowScaleTransform(existing) != null)
+        {
+            return existing;
+        }
+
+        var group = new TransformGroup
+        {
+            Children = { new TranslateTransform(), new ScaleTransform() }
+        };
+        row.RenderTransform = group;
+        return group;
+    }
+
+    private static T? FindVisualParent<T>(DependencyObject? child) where T : DependencyObject
+    {
+        while (child != null)
+        {
+            if (child is T found) return found;
+            child = child is Visual || child is System.Windows.Media.Media3D.Visual3D
+                ? VisualTreeHelper.GetParent(child)
+                : LogicalTreeHelper.GetParent(child);
+        }
+        return null;
     }
 
     private void MoveLyricsProviderItem(int index, int target)
@@ -476,15 +883,24 @@ public partial class SettingsWindow
         }
         providers[target] = moved;
 
-        LyricsProviderList.ItemsSource = providers;
-        LyricsProviderList.SelectedIndex = target;
-        UpdateLyricsProviderButtonStates();
+        _isLyricsProviderSwapping = true;
+        try
+        {
+            LyricsProviderList.ItemsSource = providers;
+            LyricsProviderList.SelectedIndex = target;
+            UpdateLyricsProviderButtonStates();
+        }
+        finally
+        {
+            _isLyricsProviderSwapping = false;
+        }
 
         if (IsLoaded && count >= 2)
         {
             Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.Loaded, () =>
             {
                 AnimateLyricsProviderSwap(index, target, oldPositions);
+                SyncLyricsProviderSelectionIndicator(animate: true, fromYOverride: oldPositions[index], durationMs: 220);
             });
         }
 
@@ -509,11 +925,9 @@ public partial class SettingsWindow
             double deltaY = oldPositions[prevIndex] - newY;
             if (Math.Abs(deltaY) <= 1.0) continue;
 
-            if (container.RenderTransform is not TranslateTransform translate || translate.IsFrozen)
-            {
-                translate = new TranslateTransform();
-                container.RenderTransform = translate;
-            }
+            var group = EnsureLyricsProviderRowTransform(container);
+            var translate = FindSettingsRowTranslateTransform(group);
+            if (translate == null) continue;
 
             var anim = new DoubleAnimation(deltaY, 0, TimeSpan.FromMilliseconds(220))
             {

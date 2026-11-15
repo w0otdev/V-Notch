@@ -2,6 +2,7 @@
         x:Class="VNotch.TranslationWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:flow="clr-namespace:VNotch.Controls"
         xmlns:controls="clr-namespace:VNotch.Controls"
         Title="Live translation" WindowStyle="None" ResizeMode="NoResize"
         AllowsTransparency="True" Background="Transparent" ShowInTaskbar="False"
@@ -19,6 +20,7 @@
         <sys:Double x:Key="ComboChevronThickness" xmlns:sys="clr-namespace:System;assembly=System.Runtime">2.5</sys:Double>
         <Style x:Key="BoldIcon" TargetType="Path"><Setter Property="Stroke" Value="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"/><Setter Property="StrokeThickness" Value="2.5"/><Setter Property="StrokeStartLineCap" Value="Round"/><Setter Property="StrokeEndLineCap" Value="Round"/><Setter Property="StrokeLineJoin" Value="Round"/><Setter Property="Width" Value="16"/><Setter Property="Height" Value="16"/><Setter Property="Stretch" Value="Uniform"/><Setter Property="Margin" Value="0,0,8,0"/></Style>
         <Style x:Key="ActionButton" TargetType="Button">
+            <Setter Property="FocusVisualStyle" Value="{x:Null}"/>
             <EventSetter Event="MouseEnter" Handler="ButtonMotion"/>
             <EventSetter Event="MouseLeave" Handler="ButtonMotion"/>
             <EventSetter Event="PreviewMouseLeftButtonDown" Handler="ButtonMotion"/>
@@ -37,7 +39,7 @@
                     </Border>
                     <ControlTemplate.Triggers>
                         <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="Surface" Property="Opacity" Value="0.85"/><Setter TargetName="Surface" Property="Background" Value="#12FFFFFF"/></Trigger>
-                        <Trigger Property="IsKeyboardFocused" Value="True"><Setter TargetName="Surface" Property="BorderBrush" Value="#FFFFFF"/><Setter TargetName="Surface" Property="BorderThickness" Value="1"/></Trigger>
+                        <Trigger Property="IsKeyboardFocused" Value="True"><Setter TargetName="Surface" Property="Background" Value="#18FFFFFF"/></Trigger>
                         <Trigger Property="IsEnabled" Value="False"><Setter TargetName="Surface" Property="Opacity" Value="0.4"/></Trigger>
                     </ControlTemplate.Triggers>
                 </ControlTemplate></Setter.Value>
@@ -143,7 +145,7 @@
                     <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition/></Grid.ColumnDefinitions>
                     <controls:DotLoadingIndicator x:Name="LoadingIndicator" Visibility="Collapsed" IsActive="False"
                                                   Margin="0,0,10,0" VerticalAlignment="Center" AutomationProperties.Name="Loading"/>
-                    <TextBlock x:Name="StatusText" Grid.Column="1" TextWrapping="Wrap" Foreground="#8C959E" FontSize="12" VerticalAlignment="Center" AutomationProperties.LiveSetting="Polite"/>
+                    <flow:NumberFlowText x:Name="StatusText" Grid.Column="1" TextWrapping="Wrap" Foreground="#8C959E" FontSize="12" VerticalAlignment="Center" AutomationProperties.LiveSetting="Polite"/>
                 </Grid>
                 <WrapPanel x:Name="TranslationActions" Grid.Row="5" Margin="0,12,0,0">
                     <Button x:Name="ManageModelButton" Style="{StaticResource ActionButton}" Background="#244F73" Margin="0,0,8,8" Click="ManageModel_Click" Visibility="Collapsed"/>

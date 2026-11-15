@@ -43,6 +43,7 @@ public partial class MainWindow
     private void InitializeCameraController()
     {
         _camera.PresentNativeFrame = PresentNativeCameraFrame;
+        _camera.PresentSurfaceFrame = PresentCameraSurface;
         _camera.FrameAvailable -= OnCameraFrameAvailable;
         _camera.FrameAvailable += OnCameraFrameAvailable;
     }
@@ -59,6 +60,23 @@ public partial class MainWindow
         if (presenter?.FitsWebcam(width, height, token) == true)
             return presenter.UploadWebcam(bitmap, token);
 
+        QueueCameraPresenter(width, height, token);
+        return true;
+    }
+
+    private WebcamCaptureController.SurfaceFrameResult PresentCameraSurface(global::Windows.Media.Capture.Frames.MediaFrameReference frame, int token)
+    {
+        if (_cleanedUp || _cameraFallbackToken == token) return WebcamCaptureController.SurfaceFrameResult.Fallback;
+        var description = frame.VideoMediaFrame.Direct3DSurface.Description;
+        var presenter = _cameraPresenter;
+        if (presenter?.FitsWebcam(description.Width, description.Height, token) == true)
+            return presenter.UploadWebcamSurface(frame, token);
+        QueueCameraPresenter(description.Width, description.Height, token);
+        return WebcamCaptureController.SurfaceFrameResult.Dropped;
+    }
+
+    private void QueueCameraPresenter(int width, int height, int token)
+    {
         if (System.Threading.Interlocked.Exchange(ref _cameraSetupQueued, 1) == 0)
         {
             Dispatcher.BeginInvoke(() =>
@@ -101,7 +119,6 @@ public partial class MainWindow
                 finally { System.Threading.Volatile.Write(ref _cameraSetupQueued, 0); }
             });
         }
-        return true;
     }
 
     private void DisposeCameraPresenter()

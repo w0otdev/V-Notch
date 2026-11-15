@@ -37,6 +37,7 @@ internal static class AccentTheme
         var swatch = GetSwatch(id);
         UpdateBrush(app.Resources, "AccentBrush", swatch.Color, animate);
         UpdateBrush(app.Resources, "AccentBrushStrong", swatch.Strong, animate);
+        UpdateBrush(app.Resources, "AccentChatBubbleBrush", Controls.SpotlightChatPalette.UserBubbleColor(swatch.Color), animate);
         // Every swatch uses a light fill, so keep text and icons dark for contrast.
         UpdateBrush(app.Resources, "AccentForegroundBrush", ForegroundColor, animate);
         UpdateBrush(app.Resources, "AccentHoverBrush", swatch.Strong, animate);

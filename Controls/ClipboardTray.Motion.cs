@@ -250,18 +250,23 @@ public sealed partial class ClipboardTray
         double opacity = fresh ? 0 : element.Opacity;
         double x = fresh ? 0 : rendered.OffsetX;
         double y = fresh ? driftY : rendered.OffsetY;
-        double targetOpacity = entering ? 1 : 0;
+        // Explicit local values belong to the layer lifecycle. Leave styles and
+        // bindings in control of stateful surfaces such as the disabled search box.
+        bool ownsOpacity = element.ReadLocalValue(OpacityProperty) is double;
+        double restingOpacity = ownsOpacity ? 1 : (double)element.GetAnimationBaseValue(OpacityProperty);
+        double targetOpacity = entering ? restingOpacity : 0;
         double targetY = entering || AnimationConfig.ReduceMotion ? 0 : driftY;
         element.BeginAnimation(OpacityProperty, null);
         // Base values always describe the settled layout. Detaching or replacing
         // any clock must never restore a stale entrance offset.
-        element.Opacity = targetOpacity;
+        if (ownsOpacity) element.Opacity = targetOpacity;
         var translate = new TranslateTransform(0, targetY);
         element.RenderTransform = translate;
         int defaultDuration = entering ? MotionEntrance : MotionStandard;
         int fullDuration = customDuration > 0 ? customDuration : defaultDuration;
         int duration = AnimationConfig.ReduceMotion ? 80 : fullDuration;
         var fade = CreateLayerAnimation(opacity, targetOpacity, AnimationConfig.ReduceMotion ? 0 : delay, duration);
+        if (!entering && !ownsOpacity) fade.FillBehavior = FillBehavior.HoldEnd;
         if (personalLock)
         {
             for (int i = 0; i < fade.KeyFrames.Count; i++)
@@ -748,7 +753,7 @@ public sealed partial class ClipboardTray
     {
         element.RenderTransform = Transform.Identity;
         element.BeginAnimation(OpacityProperty, null);
-        element.Opacity = 1;
+        if (element.ReadLocalValue(OpacityProperty) is double) element.Opacity = 1;
     }
 
     private static void AnimateCardPress(FrameworkElement element, bool pressed)

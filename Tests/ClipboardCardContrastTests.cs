@@ -32,7 +32,7 @@ public sealed class ClipboardCardContrastTests
 
     [Theory]
     [MemberData(nameof(CardCases))]
-    public void VisibleTextKeepsContrastAcrossComposedSurfacesAndInteractionRims(
+    public void VisibleTextKeepsContrastAcrossComposedSurfacesAndInteractionFeedback(
         ClipboardKind kind, string preview, string extension, int brightness, string state) => SharedStaTestRunner.Run(() =>
     {
         using var tray = new ClipboardTray();
@@ -50,8 +50,8 @@ public sealed class ClipboardCardContrastTests
             model.Image = BitmapSource.Create(1, 1, 96, 96, PixelFormats.Bgra32, null,
                 new byte[] { (byte)brightness, (byte)brightness, (byte)brightness, 255 }, 4);
         var card = CreateCard(tray, model);
-        SetRim(card, "HoverRim", state == "hover");
-        SetRim(card, "SelectedRim", state == "selected");
+        SetRim(card, "HoverFeedback", state == "hover");
+        SetRim(card, "SelectedFeedback", state == "selected");
 
         var text = RelevantText(card).Where(element => element.Visibility == Visibility.Visible &&
             element.ActualWidth > 0 && element.ActualHeight > 0 && !string.IsNullOrEmpty(element.Text)).ToArray();

@@ -30,9 +30,9 @@ public sealed class TranslationTextRevealTests
             FrameworkElement target = markdown ? window.MarkdownResult : window.ResultText;
             if (markdown)
             {
-                Assert.Equal(FontWeights.Bold, window.MarkdownResult.Document.FontWeight);
+                Assert.Equal(FontWeights.Medium, window.MarkdownResult.Document.FontWeight);
                 Assert.All(window.MarkdownResult.Document.Blocks.Cast<System.Windows.Documents.Block>(),
-                    block => Assert.Equal(FontWeights.Bold, block.FontWeight));
+                    block => Assert.Equal(FontWeights.Medium, block.FontWeight));
             }
             Assert.Equal(text, window.ResultText.Text);
             Assert.Null(target.Clip);

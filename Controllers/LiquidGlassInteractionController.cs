@@ -11,7 +11,7 @@ public sealed class LiquidGlassInteractionController : IDisposable
 {
     private readonly FrameworkElement _eventSource;
     private readonly FrameworkElement _coordinateElement;
-    private readonly LiquidGlassLensState _effect;
+    private readonly LiquidGlassRefractionEffect _effect;
     private readonly LiquidGlassInteractionState _state = new();
     private readonly Stopwatch _clock = new();
     private bool _hooked;
@@ -20,7 +20,7 @@ public sealed class LiquidGlassInteractionController : IDisposable
     internal bool IsRenderingSubscribed => _hooked;
 
     public LiquidGlassInteractionController(FrameworkElement eventSource,
-        FrameworkElement coordinateElement, LiquidGlassLensState effect)
+        FrameworkElement coordinateElement, LiquidGlassRefractionEffect effect)
     {
         _eventSource = eventSource;
         _coordinateElement = coordinateElement;

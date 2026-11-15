@@ -2,7 +2,6 @@ using System;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
-using System.Windows.Media.Effects;
 using VNotch.Models;
 
 namespace VNotch.Presenters;
@@ -24,7 +23,6 @@ public sealed class CalendarViewRefs
     public required UIElement BatterySection { get; init; }
     public required UIElement SettingsButton { get; init; }
     public required UIElement GreetingSection { get; init; }
-    public BlurEffect? CalendarGreetingContextBlur { get; init; }
 
     public required ScaleTransform CalendarWidgetScale { get; init; }
     public required TranslateTransform CalendarWidgetTranslate { get; init; }

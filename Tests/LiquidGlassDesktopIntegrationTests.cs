@@ -345,14 +345,8 @@ public sealed class LiquidGlassDesktopIntegrationTests
                 host.UpdateLayout();
                 double dpi = VisualTreeHelper.GetDpi(host).DpiScaleX;
                 var hwnd = new WindowInteropHelper(host).Handle;
-                var effect = new LiquidGlassLensState
-                {
-                    Noise = 0,
-                    HighlightStrength = 0,
-                    Chroma = 0,
-                    NotchW = 320 * dpi,
-                    NotchH = 50 * dpi
-                };
+                var effect = new LiquidGlassRefractionEffect { Noise = 0, HighlightStrength = 0, Chroma = 0 };
+                image.Effect = effect;
                 controller = new LiquidGlassController(image, () => hwnd, () =>
                 {
                     var point = clip.PointToScreen(new Point());
@@ -360,7 +354,6 @@ public sealed class LiquidGlassDesktopIntegrationTests
                         (int)(320 * dpi), (int)(50 * dpi), 0, 0);
                 }, activeFps: 30);
                 controller.CaptureFullSurface = fullSurface;
-                controller.SetParams(LiquidGlassController.GlassParams.Default with { Noise = 0, ChromaticAberration = 0 });
                 Assert.True(controller.SetGpuMode(true, g =>
                 {
                     effect.SrcW = controller.SurfaceWidth;
@@ -369,12 +362,7 @@ public sealed class LiquidGlassDesktopIntegrationTests
                     effect.NotchH = 50 * dpi;
                     effect.OffX = g.OffX;
                     effect.OffY = g.OffY;
-                    var point = clip.PointToScreen(new Point());
-                    controller.UpdateGpuLens(effect, point.X, point.Y);
                 }));
-                controller.EnableNativeRefraction();
-                var initialPoint = clip.PointToScreen(new Point());
-                controller.UpdateGpuLens(effect, initialPoint.X, initialPoint.Y);
                 controller.Start();
                 await WpfFrameWaiter.UntilAsync(() => controller.HasPresentedFrame, "glass presentation or transition completion", cancellationToken);
                 await WpfFrameWaiter.NextAsync(cancellationToken);
@@ -417,8 +405,8 @@ public sealed class LiquidGlassDesktopIntegrationTests
         return pixel;
     }
 
-    private static LiquidGlassLensState GetNativeLens(Window window) =>
-        Assert.IsType<LiquidGlassLensState>(window.GetType().GetField(
+    private static LiquidGlassRefractionEffect GetNativeLens(Window window) =>
+        Assert.IsType<LiquidGlassRefractionEffect>(window.GetType().GetField(
             "_glassRefractionEffect", BindingFlags.NonPublic | BindingFlags.Instance)!.GetValue(window));
 
     private sealed class GlassMorphHost : ISpotlightMorphHost

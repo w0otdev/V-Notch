@@ -8,6 +8,7 @@ using VNotch.Services;
 
 namespace VNotch.Controllers;
 
+
 internal sealed partial class LiquidGlassSurfaceBinder
 {
     [StructLayout(LayoutKind.Sequential, Pack = 1)]
@@ -52,6 +53,15 @@ internal sealed partial class LiquidGlassSurfaceBinder
     [LibraryImport("VNotch.Native")]
     private static partial int vn_glass_binder_compute_cpu_rim_opacities(
         double edge_highlight, double specular, double fresnel, double chroma, out VnCpuRimOpacities out_opacities);
+
+    [LibraryImport("VNotch.Native")]
+    private static partial int vn_glass_binder_build_fresnel_tint(
+        byte red, byte green, byte blue, out byte out_r, out byte out_g, out byte out_b);
+
+    [LibraryImport("VNotch.Native")]
+    private static partial int vn_glass_binder_interpolate_color(
+        byte from_r, byte from_g, byte from_b, byte to_r, byte to_g, byte to_b, double amount,
+        out byte out_r, out byte out_g, out byte out_b);
 
     [LibraryImport("VNotch.Native")]
     private static partial int vn_glass_binder_step_dynamic_fresnel(
@@ -260,7 +270,7 @@ internal sealed partial class LiquidGlassSurfaceBinder
         ref BlurEffect? blur,
         double blurAmount,
         bool useGpuRefraction,
-        LiquidGlassLensState? refractionEffect = null)
+        LiquidGlassRefractionEffect? refractionEffect = null)
     {
         if (host?.Effect != null)
             host.Effect = null;
@@ -270,7 +280,19 @@ internal sealed partial class LiquidGlassSurfaceBinder
 
         double radius = Math.Clamp(blurAmount, 0, 1) * 14.0;
         if (radius < 0.5) radius = 0.0;
-        refractionEffect.BlurRadius = radius;
+        GlassVisualUpdates.SetDouble(refractionEffect, LiquidGlassRefractionEffect.BlurRadiusProperty, radius);
+    }
+
+    public static Color BuildContentFresnelTint(byte red, byte green, byte blue)
+    {
+        vn_glass_binder_build_fresnel_tint(red, green, blue, out byte r, out byte g, out byte b);
+        return Color.FromRgb(r, g, b);
+    }
+
+    public static Color InterpolateColor(Color from, Color to, double amount)
+    {
+        vn_glass_binder_interpolate_color(from.R, from.G, from.B, to.R, to.G, to.B, amount, out byte r, out byte g, out byte b);
+        return Color.FromRgb(r, g, b);
     }
 
     /// <summary>Reads the Windows "Transparency effects" personalization toggle (defaults to enabled).</summary>

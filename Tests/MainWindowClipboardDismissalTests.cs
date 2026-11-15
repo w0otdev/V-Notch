@@ -182,6 +182,9 @@ public sealed class MainWindowClipboardDismissalTests
                 window.Show();
                 await WpfFrameWaiter.UntilAsync(() => Field<bool>(window, "_isStartupLayoutReady") && !IsAnimating(window), "startup", ct);
                 Field<IMediaDetectionService>(window, "_mediaService").Stop();
+                // Tests invoke the mouse callbacks explicitly. The raw-input worker
+                // runs on the interactive desktop, where unrelated clicks can dismiss this tray.
+                InputMonitorService.Stop();
                 window.SetDebugViewState("SecondaryShelf");
                 await WpfFrameWaiter.UntilAsync(() => !IsAnimating(window), "file tray expansion", ct);
                 window.SetDebugViewLock(false);

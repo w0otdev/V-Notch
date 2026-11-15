@@ -76,7 +76,7 @@ public sealed class CalendarPresenter : IDisposable
             TextOptions.SetTextHintingMode(_calendarDayNames[i], TextHintingMode.Animated);
             _refs.WeekDaysPanel.Children.Add(_calendarDayNames[i]);
 
-            _calendarDayNumbers[i] = new TextBlock
+            _calendarDayNumbers[i] = new VNotch.Controls.NumberFlowText
             {
                 Style = _refs.TitleTextStyle,
                 FontSize = 11,
@@ -412,11 +412,6 @@ public sealed class CalendarPresenter : IDisposable
         AnimateOpacity(_refs.SettingsButton, isFocused ? 0.62 : 1.0, duration, easing);
         AnimateOpacity(_refs.GreetingSection, isFocused ? 0.62 : 1.0, duration, easing);
 
-        if (_refs.CalendarGreetingContextBlur != null)
-        {
-            _refs.CalendarGreetingContextBlur.BeginAnimation(BlurEffect.RadiusProperty, null);
-            _refs.CalendarGreetingContextBlur.Radius = 0.0;
-        }
         // Subtle opacity dim preserves focus hierarchy without attaching an offscreen BlurEffect to text.
         _refs.GreetingSection.Opacity = isFocused ? 0.85 : 1.0;
     }

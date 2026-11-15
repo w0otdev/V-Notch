@@ -265,11 +265,14 @@ public partial class SettingsWindow
             UpdateSectionHeader();
         }
 
-        ShowAllNavItems();
         if (_navButtons.TryGetValue(NavSectionSearching, out var searchButton))
         {
             searchButton.Visibility = Visibility.Collapsed;
         }
+
+        // Resolve the active indicator's slot after removing the Searching row.
+        NavItemsStack.UpdateLayout();
+        ShowAllNavItems();
 
         foreach (var kvp in _navPanels)
         {

@@ -18,13 +18,18 @@ public sealed class MainWindowNavDragTests
     private const BindingFlags Private = BindingFlags.Instance | BindingFlags.Static | BindingFlags.NonPublic;
 
     [Theory]
-    [InlineData(0, 3)]
-    [InlineData(3, 0)]
-    [InlineData(1, 2)]
-    public void DroppingTabReordersVisibleSlotsAndPersistsTheResult(int from, int to) => SharedStaTestRunner.RunAsync(async ct =>
+    [InlineData(0, 3, false)]
+    [InlineData(3, 0, false)]
+    [InlineData(1, 2, false)]
+    [InlineData(0, 3, true)]
+    [InlineData(3, 0, true)]
+    [InlineData(1, 2, true)]
+    public void DroppingTabReordersVisibleSlotsAndPersistsTheResult(int from, int to, bool aiUsageVisible) => SharedStaTestRunner.RunAsync(async ct =>
     {
         await using var fixture = CreateFixture();
         var window = fixture.Window;
+        if (aiUsageVisible) Field<NotchSettings>(window, "_settings").VisibleNavTabs += ",AiUsage";
+        window.ApplyNavTabOrderAndVisibility();
         var children = window.NavTabsStackPanel.Children.OfType<FrameworkElement>().ToList();
         var item = children[from];
         var expected = children.Select(x => x.Tag!.ToString()!).ToList();
@@ -57,7 +62,8 @@ public sealed class MainWindowNavDragTests
             Assert.Equal(0, Panel.GetZIndex(child));
         }
         window.ApplyNavTabOrderAndVisibility();
-        Assert.Equal(expected.Select(x => Enum.Parse<NotchView>(x)), window.GetActiveTabSequence());
+        Assert.Equal(expected.Select(x => Enum.Parse<NotchView>(x))
+            .Where(view => aiUsageVisible || view != NotchView.AiUsage), window.GetActiveTabSequence());
     });
 
     [Theory]
@@ -129,13 +135,14 @@ public sealed class MainWindowNavDragTests
         {
             await using var fixture = CreateFixture();
             var window = fixture.Window;
-            Invoke(window, "ExpandNotch", null, null, NotchView.Compact);
+            Invoke(window, "ExpandNotch", null, NotchView.Secondary, NotchView.Compact);
             Assert.True((bool)typeof(MainWindow).GetProperty("_isAnimating", Private)!.GetValue(window)!);
             Set(window, "_clipboardDragAutoExpanded", true);
             Invoke(window, "NotchWrapper_DragLeave", window, null);
             Assert.True(Field<bool>(window, "_clipboardDragAutoExpanded"));
             Assert.NotNull(Field<UiScheduledTimer?>(window, "_clipboardDragTimer"));
-            await WpfFrameWaiter.UntilAsync(() => !(bool)typeof(MainWindow).GetProperty("_isExpanded", Private)!.GetValue(window)!
+            await WpfFrameWaiter.UntilAsync(() => Field<UiScheduledTimer?>(window, "_clipboardDragTimer") == null
+                && !(bool)typeof(MainWindow).GetProperty("_isExpanded", Private)!.GetValue(window)!
                 && !(bool)typeof(MainWindow).GetProperty("_isAnimating", Private)!.GetValue(window)!, "abandoned drag collapsed", ct);
             Assert.False(Field<bool>(window, "_clipboardDragAutoExpanded"));
             Assert.Null(Field<UiScheduledTimer?>(window, "_clipboardDragTimer"));

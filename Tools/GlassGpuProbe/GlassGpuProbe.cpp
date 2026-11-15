@@ -80,7 +80,42 @@ std::vector<uint32_t> RenderFixture(GpuGlass& gpu, Frame frame, const std::vecto
     return result;
 }
 
+void VerifyLiveCapture(GpuGlass& gpu, Frame& frame, HWND hwnd, bool forceWgc) {
+    gpu.ResetCapture();
+    Require(SetWindowDisplayAffinity(hwnd, WDA_EXCLUDEFROMCAPTURE) != FALSE, "Capture exclusion failed");
+    DwmFlush();
+    const auto monitor = MonitorFromWindow(hwnd, MONITOR_DEFAULTTONEAREST);
+    MONITORINFO mi{sizeof(mi)}; GetMonitorInfoW(monitor, &mi);
+    frame.x = mi.rcMonitor.left; frame.y = mi.rcMonitor.top;
+    if (forceWgc) gpu.StartGraphicsCapture(monitor);
+    ULONGLONG deadline = GetTickCount64() + 5000;
+    HRESULT hr = S_FALSE;
+    while ((hr = gpu.Render(frame)) == S_FALSE && GetTickCount64() < deadline) Sleep(10);
+    Check(hr); Require(hr == S_OK, "No desktop frame acquired on the input desktop");
+    Check(gpu.WaitReady(1000));
+    ComPtr<IDirect3DSurface9> ready;
+    Check(gpu.TakeReady(&ready));
+    Require(ready != nullptr, "Captured desktop did not reach the presentation surface");
+    printf("PASS: live %s capture with exclusion (no desktop readback).\n", gpu.framePool ? "WGC" : "DXGI");
+    if (gpu.captureSession) {
+        if (auto pacing = gpu.captureSession.try_as<Capture::IGraphicsCaptureSession5>()) {
+            for (double fps : {30.0, 60.0, 120.0, 144.0}) {
+                gpu.SetCaptureInterval(1000.0 / fps);
+                Require(pacing.MinUpdateInterval().count() == 10000,
+                    "WGC imposed an additional frame interval instead of letting the worker pace it");
+            }
+            printf("PASS: WGC keeps the supported 1 ms minimum across worker FPS changes.\n");
+        }
+        printf("WGC borderless access=0x%08lx required=%d\n", gpu.borderlessResult, gpu.captureSession.IsBorderRequired());
+        Require(gpu.borderlessResult == S_OK && !gpu.captureSession.IsBorderRequired(), "Borderless capture was not allowed by Windows");
+    }
+}
+
+#include "GpuPipelineChecks.h"
+#include "ExactWindowChecks.h"
+
 int main(int argc, char** argv) {
+    if (argc > 1 && strcmp(argv[1], "--exact-window-host") == 0) return RunExactWindowHost();
     useUploadedFixtures = argc > 1 && strcmp(argv[1], "--uploaded-backdrop") == 0;
     HWND hwnd = CreateWindowExW(0, L"STATIC", L"VNotch GPU probe", WS_POPUP, -32000, -32000, 1, 1, nullptr, nullptr, nullptr, nullptr);
     try {
@@ -92,6 +127,12 @@ int main(int argc, char** argv) {
         Check(direct9->CreateDeviceEx(vn_glass_gpu_find_adapter(direct9.Get(), hwnd), D3DDEVTYPE_HAL, hwnd,
             D3DCREATE_MULTITHREADED | D3DCREATE_FPU_PRESERVE | D3DCREATE_HARDWARE_VERTEXPROCESSING,
             &present, nullptr, &device9));
+        if (argc > 1 && strcmp(argv[1], "--wgc-only") == 0) {
+            GpuGlass capture; capture.Initialize(device9.Get(), 256, 128);
+            Frame frame{}; frame.width = 128; frame.height = 64;
+            VerifyLiveCapture(capture, frame, hwnd, true);
+            DestroyWindow(hwnd); return 0;
+        }
         if (argc > 1 && strcmp(argv[1], "--resize") == 0) {
             GpuGlass resizing; resizing.Initialize(device9.Get(), 1920, 1080);
             auto fixture = resizing.MakeTarget(1920, 1080);
@@ -116,7 +157,13 @@ int main(int argc, char** argv) {
             Require(resizing.targetAllocations - initial <= 8, "View transitions recreated warmed blur textures");
             DestroyWindow(hwnd); return 0;
         }
+        const auto initBegin = std::chrono::steady_clock::now();
         GpuGlass gpu; gpu.Initialize(device9.Get(), 128, 96);
+        printf("First presenter init: %.2f ms (precompiled shaders).\n", std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - initBegin).count());
+        VerifySharedDevice(gpu, device9.Get());
+        VerifyOpaqueWindowShader(gpu);
+        VerifyCameraGpu(gpu, device9.Get());
+        if (argc > 1 && strcmp(argv[1], "--exact-wgc") == 0) { VerifyExactWindows(gpu, hwnd); DestroyWindow(hwnd); return 0; }
         int64_t validationHandle = 0;
         Check(vn_glass_gpu_create(device9.Get(), 128, 96, &validationHandle));
         Frame invalid{}; invalid.width = 8; invalid.height = 4;
@@ -288,31 +335,10 @@ int main(int argc, char** argv) {
         gpu.retryAt = 0; gpu.captureWaitStarted = 0;
         printf("PASS: shader compilation, D3D9/D3D11 shared BGRA, double buffering, blur, refraction, alpha, RGB dispersion.\n");
         if (argc > 1) {
-            gpu.ResetCapture();
-            Require(SetWindowDisplayAffinity(hwnd, WDA_EXCLUDEFROMCAPTURE) != FALSE, "Capture exclusion failed");
-            DwmFlush();
-            MONITORINFO mi{sizeof(mi)}; GetMonitorInfoW(MonitorFromWindow(hwnd, MONITOR_DEFAULTTONEAREST), &mi);
-            f.x = mi.rcMonitor.left; f.y = mi.rcMonitor.top;
             const bool forceWgc = std::find_if(argv + 1, argv + argc, [](const char* arg) {
                 return strcmp(arg, "--wgc") == 0;
             }) != argv + argc;
-            if (forceWgc) gpu.StartGraphicsCapture(MonitorFromWindow(hwnd, MONITOR_DEFAULTTONEAREST));
-            ULONGLONG deadline = GetTickCount64() + 5000;
-            HRESULT hr = S_FALSE;
-            while ((hr = gpu.Render(f)) == S_FALSE && GetTickCount64() < deadline) Sleep(10);
-            Check(hr); Require(hr == S_OK, "No DXGI frame acquired on the input desktop");
-            printf("PASS: live %s capture with exclusion (no desktop readback).\n", gpu.framePool ? "WGC" : "DXGI");
-            if (gpu.captureSession) {
-                if (auto pacing = gpu.captureSession.try_as<Capture::IGraphicsCaptureSession5>()) {
-                    gpu.SetCaptureInterval(1000.0 / 30);
-                    Require(abs(pacing.MinUpdateInterval().count() - 333333) <= 1, "WGC did not receive the 30 FPS target");
-                    gpu.SetCaptureInterval(1000.0 / 120);
-                    Require(abs(pacing.MinUpdateInterval().count() - 83333) <= 1, "WGC did not receive a live 120 FPS update");
-                    printf("PASS: WGC capture interval changes live from 30 to 120 FPS.\n");
-                }
-                printf("WGC borderless access=0x%08lx required=%d\n", gpu.borderlessResult, gpu.captureSession.IsBorderRequired());
-                Require(gpu.borderlessResult == S_OK && !gpu.captureSession.IsBorderRequired(), "Borderless capture was not allowed by Windows");
-            }
+            VerifyLiveCapture(gpu, f, hwnd, forceWgc);
         }
         DestroyWindow(hwnd); return 0;
     } catch (HRESULT hr) { printf("FAIL HRESULT 0x%08lx\n", hr); }

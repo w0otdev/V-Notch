@@ -2,6 +2,7 @@
         x:Class="VNotch.Controls.CountdownView"
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:flow="clr-namespace:VNotch.Controls"
              xmlns:ctrl="clr-namespace:VNotch.Controls"
              xmlns:svc="clr-namespace:VNotch.Services">
     <UserControl.Resources>
@@ -103,7 +104,7 @@
                      </LinearGradientBrush>
                  </Border.Background>
                  <Grid>
-                     <TextBlock x:Name="CountdownDisplay"
+                     <flow:NumberFlowText x:Name="CountdownDisplay"
                                 Text="{Binding DisplayText}"
                                 FontSize="28"
                                 FontWeight="Bold"
@@ -113,16 +114,16 @@
                                 FontFamily="{StaticResource CountdownSystemFont}"
                                 Typography.NumeralAlignment="Tabular"
                                 RenderTransformOrigin="0.5,0.5">
-                         <TextBlock.Foreground>
+                         <flow:NumberFlowText.Foreground>
                              <SolidColorBrush x:Name="CountdownDigitsBrush" Color="{x:Static svc:UiPalette.PrimaryColor}"/>
-                         </TextBlock.Foreground>
-                         <TextBlock.RenderTransform>
+                         </flow:NumberFlowText.Foreground>
+                         <flow:NumberFlowText.RenderTransform>
                              <TransformGroup>
                                  <ScaleTransform x:Name="CountdownDisplayScale"/>
                                  <TranslateTransform x:Name="CountdownDisplayTranslate"/>
                              </TransformGroup>
-                         </TextBlock.RenderTransform>
-                     </TextBlock>
+                         </flow:NumberFlowText.RenderTransform>
+                     </flow:NumberFlowText>
 
                      <TextBox x:Name="CountdownInput"
                               Visibility="Collapsed"

@@ -112,7 +112,7 @@ public sealed class AiSubscriptionCustomizationTests
             var block = Assert.IsType<StackPanel>(Assert.Single(root.Children.Cast<UIElement>()));
             Assert.Equal("ClaudeSubscription", block.Name);
             var header = Assert.IsType<Grid>(block.Children[0]);
-            Assert.Equal("37% Used", Assert.IsType<TextBlock>(header.Children[1]).Text);
+            Assert.Equal("37% Used", Assert.IsAssignableFrom<TextBlock>(header.Children[1]).Text);
             Assert.Empty(Assert.IsType<StackPanel>(header.Children[0]).Children.OfType<Image>());
             var track = Assert.IsType<Border>(block.Children[1]);
             Assert.Equal(9, track.Height);
@@ -134,8 +134,8 @@ public sealed class AiSubscriptionCustomizationTests
             var body = Assert.IsType<StackPanel>(pane.Children[1]);
             var row = Assert.Single(body.Children.OfType<StackPanel>());
             var line = Assert.IsType<Grid>(row.Children[0]);
-            Assert.Equal(Visibility.Collapsed, Assert.IsType<TextBlock>(line.Children[1]).Visibility);
-            Assert.Equal("37% Used", Assert.IsType<TextBlock>(line.Children[2]).Text);
+            Assert.Equal(Visibility.Collapsed, Assert.IsAssignableFrom<TextBlock>(line.Children[1]).Visibility);
+            Assert.Equal("37% Used", Assert.IsAssignableFrom<TextBlock>(line.Children[2]).Text);
         }
         finally { AiUsageAppearance.Apply(original); }
     });
@@ -149,7 +149,7 @@ public sealed class AiSubscriptionCustomizationTests
             AiUsageAppearance.Apply(new NotchSettings { AiUsageShowCodex = false, AiUsageShowClaude = false });
             var widget = new AiUsageStatWidget();
             var root = Assert.IsType<StackPanel>(widget.Content);
-            Assert.Equal(Loc.Get("aiUsage.chooseProviders"), Assert.IsType<TextBlock>(Assert.Single(root.Children.Cast<UIElement>())).Text);
+            Assert.Equal(Loc.Get("aiUsage.chooseProviders"), Assert.IsAssignableFrom<TextBlock>(Assert.Single(root.Children.Cast<UIElement>())).Text);
         }
         finally { AiUsageAppearance.Apply(original); }
     });

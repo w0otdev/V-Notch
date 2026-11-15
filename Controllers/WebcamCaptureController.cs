@@ -103,6 +103,9 @@ public sealed class WebcamCaptureController : IDisposable
     // The leased array may have headroom; only width * height * 4 bytes contain frame pixels.
     public event Action<byte[], int, int, int>? FrameAvailable;
     internal Func<SoftwareBitmap, int, bool>? PresentNativeFrame { get; set; }
+    internal enum SurfaceFrameResult { Fallback, Dropped, Transferred }
+    internal Func<MediaFrameReference, int, SurfaceFrameResult>? PresentSurfaceFrame { get; set; }
+    private int _surfaceFrameInUse;
 
     public void ReleaseFrameBuffer()
     {
@@ -191,7 +194,7 @@ public sealed class WebcamCaptureController : IDisposable
                     var initSettings = new MediaCaptureInitializationSettings
                     {
                         SourceGroup = group,
-                        MemoryPreference = MediaCaptureMemoryPreference.Cpu,
+                        MemoryPreference = MediaCaptureMemoryPreference.Auto,
                         StreamingCaptureMode = StreamingCaptureMode.Video
                     };
 
@@ -490,25 +493,58 @@ public sealed class WebcamCaptureController : IDisposable
         });
     }
 
-    private void OnFrameArrived(MediaFrameReader sender, MediaFrameArrivedEventArgs args)
+    private async void OnFrameArrived(MediaFrameReader sender, MediaFrameArrivedEventArgs args)
     {
         int frameToken;
         lock (_lifecycleLock)
         {
-            if (!_isActive || !ReferenceEquals(sender, _frameReader))
-                return;
-
+            if (!_isActive || !ReferenceEquals(sender, _frameReader)) return;
             frameToken = _fadeToken;
         }
+        if (Stopwatch.GetTimestamp() - _lastFrameTimestamp < FrameIntervalTicks ||
+            Volatile.Read(ref _frameBufferInUse) != 0 ||
+            Interlocked.CompareExchange(ref _surfaceFrameInUse, 1, 0) != 0) return;
 
-        long now = Stopwatch.GetTimestamp();
-        if (now - _lastFrameTimestamp < FrameIntervalTicks)
-            return;
-
-        if (Volatile.Read(ref _frameBufferInUse) != 0) return;
-        using var frame = sender.TryAcquireLatestFrame();
-        using var bitmap = frame?.VideoMediaFrame?.SoftwareBitmap;
-        if (bitmap != null) ProcessFrame(bitmap, frameToken);
+        MediaFrameReference? frame = null;
+        try
+        {
+            frame = sender.TryAcquireLatestFrame();
+            var video = frame?.VideoMediaFrame;
+            if (video == null) return;
+            using var bitmap = video.SoftwareBitmap;
+            if (bitmap != null) { ProcessFrame(bitmap, frameToken); return; }
+            var surface = video.Direct3DSurface;
+            if (surface == null) return;
+            SurfaceFrameResult result;
+            lock (_frameBufferLock)
+            {
+                lock (_lifecycleLock)
+                    if (!_isActive || frameToken != _fadeToken) return;
+                result = PresentSurfaceFrame?.Invoke(frame!, frameToken) ?? SurfaceFrameResult.Fallback;
+                if (result != SurfaceFrameResult.Fallback) _lastFrameTimestamp = Stopwatch.GetTimestamp();
+            }
+            if (result == SurfaceFrameResult.Transferred)
+            {
+                // Native owns Close until the GPU completion query retires. An
+                // AddRef alone would not stop Dispose from recycling this frame.
+                frame = null;
+                return;
+            }
+            if (result == SurfaceFrameResult.Dropped) return;
+            using var fallback = await SoftwareBitmap.CreateCopyFromSurfaceAsync(surface).AsTask().ConfigureAwait(false);
+            ProcessFrame(fallback, frameToken);
+        }
+        catch (Exception ex)
+        {
+            lock (_lifecycleLock)
+                if (_isActive && frameToken == _fadeToken)
+                    RuntimeLog.Warn("CAMERA", $"Frame unavailable: {ex.Message}");
+        }
+        finally
+        {
+            frame?.Dispose();
+            Volatile.Write(ref _surfaceFrameInUse, 0);
+        }
     }
 
     internal void ProcessFrame(SoftwareBitmap softwareBitmap, int frameToken)

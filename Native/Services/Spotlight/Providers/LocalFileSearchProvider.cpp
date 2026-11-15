@@ -3,6 +3,7 @@
 #include <atomic>
 #include <deque>
 #include <memory>
+#include "LocalDirectoryWalk.h"
 
 // Reuse Spotlight's canonical visibility and ranking policies.
 extern "C" int32_t vn_spotlight_visibility_should_include(
@@ -107,8 +108,8 @@ static bool Visible(const std::wstring& path, std::wstring_view query, bool fold
         View(query).data(), static_cast<int32_t>(query.size()), folder ? 1 : 0, under_hidden ? 1 : 0, &include) == VN_OK && include;
 }
 
-static int32_t Kind(const WIN32_FIND_DATAW& data, std::wstring_view name) noexcept {
-    if (data.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) return 2; // Spotlight folder
+static int32_t Kind(DWORD attributes, std::wstring_view name) noexcept {
+    if (attributes & FILE_ATTRIBUTE_DIRECTORY) return 2; // Spotlight folder
     auto extension = get_extension(View(name));
     constexpr std::u16string_view apps[] = {u".exe", u".cmd", u".bat", u".msc", u".cpl", u".com", u".ps1", u".appref-ms", u".lnk"};
     for (auto app : apps) if (equals_icase(extension, app)) return 0;
@@ -133,50 +134,25 @@ static void AddResult(std::vector<Result>& out_results, const std::wstring& path
     if (out_results.size() > limit) out_results.pop_back();
 }
 
-struct Walk {
-    std::deque<std::wstring> pending;
-    std::wstring directory;
-    HANDLE cursor = INVALID_HANDLE_VALUE;
-    WIN32_FIND_DATAW data{};
-    explicit Walk(const std::wstring& root) { pending.push_back(root); }
-    ~Walk() { if (cursor != INVALID_HANDLE_VALUE) FindClose(cursor); }
-    bool Done() const noexcept { return cursor == INVALID_HANDLE_VALUE && pending.empty(); }
-};
-
 static bool Step(Walk& walk, const Search& search, std::vector<Result>& out_results, const std::wstring& query, const std::u16string& normalized,
     bool explicit_path, const std::vector<std::wstring>& hidden, size_t limit, ULONGLONG deadline) {
     for (uint32_t count = 0; count < kEntriesPerTurn; ++count) {
         if (search.cancelled.load(std::memory_order_relaxed) || GetTickCount64() >= deadline) return false;
-        if (walk.cursor == INVALID_HANDLE_VALUE) {
-            if (walk.pending.empty()) return true;
-            walk.directory = std::move(walk.pending.front());
-            walk.pending.pop_front();
-            std::wstring pattern = walk.directory;
-            if (pattern.back() != L'\\') pattern.push_back(L'\\');
-            pattern.push_back(L'*');
-            // Keep traversal working beyond MAX_PATH without changing the displayed result path.
-            pattern.insert(0, L"\\\\?\\");
-            walk.cursor = FindFirstFileExW(pattern.c_str(), FindExInfoBasic, &walk.data, FindExSearchNameMatch, nullptr, FIND_FIRST_EX_LARGE_FETCH);
-            if (walk.cursor == INVALID_HANDLE_VALUE) continue; // Includes access denied and disappearing drives.
-        }
-        const auto& data = walk.data;
-        std::wstring_view name(data.cFileName);
-        if (name != L"." && name != L".." && !(data.dwFileAttributes & FILE_ATTRIBUTE_REPARSE_POINT)) {
+        DirectoryEntry entry;
+        if (!walk.Next(entry)) { if (walk.Done()) return true; continue; }
+        std::wstring_view name(entry.name);
+        if (name != L"." && name != L".." && !(entry.attributes & FILE_ATTRIBUTE_REPARSE_POINT)) {
             std::wstring path = walk.directory;
             if (path.back() != L'\\') path.push_back(L'\\');
             path.append(name);
-            bool folder = (data.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) != 0;
+            bool folder = (entry.attributes & FILE_ATTRIBUTE_DIRECTORY) != 0;
             bool visible = Visible(path, query, folder, hidden);
-            if (folder && visible && (explicit_path || !(data.dwFileAttributes & (FILE_ATTRIBUTE_HIDDEN | FILE_ATTRIBUTE_SYSTEM))))
+            if (folder && visible && (explicit_path || !(entry.attributes & (FILE_ATTRIBUTE_HIDDEN | FILE_ATTRIBUTE_SYSTEM))))
                 walk.pending.push_back(path);
             bool matches = explicit_path ? starts_with_icase(View(path), View(query)) :
-                normalize_search(View(name)).find(normalized) != std::u16string::npos;
-            if (visible && matches && (explicit_path || !(data.dwFileAttributes & (FILE_ATTRIBUTE_HIDDEN | FILE_ATTRIBUTE_SYSTEM))))
-                AddResult(out_results, path, name, query, Kind(data, name), limit);
-        }
-        if (!FindNextFileW(walk.cursor, &walk.data)) {
-            FindClose(walk.cursor);
-            walk.cursor = INVALID_HANDLE_VALUE;
+                entry.normalized.find(normalized) != std::u16string::npos;
+            if (visible && matches && (explicit_path || !(entry.attributes & (FILE_ATTRIBUTE_HIDDEN | FILE_ATTRIBUTE_SYSTEM))))
+                AddResult(out_results, path, name, query, Kind(entry.attributes, name), limit);
         }
     }
     return true;
@@ -184,6 +160,34 @@ static bool Step(Walk& walk, const Search& search, std::vector<Result>& out_resu
 } // namespace vnotch::services::localfiles
 
 namespace lf = vnotch::services::localfiles;
+
+VN_EXPORT int32_t __stdcall vn_local_file_search_copy_results(int64_t handle,
+    VnLocalFileResult* results, int32_t capacity, char16_t* text, int32_t text_capacity,
+    int32_t* count, int32_t* text_length) noexcept {
+    if (!count || !text_length || capacity < 0 || text_capacity < 0 ||
+        (capacity && !results) || (text_capacity && !text)) return VN_ERR_INVALID_ARG;
+    *count = *text_length = 0;
+    auto lease = lf::searches.Acquire(handle);
+    auto* search = lease.get();
+    if (!search) return VN_ERR_INVALID_ARG;
+    lf::SharedSrwLockGuard guard(search->lock);
+    size_t chars = 0;
+    for (const auto& result : search->results) chars += result.path.size();
+    if (chars > INT32_MAX) return VN_ERR_FAIL;
+    *count = static_cast<int32_t>(search->results.size());
+    *text_length = static_cast<int32_t>(chars);
+    // Size-query and short-buffer calls do not write partial records.
+    if (capacity < *count || text_capacity < *text_length) return VN_ERR_BUFFER_TOO_SMALL;
+    int32_t offset = 0;
+    for (size_t i = 0; i < search->results.size(); ++i) {
+        const auto& result = search->results[i];
+        const int32_t length = static_cast<int32_t>(result.path.size());
+        results[i] = {offset, length, result.kind, result.score};
+        std::memcpy(text + offset, result.path.data(), static_cast<size_t>(length) * sizeof(char16_t));
+        offset += length;
+    }
+    return VN_OK;
+}
 
 VN_EXPORT int32_t __stdcall vn_local_file_search_create(int64_t* handle) noexcept {
     if (!handle) return VN_ERR_INVALID_ARG;
@@ -247,7 +251,7 @@ VN_EXPORT int32_t __stdcall vn_local_file_search_run(int64_t handle,
                 data.dwFileAttributes = attributes;
                 if (lf::Visible(query, query, false, hidden)) lf::AddResult(local_results, query,
                     std::wstring_view(reinterpret_cast<const wchar_t*>(name.data()), name.size()), query,
-                    lf::Kind(data, std::wstring_view(reinterpret_cast<const wchar_t*>(name.data()), name.size())), capacity);
+                    lf::Kind(data.dwFileAttributes, std::wstring_view(reinterpret_cast<const wchar_t*>(name.data()), name.size())), capacity);
                 commit_results(local_results);
                 return VN_OK;
             }

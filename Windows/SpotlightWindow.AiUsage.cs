@@ -16,17 +16,20 @@ public partial class SpotlightWindow
     private DateTimeOffset _balanceUpdated;
     private bool _balanceLoading;
 
-    private static string UsageIdentity(NotchSettings settings)
+    private static string UsageIdentity(NotchSettings settings, string? provider = null, string? conversationModel = null)
     {
-        var (key, model) = SpotlightAiService.Configuration(settings, settings.SpotlightAiProvider);
+        provider ??= settings.SpotlightAiProvider;
+        var (key, model) = SpotlightAiService.Configuration(settings, provider);
+        model = conversationModel ?? model;
         byte[] bytes = Encoding.UTF8.GetBytes(key);
-        try { return settings.SpotlightAiProvider + ":" + model + ":" + Convert.ToHexString(SHA256.HashData(bytes)); }
+        try { return provider + ":" + model + ":" + Convert.ToHexString(SHA256.HashData(bytes)); }
         finally { CryptographicOperations.ZeroMemory(bytes); }
     }
 
     private void UpdateAiUsage()
     {
-        string identity = UsageIdentity(_settings);
+        var (provider, model) = CurrentAiIdentity();
+        string identity = UsageIdentity(_settings, provider, model);
         var usage = identity == _usageIdentity ? _usageSnapshot : null;
         var parts = new List<string>();
         if (usage?.Tokens is long count)
@@ -34,7 +37,7 @@ public partial class SpotlightWindow
         if (usage?.Remaining is long remaining)
             parts.Add(Loc.Get("spotlight.ai.usage.quota", remaining.ToString("N0", Loc.GetCulture()) +
                 (usage.Limit is long limit ? " / " + limit.ToString("N0", Loc.GetCulture()) : "")));
-        if (_settings.SpotlightAiProvider == "DeepSeek" && identity == _balanceIdentity &&
+        if (provider == "DeepSeek" && identity == _balanceIdentity &&
             !string.IsNullOrEmpty(_balanceText) && _balanceText != "—")
             parts.Add(Loc.Get("spotlight.ai.usage.balance", _balanceText));
         AiUsageText.Text = string.Join(" · ", parts);
@@ -49,29 +52,29 @@ public partial class SpotlightWindow
             ScheduleContentResize();
         }
         AiUsageText.ToolTip = Loc.Get("spotlight.ai.usage.scope") +
-            (usage?.Updated is { } updated ? $"\n{updated:HH:mm:ss} · {_settings.SpotlightAiProvider}" : "") +
+            (usage?.Updated is { } updated ? $"\n{updated:HH:mm:ss} · {provider}" : "") +
             (usage?.Reset is { } reset ? "\n" + Loc.Get("spotlight.ai.usage.reset", reset) : "") +
             (identity == _balanceIdentity ? "\n" + Loc.Get("spotlight.ai.usage.balanceUpdated", _balanceUpdated.ToString("T", Loc.GetCulture())) : "");
         bool hasQuota = usage?.Remaining != null && usage.Limit > 0;
         AiQuotaBar.Visibility = hasQuota ? Visibility.Visible : Visibility.Collapsed;
         AiQuotaBar.Value = hasQuota ? Math.Clamp(100d * usage!.Remaining!.Value / usage.Limit!.Value, 0, 100) : 0;
-        AiUsageRefresh.Visibility = _settings.SpotlightAiProvider == "DeepSeek" ? Visibility.Visible : Visibility.Collapsed;
+        AiUsageRefresh.Visibility = provider == "DeepSeek" ? Visibility.Visible : Visibility.Collapsed;
         AiUsageRefresh.IsEnabled = !_balanceLoading;
         AiUsageRefresh.ToolTip = Loc.Get("spotlight.ai.usage.refresh");
     }
 
     private async void AiUsageRefresh_Click(object sender, RoutedEventArgs e)
     {
-        if (_balanceLoading || _settings.SpotlightAiProvider != "DeepSeek") return;
+        if (_balanceLoading || CurrentAiIdentity().Provider != "DeepSeek") return;
         if (_settings.EnableLocalOnlyMode || !_settings.AllowOnlineAi) { SetAiStatus("spotlight.ai.privacyBlocked"); return; }
         _balanceLoading = true;
-        string identity = UsageIdentity(_settings);
-        string key = SpotlightAiService.Configuration(_settings, "DeepSeek").Key;
+        var settings = CreateAiRequestSettings();
+        string identity = UsageIdentity(settings);
         UpdateAiUsage();
         try
         {
             using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
-            string result = await _aiService.GetBalanceAsync(_settings, timeout.Token);
+            string result = await _aiService.GetBalanceAsync(settings, timeout.Token);
             _balanceIdentity = identity;
             _balanceText = result;
             _balanceUpdated = DateTimeOffset.Now;

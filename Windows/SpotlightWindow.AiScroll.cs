@@ -13,11 +13,7 @@ public partial class SpotlightWindow
 
     private void AiTranscript_ScrollChanged(object sender, ScrollChangedEventArgs e)
     {
-        if (AiTopEdge == null || AiBottomEdge == null) return;
-        SetAiEdge(AiTopEdge, AiTranscriptScroll.VerticalOffset > 1, ref _aiTopEdgeVisible);
-        SetAiEdge(AiBottomEdge,
-            AiTranscriptScroll.ScrollableHeight - AiTranscriptScroll.VerticalOffset > 1,
-            ref _aiBottomEdgeVisible);
+        UpdateAiScrollEdges();
     }
 
     private static void SetAiEdge(Border edge, bool visible, ref bool previous)

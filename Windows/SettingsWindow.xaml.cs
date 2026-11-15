@@ -29,7 +29,6 @@ public partial class SettingsWindow : Window
     private static readonly SolidColorBrush DragHandleGlyphBrush = CreateSettingsBrush(Color.FromArgb(160, 255, 255, 255));
     private static readonly SolidColorBrush DragHandleHoverBrush = CreateSettingsBrush(Color.FromArgb(40, 255, 255, 255));
     private static readonly SolidColorBrush DraggingBackgroundBrush = CreateSettingsBrush(Color.FromArgb(50, 255, 255, 255));
-    private static readonly SolidColorBrush DraggingBorderBrush = CreateSettingsBrush(Color.FromArgb(80, 255, 255, 255));
     private static readonly SolidColorBrush BackupSuccessBrush = CreateSettingsBrush(Color.FromRgb(48, 209, 88));
     private static readonly SolidColorBrush StatusMutedBrush = CreateSettingsBrush(Color.FromRgb(107, 114, 128));
     private static readonly SolidColorBrush StatusErrorBrush = CreateSettingsBrush(Color.FromRgb(239, 68, 68));
@@ -275,7 +274,7 @@ public partial class SettingsWindow : Window
         InteractionSoundsCheck.IsChecked = _settings.EnableInteractionSounds;
         InteractionSoundVolumeSlider.Value = _settings.InteractionSoundVolume * 100;
         UpdateInteractionSoundControls();
-        AnimationFpsSlider.IsEnabled = !_settings.AutoAnimationFps;
+        UpdateAnimationFpsDependentControls();
         EnableBlurEffectsCheck.IsChecked = _settings.EnableBlurEffects;
         MediaArtBackgroundCheck.IsChecked = _settings.ShowMediaArtBackground;
 
@@ -817,22 +816,7 @@ public partial class SettingsWindow : Window
         PrivacyNetworkSection.IsEnabled = !isLocalOnly;
         PrivacyNetworkSection.IsHitTestVisible = !isLocalOnly;
 
-        double targetOpacity = isLocalOnly ? 0.35 : 1.0;
-        if (animate && !AnimationConfig.ReduceMotion)
-        {
-            var ease = new CubicEase { EasingMode = EasingMode.EaseOut };
-            var opacityAnim = new DoubleAnimation(PrivacyNetworkSection.Opacity, targetOpacity, TimeSpan.FromMilliseconds(260))
-            {
-                EasingFunction = ease
-            };
-            Timeline.SetDesiredFrameRate(opacityAnim, AnimationConfig.TargetFps);
-            PrivacyNetworkSection.BeginAnimation(OpacityProperty, opacityAnim);
-        }
-        else
-        {
-            PrivacyNetworkSection.BeginAnimation(OpacityProperty, null);
-            PrivacyNetworkSection.Opacity = targetOpacity;
-        }
+        AnimateSettingsOpacity(PrivacyNetworkSection, isLocalOnly ? 0.35 : 1.0, animate, 260);
     }
 
     private void UpdateLocalOnlyActiveBadge(bool isLocalOnly, bool animate)
@@ -932,23 +916,7 @@ public partial class SettingsWindow : Window
         element.IsEnabled = enabled;
         element.IsHitTestVisible = enabled;
 
-        double targetOpacity = enabled ? 1.0 : disabledOpacity;
-
-        if (animate && !_isLoadingSettings && !AnimationConfig.ReduceMotion)
-        {
-            var ease = new CubicEase { EasingMode = EasingMode.EaseOut };
-            var anim = new DoubleAnimation(element.Opacity, targetOpacity, TimeSpan.FromMilliseconds(240))
-            {
-                EasingFunction = ease
-            };
-            Timeline.SetDesiredFrameRate(anim, AnimationConfig.TargetFps);
-            element.BeginAnimation(OpacityProperty, anim);
-        }
-        else
-        {
-            element.BeginAnimation(OpacityProperty, null);
-            element.Opacity = targetOpacity;
-        }
+        AnimateSettingsOpacity(element, enabled ? 1.0 : disabledOpacity, animate);
     }
 
     private void AnimateCollapsibleRow(FrameworkElement? element, bool visible, bool animate = false)
@@ -970,28 +938,23 @@ public partial class SettingsWindow : Window
         element.Visibility = Visibility.Visible;
         element.IsEnabled = true;
         element.IsHitTestVisible = true;
+        AnimateSettingsOpacity(element, 1.0, animate);
 
         if (animate && !_isLoadingSettings && !AnimationConfig.ReduceMotion)
         {
             var ease = new CubicEase { EasingMode = EasingMode.EaseOut };
-            var fadeIn = new DoubleAnimation(element.Opacity < 0.1 ? 0.0 : element.Opacity, 1.0, TimeSpan.FromMilliseconds(240))
-            {
-                EasingFunction = ease
-            };
-            Timeline.SetDesiredFrameRate(fadeIn, AnimationConfig.TargetFps);
-            element.BeginAnimation(OpacityProperty, fadeIn);
-
             if (element.RenderTransform is TranslateTransform tt)
             {
-                var slideIn = new DoubleAnimation(-6, 0, TimeSpan.FromMilliseconds(240)) { EasingFunction = ease };
+                tt.BeginAnimation(TranslateTransform.YProperty, null);
+                tt.Y = 0;
+                var slideIn = new DoubleAnimation(-6, 0, TimeSpan.FromMilliseconds(240))
+                { EasingFunction = ease, FillBehavior = FillBehavior.Stop };
                 Timeline.SetDesiredFrameRate(slideIn, AnimationConfig.TargetFps);
                 tt.BeginAnimation(TranslateTransform.YProperty, slideIn);
             }
         }
         else
         {
-            element.BeginAnimation(OpacityProperty, null);
-            element.Opacity = 1.0;
             if (element.RenderTransform is TranslateTransform tt)
             {
                 tt.BeginAnimation(TranslateTransform.YProperty, null);
@@ -1002,15 +965,19 @@ public partial class SettingsWindow : Window
 
     private void CollapseCollapsibleRow(FrameworkElement element, bool animate)
     {
+        double from = element.Opacity;
         element.IsEnabled = false;
         element.IsHitTestVisible = false;
+        element.BeginAnimation(OpacityProperty, null);
+        element.Opacity = 0.0;
 
         if (animate && !_isLoadingSettings && !AnimationConfig.ReduceMotion && element.Visibility == Visibility.Visible)
         {
             var ease = new QuadraticEase { EasingMode = EasingMode.EaseOut };
-            var fadeOut = new DoubleAnimation(element.Opacity, 0.0, TimeSpan.FromMilliseconds(180))
+            var fadeOut = new DoubleAnimation(from, 0.0, TimeSpan.FromMilliseconds(180))
             {
-                EasingFunction = ease
+                EasingFunction = ease,
+                FillBehavior = FillBehavior.Stop
             };
             fadeOut.Completed += (_, _) =>
             {
@@ -1022,8 +989,6 @@ public partial class SettingsWindow : Window
         }
         else
         {
-            element.BeginAnimation(OpacityProperty, null);
-            element.Opacity = 0.0;
             element.Visibility = Visibility.Collapsed;
         }
     }

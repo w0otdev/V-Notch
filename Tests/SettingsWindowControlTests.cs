@@ -15,6 +15,61 @@ namespace VNotch.Tests;
 [Collection("Localization")]
 public sealed class SettingsWindowControlTests
 {
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void PerformancePresetFocusAndHoverKeepTextBoundsStable(bool reducedMotion) => SharedStaTestRunner.RunAsync(async ct =>
+    {
+        bool previousMotion = AnimationConfig.ReduceMotion;
+        AnimationConfig.SetReduceMotion(reducedMotion);
+        using var fixture = new Fixture();
+        var text = new TextBlock
+        {
+            Text = "Low-End & Battery Saver\nFor older PCs or 4 to 8 GB RAM. Caps 60 FPS and turns off blur and shadow.",
+            TextWrapping = TextWrapping.Wrap,
+            FontSize = 13.5
+        };
+        var button = new Button
+        {
+            Style = (Style)fixture.Window.FindResource("PerformancePresetRowButtonStyle"),
+            Uid = "Idle",
+            Content = text
+        };
+        var host = new BackgroundWindow { Content = button, Width = 520, Height = 160 };
+        try
+        {
+            host.Show();
+            await System.Windows.Threading.Dispatcher.Yield(System.Windows.Threading.DispatcherPriority.ApplicationIdle);
+            var before = text.TransformToAncestor(button).TransformBounds(new Rect(text.RenderSize));
+            Assert.Null(button.Template.FindName("RowFocusRing", button));
+            var hover = (Border)button.Template.FindName("RowHoverFeedback", button);
+            Assert.Equal(new Thickness(0), hover.BorderThickness);
+            Assert.Null(hover.BorderBrush);
+            var focusKey = (DependencyPropertyKey)typeof(UIElement)
+                .GetField("IsKeyboardFocusedPropertyKey", BindingFlags.Static | BindingFlags.NonPublic)!.GetValue(null)!;
+            var hoverKey = (DependencyPropertyKey)typeof(UIElement)
+                .GetField("IsMouseOverPropertyKey", BindingFlags.Static | BindingFlags.NonPublic)!.GetValue(null)!;
+            foreach (bool focused in new[] { true, false, true, false })
+            {
+                button.SetValue(focusKey, focused);
+                button.SetValue(hoverKey, !focused);
+                await WpfFrameWaiter.UntilAsync(() =>
+                {
+                    button.UpdateLayout();
+                    Assert.Equal(before, text.TransformToAncestor(button).TransformBounds(new Rect(text.RenderSize)));
+                    Assert.Equal(1, text.Opacity);
+                    Assert.Equal(1, button.Opacity);
+                    return hover.Opacity == 1;
+                }, "preset feedback settles without moving or fading its text", ct);
+            }
+        }
+        finally
+        {
+            host.Close();
+            AnimationConfig.SetReduceMotion(previousMotion);
+        }
+    });
+
     [Fact]
     public void NestedSettingsTreesSurviveSearchAndKeepIndependentFeatureSwitches() => SharedStaTestRunner.RunAsync(async () =>
     {
@@ -758,6 +813,140 @@ public sealed class SettingsWindowControlTests
         Assert.True(window.AnimationFpsSlider.IsEnabled);
     });
 
+    [Theory]
+    [InlineData("Appearance", "DynamicIslandModeCheck", "DynamicIslandWidthSlider", .4, true)]
+    [InlineData("Appearance", "DynamicIslandModeCheck", "DynamicIslandHeightSlider", .4, true)]
+    [InlineData("Appearance", "EnableSpotifyLyricsCheck", "LyricsProviderPanel", .45, true)]
+    [InlineData("Appearance", "EnableSpotifyLyricsCheck", "BlurDarkOverlaySlider", .45, true)]
+    [InlineData("Appearance", "EnableSpotifyCanvasCheck", "SpotifyCanvasBrightnessSlider", .45, true)]
+    [InlineData("Appearance", "EnableYouTubeSubtitlesCheck", "SubtitlePriorityRow", .45, true)]
+    [InlineData("Appearance", "EnableBlurEffectsCheck", "SubjectBlurRow", .45, true)]
+    [InlineData("Behavior", "HoverExpandCheck", "HoverDelaySlider", .4, true)]
+    [InlineData("Behavior", "IdleAutoHideCheck", "IdleAutoHideDelaySlider", .4, true)]
+    [InlineData("Behavior", "SystemNotifyCheck", "AutoDismissNotifyCheck", .4, true)]
+    [InlineData("Behavior", "AutoDismissNotifyCheck", "NotificationDurationSlider", .4, true)]
+    [InlineData("System", "EnableWeatherCheck", "ManualCityTextBox", .45, true)]
+    [InlineData("Performance", "AutoAnimationFpsCheck", "AnimationFpsSlider", .4, false)]
+    [InlineData("Privacy", "LocalOnlyModeCheck", "PrivacyNetworkSection", .35, false)]
+    [InlineData("Skins", "EnableShadowCheck", "GlassShadowOpacitySlider", .4, true)]
+    [InlineData("Skins", "EnableShadowCheck", "GlassShadowSpreadSlider", .4, true)]
+    [InlineData("FileTray", "TrayTextCheck", "TrayDelayRow", .4, true)]
+    public void DependentOptionsKeepTheirLatestStateWhenMotionIsInterrupted(
+        string section, string toggleName, string optionName, double dimmedOpacity, bool checkedWhenEnabled) => SharedStaTestRunner.RunAsync(async () =>
+    {
+        bool previous = AnimationConfig.ReduceMotion;
+        try
+        {
+            using var fixture = new Fixture();
+            var window = fixture.Window;
+            window.EnableSpotifyLyricsCheck.IsChecked = true;
+            window.SystemNotifyCheck.IsChecked = true;
+            if (section == "Skins")
+            {
+                window.DynamicIslandModeCheck.IsChecked = true;
+                window.SkinCombo.SelectedIndex = 1;
+            }
+            window.TrayImagesCheck.IsChecked = false;
+            window.TrayFilesCheck.IsChecked = false;
+            var toggle = Assert.IsType<CheckBox>(window.FindName(toggleName));
+            var option = Assert.IsAssignableFrom<UIElement>(window.FindName(optionName));
+            window.Show();
+            window.NavigateToSection(section);
+            await window.Dispatcher.InvokeAsync(() => { }, System.Windows.Threading.DispatcherPriority.ApplicationIdle);
+            foreach (bool reducedMotion in new[] { false, true })
+            {
+                AnimationConfig.SetReduceMotion(reducedMotion);
+                foreach (bool enabled in new[] { false, true, false, true })
+                {
+                    if (ReferenceEquals(toggle, window.EnableSpotifyCanvasCheck))
+                        window.SetSpotifyCanvasOptIn(enabled, () => true);
+                    else
+                        toggle.IsChecked = enabled == checkedWhenEnabled;
+                    // A reveal can replace the toggle's fade before it completes.
+                    window.ApplyProgressiveBlurCascade([option], 80, -1, false, 60);
+                    window.ResetProgressiveBlurElements(false);
+                    Assert.Equal(enabled, option.IsEnabled);
+                    Assert.Equal(enabled ? 1 : dimmedOpacity, option.Opacity);
+                }
+                window.NavigateToSection("Devices");
+                window.NavigateToSection(section);
+                window.ResetProgressiveBlurElements(false);
+                Assert.Equal(1, option.Opacity);
+            }
+        }
+        finally { AnimationConfig.SetReduceMotion(previous); }
+    });
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void StyledFeatureGroupsKeepDimmingAcrossViewsAndSearch(bool reducedMotion) => SharedStaTestRunner.RunAsync(async () =>
+    {
+        bool previous = AnimationConfig.ReduceMotion;
+        var appearance = AiUsageAppearance.Current;
+        AnimationConfig.SetReduceMotion(reducedMotion);
+        try
+        {
+            using var fixture = new Fixture();
+            var window = fixture.Window;
+            window.EnableTranslationCheck.IsChecked = true;
+            window.Show();
+            await window.Dispatcher.InvokeAsync(() => { }, System.Windows.Threading.DispatcherPriority.ApplicationIdle);
+            foreach (var (section, group, setEnabled) in new (string, StackPanel, Action<bool>)[]
+            {
+                ("Spotlight", window.SpotlightOptions, enabled => window.EnableSpotlightCheck.IsChecked = enabled),
+                ("Translation", window.CurrencyOptions, enabled => window.CurrencyConversionCheck.IsChecked = enabled),
+                ("AiUsage", window.AiUsageCustomColorsPanel, enabled =>
+                {
+                    if (enabled) window.AiUsageCustomColorsChoice.IsChecked = true;
+                    else window.AiUsageStatusColorsChoice.IsChecked = true;
+                })
+            })
+            {
+                window.NavigateToSection(section);
+                foreach (bool enabled in new[] { false, true, false, true })
+                {
+                    setEnabled(enabled);
+                    window.ApplyProgressiveBlurCascade([group], 80, -1, false, 60);
+                    window.ResetProgressiveBlurElements(false);
+                    Assert.Equal(enabled, group.IsEnabled);
+                    Assert.Equal(enabled ? 1 : .45, group.Opacity);
+                }
+                Invoke(window, "ExecuteSearch", "color");
+                Invoke(window, "ExitSearchMode");
+                window.NavigateToSection("Devices");
+                window.NavigateToSection(section);
+                window.ResetProgressiveBlurElements(false);
+                Assert.Equal(1, group.Opacity);
+                setEnabled(false);
+                Assert.Equal(.45, group.Opacity);
+            }
+        }
+        finally { AiUsageAppearance.Apply(appearance); AnimationConfig.SetReduceMotion(previous); }
+    });
+
+    [Fact]
+    public void ReopenedSettingsRowsStayVisibleWhenTheirFadeIsReplaced() => SharedStaTestRunner.RunAsync(async () =>
+    {
+        bool previous = AnimationConfig.ReduceMotion;
+        AnimationConfig.SetReduceMotion(false);
+        try
+        {
+            using var fixture = new Fixture();
+            var window = fixture.Window;
+            window.Show();
+            window.NavigateToSection("Advanced");
+            await window.Dispatcher.InvokeAsync(() => { }, System.Windows.Threading.DispatcherPriority.ApplicationIdle);
+            Invoke(window, "AnimateCollapsibleRow", window.YouTubeApiKeyRow, false, false);
+            window.YouTubeApiCheck.IsChecked = true;
+            window.ApplyProgressiveBlurCascade([window.YouTubeApiKeyRow], 80, -1, false, 60);
+            window.ResetProgressiveBlurElements(false);
+            Assert.Equal(Visibility.Visible, window.YouTubeApiKeyRow.Visibility);
+            Assert.Equal(1, window.YouTubeApiKeyRow.Opacity);
+        }
+        finally { AnimationConfig.SetReduceMotion(previous); }
+    });
+
     [Fact]
     public void SearchShowsMatchesAndEmptyStateThenRestoresTheSettingsRows() => SharedStaTestRunner.RunAsync(async ct =>
     {
@@ -863,7 +1052,8 @@ public sealed class SettingsWindowControlTests
             await WpfFrameWaiter.UntilAsync(() => window.NavHoverIndicator.Opacity == 1,
                 "unselected settings row reveals its hover surface", ct);
             Assert.Same(window.FindResource("AccentNavHoverBrush"), window.NavHoverIndicator.Background);
-            Assert.Same(window.FindResource("AccentNavHoverBorderBrush"), window.NavHoverIndicator.BorderBrush);
+            Assert.Equal(new Thickness(0), window.NavHoverIndicator.BorderThickness);
+            Assert.Null(window.NavHoverIndicator.BorderBrush);
             double displayedY = window.NavHoverIndicatorTranslate.Y;
             window.NavSkins.RaiseEvent(new MouseEventArgs(Mouse.PrimaryDevice, Environment.TickCount) { RoutedEvent = Mouse.MouseLeaveEvent });
             Assert.Equal("Skins", Field<string>(window, "_hoveredNav"));
@@ -1132,6 +1322,56 @@ public sealed class SettingsWindowControlTests
             Assert.Equal(.4, items[7].Opacity);
             fixture.Window.ResetProgressiveBlurElements(menu);
             Assert.All(items, item => Assert.Equal(0, ((TranslateTransform)item.RenderTransform).Y));
+        }
+        finally { AnimationConfig.SetReduceMotion(previous); }
+    });
+
+    [Theory]
+    [InlineData(false, false)]
+    [InlineData(false, true)]
+    [InlineData(true, false)]
+    public void TranslationOptionsFollowSwitchAfterReveal(bool reducedMotion, bool interrupt) => SharedStaTestRunner.RunAsync(async ct =>
+    {
+        bool previous = AnimationConfig.ReduceMotion;
+        AnimationConfig.SetReduceMotion(reducedMotion);
+        try
+        {
+            using var fixture = new Fixture();
+            var window = fixture.Window;
+            window.Show();
+            window.NavigateToTranslation();
+            await window.Dispatcher.InvokeAsync(() => { }, System.Windows.Threading.DispatcherPriority.ApplicationIdle);
+            window.ResetProgressiveBlurElements(isMenuList: false);
+            window.EnableTranslationCheck.IsChecked = false;
+            window.CurrencyConversionCheck.IsChecked = false;
+            Assert.Equal(.45, window.TranslationOptions.Opacity);
+
+            window.ApplyProgressiveBlurCascade([window.TranslationOptions], 80, -1, false, 60);
+            window.EnableTranslationCheck.IsChecked = true;
+            if (interrupt) window.ResetProgressiveBlurElements(isMenuList: false);
+            await WpfFrameWaiter.UntilAsync(() => !window.TranslationOptions.HasAnimatedProperties &&
+                !window.TranslationOptions.RenderTransform.HasAnimatedProperties, "translation options finish revealing", ct);
+
+            Assert.True(window.TranslationSourceCombo.IsEnabled);
+            Assert.True(window.TranslationModelCombo.IsEnabled);
+            Assert.Equal(1, window.TranslationOptions.Opacity);
+            Assert.Equal(.45, window.CurrencyOptions.Opacity);
+            window.CurrencyConversionCheck.IsChecked = true;
+            Assert.Equal(1, window.CurrencyOptions.Opacity);
+
+            foreach (bool enabled in new[] { false, true })
+            {
+                window.EnableTranslationCheck.IsChecked = enabled;
+                Assert.Equal(enabled, window.TranslationSourceCombo.IsEnabled);
+                Assert.Equal(enabled ? 1 : .45, window.TranslationOptions.Opacity);
+            }
+
+            window.NavigateToSection("Appearance");
+            window.NavigateToTranslation();
+            window.ResetProgressiveBlurElements(isMenuList: false);
+            Assert.Equal(1, window.TranslationOptions.Opacity);
+            window.EnableTranslationCheck.IsChecked = false;
+            Assert.Equal(.45, window.TranslationOptions.Opacity);
         }
         finally { AnimationConfig.SetReduceMotion(previous); }
     });

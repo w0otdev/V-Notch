@@ -235,6 +235,8 @@ public sealed class NotchNavigationIntegrationTests
                 settings.EnableDynamicIslandMode = island;
             }, services => services.AddSingleton<IMediaDetectionService>(new Fakes.FakeMediaDetectionService()));
         var window = fixture.Window;
+        // Measure resting layout without the runner's pointer triggering hover transforms.
+        window.IsHitTestVisible = false;
         await StartAsync(window, ct);
         var coordinator = Field<NotchTransitionCoordinator>(window, "_transitionCoordinator");
         Assert.True(coordinator.RequestView(NotchView.Secondary, "HeaderAlignment"));
@@ -273,6 +275,9 @@ public sealed class NotchNavigationIntegrationTests
                 settings.EnableDynamicIslandMode = island;
             }, services => services.AddSingleton<IMediaDetectionService>(new Fakes.FakeMediaDetectionService()));
         var window = fixture.Window;
+        // Hover enlarges the update/settings hit surfaces and changes their rendered gap.
+        // This test covers the resting header layout, independently of cursor position.
+        window.IsHitTestVisible = false;
         await StartAsync(window, ct);
         typeof(MainWindow).GetField("_isUpdateAvailable", Private)!.SetValue(window, update);
         var coordinator = Field<NotchTransitionCoordinator>(window, "_transitionCoordinator");
@@ -297,10 +302,18 @@ public sealed class NotchNavigationIntegrationTests
         {
             var bounds = Bounds(window.UpdateNotificationButton);
             Assert.InRange(Math.Abs(bounds.Top + bounds.Height / 2 - center), 0, 0.5);
-            Assert.True(bounds.Left >= Bounds(window.BatteryIcon).Right + 3.5);
-            Assert.True(Bounds(window.SettingsButton).Left >= bounds.Right + 3.5);
+            AssertGap(Bounds(window.BatteryIcon), bounds, "battery/update");
+            AssertGap(bounds, Bounds(window.SettingsButton), "update/settings");
         }
-        else Assert.True(Bounds(window.SettingsButton).Left >= Bounds(window.BatteryIcon).Right + 3.5);
+        else AssertGap(Bounds(window.BatteryIcon), Bounds(window.SettingsButton), "battery/settings");
+
+        void AssertGap(Rect left, Rect right, string pair)
+        {
+            double gap = right.Left - left.Right;
+            Assert.True(gap >= 3.5,
+                $"{pair} gap is {gap:F3} DIPs (island={island}, update={update}, " +
+                $"settings scale={window.SettingsScale.ScaleX:F3}, update scale={window.UpdateNotificationScale.ScaleX:F3}).");
+        }
     });
 
     [Fact]

@@ -1,4 +1,5 @@
 using System.IO;
+using System.Buffers;
 using System.Runtime.InteropServices;
 using VNotch.Models;
 
@@ -34,9 +35,15 @@ internal sealed partial class LocalFileSearchProvider : ISpotlightProvider
     [LibraryImport(NativeDll, EntryPoint = "vn_local_file_search_run", StringMarshalling = StringMarshalling.Utf16)]
     private static partial int Run(long handle, string query, int queryLength, string roots, int rootsLength,
         string hiddenRoots, int hiddenLength, int limit, int budgetMilliseconds, out int count);
-    [LibraryImport(NativeDll, EntryPoint = "vn_local_file_search_get_result", StringMarshalling = StringMarshalling.Utf16)]
-    private static partial int GetResult(long handle, int index, Span<char> path, int capacity,
-        out int length, out int kind, out double score);
+    [StructLayout(LayoutKind.Sequential, Pack = 1)]
+    private struct NativeResult
+    {
+        public int Offset, Length, Kind;
+        public double Score;
+    }
+    [LibraryImport(NativeDll, EntryPoint = "vn_local_file_search_copy_results", StringMarshalling = StringMarshalling.Utf16)]
+    private static partial int CopyResults(long handle, Span<NativeResult> results, int capacity,
+        Span<char> text, int textCapacity, out int count, out int textLength);
 
     public async Task<IReadOnlyList<SpotlightSearchItem>> SearchAsync(string query, int limit, CancellationToken cancellationToken)
     {
@@ -64,26 +71,29 @@ internal sealed partial class LocalFileSearchProvider : ISpotlightProvider
             limit, _budgetMilliseconds, out int count);
         token.ThrowIfCancellationRequested();
         if (status != 0) return Array.Empty<SpotlightSearchItem>();
-        var results = new List<SpotlightSearchItem>(count);
-        Span<char> pathBuffer = stackalloc char[512];
-        for (int index = 0; index < count; index++)
+        status = CopyResults(handle, [], 0, [], 0, out count, out int textLength);
+        if (count == 0 || count > 200 || textLength < 0 || textLength > 200 * 32768 || status != -2)
+            return Array.Empty<SpotlightSearchItem>();
+        Span<NativeResult> records = stackalloc NativeResult[count];
+        char[] arena = ArrayPool<char>.Shared.Rent(textLength);
+        try
         {
-            token.ThrowIfCancellationRequested();
-            status = GetResult(handle, index, pathBuffer, pathBuffer.Length, out int length, out int kind, out double score);
-            string path;
-            if (status == -2 && length > pathBuffer.Length)
+            if (CopyResults(handle, records, records.Length, arena, arena.Length, out count, out _) != 0)
+                return Array.Empty<SpotlightSearchItem>();
+            var results = new List<SpotlightSearchItem>(count);
+            for (int index = 0; index < count; index++)
             {
-                char[] larger = new char[length];
-                if (GetResult(handle, index, larger, larger.Length, out length, out kind, out score) != 0) continue;
-                path = new string(larger, 0, length);
+                token.ThrowIfCancellationRequested();
+                var record = records[index];
+                string path = new(arena, record.Offset, record.Length);
+                int kind = record.Kind;
+                if (IsExcluded?.Invoke(path) == true) continue;
+                var resultKind = kind switch { 0 => SpotlightResultKind.Application, 2 => SpotlightResultKind.Folder, _ => SpotlightResultKind.File };
+                string prefix = kind switch { 0 => "app", 2 => "folder", _ => "file" };
+                results.Add(new SpotlightSearchItem($"{prefix}:{path}", resultKind, Path.GetFileName(Path.TrimEndingDirectorySeparator(path)), path, path, path) { Score = record.Score });
             }
-            else if (status == 0) path = new string(pathBuffer[..length]);
-            else continue;
-            if (IsExcluded?.Invoke(path) == true) continue;
-            var resultKind = kind switch { 0 => SpotlightResultKind.Application, 2 => SpotlightResultKind.Folder, _ => SpotlightResultKind.File };
-            string prefix = kind switch { 0 => "app", 2 => "folder", _ => "file" };
-            results.Add(new SpotlightSearchItem($"{prefix}:{path}", resultKind, Path.GetFileName(Path.TrimEndingDirectorySeparator(path)), path, path, path) { Score = score });
+            return results;
         }
-        return results;
+        finally { ArrayPool<char>.Shared.Return(arena, clearArray: true); }
     }
 }

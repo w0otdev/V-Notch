@@ -1258,9 +1258,7 @@ public partial class MainWindow
             Duration: _dur500,
             Easing: _easeAppleOut,
             TargetFps: animFps,
-            ReduceMotion: AnimationConfig.ReduceMotion,
-            Spring: !switchingExpandedViews && effectiveTarget == VNotch.Models.NotchView.Media
-                ? ShellOpenSpring : null
+            ReduceMotion: AnimationConfig.ReduceMotion
         );
 
         var orderedTabs = GetActiveTabSequence();
@@ -2335,9 +2333,7 @@ public partial class MainWindow
             Duration: _dur500,
             Easing: _easeExpOut6,
             TargetFps: animFps,
-            ReduceMotion: AnimationConfig.ReduceMotion,
-            Spring: _lastExpandedViewBeforeCollapse == LastExpandedView.Primary
-                ? ShellCloseSpring : null
+            ReduceMotion: AnimationConfig.ReduceMotion
         );
 
         var plan = new VNotch.Models.TransitionPlan(
