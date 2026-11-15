@@ -238,22 +238,21 @@ public sealed class BrowserYouTubeResourceRegressionTests(ITestOutputHelper outp
 
             fixed (byte* ptr = pixels)
             {
+                IntPtr pixelAddress = (IntPtr)ptr;
                 int hrFirst = vn_glass_gpu_render_pixels(gpuHandle, in frame, (IntPtr)ptr, pixels.Length, stride);
                 Assert.Equal(0, hrFirst);
                 Assert.Equal(1UL, vn_glass_gpu_take_capture_count(gpuHandle));
 
-                _ = vn_glass_gpu_wait_ready(gpuHandle, 8);
-                System.Threading.SpinWait.SpinUntil(() => vn_glass_gpu_present_ready(gpuHandle, destSurface.NativePointer) == 0, 50);
+                WaitForGpuSuccess(() => vn_glass_gpu_present_ready(gpuHandle, destSurface.NativePointer), "present initial frame");
 
                 // Identical pixels + identical frame parameters must skip GPU upload & render (S_FALSE == 1).
                 int hrDuplicate = vn_glass_gpu_render_pixels(gpuHandle, in frame, (IntPtr)ptr, pixels.Length, stride);
                 Assert.Equal(1, hrDuplicate);
                 Assert.Equal(0UL, vn_glass_gpu_take_capture_count(gpuHandle));
 
-                // Mutating a pixel must immediately re-upload and render (S_OK == 0).
+                // Mutating a pixel must re-upload and render once the consumer releases its surface.
                 ptr[0] ^= 0xFF;
-                int hrChanged = vn_glass_gpu_render_pixels(gpuHandle, in frame, (IntPtr)ptr, pixels.Length, stride);
-                Assert.Equal(0, hrChanged);
+                WaitForGpuSuccess(() => vn_glass_gpu_render_pixels(gpuHandle, in frame, pixelAddress, pixels.Length, stride), "submit changed frame");
                 Assert.Equal(1UL, vn_glass_gpu_take_capture_count(gpuHandle));
             }
         }
@@ -390,14 +389,14 @@ public sealed class BrowserYouTubeResourceRegressionTests(ITestOutputHelper outp
                 {
                     fixed (byte* ptr = pixels)
                     {
+                        IntPtr pixelAddress = (IntPtr)ptr;
                         // Measure 100 forced GPU uploads + blur pyramid passes (mutating 1 byte each frame)
                         var swActive = Stopwatch.StartNew();
                         for (int i = 0; i < 100; i++)
                         {
                             ptr[0] = (byte)i;
-                            Assert.Equal(0, vn_glass_gpu_render_pixels(gpuHandle, in frame, (IntPtr)ptr, pixels.Length, stride));
-                            _ = vn_glass_gpu_wait_ready(gpuHandle, 8);
-                            System.Threading.SpinWait.SpinUntil(() => vn_glass_gpu_present_ready(gpuHandle, destSurface.NativePointer) == 0, 50);
+                            WaitForGpuSuccess(() => vn_glass_gpu_render_pixels(gpuHandle, in frame, pixelAddress, pixels.Length, stride), "submit benchmark frame");
+                            WaitForGpuSuccess(() => vn_glass_gpu_present_ready(gpuHandle, destSurface.NativePointer), "present benchmark frame");
                         }
                         swActive.Stop();
                         _ = vn_glass_gpu_take_capture_count(gpuHandle);
@@ -430,6 +429,16 @@ public sealed class BrowserYouTubeResourceRegressionTests(ITestOutputHelper outp
             window.Close();
         }
     });
+
+    private static void WaitForGpuSuccess(Func<int> operation, string description)
+    {
+        // S_FALSE is backpressure while D3D11 renders or D3D9 consumes a shared
+        // surface. Retry that state only; report device errors immediately.
+        int result = 1;
+        bool completed = SpinWait.SpinUntil(() => (result = operation()) != 1, TimeSpan.FromSeconds(2));
+        Assert.True(completed, $"Timed out waiting to {description}.");
+        Assert.Equal(0, result);
+    }
 
     private static BitmapSource CreateDetailedWidescreenBitmap(int width, int height)
     {

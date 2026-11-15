@@ -70,7 +70,11 @@ public sealed class FirstOpenLatencyTests(ITestOutputHelper output)
         await using var fixture = Create();
         var window = fixture.Window;
         window.Show();
-        await WpfFrameWaiter.UntilAsync(() => !Animating(window), "notch startup settles", ct);
+        // Measure the first expansion after startup preparation, as the Settings
+        // probe does. Entrance completion alone leaves service/template work queued.
+        await WpfFrameWaiter.UntilAsync(() => !Animating(window) &&
+            typeof(MainWindow).GetField("_preparedSettingsWindow", Private)!.GetValue(window) is SettingsWindow { IsLoaded: true, IsVisible: false },
+            "notch startup and deferred UI preparation finish", ct);
         var coordinator = (NotchTransitionCoordinator)typeof(MainWindow).GetField("_transitionCoordinator", Private)!.GetValue(window)!;
         var pauses = new List<double>();
         for (int attempt = 0; attempt < 2; attempt++)
