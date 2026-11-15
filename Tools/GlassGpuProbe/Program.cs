@@ -29,6 +29,8 @@ internal static class Program
             options.RemoveRange(outputIndex, 2);
         }
         args = options.ToArray();
+        if (args.Contains("--freshness-source")) return BackdropFreshnessProbe.RunSource();
+        if (args.Contains("--freshness")) return BackdropFreshnessProbe.Run();
         if (args.Contains("--host-alpha-probe")) return DwmProbeHost.Run();
         if (args.Contains("--benchmark-self-check")) { BenchmarkChecks.SelfCheck(); return 0; }
         if (args.Contains("--benchmark") || args.Contains("--benchmark-focused") || args.Contains("--benchmark-resize"))

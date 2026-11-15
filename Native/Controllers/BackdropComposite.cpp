@@ -7,6 +7,7 @@
 #include <cstring>
 #include <thread>
 #include <vector>
+#include "WindowBackdropCapture.h"
 
 #pragma comment(lib, "dwmapi.lib")
 #pragma comment(lib, "gdi32.lib")
@@ -32,7 +33,9 @@ constexpr int kMaxWindows = 8;
 constexpr int kMaxSelf = 8;
 constexpr int kStripMinHeight = 340;
 constexpr int kMismatchThreshold = 40;
-constexpr ULONGLONG kLiveTtlMs = 4;
+// A live consumer already supplies the frame cadence. Queue the next capture
+// immediately; a TTL here skips another consumer frame after each completion.
+constexpr ULONGLONG kLiveTtlMs = 0;
 constexpr ULONGLONG kStaticTtlMs = 500;
 
 struct Layer { HWND hwnd; RECT window; RECT visible; };
@@ -137,8 +140,12 @@ struct Dib {
 struct Scratch {
     Dib target;
     Dib window;
+    Dib full_window;
+    capture::WindowCaptureCache window_capture;
+    bool use_window_capture = true;
     std::vector<HWND> bad; // windows that printed opaque but are not visible on screen
     std::vector<HWND> verified; // windows already verified against screen pixels
+    std::vector<HWND> full_content; // apps whose ordinary print did not match the desktop
 };
 
 constexpr bool Contains(const RECT& outer, const RECT& inner) noexcept {
@@ -286,32 +293,64 @@ bool CompositeWindowLayer(Scratch& scratch, HDC screen, HDC dc, const RECT& area
     const int ww = layer.window.right - layer.window.left;
     const int wh = layer.window.bottom - layer.window.top;
     if (ww <= 0 || wh <= 0) return false;
-    if (!scratch.window.Ensure(screen, ww, wh)) return false;
     const int ox = hit.left - layer.window.left;
     const int oy = hit.top - layer.window.top;
     const int hw = hit.right - hit.left;
     const int hh = hit.bottom - hit.top;
     if (ox < 0 || oy < 0 || ox + hw > ww || oy + hh > wh) return false;
-    std::memset(
-        static_cast<uint8_t*>(scratch.window.bits) + static_cast<size_t>(oy) * ww * sizeof(uint32_t),
-        0,
-        static_cast<size_t>(hh) * ww * sizeof(uint32_t));
-    if (!PrintWindow(layer.hwnd, scratch.window.dc, PW_RENDERFULLCONTENT)) return false;
-    GdiFlush();
+    // Print only into the intersecting crop. A maximized source window must not
+    // allocate/rasterize a full desktop bitmap for a small glass backdrop.
+    if (!scratch.window.Ensure(screen, hw, hh)) return false;
+    Dib* captured = &scratch.window;
+    int sample_x = 0, sample_y = 0;
+    const auto print = [&](bool full) {
+        // Full-content printing can ignore a translated viewport. Keep its
+        // original full-size destination for apps that require that path.
+        captured = full ? &scratch.full_window : &scratch.window;
+        if (!captured->Ensure(screen, full ? ww : hw, full ? wh : hh)) return false;
+        sample_x = full ? ox : 0;
+        sample_y = full ? oy : 0;
+        std::memset(static_cast<uint32_t*>(captured->bits) + static_cast<size_t>(sample_y) * captured->width,
+            0, static_cast<size_t>(hh) * captured->width * sizeof(uint32_t));
+        if (!full) SetViewportOrgEx(captured->dc, -ox, -oy, nullptr);
+        const bool printed = PrintWindow(layer.hwnd, captured->dc, full ? PW_RENDERFULLCONTENT : 0) != FALSE;
+        if (!full) SetViewportOrgEx(captured->dc, 0, 0, nullptr);
+        GdiFlush();
+        return printed;
+    };
+    // PW_RENDERFULLCONTENT forces an expensive synchronous application redraw.
+    // Ordinary printing can copy its current redirected frame without that wait.
+    const bool needs_full = std::find(scratch.full_content.begin(), scratch.full_content.end(), layer.hwnd) != scratch.full_content.end();
+    const LONG_PTR extended_style = GetWindowLongPtrW(layer.hwnd, GWL_EXSTYLE);
+    const bool live_frame = scratch.use_window_capture && !(extended_style & WS_EX_LAYERED) && !IsUnredirectedToolOverlay(extended_style) &&
+        scratch.window_capture.CopyWindow(layer.hwnd, hit, layer.visible, layer.window,
+            static_cast<uint32_t*>(scratch.window.bits), hw);
+    bool printed = live_frame || print(needs_full);
+    bool printed_full = live_frame || needs_full;
+    if (!printed && !printed_full) {
+        printed_full = true;
+        printed = print(true);
+    }
+    if (!printed) return false;
 
     // Windows that draw with alpha (or nothing at all) print as black in the
     // transparent parts, so inspect the pixels instead of copying blindly.
-    const auto* wpx = static_cast<const uint32_t*>(scratch.window.bits);
-    const HitPixelSummary summary = InspectLayerHit(wpx, ww, ox, oy, hw, hh);
+    auto* wpx = static_cast<const uint32_t*>(captured->bits);
+    HitPixelSummary summary = InspectLayerHit(wpx, captured->width, sample_x, sample_y, hw, hh);
+    if (!printed_full && !summary.any_pixel) {
+        if (!print(true)) return false;
+        wpx = static_cast<const uint32_t*>(captured->bits);
+        summary = InspectLayerHit(wpx, captured->width, sample_x, sample_y, hw, hh);
+    }
     if (!summary.any_pixel) return false; // fully transparent window
     if (out_all_opaque) *out_all_opaque = summary.all_opaque;
 
     const int dst_x = hit.left - area.left;
     const int dst_y = hit.top - area.top;
     if (!summary.needs_blend) {
-        BitBlt(dc, dst_x, dst_y, hw, hh, scratch.window.dc, ox, oy, SRCCOPY);
+        BitBlt(dc, dst_x, dst_y, hw, hh, captured->dc, sample_x, sample_y, SRCCOPY);
     } else {
-        BlendPremultipliedHit(wpx, ww, ox, oy, static_cast<uint32_t*>(scratch.target.bits), width, dst_x, dst_y, hw, hh);
+        BlendPremultipliedHit(wpx, captured->width, sample_x, sample_y, static_cast<uint32_t*>(scratch.target.bits), width, dst_x, dst_y, hw, hh);
     }
     return true;
 }
@@ -333,9 +372,12 @@ bool Compose(Scratch& scratch, const RECT& area, std::vector<uint32_t>& out, boo
     };
     scratch.bad.erase(std::remove_if(scratch.bad.begin(), scratch.bad.end(), forget), scratch.bad.end());
     scratch.verified.erase(std::remove_if(scratch.verified.begin(), scratch.verified.end(), forget), scratch.verified.end());
+    scratch.full_content.erase(std::remove_if(scratch.full_content.begin(), scratch.full_content.end(), forget), scratch.full_content.end());
 
     const DWORD self_pid = GetCurrentProcessId();
-    for (int attempt = 0; attempt < 3; ++attempt) {
+    // Each collected layer may need one compatibility retry and one rejection.
+    // Leave a final pass to compose after the last rejected layer is removed.
+    for (int attempt = 0; attempt < kMaxWindows * 2 + 1; ++attempt) {
         static_only = true;
         EnumState state;
         state.area = area;
@@ -380,6 +422,13 @@ bool Compose(Scratch& scratch, const RECT& area, std::vector<uint32_t>& out, boo
 
         if (state.count > 0) {
             if (HWND bad = FindMismatchedLayer(screen, scratch.target, area, state, scratch)) {
+                // Some GPU/child-window apps need a full-content print. Retry
+                // their existing compatibility path before rejecting the layer.
+                if (!IsUnredirectedToolOverlay(GetWindowLongPtrW(bad, GWL_EXSTYLE)) &&
+                    std::find(scratch.full_content.begin(), scratch.full_content.end(), bad) == scratch.full_content.end()) {
+                    scratch.full_content.push_back(bad);
+                    continue;
+                }
                 scratch.bad.push_back(bad);
                 continue; // compose again without it
             }
@@ -394,13 +443,18 @@ bool Compose(Scratch& scratch, const RECT& area, std::vector<uint32_t>& out, boo
     return true;
 }
 
-// A wide strip of the monitor top so notch resizes stay inside one composition.
+// Retain room for ordinary notch transitions without reading back the entire
+// monitor width on every frame. Larger views grow the cached strip on demand.
 RECT StripFor(const RECT& area) noexcept {
     RECT strip = area;
     if (HMONITOR monitor = MonitorFromRect(&area, MONITOR_DEFAULTTONEAREST)) {
         MONITORINFO info{ sizeof(info) };
         if (GetMonitorInfoW(monitor, &info)) {
-            strip = { info.rcMonitor.left, info.rcMonitor.top, info.rcMonitor.right,
+            const LONG monitor_width = info.rcMonitor.right - info.rcMonitor.left;
+            const LONG strip_width = std::min<LONG>(monitor_width, std::max<LONG>(1024, area.right - area.left + 256));
+            const LONG strip_left = std::clamp<LONG>(area.left + (area.right - area.left - strip_width) / 2,
+                info.rcMonitor.left, info.rcMonitor.right - strip_width);
+            strip = { strip_left, info.rcMonitor.top, strip_left + strip_width,
                 std::min<LONG>(info.rcMonitor.bottom, std::max<LONG>(area.bottom + 64, info.rcMonitor.top + kStripMinHeight)) };
             UnionRect(&strip, &strip, &area);
         }
@@ -453,7 +507,12 @@ void WorkerMain() noexcept {
     Scratch scratch;
     std::vector<uint32_t> pixels;
     for (;;) {
-        WaitForSingleObject(g_shared.wake, INFINITE);
+        // Window capture sessions must also stop when the last glass consumer
+        // disappears; otherwise a hidden notch would keep capturing at full FPS.
+        if (WaitForSingleObject(g_shared.wake, scratch.window_capture.HasEntries() ? 500 : INFINITE) == WAIT_TIMEOUT) {
+            scratch.window_capture.ExpireUnused();
+            continue;
+        }
         RECT wanted;
         {
             SrwExclusiveGuard guard(g_shared.lock);
