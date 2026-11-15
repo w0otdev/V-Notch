@@ -9,6 +9,14 @@ std::atomic<unsigned> printCalls{0};
 COLORREF printColor = RGB(32, 96, 160);
 bool fullOnly = true, printFailure = false;
 HANDLE printEntered = nullptr, printRelease = nullptr;
+HWND enumeratedWindow = nullptr;
+BOOL WINAPI CadenceEnumWindows(WNDENUMPROC callback, LPARAM context) {
+    return enumeratedWindow ? callback(enumeratedWindow, context) : ::EnumWindows(callback, context);
+}
+BOOL WINAPI CadenceIsWindowVisible(HWND hwnd) {
+    return hwnd == enumeratedWindow || ::IsWindowVisible(hwnd);
+}
+DWORD WINAPI CadenceOwnerPid() { return enumeratedWindow ? MAXDWORD : ::GetCurrentProcessId(); }
 BOOL WINAPI CadencePrintWindow(HWND hwnd, HDC dc, UINT flags) {
     ++printCalls;
     if (printEntered) { SetEvent(printEntered); WaitForSingleObject(printRelease, 1000); }
@@ -22,8 +30,14 @@ BOOL WINAPI CadencePrintWindow(HWND hwnd, HDC dc, UINT flags) {
     return TRUE;
 }
 #define PrintWindow CadencePrintWindow
+#define EnumWindows CadenceEnumWindows
+#define IsWindowVisible CadenceIsWindowVisible
+#define GetCurrentProcessId CadenceOwnerPid
 #include "../../Native/Controllers/BackdropComposite.cpp"
 #undef PrintWindow
+#undef EnumWindows
+#undef IsWindowVisible
+#undef GetCurrentProcessId
 
 void Require(bool ok, const char* message) {
     if (!ok) throw std::runtime_error(message);
@@ -37,6 +51,13 @@ int main() {
     if (!hwnd || !screen) return 1;
     struct Cleanup { HWND hwnd; HDC dc; ~Cleanup() { ReleaseDC(nullptr, dc); DestroyWindow(hwnd); } } cleanup{hwnd, screen};
     try {
+        uint32_t emptyWithPadding[]{0, 0, 0xffffffff, 0, 0, 0xffffffff};
+        D3D11_MAPPED_SUBRESOURCE mapped{emptyWithPadding, 3 * sizeof(uint32_t), 0};
+        Require(!bd::capture::HasVisiblePixels(mapped, 2, 2), "empty capture accepted row padding as content");
+        emptyWithPadding[4] = 0xff000000;
+        Require(bd::capture::HasVisiblePixels(mapped, 2, 2), "legitimate opaque black frame was rejected");
+        emptyWithPadding[4] = 0xff808080;
+        Require(bd::capture::HasVisiblePixels(mapped, 2, 2), "legitimate opaque grey frame was rejected");
         bd::StripSlot slot{};
         slot.valid = slot.live_capture = true; slot.capture_version = 10; slot.last_access_ms = 1000;
         Require(bd::NeedsLiveRefresh(slot, 11, 1050), "new source frame did not wake a live strip");
@@ -123,7 +144,26 @@ int main() {
         printEntered = printRelease = nullptr;
         Require(bd::CopyPrintedLayer(scratch, screen, layer, hit, true, metrics) && !scratch.printed_layers.back().refresh,
             "completed legacy refresh was not consumed");
-        puts("PASS: mixed capture cadence, bounded legacy refresh, crop/resize/promotion invalidation and recovery.");
+        enumeratedWindow = hwnd;
+        bd::Scratch composition;
+        composition.use_window_capture = false;
+        composition.verified.push_back(hwnd);
+        std::vector<uint32_t> published;
+        Require(bd::Compose(composition, hit, published, metrics), "initial complete backdrop failed");
+        const auto lastGood = published;
+        Require(bd::TrackLiveCapture(composition, hwnd, true) && bd::TrackLiveCapture(composition, hwnd, false),
+            "capture recovery lost the established WGC source");
+        composition.live_windows.front().pid = 0;
+        Require(!bd::TrackLiveCapture(composition, hwnd, false), "a reused HWND inherited another source's capture history");
+        composition.printed_layers.clear(); printFailure = true;
+        Require(!bd::Compose(composition, hit, published, metrics), "missing opaque window published wallpaper as a valid backdrop");
+        Require(published == lastGood, "incomplete composition overwrote the last good pixels");
+        composition.printed_layers.clear(); printFailure = false;
+        printColor = RGB(48, 120, 192);
+        Require(bd::Compose(composition, hit, published, metrics) && published != lastGood,
+            "composition did not recover after the missing window returned");
+        enumeratedWindow = nullptr;
+        puts("PASS: mixed capture cadence, crop/resize invalidation, asynchronous recovery and incomplete-frame retention.");
         return 0;
     } catch (const std::exception& ex) { printf("FAIL: %s\n", ex.what()); return 1; }
 }

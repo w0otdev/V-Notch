@@ -22,41 +22,29 @@ public partial class SpotlightWindow
         bool user = message.Role == "user";
         if (user)
         {
-            var userContainer = new Grid
+            var userContainer = new Border
             {
                 HorizontalAlignment = HorizontalAlignment.Right,
-                Margin = new Thickness(40, 4, 0, 10),
-                MaxWidth = 540
+                Margin = new Thickness(64, 4, 0, 16),
+                MaxWidth = 520,
+                CornerRadius = new CornerRadius(18),
+                Padding = new Thickness(16, 12, 16, 12)
             };
-
-            var userStack = new StackPanel();
-
-            var userLabel = new TextBlock
-            {
-                Text = Loc.Get("spotlight.ai.you"),
-                FontFamily = sfPro,
-                FontSize = 10.5,
-                FontWeight = FontWeights.Bold,
-                Foreground = new SolidColorBrush(Color.FromRgb(140, 149, 158)),
-                Margin = new Thickness(0, 0, 0, 3),
-                HorizontalAlignment = HorizontalAlignment.Right
-            };
-            userStack.Children.Add(userLabel);
+            userContainer.SetResourceReference(Border.BackgroundProperty, "AccentChatBubbleBrush");
 
             var textBlock = new TextBlock
             {
                 Text = message.Content,
                 FontFamily = sfPro,
-                FontSize = 13,
-                FontWeight = FontWeights.Bold,
-                Foreground = new SolidColorBrush(Color.FromRgb(200, 200, 200)),
+                FontSize = 13.5,
+                FontWeight = FontWeights.SemiBold,
+                Foreground = Controls.SpotlightChatPalette.Primary,
                 TextWrapping = TextWrapping.Wrap,
-                LineHeight = 20,
-                TextAlignment = TextAlignment.Right
+                LineHeight = 22,
+                TextAlignment = TextAlignment.Left
             };
-            userStack.Children.Add(textBlock);
-
-            userContainer.Children.Add(userStack);
+            System.Windows.Automation.AutomationProperties.SetName(textBlock, Loc.Get("spotlight.ai.you") + ": " + message.Content);
+            userContainer.Child = textBlock;
             AiTranscript.Children.Add(userContainer);
             if (animate) AnimateAiArrival(userContainer, 8, 260);
             return null;
@@ -65,21 +53,21 @@ public partial class SpotlightWindow
         // Assistant Message - Flat Surface (NO FLOAT CARD DESIGN)
         var view = CreateMarkdownView(message.Content);
         view.FontFamily = sfPro;
-        view.FontWeight = FontWeights.Bold;
+        view.FontWeight = FontWeights.Normal;
 
         var card = new Border
         {
             Background = Brushes.Transparent,
             BorderThickness = new Thickness(0),
             Padding = new Thickness(0, 4, 0, 8),
-            Margin = new Thickness(0, 6, 0, 16),
+            Margin = new Thickness(0, 4, 0, 20),
             HorizontalAlignment = HorizontalAlignment.Stretch
         };
 
         var stack = new StackPanel();
 
         // Keep the selected brand and model visible beside each assistant response.
-        var headerGrid = new Grid { Margin = new Thickness(0, 0, 0, 8) };
+        var headerGrid = new Grid { Margin = new Thickness(0, 0, 0, 4) };
         headerGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
         headerGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
         headerGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
@@ -97,9 +85,9 @@ public partial class SpotlightWindow
             TextTrimming = TextTrimming.CharacterEllipsis,
             TextWrapping = TextWrapping.NoWrap,
             FontFamily = sfPro,
-            FontSize = 11.5,
-            FontWeight = FontWeights.Bold,
-            Foreground = new SolidColorBrush(Color.FromRgb(200, 200, 200)),
+            FontSize = 12,
+            FontWeight = FontWeights.SemiBold,
+            Foreground = Controls.SpotlightChatPalette.Primary,
             VerticalAlignment = VerticalAlignment.Center
         };
         Grid.SetColumn(modelTitle, 1);
@@ -110,11 +98,10 @@ public partial class SpotlightWindow
         var msgCopyBtn = new Button
         {
             Style = (Style)FindResource("AiToolbarStyle"),
-            Width = 24,
-            Height = 24,
             ToolTip = Loc.Get("spotlight.ai.copy"),
             HorizontalAlignment = HorizontalAlignment.Right
         };
+        SetAiToolLabel(msgCopyBtn, "spotlight.ai.copy");
         Grid.SetColumn(msgCopyBtn, 2);
 
         var copyPath = new System.Windows.Shapes.Path
@@ -122,8 +109,8 @@ public partial class SpotlightWindow
             Data = AiCopyGeometry,
             Fill = ChatIconBrush,
             Stretch = Stretch.Uniform,
-            Width = 10,
-            Height = 10
+            Width = 13,
+            Height = 13
         };
         msgCopyBtn.Content = copyPath;
 
@@ -181,9 +168,9 @@ public partial class SpotlightWindow
         {
             Text = Loc.Get("spotlight.ai.thinking"),
             FontFamily = (FontFamily)FindResource("SFProDisplay"),
-            FontSize = 11.5,
-            FontWeight = FontWeights.Bold,
-            Foreground = new SolidColorBrush(Color.FromRgb(168, 172, 182)),
+            FontSize = 12,
+            FontWeight = FontWeights.Medium,
+            Foreground = Controls.SpotlightChatPalette.Secondary,
             VerticalAlignment = VerticalAlignment.Center
         });
         _aiThinkingCard = new Border

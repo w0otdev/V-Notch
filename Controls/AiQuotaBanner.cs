@@ -38,7 +38,7 @@ public sealed class AiQuotaBanner : UserControl
         }
     }
 
-    private sealed class PercentageText : TextBlock
+    private sealed class PercentageText : NumberFlowText
     {
         internal static readonly DependencyProperty PercentageProperty = DependencyProperty.Register(
             "Percentage", typeof(double), typeof(PercentageText), new PropertyMetadata(0d, OnPercentageChanged));
@@ -99,7 +99,7 @@ public sealed class AiQuotaBanner : UserControl
                     RenderTransformOrigin = new Point(0.5, 0.5), RenderTransform = logoScale
                 };
                 header.Children.Add(logo);
-                header.Children.Add(new TextBlock
+                header.Children.Add(new NumberFlowText
                 {
                     Text = alert.Provider, FontSize = 14, FontWeight = FontWeights.SemiBold,
                     Foreground = UiPalette.PrimaryBrush, VerticalAlignment = VerticalAlignment.Center,
@@ -117,7 +117,7 @@ public sealed class AiQuotaBanner : UserControl
             if (!string.IsNullOrEmpty(alert.Window.Bucket) &&
                 !string.Equals(alert.Window.Bucket, alert.Provider, StringComparison.OrdinalIgnoreCase))
                 windowLabel += " · " + alert.Window.Bucket;
-            var cycle = new TextBlock
+            var cycle = new NumberFlowText
             {
                 Text = windowLabel, FontSize = 13, FontWeight = FontWeights.SemiBold, Foreground = UiPalette.PrimaryBrush,
                 Margin = new Thickness(0, 0, 10, 0), VerticalAlignment = VerticalAlignment.Center,
@@ -125,7 +125,7 @@ public sealed class AiQuotaBanner : UserControl
             };
             row.Children.Add(cycle);
 
-            var context = new TextBlock
+            var context = new NumberFlowText
             {
                 Text = Loc.Get("aiUsage.remaining"), FontSize = 11.5, Foreground = UiPalette.SecondaryBrush,
                 Margin = new Thickness(0, 3, 8, 0), TextWrapping = TextWrapping.Wrap
@@ -180,9 +180,9 @@ public sealed class AiQuotaBanner : UserControl
                 Animate(logoScale, ScaleTransform.ScaleXProperty, .92, 1, 360, delay, _easeSoftSpring, version);
                 Animate(logoScale, ScaleTransform.ScaleYProperty, .92, 1, 360, delay, _easeSoftSpring, version);
             }
-            // Fill and number use the same curve so the allowance always reads as one movement.
+            // The bar and digit reels each settle on the same final allowance.
             Animate(row.Fill, RoundedQuotaFill.ProgressProperty, 0, row.Target / 100, 420, delay + 45, _easeAppleOut, version);
-            Animate(row.Percentage, PercentageText.PercentageProperty, 0, row.Target, 420, delay + 45, _easeAppleOut, version);
+            row.Percentage.AnimateFrom("0%");
         }
     }
 
@@ -200,6 +200,7 @@ public sealed class AiQuotaBanner : UserControl
             // Keep the quota itself steady while the readout withdraws.
             row.Fill.BeginAnimation(RoundedQuotaFill.ProgressProperty, null);
             row.Fill.SetValue(RoundedQuotaFill.ProgressProperty, row.Target / 100);
+            row.Percentage.Finish();
             row.Percentage.BeginAnimation(PercentageText.PercentageProperty, null);
             row.Percentage.SetValue(PercentageText.PercentageProperty, row.Target);
             Animate(row.View, OpacityProperty, row.View.Opacity, 0, 120, 0, _easeAppleOut, version);
@@ -243,6 +244,7 @@ public sealed class AiQuotaBanner : UserControl
             }
             row.Fill.BeginAnimation(RoundedQuotaFill.ProgressProperty, null);
             row.Fill.SetValue(RoundedQuotaFill.ProgressProperty, row.Target / 100);
+            row.Percentage.Finish();
             row.Percentage.BeginAnimation(PercentageText.PercentageProperty, null);
             row.Percentage.SetValue(PercentageText.PercentageProperty, row.Target);
         }

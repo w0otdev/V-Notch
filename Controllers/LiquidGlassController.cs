@@ -1930,6 +1930,10 @@ public sealed partial class LiquidGlassController : IDisposable
                 }
                 return true;
             }
+            // A transient miss must not upload a synthetic grey/black frame over
+            // an initialized presentation surface. Keep that surface until the
+            // next complete capture; the plain material is only for cold start.
+            if (Volatile.Read(ref _hasVisibleFrame)) return false;
             isSyntheticBackdrop = true;
             return FillUnavailableBackdrop(cp.SrcW, cp.SrcH);
         }

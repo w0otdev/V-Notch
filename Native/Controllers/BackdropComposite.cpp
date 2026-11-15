@@ -224,6 +224,12 @@ struct PrintedLayer {
     std::shared_ptr<PrintedLayerRefresh> refresh;
 };
 
+struct LiveWindow {
+    HWND hwnd;
+    DWORD pid, thread;
+    ULONGLONG used;
+};
+
 struct Scratch {
     Dib target;
     Dib window;
@@ -240,7 +246,28 @@ struct Scratch {
     std::vector<OverlayCheck> overlay_checks; // bounded TTL cache for unredirected shell overlays
     std::vector<PrintedLayer> printed_layers;
     bool async_legacy_refresh = false;
+    std::vector<LiveWindow> live_windows;
 };
+
+bool TrackLiveCapture(Scratch& scratch, HWND hwnd, bool captured) {
+    const ULONGLONG now = GetTickCount64();
+    DWORD pid = 0;
+    const DWORD thread = GetWindowThreadProcessId(hwnd, &pid);
+    auto& windows = scratch.live_windows;
+    windows.erase(std::remove_if(windows.begin(), windows.end(), [&](const LiveWindow& entry) {
+        return now - entry.used > 2000 || !IsWindow(entry.hwnd) ||
+            (entry.hwnd == hwnd && (entry.pid != pid || entry.thread != thread));
+    }), windows.end());
+    for (auto& entry : windows) {
+        if (entry.hwnd == hwnd) { entry.used = now; return true; }
+    }
+    if (captured && pid && thread) {
+        if (windows.size() >= kMaxWindows)
+            windows.erase(std::min_element(windows.begin(), windows.end(), [](const auto& a, const auto& b) { return a.used < b.used; }));
+        windows.push_back({hwnd, pid, thread, now});
+    }
+    return captured;
+}
 
 constexpr bool Contains(const RECT& outer, const RECT& inner) noexcept {
     return inner.left >= outer.left && inner.top >= outer.top && inner.right <= outer.right && inner.bottom <= outer.bottom;
@@ -588,6 +615,14 @@ bool CompositeWindowLayer(Scratch& scratch, HDC screen, HDC dc, const RECT& area
         metrics.any_live_wgc = true;
         if (fresh_wgc) metrics.any_fresh_wgc = true;
     }
+    const bool previously_live = TrackLiveCapture(scratch, layer.hwnd, live_frame);
+    if (!live_frame && scratch.use_window_capture &&
+        (previously_live || scratch.window_capture.HasWindow(layer.hwnd))) {
+        // A WGC pool can be empty during resize/recovery. PrintWindow often
+        // returns a successful grey/black placeholder for Chromium at that point.
+        // Let the compositor retain its last complete strip until WGC resumes.
+        return false;
+    }
     if (!live_frame && !CopyPrintedLayer(scratch, screen, layer, hit, needs_full, metrics)) return false;
 
     // Windows that draw with alpha (or nothing at all) print as black in the
@@ -600,7 +635,7 @@ bool CompositeWindowLayer(Scratch& scratch, HDC screen, HDC dc, const RECT& area
     const int dst_x = hit.left - area.left;
     const int dst_y = hit.top - area.top;
     if (!summary.needs_blend) {
-        BitBlt(dc, dst_x, dst_y, hw, hh, scratch.window.dc, 0, 0, SRCCOPY);
+        if (!BitBlt(dc, dst_x, dst_y, hw, hh, scratch.window.dc, 0, 0, SRCCOPY)) return false;
     } else {
         BlendPremultipliedHit(wpx, hw, 0, 0, static_cast<uint32_t*>(scratch.target.bits), width, dst_x, dst_y, hw, hh);
     }
@@ -633,6 +668,7 @@ bool Compose(Scratch& scratch, const RECT& area, std::vector<uint32_t>& out, Com
 
     const DWORD self_pid = GetCurrentProcessId();
     bool had_full_print = false;
+    bool complete = false;
     // Each collected layer may need one compatibility retry and one rejection.
     // Leave a final pass to compose after the last rejected layer is removed.
     for (int attempt = 0; attempt < kMaxWindows * 2 + 1; ++attempt) {
@@ -654,7 +690,9 @@ bool Compose(Scratch& scratch, const RECT& area, std::vector<uint32_t>& out, Com
         bool covered = false;
         if (state.count > 0 && Contains(state.layers[0].visible, area)) {
             bool top_opaque = false;
-            if (CompositeWindowLayer(scratch, screen, dc, area, width, state.layers[0], metrics, &top_opaque) && top_opaque) {
+            const bool captured = CompositeWindowLayer(scratch, screen, dc, area, width, state.layers[0], metrics, &top_opaque);
+            if (!captured && !IsUnredirectedToolOverlay(GetWindowLongPtrW(state.layers[0].hwnd, GWL_EXSTYLE))) return false;
+            if (captured && top_opaque) {
                 metrics.static_only = false;
                 covered = true;
             }
@@ -681,6 +719,7 @@ bool Compose(Scratch& scratch, const RECT& area, std::vector<uint32_t>& out, Com
                 }
             }
 
+            if (!ok) return false;
             int start_idx = state.count - 1;
             for (int i = 0; i < state.count; ++i) {
                 if (Contains(state.layers[i].visible, area)) {
@@ -692,6 +731,10 @@ bool Compose(Scratch& scratch, const RECT& area, std::vector<uint32_t>& out, Com
                 if (CompositeWindowLayer(scratch, screen, dc, area, width, state.layers[i], metrics)) {
                     metrics.static_only = false;
                     ok = true;
+                } else if (!IsUnredirectedToolOverlay(GetWindowLongPtrW(state.layers[i].hwnd, GWL_EXSTYLE))) {
+                    // Wallpaper or lower windows are not a valid replacement
+                    // for an opaque window whose capture is temporarily missing.
+                    return false;
                 }
             }
         }
@@ -715,6 +758,7 @@ bool Compose(Scratch& scratch, const RECT& area, std::vector<uint32_t>& out, Com
                     // a post-PW_RENDERFULLCONTENT diff means live animation occurred between snapshots.
                     scratch.verified.push_back(bad);
                     out_metrics = metrics;
+                    complete = true;
                     break;
                 }
                 if (is_overlay) {
@@ -726,9 +770,11 @@ bool Compose(Scratch& scratch, const RECT& area, std::vector<uint32_t>& out, Com
             }
         }
         out_metrics = metrics;
+        complete = true;
         break;
     }
 
+    if (!complete) return false;
     const size_t total = static_cast<size_t>(width) * static_cast<size_t>(height);
     out.resize(total);
     const auto* src = static_cast<const uint32_t*>(scratch.target.bits);

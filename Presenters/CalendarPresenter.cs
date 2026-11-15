@@ -76,7 +76,7 @@ public sealed class CalendarPresenter : IDisposable
             TextOptions.SetTextHintingMode(_calendarDayNames[i], TextHintingMode.Animated);
             _refs.WeekDaysPanel.Children.Add(_calendarDayNames[i]);
 
-            _calendarDayNumbers[i] = new TextBlock
+            _calendarDayNumbers[i] = new VNotch.Controls.NumberFlowText
             {
                 Style = _refs.TitleTextStyle,
                 FontSize = 11,

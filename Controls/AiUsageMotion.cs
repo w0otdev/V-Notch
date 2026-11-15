@@ -1,4 +1,4 @@
-﻿using System.ComponentModel;
+using System.ComponentModel;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Data;
@@ -21,10 +21,6 @@ internal sealed class AiUsageMotion
     private bool _reveal;
     private static readonly DependencyProperty BarProgressProperty = DependencyProperty.RegisterAttached(
         "BarProgress", typeof(double), typeof(AiUsageMotion), new PropertyMetadata(0.0));
-    private static readonly DependencyProperty CounterValueProperty = DependencyProperty.RegisterAttached(
-        "CounterValue", typeof(double), typeof(AiUsageMotion), new PropertyMetadata(0.0, OnCounterValueChanged));
-    private static readonly DependencyProperty CounterFormatProperty = DependencyProperty.RegisterAttached(
-        "CounterFormat", typeof(Func<double, string>), typeof(AiUsageMotion), new PropertyMetadata(null));
     private static readonly KeySpline SpringSpline = CreateSpline(0.18, 1.24, 0.36, 1.0);
     private static readonly KeySpline SnappySpline = CreateSpline(0.16, 1.0, 0.30, 1.0);
     private static readonly BarWidthConverter WidthConverter = new();
@@ -34,14 +30,6 @@ internal sealed class AiUsageMotion
         var spline = new KeySpline(x1, y1, x2, y2);
         spline.Freeze();
         return spline;
-    }
-
-    private static void OnCounterValueChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
-    {
-        if (d.GetValue(CounterFormatProperty) is not Func<double, string> formatter) return;
-        string text = formatter((double)e.NewValue);
-        if (d is Run run) run.Text = text;
-        else if (d is TextBlock tb) tb.Text = text;
     }
 
     internal static bool MotionEnabled => AiUsageAppearance.Current.MotionIntensity > 0 && !AnimationConfig.ReduceMotion && AnimationConfig.ClientAreaAnimation && !SystemParameters.HighContrast;
@@ -225,23 +213,16 @@ internal sealed class AiUsageMotion
     internal void AnimateNumber(DependencyObject target, double fromValue, double toValue,
         Func<double, string> formatter, string finalText, int durationMs = 320, int delayMs = 0)
     {
-        if (!CanAnimate || Math.Abs(fromValue - toValue) < 0.05 || target is not IAnimatable animatable) return;
-        target.SetValue(CounterFormatProperty, formatter);
-        target.SetValue(CounterValueProperty, toValue);
-        var anim = SplineTween(fromValue, toValue, ScaleDuration(durationMs), SnappySpline, delayMs);
-        anim.Completed += (_, _) => SetTextTarget(target, finalText);
-        animatable.BeginAnimation(CounterValueProperty, anim, HandoffBehavior.SnapshotAndReplace);
-        _stopTransient.Add(() =>
+        if (!CanAnimate || Math.Abs(fromValue - toValue) < 0.05) return;
+        var flow = target as NumberFlowText ?? (target as Run)?.Parent as NumberFlowText;
+        if (flow != null)
         {
-            animatable.BeginAnimation(CounterValueProperty, null);
-            SetTextTarget(target, finalText);
-        });
-    }
-
-    private static void SetTextTarget(DependencyObject target, string text)
-    {
-        if (target is Run run) run.Text = text;
-        else if (target is TextBlock tb) tb.Text = text;
+            string previous = target is Run run
+                ? flow.Text.Replace(run.Text, formatter(fromValue), StringComparison.Ordinal)
+                : formatter(fromValue);
+            flow.AnimateFrom(previous);
+            _stopTransient.Add(flow.Finish);
+        }
     }
 
     private void AttachBarFlash(Border fill, int durationMs, double peakOpacity, int delayMs = 0)

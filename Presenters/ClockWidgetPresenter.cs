@@ -421,7 +421,7 @@ public sealed class ClockWidgetPresenter : IDisposable
         _refs.ClockViewDayGrid.Children.Clear();
         for (int i = 0; i < 42; i++)
         {
-            var dayText = new TextBlock
+            var dayText = new VNotch.Controls.NumberFlowText
             {
                 FontFamily = font,
                 FontSize = 13,

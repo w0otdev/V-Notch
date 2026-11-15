@@ -105,4 +105,56 @@ public sealed class GlassBackdropAlignmentTests
             Marshal.FreeHGlobal(bits);
         }
     });
+
+    [Theory]
+    [InlineData(0xFF000000u)]
+    [InlineData(0xFF808080u)]
+    [InlineData(0xFF336699u)]
+    public void ATransientCaptureMissDoesNotReplaceThePresentedFrameAndRecoveryAcceptsRealDarkContent(uint recoveredPixel) => SharedStaTestRunner.Run(() =>
+    {
+        using var controller = new LiquidGlassController(new Image(), () => IntPtr.Zero, () => null);
+        var bits = Marshal.AllocHGlobal(4 * 8 * 6);
+        var dib = typeof(LiquidGlassController).GetField("_dibBits", Private)!;
+        try
+        {
+            dib.SetValue(controller, bits);
+            var captureType = typeof(LiquidGlassController).GetNestedType("BackdropCaptureParams", BindingFlags.NonPublic)!;
+            var capture = Activator.CreateInstance(captureType, [100, 10, 8, 6, 8, 6, 10, 40, false, IntPtr.Zero]);
+            var method = typeof(LiquidGlassController).GetMethod("CaptureBackdrop", Private)!;
+            object?[] arguments = [capture, false];
+            controller.CompositeBackdropCapture = (_, _, width, height, destination) =>
+            {
+                for (int i = 0; i < width * height; i++) Marshal.WriteInt32(destination, i * 4, unchecked((int)0xFF446688));
+                return true;
+            };
+            Assert.True((bool)method.Invoke(controller, arguments)!);
+            typeof(LiquidGlassController).GetField("_hasVisibleFrame", Private)!.SetValue(controller, true);
+
+            // A failed provider is allowed to have touched its staging buffer.
+            controller.CompositeBackdropCapture = (_, _, width, height, destination) =>
+            {
+                for (int i = 0; i < width * height; i++) Marshal.WriteInt32(destination, i * 4, 0);
+                return false;
+            };
+            for (int miss = 0; miss < 3; miss++)
+            {
+                Assert.False((bool)method.Invoke(controller, arguments)!);
+                Assert.False((bool)arguments[1]!);
+                Assert.True(controller.HasPresentedFrame);
+            }
+            controller.CompositeBackdropCapture = (_, _, width, height, destination) =>
+            {
+                for (int i = 0; i < width * height; i++) Marshal.WriteInt32(destination, i * 4, unchecked((int)recoveredPixel));
+                return true;
+            };
+            Assert.True((bool)method.Invoke(controller, arguments)!);
+            Assert.False((bool)arguments[1]!);
+            Assert.Equal(unchecked((int)recoveredPixel), Marshal.ReadInt32(bits));
+        }
+        finally
+        {
+            dib.SetValue(controller, IntPtr.Zero);
+            Marshal.FreeHGlobal(bits);
+        }
+    });
 }

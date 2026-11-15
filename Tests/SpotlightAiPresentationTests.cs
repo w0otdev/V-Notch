@@ -181,7 +181,7 @@ public sealed class SpotlightAiPresentationTests
         var card = Assert.IsType<Border>(Assert.Single(window.AiHistoryItems.Children.Cast<UIElement>()));
         Assert.Contains(Descendants<TextBlock>(card), t => t.Text == "First question");
         card.RaiseEvent(new MouseEventArgs(Mouse.PrimaryDevice, 0) { RoutedEvent = Mouse.MouseEnterEvent });
-        Assert.Equal(Color.FromRgb(32, 32, 32), Assert.IsType<SolidColorBrush>(card.Background).Color);
+        Assert.Same(SpotlightChatPalette.Hover, card.Background);
         card.RaiseEvent(new MouseEventArgs(Mouse.PrimaryDevice, 0) { RoutedEvent = Mouse.MouseLeaveEvent });
         card.RaiseEvent(new MouseButtonEventArgs(Mouse.PrimaryDevice, 0, MouseButton.Left) { RoutedEvent = UIElement.MouseLeftButtonUpEvent });
         await WpfFrameWaiter.UntilAsync(() => window.AiHistoryPanel.Visibility == Visibility.Collapsed, "saved chat selected", ct);
@@ -191,7 +191,9 @@ public sealed class SpotlightAiPresentationTests
         Assert.Equal("saved-model", Field<string>(window, "_aiConversationModel"));
         Invoke(window, "ToggleAiHistoryPage");
         card = Assert.IsType<Border>(Assert.Single(window.AiHistoryItems.Children.Cast<UIElement>()));
-        Descendants<Button>(card).Single().RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+        Descendants<Button>(card).Single(button =>
+            System.Windows.Automation.AutomationProperties.GetName(button) == Loc.Get("spotlight.ai.delete"))
+            .RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
         await WpfFrameWaiter.UntilAsync(() => Field<List<SpotlightSavedChat>>(window, "_savedChats").Count == 0 &&
             window.AiHistoryItems.Children.OfType<TextBlock>().Any(), "deleted chat empty state", ct);
         Assert.Empty(Field<List<SpotlightAiMessage>>(window, "_aiHistory"));

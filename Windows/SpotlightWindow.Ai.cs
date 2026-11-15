@@ -54,7 +54,7 @@ public partial class SpotlightWindow
             return true;
         }
         // Keep all search launch/navigation shortcuts out of the AI surface.
-        if (e.Key == Key.Enter && Keyboard.Modifiers == ModifierKeys.None)
+        if (e.Key == Key.Enter && Keyboard.Modifiers == ModifierKeys.None && IsSearchBoxFocusedForAiToggle(e))
         {
             if (!e.IsRepeat) SendAiAsync().SafeFireAndForget("SPOTLIGHT-AI");
             e.Handled = true;
@@ -94,6 +94,8 @@ public partial class SpotlightWindow
                 }
             }
         }
+        if (AiTranscriptScroll.Visibility == Visibility.Visible)
+            AddTranscriptStops(AiTranscript);
         AddIfFocusable(AiUsageRefresh, AiUsageRow?.Visibility == Visibility.Visible);
         AddIfFocusable(AiStopButton, AiBottomActionRow?.Visibility == Visibility.Visible);
         AddIfFocusable(SearchBox);
@@ -112,6 +114,16 @@ public partial class SpotlightWindow
         Control target = stopList[nextIndex];
         FocusManager.SetFocusedElement(this, target);
         target.Focus();
+
+        void AddTranscriptStops(DependencyObject parent)
+        {
+            foreach (object child in LogicalTreeHelper.GetChildren(parent))
+            {
+                if (child is Button button) AddIfFocusable(button);
+                else if (child is RichTextBox view) AddIfFocusable(view);
+                else if (child is DependencyObject nested) AddTranscriptStops(nested);
+            }
+        }
     }
 
     private void EscapeAiMode()
@@ -267,10 +279,13 @@ public partial class SpotlightWindow
             IsReadOnly = true,
             IsDocumentEnabled = false,
             Background = System.Windows.Media.Brushes.Transparent,
+            SelectionBrush = Controls.SpotlightChatPalette.Primary,
+            SelectionTextBrush = Controls.SpotlightChatPalette.Surface,
+            SelectionOpacity = 1,
             BorderThickness = new Thickness(0),
             Padding = new Thickness(0),
             FontFamily = font,
-            FontWeight = FontWeights.Bold,
+            FontWeight = FontWeights.Normal,
             VerticalScrollBarVisibility = System.Windows.Controls.ScrollBarVisibility.Disabled
         };
     }

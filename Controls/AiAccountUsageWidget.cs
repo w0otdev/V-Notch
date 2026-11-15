@@ -12,6 +12,8 @@ namespace VNotch.Controls;
 
 public sealed class AiAccountUsageWidget : UserControl
 {
+    private readonly NumberFlowSnapshot _numberFlow = new();
+
     private static readonly Brush LabelBrush = Frozen(0xB0, 0xB0, 0xB0);
     private static readonly Brush ResetBrush = Frozen(0x87, 0x87, 0x87);
     private static readonly Brush TrackBrush = Frozen(0x2D, 0x2D, 0x2D);
@@ -66,6 +68,7 @@ public sealed class AiAccountUsageWidget : UserControl
 
     internal void Present(AiAccountUsage codex, AiAccountUsage claude)
     {
+        _numberFlow.Capture(_grid);
         _grid.Children.Clear();
         _grid.ColumnDefinitions.Clear();
         _grid.RowDefinitions.Clear();
@@ -89,6 +92,7 @@ public sealed class AiAccountUsageWidget : UserControl
         else Grid.SetRow(codexCard, 2);
         _grid.Children.Add(claudeCard);
         _grid.Children.Add(codexCard);
+        _numberFlow.Restore(_grid, true);
         AutomationProperties.SetName(this, Loc.Get("aiUsage.title"));
     }
 
@@ -109,7 +113,7 @@ public sealed class AiAccountUsageWidget : UserControl
             Margin = new(0, 0, compact ? 3 : 8, 0), Stretch = Stretch.Uniform, VerticalAlignment = VerticalAlignment.Center,
             Focusable = false, IsHitTestVisible = false, Tag = usage.Provider };
         header.Children.Add(logo);
-        header.Children.Add(new TextBlock
+        header.Children.Add(new NumberFlowText
         {
             Text = compact ? usage.Provider : Loc.Get("aiUsage.providerUsage", usage.Provider), FontSize = compact ? 10 : 19,
             FontWeight = FontWeights.Bold, VerticalAlignment = VerticalAlignment.Center
@@ -120,7 +124,7 @@ public sealed class AiAccountUsageWidget : UserControl
         if (usage.State != AiUsageState.Ready || usage.Windows is not { Count: > 0 })
         {
             string status = Loc.Get("aiUsage.state." + usage.State);
-            panel.Children.Add(new TextBlock { Text = compact ? usage.State == AiUsageState.Loading ? "…" : "—" : status,
+            panel.Children.Add(new NumberFlowText { Text = compact ? usage.State == AiUsageState.Loading ? "…" : "—" : status,
                 FontSize = compact ? 10 : 12, Foreground = LabelBrush, TextWrapping = TextWrapping.Wrap,
                 MinHeight = compact ? 20 : 105, VerticalAlignment = VerticalAlignment.Center });
             details.Add(status);
@@ -135,7 +139,7 @@ public sealed class AiAccountUsageWidget : UserControl
                 if (i < 2) panel.Children.Add(CreateQuotaRow(usage, window, now, compact, i == 0, info));
             }
             if (!compact && usage.IsStale(now))
-                panel.Children.Add(new TextBlock { Text = Loc.Get("aiUsage.stale"), FontSize = 10, Foreground = ResetBrush,
+                panel.Children.Add(new NumberFlowText { Text = Loc.Get("aiUsage.stale"), FontSize = 10, Foreground = ResetBrush,
                     TextWrapping = TextWrapping.Wrap, Margin = new(0, 8, 0, 0) });
         }
         if (usage.UpdatedAt is { } updated) details.Add(Loc.Get("aiUsage.updated", updated.ToLocalTime().ToString("g", Loc.GetCulture())));
@@ -162,16 +166,16 @@ public sealed class AiAccountUsageWidget : UserControl
         string percent = window.RemainingPercent.ToString(compact ? "0" : "0.#", Loc.GetCulture());
         string label = WindowLabel(usage, window, compact);
         if (compact)
-            row.Children.Add(new TextBlock { Text = label + " " + (expired ? "—" : percent + "%"), FontSize = 10,
+            row.Children.Add(new NumberFlowText { Text = label + " " + (expired ? "—" : percent + "%"), FontSize = 10,
                 Foreground = LabelBrush, FontWeight = FontWeights.Bold, TextTrimming = TextTrimming.CharacterEllipsis });
         else
         {
             var line = new Grid { Margin = new(0, 0, 0, 7) };
             line.ColumnDefinitions.Add(new() { Width = new GridLength(1, GridUnitType.Star) });
             line.ColumnDefinitions.Add(new() { Width = GridLength.Auto });
-            line.Children.Add(new TextBlock { Text = label, Foreground = LabelBrush, FontSize = 12, FontWeight = FontWeights.Bold,
+            line.Children.Add(new NumberFlowText { Text = label, Foreground = LabelBrush, FontSize = 12, FontWeight = FontWeights.Bold,
                 Margin = new(0, 0, 8, 0), TextTrimming = TextTrimming.CharacterEllipsis });
-            var reset = new TextBlock { Name = "QuotaReset", Text = FormatReset(window, now), FontSize = 11.5, Foreground = ResetBrush,
+            var reset = new NumberFlowText { Name = "QuotaReset", Text = FormatReset(window, now), FontSize = 11.5, Foreground = ResetBrush,
                 FontWeight = FontWeights.Bold, VerticalAlignment = VerticalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis,
                 MaxWidth = 160, ToolTip = info };
             Grid.SetColumn(reset, 1);
@@ -180,7 +184,7 @@ public sealed class AiAccountUsageWidget : UserControl
         }
         row.Children.Add(CreateTrack(window, compact, expired));
         if (!compact)
-            row.Children.Add(new TextBlock { Name = "QuotaRemaining", Text = expired ? "—" : Loc.Get("aiUsage.left", percent), FontSize = 12,
+            row.Children.Add(new NumberFlowText { Name = "QuotaRemaining", Text = expired ? "—" : Loc.Get("aiUsage.left", percent), FontSize = 12,
                 FontWeight = FontWeights.Bold, Foreground = LabelBrush, Margin = new(0, 7, 0, 0) });
         AutomationProperties.SetName(row, info);
         return row;

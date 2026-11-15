@@ -72,6 +72,13 @@ internal static partial class AiMarkdown
         {
             BodyFont = font,
             BodyFontWeight = normalBody ? FontWeights.Normal : FontWeights.Medium,
+            BodyForeground = SpotlightChatPalette.Primary,
+            CodeForeground = SpotlightChatPalette.Primary,
+            CodeBackground = SpotlightChatPalette.Surface,
+            InlineCodeForeground = SpotlightChatPalette.Primary,
+            InlineCodeBackground = SpotlightChatPalette.Surface,
+            QuoteForeground = SpotlightChatPalette.Secondary,
+            LinkForeground = SpotlightChatPalette.Link,
             LinkMode = MarkdownLinkMode.LabelWithUrlSuffix
         };
 

@@ -15,18 +15,11 @@ public partial class SpotlightWindow
     internal readonly VisualBrush AiTopEdgeBrush = new();
     internal readonly VisualBrush AiBottomEdgeBrush = new();
 
-    private static readonly SolidColorBrush AiHistoryCardIdleBrush = CreateFrozenRgbBrush(18, 18, 18);
-    private static readonly SolidColorBrush AiHistoryCardHoverBrush = CreateFrozenRgbBrush(32, 32, 32);
-    private static readonly SolidColorBrush AiHistoryCardBorderBrush = CreateFrozenRgbBrush(35, 35, 35);
-    private static readonly SolidColorBrush AiHistoryEmptyBrush = CreateFrozenRgbBrush(140, 149, 158);
+    private static readonly SolidColorBrush AiHistoryCardIdleBrush = Controls.SpotlightChatPalette.Surface;
+    private static readonly SolidColorBrush AiHistoryCardHoverBrush = Controls.SpotlightChatPalette.Hover;
+    private static readonly SolidColorBrush AiHistoryCardBorderBrush = Controls.SpotlightChatPalette.Border;
+    private static readonly SolidColorBrush AiHistoryEmptyBrush = Controls.SpotlightChatPalette.Secondary;
     private static readonly System.Windows.Media.Animation.QuarticEase AiHistoryCollapseEase = CreateAiHistoryCollapseEase();
-
-    private static SolidColorBrush CreateFrozenRgbBrush(byte r, byte g, byte b)
-    {
-        var brush = new SolidColorBrush(Color.FromRgb(r, g, b));
-        brush.Freeze();
-        return brush;
-    }
 
     private static System.Windows.Media.Animation.QuarticEase CreateAiHistoryCollapseEase()
     {
@@ -153,18 +146,21 @@ public partial class SpotlightWindow
                     Background = AiHistoryCardIdleBrush,
                     BorderBrush = AiHistoryCardBorderBrush,
                     BorderThickness = new Thickness(1),
-                    Padding = new Thickness(12, 10, 10, 10),
-                    Margin = new Thickness(0, 0, 0, 6),
+                    Padding = new Thickness(4),
+                    Margin = new Thickness(0, 0, 0, 8),
                     Cursor = Cursors.Hand
                 };
 
                 var grid = new Grid { UseLayoutRounding = false };
-                grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(30) });
                 grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
                 grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
 
+                var openContent = new Grid();
+                openContent.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(32) });
+                openContent.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+
                 var icon = CreateAiBrandImage(chat.Provider, 16);
-                grid.Children.Add(icon);
+                openContent.Children.Add(icon);
 
                 // Title + Subtitle
                 var label = new StackPanel
@@ -178,9 +174,9 @@ public partial class SpotlightWindow
                 {
                     Text = chat.Title,
                     FontFamily = sfProDisplay,
-                    FontWeight = FontWeights.Bold,
-                    FontSize = 12.5,
-                    Foreground = UiPalette.PrimaryBrush,
+                    FontWeight = FontWeights.SemiBold,
+                    FontSize = 13,
+                    Foreground = Controls.SpotlightChatPalette.Primary,
                     TextTrimming = TextTrimming.CharacterEllipsis,
                     TextWrapping = TextWrapping.NoWrap,
                     TextAlignment = TextAlignment.Left,
@@ -192,9 +188,9 @@ public partial class SpotlightWindow
                     Text = SpotlightAiModelName.Format(chat.Model, chat.Provider) + " · " + chat.UpdatedUtc.ToLocalTime().ToString("g", culture),
                     ToolTip = chat.Provider + " · " + chat.Model,
                     FontFamily = sfProDisplay,
-                    FontSize = 10.5,
-                    FontWeight = FontWeights.Bold,
-                    Foreground = UiPalette.IconBrush,
+                    FontSize = 11,
+                    FontWeight = FontWeights.Normal,
+                    Foreground = Controls.SpotlightChatPalette.Secondary,
                     TextTrimming = TextTrimming.CharacterEllipsis,
                     TextWrapping = TextWrapping.NoWrap,
                     TextAlignment = TextAlignment.Left,
@@ -202,7 +198,15 @@ public partial class SpotlightWindow
                 };
                 label.Children.Add(titleBlock);
                 label.Children.Add(subtitleBlock);
-                grid.Children.Add(label);
+                openContent.Children.Add(label);
+                var open = new Button
+                {
+                    Style = (Style)FindResource("AiHistoryOpenStyle"),
+                    Content = openContent,
+                    HorizontalAlignment = HorizontalAlignment.Stretch
+                };
+                System.Windows.Automation.AutomationProperties.SetName(open, chat.Title);
+                grid.Children.Add(open);
 
                 // Delete button
                 var delete = new Button
@@ -216,8 +220,6 @@ public partial class SpotlightWindow
                         Height = 12
                     },
                     Style = toolbarStyle,
-                    Width = 28,
-                    Height = 28,
                     Padding = new Thickness(0),
                     Margin = new Thickness(6, 0, 0, 0),
                     ToolTip = deleteLabel,
@@ -225,7 +227,7 @@ public partial class SpotlightWindow
                     VerticalAlignment = VerticalAlignment.Center
                 };
                 System.Windows.Automation.AutomationProperties.SetName(delete, deleteLabel);
-                Grid.SetColumn(delete, 2);
+                Grid.SetColumn(delete, 1);
 
                 delete.Click += async (s, args) =>
                 {
@@ -265,9 +267,10 @@ public partial class SpotlightWindow
                         var empty = new TextBlock
                         {
                             Text = Loc.Get("spotlight.ai.noHistory"),
-                            Foreground = UiPalette.IconBrush,
+                            Foreground = AiHistoryEmptyBrush,
                             FontFamily = sfProDisplay,
-                            FontWeight = FontWeights.Bold,
+                            FontWeight = FontWeights.Normal,
+                            FontSize = 12,
                             Margin = new Thickness(12, 16, 12, 16),
                             HorizontalAlignment = HorizontalAlignment.Center
                         };
@@ -284,10 +287,8 @@ public partial class SpotlightWindow
                 card.MouseEnter += (_, _) => card.Background = AiHistoryCardHoverBrush;
                 card.MouseLeave += (_, _) => card.Background = AiHistoryCardIdleBrush;
 
-                // Card click to load chat
-                card.MouseLeftButtonUp += async (_, args) =>
+                async Task OpenChat()
                 {
-                    args.Handled = true;
                     if (!card.IsHitTestVisible) return;
                     await TransitionAiPageAsync(() =>
                     {
@@ -304,7 +305,10 @@ public partial class SpotlightWindow
 
                         SearchBox.Focus();
                     });
-                };
+                }
+                open.Click += async (_, args) => { args.Handled = true; await OpenChat(); };
+                // Preserve the padded row's pointer target as well as the semantic button.
+                card.MouseLeftButtonUp += async (_, args) => { args.Handled = true; await OpenChat(); };
 
                 AiHistoryItems.Children.Add(card);
             }
@@ -316,7 +320,7 @@ public partial class SpotlightWindow
                     Text = Loc.Get("spotlight.ai.noHistory"),
                     Foreground = AiHistoryEmptyBrush,
                     FontFamily = sfProDisplay,
-                    FontWeight = FontWeights.Bold,
+                    FontWeight = FontWeights.Normal,
                     FontSize = 12,
                     Margin = new Thickness(12, 16, 12, 16),
                     HorizontalAlignment = HorizontalAlignment.Center

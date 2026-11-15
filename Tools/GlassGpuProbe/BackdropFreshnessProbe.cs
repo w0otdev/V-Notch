@@ -19,18 +19,23 @@ internal static class BackdropFreshnessProbe
     private static extern IntPtr GetWindowLongPtr(IntPtr hwnd, int index);
     [DllImport("user32.dll")]
     private static extern bool GetLayeredWindowAttributes(IntPtr hwnd, out uint key, out byte alpha, out uint flags);
+    [DllImport("user32.dll")]
+    private static extern bool SetWindowPos(IntPtr hwnd, IntPtr after, int x, int y, int width, int height, uint flags);
     [DllImport("VNotch.Native.dll")]
     private static extern int vn_backdrop_freshness_debug(IntPtr hwnd, [Out] int[] values);
 
     internal static int RunSource()
     {
         var app = new Application { ShutdownMode = ShutdownMode.OnExplicitShutdown };
-        var view = new WebView2();
+        // Keep the source's own resize/initialization background in the test
+        // palette; a real white WebView backing surface is valid captured content.
+        var view = new WebView2 { DefaultBackgroundColor = System.Drawing.Color.FromArgb(32, 96, 160) };
         var window = new Window
         {
             Left = 0, Top = SystemParameters.WorkArea.Top, Width = SystemParameters.PrimaryScreenWidth,
             Height = 650, WindowStyle = WindowStyle.None, ResizeMode = ResizeMode.NoResize,
-            ShowActivated = false, ShowInTaskbar = false, Topmost = true, Content = view
+            ShowActivated = false, ShowInTaskbar = false, Topmost = true, Content = view,
+            Background = new SolidColorBrush(Color.FromRgb(32, 96, 160))
         };
         window.Loaded += async (_, _) =>
         {
@@ -63,7 +68,7 @@ internal static class BackdropFreshnessProbe
         return app.Run();
     }
 
-    internal static int Run(int targetFps = 144, int top = 0)
+    internal static int Run(int targetFps = 144, int top = 0, bool resizeSource = false)
     {
         var app = new Application { ShutdownMode = ShutdownMode.OnExplicitShutdown };
         int sourceFrame = 0;
@@ -101,10 +106,22 @@ internal static class BackdropFreshnessProbe
             activeFps: targetFps, maxRegionWidth: 1600, maxRegionHeight: 600) { CropGpuPresentationToCapture = true };
         bool measuring = false;
         int submissions = 0, changed = 0, validCaptures = 0, uploadedPixel = 0, previousPixel = 0;
+        int readyFrames = 0;
         long lastChanged = 0;
         var gaps = new List<double>();
         var invalidPixels = new Dictionary<int, int>();
+        var probeClock = Stopwatch.StartNew();
+        var invalidUploads = new System.Collections.Concurrent.ConcurrentQueue<object>();
         Exception? failure = null;
+        int resizeCount = 0;
+        var resizeTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(180) };
+        resizeTimer.Tick += (_, _) =>
+        {
+            int sourceWidth = (int)(SystemParameters.PrimaryScreenWidth * dpi) - (resizeCount % 2 == 0 ? 120 : 0);
+            int sourceHeight = (int)((resizeCount % 2 == 0 ? 600 : 650) * dpi);
+            if (SetWindowPos((IntPtr)Volatile.Read(ref sourceHwnd), IntPtr.Zero, 0, 0, sourceWidth, sourceHeight, 0x16)) resizeCount++;
+            else failure = new InvalidOperationException("Cannot resize the controlled source window");
+        };
         try
         {
             var startup = Stopwatch.StartNew();
@@ -133,16 +150,22 @@ internal static class BackdropFreshnessProbe
                 IntPtr bits = (IntPtr)bitsField.GetValue(glass)!;
                 int w = (int)widthField.GetValue(glass)!, h = (int)heightField.GetValue(glass)!;
                 if (bits != IntPtr.Zero && w > 0 && h > 0)
+                {
                     Volatile.Write(ref uploadedPixel, Marshal.ReadInt32(bits, (w * (h / 2) + w / 2) * 4));
+                    int pixel = Volatile.Read(ref uploadedPixel);
+                    if (Math.Abs(((pixel >> 8) & 255) - 96) > 3 || Math.Abs((pixel & 255) - 160) > 3)
+                        invalidUploads.Enqueue(new { Milliseconds = probeClock.ElapsedMilliseconds, Pixel = $"{pixel:X8}", Measuring = measuring, Visible = glass.HasPresentedFrame, SourceFrame = Volatile.Read(ref sourceFrame) });
+                }
             };
             type.GetProperty("OnGpuFrameUploaded", Private)!.SetValue(glass, onUploaded);
             object presenter = type.GetField("_d3dPresenter", Private)!.GetValue(glass)!;
             presenter.GetType().GetEvent("FramePresented")!.AddEventHandler(presenter, (Action<LiquidGlassController.GpuGeometry>)(_ =>
             {
-                if (!measuring) return;
-                submissions++;
                 int pixel = Volatile.Read(ref uploadedPixel);
-                if (Math.Abs(((pixel >> 8) & 255) - 96) <= 3 && Math.Abs((pixel & 255) - 160) <= 3) validCaptures++;
+                bool validPixel = Math.Abs(((pixel >> 8) & 255) - 96) <= 3 && Math.Abs((pixel & 255) - 160) <= 3;
+                if (!measuring) { if (validPixel) readyFrames++; return; }
+                submissions++;
+                if (validPixel) validCaptures++;
                 else invalidPixels[pixel] = invalidPixels.GetValueOrDefault(pixel) + 1;
                 if (pixel == previousPixel) return;
                 previousPixel = pixel;
@@ -155,11 +178,19 @@ internal static class BackdropFreshnessProbe
             glass.SetIdle(true);
             glass.SetAnimating(false);
             glass.Start();
-            BenchmarkProbe.Pump(1500);
+            // Shader/device initialization can exceed a fixed delay. Exercise
+            // resize only after the real source has reached the presenter.
+            var warmup = Stopwatch.StartNew();
+            while (readyFrames < 10 && warmup.ElapsedMilliseconds < 10000) BenchmarkProbe.Pump(20);
+            if (readyFrames < 10) throw new TimeoutException("No valid captured source reached the presenter");
             int sourceStart = Volatile.Read(ref sourceFrame);
             var watch = Stopwatch.StartNew();
             measuring = true;
-            BenchmarkProbe.Pump(3000);
+            if (resizeSource) resizeTimer.Start();
+            BenchmarkProbe.Pump(resizeSource ? 2000 : 3000);
+            resizeTimer.Stop();
+            int beforeRecovery = changed;
+            if (resizeSource) BenchmarkProbe.Pump(1000);
             measuring = false;
             double seconds = watch.Elapsed.TotalSeconds;
             int sourceFrames = Volatile.Read(ref sourceFrame) - sourceStart;
@@ -171,7 +202,7 @@ internal static class BackdropFreshnessProbe
             vn_backdrop_freshness_debug(sourceHandle, captureDebug);
             var result = new
             {
-                TargetFps = targetFps, HostTopDip = top,
+                TargetFps = targetFps, HostTopDip = top, ResizeCount = resizeCount,
                 SourceFps = sourceFrames / seconds, SubmittedFps = submissions / seconds,
                 ChangedBackdropFps = changed / seconds, ChangedGapP95Ms = p95,
                 ChangedGapMaxMs = gaps.Count == 0 ? 0 : gaps[^1],
@@ -182,18 +213,24 @@ internal static class BackdropFreshnessProbe
                 CaptureDebug = captureDebug,
                 ValidCapturePercent = submissions == 0 ? 0 : validCaptures * 100.0 / submissions,
                 InvalidPixels = invalidPixels.OrderByDescending(p => p.Value).Take(5).Select(p => new { Pixel = $"{p.Key:X8}", Count = p.Value }).ToArray(),
-                Passed = sourceFrames >= 90 && validCaptures >= submissions * .95 &&
-                    changed >= Math.Min(sourceFrames, targetFps * seconds) * .85 && p95 < Math.Max(25, 1500.0 / targetFps)
+                InvalidUploads = invalidUploads.ToArray(),
+                Passed = resizeSource
+                    ? sourceFrames >= 90 && resizeCount >= 8 && validCaptures == submissions && changed - beforeRecovery >= targetFps * .5
+                    : sourceFrames >= 90 && validCaptures >= submissions * .95 &&
+                        changed >= Math.Min(sourceFrames, targetFps * seconds) * .85 && p95 < Math.Max(25, 1500.0 / targetFps)
             };
             string json = JsonSerializer.Serialize(result, new JsonSerializerOptions { WriteIndented = true });
             Console.WriteLine(json);
             File.WriteAllText(BenchmarkProbe.ResultPath("glass-freshness-results.json"), json);
-            Console.WriteLine(result.Passed ? "PASS: stationary glass follows fresh Chromium backdrop frames." : "FAIL: glass repeats stale Chromium backdrop frames.");
+            Console.WriteLine(resizeSource
+                ? result.Passed ? "PASS: repeated source resize retained valid pixels and recovered live capture." : "FAIL: source resize exposed invalid pixels or capture did not recover."
+                : result.Passed ? "PASS: stationary glass follows fresh Chromium backdrop frames." : "FAIL: glass repeats stale Chromium backdrop frames.");
             return result.Passed ? 0 : 1;
         }
         catch (Exception ex) { Console.WriteLine("FAIL: " + ex); return 1; }
         finally
         {
+            resizeTimer.Stop();
             glass.Stop(); window.Close();
             if (!source.HasExited) source.Kill(entireProcessTree: true);
             sourceReader.GetAwaiter().GetResult();

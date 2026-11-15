@@ -20,8 +20,8 @@ namespace VNotch;
 
 public partial class SpotlightWindow : Window
 {
-    public static Brush ChatIconBrush => UiPalette.PrimaryBrush;
-    public static Brush ChatActiveIconBrush => UiPalette.PrimaryBrush;
+    public static Brush ChatIconBrush => Controls.SpotlightChatPalette.Icon;
+    public static Brush ChatActiveIconBrush => Controls.SpotlightChatPalette.Primary;
 
     private const double ExpandedCornerRadius = 14;
     private const double NotchShadowBlurRadius = 20;

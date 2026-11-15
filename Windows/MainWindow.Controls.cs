@@ -568,15 +568,7 @@ public partial class MainWindow
             {
                 VolumeIndicatorPercentText.Text = pctText;
                 VolumeIndicatorPercentText.Measure(new Size(double.PositiveInfinity, double.PositiveInfinity));
-                if (animate && !AnimationConfig.ReduceMotion && VolumeIndicatorPercentScale != null)
-                {
-                    var pop = new DoubleAnimationUsingKeyFrames();
-                    pop.KeyFrames.Add(new EasingDoubleKeyFrame(1.12, KeyTime.FromTimeSpan(TimeSpan.FromMilliseconds(65)), _easeQuadOut));
-                    pop.KeyFrames.Add(new EasingDoubleKeyFrame(1.0, KeyTime.FromTimeSpan(TimeSpan.FromMilliseconds(200)), _easeSoftSpring));
-                    Timeline.SetDesiredFrameRate(pop, AnimationConfig.TargetFps);
-                    VolumeIndicatorPercentScale.BeginAnimation(ScaleTransform.ScaleXProperty, pop);
-                    VolumeIndicatorPercentScale.BeginAnimation(ScaleTransform.ScaleYProperty, pop);
-                }
+
             }
             double desiredLabelW = VolumeIndicatorPercentText.DesiredSize.Width > 0 ? VolumeIndicatorPercentText.DesiredSize.Width : approxLabelWidth;
             double measuredLabelW = VolumeIndicatorPercentText.ActualWidth > 0 ? VolumeIndicatorPercentText.ActualWidth : desiredLabelW;

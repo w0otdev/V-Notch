@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Windows;
 using System.Windows.Automation;
 using System.Windows.Controls;
@@ -13,6 +13,8 @@ namespace VNotch.Controls;
 
 public sealed class AiUsageNotchView : UserControl
 {
+    private readonly NumberFlowSnapshot _numberFlow = new();
+
     private static readonly Brush PrimaryTextBrush = UiPalette.PrimaryBrush;
     private static readonly Brush LabelTextBrush = UiPalette.SecondaryBrush;
     private static readonly Brush MutedTextBrush = UiPalette.SecondaryBrush;
@@ -130,6 +132,7 @@ public sealed class AiUsageNotchView : UserControl
         _claudeSetup = new ClaudeUsageBridge().InspectSetupState();
         _motion.BeginPresentation(reveal && !_isPreview);
 
+        _numberFlow.Capture(_rootGrid);
         _rootGrid.Children.Clear();
         _rootGrid.ColumnDefinitions.Clear();
         _rootGrid.RowDefinitions.Clear();
@@ -149,6 +152,7 @@ public sealed class AiUsageNotchView : UserControl
         if (paneIndex == 0) _rootGrid.Children.Add(CreateEmptyStateBody(Loc.Get("aiUsage.chooseProviders"), 1));
         LayoutPreviewPanes();
 
+        _numberFlow.Restore(_rootGrid, AiUsageMotion.MotionEnabled);
         AutomationProperties.SetName(this, Loc.Get("aiUsage.title"));
         ContentSizeChanged?.Invoke();
     }
@@ -279,7 +283,7 @@ public sealed class AiUsageNotchView : UserControl
         titleStack.Children.Add(logo);
         logo.Visibility = AiUsageAppearance.Current.ShowLogos ? Visibility.Visible : Visibility.Collapsed;
 
-        var nameText = new TextBlock
+        var nameText = new NumberFlowText
         {
             Text = usage.Provider,
             FontSize = AiUsageAppearance.Current.Compact ? 12 : 14,
@@ -291,7 +295,7 @@ public sealed class AiUsageNotchView : UserControl
 
         if (AiUsageAppearance.Current.ShowPlan && !string.IsNullOrWhiteSpace(usage.Plan))
         {
-            titleStack.Children.Add(new TextBlock
+            titleStack.Children.Add(new NumberFlowText
             {
                 Text = " · " + AiUsageTypography.PlanName(usage.Plan),
                 FontSize = 11,
@@ -384,7 +388,7 @@ public sealed class AiUsageNotchView : UserControl
 
         if (visibleCount == 1 && usage.UpdatedAt is { } updated)
         {
-            stack.Children.Add(new TextBlock
+            stack.Children.Add(new NumberFlowText
             {
                 Text = isStale
                     ? Loc.Get("aiUsage.stale")
@@ -439,7 +443,7 @@ public sealed class AiUsageNotchView : UserControl
         topLine.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
         topLine.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
 
-        var labelBlock = new TextBlock
+        var labelBlock = new NumberFlowText
         {
             Text = label,
             FontSize = 11,
@@ -452,7 +456,7 @@ public sealed class AiUsageNotchView : UserControl
         Grid.SetColumn(labelBlock, 0);
         topLine.Children.Add(labelBlock);
 
-        var resetBlock = new TextBlock
+        var resetBlock = new NumberFlowText
         {
             Name = "QuotaReset",
             Text = resetText,
@@ -467,7 +471,7 @@ public sealed class AiUsageNotchView : UserControl
         topLine.Children.Add(resetBlock);
         resetBlock.Visibility = AiUsageAppearance.Current.ShowResets ? Visibility.Visible : Visibility.Collapsed;
 
-        var percentBlock = new TextBlock
+        var percentBlock = new NumberFlowText
         {
             Name = "QuotaRemaining",
             Text = percentText,
@@ -553,7 +557,7 @@ public sealed class AiUsageNotchView : UserControl
     {
         var stack = new StackPanel { VerticalAlignment = VerticalAlignment.Top };
 
-        stack.Children.Add(new TextBlock
+        stack.Children.Add(new NumberFlowText
         {
             Text = statusText,
             FontSize = 12,
@@ -566,7 +570,7 @@ public sealed class AiUsageNotchView : UserControl
         bool opensSettings = actionKind != 0;
         string actionLabel = opensSettings ? Loc.Get("aiUsage.openSettings") : Loc.Get("aiUsage.refresh");
 
-        var actionText = new TextBlock
+        var actionText = new NumberFlowText
         {
             Text = actionLabel,
             FontSize = 11,

@@ -6,7 +6,7 @@ using VNotch.Services;
 
 namespace VNotch.Controls;
 
-public class DigitalClock : TextBlock
+public class DigitalClock : NumberFlowText
 {
     private readonly UiScheduledTimer _timer;
     private bool _isRunning;

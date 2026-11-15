@@ -1,6 +1,7 @@
 <UserControl x:Class="VNotch.Controls.ClipboardTray"
  xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
  xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:flow="clr-namespace:VNotch.Controls"
  xmlns:vm="clr-namespace:VNotch.ViewModels"
  xmlns:local="clr-namespace:VNotch.Controls"
  xmlns:primitives="clr-namespace:System.Windows.Controls.Primitives;assembly=PresentationFramework"
@@ -823,8 +824,8 @@
          </local:TrayIcon.Style>
         </local:TrayIcon>
         <TextBlock Text="{Binding Label}" FontSize="12" FontWeight="Bold" FontFamily="{StaticResource SFProDisplay}" VerticalAlignment="Center" Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"/>
-        <TextBlock Text="{Binding CountLabel, NotifyOnTargetUpdated=True}" TargetUpdated="CategoryCount_TargetUpdated" RenderTransformOrigin="0.5,0.5" FontSize="11" FontWeight="Bold" FontFamily="{StaticResource SFProDisplay}" Margin="5,0,0,0" VerticalAlignment="Center" Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}">
-         <TextBlock.Style>
+        <flow:NumberFlowText Text="{Binding CountLabel}" RenderTransformOrigin="0.5,0.5" FontSize="11" FontWeight="Bold" FontFamily="{StaticResource SFProDisplay}" Margin="5,0,0,0" VerticalAlignment="Center" Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}">
+         <flow:NumberFlowText.Style>
           <Style TargetType="TextBlock">
            <Setter Property="Opacity" Value="0.52"/>
            <Setter Property="Visibility" Value="Visible"/>
@@ -833,8 +834,8 @@
             <DataTrigger Binding="{Binding IsSelected}" Value="True"><Setter Property="Opacity" Value="0.95"/></DataTrigger>
            </Style.Triggers>
           </Style>
-         </TextBlock.Style>
-        </TextBlock>
+         </flow:NumberFlowText.Style>
+        </flow:NumberFlowText>
         <local:TrayIcon Kind="{Binding LockIconKind}" Width="10" Height="10" Margin="5,0,0,0" VerticalAlignment="Center">
          <local:TrayIcon.Style>
           <Style TargetType="local:TrayIcon">
@@ -864,11 +865,11 @@
     <StackPanel Orientation="Horizontal">
      <local:TrayIcon Kind="{Binding IconKind}" Width="13" Height="13" Margin="0,0,6,0" VerticalAlignment="Center" Foreground="{x:Static svc:UiPalette.PrimaryBrush}"/>
      <TextBlock Text="{Binding Label}" FontSize="12" VerticalAlignment="Center"/>
-     <TextBlock Text="{Binding CountLabel}" FontSize="11" Margin="5,0,0,0" VerticalAlignment="Center" Opacity="0.75">
-      <TextBlock.Style><Style TargetType="TextBlock"><Style.Triggers>
+     <flow:NumberFlowText Text="{Binding CountLabel}" FontSize="11" Margin="5,0,0,0" VerticalAlignment="Center" Opacity="0.75">
+      <flow:NumberFlowText.Style><Style TargetType="TextBlock"><Style.Triggers>
        <DataTrigger Binding="{Binding IsPersonal}" Value="True"><Setter Property="Visibility" Value="Collapsed"/></DataTrigger>
-      </Style.Triggers></Style></TextBlock.Style>
-     </TextBlock>
+      </Style.Triggers></Style></flow:NumberFlowText.Style>
+     </flow:NumberFlowText>
      <local:TrayIcon Kind="{Binding LockIconKind}" Width="10" Height="10" Margin="5,0,0,0" VerticalAlignment="Center" Foreground="{x:Static svc:UiPalette.PrimaryBrush}">
       <local:TrayIcon.Style><Style TargetType="local:TrayIcon">
        <Setter Property="Visibility" Value="Collapsed"/>
@@ -1034,7 +1035,7 @@
           <Image Width="20" Height="20" Source="{Binding DisplaySourceIcon}" Stretch="Uniform" RenderOptions.BitmapScalingMode="HighQuality" ToolTip="{Binding Source}"/>
 
           <TextBlock x:Name="CardFooterSource" Grid.Column="1" Text="{Binding FooterSource}" ToolTip="{Binding Age}" FontFamily="{StaticResource SFProDisplay}" FontSize="11.5" FontWeight="SemiBold" Foreground="{x:Static svc:UiPalette.PrimaryBrush}" Margin="5,0,6,0" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
-          <TextBlock x:Name="CardFooterSize" Grid.Column="2" Text="{Binding Size}" FontSize="11" FontFamily="{StaticResource SFProDisplay}" FontWeight="Medium" Foreground="{x:Static svc:UiPalette.SecondaryBrush}" VerticalAlignment="Center"><TextBlock.Style><Style TargetType="TextBlock"><Style.Triggers><DataTrigger Binding="{Binding Size}" Value="0 bytes"><Setter Property="Visibility" Value="Collapsed"/></DataTrigger></Style.Triggers></Style></TextBlock.Style></TextBlock>
+          <flow:NumberFlowText x:Name="CardFooterSize" Grid.Column="2" Text="{Binding Size}" FontSize="11" FontFamily="{StaticResource SFProDisplay}" FontWeight="Medium" Foreground="{x:Static svc:UiPalette.SecondaryBrush}" VerticalAlignment="Center"><flow:NumberFlowText.Style><Style TargetType="TextBlock"><Style.Triggers><DataTrigger Binding="{Binding Size}" Value="0 bytes"><Setter Property="Visibility" Value="Collapsed"/></DataTrigger></Style.Triggers></Style></flow:NumberFlowText.Style></flow:NumberFlowText>
          </Grid>
         </Border>
        </Grid>
@@ -1291,7 +1292,7 @@
    <!-- Approval Dialog -->
    <Border x:Name="ApprovalPanel" Visibility="Collapsed" Background="{StaticResource TraySurfaceOverlay}" BorderBrush="#35FFFFFF" BorderThickness="1" CornerRadius="{StaticResource TrayRadiusLarge}" Padding="20" Panel.ZIndex="20" Cursor="Arrow">
     <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center">
-     <TextBlock x:Name="ApprovalText" FontSize="13.5" FontFamily="{StaticResource SFProDisplay}" FontWeight="Bold" Foreground="White" TextWrapping="Wrap" TextAlignment="Center" MaxWidth="460"/>
+     <flow:NumberFlowText x:Name="ApprovalText" FontSize="13.5" FontFamily="{StaticResource SFProDisplay}" FontWeight="Bold" Foreground="White" TextWrapping="Wrap" TextAlignment="Center" MaxWidth="460"/>
      <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" Margin="0,16,0,0">
       <Button x:Name="ApproveButton" Style="{StaticResource TrayButton}" Background="{DynamicResource AccentSubtleBrush}" Foreground="{DynamicResource AccentBrushStrong}" Margin="0,0,10,0" Click="Approve_Click"/>
       <Button x:Name="SkipButton" Style="{StaticResource TrayButton}" Click="Skip_Click"/>
@@ -1406,7 +1407,7 @@
           HorizontalAlignment="Center" VerticalAlignment="Bottom" MaxWidth="420" IsHitTestVisible="False"
           Background="{StaticResource TraySurfaceOverlay}" BorderBrush="#25FFFFFF" BorderThickness="1"
           CornerRadius="{StaticResource TrayRadiusMedium}" Padding="10,6" Margin="12,0,12,8">
-   <TextBlock x:Name="StatusText" TextWrapping="Wrap" FontSize="12" AutomationProperties.LiveSetting="Polite"/>
+   <flow:NumberFlowText x:Name="StatusText" TextWrapping="Wrap" FontSize="12" AutomationProperties.LiveSetting="Polite"/>
   </Border>
  </Grid>
 
@@ -1426,7 +1427,7 @@
     <DropShadowEffect BlurRadius="32" ShadowDepth="6" Direction="270" Color="Black" Opacity="0.75" RenderingBias="Performance"/>
    </Border.Effect>
    <StackPanel>
-    <TextBlock x:Name="DeleteConfirmationText" TextWrapping="Wrap" FontSize="13" LineHeight="18"
+    <flow:NumberFlowText x:Name="DeleteConfirmationText" TextWrapping="Wrap" FontSize="13" LineHeight="18"
                FontFamily="{StaticResource SFProDisplay}" FontWeight="Bold" Foreground="White"
                AutomationProperties.LiveSetting="Assertive"/>
     <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,14,0,0">

@@ -41,7 +41,7 @@ internal static class Program
                 return value;
             }
             return BackdropFreshnessProbe.Run(ReadFreshnessOption("--fps", 144, 30, 240),
-                ReadFreshnessOption("--top", 0, 0, (int)SystemParameters.PrimaryScreenHeight - 64));
+                ReadFreshnessOption("--top", 0, 0, (int)SystemParameters.PrimaryScreenHeight - 64), args.Contains("--resize-source"));
         }
         if (args.Contains("--host-alpha-probe")) return DwmProbeHost.Run();
         if (args.Contains("--benchmark-self-check")) { BenchmarkChecks.SelfCheck(); return 0; }

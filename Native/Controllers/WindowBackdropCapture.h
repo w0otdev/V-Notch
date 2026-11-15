@@ -33,6 +33,14 @@ using Microsoft::WRL::ComPtr;
 inline std::atomic<intptr_t> debug_target{0};
 inline std::atomic<int> debug_info[28]{};
 
+inline bool HasVisiblePixels(const D3D11_MAPPED_SUBRESOURCE& mapped, int width, int height) noexcept {
+    for (int y = 0; y < height; ++y) {
+        const auto* row = reinterpret_cast<const uint32_t*>(static_cast<const uint8_t*>(mapped.pData) + static_cast<size_t>(y) * mapped.RowPitch);
+        for (int x = 0; x < width; ++x) if ((row[x] & 0xFF000000u) != 0) return true;
+    }
+    return false;
+}
+
 // Capture individual underlying windows, so the notch remains visible to normal
 // screenshots and is never fed back into its own backdrop. PrintWindow cannot
 // supply fresh Chromium/DirectComposition frames at the display refresh rate.
@@ -229,7 +237,7 @@ class WindowCaptureCache final {
             debug_info[7] = win_w; debug_info[8] = win_h;
         }
         // WGC normally excludes the invisible resize border. Allow <= 2 px tolerance
-        // for fractional-DPI border rounding; a real resize in flight uses PrintWindow.
+        // for fractional-DPI border rounding; retain the published strip during resize.
         const auto near_dim = [](int a, int b) noexcept { return a >= b - 2 && a <= b + 2; };
         RECT bounds{};
         if (entry.size.Width == vis_w && entry.size.Height == vis_h) bounds = visible;
@@ -263,36 +271,37 @@ class WindowCaptureCache final {
                 staging_desc.Usage = D3D11_USAGE_STAGING; staging_desc.CPUAccessFlags = D3D11_CPU_ACCESS_READ;
                 winrt::check_hresult(device->CreateTexture2D(&staging_desc, nullptr, &entry.staging));
             }
-            // Copy ONLY the intersecting backdrop crop (never full-window CopyResource),
-            // then immediately release the WGC frame back to the capture pool before Map().
+            // Copy only the intersecting crop. Keep the frame checked out until
+            // Map completes the GPU copy, so the pool cannot recycle its surface
+            // while CopySubresourceRegion is still queued on the GPU.
             const D3D11_BOX box{static_cast<UINT>(crop.left), static_cast<UINT>(crop.top), 0,
                 static_cast<UINT>(crop.right), static_cast<UINT>(crop.bottom), 1};
             context->CopySubresourceRegion(entry.staging.Get(), 0, 0, 0, 0, texture.Get(), 0, &box);
-            texture.Reset();
-            newest.Close(); newest = nullptr;
-
-            entry.pixels.resize(static_cast<size_t>(width) * height);
             D3D11_MAPPED_SUBRESOURCE mapped{};
             winrt::check_hresult(context->Map(entry.staging.Get(), 0, D3D11_MAP_READ, 0, &mapped));
-            for (int row = 0; row < height; ++row)
-                std::memcpy(entry.pixels.data() + static_cast<size_t>(row) * width,
-                    static_cast<const uint8_t*>(mapped.pData) + static_cast<size_t>(row) * mapped.RowPitch, static_cast<size_t>(width) * 4);
-            context->Unmap(entry.staging.Get(), 0);
-            if (debug) ++debug_info[9];
-            entry.copied = crop;
-            entry.copied_frame = true;
-            if (out_fresh) *out_fresh = true;
-        } else {
-            if (!entry.copied_frame || !RectContains(entry.copied, crop)) {
-                // Static window uncovered a wider strip than previously cached:
-                // request one fresh pool frame asynchronously (throttled) and let caller fall back for 1 tick.
-                const ULONGLONG now = GetTickCount64();
-                if (now >= entry.recreate_cooldown_until && entry.size.Width > 0 && entry.size.Height > 0) {
-                    entry.recreate_cooldown_until = now + 250;
-                    try { entry.pool.Recreate(capture_device, wx::DirectXPixelFormat::B8G8R8A8UIntNormalized, FramePoolBuffers, entry.size); } catch (...) { }
-                }
-                return false;
+            struct Unmap { ID3D11DeviceContext* context; ID3D11Texture2D* texture; ~Unmap() { context->Unmap(texture, 0); } } unmap{context.Get(), entry.staging.Get()};
+            // A cleared/empty WGC surface is not an opaque black image. Validate
+            // alpha before replacing the cache, and keep genuine dark content.
+            if (HasVisiblePixels(mapped, width, height)) {
+                entry.pixels.resize(static_cast<size_t>(width) * height);
+                for (int row = 0; row < height; ++row)
+                    std::memcpy(entry.pixels.data() + static_cast<size_t>(row) * width,
+                        static_cast<const uint8_t*>(mapped.pData) + static_cast<size_t>(row) * mapped.RowPitch, static_cast<size_t>(width) * 4);
+                if (debug) ++debug_info[9];
+                entry.copied = crop;
+                entry.copied_frame = true;
+                if (out_fresh) *out_fresh = true;
             }
+        }
+        if (!entry.copied_frame || !RectContains(entry.copied, crop)) {
+            // Static window uncovered a wider strip than previously cached:
+            // request a fresh pool frame asynchronously and retain the published strip.
+            const ULONGLONG now = GetTickCount64();
+            if (now >= entry.recreate_cooldown_until && entry.size.Width > 0 && entry.size.Height > 0) {
+                entry.recreate_cooldown_until = now + 250;
+                try { entry.pool.Recreate(capture_device, wx::DirectXPixelFormat::B8G8R8A8UIntNormalized, FramePoolBuffers, entry.size); } catch (...) { }
+            }
+            return false;
         }
 
         const int cached_w = entry.copied.right - entry.copied.left;

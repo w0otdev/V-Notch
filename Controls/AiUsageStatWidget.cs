@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Runtime.InteropServices;
 using System.Windows;
 using System.Windows.Automation;
@@ -17,6 +17,8 @@ namespace VNotch.Controls;
 /// <summary>Compact allowance readout with a shared visual hierarchy for both providers.</summary>
 public sealed partial class AiUsageStatWidget : UserControl
 {
+    private readonly NumberFlowSnapshot _numberFlow = new();
+
     private const double ColumnWidth = 130;
     private static readonly Brush LabelBrush = UiPalette.SecondaryBrush;
     private static readonly Brush TrackBrush = Frozen(0x1C, 0xFF, 0xFF, 0xFF);
@@ -145,6 +147,7 @@ public sealed partial class AiUsageStatWidget : UserControl
             : null;
 
         _motion.BeginPresentation(reveal);
+        _numberFlow.Capture(_root);
         _root.Children.Clear();
         _previewTooltipSummary = string.Empty;
         // Reserve breathing room inside the widget without growing its host column.
@@ -197,7 +200,7 @@ public sealed partial class AiUsageStatWidget : UserControl
         }
         if (!showFirst && !showSecond)
         {
-            var emptyText = new TextBlock
+            var emptyText = new NumberFlowText
             {
                 Text = Loc.Get("aiUsage.chooseProviders"),
                 Width = ColumnWidth,
@@ -225,6 +228,7 @@ public sealed partial class AiUsageStatWidget : UserControl
                 foreach (var (k, v) in nextPercents) _prevPercents[k] = v;
         }
         for (int i = 0; i < _root.Children.Count; i++) _motion.Reveal((FrameworkElement)_root.Children[i], i);
+        _numberFlow.Restore(_root, AiUsageMotion.MotionEnabled);
         AutomationProperties.SetName(this, Loc.Get("aiUsage.title"));
         AutomationProperties.SetHelpText(this, Loc.Get("aiUsage.details"));
     }
@@ -602,7 +606,7 @@ public sealed partial class AiUsageStatWidget : UserControl
                 IsHitTestVisible = false
             });
         }
-        brand.Children.Add(new TextBlock
+        brand.Children.Add(new NumberFlowText
         {
             Name = "ProviderTitle",
             Text = usage.Provider,
@@ -613,7 +617,7 @@ public sealed partial class AiUsageStatWidget : UserControl
         });
         head.Children.Add(brand);
         var valueText = expanded
-            ? new TextBlock { Name = "SubscriptionPlan", Text = appearance.ShowPlan ? AiUsageTypography.PlanName(usage.Plan) : "",
+            ? new NumberFlowText { Name = "SubscriptionPlan", Text = appearance.ShowPlan ? AiUsageTypography.PlanName(usage.Plan) : "",
                 FontSize = compact ? 9 : 10, Foreground = LabelBrush, TextTrimming = TextTrimming.CharacterEllipsis,
                 MaxWidth = 70, HorizontalAlignment = HorizontalAlignment.Right, VerticalAlignment = VerticalAlignment.Center }
             : CreateAllowance(usage, window, now, "PrimaryAllowance", weekly: false, build);
@@ -640,7 +644,7 @@ public sealed partial class AiUsageStatWidget : UserControl
         var (text, _, percent) = Measure(usage, window, now);
         bool available = window != null && !window.IsExpired(now);
         string value = available ? AiUsageAppearance.Current.PercentText(percent) : text;
-        var label = new TextBlock { Name = name, Text = value, FontSize = compact ? 8 : 9,
+        var label = new NumberFlowText { Name = name, Text = value, FontSize = compact ? 8 : 9,
             Margin = new Thickness(4, 0, 0, 0), TextTrimming = TextTrimming.CharacterEllipsis,
             Foreground = UiPalette.PrimaryBrush, HorizontalAlignment = HorizontalAlignment.Right, VerticalAlignment = VerticalAlignment.Center };
         if (available)
@@ -673,7 +677,7 @@ public sealed partial class AiUsageStatWidget : UserControl
         var line = new Grid();
         line.ColumnDefinitions.Add(new() { Width = new GridLength(1, GridUnitType.Star) });
         line.ColumnDefinitions.Add(new() { Width = GridLength.Auto });
-        line.Children.Add(new TextBlock { Name = weekly ? "WeeklyWindowLabel" : "PrimaryWindowLabel",
+        line.Children.Add(new NumberFlowText { Name = weekly ? "WeeklyWindowLabel" : "PrimaryWindowLabel",
             Text = weekly ? Loc.Get("aiUsage.compactSevenDay") : WindowDuration(window),
             FontSize = compact ? 9 : 10, Foreground = LabelBrush, VerticalAlignment = VerticalAlignment.Center,
             TextTrimming = TextTrimming.CharacterEllipsis });
@@ -726,7 +730,7 @@ public sealed partial class AiUsageStatWidget : UserControl
             Margin = new Thickness(0, compact ? 1 : 3, 0, 0) };
         summary.ColumnDefinitions.Add(new() { Width = new GridLength(1, GridUnitType.Star) });
         summary.ColumnDefinitions.Add(new() { Width = GridLength.Auto });
-        summary.Children.Add(new TextBlock
+        summary.Children.Add(new NumberFlowText
         {
             Name = "SubscriptionPlan", Text = Summary(usage, window, setup, now), FontSize = compact ? 8.5 : 9.5,
             Foreground = LabelBrush, TextTrimming = TextTrimming.CharacterEllipsis
@@ -736,7 +740,7 @@ public sealed partial class AiUsageStatWidget : UserControl
             string weeklyPrefix = Loc.Get("aiUsage.compactSevenDay");
             var (weekText, _, weekPercent) = Measure(usage, weekly, now);
             string finalText = weeklyPrefix + " " + weekText;
-            var week = new TextBlock { Name = "WeeklySummary", Text = finalText,
+            var week = new NumberFlowText { Name = "WeeklySummary", Text = finalText,
                 FontSize = compact ? 8.5 : 9.5, Foreground = LabelBrush, HorizontalAlignment = HorizontalAlignment.Right,
                 Margin = new Thickness(6, 0, 0, 0) };
             Grid.SetColumn(week, 1);

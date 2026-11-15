@@ -2,6 +2,7 @@
         x:Class="VNotch.MainWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:flow="clr-namespace:VNotch.Controls"
         xmlns:po="http://schemas.microsoft.com/winfx/2006/xaml/presentation/options"
         xmlns:tb="http://www.hardcodet.net/taskbar"
         Title="V-Notch"
@@ -824,7 +825,7 @@
                                                FontFamily="{StaticResource IconFont}"
                                                Visibility="Collapsed"
                                                IsHitTestVisible="False"/>
-                                    <TextBlock x:Name="VolumeIndicatorPercentText"
+                                    <flow:NumberFlowText x:Name="VolumeIndicatorPercentText"
                                                Text="0%"
                                                Foreground="#FAFFFFFF"
                                                FontFamily="{StaticResource MainSystemFont}"
@@ -841,13 +842,13 @@
                                                VerticalAlignment="Center"
                                                Margin="0,1,0,0"
                                                RenderTransformOrigin="0.5,0.5">
-                                        <TextBlock.RenderTransform>
+                                        <flow:NumberFlowText.RenderTransform>
                                             <TransformGroup>
                                                 <ScaleTransform x:Name="VolumeIndicatorPercentScale" ScaleX="1" ScaleY="1"/>
                                                 <TranslateTransform x:Name="VolumeIndicatorPercentTranslate" X="30"/>
                                             </TransformGroup>
-                                        </TextBlock.RenderTransform>
-                                    </TextBlock>
+                                        </flow:NumberFlowText.RenderTransform>
+                                    </flow:NumberFlowText>
                                 </Grid>
                                 <Grid Grid.Row="1" Margin="0,3,0,0" VerticalAlignment="Center">
                                     <UniformGrid x:Name="VolumeIndicatorTicksHost"
@@ -1340,7 +1341,7 @@
                             <StackPanel Grid.Column="1"
                                         Orientation="Horizontal"
                                         VerticalAlignment="Center">
-                                <TextBlock x:Name="ChargingPercentText"
+                                <flow:NumberFlowText x:Name="ChargingPercentText"
                                            Text="100%"
                                            Foreground="#30D158"
                                            FontSize="11.5"
@@ -1354,7 +1355,7 @@
                                            VerticalAlignment="Center"
                                            Margin="0,0,5,0"/>
 
-                                <TextBlock x:Name="ChargingWattText"
+                                <flow:NumberFlowText x:Name="ChargingWattText"
                                            Text=""
                                            Foreground="#A0FFFFFF"
                                            FontSize="10.5"
@@ -1534,7 +1535,7 @@
                                             <TranslateTransform x:Name="AppNotificationTitleTranslate"/>
                                         </TextBlock.RenderTransform>
                                     </TextBlock>
-                                    <TextBlock x:Name="AppNotificationTimeText"
+                                    <flow:NumberFlowText x:Name="AppNotificationTimeText"
                                                Grid.Column="1"
                                                Text="now"
                                                Foreground="#8A8A92"
@@ -1828,7 +1829,7 @@
                                                   Data="M17.71,7.71L12,2h-1v7.59L6.41,5L5,6.41L10.59,12L5,17.59L6.41,19L11,14.41V22h1l5.71-5.71L13.41,12L17.71,7.71z M13,5.83l1.88,1.88L13,9.59V5.83z M14.88,16.29L13,18.17v-3.76L14.88,16.29z"/>
                                         </Canvas>
                                     </Viewbox>
-                                    <TextBlock x:Name="BatteryPercent"
+                                    <flow:NumberFlowText x:Name="BatteryPercent"
                                                Text="{Binding Secondary.BatteryPercentText}"
                                                Style="{StaticResource SubtitleText}"
                                                FontSize="12"
@@ -2403,7 +2404,7 @@
                                                 HorizontalAlignment="Left"
                                                 Margin="-1,0,5,0"
                                                 Panel.ZIndex="10">
-                                        <TextBlock x:Name="MonthText"
+                                        <flow:NumberFlowText x:Name="MonthText"
                                                    Text="Dec"
                                                    Style="{StaticResource TitleText}"
                                                    FontSize="15"
@@ -2411,14 +2412,14 @@
                                                    RenderTransformOrigin="0.5,0.5"
                                                    TextOptions.TextRenderingMode="Grayscale"
                                                    TextOptions.TextHintingMode="Animated">
-                                            <TextBlock.RenderTransform>
+                                            <flow:NumberFlowText.RenderTransform>
                                                 <TransformGroup>
                                                     <ScaleTransform x:Name="MonthTextScale" ScaleX="1" ScaleY="1"/>
                                                     <TranslateTransform x:Name="MonthTextTranslate" X="0" Y="0"/>
                                                 </TransformGroup>
-                                            </TextBlock.RenderTransform>
-                                        </TextBlock>
-                                        <TextBlock x:Name="DayText"
+                                            </flow:NumberFlowText.RenderTransform>
+                                        </flow:NumberFlowText>
+                                        <flow:NumberFlowText x:Name="DayText"
                                                    Text="14"
                                                    Style="{StaticResource TitleText}"
                                                    FontSize="16.5"
@@ -2558,7 +2559,7 @@
                                                                VerticalAlignment="Bottom"
                                                                TextOptions.TextRenderingMode="Grayscale"
                                                                TextOptions.TextHintingMode="Animated"/>
-                                                    <TextBlock x:Name="SysMonCpuValueText"
+                                                    <flow:NumberFlowText x:Name="SysMonCpuValueText"
                                                                Text="0%"
                                                                FontFamily="{StaticResource MainSystemFont}"
                                                                FontSize="13"
@@ -2593,7 +2594,7 @@
                                                                VerticalAlignment="Bottom"
                                                                TextOptions.TextRenderingMode="Grayscale"
                                                                TextOptions.TextHintingMode="Animated"/>
-                                                    <TextBlock x:Name="SysMonRamValueText"
+                                                    <flow:NumberFlowText x:Name="SysMonRamValueText"
                                                                Text="—"
                                                                FontFamily="{StaticResource MainSystemFont}"
                                                                FontSize="13"
@@ -2629,7 +2630,7 @@
                                                                   Data="M12 21l-7-7h4V3h6v11h4z"/>
                                                         </Canvas>
                                                     </Viewbox>
-                                                    <TextBlock x:Name="SysMonNetDownText"
+                                                    <flow:NumberFlowText x:Name="SysMonNetDownText"
                                                                Text="0 B/s"
                                                                FontFamily="{StaticResource MainSystemFont}"
                                                                FontSize="10.5"
@@ -2646,7 +2647,7 @@
                                                                   Data="M12 3l7 7h-4v11H9V10H5z"/>
                                                         </Canvas>
                                                     </Viewbox>
-                                                    <TextBlock x:Name="SysMonNetUpText"
+                                                    <flow:NumberFlowText x:Name="SysMonNetUpText"
                                                                Text="0 B/s"
                                                                FontFamily="{StaticResource MainSystemFont}"
                                                                FontSize="10.5"
@@ -2981,7 +2982,7 @@
                                     <RowDefinition Height="*"/>
                                 </Grid.RowDefinitions>
 
-                                <TextBlock x:Name="ClockViewMonthText"
+                                <flow:NumberFlowText x:Name="ClockViewMonthText"
                                            Grid.Row="0"
                                            Text="APRIL"
                                            FontFamily="{StaticResource MainSystemFont}"
@@ -3056,7 +3057,7 @@
                                 <ColumnDefinition Width="Auto"/>
                             </Grid.ColumnDefinitions>
 
-                            <TextBlock x:Name="CountdownCompleteText"
+                            <flow:NumberFlowText x:Name="CountdownCompleteText"
                                        Grid.Column="0"
                                        Text="00:00"
                                        FontSize="15"
@@ -3071,13 +3072,13 @@
                                        FontFamily="{StaticResource MainSystemFont}"
                                        Typography.NumeralAlignment="Tabular"
                                        Typography.NumeralStyle="Lining">
-                                <TextBlock.RenderTransform>
+                                <flow:NumberFlowText.RenderTransform>
                                     <TransformGroup>
                                         <ScaleTransform x:Name="CountdownCompleteTextScale" ScaleX="0.82" ScaleY="0.82"/>
                                         <TranslateTransform x:Name="CountdownCompleteTextTranslate" Y="-10"/>
                                     </TransformGroup>
-                                </TextBlock.RenderTransform>
-                            </TextBlock>
+                                </flow:NumberFlowText.RenderTransform>
+                            </flow:NumberFlowText>
 
                             <Grid x:Name="CountdownRestartHost"
                                   Grid.Column="1"
@@ -3447,7 +3448,7 @@
                                        FontWeight="SemiBold"
                                        FontFamily="{StaticResource MainSystemFont}"/>
                         </DockPanel>
-                        <TextBlock x:Name="UpdateInlineStatusText"
+                        <flow:NumberFlowText x:Name="UpdateInlineStatusText"
                                    Text="Version v-"
                                    Foreground="#CCFFFFFF"
                                    FontSize="10.5"
