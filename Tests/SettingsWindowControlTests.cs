@@ -826,6 +826,9 @@ public sealed class SettingsWindowControlTests
     [InlineData("System", "EnableWeatherCheck", "ManualCityTextBox", .45, true)]
     [InlineData("Performance", "AutoAnimationFpsCheck", "AnimationFpsSlider", .4, false)]
     [InlineData("Privacy", "LocalOnlyModeCheck", "PrivacyNetworkSection", .35, false)]
+    [InlineData("Skins", "EnableShadowCheck", "GlassShadowOpacitySlider", .4, true)]
+    [InlineData("Skins", "EnableShadowCheck", "GlassShadowSpreadSlider", .4, true)]
+    [InlineData("FileTray", "TrayTextCheck", "TrayDelayRow", .4, true)]
     public void DependentOptionsKeepTheirLatestStateWhenMotionIsInterrupted(
         string section, string toggleName, string optionName, double dimmedOpacity, bool checkedWhenEnabled) => SharedStaTestRunner.RunAsync(async () =>
     {
@@ -836,6 +839,13 @@ public sealed class SettingsWindowControlTests
             var window = fixture.Window;
             window.EnableSpotifyLyricsCheck.IsChecked = true;
             window.SystemNotifyCheck.IsChecked = true;
+            if (section == "Skins")
+            {
+                window.DynamicIslandModeCheck.IsChecked = true;
+                window.SkinCombo.SelectedIndex = 1;
+            }
+            window.TrayImagesCheck.IsChecked = false;
+            window.TrayFilesCheck.IsChecked = false;
             var toggle = Assert.IsType<CheckBox>(window.FindName(toggleName));
             var option = Assert.IsAssignableFrom<UIElement>(window.FindName(optionName));
             window.Show();
@@ -846,7 +856,10 @@ public sealed class SettingsWindowControlTests
                 AnimationConfig.SetReduceMotion(reducedMotion);
                 foreach (bool enabled in new[] { false, true, false, true })
                 {
-                    toggle.IsChecked = enabled == checkedWhenEnabled;
+                    if (ReferenceEquals(toggle, window.EnableSpotifyCanvasCheck))
+                        window.SetSpotifyCanvasOptIn(enabled, () => true);
+                    else
+                        toggle.IsChecked = enabled == checkedWhenEnabled;
                     // A reveal can replace the toggle's fade before it completes.
                     window.ApplyProgressiveBlurCascade([option], 80, -1, false, 60);
                     window.ResetProgressiveBlurElements(false);

@@ -373,7 +373,8 @@ public partial class TranslationWindow : Window
             surface.BeginAnimation(OpacityProperty, null);
             scale.BeginAnimation(ScaleTransform.ScaleXProperty, null);
             scale.BeginAnimation(ScaleTransform.ScaleYProperty, null);
-            surface.Opacity = opacity; scale.ScaleX = scale.ScaleY = 1;
+            // The template owns hover/disabled opacity, including when motion is off.
+            scale.ScaleX = scale.ScaleY = 1;
             return;
         }
         var fade = Motion(surface.Opacity, opacity, 100);

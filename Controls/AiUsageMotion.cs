@@ -268,6 +268,61 @@ internal sealed class AiUsageMotion
         _stopTransient.Add(() => { offset.BeginAnimation(TranslateTransform.YProperty, null); element.BeginAnimation(UIElement.OpacityProperty, null); });
     }
 
+    internal void RevealViewSection(FrameworkElement element, int providerIndex, int sectionIndex)
+    {
+        if (!_reveal || !CanAnimate) return;
+
+        int delay = ScaleDuration(100) * providerIndex / 2 + sectionIndex * 35;
+        int duration = ScaleDuration(360);
+        double distance = 6 + 10 * Strength;
+        var originalTransform = element.RenderTransform;
+        var originalOrigin = element.RenderTransformOrigin;
+        var scale = new ScaleTransform(1, 1);
+        var offset = new TranslateTransform();
+        var transform = new TransformGroup();
+        transform.Children.Add(originalTransform);
+        transform.Children.Add(scale);
+        transform.Children.Add(offset);
+        element.RenderTransformOrigin = new Point(0.5, 0);
+        element.RenderTransform = transform;
+
+        // Hold the first frame throughout the stagger. BeginTime alone exposes
+        // the resting opacity before a delayed animation starts.
+        DoubleAnimationUsingKeyFrames Entrance(double from, double to, int milliseconds)
+        {
+            var animation = new DoubleAnimationUsingKeyFrames { FillBehavior = FillBehavior.Stop };
+            animation.KeyFrames.Add(new DiscreteDoubleKeyFrame(from, KeyTime.FromTimeSpan(TimeSpan.Zero)));
+            if (delay > 0)
+                animation.KeyFrames.Add(new DiscreteDoubleKeyFrame(from, KeyTime.FromTimeSpan(TimeSpan.FromMilliseconds(delay))));
+            animation.KeyFrames.Add(new SplineDoubleKeyFrame(to,
+                KeyTime.FromTimeSpan(TimeSpan.FromMilliseconds(delay + milliseconds)), SnappySpline));
+            Timeline.SetDesiredFrameRate(animation, AnimationConfig.TargetFps);
+            return animation;
+        }
+
+        void Settle()
+        {
+            offset.BeginAnimation(TranslateTransform.YProperty, null);
+            scale.BeginAnimation(ScaleTransform.ScaleXProperty, null);
+            scale.BeginAnimation(ScaleTransform.ScaleYProperty, null);
+            element.BeginAnimation(UIElement.OpacityProperty, null);
+            if (ReferenceEquals(element.RenderTransform, transform))
+            {
+                element.RenderTransform = originalTransform;
+                element.RenderTransformOrigin = originalOrigin;
+            }
+        }
+
+        var movement = Entrance(distance, 0, duration);
+        movement.Completed += (_, _) => { Settle(); _stopTransient.Remove(Settle); };
+        _stopTransient.Add(Settle);
+        double startScale = 1 - 0.025 * Strength;
+        scale.BeginAnimation(ScaleTransform.ScaleXProperty, Entrance(startScale, 1, duration));
+        scale.BeginAnimation(ScaleTransform.ScaleYProperty, Entrance(startScale, 1, duration));
+        element.BeginAnimation(UIElement.OpacityProperty, Entrance(0, element.Opacity, ScaleDuration(260)));
+        offset.BeginAnimation(TranslateTransform.YProperty, movement);
+    }
+
     internal IDisposable? Busy(FrameworkElement? source)
     {
         if (!CanAnimate || source is not Border { Child: FrameworkElement icon }) return null;

@@ -73,8 +73,9 @@ public partial class NumberFlowText : TextBlock
         SystemParameters.StaticPropertyChanged += OnSystemChanged;
         LayoutUpdated += OnLayoutUpdated;
         _lastText = Text ?? "";
-        // Static labels do not need an animation layout or a digit alphabet.
-        // Capture the old value lazily on the first actual change.
+        // Remember the original width and inline formatting before the first edit.
+        // Only visible characters are prepared; rolling alphabets stay lazy.
+        _layout = BuildLayout(_lastText, "");
         if (_fromText != null) { _pending = true; QueuePresentation(); }
     }
 
@@ -164,9 +165,11 @@ public partial class NumberFlowText : TextBlock
         InvalidateVisual();
     }
 
-    private Dictionary<string, Position> Capture()
+    private Dictionary<string, Position>? Capture()
     {
-        if (!IsAnimating && _layout.Count == 0) _layout = BuildLayout(_lastText, "");
+        // Inline edits can notify Text while their formatting is synchronizing.
+        // Use the settled layout, never reconstruct it inside that notification.
+        if (!IsAnimating && _layout.Count == 0) return null;
         if (!IsAnimating) return _layout.ToDictionary(g => g.Part.Key,
             g => new Position(g, g.Part.Digit, g.Bounds.TopLeft, 1));
         double progress = AnimationProgress;

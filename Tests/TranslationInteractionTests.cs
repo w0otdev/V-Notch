@@ -11,6 +11,37 @@ public sealed class TranslationInteractionTests
 {
     private static string LongResult => string.Join("\n", Enumerable.Repeat("A long translated paragraph that needs scrolling while keeping the menu within the screen.", 30));
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void ActionButtonDimmingFollowsAvailabilityAfterPointerFeedback(bool reducedMotion) => SharedStaTestRunner.RunAsync(async ct =>
+    {
+        bool previous = AnimationConfig.ReduceMotion;
+        AnimationConfig.SetReduceMotion(reducedMotion);
+        var window = new TranslationWindow("en", "vi");
+        BackgroundTestWindows.ProtectInput(window);
+        try
+        {
+            var work = System.Windows.Forms.Screen.PrimaryScreen!.WorkingArea;
+            window.ShowSelection(new(1, "original", new Rect(work.Left + 100, work.Top + 100, 100, 20), IntPtr.Zero, false), true);
+            await window.WaitForEntranceAsync(ct);
+            var button = window.CopyButton;
+            button.ApplyTemplate();
+            var surface = Assert.IsType<System.Windows.Controls.Border>(button.Template.FindName("Surface", button));
+            button.IsEnabled = false;
+            button.RaiseEvent(new System.Windows.Input.MouseEventArgs(System.Windows.Input.Mouse.PrimaryDevice, 0)
+            { RoutedEvent = System.Windows.Input.Mouse.MouseLeaveEvent });
+            await Task.Delay(150, ct);
+            await WpfFrameWaiter.NextAsync(ct);
+            Assert.Equal(.4, surface.Opacity);
+            button.IsEnabled = true;
+            Assert.Equal(1, surface.Opacity);
+            button.IsEnabled = false;
+            Assert.Equal(.4, surface.Opacity);
+        }
+        finally { window.Close(); AnimationConfig.SetReduceMotion(previous); }
+    });
+
     [Fact]
     public void LongResultMovesOnlyEnoughToFitAndUsesOneResultScrollArea() => SharedStaTestRunner.RunAsync(async ct =>
     {

@@ -214,8 +214,8 @@ public partial class SpotlightWindow
             ContentRegion.ClipToBounds = true;
             _contentHeightTarget = double.NaN;
         }
-        // Commit navigation immediately; animate only the destination content.
-        // Keeping the header stationary avoids the whole window blinking between pages.
+        // Commit navigation immediately. Only the shell adapts to the new height;
+        // repeated history/new-chat actions must not replay a page entrance.
         changePage();
         if (_aiMode)
         {
@@ -234,10 +234,6 @@ public partial class SpotlightWindow
                     ContentRegion.ClipToBounds = false;
                 }
             }
-            FrameworkElement mainDestination = AiWelcome.Visibility == Visibility.Visible ? AiWelcome : AiTranscriptScroll;
-            FrameworkElement destination = AiHistoryPanel.Visibility == Visibility.Visible ? AiHistoryPanel : mainDestination;
-            if (ReferenceEquals(destination, AiWelcome)) AnimateAiFade(destination);
-            else AnimateAiPageReveal(destination);
         }
         ScheduleContentResize();
         return Task.CompletedTask;
@@ -298,45 +294,6 @@ public partial class SpotlightWindow
         { FillBehavior = FillBehavior.Stop };
         Timeline.SetDesiredFrameRate(fade, AnimationConfig.TargetFps);
         element.BeginAnimation(OpacityProperty, fade);
-    }
-
-    private static void AnimateAiPageReveal(FrameworkElement element)
-    {
-        // A stopped FillBehavior.Stop clock can remain attached after completion.
-        // Only continue an in-flight fade; completed reveals must start anew.
-        bool interrupted = element.HasAnimatedProperties && element.Opacity < 1;
-        double opacity = interrupted ? element.Opacity : 0;
-        var previous = element.RenderTransform as TransformGroup;
-        var oldScale = previous?.Children.OfType<ScaleTransform>().FirstOrDefault();
-        var oldTranslate = previous?.Children.OfType<TranslateTransform>().FirstOrDefault();
-        double fromScale = interrupted && oldScale != null ? oldScale.ScaleY : 0.985;
-        double fromY = interrupted && oldTranslate != null ? oldTranslate.Y : 4;
-
-        element.BeginAnimation(OpacityProperty, null);
-        element.Opacity = 1;
-        var scale = new ScaleTransform(1, 1);
-        var translate = new TranslateTransform();
-        var transforms = new TransformGroup();
-        transforms.Children.Add(scale);
-        transforms.Children.Add(translate);
-        element.RenderTransformOrigin = new Point(0.5, 0);
-        element.RenderTransform = transforms;
-
-        var duration = TimeSpan.FromMilliseconds(AnimationConfig.ReduceMotion ? 160 : 280);
-        var ease = new CubicBezierEase(0.23, 1, 0.32, 1) { EasingMode = EasingMode.EaseIn };
-        var fade = new DoubleAnimation(opacity, 1, duration) { FillBehavior = FillBehavior.Stop };
-        Timeline.SetDesiredFrameRate(fade, AnimationConfig.TargetFps);
-        element.BeginAnimation(OpacityProperty, fade);
-        if (AnimationConfig.ReduceMotion) return;
-
-        var morph = new DoubleAnimation(fromScale, 1, duration)
-        { EasingFunction = ease, FillBehavior = FillBehavior.Stop };
-        var slide = new DoubleAnimation(fromY, 0, duration)
-        { EasingFunction = ease, FillBehavior = FillBehavior.Stop };
-        Timeline.SetDesiredFrameRate(morph, AnimationConfig.TargetFps);
-        Timeline.SetDesiredFrameRate(slide, AnimationConfig.TargetFps);
-        scale.BeginAnimation(ScaleTransform.ScaleYProperty, morph);
-        translate.BeginAnimation(TranslateTransform.YProperty, slide);
     }
 
     private static void AnimateAiArrival(FrameworkElement element, double distance, int milliseconds)

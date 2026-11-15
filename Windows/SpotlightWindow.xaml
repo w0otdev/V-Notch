@@ -121,6 +121,47 @@
             </Setter>
         </Style>
 
+        <Style x:Key="AiNavigationStyle" TargetType="controls:AiNavigationButton">
+            <Setter Property="Height" Value="38"/>
+            <Setter Property="MinWidth" Value="72"/>
+            <Setter Property="Padding" Value="12,0,12,3"/>
+            <Setter Property="FontFamily" Value="{StaticResource SFProDisplay}"/>
+            <Setter Property="FontSize" Value="12"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="Foreground" Value="{StaticResource AiSecondaryBrush}"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="FocusVisualStyle" Value="{x:Null}"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="controls:AiNavigationButton">
+                        <Grid Background="Transparent">
+                            <Border x:Name="SelectionSurface" CornerRadius="8" Background="{DynamicResource AccentSubtleBrush}" Opacity="0"/>
+                            <Border x:Name="HoverOverlay" CornerRadius="8" Background="{StaticResource AiHoverBrush}" Opacity="0" IsHitTestVisible="False"/>
+                            <Border x:Name="PressedOverlay" CornerRadius="8" Background="{StaticResource AiPressedBrush}" Opacity="0" IsHitTestVisible="False"/>
+                            <Border x:Name="Outline" CornerRadius="8" BorderThickness="1" BorderBrush="Transparent" Padding="{TemplateBinding Padding}">
+                                <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                            </Border>
+                            <Border x:Name="InkMark" Width="4" Height="2" CornerRadius="1" Background="{StaticResource AiIconBrush}"
+                                    Opacity="0.2" HorizontalAlignment="Center" VerticalAlignment="Bottom" Margin="0,0,0,3" IsHitTestVisible="False"/>
+                        </Grid>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsSelected" Value="True">
+                                <Setter Property="Foreground" Value="{StaticResource AiPrimaryBrush}"/>
+                                <Setter TargetName="SelectionSurface" Property="Opacity" Value="1"/>
+                                <Setter TargetName="InkMark" Property="Background" Value="{DynamicResource AccentBrush}"/>
+                            </Trigger>
+                            <Trigger Property="IsKeyboardFocused" Value="True">
+                                <Setter TargetName="Outline" Property="BorderBrush" Value="{StaticResource AiFocusBrush}"/>
+                            </Trigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter Property="Opacity" Value="0.45"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
         <Style x:Key="AiSuggestionStyle" TargetType="Button" BasedOn="{StaticResource AiActionStyle}">
             <Setter Property="HorizontalContentAlignment" Value="Center"/>
             <Setter Property="Template">
@@ -624,7 +665,6 @@
                 <Grid.RowDefinitions>
                     <RowDefinition Height="64"/>
                     <RowDefinition Height="Auto"/>
-                    <RowDefinition Height="Auto"/>
                 </Grid.RowDefinitions>
 
             <!-- Search field: text on the left, magnifier on the right (Flow Launcher layout). -->
@@ -754,20 +794,9 @@
                 </controls:MorphingSettingsIcon>
             </Grid>
 
-            <Border x:Name="SpotlightIntroPanel" Grid.Row="1" Visibility="Collapsed"
-                    BorderBrush="#20FFFFFF" BorderThickness="0,1,0,0" Padding="22,18,22,18">
-                <StackPanel>
-                    <TextBlock x:Name="SpotlightIntroTitle" FontSize="11" Foreground="#AAAAAA"/>
-                    <TextBlock x:Name="SpotlightIntroHeadline" FontSize="20" FontWeight="Bold" Foreground="#FFFFFF" Margin="0,5,0,8"/>
-                    <TextBlock x:Name="SpotlightIntroBody" FontSize="13" Foreground="#CCCCCC" TextWrapping="Wrap"/>
-                    <Button x:Name="SpotlightIntroClose" HorizontalAlignment="Left" Padding="14,7" Margin="0,14,0,0"
-                            Click="SpotlightIntroClose_Click"/>
-                </StackPanel>
-            </Border>
-
             <!-- Results appear only after the user starts searching. -->
             <Border x:Name="ContentRegion"
-                    Grid.Row="2"
+                    Grid.Row="1"
                     BorderBrush="#14FFFFFF"
                     BorderThickness="0,1,0,0"
                     Visibility="Collapsed">
@@ -809,28 +838,68 @@
                                     <Button x:Name="AiCopyButton" Style="{StaticResource AiToolbarStyle}" Click="AiCopy_Click" IsEnabled="False" Margin="0,0,4,0">
                                         <Path Data="{x:Static local:SpotlightWindow.AiCopyGeometry}" Fill="{x:Static local:SpotlightWindow.ChatIconBrush}" Stretch="Uniform" Width="13" Height="13"/>
                                     </Button>
-                                    <Button x:Name="AiHistoryButton" Style="{StaticResource AiToolbarStyle}" Click="AiHistory_Click" Margin="0,0,4,0">
-                                        <Path Data="{x:Static local:SpotlightWindow.AiHistoryGeometry}" Fill="{x:Static local:SpotlightWindow.ChatIconBrush}" Stretch="Uniform" Width="14" Height="14"/>
-                                    </Button>
-                                    <Button x:Name="AiNewChatButton" Style="{StaticResource AiToolbarStyle}" Click="AiNewChat_Click">
-                                        <Path Data="{x:Static local:SpotlightWindow.AiPlusGeometry}" Fill="{x:Static local:SpotlightWindow.ChatIconBrush}" Stretch="Uniform" Width="12" Height="12"/>
-                                    </Button>
+                                    <Border Background="{StaticResource AiSurfaceBrush}" CornerRadius="11" Padding="3" Margin="6,0,0,0">
+                                        <StackPanel Orientation="Horizontal">
+                                            <controls:AiNavigationButton x:Name="AiHistoryButton" Click="AiHistory_Click">
+                                                <controls:AiNavigationButton.Style>
+                                                    <Style TargetType="controls:AiNavigationButton" BasedOn="{StaticResource AiNavigationStyle}">
+                                                        <Style.Triggers>
+                                                            <DataTrigger Binding="{Binding Visibility, ElementName=AiHistoryPanel}" Value="Visible">
+                                                                <Setter Property="IsSelected" Value="True"/>
+                                                            </DataTrigger>
+                                                        </Style.Triggers>
+                                                    </Style>
+                                                </controls:AiNavigationButton.Style>
+                                                <StackPanel Orientation="Horizontal">
+                                                    <Path Data="M5,2.5 H13.5 Q15,2.5 15,4 V10 Q15,11.5 13.5,11.5 H8 L4,14.5 V11.5 Q2.5,11.5 2.5,10 V4 Q2.5,2.5 5,2.5 Z M6,6 H12 M6,8.5 H10"
+                                                          Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" StrokeThickness="1.5" StrokeLineJoin="Round" StrokeStartLineCap="Round" StrokeEndLineCap="Round"
+                                                          Stretch="Uniform" Width="15" Height="15" Margin="0,0,7,0"/>
+                                                    <TextBlock Text="{Binding ToolTip, ElementName=AiHistoryButton}" MaxWidth="128" TextTrimming="CharacterEllipsis" VerticalAlignment="Center"/>
+                                                </StackPanel>
+                                            </controls:AiNavigationButton>
+                                            <Border Width="1" Height="16" Background="{StaticResource AiBorderBrush}" Margin="3,0" VerticalAlignment="Center"/>
+                                            <controls:AiNavigationButton x:Name="AiNewChatButton" Click="AiNewChat_Click">
+                                                <controls:AiNavigationButton.Style>
+                                                    <Style TargetType="controls:AiNavigationButton" BasedOn="{StaticResource AiNavigationStyle}">
+                                                        <Style.Triggers>
+                                                            <DataTrigger Binding="{Binding Visibility, ElementName=AiWelcome}" Value="Visible">
+                                                                <Setter Property="IsSelected" Value="True"/>
+                                                            </DataTrigger>
+                                                        </Style.Triggers>
+                                                    </Style>
+                                                </controls:AiNavigationButton.Style>
+                                                <StackPanel Orientation="Horizontal">
+                                                    <Path Data="M8,3 H4 Q2,3 2,5 V13 Q2,15 4,15 H12 Q14,15 14,13 V9 M8,10 L8.5,6.5 L13,2 Q14,1 15,2 Q16,3 15,4 L10.5,8.5 Z M12,3 L14,5"
+                                                          Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" StrokeThickness="1.5" StrokeLineJoin="Round" StrokeStartLineCap="Round" StrokeEndLineCap="Round"
+                                                          Stretch="Uniform" Width="15" Height="15" Margin="0,0,7,0"/>
+                                                    <TextBlock Text="{Binding ToolTip, ElementName=AiNewChatButton}" MaxWidth="128" TextTrimming="CharacterEllipsis" VerticalAlignment="Center"/>
+                                                </StackPanel>
+                                            </controls:AiNavigationButton>
+                                        </StackPanel>
+                                    </Border>
                                 </StackPanel>
                             </Grid>
 
-                            <!-- Calm empty state with clearly actionable prompts. -->
-                            <Border x:Name="AiWelcome" Padding="24,20,24,16" Margin="0,0,0,6" Background="Transparent">
-                                <StackPanel>
-                                    <Image x:Name="AiWelcomeLogo" Width="32" Height="32" Stretch="Uniform" HorizontalAlignment="Center" Margin="0,4,0,14"/>
-                                    <TextBlock x:Name="AiWelcomeTitle" FontFamily="{StaticResource SFProDisplay}" Foreground="{StaticResource AiPrimaryBrush}" FontSize="17" FontWeight="Bold" HorizontalAlignment="Center"/>
-                                    <TextBlock x:Name="AiWelcomeHint" FontFamily="{StaticResource SFProDisplay}" FontWeight="Bold" Foreground="{StaticResource AiSecondaryBrush}" FontSize="12.5" LineHeight="20" Margin="0,8,0,20" TextAlignment="Center" TextWrapping="Wrap"/>
-                                    <WrapPanel HorizontalAlignment="Center">
-                                        <controls:AiSuggestionButton x:Name="AiPromptOne" Style="{StaticResource AiSuggestionStyle}" Click="AiSuggestion_Click" Margin="0,0,8,6"/>
-                                        <controls:AiSuggestionButton x:Name="AiPromptTwo" Style="{StaticResource AiSuggestionStyle}" Click="AiSuggestion_Click" Margin="0,0,0,6"/>
-                                    </WrapPanel>
-                                </StackPanel>
+                            <!-- A compact writing surface, stable during conversation navigation. -->
+                            <Border x:Name="AiWelcome" Padding="18" Margin="0,0,0,8" Background="{StaticResource AiSurfaceBrush}" CornerRadius="12">
+                                <Grid>
+                                    <Grid.ColumnDefinitions><ColumnDefinition Width="40"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                                    <Image x:Name="AiWelcomeLogo" Width="24" Height="24" Stretch="Uniform" HorizontalAlignment="Left" VerticalAlignment="Top" Margin="0,3,0,0"/>
+                                    <StackPanel Grid.Column="1">
+                                        <TextBlock x:Name="AiWelcomeTitle" Foreground="{StaticResource AiPrimaryBrush}" FontSize="16" FontWeight="SemiBold"/>
+                                        <TextBlock x:Name="AiWelcomeHint" FontWeight="Normal" Foreground="{StaticResource AiSecondaryBrush}" FontSize="12.5" LineHeight="20" Margin="0,5,0,16" TextWrapping="Wrap"/>
+                                        <WrapPanel>
+                                            <controls:AiSuggestionButton x:Name="AiPromptOne" Style="{StaticResource AiSuggestionStyle}" Click="AiSuggestion_Click" Margin="0,0,8,4"/>
+                                            <controls:AiSuggestionButton x:Name="AiPromptTwo" Style="{StaticResource AiSuggestionStyle}" Click="AiSuggestion_Click" Margin="0,0,0,4"/>
+                                        </WrapPanel>
+                                    </StackPanel>
+                                </Grid>
                             </Border>
 
+                            <DockPanel Margin="4,0,8,12" Visibility="{Binding Visibility, ElementName=AiHistoryPanel}">
+                                <TextBlock x:Name="AiHistoryCount" DockPanel.Dock="Right" FontSize="12" FontWeight="Normal" Foreground="{StaticResource AiSecondaryBrush}" VerticalAlignment="Center"/>
+                                <TextBlock Text="{Binding ToolTip, ElementName=AiHistoryButton}" FontSize="14" FontWeight="SemiBold" Foreground="{StaticResource AiPrimaryBrush}"/>
+                            </DockPanel>
                             <ScrollViewer x:Name="AiHistoryPanel" Visibility="Collapsed" MaxHeight="310" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" HorizontalContentAlignment="Stretch">
                                 <ScrollViewer.Resources><Style TargetType="ScrollBar" BasedOn="{StaticResource ThinScrollBar}"/></ScrollViewer.Resources>
                                 <StackPanel x:Name="AiHistoryItems" Margin="0,2,8,0" HorizontalAlignment="Stretch"/>

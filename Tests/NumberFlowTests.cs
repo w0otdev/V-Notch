@@ -75,12 +75,12 @@ public sealed class NumberFlowTests
             var numberRun = next.Inlines.FirstInline;
             panel.Children.Add(next);
             snapshot.Restore(panel);
-            await Task.Delay(70);
+            await WpfFrameWaiter.UntilAsync(() => next.IsAnimating, "rebuilt quota animation");
             Assert.True(next.IsAnimating);
             Assert.Equal("79% left", next.Text);
             Assert.Same(numberRun, next.Inlines.FirstInline);
             Assert.Equal(26, numberRun.FontSize);
-            await Task.Delay(550);
+            await WpfFrameWaiter.UntilAsync(() => !next.IsAnimating, "rebuilt quota animation completed");
             Assert.False(next.IsAnimating);
             Assert.Null(next.OpacityMask);
         }
@@ -102,16 +102,16 @@ public sealed class NumberFlowTests
         try
         {
             window.Show();
-            await Task.Delay(60);
+            await WpfFrameWaiter.UntilAsync(() => text.IsLoaded, "bound number loaded");
             source.Text = "100%";
-            await Task.Delay(60);
+            await WpfFrameWaiter.UntilAsync(() => text.IsAnimating, "bound number animation");
             Assert.True(text.IsAnimating);
             Assert.Equal("100%", text.Text);
             Assert.Equal("100%", UIElementAutomationPeer.CreatePeerForElement(text)!.GetName());
             Assert.True(BindingOperations.IsDataBound(text, TextBlock.TextProperty));
             Assert.NotNull(text.OpacityMask);
             source.Text = "82%";
-            await Task.Delay(55);
+            await WpfFrameWaiter.NextAsync();
             Assert.True(text.IsAnimating);
             Assert.Equal("82%", text.Text);
             AnimationConfig.SetReduceMotion(true);
@@ -122,13 +122,13 @@ public sealed class NumberFlowTests
             Assert.False(text.IsAnimating);
             AnimationConfig.SetReduceMotion(false);
             source.Text = "66%";
-            await Task.Delay(50);
+            await WpfFrameWaiter.UntilAsync(() => text.IsAnimating, "animation resumed after reduced motion");
             text.Visibility = Visibility.Collapsed;
             Assert.False(text.IsAnimating);
             text.Visibility = Visibility.Visible;
             await Task.Delay(40);
             source.Text = "67%";
-            await Task.Delay(50);
+            await WpfFrameWaiter.UntilAsync(() => text.IsAnimating, "animation resumed after visibility change");
             Assert.True(text.IsAnimating);
             root.Child = null;
             await Task.Delay(40);
@@ -183,7 +183,9 @@ public sealed class NumberFlowTests
                 if (i == 4) ((Run)readouts[i].Inlines.FirstInline).Text = "79%";
                 else readouts[i].Text = next[i];
             }
-            await Task.Delay(35);
+            // Presentation now follows WPF's settled layout instead of forcing a
+            // synchronous layout flush. Wait for the frame, not a wall-clock guess.
+            await WpfFrameWaiter.UntilAsync(() => readouts.All(n => n.IsAnimating), "all number reels started");
             Assert.Equal("79% left", readouts[4].Text);
             Assert.All(readouts, n => Assert.True(n.IsAnimating, n.Text));
             for (int frame = 1; frame <= 22; frame++) { Capture(frame); await Task.Delay(30); }

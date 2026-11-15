@@ -353,6 +353,23 @@ public partial class SettingsWindow
     internal static double ResolveElementRestingOpacity(UIElement el) =>
         (double)el.GetAnimationBaseValue(OpacityProperty);
 
+    private void AnimateSettingsOpacity(UIElement element, double targetOpacity, bool animate, int durationMs = 240)
+    {
+        double from = element.Opacity;
+        element.BeginAnimation(OpacityProperty, null);
+        // Persist the latest feature state before any reveal can replace this clock.
+        element.Opacity = targetOpacity;
+        if (!animate || _isLoadingSettings || AnimationConfig.ReduceMotion || from == targetOpacity) return;
+
+        var fade = new DoubleAnimation(from, targetOpacity, TimeSpan.FromMilliseconds(durationMs))
+        {
+            EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut },
+            FillBehavior = FillBehavior.Stop
+        };
+        Timeline.SetDesiredFrameRate(fade, AnimationConfig.TargetFps);
+        element.BeginAnimation(OpacityProperty, fade);
+    }
+
     internal unsafe void ApplyProgressiveBlurCascade(
         IReadOnlyList<UIElement> items,
         int baseDelayMs,

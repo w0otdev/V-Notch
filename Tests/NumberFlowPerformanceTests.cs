@@ -20,11 +20,14 @@ public sealed class NumberFlowPerformanceTests(ITestOutputHelper output)
 
     [Theory]
     [InlineData("99%", "100%")]
+    [InlineData("100%", "99%")]
     [InlineData("01:00", "00:59")]
     [InlineData("9.9 MB/s", "12.4 MB/s")]
+    [InlineData("12.4 MB/s", "9.9 MB/s")]
     [InlineData("12\n59", "13\n00")]
     [InlineData("١٢%", "١٣%")]
     [InlineData("82% left", "79% left")]
+    [InlineData("82% left", "100% left")]
     public void RetainedReelsMatchPreviousPixelsIncludingInterruption(string previous, string next) => SharedStaTestRunner.RunAsync(async ct =>
     {
         using var host = new Pair(previous);
@@ -60,7 +63,6 @@ public sealed class NumberFlowPerformanceTests(ITestOutputHelper output)
                         {
                             var reels = (System.Collections.ICollection)probe.View.GetType().GetField("_reels", Private)!.GetValue(probe.View)!;
                             output.WriteLine($"{probe.View.GetType().Name}: text={probe.View.Text}, reels={reels.Count}, mask={probe.View.OpacityMask != null}");
-                            foreach (var reel in reels) output.WriteLine(reel.ToString());
                         }
                     }
                     Assert.True(difference / (double)before.Length < .25 && changed < before.Length * .005,
@@ -129,12 +131,12 @@ public sealed class NumberFlowPerformanceTests(ITestOutputHelper output)
     });
 
     [Fact]
-    public void GlyphCacheIsLazyBoundedAndReleasedOnUnload() => SharedStaTestRunner.RunAsync(async ct =>
+    public void GlyphCachePreparesOnlyVisibleCharactersAndIsBoundedAndReleasedOnUnload() => SharedStaTestRunner.RunAsync(async ct =>
     {
         using var host = new Pair("2026");
         await host.Ready(ct);
         var cache = (NumberFlowGlyphCache)typeof(NumberFlowText).GetField("_glyphCache", Private)!.GetValue(host.After.View)!;
-        Assert.Equal(0, cache.Count);
+        Assert.Equal(3, cache.Count); // 2026 needs 2, 0 and 6, not ten digits per slot.
         for (int i = 0; i < 30; i++)
         {
             host.After.View.FontSize = 10 + i;
@@ -146,6 +148,31 @@ public sealed class NumberFlowPerformanceTests(ITestOutputHelper output)
         Assert.Equal(0, cache.Count);
         Assert.False(((NumberFlowText)host.After.View).IsAnimating);
         Assert.Null(host.After.View.OpacityMask);
+    });
+
+    [Fact]
+    public void AForegroundBrushCanChangeColorDuringTheRetainedAnimation() => SharedStaTestRunner.RunAsync(async ct =>
+    {
+        using var host = new Pair("28%");
+        await host.Ready(ct);
+        var brush = new SolidColorBrush(Colors.Blue);
+        host.After.View.Foreground = brush;
+        host.After.Present("39%");
+        host.After.Progress(.37);
+        var before = Pixels(host.After, 96);
+        brush.Color = Colors.Red;
+        var after = Pixels(host.After, 96);
+        Assert.True(Channel(before, 0) > 0);
+        Assert.Equal(0, Channel(before, 2));
+        Assert.Equal(0, Channel(after, 0));
+        Assert.True(Channel(after, 2) > 0);
+
+        static long Channel(byte[] pixels, int channel)
+        {
+            long total = 0;
+            for (int i = channel; i < pixels.Length; i += 4) total += pixels[i];
+            return total;
+        }
     });
 
     private static Measurement MeasureFrames(Probe probe, bool retained)
@@ -246,6 +273,7 @@ public sealed class NumberFlowPerformanceTests(ITestOutputHelper output)
                 view.FontSize = 28;
                 view.FontWeight = FontWeights.Bold;
                 view.Foreground = Brushes.White;
+                view.HorizontalAlignment = HorizontalAlignment.Left;
                 if (text.Contains("left")) AiUsageTypography.EmphasizePercent(view, text, 82, 40);
                 panel.Children.Add(view);
             }

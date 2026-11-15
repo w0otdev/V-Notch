@@ -16,16 +16,15 @@ internal sealed class NumberFlowGlyphCache
 
     internal Image Get(Style style, char character)
     {
-        // A live brush can change without changing identity. Snapshot it for this
-        // transition and leave it out of the cross-update cache.
+        // A live brush can change without changing identity. Preserve that live
+        // brush during this transition, but leave it out of the cross-update cache.
         bool cacheable = style.Brush.IsFrozen;
         if (cacheable && _images.TryGetValue((style, character), out var image)) return image;
-        var brush = cacheable ? style.Brush : style.Brush.CloneCurrentValue();
         var text = new FormattedText(character.ToString(), style.Culture, style.Direction,
-            style.Typeface, style.Size, brush, style.PixelsPerDip);
+            style.Typeface, style.Size, style.Brush, style.PixelsPerDip);
         var drawing = new DrawingGroup();
         using (var dc = drawing.Open()) dc.DrawText(text, new Point());
-        drawing.Freeze();
+        if (cacheable) drawing.Freeze();
         image = new Image(drawing, text.WidthIncludingTrailingWhitespace, text.Height, text.Baseline);
         if (cacheable)
         {

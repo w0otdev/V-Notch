@@ -123,6 +123,7 @@ public partial class SpotlightWindow
         if (showHistory)
         {
             AiHistoryItems.Children.Clear();
+            AiHistoryCount.Text = _savedChats.Count.ToString(Loc.GetCulture());
             var sfProDisplay = (FontFamily)FindResource("SFProDisplay");
             var toolbarStyle = (Style)FindResource("AiToolbarStyle");
             string deleteLabel = Loc.Get("spotlight.ai.delete");
@@ -142,24 +143,34 @@ public partial class SpotlightWindow
                 var chat = indexedChats[idx].Chat;
                 var card = new Border
                 {
-                    CornerRadius = new CornerRadius(8),
+                    CornerRadius = new CornerRadius(12),
                     Background = AiHistoryCardIdleBrush,
-                    BorderBrush = AiHistoryCardBorderBrush,
+                    BorderBrush = chat.Id == _chatId ? AiHistoryCardBorderBrush : Brushes.Transparent,
                     BorderThickness = new Thickness(1),
-                    Padding = new Thickness(4),
-                    Margin = new Thickness(0, 0, 0, 8),
+                    Padding = new Thickness(4, 6, 4, 6),
+                    Margin = new Thickness(0, 0, 0, 6),
                     Cursor = Cursors.Hand
                 };
 
                 var grid = new Grid { UseLayoutRounding = false };
+                grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(8) });
                 grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
                 grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+                var currentMark = new Border
+                {
+                    Width = 2,
+                    CornerRadius = new CornerRadius(1),
+                    Margin = new Thickness(0, 9, 0, 9),
+                    Visibility = chat.Id == _chatId ? Visibility.Visible : Visibility.Hidden
+                };
+                currentMark.SetResourceReference(Border.BackgroundProperty, "AccentBrush");
+                grid.Children.Add(currentMark);
 
                 var openContent = new Grid();
                 openContent.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(32) });
                 openContent.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
 
-                var icon = CreateAiBrandImage(chat.Provider, 16);
+                var icon = CreateAiBrandImage(chat.Provider, 18);
                 openContent.Children.Add(icon);
 
                 // Title + Subtitle
@@ -174,7 +185,7 @@ public partial class SpotlightWindow
                 {
                     Text = chat.Title,
                     FontFamily = sfProDisplay,
-                    FontWeight = FontWeights.Bold,
+                    FontWeight = FontWeights.SemiBold,
                     FontSize = 13,
                     Foreground = Controls.SpotlightChatPalette.Primary,
                     TextTrimming = TextTrimming.CharacterEllipsis,
@@ -189,7 +200,7 @@ public partial class SpotlightWindow
                     ToolTip = chat.Provider + " · " + chat.Model,
                     FontFamily = sfProDisplay,
                     FontSize = 11,
-                    FontWeight = FontWeights.Bold,
+                    FontWeight = FontWeights.Normal,
                     Foreground = Controls.SpotlightChatPalette.Secondary,
                     TextTrimming = TextTrimming.CharacterEllipsis,
                     TextWrapping = TextWrapping.NoWrap,
@@ -197,6 +208,21 @@ public partial class SpotlightWindow
                     Margin = new Thickness(0, 4, 0, 0)
                 };
                 label.Children.Add(titleBlock);
+                string preview = chat.Messages.LastOrDefault()?.Content.ReplaceLineEndings(" ").Trim() ?? "";
+                if (preview.Length > 0)
+                {
+                    label.Children.Add(new TextBlock
+                    {
+                        Text = preview,
+                        FontFamily = sfProDisplay,
+                        FontSize = 12,
+                        FontWeight = FontWeights.Normal,
+                        Foreground = Controls.SpotlightChatPalette.Secondary,
+                        TextTrimming = TextTrimming.CharacterEllipsis,
+                        TextWrapping = TextWrapping.NoWrap,
+                        Margin = new Thickness(0, 4, 0, 0)
+                    });
+                }
                 label.Children.Add(subtitleBlock);
                 openContent.Children.Add(label);
                 var open = new Button
@@ -206,6 +232,7 @@ public partial class SpotlightWindow
                     HorizontalAlignment = HorizontalAlignment.Stretch
                 };
                 System.Windows.Automation.AutomationProperties.SetName(open, chat.Title);
+                Grid.SetColumn(open, 1);
                 grid.Children.Add(open);
 
                 // Delete button
@@ -227,7 +254,7 @@ public partial class SpotlightWindow
                     VerticalAlignment = VerticalAlignment.Center
                 };
                 System.Windows.Automation.AutomationProperties.SetName(delete, deleteLabel);
-                Grid.SetColumn(delete, 1);
+                Grid.SetColumn(delete, 2);
 
                 delete.Click += async (s, args) =>
                 {
@@ -237,6 +264,7 @@ public partial class SpotlightWindow
                     card.IsHitTestVisible = false;
                     card.ClipToBounds = true;
                     _savedChats.Remove(chat);
+                    AiHistoryCount.Text = _savedChats.Count.ToString(Loc.GetCulture());
                     if (chat.Id == _chatId) { _aiHistory.Clear(); _chatId = Guid.NewGuid().ToString("N"); SearchBox.Clear(); RenderAiHistory(); }
                     await PersistAiHistoryAsync();
 
@@ -275,7 +303,6 @@ public partial class SpotlightWindow
                             HorizontalAlignment = HorizontalAlignment.Center
                         };
                         AiHistoryItems.Children.Add(empty);
-                        AnimateAiArrival(empty, 4, 200);
                     }
                     ScheduleContentResize();
                 };
@@ -370,16 +397,8 @@ public partial class SpotlightWindow
     }
     private void UpdateAiWelcome()
     {
-        bool wasVisible = AiWelcome.Visibility == Visibility.Visible;
         bool showWelcome = _aiHistory.Count == 0 && AiHistoryPanel.Visibility != Visibility.Visible;
         AiWelcome.Visibility = showWelcome ? Visibility.Visible : Visibility.Collapsed;
-        // A failed first request restores this whole surface, not just the status line.
-        // Only reveal on entry so normal metadata/input refreshes do not restart it.
-        if (showWelcome && !wasVisible && _aiMode && IsSpotlightOpen && !_isClosing)
-        {
-            AnimateAiFade(AiHeader);
-            AnimateAiFade(AiWelcome);
-        }
     }
     private void AiSuggestion_Click(object sender, RoutedEventArgs e)
     {

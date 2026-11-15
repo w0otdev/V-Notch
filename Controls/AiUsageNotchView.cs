@@ -149,7 +149,12 @@ public sealed class AiUsageNotchView : UserControl
         {
             AppendProviderPane(second, now, paneIndex++);
         }
-        if (paneIndex == 0) _rootGrid.Children.Add(CreateEmptyStateBody(Loc.Get("aiUsage.chooseProviders"), 1));
+        if (paneIndex == 0)
+        {
+            var emptyState = CreateEmptyStateBody(Loc.Get("aiUsage.chooseProviders"), 1);
+            _rootGrid.Children.Add(emptyState);
+            _motion.RevealViewSection(emptyState, 0, 0);
+        }
         LayoutPreviewPanes();
 
         _numberFlow.Restore(_rootGrid, AiUsageMotion.MotionEnabled);
@@ -176,7 +181,19 @@ public sealed class AiUsageNotchView : UserControl
         var pane = CreateProviderPane(account, now);
         Grid.SetColumn(pane, _rootGrid.ColumnDefinitions.Count - 1);
         _rootGrid.Children.Add(pane);
-        _motion.Reveal(pane, paneIndex);
+        int sectionIndex = 0;
+        foreach (FrameworkElement section in pane.Children)
+        {
+            if (section is StackPanel rows)
+            {
+                foreach (FrameworkElement row in rows.Children)
+                    _motion.RevealViewSection(row, paneIndex, sectionIndex++);
+            }
+            else
+            {
+                _motion.RevealViewSection(section, paneIndex, sectionIndex++);
+            }
+        }
     }
 
     private void LayoutPreviewPanes()
