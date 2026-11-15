@@ -36,11 +36,15 @@ public sealed class FirstOpenLatencyTests(ITestOutputHelper output)
             var watch = Stopwatch.StartNew();
             double lastTick = 0, longestPause = 0;
             bool closed = false;
+            bool measuring = false;
+            var timerReady = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
             var timer = new DispatcherTimer(DispatcherPriority.Input) { Interval = TimeSpan.FromMilliseconds(10) };
             timer.Tick += (_, _) =>
             {
+                if (!measuring) { timerReady.TrySetResult(); return; }
                 double now = watch.Elapsed.TotalMilliseconds;
-                longestPause = Math.Max(longestPause, now - lastTick);
+                // Only time beyond the timer's requested interval is dispatcher delay.
+                longestPause = Math.Max(longestPause, now - lastTick - timer.Interval.TotalMilliseconds);
                 lastTick = now;
                 if (now >= 500 && Application.Current.Windows.OfType<SettingsWindow>().LastOrDefault() is { } settings)
                 {
@@ -51,16 +55,19 @@ public sealed class FirstOpenLatencyTests(ITestOutputHelper output)
             timer.Start();
             try
             {
+                await timerReady.Task.WaitAsync(ct);
+                watch.Restart();
+                measuring = true;
                 typeof(MainWindow).GetMethod("OpenAppSettings", Private)!.Invoke(window, [false]);
                 await WpfFrameWaiter.UntilAsync(() => closed, "settings close completes", ct);
             }
             finally { timer.Stop(); }
             pauses.Add(longestPause);
-            output.WriteLine($"Settings open {attempt + 1}: longest UI pause {longestPause:F1} ms");
+            output.WriteLine($"Settings open {attempt + 1}: longest input timer delay {longestPause:F1} ms");
             await WpfFrameWaiter.UntilAsync(() => !Animating(window), "settings return settles", ct);
         }
         SettingsWindow.FirstOpenProbe -= Capture;
-        Assert.True(pauses[0] < 100, $"First Settings click stalled the UI for {pauses[0]:F1} ms (second: {pauses[1]:F1} ms).");
+        Assert.True(pauses[0] < 100, $"First Settings click delayed the input timer by {pauses[0]:F1} ms (second: {pauses[1]:F1} ms).");
     });
 
     [Fact]
@@ -81,26 +88,32 @@ public sealed class FirstOpenLatencyTests(ITestOutputHelper output)
         {
             var watch = Stopwatch.StartNew();
             double lastTick = 0, longestPause = 0;
+            bool measuring = false;
+            var timerReady = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
             var timer = new DispatcherTimer(DispatcherPriority.Input) { Interval = TimeSpan.FromMilliseconds(10) };
             timer.Tick += (_, _) =>
             {
+                if (!measuring) { timerReady.TrySetResult(); return; }
                 double now = watch.Elapsed.TotalMilliseconds;
-                longestPause = Math.Max(longestPause, now - lastTick);
+                longestPause = Math.Max(longestPause, now - lastTick - timer.Interval.TotalMilliseconds);
                 lastTick = now;
             };
             timer.Start();
             try
             {
+                await timerReady.Task.WaitAsync(ct);
+                watch.Restart();
+                measuring = true;
                 coordinator.RequestView(NotchView.Media, "first-open-latency");
                 await WpfFrameWaiter.UntilAsync(() => !Animating(window) && coordinator.CurrentView == NotchView.Media, "notch expansion completes", ct);
             }
             finally { timer.Stop(); }
             pauses.Add(longestPause);
-            output.WriteLine($"Notch open {attempt + 1}: longest UI pause {longestPause:F1} ms");
+            output.WriteLine($"Notch open {attempt + 1}: longest input timer delay {longestPause:F1} ms");
             coordinator.RequestView(NotchView.Compact, "first-open-latency");
             await WpfFrameWaiter.UntilAsync(() => !Animating(window) && coordinator.CurrentView == NotchView.Compact, "notch collapse completes", ct);
         }
-        Assert.True(pauses[0] < 100, $"First notch click stalled the UI for {pauses[0]:F1} ms (second: {pauses[1]:F1} ms).");
+        Assert.True(pauses[0] < 100, $"First notch click delayed the input timer by {pauses[0]:F1} ms (second: {pauses[1]:F1} ms).");
     });
 
     [Theory]
