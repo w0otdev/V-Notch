@@ -106,15 +106,18 @@ try {
         exit 0
     }
 
-    # Write arguments to an MSBuild/dotnet response file so large filters never hit Windows command-line limits.
-    $rspFile = Join-Path $tempDir "shard-$ShardIndex.rsp"
+    # Keep large filters out of the command line without sending quoted CLI arguments through MSBuild response-file parsing.
+    $settingsFile = Join-Path $tempDir "shard-$ShardIndex.runsettings"
+    [xml]$settings = '<RunSettings><RunConfiguration><TestCaseFilter /></RunConfiguration></RunSettings>'
+    $settings.RunSettings.RunConfiguration.TestCaseFilter = $fullFilter
+    $settings.Save($settingsFile)
     $argsList = [System.Collections.Generic.List[string]]::new()
     $argsList.Add('--configuration')
     $argsList.Add($Configuration)
     $argsList.Add('--no-build')
     $argsList.Add('--no-restore')
-    $argsList.Add('--filter')
-    $argsList.Add($fullFilter)
+    $argsList.Add('--settings')
+    $argsList.Add($settingsFile)
     $argsList.Add('--blame-hang-timeout')
     $argsList.Add('60s')
     $argsList.Add('--logger')
@@ -123,17 +126,13 @@ try {
     $argsList.Add('console;verbosity=minimal')
     if ($CollectCoverage) {
         $resolvedResults = if ([IO.Path]::IsPathRooted($ResultsDirectory)) { $ResultsDirectory } else { Join-Path $repoRoot $ResultsDirectory }
-        $argsList.Add('--collect:XPlat Code Coverage')
+        $argsList.Add('--collect')
+        $argsList.Add('XPlat Code Coverage')
         $argsList.Add('--results-directory')
         $argsList.Add($resolvedResults)
     }
 
-    $escapedLines = $argsList | ForEach-Object {
-        if ($_ -match '[\s"&|()]') { '"' + ($_.Replace('"', '\"')) + '"' } else { $_ }
-    }
-    Set-Content -LiteralPath $rspFile -Value $escapedLines -Encoding UTF8
-
-    & dotnet test $resolvedProject "@$rspFile"
+    & dotnet test $resolvedProject @argsList
     if ($LASTEXITCODE -ne 0) {
         exit $LASTEXITCODE
     }
