@@ -61,6 +61,8 @@ public sealed partial class SystemMonitorModule : NotchModuleBase
     private double _latestDownBytesPerSec = 0;
     private double _latestUpBytesPerSec = 0;
     private readonly object _netStatsLock = new();
+    private int _networkGeneration;
+    private int _sampledNetworkGeneration = -1;
 
     private ulong _usablePhysicalBytes;
     private ulong _installedPhysicalBytes;
@@ -69,21 +71,25 @@ public sealed partial class SystemMonitorModule : NotchModuleBase
 
     protected override void OnInitialize()
     {
-        NativeReset(ref _cpuState);
-        NativeReset(ref _netState);
-
         if (NativeReadMemory(1, out var memory) == 0)
         {
             _usablePhysicalBytes = memory.TotalPhysical;
             _installedPhysicalBytes = memory.InstalledPhysical;
         }
         if (_installedPhysicalBytes == 0) _installedPhysicalBytes = _usablePhysicalBytes;
+    }
 
-        // Initialize baselines
+    protected override void OnStart()
+    {
+        // A hidden widget has no useful sampling interval. Start fresh instead
+        // of reporting CPU/network averages over the time it was closed.
+        NativeReset(ref _cpuState);
         SampleCpuUsage();
-        if (Interlocked.CompareExchange(ref _isNetworkSampling, 1, 0) == 0)
+        lock (_netStatsLock)
         {
-            Task.Run(SampleNetworkUsageBackground);
+            _networkGeneration++;
+            _latestDownBytesPerSec = 0;
+            _latestUpBytesPerSec = 0;
         }
     }
 
@@ -129,13 +135,25 @@ public sealed partial class SystemMonitorModule : NotchModuleBase
 
     private void SampleNetworkUsageBackground()
     {
+        int generation;
+        lock (_netStatsLock) generation = _networkGeneration;
         try
         {
+            // Only this serialized worker accesses _netState. A restart can
+            // invalidate a sample in flight without waiting on native I/O in WPF.
+            if (_sampledNetworkGeneration != generation)
+            {
+                NativeReset(ref _netState);
+                _sampledNetworkGeneration = generation;
+            }
             int status = NativeSampleNetwork(ref _netState, out double down, out double up);
             lock (_netStatsLock)
             {
-                _latestDownBytesPerSec = down;
-                _latestUpBytesPerSec = up;
+                if (generation == _networkGeneration)
+                {
+                    _latestDownBytesPerSec = down;
+                    _latestUpBytesPerSec = up;
+                }
             }
             if (status != 0) RuntimeLog.Log("SYSTEM-MONITOR-NET", $"native network sampling failed ({status})");
         }
@@ -143,8 +161,11 @@ public sealed partial class SystemMonitorModule : NotchModuleBase
         {
             lock (_netStatsLock)
             {
-                _latestDownBytesPerSec = 0;
-                _latestUpBytesPerSec = 0;
+                if (generation == _networkGeneration)
+                {
+                    _latestDownBytesPerSec = 0;
+                    _latestUpBytesPerSec = 0;
+                }
             }
             RuntimeLog.Log("SYSTEM-MONITOR-NET", ex.Message);
         }

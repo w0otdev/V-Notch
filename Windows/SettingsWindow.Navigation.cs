@@ -562,7 +562,6 @@ public partial class SettingsWindow
         else
         {
             element.BeginAnimation(OpacityProperty, null);
-            element.Opacity = ResolveElementRestingOpacity(element);
             element.Effect = null;
         }
     }

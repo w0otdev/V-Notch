@@ -339,7 +339,9 @@ internal static partial class FileIconProvider
     {
         try
         {
-            IntPtr hBitmap = Win32Interop.GetShellThumbnailBitmap(filePath, size, Win32Interop.SIIGBF_BIGGERSIZEOK);
+            // Ask the Shell to fit the requested box. BIGGERSIZEOK can hand back
+            // a much larger cached thumbnail that we would then retain in WPF.
+            IntPtr hBitmap = Win32Interop.GetShellThumbnailBitmap(filePath, size, 0);
             if (hBitmap == IntPtr.Zero) return null;
 
             try
@@ -364,10 +366,21 @@ internal static partial class FileIconProvider
     {
         try
         {
+            // Read only the dimensions before decoding. Limiting width alone
+            // lets a tall image retain thousands of rows for a tiny file icon.
+            using var stream = new FileStream(filePath, FileMode.Open, FileAccess.Read,
+                FileShare.ReadWrite | FileShare.Delete);
+            var decoder = BitmapDecoder.Create(stream, BitmapCreateOptions.DelayCreation, BitmapCacheOption.None);
+            var frame = decoder.Frames[0];
+            int width = frame.PixelWidth, height = frame.PixelHeight;
+            stream.Position = 0;
             var bitmap = new BitmapImage();
             bitmap.BeginInit();
-            bitmap.UriSource = new Uri(filePath);
-            bitmap.DecodePixelWidth = 48;
+            bitmap.StreamSource = stream;
+            if (height > width)
+                bitmap.DecodePixelHeight = Math.Min(48, height);
+            else
+                bitmap.DecodePixelWidth = Math.Min(48, width);
             bitmap.CacheOption = BitmapCacheOption.OnLoad;
             bitmap.EndInit();
             bitmap.Freeze();

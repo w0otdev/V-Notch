@@ -644,6 +644,8 @@ public partial class SpotlightWindow : Window
 
     private async void SearchBox_TextChanged(object sender, TextChangedEventArgs e)
     {
+        // Editing or sending takes precedence over a suggestion's presentation animation.
+        ResetAiPromptReveal();
         // CompleteHide clears the input while closing. Reset its overlays even
         // then: reopening with an already-empty input raises no TextChanged.
         PlaceholderText.Visibility = string.IsNullOrEmpty(SearchBox.Text)
@@ -723,7 +725,11 @@ public partial class SpotlightWindow : Window
 
     private void SearchBox_LostFocus(object sender, RoutedEventArgs e) => GlowingCaret.Visibility = Visibility.Collapsed;
 
-    private void SearchBox_SelectionChanged(object sender, RoutedEventArgs e) => UpdateGlowingCaret();
+    private void SearchBox_SelectionChanged(object sender, RoutedEventArgs e)
+    {
+        if (SearchBox.SelectionLength > 0) ResetAiPromptReveal();
+        UpdateGlowingCaret();
+    }
 
     private void UpdateGlowingCaret()
     {

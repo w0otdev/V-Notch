@@ -123,6 +123,32 @@
 
         <Style x:Key="AiSuggestionStyle" TargetType="Button" BasedOn="{StaticResource AiActionStyle}">
             <Setter Property="HorizontalContentAlignment" Value="Center"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <!-- Keep the hit target stationary while the visual lifts. -->
+                        <Grid Background="Transparent">
+                            <Grid x:Name="MotionSurface" RenderTransformOrigin="0.5,0.5">
+                                <Border CornerRadius="8" Background="{TemplateBinding Background}"/>
+                                <Border x:Name="HoverOverlay" CornerRadius="8" Background="{StaticResource AiHoverBrush}" Opacity="0" IsHitTestVisible="False"/>
+                                <Border x:Name="PressedOverlay" CornerRadius="8" Background="{StaticResource AiPressedBrush}" Opacity="0" IsHitTestVisible="False"/>
+                                <Border x:Name="Outline" CornerRadius="8" BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="{TemplateBinding BorderThickness}"
+                                        Padding="{TemplateBinding Padding}">
+                                    <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                </Border>
+                            </Grid>
+                        </Grid>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsKeyboardFocused" Value="True">
+                                <Setter TargetName="Outline" Property="BorderBrush" Value="{StaticResource AiFocusBrush}"/>
+                            </Trigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter TargetName="MotionSurface" Property="Opacity" Value="0.45"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
         </Style>
 
         <Style x:Key="AiHistoryOpenStyle" TargetType="Button" BasedOn="{StaticResource AiActionStyle}">
@@ -647,14 +673,6 @@
                                 <Setter Property="SelectionBrush" Value="White"/>
                                 <Setter Property="SelectionTextBrush" Value="#C8C8C8"/>
                                 <Setter Property="SelectionOpacity" Value="0.35"/>
-                                <Style.Triggers>
-                                    <DataTrigger Binding="{Binding Visibility, ElementName=AiPanel}" Value="Visible">
-                                        <Setter Property="FontWeight" Value="Bold"/>
-                                        <Setter Property="SelectionBrush" Value="{StaticResource AiPrimaryBrush}"/>
-                                        <Setter Property="SelectionTextBrush" Value="{StaticResource AiSurfaceBrush}"/>
-                                        <Setter Property="SelectionOpacity" Value="1"/>
-                                    </DataTrigger>
-                                </Style.Triggers>
                             </Style>
                         </TextBox.Style>
                         <TextBox.Template>
@@ -807,8 +825,8 @@
                                     <TextBlock x:Name="AiWelcomeTitle" FontFamily="{StaticResource SFProDisplay}" Foreground="{StaticResource AiPrimaryBrush}" FontSize="17" FontWeight="Bold" HorizontalAlignment="Center"/>
                                     <TextBlock x:Name="AiWelcomeHint" FontFamily="{StaticResource SFProDisplay}" FontWeight="Bold" Foreground="{StaticResource AiSecondaryBrush}" FontSize="12.5" LineHeight="20" Margin="0,8,0,20" TextAlignment="Center" TextWrapping="Wrap"/>
                                     <WrapPanel HorizontalAlignment="Center">
-                                        <Button x:Name="AiPromptOne" Style="{StaticResource AiSuggestionStyle}" Click="AiSuggestion_Click" Margin="0,0,8,6"/>
-                                        <Button x:Name="AiPromptTwo" Style="{StaticResource AiSuggestionStyle}" Click="AiSuggestion_Click" Margin="0,0,0,6"/>
+                                        <controls:AiSuggestionButton x:Name="AiPromptOne" Style="{StaticResource AiSuggestionStyle}" Click="AiSuggestion_Click" Margin="0,0,8,6"/>
+                                        <controls:AiSuggestionButton x:Name="AiPromptTwo" Style="{StaticResource AiSuggestionStyle}" Click="AiSuggestion_Click" Margin="0,0,0,6"/>
                                     </WrapPanel>
                                 </StackPanel>
                             </Border>

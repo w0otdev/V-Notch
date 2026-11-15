@@ -1,5 +1,4 @@
 using System.ComponentModel;
-using System.Globalization;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Documents;
@@ -14,11 +13,11 @@ namespace VNotch.Controls;
 /// Native TextBlock semantics and layout with a clipped, place-value digit reel on updates.
 /// Text/bindings/automation always expose the final value, never interpolated fake numbers.
 /// </summary>
-public class NumberFlowText : TextBlock
+public partial class NumberFlowText : TextBlock
 {
     private static readonly DependencyProperty ProgressProperty = DependencyProperty.Register(
         "Progress", typeof(double), typeof(NumberFlowText),
-        new FrameworkPropertyMetadata(1d, (d, _) => ((NumberFlowText)d)._adorner?.InvalidateVisual()));
+        new FrameworkPropertyMetadata(1d, (d, _) => ((NumberFlowText)d).UpdateAnimationFrame()));
     public static readonly DependencyProperty IsNumberFlowEnabledProperty = DependencyProperty.Register(
         nameof(IsNumberFlowEnabled), typeof(bool), typeof(NumberFlowText),
         new PropertyMetadata(true, (d, e) => { if (e.NewValue is false) ((NumberFlowText)d).Finish(); }));
@@ -29,8 +28,8 @@ public class NumberFlowText : TextBlock
         set => SetValue(IsNumberFlowEnabledProperty, value);
     }
 
-    private sealed record Glyph(NumberFlowValue.Part Part, Rect Bounds, FormattedText Text,
-        FormattedText[]? Digits);
+    private sealed record Glyph(NumberFlowValue.Part Part, Rect Bounds, NumberFlowGlyphCache.Image Image,
+        NumberFlowGlyphCache.Style Style);
     private sealed record Reel(Glyph Glyph, double From, double To, Point FromPoint, double FromOpacity);
     private sealed record Position(Glyph Glyph, double Value, Point Point, double Opacity);
     private List<Glyph> _layout = [];
@@ -39,7 +38,7 @@ public class NumberFlowText : TextBlock
     private string? _fromText;
     private string _lastText = "";
     private bool _pending;
-    private bool _queued;
+    private DispatcherOperation? _presentation;
     private NumberAdorner? _adorner;
     private AdornerLayer? _layer;
     private int _version;
@@ -59,7 +58,13 @@ public class NumberFlowText : TextBlock
         SetResourceReference(StyleProperty, typeof(TextBlock));
         Loaded += OnLoaded;
         Unloaded += OnUnloaded;
-        IsVisibleChanged += (_, _) => { if (!IsVisible) Finish(); };
+        IsVisibleChanged += (_, _) =>
+        {
+            if (IsVisible) return;
+            Finish();
+            _layout.Clear();
+            _glyphCache.Clear();
+        };
     }
 
     private void OnLoaded(object sender, RoutedEventArgs e)
@@ -67,9 +72,9 @@ public class NumberFlowText : TextBlock
         AnimationConfig.ReduceMotionChanged += OnMotionChanged;
         SystemParameters.StaticPropertyChanged += OnSystemChanged;
         LayoutUpdated += OnLayoutUpdated;
-        UpdateLayout();
         _lastText = Text ?? "";
-        _layout = BuildLayout(Text ?? "", "");
+        // Static labels do not need an animation layout or a digit alphabet.
+        // Capture the old value lazily on the first actual change.
         if (_fromText != null) { _pending = true; QueuePresentation(); }
     }
 
@@ -80,6 +85,7 @@ public class NumberFlowText : TextBlock
         LayoutUpdated -= OnLayoutUpdated;
         Finish();
         _layout.Clear();
+        _glyphCache.Clear();
     }
 
     private void OnSystemChanged(object? sender, PropertyChangedEventArgs e)
@@ -96,8 +102,9 @@ public class NumberFlowText : TextBlock
     private void OnLayoutUpdated(object? sender, EventArgs e)
     {
         // Run.Text changes defer the aggregate Text property; observe the settled inline text too.
+        if (_pending) { QueuePresentation(); return; }
         string text = Text ?? "";
-        if (_pending || text == _lastText) return;
+        if (text == _lastText) return;
         if (CanAnimate && _lastText.Any(char.IsDigit) && text.Any(char.IsDigit))
         {
             _previous = Capture();
@@ -139,7 +146,11 @@ public class NumberFlowText : TextBlock
 
     internal void Finish()
     {
+        if (_adorner == null && !_pending && _presentation == null) return;
         ++_version;
+        _presentation?.Abort();
+        _presentation = null;
+        _scene = null;
         BeginAnimation(ProgressProperty, null);
         SetValue(ProgressProperty, 1d);
         if (_adorner != null) _layer?.Remove(_adorner);
@@ -155,6 +166,7 @@ public class NumberFlowText : TextBlock
 
     private Dictionary<string, Position> Capture()
     {
+        if (!IsAnimating && _layout.Count == 0) _layout = BuildLayout(_lastText, "");
         if (!IsAnimating) return _layout.ToDictionary(g => g.Part.Key,
             g => new Position(g, g.Part.Digit, g.Bounds.TopLeft, 1));
         double progress = AnimationProgress;
@@ -165,13 +177,14 @@ public class NumberFlowText : TextBlock
 
     private void QueuePresentation()
     {
-        if (_queued || !IsLoaded) return;
-        _queued = true;
-        Dispatcher.BeginInvoke(DispatcherPriority.Render, new Action(() =>
+        if (_presentation != null || !IsLoaded) return;
+        // Loaded priority runs after WPF's pending layout/render work. Forcing
+        // UpdateLayout here made every number flush the entire dispatcher tree.
+        _presentation = Dispatcher.BeginInvoke(DispatcherPriority.Loaded, new Action(() =>
         {
-            _queued = false;
+            _presentation = null;
             if (!_pending) return;
-            UpdateLayout();
+            if (!IsMeasureValid || !IsArrangeValid) return;
             Present();
         }));
     }
@@ -201,6 +214,7 @@ public class NumberFlowText : TextBlock
             _previous = null;
             _fromText = null;
             _layer = layer;
+            _scene = new ReelScene(_reels, _glyphCache);
             if (_adorner == null)
             {
                 _adorner = new NumberAdorner(this) { IsHitTestVisible = false };
@@ -209,6 +223,7 @@ public class NumberFlowText : TextBlock
                 hide.KeyFrames.Add(new DiscreteObjectKeyFrame(Brushes.Transparent, KeyTime.FromTimeSpan(TimeSpan.Zero)));
                 BeginAnimation(OpacityMaskProperty, hide);
             }
+            _adorner.InvalidateVisual();
             BeginAnimation(ProgressProperty, null);
             SetValue(ProgressProperty, 1d);
             int version = ++_version;
@@ -216,6 +231,7 @@ public class NumberFlowText : TextBlock
                 AnimationPrimitives._easeUiOut, null);
             animation.Completed += (_, _) => { if (version == _version) Finish(); };
             BeginAnimation(ProgressProperty, animation, HandoffBehavior.SnapshotAndReplace);
+            UpdateAnimationFrame();
         }
 
         else { Finish(); _lastText = text; }
@@ -223,117 +239,13 @@ public class NumberFlowText : TextBlock
 
     private sealed class NumberAdorner(NumberFlowText owner) : Adorner(owner)
     {
-        protected override void OnRender(DrawingContext drawingContext) => owner.RenderReels(drawingContext);
+        internal int RenderCount { get; private set; }
+        protected override void OnRender(DrawingContext drawingContext)
+        {
+            RenderCount++;
+            owner.RenderReels(drawingContext);
+        }
         protected override HitTestResult? HitTestCore(PointHitTestParameters hitTestParameters) => null;
-    }
-
-    private void RenderReels(DrawingContext dc)
-    {
-        // Clip in this visual, so parent transforms, opacity, glass and scroll clips still apply.
-        var clip = new Rect(RenderSize);
-        double opacity = Opacity;
-        for (DependencyObject? parent = VisualTreeHelper.GetParent(this); parent is Visual visual; parent = VisualTreeHelper.GetParent(parent))
-        {
-            if (_layer != null && ReferenceEquals(parent, VisualTreeHelper.GetParent(_layer))) break;
-            if (parent is UIElement element)
-            {
-                opacity *= element.Opacity;
-                if (element.ClipToBounds || element.Clip != null)
-                {
-                    var bounds = element.Clip?.Bounds ?? new Rect(element.RenderSize);
-                    clip.Intersect(visual.TransformToVisual(this).TransformBounds(bounds));
-                }
-            }
-            if (parent is Window) break;
-        }
-        if (clip.IsEmpty) return;
-        dc.PushOpacity(opacity);
-        dc.PushClip(new RectangleGeometry(clip));
-        double progress = AnimationProgress;
-        foreach (var reel in _reels)
-        {
-            var glyph = reel.Glyph;
-            double x = Lerp(reel.FromPoint.X, glyph.Bounds.X, progress);
-            double y = Lerp(reel.FromPoint.Y, glyph.Bounds.Y, progress);
-            dc.PushOpacity(Lerp(reel.FromOpacity, 1, progress));
-            if (glyph.Digits == null || Math.Abs(reel.To - reel.From) < .001)
-                dc.DrawText(glyph.Text, new Point(x, y));
-            else
-            {
-                double position = Lerp(reel.From, reel.To, progress);
-                int first = (int)Math.Floor(position);
-                double height = glyph.Bounds.Height;
-                dc.PushClip(new RectangleGeometry(new Rect(x - 1, y, glyph.Bounds.Width + 2, height)));
-                for (int row = first; row <= first + 1; row++)
-                {
-                    int radix = glyph.Digits.Length;
-                    var digit = glyph.Digits[(row % radix + radix) % radix];
-                    double offset = (row - position) * height;
-                    // Soft edges avoid the hard slot-machine cut at the top and bottom.
-                    dc.PushOpacity(Math.Clamp(1 - Math.Abs(offset) / height * .65, 0, 1));
-                    dc.DrawText(digit, new Point(x + (glyph.Bounds.Width - digit.WidthIncludingTrailingWhitespace) / 2, y + offset));
-                    dc.Pop();
-                }
-                dc.Pop();
-            }
-            dc.Pop();
-        }
-        dc.Pop();
-        dc.Pop();
-    }
-
-    private List<Glyph> BuildLayout(string text, string previous)
-    {
-        if (string.IsNullOrEmpty(text) || text.Length >= 512 || !text.Any(char.IsDigit) ||
-            ActualWidth <= 0 || ActualHeight <= 0) return [];
-        var culture = Language.GetEquivalentCulture();
-        double dpi = VisualTreeHelper.GetDpi(this).PixelsPerDip;
-        var typeface = new Typeface(FontFamily, FontStyle, FontWeight, FontStretch);
-        var formatted = new FormattedText(text, culture, FlowDirection, typeface, FontSize, Foreground, dpi)
-        {
-            MaxTextWidth = Math.Max(1, ActualWidth - Padding.Left - Padding.Right),
-            TextAlignment = TextAlignment,
-            Trimming = TextTrimming
-        };
-        if (!double.IsNaN(LineHeight)) formatted.LineHeight = LineHeight;
-        var styles = Enumerable.Repeat((FontSize, typeface, Foreground), text.Length).ToArray();
-        int index = 0;
-        void ApplyInlines(InlineCollection inlines)
-        {
-            foreach (var inline in inlines)
-            {
-                if (inline is Span span) { ApplyInlines(span.Inlines); continue; }
-                if (inline is LineBreak) { index++; continue; }
-                if (inline is not Run run) continue;
-                int length = Math.Min(run.Text.Length, text.Length - index);
-                if (length <= 0) continue;
-                var face = new Typeface(run.FontFamily, run.FontStyle, run.FontWeight, run.FontStretch);
-                formatted.SetFontSize(run.FontSize, index, length);
-                formatted.SetFontTypeface(face, index, length);
-                formatted.SetForegroundBrush(run.Foreground, index, length);
-                for (int j = index; j < index + length; j++) styles[j] = (run.FontSize, face, run.Foreground);
-                index += length;
-            }
-        }
-        if (text == Text || text.Length == Text?.Length) ApplyInlines(Inlines);
-        var output = new List<Glyph>(text.Length);
-        foreach (var part in NumberFlowValue.Split(text, previous))
-        {
-            if (part.Character is '\n' or '\r') continue;
-            var geometry = formatted.BuildHighlightGeometry(new Point(Padding.Left, Padding.Top), part.Index, 1);
-            if (geometry == null || geometry.Bounds.IsEmpty) continue;
-            var (size, face, brush) = styles[part.Index];
-            FormattedText Make(char value) => new(value.ToString(), culture, FlowDirection, face, size, brush, dpi);
-            var glyph = Make(part.Character);
-            var bounds = geometry.Bounds;
-            // Highlight rectangles use the line height; align mixed-size runs on their baseline.
-            bounds.Y += Math.Max(0, formatted.Baseline - glyph.Baseline);
-            bounds.Height = glyph.Height;
-            var digits = part.Digit >= 0
-                ? Enumerable.Range(0, part.Radix).Select(n => Make((char)(part.Character - part.Digit + n))).ToArray() : null;
-            output.Add(new(part, bounds, glyph, digits));
-        }
-        return output;
     }
 
     private static double Lerp(double from, double to, double progress) => from + (to - from) * progress;

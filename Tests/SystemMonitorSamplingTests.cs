@@ -39,8 +39,16 @@ public sealed class SystemMonitorSamplingTests
         int count = samples.Count;
         module.Tick();
         Assert.Equal(count, samples.Count);
+        await TestWait.UntilAsync(() => (int)typeof(SystemMonitorModule).GetField("_isNetworkSampling",
+            System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!.GetValue(module)! == 0,
+            "network sample finished", ct);
+        foreach (string field in new[] { "_latestDownBytesPerSec", "_latestUpBytesPerSec" })
+            typeof(SystemMonitorModule).GetField(field, System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!
+                .SetValue(module, 12345.0);
         module.Start();
         Assert.Equal(count + 1, samples.Count);
+        Assert.Equal(0, samples[^1].NetDownBytesPerSec);
+        Assert.Equal(0, samples[^1].NetUpBytesPerSec);
         module.Dispose();
         module.Tick();
         module.Start();

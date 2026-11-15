@@ -383,6 +383,10 @@ public partial class SpotlightWindow
     }
     private void AiSuggestion_Click(object sender, RoutedEventArgs e)
     {
-        if (sender is Button { Content: string prompt }) { SearchBox.Text = prompt; SearchBox.Focus(); SearchBox.CaretIndex = prompt.Length; }
+        if (sender is not Button { Content: string prompt }) return;
+        SearchBox.Text = prompt;
+        SearchBox.Focus();
+        SearchBox.CaretIndex = prompt.Length;
+        AnimateAiPromptReveal();
     }
 }

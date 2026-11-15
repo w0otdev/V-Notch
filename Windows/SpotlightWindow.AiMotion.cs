@@ -15,6 +15,7 @@ public partial class SpotlightWindow
 {
     private VNotch.Controls.ThinkingOrb? _aiThinkingOrb;
     private Border? _aiThinkingCard;
+    private LinearGradientBrush? _aiPromptRevealMask;
 
     private RichTextBox? AddAiMessage(SpotlightAiMessage message, bool animate)
     {
@@ -240,6 +241,50 @@ public partial class SpotlightWindow
         }
         ScheduleContentResize();
         return Task.CompletedTask;
+    }
+
+    private void AnimateAiPromptReveal()
+    {
+        ResetAiPromptReveal();
+        if (AnimationConfig.ReduceMotion || string.IsNullOrEmpty(SearchBox.Text)) return;
+
+        SearchBox.UpdateLayout();
+        double width = Math.Max(1, SearchBox.ActualWidth);
+        var caret = GetSearchBoxCaretRect(SearchBox.Text.Length, SearchBox.Text.Length);
+        double end = caret.IsEmpty ? 1 : Math.Clamp((caret.Right + 4) / width, 0.08, 1);
+        double feather = Math.Min(0.12, 28 / width);
+        var ink = new GradientStop(Colors.Black, -feather);
+        var edge = new GradientStop(Colors.Transparent, 0);
+        var mask = new LinearGradientBrush
+        {
+            StartPoint = new Point(0, 0.5), EndPoint = new Point(1, 0.5),
+            GradientStops = { ink, edge }
+        };
+        _aiPromptRevealMask = mask;
+        SearchBox.OpacityMask = mask;
+
+        // Reveal the ink in place with a feathered sweep. The complete draft is
+        // already editable; no character timers, layout shifts or delayed input.
+        var duration = TimeSpan.FromMilliseconds(360);
+        var ease = CubicBezierEase.FromEaseOutCurve(0.22, 0.61, 0.36, 1);
+        var inkReveal = new DoubleAnimation(-feather, end, duration) { EasingFunction = ease };
+        var edgeReveal = new DoubleAnimation(0, end + feather, duration) { EasingFunction = ease };
+        Timeline.SetDesiredFrameRate(inkReveal, AnimationConfig.TargetFps);
+        Timeline.SetDesiredFrameRate(edgeReveal, AnimationConfig.TargetFps);
+        edgeReveal.Completed += (_, _) =>
+        {
+            if (ReferenceEquals(_aiPromptRevealMask, mask)) ResetAiPromptReveal();
+        };
+        ink.BeginAnimation(GradientStop.OffsetProperty, inkReveal);
+        edge.BeginAnimation(GradientStop.OffsetProperty, edgeReveal);
+    }
+
+    private void ResetAiPromptReveal()
+    {
+        if (_aiPromptRevealMask is not { } mask) return;
+        _aiPromptRevealMask = null;
+        foreach (var stop in mask.GradientStops) stop.BeginAnimation(GradientStop.OffsetProperty, null);
+        if (ReferenceEquals(SearchBox.OpacityMask, mask)) SearchBox.OpacityMask = null;
     }
 
     private static void AnimateAiFade(FrameworkElement element)

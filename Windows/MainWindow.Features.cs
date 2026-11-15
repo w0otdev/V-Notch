@@ -27,6 +27,7 @@ public partial class MainWindow
 
     private void EnsureActiveExpandedWidgetFeatureLoaded()
     {
+        UpdateSystemMonitorActivity();
         if (!_isExpanded)
         {
             return;
@@ -35,11 +36,6 @@ public partial class MainWindow
         if (_settings.EnableWeather && !_weatherModule.IsRunning)
         {
             _weatherModule.Start();
-        }
-
-        if (IsSystemMonitorWidgetMode && !_systemMonitorModule.IsRunning)
-        {
-            _systemMonitorModule.Start();
         }
     }
 }
