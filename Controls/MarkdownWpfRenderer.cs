@@ -1,5 +1,6 @@
 using System;
 using System.Globalization;
+using System.Text;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Documents;
@@ -441,7 +442,7 @@ internal static class MarkdownWpfRenderer
     private static void AddFlowInlines(InlineCollection target, ContainerInline container, MarkdownFlowOptions opt)
     {
         bool trimNextSpace = false;
-        foreach (var inline in container)
+        for (var inline = container.FirstChild; inline != null; inline = inline.NextSibling)
         {
             if (trimNextSpace && inline is LiteralInline trimmedLiteral)
             {
@@ -458,7 +459,8 @@ internal static class MarkdownWpfRenderer
             switch (inline)
             {
                 case LiteralInline literal:
-                    target.Add(new Run(literal.Content.ToString()));
+                    target.Add(new Run(ReadAdjacentLiteralText(literal, out var lastLiteral)));
+                    inline = lastLiteral;
                     break;
 
                 case HtmlEntityInline entity:
@@ -906,7 +908,7 @@ internal static class MarkdownWpfRenderer
         bool skipLeadingTaskList)
     {
         bool trimNextSpace = false;
-        foreach (var inline in container)
+        for (var inline = container.FirstChild; inline != null; inline = inline.NextSibling)
         {
             if (inline is TaskList task)
             {
@@ -938,7 +940,8 @@ internal static class MarkdownWpfRenderer
             switch (inline)
             {
                 case LiteralInline literal:
-                    target.Add(CreatePanelRun(literal.Content.ToString(), opt));
+                    target.Add(CreatePanelRun(ReadAdjacentLiteralText(literal, out var lastLiteral), opt));
+                    inline = lastLiteral;
                     break;
 
                 case HtmlEntityInline entity:
@@ -1022,6 +1025,24 @@ internal static class MarkdownWpfRenderer
                     break;
             }
         }
+    }
+
+    private static string ReadAdjacentLiteralText(LiteralInline first, out LiteralInline last)
+    {
+        last = first;
+        if (first.NextSibling is not LiteralInline)
+            return first.Content.ToString();
+
+        // Unmatched Markdown delimiters can produce thousands of adjacent literals.
+        // Batch them before creating WPF text elements; appending to Run.Text instead
+        // would repeatedly copy the growing string and invalidate the text container.
+        var text = new StringBuilder(first.Content.ToString());
+        while (last.NextSibling is LiteralInline next)
+        {
+            text.Append(next.Content.Text, next.Content.Start, next.Content.Length);
+            last = next;
+        }
+        return text.ToString();
     }
 
     // Bold/Italic subclasses keep the document semantic for copy and tests.
