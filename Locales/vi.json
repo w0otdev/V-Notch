@@ -693,6 +693,8 @@
   "spotlight.ai.emptyError": "Nhà cung cấp không trả về văn bản đọc được. Thử câu hỏi hoặc mô hình khác.",
   "spotlight.ai.hint": "",
   "spotlight.ai.history": "Lịch sử hội thoại",
+  "spotlight.ai.switchProvider": "Đổi nhà cung cấp",
+  "spotlight.ai.providerNotConfigured": "Thiết lập trong Cài đặt",
   "spotlight.ai.metadata": "{0} tin nhắn · {1:N0} ký tự",
   "spotlight.ai.modelError": "Yêu cầu bị từ chối. Kiểm tra mã mô hình và quyền truy cập của tài khoản API.",
   "spotlight.ai.networkError": "Không thể hoàn tất yêu cầu. Kiểm tra kết nối và thử lại.",

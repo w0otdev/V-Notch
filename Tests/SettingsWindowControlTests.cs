@@ -41,8 +41,10 @@ public sealed class SettingsWindowControlTests
             host.Show();
             await System.Windows.Threading.Dispatcher.Yield(System.Windows.Threading.DispatcherPriority.ApplicationIdle);
             var before = text.TransformToAncestor(button).TransformBounds(new Rect(text.RenderSize));
-            var ring = (Border)button.Template.FindName("RowFocusRing", button);
+            Assert.Null(button.Template.FindName("RowFocusRing", button));
             var hover = (Border)button.Template.FindName("RowHoverFeedback", button);
+            Assert.Equal(new Thickness(0), hover.BorderThickness);
+            Assert.Null(hover.BorderBrush);
             var focusKey = (DependencyPropertyKey)typeof(UIElement)
                 .GetField("IsKeyboardFocusedPropertyKey", BindingFlags.Static | BindingFlags.NonPublic)!.GetValue(null)!;
             var hoverKey = (DependencyPropertyKey)typeof(UIElement)
@@ -57,7 +59,7 @@ public sealed class SettingsWindowControlTests
                     Assert.Equal(before, text.TransformToAncestor(button).TransformBounds(new Rect(text.RenderSize)));
                     Assert.Equal(1, text.Opacity);
                     Assert.Equal(1, button.Opacity);
-                    return ring.Opacity == (focused ? 1 : 0) && hover.Opacity == (focused ? 0 : 1);
+                    return hover.Opacity == 1;
                 }, "preset feedback settles without moving or fading its text", ct);
             }
         }
@@ -1050,7 +1052,8 @@ public sealed class SettingsWindowControlTests
             await WpfFrameWaiter.UntilAsync(() => window.NavHoverIndicator.Opacity == 1,
                 "unselected settings row reveals its hover surface", ct);
             Assert.Same(window.FindResource("AccentNavHoverBrush"), window.NavHoverIndicator.Background);
-            Assert.Same(window.FindResource("AccentNavHoverBorderBrush"), window.NavHoverIndicator.BorderBrush);
+            Assert.Equal(new Thickness(0), window.NavHoverIndicator.BorderThickness);
+            Assert.Null(window.NavHoverIndicator.BorderBrush);
             double displayedY = window.NavHoverIndicatorTranslate.Y;
             window.NavSkins.RaiseEvent(new MouseEventArgs(Mouse.PrimaryDevice, Environment.TickCount) { RoutedEvent = Mouse.MouseLeaveEvent });
             Assert.Equal("Skins", Field<string>(window, "_hoveredNav"));

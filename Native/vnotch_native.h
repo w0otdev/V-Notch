@@ -733,6 +733,14 @@ struct VnCategoryPillMotionOut
 #pragma pack(pop)
 
 VN_EXPORT int32_t __stdcall vn_audio_sessions_open_all(int64_t* snapshot, int32_t* count, int32_t* hresult) noexcept;
+#pragma pack(push, 1)
+// Caller-owned UTF-16 arena: offset/length are code units, without terminators.
+struct VnLocalFileResult { int32_t offset, length, kind; double score; };
+#pragma pack(pop)
+static_assert(sizeof(VnLocalFileResult) == 20);
+VN_EXPORT int32_t __stdcall vn_local_file_search_copy_results(int64_t handle,
+    VnLocalFileResult* results, int32_t capacity, char16_t* text, int32_t text_capacity,
+    int32_t* count, int32_t* text_length) noexcept;
 VN_EXPORT int32_t __stdcall vn_local_file_search_create(int64_t* handle) noexcept;
 VN_EXPORT int32_t __stdcall vn_local_file_search_cancel(int64_t handle) noexcept;
 VN_EXPORT int32_t __stdcall vn_local_file_search_close(int64_t handle) noexcept;

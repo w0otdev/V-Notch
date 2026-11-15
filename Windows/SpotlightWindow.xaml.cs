@@ -122,6 +122,7 @@ public partial class SpotlightWindow : Window
         {
             if (!_isParked
                 && !_isClosing
+                && _aiProviderMenu is not { IsOpen: true }
                 && SearchBox.IsEnabled
                 && !SearchBox.IsKeyboardFocused)
             {
@@ -495,6 +496,7 @@ public partial class SpotlightWindow : Window
         if (!IsSpotlightOpen || _isClosing) return;
         PlaySpotlightClickSfx();
         CloseResultContextMenu();
+        CloseAiProviderMenu();
         SaveAiHistory();
         StopAiActivity();
         _lastDismissedQuery = SearchBox.Text;
@@ -518,6 +520,7 @@ public partial class SpotlightWindow : Window
     {
         ++_animationGeneration;
         _allowClose = true;
+        CloseAiProviderMenu();
         CancelAiRequest();
         SaveAiHistory();
         StopAiActivity();
@@ -1454,7 +1457,8 @@ public partial class SpotlightWindow : Window
         int generation = _animationGeneration;
         Dispatcher.BeginInvoke(() =>
         {
-            if (generation != _animationGeneration || !IsSpotlightOpen || _isClosing || _personalizationOpen || _resultMenuOpen) return;
+            if (generation != _animationGeneration || !IsSpotlightOpen || IsActive || _isClosing || _personalizationOpen || _resultMenuOpen
+                || _aiProviderMenu is { IsOpen: true }) return;
             HideSpotlight();
         }, DispatcherPriority.Input);
     }

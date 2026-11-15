@@ -76,6 +76,7 @@ public partial class SpotlightWindow
 
     internal void ApplySettings(NotchSettings settings)
     {
+        CloseAiProviderMenu();
         bool languageChanged = !string.Equals(_settings.Language, settings.Language, StringComparison.Ordinal);
         bool restoreSavedChats = !_settings.SaveAiChatHistory && settings.SaveAiChatHistory;
         if (settings.EnableLocalOnlyMode || !settings.AllowOnlineAi)
@@ -100,6 +101,7 @@ public partial class SpotlightWindow
         {
             CancelAiRequest();
             SaveAiHistory();
+            _aiSelectedProvider = null;
             _chatId = Guid.NewGuid().ToString("N");
             _aiHistory.Clear();
             _aiConversationProvider = settings.SpotlightAiProvider;

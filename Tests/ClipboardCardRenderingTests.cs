@@ -87,11 +87,12 @@ public sealed class ClipboardCardRenderingTests
         }, height);
         var preview = Descendants(card).OfType<TextBlock>().Single(element => element.Name == "CardPreviewText");
         var viewport = Descendants(card).OfType<Grid>().Single(element => element.Name == "CardPreviewViewport");
-        // Render the settled production selection rim without relying on the
+        // Render the settled production selection feedback without relying on the
         // animation clock or requiring the card's containing window to be visible.
-        var selectionRim = Descendants(card).OfType<System.Windows.Shapes.Rectangle>().Single(element => element.Name == "SelectedRim");
-        selectionRim.BeginAnimation(UIElement.OpacityProperty, null);
-        selectionRim.Opacity = selected ? 1 : 0;
+        var selection = Descendants(card).OfType<System.Windows.Shapes.Rectangle>().Single(element => element.Name == "SelectedFeedback");
+        Assert.Null(selection.Stroke);
+        selection.BeginAnimation(UIElement.OpacityProperty, null);
+        selection.Opacity = selected ? 1 : 0;
         Descendants(card).OfType<Border>().Single(element => element.Name == "CardActions").Visibility = Visibility.Collapsed;
         var origin = viewport.TranslatePoint(new Point(), card);
         var previewBounds = new Rect(origin, viewport.RenderSize);

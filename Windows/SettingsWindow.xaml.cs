@@ -29,7 +29,6 @@ public partial class SettingsWindow : Window
     private static readonly SolidColorBrush DragHandleGlyphBrush = CreateSettingsBrush(Color.FromArgb(160, 255, 255, 255));
     private static readonly SolidColorBrush DragHandleHoverBrush = CreateSettingsBrush(Color.FromArgb(40, 255, 255, 255));
     private static readonly SolidColorBrush DraggingBackgroundBrush = CreateSettingsBrush(Color.FromArgb(50, 255, 255, 255));
-    private static readonly SolidColorBrush DraggingBorderBrush = CreateSettingsBrush(Color.FromArgb(80, 255, 255, 255));
     private static readonly SolidColorBrush BackupSuccessBrush = CreateSettingsBrush(Color.FromRgb(48, 209, 88));
     private static readonly SolidColorBrush StatusMutedBrush = CreateSettingsBrush(Color.FromRgb(107, 114, 128));
     private static readonly SolidColorBrush StatusErrorBrush = CreateSettingsBrush(Color.FromRgb(239, 68, 68));

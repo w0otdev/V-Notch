@@ -16,7 +16,7 @@ public sealed class ClipboardSearchPresentationTests
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
-    public void HoverReversalsSettleAndKeyboardFocusKeepsTheRingVisible(bool reducedMotion) => SharedStaTestRunner.RunAsync(async ct =>
+    public void HoverReversalsSettleAndKeyboardFocusKeepsTheSurfaceVisible(bool reducedMotion) => SharedStaTestRunner.RunAsync(async ct =>
     {
         bool previousMotion = AnimationConfig.ReduceMotion;
         AnimationConfig.SetReduceMotion(reducedMotion);
@@ -27,7 +27,9 @@ public sealed class ClipboardSearchPresentationTests
             window.Show();
             await Dispatcher.Yield(DispatcherPriority.ApplicationIdle);
             var surface = (Border)tray.FindName("SearchSurface");
-            var ring = (Border)tray.FindName("SearchFeedbackRing");
+            Assert.Null(tray.FindName("SearchFeedbackRing"));
+            var fill = (Border)tray.FindName("SearchFeedbackFill");
+            Assert.Equal(new Thickness(0), fill.BorderThickness);
             var icon = (TrayIcon)tray.FindName("SearchGlyph");
             var search = (TextBox)tray.FindName("SearchBox");
             var other = (Button)tray.FindName("AddLabelButton");
@@ -37,17 +39,17 @@ public sealed class ClipboardSearchPresentationTests
             surface.SetValue(mouseOver, true);
             surface.SetValue(mouseOver, false);
             surface.SetValue(mouseOver, true);
-            await WpfFrameWaiter.UntilAsync(() => Math.Abs(ring.Opacity - .55) < .001
+            await WpfFrameWaiter.UntilAsync(() => Math.Abs(fill.Opacity - .55) < .001
                 && Math.Abs(icon.RenderTransform.Value.M11 - (reducedMotion ? 1 : 1.06)) < .001,
                 "search hover settles to the latest pointer state", ct);
 
             SetSearchFocusState(tray, true);
             surface.SetValue(mouseOver, false);
-            await WpfFrameWaiter.UntilAsync(() => ring.Opacity == 1
+            await WpfFrameWaiter.UntilAsync(() => fill.Opacity == 1
                 && Math.Abs(icon.RenderTransform.Value.M11 - (reducedMotion ? 1 : 1.08)) < .001,
                 "keyboard focus stays visible after pointer leaves", ct);
             SetSearchFocusState(tray, false);
-            await WpfFrameWaiter.UntilAsync(() => ring.Opacity == 0
+            await WpfFrameWaiter.UntilAsync(() => fill.Opacity == 0
                 && Math.Abs(icon.RenderTransform.Value.M11 - 1) < .001,
                 "search feedback returns to rest", ct);
         }
@@ -138,7 +140,6 @@ public sealed class ClipboardSearchPresentationTests
             window.Show();
             await Dispatcher.Yield(DispatcherPriority.ApplicationIdle);
             var search = (TextBox)tray.FindName("SearchBox");
-            var ring = (Border)tray.FindName("SearchFeedbackRing");
             var fill = (Border)tray.FindName("SearchFeedbackFill");
             var icon = (TrayIcon)tray.FindName("SearchGlyph");
             SetSearchFocusState(tray, true);
@@ -147,7 +148,7 @@ public sealed class ClipboardSearchPresentationTests
                 AccentTheme.Apply(accent);
                 await Dispatcher.Yield(DispatcherPriority.DataBind);
                 var expected = AccentTheme.GetSwatch(accent).Color;
-                Assert.Equal(expected, Assert.IsType<SolidColorBrush>(ring.BorderBrush).Color);
+                Assert.Same(Application.Current.FindResource("AccentSubtleBrush"), fill.Background);
                 Assert.Equal(expected, Assert.IsType<SolidColorBrush>(search.CaretBrush).Color);
                 Assert.Equal(expected, Assert.IsType<SolidColorBrush>(search.SelectionBrush).Color);
                 Assert.Equal(expected, Assert.IsType<SolidColorBrush>(icon.Foreground).Color);

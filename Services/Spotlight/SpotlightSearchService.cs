@@ -300,12 +300,10 @@ internal sealed partial class SpotlightSearchService
 
             bool pinned = prefs.IsPinned(item.Target);
             double usageBoost = _usage.GetBoostNormalized(item.Id, normalizedQuery);
-            _ = vn_spotlight_search_compute_boosted_score(
-                item.Score, usageBoost, pinned ? (byte)1 : (byte)0, out double boosted);
             output.Add(item with
             {
                 IsPinned = pinned,
-                Score = boosted
+                Score = item.Score + usageBoost + (pinned ? 150 : 0)
             });
         }
 

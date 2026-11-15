@@ -30,6 +30,51 @@ internal sealed partial class NativeClipboardRecordStore : IDisposable
     private static partial int vn_clipboard_record_append(RecordHandle handle, string path, int pathLength,
         ReadOnlySpan<byte> payload, int length);
 
+    [StructLayout(LayoutKind.Sequential, Pack = 1)]
+    private struct StartupItem
+    {
+        public int DirectoryOffset, DirectoryLength, Status, PayloadLength, MigrationStatus;
+    }
+    [LibraryImport("VNotch.Native.dll", StringMarshalling = StringMarshalling.Utf16)]
+    private static partial int vn_clipboard_record_startup_batch(RecordHandle handle,
+        string directories, int directoryChars, Span<StartupItem> items, int count, Span<byte> payloads, int capacity);
+
+    internal delegate void StartupRecordReader(string directory, ReadOnlySpan<byte> json, bool needsFallback, bool migrationDeferred);
+
+    // The callback must consume the borrowed plaintext before returning. The
+    // fixed batch bounds peak memory regardless of the number of pinned items.
+    internal void ReadStartupBatch(IReadOnlyList<string> directories, StartupRecordReader read)
+    {
+        const int stride = 4096;
+        if (directories.Count is < 1 or > 32) throw new ArgumentOutOfRangeException(nameof(directories));
+        Span<StartupItem> items = stackalloc StartupItem[directories.Count];
+        string paths = string.Join('\0', directories);
+        int offset = 0;
+        for (int i = 0; i < items.Length; i++)
+        {
+            items[i] = new() { DirectoryOffset = offset, DirectoryLength = directories[i].Length };
+            offset += directories[i].Length + 1;
+        }
+        byte[] payloads = ArrayPool<byte>.Shared.Rent(items.Length * stride);
+        try
+        {
+            if (vn_clipboard_record_startup_batch(_handle, paths, paths.Length, items, items.Length,
+                payloads, payloads.Length) != 0) throw new IOException("Could not read clipboard startup metadata.");
+            for (int i = 0; i < items.Length; i++)
+            {
+                var item = items[i];
+                bool valid = item.Status == 0 && item.PayloadLength is > 0 and <= stride;
+                read(directories[i], valid ? payloads.AsSpan(i * stride, item.PayloadLength) : [],
+                    needsFallback: !valid, migrationDeferred: item.MigrationStatus != 0);
+            }
+        }
+        finally
+        {
+            CryptographicOperations.ZeroMemory(payloads);
+            ArrayPool<byte>.Shared.Return(payloads);
+        }
+    }
+
     internal NativeClipboardRecordStore(string root)
     {
         if (vn_clipboard_record_open(root, root.Length, out long handle) != 0)

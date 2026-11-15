@@ -1,0 +1,269 @@
+#pragma once
+#include "vnotch_common.h"
+#include "vnotch_cpu.h"
+#include <algorithm>
+#include <charconv>
+#include <cmath>
+#include <cstdint>
+#include <cstdio>
+#include <cstring>
+#include <immintrin.h>
+#include <limits>
+#include <string_view>
+
+namespace vnotch::controllers {
+constexpr uint64_t Avalanche64(uint64_t x) noexcept
+{
+    x ^= x >> 33;
+    x *= 0xff51afd7ed558ccdULL;
+    x ^= x >> 33;
+    x *= 0xc4ceb9fe1a85ec53ULL;
+    x ^= x >> 33;
+    return x;
+}
+
+inline double Smoother01(double x) noexcept
+{
+    const double t = std::clamp(x, 0.0, 1.0);
+    return t * t * t * (t * (t * 6.0 - 15.0) + 10.0);
+}
+
+inline double RoundedRectSdf(
+    double px, double py, double bx, double by, double top_radius, double bottom_radius) noexcept
+{
+    const double r = py < 0.0 ? top_radius : bottom_radius;
+    const double qx = std::abs(px) - (bx - r);
+    const double qy = (py < 0.0 ? -py : py) - (by - r);
+    if (qx > 0.0 && qy > 0.0) return std::sqrt(qx * qx + qy * qy) - r;
+    if (qx > 0.0) return qx - r;
+    if (qy > 0.0) return qy - r;
+    return std::max(qx - r, qy - r);
+}
+
+inline double GlassHash(int32_t ix, int32_t iy) noexcept
+{
+    uint32_t h = static_cast<uint32_t>(ix * 374761393 + iy * 668265263);
+    h = (h ^ (h >> 13)) * 1274126177u;
+    return static_cast<double>((h ^ (h >> 16)) & 0xFFFFFFu) * (1.0 / 16777216.0);
+}
+
+inline double ValueNoise(double px, double py) noexcept
+{
+    if (!std::isfinite(px) || !std::isfinite(py))
+    {
+        return 0.5;
+    }
+    const double clamped_px = std::clamp(px, -1e8, 1e8);
+    const double clamped_py = std::clamp(py, -1e8, 1e8);
+    const double floor_x = std::floor(clamped_px);
+    const double floor_y = std::floor(clamped_py);
+    const int32_t ix = static_cast<int32_t>(floor_x);
+    const int32_t iy = static_cast<int32_t>(floor_y);
+    const double fx = Smoother01(clamped_px - floor_x);
+    const double fy = Smoother01(clamped_py - floor_y);
+    const double h00 = GlassHash(ix, iy);
+    const double h10 = GlassHash(ix + 1, iy);
+    const double h01 = GlassHash(ix, iy + 1);
+    const double h11 = GlassHash(ix + 1, iy + 1);
+    const double top = h00 + (h10 - h00) * fx;
+    const double bottom = h01 + (h11 - h01) * fx;
+    return top + (bottom - top) * fy;
+}
+
+inline void PackSampleCoord(
+    double sx,
+    double sy,
+    int32_t src_w,
+    int32_t max_x,
+    int32_t max_y,
+    int32_t* out_idx,
+    int32_t* out_aux) noexcept
+{
+    const double safe_sx = std::isfinite(sx)
+        ? std::clamp(sx, -1.0, static_cast<double>(std::max(0, max_x)) + 1.0)
+        : 0.0;
+    const double safe_sy = std::isfinite(sy)
+        ? std::clamp(sy, -1.0, static_cast<double>(std::max(0, max_y)) + 1.0)
+        : 0.0;
+    int32_t ix = static_cast<int32_t>(std::floor(safe_sx));
+    int32_t iy = static_cast<int32_t>(std::floor(safe_sy));
+    const double fx = safe_sx - ix;
+    const double fy = safe_sy - iy;
+
+    int32_t wx;
+    if (ix < 0)
+    {
+        ix = 0;
+        wx = 0;
+    }
+    else if (ix >= max_x)
+    {
+        if (max_x > 0)
+        {
+            ix = max_x - 1;
+            wx = 256;
+        }
+        else
+        {
+            ix = 0;
+            wx = 0;
+        }
+    }
+    else
+    {
+        wx = std::clamp(static_cast<int32_t>(std::nearbyint(fx * 256.0)), 0, 256);
+    }
+
+    int32_t wy;
+    if (iy < 0)
+    {
+        iy = 0;
+        wy = 0;
+    }
+    else if (iy >= max_y)
+    {
+        if (max_y > 0)
+        {
+            iy = max_y - 1;
+            wy = 256;
+        }
+        else
+        {
+            iy = 0;
+            wy = 0;
+        }
+    }
+    else
+    {
+        wy = std::clamp(static_cast<int32_t>(std::nearbyint(fy * 256.0)), 0, 256);
+    }
+
+    const int32_t flags = (max_x > 0 ? 1 : 0) | (max_y > 0 ? 2 : 0);
+    *out_idx = (iy * src_w + ix) << 2;
+    *out_aux = flags | (wx << 2) | (wy << 12);
+}
+
+inline int32_t BilerpChannelFast(
+    const uint8_t* src,
+    int32_t idx,
+    int32_t aux,
+    int32_t stride,
+    int32_t chan) noexcept
+{
+    const int32_t wx = (aux >> 2) & 0x1FF;
+    const int32_t wy = (aux >> 12) & 0x1FF;
+    const uint8_t* p0 = src + idx + chan;
+    const uint8_t* p1 = p0 + stride;
+    const int32_t p00 = p0[0];
+    const int32_t p10 = p0[4];
+    const int32_t p01 = p1[0];
+    const int32_t p11 = p1[4];
+    const int32_t top = (p00 << 8) + (p10 - p00) * wx;
+    const int32_t bot = (p01 << 8) + (p11 - p01) * wx;
+    return ((top << 8) + (bot - top) * wy) >> 16;
+}
+
+inline int32_t BilerpChannel(
+    const uint8_t* src,
+    int32_t idx,
+    int32_t aux,
+    int32_t stride,
+    int32_t chan) noexcept
+{
+    if ((aux & 3) == 3)
+    {
+        return BilerpChannelFast(src, idx, aux, stride, chan);
+    }
+    const int32_t step_x = (aux & 1) != 0 ? 4 : 0;
+    const int32_t step_y = (aux & 2) != 0 ? stride : 0;
+    const int32_t wx = (aux >> 2) & 0x1FF;
+    const int32_t wy = (aux >> 12) & 0x1FF;
+
+    const int32_t bas = idx + chan;
+    const int32_t p00 = src[bas];
+    const int32_t p10 = src[bas + step_x];
+    const int32_t p01 = src[bas + step_y];
+    const int32_t p11 = src[bas + step_x + step_y];
+
+    const int32_t top = p00 * (256 - wx) + p10 * wx;
+    const int32_t bot = p01 * (256 - wx) + p11 * wx;
+    return (top * (256 - wy) + bot * wy) >> 16;
+}
+
+inline uint8_t ClampByteFloat(float v) noexcept
+{
+    if (!std::isfinite(v))
+    {
+        return 0u;
+    }
+    const float clamped = std::min(std::max(v, 0.0f), 255.0f);
+    return static_cast<uint8_t>(static_cast<int32_t>(clamped + 0.5f));
+}
+
+__forceinline void SampleRefractedBgr(
+    const uint8_t* src,
+    const int32_t* m,
+    int32_t src_stride,
+    int32_t& b,
+    int32_t& g,
+    int32_t& r) noexcept
+{
+    const int32_t idx_b = m[0];
+    const int32_t aux_b = m[1];
+    const int32_t idx_r = m[4];
+    const int32_t aux_r = m[5];
+
+    if (idx_b == idx_r && aux_b == aux_r)
+    {
+        const uint8_t* p00 = src + idx_b;
+        if ((aux_b >> 2) == 0)
+        {
+            b = p00[0];
+            g = p00[1];
+            r = p00[2];
+            return;
+        }
+
+        const int32_t wx = (aux_b >> 2) & 0x1FF;
+        const int32_t wy = (aux_b >> 12) & 0x1FF;
+        const int32_t inv_wx = 256 - wx;
+        const int32_t inv_wy = 256 - wy;
+        const int32_t w00 = inv_wx * inv_wy;
+        const int32_t w10 = wx * inv_wy;
+        const int32_t w01 = inv_wx * wy;
+        const int32_t w11 = wx * wy;
+
+        if ((aux_b & 3) == 3)
+        {
+            const uint8_t* p01 = p00 + src_stride;
+            b = (p00[0] * w00 + p00[4] * w10 + p01[0] * w01 + p01[4] * w11) >> 16;
+            g = (p00[1] * w00 + p00[5] * w10 + p01[1] * w01 + p01[5] * w11) >> 16;
+            r = (p00[2] * w00 + p00[6] * w10 + p01[2] * w01 + p01[6] * w11) >> 16;
+            return;
+        }
+
+        const int32_t step_x = (aux_b & 1) != 0 ? 4 : 0;
+        const int32_t step_y = (aux_b & 2) != 0 ? src_stride : 0;
+        const uint8_t* p10 = p00 + step_x;
+        const uint8_t* p01 = p00 + step_y;
+        const uint8_t* p11 = p01 + step_x;
+        b = (p00[0] * w00 + p10[0] * w10 + p01[0] * w01 + p11[0] * w11) >> 16;
+        g = (p00[1] * w00 + p10[1] * w10 + p01[1] * w01 + p11[1] * w11) >> 16;
+        r = (p00[2] * w00 + p10[2] * w10 + p01[2] * w01 + p11[2] * w11) >> 16;
+        return;
+    }
+
+    b = BilerpChannel(src, idx_b, aux_b, src_stride, 0);
+    g = BilerpChannel(src, m[2], m[3], src_stride, 1);
+    r = BilerpChannel(src, idx_r, aux_r, src_stride, 2);
+}
+
+constexpr double SampleRgbLuminance(int32_t rgb) noexcept
+{
+    const int32_t r = (rgb >> 16) & 0xFF;
+    const int32_t g = (rgb >> 8) & 0xFF;
+    const int32_t b = rgb & 0xFF;
+    return 0.299 * r + 0.587 * g + 0.114 * b;
+}
+
+}

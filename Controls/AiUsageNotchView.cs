@@ -176,11 +176,14 @@ public sealed class AiUsageNotchView : UserControl
             };
             Grid.SetColumn(divider, _rootGrid.ColumnDefinitions.Count - 1);
             _rootGrid.Children.Add(divider);
+            _motion.RevealViewDivider(divider);
         }
         _rootGrid.ColumnDefinitions.Add(new() { Width = new GridLength(1, GridUnitType.Star) });
         var pane = CreateProviderPane(account, now);
         Grid.SetColumn(pane, _rootGrid.ColumnDefinitions.Count - 1);
         _rootGrid.Children.Add(pane);
+        var appearance = AiUsageAppearance.Current;
+        _motion.RevealViewPane(pane, paneIndex, (appearance.ShowCodex ? 1 : 0) + (appearance.ShowClaude ? 1 : 0));
         int sectionIndex = 0;
         foreach (FrameworkElement section in pane.Children)
         {

@@ -11,6 +11,7 @@ internal sealed class AiAccountUsageMonitor : IAsyncDisposable
     private readonly object _gate = new();
     private readonly SemaphoreSlim _refresh = new(1, 1);
     private readonly AiQuotaNotifications _quotaNotifications = new();
+    private readonly AiUsagePollPolicy _codexPollPolicy = new();
     private CancellationTokenSource? _lifetime;
     private Task _loop = Task.CompletedTask;
     private readonly List<Task> _retired = [];
@@ -45,6 +46,7 @@ internal sealed class AiAccountUsageMonitor : IAsyncDisposable
             CancellationToken lifetime = source.Token;
             _nextCodexRead = default;
             _nextManualCodexRead = default;
+            _codexPollPolicy.Reset();
             var state = !options.Item1 ? AiUsageState.Disabled : options.Item4 ? AiUsageState.PrivacyBlocked : AiUsageState.Loading;
             Codex = new("Codex", options.Item2 ? state : AiUsageState.Disabled);
             Claude = new("Claude", options.Item3 ? state : AiUsageState.Disabled);
@@ -119,6 +121,7 @@ internal sealed class AiAccountUsageMonitor : IAsyncDisposable
                 }
                 if (codex != null)
                 {
+                    _nextCodexRead = _utcNow() + _codexPollPolicy.After(codex.State);
                     Codex = codex;
                     _quotaNotifications.Evaluate(codex, _utcNow(), alerts);
                 }

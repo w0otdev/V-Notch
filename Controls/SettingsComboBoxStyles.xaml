@@ -3,6 +3,7 @@
         <CubicEase x:Key="ComboInteractiveEaseOut" EasingMode="EaseOut"/>
 
         <Style TargetType="ComboBoxItem">
+            <Setter Property="FocusVisualStyle" Value="{x:Null}"/>
             <Setter Property="Foreground" Value="{DynamicResource SettingsTextBrush}"/>
             <Setter Property="Background" Value="Transparent"/>
             <Setter Property="FontWeight" Value="Bold"/>
@@ -58,6 +59,10 @@
                                 <Setter TargetName="ItemBorder" Property="Background" Value="{DynamicResource AccentSubtleBrush}"/>
                                 <Setter Property="Foreground" Value="#FFFFFF"/>
                             </Trigger>
+                            <Trigger Property="IsKeyboardFocused" Value="True">
+                                <Setter TargetName="ItemBorder" Property="Background" Value="#18FFFFFF"/>
+                                <Setter Property="Foreground" Value="#FFFFFF"/>
+                            </Trigger>
                         </ControlTemplate.Triggers>
                     </ControlTemplate>
                 </Setter.Value>
@@ -65,6 +70,7 @@
         </Style>
 
         <Style TargetType="ComboBox">
+            <Setter Property="FocusVisualStyle" Value="{x:Null}"/>
             <Setter Property="Height" Value="44"/>
             <Setter Property="Margin" Value="0,8,0,0"/>
             <Setter Property="Background" Value="{DynamicResource SurfaceBrush}"/>
@@ -95,8 +101,6 @@
                                                     CornerRadius="12"/>
                                             <Border x:Name="ComboHoverOverlay"
                                                     Background="#0CFFFFFF"
-                                                    BorderBrush="#36FFFFFF"
-                                                    BorderThickness="1"
                                                     CornerRadius="12"
                                                     Opacity="0"
                                                     IsHitTestVisible="False"/>
@@ -131,6 +135,9 @@
                                             </Grid>
                                         </Grid>
                                         <ControlTemplate.Triggers>
+                                            <DataTrigger Binding="{Binding IsKeyboardFocusWithin, RelativeSource={RelativeSource AncestorType=ComboBox}}" Value="True">
+                                                <Setter TargetName="ComboBorder" Property="Background" Value="#242424"/>
+                                            </DataTrigger>
                                             <Trigger Property="IsMouseOver" Value="True">
                                                 <Setter TargetName="ChevronPath" Property="Stroke" Value="#FFFFFF"/>
                                                 <Trigger.EnterActions>
@@ -185,7 +192,7 @@
                                                 </Trigger.ExitActions>
                                             </Trigger>
                                             <Trigger Property="IsChecked" Value="True">
-                                                <Setter TargetName="ComboBorder" Property="BorderBrush" Value="#54FFFFFF"/>
+                                                <Setter TargetName="ComboBorder" Property="Background" Value="#242424"/>
                                                 <Setter TargetName="ChevronPath" Property="Stroke" Value="#FFFFFF"/>
                                                 <Trigger.EnterActions>
                                                     <BeginStoryboard>

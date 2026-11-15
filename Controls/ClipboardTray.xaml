@@ -79,10 +79,9 @@
                    VerticalAlignment="{TemplateBinding VerticalContentAlignment}"/>
     </Border>
     <ControlTemplate.Triggers>
-     <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="InputSurface" Property="local:TrayMotion.BorderBrush" Value="#40FFFFFF"/></Trigger>
+     <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="InputSurface" Property="Background" Value="#18FFFFFF"/></Trigger>
      <Trigger Property="IsKeyboardFocusWithin" Value="True">
-      <Setter TargetName="InputSurface" Property="local:TrayMotion.BorderBrush" Value="#90FFFFFF"/>
-      <Setter TargetName="InputSurface" Property="Background" Value="#18FFFFFF"/>
+      <Setter TargetName="InputSurface" Property="Background" Value="#22FFFFFF"/>
      </Trigger>
      <Trigger Property="IsEnabled" Value="False"><Setter TargetName="InputSurface" Property="Opacity" Value="0.4"/></Trigger>
     </ControlTemplate.Triggers>
@@ -127,6 +126,7 @@
 
   <!-- Base Glass Button -->
   <Style x:Key="TrayButton" TargetType="Button">
+   <Setter Property="FocusVisualStyle" Value="{x:Null}"/>
    <Setter Property="FontFamily" Value="{StaticResource SFProDisplay}"/>
    <Setter Property="FontWeight" Value="Bold"/>
    <EventSetter Event="PreviewMouseLeftButtonDown" Handler="Button_PointerDown"/>
@@ -149,11 +149,8 @@
      <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" RecognizesAccessKey="True"/>
     </Border>
     <ControlTemplate.Triggers>
-     <Trigger Property="IsMouseOver" Value="True">
-      <Setter TargetName="Surface" Property="local:TrayMotion.BorderBrush" Value="#45FFFFFF"/>
-     </Trigger>
      <Trigger Property="IsPressed" Value="True"><Setter TargetName="Surface" Property="local:TrayMotion.Opacity" Value="0.7"/></Trigger>
-     <Trigger Property="IsKeyboardFocused" Value="True"><Setter TargetName="Surface" Property="local:TrayMotion.BorderBrush" Value="#A0FFFFFF"/></Trigger>
+     <Trigger Property="IsKeyboardFocused" Value="True"><Setter TargetName="Surface" Property="local:TrayMotion.Background" Value="#28FFFFFF"/></Trigger>
      <Trigger Property="IsEnabled" Value="False"><Setter Property="Opacity" Value="0.4"/></Trigger>
     </ControlTemplate.Triggers>
    </ControlTemplate></Setter.Value></Setter>
@@ -300,6 +297,7 @@
 
   <!-- Group Choice Checkbox -->
   <Style x:Key="TrayGroupChoice" TargetType="CheckBox">
+   <Setter Property="FocusVisualStyle" Value="{x:Null}"/>
    <Setter Property="Cursor" Value="Hand"/>
    <Setter Property="Template"><Setter.Value><ControlTemplate TargetType="CheckBox">
     <StackPanel Orientation="Horizontal" Background="Transparent">
@@ -314,8 +312,8 @@
       <Setter TargetName="CheckSurface" Property="local:TrayMotion.Background" Value="White"/>
       <Setter TargetName="CheckGlyph" Property="local:TrayMotion.Opacity" Value="1"/>
      </Trigger>
-     <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="CheckSurface" Property="local:TrayMotion.BorderBrush" Value="#80FFFFFF"/></Trigger>
-     <Trigger Property="IsKeyboardFocused" Value="True"><Setter TargetName="CheckSurface" Property="local:TrayMotion.BorderBrush" Value="White"/></Trigger>
+     <Trigger Property="IsMouseOver" Value="True"><Setter Property="Foreground" Value="White"/></Trigger>
+     <Trigger Property="IsKeyboardFocused" Value="True"><Setter Property="Foreground" Value="White"/></Trigger>
      <Trigger Property="IsPressed" Value="True"><Setter TargetName="CheckSurface" Property="local:TrayMotion.Opacity" Value="0.7"/></Trigger>
      <Trigger Property="IsEnabled" Value="False"><Setter Property="Opacity" Value="0.4"/></Trigger>
     </ControlTemplate.Triggers>
@@ -681,17 +679,6 @@
         </Style>
        </Border.Style>
       </Border>
-      <Border x:Name="SearchFeedbackRing" BorderBrush="{DynamicResource AccentBrush}" BorderThickness="1" CornerRadius="14" Margin="-1" IsHitTestVisible="False">
-       <Border.Style>
-        <Style TargetType="Border">
-         <Setter Property="local:TrayMotion.Opacity" Value="0"/>
-         <Style.Triggers>
-          <DataTrigger Binding="{Binding IsMouseOver, ElementName=SearchSurface}" Value="True"><Setter Property="local:TrayMotion.Opacity" Value="0.55"/></DataTrigger>
-          <DataTrigger Binding="{Binding IsKeyboardFocusWithin, ElementName=SearchSurface}" Value="True"><Setter Property="local:TrayMotion.Opacity" Value="1"/></DataTrigger>
-         </Style.Triggers>
-        </Style>
-       </Border.Style>
-      </Border>
       <local:TrayIcon x:Name="SearchGlyph" Kind="Search" Width="13.5" Height="13.5" Margin="13,0,0,0" HorizontalAlignment="Left" VerticalAlignment="Center"
        Foreground="{DynamicResource AccentBrush}" IsHitTestVisible="False" RenderTransformOrigin="0.5,0.5">
        <local:TrayIcon.Style>
@@ -954,27 +941,9 @@
          </Rectangle.Stroke>
         </Rectangle>
 
-        <!-- Layer 4b: Hover Optical Rim (Smooth animated illumination on card hover) -->
-        <Rectangle x:Name="HoverRim" RadiusX="12" RadiusY="12" Margin="0" StrokeThickness="2" Opacity="0" IsHitTestVisible="False" Panel.ZIndex="3">
-         <Rectangle.Stroke>
-          <LinearGradientBrush StartPoint="0,0" EndPoint="0,1">
-           <GradientStop Color="#85FFFFFF" Offset="0"/>
-           <GradientStop Color="#45FFFFFF" Offset="0.45"/>
-           <GradientStop Color="#20FFFFFF" Offset="1"/>
-          </LinearGradientBrush>
-         </Rectangle.Stroke>
-        </Rectangle>
-
-        <!-- Layer 4c: Selected Optical Rim (High-contrast animated rim on selection) -->
-        <Rectangle x:Name="SelectedRim" RadiusX="12" RadiusY="12" Margin="0" StrokeThickness="2" Opacity="0" IsHitTestVisible="False" Panel.ZIndex="4">
-         <Rectangle.Stroke>
-          <LinearGradientBrush StartPoint="0,0" EndPoint="0,1">
-           <GradientStop Color="#FFFFFF" Offset="0"/>
-           <GradientStop Color="#E6FFFFFF" Offset="0.5"/>
-           <GradientStop Color="#B8FFFFFF" Offset="1"/>
-          </LinearGradientBrush>
-         </Rectangle.Stroke>
-        </Rectangle>
+        <!-- Interaction feedback changes the surface, without an extra outline. -->
+        <Rectangle x:Name="HoverFeedback" RadiusX="12" RadiusY="12" Fill="#0CFFFFFF" Opacity="0" IsHitTestVisible="False" Panel.ZIndex="3"/>
+        <Rectangle x:Name="SelectedFeedback" RadiusX="12" RadiusY="12" Fill="#18FFFFFF" Opacity="0" IsHitTestVisible="False" Panel.ZIndex="4"/>
 
         <Control Focusable="False" IsTabStop="False" IsHitTestVisible="False">
          <Control.Style>
@@ -1156,7 +1125,7 @@
        <DataTrigger.EnterActions>
         <BeginStoryboard>
          <Storyboard>
-          <DoubleAnimation Storyboard.TargetName="HoverRim" Storyboard.TargetProperty="Opacity" To="1.0" Duration="0:0:0.18">
+          <DoubleAnimation Storyboard.TargetName="HoverFeedback" Storyboard.TargetProperty="Opacity" To="1.0" Duration="0:0:0.18">
            <DoubleAnimation.EasingFunction><CubicEase EasingMode="EaseOut"/></DoubleAnimation.EasingFunction>
           </DoubleAnimation>
          </Storyboard>
@@ -1165,7 +1134,7 @@
        <DataTrigger.ExitActions>
         <BeginStoryboard>
          <Storyboard>
-          <DoubleAnimation Storyboard.TargetName="HoverRim" Storyboard.TargetProperty="Opacity" To="0.0" Duration="0:0:0.22">
+          <DoubleAnimation Storyboard.TargetName="HoverFeedback" Storyboard.TargetProperty="Opacity" To="0.0" Duration="0:0:0.22">
            <DoubleAnimation.EasingFunction><CubicEase EasingMode="EaseOut"/></DoubleAnimation.EasingFunction>
           </DoubleAnimation>
          </Storyboard>
@@ -1176,7 +1145,7 @@
        <DataTrigger.EnterActions>
         <BeginStoryboard>
          <Storyboard>
-          <DoubleAnimation Storyboard.TargetName="SelectedRim" Storyboard.TargetProperty="Opacity" To="1.0" Duration="0:0:0.18">
+          <DoubleAnimation Storyboard.TargetName="SelectedFeedback" Storyboard.TargetProperty="Opacity" To="1.0" Duration="0:0:0.18">
            <DoubleAnimation.EasingFunction><CubicEase EasingMode="EaseOut"/></DoubleAnimation.EasingFunction>
           </DoubleAnimation>
          </Storyboard>
@@ -1185,7 +1154,7 @@
        <DataTrigger.ExitActions>
         <BeginStoryboard>
          <Storyboard>
-          <DoubleAnimation Storyboard.TargetName="SelectedRim" Storyboard.TargetProperty="Opacity" To="0.0" Duration="0:0:0.22">
+          <DoubleAnimation Storyboard.TargetName="SelectedFeedback" Storyboard.TargetProperty="Opacity" To="0.0" Duration="0:0:0.22">
            <DoubleAnimation.EasingFunction><CubicEase EasingMode="EaseOut"/></DoubleAnimation.EasingFunction>
           </DoubleAnimation>
          </Storyboard>

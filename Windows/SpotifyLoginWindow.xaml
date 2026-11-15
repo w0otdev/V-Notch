@@ -77,7 +77,6 @@
                         <ControlTemplate.Triggers>
                             <Trigger Property="IsMouseOver" Value="True">
                                 <Setter TargetName="ButtonBorder" Property="Background" Value="{StaticResource SurfaceBrushHover}"/>
-                                <Setter TargetName="ButtonBorder" Property="BorderBrush" Value="#484848"/>
                             </Trigger>
                             <Trigger Property="IsPressed" Value="True">
                                 <Setter TargetName="ButtonBorder" Property="Background" Value="#202020"/>

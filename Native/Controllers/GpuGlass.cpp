@@ -5,7 +5,6 @@
 #include <d3d11.h>
 #include <d3d11_4.h>
 #include <dxgi1_5.h>
-#include <d3dcompiler.h>
 #include <wrl/client.h>
 #include <array>
 #include <memory>
@@ -22,7 +21,6 @@
 
 #pragma comment(lib, "d3d11.lib")
 #pragma comment(lib, "dxgi.lib")
-#pragma comment(lib, "d3dcompiler.lib")
 #pragma comment(lib, "windowsapp.lib")
 
 namespace {
@@ -127,18 +125,9 @@ public:
     std::vector<DXGI_OUTDUPL_MOVE_RECT> moveRects;
     ULONGLONG smallSince = 0;
 
-    ComPtr<ID3DBlob> Compile(const char* entry, const char* profile) {
-        ComPtr<ID3DBlob> blob, errors;
-        HRESULT hr = D3DCompile(kGlassGpuShader, sizeof(kGlassGpuShader) - 1, "GlassGpu", nullptr,
-            nullptr, entry, profile, D3DCOMPILE_OPTIMIZATION_LEVEL3 | D3DCOMPILE_ENABLE_STRICTNESS,
-            0, &blob, &errors);
-        if (FAILED(hr) && errors) OutputDebugStringA(static_cast<const char*>(errors->GetBufferPointer()));
-        Check(hr);
-        return blob;
-    }
-    void PixelShader(const char* entry, ComPtr<ID3D11PixelShader>& shader) {
-        auto blob = Compile(entry, "ps_4_0");
-        Check(device->CreatePixelShader(blob->GetBufferPointer(), blob->GetBufferSize(), nullptr, &shader));
+    template<size_t N>
+    void PixelShader(const unsigned char (&bytecode)[N], ComPtr<ID3D11PixelShader>& shader) {
+        Check(device->CreatePixelShader(bytecode, N, nullptr, &shader));
     }
     void Initialize(IDirect3DDevice9Ex* device9, int w, int h) {
         presentationDevice = device9;
@@ -179,11 +168,11 @@ public:
             Check(device->CreateRenderTargetView(target.texture.Get(), nullptr, &target.rtv));
             Check(device9->CreateQuery(D3DQUERYTYPE_EVENT, &target.consumed));
         }
-        auto blob = Compile("fullscreenVs", "vs_4_0");
-        Check(device->CreateVertexShader(blob->GetBufferPointer(), blob->GetBufferSize(), nullptr, &vertex));
-        PixelShader("cropPs", crop); PixelShader("downPs", down); PixelShader("upPs", up);
-        PixelShader("resolvePs", resolve);
-        PixelShader("copyPs", copy); PixelShader("refractPs", refraction);
+        using namespace vnotch::graphics::shaders;
+        Check(device->CreateVertexShader(fullscreenVs, sizeof(fullscreenVs), nullptr, &vertex));
+        PixelShader(cropPs, crop); PixelShader(downPs, down); PixelShader(upPs, up);
+        PixelShader(resolvePs, resolve);
+        PixelShader(copyPs, copy); PixelShader(refractPs, refraction);
         D3D11_SAMPLER_DESC sample{};
         sample.Filter = D3D11_FILTER_MIN_MAG_MIP_LINEAR;
         sample.AddressU = sample.AddressV = sample.AddressW = D3D11_TEXTURE_ADDRESS_CLAMP;

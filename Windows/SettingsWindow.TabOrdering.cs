@@ -375,7 +375,6 @@ public partial class SettingsWindow
         if (_settingsNavDragRow is Border border)
         {
             border.Background = DraggingBackgroundBrush;
-            border.BorderBrush = DraggingBorderBrush;
             border.Effect = null;
         }
 

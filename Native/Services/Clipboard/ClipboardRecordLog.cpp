@@ -1,5 +1,6 @@
 #include "../../vnotch_native.h"
 #include "../../vnotch_handle_registry.h"
+#include "ClipboardStartupContract.h"
 #include <bcrypt.h>
 #include <array>
 #include <memory>
@@ -310,6 +311,53 @@ struct Context {
             Require(MoveFileExW(temp.c_str(), path.c_str(), MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH));
         } catch (...) { DeleteFileW(temp.c_str()); throw; }
     }
+    void Migrate(const std::wstring& full) {
+        Handle file(CreateFileW(full.c_str(), GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_DELETE, nullptr,
+            OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr));
+        Require(static_cast<bool>(file)); const uint64_t size = FileSize(file.value);
+        if (!IsLegacy(file.value, size)) { encrypted_seen = true; return; }
+        Require(size <= kMaxPayload);
+        SecretBuffer plain; plain.bytes.resize(static_cast<size_t>(size));
+        ReadExactAt(file.value, 0, plain.bytes.data(), plain.bytes.size());
+        file.Close();
+        EnsureKey(true); Replace(full, plain.bytes.data(), static_cast<int32_t>(size));
+    }
+    int32_t Read(const std::wstring& full, uint8_t* output, int32_t capacity,
+                 int32_t* written, bool migrate_legacy = false) {
+        Handle file(CreateFileW(full.c_str(), GENERIC_READ,
+            FILE_SHARE_READ | FILE_SHARE_DELETE | (migrate_legacy ? 0 : FILE_SHARE_WRITE),
+            nullptr, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr));
+        if (!file && (GetLastError() == ERROR_FILE_NOT_FOUND || GetLastError() == ERROR_PATH_NOT_FOUND)) return 2;
+        Require(static_cast<bool>(file)); const uint64_t size = FileSize(file.value);
+        std::array<uint8_t, kHeaderSize> pages{};
+        const auto prefix_size = static_cast<size_t>(std::min<uint64_t>(size, pages.size()));
+        if (prefix_size > 0) ReadExactAt(file.value, 0, pages.data(), prefix_size);
+        if (IsLegacyBytes(pages.data(), prefix_size)) {
+            if (!migrate_legacy) return 1;
+            Require(size > 0 && size <= kMaxPayload);
+            SecretBuffer legacy; legacy.bytes.resize(static_cast<size_t>(size));
+            ReadExactAt(file.value, 0, legacy.bytes.data(), legacy.bytes.size());
+            file.Close();
+            EnsureKey(true); Replace(full, legacy.bytes.data(), static_cast<int32_t>(size));
+            *written = static_cast<int32_t>(size);
+            if (capacity < *written) return VN_ERR_BUFFER_TOO_SMALL;
+            std::copy(legacy.bytes.begin(), legacy.bytes.end(), output);
+            return VN_OK;
+        }
+        encrypted_seen = true;
+        const auto header = ReadHeader(pages.data(), size); const auto commit = Latest(header, size);
+        Require(commit.size > sizeof(Record) && commit.size - sizeof(Record) <= kMaxPayload);
+        *written = static_cast<int32_t>(commit.size - sizeof(Record));
+        if (capacity < *written) return VN_ERR_BUFFER_TOO_SMALL;
+        EnsureKey(false); SecretBuffer plain;
+        std::vector<uint8_t> large;
+        uint8_t* record = pages.data();
+        if (commit.size > pages.size()) { large.resize(commit.size); record = large.data(); }
+        ReadExactAt(file.value, commit.offset, record, commit.size);
+        ReadRecordBytes(record, header, commit, plain);
+        std::copy(plain.bytes.begin(), plain.bytes.end(), output); return VN_OK;
+    }
+
 };
 vnotch::HandleRegistry<Context> contexts;
 }
@@ -325,15 +373,7 @@ VN_EXPORT int32_t __stdcall vn_clipboard_record_migrate(int64_t handle, const wc
         auto context = contexts.Acquire(handle); if (!context) return VN_ERR_INVALID_ARG;
         std::lock_guard lock(context->gate);
         const auto full = context->Path(path, length);
-        Handle file(CreateFileW(full.c_str(), GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_DELETE, nullptr,
-            OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr));
-        Require(static_cast<bool>(file)); const uint64_t size = FileSize(file.value);
-        if (!IsLegacy(file.value, size)) { context->encrypted_seen = true; return VN_OK; }
-        Require(size <= kMaxPayload);
-        SecretBuffer plain; plain.bytes.resize(static_cast<size_t>(size));
-        ReadExactAt(file.value, 0, plain.bytes.data(), plain.bytes.size());
-        file.Close();
-        context->EnsureKey(true); context->Replace(full, plain.bytes.data(), static_cast<int32_t>(size));
+        context->Migrate(full);
         return VN_OK;
     } catch (...) { return VN_ERR_FAIL; }
 }
@@ -345,25 +385,7 @@ VN_EXPORT int32_t __stdcall vn_clipboard_record_read(int64_t handle, const wchar
         auto context = contexts.Acquire(handle); if (!context) return VN_ERR_INVALID_ARG;
         std::lock_guard lock(context->gate);
         const auto full = context->Path(path, length);
-        Handle file(CreateFileW(full.c_str(), GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, nullptr, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr));
-        if (!file && (GetLastError() == ERROR_FILE_NOT_FOUND || GetLastError() == ERROR_PATH_NOT_FOUND)) return 2;
-        Require(static_cast<bool>(file)); const uint64_t size = FileSize(file.value);
-        std::array<uint8_t, kHeaderSize> pages{};
-        const auto prefix_size = static_cast<size_t>(std::min<uint64_t>(size, pages.size()));
-        if (prefix_size > 0) ReadExactAt(file.value, 0, pages.data(), prefix_size);
-        if (IsLegacyBytes(pages.data(), prefix_size)) return 1;
-        context->encrypted_seen = true;
-        const auto header = ReadHeader(pages.data(), size); const auto commit = Latest(header, size);
-        Require(commit.size > sizeof(Record) && commit.size - sizeof(Record) <= kMaxPayload);
-        *written = static_cast<int32_t>(commit.size - sizeof(Record));
-        if (capacity < *written) return VN_ERR_BUFFER_TOO_SMALL;
-        context->EnsureKey(false); SecretBuffer plain;
-        std::vector<uint8_t> large;
-        uint8_t* record = pages.data();
-        if (commit.size > pages.size()) { large.resize(commit.size); record = large.data(); }
-        ReadExactAt(file.value, commit.offset, record, commit.size);
-        context->ReadRecordBytes(record, header, commit, plain);
-        std::copy(plain.bytes.begin(), plain.bytes.end(), output); return VN_OK;
+        return context->Read(full, output, capacity, written);
     } catch (...) { return VN_ERR_FAIL; }
 }
 VN_EXPORT int32_t __stdcall vn_clipboard_record_append(int64_t handle, const wchar_t* path, int32_t path_length,
@@ -399,6 +421,36 @@ VN_EXPORT int32_t __stdcall vn_clipboard_record_append(int64_t handle, const wch
         if (size > std::max<uint64_t>(256 * 1024, static_cast<uint64_t>(length) * 4 + kHeaderSize)) {
             file.Close(); context->Replace(full, plain, length);
         } else context->Append(file.value, header, commit, plain, length);
+        return VN_OK;
+    } catch (...) { return VN_ERR_FAIL; }
+}
+
+// Errors are isolated per item. No plaintext is retained beyond this call.
+VN_EXPORT int32_t __stdcall vn_clipboard_record_startup_batch(int64_t handle,
+    const wchar_t* directories, int32_t directory_chars, VnClipboardStartupItem* items,
+    int32_t count, uint8_t* payloads, int32_t capacity) noexcept {
+    if (!directories || directory_chars <= 0 || !items || count <= 0 || count > kClipboardStartupBatch ||
+        !payloads || capacity < count * kClipboardStartupStride) return VN_ERR_INVALID_ARG;
+    try {
+        auto context = contexts.Acquire(handle); if (!context) return VN_ERR_INVALID_ARG;
+        std::lock_guard lock(context->gate);
+        for (int32_t i = 0; i < count; ++i) {
+            auto& item = items[i];
+            item.status = VN_ERR_FAIL; item.payload_length = 0; item.migration_status = VN_OK;
+            if (item.directory_offset < 0 || item.directory_length <= 0 ||
+                item.directory_offset > directory_chars || item.directory_length > directory_chars - item.directory_offset) {
+                item.status = VN_ERR_INVALID_ARG; continue;
+            }
+            try {
+                const auto directory = context->Path(directories + item.directory_offset, item.directory_length);
+                try {
+                    item.status = context->Read(directory + L"\\entry.json", payloads + i * kClipboardStartupStride,
+                        kClipboardStartupStride, &item.payload_length, true);
+                } catch (...) { item.migration_status = VN_ERR_FAIL; }
+                try { context->Migrate(directory + L"\\content.json"); }
+                catch (...) { item.migration_status = VN_ERR_FAIL; }
+            } catch (...) { item.status = VN_ERR_FAIL; }
+        }
         return VN_OK;
     } catch (...) { return VN_ERR_FAIL; }
 }

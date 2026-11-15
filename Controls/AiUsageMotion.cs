@@ -11,7 +11,7 @@ using VNotch.Services.AiUsage;
 namespace VNotch.Controls;
 
 // Motion stays local to the quota surfaces; hidden/unloaded views own no running clocks.
-internal sealed class AiUsageMotion
+internal sealed partial class AiUsageMotion
 {
     private readonly FrameworkElement _owner;
     private readonly Dictionary<string, Border> _bars = new();
@@ -106,6 +106,8 @@ internal sealed class AiUsageMotion
         width.Bindings.Add(new Binding { Source = fill, Path = new PropertyPath(BarProgressProperty) });
         fill.SetBinding(FrameworkElement.WidthProperty, width);
         if (available) _bars[key] = fill;
+        // The details entrance starts each meter with its own quota row.
+        if (_reveal && _owner is AiUsageNotchView && CanAnimate) return;
         double from = _reveal ? 1 : _previous.TryGetValue(key, out double previous) ? previous : (_owner is AiUsageStatWidget { IsPreview: true } ? target : 1);
         if (!CanAnimate || !available || Math.Abs(from - target) < 0.001) return;
         int scaled = ScaleDuration(300);
@@ -266,61 +268,6 @@ internal sealed class AiUsageMotion
         offset.BeginAnimation(TranslateTransform.YProperty, movement);
         element.BeginAnimation(UIElement.OpacityProperty, fade);
         _stopTransient.Add(() => { offset.BeginAnimation(TranslateTransform.YProperty, null); element.BeginAnimation(UIElement.OpacityProperty, null); });
-    }
-
-    internal void RevealViewSection(FrameworkElement element, int providerIndex, int sectionIndex)
-    {
-        if (!_reveal || !CanAnimate) return;
-
-        int delay = ScaleDuration(100) * providerIndex / 2 + sectionIndex * 35;
-        int duration = ScaleDuration(360);
-        double distance = 6 + 10 * Strength;
-        var originalTransform = element.RenderTransform;
-        var originalOrigin = element.RenderTransformOrigin;
-        var scale = new ScaleTransform(1, 1);
-        var offset = new TranslateTransform();
-        var transform = new TransformGroup();
-        transform.Children.Add(originalTransform);
-        transform.Children.Add(scale);
-        transform.Children.Add(offset);
-        element.RenderTransformOrigin = new Point(0.5, 0);
-        element.RenderTransform = transform;
-
-        // Hold the first frame throughout the stagger. BeginTime alone exposes
-        // the resting opacity before a delayed animation starts.
-        DoubleAnimationUsingKeyFrames Entrance(double from, double to, int milliseconds)
-        {
-            var animation = new DoubleAnimationUsingKeyFrames { FillBehavior = FillBehavior.Stop };
-            animation.KeyFrames.Add(new DiscreteDoubleKeyFrame(from, KeyTime.FromTimeSpan(TimeSpan.Zero)));
-            if (delay > 0)
-                animation.KeyFrames.Add(new DiscreteDoubleKeyFrame(from, KeyTime.FromTimeSpan(TimeSpan.FromMilliseconds(delay))));
-            animation.KeyFrames.Add(new SplineDoubleKeyFrame(to,
-                KeyTime.FromTimeSpan(TimeSpan.FromMilliseconds(delay + milliseconds)), SnappySpline));
-            Timeline.SetDesiredFrameRate(animation, AnimationConfig.TargetFps);
-            return animation;
-        }
-
-        void Settle()
-        {
-            offset.BeginAnimation(TranslateTransform.YProperty, null);
-            scale.BeginAnimation(ScaleTransform.ScaleXProperty, null);
-            scale.BeginAnimation(ScaleTransform.ScaleYProperty, null);
-            element.BeginAnimation(UIElement.OpacityProperty, null);
-            if (ReferenceEquals(element.RenderTransform, transform))
-            {
-                element.RenderTransform = originalTransform;
-                element.RenderTransformOrigin = originalOrigin;
-            }
-        }
-
-        var movement = Entrance(distance, 0, duration);
-        movement.Completed += (_, _) => { Settle(); _stopTransient.Remove(Settle); };
-        _stopTransient.Add(Settle);
-        double startScale = 1 - 0.025 * Strength;
-        scale.BeginAnimation(ScaleTransform.ScaleXProperty, Entrance(startScale, 1, duration));
-        scale.BeginAnimation(ScaleTransform.ScaleYProperty, Entrance(startScale, 1, duration));
-        element.BeginAnimation(UIElement.OpacityProperty, Entrance(0, element.Opacity, ScaleDuration(260)));
-        offset.BeginAnimation(TranslateTransform.YProperty, movement);
     }
 
     internal IDisposable? Busy(FrameworkElement? source)

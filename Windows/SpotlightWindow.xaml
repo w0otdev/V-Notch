@@ -50,7 +50,6 @@
         <x:Static x:Key="AiHoverBrush" Member="controls:SpotlightChatPalette.Hover"/>
         <x:Static x:Key="AiPressedBrush" Member="controls:SpotlightChatPalette.Pressed"/>
         <x:Static x:Key="AiBorderBrush" Member="controls:SpotlightChatPalette.Border"/>
-        <x:Static x:Key="AiFocusBrush" Member="controls:SpotlightChatPalette.Focus"/>
         <x:Static x:Key="AiErrorBrush" Member="controls:SpotlightChatPalette.Error"/>
 
         <Style x:Key="AiActionStyle" TargetType="Button">
@@ -78,7 +77,7 @@
                                 <Setter TargetName="Surface" Property="Background" Value="{StaticResource AiHoverBrush}"/>
                             </Trigger>
                             <Trigger Property="IsKeyboardFocused" Value="True">
-                                <Setter TargetName="Surface" Property="BorderBrush" Value="{StaticResource AiFocusBrush}"/>
+                                <Setter TargetName="Surface" Property="Background" Value="{StaticResource AiHoverBrush}"/>
                             </Trigger>
                             <Trigger Property="IsPressed" Value="True"><Setter TargetName="Surface" Property="Background" Value="{StaticResource AiPressedBrush}"/></Trigger>
                             <Trigger Property="IsEnabled" Value="False">
@@ -110,7 +109,7 @@
                             <Setter TargetName="Bg" Property="Background" Value="{StaticResource AiHoverBrush}"/>
                         </Trigger>
                         <Trigger Property="IsKeyboardFocused" Value="True">
-                            <Setter TargetName="Bg" Property="BorderBrush" Value="{StaticResource AiFocusBrush}"/>
+                            <Setter TargetName="Bg" Property="Background" Value="{StaticResource AiHoverBrush}"/>
                         </Trigger>
                         <Trigger Property="IsPressed" Value="True"><Setter TargetName="Bg" Property="Background" Value="{StaticResource AiPressedBrush}"/></Trigger>
                         <Trigger Property="IsEnabled" Value="False">
@@ -122,12 +121,9 @@
         </Style>
 
         <Style x:Key="AiNavigationStyle" TargetType="controls:AiNavigationButton">
-            <Setter Property="Height" Value="38"/>
-            <Setter Property="MinWidth" Value="72"/>
-            <Setter Property="Padding" Value="12,0,12,3"/>
-            <Setter Property="FontFamily" Value="{StaticResource SFProDisplay}"/>
-            <Setter Property="FontSize" Value="12"/>
-            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="Width" Value="36"/>
+            <Setter Property="Height" Value="32"/>
+            <Setter Property="Padding" Value="0,0,0,3"/>
             <Setter Property="Foreground" Value="{StaticResource AiSecondaryBrush}"/>
             <Setter Property="Cursor" Value="Hand"/>
             <Setter Property="FocusVisualStyle" Value="{x:Null}"/>
@@ -151,7 +147,7 @@
                                 <Setter TargetName="InkMark" Property="Background" Value="{DynamicResource AccentBrush}"/>
                             </Trigger>
                             <Trigger Property="IsKeyboardFocused" Value="True">
-                                <Setter TargetName="Outline" Property="BorderBrush" Value="{StaticResource AiFocusBrush}"/>
+                                <Setter TargetName="Outline" Property="Background" Value="{StaticResource AiHoverBrush}"/>
                             </Trigger>
                             <Trigger Property="IsEnabled" Value="False">
                                 <Setter Property="Opacity" Value="0.45"/>
@@ -181,7 +177,7 @@
                         </Grid>
                         <ControlTemplate.Triggers>
                             <Trigger Property="IsKeyboardFocused" Value="True">
-                                <Setter TargetName="Outline" Property="BorderBrush" Value="{StaticResource AiFocusBrush}"/>
+                                <Setter TargetName="Outline" Property="Background" Value="{StaticResource AiHoverBrush}"/>
                             </Trigger>
                             <Trigger Property="IsEnabled" Value="False">
                                 <Setter TargetName="MotionSurface" Property="Opacity" Value="0.45"/>
@@ -234,8 +230,7 @@
                         </Grid>
                         <ControlTemplate.Triggers>
                             <Trigger Property="IsKeyboardFocused" Value="True">
-                                <Setter TargetName="Bg" Property="BorderBrush" Value="White"/>
-                                <Setter TargetName="Bg" Property="BorderThickness" Value="2"/>
+                                <Setter TargetName="Bg" Property="Background" Value="#FF6870"/>
                             </Trigger>
                         </ControlTemplate.Triggers>
                     </ControlTemplate>
@@ -320,6 +315,26 @@
                     </ControlTemplate>
                 </Setter.Value>
             </Setter>
+        </Style>
+        <Style x:Key="AiProviderMenuStyle" TargetType="ContextMenu" BasedOn="{StaticResource SpotlightContextMenuStyle}">
+            <Setter Property="FontFamily" Value="{StaticResource SFProDisplay}"/>
+            <Setter Property="FontWeight" Value="Bold"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ContextMenu">
+                        <Border x:Name="ProviderMenuSurface" Background="{StaticResource AiSurfaceBrush}" BorderBrush="{StaticResource AiBorderBrush}"
+                                BorderThickness="1" CornerRadius="10" Padding="4" Opacity="0">
+                            <StackPanel IsItemsHost="True"/>
+                        </Border>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+        <Style x:Key="AiProviderButtonStyle" TargetType="Button" BasedOn="{StaticResource AiActionStyle}">
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="BorderBrush" Value="Transparent"/>
+            <Setter Property="Padding" Value="8,5"/>
+            <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
         </Style>
         <Style x:Key="SpotlightMenuItemStyle" TargetType="MenuItem">
             <Setter Property="OverridesDefaultStyle" Value="True"/>
@@ -825,11 +840,16 @@
                                     <Button x:Name="AiBackButton" Style="{StaticResource AiToolbarStyle}" Click="AiBack_Click" Margin="0,0,10,0">
                                         <Path Data="{x:Static local:SpotlightWindow.AiArrowLeftGeometry}" Fill="{x:Static local:SpotlightWindow.ChatIconBrush}" Stretch="Uniform" Width="13" Height="13"/>
                                     </Button>
-                                    <Grid x:Name="AiModelPill" Grid.Column="1" VerticalAlignment="Center">
-                                        <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
-                                        <Image x:Name="AiProviderLogo" Width="15" Height="15" Stretch="Uniform" Margin="0,0,7,0"/>
-                                        <flow:NumberFlowText x:Name="AiModeLabel" Grid.Column="1" Foreground="{StaticResource AiPrimaryBrush}" FontFamily="{StaticResource SFProDisplay}" FontWeight="Bold" FontSize="12" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" TextWrapping="NoWrap"/>
-                                    </Grid>
+                                    <Button x:Name="AiProviderButton" Grid.Column="1" Style="{StaticResource AiProviderButtonStyle}"
+                                            Click="AiProviderButton_Click" HorizontalAlignment="Left" MaxWidth="260">
+                                        <Grid x:Name="AiModelPill" VerticalAlignment="Center">
+                                            <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                                            <Image x:Name="AiProviderLogo" Width="15" Height="15" Stretch="Uniform" Margin="0,0,7,0"/>
+                                            <flow:NumberFlowText x:Name="AiModeLabel" Grid.Column="1" Foreground="{StaticResource AiPrimaryBrush}" FontFamily="{StaticResource SFProDisplay}" FontWeight="Bold" FontSize="12" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" TextWrapping="NoWrap"/>
+                                            <Path Grid.Column="2" Data="M0,0 L4,4 L8,0" Stroke="{StaticResource AiSecondaryBrush}" StrokeThickness="1.4"
+                                                  StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round" VerticalAlignment="Center" Margin="9,0,0,0"/>
+                                        </Grid>
+                                    </Button>
                                 </Grid>
 
                                 <!-- Right: Metadata + Action buttons -->
@@ -850,12 +870,9 @@
                                                         </Style.Triggers>
                                                     </Style>
                                                 </controls:AiNavigationButton.Style>
-                                                <StackPanel Orientation="Horizontal">
-                                                    <Path Data="M5,2.5 H13.5 Q15,2.5 15,4 V10 Q15,11.5 13.5,11.5 H8 L4,14.5 V11.5 Q2.5,11.5 2.5,10 V4 Q2.5,2.5 5,2.5 Z M6,6 H12 M6,8.5 H10"
-                                                          Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" StrokeThickness="1.5" StrokeLineJoin="Round" StrokeStartLineCap="Round" StrokeEndLineCap="Round"
-                                                          Stretch="Uniform" Width="15" Height="15" Margin="0,0,7,0"/>
-                                                    <TextBlock Text="{Binding ToolTip, ElementName=AiHistoryButton}" MaxWidth="128" TextTrimming="CharacterEllipsis" VerticalAlignment="Center"/>
-                                                </StackPanel>
+                                                <Path Data="M5,2.5 H13.5 Q15,2.5 15,4 V10 Q15,11.5 13.5,11.5 H8 L4,14.5 V11.5 Q2.5,11.5 2.5,10 V4 Q2.5,2.5 5,2.5 Z M6,6 H12 M6,8.5 H10"
+                                                      Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" StrokeThickness="1.5" StrokeLineJoin="Round" StrokeStartLineCap="Round" StrokeEndLineCap="Round"
+                                                      Stretch="Uniform" Width="15" Height="15"/>
                                             </controls:AiNavigationButton>
                                             <Border Width="1" Height="16" Background="{StaticResource AiBorderBrush}" Margin="3,0" VerticalAlignment="Center"/>
                                             <controls:AiNavigationButton x:Name="AiNewChatButton" Click="AiNewChat_Click">
@@ -868,12 +885,9 @@
                                                         </Style.Triggers>
                                                     </Style>
                                                 </controls:AiNavigationButton.Style>
-                                                <StackPanel Orientation="Horizontal">
-                                                    <Path Data="M8,3 H4 Q2,3 2,5 V13 Q2,15 4,15 H12 Q14,15 14,13 V9 M8,10 L8.5,6.5 L13,2 Q14,1 15,2 Q16,3 15,4 L10.5,8.5 Z M12,3 L14,5"
-                                                          Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" StrokeThickness="1.5" StrokeLineJoin="Round" StrokeStartLineCap="Round" StrokeEndLineCap="Round"
-                                                          Stretch="Uniform" Width="15" Height="15" Margin="0,0,7,0"/>
-                                                    <TextBlock Text="{Binding ToolTip, ElementName=AiNewChatButton}" MaxWidth="128" TextTrimming="CharacterEllipsis" VerticalAlignment="Center"/>
-                                                </StackPanel>
+                                                <Path Data="M8,3 H4 Q2,3 2,5 V13 Q2,15 4,15 H12 Q14,15 14,13 V9 M8,10 L8.5,6.5 L13,2 Q14,1 15,2 Q16,3 15,4 L10.5,8.5 Z M12,3 L14,5"
+                                                      Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" StrokeThickness="1.5" StrokeLineJoin="Round" StrokeStartLineCap="Round" StrokeEndLineCap="Round"
+                                                      Stretch="Uniform" Width="15" Height="15"/>
                                             </controls:AiNavigationButton>
                                         </StackPanel>
                                     </Border>
@@ -886,8 +900,8 @@
                                     <Grid.ColumnDefinitions><ColumnDefinition Width="40"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
                                     <Image x:Name="AiWelcomeLogo" Width="24" Height="24" Stretch="Uniform" HorizontalAlignment="Left" VerticalAlignment="Top" Margin="0,3,0,0"/>
                                     <StackPanel Grid.Column="1">
-                                        <TextBlock x:Name="AiWelcomeTitle" Foreground="{StaticResource AiPrimaryBrush}" FontSize="16" FontWeight="SemiBold"/>
-                                        <TextBlock x:Name="AiWelcomeHint" FontWeight="Normal" Foreground="{StaticResource AiSecondaryBrush}" FontSize="12.5" LineHeight="20" Margin="0,5,0,16" TextWrapping="Wrap"/>
+                                        <TextBlock x:Name="AiWelcomeTitle" Foreground="{StaticResource AiPrimaryBrush}" FontSize="16" FontWeight="Bold"/>
+                                        <TextBlock x:Name="AiWelcomeHint" FontWeight="Bold" Foreground="{StaticResource AiSecondaryBrush}" FontSize="12.5" LineHeight="20" Margin="0,5,0,16" TextWrapping="Wrap"/>
                                         <WrapPanel>
                                             <controls:AiSuggestionButton x:Name="AiPromptOne" Style="{StaticResource AiSuggestionStyle}" Click="AiSuggestion_Click" Margin="0,0,8,4"/>
                                             <controls:AiSuggestionButton x:Name="AiPromptTwo" Style="{StaticResource AiSuggestionStyle}" Click="AiSuggestion_Click" Margin="0,0,0,4"/>
@@ -897,8 +911,8 @@
                             </Border>
 
                             <DockPanel Margin="4,0,8,12" Visibility="{Binding Visibility, ElementName=AiHistoryPanel}">
-                                <TextBlock x:Name="AiHistoryCount" DockPanel.Dock="Right" FontSize="12" FontWeight="Normal" Foreground="{StaticResource AiSecondaryBrush}" VerticalAlignment="Center"/>
-                                <TextBlock Text="{Binding ToolTip, ElementName=AiHistoryButton}" FontSize="14" FontWeight="SemiBold" Foreground="{StaticResource AiPrimaryBrush}"/>
+                                <TextBlock x:Name="AiHistoryCount" DockPanel.Dock="Right" FontSize="12" FontWeight="Bold" Foreground="{StaticResource AiSecondaryBrush}" VerticalAlignment="Center"/>
+                                <TextBlock Text="{Binding ToolTip, ElementName=AiHistoryButton}" FontSize="14" FontWeight="Bold" Foreground="{StaticResource AiPrimaryBrush}"/>
                             </DockPanel>
                             <ScrollViewer x:Name="AiHistoryPanel" Visibility="Collapsed" MaxHeight="310" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" HorizontalContentAlignment="Stretch">
                                 <ScrollViewer.Resources><Style TargetType="ScrollBar" BasedOn="{StaticResource ThinScrollBar}"/></ScrollViewer.Resources>

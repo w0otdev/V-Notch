@@ -40,6 +40,15 @@ public partial class SpotlightWindow
 
     private bool HandleAiKey(KeyEventArgs e)
     {
+        if (_aiProviderMenu is { IsOpen: true })
+        {
+            if (e.Key == Key.Escape)
+            {
+                CloseAiProviderMenu();
+                e.Handled = true;
+            }
+            return true;
+        }
         if (IsAiToggle(e))
         {
             if (!e.IsRepeat) ToggleAiMode();
@@ -77,6 +86,7 @@ public partial class SpotlightWindow
         }
 
         AddIfFocusable(AiBackButton);
+        AddIfFocusable(AiProviderButton);
         AddIfFocusable(AiCopyButton);
         AddIfFocusable(AiHistoryButton);
         AddIfFocusable(AiNewChatButton);
@@ -133,6 +143,7 @@ public partial class SpotlightWindow
 
     private void ToggleAiMode()
     {
+        CloseAiProviderMenu();
         CancelAiRequest();
         CancelSearchDebounce();
         CancelSearchingGrace();
@@ -177,7 +188,8 @@ public partial class SpotlightWindow
         SetAiToolLabel(AiCopyButton, "spotlight.ai.copy");
         AiHistoryButton.ToolTip = Loc.Get("spotlight.ai.history");
         System.Windows.Automation.AutomationProperties.SetName(AiHistoryButton, Loc.Get("spotlight.ai.history"));
-        AiWelcomeTitle.Text = Loc.Get("spotlight.ai.welcome");
+        AiWelcomeTitle.Text = Loc.Get("spotlight.ai.newChat");
+        AiHistoryCount.Text = _savedChats.Count.ToString(Loc.GetCulture());
         AiWelcomeHint.Text = Loc.Get("spotlight.ai.welcomeHint");
         AiPromptOne.Content = Loc.Get("spotlight.ai.promptOne");
         AiPromptTwo.Content = Loc.Get("spotlight.ai.promptTwo");
@@ -294,13 +306,7 @@ public partial class SpotlightWindow
     {
         if (!_aiMode || _aiRequest != null || string.IsNullOrWhiteSpace(SearchBox.Text)) return;
         CloseAiHistory();
-        var settings = _settings.Clone();
-        if (_aiHistory.Count > 0)
-        {
-            settings.SpotlightAiProvider = _aiConversationProvider;
-            var savedConfig = SpotlightAiService.Configuration(settings, _aiConversationProvider);
-            SpotlightAiService.Configure(settings, _aiConversationProvider, savedConfig.Key, _aiConversationModel);
-        }
+        var settings = CreateAiRequestSettings();
         var config = SpotlightAiService.Configuration(settings, settings.SpotlightAiProvider);
         if (!SpotlightAiService.IsConfigured(settings))
         {
