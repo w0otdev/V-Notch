@@ -135,13 +135,14 @@ public sealed class MainWindowNavDragTests
         {
             await using var fixture = CreateFixture();
             var window = fixture.Window;
-            Invoke(window, "ExpandNotch", null, null, NotchView.Compact);
+            Invoke(window, "ExpandNotch", null, NotchView.Secondary, NotchView.Compact);
             Assert.True((bool)typeof(MainWindow).GetProperty("_isAnimating", Private)!.GetValue(window)!);
             Set(window, "_clipboardDragAutoExpanded", true);
             Invoke(window, "NotchWrapper_DragLeave", window, null);
             Assert.True(Field<bool>(window, "_clipboardDragAutoExpanded"));
             Assert.NotNull(Field<UiScheduledTimer?>(window, "_clipboardDragTimer"));
-            await WpfFrameWaiter.UntilAsync(() => !(bool)typeof(MainWindow).GetProperty("_isExpanded", Private)!.GetValue(window)!
+            await WpfFrameWaiter.UntilAsync(() => Field<UiScheduledTimer?>(window, "_clipboardDragTimer") == null
+                && !(bool)typeof(MainWindow).GetProperty("_isExpanded", Private)!.GetValue(window)!
                 && !(bool)typeof(MainWindow).GetProperty("_isAnimating", Private)!.GetValue(window)!, "abandoned drag collapsed", ct);
             Assert.False(Field<bool>(window, "_clipboardDragAutoExpanded"));
             Assert.Null(Field<UiScheduledTimer?>(window, "_clipboardDragTimer"));
