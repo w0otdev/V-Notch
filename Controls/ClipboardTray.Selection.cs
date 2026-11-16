@@ -70,7 +70,7 @@ public sealed partial class ClipboardTray
         Cards.Focus();
         // Select data items, including those with no realized container or thumbnail.
         Cards.SelectAll();
-        _pendingSelectAll = _controller != null && _queryDirty ? (_category, SearchBox.Text) : null;
+        _pendingSelectAll = _controller != null && (_queryDirty || _hasMoreResults) ? (_category, SearchBox.Text) : null;
         if (_pendingSelectAll != null) QueueRefresh();
         return true;
     }

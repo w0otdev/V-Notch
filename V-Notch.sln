@@ -8,6 +8,14 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "VNotch.Tests", "Tests\VNotc
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Uninstall", "Uninstall\Uninstall.csproj", "{7E2E3525-F89C-4806-BB39-9B8A39509429}"
 EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Projects", "Projects", "{34562FEA-7F49-4642-8105-78FB0E6EFAF3}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "VNotch.Core", "Projects\Core\VNotch.Core.csproj", "{20300DF9-F849-46E9-A186-637D2EC160B7}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "VNotch.Application", "Projects\Application\VNotch.Application.csproj", "{C102B78B-8FCC-44AB-9D10-71A12C8482ED}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "VNotch.Infrastructure.Windows", "Projects\Infrastructure.Windows\VNotch.Infrastructure.Windows.csproj", "{2993E93B-976E-43A2-92B2-6D8505E87D1D}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -26,11 +34,28 @@ Global
 		{7E2E3525-F89C-4806-BB39-9B8A39509429}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{7E2E3525-F89C-4806-BB39-9B8A39509429}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{7E2E3525-F89C-4806-BB39-9B8A39509429}.Release|Any CPU.Build.0 = Release|Any CPU
+		{20300DF9-F849-46E9-A186-637D2EC160B7}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{20300DF9-F849-46E9-A186-637D2EC160B7}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{20300DF9-F849-46E9-A186-637D2EC160B7}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{20300DF9-F849-46E9-A186-637D2EC160B7}.Release|Any CPU.Build.0 = Release|Any CPU
+		{C102B78B-8FCC-44AB-9D10-71A12C8482ED}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{C102B78B-8FCC-44AB-9D10-71A12C8482ED}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{C102B78B-8FCC-44AB-9D10-71A12C8482ED}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{C102B78B-8FCC-44AB-9D10-71A12C8482ED}.Release|Any CPU.Build.0 = Release|Any CPU
+		{2993E93B-976E-43A2-92B2-6D8505E87D1D}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{2993E93B-976E-43A2-92B2-6D8505E87D1D}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{2993E93B-976E-43A2-92B2-6D8505E87D1D}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{2993E93B-976E-43A2-92B2-6D8505E87D1D}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
 	EndGlobalSection
 	GlobalSection(ExtensibilityGlobals) = postSolution
 		SolutionGuid = {6AE4A3F4-4BF5-49F2-A24E-92A966B157E9}
+	EndGlobalSection
+	GlobalSection(NestedProjects) = preSolution
+		{20300DF9-F849-46E9-A186-637D2EC160B7} = {34562FEA-7F49-4642-8105-78FB0E6EFAF3}
+		{C102B78B-8FCC-44AB-9D10-71A12C8482ED} = {34562FEA-7F49-4642-8105-78FB0E6EFAF3}
+		{2993E93B-976E-43A2-92B2-6D8505E87D1D} = {34562FEA-7F49-4642-8105-78FB0E6EFAF3}
 	EndGlobalSection
 EndGlobal

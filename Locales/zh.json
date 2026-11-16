@@ -1,4 +1,10 @@
 {
+  "spotlight.partial": "文件搜索不完整",
+  "spotlight.partial.hint": "部分位置未能在时限内扫描。使用索引搜索可找到更多文件。",
+  "spotlight.ai.previousPage": "上一页",
+  "spotlight.ai.nextPage": "下一页",
+  "spotlight.ai.olderMessages": "较早的消息",
+  "spotlight.ai.latestMessages": "最新消息",
   "settings.accentColor": "强调色",
   "settings.accentColor.hint": "选择整个应用使用的强调色。",
   "settings.accentColor.default": "默认",

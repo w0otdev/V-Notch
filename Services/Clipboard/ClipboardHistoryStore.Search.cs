@@ -53,25 +53,50 @@ public sealed partial class ClipboardHistoryStore
         public void Dispose() => ArrayPool<char>.Shared.Return(_buffer, clearArray: true);
     }
 
-    private IReadOnlyList<ClipboardEntry> SearchCore(string? query, string category, CancellationToken cancellation)
+    // shortcut: cold text misses can scan all entries; add a protected text index if query p95 exceeds 200 ms.
+    private ClipboardSearchPage SearchCore(string? query, string category, int offset, int pageSize, CancellationToken cancellation)
+    {
+        int epoch = Volatile.Read(ref _personalEpoch);
+        bool personal = category == "Personal";
+        if (personal && !IsPersonalUnlocked) return new([], false, offset);
+        ClipboardEntry[] snapshot;
+        lock (_entriesLock) snapshot = _searchSnapshot ??= _searchOrder.ToArray();
+        var labels = Volatile.Read(ref _labels);
+        var result = new List<ClipboardEntry>(Math.Min(pageSize, 100));
+        int skipped = 0;
+        bool more = false;
+        for (int start = 0; start < snapshot.Length && !more; start += 64)
+        {
+            cancellation.ThrowIfCancellationRequested();
+            var batch = snapshot.AsSpan(start, Math.Min(64, snapshot.Length - start)).ToArray();
+            foreach (var entry in SearchBatchCore(query ?? "", category, batch, labels, cancellation))
+            {
+                lock (_entriesLock)
+                {
+                    if (!_entries.TryGetValue(entry.Id, out var current) || current != entry) continue;
+                }
+                if (skipped++ < offset) continue;
+                if (result.Count == pageSize) { more = true; break; }
+                result.Add(entry);
+            }
+        }
+        if (personal && (!IsPersonalUnlocked || epoch != Volatile.Read(ref _personalEpoch))) return new([], false, offset);
+        return new(result, more, checked(offset + result.Count));
+    }
+
+    private IReadOnlyList<ClipboardEntry> SearchBatchCore(string query, string category, IReadOnlyList<ClipboardEntry> candidates,
+        ClipboardLabel[] labelSnapshot, CancellationToken cancellation)
     {
         cancellation.ThrowIfCancellationRequested();
         bool personal = category == "Personal";
         if (personal && !IsPersonalUnlocked) return Array.Empty<ClipboardEntry>();
-        query ??= string.Empty;
-        List<ClipboardEntry> candidates;
-        lock (_entriesLock)
-        {
-            candidates = new List<ClipboardEntry>(_entries.Count);
-            foreach (var pair in _entries) candidates.Add(pair.Value);
-        }
         int count = candidates.Count;
         if (count == 0) return Array.Empty<ClipboardEntry>();
         int groupCount = 0;
         foreach (var entry in candidates) groupCount = checked(groupCount + entry.Groups.Length);
         var entries = ArrayPool<SearchEntry>.Shared.Rent(count);
         var groups = ArrayPool<SearchSlice>.Shared.Rent(Math.Max(1, groupCount));
-        var labels = ArrayPool<SearchLabel>.Shared.Rent(Math.Max(1, _labels.Length));
+        var labels = ArrayPool<SearchLabel>.Shared.Rent(Math.Max(1, labelSnapshot.Length));
         var matches = ArrayPool<byte>.Shared.Rent(count);
         using var pool = new SearchTextPool();
         try
@@ -97,10 +122,10 @@ public sealed partial class ClipboardHistoryStore
                 };
                 foreach (string group in entry.Groups) groups[groupIndex++] = pool.Add(group);
             }
-            for (int i = 0; i < _labels.Length; i++)
-                labels[i] = new SearchLabel { Id = pool.Add(_labels[i].Id), Name = pool.Add(_labels[i].Name) };
+            for (int i = 0; i < labelSnapshot.Length; i++)
+                labels[i] = new SearchLabel { Id = pool.Add(labelSnapshot[i].Id), Name = pool.Add(labelSnapshot[i].Name) };
 
-            int Filter() => vn_clipboard_store_filter_entries_batch(entries, count, groups, groupCount, labels, _labels.Length,
+            int Filter() => vn_clipboard_store_filter_entries_batch(entries, count, groups, groupCount, labels, labelSnapshot.Length,
                 pool.Text, pool.Text.Length, query, query.Length, category, category.Length, personal ? (byte)1 : (byte)0, matches, count);
             if (Filter() != 0) throw new InvalidOperationException("Native clipboard search failed.");
             bool readFullText = false;
@@ -112,10 +137,17 @@ public sealed partial class ClipboardHistoryStore
                 string fullText;
                 try
                 {
-                    if (!_searchText.TryGet(entry.Id, out fullText!))
+                    lock (_vaultReadLock)
                     {
-                        fullText = ReadContent(entry).Text;
-                        _searchText.Set(entry.Id, fullText);
+                        if (entry.IsPersonal && !IsPersonalUnlocked) return Array.Empty<ClipboardEntry>();
+                        if (!_searchText.TryGet(entry.Id, out fullText!))
+                        {
+                            fullText = ReadContent(entry).Text;
+                            // Do not repopulate a removed or reclassified entry from a stale snapshot.
+                            lock (_entriesLock)
+                                if (_entries.TryGetValue(entry.Id, out var current) && current == entry && !current.IsSensitive)
+                                    _searchText.Set(entry.Id, fullText);
+                        }
                     }
                 }
                 catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or JsonException or CryptographicException)
@@ -130,7 +162,6 @@ public sealed partial class ClipboardHistoryStore
             cancellation.ThrowIfCancellationRequested();
             var result = new List<ClipboardEntry>(count);
             for (int i = 0; i < count; i++) if (matches[i] == 1) result.Add(candidates[i]);
-            result.Sort(s_copiedUtcDescComparison);
             return result;
         }
         finally

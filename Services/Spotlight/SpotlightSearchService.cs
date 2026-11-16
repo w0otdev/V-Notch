@@ -1,7 +1,6 @@
 using System.IO;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
-using VNotch.Controllers;
 using VNotch.Models;
 using VNotch.Services.Spotlight.Providers;
 
@@ -37,96 +36,29 @@ internal sealed partial class SpotlightSearchService
     private const int ProviderSearchDebounceMs = 75;
 
     internal readonly record struct SearchUpdate(
-        IReadOnlyList<SpotlightSearchItem> Results, bool IsComplete, bool IsImmediateComplete);
+        IReadOnlyList<SpotlightSearchItem> Results, bool IsComplete, bool IsImmediateComplete, SearchCompleteness FileCompleteness = SearchCompleteness.Complete);
     private static readonly Comparison<SpotlightSearchItem> s_mergeComparison = CompareMergedItems;
     internal static readonly Comparison<SpotlightSearchItem> s_scoreAndTitleComparison = CompareScoreAndTitle;
 
     private readonly ISpotlightProvider[] _providers;
     private readonly ISpotlightProvider[] _instantProviders;
     private readonly ISpotlightProvider[] _deferredProviders;
-    private readonly WindowsSearchProvider? _windowsSearchProvider;
-    private readonly EverythingSearchProvider? _everythingSearchProvider;
-    private readonly LocalFileSearchProvider? _localFileSearchProvider;
-    private readonly AppSearchProvider[] _appSearchProviders;
-    private readonly SystemFileSearchProvider[] _systemFileSearchProviders;
     private readonly SpotlightUsageStore? _usage;
 
-    public bool IsWindowsSearchAvailable =>
-        (_windowsSearchProvider?.IsAvailable ?? false) ||
-        (_everythingSearchProvider?.IsAvailable ?? false) ||
-        (_localFileSearchProvider?.IsAvailable ?? false);
+    public bool IsWindowsSearchAvailable => _providers.Any(p => p.FileRole != FileSearchRole.None && p.IsAvailable);
 
-    public SpotlightSearchService(
-        IEnumerable<ISpotlightProvider> providers,
-        SpotlightUsageStore? usage = null)
+    public SpotlightSearchService(IEnumerable<ISpotlightProvider> providers, SpotlightUsageStore? usage = null)
     {
-        _providers = providers as ISpotlightProvider[] ?? new List<ISpotlightProvider>(providers).ToArray();
+        _providers = providers.ToArray();
         _usage = usage;
-
-        var instantList = new List<ISpotlightProvider>(_providers.Length);
-        var deferredList = new List<ISpotlightProvider>(_providers.Length);
-        var appProviders = new List<AppSearchProvider>(2);
-        var sysFileProviders = new List<SystemFileSearchProvider>(2);
-        Func<string, bool>? isExcludedDelegate = _usage != null
-            ? path => _usage.Preferences.IsExcluded(path)
-            : null;
-
-        for (int i = 0; i < _providers.Length; i++)
-        {
-            var provider = _providers[i];
-            if (provider.IsInstant)
-                instantList.Add(provider);
-            else
-                deferredList.Add(provider);
-
-            if (provider is EverythingSearchProvider everything)
-            {
-                _everythingSearchProvider ??= everything;
-                if (isExcludedDelegate != null)
-                    everything.IsExcluded = isExcludedDelegate;
-            }
-            else if (provider is WindowsSearchProvider windows)
-            {
-                _windowsSearchProvider ??= windows;
-                if (isExcludedDelegate != null)
-                    windows.IsExcluded = isExcludedDelegate;
-            }
-            else if (provider is AppSearchProvider appProvider)
-            {
-                appProviders.Add(appProvider);
-            }
-            else if (provider is SystemFileSearchProvider sysFileProvider)
-            {
-                sysFileProviders.Add(sysFileProvider);
-            }
-            else if (provider is LocalFileSearchProvider localFiles)
-            {
-                _localFileSearchProvider = localFiles;
-                localFiles.IsExcluded = isExcludedDelegate;
-                localFiles.ExcludedFolders = _usage != null ? () => _usage.Preferences.GetExcludedFolders() : null;
-            }
-        }
-
-        _instantProviders = instantList.ToArray();
-        _deferredProviders = deferredList.ToArray();
-        _appSearchProviders = appProviders.ToArray();
-        _systemFileSearchProviders = sysFileProviders.ToArray();
+        _instantProviders = _providers.Where(p => p.IsInstant).ToArray();
+        _deferredProviders = _providers.Where(p => !p.IsInstant).ToArray();
+        foreach (var provider in _providers)
+            provider.ConfigureExclusions(usage == null ? null : path => usage.Preferences.IsExcluded(path),
+                usage == null ? null : () => usage.Preferences.GetExcludedFolders());
     }
 
-    internal Task WarmupAsync()
-    {
-        int total = _appSearchProviders.Length + _systemFileSearchProviders.Length;
-        if (total == 0) return Task.CompletedTask;
-
-        var tasks = new Task[total];
-        int idx = 0;
-        for (int i = 0; i < _appSearchProviders.Length; i++)
-            tasks[idx++] = _appSearchProviders[i].WarmupAsync();
-        for (int i = 0; i < _systemFileSearchProviders.Length; i++)
-            tasks[idx++] = _systemFileSearchProviders[i].WarmupAsync();
-
-        return Task.WhenAll(tasks);
-    }
+    internal Task WarmupAsync() => Task.WhenAll(_providers.Select(p => p.WarmupAsync()));
 
     internal Task<IReadOnlyList<SpotlightSearchItem>> SearchInstantAsync(
         string query,
@@ -178,23 +110,23 @@ internal sealed partial class SpotlightSearchService
         CancellationToken queryToken = queryCts.Token;
         string normalizedForUsage = _usage != null ? SettingsSearchMatcher.Normalize(query) : string.Empty;
 
-        var tasks = new Task<IReadOnlyList<SpotlightSearchItem>>[selectedProviders.Length];
+        var tasks = new Task<SearchBatch>[selectedProviders.Length];
         var immediateProviders = new bool[selectedProviders.Length];
         int immediateRemaining = 1; // Preference/history results are part of the immediate phase.
         int everythingIndex = -1;
         for (int i = 0; i < selectedProviders.Length; i++)
         {
-            if (selectedProviders[i] is EverythingSearchProvider && everythingIndex < 0)
+            if (selectedProviders[i].FileRole == FileSearchRole.AuthoritativeIndex && everythingIndex < 0)
                 everythingIndex = i;
-            if (selectedProviders[i] is LocalFileSearchProvider) continue;
-            immediateProviders[i] = selectedProviders[i].IsInstant && selectedProviders[i] is not EverythingSearchProvider;
+            if (selectedProviders[i].FileRole == FileSearchRole.Fallback) continue;
+            immediateProviders[i] = !selectedProviders[i].DeferSearch;
             if (immediateProviders[i]) immediateRemaining++;
             tasks[i] = SearchDelayedProviderAsync(selectedProviders[i], query,
                 immediateProviders[i] ? 0 : debounceMilliseconds, queryToken);
         }
         for (int i = 0; i < selectedProviders.Length; i++)
         {
-            if (selectedProviders[i] is LocalFileSearchProvider)
+            if (selectedProviders[i].FileRole == FileSearchRole.Fallback)
                 tasks[i] = SearchLocalFallbackAsync(selectedProviders[i],
                     everythingIndex >= 0 ? tasks[everythingIndex] : null, query, queryToken,
                     debounceMilliseconds);
@@ -217,6 +149,7 @@ internal sealed partial class SpotlightSearchService
             var groups = new IReadOnlyList<SpotlightSearchItem>[tasks.Length + 2];
             Array.Fill(groups, Array.Empty<SpotlightSearchItem>());
             var pending = new List<Task>(allTasks);
+            var fileStates = new Dictionary<int, SearchCompleteness>();
 
             while (pending.Count > 0)
             {
@@ -226,7 +159,9 @@ internal sealed partial class SpotlightSearchService
                 for (int index = 0; index < tasks.Length; index++)
                 {
                     if (!tasks[index].IsCompleted || !pending.Remove(tasks[index])) continue;
-                    groups[index] = ApplyUsageBoost(await tasks[index].ConfigureAwait(false), normalizedForUsage);
+                    var batch = await tasks[index].ConfigureAwait(false);
+                    groups[index] = ApplyUsageBoost(batch.Results, normalizedForUsage);
+                    if (selectedProviders[index].FileRole != FileSearchRole.None) fileStates[index] = batch.Completeness;
                     if (immediateProviders[index]) immediateRemaining--;
                 }
                 if (personalization.IsCompleted && pending.Remove(personalization))
@@ -238,7 +173,12 @@ internal sealed partial class SpotlightSearchService
                 }
                 queryToken.ThrowIfCancellationRequested();
                 yield return new(Merge(groups, limit), IsComplete: pending.Count == 0,
-                    IsImmediateComplete: immediateRemaining == 0);
+                    IsImmediateComplete: immediateRemaining == 0, FileCompleteness:
+                        fileStates.Any(p => selectedProviders[p.Key].FileRole == FileSearchRole.AuthoritativeIndex && p.Value == SearchCompleteness.Complete)
+                            ? SearchCompleteness.Complete
+                            : fileStates.Values.Contains(SearchCompleteness.Partial) ? SearchCompleteness.Partial
+                            : fileStates.Count > 0 && fileStates.Values.All(v => v == SearchCompleteness.Unavailable)
+                                ? SearchCompleteness.Unavailable : SearchCompleteness.Complete);
             }
         }
         finally
@@ -252,7 +192,7 @@ internal sealed partial class SpotlightSearchService
         }
     }
 
-    private static async Task<IReadOnlyList<SpotlightSearchItem>> SearchDelayedProviderAsync(
+    private static async Task<SearchBatch> SearchDelayedProviderAsync(
         ISpotlightProvider provider, string query, int debounceMilliseconds, CancellationToken cancellationToken)
     {
         if (debounceMilliseconds > 0)
@@ -260,8 +200,8 @@ internal sealed partial class SpotlightSearchService
         return await SearchProviderAsync(provider, query, MaxResults, cancellationToken).ConfigureAwait(false);
     }
 
-    private async Task<IReadOnlyList<SpotlightSearchItem>> SearchLocalFallbackAsync(
-        ISpotlightProvider local, Task<IReadOnlyList<SpotlightSearchItem>>? indexedQuery,
+    private static async Task<SearchBatch> SearchLocalFallbackAsync(
+        ISpotlightProvider local, Task<SearchBatch>? indexedQuery,
         string query, CancellationToken cancellationToken, int debounceMilliseconds = 0)
     {
         // Delay independently from in-memory results, rather than waiting for
@@ -271,10 +211,10 @@ internal sealed partial class SpotlightSearchService
         // A successful indexed query with zero matches is still authoritative.
         // Await this query's IPC result so an unavailable / timed-out index keeps
         // the disk fallback, including on the first search after startup.
-        if (indexedQuery != null) await indexedQuery.ConfigureAwait(false);
+        var indexed = indexedQuery == null ? null : await indexedQuery.ConfigureAwait(false);
         cancellationToken.ThrowIfCancellationRequested();
-        if (_everythingSearchProvider?.IsAvailable == true)
-            return Array.Empty<SpotlightSearchItem>();
+        if (indexed?.Completeness == SearchCompleteness.Complete)
+            return new([], SearchCompleteness.Complete);
         return await SearchProviderAsync(local, query, MaxResults, cancellationToken).ConfigureAwait(false);
     }
 
@@ -389,7 +329,7 @@ internal sealed partial class SpotlightSearchService
         return valid != 0;
     }
 
-    private static async Task<IReadOnlyList<SpotlightSearchItem>> SearchProviderAsync(
+    private static async Task<SearchBatch> SearchProviderAsync(
         ISpotlightProvider provider,
         string query,
         int limit,
@@ -400,7 +340,7 @@ internal sealed partial class SpotlightSearchService
             // An async provider may run synchronously until its first incomplete
             // await (warm indexes and native IPC in particular). Never run that
             // prefix on the caller's UI thread.
-            return await Task.Run(() => provider.SearchAsync(query, limit, cancellationToken),
+            return await Task.Run(() => provider.SearchBatchAsync(query, limit, cancellationToken),
                 cancellationToken).ConfigureAwait(false);
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
@@ -410,7 +350,7 @@ internal sealed partial class SpotlightSearchService
         catch (Exception ex)
         {
             RuntimeLog.Error("SPOTLIGHT-SEARCH", ex, $"{provider.GetType().Name} failed");
-            return Array.Empty<SpotlightSearchItem>();
+            return new([], SearchCompleteness.Unavailable);
         }
     }
 

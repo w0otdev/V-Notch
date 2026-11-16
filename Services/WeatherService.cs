@@ -41,6 +41,15 @@ public sealed partial class WeatherService : IWeatherService, IDisposable
     private sealed record CachedLocation(double Lat, double Lon, string City, DateTime Expiry);
     private CachedLocation? _cachedLocation;
 
+    private readonly TimeProvider _clock;
+    private readonly SemaphoreSlim _fetchGate = new(1, 1);
+    private readonly Dictionary<string, (WeatherInfo Weather, DateTimeOffset Expires)> _forecasts = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, (DateTimeOffset Until, int Failures)> _cooldowns = new(StringComparer.OrdinalIgnoreCase);
+    private static readonly System.Diagnostics.Metrics.Meter WeatherMetrics = new("VNotch.Weather");
+    private static readonly System.Diagnostics.Metrics.Counter<long> Requests = WeatherMetrics.CreateCounter<long>("weather.requests");
+    private static readonly System.Diagnostics.Metrics.Counter<long> Timeouts = WeatherMetrics.CreateCounter<long>("weather.timeouts");
+    private static readonly System.Diagnostics.Metrics.Counter<long> RateLimits = WeatherMetrics.CreateCounter<long>("weather.rate_limits");
+
     private readonly HttpClient _http;
     private readonly bool _ownsHttpClient;
 
@@ -51,9 +60,32 @@ public sealed partial class WeatherService : IWeatherService, IDisposable
         if (_ownsHttpClient) _http.Dispose();
     }
 
-    internal WeatherService(HttpClient httpClient) => _http = httpClient ?? throw new ArgumentNullException(nameof(httpClient));
+    internal WeatherService(HttpClient httpClient, TimeProvider? clock = null)
+    {
+        _http = httpClient ?? throw new ArgumentNullException(nameof(httpClient));
+        _clock = clock ?? TimeProvider.System;
+    }
 
     public async Task<WeatherInfo?> GetCurrentWeatherAsync(string? manualCity = null, CancellationToken cancellationToken = default)
+    {
+        try { await _fetchGate.WaitAsync(cancellationToken).ConfigureAwait(false); }
+        catch (OperationCanceledException) { return null; }
+        try
+        {
+            string key = CleanCity(manualCity) ?? "";
+            if (_forecasts.TryGetValue(key, out var cached) && _clock.GetUtcNow() < cached.Expires) return cached.Weather;
+            var weather = await FetchCurrentWeatherAsync(manualCity, cancellationToken).ConfigureAwait(false);
+            if (weather != null)
+            {
+                if (_forecasts.Count >= 8) _forecasts.Remove(_forecasts.MinBy(p => p.Value.Expires).Key);
+                _forecasts[key] = (weather, _clock.GetUtcNow().AddMinutes(15));
+            }
+            return weather;
+        }
+        finally { _fetchGate.Release(); }
+    }
+
+    private async Task<WeatherInfo?> FetchCurrentWeatherAsync(string? manualCity, CancellationToken cancellationToken)
     {
         try
         {
@@ -71,14 +103,15 @@ public sealed partial class WeatherService : IWeatherService, IDisposable
                 "&timezone=auto&forecast_days=1";
 
             using var requestCts = CreateRequestCancellation(cancellationToken);
-            using var response = await _http.GetAsync(url, HttpCompletionOption.ResponseHeadersRead, requestCts.Token).ConfigureAwait(false);
+            using var response = await SendWeatherRequestAsync(url, requestCts.Token, cancellationToken).ConfigureAwait(false);
+            if (response == null) return null;
             if (!response.IsSuccessStatusCode)
             {
                 RuntimeLog.Log(LogCategory, $"Open-Meteo HTTP {(int)response.StatusCode}");
                 return null;
             }
 
-            using var doc = await ReadLimitedJsonAsync(response, MaxWeatherResponseBytes, requestCts.Token).ConfigureAwait(false);
+            using var doc = await ReadWeatherBodyAsync(response, "api.open-meteo.com", requestCts.Token, cancellationToken).ConfigureAwait(false);
             if (doc is null) return null;
 
             var info = ParseForecastJson(doc.RootElement, city);
@@ -97,6 +130,53 @@ public sealed partial class WeatherService : IWeatherService, IDisposable
         {
             RuntimeLog.Log(LogCategory, $"Error: {ex.Message}");
             return null;
+        }
+    }
+
+    private async Task<HttpResponseMessage?> SendWeatherRequestAsync(string url, CancellationToken requestToken, CancellationToken callerToken)
+    {
+        string host = new Uri(url).Host;
+        var now = _clock.GetUtcNow();
+        if (_cooldowns.TryGetValue(host, out var cooldown) && now < cooldown.Until) return null;
+        Requests.Add(1);
+        try
+        {
+            var response = await _http.GetAsync(url, HttpCompletionOption.ResponseHeadersRead, requestToken).ConfigureAwait(false);
+            if ((int)response.StatusCode == 429 || (int)response.StatusCode >= 500)
+            {
+                if ((int)response.StatusCode == 429) RateLimits.Add(1);
+                int failures = Math.Min(10, cooldown.Failures + 1);
+                var retry = response.Headers.RetryAfter;
+                var delay = retry?.Delta ?? (retry?.Date is { } date ? date - now : TimeSpan.FromMinutes(Math.Min(60, 1 << Math.Min(failures - 1, 6))));
+                delay = delay > TimeSpan.FromSeconds(1) ? delay : TimeSpan.FromSeconds(1);
+                _cooldowns[host] = (delay < DateTimeOffset.MaxValue - now ? now + delay : DateTimeOffset.MaxValue, failures);
+            }
+            return response;
+        }
+        catch (Exception ex) when (ex is HttpRequestException || ex is OperationCanceledException && !callerToken.IsCancellationRequested)
+        {
+            if (ex is OperationCanceledException) Timeouts.Add(1);
+            int failures = Math.Min(10, cooldown.Failures + 1);
+            _cooldowns[host] = (now.AddMinutes(Math.Min(60, 1 << Math.Min(failures - 1, 6))), failures);
+            throw;
+        }
+    }
+
+    private async Task<JsonDocument?> ReadWeatherBodyAsync(HttpResponseMessage response, string host,
+        CancellationToken requestToken, CancellationToken callerToken)
+    {
+        try
+        {
+            var document = await ReadLimitedJsonAsync(response, MaxWeatherResponseBytes, requestToken).ConfigureAwait(false);
+            if (document != null) _cooldowns.Remove(host);
+            return document;
+        }
+        catch (Exception ex) when (ex is HttpRequestException || ex is OperationCanceledException && !callerToken.IsCancellationRequested)
+        {
+            if (ex is OperationCanceledException) Timeouts.Add(1);
+            int failures = Math.Min(10, _cooldowns.GetValueOrDefault(host).Failures + 1);
+            _cooldowns[host] = (_clock.GetUtcNow().AddMinutes(Math.Min(60, 1 << Math.Min(failures - 1, 6))), failures);
+            throw;
         }
     }
 
@@ -208,14 +288,15 @@ public sealed partial class WeatherService : IWeatherService, IDisposable
                          "&count=1&language=en&format=json";
 
             using var requestCts = CreateRequestCancellation(token);
-            using var response = await _http.GetAsync(url, HttpCompletionOption.ResponseHeadersRead, requestCts.Token).ConfigureAwait(false);
+            using var response = await SendWeatherRequestAsync(url, requestCts.Token, token).ConfigureAwait(false);
+            if (response == null) return null;
             if (!response.IsSuccessStatusCode)
             {
                 RuntimeLog.Log(LogCategory, $"Geocoding HTTP {(int)response.StatusCode}");
                 return null;
             }
 
-            using var doc = await ReadLimitedJsonAsync(response, MaxWeatherResponseBytes, requestCts.Token).ConfigureAwait(false);
+            using var doc = await ReadWeatherBodyAsync(response, "geocoding-api.open-meteo.com", requestCts.Token, token).ConfigureAwait(false);
             if (doc is null) return null;
             var root = doc.RootElement;
 
@@ -249,20 +330,21 @@ public sealed partial class WeatherService : IWeatherService, IDisposable
     {
         token.ThrowIfCancellationRequested();
         var cached = Volatile.Read(ref _cachedLocation);
-        if (cached is not null && DateTime.UtcNow < cached.Expiry)
+        if (cached is not null && _clock.GetUtcNow().UtcDateTime < cached.Expiry)
             return (cached.Lat, cached.Lon, cached.City);
 
         try
         {
             using var requestCts = CreateRequestCancellation(token);
-            using var response = await _http.GetAsync("https://ipwho.is/", HttpCompletionOption.ResponseHeadersRead, requestCts.Token).ConfigureAwait(false);
+            using var response = await SendWeatherRequestAsync("https://ipwho.is/", requestCts.Token, token).ConfigureAwait(false);
+            if (response == null) return null;
             if (!response.IsSuccessStatusCode)
             {
                 RuntimeLog.Log(LogCategory, $"ipwho.is HTTP {(int)response.StatusCode}");
                 return null;
             }
 
-            using var doc = await ReadLimitedJsonAsync(response, MaxWeatherResponseBytes, requestCts.Token).ConfigureAwait(false);
+            using var doc = await ReadWeatherBodyAsync(response, "ipwho.is", requestCts.Token, token).ConfigureAwait(false);
             if (doc is null) return null;
             var root = doc.RootElement;
 
@@ -286,7 +368,7 @@ public sealed partial class WeatherService : IWeatherService, IDisposable
                 ? cityProp.GetString() ?? string.Empty
                 : string.Empty;
 
-            Volatile.Write(ref _cachedLocation, new CachedLocation(lat, lon, city, DateTime.UtcNow.AddMinutes(30)));
+            Volatile.Write(ref _cachedLocation, new CachedLocation(lat, lon, city, _clock.GetUtcNow().UtcDateTime.AddMinutes(30)));
             return (lat, lon, city);
         }
         catch (OperationCanceledException)

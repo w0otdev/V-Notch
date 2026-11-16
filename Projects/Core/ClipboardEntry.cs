@@ -61,3 +61,5 @@ public readonly record struct ClipboardUnlockResult(ClipboardUnlockStatus Status
 {
     public bool Succeeded => Status == ClipboardUnlockStatus.Success;
 }
+
+public sealed record ClipboardSearchPage(IReadOnlyList<ClipboardEntry> Entries, bool HasMore, int NextOffset);

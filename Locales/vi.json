@@ -1,4 +1,12 @@
 {
+  "spotlight.partial": "Tìm file chưa đầy đủ",
+  "spotlight.partial.hint": "Một số vị trí chưa được quét trong thời gian cho phép. Tìm kiếm có chỉ mục có thể tìm thêm file.",
+
+  "spotlight.ai.previousPage": "Trang trước",
+  "spotlight.ai.nextPage": "Trang sau",
+  "spotlight.ai.olderMessages": "Tin nhắn cũ hơn",
+  "spotlight.ai.latestMessages": "Tin nhắn mới nhất",
+
   "settings.accentColor": "Màu nhấn",
   "settings.accentColor.hint": "Chọn màu nhấn cho các nút và thành phần giao diện trong ứng dụng.",
   "settings.accentColor.default": "Mặc định",

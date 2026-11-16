@@ -187,6 +187,15 @@ jobs:
           if-no-files-found: error
           retention-days: 1
 
+      - name: Retain architecture scale evidence
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: architecture-scale-shard-${{ matrix.shard }}
+          path: artifacts/architecture-scale/*.json
+          if-no-files-found: ignore
+          retention-days: 14
+
   windows-validation:
     name: Windows validation
     needs: [preflight, windows-test]
@@ -230,15 +239,35 @@ jobs:
 
       # actions/download-artifact@v4.3.0
       - name: Download sharded coverage reports
-        uses: actions/download-artifact@d3f86a106a0bac45b975a628896c90dbdf5c8093
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
         with:
           pattern: coverage-shard-*
           path: TestResults/Coverage
-          merge-multiple: true
+          # Collector attachment paths can collide across shards; the coverage gate scans recursively.
+          merge-multiple: false
 
       - name: Assert code coverage
         shell: pwsh
         run: pwsh -NoProfile -File Tools/Assert-Coverage.ps1 -ResultsDirectory TestResults/Coverage -MinimumLinePercent 70
+
+      - name: Download architecture scale evidence
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          pattern: architecture-scale-shard-*
+          path: artifacts/architecture-scale
+          merge-multiple: true
+
+      - name: Require both architecture scale fixtures
+        shell: pwsh
+        run: |
+          foreach ($size in 100, 1000) {
+            foreach ($kind in 'scale', 'ui') {
+              $path = "artifacts/architecture-scale/$kind-$size.json"
+              if (-not (Test-Path -LiteralPath $path)) { throw "Missing scale evidence: $path" }
+              $result = Get-Content -LiteralPath $path -Raw | ConvertFrom-Json
+              if ($result.count -ne $size) { throw "Invalid fixture size in $path" }
+            }
+          }
 
       - name: Verify gates, update compatibility & package audit in parallel
         id: gates

@@ -10,12 +10,6 @@ using VNotch.Models;
 
 namespace VNotch.Services.Spotlight;
 
-internal sealed record SpotlightAiMessage(string Role, string Content)
-{
-    public JsonElement[]? GeminiParts { get; init; }
-    public bool IsIncomplete { get; init; }
-}
-
 public sealed class SpotlightAiException(string resourceKey, string? diagnostic = null) : InvalidOperationException(resourceKey)
 {
     internal string? Diagnostic { get; } = diagnostic;

@@ -29,7 +29,25 @@ public partial class SpotlightWindow
     }
     private async void AiCopy_Click(object sender, RoutedEventArgs e)
     {
-        string text = string.Join("\n\n", _aiHistory.Select(m => m.Content));
+        string text;
+        try
+        {
+            string id = _chatId;
+            var parts = new List<string> { string.Join("\n\n", _aiHistory.Select(m => m.Content)) };
+            int before = _messageOffset;
+            await _chatSession.FlushAsync();
+            while (before > 0)
+            {
+                var page = await _chatStore.LoadAsync(id, before, 100);
+                if (page == null || page.MessageOffset >= before) throw new System.IO.IOException("Chat page is unavailable.");
+                parts.Add(string.Join("\n\n", page.Messages.Select(m => m.Content)));
+                before = page.MessageOffset;
+            }
+            if (_allowClose || _chatId != id) return;
+            parts.Reverse();
+            text = string.Join("\n\n", parts);
+        }
+        catch (Exception ex) { ReportChatFailure(ex); return; }
         if (TryCopyToClipboard(text))
         {
             SetAiStatus("spotlight.ai.copied");

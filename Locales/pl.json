@@ -1,4 +1,10 @@
 {
+  "spotlight.partial": "Wyszukiwanie plików jest niepełne",
+  "spotlight.partial.hint": "Niektórych lokalizacji nie przeskanowano w wyznaczonym czasie. Wyszukiwanie w indeksie może znaleźć więcej plików.",
+  "spotlight.ai.previousPage": "Poprzednia strona",
+  "spotlight.ai.nextPage": "Następna strona",
+  "spotlight.ai.olderMessages": "Starsze wiadomości",
+  "spotlight.ai.latestMessages": "Najnowsze wiadomości",
   "settings.accentColor": "Kolor akcentu",
   "settings.accentColor.hint": "Wybierz kolor wyróżnienia dla całej aplikacji.",
   "settings.accentColor.default": "Domyślny",

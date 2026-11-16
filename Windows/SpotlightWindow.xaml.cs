@@ -99,10 +99,11 @@ public partial class SpotlightWindow : Window
     internal event EventHandler? OpenStateChanged;
 
     internal SpotlightWindow(SpotlightViewModel viewModel, SpotlightLauncher launcher, NotchSettings? settings = null,
-        SpotlightAiService? aiService = null, SpotlightChatStore? chatStore = null)
+        SpotlightAiService? aiService = null, IChatRepository? chatStore = null)
     {
         _aiService = aiService ?? new SpotlightAiService();
         _chatStore = chatStore ?? new SpotlightChatStore();
+        _chatSession = new VNotch.ApplicationServices.ChatSession(_chatStore);
         InitializeComponent();
         LocalizedPresentation.Apply(this);
         if (settings != null) _settings = settings.Clone();
@@ -149,7 +150,8 @@ public partial class SpotlightWindow : Window
         {
             if (args.PropertyName is nameof(SpotlightViewModel.IsSearching)
                 or nameof(SpotlightViewModel.HasNoResults)
-                or nameof(SpotlightViewModel.IsWindowsSearchUnavailable))
+                or nameof(SpotlightViewModel.IsWindowsSearchUnavailable)
+                or nameof(SpotlightViewModel.IsFileSearchPartial))
             {
                 if (args.PropertyName == nameof(SpotlightViewModel.IsSearching)
                     && !_viewModel.IsSearching)
@@ -1934,6 +1936,8 @@ public partial class SpotlightWindow : Window
         int resultCount = _viewModel.Results.Count;
         bool hasQuery = !string.IsNullOrWhiteSpace(SearchBox.Text);
         bool hasResults = resultCount > 0;
+        PartialSearchHint.Text = Loc.Get("spotlight.partial.hint");
+        PartialSearchHint.Visibility = hasResults && _viewModel.IsFileSearchPartial && !_viewModel.IsSearching ? Visibility.Visible : Visibility.Collapsed;
         // Cancellation precedes the input debounce. Keep the existing loading
         // presentation alive until the replacement query starts.
         bool searchPending = _viewModel.IsSearching || _searchInputPending;
@@ -1961,6 +1965,10 @@ public partial class SpotlightWindow : Window
             if (showSearching)
             {
                 status = "searching";
+            }
+            else if (_viewModel.IsFileSearchPartial)
+            {
+                status = "partial";
             }
             else if (_viewModel.IsWindowsSearchUnavailable)
             {

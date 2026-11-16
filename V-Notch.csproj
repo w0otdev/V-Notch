@@ -81,12 +81,18 @@
     <Compile Remove=".cache\**\*.cs" />
     <Compile Remove="artifacts\**\*.cs" />
     <Compile Remove="Tests\**\*.cs" />
+    <Compile Remove="Projects\**\*.cs" />
+    <EmbeddedResource Remove="Projects\**\*" />
+    <None Remove="Projects\**\*" />
     <Compile Remove="Tools\**\*.cs" />
     <Compile Remove="Uninstall\**\*.cs" />
   </ItemGroup>
 
   <ItemGroup>
     <InternalsVisibleTo Include="VNotch.Tests" />
+    <ProjectReference Include="Projects/Core/VNotch.Core.csproj" />
+    <ProjectReference Include="Projects/Application/VNotch.Application.csproj" />
+    <ProjectReference Include="Projects/Infrastructure.Windows/VNotch.Infrastructure.Windows.csproj" />
     <EmbeddedResource Include="Security\update-public-key.pem" LogicalName="VNotch.UpdatePublicKey.pem" />
     <EmbeddedResource Include="Assets\MediaProtocols.json" LogicalName="VNotch.MediaProtocols.json" />
     <EmbeddedResource Include="docs\TERMS_OF_SERVICE.md" LogicalName="VNotch.TERMS_OF_SERVICE.md" />

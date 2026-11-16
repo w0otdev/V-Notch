@@ -1,4 +1,10 @@
 {
+  "spotlight.partial": "La ricerca dei file è incompleta",
+  "spotlight.partial.hint": "Alcune posizioni non sono state esaminate entro il limite di tempo. Una ricerca indicizzata può trovare altri file.",
+  "spotlight.ai.previousPage": "Pagina precedente",
+  "spotlight.ai.nextPage": "Pagina successiva",
+  "spotlight.ai.olderMessages": "Messaggi precedenti",
+  "spotlight.ai.latestMessages": "Messaggi più recenti",
   "settings.accentColor": "Colore di accento",
   "settings.accentColor.hint": "Scegli il colore di evidenziazione dell’app.",
   "settings.accentColor.default": "Predefinito",

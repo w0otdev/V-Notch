@@ -21,6 +21,7 @@ struct Search {
     SRWLOCK lock = SRWLOCK_INIT;
     std::atomic<bool> cancelled{false};
     std::vector<Result> results;
+    bool partial = false;
 };
 
 struct ExclusiveSrwLockGuard {
@@ -222,9 +223,10 @@ VN_EXPORT int32_t __stdcall vn_local_file_search_run(int64_t handle,
         lf::ExclusiveSrwLockGuard guard(search->lock);
         search->results.clear();
     }
-    auto commit_results = [&](std::vector<lf::Result>& local_results) noexcept {
+    auto commit_results = [&](std::vector<lf::Result>& local_results, bool partial = false) noexcept {
         lf::ExclusiveSrwLockGuard guard(search->lock);
         search->results.swap(local_results);
+        search->partial = partial;
         *count = static_cast<int32_t>(search->results.size());
     };
     try {
@@ -269,7 +271,7 @@ VN_EXPORT int32_t __stdcall vn_local_file_search_run(int64_t handle,
             for (auto& walk : walks) if (!walk->Done()) {
                 pending = true;
                 if (!lf::Step(*walk, *search, local_results, query, normalized, explicit_path, hidden, capacity, deadline)) {
-                    commit_results(local_results);
+                    commit_results(local_results, true);
                     return VN_OK;
                 }
             }
@@ -277,6 +279,15 @@ VN_EXPORT int32_t __stdcall vn_local_file_search_run(int64_t handle,
         commit_results(local_results);
         return VN_OK;
     } catch (...) { return VN_ERR_FAIL; }
+}
+
+VN_EXPORT int32_t __stdcall vn_local_file_search_is_partial(int64_t handle, uint8_t* partial) noexcept {
+    if (!partial) return VN_ERR_INVALID_ARG;
+    auto lease = lf::searches.Acquire(handle);
+    if (!lease.get()) return VN_ERR_INVALID_ARG;
+    lf::SharedSrwLockGuard guard(lease.get()->lock);
+    *partial = lease.get()->partial ? 1 : 0;
+    return VN_OK;
 }
 
 VN_EXPORT int32_t __stdcall vn_local_file_search_get_result(int64_t handle, int32_t index,

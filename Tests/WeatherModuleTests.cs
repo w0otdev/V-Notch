@@ -18,7 +18,7 @@ public sealed class WeatherModuleTests
             ManualCity = string.Empty
         };
         var weatherService = new FakeWeatherService(CreateWeather("Hanoi"));
-        using var module = new WeatherModule(weatherService, new FakeSettingsService(persistedSettings));
+        using var module = new WeatherModule(weatherService, new FakeSettingsService(persistedSettings), random: () => 0);
 
         WeatherInfo? update = null;
         module.WeatherUpdated += (_, e) => update = e.Weather;
@@ -47,7 +47,7 @@ public sealed class WeatherModuleTests
             ManualCity = "Hanoi"
         };
         var weatherService = new FakeWeatherService(CreateWeather("Hanoi"));
-        using var module = new WeatherModule(weatherService, new FakeSettingsService(initialSettings));
+        using var module = new WeatherModule(weatherService, new FakeSettingsService(initialSettings), random: () => 0);
 
         module.Start();
         Assert.Equal(1, weatherService.CallCount);
@@ -70,7 +70,7 @@ public sealed class WeatherModuleTests
     {
         var settings = new NotchSettings { EnableWeather = true };
         var weatherService = new FakeWeatherService(null);
-        using var module = new WeatherModule(weatherService, new FakeSettingsService(settings));
+        using var module = new WeatherModule(weatherService, new FakeSettingsService(settings), random: () => 0);
 
         WeatherUpdateEventArgs? update = null;
         module.WeatherUpdated += (_, e) => update = e;
@@ -86,7 +86,7 @@ public sealed class WeatherModuleTests
     {
         var settings = new NotchSettings { EnableWeather = true };
         var weatherService = new FakeWeatherService(CreateWeather("Ho Chi Minh City"));
-        using var module = new WeatherModule(weatherService, new FakeSettingsService(settings));
+        using var module = new WeatherModule(weatherService, new FakeSettingsService(settings), random: () => 0);
 
         module.Start();
         WeatherInfo? replayed = null;

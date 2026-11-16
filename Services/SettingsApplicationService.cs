@@ -5,7 +5,7 @@ using VNotch.Models;
 
 namespace VNotch.Services;
 
-public sealed class SettingsApplicationService : ISettingsApplicationService
+public sealed partial class SettingsApplicationService : ISettingsApplicationService
 {
     private static bool IsValidFilePath(string? filePath) =>
         filePath != null && filePath.Any(c => c > ' ' && c != '\u00a0' && c != '\ufeff');

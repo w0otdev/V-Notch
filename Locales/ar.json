@@ -1,4 +1,10 @@
 {
+  "spotlight.partial": "البحث عن الملفات غير مكتمل",
+  "spotlight.partial.hint": "لم يتم فحص بعض المواقع ضمن المهلة المحددة. قد يعثر البحث المفهرس على ملفات إضافية.",
+  "spotlight.ai.previousPage": "الصفحة السابقة",
+  "spotlight.ai.nextPage": "الصفحة التالية",
+  "spotlight.ai.olderMessages": "رسائل أقدم",
+  "spotlight.ai.latestMessages": "أحدث الرسائل",
   "settings.accentColor": "لون التمييز",
   "settings.accentColor.hint": "اختر لون التمييز المستخدم في التطبيق بأكمله.",
   "settings.accentColor.default": "الافتراضي",
