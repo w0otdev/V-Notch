@@ -29,11 +29,19 @@ public sealed class BluetoothNotificationController : IDisposable
     }
 
     private readonly object _stateGate = new();
+    private readonly Func<double, Action, IDisposable> _scheduleDismiss;
     private bool _isVisible;
     private bool _currentConnected = true;
-    private System.Timers.Timer? _dismissTimer;
+    private IDisposable? _dismissTimer;
     private long _dismissGeneration;
     private bool _disposed;
+
+    public BluetoothNotificationController() : this(ScheduleDismiss) { }
+
+    internal BluetoothNotificationController(Func<double, Action, IDisposable> scheduleDismiss)
+    {
+        _scheduleDismiss = scheduleDismiss ?? throw new ArgumentNullException(nameof(scheduleDismiss));
+    }
 
     public bool IsVisible
     {
@@ -120,13 +128,8 @@ public sealed class BluetoothNotificationController : IDisposable
         StopDismissTimerLocked();
 
         long generation = ++_dismissGeneration;
-        var timer = new System.Timers.Timer(AutoDismissMs)
-        {
-            AutoReset = false
-        };
-        _dismissTimer = timer;
-
-        timer.Elapsed += (s, e) =>
+        IDisposable? timer = null;
+        timer = _scheduleDismiss(AutoDismissMs, () =>
         {
             lock (_stateGate)
             {
@@ -141,11 +144,19 @@ public sealed class BluetoothNotificationController : IDisposable
                 _dismissTimer = null;
                 ++_dismissGeneration;
                 _isVisible = false;
-                timer.Dispose();
+                timer!.Dispose();
                 DismissRequested?.Invoke();
             }
-        };
+        });
+        _dismissTimer = timer;
+    }
+
+    private static IDisposable ScheduleDismiss(double intervalMs, Action callback)
+    {
+        var timer = new System.Timers.Timer(intervalMs) { AutoReset = false };
+        timer.Elapsed += (_, _) => callback();
         timer.Start();
+        return timer;
     }
 
     private void StopDismissTimerLocked()
@@ -153,7 +164,6 @@ public sealed class BluetoothNotificationController : IDisposable
         ++_dismissGeneration;
         var timer = _dismissTimer;
         _dismissTimer = null;
-        timer?.Stop();
         timer?.Dispose();
     }
 

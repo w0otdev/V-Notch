@@ -1,7 +1,6 @@
 using System;
 using System.IO;
 using System.Text.Json;
-using System.Threading;
 using System.Runtime.InteropServices;
 using VNotch.Controllers;
 using VNotch.Models;
@@ -13,35 +12,56 @@ namespace VNotch.Tests;
 public sealed class AuditRegressionTests
 {
     [Fact]
-    public async Task BluetoothController_NewShowCancelsPendingTimerAndNeverFiresStaleDismiss()
+    public void BluetoothController_NewShowCancelsPendingTimerAndNeverFiresStaleDismiss()
     {
-        using var controller = new BluetoothNotificationController { AutoDismissMs = 160 };
-        using var dismissed = new ManualResetEventSlim(false);
+        var timers = new List<PendingDismiss>();
+        using var controller = new BluetoothNotificationController((intervalMs, callback) =>
+        {
+            Assert.Equal(160d, intervalMs);
+            var timer = new PendingDismiss(callback);
+            timers.Add(timer);
+            return timer;
+        }) { AutoDismissMs = 160 };
         int shows = 0;
         int dismisses = 0;
-        controller.ShowRequested += (_, _) => Interlocked.Increment(ref shows);
-        controller.DismissRequested += () => { Interlocked.Increment(ref dismisses); dismissed.Set(); };
+        controller.ShowRequested += (_, _) => shows++;
+        controller.DismissRequested += () => dismisses++;
 
         var first = new BluetoothDeviceInfo { Name = "Mouse", DeviceType = BluetoothDeviceType.Mouse };
         var second = new BluetoothDeviceInfo { Name = "Buds", DeviceType = BluetoothDeviceType.Headphones };
 
         Assert.True(controller.TryShow(first, connected: true, isNotchVisible: true, isAnimating: false, isExpanded: false, isMusicExpanded: false));
-        await Task.Delay(80);
-        long secondShownAt = Environment.TickCount64;
+        var firstTimer = Assert.Single(timers);
         Assert.True(controller.TryShow(second, connected: true, isNotchVisible: true, isAnimating: false, isExpanded: false, isMusicExpanded: false));
-        await Task.Delay(100);
+        Assert.Equal(2, timers.Count);
+        var secondTimer = timers[1];
+        Assert.True(firstTimer.IsDisposed);
+        Assert.False(secondTimer.IsDisposed);
 
-        // First timer window has elapsed, but second toast is still within its 160 ms window.
-        Assert.Equal(2, Volatile.Read(ref shows));
-        if (Environment.TickCount64 - secondShownAt < 120)
-        {
-            Assert.Equal(0, Volatile.Read(ref dismisses));
-            Assert.True(controller.IsVisible);
-        }
+        // A callback may already be queued when its timer is cancelled. Deliver
+        // it explicitly, without depending on CI scheduling between short delays.
+        firstTimer.FireQueuedCallback();
+        Assert.Equal(2, shows);
+        Assert.Equal(0, dismisses);
+        Assert.True(controller.IsVisible);
+        Assert.False(secondTimer.IsDisposed);
 
-        Assert.True(dismissed.Wait(TimeSpan.FromSeconds(5)));
-        Assert.Equal(1, Volatile.Read(ref dismisses));
+        secondTimer.FireQueuedCallback();
+        Assert.Equal(1, dismisses);
         Assert.False(controller.IsVisible);
+        Assert.True(secondTimer.IsDisposed);
+
+        firstTimer.FireQueuedCallback();
+        secondTimer.FireQueuedCallback();
+        Assert.Equal(1, dismisses);
+        Assert.False(controller.IsVisible);
+    }
+
+    private sealed class PendingDismiss(Action callback) : IDisposable
+    {
+        public bool IsDisposed { get; private set; }
+        public void FireQueuedCallback() => callback();
+        public void Dispose() => IsDisposed = true;
     }
 
     [Fact]

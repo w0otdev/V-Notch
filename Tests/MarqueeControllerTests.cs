@@ -1,14 +1,12 @@
-using System.Runtime.ExceptionServices;
-using System.Threading;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
-using System.Windows.Threading;
 using VNotch.Controls;
 using Xunit;
 
 namespace VNotch.Tests;
 
+[Collection("Localization")]
 public class MarqueeControllerTests
 {
     [Theory]
@@ -18,7 +16,7 @@ public class MarqueeControllerTests
     [InlineData(14)]
     public void RefreshOnlyScrollsTitlesThatOverflowTheirViewport(double spareWidth)
     {
-        RunOnStaThread(() =>
+        SharedStaTestRunner.RunAsync(async ct =>
         {
             var targets = new MarqueeTestTargets("Đình - Có Thực Đến Mùa Cây", "Artist");
             targets.TitleA.Measure(new Size(double.PositiveInfinity, double.PositiveInfinity));
@@ -28,15 +26,22 @@ public class MarqueeControllerTests
             targets.TitleLayerA.Children.Add(targets.TitleA);
             targets.TitleLayerA.RenderTransform = targets.TitleMarqueeA;
             row.Children.Add(targets.TitleLayerA);
-            var host = new Window { Content = row, Width = viewportWidth + 40, Height = 100, ShowInTaskbar = false };
+            var host = new BackgroundWindow { Content = row, Width = viewportWidth + 40, Height = 100 };
             try
             {
                 host.Show();
                 controller.RefreshMediaMarquee();
-                PumpDispatcherFor(TimeSpan.FromMilliseconds(1500));
-
-                if (spareWidth >= 0) Assert.Equal(0, targets.TitleMarqueeA.X);
-                else Assert.True(targets.TitleMarqueeA.X < 0, "A title wider than the viewport must still scroll.");
+                if (spareWidth >= 0)
+                {
+                    Assert.False(targets.TitleMarqueeA.HasAnimatedProperties);
+                    Assert.Equal(0, targets.TitleMarqueeA.X);
+                }
+                else
+                {
+                    await WpfFrameWaiter.UntilAsync(() => targets.TitleMarqueeA.X < 0,
+                        "overflowing title begins scrolling", ct);
+                    Assert.True(targets.TitleMarqueeA.X < 0, "A title wider than the viewport must still scroll.");
+                }
             }
             finally { host.Close(); }
         });
@@ -45,10 +50,10 @@ public class MarqueeControllerTests
     [Fact]
     public void PlaceholderThenRealTitleImmediately_DoesNotDropRealTitle()
     {
-        RunOnStaThread(() =>
+        SharedStaTestRunner.Run(() =>
         {
             var targets = new MarqueeTestTargets("No media playing", "Artist name");
-            var controller = targets.CreateController();
+            using var controller = targets.CreateController();
 
             controller.UpdateTitleText("No media playing");
             controller.UpdateTitleText("Real track title");
@@ -61,10 +66,10 @@ public class MarqueeControllerTests
     [Fact]
     public void RapidUpdates_AfterMorphWindow_LatestTitleAndArtistWin()
     {
-        RunOnStaThread(() =>
+        SharedStaTestRunner.RunAsync(async ct =>
         {
             var targets = new MarqueeTestTargets("Initial title", "Initial artist");
-            var controller = targets.CreateController();
+            using var controller = targets.CreateController();
 
             controller.UpdateTitleText("First title");
             controller.UpdateArtistText("First artist");
@@ -73,7 +78,8 @@ public class MarqueeControllerTests
             controller.UpdateTitleText("Final title");
             controller.UpdateArtistText("Final artist");
 
-            PumpDispatcherFor(TimeSpan.FromMilliseconds(500));
+            await WpfFrameWaiter.UntilAsync(() => targets.TitleA.Text == "Final title"
+                && targets.ArtistA.Text == "Final artist", "latest marquee metadata is applied", ct);
 
             Assert.Equal("Final title", targets.TitleA.Text);
             Assert.Equal("Final artist", targets.ArtistA.Text);
@@ -85,10 +91,10 @@ public class MarqueeControllerTests
     [Fact]
     public void TrackTransition_BypassesPendingMetadataAndMovesBothRowsTogether()
     {
-        RunOnStaThread(() =>
+        SharedStaTestRunner.RunAsync(async ct =>
         {
             var targets = new MarqueeTestTargets("Initial title", "Initial artist");
-            var controller = targets.CreateController();
+            using var controller = targets.CreateController();
 
             controller.TransitionTrackText("First title", "First artist");
             controller.UpdateTitleText("Stale title");
@@ -100,62 +106,16 @@ public class MarqueeControllerTests
             Assert.True(targets.ArtistLayerA.HasAnimatedProperties);
             Assert.True(targets.ArtistLayerB.HasAnimatedProperties);
 
-            PumpDispatcherFor(TimeSpan.FromMilliseconds(500));
+            // The slide finishes after the metadata throttle would have fired.
+            // Observe its completion instead of racing a fixed-duration sleep.
+            await WpfFrameWaiter.UntilAsync(() => targets.TitleMorphA.X == 0
+                && targets.ArtistMorphA.X == 0, "both track transition rows finish sliding", ct);
 
             Assert.Equal("Final title", targets.TitleA.Text);
             Assert.Equal("Final artist", targets.ArtistA.Text);
             Assert.NotEqual("Stale title", targets.TitleB.Text);
             Assert.NotEqual("Stale artist", targets.ArtistB.Text);
         });
-    }
-
-    private static void PumpDispatcherFor(TimeSpan duration)
-    {
-        var frame = new DispatcherFrame();
-        var timer = new DispatcherTimer(DispatcherPriority.ApplicationIdle, Dispatcher.CurrentDispatcher)
-        {
-            Interval = duration
-        };
-
-        timer.Tick += (_, _) =>
-        {
-            timer.Stop();
-            frame.Continue = false;
-        };
-        timer.Start();
-        Dispatcher.PushFrame(frame);
-    }
-
-    private static void RunOnStaThread(Action action)
-    {
-        Exception? failure = null;
-        var thread = new Thread(() =>
-        {
-            try
-            {
-                VNotch.TestSupport.BackgroundTestDesktop.AttachCurrentThread();
-                SynchronizationContext.SetSynchronizationContext(
-                    new DispatcherSynchronizationContext(Dispatcher.CurrentDispatcher));
-                action();
-            }
-            catch (Exception ex)
-            {
-                failure = ex;
-            }
-            finally
-            {
-                Dispatcher.CurrentDispatcher.InvokeShutdown();
-            }
-        });
-
-        thread.SetApartmentState(ApartmentState.STA);
-        thread.Start();
-
-        Assert.True(thread.Join(TimeSpan.FromSeconds(5)), "STA test thread did not finish.");
-        if (failure != null)
-        {
-            ExceptionDispatchInfo.Capture(failure).Throw();
-        }
     }
 
     private sealed class MarqueeTestTargets
@@ -172,10 +132,12 @@ public class MarqueeControllerTests
         private readonly TranslateTransform _titleMarqueeA = new();
         public TranslateTransform TitleMarqueeA => _titleMarqueeA;
         private readonly TranslateTransform _titleMorphA = new();
+        public TranslateTransform TitleMorphA => _titleMorphA;
         private readonly TranslateTransform _titleMarqueeB = new();
         private readonly TranslateTransform _titleMorphB = new();
         private readonly TranslateTransform _artistMarqueeA = new();
         private readonly TranslateTransform _artistMorphA = new();
+        public TranslateTransform ArtistMorphA => _artistMorphA;
         private readonly TranslateTransform _artistMarqueeB = new();
         private readonly TranslateTransform _artistMorphB = new();
 
