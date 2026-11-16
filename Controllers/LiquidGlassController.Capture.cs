@@ -64,13 +64,14 @@ public sealed partial class LiquidGlassController : IDisposable
         if (displayW <= 1 || displayH <= 1) return false;
 
         bool gpuMode = _gpuMode;
-        if (gpuMode && WindowAnimationPolicy.InvisibleMode)
+        bool invisibleMode = WindowAnimationPolicy.InvisibleMode;
+        if (gpuMode && invisibleMode)
         {
             var gpuDims = ComputeFrameDimensions(region, p, true, false, displayW, displayH);
             _outScale = gpuDims.OutScale;
             return ProcessDesktopGpuFrame(p, region, gpuDims, generation, blurSigma, refreshVersion);
         }
-        if (gpuMode && !WindowAnimationPolicy.InvisibleMode)
+        if (gpuMode && !invisibleMode)
         {
             var gpuDims = ComputeFrameDimensions(region, p, true, false, displayW, displayH);
             _outScale = gpuDims.OutScale;

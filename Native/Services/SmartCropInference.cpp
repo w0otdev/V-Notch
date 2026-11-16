@@ -1,5 +1,6 @@
 #include "SmartCropInference.h"
 #include "../vnotch_handle_registry.h"
+#include "../vnotch_session_replacement.h"
 #define ORT_API_MANUAL_INIT
 #include <onnxruntime_cxx_api.h>
 #include <array>
@@ -79,32 +80,38 @@ struct CropSession {
     }
 
     void Open(bool prefer_dml) {
-        Ort::SessionOptions options;
-        options.SetGraphOptimizationLevel(GraphOptimizationLevel::ORT_ENABLE_ALL);
-        options.SetExecutionMode(ExecutionMode::ORT_SEQUENTIAL);
-        options.DisableMemPattern();
-        options.DisableCpuMemArena();
-        options.SetInterOpNumThreads(1); options.SetIntraOpNumThreads(1);
-        if (prefer_dml) {
-            const auto append = reinterpret_cast<AppendDml>(GetProcAddress(GetModuleHandleW(L"onnxruntime.dll"),
-                "OrtSessionOptionsAppendExecutionProvider_DML"));
-            if (!append) throw std::runtime_error("DirectML provider unavailable");
-            Ort::ThrowOnError(append(options, 0));
-        }
-        Ort::Session candidate(env, model.c_str(), options);
-        if (candidate.GetInputCount() != 1 || candidate.GetOutputCount() != 1 ||
-            candidate.GetInputTypeInfo(0).GetTensorTypeAndShapeInfo().GetShape() != std::vector<int64_t>{1, 3, 416, 416} ||
-            candidate.GetOutputTypeInfo(0).GetTensorTypeAndShapeInfo().GetShape() != std::vector<int64_t>{1, 3549, 85} ||
-            candidate.GetInputTypeInfo(0).GetTensorTypeAndShapeInfo().GetElementType() != ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT ||
-            candidate.GetOutputTypeInfo(0).GetTensorTypeAndShapeInfo().GetElementType() != ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT)
-            throw std::runtime_error("Unexpected YOLOX model signature");
-        Ort::AllocatorWithDefaultOptions allocator;
-        input_name = candidate.GetInputNameAllocated(0, allocator).get();
-        output_name = candidate.GetOutputNameAllocated(0, allocator).get();
-        session = std::move(candidate); dml = prefer_dml;
+        dml = false;
+        vnotch::ReplaceSession(session, [&]() {
+            Ort::SessionOptions options;
+            options.SetGraphOptimizationLevel(GraphOptimizationLevel::ORT_ENABLE_ALL);
+            options.SetExecutionMode(ExecutionMode::ORT_SEQUENTIAL);
+            options.DisableMemPattern();
+            options.DisableCpuMemArena();
+            options.SetInterOpNumThreads(1); options.SetIntraOpNumThreads(1);
+            if (prefer_dml) {
+                const auto append = reinterpret_cast<AppendDml>(GetProcAddress(GetModuleHandleW(L"onnxruntime.dll"),
+                    "OrtSessionOptionsAppendExecutionProvider_DML"));
+                if (!append) throw std::runtime_error("DirectML provider unavailable");
+                Ort::ThrowOnError(append(options, 0));
+            }
+            Ort::Session candidate(env, model.c_str(), options);
+            if (candidate.GetInputCount() != 1 || candidate.GetOutputCount() != 1 ||
+                candidate.GetInputTypeInfo(0).GetTensorTypeAndShapeInfo().GetShape() != std::vector<int64_t>{1, 3, 416, 416} ||
+                candidate.GetOutputTypeInfo(0).GetTensorTypeAndShapeInfo().GetShape() != std::vector<int64_t>{1, 3549, 85} ||
+                candidate.GetInputTypeInfo(0).GetTensorTypeAndShapeInfo().GetElementType() != ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT ||
+                candidate.GetOutputTypeInfo(0).GetTensorTypeAndShapeInfo().GetElementType() != ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT)
+                throw std::runtime_error("Unexpected YOLOX model signature");
+            Ort::AllocatorWithDefaultOptions allocator;
+            input_name = candidate.GetInputNameAllocated(0, allocator).get();
+            output_name = candidate.GetOutputNameAllocated(0, allocator).get();
+            return candidate;
+        });
+        dml = prefer_dml;
     }
 
     void Run() {
+        // A failed CPU fallback may have left an empty session. Never call ORT with it.
+        if (!session) Open(false);
         const char* inputs[]{input_name.c_str()}, *outputs[]{output_name.c_str()};
         session.Run(Ort::RunOptions{nullptr}, inputs, &input_value, 1, outputs, &output_value, 1);
     }
@@ -142,7 +149,7 @@ VN_EXPORT int32_t __stdcall vn_smartcrop_session_infer(int64_t handle, const uin
     int32_t width, int32_t height, int32_t stride, Detection* detections, int32_t capacity,
     int32_t* out_count, uint8_t* out_dml) noexcept {
     if (!out_count || !out_dml || capacity < 3549 || !detections) return VN_ERR_INVALID_ARG;
-    *out_count = 0;
+    *out_count = 0; *out_dml = 0;
     try {
         auto session = sessions.Acquire(handle);
         if (!session) return VN_ERR_INVALID_ARG;

@@ -76,6 +76,7 @@ internal sealed partial class D3DImageFramePresenter
     private GpuHandle? _gpuHandle;
     private bool _hasGpuBackBuffer;
     private double _appliedCaptureIntervalMs;
+    private string _lastCaptureRoute = "waiting";
     internal double LastGpuRenderMs { get; private set; }
     internal double LastGpuWaitMs { get; private set; }
     internal double SubmittedGpuRenderMs { get; private set; }
@@ -97,7 +98,7 @@ internal sealed partial class D3DImageFramePresenter
         get
         {
             lock (_surfaceSync)
-                return $"backend={(_gpuHandle == null ? "waiting" : NativeGpuCaptureBackend(_gpuHandle) switch { 1 => "DXGI", 2 => "WGC", _ => "waiting" })} " +
+                return $"route={_lastCaptureRoute} backend={(_gpuHandle == null ? "waiting" : NativeGpuCaptureBackend(_gpuHandle) switch { 1 => "DXGI", 2 => "WGC", _ => "waiting" })} " +
                     $"capture=0x{(_gpuHandle == null ? 1 : NativeGpuCaptureStatus(_gpuHandle)):X8} " +
                     $"borderless=0x{(_gpuHandle == null ? 1 : NativeGpuBorderlessStatus(_gpuHandle)):X8} " +
                     $"fence=0x{(_gpuHandle == null ? 1 : NativeGpuFenceStatus(_gpuHandle)):X8} " +
@@ -141,14 +142,18 @@ internal sealed partial class D3DImageFramePresenter
                 }
                 long renderStarted = Stopwatch.GetTimestamp();
                 GpuCaptureRequests++;
+                _lastCaptureRoute = exactWindows ? "windows" : pixels == IntPtr.Zero ? "desktop" : "pixels";
                 int hr = exactWindows ? NativeGpuRenderWindows(_gpuHandle, in frame) : pixels == IntPtr.Zero
                     ? NativeGpuRender(_gpuHandle, in frame)
                     : NativeGpuRenderPixels(_gpuHandle, in frame, pixels, length, stride);
                 long renderEnded = Stopwatch.GetTimestamp();
                 LastGpuRenderMs = (renderEnded - renderStarted) * 1000.0 / Stopwatch.Frequency;
-                if (exactWindows && hr == unchecked((int)0x8000000A)) return false;
-                Marshal.ThrowExceptionForHR(hr);
-                if (hr != 0) { GpuRenderSkips++; return true; }
+                switch (GlassGpuResultPolicy.Classify(exactWindows, hr))
+                {
+                    case GlassGpuRenderOutcome.UseBackdropFallback: return false;
+                    case GlassGpuRenderOutcome.KeepPrevious: GpuRenderSkips++; return true;
+                    case GlassGpuRenderOutcome.Fail: Marshal.ThrowExceptionForHR(hr); break;
+                }
                 // Wait briefly on the capture worker, so the first UI dispatch
                 // normally receives a completed texture. Never wait on the UI.
                 int waitResult = NativeGpuWaitReady(_gpuHandle, 4);

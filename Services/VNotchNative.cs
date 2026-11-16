@@ -14,10 +14,10 @@ public static partial class VNotchNative
 {
     private const string DllName = "VNotch.Native.dll";
 
-    public const int VN_OK = 0;
-    public const int VN_ERR_INVALID_ARG = -1;
-    public const int VN_ERR_BUFFER_TOO_SMALL = -2;
-    public const int VN_ERR_FAIL = -3;
+    public const int VN_OK = (int)Interop.NativeStatus.Ok;
+    public const int VN_ERR_INVALID_ARG = (int)Interop.NativeStatus.InvalidArgument;
+    public const int VN_ERR_BUFFER_TOO_SMALL = (int)Interop.NativeStatus.BufferTooSmall;
+    public const int VN_ERR_FAIL = (int)Interop.NativeStatus.Failure;
 
     internal const int VN_PERF_SELECTION_BACKUP = -2;
     internal const int VN_PERF_SELECTION_CUSTOM = -1;
