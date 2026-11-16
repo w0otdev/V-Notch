@@ -150,6 +150,7 @@ public partial class SpotlightWindow
         _aiConversationProvider = provider;
         _aiConversationModel = model;
         _chatId = Guid.NewGuid().ToString("N");
+        _messageOffset = 0;
         _aiHistory.Clear();
         _aiDraftToRestore = null;
         CloseAiHistory();

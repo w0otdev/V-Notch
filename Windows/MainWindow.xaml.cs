@@ -227,7 +227,8 @@ public partial class MainWindow : Window
         SystemMonitorModule systemMonitorModule,
         ISpotlightController spotlightController,
         VNotch.Controllers.NotchTransitionCoordinator? transitionCoordinator = null,
-        VNotch.Services.Clipboard.ClipboardHistoryStore? clipboardHistoryStore = null)
+        VNotch.Services.Clipboard.ClipboardHistoryStore? clipboardHistoryStore = null,
+        Func<AudioMixerService>? audioMixerFactory = null, Func<IVolumeService>? volumeFactory = null)
     {
         InitializeComponent();
         SettingsButton.AddHandler(Mouse.PreviewMouseDownEvent, new MouseButtonEventHandler((sender, e) =>
@@ -306,8 +307,8 @@ public partial class MainWindow : Window
             else DisableKeyboardInput();
         };
         AudioContent.Attach(_viewModel.AudioMixer,
-            () => (AudioMixerService)App.Services.GetService(typeof(AudioMixerService))!,
-            () => (IVolumeService)App.Services.GetService(typeof(IVolumeService))!,
+            audioMixerFactory ?? (() => throw new InvalidOperationException("Audio mixer was not supplied by the composition root.")),
+            volumeFactory ?? (() => throw new InvalidOperationException("Volume service was not supplied by the composition root.")),
             () => _isAnimating, () => IsLiquidGlassEnabled);
         AudioContent.FitHeightRequested += AnimateAudioNotchHeight;
         AudioContent.OutputDeviceChanged += () =>

@@ -81,24 +81,28 @@ public partial class MainWindow
         var oldSettings = _settings;
         bool sizeChanged = HasNotchGeometryChanged(oldSettings, newSettings);
         bool languageChanged = !string.Equals(newSettings.Language, oldSettings.Language, StringComparison.Ordinal);
-        bool spotifyCanvasChanged = HasSpotifyCanvasConfigChanged(oldSettings, newSettings);
         _modeTransitionPending = newSettings.EnableDynamicIslandMode != oldSettings.EnableDynamicIslandMode;
         bool oldIgnoreAuto = oldSettings.IgnoreYouTubeAutoSubtitles;
         string oldSubtitlePriority = oldSettings.SubtitlePriority ?? "";
 
         _settings = newSettings.Clone();
         _clipboardHotkey?.Apply(_settings.ClipboardHotkey);
-        _clipboardHistory?.ApplySettings(_settings);
+        var runtimeChanges = SettingsApplicationService.ApplyRuntimeSettings(oldSettings, _settings,
+            new SettingsApplicationService.RuntimeTargets(
+                settings => _clipboardHistory?.ApplySettings(settings),
+                NetworkPrivacy.Current.Apply,
+                VNotch.Services.AiUsage.AiAccountUsageMonitor.Shared.ApplySettings,
+                settings => _liveTranslation?.ApplySettings(settings),
+                _weatherModule.OnSettingsChanged,
+                settings => _spotifyCanvasController?.UpdateSettings(settings)));
         if (_settings.HideCamera && IsCameraPreviewLifecycleActive) StopCameraPreviewForViewExit();
-        NetworkPrivacy.Current.Apply(_settings);
-        VNotch.Services.AiUsage.AiAccountUsageMonitor.Shared.ApplySettings(_settings);
         ApplyInvisibleMode();
-        _liveTranslation?.ApplySettings(_settings);
 
         UpdateWindowAndNotchPlacementSettings(oldSettings, newSettings, settingsWindow);
         ApplySettings(oldSettings, sizeChanged);
-        UpdateWeatherAndCanvasSettings(oldSettings, newSettings, spotifyCanvasChanged);
-        RefetchSubtitlesIfPriorityChanged(oldSubtitlePriority, oldIgnoreAuto);
+        if (runtimeChanges.Weather)
+            WeatherWidgetView.ApplySettings(_settings.EnableWeather && !_settings.EnableLocalOnlyMode && _settings.AllowOnlineWeather);
+        if (runtimeChanges.Subtitles) RefetchSubtitlesIfPriorityChanged(oldSubtitlePriority, oldIgnoreAuto);
 
         if (languageChanged)
         {
@@ -115,13 +119,6 @@ public partial class MainWindow
         newSettings.DynamicIslandHeight != oldSettings.DynamicIslandHeight ||
         newSettings.Height != oldSettings.Height ||
         newSettings.CornerRadius != oldSettings.CornerRadius;
-
-    private static bool HasSpotifyCanvasConfigChanged(NotchSettings oldSettings, NotchSettings newSettings) =>
-        newSettings.EnableSpotifyCanvas != oldSettings.EnableSpotifyCanvas ||
-        newSettings.AllowOnlineCanvas != oldSettings.AllowOnlineCanvas ||
-        newSettings.SpotifyCanvasConsentVersion != oldSettings.SpotifyCanvasConsentVersion ||
-        newSettings.EnableLocalOnlyMode != oldSettings.EnableLocalOnlyMode ||
-        !string.Equals(newSettings.SpotifySpDc, oldSettings.SpotifySpDc, StringComparison.Ordinal);
 
     private void UpdateWindowAndNotchPlacementSettings(
         NotchSettings oldSettings,
@@ -155,27 +152,6 @@ public partial class MainWindow
         if (oldSettings.EnableSpotlight != newSettings.EnableSpotlight)
         {
             settingsWindow.SetSpotlightHotkeyStatus(_spotlightController.IsHotkeyRegistered);
-        }
-    }
-
-    private void UpdateWeatherAndCanvasSettings(
-        NotchSettings oldSettings,
-        NotchSettings newSettings,
-        bool spotifyCanvasChanged)
-    {
-        if (oldSettings.EnableWeather != newSettings.EnableWeather ||
-            oldSettings.AllowOnlineWeather != newSettings.AllowOnlineWeather ||
-            oldSettings.EnableLocalOnlyMode != newSettings.EnableLocalOnlyMode ||
-            !string.Equals(oldSettings.ManualCity, newSettings.ManualCity, StringComparison.Ordinal))
-        {
-            WeatherWidgetView.ApplySettings(
-                _settings.EnableWeather && !_settings.EnableLocalOnlyMode && _settings.AllowOnlineWeather);
-            _weatherModule.OnSettingsChanged(_settings);
-        }
-
-        if (spotifyCanvasChanged)
-        {
-            _spotifyCanvasController?.UpdateSettings(_settings);
         }
     }
 

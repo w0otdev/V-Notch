@@ -310,6 +310,9 @@ public sealed partial class ClipboardTray : UserControl, IDisposable
         e.Handled = true;
     }
     private bool _queryDirty = true;
+    private bool _hasMoreResults;
+    private int _nextSearchOffset;
+    private bool _loadingMoreResults;
     private void CancelSearch()
     {
         var cts = Interlocked.Exchange(ref _searchCancellation, null);
@@ -353,7 +356,9 @@ public sealed partial class ClipboardTray : UserControl, IDisposable
         if (UpdateCategoryLockState()) return;
         try
         {
-            var entries = await _controller.Store.SearchAsync(SearchBox.Text, _category, cancellation);
+            var page = await _controller.Store.SearchPageAsync(SearchBox.Text, _category, 0,
+                _pendingSelectAll != null ? int.MaxValue : 100, cancellation);
+            var entries = page.Entries;
             var counts = _controller.Store.GetCategoryCounts();
             // Regex construction and matching belong to the query worker, not
             // the first WPF binding/layout pass during the tray reveal.
@@ -386,12 +391,38 @@ public sealed partial class ClipboardTray : UserControl, IDisposable
             EmptyDropIcon.Visibility = isEmpty && !isSearch ? Visibility.Visible : Visibility.Collapsed;
             EmptyDropHint.Visibility = isEmpty && !isSearch ? Visibility.Visible : Visibility.Collapsed;
             _queryDirty = false;
+            _hasMoreResults = page.HasMore;
+            _nextSearchOffset = page.NextOffset;
             CompletePendingSelectAll();
         }
         catch (OperationCanceledException) { /* Intentionally ignored. */ }
         catch (ObjectDisposedException) { /* Intentionally ignored. */ }
         catch (Exception ex) when (ex is IOException or System.Security.Cryptography.CryptographicException or System.Text.Json.JsonException)
         { StatusChanged(Loc.Get("clipboard.error")); }
+    }
+
+    private async Task LoadMoreResultsAsync()
+    {
+        if (!_hasMoreResults || _queryDirty || _loadingMoreResults || _controller == null || _disposed || _trayLeaving) return;
+        _loadingMoreResults = true;
+        int version = _refreshVersion;
+        var cancellation = _searchCancellation?.Token ?? CancellationToken.None;
+        try
+        {
+            var page = await _controller.Store.SearchPageAsync(SearchBox.Text, _category, _nextSearchOffset, 100, cancellation);
+            if (version != _refreshVersion || _queryDirty || _disposed || cancellation.IsCancellationRequested) return;
+            var entries = _cards.Select(c => c.Entry).Concat(page.Entries).DistinctBy(e => e.Id).ToArray();
+            var masking = await PrepareCardMaskingAsync(entries, cancellation);
+            if (version != _refreshVersion || _queryDirty || _disposed || cancellation.IsCancellationRequested) return;
+            ReconcilePreparedCards(entries, masking);
+            _hasMoreResults = page.HasMore;
+            _nextSearchOffset = page.NextOffset;
+        }
+        catch (OperationCanceledException) { }
+        catch (ObjectDisposedException) { }
+        catch (Exception ex) when (ex is IOException or System.Security.Cryptography.CryptographicException or System.Text.Json.JsonException)
+        { StatusChanged(Loc.Get("clipboard.error")); }
+        finally { _loadingMoreResults = false; }
     }
 
     private bool AreEntriesIdentical(IReadOnlyList<ClipboardEntry> entries)

@@ -1,4 +1,10 @@
 {
+  "spotlight.partial": "Zoeken naar bestanden is onvolledig",
+  "spotlight.partial.hint": "Sommige locaties konden niet binnen de tijdslimiet worden doorzocht. Een geïndexeerde zoekopdracht kan meer bestanden vinden.",
+  "spotlight.ai.previousPage": "Vorige pagina",
+  "spotlight.ai.nextPage": "Volgende pagina",
+  "spotlight.ai.olderMessages": "Oudere berichten",
+  "spotlight.ai.latestMessages": "Nieuwste berichten",
   "settings.accentColor": "Accentkleur",
   "settings.accentColor.hint": "Kies de markeerkleur voor de hele app.",
   "settings.accentColor.default": "Standaard",

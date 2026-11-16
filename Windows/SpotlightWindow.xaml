@@ -916,10 +916,35 @@
                                 <TextBlock x:Name="AiHistoryCount" DockPanel.Dock="Right" FontSize="12" FontWeight="Bold" Foreground="{StaticResource AiSecondaryBrush}" VerticalAlignment="Center"/>
                                 <TextBlock Text="{Binding ToolTip, ElementName=AiHistoryButton}" FontSize="14" FontWeight="Bold" Foreground="{StaticResource AiPrimaryBrush}"/>
                             </DockPanel>
-                            <ScrollViewer x:Name="AiHistoryPanel" Visibility="Collapsed" MaxHeight="310" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" HorizontalContentAlignment="Stretch">
-                                <ScrollViewer.Resources><Style TargetType="ScrollBar" BasedOn="{StaticResource ThinScrollBar}"/></ScrollViewer.Resources>
-                                <StackPanel x:Name="AiHistoryItems" Margin="0,2,8,0" HorizontalAlignment="Stretch"/>
-                            </ScrollViewer>
+                            <Grid x:Name="AiHistoryPanel" Visibility="Collapsed" MaxHeight="310">
+                                <Grid.RowDefinitions><RowDefinition Height="*"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
+                                <controls:ChatHistoryList x:Name="AiHistoryItems" MinHeight="80" MaxHeight="270" Margin="0,2,8,0">
+                                    <controls:ChatHistoryList.Resources><Style TargetType="ScrollBar" BasedOn="{StaticResource ThinScrollBar}"/></controls:ChatHistoryList.Resources>
+                                    <controls:ChatHistoryList.Template>
+                                        <ControlTemplate TargetType="controls:ChatHistoryList">
+                                            <ScrollViewer Focusable="False" CanContentScroll="True" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+                                                <ItemsPresenter/>
+                                            </ScrollViewer>
+                                        </ControlTemplate>
+                                    </controls:ChatHistoryList.Template>
+                                    <controls:ChatHistoryList.ItemsPanel><ItemsPanelTemplate><VirtualizingStackPanel/></ItemsPanelTemplate></controls:ChatHistoryList.ItemsPanel>
+                                    <controls:ChatHistoryList.ItemContainerStyle>
+                                        <Style TargetType="ListBoxItem">
+                                            <Setter Property="Focusable" Value="False"/>
+                                            <Setter Property="Template"><Setter.Value><ControlTemplate TargetType="ListBoxItem"><ContentPresenter/></ControlTemplate></Setter.Value></Setter>
+                                        </Style>
+                                    </controls:ChatHistoryList.ItemContainerStyle>
+                                </controls:ChatHistoryList>
+                                <TextBlock x:Name="AiHistoryEmpty" Foreground="{StaticResource AiSecondaryBrush}" FontWeight="Bold" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                <StackPanel Grid.Row="1" Orientation="Horizontal" HorizontalAlignment="Center">
+                                    <Button x:Name="AiHistoryPrevious" Style="{StaticResource AiHistoryOpenStyle}" Click="AiHistoryPrevious_Click" Margin="8,4"/>
+                                    <Button x:Name="AiHistoryNext" Style="{StaticResource AiHistoryOpenStyle}" Click="AiHistoryNext_Click" Margin="8,4"/>
+                                </StackPanel>
+                            </Grid>
+                            <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
+                                <Button x:Name="AiOlderMessages" Style="{StaticResource AiHistoryOpenStyle}" Click="AiOlderMessages_Click" Visibility="Collapsed" Margin="8,4"/>
+                                <Button x:Name="AiLatestMessages" Style="{StaticResource AiHistoryOpenStyle}" Click="AiLatestMessages_Click" Visibility="Collapsed" Margin="8,4"/>
+                            </StackPanel>
 
                             <Grid ClipToBounds="True">
                             <ScrollViewer x:Name="AiTranscriptScroll" ScrollChanged="AiTranscript_ScrollChanged" MaxHeight="310" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
@@ -1245,6 +1270,7 @@
                             </Grid>
                         </StackPanel>
 
+                        <TextBlock x:Name="PartialSearchHint" Visibility="Collapsed" FontSize="11" Margin="12,4" TextWrapping="Wrap" Foreground="{StaticResource AiSecondaryBrush}"/>
                         <Grid x:Name="StatusPanel"
                               MinHeight="112"
                               Margin="24,4,24,14"

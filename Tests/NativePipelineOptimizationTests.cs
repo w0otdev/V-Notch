@@ -70,14 +70,19 @@ public sealed partial class NativePipelineOptimizationTests(ITestOutputHelper ou
     public void NativeYoloxRunsWithCpuOrPreferredDirectMlWithoutManagedTensorAllocations(byte preferDml)
     {
         string directory = AppContext.BaseDirectory, model = Path.Combine(directory, "Models", "yolox_nano.onnx");
-        Assert.Equal(0, vn_smartcrop_session_create(model, model.Length, directory, directory.Length, preferDml, out long handle, out byte backend));
+        TraceYolox(preferDml, $"create started; runtime={Environment.Version}; os={Environment.OSVersion}; cores={Environment.ProcessorCount}; modelExists={File.Exists(model)}");
+        int createStatus = vn_smartcrop_session_create(model, model.Length, directory, directory.Length, preferDml, out long handle, out byte backend);
+        TraceYolox(preferDml, $"create completed; status={createStatus}; backend={backend}");
+        Assert.Equal(0, createStatus);
         try
         {
             if (preferDml == 0) Assert.Equal(0, backend);
             byte[] pixels = new byte[64 * 64 * 4];
             byte[] detections = new byte[3549 * 24];
+            TraceYolox(preferDml, "warmup started");
             Assert.Equal(0, vn_smartcrop_session_infer(handle, pixels, pixels.Length, 64, 64, 256,
                 detections, 3549, out _, out _));
+            TraceYolox(preferDml, "measured inference started");
             var stopwatch = Stopwatch.StartNew();
             long allocated = GC.GetAllocatedBytesForCurrentThread();
             int status = 0;
@@ -86,11 +91,37 @@ public sealed partial class NativePipelineOptimizationTests(ITestOutputHelper ou
                     detections, 3549, out _, out backend);
             long delta = GC.GetAllocatedBytesForCurrentThread() - allocated;
             stopwatch.Stop();
+            TraceYolox(preferDml, $"measured inference completed; status={status}; backend={backend}; allocated={delta}");
             Assert.Equal(0, status);
             Assert.Equal(0, delta);
             output.WriteLine($"YOLOX backend={(backend != 0 ? "DirectML" : "CPU")}, mean={stopwatch.Elapsed.TotalMilliseconds / 5:F2} ms, managed tensor allocations={delta} bytes");
         }
-        finally { Assert.Equal(0, vn_smartcrop_session_destroy(handle)); }
+        finally
+        {
+            TraceYolox(preferDml, "destroy started");
+            int destroyStatus = vn_smartcrop_session_destroy(handle);
+            TraceYolox(preferDml, $"destroy completed; status={destroyStatus}");
+            Assert.Equal(0, destroyStatus);
+        }
+    }
+
+    private void TraceYolox(byte preferDml, string stage)
+    {
+        string message = $"{DateTime.UtcNow:O} preferDml={preferDml}: {stage}";
+        output.WriteLine(message);
+        // xUnit's buffered output can disappear with testhost. Flush each native
+        // phase to a separate artifact, outside the allocation measurement.
+        string? directory = Environment.GetEnvironmentVariable("VNOTCH_TEST_DIAGNOSTICS_DIRECTORY");
+        if (string.IsNullOrWhiteSpace(directory)) return;
+        try
+        {
+            Directory.CreateDirectory(directory);
+            File.AppendAllText(Path.Combine(directory, $"native-yolox-{Environment.ProcessId}-{preferDml}.log"), message + Environment.NewLine);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            output.WriteLine($"Could not persist YOLOX diagnostic: {ex.Message}");
+        }
     }
 
     [Theory]

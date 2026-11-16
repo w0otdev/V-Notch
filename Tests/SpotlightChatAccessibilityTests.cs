@@ -35,13 +35,13 @@ public sealed class SpotlightChatAccessibilityTests
     }
 
     [Fact]
-    public void KeyboardReachesTranscriptCopyAndOpensHistoryWithoutSendingDraft() => SharedStaTestRunner.Run(() =>
+    public void KeyboardReachesTranscriptCopyAndOpensHistoryWithoutSendingDraft() => SharedStaTestRunner.RunAsync(async ct =>
     {
         bool previous = AnimationConfig.ReduceMotion;
         AnimationConfig.SetReduceMotion(true);
         try
         {
-            using var fixture = new SpotlightWindowFixture(new NotchSettings { HasSeenSpotlightIntro = true });
+            using var fixture = new SpotlightWindowFixture(new NotchSettings { HasSeenSpotlightIntro = true }, saveChatHistory: true);
             var window = fixture.Window;
             window.ShowSpotlight();
             var searchSelectionBrush = window.SearchBox.SelectionBrush;
@@ -95,6 +95,8 @@ public sealed class SpotlightChatAccessibilityTests
             AssertBoldTypography(AiMarkdown.Render(markdown, uniformBold: true));
             var copy = Descendants<Button>(window.AiTranscript).Single();
             Assert.Equal(Loc.Get("spotlight.ai.copy"), AutomationProperties.GetName(copy));
+            // The background test window must not inherit keyboard focus from an earlier fixture.
+            Keyboard.ClearFocus();
             FocusManager.SetFocusedElement(window, window.AiNewChatButton);
             RouteKey(window, Key.Tab);
             Assert.Same(copy, FocusManager.GetFocusedElement(window));
@@ -106,20 +108,30 @@ public sealed class SpotlightChatAccessibilityTests
                 Provider = "OpenAI", Model = "gpt-4.1", Draft = "A saved follow-up",
                 Messages = [new("user", "A calmer workspace"), new("assistant", "Keep the essentials close.")]
             };
-            Field<List<SpotlightSavedChat>>(window, "_savedChats").Add(chat);
+            await fixture.ChatStore.SaveChatAsync(chat);
             window.ShowAiHistoryPanel();
+            await Field<Task>(window, "_historyPageTask");
             window.UpdateLayout();
+            Assert.True(window.AiHistoryItems.Items.Count > 0, "Repository page must be published before realizing cards.");
+            Assert.True(window.AiPanel.IsVisible, $"AI panel is hidden; mode={Field<bool>(window, "_aiMode")}, panel={window.AiPanel.Visibility}");
+            Assert.True(window.AiHistoryItems.IsVisible, $"History list is hidden; history={window.AiHistoryPanel.Visibility}, size={window.AiHistoryItems.ActualWidth}x{window.AiHistoryItems.ActualHeight}");
+            await WpfFrameWaiter.UntilAsync(() => window.AiHistoryItems.ItemContainerGenerator.ContainerFromIndex(0) != null, "first history card realized", ct);
             Capture(window, "history");
             AssertBoldTypography(window.AiHistoryItems);
-            var open = Descendants<Button>(window.AiHistoryItems).Single(button =>
-                AutomationProperties.GetName(button) == chat.Title);
+            Keyboard.ClearFocus();
             FocusManager.SetFocusedElement(window, window.AiNewChatButton);
-            RouteKey(window, Key.Tab);
-            Assert.Same(open, FocusManager.GetFocusedElement(window));
+            for (int i = 0; i < window.AiHistoryItems.Items.Count * 2; i++)
+            {
+                RouteKey(window, Key.Tab);
+                if (FocusManager.GetFocusedElement(window) is Button focused && AutomationProperties.GetName(focused) == chat.Title) break;
+            }
+            var open = Assert.IsType<Button>(FocusManager.GetFocusedElement(window));
+            Assert.Equal(chat.Title, AutomationProperties.GetName(open));
             window.SearchBox.Text = "Do not send this draft";
             var enter = RouteKey(window, Key.Enter);
             Assert.False(enter.Handled);
             open.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+            await WpfFrameWaiter.UntilAsync(() => window.AiHistoryPanel.Visibility == Visibility.Collapsed, "chat loaded", ct);
             Assert.Equal(chat.Id, Field<string>(window, "_chatId"));
             Assert.Equal(chat.Draft, window.SearchBox.Text);
             Assert.Equal(Visibility.Collapsed, window.AiHistoryPanel.Visibility);
@@ -354,6 +366,13 @@ public sealed class SpotlightChatAccessibilityTests
         typeof(SpotlightWindow).GetMethod(name, Private)!.Invoke(window, args);
     private static IEnumerable<T> Descendants<T>(DependencyObject parent) where T : DependencyObject
     {
+        if (parent is ItemsControl items)
+        {
+            for (int i = 0; i < items.Items.Count; i++)
+                if (items.ItemContainerGenerator.ContainerFromIndex(i) is ContentControl { Content: DependencyObject content })
+                    foreach (var child in Descendants<T>(content)) yield return child;
+            yield break;
+        }
         foreach (object child in LogicalTreeHelper.GetChildren(parent))
         {
             if (child is T match) yield return match;

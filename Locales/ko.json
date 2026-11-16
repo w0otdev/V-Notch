@@ -1,4 +1,10 @@
 {
+  "spotlight.partial": "파일 검색이 완료되지 않았습니다",
+  "spotlight.partial.hint": "시간 제한 내에 일부 위치를 검색하지 못했습니다. 인덱스 검색으로 더 많은 파일을 찾을 수 있습니다.",
+  "spotlight.ai.previousPage": "이전 페이지",
+  "spotlight.ai.nextPage": "다음 페이지",
+  "spotlight.ai.olderMessages": "이전 메시지",
+  "spotlight.ai.latestMessages": "최신 메시지",
   "settings.accentColor": "강조 색상",
   "settings.accentColor.hint": "앱 전체에 사용할 강조 색상을 선택하세요.",
   "settings.accentColor.default": "기본값",

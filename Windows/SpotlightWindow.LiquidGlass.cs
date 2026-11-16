@@ -89,6 +89,7 @@ public partial class SpotlightWindow
             _savedChats.Clear();
             _aiHistory.Clear();
             _chatId = Guid.NewGuid().ToString("N");
+            _messageOffset = 0;
             _aiDraftToRestore = null;
             if (_aiMode) SearchBox.Clear();
             CloseAiHistory();
@@ -103,6 +104,7 @@ public partial class SpotlightWindow
             SaveAiHistory();
             _aiSelectedProvider = null;
             _chatId = Guid.NewGuid().ToString("N");
+            _messageOffset = 0;
             _aiHistory.Clear();
             _aiConversationProvider = settings.SpotlightAiProvider;
             _aiConversationModel = VNotch.Services.Spotlight.SpotlightAiService.Configuration(settings, settings.SpotlightAiProvider).Model;

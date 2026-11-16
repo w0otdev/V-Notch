@@ -60,6 +60,12 @@ internal sealed partial class EverythingSearchProvider : ISpotlightProvider, IDi
         int outCap,
         out int outBytes);
 
+    public FileSearchRole FileRole => FileSearchRole.AuthoritativeIndex;
+    public bool DeferSearch => true;
+    public void ConfigureExclusions(Func<string, bool>? isExcluded, Func<IReadOnlyList<string>>? excludedFolders)
+    {
+        IsExcluded = isExcluded;
+    }
     internal Func<string, bool>? IsExcluded { get; set; }
 
     private const string EverythingIpcWindowClass = "EVERYTHING_TASKBAR_NOTIFICATION";

@@ -70,15 +70,23 @@ public sealed class MainWindowDesktopRevealTests
         Field<NotchSettings>(window, "_settings").StayBehindWindows = true;
         window.StartStartupHold(TimeSpan.Zero);
         Assert.Null(Field<UiScheduledTimer?>(window, "_startupHoldTimer"));
-        window.StartStartupHold(TimeSpan.FromSeconds(1));
+        // Keep the hold active beyond the runner's deadline; this test checks
+        // demotion during a hold, not expiration after a short wall-clock delay.
+        window.StartStartupHold(TimeSpan.FromMinutes(1));
         var first = Field<UiScheduledTimer>(window, "_startupHoldTimer");
-        window.StartStartupHold(TimeSpan.FromSeconds(2));
+        window.StartStartupHold(TimeSpan.FromMinutes(2));
+        var hold = Field<UiScheduledTimer>(window, "_startupHoldTimer");
+        Assert.NotSame(first, hold);
         Assert.False(first.IsEnabled);
         Invoke(window, "ScheduleDesktopLayerDemotion");
         var demotion = Field<UiScheduledTimer>(window, "_desktopDemotionDelayTimer");
+        var demotionChecked = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        demotion.Tick += (_, _) => demotionChecked.TrySetResult();
         Invoke(window, "ScheduleDesktopLayerDemotion");
         Assert.Same(demotion, Field<UiScheduledTimer>(window, "_desktopDemotionDelayTimer"));
-        await WpfFrameWaiter.UntilAsync(() => !demotion.IsEnabled, "desktop demotion checks active hold", ct);
+        await demotionChecked.Task.WaitAsync(ct);
+        Assert.False(demotion.IsEnabled);
+        Assert.True(hold.IsEnabled);
         Assert.True(Field<bool>(window, "_isDesktopEdgePromoted"));
         Set(window, "_desktopPromotionPending", true);
         Set(window, "_desktopDemotionPending", true);
@@ -89,6 +97,7 @@ public sealed class MainWindowDesktopRevealTests
         Assert.False(Field<bool>(window, "_desktopDemotionPending"));
         Assert.False(Field<bool>(window, "_desktopPointerInHoverZone"));
         Assert.Null(Field<UiScheduledTimer?>(window, "_startupHoldTimer"));
+        Assert.False(hold.IsEnabled);
         Assert.Equal(1d, window.DesktopRevealRoot.ReadLocalValue(UIElement.OpacityProperty));
     });
 

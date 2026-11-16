@@ -50,9 +50,21 @@ public partial class WeatherModule : NotchModuleBase
     private CancellationTokenSource? _cts;
     private int _requestVersion;
     private WeatherInfo? _lastWeather;
-
-    public WeatherModule(IWeatherService weatherService, ISettingsService settingsService)
+    private readonly Func<double> _random;
+    private bool _startImmediately;
+    protected override TimeSpan? InitialTickDelay
     {
+        get
+        {
+            double sample = Math.Clamp(_random(), 0, 1);
+            return _startImmediately || sample == 0 ? null : TimeSpan.FromSeconds(1 + sample * 59);
+        }
+    }
+
+
+    public WeatherModule(IWeatherService weatherService, ISettingsService settingsService, VNotch.Contracts.IModuleScheduler? scheduler = null, Func<double>? random = null) : base(scheduler)
+    {
+        _random = random ?? Random.Shared.NextDouble;
         _weatherService = weatherService ?? throw new ArgumentNullException(nameof(weatherService));
         ArgumentNullException.ThrowIfNull(settingsService);
         _settings = settingsService.Load().Clone();
@@ -60,7 +72,7 @@ public partial class WeatherModule : NotchModuleBase
 
     public override string ModuleName => "Weather";
 
-    public override TimeSpan? TickInterval => TimeSpan.FromMinutes(15);
+    public override TimeSpan? TickInterval => TimeSpan.FromMinutes(15 + Math.Clamp(_random(), 0, 1) * 3);
 
     public event EventHandler<WeatherUpdateEventArgs>? WeatherUpdated;
 
@@ -108,7 +120,8 @@ public partial class WeatherModule : NotchModuleBase
                 break;
             case ActionStart:
                 // Start() performs an immediate tick before starting the timer.
-                Start();
+                _startImmediately = true;
+                try { Start(); } finally { _startImmediately = false; }
                 break;
             case ActionRefresh:
                 // Weather was just enabled or the city changed: drop the stale request and refresh explicitly.

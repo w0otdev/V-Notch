@@ -23,6 +23,8 @@ public static class ServiceConfigurator
         services.AddSingleton<IMediaDetectionService, MediaDetectionService>();
         services.AddSingleton<IVolumeService, VolumeService>();
         services.AddSingleton<AudioMixerService>();
+        services.AddSingleton<Func<AudioMixerService>>(sp => () => sp.GetRequiredService<AudioMixerService>());
+        services.AddSingleton<Func<IVolumeService>>(sp => () => sp.GetRequiredService<IVolumeService>());
         services.AddSingleton<IBatteryService, BatteryServiceImpl>();
         services.AddSingleton(sp => new BluetoothMonitorService(Application.Current.Dispatcher));
         services.AddSingleton<PrivacyIndicatorService>();
@@ -42,9 +44,10 @@ public static class ServiceConfigurator
         services.AddSingleton<SpotlightSearchService>();
         services.AddSingleton<SpotlightLauncher>();
         services.AddSingleton<SpotlightViewModel>();
+        services.AddSingleton<IChatRepository>(_ => new SpotlightChatStore());
         services.AddSingleton(sp => new SpotlightWindow(
             sp.GetRequiredService<SpotlightViewModel>(),
-            sp.GetRequiredService<SpotlightLauncher>()));
+            sp.GetRequiredService<SpotlightLauncher>(), chatStore: sp.GetRequiredService<IChatRepository>()));
         services.AddSingleton<Controllers.ISpotlightController>(sp =>
             new Controllers.SpotlightController(() => sp.GetRequiredService<SpotlightWindow>()));
         services.AddSingleton<Controllers.NotchTransitionCoordinator>();

@@ -159,7 +159,8 @@ public sealed partial class ClipboardHistoryStore : IDisposable, IAsyncDisposabl
         snapshot.MakeReadOnly();
         return await Run(() =>
         {
-            var result = _vault.UnlockWithResult(snapshot, create);
+            ClipboardUnlockResult result;
+            lock (_vaultReadLock) result = _vault.UnlockWithResult(snapshot, create);
             if (!result.Succeeded) return result;
             try
             {
@@ -200,7 +201,7 @@ public sealed partial class ClipboardHistoryStore : IDisposable, IAsyncDisposabl
         string directory = Path.Combine(_root, "personal");
         SafeFileDeletion.DeleteDirectory(directory);
         TryDeleteDirectory(Path.Combine(_root, "sensitive-expiry"));
-        _vault.Reset();
+        lock (_vaultReadLock) _vault.Reset();
         Directory.CreateDirectory(directory);
         Changed?.Invoke();
         return true;
@@ -209,7 +210,12 @@ public sealed partial class ClipboardHistoryStore : IDisposable, IAsyncDisposabl
     private void LockPersonalCore()
     {
         _personalUnlocked = false;
-        _vault.Lock();
+        lock (_vaultReadLock)
+        {
+            Interlocked.Increment(ref _personalEpoch);
+            _vault.Lock();
+            _searchText.Clear();
+        }
         if (_personalExports.Count > 0)
         {
             var roots = new string[_personalExports.Count];

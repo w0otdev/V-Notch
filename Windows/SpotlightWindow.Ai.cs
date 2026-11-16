@@ -78,6 +78,21 @@ public partial class SpotlightWindow
 
     private void AdvanceAiTabFocus(bool reverse, KeyEventArgs e)
     {
+        var current = (Keyboard.FocusedElement as DependencyObject is { } kb && GetWindow(kb) == this ? kb : null)
+            ?? FocusManager.GetFocusedElement(this) as DependencyObject
+            ?? e.OriginalSource as DependencyObject;
+        if (AiHistoryPanel.Visibility == Visibility.Visible)
+        {
+            var historyTarget = current == AiNewChatButton && !reverse
+                ? AiHistoryItems.CardStop(0, false)
+                : AiHistoryItems.NextCardStop(current, reverse);
+            if (historyTarget != null)
+            {
+                FocusManager.SetFocusedElement(this, historyTarget);
+                historyTarget.Focus();
+                return;
+            }
+        }
         var stopList = new List<Control>(8);
         void AddIfFocusable(Control? control, bool parentVisible = true)
         {
@@ -95,15 +110,12 @@ public partial class SpotlightWindow
         AddIfFocusable(AiPromptTwo, welcomeVisible);
         if (AiHistoryPanel?.Visibility == Visibility.Visible && AiHistoryItems != null)
         {
-            foreach (UIElement child in AiHistoryItems.Children)
-            {
-                if (child is Border { Child: Panel panel })
-                {
-                    foreach (UIElement item in panel.Children)
-                        AddIfFocusable(item as Control);
-                }
-            }
+            AddTranscriptStops(AiHistoryItems);
+            AddIfFocusable(AiHistoryPrevious);
+            AddIfFocusable(AiHistoryNext);
         }
+        AddIfFocusable(AiOlderMessages);
+        AddIfFocusable(AiLatestMessages);
         if (AiTranscriptScroll.Visibility == Visibility.Visible)
             AddTranscriptStops(AiTranscript);
         AddIfFocusable(AiUsageRefresh, AiUsageRow?.Visibility == Visibility.Visible);
@@ -111,10 +123,6 @@ public partial class SpotlightWindow
         AddIfFocusable(SearchBox);
 
         if (stopList.Count == 0) return;
-
-        var current = (Keyboard.FocusedElement as DependencyObject is { } kb && GetWindow(kb) == this ? kb : null)
-            ?? FocusManager.GetFocusedElement(this) as DependencyObject
-            ?? e.OriginalSource as DependencyObject;
 
         int index = stopList.FindIndex(c => c == current || (current != null && c.IsAncestorOf(current)));
         int nextIndex = index < 0
@@ -127,6 +135,12 @@ public partial class SpotlightWindow
 
         void AddTranscriptStops(DependencyObject parent)
         {
+            if (parent is System.Windows.Controls.ItemsControl items)
+            {
+                for (int i = 0; i < items.Items.Count; i++)
+                    if (items.ItemContainerGenerator.ContainerFromIndex(i) is System.Windows.Controls.ContentControl { Content: DependencyObject content }) AddTranscriptStops(content);
+                return;
+            }
             foreach (object child in LogicalTreeHelper.GetChildren(parent))
             {
                 if (child is Button button) AddIfFocusable(button);
@@ -189,7 +203,11 @@ public partial class SpotlightWindow
         AiHistoryButton.ToolTip = Loc.Get("spotlight.ai.history");
         System.Windows.Automation.AutomationProperties.SetName(AiHistoryButton, Loc.Get("spotlight.ai.history"));
         AiWelcomeTitle.Text = Loc.Get("spotlight.ai.newChat");
-        AiHistoryCount.Text = _savedChats.Count.ToString(Loc.GetCulture());
+        AiHistoryCount.Text = _historyTotal.ToString(Loc.GetCulture());
+        AiHistoryPrevious.Content = Loc.Get("spotlight.ai.previousPage");
+        AiHistoryNext.Content = Loc.Get("spotlight.ai.nextPage");
+        AiOlderMessages.Content = Loc.Get("spotlight.ai.olderMessages");
+        AiLatestMessages.Content = Loc.Get("spotlight.ai.latestMessages");
         AiWelcomeHint.Text = Loc.Get("spotlight.ai.welcomeHint");
         AiPromptOne.Content = Loc.Get("spotlight.ai.promptOne");
         AiPromptTwo.Content = Loc.Get("spotlight.ai.promptTwo");
@@ -277,8 +295,6 @@ public partial class SpotlightWindow
         UpdateAiIdentity();
         UpdateAiWelcome();
         UpdateAiMetadata();
-<<<<<<< Updated upstream
-=======
         RenderTranscriptPage(_aiHistory.TakeLast(32).ToArray(), _messageOffset + Math.Max(0, _aiHistory.Count - 32));
     }
 
@@ -288,9 +304,11 @@ public partial class SpotlightWindow
         _aiTranscriptReleased = false;
         ++_transcriptGeneration;
         _transcriptPageOffset = offset;
->>>>>>> Stashed changes
         AiTranscript.Children.Clear();
-        foreach (var message in _aiHistory) AddAiMessage(message, animate: false);
+        foreach (var message in messages) AddAiMessage(message, animate: false);
+        AiOlderMessages.Visibility = offset > 0 && (_settings.SaveAiChatHistory || offset > _messageOffset)
+            ? Visibility.Visible : Visibility.Collapsed;
+        AiLatestMessages.Visibility = offset + messages.Count < _messageOffset + _aiHistory.Count ? Visibility.Visible : Visibility.Collapsed;
         AiTranscriptScroll.ScrollToEnd();
         if (_isParked) ScheduleAiTranscriptRelease();
     }
@@ -318,8 +336,10 @@ public partial class SpotlightWindow
 
     private async Task SendAiAsync()
     {
-        if (!_aiMode || _aiRequest != null || string.IsNullOrWhiteSpace(SearchBox.Text)) return;
+        await _historyLoadTask;
+        if (!_aiMode || _aiRequest != null || string.IsNullOrWhiteSpace(SearchBox.Text) || _allowClose) return;
         CloseAiHistory();
+        RenderAiHistory();
         var settings = CreateAiRequestSettings();
         var config = SpotlightAiService.Configuration(settings, settings.SpotlightAiProvider);
         if (!SpotlightAiService.IsConfigured(settings))
@@ -330,7 +350,10 @@ public partial class SpotlightWindow
         }
         if (_aiConversationProvider != settings.SpotlightAiProvider || _aiConversationModel != config.Model)
         {
+            SaveAiHistory();
             _aiHistory.Clear();
+            _messageOffset = 0;
+            _chatId = Guid.NewGuid().ToString("N");
             _aiConversationProvider = settings.SpotlightAiProvider;
             _aiConversationModel = config.Model;
         }
@@ -350,7 +373,7 @@ public partial class SpotlightWindow
         UpdateAiWelcome();
         UpdateAiMetadata();
         ShowAiThinking();
-        using var cts = new CancellationTokenSource();
+        using var cts = _chatSession.BeginRequest();
         _aiRequest = cts;
         RefreshAiPanel();
         var started = System.Diagnostics.Stopwatch.StartNew();
@@ -393,21 +416,7 @@ public partial class SpotlightWindow
         revealTimer.Start();
         try
         {
-            // Interrupted responses stay visible but are not replayed as completed turns.
-            var history = new List<SpotlightAiMessage>();
-            int i = 0;
-            while (i < _aiHistory.Count)
-            {
-                if (i + 1 < _aiHistory.Count && _aiHistory[i + 1].IsIncomplete)
-                {
-                    i += 2;
-                    continue;
-                }
-                history.Add(_aiHistory[i]);
-                i++;
-            }
-            while (history.Count > 21 || (history.Count > 2 && history.Sum(m => m.Content.Length) > 64000))
-                history.RemoveRange(0, 2);
+            var history = VNotch.ApplicationServices.ChatSession.RequestContext(_aiHistory);
             var geminiParts = new List<System.Text.Json.JsonElement>();
             var response = new System.Text.StringBuilder();
             cts.CancelAfter(AiRequestTimeout);
@@ -502,9 +511,23 @@ public partial class SpotlightWindow
                     UpdateAiUsage();
                 }
                 _aiRequest = null;
+                _chatSession.EndRequest(cts);
                 SaveAiHistory();
-                if (liveView == null) RenderAiHistory();
-                else { UpdateAiWelcome(); UpdateAiMetadata(); }
+                if (_settings.SaveAiChatHistory && _aiHistory.Count > 64)
+                {
+                    string savedId = _chatId;
+                    try
+                    {
+                        await _chatSession.FlushAsync();
+                        if (_chatId == savedId && _aiRequest == null)
+                        {
+                            int trim = Math.Max(0, _aiHistory.Count - 32);
+                            _aiHistory.RemoveRange(0, trim); _messageOffset += trim;
+                        }
+                    }
+                    catch (Exception ex) { ReportChatFailure(ex); }
+                }
+                RenderAiHistory();
                 if (_aiMode) RefreshAiPanel();
             }
         }
@@ -516,7 +539,7 @@ public partial class SpotlightWindow
         var cts = _aiRequest;
         if (cts == null) return;
         _aiRequest = null;
-        cts.Cancel();
+        _chatSession.CancelRequest();
         if (_aiHistory.LastOrDefault() is { Role: "user" } pending)
         {
             _aiHistory.RemoveAt(_aiHistory.Count - 1);
@@ -549,6 +572,7 @@ public partial class SpotlightWindow
         CancelAiRequest();
         SaveAiHistory();
         _chatId = Guid.NewGuid().ToString("N");
+        _messageOffset = 0;
         CloseAiHistory();
         _aiHistory.Clear();
         RenderAiHistory();

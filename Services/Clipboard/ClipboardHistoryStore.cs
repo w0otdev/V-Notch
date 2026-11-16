@@ -197,7 +197,16 @@ public sealed partial class ClipboardHistoryStore : IDisposable, IAsyncDisposabl
     private int _cachedCategoryVersion = -1;
     private int _cachedCategoryEntriesCount = -1;
     private Dictionary<string, int>? _cachedCategoryCounts;
-    private Task _pending = Task.CompletedTask;
+    private readonly VNotch.ApplicationServices.BoundedSerialQueue _writes = new(64);
+    private readonly VNotch.ApplicationServices.LatestQuery<ClipboardSearchPage> _queries = new();
+    private readonly object _vaultReadLock = new();
+    private int _personalEpoch;
+    private readonly SortedSet<ClipboardEntry> _searchOrder = new(Comparer<ClipboardEntry>.Create((a, b) =>
+    {
+        int time = b.CopiedUtc.CompareTo(a.CopiedUtc);
+        return time != 0 ? time : a.Id.CompareTo(b.Id);
+    }));
+    private ClipboardEntry[]? _searchSnapshot;
     private Task? _disposeTask;
     private volatile bool _personalUnlocked;
     private bool _disposed;
@@ -364,8 +373,19 @@ public sealed partial class ClipboardHistoryStore : IDisposable, IAsyncDisposabl
         }
     }
 
-    public Task<IReadOnlyList<ClipboardEntry>> SearchAsync(string query, string category, CancellationToken cancellation = default)
-        => Run<IReadOnlyList<ClipboardEntry>>(() => SearchCore(query, category, cancellation));
+    public async Task<IReadOnlyList<ClipboardEntry>> SearchAsync(string query, string category, CancellationToken cancellation = default)
+        => (await SearchPageAsync(query, category, 0, int.MaxValue, cancellation).ConfigureAwait(false)).Entries;
+
+    public Task<ClipboardSearchPage> SearchPageAsync(string query, string category, int offset = 0, int count = 100, CancellationToken cancellation = default)
+    {
+        ArgumentOutOfRangeException.ThrowIfNegative(offset);
+        ArgumentOutOfRangeException.ThrowIfLessThan(count, 1);
+        lock (_gate)
+        {
+            ObjectDisposedException.ThrowIf(_disposed, this);
+            return _queries.Submit(token => SearchCore(query, category, offset, count, token), cancellation);
+        }
+    }
 
     public static bool MatchesCategory(ClipboardEntry entry, string category, bool includeArchived = false) =>
         MatchesCategory(entry, (category ?? string.Empty).AsSpan(), includeArchived);
@@ -580,7 +600,10 @@ public sealed partial class ClipboardHistoryStore : IDisposable, IAsyncDisposabl
         if (entry.IsPersonal || entry.IsSensitive) RemoveImagePreview(entry.Id);
         lock (_entriesLock)
         {
+            if (_entries.TryGetValue(entry.Id, out var old)) _searchOrder.Remove(old);
             _entries[entry.Id] = entry;
+            _searchOrder.Add(entry);
+            _searchSnapshot = null;
             Interlocked.Increment(ref _entriesMutationVersion);
             _cachedCategoryCounts = null;
         }
@@ -614,15 +637,18 @@ public sealed partial class ClipboardHistoryStore : IDisposable, IAsyncDisposabl
     {
         RemoveImagePreview(id);
         ReleaseEntryExports(id);
-        _searchText.Remove(id);
         DeleteSensitiveExpiryMarker(id);
         lock (_entriesLock)
         {
             if (_entries.TryRemove(id, out var entry))
             {
+                _searchOrder.Remove(entry);
+                _searchSnapshot = null;
                 Interlocked.Increment(ref _entriesMutationVersion);
                 _cachedCategoryCounts = null;
             }
+            // Search admits cached text under the same lock; deletion must win that race.
+            _searchText.Remove(id);
         }
     }
 
@@ -681,10 +707,7 @@ public sealed partial class ClipboardHistoryStore : IDisposable, IAsyncDisposabl
         lock (_gate)
         {
             ObjectDisposedException.ThrowIf(_disposed, this);
-            var task = _pending.ContinueWith(_ => action(), CancellationToken.None,
-                TaskContinuationOptions.None, TaskScheduler.Default);
-            _pending = task;
-            return task;
+            return _writes.Enqueue(action);
         }
     }
     private static Stream OpenReadFileWithRetry(string path)
@@ -733,7 +756,7 @@ public sealed partial class ClipboardHistoryStore : IDisposable, IAsyncDisposabl
             if (_disposeTask != null) return new ValueTask(_disposeTask);
             _disposed = true;
             _personalUnlocked = false;
-            var pending = _pending;
+            var pending = Task.WhenAll(_writes.CompleteAsync(), _queries.CompleteAsync());
             _disposeTask = DisposeCoreAsync(pending);
             return new ValueTask(_disposeTask);
         }
@@ -756,7 +779,7 @@ public sealed partial class ClipboardHistoryStore : IDisposable, IAsyncDisposabl
             }
         }
         _publicRecords?.Dispose();
-        lock (_entriesLock) _entries.Dispose();
+        lock (_entriesLock) { _entries.Dispose(); _searchOrder.Clear(); _searchSnapshot = null; }
         foreach (var lease in _exportLeases.Values) lease.Dispose();
         _exportLeases.Clear();
         _exportEntries.Clear();

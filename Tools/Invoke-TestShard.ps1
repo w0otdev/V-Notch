@@ -107,9 +107,12 @@ try {
     }
 
     # Keep large filters out of the command line without sending quoted CLI arguments through MSBuild response-file parsing.
-    $settingsFile = Join-Path $tempDir "shard-$ShardIndex.runsettings"
-    [xml]$settings = '<RunSettings><RunConfiguration><TestCaseFilter /></RunConfiguration></RunSettings>'
+    $resolvedResults = [IO.Path]::GetFullPath($(if ([IO.Path]::IsPathRooted($ResultsDirectory)) { $ResultsDirectory } else { Join-Path $repoRoot $ResultsDirectory }))
+    New-Item -ItemType Directory -Path $resolvedResults -Force | Out-Null
+    $settingsFile = Join-Path $resolvedResults "shard-$ShardIndex.runsettings"
+    [xml]$settings = '<RunSettings><RunConfiguration><TestCaseFilter /><EnvironmentVariables><VNOTCH_TEST_DIAGNOSTICS_DIRECTORY /></EnvironmentVariables></RunConfiguration></RunSettings>'
     $settings.RunSettings.RunConfiguration.TestCaseFilter = $fullFilter
+    $settings.RunSettings.RunConfiguration.EnvironmentVariables.VNOTCH_TEST_DIAGNOSTICS_DIRECTORY = $resolvedResults
     $settings.Save($settingsFile)
     $argsList = [System.Collections.Generic.List[string]]::new()
     $argsList.Add('--configuration')
@@ -120,16 +123,19 @@ try {
     $argsList.Add($settingsFile)
     $argsList.Add('--blame-hang-timeout')
     $argsList.Add('60s')
+    $argsList.Add('--blame-crash-dump-type')
+    $argsList.Add('mini')
+    $argsList.Add('--diag')
+    $argsList.Add((Join-Path $resolvedResults "shard-$ShardIndex.vstest.log"))
+    $argsList.Add('--results-directory')
+    $argsList.Add($resolvedResults)
     $argsList.Add('--logger')
     $argsList.Add("trx;LogFileName=shard-$ShardIndex.trx")
     $argsList.Add('--logger')
     $argsList.Add('console;verbosity=minimal')
     if ($CollectCoverage) {
-        $resolvedResults = if ([IO.Path]::IsPathRooted($ResultsDirectory)) { $ResultsDirectory } else { Join-Path $repoRoot $ResultsDirectory }
         $argsList.Add('--collect')
         $argsList.Add('XPlat Code Coverage')
-        $argsList.Add('--results-directory')
-        $argsList.Add($resolvedResults)
     }
 
     & dotnet test $resolvedProject @argsList

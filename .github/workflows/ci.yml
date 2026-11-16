@@ -218,9 +218,39 @@ jobs:
         # Coverage needs application symbols; published Release builds intentionally omit them.
         run: dotnet build Tests/VNotch.Tests.csproj --configuration Release --no-restore -warnaserror -nologo -v:q -clp:NoSummary -m -p:SkipNativeCompile=true -p:DebugType=portable -p:DebugSymbols=true
 
+      - name: Prepare native crash dump collection
+        shell: pwsh
+        run: |
+          $directory = Join-Path $env:RUNNER_TEMP 'vnotch-procdump'
+          New-Item -ItemType Directory -Path $directory -Force | Out-Null
+          $archive = Join-Path $directory 'Procdump.zip'
+          Invoke-WebRequest 'https://download.sysinternals.com/files/Procdump.zip' -OutFile $archive
+          if ((Get-FileHash -LiteralPath $archive -Algorithm SHA256).Hash -ne '5FE68E81632F13188930AFFFF20A9A9910170BAE654360850D3108CEAD708A2D') {
+            throw 'Unexpected ProcDump archive hash.'
+          }
+          Expand-Archive -LiteralPath $archive -DestinationPath $directory
+          "PROCDUMP_PATH=$directory" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+
       - name: Run unit test shard ${{ matrix.shard }}
         shell: pwsh
+        env:
+          # .NET's default crash collector does not capture native exceptions.
+          VSTEST_DUMP_FORCEPROCDUMP: '1'
         run: pwsh -NoProfile -File Tools/Invoke-TestShard.ps1 -ShardIndex ${{ matrix.shard }} -TotalShards 4 -ResultsDirectory TestResults/Coverage -CollectCoverage -BaseFilter 'Category!=DesktopIntegration&Category!=Performance'
+
+      - name: Retain shard crash diagnostics
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: test-diagnostics-shard-${{ matrix.shard }}
+          path: |
+            TestResults/Coverage/**/*.trx
+            TestResults/Coverage/**/*.log
+            TestResults/Coverage/**/*.runsettings
+            TestResults/Coverage/**/Sequence_*.xml
+            TestResults/Coverage/**/*.dmp
+          if-no-files-found: ignore
+          retention-days: 7
 
       - name: Check performance budgets without coverage instrumentation
         if: matrix.shard == 0
@@ -234,6 +264,15 @@ jobs:
           path: TestResults/Coverage/**/*.cobertura.xml
           if-no-files-found: error
           retention-days: 1
+
+      - name: Retain architecture scale evidence
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: architecture-scale-shard-${{ matrix.shard }}
+          path: artifacts/architecture-scale/*.json
+          if-no-files-found: ignore
+          retention-days: 14
 
   windows-validation:
     name: Windows validation
@@ -292,11 +331,31 @@ jobs:
         with:
           pattern: coverage-shard-*
           path: TestResults/Coverage
-          merge-multiple: true
+          # Collector attachment paths can collide across shards; the coverage gate scans recursively.
+          merge-multiple: false
 
       - name: Assert code coverage
         shell: pwsh
         run: pwsh -NoProfile -File Tools/Assert-Coverage.ps1 -ResultsDirectory TestResults/Coverage -MinimumLinePercent 70 -AllProductionAssemblies
+
+      - name: Download architecture scale evidence
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          pattern: architecture-scale-shard-*
+          path: artifacts/architecture-scale
+          merge-multiple: true
+
+      - name: Require both architecture scale fixtures
+        shell: pwsh
+        run: |
+          foreach ($size in 100, 1000) {
+            foreach ($kind in 'scale', 'ui') {
+              $path = "artifacts/architecture-scale/$kind-$size.json"
+              if (-not (Test-Path -LiteralPath $path)) { throw "Missing scale evidence: $path" }
+              $result = Get-Content -LiteralPath $path -Raw | ConvertFrom-Json
+              if ($result.count -ne $size) { throw "Invalid fixture size in $path" }
+            }
+          }
 
       - name: Verify gates, update compatibility & package audit in parallel
         id: gates

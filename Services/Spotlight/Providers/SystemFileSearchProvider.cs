@@ -81,6 +81,8 @@ internal sealed partial class SystemFileSearchProvider : ISpotlightProvider
             .ToArray();
     }
 
+    Task ISpotlightProvider.WarmupAsync() => WarmupAsync();
+
     internal Task WarmupAsync() => _index.Value;
 
     private static double ScoreSystemFile(SpotlightSearchItem file, ReadOnlySpan<char> requested)

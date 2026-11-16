@@ -78,7 +78,7 @@ public sealed class SpotlightAiIdentityTests
         });
 
     [Fact]
-    public void SavedChatKeepsItsIdentityAndNewChatUsesCurrentSelection() => SharedStaTestRunner.Run(() =>
+    public void SavedChatKeepsItsIdentityAndNewChatUsesCurrentSelection() => SharedStaTestRunner.RunAsync(async ct =>
     {
         using var fixture = new SpotlightWindowFixture(Settings("OpenAI", "Sol 6.1"), saveChatHistory: true);
         var window = fixture.Window;
@@ -88,8 +88,13 @@ public sealed class SpotlightAiIdentityTests
             Provider = "Gemini", Model = "Astra",
             Messages = [new("user", "Saved prompt"), new("assistant", "Saved answer")]
         };
-        Field<List<SpotlightSavedChat>>(window, "_savedChats").Add(saved);
+        await fixture.ChatStore.SaveChatAsync(saved);
+        window.ShowSpotlight();
+        Invoke(window, "ToggleAiMode");
         Invoke(window, "ToggleAiHistoryPage");
+        await Field<Task>(window, "_historyPageTask");
+        window.UpdateLayout();
+        await WpfFrameWaiter.UntilAsync(() => window.AiHistoryItems.ItemContainerGenerator.ContainerFromIndex(0) != null, "saved identity card realized", ct);
         Assert.Same(AiProviderBrand.For("Gemini"), Assert.Single(Descendants<Image>(window.AiHistoryItems)).Source);
         Assert.Contains(Descendants<TextBlock>(window.AiHistoryItems), text => text.Text.StartsWith("Astra · ", StringComparison.Ordinal));
         Set(window, "_aiConversationProvider", saved.Provider);
@@ -151,6 +156,13 @@ public sealed class SpotlightAiIdentityTests
     private static void Set(SpotlightWindow window, string name, object value) => typeof(SpotlightWindow).GetField(name, Private)!.SetValue(window, value);
     private static IEnumerable<T> Descendants<T>(DependencyObject parent) where T : DependencyObject
     {
+        if (parent is System.Windows.Controls.ItemsControl items)
+        {
+            for (int i = 0; i < items.Items.Count; i++)
+                if (items.ItemContainerGenerator.ContainerFromIndex(i) is System.Windows.Controls.ContentControl { Content: DependencyObject content })
+                    foreach (var child in Descendants<T>(content)) yield return child;
+            yield break;
+        }
         foreach (object child in LogicalTreeHelper.GetChildren(parent))
         {
             if (child is T match) yield return match;

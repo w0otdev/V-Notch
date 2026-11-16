@@ -224,6 +224,21 @@
         "type": "Transitive",
         "resolved": "2.1.0",
         "contentHash": "KK+SjNSuKdP+zbavekubi+vaeb1Jo4k87ZF6CMkVWjr6RjJwc8peVtmgzXXDIMy4ZC3ZISyk3llY3q65ISOkBQ=="
+      },
+      "vnotch.application": {
+        "type": "Project",
+        "dependencies": {
+          "VNotch.Core": "[1.0.0, )"
+        }
+      },
+      "vnotch.core": {
+        "type": "Project"
+      },
+      "vnotch.infrastructure.windows": {
+        "type": "Project",
+        "dependencies": {
+          "VNotch.Core": "[1.0.0, )"
+        }
       }
     },
     "net8.0-windows10.0.19041/win-x64": {

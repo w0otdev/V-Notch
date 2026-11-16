@@ -13,6 +13,11 @@ internal sealed partial class WindowsSearchProvider : ISpotlightProvider
 {
     private const string NativeDll = "VNotch.Native.dll";
 
+    public FileSearchRole FileRole => FileSearchRole.Supplemental;
+    public void ConfigureExclusions(Func<string, bool>? isExcluded, Func<IReadOnlyList<string>>? excludedFolders)
+    {
+        IsExcluded = isExcluded;
+    }
     internal Func<string, bool>? IsExcluded { get; set; }
 
     private const int QueryTimeoutMilliseconds = 1500;
