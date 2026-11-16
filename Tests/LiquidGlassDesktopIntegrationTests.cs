@@ -180,7 +180,8 @@ public sealed class LiquidGlassDesktopIntegrationTests
                 await VerifyLiveDesktopBackdropCaptureAsync(capture, background, pixels, cancellationToken);
 
                 AnimationConfig.SetReduceMotion(false);
-                fixture = new SpotlightWindowFixture(new NotchSettings { NotchStyle = "liquidglass" });
+                var glassSettings = CreateSpotlightCaptureSettings();
+                fixture = new SpotlightWindowFixture(glassSettings);
                 window = fixture.Window;
                 window.MorphHostOverride = new GlassMorphHost();
                 var controllerField = typeof(SpotlightWindow).GetField("_liquidGlass",
@@ -209,7 +210,7 @@ public sealed class LiquidGlassDesktopIntegrationTests
                     // A theme switch stops and immediately restarts the controller
                     // while its native worker can still be inside CaptureInto.
                     window.ApplySettings(new NotchSettings { NotchStyle = "default" });
-                    window.ApplySettings(new NotchSettings { NotchStyle = "liquidglass" });
+                    window.ApplySettings(glassSettings);
                     await WpfFrameWaiter.UntilAsync(() => controller.HasPresentedFrame, "glass presentation or transition completion", cancellationToken);
                     window.HideSpotlight();
                     await WpfFrameWaiter.UntilAsync(() => !window.IsSpotlightOpen, "glass presentation or transition completion", cancellationToken);
@@ -266,11 +267,11 @@ public sealed class LiquidGlassDesktopIntegrationTests
             int sy = Math.Clamp((int)(effect.NotchH / 2), 0, copy.PixelHeight - 1);
             var sample = new byte[4];
             copy.CopyPixels(new Int32Rect(sx, sy, 1, 1), sample, 4, 0);
-            Assert.True(sample[1] >= 175 && sample[1] <= 205,
+            Assert.True(sample[0] is >= 110 and <= 145 &&
+                sample[1] is >= 175 and <= 205 && sample[2] is >= 20 and <= 45,
                 $"cycle={cycle} frame={frame} pixel={sample[2]},{sample[1]},{sample[0]} " +
                 $"screen={controller.LastPresentedCaptureOriginX + sx},{controller.LastPresentedCaptureOriginY + sy} " +
                 $"source={copy.PixelWidth}x{copy.PixelHeight} offset={effect.OffX},{effect.OffY}");
-            Assert.InRange(sample[2], (byte)20, (byte)45);
             if (frame == 8)
             {
                 window.HideSpotlight();
@@ -280,6 +281,26 @@ public sealed class LiquidGlassDesktopIntegrationTests
             }
         }
     }
+
+    private static NotchSettings CreateSpotlightCaptureSettings() => new()
+    {
+        NotchStyle = "liquidglass",
+        // The D3D surface contains refracted output, not raw capture pixels.
+        // Keep geometry/refraction enabled but neutralize color grading and
+        // lighting so the backdrop RGB assertions also hold during a morph.
+        LiquidGlass = new LiquidGlassConfig
+        {
+            Saturation = 0,
+            Brightness = 0,
+            Noise = 0,
+            EdgeHighlight = 0,
+            Specular = 0,
+            Fresnel = 0,
+            GlowWeight = 0,
+            GlowBias = 0,
+            TouchLight = 0
+        }
+    };
 
     private static async Task VerifyLiveDesktopDynamicUpdateAsync(SpotlightWindow window, Window background, LiquidGlassController controller, CancellationToken cancellationToken)
     {

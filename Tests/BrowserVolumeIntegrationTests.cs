@@ -44,7 +44,9 @@ public sealed class BrowserVolumeIntegrationTests(ITestOutputHelper output)
             const context = new AudioContext();
             const oscillator = context.createOscillator();
             const gain = context.createGain();
-            gain.gain.value = 0;
+            // Keep the render stream active: Chromium can suspend a completely
+            // silent destination before Windows marks its audio session active.
+            gain.gain.value = 0.0001;
             oscillator.connect(gain).connect(context.destination);
             oscillator.start();
             context.resume();
@@ -60,24 +62,14 @@ public sealed class BrowserVolumeIntegrationTests(ITestOutputHelper output)
             using var service = new MediaSessionVolumeService(WindowsMediaAudioSessions.ReadAllEndpoints, _ => testPids, () => DateTime.UtcNow);
             // Only the new isolated browser processes can match this artificial source ID.
             const string source = "VNotch.ControlledBrowser.exe";
-            bool ready = false;
-            for (int attempt = 0; attempt < 300 && !ready; attempt++)
-            {
-                Assert.False(browser.HasExited, "The isolated browser exited before creating a Windows audio session.");
-                testPids = Process.GetProcessesByName(processName).Select(p => { using (p) return (uint)p.Id; })
-                    .Where(pid => !existingPids.Contains(pid)).ToHashSet();
-                ready = service.TryGetVolume(source, out _, out _);
-                if (!ready) await Task.Delay(100);
-            }
-            Assert.True(ready, "The isolated browser did not create a Windows audio session.");
-            using var sessions = WindowsMediaAudioSessions.ReadAllEndpoints();
-            var controlled = sessions.Sessions.First(s => testPids.Contains(s.GetProcessID) && s.State == 1);
-            Assert.Contains(controlled.GetProcessID, MediaSessionVolumeService.GetProcessIds(processName + ".exe"));
-            using var lease = controlled.SimpleAudioVolume;
+            using var lease = await WaitForActiveBrowserVolumeAsync(browser, processName, existingPids,
+                pids => testPids = pids);
+            Assert.True(service.TryGetVolume(source, out _, out _));
             float original = lease.Volume;
             bool muted = lease.Mute;
             try
             {
+                Assert.True(lease.IsActive, "The controlled browser audio stream stopped before the volume writes.");
                 Assert.True(service.TrySetVolume(source, .25f));
                 Assert.Equal(.25f, lease.Volume, 4);
                 Assert.True(service.TrySetVolume(source, .65f));
@@ -97,5 +89,41 @@ public sealed class BrowserVolumeIntegrationTests(ITestOutputHelper output)
                 catch (IOException) { /* A browser child may still be releasing a profile file. */ }
             }
         }
+    }
+
+    private async Task<IMediaAudioVolume> WaitForActiveBrowserVolumeAsync(Process browser, string processName,
+        HashSet<uint> existingPids, Action<HashSet<uint>> updateProcessIds)
+    {
+        var elapsed = Stopwatch.StartNew();
+        string lastSessions = "none";
+        while (elapsed.Elapsed < TimeSpan.FromSeconds(30))
+        {
+            Assert.False(browser.HasExited, "The isolated browser exited before creating an active Windows audio session.");
+            var testPids = Process.GetProcessesByName(processName).Select(p => { using (p) return (uint)p.Id; })
+                .Where(pid => !existingPids.Contains(pid)).ToHashSet();
+            updateProcessIds(testPids);
+            using (var sessions = WindowsMediaAudioSessions.ReadAllEndpoints())
+            {
+                var controlled = sessions.Sessions.Where(s => testPids.Contains(s.GetProcessID)).ToArray();
+                lastSessions = string.Join(", ", controlled.Select(s => $"pid={s.GetProcessID} state={s.State}"));
+                foreach (var session in controlled.Where(s => s.State == 1))
+                {
+                    Assert.Contains(session.GetProcessID, MediaSessionVolumeService.GetProcessIds(processName + ".exe"));
+                    var volume = session.SimpleAudioVolume;
+                    // Acquire from the snapshot that satisfied readiness, rather
+                    // than racing another enumeration after TryGetVolume (which
+                    // also succeeds for inactive sessions).
+                    if (volume.IsActive)
+                    {
+                        output.WriteLine($"Active browser audio session: pid={session.GetProcessID}");
+                        return volume;
+                    }
+                    volume.Dispose();
+                }
+            }
+            await Task.Delay(100);
+        }
+
+        throw new TimeoutException($"The isolated browser did not create an active Windows audio session. Last sessions: {lastSessions}");
     }
 }
