@@ -73,6 +73,8 @@ internal sealed partial class AppSearchProvider : ISpotlightProvider
         return results;
     }
 
+    Task ISpotlightProvider.WarmupAsync() => WarmupAsync();
+
     internal Task<IReadOnlyList<SpotlightSearchItem>> WarmupAsync()
     {
         lock (_indexGate)

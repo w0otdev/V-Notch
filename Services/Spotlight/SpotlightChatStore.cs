@@ -3,28 +3,7 @@ using System.Text.Json;
 
 namespace VNotch.Services.Spotlight;
 
-internal sealed class SpotlightSavedChat
-{
-    public string Id { get; set; } = Guid.NewGuid().ToString("N");
-    public string Provider { get; set; } = "";
-    public string Model { get; set; } = "";
-    public string Draft { get; set; } = "";
-    public DateTime UpdatedUtc { get; set; } = DateTime.UtcNow;
-    public List<SpotlightAiMessage> Messages { get; set; } = new();
-    public string Title
-    {
-        get
-        {
-            if (Messages.FirstOrDefault(m => m.Role == "user")?.Content is not { } content) return "…";
-            int lineEnd = content.IndexOfAny(['\r', '\n']);
-            int length = Math.Min(64, lineEnd < 0 ? content.Length : lineEnd);
-            if (length > 0 && char.IsHighSurrogate(content[length - 1])) length--;
-            return content[..length];
-        }
-    }
-}
-
-internal sealed class SpotlightChatStore
+internal sealed class SpotlightChatStore : IChatRepository
 {
     private readonly string _path;
     private readonly object _gate = new();
@@ -33,7 +12,23 @@ internal sealed class SpotlightChatStore
     private List<SpotlightSavedChat>? _pendingChats;
     private Task<bool> _saveTask = Task.FromResult(true);
     private bool _saving;
-    internal SpotlightChatStore(string? path = null) => _path = path ?? Path.Combine(AppPaths.LocalAppDataRoot, "spotlight-chats.enc");
+    private readonly VNotch.Infrastructure.Windows.EncryptedChatRepository _repository;
+    internal SpotlightChatStore(string? path = null)
+    {
+        _path = path ?? Path.Combine(AppPaths.LocalAppDataRoot, "spotlight-chats.enc");
+        _repository = new(_path + ".store", DataProtection.Protect, DataProtection.Unprotect, () =>
+        {
+            var chats = Load();
+            if (!_canSave) throw new IOException("Saved chats are temporarily unavailable; migration was not committed.");
+            return chats;
+        });
+    }
+
+    public Task<ChatPage> ListAsync(int offset, int count, CancellationToken cancellation = default) => _repository.ListAsync(offset, count, cancellation);
+    public Task<SpotlightSavedChat?> LoadAsync(string id, int before = int.MaxValue, int count = 32, CancellationToken cancellation = default) => _repository.LoadAsync(id, before, count, cancellation);
+    public Task<ChatSummary?> LatestAsync(string provider, string model, CancellationToken cancellation = default) => _repository.LatestAsync(provider, model, cancellation);
+    public Task SaveChatAsync(SpotlightSavedChat chat, CancellationToken cancellation = default) => _repository.SaveChatAsync(chat, cancellation);
+    public Task DeleteAsync(string id, CancellationToken cancellation = default) => _repository.DeleteAsync(id, cancellation);
 
     internal List<SpotlightSavedChat> Load()
     {
@@ -137,5 +132,5 @@ internal sealed class SpotlightChatStore
         }
     }
 
-    internal Task FlushAsync() { lock (_saveGate) return _saveTask; }
+    public Task FlushAsync() { lock (_saveGate) return Task.WhenAll(_saveTask, _repository.FlushAsync()); }
 }

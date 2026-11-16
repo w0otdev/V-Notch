@@ -1,4 +1,10 @@
 {
+  "spotlight.partial": "Pencarian file belum lengkap",
+  "spotlight.partial.hint": "Beberapa lokasi belum dipindai dalam batas waktu. Pencarian terindeks dapat menemukan lebih banyak file.",
+  "spotlight.ai.previousPage": "Halaman sebelumnya",
+  "spotlight.ai.nextPage": "Halaman berikutnya",
+  "spotlight.ai.olderMessages": "Pesan lama",
+  "spotlight.ai.latestMessages": "Pesan terbaru",
   "settings.accentColor": "Warna aksen",
   "settings.accentColor.hint": "Pilih warna sorotan untuk seluruh aplikasi.",
   "settings.accentColor.default": "Default",

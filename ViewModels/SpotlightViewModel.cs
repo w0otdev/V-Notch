@@ -37,6 +37,7 @@ internal sealed partial class SpotlightViewModel : ObservableObject, IDisposable
     [ObservableProperty] private bool _isSearching;
     [ObservableProperty] private bool _hasNoResults;
     [ObservableProperty] private bool _isWindowsSearchUnavailable;
+    [ObservableProperty] private bool _isFileSearchPartial;
 
     partial void OnSelectedResultChanged(SpotlightSearchItem? value)
     {
@@ -70,6 +71,7 @@ internal sealed partial class SpotlightViewModel : ObservableObject, IDisposable
             IsSearching = false;
             HasNoResults = false;
             IsWindowsSearchUnavailable = false;
+            IsFileSearchPartial = false;
             try
             {
                 var pinned = await Task.Run(() => _usage.Preferences.Search(""), cancellationToken);
@@ -83,6 +85,8 @@ internal sealed partial class SpotlightViewModel : ObservableObject, IDisposable
 
         IsSearching = true;
         HasNoResults = false;
+        IsFileSearchPartial = false;
+        IsWindowsSearchUnavailable = false;
         try
         {
             await foreach (var update in _search.SearchUpdatesAsync(query, ResultLimit, cancellationToken))
@@ -94,10 +98,11 @@ internal sealed partial class SpotlightViewModel : ObservableObject, IDisposable
                 // file query can show its searching status after the grace period.
                 // Only the completed query may declare that it has no results.
                 if (update.Results.Count == 0 && !update.IsImmediateComplete && !update.IsComplete) continue;
+                IsFileSearchPartial = update.FileCompleteness == Services.Spotlight.Providers.SearchCompleteness.Partial;
+                IsWindowsSearchUnavailable = update.FileCompleteness == Services.Spotlight.Providers.SearchCompleteness.Unavailable || !_search.IsWindowsSearchAvailable;
                 Publish(update.Results, markNoResults: update.IsComplete);
                 StartIconHydration(update.Results, generation, cancellationToken);
             }
-            IsWindowsSearchUnavailable = !_search.IsWindowsSearchAvailable;
         }
         catch (OperationCanceledException)
         {

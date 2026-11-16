@@ -1,4 +1,10 @@
 {
+  "spotlight.partial": "फ़ाइल खोज अधूरी है",
+  "spotlight.partial.hint": "समय सीमा में कुछ स्थानों की जाँच नहीं हो सकी। अनुक्रमित खोज से और फ़ाइलें मिल सकती हैं।",
+  "spotlight.ai.previousPage": "पिछला पृष्ठ",
+  "spotlight.ai.nextPage": "अगला पृष्ठ",
+  "spotlight.ai.olderMessages": "पुराने संदेश",
+  "spotlight.ai.latestMessages": "नवीनतम संदेश",
   "settings.accentColor": "एक्सेंट रंग",
   "settings.accentColor.hint": "पूरे ऐप में इस्तेमाल होने वाला हाइलाइट रंग चुनें।",
   "settings.accentColor.default": "डिफ़ॉल्ट",

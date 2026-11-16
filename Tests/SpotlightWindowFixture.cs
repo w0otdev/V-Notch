@@ -13,9 +13,10 @@ internal sealed class SpotlightWindowFixture : IDisposable
     internal string UsagePath { get; }
     internal SpotlightUsageStore Usage { get; }
     internal SpotlightWindow Window { get; }
+    internal IChatRepository ChatStore { get; }
 
     internal SpotlightWindowFixture(NotchSettings settings, SpotlightAiService? aiService = null, bool saveChatHistory = false,
-        ISpotlightProvider? searchProvider = null, ISpotlightProvider? deferredSearchProvider = null)
+        ISpotlightProvider? searchProvider = null, ISpotlightProvider? deferredSearchProvider = null, IChatRepository? chatStore = null)
     {
         LiquidGlassSpotlightTests.CreateApplicationResources();
         DirectoryPath = Directory.CreateTempSubdirectory("vnotch-test-lg-").FullName;
@@ -29,8 +30,9 @@ internal sealed class SpotlightWindowFixture : IDisposable
         {
             var isolatedSettings = settings.Clone();
             isolatedSettings.SaveAiChatHistory = saveChatHistory;
+            ChatStore = chatStore ?? new SpotlightChatStore(Path.Combine(DirectoryPath, "chats.enc"));
             Window = new SpotlightWindow(viewModel, new SpotlightLauncher(), isolatedSettings, aiService,
-                new SpotlightChatStore(Path.Combine(DirectoryPath, "chats.enc")))
+                ChatStore)
             {
                 Opacity = 0,
                 SuppressForegroundActivationForTests = true

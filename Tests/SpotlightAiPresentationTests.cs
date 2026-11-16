@@ -59,7 +59,7 @@ public sealed class SpotlightAiPresentationTests
         await WpfFrameWaiter.UntilAsync(() => window.AiUsageRow.Visibility == Visibility.Visible, "stream usage published", ct);
         var store = new SpotlightChatStore(System.IO.Path.Combine(fixture.DirectoryPath, "chats.enc"));
         await window.FlushPersistenceAsync();
-        Assert.Equal(history, store.Load().Single().Messages);
+        Assert.Equal(history, (await store.LoadAsync((await store.ListAsync(0, 40)).Items.Single().Id))!.Messages);
         string originalId = Field<string>(window, "_chatId");
         Invoke(window, "CreateNewAiChat");
         Assert.Empty(history);
@@ -166,7 +166,8 @@ public sealed class SpotlightAiPresentationTests
         window.ShowSpotlight();
         Invoke(window, "ToggleAiMode");
         Invoke(window, "ToggleAiHistoryPage");
-        Assert.IsType<TextBlock>(Assert.Single(window.AiHistoryItems.Children.Cast<UIElement>()));
+        await Field<Task>(window, "_historyPageTask");
+        Assert.Equal(Visibility.Visible, window.AiHistoryEmpty.Visibility);
         Invoke(window, "ToggleAiHistoryPage");
         var chat = new SpotlightSavedChat
         {
@@ -176,9 +177,12 @@ public sealed class SpotlightAiPresentationTests
             Messages = [new("user", "First question"), new("assistant", "Saved answer")]
         };
         if (unfinished) chat.Messages.Add(new("user", "Unfinished question"));
-        Field<List<SpotlightSavedChat>>(window, "_savedChats").Add(chat);
+        await fixture.ChatStore.SaveChatAsync(chat);
         Invoke(window, "ToggleAiHistoryPage");
-        var card = Assert.IsType<Border>(Assert.Single(window.AiHistoryItems.Children.Cast<UIElement>()));
+        await Field<Task>(window, "_historyPageTask");
+        window.UpdateLayout();
+        await WpfFrameWaiter.UntilAsync(() => window.AiHistoryItems.ItemContainerGenerator.ContainerFromIndex(0) != null, "history card realized", ct);
+        var card = Assert.IsType<Border>(Assert.IsType<ListBoxItem>(window.AiHistoryItems.ItemContainerGenerator.ContainerFromIndex(0)).Content);
         Assert.Contains(Descendants<TextBlock>(card), t => t.Text == "First question");
         card.RaiseEvent(new MouseEventArgs(Mouse.PrimaryDevice, 0) { RoutedEvent = Mouse.MouseEnterEvent });
         Assert.Same(SpotlightChatPalette.Hover, card.Background);
@@ -190,14 +194,17 @@ public sealed class SpotlightAiPresentationTests
         Assert.Equal(unfinished ? "Unfinished question" : "Saved draft", window.SearchBox.Text);
         Assert.Equal("saved-model", Field<string>(window, "_aiConversationModel"));
         Invoke(window, "ToggleAiHistoryPage");
-        card = Assert.IsType<Border>(Assert.Single(window.AiHistoryItems.Children.Cast<UIElement>()));
+        await Field<Task>(window, "_historyPageTask");
+        window.UpdateLayout();
+        await WpfFrameWaiter.UntilAsync(() => window.AiHistoryItems.ItemContainerGenerator.ContainerFromIndex(0) != null, "restored history card realized", ct);
+        card = Assert.IsType<Border>(Assert.IsType<ListBoxItem>(window.AiHistoryItems.ItemContainerGenerator.ContainerFromIndex(0)).Content);
         Descendants<Button>(card).Single(button =>
             System.Windows.Automation.AutomationProperties.GetName(button) == Loc.Get("spotlight.ai.delete"))
             .RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
-        await WpfFrameWaiter.UntilAsync(() => Field<List<SpotlightSavedChat>>(window, "_savedChats").Count == 0 &&
-            window.AiHistoryItems.Children.OfType<TextBlock>().Any(), "deleted chat empty state", ct);
+        await WpfFrameWaiter.UntilAsync(() => Field<List<ChatSummary>>(window, "_savedChats").Count == 0 &&
+            window.AiHistoryEmpty.Visibility == Visibility.Visible, "deleted chat empty state", ct);
         Assert.Empty(Field<List<SpotlightAiMessage>>(window, "_aiHistory"));
-        Assert.Empty(new SpotlightChatStore(System.IO.Path.Combine(fixture.DirectoryPath, "chats.enc")).Load());
+        Assert.Empty((await fixture.ChatStore.ListAsync(0, 40)).Items);
     });
 
     [Theory]
@@ -319,7 +326,7 @@ public sealed class SpotlightAiPresentationTests
             Descendants<RichTextBox>(window.AiTranscript).Single().Document.ContentEnd).Text);
         Assert.Null(Field<object?>(window, "_aiRequest"));
         await window.FlushPersistenceAsync();
-        Assert.Equal(history, new SpotlightChatStore(System.IO.Path.Combine(fixture.DirectoryPath, "chats.enc")).Load().Single().Messages);
+        Assert.Equal(history, (await fixture.ChatStore.LoadAsync((await fixture.ChatStore.ListAsync(0, 40)).Items.Single().Id))!.Messages);
     });
 
     [Fact]

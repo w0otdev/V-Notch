@@ -13,6 +13,12 @@ internal sealed partial class LocalFileSearchProvider : ISpotlightProvider
     private readonly string _hiddenRoots = string.Join('\0', SpotlightFileVisibility.HiddenRoots);
     private readonly int _budgetMilliseconds;
     private readonly SemaphoreSlim _searchGate = new(1, 1);
+    public FileSearchRole FileRole => FileSearchRole.Fallback;
+    public void ConfigureExclusions(Func<string, bool>? isExcluded, Func<IReadOnlyList<string>>? excludedFolders)
+    {
+        IsExcluded = isExcluded;
+        ExcludedFolders = excludedFolders;
+    }
     internal Func<string, bool>? IsExcluded { get; set; }
     internal Func<IReadOnlyList<string>>? ExcludedFolders { get; set; }
     public bool IsAvailable => true;
@@ -45,14 +51,20 @@ internal sealed partial class LocalFileSearchProvider : ISpotlightProvider
     private static partial int CopyResults(long handle, Span<NativeResult> results, int capacity,
         Span<char> text, int textCapacity, out int count, out int textLength);
 
-    public async Task<IReadOnlyList<SpotlightSearchItem>> SearchAsync(string query, int limit, CancellationToken cancellationToken)
+    [LibraryImport(NativeDll, EntryPoint = "vn_local_file_search_is_partial")]
+    private static partial int IsPartial(long handle, out byte partial);
+
+    public async Task<IReadOnlyList<SpotlightSearchItem>> SearchAsync(string query, int limit, CancellationToken cancellationToken) =>
+        (await SearchBatchAsync(query, limit, cancellationToken).ConfigureAwait(false)).Results;
+
+    public async Task<SearchBatch> SearchBatchAsync(string query, int limit, CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
-        if (limit <= 0 || !SpotlightFileVisibility.ShouldSearch(query)) return Array.Empty<SpotlightSearchItem>();
+        if (limit <= 0 || !SpotlightFileVisibility.ShouldSearch(query)) return new(Array.Empty<SpotlightSearchItem>(), SearchCompleteness.Complete);
         await _searchGate.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
-            if (Create(out long handle) != 0) return Array.Empty<SpotlightSearchItem>();
+            if (Create(out long handle) != 0) return new(Array.Empty<SpotlightSearchItem>(), SearchCompleteness.Unavailable);
             try
             {
                 using var registration = cancellationToken.Register(() => Cancel(handle));
@@ -64,22 +76,25 @@ internal sealed partial class LocalFileSearchProvider : ISpotlightProvider
         finally { _searchGate.Release(); }
     }
 
-    private IReadOnlyList<SpotlightSearchItem> SearchNative(long handle, string query, int limit, CancellationToken token)
+    private SearchBatch SearchNative(long handle, string query, int limit, CancellationToken token)
     {
         string hiddenRoots = _hiddenRoots + '\0' + string.Join('\0', ExcludedFolders?.Invoke() ?? Array.Empty<string>());
         int status = Run(handle, query, query.Length, _roots, _roots.Length, hiddenRoots, hiddenRoots.Length,
             limit, _budgetMilliseconds, out int count);
         token.ThrowIfCancellationRequested();
-        if (status != 0) return Array.Empty<SpotlightSearchItem>();
+        if (status != 0) return new(Array.Empty<SpotlightSearchItem>(), SearchCompleteness.Unavailable);
+        if (IsPartial(handle, out byte partial) != 0) return new([], SearchCompleteness.Unavailable);
+        var completeness = partial != 0 ? SearchCompleteness.Partial : SearchCompleteness.Complete;
+        if (count == 0) return new([], completeness);
         status = CopyResults(handle, [], 0, [], 0, out count, out int textLength);
         if (count == 0 || count > 200 || textLength < 0 || textLength > 200 * 32768 || status != -2)
-            return Array.Empty<SpotlightSearchItem>();
+            return new(Array.Empty<SpotlightSearchItem>(), SearchCompleteness.Unavailable);
         Span<NativeResult> records = stackalloc NativeResult[count];
         char[] arena = ArrayPool<char>.Shared.Rent(textLength);
         try
         {
             if (CopyResults(handle, records, records.Length, arena, arena.Length, out count, out _) != 0)
-                return Array.Empty<SpotlightSearchItem>();
+                return new(Array.Empty<SpotlightSearchItem>(), SearchCompleteness.Unavailable);
             var results = new List<SpotlightSearchItem>(count);
             for (int index = 0; index < count; index++)
             {
@@ -92,7 +107,7 @@ internal sealed partial class LocalFileSearchProvider : ISpotlightProvider
                 string prefix = kind switch { 0 => "app", 2 => "folder", _ => "file" };
                 results.Add(new SpotlightSearchItem($"{prefix}:{path}", resultKind, Path.GetFileName(Path.TrimEndingDirectorySeparator(path)), path, path, path) { Score = record.Score });
             }
-            return results;
+            return new(results, completeness);
         }
         finally { ArrayPool<char>.Shared.Return(arena, clearArray: true); }
     }

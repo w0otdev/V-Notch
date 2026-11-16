@@ -9,7 +9,7 @@ namespace VNotch.Services;
 /// A dispatcher-bound schedule. All schedules on one dispatcher share one wake-up
 /// timer, which sleeps until the next deadline and stops when no work is due.
 /// </summary>
-public sealed partial class UiScheduledTimer : IDisposable
+public sealed partial class UiScheduledTimer : VNotch.Contracts.IModuleTimer
 {
     private const string NativeDll = "VNotch.Native.dll";
 

@@ -144,7 +144,12 @@ public sealed partial class ClipboardTray
     private void TrayScroll_Changed(object sender, ScrollChangedEventArgs e)
     {
         if (sender is FrameworkElement element) UpdateEdgeFade(element);
-        if (ReferenceEquals(sender, Cards)) QueueCardContentRefresh();
+        if (ReferenceEquals(sender, Cards))
+        {
+            QueueCardContentRefresh();
+            if (e.HorizontalChange > 0 && e.HorizontalOffset + e.ViewportWidth >= e.ExtentWidth - 400)
+                LoadMoreResultsAsync().SafeFireAndForget("CLIPBOARD-PAGE");
+        }
     }
 
     private void TrayScroll_SizeChanged(object sender, SizeChangedEventArgs e)

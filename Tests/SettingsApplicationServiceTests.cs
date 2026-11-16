@@ -12,6 +12,35 @@ namespace VNotch.Tests;
 public sealed class SettingsApplicationServiceTests
 {
     [Fact]
+    public void RuntimePreviewAppliesPrivacyFirstAndIsolatesFeatureSnapshots()
+    {
+        var previous = new NotchSettings { ManualCity = "Hanoi", EnableLocalOnlyMode = false };
+        var next = previous.Clone();
+        next.ManualCity = "Da Nang";
+        next.EnableLocalOnlyMode = true;
+        var order = new List<string>();
+        var targets = new SettingsApplicationService.RuntimeTargets(
+            settings => { order.Add("clipboard"); settings.ManualCity = "mutated"; },
+            settings => { order.Add("privacy"); Assert.True(settings.EnableLocalOnlyMode); },
+            settings => { order.Add("usage"); Assert.Equal("Da Nang", settings.ManualCity); },
+            settings => order.Add("translation"),
+            settings => { order.Add("weather"); Assert.Equal("Da Nang", settings.ManualCity); },
+            settings => order.Add("canvas"));
+        var changes = SettingsApplicationService.ApplyRuntimeSettings(previous, next, targets);
+        Assert.Equal(new[] { "privacy", "clipboard", "usage", "translation", "weather", "canvas" }, order);
+        Assert.True(changes.Weather);
+        Assert.True(changes.Canvas);
+        Assert.False(changes.Subtitles);
+        Assert.Equal("Da Nang", next.ManualCity);
+        order.Clear();
+        changes = SettingsApplicationService.ApplyRuntimeSettings(next, next, targets);
+        Assert.False(changes.Weather);
+        Assert.False(changes.Canvas);
+        Assert.DoesNotContain("weather", order);
+        Assert.DoesNotContain("canvas", order);
+    }
+
+    [Fact]
     public async Task ApplyAsync_PersistsSettings_UpdatesAutoStart_AndFiresSettingsApplied()
     {
         var fakeService = new FakeSettingsService();

@@ -1,4 +1,10 @@
 {
+  "spotlight.partial": "Dosya araması tamamlanmadı",
+  "spotlight.partial.hint": "Bazı konumlar süre sınırı içinde taranamadı. Dizinli arama daha fazla dosya bulabilir.",
+  "spotlight.ai.previousPage": "Önceki sayfa",
+  "spotlight.ai.nextPage": "Sonraki sayfa",
+  "spotlight.ai.olderMessages": "Eski mesajlar",
+  "spotlight.ai.latestMessages": "Son mesajlar",
   "settings.accentColor": "Vurgu rengi",
   "settings.accentColor.hint": "Uygulama genelinde kullanılan vurgu rengini seçin.",
   "settings.accentColor.default": "Varsayılan",

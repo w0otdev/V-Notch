@@ -1,4 +1,10 @@
 {
+  "spotlight.partial": "Die Dateisuche ist unvollständig",
+  "spotlight.partial.hint": "Einige Speicherorte konnten im Zeitlimit nicht durchsucht werden. Eine indexierte Suche kann weitere Dateien finden.",
+  "spotlight.ai.previousPage": "Vorherige Seite",
+  "spotlight.ai.nextPage": "Nächste Seite",
+  "spotlight.ai.olderMessages": "Ältere Nachrichten",
+  "spotlight.ai.latestMessages": "Neueste Nachrichten",
   "settings.accentColor": "Akzentfarbe",
   "settings.accentColor.hint": "Wähle die Hervorhebungsfarbe für die gesamte App.",
   "settings.accentColor.default": "Standard",

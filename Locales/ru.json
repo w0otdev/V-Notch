@@ -1,4 +1,10 @@
 {
+  "spotlight.partial": "Поиск файлов не завершён",
+  "spotlight.partial.hint": "Некоторые папки не удалось проверить за отведённое время. Поиск по индексу может найти больше файлов.",
+  "spotlight.ai.previousPage": "Предыдущая страница",
+  "spotlight.ai.nextPage": "Следующая страница",
+  "spotlight.ai.olderMessages": "Старые сообщения",
+  "spotlight.ai.latestMessages": "Последние сообщения",
   "settings.accentColor": "Цвет акцента",
   "settings.accentColor.hint": "Выберите цвет выделения для всего приложения.",
   "settings.accentColor.default": "По умолчанию",
