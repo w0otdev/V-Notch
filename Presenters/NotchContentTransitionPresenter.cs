@@ -30,7 +30,8 @@ public sealed class NotchContentTransitionPresenter : IDisposable
     private long _activeSessionId;
     private long _animationVersion;
     private bool _disposed;
-    private sealed record PageOffset(Transform Original, TransformGroup Wrapper, TranslateTransform Offset);
+    private sealed record PageOffset(Transform Original, TransformGroup Wrapper,
+        TranslateTransform Offset, ScaleTransform Scale);
     private readonly Dictionary<FrameworkElement, PageOffset> _pageOffsets = new();
 
     public NotchContentTransitionPresenter(NotchContentViewRefs refs)
@@ -93,11 +94,12 @@ public sealed class NotchContentTransitionPresenter : IDisposable
         // Cross-fade animation
         int fps = plan.Motion.TargetFps > 0 ? plan.Motion.TargetFps : AnimationConfig.TargetFps;
         bool switchingExpandedView = plan.FromView != NotchView.Compact;
+        bool aiDetailTransition = IsAiDetailTransition(plan);
         var enterDuration = switchingExpandedView
-            ? new Duration(TimeSpan.FromMilliseconds(Math.Min(320, plan.Motion.Duration.TimeSpan.TotalMilliseconds)))
+            ? new Duration(TimeSpan.FromMilliseconds(Math.Min(aiDetailTransition ? 280 : 320, plan.Motion.Duration.TimeSpan.TotalMilliseconds)))
             : plan.Motion.Duration;
         var exitDuration = switchingExpandedView
-            ? new Duration(TimeSpan.FromMilliseconds(Math.Min(190, plan.Motion.Duration.TimeSpan.TotalMilliseconds)))
+            ? new Duration(TimeSpan.FromMilliseconds(Math.Min(aiDetailTransition ? 160 : 190, plan.Motion.Duration.TimeSpan.TotalMilliseconds)))
             : plan.Motion.Duration;
 
         // Chuẩn bị target element theo Rule D3: Lấy opacity hiện tại TRƯỚC KHI dừng animation clock
@@ -109,8 +111,8 @@ public sealed class NotchContentTransitionPresenter : IDisposable
         if (switchingExpandedView)
         {
             targetElement.IsHitTestVisible = false;
-            AnimatePageOffset(targetElement, targetWasVisible ? 0 : 22 * plan.NavigationDirection,
-                0, enterDuration, fps);
+            AnimatePageOffset(targetElement, targetWasVisible ? 0 : (aiDetailTransition ? 28 : 22) * plan.NavigationDirection,
+                0, enterDuration, fps, initialScale: aiDetailTransition && !targetWasVisible ? 0.97 : 1);
         }
         else
         {
@@ -120,7 +122,8 @@ public sealed class NotchContentTransitionPresenter : IDisposable
 
         var fadeIn = new DoubleAnimation(targetStartOpacity, 1.0, enterDuration)
         {
-            EasingFunction = switchingExpandedView ? ExpandedSwitchEnterEase : plan.Motion.Easing,
+            EasingFunction = aiDetailTransition ? AnimationPrimitives._easeAppleOut
+                : switchingExpandedView ? ExpandedSwitchEnterEase : plan.Motion.Easing,
             FillBehavior = FillBehavior.HoldEnd
         };
         Timeline.SetDesiredFrameRate(fadeIn, fps);
@@ -216,12 +219,15 @@ public sealed class NotchContentTransitionPresenter : IDisposable
             if (switchingExpandedView)
             {
                 el.IsHitTestVisible = false;
-                AnimatePageOffset(el, 0, -14 * plan.NavigationDirection, exitDuration, fps);
+                bool aiDetailTransition = IsAiDetailTransition(plan);
+                AnimatePageOffset(el, 0, -(aiDetailTransition ? 18 : 14) * plan.NavigationDirection,
+                    exitDuration, fps, targetScale: aiDetailTransition ? 0.97 : 1);
             }
 
             var fadeOut = new DoubleAnimation(currentElOpacity, 0.0, exitDuration)
             {
-                EasingFunction = switchingExpandedView ? AnimationPrimitives._easeQuadInOut : plan.Motion.Easing
+                EasingFunction = IsAiDetailTransition(plan) ? AnimationPrimitives._easeAppleOut
+                    : switchingExpandedView ? AnimationPrimitives._easeQuadInOut : plan.Motion.Easing
             };
             Timeline.SetDesiredFrameRate(fadeOut, fps);
             fadeOut.Completed += (_, _) =>
@@ -255,16 +261,29 @@ public sealed class NotchContentTransitionPresenter : IDisposable
         }
     }
 
-    private void AnimatePageOffset(FrameworkElement element, double initialX, double targetX, Duration duration, int fps)
+    private static bool IsAiDetailTransition(TransitionPlan plan) =>
+        (plan.FromView == NotchView.Media && plan.TargetView == NotchView.AiUsage) ||
+        (plan.FromView == NotchView.AiUsage && plan.TargetView == NotchView.Media);
+
+    private void AnimatePageOffset(FrameworkElement element, double initialX, double targetX, Duration duration, int fps,
+        double initialScale = 1, double targetScale = 1)
     {
         if (!_pageOffsets.TryGetValue(element, out var layer) || !ReferenceEquals(element.RenderTransform, layer.Wrapper))
         {
             var original = element.RenderTransform ?? Transform.Identity;
             var offset = new TranslateTransform(initialX, 0);
+            // Scale around the content centre without moving the origin of its
+            // existing layout transform (the media view has a resting offset).
+            double width = double.IsFinite(element.Width) ? element.Width : element.ActualWidth;
+            double height = double.IsFinite(element.Height) ? element.Height : element.ActualHeight;
+            var scale = new ScaleTransform(initialScale, initialScale,
+                (0.5 - element.RenderTransformOrigin.X) * width,
+                (0.5 - element.RenderTransformOrigin.Y) * height);
             var wrapper = new TransformGroup();
             wrapper.Children.Add(original);
+            wrapper.Children.Add(scale);
             wrapper.Children.Add(offset);
-            layer = new PageOffset(original, wrapper, offset);
+            layer = new PageOffset(original, wrapper, offset, scale);
             _pageOffsets[element] = layer;
             element.RenderTransform = wrapper;
         }
@@ -273,12 +292,27 @@ public sealed class NotchContentTransitionPresenter : IDisposable
         layer.Offset.X = from;
         var slide = AnimationPrimitives.MakeAnim(from, targetX, duration, AnimationPrimitives._easeAppleOut, fps);
         layer.Offset.BeginAnimation(TranslateTransform.XProperty, slide, HandoffBehavior.SnapshotAndReplace);
+        // Retarget from the rendered scale, including when navigation reverses.
+        double fromScaleX = layer.Scale.ScaleX, fromScaleY = layer.Scale.ScaleY;
+        if (fromScaleX != targetScale || fromScaleY != targetScale || layer.Scale.HasAnimatedProperties)
+        {
+            layer.Scale.BeginAnimation(ScaleTransform.ScaleXProperty, null);
+            layer.Scale.BeginAnimation(ScaleTransform.ScaleYProperty, null);
+            layer.Scale.ScaleX = fromScaleX;
+            layer.Scale.ScaleY = fromScaleY;
+            layer.Scale.BeginAnimation(ScaleTransform.ScaleXProperty,
+                AnimationPrimitives.MakeAnim(fromScaleX, targetScale, duration, AnimationPrimitives._easeAppleOut, fps));
+            layer.Scale.BeginAnimation(ScaleTransform.ScaleYProperty,
+                AnimationPrimitives.MakeAnim(fromScaleY, targetScale, duration, AnimationPrimitives._easeAppleOut, fps));
+        }
     }
 
     private void ReleasePageOffset(FrameworkElement element)
     {
         if (!_pageOffsets.Remove(element, out var layer)) return;
         layer.Offset.BeginAnimation(TranslateTransform.XProperty, null);
+        layer.Scale.BeginAnimation(ScaleTransform.ScaleXProperty, null);
+        layer.Scale.BeginAnimation(ScaleTransform.ScaleYProperty, null);
         if (ReferenceEquals(element.RenderTransform, layer.Wrapper)) element.RenderTransform = layer.Original;
     }
 

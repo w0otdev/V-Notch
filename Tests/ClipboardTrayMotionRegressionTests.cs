@@ -153,10 +153,15 @@ public sealed class ClipboardTrayMotionRegressionTests
     {
         var survivor = cards[2];
         var container = (ListBoxItem)list.ItemContainerGenerator.ContainerFromItem(survivor);
+        var removed = (ListBoxItem)list.ItemContainerGenerator.ContainerFromItem(cards[0]);
         var originalMotion = container.RenderTransform;
         var remaining = new[] { survivor.Entry };
 
         await (Task)Invoke(tray, "AnimateCollectionChangesAsync", remaining, CancellationToken.None)!;
+        // The exit must stay hidden until reconciliation detaches the container.
+        Assert.Equal(0d, removed.GetAnimationBaseValue(UIElement.OpacityProperty));
+        await NextRenderFrame();
+        Assert.InRange(removed.Opacity, 0, 0.01);
         Assert.Same(originalMotion, container.RenderTransform);
         Assert.Equal(0, container.RenderTransform.Value.OffsetX);
         Assert.Equal(1, container.Opacity);
@@ -248,8 +253,10 @@ public sealed class ClipboardTrayMotionRegressionTests
         using var cancellation = new CancellationTokenSource();
 
         var removal = (Task)Invoke(tray, "AnimateCollectionChangesAsync", new[] { cards[1].Entry }, cancellation.Token)!;
+        await WpfFrameWaiter.UntilAsync(() => removed.Opacity < 0.9, "removal fade starts");
         cancellation.Cancel();
         await Assert.ThrowsAnyAsync<OperationCanceledException>(() => removal);
+        Assert.InRange(removed.Opacity, 0, 0.999);
 
         Assert.Same(motion, survivor.RenderTransform);
         Assert.True(motion.HasAnimatedProperties);
