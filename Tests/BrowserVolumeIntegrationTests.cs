@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.IO;
+using NAudio.CoreAudioApi;
 using VNotch.Services;
 using Xunit;
 using Xunit.Abstractions;
@@ -18,7 +19,18 @@ public sealed class BrowserVolumeIntegrationTests(ITestOutputHelper output)
             @"C:\Program Files\Google\Chrome\Application\chrome.exe",
             @"C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe"
         }.FirstOrDefault(File.Exists);
-        if (executable == null) { output.WriteLine("No Chromium browser installed; live check unavailable."); return; }
+        Assert.True(executable != null && File.Exists(executable),
+            "A Chromium browser is required. Install Chrome/Edge or set VNOTCH_VOLUME_TEST_BROWSER to its executable.");
+        using (var enumerator = new MMDeviceEnumerator())
+        {
+            var endpoints = enumerator.EnumerateAudioEndPoints(DataFlow.Render, DeviceState.Active);
+            Assert.True(endpoints.Count > 0,
+                "No active Windows audio render endpoint. Prepare the CI audio device with Tools/Initialize-DesktopTestRunner.ps1.");
+            foreach (var endpoint in endpoints)
+            {
+                using (endpoint) output.WriteLine($"Audio output: {endpoint.FriendlyName}");
+            }
+        }
 
         string processName = Path.GetFileNameWithoutExtension(executable);
         var existingPids = Process.GetProcessesByName(processName).Select(p => { using (p) return (uint)p.Id; }).ToHashSet();
@@ -49,8 +61,9 @@ public sealed class BrowserVolumeIntegrationTests(ITestOutputHelper output)
             // Only the new isolated browser processes can match this artificial source ID.
             const string source = "VNotch.ControlledBrowser.exe";
             bool ready = false;
-            for (int attempt = 0; attempt < 50 && !ready; attempt++)
+            for (int attempt = 0; attempt < 300 && !ready; attempt++)
             {
+                Assert.False(browser.HasExited, "The isolated browser exited before creating a Windows audio session.");
                 testPids = Process.GetProcessesByName(processName).Select(p => { using (p) return (uint)p.Id; })
                     .Where(pid => !existingPids.Contains(pid)).ToHashSet();
                 ready = service.TryGetVolume(source, out _, out _);

@@ -13,10 +13,13 @@ $total = [int]$counters.total
 $executed = [int]$counters.executed
 $passed = [int]$counters.passed
 $failed = [int]$counters.failed
-$skipped = [int]$counters.notExecuted
+# VSTest's xUnit adapter can report notExecuted=0 for skipped facts. The result
+# records still carry NotExecuted, so do not hide them in the failure diagnostic.
+$skipped = [Math]::Max([int]$counters.notExecuted,
+    @($doc.TestRun.Results.UnitTestResult | Where-Object outcome -eq 'NotExecuted').Count)
 if ($total -le 0 -or $executed -ne $total -or $passed -ne $total -or $failed -ne 0 -or $skipped -ne 0 -or
     $doc.TestRun.ResultSummary.outcome -ne 'Completed') {
-    throw "Desktop gate failed: total $total, executed $executed, passed $passed, failed $failed, skipped $skipped. A disposable non-interactive Windows runner is required."
+    throw "Desktop gate failed: total $total, executed $executed, passed $passed, failed $failed, skipped $skipped. See the TRX failures and skip reasons; visible tests require an opted-in GitHub-hosted Windows desktop and browser audio requires an active render endpoint."
 }
 $summary = "Desktop integration: $passed/$total passed; no skipped tests."
 Write-Host $summary

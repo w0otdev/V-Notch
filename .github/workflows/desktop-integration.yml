@@ -60,9 +60,13 @@ jobs:
       - name: Build
         run: dotnet build V-Notch.sln --configuration Release --no-restore -warnaserror -p:SkipNativeCompile=true
 
-      # Desktop.runsettings filters Category=DesktopIntegration and sets
-      # VNOTCH_RUN_DESKTOP_TESTS=1. DesktopTestMode also requires a non-interactive
-      # session, so tests skip themselves where that guard does not hold.
+      - name: Prepare desktop and audio prerequisites
+        shell: pwsh
+        run: ./Tools/Initialize-DesktopTestRunner.ps1
+
+      # Hosted VMs are disposable even though Windows reports UserInteractive=true.
+      # Desktop.runsettings opts in; DesktopTestMode also verifies hosted-runner
+      # identity, keeping visible tests disabled on local and self-hosted machines.
       - name: Test (desktop integration)
         shell: pwsh
         run: >-

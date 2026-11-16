@@ -63,7 +63,7 @@ public sealed class BackgroundTestWindowTests
     [Fact]
     public void VisibleDesktopOptInCannotBypassBackgroundModeInAnInteractiveSession()
     {
-        if (!Environment.UserInteractive) return;
+        if (!Environment.UserInteractive || Environment.GetEnvironmentVariable("RUNNER_ENVIRONMENT") == "github-hosted") return;
         string? previous = Environment.GetEnvironmentVariable(DesktopTestMode.EnvironmentVariable);
         try
         {
