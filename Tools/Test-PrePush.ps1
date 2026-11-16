@@ -2,12 +2,22 @@
 param(
     [switch]$Full,
     [string]$BaseRef,
+    [Parameter(HelpMessage = 'Reuse the previous pre-push build in artifacts/pre-push.')]
     [switch]$SkipBuild
 )
 
 $ErrorActionPreference = 'Stop'
 $stopwatch = [System.Diagnostics.Stopwatch]::StartNew()
 $repoRoot = Split-Path $PSScriptRoot -Parent
+# Publish and coverage builds can remove each other's PDBs when they share obj/bin.
+# Keep the complete validation graph (including native intermediates) separate,
+# and use the same paths for restore, build, and --no-build test execution.
+$validationArtifacts = Join-Path $repoRoot 'artifacts/pre-push'
+$validationArguments = @(
+    "-p:ArtifactsPath=$validationArtifacts",
+    "-p:VNotchNativeArtifactPath=$(Join-Path $validationArtifacts 'native/VNotch.Native.dll')",
+    "-p:_VNotchNativeObjDir=$(Join-Path $validationArtifacts 'native/obj')"
+)
 Push-Location $repoRoot
 
 try {
@@ -117,7 +127,7 @@ try {
 
     if ($needsLockedRestore) {
         Invoke-Step 'Restore solution (--locked-mode)' {
-            & dotnet restore V-Notch.sln --locked-mode -nologo -v:q
+            & dotnet restore V-Notch.sln --locked-mode -nologo -v:q @validationArguments
         }
     }
 
@@ -126,13 +136,13 @@ try {
             # Local checks do not download a verified native artifact like CI.
             # Build the DLL from this checkout so managed imports and native ABI
             # stay in sync. MSBuild still skips up-to-date native compilation.
-            & dotnet build V-Notch.sln --configuration Release -warnaserror -nologo -v:q -clp:NoSummary -m -p:SkipNativeCompile=false -p:NativeFastCompile=true
+            & dotnet build V-Notch.sln --configuration Release -warnaserror -nologo -v:q -clp:NoSummary -m -p:SkipNativeCompile=false -p:NativeFastCompile=true @validationArguments
         }
     }
 
     if ($Full) {
         Invoke-Step 'Run full non-desktop test suite' {
-            & dotnet test Tests/VNotch.Tests.csproj --configuration Release --no-build --no-restore `
+            & dotnet test Tests/VNotch.Tests.csproj --configuration Release --no-build --no-restore @validationArguments `
                 --filter 'Category!=DesktopIntegration' --blame-hang-timeout 60s --logger 'console;verbosity=minimal'
         }
     } else {
@@ -170,7 +180,7 @@ try {
             $filter = "Category!=DesktopIntegration&($classFilter)"
             Write-Host ("Matched {0} test class(es): {1}" -f $selected.Count, ($selected -join ', '))
             Invoke-Step 'Run affected unit tests' {
-                & dotnet test Tests/VNotch.Tests.csproj --configuration Release --no-build --no-restore `
+                & dotnet test Tests/VNotch.Tests.csproj --configuration Release --no-build --no-restore @validationArguments `
                     --filter $filter --blame-hang-timeout 60s --logger 'console;verbosity=minimal'
             }
         } else {
