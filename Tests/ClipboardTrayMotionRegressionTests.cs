@@ -253,9 +253,14 @@ public sealed class ClipboardTrayMotionRegressionTests
         using var cancellation = new CancellationTokenSource();
 
         var removal = (Task)Invoke(tray, "AnimateCollectionChangesAsync", new[] { cards[1].Entry }, cancellation.Token)!;
-        await WpfFrameWaiter.UntilAsync(() => removed.Opacity < 0.9, "removal fade starts");
+        // Zero can be the settled base value before WPF initializes the exit
+        // clock. Cancel only after an actual intermediate fade frame is visible.
+        await WpfFrameWaiter.UntilAsync(() => removed.Opacity > 0 && removed.Opacity < 0.9, "removal fade starts");
         cancellation.Cancel();
         await Assert.ThrowsAnyAsync<OperationCanceledException>(() => removal);
+        // The replacement clock is initialized on a render tick. Before that,
+        // WPF can expose the settled base opacity even though the fade is queued.
+        await WpfFrameWaiter.UntilAsync(() => removed.Opacity < 0.999, "cancelled removal reversal starts");
         Assert.InRange(removed.Opacity, 0, 0.999);
 
         Assert.Same(motion, survivor.RenderTransform);
@@ -263,8 +268,9 @@ public sealed class ClipboardTrayMotionRegressionTests
         Assert.Equal(1, survivor.Opacity);
         Assert.Equal(1d, removed.GetAnimationBaseValue(UIElement.OpacityProperty));
         // Cancellation reverses the exit from its presentation, rather than snapping.
-        await Task.Delay(300);
-        await NextRenderFrame();
+        await WpfFrameWaiter.UntilAsync(
+            () => removed.Opacity == 1 && removed.RenderTransform.Value == Matrix.Identity,
+            "cancelled removal reversal settles");
         Assert.Equal(Matrix.Identity, removed.RenderTransform.Value);
         Assert.Equal(1, removed.Opacity);
     });

@@ -122,8 +122,11 @@ try {
     }
 
     if (-not $SkipBuild) {
-        Invoke-Step 'Build Release (-warnaserror)' {
-            & dotnet build V-Notch.sln --configuration Release -warnaserror -nologo -v:q -clp:NoSummary -m -p:SkipNativeCompile=true
+        Invoke-Step 'Build Release including native library (-warnaserror)' {
+            # Local checks do not download a verified native artifact like CI.
+            # Build the DLL from this checkout so managed imports and native ABI
+            # stay in sync. MSBuild still skips up-to-date native compilation.
+            & dotnet build V-Notch.sln --configuration Release -warnaserror -nologo -v:q -clp:NoSummary -m -p:SkipNativeCompile=false -p:NativeFastCompile=true
         }
     }
 
