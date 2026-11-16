@@ -73,6 +73,11 @@ public sealed class MainWindowCountdownCompletionTests
 
     private static async Task ShowCompletion(MainWindow window, bool music, CancellationToken ct)
     {
+        window.ShowActivated = false;
+        window.Show();
+        await WpfFrameWaiter.UntilAsync(() => Get<bool>(window, "_isStartupLayoutReady") && !Get<bool>(window, "_isAnimating"), "notch startup", ct);
+        // Mouse callbacks are driven explicitly; desktop input must not replace the test transition.
+        InputMonitorService.Stop();
         window.NotchBorder.Width = 300;
         window.NotchBorder.Height = 40;
         if (music) window.SetDebugViewState("CompactMusicPill");
@@ -80,7 +85,7 @@ public sealed class MainWindowCountdownCompletionTests
         await WpfFrameWaiter.UntilAsync(() => Get<bool>(window, "_isCountdownCompleteVisible") && !Get<bool>(window, "_isAnimating") && window.CountdownCompleteOverlay.Visibility == Visibility.Visible, "countdown completion presentation", ct);
         Assert.Equal(Visibility.Collapsed, window.SettingsButton.Visibility);
         Assert.False(window.SettingsButton.IsHitTestVisible);
-        await WpfFrameWaiter.UntilAsync(() => Math.Abs(window.CountdownRestartHost.Opacity - 1) < 1e-6 && Math.Abs(window.CountdownDismissHost.Opacity - 1) < 1e-6, "countdown completion controls", ct);
+        await WpfFrameWaiter.UntilAsync(() => !Get<bool>(window, "_isAnimating") && Math.Abs(window.CountdownRestartHost.Opacity - 1) < 1e-6 && Math.Abs(window.CountdownDismissHost.Opacity - 1) < 1e-6, "countdown completion controls", ct);
     }
     private static GreetingAcceptanceTests.MainWindowFixture Create() => new("en", false, settings => { settings.EnableLocalOnlyMode = true; settings.DisableMouseLeaveAutoClose = true; }, services => services.AddSingleton<IMediaDetectionService>(new FakeMediaDetectionService()));
     private static MouseButtonEventArgs Click() => new(Mouse.PrimaryDevice, Environment.TickCount, MouseButton.Left) { RoutedEvent = UIElement.MouseLeftButtonDownEvent };

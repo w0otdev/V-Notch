@@ -21,12 +21,22 @@ public sealed class SoundCloudMatchingTests
     [Theory]
     [InlineData("<script>const example = 'https://soundcloud.com/artist/test-song';</script>")]
     [InlineData("<!-- <a href=\"/artist/test-song\"> -->")]
+    [InlineData("<!-- <a href=\"/artist/test-song\">")]
     [InlineData("<a href='https://example.org/?url=https://soundcloud.com/artist/test-song'>external</a>")]
     [InlineData("<a href='https://soundcloud.com.example.org/artist/test-song'>external</a>")]
     [InlineData("<a href='/artist/test-song/extra'>not a track</a>")]
     [InlineData("<a href='/artist/sets'>playlist</a><a href='/search/sounds'>navigation</a>")]
     public void SearchIgnoresTextCommentsAndNonTrackLinks(string html) =>
         Assert.Empty(SoundCloudMatching.ExtractTrackUrlsFromSearchHtml(html, "Test song", "Artist"));
+
+    [Fact]
+    public void SearchResumesAfterAnHtmlComment()
+    {
+        const string html = "<!-- <a href='/artist/commented-song'> -->" +
+            "<a href='/artist/test-song'>Song</a>";
+        var candidate = Assert.Single(SoundCloudMatching.ExtractTrackUrlsFromSearchHtml(html, "Test song", "Artist"));
+        Assert.Equal("https://soundcloud.com/artist/test-song", candidate.Url);
+    }
 
     [Fact]
     public void SearchDeduplicatesAndRanksLinks()

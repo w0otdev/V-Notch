@@ -29,8 +29,17 @@ VN_EXPORT int32_t __stdcall vn_soundcloud_extract_anchor_hrefs(
 
     int32_t total = 0;
     int32_t i = 0;
+    const std::wstring_view markup(html, static_cast<size_t>(html_len));
     while (i + 3 < html_len)
     {
+        if (markup.substr(static_cast<size_t>(i), 4) == L"<!--")
+        {
+            const auto end = markup.find(L"-->", static_cast<size_t>(i) + 4);
+            if (end == std::wstring_view::npos) break;
+            i = static_cast<int32_t>(end + 3);
+            continue;
+        }
+
         if (html[i] != L'<' || to_ascii_lower_w(html[i + 1]) != L'a' || !is_html_space(html[i + 2]))
         {
             ++i;

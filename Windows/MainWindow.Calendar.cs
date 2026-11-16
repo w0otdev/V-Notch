@@ -30,7 +30,6 @@ public partial class MainWindow
             BatterySection = BatterySection,
             SettingsButton = SettingsButton,
             GreetingSection = GreetingSection,
-            CalendarGreetingContextBlur = null,
             CalendarWidgetScale = CalendarWidgetScale,
             CalendarWidgetTranslate = CalendarWidgetTranslate,
             SmallTextStyle = (Style)FindResource("SmallText"),

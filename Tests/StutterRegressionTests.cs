@@ -35,7 +35,7 @@ public sealed class StutterRegressionTests
         window.ShowActivated = false;
         window.Show();
         await WpfFrameWaiter.UntilAsync(() => Field<bool>("_isStartupLayoutReady") && !IsAnimating(), "startup", ct);
-        Field<IMediaDetectionService>("_mediaService").Stop();
+        await Field<IMediaDetectionService>("_mediaService").StopAsync();
         Call("SetupExpandedContentBeforeAnimation");
         double width = window.NotchBorder.Width;
         double height = window.NotchBorder.Height;
@@ -43,14 +43,22 @@ public sealed class StutterRegressionTests
         Assert.Equal(width, window.NotchBorder.Width);
         Assert.Equal(height, window.NotchBorder.Height);
         window.SetDebugViewState("MediaExpanded");
-        await WpfFrameWaiter.UntilAsync(() => !IsAnimating(), "media expansion", ct);
+        // Completing the shell transition can start a separate media-width settle.
+        // Compare destination coordinates only after that and the thumbnail handoff
+        // finish; UpdateLayout alone does not advance those animation clocks.
+        await WpfFrameWaiter.UntilAsync(() => !IsAnimating()
+            && !Field<bool>("_isMediaWidthAnimating")
+            && !Field<bool>("_isThumbnailExpandAnimating")
+            && !window.ThumbnailScale.HasAnimatedProperties, "media destination layout settles", ct);
         window.UpdateLayout();
         var args = new object?[] { null };
         Assert.True((bool)typeof(MainWindow).GetMethod("TryComputeThumbnailExpandTarget", PrivateInstance)!.Invoke(window, args)!);
         var actual = ((double X, double Y))args[0]!;
         // Hosted runners lack the app fonts, so text-driven widths shift the centred slot by sub-2 DIP.
-        Assert.InRange(Math.Abs(actual.X - target.X), 0, 2.0);
-        Assert.InRange(Math.Abs(actual.Y - target.Y), 0, 2.0);
+        Assert.True(Math.Abs(actual.X - target.X) <= 2.0,
+            $"Thumbnail X: cached={target.X:F3}, settled={actual.X:F3} (island={island}).");
+        Assert.True(Math.Abs(actual.Y - target.Y) <= 2.0,
+            $"Thumbnail Y: cached={target.Y:F3}, settled={actual.Y:F3} (island={island}).");
 
         var artwork = System.Windows.Media.Imaging.BitmapSource.Create(1, 1, 96, 96, PixelFormats.Bgra32, null, new byte[] { 80, 120, 180, 255 }, 4);
         artwork.Freeze();

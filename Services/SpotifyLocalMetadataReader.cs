@@ -73,14 +73,20 @@ internal sealed partial class SpotifyLocalMetadataReader
         {
             // A stuck accessibility provider must never accumulate workers.
             if (_pending is { IsCompleted: false }) return _pending;
-            return _pending = Task.Run(() =>
+            // UI Automation is blocking native work. Queueing it on the shared
+            // pool can consume the entire read budget before the provider runs
+            // when other media/background work is busy. Keep the single in-flight
+            // read on a dedicated worker without blocking the caller's dispatcher.
+            return _pending = Task.Factory.StartNew(() =>
             {
                 Track? snapshot;
                 try { snapshot = _read(); }
                 catch { snapshot = null; }
                 lock (_gate) { if (snapshot != null) _cached = snapshot; }
                 return snapshot;
-            });
+            }, CancellationToken.None,
+                TaskCreationOptions.LongRunning | TaskCreationOptions.DenyChildAttach,
+                TaskScheduler.Default);
         }
     }
 

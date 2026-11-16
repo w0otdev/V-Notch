@@ -237,7 +237,9 @@ public sealed class MainWindowVolumeInteractionTests
         await WpfFrameWaiter.UntilAsync(() => Math.Abs(((ScaleTransform)button.RenderTransform).ScaleX - 1.18) < .0001, "media hover scale", ct);
         Assert.Null(button.CacheMode);
         Invoke(window, "MediaButton_MouseLeave", button, args);
-        await WpfFrameWaiter.UntilAsync(() => button.CacheMode == null, "media hover cleanup", ct);
+        await WpfFrameWaiter.UntilAsync(() => Math.Abs(((ScaleTransform)button.RenderTransform).ScaleX - 1) < .000001,
+            "media hover resting scale", ct);
+        Assert.Null(button.CacheMode);
         Assert.Equal(1, ((ScaleTransform)button.RenderTransform).ScaleX, 5);
         Invoke(window, "VolumeIcon_MouseEnter", window, args);
         await WpfFrameWaiter.UntilAsync(() => Math.Abs(window.VolumeIconScale.ScaleX - 1.2) < .0001, "volume icon hover", ct);

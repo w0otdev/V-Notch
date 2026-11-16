@@ -48,7 +48,7 @@ public partial class MainWindow
 
     private async Task PrepareSettingsFirstOpenAsync(int generation)
     {
-        if (_cleanedUp || generation != _settingsPreparationGeneration || _activeSettingsWindow != null) return;
+        if (!await WaitForSettingsPreparationIdleAsync(generation)) return;
         SettingsWindow? prepared = null;
         try
         {
@@ -58,7 +58,7 @@ public partial class MainWindow
             prepared = CreateSettingsWindow(prepareForFirstShow: true);
             _preparedSettingsWindow = prepared;
             await Dispatcher.InvokeAsync(static () => { }, System.Windows.Threading.DispatcherPriority.ContextIdle);
-            if (_cleanedUp || generation != _settingsPreparationGeneration || !ReferenceEquals(prepared, _preparedSettingsWindow)) return;
+            if (!await WaitForSettingsPreparationIdleAsync(generation) || !ReferenceEquals(prepared, _preparedSettingsWindow)) return;
             await prepared.PrepareForFirstShowAsync();
         }
         catch (Exception ex)
@@ -71,6 +71,19 @@ public partial class MainWindow
             }
             RuntimeLog.Warn("FIRST-OPEN", $"Settings preparation skipped: {ex.GetType().Name}");
         }
+    }
+
+    private async Task<bool> WaitForSettingsPreparationIdleAsync(int generation)
+    {
+        // ApplicationIdle can run between animation frames. A click immediately
+        // after startup must not compete with Settings XAML or native realization.
+        // Recheck each stage because input can arrive while preparation yields.
+        while (!_cleanedUp && generation == _settingsPreparationGeneration && _activeSettingsWindow == null)
+        {
+            if (!_isAnimating) return true;
+            await Task.Delay(50);
+        }
+        return false;
     }
 
     private void PrepareSecondaryContentForFirstOpen()
