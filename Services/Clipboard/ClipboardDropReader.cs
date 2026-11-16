@@ -306,12 +306,12 @@ internal static partial class ClipboardDropReader
     private static byte[] Encode(BitmapSource bitmap)
     {
         if ((long)bitmap.PixelWidth * bitmap.PixelHeight > 32_000_000) throw new InvalidDataException("Image is too large.");
-        using var output = new MemoryStream();
+        using var output = new NativeBufferStream();
         var encoder = new PngBitmapEncoder();
         encoder.Frames.Add(BitmapFrame.Create(bitmap));
         encoder.Save(output);
         if (output.Length > MaxImageBytes) throw new InvalidDataException("Image is too large.");
-        return output.ToArray();
+        return output.ReadBuffered(static bytes => bytes.ToArray());
     }
     private static void CopyBounded(Stream input, Stream output)
     {

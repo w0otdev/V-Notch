@@ -33,17 +33,29 @@ internal static partial class ClipboardImagePreview
             return DecodeCore(null, buffer.AsSpan(), isPersonal, cancellation);
         if (!stream.CanSeek) throw new NotSupportedException("Preview input must be seekable.");
         int length = checked((int)stream.Length);
-        byte[] encoded = ArrayPool<byte>.Shared.Rent(length);
+        // Large encoded images must not leave a full PNG-sized bucket in the
+        // shared pool. Scratch storage is wiped and freed as soon as WIC exits.
+        using var encoded = new NativeBufferStream();
+        encoded.SetLength(length);
+        byte[] chunk = ArrayPool<byte>.Shared.Rent(64 * 1024);
         try
         {
             stream.Position = 0;
-            stream.ReadExactly(encoded.AsSpan(0, length));
-            return DecodeCore(null, encoded.AsSpan(0, length), isPersonal, cancellation);
+            for (int remaining = length; remaining > 0;)
+            {
+                cancellation.ThrowIfCancellationRequested();
+                int count = Math.Min(remaining, chunk.Length);
+                stream.ReadExactly(chunk.AsSpan(0, count));
+                encoded.Write(chunk.AsSpan(0, count));
+                remaining -= count;
+            }
+            return encoded.ReadBuffered(bytes => DecodeCore(null, bytes, isPersonal, cancellation));
         }
         finally
         {
-            if (isPersonal) CryptographicOperations.ZeroMemory(encoded);
-            ArrayPool<byte>.Shared.Return(encoded);
+            // Custom streams can contain decrypted public as well as private data.
+            CryptographicOperations.ZeroMemory(chunk);
+            ArrayPool<byte>.Shared.Return(chunk);
         }
     }
 

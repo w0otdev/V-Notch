@@ -12,6 +12,7 @@ param(
     [string]$ReleaseVersion = '',
     [string]$WindowsVersion = '',
     [string]$InformationalVersion = '',
+    [string]$TestedNativeArtifactDirectory = '',
     # Optional code-signing certificate. In CI, pass these from protected secrets.
     [string]$CertificatePath = '',
     [string]$CertificatePassword = '',
@@ -42,6 +43,12 @@ $repoRoot = Split-Path $scriptDir -Parent
 # Capture the conditional output as an array: a single string splats into
 # individual characters when passed to a native command such as dotnet.
 $restoreArguments = @(if ($LockedRestore) { '-p:RestoreLockedMode=true' })
+$nativeArguments = @()
+if ($TestedNativeArtifactDirectory) {
+    & (Join-Path $repoRoot 'Tools/Assert-NativeArtifact.ps1') -ArtifactDirectory $TestedNativeArtifactDirectory
+    $nativeBinary = [IO.Path]::GetFullPath((Join-Path $TestedNativeArtifactDirectory 'VNotch.Native.dll'))
+    $nativeArguments = @('-p:SkipNativeCompile=true', "-p:VNotchNativeArtifactPath=$nativeBinary")
+}
 if ($RequireAuthenticode -and -not $CertificateThumbprint) {
     throw 'A trusted certificate thumbprint is required for a public release.'
 }
@@ -150,10 +157,10 @@ Write-TreeStep "2/4" "Publish V-Notch & Uninstaller"
 $pubSw = [System.Diagnostics.Stopwatch]::StartNew()
 if ($SelfContained) {
     # Self-contained: bundles the .NET runtime, runs without installing .NET 8.
-    $pubOut = Invoke-CapturedNative { & dotnet publish .\V-Notch.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=false -p:DebugType=none -p:DebugSymbols=false -nologo -v:q -o $publishDir @restoreArguments @versionArguments }
+    $pubOut = Invoke-CapturedNative { & dotnet publish .\V-Notch.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=false -p:DebugType=none -p:DebugSymbols=false -nologo -v:q -o $publishDir @restoreArguments @versionArguments @nativeArguments }
 } else {
     # Framework-dependent single file - requires .NET 8 runtime.
-    $pubOut = Invoke-CapturedNative { & dotnet publish .\V-Notch.csproj -c Release -r win-x64 --self-contained false -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=false -p:DebugType=none -p:DebugSymbols=false -nologo -v:q -o $publishDir @restoreArguments @versionArguments }
+    $pubOut = Invoke-CapturedNative { & dotnet publish .\V-Notch.csproj -c Release -r win-x64 --self-contained false -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=false -p:DebugType=none -p:DebugSymbols=false -nologo -v:q -o $publishDir @restoreArguments @versionArguments @nativeArguments }
 }
 if ($LASTEXITCODE -ne 0) {
     foreach ($l in @($pubOut | ForEach-Object { "$_" } | Where-Object { $_.Trim() })) {
@@ -171,6 +178,9 @@ if ($exeVersion -ne $installerVersion -or $publishedVersion.ProductVersion -cne 
 }
 if (-not (Test-Path -LiteralPath "$publishDir\VNotch.Native.dll")) {
     throw 'Published VNotch.Native.dll is missing from the release output directory.'
+}
+if ($TestedNativeArtifactDirectory) {
+    & (Join-Path $repoRoot 'Tools/Assert-NativeArtifact.ps1') -ArtifactDirectory $TestedNativeArtifactDirectory -BinaryPath "$publishDir\VNotch.Native.dll"
 }
 $appExeHash = (Get-FileHash -Algorithm SHA256 "$publishDir\V-Notch.exe").Hash.ToLowerInvariant()
 Set-Content -Path "$publishDir\V-Notch.exe.sha256" -Value "$appExeHash  V-Notch.exe"

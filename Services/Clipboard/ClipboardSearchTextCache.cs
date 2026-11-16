@@ -2,8 +2,14 @@ using System.Runtime.InteropServices;
 
 namespace VNotch.Services.Clipboard;
 
+<<<<<<< Updated upstream
 /// <summary>Used only on the store's serialized worker; never persists decrypted Personal text.</summary>
 internal sealed partial class ClipboardSearchTextCache(int maxCharacters = 8 * 1024 * 1024, int maxEntries = 2048)
+=======
+/// <summary>Thread-safe bounded cache; never persists decrypted Personal text.</summary>
+// UTF-16 payload budget: 4M characters = 8 MiB, excluding small index overhead.
+internal sealed class ClipboardSearchTextCache(int maxCharacters = 4 * 1024 * 1024, int maxEntries = 2048)
+>>>>>>> Stashed changes
 {
     private const string NativeDll = "VNotch.Native.dll";
 
@@ -61,5 +67,17 @@ internal sealed partial class ClipboardSearchTextCache(int maxCharacters = 8 * 1
         _items.Clear();
         _recent.Clear();
         _characters = 0;
+    }
+
+    internal void Trim(int characterBudget, int entryBudget)
+    {
+        ArgumentOutOfRangeException.ThrowIfNegative(characterBudget);
+        ArgumentOutOfRangeException.ThrowIfNegative(entryBudget);
+        lock (_gate)
+        {
+            while (_recent.First is { } first &&
+                (_characters > characterBudget || _items.Count > entryBudget))
+                Remove(first.Value);
+        }
     }
 }

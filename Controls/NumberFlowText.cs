@@ -30,8 +30,8 @@ public partial class NumberFlowText : TextBlock
 
     private sealed record Glyph(NumberFlowValue.Part Part, Rect Bounds, NumberFlowGlyphCache.Image Image,
         NumberFlowGlyphCache.Style Style);
-    private sealed record Reel(Glyph Glyph, double From, double To, Point FromPoint, double FromOpacity);
-    private sealed record Position(Glyph Glyph, double Value, Point Point, double Opacity);
+    private sealed record Reel(Glyph Glyph, double From, double To, Point FromPoint, double FromOpacity, double FromWidth);
+    private sealed record Position(Glyph Glyph, double Value, Point Point, double Opacity, double Width);
     private List<Glyph> _layout = [];
     private List<Reel> _reels = [];
     private Dictionary<string, Position>? _previous;
@@ -171,11 +171,12 @@ public partial class NumberFlowText : TextBlock
         // Use the settled layout, never reconstruct it inside that notification.
         if (!IsAnimating && _layout.Count == 0) return null;
         if (!IsAnimating) return _layout.ToDictionary(g => g.Part.Key,
-            g => new Position(g, g.Part.Digit, g.Bounds.TopLeft, 1));
+            g => new Position(g, g.Part.Digit, g.Bounds.TopLeft, 1, g.Bounds.Width));
         double progress = AnimationProgress;
         return _reels.ToDictionary(r => r.Glyph.Part.Key, r => new Position(r.Glyph,
             Lerp(r.From, r.To, progress), new Point(Lerp(r.FromPoint.X, r.Glyph.Bounds.X, progress),
-                Lerp(r.FromPoint.Y, r.Glyph.Bounds.Y, progress)), Lerp(r.FromOpacity, 1, progress)));
+                Lerp(r.FromPoint.Y, r.Glyph.Bounds.Y, progress)), Lerp(r.FromOpacity, 1, progress),
+            Lerp(r.FromWidth, r.Glyph.Bounds.Width, progress)));
     }
 
     private void QueuePresentation()
@@ -201,17 +202,18 @@ public partial class NumberFlowText : TextBlock
         {
             var old = _previous is { Count: > 0 } ? _previous :
                 BuildLayout(_fromText ?? _lastText, "").ToDictionary(g => g.Part.Key,
-                    g => new Position(g, g.Part.Digit, g.Bounds.TopLeft, 1));
+                    g => new Position(g, g.Part.Digit, g.Bounds.TopLeft, 1, g.Bounds.Width));
             _layout = BuildLayout(text, _fromText ?? _lastText);
             _lastText = text;
+            if (_layout.Count == 0) { Finish(); return; }
             _reels = _layout.Select(g =>
             {
                 if (!old.TryGetValue(g.Part.Key, out var p))
-                    return new Reel(g, g.Part.Digit, g.Part.Digit, g.Bounds.TopLeft, 0);
+                    return new Reel(g, g.Part.Digit, g.Part.Digit, g.Bounds.TopLeft, 0, g.Bounds.Width);
                 bool digits = g.Part.Digit >= 0 && p.Glyph.Part.Digit >= 0;
                 double to = digits ? NumberFlowValue.Destination(p.Value, g.Part.Digit, g.Part.Trend, g.Part.Radix) : g.Part.Digit;
                 return new Reel(g, digits ? p.Value : g.Part.Digit, to, p.Point,
-                    digits || p.Glyph.Part.Character == g.Part.Character ? p.Opacity : 0);
+                    digits || p.Glyph.Part.Character == g.Part.Character ? p.Opacity : 0, p.Width);
             }).ToList();
             _pending = false;
             _previous = null;
@@ -221,6 +223,8 @@ public partial class NumberFlowText : TextBlock
             if (_adorner == null)
             {
                 _adorner = new NumberAdorner(this) { IsHitTestVisible = false };
+                TextOptions.SetTextRenderingMode(_adorner, TextOptions.GetTextRenderingMode(this));
+                TextOptions.SetTextHintingMode(_adorner, TextOptions.GetTextHintingMode(this));
                 layer.Add(_adorner);
                 var hide = new ObjectAnimationUsingKeyFrames();
                 hide.KeyFrames.Add(new DiscreteObjectKeyFrame(Brushes.Transparent, KeyTime.FromTimeSpan(TimeSpan.Zero)));

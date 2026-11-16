@@ -30,7 +30,10 @@ public sealed class NumberFlowPerformanceTests(ITestOutputHelper output)
     [InlineData("82% left", "100% left")]
     public void RetainedReelsMatchPreviousPixelsIncludingInterruption(string previous, string next) => SharedStaTestRunner.RunAsync(async ct =>
     {
-        using var host = new Pair(previous);
+        // The legacy renderer ignored tabular typography and snapped changing
+        // slot widths. Use fixed-width glyphs for display-list parity; native
+        // proportional/tabular positions have their own regression tests.
+        using var host = new Pair(previous, legacyMetrics: true);
         await host.Ready(ct);
         host.Present(next);
         CompareFrames();
@@ -258,7 +261,7 @@ public sealed class NumberFlowPerformanceTests(ITestOutputHelper output)
         internal Probe Before { get; }
         internal Probe After { get; }
 
-        internal Pair(string text)
+        internal Pair(string text, bool legacyMetrics = false)
         {
             AnimationConfig.SetReduceMotion(false);
             AnimationConfig.ClientAreaAnimationOverride = true;
@@ -269,12 +272,13 @@ public sealed class NumberFlowPerformanceTests(ITestOutputHelper output)
             {
                 var view = probe.View;
                 view.Text = text;
-                view.FontFamily = AppFonts.Get();
+                view.FontFamily = legacyMetrics ? new FontFamily("Courier New") : AppFonts.Get();
                 view.FontSize = 28;
                 view.FontWeight = FontWeights.Bold;
                 view.Foreground = Brushes.White;
                 view.HorizontalAlignment = HorizontalAlignment.Left;
                 if (text.Contains("left")) AiUsageTypography.EmphasizePercent(view, text, 82, 40);
+                if (legacyMetrics) Typography.SetNumeralAlignment(view, FontNumeralAlignment.Normal);
                 panel.Children.Add(view);
             }
             Window = new Window { Width = 380, Height = 160, ShowActivated = false,

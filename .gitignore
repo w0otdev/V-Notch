@@ -101,6 +101,9 @@ update_settings.ps1
 # Ignore ad-hoc tools, retaining the reproducible benchmark/stress runners
 /Tools/*
 !/Tools/Assert-Coverage.ps1
+!/Tools/Assert-NativeArtifact.ps1
+!/Tools/New-NativeArtifact.ps1
+!/Tools/Assert-DesktopTests.ps1
 !/Tools/Assert-ForwardUpdateCompatibility.ps1
 !/Tools/Assert-ModelAssets.ps1
 !/Tools/Assert-PackageAudit.ps1

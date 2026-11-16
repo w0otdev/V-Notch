@@ -363,7 +363,7 @@ if ($startStep -le 5) {
         throw "Test run failed."
     }
     if ($MinimumCoverage -gt 0) {
-        Invoke-StepScript { & "$repository/Tools/Assert-Coverage.ps1" -ResultsDirectory $coverageResultsDir -MinimumLinePercent $MinimumCoverage } | Out-Null
+        Invoke-StepScript { & "$repository/Tools/Assert-Coverage.ps1" -ResultsDirectory $coverageResultsDir -MinimumLinePercent $MinimumCoverage -AllProductionAssemblies } | Out-Null
     }
     Write-TreeItem ("Unit tests passed in {0:N1}s." -f $tstSw.Elapsed.TotalSeconds) -State "Success"
 
