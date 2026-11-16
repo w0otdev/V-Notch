@@ -243,15 +243,6 @@ public partial class MainWindow
         return ease;
     }
 
-    private static void EnsureUnfrozen(Brush? brush, Action<Color?> replace)
-    {
-        var sb = brush as SolidColorBrush;
-        if (sb == null || sb.IsFrozen)
-        {
-            replace(sb?.Color);
-        }
-    }
-
     private static Color LiftDarkColor(Color c)
     {
         double r = c.R / 255.0, g = c.G / 255.0, b = c.B / 255.0;

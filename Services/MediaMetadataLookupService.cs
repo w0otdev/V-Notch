@@ -80,10 +80,7 @@ public sealed partial class MediaMetadataLookupService : IMediaMetadataLookupSer
 
     private const string YouTubeTitleSearchLogTag = "META-YOUTUBE-TITLE-SEARCH";
     private const string YouTubeApiLogTag = "META-YOUTUBE-API";
-    private const string ItemsPropertyName = "items";
-    private const string VideoIdPropertyName = "videoId";
     private const string TitlePropertyName = "title";
-    private const string DurationPropertyName = "duration";
 
     private static readonly HttpClient SharedHttpClient = new(NetworkPrivacy.Handler(NetworkFeature.Artwork));
     private static readonly HttpClient SharedKeyClient = new(NetworkPrivacy.Handler(NetworkFeature.Artwork));
@@ -1207,25 +1204,6 @@ public sealed partial class MediaMetadataLookupService : IMediaMetadataLookupSer
         {
             return null;
         }
-    }
-
-    private static int ComputeAlbumTieBreakerBonus(string? candidateAlbum, string? expectedAlbum)
-    {
-        if (string.IsNullOrWhiteSpace(expectedAlbum) || string.IsNullOrWhiteSpace(candidateAlbum))
-            return 0;
-
-        string normCand = SpotifyTrackMatcher.NormalizeForMatch(candidateAlbum);
-        string normExp = SpotifyTrackMatcher.NormalizeForMatch(expectedAlbum);
-        if (normCand.Length == 0 || normExp.Length == 0)
-            return 0;
-
-        if (string.Equals(normCand, normExp, StringComparison.Ordinal) ||
-            normCand.StartsWith(normExp + " ", StringComparison.Ordinal))
-        {
-            return 40;
-        }
-
-        return -20;
     }
 
     private async Task<string?> TrySearchItunesArtistsAsync(

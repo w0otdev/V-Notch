@@ -98,11 +98,7 @@ namespace VNotch.Controls
 
         private const int BarCount = 5;
         private const double MinHeightRatio = 0.08;
-        private const double BarWidthRatio = 0.10;
-        private const double BarSpacingRatio = 0.05;
-        private const double CornerRadiusRatio = 0.5;
         private const double CaptureRetryIntervalMs = 2500;
-        private const double MinHeightChangeThreshold = 0.0012;
 
         #endregion
 

@@ -224,9 +224,6 @@ public partial class MainWindow
 
     private float _currentVolume = 0.5f;
     private const float VolumeScrollStep = 0.05f;
-    private const double CompactVolumeImmediateWheelDelta = 120.0;
-    private const double CompactVolumeSmoothActivationDelta = 240.0;
-    private const double CompactVolumeWheelSessionResetMs = 450.0;
     private const double CompactVolumeClickSuppressMs = 600.0;
     private UiScheduledTimer? _volumeIndicatorHideTimer;
     private bool _isVolumeIndicatorActive = false;

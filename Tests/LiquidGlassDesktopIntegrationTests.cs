@@ -202,10 +202,12 @@ public sealed class LiquidGlassDesktopIntegrationTests
                         typeof(SpotlightWindow).GetMethod("OnGpuRefractionFailure",
                             BindingFlags.NonPublic | BindingFlags.Instance)!.Invoke(window,
                                 new object[] { new InvalidOperationException("Injected GPU loss") });
-                        await WpfFrameWaiter.UntilAsync(() => controller.HasPresentedFrame, "glass presentation or transition completion", cancellationToken);
-                        Assert.IsType<WriteableBitmap>(window.GlassBackdropImage.Source);
+                        await WpfFrameWaiter.UntilAsync(() => controller.HasPresentedFrame, "a CPU frame after GPU loss", cancellationToken);
+                        var bitmap = Assert.IsType<WriteableBitmap>(window.GlassBackdropImage.Source);
                         Assert.Null(window.GlassBackdropImage.Effect);
-                        Assert.True(double.IsNaN(window.GlassBackdropImage.Width));
+                        Assert.Equal(bitmap.Width, window.GlassBackdropImage.Width);
+                        Assert.Equal(bitmap.Height, window.GlassBackdropImage.Height);
+                        Assert.Equal(Stretch.None, window.GlassBackdropImage.Stretch);
                     }
                     // A theme switch stops and immediately restarts the controller
                     // while its native worker can still be inside CaptureInto.

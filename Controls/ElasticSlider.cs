@@ -483,11 +483,6 @@ public partial class ElasticSlider : Slider
         _lastAnimatedValue = Value;
     }
 
-    private void AnimateFillSpring()
-    {
-        AnimateFillSmooth();
-    }
-
     private void AnimateFillSmooth()
     {
         if (_fillBorder == null || _rootBorder == null) return;

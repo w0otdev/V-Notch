@@ -5,7 +5,6 @@
 #include <d3d11_4.h>
 #include <dxgi.h>
 #include <dxgi1_2.h>
-#include <dxgi1_5.h>
 #include <wrl/client.h>
 #include <winrt/Windows.Foundation.h>
 #include <winrt/Windows.Foundation.Metadata.h>
@@ -85,16 +84,6 @@ class WindowCaptureCache final {
     wx::Direct3D11::IDirect3DDevice capture_device{nullptr};
     std::vector<std::unique_ptr<Entry>> entries;
     std::vector<RejectedWindow> rejected_windows;
-    ComPtr<IDXGIOutputDuplication> desktop_duplication;
-    ComPtr<ID3D11Texture2D> desktop_staging;
-    std::unique_ptr<Entry> desktop_capture;
-    HMONITOR desktop_capture_monitor = nullptr;
-    ULONGLONG desktop_capture_retry_at = 0;
-    std::vector<uint32_t> desktop_pixels;
-    RECT desktop_sample_area{};
-    ULONGLONG desktop_used = 0;
-    HMONITOR desktop_monitor = nullptr;
-    ULONGLONG desktop_retry_at = 0;
     ULONGLONG retry_at = 0;
 
     static void RequestBorderlessAccessOnce() noexcept {
@@ -378,7 +367,7 @@ public:
 
     void SetFrameWakeEvent(HANDLE wake) noexcept { notification->wake = wake; }
     uint64_t FrameVersion() const noexcept { return notification->version.load(std::memory_order_acquire); }
-    bool HasEntries() const noexcept { return !entries.empty() || desktop_duplication != nullptr || desktop_capture != nullptr; }
+    bool HasEntries() const noexcept { return !entries.empty(); }
     bool HasWindow(HWND hwnd) const noexcept {
         for (const auto& entry : entries) if (entry->hwnd == hwnd) return true;
         return false;
@@ -392,174 +381,9 @@ public:
         entries.erase(std::remove_if(entries.begin(), entries.end(), [&](const auto& entry) {
             return now - entry->used > 2000;
         }), entries.end());
-        if (desktop_duplication && now - desktop_used > 2000) {
-            desktop_duplication.Reset(); desktop_staging.Reset(); desktop_pixels.clear(); desktop_monitor = nullptr;
-        }
-        if (desktop_capture && now - desktop_used > 2000) { desktop_capture.reset(); desktop_capture_monitor = nullptr; }
-        if (entries.empty() && !desktop_duplication && !desktop_capture) {
+        if (entries.empty()) {
             capture_device = nullptr;
             context.Reset(); device.Reset();
-        }
-    }
-
-    bool CopyDesktopCapture(const RECT& area, uint32_t* destination, int stride) noexcept {
-        const ULONGLONG now = GetTickCount64();
-        if (now < desktop_capture_retry_at) return false;
-        try {
-            const HMONITOR monitor = MonitorFromRect(&area, MONITOR_DEFAULTTONEAREST);
-            MONITORINFO info{sizeof(info)};
-            if (!GetMonitorInfoW(monitor, &info)) return false;
-            EnsureDevice(monitor);
-            if (!desktop_capture || desktop_capture_monitor != monitor) {
-                desktop_capture.reset();
-                auto entry = std::make_unique<Entry>();
-                const auto interop = winrt::get_activation_factory<wc::GraphicsCaptureItem, IGraphicsCaptureItemInterop>();
-                winrt::check_hresult(interop->CreateForMonitor(monitor, winrt::guid_of<wc::IGraphicsCaptureItem>(), winrt::put_abi(entry->item)));
-                entry->size = entry->item.Size();
-                entry->pool = wc::Direct3D11CaptureFramePool::CreateFreeThreaded(
-                    capture_device, wx::DirectXPixelFormat::B8G8R8A8UIntNormalized, 3, entry->size);
-                entry->session = entry->pool.CreateCaptureSession(entry->item);
-                ConfigureSession(entry->session);
-                entry->session.StartCapture();
-                desktop_capture = std::move(entry); desktop_capture_monitor = monitor;
-            }
-            desktop_used = now;
-            auto frame = desktop_capture->pool.TryGetNextFrame();
-            struct Close { wc::Direct3D11CaptureFrame& frame; ~Close() { try { if (frame) frame.Close(); } catch (...) { } } } close{frame};
-            const int width = area.right - area.left, height = area.bottom - area.top;
-            if (frame) {
-                for (int i = 0; i < 3; ++i) {
-                    auto next = desktop_capture->pool.TryGetNextFrame();
-                    if (!next) break;
-                    frame.Close(); frame = next;
-                }
-                const auto size = frame.ContentSize();
-                if (size.Width != desktop_capture->size.Width || size.Height != desktop_capture->size.Height) {
-                    frame.Close(); frame = nullptr;
-                    desktop_capture->size = size; desktop_pixels.clear();
-                    desktop_capture->pool.Recreate(capture_device, wx::DirectXPixelFormat::B8G8R8A8UIntNormalized, 3, size);
-                    return false;
-                }
-                auto access = frame.Surface().as<::Windows::Graphics::DirectX::Direct3D11::IDirect3DDxgiInterfaceAccess>();
-                ComPtr<ID3D11Texture2D> texture;
-                winrt::check_hresult(access->GetInterface(IID_PPV_ARGS(&texture)));
-                D3D11_TEXTURE2D_DESC desc{}, previous{};
-                texture->GetDesc(&desc);
-                const int x = area.left - info.rcMonitor.left, y = area.top - info.rcMonitor.top;
-                if (x < 0 || y < 0 || x + width > static_cast<int>(desc.Width) || y + height > static_cast<int>(desc.Height)) return false;
-                if (desktop_staging) desktop_staging->GetDesc(&previous);
-                if (previous.Width != static_cast<UINT>(width) || previous.Height != static_cast<UINT>(height)) {
-                    desktop_staging.Reset();
-                    desc.Width = width; desc.Height = height; desc.Usage = D3D11_USAGE_STAGING;
-                    desc.CPUAccessFlags = D3D11_CPU_ACCESS_READ; desc.BindFlags = desc.MiscFlags = 0;
-                    winrt::check_hresult(device->CreateTexture2D(&desc, nullptr, &desktop_staging));
-                }
-                // Read only the tiny verification rectangle, not another full
-                // monitor snapshot or a long-lived lease on its capture pool.
-                const D3D11_BOX box{static_cast<UINT>(x), static_cast<UINT>(y), 0,
-                    static_cast<UINT>(x + width), static_cast<UINT>(y + height), 1};
-                context->CopySubresourceRegion(desktop_staging.Get(), 0, 0, 0, 0, texture.Get(), 0, &box);
-                desktop_pixels.resize(static_cast<size_t>(width) * height);
-                D3D11_MAPPED_SUBRESOURCE mapped{};
-                winrt::check_hresult(context->Map(desktop_staging.Get(), 0, D3D11_MAP_READ, 0, &mapped));
-                for (int row = 0; row < height; ++row)
-                    std::memcpy(desktop_pixels.data() + static_cast<size_t>(row) * width,
-                        static_cast<const uint8_t*>(mapped.pData) + static_cast<size_t>(row) * mapped.RowPitch, static_cast<size_t>(width) * 4);
-                context->Unmap(desktop_staging.Get(), 0);
-                desktop_sample_area = area;
-            } else if (!EqualRect(&area, &desktop_sample_area) || desktop_pixels.empty()) return false;
-            for (int row = 0; row < height; ++row)
-                std::memcpy(destination + static_cast<size_t>(row) * stride,
-                    desktop_pixels.data() + static_cast<size_t>(row) * width, static_cast<size_t>(width) * 4);
-            return true;
-        } catch (...) {
-            desktop_capture.reset(); desktop_capture_monitor = nullptr; desktop_capture_retry_at = now + 3000;
-            return false;
-        }
-    }
-
-    // These pixels are used only to validate points outside this process's
-    // windows. They never become the rendered backdrop, avoiding self-feedback.
-    bool CopyDesktopSamples(const RECT& area, uint32_t* destination, int stride) noexcept {
-        const ULONGLONG now = GetTickCount64();
-        if (now < retry_at) return false;
-        if (now < desktop_retry_at) return CopyDesktopCapture(area, destination, stride);
-        try {
-            const HMONITOR monitor = MonitorFromRect(&area, MONITOR_DEFAULTTONEAREST);
-            MONITORINFO info{sizeof(info)};
-            if (!GetMonitorInfoW(monitor, &info)) return false;
-            if (!desktop_duplication || monitor != desktop_monitor) {
-                EnsureDevice(monitor);
-                desktop_duplication.Reset(); desktop_pixels.clear();
-                ComPtr<IDXGIDevice> dxgi;
-                ComPtr<IDXGIAdapter> adapter;
-                winrt::check_hresult(device.As(&dxgi));
-                winrt::check_hresult(dxgi->GetAdapter(&adapter));
-                for (UINT i = 0; ; ++i) {
-                    ComPtr<IDXGIOutput> output;
-                    if (adapter->EnumOutputs(i, &output) == DXGI_ERROR_NOT_FOUND) break;
-                    DXGI_OUTPUT_DESC desc{};
-                    winrt::check_hresult(output->GetDesc(&desc));
-                    if (desc.Monitor != monitor) continue;
-                    if (desc.Rotation != DXGI_MODE_ROTATION_IDENTITY && desc.Rotation != DXGI_MODE_ROTATION_UNSPECIFIED) return false;
-                    ComPtr<IDXGIOutput1> capture_output;
-                    winrt::check_hresult(output.As(&capture_output));
-                    ComPtr<IDXGIOutput5> output5;
-                    if (SUCCEEDED(output.As(&output5))) {
-                        const DXGI_FORMAT formats[]{DXGI_FORMAT_B8G8R8A8_UNORM};
-                        winrt::check_hresult(output5->DuplicateOutput1(device.Get(), 0, ARRAYSIZE(formats), formats, &desktop_duplication));
-                    } else winrt::check_hresult(capture_output->DuplicateOutput(device.Get(), &desktop_duplication));
-                    break;
-                }
-                if (!desktop_duplication) throw DXGI_ERROR_UNSUPPORTED;
-                desktop_monitor = monitor;
-                desktop_capture.reset(); desktop_capture_monitor = nullptr;
-            }
-            desktop_used = now;
-            const int width = area.right - area.left, height = area.bottom - area.top;
-            DXGI_OUTDUPL_FRAME_INFO frame_info{};
-            ComPtr<IDXGIResource> resource;
-            const HRESULT acquired = desktop_duplication->AcquireNextFrame(0, &frame_info, &resource);
-            if (acquired == DXGI_ERROR_WAIT_TIMEOUT) {
-                if (!EqualRect(&area, &desktop_sample_area) || desktop_pixels.empty()) return false;
-            } else {
-                winrt::check_hresult(acquired);
-                struct Release { IDXGIOutputDuplication* value; ~Release() { value->ReleaseFrame(); } } release{desktop_duplication.Get()};
-                ComPtr<ID3D11Texture2D> texture;
-                winrt::check_hresult(resource.As(&texture));
-                D3D11_TEXTURE2D_DESC desc{}, current{};
-                texture->GetDesc(&desc);
-                const int x = area.left - info.rcMonitor.left, y = area.top - info.rcMonitor.top;
-                if (x < 0 || y < 0 || x + width > static_cast<int>(desc.Width) || y + height > static_cast<int>(desc.Height)) return false;
-                if (desktop_staging) desktop_staging->GetDesc(&current);
-                if (current.Width != static_cast<UINT>(width) || current.Height != static_cast<UINT>(height)) {
-                    desktop_staging.Reset();
-                    desc.Width = width; desc.Height = height;
-                    desc.Usage = D3D11_USAGE_STAGING; desc.CPUAccessFlags = D3D11_CPU_ACCESS_READ;
-                    desc.BindFlags = desc.MiscFlags = 0;
-                    winrt::check_hresult(device->CreateTexture2D(&desc, nullptr, &desktop_staging));
-                }
-                const D3D11_BOX box{static_cast<UINT>(x), static_cast<UINT>(y), 0,
-                    static_cast<UINT>(x + width), static_cast<UINT>(y + height), 1};
-                context->CopySubresourceRegion(desktop_staging.Get(), 0, 0, 0, 0, texture.Get(), 0, &box);
-                desktop_pixels.resize(static_cast<size_t>(width) * height);
-                D3D11_MAPPED_SUBRESOURCE mapped{};
-                winrt::check_hresult(context->Map(desktop_staging.Get(), 0, D3D11_MAP_READ, 0, &mapped));
-                for (int row = 0; row < height; ++row)
-                    std::memcpy(desktop_pixels.data() + static_cast<size_t>(row) * width,
-                        static_cast<const uint8_t*>(mapped.pData) + static_cast<size_t>(row) * mapped.RowPitch, static_cast<size_t>(width) * 4);
-                context->Unmap(desktop_staging.Get(), 0);
-                desktop_sample_area = area;
-            }
-            for (int row = 0; row < height; ++row)
-                std::memcpy(destination + static_cast<size_t>(row) * stride,
-                    desktop_pixels.data() + static_cast<size_t>(row) * width, static_cast<size_t>(width) * 4);
-            return true;
-        } catch (...) {
-            debug_info[23] = winrt::to_hresult();
-            desktop_duplication.Reset(); desktop_staging.Reset(); desktop_pixels.clear(); desktop_monitor = nullptr;
-            desktop_retry_at = now + 3000;
-            return CopyDesktopCapture(area, destination, stride);
         }
     }
 
@@ -591,8 +415,6 @@ public:
             const bool device_lost = !device || !capture_device || FAILED(device->GetDeviceRemovedReason());
             if (device_lost) {
                 entries.clear();
-                desktop_capture.reset(); desktop_capture_monitor = nullptr;
-                desktop_duplication.Reset(); desktop_staging.Reset(); desktop_pixels.clear(); desktop_monitor = nullptr;
                 capture_device = nullptr;
                 context.Reset(); device.Reset();
                 retry_at = fail_now + 1000;
