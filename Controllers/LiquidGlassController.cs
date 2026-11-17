@@ -583,8 +583,6 @@ public sealed partial class LiquidGlassController : IDisposable
         }
     }
 
-    public void SetCaptureExclusion(bool exclude) { /* no-op */ }
-
     public bool HasPresentedFrame => _hasVisibleFrame;
     internal long FrameSubmissionCount => Interlocked.Read(ref _totalPresentedFrames);
     internal double LastSubmissionLatencyMs => _d3dPresenter?.LastQueueMs ?? 0;
@@ -774,7 +772,7 @@ public sealed partial class LiquidGlassController : IDisposable
                     return false;
                 }
                 if (_currentDisplayAffinityHwnd == hwnd && _currentDisplayAffinity == (int)affinity) return true;
-                if (!SetWindowDisplayAffinity(hwnd, affinity)) return false;
+                if (!ApplyWindowCapturePolicy(hwnd)) return false;
                 _currentDisplayAffinityHwnd = hwnd;
                 _currentDisplayAffinity = (int)affinity;
                 // The worker must see the committed exclusion before capturing, but

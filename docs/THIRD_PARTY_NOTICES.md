@@ -22,8 +22,9 @@ Removal does not retroactively resolve obligations for previous distributions.
 
 ## Thinking Orbs
 
-`Controls/ThinkingOrbGeometry.cs` adapts the Working and Composing particle
-geometry and small-size presets from [Thinking Orbs by Jakub Antalik](https://github.com/Jakubantalik/thinking-orbs/tree/de85557ca220332586d070d8788c0e1d6e877a0d),
+`Controls/ThinkingOrbGeometry.cs` and `Controls/ThinkingOrbGeometry.Solving.cs`
+adapt the Working, Composing and Solving particle geometry and presets from
+[Thinking Orbs by Jakub Antalik](https://github.com/Jakubantalik/thinking-orbs/tree/de85557ca220332586d070d8788c0e1d6e877a0d),
 as demonstrated in [Details.so Orb 01](https://www.details.so/vault/orb-01).
 The renderer is adapted for WPF, with visibility-aware scheduling and reduced
 motion support. Copyright (c) 2026 Jakub Antalik, MIT; the full license is bundled

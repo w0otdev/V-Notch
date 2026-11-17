@@ -1,10 +1,10 @@
 using System;
 using System.Diagnostics;
 using System.Runtime.InteropServices;
+using Microsoft.Win32.SafeHandles;
 using Vortice.Direct3D9;
 using Windows.Graphics.Imaging;
 using Windows.Media.Capture.Frames;
-using Microsoft.Win32.SafeHandles;
 using static VNotch.Controllers.WebcamCaptureController;
 
 namespace VNotch.Controllers;

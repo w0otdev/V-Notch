@@ -108,7 +108,6 @@ public sealed partial class MediaDetectionService : IMediaDetectionService, IAsy
     private const string YouTubePlatformName = "YouTube";
     private const string SoundCloudPlatformName = "SoundCloud";
     private const string YouTubeLowerPlatformName = "youtube";
-    private const string SoundCloudLowerPlatformName = "soundcloud";
     private const string MediaStopLogTag = "MEDIA-STOP";
 
     private readonly object _lifecycleLock = new();

@@ -80,7 +80,7 @@ public sealed partial class LiquidGlassController : IDisposable
             return ShouldContinueWorker(generation);
         }
 
-        if (ApplyCapturePolicy(frameIntervalMs))
+        if (ApplyCapturePolicy())
             return true;
 
         if (Interlocked.Exchange(ref _captureAffinityFlushPending, 0) != 0)
@@ -216,7 +216,7 @@ public sealed partial class LiquidGlassController : IDisposable
         }
     }
 
-    private bool ApplyCapturePolicy(double frameIntervalMs)
+    private bool ApplyCapturePolicy()
     {
         if (!WindowAnimationPolicy.InvisibleMode)
         {

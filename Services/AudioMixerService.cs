@@ -187,8 +187,6 @@ public sealed partial class AudioMixerService : IDisposable
         return false;
     }
 
-    public List<AudioSessionInfo> GetSessions() => GetSessions(includeIcons: true);
-
     public List<AudioSessionInfo> GetSessions(bool includeIcons) => ReadSessions(includeIcons);
 
     internal List<AudioSessionInfo> ResolveSessionIcons(IReadOnlyList<AudioSessionInfo> sessions)

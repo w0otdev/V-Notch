@@ -33,12 +33,6 @@ public partial class SpotlightWindow
     private long _lastTransparencyCheckTicks;
     private UiScheduledTimer? _glassResourceExpiry;
 
-    internal void PrepareGlassForOpening()
-    {
-        if (!IsLiquidGlassEnabled || IsSpotlightOpen) return;
-        ScheduleGlassResourceExpiry();
-    }
-
     private void RetainGlassForReopen()
     {
         _liquidGlass?.Stop(retainGpuResources: true);

@@ -7,8 +7,8 @@ using System.Windows.Controls;
 using System.Windows.Documents;
 using System.Windows.Input;
 using System.Windows.Media;
-using VNotch.Models;
 using VNotch.Controls;
+using VNotch.Models;
 using VNotch.Services;
 using VNotch.Services.Spotlight;
 using Xunit;
@@ -353,11 +353,26 @@ public sealed class SpotlightAiPresentationTests
             window.ContentRegion.ActualHeight >= window.AiPanel.ActualHeight,
             "working orb visible after content expansion", ct);
         Assert.Equal(ThinkingOrbState.Working, working.State);
+        var thinkingLabel = Descendants<TextBlock>(Field<Border>(window, "_aiThinkingCard")).Single();
+        var labelSize = thinkingLabel.RenderSize;
+        byte[] initialLabel = TranslationLoadingMotionTests.Pixels(thinkingLabel);
+        await WpfFrameWaiter.UntilAsync(() => !TranslationLoadingMotionTests.Pixels(thinkingLabel).SequenceEqual(initialLabel),
+            "thinking label shimmers while waiting", ct);
+        Assert.Equal(labelSize, thinkingLabel.RenderSize);
         CaptureOrbPreview(window, "working");
+        if (Environment.GetEnvironmentVariable("TRANSLATION_ORB_CAPTURE") == "1")
+        {
+            for (int frame = 0; frame < 45; frame++)
+            {
+                CaptureOrbPreview(window, $"thinking-{frame:000}");
+                await Task.Delay(40, ct);
+            }
+        }
 
         AnimationConfig.SetReduceMotion(true);
         Assert.True(working.IsActive);
         Assert.False(working.IsAnimating);
+        Assert.Null(thinkingLabel.OpacityMask);
         AnimationConfig.SetReduceMotion(false);
         Assert.True(working.IsAnimating);
         window.HideSpotlight();

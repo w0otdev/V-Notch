@@ -1,5 +1,5 @@
-using System.Buffers;
 using System;
+using System.Buffers;
 using System.Collections.Frozen;
 using System.Collections.Generic;
 using System.Globalization;
@@ -173,7 +173,7 @@ public static partial class Loc
     public static string Get(string key, params object[] args)
     {
         var template = Get(key);
-        try { return string.Format(template, args); }
+        try { return string.Format(GetCulture(), template, args); }
         catch { return template; }
     }
 

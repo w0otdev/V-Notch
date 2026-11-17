@@ -46,9 +46,6 @@ public sealed partial class MagnifierCaptureSource : IDisposable
     [LibraryImport(NativeDll, EntryPoint = "vn_magcap_has_usable_frame")]
     private static partial int NativeHasUsableFrame(int handle, int x, int y, int width, int height, out byte usable);
 
-    [LibraryImport(NativeDll, EntryPoint = "vn_magcap_wait_unfiltered_frame")]
-    private static partial int NativeWaitUnfilteredFrame(int handle, uint timeoutMs, out byte received);
-
     [LibraryImport(NativeDll, EntryPoint = "vn_magcap_debug_status")]
     private static unsafe partial int NativeDebugStatus(int handle, int x, int y, int width, int height, char* buffer, int capacity, out int length);
 
@@ -180,21 +177,6 @@ public sealed partial class MagnifierCaptureSource : IDisposable
             DisposeRetiredInstances();
             _sharedInstance = null;
             _sharedRefCount = 0;
-        }
-    }
-
-    public static bool PrewarmUnfilteredDesktopFrame(TimeSpan timeout)
-    {
-        MagnifierCaptureSource source = AcquireShared(IntPtr.Zero);
-        try
-        {
-            uint timeoutMs = (uint)Math.Clamp(timeout.TotalMilliseconds, 0, int.MaxValue);
-            return source._handle > 0 &&
-                   NativeWaitUnfilteredFrame(source._handle, timeoutMs, out byte received) == 0 && received != 0;
-        }
-        finally
-        {
-            ReleaseShared(IntPtr.Zero);
         }
     }
 

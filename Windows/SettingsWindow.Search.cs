@@ -199,22 +199,6 @@ public partial class SettingsWindow
         SettingsSearchBox.Focus();
     }
 
-    private static int GetSearchRowScore(SearchRowEntry row, string query, bool allowFuzzy)
-    {
-        ReadOnlySpan<char> titleSpan = row.NormalizedTitleText.AsSpan();
-        ReadOnlySpan<char> contentSpan = row.NormalizedSearchText.AsSpan();
-        ReadOnlySpan<char> combinedSpan = row.NormalizedCombinedText.AsSpan();
-        ReadOnlySpan<char> querySpan = query.AsSpan();
-        vn_settings_search_score_row(
-            titleSpan, titleSpan.Length,
-            contentSpan, contentSpan.Length,
-            combinedSpan, combinedSpan.Length,
-            querySpan, querySpan.Length,
-            allowFuzzy ? (byte)1 : (byte)0,
-            out int score);
-        return score;
-    }
-
     private bool EnterSearchMode()
     {
         if (_isSearchMode)

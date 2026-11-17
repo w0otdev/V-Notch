@@ -45,17 +45,6 @@ double StepResponse(double damping_ratio, double damped_frequency, double t) noe
     return 1.0 - decay * (std::cos(phase) + damping_ratio * kNaturalFrequency / damped_frequency * std::sin(phase));
 }
 
-// Core easing used for EaseIn; WPF mirrors it for EaseOut (1 - core(1 - t)).
-double DampedSpringCore(double damping_ratio, double normalized_time) noexcept {
-    if (!std::isfinite(normalized_time)) return normalized_time > 0.0 ? 1.0 : 0.0;
-    const double time = std::clamp(normalized_time, 0.0, 1.0);
-    if (time == 0.0 || time == 1.0) return time;
-    const double damped_frequency = kNaturalFrequency * std::sqrt(std::max(0.0, 1.0 - damping_ratio * damping_ratio));
-    const double end_response = StepResponse(damping_ratio, damped_frequency, 1.0);
-    // Normalizing by the end response lands the last frame exactly on the target.
-    return 1.0 - StepResponse(damping_ratio, damped_frequency, 1.0 - time) / end_response;
-}
-
 int32_t SignOf(double value) noexcept {
     return (value > 0.0) - (value < 0.0);
 }

@@ -18,14 +18,9 @@ public sealed class MediaDisplayController
     private int _thumbnailSwitchGeneration = 0;
 
     public string LastAnimatedTrackSignature => _lastAnimatedTrackSignature;
-    public string LastColorTrackSignature => _lastColorTrackSignature;
-    public string LastRenderedMediaSource => _lastRenderedMediaSource;
-    public ImageSource? LastAnimatedThumbnail => _lastAnimatedThumbnail;
-    public bool ThumbnailShownForCurrentTrack => _thumbnailShownForCurrentTrack;
-    public bool TrackChangeBounceNeeded => _trackChangeBounceNeeded;
     public int ThumbnailSwitchGeneration => _thumbnailSwitchGeneration;
 
-    public MediaDisplayResult ProcessMediaUpdate(MediaInfo info, bool isExpanded, bool isMusicExpanded, bool isMusicCompactMode, bool isAnimating)
+    public MediaDisplayResult ProcessMediaUpdate(MediaInfo info)
     {
         var result = new MediaDisplayResult();
 
@@ -175,16 +170,6 @@ public sealed class MediaDisplayController
 
     public int IncrementGeneration() => ++_thumbnailSwitchGeneration;
 
-    public void MarkThumbnailShown()
-    {
-        _thumbnailShownForCurrentTrack = true;
-    }
-
-    public void SetLastAnimatedThumbnail(ImageSource? thumb)
-    {
-        _lastAnimatedThumbnail = thumb;
-    }
-
     public void Reset()
     {
         _lastAnimatedTrackSignature = "";
@@ -212,11 +197,11 @@ public sealed class MediaDisplayController
         return renderedSource;
     }
 
-    private static DisplayTextResult ResolveDisplayText(MediaInfo info, bool hasRealTrack, string renderedSource)
+    internal static DisplayTextResult ResolveDisplayText(MediaInfo info, bool hasRealTrack, string renderedSource)
     {
         if (!hasRealTrack)
         {
-            return new DisplayTextResult("No media playing", "Artist name");
+            return new DisplayTextResult(Loc.Get("media.noMedia"), Loc.Get("media.artistName"));
         }
 
         string titleText = info.CurrentTrack;
@@ -237,7 +222,7 @@ public sealed class MediaDisplayController
         }
         else
         {
-            artistText = "Unknown Artist";
+            artistText = Loc.Get("media.unknownArtist");
         }
 
         return new DisplayTextResult(titleText, artistText);

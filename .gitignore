@@ -112,6 +112,9 @@ update_settings.ps1
 !/Tools/UpdateCompatibility/
 !/Tools/ShaderCompiler/
 !/Tools/GlassGpuProbe/
+!/Tools/TranslationRuntime/
+/Native/out/translation/
+!/docs/TRANSLATION_LITE.md
 /changes
 build-installer.ps1
 .test-output/ai-errors/Locales/ar.json

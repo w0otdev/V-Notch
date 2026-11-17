@@ -59,7 +59,7 @@ public partial class NotchSettings : IJsonOnDeserialized
     public int ClipboardCaptureDelay { get => _clipboardCaptureDelay; set => _clipboardCaptureDelay = ClampInt(value, 100, 2000); }
     public string ClipboardHotkey { get; set; } = "";
 
-    public string TranslationModelId { get; set; } = "qwen3-4b-instruct-2507-q4km-v1";
+    public string TranslationModelId { get; set; } = "small100-int8-v1";
     public bool EnableLiveTranslation { get; set; } = false;
     public bool TranslationIgnoreFullscreen { get; set; } = true;
     public string TranslationExcludedApps { get; set; } = "cs2;csgo;VALORANT-Win64-Shipping;GenshinImpact";

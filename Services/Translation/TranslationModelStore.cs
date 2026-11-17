@@ -26,7 +26,7 @@ internal sealed partial class TranslationModelStore
     private static readonly HttpClient Client = new(NetworkPrivacy.Handler(NetworkFeature.TranslationModels))
     { Timeout = Timeout.InfiniteTimeSpan };
     // The singleton constructor captures Client; initialize the transport first.
-    internal static TranslationModelStore Shared { get; } = new();
+    internal static TranslationModelStore Shared { get; } = new(profile: TranslationModelProfile.Small100);
     private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, TranslationModelStore> Stores = new();
     internal static TranslationModelStore For(string? id)
     {
@@ -268,6 +268,7 @@ internal sealed partial class TranslationModelStore
 
     internal async Task TryEnsureVulkanRuntimeAsync(CancellationToken ct)
     {
+        if (Profile.IsLite) return;
         if (!ReferenceEquals(_client, Client)) return;
         if (TranslationNativeRuntime.HasBundledVulkanRuntime()) return;
         if (await TranslationNativeRuntime.IsOnDemandVulkanValidAsync(ct).ConfigureAwait(false)) return;

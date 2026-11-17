@@ -1,6 +1,6 @@
+using System.Collections.Concurrent;
 using System.ComponentModel;
 using System.Runtime.CompilerServices;
-using System.Collections.Concurrent;
 using System.Windows;
 using System.Windows.Interop;
 
@@ -97,14 +97,14 @@ internal static class WindowAnimationPolicy
         foreach (Window window in Application.Current.Windows.Cast<Window>().ToArray()) Attach(window);
     }
 
-    internal static bool SetCaptureAffinity(IntPtr hwnd, uint affinity)
+    internal static bool ApplyCaptureAffinity(IntPtr hwnd)
     {
         // HwndSource lookup is dispatcher-local. Capture workers must use the
-        // registered lifetime so a later UI refresh retains their request.
+        // registered lifetime to apply the same policy as subsequent UI refreshes.
         if (WindowHandles.TryGetValue(hwnd, out var lifetime))
-            return lifetime.SetCaptureAffinity(hwnd, affinity);
+            return lifetime.ApplyCaptureAffinity(hwnd);
         if (HwndSource.FromHwnd(hwnd)?.RootVisual is Window window)
-            return Windows.GetValue(window, static key => new WindowLifetime(key)).SetCaptureAffinity(hwnd, affinity);
+            return Windows.GetValue(window, static key => new WindowLifetime(key)).ApplyCaptureAffinity(hwnd);
         return Win32Interop.SetWindowDisplayAffinityNative(hwnd,
             InvisibleMode ? Win32Interop.WDA_EXCLUDEFROMCAPTURE : Win32Interop.WDA_NONE);
     }
@@ -144,7 +144,7 @@ internal static class WindowAnimationPolicy
             TrackHandle(new WindowInteropHelper(window).Handle);
         }
 
-        internal bool SetCaptureAffinity(IntPtr hwnd, uint affinity)
+        internal bool ApplyCaptureAffinity(IntPtr hwnd)
         {
             lock (_captureSync)
             {
@@ -208,8 +208,7 @@ internal static class WindowAnimationPolicy
             }
 
             int disabled = 1; // Win32 BOOL, not a one-byte managed bool.
-            _ = Win32Interop.DwmSetWindowAttributeInt(hwnd,
-                Win32Interop.DWMWA_TRANSITIONS_FORCEDISABLED, ref disabled, sizeof(int));
+            _ = Win32Interop.DwmSetWindowAttributeInt(hwnd, Win32Interop.DWMWA_TRANSITIONS_FORCEDISABLED, ref disabled);
 
             if (!_window.ShowInTaskbar)
             {

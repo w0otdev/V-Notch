@@ -16,6 +16,8 @@ public sealed class TranslationTextRevealTests
     public void CharactersAppearInOrderWithIndividualFadesWithoutChangingLayout(bool markdown) => SharedStaTestRunner.RunAsync(async ct =>
     {
         bool previous = AnimationConfig.ReduceMotion;
+        bool? previousClientAnimation = AnimationConfig.ClientAreaAnimationOverride;
+        AnimationConfig.ClientAreaAnimationOverride = true;
         AnimationConfig.SetReduceMotion(false);
         var window = new TranslationWindow("en", "vi") { Opacity = 0, ShowActivated = false };
         BackgroundTestWindows.ProtectInput(window);
@@ -36,13 +38,13 @@ public sealed class TranslationTextRevealTests
             }
             Assert.Equal(text, window.ResultText.Text);
             Assert.Null(target.Clip);
-            if (!SystemParameters.ClientAreaAnimation) { Assert.Equal(1, target.Opacity); return; }
             Assert.Equal(0, target.Opacity);
             await WpfFrameWaiter.UntilAsync(() => HasCharacterFades(window),
                 "individual characters fade while later characters stay hidden", ct);
             Assert.Null(target.Clip);
             var size = target.RenderSize;
             int partialPixels = CountVisiblePixels(window);
+            Capture(window.PopupSurface, markdown ? "markdown-reveal" : "plain-reveal");
             Assert.True(partialPixels > 0);
             Assert.Equal(text, window.ResultText.Text);
             Assert.True(window.CopyButton.IsEnabled);
@@ -50,8 +52,9 @@ public sealed class TranslationTextRevealTests
             Assert.Equal(size, target.RenderSize);
             Assert.Equal(text, window.ResultText.Text);
             Assert.True(CountVisiblePixels(window) > partialPixels);
+            Capture(window.PopupSurface, markdown ? "markdown-complete" : "plain-complete");
         }
-        finally { window.Close(); AnimationConfig.SetReduceMotion(previous); }
+        finally { window.Close(); AnimationConfig.SetReduceMotion(previous); AnimationConfig.ClientAreaAnimationOverride = previousClientAnimation; }
     });
 
     [Theory]
@@ -70,6 +73,8 @@ public sealed class TranslationTextRevealTests
     public void InterruptingRevealCannotMaskNewContent(string action, bool markdown) => SharedStaTestRunner.RunAsync(async ct =>
     {
         bool previous = AnimationConfig.ReduceMotion;
+        bool? previousClientAnimation = AnimationConfig.ClientAreaAnimationOverride;
+        AnimationConfig.ClientAreaAnimationOverride = true;
         AnimationConfig.SetReduceMotion(false);
         var window = new TranslationWindow("en", "vi") { Opacity = 0, ShowActivated = false };
         BackgroundTestWindows.ProtectInput(window);
@@ -82,8 +87,7 @@ public sealed class TranslationTextRevealTests
             if (markdown) text = "**Formatted translation**\n\n- " + text;
             window.ShowResult(new(text, "en", "vi", true));
             FrameworkElement target = markdown ? window.MarkdownResult : window.ResultText;
-            if (SystemParameters.ClientAreaAnimation)
-                await WpfFrameWaiter.UntilAsync(() => HasCharacterFades(window), "character fade starts", ct);
+            await WpfFrameWaiter.UntilAsync(() => HasCharacterFades(window), "character fade starts", ct);
             switch (action)
             {
                 case "language": window.TargetLanguageCombo.SelectedValue = "fr"; Assert.Empty(window.ResultText.Text); break;
@@ -107,7 +111,37 @@ public sealed class TranslationTextRevealTests
             if (action == "dismiss") return;
             await WpfFrameWaiter.UntilAsync(() => window.ResultText.Text == "Newest result" && Math.Abs(window.ResultText.Opacity - 1) < 1e-6 && window.ResultText.OpacityMask == null, "new character reveal completes", ct);
         }
-        finally { window.Close(); AnimationConfig.SetReduceMotion(previous); }
+        finally { window.Close(); AnimationConfig.SetReduceMotion(previous); AnimationConfig.ClientAreaAnimationOverride = previousClientAnimation; }
+    });
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void ANewResultStillRevealsAfterResettingAPreviouslyScrolledResult(bool markdown) => SharedStaTestRunner.RunAsync(async ct =>
+    {
+        bool previous = AnimationConfig.ReduceMotion;
+        bool? previousClientAnimation = AnimationConfig.ClientAreaAnimationOverride;
+        AnimationConfig.ClientAreaAnimationOverride = true;
+        AnimationConfig.SetReduceMotion(true);
+        var window = new TranslationWindow("en", "vi") { Opacity = 0, ShowActivated = false };
+        BackgroundTestWindows.ProtectInput(window);
+        try
+        {
+            window.ConfigureFormatting(markdown);
+            window.ShowClipboard("source");
+            await window.WaitForEntranceAsync(ct);
+            string text = string.Join("\n", Enumerable.Repeat("Translated paragraph with enough lines to scroll.", 30));
+            if (markdown) text = "**Heading**\n\n" + text;
+            window.ShowResult(new(text, "en", "vi", true));
+            await WpfFrameWaiter.UntilAsync(() => window.ResultScroll.ScrollableHeight > 100, "old result is scrollable", ct);
+            window.ResultScroll.ScrollToVerticalOffset(100);
+            await WpfFrameWaiter.UntilAsync(() => window.ResultScroll.VerticalOffset > 0, "old result scrolls", ct);
+            AnimationConfig.SetReduceMotion(false);
+            window.ShowResult(new(text + "\nNew result.", "en", "vi", true) { IsCached = true });
+            await WpfFrameWaiter.UntilAsync(() => HasCharacterFades(window), "new reveal survives ScrollToTop and layout", ct);
+            Assert.Equal(0, window.ResultScroll.VerticalOffset);
+        }
+        finally { window.Close(); AnimationConfig.SetReduceMotion(previous); AnimationConfig.ClientAreaAnimationOverride = previousClientAnimation; }
     });
 
     private static bool HasCharacterFades(TranslationWindow window)
@@ -129,5 +163,20 @@ public sealed class TranslationTextRevealTests
         int count = 0;
         for (int i = 3; i < pixels.Length; i += 4) if (pixels[i] > 32) count++;
         return count;
+    }
+
+    internal static void Capture(FrameworkElement surface, string name)
+    {
+        if (Environment.GetEnvironmentVariable("TRANSLATION_MOTION_CAPTURE") is not string directory) return;
+        System.IO.Directory.CreateDirectory(directory);
+        var bitmap = new RenderTargetBitmap((int)Math.Ceiling(surface.ActualWidth), (int)Math.Ceiling(surface.ActualHeight), 96, 96, PixelFormats.Pbgra32);
+        var visual = new DrawingVisual();
+        using (var context = visual.RenderOpen())
+            context.DrawRectangle(new VisualBrush(surface), null, new Rect(surface.RenderSize));
+        bitmap.Render(visual);
+        var encoder = new PngBitmapEncoder();
+        encoder.Frames.Add(BitmapFrame.Create(bitmap));
+        using var file = System.IO.File.Create(System.IO.Path.Combine(directory, name + ".png"));
+        encoder.Save(file);
     }
 }

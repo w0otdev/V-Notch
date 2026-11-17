@@ -62,14 +62,13 @@ public sealed class AiUsageVisualPresentationTests
             Assert.Same(resources["AccentBrush"], viewFill.Background);
             Assert.Same(resources["AccentBrush"], widgetFill.Background);
             Assert.Same(widgetFill.Background, weeklyFill.Background);
-            foreach (double used in new[] { 0d, 69, 70, 81, 90, 100 })
-                Assert.Same(resources["AccentBrush"], AiUsageAppearance.Current.Fill("Codex", used));
+            Assert.Same(resources["AccentBrush"], AiUsageAppearance.Current.Fill("Codex"));
             Layout(view, 464);
             Layout(widget, 130);
             Save(view, "view-app-accent-blue");
             Save(widget, "widget-app-accent-blue");
             var custom = new AiUsageAppearance { StatusColors = false, CodexColor = "#ABCDEF" };
-            custom.BindFill(widgetFill, "Codex", 23);
+            custom.BindFill(widgetFill, "Codex");
             AccentTheme.Apply("pink");
             Assert.Equal(Color.FromRgb(0xAB, 0xCD, 0xEF), Assert.IsType<SolidColorBrush>(widgetFill.Background).Color);
             foreach (string language in new[] { "en", "vi" })

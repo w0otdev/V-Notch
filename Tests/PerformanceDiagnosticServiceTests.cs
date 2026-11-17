@@ -1,8 +1,8 @@
 using System;
-using System.Linq;
-using System.Reflection;
 using System.Diagnostics;
 using System.Globalization;
+using System.Linq;
+using System.Reflection;
 using VNotch.Models;
 using VNotch.Services;
 using Xunit;

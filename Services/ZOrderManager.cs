@@ -30,12 +30,6 @@ public sealed partial class ZOrderManager : IDisposable
         long selfHwnd,
         out byte outProcess);
 
-    private static IntPtr _currentForegroundWindow;
-    private static int _activeForegroundHooks;
-
-    internal static IntPtr GetForegroundWindowCached() => Volatile.Read(ref _activeForegroundHooks) > 0
-        ? Interlocked.CompareExchange(ref _currentForegroundWindow, IntPtr.Zero, IntPtr.Zero)
-        : GetForegroundWindow();
     private readonly Func<IntPtr> _getHwnd;
     private readonly Func<bool> _isEffectivelyVisible;
     private readonly Func<bool> _isSuspended;
@@ -114,8 +108,6 @@ public sealed partial class ZOrderManager : IDisposable
 
     private void ForegroundWindowChanged(uint eventType, IntPtr hwnd)
     {
-        if (eventType == EVENT_SYSTEM_FOREGROUND)
-            Interlocked.Exchange(ref _currentForegroundWindow, hwnd);
         if (vn_zorder_manager_should_process_foreground(eventType, hwnd.ToInt64(), _getHwnd().ToInt64(), out byte shouldProcess) == 0 && shouldProcess == 0)
             return;
 
@@ -185,8 +177,6 @@ public sealed partial class ZOrderManager : IDisposable
             if (hook.Install())
             {
                 _foregroundHook = hook;
-                Interlocked.Exchange(ref _currentForegroundWindow, GetForegroundWindow());
-                Interlocked.Increment(ref _activeForegroundHooks);
             }
         }
         AssertNow();
@@ -203,7 +193,6 @@ public sealed partial class ZOrderManager : IDisposable
         {
             _foregroundHook = null;
             foregroundHook.Dispose();
-            Interlocked.Decrement(ref _activeForegroundHooks);
         }
     }
 

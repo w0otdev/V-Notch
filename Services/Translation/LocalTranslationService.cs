@@ -41,8 +41,11 @@ internal sealed partial class LocalTranslationService(ILocalTranslationEngine en
         }
     }
     private volatile bool _disposed;
-    internal Task Disposal => (engine as QwenTranslationEngine)?.Disposal ?? Task.CompletedTask;
+    internal Task Disposal => engine.Disposal;
+    internal bool InstantPresentation => engine.InstantPresentation;
+    internal void SetEnabled(bool enabled) => engine.SetEnabled(enabled);
     internal TranslationStage Stage => engine.Stage;
+    internal bool IsCpuFallback => engine.IsCpuFallback;
 
     internal async Task PrepareAsync(CancellationToken ct)
     {
@@ -60,10 +63,10 @@ internal sealed partial class LocalTranslationService(ILocalTranslationEngine en
         TranslateCoreAsync(text, source, target, ct, sameLanguageChecked: false);
 
     // The controller already checked this exact prepared text and language pair.
-    internal Task<TranslationResult> TranslateAfterLanguageCheckAsync(string text, string source, string target, CancellationToken ct) =>
-        TranslateCoreAsync(text, source, target, ct, sameLanguageChecked: true);
+    internal Task<TranslationResult> TranslateAfterLanguageCheckAsync(string text, string source, string target, CancellationToken ct, Action<string>? preview = null, TranslationLanguageAnalysis? language = null) =>
+        TranslateCoreAsync(text, source, target, ct, sameLanguageChecked: true, preview, language);
 
-    private async Task<TranslationResult> TranslateCoreAsync(string text, string source, string target, CancellationToken ct, bool sameLanguageChecked)
+    private async Task<TranslationResult> TranslateCoreAsync(string text, string source, string target, CancellationToken ct, bool sameLanguageChecked, Action<string>? preview = null, TranslationLanguageAnalysis? language = null)
     {
         string prepared = PrepareRequest(text, source, target, ct);
         bool truncated = prepared.Length < text.Length;
@@ -73,9 +76,11 @@ internal sealed partial class LocalTranslationService(ILocalTranslationEngine en
         string originalText = text;
         var key = (originalText, source, target);
         if (TryGetCached(key, truncated, ct) is { } cached) return cached;
+        if (source == "auto" && language?.Text != text)
+            language = await TranslationLanguages.AnalyzeAsync(text, ct).ConfigureAwait(false);
         if (!sameLanguageChecked)
         {
-            var unchanged = await TrySameLanguageAsync(text, source, target, ct).ConfigureAwait(false);
+            var unchanged = TrySameLanguage(text, source, target, language);
             if (unchanged != null)
             {
                 ct.ThrowIfCancellationRequested();
@@ -92,6 +97,8 @@ internal sealed partial class LocalTranslationService(ILocalTranslationEngine en
             string fitted = await engine.FitInputAsync(text, ct).ConfigureAwait(false);
             bool tokenTruncated = fitted.Length < text.Length;
             text = fitted;
+            if (source == "auto" && language?.Text != text)
+                language = await TranslationLanguages.AnalyzeAsync(text, ct).ConfigureAwait(false);
             var fittedKey = (text, source, target);
             if (fittedKey != key && TryGetCached(fittedKey, tokenTruncated || truncated, ct) is { } fittedCached)
             {
@@ -105,11 +112,11 @@ internal sealed partial class LocalTranslationService(ILocalTranslationEngine en
                 };
             }
             string translated = await TranslationStructuredText.TranslateAsync(text,
-                (prose, token) => engine.TranslateAsync(prose, source, target, token), ct).ConfigureAwait(false);
+                (prose, token) => engine.TranslateWithPreviewAsync(prose, source, target, preview, token, language), ct).ConfigureAwait(false);
             ct.ThrowIfCancellationRequested();
             translated = TranslationTextIntegrity.Clean(translated);
-            string hintSource = source == "auto" ? TranslationLanguages.Detect(text) ?? source : source;
-            if (!TranslationMeaningIntegrity.PreservesStatement(text, hintSource, translated))
+            string hintSource = source == "auto" ? language?.DetectedLanguage ?? source : source;
+            if (!TranslationMeaningIntegrity.PreservesStatementAndSubject(text, hintSource, translated, target, hintSource))
                 throw new TranslationException("translation.meaningChanged");
             // Numeric mismatches remain readable for review, without replacement or caching.
             var inspection = TranslationTextIntegrity.Inspect(originalText, translated);
@@ -118,7 +125,7 @@ internal sealed partial class LocalTranslationService(ILocalTranslationEngine en
                 throw new TranslationException("translation.literalsChanged");
             var result = new TranslationResult(translated, source, target, literalsPreserved,
                 TranslationDateIntegrity.PreservesWeekdays(text, hintSource, translated, target))
-            { InputTruncated = tokenTruncated };
+            { InputTruncated = tokenTruncated, UsedCpuFallback = engine.IsCpuFallback, InstantPresentation = engine.InstantPresentation };
             if (vn_local_translation_should_cache_result(
                 literalsPreserved ? (byte)1 : (byte)0,
                 result.WeekdaysPreserved ? (byte)1 : (byte)0,
@@ -183,25 +190,15 @@ internal sealed partial class LocalTranslationService(ILocalTranslationEngine en
                 return null;
             }
             _order.AddLast(node);
-            return node.Value.Result with { InputTruncated = node.Value.Result.InputTruncated || truncated };
+            return node.Value.Result with { InputTruncated = node.Value.Result.InputTruncated || truncated, IsCached = true };
         }
     }
 
-    internal static TranslationResult? TrySameLanguage(string text, string source, string target)
+    internal static TranslationResult? TrySameLanguage(string text, string source, string target, TranslationLanguageAnalysis? analysis = null)
     {
         if (!TranslationLanguages.IsSupported(target)) return null;
-        string? language = source == "auto" ? TranslationLanguages.DetectForPassthrough(text) : source;
-        return language == target ? new(text, language, target, true) : null;
-    }
-
-    internal static async ValueTask<TranslationResult?> TrySameLanguageAsync(string text, string source, string target, CancellationToken ct)
-    {
-        ct.ThrowIfCancellationRequested();
-        if (!TranslationLanguages.IsSupported(target)) return null;
-        string? language = source == "auto"
-            ? await TranslationLanguages.DetectForPassthroughAsync(text, ct).ConfigureAwait(false)
-            : source;
-        ct.ThrowIfCancellationRequested();
+        string? language = source != "auto" ? source : analysis?.Text == text
+            ? analysis.PassthroughLanguage : TranslationLanguages.DetectForPassthrough(text);
         return language == target ? new(text, language, target, true) : null;
     }
 

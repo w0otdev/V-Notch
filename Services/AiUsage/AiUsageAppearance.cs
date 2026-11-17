@@ -49,7 +49,7 @@ internal sealed record AiUsageAppearance
     internal bool Shows(string provider) => provider == "Claude" ? ShowClaude : ShowCodex;
     internal double Percent(AiQuotaWindow window) => ShowUsed ? window.UsedPercent : window.RemainingPercent;
     internal string PercentText(double percent) => Loc.Get(ShowUsed ? "aiUsage.used" : "aiUsage.left", percent.ToString("0.#", Loc.GetCulture()));
-    internal Brush Fill(string provider, double used)
+    internal Brush Fill(string provider)
     {
         if (SystemParameters.HighContrast) return SystemColors.HighlightBrush;
         if (StatusColors)
@@ -63,9 +63,9 @@ internal sealed record AiUsageAppearance
         return brush;
     }
 
-    internal void BindFill(Border fill, string provider, double used)
+    internal void BindFill(Border fill, string provider)
     {
-        fill.Background = Fill(provider, used);
+        fill.Background = Fill(provider);
         // AccentTheme replaces its resource brushes; keep existing quota bars live.
         if (!SystemParameters.HighContrast && StatusColors &&
             Application.Current?.TryFindResource("AccentBrush") is Brush)

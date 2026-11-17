@@ -31,17 +31,17 @@ internal static partial class TranslationModelPrompts
         return text;
     }
 
-    internal static string Build(TranslationModelProfile model, string text, string source, string target, bool enableHumanizer = true)
+    internal static string Build(TranslationModelProfile model, string text, string source, string target, bool enableHumanizer = true, string? sourceHint = null)
     {
         // Do not let text containing model control tokens break out of the user turn.
         text = Sanitize(text);
         if (source == "auto")
         {
-            string? detected = TranslationLanguages.Detect(text);
+            string? detected = sourceHint ?? TranslationLanguages.Detect(text);
             if (detected != null && detected != target) source = detected;
         }
         string targetName = TranslationLanguages.EnglishName(target);
-        string meaning = TranslationMeaningIntegrity.Instruction(text, source, enableHumanizer);
+        string meaning = TranslationMeaningIntegrity.Instruction(text, source, enableHumanizer, sourceHint);
         string glossary = QwenTranslationEngine.Glossary(source, target, enableHumanizer);
         if (glossary.Length > 0) meaning += glossary + " ";
         if (model.PromptKind == TranslationPromptKind.Hunyuan)

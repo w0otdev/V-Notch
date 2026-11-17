@@ -4,8 +4,6 @@ namespace VNotch.Services;
 
 internal static partial class MediaTimelinePolicy
 {
-    public static readonly TimeSpan MaxReasonableDuration = TimeSpan.FromHours(12);
-
     [LibraryImport("VNotch.Native.dll")]
     private static partial int vn_timeline_policy_has_finite_duration(long durationTicks, out byte outFinite);
 

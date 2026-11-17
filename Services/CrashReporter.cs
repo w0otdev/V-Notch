@@ -351,16 +351,6 @@ public static partial class CrashReporter
         }
     }
 
-    internal static string[] GetAllCandidateCrashLogPaths() =>
-    [
-        CrashLogPath,
-        ResolvePrimaryCrashLogPath(),
-        SecondaryCrashLogPath,
-        Path.Combine(AppContext.BaseDirectory, CrashLogFileName),
-        FallbackCrashLogPath,
-        Path.Combine(Path.GetTempPath(), CrashLogFileName)
-    ];
-
     internal static void DeleteCrashLogs()
     {
         lock (_crashLock)

@@ -46,9 +46,6 @@ internal static partial class ArtworkFrameDetector
         }
     }
 
-    internal static unsafe Int32Rect? DetectFrameFromPixels(byte[] pixels, int w, int h, int stride) =>
-        DetectFrameFromPixels(pixels, w, h, w, h);
-
     internal static unsafe Int32Rect? DetectWhiteFrame(BitmapSource source)
     {
         int width = source.PixelWidth, height = source.PixelHeight;

@@ -6,10 +6,6 @@ namespace VNotch.Services;
 internal static partial class SettingsSearchMatcher
 {
     [LibraryImport("VNotch.Native.dll")]
-    private static unsafe partial int vn_settings_search_get_normalized_score(
-        char* normSourcePtr, int normSourceLen, char* normQueryPtr, int normQueryLen, byte allowFuzzy, out int outScore);
-
-    [LibraryImport("VNotch.Native.dll")]
     private static unsafe partial int vn_settings_search_is_match(
         char* sourcePtr, int sourceLen, char* queryPtr, int queryLen, out byte outIsMatch);
 
@@ -38,26 +34,6 @@ internal static partial class SettingsSearchMatcher
         {
             _ = vn_settings_search_is_match(pS, s.Length, pQ, q.Length, out byte isMatch);
             return isMatch != 0;
-        }
-    }
-
-    public static bool IsNormalizedMatch(string normalizedSource, string normalizedQuery) =>
-        GetNormalizedMatchScore(normalizedSource, normalizedQuery) > 0;
-
-    public static unsafe int GetNormalizedMatchScore(string normalizedSource, string normalizedQuery, bool allowFuzzy = true)
-    {
-        if (string.IsNullOrEmpty(normalizedSource) || string.IsNullOrEmpty(normalizedQuery))
-            return 0;
-
-        fixed (char* pS = normalizedSource)
-        fixed (char* pQ = normalizedQuery)
-        {
-            _ = vn_settings_search_get_normalized_score(
-                pS, normalizedSource.Length,
-                pQ, normalizedQuery.Length,
-                allowFuzzy ? (byte)1 : (byte)0,
-                out int score);
-            return score;
         }
     }
 

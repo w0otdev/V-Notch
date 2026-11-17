@@ -51,7 +51,6 @@ public partial class MainWindow
 
         if (glass)
         {
-            UpdateGlassMediaTint(dominantColor);
         }
 
         string currentTrackId = $"{info.CurrentTrack}|{info.CurrentArtist}";
@@ -243,15 +242,6 @@ public partial class MainWindow
         return ease;
     }
 
-    private static void EnsureUnfrozen(Brush? brush, Action<Color?> replace)
-    {
-        var sb = brush as SolidColorBrush;
-        if (sb == null || sb.IsFrozen)
-        {
-            replace(sb?.Color);
-        }
-    }
-
     private static Color LiftDarkColor(Color c)
     {
         double r = c.R / 255.0, g = c.G / 255.0, b = c.B / 255.0;
@@ -312,7 +302,6 @@ public partial class MainWindow
 
     private void HideMediaBackground()
     {
-        ClearGlassMediaTint();
         HideMediaBackgroundOverlay();
 
         if (_isTimerView || _isAudioView || _isSecondaryView || _isCameraView || _isAiUsageView) return;

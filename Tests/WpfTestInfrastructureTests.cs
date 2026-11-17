@@ -1,11 +1,11 @@
 using System.Runtime.InteropServices.WindowsRuntime;
-using Windows.Graphics.Imaging;
 using System.Windows;
 using System.Windows.Interop;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using System.Windows.Threading;
 using VNotch.Controllers;
+using Windows.Graphics.Imaging;
 using Xunit;
 
 namespace VNotch.Tests;

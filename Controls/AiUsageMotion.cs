@@ -212,8 +212,7 @@ internal sealed partial class AiUsageMotion
         });
     }
 
-    internal void AnimateNumber(DependencyObject target, double fromValue, double toValue,
-        Func<double, string> formatter, string finalText, int durationMs = 320, int delayMs = 0)
+    internal void AnimateNumber(DependencyObject target, double fromValue, double toValue, Func<double, string> formatter)
     {
         if (!CanAnimate || Math.Abs(fromValue - toValue) < 0.05) return;
         var flow = target as NumberFlowText ?? (target as Run)?.Parent as NumberFlowText;

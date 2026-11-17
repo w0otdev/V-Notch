@@ -436,40 +436,6 @@ public:
         return true;
     }
 
-    static int32_t DetectTextRegions(
-        const uint8_t* pixels, int32_t w, int32_t h, int32_t stride,
-        int32_t img_width, int32_t img_height,
-        VnCropRect* out_regions, int32_t out_cap) noexcept
-    {
-        if (img_width <= 0 || img_height <= 0 || !IsValidPixelArgs(pixels, w, h, stride, 8)) {
-            return 0;
-        }
-        constexpr int32_t grid_size = 8;
-        int32_t cell_w = img_width / grid_size;
-        int32_t cell_h = img_height / grid_size;
-        int32_t a_cell_w = w / grid_size;
-        int32_t a_cell_h = h / grid_size;
-
-        int32_t count = 0;
-        for (int32_t gy = 0; gy < grid_size; gy++) {
-            for (int32_t gx = 0; gx < grid_size; gx++) {
-                int32_t sx = gx * a_cell_w;
-                int32_t sy = gy * a_cell_h;
-                int32_t ex = std::min(sx + a_cell_w, w - 1);
-                int32_t ey = std::min(sy + a_cell_h, h - 1);
-
-                double edge_ratio = CalculateCellEdgeRatio(pixels, stride, w, h, sx, sy, ex, ey);
-                if (edge_ratio > 0.30) {
-                    if (out_regions && count < out_cap) {
-                        out_regions[count] = VnCropRect{gx * cell_w, gy * cell_h, cell_w, cell_h};
-                    }
-                    count++;
-                }
-            }
-        }
-        return count;
-    }
-
     static VnCropRect BuildCropRect(float center_x, float center_y, int32_t img_width, int32_t img_height, int32_t crop_size) noexcept {
         img_width = std::max(1, img_width);
         img_height = std::max(1, img_height);

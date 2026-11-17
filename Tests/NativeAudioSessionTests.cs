@@ -1,6 +1,6 @@
-using VNotch.Services;
 using NAudio.CoreAudioApi;
 using NAudio.Wave;
+using VNotch.Services;
 using Xunit;
 using Xunit.Abstractions;
 

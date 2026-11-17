@@ -218,14 +218,14 @@
             <Setter Property="LineStackingStrategy" Value="BlockLineHeight"/>
             <Setter Property="Foreground" Value="{StaticResource SettingsTextBrush}"/>
             <Setter Property="FontSize" Value="{StaticResource SettingsLabelFontSize}"/>
-            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="FontWeight" Value="Bold"/>
         </Style>
 
         <Style x:Key="SettingHintText" TargetType="TextBlock" BasedOn="{StaticResource {x:Type TextBlock}}">
             <Setter Property="Margin" Value="0,6,0,0"/>
             <Setter Property="Foreground" Value="{StaticResource MutedText}"/>
             <Setter Property="FontSize" Value="{StaticResource SettingsHintFontSize}"/>
-            <Setter Property="FontWeight" Value="Medium"/>
+            <Setter Property="FontWeight" Value="Bold"/>
             <Setter Property="LineHeight" Value="18"/>
             <Setter Property="LineStackingStrategy" Value="BlockLineHeight"/>
             <Setter Property="TextWrapping" Value="Wrap"/>

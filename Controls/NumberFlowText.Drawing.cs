@@ -1,5 +1,4 @@
 using System.Windows;
-using System.Windows.Documents;
 using System.Windows.Media;
 
 namespace VNotch.Controls;
@@ -14,37 +13,49 @@ public partial class NumberFlowText
     private sealed class ReelScene
     {
         internal DrawingGroup Drawing { get; } = new();
+        internal Rect Bounds { get; private set; } = Rect.Empty;
         private readonly RectangleGeometry _clip = new();
         private readonly Slot[] _slots;
 
-        private sealed record Slot(Reel Reel, DrawingGroup Drawing, TranslateTransform Position,
-            TranslateTransform? Scroll, Row[] Rows);
-        private sealed record Row(int Index, DrawingGroup Drawing);
+        private sealed record Slot(Reel Reel, DrawingGroup Drawing, TranslateTransform Position, Row[] Rows);
+        private sealed record Row(int Index, DrawingGroup Drawing, TranslateTransform Position, double BaselineOffset);
 
         internal ReelScene(List<Reel> reels, NumberFlowGlyphCache cache)
         {
+            var liveImages = new Dictionary<(NumberFlowGlyphCache.Style, char), NumberFlowGlyphCache.Image>();
+            NumberFlowGlyphCache.Image RollingImage(Glyph glyph, int digit)
+            {
+                if (digit == glyph.Part.Digit) return glyph.Image;
+                char character = (char)(glyph.Part.Character - glyph.Part.Digit + digit);
+                if (glyph.Style.Brush.IsFrozen) return cache.Get(glyph.Style, character);
+                var key = (glyph.Style, character);
+                if (!liveImages.TryGetValue(key, out var image))
+                    liveImages[key] = image = cache.Get(glyph.Style, character);
+                return image;
+            }
             Drawing.ClipGeometry = _clip;
             _slots = new Slot[reels.Count];
             for (int i = 0; i < reels.Count; i++)
             {
                 var reel = reels[i];
                 var glyph = reel.Glyph;
+                var bounds = Bounds;
+                bounds.Union(glyph.Bounds);
+                bounds.Union(new Rect(reel.FromPoint, glyph.Bounds.Size));
+                Bounds = bounds;
                 var position = new TranslateTransform();
                 var drawing = new DrawingGroup { Transform = position };
                 Drawing.Children.Add(drawing);
                 if (glyph.Part.Digit < 0 || Math.Abs(reel.To - reel.From) < .001)
                 {
                     drawing.Children.Add(glyph.Image.Drawing);
-                    _slots[i] = new Slot(reel, drawing, position, null, []);
+                    _slots[i] = new Slot(reel, drawing, position, []);
                     continue;
                 }
 
                 var clip = new RectangleGeometry(new Rect(-1, 0, glyph.Bounds.Width + 2, glyph.Bounds.Height));
                 clip.Freeze();
                 drawing.ClipGeometry = clip;
-                var scroll = new TranslateTransform();
-                var strip = new DrawingGroup { Transform = scroll };
-                drawing.Children.Add(strip);
                 // Normalize the cycle to keep transforms small after repeated retargeting.
                 double cycle = Math.Floor(Math.Min(reel.From, reel.To));
                 int last = (int)Math.Floor(Math.Max(reel.From, reel.To) - cycle) + 1;
@@ -53,15 +64,16 @@ public partial class NumberFlowText
                 {
                     int digit = ((int)cycle + row) % glyph.Part.Radix;
                     if (digit < 0) digit += glyph.Part.Radix;
-                    var image = cache.Get(glyph.Style, (char)(glyph.Part.Character - glyph.Part.Digit + digit));
-                    var transform = new TranslateTransform((glyph.Bounds.Width - image.Width) / 2, row * glyph.Bounds.Height);
-                    transform.Freeze();
+                    // The landing row is the actual shaped text, including inline
+                    // baselines, kerning and OpenType numeral variants.
+                    var image = RollingImage(glyph, digit);
+                    var transform = new TranslateTransform((glyph.Bounds.Width - image.Width) / 2, 0);
                     var rowDrawing = new DrawingGroup { Transform = transform };
                     rowDrawing.Children.Add(image.Drawing);
-                    strip.Children.Add(rowDrawing);
-                    rows[row] = new Row(row, rowDrawing);
+                    drawing.Children.Add(rowDrawing);
+                    rows[row] = new Row(row, rowDrawing, transform, glyph.Image.Baseline - image.Baseline);
                 }
-                _slots[i] = new Slot(reel with { From = reel.From - cycle, To = reel.To - cycle }, drawing, position, scroll, rows);
+                _slots[i] = new Slot(reel with { From = reel.From - cycle, To = reel.To - cycle }, drawing, position, rows);
             }
         }
 
@@ -73,22 +85,30 @@ public partial class NumberFlowText
             {
                 var reel = slot.Reel;
                 var bounds = reel.Glyph.Bounds;
-                SetPosition(slot.Position, Lerp(reel.FromPoint.X, bounds.X, progress), Lerp(reel.FromPoint.Y, bounds.Y, progress));
+                double tolerance = 1 / (64 * reel.Glyph.Style.PixelsPerDip);
+                SetPosition(slot.Position, Settle(Lerp(reel.FromPoint.X, bounds.X, progress), bounds.X, tolerance),
+                    Settle(Lerp(reel.FromPoint.Y, bounds.Y, progress), bounds.Y, tolerance));
                 double alpha = Lerp(reel.FromOpacity, 1, progress);
                 if (slot.Drawing.Opacity != alpha) slot.Drawing.Opacity = alpha;
-                if (slot.Scroll == null) continue;
-                double value = Lerp(reel.From, reel.To, progress);
-                double y = -value * bounds.Height;
-                if (slot.Scroll.Y != y) slot.Scroll.Y = y;
+                if (slot.Rows.Length == 0) continue;
+                double value = Settle(Lerp(reel.From, reel.To, progress), reel.To, tolerance / bounds.Height);
                 int first = (int)Math.Floor(value);
                 foreach (var row in slot.Rows)
                 {
                     alpha = row.Index == first || row.Index == first + 1
                         ? Math.Clamp(1 - Math.Abs(row.Index - value) * .65, 0, 1) : 0;
                     if (row.Drawing.Opacity != alpha) row.Drawing.Opacity = alpha;
+                    // Keep the visible row near zero. Subtracting two tall strip
+                    // transforms in the compositor introduced a one-pixel jump
+                    // when WPF's native baseline guidelines took over at rest.
+                    double y = (row.Index - value) * bounds.Height + row.BaselineOffset;
+                    if (alpha > 0 && row.Position.Y != y) row.Position.Y = y;
                 }
             }
         }
+
+        private static double Settle(double value, double target, double tolerance) =>
+            Math.Abs(value - target) < tolerance ? target : value;
 
         private static void SetPosition(TranslateTransform transform, double x, double y)
         {
@@ -101,6 +121,9 @@ public partial class NumberFlowText
     {
         if (_scene == null) return;
         var clip = new Rect(RenderSize);
+        // A shorter target must not cut off the suffix while it travels from
+        // the wider previous layout. Ancestor clips still apply below.
+        clip.Union(_scene.Bounds);
         double opacity = Opacity;
         for (DependencyObject? parent = VisualTreeHelper.GetParent(this); parent is Visual visual; parent = VisualTreeHelper.GetParent(parent))
         {
@@ -122,57 +145,6 @@ public partial class NumberFlowText
     private void RenderReels(DrawingContext dc)
     {
         if (_scene != null) dc.DrawDrawing(_scene.Drawing);
-    }
-
-    private List<Glyph> BuildLayout(string text, string previous)
-    {
-        if (string.IsNullOrEmpty(text) || text.Length >= 512 || !text.Any(char.IsDigit) ||
-            ActualWidth <= 0 || ActualHeight <= 0) return [];
-        var culture = Language.GetEquivalentCulture();
-        double dpi = VisualTreeHelper.GetDpi(this).PixelsPerDip;
-        var typeface = new Typeface(FontFamily, FontStyle, FontWeight, FontStretch);
-        var formatted = new FormattedText(text, culture, FlowDirection, typeface, FontSize, Foreground, dpi)
-        {
-            MaxTextWidth = Math.Max(1, ActualWidth - Padding.Left - Padding.Right),
-            TextAlignment = TextAlignment,
-            Trimming = TextTrimming
-        };
-        if (!double.IsNaN(LineHeight)) formatted.LineHeight = LineHeight;
-        var styles = new NumberFlowGlyphCache.Style[text.Length];
-        Array.Fill(styles, new(culture, FlowDirection, typeface, FontSize, Foreground, dpi));
-        int index = 0;
-        void ApplyInlines(InlineCollection inlines)
-        {
-            foreach (var inline in inlines)
-            {
-                if (inline is Span span) { ApplyInlines(span.Inlines); continue; }
-                if (inline is LineBreak) { index++; continue; }
-                if (inline is not Run run) continue;
-                int length = Math.Min(run.Text.Length, text.Length - index);
-                if (length <= 0) continue;
-                var face = new Typeface(run.FontFamily, run.FontStyle, run.FontWeight, run.FontStretch);
-                formatted.SetFontSize(run.FontSize, index, length);
-                formatted.SetFontTypeface(face, index, length);
-                formatted.SetForegroundBrush(run.Foreground, index, length);
-                var style = new NumberFlowGlyphCache.Style(culture, FlowDirection, face, run.FontSize, run.Foreground, dpi);
-                for (int j = index; j < index + length; j++) styles[j] = style;
-                index += length;
-            }
-        }
-        if (text == Text || text.Length == Text?.Length) ApplyInlines(Inlines);
-        var output = new List<Glyph>(text.Length);
-        foreach (var part in NumberFlowValue.Split(text, previous))
-        {
-            if (part.Character is '\n' or '\r') continue;
-            var bounds = formatted.BuildHighlightGeometry(new Point(Padding.Left, Padding.Top), part.Index, 1)?.Bounds ?? Rect.Empty;
-            if (bounds.IsEmpty) continue;
-            var style = styles[part.Index];
-            var image = _glyphCache.Get(style, part.Character);
-            bounds.Y += Math.Max(0, formatted.Baseline - image.Baseline);
-            bounds.Height = image.Height;
-            output.Add(new(part, bounds, image, style));
-        }
-        return output;
     }
 
 }

@@ -116,5 +116,5 @@ public sealed class ClipboardClassificationLanguageTests
     [InlineData("person+tag@sub.example.com")]
     [InlineData("Contact: first.last@example.co.uk!")]
     public void EmailAddressAddsEmailGroup(string text) =>
-        Assert.Contains("Email", ClipboardClassifier.Classify(text, ClipboardKind.Text));
+        Assert.Contains("Email", ClipboardClassifier.Classify(text));
 }

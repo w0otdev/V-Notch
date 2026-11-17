@@ -130,6 +130,8 @@ public partial class DebugWindow : Window
         IsVisibleChanged += DebugWindow_IsVisibleChanged;
         Closed += (_, _) =>
         {
+            _localizationClosed = true;
+            Loc.LanguageChanged -= OnLanguageChanged;
             if (_updateTimer != null)
             {
                 _updateTimer.Stop();
@@ -157,6 +159,8 @@ public partial class DebugWindow : Window
             Interval = TimeSpan.FromMilliseconds(200)
         };
         _updateTimer.Tick += UpdateTimer_Tick;
+        RefreshLocalization();
+        Loc.LanguageChanged += OnLanguageChanged;
     }
 
     private void DebugWindow_Loaded(object sender, RoutedEventArgs e)
@@ -293,7 +297,7 @@ public partial class DebugWindow : Window
             _glassSampleTicks = active ? now : 0;
             _glassSampleCount = count;
             _prevGlassMetrics = null;
-            GlassSummaryText.Text = "Glass: waiting for sample";
+            GlassSummaryText.Text = Loc.Get("debug.glassWaiting");
             return;
         }
         double elapsed = (now - _glassSampleTicks) / (double)Stopwatch.Frequency;
@@ -302,7 +306,7 @@ public partial class DebugWindow : Window
         double latency = fps > 0 ? Math.Round(latencyMs, 1) : 0;
         if (_prevGlassMetrics != (fps, latency))
         {
-            GlassSummaryText.Text = fps > 0 ? $"Glass {fps} FPS • submit {latency:0.0} ms" : "Glass: idle";
+            GlassSummaryText.Text = FormatGlassMetrics(fps, latency);
             _prevGlassMetrics = (fps, latency);
         }
         _glassSampleTicks = now;
@@ -320,6 +324,7 @@ public partial class DebugWindow : Window
     public void UpdateSnapshot(PerformanceDebugSnapshot snapshot)
     {
         if (snapshot == null) return;
+        _lastSnapshot = snapshot;
 
         UpdateHealthBanner(snapshot);
         UpdateVNotchCpuSection(snapshot);
@@ -345,22 +350,25 @@ public partial class DebugWindow : Window
                 HealthBanner.Background = CriticalBg;
                 HealthBanner.BorderBrush = CriticalBorder;
                 HealthBadgeBorder.Background = CriticalBorder;
-                HealthBadgeText.Text = "CRITICAL";
+                HealthBadgeText.Text = Loc.Get("debug.critical");
                 break;
             case PerformanceHealthLevel.Warning:
                 HealthBanner.Background = WarningBg;
                 HealthBanner.BorderBrush = WarningBorder;
                 HealthBadgeBorder.Background = WarningBorder;
-                HealthBadgeText.Text = "WARNING";
+                HealthBadgeText.Text = Loc.Get("debug.warning");
                 break;
             default:
                 HealthBanner.Background = NominalBg;
                 HealthBanner.BorderBrush = NominalBorder;
                 HealthBadgeBorder.Background = NominalBorder;
-                HealthBadgeText.Text = "NOMINAL";
+                HealthBadgeText.Text = Loc.Get("debug.nominal");
                 break;
         }
-        HealthSummaryText.Text = snapshot.HealthStatusSummary;
+        HealthSummaryText.Text = snapshot.HealthStatusKey is { } key
+            ? Loc.Get(key, snapshot.HealthStatusArguments)
+            : snapshot.HealthStatusSummary == "Performance Nominal"
+                ? Loc.Get("debug.performanceNominal") : snapshot.HealthStatusSummary;
     }
 
     private void UpdateVNotchCpuSection(PerformanceDebugSnapshot snapshot)
@@ -374,7 +382,7 @@ public partial class DebugWindow : Window
         if (VNotchCpuThreadsText != null && HasChanged(ref _prevVNotchCpuThreads,
             (snapshot.ProcessThreadCount, snapshot.ProcessHandleCount)))
         {
-            VNotchCpuThreadsText.Text = $"CPU ({snapshot.ProcessThreadCount} th / {snapshot.ProcessHandleCount} hd)";
+            VNotchCpuThreadsText.Text = Loc.Get("debug.cpuThreads", snapshot.ProcessThreadCount, snapshot.ProcessHandleCount);
         }
     }
 
@@ -389,7 +397,7 @@ public partial class DebugWindow : Window
 
         if (VNotchPrivateRamText != null && HasChanged(ref _prevVNotchPrivateRam, snapshot.ProcessPrivateBytes))
         {
-            VNotchPrivateRamText.Text = $"RAM ({FormatMb(snapshot.ProcessPrivateBytes)} MB Priv)";
+            VNotchPrivateRamText.Text = Loc.Get("debug.privateRam", FormatMb(snapshot.ProcessPrivateBytes));
         }
     }
 
@@ -397,7 +405,7 @@ public partial class DebugWindow : Window
     {
         if (GcHeapText != null && HasChanged(ref _prevGcHeap, snapshot.ManagedHeapBytes))
         {
-            GcHeapText.Text = $"Heap {FormatMb((ulong)snapshot.ManagedHeapBytes)} MB";
+            GcHeapText.Text = Loc.Get("debug.heap", FormatMb((ulong)snapshot.ManagedHeapBytes));
         }
 
         if (AllocRateText != null && HasChanged(ref _prevAllocRate, Math.Max(0, snapshot.AllocBytesPerSec)))
@@ -448,7 +456,7 @@ public partial class DebugWindow : Window
 
         if (GlobalRamAvailText != null && HasChanged(ref _prevGlobalRamAvail, snapshot.GlobalRamAvailBytes))
         {
-            GlobalRamAvailText.Text = $"RAM ({FormatGb(snapshot.GlobalRamAvailBytes)} GB free)";
+            GlobalRamAvailText.Text = Loc.Get("debug.availableRam", FormatGb(snapshot.GlobalRamAvailBytes));
         }
 
         if (GlobalGpuText != null && HasChanged(ref _prevGlobalGpu, Math.Round(snapshot.GlobalGpuPercent)))
@@ -539,7 +547,7 @@ public partial class DebugWindow : Window
     {
         bool isVisible = ServiceLogsPanel.Visibility == Visibility.Visible;
         ServiceLogsPanel.Visibility = isVisible ? Visibility.Collapsed : Visibility.Visible;
-        ToggleServiceLogsBtn.Content = isVisible ? "Service Logs ▶" : "Service Logs ◀";
+        RefreshServiceLogsToggle();
         if (!isVisible)
         {
             RefreshServiceLogs();
@@ -549,7 +557,7 @@ public partial class DebugWindow : Window
     private void CloseServiceLogsBtn_Click(object sender, RoutedEventArgs e)
     {
         ServiceLogsPanel.Visibility = Visibility.Collapsed;
-        ToggleServiceLogsBtn.Content = "Service Logs ▶";
+        RefreshServiceLogsToggle();
     }
 
     #endregion
@@ -650,7 +658,7 @@ public partial class DebugWindow : Window
         try
         {
             var rawLogs = PerformanceDiagnosticService.Instance.GetRecentServiceLogs();
-            string filter = ServiceCategoryFilterComboBox?.SelectedItem is ComboBoxItem cbi && cbi.Content is string text ? text : "";
+            string filter = ServiceCategoryFilterComboBox?.SelectedItem is ComboBoxItem cbi && cbi.Tag is string filterId ? filterId : "";
 
             bool filterChanged = filter != _lastActiveFilter;
             _lastActiveFilter = filter;
@@ -712,7 +720,7 @@ public partial class DebugWindow : Window
 
         if (ServiceLogCountText != null)
         {
-            ServiceLogCountText.Text = $"{_serviceLogs.Count} service events logged";
+            ServiceLogCountText.Text = Loc.Get("debug.serviceCount", _serviceLogs.Count);
         }
 
         if (_serviceLogs.Count > 0)
@@ -766,7 +774,7 @@ public partial class DebugWindow : Window
                 existingTimer.Dispose();
                 btn.Tag = null;
             }
-            btn.Content = "Copied!";
+            btn.Content = Loc.Get("debug.copied");
 
             var timer = new UiScheduledTimer { Interval = TimeSpan.FromSeconds(1.5) };
             timer.Tick += (s, ev) =>
@@ -779,7 +787,7 @@ public partial class DebugWindow : Window
                     {
                         CopyAllLogsBtn.Tag = null;
                     }
-                    CopyAllLogsBtn.Content = "Copy";
+                    CopyAllLogsBtn.Content = Loc.Get("clipboard.copy");
                 }
             };
             btn.Tag = timer;
@@ -812,7 +820,7 @@ public partial class DebugWindow : Window
                 existingTimer.Dispose();
                 btn.Tag = null;
             }
-            btn.Content = "Copied!";
+            btn.Content = Loc.Get("debug.copied");
 
             var timer = new UiScheduledTimer { Interval = TimeSpan.FromSeconds(1.5) };
             timer.Tick += (s, ev) =>
@@ -825,7 +833,7 @@ public partial class DebugWindow : Window
                     {
                         CopyServiceLogsBtn.Tag = null;
                     }
-                    CopyServiceLogsBtn.Content = "Copy All";
+                    CopyServiceLogsBtn.Content = Loc.Get("debug.copyAll");
                 }
             };
             btn.Tag = timer;
@@ -858,10 +866,10 @@ public partial class DebugWindow : Window
     }
 
     private static string FormatMb(ulong bytes) =>
-        (bytes / 1024.0 / 1024.0).ToString("0.0");
+        (bytes / 1024.0 / 1024.0).ToString("0.0", Loc.GetCulture());
 
     private static string FormatGb(ulong bytes) =>
-        (bytes / (1024.0 * 1024.0 * 1024.0)).ToString("0.0");
+        (bytes / (1024.0 * 1024.0 * 1024.0)).ToString("0.0", Loc.GetCulture());
 
     private static string FormatRate(double bytesPerSec)
     {

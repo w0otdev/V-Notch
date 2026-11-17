@@ -11,8 +11,6 @@ namespace VNotch.Tests;
 [Collection("Localization")]
 public sealed class VisibleFrameCadenceTests
 {
-    private static long Ticks(double seconds) => (long)Math.Round(seconds * Stopwatch.Frequency);
-
     [Theory]
     [InlineData(60)]
     [InlineData(120)]

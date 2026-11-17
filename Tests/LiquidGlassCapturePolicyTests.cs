@@ -125,7 +125,7 @@ public sealed class LiquidGlassCapturePolicyTests
             .Invoke(controller, [Win32Interop.WDA_EXCLUDEFROMCAPTURE])!;
     private static bool ApplyCapturePolicy(LiquidGlassController controller) =>
         (bool)typeof(LiquidGlassController).GetMethod("ApplyCapturePolicy", BindingFlags.Instance | BindingFlags.NonPublic)!
-            .Invoke(controller, [16.0])!;
+            .Invoke(controller, null)!;
     private static T Get<T>(object target, string field) =>
         (T)target.GetType().GetField(field, BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(target)!;
     private static void Set(object target, string field, object value) =>

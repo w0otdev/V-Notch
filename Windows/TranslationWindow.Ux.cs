@@ -74,7 +74,7 @@ public partial class TranslationWindow
     {
         string fallbackKey = _selection?.CanReplace != true ? "translation.replaceReadOnly" : "translation.replaceUnavailable";
         string key = _inputTruncated ? "translation.replaceTruncated" : fallbackKey;
-        ReplaceButton.ToolTip = ReplaceButton.IsEnabled ? null : Loc.Get(key);
+        ReplaceButton.ToolTip = Loc.Get(ReplaceButton.IsEnabled ? "translation.replaceHint" : key);
         System.Windows.Automation.AutomationProperties.SetHelpText(ReplaceButton, ReplaceButton.ToolTip as string ?? "");
     }
 

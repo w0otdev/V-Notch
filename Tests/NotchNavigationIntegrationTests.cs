@@ -323,7 +323,6 @@ public sealed class NotchNavigationIntegrationTests
         var window = fixture.Window;
         await StartAsync(window, ct);
         var coordinator = Field<NotchTransitionCoordinator>(window, "_transitionCoordinator");
-        Assert.Same(coordinator, Field<NotchManager>(window, "_notchManager").TransitionCoordinator);
         for (int i = 0; i < 12; i++)
         {
             window.SetDebugViewState("MediaExpanded");

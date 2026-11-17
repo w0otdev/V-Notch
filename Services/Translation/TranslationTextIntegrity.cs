@@ -23,14 +23,6 @@ internal static partial class TranslationTextIntegrity
     }
 
     [LibraryImport(NativeDll, StringMarshalling = StringMarshalling.Utf16)]
-    private static partial int vn_translation_normalize_fact(
-        ReadOnlySpan<char> factPtr,
-        int factLen,
-        Span<char> outBuf,
-        int outCap,
-        out int outLen);
-
-    [LibraryImport(NativeDll, StringMarshalling = StringMarshalling.Utf16)]
     private static partial int vn_translation_has_unresolved_placeholder(
         ReadOnlySpan<char> sourcePtr,
         int sourceLen,
@@ -153,16 +145,6 @@ internal static partial class TranslationTextIntegrity
         ReadOnlySpan<char> t = (translated ?? string.Empty).AsSpan();
         vn_translation_has_unresolved_placeholder(s, s.Length, t, t.Length, out byte res);
         return res != 0;
-    }
-
-    internal static string NormalizeFact(string fact)
-    {
-        if (string.IsNullOrEmpty(fact)) return string.Empty;
-        ReadOnlySpan<char> span = fact.AsSpan();
-        int cap = span.Length + 4;
-        Span<char> buf = cap <= 256 ? stackalloc char[cap] : new char[cap];
-        vn_translation_normalize_fact(span, span.Length, buf, buf.Length, out int len);
-        return len > 0 ? new string(buf[..len]) : string.Empty;
     }
 
     internal static string Clean(string text)

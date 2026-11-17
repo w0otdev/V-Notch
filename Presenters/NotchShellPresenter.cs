@@ -137,22 +137,6 @@ public sealed class NotchShellPresenter : IDisposable
         border.BeginAnimation(FrameworkElement.HeightProperty, heightAnim);
     }
 
-    public void SnapTo(double width, double height, double cornerRadius)
-    {
-        if (_disposed) return;
-        ++_animationVersion;
-        _activeSessionId++;
-        var border = _refs.NotchBorder;
-        border.BeginAnimation(FrameworkElement.WidthProperty, null);
-        border.BeginAnimation(FrameworkElement.HeightProperty, null);
-        border.Width = width;
-        border.Height = height;
-        if (_refs.CornerRadiusBuilder != null)
-            border.CornerRadius = _refs.CornerRadiusBuilder(cornerRadius);
-        else
-            border.CornerRadius = new CornerRadius(cornerRadius);
-    }
-
     public void CancelCurrentAnimation()
     {
         ++_animationVersion;

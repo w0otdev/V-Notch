@@ -29,6 +29,7 @@ public partial class TranslationWindow : Window
     private const int ExitMilliseconds = 140;
     private TranslationSelection? _selection;
     private TranslationResult? _result;
+    private bool _hasPreview;
     internal event Action? TranslateRequested;
     internal event Action? CancelRequested;
     internal event Action? ReplaceRequested;
@@ -49,6 +50,7 @@ public partial class TranslationWindow : Window
     {
         WindowAnimationPolicy.Attach(this);
         InitializeComponent();
+        InitializeContentMotion();
         ApplyWindowShadow(WindowAnimationPolicy.ShadowEnabled);
         ResultText.TextChanged += (_, _) =>
         {
@@ -66,6 +68,7 @@ public partial class TranslationWindow : Window
         TargetLanguageCombo.DropDownClosed += LanguageMenuMotion;
         Closed += (_, _) =>
         {
+            SetContentMorphing(false);
             ++_presentationVersion; ++_motionVersion;
             _presentationOperation?.Abort();
             _entranceCompletion?.TrySetCanceled();
@@ -77,22 +80,23 @@ public partial class TranslationWindow : Window
             StopResultReveal();
             SetLoading(false);
         };
-        SizeChanged += (_, _) => { if (IsVisible && !_dismissing) SchedulePresentation(); };
+        SizeChanged += (_, _) => { if (IsVisible && !_dismissing && !ContentIsMorphing) SchedulePresentation(); };
         foreach (FrameworkElement child in TranslationPanel.Children)
-            if (Grid.GetRow(child) != 3)
+            if (Grid.GetRow(child) is not (3 or 4))
                 child.SizeChanged += (_, _) => { if (IsVisible && !_dismissing) SchedulePresentation(); };
         IsVisibleChanged += (_, _) =>
         {
             RefreshLoadingMotion();
-            if (!IsVisible) StopResultReveal();
+            if (!IsVisible) { StopResultReveal(); SetContentMorphing(false); }
         };
         MarkdownResult.PreviewMouseDown += (_, _) => StopResultReveal();
-        MarkdownResult.SizeChanged += (_, _) => { if (_resultRevealBrushes != null) StopResultReveal(); };
+        MarkdownResult.SizeChanged += (_, _) => ResultRevealLayoutChanged();
         ResultText.PreviewMouseDown += (_, _) => StopResultReveal();
-        ResultText.SizeChanged += (_, _) => { if (_resultRevealBrushes != null) StopResultReveal(); };
+        ResultText.SizeChanged += (_, _) => ResultRevealLayoutChanged();
         ResultScroll.ScrollChanged += (_, e) =>
         {
-            if (e.VerticalChange != 0 || e.HorizontalChange != 0) StopResultReveal();
+            // ScrollToTop and viewport sizing happen before a queued reveal starts.
+            if (_resultRevealCharacters != null && (e.VerticalChange != 0 || e.HorizontalChange != 0)) StopResultReveal();
             UpdateResultScrollFades();
         };
         ResultScroll.SizeChanged += (_, _) => UpdateResultScrollFades();
@@ -180,6 +184,7 @@ public partial class TranslationWindow : Window
         bool retarget = wasVisible && (_dismissing || _popupAnimating) && !changingMode && bounds == _presentationBounds;
         if (reveal)
         {
+            SetContentMorphing(false);
             _entranceCompletion?.TrySetCanceled();
             _entranceCompletion = new(TaskCreationOptions.RunContinuationsAsynchronously);
             ++_motionVersion;
@@ -250,10 +255,13 @@ public partial class TranslationWindow : Window
         if (hwnd == IntPtr.Zero || !Win32Interop.GetWindowRect(hwnd, out var rect)) return;
         if (_draggingPopup) return;
         bool initialPlacement = _anchorPlacementPending;
+        double finalHeight = (ActualHeight + ResultHeightHost.TargetHeight - ResultHeightHost.ActualHeight +
+            StatusHeightHost.TargetHeight - StatusHeightHost.ActualHeight) * VisualTreeHelper.GetDpi(this).DpiScaleY;
+        double placementHeight = ContentIsMorphing ? Math.Round(finalHeight) : rect.Bottom - rect.Top;
         var placement = initialPlacement
             ? ClampPlacement(_presentationBounds, _workArea, rect.Right - rect.Left, rect.Bottom - rect.Top)
             : new Point(Math.Clamp(rect.Left, _workArea.Left, Math.Max(_workArea.Left, _workArea.Right - (rect.Right - rect.Left))),
-                Math.Clamp(rect.Top, _workArea.Top, Math.Max(_workArea.Top, _workArea.Bottom - (rect.Bottom - rect.Top))));
+                Math.Clamp(rect.Top, _workArea.Top, Math.Max(_workArea.Top, _workArea.Bottom - placementHeight)));
         _anchorPlacementPending = false;
         MovePopupTo(placement, animate: !initialPlacement);
     }
@@ -317,6 +325,7 @@ public partial class TranslationWindow : Window
     {
         if (version != _motionVersion) return;
         _popupAnimating = false;
+        SetContentMorphing(true);
         // Results and status changes can resize the HWND. Apply them after the
         // entrance has settled so its native position stays fixed while sliding.
         var result = _deferredResult;
@@ -489,18 +498,26 @@ public partial class TranslationWindow : Window
 
     private void ApplyStatus(string key)
     {
+        if (_hasPreview)
+        {
+            StopResultReveal();
+            _hasPreview = false;
+            ResultText.Clear();
+            MarkdownResult.Document.Blocks.Clear();
+        }
         ManageModelButton.Visibility = key is "translation.modelMissing" or "translation.modelInvalid" ? Visibility.Visible : Visibility.Collapsed;
         SetLoading(key == "translation.working");
         StatusText.Text = Loc.Get(key);
         TranslateButton.IsEnabled = key != "translation.working";
         CancelButton.Visibility = key == "translation.working" ? Visibility.Visible : Visibility.Collapsed;
         if (key == "translation.working") { StopResultReveal(); _result = null; CopyButton.IsEnabled = ReplaceButton.IsEnabled = false; }
-        if (key is "translation.literalsChanged" or "translation.currencyAmbiguous")
+        if (key is "translation.literalsChanged" or "translation.currencyAmbiguous" or "translation.meaningChanged")
         {
             StopResultReveal(); _result = null; ResultText.Clear();
             CopyButton.IsEnabled = ReplaceButton.IsEnabled = false;
         }
         UpdateReplacementHint();
+        if (IsVisible) SchedulePresentation();
     }
 
     private void SetLoading(bool loading)
@@ -513,11 +530,11 @@ public partial class TranslationWindow : Window
     private void RefreshLoadingMotion()
     {
         bool animate = LoadingIndicator.Visibility == Visibility.Visible && IsVisible &&
-            !_dismissing && !_popupAnimating && !AnimationConfig.ReduceMotion && SystemParameters.ClientAreaAnimation;
+            !_dismissing && !_popupAnimating && !AnimationConfig.ReduceMotion && AnimationConfig.ClientAreaAnimation;
         LoadingIndicator.IsActive = animate;
     }
 
-    internal void ShowActivity(TranslationStage stage, int seconds)
+    internal void ShowActivity(TranslationStage stage, int seconds, bool cpuFallback = false)
     {
         string key = stage switch
         {
@@ -529,6 +546,7 @@ public partial class TranslationWindow : Window
         };
         if (_dismissing || _deferredResult != null) return;
         string text = Loc.Get(key, seconds);
+        if (cpuFallback) text += " · " + Loc.Get("translation.cpuFallback");
         if (DeferPresentation) _deferredActivity = text;
         else StatusText.Text = text;
     }
@@ -546,13 +564,13 @@ public partial class TranslationWindow : Window
         if (_result != null) PresentResultText();
     }
 
-    private void PresentResultText()
+    private void PresentResultText(bool preserveReveal = false, double? streamingFontSize = null)
     {
-        StopResultReveal();
+        if (!preserveReveal) StopResultReveal();
         if (_result == null) return;
         string text = _result.Text;
         bool longText = text.Length >= 400 || HasAtLeastNewlines(text, 5);
-        ResultText.FontSize = longText ? 15 : 19;
+        ResultText.FontSize = streamingFontSize ?? (longText ? 15 : 19);
         ResultText.FontWeight = FontWeights.Bold;
         bool markdown = _formatText && _result.Currency == null && TranslationStructuredText.HasMarkdown(text);
         ResultText.Text = _formatText && _result.Currency == null && !markdown ? TranslationTextFormatting.Format(text) : text;
@@ -561,7 +579,7 @@ public partial class TranslationWindow : Window
         if (markdown)
         {
             MarkdownResult.Document = VNotch.Controls.AiMarkdown.Render(text, ResultText.FontFamily);
-            MarkdownResult.Document.FontSize = longText ? 15 : 19;
+            MarkdownResult.Document.FontSize = ResultText.FontSize;
         }
         else MarkdownResult.Document.Blocks.Clear();
         if (IsVisible) SchedulePresentation();
@@ -580,6 +598,23 @@ public partial class TranslationWindow : Window
         return false;
     }
 
+    internal void ShowPreview(string text)
+    {
+        if (_dismissing || DeferPresentation || _result != null) return;
+        int visiblePrefix = _hasPreview && text.StartsWith(ResultText.Text, StringComparison.Ordinal) ? ResultText.Text.Length : 0;
+        if (_hasPreview && text == ResultText.Text) return;
+        if (!_hasPreview) ResultText.FontSize = text.Length >= 400 ? 15 : 19;
+        _hasPreview = true;
+        MarkdownResult.Visibility = Visibility.Collapsed;
+        MarkdownResult.Document.Blocks.Clear();
+        ResultText.Visibility = Visibility.Visible;
+        ResultText.FontWeight = FontWeights.Bold;
+        ResultText.Text = text;
+        CopyButton.IsEnabled = ReplaceButton.IsEnabled = false;
+        if (IsVisible) SchedulePresentation();
+        QueueResultReveal(visiblePrefix);
+    }
+
     internal void ShowResult(TranslationResult result)
     {
         if (_dismissing) return;
@@ -591,9 +626,12 @@ public partial class TranslationWindow : Window
         }
         SetLoading(false);
         ManageModelButton.Visibility = Visibility.Collapsed;
+        string preview = _hasPreview ? ResultText.Text : "";
+        _hasPreview = false;
         _result = result;
         SetInputTruncated(result.InputTruncated || _inputTruncated);
-        PresentResultText();
+        PresentResultText(preview.Length > 0 && result.Text.StartsWith(preview, StringComparison.Ordinal),
+            preview.Length > 0 ? ResultText.FontSize : null);
         ResultScroll.ScrollToTop();
         CopyButton.IsEnabled = true;
         ReplaceButton.IsEnabled = CanReplaceResult;
@@ -603,6 +641,8 @@ public partial class TranslationWindow : Window
         LanguageSummary.Text = $"{LanguageName(result.SourceLanguage)} → {LanguageName(result.TargetLanguage)}";
         string literalStatus = result.LiteralsPreserved ? "" : Loc.Get("translation.checkFacts");
         StatusText.Text = !result.WeekdaysPreserved ? Loc.Get("translation.checkDates") : literalStatus;
+        if (result.UsedCpuFallback && !result.IsCached)
+            StatusText.Text = string.Join(" · ", new[] { StatusText.Text, Loc.Get("translation.cpuFallback") }.Where(value => value.Length > 0));
         if (result.Currency is { } conversion)
         {
             ConfigureCurrencies(true, conversion.Price.Currency, conversion.Target);
@@ -614,13 +654,23 @@ public partial class TranslationWindow : Window
             if (conversion.Price.AssumedCurrency) StatusText.Text += " " + Loc.Get("translation.currencyAssumed", conversion.Price.Currency);
         }
         if (_selection != null) UpdatePresentation(_selection.Bounds);
-        QueueResultReveal();
+        // Cache hits and fast engines still deserve the same visual handoff. Preserve
+        // a streaming prefix instead of hiding words the user has already read.
+        int visiblePrefix = preview.Length > 0 && ResultText.Text.StartsWith(preview, StringComparison.Ordinal) ? preview.Length : 0;
+        // Final formatting may rewrite the preview (for example, Markdown). It is
+        // already readable, so do not hide and replay the whole answer at handoff.
+        if (preview.Length == 0 || (visiblePrefix > 0 && MarkdownResult.Visibility != Visibility.Visible)) QueueResultReveal(visiblePrefix);
+        else StopResultReveal();
     }
 
     internal void DisableReplacement() => ReplaceButton.IsEnabled = false;
     internal void Dismiss()
     {
         if (_dismissing) return;
+        // Freeze the current morph throughout the exit; settle only after hiding.
+        ResultHeightHost.MotionEnabled = StatusHeightHost.MotionEnabled = false;
+        ResultHeightHost.Freeze();
+        StatusHeightHost.Freeze();
         StopResultReveal(revealImmediately: false);
         _entranceCompletion?.TrySetCanceled();
         _entranceCompletion = null;
@@ -673,6 +723,7 @@ public partial class TranslationWindow : Window
     }
     private void CopyText(string text)
     {
+        if (_result == null) return;
         try
         {
             var data = new DataObject();

@@ -1082,7 +1082,6 @@ public partial class MainWindow
         }
         if (effectiveTarget != VNotch.Models.NotchView.Media)
         {
-            ClearGlassMediaTint();
             HideMediaBackgroundOverlay();
             SuspendSpotifyCanvasLifecycle();
             if (_isThumbnailExpandAnimating && fromView == VNotch.Models.NotchView.Media)
@@ -1393,57 +1392,6 @@ public partial class MainWindow
 
     private int _mediaContentRevealGeneration;
     private int _cameraContentRevealGeneration;
-
-    private void PlayThumbnailViewHideAnimation()
-    {
-        if (ThumbnailBorder == null) return;
-
-        int gen = ++_mediaContentRevealGeneration;
-        int fps = AnimationConfig.TargetFps;
-
-        double currentOpacity = ThumbnailBorder.Opacity > 0.01 ? ThumbnailBorder.Opacity : 1.0;
-        ThumbnailBorder.BeginAnimation(OpacityProperty, null);
-        ThumbnailBorder.Opacity = currentOpacity;
-
-        double currentScaleX = ThumbnailScale?.ScaleX ?? 1.0;
-        double currentScaleY = ThumbnailScale?.ScaleY ?? 1.0;
-        if (ThumbnailScale != null)
-        {
-            ThumbnailScale.BeginAnimation(ScaleTransform.ScaleXProperty, null);
-            ThumbnailScale.BeginAnimation(ScaleTransform.ScaleYProperty, null);
-            ThumbnailScale.ScaleX = currentScaleX;
-            ThumbnailScale.ScaleY = currentScaleY;
-        }
-
-        var dur = new Duration(TimeSpan.FromMilliseconds(160));
-        var fadeOut = MakeAnim(currentOpacity, 0.0, dur, _easeQuadOut);
-        Timeline.SetDesiredFrameRate(fadeOut, fps);
-
-        fadeOut.Completed += (_, _) =>
-        {
-            if (gen != _mediaContentRevealGeneration) return;
-            ThumbnailBorder.BeginAnimation(OpacityProperty, null);
-            ThumbnailBorder.Opacity = 0;
-            if (ThumbnailScale != null)
-            {
-                ThumbnailScale.BeginAnimation(ScaleTransform.ScaleXProperty, null);
-                ThumbnailScale.BeginAnimation(ScaleTransform.ScaleYProperty, null);
-                ThumbnailScale.ScaleX = 1.0;
-                ThumbnailScale.ScaleY = 1.0;
-            }
-        };
-
-        ThumbnailBorder.BeginAnimation(OpacityProperty, fadeOut);
-        if (ThumbnailScale != null)
-        {
-            var scaleXOut = MakeAnim(currentScaleX, 0.82, dur, _easePowerOut3);
-            var scaleYOut = MakeAnim(currentScaleY, 0.82, dur, _easePowerOut3);
-            Timeline.SetDesiredFrameRate(scaleXOut, fps);
-            Timeline.SetDesiredFrameRate(scaleYOut, fps);
-            ThumbnailScale.BeginAnimation(ScaleTransform.ScaleXProperty, scaleXOut);
-            ThumbnailScale.BeginAnimation(ScaleTransform.ScaleYProperty, scaleYOut);
-        }
-    }
 
     private void ResetMediaContentReveal()
     {

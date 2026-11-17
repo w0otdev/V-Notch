@@ -1,5 +1,5 @@
-using System.Runtime.InteropServices;
 using System.ComponentModel;
+using System.Runtime.InteropServices;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Windows;
@@ -871,7 +871,7 @@ public partial class SpotlightWindow : Window
         {
             if (_viewModel.SelectedResult is { } selected)
             {
-                OpenResultContextMenu(selected, openedByKeyboard: true);
+                OpenResultContextMenu(selected);
                 e.Handled = true;
             }
         }
@@ -1196,12 +1196,12 @@ public partial class SpotlightWindow : Window
 
     private void ResultItem_MouseRightButtonUp(object sender, MouseButtonEventArgs e)
     {
-        if (sender is not ListBoxItem { DataContext: SpotlightSearchItem item } container) return;
-        OpenResultContextMenu(item, container, openedByKeyboard: true);
+        if (sender is not ListBoxItem { DataContext: SpotlightSearchItem item }) return;
+        OpenResultContextMenu(item);
         e.Handled = true;
     }
 
-    private unsafe ContextMenu OpenResultContextMenu(SpotlightSearchItem item, FrameworkElement? container = null, bool openedByKeyboard = false)
+    private unsafe ContextMenu OpenResultContextMenu(SpotlightSearchItem item)
     {
         _viewModel.SelectedResult = item;
         _quickActionCallbacks.Clear();

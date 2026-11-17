@@ -294,7 +294,7 @@
 
                     <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
                         <Path Data="M 0 0 L 4 5 L 8 0 Z" Fill="#E0E0E6" VerticalAlignment="Center" Margin="0,1,6,0"/>
-                        <TextBlock Text="V-Notch Performance Inspector" Foreground="#E0E0E6" FontSize="12" FontWeight="Bold"/>
+                        <TextBlock x:Name="InspectorTitleText" Text="V-Notch Performance Inspector" Foreground="#E0E0E6" FontSize="12" FontWeight="Bold"/>
                     </StackPanel>
 
                     <!-- Close 'X' Button -->
@@ -353,7 +353,7 @@
                         <ComboBoxItem Content="Compact Pill" Tag="CompactMusicPill"/>
                         <ComboBoxItem Content="Collapsed" Tag="CollapsedNotch"/>
                     </ComboBox>
-                    <TextBlock Grid.Column="1" Text="View State" Foreground="#D0D0D8" FontSize="11"
+                    <TextBlock Grid.Column="1" x:Name="ViewStateLabel" Text="View State" Foreground="#D0D0D8" FontSize="11"
                                VerticalAlignment="Center" Margin="8,0,0,0"/>
                 </Grid>
 
@@ -385,7 +385,7 @@
                         Cursor="Hand" MouseLeftButtonDown="ToggleProcessUsage_Click">
                     <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
                         <Path x:Name="ProcessUsageArrow" Data="M 0 0 L 4 5 L 8 0 Z" Fill="#64D2FF" VerticalAlignment="Center" Margin="0,1,6,0"/>
-                        <TextBlock Text="V-NOTCH USAGE (PROCESS)" Foreground="#64D2FF" FontSize="10.5" FontWeight="Bold"/>
+                        <TextBlock x:Name="ProcessUsageHeader" Text="V-NOTCH USAGE (PROCESS)" Foreground="#64D2FF" FontSize="10.5" FontWeight="Bold"/>
                     </StackPanel>
                 </Border>
 
@@ -478,7 +478,7 @@
                         Cursor="Hand" MouseLeftButtonDown="ToggleGlobalUsage_Click">
                     <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
                         <Path x:Name="GlobalUsageArrow" Data="M 0 0 L 4 5 L 8 0 Z" Fill="#FF9F0A" VerticalAlignment="Center" Margin="0,1,6,0"/>
-                        <TextBlock Text="GLOBAL SYSTEM USAGE" Foreground="#FF9F0A" FontSize="10.5" FontWeight="Bold"/>
+                        <TextBlock x:Name="GlobalUsageHeader" Text="GLOBAL SYSTEM USAGE" Foreground="#FF9F0A" FontSize="10.5" FontWeight="Bold"/>
                     </StackPanel>
                 </Border>
 
@@ -501,7 +501,7 @@
                                            HorizontalAlignment="Center" VerticalAlignment="Center"/>
                             </Grid>
                         </Border>
-                        <TextBlock Grid.Column="1" Text="Global CPU" Foreground="#D0D0D8" FontSize="10.5"
+                        <TextBlock Grid.Column="1" x:Name="GlobalCpuLabel" Text="Global CPU" Foreground="#D0D0D8" FontSize="10.5"
                                    VerticalAlignment="Center" Margin="8,0,0,0"/>
                     </Grid>
 
@@ -561,7 +561,7 @@
                                 <flow:NumberFlowText x:Name="NetUpText" Text="0 B/s" Foreground="#C8C8C8" FontSize="9.5"/>
                             </StackPanel>
                         </Border>
-                        <TextBlock Grid.Column="1" Text="Network I/O" Foreground="#D0D0D8" FontSize="10.5"
+                        <TextBlock Grid.Column="1" x:Name="NetworkLabel" Text="Network I/O" Foreground="#D0D0D8" FontSize="10.5"
                                    VerticalAlignment="Center" Margin="8,0,0,0"/>
                     </Grid>
                 </StackPanel>
@@ -578,7 +578,7 @@
                         </Grid.ColumnDefinitions>
                         <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
                             <Path x:Name="BottlenecksArrow" Data="M 0 0 L 4 5 L 8 0 Z" Fill="#A0A0AA" VerticalAlignment="Center" Margin="0,1,6,0"/>
-                            <TextBlock Text="BOTTLENECK &amp; HEALTH ALERTS" Foreground="#D8D8E0" FontSize="10" FontWeight="Bold"/>
+                            <TextBlock x:Name="AlertsHeader" Text="BOTTLENECK &amp; HEALTH ALERTS" Foreground="#D8D8E0" FontSize="10" FontWeight="Bold"/>
                         </StackPanel>
                         <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
                             <Button x:Name="CopyAllLogsBtn" Click="CopyAllLogsBtn_Click"
@@ -725,7 +725,7 @@
 
                     <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
                         <Path Data="M 0 0 L 4 5 L 8 0 Z" Fill="#64D2FF" VerticalAlignment="Center" Margin="0,1,6,0"/>
-                        <TextBlock Text="SERVICE RUNTIME LOGS" Foreground="#64D2FF" FontSize="11.5" FontWeight="Bold"/>
+                        <TextBlock x:Name="ServiceLogsHeader" Text="SERVICE RUNTIME LOGS" Foreground="#64D2FF" FontSize="11.5" FontWeight="Bold"/>
                     </StackPanel>
 
                     <!-- Close Side Panel Button -->
@@ -761,17 +761,17 @@
                     <ComboBox x:Name="ServiceCategoryFilterComboBox"
                               Style="{StaticResource ImGuiComboBoxStyle}"
                               SelectionChanged="ServiceCategoryFilterComboBox_SelectionChanged">
-                        <ComboBoxItem Content="All Categories" IsSelected="True"/>
-                        <ComboBoxItem Content="Media (Playback &amp; Track)"/>
-                        <ComboBoxItem Content="Audio Mixer"/>
-                        <ComboBoxItem Content="Battery &amp; Power"/>
-                        <ComboBoxItem Content="Bluetooth"/>
-                        <ComboBoxItem Content="Spotify"/>
-                        <ComboBoxItem Content="Weather"/>
-                        <ComboBoxItem Content="Spotlight Search"/>
-                        <ComboBoxItem Content="Subtitles &amp; Lyrics"/>
-                        <ComboBoxItem Content="Liquid Glass"/>
-                        <ComboBoxItem Content="Memory &amp; GC"/>
+                        <ComboBoxItem Tag="All Categories" Content="All Categories" IsSelected="True"/>
+                        <ComboBoxItem Tag="Media (Playback &amp; Track)" Content="Media (Playback &amp; Track)"/>
+                        <ComboBoxItem Tag="Audio Mixer" Content="Audio Mixer"/>
+                        <ComboBoxItem Tag="Battery &amp; Power" Content="Battery &amp; Power"/>
+                        <ComboBoxItem Tag="Bluetooth" Content="Bluetooth"/>
+                        <ComboBoxItem Tag="Spotify" Content="Spotify"/>
+                        <ComboBoxItem Tag="Weather" Content="Weather"/>
+                        <ComboBoxItem Tag="Spotlight Search" Content="Spotlight Search"/>
+                        <ComboBoxItem Tag="Subtitles &amp; Lyrics" Content="Subtitles &amp; Lyrics"/>
+                        <ComboBoxItem Tag="Liquid Glass" Content="Liquid Glass"/>
+                        <ComboBoxItem Tag="Memory &amp; GC" Content="Memory &amp; GC"/>
                     </ComboBox>
 
                     <StackPanel Grid.Column="1" Orientation="Horizontal" Margin="6,0,0,0">

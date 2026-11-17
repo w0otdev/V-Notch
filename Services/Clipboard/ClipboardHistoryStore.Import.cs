@@ -92,11 +92,11 @@ public sealed partial class ClipboardHistoryStore : IDisposable, IAsyncDisposabl
                         using var hashing = new ClipboardHashingStream(output, attachmentHash);
                         if (directory)
                         {
-                            copiedSize = checked(copiedSize + CopyDirectory(path, hashing, ref copiedItems, maxAllowedBytes, copiedSize, approved));
+                            copiedSize = checked(copiedSize + CopyDirectory(path, hashing, ref copiedItems, maxAllowedBytes, approved));
                         }
                         else
                         {
-                            long written = CopyStreamBounded(inputFile!, hashing, maxAllowedBytes, copiedSize, approved);
+                            long written = CopyStreamBounded(inputFile!, hashing, maxAllowedBytes, approved);
                             copiedSize = checked(copiedSize + written);
                         }
                         return hashing.BytesWritten;
@@ -187,7 +187,7 @@ public sealed partial class ClipboardHistoryStore : IDisposable, IAsyncDisposabl
                 CopiedUtc = capture.CopiedUtc,
                 ByteSize = size,
                 IsPersonal = personal,
-                Groups = ClipboardClassifier.Classify(capture.Text + " " + title, kind)
+                Groups = ClipboardClassifier.Classify(capture.Text + " " + title)
             };
             var content = new ClipboardContent { Entry = entry, Text = capture.Text, Html = capture.Html, Rtf = capture.Rtf, Files = files.ToArray() };
             if (personal)

@@ -4,7 +4,6 @@ namespace VNotch.Services;
 
 internal static partial class BrowserMediaTransitionPolicy
 {
-    internal static readonly TimeSpan LikelyAdMaximumDuration = TimeSpan.FromMinutes(2);
     internal static readonly TimeSpan LikelyAdQuarantineWindow = TimeSpan.FromSeconds(45);
 
     [StructLayout(LayoutKind.Sequential, Pack = 1)]

@@ -15,14 +15,14 @@ namespace VNotch.Services.Clipboard;
 /// Disk work is serialized off the UI thread; full-text search uses a bounded memory cache.</summary>
 public sealed partial class ClipboardHistoryStore : IDisposable, IAsyncDisposable
 {
-    private static long CopyStreamBounded(Stream input, Stream destination, long maxAllowedBytes, long copiedSizeSoFar, bool approved)
+    private static long CopyStreamBounded(Stream input, Stream destination, long maxAllowedBytes, bool approved)
     {
         if (!approved && input.CanSeek && input.Length > maxAllowedBytes)
             throw new ClipboardImportLimitException();
         return NativeClipboardStreamCopy.Copy(input, destination, approved ? long.MaxValue : maxAllowedBytes);
     }
 
-    private long CopyDirectory(string source, Stream destination, ref int copiedItems, long maxAllowedBytes, long copiedSizeSoFar, bool approved)
+    private long CopyDirectory(string source, Stream destination, ref int copiedItems, long maxAllowedBytes, bool approved)
     {
         long size = 0;
         using var archive = new ZipArchive(destination, ZipArchiveMode.Create, leaveOpen: true);
@@ -45,7 +45,7 @@ public sealed partial class ClipboardHistoryStore : IDisposable, IAsyncDisposabl
                 if (!approved && input.CanSeek && input.Length > remaining)
                     throw new ClipboardImportLimitException();
                 using var output = entry.Open();
-                long written = CopyStreamBounded(input, output, remaining, checked(copiedSizeSoFar + size), approved);
+                long written = CopyStreamBounded(input, output, remaining, approved);
                 size = checked(size + written);
             }
         }

@@ -80,11 +80,7 @@ public sealed partial class MediaMetadataLookupService : IMediaMetadataLookupSer
 
     private const string YouTubeTitleSearchLogTag = "META-YOUTUBE-TITLE-SEARCH";
     private const string YouTubeApiLogTag = "META-YOUTUBE-API";
-    private const string ItemsPropertyName = "items";
-    private const string VideoIdPropertyName = "videoId";
     private const string TitlePropertyName = "title";
-    private const string DurationPropertyName = "duration";
-
     private static readonly HttpClient SharedHttpClient = new(NetworkPrivacy.Handler(NetworkFeature.Artwork));
     private static readonly HttpClient SharedKeyClient = new(NetworkPrivacy.Handler(NetworkFeature.Artwork));
     private readonly HttpClient _httpClient;
@@ -535,7 +531,7 @@ public sealed partial class MediaMetadataLookupService : IMediaMetadataLookupSer
             RuntimeLog.Log(YouTubeApiLogTag, $"data-api-disabled videoId={videoId} -> using oEmbed only");
         }
 
-        var oembed = await ValidateVideoIdWithOEmbedAsync(videoId, apiKey, ct);
+        var oembed = await ValidateVideoIdWithOEmbedAsync(videoId, ct);
         if (oembed == null)
         {
             if (!ct.IsCancellationRequested)
@@ -601,7 +597,7 @@ public sealed partial class MediaMetadataLookupService : IMediaMetadataLookupSer
         return null;
     }
 
-    private async Task<YouTubeLookupResult?> ValidateVideoIdWithOEmbedAsync(string videoId, string? apiKey, CancellationToken ct)
+    private async Task<YouTubeLookupResult?> ValidateVideoIdWithOEmbedAsync(string videoId, CancellationToken ct)
     {
         try
         {
@@ -678,12 +674,6 @@ public sealed partial class MediaMetadataLookupService : IMediaMetadataLookupSer
             return null;
         }
     }
-    private static string? PickBestThumbnail(JsonElement thumbnails)
-        => YouTubeMetadataParsing.PickBestThumbnail(thumbnails);
-
-    private static bool LooksLikeQuotaExceeded(string body)
-        => YouTubeMetadataParsing.LooksLikeQuotaExceeded(body);
-
     private static readonly YouTubeQuotaCooldown QuotaCooldown = new();
 
     private static readonly object _videoCacheLock = new();
@@ -748,9 +738,6 @@ public sealed partial class MediaMetadataLookupService : IMediaMetadataLookupSer
             _videoCache[VideoCacheKey(videoId, apiKey)] = (result, DateTime.UtcNow.Add(_videoCacheTtl));
         }
     }
-
-    private static TimeSpan ParseIso8601Duration(string iso)
-        => YouTubeMetadataParsing.ParseIso8601Duration(iso);
 
     internal static string? GetYouTubeApiKey(ISettingsService? settingsService)
     {
@@ -1207,25 +1194,6 @@ public sealed partial class MediaMetadataLookupService : IMediaMetadataLookupSer
         {
             return null;
         }
-    }
-
-    private static int ComputeAlbumTieBreakerBonus(string? candidateAlbum, string? expectedAlbum)
-    {
-        if (string.IsNullOrWhiteSpace(expectedAlbum) || string.IsNullOrWhiteSpace(candidateAlbum))
-            return 0;
-
-        string normCand = SpotifyTrackMatcher.NormalizeForMatch(candidateAlbum);
-        string normExp = SpotifyTrackMatcher.NormalizeForMatch(expectedAlbum);
-        if (normCand.Length == 0 || normExp.Length == 0)
-            return 0;
-
-        if (string.Equals(normCand, normExp, StringComparison.Ordinal) ||
-            normCand.StartsWith(normExp + " ", StringComparison.Ordinal))
-        {
-            return 40;
-        }
-
-        return -20;
     }
 
     private async Task<string?> TrySearchItunesArtistsAsync(

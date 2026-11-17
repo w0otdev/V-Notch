@@ -89,6 +89,8 @@ public partial class TranslationWindow
 
     private void PopupMotionPreferenceChanged()
     {
+        if (AnimationConfig.ReduceMotion) SetContentMorphing(false);
+        else if (IsVisible && !_popupAnimating && !_dismissing) SetContentMorphing(true);
         if (AnimationConfig.ReduceMotion && _placementAnimating) FinishPopupPlacement(_placementMotionVersion);
         if (!AnimationConfig.ReduceMotion || !_popupAnimating || _dismissing || _expansionScale == null) return;
         _expansionScale.BeginAnimation(ScaleTransform.ScaleXProperty, null);
@@ -122,7 +124,7 @@ public partial class TranslationWindow
         double chrome = 0;
         var rows = TranslationPanel.RowDefinitions;
         for (int i = 0; i < rows.Count; i++)
-            if (i != 3) chrome += rows[i].ActualHeight;
+            if (i != 3) chrome += i == 4 ? StatusHeightHost.TargetHeight : rows[i].ActualHeight;
         if (vn_translation_compute_viewport_height(TranslationPanel.MaxHeight, chrome, ResultScroll.MaxHeight, out double height, out byte changed) != 0 || changed == 0)
             return false;
         ResultScroll.MaxHeight = height;

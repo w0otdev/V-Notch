@@ -23,8 +23,6 @@ public partial class SpotlightWindow
     private Task _historyPageTask = Task.CompletedTask;
     private bool _loadingTranscript;
     private string? _aiDraftToRestore;
-    internal readonly VisualBrush AiTopEdgeBrush = new();
-    internal readonly VisualBrush AiBottomEdgeBrush = new();
     private static readonly SolidColorBrush AiHistoryCardIdleBrush = Controls.SpotlightChatPalette.Surface;
     private static readonly SolidColorBrush AiHistoryCardHoverBrush = Controls.SpotlightChatPalette.Hover;
     private static readonly SolidColorBrush AiHistoryCardBorderBrush = Controls.SpotlightChatPalette.Border;
@@ -365,8 +363,6 @@ public partial class SpotlightWindow
         AiTranscriptScroll.Visibility = Visibility.Visible;
         UpdateAiScrollEdges();
     }
-
-    internal void ToggleAiHistoryPanel() => ToggleAiHistoryPage();
 
     internal void ShowAiHistoryPanel()
     {

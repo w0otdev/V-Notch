@@ -89,12 +89,6 @@ public sealed partial class GestureController
         return false;
     }
 
-    public void CancelTracking()
-    {
-        _isTracking = false;
-        _gestureTriggered = false;
-    }
-
     public bool IsTracking => _isTracking;
 
     public bool IsGestureActive { get; set; }

@@ -463,8 +463,6 @@ public sealed class ClipboardHistoryController : IDisposable, IAsyncDisposable
         }
     }
 
-    public Task DragAsync(FrameworkElement source, ClipboardEntry entry) => DragManyAsync(source, [entry]);
-
     public async Task DragManyAsync(FrameworkElement source, IReadOnlyList<ClipboardEntry> entries)
     {
         if (IsDragging || entries.Count == 0) return;

@@ -103,6 +103,9 @@
                          <GradientStop Color="#F7050505" Offset="1"/>
                      </LinearGradientBrush>
                  </Border.Background>
+                 <!-- Keep the reels inside the panel's effect/transform subtree so
+                      the animated and resting digits use the same pixel origin. -->
+                 <AdornerDecorator>
                  <Grid>
                      <flow:NumberFlowText x:Name="CountdownDisplay"
                                 Text="{Binding DisplayText}"
@@ -188,6 +191,7 @@
                          </Border>
                      </Grid>
                 </Grid>
+                 </AdornerDecorator>
             </Border>
 
             <Border x:Name="CountdownStepperCapsule"

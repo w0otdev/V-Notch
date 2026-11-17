@@ -13,7 +13,11 @@ public sealed class ThinkingOrb : FrameworkElement
     public static readonly DependencyProperty StateProperty = DependencyProperty.Register(
         nameof(State), typeof(ThinkingOrbState), typeof(ThinkingOrb),
         new FrameworkPropertyMetadata(ThinkingOrbState.Working, FrameworkPropertyMetadataOptions.AffectsRender),
-        value => value is ThinkingOrbState.Working or ThinkingOrbState.Composing);
+        value => value is ThinkingOrbState.Working or ThinkingOrbState.Composing or ThinkingOrbState.Solving);
+    public static readonly DependencyProperty DotScaleProperty = DependencyProperty.Register(
+        nameof(DotScale), typeof(double), typeof(ThinkingOrb),
+        new FrameworkPropertyMetadata(1d, FrameworkPropertyMetadataOptions.AffectsRender),
+        value => value is double scale && double.IsFinite(scale) && scale > 0 && scale <= 3);
 
     private static readonly SolidColorBrush[] ParticleBrushes = CreateBrushes();
     private readonly ThinkingOrbGeometry.Dot[] _dots = new ThinkingOrbGeometry.Dot[ThinkingOrbGeometry.Capacity];
@@ -23,6 +27,7 @@ public sealed class ThinkingOrb : FrameworkElement
 
     public bool IsActive { get => (bool)GetValue(IsActiveProperty); set => SetValue(IsActiveProperty, value); }
     public ThinkingOrbState State { get => (ThinkingOrbState)GetValue(StateProperty); set => SetValue(StateProperty, value); }
+    public double DotScale { get => (double)GetValue(DotScaleProperty); set => SetValue(DotScaleProperty, value); }
 
     public ThinkingOrb()
     {
@@ -42,13 +47,14 @@ public sealed class ThinkingOrb : FrameworkElement
         if (size <= 0 || !double.IsFinite(size)) return;
         int count = ThinkingOrbGeometry.WriteFrame(_dots, State, size, _clock.Elapsed.TotalSeconds);
         double x = (ActualWidth - size) / 2, y = (ActualHeight - size) / 2;
+        double dotScale = DotScale;
         for (int i = 0; i < count; i++)
         {
             var dot = _dots[i];
             int gray = (int)Math.Round(Math.Clamp(1 - dot.Ink, 0, 1) * 31);
             int alpha = (int)Math.Round(Math.Clamp(dot.Alpha, 0, 1) * 15);
             drawingContext.DrawEllipse(ParticleBrushes[alpha * 32 + gray], null,
-                new Point(dot.X + x, dot.Y + y), dot.Radius, dot.Radius);
+                new Point(dot.X + x, dot.Y + y), dot.Radius * dotScale, dot.Radius * dotScale);
         }
     }
 

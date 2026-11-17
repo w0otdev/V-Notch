@@ -35,7 +35,9 @@ public sealed class TranslationPlacementMotionTests
             CompositionTarget.Rendering += OnFrame;
             window.ShowResult(new(LongResult, "en", "vi", true));
             await WpfFrameWaiter.NextAsync(ct);
-            await WpfFrameWaiter.UntilAsync(() => Bounds(window).Bottom <= work.Bottom + 1 && !window.IsPresentationAnimating, "automatic position spring settles inside the screen", ct);
+            await WpfFrameWaiter.UntilAsync(() => Bounds(window).Bottom <= work.Bottom + 1 && !window.IsPresentationAnimating &&
+                !window.ResultHeightHost.IsMorphing && !window.StatusHeightHost.IsMorphing,
+                "height morph and automatic position spring settle inside the screen", ct);
             await WpfFrameWaiter.NextAsync(ct);
             var settled = Bounds(window);
             Assert.True(settled.Top < from, $"The menu should grow and move up to fit: from={from}, final={settled.Top}, height={settled.Bottom - settled.Top}, screenBottom={work.Bottom}.");

@@ -90,12 +90,11 @@ public:
         init_done = CreateEventW(nullptr, TRUE, FALSE, nullptr);
         request = CreateEventW(nullptr, FALSE, FALSE, nullptr);
         frame_received = CreateEventW(nullptr, TRUE, FALSE, nullptr);
-        unfiltered_received = CreateEventW(nullptr, TRUE, FALSE, nullptr);
     }
     Source(const Source&) = delete;
     Source& operator=(const Source&) = delete;
     ~Source() {
-        for (HANDLE h : {init_done, request, frame_received, unfiltered_received})
+        for (HANDLE h : {init_done, request, frame_received})
             if (h) CloseHandle(h);
         if (thread) CloseHandle(thread);
     }
@@ -106,7 +105,6 @@ public:
     HANDLE init_done = nullptr;
     HANDLE request = nullptr;
     HANDLE frame_received = nullptr;
-    HANDLE unfiltered_received = nullptr;
     std::atomic<bool> running{false};
     std::atomic<bool> ready{false};
     std::atomic<bool> capture_enabled{true};
@@ -132,7 +130,6 @@ public:
     std::vector<uint8_t> completed;
     int32_t completed_width = 0, completed_height = 0, completed_x = 0, completed_y = 0;
     bool has_completed = false;
-    bool has_unfiltered = false;
     int64_t completed_tick = 0;
     int32_t completed_filter_version = 0;
     uint64_t frame_counter = 0;
@@ -205,7 +202,6 @@ public:
     // ---- frames ----
     void ClearFrameLocked() noexcept {
         has_completed = false;
-        has_unfiltered = false;
         completed.clear();
         completed.shrink_to_fit();
     }
@@ -298,10 +294,6 @@ public:
                 has_completed = true;
                 completed_tick = static_cast<int64_t>(GetTickCount64());
                 ++frame_counter;
-                if (applied_filter_version == 0) {
-                    has_unfiltered = true;
-                    SetEvent(unfiltered_received);
-                }
             }
             SetEvent(frame_received);
             return true;
@@ -400,7 +392,6 @@ public:
                     ScopedLock guard(&frame_lock);
                     ClearFrameLocked();
                     ResetEvent(frame_received);
-                    ResetEvent(unfiltered_received);
                 } else {
                     if (!host_shown) ShowWindow(host, SW_SHOWNA);
                     host_shown = true;
@@ -455,7 +446,7 @@ public:
 
     // May throw std::bad_alloc before the pump thread exists; vn_magcap_initialize reports that as VN_ERR_FAIL.
     bool Start(HWND exclude) {
-        if (!init_done || !request || !frame_received || !unfiltered_received) return false;
+        if (!init_done || !request || !frame_received) return false;
         if (running.load() || thread != nullptr) {
             if (!Stop()) return false;
         }
@@ -748,23 +739,6 @@ VN_EXPORT int32_t __stdcall vn_magcap_has_usable_frame(
     SetEvent(source->request);
     mc::ScopedLock guard(&source->frame_lock);
     *out_usable = source->HasUsableFrameLocked(x, y, width, height) ? 1 : 0;
-    return VN_OK;
-}
-
-// Waits for a frame captured with no exclusion list. out_received = 1 when one is available.
-VN_EXPORT int32_t __stdcall vn_magcap_wait_unfiltered_frame(int32_t handle, uint32_t timeout_ms, uint8_t* out_received) noexcept {
-    auto source = mc::Find(handle);
-    if (!source || !out_received) return VN_ERR_INVALID_ARG;
-    {
-        mc::ScopedLock guard(&source->frame_lock);
-        if (source->has_unfiltered) {
-            *out_received = 1;
-            return VN_OK;
-        }
-        ResetEvent(source->unfiltered_received);
-    }
-    SetEvent(source->request);
-    *out_received = WaitForSingleObject(source->unfiltered_received, timeout_ms) == WAIT_OBJECT_0 ? 1 : 0;
     return VN_OK;
 }
 

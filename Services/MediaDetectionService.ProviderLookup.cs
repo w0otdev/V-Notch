@@ -210,9 +210,4 @@ public sealed partial class MediaDetectionService : IMediaDetectionService, IAsy
     private static bool SpotifyTitleContainsTrack(string spotifyWindowTitle, string smtcTrack)
         => MediaHeuristics.SpotifyTitleContainsTrack(spotifyWindowTitle, smtcTrack);
 
-    private static string ExtractVideoTitle(string windowTitle, string platform)
-    {
-        return PlatformDetector.ExtractTitleFromWindow(windowTitle, platform);
-    }
-
 }

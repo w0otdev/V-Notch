@@ -17,15 +17,6 @@
 
 namespace vnotch::services {
 
-#pragma pack(push, 1)
-struct VnRect {
-    int32_t left;
-    int32_t top;
-    int32_t right;
-    int32_t bottom;
-};
-#pragma pack(pop)
-
 class FullscreenDetector final {
 public:
     static int32_t DetectFullscreenType(HWND hwnd, HWND notch_hwnd, HMONITOR notch_monitor) noexcept {
@@ -288,28 +279,6 @@ VN_EXPORT int32_t vn_fullscreen_is_blocked_class_name(
     }
     *out_blocked = vnotch::services::FullscreenDetector::IsBlockedClassName(
         std::u16string_view(name_ptr, static_cast<size_t>(name_len))) ? 1 : 0;
-    return VN_OK;
-}
-
-VN_EXPORT int32_t vn_fullscreen_try_get_window_bounds(
-    intptr_t hwnd, vnotch::services::VnRect* out_rect, uint8_t* out_ok) noexcept
-{
-    if (!out_rect || !out_ok) return VN_ERR_INVALID_ARG;
-    RECT r{};
-    bool ok = vnotch::services::FullscreenDetector::TryGetWindowBounds(reinterpret_cast<HWND>(hwnd), &r);
-    out_rect->left = r.left;
-    out_rect->top = r.top;
-    out_rect->right = r.right;
-    out_rect->bottom = r.bottom;
-    *out_ok = ok ? 1 : 0;
-    return VN_OK;
-}
-
-VN_EXPORT int32_t vn_fullscreen_is_window_cloaked(
-    intptr_t hwnd, uint8_t* out_cloaked) noexcept
-{
-    if (!out_cloaked) return VN_ERR_INVALID_ARG;
-    *out_cloaked = vnotch::services::FullscreenDetector::IsWindowCloaked(reinterpret_cast<HWND>(hwnd)) ? 1 : 0;
     return VN_OK;
 }
 

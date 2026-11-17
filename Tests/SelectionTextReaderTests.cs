@@ -146,7 +146,7 @@ public sealed class SelectionTextReaderTests
             rtb.SelectAll();
             var hwnd = new System.Windows.Interop.WindowInteropHelper(window).Handle;
             var root = System.Windows.Automation.AutomationElement.FromHandle(hwnd);
-            using var result = SelectionTextReader.Read(hwnd, null, manual: true, out bool protectedInput, rootElement: root, allowOwnProcess: true);
+            using var result = SelectionTextReader.Read(hwnd, null, manual: true, out bool protectedInput, allowOwnProcess: true);
             Assert.False(protectedInput);
             Assert.NotNull(result);
             Assert.Contains("Tiếng Việt", result.Text);
@@ -170,7 +170,7 @@ public sealed class SelectionTextReaderTests
             tb.Select(9, 6);
             var hwnd = new System.Windows.Interop.WindowInteropHelper(window).Handle;
             var root = System.Windows.Automation.AutomationElement.FromHandle(hwnd);
-            using var result = SelectionTextReader.Read(hwnd, null, manual: true, out bool protectedInput, rootElement: root, allowOwnProcess: true);
+            using var result = SelectionTextReader.Read(hwnd, null, manual: true, out bool protectedInput, allowOwnProcess: true);
             Assert.False(protectedInput);
             Assert.NotNull(result);
             Assert.Equal("public", result.Text);
@@ -219,7 +219,7 @@ public sealed class SelectionTextReaderTests
             var listElement = root.FindFirst(
                 System.Windows.Automation.TreeScope.Subtree,
                 new System.Windows.Automation.PropertyCondition(System.Windows.Automation.AutomationElement.ControlTypeProperty, System.Windows.Automation.ControlType.List));
-            using var result = SelectionTextReader.Read(hwnd, listElement, manual: true, out bool protectedInput, rootElement: root, allowOwnProcess: true);
+            using var result = SelectionTextReader.Read(hwnd, listElement, manual: true, out bool protectedInput, allowOwnProcess: true);
             Assert.False(protectedInput);
             Assert.NotNull(result);
             Assert.Equal("Item two Tiếng Việt", result.Text);
@@ -250,7 +250,7 @@ public sealed class SelectionTextReaderTests
             var treeElement = root.FindFirst(
                 System.Windows.Automation.TreeScope.Subtree,
                 new System.Windows.Automation.PropertyCondition(System.Windows.Automation.AutomationElement.ControlTypeProperty, System.Windows.Automation.ControlType.Tree));
-            using var treeResult = SelectionTextReader.Read(hwnd, treeElement, manual: true, out bool protectedInput, rootElement: root, allowOwnProcess: true);
+            using var treeResult = SelectionTextReader.Read(hwnd, treeElement, manual: true, out bool protectedInput, allowOwnProcess: true);
             Assert.False(protectedInput);
             Assert.NotNull(treeResult);
             Assert.Equal("Selected Tiếng Việt node", treeResult.Text);
@@ -258,7 +258,7 @@ public sealed class SelectionTextReaderTests
             var textElement = root.FindFirst(
                 System.Windows.Automation.TreeScope.Subtree,
                 new System.Windows.Automation.PropertyCondition(System.Windows.Automation.AutomationElement.NameProperty, "Static status message"));
-            using var textResult = SelectionTextReader.Read(hwnd, textElement, manual: true, out protectedInput, rootElement: root, allowOwnProcess: true);
+            using var textResult = SelectionTextReader.Read(hwnd, textElement, manual: true, out protectedInput, allowOwnProcess: true);
             Assert.False(protectedInput);
             Assert.NotNull(textResult);
             Assert.Equal("Static status message", textResult.Text);

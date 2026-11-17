@@ -280,32 +280,6 @@ public sealed class TranslationStoreAndIntegrityTests
         return privacy;
     }
 
-    private static void EnableTranslationModelsIfNeeded(NetworkPrivacy privacy)
-    {
-        foreach (var method in typeof(NetworkPrivacy).GetMethods(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance))
-        {
-            var p = method.GetParameters();
-            if (p.Length == 2 && p[0].ParameterType == typeof(NetworkFeature) && p[1].ParameterType == typeof(bool))
-            {
-                try { method.Invoke(privacy, [NetworkFeature.TranslationModels, true]); }
-                catch { /* Best effort */ }
-            }
-        }
-    }
-
-    private static bool CanAcquireTranslationModels(NetworkPrivacy privacy)
-    {
-        try
-        {
-            var token = privacy.Acquire(NetworkFeature.TranslationModels);
-            return !token.IsCancellationRequested;
-        }
-        catch
-        {
-            return false;
-        }
-    }
-
     private sealed class ControlledHttpMessageHandler(Func<CancellationToken, Task<HttpResponseMessage>> responder) : HttpMessageHandler
     {
         protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken) =>

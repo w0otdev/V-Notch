@@ -26,11 +26,11 @@ public sealed class WindowAnimationPolicyTests
         Assert.Equal(Win32Interop.WDA_NONE, affinity);
 
         // Renderer requests must never hide the notch outside Ghost mode.
-        Assert.True(await Task.Run(() => Win32Interop.SetWindowDisplayAffinity(hwnd, Win32Interop.WDA_EXCLUDEFROMCAPTURE)));
+        Assert.True(await Task.Run(() => Win32Interop.ApplyWindowCapturePolicy(hwnd)));
         WindowAnimationPolicy.Attach(window);
         Assert.True(GetWindowDisplayAffinity(hwnd, out affinity));
         Assert.Equal(Win32Interop.WDA_NONE, affinity);
-        Assert.True(await Task.Run(() => Win32Interop.SetWindowDisplayAffinity(hwnd, Win32Interop.WDA_NONE)));
+        Assert.True(await Task.Run(() => Win32Interop.ApplyWindowCapturePolicy(hwnd)));
         WindowAnimationPolicy.Attach(window);
         Assert.True(GetWindowDisplayAffinity(hwnd, out affinity));
         Assert.Equal(Win32Interop.WDA_NONE, affinity);
@@ -45,7 +45,7 @@ public sealed class WindowAnimationPolicyTests
             var hwnd = new WindowInteropHelper(window).EnsureHandle();
             WindowAnimationPolicy.Attach(window);
             // Legacy/backend requests cannot override the app's capture policy.
-            Assert.True(await Task.Run(() => Win32Interop.SetWindowDisplayAffinity(hwnd, Win32Interop.WDA_EXCLUDEFROMCAPTURE)));
+            Assert.True(await Task.Run(() => Win32Interop.ApplyWindowCapturePolicy(hwnd)));
             Assert.True(GetWindowDisplayAffinity(hwnd, out uint affinity));
             Assert.Equal(Win32Interop.WDA_NONE, affinity);
 
@@ -71,7 +71,7 @@ public sealed class WindowAnimationPolicyTests
             Assert.False(window.ShowInTaskbar);
             Assert.NotEqual(0, Win32Interop.GetWindowLong(hwnd, Win32Interop.GWL_EXSTYLE) & Win32Interop.WS_EX_TOOLWINDOW);
             // Glass cleanup cannot remove the user's capture exclusion.
-            Assert.True(Win32Interop.SetWindowDisplayAffinity(hwnd, Win32Interop.WDA_NONE));
+            Assert.True(Win32Interop.ApplyWindowCapturePolicy(hwnd));
             Assert.True(GetWindowDisplayAffinity(hwnd, out uint affinity));
             Assert.Equal(Win32Interop.WDA_EXCLUDEFROMCAPTURE, affinity);
             WindowAnimationPolicy.SetInvisibleMode(false);

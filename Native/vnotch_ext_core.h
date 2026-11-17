@@ -24,14 +24,6 @@ struct VnCoreRect
 };
 static_assert(sizeof(VnCoreRect) == 16);
 
-struct VnCoreAnimClockState
-{
-    int64_t last_tick;
-    double next_tick;
-    double target_fps;
-};
-static_assert(sizeof(VnCoreAnimClockState) == 24);
-
 struct VnCoreTextSlice
 {
     int32_t offset;
@@ -88,15 +80,6 @@ VN_EXPORT int32_t __stdcall vn_smartcrop_select_portrait_face(
     const VnCoreDetection* person,
     VnCoreDetection* out_best_face,
     uint8_t* out_found) noexcept;
-
-// AnimationFrameClock
-VN_EXPORT int32_t __stdcall vn_anim_clock_try_advance(
-    VnCoreAnimClockState* io_state,
-    int64_t now_tick,
-    int64_t stopwatch_freq,
-    double target_fps,
-    double* out_seconds,
-    uint8_t* out_advanced) noexcept;
 
 // AppNotificationService.Icons
 VN_EXPORT int32_t __stdcall vn_appnotify_compute_icon_crop_bounds(

@@ -313,16 +313,14 @@ public sealed class SettingsDiffingTests
     [Fact]
     public void ClipboardClassifier_Classify_FastPathReturnsEmptyAndPreservesRuleMatching()
     {
-        Assert.Same(Array.Empty<string>(), Services.Clipboard.ClipboardClassifier.Classify("", ClipboardKind.Text));
-        Assert.Same(Array.Empty<string>(), Services.Clipboard.ClipboardClassifier.Classify("just a normal sentence", ClipboardKind.Text));
+        Assert.Same(Array.Empty<string>(), Services.Clipboard.ClipboardClassifier.Classify(""));
+        Assert.Same(Array.Empty<string>(), Services.Clipboard.ClipboardClassifier.Classify("just a normal sentence"));
 
-        var workAndEmail = Services.Clipboard.ClipboardClassifier.Classify(
-            "Project deadline tomorrow, contact dev@example.com", ClipboardKind.Text);
+        var workAndEmail = Services.Clipboard.ClipboardClassifier.Classify("Project deadline tomorrow, contact dev@example.com");
         Assert.Contains("Work", workAndEmail);
         Assert.Contains("Email", workAndEmail);
 
-        var contextPair = Services.Clipboard.ClipboardClassifier.Classify(
-            "Review the agenda and task list", ClipboardKind.Text);
+        var contextPair = Services.Clipboard.ClipboardClassifier.Classify("Review the agenda and task list");
         Assert.Contains("Work", contextPair);
     }
 }

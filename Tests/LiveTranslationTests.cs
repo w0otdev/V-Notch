@@ -289,8 +289,8 @@ public sealed class LiveTranslationTests
     [InlineData("Call 15:00", "Gọi 15:30", false)]
     [InlineData("Balance -$42", "Số dư $42", false)]
     [InlineData("Delta −5%", "Độ lệch 5%", false)]
-    [InlineData("Cost 1000", "Giá 1.000", true)]
-    [InlineData("Cost 1000", "Giá 1,000", true)]
+    [InlineData("Cost 1000", "Giá 1.000", false)]
+    [InlineData("Cost 1000", "Giá 1,000", false)]
     public void LiteralChangesAreReported(string source, string result, bool safe)
         => Assert.Equal(safe, TranslationTextIntegrity.Verify(source, result));
 

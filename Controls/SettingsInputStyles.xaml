@@ -17,7 +17,7 @@
         <Setter Property="Padding" Value="14,10"/>
         <Setter Property="FontSize" Value="13"/>
         <Setter Property="FontFamily" Value="{DynamicResource SettingsFont}"/>
-        <Setter Property="FontWeight" Value="SemiBold"/>
+        <Setter Property="FontWeight" Value="Bold"/>
         <Setter Property="Background" Value="{StaticResource SettingsInputBackground}"/>
         <Setter Property="Foreground" Value="{StaticResource SettingsInputText}"/>
         <Setter Property="BorderBrush" Value="{StaticResource SettingsInputBorder}"/>

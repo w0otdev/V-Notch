@@ -30,7 +30,6 @@ internal sealed partial class TranslationSelectionService : IDisposable
     private readonly TaskCompletionSource<Dispatcher> _ready = new(TaskCreationOptions.RunContinuationsAsynchronously);
     private long _manualRequestVersion;
     private UiScheduledTimer? _debounce;
-    private AutomationElement? _root;
     private NativeSelectionState? _nativeSelection;
     private TranslationSelection? _snapshot;
     private long _nextId;
@@ -231,10 +230,9 @@ internal sealed partial class TranslationSelectionService : IDisposable
                 DetachSelection();
                 _lastValidSnapshot = null;
                 Publish(null, !manual);
-                _root = AutomationElement.FromHandle(window);
                 _watchedWindow = window;
             }
-            var result = SelectionTextReader.Read(window, null, manual, out bool protectedInput, rootElement: _root, previousSelection: _nativeSelection);
+            var result = SelectionTextReader.Read(window, null, manual, out bool protectedInput, previousSelection: _nativeSelection);
             if (Win32Interop.GetForegroundWindow() != window) { result?.Dispose(); return; }
             if (result == null)
             {
@@ -321,7 +319,6 @@ internal sealed partial class TranslationSelectionService : IDisposable
 
     private void DetachSelection()
     {
-        _root = null;
         _watchedWindow = IntPtr.Zero;
         _nativeSelection?.Dispose(); _nativeSelection = null;
     }

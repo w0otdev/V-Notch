@@ -67,7 +67,7 @@ public sealed partial class AiUsageStatWidget : UserControl
         Border Fill, string FillKey, Color TargetColor, Action RestoreBind, int RowIndex, bool IsWeekly, bool IsNewBlock);
 
     private readonly record struct NumberAnimTarget(
-        DependencyObject Target, string Key, double TargetPercent, Func<double, string> Formatter, string FinalText, int DelayMs);
+        DependencyObject Target, string Key, double TargetPercent, Func<double, string> Formatter);
 
     public AiUsageStatWidget()
     {
@@ -399,7 +399,7 @@ public sealed partial class AiUsageStatWidget : UserControl
         {
             if (!snapshot.LivePercents.TryGetValue(num.Key, out double prevValue)) continue;
             if (Math.Abs(prevValue - num.TargetPercent) > 0.2)
-                _motion.AnimateNumber(num.Target, prevValue, num.TargetPercent, num.Formatter, num.FinalText, durationMs: 340, delayMs: num.DelayMs);
+                _motion.AnimateNumber(num.Target, prevValue, num.TargetPercent, num.Formatter);
         }
     }
 
@@ -525,7 +525,7 @@ public sealed partial class AiUsageStatWidget : UserControl
             usage.UpdatedAt.HasValue ? (byte)1 : (byte)0, usage.UpdatedAt?.UtcDateTime.Ticks ?? 0L,
             now.UtcDateTime.Ticks, out var v);
         if (v.IsExpired != 0) return ("—", UiPalette.TertiaryBrush, 0);
-        Brush fill = AiUsageAppearance.Current.Fill(usage.Provider, v.ClampedUsedPercent);
+        Brush fill = AiUsageAppearance.Current.Fill(usage.Provider);
         double percent = AiUsageAppearance.Current.ShowUsed ? v.ClampedUsedPercent : v.ClampedRemainingPercent;
         return (percent.ToString("0.#", Loc.GetCulture()) + "%", fill, percent);
     }
@@ -653,14 +653,11 @@ public sealed partial class AiUsageStatWidget : UserControl
             if (build != null && FindPercentRun(label) is { } numberRun)
             {
                 var culture = Loc.GetCulture();
-                string finalNum = percent.ToString("0.#", culture) + "%";
                 build.Numbers.Add(new NumberAnimTarget(
                     numberRun,
                     usage.Provider + (weekly ? ":weekly" : ":primary"),
                     percent,
-                    v => Math.Round(v).ToString("0", culture) + "%",
-                    finalNum,
-                    weekly ? 35 : 0));
+                    v => Math.Round(v).ToString("0", culture) + "%"));
             }
         }
         else label.FontSize = compact ? 12 : 16;
@@ -696,13 +693,12 @@ public sealed partial class AiUsageStatWidget : UserControl
         bool compact = appearance.Compact;
         var (_, fill, percent) = Measure(usage, window, now);
         int height = appearance.BarHeight;
-        double usedPercent = window?.UsedPercent ?? 0;
         var track = new Border { Name = weekly ? "WeeklyQuotaTrack" : "PrimaryQuotaTrack", Width = ColumnWidth, Height = height,
             CornerRadius = new CornerRadius(height / 2.0), Margin = new Thickness(0, compact ? 2 : 4, 0, 0),
             HorizontalAlignment = HorizontalAlignment.Left, Background = TrackBrush, ClipToBounds = true };
         var fillBorder = new Border { Name = weekly ? "WeeklyQuotaFill" : "PrimaryQuotaFill", Width = ColumnWidth, Height = height, CornerRadius = new CornerRadius(height / 2.0),
             HorizontalAlignment = HorizontalAlignment.Left, Background = fill };
-        appearance.BindFill(fillBorder, usage.Provider, usedPercent);
+        appearance.BindFill(fillBorder, usage.Provider);
         _motion.BindBar(fillBorder, usage.Provider + (weekly ? ":weekly" : ":compact"), percent, window != null && !window.IsExpired(now));
         if (build != null)
         {
@@ -712,7 +708,7 @@ public sealed partial class AiUsageStatWidget : UserControl
                 fillBorder,
                 provider + ":" + fillBorder.Name,
                 targetColor,
-                () => appearance.BindFill(fillBorder, provider, usedPercent),
+                () => appearance.BindFill(fillBorder, provider),
                 build.Tracks.Count,
                 weekly,
                 isNewBlock));
@@ -752,9 +748,7 @@ public sealed partial class AiUsageStatWidget : UserControl
                     week,
                     usage.Provider + ":weekly",
                     weekPercent,
-                    v => weeklyPrefix + " " + Math.Round(v).ToString("0", culture) + "%",
-                    finalText,
-                    45));
+                    v => weeklyPrefix + " " + Math.Round(v).ToString("0", culture) + "%"));
             }
         }
         return summary;

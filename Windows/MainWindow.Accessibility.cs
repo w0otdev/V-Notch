@@ -29,6 +29,8 @@ public partial class MainWindow
 
     private void RefreshAccessibleNames()
     {
+        CountdownWidget.CountdownResetBtn.ToolTip = Loc.Get("timer.reset");
+        CountdownWidget.CountdownDisplayPanel.ToolTip = Loc.Get("timer.customTimeHint");
         foreach (var (element, key) in new (DependencyObject, string)[]
         {
             (SettingsButton, "tooltip.settings"),

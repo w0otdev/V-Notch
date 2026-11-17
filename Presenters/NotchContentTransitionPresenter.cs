@@ -289,12 +289,6 @@ public sealed class NotchContentTransitionPresenter : IDisposable
         element.IsHitTestVisible = true;
     }
 
-    public long InvalidateSession()
-    {
-        ++_animationVersion;
-        return ++_activeSessionId;
-    }
-
     public void CancelActiveTransition()
     {
         ++_animationVersion;
@@ -368,42 +362,6 @@ public sealed class NotchContentTransitionPresenter : IDisposable
         object value = target.GetValue(property);
         target.BeginAnimation(property, null);
         target.SetCurrentValue(property, value);
-    }
-
-    public void SnapToView(NotchView view)
-    {
-        if (_disposed) return;
-        ++_animationVersion;
-        _activeSessionId++;
-        var target = GetElementForView(view);
-        if (view == NotchView.AudioMixer && _refs.AudioScrollViewer != null)
-        {
-            _refs.AudioScrollViewer.BeginAnimation(UIElement.OpacityProperty, null);
-            _refs.AudioScrollViewer.Visibility = Visibility.Visible;
-            _refs.AudioScrollViewer.Opacity = 1.0;
-            ClearTemporaryAnimationTransforms(_refs.AudioScrollViewer);
-        }
-        else if (_refs.AudioScrollViewer != null && !ReferenceEquals(_refs.AudioScrollViewer, _refs.AudioContent))
-        {
-            ResetElementVisualState(_refs.AudioScrollViewer);
-        }
-
-        foreach (var el in GetAllElements())
-        {
-            if (target != null && ReferenceEquals(el, target))
-            {
-                el.BeginAnimation(UIElement.OpacityProperty, null);
-                el.Visibility = Visibility.Visible;
-                el.Opacity = 1.0;
-                ReleasePageOffset(el);
-                el.IsHitTestVisible = true;
-                ClearTemporaryAnimationTransforms(el);
-            }
-            else
-            {
-                ResetContentVisualState(el);
-            }
-        }
     }
 
     public static void ResetElementVisualState(FrameworkElement el)

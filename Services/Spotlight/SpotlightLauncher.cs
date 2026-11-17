@@ -125,9 +125,6 @@ internal sealed partial class SpotlightLauncher
         }
     }
 
-    public bool TryLaunchElevated(SpotlightSearchItem item) =>
-        TryLaunchElevated(item, out _);
-
     public bool TryLaunchElevated(SpotlightSearchItem item, out bool cancelled)
     {
         cancelled = false;

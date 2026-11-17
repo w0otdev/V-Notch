@@ -97,18 +97,6 @@ public sealed class BluetoothNotificationController : IDisposable
         }
     }
 
-    public void ForceDismiss()
-    {
-        lock (_stateGate)
-        {
-            if (!_isVisible) return;
-
-            StopDismissTimerLocked();
-            _isVisible = false;
-            DismissRequested?.Invoke();
-        }
-    }
-
     public static Geometry GetIconGeometry(BluetoothDeviceType deviceType)
     {
         return deviceType switch

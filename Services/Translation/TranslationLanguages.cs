@@ -11,6 +11,8 @@ using LanguageDetection;
 
 namespace VNotch.Services.Translation;
 
+internal sealed record TranslationLanguageAnalysis(string Text, string? DetectedLanguage, double? Confidence, string? PassthroughLanguage);
+
 internal static partial class TranslationLanguages
 {
     internal sealed record Language(string Code, string Name)
@@ -18,7 +20,7 @@ internal static partial class TranslationLanguages
         public override string ToString() => Name;
     }
 
-    internal static readonly string[] Codes = ("af am ar az ba be bg bn br bs ca ceb cs cy da de el en es et fa ff fi fr fy ga gd gl gu ha he hi hr ht hu hy id ig ilo is it ja jv ka kk km kn ko lb lg ln lo lt lv mg mk ml mn mr ms my ne nl no ns oc or pa pl ps pt ro ru sd si sk sl so sq sr ss su sv sw ta th tl tn tr uk ur uz vi wo xh yi yo zh zu").Split(' ');
+    internal static readonly string[] Codes = ("af am ar ast az ba be bg bn br bs ca ceb cs cy da de el en es et fa ff fi fr fy ga gd gl gu ha he hi hr ht hu hy id ig ilo is it ja jv ka kk km kn ko lb lg ln lo lt lv mg mk ml mn mr ms my ne nl no ns oc or pa pl ps pt ro ru sd si sk sl so sq sr ss su sv sw ta th tl tn tr uk ur uz vi wo xh yi yo zh zu").Split(' ');
     private static readonly FrozenSet<string> SupportedCodes = Codes.ToFrozenSet(StringComparer.Ordinal);
     private static readonly FrozenDictionary<string, string> DetectorCodeToSupported = BuildDetectorCodeMap();
 
@@ -35,7 +37,6 @@ internal static partial class TranslationLanguages
         return map.ToFrozenDictionary(StringComparer.Ordinal);
     }
 
-    internal static string ModelTarget(string code) => code switch { "ns" => "nso", "tl" => "fil", _ => code };
     internal static string EnglishName(string code) => code switch
     {
         "ns" => "Northern Sotho",
@@ -65,6 +66,51 @@ internal static partial class TranslationLanguages
     });
     private static readonly SemaphoreSlim PassthroughGate = new(1, 1);
 
+    internal static async Task PrepareAsync(CancellationToken ct)
+    {
+        if (Detector.IsValueCreated) return;
+        await PassthroughGate.WaitAsync(ct).ConfigureAwait(false);
+        try
+        {
+            await Task.Run(() => { ct.ThrowIfCancellationRequested(); _ = Detector.Value; }, ct).ConfigureAwait(false);
+        }
+        finally { PassthroughGate.Release(); }
+    }
+
+    internal static async Task<TranslationLanguageAnalysis> AnalyzeAsync(string text, CancellationToken ct)
+    {
+        ct.ThrowIfCancellationRequested();
+        string normalized = text.Normalize(NormalizationForm.FormC);
+        string? scriptHint = TranslationPhraseGlossary.Find(normalized)?.Source ?? DetectUnambiguousScript(normalized);
+        bool longEnoughForPassthrough = HasAtLeastLetters(normalized, 40);
+        if (!longEnoughForPassthrough && (scriptHint != null || !HasAtLeastLetters(normalized, 12)))
+            return new(text, scriptHint, null, null);
+        await PassthroughGate.WaitAsync(ct).ConfigureAwait(false);
+        try
+        {
+            return await Task.Run(() =>
+            {
+                ct.ThrowIfCancellationRequested();
+                string? hint = scriptHint;
+                string? confident = null;
+                double? confidence = null;
+                if (longEnoughForPassthrough || (hint == null && HasAtLeastLetters(normalized, 12)))
+                {
+                    var best = Detector.Value.DetectAll(normalized).MaxBy(value => value.Probability);
+                    string? detected = FromDetectorCode(best?.Language);
+                    hint ??= detected;
+                    confidence = hint == detected ? best?.Probability : null;
+                    if (confidence >= 0.995) confident = detected;
+                }
+                ct.ThrowIfCancellationRequested();
+                string? passthrough = longEnoughForPassthrough && confident != null
+                    ? DetectForPassthroughCore(normalized, ct, confident) : null;
+                return new TranslationLanguageAnalysis(text, hint, confidence, passthrough);
+            }, ct).ConfigureAwait(false);
+        }
+        finally { PassthroughGate.Release(); }
+    }
+
     internal static string? Detect(string text)
     {
         text = text.Normalize(NormalizationForm.FormC);
@@ -83,19 +129,6 @@ internal static partial class TranslationLanguages
         return DetectForPassthroughCore(text, default);
     }
 
-    internal static async ValueTask<string?> DetectForPassthroughAsync(string text, CancellationToken ct)
-    {
-        ct.ThrowIfCancellationRequested();
-        text = text.Normalize(NormalizationForm.FormC);
-        if (!HasAtLeastLetters(text, 40)) return null;
-        await PassthroughGate.WaitAsync(ct).ConfigureAwait(false);
-        try
-        {
-            return await Task.Run(() => DetectForPassthroughCore(text, ct), ct).ConfigureAwait(false);
-        }
-        finally { PassthroughGate.Release(); }
-    }
-
     [StructLayout(LayoutKind.Sequential, Pack = 1)]
     private struct VnSubTextSlice
     {
@@ -103,10 +136,10 @@ internal static partial class TranslationLanguages
         public int length;
     }
 
-    private static string? DetectForPassthroughCore(string text, CancellationToken ct)
+    private static string? DetectForPassthroughCore(string text, CancellationToken ct, string? knownConfidentLanguage = null)
     {
         ct.ThrowIfCancellationRequested();
-        string? language = ConfidentLanguage(text);
+        string? language = knownConfidentLanguage ?? ConfidentLanguage(text);
         ct.ThrowIfCancellationRequested();
         if (language == null) return null;
 

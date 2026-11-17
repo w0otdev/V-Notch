@@ -92,6 +92,7 @@ public partial class SettingsWindow
         string fit = _translationHardware?.Fits(model) == false ? Loc.Get("translation.modelLowMemory") : Loc.Get("translation.modelEstimate");
         TranslationModelFitHint.Text = Loc.Get("translation.modelRequirements", model.MinimumRamGiB, model.GpuGiB) + " " + fit +
             (model.PromptKind == TranslationPromptKind.TranslateGemma ? " " + Loc.Get("translation.modelSourceHint") : "");
+        if (model.IsLite) TranslationModelFitHint.Text = Loc.Get("translation.liteHint");
         TranslationModelDetailsButton.Visibility = model.IsCustom ? Visibility.Collapsed : Visibility.Visible;
         TranslationDownloadPrivacy.Visibility = model.IsCustom ? Visibility.Collapsed : Visibility.Visible;
         if (model.IsCustom)

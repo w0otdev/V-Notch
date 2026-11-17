@@ -3,10 +3,10 @@ using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
 using System.Linq;
-using Xunit;
 using VNotch;
 using VNotch.Models;
 using VNotch.Services;
+using Xunit;
 
 namespace VNotch.Tests;
 

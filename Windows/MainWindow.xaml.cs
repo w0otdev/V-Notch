@@ -336,7 +336,7 @@ public partial class MainWindow : Window
                 _settingsService.SaveAsync(_settings).SafeFireAndForget("SETTINGS-SAVE");
             }
         }
-        _notchManager = new NotchManager(this, _settings, _transitionCoordinator);
+        _notchManager = new NotchManager(this, _settings);
         _mediaService = mediaService;
         _updateService = updateService;
         if (_updateService != null)
@@ -1626,6 +1626,16 @@ public partial class MainWindow : Window
     private void RefreshNotchLocalization()
     {
         _clipboardTrayView?.ApplyLocalization();
+        if (_activeAppNotification != null && !_isAiQuotaNotification)
+            ApplyAppNotificationContent(_activeAppNotification);
+        if (_currentMediaInfo is { IsMetadataPending: false } mediaInfo)
+        {
+            var text = MediaDisplayController.ResolveDisplayText(mediaInfo,
+                !string.IsNullOrEmpty(mediaInfo.CurrentTrack), _viewModel.Media.SourceIcon);
+            MediaPlayback.UpdateTitleText(text.Title);
+            MediaPlayback.UpdateArtistText(text.Artist);
+            CompactTitleMarquee.SetCurrentValue(TextBlock.TextProperty, text.Title);
+        }
         LocalizedPresentation.Apply(this);
         RefreshAccessibleNames();
         EventText.Text = Loc.Get("greeting.enjoyDay");

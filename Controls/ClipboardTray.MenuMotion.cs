@@ -15,15 +15,6 @@ public sealed partial class ClipboardTray
     private readonly Dictionary<ContextMenu, FrameworkElement> _menuAnimationTargets = [];
     private static bool MenuKeyboardInput => InputManager.Current.MostRecentInputDevice is KeyboardDevice;
 
-    internal static readonly BackEase AppleSpring = CreateAppleSpring();
-
-    private static BackEase CreateAppleSpring()
-    {
-        var ease = new BackEase { EasingMode = EasingMode.EaseOut, Amplitude = 0.32 };
-        ease.Freeze();
-        return ease;
-    }
-
     private void QueueMenuEntrance(FrameworkElement surface, FrameworkElement? target, Func<bool> isOpen, bool fresh, bool submenu = false)
     {
         if (MenuKeyboardInput || AnimationConfig.ReduceMotion || !AnimationConfig.ClientAreaAnimation)

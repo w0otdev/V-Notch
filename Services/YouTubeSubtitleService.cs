@@ -325,16 +325,6 @@ internal sealed partial class YouTubeSubtitleService : IDisposable
             || host.EndsWith(".youtube.com", StringComparison.OrdinalIgnoreCase) || host.Equals("captions.test", StringComparison.OrdinalIgnoreCase);
     }
 
-    private static async Task<string?> ReadBoundedStringAsync(HttpResponseMessage response, int maxBytes, CancellationToken token)
-    {
-        try
-        {
-            using var body = await PooledUtf8Response.ReadAsync(response, maxBytes, token).ConfigureAwait(false);
-            return body.Length == 0 ? null : Encoding.UTF8.GetString(body.Span);
-        }
-        catch (InvalidDataException) { return null; }
-    }
-
     private async Task<List<LyricLine>?> FetchViaInnertubeAsync(string videoId, CancellationToken token)
     {
         try

@@ -168,7 +168,7 @@ public partial class SpotlightWindow
             VerticalAlignment = VerticalAlignment.Center
         };
         row.Children.Add(_aiThinkingOrb);
-        row.Children.Add(new TextBlock
+        var thinkingLabel = new TextBlock
         {
             Text = Loc.Get("spotlight.ai.thinking"),
             FontFamily = (FontFamily)FindResource("SFProDisplay"),
@@ -176,7 +176,10 @@ public partial class SpotlightWindow
             FontWeight = FontWeights.Bold,
             Foreground = Controls.SpotlightChatPalette.Secondary,
             VerticalAlignment = VerticalAlignment.Center
-        });
+        };
+        thinkingLabel.SetBinding(Controls.TextShimmer.IsActiveProperty,
+            new System.Windows.Data.Binding(nameof(Controls.ThinkingOrb.IsActive)) { Source = _aiThinkingOrb });
+        row.Children.Add(thinkingLabel);
         _aiThinkingCard = new Border
         {
             Background = Brushes.Transparent,

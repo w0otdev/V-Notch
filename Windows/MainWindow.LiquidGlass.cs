@@ -1121,15 +1121,6 @@ public partial class MainWindow
 
     private static bool IsSystemTransparencyEnabled() => LiquidGlassSurfaceBinder.ReadSystemTransparencySetting();
 
-    public void UpdateGlassMediaTint(Color dominantColor)
-    {
-        // Feature disabled per user request: Do not tint liquid glass based on media thumbnail.
-    }
-
-    public void ClearGlassMediaTint()
-    {
-        // Feature disabled: Do not tint liquid glass based on media thumbnail.
-    }
 #pragma warning disable S1144 // Invoked via reflection in MainWindowGlassPresentationTests
     private void UpdateDynamicGlassTint()
     {

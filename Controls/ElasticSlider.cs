@@ -483,11 +483,6 @@ public partial class ElasticSlider : Slider
         _lastAnimatedValue = Value;
     }
 
-    private void AnimateFillSpring()
-    {
-        AnimateFillSmooth();
-    }
-
     private void AnimateFillSmooth()
     {
         if (_fillBorder == null || _rootBorder == null) return;
@@ -670,13 +665,6 @@ public partial class ElasticSlider : Slider
         double f = 0.0, step = 1.0, snapped = Value;
         int ticks = 1;
         return NativeComputeElasticSliderMetrics(Value, Minimum, Maximum, TickFrequency, &f, &step, &ticks, &snapped) == 0 ? step : 1.0;
-    }
-
-    private unsafe int GetTickCount()
-    {
-        double f = 0.0, step = 1.0, snapped = Value;
-        int ticks = 1;
-        return NativeComputeElasticSliderMetrics(Value, Minimum, Maximum, TickFrequency, &f, &step, &ticks, &snapped) == 0 ? ticks : 1;
     }
 
     private unsafe double SnapValue(double value)

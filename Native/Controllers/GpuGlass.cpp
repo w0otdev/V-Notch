@@ -675,12 +675,6 @@ public:
         Check(hr);
         return hr == S_OK && ready ? S_OK : S_FALSE;
     }
-    HRESULT TakeReady(IDirect3DSurface9** surface) {
-        if (CompletionReady() != S_OK) return S_FALSE;
-        Check(output[nextOutput].surface.CopyTo(surface));
-        nextOutput ^= 1; pending = false;
-        return S_OK;
-    }
     HRESULT PresentReady(IDirect3DSurface9* destination) {
         if (CompletionReady() != S_OK) return S_FALSE;
         auto& target = output[nextOutput];
@@ -744,12 +738,6 @@ VN_EXPORT int32_t __stdcall vn_glass_gpu_render_pixels(int64_t handle, const Fra
     try { return pipeline->RenderPixels(*frame, pixels, static_cast<UINT>(stride)); }
     catch (HRESULT hr) { return pipeline->captureResult = hr; }
     catch (...) { return pipeline->captureResult = E_FAIL; }
-}
-VN_EXPORT int32_t __stdcall vn_glass_gpu_take_ready(int64_t handle, IDirect3DSurface9** surface) noexcept {
-    if (!surface) return E_INVALIDARG;
-    *surface = nullptr; auto pipeline = pipelines.Acquire(handle);
-    if (!pipeline) return E_INVALIDARG;
-    try { return pipeline->TakeReady(surface); } catch (HRESULT hr) { return hr; } catch (...) { return E_FAIL; }
 }
 VN_EXPORT void __stdcall vn_glass_gpu_destroy(int64_t handle) noexcept { pipelines.Remove(handle); }
 VN_EXPORT int32_t __stdcall vn_glass_gpu_wait_ready(int64_t handle, uint32_t timeoutMs) noexcept {

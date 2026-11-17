@@ -10,25 +10,6 @@ namespace vnotch::services
     class YouTubeMetadataParsing final
     {
     public:
-        static int32_t vn_youtube_looks_like_quota_exceeded_impl(const char16_t* body_ptr, int32_t body_len, uint8_t* out_exceeded) noexcept
-        {
-    if (out_exceeded == nullptr)
-    {
-        return VN_ERR_INVALID_ARG;
-    }
-    std::u16string_view sv = make_u16_view(body_ptr, body_len);
-    if (is_null_or_whitespace(sv))
-    {
-        *out_exceeded = 0u;
-        return VN_OK;
-    }
-    bool ex = contains_ordinal(sv, u"quotaExceeded") ||
-              contains_ordinal(sv, u"dailyLimitExceeded") ||
-              contains_ordinal(sv, u"rateLimitExceeded");
-    *out_exceeded = ex ? 1u : 0u;
-    return VN_OK;
-}
-
         static int32_t vn_youtube_parse_iso8601_duration_ticks_impl(const char16_t* iso_ptr, int32_t iso_len, int64_t* out_ticks) noexcept
         {
     if (out_ticks == nullptr)
@@ -106,11 +87,6 @@ namespace vnotch::services
 
     };
 } // namespace vnotch::services
-
-VN_EXPORT int32_t vn_youtube_looks_like_quota_exceeded(const char16_t* body_ptr, int32_t body_len, uint8_t* out_exceeded) noexcept
-{
-    return vnotch::services::YouTubeMetadataParsing::vn_youtube_looks_like_quota_exceeded_impl(body_ptr, body_len, out_exceeded);
-}
 
 VN_EXPORT int32_t vn_youtube_parse_iso8601_duration_ticks(const char16_t* iso_ptr, int32_t iso_len, int64_t* out_ticks) noexcept
 {

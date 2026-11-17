@@ -83,8 +83,7 @@ public class MediaDisplayControllerTests
     [Fact]
     public void ProcessMediaUpdate_FirstTrackWithThumbnail_RevealsFirst()
     {
-        var result = _sut.ProcessMediaUpdate(Track("Song", thumb: NewThumb()),
-            isExpanded: true, isMusicExpanded: false, isMusicCompactMode: false, isAnimating: false);
+        var result = _sut.ProcessMediaUpdate(Track("Song", thumb: NewThumb()));
 
         Assert.Equal(MediaDisplayAction.Update, result.Action);
         Assert.True(result.IsNewTrack);
@@ -98,8 +97,8 @@ public class MediaDisplayControllerTests
     [Fact]
     public void ProcessMediaUpdate_SecondDistinctTrack_AnimatesSwitch()
     {
-        _sut.ProcessMediaUpdate(Track("Song1", thumb: NewThumb()), true, false, false, false);
-        var result = _sut.ProcessMediaUpdate(Track("Song2", thumb: NewThumb()), true, false, false, false);
+        _sut.ProcessMediaUpdate(Track("Song1", thumb: NewThumb()));
+        var result = _sut.ProcessMediaUpdate(Track("Song2", thumb: NewThumb()));
 
         Assert.True(result.IsNewTrack);
         Assert.Equal(ThumbnailAction.AnimateSwitch, result.ThumbnailAction);
@@ -109,8 +108,8 @@ public class MediaDisplayControllerTests
     public void ProcessMediaUpdate_SameTrackSameThumbnail_NoThumbnailAction()
     {
         var thumb = NewThumb();
-        _sut.ProcessMediaUpdate(Track("Song", thumb: thumb), true, false, false, false);
-        var result = _sut.ProcessMediaUpdate(Track("Song", thumb: thumb), true, false, false, false);
+        _sut.ProcessMediaUpdate(Track("Song", thumb: thumb));
+        var result = _sut.ProcessMediaUpdate(Track("Song", thumb: thumb));
 
         Assert.False(result.IsNewTrack);
         Assert.Equal(ThumbnailAction.None, result.ThumbnailAction);
@@ -119,7 +118,7 @@ public class MediaDisplayControllerTests
     [Fact]
     public void ProcessMediaUpdate_NewTrackWithoutThumbnail_ShowsFallback()
     {
-        var result = _sut.ProcessMediaUpdate(Track("Song", thumb: null), true, false, false, false);
+        var result = _sut.ProcessMediaUpdate(Track("Song", thumb: null));
 
         Assert.Equal(MediaDisplayAction.Update, result.Action);
         Assert.True(result.IsNewTrack);
@@ -131,12 +130,12 @@ public class MediaDisplayControllerTests
     [Fact]
     public void ProcessMediaUpdate_StaleThumbnailOnlyUpdate_IsIgnored()
     {
-        _sut.ProcessMediaUpdate(Track("Song", thumb: NewThumb()), true, false, false, false);
+        _sut.ProcessMediaUpdate(Track("Song", thumb: NewThumb()));
 
         var stale = Track("OtherSong", thumb: NewThumb());
         stale.IsThumbnailOnlyUpdate = true;
 
-        var result = _sut.ProcessMediaUpdate(stale, true, false, false, false);
+        var result = _sut.ProcessMediaUpdate(stale);
         Assert.Equal(MediaDisplayAction.Ignore, result.Action);
     }
 
@@ -148,7 +147,7 @@ public class MediaDisplayControllerTests
     public void ProcessMediaUpdate_NoTrackNotPlaying_Clears()
     {
         var info = new MediaInfo { CurrentTrack = "", IsAnyMediaPlaying = false };
-        var result = _sut.ProcessMediaUpdate(info, true, false, false, false);
+        var result = _sut.ProcessMediaUpdate(info);
 
         Assert.Equal(MediaDisplayAction.Clear, result.Action);
         Assert.False(result.HasRealTrack);
@@ -158,7 +157,7 @@ public class MediaDisplayControllerTests
     public void ProcessMediaUpdate_NoTrackButPlaying_Updates()
     {
         var info = new MediaInfo { CurrentTrack = "", IsAnyMediaPlaying = true };
-        var result = _sut.ProcessMediaUpdate(info, true, false, false, false);
+        var result = _sut.ProcessMediaUpdate(info);
 
         Assert.Equal(MediaDisplayAction.Update, result.Action);
         Assert.False(result.HasRealTrack);
@@ -172,7 +171,7 @@ public class MediaDisplayControllerTests
     public void ProcessMediaUpdate_NoTrack_DisplaysPlaceholders()
     {
         var info = new MediaInfo { CurrentTrack = "", IsAnyMediaPlaying = false };
-        var result = _sut.ProcessMediaUpdate(info, true, false, false, false);
+        var result = _sut.ProcessMediaUpdate(info);
 
         Assert.Equal("No media playing", result.DisplayText.Title);
         Assert.Equal("Artist name", result.DisplayText.Artist);
@@ -181,8 +180,7 @@ public class MediaDisplayControllerTests
     [Fact]
     public void ProcessMediaUpdate_RealArtist_UsedDirectly()
     {
-        var result = _sut.ProcessMediaUpdate(Track("Song", artist: "Daft Punk", thumb: NewThumb()),
-            true, false, false, false);
+        var result = _sut.ProcessMediaUpdate(Track("Song", artist: "Daft Punk", thumb: NewThumb()));
 
         Assert.Equal("Song", result.DisplayText.Title);
         Assert.Equal("Daft Punk", result.DisplayText.Artist);
@@ -191,8 +189,7 @@ public class MediaDisplayControllerTests
     [Fact]
     public void ProcessMediaUpdate_TopicSuffix_IsStripped()
     {
-        var result = _sut.ProcessMediaUpdate(Track("Song", artist: "Some Band - Topic", thumb: NewThumb()),
-            true, false, false, false);
+        var result = _sut.ProcessMediaUpdate(Track("Song", artist: "Some Band - Topic", thumb: NewThumb()));
 
         Assert.Equal("Some Band", result.DisplayText.Artist);
     }
@@ -200,8 +197,7 @@ public class MediaDisplayControllerTests
     [Fact]
     public void ProcessMediaUpdate_GenericArtist_FallsBackToSource()
     {
-        var result = _sut.ProcessMediaUpdate(Track("Song", artist: "YouTube", source: "YouTube", thumb: NewThumb()),
-            true, false, false, false);
+        var result = _sut.ProcessMediaUpdate(Track("Song", artist: "YouTube", source: "YouTube", thumb: NewThumb()));
 
         Assert.Equal("YouTube", result.DisplayText.Artist);
     }
@@ -213,14 +209,14 @@ public class MediaDisplayControllerTests
     {
         var thumb = NewThumb();
         var initial = Track("Lối Chơi (Interlude)", artist: "Wren Evans", source: "Spotify", thumb: thumb);
-        var r1 = _sut.ProcessMediaUpdate(initial, true, false, false, false);
+        var r1 = _sut.ProcessMediaUpdate(initial);
         Assert.True(r1.IsNewTrack);
         Assert.Equal("Wren Evans", r1.DisplayText.Artist);
 
         var enriched = Track("Lối Chơi (Interlude)", artist: "Wren Evans, itsnk", source: "Spotify", thumb: thumb);
         Assert.True(VNotch.Services.MediaUpdateQueue.SameTrack(initial, enriched));
 
-        var r2 = _sut.ProcessMediaUpdate(enriched, true, false, false, false);
+        var r2 = _sut.ProcessMediaUpdate(enriched);
         Assert.False(r2.IsNewTrack);
         Assert.Equal(ThumbnailAction.None, r2.ThumbnailAction);
         Assert.Equal("Wren Evans, itsnk", r2.DisplayText.Artist);
@@ -240,7 +236,7 @@ public class MediaDisplayControllerTests
     [Fact]
     public void Reset_ClearsSignaturesAndBumpsGeneration()
     {
-        _sut.ProcessMediaUpdate(Track("Song", thumb: NewThumb()), true, false, false, false);
+        _sut.ProcessMediaUpdate(Track("Song", thumb: NewThumb()));
         int genBefore = _sut.ThumbnailSwitchGeneration;
 
         _sut.Reset();
@@ -248,7 +244,7 @@ public class MediaDisplayControllerTests
         Assert.Equal("", _sut.LastAnimatedTrackSignature);
         Assert.True(_sut.ThumbnailSwitchGeneration > genBefore);
 
-        var result = _sut.ProcessMediaUpdate(Track("Song", thumb: NewThumb()), true, false, false, false);
+        var result = _sut.ProcessMediaUpdate(Track("Song", thumb: NewThumb()));
         Assert.Equal(ThumbnailAction.RevealFirst, result.ThumbnailAction);
     }
 

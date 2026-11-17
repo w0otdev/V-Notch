@@ -4,21 +4,6 @@
 
 #pragma pack(push, 1)
 
-struct VnAiParsedWindow
-{
-    double used_percent;
-    int64_t reset_unix_seconds;
-    int32_t duration_minutes;
-    uint8_t has_duration;
-    uint8_t has_reset;
-    uint8_t label_kind;
-    uint8_t has_bucket;
-    uint8_t bucket_len;
-    uint8_t reserved[3];
-    uint8_t bucket_ascii[64];
-};
-static_assert(sizeof(VnAiParsedWindow) == 92);
-
 struct VnSubTextSlice
 {
     int32_t offset;
@@ -41,17 +26,6 @@ static_assert(sizeof(VnTextFactSpan) == 16);
 #pragma pack(pop)
 
 // AiUsage
-VN_EXPORT int32_t __stdcall vn_ai_usage_is_valid_bucket_id(
-    const wchar_t* id_ptr, int32_t id_len, uint8_t* out_valid) noexcept;
-
-VN_EXPORT int32_t __stdcall vn_ai_usage_parse_codex(
-    const wchar_t* json_ptr, int32_t json_len,
-    VnAiParsedWindow* out_windows, int32_t window_cap, int32_t* out_count) noexcept;
-
-VN_EXPORT int32_t __stdcall vn_ai_usage_parse_claude(
-    const wchar_t* json_ptr, int32_t json_len,
-    VnAiParsedWindow* out_windows, int32_t window_cap, int32_t* out_count) noexcept;
-
 VN_EXPORT int32_t __stdcall vn_claude_bridge_build_command(
     const wchar_t* script_ptr, int32_t script_len,
     wchar_t* out_buf, int32_t out_cap, int32_t* out_len) noexcept;

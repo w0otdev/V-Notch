@@ -539,12 +539,6 @@ public partial class SettingsWindow
         PushLivePreview();
     }
 
-    private void GlassConfigCheck_Changed(object sender, RoutedEventArgs e)
-    {
-        if (_isLoadingSettings) return;
-        PushLivePreview();
-    }
-
     private void GpuRefractionCheck_Changed(object sender, RoutedEventArgs e)
     {
         if (_isLoadingSettings) return;
