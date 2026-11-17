@@ -4,6 +4,9 @@ param(
     [int]$Jobs = 4
 )
 $ErrorActionPreference = 'Stop'
+# MSBuild can pass PowerShell 7's module path to Windows PowerShell unchanged.
+# Prefer this host's built-ins before autoloading Utility (Get-FileHash, etc.).
+$env:PSModulePath = (Join-Path $PSHOME 'Modules') + [IO.Path]::PathSeparator + $env:PSModulePath
 $Root = [IO.Path]::GetFullPath($Root)
 if (!$OutputDirectory) { $OutputDirectory = Join-Path $Root 'Native/out/translation' }
 $OutputDirectory = [IO.Path]::GetFullPath($OutputDirectory)
