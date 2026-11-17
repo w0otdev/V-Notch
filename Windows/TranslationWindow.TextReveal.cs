@@ -20,6 +20,8 @@ public partial class TranslationWindow
     private Dictionary<int, CharacterReveal>? _resultRevealCharacters;
     private readonly Stopwatch _resultRevealClock = new();
     private bool _buildingReveal;
+    // Instance-scoped so deterministic tests do not alter other windows' clocks.
+    internal Func<DoubleAnimation, AnimationClock>? ResultRevealClockFactory { get; set; }
     private sealed record CharacterReveal(SolidColorBrush Brush, double Start);
 
     private void QueueResultReveal(int visiblePrefixLength = 0, bool preserveProgress = false)
@@ -116,7 +118,9 @@ public partial class TranslationWindow
             var reveal = new DoubleAnimation(elapsed, end, TimeSpan.FromMilliseconds(end - elapsed)) { FillBehavior = FillBehavior.HoldEnd };
             Timeline.SetDesiredFrameRate(reveal, Math.Min(60, AnimationConfig.TargetFps));
             reveal.Completed += (_, _) => { if (version == _resultRevealVersion) StopResultReveal(); };
-            BeginAnimation(ResultRevealTimeProperty, reveal);
+            if (ResultRevealClockFactory is { } createClock)
+                ApplyAnimationClock(ResultRevealTimeProperty, createClock(reveal));
+            else BeginAnimation(ResultRevealTimeProperty, reveal);
         }
     }
 

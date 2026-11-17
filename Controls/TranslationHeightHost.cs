@@ -22,6 +22,8 @@ public sealed class TranslationHeightHost : Decorator
     internal bool IsMorphing { get; private set; }
     internal double TargetHeight => _targetHeight;
     internal double PresentedHeight => (double)GetValue(PresentedHeightProperty);
+    // Tests can pause and seek the real timeline without changing production timing.
+    internal Func<DoubleAnimation, AnimationClock>? AnimationClockFactory { get; set; }
     internal event Action? TargetHeightChanged;
     internal event Action? MorphCompleted;
 
@@ -72,7 +74,9 @@ public sealed class TranslationHeightHost : Decorator
                     IsMorphing = false;
                     MorphCompleted?.Invoke();
                 };
-                BeginAnimation(PresentedHeightProperty, motion);
+                if (AnimationClockFactory is { } createClock)
+                    ApplyAnimationClock(PresentedHeightProperty, createClock(motion));
+                else BeginAnimation(PresentedHeightProperty, motion);
             }
             TargetHeightChanged?.Invoke();
         }
