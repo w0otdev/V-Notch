@@ -17,7 +17,7 @@ internal static partial class ThinkingOrbGeometry
         {
             ThinkingOrbState.Working => Working(dots, size, seconds * 3.9),
             ThinkingOrbState.Composing => Composing(dots, size, seconds * 3.12),
-            ThinkingOrbState.Solving => Solving(dots, size, seconds * 1.82),
+            ThinkingOrbState.Solving => Solving(dots, size, seconds * 7.28),
             _ => throw new ArgumentOutOfRangeException(nameof(state))
         };
         Array.Sort(dots, 0, count, DepthOrder);

@@ -228,7 +228,7 @@ public sealed class SelectionTextReaderTests
     });
 
     [Fact]
-    public void WpfTreeViewAndTextBlockFallbackReadSelectedAndStaticText() => SharedStaTestRunner.Run(() =>
+    public void WpfTreeViewReadsSelectedItemButStaticTextIsNotASelection() => SharedStaTestRunner.Run(() =>
     {
         var tree = new System.Windows.Controls.TreeView();
         var rootNode = new System.Windows.Controls.TreeViewItem { Header = "Parent folder", IsExpanded = true };
@@ -258,10 +258,10 @@ public sealed class SelectionTextReaderTests
             var textElement = root.FindFirst(
                 System.Windows.Automation.TreeScope.Subtree,
                 new System.Windows.Automation.PropertyCondition(System.Windows.Automation.AutomationElement.NameProperty, "Static status message"));
+            childNode.IsSelected = false;
             using var textResult = SelectionTextReader.Read(hwnd, textElement, manual: true, out protectedInput, allowOwnProcess: true);
             Assert.False(protectedInput);
-            Assert.NotNull(textResult);
-            Assert.Equal("Static status message", textResult.Text);
+            Assert.Null(textResult);
         }
         finally { window.Close(); }
     });

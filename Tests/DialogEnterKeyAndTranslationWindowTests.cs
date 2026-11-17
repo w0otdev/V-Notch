@@ -86,7 +86,7 @@ public class DialogEnterKeyAndTranslationWindowTests
     }
 
     [Fact]
-    public void TranslationWindow_EnterKey_DoesNotTriggerTranslateWhenSecondaryButtonFocused()
+    public void TranslationWindow_EnterKey_DoesNotTriggerSummaryWhenSecondaryButtonFocused()
     {
         RunOnSta(() =>
         {
@@ -96,8 +96,8 @@ public class DialogEnterKeyAndTranslationWindowTests
             try
             {
                 using var source = new HwndSource(new HwndSourceParameters("TranslationEnterTest") { Width = 1, Height = 1 });
-                int translateCount = 0;
-                window.TranslateRequested += () => translateCount++;
+                int summaryCount = 0;
+                window.SummarizeRequested += () => summaryCount++;
                 window.CopyButton.IsEnabled = true;
 
                 FocusManager.SetFocusedElement(window, window.CopyButton);
@@ -107,7 +107,7 @@ public class DialogEnterKeyAndTranslationWindowTests
                     RoutedEvent = UIElement.PreviewKeyDownEvent
                 };
                 window.RaiseEvent(copyEnter);
-                Assert.Equal(0, translateCount);
+                Assert.Equal(0, summaryCount);
                 Assert.False(copyEnter.Handled);
 
                 FocusManager.SetFocusedElement(window, window.CloseButton);
@@ -117,18 +117,18 @@ public class DialogEnterKeyAndTranslationWindowTests
                     RoutedEvent = UIElement.PreviewKeyDownEvent
                 };
                 window.RaiseEvent(closeEnter);
-                Assert.Equal(0, translateCount);
+                Assert.Equal(0, summaryCount);
                 Assert.False(closeEnter.Handled);
 
-                FocusManager.SetFocusedElement(window, window.TranslateButton);
-                window.TranslateButton.Focus();
-                var translateEnter = new KeyEventArgs(Keyboard.PrimaryDevice, source, 0, Key.Enter)
+                FocusManager.SetFocusedElement(window, window.SummarizeButton);
+                window.SummarizeButton.Focus();
+                var summaryEnter = new KeyEventArgs(Keyboard.PrimaryDevice, source, 0, Key.Enter)
                 {
                     RoutedEvent = UIElement.PreviewKeyDownEvent
                 };
-                window.RaiseEvent(translateEnter);
-                Assert.Equal(1, translateCount);
-                Assert.True(translateEnter.Handled);
+                window.RaiseEvent(summaryEnter);
+                Assert.Equal(1, summaryCount);
+                Assert.True(summaryEnter.Handled);
 
                 FocusManager.SetFocusedElement(window, window);
                 window.Focus();
@@ -137,7 +137,7 @@ public class DialogEnterKeyAndTranslationWindowTests
                     RoutedEvent = UIElement.PreviewKeyDownEvent
                 };
                 window.RaiseEvent(windowEnter);
-                Assert.Equal(2, translateCount);
+                Assert.Equal(2, summaryCount);
                 Assert.True(windowEnter.Handled);
             }
             finally

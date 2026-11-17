@@ -115,7 +115,7 @@ public sealed class TranslationSameLanguageTests
         window.ShowActivated = false;
         typeof(LiveTranslationController).GetField("_text", BindingFlags.NonPublic | BindingFlags.Instance)!.SetValue(controller, ScreenshotText);
         window.ShowClipboard(ScreenshotText);
-        window.TranslateButton.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+        _ = typeof(LiveTranslationController).GetMethod("TranslateAsync", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)!.Invoke(controller, null);
         await WpfFrameWaiter.UntilAsync(() => window.CopyButton.IsEnabled, "same-language result without a model", ct);
         Assert.Equal(ScreenshotText, window.OutputText);
         Assert.Equal(0, engine.Preparations + engine.Fits + engine.Calls);

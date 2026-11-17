@@ -6,7 +6,7 @@ using VNotch.Services.Translation;
 
 namespace VNotch.Controllers;
 
-internal sealed class LiveTranslationController : IDisposable
+internal sealed partial class LiveTranslationController : IDisposable
 {
     private readonly Dispatcher _dispatcher;
     private readonly Action _manageModel;
@@ -263,6 +263,7 @@ internal sealed class LiveTranslationController : IDisposable
         var window = new TranslationWindow(_settings.TranslationSourceLanguage, _settings.TranslationTargetLanguage);
         window.ConfigureFormatting(_settings.FormatTranslationText);
         window.TranslateRequested += () => _ = TranslateAsync();
+        window.SummarizeRequested += () => _ = SummarizeAsync();
         window.CancelRequested += () => { CancelRequest(); window.SetStatus("translation.cancelled"); };
         window.ReplaceRequested += () => _ = ReplaceAsync();
         window.ManageModelRequested += () => { window.Dismiss(); _manageModel(); };
@@ -305,6 +306,7 @@ internal sealed class LiveTranslationController : IDisposable
             var window = EnsureWindow();
             window.ShowClipboard(_text, _inputWasTruncated);
             if (_text.Length == 0) window.SetStatus("translation.noSelection");
+            else _ = TranslateAsync();
         }
         catch (System.Runtime.InteropServices.COMException)
         {

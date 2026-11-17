@@ -82,8 +82,9 @@ internal static partial class TranslationLanguages
         ct.ThrowIfCancellationRequested();
         string normalized = text.Normalize(NormalizationForm.FormC);
         string? scriptHint = TranslationPhraseGlossary.Find(normalized)?.Source ?? DetectUnambiguousScript(normalized);
-        bool longEnoughForPassthrough = HasAtLeastLetters(normalized, 40);
-        if (!longEnoughForPassthrough && (scriptHint != null || !HasAtLeastLetters(normalized, 12)))
+        // Short sentences can be identified confidently too. Requiring 40 letters
+        // sent already-translated selections through model loading and inference.
+        if (!HasAtLeastLetters(normalized, 12))
             return new(text, scriptHint, null, null);
         await PassthroughGate.WaitAsync(ct).ConfigureAwait(false);
         try
@@ -92,18 +93,13 @@ internal static partial class TranslationLanguages
             {
                 ct.ThrowIfCancellationRequested();
                 string? hint = scriptHint;
-                string? confident = null;
-                double? confidence = null;
-                if (longEnoughForPassthrough || (hint == null && HasAtLeastLetters(normalized, 12)))
-                {
-                    var best = Detector.Value.DetectAll(normalized).MaxBy(value => value.Probability);
-                    string? detected = FromDetectorCode(best?.Language);
-                    hint ??= detected;
-                    confidence = hint == detected ? best?.Probability : null;
-                    if (confidence >= 0.995) confident = detected;
-                }
+                var best = Detector.Value.DetectAll(normalized).MaxBy(value => value.Probability);
+                string? detected = FromDetectorCode(best?.Language);
+                hint ??= detected;
+                double? confidence = hint == detected ? best?.Probability : null;
+                string? confident = confidence >= 0.995 ? detected : null;
                 ct.ThrowIfCancellationRequested();
-                string? passthrough = longEnoughForPassthrough && confident != null
+                string? passthrough = confident != null
                     ? DetectForPassthroughCore(normalized, ct, confident) : null;
                 return new TranslationLanguageAnalysis(text, hint, confidence, passthrough);
             }, ct).ConfigureAwait(false);
@@ -125,7 +121,7 @@ internal static partial class TranslationLanguages
     internal static string? DetectForPassthrough(string text)
     {
         text = text.Normalize(NormalizationForm.FormC);
-        if (!HasAtLeastLetters(text, 40)) return null;
+        if (!HasAtLeastLetters(text, 12)) return null;
         return DetectForPassthroughCore(text, default);
     }
 
@@ -160,11 +156,14 @@ internal static partial class TranslationLanguages
             ct.ThrowIfCancellationRequested();
             VnSubTextSlice s = slices[i];
             if (s.length == text.Length) continue;
-            if (HasAtLeastLettersSpan(textSpan.Slice(s.offset, s.length), 12) &&
-                ConfidentLanguage(text.Substring(s.offset, s.length)) != language)
-            {
+            ReadOnlySpan<char> sentence = textSpan.Slice(s.offset, s.length);
+            if (!HasAtLeastLettersSpan(sentence, 12)) continue;
+            string? sentenceLanguage = ConfidentLanguage(text.Substring(s.offset, s.length));
+            // Headings and short list items (e.g. "Project management") can be
+            // ambiguous in isolation. Use the confidently detected document as
+            // context, but still reject another language or uncertain full prose.
+            if (sentenceLanguage != null ? sentenceLanguage != language : HasAtLeastLettersSpan(sentence, 40))
                 return null;
-            }
         }
         return language;
     }

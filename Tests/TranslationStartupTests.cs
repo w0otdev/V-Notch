@@ -33,7 +33,7 @@ public sealed class TranslationStartupTests
         window.ShowActivated = false;
         typeof(LiveTranslationController).GetField("_text", BindingFlags.NonPublic | BindingFlags.Instance)!.SetValue(controller, "USD 10");
         window.ShowClipboard("USD 10");
-        window.TranslateButton.RaiseEvent(new System.Windows.RoutedEventArgs(System.Windows.Controls.Button.ClickEvent));
+        _ = typeof(LiveTranslationController).GetMethod("TranslateAsync", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)!.Invoke(controller, null);
         await WpfFrameWaiter.UntilAsync(() => window.ResultText.Text.EndsWith(target), "currency result without model", ct);
         Assert.Equal(0, engine.Calls);
         Assert.False(engine.Preparing.Task.IsCompleted);
@@ -64,7 +64,7 @@ public sealed class TranslationStartupTests
         window.ShowActivated = false;
         typeof(LiveTranslationController).GetField("_text", BindingFlags.NonPublic | BindingFlags.Instance)!.SetValue(controller, "USD 10");
         window.ShowClipboard("USD 10");
-        window.TranslateButton.RaiseEvent(new System.Windows.RoutedEventArgs(System.Windows.Controls.Button.ClickEvent));
+        _ = typeof(LiveTranslationController).GetMethod("TranslateAsync", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)!.Invoke(controller, null);
         await WpfFrameWaiter.UntilAsync(() => window.ResultText.Text == "USD 10", "local fallback", ct);
         Assert.Equal(1, engine.Calls);
     });
@@ -148,7 +148,7 @@ public sealed class TranslationStartupTests
             window.ShowActivated = false;
             typeof(LiveTranslationController).GetField("_text", BindingFlags.NonPublic | BindingFlags.Instance)!.SetValue(controller, "hello");
             window.ShowClipboard("hello");
-            window.TranslateButton.RaiseEvent(new System.Windows.RoutedEventArgs(System.Windows.Controls.Button.ClickEvent));
+            _ = typeof(LiveTranslationController).GetMethod("TranslateAsync", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)!.Invoke(controller, null);
             await WpfFrameWaiter.UntilAsync(() => window.OutputText == "vi result" && window.CopyButton.IsEnabled, "cached result during model preparation", ct);
             Assert.False(preparation.IsCompleted);
             Assert.Equal(1, engine.Calls);
@@ -382,7 +382,7 @@ public sealed class TranslationStartupTests
             // begin on a worker thread, independently of render/animation progress.
             var entrance = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
             typeof(TranslationWindow).GetField("_entranceCompletion", BindingFlags.NonPublic | BindingFlags.Instance)!.SetValue(window, entrance);
-            window.TranslateButton.RaiseEvent(new System.Windows.RoutedEventArgs(System.Windows.Controls.Button.ClickEvent));
+            _ = typeof(LiveTranslationController).GetMethod("TranslateAsync", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)!.Invoke(controller, null);
             Assert.True(engine.Translating.Task.Wait(TimeSpan.FromSeconds(3)));
             Assert.False(entrance.Task.IsCompleted);
             Assert.NotEqual(uiThread, inferenceThread);
@@ -409,7 +409,7 @@ public sealed class TranslationStartupTests
         window.ShowActivated = false;
         typeof(LiveTranslationController).GetField("_text", BindingFlags.NonPublic | BindingFlags.Instance)!.SetValue(controller, "hello");
         window.ShowSelection(new(1, "hello", new System.Windows.Rect(100, 100, 100, 20), IntPtr.Zero, false), true);
-        window.TranslateButton.RaiseEvent(new System.Windows.RoutedEventArgs(System.Windows.Controls.Button.ClickEvent));
+        _ = typeof(LiveTranslationController).GetMethod("TranslateAsync", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)!.Invoke(controller, null);
         Assert.True(window.IsPresentationAnimating);
         Assert.True(engine.Translating.Task.Wait(TimeSpan.FromSeconds(3)));
         if (action == "cancel") window.CancelButton.RaiseEvent(new System.Windows.RoutedEventArgs(System.Windows.Controls.Button.ClickEvent));
@@ -435,7 +435,7 @@ public sealed class TranslationStartupTests
         window.Opacity = 0;
         typeof(LiveTranslationController).GetField("_text", BindingFlags.NonPublic | BindingFlags.Instance)!.SetValue(controller, "hello");
         window.ShowSelection(new(1, "hello", new System.Windows.Rect(100, 100, 100, 20), IntPtr.Zero, false), true);
-        window.TranslateButton.RaiseEvent(new System.Windows.RoutedEventArgs(System.Windows.Controls.Button.ClickEvent));
+        _ = typeof(LiveTranslationController).GetMethod("TranslateAsync", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)!.Invoke(controller, null);
         await engine.Preparing.Task.WaitAsync(ct);
         var preparation = controller.PrepareModelAsync();
         window.Dismiss();
@@ -507,7 +507,7 @@ public sealed class TranslationStartupTests
         window.Opacity = 0;
         typeof(LiveTranslationController).GetField("_text", BindingFlags.NonPublic | BindingFlags.Instance)!.SetValue(controller, "USD 50");
         window.ShowClipboard("USD 50");
-        window.TranslateButton.RaiseEvent(new System.Windows.RoutedEventArgs(System.Windows.Controls.Button.ClickEvent));
+        _ = typeof(LiveTranslationController).GetMethod("TranslateAsync", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)!.Invoke(controller, null);
         await handler.Started.Task.WaitAsync(ct);
         window.SourceCurrencyCombo.SelectedValue = "SGD";
         window.TargetCurrencyCombo.SelectedValue = "EUR";
@@ -532,7 +532,7 @@ public sealed class TranslationStartupTests
         typeof(LiveTranslationController).GetField("_text", BindingFlags.NonPublic | BindingFlags.Instance)!.SetValue(controller, "hello");
         window.ShowClipboard("hello");
         await window.WaitForEntranceAsync(ct);
-        window.TranslateButton.RaiseEvent(new System.Windows.RoutedEventArgs(System.Windows.Controls.Button.ClickEvent));
+        _ = typeof(LiveTranslationController).GetMethod("TranslateAsync", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)!.Invoke(controller, null);
         await engine.Translating.Task.WaitAsync(ct);
         Assert.Null(engine.Preview);
         await WpfFrameWaiter.NextAsync(ct);

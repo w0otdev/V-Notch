@@ -50,7 +50,7 @@ public sealed class TranslationColdStartIntegrationTests(ITestOutputHelper outpu
                 typeof(LiveTranslationController).GetField("_text", flags)!.SetValue(controller, text);
                 window.ShowClipboard(text);
                 var timer = Stopwatch.StartNew();
-                window.TranslateButton.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                _ = typeof(LiveTranslationController).GetMethod("TranslateAsync", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)!.Invoke(controller, null);
                 await WpfFrameWaiter.UntilAsync(() => window.ResultText.Text.Length > 0, "first visible translation", ct);
                 double firstPreviewMs = timer.Elapsed.TotalMilliseconds;
                 await WpfFrameWaiter.UntilAsync(() => window.CopyButton.IsEnabled, "complete first popup translation", ct);

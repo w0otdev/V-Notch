@@ -27,6 +27,7 @@ public partial class TranslationWindow
 
     private void ResetSelectionUx()
     {
+        _summarySource = null;
         SetInputTruncated(false);
         ConfigureCurrencies(false, null, null);
         CurrencyNumberOnlyCheck.IsChecked = true;
@@ -62,6 +63,7 @@ public partial class TranslationWindow
     {
         if (_configuringCurrencies || SourceCurrencyCombo.SelectedValue == null || TargetCurrencyCombo.SelectedValue == null) return;
         StopResultReveal();
+        _summarySource = null;
         _result = null; ResultText.Clear(); CopyButton.IsEnabled = ReplaceButton.IsEnabled = false;
         UpdateReplacementHint();
         CurrenciesChanged?.Invoke(TranslationCurrencies.Supported(SourceCurrencyCombo.SelectedValue as string) ? (string)SourceCurrencyCombo.SelectedValue : null,

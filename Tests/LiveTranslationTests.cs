@@ -126,7 +126,7 @@ public sealed class LiveTranslationTests
             window.CancelButton.RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Button.ClickEvent));
             Assert.True(cancelled);
             window.SetStatus("translation.cancelled");
-            Assert.True(window.TranslateButton.IsEnabled);
+            Assert.True(window.SummarizeButton.IsEnabled);
             Assert.Equal(Visibility.Collapsed, window.CancelButton.Visibility);
         }
         finally { window.Close(); }
