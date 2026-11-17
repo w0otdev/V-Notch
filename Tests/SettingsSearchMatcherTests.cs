@@ -95,7 +95,7 @@ public sealed class SettingsSearchMatcherTests
         XNamespace xaml = "http://schemas.microsoft.com/winfx/2006/xaml";
         string[] panelNames =
         {
-            "PanelAppearance", "PanelBehavior", "PanelSkins", "PanelDevices", "PanelSystem", "PanelPrivacy", "PanelSpotlight",
+            "PanelAppearance", "PanelBehavior", "PanelDevices", "PanelSystem", "PanelPrivacy", "PanelSpotlight",
             "PanelFileTray", "PanelAdvanced", "PanelPerformance", "PanelDonating", "PanelUpdates"
         };
 

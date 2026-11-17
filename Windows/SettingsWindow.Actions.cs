@@ -139,7 +139,7 @@ public partial class SettingsWindow
         _hasRevertedLivePreview = true;
         var baseline = _editSession.Revert();
         _settings = baseline.Clone();
-        ApplyGpuPreference(GetEffectiveGpuPreference(baseline));
+        ApplyGpuPreference(baseline.GpuPreference);
         InteractionSounds.Configure(baseline.EnableInteractionSounds, baseline.InteractionSoundVolume);
         ProcessPriorityPolicy.Apply(baseline.ProcessPriority);
         WindowTitleScanner.UpdateInspectionAllowed(baseline.EnableBrowserUrlInspection);
@@ -560,7 +560,6 @@ public partial class SettingsWindow
         snapshot.InteractionSoundVolume = InteractionSoundVolumeSlider.Value / 100;
         snapshot.EnableBlurEffects = EnableBlurEffectsCheck.IsChecked ?? true;
         snapshot.ShowMediaArtBackground = MediaArtBackgroundCheck.IsChecked ?? true;
-        ReadLiquidGlassUi(snapshot);
         snapshot.EnableSubjectBlur = EnableSubjectBlurCheck.IsChecked ?? true;
         snapshot.EnableSmartCrop = EnableSmartCropCheck.IsChecked ?? true;
         snapshot.EnableSpotifyLyrics = EnableSpotifyLyricsCheck.IsChecked ?? true;
@@ -573,6 +572,8 @@ public partial class SettingsWindow
         snapshot.SubtitlePriority = GetSubtitlePriorityString();
 
         snapshot.EnableDynamicIslandMode = DynamicIslandModeCheck.IsChecked ?? false;
+        snapshot.EnableTopLeftCornerMode = TopLeftCornerModeCheck.IsChecked ?? false;
+        snapshot.TopLeftCornerFloatingCircle = TopLeftCornerFloatingCheck.IsChecked ?? false;
         snapshot.EnableShadow = EnableShadowCheck.IsChecked ?? true;
 
         snapshot.EnableHoverExpand = HoverExpandCheck.IsChecked ?? true;
@@ -665,11 +666,6 @@ public partial class SettingsWindow
             VNotch.Services.WindowTitleScanner.UpdateInspectionAllowed(snapshot.EnableBrowserUrlInspection);
         }
 
-        if (IsLiquidGlassConfigChanged(appliedSettings, snapshot))
-        {
-            ApplyLiquidGlassSkin();
-        }
-
         bool hasChanges = _editSession.Preview(snapshot);
         _settings = snapshot.Clone();
 
@@ -679,20 +675,6 @@ public partial class SettingsWindow
         }
 
         return hasChanges;
-    }
-
-    private static bool IsLiquidGlassConfigChanged(NotchSettings? oldSettings, NotchSettings? newSettings)
-    {
-        if (oldSettings == null || newSettings == null) return true;
-        if (!string.Equals(oldSettings.NotchStyle, newSettings.NotchStyle, StringComparison.OrdinalIgnoreCase))
-            return true;
-        if (!string.Equals(oldSettings.LiquidGlassPreset, newSettings.LiquidGlassPreset, StringComparison.OrdinalIgnoreCase))
-            return true;
-        if ((oldSettings.LiquidGlass == null) != (newSettings.LiquidGlass == null))
-            return true;
-        if (oldSettings.LiquidGlass != null && newSettings.LiquidGlass != null && !oldSettings.LiquidGlass.ValueEquals(newSettings.LiquidGlass))
-            return true;
-        return false;
     }
 
     internal async Task SaveAsync(NotchSettings snapshot, CancellationToken ct = default)

@@ -215,7 +215,6 @@ public sealed class MainWindowLyricsPresentationTests
         var window = fixture.Window;
         var settings = Field<NotchSettings>(window, "_settings");
         settings.EnableBlurEffects = settings.ShowMediaArtBackground = true;
-        settings.NotchStyle = "default";
         settings.BrightenDarkLyricsBackground = false;
         window.SetDebugViewLock(true);
         window.Show();

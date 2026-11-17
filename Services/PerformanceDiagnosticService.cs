@@ -513,7 +513,7 @@ public sealed partial class PerformanceDiagnosticService
             _currentHealthLevel = PerformanceHealthLevel.Warning;
             _currentHealthSummary = $"FPS Drop: {m.Fps:0} FPS ({m.FrameTimeMs:0.0}ms frame time)";
             AddLog(PerformanceHealthLevel.Warning, "BOTTLENECK-FPS",
-                $"Frame drop ({m.Fps:0} FPS, {m.FrameTimeMs:0.0}ms frame time). Cause: Render composition pipeline exceeded target {targetFrameBudgetMs:0.0}ms frame budget (DWM composition or GPU refraction overhead).");
+                $"Frame drop ({m.Fps:0} FPS, {m.FrameTimeMs:0.0}ms frame time). Cause: Render composition pipeline exceeded target {targetFrameBudgetMs:0.0}ms frame budget (DWM composition overhead).");
             return true;
         }
 
@@ -605,7 +605,7 @@ public sealed partial class PerformanceDiagnosticService
             _currentHealthLevel = level;
             _currentHealthSummary = $"High V-Notch CPU: {m.ProcCpu:0.0}%";
             AddLog(level, "BOTTLENECK-CPU",
-                $"High CPU usage by V-Notch ({m.ProcCpu:0.0}% across {m.ThreadCount} threads). Cause: Active liquid glass refraction, shader convolution, or rapid polling loops.");
+                $"High CPU usage by V-Notch ({m.ProcCpu:0.0}% across {m.ThreadCount} threads). Cause: Active rendering work or rapid polling loops.");
         }
 
         if (m.GlobalCpu > 92.0 && (now - _lastGlobalCpuAlert).TotalSeconds > 4.0)

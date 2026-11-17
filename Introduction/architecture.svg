@@ -267,7 +267,7 @@
 <path d="M 1140.1355055491726 714.857876370711 Q 966.6237777588365 714.8426272217401 795.3599842959268 715.4508344479027" stroke="#553c9a" stroke-width="1.4" stroke-opacity="0.6" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
 <path d="M 794.6468775930997 715.1333284980211 Q 794.6001618085176 495.0237729182754 795.731025152012 275.6908831709335" stroke="#553c9a" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
 <path d="M 795.4352299312892 715.3226878266443 Q 794.2984500460415 495.1763727055245 794.898887557876 275.41726235968093" stroke="#553c9a" stroke-width="1.4" stroke-opacity="0.6" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
-<text x="815" y="302" font-family="'Segoe Print', 'Comic Sans MS', cursive, sans-serif" font-size="14" font-weight="bold" fill="#553c9a">System Widgets &amp; Optics</text>
+<text x="815" y="302" font-family="'Segoe Print', 'Comic Sans MS', cursive, sans-serif" font-size="14" font-weight="bold" fill="#553c9a">System Widgets &amp; Devices</text>
 <rect x="815" y="320" width="305" height="50" rx="6" fill="#ffffff" />
 <path d="M 815.1986170437119 319.8916310282325 Q 966.7723570351641 320.1561403811254 1120.3691393452752 319.3835271425426" stroke="#553c9a" stroke-width="1.3" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
 <path d="M 815.2620152145479 320.07140711203425 Q 966.8620163771798 318.98887306139903 1119.7406341344154 320.2870138169463" stroke="#553c9a" stroke-width="0.9099999999999999" stroke-opacity="0.6" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
@@ -310,8 +310,8 @@
 <path d="M 1120.3166328863892 564.5928382812363 Q 968.2210570684219 564.2883639475427 814.5247945490163 564.7934993928031" stroke="#553c9a" stroke-width="0.9099999999999999" stroke-opacity="0.6" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
 <path d="M 814.2740522809016 564.2194430994141 Q 816.2846724849189 541.1079920093757 815.7782565983017 514.6752631571718" stroke="#553c9a" stroke-width="1.3" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
 <path d="M 814.5295489923711 565.1076111727556 Q 815.034826717402 539.829253473643 814.6893884746377 514.6427169514335" stroke="#553c9a" stroke-width="0.9099999999999999" stroke-opacity="0.6" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
-<text x="967.5" y="539" font-family="'Segoe Print', 'Comic Sans MS', cursive, sans-serif" font-size="12" font-weight="bold" fill="#44337a" text-anchor="middle">Liquid Glass Controller</text>
-<text x="967.5" y="555" font-family="'Segoe Print', 'Comic Sans MS', cursive, sans-serif" font-size="10" fill="#718096" text-anchor="middle">[LiquidGlassController.cs]</text>
+<text x="967.5" y="539" font-family="'Segoe Print', 'Comic Sans MS', cursive, sans-serif" font-size="12" font-weight="bold" fill="#44337a" text-anchor="middle">Webcam Capture</text>
+<text x="967.5" y="555" font-family="'Segoe Print', 'Comic Sans MS', cursive, sans-serif" font-size="10" fill="#718096" text-anchor="middle">[WebcamCaptureController.cs]</text>
 <rect x="815" y="580" width="305" height="50" rx="6" fill="#ffffff" />
 <path d="M 814.9105134725 579.8940264529238 Q 968.5335491179771 579.8879686148794 1119.262948623834 579.6476408261991" stroke="#553c9a" stroke-width="1.3" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
 <path d="M 815.1056355507187 580.1351130087427 Q 967.609501583282 579.1886324583788 1119.8191767223936 580.2262548556482" stroke="#553c9a" stroke-width="0.9099999999999999" stroke-opacity="0.6" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
@@ -348,13 +348,6 @@
 <path d="M 250.21400849342726 160.61233637806575 Q 246.5868213106118 155.80384315128018 245.16952897795005 152.07986023608487" stroke="#2b6cb0" stroke-width="1.5" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
 <path d="M 249.97161595916992 160.37463454385767 Q 248.66509090271782 157.19790174431787 245.0427548556711 152.03525325835759" stroke="#2b6cb0" stroke-width="1.0499999999999998" stroke-opacity="0.6" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
 <text x="215" y="134" font-family="'Segoe Print', 'Comic Sans MS', cursive, sans-serif" font-size="11" fill="#2b6cb0" text-anchor="middle" font-weight="600">uses</text>
-<path d="M 1064.4247607117868 145.10631783493633 Q 1011.8354941992891 328.7397898827584 959.9709071708289 515.0286692491169" stroke="#553c9a" stroke-width="1.4" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
-<path d="M 1065.0702671254517 144.5770898357552 Q 1011.6461542671178 331.0121719251034 959.5488411852888 514.7139834361067" stroke="#553c9a" stroke-width="0.9799999999999999" stroke-opacity="0.6" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
-<path d="M 959.4038316410813 515.6753000347256 Q 957.9895580493908 511.4728385222103 957.3927924559789 506.59740925133065" stroke="#553c9a" stroke-width="1.5" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
-<path d="M 960.4439724692913 515.2267629243966 Q 959.9859919787244 509.4715382030979 957.89089220479 506.0971043488503" stroke="#553c9a" stroke-width="1.0499999999999998" stroke-opacity="0.6" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
-<path d="M 960.7742683521583 515.0630044220632 Q 962.0464251873682 513.155872575166 965.8097145134254 509.4005268437581" stroke="#553c9a" stroke-width="1.5" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
-<path d="M 960.1326059038262 514.9197520335592 Q 964.1016798172144 512.0040061827115 966.7134679829104 508.3920950224193" stroke="#553c9a" stroke-width="1.0499999999999998" stroke-opacity="0.6" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
-<text x="1012.5" y="324" font-family="'Segoe Print', 'Comic Sans MS', cursive, sans-serif" font-size="11" fill="#553c9a" text-anchor="middle" font-weight="600">desktop sampling</text>
 <path d="M 990.0633075713085 120.01751751141921 Q 911.8527735323491 129.21745134415943 835.4527200225856 140.4755682995239" stroke="#2b6cb0" stroke-width="1.4" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
 <path d="M 989.8914415832525 119.62990455665953 Q 913.0375086037576 129.121636583337 835.0065319262665 139.93503818647065" stroke="#2b6cb0" stroke-width="0.9799999999999999" stroke-opacity="0.6" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
 <path d="M 834.5137942195465 140.33650031610838 Q 837.1150100524361 136.5327989436001 841.8564767202131 135.1374883006763" stroke="#2b6cb0" stroke-width="1.5" fill="none" stroke-linecap="round" stroke-linejoin="round"/>

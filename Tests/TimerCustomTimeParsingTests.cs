@@ -71,18 +71,3 @@ public class TimerCustomTimeParsingTests
         Assert.False(vm.TryParseCustomTime(input, out _));
     }
 }
-
-public class MagnifierCaptureSourceDisposeTests
-{
-    [Fact]
-    public void Dispose_WithoutInitialize_IsIdempotent()
-    {
-        var source = new MagnifierCaptureSource();
-
-        source.Dispose();
-        var ex = Record.Exception(source.Dispose);
-
-        Assert.Null(ex);
-        Assert.False(source.IsReady);
-    }
-}

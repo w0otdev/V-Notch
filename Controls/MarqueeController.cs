@@ -254,7 +254,9 @@ internal sealed class MarqueeController : IDisposable
         {
             if (isTitle) _titleScrollDistance = distance;
             else _artistScrollDistance = distance;
-            StartMarqueeAnimation(activeTranslate, distance);
+            // A Forever clock on hidden text keeps WPF rendering; IsVisibleChanged re-runs this when it is shown.
+            if (activeText.IsVisible) StartMarqueeAnimation(activeTranslate, distance);
+            else activeTranslate.BeginAnimation(TranslateTransform.XProperty, null);
         }
         else
         {
@@ -292,7 +294,8 @@ internal sealed class MarqueeController : IDisposable
         {
             double distance = textWidth - containerWidth + 15;
             setDistance(distance);
-            StartMarqueeAnimation(newActiveTranslate, distance);
+            if (newActiveText.IsVisible) StartMarqueeAnimation(newActiveTranslate, distance);
+            else newActiveTranslate.BeginAnimation(TranslateTransform.XProperty, null);
         }
         else
         {

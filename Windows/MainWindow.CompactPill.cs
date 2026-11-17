@@ -48,6 +48,8 @@ public partial class MainWindow
                 if (owner != CompactPillSlot.Clipboard) HideCompactSurface(MusicViz);
                 HideCompactSurface(CompactThumbnailBorder);
             }
+            // The corner shapes have no room for the visualizer; keeping it collapsed also keeps it from rendering.
+            if (IsCornerMode && owner == CompactPillSlot.None) HideCompactSurface(MusicViz);
             if (owner != CompactPillSlot.Clipboard)
             {
                 HideCompactSurface(ClipboardCheckIcon);
@@ -173,7 +175,6 @@ public partial class MainWindow
         };
 
         NotchBorder.BeginAnimation(WidthProperty, anim, HandoffBehavior.SnapshotAndReplace);
-        BeginGlassHoverMotion(anim);
     }
 
     private bool IsCompactSlotStale(int token) => !_compactPillArbiter.IsTokenCurrent(token);

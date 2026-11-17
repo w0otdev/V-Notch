@@ -15,7 +15,7 @@ public sealed class SpotlightWindowFixtureTests
             "Fixture app", "", "shell:AppsFolder\\Fixture!App");
         Assert.Throws<InvalidOperationException>((Action)(() =>
         {
-            using var fixture = new SpotlightWindowFixture(new NotchSettings { NotchStyle = "default" });
+            using var fixture = new SpotlightWindowFixture(new NotchSettings());
             directory = fixture.DirectoryPath;
             fixture.Usage.RecordLaunch(item);
             fixture.Usage.WaitForPendingSavesAsync().GetAwaiter().GetResult();

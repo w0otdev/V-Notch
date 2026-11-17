@@ -2,11 +2,9 @@ using System.IO;
 using System.Net;
 using System.Net.Http;
 using System.Net.Http.Headers;
-using System.Runtime.InteropServices;
 using System.Text.Json;
 using System.Windows;
 using System.Windows.Media;
-using VNotch.Controllers;
 using VNotch.Models;
 using VNotch.Services;
 using Xunit;
@@ -24,12 +22,10 @@ public sealed class PerformanceAuditRegressionTests
         await service.SaveAsync(new NotchSettings { Width = 351 });
         var first = service.Load();
         first.Width = 999;
-        first.LiquidGlass.PowerFactor = 9;
         using (var exclusive = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.None))
         {
             var second = service.Load();
             Assert.Equal(351, second.Width);
-            Assert.NotEqual(9, second.LiquidGlass.PowerFactor);
         }
         await service.SaveAsync(new NotchSettings { Width = 452 });
         Assert.Equal(452, service.Load().Width);
@@ -49,79 +45,6 @@ public sealed class PerformanceAuditRegressionTests
         await using var service = new SettingsService(path, _ => { });
         _ = service.Load();
         Assert.InRange(Directory.GetFiles(folder.Path, "settings.bak-*.json").Length, 1, 10);
-    }
-
-    [Theory]
-    [InlineData(true, false, true, 250, 100)]
-    [InlineData(true, false, true, 249, 8)]
-    [InlineData(true, true, true, 1000, 8)]
-    [InlineData(false, false, true, 1000, 8)]
-    [InlineData(true, false, false, 1000, 8)]
-    public void OnlyASettledCollapsedBackdropUsesIdleCadence(bool idle, bool animating, bool hasFrame, long age, double expected) =>
-        Assert.Equal(expected, LiquidGlassController.ChooseFrameIntervalMs(8, idle, animating, hasFrame, age));
-
-    [Fact]
-    public void InputWakeDoesNotInheritTheOldIdleDeadline() =>
-        Assert.Equal(28, LiquidGlassController.ComputeNextFrameDeadline(100, 8, 20));
-
-    [Theory]
-    [InlineData(96)]
-    [InlineData(144)]
-    [InlineData(192)]
-    public void CroppedGlassPresentationPreservesPixelDensityAndCaptureBounds(double dpi) => SharedStaTestRunner.Run(() =>
-    {
-        byte[] pixels = new byte[16 * 16 * 4];
-        new Random(42).NextBytes(pixels);
-        for (int i = 3; i < pixels.Length; i += 4) pixels[i] = 255;
-        var source = System.Windows.Media.Imaging.BitmapSource.Create(16, 16, 96, 96,
-            PixelFormats.Bgra32, null, pixels, 16 * 4);
-        source.Freeze();
-        var presentation = new GlassCaptureImage(source, 16, 16);
-        foreach (var (width, height) in new[] { (7, 9), (12, 6), (16, 16) })
-        {
-            presentation.SetCaptureSize(width, height);
-            var crop = new System.Windows.Media.Imaging.CroppedBitmap(source, new Int32Rect(0, 0, width, height));
-            Assert.Equal(Raster(crop, width, height), Raster(presentation.Image, width, height));
-        }
-
-        byte[] Raster(ImageSource image, int width, int height)
-        {
-            var visual = new DrawingVisual();
-            using (var drawing = visual.RenderOpen())
-                drawing.DrawImage(image, new Rect(0, 0, width * 96 / dpi, height * 96 / dpi));
-            var bitmap = new System.Windows.Media.Imaging.RenderTargetBitmap(width, height, dpi, dpi, PixelFormats.Pbgra32);
-            bitmap.Render(visual);
-            var result = new byte[width * height * 4];
-            bitmap.CopyPixels(result, width * 4, 0);
-            return result;
-        }
-    });
-
-    [Fact]
-    public void FrameDigestDetectsEveryByteWithoutRetainingPixels()
-    {
-        const int w = 13, h = 9;
-        byte[] bytes = new byte[w * h * 4];
-        new Random(42).NextBytes(bytes);
-        IntPtr pointer = Marshal.AllocHGlobal(bytes.Length);
-        try
-        {
-            Marshal.Copy(bytes, 0, pointer, bytes.Length);
-            var history = new GlassFrameHistory();
-            history.Commit(pointer, w, h);
-            Assert.True(history.IsUnchanged(pointer, w, h));
-            for (int i = 0; i < bytes.Length; i++)
-            {
-                Marshal.WriteByte(pointer, i, (byte)(Marshal.ReadByte(pointer, i) ^ 1));
-                Assert.False(history.IsUnchanged(pointer, w, h));
-                history.CommitCheckedFrame();
-            }
-            Assert.False(history.IsUnchanged(pointer, h, w));
-            Assert.Equal(0, history.RetainedPixelBytes);
-            history.Clear();
-            Assert.False(history.IsUnchanged(pointer, w, h));
-        }
-        finally { Marshal.FreeHGlobal(pointer); }
     }
 
     [Fact]

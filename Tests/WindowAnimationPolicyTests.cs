@@ -26,7 +26,7 @@ public sealed class WindowAnimationPolicyTests
             var hwnd = new WindowInteropHelper(window).Handle;
             Assert.False(window.ShowInTaskbar);
             Assert.NotEqual(0, Win32Interop.GetWindowLong(hwnd, Win32Interop.GWL_EXSTYLE) & Win32Interop.WS_EX_TOOLWINDOW);
-            // Glass cleanup cannot remove the user's capture exclusion.
+            // Clearing the affinity elsewhere cannot remove the user's capture exclusion.
             Assert.True(Win32Interop.SetWindowDisplayAffinity(hwnd, Win32Interop.WDA_NONE));
             Assert.True(GetWindowDisplayAffinity(hwnd, out uint affinity));
             Assert.Equal(Win32Interop.WDA_EXCLUDEFROMCAPTURE, affinity);

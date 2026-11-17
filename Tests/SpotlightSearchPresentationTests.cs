@@ -379,7 +379,7 @@ public sealed class SpotlightSearchPresentationTests
         Assert.Null(Field<UiScheduledTimer?>(window, "_failureTimer"));
     });
 
-    private static NotchSettings Settings() => new() { EnableLocalOnlyMode = true, NotchStyle = "default" };
+    private static NotchSettings Settings() => new() { EnableLocalOnlyMode = true };
     private static T Field<T>(SpotlightWindow window, string name) => (T)typeof(SpotlightWindow).GetField(name, Private)!.GetValue(window)!;
     private static void Invoke(SpotlightWindow window, string name, params object?[] args) => typeof(SpotlightWindow).GetMethod(name, Private)!.Invoke(window, args);
 
@@ -407,6 +407,39 @@ public sealed class SpotlightSearchPresentationTests
         {
             Assert.True(positions[i] > positions[i - 1], $"Expected caret X at index {i} ({positions[i]}) > index {i - 1} ({positions[i - 1]})");
         }
+    });
+
+    [Fact]
+    public void GlowingCaretBlinkOnlyRunsWhileTheCaretIsVisible() => SharedStaTestRunner.RunAsync(async ct =>
+    {
+        bool previous = AnimationConfig.ReduceMotion;
+        AnimationConfig.SetReduceMotion(false);
+        try
+        {
+            using var fixture = new SpotlightWindowFixture(Settings());
+            var window = fixture.Window;
+            window.ShowSpotlight();
+            await Dispatcher.Yield(DispatcherPriority.ApplicationIdle);
+            window.SearchBox.Focus();
+            window.SearchBox.UpdateLayout();
+            Invoke(window, "UpdateGlowingCaret");
+            Assert.True(window.GlowingCaret.IsVisible);
+            Assert.True(window.GlowingCaret.HasAnimatedProperties);
+
+            // Focus loss collapses the caret; its Forever blink must not keep ticking behind it.
+            Invoke(window, "SearchBox_LostFocus", window.SearchBox, new RoutedEventArgs());
+            Assert.False(window.GlowingCaret.IsVisible);
+            Assert.False(window.GlowingCaret.HasAnimatedProperties);
+
+            // A hidden shell stops the blink even though the caret itself was never collapsed.
+            Invoke(window, "UpdateGlowingCaret");
+            Assert.True(window.GlowingCaret.HasAnimatedProperties);
+            window.Shell.Visibility = Visibility.Hidden;
+            Assert.False(window.GlowingCaret.HasAnimatedProperties);
+            window.Shell.Visibility = Visibility.Visible;
+            Assert.True(window.GlowingCaret.HasAnimatedProperties);
+        }
+        finally { AnimationConfig.SetReduceMotion(previous); }
     });
 
     private sealed class ResultsProvider : ISpotlightProvider

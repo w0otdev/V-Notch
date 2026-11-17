@@ -51,8 +51,4 @@ internal sealed partial class SettingsEditSession
         _applied.HasSeenCpp26Notice = true;
         return Baseline;
     }
-    internal void EnsureCustomGlass(LiquidGlassConfig config)
-    {
-        _applied.LiquidGlassCustom ??= config.Clone();
-    }
 }

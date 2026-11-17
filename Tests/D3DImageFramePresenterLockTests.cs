@@ -1,9 +1,10 @@
-using System.Runtime.InteropServices;
+using System.Runtime.InteropServices.WindowsRuntime;
 using System.Windows;
 using System.Windows.Interop;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using VNotch.Controllers;
+using Windows.Graphics.Imaging;
 using Xunit;
 
 namespace VNotch.Tests;
@@ -21,24 +22,20 @@ public sealed class D3DImageFramePresenterLockTests
         var target = new CompositorTarget();
         using var presenter = new D3DImageFramePresenter(window.Dispatcher, hwnd, 8, 8, target);
         var pixels = new byte[8 * 8 * 4];
-        var source = Marshal.AllocHGlobal(pixels.Length);
         Exception? failure = null;
         int presented = 0;
-        LiquidGlassController.GpuGeometry lastPresented = default;
         presenter.Failed += ex => failure = ex;
-        presenter.FramePresented += tag => { presented++; lastPresented = tag; };
-        LiquidGlassController.GpuGeometry Upload(int version)
+        presenter.FramePresented += () => presented++;
+        void Upload(int version)
         {
             for (int i = 0; i < pixels.Length; i += 4)
             {
                 pixels[i + 2] = (byte)version;
                 pixels[i + 3] = 255;
             }
-            Marshal.Copy(pixels, 0, source, pixels.Length);
-            var tag = new LiquidGlassController.GpuGeometry { CaptureOriginX = version };
-            Assert.True(presenter.UploadFrame(source, 8, 8, 32, 1, out bool uploaded, tag));
-            Assert.True(uploaded);
-            return tag;
+            using var bitmap = SoftwareBitmap.CreateCopyFromBuffer(pixels.AsBuffer(), BitmapPixelFormat.Bgra8, 8, 8, BitmapAlphaMode.Ignore);
+            Assert.True(presenter.UploadWebcam(bitmap, 1));
+            Assert.True(presenter.HasPendingFrame);
         }
         try
         {
@@ -53,10 +50,9 @@ public sealed class D3DImageFramePresenterLockTests
                 target.Writable = false;
                 int before = presented;
                 int writesBefore = target.Writes;
-                LiquidGlassController.GpuGeometry newest = default;
                 for (int attempt = 0; attempt < 3; attempt++)
                 {
-                    newest = Upload(20 + cycle + attempt);
+                    Upload(20 + cycle + attempt);
                     if (busyAttach) presenter.AttachBackBuffer();
                     else presenter.PresentPendingFrame();
                     Assert.Equal(0, target.LockCount);
@@ -68,7 +64,6 @@ public sealed class D3DImageFramePresenterLockTests
                 target.Writable = true;
                 presenter.PresentPendingFrame();
                 Assert.Equal(before + 1, presented);
-                Assert.Equal(newest, lastPresented);
                 Assert.False(presenter.HasPendingFrame);
                 Assert.Equal(0, target.LockCount);
                 Assert.Null(failure);
@@ -77,7 +72,6 @@ public sealed class D3DImageFramePresenterLockTests
         finally
         {
             target.Writable = true;
-            Marshal.FreeHGlobal(source);
             window.Close();
         }
     });

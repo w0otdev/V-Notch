@@ -117,7 +117,7 @@ public partial class MainWindow
 
         int visibilityGeneration = ++_updateVisibilityGeneration;
         bool wasVisible = UpdateNotificationButton.Visibility == Visibility.Visible;
-        double iconRestY = _settings.EnableDynamicIslandMode ? 5 : 0;
+        double iconRestY = IslandLayout ? 5 : 0;
 
         // A visible button may actually be halfway through a stale fade-out.
         // Remove that clock before restoring its visible base state.

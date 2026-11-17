@@ -116,36 +116,6 @@ OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 ~~~
 
-### OverShifted/LiquidGlass - MIT
-
-Copyright (c) 2026 Sepehr Kalanaki (OverShifted). The adapted refraction formulas and noise in Shaders/LiquidGlassRefraction.hlsl, and its compiled .ps output, are based on this project. V-Notch contains a modified HLSL adaptation for its WPF rendering pipeline. License reference commit: 3797fa541c1f026c521a75885ee271f03bdf9f0f; the original adaptation commit is not recorded.
-
-Complete upstream license: <https://raw.githubusercontent.com/OverShifted/LiquidGlass/3797fa541c1f026c521a75885ee271f03bdf9f0f/LICENSE>
-
-~~~text
-MIT License
-
-Copyright (c) 2026 Sepehr Kalanaki
-
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
-
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-SOFTWARE.
-~~~
-
 ### m2m100_418M translation model — upstream MIT
 
 Research benchmark only; excluded from the production translation feature and installer. Original model: Facebook AI / Meta, facebook/m2m100_418M (https://huggingface.co/facebook/m2m100_418M). Copyright (c) Facebook, Inc. and its affiliates. The upstream model card declares MIT; the full Fairseq MIT text is reproduced below. ONNX/int8 conversion and tokenizer assets: Xenova/m2m100_418M at revision 9c374f0b7aca709787cea97b047bfbbd1559d177 (https://huggingface.co/Xenova/m2m100_418M/tree/9c374f0b7aca709787cea97b047bfbbd1559d177). Research hashes are recorded in Tools/TranslationBench/Research/TranslationResearchProfiles.cs. The conversion card identifies the base model but does not supply a separate conversion license; this notice does not assert additional conversion rights. Fairseq license reference commit: 3d262bb25690e4eb2e7d3c1309b1e9c406ca4b99.

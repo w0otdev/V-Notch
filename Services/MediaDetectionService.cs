@@ -213,6 +213,7 @@ public sealed partial class MediaDetectionService : IMediaDetectionService, IAsy
     private int _soundCloudFetchGeneration = 0;
     private int _soundCloudFetchInFlight = 0;
     private int _thumbnailFetchGeneration = 0;
+    private int _thumbnailRetryGeneration = -1;
     private ArtworkFingerprint? _lastSessionArtworkFingerprint;
     private int _sessionArtworkGeneration = -1;
     private static readonly TimeSpan YouTubeThumbnailRetryInterval = TimeSpan.FromSeconds(1.1);
@@ -390,6 +391,7 @@ public sealed partial class MediaDetectionService : IMediaDetectionService, IAsy
             _bgCts?.Dispose();
             _bgCts = new CancellationTokenSource();
             var ct = _bgCts.Token;
+            Volatile.Write(ref _thumbnailRetryGeneration, -1);
 
             _startupProgressSyncUntilUtc = DateTime.UtcNow.AddSeconds(5);
             _initTask = StartCoreAsync(generation, ct);
@@ -3349,26 +3351,37 @@ public sealed partial class MediaDetectionService : IMediaDetectionService, IAsy
 
         if (info.Thumbnail == null && _state == ServiceLifecycleState.Running && _bgCts is { IsCancellationRequested: false } cts)
         {
-            int expectedGen = Volatile.Read(ref _thumbnailFetchGeneration);
-            var token = cts.Token;
-            _ = Task.Run(async () =>
-            {
-                try
-                {
-                    foreach (int delayMs in new[] { 250, 750 })
-                    {
-                        await Task.Delay(delayMs, token);
-                        if (expectedGen != Volatile.Read(ref _thumbnailFetchGeneration) || CachedThumbnail != null)
-                            return;
-                        _changes.Enqueue(ChangeTypes.Heartbeat);
-                    }
-                }
-                catch (OperationCanceledException)
-                {
-                    // Normal on shutdown/cancellation.
-                }
-            }, token);
+            TryScheduleLateThumbnailRetry(cts.Token);
         }
+    }
+
+    // Each retry enqueues a heartbeat that runs another pass, which would schedule another pair of
+    // retries for the same artwork-less track. One retry chain per thumbnail generation keeps the
+    // passes from multiplying; later artwork still arrives via SMTC events and the heartbeat.
+    private bool TryScheduleLateThumbnailRetry(CancellationToken token)
+    {
+        int expectedGen = Volatile.Read(ref _thumbnailFetchGeneration);
+        if (Interlocked.Exchange(ref _thumbnailRetryGeneration, expectedGen) == expectedGen)
+            return false;
+
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                foreach (int delayMs in new[] { 250, 750 })
+                {
+                    await Task.Delay(delayMs, token);
+                    if (expectedGen != Volatile.Read(ref _thumbnailFetchGeneration) || CachedThumbnail != null)
+                        return;
+                    _changes.Enqueue(ChangeTypes.Heartbeat);
+                }
+            }
+            catch (OperationCanceledException)
+            {
+                // Normal on shutdown/cancellation.
+            }
+        }, token);
+        return true;
     }
 
     private Task ApplySessionThumbnailAsync(MediaInfo info, GlobalSystemMediaTransportControlsSessionMediaProperties? mediaProperties, bool trackChangedForThisPass)

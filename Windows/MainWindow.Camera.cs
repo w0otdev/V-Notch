@@ -68,7 +68,7 @@ public partial class MainWindow
                     if (_cleanedUp || !_camera.IsActive || _camera.FadeToken != token) return;
                     DisposeCameraPresenter();
                     var next = new D3DImageFramePresenter(Dispatcher,
-                        new System.Windows.Interop.WindowInteropHelper(this).Handle, width, height, webcam: true);
+                        new System.Windows.Interop.WindowInteropHelper(this).Handle, width, height);
                     try
                     {
                         next.PrepareResources();
@@ -79,7 +79,7 @@ public partial class MainWindow
                             _cameraFallbackToken = token;
                             RuntimeLog.Error(CameraLogTag, ex, "Camera surface failed");
                         };
-                        next.FramePresented += _ =>
+                        next.FramePresented += () =>
                         {
                             if (!_camera.IsActive || token != _camera.FadeToken || _cameraPresenter != next) return;
                             if (CameraPreviewImage.Source != next.ImageSource)

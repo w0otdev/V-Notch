@@ -63,7 +63,6 @@ try {
 
         if (($null -ne $nativeBinDll) -and (-not $nativeDirty)) {
             $buildArgs += "-p:SkipNativeCompile=true"
-            $buildArgs += "-p:SkipShaderCompile=true"
         }
 
         Write-Host "[t] Incremental build..." -ForegroundColor Cyan

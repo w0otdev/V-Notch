@@ -4,10 +4,10 @@ using System.Windows.Media;
 
 namespace VNotch.Controls;
 
-// GlassClipBuilder already keeps the silhouette inside RenderSize. Combining it
-// with WPF's rectangular layout clip repeatedly flattens the squircle into a
-// PathGeometry when live D3DImage updates invalidate the visual's bounds.
-public sealed class GlassClipGrid : Grid
+// NotchClipBuilder already keeps the silhouette inside RenderSize. Combining it
+// with WPF's rectangular layout clip repeatedly flattens the outline into a
+// PathGeometry whenever the visual's bounds are invalidated.
+public sealed class NotchClipGrid : Grid
 {
     protected override Geometry? GetLayoutClip(Size layoutSlotSize)
     {

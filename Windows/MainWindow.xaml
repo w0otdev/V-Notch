@@ -549,180 +549,6 @@
                                 IsHitTestVisible="False"
                                 CornerRadius="0,0,20,20"/>
 
-                        <!-- Final rounded clip for material stack; kept outside blurred children
-                             so post-effects cannot spread Touch Light into rectangular corners. -->
-                        <ctrl:GlassClipGrid x:Name="GlassMaterialClipHost"
-                              Visibility="Collapsed"
-                              IsHitTestVisible="False"
-                              SizeChanged="GlassMaterialClipHost_SizeChanged">
-                        <Border x:Name="GlassBackdropHost"
-                                IsHitTestVisible="False"
-                                Visibility="Collapsed"
-                                CornerRadius="0,0,20,20">
-
-                            <Canvas>
-                            <Image x:Name="GlassBackdropImage"
-                                   HorizontalAlignment="Left"
-                                   VerticalAlignment="Top"
-                                   Stretch="Fill"
-                                   Margin="0"
-                                   RenderOptions.BitmapScalingMode="HighQuality"/>
-                            </Canvas>
-                        </Border>
-
-                        <Border x:Name="GlassGrainOverlay"
-                                IsHitTestVisible="False"
-                                Visibility="Collapsed"
-                                Opacity="0"
-                                CornerRadius="0,0,20,20"/>
-
-                        <Border x:Name="GlassTintOverlay"
-                                IsHitTestVisible="False"
-                                Visibility="Collapsed"
-                                CornerRadius="0,0,20,20">
-                            <Border.Background>
-                                <LinearGradientBrush StartPoint="0,0" EndPoint="0,1" po:Freeze="True">
-                                    <GradientStop Color="#0CFFFFFF" Offset="0"/>
-                                    <GradientStop Color="#06FFFFFF" Offset="0.5"/>
-                                    <GradientStop Color="#160A0E14" Offset="1"/>
-                                </LinearGradientBrush>
-                            </Border.Background>
-                        </Border>
-
-                        <!-- Optical rim stack: depth, spectral split, Fresnel,
-                             broken edge reflection and a focused specular glint. -->
-                        <Border x:Name="GlassDepthRimBorder"
-                                IsHitTestVisible="False"
-                                Visibility="Collapsed"
-                                Opacity="0"
-                                BorderThickness="1.2"
-                                CornerRadius="0,0,20,20">
-                            <Border.BorderBrush>
-                                <LinearGradientBrush StartPoint="0,0" EndPoint="1,1" po:Freeze="True">
-                                    <GradientStop Color="#00000000" Offset="0"/>
-                                    <GradientStop Color="#08000000" Offset="0.42"/>
-                                    <GradientStop Color="#B8000000" Offset="0.78"/>
-                                    <GradientStop Color="#54000000" Offset="1"/>
-                                </LinearGradientBrush>
-                            </Border.BorderBrush>
-                        </Border>
-
-                        <Border x:Name="GlassCoolRimBorder"
-                                IsHitTestVisible="False"
-                                Visibility="Collapsed"
-                                Opacity="0"
-                                BorderThickness="1.8"
-                                CornerRadius="0,0,20,20">
-                            <Border.BorderBrush>
-                                <RadialGradientBrush Center="0.14,0.72"
-                                                       GradientOrigin="0.14,0.72"
-                                                       RadiusX="0.68" RadiusY="0.82"
-                                                       po:Freeze="True">
-                                    <GradientStop Color="#E57D92FF" Offset="0"/>
-                                    <GradientStop Color="#8871C8FF" Offset="0.26"/>
-                                    <GradientStop Color="#247BDFFF" Offset="0.58"/>
-                                    <GradientStop Color="#007BDFFF" Offset="1"/>
-                                </RadialGradientBrush>
-                            </Border.BorderBrush>
-                        </Border>
-
-                        <Border x:Name="GlassWarmRimBorder"
-                                IsHitTestVisible="False"
-                                Visibility="Collapsed"
-                                Opacity="0"
-                                BorderThickness="1.65"
-                                CornerRadius="0,0,20,20">
-                            <Border.BorderBrush>
-                                <RadialGradientBrush Center="0.9,0.2"
-                                                       GradientOrigin="0.9,0.2"
-                                                       RadiusX="0.58" RadiusY="0.76"
-                                                       po:Freeze="True">
-                                    <GradientStop Color="#E5FFD27A" Offset="0"/>
-                                    <GradientStop Color="#7CFFAB5C" Offset="0.3"/>
-                                    <GradientStop Color="#18FF9348" Offset="0.64"/>
-                                    <GradientStop Color="#00FF9348" Offset="1"/>
-                                </RadialGradientBrush>
-                            </Border.BorderBrush>
-                        </Border>
-
-                        <Border x:Name="GlassFresnelBloomBorder"
-                                IsHitTestVisible="False"
-                                Visibility="Collapsed"
-                                Opacity="0"
-                                BorderThickness="3.2"
-                                CornerRadius="0,0,20,20"
-                                BorderBrush="Transparent">
-                            <Border.Effect>
-                                <BlurEffect Radius="3.2"
-                                            KernelType="Gaussian"
-                                            RenderingBias="Quality"/>
-                            </Border.Effect>
-                        </Border>
-
-                        <Border x:Name="GlassFresnelBorder"
-                                IsHitTestVisible="False"
-                                Visibility="Collapsed"
-                                Opacity="0"
-                                BorderThickness="1.15"
-                                CornerRadius="0,0,20,20"
-                                BorderBrush="Transparent"/>
-
-                        <Border x:Name="GlassInnerFresnelBorder"
-                                IsHitTestVisible="False"
-                                Visibility="Collapsed"
-                                Opacity="0"
-                                Margin="1.15"
-                                BorderThickness="0.8"
-                                CornerRadius="0,0,19,19"
-                                BorderBrush="Transparent"/>
-
-                        <Border x:Name="GlassDarkOverlay"
-                                IsHitTestVisible="False"
-                                Visibility="Collapsed"
-                                Opacity="0"
-                                CornerRadius="0,0,20,20"
-                                Background="#90000000"/>
-
-                        <Border x:Name="GlassRimBorder"
-                                IsHitTestVisible="False"
-                                Visibility="Collapsed"
-                                Opacity="0"
-                                BorderThickness="0.75"
-                                CornerRadius="0,0,20,20">
-                            <Border.BorderBrush>
-                                <LinearGradientBrush StartPoint="0.04,0" EndPoint="0.96,1" po:Freeze="True">
-                                    <GradientStop Color="#FFFFFFFF" Offset="0"/>
-                                    <GradientStop Color="#B8E9F7FF" Offset="0.16"/>
-                                    <GradientStop Color="#30FFFFFF" Offset="0.38"/>
-                                    <GradientStop Color="#18000000" Offset="0.57"/>
-                                    <GradientStop Color="#A6000000" Offset="0.76"/>
-                                    <GradientStop Color="#48FFFFFF" Offset="0.91"/>
-                                    <GradientStop Color="#D8FFFFFF" Offset="1"/>
-                                </LinearGradientBrush>
-                            </Border.BorderBrush>
-                        </Border>
-
-                        <Border x:Name="GlassSpecularBorder"
-                                IsHitTestVisible="False"
-                                Visibility="Collapsed"
-                                Opacity="0"
-                                BorderThickness="1.15"
-                                CornerRadius="0,0,20,20">
-                            <Border.BorderBrush>
-                                <RadialGradientBrush Center="0.22,0.08"
-                                                       GradientOrigin="0.18,0.02"
-                                                       RadiusX="0.38" RadiusY="0.62"
-                                                       po:Freeze="True">
-                                    <GradientStop Color="#FFFFFFFF" Offset="0"/>
-                                    <GradientStop Color="#FFFFFFFF" Offset="0.13"/>
-                                    <GradientStop Color="#8CFFFFFF" Offset="0.34"/>
-                                    <GradientStop Color="#10FFFFFF" Offset="0.68"/>
-                                    <GradientStop Color="#00FFFFFF" Offset="1"/>
-                                </RadialGradientBrush>
-                            </Border.BorderBrush>
-                        </Border>
-                        </ctrl:GlassClipGrid>
-
                         <!-- Add live widgets inside this group; startup greetings hide the group. -->
                         <Grid x:Name="NotchLiveContent">
                         <Border x:Name="VolumeIndicatorContainer"
@@ -921,7 +747,7 @@
                         </Border>
 
                         <Grid x:Name="SpotlightReturnContentHost">
-                        <ctrl:GlassClipGrid x:Name="NotchContent" Margin="0" SizeChanged="NotchContent_SizeChanged" RenderOptions.ClearTypeHint="Enabled" UseLayoutRounding="False" SnapsToDevicePixels="False">
+                        <ctrl:NotchClipGrid x:Name="NotchContent" Margin="0" SizeChanged="NotchContent_SizeChanged" RenderOptions.ClearTypeHint="Enabled" UseLayoutRounding="False" SnapsToDevicePixels="False">
 
 
 
@@ -1142,6 +968,14 @@
                         <ctrl:ActiveBlur.Blur><ctrl:BlurDefinition>
                             <BlurEffect x:Name="CollapsedContentBlur" Radius="0" RenderingBias="Performance"/>
                         </ctrl:BlurDefinition></ctrl:ActiveBlur.Blur>
+                        <TextBlock x:Name="CollapsedClockText"
+                                   Style="{StaticResource TitleText}"
+                                   FontSize="11.5"
+                                   FontWeight="SemiBold"
+                                   Foreground="#EEFFFFFF"
+                                   VerticalAlignment="Center"
+                                   Margin="0,0,0,6"
+                                   IsHitTestVisible="False"/>
                     </StackPanel>
 
                     <StackPanel x:Name="PrivacyIndicatorPanel"
@@ -1484,6 +1318,26 @@
                             </Canvas>
                         </Grid>
 
+                        <TextBlock x:Name="CompactClockText"
+                                   Grid.Row="0" Grid.Column="1"
+                                   FontSize="11.5"
+                                   FontWeight="SemiBold"
+                                   Foreground="#EEFFFFFF"
+                                   HorizontalAlignment="Center"
+                                   VerticalAlignment="Center"
+                                   IsHitTestVisible="False">
+                            <TextBlock.Style>
+                                <Style TargetType="TextBlock" BasedOn="{StaticResource TitleText}">
+                                    <Style.Triggers>
+                                        <!-- "Copied" spans this column while the clipboard peek shows. -->
+                                        <DataTrigger Binding="{Binding Visibility, ElementName=ClipboardCopiedText}" Value="Visible">
+                                            <Setter Property="Visibility" Value="Hidden"/>
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </TextBlock.Style>
+                        </TextBlock>
+
                         <ctrl:MusicVisualizer x:Name="MusicViz"
                                               Grid.Row="0" Grid.Column="2"
                                               Width="20" Height="17"
@@ -1543,7 +1397,7 @@
 
                     </Grid>
 
-                    <ctrl:GlassClipGrid x:Name="ExpandedContent"
+                    <ctrl:NotchClipGrid x:Name="ExpandedContent"
                           Opacity="0"
                           Visibility="Collapsed"
                           Margin="8,2,8,8"
@@ -2611,7 +2465,7 @@
                                 </Grid>
                             </Border>
                         </Grid>
-                    </ctrl:GlassClipGrid>
+                    </ctrl:NotchClipGrid>
 
                     <Grid x:Name="SecondaryContent" Opacity="0" Visibility="Collapsed" Margin="8,0,8,8" HorizontalAlignment="Center" VerticalAlignment="Stretch" Width="888" MouseLeftButtonDown="SecondaryContent_Click">
                         <ContentControl x:Name="ClipboardTrayHost" HorizontalContentAlignment="Stretch" VerticalContentAlignment="Stretch"/>
@@ -2933,7 +2787,7 @@
                             </RadialGradientBrush>
                         </Border.Background>
                     </Border>
-                    </ctrl:GlassClipGrid>
+                    </ctrl:NotchClipGrid>
                         </Grid>
                         </Grid>
                     <Grid x:Name="GreetingOverlay"

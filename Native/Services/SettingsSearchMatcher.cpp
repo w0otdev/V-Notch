@@ -275,7 +275,7 @@ namespace vnotch::services
             { { u"hotkey", u"shortcut", u"keybind", u"phim", u"tat", u"alt", u"space", u"" }, 7 },
             { { u"audio", u"sound", u"volume", u"speaker", u"mixer", u"equalizer", u"loa", u"" }, 7 },
             { { u"microphone", u"mic", u"camera", u"webcam", u"privacy", u"indicator", u"", u"" }, 6 },
-            { { u"theme", u"dark", u"skin", u"appearance", u"glass", u"liquid", u"refraction", u"blur" }, 8 },
+            { { u"theme", u"dark", u"skin", u"appearance", u"blur", u"", u"", u"" }, 5 },
             { { u"fps", u"hz", u"framerate", u"frame", u"smooth", u"performance", u"gpu", u"hardware" }, 8 },
             { { u"pin", u"passcode", u"password", u"vault", u"lock", u"personal", u"khoa", u"" }, 7 },
             { { u"clipboard", u"tray", u"shelf", u"file", u"history", u"khay", u"tep", u"" }, 7 },

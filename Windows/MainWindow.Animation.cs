@@ -21,7 +21,7 @@ public partial class MainWindow
     private const double ExpandedContentHorizontalInset = 16;
     private const double ExpandedContentVerticalInset = 10;
 
-    private double ExpandedContentRestY => _settings.EnableDynamicIslandMode ? 8.5 : 4;
+    private double ExpandedContentRestY => IslandLayout ? 8.5 : 4;
 
     private int _mediaWidthAnimationVersion;
     private bool _isMediaWidthAnimating;
@@ -32,7 +32,6 @@ public partial class MainWindow
         if (_isMediaWidthAnimating)
         {
             _isMediaWidthAnimating = false;
-            UpdateGlassMotionState();
         }
         ExpandedContent?.BeginAnimation(WidthProperty, null);
     }
@@ -81,7 +80,6 @@ public partial class MainWindow
             if (_isMediaWidthAnimating)
             {
                 _isMediaWidthAnimating = false;
-                UpdateGlassMotionState();
             }
             UpdateProgressSectionLayout();
             MediaPlayback?.RefreshMediaMarquee();
@@ -99,13 +97,11 @@ public partial class MainWindow
             NotchBorder.Width = targetWidth;
             ExpandedContent.Width = targetContentWidth;
             _isMediaWidthAnimating = false;
-            UpdateGlassMotionState();
             UpdateProgressSectionLayout();
             MediaPlayback?.RefreshMediaMarquee();
         };
 
         _isMediaWidthAnimating = true;
-        UpdateGlassMotionState();
         NotchBorder.Width = targetWidth;
         ExpandedContent.Width = targetContentWidth;
         NotchBorder.BeginAnimation(WidthProperty, borderAnim);
@@ -224,10 +220,10 @@ public partial class MainWindow
 
     private void ConfigureAnimationThumbnailRestSlot()
     {
-        double left = _settings.EnableDynamicIslandMode ? 12 : 8;
+        double left = IslandLayout ? 12 : 8;
         double top = 4;
 
-        if (_settings.EnableDynamicIslandMode)
+        if (IslandLayout)
         {
             const double compactThumbSize = 22;
             top = Math.Max(0, (GetCollapsedHeight() - compactThumbSize) / 2.0);
@@ -287,18 +283,18 @@ public partial class MainWindow
         if (TryComputeCompactThumbnailRestOffset(out var offset))
         {
             _cachedCompactThumbnailOffset = offset;
-            _cachedCompactIslandMode = _settings.EnableDynamicIslandMode;
+            _cachedCompactIslandMode = IslandLayout;
             _cachedCompactHeight = GetCollapsedHeight();
-            _cachedCompactDpi = GetGlassDpiScale();
+            _cachedCompactDpi = VisualTreeHelper.GetDpi(this).DpiScaleX;
         }
     }
 
     private (double X, double Y) MeasureCompactThumbnailRestOffset()
     {
         if (_cachedCompactThumbnailOffset.HasValue &&
-            _cachedCompactIslandMode == _settings.EnableDynamicIslandMode &&
+            _cachedCompactIslandMode == IslandLayout &&
             Math.Abs(_cachedCompactHeight - GetCollapsedHeight()) < 1e-6 &&
-            Math.Abs(_cachedCompactDpi - GetGlassDpiScale()) < 1e-6)
+            Math.Abs(_cachedCompactDpi - VisualTreeHelper.GetDpi(this).DpiScaleX) < 1e-6)
             return _cachedCompactThumbnailOffset.Value;
         return MusicCompactContent.Visibility != Visibility.Collapsed && MusicCompactContent.IsArrangeValid &&
             TryComputeCompactThumbnailRestOffset(out var measuredOffset) ? measuredOffset : (0, 0);
@@ -345,23 +341,13 @@ public partial class MainWindow
         if (AnimationThumbnailRim != null)
         {
             AnimationThumbnailRim.CornerRadius = new CornerRadius(6);
-            AnimationThumbnailRim.BorderThickness = IsLiquidGlassEnabled ? new Thickness(0.5) : new Thickness(0);
+            AnimationThumbnailRim.BorderThickness = new Thickness(0);
         }
         AnimationThumbnailClip.Rect = new Rect(0, 0, 22, 22);
         AnimationThumbnailClip.RadiusX = 6;
         AnimationThumbnailClip.RadiusY = 6;
         AnimationThumbnailTranslate.X = 0;
         AnimationThumbnailTranslate.Y = 0;
-
-        if (AnimationThumbnailBorder.Effect is DropShadowEffect animShadow)
-        {
-            animShadow.BeginAnimation(DropShadowEffect.BlurRadiusProperty, null);
-            animShadow.BeginAnimation(DropShadowEffect.OpacityProperty, null);
-            animShadow.BeginAnimation(DropShadowEffect.ShadowDepthProperty, null);
-            animShadow.BlurRadius = 8;
-            animShadow.Opacity = 0.5;
-            animShadow.ShadowDepth = 1.2;
-        }
 
         if (clearSource)
         {
@@ -585,7 +571,7 @@ public partial class MainWindow
     {
         double dpi = VisualTreeHelper.GetDpi(this).DpiScaleX;
         if (_cachedThumbnailExpandTarget.HasValue &&
-            _lastMeasuredTargetIslandMode == _settings.EnableDynamicIslandMode &&
+            _lastMeasuredTargetIslandMode == IslandLayout &&
             Math.Abs(_lastMeasuredTargetExpandedWidth - _expandedWidth) < 0.1 &&
             Math.Abs(_lastMeasuredTargetExpandedHeight - _expandedHeight) < 0.1 &&
             Math.Abs(_lastMeasuredTargetDpi - dpi) < 0.001)
@@ -608,7 +594,7 @@ public partial class MainWindow
             _lastMeasuredTargetExpandedWidth = _expandedWidth;
             _lastMeasuredTargetExpandedHeight = _expandedHeight;
             _lastMeasuredTargetDpi = dpi;
-            _lastMeasuredTargetIslandMode = _settings.EnableDynamicIslandMode;
+            _lastMeasuredTargetIslandMode = IslandLayout;
         }
 
         return _cachedThumbnailExpandTarget;
@@ -718,11 +704,6 @@ public partial class MainWindow
 
         AnimationThumbnailClip.BeginAnimation(RectangleGeometry.RectProperty, _cachedThumbRectExpand);
 
-        if (IsLiquidGlassEnabled && AnimationThumbnailBorder.Effect is DropShadowEffect animShadow)
-        {
-            animShadow.BeginAnimation(DropShadowEffect.OpacityProperty, null); animShadow.Opacity = 0.5; animShadow.BeginAnimation(DropShadowEffect.OpacityProperty, MakeAnim(0.5, 0.0, thumbDur, _easeExpOut6));
-        }
-
         if (CompactThumbnailBorder != null)
         {
             CompactThumbnailBorder.Opacity = 0;
@@ -830,7 +811,7 @@ public partial class MainWindow
         LyricsBlurBackground.Visibility = Visibility.Collapsed;
     }
 
-    private bool CanShowLyricsBlurBackground => _settings.EnableBlurEffects && !IsLiquidGlassEnabled &&
+    private bool CanShowLyricsBlurBackground => _settings.EnableBlurEffects &&
         ShouldShowMediaBlurBackground && !_isSpotifyCanvasMediaOpen &&
         _isExpanded && !_isTimerView && !_isAudioView && !_isSecondaryView;
 
@@ -1037,7 +1018,7 @@ public partial class MainWindow
             _lastMeasuredTargetExpandedWidth = _expandedWidth;
             _lastMeasuredTargetExpandedHeight = _expandedHeight;
             _lastMeasuredTargetDpi = VisualTreeHelper.GetDpi(this).DpiScaleX;
-            _lastMeasuredTargetIslandMode = _settings.EnableDynamicIslandMode;
+            _lastMeasuredTargetIslandMode = IslandLayout;
         }
 
         if (effectiveTarget == VNotch.Models.NotchView.Media && _isThumbnailExpandAnimating)
@@ -1090,7 +1071,6 @@ public partial class MainWindow
         }
         if (effectiveTarget != VNotch.Models.NotchView.Media)
         {
-            ClearGlassMediaTint();
             HideMediaBackgroundOverlay();
             SuspendSpotifyCanvasLifecycle();
             if (_isThumbnailExpandAnimating && fromView == VNotch.Models.NotchView.Media)
@@ -1857,7 +1837,7 @@ public partial class MainWindow
             _lastMeasuredTargetExpandedWidth = _expandedWidth;
             _lastMeasuredTargetExpandedHeight = _expandedHeight;
             _lastMeasuredTargetDpi = VisualTreeHelper.GetDpi(this).DpiScaleX;
-            _lastMeasuredTargetIslandMode = _settings.EnableDynamicIslandMode;
+            _lastMeasuredTargetIslandMode = IslandLayout;
         }
 
         var cachedExpandTarget = _cachedThumbnailExpandTarget;
@@ -1919,11 +1899,6 @@ public partial class MainWindow
         AnimateThumbnailAnimationRadius(14, 6, thumbDur, _easeExpOut6, thumbDelay);
 
         AnimationThumbnailClip.BeginAnimation(RectangleGeometry.RectProperty, _cachedThumbRectCollapse);
-
-        if (IsLiquidGlassEnabled && AnimationThumbnailBorder.Effect is DropShadowEffect animShadow)
-        {
-            animShadow.BeginAnimation(DropShadowEffect.OpacityProperty, null); animShadow.Opacity = 0.0; animShadow.BeginAnimation(DropShadowEffect.OpacityProperty, MakeAnim(0.0, 0.5, thumbDur, _easeQuadOut, thumbDelay));
-        }
     }
 
     private void DismissCollapseNotificationsAndOverlays()
@@ -2052,6 +2027,8 @@ public partial class MainWindow
         _isAnimating = false;
         NotchBorder.IsHitTestVisible = true;
         _transitionCoordinator.CompleteTransition(generation);
+        // Expanded-only work (lyrics/volume timers, raw mouse input worker) stops with the expanded view.
+        UpdateProgressTimerState();
         UpdateSpotifyCanvasPresentationContext();
         NotchBorder.BeginAnimation(WidthProperty, null);
         NotchBorder.BeginAnimation(HeightProperty, null);

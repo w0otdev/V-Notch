@@ -24,12 +24,6 @@ namespace vnotch::kernels::avx2
     void BoxBlurHorizontal(const uint8_t* source, uint8_t* target, int32_t w, int32_t h, int32_t radius) noexcept;
     void BoxBlurVertical(const uint8_t* source, uint8_t* target, int32_t w, int32_t h, int32_t radius) noexcept;
 
-    // GlassBoxBlurKernels.avx2.cpp
-    // Requires 2 * radius + 1 <= 4097 so the float divide stays exact.
-    void GlassBoxBlurHorizontal(const uint8_t* src, uint8_t* dst, int32_t w, int32_t radius, int32_t y0, int32_t y1) noexcept;
-    // Blurs columns in 32 byte strips starting at column_start. Returns the first unprocessed byte column.
-    int32_t GlassBoxBlurVerticalBulk(const uint8_t* src, uint8_t* dst, int32_t w, int32_t h, int32_t radius, int32_t column_start, int32_t column_end) noexcept;
-
     // WebcamPixelKernels.avx2.cpp (each returns the first unprocessed pixel or byte index)
     int32_t WebcamRgbInPlaceBulk(uint8_t* pixels, int32_t length, uint8_t is_rgba, int32_t alpha_mode) noexcept;
     int32_t WebcamGray8Bulk(const uint8_t* src, int32_t pixel_count, uint8_t* dst) noexcept;

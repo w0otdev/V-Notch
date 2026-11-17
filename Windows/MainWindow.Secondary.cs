@@ -27,7 +27,6 @@ public partial class MainWindow
             System.Windows.Data.BindingOperations.SetBinding(view.HeaderTranslate,
                 System.Windows.Media.TranslateTransform.YProperty,
                 new System.Windows.Data.Binding(nameof(System.Windows.Media.TranslateTransform.Y)) { Source = NavIconsTranslate });
-            view.IsVisibleChanged += (_, _) => ApplyGlassContentShadow(IsLiquidGlassEnabled);
             ClipboardTrayHost.Content = view;
             RegisterName(nameof(ClipboardTrayView), view);
             LocalizedPresentation.Apply(view);

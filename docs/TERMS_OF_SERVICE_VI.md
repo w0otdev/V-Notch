@@ -21,7 +21,7 @@ Dự án không nhận bản quyền đối với phần mềm độc lập, nh�
 
 ## 3. Tính năng, quyền truy cập và kiểm soát
 
-Ứng dụng có thể đọc Windows media session, tiêu đề cửa sổ hoặc URL phát nhạc từ trình duyệt, pixel màn hình cho hiệu ứng kính, sự kiện và phần xem trước clipboard tùy chọn, khung hình camera khi kích hoạt, đường dẫn File Shelf, âm lượng, Bluetooth, tải phần cứng và metadata tìm kiếm cục bộ. Tham khảo [Chính sách bảo mật](PRIVACY_POLICY_VI.md) về đích mạng, log/cache, lưu giữ và công tắc kiểm soát. Điều khoản này không tự thay thế sự đồng ý riêng mà pháp luật yêu cầu. Chỉ dùng trên thiết bị và tài khoản bạn được phép truy cập; thận trọng khi dùng máy chung, camera, clipboard, cookie đăng nhập và nội dung nhạy cảm. Không đăng thông tin nhạy cảm trong issue công khai.
+Ứng dụng có thể đọc Windows media session, tiêu đề cửa sổ hoặc URL phát nhạc từ trình duyệt, sự kiện và phần xem trước clipboard tùy chọn, khung hình camera khi kích hoạt, đường dẫn File Shelf, âm lượng, Bluetooth, tải phần cứng và metadata tìm kiếm cục bộ. Tham khảo [Chính sách bảo mật](PRIVACY_POLICY_VI.md) về đích mạng, log/cache, lưu giữ và công tắc kiểm soát. Điều khoản này không tự thay thế sự đồng ý riêng mà pháp luật yêu cầu. Chỉ dùng trên thiết bị và tài khoản bạn được phép truy cập; thận trọng khi dùng máy chung, camera, clipboard, cookie đăng nhập và nội dung nhạy cảm. Không đăng thông tin nhạy cảm trong issue công khai.
 
 File Shelf quản lý tham chiếu đường dẫn tệp; đường dẫn có thể được lưu trong cài đặt. Hãy sao lưu dữ liệu và kiểm tra thao tác tệp trước khi tin cậy công cụ. Gỡ cài đặt không đồng nghĩa xóa cache, file tạm hoặc bản sao lưu. Chấm chỉ báo camera/mic chỉ hỗ trợ tham khảo, không thay thế công cụ phát hiện xâm nhập hoặc cam kết an toàn tuyệt đối.
 

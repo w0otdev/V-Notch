@@ -35,7 +35,6 @@ public class SettingsWindowDecouplingTests
     [InlineData(2)] // Double difference
     [InlineData(3)] // String difference
     [InlineData(4)] // Bool difference
-    [InlineData(5)] // LiquidGlass difference
     public void NotchSettings_ValueEquals_DifferentValues_ReturnsFalse(int diffType)
     {
         var s1 = new NotchSettings();
@@ -54,9 +53,6 @@ public class SettingsWindowDecouplingTests
                 break;
             case 4:
                 s2.EnableBlurEffects = !s1.EnableBlurEffects;
-                break;
-            case 5:
-                s2.LiquidGlass.BlurAmount += 0.5;
                 break;
         }
 

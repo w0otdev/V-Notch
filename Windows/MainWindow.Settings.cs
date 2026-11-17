@@ -82,7 +82,9 @@ public partial class MainWindow
         bool sizeChanged = HasNotchGeometryChanged(oldSettings, newSettings);
         bool languageChanged = !string.Equals(newSettings.Language, oldSettings.Language, StringComparison.Ordinal);
         bool spotifyCanvasChanged = HasSpotifyCanvasConfigChanged(oldSettings, newSettings);
-        _modeTransitionPending = newSettings.EnableDynamicIslandMode != oldSettings.EnableDynamicIslandMode;
+        // Corner mode switches shape and position at once, so it skips the notch/island morph.
+        _modeTransitionPending = IsIslandLayout(newSettings) != IsIslandLayout(oldSettings)
+            && !newSettings.EnableTopLeftCornerMode && !oldSettings.EnableTopLeftCornerMode;
         bool oldIgnoreAuto = oldSettings.IgnoreYouTubeAutoSubtitles;
         string oldSubtitlePriority = oldSettings.SubtitlePriority ?? "";
 
@@ -113,7 +115,9 @@ public partial class MainWindow
         newSettings.DynamicIslandWidth != oldSettings.DynamicIslandWidth ||
         newSettings.DynamicIslandHeight != oldSettings.DynamicIslandHeight ||
         newSettings.Height != oldSettings.Height ||
-        newSettings.CornerRadius != oldSettings.CornerRadius;
+        newSettings.CornerRadius != oldSettings.CornerRadius ||
+        newSettings.EnableTopLeftCornerMode != oldSettings.EnableTopLeftCornerMode ||
+        newSettings.TopLeftCornerFloatingCircle != oldSettings.TopLeftCornerFloatingCircle;
 
     private static bool HasSpotifyCanvasConfigChanged(NotchSettings oldSettings, NotchSettings newSettings) =>
         newSettings.EnableSpotifyCanvas != oldSettings.EnableSpotifyCanvas ||
@@ -135,7 +139,9 @@ public partial class MainWindow
 
         bool monitorChanged = oldSettings.MonitorIndex != newSettings.MonitorIndex ||
                               oldSettings.MonitorDeviceId != newSettings.MonitorDeviceId;
-        if (monitorChanged ||
+        bool cornerChanged = oldSettings.EnableTopLeftCornerMode != newSettings.EnableTopLeftCornerMode ||
+                             oldSettings.TopLeftCornerFloatingCircle != newSettings.TopLeftCornerFloatingCircle;
+        if (monitorChanged || cornerChanged ||
             oldSettings.EnableHoverExpand != newSettings.EnableHoverExpand ||
             oldSettings.Height != newSettings.Height ||
             oldSettings.AnimationFps != newSettings.AnimationFps)
@@ -143,7 +149,7 @@ public partial class MainWindow
             _notchManager.UpdateSettings(_settings);
         }
 
-        if (monitorChanged)
+        if (monitorChanged || cornerChanged)
         {
             PositionAtTop();
         }
@@ -219,20 +225,6 @@ public partial class MainWindow
         {
             CheckForUpdatesAsync().SafeFireAndForget("SETTINGS-AUTOCHECK-ENABLED");
         }
-    }
-
-    private static bool IsLiquidGlassConfigChanged(NotchSettings? oldSettings, NotchSettings? newSettings)
-    {
-        if (oldSettings == null || newSettings == null) return true;
-        if (!string.Equals(oldSettings.NotchStyle, newSettings.NotchStyle, StringComparison.OrdinalIgnoreCase))
-            return true;
-        if (!string.Equals(oldSettings.LiquidGlassPreset, newSettings.LiquidGlassPreset, StringComparison.OrdinalIgnoreCase))
-            return true;
-        if ((oldSettings.LiquidGlass == null) != (newSettings.LiquidGlass == null))
-            return true;
-        if (oldSettings.LiquidGlass != null && newSettings.LiquidGlass != null && !oldSettings.LiquidGlass.ValueEquals(newSettings.LiquidGlass))
-            return true;
-        return false;
     }
 
 #pragma warning disable S3776 // Synchronizes multiple WPF visual tree elements with application configuration
@@ -342,13 +334,15 @@ public partial class MainWindow
             || oldSettings.DynamicIslandWidth != _settings.DynamicIslandWidth
             || oldSettings.DynamicIslandHeight != _settings.DynamicIslandHeight
             || oldSettings.CornerRadius != _settings.CornerRadius
-            || oldSettings.EnableDynamicIslandMode != _settings.EnableDynamicIslandMode;
+            || oldSettings.EnableDynamicIslandMode != _settings.EnableDynamicIslandMode
+            || oldSettings.EnableTopLeftCornerMode != _settings.EnableTopLeftCornerMode
+            || oldSettings.TopLeftCornerFloatingCircle != _settings.TopLeftCornerFloatingCircle;
 
         if (layoutChanged)
         {
             _collapsedWidth = GetCollapsedWidth();
             _collapsedHeight = GetCollapsedHeight();
-            _expandedHeight = _settings.EnableDynamicIslandMode ? 154 : 147;
+            _expandedHeight = IslandLayout ? 154 : 147;
             _cornerRadiusCollapsed = GetCollapsedCornerRadius();
             _cachedThumbnailExpandTarget = null;
 
@@ -358,10 +352,14 @@ public partial class MainWindow
             _modeTransitionPending = false;
 
             ApplyDynamicIslandLayout(animateTransition: willModeTransition);
+            ApplyCornerModePlacement();
+            if (oldSettings != null && oldSettings.EnableTopLeftCornerMode && !IsCornerMode) RestoreCompactMediaPresentation();
 
             if (!_isExpanded && !_isAnimating)
             {
-                double currentRadius = NotchBorder.CornerRadius.BottomLeft;
+                // Which corners are rounded depends on the mode, even when the radius value is unchanged.
+                if (!willModeTransition) SyncShellCornerRadius(MakeNotchCornerRadius(NotchBorder.CornerRadius.BottomRight));
+                double currentRadius = NotchBorder.CornerRadius.BottomRight;
                 if (currentRadius > 0)
                     CurrentCornerRadius = currentRadius;
                 else
@@ -440,7 +438,6 @@ public partial class MainWindow
                         NotchBorderShadow.CornerRadius = cr;
                         // removed MediaBackground CornerRadius
                         // removed MediaBackground2 CornerRadius
-                        _glassMaterialPresenter.SyncCornerRadius(cr);
                         CurrentCornerRadius = _cornerRadiusCollapsed;
                     }
                 }
@@ -575,11 +572,6 @@ public partial class MainWindow
         if (_currentMediaInfo != null && !_isExpanded && (smartCropChanged || (mediaArtBgChanged && _settings.ShowMediaArtBackground)))
         {
             UpdateMediaBackground(_currentMediaInfo, forceRefresh: true);
-        }
-
-        if (oldSettings == null || IsLiquidGlassConfigChanged(oldSettings, _settings))
-        {
-            ApplyLiquidGlassSkin();
         }
     }
 #pragma warning restore S3776

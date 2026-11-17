@@ -63,10 +63,6 @@ internal sealed partial class SpotlightController : ISpotlightController, IAsync
         bool spotlightChanged = _settings == null || _settings.EnableSpotlight != settings.EnableSpotlight;
         bool historyChanged = _settings == null || _settings.EnableSpotlightHistory != settings.EnableSpotlightHistory;
         bool languageChanged = _settings == null || !string.Equals(_settings.Language, settings.Language, StringComparison.Ordinal);
-        bool glassChanged = _settings == null
-            || !string.Equals(_settings.NotchStyle, settings.NotchStyle, StringComparison.OrdinalIgnoreCase)
-            || !(_settings.LiquidGlass?.ValueEquals(settings.LiquidGlass) ?? (settings.LiquidGlass == null));
-
         bool aiChanged = _settings == null
             || _settings.SpotlightDefaultAi != settings.SpotlightDefaultAi
             || _settings.SpotlightAiWordsPerSecond != settings.SpotlightAiWordsPerSecond
@@ -76,7 +72,7 @@ internal sealed partial class SpotlightController : ISpotlightController, IAsync
                 != VNotch.Services.Spotlight.SpotlightAiService.Configuration(settings, provider));
 
         _settings = settings.Clone();
-        if (glassChanged || historyChanged || languageChanged || aiChanged)
+        if (historyChanged || languageChanged || aiChanged)
         {
             _window?.ApplySettings(_settings);
         }
@@ -264,7 +260,6 @@ internal sealed partial class SpotlightController : ISpotlightController, IAsync
                     _window.Owner = _host;
                     _window.ApplySettings(_settings);
                 }
-                _window.PrepareGlassForOpening();
             }
             catch (Exception ex)
             {

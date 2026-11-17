@@ -271,7 +271,6 @@ public sealed class SpotlightPersonalizationAndMorphTests
             Assert.Equal(Visibility.Visible, window.AiGlowBorder.Visibility);
             window.HideSpotlight();
             Assert.Equal(Visibility.Collapsed, window.AiGlowBorder.Visibility);
-            Assert.Equal(Visibility.Collapsed, window.GlassRimBorder.Visibility);
             Assert.Equal(0, window.AiGlowBorder.Opacity);
             window.ToggleFromHotkey();
             Assert.Equal(Visibility.Visible, window.AiGlowBorder.Visibility);

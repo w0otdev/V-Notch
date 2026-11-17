@@ -61,7 +61,7 @@
     <td align="center" valign="top" width="50%">
       <img src="Introduction/dynamic.gif" alt="Dynamic Island mode"><br>
       <b>Dynamic Island mode</b><br>
-      <sub>A floating pill with spring animations and Liquid Glass refraction.</sub>
+      <sub>A floating pill with spring animations.</sub>
     </td>
     <td align="center" valign="top" width="50%">
       <img src="Introduction/media-control.gif" alt="Media controls"><br>
@@ -101,13 +101,8 @@
     </td>
   </tr>
   <tr>
-    <td align="center" valign="top" width="50%">
-      <img src="Introduction/liquid-glass.gif" alt="Liquid Glass optics"><br>
-      <b>Liquid Glass optics</b><br>
-      <sub>Glass rendered with DirectX 11, including chromatic aberration and refraction at the edges.</sub>
-    </td>
-    <td align="center" valign="top" width="50%">
-      <img src="Introduction/staybehind.gif" alt="Stay behind windows"><br>
+    <td align="center" valign="top" colspan="2">
+      <img src="Introduction/staybehind.gif" alt="Stay behind windows" width="50%"><br>
       <b>Stay behind windows</b><br>
       <sub>Keep the notch on the desktop layer, below maximized apps.</sub>
     </td>
@@ -170,7 +165,7 @@ API keys are encrypted in local settings with Windows DPAPI and excluded from se
 
 ## Installation
 
-V-Notch runs on 64-bit Windows 10 build 19041 or later, or Windows 11. It requires [.NET 8 Desktop Runtime](https://dotnet.microsoft.com/download/dotnet/8.0) or [.NET 10 Desktop Runtime](https://dotnet.microsoft.com/download/dotnet/10.0). The self-contained installer includes the runtime. A dedicated GPU is recommended for Liquid Glass at 60-120 FPS.
+V-Notch runs on 64-bit Windows 10 build 19041 or later, or Windows 11. It requires [.NET 8 Desktop Runtime](https://dotnet.microsoft.com/download/dotnet/8.0) or [.NET 10 Desktop Runtime](https://dotnet.microsoft.com/download/dotnet/10.0). The self-contained installer includes the runtime.
 
 1. Download `V-Notch-Setup.exe` from [Releases](https://github.com/w0otdev/V-Notch/releases). Use `V-Notch-Setup-SelfContained.exe` to skip the .NET install.
 2. Run the installer.
@@ -181,17 +176,6 @@ V-Notch runs on 64-bit Windows 10 build 19041 or later, or Windows 11. It requir
 <summary><strong>Build with GitHub Actions</strong></summary>
 
 The `Release Installer` workflow runs automatically via `workflow_run` after `CI` succeeds on `main` (or `master` and `v*` release branches). For `main` pushes, it publishes a beta release tag `v<version>-beta.<run>.<attempt>` containing both `V-Notch-Setup.exe` (framework-dependent) and `V-Notch-Setup-SelfContained.exe` (self-contained), plus `.sha256`, `.manifest.json`, `.sig`, and `checksums.txt`.
-
-</details>
-
-<details>
-<summary><strong>Liquid Glass GPU pipeline and validation</strong></summary>
-
-GPU mode uses DXGI Desktop Duplication with Windows.Graphics.Capture fallback, D3D11 Dual-Kawase blur, and the existing refraction/RGB dispersion shader compiled for D3D11. Blur works in linear light with FP16 intermediate textures, blends between pyramid levels, then resolves to BGRA with stable sub-LSB dither. Working textures grow to a bounded peak capacity and are reused across view transitions; samplers clamp to the active rectangle so smaller views cannot read stale pixels from unused capacity. Only the blur levels in use are allocated. Capture and processing keep desktop pixels in GPU textures. Two shared D3D9Ex textures feed one persistent WPF `D3DImage` back buffer through GPU copies; D3D11 completion queries and D3D9 consumer fences prevent reuse before either device finishes. Hardware presentation needs no `WriteableBitmap`, desktop readback, or CPU blur. WPF software fallback remains enabled for explicit snapshots and software composition. The legacy CPU capture/render path remains available as a fallback.
-
-The renderer selects the window's monitor adapter. If a hybrid GPU preference redirects D3D9 to a discrete GPU that cannot duplicate the display, Windows.Graphics.Capture supplies textures on that device instead. WGC requests borderless-capture access once per process and sets `IsBorderRequired(false)` before starting capture on supported Windows versions. Windows policy or denied consent can still require the border. Target FPS caps capture attempts even during interaction wake-ups and updates WGC's `MinUpdateInterval` live when supported. Actual submissions depend on GPU load and WPF/DWM composition; static scenes can reuse a cached frame. Logs distinguish the target, worker loops, captured frames, and WPF submissions. Capture exclusion is required to prevent recursive feedback, so the glass window is excluded from screenshots/recordings while GPU mode is active, including while screenshot hotkeys are pressed. Sampling outside the selected monitor extends its edge pixels. Desktop switches and duplication access loss discard the cached desktop and retry capture; device/adapter failures and a five-second wait without a usable capture use the existing fallback and retry flow. Diagnostic logs identify `DXGI` or `WGC`, the last capture HRESULT, and borderless-access status.
-
-Build with the Visual Studio x64 C++ tools installed. The native build embeds both HLSL sources automatically. Run `powershell -NoProfile -File scripts/Test-GlassGpu.ps1` for synthetic hardware checks of blur, refraction, alpha, dispersion, shared textures, and capture timeout. Add `-LiveCapture` to smoke-test Desktop Duplication or `-WindowsGraphicsCapture` to exercise WGC without reading desktop pixels back. `dotnet run --project Tools/GlassGpuProbe/WpfProbe.csproj -c Release` validates the WPF bridge across three start/stop sessions using a hidden window; add `-- --main` to check the production MainWindow's glass material with isolated settings and startup suppressed. Frame cost depends on resolution, blur radius, GPU and driver; no fixed frame-time claim is made.
 
 </details>
 

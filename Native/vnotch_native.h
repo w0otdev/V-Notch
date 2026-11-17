@@ -386,47 +386,6 @@ struct VnJsonBoundaryState
     int32_t depth;
 };
 
-struct VnGlassMapParams
-{
-    int32_t out_w;
-    int32_t out_h;
-    int32_t src_w;
-    int32_t src_h;
-    int32_t margin;
-    int32_t notch_w;
-    int32_t notch_h;
-    int32_t notch_off_x;
-    int32_t notch_off_y;
-    int32_t capture_shift_x;
-    int32_t capture_shift_y;
-    double out_scale;
-    double top_corner_radius;
-    double bottom_corner_radius;
-    double edge_bend;
-    double chromatic_aberration;
-    double distortion;
-    double f_power;
-    double refraction_a;
-    double refraction_b;
-    double refraction_c;
-    double refraction_d;
-    double refraction;
-    double z_radius;
-    int32_t bevel_mode;
-};
-
-struct VnGlassBackdropOpticsOut
-{
-    uint8_t red;
-    uint8_t green;
-    uint8_t blue;
-    uint8_t reserved;
-    double light_x;
-    double light_y;
-    double contrast;
-    int32_t outside_rgb;
-};
-
 struct VnProgressiveBlurStep
 {
     int32_t delay_ms;
@@ -510,83 +469,12 @@ VN_EXPORT int32_t __stdcall vn_soundcloud_find_next_anchor_href(
     int32_t* out_next_pos,
     uint8_t* out_found) noexcept;
 
-VN_EXPORT int32_t __stdcall vn_glass_build_refraction_lut(
-    double f_power,
-    double refraction_a,
-    double refraction_b,
-    double refraction_c,
-    double refraction_d,
-    double* out_lut,
-    int32_t lut_len) noexcept;
-
-VN_EXPORT int32_t __stdcall vn_glass_build_refraction_rows(
-    const VnGlassMapParams* params,
-    const double* lut,
-    int32_t lut_len,
-    int32_t y_start,
-    int32_t y_end,
-    int32_t* out_map) noexcept;
-
-VN_EXPORT int32_t __stdcall vn_glass_refract_gather(
-    const uint8_t* src,
-    uint8_t* dst,
-    const int32_t* refract_map,
-    int32_t src_stride,
-    int32_t start_pixel,
-    int32_t end_pixel,
-    uint8_t adjust_color,
-    float sat_factor,
-    float bright_add) noexcept;
-
-VN_EXPORT int32_t __stdcall vn_glass_analyze_backdrop_samples(
-    const int32_t* rgb_samples,
-    int32_t sample_len,
-    int32_t columns,
-    int32_t rows,
-    VnGlassBackdropOpticsOut* out_optics) noexcept;
-
-VN_EXPORT int32_t __stdcall vn_glass_sample_backdrop_optics(
-    const uint8_t* dib_bits,
-    int32_t src_w,
-    int32_t src_h,
-    int32_t sample_x,
-    int32_t sample_y,
-    int32_t sample_w,
-    int32_t sample_h,
-    VnGlassBackdropOpticsOut* out_optics) noexcept;
-
-VN_EXPORT int32_t __stdcall vn_glass_gaussian_box_radii(
-    double sigma,
-    int32_t passes,
-    int32_t* out_radii,
-    int32_t radii_cap,
-    int32_t* out_written) noexcept;
-
-VN_EXPORT int32_t __stdcall vn_glass_compute_capture_interval_ms(
-    int32_t configured_fps,
-    int32_t display_refresh_hz,
-    uint8_t ultimate_gpu,
-    double* out_interval_ms) noexcept;
-
-VN_EXPORT int32_t __stdcall vn_glass_should_submit_frame(
+VN_EXPORT int32_t __stdcall vn_d3d_should_submit_frame(
     int64_t now_ticks,
     int64_t last_submit_ticks,
     int64_t stopwatch_freq,
     double active_interval_ms,
-    uint8_t force_present,
     uint8_t* out_should_submit) noexcept;
-
-VN_EXPORT int32_t __stdcall vn_glass_score_d3d9_adapter(
-    const char16_t* description,
-    int32_t desc_len,
-    uint32_t vendor_id,
-    int64_t* out_score) noexcept;
-
-VN_EXPORT int32_t __stdcall vn_glass_compute_squircle_lut(
-    double power,
-    int32_t segments,
-    double* out_pow_cos,
-    double* out_pow_sin) noexcept;
 
 #pragma pack(push, 1)
 
@@ -2339,60 +2227,6 @@ VN_EXPORT int32_t __stdcall vn_elastic_slider_compute_overscroll(
 VN_EXPORT int32_t __stdcall vn_elastic_slider_eval_mouse(
     double mouse_x, double width, double track_edge_pad, double min_val, double max_val, double tick_freq,
     double* out_drag_overflow, double* out_clamped_fraction, double* out_snapped_value, int32_t* out_overscroll_dir) noexcept;
-
-#pragma pack(push, 1)
-struct VnCpuRimOpacities
-{
-    double active_fresnel;
-    double rim;
-    double depth_rim;
-    double fresnel_bloom;
-    double fresnel;
-    double inner_fresnel;
-    double specular;
-    double cool_rim;
-    double warm_rim;
-};
-
-struct VnDynamicFresnelStep
-{
-    double fresnel_x;
-    double fresnel_y;
-    double fresnel_contrast;
-    uint8_t tint_r;
-    uint8_t tint_g;
-    uint8_t tint_b;
-    uint8_t bright_r;
-    uint8_t bright_g;
-    uint8_t bright_b;
-    uint8_t mid_r;
-    uint8_t mid_g;
-    uint8_t mid_b;
-    uint8_t inner_shadow_a;
-    double origin_x;
-    double origin_y;
-    double radius_x;
-    double radius_y;
-    double bloom_opacity;
-    double fresnel_opacity;
-    double inner_fresnel_opacity;
-};
-#pragma pack(pop)
-VN_EXPORT int32_t __stdcall vn_glass_binder_compute_cpu_rim_opacities(
-    double edge_highlight, double specular, double fresnel, double chroma, VnCpuRimOpacities* out_opacities) noexcept;
-VN_EXPORT int32_t __stdcall vn_glass_binder_build_fresnel_tint(
-    uint8_t red, uint8_t green, uint8_t blue, uint8_t* out_r, uint8_t* out_g, uint8_t* out_b) noexcept;
-VN_EXPORT int32_t __stdcall vn_glass_binder_interpolate_color(
-    uint8_t from_r, uint8_t from_g, uint8_t from_b, uint8_t to_r, uint8_t to_g, uint8_t to_b,
-    double amount, uint8_t* out_r, uint8_t* out_g, uint8_t* out_b) noexcept;
-VN_EXPORT int32_t __stdcall vn_glass_binder_step_dynamic_fresnel(
-    int64_t now_ticks, int64_t last_ticks, double active_fresnel_level,
-    double light_x, double light_y, double contrast,
-    uint8_t optic_r, uint8_t optic_g, uint8_t optic_b,
-    double cur_x, double cur_y, double cur_contrast,
-    uint8_t cur_tint_r, uint8_t cur_tint_g, uint8_t cur_tint_b,
-    VnDynamicFresnelStep* out_step) noexcept;
-VN_EXPORT int32_t __stdcall vn_glass_binder_read_system_transparency(uint8_t* out_enabled) noexcept;
 
 VN_EXPORT int32_t __stdcall vn_highlighted_text_fill_mask(
     const wchar_t* text_ptr, int32_t text_len, const wchar_t* query_ptr, int32_t query_len,

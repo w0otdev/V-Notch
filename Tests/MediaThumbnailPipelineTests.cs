@@ -953,6 +953,26 @@ public sealed class MediaThumbnailPipelineTests
         Assert.Null(await service.ConvertToWpfBitmapAsync(zeroLoadedStream, ct));
     });
 
+    [Fact]
+    public void ArtworklessTrackSchedulesOneLateRetryChainPerThumbnailGeneration() => SharedStaTestRunner.RunAsync(async ct =>
+    {
+        using var fixture = new Fixture();
+        using var retryScope = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        Assert.True((bool)Invoke(fixture.Service, "TryScheduleLateThumbnailRetry", retryScope.Token)!);
+        for (int pass = 0; pass < 50; pass++)
+            Assert.False((bool)Invoke(fixture.Service, "TryScheduleLateThumbnailRetry", retryScope.Token)!); // Each retry-triggered pass must not queue more retries.
+
+        var changes = Field<MediaChangeQueue>(fixture.Service, "_changes");
+        await using var reader = changes.ReadAllAsync(ct).GetAsyncEnumerator();
+        Assert.True(await reader.MoveNextAsync());
+        Assert.Equal(ChangeTypes.Heartbeat, reader.Current); // The single chain still wakes the processing loop for late artwork.
+
+        Set(fixture.Service, "_thumbnailFetchGeneration", 1); // Next track.
+        Assert.True((bool)Invoke(fixture.Service, "TryScheduleLateThumbnailRetry", retryScope.Token)!);
+        Assert.False((bool)Invoke(fixture.Service, "TryScheduleLateThumbnailRetry", retryScope.Token)!);
+        retryScope.Cancel();
+    });
+
     private static YouTubeLookupResult Result(string title, string id = "abcdefghijk") => new() { Id = id, Title = title, Author = "Fixture artist - Topic", Duration = TimeSpan.FromSeconds(123), Source = YouTubeLookupSource.DataApi, ThumbnailUrl = "https://fixture.invalid/preferred.jpg" };
     private static Task FetchYouTube(MediaDetectionService service, MediaInfo info, CancellationToken ct) => (Task)Invoke(service, "FetchYouTubeThumbnailAsync", info, ct, false, info.CurrentTrack, info.CurrentArtist, info.SourceAppId, info.SessionInstanceKey, 0, 0, true, null)!;
     private static Task FetchSoundCloud(MediaDetectionService service, MediaInfo info, CancellationToken ct) => (Task)Invoke(service, "FetchSoundCloudThumbnailAsync", info, ct, info.CurrentTrack, info.CurrentArtist, info.SourceAppId, info.SessionInstanceKey, 0, 0, true, null)!;

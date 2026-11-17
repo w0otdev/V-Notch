@@ -109,7 +109,6 @@ public partial class MainWindow
         }
         if (fromPrimary)
         {
-            ClearGlassMediaTint();
             HideMediaBackgroundOverlay();
             if (LyricsBlurBackground != null && LyricsBlurBackground.Visibility == Visibility.Visible)
             {
@@ -314,7 +313,7 @@ public partial class MainWindow
             var aSlide = MakeAnim(0, 10, durOut, _easeAppleIn);
             Timeline.SetDesiredFrameRate(aSlide, fps);
 
-            bool useContentBlur = _settings.EnableBlurEffects && !IsLiquidGlassEnabled;
+            bool useContentBlur = _settings.EnableBlurEffects;
             BlurEffect? outBlur = null;
             DoubleAnimation? blurOutAnim = null;
             if (useContentBlur)
@@ -351,7 +350,7 @@ public partial class MainWindow
             var slideUp = MakeAnim(outRestY, outRestY - 10, durOut, _easeAppleIn);
             Timeline.SetDesiredFrameRate(slideUp, fps);
 
-            bool useContentBlur = _settings.EnableBlurEffects && !IsLiquidGlassEnabled;
+            bool useContentBlur = _settings.EnableBlurEffects;
             BlurEffect? outBlur = null;
             DoubleAnimation? blurOutAnim = null;
             if (useContentBlur)
@@ -408,7 +407,7 @@ public partial class MainWindow
             Timeline.SetDesiredFrameRate(aFadeIn, fps);
             Timeline.SetDesiredFrameRate(springSlide, fps);
 
-            bool useContentBlur = _settings.EnableBlurEffects && !IsLiquidGlassEnabled;
+            bool useContentBlur = _settings.EnableBlurEffects;
             BlurEffect? inBlur = null;
             DoubleAnimation? blurInAnim = null;
             if (useContentBlur)

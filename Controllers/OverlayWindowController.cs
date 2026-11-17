@@ -20,6 +20,10 @@ public sealed class OverlayWindowController : IDisposable
     private HwndSource? _source;
     private bool _displayUpdatePending;
     public Func<System.Windows.Forms.Screen>? TargetScreen { get; set; }
+
+    // Top-left corner mode: the host window and the notch inside it hug the screen's left edge.
+    public bool AnchorLeft { get; set; }
+    public double LeftInset { get; set; }
     public Func<bool>? IsZOrderSuspended { get; set; }
 
 #pragma warning disable S107 // Component wiring constructor delegates lifecycle and placement actions
@@ -91,7 +95,7 @@ public sealed class OverlayWindowController : IDisposable
         var bounds = CalculateCenteredBounds(
             screenLeft, screenWidth, widthDip, heightDip, dpiScale);
 
-        _state.FixedX = bounds.X;
+        _state.FixedX = AnchorLeft ? screenLeft : bounds.X;
         _state.FixedY = screen.Bounds.Top;
         _state.WindowWidth = bounds.Width;
         _state.WindowHeight = bounds.Height;
@@ -206,7 +210,7 @@ public sealed class OverlayWindowController : IDisposable
         double windowLeft = _state.FixedX / dpiScale;
         double windowTop = _state.FixedY / dpiScale;
         double windowWidth = _state.WindowWidth / dpiScale;
-        return (windowLeft + (windowWidth - notchWidth) / 2.0,
+        return (AnchorLeft ? windowLeft + LeftInset : windowLeft + (windowWidth - notchWidth) / 2.0,
             windowTop, notchWidth, notchHeight, cornerRadius);
     }
 

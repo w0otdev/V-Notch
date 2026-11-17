@@ -49,7 +49,7 @@ public partial class MainWindow
                 _spotifyCanvasController.UpdateSettings(_settings);
                 _spotifyCanvasController.UpdatePresentationContext(
                     canFadeIn: _isLyricsActive && _isExpanded && !_isAnimating,
-                    blurFallbackEnabled: _settings.EnableBlurEffects && !IsLiquidGlassEnabled,
+                    blurFallbackEnabled: _settings.EnableBlurEffects,
                     isLyricsActive: _isLyricsActive);
             }
             return _spotifyCanvasController;
@@ -208,7 +208,7 @@ public partial class MainWindow
                          !_isAudioView &&
                          !_isSecondaryView && !_isCameraView;
 
-        bool blurFallbackEnabled = _settings.EnableBlurEffects && !IsLiquidGlassEnabled;
+        bool blurFallbackEnabled = _settings.EnableBlurEffects;
 
         _spotifyCanvasController.UpdatePresentationContext(
             canFadeIn: canFadeIn,

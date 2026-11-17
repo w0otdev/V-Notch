@@ -140,7 +140,7 @@ public partial class App : Application
             }
 
             ApplyProcessPriority(loadedSettings.ProcessPriority);
-            SettingsWindow.ApplyGpuPreference(SettingsWindow.GetEffectiveGpuPreference(loadedSettings));
+            SettingsWindow.ApplyGpuPreference(loadedSettings.GpuPreference);
             InteractionSounds.Initialize(loadedSettings.EnableInteractionSounds, loadedSettings.InteractionSoundVolume);
 
             var mainWindow = Services.GetRequiredService<MainWindow>();
@@ -422,7 +422,6 @@ public partial class App : Application
             }
 
             _guard?.Dispose();
-            VNotch.Controllers.MagnifierCaptureSource.ShutdownShared();
             if (!_servicesDisposed) RuntimeLog.Log("SYSTEM", "Application exit");
             base.OnExit(e);
         }

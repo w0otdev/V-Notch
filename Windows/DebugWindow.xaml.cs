@@ -1,7 +1,6 @@
 using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
-using System.Diagnostics;
 using System.Linq;
 using System.Runtime.InteropServices;
 using System.Windows;
@@ -22,7 +21,6 @@ public sealed class DebugWindowOptions
     public Action? OnClose { get; init; }
     public Action<double, double>? OnPositionChanged { get; init; }
     public Func<(double Fps, int Hz, double FrameTimeMs, double NetDown, double NetUp)>? LiveMetricsProvider { get; init; }
-    public Func<(bool Active, long Submissions, double LatencyMs)>? GlassMetricsProvider { get; init; }
     public Action<bool>? OnLockViewChanged { get; init; }
     public Action<bool>? OnDragNotchChanged { get; init; }
     public Action<string>? OnViewStateChanged { get; init; }
@@ -44,9 +42,6 @@ public partial class DebugWindow : Window
     private readonly Action? _onClose;
     private readonly Action<double, double>? _onPositionChanged;
     private readonly Func<(double Fps, int Hz, double FrameTimeMs, double NetDown, double NetUp)>? _liveMetricsProvider;
-    private readonly Func<(bool Active, long Submissions, double LatencyMs)>? _glassMetricsProvider;
-    private long _glassSampleTicks, _glassSampleCount;
-    private (double Fps, double Latency)? _prevGlassMetrics;
     private readonly Action<bool>? _onLockViewChanged;
     private readonly Action<bool>? _onDragNotchChanged;
     private readonly Action<string>? _onViewStateChanged;
@@ -119,7 +114,6 @@ public partial class DebugWindow : Window
         _onClose = options?.OnClose;
         _onPositionChanged = options?.OnPositionChanged;
         _liveMetricsProvider = options?.LiveMetricsProvider;
-        _glassMetricsProvider = options?.GlassMetricsProvider;
         _onLockViewChanged = options?.OnLockViewChanged;
         _onDragNotchChanged = options?.OnDragNotchChanged;
         _onViewStateChanged = options?.OnViewStateChanged;
@@ -215,11 +209,6 @@ public partial class DebugWindow : Window
             var (fps, hz, frameTimeMs, netDown, netUp) = _liveMetricsProvider?.Invoke() ?? (0, 0, 0, 0, 0);
             var snapshot = PerformanceDiagnosticService.Instance.SampleSnapshot(fps, hz, frameTimeMs, netDown, netUp);
             UpdateSnapshot(snapshot);
-            if (_glassMetricsProvider is { } glassProvider)
-            {
-                var glass = glassProvider();
-                UpdateGlassMetrics(glass.Active, glass.Submissions, glass.LatencyMs, Stopwatch.GetTimestamp());
-            }
 
             _logRefreshCounter++;
             if (_logRefreshCounter % 2 == 0) // Refresh log UI every ~400ms
@@ -283,30 +272,6 @@ public partial class DebugWindow : Window
         {
             FpsSummaryText.Text = $"UI {rounded} FPS";
         }
-    }
-
-    internal void UpdateGlassMetrics(bool active, long count, double latencyMs, long now)
-    {
-        GlassSummaryText.Visibility = active ? Visibility.Visible : Visibility.Collapsed;
-        if (!active || _glassSampleTicks == 0 || count < _glassSampleCount)
-        {
-            _glassSampleTicks = active ? now : 0;
-            _glassSampleCount = count;
-            _prevGlassMetrics = null;
-            GlassSummaryText.Text = "Glass: waiting for sample";
-            return;
-        }
-        double elapsed = (now - _glassSampleTicks) / (double)Stopwatch.Frequency;
-        if (elapsed < 0.4) return;
-        double fps = Math.Round((count - _glassSampleCount) / elapsed);
-        double latency = fps > 0 ? Math.Round(latencyMs, 1) : 0;
-        if (_prevGlassMetrics != (fps, latency))
-        {
-            GlassSummaryText.Text = fps > 0 ? $"Glass {fps} FPS • submit {latency:0.0} ms" : "Glass: idle";
-            _prevGlassMetrics = (fps, latency);
-        }
-        _glassSampleTicks = now;
-        _glassSampleCount = count;
     }
 
     public void UpdateRefreshRate(int hz)
@@ -731,7 +696,6 @@ public partial class DebugWindow : Window
         "Weather" => log.Category.StartsWith("WEATHER", StringComparison.OrdinalIgnoreCase),
         "Spotlight Search" => log.Category.StartsWith("SPOTLIGHT", StringComparison.OrdinalIgnoreCase),
         "Subtitles & Lyrics" => log.Category.StartsWith("SUBTITLE", StringComparison.OrdinalIgnoreCase) || log.Category.StartsWith("LYRICS", StringComparison.OrdinalIgnoreCase),
-        "Liquid Glass" => log.Category.StartsWith("LIQUIDGLASS", StringComparison.OrdinalIgnoreCase) || log.Category.StartsWith("GLASS", StringComparison.OrdinalIgnoreCase),
         "Memory & GC" => log.Category.StartsWith("MEMORY", StringComparison.OrdinalIgnoreCase) || log.Category.StartsWith("GC", StringComparison.OrdinalIgnoreCase) || log.Category.StartsWith("CROP", StringComparison.OrdinalIgnoreCase),
         _ => true
     };

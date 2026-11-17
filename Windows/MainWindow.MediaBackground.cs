@@ -28,8 +28,6 @@ public partial class MainWindow
 
     private void UpdateMediaBackground(MediaInfo? info, bool forceRefresh = false)
     {
-        bool glass = IsLiquidGlassEnabled;
-
         if (info == null || (!info.IsAnyMediaPlaying && string.IsNullOrEmpty(info.CurrentTrack)))
         {
             _lastBackgroundThumbnail = null;
@@ -43,16 +41,11 @@ public partial class MainWindow
             return;
         }
 
-        bool suppressBackdrop = glass || !_settings.ShowMediaArtBackground || !_settings.EnableBlurEffects;
+        bool suppressBackdrop = !_settings.ShowMediaArtBackground || !_settings.EnableBlurEffects;
 
         var palette = DynamicIslandColorExtractor.GetDynamicIslandPalette(info.Thumbnail);
         var dominantColor = palette.Main;
         var subColor = palette.Sub;
-
-        if (glass)
-        {
-            UpdateGlassMediaTint(dominantColor);
-        }
 
         string currentTrackId = $"{info.CurrentTrack}|{info.CurrentArtist}";
         bool isNewTrack = _lastTrackId != null && _lastTrackId != currentTrackId;
@@ -318,7 +311,6 @@ public partial class MainWindow
 
     private void HideMediaBackground()
     {
-        ClearGlassMediaTint();
         HideMediaBackgroundOverlay();
 
         if (_isTimerView || _isAudioView || _isSecondaryView || _isCameraView) return;
@@ -434,14 +426,6 @@ public partial class MainWindow
     {
         if (!_isExpanded || _isAnimating || _currentMediaInfo == null) return;
 
-        // Re-derive accent colors after view switches in Liquid Glass mode to
-        // restore music brushes from fallback defaults.
-        if (IsLiquidGlassEnabled)
-        {
-            UpdateMediaBackground(_currentMediaInfo, forceRefresh: true);
-            return;
-        }
-
         if (!_settings.ShowMediaArtBackground) return;
         if (!_settings.EnableBlurEffects) return;
 
@@ -493,7 +477,7 @@ public partial class MainWindow
 
     private void EnsureMediaBackgroundVisible(int recoveryVersion)
     {
-        if (IsLiquidGlassEnabled || !_settings.ShowMediaArtBackground)
+        if (!_settings.ShowMediaArtBackground)
         {
             return;
         }
@@ -553,7 +537,7 @@ public partial class MainWindow
     {
         try
         {
-            if (_cleanedUp || IsLiquidGlassEnabled || !_settings.ShowMediaArtBackground || !_settings.EnableBlurEffects)
+            if (_cleanedUp || !_settings.ShowMediaArtBackground || !_settings.EnableBlurEffects)
             {
                 return;
             }
@@ -699,7 +683,7 @@ public partial class MainWindow
     private bool CanProcessBlurRequest(BlurRequest req)
     {
         if (req.Version != _blurTaskVersion) return false;
-        if (!_cleanedUp && !IsLiquidGlassEnabled &&
+        if (!_cleanedUp &&
             _settings.ShowMediaArtBackground && _settings.EnableBlurEffects) return true;
         // Allow the same artwork to be requested again on the next expansion.
         _lastBlurThumbnailRef = null;

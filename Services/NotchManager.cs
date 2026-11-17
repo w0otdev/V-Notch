@@ -95,6 +95,15 @@ public sealed partial class NotchManager : INotchManager
         GeometryComputeCount++;
         var workingArea = screen.Bounds;
         double scale = MonitorSelection.GetScale(screen);
+        if (_settings.EnableTopLeftCornerMode)
+        {
+            // A "screen" exactly as wide as the shape makes the native centring put it flush left.
+            // The floating circle's 8 px gap is included so the screen edge next to it also counts as hover.
+            int size = NotchSettings.CornerCollapsedSize + (_settings.TopLeftCornerFloatingCircle ? 8 : 0);
+            _ = NativeComputeGeometry(workingArea.Left, workingArea.Top, (int)Math.Round(size * scale),
+                size, size, scale, 4.0, out geom);
+            return;
+        }
         _ = NativeComputeGeometry(
             workingArea.Left,
             workingArea.Top,

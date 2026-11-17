@@ -872,7 +872,7 @@ public partial class MainWindow
             bool enableBlur = _settings.EnableBlurEffects && !AnimationConfig.ReduceMotion;
             if (vn_animation_compute_volume_hud_transition(
                     1,
-                    _settings.EnableDynamicIslandMode ? (byte)1 : (byte)0,
+                    IslandLayout ? (byte)1 : (byte)0,
                     enableBlur ? (byte)1 : (byte)0,
                     _collapsedWidth,
                     _collapsedHeight,
@@ -893,7 +893,7 @@ public partial class MainWindow
                     MediaToBlur = enableBlur ? 7.0 : 0.0,
                     TargetWidth = _collapsedWidth + VolumeHudExtraWidth,
                     TargetHeight = _collapsedHeight + VolumeHudExtraHeight,
-                    TargetCornerRadius = _settings.EnableDynamicIslandMode ? (_collapsedHeight + VolumeHudExtraHeight) * 0.5 : Math.Max(_cornerRadiusCollapsed, 18.0),
+                    TargetCornerRadius = IslandLayout ? (_collapsedHeight + VolumeHudExtraHeight) * 0.5 : Math.Max(_cornerRadiusCollapsed, 18.0),
                     MorphDurationMs = 350,
                     FadeDurationMs = 240
                 };
@@ -1077,7 +1077,7 @@ public partial class MainWindow
         bool enableBlur = _settings.EnableBlurEffects && !AnimationConfig.ReduceMotion;
         if (vn_animation_compute_volume_hud_transition(
                 0,
-                _settings.EnableDynamicIslandMode ? (byte)1 : (byte)0,
+                IslandLayout ? (byte)1 : (byte)0,
                 enableBlur ? (byte)1 : (byte)0,
                 _collapsedWidth,
                 _collapsedHeight,

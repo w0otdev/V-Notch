@@ -19,6 +19,10 @@ internal static class AnimationConfig
 
     public static int TargetFps => _targetFps;
 
+    // Slow looping ambient effects (title shimmer, charging pulse) look the same at 30 fps, but each
+    // extra frame makes WPF recompose the whole layered window, so they must not follow a 120 Hz target.
+    public static int AmbientFps => ComputeAmbientFps(_targetFps);
+
     public static bool ReduceMotion => _reduceMotion;
 
     public static event Action? ReduceMotionChanged;
@@ -54,6 +58,8 @@ internal static class AnimationConfig
     {
         _targetFps = ComputeTargetFps(_configuredFps, DetectRefreshHz(_deviceName) ?? DetectRefreshHz(null), _autoFps);
     }
+
+    internal static int ComputeAmbientFps(int targetFps) => Math.Min(targetFps, MinFps);
 
     internal static int ComputeTargetFps(int configuredFps, int? detectedRefreshHz, bool autoFps = false)
     {

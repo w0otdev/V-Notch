@@ -22,36 +22,6 @@ namespace VNotch;
 
 public partial class SettingsWindow
 {
-    #region Liquid Glass UI Support
-
-    private void ApplyLiquidGlassSkin()
-    {
-        if (GlassBackdropHost == null) return;
-        if (GlassBackdropHost.Visibility == Visibility.Collapsed) return;
-
-        // Liquid Glass is a notch skin only.
-        MainShell.Background = (Brush)FindResource("WindowGlow");
-        GlassBackdropHost.Background = null;
-        GlassBackdropHost.Visibility = Visibility.Collapsed;
-        GlassTintOverlay.Visibility = Visibility.Collapsed;
-        GlassDarkOverlay.Visibility = Visibility.Collapsed;
-        if (GlassGrainOverlay != null) GlassGrainOverlay.Visibility = Visibility.Collapsed;
-
-        DetachGpuRefraction();
-    }
-
-    private void DetachGpuRefraction()
-    {
-        if (GlassBackdropImage != null)
-        {
-            GlassBackdropImage.Effect = null;
-            GlassBackdropImage.Width = double.NaN;
-            GlassBackdropImage.Height = double.NaN;
-        }
-        if (GlassBackdropHost != null)
-            GlassBackdropHost.Effect = null;
-    }
-
     protected override void OnSourceInitialized(EventArgs e)
     {
         base.OnSourceInitialized(e);
@@ -143,8 +113,5 @@ public partial class SettingsWindow
         _monitorChoicesClosed = true;
         UnsubscribeDisplaySettingsChanged();
         base.OnClosed(e);
-        DetachGpuRefraction();
     }
-
-    #endregion
 }

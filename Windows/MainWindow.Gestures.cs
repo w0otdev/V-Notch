@@ -24,7 +24,6 @@ public partial class MainWindow
             if (_gestureController == null || _gestureController.IsGestureActive == value) return;
 
             _gestureController.IsGestureActive = value;
-            UpdateGlassMotionState();
         }
     }
 
@@ -148,7 +147,6 @@ public partial class MainWindow
                 _fixedX = _debugDragStartFixedX + dx;
                 _fixedY = _debugDragStartFixedY + dy;
                 _overlayWindow.MoveFixedPosition(_fixedX, _fixedY);
-                _liquidGlass?.SetLiveRegion(GetGlassCaptureRegion());
             }
 
             e.Handled = true;
@@ -372,7 +370,6 @@ public partial class MainWindow
             EasingFunction = _easeSoftSpring
         };
         Timeline.SetDesiredFrameRate(snapBack, VNotch.Services.AnimationConfig.TargetFps);
-        BeginGlassGestureSnapBack(snapBack);
         snapBack.Completed += (s, e) =>
         {
             _gestureTranslate.BeginAnimation(TranslateTransform.XProperty, null);

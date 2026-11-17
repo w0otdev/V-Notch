@@ -1,5 +1,6 @@
 using System.Runtime.ExceptionServices;
 using System.Threading;
+using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
 using System.Windows.Threading;
@@ -77,6 +78,34 @@ public class MarqueeControllerTests
         });
     }
 
+    [Fact]
+    public void LongTitleScrollsOnlyWhileItsTextIsVisible()
+    {
+        RunOnStaThread(() =>
+        {
+            var targets = new MarqueeTestTargets("Initial title", "Initial artist");
+            var controller = targets.CreateController();
+
+            // A track change while the expanded view is hidden must not start a Forever clock.
+            controller.TransitionTrackText(new string('W', 200), "Artist");
+            Assert.False(targets.TitleMarqueeB.HasAnimatedProperties);
+
+            var host = new Window
+            {
+                ShowActivated = false, ShowInTaskbar = false, WindowStyle = WindowStyle.None,
+                Width = 10, Height = 10, Left = -3000, Top = -3000,
+                Content = new StackPanel { Children = { targets.TitleA, targets.TitleB } }
+            };
+            try
+            {
+                host.Show();
+                controller.RefreshMediaMarquee();
+                Assert.True(targets.TitleMarqueeB.HasAnimatedProperties);
+            }
+            finally { host.Close(); }
+        });
+    }
+
     private static void PumpDispatcherFor(TimeSpan duration)
     {
         var frame = new DispatcherFrame();
@@ -136,6 +165,7 @@ public class MarqueeControllerTests
         public Grid TitleLayerB { get; } = new() { Opacity = 0 };
         public Grid ArtistLayerA { get; } = new() { Opacity = 1 };
         public Grid ArtistLayerB { get; } = new() { Opacity = 0 };
+        public TranslateTransform TitleMarqueeB => _titleMarqueeB;
 
         private readonly TranslateTransform _titleMarqueeA = new();
         private readonly TranslateTransform _titleMorphA = new();

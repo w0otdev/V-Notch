@@ -17,7 +17,7 @@ public sealed class SetupWizardNavigationTests
     [InlineData("de")]
     public void MinimumSizeKeepsActionsAndTheCurrentStepVisible(string language) => SharedStaTestRunner.RunAsync(async ct =>
     {
-        LiquidGlassSpotlightTests.CreateApplicationResources();
+        SpotlightShellTests.CreateApplicationResources();
         var window = FreshWindow(language);
         window.Width = 520;
         window.Height = 420;
@@ -52,7 +52,7 @@ public sealed class SetupWizardNavigationTests
     [InlineData(true)]
     public void ExistingInstallationRequiresOnlyPolicyBeforeUpdating(bool installed) => SharedStaTestRunner.RunAsync(async ct =>
     {
-        LiquidGlassSpotlightTests.CreateApplicationResources();
+        SpotlightShellTests.CreateApplicationResources();
         string directory = System.IO.Directory.CreateTempSubdirectory("vnotch-update-navigation-").FullName;
         if (installed) System.IO.File.WriteAllText(System.IO.Path.Combine(directory, "V-Notch.exe"), "fixture executable");
         var completion = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -128,7 +128,7 @@ public sealed class SetupWizardNavigationTests
     [Fact]
     public void FailedUpgradeCanChangeDirectoryOrReturnToPolicyAndRetry() => SharedStaTestRunner.RunAsync(async ct =>
     {
-        LiquidGlassSpotlightTests.CreateApplicationResources();
+        SpotlightShellTests.CreateApplicationResources();
         string directory = System.IO.Directory.CreateTempSubdirectory("vnotch-update-retry-").FullName;
         System.IO.File.WriteAllText(System.IO.Path.Combine(directory, "V-Notch.exe"), "fixture executable");
         int attempts = 0;
@@ -178,7 +178,7 @@ public sealed class SetupWizardNavigationTests
     public void WizardNavigatesPreparationStepsAndCanResumeAfterCancellation(string language) => SharedStaTestRunner.RunAsync(async ct =>
     {
         bool previousReducedMotion = AnimationConfig.ReduceMotion;
-        LiquidGlassSpotlightTests.CreateApplicationResources();
+        SpotlightShellTests.CreateApplicationResources();
         var window = FreshWindow(language);
         try
         {
@@ -261,7 +261,7 @@ public sealed class SetupWizardNavigationTests
     [Fact]
     public void ChangingLanguageRefreshesAllStepsAndCancelLabels() => SharedStaTestRunner.RunAsync(async ct =>
     {
-        LiquidGlassSpotlightTests.CreateApplicationResources();
+        SpotlightShellTests.CreateApplicationResources();
         var window = FreshWindow();
         try
         {

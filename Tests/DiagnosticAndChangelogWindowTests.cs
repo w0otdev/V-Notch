@@ -23,7 +23,7 @@ public sealed class DiagnosticAndChangelogWindowTests
     [InlineData(PerformanceHealthLevel.Critical, "CRITICAL")]
     public void DiagnosticSnapshotFormatsMetricsAndClampsBars(PerformanceHealthLevel health, string badge) => SharedStaTestRunner.Run(() =>
     {
-        LiquidGlassSpotlightTests.CreateApplicationResources();
+        SpotlightShellTests.CreateApplicationResources();
         var window = new DebugWindow();
         try
         {
@@ -86,7 +86,7 @@ public sealed class DiagnosticAndChangelogWindowTests
     [Fact]
     public void DiagnosticControlsPublishViewLockDragAndPositionCallbacks() => SharedStaTestRunner.Run(() =>
     {
-        LiquidGlassSpotlightTests.CreateApplicationResources();
+        SpotlightShellTests.CreateApplicationResources();
         var locks = new List<bool>();
         var drags = new List<bool>();
         var views = new List<string>();
@@ -151,11 +151,10 @@ public sealed class DiagnosticAndChangelogWindowTests
     [InlineData("Weather", "WEATHER")]
     [InlineData("Spotlight Search", "SPOTLIGHT")]
     [InlineData("Subtitles & Lyrics", "LYRICS")]
-    [InlineData("Liquid Glass", "GLASS")]
     [InlineData("Memory & GC", "GC")]
     public void DiagnosticLogFilteringAndRetentionKeepOnlyMatchingNewestEntries(string filter, string category) => SharedStaTestRunner.Run(() =>
     {
-        LiquidGlassSpotlightTests.CreateApplicationResources();
+        SpotlightShellTests.CreateApplicationResources();
         var window = new DebugWindow();
         try
         {
@@ -184,7 +183,7 @@ public sealed class DiagnosticAndChangelogWindowTests
     [InlineData("0.5.0")]
     public void ChangelogLoadsVersionsBadgesAndSafeMarkdown(string installed) => SharedStaTestRunner.RunAsync(async ct =>
     {
-        LiquidGlassSpotlightTests.CreateApplicationResources();
+        SpotlightShellTests.CreateApplicationResources();
         using var fixture = new ChangelogFixture(installed,
         [
             new() { Version = "2.0.0", PublishedAt = new DateTime(2026, 1, 2, 0, 0, 0, DateTimeKind.Utc), ReleaseNotes = "# Main\n## Group\n### Detail\n\n- **Fixed** with *care* and `code`\n* More\nPlain [safe](https://example.com) and [blocked](file:///C:/private.txt) end" },
@@ -221,7 +220,7 @@ public sealed class DiagnosticAndChangelogWindowTests
     [Fact]
     public void ChangelogFailureShowsErrorAndClearsLoading() => SharedStaTestRunner.RunAsync(async ct =>
     {
-        LiquidGlassSpotlightTests.CreateApplicationResources();
+        SpotlightShellTests.CreateApplicationResources();
         using var fixture = new ChangelogFixture("1.0.0", [], fail: true);
         await (Task)Invoke(fixture.Window, "LoadChangelog")!;
         Assert.Equal(Visibility.Visible, fixture.Window.ErrorPanel.Visibility);

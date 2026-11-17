@@ -150,7 +150,6 @@ public sealed class LocalizationTests
     {
         var allowedTechnicalLabels = new HashSet<string>(StringComparer.Ordinal)
         {
-            "settings.skin.liquidglass",
             "settings.youtubeApiKey",
             "settings.enableSpotifyCanvas",
             "translation.downloadSize", // Numeric progress uses the same language-neutral separators.
@@ -182,7 +181,6 @@ public sealed class LocalizationTests
     {
         var allowedTechnicalLabels = new HashSet<string>(StringComparer.Ordinal)
         {
-            "settings.skin.liquidglass",
             "settings.youtubeApiKey",
             "settings.enableSpotifyCanvas",
             "translation.downloadSize", // Numeric progress uses the same language-neutral separators.

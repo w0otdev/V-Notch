@@ -1,6 +1,5 @@
 using System.Linq.Expressions;
 using System.Reflection;
-using System.Runtime.InteropServices;
 using System.Text.Json.Serialization;
 
 namespace VNotch.Models;
@@ -120,18 +119,13 @@ public partial class NotchSettings
 
     public bool EnableShadow { get; set; } = true;
     public bool EnableGlowOnHover { get; set; } = true;
-    public string NotchStyle { get; set; } = "default";
-
-    public LiquidGlassConfig LiquidGlass { get; set; } = new();
-
-    // User's custom Liquid Glass settings; kept separate so applying presets
-    // does not overwrite hand-tuned values when switching back to Custom.
-    public LiquidGlassConfig? LiquidGlassCustom { get; set; }
-
-    // Which Liquid Glass preset is active: "custom", "frosted" or "dark".
-    public string LiquidGlassPreset { get; set; } = "custom";
 
     public bool EnableDynamicIslandMode { get; set; } = false;
+
+    // Side length of the collapsed top-left corner shapes (quarter-circle radius / circle diameter).
+    public const int CornerCollapsedSize = 48;
+    public bool EnableTopLeftCornerMode { get; set; } = false;
+    public bool TopLeftCornerFloatingCircle { get; set; } = false;
 
     public bool HideOnExclusiveFullscreen { get; set; } = false;
     public bool HideOnWindowedFullscreen { get; set; } = false;
@@ -266,8 +260,6 @@ public partial class NotchSettings
         for (int i = 0; i < _cloneableProperties.Length; i++)
         {
             var prop = _cloneableProperties[i];
-            if (prop.PropertyType == typeof(LiquidGlassConfig))
-                continue;
 
             var p1 = Expression.Property(left, prop);
             var p2 = Expression.Property(right, prop);
@@ -309,8 +301,6 @@ public partial class NotchSettings
     {
         var clone = (NotchSettings)MemberwiseClone();
         clone.IsDirty = false;
-        clone.LiquidGlass = LiquidGlass?.Clone() ?? new LiquidGlassConfig();
-        clone.LiquidGlassCustom = LiquidGlassCustom?.Clone();
         return clone;
     }
 
@@ -319,163 +309,6 @@ public partial class NotchSettings
         if (ReferenceEquals(this, other)) return true;
         if (other is null) return false;
 
-        if (!_scalarValueEquals(this, other))
-            return false;
-
-        if ((LiquidGlass == null) != (other.LiquidGlass == null))
-            return false;
-        if (LiquidGlass != null && other.LiquidGlass != null && !LiquidGlass.ValueEquals(other.LiquidGlass))
-            return false;
-
-        if ((LiquidGlassCustom == null) != (other.LiquidGlassCustom == null))
-            return false;
-        if (LiquidGlassCustom != null && other.LiquidGlassCustom != null && !LiquidGlassCustom.ValueEquals(other.LiquidGlassCustom))
-            return false;
-
-        return true;
-    }
-}
-
-public partial class LiquidGlassConfig
-{
-    private const string NativeDll = "VNotch.Native.dll";
-
-    [StructLayout(LayoutKind.Sequential, Pack = 1)]
-    private struct VnLiquidGlassScalars
-    {
-        public double BlurAmount;
-        public double Refraction;
-        public double EdgeBend;
-        public double ChromaticAberration;
-        public double EdgeHighlight;
-        public double TouchLight;
-        public double Specular;
-        public double Fresnel;
-        public double Distortion;
-        public int CornerRadius;
-        public double ZRadius;
-        public double Opacity;
-        public double Saturation;
-        public double Brightness;
-        public double ShadowOpacity;
-        public int ShadowSpread;
-        public int BevelMode;
-        public int TargetFps;
-        public int Variant;
-        public double PowerFactor;
-        public double RefractionA;
-        public double RefractionB;
-        public double RefractionC;
-        public double RefractionD;
-        public double FPower;
-        public double Noise;
-        public double GlowWeight;
-        public double GlowBias;
-        public double GlowEdge0;
-        public double GlowEdge1;
-        public byte HideFromScreenCapture;
-        public byte UseGpuRefraction;
-        public byte UseUltimateGpu;
-    }
-
-    [LibraryImport(NativeDll)]
-    private static partial int vn_liquid_glass_config_equals(
-        ref VnLiquidGlassScalars a,
-        ref VnLiquidGlassScalars b,
-        out byte outEqual);
-
-    // Defaults are tuned from OverShifted/LiquidGlass Apple squircle shader architecture.
-    public double BlurAmount { get; set; } = 0.3;
-    public double Refraction { get; set; } = 1.0;
-    public double EdgeBend { get; set; } = 1.65;
-    public double ChromaticAberration { get; set; } = 0.56;
-    public double EdgeHighlight { get; set; } = 0.1;
-    public double TouchLight { get; set; } = 0.9;
-    public double Specular { get; set; } = 0.0;
-    public double Fresnel { get; set; } = 0.0;
-    public double Distortion { get; set; } = 0.32;
-    public int CornerRadius { get; set; } = 20;
-    public double ZRadius { get; set; } = 0.23;
-    public double Opacity { get; set; } = 1.0;
-    public double Saturation { get; set; } = 0.15;
-    public double Brightness { get; set; } = -0.05;
-    public double ShadowOpacity { get; set; } = 0.85;
-    public int ShadowSpread { get; set; } = 24;
-    public int BevelMode { get; set; } = 0;
-    public int TargetFps { get; set; } = 0;
-    public int Variant { get; set; } = 0; // 0 = Regular (Adaptive), 1 = Clear (highly transparent, non-adaptive)
-
-    // OverShifted LiquidGlass Core Parameters (matching showcase preset)
-    public double PowerFactor { get; set; } = 3.0;
-    public double RefractionA { get; set; } = 0.7;
-    public double RefractionB { get; set; } = 2.3;
-    public double RefractionC { get; set; } = 5.2;
-    public double RefractionD { get; set; } = 6.9;
-    public double FPower { get; set; } = 1.0;
-    public double Noise { get; set; } = 0.066;
-    public double GlowWeight { get; set; } = 0.692;
-    public double GlowBias { get; set; } = -0.040;
-    public double GlowEdge0 { get; set; } = 0.441;
-    public double GlowEdge1 { get; set; } = -0.474;
-
-    // Legacy CPU capture preference. GPU desktop capture always excludes the
-    // glass window to prevent recursive feedback.
-    public bool HideFromScreenCapture { get; set; } = false;
-
-    // New installations use the native-resolution GPU lens. Existing settings keep
-    // their serialized value, including an explicit false from the old opt-in UI.
-    public bool UseGpuRefraction { get; set; } = true;
-
-    // Uncapped-by-display pacing to TargetFps. Shared capture/render textures use
-    // the adapter driving the window's monitor, including in this mode.
-    public bool UseUltimateGpu { get; set; } = false;
-
-    public LiquidGlassConfig Clone() => (LiquidGlassConfig)MemberwiseClone();
-
-    private VnLiquidGlassScalars ToNative() => new()
-    {
-        BlurAmount = BlurAmount,
-        Refraction = Refraction,
-        EdgeBend = EdgeBend,
-        ChromaticAberration = ChromaticAberration,
-        EdgeHighlight = EdgeHighlight,
-        TouchLight = TouchLight,
-        Specular = Specular,
-        Fresnel = Fresnel,
-        Distortion = Distortion,
-        CornerRadius = CornerRadius,
-        ZRadius = ZRadius,
-        Opacity = Opacity,
-        Saturation = Saturation,
-        Brightness = Brightness,
-        ShadowOpacity = ShadowOpacity,
-        ShadowSpread = ShadowSpread,
-        BevelMode = BevelMode,
-        TargetFps = TargetFps,
-        Variant = Variant,
-        PowerFactor = PowerFactor,
-        RefractionA = RefractionA,
-        RefractionB = RefractionB,
-        RefractionC = RefractionC,
-        RefractionD = RefractionD,
-        FPower = FPower,
-        Noise = Noise,
-        GlowWeight = GlowWeight,
-        GlowBias = GlowBias,
-        GlowEdge0 = GlowEdge0,
-        GlowEdge1 = GlowEdge1,
-        HideFromScreenCapture = HideFromScreenCapture ? (byte)1 : (byte)0,
-        UseGpuRefraction = UseGpuRefraction ? (byte)1 : (byte)0,
-        UseUltimateGpu = UseUltimateGpu ? (byte)1 : (byte)0,
-    };
-
-    public bool ValueEquals(LiquidGlassConfig? other)
-    {
-        if (ReferenceEquals(this, other)) return true;
-        if (other is null) return false;
-
-        var left = ToNative();
-        var right = other.ToNative();
-        return vn_liquid_glass_config_equals(ref left, ref right, out byte equal) == 0 && equal != 0;
+        return _scalarValueEquals(this, other);
     }
 }

@@ -44,10 +44,6 @@ public partial class MainWindow
         var animX = MakeAnim(targetScale, duration, easing);
         NotchScale.BeginAnimation(ScaleTransform.ScaleXProperty, animX);
         NotchShadowScale.BeginAnimation(ScaleTransform.ScaleXProperty, animX);
-
-        // Keep the liquid glass tracking the notch at full rate while the hover
-        // scale plays, so the refracted backdrop doesn't jump in throttled steps.
-        BeginGlassHoverMotion(animX);
     }
 
     private void AnimateThumbnailHover(bool isHovered)
@@ -63,7 +59,7 @@ public partial class MainWindow
             ResetCompactThumbnailNextLayer();
         }
 
-        bool islandMode = _settings.EnableDynamicIslandMode;
+        bool islandMode = IslandLayout;
         double thumbScale;
         double notchWidth;
         double notchHeight;
@@ -92,9 +88,6 @@ public partial class MainWindow
             $"AnimateNotchHover -> {notchWidth} (hover={isHovered}, _isExpanded={_isExpanded}, _isAnimating={_isAnimating})");
         NotchBorder.BeginAnimation(WidthProperty, widthAnim);
         NotchBorder.BeginAnimation(HeightProperty, heightAnim);
-        // Same as AnimateNotchHover: keep the glass at full rate for the resize.
-
-        BeginGlassHoverMotion(widthAnim);
 
         if (isHovered)
         {
@@ -397,7 +390,6 @@ public partial class MainWindow
             double radius = (double)e.NewValue;
             var cr = window.MakeNotchCornerRadius(radius);
             window.SyncShellCornerRadius(cr);
-            window._glassMaterialPresenter.SyncCornerRadius(cr);
             window.UpdateNotchClip();
         }
     }
@@ -430,7 +422,8 @@ public partial class MainWindow
 
     private CornerRadius MakeNotchCornerRadius(double radius)
     {
-        return _settings.EnableDynamicIslandMode
+        if (IsCornerQuarter) return new CornerRadius(0, 0, radius, 0);
+        return IslandLayout
             ? new CornerRadius(radius, radius, radius, radius)
             : new CornerRadius(0, 0, radius, radius);
     }
@@ -469,7 +462,7 @@ public partial class MainWindow
     private void AnimateModeTransition(int fps)
     {
         int gen = ++_modeTransitionGeneration;
-        bool toIsland = _settings.EnableDynamicIslandMode;
+        bool toIsland = IslandLayout;
 
         _mtNotchW = _settings.Width;
         _mtNotchH = _settings.Height;
@@ -480,9 +473,8 @@ public partial class MainWindow
         _mtIslandR = Math.Max(0, _mtIslandH / 2.0);
 
         _isModeTransitioning = true;
-        UpdateGlassMotionState();
 
-        bool showEars = !toIsland && !IsLiquidGlassEnabled;
+        bool showEars = !toIsland;
         var earVisStart = showEars ? Visibility.Visible : Visibility.Collapsed;
         double earOpacityStart = showEars ? 1.0 : 0.0;
         if (LeftEar != null) { LeftEar.Visibility = earVisStart; LeftEar.Opacity = earOpacityStart; }
@@ -520,7 +512,6 @@ public partial class MainWindow
 
         var cr = new CornerRadius(topRadius, topRadius, bottomRadius, bottomRadius);
         SyncShellCornerRadius(cr);
-        _glassMaterialPresenter.SyncCornerRadius(cr);
 
         if (NotchContainer != null)
         {
@@ -531,11 +522,10 @@ public partial class MainWindow
             }
         }
 
-        double effectiveEarOpacity = IsLiquidGlassEnabled ? 0.0 : earOpacity;
-        if (LeftEar != null) LeftEar.Opacity = effectiveEarOpacity;
-        if (RightEar != null) RightEar.Opacity = effectiveEarOpacity;
-        if (LeftShadowEar != null) LeftShadowEar.Opacity = effectiveEarOpacity;
-        if (RightShadowEar != null) RightShadowEar.Opacity = effectiveEarOpacity;
+        if (LeftEar != null) LeftEar.Opacity = earOpacity;
+        if (RightEar != null) RightEar.Opacity = earOpacity;
+        if (LeftShadowEar != null) LeftShadowEar.Opacity = earOpacity;
+        if (RightShadowEar != null) RightShadowEar.Opacity = earOpacity;
 
         UpdateNotchClip();
     }
@@ -543,7 +533,6 @@ public partial class MainWindow
     private void FinalizeModeTransition(bool toIsland)
     {
         _isModeTransitioning = false;
-        UpdateGlassMotionState();
 
         NotchBorder.Width = _collapsedWidth;
         NotchBorder.Height = _collapsedHeight;
@@ -556,7 +545,6 @@ public partial class MainWindow
         // removed MediaBackground2 CornerRadius
         NotchBorderShadow.CornerRadius = cr;
         HoverGlow.CornerRadius = cr;
-        _glassMaterialPresenter.SyncCornerRadius(cr);
         CurrentCornerRadius = _cornerRadiusCollapsed;
 
         if (NotchContainer != null)
@@ -573,7 +561,8 @@ public partial class MainWindow
 
     private double GetCollapsedWidth()
     {
-        double width = _settings.EnableDynamicIslandMode
+        if (IsCornerMode) return CornerSize;
+        double width = IslandLayout
             ? _settings.DynamicIslandWidth
             : _settings.Width;
 
@@ -582,14 +571,16 @@ public partial class MainWindow
 
     private double GetCollapsedHeight()
     {
-        return _settings.EnableDynamicIslandMode
+        if (IsCornerMode) return CornerSize;
+        return IslandLayout
             ? _settings.DynamicIslandHeight
             : _settings.Height;
     }
 
     private double GetCollapsedCornerRadius()
     {
-        return _settings.EnableDynamicIslandMode
+        if (IsCornerQuarter) return CornerSize;
+        return IslandLayout
             ? Math.Max(0, _collapsedHeight / 2.0)
             : _settings.CornerRadius;
     }
@@ -712,7 +703,7 @@ public partial class MainWindow
         bool showBattery = show && _settings.ShowBatteryIndicator;
         bool showBackground = show && targetView is VNotch.Models.NotchView.Secondary
             or VNotch.Models.NotchView.Timer or VNotch.Models.NotchView.AudioMixer;
-        double restY = _settings.EnableDynamicIslandMode ? 5 : 0;
+        double restY = IslandLayout ? 5 : 0;
         double settingsY = targetView == VNotch.Models.NotchView.Secondary ? 0 : restY;
         var duration = new Duration(TimeSpan.FromMilliseconds(show ? 340 : 220));
         var settingsDelay = show ? TimeSpan.FromMilliseconds(56) : TimeSpan.Zero;

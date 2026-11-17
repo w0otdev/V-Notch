@@ -984,7 +984,7 @@ public partial class MainWindow
         CompactThumbnailScale.BeginAnimation(ScaleTransform.ScaleXProperty, null);
         CompactThumbnailScale.BeginAnimation(ScaleTransform.ScaleYProperty, null);
         CompactThumbnailBorder.BeginAnimation(OpacityProperty, null);
-        CompactThumbnailBorder.RenderTransformOrigin = _settings.EnableDynamicIslandMode
+        CompactThumbnailBorder.RenderTransformOrigin = IslandLayout
             ? new Point(0.5, 0.5)
             : new Point(0, 0);
         CompactThumbnailScale.ScaleX = 1.0;
@@ -1095,7 +1095,8 @@ public partial class MainWindow
     private void StartTitleShimmer()
     {
         _shimmerWanted = true;
-        if (!AmbientAnimationsAllowed) return;
+        // The title lives in the expanded view; a hidden shimmer still forces WPF to render every frame.
+        if (!AmbientAnimationsAllowed || !MediaPlayback.TrackTitle.IsVisible) return;
         if (_isShimmerActive) return;
         _isShimmerActive = true;
 
@@ -1121,7 +1122,7 @@ public partial class MainWindow
         {
             RepeatBehavior = RepeatBehavior.Forever
         };
-        Timeline.SetDesiredFrameRate(storyboard, VNotch.Services.AnimationConfig.TargetFps);
+        Timeline.SetDesiredFrameRate(storyboard, VNotch.Services.AnimationConfig.AmbientFps);
 
         var anim0 = new DoubleAnimation
         {
@@ -1153,11 +1154,11 @@ public partial class MainWindow
         Storyboard.SetTargetProperty(anim2,
             new PropertyPath("(TextBlock.Foreground).(GradientBrush.GradientStops)[2].(GradientStop.Offset)", Array.Empty<object>()));
 
-        System.Windows.Media.Animation.Timeline.SetDesiredFrameRate(anim0, VNotch.Services.AnimationConfig.TargetFps);
+        System.Windows.Media.Animation.Timeline.SetDesiredFrameRate(anim0, VNotch.Services.AnimationConfig.AmbientFps);
         storyboard.Children.Add(anim0);
-        System.Windows.Media.Animation.Timeline.SetDesiredFrameRate(anim1, VNotch.Services.AnimationConfig.TargetFps);
+        System.Windows.Media.Animation.Timeline.SetDesiredFrameRate(anim1, VNotch.Services.AnimationConfig.AmbientFps);
         storyboard.Children.Add(anim1);
-        System.Windows.Media.Animation.Timeline.SetDesiredFrameRate(anim2, VNotch.Services.AnimationConfig.TargetFps);
+        System.Windows.Media.Animation.Timeline.SetDesiredFrameRate(anim2, VNotch.Services.AnimationConfig.AmbientFps);
         storyboard.Children.Add(anim2);
 
         _titleShimmerStoryboard = storyboard;

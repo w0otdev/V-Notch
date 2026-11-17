@@ -16,115 +16,6 @@ public sealed partial class SettingsService : ISettingsService, IAsyncDisposable
     private const ulong ExtendedNormalizationMagic = 0x564E5F4E4F524D32UL;
 
     [StructLayout(LayoutKind.Sequential, Pack = 1)]
-    private struct VnLiquidGlassScalars
-    {
-        public double BlurAmount;
-        public double Refraction;
-        public double EdgeBend;
-        public double ChromaticAberration;
-        public double EdgeHighlight;
-        public double TouchLight;
-        public double Specular;
-        public double Fresnel;
-        public double Distortion;
-        public int CornerRadius;
-        public double ZRadius;
-        public double Opacity;
-        public double Saturation;
-        public double Brightness;
-        public double ShadowOpacity;
-        public int ShadowSpread;
-        public int BevelMode;
-        public int TargetFps;
-        public int Variant;
-        public double PowerFactor;
-        public double RefractionA;
-        public double RefractionB;
-        public double RefractionC;
-        public double RefractionD;
-        public double FPower;
-        public double Noise;
-        public double GlowWeight;
-        public double GlowBias;
-        public double GlowEdge0;
-        public double GlowEdge1;
-        public byte HideFromScreenCapture;
-        public byte UseGpuRefraction;
-        public byte UseUltimateGpu;
-
-        public static VnLiquidGlassScalars FromManaged(LiquidGlassConfig c) => new()
-        {
-            BlurAmount = c.BlurAmount,
-            Refraction = c.Refraction,
-            EdgeBend = c.EdgeBend,
-            ChromaticAberration = c.ChromaticAberration,
-            EdgeHighlight = c.EdgeHighlight,
-            TouchLight = c.TouchLight,
-            Specular = c.Specular,
-            Fresnel = c.Fresnel,
-            Distortion = c.Distortion,
-            CornerRadius = c.CornerRadius,
-            ZRadius = c.ZRadius,
-            Opacity = c.Opacity,
-            Saturation = c.Saturation,
-            Brightness = c.Brightness,
-            ShadowOpacity = c.ShadowOpacity,
-            ShadowSpread = c.ShadowSpread,
-            BevelMode = c.BevelMode,
-            TargetFps = c.TargetFps,
-            Variant = c.Variant,
-            PowerFactor = c.PowerFactor,
-            RefractionA = c.RefractionA,
-            RefractionB = c.RefractionB,
-            RefractionC = c.RefractionC,
-            RefractionD = c.RefractionD,
-            FPower = c.FPower,
-            Noise = c.Noise,
-            GlowWeight = c.GlowWeight,
-            GlowBias = c.GlowBias,
-            GlowEdge0 = c.GlowEdge0,
-            GlowEdge1 = c.GlowEdge1,
-            HideFromScreenCapture = c.HideFromScreenCapture ? (byte)1 : (byte)0,
-            UseGpuRefraction = c.UseGpuRefraction ? (byte)1 : (byte)0,
-            UseUltimateGpu = c.UseUltimateGpu ? (byte)1 : (byte)0,
-        };
-
-        public readonly void ApplyToManaged(LiquidGlassConfig c)
-        {
-            c.BlurAmount = BlurAmount;
-            c.Refraction = Refraction;
-            c.EdgeBend = EdgeBend;
-            c.ChromaticAberration = ChromaticAberration;
-            c.EdgeHighlight = EdgeHighlight;
-            c.TouchLight = TouchLight;
-            c.Specular = Specular;
-            c.Fresnel = Fresnel;
-            c.Distortion = Distortion;
-            c.CornerRadius = CornerRadius;
-            c.ZRadius = ZRadius;
-            c.Opacity = Opacity;
-            c.Saturation = Saturation;
-            c.Brightness = Brightness;
-            c.ShadowOpacity = ShadowOpacity;
-            c.ShadowSpread = ShadowSpread;
-            c.BevelMode = BevelMode;
-            c.TargetFps = TargetFps;
-            c.Variant = Variant;
-            c.PowerFactor = PowerFactor;
-            c.RefractionA = RefractionA;
-            c.RefractionB = RefractionB;
-            c.RefractionC = RefractionC;
-            c.RefractionD = RefractionD;
-            c.FPower = FPower;
-            c.Noise = Noise;
-            c.GlowWeight = GlowWeight;
-            c.GlowBias = GlowBias;
-            c.GlowEdge0 = GlowEdge0;
-            c.GlowEdge1 = GlowEdge1;
-        }
-    }
-
-    [StructLayout(LayoutKind.Sequential, Pack = 1)]
     private struct VnSettingsNormalizationParams
     {
         public int Width;
@@ -151,9 +42,6 @@ public sealed partial class SettingsService : ISettingsService, IAsyncDisposable
         public double LargeExpandMultiplier;
         public int SpotlightAiWordsPerSecond;
         public int GpuPreference;
-        public VnLiquidGlassScalars LiquidGlass;
-        public byte HasLiquidGlassCustom;
-        public VnLiquidGlassScalars LiquidGlassCustom;
     }
 
     [LibraryImport(NativeDll)]
@@ -744,12 +632,6 @@ public sealed partial class SettingsService : ISettingsService, IAsyncDisposable
     {
         bool changed = false;
 
-        if (settings.LiquidGlass is null)
-        {
-            settings.LiquidGlass = new LiquidGlassConfig();
-            changed = true;
-        }
-
         if (settings.DebugWindowX.HasValue && !double.IsFinite(settings.DebugWindowX.Value))
         {
             settings.DebugWindowX = null;
@@ -787,12 +669,7 @@ public sealed partial class SettingsService : ISettingsService, IAsyncDisposable
             MediumExpandMultiplier = settings.MediumExpandMultiplier,
             LargeExpandMultiplier = settings.LargeExpandMultiplier,
             SpotlightAiWordsPerSecond = settings.SpotlightAiWordsPerSecond,
-            GpuPreference = settings.GpuPreference,
-            LiquidGlass = VnLiquidGlassScalars.FromManaged(settings.LiquidGlass),
-            HasLiquidGlassCustom = settings.LiquidGlassCustom is not null ? (byte)1 : (byte)0,
-            LiquidGlassCustom = settings.LiquidGlassCustom is not null
-                ? VnLiquidGlassScalars.FromManaged(settings.LiquidGlassCustom)
-                : default
+            GpuPreference = settings.GpuPreference
         };
 
         if (vn_settings_service_normalize_numeric(ref normParams, out byte numericChanged) == 0 && numericChanged != 0)
@@ -818,11 +695,6 @@ public sealed partial class SettingsService : ISettingsService, IAsyncDisposable
             settings.LargeExpandMultiplier = normParams.LargeExpandMultiplier;
             settings.SpotlightAiWordsPerSecond = normParams.SpotlightAiWordsPerSecond;
             settings.GpuPreference = normParams.GpuPreference;
-            normParams.LiquidGlass.ApplyToManaged(settings.LiquidGlass);
-            if (settings.LiquidGlassCustom is not null)
-            {
-                normParams.LiquidGlassCustom.ApplyToManaged(settings.LiquidGlassCustom);
-            }
             changed = true;
         }
 

@@ -94,8 +94,6 @@ public partial class MainWindow : Window
         set
         {
             _isVisualAnimationActive = value;
-            // Drive the liquid-glass refresh rate off notch motion: full rate while
-            UpdateGlassMotionState();
         }
     }
 
@@ -164,7 +162,6 @@ public partial class MainWindow : Window
     private readonly bool _ownsTransitionCoordinator;
     private readonly Func<NotchView, string, bool> _canInitiateTransition;
     private readonly Func<bool> _isExpandedCheck;
-    private readonly VNotch.Presenters.GlassMaterialClipPresenter _glassMaterialPresenter;
     private VNotch.Presenters.NotchShellPresenter? _notchShellPresenter;
     private VNotch.Presenters.NotchContentTransitionPresenter? _notchContentPresenter;
 
@@ -236,14 +233,17 @@ public partial class MainWindow : Window
                 Settings_Click(sender, e);
         }), handledEventsToo: true);
         InitializeShellCornerRadiusSync();
+        BatteryFill.IsVisibleChanged += (_, _) => RefreshAmbientAnimations();
+        MediaPlayback.TrackTitle.IsVisibleChanged += (_, _) => RefreshAmbientAnimations();
+        CompactHoverInfo.IsVisibleChanged += (_, _) =>
+        {
+            // The title marquee is a Forever clock; it must not keep ticking once the hover info is hidden.
+            if (CompactHoverInfo.IsVisible) QueueCompactMarqueeRefresh();
+            else CompactTitleMarqueeTranslate.BeginAnimation(TranslateTransform.XProperty, null);
+        };
         MusicCompactContent.Loaded += (_, _) => { MusicCompactContent.LayoutUpdated -= CacheCompactThumbnailRestOffset; MusicCompactContent.LayoutUpdated += CacheCompactThumbnailRestOffset; };
         MusicCompactContent.Unloaded += (_, _) => MusicCompactContent.LayoutUpdated -= CacheCompactThumbnailRestOffset;
         System.Windows.Input.InputManager.Current.PreProcessInput += BlockGreetingInput;
-        _glassMaterialPresenter = new(GlassMaterialClipHost,
-            GlassBackdropHost, GlassTintOverlay, GlassGrainOverlay,
-            GlassDepthRimBorder, GlassCoolRimBorder, GlassWarmRimBorder,
-            GlassFresnelBloomBorder, GlassFresnelBorder, GlassInnerFresnelBorder,
-            GlassRimBorder, GlassSpecularBorder, GlassDarkOverlay);
         LocalizedPresentation.Apply(this);
         _mediaUpdates = new(action => Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.Background, action), ApplyMediaUpdate);
         Language = System.Windows.Markup.XmlLanguage.GetLanguage(Loc.GetCulture().IetfLanguageTag);
@@ -298,7 +298,7 @@ public partial class MainWindow : Window
         AudioContent.Attach(_viewModel.AudioMixer,
             () => (AudioMixerService)App.Services.GetService(typeof(AudioMixerService))!,
             () => (IVolumeService)App.Services.GetService(typeof(IVolumeService))!,
-            () => _isAnimating, () => IsLiquidGlassEnabled);
+            () => _isAnimating);
         AudioContent.FitHeightRequested += AnimateAudioNotchHeight;
         AudioContent.OutputDeviceChanged += () =>
         {
@@ -363,7 +363,7 @@ public partial class MainWindow : Window
 
         _collapsedWidth = GetCollapsedWidth();
         _collapsedHeight = GetCollapsedHeight();
-        _expandedHeight = _settings.EnableDynamicIslandMode ? 154 : 147;
+        _expandedHeight = IslandLayout ? 154 : 147;
         _cornerRadiusCollapsed = GetCollapsedCornerRadius();
 
         _updateTimer = new UiScheduledTimer
@@ -400,11 +400,7 @@ public partial class MainWindow : Window
             () => ShouldStayOnDesktopLayer,
             () => _zOrderManager.EnsureTopmost(force: true),
             HandleAppDeactivated,
-            () =>
-            {
-                InvalidateGlassDpiScale();
-                PositionAtTop();
-            },
+            PositionAtTop,
             HandleClipboardUpdated);
         _overlayWindow.TargetScreen = () => MonitorSelection.Resolve(_settings);
         _overlayWindow.IsZOrderSuspended = isTopmostSuspended;
@@ -513,6 +509,7 @@ public partial class MainWindow : Window
     private void MainWindow_Loaded(object sender, RoutedEventArgs e)
     {
         InitializeSessionUnlockFeedback();
+        InitializeCollapsedClock();
         _invisibleHotkey ??= new VNotch.Controllers.InvisibleHotkeyController(this, ToggleInvisibleMode);
         _overlayWindow.Initialize();
         _spotlightController.Initialize(this, _settings);
@@ -677,10 +674,10 @@ public partial class MainWindow : Window
         if (_cleanedUp) return;
         _cleanedUp = true;
         DiscardPreparedSettingsWindow();
-        StopLiquidGlass();
         _moduleHost.StopAll();
         DisposeGreetingLifecycle();
         DisposeSessionUnlockFeedback();
+        DisposeCollapsedClock();
         _mediaUpdates.Dispose();
 
         _notchManager.HoverService.HoverEnter -= HoverService_HoverEnter;
@@ -750,7 +747,6 @@ public partial class MainWindow : Window
         _musicCompactExitDebounceTimer?.Dispose();
         _blurDissolveDebounce?.Dispose();
         _scrollSessionResetTimer?.Dispose();
-        _glassGpuRetryTimer?.Dispose();
         // No-op when the debug FPS overlay never subscribed.
         CompositionTarget.Rendering -= CompositionTarget_Rendering_DebugFps;
         DetachDesktopTransparentFrameHandler();
@@ -797,7 +793,6 @@ public partial class MainWindow : Window
         _isAudioView = snapshot.CurrentView == VNotch.Models.NotchView.AudioMixer;
         _isSecondaryView = snapshot.CurrentView == VNotch.Models.NotchView.Secondary;
         _isTimerView = snapshot.CurrentView == VNotch.Models.NotchView.Timer;
-        UpdateGlassMotionState();
         SyncPrivacyDotVisibilityForCurrentView();
         UpdateSpotifyCanvasPresentationContext();
     }
@@ -1014,6 +1009,7 @@ public partial class MainWindow : Window
         int gen = ++_fullscreenSlideGeneration;
         _fullscreenSlideVisible = shouldBeVisible;
         _isFullscreenSlideAnimating = true;
+        RefreshCollapsedClock();
 
         double slideDistance = NotchVisibilitySlideDistance;
 
@@ -1212,6 +1208,7 @@ public partial class MainWindow : Window
     private void PositionAtTop()
     {
         double notchSurfaceWidth = Math.Max(ClipboardTrayWidth, Math.Max(Math.Max(_expandedWidth, _clockViewWidth), _audioViewWidth));
+        ApplyCornerModePlacement();
         _overlayWindow.PositionAtTop(notchSurfaceWidth, MaxExpandedNotchHeight);
 
         // Initialize the global hover/top-edge bounds at startup as well as after
@@ -1241,7 +1238,7 @@ public partial class MainWindow : Window
         if (!double.IsFinite(height) || height <= 0) height = _collapsedHeight;
 
         CornerRadius corners = NotchBorder.CornerRadius;
-        bool islandMode = _settings.EnableDynamicIslandMode;
+        bool islandMode = IslandLayout;
         double topRadius = islandMode ? Math.Max(0, Math.Min(corners.TopLeft, corners.TopRight)) : 0;
         double bottomRadius = Math.Max(0, Math.Min(corners.BottomLeft, corners.BottomRight));
         var rect = _overlayWindow.GetNotchScreenRect(width, height, bottomRadius);
@@ -1280,7 +1277,6 @@ public partial class MainWindow : Window
         HoverGlow.Opacity = 0;
 
         // This guard is acquired before Spotlight calls Show(). Showing or
-        SyncLiquidGlassAfterSpotlightHandoff();
         _hoverCollapseTimer.Stop();
         _hoverThumbnailDelayTimer.Stop();
     }
@@ -1346,7 +1342,6 @@ public partial class MainWindow : Window
         _spotlightMorphOwnsNotchVisibility = false;
         CompleteSpotlightReturnScaleHandoff();
         _transitionCoordinator.CompleteSpotlightHandoff(_activeSpotlightSessionId, restorePreviousView: true);
-        SyncLiquidGlassAfterSpotlightHandoff();
     }
 
     internal void BeginSpotlightReturnHandoff(TimeSpan duration)
@@ -1365,7 +1360,7 @@ public partial class MainWindow : Window
 
         CompleteSpotlightReturnScaleHandoff();
         // Restore material once. Only the dedicated content host animates, so
-        // glass, tint and shadow cannot pulse as two window fades overlap.
+        // the material and shadow cannot pulse as two window fades overlap.
         NotchWrapper.Opacity = _spotlightRestoreNotchOpacity;
         NotchShadowWrapper.Opacity = _spotlightRestoreShadowOpacity;
         // Ownership remains with Spotlight until its HWND is actually hidden.
@@ -1382,9 +1377,7 @@ public partial class MainWindow : Window
         NotchScale.ScaleX = NotchScale.ScaleY = 1;
         NotchShadowScale.ScaleX = NotchShadowScale.ScaleY = 1;
         _spotlightReturnHandoffActive = true;
-        SyncLiquidGlassAfterSpotlightHandoff();
 
-        _liquidGlass?.ForceRefresh();
         if (AnimationConfig.ReduceMotion || duration <= TimeSpan.Zero)
             return;
 
@@ -1484,7 +1477,6 @@ public partial class MainWindow : Window
         NotchBorderShadow.CornerRadius = cr;
         MediaBackground.CornerRadius = cr;
         MediaBackground2.CornerRadius = cr;
-        _glassMaterialPresenter.SyncCornerRadius(cr);
         CurrentCornerRadius = _cornerRadiusCollapsed;
     }
 
@@ -1496,11 +1488,7 @@ public partial class MainWindow : Window
         }
         if (CountdownWidget?.TimerControlBarShadow != null)
         {
-            CountdownWidget.TimerControlBarShadow.Opacity = (IsLiquidGlassEnabled || !enabled) ? 0 : 0.45;
-        }
-        if (IsLiquidGlassEnabled)
-        {
-            ApplyGlassContentShadow(_isExpanded || _isMusicCompactMode);
+            CountdownWidget.TimerControlBarShadow.Opacity = enabled ? 0.45 : 0;
         }
     }
 
@@ -1628,7 +1616,7 @@ public partial class MainWindow : Window
 #pragma warning disable S3776 // Synchronizes visual margins, transforms, and visibility for Dynamic Island layout mode
     private void ApplyDynamicIslandLayout(bool animateTransition = false)
     {
-        bool islandMode = _settings.EnableDynamicIslandMode;
+        bool islandMode = IslandLayout;
 
         if (!animateTransition)
         {
@@ -1650,7 +1638,7 @@ public partial class MainWindow : Window
 
     private void UpdateEarVisibility()
     {
-        bool showEars = !_settings.EnableDynamicIslandMode && !IsLiquidGlassEnabled;
+        bool showEars = !IslandLayout && !IsCornerMode;
         var earVisibility = showEars ? Visibility.Visible : Visibility.Collapsed;
         double earOpacity = showEars ? 1.0 : 0.0;
 
@@ -1672,6 +1660,23 @@ public partial class MainWindow : Window
             double islandTop = Math.Max(0, (GetCollapsedHeight() - 22) / 2.0);
             MusicCompactContent.VerticalAlignment = VerticalAlignment.Top;
             MusicCompactContent.Margin = islandMode ? new Thickness(12, islandTop, 12, 0) : new Thickness(8, 4, 8, 4);
+            // Corner shapes show only the album art: centred in the circle, pulled towards the corner in the quarter-circle.
+            if (IsCornerMode) MusicCompactContent.Margin = islandMode ? new Thickness(islandTop, islandTop, 0, 0) : new Thickness(9, 8, 0, 0);
+        }
+
+        if (CollapsedClockText != null)
+        {
+            CollapsedClockText.Margin = IsCornerQuarter ? new Thickness(0, 0, 8, 10)
+                : islandMode ? new Thickness(0) : new Thickness(0, 0, 0, 6);
+            CollapsedClockText.FontSize = IsCornerMode ? 10.5 : 11.5;
+            if (IsCornerMode)
+            {
+                CompactClockText.Visibility = Visibility.Collapsed;
+                EnsureCompactPresentationGuard();
+                EnforceCompactPresentationOwner();
+            }
+            else CompactClockText.ClearValue(VisibilityProperty);
+            RefreshCollapsedClock();
         }
 
         if (CompactHoverInfo != null)
@@ -1920,7 +1925,7 @@ public partial class MainWindow : Window
 
     private void CompactThumbnailBorder_MouseEnter(object sender, MouseEventArgs e)
     {
-        if (!_isExpanded && !_isAnimating && (_isMusicCompactMode))
+        if (!_isExpanded && !_isAnimating && (_isMusicCompactMode) && !IsCornerMode)
         {
             _compactThumbnailHoverLeaveTimer.Stop();
             _hoverThumbnailDelayTimer.Stop();
@@ -1972,7 +1977,7 @@ public partial class MainWindow : Window
 
         Rect exitBounds = thumbnailBounds;
 
-        if ((_settings.EnableDynamicIslandMode) && _isCompactThumbnailHovered)
+        if ((IslandLayout) && _isCompactThumbnailHovered)
         {
             double notchWidth = NotchBorder.ActualWidth > 0 ? NotchBorder.ActualWidth : NotchBorder.Width;
             double notchHeight = NotchBorder.ActualHeight > 0 ? NotchBorder.ActualHeight : NotchBorder.Height;
@@ -2187,7 +2192,6 @@ public partial class MainWindow : Window
     private double _lastNotchClipW = -1;
     private double _lastNotchClipH = -1;
     private CornerRadius _lastNotchClipCr = new CornerRadius(-1);
-    private double _lastNotchClipPower = -1;
 
     private void UpdateNotchClip()
     {
@@ -2199,13 +2203,11 @@ public partial class MainWindow : Window
         if (w <= 0 || h <= 0) return;
 
         CornerRadius cr = NotchBorder.CornerRadius;
-        double power = IsLiquidGlassEnabled ? _settings.LiquidGlass?.PowerFactor ?? 3 : 2;
 
         if (NotchContent.Clip == null ||
             Math.Abs(w - _lastNotchClipW) > 0.05 ||
             Math.Abs(h - _lastNotchClipH) > 0.05 ||
-            !cr.Equals(_lastNotchClipCr) ||
-            Math.Abs(power - _lastNotchClipPower) > 1e-3)
+            !cr.Equals(_lastNotchClipCr))
         {
             var geometry = BuildNotchClipGeometry(w, h);
             if (geometry != null)
@@ -2213,27 +2215,14 @@ public partial class MainWindow : Window
                 _lastNotchClipW = w;
                 _lastNotchClipH = h;
                 _lastNotchClipCr = cr;
-                _lastNotchClipPower = power;
                 NotchContent.Clip = geometry;
                 HoverGlow.Clip = geometry;
             }
         }
-
-        // Keep the complete glass material stack clipped to its current silhouette.
-        UpdateGlassClip();
-    }
-
-    private void UpdateGlassClip() =>
-        _glassMaterialPresenter?.UpdateClip(NotchBorder.CornerRadius);
-
-    private void GlassMaterialClipHost_SizeChanged(object sender, SizeChangedEventArgs e)
-    {
-        UpdateGlassClip();
     }
 
     private StreamGeometry? BuildNotchClipGeometry(double w, double h) =>
-        GlassClipBuilder.CreateClip(new Size(Math.Max(0, w), Math.Max(0, h)), NotchBorder.CornerRadius,
-            IsLiquidGlassEnabled ? _settings.LiquidGlass?.PowerFactor ?? 3 : 2);
+        NotchClipBuilder.CreateClip(new Size(Math.Max(0, w), Math.Max(0, h)), NotchBorder.CornerRadius);
 
     #endregion
 

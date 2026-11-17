@@ -20,6 +20,17 @@ public class AnimationConfigTests
         Assert.Equal(expected, AnimationConfig.ComputeTargetFps(configuredFps, refreshHz));
     }
 
+    [Theory]
+    [InlineData(240, 30)]
+    [InlineData(120, 30)]
+    [InlineData(60, 30)]
+    [InlineData(30, 30)]
+    [InlineData(24, 24)]
+    public void ComputeAmbientFps_NeverExceedsTheMinimumSelectableRate(int targetFps, int expected)
+    {
+        Assert.Equal(expected, AnimationConfig.ComputeAmbientFps(targetFps));
+    }
+
     [Fact]
     public void ComputeTargetFps_KeepsConfiguredCapWhenRefreshRateIsUnavailable()
     {

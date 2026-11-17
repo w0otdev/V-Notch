@@ -166,7 +166,7 @@ public sealed class PrivacySettingsTests
             var method = typeof(SettingsWindow).GetMethod("IsInteractiveElement", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static);
             Assert.NotNull(method);
 
-            string[] navTags = { "Searching", "Appearance", "Skins", "Behavior", "Devices", "System", "Privacy", "Spotlight", "Advanced", "Performance", "Donating", "Updates" };
+            string[] navTags = { "Searching", "Appearance", "Behavior", "Devices", "System", "Privacy", "Spotlight", "Advanced", "Performance", "Donating", "Updates" };
             foreach (var tag in navTags)
             {
                 var border = new System.Windows.Controls.Border { Tag = tag };

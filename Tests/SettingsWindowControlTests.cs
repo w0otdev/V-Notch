@@ -242,6 +242,8 @@ public sealed class SettingsWindowControlTests
     [InlineData("EnableYouTubeSubtitlesCheck", "EnableYouTubeSubtitles")]
     [InlineData("IgnoreYouTubeAutoSubtitlesCheck", "IgnoreYouTubeAutoSubtitles")]
     [InlineData("DynamicIslandModeCheck", "EnableDynamicIslandMode")]
+    [InlineData("TopLeftCornerModeCheck", "EnableTopLeftCornerMode")]
+    [InlineData("TopLeftCornerFloatingCheck", "TopLeftCornerFloatingCircle")]
     [InlineData("AutoAnimationFpsCheck", "AutoAnimationFps")]
     [InlineData("HoverExpandCheck", "EnableHoverExpand")]
     [InlineData("DisableMouseLeaveAutoCloseCheck", "DisableMouseLeaveAutoClose")]
@@ -358,6 +360,11 @@ public sealed class SettingsWindowControlTests
             window.DynamicIslandModeCheck.IsChecked = enabled;
             Assert.Equal(enabled, window.DynamicIslandWidthSlider.IsEnabled);
             Assert.Equal(enabled, window.DynamicIslandHeightSlider.IsEnabled);
+            window.TopLeftCornerModeCheck.IsChecked = enabled;
+            Assert.Equal(enabled, window.TopLeftCornerFloatingCheck.IsEnabled);
+            Assert.Equal(!enabled, window.DynamicIslandModeCheck.IsEnabled);
+            Assert.False(enabled && window.DynamicIslandWidthSlider.IsEnabled);
+            window.TopLeftCornerModeCheck.IsChecked = false;
         }
         window.AutoAnimationFpsCheck.IsChecked = true;
         Assert.False(window.AnimationFpsSlider.IsEnabled);
@@ -660,7 +667,6 @@ public sealed class SettingsWindowControlTests
     [InlineData("Donating", true)]
     [InlineData("Updates", true)]
     [InlineData("Searching", true)]
-    [InlineData("Skins", true)]
     public void SettingsSaveClosesEverySectionOnceAndPersistsSnapshot(string section, bool fastClose) => SharedStaTestRunner.RunAsync(async ct =>
     {
         bool previousReducedMotion = AnimationConfig.ReduceMotion;
@@ -766,84 +772,6 @@ public sealed class SettingsWindowControlTests
                 throw new InvalidOperationException("Cleanup directory is outside the temporary root.");
             System.IO.Directory.Delete(directory, recursive: true);
         }
-    });
-
-    [Theory]
-    [InlineData("frosted", 0.20)]
-    [InlineData("dark", 0.25)]
-    [InlineData("ultrathin", 0.10)]
-    [InlineData("thin", 0.20)]
-    [InlineData("regular", 0.20)]
-    [InlineData("thick", 0.35)]
-    [InlineData("ultrathick", 0.50)]
-    [InlineData("clear", 0.05)]
-    public void GlassPresetsSurviveLocalizationAndPreserveTheCustomSlot(string preset, double blur) => SharedStaTestRunner.Run(() =>
-    {
-        using var fixture = new Fixture();
-        var window = fixture.Window;
-        Assert.Equal(9, window.GlassPresetCombo.Items.Count);
-        window.SkinCombo.SelectedIndex = 1;
-        window.GlassBlurSlider.Value = 40;
-        window.GlassRefractionSlider.Value = 70;
-        window.GlassFpsSlider.Value = 120;
-        window.UltimateGpuCheck.IsChecked = true;
-        window.GpuRefractionCheck.IsChecked = false;
-        window.GlassPresetCombo.SelectedItem = window.GlassPresetCombo.Items.Cast<ComboBoxItem>().Single(item => (string)item.Tag == preset);
-        var snapshot = window.ReadSettingsFromUi();
-        Assert.Equal("liquidglass", snapshot.NotchStyle);
-        Assert.Equal(preset, snapshot.LiquidGlassPreset);
-        Assert.Equal(blur, snapshot.LiquidGlass.BlurAmount, 5);
-        Assert.Equal(120, snapshot.LiquidGlass.TargetFps);
-        Assert.False(snapshot.LiquidGlass.UseGpuRefraction);
-        Assert.True(snapshot.LiquidGlass.UseUltimateGpu);
-        Assert.Equal(Visibility.Visible, window.UltimateGpuWarning.Visibility);
-        foreach (string language in new[] { "vi", "ja", "en" })
-        {
-            Loc.SetLanguage(language);
-            Invoke(window, "ApplyLiquidGlassLocalization");
-            Assert.Equal(9, window.GlassPresetCombo.Items.Count);
-            Assert.Equal(preset, ((ComboBoxItem)window.GlassPresetCombo.SelectedItem).Tag);
-            Assert.Equal(blur, window.ReadSettingsFromUi().LiquidGlass.BlurAmount, 5);
-        }
-        window.GlassPresetCombo.SelectedItem = window.GlassPresetCombo.Items.Cast<ComboBoxItem>().Single(item => (string)item.Tag == "custom");
-        Assert.Equal(40, window.GlassBlurSlider.Value);
-        Assert.Equal(70, window.GlassRefractionSlider.Value);
-        Assert.Equal(0.4, window.ReadSettingsFromUi().LiquidGlassCustom!.BlurAmount, 5);
-        window.GlassBlurSlider.Value = 55;
-        Assert.Equal("custom", ((ComboBoxItem)window.GlassPresetCombo.SelectedItem).Tag);
-        window.SkinCombo.SelectedIndex = 0;
-        Assert.Equal("default", window.ReadSettingsFromUi().NotchStyle);
-    });
-
-    [Theory]
-    [InlineData("GlassBlurSlider", "BlurAmount", 40, 0.4)]
-    [InlineData("GlassRefractionSlider", "Refraction", 70, 0.7)]
-    [InlineData("GlassEdgeBendSlider", "EdgeBend", 40, 0.4)]
-    [InlineData("GlassChromSlider", "ChromaticAberration", 50, 0.5)]
-    [InlineData("GlassEdgeHighlightSlider", "EdgeHighlight", 50, 0.5)]
-    [InlineData("GlassTouchLightSlider", "TouchLight", 50, 0.5)]
-    [InlineData("GlassSpecularSlider", "Specular", 50, 0.5)]
-    [InlineData("GlassFresnelSlider", "Fresnel", 50, 0.5)]
-    [InlineData("GlassDistortionSlider", "Distortion", 30, 0.3)]
-    [InlineData("GlassGrainSlider", "Noise", 20, 0.2)]
-    [InlineData("GlassZRadiusSlider", "ZRadius", 40, 0.4)]
-    [InlineData("GlassOpacitySlider", "Opacity", 60, 0.6)]
-    [InlineData("GlassSaturationSlider", "Saturation", 30, 0.3)]
-    [InlineData("GlassBrightnessSlider", "Brightness", 20, 0.2)]
-    [InlineData("GlassShadowOpacitySlider", "ShadowOpacity", 40, 0.4)]
-    [InlineData("GlassShadowSpreadSlider", "ShadowSpread", 20, 20)]
-    [InlineData("GlassBevelModeSlider", "BevelMode", 1, 1)]
-    [InlineData("GlassFpsSlider", "TargetFps", 120, 120)]
-    public void GlassControlsRoundTripDisplayUnitsAndHiddenOptics(string control, string property, double value, double expected) => SharedStaTestRunner.Run(() =>
-    {
-        using var fixture = new Fixture();
-        var window = fixture.Window;
-        Field<RangeBase>(window, control).Value = value;
-        var snapshot = window.ReadSettingsFromUi();
-        Assert.Equal(expected, Convert.ToDouble(typeof(LiquidGlassConfig).GetProperty(property)!.GetValue(snapshot.LiquidGlass)), 5);
-        Assert.Equal("custom", snapshot.LiquidGlassPreset);
-        window.ApplyPreview(snapshot);
-        Assert.Equal(value, Field<RangeBase>(window, control).Value);
     });
 
     [Theory]

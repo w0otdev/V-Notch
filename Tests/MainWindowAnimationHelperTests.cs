@@ -209,6 +209,31 @@ public sealed class MainWindowAnimationHelperTests
         Assert.Equal(window.NotchBorder.CornerRadius, window.NotchBorderShadow.CornerRadius);
     });
 
+    [Fact]
+    public void FinalizeCompactModeDefersRestingThumbnailWhileCollapseOverlayAnimates() => SharedStaTestRunner.Run(() =>
+    {
+        using var fixture = CreateFixture();
+        var window = fixture.Window;
+        Assert.Equal(Colors.Transparent, Assert.IsAssignableFrom<SolidColorBrush>(window.CompactThumbnailBorder.Background).Color);
+
+        Set(window, "_isMusicCompactMode", true);
+
+        Set(window, "_isThumbnailCollapseAnimating", true);
+        window.CompactThumbnailBorder.Opacity = 0;
+        window.CompactThumbnailBorder.Visibility = Visibility.Hidden;
+
+        Invoke(window, "FinalizeCompactModeAfterCollapse", window.MusicCompactContent, false, false);
+        Assert.Equal(Visibility.Hidden, window.CompactThumbnailBorder.Visibility);
+        Assert.Equal(0, window.CompactThumbnailBorder.Opacity);
+
+        var handoff = Field<Action?>(window, "_pendingThumbnailHandoff");
+        Assert.NotNull(handoff);
+        Set(window, "_isThumbnailCollapseAnimating", false);
+        handoff!();
+        Assert.Equal(Visibility.Visible, window.CompactThumbnailBorder.Visibility);
+        Assert.Equal(1, window.CompactThumbnailBorder.Opacity);
+    });
+
     private static GreetingAcceptanceTests.MainWindowFixture CreateFixture()
     {
         var fixture = new GreetingAcceptanceTests.MainWindowFixture("en", greeting: false,

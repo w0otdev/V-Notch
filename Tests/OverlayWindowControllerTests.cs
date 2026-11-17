@@ -156,6 +156,19 @@ public class OverlayWindowControllerTests
     }
 
     [Fact]
+    public void NotchScreenRectFollowsTheLeftAnchorInCornerMode() => SharedStaTestRunner.Run(() =>
+    {
+        var window = new BackgroundWindow();
+        var state = new NotchShellState { FixedX = 300, FixedY = 0, WindowWidth = 900, WindowHeight = 360 };
+        using var controller = new OverlayWindowController(window, state, () => true, () => false,
+            () => { }, () => { }, () => { }, () => { });
+        double scale = controller.DpiScale;
+        Assert.Equal(300 / scale + (900 / scale - 200) / 2.0, controller.GetNotchScreenRect(200, 40, 8).Left, 6);
+        controller.AnchorLeft = true;
+        Assert.Equal(300 / scale, controller.GetNotchScreenRect(200, 40, 8).Left, 6);
+    });
+
+    [Fact]
     public void CalculateCenteredBounds_UsesPhysicalPixelsAndScreenOffset()
     {
         var bounds = OverlayWindowController.CalculateCenteredBounds(

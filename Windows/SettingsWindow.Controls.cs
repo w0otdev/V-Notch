@@ -280,17 +280,10 @@ public partial class SettingsWindow
     private void EnableShadowCheck_Changed(object sender, RoutedEventArgs e)
     {
         bool shadowEnabled = EnableShadowCheck.IsChecked ?? true;
-        UpdateShadowDependentControls(shadowEnabled, animate: true);
         ApplyWindowShadow(shadowEnabled);
         if (_isLoadingSettings) return;
         WindowAnimationPolicy.SetShadowEnabled(shadowEnabled);
         PushLivePreview();
-    }
-
-    private void UpdateShadowDependentControls(bool shadowEnabled, bool animate = false)
-    {
-        AnimateDependentElement(GlassShadowOpacitySlider, shadowEnabled, 0.4, animate);
-        AnimateDependentElement(GlassShadowSpreadSlider, shadowEnabled, 0.4, animate);
     }
 
     private void DynamicIslandModeCheck_Changed(object sender, RoutedEventArgs e)
@@ -300,11 +293,28 @@ public partial class SettingsWindow
         PushLivePreview();
     }
 
+    private void TopLeftCornerModeCheck_Changed(object sender, RoutedEventArgs e)
+    {
+        UpdateTopLeftCornerDependentControls(TopLeftCornerModeCheck.IsChecked ?? false, animate: true);
+        if (_isLoadingSettings) return;
+        PushLivePreview();
+    }
+
+    private void UpdateTopLeftCornerDependentControls(bool cornerEnabled, bool animate = false)
+    {
+        AnimateDependentElement(TopLeftCornerFloatingCheck, cornerEnabled, 0.4, animate);
+        AnimateDependentElement(TopLeftCornerFloatingHint, cornerEnabled, 0.4, animate);
+        // The corner shapes replace the Dynamic Island look, so its controls have no effect meanwhile.
+        AnimateDependentElement(DynamicIslandModeCheck, !cornerEnabled, 0.4, animate);
+        AnimateDependentElement(DynamicIslandModeHint, !cornerEnabled, 0.4, animate);
+        UpdateDynamicIslandDependentControls(DynamicIslandModeCheck.IsChecked ?? false, animate);
+    }
+
     private void UpdateDynamicIslandDependentControls(bool islandEnabled, bool animate = false)
     {
+        islandEnabled &= !(TopLeftCornerModeCheck.IsChecked ?? false);
         AnimateDependentElement(DynamicIslandWidthSlider, islandEnabled, 0.4, animate);
         AnimateDependentElement(DynamicIslandHeightSlider, islandEnabled, 0.4, animate);
-        UpdateLiquidGlassAvailability(animate);
     }
 
     private void UpdateLyricsDependentControls(bool lyricsEnabled, bool animate = false)
@@ -1013,23 +1023,12 @@ public partial class SettingsWindow
         HideCpp26Banner(markSeen: true);
     }
 
-    internal static int GetEffectiveGpuPreference(NotchSettings settings)
-    {
-        if (string.Equals(settings.NotchStyle, SkinLiquidGlass, StringComparison.OrdinalIgnoreCase) &&
-            settings.LiquidGlass is { UseGpuRefraction: true, UseUltimateGpu: true })
-        {
-            return 2;
-        }
-
-        return settings.GpuPreference;
-    }
-
     private void ApplyEffectiveGpuPreference()
     {
-        int effective = GetEffectiveGpuPreference(_settings);
+        int effective = _settings.GpuPreference;
         ApplyGpuPreference(effective);
 
-        int baselineEffective = GetEffectiveGpuPreference(_editSession.Baseline);
+        int baselineEffective = _editSession.Baseline.GpuPreference;
         if (effective != baselineEffective)
         {
             ShowRestartBanner();

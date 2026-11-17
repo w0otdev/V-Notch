@@ -101,30 +101,28 @@ public class SettingsMigratorTests
     }
 
     [Fact]
-    public void NewDefaults_EnableGpuGlassWithoutHidingNotchFromCapture()
-    {
-        var settings = new NotchSettings();
-
-        Assert.True(settings.LiquidGlass.UseGpuRefraction);
-        Assert.False(settings.LiquidGlass.HideFromScreenCapture);
-    }
-
-    [Fact]
-    public void CurrentSettings_PreserveExplicitGpuOptOut()
+    public void LegacyLiquidGlassSettingsLoadAndAreDroppedOnSave()
     {
         string rawJson = $$"""
             {
               "SettingsVersion": {{SettingsMigrator.CurrentVersion}},
-              "LiquidGlass": {
-                "UseGpuRefraction": false
-              }
+              "Width": 321,
+              "NotchStyle": "liquidglass",
+              "LiquidGlassPreset": "frosted",
+              "LiquidGlass": { "UseGpuRefraction": false, "UseUltimateGpu": true, "BlurAmount": 0.4 },
+              "LiquidGlassCustom": { "Refraction": 1.2 }
             }
             """;
 
         var (settings, migrated) = SettingsMigrator.Migrate(rawJson);
 
         Assert.False(migrated);
-        Assert.False(settings.LiquidGlass.UseGpuRefraction);
+        Assert.Equal(321, settings.Width);
+        var saved = System.Text.Json.Nodes.JsonNode.Parse(JsonSerializer.Serialize(settings))!.AsObject();
+        Assert.False(saved.ContainsKey("NotchStyle"));
+        Assert.False(saved.ContainsKey("LiquidGlassPreset"));
+        Assert.False(saved.ContainsKey("LiquidGlass"));
+        Assert.False(saved.ContainsKey("LiquidGlassCustom"));
     }
 
     [Fact]

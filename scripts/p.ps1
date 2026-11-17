@@ -40,7 +40,7 @@
 #>
 [CmdletBinding()]
 param(
-    [string]$TestFilter = "FullyQualifiedName~PerformanceBenchmarkTests|FullyQualifiedName~HotPathRegressionTests|FullyQualifiedName~SpringEasingPerformanceTests|FullyQualifiedName~MorphAnimationResourceTests|FullyQualifiedName~LiquidGlassPacingTests.LiquidGlass_PacingBenchmark_60Fps_And_120Fps|FullyQualifiedName~FirstOpenLatencyTests|FullyQualifiedName~ClipboardTrayOpeningPerformanceTests|FullyQualifiedName~ScrubberPerformanceTests|FullyQualifiedName~ProgressViewModelPerformanceTests|FullyQualifiedName~PerformanceAuditRegressionTests|FullyQualifiedName~DebugWindowAllocationTests|FullyQualifiedName~PrivacyPollingAllocationTests|FullyQualifiedName~ServiceOptimizationTests|FullyQualifiedName~ServicePollingOptimizationTests|FullyQualifiedName~SubjectAwareBlurOptimizationTests",
+    [string]$TestFilter = "FullyQualifiedName~PerformanceBenchmarkTests|FullyQualifiedName~HotPathRegressionTests|FullyQualifiedName~SpringEasingPerformanceTests|FullyQualifiedName~MorphAnimationResourceTests|FullyQualifiedName~FirstOpenLatencyTests|FullyQualifiedName~ClipboardTrayOpeningPerformanceTests|FullyQualifiedName~ScrubberPerformanceTests|FullyQualifiedName~ProgressViewModelPerformanceTests|FullyQualifiedName~PerformanceAuditRegressionTests|FullyQualifiedName~DebugWindowAllocationTests|FullyQualifiedName~PrivacyPollingAllocationTests|FullyQualifiedName~ServiceOptimizationTests|FullyQualifiedName~ServicePollingOptimizationTests|FullyQualifiedName~SubjectAwareBlurOptimizationTests",
 
     [ValidateRange(2, 300)]
     [int]$LiveBenchmarkSeconds = 8,
@@ -434,7 +434,6 @@ try {
             $category = switch -Wildcard ($className) {
                 "*Latency*"      { "UI & Open Latency"; break }
                 "*Clipboard*"    { "Clipboard & Virtualization"; break }
-                "*Glass*"        { "Liquid Glass & Shaders"; break }
                 "*Blur*"         { "SIMD Blur & Imaging"; break }
                 "*Allocation*"   { "Zero-Alloc & Memory"; break }
                 "*Polling*"      { "Background Polling"; break }
@@ -869,7 +868,7 @@ try {
         <ul>
             <li><strong>Overall Verdict:</strong> <span style="color: $verdictColor; font-weight: 800;">$overallVerdict</span>. Completed the full benchmark suite in <strong>${totalDurationSec}s</strong> with <strong>$passedCount/$totalTests</strong> performance and regression checks passing ($failedCount regressions).</li>
             <li><strong>Live Process Footprint:</strong> $(ConvertTo-HtmlEncoded $liveSummaryBullet)</li>
-            <li><strong>UI Latency &amp; Frame Pacing:</strong> First-open Settings and Notch expansion stay within frame responsiveness budgets, Liquid Glass sustains 60 FPS and 120 FPS pacing targets, and the virtualized Clipboard Tray scrolls without UI stalls.</li>
+            <li><strong>UI Latency &amp; Frame Pacing:</strong> First-open Settings and Notch expansion stay within frame responsiveness budgets, and the virtualized Clipboard Tray scrolls without UI stalls.</li>
             <li><strong>Native/Unsafe &amp; Zero-Allocation Hot Paths:</strong> K32EnumProcesses, Unsafe Mouse Hook dispatch, BMP Artwork Crop encoding, Color Extractor caching, and steady-state Log Scrubbing deliver 7x to 37,000x speedups while eliminating managed GC pressure on hot paths.</li>
         </ul>
     </div>
@@ -1010,7 +1009,7 @@ try {
     if (Test-Path -LiteralPath $tempWorkDir) {
         Remove-Item -LiteralPath $tempWorkDir -Recurse -Force -ErrorAction SilentlyContinue
     }
-    foreach ($cleanupRel in @("Tests\TestResults", "Tests\bin", "Tools\ShaderCompiler\bin", "Tools\ShaderCompiler\obj")) {
+    foreach ($cleanupRel in @("Tests\TestResults", "Tests\bin")) {
         $cleanupPath = Join-Path $repoRoot $cleanupRel
         if (Test-Path -LiteralPath $cleanupPath) {
             Remove-Item -LiteralPath $cleanupPath -Recurse -Force -ErrorAction SilentlyContinue

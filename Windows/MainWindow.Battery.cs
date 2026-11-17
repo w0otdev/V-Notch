@@ -26,10 +26,10 @@ public partial class MainWindow
     {
         bool allowed = AmbientAnimationsAllowed;
 
-        if (_chargingPulseWanted && allowed) StartChargingPulse();
+        if (_chargingPulseWanted && allowed && BatteryFill.IsVisible) StartChargingPulse();
         else StopChargingPulseInternal();
 
-        if (_shimmerWanted && allowed) StartTitleShimmer();
+        if (_shimmerWanted && allowed && MediaPlayback.TrackTitle.IsVisible) StartTitleShimmer();
         else StopTitleShimmerInternal();
     }
 
@@ -368,14 +368,14 @@ public partial class MainWindow
     private void StartChargingPulse()
     {
         _chargingPulseWanted = true;
-        if (!AmbientAnimationsAllowed) return;
+        if (!AmbientAnimationsAllowed || !BatteryFill.IsVisible) return;
         if (_chargingPulseStoryboard != null) return;
 
         _chargingPulseStoryboard = new Storyboard
         {
             RepeatBehavior = RepeatBehavior.Forever
         };
-        Timeline.SetDesiredFrameRate(_chargingPulseStoryboard, VNotch.Services.AnimationConfig.TargetFps);
+        Timeline.SetDesiredFrameRate(_chargingPulseStoryboard, VNotch.Services.AnimationConfig.AmbientFps);
 
         var pulseAnimation = new DoubleAnimation
         {
@@ -388,7 +388,7 @@ public partial class MainWindow
 
         Storyboard.SetTarget(pulseAnimation, BatteryFill);
         Storyboard.SetTargetProperty(pulseAnimation, new PropertyPath("Opacity", Array.Empty<object>()));
-        System.Windows.Media.Animation.Timeline.SetDesiredFrameRate(pulseAnimation, VNotch.Services.AnimationConfig.TargetFps);
+        System.Windows.Media.Animation.Timeline.SetDesiredFrameRate(pulseAnimation, VNotch.Services.AnimationConfig.AmbientFps);
         _chargingPulseStoryboard.Children.Add(pulseAnimation);
 
         _chargingPulseStoryboard.Begin();

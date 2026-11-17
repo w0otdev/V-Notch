@@ -214,13 +214,14 @@ public partial class MainWindow
 
         double top = PrivacyDotTopMargin;
         bool isCollapsed = !_isExpanded && !_isMusicExpanded;
-        if (isCollapsed && _settings.EnableDynamicIslandMode)
+        if (isCollapsed && IslandLayout)
         {
             double h = NotchBorder?.ActualHeight > 0
                 ? NotchBorder.ActualHeight
                 : GetCollapsedHeight();
             if (h > 0) top = Math.Max(0, (h - PrivacyDotSize) / 2.0);
         }
+        if (isCollapsed && IsCornerMode) right = top = 6;
 
         var current = PrivacyIndicatorPanel.Margin;
         var target = new Thickness(0, top, right, 0);

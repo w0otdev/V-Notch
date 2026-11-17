@@ -17,46 +17,6 @@ public sealed partial class NativeAuditHardeningTests
     private const int VN_ERR_FAIL = -3;
 
     [StructLayout(LayoutKind.Sequential, Pack = 1)]
-    private struct VnGlassBackdropOpticsOut
-    {
-        public byte Red;
-        public byte Green;
-        public byte Blue;
-        public byte Reserved;
-        public double LightX;
-        public double LightY;
-        public double Contrast;
-        public int OutsideRgb;
-    }
-
-    [StructLayout(LayoutKind.Sequential, Pack = 1)]
-    private struct VnGlassMapParams
-    {
-        public int OutW;
-        public int OutH;
-        public int SrcW;
-        public int SrcH;
-        public int Margin;
-        public int NotchW;
-        public int NotchH;
-        public int NotchOffX;
-        public int NotchOffY;
-        public int CaptureShiftX;
-        public int CaptureShiftY;
-        public double OutScale;
-        public double TopCornerRadius;
-        public double BottomCornerRadius;
-        public double EdgeBend;
-        public double ChromaticAberration;
-        public double Distortion;
-        public double FPower;
-        public double RefractionA;
-        public double RefractionB;
-        public double RefractionC;
-        public double RefractionD;
-    }
-
-    [StructLayout(LayoutKind.Sequential, Pack = 1)]
     private struct VnComplexFloat
     {
         public float Real;
@@ -198,16 +158,6 @@ public sealed partial class NativeAuditHardeningTests
         public int StaggerStepMs;
     }
 
-    // 1. vn_glass_analyze_backdrop_samples
-    [LibraryImport(NativeDll, StringMarshalling = StringMarshalling.Utf16)]
-    [UnmanagedCallConv(CallConvs = [typeof(System.Runtime.CompilerServices.CallConvStdcall)])]
-    private static partial int vn_glass_analyze_backdrop_samples(
-        ReadOnlySpan<int> rgbSamples,
-        int sampleLen,
-        int columns,
-        int rows,
-        out VnGlassBackdropOpticsOut outOptics);
-
     // 2. vn_clipboard_store_validate_archive_extract_step
     [LibraryImport(NativeDll, StringMarshalling = StringMarshalling.Utf16)]
     private static partial int vn_clipboard_store_validate_archive_extract_step(
@@ -221,17 +171,6 @@ public sealed partial class NativeAuditHardeningTests
         ReadOnlySpan<char> resolvedPath,
         int resolvedPathLen,
         out byte outIsValid);
-
-    // 3. vn_glass_build_refraction_rows
-    [LibraryImport(NativeDll, StringMarshalling = StringMarshalling.Utf16)]
-    [UnmanagedCallConv(CallConvs = [typeof(System.Runtime.CompilerServices.CallConvStdcall)])]
-    private static partial int vn_glass_build_refraction_rows(
-        in VnGlassMapParams parms,
-        ReadOnlySpan<double> lut,
-        int lutLen,
-        int yStart,
-        int yEnd,
-        Span<int> outMap);
 
     // 4. vn_visualizer_spectrum_compute & vn_visualizer_spectrum_update_ranges
     [LibraryImport(NativeDll, StringMarshalling = StringMarshalling.Utf16)]
@@ -306,15 +245,6 @@ public sealed partial class NativeAuditHardeningTests
         out int length,
         out int kind,
         out double score);
-
-    // 8. vn_glass_frame_hash_128
-    [LibraryImport(NativeDll, StringMarshalling = StringMarshalling.Utf16)]
-    [UnmanagedCallConv(CallConvs = [typeof(System.Runtime.CompilerServices.CallConvStdcall)])]
-    private static partial int vn_glass_frame_hash_128(
-        ReadOnlySpan<byte> data,
-        int length,
-        out ulong outLo,
-        out ulong outHi);
 
     // 9. vn_settings_search_is_normalized_match
     [LibraryImport(NativeDll, StringMarshalling = StringMarshalling.Utf16)]
@@ -602,25 +532,6 @@ public sealed partial class NativeAuditHardeningTests
         out int outLen);
 
     [Fact]
-    public void Finding01_GlassAnalyzeBackdropSamples_OverflowingDimensions_ReturnsDefaultOpticsWithoutCrash()
-    {
-        Span<int> samples = stackalloc int[4] { 0x112233, 0x445566, 0x778899, 0xAABBCC };
-
-        int status = vn_glass_analyze_backdrop_samples(
-            samples,
-            sampleLen: 4,
-            columns: 4,
-            rows: 0x40000001,
-            out VnGlassBackdropOpticsOut optics);
-
-        Assert.Equal(VN_OK, status);
-        Assert.Equal(128, optics.Red);
-        Assert.Equal(128, optics.Green);
-        Assert.Equal(128, optics.Blue);
-        Assert.Equal(0.0, optics.Contrast);
-    }
-
-    [Fact]
     public void Finding02_ClipboardStoreValidateArchiveExtractStep_EnforcesDirectoryBoundary()
     {
         ReadOnlySpan<char> rootPrefix = @"C:\Temp\dir";
@@ -669,55 +580,6 @@ public sealed partial class NativeAuditHardeningTests
             out byte isValidExactRoot);
         Assert.Equal(VN_OK, statusExactRoot);
         Assert.Equal(0, isValidExactRoot);
-    }
-
-    [Fact]
-    public void Finding03_GlassBuildRefractionRows_NonFiniteFloatingPointParams_ReturnsInvalidArg()
-    {
-        Span<double> lut = stackalloc double[64];
-        for (int i = 0; i < lut.Length; i++)
-        {
-            lut[i] = i / 63.0;
-        }
-
-        Span<int> outMap = stackalloc int[16 * 16];
-        var baseParams = new VnGlassMapParams
-        {
-            OutW = 16,
-            OutH = 16,
-            SrcW = 32,
-            SrcH = 32,
-            Margin = 2,
-            NotchW = 16,
-            NotchH = 16,
-            NotchOffX = 0,
-            NotchOffY = 0,
-            CaptureShiftX = 0,
-            CaptureShiftY = 0,
-            OutScale = 1.0,
-            TopCornerRadius = 4.0,
-            BottomCornerRadius = 4.0,
-            EdgeBend = 0.25,
-            ChromaticAberration = 0.0,
-            Distortion = 0.1,
-            FPower = 2.0,
-            RefractionA = 0.1,
-            RefractionB = 0.1,
-            RefractionC = 0.1,
-            RefractionD = 1.0
-        };
-
-        VnGlassMapParams nanScale = baseParams;
-        nanScale.OutScale = double.NaN;
-        Assert.Equal(VN_ERR_INVALID_ARG, vn_glass_build_refraction_rows(in nanScale, lut, lut.Length, 0, 16, outMap));
-
-        VnGlassMapParams nanRadius = baseParams;
-        nanRadius.TopCornerRadius = double.NaN;
-        Assert.Equal(VN_ERR_INVALID_ARG, vn_glass_build_refraction_rows(in nanRadius, lut, lut.Length, 0, 16, outMap));
-
-        VnGlassMapParams infEdgeBend = baseParams;
-        infEdgeBend.EdgeBend = double.PositiveInfinity;
-        Assert.Equal(VN_ERR_INVALID_ARG, vn_glass_build_refraction_rows(in infEdgeBend, lut, lut.Length, 0, 16, outMap));
     }
 
     [Fact]
@@ -912,28 +774,11 @@ public sealed partial class NativeAuditHardeningTests
     }
 
     [Fact]
-    public void Finding08_GlassFrameHash128_128ByteBuffer_ProducesDeterministicNonZeroOutput()
-    {
-        Span<byte> buffer = stackalloc byte[128];
-        for (int i = 0; i < buffer.Length; i++)
-        {
-            buffer[i] = (byte)((i * 37) + 13);
-        }
-
-        Assert.Equal(VN_OK, vn_glass_frame_hash_128(buffer, buffer.Length, out ulong lo1, out ulong hi1));
-        Assert.Equal(VN_OK, vn_glass_frame_hash_128(buffer, buffer.Length, out ulong lo2, out ulong hi2));
-
-        Assert.True((lo1 | hi1) != 0UL);
-        Assert.Equal(lo1, lo2);
-        Assert.Equal(hi1, hi2);
-    }
-
-    [Fact]
     public void Finding09_SettingsSearchIsNormalizedMatch_MultiWordStrings_MatchesCorrectly()
     {
-        ReadOnlySpan<char> candidate = "liquid glass refraction quality";
-        ReadOnlySpan<char> matchingQuery = "glass refraction";
-        ReadOnlySpan<char> nonMatchingQuery = "glass bluetooth";
+        ReadOnlySpan<char> candidate = "media artwork blur quality";
+        ReadOnlySpan<char> matchingQuery = "artwork blur";
+        ReadOnlySpan<char> nonMatchingQuery = "artwork bluetooth";
 
         Assert.Equal(VN_OK, vn_settings_search_is_normalized_match(
             candidate, candidate.Length, matchingQuery, matchingQuery.Length, out byte matched));

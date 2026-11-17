@@ -75,7 +75,6 @@ public partial class SettingsWindow
     {
         _navPanels[NavSectionSearching] = PanelSearching;
         _navPanels[NavSectionAppearance] = PanelAppearance;
-        _navPanels[NavSectionSkins] = PanelSkins;
         _navPanels[NavSectionBehavior] = PanelBehavior;
         _navPanels[NavSectionDevices] = PanelDevices;
         _navPanels[NavSectionSystem] = PanelSystem;
@@ -90,7 +89,6 @@ public partial class SettingsWindow
 
         _navButtons[NavSectionSearching] = NavSearching;
         _navButtons[NavSectionAppearance] = NavAppearance;
-        _navButtons[NavSectionSkins] = NavSkins;
         _navButtons[NavSectionBehavior] = NavBehavior;
         _navButtons[NavSectionDevices] = NavDevices;
         _navButtons[NavSectionSystem] = NavSystem;
@@ -330,7 +328,7 @@ public partial class SettingsWindow
 
     private static readonly string[] _navOrder =
     {
-        NavSectionSearching, NavSectionAppearance, NavSectionSkins, NavSectionBehavior, NavSectionDevices,
+        NavSectionSearching, NavSectionAppearance, NavSectionBehavior, NavSectionDevices,
         NavSectionSystem, NavSectionPrivacy, NavSectionSpotlight, "Translation", NavSectionFileTray, NavSectionAdvanced, NavSectionPerformance, NavSectionDonating, NavSectionUpdates
     };
 
@@ -427,7 +425,6 @@ public partial class SettingsWindow
             NavSectionPerformance => PerformanceCard,
             NavSectionDonating => DonatingCard,
             NavSectionUpdates => UpdatesCard,
-            NavSectionSkins => SkinCard,
             _ => null
         };
 
@@ -446,7 +443,6 @@ public partial class SettingsWindow
             NavSectionPerformance => PerformanceCardTranslate,
             NavSectionDonating => DonatingCardTranslate,
             NavSectionUpdates => UpdatesCardTranslate,
-            NavSectionSkins => SkinCardTranslate,
             _ => null
         };
 

@@ -105,8 +105,6 @@ update_settings.ps1
 !/Tools/validate_locales.py
 !/Tools/TestSupport/
 !/Tools/UpdateCompatibility/
-!/Tools/ShaderCompiler/
-!/Tools/GlassGpuProbe/
 /changes
 build-installer.ps1
 .test-output/ai-errors/Locales/ar.json

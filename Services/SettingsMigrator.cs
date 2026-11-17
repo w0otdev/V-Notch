@@ -68,7 +68,6 @@ public static partial class SettingsMigrator
 
     private static JsonObject MigrateV0(JsonObject root)
     {
-        EnsureProperty(root, nameof(NotchSettings.NotchStyle), "default");
         EnsureProperty(root, nameof(NotchSettings.HoverZoneMargin), 60);
         return root;
     }

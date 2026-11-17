@@ -247,7 +247,6 @@ try {
         'Security',
         'Services',
         'Setup',
-        'Shaders',
         'ViewModels',
         'Windows',
         'scripts'

@@ -7,42 +7,6 @@
 namespace vnotch::services {
 
 #pragma pack(push, 1)
-struct VnLiquidGlassScalars {
-    double blur_amount;
-    double refraction;
-    double edge_bend;
-    double chromatic_aberration;
-    double edge_highlight;
-    double touch_light;
-    double specular;
-    double fresnel;
-    double distortion;
-    int32_t corner_radius;
-    double z_radius;
-    double opacity;
-    double saturation;
-    double brightness;
-    double shadow_opacity;
-    int32_t shadow_spread;
-    int32_t bevel_mode;
-    int32_t target_fps;
-    int32_t variant;
-    double power_factor;
-    double refraction_a;
-    double refraction_b;
-    double refraction_c;
-    double refraction_d;
-    double f_power;
-    double noise;
-    double glow_weight;
-    double glow_bias;
-    double glow_edge0;
-    double glow_edge1;
-    uint8_t hide_from_screen_capture;
-    uint8_t use_gpu_refraction;
-    uint8_t use_ultimate_gpu;
-};
-
 struct VnSettingsNormalizationParams {
     int32_t width;
     int32_t height;
@@ -68,9 +32,6 @@ struct VnSettingsNormalizationParams {
     double large_expand_multiplier;
     int32_t spotlight_ai_words_per_second;
     int32_t gpu_preference;
-    VnLiquidGlassScalars liquid_glass;
-    uint8_t has_liquid_glass_custom;
-    VnLiquidGlassScalars liquid_glass_custom;
 };
 #pragma pack(pop)
 
@@ -97,39 +58,6 @@ public:
             field = clamped;
             changed = true;
         }
-    }
-
-    static void NormalizeLiquidGlassScalars(VnLiquidGlassScalars& g, bool& changed) noexcept {
-        ClampDoubleField(g.blur_amount, 0.0, 1.0, 0.3, changed);
-        ClampDoubleField(g.refraction, 0.0, 1.5, 1.0, changed);
-        ClampDoubleField(g.edge_bend, 0.0, 10.0, 1.65, changed);
-        ClampDoubleField(g.chromatic_aberration, 0.0, 1.0, 0.56, changed);
-        ClampDoubleField(g.edge_highlight, 0.0, 1.0, 0.1, changed);
-        ClampDoubleField(g.touch_light, 0.0, 3.0, 0.9, changed);
-        ClampDoubleField(g.specular, 0.0, 1.0, 0.0, changed);
-        ClampDoubleField(g.fresnel, 0.0, 1.0, 0.0, changed);
-        ClampDoubleField(g.distortion, 0.0, 1.0, 0.32, changed);
-        ClampIntField(g.corner_radius, 0, 50, changed);
-        ClampDoubleField(g.z_radius, 0.05, 0.60, 0.23, changed);
-        ClampDoubleField(g.opacity, 0.0, 1.0, 1.0, changed);
-        ClampDoubleField(g.saturation, -1.0, 1.0, 0.15, changed);
-        ClampDoubleField(g.brightness, -0.5, 0.5, -0.05, changed);
-        ClampDoubleField(g.shadow_opacity, 0.0, 1.0, 0.85, changed);
-        ClampIntField(g.shadow_spread, 0, 40, changed);
-        ClampIntField(g.bevel_mode, 0, 1, changed);
-        ClampIntField(g.target_fps, 0, 240, changed);
-        ClampIntField(g.variant, 0, 1, changed);
-        ClampDoubleField(g.power_factor, 0.5, 10.0, 3.0, changed);
-        ClampDoubleField(g.refraction_a, 0.0, 20.0, 0.7, changed);
-        ClampDoubleField(g.refraction_b, 0.0, 20.0, 2.3, changed);
-        ClampDoubleField(g.refraction_c, 0.0, 20.0, 5.2, changed);
-        ClampDoubleField(g.refraction_d, 0.0, 20.0, 6.9, changed);
-        ClampDoubleField(g.f_power, 0.1, 10.0, 1.0, changed);
-        ClampDoubleField(g.noise, 0.0, 1.0, 0.066, changed);
-        ClampDoubleField(g.glow_weight, -2.0, 2.0, 0.692, changed);
-        ClampDoubleField(g.glow_bias, -2.0, 2.0, -0.040, changed);
-        ClampDoubleField(g.glow_edge0, -2.0, 2.0, 0.441, changed);
-        ClampDoubleField(g.glow_edge1, -2.0, 2.0, -0.474, changed);
     }
 
     static int32_t RoundToEven(double value) noexcept {
@@ -191,11 +119,6 @@ public:
         ClampIntField(p.spotlight_ai_words_per_second, 2, 30, changed);
         ClampIntField(p.gpu_preference, 0, 2, changed);
 
-        NormalizeLiquidGlassScalars(p.liquid_glass, changed);
-        if (p.has_liquid_glass_custom != 0) {
-            NormalizeLiquidGlassScalars(p.liquid_glass_custom, changed);
-        }
-
         return changed;
     }
 
@@ -256,42 +179,6 @@ public:
             return (a > 0.0) == (b > 0.0);
         }
         return false;
-    }
-
-    static bool LiquidGlassEquals(const VnLiquidGlassScalars& a, const VnLiquidGlassScalars& b) noexcept {
-        return DoubleEquals(a.blur_amount, b.blur_amount, true)
-            && DoubleEquals(a.refraction, b.refraction, true)
-            && DoubleEquals(a.edge_bend, b.edge_bend, true)
-            && DoubleEquals(a.chromatic_aberration, b.chromatic_aberration, true)
-            && DoubleEquals(a.edge_highlight, b.edge_highlight, true)
-            && DoubleEquals(a.touch_light, b.touch_light, true)
-            && DoubleEquals(a.specular, b.specular, true)
-            && DoubleEquals(a.fresnel, b.fresnel, true)
-            && DoubleEquals(a.distortion, b.distortion, true)
-            && a.corner_radius == b.corner_radius
-            && DoubleEquals(a.z_radius, b.z_radius, true)
-            && DoubleEquals(a.opacity, b.opacity, true)
-            && DoubleEquals(a.saturation, b.saturation, true)
-            && DoubleEquals(a.brightness, b.brightness, true)
-            && DoubleEquals(a.shadow_opacity, b.shadow_opacity, true)
-            && a.shadow_spread == b.shadow_spread
-            && a.bevel_mode == b.bevel_mode
-            && a.target_fps == b.target_fps
-            && a.variant == b.variant
-            && DoubleEquals(a.power_factor, b.power_factor, true)
-            && DoubleEquals(a.refraction_a, b.refraction_a, true)
-            && DoubleEquals(a.refraction_b, b.refraction_b, true)
-            && DoubleEquals(a.refraction_c, b.refraction_c, true)
-            && DoubleEquals(a.refraction_d, b.refraction_d, true)
-            && DoubleEquals(a.f_power, b.f_power, true)
-            && DoubleEquals(a.noise, b.noise, true)
-            && DoubleEquals(a.glow_weight, b.glow_weight, true)
-            && DoubleEquals(a.glow_bias, b.glow_bias, true)
-            && DoubleEquals(a.glow_edge0, b.glow_edge0, true)
-            && DoubleEquals(a.glow_edge1, b.glow_edge1, true)
-            && a.hide_from_screen_capture == b.hide_from_screen_capture
-            && a.use_gpu_refraction == b.use_gpu_refraction
-            && a.use_ultimate_gpu == b.use_ultimate_gpu;
     }
 };
 
@@ -372,15 +259,6 @@ VN_EXPORT int32_t __stdcall vn_settings_double_equals(
     uint8_t* out_equal) noexcept {
     if (!out_equal) return VN_E_INVALID_ARG;
     *out_equal = vnotch::services::SettingsService::DoubleEquals(a, b, allow_nan_equal != 0) ? 1u : 0u;
-    return VN_OK;
-}
-
-VN_EXPORT int32_t __stdcall vn_liquid_glass_config_equals(
-    const vnotch::services::VnLiquidGlassScalars* a,
-    const vnotch::services::VnLiquidGlassScalars* b,
-    uint8_t* out_equal) noexcept {
-    if (!a || !b || !out_equal) return VN_E_INVALID_ARG;
-    *out_equal = vnotch::services::SettingsService::LiquidGlassEquals(*a, *b) ? 1u : 0u;
     return VN_OK;
 }
 

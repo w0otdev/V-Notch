@@ -13,7 +13,7 @@
 
 ## 1. Giới thiệu
 
-V-Notch là ứng dụng desktop miễn phí, mã nguồn mở dành cho Windows, tái hiện trải nghiệm notch kiểu macOS và Dynamic Island của iPhone. Ứng dụng hiển thị phương tiện đang phát, trạng thái pin và Bluetooth, khay chứa tệp tạm thời (File Shelf), xem trước camera, âm lượng hệ thống và bộ trộn âm thanh từng ứng dụng, màn hình theo dõi tài nguyên phần cứng (CPU, RAM, GPU), đồng hồ, lịch, bộ đếm giờ/bấm giờ, trình tìm kiếm và khởi chạy nhanh Spotlight, cùng các thông tin ngữ cảnh khác với hoạt ảnh mượt mà và hiệu ứng quang học kính lỏng (Liquid Glass).
+V-Notch là ứng dụng desktop miễn phí, mã nguồn mở dành cho Windows, tái hiện trải nghiệm notch kiểu macOS và Dynamic Island của iPhone. Ứng dụng hiển thị phương tiện đang phát, trạng thái pin và Bluetooth, khay chứa tệp tạm thời (File Shelf), xem trước camera, âm lượng hệ thống và bộ trộn âm thanh từng ứng dụng, màn hình theo dõi tài nguyên phần cứng (CPU, RAM, GPU), đồng hồ, lịch, bộ đếm giờ/bấm giờ, trình tìm kiếm và khởi chạy nhanh Spotlight, cùng các thông tin ngữ cảnh khác với hoạt ảnh mượt mà.
 
 Chính sách bảo mật này giải thích chi tiết dữ liệu nào ứng dụng truy cập, tại sao truy cập, dữ liệu đó đi đâu, và được lưu giữ trong bao lâu. Nội dung phản ánh hành vi thực tế của mã nguồn được công khai tại [github.com/w0otdev/V-Notch](https://github.com/w0otdev/V-Notch).
 
@@ -44,7 +44,6 @@ Chính sách này dùng các thuật ngữ sau:
 | **Spotlight AI (tùy chọn)** | Tin nhắn gửi, ngữ cảnh gần đây, khóa API, model | Có: nhà cung cấp AI được chọn (§4.8) | Khóa và lịch sử chat mã hóa cục bộ (§5.6) |
 | **Dịch trực tiếp (tùy chọn)** | Văn bản được chọn qua UI Automation; clipboard chỉ khi bạn yêu cầu | Không gửi văn bản; tải model GGUF tùy chọn kết nối `huggingface.co` (`*.huggingface.co`, `*.hf.co`) | Chỉ model/cấu hình (xác minh SHA-256 cục bộ); cache bản dịch nằm trong RAM |
 | **Tìm kiếm & Launcher Spotlight** | Tên ứng dụng cục bộ, metadata tệp cục bộ (bộ lập chỉ mục tích hợp / Windows Search / Everything), biểu thức toán & tiền tệ | Không với tìm kiếm/toán cục bộ; quy đổi tiền tệ truy vấn `api.frankfurter.dev` khi trực tuyến (§4.6) | Lịch sử tần suất khởi chạy lưu cục bộ (tối đa 100 mục, xem §5) |
-| **Chụp nền hiệu ứng Liquid Glass** | Pixel màn hình ngay dưới vùng notch (DXGI / Magnification API) | Không | Không (xử lý theo từng frame trên GPU/CPU và giải phóng ngay) |
 | **Giám sát phần cứng hệ thống** | Tỷ lệ dùng CPU, mức RAM, tải GPU (Windows performance counters / DXGI) | Không | Không (tạm thời trong bộ nhớ) |
 | **Xem trước camera (opt-in)** | Khung hình camera trực tiếp | Không | Không (không bao giờ ghi lại, chụp hay lưu) |
 | **File Shelf** | Đường dẫn tệp + metadata tệp cơ bản (tên, kích thước, loại) | Không | Đường dẫn lưu cục bộ trong cài đặt (xem §5) |
@@ -52,7 +51,7 @@ Chính sách này dùng các thuật ngữ sau:
 | **Phát hiện nguồn phát** | Tiêu đề cửa sổ đang hiển thị; URL trình duyệt (UI Automation) | Không | Có thể: ánh xạ tiêu đề media/nguồn trong cache (§5.3); nhật ký chẩn đoán và lỗi nếu bật (§5.4) |
 | **Nhật ký chẩn đoán & báo cáo lỗi** | Sự kiện kỹ thuật, lỗi, chi tiết ngoại lệ chưa xử lý (chỉ khi `EnableDiagnosticLogging` đang bật) | Không | Có: `vnotch-debug.log` và `vnotch-crash.log` (kèm bản xoay vòng `.old`, xem §5.4) |
 | **Bluetooth & trạng thái pin** | Tên thiết bị, loại, mức pin phụ kiện, trạng thái kết nối | Không | Không (tạm thời trong bộ nhớ) |
-| **Lịch sử, Chỉ báo & Xem trước Clipboard** | Văn bản, HTML/RTF, ảnh, tệp/thư mục đã sao chép và metadata ứng dụng nguồn | Lịch sử Clipboard không tự động tải nội dung lên | Có: tại `%LOCALAPPDATA%\V-Notch\Clipboard\` (§3.10, §5.7) |
+| **Lịch sử, Chỉ báo & Xem trước Clipboard** | Văn bản, HTML/RTF, ảnh, tệp/thư mục đã sao chép và metadata ứng dụng nguồn | Lịch sử Clipboard không tự động tải nội dung lên | Có: tại `%LOCALAPPDATA%\V-Notch\Clipboard\` (§3.9, §5.7) |
 | **Chỉ báo quyền riêng tư** | Micro, camera, hoặc quay màn hình có đang hoạt động không | Không | Không (tạm thời trong bộ nhớ) |
 | **Đồng hồ, Lịch, Hẹn giờ & Tiếng ồn trắng** | Giờ hệ thống, bộ đếm ngược, bấm giờ, âm thanh nền tổng hợp | Không | Cấu hình hẹn giờ lưu trong cài đặt |
 | **Cử chỉ chuột** | Di chuyển/nhấp chuột trên vùng notch | Không | Không |
@@ -114,34 +113,27 @@ V-Notch tích hợp trình tìm kiếm Spotlight cho phép bạn tìm ứng dụ
 
 **Spotlight Search xử lý truy vấn ứng dụng/tệp và phép tính toán học cục bộ.** Chế độ AI riêng biệt gửi tin nhắn bạn chủ động gửi và ngữ cảnh hội thoại như mô tả tại §4.8.
 
-### 3.4 Hiệu ứng Liquid Glass & Chụp nền màn hình
-
-V-Notch trang bị động cơ mô phỏng quang học Liquid Glass giúp tái hiện hiện tượng khúc xạ ánh sáng, tán sắc sắc sai (chromatic aberration), uốn mép (edge bend), vát cạnh (bevel) và làm mờ nền theo phong cách macOS và Dynamic Island.
-
-- Để tính toán khúc xạ quang học, V-Notch lấy mẫu một vùng pixel nhỏ của màn hình ngay phía sau notch bằng DirectX 11 (DXGI Desktop Duplication) hoặc Windows Magnification API.
-- **Cam kết bảo mật:** Việc lấy mẫu pixel chỉ diễn ra trong bộ nhớ GPU/CPU cục bộ theo từng khung hình để hiển thị hiệu ứng thị giác. Các khung hình bị loại bỏ ngay lập tức sau khi hiển thị lên màn hình. **V-Notch không chủ đích ghi/lưu hoặc tải lên các khung hình được lấy mẫu; Windows và thành phần đồ họa có thể có cơ chế bộ nhớ/cache riêng.**
-
-### 3.5 Giám sát tài nguyên phần cứng (CPU, RAM, GPU)
+### 3.4 Giám sát tài nguyên phần cứng (CPU, RAM, GPU)
 
 Module System Monitor đọc các thông số hiệu năng phần cứng theo thời gian thực (tỷ lệ phần trăm sử dụng CPU, dung lượng RAM sử dụng, và tải GPU) thông qua Windows performance counters và truy vấn adapter DXGI. Thông tin này chỉ được xử lý tạm thời trong bộ nhớ để hiển thị widget và không bao giờ được lưu trữ hay gửi đi đâu.
 
-### 3.6 Xem trước Camera (Tùy chọn)
+### 3.5 Xem trước Camera (Tùy chọn)
 
 V-Notch có thể hiển thị xem trước camera trực tiếp, chỉ khi bạn chủ động mở tính năng đó. Trong khi hoạt động, các khung hình camera được xử lý cục bộ để hiển thị trên màn hình. **Không có khung hình nào được ghi lại, lưu trữ, chụp ảnh, hoặc truyền đi.** Khi bạn đóng xem trước, camera được giải phóng ngay lập tức. Khi xem trước camera của chính V-Notch đang bật, ứng dụng tự ẩn chấm báo "camera đang dùng" của mình để tránh hiển thị dư thừa.
 
-### 3.7 File Shelf (Tùy chọn)
+### 3.6 File Shelf (Tùy chọn)
 
 Khi bạn kéo tệp vào File Shelf, V-Notch ghi lại đường dẫn của mỗi tệp và metadata hệ thống tệp cơ bản (tên, kích thước, loại) để hiển thị và quản lý khay chứa. Ứng dụng dùng `FileSystemWatcher` trên các vị trí đó để giữ khay đồng bộ nếu tệp bị di chuyển hoặc xóa. **Nội dung tệp của bạn không bao giờ bị mở, đọc, sửa đổi, hay truyền đi.** Danh sách đường dẫn tệp được lưu cục bộ trong cài đặt để khay được giữ lại giữa các phiên làm việc (xem Mục 5).
 
-### 3.8 Âm lượng hệ thống & Bộ trộn âm thanh (Audio Mixer)
+### 3.7 Âm lượng hệ thống & Bộ trộn âm thanh (Audio Mixer)
 
 V-Notch dùng trực tiếp API Windows Core Audio trong mã gốc để đọc âm lượng tổng của hệ thống, theo dõi phiên âm thanh của từng ứng dụng đang mở, và điều chỉnh mức âm lượng tương ứng khi bạn sử dụng thanh trượt trên notch. Không có âm thanh nào bị ghi âm, thu lại hoặc chặn bắt; chỉ mức âm lượng dạng số và định danh phiên âm thanh của các audio endpoint đang hoạt động được đọc và thiết lập.
 
-### 3.9 Trạng thái thiết bị Bluetooth & Mức pin
+### 3.8 Trạng thái thiết bị Bluetooth & Mức pin
 
 V-Notch theo dõi các sự kiện kết nối/ngắt kết nối Bluetooth bằng API liệt kê thiết bị của Windows để hiển thị thông báo kết nối (ví dụ khi tai nghe của bạn kết nối) và mức pin của phụ kiện. Ứng dụng đọc tên hiển thị của thiết bị, loại thiết bị (tai nghe, loa, bàn phím...), trạng thái kết nối và phần trăm pin khi được hỗ trợ. Thông tin này chỉ được dùng tạm thời trên màn hình và không được lưu hay truyền đi.
 
-### 3.10 Lịch sử, Chỉ báo & Xem trước Clipboard
+### 3.9 Lịch sử, Chỉ báo & Xem trước Clipboard
 
 V-Notch đăng ký trình lắng nghe định dạng Clipboard của Windows để hiển thị huy hiệu "Copied", xem trước và lưu lịch sử Clipboard. Khi thu thập đang hoạt động (thu thập văn bản, ảnh và tệp được bật mặc định), ứng dụng đọc các định dạng được hỗ trợ và lưu bản sao cục bộ: văn bản thuần, HTML/RTF, ảnh và nội dung tệp/thư mục đã sao chép, kèm thời gian và tên/đường dẫn tệp thực thi của ứng dụng nguồn. Lịch sử vẫn còn sau khi khởi động lại ứng dụng. Bạn cũng có thể nhập mục bằng kéo thả.
 
@@ -151,19 +143,19 @@ Trước khi đọc nội dung để lưu lịch sử, V-Notch bỏ qua mục c�
 
 Tạm dừng thu thập trong khay Clipboard hoặc tắt từng loại văn bản/ảnh/tệp trong cài đặt Clipboard để ngừng thu thập mới. Các công tắc này không xóa lịch sử đã lưu. Đường dẫn, thời hạn lưu và cách xóa được mô tả tại §5.7.
 
-### 3.11 Chỉ báo quyền riêng tư (Mic / Camera / Quay màn hình)
+### 3.10 Chỉ báo quyền riêng tư (Mic / Camera / Quay màn hình)
 
 Mô phỏng hành vi của iOS/macOS, V-Notch có thể hiển thị một chấm màu nhỏ khi micro, camera, hoặc tính năng quay màn hình của bạn đang được *bất kỳ* ứng dụng nào trên hệ thống sử dụng. Đây chỉ là phản ánh trạng thái cảm biến: xử lý tạm thời trong bộ nhớ và không lưu hay truyền tải bất kỳ thông tin nào.
 
-### 3.12 Tiện ích môi trường (Đồng hồ, Lịch, Hẹn giờ, Bấm giờ & Tiếng ồn trắng)
+### 3.11 Tiện ích môi trường (Đồng hồ, Lịch, Hẹn giờ, Bấm giờ & Tiếng ồn trắng)
 
 V-Notch tích hợp sẵn các tiện ích hiển thị giờ hệ thống, ngày tháng, giờ quốc tế, lịch tương tác, bộ đếm ngược / bấm giờ thể thao và trình tạo tiếng ồn trắng (white noise). Toàn bộ quá trình tính toán, đếm giờ và tổng hợp âm thanh đều chạy cục bộ trên thiết bị của bạn.
 
-### 3.13 Cử chỉ & Đầu vào chuột
+### 3.12 Cử chỉ & Đầu vào chuột
 
 Để hỗ trợ các thao tác cử chỉ vuốt và nhấp đúp trên notch (chuyển/lùi bài, mở khay tệp, phát/tạm dừng), V-Notch theo dõi di chuyển và nhấp chuột trong phạm vi vùng notch. Đầu vào này được diễn giải cục bộ để nhận diện cử chỉ và không bao giờ bị ghi log hay truyền đi.
 
-### 3.14 Cắt ảnh bìa thông minh trên thiết bị (ONNX)
+### 3.13 Cắt ảnh bìa thông minh trên thiết bị (ONNX)
 
 Nếu được bật, V-Notch dùng mô hình nhận diện đối tượng YOLOX-Nano đi kèm, chạy cục bộ qua ONNX Runtime, để tự động cắt ảnh bìa rộng quanh khuôn mặt hoặc chủ thể bài hát. **Toàn bộ quá trình phân tích ảnh chạy trên thiết bị của bạn. Không có hình ảnh, đầu vào mô hình, hay kết quả nhận diện nào được gửi đi.** Tính năng này không cần kết nối mạng.
 
@@ -289,7 +281,7 @@ Việc dọn tệp tạm định kỳ giữ nguyên lịch sử chat, lịch s�
 
 ### 5.1 Cài đặt (`%APPDATA%\V-Notch\settings.json`)
 
-Lưu các tùy chọn của bạn: kích thước và vị trí notch, kiểu giao diện và tùy chỉnh Liquid Glass, bật/tắt thông báo, ngôn ngữ, hành vi khởi động cùng Windows, đường dẫn tệp trong File Shelf và các cờ tính năng. Tệp cài đặt có thể chứa YouTube API key nếu bạn tự cung cấp và phiên Spotify nếu bạn chọn Kết nối Spotify. Các thông tin xác thực này, bao gồm khóa nhà cung cấp AI tùy chọn (§5.6), được mã hóa bằng Windows DPAPI (Data Protection API) trước khi ghi xuống đĩa cho tài khoản Windows hiện tại, phụ thuộc bảo mật tài khoản và hệ điều hành. Nếu DPAPI không khả dụng, các giá trị nhạy cảm này sẽ không được lưu.
+Lưu các tùy chọn của bạn: kích thước và vị trí notch, kiểu giao diện, bật/tắt thông báo, ngôn ngữ, hành vi khởi động cùng Windows, đường dẫn tệp trong File Shelf và các cờ tính năng. Tệp cài đặt có thể chứa YouTube API key nếu bạn tự cung cấp và phiên Spotify nếu bạn chọn Kết nối Spotify. Các thông tin xác thực này, bao gồm khóa nhà cung cấp AI tùy chọn (§5.6), được mã hóa bằng Windows DPAPI (Data Protection API) trước khi ghi xuống đĩa cho tài khoản Windows hiện tại, phụ thuộc bảo mật tài khoản và hệ điều hành. Nếu DPAPI không khả dụng, các giá trị nhạy cảm này sẽ không được lưu.
 
 ### 5.2 Lịch sử sử dụng Spotlight (`%APPDATA%\V-Notch\spotlight-usage.json`)
 
@@ -359,7 +351,6 @@ V-Notch **không được thiết kế để**:
 |---|---|---|
 | **Media Session (SMTC)** | Hiển thị metadata phương tiện đang phát & điều khiển phát nhạc | Có (tính năng cốt lõi) |
 | **Audio Endpoint (Core Audio)** | Đọc & điều chỉnh mức âm lượng tổng và âm lượng từng ứng dụng | Có (tính năng cốt lõi) |
-| **DirectX 11 / DXGI / Magnification** | Lấy mẫu nền màn hình cục bộ cho khúc xạ quang học Liquid Glass | Tùy chọn (hiệu ứng hình ảnh) |
 | **Windows Search / Everything IPC** | Tìm kiếm tệp tin và ứng dụng cục bộ trong Spotlight (`Alt + Space`) | Tùy chọn |
 | **Truy cập Internet** | Kiểm tra cập nhật & tính toàn vẹn, tra cứu ảnh bìa/metadata & lời bài hát, phụ đề, quy đổi tiền tệ, tải model, dự báo thời tiết | Tùy chọn |
 | **Camera (DirectShow / MediaFoundation)** | Xem trước camera trực tiếp ngay trong notch | Opt-in (tùy chọn bật) |

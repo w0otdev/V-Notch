@@ -414,7 +414,7 @@ if (-not $env:VNOTCH_CI_RESUME_TEST_FIXTURE) {
     if ((Test-Path -LiteralPath $artifactsDir) -and @(Get-ChildItem -LiteralPath $artifactsDir -Force -ErrorAction SilentlyContinue).Count -eq 0) {
         Remove-Item -LiteralPath $artifactsDir -Force -ErrorAction SilentlyContinue
     }
-    foreach ($cleanupRel in @('Tests\TestResults', 'Tests\bin', 'Tools\ShaderCompiler\bin', 'Tools\ShaderCompiler\obj', 'Uninstall\bin')) {
+    foreach ($cleanupRel in @('Tests\TestResults', 'Tests\bin', 'Uninstall\bin')) {
         $cleanupPath = Join-Path $repository $cleanupRel
         if (Test-Path -LiteralPath $cleanupPath) {
             Remove-Item -LiteralPath $cleanupPath -Recurse -Force -ErrorAction SilentlyContinue

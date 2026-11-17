@@ -17,7 +17,7 @@ internal sealed class SpotlightWindowFixture : IDisposable
     internal SpotlightWindowFixture(NotchSettings settings, SpotlightAiService? aiService = null, bool saveChatHistory = false,
         ISpotlightProvider? searchProvider = null, ISpotlightProvider? deferredSearchProvider = null)
     {
-        LiquidGlassSpotlightTests.CreateApplicationResources();
+        SpotlightShellTests.CreateApplicationResources();
         DirectoryPath = Directory.CreateTempSubdirectory("vnotch-test-lg-").FullName;
         UsagePath = Path.Combine(DirectoryPath, "usage.json");
         Usage = new SpotlightUsageStore(UsagePath, () => DateTime.UtcNow);

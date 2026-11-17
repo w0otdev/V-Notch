@@ -19,8 +19,6 @@ public sealed partial class AudioMixerView : UserControl, IDisposable
     private Func<AudioMixerService>? _getMixer;
     private Func<IVolumeService>? _getVolume;
     private Func<bool> _isTransitioning = () => false;
-    private Func<bool> _usesGlass = () => false;
-    private bool IsLiquidGlassEnabled => _usesGlass();
     private AudioMixerService? _audioMixerServiceCached;
     private AudioMixerService AudioMixer => _audioMixerServiceCached ??= _getMixer!();
     private bool _active;
@@ -58,13 +56,12 @@ public sealed partial class AudioMixerView : UserControl, IDisposable
     }
 
     public void Attach(AudioMixerViewModel viewModel, Func<AudioMixerService> mixer,
-        Func<IVolumeService> volume, Func<bool> isTransitioning, Func<bool> usesGlass)
+        Func<IVolumeService> volume, Func<bool> isTransitioning)
     {
         _viewModel = viewModel;
         _getMixer = mixer;
         _getVolume = volume;
         _isTransitioning = isTransitioning;
-        _usesGlass = usesGlass;
     }
 
     public void StartPolling()
@@ -1019,9 +1016,7 @@ public sealed partial class AudioMixerView : UserControl, IDisposable
     private TextBlock ColumnLabel(string text) => new TextBlock
     {
         Text = text,
-        // White on the liquid glass skin (the grey header reads poorly over the
-        // live refracted backdrop); default grey otherwise.
-        Foreground = IsLiquidGlassEnabled ? VNotch.Services.UiPalette.PrimaryBrush : AudioHeaderText,
+        Foreground = AudioHeaderText,
         FontSize = 12,
         FontWeight = FontWeights.Bold,
         FontFamily = AudioFont,
@@ -1142,9 +1137,7 @@ public sealed partial class AudioMixerView : UserControl, IDisposable
     {
         var percent = new TextBlock
         {
-            // White on the liquid glass skin so the percentages stay legible over
-            // the refracted backdrop; muted grey on the default skin.
-            Foreground = IsLiquidGlassEnabled ? VNotch.Services.UiPalette.PrimaryBrush : AudioMuted,
+            Foreground = AudioMuted,
             FontSize = 12.5,
             FontWeight = FontWeights.Bold,
             FontFamily = AudioFont,

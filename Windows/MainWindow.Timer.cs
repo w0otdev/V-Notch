@@ -112,7 +112,7 @@ public partial class MainWindow
         var slideUp = MakeAnim(ExpandedContentRestY, ExpandedContentRestY - 10, durOut, _easeAppleIn);
         Timeline.SetDesiredFrameRate(slideUp, fps);
 
-        bool useContentBlur = _settings.EnableBlurEffects && !IsLiquidGlassEnabled;
+        bool useContentBlur = _settings.EnableBlurEffects;
         BlurEffect? expandedBlur = null;
         DoubleAnimation? blurOutAnim = null;
         if (useContentBlur)

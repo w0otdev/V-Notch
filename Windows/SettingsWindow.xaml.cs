@@ -51,16 +51,10 @@ public partial class SettingsWindow : Window
     private const string WidgetWordClock = "wordclock";
     private const string WidgetWeather = "weather";
     private const string WidgetSysMon = "sysmon";
-    private const string SkinLiquidGlass = "liquidglass";
-    private const string GlassPresetCustom = "custom";
-    private const string GlassPresetFrosted = "frosted";
-    private const string GlassPresetRegular = "regular";
-    private const string GlassPresetClear = "clear";
 
     // Navigation sections
     private const string NavSectionAppearance = "Appearance";
     private const string NavSectionSearching = "Searching";
-    private const string NavSectionSkins = "Skins";
     private const string NavSectionBehavior = "Behavior";
     private const string NavSectionDevices = "Devices";
     private const string NavSectionSystem = "System";
@@ -273,13 +267,13 @@ public partial class SettingsWindow : Window
         EnableBlurEffectsCheck.IsChecked = _settings.EnableBlurEffects;
         MediaArtBackgroundCheck.IsChecked = _settings.ShowMediaArtBackground;
 
-        // Liquid Glass availability depends on this checkbox. Initialize the mode
         DynamicIslandModeCheck.IsChecked = _settings.EnableDynamicIslandMode;
         UpdateDynamicIslandDependentControls(_settings.EnableDynamicIslandMode);
+        TopLeftCornerModeCheck.IsChecked = _settings.EnableTopLeftCornerMode;
+        TopLeftCornerFloatingCheck.IsChecked = _settings.TopLeftCornerFloatingCircle;
+        UpdateTopLeftCornerDependentControls(_settings.EnableTopLeftCornerMode);
         EnableShadowCheck.IsChecked = _settings.EnableShadow;
-        UpdateShadowDependentControls(_settings.EnableShadow);
         ApplyWindowShadow(_settings.EnableShadow);
-        LoadLiquidGlassUi();
         EnableSubjectBlurCheck.IsChecked = _settings.EnableSubjectBlur;
         EnableSmartCropCheck.IsChecked = _settings.EnableSmartCrop;
         UpdatePerformanceDependentControls(_settings.EnableBlurEffects);
@@ -381,7 +375,6 @@ public partial class SettingsWindow : Window
         LoadAdditionalPrivacy(_settings);
         UpdateLocalOnlyDependentControls(_settings.EnableLocalOnlyMode);
 
-        ApplyLiquidGlassSkin();
         _isLoadingSettings = false;
         ApplyLocalization();
     }
@@ -398,7 +391,6 @@ public partial class SettingsWindow : Window
 
         // Navigation tooltips
         TooltipHelper.SetLocalizedTooltip(NavAppearance, "tooltip.nav.appearance");
-        TooltipHelper.SetLocalizedTooltip(NavSkins, "tooltip.nav.skins");
         TooltipHelper.SetLocalizedTooltip(NavBehavior, "tooltip.nav.behavior");
         TooltipHelper.SetLocalizedTooltip(NavDevices, "tooltip.nav.devices");
         TooltipHelper.SetLocalizedTooltip(NavSystem, "tooltip.nav.system");
@@ -449,8 +441,6 @@ public partial class SettingsWindow : Window
         TooltipHelper.SetLocalizedTooltip(HelloGreetingCheck, "tooltip.helloGreeting");
         TooltipHelper.SetLocalizedTooltip(EnableSpotlightCheck, "settings.enableSpotlight.hint");
         TooltipHelper.SetLocalizedTooltip(EnableWeatherCheck, "tooltip.enableWeather");
-        TooltipHelper.SetLocalizedTooltip(GpuRefractionCheck, "tooltip.gpuRefraction");
-        if (UltimateGpuCheck != null) TooltipHelper.SetLocalizedTooltip(UltimateGpuCheck, "tooltip.ultimateGpu");
         TooltipHelper.SetLocalizedTooltip(EnableSpotifyCanvasCheck, "tooltip.spotifyCanvas");
         TooltipHelper.SetLocalizedTooltip(LocalOnlyModeCheck, "tooltip.privacy.localOnly");
         TooltipHelper.SetLocalizedTooltip(AutoCheckUpdatesCheck, "tooltip.privacy.autoUpdates");
@@ -469,8 +459,6 @@ public partial class SettingsWindow : Window
         TooltipHelper.SetLocalizedTooltip(CameraCombo, "tooltip.cameraCombo");
         TooltipHelper.SetLocalizedTooltip(VisualizerAudioCombo, "tooltip.visualizerAudioCombo");
         TooltipHelper.SetLocalizedTooltip(LanguageCombo, "tooltip.languageCombo");
-        TooltipHelper.SetLocalizedTooltip(SkinCombo, "tooltip.skinCombo");
-        TooltipHelper.SetLocalizedTooltip(GlassPresetCombo, "tooltip.glassPresetCombo");
     }
 
     private void ApplyLocalization()
@@ -512,7 +500,6 @@ public partial class SettingsWindow : Window
 
         NavSearchingText.Text = Loc.Get(LocKeySearching);
         NavAppearanceText.Text = Loc.Get("settings.nav.appearance");
-        NavSkinsText.Text = Loc.Get("settings.nav.skins");
         NavBehaviorText.Text = Loc.Get("settings.nav.behavior");
         NavDevicesText.Text = Loc.Get("settings.nav.devices");
         NavSystemText.Text = Loc.Get("settings.nav.system");
@@ -622,6 +609,10 @@ public partial class SettingsWindow : Window
 
         DynamicIslandModeCheck.Content = Loc.Get("settings.dynamicIslandMode");
         DynamicIslandModeHint.Text = Loc.Get("settings.dynamicIslandMode.hint");
+        TopLeftCornerModeCheck.Content = Loc.Get("settings.cornerMode");
+        TopLeftCornerModeHint.Text = Loc.Get("settings.cornerMode.hint");
+        TopLeftCornerFloatingCheck.Content = Loc.Get("settings.cornerModeFloating");
+        TopLeftCornerFloatingHint.Text = Loc.Get("settings.cornerModeFloating.hint");
         EnableShadowCheck.Content = Loc.Get("settings.enableShadow");
         EnableShadowHint.Text = Loc.Get("settings.enableShadow.hint");
 
@@ -714,7 +705,6 @@ public partial class SettingsWindow : Window
         EnableBlurEffectsHint.Text = Loc.Get("settings.enableBlurEffects.hint");
         MediaArtBackgroundCheck.Content = Loc.Get("settings.mediaArtBackground");
         MediaArtBackgroundHint.Text = Loc.Get("settings.mediaArtBackground.hint");
-        ApplyLiquidGlassLocalization();
         EnableSubjectBlurCheck.Content = Loc.Get("settings.enableSubjectBlur");
         EnableSubjectBlurHint.Text = Loc.Get("settings.enableSubjectBlur.hint");
         EnableSmartCropCheck.Content = Loc.Get("settings.enableSmartCrop");
@@ -1169,12 +1159,6 @@ public partial class SettingsWindow : Window
         EnableWeatherHint.Text = Loc.Get("settings.enableWeather.hint");
         ManualCityLabel.Text = Loc.Get("settings.manualCity");
         ManualCityHint.Text = Loc.Get("settings.manualCity.hint");
-
-        GpuRefractionCheck.Content = Loc.Get("settings.gpuRefraction");
-        GpuRefractionHint.Text = Loc.Get("settings.gpuRefraction.hint");
-        if (UltimateGpuCheck != null) UltimateGpuCheck.Content = Loc.Get("settings.glass.ultimateGpu");
-        if (UltimateGpuHint != null) UltimateGpuHint.Text = Loc.Get("settings.glass.ultimateGpu.hint");
-        if (UltimateGpuWarning != null) UltimateGpuWarning.Text = Loc.Get("settings.glass.ultimateGpu.warning");
 
         ApplyGpuAndProcessLocalization();
         ApplyBackupSectionLocalization();

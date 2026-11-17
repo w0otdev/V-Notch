@@ -54,8 +54,6 @@ public partial class SettingsWindow
             LanguageCombo?.IsDropDownOpen == true ||
             CameraCombo?.IsDropDownOpen == true ||
             VisualizerAudioCombo?.IsDropDownOpen == true ||
-            SkinCombo?.IsDropDownOpen == true ||
-            GlassPresetCombo?.IsDropDownOpen == true ||
             ProcessPriorityCombo?.IsDropDownOpen == true ||
             GpuPreferenceCombo?.IsDropDownOpen == true)
         {

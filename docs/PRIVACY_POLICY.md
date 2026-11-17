@@ -13,7 +13,7 @@
 
 ## 1. Introduction
 
-V-Notch is a free, open-source desktop application for Windows that recreates a macOS-style notch and iPhone Dynamic Island experience. It displays now-playing media, battery and Bluetooth status, a file shelf, a camera preview, system volume and audio mixer, system resource monitor (CPU, RAM, GPU), clock, calendar, timer, Spotlight search launcher, and other ambient information with smooth animations and Liquid Glass optics.
+V-Notch is a free, open-source desktop application for Windows that recreates a macOS-style notch and iPhone Dynamic Island experience. It displays now-playing media, battery and Bluetooth status, a file shelf, a camera preview, system volume and audio mixer, system resource monitor (CPU, RAM, GPU), clock, calendar, timer, Spotlight search launcher, and other ambient information with smooth animations.
 
 This Privacy Policy explains in detail what data the application accesses, why it accesses it, where that data goes, and how long it is kept. It reflects the behavior of the application source code, which is publicly available for inspection at [github.com/w0otdev/V-Notch](https://github.com/w0otdev/V-Notch).
 
@@ -42,7 +42,6 @@ This policy uses the following terms:
 | **Spotlight AI (opt-in)** | Submitted messages, recent context, API key, selected model | Yes: selected AI provider (§4.8) | Keys and chat history encrypted locally (§5.6) |
 | **Live translation (opt-in)** | Selected text exposed by UI Automation; clipboard text only on an explicit command | No text upload; optional GGUF model download contacts `huggingface.co` (`*.huggingface.co`, `*.hf.co`) | Model/configuration only (SHA-256 verified locally); translation cache stays in RAM |
 | **Spotlight search & launcher** | Local app names, local file metadata (native indexer / Windows Search / Everything), math & currency expressions | No for local search/math; currency conversion queries `api.frankfurter.dev` when online (§4.6) | Recent launch frequency stored locally (max 100 entries, see §5) |
-| **Liquid Glass backdrop capture** | Screen pixels directly under the notch area (DXGI / Magnification API) | No | No (processed per-frame on GPU/CPU and discarded immediately) |
 | **System hardware monitor** | CPU usage, RAM usage, GPU utilization (Windows performance counters / DXGI) | No | No (transient in memory) |
 | **Camera preview (opt-in)** | Live camera frames | No | No (never recorded, captured, or saved) |
 | **File Shelf** | File paths + basic file metadata (name, size, type) | No | File paths persisted locally in settings (see §5) |
@@ -50,7 +49,7 @@ This policy uses the following terms:
 | **Media source detection** | Visible window titles; active browser URLs (UI Automation) | No | Potentially: derived media-title/source mapping in local cache (§5.3); diagnostic and crash logs if enabled (§5.4) |
 | **Diagnostic & crash logs** | Technical events, errors, unhandled exception details (only when `EnableDiagnosticLogging` is enabled) | No | Yes: `vnotch-debug.log` and `vnotch-crash.log` (plus `.old` rotations, see §5.4) |
 | **Bluetooth & battery status** | Connected device name, type, battery level, state | No | No (transient in memory) |
-| **Clipboard history, indicator & peek** | Copied text, HTML/RTF, images, files/folders and source-app metadata | No automatic upload by Clipboard history | Yes: local history at `%LOCALAPPDATA%\V-Notch\Clipboard\` (§3.10, §5.7) |
+| **Clipboard history, indicator & peek** | Copied text, HTML/RTF, images, files/folders and source-app metadata | No automatic upload by Clipboard history | Yes: local history at `%LOCALAPPDATA%\V-Notch\Clipboard\` (§3.9, §5.7) |
 | **Privacy indicators** | Whether microphone, camera, or screen recording is active | No | No (transient in memory) |
 | **Clock, Calendar, Timer & White Noise** | Local system time, countdown timers, stopwatch, synthesized ambient audio | No | Timer presets in settings |
 | **Gestures & mouse input** | Mouse movement/clicks over the notch | No | No |
@@ -110,34 +109,27 @@ V-Notch features a built-in Spotlight search launcher that lets you find applica
 
 **Spotlight Search processes app/file queries and math calculations locally.** The separate AI mode sends messages you explicitly submit and conversation context as described in §4.8.
 
-### 3.4 Liquid Glass & Screen Backdrop Capture
-
-V-Notch includes a Liquid Glass optical simulation engine that renders glass refraction, chromatic aberration, edge bending, bevel, and blur effects matching macOS and Dynamic Island aesthetics.
-
-- To calculate optical refraction, V-Notch samples a small region of the screen directly beneath the notch area using DirectX 11 (DXGI Desktop Duplication) or the Windows Magnification API.
-- **Privacy safeguard:** Screen pixel sampling occurs solely inside local GPU/CPU memory on a per-frame basis to render the visual effect. Captured frames are immediately discarded once presented on screen. **V-Notch does not intentionally persist or upload these sampled frames; operating-system/graphics components may manage their own memory or caches.**
-
-### 3.5 System Hardware Monitor (CPU, RAM, GPU)
+### 3.4 System Hardware Monitor (CPU, RAM, GPU)
 
 The System Monitor module reads system performance metrics (CPU usage percentage, physical RAM consumption, and GPU utilization) via standard Windows performance counters and DXGI adapter queries. This information is processed in memory for live widget display only and is never stored or transmitted.
 
-### 3.6 Camera Preview (Opt-In)
+### 3.5 Camera Preview (Opt-In)
 
 V-Notch can show a live camera preview, only when you explicitly open that feature. While active, camera frames are processed locally for on-screen display. **No frame is ever recorded, saved, photographed, or transmitted.** When you close the preview, the camera is released. When V-Notch's own camera preview is active, it suppresses its own "camera in use" privacy dot to avoid a redundant indicator.
 
-### 3.7 File Shelf (Opt-In)
+### 3.6 File Shelf (Opt-In)
 
 When you drag files onto the File Shelf, V-Notch records each file's path and basic file-system metadata (name, size, type) so it can display and manage the shelf. It uses a `FileSystemWatcher` on those locations to keep the shelf in sync if a file is moved or deleted. **The contents of your files are not opened, read, modified, or transmitted.** The list of file paths is saved locally in settings so the shelf persists between sessions (see Section 5).
 
-### 3.8 System Audio Volume & Audio Mixer
+### 3.7 System Audio Volume & Audio Mixer
 
 V-Notch uses the Windows Core Audio API directly in native code to read the current system volume, monitor individual app audio sessions, and adjust them when you use the notch's volume control or audio mixer. No audio is recorded, intercepted, or captured; only numeric volume levels and session identities of active audio endpoints are read and set.
 
-### 3.9 Bluetooth Device Status & Battery Levels
+### 3.8 Bluetooth Device Status & Battery Levels
 
 V-Notch watches for Bluetooth connect/disconnect events using the Windows device enumeration API in order to show a connection notification (for example, when your headphones connect) and accessory battery levels. It reads the device's display name, a category guess (headphones, speaker, keyboard, etc.), connection state, and battery percentage when available. This information is used transiently for the on-screen notification and widget, and is not stored or transmitted.
 
-### 3.10 Clipboard History, Change Indicator & Peek
+### 3.9 Clipboard History, Change Indicator & Peek
 
 V-Notch registers a Windows clipboard format listener for the "Copied" badge, preview and persistent Clipboard history. While capture is active (text, image and file capture are enabled by default), it reads supported clipboard content and saves local copies: plain text, HTML/RTF, images and the contents of copied files/folders, together with timestamps and source application name/executable path. History remains available after restarting the app. Items can also be imported by drag and drop.
 
@@ -147,19 +139,19 @@ Before reading content for history, V-Notch skips clipboard items carrying `Excl
 
 Pause capture in the Clipboard tray or disable individual text/image/file capture types in Clipboard settings to stop new captures. These controls do not erase existing history. Storage, retention and deletion are described in §5.7.
 
-### 3.11 Privacy Indicators (Mic / Camera / Screen Capture)
+### 3.10 Privacy Indicators (Mic / Camera / Screen Capture)
 
 Mirroring iOS/macOS behavior, V-Notch can display a small colored dot when your microphone, camera, or screen recording is in use by *any* application. This is a status reflection only: it indicates that a sensor is active, processes that status transiently in memory, and stores or transmits nothing.
 
-### 3.12 Ambient Widgets (Clock, Calendar, Timer, Stopwatch & White Noise)
+### 3.11 Ambient Widgets (Clock, Calendar, Timer, Stopwatch & White Noise)
 
 V-Notch includes ambient widgets for clock, date, world time, interactive calendar, a countdown timer / stopwatch, and an ambient white noise generator. All calculations, timers, and audio synthesis run locally on your device.
 
-### 3.13 Gestures & Mouse Input
+### 3.12 Gestures & Mouse Input
 
 To support swipe and double-tap gestures on the notch (next/previous track, open shelf, play/pause), V-Notch monitors mouse movement and clicks in the region of the notch. This input is interpreted locally to recognize gestures and is never logged or transmitted.
 
-### 3.14 On-Device Smart Thumbnail Cropping (ONNX)
+### 3.13 On-Device Smart Thumbnail Cropping (ONNX)
 
 If enabled, V-Notch uses a bundled YOLOX-Nano object-detection model running locally through ONNX Runtime to crop wide artwork around a face or subject. **All image analysis runs on your device. No image, model input, or detection result is sent anywhere.** This feature requires no network connection.
 
@@ -285,7 +277,7 @@ Periodic temporary-file cleanup preserves saved chat history, quarantined `.corr
 
 ### 5.1 Settings (`%APPDATA%\V-Notch\settings.json`)
 
-Stores your preferences: notch size and position, visual style and Liquid Glass options, notification toggles, language, startup behavior, File Shelf contents (file paths), and feature flags. Settings may contain a YouTube API key only if you explicitly provide one and a Spotify session only if you choose Connect Spotify. These credentials, including optional AI provider keys (§5.6), are encrypted using Windows DPAPI (Data Protection API) before they are written to disk. The encrypted values are tied to the current Windows user account and are protected for the Windows user by DPAPI, subject to the security of that account and operating system. If DPAPI is unavailable, these sensitive values are not saved.
+Stores your preferences: notch size and position, visual style, notification toggles, language, startup behavior, File Shelf contents (file paths), and feature flags. Settings may contain a YouTube API key only if you explicitly provide one and a Spotify session only if you choose Connect Spotify. These credentials, including optional AI provider keys (§5.6), are encrypted using Windows DPAPI (Data Protection API) before they are written to disk. The encrypted values are tied to the current Windows user account and are protected for the Windows user by DPAPI, subject to the security of that account and operating system. If DPAPI is unavailable, these sensitive values are not saved.
 
 ### 5.2 Spotlight Usage History (`%APPDATA%\V-Notch\spotlight-usage.json`)
 
@@ -354,7 +346,6 @@ V-Notch does **not**:
 |---|---|---|
 | **Media Session (SMTC)** | Show now-playing media metadata & playback control | Yes (core feature) |
 | **Audio Endpoint (Core Audio)** | Read and adjust system master & app volume levels | Yes (core feature) |
-| **DirectX 11 / DXGI / Magnification** | Local screen backdrop sampling for Liquid Glass refraction | Optional (visual effect) |
 | **Windows Search / Everything IPC** | Local file and application search in Spotlight (`Alt + Space`) | Optional |
 | **Internet Access** | Update & integrity checks, artwork/metadata & lyrics lookup, subtitles, currency conversion, model download, weather | Optional |
 | **Camera (DirectShow / MediaFoundation)** | Live camera preview inside the notch | Opt-in |

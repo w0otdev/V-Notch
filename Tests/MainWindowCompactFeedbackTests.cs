@@ -56,9 +56,19 @@ public sealed class MainWindowCompactFeedbackTests
             AnimationConfig.SetReduceMotion(false);
             await using var fixture = CreateFixture();
             var window = fixture.Window;
+            await ShowWithoutLiveBatteryAsync(window, ct);
             Invoke(window, "HandleBatteryUpdate", new BatteryInfo { Percentage = 60, IsPluggedIn = false });
             Invoke(window, "HandleBatteryUpdate", new BatteryInfo { Percentage = 60, IsCharging = true, IsPluggedIn = true });
             Assert.True(Field<bool>(window, "_chargingPulseWanted"));
+            // The pulsing fill is part of the expanded view, so it only animates while that view is shown.
+            Assert.False(window.BatteryFill.IsVisible);
+            Assert.Null(Field<object?>(window, "_chargingPulseStoryboard"));
+            window.ExpandedContent.Visibility = Visibility.Visible;
+            Assert.NotNull(Field<object?>(window, "_chargingPulseStoryboard"));
+            window.ExpandedContent.Visibility = Visibility.Collapsed;
+            Assert.Null(Field<object?>(window, "_chargingPulseStoryboard"));
+            Assert.True(Field<bool>(window, "_chargingPulseWanted"));
+            window.ExpandedContent.Visibility = Visibility.Visible;
             Assert.NotNull(Field<object?>(window, "_chargingPulseStoryboard"));
             Assert.Equal(Loc.Get("battery.charging"), window.ChargingStatusText.Text);
             Invoke(window, "HandleBatteryUpdate", new BatteryInfo { Percentage = 10, IsPluggedIn = false, IsBatterySaver = true });
@@ -73,6 +83,108 @@ public sealed class MainWindowCompactFeedbackTests
             Invoke(window, "CancelChargingGlanceImmediate");
         }
         finally { AnimationConfig.SetReduceMotion(previous); }
+    });
+
+    [Fact]
+    public void IdleTitleShimmerOnlyRunsWhileTheTitleIsVisible() => SharedStaTestRunner.RunAsync(async ct =>
+    {
+        bool previous = AnimationConfig.ReduceMotion;
+        try
+        {
+            AnimationConfig.SetReduceMotion(false);
+            await using var fixture = CreateFixture();
+            var window = fixture.Window;
+            await ShowWithoutLiveBatteryAsync(window, ct);
+            window.ExpandedContent.Visibility = Visibility.Collapsed;
+            Invoke(window, "StartTitleShimmer");
+            Assert.True(Field<bool>(window, "_shimmerWanted"));
+            Assert.False(Field<bool>(window, "_isShimmerActive"));
+            window.ExpandedContent.Visibility = Visibility.Visible;
+            Assert.True(window.MediaPlayback.TrackTitle.IsVisible);
+            Assert.True(Field<bool>(window, "_isShimmerActive"));
+            Assert.IsType<LinearGradientBrush>(window.MediaPlayback.TrackTitle.Foreground);
+            window.ExpandedContent.Visibility = Visibility.Collapsed;
+            Assert.False(Field<bool>(window, "_isShimmerActive"));
+            Assert.True(Field<bool>(window, "_shimmerWanted"));
+            Invoke(window, "StopTitleShimmer");
+            window.ExpandedContent.Visibility = Visibility.Visible;
+            Assert.False(Field<bool>(window, "_isShimmerActive"));
+        }
+        finally { AnimationConfig.SetReduceMotion(previous); }
+    });
+
+    [Fact]
+    public void SlowAmbientLoopsStayAtThirtyFpsOnAHighRefreshTarget() => SharedStaTestRunner.RunAsync(async ct =>
+    {
+        bool previousReduceMotion = AnimationConfig.ReduceMotion;
+        const BindingFlags configFlags = BindingFlags.Static | BindingFlags.NonPublic;
+        int previousFps = (int)typeof(AnimationConfig).GetField("_configuredFps", configFlags)!.GetValue(null)!;
+        bool previousAutoFps = (bool)typeof(AnimationConfig).GetField("_autoFps", configFlags)!.GetValue(null)!;
+        try
+        {
+            AnimationConfig.SetReduceMotion(false);
+            AnimationConfig.Configure(120, autoFps: false);
+            Assert.Equal(120, AnimationConfig.TargetFps);
+            await using var fixture = CreateFixture();
+            var window = fixture.Window;
+            await ShowWithoutLiveBatteryAsync(window, ct);
+            window.ExpandedContent.Visibility = Visibility.Visible;
+            Invoke(window, "StartTitleShimmer");
+            Invoke(window, "StartChargingPulse");
+            // One Forever clock above the display-rate floor makes WPF recompose the layered window at that rate.
+            foreach (string name in new[] { "_titleShimmerStoryboard", "_chargingPulseStoryboard" })
+            {
+                var storyboard = Field<System.Windows.Media.Animation.Storyboard>(window, name);
+                Assert.Equal(30, System.Windows.Media.Animation.Timeline.GetDesiredFrameRate(storyboard));
+                Assert.All(storyboard.Children, child => Assert.Equal(30, System.Windows.Media.Animation.Timeline.GetDesiredFrameRate(child)));
+            }
+        }
+        finally
+        {
+            AnimationConfig.Configure(previousFps, previousAutoFps);
+            AnimationConfig.SetReduceMotion(previousReduceMotion);
+        }
+    });
+
+    [Fact]
+    public void CompactTitleMarqueeOnlyRunsWhileTheHoverInfoIsVisible() => SharedStaTestRunner.RunAsync(async ct =>
+    {
+        bool previous = AnimationConfig.ReduceMotion;
+        try
+        {
+            AnimationConfig.SetReduceMotion(false);
+            await using var fixture = CreateFixture();
+            var window = fixture.Window;
+            await ShowWithoutLiveBatteryAsync(window, ct);
+            window.MusicCompactContent.Visibility = Visibility.Visible;
+            Set(window, "_isMusicCompactMode", true);
+            Set(window, "_currentMediaInfo", new MediaInfo { CurrentTrack = new string('W', 120), CurrentArtist = "Fixture artist" });
+            Set(window, "_isCompactThumbnailHovered", true);
+            Invoke(window, "AnimateThumbnailHover", true);
+            Assert.True(window.CompactHoverInfo.IsVisible);
+            Assert.True(window.CompactTitleMarqueeTranslate.HasAnimatedProperties);
+            // Collapsing the hover info after the pointer leaves must not leave the Forever clock running.
+            window.CompactHoverInfo.Visibility = Visibility.Collapsed;
+            Assert.False(window.CompactTitleMarqueeTranslate.HasAnimatedProperties);
+            window.CompactHoverInfo.Visibility = Visibility.Visible;
+            await WpfFrameWaiter.UntilAsync(() => window.CompactTitleMarqueeTranslate.HasAnimatedProperties, "marquee resumes when the hover info is shown again", ct);
+        }
+        finally { AnimationConfig.SetReduceMotion(previous); }
+    });
+
+    [Fact]
+    public void CollapsingTheNotchStopsTheExpandedOnlyTimersAndRawMouseWorker() => SharedStaTestRunner.RunAsync(async ct =>
+    {
+        await using var fixture = CreateFixture();
+        var window = fixture.Window;
+        await ShowWithoutLiveBatteryAsync(window, ct);
+        var lyricsTimer = Field<UiScheduledTimer>(window, "_lyricsTimer");
+        bool IsAnimating() => (bool)typeof(MainWindow).GetProperty("_isAnimating", Private)!.GetValue(window)!;
+        ReflectionInvoker.InvokeWithDefaults(window, typeof(MainWindow).GetMethod("ExpandNotch", Private)!, new object?[] { null, NotchView.Media, NotchView.Compact });
+        await WpfFrameWaiter.UntilAsync(() => !IsAnimating() && lyricsTimer.IsEnabled && InputMonitorService.IsStarted, "expanded view starts its timers", ct);
+        ReflectionInvoker.InvokeWithDefaults(window, typeof(MainWindow).GetMethod("CollapseNotch", Private)!, new object?[] { null });
+        await WpfFrameWaiter.UntilAsync(() => !IsAnimating() && !lyricsTimer.IsEnabled && !InputMonitorService.IsStarted, "collapse stops expanded-only work", ct);
+        Assert.False(Field<UiScheduledTimer>(window, "_volumeSyncTimer").IsEnabled);
     });
 
     [Theory]
@@ -146,6 +258,54 @@ public sealed class MainWindowCompactFeedbackTests
         await WpfFrameWaiter.UntilAsync(() => Math.Abs(fixture.Window.NotchScale.ScaleX - 1) < 1e-6 && Math.Abs(fixture.Window.NotchScale.ScaleY - 1) < 1e-6, "copy bounce returns to rest", ct);
     });
 
+    [Fact]
+    public void CollapsedClockShowsTheTimeAndOnlyTicksWhileItIsOnScreen() => SharedStaTestRunner.RunAsync(async ct =>
+    {
+        await using var fixture = CreateFixture();
+        var window = fixture.Window;
+        await ShowWithoutLiveBatteryAsync(window, ct);
+        var timer = Field<DispatcherTimer>(window, "_collapsedClockTimer");
+        static string Format(DateTime time) => time.ToString("t", System.Globalization.CultureInfo.CurrentCulture);
+
+        window.CollapsedContent.Visibility = Visibility.Visible;
+        var before = DateTime.Now;
+        Invoke(window, "RefreshCollapsedClock");
+        Assert.True(window.CollapsedClockText.IsVisible);
+        Assert.Contains(window.CollapsedClockText.Text, new[] { Format(before), Format(DateTime.Now) });
+        Assert.True(timer.IsEnabled);
+        Assert.InRange(timer.Interval, TimeSpan.Zero, TimeSpan.FromSeconds(60.05));
+
+        window.CollapsedContent.Visibility = Visibility.Collapsed;
+        Assert.False(timer.IsEnabled);
+
+        window.MusicCompactContent.Visibility = Visibility.Visible;
+        Assert.True(window.CompactClockText.IsVisible);
+        Assert.Equal(window.CollapsedClockText.Text, window.CompactClockText.Text);
+        Assert.True(timer.IsEnabled);
+        Assert.Equal(0, System.Windows.Controls.Grid.GetColumn(window.CompactThumbnailBorder));
+        Assert.Equal(1, System.Windows.Controls.Grid.GetColumn(window.CompactClockText));
+        Assert.Equal(2, System.Windows.Controls.Grid.GetColumn(window.MusicViz));
+
+        window.ClipboardCopiedText.Visibility = Visibility.Visible;
+        Assert.False(window.CompactClockText.IsVisible);
+        window.ClipboardCopiedText.Visibility = Visibility.Collapsed;
+        Assert.True(window.CompactClockText.IsVisible);
+
+        Set(window, "_isNotchVisible", false);
+        Invoke(window, "RefreshCollapsedClock");
+        Assert.False(timer.IsEnabled);
+    });
+
+    [Theory]
+    [InlineData(0, 0)]
+    [InlineData(30, 500)]
+    [InlineData(59, 999)]
+    public void CollapsedClockTimerIsAlignedToTheNextMinute(int second, int millisecond)
+    {
+        var now = new DateTime(2026, 11, 17, 16, 20, second, millisecond);
+        Assert.Equal(new DateTime(2026, 11, 17, 16, 21, 0).AddMilliseconds(50), now + MainWindow.GetDelayToNextMinute(now));
+    }
+
     private static GreetingAcceptanceTests.MainWindowFixture CreateFixture()
     {
         var fixture = new GreetingAcceptanceTests.MainWindowFixture("en", greeting: false,
@@ -154,6 +314,15 @@ public sealed class MainWindowCompactFeedbackTests
         fixture.Window.NotchBorder.Height = 40;
         Set(fixture.Window, "_isNotchVisible", true);
         return fixture;
+    }
+
+    private static async Task ShowWithoutLiveBatteryAsync(MainWindow window, CancellationToken ct)
+    {
+        window.ShowActivated = false;
+        window.Show();
+        await WpfFrameWaiter.UntilAsync(() => Field<bool>(window, "_coreModulesStarted") && Field<bool>(window, "_isStartupLayoutReady") && !(bool)typeof(MainWindow).GetProperty("_isAnimating", Private)!.GetValue(window)!, "startup", ct);
+        // The real battery would otherwise overwrite the fixture's battery updates.
+        Field<VNotch.Modules.BatteryModule>(window, "_batteryModule").Stop();
     }
 
     private static T Field<T>(MainWindow window, string name) => (T)typeof(MainWindow).GetField(name, Private)!.GetValue(window)!;

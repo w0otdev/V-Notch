@@ -142,7 +142,7 @@ public sealed class LifetimeAuditRegressionTests
     });
 
     [Fact]
-    public void BoundedBezierCacheAndWindowGeometryDisposeCleanly() => SharedStaTestRunner.Run(() =>
+    public void BoundedBezierCacheStaysBounded() => SharedStaTestRunner.Run(() =>
     {
         for (int i = 0; i < 100; i++)
         {
@@ -153,11 +153,6 @@ public sealed class LifetimeAuditRegressionTests
         var samplesField = typeof(CubicBezierEase).GetField("Samples", BindingFlags.Static | BindingFlags.NonPublic)!;
         var samples = (System.Collections.ICollection)samplesField.GetValue(null)!;
         Assert.InRange(samples.Count, 1, 64);
-
-        var window = new System.Windows.Window();
-        using var geometry = new WindowScreenGeometry(window);
-        geometry.Dispose();
-        window.Close();
     });
 
     private sealed class TrackingHandler : HttpMessageHandler
