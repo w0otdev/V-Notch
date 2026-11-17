@@ -19,6 +19,7 @@ public sealed class EncryptedChatRepository : IChatRepository
     private ChatSummary[]? _ordered;
     private bool _initialized;
     private bool _catalogDirty;
+    private readonly Dictionary<string, ChatRecoveryIssue> _recoveryIssues = new(StringComparer.Ordinal);
 
     private sealed record Chunk(string File, string Hash, int Count);
     private sealed record Manifest(ChatSummary Summary, string Draft, List<Chunk> Chunks);
@@ -53,6 +54,7 @@ public sealed class EncryptedChatRepository : IChatRepository
         if (_initialized) return;
         Directory.CreateDirectory(_root);
         _chats.Clear();
+        _recoveryIssues.Clear();
         if (File.Exists(Path.Combine(_root, "ready")) && !File.Exists(Path.Combine(_root, "catalog.dirty")) &&
             File.Exists(Path.Combine(_root, "catalog.enc")))
         {
@@ -97,11 +99,22 @@ public sealed class EncryptedChatRepository : IChatRepository
             {
                 // Never treat transient I/O errors as corruption or overwrite the last good backup.
                 string backup = path + ".bak";
-                manifest = Read<Manifest>(backup);
-                Validate(manifest, id);
-                foreach (var chunk in manifest.Chunks) ReadChunk(id, chunk);
+                try
+                {
+                    manifest = Read<Manifest>(backup);
+                    Validate(manifest, id);
+                    foreach (var chunk in manifest.Chunks) ReadChunk(id, chunk);
+                }
+                catch (Exception backupError) when (backupError is JsonException or CryptographicException or FileNotFoundException or DirectoryNotFoundException)
+                {
+                    // Preserve both generations in place. One damaged conversation must not
+                    // hide healthy chats, and must never silently become an empty conversation.
+                    _recoveryIssues[id] = new(id, RecoveredFromBackup: false);
+                    continue;
+                }
                 File.Copy(path, path + "." + Guid.NewGuid().ToString("N") + ".corrupt");
                 WriteAtomic(path, File.ReadAllText(backup));
+                _recoveryIssues[id] = new(id, RecoveredFromBackup: true);
             }
             _chats[id] = manifest;
         }
@@ -117,7 +130,10 @@ public sealed class EncryptedChatRepository : IChatRepository
         {
             _ordered ??= _chats.Values.Select(c => c.Summary).OrderByDescending(c => c.UpdatedUtc)
                 .ThenBy(c => c.Id, StringComparer.Ordinal).ToArray();
-            return new ChatPage(_ordered.Skip(offset).Take(count).ToArray(), _ordered.Length);
+            return new ChatPage(_ordered.Skip(offset).Take(count).ToArray(), _ordered.Length)
+            {
+                RecoveryIssues = _recoveryIssues.Values.ToArray()
+            };
         }, cancellation);
     }
 
@@ -132,7 +148,12 @@ public sealed class EncryptedChatRepository : IChatRepository
         if (count is < 1 or > 100 || before < 0) throw new ArgumentOutOfRangeException(nameof(count));
         return Run<SpotlightSavedChat?>(() =>
         {
-            if (!_chats.TryGetValue(id, out var manifest)) return null;
+            if (!_chats.TryGetValue(id, out var manifest))
+            {
+                if (_recoveryIssues.ContainsKey(id))
+                    throw new InvalidDataException("This conversation is damaged; its files have been preserved for recovery.");
+                return null;
+            }
             int end = Math.Min(before, manifest.Summary.MessageCount);
             int start = Math.Max(0, end - count);
             var messages = new List<SpotlightAiMessage>(end - start);
@@ -172,6 +193,8 @@ public sealed class EncryptedChatRepository : IChatRepository
     private void SaveCore(SpotlightSavedChat chat)
     {
         ValidateId(chat.Id);
+        if (_recoveryIssues.TryGetValue(chat.Id, out var issue) && !issue.RecoveredFromBackup)
+            throw new InvalidDataException("Cannot overwrite a damaged conversation. Save as a new conversation or recover its files first.");
         _chats.TryGetValue(chat.Id, out var previous);
         if (chat.MessageOffset < 0 || chat.MessageOffset > (previous?.Summary.MessageCount ?? 0))
             throw new InvalidOperationException("The chat tail does not follow the stored conversation.");
@@ -235,6 +258,7 @@ public sealed class EncryptedChatRepository : IChatRepository
                 try { Directory.Delete(tombstone, true); } catch (IOException) { } catch (UnauthorizedAccessException) { }
             }
             _chats.Remove(id);
+            _recoveryIssues.Remove(id);
             _ordered = null;
             return true;
         }, cancellation);
@@ -243,6 +267,8 @@ public sealed class EncryptedChatRepository : IChatRepository
     public Task FlushAsync() => Run(() =>
     {
         if (!_catalogDirty) return true;
+        // A partial catalog must not hide damaged records on the next launch.
+        if (_recoveryIssues.Values.Any(issue => !issue.RecoveredFromBackup)) return true;
         WriteAtomic(Path.Combine(_root, "catalog.enc"), _protect(JsonSerializer.Serialize(_chats.Values)), keepBackup: true);
         File.Delete(Path.Combine(_root, "catalog.dirty"));
         _catalogDirty = false;

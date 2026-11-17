@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Only for a disposable non-interactive Windows session. Interactive sessions
-     keep these tests skipped even with this opt-in; ordinary UI tests run on a
-     private background desktop and never switch the user's desktop. -->
+<!-- Only for disposable GitHub-hosted Windows runners with an interactive desktop.
+     Local and self-hosted sessions keep visible tests skipped even with this opt-in;
+     ordinary UI tests run on a private background desktop. -->
 <RunSettings>
   <RunConfiguration>
     <TestCaseFilter>Category=DesktopIntegration</TestCaseFilter>

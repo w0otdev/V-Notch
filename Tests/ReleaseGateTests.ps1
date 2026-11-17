@@ -217,6 +217,7 @@ try {
         throw 'Concatenated .sha256 sidecars must produce 1 line per installer in checksums.txt.'
     }
 
+    & (Join-Path $repository 'Tests/DesktopGateTests.ps1')
     & (Join-Path $repository 'Tests/DevRunnerTests.ps1')
     Write-Host 'Release gates passed: coverage boundaries, merged suites/assemblies, duplicate reports, XML safety, model allowlist/hash/license, required signing, manifest checksums, dev runner process scope.'
 } finally {

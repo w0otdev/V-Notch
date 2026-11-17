@@ -17,8 +17,9 @@ public partial class NumberFlowText
         private readonly RectangleGeometry _clip = new();
         private readonly Slot[] _slots;
 
-        private sealed record Slot(Reel Reel, DrawingGroup Drawing, TranslateTransform Position, Row[] Rows);
-        private sealed record Row(int Index, DrawingGroup Drawing, TranslateTransform Position, double BaselineOffset);
+        private sealed record Slot(Reel Reel, DrawingGroup Drawing, TranslateTransform Position,
+            RectangleGeometry? Clip, Row[] Rows);
+        private sealed record Row(int Index, DrawingGroup Drawing, TranslateTransform Position, double BaselineOffset, double Width);
 
         internal ReelScene(List<Reel> reels, NumberFlowGlyphCache cache)
         {
@@ -41,7 +42,7 @@ public partial class NumberFlowText
                 var glyph = reel.Glyph;
                 var bounds = Bounds;
                 bounds.Union(glyph.Bounds);
-                bounds.Union(new Rect(reel.FromPoint, glyph.Bounds.Size));
+                bounds.Union(new Rect(reel.FromPoint, new Size(reel.FromWidth, glyph.Bounds.Height)));
                 Bounds = bounds;
                 var position = new TranslateTransform();
                 var drawing = new DrawingGroup { Transform = position };
@@ -49,12 +50,11 @@ public partial class NumberFlowText
                 if (glyph.Part.Digit < 0 || Math.Abs(reel.To - reel.From) < .001)
                 {
                     drawing.Children.Add(glyph.Image.Drawing);
-                    _slots[i] = new Slot(reel, drawing, position, []);
+                    _slots[i] = new Slot(reel, drawing, position, null, []);
                     continue;
                 }
 
                 var clip = new RectangleGeometry(new Rect(-1, 0, glyph.Bounds.Width + 2, glyph.Bounds.Height));
-                clip.Freeze();
                 drawing.ClipGeometry = clip;
                 // Normalize the cycle to keep transforms small after repeated retargeting.
                 double cycle = Math.Floor(Math.Min(reel.From, reel.To));
@@ -71,9 +71,9 @@ public partial class NumberFlowText
                     var rowDrawing = new DrawingGroup { Transform = transform };
                     rowDrawing.Children.Add(image.Drawing);
                     drawing.Children.Add(rowDrawing);
-                    rows[row] = new Row(row, rowDrawing, transform, glyph.Image.Baseline - image.Baseline);
+                    rows[row] = new Row(row, rowDrawing, transform, glyph.Image.Baseline - image.Baseline, image.Width);
                 }
-                _slots[i] = new Slot(reel with { From = reel.From - cycle, To = reel.To - cycle }, drawing, position, rows);
+                _slots[i] = new Slot(reel with { From = reel.From - cycle, To = reel.To - cycle }, drawing, position, clip, rows);
             }
         }
 
@@ -91,6 +91,11 @@ public partial class NumberFlowText
                 double alpha = Lerp(reel.FromOpacity, 1, progress);
                 if (slot.Drawing.Opacity != alpha) slot.Drawing.Opacity = alpha;
                 if (slot.Rows.Length == 0) continue;
+                // Preserve the current advance width when proportional digits
+                // change or an in-flight transition is retargeted.
+                double width = Settle(Lerp(reel.FromWidth, bounds.Width, progress), bounds.Width, tolerance);
+                var slotClip = new Rect(-1, 0, width + 2, bounds.Height);
+                if (slot.Clip!.Rect != slotClip) slot.Clip.Rect = slotClip;
                 double value = Settle(Lerp(reel.From, reel.To, progress), reel.To, tolerance / bounds.Height);
                 int first = (int)Math.Floor(value);
                 foreach (var row in slot.Rows)
@@ -102,7 +107,7 @@ public partial class NumberFlowText
                     // transforms in the compositor introduced a one-pixel jump
                     // when WPF's native baseline guidelines took over at rest.
                     double y = (row.Index - value) * bounds.Height + row.BaselineOffset;
-                    if (alpha > 0 && row.Position.Y != y) row.Position.Y = y;
+                    if (alpha > 0) SetPosition(row.Position, (width - row.Width) / 2, y);
                 }
             }
         }

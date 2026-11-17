@@ -114,6 +114,41 @@ public sealed class ArchitecturePersistenceTests : IDisposable
         Assert.Single((await reader.ListAsync(0, 10)).Items);
     }
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task UnrecoverableChatDoesNotBlockHealthyChatsOrDisappearAfterFlush(bool corruptBackup)
+    {
+        var damaged = Chat(2);
+        var healthy = Chat(4);
+        var writer = Repository();
+        await writer.SaveChatAsync(damaged);
+        await writer.SaveChatAsync(healthy);
+        string index = Path.Combine(_root, damaged.Id, "index.enc");
+        File.WriteAllText(index, DataProtection.Protect("invalid json"));
+        if (corruptBackup) File.WriteAllText(index + ".bak", DataProtection.Protect("also invalid"));
+        byte[] evidence = File.ReadAllBytes(index);
+
+        var reader = Repository();
+        for (int reopen = 0; reopen < 2; reopen++)
+        {
+            var page = await reader.ListAsync(0, 10);
+            Assert.Equal(healthy.Id, Assert.Single(page.Items).Id);
+            Assert.Equal(new ChatRecoveryIssue(damaged.Id, false), Assert.Single(page.RecoveryIssues));
+            Assert.Equal(healthy.Messages, (await reader.LoadAsync(healthy.Id))!.Messages);
+            await Assert.ThrowsAsync<InvalidDataException>(() => reader.LoadAsync(damaged.Id));
+            await Assert.ThrowsAsync<InvalidDataException>(() => reader.SaveChatAsync(damaged));
+            await reader.FlushAsync();
+            Assert.Equal(evidence, File.ReadAllBytes(index));
+            Assert.True(File.Exists(Path.Combine(_root, "catalog.dirty")));
+            reader = Repository();
+        }
+        await reader.DeleteAsync(damaged.Id);
+        await reader.FlushAsync();
+        Assert.Empty((await Repository().ListAsync(0, 10)).RecoveryIssues);
+        Assert.False(File.Exists(Path.Combine(_root, "catalog.dirty")));
+    }
+
     [Fact]
     public async Task FailedCommitPreservesThePreviousConversationAndCanRetry()
     {

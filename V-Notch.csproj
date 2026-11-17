@@ -15,6 +15,7 @@
 
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <AssemblyName>V-Notch</AssemblyName>
+    <VNotchNativeArtifactPath Condition="'$(VNotchNativeArtifactPath)' == ''">$(MSBuildThisFileDirectory)Native\out\VNotch.Native.dll</VNotchNativeArtifactPath>
     <RootNamespace>VNotch</RootNamespace>
 
     <PublishSingleFile>true</PublishSingleFile>
@@ -41,8 +42,8 @@
     <EnableCompressionInSingleFile Condition="'$(Configuration)' == 'Release' And '$(SelfContained)' == 'true'">true</EnableCompressionInSingleFile>
     <PublishReferencesDocumentationFiles>false</PublishReferencesDocumentationFiles>
     <Version>2.4.1</Version>
-    <AssemblyVersion>2.4.1</AssemblyVersion>
-    <FileVersion>2.4.1</FileVersion>
+    <AssemblyVersion>2.4.1.0</AssemblyVersion>
+    <FileVersion>2.4.1.0</FileVersion>
     <Authors>w0otdev, viper1aa</Authors>
     <Company>V-Notch</Company>
     <Product>V-Notch</Product>
@@ -242,7 +243,7 @@ public sealed class MinifyLocaleJsonTask : Task
   <ItemGroup>
     <None Remove="Fonts\SF-Pro-Display-*.otf" />
     <Content Include="Fonts\SF-Pro-Display-*.otf" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" ExcludeFromSingleFile="true" />
-    <Content Include="Native\out\VNotch.Native.dll" Link="VNotch.Native.dll" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" ExcludeFromSingleFile="true" />
+    <Content Include="$(VNotchNativeArtifactPath)" Link="VNotch.Native.dll" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" ExcludeFromSingleFile="true" />
     <Resource Include="Fonts\segmdl2.ttf" />
     <Resource Include="Assets\logo.png" />
     <Resource Include="Assets\TrayIcons\*.png" />
@@ -304,7 +305,7 @@ public sealed class MinifyLocaleJsonTask : Task
   </Target>
 
   <PropertyGroup>
-    <_VNotchNativeDll>$(MSBuildThisFileDirectory)Native\out\VNotch.Native.dll</_VNotchNativeDll>
+    <_VNotchNativeDll>$(VNotchNativeArtifactPath)</_VNotchNativeDll>
     <_VNotchNativeObjDir>$(MSBuildThisFileDirectory)obj\native</_VNotchNativeObjDir>
   </PropertyGroup>
   <ItemGroup>
@@ -357,7 +358,7 @@ public sealed class MinifyLocaleJsonTask : Task
       <VcVars64Path>$([System.String]::Copy('$(_VcVarsFromVsWhere)').Split(';')[0].Trim())</VcVars64Path>
     </PropertyGroup>
     <Error Condition="'$(VcVars64Path)' == '' Or !Exists('$(VcVars64Path)')" Text="vcvars64.bat was not found. Install the Visual Studio C++ x64 build tools or pass -p:VcVars64Path=..." />
-    <MakeDir Directories="$(MSBuildThisFileDirectory)Native\out;$(_VNotchNativeObjDir);$(_VNotchNativeObjDir)\hot;$(_VNotchNativeObjDir)\cold;$(_VNotchNativeObjDir)\avx2" />
+    <MakeDir Directories="$([System.IO.Path]::GetDirectoryName('$(_VNotchNativeDll)'));$(_VNotchNativeObjDir);$(_VNotchNativeObjDir)\hot;$(_VNotchNativeObjDir)\cold;$(_VNotchNativeObjDir)\avx2" />
     <WriteLinesToFile Condition="'$(_VcVarsCacheFile)' != '' And !Exists('$(_VcVarsCacheFile)')" File="$(_VcVarsCacheFile)" Lines="$(VcVars64Path)" Overwrite="true" />
     <!--
       Baseline x64 (SSE2) for everything except *.avx2.cpp: hot render/audio/capture/inference TUs keep /O2 /Ot,

@@ -275,6 +275,7 @@ public partial class SpotlightWindow
 
     private void RefreshAiPanel()
     {
+        RestoreAiTranscript();
         ResultsList.Visibility = Visibility.Collapsed;
         StatusPanel.Visibility = Visibility.Collapsed;
         AiPanel.Visibility = Visibility.Visible;
@@ -302,6 +303,8 @@ public partial class SpotlightWindow
 
     private void RenderTranscriptPage(IReadOnlyList<SpotlightAiMessage> messages, int offset)
     {
+        _renderedAiMessages = messages as SpotlightAiMessage[] ?? messages.ToArray();
+        _aiTranscriptReleased = false;
         ++_transcriptGeneration;
         _transcriptPageOffset = offset;
         AiTranscript.Children.Clear();
@@ -310,6 +313,7 @@ public partial class SpotlightWindow
             ? Visibility.Visible : Visibility.Collapsed;
         AiLatestMessages.Visibility = offset + messages.Count < _messageOffset + _aiHistory.Count ? Visibility.Visible : Visibility.Collapsed;
         AiTranscriptScroll.ScrollToEnd();
+        if (_isParked) ScheduleAiTranscriptRelease();
     }
 
     private System.Windows.Controls.RichTextBox CreateMarkdownView(string text)

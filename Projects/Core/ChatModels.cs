@@ -33,7 +33,12 @@ public sealed class SpotlightSavedChat
 
 public sealed record ChatSummary(string Id, string Provider, string Model, string Title, string Preview, DateTime UpdatedUtc, int MessageCount);
 
-public sealed record ChatPage(IReadOnlyList<ChatSummary> Items, int TotalCount);
+public sealed record ChatRecoveryIssue(string ChatId, bool RecoveredFromBackup);
+
+public sealed record ChatPage(IReadOnlyList<ChatSummary> Items, int TotalCount)
+{
+    public IReadOnlyList<ChatRecoveryIssue> RecoveryIssues { get; init; } = [];
+}
 
 public interface IChatRepository
 {

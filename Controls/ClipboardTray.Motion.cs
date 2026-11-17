@@ -529,14 +529,18 @@ public sealed partial class ClipboardTray
                 // slide when the actual item slots change.
                 await Task.Delay(160, cancellation);
             }
-            finally
+            catch (OperationCanceledException)
             {
                 foreach (var (item, entryId) in removing)
                     if (item.DataContext is VNotch.ViewModels.ClipboardCardViewModel card && card.Entry.Id == entryId)
                     {
-                        ResetCardMotion(item);
+                        // Reverse from the rendered state instead of flashing back to opaque.
+                        AnimateCardLifecycle(item, entering: true);
                     }
+                throw;
             }
+            // Keep completed exits hidden until reconciliation removes them.
+            // Container cleanup resets motion before a recycled card is reused.
         }
     }
 

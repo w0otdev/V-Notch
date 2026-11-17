@@ -93,7 +93,8 @@ public sealed class NotchTabMotionTests
                 "initial media view", ct);
             AnimationConfig.SetReduceMotion(false);
             double navigationY = window.NavIconsTranslate.Y;
-            foreach (var target in new[] { NotchView.Timer, NotchView.AudioMixer, NotchView.Secondary, NotchView.Media, NotchView.Timer })
+            foreach (var target in new[] { NotchView.Timer, NotchView.AudioMixer, NotchView.Secondary,
+                NotchView.Media, NotchView.AiUsage, NotchView.Media, NotchView.AiUsage, NotchView.Timer })
             {
                 window.NavigateToNotchView(target);
                 Assert.Equal(target, coordinator.TargetView);
@@ -114,23 +115,41 @@ public sealed class NotchTabMotionTests
     });
 
     [Theory]
-    [InlineData(1)]
-    [InlineData(-1)]
-    public void ReversingAPageTransitionPreservesTheRenderedFrameAndRestoresLayout(int direction) => SharedStaTestRunner.RunAsync(async ct =>
+    [InlineData(1, NotchView.Timer)]
+    [InlineData(-1, NotchView.Timer)]
+    [InlineData(1, NotchView.AiUsage)]
+    [InlineData(-1, NotchView.AiUsage)]
+    public void ReversingAPageTransitionPreservesTheRenderedFrameAndRestoresLayout(int direction, NotchView detailView) => SharedStaTestRunner.RunAsync(async ct =>
     {
         var mediaTransform = new TranslateTransform(0, 6);
         var media = new Canvas { Name = "ExpandedContent", RenderTransform = mediaTransform };
         var timer = new Canvas { Visibility = Visibility.Collapsed, Opacity = 0 };
-        using var presenter = new NotchContentTransitionPresenter(new() { ExpandedContent = media, TimerContent = timer });
+        using var presenter = new NotchContentTransitionPresenter(new()
+        {
+            ExpandedContent = media,
+            TimerContent = detailView == NotchView.Timer ? timer : null,
+            AiUsageContent = detailView == NotchView.AiUsage ? timer : null
+        });
         var motion = new TransitionMotionConfig(TimeSpan.FromMilliseconds(250), AnimationPrimitives._easeUiOut, 60, false);
-        var plan = new TransitionPlan(1, NotchView.Media, NotchView.Timer, NotchShapeState.Expanding, 300, 200, 20, motion, direction);
+        var plan = new TransitionPlan(1, NotchView.Media, detailView, NotchShapeState.Expanding, 300, 200, 20, motion, direction);
         presenter.TransitionContent(plan, _ => { });
-        Assert.Equal(22 * direction, timer.RenderTransform.Value.OffsetX, 8);
+        double enterDistance = detailView == NotchView.AiUsage ? 28 : 22;
+        Assert.Equal(enterDistance * direction, timer.RenderTransform.Value.OffsetX, 8);
         Assert.False(timer.IsHitTestVisible);
         var mediaOffset = Assert.IsType<TranslateTransform>(Assert.IsType<TransformGroup>(media.RenderTransform).Children[^1]);
         var timerOffset = Assert.IsType<TranslateTransform>(Assert.IsType<TransformGroup>(timer.RenderTransform).Children[^1]);
         HoldAt(mediaOffset, TranslateTransform.XProperty, 0, -14 * direction);
-        HoldAt(timerOffset, TranslateTransform.XProperty, 22 * direction, 0);
+        HoldAt(timerOffset, TranslateTransform.XProperty, enterDistance * direction, 0);
+        if (detailView == NotchView.AiUsage)
+        {
+            var mediaScale = Assert.IsType<ScaleTransform>(Assert.IsType<TransformGroup>(media.RenderTransform).Children[^2]);
+            var detailScale = Assert.IsType<ScaleTransform>(Assert.IsType<TransformGroup>(timer.RenderTransform).Children[^2]);
+            Assert.Equal(0.97, detailScale.ScaleX, 8);
+            HoldAt(mediaScale, ScaleTransform.ScaleXProperty, 1, 0.97);
+            HoldAt(mediaScale, ScaleTransform.ScaleYProperty, 1, 0.97);
+            HoldAt(detailScale, ScaleTransform.ScaleXProperty, 0.97, 1);
+            HoldAt(detailScale, ScaleTransform.ScaleYProperty, 0.97, 1);
+        }
         HoldAt(media, UIElement.OpacityProperty, 1, 0);
         HoldAt(timer, UIElement.OpacityProperty, 0, 1);
         presenter.CancelActiveTransition();
@@ -141,7 +160,7 @@ public sealed class NotchTabMotionTests
         presenter.TransitionContent(plan with
         {
             SessionId = 2,
-            FromView = NotchView.Timer,
+            FromView = detailView,
             TargetView = NotchView.Media,
             NavigationDirection = -direction
         }, _ => completed = true);
@@ -156,6 +175,27 @@ public sealed class NotchTabMotionTests
         Assert.Equal(0, media.RenderTransform.Value.OffsetX);
         Assert.True(media.IsHitTestVisible);
         Assert.Equal(Visibility.Collapsed, timer.Visibility);
+    });
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public void AiDetailTransitionWithoutMotionSettlesImmediately(bool reduceMotion) => SharedStaTestRunner.Run(() =>
+    {
+        var media = new Canvas { Name = "ExpandedContent" };
+        var detail = new Canvas { Visibility = Visibility.Collapsed, Opacity = 0 };
+        using var presenter = new NotchContentTransitionPresenter(new() { ExpandedContent = media, AiUsageContent = detail });
+        var motion = new TransitionMotionConfig(TimeSpan.FromMilliseconds(reduceMotion ? 500 : 0),
+            AnimationPrimitives._easeUiOut, 60, reduceMotion);
+        var plan = new TransitionPlan(1, NotchView.Media, NotchView.AiUsage, NotchShapeState.Expanding, 500, 240, 20, motion);
+        bool completed = false;
+        presenter.TransitionContent(plan, _ => completed = true);
+        Assert.True(completed);
+        Assert.Equal(Visibility.Collapsed, media.Visibility);
+        Assert.Equal(Visibility.Visible, detail.Visibility);
+        Assert.Equal(1, detail.Opacity);
+        Assert.True(detail.RenderTransform == null || detail.RenderTransform.Value.IsIdentity);
+        Assert.True(detail.IsHitTestVisible);
     });
 
     private static void HoldAt(IAnimatable target, DependencyProperty property, double from, double to)

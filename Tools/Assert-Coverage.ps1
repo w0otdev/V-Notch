@@ -2,10 +2,17 @@
 param(
     [Parameter(Mandatory)][string]$ResultsDirectory,
     [Alias('MinimumLinePercent')][ValidateRange(0, 100)][decimal]$MinimumPercent = 70,
-    [ValidateNotNullOrEmpty()][string]$AssemblyName = 'V-Notch'
+    [ValidateNotNullOrEmpty()][string]$AssemblyName = 'V-Notch',
+    [switch]$AllProductionAssemblies
 )
 
 $ErrorActionPreference = 'Stop'
+if ($AllProductionAssemblies) {
+    foreach ($assembly in 'V-Notch', 'VNotch.Core', 'VNotch.Application', 'VNotch.Infrastructure.Windows') {
+        & $PSCommandPath -ResultsDirectory $ResultsDirectory -MinimumPercent $MinimumPercent -AssemblyName $assembly
+    }
+    return
+}
 $reports = @(Get-ChildItem -LiteralPath $ResultsDirectory -Recurse -File -Filter '*.cobertura.xml')
 if ($reports.Count -eq 0) { throw 'No Cobertura coverage report was produced.' }
 # Microsoft.CodeCoverage can write the same attachment in both the run folder and
@@ -116,7 +123,7 @@ if ($targetReports.Count -eq 1 -and $targetReports[0].Packages.Count -eq 1) {
     if ($valid -le 0) { throw 'Distinct or mixed-assembly coverage reports require application line details to merge.' }
 }
 $percent = [decimal]$covered * 100 / $valid
-$message = 'Application line coverage: {0:F2}% ({1}/{2}); required: {3:F2}%' -f $percent, $covered, $valid, $MinimumPercent
+$message = '{0} line coverage: {1:F2}% ({2}/{3}); required: {4:F2}%' -f $AssemblyName, $percent, $covered, $valid, $MinimumPercent
 Write-Host $message
 if ($env:GITHUB_STEP_SUMMARY) { Add-Content -LiteralPath $env:GITHUB_STEP_SUMMARY -Value $message }
 if ($percent -lt $MinimumPercent) { throw 'Application coverage is below the required threshold.' }

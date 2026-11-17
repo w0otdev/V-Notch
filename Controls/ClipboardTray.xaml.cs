@@ -185,6 +185,7 @@ public sealed partial class ClipboardTray : UserControl, IDisposable
             UpdateAgeTimer();
             if (IsVisible)
             {
+                CancelCacheRelease();
                 _animateResults = false;
                 if (_queryDirty)
                 {
@@ -204,6 +205,7 @@ public sealed partial class ClipboardTray : UserControl, IDisposable
                 CancelCardPositionAnimation();
                 CancelPendingPersonalDrop();
                 HidePrivateContent();
+                ScheduleCacheRelease();
                 if (_controller?.Store.IsPersonalUnlocked == true) _ = SafeAsync(_controller.LockPersonalAsync);
             }
         };
@@ -221,6 +223,7 @@ public sealed partial class ClipboardTray : UserControl, IDisposable
         controller.ImportProgress += OnImportProgress;
         RebuildCategories();
         QueueRefresh();
+        ScheduleCacheRelease();
     }
     public void ApplyLocalization()
     {
@@ -1690,6 +1693,9 @@ public sealed partial class ClipboardTray : UserControl, IDisposable
     {
         if (_disposed) return;
         _disposed = true;
+        CancelCacheRelease();
+        _cacheReleaseTimer?.Dispose();
+        _cacheReleaseTimer = null;
         Unloaded -= Tray_Unloaded;
         StopEntranceWork();
         _entranceWorkTimer?.Dispose();
@@ -1751,6 +1757,7 @@ public sealed partial class ClipboardTray : UserControl, IDisposable
         _searchTimer.Stop();
         _queryDirty = true;
         HidePrivateContent();
+        ScheduleCacheRelease();
         if (_controller?.Store.IsPersonalUnlocked == true) _ = SafeAsync(_controller.LockPersonalAsync);
     }
 

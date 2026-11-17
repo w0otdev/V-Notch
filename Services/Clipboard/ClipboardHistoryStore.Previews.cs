@@ -64,4 +64,14 @@ public sealed partial class ClipboardHistoryStore
     {
         if (_imagePreviews.Remove(id, out var preview)) _imagePreviewBytes -= preview.Bytes;
     }
+
+    internal Task TrimMemoryCachesAsync(CancellationToken cancellation = default) => Run(() =>
+    {
+        cancellation.ThrowIfCancellationRequested();
+        // Keep a small warm tail for reopening; originals remain in the store.
+        _searchText.Trim(characterBudget: 256 * 1024, entryBudget: 32);
+        while (_imagePreviews.Count > 3)
+            RemoveImagePreview(_imagePreviews.MinBy(pair => pair.Value.LastAccess).Key);
+        return true;
+    });
 }

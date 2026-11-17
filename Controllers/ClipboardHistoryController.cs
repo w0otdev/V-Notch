@@ -19,6 +19,7 @@ public sealed class ClipboardHistoryController : IDisposable, IAsyncDisposable
     private readonly Dispatcher _dispatcher;
     private readonly Func<byte[], Task<BitmapSource>> _decodeOriginalImage;
     internal const int MaxPendingCaptures = 8;
+    private static readonly SemaphoreSlim ImageEncodingGate = new(1, 1);
     private readonly SemaphoreSlim _captureSlots = new(MaxPendingCaptures, MaxPendingCaptures);
     private readonly Channel<Task<ClipboardCapture>> _captures = Channel.CreateBounded<Task<ClipboardCapture>>(
         new BoundedChannelOptions(MaxPendingCaptures) { SingleReader = true, SingleWriter = true });
@@ -251,14 +252,33 @@ public sealed class ClipboardHistoryController : IDisposable, IAsyncDisposable
         finally { if (!queued) _captureSlots.Release(); }
     }
 
-    private static Task<ClipboardCapture> EncodeImageAsync(ClipboardCapture capture, BitmapSource image) => Task.Run(() =>
+    internal static async Task<ClipboardCapture> EncodeImageAsync(ClipboardCapture capture, BitmapSource image)
     {
-        using var stream = new MemoryStream();
-        var encoder = new PngBitmapEncoder();
-        encoder.Frames.Add(BitmapFrame.Create(image));
-        encoder.Save(stream);
-        return capture with { ImagePng = stream.ToArray(), ImagePixelFingerprint = ClipboardHistoryStore.FingerprintPixels(image) };
-    });
+        // Keep capture order and every admitted snapshot, but avoid overlapping
+        // full-size WIC encoders and their temporary output buffers.
+        await ImageEncodingGate.WaitAsync().ConfigureAwait(false);
+        try
+        {
+            return await Task.Run(() =>
+            {
+                byte[] png;
+                using (var stream = new NativeBufferStream())
+                {
+                    var encoder = new PngBitmapEncoder();
+                    encoder.Frames.Add(BitmapFrame.Create(image));
+                    encoder.Save(stream);
+                    png = stream.ReadBuffered(static bytes => bytes.ToArray());
+                }
+                // Release encoded scratch before fingerprinting allocates pixels.
+                return capture with
+                {
+                    ImagePng = png,
+                    ImagePixelFingerprint = ClipboardHistoryStore.FingerprintPixels(image)
+                };
+            }).ConfigureAwait(false);
+        }
+        finally { ImageEncodingGate.Release(); }
+    }
 
     internal async Task ImportDropAsync(System.Windows.IDataObject data, string? category = null)
     {

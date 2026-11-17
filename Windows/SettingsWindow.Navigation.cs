@@ -228,8 +228,6 @@ public partial class SettingsWindow
         NavSectionSystem, NavSectionPrivacy, NavSectionSpotlight, NavSectionAiUsage, "Translation", NavSectionFileTray, NavSectionAdvanced, NavSectionPerformance, NavSectionDonating, NavSectionUpdates
     };
 
-    private int _navTransitionVersion;
-
     private void UpdateNavButtonVisual(Border btn, bool isActive, bool animate = true)
     {
         btn.Background = _transparentBrush;
@@ -315,8 +313,6 @@ public partial class SettingsWindow
             AnimateNavActiveIndicator(newBtn, animate: true);
             RefreshNavHoverIndicator();
         }
-
-        _navTransitionVersion++;
 
         foreach (var kvp in _navPanels)
             if (kvp.Key != section) kvp.Value.Visibility = Visibility.Collapsed;

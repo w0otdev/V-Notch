@@ -54,4 +54,16 @@ internal sealed class ClipboardSearchTextCache(int maxCharacters = 2 * 1024 * 10
             _characters = 0;
         }
     }
+
+    internal void Trim(int characterBudget, int entryBudget)
+    {
+        ArgumentOutOfRangeException.ThrowIfNegative(characterBudget);
+        ArgumentOutOfRangeException.ThrowIfNegative(entryBudget);
+        lock (_gate)
+        {
+            while (_recent.First is { } first &&
+                (_characters > characterBudget || _items.Count > entryBudget))
+                Remove(first.Value);
+        }
+    }
 }

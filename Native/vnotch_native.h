@@ -30,7 +30,7 @@
 #pragma comment(lib, "dwmapi.lib")
 #pragma comment(lib, "normaliz.lib")
 
-#define VN_EXPORT extern "C" __declspec(dllexport)
+#include "vnotch_abi.h"
 #include "Services/Translation/LiteTranslationAbi.h"
 VN_EXPORT int32_t __stdcall vn_translation_lite_open(const wchar_t*, int32_t, int32_t, int64_t*) noexcept;
 VN_EXPORT int32_t __stdcall vn_translation_lite_translate(int64_t, const wchar_t*, int32_t, const wchar_t*, int32_t,
@@ -40,11 +40,6 @@ VN_EXPORT int32_t __stdcall vn_translation_lite_release_idle(int64_t, int32_t, u
 VN_EXPORT int32_t __stdcall vn_translation_lite_set_natural(int64_t, uint8_t) noexcept;
 VN_EXPORT int32_t __stdcall vn_update_parse_atom(const uint8_t*, int32_t, char16_t*, int32_t, int32_t*) noexcept;
 VN_EXPORT int32_t __stdcall vn_setup_show_message(const wchar_t*, int32_t, const wchar_t*, int32_t, int32_t, int32_t*) noexcept;
-
-constexpr int32_t VN_OK = 0;
-constexpr int32_t VN_ERR_INVALID_ARG = -1;
-constexpr int32_t VN_ERR_BUFFER_TOO_SMALL = -2;
-constexpr int32_t VN_ERR_FAIL = -3;
 
 // Flat parsing results borrow native-owned storage until their close function.
 struct VnLyricWord { int64_t start, end; int32_t offset, length; };
