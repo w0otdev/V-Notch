@@ -871,7 +871,10 @@ public partial class SpotlightWindow : Window
         {
             if (_viewModel.SelectedResult is { } selected)
             {
-                OpenResultContextMenu(selected);
+                // Opening is a one-shot command. Repeated input must not rebuild
+                // the active panel, reset its selection, or restart its animation.
+                if (!_quickActionsOpen && !e.IsRepeat)
+                    OpenResultContextMenu(selected);
                 e.Handled = true;
             }
         }

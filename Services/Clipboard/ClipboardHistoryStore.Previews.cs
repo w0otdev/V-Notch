@@ -7,7 +7,7 @@ namespace VNotch.Services.Clipboard;
 public sealed partial class ClipboardHistoryStore
 {
     private sealed record ImagePreview(BitmapSource Image, long Bytes, long LastAccess);
-    private const long ImagePreviewBudget = 8 * 1024 * 1024;
+    private const long ImagePreviewBudget = 4 * 1024 * 1024;
     private const int ImagePreviewLimit = 24;
     // Access is serialized by Run(), like the entry files. Personal/sensitive
     // previews stay viewport-owned and never enter this shared cache.

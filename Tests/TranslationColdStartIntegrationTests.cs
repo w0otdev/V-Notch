@@ -17,7 +17,7 @@ public sealed class TranslationColdStartIntegrationTests(ITestOutputHelper outpu
 {
     // Run alone in a fresh host, with no other process holding the model on the GPU.
     [TranslationGpuFact]
-    public void FirstPopupTranslationUsesAutomaticStartupPreparation() => SharedStaTestRunner.RunAsync(async ct =>
+    public void FirstPopupTranslationPreparesModelOnDemand() => SharedStaTestRunner.RunAsync(async ct =>
     {
         var store = new TranslationModelStore(profile: TranslationModelCatalog.Find("translategemma-4b"));
         Assert.True(store.IsInstalled);
@@ -37,9 +37,9 @@ public sealed class TranslationColdStartIntegrationTests(ITestOutputHelper outpu
             controller.ApplySettings(settings);
             output.WriteLine($"ApplySettings: {startup.Elapsed.TotalMilliseconds:F1} ms");
             var preparation = (Task?)typeof(LiveTranslationController).GetField("_preparation", flags)!.GetValue(controller);
-            bool immediate = Environment.GetEnvironmentVariable("VNOTCH_TRANSLATION_IMMEDIATE") == "1";
-            if (preparation != null && !immediate) await preparation.WaitAsync(ct);
-            output.WriteLine($"Automatic preparation: {preparation != null}; ready/wait: {startup.Elapsed.TotalMilliseconds:F1} ms; immediate: {immediate}");
+            Assert.Null(preparation);
+            Assert.Null(typeof(QwenTranslationEngine).GetField("_weights", flags)!.GetValue(engine));
+            output.WriteLine($"Enabled without resident model: {startup.Elapsed.TotalMilliseconds:F1} ms");
 
             var window = (TranslationWindow)typeof(LiveTranslationController).GetMethod("EnsureWindow", flags)!.Invoke(controller, null)!;
             BackgroundTestWindows.ProtectInput(window);
@@ -58,7 +58,7 @@ public sealed class TranslationColdStartIntegrationTests(ITestOutputHelper outpu
                 Assert.NotEmpty(window.OutputText);
                 Assert.NotEqual(text, window.OutputText);
             }
-            Assert.NotNull(preparation);
+            Assert.NotNull(typeof(LiveTranslationController).GetField("_preparation", flags)!.GetValue(controller));
             Assert.True(NativeApi.llama_supports_gpu_offload());
             Assert.False(engine.IsCpuFallback);
             Assert.True((bool)typeof(QwenTranslationEngine).GetField("_preparedForInference", flags)!.GetValue(engine)!);

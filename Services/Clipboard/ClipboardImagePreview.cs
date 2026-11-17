@@ -33,7 +33,10 @@ internal static partial class ClipboardImagePreview
             return DecodeCore(null, buffer.AsSpan(), isPersonal, cancellation);
         if (!stream.CanSeek) throw new NotSupportedException("Preview input must be seekable.");
         int length = checked((int)stream.Length);
-        byte[] encoded = ArrayPool<byte>.Shared.Rent(length);
+        // Large, infrequently opened originals must not become a long-lived
+        // shared-pool entry (a 20 MiB PNG otherwise retains a 32 MiB bucket).
+        bool pooled = length <= 1024 * 1024;
+        byte[] encoded = pooled ? ArrayPool<byte>.Shared.Rent(length) : GC.AllocateUninitializedArray<byte>(length);
         try
         {
             stream.Position = 0;
@@ -43,7 +46,7 @@ internal static partial class ClipboardImagePreview
         finally
         {
             if (isPersonal) CryptographicOperations.ZeroMemory(encoded);
-            ArrayPool<byte>.Shared.Return(encoded);
+            if (pooled) ArrayPool<byte>.Shared.Return(encoded);
         }
     }
 

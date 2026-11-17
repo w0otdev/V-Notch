@@ -7,6 +7,28 @@ namespace VNotch.Tests;
 public sealed class PrivacyProcessSnapshotTests
 {
     [Fact]
+    public void SequentialPollsReuseTheBufferAcrossDifferentWorkers()
+    {
+        // Warm native interop and leave a buffer sized to this machine's process count.
+        PrivacyProcessSnapshot.Capture().Dispose();
+        var allocations = new long[8];
+        for (int i = 0; i < allocations.Length; i++)
+        {
+            int index = i;
+            var worker = new Thread(() =>
+            {
+                long before = GC.GetAllocatedBytesForCurrentThread();
+                using var snapshot = PrivacyProcessSnapshot.Capture();
+                allocations[index] = GC.GetAllocatedBytesForCurrentThread() - before;
+            });
+            worker.Start();
+            worker.Join();
+        }
+        // A per-thread ArrayPool retains at least 135 KiB on each new worker.
+        Assert.All(allocations, bytes => Assert.InRange(bytes, 0, 4096));
+    }
+
+    [Fact]
     public void CaptureContainsCurrentExecutableAndProcessId()
     {
         using var snapshot = PrivacyProcessSnapshot.Capture();

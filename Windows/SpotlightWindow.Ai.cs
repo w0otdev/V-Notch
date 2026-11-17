@@ -213,6 +213,8 @@ public partial class SpotlightWindow
         AiPromptTwo.Content = Loc.Get("spotlight.ai.promptTwo");
         AiStopButton.ToolTip = Loc.Get("spotlight.ai.stop");
         System.Windows.Automation.AutomationProperties.SetName(AiStopButton, Loc.Get("spotlight.ai.stop"));
+        _aiThinkingLabel?.RefreshLocalization();
+        AiActivityLabel.RefreshLocalization();
         RenderAiStatus();
     }
 
@@ -250,7 +252,8 @@ public partial class SpotlightWindow
             _aiStatusKey is "spotlight.ai.configure" or "spotlight.ai.tooLong" or
                 "spotlight.ai.requestTimeout" or "spotlight.ai.timeout" ? "error" : null;
         AiStatus.Text = text;
-        AiStatus.Visibility = string.IsNullOrWhiteSpace(text) ? Visibility.Collapsed : Visibility.Visible;
+        bool showingAgentLabel = _aiRequest != null && _aiThinkingCard == null && AiStatus.Tag is not "error";
+        AiStatus.Visibility = string.IsNullOrWhiteSpace(text) || showingAgentLabel ? Visibility.Collapsed : Visibility.Visible;
         if (AiStatus.Visibility == Visibility.Visible && AiBottomActionRow.Visibility != Visibility.Visible)
         {
             AiBottomActionRow.Visibility = Visibility.Visible;

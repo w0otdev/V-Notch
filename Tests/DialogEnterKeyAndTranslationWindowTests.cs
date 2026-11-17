@@ -5,12 +5,14 @@ using System.Windows;
 using System.Windows.Automation;
 using System.Windows.Input;
 using System.Windows.Interop;
+using System.Xml.Linq;
 using VNotch.Services;
 using VNotch.Windows;
 using Xunit;
 
 namespace VNotch.Tests;
 
+[Collection("Localization")]
 public class DialogEnterKeyAndTranslationWindowTests
 {
     private static void RunOnSta(Action action)
@@ -149,7 +151,7 @@ public class DialogEnterKeyAndTranslationWindowTests
     }
 
     [Fact]
-    public void TranslationWindow_SelectionChipCloseButton_LocalizesAutomationName_And_HasNoLinearGradientBrush()
+    public void TranslationWindow_SelectionChipCloseButton_LocalizesAutomationName_And_OnlyScrollFadesUseGradients()
     {
         RunOnSta(() =>
         {
@@ -168,8 +170,18 @@ public class DialogEnterKeyAndTranslationWindowTests
         });
 
         string xamlPath = FindRepoFile(Path.Combine("Windows", "TranslationWindow.xaml"));
-        string xaml = File.ReadAllText(xamlPath);
-        Assert.DoesNotContain("LinearGradientBrush", xaml, StringComparison.OrdinalIgnoreCase);
+        var document = XDocument.Load(xamlPath);
+        XNamespace presentation = "http://schemas.microsoft.com/winfx/2006/xaml/presentation";
+        XNamespace xaml = "http://schemas.microsoft.com/winfx/2006/xaml";
+        var gradients = document.Descendants(presentation + "LinearGradientBrush").ToArray();
+        // The card and controls stay solid. Only the two scroll-edge opacity
+        // masks use gradients, fading the existing surface without adding color.
+        Assert.Equal(new[] { "ResultTopFade", "ResultBottomFade" }, gradients.Select(gradient =>
+        {
+            Assert.Equal(presentation + "Border.OpacityMask", gradient.Parent?.Name);
+            Assert.Equal(presentation + "Border", gradient.Parent?.Parent?.Name);
+            return (string?)gradient.Parent?.Parent?.Attribute(xaml + "Name");
+        }));
     }
 
     private static string FindRepoFile(string relativePath)

@@ -99,6 +99,15 @@ internal static partial class AiMarkdown
         return parsed;
     }
 
+    internal static string ToPlainTextPreview(string markdown)
+    {
+        if (string.IsNullOrWhiteSpace(markdown)) return string.Empty;
+
+        // Saved previews may end inside emphasis or inline code after truncation.
+        string text = Markdig.Markdown.ToPlainText(CloseSpans(markdown), MarkdownWpfRenderer.Pipeline);
+        return string.Join(" ", text.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries));
+    }
+
     internal static FlowDocument Render(string markdown, FontFamily? fontFamily = null, bool normalBody = false,
         bool uniformBold = false)
     {

@@ -607,7 +607,6 @@ public partial class MainWindow : Window
             if (_cleanedUp) return;
             _viewModel.Initialize();
             StartCoreModules();
-            ScheduleSettingsFirstOpenPreparation();
         }), DispatcherPriority.ApplicationIdle);
     }
 
@@ -2119,6 +2118,7 @@ public partial class MainWindow : Window
 
     private void SettingsButton_MouseEnter(object sender, MouseEventArgs e)
     {
+        ScheduleSettingsFirstOpenPreparation();
         SettingsButton.CacheMode = null;
         AnimateSettingsHover(true);
     }
@@ -2305,6 +2305,7 @@ public partial class MainWindow : Window
             return;
         }
         _isTrayMenuOpen = true;
+        ScheduleSettingsFirstOpenPreparation();
         MenuInvisibleText.Text = Loc.Get(_settings.InvisibleMode ? "settings.privacy.invisible.disable" : "settings.privacy.invisible.enable");
         MenuInvisible.IsChecked = _settings.InvisibleMode;
         MenuToggleText.Text = Loc.Get(_isNotchVisible ? "tray.hide" : "tray.show");

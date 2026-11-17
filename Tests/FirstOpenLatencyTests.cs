@@ -24,6 +24,7 @@ public sealed class FirstOpenLatencyTests(ITestOutputHelper output)
         await using var fixture = Create();
         var window = fixture.Window;
         window.Show();
+        typeof(MainWindow).GetMethod("ScheduleSettingsFirstOpenPreparation", Private)!.Invoke(window, null);
         await WpfFrameWaiter.UntilAsync(() =>
             typeof(MainWindow).GetField("_preparedSettingsWindow", Private)!.GetValue(window) is SettingsWindow { IsLoaded: true, IsVisible: false },
             "post-entrance settings preparation finishes", ct);
@@ -77,11 +78,10 @@ public sealed class FirstOpenLatencyTests(ITestOutputHelper output)
         await using var fixture = Create();
         var window = fixture.Window;
         window.Show();
-        // Measure the first expansion after startup preparation, as the Settings
-        // probe does. Entrance completion alone leaves service/template work queued.
+        // Compact startup prepares the notch, without constructing Settings.
         await WpfFrameWaiter.UntilAsync(() => !Animating(window) &&
-            typeof(MainWindow).GetField("_preparedSettingsWindow", Private)!.GetValue(window) is SettingsWindow { IsLoaded: true, IsVisible: false },
-            "notch startup and deferred UI preparation finish", ct);
+            (bool)typeof(MainWindow).GetField("_coreModulesStarted", Private)!.GetValue(window)!,
+            "notch startup and services finish", ct);
         var coordinator = (NotchTransitionCoordinator)typeof(MainWindow).GetField("_transitionCoordinator", Private)!.GetValue(window)!;
         var pauses = new List<double>();
         for (int attempt = 0; attempt < 2; attempt++)
@@ -168,7 +168,7 @@ public sealed class FirstOpenLatencyTests(ITestOutputHelper output)
     });
 
     [Fact]
-    public void SettingsPreparationWaitsUntilTheNotchStartupEntranceHasFinished() => SharedStaTestRunner.RunAsync(async ct =>
+    public void SettingsPreparationWaitsForUserIntentAndTheNotchEntrance() => SharedStaTestRunner.RunAsync(async ct =>
     {
         await using var fixture = Create();
         var window = fixture.Window;
@@ -182,13 +182,92 @@ public sealed class FirstOpenLatencyTests(ITestOutputHelper output)
         try
         {
             window.Show();
+            await WpfFrameWaiter.UntilAsync(() => !Animating(window) &&
+                (bool)typeof(MainWindow).GetField("_coreModulesStarted", Private)!.GetValue(window)!,
+                "compact services start", ct);
+            await window.Dispatcher.InvokeAsync(static () => { }, DispatcherPriority.ApplicationIdle);
             Assert.Null(typeof(MainWindow).GetField("_preparedSettingsWindow", Private)!.GetValue(window));
+            Assert.Null(afterEntrance);
+            // Opening the tray menu is an actual Settings entry point.
+            typeof(MainWindow).GetMethod("TrayContextMenu_Opened", Private)!.Invoke(window, [window, new RoutedEventArgs()]);
             await WpfFrameWaiter.UntilAsync(() =>
                 typeof(MainWindow).GetField("_preparedSettingsWindow", Private)!.GetValue(window) is SettingsWindow { IsLoaded: true, IsVisible: false },
                 "deferred settings preparation completes", ct);
             Assert.True(afterEntrance);
         }
         finally { SettingsWindow.FirstOpenProbe -= Capture; }
+    });
+
+    [Fact]
+    public void ExpiredSettingsPreparationReleasesTheWindowAndCanBePreparedAgain() => SharedStaTestRunner.RunAsync(async ct =>
+    {
+        await using var fixture = Create();
+        var window = fixture.Window;
+        window.Show();
+        var prepared = typeof(MainWindow).GetField("_preparedSettingsWindow", Private)!;
+        var schedule = typeof(MainWindow).GetMethod("ScheduleSettingsFirstOpenPreparation", Private)!;
+        for (int attempt = 0; attempt < 2; attempt++)
+        {
+            schedule.Invoke(window, null);
+            await WpfFrameWaiter.UntilAsync(() => prepared.GetValue(window) is SettingsWindow { IsLoaded: true, IsVisible: false },
+                "intent prepares settings", ct);
+            var standby = (SettingsWindow)prepared.GetValue(window)!;
+            typeof(MainWindow).GetMethod("ReleasePreparedSettingsWindow", Private)!.Invoke(window, null);
+            Assert.Null(prepared.GetValue(window));
+            Assert.Null(typeof(MainWindow).GetField("_preparedSettingsSnapshot", Private)!.GetValue(window));
+            Assert.Null(typeof(MainWindow).GetField("_settingsPreparationExpiry", Private)!.GetValue(window));
+            await WpfFrameWaiter.UntilAsync(() => !Application.Current.Windows.Cast<Window>().Contains(standby),
+                "standby settings closes", ct);
+        }
+    });
+
+    [Fact]
+    public void ExpiredSettingsWindowCanBeCollected() => SharedStaTestRunner.RunAsync(async ct =>
+    {
+        await using var fixture = Create();
+        var window = fixture.Window;
+        window.Show();
+        typeof(MainWindow).GetMethod("ScheduleSettingsFirstOpenPreparation", Private)!.Invoke(window, null);
+        var prepared = typeof(MainWindow).GetField("_preparedSettingsWindow", Private)!;
+        await WpfFrameWaiter.UntilAsync(() => prepared.GetValue(window) is SettingsWindow { IsLoaded: true, IsVisible: false },
+            "standby settings is ready", ct);
+        var reference = ReferenceAndReleasePreparedSettings(window);
+        // WPF releases composition/native-window callbacks over subsequent frames.
+        for (int attempt = 0; attempt < 20 && reference.IsAlive; attempt++)
+        {
+            await Task.Delay(100, ct);
+            await window.Dispatcher.InvokeAsync(static () => { }, DispatcherPriority.ApplicationIdle);
+            GC.Collect();
+            GC.WaitForPendingFinalizers();
+            GC.Collect();
+        }
+        Assert.False(reference.IsAlive, "Expired Settings must not remain rooted by its owner, timer or event subscriptions.");
+    });
+
+    [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.NoInlining)]
+    private static WeakReference ReferenceAndReleasePreparedSettings(MainWindow window)
+    {
+        var reference = new WeakReference(typeof(MainWindow).GetField("_preparedSettingsWindow", Private)!.GetValue(window)!);
+        typeof(MainWindow).GetMethod("ReleasePreparedSettingsWindow", Private)!.Invoke(window, null);
+        return reference;
+    }
+
+    [Fact]
+    public void TakingPreparedSettingsCancelsExpiryWithoutClosingTheActiveWindow() => SharedStaTestRunner.RunAsync(async ct =>
+    {
+        await using var fixture = Create();
+        var window = fixture.Window;
+        window.Show();
+        typeof(MainWindow).GetMethod("ScheduleSettingsFirstOpenPreparation", Private)!.Invoke(window, null);
+        var prepared = typeof(MainWindow).GetField("_preparedSettingsWindow", Private)!;
+        await WpfFrameWaiter.UntilAsync(() => prepared.GetValue(window) is SettingsWindow { IsLoaded: true, IsVisible: false },
+            "settings preparation finishes", ct);
+        var standby = (SettingsWindow)prepared.GetValue(window)!;
+        typeof(MainWindow).GetMethod("OpenAppSettings", Private)!.Invoke(window, [false]);
+        Assert.Same(standby, typeof(MainWindow).GetField("_activeSettingsWindow", Private)!.GetValue(window));
+        Assert.Null(typeof(MainWindow).GetField("_settingsPreparationExpiry", Private)!.GetValue(window));
+        typeof(MainWindow).GetMethod("ReleasePreparedSettingsWindow", Private)!.Invoke(window, null);
+        Assert.True(standby.IsVisible);
     });
 
     private static bool Animating(MainWindow window) =>

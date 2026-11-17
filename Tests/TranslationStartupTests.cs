@@ -33,8 +33,8 @@ public sealed class TranslationStartupTests
         window.ShowActivated = false;
         typeof(LiveTranslationController).GetField("_text", BindingFlags.NonPublic | BindingFlags.Instance)!.SetValue(controller, "USD 10");
         window.ShowClipboard("USD 10");
-        _ = typeof(LiveTranslationController).GetMethod("TranslateAsync", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)!.Invoke(controller, null);
-        await WpfFrameWaiter.UntilAsync(() => window.ResultText.Text.EndsWith(target), "currency result without model", ct);
+        await ((Task)typeof(LiveTranslationController).GetMethod("TranslateAsync", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)!.Invoke(controller, null)!).WaitAsync(ct);
+        Assert.True(window.ResultText.Text.EndsWith(target), $"Currency result: '{window.ResultText.Text}', status: '{window.StatusText.Text}'");
         Assert.Equal(0, engine.Calls);
         Assert.False(engine.Preparing.Task.IsCompleted);
         Assert.Equal("USD → " + target, window.LanguageSummary.Text);
@@ -157,7 +157,7 @@ public sealed class TranslationStartupTests
     });
 
     [Fact]
-    public void StartupPreparesInstalledModelOffDispatcherWithTranslationDisabled() => SharedStaTestRunner.RunAsync(async ct =>
+    public void ExplicitPreparationRunsOffDispatcherEvenWithTranslationDisabled() => SharedStaTestRunner.RunAsync(async ct =>
     {
         using var fixture = new ModelFixture();
         using var engine = new PreparedEngine { BlockPreparation = true };
@@ -188,21 +188,29 @@ public sealed class TranslationStartupTests
         Assert.False(engine.Preparing.Task.IsCompleted);
     });
 
-    [Fact]
-    public void EnablingTranslationPreparesGgufBeforeAnySelectionAndKeepsDispatcherResponsive() => SharedStaTestRunner.RunAsync(async ct =>
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void EnablingTranslationKeepsWatchersReadyWithoutLoadingTheModel(bool automatic) => SharedStaTestRunner.RunAsync(async ct =>
     {
         using var fixture = new ModelFixture();
         using var engine = new PreparedEngine { BlockPreparation = true };
         using var controller = new LiveTranslationController(Dispatcher.CurrentDispatcher, () => { }, fixture.Store, engine);
         Assert.False(fixture.Store.Profile.IsLite);
         int uiThread = Environment.CurrentManagedThreadId;
-        var settings = new NotchSettings { EnableLiveTranslation = false, TranslationSourceLanguage = "en" };
+        var settings = new NotchSettings { EnableLiveTranslation = false, AutoLiveTranslation = automatic, TranslationSourceLanguage = "en" };
         controller.ApplySettings(settings);
         Assert.False(engine.Preparing.Task.IsCompleted);
         settings.EnableLiveTranslation = true;
         controller.ApplySettings(settings);
-        var preparation = Assert.IsAssignableFrom<Task>(typeof(LiveTranslationController)
-            .GetField("_preparation", BindingFlags.NonPublic | BindingFlags.Instance)!.GetValue(controller));
+        controller.ApplySettings(settings);
+        typeof(LiveTranslationController).GetMethod("ModelChanged", BindingFlags.NonPublic | BindingFlags.Instance)!.Invoke(controller, null);
+        await Dispatcher.CurrentDispatcher.InvokeAsync(() => { }, DispatcherPriority.ApplicationIdle, ct);
+        Assert.False(engine.Preparing.Task.IsCompleted);
+        Assert.Null(typeof(LiveTranslationController).GetField("_preparation", BindingFlags.NonPublic | BindingFlags.Instance)!.GetValue(controller));
+        Assert.NotNull(typeof(LiveTranslationController).GetField("_selectionService", BindingFlags.NonPublic | BindingFlags.Instance)!.GetValue(controller));
+        Assert.NotNull(typeof(LiveTranslationController).GetField("_shiftShortcut", BindingFlags.NonPublic | BindingFlags.Instance)!.GetValue(controller));
+        var preparation = controller.PrepareModelAsync();
         try
         {
             await engine.Preparing.Task.WaitAsync(ct);
@@ -225,8 +233,8 @@ public sealed class TranslationStartupTests
         using var engine = new PreparedEngine { BlockPreparation = true };
         using var controller = new LiveTranslationController(Dispatcher.CurrentDispatcher, () => { }, fixture.Store, engine);
         controller.ApplySettings(new NotchSettings { EnableLiveTranslation = true, TranslationSourceLanguage = "en" });
-        await engine.Preparing.Task.WaitAsync(ct);
         var preparation = controller.PrepareModelAsync();
+        await engine.Preparing.Task.WaitAsync(ct);
         if (dispose) controller.Dispose();
         else controller.ApplySettings(new NotchSettings { EnableLiveTranslation = false, TranslationSourceLanguage = "en" });
         await preparation.WaitAsync(ct);

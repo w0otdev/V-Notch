@@ -18,13 +18,16 @@ public sealed class ChromiumSelectionTests
     public void ChromiumReadsExactDomSelectionAcrossMessageNodesAndRejectsUnselectedText() => RunChromiumAsync(async () =>
     {
         using var view = new WebView2();
+        string profile = Path.Combine(Path.GetTempPath(), "VNotchSelectionTests", Guid.NewGuid().ToString("N"));
+        var browserExited = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        CoreWebView2Environment? environment = null;
         var window = new Window { Content = view, Width = 800, Height = 600, ShowActivated = false, ShowInTaskbar = false };
         BackgroundTestWindows.ProtectInput(window);
         try
         {
             window.Show();
-            var environment = await CoreWebView2Environment.CreateAsync(null,
-                Path.Combine(Path.GetTempPath(), "VNotchSelectionTests", Guid.NewGuid().ToString("N")));
+            environment = await CoreWebView2Environment.CreateAsync(null, profile);
+            environment.BrowserProcessExited += (_, _) => browserExited.TrySetResult();
             await view.EnsureCoreWebView2Async(environment);
             var loaded = new TaskCompletionSource();
             view.NavigationCompleted += (_, e) => { if (e.IsSuccess) loaded.TrySetResult(); else loaded.TrySetException(new InvalidOperationException(e.WebErrorStatus.ToString())); };
@@ -103,7 +106,19 @@ public sealed class ChromiumSelectionTests
             using var changedChannel = SelectionTextReader.Read(hwnd, null, true, out _, allowOwnProcess: true, previousSelection: draftSelection.Native);
             Assert.Null(changedChannel);
         }
-        finally { window.Close(); }
+        finally
+        {
+            view.Dispose();
+            window.Close();
+            if (environment != null)
+            {
+                try { await browserExited.Task.WaitAsync(TimeSpan.FromSeconds(3)); }
+                catch (TimeoutException) { }
+            }
+            try { if (Directory.Exists(profile)) Directory.Delete(profile, recursive: true); }
+            catch (IOException) { /* Browser shutdown may still be releasing its profile. */ }
+            catch (UnauthorizedAccessException) { }
+        }
     });
 
     private static void RunChromiumAsync(Func<Task> action)

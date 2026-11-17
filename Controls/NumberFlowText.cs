@@ -71,8 +71,8 @@ public partial class NumberFlowText : TextBlock
 
     private void OnLoaded(object sender, RoutedEventArgs e)
     {
-        AnimationConfig.ReduceMotionChanged += OnMotionChanged;
-        SystemParameters.StaticPropertyChanged += OnSystemChanged;
+        MotionListeners.Add(this);
+        LayoutUpdated -= OnLayoutUpdated;
         LayoutUpdated += OnLayoutUpdated;
         _lastText = Text ?? "";
         // Remember the original width and inline formatting before the first edit.
@@ -84,17 +84,38 @@ public partial class NumberFlowText : TextBlock
 
     private void OnUnloaded(object sender, RoutedEventArgs e)
     {
-        AnimationConfig.ReduceMotionChanged -= OnMotionChanged;
-        SystemParameters.StaticPropertyChanged -= OnSystemChanged;
+        MotionListeners.Remove(this);
         LayoutUpdated -= OnLayoutUpdated;
         Finish();
         _layout.Clear();
         _glyphCache.Clear();
     }
 
-    private void OnSystemChanged(object? sender, PropertyChangedEventArgs e)
+    // Rows can be replaced while WPF is broadcasting Loaded. A static event
+    // must not keep a detached row (and its owning window) alive if Unloaded
+    // is missed. The weak table also makes repeated Loaded notifications safe.
+    private static class MotionListeners
     {
-        if (e.PropertyName is nameof(SystemParameters.ClientAreaAnimation) or nameof(SystemParameters.HighContrast)) OnMotionChanged();
+        private static readonly System.Runtime.CompilerServices.ConditionalWeakTable<NumberFlowText, object> Views = new();
+
+        static MotionListeners()
+        {
+            AnimationConfig.ReduceMotionChanged += OnChanged;
+            SystemParameters.StaticPropertyChanged += OnSystemChanged;
+        }
+
+        internal static void Add(NumberFlowText view) => Views.GetValue(view, static _ => new object());
+        internal static void Remove(NumberFlowText view) => Views.Remove(view);
+
+        private static void OnChanged()
+        {
+            foreach (var entry in Views) entry.Key.OnMotionChanged();
+        }
+
+        private static void OnSystemChanged(object? sender, PropertyChangedEventArgs e)
+        {
+            if (e.PropertyName is nameof(SystemParameters.ClientAreaAnimation) or nameof(SystemParameters.HighContrast)) OnChanged();
+        }
     }
 
     private void OnMotionChanged()

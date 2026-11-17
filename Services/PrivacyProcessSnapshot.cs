@@ -1,10 +1,13 @@
-using System.Buffers;
 using System.Runtime.InteropServices;
 
 namespace VNotch.Services;
 
 internal sealed partial class PrivacyProcessSnapshot : IDisposable
 {
+    // A shared ArrayPool keeps a large snapshot on every worker that polls.
+    // Keep one spare across workers instead; in-use snapshots remain independent.
+    private static Win32Interop.VnProcessEntry[]? _spareEntries;
+    private const int MaxRetainedEntries = 1024;
     private Win32Interop.VnProcessEntry[]? _entries;
     internal int Count { get; private set; }
     internal ReadOnlySpan<Win32Interop.VnProcessEntry> Entries => _entries.AsSpan(0, Count);
@@ -28,13 +31,15 @@ internal sealed partial class PrivacyProcessSnapshot : IDisposable
         var processes = new PrivacyProcessSnapshot();
         try
         {
-            // The native snapshot reports the live process count, so one retry always fits.
-            var entries = ArrayPool<Win32Interop.VnProcessEntry>.Shared.Rent(256);
+            var entries = Interlocked.Exchange(ref _spareEntries, null) ?? new Win32Interop.VnProcessEntry[256];
+            processes._entries = entries; // Also return the buffer if native capture fails.
             int written = Win32Interop.CaptureProcessSnapshot(entries, out int total);
             if (total > entries.Length)
             {
-                ArrayPool<Win32Interop.VnProcessEntry>.Shared.Return(entries);
-                entries = ArrayPool<Win32Interop.VnProcessEntry>.Shared.Rent(total + 64);
+                // Leave room for processes starting between the two snapshots.
+                // The undersized buffer is no longer worth retaining.
+                entries = new Win32Interop.VnProcessEntry[checked(total + 64)];
+                processes._entries = entries;
                 written = Win32Interop.CaptureProcessSnapshot(entries, out _);
             }
             processes._entries = entries;
@@ -65,10 +70,11 @@ internal sealed partial class PrivacyProcessSnapshot : IDisposable
 
     public void Dispose()
     {
-        if (_entries == null) return;
-        ArrayPool<Win32Interop.VnProcessEntry>.Shared.Return(_entries);
-        _entries = null;
+        var entries = Interlocked.Exchange(ref _entries, null);
+        if (entries == null) return;
         Count = 0;
+        if (entries.Length <= MaxRetainedEntries)
+            Interlocked.CompareExchange(ref _spareEntries, entries, null);
     }
 
 

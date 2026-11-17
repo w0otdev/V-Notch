@@ -7,6 +7,31 @@ namespace VNotch.Tests;
 [Collection("Localization")]
 public sealed class SelectionTextReaderTests
 {
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void ClearingHighlightDoesNotTranslateDraftOrActiveTabLabel(bool manual) => SharedStaTestRunner.Run(() =>
+    {
+        var text = new System.Windows.Controls.TextBox { Text = "Unselected draft message" };
+        var tabs = new System.Windows.Controls.TabControl();
+        tabs.Items.Add(new System.Windows.Controls.TabItem { Header = "Active channel", Content = text, IsSelected = true });
+        var window = new Window { Content = tabs, Width = 320, Height = 180 };
+        BackgroundTestWindows.ProtectInput(window);
+        try
+        {
+            window.Show(); window.UpdateLayout();
+            text.Select(2, 8);
+            var hwnd = new System.Windows.Interop.WindowInteropHelper(window).Handle;
+            using var selected = SelectionTextReader.Read(hwnd, null, manual, out _, allowOwnProcess: true);
+            Assert.NotNull(selected);
+            Assert.Equal("selected", selected.Text);
+            text.Select(2, 0);
+            using var cleared = SelectionTextReader.Read(hwnd, null, manual, out _, allowOwnProcess: true, previousSelection: selected.Native);
+            Assert.Null(cleared);
+        }
+        finally { window.Close(); }
+    });
+
     [Fact]
     public void NativeSelectionRetainsRangeIdentityAndHonorsCancelledReplacement() => SharedStaTestRunner.Run(() =>
     {

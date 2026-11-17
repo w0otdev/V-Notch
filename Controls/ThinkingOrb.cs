@@ -6,14 +6,14 @@ using VNotch.Services;
 namespace VNotch.Controls;
 
 /// <summary>A compact, transparent particle orb. No clocks run while hidden or idle.</summary>
-public sealed class ThinkingOrb : FrameworkElement
+public sealed partial class ThinkingOrb : FrameworkElement
 {
     public static readonly DependencyProperty IsActiveProperty = DependencyProperty.Register(
         nameof(IsActive), typeof(bool), typeof(ThinkingOrb), new FrameworkPropertyMetadata(false, OnActivityChanged));
     public static readonly DependencyProperty StateProperty = DependencyProperty.Register(
         nameof(State), typeof(ThinkingOrbState), typeof(ThinkingOrb),
         new FrameworkPropertyMetadata(ThinkingOrbState.Working, FrameworkPropertyMetadataOptions.AffectsRender),
-        value => value is ThinkingOrbState.Working or ThinkingOrbState.Composing or ThinkingOrbState.Solving);
+        value => value is ThinkingOrbState state && Enum.IsDefined(state));
     public static readonly DependencyProperty DotScaleProperty = DependencyProperty.Register(
         nameof(DotScale), typeof(double), typeof(ThinkingOrb),
         new FrameworkPropertyMetadata(1d, FrameworkPropertyMetadataOptions.AffectsRender),
@@ -31,6 +31,7 @@ public sealed class ThinkingOrb : FrameworkElement
 
     public ThinkingOrb()
     {
+        InitializeAgentLayers();
         IsHitTestVisible = false;
         Focusable = false;
         Loaded += OnLoaded;
@@ -45,6 +46,11 @@ public sealed class ThinkingOrb : FrameworkElement
         base.OnRender(drawingContext);
         double size = Math.Min(ActualWidth, ActualHeight);
         if (size <= 0 || !double.IsFinite(size)) return;
+        if (RandomizeStates)
+        {
+            RenderAgent(size);
+            return;
+        }
         int count = ThinkingOrbGeometry.WriteFrame(_dots, State, size, _clock.Elapsed.TotalSeconds);
         double x = (ActualWidth - size) / 2, y = (ActualHeight - size) / 2;
         double dotScale = DotScale;
@@ -61,6 +67,7 @@ public sealed class ThinkingOrb : FrameworkElement
     private static void OnActivityChanged(DependencyObject sender, DependencyPropertyChangedEventArgs args)
     {
         var orb = (ThinkingOrb)sender;
+        orb.UpdateAgentActivity((bool)args.NewValue);
         if (!(bool)args.NewValue) orb._clock.Reset();
         orb.UpdateClock();
     }
@@ -98,6 +105,7 @@ public sealed class ThinkingOrb : FrameworkElement
             CompositionTarget.Rendering += OnFrame;
         }
         else if (!animate) StopClock();
+        PublishAgentTransition();
         InvalidateVisual();
     }
 
@@ -113,6 +121,8 @@ public sealed class ThinkingOrb : FrameworkElement
         double now = _clock.Elapsed.TotalSeconds;
         if (now - _lastFrame < 1d / Math.Min(60, AnimationConfig.TargetFps)) return;
         _lastFrame = now;
+        AdvanceAgentState(now + _agentTimeOffset);
+        PublishAgentTransition();
         InvalidateVisual();
     }
 

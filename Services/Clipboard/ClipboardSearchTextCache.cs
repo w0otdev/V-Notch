@@ -1,7 +1,7 @@
 namespace VNotch.Services.Clipboard;
 
 /// <summary>Thread-safe bounded cache; never persists decrypted Personal text.</summary>
-internal sealed class ClipboardSearchTextCache(int maxCharacters = 8 * 1024 * 1024, int maxEntries = 2048)
+internal sealed class ClipboardSearchTextCache(int maxCharacters = 2 * 1024 * 1024, int maxEntries = 2048)
 {
     private readonly object _gate = new();
     private readonly Dictionary<Guid, (string Text, LinkedListNode<Guid> Node)> _items = [];

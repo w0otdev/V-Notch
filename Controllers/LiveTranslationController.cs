@@ -100,7 +100,8 @@ internal sealed partial class LiveTranslationController : IDisposable
         _service.SetEnabled(_settings.EnableLiveTranslation);
         if (_settings.EnableLiveTranslation)
         {
-            if (_store.IsInstalled) _ = PrepareModelAsync();
+            // Enabled means the watcher/shortcut is ready. Load model weights
+            // only for a translation that misses the cache/passthrough paths.
             _idle.Start();
             if (_selectionService == null)
             {
@@ -141,8 +142,8 @@ internal sealed partial class LiveTranslationController : IDisposable
     {
         _dispatcher.VerifyAccess();
         if (_disposed || !_store.IsInstalled) return Task.CompletedTask;
-        // Prepare the selected model before the first selection, sharing the same
-        // work with foreground requests. Closing a popup must not cancel this task.
+        // Share preparation between foreground requests. Closing a popup must
+        // not cancel another request that is waiting for the same model.
         _idle.Start();
         if (_preparation?.IsCompleted != false)
         {

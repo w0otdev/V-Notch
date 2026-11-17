@@ -233,7 +233,7 @@ public partial class SpotlightWindow
             Margin = new Thickness(0, 4, 0, 0)
         };
         label.Children.Add(titleBlock);
-        string preview = chat.Preview;
+        string preview = Controls.AiMarkdown.ToPlainTextPreview(chat.Preview);
         if (preview.Length > 0)
         {
             label.Children.Add(new TextBlock

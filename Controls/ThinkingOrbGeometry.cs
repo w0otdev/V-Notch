@@ -2,7 +2,7 @@
 // See docs/licenses/ThinkingOrbs-MIT.txt and docs/THIRD_PARTY_NOTICES.md.
 namespace VNotch.Controls;
 
-public enum ThinkingOrbState { Working, Composing, Solving }
+public enum ThinkingOrbState { Working, Composing, Solving, Searching, Shaping, Listening }
 
 /// <summary>The reference's small-orb presets, projected from rotating 3D particles.</summary>
 internal static partial class ThinkingOrbGeometry
@@ -18,6 +18,8 @@ internal static partial class ThinkingOrbGeometry
             ThinkingOrbState.Working => Working(dots, size, seconds * 3.9),
             ThinkingOrbState.Composing => Composing(dots, size, seconds * 3.12),
             ThinkingOrbState.Solving => Solving(dots, size, seconds * 7.28),
+            ThinkingOrbState.Searching or ThinkingOrbState.Shaping or ThinkingOrbState.Listening
+                => AgentOrbGeometry.WriteFrame(dots, state, size, seconds),
             _ => throw new ArgumentOutOfRangeException(nameof(state))
         };
         Array.Sort(dots, 0, count, DepthOrder);

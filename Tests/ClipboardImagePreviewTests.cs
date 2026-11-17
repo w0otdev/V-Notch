@@ -136,7 +136,7 @@ public sealed class ClipboardImagePreviewTests
             }
             Assert.InRange(Cache(store).Count, 1, 24);
             long bytes = (long)typeof(ClipboardHistoryStore).GetField("_imagePreviewBytes", BindingFlags.NonPublic | BindingFlags.Instance)!.GetValue(store)!;
-            Assert.InRange(bytes, 1, 8 * 1024 * 1024);
+            Assert.InRange(bytes, 1, 4 * 1024 * 1024);
             Assert.True(Cache(store).Count < 20, "Pixel-budget eviction must run before the item-count limit.");
         }
         finally { if (Directory.Exists(root)) Directory.Delete(root, true); }
