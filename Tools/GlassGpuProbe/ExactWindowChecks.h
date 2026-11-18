@@ -51,10 +51,7 @@ inline void VerifyExactWindows(GpuGlass& gpu, HWND selfWindow) {
     Require(hr == S_OK, "Exact WGC composition never became ready");
     UINT output = gpu.nextOutput;
     Check(gpu.WaitReady(1000));
-    ComPtr<IDirect3DSurface9> ready;
-    deadline = GetTickCount64() + 5000;
-    while ((hr = gpu.TakeReady(&ready)) == S_FALSE && GetTickCount64() < deadline) Sleep(1);
-    Require(hr == S_OK, "Exact window frame did not finish");
+    PresentProbeFrame(gpu);
     D3D11_TEXTURE2D_DESC desc{}; gpu.output[output].texture->GetDesc(&desc);
     desc.Usage = D3D11_USAGE_STAGING; desc.BindFlags = 0; desc.MiscFlags = 0; desc.CPUAccessFlags = D3D11_CPU_ACCESS_READ;
     ComPtr<ID3D11Texture2D> readback; Check(gpu.device->CreateTexture2D(&desc, nullptr, &readback));
@@ -68,6 +65,16 @@ inline void VerifyExactWindows(GpuGlass& gpu, HWND selfWindow) {
     }
     gpu.context->Unmap(readback.Get(), 0);
     Require(same, "Exact WGC composition sampled the notch or wrong source coordinates");
+    // Model a completed fallback upload while this window cache still has its
+    // old front texture. The next call can start validating the window again
+    // but must not immediately submit its cached front over the fallback.
+    std::vector<uint32_t> fallback(frame.width * frame.height, 0xffc06020);
+    Check(gpu.RenderPixels(frame, reinterpret_cast<const uint8_t*>(fallback.data()), frame.width * 4));
+    Require(gpu.pending, "pixel fallback did not submit");
+    PresentProbeFrame(gpu);
+    hr = gpu.RenderWindows(frame);
+    Require((hr == E_PENDING || hr == S_FALSE) && !gpu.pending,
+        "old window composition was presented after a newer pixel upload");
     SetWindowLongPtrW(source, GWL_EXSTYLE, GetWindowLongPtrW(source, GWL_EXSTYLE) | WS_EX_LAYERED);
     SetLayeredWindowAttributes(source, 0, 128, LWA_ALPHA);
     Require(gpu.RenderWindows(frame) == E_PENDING, "Translucent source did not select exact CPU fallback");
@@ -81,8 +88,7 @@ inline void VerifyExactWindows(GpuGlass& gpu, HWND selfWindow) {
     }
     Require(hr == S_OK, "Exact capture did not recover its shared device after idle eviction");
     Check(gpu.WaitReady(1000));
-    ready.Reset();
-    Require(gpu.TakeReady(&ready) == S_OK, "Recovered exact frame did not finish");
+    PresentProbeFrame(gpu);
     PostMessageW(source, WM_CLOSE, 0, 0);
     ShowWindow(selfWindow, SW_HIDE);
     gpu.ResetCapture();

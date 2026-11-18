@@ -57,12 +57,16 @@ public partial class TranslationWindow
                 StopResultReveal();
                 return;
             }
-            // Start with the height morph, after the pending presentation/layout pass.
-            // Later reflow rebuilds the mask without cancelling the character clocks.
-            _buildingReveal = true;
-            try { target.UpdateLayout(); }
-            finally { _buildingReveal = false; }
-            if (version != _resultRevealVersion) return;
+            // A cold result can arrive before the text viewport has been
+            // arranged. Query caret rectangles only once layout is usable.
+            if (!append || !target.IsMeasureValid || !target.IsArrangeValid ||
+                !ResultScroll.IsArrangeValid || ResultScroll.ViewportHeight <= 0)
+            {
+                _buildingReveal = true;
+                try { target.UpdateLayout(); }
+                finally { _buildingReveal = false; }
+                if (version != _resultRevealVersion) return;
+            }
             // Measure once after layout. The complete selectable text stays in place;
             // only the alpha of characters in the visible viewport changes per frame.
             var drawing = new DrawingGroup();
@@ -71,7 +75,33 @@ public partial class TranslationWindow
             double elapsed = _resultRevealClock.Elapsed.TotalMilliseconds;
             int added = 0;
             double viewportHeight = ResultScroll.ViewportHeight;
-            var rects = ResultCharacterRects().TakeWhile(character => character.Leading.IsEmpty || character.Leading.Top < viewportHeight).ToArray();
+            int first = 0;
+            double opaqueHeight = 0;
+            if (target == ResultText && append && target.Opacity > 0 && visiblePrefixLength > 0)
+            {
+                int activeOffset = visiblePrefixLength;
+                if (previous != null)
+                    foreach (var (offset, character) in previous)
+                        if (character.Brush.Opacity < 1) activeOffset = Math.Min(activeOffset, offset);
+                // Wrapping and bidi can reposition the current line. Rebuild it and
+                // everything below it, painting completed lines as one opaque band.
+                int line = ResultText.GetLineIndexFromCharacterIndex(Math.Max(0, Math.Min(activeOffset, ResultText.Text.Length) - 1));
+                if (line > 0)
+                {
+                    first = Math.Max(0, ResultText.GetCharacterIndexFromLineIndex(line));
+                    var bounds = ResultText.GetRectFromCharacterIndex(first);
+                    if (bounds.IsEmpty) first = 0;
+                    else opaqueHeight = Math.Clamp(bounds.Top, 0, target.ActualHeight);
+                }
+            }
+            (int Offset, Rect Leading, Rect Trailing)[] rects;
+            _buildingReveal = true;
+            try
+            {
+                rects = ResultCharacterRects(first)
+                    .TakeWhile(character => character.Leading.IsEmpty || character.Leading.Top < viewportHeight).ToArray();
+            }
+            finally { _buildingReveal = false; }
             if (version != _resultRevealVersion) return;
             int freshCount = rects.Count(character => (previous == null || !previous.ContainsKey(character.Offset)) &&
                 (!append || character.Offset >= visiblePrefixLength || target.Opacity == 0));
@@ -79,6 +109,8 @@ public partial class TranslationWindow
             using (var context = drawing.Open())
             {
                 context.DrawRectangle(Brushes.Transparent, null, new Rect(target.RenderSize));
+                if (opaqueHeight > 0)
+                    context.DrawRectangle(Brushes.Black, null, new Rect(0, 0, target.ActualWidth, opaqueHeight));
                 foreach (var (offset, leading, trailing) in rects)
                 {
                     // Caret queries can finish a pending layout and trigger cancellation.
@@ -124,7 +156,7 @@ public partial class TranslationWindow
         }
     }
 
-    private IEnumerable<(int Offset, Rect Leading, Rect Trailing)> ResultCharacterRects()
+    private IEnumerable<(int Offset, Rect Leading, Rect Trailing)> ResultCharacterRects(int first)
     {
         if (MarkdownResult.Visibility == Visibility.Visible)
         {
@@ -135,12 +167,11 @@ public partial class TranslationWindow
                 if (cursor.GetPointerContext(LogicalDirection.Forward) == TextPointerContext.Text)
                 {
                     string text = cursor.GetTextInRun(LogicalDirection.Forward);
-                    int[] starts = StringInfo.ParseCombiningCharacters(text);
-                    for (int i = 0; i < starts.Length; i++)
+                    for (int i = 0, end; i < text.Length; i = end)
                     {
-                        if (char.IsWhiteSpace(text, starts[i])) continue;
-                        int end = i + 1 < starts.Length ? starts[i + 1] : text.Length;
-                        yield return (runOffset + starts[i], cursor.GetPositionAtOffset(starts[i])!.GetCharacterRect(LogicalDirection.Forward),
+                        end = i + StringInfo.GetNextTextElementLength(text.AsSpan(i));
+                        if (char.IsWhiteSpace(text, i)) continue;
+                        yield return (runOffset + i, cursor.GetPositionAtOffset(i)!.GetCharacterRect(LogicalDirection.Forward),
                             cursor.GetPositionAtOffset(end)!.GetCharacterRect(LogicalDirection.Backward));
                     }
                     runOffset += text.Length;
@@ -149,12 +180,12 @@ public partial class TranslationWindow
             }
             yield break;
         }
-        int[] plainStarts = StringInfo.ParseCombiningCharacters(ResultText.Text);
-        for (int i = 0; i < plainStarts.Length; i++)
+        string plain = ResultText.Text;
+        for (int i = first, end; i < plain.Length; i = end)
         {
-            if (char.IsWhiteSpace(ResultText.Text, plainStarts[i])) continue;
-            int end = i + 1 < plainStarts.Length ? plainStarts[i + 1] : ResultText.Text.Length;
-            yield return (plainStarts[i], ResultText.GetRectFromCharacterIndex(plainStarts[i]),
+            end = i + StringInfo.GetNextTextElementLength(plain.AsSpan(i));
+            if (char.IsWhiteSpace(plain, i)) continue;
+            yield return (i, ResultText.GetRectFromCharacterIndex(i),
                 ResultText.GetRectFromCharacterIndex(end - 1, trailingEdge: true));
         }
     }

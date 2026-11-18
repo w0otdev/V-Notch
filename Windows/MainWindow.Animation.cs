@@ -2043,11 +2043,6 @@ public partial class MainWindow
         {
             ScheduleDesktopLayerDemotion();
         }
-
-        if (_currentMediaInfo?.IsAnyMediaPlaying != true)
-        {
-            Task.Run(() => _mediaService.ArtworkService.TrimMemory(compactWorkingSet: true)).SafeFireAndForget("COLLAPSE-TRIM");
-        }
     }
 
     private void ResetContentTransformAndEffectsAfterCollapse()

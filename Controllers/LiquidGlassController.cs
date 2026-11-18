@@ -426,6 +426,7 @@ public sealed partial class LiquidGlassController : IDisposable
         _regionProvider = regionProvider ?? throw new ArgumentNullException(nameof(regionProvider));
         _dispatcher = host.Dispatcher;
         _logTag = logTag;
+        CompositeBackdropCapture = CaptureCompositeFrame;
         _maxRegionW = Math.Clamp(maxRegionWidth, 64, 4096);
         _maxRegionH = Math.Clamp(maxRegionHeight, 64, 4096);
 
@@ -487,7 +488,9 @@ public sealed partial class LiquidGlassController : IDisposable
     internal static double ChooseFrameIntervalMs(double activeIntervalMs, bool idle, bool animating,
         bool hasFrame, long unchangedMilliseconds, bool forceRefresh = false) =>
         idle && !animating && hasFrame && unchangedMilliseconds >= 250 && !forceRefresh
-            ? Math.Max(100, activeIntervalMs) : activeIntervalMs;
+            // A different window can move underneath a silent capture session.
+            // Keep checking coverage and polling sources which lack notifications.
+            ? Math.Max(1000.0 / 30, activeIntervalMs) : activeIntervalMs;
 
     internal static double ChooseProcessingIntervalMs(double intervalMs, double workMs, bool gpuMode) =>
         gpuMode ? intervalMs : Math.Max(intervalMs, Math.Min(100, workMs * 1.25));

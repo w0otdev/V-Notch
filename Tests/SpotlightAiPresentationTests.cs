@@ -79,9 +79,9 @@ public sealed class SpotlightAiPresentationTests
     public void FailedRequestRestoresPromptAndCanRetry(int status, string error) => Run(false, async ct =>
     {
         int attempts = 0;
-        using var client = new HttpClient(new Handler((_, _) => Task.FromResult(++attempts == 1
-            ? new HttpResponseMessage((HttpStatusCode)status) { Content = new StringContent("data: [DONE]\n\n") }
-            : Stream("Retry succeeded"))));
+        using var client = new HttpClient(new Handler((_, _) => Task.FromResult(++attempts == 2
+            ? Stream("Retry succeeded")
+            : new HttpResponseMessage((HttpStatusCode)status) { Content = new StringContent("data: [DONE]\n\n") })));
         using var fixture = new SpotlightWindowFixture(Settings(), new SpotlightAiService(client));
         var window = fixture.Window;
         window.ShowSpotlight();
@@ -99,6 +99,12 @@ public sealed class SpotlightAiPresentationTests
         Assert.Equal(2, attempts);
         Assert.Equal("Retry succeeded", Field<List<SpotlightAiMessage>>(window, "_aiHistory")[1].Content);
         Assert.Null(window.AiStatus.Tag);
+        window.SearchBox.Text = "Follow-up";
+        await (Task)Invoke(window, "SendAiAsync")!;
+        var history = Field<List<SpotlightAiMessage>>(window, "_aiHistory");
+        Assert.Equal(2, history.Count);
+        Assert.Equal("Retry succeeded", history[1].Content);
+        Assert.Equal("Follow-up", window.SearchBox.Text);
         await WpfFrameWaiter.NextAsync(ct);
     });
 

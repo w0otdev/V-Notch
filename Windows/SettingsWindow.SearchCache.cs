@@ -103,19 +103,20 @@ public partial class SettingsWindow
         _dirtySearchRows.Clear();
     }
 
-    private void RestoreSearchRow(SearchRowEntry row)
+    private void RestoreRowsExcept(HashSet<Border>? desired)
     {
-        if (ReferenceEquals(row.Row.Parent, row.OriginalParent)) return;
-        if (row.Row.Parent is Panel parent) parent.Children.Remove(row.Row);
-        int insertIndex = row.OriginalIndex;
-        // Earlier rows can remain in the results. Account for their vacant slots
-        // so restoring only one changed result still preserves its source order.
-        foreach (var peer in _searchRows)
-            if (ReferenceEquals(peer.OriginalParent, row.OriginalParent) &&
-                peer.OriginalIndex < row.OriginalIndex && !ReferenceEquals(peer.Row.Parent, row.OriginalParent))
-                insertIndex--;
-        row.OriginalParent.Children.Insert(Math.Clamp(insertIndex, 0, row.OriginalParent.Children.Count), row.Row);
-        row.Row.Visibility = row.OriginalVisibility;
+        foreach (var siblings in _rowsByParent)
+        {
+            int vacant = 0;
+            foreach (var row in siblings)
+            {
+                if (ReferenceEquals(row.Row.Parent, row.OriginalParent)) continue;
+                if (desired?.Contains(row.Row) == true) { vacant++; continue; }
+                if (row.Row.Parent is Panel parent) parent.Children.Remove(row.Row);
+                row.OriginalParent.Children.Insert(Math.Clamp(row.OriginalIndex - vacant, 0, row.OriginalParent.Children.Count), row.Row);
+                row.Row.Visibility = row.OriginalVisibility;
+            }
+        }
     }
 
     private void ApplySearchResultDiff(ReadOnlySpan<VnSettingsSearchMatchResult> matches)
@@ -127,9 +128,7 @@ public partial class SettingsWindow
         _updatingSearchPresentation = true;
         try
         {
-            foreach (var row in _searchRows)
-                if (ReferenceEquals(row.Row.Parent, SearchResultsStack) && !desired.Contains(row.Row))
-                    RestoreSearchRow(row);
+            RestoreRowsExcept(desired);
 
             int index = 0;
             foreach (var match in matches)

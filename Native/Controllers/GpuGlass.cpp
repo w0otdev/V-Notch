@@ -83,6 +83,7 @@ public:
     Target resolved;
     Target uploadedBackdrop;
     std::unique_ptr<WindowBackdrop> windowBackdrop;
+    winrt::handle windowFrameWake{CreateEventW(nullptr, FALSE, FALSE, nullptr)};
     uint64_t uploadedPixelsHash = 0;
     UINT uploadedPixelsWidth = 0, uploadedPixelsHeight = 0;
     bool hasUploadedPixelsHash = false;
@@ -515,13 +516,13 @@ public:
     }
     // S_OK submitted; S_FALSE unchanged/busy; E_PENDING requests the CPU path.
     HRESULT RenderWindows(const Frame& f) {
-        std::lock_guard commandLock(sharedDevice->commands);
+        std::unique_lock commandLock(sharedDevice->commands);
         if (pending) return S_FALSE;
         if (!usingUploadedBackdrop) { ResetCapture(); usingUploadedBackdrop = true; }
         if (!windowBackdrop) windowBackdrop = std::make_unique<WindowBackdrop>();
         Target composed;
         bool changed = false;
-        const bool captured = windowBackdrop->Capture(f, device.Get(), context.Get(),
+        const HRESULT captured = windowBackdrop->Capture(f, device.Get(), context.Get(), windowFrameWake.get(), commandLock,
             [&](UINT w, UINT h) { return MakeTarget(std::min<UINT>(width, (w + 127) / 128 * 128), std::min<UINT>(height, (h + 63) / 64 * 64)); },
             [&](const auto& source, ID3D11RenderTargetView* destination, const RECT& hit, const RECT& area) {
                 Constants data{};
@@ -533,17 +534,19 @@ public:
                     hit.right - hit.left, hit.bottom - hit.top, sharedDevice->opaqueWindow.Get(), data, {},
                     static_cast<float>(hit.left - area.left), static_cast<float>(hit.top - area.top));
             }, composed, changed);
-        if (!captured) return E_PENDING;
-        const bool sourceChanged = desktopTexture.Get() != composed.texture.Get() || changed;
+        if (captured != S_OK) return captured;
+        // A busy shared output may defer this submission. Keep the source
+        // dirty until the resolved texture actually contains the new pixels.
+        sourceDirty |= desktopTexture.Get() != composed.texture.Get() || changed;
         desktopTexture = composed.texture; desktopView = composed.srv;
         usingUploadedBackdrop = true;
         outputDesc.DesktopCoordinates = {f.x, f.y, f.x + f.width, f.y + f.height};
         outputDesc.Rotation = DXGI_MODE_ROTATION_IDENTITY;
         Frame normalized = f; normalized.refract &= 1;
-        if (hasRenderedFrame && !sourceChanged && !(f.refract & 2) && memcmp(&normalized, &lastFrame, sizeof(Frame)) == 0) return S_FALSE;
-        HRESULT hr = RenderCaptured(f, sourceChanged || !hasRenderedFrame || f.blur != lastFrame.blur ||
+        if (hasRenderedFrame && !sourceDirty && !(f.refract & 2) && memcmp(&normalized, &lastFrame, sizeof(Frame)) == 0) return S_FALSE;
+        HRESULT hr = RenderCaptured(f, sourceDirty || !hasRenderedFrame || f.blur != lastFrame.blur ||
             f.width != lastFrame.width || f.height != lastFrame.height);
-        if (hr == S_OK) { lastFrame = normalized; hasRenderedFrame = true; ++captureFrames; }
+        if (hr == S_OK) { lastFrame = normalized; hasRenderedFrame = true; sourceDirty = false; ++captureFrames; }
         return hr;
     }
     static uint64_t HashPixelRows(const uint8_t* pixels, int width, int height, UINT stride) noexcept {
@@ -619,6 +622,9 @@ public:
             sourceDirty = false;
             uploadedDirty = false;
             uploadMatchesSubmitted = true;
+            // A window query that began before the pixel handoff must not
+            // replace this frame when its GPU result arrives later.
+            if (windowBackdrop) windowBackdrop->Supersede();
         }
         return hr;
     }
@@ -701,6 +707,7 @@ public:
         }
         target.initialized = true;
         target.activeWidth = pendingWidth = f.width; target.activeHeight = pendingHeight = f.height;
+        if (f.refract & 1) PrepareLensConstants(data.lens);
         Draw(resolved.Input(f.width, f.height), target.rtv.Get(), f.width, f.height, (f.refract & 1) ? refraction.Get() : copy.Get(), data);
         context->End(completed.Get());
         if (completionFence && completionEvent) Check(fenceContext->Signal(completionFence.Get(), ++fenceValue));
@@ -784,6 +791,12 @@ VN_EXPORT int32_t __stdcall vn_glass_gpu_render(int64_t handle, const Frame* fra
     try { return pipeline->Render(*frame); }
     catch (const winrt::hresult_error& error) { return pipeline->captureResult = error.code(); }
     catch (HRESULT hr) { return pipeline->captureResult = hr; } catch (...) { return pipeline->captureResult = E_FAIL; }
+}
+VN_EXPORT uint32_t __stdcall vn_glass_gpu_wait_backdrop(int64_t handle, HANDLE interrupt, uint32_t timeoutMs) noexcept {
+    auto pipeline = pipelines.Acquire(handle);
+    if (!pipeline || !pipeline->windowFrameWake || !interrupt) return WAIT_FAILED;
+    HANDLE events[]{interrupt, pipeline->windowFrameWake.get()};
+    return WaitForMultipleObjects(ARRAYSIZE(events), events, FALSE, timeoutMs);
 }
 VN_EXPORT int32_t __stdcall vn_glass_gpu_render_windows(int64_t handle, const Frame* frame) noexcept {
     auto pipeline = pipelines.Acquire(handle);

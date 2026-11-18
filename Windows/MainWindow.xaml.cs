@@ -2234,16 +2234,41 @@ public partial class MainWindow : Window
         // SizeChanged already follows the animated notch geometry. Starting four
         // new layout animations on every frame creates clock churn and a trailing
         // layout tail after the notch has settled. Follow that geometry directly.
-        MediaBackground.Width = primaryLength;
-        MediaBackground.Height = primaryBreadth;
-        MediaBackground2.Width = secondaryLength;
-        MediaBackground2.Height = secondaryBreadth;
+        if (MediaBackground.Width != primaryLength) MediaBackground.Width = primaryLength;
+        if (MediaBackground.Height != primaryBreadth) MediaBackground.Height = primaryBreadth;
+        if (MediaBackground2.Width != secondaryLength) MediaBackground2.Width = secondaryLength;
+        if (MediaBackground2.Height != secondaryBreadth) MediaBackground2.Height = secondaryBreadth;
     }
 
     private double _lastNotchClipW = -1;
     private double _lastNotchClipH = -1;
     private CornerRadius _lastNotchClipCr = new CornerRadius(-1);
     private double _lastNotchClipPower = -1;
+
+    private RectangleGeometry? _solidRoundedClip, _solidTopFill;
+    private GeometryGroup? _solidNotchClip;
+    private bool _lastClipUsedGlass;
+
+    private Geometry? SolidShellClip(double width, double height, CornerRadius corners)
+    {
+        if (corners.BottomLeft != corners.BottomRight || corners.TopLeft != corners.TopRight ||
+            (corners.TopLeft != 0 && corners.TopLeft != corners.BottomLeft))
+            return BuildNotchClipGeometry(width, height);
+        double radius = Math.Min(corners.BottomLeft, Math.Min(width, height) / 2);
+        _solidRoundedClip ??= new RectangleGeometry();
+        _solidRoundedClip.Rect = new Rect(0, 0, width, height);
+        if (_solidRoundedClip.RadiusX != radius) _solidRoundedClip.RadiusX = _solidRoundedClip.RadiusY = radius;
+        if (corners.TopLeft == corners.BottomLeft) return _solidRoundedClip;
+        if (_solidNotchClip == null)
+        {
+            _solidTopFill = new RectangleGeometry();
+            _solidNotchClip = new GeometryGroup { FillRule = FillRule.Nonzero };
+            _solidNotchClip.Children.Add(_solidRoundedClip);
+            _solidNotchClip.Children.Add(_solidTopFill);
+        }
+        _solidTopFill!.Rect = new Rect(0, 0, width, radius);
+        return _solidNotchClip;
+    }
 
     private void UpdateNotchClip()
     {
@@ -2257,15 +2282,16 @@ public partial class MainWindow : Window
         CornerRadius cr = NotchBorder.CornerRadius;
         double power = IsLiquidGlassEnabled ? _settings.LiquidGlass?.PowerFactor ?? 3 : 2;
 
-        if (NotchContent.Clip == null ||
+        if (NotchContent.Clip == null || _lastClipUsedGlass != IsLiquidGlassEnabled ||
             Math.Abs(w - _lastNotchClipW) > 0.05 ||
             Math.Abs(h - _lastNotchClipH) > 0.05 ||
             !cr.Equals(_lastNotchClipCr) ||
             Math.Abs(power - _lastNotchClipPower) > 1e-3)
         {
-            var geometry = BuildNotchClipGeometry(w, h);
+            var geometry = IsLiquidGlassEnabled ? BuildNotchClipGeometry(w, h) : SolidShellClip(w, h, cr);
             if (geometry != null)
             {
+                _lastClipUsedGlass = IsLiquidGlassEnabled;
                 _lastNotchClipW = w;
                 _lastNotchClipH = h;
                 _lastNotchClipCr = cr;
@@ -2285,6 +2311,8 @@ public partial class MainWindow : Window
     private void GlassMaterialClipHost_SizeChanged(object sender, SizeChangedEventArgs e)
     {
         UpdateGlassClip();
+        // Layout can widen the clip before the next capture or animation tick.
+        if (_liquidGlass?.UsesNativeRefraction == true) AlignGpuBackdropToLiveNotch();
     }
 
     private StreamGeometry? BuildNotchClipGeometry(double w, double h) =>

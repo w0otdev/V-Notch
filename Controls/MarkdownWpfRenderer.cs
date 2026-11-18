@@ -453,6 +453,20 @@ internal static class MarkdownWpfRenderer
         return slice.ToString();
     }
 
+    internal static void AddStreamInline(InlineCollection target, Markdig.Syntax.Inlines.Inline inline, MarkdownFlowOptions opt)
+    {
+        if (inline is LiteralInline literal) target.Add(new Run(literal.Content.ToString()));
+        else if (inline is EmphasisInline emphasis) target.Add(RenderEmphasis(emphasis, opt));
+    }
+
+    private static WpfInline RenderEmphasis(EmphasisInline emphasis, MarkdownFlowOptions opt)
+    {
+        var span = CreateEmphasisSpan(emphasis, out var leaf);
+        ApplyEmphasisStyle(span, emphasis, boldForeground: null, italicForeground: null);
+        AddFlowInlines(leaf.Inlines, emphasis, opt);
+        return span;
+    }
+
     private static void AddFlowInlines(InlineCollection target, ContainerInline container, MarkdownFlowOptions opt)
     {
         bool trimNextSpace = false;
@@ -518,10 +532,7 @@ internal static class MarkdownWpfRenderer
                     break;
 
                 case EmphasisInline emphasis:
-                    var span = CreateEmphasisSpan(emphasis, out var leaf);
-                    ApplyEmphasisStyle(span, emphasis, boldForeground: null, italicForeground: null);
-                    AddFlowInlines(leaf.Inlines, emphasis, opt);
-                    target.Add(span);
+                    target.Add(RenderEmphasis(emphasis, opt));
                     break;
 
                 case LinkInline link:

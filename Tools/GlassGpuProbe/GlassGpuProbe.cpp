@@ -17,10 +17,26 @@ bool NearPixels(const std::vector<uint32_t>& actual, const std::vector<uint32_t>
     return true;
 }
 
+void PresentProbeFrame(GpuGlass& gpu, IDirect3DSurface9* destination = nullptr) {
+    ComPtr<IDirect3DSurface9> temporary;
+    if (!destination) {
+        Check(gpu.presentationDevice->CreateRenderTarget(gpu.width, gpu.height, D3DFMT_A8R8G8B8,
+            D3DMULTISAMPLE_NONE, 0, FALSE, &temporary, nullptr));
+        destination = temporary.Get();
+    }
+    const ULONGLONG deadline = GetTickCount64() + 5000;
+    HRESULT hr;
+    while ((hr = gpu.PresentReady(destination)) == S_FALSE && GetTickCount64() < deadline) Sleep(1);
+    Check(hr); Require(hr == S_OK, "GPU frame did not reach the presentation surface");
+}
+
 std::vector<uint32_t> RenderFixture(GpuGlass& gpu, Frame frame, const std::vector<uint32_t>& pixels,
     IDirect3DSurface9* presentation = nullptr, UINT stride = 0) {
     if (!stride) stride = frame.width * 4;
-    if (!useUploadedFixtures) {
+    if (useUploadedFixtures) {
+        // Pixel assertions require a submission even for an identical fixture.
+        frame.refract |= 2;
+    } else {
         auto fixture = gpu.MakeTarget(frame.width, frame.height);
         gpu.context->UpdateSubresource(fixture.texture.Get(), 0, nullptr, pixels.data(), stride, 0);
         gpu.desktopTexture = fixture.texture; gpu.desktopView = fixture.srv;
@@ -34,15 +50,7 @@ std::vector<uint32_t> RenderFixture(GpuGlass& gpu, Frame frame, const std::vecto
         : gpu.RenderCaptured(frame)) == S_FALSE && GetTickCount64() < deadline) Sleep(1);
     Require(gpu.pending, "GPU completion query missing");
     Check(gpu.WaitReady(4));
-    ComPtr<IDirect3DSurface9> ready;
-    if (presentation) {
-        HRESULT hr;
-        while ((hr = gpu.PresentReady(presentation)) == S_FALSE && GetTickCount64() < deadline) Sleep(1);
-        Check(hr); Require(hr == S_OK, "Persistent presentation did not finish");
-    } else {
-        while (gpu.TakeReady(&ready) == S_FALSE && GetTickCount64() < deadline) Sleep(1);
-        Require(ready != nullptr, "GPU did not finish within 5 seconds");
-    }
+    PresentProbeFrame(gpu, presentation);
     Require(gpu.nextOutput != outputIndex, "Shared output did not alternate");
     if (presentation) {
         // Verify the actual persistent WPF surface, including cleared pixels
@@ -80,6 +88,49 @@ std::vector<uint32_t> RenderFixture(GpuGlass& gpu, Frame frame, const std::vecto
     return result;
 }
 
+// Compare a strongly compressed one-pixel grating against the area under
+// the continuous warp. Point sampling the centre alone aliases this pattern.
+void VerifyFilteredBend(GpuGlass& gpu, Frame frame) {
+    frame.lens[7][0] = 0; // attached top; the test scanline sees a straight side
+    frame.lens[30][0] = 6;
+    std::vector<uint32_t> stripes(frame.width * frame.height);
+    for (int y = 0; y < frame.height; ++y)
+        for (int x = 0; x < frame.width; ++x)
+            stripes[y * frame.width + x] = x % 2 ? 0xffffffff : 0xff000000;
+    auto filtered = RenderFixture(gpu, frame, stripes);
+    // Normalize out the original hairline highlight at the silhouette.
+    std::fill(stripes.begin(), stripes.end(), 0xff000000);
+    auto black = RenderFixture(gpu, frame, stripes);
+    std::fill(stripes.begin(), stripes.end(), 0xffffffff);
+    auto white = RenderFixture(gpu, frame, stripes);
+    const double width = frame.lens[3][1], lever = width * 1.5 * frame.lens[30][0];
+    const auto sample = [&](double x) {
+        const double t = std::clamp(1.0 - x / width, 0.0, 1.0);
+        const double depth = 1.0 - t;
+        const double loss = 2.3 * std::pow(5.2 * std::exp(1.0), -0.7 - 6.9 * depth * depth);
+        const double ray = std::clamp(1.0 - loss - 0.16 * t * t, 0.02, 1.25);
+        const double axis = 1.0 - 2 * x / frame.lens[2][0];
+        const double texel = std::clamp(x - 0.5 + frame.lens[4][0] + axis * (1.0 - ray) * lever * t,
+            0.0, static_cast<double>(frame.width - 1));
+        return 255.0 * std::abs(std::remainder(texel, 2.0));
+    };
+    double pointError = 0, filteredError = 0;
+    constexpr int testedPixels = 8;
+    for (int x = 0; x < testedPixels; ++x) {
+        double reference = 0;
+        for (int sub = 0; sub < 64; ++sub)
+            reference += sample(x + (sub + .5) / 64) / 64;
+        pointError += std::abs(sample(x + .5) - reference);
+        const int i = 16 * frame.width + x;
+        const double low = black[i] & 255, high = white[i] & 255;
+        const double observed = ((filtered[i] & 255) - low) * 255.0 / (high - low);
+        filteredError += std::abs(observed - reference);
+    }
+    printf("Compressed grating mean absolute error: %.1f point, %.1f filtered (levels/255).\n",
+        pointError / testedPixels, filteredError / testedPixels);
+    Require(filteredError < pointError * 0.8, "Compressed grating aliased on the sharp bevel");
+}
+
 void VerifyLiveCapture(GpuGlass& gpu, Frame& frame, HWND hwnd, bool forceWgc) {
     gpu.ResetCapture();
     Require(SetWindowDisplayAffinity(hwnd, WDA_EXCLUDEFROMCAPTURE) != FALSE, "Capture exclusion failed");
@@ -93,9 +144,7 @@ void VerifyLiveCapture(GpuGlass& gpu, Frame& frame, HWND hwnd, bool forceWgc) {
     while ((hr = gpu.Render(frame)) == S_FALSE && GetTickCount64() < deadline) Sleep(10);
     Check(hr); Require(hr == S_OK, "No desktop frame acquired on the input desktop");
     Check(gpu.WaitReady(1000));
-    ComPtr<IDirect3DSurface9> ready;
-    Check(gpu.TakeReady(&ready));
-    Require(ready != nullptr, "Captured desktop did not reach the presentation surface");
+    PresentProbeFrame(gpu);
     printf("PASS: live %s capture with exclusion (no desktop readback).\n", gpu.framePool ? "WGC" : "DXGI");
     if (gpu.captureSession) {
         if (auto pacing = gpu.captureSession.try_as<Capture::IGraphicsCaptureSession5>()) {
@@ -147,10 +196,7 @@ int main(int argc, char** argv) {
                 size.width = cycle % 2 ? 400 : 1920;
                 size.height = cycle % 2 ? 160 : 900;
                 Check(resizing.RenderCaptured(size));
-                ComPtr<IDirect3DSurface9> ready;
-                ULONGLONG deadline = GetTickCount64() + 5000;
-                while (resizing.TakeReady(&ready) == S_FALSE && GetTickCount64() < deadline) Sleep(1);
-                Require(ready != nullptr, "Resize did not finish");
+                PresentProbeFrame(resizing);
             }
             printf("RESIZE 24 large/small frames: %llu texture allocations, %.2f MiB allocation traffic\n",
                 resizing.targetAllocations - initial, (resizing.targetAllocatedBytes - bytes) / 1048576.0);
@@ -246,6 +292,75 @@ int main(int argc, char** argv) {
             dispersed |= neutral[i] != chromatic[i];
         }
         Require(dispersed, "RGB dispersion produced no change");
+        // Light only the backdrop outside the right edge. A transmitted ray
+        // can't see that stripe; a reflected ray on the right bevel can.
+        auto reflectionFrame = f;
+        reflectionFrame.lens[14][0] = reflectionFrame.lens[15][0] = 0; // grain, specular
+        reflectionFrame.lens[17][0] = reflectionFrame.lens[19][0] = 0; // distortion, dispersion
+        reflectionFrame.lens[3][1] = 20; // native optical rim in pixels
+        std::vector<uint32_t> stripe(f.width * f.height, 0xff000000);
+        for (int y = 0; y < f.height; ++y)
+            std::fill_n(stripe.begin() + (y + 1) * f.width - 6, 6, 0xffffffff);
+        auto transmitted = RenderFixture(gpu, reflectionFrame, stripe);
+        reflectionFrame.lens[16][0] = 1; // Fresnel
+        auto reflected = RenderFixture(gpu, reflectionFrame, stripe);
+        const int rightBevel = 24 * f.width + 77;
+        Require((reflected[rightBevel] & 255) > (transmitted[rightBevel] & 255) + 64,
+            "Glass bevel failed to reflect bright content outside the lens");
+        Require(reflected[24 * f.width + 40] == transmitted[24 * f.width + 40],
+            "Rim reflection leaked into the flat center");
+        // A small warm light outside the lens should move along the bevel
+        // with the backdrop. Give the mirror ray real padding on each side.
+        auto lampFrame = reflectionFrame;
+        lampFrame.lens[0][0] = static_cast<float>(lampFrame.width = 128);
+        lampFrame.lens[1][0] = static_cast<float>(lampFrame.height = 96);
+        lampFrame.lens[4][0] = lampFrame.lens[5][0] = 24;
+        lampFrame.lens[16][0] = 0.14f;
+        auto renderLamp = [&](int centreY) {
+            std::vector<uint32_t> backdrop(lampFrame.width * lampFrame.height, 0xff101010);
+            for (int y = centreY - 6; y <= centreY + 6; ++y)
+                for (int x = 115; x <= 127; ++x)
+                    if ((x-121)*(x-121) + (y-centreY)*(y-centreY) <= 36)
+                        backdrop[y * lampFrame.width + x] = 0xffffbb68;
+            return RenderFixture(gpu, lampFrame, backdrop);
+        };
+        auto upper = renderLamp(39), lower = renderLamp(56);
+        const int upperLip = 15 * lampFrame.width + 78, lowerLip = 32 * lampFrame.width + 78;
+        auto red = [](uint32_t pixel) { return static_cast<int>((pixel >> 16) & 255); };
+        Require(red(upper[upperLip]) >= red(lower[upperLip]) + 38 &&
+                red(lower[lowerLip]) >= red(upper[lowerLip]) + 38,
+            "A local backdrop light did not form a travelling rim highlight");
+        Require(red(upper[upperLip]) > static_cast<int>(upper[upperLip] & 255) + 12 &&
+                upper[15 * lampFrame.width + 40] == lower[15 * lampFrame.width + 40],
+            "Reflected light lost its source colour or spilled into the lens centre");
+        // On a 2-levels-per-texel ramp the green channel directly measures
+        // source travel. Test the inset bend independently of the bright lip.
+        auto bendFrame = reflectionFrame;
+        bendFrame.lens[16][0] = bendFrame.lens[30][0] = 0;
+        auto flat = RenderFixture(gpu, bendFrame, checker);
+        bendFrame.lens[30][0] = 1.65f;
+        auto bent = RenderFixture(gpu, bendFrame, checker);
+        auto green = [&](const std::vector<uint32_t>& pixels, int x) {
+            return static_cast<int>((pixels[24 * f.width + x] >> 8) & 255);
+        };
+        Require(green(bent, 2) >= green(flat, 2) + 10, "The outer lip lost its original fold");
+        Require(std::abs(green(bent, 12) - green(flat, 12)) <= 2, "The thin fold spread into the body");
+        Require(green(bent, 31) == green(flat, 31), "Bending moved the flat interior");
+        // A horizontal ramp in Y used to stay straight across a vertical
+        // side. Its two ends should now turn towards the centre of the tray.
+        for (int y = 0; y < f.height; ++y)
+            std::fill_n(checker.begin() + y * f.width, f.width, 0xff000000u | (y * 3u * 0x010101u));
+        bendFrame.lens[30][0] = 0;
+        auto straightRows = RenderFixture(gpu, bendFrame, checker);
+        bendFrame.lens[30][0] = 1.65f;
+        auto curvedRows = RenderFixture(gpu, bendFrame, checker);
+        auto shift = [&](int x, int y) {
+            const int i = y * f.width + x;
+            return int((curvedRows[i] >> 8) & 255) - int((straightRows[i] >> 8) & 255);
+        };
+        Require(shift(4, 12) >= 5 && shift(4, 35) <= -5 && shift(40, 24) == 0,
+            "Crossing lines did not bend on the straight side of the lens");
+        VerifyFilteredBend(gpu, bendFrame);
         f.refract = 0;
         for (int y = 0; y < f.height; ++y)
             for (int x = 0; x < f.width; ++x) checker[y*f.width+x] = x < f.width / 2 ? 0xff000000 : 0xffffffff;

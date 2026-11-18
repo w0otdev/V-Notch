@@ -614,7 +614,7 @@ public partial class SpotlightWindow
             fx.HighlightStrength = cfg.TouchLight;
         }
         lg.UpdateGpuLens(fx, screenLeft, screenTop);
-        lg.AlignPresentedFrame(screenLeft, screenTop, dpiScale, dpiScale);
+        lg.AlignPresentedFrame(screenLeft, screenTop, exactW, exactH, dpiScale, dpiScale);
     }
 
     private const int GpuEdgeBleedPx = 64;
@@ -629,8 +629,11 @@ public partial class SpotlightWindow
         double shellW = GlassBackdropHost.ActualWidth;
         if (!double.IsFinite(shellW) || shellW <= 0) shellW = Shell.Width;
         if (!double.IsFinite(shellW) || shellW <= 0) shellW = 720;
+        double shellH = GlassBackdropHost.ActualHeight;
+        if (!double.IsFinite(shellH) || shellH <= 0) shellH = Shell.Height;
+        if (!double.IsFinite(shellH) || shellH <= 0) shellH = 64;
         var (screenLeft, screenTop) = GetShellScreenPosition(shellW * dpiScale, dpiScale);
-        lg.AlignPresentedFrame(screenLeft, screenTop, dpiScale, dpiScale);
+        lg.AlignPresentedFrame(screenLeft, screenTop, shellW * dpiScale, shellH * dpiScale, dpiScale, dpiScale);
     }
 
     private (double ScreenLeft, double ScreenTop) GetShellScreenPosition(double exactW, double dpiScale)

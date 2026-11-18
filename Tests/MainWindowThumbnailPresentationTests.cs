@@ -16,6 +16,39 @@ public sealed class MainWindowThumbnailPresentationTests
     private const BindingFlags Private = BindingFlags.Instance | BindingFlags.Static | BindingFlags.NonPublic;
 
     [Fact]
+    public void SpotlightHandoffStillDrawsAfterTheMainNotchIsHidden() => SharedStaTestRunner.RunAsync(async ct =>
+    {
+        await using var fixture = CreateFixture(false);
+        var window = fixture.Window;
+        window.SetDebugViewLock(true);
+        window.Show();
+        await WpfFrameWaiter.UntilAsync(() => Field<bool>(window, "_isStartupLayoutReady") &&
+            !Property<bool>(window, "_isAnimating") && window.NotchBorder.Opacity >= 0.999,
+            "solid notch fully visible before handoff", ct);
+        var image = Assert.IsType<DrawingImage>(window.CaptureSpotlightMorphVisual());
+        int OpaquePixels()
+        {
+            var visual = new DrawingVisual();
+            using (var context = visual.RenderOpen()) context.DrawImage(image, new Rect(0, 0, image.Width, image.Height));
+            int width = (int)Math.Ceiling(image.Width), height = (int)Math.Ceiling(image.Height);
+            var bitmap = new RenderTargetBitmap(width, height, 96, 96, PixelFormats.Pbgra32);
+            bitmap.Render(visual);
+            byte[] pixels = new byte[width * height * 4];
+            bitmap.CopyPixels(pixels, width * 4, 0);
+            return Enumerable.Range(0, width * height).Count(i => pixels[i * 4 + 3] > 128);
+        }
+        int before = OpaquePixels();
+        Assert.True(before > image.Width * image.Height / 4,
+            $"Visible notch produced {before} opaque pixels at {image.Width}×{image.Height}, background {window.NotchBackground.Background}, opacity {window.NotchBackground.Opacity}, shell {window.NotchBorder.Opacity}");
+        window.SetSpotlightMorphActive(true);
+        try
+        {
+            Assert.Equal(before, OpaquePixels());
+        }
+        finally { window.SetSpotlightMorphActive(false); }
+    });
+
+    [Fact]
     public void ArtworkSnapshotCannotReplaceTheFullSpotifyArtistList() => SharedStaTestRunner.RunAsync(async ct =>
     {
         await using var fixture = CreateFixture(false);

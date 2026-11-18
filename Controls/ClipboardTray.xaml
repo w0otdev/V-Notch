@@ -588,7 +588,8 @@
   <!-- Only the active content kind instantiates its visual tree and bindings. -->
   <ControlTemplate x:Key="TrayCardImageContent" TargetType="Control">
    <Grid>
-    <Image Source="{Binding Image, NotifyOnTargetUpdated=True}" TargetUpdated="CardPreview_TargetUpdated" Stretch="UniformToFill" RenderOptions.BitmapScalingMode="HighQuality" HorizontalAlignment="Stretch" VerticalAlignment="Stretch"/>
+     <!-- WIC already filters these thumbnails to the viewport's pixel size. -->
+     <Image Source="{Binding Image, NotifyOnTargetUpdated=True}" TargetUpdated="CardPreview_TargetUpdated" Stretch="UniformToFill" RenderOptions.BitmapScalingMode="Linear" HorizontalAlignment="Stretch" VerticalAlignment="Stretch"/>
     <Border CornerRadius="{StaticResource TrayRadiusLarge}" IsHitTestVisible="False">
      <Border.Background>
       <LinearGradientBrush StartPoint="0,0" EndPoint="0,1">

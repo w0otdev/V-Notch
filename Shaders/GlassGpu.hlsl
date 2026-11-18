@@ -16,6 +16,8 @@ cbuffer GlassConstants : register(b0)
 #define GLASS_BLEED lens[2].y
 // Optical rim width in pixels, packed in the unused .y of the notchH register.
 #define GLASS_RIM lens[3].y
+// The native renderer resolves the configured blur before drawing the lens.
+#define GLASS_PREFILTERED_BACKDROP 1
 float4 sampleSource(float2 uv) { return sourceTexture.Sample(linearSampler, clamp(uv * sourceRegion.xy, sourceRegion.zw, sourceRegion.xy - sourceRegion.zw)); }
 float4 sampleDetail(float2 uv) { return detailTexture.Sample(linearSampler, clamp(uv * detailRegion.xy, detailRegion.zw, detailRegion.xy - detailRegion.zw)); }
 struct VertexOutput { float4 position : SV_Position; float2 uv : TEXCOORD0; };

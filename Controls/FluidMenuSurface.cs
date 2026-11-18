@@ -50,7 +50,7 @@ public sealed partial class FluidMenuSurface : Grid
     private FadeState _fade;
     private double _targetY, _height = 32;
     private bool _visible, _initialized;
-    private long _timestamp;
+    private AnimationFrameClock _frameClock;
     private TimeSpan _renderingTime = TimeSpan.MinValue;
     private int _request;
 
@@ -157,7 +157,7 @@ public sealed partial class FluidMenuSurface : Grid
         if (!IsVisible || !MotionAllowed) { StopMotion(); return; }
         if (IsAnimating) return;
         IsAnimating = true;
-        _timestamp = Stopwatch.GetTimestamp();
+        _frameClock.Reset(Stopwatch.GetTimestamp());
         _renderingTime = TimeSpan.MinValue;
         CompositionTarget.Rendering += RenderMotion;
     }
@@ -170,10 +170,7 @@ public sealed partial class FluidMenuSurface : Grid
             _renderingTime = frame.RenderingTime;
         }
         if (!IsVisible || !MotionAllowed) { StopMotion(); return; }
-        long now = Stopwatch.GetTimestamp();
-        double seconds = Stopwatch.GetElapsedTime(_timestamp, now).TotalSeconds;
-        if (seconds < .9 / AnimationConfig.TargetFps) return;
-        _timestamp = now;
+        if (!_frameClock.TryAdvance(Stopwatch.GetTimestamp(), AnimationConfig.TargetFps, out double seconds)) return;
         AdvanceMotion(seconds);
     }
 

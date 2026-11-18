@@ -12,6 +12,25 @@
 
 #include "GlassOpticsMath.h"
 
+namespace {
+// A minified ray uses the first two coordinate pairs as the endpoints of
+// its footprint. The last pair carries this tag and the dispersion weight.
+constexpr int32_t FilteredFootprint = -1;
+void ReadFootprint(const uint8_t* src, const int32_t* m, int stride, int& b, int& g, int& r) noexcept
+{
+    const int chroma = m[5]; // 0..256
+    const int weights[] = {128 + chroma / 2, 128, 128 - 58 * chroma / 256};
+    int colors[3];
+    for (int channel = 0; channel < 3; ++channel)
+    {
+        const int outer = vnotch::controllers::BilerpChannel(src, m[0], m[1], stride, channel);
+        const int inner = vnotch::controllers::BilerpChannel(src, m[2], m[3], stride, channel);
+        colors[channel] = (outer * (256 - weights[channel]) + inner * weights[channel] + 128) >> 8;
+    }
+    b = colors[0]; g = colors[1]; r = colors[2];
+}
+}
+
 extern "C" {
 VN_EXPORT int32_t __stdcall vn_glass_build_refraction_lut(
     double f_power,
@@ -91,21 +110,19 @@ VN_EXPORT int32_t __stdcall vn_glass_build_refraction_rows(
     const double u_chroma = std::clamp(params->chromatic_aberration, 0.0, 2.0);
     const double distort = std::clamp(params->distortion, 0.0, 2.0);
     const double refract_strength = std::clamp(params->refraction, 0.0, 3.0);
-    const double z_rad = std::clamp(params->z_radius, 0.04, 1.0);
-    const double depth_reach = std::clamp(z_rad / 0.25, 0.20, 2.8) * (params->bevel_mode >= 1 ? 1.45 : 1.0);
+    const double rim = std::min(min_half, std::max(3.0,
+        std::clamp(params->z_radius, 0.02, 0.95) * 100.0 * params->out_scale));
+    const double inv_rim = 1.0 / std::max(rim, 1.0);
+    // A notch attached to the screen has no exposed upper glass surface.
+    const double lift = top_r < 0.5 ? rim * 2.0 + 1.0 : 0.0;
     const double bevel_shelf = params->bevel_mode >= 1 ? 0.22 : 0.0;
-    const double aspect = std::clamp(
-        static_cast<double>(params->notch_h) / std::max(static_cast<double>(params->notch_w), 1.0) * 2.5,
-        0.0,
-        1.0);
-    const double vertical_balance = 0.68 + 0.32 * aspect;
-    const double bend = std::max(params->edge_bend, 0.05) *
+    const double bend = std::max(params->edge_bend, 0.0) *
         (refract_strength > 1e-4 ? (0.20 + 1.15 * refract_strength) : 0.0);
-    const double inv_half_x = 1.0 / std::max(half_x, 1.0);
-    const double inv_half_y = 1.0 / std::max(half_y, 1.0);
-    const double inv_min_half = 1.0 / std::max(min_half, 1.0);
+    const double dome_pull = (0.18 + bevel_shelf) * std::min(refract_strength, 1.8);
+    const double lever = rim * 1.5 * bend;
+    const double inv_half_x = 1.0 / std::max(half_x, 0.5);
+    const double inv_half_y = 1.0 / std::max(half_y, 0.5);
     const double lut_scale = static_cast<double>(lut_len - 1);
-    const int32_t lut_max_idx = lut_len - 1;
 
     for (int32_t y = y0; y < y1; ++y)
     {
@@ -120,54 +137,60 @@ VN_EXPORT int32_t __stdcall vn_glass_build_refraction_rows(
             double base_y = row_base_y;
             int32_t* cell = dst_row + static_cast<size_t>(x) * 6;
 
-            const double inside = -vnotch::controllers::RoundedRectSdf(lx, ly, half_x, half_y, top_r, bottom_r);
-            if (!std::isfinite(inside) || inside <= 0.0)
+            const auto edge = vnotch::controllers::RoundedRectEdge(lx, ly + lift, half_x, half_y + lift, top_r, bottom_r);
+            if (ly < -half_y || edge.inside <= 0.0 || edge.inside >= rim)
             {
-                int32_t s_idx = 0, s_aux = 0;
-                vnotch::controllers::PackSampleCoord(base_x, base_y, src_w, max_x, max_y, &s_idx, &s_aux);
-                cell[0] = s_idx; cell[1] = s_aux;
-                cell[2] = s_idx; cell[3] = s_aux;
-                cell[4] = s_idx; cell[5] = s_aux;
+                // These coordinates are integer capture pixels. No neighbours
+                // are needed, including at the last source row or column.
+                const int ix = static_cast<int>(std::clamp(base_x, 0.0, static_cast<double>(max_x)));
+                const int iy = static_cast<int>(std::clamp(base_y, 0.0, static_cast<double>(max_y)));
+                cell[0] = cell[2] = cell[4] = (iy * src_w + ix) * 4;
+                cell[1] = cell[3] = cell[5] = 0;
                 continue;
             }
 
-            const double px_norm = lx * inv_half_x;
-            const double py_norm = ly * inv_half_y;
-            const double raw_dist = inside * inv_min_half;
-            const double dist_norm = std::isfinite(raw_dist) ? std::clamp(raw_dist, 0.0, 1.0) : 0.0;
-            const double scaled_dist = std::clamp(dist_norm / depth_reach, 0.0, 1.0);
-            const double one_minus_dist = 1.0 - scaled_dist;
+            const double one_minus_dist = std::max(1.0 - edge.inside * inv_rim, 0.0);
+            const double grazing = one_minus_dist * one_minus_dist;
 
-            const double raw_lut_pos = scaled_dist * lut_scale;
-            const double lut_pos = std::isfinite(raw_lut_pos)
-                ? std::clamp(raw_lut_pos, 0.0, static_cast<double>(lut_max_idx - 1))
-                : 0.0;
-            int32_t lut_idx = static_cast<int32_t>(lut_pos);
-            lut_idx = std::clamp(lut_idx, 0, lut_max_idx - 1);
-            const double lut0 = std::isfinite(lut[lut_idx]) ? lut[lut_idx] : 1.0;
-            const double lut1 = std::isfinite(lut[lut_idx + 1]) ? lut[lut_idx + 1] : lut0;
-            const double frac = std::clamp((scaled_dist * lut_scale) - static_cast<double>(lut_idx), 0.0, 1.0);
-            const double base_refract = lut0 + (lut1 - lut0) * frac;
-            const double dome_pull = (one_minus_dist * one_minus_dist) * (0.18 + bevel_shelf) * std::min(refract_strength, 1.8);
-            const double refract_factor = std::clamp(base_refract - dome_pull, 0.05, 1.25);
-
-            double disp_x = (px_norm * refract_factor - px_norm) * half_x * bend;
-            double disp_y = (py_norm * refract_factor - py_norm) * half_y * bend;
+            const double depth = edge.inside * inv_rim;
+            const double pos = depth * depth * lut_scale;
+            const int idx = std::min(static_cast<int>(pos), lut_len - 2);
+            const double a = std::isfinite(lut[idx]) ? lut[idx] : 1.0;
+            const double b = std::isfinite(lut[idx + 1]) ? lut[idx + 1] : a;
+            const double ray = std::lerp(a, b, pos - idx) - grazing * dome_pull;
+            const double factor = std::clamp(ray, 0.05, 1.25);
+            const double travel = (1.0 - factor) * lever * one_minus_dist;
+            const double axis_x = -lx * inv_half_x;
+            const double axis_y = -ly * inv_half_y;
+            double disp_x = axis_x * travel;
+            double disp_y = axis_y * travel;
 
             if (distort > 0.0)
             {
                 const double noise_x = vnotch::controllers::ValueNoise(lx * 0.055, ly * 0.055) * 2.0 - 1.0;
                 const double noise_y = vnotch::controllers::ValueNoise(lx * 0.055 + 19.7, ly * 0.055 + 43.1) * 2.0 - 1.0;
-                const double distort_scale = distort * 14.0 * (0.35 + 0.65 * one_minus_dist);
+                const double distort_scale = distort * 5.0 * grazing;
                 disp_x += noise_x * distort_scale;
-                disp_y += noise_y * vertical_balance * distort_scale;
+                disp_y += noise_y * distort_scale;
             }
 
             base_x += disp_x;
             base_y += disp_y;
 
-            const double ca_s = std::min(u_chroma * (0.30 + 0.70 * one_minus_dist) * 9.5, 14.0);
-            if (ca_s <= 0.0)
+            const double ca_s = std::min(u_chroma * 2.0, 3.0) * grazing;
+            const double slope = ray == factor ? (b - a) * lut_scale * (2.0 * depth) + 2.0 * one_minus_dist * dome_pull : 0.0;
+            const double radial_step = 1.0 - lever * inv_rim * (1.0 - factor + one_minus_dist * slope);
+            if (std::abs(radial_step) > 1.5)
+            {
+                const double spread = (std::abs(radial_step) - 1.0) * 0.25;
+                const double dx = axis_x * spread, dy = axis_y * spread;
+                vnotch::controllers::PackSampleCoord(base_x - dx, base_y - dy, src_w, max_x, max_y, &cell[0], &cell[1]);
+                vnotch::controllers::PackSampleCoord(base_x + dx, base_y + dy, src_w, max_x, max_y, &cell[2], &cell[3]);
+                cell[4] = FilteredFootprint;
+                cell[5] = static_cast<int32_t>(std::nearbyint(256.0 * std::min(ca_s / spread, 1.0)));
+                continue;
+            }
+            if (ca_s <= 0.01)
             {
                 int32_t s_idx = 0, s_aux = 0;
                 vnotch::controllers::PackSampleCoord(base_x, base_y, src_w, max_x, max_y, &s_idx, &s_aux);
@@ -177,20 +200,12 @@ VN_EXPORT int32_t __stdcall vn_glass_build_refraction_rows(
                 continue;
             }
 
-            const double disp_len = std::sqrt(disp_x * disp_x + disp_y * disp_y);
-            const double norm_len = std::sqrt(px_norm * px_norm + py_norm * py_norm);
-            const double ca_dir_x = (std::isfinite(disp_len) && disp_len > 1e-4)
-                ? disp_x / disp_len
-                : ((norm_len > 1e-4) ? -px_norm / norm_len : 1.0);
-            const double ca_dir_y = (std::isfinite(disp_len) && disp_len > 1e-4)
-                ? disp_y / disp_len
-                : ((norm_len > 1e-4) ? -py_norm / norm_len : 0.0);
-            const double ca_x = ca_dir_x * ca_s;
-            const double ca_y = ca_dir_y * vertical_balance * ca_s;
+            const double ca_x = axis_x * ca_s;
+            const double ca_y = axis_y * ca_s;
 
-            vnotch::controllers::PackSampleCoord(base_x - ca_x, base_y - ca_y, src_w, max_x, max_y, &cell[0], &cell[1]);
+            vnotch::controllers::PackSampleCoord(base_x + ca_x, base_y + ca_y, src_w, max_x, max_y, &cell[0], &cell[1]);
             vnotch::controllers::PackSampleCoord(base_x, base_y, src_w, max_x, max_y, &cell[2], &cell[3]);
-            vnotch::controllers::PackSampleCoord(base_x + ca_x, base_y + ca_y, src_w, max_x, max_y, &cell[4], &cell[5]);
+            vnotch::controllers::PackSampleCoord(base_x - ca_x, base_y - ca_y, src_w, max_x, max_y, &cell[4], &cell[5]);
         }
     }
 
@@ -253,6 +268,15 @@ VN_EXPORT int32_t __stdcall vn_glass_refract_gather(
                 out_px[2] = static_cast<uint8_t>(((p00[2] * inv_wx + p10[2] * wx) * inv_wy + (p01[2] * inv_wx + p11[2] * wx) * wy) >> 16);
                 out_px[3] = 255;
             }
+            else if (idx_r == FilteredFootprint)
+            {
+                int b, g, r;
+                ReadFootprint(src, m, src_stride, b, g, r);
+                out_px[0] = static_cast<uint8_t>(b);
+                out_px[1] = static_cast<uint8_t>(g);
+                out_px[2] = static_cast<uint8_t>(r);
+                out_px[3] = 255;
+            }
             else
             {
                 out_px[0] = static_cast<uint8_t>(vnotch::controllers::BilerpChannel(src, idx_b, aux_b, src_stride, 0));
@@ -304,6 +328,10 @@ VN_EXPORT int32_t __stdcall vn_glass_refract_gather(
                 r = ((p00[2] * inv_wx + p10[2] * wx) * inv_wy + (p01[2] * inv_wx + p11[2] * wx) * wy) >> 16;
             }
         }
+        else if (idx_r == FilteredFootprint)
+        {
+            ReadFootprint(src, m, src_stride, b, g, r);
+        }
         else
         {
             b = vnotch::controllers::BilerpChannel(src, idx_b, aux_b, src_stride, 0);
@@ -312,11 +340,8 @@ VN_EXPORT int32_t __stdcall vn_glass_refract_gather(
         }
 
         const float lum = (static_cast<float>(77 * r + 150 * g + 29 * b) * (1.0f / 256.0f)) * one_minus_sat + safe_bright;
-        uint8_t* out_px = dst + (static_cast<size_t>(i) << 2);
-        out_px[0] = vnotch::controllers::ClampByteFloat(lum + static_cast<float>(b) * safe_sat);
-        out_px[1] = vnotch::controllers::ClampByteFloat(lum + static_cast<float>(g) * safe_sat);
-        out_px[2] = vnotch::controllers::ClampByteFloat(lum + static_cast<float>(r) * safe_sat);
-        out_px[3] = 255;
+        const uint32_t pixel = vnotch::controllers::PackAdjustedBgra(b, g, r, safe_sat, lum);
+        std::memcpy(dst + (static_cast<size_t>(i) << 2), &pixel, sizeof(pixel));
     }
 
     return VN_OK;

@@ -64,6 +64,8 @@ internal sealed partial class D3DImageFramePresenter
     private static partial int NativeGpuRender(GpuHandle handle, in GpuFrame frame);
     [LibraryImport("VNotch.Native.dll", EntryPoint = "vn_glass_gpu_render_windows")]
     private static partial int NativeGpuRenderWindows(GpuHandle handle, in GpuFrame frame);
+    [LibraryImport("VNotch.Native.dll", EntryPoint = "vn_glass_gpu_wait_backdrop")]
+    private static partial uint NativeGpuWaitBackdrop(GpuHandle handle, SafeWaitHandle interrupt, uint timeoutMs);
     [LibraryImport("VNotch.Native.dll", EntryPoint = "vn_glass_gpu_render_pixels")]
     private static partial int NativeGpuRenderPixels(GpuHandle handle, in GpuFrame frame, IntPtr pixels, int length, int stride);
     [LibraryImport("VNotch.Native.dll", EntryPoint = "vn_glass_gpu_wait_ready")]
@@ -106,6 +108,20 @@ internal sealed partial class D3DImageFramePresenter
     internal long GpuRenderSkips { get; private set; }
     internal long GpuCompletionRetries { get; private set; }
     internal long GpuWorkerTimeouts { get; private set; }
+    // The worker waits outside the surface lock. Stop and UI handoff can wake
+    // it through interrupt even while the underlying window stays static.
+    internal bool TryWaitForBackdrop(SafeWaitHandle interrupt, int timeoutMs, out bool arrived)
+    {
+        arrived = false;
+        if (_gpuHandle is not { } handle) return false;
+        try
+        {
+            uint result = NativeGpuWaitBackdrop(handle, interrupt, (uint)timeoutMs);
+            arrived = result == 1; // WAIT_OBJECT_0 + 1
+            return result != uint.MaxValue; // WAIT_FAILED
+        }
+        catch (ObjectDisposedException) { return false; }
+    }
     internal ulong GpuConsumerRetries
     {
         get { lock (_surfaceSync) return _gpuHandle == null ? 0 : NativeGpuConsumerStalls(_gpuHandle); }

@@ -28,16 +28,25 @@ inline double Smoother01(double x) noexcept
     return t * t * t * (t * (t * 6.0 - 15.0) + 10.0);
 }
 
-inline double RoundedRectSdf(
+struct GlassEdge
+{
+    double inside, inward_x, inward_y;
+};
+
+inline GlassEdge RoundedRectEdge(
     double px, double py, double bx, double by, double top_radius, double bottom_radius) noexcept
 {
     const double r = py < 0.0 ? top_radius : bottom_radius;
     const double qx = std::abs(px) - (bx - r);
     const double qy = (py < 0.0 ? -py : py) - (by - r);
-    if (qx > 0.0 && qy > 0.0) return std::sqrt(qx * qx + qy * qy) - r;
-    if (qx > 0.0) return qx - r;
-    if (qy > 0.0) return qy - r;
-    return std::max(qx - r, qy - r);
+    const double nx = px < 0.0 ? 1.0 : -1.0;
+    const double ny = py < 0.0 ? 1.0 : -1.0;
+    if (qx > 0.0 && qy > 0.0)
+    {
+        const double length = std::sqrt(qx * qx + qy * qy);
+        return {r - length, nx * qx / length, ny * qy / length};
+    }
+    return qx > qy ? GlassEdge{r - qx, nx, 0.0} : GlassEdge{r - qy, 0.0, ny};
 }
 
 inline double GlassHash(int32_t ix, int32_t iy) noexcept
@@ -190,14 +199,17 @@ inline int32_t BilerpChannel(
     return (top * (256 - wy) + bot * wy) >> 16;
 }
 
-inline uint8_t ClampByteFloat(float v) noexcept
+inline uint32_t PackAdjustedBgra(int b, int g, int r, float saturation, float offset) noexcept
 {
-    if (!std::isfinite(v))
-    {
-        return 0u;
-    }
-    const float clamped = std::min(std::max(v, 0.0f), 255.0f);
-    return static_cast<uint8_t>(static_cast<int32_t>(clamped + 0.5f));
+    const __m128 rgb = _mm_cvtepi32_ps(_mm_set_epi32(0, r, g, b));
+    const __m128 color = _mm_add_ps(_mm_mul_ps(rgb, _mm_set1_ps(saturation)), _mm_set1_ps(offset));
+    // Saturating packs handle negative values. Preserve the scalar path's
+    // zero for a channel that overflowed even though the inputs were finite.
+    const __m128 finite = _mm_cmple_ps(color, _mm_set1_ps(std::numeric_limits<float>::max()));
+    const __m128 capped = _mm_and_ps(finite, _mm_min_ps(color, _mm_set1_ps(255.0f)));
+    const __m128i rounded = _mm_cvttps_epi32(_mm_add_ps(capped, _mm_set1_ps(0.5f)));
+    const __m128i words = _mm_packs_epi32(rounded, rounded);
+    return static_cast<uint32_t>(_mm_cvtsi128_si32(_mm_packus_epi16(words, words))) | 0xff000000u;
 }
 
 }

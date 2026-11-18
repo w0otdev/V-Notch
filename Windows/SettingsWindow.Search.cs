@@ -72,13 +72,11 @@ public partial class SettingsWindow
     private UiScheduledTimer? _searchDebounce;
     private bool _isSearchMode;
     private readonly List<SearchRowEntry> _searchRows = new();
-    private readonly List<SearchRowEntry> _restoreRowsBuffer = new(64);
+    private SearchRowEntry[][] _rowsByParent = [];
     private char[] _searchArena = new char[16384];
     private int _searchArenaLen;
     private VnSettingsSearchRowSpan[] _searchRowSpans = new VnSettingsSearchRowSpan[128];
 
-    private static readonly Comparison<SearchRowEntry> s_restoreOrderComparison =
-        static (a, b) => a.OriginalIndex.CompareTo(b.OriginalIndex);
 
     private void SettingsSearchSurface_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
     {
@@ -299,6 +297,8 @@ public partial class SettingsWindow
                     sectionText));
             }
         }
+        _rowsByParent = _searchRows.GroupBy(row => row.OriginalParent)
+            .Select(group => group.OrderBy(row => row.OriginalIndex).ToArray()).ToArray();
         foreach (var row in _searchRows)
             ObserveSearchRow(row);
         foreach (var button in _navButtons.Values)
@@ -308,21 +308,8 @@ public partial class SettingsWindow
 
     private void RestoreSearchRows()
     {
-        _restoreRowsBuffer.Clear();
-        for (int i = 0; i < _searchRows.Count; i++)
-        {
-            if (!ReferenceEquals(_searchRows[i].Row.Parent, _searchRows[i].OriginalParent))
-                _restoreRowsBuffer.Add(_searchRows[i]);
-        }
-
-        _restoreRowsBuffer.Sort(s_restoreOrderComparison);
-
         _updatingSearchPresentation = true;
-        try
-        {
-            foreach (var row in _restoreRowsBuffer)
-                RestoreSearchRow(row);
-        }
+        try { RestoreRowsExcept(null); }
         finally { _updatingSearchPresentation = false; }
     }
 

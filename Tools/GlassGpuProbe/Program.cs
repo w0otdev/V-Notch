@@ -29,6 +29,8 @@ internal static class Program
             options.RemoveRange(outputIndex, 2);
         }
         args = options.ToArray();
+        if (args.Contains("--latency-source")) return BackdropLatencyProbe.RunSource();
+        if (args.Contains("--backdrop-latency")) return BackdropLatencyProbe.Run();
         if (args.Contains("--freshness-source")) return BackdropFreshnessProbe.RunSource();
         if (args.Contains("--freshness"))
         {

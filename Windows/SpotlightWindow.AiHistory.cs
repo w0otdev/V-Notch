@@ -75,6 +75,7 @@ public partial class SpotlightWindow
     private void SaveAiHistory()
     {
         if (!_settings.SaveAiChatHistory || _aiHistory.Count == 0) return;
+        FlushAiResponse();
         var chat = new SpotlightSavedChat
         {
             Id = _chatId,

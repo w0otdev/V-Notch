@@ -57,15 +57,17 @@ public sealed partial class MagnifierCaptureSource : IDisposable
     private static unsafe partial int NativeTestInstallFrame(
         int handle, byte ready, byte running, int width, int height, byte* pixels, int pixelBytes, long frameAgeMs);
 
-    [LibraryImport(NativeDll, EntryPoint = "vn_backdrop_composite")]
-    private static partial int NativeBackdropComposite(int x, int y, int width, int height, IntPtr destination, out byte ok);
+    [LibraryImport(NativeDll, EntryPoint = "vn_backdrop_composite_frame")]
+    private static partial int NativeBackdropComposite(int x, int y, int width, int height, IntPtr destination,
+        ref ulong publication, int waitMs, out byte ok);
 
-    internal static bool TryCompositeDesktop(int x, int y, int width, int height, IntPtr destination)
+    internal static bool TryCompositeDesktop(int x, int y, int width, int height, IntPtr destination,
+        ref ulong publication, int waitMs)
     {
         if (destination == IntPtr.Zero || width <= 0 || height <= 0) return false;
         try
         {
-            return NativeBackdropComposite(x, y, width, height, destination, out byte ok) == 0 && ok != 0;
+            return NativeBackdropComposite(x, y, width, height, destination, ref publication, waitMs, out byte ok) == 0 && ok != 0;
         }
         catch (Exception ex) when (ex is DllNotFoundException or EntryPointNotFoundException)
         {

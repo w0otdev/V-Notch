@@ -115,10 +115,11 @@ int main() {
 
     constexpr int width = 320, height = 64, samples = 144;
     std::vector<uint32_t> pixels(width * height);
+    uint64_t publication = 0;
     auto capture = [&]() {
         uint8_t ok = 0;
-        if (vn_backdrop_composite(80, 80, width, height, pixels.data(), &ok) != VN_OK || !ok) return false;
-        return true;
+        return vn_backdrop_composite_frame(80, 80, width, height, pixels.data(),
+            &publication, 1000 / samples, &ok) == VN_OK && ok && publication != 0;
     };
     // The public compositor queues cold captures on its worker. Keep this
     // source window pumping messages while WGC/PrintWindow warms up.
@@ -138,16 +139,26 @@ int main() {
     printCalls.store(0);
     printMicroseconds.store(0);
     const auto start = std::chrono::steady_clock::now();
+    // In the app the backdrop worker and the window being sampled have
+    // independent clocks. A capture wait must never delay the next WM_PAINT.
+    bool captureFailed = false;
+    std::thread consumer([&] {
+        for (unsigned sample = 1; sample <= samples; ++sample) {
+            PumpUntil(start + std::chrono::microseconds(sample * 1000000LL / samples));
+            if (!capture()) { captureFailed = true; return; }
+            const uint32_t pixel = pixels[width * height / 2];
+            if (pixel != previous) ++changes;
+            previous = pixel;
+        }
+    });
     for (unsigned frame = 1; frame <= samples; ++frame) {
         sourceFrame.store(frame);
         InvalidateRect(source, nullptr, FALSE);
         UpdateWindow(source);
         PumpUntil(start + std::chrono::microseconds(frame * 1000000LL / samples));
-        if (!capture()) { DestroyWindow(source); return 2; }
-        const uint32_t pixel = pixels[width * height / 2];
-        if (pixel != previous) ++changes;
-        previous = pixel;
     }
+    consumer.join();
+    if (captureFailed) { DestroyWindow(source); return 2; }
     const double seconds = std::chrono::duration<double>(std::chrono::steady_clock::now() - start).count();
     printf("Elapsed: %.3f s; PrintWindow calls: %u; mean PrintWindow: %.2f ms.\n",
         seconds, printCalls.load(), printCalls.load() ? printMicroseconds.load() / 1000.0 / printCalls.load() : 0.0);

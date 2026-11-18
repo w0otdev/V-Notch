@@ -369,7 +369,6 @@ public partial class MainWindow
                 HideMediaBackground();
                 ClearLyrics();
                 UpdatePictureInPictureBadge(false, animate: false);
-                Task.Run(async () => { await Task.Delay(450).ConfigureAwait(false); _mediaService.ArtworkService.TrimMemory(compactWorkingSet: true); }).SafeFireAndForget("MEDIA-STOP-TRIM");
             }
         }
 

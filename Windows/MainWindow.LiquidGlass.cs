@@ -638,12 +638,14 @@ public partial class MainWindow
             lg.ResetPresentedFrameAlignment();
             return;
         }
-        var (_, _, dpiScale, screenLeft, screenTop) = GetOrComputeFrameMetrics();
+        var (notchW, notchH, dpiScale, screenLeft, screenTop) = GetOrComputeFrameMetrics();
         double scaleX = NotchScale?.ScaleX ?? 1.0;
         double scaleY = NotchScale?.ScaleY ?? 1.0;
         if (!double.IsFinite(scaleX) || scaleX <= 0) scaleX = 1.0;
         if (!double.IsFinite(scaleY) || scaleY <= 0) scaleY = 1.0;
-        lg.AlignPresentedFrame(screenLeft, screenTop, dpiScale * scaleX, dpiScale * scaleY);
+        // Same units as the lens snapshot (UpdateShaderGeometryPerFrame: notch * dpi).
+        lg.AlignPresentedFrame(screenLeft, screenTop, notchW * dpiScale, notchH * dpiScale,
+            dpiScale * scaleX, dpiScale * scaleY);
     }
 
     private void ResetGpuBackdropAlignment() => _liquidGlass?.ResetPresentedFrameAlignment();

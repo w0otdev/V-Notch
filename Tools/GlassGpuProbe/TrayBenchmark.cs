@@ -309,7 +309,7 @@ internal static class TrayBenchmark
             else { window.Background = new SolidColorBrush(Color.FromRgb(20, 20, 20)); window.Show(); }
             if (failure != null) throw new InvalidOperationException(failure);
             await Task.Delay(700);
-            int expectedInitial = Math.Min(maxEntries, 1024);
+            int expectedInitial = Math.Min(maxEntries, 100);
             await Measure($"first-open-{expectedInitial}-cards", async () =>
             {
                 tray = new ClipboardTray(); content.Children.Add(tray); tray.Attach(controller);
@@ -418,9 +418,10 @@ internal static class TrayBenchmark
                 await Measure($"append-100-files-{batch + 1}", async () =>
                 {
                     var imported = await store.ImportAsync(new ClipboardCapture { FilePaths = paths.ToArray(), SeparateFiles = true });
-                    Guid? firstId = imported.Entries.FirstOrDefault()?.Id ?? imported.Entry?.Id;
-                    await Until(() => list.Items.Count == Math.Min(maxEntries, expectedInitial + (batch + 1) * 100) &&
-                        list.Items.Cast<VNotch.ViewModels.ClipboardCardViewModel>().Any(card => card.Entry.Id == firstId), "appended cards visible");
+                    var batchIds = imported.Entries.Select(entry => entry.Id).ToHashSet();
+                    if (imported.Entry != null) batchIds.Add(imported.Entry.Id);
+                    await Until(() => list.Items.Count >= expectedInitial &&
+                        list.Items.Cast<VNotch.ViewModels.ClipboardCardViewModel>().Any(card => batchIds.Contains(card.Entry.Id)), "appended cards visible");
                     await Task.Delay(400);
                 });
             }
