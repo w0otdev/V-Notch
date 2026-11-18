@@ -118,11 +118,9 @@ public sealed class ChangelogBlurWave : FrameworkElement
     {
         int w = Math.Max(1, (int)Math.Ceiling(size.Width / BlurSampleSpacing));
         int h = Math.Max(1, (int)Math.Ceiling(size.Height / BlurSampleSpacing));
-        var sample = new DrawingVisual();
-        RenderOptions.SetBitmapScalingMode(sample, BitmapScalingMode.Fant);
-        using (var dc = sample.RenderOpen()) dc.DrawImage(sharp, new Rect(0, 0, w, h));
-        var soft = new RenderTargetBitmap(w, h, 96, 96, PixelFormats.Pbgra32);
-        soft.Render(sample);
+        // Filter the source pixels before the moving band scales the sample back up.
+        var soft = new TransformedBitmap(sharp,
+            new ScaleTransform((double)w / sharp.PixelWidth, (double)h / sharp.PixelHeight));
         soft.Freeze();
         return soft;
     }

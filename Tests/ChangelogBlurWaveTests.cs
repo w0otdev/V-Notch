@@ -14,11 +14,15 @@ namespace VNotch.Tests;
 public sealed class ChangelogBlurWaveTests
 {
     [Theory]
-    [InlineData(Orientation.Horizontal, true)]
-    [InlineData(Orientation.Horizontal, false)]
-    [InlineData(Orientation.Vertical, true)]
-    [InlineData(Orientation.Vertical, false)]
-    public void OnlyTheMovingBandSoftensTheOutgoingPage(Orientation axis, bool forward) => SharedStaTestRunner.Run(() =>
+    [InlineData(Orientation.Horizontal, true, 1.0)]
+    [InlineData(Orientation.Horizontal, false, 1.0)]
+    [InlineData(Orientation.Vertical, true, 1.0)]
+    [InlineData(Orientation.Vertical, false, 1.0)]
+    [InlineData(Orientation.Horizontal, true, 1.25)]
+    [InlineData(Orientation.Horizontal, false, 1.25)]
+    [InlineData(Orientation.Vertical, true, 1.25)]
+    [InlineData(Orientation.Vertical, false, 1.25)]
+    public void OnlyTheMovingBandSoftensTheOutgoingPage(Orientation axis, bool forward, double dpiScale) => SharedStaTestRunner.Run(() =>
     {
         bool oldMotion = AnimationConfig.ReduceMotion;
         var oldSystem = AnimationConfig.ClientAreaAnimationOverride;
@@ -43,6 +47,7 @@ public sealed class ChangelogBlurWaveTests
             }
             page.Background = new DrawingBrush(pattern);
             window.Show();
+            VisualTreeHelper.SetRootDpi(window, new DpiScale(dpiScale, dpiScale));
             window.UpdateLayout();
             wave.Capture(host, axis, forward);
             page.Background = Brushes.Blue;
