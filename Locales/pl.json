@@ -948,6 +948,8 @@
   "update.installingTitle": "Instalowanie aktualizacji",
   "update.openingUpdater": "Uruchamianie programu aktualizującego...",
   "update.pleaseWait": "Proszę czekać...",
+  "update.releaseUnavailable": "Nie udało się zweryfikować informacji o wydaniach. Sprawdź połączenie i spróbuj ponownie.",
+  "update.localOnly": "Tryb lokalny blokuje sprawdzanie aktualizacji przez internet.",
   "update.preparing": "Przygotowywanie pobierania...",
   "update.readyToUpdate": "Gotowy do aktualizacji",
   "update.version": "Wersja v{0}",

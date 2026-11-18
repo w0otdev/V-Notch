@@ -192,32 +192,43 @@ public sealed partial class ReleaseFeedIntegrationTests(ITestOutputHelper output
         }
     }
 
-    [Fact]
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
     [Trait("Category", "DesktopIntegration")]
-    public async Task PublicReleaseFeedLoadsThroughNativeTransportWhenApiIsUnavailable()
+    public async Task PublicReleaseHistoryLoadsWhenOneEndpointIsUnavailable(bool atomUnavailable)
     {
-        using var client = new HttpClient(new RateLimitedApiHandler
+        var privacy = new NetworkPrivacy();
+        privacy.Apply(new() { EnableLocalOnlyMode = false });
+        using var client = new HttpClient(privacy.CreateHandler(NetworkFeature.Updates, new SingleEndpointOutage(atomUnavailable)
         {
             InnerHandler = NetworkPrivacy.CreateHttpHandler()
-        })
+        }))
         { Timeout = TimeSpan.FromSeconds(30) };
         using var updater = new UpdateService(client, new UpdateSecurityPolicy());
         var releases = await updater.GetAllReleasesAsync();
         Assert.NotEmpty(releases);
+        Assert.Contains(releases, release => !string.IsNullOrWhiteSpace(release.ReleaseNotes));
         Assert.All(releases, release =>
         {
             Assert.True(UpdateService.TryParseReleaseVersion(release.Version, out _, out _));
             Assert.False(release.IsNewerVersion);
             Assert.Empty(release.DownloadUrl);
         });
-        output.WriteLine($"Loaded {releases.Count} live release entries; newest feed entry: {releases[0].Version}.");
+        var latest = await updater.CheckForUpdatesAsync(forceRefresh: true);
+        Assert.NotNull(latest);
+        output.WriteLine($"Loaded {releases.Count} live releases. Installed {updater.CurrentVersion}, checked {latest.Version}.");
     }
 
-    private sealed class RateLimitedApiHandler : DelegatingHandler
+    private sealed class SingleEndpointOutage(bool atomUnavailable) : DelegatingHandler
     {
-        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken) =>
-            request.RequestUri!.Host == "api.github.com"
-                ? Task.FromResult(new HttpResponseMessage(HttpStatusCode.Forbidden))
-                : base.SendAsync(request, cancellationToken);
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+        {
+            if (atomUnavailable && request.RequestUri!.AbsolutePath.EndsWith("/releases.atom", StringComparison.Ordinal))
+                return Task.FromResult(new HttpResponseMessage(HttpStatusCode.ServiceUnavailable));
+            if (!atomUnavailable && request.RequestUri!.Host == "api.github.com")
+                return Task.FromResult(new HttpResponseMessage(HttpStatusCode.Forbidden));
+            return base.SendAsync(request, cancellationToken);
+        }
     }
 }

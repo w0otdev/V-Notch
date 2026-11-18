@@ -948,6 +948,8 @@
   "update.installingTitle": "Instalando actualización",
   "update.openingUpdater": "Abriendo actualizador...",
   "update.pleaseWait": "Espere por favor...",
+  "update.releaseUnavailable": "No se pudo verificar la información de las versiones. Comprueba la conexión y vuelve a intentarlo.",
+  "update.localOnly": "El modo solo local bloquea las consultas de actualizaciones en línea.",
   "update.preparing": "Preparando descarga...",
   "update.readyToUpdate": "Listo para actualizar",
   "update.version": "Versión v{0}",

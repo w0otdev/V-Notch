@@ -15,13 +15,15 @@ namespace VNotch.Windows;
 public partial class ChangelogWindow : Window
 {
     private readonly IUpdateService _updateService;
+    private readonly Func<bool> _canUseNetwork;
     private List<ChangelogEntry> _changelogEntries = new();
 
-    public ChangelogWindow(IUpdateService updateService)
+    public ChangelogWindow(IUpdateService updateService, Func<bool>? canUseNetwork = null)
     {
         InitializeComponent();
         AnimationPrimitives.ApplyFpsToTree(this);
         _updateService = updateService ?? throw new ArgumentNullException(nameof(updateService));
+        _canUseNetwork = canUseNetwork ?? (() => NetworkPrivacy.Current.IsAllowed(NetworkFeature.Updates));
 
         Language = System.Windows.Markup.XmlLanguage.GetLanguage(Loc.GetCulture().IetfLanguageTag);
         Title = Loc.Get("changelog.windowTitle");
@@ -68,7 +70,7 @@ public partial class ChangelogWindow : Window
             var allReleases = await _updateService.GetAllReleasesAsync();
             if (allReleases.Count == 0)
             {
-                ShowError(Loc.Get("changelog.loadFailed"));
+                ShowError(Loc.Get(_canUseNetwork() ? "update.releaseUnavailable" : "update.localOnly"));
                 return;
             }
             var currentVersion = _updateService.CurrentVersion;

@@ -948,6 +948,8 @@
   "update.installingTitle": "Update wird installiert",
   "update.openingUpdater": "Updater wird geöffnet...",
   "update.pleaseWait": "Bitte warten...",
+  "update.releaseUnavailable": "Release-Informationen konnten nicht geprüft werden. Prüfe deine Verbindung und versuche es erneut.",
+  "update.localOnly": "Im rein lokalen Modus sind Online-Abfragen für Updates gesperrt.",
   "update.preparing": "Download wird vorbereitet...",
   "update.readyToUpdate": "Bereit zum Aktualisieren",
   "update.version": "Version v{0}",

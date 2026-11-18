@@ -948,6 +948,8 @@
   "update.installingTitle": "正在安装更新",
   "update.openingUpdater": "正在启动更新程序…",
   "update.pleaseWait": "请稍候…",
+  "update.releaseUnavailable": "无法验证版本信息。请检查网络连接后重试。",
+  "update.localOnly": "仅本地模式已阻止在线检查更新。",
   "update.preparing": "正在准备下载…",
   "update.readyToUpdate": "准备安装更新",
   "update.version": "新版本 v{0}",

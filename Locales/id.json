@@ -948,6 +948,8 @@
   "update.installingTitle": "Menginstal Pembaruan",
   "update.openingUpdater": "Membuka penginstal pembaruan...",
   "update.pleaseWait": "Harap tunggu...",
+  "update.releaseUnavailable": "Informasi rilis tidak dapat diverifikasi. Periksa koneksi Anda dan coba lagi.",
+  "update.localOnly": "Mode lokal saja memblokir pemeriksaan pembaruan daring.",
   "update.preparing": "Mempersiapkan pengunduhan...",
   "update.readyToUpdate": "Siap Memperbarui",
   "update.version": "Versi v{0}",

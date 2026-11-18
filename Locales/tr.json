@@ -948,6 +948,8 @@
   "update.installingTitle": "Güncelleme Yükleniyor",
   "update.openingUpdater": "Güncelleyici başlatılıyor...",
   "update.pleaseWait": "Lütfen bekleyin...",
+  "update.releaseUnavailable": "Sürüm bilgileri doğrulanamadı. Bağlantınızı kontrol edip yeniden deneyin.",
+  "update.localOnly": "Yalnızca yerel mod, çevrimiçi güncelleme denetimlerini engeller.",
   "update.preparing": "İndirme hazırlanıyor...",
   "update.readyToUpdate": "Güncellemeye Hazır",
   "update.version": "Sürüm v{0}",

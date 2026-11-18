@@ -948,6 +948,8 @@
   "update.installingTitle": "Установка обновления",
   "update.openingUpdater": "Запуск программы обновления...",
   "update.pleaseWait": "Пожалуйста, подождите...",
+  "update.releaseUnavailable": "Не удалось проверить сведения о выпусках. Проверьте подключение и повторите попытку.",
+  "update.localOnly": "В локальном режиме проверка обновлений через интернет отключена.",
   "update.preparing": "Подготовка к загрузке...",
   "update.readyToUpdate": "Всё готово к обновлению",
   "update.version": "Версия v{0}",

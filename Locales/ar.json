@@ -948,6 +948,8 @@
   "update.installingTitle": "جارٍ تثبيت التحديث",
   "update.openingUpdater": "جارٍ فتح برنامج التحديث...",
   "update.pleaseWait": "يرجى الانتظار...",
+  "update.releaseUnavailable": "تعذّر التحقق من معلومات الإصدار. تحقّق من اتصالك وحاول مجددًا.",
+  "update.localOnly": "يمنع الوضع المحلي فقط الاتصال بخدمة التحديثات.",
   "update.preparing": "جارٍ التحضير للتنزيل...",
   "update.readyToUpdate": "جاهز للتحديث",
   "update.version": "الإصدار v{0}",

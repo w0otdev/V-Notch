@@ -667,7 +667,7 @@ public partial class SettingsWindow : Window
 
         CheckUpdateButton.Content = Loc.Get("settings.checkUpdate");
         DownloadUpdateButton.Content = Loc.Get("settings.downloadInstall");
-        UpdateStatusText.Text = Loc.Get("settings.upToDate");
+        _updatePresenter.RefreshCheckStatus(_settings.EnableLocalOnlyMode);
         CurrentVersionText.Text = Loc.Get("settings.currentVersion", GetAppVersion());
         ViewChangelogButton.Content = Loc.Get("settings.btn.changelog");
         ReportBugLabel.Text = Loc.Get("settings.reportBug");
@@ -805,8 +805,7 @@ public partial class SettingsWindow : Window
         if (IncludePrereleaseUpdatesCheck != null) IncludePrereleaseUpdatesCheck.IsEnabled = !isLocalOnly;
         if (EnableOnlineArtworkCheck != null) EnableOnlineArtworkCheck.IsEnabled = !isLocalOnly;
         if (EnableOnlineLyricsCheck != null) EnableOnlineLyricsCheck.IsEnabled = !isLocalOnly;
-        if (CheckUpdateButton != null) CheckUpdateButton.IsEnabled = !isLocalOnly;
-        if (DownloadUpdateButton != null) DownloadUpdateButton.IsEnabled = !isLocalOnly;
+        _updatePresenter.RefreshCheckStatus(isLocalOnly);
     }
 
     private void UpdatePrivacyNetworkSection(bool isLocalOnly, bool animate)

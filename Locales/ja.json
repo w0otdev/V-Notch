@@ -948,6 +948,8 @@
   "update.installingTitle": "アップデートをインストール中",
   "update.openingUpdater": "アップデーターを開いています...",
   "update.pleaseWait": "少々お待ちください...",
+  "update.releaseUnavailable": "リリース情報を確認できませんでした。接続を確認して、もう一度お試しください。",
+  "update.localOnly": "ローカル専用モードでは、オンラインで更新を確認できません。",
   "update.preparing": "ダウンロードを準備中...",
   "update.readyToUpdate": "更新の準備完了",
   "update.version": "バージョン v{0}",

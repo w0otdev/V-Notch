@@ -124,6 +124,46 @@ public sealed class UpdateFeedFallbackTests
     }
 
     [Fact]
+    public async Task UnavailableAtomUsesPublishedApiNotesAndRequiresSignedAssets()
+    {
+        using var fixture = new Fixture { FeedUnavailable = true, ApiReleases = """
+            [
+              {"tag_name":"v99.2.0","body":"Draft","draft":true,"published_at":null},
+              {"tag_name":"v99.1.0","body":"Published notes","draft":false,"published_at":"2026-10-31T00:00:00Z"}
+            ]
+            """ };
+        using var service = fixture.Service();
+        Assert.Null(await service.CheckForUpdatesAsync());
+        var history = Assert.Single(await service.GetAllReleasesAsync());
+        Assert.Equal("Published notes", history.ReleaseNotes);
+        Assert.Empty(history.DownloadUrl);
+        fixture.Sign("99.1.0", UpdateService.SetupName);
+        var update = await service.CheckForUpdatesAsync(forceRefresh: true);
+        Assert.NotNull(update);
+        Assert.True(update.IsNewerVersion);
+        Assert.Equal("99.1.0", update.Version);
+    }
+
+    [Fact]
+    public void ManualCheckCanRetryAfterFailureAndKeepsTheResultOnRelocalization() => SharedStaTestRunner.RunAsync(async () =>
+    {
+        using var fixture = new Fixture("1.0.0") { FeedUnavailable = true, ApiUnavailable = true };
+        using var service = fixture.Service();
+        var refs = new SettingsUpdateViewRefs(new Window(), new TextBlock(), new Button(), new Button());
+        using var presenter = new SettingsUpdatePresenter(service, refs, () => true);
+        presenter.RefreshCheckStatus(false);
+        Assert.Equal(Loc.Get("tooltip.checkUpdates"), refs.Status.Text);
+        await presenter.CheckForUpdatesAsync(forceRefresh: true);
+        presenter.RefreshCheckStatus(false);
+        Assert.Equal(Loc.Get("update.releaseUnavailable"), refs.Status.Text);
+        Assert.True(refs.Check.IsEnabled);
+        Assert.Equal(Visibility.Collapsed, refs.Download.Visibility);
+        fixture.FeedUnavailable = false;
+        await presenter.CheckForUpdatesAsync(forceRefresh: true);
+        Assert.Equal(Loc.Get("settings.upToDate"), refs.Status.Text);
+    });
+
+    [Fact]
     public void VerifiedFallbackEnablesTheSettingsDownloadAction() => SharedStaTestRunner.RunAsync(async () =>
     {
         using var fixture = new Fixture("99.1.0");
@@ -148,6 +188,7 @@ public sealed class UpdateFeedFallbackTests
         internal List<string> Requests { get; } = [];
         internal string[] Versions = versions;
         internal bool FeedUnavailable, ApiUnavailable;
+        internal string? ApiReleases;
 
         internal UpdateService Service(string? cache = null)
         {
@@ -174,6 +215,7 @@ public sealed class UpdateFeedFallbackTests
             if (request.RequestUri.Host == "api.github.com")
             {
                 if (ApiUnavailable) throw new HttpRequestException("Fixture API offline");
+                if (ApiReleases != null) return new(HttpStatusCode.OK) { Content = new StringContent(ApiReleases) };
                 return new(HttpStatusCode.Forbidden) { Headers = { RetryAfter = new(TimeSpan.FromHours(1)) } };
             }
             Assert.False(request.Headers.Contains("If-None-Match"));

@@ -950,6 +950,8 @@
   "update.installingTitle": "Installing Update",
   "update.openingUpdater": "Opening updater...",
   "update.pleaseWait": "Please wait...",
+  "update.releaseUnavailable": "Couldn’t verify release information. Check your connection and try again.",
+  "update.localOnly": "Local-only mode blocks online update checks.",
   "update.preparing": "Preparing download...",
   "update.readyToUpdate": "Ready to Update",
   "update.version": "Version v{0}",

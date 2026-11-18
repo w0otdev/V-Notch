@@ -950,6 +950,8 @@
   "update.installingTitle": "Đang cài đặt bản cập nhật",
   "update.openingUpdater": "Đang mở trình cập nhật...",
   "update.pleaseWait": "Vui lòng chờ...",
+  "update.releaseUnavailable": "Chưa xác minh được thông tin bản phát hành. Hãy kiểm tra kết nối và thử lại.",
+  "update.localOnly": "Chế độ chỉ cục bộ đang chặn kiểm tra cập nhật qua mạng.",
   "update.preparing": "Đang chuẩn bị tải...",
   "update.readyToUpdate": "Sẵn sàng cập nhật",
   "update.version": "Phiên bản v{0}",

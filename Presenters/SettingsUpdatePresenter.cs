@@ -17,6 +17,7 @@ public sealed class SettingsUpdatePresenter : IDisposable
     private SettingsUpdateViewRefs? _refs;
     private UpdateInfo? _availableUpdate;
     private bool _checking;
+    private string _checkStatusKey = "tooltip.checkUpdates";
     private bool _downloading;
     private readonly CancellationTokenSource _lifetime = new();
     private UpdateDownloadWindow? _progressWindow;
@@ -34,7 +35,12 @@ public sealed class SettingsUpdatePresenter : IDisposable
 
     public async Task CheckForUpdatesAsync(bool forceRefresh = false)
     {
-        if (_refs == null || _checking || _downloading || !_canUseNetwork()) return;
+        if (_refs == null || _checking || _downloading) return;
+        if (!_canUseNetwork())
+        {
+            RefreshCheckStatus(localOnly: true);
+            return;
+        }
         _checking = true;
         try
         {
@@ -51,8 +57,8 @@ public sealed class SettingsUpdatePresenter : IDisposable
                     if (includePrereleases != _includePrereleases()) continue;
                     _availableUpdate = update;
                     bool newer = IsNewerUpdate(update);
-                    string updateText = newer ? Loc.Get("settings.updateAvailable", update!.Version) : Loc.Get("settings.upToDate");
-                    _refs.Status.Text = update == null ? Loc.Get("settings.checkUpdate") : updateText;
+                    _checkStatusKey = update == null ? "update.releaseUnavailable"
+                        : newer ? "settings.updateAvailable" : "settings.upToDate";
 
                     _refs.Download.Visibility = newer ? Visibility.Visible : Visibility.Collapsed;
                     try { UpdateDetected?.Invoke(this, update); }
@@ -65,7 +71,8 @@ public sealed class SettingsUpdatePresenter : IDisposable
                 catch (Exception ex)
                 {
                     RuntimeLog.Error("SETTINGS", ex, "Update check failed");
-                    if (_refs != null) _refs.Status.Text = Loc.Get("error.updateStatus", ex.Message);
+                    _availableUpdate = null;
+                    _checkStatusKey = "update.releaseUnavailable";
                 }
 
                 if (_refs == null || includePrereleases == _includePrereleases()) break;
@@ -74,17 +81,30 @@ public sealed class SettingsUpdatePresenter : IDisposable
         finally
         {
             _checking = false;
-            if (_refs != null) _refs.Check.IsEnabled = _canUseNetwork();
+            RefreshCheckStatus(localOnly: !_canUseNetwork());
         }
+    }
+
+    internal void RefreshCheckStatus(bool localOnly)
+    {
+        if (_refs == null || _downloading) return;
+        _refs.Check.IsEnabled = !localOnly && !_checking;
+        _refs.Download.IsEnabled = !localOnly;
+        if (localOnly) _refs.Status.Text = Loc.Get("update.localOnly");
+        else if (_checking) _refs.Status.Text = Loc.Get("settings.checkingUpdates");
+        else if (_checkStatusKey == "settings.updateAvailable" && _availableUpdate != null)
+            _refs.Status.Text = Loc.Get(_checkStatusKey, _availableUpdate.Version);
+        else _refs.Status.Text = Loc.Get(_checkStatusKey);
     }
 
     public Task RefreshUpdateChannelAsync()
     {
         _availableUpdate = null;
+        _checkStatusKey = "tooltip.checkUpdates";
         if (_refs != null)
         {
             _refs.Download.Visibility = Visibility.Collapsed;
-            _refs.Status.Text = Loc.Get("settings.checkUpdate");
+            RefreshCheckStatus(localOnly: !_canUseNetwork());
         }
         return CheckForUpdatesAsync();
     }
@@ -171,7 +191,7 @@ public sealed class SettingsUpdatePresenter : IDisposable
         if (_refs == null) return;
         try
         {
-            new ChangelogWindow(_service)
+            new ChangelogWindow(_service, _canUseNetwork)
             {
                 Owner = _refs.Owner,
                 WindowStartupLocation = WindowStartupLocation.CenterOwner

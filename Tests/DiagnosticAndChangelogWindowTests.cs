@@ -219,6 +219,21 @@ public sealed class DiagnosticAndChangelogWindowTests
     });
 
     [Fact]
+    public void UnavailableChangelogExplainsWhetherLocalOnlyModeIsActive() => SharedStaTestRunner.RunAsync(async () =>
+    {
+        LiquidGlassSpotlightTests.CreateApplicationResources();
+        bool online = true;
+        using var fixture = new ChangelogFixture("2.4.1", [], canUseNetwork: () => online);
+        await (Task)Invoke(fixture.Window, "LoadChangelog")!;
+        Assert.Equal(Loc.Get("update.releaseUnavailable"), fixture.Window.ErrorText.Text);
+        online = false;
+        await (Task)Invoke(fixture.Window, "LoadChangelog")!;
+        Assert.Equal(Loc.Get("update.localOnly"), fixture.Window.ErrorText.Text);
+        Assert.Equal(Visibility.Visible, fixture.Window.ErrorPanel.Visibility);
+        Assert.Equal(Visibility.Collapsed, fixture.Window.LoadingText.Visibility);
+    });
+
+    [Fact]
     public void ChangelogFailureShowsErrorAndClearsLoading() => SharedStaTestRunner.RunAsync(async ct =>
     {
         LiquidGlassSpotlightTests.CreateApplicationResources();
@@ -251,10 +266,10 @@ public sealed class DiagnosticAndChangelogWindowTests
         public event EventHandler<UpdateInfo?>? UpdateCheckCompleted { add { /* no-op */ } remove { /* no-op */ } }
         public UpdateInfo? LatestUpdateInfo => null;
         internal ChangelogWindow Window { get; }
-        internal ChangelogFixture(string installed, IReadOnlyList<UpdateInfo> releases, bool fail = false)
+        internal ChangelogFixture(string installed, IReadOnlyList<UpdateInfo> releases, bool fail = false, Func<bool>? canUseNetwork = null)
         {
             CurrentVersion = installed; _releases = releases; _fail = fail;
-            Window = new ChangelogWindow(this);
+            Window = new ChangelogWindow(this, canUseNetwork);
         }
         public Task<IReadOnlyList<UpdateInfo>> GetAllReleasesAsync() => _fail
             ? Task.FromException<IReadOnlyList<UpdateInfo>>(new InvalidOperationException("test failure")) : Task.FromResult(_releases);

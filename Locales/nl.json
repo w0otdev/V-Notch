@@ -948,6 +948,8 @@
   "update.installingTitle": "Update installeren",
   "update.openingUpdater": "Updater starten...",
   "update.pleaseWait": "Even geduld...",
+  "update.releaseUnavailable": "De releasegegevens konden niet worden gecontroleerd. Controleer je verbinding en probeer het opnieuw.",
+  "update.localOnly": "De lokale modus blokkeert het online zoeken naar updates.",
   "update.preparing": "Download voorbereiden...",
   "update.readyToUpdate": "Klaar om bij te werken",
   "update.version": "Versie v{0}",
