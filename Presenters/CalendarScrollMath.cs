@@ -6,7 +6,6 @@ namespace VNotch.Presenters;
 public static partial class CalendarScrollMath
 {
     public const int TotalDays = 11;
-    public const int VisibleDays = 3;
     public const double CellWidth = 30.0;
 
     public static int ClampIndex(int idx)

@@ -366,11 +366,4 @@ public sealed partial class LiquidGlassController : IDisposable
         return t * t * t * (t * (t * 6.0 - 15.0) + 10.0);
     }
 
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    internal static double ExponentialRefract(double x, double a, double b, double c, double d)
-    {
-        double exponent = -d * x - a;
-        double baseVal = Math.Max(c * 2.718281828459045, 0.0001);
-        return 1.0 - b * Math.Pow(baseVal, exponent);
-    }
 }

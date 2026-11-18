@@ -1,8 +1,8 @@
 using System.Reflection;
 using System.Windows;
-using System.Windows.Input;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
+using System.Windows.Input;
 using System.Windows.Media;
 using VNotch.Models;
 using VNotch.Services;
@@ -513,7 +513,7 @@ public sealed class SettingsWindowControlTests
     {
         using var fixture = new Fixture();
         var window = fixture.Window;
-        Assert.Equal(9, window.TranslationModelCombo.Items.Count);
+        Assert.Equal(TranslationModelCatalog.All.Length, window.TranslationModelCombo.Items.Count);
         Assert.Equal(2, window.TranslationModelCombo.Items.Groups!.Count);
         foreach (var model in TranslationModelCatalog.All)
         {

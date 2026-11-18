@@ -36,16 +36,15 @@ public sealed partial class ClipboardTray
         CancelSearch();
         _searchTimer.Stop();
         _entranceWorkTimer ??= CreateEntranceWorkTimer();
+        // With no cards on screen only the header is animating (40 + 320 ms).
+        // A populated tray also waits for the final card's stagger to finish.
+        _entranceWorkTimer.Interval = TimeSpan.FromMilliseconds(_cards.Count == 0 ? 360 : 740);
         _entranceWorkTimer.Start();
     }
 
     private UiScheduledTimer CreateEntranceWorkTimer()
     {
-        var timer = new UiScheduledTimer(DispatcherPriority.Background)
-        {
-            // Last stagger: 60ms + 7 * 40ms + 400ms.
-            Interval = TimeSpan.FromMilliseconds(740)
-        };
+        var timer = new UiScheduledTimer(DispatcherPriority.Background);
         timer.Tick += (_, _) =>
         {
             timer.Stop();
@@ -80,16 +79,28 @@ public sealed partial class ClipboardTray
             {
                 bool visible = IsCardInViewport(element);
                 RefreshCardViewportVisibility(element, visible);
-                if (visible && element.DataContext is ClipboardCardViewModel card && NeedsCardContent(card))
+                if (visible && element.DataContext is ClipboardCardViewModel card && NeedsCardContent(element, card))
                     _ = SafeAsync(() => LoadCardContentAsync(element));
                 else if (!visible) CancelThumbnailLoad(element);
             }
         }));
     }
 
-    private static bool NeedsCardContent(ClipboardCardViewModel card) =>
+    protected override void OnDpiChanged(DpiScale oldDpi, DpiScale newDpi)
+    {
+        base.OnDpiChanged(oldDpi, newDpi);
+        QueueCardContentRefresh();
+    }
+
+    private static ClipboardImagePreview.PixelTarget CardPixelTarget(FrameworkElement element)
+    {
+        var dpi = System.Windows.Media.VisualTreeHelper.GetDpi(element);
+        return new((int)Math.Ceiling(element.ActualWidth * dpi.DpiScaleX), (int)Math.Ceiling(element.ActualHeight * dpi.DpiScaleY));
+    }
+
+    private static bool NeedsCardContent(FrameworkElement element, ClipboardCardViewModel card) =>
         card.NeedsMaskedPreviewSize ||
-        (card.Entry.Kind == ClipboardKind.Image && card.Image == null) ||
+        (card.Entry.Kind == ClipboardKind.Image && (card.Image == null || card.PreviewTarget != CardPixelTarget(element))) ||
         (card.Entry.Kind == ClipboardKind.File && card.PreferredFileIcon == null && card.FileIcon == null) ||
         (card.PreferredSourceIcon == null && card.SourceIcon == null && card.Entry.SourceExecutable.Length != 0);
 
@@ -100,8 +111,9 @@ public sealed partial class ClipboardTray
             !IsCardInViewport(element)) return Task.CompletedTask;
         var controller = _controller;
         if (controller == null || card.Entry.IsPersonal && !controller.Store.IsPersonalUnlocked) return Task.CompletedTask;
-        if (!NeedsCardContent(card)) return Task.CompletedTask;
-        if (_completedContentLoads.TryGetValue(element, out var completed) && ReferenceEquals(completed, card))
+        if (!NeedsCardContent(element, card)) return Task.CompletedTask;
+        if (_completedContentLoads.TryGetValue(element, out var completed) && ReferenceEquals(completed, card) &&
+            (card.Entry.Kind != ClipboardKind.Image || card.PreviewTarget == CardPixelTarget(element)))
             return Task.CompletedTask;
         if (_thumbnailLoads.TryGetValue(element, out var existing) && ReferenceEquals(existing.Card, card)) return existing.Completion;
         CancelThumbnailLoad(element);
@@ -119,6 +131,7 @@ public sealed partial class ClipboardTray
         var card = load.Card;
         var cancellation = load.Cancellation.Token;
         bool acquired = false;
+        ClipboardImagePreview.PixelTarget? attemptedTarget = null;
         bool IsCurrent() => !_disposed && !cancellation.IsCancellationRequested && IsCardInViewport(element)
             && _realizedCardElements.Contains(element) && ReferenceEquals(element.DataContext, card)
             && (!card.Entry.IsPersonal || controller.Store.IsPersonalUnlocked);
@@ -141,15 +154,26 @@ public sealed partial class ClipboardTray
                 if (!IsCurrent()) return;
                 if (icon != null) card.FileIcon = icon;
             }
-            if (card.Entry.Kind != ClipboardKind.Image || card.Image != null || !IsCurrent()) return;
-            var image = await controller.Store.GetImagePreviewAsync(card.Entry.Id, cancellation);
+            if (card.Entry.Kind != ClipboardKind.Image || !IsCurrent()) return;
+            var target = CardPixelTarget(element);
+            if (card.Image != null && card.PreviewTarget == target) return;
+            attemptedTarget = target;
+            var image = await controller.Store.GetImagePreviewAsync(card.Entry.Id, cancellation, target);
             if (IsCurrent()) card.Image = image;
         }
         catch (Exception ex) when (ex is OperationCanceledException or ObjectDisposedException) { /* Intentionally ignored. */ }
         catch (Exception ex) when (IsContentError(ex)) { /* Intentionally ignored. */ }
         finally
         {
-            if (IsCurrent()) _completedContentLoads[element] = card;
+            if (IsCurrent())
+            {
+                _completedContentLoads[element] = card;
+                if (attemptedTarget is { } target)
+                {
+                    card.PreviewTarget = target;
+                    if (target != CardPixelTarget(element)) QueueCardContentRefresh();
+                }
+            }
             if (_thumbnailLoads.TryGetValue(element, out var current) && ReferenceEquals(current, load))
                 _thumbnailLoads.Remove(element);
             if (acquired)

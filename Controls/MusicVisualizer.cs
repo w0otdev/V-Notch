@@ -99,11 +99,10 @@ namespace VNotch.Controls
         private const int BarCount = 5;
         private const double MinHeightRatio = 0.08;
         private const double CaptureRetryIntervalMs = 2500;
-
         #endregion
 
         private readonly Stopwatch _stopwatch = new Stopwatch();
-        private double _lastTickSeconds;
+        private VNotch.Services.AnimationFrameClock _frameClock;
         private DateTime _lastCaptureRetryUtc = DateTime.MinValue;
         private bool _isRenderingActive;
         private bool _holdsCaptureLease;
@@ -228,7 +227,7 @@ namespace VNotch.Controls
             if (_isRenderingActive) return;
             _isRenderingActive = true;
             if (!_stopwatch.IsRunning) _stopwatch.Start();
-            _lastTickSeconds = _stopwatch.Elapsed.TotalSeconds;
+            _frameClock.Reset(Stopwatch.GetTimestamp());
             CompositionTarget.Rendering += OnRendering;
         }
 
@@ -243,9 +242,7 @@ namespace VNotch.Controls
         private void OnRendering(object? sender, EventArgs e)
         {
             double totalSec = _stopwatch.Elapsed.TotalSeconds;
-            double dt = totalSec - _lastTickSeconds;
-            if (dt * 1000 + 0.1 < 1000d / Math.Max(1, VNotch.Services.AnimationConfig.TargetFps)) return;
-            _lastTickSeconds = totalSec;
+            if (!_frameClock.TryAdvance(Stopwatch.GetTimestamp(), VNotch.Services.AnimationConfig.TargetFps, out double dt)) return;
 
             EnsureAudioCaptureStarted();
 

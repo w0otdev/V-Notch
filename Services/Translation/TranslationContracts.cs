@@ -7,6 +7,11 @@ internal sealed record TranslationResult(string Text, string SourceLanguage, str
 {
     internal CurrencyConversion? Currency { get; init; }
     internal bool InputTruncated { get; init; }
+    internal bool IsCached { get; init; }
+    internal bool UsedCpuFallback { get; init; }
+    internal bool InstantPresentation { get; init; }
+    internal bool IsSummary { get; init; }
+    internal bool SummaryReduced { get; init; }
 }
 internal enum TranslationStage { Waiting, CheckingModel, LoadingModel, Translating, FetchingRates }
 
@@ -16,13 +21,21 @@ internal readonly record struct TranslationEngineInput(string Text, int? TokenCo
 
 internal interface ILocalTranslationEngine : IDisposable
 {
+    Task Disposal => Task.CompletedTask;
+    bool InstantPresentation => false;
+    void SetEnabled(bool enabled) { }
     void Configure(TranslationOptions options) { }
     Task PrepareAsync(CancellationToken cancellationToken) => Task.CompletedTask;
     Task<string> FitInputAsync(string text, CancellationToken cancellationToken) => Task.FromResult(text);
     async Task<TranslationEngineInput> FitForTranslationAsync(string text, CancellationToken cancellationToken) =>
         new(await FitInputAsync(text, cancellationToken).ConfigureAwait(false));
     TranslationStage Stage => TranslationStage.Translating;
+    bool IsCpuFallback => false;
+    Task<string> SummarizeAsync(string text, string language, CancellationToken cancellationToken) =>
+        Task.FromException<string>(new TranslationException("translation.summaryModelRequired"));
     Task<string> TranslateAsync(string text, string sourceLanguage, string targetLanguage, CancellationToken cancellationToken);
+    Task<string> TranslateWithPreviewAsync(string text, string sourceLanguage, string targetLanguage, Action<string>? preview, CancellationToken cancellationToken, TranslationLanguageAnalysis? language = null) =>
+        TranslateAsync(text, sourceLanguage, targetLanguage, cancellationToken);
     Task<string> TranslateFittedAsync(TranslationEngineInput input, string sourceLanguage, string targetLanguage, CancellationToken cancellationToken) =>
         TranslateAsync(input.Text, sourceLanguage, targetLanguage, cancellationToken);
     void ReleaseIdleResources();

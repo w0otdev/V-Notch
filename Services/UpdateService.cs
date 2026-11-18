@@ -397,7 +397,6 @@ public sealed partial class UpdateService : IUpdateService, IDisposable
         string? expectedSha256Override = null)
     {
         string? directory = null;
-        string? installerPath = null;
         FileStream? installerLock = null;
         IDisposable? cleanupLease = null;
         var installerStarted = false;
@@ -416,7 +415,7 @@ public sealed partial class UpdateService : IUpdateService, IDisposable
             SafeFileDeletion.ValidatePath(directory);
             cleanupLease = AppFileCleanupService.Protect(directory);
             Directory.CreateDirectory(directory);
-            installerPath = Path.Combine(directory, safeInstallerName);
+            var installerPath = Path.Combine(directory, safeInstallerName);
             installerLock = await DownloadAndVerifyInstallerWithLockAsync(updateInfo, installerPath, progress, cancellationToken, expectedSha256Override).ConfigureAwait(false);
 
             cancellationToken.ThrowIfCancellationRequested();

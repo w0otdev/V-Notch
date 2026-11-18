@@ -7,8 +7,8 @@ using System.Windows.Controls;
 using System.Windows.Documents;
 using System.Windows.Input;
 using System.Windows.Media;
-using VNotch.Models;
 using VNotch.Controls;
+using VNotch.Models;
 using VNotch.Services;
 using VNotch.Services.Spotlight;
 using Xunit;
@@ -79,9 +79,9 @@ public sealed class SpotlightAiPresentationTests
     public void FailedRequestRestoresPromptAndCanRetry(int status, string error) => Run(false, async ct =>
     {
         int attempts = 0;
-        using var client = new HttpClient(new Handler((_, _) => Task.FromResult(++attempts == 1
-            ? new HttpResponseMessage((HttpStatusCode)status) { Content = new StringContent("data: [DONE]\n\n") }
-            : Stream("Retry succeeded"))));
+        using var client = new HttpClient(new Handler((_, _) => Task.FromResult(++attempts == 2
+            ? Stream("Retry succeeded")
+            : new HttpResponseMessage((HttpStatusCode)status) { Content = new StringContent("data: [DONE]\n\n") })));
         using var fixture = new SpotlightWindowFixture(Settings(), new SpotlightAiService(client));
         var window = fixture.Window;
         window.ShowSpotlight();
@@ -99,6 +99,12 @@ public sealed class SpotlightAiPresentationTests
         Assert.Equal(2, attempts);
         Assert.Equal("Retry succeeded", Field<List<SpotlightAiMessage>>(window, "_aiHistory")[1].Content);
         Assert.Null(window.AiStatus.Tag);
+        window.SearchBox.Text = "Follow-up";
+        await (Task)Invoke(window, "SendAiAsync")!;
+        var history = Field<List<SpotlightAiMessage>>(window, "_aiHistory");
+        Assert.Equal(2, history.Count);
+        Assert.Equal("Retry succeeded", history[1].Content);
+        Assert.Equal("Follow-up", window.SearchBox.Text);
         await WpfFrameWaiter.NextAsync(ct);
     });
 
@@ -352,12 +358,44 @@ public sealed class SpotlightAiPresentationTests
             !Field<bool>(window, "_entranceActive") && !window.ContentRegion.ClipToBounds &&
             window.ContentRegion.ActualHeight >= window.AiPanel.ActualHeight,
             "working orb visible after content expansion", ct);
-        Assert.Equal(ThinkingOrbState.Working, working.State);
+        Assert.True(working.RandomizeStates);
+        Assert.Contains(working.State, new[] { ThinkingOrbState.Searching, ThinkingOrbState.Shaping,
+            ThinkingOrbState.Listening, ThinkingOrbState.Solving });
+        var agentLabel = Field<AgentOrbLabel>(window, "_aiThinkingLabel");
+        var thinkingLabel = agentLabel.CurrentLabel;
+        Assert.Equal(Loc.Get("spotlight.ai.agent." + working.State.ToString().ToLowerInvariant()), thinkingLabel.Text);
+        var labelSize = thinkingLabel.RenderSize;
+        byte[] initialLabel = TranslationLoadingMotionTests.Pixels(thinkingLabel);
+        await WpfFrameWaiter.UntilAsync(() => !TranslationLoadingMotionTests.Pixels(thinkingLabel).SequenceEqual(initialLabel),
+            "thinking label shimmers while waiting", ct);
+        Assert.Equal(labelSize, thinkingLabel.RenderSize);
+        var firstState = working.State;
+        await WpfFrameWaiter.UntilAsync(() => working.State != firstState,
+            "waiting orb changes to a different reference state", ct);
+        await WpfFrameWaiter.UntilAsync(() => working.AgentTransition.Progress is > .02 and < .95,
+            "orb and text are midway through the same scroll and fade", ct);
+        Assert.Equal(Loc.Get("spotlight.ai.agent." + working.State.ToString().ToLowerInvariant()), thinkingLabel.Text);
+        Assert.Equal(working.AgentTransition.Progress, thinkingLabel.Opacity);
+        Assert.Equal(1 - working.AgentTransition.Progress, agentLabel.OutgoingLabel.Opacity);
+        Assert.True(((TranslateTransform)thinkingLabel.RenderTransform).Y > 0);
+        Assert.True(((TranslateTransform)agentLabel.OutgoingLabel.RenderTransform).Y < 0);
+        Assert.Equal(labelSize, thinkingLabel.RenderSize);
         CaptureOrbPreview(window, "working");
+        int captureFrames = Environment.GetEnvironmentVariable("VNOTCH_AGENT_ORB_CAPTURE") == "1" ? 400 :
+            Environment.GetEnvironmentVariable("TRANSLATION_ORB_CAPTURE") == "1" ? 45 : 0;
+        if (captureFrames > 0)
+        {
+            for (int frame = 0; frame < captureFrames; frame++)
+            {
+                CaptureOrbPreview(window, $"thinking-{frame:000}");
+                await Task.Delay(40, ct);
+            }
+        }
 
         AnimationConfig.SetReduceMotion(true);
         Assert.True(working.IsActive);
         Assert.False(working.IsAnimating);
+        Assert.Null(thinkingLabel.OpacityMask);
         AnimationConfig.SetReduceMotion(false);
         Assert.True(working.IsAnimating);
         window.HideSpotlight();
@@ -367,12 +405,16 @@ public sealed class SpotlightAiPresentationTests
         await WpfFrameWaiter.UntilAsync(() => working.IsAnimating && !Field<bool>(window, "_entranceActive"),
             "working orb resumed", ct);
 
+        var handoffState = working.State;
         release.SetResult();
         await WpfFrameWaiter.UntilAsync(() => window.AiActivityOrb.IsAnimating &&
             Field<string>(window, "_aiStatusKey") == "spotlight.ai.streaming", "composing orb visible", ct);
         Assert.False(working.IsAnimating);
         Assert.Null(Field<ThinkingOrb?>(window, "_aiThinkingOrb"));
-        Assert.Equal(ThinkingOrbState.Composing, window.AiActivityOrb.State);
+        Assert.True(window.AiActivityOrb.RandomizeStates);
+        Assert.Equal(handoffState, window.AiActivityOrb.State);
+        Assert.Equal(Loc.Get("spotlight.ai.agent." + handoffState.ToString().ToLowerInvariant()), window.AiActivityLabel.CurrentLabel.Text);
+        Assert.Equal(Visibility.Collapsed, window.AiStatus.Visibility);
         await WpfFrameWaiter.UntilAsync(() => Descendants<RichTextBox>(window.AiTranscript).Any(view =>
             new TextRange(view.Document.ContentStart, view.Document.ContentEnd).Text.Contains("orb follows")),
             "response text revealed beside composing orb", ct);

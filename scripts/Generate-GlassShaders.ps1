@@ -10,12 +10,14 @@ $core = [regex]::Replace($core, 'float\s+(\w+)\s*:\s*register\(c(\d+)\);', {
     '#define ' + $m.Groups[1].Value + ' lens[' + $m.Groups[2].Value + '].x'
 })
 if ($count -ne 32) { throw "Expected 32 glass shader constants; found $count." }
-$core = $core -replace 'float4 main\(float2 uv : TEXCOORD\) : COLOR', 'float4 glassRefraction(float2 uv)'
 $prefix = [IO.File]::ReadAllText((Join-Path $Root 'Shaders/GlassGpu.hlsl'))
 $suffix = @'
 float4 refractPs(VertexOutput i) : SV_Target
 {
-    return glassRefraction(i.position.xy / max(float2(srcW, srcH), 1));
+    float2 inverseSize = float2(lens[0].y, lens[1].y);
+    if (min(min(srcW, srcH), min(notchW, notchH)) < 1.0)
+        return sampleSource(saturate(i.position.xy * inverseSize));
+    return shadeGlass(i.position.xy, inverseSize);
 }
 '@
 $shader = $prefix + "`n#define tex2D(s, uv) sampleSource(uv)`n" + $core + "`n" + $suffix
@@ -72,7 +74,7 @@ $header = [Text.StringBuilder]::new()
 [void]$header.AppendLine('// Generated shader bytecode. Do not edit; see Generate-GlassShaders.ps1.')
 [void]$header.AppendLine('#pragma once')
 [void]$header.AppendLine('namespace vnotch::graphics::shaders {')
-foreach ($entry in @('fullscreenVs', 'cropPs', 'downPs', 'upPs', 'resolvePs', 'copyPs', 'refractPs', 'opaqueWindowPs')) {
+foreach ($entry in @('fullscreenVs', 'cropPs', 'downPs', 'upPs', 'upResolvePs', 'resolvePs', 'copyPs', 'refractPs', 'opaqueWindowPs')) {
     $profile = if ($entry -eq 'fullscreenVs') { 'vs_4_0' } else { 'ps_4_0' }
     $bytes = [VNotch.Build.GlassShaderCompiler]::Compile($shader, $entry, $profile)
     [void]$header.AppendLine("inline constexpr unsigned char $entry[] = {")

@@ -1,7 +1,7 @@
-using System.Security.Cryptography;
 using System;
 using System.IO;
 using System.Runtime.InteropServices;
+using System.Security.Cryptography;
 using System.Windows;
 using VNotch.Windows;
 

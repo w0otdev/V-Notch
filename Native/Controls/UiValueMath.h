@@ -23,13 +23,6 @@ inline double MathF64Max(double a, double b) noexcept
     return a > b ? a : b;
 }
 
-inline double MathF64Min(double a, double b) noexcept
-{
-    if (std::isnan(a) || std::isnan(b))
-        return std::numeric_limits<double>::quiet_NaN();
-    return a < b ? a : b;
-}
-
 inline int32_t UncheckedRoundToInt32(double value) noexcept
 {
     if (!std::isfinite(value))

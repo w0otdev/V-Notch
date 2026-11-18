@@ -153,13 +153,6 @@ internal static partial class DynamicIslandColorExtractor
         return valid != 0 ? new Int32Rect(x, y, w, h) : null;
     }
 
-    public static Color GetDominantColor(BitmapSource bitmap)
-    {
-        var result = ExtractAdvancedPalette(bitmap);
-        if (result.IsMonotone) return Colors.White;
-        return result.Primary != default ? result.Primary : Color.FromRgb(30, 30, 30);
-    }
-
     public static double GetAdaptiveBlurOpacity(double luminance, double brightnessBoost = 1.0)
     {
         vn_dicolor_get_adaptive_blur_opacity(luminance, brightnessBoost, out double opacity);

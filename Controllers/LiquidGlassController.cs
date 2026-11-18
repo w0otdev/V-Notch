@@ -426,6 +426,7 @@ public sealed partial class LiquidGlassController : IDisposable
         _regionProvider = regionProvider ?? throw new ArgumentNullException(nameof(regionProvider));
         _dispatcher = host.Dispatcher;
         _logTag = logTag;
+        CompositeBackdropCapture = CaptureCompositeFrame;
         _maxRegionW = Math.Clamp(maxRegionWidth, 64, 4096);
         _maxRegionH = Math.Clamp(maxRegionHeight, 64, 4096);
 
@@ -487,7 +488,9 @@ public sealed partial class LiquidGlassController : IDisposable
     internal static double ChooseFrameIntervalMs(double activeIntervalMs, bool idle, bool animating,
         bool hasFrame, long unchangedMilliseconds, bool forceRefresh = false) =>
         idle && !animating && hasFrame && unchangedMilliseconds >= 250 && !forceRefresh
-            ? Math.Max(100, activeIntervalMs) : activeIntervalMs;
+            // A different window can move underneath a silent capture session.
+            // Keep checking coverage and polling sources which lack notifications.
+            ? Math.Max(1000.0 / 30, activeIntervalMs) : activeIntervalMs;
 
     internal static double ChooseProcessingIntervalMs(double intervalMs, double workMs, bool gpuMode) =>
         gpuMode ? intervalMs : Math.Max(intervalMs, Math.Min(100, workMs * 1.25));
@@ -582,8 +585,6 @@ public sealed partial class LiquidGlassController : IDisposable
             _mapsDirty = true;
         }
     }
-
-    public void SetCaptureExclusion(bool exclude) { /* no-op */ }
 
     public bool HasPresentedFrame => _hasVisibleFrame;
     internal long FrameSubmissionCount => Interlocked.Read(ref _totalPresentedFrames);
@@ -774,7 +775,7 @@ public sealed partial class LiquidGlassController : IDisposable
                     return false;
                 }
                 if (_currentDisplayAffinityHwnd == hwnd && _currentDisplayAffinity == (int)affinity) return true;
-                if (!SetWindowDisplayAffinity(hwnd, affinity)) return false;
+                if (!ApplyWindowCapturePolicy(hwnd)) return false;
                 _currentDisplayAffinityHwnd = hwnd;
                 _currentDisplayAffinity = (int)affinity;
                 // The worker must see the committed exclusion before capturing, but

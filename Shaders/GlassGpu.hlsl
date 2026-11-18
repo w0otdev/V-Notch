@@ -12,6 +12,12 @@ cbuffer GlassConstants : register(b0)
     float4 sourceRegion;   // active/capacity ratio, half texel in capacity space
     float4 detailRegion;
 };
+// Animation edge bleed in pixels, packed in the unused .y of the notchW register.
+#define GLASS_BLEED lens[2].y
+// Optical rim width in pixels, packed in the unused .y of the notchH register.
+#define GLASS_RIM lens[3].y
+// The native renderer resolves the configured blur before drawing the lens.
+#define GLASS_PREFILTERED_BACKDROP 1
 float4 sampleSource(float2 uv) { return sourceTexture.Sample(linearSampler, clamp(uv * sourceRegion.xy, sourceRegion.zw, sourceRegion.xy - sourceRegion.zw)); }
 float4 sampleDetail(float2 uv) { return detailTexture.Sample(linearSampler, clamp(uv * detailRegion.xy, detailRegion.zw, detailRegion.xy - detailRegion.zw)); }
 struct VertexOutput { float4 position : SV_Position; float2 uv : TEXCOORD0; };
@@ -44,7 +50,7 @@ float4 downPs(VertexOutput i) : SV_Target
     s += sampleSource(i.uv + d);
     return s / 8;
 }
-float4 upPs(VertexOutput i) : SV_Target
+float4 upSample(VertexOutput i)
 {
     float2 d = passInfo.xy * passInfo.z;
     float4 s = sampleSource(i.uv + float2(-2*d.x, 0));
@@ -59,13 +65,17 @@ float4 upPs(VertexOutput i) : SV_Target
     // keeps the blur continuous across powers of two instead of popping levels.
     return lerp(sampleDetail(i.uv), s / 12, passInfo.w);
 }
-float4 resolvePs(VertexOutput i) : SV_Target
+float4 upPs(VertexOutput i) : SV_Target { return upSample(i); }
+float4 ditheredSrgb(float3 linearColor, float2 position)
 {
-    float3 c = linearToSrgb(sampleSource(i.uv).rgb);
+    float3 c = linearToSrgb(linearColor);
     // Stable sub-LSB dither masks quantization in smooth, dark gradients.
-    float dither = (frac(52.9829189 * frac(dot(i.position.xy + cropRect.xy, float2(0.06711056, 0.00583715)))) - 0.5) / 255;
+    float dither = (frac(52.9829189 * frac(dot(position + cropRect.xy, float2(0.06711056, 0.00583715)))) - 0.5) / 255;
     return float4(saturate(c + dither), 1);
 }
+float4 resolvePs(VertexOutput i) : SV_Target { return ditheredSrgb(sampleSource(i.uv).rgb, i.position.xy); }
+// Final up pass and resolve in one draw: skips a full-resolution FP16 write+read.
+float4 upResolvePs(VertexOutput i) : SV_Target { return ditheredSrgb(upSample(i).rgb, i.position.xy); }
 float4 copyPs(VertexOutput i) : SV_Target { return sampleSource(i.uv); }
 
 // GPU window composition: reject empty/transparent WGC frames without readback.

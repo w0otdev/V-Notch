@@ -28,9 +28,6 @@ public interface IWindowTitleScanner
 
 public sealed partial class WindowTitleScanner : IWindowTitleScanner, IDisposable
 {
-    private const string HttpsPrefix = "https://";
-    private const string SpotifyWebPlayerHost = "open.spotify.com";
-
 
     [LibraryImport("VNotch.Native.dll")]
     private static partial int vn_wtscanner_matches_platform_title(

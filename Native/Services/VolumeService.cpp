@@ -11,10 +11,6 @@ public:
         return std::clamp(volume, 0.0f, 1.0f);
     }
 
-    static constexpr bool IsTargetRenderMultimediaEndpoint(int32_t data_flow, int32_t role) noexcept {
-        // DataFlow.Render == 0, Role.Multimedia == 1
-        return data_flow == 0 && role == 1;
-    }
 };
 
 } // namespace vnotch::services

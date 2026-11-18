@@ -62,7 +62,7 @@ public static partial class ClipboardClassifier
         return isImage != 0;
     }
 
-    public static string[] Classify(string text, ClipboardKind kind)
+    public static string[] Classify(string text)
     {
         if (string.IsNullOrWhiteSpace(text)) return Array.Empty<string>();
 

@@ -5,12 +5,14 @@ using System.Windows;
 using System.Windows.Automation;
 using System.Windows.Input;
 using System.Windows.Interop;
+using System.Xml.Linq;
 using VNotch.Services;
 using VNotch.Windows;
 using Xunit;
 
 namespace VNotch.Tests;
 
+[Collection("Localization")]
 public class DialogEnterKeyAndTranslationWindowTests
 {
     private static void RunOnSta(Action action)
@@ -86,7 +88,7 @@ public class DialogEnterKeyAndTranslationWindowTests
     }
 
     [Fact]
-    public void TranslationWindow_EnterKey_DoesNotTriggerTranslateWhenSecondaryButtonFocused()
+    public void TranslationWindow_EnterKey_DoesNotTriggerSummaryWhenSecondaryButtonFocused()
     {
         RunOnSta(() =>
         {
@@ -96,8 +98,8 @@ public class DialogEnterKeyAndTranslationWindowTests
             try
             {
                 using var source = new HwndSource(new HwndSourceParameters("TranslationEnterTest") { Width = 1, Height = 1 });
-                int translateCount = 0;
-                window.TranslateRequested += () => translateCount++;
+                int summaryCount = 0;
+                window.SummarizeRequested += () => summaryCount++;
                 window.CopyButton.IsEnabled = true;
 
                 FocusManager.SetFocusedElement(window, window.CopyButton);
@@ -107,7 +109,7 @@ public class DialogEnterKeyAndTranslationWindowTests
                     RoutedEvent = UIElement.PreviewKeyDownEvent
                 };
                 window.RaiseEvent(copyEnter);
-                Assert.Equal(0, translateCount);
+                Assert.Equal(0, summaryCount);
                 Assert.False(copyEnter.Handled);
 
                 FocusManager.SetFocusedElement(window, window.CloseButton);
@@ -117,18 +119,18 @@ public class DialogEnterKeyAndTranslationWindowTests
                     RoutedEvent = UIElement.PreviewKeyDownEvent
                 };
                 window.RaiseEvent(closeEnter);
-                Assert.Equal(0, translateCount);
+                Assert.Equal(0, summaryCount);
                 Assert.False(closeEnter.Handled);
 
-                FocusManager.SetFocusedElement(window, window.TranslateButton);
-                window.TranslateButton.Focus();
-                var translateEnter = new KeyEventArgs(Keyboard.PrimaryDevice, source, 0, Key.Enter)
+                FocusManager.SetFocusedElement(window, window.SummarizeButton);
+                window.SummarizeButton.Focus();
+                var summaryEnter = new KeyEventArgs(Keyboard.PrimaryDevice, source, 0, Key.Enter)
                 {
                     RoutedEvent = UIElement.PreviewKeyDownEvent
                 };
-                window.RaiseEvent(translateEnter);
-                Assert.Equal(1, translateCount);
-                Assert.True(translateEnter.Handled);
+                window.RaiseEvent(summaryEnter);
+                Assert.Equal(1, summaryCount);
+                Assert.True(summaryEnter.Handled);
 
                 FocusManager.SetFocusedElement(window, window);
                 window.Focus();
@@ -137,7 +139,7 @@ public class DialogEnterKeyAndTranslationWindowTests
                     RoutedEvent = UIElement.PreviewKeyDownEvent
                 };
                 window.RaiseEvent(windowEnter);
-                Assert.Equal(2, translateCount);
+                Assert.Equal(2, summaryCount);
                 Assert.True(windowEnter.Handled);
             }
             finally
@@ -149,7 +151,7 @@ public class DialogEnterKeyAndTranslationWindowTests
     }
 
     [Fact]
-    public void TranslationWindow_SelectionChipCloseButton_LocalizesAutomationName_And_HasNoLinearGradientBrush()
+    public void TranslationWindow_SelectionChipCloseButton_LocalizesAutomationName_And_OnlyScrollFadesUseGradients()
     {
         RunOnSta(() =>
         {
@@ -168,8 +170,18 @@ public class DialogEnterKeyAndTranslationWindowTests
         });
 
         string xamlPath = FindRepoFile(Path.Combine("Windows", "TranslationWindow.xaml"));
-        string xaml = File.ReadAllText(xamlPath);
-        Assert.DoesNotContain("LinearGradientBrush", xaml, StringComparison.OrdinalIgnoreCase);
+        var document = XDocument.Load(xamlPath);
+        XNamespace presentation = "http://schemas.microsoft.com/winfx/2006/xaml/presentation";
+        XNamespace xaml = "http://schemas.microsoft.com/winfx/2006/xaml";
+        var gradients = document.Descendants(presentation + "LinearGradientBrush").ToArray();
+        // The card and controls stay solid. Only the two scroll-edge opacity
+        // masks use gradients, fading the existing surface without adding color.
+        Assert.Equal(new[] { "ResultTopFade", "ResultBottomFade" }, gradients.Select(gradient =>
+        {
+            Assert.Equal(presentation + "Border.OpacityMask", gradient.Parent?.Name);
+            Assert.Equal(presentation + "Border", gradient.Parent?.Parent?.Name);
+            return (string?)gradient.Parent?.Parent?.Attribute(xaml + "Name");
+        }));
     }
 
     private static string FindRepoFile(string relativePath)

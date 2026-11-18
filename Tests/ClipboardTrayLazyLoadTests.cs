@@ -144,6 +144,46 @@ public sealed class ClipboardTrayLazyLoadTests
     });
 
     [Fact]
+    public void ReachingThePageBoundaryAppendsOnePageAndKeepsTheViewport() => SharedStaTestRunner.RunAsync(async ct =>
+    {
+        var fixture = Directory.CreateTempSubdirectory("vnotch-tray-page-");
+        try
+        {
+            var paths = Enumerable.Range(0, 240).Select(i => Path.Combine(fixture.FullName, $"{i}.txt")).ToArray();
+            foreach (var path in paths) File.WriteAllText(path, Path.GetFileName(path));
+            var store = new ClipboardHistoryStore(Path.Combine(fixture.FullName, "store"));
+            await using var controller = new ClipboardHistoryController(Dispatcher.CurrentDispatcher, store);
+            await store.ImportAsync(new ClipboardCapture { FilePaths = paths, SeparateFiles = true });
+            using var tray = new ClipboardTray();
+            tray.Attach(controller);
+            var window = new BackgroundWindow { Content = tray, Width = 780, Height = 300 };
+            try
+            {
+                window.Show();
+                var cards = Field<ObservableCollection<ClipboardCardViewModel>>(tray, "_cards");
+                await WpfFrameWaiter.UntilAsync(() => cards.Count == 100, "initial page", ct);
+                await Dispatcher.Yield(DispatcherPriority.ApplicationIdle);
+                var list = (ListBox)tray.FindName("Cards");
+                var scroll = Descendants(list).OfType<ScrollViewer>().First();
+                double anchor = scroll.ScrollableWidth;
+                Assert.True(anchor > 0);
+                var first = cards[0];
+                bool reset = false;
+                cards.CollectionChanged += (_, e) => reset |= e.Action == NotifyCollectionChangedAction.Reset;
+                scroll.ScrollToHorizontalOffset(anchor);
+                await WpfFrameWaiter.UntilAsync(() => cards.Count >= 200 && scroll.ScrollableWidth > anchor + 400, "second page laid out", ct);
+                await Dispatcher.Yield(DispatcherPriority.ApplicationIdle);
+                Assert.Equal(200, cards.Count);
+                Assert.Same(first, cards[0]);
+                Assert.False(reset);
+                Assert.InRange(scroll.HorizontalOffset, anchor - 1, anchor + 1);
+            }
+            finally { window.Close(); }
+        }
+        finally { fixture.Delete(true); }
+    });
+
+    [Fact]
     public void LargeResultsBatchChangesAndKeepSelectionAndScroll() => SharedStaTestRunner.RunAsync(async () =>
     {
         using var tray = new ClipboardTray();

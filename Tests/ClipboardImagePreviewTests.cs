@@ -1,5 +1,5 @@
-using System.Collections;
 using System.Buffers.Binary;
+using System.Collections;
 using System.IO;
 using System.Reflection;
 using System.Security;
@@ -47,6 +47,20 @@ public sealed class ClipboardImagePreviewTests
         byte[] expectedPixels = new byte[expectedWidth * expectedHeight * 4], actualPixels = new byte[expectedPixels.Length];
         expected.CopyPixels(expectedPixels, expectedWidth * 4, 0); actual.CopyPixels(actualPixels, expectedWidth * 4, 0);
         Assert.All(expectedPixels.Zip(actualPixels), pair => Assert.InRange(Math.Abs(pair.First - pair.Second), 0, 1));
+    }
+
+    [Fact]
+    public void TrayPreviewKeepsTheCenteredPixelsAndFullPreviewKeepsItsAspectRatio()
+    {
+        byte[] png = Png(1800, 1200, 55, stripe: true);
+        var full = ClipboardImagePreview.Decode(png, false, default);
+        var card = ClipboardImagePreview.Decode(png, false, default, new(210, 280));
+        Assert.Equal((420, 280), (full.PixelWidth, full.PixelHeight));
+        Assert.Equal((210, 280), (card.PixelWidth, card.PixelHeight));
+        byte[] expected = new byte[210 * 280 * 4], actual = new byte[expected.Length];
+        full.CopyPixels(new System.Windows.Int32Rect(105, 0, 210, 280), expected, 840, 0);
+        card.CopyPixels(actual, 840, 0);
+        Assert.Equal(expected, actual);
     }
 
     [Fact]
@@ -136,7 +150,7 @@ public sealed class ClipboardImagePreviewTests
             }
             Assert.InRange(Cache(store).Count, 1, 24);
             long bytes = (long)typeof(ClipboardHistoryStore).GetField("_imagePreviewBytes", BindingFlags.NonPublic | BindingFlags.Instance)!.GetValue(store)!;
-            Assert.InRange(bytes, 1, 8 * 1024 * 1024);
+            Assert.InRange(bytes, 1, 4 * 1024 * 1024);
             Assert.True(Cache(store).Count < 20, "Pixel-budget eviction must run before the item-count limit.");
         }
         finally { if (Directory.Exists(root)) Directory.Delete(root, true); }
@@ -170,10 +184,15 @@ public sealed class ClipboardImagePreviewTests
     private static IDictionary Cache(ClipboardHistoryStore store) =>
         (IDictionary)typeof(ClipboardHistoryStore).GetField("_imagePreviews", BindingFlags.NonPublic | BindingFlags.Instance)!.GetValue(store)!;
 
-    private static byte[] Png(int width, int height, byte color)
+    private static byte[] Png(int width, int height, byte color, bool stripe = false)
     {
         byte[] pixels = new byte[width * height * 4];
-        for (int i = 0; i < pixels.Length; i += 4) { pixels[i] = color; pixels[i + 1] = (byte)(255 - color); pixels[i + 3] = 255; }
+        for (int i = 0; i < pixels.Length; i += 4)
+        {
+            pixels[i] = stripe ? (byte)((i / 4 % width) / 8) : color;
+            pixels[i + 1] = (byte)(255 - color);
+            pixels[i + 3] = 255;
+        }
         var bitmap = BitmapSource.Create(width, height, 96, 96, PixelFormats.Bgra32, null, pixels, width * 4);
         var encoder = new PngBitmapEncoder(); encoder.Frames.Add(BitmapFrame.Create(bitmap));
         using var stream = new MemoryStream(); encoder.Save(stream); return stream.ToArray();

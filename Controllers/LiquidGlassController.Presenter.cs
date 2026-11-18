@@ -108,7 +108,9 @@ public sealed partial class LiquidGlassController : IDisposable
         _host.Width = SurfaceWidth / dpi;
         _host.Height = SurfaceHeight / dpi;
         _host.RenderTransform = null;
-        RenderOptions.SetBitmapScalingMode(_host, BitmapScalingMode.HighQuality);
+        // The GPU frame is sized 1:1 to physical pixels, so Linear samples the same
+        // texels as HighQuality without WPF's Fant/mipmap work on every D3DImage update.
+        RenderOptions.SetBitmapScalingMode(_host, BitmapScalingMode.Linear);
         // Do not expose the D3DImage until its first captured frame has been
     }
 
@@ -196,9 +198,14 @@ public sealed partial class LiquidGlassController : IDisposable
             if (!ReferenceEquals(_host.Source, source)) _host.Source = source;
         }
         if (_waitingForGpuPresentation) SignalWakeEventSafe();
+        GpuFramePresented?.Invoke();
     }
 
+    /// <summary>Raised on the UI thread after every GPU frame WPF receives.</summary>
+    public event Action? GpuFramePresented;
+
     public ImageSource? ImageSource => _d3dPresenter?.ImageSource;
+    internal D3DImageFramePresenter.GpuFrame? PresentedGpuFrame => _d3dPresenter?.PresentedGpuFrame;
 
     // Morphing windows can reveal pixels beyond the previous frame's small
     // bounds before capture catches up. Fill a stable envelope for those hosts.

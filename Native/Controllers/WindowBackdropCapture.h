@@ -44,9 +44,18 @@ inline bool HasVisiblePixels(const D3D11_MAPPED_SUBRESOURCE& mapped, int width, 
 // screenshots and is never fed back into its own backdrop. PrintWindow cannot
 // supply fresh Chromium/DirectComposition frames at the display refresh rate.
 class WindowCaptureCache final {
+public:
+    // Borrowed until the next cache operation. Stride includes the padding
+    // retained for moving or expanding glass.
+    struct PixelRegion {
+        const uint32_t* pixels = nullptr;
+        int stride = 0;
+        bool fresh = false;
+    };
+private:
     static constexpr int FramePoolBuffers = 2;
     struct FrameNotification {
-        HANDLE wake = nullptr; // process-lifetime event owned by the composite worker
+        winrt::handle wake;
         std::atomic<uint64_t> version{0};
     };
     std::shared_ptr<FrameNotification> notification = std::make_shared<FrameNotification>();
@@ -65,7 +74,55 @@ class WindowCaptureCache final {
         RECT copied{};
         std::vector<uint32_t> pixels;
         bool copied_frame = false;
+        int64_t copied_at = 0;
+        bool saw_initial_crop = false, has_initial_color = false, showing_initial_color = false;
+        uint32_t initial_color = 0;
+        ULONGLONG confirm_initial_color_at = 0;
         ULONGLONG recreate_cooldown_until = 0;
+        bool awaiting_repaint = false;
+        ULONGLONG first_resized_at = 0;
+        int64_t first_resized_sample = 0;
+
+        void ResizePool(const wx::Direct3D11::IDirect3DDevice& device, winrt::Windows::Graphics::SizeInt32 next) {
+            size = next;
+            // Keep draining the new pool while the window repaints its client.
+            // A static source can still publish its retained frame after the grace period.
+            awaiting_repaint = true;
+            first_resized_at = 0;
+            recreate_cooldown_until = GetTickCount64() + 100;
+            if (size.Width > 0 && size.Height > 0)
+                pool.Recreate(device, wx::DirectXPixelFormat::B8G8R8A8UIntNormalized, FramePoolBuffers, size);
+        }
+
+        bool RepaintReady(int64_t sample) noexcept {
+            if (!awaiting_repaint) return true;
+            const auto now = GetTickCount64();
+            if (!first_resized_at) {
+                first_resized_at = now;
+                first_resized_sample = sample;
+            }
+            if (sample == first_resized_sample && now - first_resized_at < 100) return false;
+            awaiting_repaint = false;
+            return true;
+        }
+
+        void ObserveCrop() noexcept {
+            if (!saw_initial_crop) {
+                saw_initial_crop = true;
+                initial_color = pixels.front();
+                has_initial_color = showing_initial_color =
+                    std::all_of(pixels.begin(), pixels.end(), [&](uint32_t p) { return p == initial_color; });
+            } else if (has_initial_color) {
+                // Composited child windows can briefly expose their original
+                // backing color during a surface swap, even after WGC reports
+                // the right size. Confirm a return to that exact flat crop.
+                const bool flat = pixels[pixels.size() / 2] == initial_color &&
+                    std::all_of(pixels.begin(), pixels.end(), [&](uint32_t p) { return p == initial_color; });
+                if (flat && !showing_initial_color) confirm_initial_color_at = GetTickCount64() + 40;
+                if (!flat) confirm_initial_color_at = 0;
+                showing_initial_color = flat;
+            }
+        }
 
         ~Entry() noexcept {
             try { if (gpu_frame) gpu_frame.Close(); } catch (...) { }
@@ -177,7 +234,7 @@ class WindowCaptureCache final {
         if (notification->wake) {
             entry->pool.FrameArrived([signal = notification](const auto&, const auto&) {
                 signal->version.fetch_add(1, std::memory_order_release);
-                SetEvent(signal->wake);
+                SetEvent(signal->wake.get());
             });
         }
         if (debug) debug_info[12] = 4;
@@ -195,9 +252,7 @@ class WindowCaptureCache final {
                inner.right <= outer.right && inner.bottom <= outer.bottom;
     }
 
-    bool Copy(Entry& entry, const RECT& hit, const RECT& visible, const RECT& window,
-        uint32_t* destination, int stride, bool* out_fresh) {
-        if (out_fresh) *out_fresh = false;
+    bool ReadRegion(Entry& entry, const RECT& hit, const RECT& visible, const RECT& window, PixelRegion& out) {
         const bool debug = reinterpret_cast<intptr_t>(entry.hwnd) == debug_target.load();
         if (debug) ++debug_info[0];
         auto newest = entry.pool.TryGetNextFrame();
@@ -214,10 +269,7 @@ class WindowCaptureCache final {
             if (size.Width != entry.size.Width || size.Height != entry.size.Height) {
                 newest.Close(); newest = nullptr;
                 entry.pixels.clear(); entry.copied_frame = false;
-                entry.size = size;
-                if (size.Width > 0 && size.Height > 0) {
-                    entry.pool.Recreate(capture_device, wx::DirectXPixelFormat::B8G8R8A8UIntNormalized, FramePoolBuffers, size);
-                }
+                entry.ResizePool(capture_device, size);
                 return false;
             }
         }
@@ -253,37 +305,57 @@ class WindowCaptureCache final {
             texture->GetDesc(&source_desc);
             if (static_cast<UINT>(crop.right) > source_desc.Width || static_cast<UINT>(crop.bottom) > source_desc.Height) return false;
 
+            // Cache a padded crop. While the notch resizes, `hit` grows every
+            // frame; a static window (e.g. MyDockFinder's top bar) sends no new
+            // WGC frame, so an exact-crop cache could not serve the wider strip
+            // and the layer dropped out until the next frame. Same pixels, 1:1.
+            constexpr LONG kCachePad = 192;
+            const RECT cache{
+                std::max<LONG>(0, crop.left - kCachePad), std::max<LONG>(0, crop.top - kCachePad),
+                std::min<LONG>(static_cast<LONG>(source_desc.Width), crop.right + kCachePad),
+                std::min<LONG>(static_cast<LONG>(source_desc.Height), crop.bottom + kCachePad)};
+            const int cache_w = cache.right - cache.left, cache_h = cache.bottom - cache.top;
+
             D3D11_TEXTURE2D_DESC staging_desc{};
             if (entry.staging) entry.staging->GetDesc(&staging_desc);
-            if (staging_desc.Width != static_cast<UINT>(width) || staging_desc.Height != static_cast<UINT>(height)) {
+            // Grow-only staging: a resizing hit must not reallocate every frame.
+            if (staging_desc.Width < static_cast<UINT>(cache_w) || staging_desc.Height < static_cast<UINT>(cache_h)) {
                 entry.staging.Reset();
+                const UINT grow_w = std::max<UINT>(staging_desc.Width, static_cast<UINT>(cache_w));
+                const UINT grow_h = std::max<UINT>(staging_desc.Height, static_cast<UINT>(cache_h));
                 staging_desc = {};
-                staging_desc.Width = width; staging_desc.Height = height;
+                staging_desc.Width = grow_w; staging_desc.Height = grow_h;
                 staging_desc.MipLevels = staging_desc.ArraySize = staging_desc.SampleDesc.Count = 1;
                 staging_desc.Format = DXGI_FORMAT_B8G8R8A8_UNORM;
                 staging_desc.Usage = D3D11_USAGE_STAGING; staging_desc.CPUAccessFlags = D3D11_CPU_ACCESS_READ;
                 winrt::check_hresult(device->CreateTexture2D(&staging_desc, nullptr, &entry.staging));
             }
-            // Copy only the intersecting crop. Keep the frame checked out until
+            // Copy only the padded crop. Keep the frame checked out until
             // Map completes the GPU copy, so the pool cannot recycle its surface
             // while CopySubresourceRegion is still queued on the GPU.
-            const D3D11_BOX box{static_cast<UINT>(crop.left), static_cast<UINT>(crop.top), 0,
-                static_cast<UINT>(crop.right), static_cast<UINT>(crop.bottom), 1};
+            const D3D11_BOX box{static_cast<UINT>(cache.left), static_cast<UINT>(cache.top), 0,
+                static_cast<UINT>(cache.right), static_cast<UINT>(cache.bottom), 1};
             context->CopySubresourceRegion(entry.staging.Get(), 0, 0, 0, 0, texture.Get(), 0, &box);
             D3D11_MAPPED_SUBRESOURCE mapped{};
             winrt::check_hresult(context->Map(entry.staging.Get(), 0, D3D11_MAP_READ, 0, &mapped));
             struct Unmap { ID3D11DeviceContext* context; ID3D11Texture2D* texture; ~Unmap() { context->Unmap(texture, 0); } } unmap{context.Get(), entry.staging.Get()};
             // A cleared/empty WGC surface is not an opaque black image. Validate
             // alpha before replacing the cache, and keep genuine dark content.
-            if (HasVisiblePixels(mapped, width, height)) {
-                entry.pixels.resize(static_cast<size_t>(width) * height);
-                for (int row = 0; row < height; ++row)
-                    std::memcpy(entry.pixels.data() + static_cast<size_t>(row) * width,
-                        static_cast<const uint8_t*>(mapped.pData) + static_cast<size_t>(row) * mapped.RowPitch, static_cast<size_t>(width) * 4);
+            // Judge the requested crop only, as before; padding may be empty.
+            D3D11_MAPPED_SUBRESOURCE crop_view = mapped;
+            crop_view.pData = static_cast<uint8_t*>(mapped.pData) +
+                static_cast<size_t>(crop.top - cache.top) * mapped.RowPitch + static_cast<size_t>(crop.left - cache.left) * 4;
+            if (HasVisiblePixels(crop_view, width, height)) {
+                entry.pixels.resize(static_cast<size_t>(cache_w) * cache_h);
+                for (int row = 0; row < cache_h; ++row)
+                    std::memcpy(entry.pixels.data() + static_cast<size_t>(row) * cache_w,
+                        static_cast<const uint8_t*>(mapped.pData) + static_cast<size_t>(row) * mapped.RowPitch, static_cast<size_t>(cache_w) * 4);
                 if (debug) ++debug_info[9];
-                entry.copied = crop;
+                entry.copied = cache;
                 entry.copied_frame = true;
-                if (out_fresh) *out_fresh = true;
+                entry.copied_at = newest.SystemRelativeTime().count();
+                entry.ObserveCrop();
+                out.fresh = true;
             }
         }
         if (!entry.copied_frame || !RectContains(entry.copied, crop)) {
@@ -300,9 +372,9 @@ class WindowCaptureCache final {
         const int cached_w = entry.copied.right - entry.copied.left;
         const int sub_x = crop.left - entry.copied.left;
         const int sub_y = crop.top - entry.copied.top;
-        for (int row = 0; row < height; ++row)
-            std::memcpy(destination + static_cast<size_t>(row) * stride,
-                entry.pixels.data() + static_cast<size_t>(sub_y + row) * cached_w + sub_x, static_cast<size_t>(width) * 4);
+        out.pixels = entry.pixels.data() + static_cast<size_t>(sub_y) * cached_w + sub_x;
+        out.stride = cached_w;
+        if (!entry.RepaintReady(entry.copied_at) || GetTickCount64() < entry.confirm_initial_color_at) return false;
         return true;
     }
 
@@ -326,7 +398,8 @@ public:
         UINT width = 0, height = 0;
         bool fresh = false;
     };
-    bool AcquireTexture(HWND hwnd, const RECT& hit, const RECT& visible, const RECT& window, TextureRegion& out) {
+    bool AcquireTexture(HWND hwnd, const RECT& hit, const RECT& visible, const RECT& window, TextureRegion& out,
+                        int64_t afterPixelUpload) {
         DWORD pid = 0;
         const DWORD thread = GetWindowThreadProcessId(hwnd, &pid);
         if (!thread || pid == GetCurrentProcessId()) return false;
@@ -342,9 +415,8 @@ public:
             entry.gpu_frame = newest; entry.gpu_texture.Reset(); entry.gpu_view.Reset();
             const auto size = newest.ContentSize();
             if (size.Width != entry.size.Width || size.Height != entry.size.Height) {
-                entry.gpu_frame.Close(); entry.gpu_frame = nullptr; entry.size = size;
-                if (size.Width > 0 && size.Height > 0)
-                    entry.pool.Recreate(capture_device, wx::DirectXPixelFormat::B8G8R8A8UIntNormalized, FramePoolBuffers, size);
+                entry.gpu_frame.Close(); entry.gpu_frame = nullptr;
+                entry.ResizePool(capture_device, size);
                 return false;
             }
             auto access = newest.Surface().as<::Windows::Graphics::DirectX::Direct3D11::IDirect3DDxgiInterfaceAccess>();
@@ -361,11 +433,22 @@ public:
         D3D11_TEXTURE2D_DESC desc{}; entry.gpu_texture->GetDesc(&desc);
         if (out.crop.left < 0 || out.crop.top < 0 || out.crop.right > static_cast<LONG>(desc.Width) ||
             out.crop.bottom > static_cast<LONG>(desc.Height)) return false;
+        if (afterPixelUpload || entry.awaiting_repaint) {
+            const int64_t capturedAt = entry.gpu_frame.SystemRelativeTime().count();
+            if (capturedAt <= afterPixelUpload || !entry.RepaintReady(capturedAt)) return false;
+        }
         out.view = entry.gpu_view; out.width = desc.Width; out.height = desc.Height;
         return true;
     }
 
-    void SetFrameWakeEvent(HANDLE wake) noexcept { notification->wake = wake; }
+    // Bind before opening the first pool. A late FrameArrived can outlive
+    // the renderer, so its shared notification owns a duplicate event handle.
+    void SetFrameWakeEvent(HANDLE wake) noexcept {
+        HANDLE copy = nullptr;
+        if (wake && DuplicateHandle(GetCurrentProcess(), wake, GetCurrentProcess(), &copy,
+                                    EVENT_MODIFY_STATE, FALSE, 0))
+            notification->wake = winrt::handle{copy};
+    }
     uint64_t FrameVersion() const noexcept { return notification->version.load(std::memory_order_acquire); }
     bool HasEntries() const noexcept { return !entries.empty(); }
     bool HasWindow(HWND hwnd) const noexcept {
@@ -387,9 +470,8 @@ public:
         }
     }
 
-    bool CopyWindow(HWND hwnd, const RECT& hit, const RECT& visible, const RECT& window,
-        uint32_t* destination, int stride, bool* out_fresh = nullptr) noexcept {
-        if (out_fresh) *out_fresh = false;
+    bool ReadWindow(HWND hwnd, const RECT& hit, const RECT& visible, const RECT& window, PixelRegion& out) noexcept {
+        out = {};
         const ULONGLONG now = GetTickCount64();
         if (now < retry_at) return false;
         rejected_windows.erase(std::remove_if(rejected_windows.begin(), rejected_windows.end(), [&](const RejectedWindow& r) {
@@ -403,7 +485,7 @@ public:
             DWORD pid = 0;
             const DWORD thread = GetWindowThreadProcessId(hwnd, &pid);
             if (!thread || !pid) return false;
-            const bool copied = Copy(Get(hwnd, pid, thread), hit, visible, window, destination, stride, out_fresh);
+            const bool copied = ReadRegion(Get(hwnd, pid, thread), hit, visible, window, out);
             const int micros = static_cast<int>(std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now() - debug_start).count());
             if (reinterpret_cast<intptr_t>(hwnd) == debug_target.load()) debug_info[13] += micros;
             debug_info[25] += micros; ++debug_info[24];

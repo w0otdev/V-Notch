@@ -38,6 +38,109 @@ public sealed class ThinkingOrbTests
         }
     }
 
+    // Distances in 3D distinguish a layer turn from whole-sphere rotation,
+    // and expose dots bunching together even when the silhouette stays round.
+    [Theory]
+    [InlineData(0)]
+    [InlineData(1)]
+    [InlineData(2)]
+    [InlineData(3)]
+    [InlineData(4)]
+    [InlineData(5)]
+    public void SolvingTurnsEachSideWithoutCrowding(int turn)
+    {
+        double[] initialDistances = PairDistances(SolveFrame(0), 152, 34);
+        for (int sample = 1; sample < 10; sample++)
+        {
+            var dots = SolveFrame(turn * 2.2 + 1.65 * sample / 10);
+            double[] distances = PairDistances(dots, dots.Length, 34);
+            Assert.True(distances[0] >= .19 * .19, "Moving and fixed rows must remain separated.");
+            if (sample == 5)
+                Assert.True(distances.Zip(initialDistances, (a, b) => Math.Abs(a - b)).Max() > .005,
+                    "The layer must turn independently of the rest of the orb.");
+        }
+    }
+
+    [Theory]
+    [InlineData(0)]
+    [InlineData(1)]
+    [InlineData(2)]
+    [InlineData(3)]
+    [InlineData(4)]
+    [InlineData(5)]
+    [InlineData(60)]
+    public void SolvingRealignsAndSettlesAfterEveryQuarterTurn(int turn)
+    {
+        double[] initialDistances = PairDistances(SolveFrame(0), 152, 34);
+        foreach (double offset in new[] { 1.65, 1.9, 2.2 })
+        {
+            double[] distances = PairDistances(SolveFrame(turn * 2.2 + offset), 152, 34);
+            for (int i = 0; i < initialDistances.Length; i++)
+                Assert.InRange(Math.Abs(distances[i] - initialDistances[i]), 0, 1e-10);
+        }
+    }
+
+    [Theory]
+    [InlineData(1)]
+    [InlineData(2)]
+    [InlineData(3)]
+    [InlineData(4)]
+    [InlineData(5)]
+    [InlineData(6)]
+    public void SolvingDoesNotJumpWhenChangingSidesOrRepeating(int turn)
+    {
+        var before = SolveFrame(turn * 2.2 - 1e-5);
+        var after = SolveFrame(turn * 2.2 + 1e-5);
+        foreach (var dot in before)
+        {
+            var nearest = after.MinBy(candidate => DistanceSquared(dot, candidate, 34));
+            Assert.InRange(DistanceSquared(dot, nearest, 34), 0, 1e-8);
+            Assert.InRange(Math.Abs(dot.Radius - nearest.Radius), 0, 1e-4);
+            Assert.InRange(Math.Abs(dot.Ink - nearest.Ink), 0, 1e-4);
+        }
+    }
+
+    private static ThinkingOrbGeometry.Dot[] SolveFrame(double time)
+    {
+        const double size = 34, dotScale = 1.6;
+        var dots = new ThinkingOrbGeometry.Dot[ThinkingOrbGeometry.Capacity];
+        int count = ThinkingOrbGeometry.WriteFrame(dots, ThinkingOrbState.Solving, size, time / 7.28);
+        Assert.Equal(152, count);
+        for (int i = 0; i < count; i++)
+        {
+            var dot = dots[i];
+            double x = (dot.X - size / 2) / (size * .41);
+            double y = (dot.Y - size / 2) / (size * .41);
+            Assert.InRange(x * x + y * y + dot.Z * dot.Z, 1 - 1e-10, 1 + 1e-10);
+            double radius = dot.Radius * dotScale;
+            Assert.InRange(dot.X, radius, size - radius);
+            Assert.InRange(dot.Y, radius, size - radius);
+            Assert.InRange(dot.Ink, 0, 1);
+            Assert.Equal(1, dot.Alpha);
+            if (i > 0) Assert.True(dot.Z >= dots[i - 1].Z);
+        }
+        return dots[..count];
+    }
+
+    private static double[] PairDistances(ThinkingOrbGeometry.Dot[] dots, int count, double size)
+    {
+        var distances = new double[count * (count - 1) / 2];
+        int index = 0;
+        for (int i = 0; i < count; i++)
+        for (int j = i + 1; j < count; j++)
+            distances[index++] = DistanceSquared(dots[i], dots[j], size);
+        Array.Sort(distances);
+        return distances;
+    }
+
+    private static double DistanceSquared(ThinkingOrbGeometry.Dot a, ThinkingOrbGeometry.Dot b, double size)
+    {
+        double x = (a.X - b.X) / (size * .41);
+        double y = (a.Y - b.Y) / (size * .41);
+        double z = a.Z - b.Z;
+        return x * x + y * y + z * z;
+    }
+
     private static void AssertDot(ThinkingOrbGeometry.Dot actual, double[] expected)
     {
         double[] values = [actual.X, actual.Y, actual.Z, actual.Radius, actual.Ink, actual.Alpha];

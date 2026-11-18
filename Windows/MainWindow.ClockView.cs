@@ -74,11 +74,6 @@ public partial class MainWindow : IClockWidgetHost
         return presenter;
     }
 
-    internal void BuildClockViewCalendar()
-    {
-        EnsureClockViewFeatureLoaded();
-    }
-
     private void RefreshClockView() => EnsureClockViewFeatureLoaded().RefreshClockView();
 
     private void RefreshClockViewLocale() => _clockWidgetPresenter?.RefreshClockViewLocale();

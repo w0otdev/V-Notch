@@ -6,20 +6,22 @@ namespace VNotch.Services.Clipboard;
 
 public sealed partial class ClipboardHistoryStore
 {
-    private sealed record ImagePreview(BitmapSource Image, long Bytes, long LastAccess);
-    private const long ImagePreviewBudget = 8 * 1024 * 1024;
+    private sealed record ImagePreview(BitmapSource Image, long Bytes, long LastAccess, ClipboardImagePreview.PixelTarget Target);
+    private const long ImagePreviewBudget = 4 * 1024 * 1024;
     private const int ImagePreviewLimit = 24;
     // Access is serialized by Run(), like the entry files. Personal/sensitive
     // previews stay viewport-owned and never enter this shared cache.
     private readonly Dictionary<Guid, ImagePreview> _imagePreviews = [];
     private long _imagePreviewBytes, _imagePreviewAccess;
 
-    internal Task<BitmapSource?> GetImagePreviewAsync(Guid id, CancellationToken cancellation = default) => Run(() =>
+    // The open tray can revisit up to 24 images while scrolling. The existing
+    // idle trim releases this working set after the tray closes.
+    internal Task<BitmapSource?> GetImagePreviewAsync(Guid id, CancellationToken cancellation = default, ClipboardImagePreview.PixelTarget target = default) => Run(() =>
     {
         cancellation.ThrowIfCancellationRequested();
         var entry = Find(id);
         bool cacheable = !entry.IsPersonal && !entry.IsSensitive;
-        if (cacheable && _imagePreviews.TryGetValue(id, out var cached))
+        if (cacheable && _imagePreviews.TryGetValue(id, out var cached) && (cached.Target == target || cached.Target == default))
         {
             _imagePreviews[id] = cached with { LastAccess = ++_imagePreviewAccess };
             return cached.Image;
@@ -33,7 +35,7 @@ public sealed partial class ClipboardHistoryStore
             if (entry.IsPersonal)
             {
                 personalBytes = _vault.Open(File.ReadAllBytes(path));
-                image = ClipboardImagePreview.Decode(personalBytes, true, cancellation);
+                image = ClipboardImagePreview.Decode(personalBytes, true, cancellation, target);
                 EnsurePersonalUnlocked();
             }
             else
@@ -41,7 +43,7 @@ public sealed partial class ClipboardHistoryStore
                 // Public originals are streamed/decrypted directly without materializing
                 // a full-size uncompressed bitmap on the managed heap.
                 using var input = OpenPublicBlobRead(path);
-                image = ClipboardImagePreview.Decode(input, entry.IsSensitive, cancellation);
+                image = ClipboardImagePreview.Decode(input, entry.IsSensitive, cancellation, target);
             }
         }
         finally { if (personalBytes != null) CryptographicOperations.ZeroMemory(personalBytes); }
@@ -49,11 +51,13 @@ public sealed partial class ClipboardHistoryStore
         if (cacheable)
         {
             long bytes = (long)((image.PixelWidth * image.Format.BitsPerPixel + 7) / 8) * image.PixelHeight;
-            while (_imagePreviews.Count > 0 && (_imagePreviews.Count >= ImagePreviewLimit || _imagePreviewBytes + bytes > ImagePreviewBudget))
+            RemoveImagePreview(id);
+            long budget = target != default ? 2 * ImagePreviewBudget : ImagePreviewBudget;
+            while (_imagePreviews.Count > 0 && (_imagePreviews.Count >= ImagePreviewLimit || _imagePreviewBytes + bytes > budget))
                 RemoveImagePreview(_imagePreviews.MinBy(pair => pair.Value.LastAccess).Key);
             if (bytes <= ImagePreviewBudget)
             {
-                _imagePreviews[id] = new ImagePreview(image, bytes, ++_imagePreviewAccess);
+                _imagePreviews[id] = new ImagePreview(image, bytes, ++_imagePreviewAccess, target);
                 _imagePreviewBytes += bytes;
             }
         }

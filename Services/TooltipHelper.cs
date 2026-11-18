@@ -16,25 +16,12 @@ public static class TooltipHelper
             var tooltip = new ToolTip
             {
                 Content = tooltipText,
+                Tag = localizationKey,
                 Placement = System.Windows.Controls.Primitives.PlacementMode.Mouse,
                 Style = CreateTooltipStyle()
             };
             element.ToolTip = tooltip;
         }
-    }
-
-    public static void SetTooltip(FrameworkElement element, string text)
-    {
-        if (element == null || string.IsNullOrEmpty(text))
-            return;
-
-        var tooltip = new ToolTip
-        {
-            Content = text,
-            Placement = System.Windows.Controls.Primitives.PlacementMode.Mouse,
-            Style = CreateTooltipStyle()
-        };
-        element.ToolTip = tooltip;
     }
 
     public static void RefreshTooltips(DependencyObject parent)

@@ -139,22 +139,24 @@ static bool Step(Walk& walk, const Search& search, std::vector<Result>& out_resu
     bool explicit_path, const std::vector<std::wstring>& hidden, size_t limit, ULONGLONG deadline) {
     for (uint32_t count = 0; count < kEntriesPerTurn; ++count) {
         if (search.cancelled.load(std::memory_order_relaxed) || GetTickCount64() >= deadline) return false;
-        DirectoryEntry entry;
-        if (!walk.Next(entry)) { if (walk.Done()) return true; continue; }
-        std::wstring_view name(entry.name);
-        if (name != L"." && name != L".." && !(entry.attributes & FILE_ATTRIBUTE_REPARSE_POINT)) {
-            std::wstring path = walk.directory;
-            if (path.back() != L'\\') path.push_back(L'\\');
-            path.append(name);
-            bool folder = (entry.attributes & FILE_ATTRIBUTE_DIRECTORY) != 0;
-            bool visible = Visible(path, query, folder, hidden);
-            if (folder && visible && (explicit_path || !(entry.attributes & (FILE_ATTRIBUTE_HIDDEN | FILE_ATTRIBUTE_SYSTEM))))
-                walk.pending.push_back(path);
-            bool matches = explicit_path ? starts_with_icase(View(path), View(query)) :
-                entry.normalized.find(normalized) != std::u16string::npos;
-            if (visible && matches && (explicit_path || !(entry.attributes & (FILE_ATTRIBUTE_HIDDEN | FILE_ATTRIBUTE_SYSTEM))))
-                AddResult(out_results, path, name, query, Kind(entry.attributes, name), limit);
-        }
+        const DirectoryEntry* entry = walk.Next();
+        if (!entry) { if (walk.Done()) return true; continue; }
+        std::wstring_view name(entry->name);
+        if (name == L"." || name == L".." || (entry->attributes & FILE_ATTRIBUTE_REPARSE_POINT)) continue;
+        if (!explicit_path && (entry->attributes & (FILE_ATTRIBUTE_HIDDEN | FILE_ATTRIBUTE_SYSTEM))) continue;
+        bool folder = (entry->attributes & FILE_ATTRIBUTE_DIRECTORY) != 0;
+        bool matches = !explicit_path && entry->normalized.find(normalized) != std::u16string::npos;
+        // Most files do not match. Avoid allocating their full path and walking
+        // every path segment through the visibility policy on each keystroke.
+        // Nonmatching folders still need traversal to reach matching children.
+        if (!explicit_path && !folder && !matches) continue;
+        std::wstring path = walk.directory;
+        if (path.back() != L'\\') path.push_back(L'\\');
+        path.append(name);
+        if (!Visible(path, query, folder, hidden)) continue;
+        if (folder) walk.pending.push_back(path);
+        if (explicit_path) matches = starts_with_icase(View(path), View(query));
+        if (matches) AddResult(out_results, path, name, query, Kind(entry->attributes, name), limit);
     }
     return true;
 }

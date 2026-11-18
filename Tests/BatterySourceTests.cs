@@ -1,6 +1,6 @@
 using VNotch.Models;
-using VNotch.Services;
 using VNotch.Modules;
+using VNotch.Services;
 using Xunit;
 
 namespace VNotch.Tests;

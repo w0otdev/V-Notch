@@ -33,18 +33,6 @@ struct VnFileTime {
     uint32_t high;
 };
 
-struct VnMemoryStatus {
-    uint32_t length;
-    uint32_t memory_load;
-    uint64_t total_phys;
-    uint64_t avail_phys;
-    uint64_t total_page_file;
-    uint64_t avail_page_file;
-    uint64_t total_virtual;
-    uint64_t avail_virtual;
-    uint64_t avail_extended_virtual;
-};
-
 struct VnProcessMemoryCounters {
     uint32_t cb;
     uint32_t page_fault_count;
@@ -89,7 +77,6 @@ static_assert(sizeof(VnPoint) == sizeof(POINT));
 static_assert(sizeof(VnRect) == sizeof(RECT));
 static_assert(sizeof(VnMonitorInfo) == sizeof(MONITORINFO));
 static_assert(sizeof(VnFileTime) == sizeof(FILETIME));
-static_assert(sizeof(VnMemoryStatus) == sizeof(MEMORYSTATUSEX));
 static_assert(sizeof(VnProcessMemoryCounters) == sizeof(PROCESS_MEMORY_COUNTERS_EX));
 
 using KeyboardHookCallback = int32_t(__stdcall*)(int64_t context, const VnKeyboardHookEvent* event);
@@ -918,14 +905,6 @@ VN_EXPORT int32_t __stdcall vn_win32_get_process_times(
     return VN_OK;
 }
 
-VN_EXPORT int32_t __stdcall vn_win32_get_process_handle_count(int64_t process, uint32_t* out_count) noexcept {
-    if (!out_count) return VN_ERR_INVALID_ARG;
-    DWORD count = 0;
-    if (!GetProcessHandleCount(reinterpret_cast<HANDLE>(static_cast<intptr_t>(process)), &count)) return VN_ERR_FAIL;
-    *out_count = count;
-    return VN_OK;
-}
-
 VN_EXPORT int32_t __stdcall vn_win32_get_process_memory_info(
     int64_t process, svc::VnProcessMemoryCounters* out_counters) noexcept {
     if (!out_counters) return VN_ERR_INVALID_ARG;
@@ -939,18 +918,6 @@ VN_EXPORT int32_t __stdcall vn_win32_get_process_memory_info(
         counters.QuotaPeakPagedPoolUsage, counters.QuotaPagedPoolUsage,
         counters.QuotaPeakNonPagedPoolUsage, counters.QuotaNonPagedPoolUsage,
         counters.PagefileUsage, counters.PeakPagefileUsage, counters.PrivateUsage};
-    return VN_OK;
-}
-
-VN_EXPORT int32_t __stdcall vn_win32_global_memory_status(svc::VnMemoryStatus* out_status) noexcept {
-    if (!out_status) return VN_ERR_INVALID_ARG;
-    MEMORYSTATUSEX status{};
-    status.dwLength = sizeof(status);
-    if (!GlobalMemoryStatusEx(&status)) return VN_ERR_FAIL;
-    *out_status = svc::VnMemoryStatus{
-        status.dwLength, status.dwMemoryLoad, status.ullTotalPhys, status.ullAvailPhys,
-        status.ullTotalPageFile, status.ullAvailPageFile, status.ullTotalVirtual,
-        status.ullAvailVirtual, status.ullAvailExtendedVirtual};
     return VN_OK;
 }
 

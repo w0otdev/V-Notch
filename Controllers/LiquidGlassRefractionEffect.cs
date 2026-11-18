@@ -124,7 +124,7 @@ public sealed class LiquidGlassRefractionEffect : ShaderEffect
     }
 
     public static readonly DependencyProperty InputProperty =
-        RegisterPixelShaderSamplerProperty("Input", typeof(LiquidGlassRefractionEffect), 0);
+        RegisterPixelShaderSamplerProperty("Input", typeof(LiquidGlassRefractionEffect), 0, SamplingMode.Bilinear);
 
     private static DependencyProperty Reg(string name, int register, double def = 0.0) =>
         DependencyProperty.Register(name, typeof(double), typeof(LiquidGlassRefractionEffect),

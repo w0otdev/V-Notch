@@ -1,6 +1,6 @@
 using System.Runtime.InteropServices;
-using Microsoft.Win32.SafeHandles;
 using System.Windows;
+using Microsoft.Win32.SafeHandles;
 
 namespace VNotch.Services.Translation;
 

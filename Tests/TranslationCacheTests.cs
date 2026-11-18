@@ -23,7 +23,8 @@ public sealed class TranslationCacheTests
             await entered.Task.WaitAsync(TimeSpan.FromSeconds(3));
             var cached = await service.TranslateAsync("cached", "en", "vi", default)
                 .WaitAsync(TimeSpan.FromSeconds(2));
-            Assert.Equal(original, cached);
+            Assert.True(cached.IsCached);
+            Assert.Equal(original, cached with { IsCached = false });
             Assert.False(slow.IsCompleted);
             Assert.Equal(2, engine.Calls);
         }

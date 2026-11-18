@@ -97,10 +97,12 @@ struct Reader {
         api = previous;
         if (!api && FAILED(CoCreateInstance(CLSID_CUIAutomation8, nullptr, CLSCTX_INPROC_SERVER, IID_PPV_ARGS(api.GetAddressOf())))) return false;
         if (FAILED(api->CreateCacheRequest(cache.GetAddressOf()))) return false;
+        Ptr<IUIAutomationCondition> raw_view;
+        if (FAILED(api->get_RawViewCondition(raw_view.GetAddressOf())) || FAILED(cache->put_TreeFilter(raw_view.Get()))) return false;
         cache->put_TreeScope(TreeScope_Element);
         for (const auto id : {UIA_RuntimeIdPropertyId, UIA_IsPasswordPropertyId, UIA_ControlTypePropertyId, UIA_NativeWindowHandlePropertyId, UIA_ProcessIdPropertyId,
             UIA_IsEnabledPropertyId, UIA_BoundingRectanglePropertyId, UIA_NamePropertyId, UIA_HelpTextPropertyId, UIA_ValueValuePropertyId,
-            UIA_SelectionItemIsSelectedPropertyId}) if (FAILED(cache->AddProperty(id))) return false;
+            UIA_SelectionItemIsSelectedPropertyId, UIA_IsOffscreenPropertyId}) if (FAILED(cache->AddProperty(id))) return false;
         for (const auto id : {UIA_TextPatternId, UIA_SelectionPatternId}) if (FAILED(cache->AddPattern(id))) return false;
         if (FAILED(cache->Clone(children_cache.GetAddressOf()))) return false;
         children_cache->put_TreeScope(static_cast<TreeScope>(TreeScope_Element | TreeScope_Children));
@@ -136,12 +138,13 @@ struct Reader {
         const auto process = static_cast<DWORD>(number(element, UIA_ProcessIdPropertyId));
         if (process == GetCurrentProcessId() && pid != process) return false;
         auto handle = reinterpret_cast<HWND>(static_cast<intptr_t>(number(element, UIA_NativeWindowHandlePropertyId)));
-        if (same_window(handle) || (pid && process == pid)) return true;
+        if (handle) return same_window(handle);
         Ptr<IUIAutomationElement> current = element;
         for (int depth = 0; current && depth < 24 && time(); ++depth) {
             handle = reinterpret_cast<HWND>(static_cast<intptr_t>(number(current.Get(), UIA_NativeWindowHandlePropertyId)));
-            DWORD owner = 0; if (handle) GetWindowThreadProcessId(handle, &owner);
-            if (same_window(handle) || (pid && (owner == pid || static_cast<DWORD>(number(current.Get(), UIA_ProcessIdPropertyId)) == pid))) return true;
+            // Chromium shares a browser PID between windows. A matching process
+            // alone must never admit a selection from a different window.
+            if (handle) return same_window(handle);
             current = parent(current.Get(), false);
         }
         return false;
@@ -168,7 +171,7 @@ struct Reader {
         return result;
     }
     std::unique_ptr<Selection> read(IUIAutomationElement* element) {
-        if (!element || !time() || password(element)) return {};
+        if (!element || !time() || password(element) || boolean(element, UIA_IsOffscreenPropertyId)) return {};
         Ptr<IUIAutomationTextPattern> pattern;
         if (FAILED(element->GetCachedPatternAs(UIA_TextPatternId, IID_PPV_ARGS(pattern.GetAddressOf()))) || !pattern) return {};
         Ptr<IUIAutomationTextRangeArray> ranges; pattern->GetSelection(ranges.GetAddressOf());
@@ -179,6 +182,8 @@ struct Reader {
         for (int i = 0; i < range_limit && time(); ++i) {
             Ptr<IUIAutomationTextRange> range;
             if (FAILED(ranges->GetElement(i, range.GetAddressOf())) || !range) continue;
+            int endpoints = 0;
+            if (FAILED(range->CompareEndpoints(TextPatternRangeEndpoint_Start, range.Get(), TextPatternRangeEndpoint_End, &endpoints)) || endpoints == 0) continue;
             if (count == 1) single = range;
             if (text.size() <= static_cast<size_t>(limit)) append(text, range_text(range.Get(), limit + 256), limit);
             // Text range geometry is not cacheable by IUIAutomationCacheRequest.
@@ -194,14 +199,8 @@ struct Reader {
             }
         }
         const int type = number(element, UIA_ControlTypePropertyId);
-        if (text.empty() && manual && time()) {
-            SupportedTextSelection supported = SupportedTextSelection_Single;
-            pattern->get_SupportedTextSelection(&supported);
-            if (supported == SupportedTextSelection_None || type == UIA_TextControlTypeId || type == UIA_ToolTipControlTypeId) {
-                Ptr<IUIAutomationTextRange> document; pattern->get_DocumentRange(document.GetAddressOf());
-                append(text, range_text(document.Get(), limit + 256), limit);
-            }
-        }
+        // DocumentRange/Name/Value are not evidence of a selection. In Chromium
+        // they may describe an entire message, draft, or page under the cursor.
         if (text.empty()) return {};
         if (!rectangle.valid()) {
             const auto control_bounds = bounds(element);
@@ -242,7 +241,10 @@ struct Reader {
             Ptr<IUIAutomationSelectionPattern> pattern;
             container->GetCachedPatternAs(UIA_SelectionPatternId, IID_PPV_ARGS(pattern.GetAddressOf()));
             Ptr<IUIAutomationElementArray> items;
-            if (pattern) pattern->GetCurrentSelection(items.GetAddressOf());
+            const int container_type = number(container.Get(), UIA_ControlTypePropertyId);
+            if (pattern && (container_type == UIA_ListControlTypeId || container_type == UIA_TreeControlTypeId ||
+                container_type == UIA_ComboBoxControlTypeId || container_type == UIA_DataGridControlTypeId))
+                pattern->GetCurrentSelection(items.GetAddressOf());
             int count = 0; if (items) items->get_Length(&count);
             Text text; Ptr<IUIAutomationElement> first;
             for (int i = 0; i < std::min(count, 32) && time(); ++i) {
@@ -255,17 +257,16 @@ struct Reader {
             container = parent(container.Get(), false);
         }
         const int type = number(element, UIA_ControlTypePropertyId);
-        if (boolean(element, UIA_SelectionItemIsSelectedPropertyId) || type == UIA_TextControlTypeId || type == UIA_DataItemControlTypeId ||
-            type == UIA_ListItemControlTypeId || type == UIA_TreeItemControlTypeId || type == UIA_HyperlinkControlTypeId || type == UIA_ToolTipControlTypeId ||
-            type == UIA_StatusBarControlTypeId || type == UIA_HeaderItemControlTypeId || type == UIA_DocumentControlTypeId || type == UIA_EditControlTypeId) {
+        if (boolean(element, UIA_SelectionItemIsSelectedPropertyId) &&
+            (type == UIA_DataItemControlTypeId || type == UIA_ListItemControlTypeId || type == UIA_TreeItemControlTypeId)) {
             Text text; append(text, single_text(element), limit);
             return finish(element, std::move(text), fallback_bounds(element));
         }
         return {};
     }
-    std::unique_ptr<Selection> scan(IUIAutomationElement* previous, const int32_t* event_id, int event_id_length, HWND focus_handle, bool& protected_input) {
+    std::unique_ptr<Selection> scan(const int32_t* event_id, int event_id_length, HWND focus_handle, bool& protected_input) {
         Ptr<IUIAutomationElement> focused; api->GetFocusedElementBuildCache(cache.Get(), focused.GetAddressOf());
-        if (focused && password(focused.Get())) { protected_input = true; return {}; }
+        if (focused && within(focused.Get()) && password(focused.Get())) { protected_input = true; return {}; }
         auto point = at(cursor), focus = from(same_window(focus_handle) ? focus_handle : nullptr), root = from(window);
         Ptr<IUIAutomationElement> event;
         if (root && event_id && event_id_length > 0 && time()) {
@@ -281,19 +282,28 @@ struct Reader {
                 }
             }
         }
-        std::vector<Ptr<IUIAutomationElement>> seeds{event, update(previous), focused, focus, point};
+        // A retained provider can keep a selection alive in an inactive tab. Discover
+        // the current selection from live focus/cursor/tree data on every capture.
+        std::vector<Ptr<IUIAutomationElement>> seeds{event, point, focused, focus};
         if (manual) for (const POINT offset : {POINT{-6, 0}, POINT{6, 0}, POINT{0, -6}, POINT{0, 6}})
             if (time()) seeds.push_back(at({cursor.x + offset.x, cursor.y + offset.y}));
         for (const auto& seed : seeds) {
-            if (!seed || !time() || !within(seed.Get())) continue;
+            if (!seed || !time() || boolean(seed.Get(), UIA_IsOffscreenPropertyId) || !within(seed.Get())) continue;
             Ptr<IUIAutomationElement> current = seed;
+            std::unique_ptr<Selection> candidate;
             for (int depth = 0; current && depth < 64 && time(); ++depth) {
                 if (password(current.Get())) { if (depth == 0) { protected_input = true; return {}; } break; }
                 if (seen(current.Get())) break;
-                if (auto result = read(current.Get())) return result;
+                if (auto result = read(current.Get())) {
+                    // Leaf text providers may clip a DOM selection to their own
+                    // message/span. Its document provider owns the complete range.
+                    if (number(current.Get(), UIA_ControlTypePropertyId) == UIA_DocumentControlTypeId) return result;
+                    if (!candidate) candidate = std::move(result);
+                }
                 if (reinterpret_cast<HWND>(static_cast<intptr_t>(number(current.Get(), UIA_NativeWindowHandlePropertyId))) == window) break;
                 current = parent(current.Get(), depth < 48);
             }
+            if (candidate) return candidate;
         }
         // Fetch each container's immediate children as one cached batch. Bound the
         // traversal itself instead of materializing an unlimited FindAll subtree.
@@ -303,7 +313,7 @@ struct Reader {
             std::deque<Node> pending; pending.push_back({container, 0}); int nodes = 0, texts = 0;
             while (!pending.empty() && nodes++ < 256 && texts < 64 && time()) {
                 auto node = std::move(pending.front()); pending.pop_front();
-                if (!node.element || password(node.element.Get())) continue;
+                if (!node.element || password(node.element.Get()) || boolean(node.element.Get(), UIA_IsOffscreenPropertyId)) continue;
                 if (!seen(node.element.Get())) {
                     Ptr<IUIAutomationTextPattern> text_pattern;
                     if (SUCCEEDED(node.element->GetCachedPatternAs(UIA_TextPatternId, IID_PPV_ARGS(text_pattern.GetAddressOf()))) && text_pattern) {
@@ -322,7 +332,7 @@ struct Reader {
             }
         }
         if (manual) for (const auto& candidate : {point, focused, focus, event, root}) {
-            if (candidate && time() && within(candidate.Get()) && !password(candidate.Get()))
+            if (candidate && time() && within(candidate.Get()) && !password(candidate.Get()) && !boolean(candidate.Get(), UIA_IsOffscreenPropertyId))
                 if (auto result = fallback(candidate.Get())) return result;
         }
         return {};
@@ -344,8 +354,7 @@ VN_EXPORT int32_t vn_selection_read(intptr_t hwnd, const int32_t* event_id, int3
         Reader reader(window, pid, point, manual != 0, limit);
         if (!reader.initialize(previous ? previous->api.Get() : nullptr)) return VN_ERR_FAIL;
         bool protected_value = false;
-        auto result = reader.scan(previous && previous->window == window ? previous->element.Get() : nullptr,
-            event_id, event_id_length, reinterpret_cast<HWND>(focus_hwnd), protected_value);
+        auto result = reader.scan(event_id, event_id_length, reinterpret_cast<HWND>(focus_hwnd), protected_value);
         *protected_input = protected_value ? 1 : 0;
         if (!result) return VN_OK;
         std::copy(result->text.begin(), result->text.end(), text); *length = static_cast<int32_t>(result->text.size());

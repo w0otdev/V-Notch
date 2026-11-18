@@ -40,7 +40,6 @@ public sealed partial class DustParticleOverlay : FrameworkElement
         remove => RemoveHandler(DissolveRequestedEvent, value);
     }
 
-    private const int MinParticles = 24;
     private const int MaxParticles = 180;
     private const int AlphaLevels = 20;
     private const int TintVariants = 3;

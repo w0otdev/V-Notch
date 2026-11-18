@@ -49,6 +49,27 @@ public sealed class PerformanceAuditResourceTests
     });
 
     [Fact]
+    public void StreamedParagraphKeepsStableInlinesAcrossTokenAndMarkupBoundaries() => SharedStaTestRunner.Run(() =>
+    {
+        var renderer = new AiMarkdown.StreamRenderer();
+        string[] chunks = ["First **bold** and a", " longer ", "*italic", "* word.", " [link](https://example.org)", "\n\nNext block"];
+        string markdown = "";
+        Inline? firstInline = null;
+        foreach (string chunk in chunks)
+        {
+            markdown += chunk;
+            Assert.True(renderer.Advance(markdown, int.MaxValue, 0));
+            var expected = AiMarkdown.Render(AiMarkdown.CloseSpans(markdown));
+            Assert.Equal(new TextRange(expected.ContentStart, expected.ContentEnd).Text,
+                new TextRange(renderer.Document.ContentStart, renderer.Document.ContentEnd).Text);
+            if (markdown.Contains('[')) continue;
+            var paragraph = Assert.IsType<Paragraph>(renderer.Document.Blocks.FirstBlock);
+            firstInline ??= paragraph.Inlines.FirstInline;
+            Assert.Same(firstInline, paragraph.Inlines.FirstInline);
+        }
+    });
+
+    [Fact]
     public void PackagePidCacheRetainsOtherLiveEntriesWhenFull()
     {
         PrivacyIndicatorService.ConsumerProcessProbe.ClearPackageFamilyCache();

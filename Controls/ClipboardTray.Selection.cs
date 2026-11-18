@@ -267,8 +267,7 @@ public sealed partial class ClipboardTray
         double next = Math.Clamp(scroll.HorizontalOffset + speed * seconds, 0, scroll.ScrollableWidth);
         if (Math.Abs(next - scroll.HorizontalOffset) < 0.01) return;
         scroll.ScrollToHorizontalOffset(next);
-        // Realize the new edge before hit-testing; the pointer may be stationary.
-        Cards.UpdateLayout();
+        // ScrollChanged marks bounds dirty when WPF commits the offset.
         _selectionBoundsDirty = _selectionUpdatePending = true;
     }
 

@@ -130,7 +130,6 @@ public sealed class ElasticSliderPresentationTests
         slider.Unit = "%";
         Invoke(slider, "AnimateScaleImmediate", 1.05, 0.9, false);
         Invoke(slider, "AnimateRubberBandRelease");
-        Assert.Equal(1, Invoke(slider, "GetTickCount"));
         Assert.Equal(1d, Invoke(slider, "GetEffectiveTickStep"));
         Assert.Equal(5, slider.Value);
     });

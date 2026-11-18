@@ -58,8 +58,6 @@ internal sealed partial class SpotlightSearchService
                 usage == null ? null : () => usage.Preferences.GetExcludedFolders());
     }
 
-    internal Task WarmupAsync() => Task.WhenAll(_providers.Select(p => p.WarmupAsync()));
-
     internal Task<IReadOnlyList<SpotlightSearchItem>> SearchInstantAsync(
         string query,
         int limit,

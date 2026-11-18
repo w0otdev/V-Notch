@@ -501,12 +501,18 @@ public sealed class ClipboardTrayInteractionTests
             await Dispatcher.Yield(DispatcherPriority.ApplicationIdle);
             tray.UpdateLayout();
             SetField(tray, "_animateResults", false);
+            var list = (ClipboardCardListBox)tray.FindName("Cards");
             using var cancellation = new CancellationTokenSource();
             var pending = (Task)Invoke(tray, "AnimateCollectionChangesAsync",
                 new[] { cards[1].Entry }, cancellation.Token)!;
             cancellation.Cancel();
             await Assert.ThrowsAnyAsync<OperationCanceledException>(() => pending);
-            var list = (ClipboardCardListBox)tray.FindName("Cards");
+            // Cancellation starts a reverse animation; it does not snap to the
+            // target. Let WPF initialize that clock before checking its endpoint.
+            await WpfFrameWaiter.NextAsync();
+            await WpfFrameWaiter.UntilAsync(() => cards.All(card =>
+                list.ItemContainerGenerator.ContainerFromItem(card) is ListBoxItem container &&
+                container.Opacity == 1 && container.RenderTransform.Value.IsIdentity), "cancelled card removal settles");
             foreach (var card in cards)
             {
                 var container = (ListBoxItem)list.ItemContainerGenerator.ContainerFromItem(card);

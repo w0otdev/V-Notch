@@ -40,7 +40,7 @@ internal static class ServicePrewarmer
 
     private static void RunBackgroundWarmups(IServiceProvider provider)
     {
-        var settings = WarmupSettings(provider);
+        WarmupSettings(provider);
         // Build file indexes on the first actual Spotlight query. They are not
         // needed for startup and can enumerate thousands of system files.
         WarmupBattery(provider);

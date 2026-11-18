@@ -1,13 +1,13 @@
-using Microsoft.Win32;
-using System.IO;
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.IO;
 using System.Runtime.InteropServices;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Threading;
+using Microsoft.Win32;
 
 namespace VNotch.Services;
 
@@ -552,31 +552,6 @@ public sealed partial class PrivacyIndicatorService : IDisposable
         else
         {
             _dispatcher.BeginInvoke(DispatcherPriority.Normal, new Action(Apply));
-        }
-    }
-
-    internal void PollMicrophoneFlow()
-    {
-        try
-        {
-            var candidates = _microphoneCandidates;
-            MicrophoneFlowEvidence evidence = candidates.Count > 0
-                ? _microphoneFlowProbe.Probe(candidates)
-                : MicrophoneFlowEvidence.Empty;
-
-            bool microphoneInUse = _microphoneActivityGate.Evaluate(
-                hasCandidate: candidates.Count > 0,
-                hasActiveSession: evidence.HasActiveSession,
-                peakLevel: evidence.PeakLevel,
-                DateTime.UtcNow);
-
-            PublishState(microphoneInUse, evidence);
-        }
-        catch (Exception ex)
-        {
-            _microphoneActivityGate.Reset();
-            PublishState(microphoneInUse: false, MicrophoneFlowEvidence.Empty);
-            RuntimeLog.Error("PRIVACY-MIC", ex, "Microphone flow probe failed");
         }
     }
 

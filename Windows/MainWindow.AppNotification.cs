@@ -146,7 +146,7 @@ public partial class MainWindow
 
     private void ApplyAppNotificationContent(AppNotificationInfo notification)
     {
-        string appName = string.IsNullOrWhiteSpace(notification.AppName) ? "Notification" : notification.AppName;
+        string appName = string.IsNullOrWhiteSpace(notification.AppName) ? Loc.Get("notification.title") : notification.AppName;
         string rawTitle = notification.Title ?? string.Empty;
         string rawBody = notification.Body ?? string.Empty;
 
@@ -173,7 +173,7 @@ public partial class MainWindow
         AppNotificationTitleText.Text = displayTitle;
         AppNotificationBodyText.Text = displayBody;
         AppNotificationBodyText.Visibility = string.IsNullOrWhiteSpace(displayBody) ? Visibility.Collapsed : Visibility.Visible;
-        AppNotificationTimeText.Text = "now";
+        AppNotificationTimeText.Text = Loc.Get("notification.now");
         AppNotificationAvatarInitialsText.Text = AppNotificationService.ExtractInitials(displayTitle, appName);
 
         ImageSource? icon = AppNotificationService.NormalizeAppIcon(notification.AppIcon)

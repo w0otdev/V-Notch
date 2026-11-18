@@ -443,7 +443,7 @@ public sealed class AiUsageNotchView : UserControl
             : AiUsageAppearance.Current.PercentText(AiUsageAppearance.Current.ShowUsed ? visual.ClampedUsedPercent : visual.ClampedRemainingPercent);
         string allowanceText = percentText;
 
-        Brush fillBrush = AiUsageAppearance.Current.Fill(usage.Provider, visual.ClampedUsedPercent);
+        Brush fillBrush = AiUsageAppearance.Current.Fill(usage.Provider);
 
         Brush valueBrush = SystemParameters.HighContrast
             ? SystemColors.ControlTextBrush
@@ -523,7 +523,7 @@ public sealed class AiUsageNotchView : UserControl
             CornerRadius = new CornerRadius(AiUsageAppearance.Current.BarHeight / 2.0),
             Background = fillBrush
         };
-        AiUsageAppearance.Current.BindFill(fillBorder, usage.Provider, visual.ClampedUsedPercent);
+        AiUsageAppearance.Current.BindFill(fillBorder, usage.Provider);
         Grid.SetColumn(fillBorder, 0);
         Grid.SetColumnSpan(fillBorder, 2);
         _motion.BindBar(fillBorder, usage.Provider + ":" + window.Bucket + ":" + window.LabelKey + ":" + window.DurationMinutes,

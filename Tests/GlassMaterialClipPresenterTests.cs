@@ -1,8 +1,8 @@
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
-using VNotch.Presenters;
 using VNotch.Controls;
+using VNotch.Presenters;
 using VNotch.Services;
 using Xunit;
 

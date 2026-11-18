@@ -3,6 +3,7 @@ using System.IO;
 using System.Reflection;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using VNotch.Models;
@@ -154,6 +155,74 @@ public sealed class SpotlightPersonalizationAndMorphTests
         await WpfFrameWaiter.UntilAsync(() => window.ContentRegion.ActualHeight > contractedHeight + 20, "results height re-expanded", ct);
         Assert.True(window.IsSpotlightOpen);
     });
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void RepeatedQuickActionOpenKeysPreserveThePanelAndSelectedAction(bool reducedMotion) => WithFixture(async (fixture, ct) =>
+    {
+        bool previous = AnimationConfig.ReduceMotion;
+        AnimationConfig.SetReduceMotion(reducedMotion);
+        try
+        {
+            var window = fixture.Window;
+            window.ShowSpotlight();
+            await WpfFrameWaiter.UntilAsync(() => !Field<bool>(window, "_entranceActive"), "quick actions entrance", ct);
+            var vm = (SpotlightViewModel)window.DataContext;
+            window.SearchBox.Text = "fixture";
+            Invoke(window, "CancelSearchDebounce");
+            vm.CancelPendingSearch();
+            var item = ApplicationItem(fixture, "fixture");
+            vm.Results.Add(item);
+            vm.SelectedResult = item;
+            window.SearchBox.CaretIndex = window.SearchBox.Text.Length;
+
+            Assert.True(SendQuickActionKey(window, Key.Right).Handled);
+            var menu = Field<ContextMenu>(window, "_activeResultMenu");
+            var firstRow = window.QuickActionsItems.Children[0];
+            int slideVersion = Field<int>(window, "_quickActionsSlideVersion");
+            Assert.True(SendQuickActionKey(window, Key.Down, repeat: true).Handled);
+            Assert.Equal(1, Field<int>(window, "_activeResultMenuIndex"));
+
+            for (int i = 0; i < 24; i++)
+            {
+                var key = i % 2 == 0 ? Key.Right : Key.Apps;
+                Assert.True(SendQuickActionKey(window, key, repeat: i % 3 != 0).Handled);
+                Assert.Same(menu, Field<ContextMenu>(window, "_activeResultMenu"));
+                Assert.Same(firstRow, window.QuickActionsItems.Children[0]);
+                Assert.Equal(slideVersion, Field<int>(window, "_quickActionsSlideVersion"));
+                Assert.Equal(1, Field<int>(window, "_activeResultMenuIndex"));
+                await WpfFrameWaiter.NextAsync(ct);
+            }
+            await WpfFrameWaiter.UntilAsync(() => window.QuickActionsPanel.Opacity == 1 && window.QuickActionsTranslate.X == 0,
+                "quick actions animation finishes while opening keys repeat", ct);
+
+            Assert.True(SendQuickActionKey(window, Key.Left).Handled);
+            int closeVersion = Field<int>(window, "_quickActionsSlideVersion");
+            Assert.True(SendQuickActionKey(window, Key.Right, repeat: true).Handled);
+            Assert.False(Field<bool>(window, "_quickActionsOpen"));
+            Assert.Equal(closeVersion, Field<int>(window, "_quickActionsSlideVersion"));
+            window.SearchBox.CaretIndex = 1;
+            Assert.False(SendQuickActionKey(window, Key.Right, repeat: true).Handled);
+            window.SearchBox.CaretIndex = window.SearchBox.Text.Length;
+            Assert.True(SendQuickActionKey(window, Key.Right).Handled);
+            Assert.True(Field<bool>(window, "_quickActionsOpen"));
+            Assert.NotSame(menu, Field<ContextMenu>(window, "_activeResultMenu"));
+        }
+        finally { AnimationConfig.SetReduceMotion(previous); }
+    });
+
+    private static KeyEventArgs SendQuickActionKey(SpotlightWindow window, Key key, bool repeat = false)
+    {
+        var args = new KeyEventArgs(Keyboard.PrimaryDevice, PresentationSource.FromVisual(window)!, Environment.TickCount, key)
+        {
+            RoutedEvent = Keyboard.PreviewKeyDownEvent
+        };
+        if (repeat) typeof(KeyEventArgs).GetMethod("SetRepeat", Private)!.Invoke(args, [true]);
+        Assert.Equal(repeat, args.IsRepeat);
+        window.SearchBox.RaiseEvent(args);
+        return args;
+    }
 
     [Theory]
     [InlineData(false)]

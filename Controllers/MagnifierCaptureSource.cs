@@ -46,9 +46,6 @@ public sealed partial class MagnifierCaptureSource : IDisposable
     [LibraryImport(NativeDll, EntryPoint = "vn_magcap_has_usable_frame")]
     private static partial int NativeHasUsableFrame(int handle, int x, int y, int width, int height, out byte usable);
 
-    [LibraryImport(NativeDll, EntryPoint = "vn_magcap_wait_unfiltered_frame")]
-    private static partial int NativeWaitUnfilteredFrame(int handle, uint timeoutMs, out byte received);
-
     [LibraryImport(NativeDll, EntryPoint = "vn_magcap_debug_status")]
     private static unsafe partial int NativeDebugStatus(int handle, int x, int y, int width, int height, char* buffer, int capacity, out int length);
 
@@ -60,15 +57,17 @@ public sealed partial class MagnifierCaptureSource : IDisposable
     private static unsafe partial int NativeTestInstallFrame(
         int handle, byte ready, byte running, int width, int height, byte* pixels, int pixelBytes, long frameAgeMs);
 
-    [LibraryImport(NativeDll, EntryPoint = "vn_backdrop_composite")]
-    private static partial int NativeBackdropComposite(int x, int y, int width, int height, IntPtr destination, out byte ok);
+    [LibraryImport(NativeDll, EntryPoint = "vn_backdrop_composite_frame")]
+    private static partial int NativeBackdropComposite(int x, int y, int width, int height, IntPtr destination,
+        ref ulong publication, int waitMs, out byte ok);
 
-    internal static bool TryCompositeDesktop(int x, int y, int width, int height, IntPtr destination)
+    internal static bool TryCompositeDesktop(int x, int y, int width, int height, IntPtr destination,
+        ref ulong publication, int waitMs)
     {
         if (destination == IntPtr.Zero || width <= 0 || height <= 0) return false;
         try
         {
-            return NativeBackdropComposite(x, y, width, height, destination, out byte ok) == 0 && ok != 0;
+            return NativeBackdropComposite(x, y, width, height, destination, ref publication, waitMs, out byte ok) == 0 && ok != 0;
         }
         catch (Exception ex) when (ex is DllNotFoundException or EntryPointNotFoundException)
         {
@@ -180,21 +179,6 @@ public sealed partial class MagnifierCaptureSource : IDisposable
             DisposeRetiredInstances();
             _sharedInstance = null;
             _sharedRefCount = 0;
-        }
-    }
-
-    public static bool PrewarmUnfilteredDesktopFrame(TimeSpan timeout)
-    {
-        MagnifierCaptureSource source = AcquireShared(IntPtr.Zero);
-        try
-        {
-            uint timeoutMs = (uint)Math.Clamp(timeout.TotalMilliseconds, 0, int.MaxValue);
-            return source._handle > 0 &&
-                   NativeWaitUnfilteredFrame(source._handle, timeoutMs, out byte received) == 0 && received != 0;
-        }
-        finally
-        {
-            ReleaseShared(IntPtr.Zero);
         }
     }
 

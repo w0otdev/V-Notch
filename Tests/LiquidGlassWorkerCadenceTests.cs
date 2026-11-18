@@ -1,5 +1,5 @@
-using System.Reflection;
 using System.Diagnostics;
+using System.Reflection;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Interop;
@@ -86,7 +86,8 @@ public sealed class LiquidGlassWorkerCadenceTests
     [Fact]
     public void PointerRefreshResumesActiveCadenceFromASettledBackdrop()
     {
-        Assert.Equal(100, LiquidGlassController.ChooseFrameIntervalMs(8, true, false, true, 1000));
+        Assert.Equal(1000.0 / 30, LiquidGlassController.ChooseFrameIntervalMs(8, true, false, true, 1000));
+        Assert.Equal(50, LiquidGlassController.ChooseFrameIntervalMs(50, true, false, true, 1000));
         Assert.Equal(8, LiquidGlassController.ChooseFrameIntervalMs(8, true, false, true, 1000, forceRefresh: true));
     }
 

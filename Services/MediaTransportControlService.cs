@@ -109,9 +109,6 @@ public sealed partial class MediaTransportControlService
         }
     }
 
-    public const double RestartThresholdSeconds = 3.0;
-    public const double ConsecutiveClickWindowSeconds = 3.0;
-
     private DateTime _lastRewindUtc = DateTime.MinValue;
     private string _lastRewindSessionId = "";
 

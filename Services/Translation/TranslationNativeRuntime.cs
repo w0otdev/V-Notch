@@ -134,14 +134,56 @@ internal static partial class TranslationNativeRuntime
     private static bool TryLoadLibraryCore(string path, out string? loaded)
     {
         loaded = null;
-        // Resolve ggml beside llama.dll even with App's hardened DLL search policy.
-        if (!NativeLibrary.TryLoad(path, typeof(TranslationNativeRuntime).Assembly,
-            DllImportSearchPath.UseDllDirectoryForDependencies | DllImportSearchPath.System32 | DllImportSearchPath.ApplicationDirectory,
-            out var handle)) return false;
+        bool vulkan = string.Equals(Path.GetFileName(Path.GetDirectoryName(path)), "vulkan", StringComparison.OrdinalIgnoreCase);
+        var handle = vulkan
+            ? LoadVulkanLibrary(path, AppContext.BaseDirectory, Avx2.IsSupported || Avx512F.IsSupported, LoadNativeLibrary, NativeLibrary.Free)
+            : LoadNativeLibrary(path);
+        if (handle == IntPtr.Zero)
+        {
+            RuntimeLog.Warn(LogCategory, vulkan ? "Vulkan runtime dependencies could not be loaded; trying the bundled CPU runtime." : "Bundled CPU runtime could not be loaded.");
+            return false;
+        }
         _handle = handle;
         _loaded = true;
         loaded = _library = path;
         return true;
+    }
+
+    private static IntPtr LoadNativeLibrary(string path) =>
+        File.Exists(path) && NativeLibrary.TryLoad(path, typeof(TranslationNativeRuntime).Assembly,
+            DllImportSearchPath.UseDllDirectoryForDependencies | DllImportSearchPath.System32 | DllImportSearchPath.ApplicationDirectory,
+            out var handle) ? handle : IntPtr.Zero;
+
+    internal static IntPtr LoadVulkanLibrary(string path, string appRoot, bool avx2,
+        Func<string, IntPtr> load, Action<IntPtr> free)
+    {
+        // LLamaSharp 0.27's Vulkan package imports ggml-cpu.dll but ships it only
+        // in the CPU package's ISA folders. Load Vulkan's verified ggml-base first:
+        // otherwise loading the CPU DLL would bind the entire backend to its base DLL.
+        // Explicit absolute paths preserve the app's hardened DLL search policy.
+        var baseHandle = load(Path.Combine(Path.GetDirectoryName(path)!, "ggml-base.dll"));
+        if (baseHandle == IntPtr.Zero) return IntPtr.Zero;
+        try
+        {
+            foreach (string candidate in Candidates(appRoot, avx2, avx2, false).Skip(1))
+            {
+                var cpuHandle = load(Path.Combine(Path.GetDirectoryName(candidate)!, "ggml-cpu.dll"));
+                if (cpuHandle == IntPtr.Zero) continue;
+                try
+                {
+                    var handle = load(path);
+                    if (handle != IntPtr.Zero) return handle;
+                }
+                finally { free(cpuHandle); }
+            }
+            return IntPtr.Zero;
+        }
+        finally
+        {
+            // On success llama.dll retains its imports. On failure release every
+            // preload so the CPU fallback can load its own matching dependencies.
+            free(baseHandle);
+        }
     }
 
     internal static IEnumerable<string> Candidates(string root, bool avx, bool avx2, bool avx512)

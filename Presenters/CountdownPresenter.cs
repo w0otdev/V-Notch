@@ -129,15 +129,6 @@ public sealed class CountdownPresenter : IDisposable
         _refs.PanelBorderBrush.BeginAnimation(SolidColorBrush.ColorProperty, flash);
     }
 
-    public void SetHighlight(UIElement highlight, bool visible)
-    {
-        if (_disposed) return;
-
-        var anim = MakeAnim(visible ? 0.0 : 1.0, visible ? 1.0 : 0.0,
-            new Duration(TimeSpan.FromMilliseconds(visible ? 120 : 180)), _easeQuadOut);
-        highlight.BeginAnimation(UIElement.OpacityProperty, anim);
-    }
-
     public void AnimateStepHighlightOpacity(UIElement highlight, double to, int durationMs)
     {
         if (_disposed) return;

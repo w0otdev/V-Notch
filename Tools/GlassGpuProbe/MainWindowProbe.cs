@@ -113,6 +113,7 @@ internal static class MainWindowProbe
             if (backdrop.Opacity <= 0 || backdrop.Visibility != Visibility.Visible || image.Source == null || glass.ImageSource is not D3DImage)
                 throw new InvalidOperationException("The native frame is not exposed by the glass material.");
             Console.WriteLine("PASS: production MainWindow receives native glass with lazy resources and its real region provider.");
+            CheckTraySizeJump(window, notch, image, glass, dpiScale);
             return 0;
         }
         catch (Exception ex) { Console.WriteLine($"FAIL: {ex}"); return 1; }
@@ -121,5 +122,42 @@ internal static class MainWindowProbe
             window.Close();
             if (System.IO.Directory.Exists(directory)) System.IO.Directory.Delete(directory, recursive: true);
         }
+    }
+
+    private static void CheckTraySizeJump(MainWindow window, FrameworkElement notch,
+        System.Windows.Controls.Image image, LiquidGlassController glass, double dpi)
+    {
+        var presented = typeof(LiquidGlassController).GetProperty("PresentedGpuFrame", Private)!;
+        var oldFrame = presented.GetValue(glass) ?? throw new InvalidOperationException("No compact frame.");
+        var get = oldFrame.GetType().GetMethod("Get")!;
+        var getY = oldFrame.GetType().GetMethod("GetY")!;
+        double Lens(object frame, int i) => (float)get.Invoke(frame, [i])!;
+        double bleed = (float)getY.Invoke(oldFrame, [2])!;
+        // Resize the real notch before the dispatcher can deliver another GPU frame.
+        notch.Width = 1150 / dpi;
+        notch.Height = 334 / dpi;
+        var content = (FrameworkElement)window.Content;
+        content.Measure(new Size(1400, 700));
+        content.Arrange(new Rect(0, 0, 1400, 700));
+        content.UpdateLayout();
+        var mapped = image.RenderTransform.TransformBounds(new Rect(0, 0,
+            (Lens(oldFrame, 2) + 2 * bleed) / dpi, (Lens(oldFrame, 3) + 2 * bleed) / dpi));
+        if (mapped.Left > .01 || mapped.Top > .01 || mapped.Right < notch.Width - .01 || mapped.Bottom < notch.Height - .01)
+            throw new InvalidOperationException($"Compact GPU frame exposed the tray background on resize: {mapped}");
+
+        glass.ForceRefresh();
+        var deadline = Environment.TickCount64 + 4000;
+        do
+        {
+            BenchmarkProbe.Pump(20);
+            if (presented.GetValue(glass) is not { } frame || Math.Abs(Lens(frame, 2) - 1150) > 1 ||
+                Math.Abs(Lens(frame, 3) - 334) > 1) continue;
+            var m = image.RenderTransform.Value;
+            if (Math.Abs(m.M11 - 1) > .002 || Math.Abs(m.M22 - 1) > .002)
+                throw new InvalidOperationException("Expanded native frame is still stretched.");
+            Console.WriteLine("PASS: compact frame covers the 1150x334 tray immediately, then a native-size frame replaces it.");
+            return;
+        } while (Environment.TickCount64 < deadline);
+        throw new TimeoutException("Native tray-sized frame did not replace the compact frame.");
     }
 }

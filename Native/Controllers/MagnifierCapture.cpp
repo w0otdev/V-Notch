@@ -90,12 +90,11 @@ public:
         init_done = CreateEventW(nullptr, TRUE, FALSE, nullptr);
         request = CreateEventW(nullptr, FALSE, FALSE, nullptr);
         frame_received = CreateEventW(nullptr, TRUE, FALSE, nullptr);
-        unfiltered_received = CreateEventW(nullptr, TRUE, FALSE, nullptr);
     }
     Source(const Source&) = delete;
     Source& operator=(const Source&) = delete;
     ~Source() {
-        for (HANDLE h : {init_done, request, frame_received, unfiltered_received})
+        for (HANDLE h : {init_done, request, frame_received})
             if (h) CloseHandle(h);
         if (thread) CloseHandle(thread);
     }
@@ -106,7 +105,6 @@ public:
     HANDLE init_done = nullptr;
     HANDLE request = nullptr;
     HANDLE frame_received = nullptr;
-    HANDLE unfiltered_received = nullptr;
     std::atomic<bool> running{false};
     std::atomic<bool> ready{false};
     std::atomic<bool> capture_enabled{true};
@@ -127,12 +125,36 @@ public:
 
     CaptureRequest active;
     CaptureRequest requested;
+    // Pump-thread only: when the consumer's crop last changed.
+    CaptureRequest last_request;
+    ULONGLONG last_request_change = 0;
+
+    // While the notch animates, the crop moves every frame. Retargeting the
+    // Magnifier source invalidates the frame and stalls the next capture (up to
+    // 12 ms), so capture a padded area and serve sub-crops from it. Crops are
+    // copied 1:1 from the same desktop pixels, so the output is unchanged.
+    static constexpr ULONGLONG kSettleMs = 400;
+    static bool ContainsRequest(const CaptureRequest& outer, const CaptureRequest& inner) noexcept {
+        return outer.width > 0 && outer.height > 0 &&
+            inner.x >= outer.x && inner.y >= outer.y &&
+            static_cast<int64_t>(inner.x) + inner.width <= static_cast<int64_t>(outer.x) + outer.width &&
+            static_cast<int64_t>(inner.y) + inner.height <= static_cast<int64_t>(outer.y) + outer.height;
+    }
+    static CaptureRequest PadRequest(const CaptureRequest& r, int32_t pad) noexcept {
+        const int vx = GetSystemMetrics(SM_XVIRTUALSCREEN), vy = GetSystemMetrics(SM_YVIRTUALSCREEN);
+        const int vr = vx + GetSystemMetrics(SM_CXVIRTUALSCREEN), vb = vy + GetSystemMetrics(SM_CYVIRTUALSCREEN);
+        const int left = std::max(vx, r.x - pad), top = std::max(vy, r.y - pad);
+        const int right = std::min(vr, r.x + r.width + pad), bottom = std::min(vb, r.y + r.height + pad);
+        return { left, top, std::max(1, right - left), std::max(1, bottom - top) };
+    }
+    static int32_t MovingPad(const CaptureRequest& r) noexcept {
+        return std::clamp(std::max(r.width, r.height) / 5, 96, 192);
+    }
 
     SRWLOCK frame_lock = SRWLOCK_INIT;
     std::vector<uint8_t> completed;
     int32_t completed_width = 0, completed_height = 0, completed_x = 0, completed_y = 0;
     bool has_completed = false;
-    bool has_unfiltered = false;
     int64_t completed_tick = 0;
     int32_t completed_filter_version = 0;
     uint64_t frame_counter = 0;
@@ -205,7 +227,6 @@ public:
     // ---- frames ----
     void ClearFrameLocked() noexcept {
         has_completed = false;
-        has_unfiltered = false;
         completed.clear();
         completed.shrink_to_fit();
     }
@@ -298,10 +319,6 @@ public:
                 has_completed = true;
                 completed_tick = static_cast<int64_t>(GetTickCount64());
                 ++frame_counter;
-                if (applied_filter_version == 0) {
-                    has_unfiltered = true;
-                    SetEvent(unfiltered_received);
-                }
             }
             SetEvent(frame_received);
             return true;
@@ -400,7 +417,6 @@ public:
                     ScopedLock guard(&frame_lock);
                     ClearFrameLocked();
                     ResetEvent(frame_received);
-                    ResetEvent(unfiltered_received);
                 } else {
                     if (!host_shown) ShowWindow(host, SW_SHOWNA);
                     host_shown = true;
@@ -409,23 +425,34 @@ public:
                     CaptureRequest req;
                     { ScopedLock guard(&frame_lock); req = requested; }
                     if (req.width > 0 && req.height > 0) {
-                        const bool changed = memcmp(&active, &req, sizeof(req)) != 0;
+                        const ULONGLONG now = GetTickCount64();
+                        if (memcmp(&last_request, &req, sizeof(req)) != 0) {
+                            last_request = req;
+                            last_request_change = now;
+                        }
+                        const bool inside = ContainsRequest(active, req);
+                        // Once the crop rests, shrink back to the exact crop so idle
+                        // captures stay as small as before.
+                        const CaptureRequest exact = PadRequest(req, 0);
+                        const bool settle = inside && now - last_request_change >= kSettleMs &&
+                            memcmp(&active, &exact, sizeof(exact)) != 0;
+                        const bool changed = !inside || settle;
                         if (changed) {
                             ScopedLock guard(&frame_lock);
                             has_completed = false;
                         }
-                        active = req;
+                        if (changed) active = settle ? exact : PadRequest(req, MovingPad(req));
                         if (changed) {
-                            SetWindowPos(host, nullptr, req.x, req.y, req.width, req.height, SWP_NOACTIVATE | SWP_NOZORDER | SWP_NOREDRAW);
-                            SetWindowPos(mag, nullptr, 0, 0, req.width, req.height, SWP_NOACTIVATE | SWP_NOZORDER | SWP_NOREDRAW);
-                            if (req.width != mag_w || req.height != mag_h) {
-                                mag_w = req.width;
-                                mag_h = req.height;
-                                MoveWindow(host, req.x, req.y, mag_w, mag_h, FALSE);
+                            SetWindowPos(host, nullptr, active.x, active.y, active.width, active.height, SWP_NOACTIVATE | SWP_NOZORDER | SWP_NOREDRAW);
+                            SetWindowPos(mag, nullptr, 0, 0, active.width, active.height, SWP_NOACTIVATE | SWP_NOZORDER | SWP_NOREDRAW);
+                            if (active.width != mag_w || active.height != mag_h) {
+                                mag_w = active.width;
+                                mag_h = active.height;
+                                MoveWindow(host, active.x, active.y, mag_w, mag_h, FALSE);
                                 MoveWindow(mag, 0, 0, mag_w, mag_h, FALSE);
                             }
                         }
-                        const RECT rect{req.x, req.y, req.x + req.width, req.y + req.height};
+                        const RECT rect{active.x, active.y, active.x + active.width, active.y + active.height};
                         if (!api.set_window_source(mag, rect)) {
                             source_fail_count.fetch_add(1);
                         } else {
@@ -455,7 +482,7 @@ public:
 
     // May throw std::bad_alloc before the pump thread exists; vn_magcap_initialize reports that as VN_ERR_FAIL.
     bool Start(HWND exclude) {
-        if (!init_done || !request || !frame_received || !unfiltered_received) return false;
+        if (!init_done || !request || !frame_received) return false;
         if (running.load() || thread != nullptr) {
             if (!Stop()) return false;
         }
@@ -748,23 +775,6 @@ VN_EXPORT int32_t __stdcall vn_magcap_has_usable_frame(
     SetEvent(source->request);
     mc::ScopedLock guard(&source->frame_lock);
     *out_usable = source->HasUsableFrameLocked(x, y, width, height) ? 1 : 0;
-    return VN_OK;
-}
-
-// Waits for a frame captured with no exclusion list. out_received = 1 when one is available.
-VN_EXPORT int32_t __stdcall vn_magcap_wait_unfiltered_frame(int32_t handle, uint32_t timeout_ms, uint8_t* out_received) noexcept {
-    auto source = mc::Find(handle);
-    if (!source || !out_received) return VN_ERR_INVALID_ARG;
-    {
-        mc::ScopedLock guard(&source->frame_lock);
-        if (source->has_unfiltered) {
-            *out_received = 1;
-            return VN_OK;
-        }
-        ResetEvent(source->unfiltered_received);
-    }
-    SetEvent(source->request);
-    *out_received = WaitForSingleObject(source->unfiltered_received, timeout_ms) == WAIT_OBJECT_0 ? 1 : 0;
     return VN_OK;
 }
 

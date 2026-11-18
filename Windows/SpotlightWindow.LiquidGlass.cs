@@ -33,12 +33,6 @@ public partial class SpotlightWindow
     private long _lastTransparencyCheckTicks;
     private UiScheduledTimer? _glassResourceExpiry;
 
-    internal void PrepareGlassForOpening()
-    {
-        if (!IsLiquidGlassEnabled || IsSpotlightOpen) return;
-        ScheduleGlassResourceExpiry();
-    }
-
     private void RetainGlassForReopen()
     {
         _liquidGlass?.Stop(retainGpuResources: true);
@@ -388,6 +382,11 @@ public partial class SpotlightWindow
             }
 
             _liquidGlass.EnableNativeRefraction();
+            // Screen-lock late frames while the shell resizes, with an edge bleed so
+            // they never reveal what is behind the glass (same as the notch).
+            _liquidGlass.GpuEdgeBleedPx = GpuEdgeBleedPx;
+            _liquidGlass.GpuFramePresented -= AlignGpuBackdropToLiveShell;
+            _liquidGlass.GpuFramePresented += AlignGpuBackdropToLiveShell;
             RuntimeLog.Log("LIQUIDGLASS",
                 $"Spotlight GPU refraction enabled; target={Math.Clamp(_settings.LiquidGlass?.TargetFps ?? 60, 30, LiquidGlassController.MaxTargetFps)} FPS; ultimateGpu={useUltimateGpu}");
             _gpuRefractionConfigured = true;
@@ -426,6 +425,12 @@ public partial class SpotlightWindow
         _lastAppliedTouchLight = -1;
         _glassInteractionController?.Dispose();
         _glassInteractionController = null;
+        if (_liquidGlass != null)
+        {
+            _liquidGlass.GpuFramePresented -= AlignGpuBackdropToLiveShell;
+            _liquidGlass.GpuEdgeBleedPx = 0;
+            _liquidGlass.ResetPresentedFrameAlignment();
+        }
 
         if (GlassBackdropImage != null)
         {
@@ -609,6 +614,26 @@ public partial class SpotlightWindow
             fx.HighlightStrength = cfg.TouchLight;
         }
         lg.UpdateGpuLens(fx, screenLeft, screenTop);
+        lg.AlignPresentedFrame(screenLeft, screenTop, exactW, exactH, dpiScale, dpiScale);
+    }
+
+    private const int GpuEdgeBleedPx = 64;
+
+    // A new GPU frame reached WPF: re-align it to where the shell is now.
+    private void AlignGpuBackdropToLiveShell()
+    {
+        var lg = _liquidGlass;
+        if (lg == null || !_gpuRefractionConfigured || GlassBackdropHost == null) return;
+        double dpiScale = GetGlassDpiScale();
+        if (!double.IsFinite(dpiScale) || dpiScale <= 0) dpiScale = 1.0;
+        double shellW = GlassBackdropHost.ActualWidth;
+        if (!double.IsFinite(shellW) || shellW <= 0) shellW = Shell.Width;
+        if (!double.IsFinite(shellW) || shellW <= 0) shellW = 720;
+        double shellH = GlassBackdropHost.ActualHeight;
+        if (!double.IsFinite(shellH) || shellH <= 0) shellH = Shell.Height;
+        if (!double.IsFinite(shellH) || shellH <= 0) shellH = 64;
+        var (screenLeft, screenTop) = GetShellScreenPosition(shellW * dpiScale, dpiScale);
+        lg.AlignPresentedFrame(screenLeft, screenTop, shellW * dpiScale, shellH * dpiScale, dpiScale, dpiScale);
     }
 
     private (double ScreenLeft, double ScreenTop) GetShellScreenPosition(double exactW, double dpiScale)

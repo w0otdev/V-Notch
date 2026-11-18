@@ -197,7 +197,14 @@ public sealed partial class ClipboardCardViewModel : ObservableObject
         if (bytes < 1024 * 1024) return (bytes / 1024d).ToString("0.#", Services.Loc.GetCulture()) + " KB";
         return (bytes / (1024d * 1024)).ToString("0.#", Services.Loc.GetCulture()) + " MB";
     }
-    public string Age => _age;
+    public string Age
+    {
+        get
+        {
+            if (_age.Length == 0) RefreshAge(DateTime.UtcNow);
+            return _age;
+        }
+    }
 
     internal void RefreshAge(DateTime nowUtc)
     {
@@ -212,7 +219,8 @@ public sealed partial class ClipboardCardViewModel : ObservableObject
             2 => Services.Loc.Get("clipboard.hoursAgo", value),
             _ => Services.Loc.Get("clipboard.daysAgo", value)
         };
-        SetProperty(ref _age, label, nameof(Age));
+        if (_age.Length == 0) _age = label;
+        else SetProperty(ref _age, label, nameof(Age));
     }
     public string FileExtension => _fileExtension ??= ComputeFileExtension();
 
@@ -344,6 +352,7 @@ public sealed partial class ClipboardCardViewModel : ObservableObject
     }
     public FontFamily ContentFont => SharedContentFont;
     public Brush CardBrush => _cardBrush ??= CreateCardBrush(Entry, IsMasked);
+    internal Services.Clipboard.ClipboardImagePreview.PixelTarget PreviewTarget { get; set; }
     [ObservableProperty] private ImageSource? _image;
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(DisplaySourceIcon))]
@@ -364,7 +373,6 @@ public sealed partial class ClipboardCardViewModel : ObservableObject
     {
         Entry = entry;
         _isMasked = isMasked;
-        RefreshAge(DateTime.UtcNow);
     }
 
     private static Brush CreateCardBrush(ClipboardEntry entry, bool isMasked)

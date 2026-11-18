@@ -210,7 +210,6 @@ public sealed partial class ClipboardTray : UserControl, IDisposable
             }
         };
         ApplyLocalization();
-        RebuildCategories();
     }
 
     public void Attach(ClipboardHistoryController controller)
@@ -364,13 +363,23 @@ public sealed partial class ClipboardTray : UserControl, IDisposable
             // the first WPF binding/layout pass during the tray reveal.
             var masking = await PrepareCardMaskingAsync(entries, cancellation);
             if (version != _refreshVersion || cancellation.IsCancellationRequested || _disposed) return;
-            await PrepareResultsAsync(cancellation);
-            await AnimateCollectionChangesAsync(entries, cancellation);
+            if (_cards.Count > 0)
+            {
+                await PrepareResultsAsync(cancellation);
+                await AnimateCollectionChangesAsync(entries, cancellation);
+            }
             if (version != _refreshVersion || cancellation.IsCancellationRequested || _disposed || _trayLeaving) return;
             _categoryCounts = counts;
             bool wasEmpty = _cards.Count == 0;
             if (_animateResults) FindScrollViewer(Cards)?.ScrollToHorizontalOffset(0);
-            if (!AreEntriesIdentical(entries))
+            if (wasEmpty && entries.Count > 32)
+            {
+                var initial = new ClipboardCardViewModel[entries.Count];
+                for (int i = 0; i < initial.Length; i++)
+                    initial[i] = new ClipboardCardViewModel(entries[i], masking[entries[i].Id]);
+                _cards.ReplaceAll(initial);
+            }
+            else if (!AreEntriesIdentical(entries))
             {
                 var positions = CaptureCardPositions();
                 ReconcilePreparedCards(entries, masking);
@@ -411,10 +420,19 @@ public sealed partial class ClipboardTray : UserControl, IDisposable
         {
             var page = await _controller.Store.SearchPageAsync(SearchBox.Text, _category, _nextSearchOffset, 100, cancellation);
             if (version != _refreshVersion || _queryDirty || _disposed || cancellation.IsCancellationRequested) return;
-            var entries = _cards.Select(c => c.Entry).Concat(page.Entries).DistinctBy(e => e.Id).ToArray();
+            var entries = page.Entries;
             var masking = await PrepareCardMaskingAsync(entries, cancellation);
             if (version != _refreshVersion || _queryDirty || _disposed || cancellation.IsCancellationRequested) return;
-            ReconcilePreparedCards(entries, masking);
+            if (_trayLeaving || _groupEntryId != null) return;
+            var scroll = FindScrollViewer(Cards);
+            // WPF pins the viewport to the end when its extent grows. An
+            // explicit offset keeps the same card in view as this page arrives.
+            double? endAnchor = scroll != null && scroll.ScrollableWidth > 0 &&
+                scroll.HorizontalOffset >= scroll.ScrollableWidth - 1 ? scroll.HorizontalOffset : null;
+            foreach (var entry in entries)
+                if (!_cards.ById.ContainsKey(entry.Id))
+                    _cards.Add(new ClipboardCardViewModel(entry, masking[entry.Id]));
+            if (endAnchor is double offset) scroll!.ScrollToHorizontalOffset(offset);
             _hasMoreResults = page.HasMore;
             _nextSearchOffset = page.NextOffset;
         }
@@ -1051,6 +1069,8 @@ public sealed partial class ClipboardTray : UserControl, IDisposable
     private void Card_SizeChanged(object sender, SizeChangedEventArgs e)
     {
         if (sender is not Border border || e.NewSize.Width <= 0 || e.NewSize.Height <= 0) return;
+        if (border.DataContext is ClipboardCardViewModel { Entry.Kind: ClipboardKind.Image })
+            QueueCardContentRefresh();
         var bounds = new Rect(e.NewSize);
         if (border.Clip is RectangleGeometry existing && existing.Rect == bounds) return;
         var clip = new RectangleGeometry(bounds, 12, 12);

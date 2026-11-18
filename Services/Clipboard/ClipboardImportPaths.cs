@@ -10,8 +10,6 @@ namespace VNotch.Services.Clipboard;
 internal static partial class ClipboardImportPaths
 {
     private const string NativeDll = "VNotch.Native.dll";
-    private const FileOptions FileFlagOpenReparsePoint = (FileOptions)0x00200000;
-
     [LibraryImport(NativeDll)]
     private static partial int vn_clipboard_is_cloud_placeholder(uint tag, out byte outIsCloud);
 

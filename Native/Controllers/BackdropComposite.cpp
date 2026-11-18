@@ -22,7 +22,7 @@
 //
 // PrintWindow on maximized windows takes tens of milliseconds, so a worker
 // thread composes one wide strip of the monitor top and callers only copy a
-// crop out of the latest finished strip. The render loop never waits on it.
+// crop out of the latest finished strip.
 //
 // Some windows (overlay bars, layered widgets) print as opaque even though
 // they are not visible on screen. Every composition is checked against the
@@ -152,6 +152,20 @@ bool TrackLiveCapture(Scratch& scratch, HWND hwnd, bool captured) {
         windows.push_back({hwnd, pid, thread, now});
     }
     return captured;
+}
+
+// An unredirected tool overlay that WGC captured recently is real, visible
+// content (e.g. MyDockFinder's top bar), not an invisible shell ghost. If its
+// frame is momentarily missing, keep the last complete strip instead of
+// composing without it, which made the bar blink in and out.
+bool WasLiveCapture(const Scratch& scratch, HWND hwnd) noexcept {
+    for (const auto& entry : scratch.live_windows)
+        if (entry.hwnd == hwnd) return true;
+    return false;
+}
+
+bool MayOmitFailedLayer(const Scratch& scratch, HWND hwnd) noexcept {
+    return IsUnredirectedToolOverlay(GetWindowLongPtrW(hwnd, GWL_EXSTYLE)) && !WasLiveCapture(scratch, hwnd);
 }
 
 constexpr bool Contains(const RECT& outer, const RECT& inner) noexcept {
@@ -471,7 +485,7 @@ bool CopyPrintedLayer(Scratch& scratch, HDC screen, const Layer& layer, const RE
     return entry.ok;
 }
 
-bool CompositeWindowLayer(Scratch& scratch, HDC screen, HDC dc, const RECT& area, int width, Layer& layer, ComposeMetrics& metrics, bool* out_all_opaque = nullptr) {
+bool CompositeWindowLayer(Scratch& scratch, HDC screen, const RECT& area, int width, Layer& layer, ComposeMetrics& metrics, bool* out_all_opaque = nullptr) {
     layer.from_wgc = false;
     // Copy only the visible frame; the invisible resize border prints black.
     RECT hit{};
@@ -484,24 +498,20 @@ bool CompositeWindowLayer(Scratch& scratch, HDC screen, HDC dc, const RECT& area
     const int hw = hit.right - hit.left;
     const int hh = hit.bottom - hit.top;
     if (ox < 0 || oy < 0 || ox + hw > ww || oy + hh > wh) return false;
-    // Print only into the intersecting crop. A maximized source window must not
-    // allocate/rasterize a full desktop bitmap for a small glass backdrop.
-    if (!scratch.window.Ensure(screen, hw, hh)) return false;
     // PW_RENDERFULLCONTENT forces an expensive synchronous application redraw.
     // Ordinary printing can copy its current redirected frame without that wait.
     const bool needs_full = std::find(scratch.full_content.begin(), scratch.full_content.end(), layer.hwnd) != scratch.full_content.end();
-    bool fresh_wgc = false;
+    capture::WindowCaptureCache::PixelRegion source{};
     // DirectComposition tool windows (including MyDockFinder's top bar) have
     // no GDI redirection bitmap. WGC captures their actual DWM visual, while
     // PrintWindow may succeed with an empty image. Try WGC for these too;
     // keep the legacy overlay validation only for the print fallback.
     const bool live_frame = scratch.use_window_capture &&
-        scratch.window_capture.CopyWindow(layer.hwnd, hit, layer.visible, layer.window,
-            static_cast<uint32_t*>(scratch.window.bits), hw, &fresh_wgc);
+        scratch.window_capture.ReadWindow(layer.hwnd, hit, layer.visible, layer.window, source);
     if (live_frame) {
         layer.from_wgc = true;
         metrics.any_live_wgc = true;
-        if (fresh_wgc) metrics.any_fresh_wgc = true;
+        if (source.fresh) metrics.any_fresh_wgc = true;
     }
     const bool previously_live = TrackLiveCapture(scratch, layer.hwnd, live_frame);
     if (!live_frame && scratch.use_window_capture &&
@@ -511,21 +521,28 @@ bool CompositeWindowLayer(Scratch& scratch, HDC screen, HDC dc, const RECT& area
         // Let the compositor retain its last complete strip until WGC resumes.
         return false;
     }
-    if (!live_frame && !CopyPrintedLayer(scratch, screen, layer, hit, needs_full, metrics)) return false;
+    if (!live_frame) {
+        if (!scratch.window.Ensure(screen, hw, hh) ||
+            !CopyPrintedLayer(scratch, screen, layer, hit, needs_full, metrics)) return false;
+        source.pixels = static_cast<const uint32_t*>(scratch.window.bits);
+        source.stride = hw;
+    }
 
     // Windows that draw with alpha (or nothing at all) print as black in the
     // transparent parts, so inspect the pixels instead of copying blindly.
-    auto* wpx = static_cast<const uint32_t*>(scratch.window.bits);
-    HitPixelSummary summary = InspectLayerHit(wpx, hw, 0, 0, hw, hh);
+    HitPixelSummary summary = InspectLayerHit(source.pixels, source.stride, 0, 0, hw, hh);
     if (!summary.any_pixel) return false; // fully transparent window
     if (out_all_opaque) *out_all_opaque = summary.all_opaque;
 
     const int dst_x = hit.left - area.left;
     const int dst_y = hit.top - area.top;
+    auto* target = static_cast<uint32_t*>(scratch.target.bits);
     if (!summary.needs_blend) {
-        if (!BitBlt(dc, dst_x, dst_y, hw, hh, scratch.window.dc, 0, 0, SRCCOPY)) return false;
+        for (int row = 0; row < hh; ++row)
+            std::memcpy(target + static_cast<size_t>(dst_y + row) * width + dst_x,
+                source.pixels + static_cast<size_t>(row) * source.stride, static_cast<size_t>(hw) * 4);
     } else {
-        BlendPremultipliedHit(wpx, hw, 0, 0, static_cast<uint32_t*>(scratch.target.bits), width, dst_x, dst_y, hw, hh);
+        BlendPremultipliedHit(source.pixels, source.stride, 0, 0, target, width, dst_x, dst_y, hw, hh);
     }
     return true;
 }
@@ -542,7 +559,6 @@ bool Compose(Scratch& scratch, const RECT& area, std::vector<uint32_t>& out, Com
     if (!screen) return false;
     struct Release { HDC dc; ~Release() noexcept { ReleaseDC(nullptr, dc); } } release{ screen };
     if (!scratch.target.Ensure(screen, width, height)) return false;
-    HDC dc = scratch.target.dc;
 
     const ULONGLONG check_now = GetTickCount64();
     scratch.overlay_checks.erase(std::remove_if(scratch.overlay_checks.begin(), scratch.overlay_checks.end(),
@@ -578,8 +594,8 @@ bool Compose(Scratch& scratch, const RECT& area, std::vector<uint32_t>& out, Com
         bool covered = false;
         if (state.count > 0 && Contains(state.layers[0].visible, area)) {
             bool top_opaque = false;
-            const bool captured = CompositeWindowLayer(scratch, screen, dc, area, width, state.layers[0], metrics, &top_opaque);
-            if (!captured && !IsUnredirectedToolOverlay(GetWindowLongPtrW(state.layers[0].hwnd, GWL_EXSTYLE))) return false;
+            const bool captured = CompositeWindowLayer(scratch, screen, area, width, state.layers[0], metrics, &top_opaque);
+            if (!captured && !MayOmitFailedLayer(scratch, state.layers[0].hwnd)) return false;
             if (captured && top_opaque) {
                 metrics.static_only = false;
                 covered = true;
@@ -590,21 +606,40 @@ bool Compose(Scratch& scratch, const RECT& area, std::vector<uint32_t>& out, Com
         if (!covered) {
             // PaintDesktop rebuilds the wallpaper even when applications cover
             // it. Retain the same bounded static lifetime as a desktop-only strip.
+            // Paint a padded area and serve sub-rects from it: while the notch
+            // animates, `area` changes every frame and repainting each time made
+            // this the slowest step. Same wallpaper pixels, copied 1:1.
             const ULONGLONG now = GetTickCount64();
-            if (scratch.wallpaper.bits && EqualRect(&scratch.wallpaper_area, &area) &&
-                now - scratch.wallpaper_tick < kWallpaperTtlMs) {
-                std::memcpy(scratch.target.bits, scratch.wallpaper.bits, static_cast<size_t>(width) * height * 4);
-                ok = true;
-            } else {
-                // PaintDesktop treats DC coordinates as screen coordinates.
-                SetViewportOrgEx(dc, -area.left, -area.top, nullptr);
-                ok = PaintDesktop(dc) != FALSE;
-                SetViewportOrgEx(dc, 0, 0, nullptr);
-                GdiFlush();
-                if (ok && scratch.wallpaper.Ensure(screen, width, height)) {
-                    std::memcpy(scratch.wallpaper.bits, scratch.target.bits, static_cast<size_t>(width) * height * 4);
-                    scratch.wallpaper_area = area; scratch.wallpaper_tick = now;
+            const bool cached = scratch.wallpaper.bits && Contains(scratch.wallpaper_area, area) &&
+                now - scratch.wallpaper_tick < kWallpaperTtlMs;
+            ok = true;
+            if (!cached) {
+                constexpr LONG kWallpaperPad = 160;
+                const LONG vx = GetSystemMetrics(SM_XVIRTUALSCREEN), vy = GetSystemMetrics(SM_YVIRTUALSCREEN);
+                const LONG vr = vx + GetSystemMetrics(SM_CXVIRTUALSCREEN), vb = vy + GetSystemMetrics(SM_CYVIRTUALSCREEN);
+                RECT padded{ std::max(vx, area.left - kWallpaperPad), std::max(vy, area.top - kWallpaperPad),
+                    std::min(vr, area.right + kWallpaperPad), std::min(vb, area.bottom + kWallpaperPad) };
+                // The virtual screen always contains `area`; keep it if metrics disagree.
+                if (!Contains(padded, area)) padded = area;
+                const int pw = padded.right - padded.left, ph = padded.bottom - padded.top;
+                ok = scratch.wallpaper.Ensure(screen, pw, ph);
+                if (ok) {
+                    // PaintDesktop treats DC coordinates as screen coordinates.
+                    SetViewportOrgEx(scratch.wallpaper.dc, -padded.left, -padded.top, nullptr);
+                    ok = PaintDesktop(scratch.wallpaper.dc) != FALSE;
+                    SetViewportOrgEx(scratch.wallpaper.dc, 0, 0, nullptr);
+                    GdiFlush();
                 }
+                if (ok) { scratch.wallpaper_area = padded; scratch.wallpaper_tick = now; }
+                else scratch.wallpaper_area = {};
+            }
+            if (ok) {
+                const int ox = area.left - scratch.wallpaper_area.left, oy = area.top - scratch.wallpaper_area.top;
+                const auto* src = static_cast<const uint8_t*>(scratch.wallpaper.bits);
+                auto* dst = static_cast<uint8_t*>(scratch.target.bits);
+                const size_t srcStride = static_cast<size_t>(scratch.wallpaper.width) * 4, rowBytes = static_cast<size_t>(width) * 4;
+                for (int row = 0; row < height; ++row)
+                    std::memcpy(dst + row * rowBytes, src + (static_cast<size_t>(oy) + row) * srcStride + static_cast<size_t>(ox) * 4, rowBytes);
             }
 
             if (!ok) return false;
@@ -616,10 +651,10 @@ bool Compose(Scratch& scratch, const RECT& area, std::vector<uint32_t>& out, Com
                 }
             }
             for (int i = start_idx; i >= 0; --i) {
-                if (CompositeWindowLayer(scratch, screen, dc, area, width, state.layers[i], metrics)) {
+                if (CompositeWindowLayer(scratch, screen, area, width, state.layers[i], metrics)) {
                     metrics.static_only = false;
                     ok = true;
-                } else if (!IsUnredirectedToolOverlay(GetWindowLongPtrW(state.layers[i].hwnd, GWL_EXSTYLE))) {
+                } else if (!MayOmitFailedLayer(scratch, state.layers[i].hwnd)) {
                     // Wallpaper or lower windows are not a valid replacement
                     // for an opaque window whose capture is temporarily missing.
                     return false;
@@ -628,8 +663,6 @@ bool Compose(Scratch& scratch, const RECT& area, std::vector<uint32_t>& out, Com
         }
         had_full_print = had_full_print || metrics.any_full_print;
         if (!ok) return false;
-        GdiFlush();
-
         if (state.count > 0) {
             if (HWND bad = FindMismatchedLayer(screen, scratch.target, area, state, scratch)) {
                 const LONG_PTR bad_ex = GetWindowLongPtrW(bad, GWL_EXSTYLE);
@@ -721,6 +754,7 @@ struct StripSlot {
     bool in_flight = false;
     uint64_t request_gen = 0;
     uint64_t completed_gen = 0;
+    uint64_t publication = 0;
     uint64_t capture_version = 0;
     bool live_capture = false;
 };
@@ -776,6 +810,7 @@ void WorkerMain() noexcept {
         int pick = -1;
         RECT wanted{};
         uint64_t gen = 0;
+        uint64_t publication = 0;
         {
             SrwExclusiveGuard guard(g_shared.lock);
             uint64_t best_gen = UINT64_MAX;
@@ -803,6 +838,7 @@ void WorkerMain() noexcept {
                 s.queued = false;
                 s.in_flight = true;
                 gen = s.request_gen;
+                publication = ++g_shared.global_seq;
             }
         }
 
@@ -822,6 +858,7 @@ void WorkerMain() noexcept {
             auto& s = g_shared.slots[pick];
             if (ok) {
                 s.pixels.swap(pixels);
+                s.publication = publication;
                 s.area = wanted;
                 s.updated_ms = NowSteadyMs();
                 s.ttl_ms = ChooseStripTtlMs(metrics);
@@ -831,9 +868,6 @@ void WorkerMain() noexcept {
             s.capture_version = capture_version;
             if (gen > s.completed_gen) s.completed_gen = gen;
             s.in_flight = false;
-            if (s.queued && ok && s.has_next_wanted && Contains(wanted, s.next_wanted)) {
-                s.queued = false;
-            }
             WakeAllConditionVariable(&g_shared.done);
         }
     }
@@ -861,10 +895,11 @@ void CopyCrop(const StripSlot& strip, const RECT& area, uint32_t* dest) noexcept
     }
 }
 
-void WaitSlotUntil(Shared& shared, StripSlot& slot, uint64_t target_gen, int64_t budget_ms) noexcept {
+template<class Ready>
+void WaitSlotUntil(Shared& shared, int64_t budget_ms, Ready ready) noexcept {
     if (budget_ms <= 0) return;
     const auto deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(budget_ms);
-    while (slot.completed_gen < target_gen) {
+    while (!ready()) {
         const auto now = std::chrono::steady_clock::now();
         if (now >= deadline) break;
         const auto rem = std::chrono::duration_cast<std::chrono::milliseconds>(
@@ -888,11 +923,11 @@ VN_EXPORT int32_t __stdcall vn_backdrop_freshness_debug(intptr_t hwnd, int32_t* 
 }
 
 // Fills destination (width*height top-down BGRA) with the desktop under the
-// given screen rect, excluding this process's windows. Non-blocking in steady
-// state across up to 4 concurrent glass strips; never runs D3D11/PrintWindow
-// on caller threads.
-VN_EXPORT int32_t __stdcall vn_backdrop_composite(
-    int32_t x, int32_t y, int32_t width, int32_t height, void* destination, uint8_t* out_ok) noexcept {
+// given screen rect, excluding this process's windows. A consumer may wait
+// briefly for a newer publication. Only the worker runs D3D11/PrintWindow.
+VN_EXPORT int32_t __stdcall vn_backdrop_composite_frame(
+    int32_t x, int32_t y, int32_t width, int32_t height, void* destination,
+    uint64_t* publication, int32_t wait_ms, uint8_t* out_ok) noexcept {
     if (!out_ok) return VN_ERR_INVALID_ARG;
     *out_ok = 0;
     if (!destination || width <= 0 || height <= 0 || width > 16384 || height > 16384) return VN_ERR_INVALID_ARG;
@@ -906,11 +941,25 @@ VN_EXPORT int32_t __stdcall vn_backdrop_composite(
         bd::SrwExclusiveGuard guard(shared.lock);
         if (!bd::EnsureWorker()) return VN_ERR_FAIL;
         const int64_t now_ms = bd::NowSteadyMs();
+        // A new consumer (or one returning from another capture source) must
+        // wait for composition started after the handoff, including on retries.
+        if (publication && !*publication) *publication = ++shared.global_seq;
+        const uint64_t minimum = publication ? *publication : 0;
+        const auto usable = [&](const bd::StripSlot& s) {
+            return s.monitor == mon && s.valid && s.publication >= minimum && bd::Contains(s.area, area);
+        };
 
-        // 1. Fast path: an existing strip already covers `area`.
-        for (int i = 0; i < bd::kMaxStrips; ++i) {
-            auto& slot = shared.slots[i];
-            if (!slot.valid || !bd::Contains(slot.area, area)) continue;
+        // Widening and moving two glass hosts can leave overlapping strips.
+        // Read the newest covering publication, regardless of slot order.
+        const auto newestCovering = [&]() {
+            bd::StripSlot* newest = nullptr;
+            for (auto& s : shared.slots) {
+                if (usable(s) && (!newest || s.publication > newest->publication)) newest = &s;
+            }
+            return newest;
+        };
+        if (auto* newest = newestCovering()) {
+            auto& slot = *newest;
 
             slot.last_access_ms = now_ms;
             if (!slot.has_next_wanted) {
@@ -935,18 +984,26 @@ VN_EXPORT int32_t __stdcall vn_backdrop_composite(
                 wait_gen = slot.request_gen;
             }
 
-            // Active render loops (age < 25ms) return immediately in ~10us with zero wait.
-            // After an idle gap (age >= 25ms), allow up to 2ms so a fast WGC frame lands immediately.
-            if (age_ms >= 25 && wait_gen > 0) {
-                bd::WaitSlotUntil(shared, slot, wait_gen, 2);
+            // When the consumer clock lands just ahead of WGC, let the worker
+            // finish the new strip within this frame's budget. Each consumer
+            // tracks its own publication, even when two lenses share a strip.
+            if (wait_ms > 0 && publication && slot.live_capture && slot.publication == *publication) {
+                bd::WaitSlotUntil(shared, std::min(wait_ms, 8), [&] {
+                    auto* current = newestCovering();
+                    return current && current->publication > minimum;
+                });
+            } else if (age_ms >= 25 && wait_gen > 0) {
+                bd::WaitSlotUntil(shared, 2, [&] { return slot.completed_gen >= wait_gen; });
             }
 
-            if (slot.valid && bd::Contains(slot.area, area)) {
-                bd::CopyCrop(slot, area, dest);
+            // The condition wait releases the lock. Another covering strip
+            // may now hold a more recent publication than the one we waited on.
+            if (auto* current = newestCovering()) {
+                bd::CopyCrop(*current, area, dest);
+                if (publication) *publication = current->publication;
                 *out_ok = 1;
                 return VN_OK;
             }
-            break;
         }
 
         // 2. Cold start or geometry expanded outside all current strips:
@@ -1008,13 +1065,19 @@ VN_EXPORT int32_t __stdcall vn_backdrop_composite(
             SetEvent(shared.wake);
         }
         const uint64_t req = slot.request_gen;
-        bd::WaitSlotUntil(shared, slot, req, 15);
-        if (slot.valid && bd::Contains(slot.area, area)) {
-            bd::CopyCrop(slot, area, dest);
+        bd::WaitSlotUntil(shared, 15, [&] { return slot.completed_gen >= req; });
+        if (auto* current = newestCovering()) {
+            bd::CopyCrop(*current, area, dest);
+            if (publication) *publication = current->publication;
             *out_ok = 1;
         }
         return VN_OK;
     } catch (...) {
         return VN_ERR_FAIL;
     }
+}
+
+VN_EXPORT int32_t __stdcall vn_backdrop_composite(
+    int32_t x, int32_t y, int32_t width, int32_t height, void* destination, uint8_t* out_ok) noexcept {
+    return vn_backdrop_composite_frame(x, y, width, height, destination, nullptr, 0, out_ok);
 }

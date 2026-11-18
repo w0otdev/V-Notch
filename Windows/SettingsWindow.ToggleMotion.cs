@@ -186,7 +186,6 @@ public partial class SettingsWindow
     }
 
     private static readonly CubicEase _switchEaseOut = CreateFrozenCubicEase(EasingMode.EaseOut);
-
     private static CubicEase CreateFrozenCubicEase(EasingMode mode)
     {
         var ease = new CubicEase { EasingMode = mode };

@@ -226,7 +226,7 @@ public sealed class SubSafeConversionsTests
         Assert.Equal(ClipboardKind.Code, ClipboardClassifier.Detect(new ClipboardCapture { Text = "Console.WriteLine(value);" }));
         Assert.Equal(ClipboardKind.Text, ClipboardClassifier.Detect(new ClipboardCapture { Text = "Please select an item from our menu today." }));
 
-        string[] groups = ClipboardClassifier.Classify("Contact alice.smith+ops@sub.domain.org for details", ClipboardKind.Text);
+        string[] groups = ClipboardClassifier.Classify("Contact alice.smith+ops@sub.domain.org for details");
         Assert.Contains("Email", groups);
     }
 

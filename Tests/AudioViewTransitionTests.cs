@@ -5,16 +5,15 @@ namespace VNotch.Tests;
 public class AudioViewTransitionTests
 {
     [Theory]
-    [InlineData(true, true, false, true)]
-    [InlineData(true, true, true, true)]
-    [InlineData(true, false, true, false)]
-    [InlineData(false, true, true, false)]
-    public void Snapshot_IsDeferredDuringOpeningAnimationIncludingColdOpen(
-        bool isAudioView, bool isAnimating, bool hasBuiltUi, bool expected)
+    [InlineData(true, true, true)]
+    [InlineData(true, false, false)]
+    [InlineData(false, true, false)]
+    [InlineData(false, false, false)]
+    public void Snapshot_IsDeferredOnlyDuringAudioViewTransition(
+        bool isAudioView, bool isAnimating, bool expected)
     {
         Assert.Equal(expected,
-            Controls.AudioMixerView.ShouldDeferAudioSnapshotDuringTransition(
-                isAudioView, isAnimating, hasBuiltUi));
+            Controls.AudioMixerView.ShouldDeferAudioSnapshotDuringTransition(isAudioView, isAnimating));
     }
 
     [Theory]

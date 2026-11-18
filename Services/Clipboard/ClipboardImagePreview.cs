@@ -13,24 +13,26 @@ internal static partial class ClipboardImagePreview
     [StructLayout(LayoutKind.Sequential)]
     private struct PreviewInfo { public int Width, Height; public double DpiX, DpiY; }
 
-    [LibraryImport("VNotch.Native.dll", EntryPoint = "vn_clipboard_image_preview", StringMarshalling = StringMarshalling.Utf16)]
-    private static unsafe partial int NativeDecode(string? path, int pathLength, byte* encoded, int encodedLength,
-        byte* pixels, int capacity, out PreviewInfo info);
+    internal readonly record struct PixelTarget(int Width, int Height);
 
-    internal static BitmapSource Decode(byte[] encoded, bool isPersonal, CancellationToken cancellation)
+    [LibraryImport("VNotch.Native.dll", EntryPoint = "vn_clipboard_image_preview_sized", StringMarshalling = StringMarshalling.Utf16)]
+    private static unsafe partial int NativeDecode(string? path, int pathLength, byte* encoded, int encodedLength,
+        byte* pixels, int capacity, int width, int height, out PreviewInfo info);
+
+    internal static BitmapSource Decode(byte[] encoded, bool isPersonal, CancellationToken cancellation, PixelTarget target = default)
     {
         ArgumentNullException.ThrowIfNull(encoded);
-        return DecodeCore(null, encoded, isPersonal, cancellation);
+        return DecodeCore(null, encoded, isPersonal, cancellation, target);
     }
 
-    internal static BitmapSource Decode(Stream stream, bool isPersonal, CancellationToken cancellation)
+    internal static BitmapSource Decode(Stream stream, bool isPersonal, CancellationToken cancellation, PixelTarget target = default)
     {
         ArgumentNullException.ThrowIfNull(stream);
         cancellation.ThrowIfCancellationRequested();
         if (!stream.CanRead) throw new NotSupportedException("Preview input must be readable.");
-        if (stream is FileStream file) return DecodeCore(file.Name, [], isPersonal, cancellation);
+        if (stream is FileStream file) return DecodeCore(file.Name, [], isPersonal, cancellation, target);
         if (stream is MemoryStream memory && memory.TryGetBuffer(out var buffer))
-            return DecodeCore(null, buffer.AsSpan(), isPersonal, cancellation);
+            return DecodeCore(null, buffer.AsSpan(), isPersonal, cancellation, target);
         if (!stream.CanSeek) throw new NotSupportedException("Preview input must be seekable.");
         int length = checked((int)stream.Length);
         // Large encoded images must not leave a full PNG-sized bucket in the
@@ -49,7 +51,7 @@ internal static partial class ClipboardImagePreview
                 encoded.Write(chunk.AsSpan(0, count));
                 remaining -= count;
             }
-            return encoded.ReadBuffered(bytes => DecodeCore(null, bytes, isPersonal, cancellation));
+            return encoded.ReadBuffered(bytes => DecodeCore(null, bytes, isPersonal, cancellation, target));
         }
         finally
         {
@@ -59,7 +61,7 @@ internal static partial class ClipboardImagePreview
         }
     }
 
-    private static unsafe BitmapSource DecodeCore(string? path, ReadOnlySpan<byte> encoded, bool isPersonal, CancellationToken cancellation)
+    private static unsafe BitmapSource DecodeCore(string? path, ReadOnlySpan<byte> encoded, bool isPersonal, CancellationToken cancellation, PixelTarget target = default)
     {
         cancellation.ThrowIfCancellationRequested();
         byte[] pixels = ArrayPool<byte>.Shared.Rent(PreviewEdge * PreviewEdge * 4);
@@ -69,7 +71,7 @@ internal static partial class ClipboardImagePreview
             int result;
             fixed (byte* input = encoded)
             fixed (byte* output = pixels)
-                result = NativeDecode(path, path?.Length ?? 0, input, encoded.Length, output, pixels.Length, out info);
+                result = NativeDecode(path, path?.Length ?? 0, input, encoded.Length, output, pixels.Length, target.Width, target.Height, out info);
             if (result < 0)
             {
                 var error = Marshal.GetExceptionForHR(result);

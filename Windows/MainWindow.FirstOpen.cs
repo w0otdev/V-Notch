@@ -12,6 +12,7 @@ public partial class MainWindow
     private bool _firstOpenUiPrepared;
     private bool _settingsPreparationScheduled;
     private int _settingsPreparationGeneration;
+    private UiScheduledTimer? _settingsPreparationExpiry;
 
     protected override System.Windows.Automation.Peers.AutomationPeer OnCreateAutomationPeer() =>
         new MainWindowAutomationPeer(this);
@@ -39,7 +40,13 @@ public partial class MainWindow
 
     private void ScheduleSettingsFirstOpenPreparation()
     {
-        if (_settingsPreparationScheduled || _cleanedUp) return;
+        if (_cleanedUp || _activeSettingsWindow != null) return;
+        if (_preparedSettingsWindow != null)
+        {
+            RestartSettingsPreparationExpiry();
+            return;
+        }
+        if (_settingsPreparationScheduled) return;
         _settingsPreparationScheduled = true;
         int generation = _settingsPreparationGeneration;
         Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.ApplicationIdle, new Action(() =>
@@ -60,6 +67,8 @@ public partial class MainWindow
             await Dispatcher.InvokeAsync(static () => { }, System.Windows.Threading.DispatcherPriority.ContextIdle);
             if (!await WaitForSettingsPreparationIdleAsync(generation) || !ReferenceEquals(prepared, _preparedSettingsWindow)) return;
             await prepared.PrepareForFirstShowAsync();
+            if (generation == _settingsPreparationGeneration && ReferenceEquals(prepared, _preparedSettingsWindow))
+                RestartSettingsPreparationExpiry();
         }
         catch (Exception ex)
         {
@@ -67,10 +76,31 @@ public partial class MainWindow
             {
                 _preparedSettingsWindow = null;
                 _preparedSettingsSnapshot = null;
+                _settingsPreparationScheduled = false;
                 prepared?.Close();
             }
             RuntimeLog.Warn("FIRST-OPEN", $"Settings preparation skipped: {ex.GetType().Name}");
         }
+    }
+
+    private void RestartSettingsPreparationExpiry()
+    {
+        _settingsPreparationExpiry?.Dispose();
+        _settingsPreparationExpiry = new UiScheduledTimer { Interval = TimeSpan.FromSeconds(30) };
+        _settingsPreparationExpiry.Tick += (_, _) => ReleasePreparedSettingsWindow();
+        _settingsPreparationExpiry.Start();
+    }
+
+    private void ReleasePreparedSettingsWindow()
+    {
+        _settingsPreparationGeneration++;
+        _settingsPreparationScheduled = false;
+        _settingsPreparationExpiry?.Dispose();
+        _settingsPreparationExpiry = null;
+        var prepared = _preparedSettingsWindow;
+        _preparedSettingsWindow = null;
+        _preparedSettingsSnapshot = null;
+        prepared?.Close();
     }
 
     private async Task<bool> WaitForSettingsPreparationIdleAsync(int generation)
@@ -140,6 +170,9 @@ public partial class MainWindow
         // Cancel queued stages before taking ownership. A user opening Settings
         // while its hidden realization yields must never have it hidden again.
         _settingsPreparationGeneration++;
+        _settingsPreparationScheduled = false;
+        _settingsPreparationExpiry?.Dispose();
+        _settingsPreparationExpiry = null;
         var prepared = _preparedSettingsWindow;
         _preparedSettingsWindow = null;
         var snapshot = _preparedSettingsSnapshot;
@@ -155,14 +188,9 @@ public partial class MainWindow
 
     private void DiscardPreparedSettingsWindow()
     {
-        _settingsPreparationGeneration++;
+        ReleasePreparedSettingsWindow();
         var active = _activeSettingsWindow;
         _activeSettingsWindow = null;
         active?.Close();
-
-        var prepared = _preparedSettingsWindow;
-        _preparedSettingsWindow = null;
-        _preparedSettingsSnapshot = null;
-        prepared?.Close();
     }
 }

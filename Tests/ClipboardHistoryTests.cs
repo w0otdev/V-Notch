@@ -283,10 +283,10 @@ public sealed class ClipboardHistoryTests
     [Fact]
     public void OfflineCategoriesUseOnlyFixedGroupsAndNeverSelectPersonal()
     {
-        Assert.Contains("Receipts", ClipboardClassifier.Classify("Invoice subtotal 200", ClipboardKind.Text));
-        Assert.Contains("Email", ClipboardClassifier.Classify("me@example.com", ClipboardKind.Text));
-        Assert.Contains("Ideas", ClipboardClassifier.Classify("ý tưởng mới", ClipboardKind.Text));
-        Assert.DoesNotContain("Personal", ClipboardClassifier.Classify("private personal password", ClipboardKind.Text));
+        Assert.Contains("Receipts", ClipboardClassifier.Classify("Invoice subtotal 200"));
+        Assert.Contains("Email", ClipboardClassifier.Classify("me@example.com"));
+        Assert.Contains("Ideas", ClipboardClassifier.Classify("ý tưởng mới"));
+        Assert.DoesNotContain("Personal", ClipboardClassifier.Classify("private personal password"));
     }
 
     [Theory]
@@ -549,8 +549,4 @@ public sealed class ClipboardHistoryTests
         Assert.False(File.Exists(personalExport2));
     }
 
-    private static void EndHelper()
-    {
-
-    }
 }

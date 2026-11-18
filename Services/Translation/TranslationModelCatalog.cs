@@ -5,6 +5,7 @@ internal static class TranslationModelCatalog
 {
     internal static readonly TranslationModelProfile[] All =
     [
+        TranslationModelProfile.Small100,
         TranslationModelProfile.QwenInstruct,
         new("translategemma-4b", "bullerwins/translategemma-4b-it-GGUF", "7c938465a870d8624bcfa98a8e4a3510053c19a8",
         [
@@ -42,6 +43,6 @@ internal static class TranslationModelCatalog
         ]) { DisplayName = "Gemma 4 31B", TranslationRating = 5, PromptKind = TranslationPromptKind.General, MinimumRamGiB = 48, GpuGiB = 24, Tier = "workstation", License = "Apache 2.0" },
     ];
     internal static IEnumerable<TranslationModelProfile> Available => All.Concat(CustomTranslationModels.Shared.Profiles);
-    internal static TranslationModelProfile Find(string? id) => Available.FirstOrDefault(p => p.Id == id) ?? TranslationModelProfile.QwenInstruct;
+    internal static TranslationModelProfile Find(string? id) => Available.FirstOrDefault(p => p.Id == id) ?? TranslationModelProfile.Small100;
     internal static string Normalize(string? id) => Find(id).Id;
 }

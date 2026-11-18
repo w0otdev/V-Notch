@@ -38,9 +38,18 @@ std::wstring ResolveNativeModuleDirectory() {
     return path;
 }
 
-// Keep the runtime loaded while any Ort object (including the managed compatibility API) exists.
-void InitializeRuntime() {
-    static const bool initialized = [&] {
+std::mutex runtime_gate;
+HMODULE runtime_module = nullptr;
+size_t runtime_leases = 0;
+
+// One loader reference while native sessions exist. Managed ONNX consumers own
+// their own loader references; releasing ours cannot unload their runtime.
+// This must be the first CropSession member so all Ort objects die before it.
+class RuntimeLease {
+public:
+    RuntimeLease() {
+        std::lock_guard lock(runtime_gate);
+        if (runtime_module) { ++runtime_leases; return; }
         constexpr DWORD kLoadFlags = LOAD_LIBRARY_SEARCH_DLL_LOAD_DIR | LOAD_LIBRARY_SEARCH_SYSTEM32;
         const std::wstring module_dir = ResolveNativeModuleDirectory();
         HMODULE module = LoadLibraryExW((module_dir + L"\\onnxruntime.dll").c_str(), nullptr, kLoadFlags);
@@ -53,12 +62,27 @@ void InitializeRuntime() {
         const OrtApi* api = get_api ? get_api()->GetApi(ORT_API_VERSION) : nullptr;
         if (!api) { FreeLibrary(module); throw std::runtime_error("Incompatible ONNX Runtime"); }
         Ort::InitApi(api);
-        return true;
-    }();
-    (void)initialized;
-}
+        runtime_module = module;
+        runtime_leases = 1;
+    }
+
+    ~RuntimeLease() {
+        std::lock_guard lock(runtime_gate);
+        if (--runtime_leases != 0) return;
+        // Serialize unload with the next acquisition, including failed session
+        // construction and sessions still held by an in-flight inference.
+        // No Ort objects remain. InitApi(nullptr) is a getter/no-op in ORT;
+        // the next lease installs a fresh API before constructing any object.
+        FreeLibrary(runtime_module);
+        runtime_module = nullptr;
+    }
+
+    RuntimeLease(const RuntimeLease&) = delete;
+    RuntimeLease& operator=(const RuntimeLease&) = delete;
+};
 
 struct CropSession {
+    RuntimeLease runtime;
     Ort::Env env{ORT_LOGGING_LEVEL_WARNING, "VNotch.SmartCrop"};
     Ort::Session session{nullptr};
     Ort::MemoryInfo memory = Ort::MemoryInfo::CreateCpu(OrtArenaAllocator, OrtMemTypeDefault);
@@ -133,7 +157,6 @@ VN_EXPORT int32_t __stdcall vn_smartcrop_session_create(const wchar_t* model, in
         return VN_ERR_INVALID_ARG;
     *out_handle = 0; *out_dml = 0;
     try {
-        InitializeRuntime();
         auto session = std::make_unique<CropSession>(std::wstring(model_view), prefer_dml != 0);
         *out_dml = session->dml ? 1 : 0;
         *out_handle = sessions.Add(std::move(session));

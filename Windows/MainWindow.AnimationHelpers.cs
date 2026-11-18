@@ -720,7 +720,8 @@ public partial class MainWindow
         bool animate = !VNotch.Services.AnimationConfig.ReduceMotion && VNotch.Services.AnimationConfig.ClientAreaAnimation;
         bool chromeVisible = NavIconsPanel.Visibility == Visibility.Visible && NavIconsPanel.Opacity > 0.01;
         var targetView = _navigationVisualTarget ?? _transitionCoordinator.CurrentView;
-        bool showBattery = show && _settings.ShowBatteryIndicator;
+        bool showBattery = show && _settings.ShowBatteryIndicator
+            && targetView != VNotch.Models.NotchView.AiUsage;
         bool showBackground = show && targetView is VNotch.Models.NotchView.Secondary
             or VNotch.Models.NotchView.Timer or VNotch.Models.NotchView.AudioMixer;
         double restY = _settings.EnableDynamicIslandMode ? 5 : 0;

@@ -52,7 +52,7 @@ public sealed class PerformanceAuditRegressionTests
     }
 
     [Theory]
-    [InlineData(true, false, true, 250, 100)]
+    [InlineData(true, false, true, 250, 1000.0 / 30)]
     [InlineData(true, false, true, 249, 8)]
     [InlineData(true, true, true, 1000, 8)]
     [InlineData(false, false, true, 1000, 8)]

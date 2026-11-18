@@ -43,6 +43,45 @@ void Require(bool ok, const char* message) {
     if (!ok) throw std::runtime_error(message);
 }
 
+// Hold the worker still to exercise overlap, timeout and reopen deterministically.
+void CheckPublicationOrder() {
+    auto& shared = bd::g_shared;
+    shared.wake = CreateEventW(nullptr, FALSE, FALSE, nullptr);
+    Require(shared.wake != nullptr, "could not create test wake event");
+    shared.worker_started = true;
+    RECT area{100, 100, 102, 101};
+    for (int i = 0; i < 2; ++i) {
+        auto& slot = shared.slots[i];
+        slot.area = area;
+        slot.monitor = MonitorFromRect(&area, MONITOR_DEFAULTTONEAREST);
+        slot.valid = true;
+        slot.publication = ++shared.global_seq;
+        slot.updated_ms = bd::NowSteadyMs();
+        slot.pixels.assign(2, static_cast<uint32_t>(slot.publication));
+    }
+    uint64_t seen = 1;
+    uint32_t pixels[2]{};
+    const auto read = [&] {
+        uint8_t ok = 0;
+        Require(vn_backdrop_composite_frame(100, 100, 2, 1, pixels, &seen, 0, &ok) == VN_OK,
+            "cannot read test publication");
+        return ok != 0;
+    };
+    Require(read() && seen == 2 && pixels[0] == 2, "overlapping strip replayed the older pixels");
+    shared.slots[1].valid = false;
+    Require(!read() && seen == 2 && pixels[0] == 2, "cache miss rolled the consumer back");
+    seen = 0;
+    Require(!read() && seen > 2, "reopening exposed a previous session's strip");
+    auto& newest = shared.slots[0];
+    newest.publication = ++shared.global_seq;
+    newest.pixels.assign(2, 0xff000000);
+    Require(read() && seen == newest.publication && pixels[0] == 0xff000000,
+        "reopened consumer failed to accept a new black frame");
+    CloseHandle(shared.wake);
+    shared.wake = nullptr;
+    shared.worker_started = false;
+}
+
 int main() {
     SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
     HWND hwnd = CreateWindowExW(0, L"STATIC", L"Cadence probe", WS_POPUP,
@@ -163,6 +202,7 @@ int main() {
         Require(bd::Compose(composition, hit, published, metrics) && published != lastGood,
             "composition did not recover after the missing window returned");
         enumeratedWindow = nullptr;
+        CheckPublicationOrder();
         puts("PASS: mixed capture cadence, crop/resize invalidation, asynchronous recovery and incomplete-frame retention.");
         return 0;
     } catch (const std::exception& ex) { printf("FAIL: %s\n", ex.what()); return 1; }

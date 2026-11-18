@@ -547,10 +547,9 @@ public sealed partial class ClipboardHistoryStore : IDisposable, IAsyncDisposabl
     private ClipboardEntry RestoreFileMetadata(ClipboardEntry entry)
     {
         var original = entry;
-        ClipboardContent? content = null;
         if (!entry.IsSensitive && entry.SensitivityVersion < ClipboardSensitiveData.DetectorVersion)
         {
-            content = ReadContent(entry);
+            var content = ReadContent(entry);
             entry = entry with
             {
                 IsSensitive = HasSensitiveFiles(content.Files)

@@ -22,6 +22,8 @@ public sealed partial class LiquidGlassController : IDisposable
 {
     private void WorkerLoop(int generation)
     {
+        _lastBackdropWakeTicks = 0;
+        _compositePublication = 0;
         var clock = Stopwatch.StartNew();
         double nextFrameAtMs = clock.Elapsed.TotalMilliseconds;
         double lastCaptureAtMs = double.NegativeInfinity;
@@ -55,18 +57,22 @@ public sealed partial class LiquidGlassController : IDisposable
     private bool ShouldContinueWorker(int generation) =>
         _isActive && generation == Volatile.Read(ref _renderGeneration);
 
+    private long _lastBackdropWakeTicks;
+
     private bool ExecuteWorkerFrame(int generation, Stopwatch clock, ref double nextFrameAtMs, ref double lastCaptureAtMs)
     {
         double frameStart = clock.Elapsed.TotalMilliseconds;
         RefreshDisplayCadence();
         double activeIntervalMs = ChooseLockedFrameIntervalMs(Volatile.Read(ref _activeIntervalMs));
         double frameIntervalMs = ChooseFrameIntervalMs(activeIntervalMs, _idle, _animating,
-            _hasUploadedGpuFrame || _hasPresentedCpuFrame, Environment.TickCount64 - _lastPresentTicks, ForceRefreshNeeded);
+            _hasUploadedGpuFrame || _hasPresentedCpuFrame, Environment.TickCount64 - Math.Max(_lastPresentTicks, _lastBackdropWakeTicks),
+            ForceRefreshNeeded);
         // GPU work includes completion waits; they must not lower the requested cadence.
         frameIntervalMs = ChooseProcessingIntervalMs(frameIntervalMs, _frameWorkMs, _gpuMode);
+        bool backedOff = frameIntervalMs > activeIntervalMs;
         if (_gpuMode)
         {
-            if (!_presentationPaused && (frameIntervalMs < 100 || _d3dPresenter?.HasPendingFrame == true))
+            if (!_presentationPaused && ((!backedOff && activeIntervalMs < 100) || _d3dPresenter?.HasPendingFrame == true))
                 RequestRenderTimerPeriod();
             else
                 ReleaseRenderTimerPeriod();
@@ -76,11 +82,21 @@ public sealed partial class LiquidGlassController : IDisposable
         double remainingMs = lastCaptureAtMs + (_gpuMode ? frameIntervalMs : activeIntervalMs) - frameStart;
         if (remainingMs > 0)
         {
+            if (_gpuMode && _lastGpuWasExactWindows && !WindowAnimationPolicy.InvisibleMode &&
+                backedOff && !_presentationPaused &&
+                _d3dPresenter is { } presenter &&
+                presenter.TryWaitForBackdrop(_idleWakeEvent.SafeWaitHandle, (int)Math.Ceiling(remainingMs), out bool arrived))
+            {
+                // Resume normal pacing long enough to consume and validate the
+                // arriving texture, even for a single change followed by silence.
+                if (arrived) _lastBackdropWakeTicks = Environment.TickCount64;
+                return ShouldContinueWorker(generation);
+            }
             SleepUntilRenderDeadline(remainingMs);
             return ShouldContinueWorker(generation);
         }
 
-        if (ApplyCapturePolicy(frameIntervalMs))
+        if (ApplyCapturePolicy())
             return true;
 
         if (Interlocked.Exchange(ref _captureAffinityFlushPending, 0) != 0)
@@ -216,7 +232,7 @@ public sealed partial class LiquidGlassController : IDisposable
         }
     }
 
-    private bool ApplyCapturePolicy(double frameIntervalMs)
+    private bool ApplyCapturePolicy()
     {
         if (!WindowAnimationPolicy.InvisibleMode)
         {

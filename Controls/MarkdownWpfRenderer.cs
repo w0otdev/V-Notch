@@ -9,6 +9,7 @@ using System.Windows.Navigation;
 using Markdig;
 using Markdig.Extensions.Tables;
 using Markdig.Extensions.TaskLists;
+using Markdig.Parsers.Inlines;
 using Markdig.Syntax;
 using Markdig.Syntax.Inlines;
 using VNotch.Services;
@@ -153,15 +154,28 @@ internal sealed class MarkdownPanelOptions
 
 internal static class MarkdownWpfRenderer
 {
-    internal static readonly MarkdownPipeline Pipeline = new MarkdownPipelineBuilder()
-        .UsePipeTables()
-        .UseEmphasisExtras()
-        .UseTaskLists()
-        .UseAutoLinks()
-        .Build();
+    internal static readonly MarkdownPipeline Pipeline = CreatePipeline(bracketedLinks: true);
+    private static readonly MarkdownPipeline PipelineWithoutBracketedLinks = CreatePipeline(bracketedLinks: false);
 
-    internal static MarkdownDocument Parse(string markdown) =>
-        Markdown.Parse(markdown ?? string.Empty, Pipeline);
+    private static MarkdownPipeline CreatePipeline(bool bracketedLinks)
+    {
+        var builder = new MarkdownPipelineBuilder().UsePipeTables().UseEmphasisExtras();
+        if (bracketedLinks)
+            builder.UseTaskLists();
+        else
+            builder.InlineParsers.TryRemove<LinkInlineParser>();
+
+        return builder.UseAutoLinks().Build();
+    }
+
+    internal static MarkdownDocument Parse(string markdown)
+    {
+        markdown ??= string.Empty;
+        // Without a closing bracket, every link opener is literal. Let the literal
+        // parser consume them together before Markdig builds a nested delimiter tree.
+        var pipeline = markdown.Contains('[') && !markdown.Contains(']') ? PipelineWithoutBracketedLinks : Pipeline;
+        return Markdown.Parse(markdown, pipeline);
+    }
 
     internal static FlowDocument RenderFlowDocument(string markdown, MarkdownFlowOptions? options = null) =>
         RenderFlowDocument(Parse(markdown), options);
@@ -439,6 +453,20 @@ internal static class MarkdownWpfRenderer
         return slice.ToString();
     }
 
+    internal static void AddStreamInline(InlineCollection target, Markdig.Syntax.Inlines.Inline inline, MarkdownFlowOptions opt)
+    {
+        if (inline is LiteralInline literal) target.Add(new Run(literal.Content.ToString()));
+        else if (inline is EmphasisInline emphasis) target.Add(RenderEmphasis(emphasis, opt));
+    }
+
+    private static WpfInline RenderEmphasis(EmphasisInline emphasis, MarkdownFlowOptions opt)
+    {
+        var span = CreateEmphasisSpan(emphasis, out var leaf);
+        ApplyEmphasisStyle(span, emphasis, boldForeground: null, italicForeground: null);
+        AddFlowInlines(leaf.Inlines, emphasis, opt);
+        return span;
+    }
+
     private static void AddFlowInlines(InlineCollection target, ContainerInline container, MarkdownFlowOptions opt)
     {
         bool trimNextSpace = false;
@@ -504,10 +532,7 @@ internal static class MarkdownWpfRenderer
                     break;
 
                 case EmphasisInline emphasis:
-                    var span = CreateEmphasisSpan(emphasis, out var leaf);
-                    ApplyEmphasisStyle(span, emphasis, boldForeground: null, italicForeground: null);
-                    AddFlowInlines(leaf.Inlines, emphasis, opt);
-                    target.Add(span);
+                    target.Add(RenderEmphasis(emphasis, opt));
                     break;
 
                 case LinkInline link:

@@ -667,13 +667,6 @@ public partial class ElasticSlider : Slider
         return NativeComputeElasticSliderMetrics(Value, Minimum, Maximum, TickFrequency, &f, &step, &ticks, &snapped) == 0 ? step : 1.0;
     }
 
-    private unsafe int GetTickCount()
-    {
-        double f = 0.0, step = 1.0, snapped = Value;
-        int ticks = 1;
-        return NativeComputeElasticSliderMetrics(Value, Minimum, Maximum, TickFrequency, &f, &step, &ticks, &snapped) == 0 ? ticks : 1;
-    }
-
     private unsafe double SnapValue(double value)
     {
         double f = 0.0, step = 1.0, snapped = value;

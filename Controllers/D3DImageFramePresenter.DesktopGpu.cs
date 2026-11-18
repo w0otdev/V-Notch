@@ -22,6 +22,25 @@ internal sealed partial class D3DImageFramePresenter
             Lens[register * 4] = float.IsFinite(scalar) ? scalar : 0;
         }
 
+        public readonly float Get(int register)
+        {
+            fixed (float* lens = Lens)
+                return lens[register * 4];
+        }
+
+        // Second component of a register; only the native D3D11 shader reads it.
+        public void SetY(int register, double value)
+        {
+            float scalar = (float)value;
+            Lens[register * 4 + 1] = float.IsFinite(scalar) ? scalar : 0;
+        }
+
+        public readonly float GetY(int register)
+        {
+            fixed (float* lens = Lens)
+                return lens[register * 4 + 1];
+        }
+
         public readonly bool LensEquals(in GpuFrame other)
         {
             fixed (float* a = Lens, b = other.Lens)
@@ -45,6 +64,8 @@ internal sealed partial class D3DImageFramePresenter
     private static partial int NativeGpuRender(GpuHandle handle, in GpuFrame frame);
     [LibraryImport("VNotch.Native.dll", EntryPoint = "vn_glass_gpu_render_windows")]
     private static partial int NativeGpuRenderWindows(GpuHandle handle, in GpuFrame frame);
+    [LibraryImport("VNotch.Native.dll", EntryPoint = "vn_glass_gpu_wait_backdrop")]
+    private static partial uint NativeGpuWaitBackdrop(GpuHandle handle, SafeWaitHandle interrupt, uint timeoutMs);
     [LibraryImport("VNotch.Native.dll", EntryPoint = "vn_glass_gpu_render_pixels")]
     private static partial int NativeGpuRenderPixels(GpuHandle handle, in GpuFrame frame, IntPtr pixels, int length, int stride);
     [LibraryImport("VNotch.Native.dll", EntryPoint = "vn_glass_gpu_wait_ready")]
@@ -75,6 +96,8 @@ internal sealed partial class D3DImageFramePresenter
     private readonly bool _useGpuCapture;
     private GpuHandle? _gpuHandle;
     private bool _hasGpuBackBuffer;
+    private GpuFrame _pendingGpuFrame;
+    internal GpuFrame? PresentedGpuFrame { get; private set; }
     private double _appliedCaptureIntervalMs;
     private string _lastCaptureRoute = "waiting";
     internal double LastGpuRenderMs { get; private set; }
@@ -85,6 +108,20 @@ internal sealed partial class D3DImageFramePresenter
     internal long GpuRenderSkips { get; private set; }
     internal long GpuCompletionRetries { get; private set; }
     internal long GpuWorkerTimeouts { get; private set; }
+    // The worker waits outside the surface lock. Stop and UI handoff can wake
+    // it through interrupt even while the underlying window stays static.
+    internal bool TryWaitForBackdrop(SafeWaitHandle interrupt, int timeoutMs, out bool arrived)
+    {
+        arrived = false;
+        if (_gpuHandle is not { } handle) return false;
+        try
+        {
+            uint result = NativeGpuWaitBackdrop(handle, interrupt, (uint)timeoutMs);
+            arrived = result == 1; // WAIT_OBJECT_0 + 1
+            return result != uint.MaxValue; // WAIT_FAILED
+        }
+        catch (ObjectDisposedException) { return false; }
+    }
     internal ulong GpuConsumerRetries
     {
         get { lock (_surfaceSync) return _gpuHandle == null ? 0 : NativeGpuConsumerStalls(_gpuHandle); }
@@ -163,6 +200,7 @@ internal sealed partial class D3DImageFramePresenter
                 _frameWidth = frame.Width;
                 _frameHeight = frame.Height;
                 _uploadTag = tag;
+                _pendingGpuFrame = frame;
                 _lastUploadTicks = renderStarted;
                 _pendingFrame = true;
                 _pendingForcePresent = true;

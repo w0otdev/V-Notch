@@ -1,10 +1,10 @@
 using System;
 using System.Collections.Generic;
-using Microsoft.Win32.SafeHandles;
 using System.IO;
 using System.Runtime.InteropServices;
 using System.Threading;
 using System.Threading.Tasks;
+using Microsoft.Win32.SafeHandles;
 using VNotch.Models;
 
 namespace VNotch.Services.Spotlight.Providers;

@@ -2,10 +2,10 @@
 // See docs/licenses/ThinkingOrbs-MIT.txt and docs/THIRD_PARTY_NOTICES.md.
 namespace VNotch.Controls;
 
-public enum ThinkingOrbState { Working, Composing }
+public enum ThinkingOrbState { Working, Composing, Solving, Searching, Shaping, Listening }
 
 /// <summary>The reference's small-orb presets, projected from rotating 3D particles.</summary>
-internal static class ThinkingOrbGeometry
+internal static partial class ThinkingOrbGeometry
 {
     internal readonly record struct Dot(double X, double Y, double Z, double Radius, double Ink, double Alpha);
     internal const int Capacity = 208;
@@ -13,9 +13,15 @@ internal static class ThinkingOrbGeometry
 
     internal static int WriteFrame(Dot[] dots, ThinkingOrbState state, double size, double seconds)
     {
-        int count = state == ThinkingOrbState.Working
-            ? Working(dots, size, seconds * 3.9)
-            : Composing(dots, size, seconds * 3.12);
+        int count = state switch
+        {
+            ThinkingOrbState.Working => Working(dots, size, seconds * 3.9),
+            ThinkingOrbState.Composing => Composing(dots, size, seconds * 3.12),
+            ThinkingOrbState.Solving => Solving(dots, size, seconds * 7.28),
+            ThinkingOrbState.Searching or ThinkingOrbState.Shaping or ThinkingOrbState.Listening
+                => AgentOrbGeometry.WriteFrame(dots, state, size, seconds),
+            _ => throw new ArgumentOutOfRangeException(nameof(state))
+        };
         Array.Sort(dots, 0, count, DepthOrder);
         return count;
     }
@@ -96,14 +102,15 @@ internal static class ThinkingOrbGeometry
         return h - Math.Floor(h);
     }
 
-    private readonly struct Projection(double yaw, double size)
+    private readonly struct Projection(double yaw, double size, double tilt = .3, double scale = 1)
     {
         private readonly double _sin = Math.Sin(yaw), _cos = Math.Cos(yaw);
+        private readonly double _tiltSin = Math.Sin(tilt), _tiltCos = Math.Cos(tilt);
         internal (double X, double Y, double Z) Project(double x, double y, double z)
         {
             double x1 = x * _cos + z * _sin, z1 = -x * _sin + z * _cos;
-            double y1 = y * Math.Cos(.3) - z1 * Math.Sin(.3);
-            return (size / 2 + x1, size / 2 - y1, y * Math.Sin(.3) + z1 * Math.Cos(.3));
+            double y1 = y * _tiltCos - z1 * _tiltSin;
+            return (size / 2 + x1 * scale, size / 2 - y1 * scale, y * _tiltSin + z1 * _tiltCos);
         }
     }
 }

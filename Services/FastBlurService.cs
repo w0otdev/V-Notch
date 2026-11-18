@@ -94,9 +94,6 @@ public static partial class FastBlurService
         }).ConfigureAwait(false);
     }
 
-    internal static void DarkenPixels(byte[] pixels, int width, int height, float factor)
-        => DarkenPixels(pixels, width * height * 4, factor);
-
     internal static unsafe void DarkenPixels(byte[] pixels, int length, float factor = 0.96f)
     {
         if (pixels == null || length <= 0) return;

@@ -5,6 +5,7 @@ using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
 using System.Windows.Input;
 using System.Windows.Media;
+using System.Windows.Media.Animation;
 using System.Windows.Media.Imaging;
 using VNotch.Services;
 using VNotch.Services.Translation;
@@ -26,11 +27,31 @@ public sealed class TranslationMenuTests
         {
             var bounds = new Rect(200, 200, 100, 20);
             window.ShowSelection(new(1, "first", bounds, IntPtr.Zero, false), true);
-            await WpfFrameWaiter.UntilAsync(() => !window.IsPresentationAnimating, "entrance settles", ct);
+            await window.WaitForEntranceAsync(ct);
+            if (SystemParameters.ClientAreaAnimation)
+            {
+                // Seed a partially revealed frame, then dismiss/reopen in one
+                // dispatcher turn. Sampling the real 140 ms exit's midpoint can
+                // miss every intermediate frame on a loaded test runner.
+                var midpoint = (AnimationClock)new DoubleAnimation(1, 0, TimeSpan.FromSeconds(1)).CreateClock(true);
+                var slide = (AnimationClock)new DoubleAnimation(-24, 0, TimeSpan.FromSeconds(1)).CreateClock(true);
+                window.PopupSurface.ApplyAnimationClock(UIElement.OpacityProperty, midpoint);
+                window.PopupOffset.ApplyAnimationClock(TranslateTransform.XProperty, slide);
+                midpoint.Controller!.Begin();
+                slide.Controller!.Begin();
+                midpoint.Controller.SeekAlignedToLastTick(TimeSpan.FromMilliseconds(500), TimeSeekOrigin.BeginTime);
+                slide.Controller.SeekAlignedToLastTick(TimeSpan.FromMilliseconds(500), TimeSeekOrigin.BeginTime);
+                Assert.Equal(.5, window.PopupSurface.Opacity, 3);
+                Assert.Equal(-12, window.PopupOffset.X, 3);
+            }
+            double opacity = window.PopupSurface.Opacity, x = window.PopupOffset.X;
+            // Keep the real exit clock and its completion handler in this path.
             window.Dismiss();
             if (SystemParameters.ClientAreaAnimation)
-                await WpfFrameWaiter.UntilAsync(() => window.PopupSurface.Opacity is > .2 and < .8, "exit reaches its middle", ct);
-            double opacity = window.PopupSurface.Opacity, x = window.PopupOffset.X;
+            {
+                Assert.Equal(opacity, window.PopupSurface.Opacity, 3);
+                Assert.Equal(x, window.PopupOffset.X, 3);
+            }
             window.ShowSelection(new(2, "second", bounds, IntPtr.Zero, false), true);
             if (SystemParameters.ClientAreaAnimation)
             {
@@ -38,6 +59,8 @@ public sealed class TranslationMenuTests
                 Assert.Equal(x, window.PopupOffset.X, 3);
             }
             await WpfFrameWaiter.UntilAsync(() => !window.IsPresentationAnimating, "reversed entrance settles", ct);
+            // Also pass the original exit's deadline before checking visibility.
+            await Task.Delay(200, ct);
             Assert.True(window.IsVisible);
             Assert.Equal("second", window.OriginalText.Text);
             Assert.Equal(1, window.PopupSurface.Opacity, 3);

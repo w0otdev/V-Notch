@@ -31,6 +31,13 @@
 #pragma comment(lib, "normaliz.lib")
 
 #include "vnotch_abi.h"
+#include "Services/Translation/LiteTranslationAbi.h"
+VN_EXPORT int32_t __stdcall vn_translation_lite_open(const wchar_t*, int32_t, int32_t, int64_t*) noexcept;
+VN_EXPORT int32_t __stdcall vn_translation_lite_translate(int64_t, const wchar_t*, int32_t, const wchar_t*, int32_t,
+    VnTranslationCancelled, intptr_t, wchar_t*, int32_t, int32_t*) noexcept;
+VN_EXPORT int32_t __stdcall vn_translation_lite_close(int64_t) noexcept;
+VN_EXPORT int32_t __stdcall vn_translation_lite_release_idle(int64_t, int32_t, uint8_t*) noexcept;
+VN_EXPORT int32_t __stdcall vn_translation_lite_set_natural(int64_t, uint8_t) noexcept;
 VN_EXPORT int32_t __stdcall vn_update_parse_atom(const uint8_t*, int32_t, char16_t*, int32_t, int32_t*) noexcept;
 VN_EXPORT int32_t __stdcall vn_setup_show_message(const wchar_t*, int32_t, const wchar_t*, int32_t, int32_t, int32_t*) noexcept;
 
@@ -498,15 +505,6 @@ VN_EXPORT int32_t __stdcall vn_visualizer_mix_frames_to_mono(
     float* out_mono,
     int32_t mono_cap,
     int32_t* out_frames_written) noexcept;
-
-VN_EXPORT int32_t __stdcall vn_soundcloud_find_next_anchor_href(
-    const char16_t* html_ptr,
-    int32_t html_len,
-    int32_t start_pos,
-    int32_t* out_href_start,
-    int32_t* out_href_len,
-    int32_t* out_next_pos,
-    uint8_t* out_found) noexcept;
 
 VN_EXPORT int32_t __stdcall vn_glass_build_refraction_lut(
     double f_power,
@@ -1862,13 +1860,3 @@ VN_EXPORT int32_t __stdcall vn_text_resolve_rendering_policy(
 #include "vnotch_ext_core.h"
 #include "vnotch_ext_sub.h"
 #include "vnotch_ext_ui.h"
-
-
-
-
-// Liquid Glass release 2.3.1 ABI.
-VN_EXPORT int32_t __stdcall vn_glass_binder_build_fresnel_tint(
-    uint8_t red, uint8_t green, uint8_t blue, uint8_t* out_r, uint8_t* out_g, uint8_t* out_b) noexcept;
-VN_EXPORT int32_t __stdcall vn_glass_binder_interpolate_color(
-    uint8_t from_r, uint8_t from_g, uint8_t from_b, uint8_t to_r, uint8_t to_g, uint8_t to_b,
-    double amount, uint8_t* out_r, uint8_t* out_g, uint8_t* out_b) noexcept;

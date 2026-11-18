@@ -168,21 +168,9 @@ public static partial class RuntimeLog
         }
     }
 
-    public static void Trace(string category, string message) => WriteEntry(LogLevel.Trace, category, message);
-
-    public static void Trace(string category, [InterpolatedStringHandlerArgument("category")] ref TraceMessageHandler message)
-    {
-        if (message.Enabled) WriteEntry(LogLevel.Trace, category, message.GetText());
-    }
-
-    public static void Trace(string category, Func<string> messageFactory)
-    {
-        if (IsEnabled(LogLevel.Trace)) WriteEntry(LogLevel.Trace, category, messageFactory());
-    }
-
     public static void Debug(string category, string message) => WriteEntry(LogLevel.Debug, category, message);
 
-    public static void Debug(string category, [InterpolatedStringHandlerArgument("category")] ref DebugMessageHandler message)
+    public static void Debug(string category, ref DebugMessageHandler message)
     {
         if (message.Enabled) WriteEntry(LogLevel.Debug, category, message.GetText());
     }
@@ -198,26 +186,9 @@ public static partial class RuntimeLog
     {
         private DefaultInterpolatedStringHandler _builder;
         public bool Enabled { get; }
-        public DebugMessageHandler(int literalLength, int formattedCount, string category, out bool enabled)
+        public DebugMessageHandler(int literalLength, int formattedCount, out bool enabled)
         {
             Enabled = enabled = IsEnabled(LogLevel.Debug);
-            _builder = enabled ? new(literalLength, formattedCount) : default;
-        }
-        public void AppendLiteral(string value) => _builder.AppendLiteral(value);
-        public void AppendFormatted<T>(T value) => _builder.AppendFormatted(value);
-        public void AppendFormatted<T>(T value, string? format) => _builder.AppendFormatted(value, format);
-        public void AppendFormatted<T>(T value, int alignment, string? format = null) => _builder.AppendFormatted(value, alignment, format);
-        internal string GetText() => _builder.ToStringAndClear();
-    }
-
-    [InterpolatedStringHandler]
-    public ref struct TraceMessageHandler
-    {
-        private DefaultInterpolatedStringHandler _builder;
-        public bool Enabled { get; }
-        public TraceMessageHandler(int literalLength, int formattedCount, string category, out bool enabled)
-        {
-            Enabled = enabled = IsEnabled(LogLevel.Trace);
             _builder = enabled ? new(literalLength, formattedCount) : default;
         }
         public void AppendLiteral(string value) => _builder.AppendLiteral(value);
@@ -230,11 +201,6 @@ public static partial class RuntimeLog
     public static void Log(string category, string message) => WriteEntry(LogLevel.Info, category, message);
 
     public static void Info(string category, string message) => WriteEntry(LogLevel.Info, category, message);
-
-    public static void Info(string category, Func<string> messageFactory)
-    {
-        if (IsEnabled(LogLevel.Info)) WriteEntry(LogLevel.Info, category, messageFactory());
-    }
 
     public static void Warn(string category, string message) => WriteEntry(LogLevel.Warn, category, message);
 

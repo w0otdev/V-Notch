@@ -99,14 +99,6 @@ public class ServicesAuditFixTests
         }
     }
 
-    private static void WriteKey(string path, string key) =>
-        File.WriteAllText(path, JsonSerializer.Serialize(new Dictionary<string, object>
-        {
-            ["SettingsVersion"] = SettingsMigrator.CurrentVersion,
-            ["EnableYouTubeApi"] = true,
-            ["YouTubeApiKey"] = DataProtection.Protect(key)
-        }));
-
     private sealed class ThrowingHandler : HttpMessageHandler
     {
         protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken) =>

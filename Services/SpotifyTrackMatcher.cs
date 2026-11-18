@@ -22,9 +22,6 @@ internal static partial class SpotifyTrackMatcher
     internal static string? ParsePathfinderTrackId(ReadOnlySpan<byte> json, string expectedTrack, string expectedArtist) =>
         NativeCatalogParser.Select(json, 1, expectedTrack, expectedArtist).Text;
 
-    internal static string? ParsePathfinderTrackArtists(string json, string expectedTrack, string expectedArtist, string? expectedAlbum = null) =>
-        NativeCatalogParser.Select(json, 7, expectedTrack, expectedArtist, album: expectedAlbum).Text;
-
     internal static string? ParsePathfinderTrackArtists(ReadOnlySpan<byte> json, string expectedTrack, string expectedArtist, string? expectedAlbum = null) =>
         NativeCatalogParser.Select(json, 7, expectedTrack, expectedArtist, album: expectedAlbum).Text;
 

@@ -248,16 +248,6 @@ internal sealed partial class SpotlightPreferences
         }
     }
 
-    public void ResetExcludedFolders()
-    {
-        lock (_gate)
-        {
-            Data.ExcludedFolders.Clear();
-            _excludedFoldersSnapshot = null;
-            Save();
-        }
-    }
-
     private static string NormalizeFolder(string folder)
     {
         folder = Environment.ExpandEnvironmentVariables(folder.Trim());
@@ -313,8 +303,6 @@ internal sealed partial class SpotlightPreferences
         }
         return false;
     }
-
-    public SpotlightSearchItem Decorate(SpotlightSearchItem item) => item with { IsPinned = IsPinned(item.Target) };
 
     public IReadOnlyList<SpotlightSearchItem> Search(string query)
     {

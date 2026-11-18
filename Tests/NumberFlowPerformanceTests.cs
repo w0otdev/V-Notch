@@ -28,49 +28,31 @@ public sealed class NumberFlowPerformanceTests(ITestOutputHelper output)
     [InlineData("١٢%", "١٣%")]
     [InlineData("82% left", "79% left")]
     [InlineData("82% left", "100% left")]
-    public void RetainedReelsMatchPreviousPixelsIncludingInterruption(string previous, string next) => SharedStaTestRunner.RunAsync(async ct =>
+    public void RetainedReelsLandOnNativeTextIncludingInterruption(string previous, string next) => SharedStaTestRunner.RunAsync(async ct =>
     {
         // The legacy renderer ignored tabular typography and snapped changing
         // slot widths. Use fixed-width glyphs for display-list parity; native
         // proportional/tabular positions have their own regression tests.
         using var host = new Pair(previous, legacyMetrics: true);
         await host.Ready(ct);
-        host.Present(next);
+        host.After.Present(next);
         CompareFrames();
-        host.SetProgress(.37);
-        host.Present(previous);
+        host.After.Progress(.37);
+        host.After.Present(previous);
         CompareFrames();
 
         void CompareFrames()
         {
-            foreach (double progress in new[] { 0d, .13, .37, .71, .99, 1 })
+            // The old renderer is an allocation baseline, not a visual oracle:
+            // it reproduces the missing suffix and incorrect numeral metrics.
+            var native = VisualTreeHelper.GetDrawing(host.After.View)!;
+            foreach (double progress in new[] { 1d, .99999 })
             {
-                host.SetProgress(progress);
+                host.After.Progress(progress);
+                var drawing = new DrawingGroup();
+                using (var dc = drawing.Open()) host.After.Render(dc);
                 foreach (double dpi in new[] { 96d, 120, 144 })
-                {
-                    var before = Pixels(host.Before, dpi);
-                    var after = Pixels(host.After, dpi);
-                    long difference = 0;
-                    int changed = 0;
-                    for (int i = 0; i < before.Length; i++)
-                    {
-                        int delta = Math.Abs(before[i] - after[i]);
-                        difference += delta;
-                        if (delta > 4) changed++;
-                    }
-                    // Transform-local clips may differ by a subpixel at a glyph edge.
-                    // Keep the aggregate tolerance well below one channel level.
-                    if (difference / (double)before.Length >= .25 || changed >= before.Length * .005)
-                    {
-                        foreach (var probe in new[] { host.Before, host.After })
-                        {
-                            var reels = (System.Collections.ICollection)probe.View.GetType().GetField("_reels", Private)!.GetValue(probe.View)!;
-                            output.WriteLine($"{probe.View.GetType().Name}: text={probe.View.Text}, reels={reels.Count}, mask={probe.View.OpacityMask != null}");
-                        }
-                    }
-                    Assert.True(difference / (double)before.Length < .25 && changed < before.Length * .005,
-                        $"{previous}->{next}, p={progress}, dpi={dpi}: mean channel delta={difference / (double)before.Length:F4}, changed={changed}");
-                }
+                    NumberFlowLayoutTests.AssertSamePixels(native, drawing, dpi, $"{previous}->{next}, p={progress}");
             }
         }
     });
@@ -134,12 +116,12 @@ public sealed class NumberFlowPerformanceTests(ITestOutputHelper output)
     });
 
     [Fact]
-    public void GlyphCachePreparesOnlyVisibleCharactersAndIsBoundedAndReleasedOnUnload() => SharedStaTestRunner.RunAsync(async ct =>
+    public void GlyphCachePreparesOnlyRollingCharactersAndIsBoundedAndReleasedOnUnload() => SharedStaTestRunner.RunAsync(async ct =>
     {
         using var host = new Pair("2026");
         await host.Ready(ct);
         var cache = (NumberFlowGlyphCache)typeof(NumberFlowText).GetField("_glyphCache", Private)!.GetValue(host.After.View)!;
-        Assert.Equal(3, cache.Count); // 2026 needs 2, 0 and 6, not ten digits per slot.
+        Assert.Equal(0, cache.Count); // Resting glyphs come directly from the native drawing.
         for (int i = 0; i < 30; i++)
         {
             host.After.View.FontSize = 10 + i;

@@ -209,7 +209,7 @@ public sealed class TranslationUxTests
         window.Opacity = 0;
         type.GetField("_text", BindingFlags.NonPublic | BindingFlags.Instance)!.SetValue(controller, "hello");
         window.ShowSelection(new(1, "hello", new Rect(100, 100, 100, 20), IntPtr.Zero, false), true);
-        window.TranslateButton.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+        _ = typeof(LiveTranslationController).GetMethod("TranslateAsync", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)!.Invoke(controller, null);
         await WpfFrameWaiter.UntilAsync(() => window.ManageModelButton.Visibility == Visibility.Visible, "missing model CTA", ct);
         Assert.Equal(Loc.Get("translation.modelMissing"), window.StatusText.Text);
         window.ManageModelButton.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));

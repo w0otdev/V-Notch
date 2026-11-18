@@ -27,15 +27,15 @@ internal static class BackdropFreshnessProbe
     internal static int RunSource()
     {
         var app = new Application { ShutdownMode = ShutdownMode.OnExplicitShutdown };
-        // Keep the source's own resize/initialization background in the test
-        // palette; a real white WebView backing surface is valid captured content.
-        var view = new WebView2 { DefaultBackgroundColor = System.Drawing.Color.FromArgb(32, 96, 160) };
+        // Valid source pixels, but distinct from the animated frame counter:
+        // Chromium may show this backing color on the desktop during a resize.
+        var view = new WebView2 { DefaultBackgroundColor = System.Drawing.Color.FromArgb(16, 96, 160) };
         var window = new Window
         {
             Left = 0, Top = SystemParameters.WorkArea.Top, Width = SystemParameters.PrimaryScreenWidth,
             Height = 650, WindowStyle = WindowStyle.None, ResizeMode = ResizeMode.NoResize,
             ShowActivated = false, ShowInTaskbar = false, Topmost = true, Content = view,
-            Background = new SolidColorBrush(Color.FromRgb(32, 96, 160))
+            Background = new SolidColorBrush(Color.FromRgb(16, 96, 160))
         };
         window.Loaded += async (_, _) =>
         {
@@ -48,12 +48,12 @@ internal static class BackdropFreshnessProbe
                 view.CoreWebView2.WebMessageReceived += (_, e) => Console.WriteLine(e.WebMessageAsJson);
                 view.NavigateToString("""
                     <!doctype html><html><head><style>
-                    html,body { margin:0;width:100%;height:100%;overflow:hidden;background:rgb(32,96,160) }
+                    html,body { margin:0;width:100%;height:100%;overflow:hidden;background:rgb(16,96,160) }
                     </style></head><body><script>
                     let frame=0, started=performance.now();
                     function tick() {
                       frame++;
-                      const red=performance.now()-started<2000 ? 32 : 32+(frame*47)%192;
+                      const red=performance.now()-started<2000 ? 16 : 32+(frame*47)%192;
                       document.body.style.backgroundColor=`rgb(${red},96,160)`;
                       chrome.webview.postMessage({frame});
                       requestAnimationFrame(tick);
@@ -106,10 +106,14 @@ internal static class BackdropFreshnessProbe
             activeFps: targetFps, maxRegionWidth: 1600, maxRegionHeight: 600) { CropGpuPresentationToCapture = true };
         bool measuring = false;
         int submissions = 0, changed = 0, validCaptures = 0, uploadedPixel = 0, previousPixel = 0;
-        int readyFrames = 0;
+        int readyFrames = 0, previousWarmupPixel = 0;
+        int sourceBackingFrames = 0;
+        int previousAnimatedRed = -1;
+        long lastAnimated = 0;
         long lastChanged = 0;
         var gaps = new List<double>();
         var invalidPixels = new Dictionary<int, int>();
+        var reversed = new List<object>();
         var probeClock = Stopwatch.StartNew();
         var invalidUploads = new System.Collections.Concurrent.ConcurrentQueue<object>();
         Exception? failure = null;
@@ -119,7 +123,8 @@ internal static class BackdropFreshnessProbe
         {
             int sourceWidth = (int)(SystemParameters.PrimaryScreenWidth * dpi) - (resizeCount % 2 == 0 ? 120 : 0);
             int sourceHeight = (int)((resizeCount % 2 == 0 ? 600 : 650) * dpi);
-            if (SetWindowPos((IntPtr)Volatile.Read(ref sourceHwnd), IntPtr.Zero, 0, 0, sourceWidth, sourceHeight, 0x16)) resizeCount++;
+            if (SetWindowPos((IntPtr)Volatile.Read(ref sourceHwnd), IntPtr.Zero, 0, 0, sourceWidth, sourceHeight, 0x16))
+                resizeCount++;
             else failure = new InvalidOperationException("Cannot resize the controlled source window");
         };
         try
@@ -162,16 +167,37 @@ internal static class BackdropFreshnessProbe
             presenter.GetType().GetEvent("FramePresented")!.AddEventHandler(presenter, (Action<LiquidGlassController.GpuGeometry>)(_ =>
             {
                 int pixel = Volatile.Read(ref uploadedPixel);
+                int red = (pixel >> 16) & 255;
                 bool validPixel = Math.Abs(((pixel >> 8) & 255) - 96) <= 3 && Math.Abs((pixel & 255) - 160) <= 3;
-                if (!measuring) { if (validPixel) readyFrames++; return; }
+                if (!measuring)
+                {
+                    if (validPixel && red >= 32 && red < 224 && pixel != previousWarmupPixel) { readyFrames++; previousWarmupPixel = pixel; }
+                    return;
+                }
                 submissions++;
                 if (validPixel) validCaptures++;
                 else invalidPixels[pixel] = invalidPixels.GetValueOrDefault(pixel) + 1;
                 if (pixel == previousPixel) return;
-                previousPixel = pixel;
                 changed++;
                 long now = Stopwatch.GetTimestamp();
                 if (lastChanged != 0) gaps.Add((now - lastChanged) * 1000.0 / Stopwatch.Frequency);
+                if (validPixel && red == 16) sourceBackingFrames++;
+                if (validPixel && red >= 32 && red < 224)
+                {
+                    double gap = (now - lastAnimated) * 1000.0 / Stopwatch.Frequency;
+                    // The fixture encodes its frame counter as red = 32 + (47*n)%192.
+                    // 143 is the modular inverse of 47. Short gaps cannot wrap half
+                    // the palette at any of the supported 30-240 Hz test rates.
+                    int redDelta = red - previousAnimatedRed;
+                    if (previousAnimatedRed >= 0 && gap < 300 && ((redDelta * 143 % 192 + 192) % 192) > 96)
+                    {
+                        reversed.Add(new { FromRed = previousAnimatedRed, ToRed = red, GapMs = gap,
+                            SourceFrame = Volatile.Read(ref sourceFrame), ResizeCount = resizeCount });
+                    }
+                    previousAnimatedRed = red;
+                    lastAnimated = now;
+                }
+                previousPixel = pixel;
                 lastChanged = now;
             }));
             glass.SetBlur(28 * .1 * .1 * dpi);
@@ -213,11 +239,12 @@ internal static class BackdropFreshnessProbe
                 CaptureDebug = captureDebug,
                 ValidCapturePercent = submissions == 0 ? 0 : validCaptures * 100.0 / submissions,
                 InvalidPixels = invalidPixels.OrderByDescending(p => p.Value).Take(5).Select(p => new { Pixel = $"{p.Key:X8}", Count = p.Value }).ToArray(),
-                InvalidUploads = invalidUploads.ToArray(),
-                Passed = resizeSource
+                InvalidUploads = invalidUploads.ToArray(), SourceBackingFrames = sourceBackingFrames,
+                ReversedFrames = reversed.Count, Reversals = reversed,
+                Passed = invalidUploads.IsEmpty && reversed.Count == 0 && sourceBackingFrames == 0 && (resizeSource
                     ? sourceFrames >= 90 && resizeCount >= 8 && validCaptures == submissions && changed - beforeRecovery >= targetFps * .5
                     : sourceFrames >= 90 && validCaptures >= submissions * .95 &&
-                        changed >= Math.Min(sourceFrames, targetFps * seconds) * .85 && p95 < Math.Max(25, 1500.0 / targetFps)
+                        changed >= Math.Min(sourceFrames, targetFps * seconds) * .85 && p95 < Math.Max(25, 1500.0 / targetFps))
             };
             string json = JsonSerializer.Serialize(result, new JsonSerializerOptions { WriteIndented = true });
             Console.WriteLine(json);

@@ -2027,24 +2027,8 @@
                             <Grid x:Name="LyricsCanvasViewport"
                                   Background="Transparent"
                                   ClipToBounds="True">
-                                <MediaElement x:Name="LyricsCanvasVideo"
-                                              LoadedBehavior="Manual"
-                                              UnloadedBehavior="Manual"
-                                              Stretch="UniformToFill"
-                                              HorizontalAlignment="Center"
-                                              VerticalAlignment="Center"
-                                              IsMuted="True"
-                                              ScrubbingEnabled="True"
-                                              Opacity="1"/>
-                                <MediaElement x:Name="LyricsCanvasVideoAlt"
-                                              LoadedBehavior="Manual"
-                                              UnloadedBehavior="Manual"
-                                              Stretch="UniformToFill"
-                                              HorizontalAlignment="Center"
-                                              VerticalAlignment="Center"
-                                              IsMuted="True"
-                                              ScrubbingEnabled="True"
-                                              Opacity="0"/>
+                                <!-- Players are added on first Canvas use. Even an empty
+                                     MediaElement initializes the native video subsystem. -->
                                 <Rectangle x:Name="LyricsCanvasBrightnessOverlay"
                                            Fill="Black"
                                            Opacity="0.3"

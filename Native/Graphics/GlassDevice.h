@@ -16,7 +16,7 @@ struct GlassDevice final {
     ComPtr<ID3D11Device> device;
     ComPtr<ID3D11DeviceContext> context;
     ComPtr<ID3D11VertexShader> vertex;
-    ComPtr<ID3D11PixelShader> crop, down, up, resolve, copy, refraction, opaqueWindow;
+    ComPtr<ID3D11PixelShader> crop, down, up, upResolve, resolve, copy, refraction, opaqueWindow;
     ComPtr<ID3D11SamplerState> sampler;
     ComPtr<ID3D11RasterizerState> rasterizer;
     // D3D11Multithread protects individual calls, not a whole draw sequence.
@@ -36,7 +36,7 @@ struct GlassDevice final {
         multithread->SetMultithreadProtected(TRUE);
         using namespace shaders;
         Check(device->CreateVertexShader(fullscreenVs, sizeof(fullscreenVs), nullptr, &vertex));
-        Pixel(cropPs, crop); Pixel(downPs, down); Pixel(upPs, up);
+        Pixel(cropPs, crop); Pixel(downPs, down); Pixel(upPs, up); Pixel(upResolvePs, upResolve);
         Pixel(resolvePs, resolve); Pixel(copyPs, copy); Pixel(refractPs, refraction);
         Pixel(opaqueWindowPs, opaqueWindow);
         D3D11_SAMPLER_DESC sample{};

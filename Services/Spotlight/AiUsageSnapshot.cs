@@ -62,14 +62,6 @@ internal sealed partial class SpotlightAiService
         return GetBalanceCoreAsync(Configuration(settings, "DeepSeek").Key, token);
     }
 
-    internal Task<string> GetBalanceAsync(string key, CancellationToken token = default)
-    {
-        ArgumentNullException.ThrowIfNull(key);
-        if (!NetworkPrivacy.Current.IsAllowed(NetworkFeature.Ai))
-            throw new SpotlightAiException("spotlight.ai.privacyBlocked");
-        return GetBalanceCoreAsync(key, token);
-    }
-
     private async Task<string> GetBalanceCoreAsync(string key, CancellationToken token)
     {
         key = key.Trim();

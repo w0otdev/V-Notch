@@ -11,6 +11,67 @@ namespace VNotch.Tests;
 [Collection("Localization")]
 public sealed class D3DImageFramePresenterLockTests
 {
+    [Fact]
+    public void GpuLensMetadataFollowsPresentationAndClearsOnRestart() => SharedStaTestRunner.RunAsync(async ct =>
+    {
+        var window = new Window { ShowActivated = false, ShowInTaskbar = false };
+        var hwnd = new WindowInteropHelper(window).EnsureHandle();
+        var target = new CompositorTarget();
+        using var presenter = new D3DImageFramePresenter(window.Dispatcher, hwnd, 8, 8, target, useGpuCapture: true);
+        var pixels = Enumerable.Repeat((byte)255, 8 * 8 * 4).ToArray();
+        var source = Marshal.AllocHGlobal(pixels.Length);
+        Exception? failure = null;
+        presenter.Failed += ex => failure = ex;
+        D3DImageFramePresenter.GpuFrame Submit(int generation, int lensWidth)
+        {
+            // Upload controlled pixels; this test never captures the user's desktop.
+            var frame = new D3DImageFramePresenter.GpuFrame { Width = 8, Height = 8, Refract = 2 };
+            frame.Set(0, 8); frame.Set(1, 8);
+            frame.Set(2, lensWidth); frame.Set(3, 4);
+            Assert.True(presenter.CaptureGpuFrame(in frame, default, generation, out bool submitted,
+                source, 32, pixels.Length));
+            Assert.True(submitted);
+            Assert.Null(failure);
+            return frame;
+        }
+        async Task PresentAsync()
+        {
+            await WpfFrameWaiter.UntilAsync(() =>
+            {
+                presenter.PresentPendingFrame();
+                Assert.Null(failure);
+                return !presenter.HasPendingFrame;
+            }, "the uploaded GPU lens", ct);
+        }
+        try
+        {
+            Marshal.Copy(pixels, 0, source, pixels.Length);
+            presenter.BeginSession(1);
+            Assert.Null(presenter.PresentedGpuFrame);
+            var first = Submit(1, 4);
+            await PresentAsync();
+            Assert.True(first.FrameEquals(Assert.IsType<D3DImageFramePresenter.GpuFrame>(presenter.PresentedGpuFrame)));
+
+            target.Writable = false;
+            var second = Submit(1, 8);
+            presenter.PresentPendingFrame();
+            Assert.True(presenter.HasPendingFrame);
+            Assert.True(first.FrameEquals(Assert.IsType<D3DImageFramePresenter.GpuFrame>(presenter.PresentedGpuFrame)));
+            target.Writable = true;
+            await PresentAsync();
+            Assert.True(second.FrameEquals(Assert.IsType<D3DImageFramePresenter.GpuFrame>(presenter.PresentedGpuFrame)));
+
+            presenter.SuspendPresentation();
+            Assert.Null(presenter.PresentedGpuFrame);
+            presenter.BeginSession(2);
+            var reopened = Submit(2, 2);
+            Assert.Null(presenter.PresentedGpuFrame);
+            await PresentAsync();
+            Assert.True(reopened.FrameEquals(Assert.IsType<D3DImageFramePresenter.GpuFrame>(presenter.PresentedGpuFrame)));
+        }
+        finally { Marshal.FreeHGlobal(source); window.Close(); }
+    });
+
     [Theory]
     [InlineData(false)]
     [InlineData(true)]

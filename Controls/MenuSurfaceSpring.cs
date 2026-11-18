@@ -26,7 +26,7 @@ internal sealed partial class MenuSurfaceSpring
     private readonly TransformGroup _transform;
     private State _state;
     private bool _running;
-    private long _timestamp;
+    private AnimationFrameClock _frameClock;
     private TimeSpan _renderingTime;
 
     private MenuSurfaceSpring(FrameworkElement surface)
@@ -61,7 +61,7 @@ internal sealed partial class MenuSurfaceSpring
             motion._running = true;
             CompositionTarget.Rendering += motion.Render;
         }
-        motion._timestamp = Stopwatch.GetTimestamp();
+        motion._frameClock.Reset(Stopwatch.GetTimestamp());
         motion._renderingTime = TimeSpan.MinValue;
         motion.Advance(0);
     }
@@ -89,10 +89,7 @@ internal sealed partial class MenuSurfaceSpring
             ResetSurface();
             return;
         }
-        long now = Stopwatch.GetTimestamp();
-        double seconds = Stopwatch.GetElapsedTime(_timestamp, now).TotalSeconds;
-        if (seconds < .9 / AnimationConfig.TargetFps) return;
-        _timestamp = now;
+        if (!_frameClock.TryAdvance(Stopwatch.GetTimestamp(), AnimationConfig.TargetFps, out double seconds)) return;
         Advance(seconds);
     }
 

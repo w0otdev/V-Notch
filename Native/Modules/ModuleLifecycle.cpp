@@ -2,18 +2,11 @@
 #include <cstdint>
 #include <string_view>
 
-// Module lifecycle state machine and the weather module's settings-change policy.
-// The managed shell keeps the timer, events and service calls; every transition decision lives here.
+// Weather module settings-change policy; module lifecycle lives in the application layer.
 
 namespace vnotch::modules {
 
 #pragma pack(push, 1)
-struct VnModuleLifecycle {
-    uint8_t initialized;
-    uint8_t running;
-    uint8_t disposed;
-};
-
 struct VnWeatherSettingsInput {
     uint8_t previous_enable_weather;
     uint8_t previous_local_only;
@@ -51,71 +44,6 @@ bool CitiesEqual(std::u16string_view a, std::u16string_view b) noexcept {
 namespace mod = vnotch::modules;
 
 extern "C" {
-
-VN_EXPORT int32_t __stdcall vn_module_begin_initialize(const mod::VnModuleLifecycle* state, uint8_t* out_proceed) noexcept {
-    if (!state || !out_proceed) return VN_ERR_INVALID_ARG;
-    *out_proceed = (state->initialized == 0 && state->disposed == 0) ? 1 : 0;
-    return VN_OK;
-}
-
-VN_EXPORT int32_t __stdcall vn_module_complete_initialize(mod::VnModuleLifecycle* state) noexcept {
-    if (!state) return VN_ERR_INVALID_ARG;
-    state->initialized = 1;
-    return VN_OK;
-}
-
-// Non-mutating plan for Start(): initialize first when needed, then commit. A failed initialize does not block Start.
-VN_EXPORT int32_t __stdcall vn_module_plan_start(
-    const mod::VnModuleLifecycle* state, uint8_t* out_needs_initialize, uint8_t* out_proceed) noexcept {
-    if (!state || !out_needs_initialize || !out_proceed) return VN_ERR_INVALID_ARG;
-    *out_needs_initialize = 0;
-    *out_proceed = 0;
-    if (state->disposed != 0) return VN_OK;
-    *out_needs_initialize = state->initialized == 0 ? 1 : 0;
-    *out_proceed = state->running == 0 ? 1 : 0;
-    return VN_OK;
-}
-
-VN_EXPORT int32_t __stdcall vn_module_commit_start(mod::VnModuleLifecycle* state) noexcept {
-    if (!state) return VN_ERR_INVALID_ARG;
-    state->running = 1;
-    return VN_OK;
-}
-VN_EXPORT int32_t __stdcall vn_module_fail_start(mod::VnModuleLifecycle* state) noexcept {
-    if (!state) return VN_ERR_INVALID_ARG;
-    state->running = 0;
-    return VN_OK;
-}
-
-VN_EXPORT int32_t __stdcall vn_module_begin_stop(const mod::VnModuleLifecycle* state, uint8_t* out_proceed) noexcept {
-    if (!state || !out_proceed) return VN_ERR_INVALID_ARG;
-    *out_proceed = state->running != 0 ? 1 : 0;
-    return VN_OK;
-}
-
-VN_EXPORT int32_t __stdcall vn_module_complete_stop(mod::VnModuleLifecycle* state) noexcept {
-    if (!state) return VN_ERR_INVALID_ARG;
-    state->running = 0;
-    return VN_OK;
-}
-
-VN_EXPORT int32_t __stdcall vn_module_can_tick(const mod::VnModuleLifecycle* state, uint8_t* out_can_tick) noexcept {
-    if (!state || !out_can_tick) return VN_ERR_INVALID_ARG;
-    *out_can_tick = (state->running != 0 && state->disposed == 0) ? 1 : 0;
-    return VN_OK;
-}
-
-VN_EXPORT int32_t __stdcall vn_module_begin_dispose(const mod::VnModuleLifecycle* state, uint8_t* out_proceed) noexcept {
-    if (!state || !out_proceed) return VN_ERR_INVALID_ARG;
-    *out_proceed = state->disposed == 0 ? 1 : 0;
-    return VN_OK;
-}
-
-VN_EXPORT int32_t __stdcall vn_module_complete_dispose(mod::VnModuleLifecycle* state) noexcept {
-    if (!state) return VN_ERR_INVALID_ARG;
-    state->disposed = 1;
-    return VN_OK;
-}
 
 // Whether a refresh may start for the current settings.
 VN_EXPORT int32_t __stdcall vn_weather_can_refresh(

@@ -1,7 +1,7 @@
 using System.Reflection;
+using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Media.Animation;
-using System.Windows.Input;
 using Microsoft.Extensions.DependencyInjection;
 using VNotch.Presenters;
 using VNotch.Services;

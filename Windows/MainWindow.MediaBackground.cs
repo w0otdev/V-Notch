@@ -51,7 +51,6 @@ public partial class MainWindow
 
         if (glass)
         {
-            UpdateGlassMediaTint(dominantColor);
         }
 
         string currentTrackId = $"{info.CurrentTrack}|{info.CurrentArtist}";
@@ -303,7 +302,6 @@ public partial class MainWindow
 
     private void HideMediaBackground()
     {
-        ClearGlassMediaTint();
         HideMediaBackgroundOverlay();
 
         if (_isTimerView || _isAudioView || _isSecondaryView || _isCameraView || _isAiUsageView) return;

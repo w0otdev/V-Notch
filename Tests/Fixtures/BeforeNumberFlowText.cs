@@ -1,5 +1,4 @@
 // Paired rendering/allocation reference from NumberFlowText before the resource optimization (4feb4d38).
-using VNotch.Controls;
 using System.ComponentModel;
 using System.Globalization;
 using System.Windows;
@@ -8,6 +7,7 @@ using System.Windows.Documents;
 using System.Windows.Media;
 using System.Windows.Media.Animation;
 using System.Windows.Threading;
+using VNotch.Controls;
 using VNotch.Services;
 
 namespace VNotch.Tests.Fixtures;

@@ -5,7 +5,6 @@ namespace VNotch.Services;
 // Pure decisions over caller-owned snapshots. No dispatcher, I/O, clock reads or mutable state.
 internal static class BrowserMediaTransitionPolicy
 {
-    internal static readonly TimeSpan LikelyAdMaximumDuration = TimeSpan.FromMinutes(2);
     internal static readonly TimeSpan LikelyAdQuarantineWindow = TimeSpan.FromSeconds(45);
 
 #pragma warning disable S107

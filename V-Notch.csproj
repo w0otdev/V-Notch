@@ -41,9 +41,9 @@
          reflection, COM interop or CPU/GPU translation backends. -->
     <EnableCompressionInSingleFile Condition="'$(Configuration)' == 'Release' And '$(SelfContained)' == 'true'">true</EnableCompressionInSingleFile>
     <PublishReferencesDocumentationFiles>false</PublishReferencesDocumentationFiles>
-    <Version>2.4.0</Version>
-    <AssemblyVersion>2.4.0.0</AssemblyVersion>
-    <FileVersion>2.4.0.0</FileVersion>
+    <Version>2.4.1</Version>
+    <AssemblyVersion>2.4.1.0</AssemblyVersion>
+    <FileVersion>2.4.1.0</FileVersion>
     <Authors>w0otdev, viper1aa</Authors>
     <Company>V-Notch</Company>
     <Product>V-Notch</Product>
@@ -57,6 +57,12 @@
 
     <ApplicationManifest>app.manifest</ApplicationManifest>
   </PropertyGroup>
+
+  <ItemGroup>
+    <!-- Bound GC growth for this long-lived tray app without a heap hard limit
+         (large clipboard items and on-demand AI must still be able to allocate). -->
+    <RuntimeHostConfigurationOption Include="System.GC.ConserveMemory" Value="5" />
+  </ItemGroup>
 
   <ItemGroup>
     <PackageReference Include="CommunityToolkit.Mvvm" Version="8.4.0" />
@@ -306,7 +312,7 @@ public sealed class MinifyLocaleJsonTask : Task
     <_VNotchGpuShaderInputs Include="$(MSBuildThisFileDirectory)Shaders\GlassGpu.hlsl;$(MSBuildThisFileDirectory)Shaders\LiquidGlassRefraction.hlsl;$(MSBuildThisFileDirectory)scripts\Generate-GlassShaders.ps1" />
     <_VNotchNativeHeaders Include="$(MSBuildThisFileDirectory)Native\**\*.h" />
     <_VNotchNativeHeaders Include="$(PkgMicrosoft_ML_OnnxRuntime_DirectML)\build\native\include\*.h" />
-    <_VNotchNativeSources Include="$(MSBuildThisFileDirectory)Native\**\*.cpp" />
+    <_VNotchNativeSources Include="$(MSBuildThisFileDirectory)Native\**\*.cpp" Exclude="$(MSBuildThisFileDirectory)Native\Services\Translation\LiteTranslationRuntime.cpp" />
     <_VNotchNativeAvx2Sources Include="$(MSBuildThisFileDirectory)Native\**\*.avx2.cpp" />
     <_VNotchNativeHotBaselineSources Include="
       $(MSBuildThisFileDirectory)Native\Controllers\GpuGlass.cpp;
@@ -322,7 +328,7 @@ public sealed class MinifyLocaleJsonTask : Task
       $(MSBuildThisFileDirectory)Native\Services\AnimationMath.cpp;
       $(MSBuildThisFileDirectory)Native\Controls\UiMotionAndParticles.cpp;
       $(MSBuildThisFileDirectory)Native\Services\Clipboard\ClipboardSensitiveData.cpp" />
-    <_VNotchNativeColdBaselineSources Include="$(MSBuildThisFileDirectory)Native\**\*.cpp" Exclude="$(MSBuildThisFileDirectory)Native\**\*.avx2.cpp" />
+    <_VNotchNativeColdBaselineSources Include="$(MSBuildThisFileDirectory)Native\**\*.cpp" Exclude="$(MSBuildThisFileDirectory)Native\**\*.avx2.cpp;$(MSBuildThisFileDirectory)Native\Services\Translation\LiteTranslationRuntime.cpp" />
     <_VNotchNativeColdBaselineSources Remove="@(_VNotchNativeHotBaselineSources)" />
   </ItemGroup>
   <Target Name="GenerateVNotchGlassShaders" BeforeTargets="CompileVNotchNative" Condition="'$(SkipNativeCompile)' != 'true' And '$(DesignTimeBuild)' != 'true' And !$(MSBuildProjectName.EndsWith('_wpftmp'))" Inputs="@(_VNotchGpuShaderInputs)" Outputs="$(_VNotchNativeObjDir)\GlassShaders.g.h">
@@ -383,6 +389,21 @@ public sealed class MinifyLocaleJsonTask : Task
     <Exec Command="call &quot;$(_VNotchNativeObjDir)\vcvars64.env.cmd&quot; &amp;&amp; ver &gt;nul &amp;&amp; (for %%R in (&quot;$(_VNotchNativeObjDir)\baseline-hot.rsp&quot;) do if %%~zR gtr 0 cl.exe /nologo /c /std:c++latest $(_NativeHotOptFlags) /GR- /MT /EHsc $(_NativeMpFlag) /W4 /utf-8 /I&quot;$(MSBuildThisFileDirectory)Native&quot; /I&quot;$(_VNotchNativeObjDir)&quot; /I&quot;$(_OnnxRuntimeIncludeDir)&quot; /Fo&quot;$(_VNotchNativeObjDir)\hot\\&quot; @&quot;%%~R&quot;) &amp;&amp; (for %%R in (&quot;$(_VNotchNativeObjDir)\baseline-cold.rsp&quot;) do if %%~zR gtr 0 cl.exe /nologo /c /std:c++latest $(_NativeColdOptFlags) /GR- /MT /EHsc $(_NativeMpFlag) /W4 /utf-8 /I&quot;$(MSBuildThisFileDirectory)Native&quot; /I&quot;$(_VNotchNativeObjDir)&quot; /I&quot;$(_OnnxRuntimeIncludeDir)&quot; /Fo&quot;$(_VNotchNativeObjDir)\cold\\&quot; @&quot;%%~R&quot;) &amp;&amp; (for %%R in (&quot;$(_VNotchNativeObjDir)\avx2.rsp&quot;) do if %%~zR gtr 0 cl.exe /nologo /c /std:c++latest /O2 /Oi /Ot /Gy /Gw /GR- /arch:AVX2 /MT /EHsc $(_NativeMpFlag) /W4 /utf-8 /I&quot;$(MSBuildThisFileDirectory)Native&quot; /Fo&quot;$(_VNotchNativeObjDir)\avx2\\&quot; @&quot;%%~R&quot;) &amp;&amp; link.exe /nologo /DLL $(_NativeLinkOptFlags) /BREPRO /NOCOFFGRPINFO /MERGE:.fptable=.rdata /NODEFAULTLIB:libucrt.lib /DEFAULTLIB:ucrt.lib /CETCOMPAT /OUT:&quot;$(_VNotchNativeDll)&quot; /IMPLIB:&quot;$(_VNotchNativeObjDir)\VNotch.Native.lib&quot; @&quot;$(_VNotchNativeObjDir)\link.rsp&quot;" IgnoreStandardErrorWarningFormat="true" />
   </Target>
   <Target Name="BuildNativeDll" DependsOnTargets="CompileVNotchNative" />
+
+  <!-- Pinned CPU translation runtime; the model itself is downloaded only on user request. -->
+  <Target Name="BuildTranslationRuntime" BeforeTargets="PrepareForBuild"
+          Condition="'$(SkipNativeCompile)' != 'true' And '$(SkipTranslationRuntime)' != 'true' And '$(DesignTimeBuild)' != 'true' And !$(MSBuildProjectName.EndsWith('_wpftmp'))">
+    <Exec Command="powershell.exe -NoProfile -ExecutionPolicy Bypass -File &quot;$(MSBuildThisFileDirectory)scripts\Build-TranslationRuntime.ps1&quot; -Root &quot;$(MSBuildProjectDirectory)&quot;" />
+  </Target>
+  <!-- Evaluate after runtime compilation so clean builds also copy the generated DLLs. -->
+  <Target Name="IncludeTranslationRuntime" BeforeTargets="AssignTargetPaths" DependsOnTargets="BuildTranslationRuntime">
+    <ItemGroup>
+      <_TranslationRuntimeFile Include="Native\out\translation\**\*.dll;Native\out\translation\**\*.txt" />
+      <Content Include="@(_TranslationRuntimeFile)"
+               Link="translation\%(_TranslationRuntimeFile.RecursiveDir)%(_TranslationRuntimeFile.Filename)%(_TranslationRuntimeFile.Extension)"
+               CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" ExcludeFromSingleFile="true" />
+    </ItemGroup>
+  </Target>
 
   <Target Name="SetPackageManifestVersion" BeforeTargets="Build">
     <PropertyGroup>

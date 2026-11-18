@@ -21,7 +21,7 @@ public partial class SettingsWindow
     private NavHoverSpringState _navHoverState;
     private double _navHoverTargetY;
     private bool _navHoverVisible, _navHoverSelected, _navHoverAnimating, _navHoverInitialized;
-    private long _navHoverFrameTimestamp;
+    private AnimationFrameClock _navHoverFrameClock;
     private TimeSpan _navHoverRenderingTime = TimeSpan.MinValue;
 
     private void StartNavHoverMotion(double targetY, bool visible, bool selected, bool animate)
@@ -44,7 +44,7 @@ public partial class SettingsWindow
         }
         if (_navHoverAnimating) return;
         _navHoverAnimating = true;
-        _navHoverFrameTimestamp = Stopwatch.GetTimestamp();
+        _navHoverFrameClock.Reset(Stopwatch.GetTimestamp());
         _navHoverRenderingTime = TimeSpan.MinValue;
         CompositionTarget.Rendering += RenderNavHoverMotion;
     }
@@ -61,10 +61,7 @@ public partial class SettingsWindow
             StopNavHoverMotion();
             return;
         }
-        long now = Stopwatch.GetTimestamp();
-        double seconds = Stopwatch.GetElapsedTime(_navHoverFrameTimestamp, now).TotalSeconds;
-        if (seconds < .9 / AnimationConfig.TargetFps) return;
-        _navHoverFrameTimestamp = now;
+        if (!_navHoverFrameClock.TryAdvance(Stopwatch.GetTimestamp(), AnimationConfig.TargetFps, out double seconds)) return;
         AdvanceNavHoverMotion(seconds);
     }
 

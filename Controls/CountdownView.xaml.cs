@@ -73,20 +73,6 @@ public sealed partial class CountdownView : UserControl, IDisposable
 
     public void RefreshProgress() => SetCountdownProgress(false);
     public void CancelEditing() => CancelTimerEditingInstant();
-    public void StopRepeat() => _presenter?.StopRepeat();
-
-    public void RestorePresentation()
-    {
-        foreach (UIElement element in new UIElement[] { CountdownDisplay, CountdownProgressFill,
-            CountdownDisplayPanel, CountdownStartBtn, CountdownResetBtn })
-        {
-            element.BeginAnimation(OpacityProperty, null);
-            element.Opacity = 1;
-        }
-        CountdownStepperCapsule.BeginAnimation(OpacityProperty, null);
-        CountdownStepperCapsule.Opacity = _controller?.IsRunning == true ? 0.4 : 1;
-    }
-
     public void Dispose()
     {
         if (_disposed) return;

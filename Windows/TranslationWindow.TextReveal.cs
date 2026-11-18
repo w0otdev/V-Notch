@@ -1,5 +1,5 @@
 using System.Globalization;
-using System.Runtime.InteropServices;
+using System.Diagnostics;
 using System.Windows;
 using System.Windows.Documents;
 using System.Windows.Media;
@@ -16,120 +16,195 @@ public partial class TranslationWindow
         "ResultRevealTime", typeof(double), typeof(TranslationWindow),
         new PropertyMetadata(0d, (owner, e) => ((TranslationWindow)owner).UpdateCharacterFades((double)e.NewValue)));
     private DispatcherOperation? _resultRevealStart;
-    private int _resultRevealVersion, _resultRevealCompleted;
-    private List<SolidColorBrush>? _resultRevealBrushes;
-    private double _resultRevealInterval;
+    private int _resultRevealVersion;
+    private Dictionary<int, CharacterReveal>? _resultRevealCharacters;
+    private readonly Stopwatch _resultRevealClock = new();
+    private bool _buildingReveal;
+    // Instance-scoped so deterministic tests do not alter other windows' clocks.
+    internal Func<DoubleAnimation, AnimationClock>? ResultRevealClockFactory { get; set; }
+    private sealed record CharacterReveal(SolidColorBrush Brush, double Start);
 
-    [LibraryImport("VNotch.Native")]
-    private static partial int vn_translation_compute_character_fades(
-        double elapsed, double interval, double fadeMs, int brushCount, int completedIndex,
-        Span<double> outOpacities, int opacityCap, out int outStartIndex, out int outEndIndex, out int outNewCompleted);
-
-    private void QueueResultReveal()
+    private void QueueResultReveal(int visiblePrefixLength = 0, bool preserveProgress = false)
     {
-        StopResultReveal();
         if (!IsVisible || _dismissing || ResultText.Text.Length == 0 ||
-            AnimationConfig.ReduceMotion || !SystemParameters.ClientAreaAnimation) return;
+            AnimationConfig.ReduceMotion || !AnimationConfig.ClientAreaAnimation)
+        {
+            StopResultReveal();
+            return;
+        }
 
-        int version = _resultRevealVersion;
         FrameworkElement target = MarkdownResult.Visibility == Visibility.Visible ? MarkdownResult : ResultText;
-        target.Opacity = 0;
-        _resultRevealStart = Dispatcher.BeginInvoke(DispatcherPriority.Loaded, new Action(() =>
+        bool append = preserveProgress || (visiblePrefixLength > 0 && target == ResultText);
+        if (!append)
+        {
+            StopResultReveal();
+            target.Opacity = 0;
+            _resultRevealClock.Restart();
+        }
+        else if (!_resultRevealClock.IsRunning) _resultRevealClock.Start();
+        // Coalesce token bursts and let normal layout finish before querying glyphs.
+        // Keep the old brushes/clock alive: an append must not finish or restart a fade.
+        _resultRevealStart?.Abort();
+        int version = ++_resultRevealVersion;
+        _resultRevealStart = Dispatcher.BeginInvoke(DispatcherPriority.Loaded, new Action(StartReveal));
+
+        void StartReveal()
         {
             if (version != _resultRevealVersion) return;
             _resultRevealStart = null;
-            if (!IsVisible || _dismissing || AnimationConfig.ReduceMotion || !SystemParameters.ClientAreaAnimation)
+            if (!IsVisible || _dismissing || AnimationConfig.ReduceMotion || !AnimationConfig.ClientAreaAnimation)
             {
                 StopResultReveal();
                 return;
             }
+            // A cold result can arrive before the text viewport has been
+            // arranged. Query caret rectangles only once layout is usable.
+            if (!append || !target.IsMeasureValid || !target.IsArrangeValid ||
+                !ResultScroll.IsArrangeValid || ResultScroll.ViewportHeight <= 0)
+            {
+                _buildingReveal = true;
+                try { target.UpdateLayout(); }
+                finally { _buildingReveal = false; }
+                if (version != _resultRevealVersion) return;
+            }
             // Measure once after layout. The complete selectable text stays in place;
             // only the alpha of characters in the visible viewport changes per frame.
             var drawing = new DrawingGroup();
-            var brushes = new List<SolidColorBrush>();
+            var characters = new Dictionary<int, CharacterReveal>();
+            var previous = append ? _resultRevealCharacters : null;
+            double elapsed = _resultRevealClock.Elapsed.TotalMilliseconds;
+            int added = 0;
             double viewportHeight = ResultScroll.ViewportHeight;
+            int first = 0;
+            double opaqueHeight = 0;
+            if (target == ResultText && append && target.Opacity > 0 && visiblePrefixLength > 0)
+            {
+                int activeOffset = visiblePrefixLength;
+                if (previous != null)
+                    foreach (var (offset, character) in previous)
+                        if (character.Brush.Opacity < 1) activeOffset = Math.Min(activeOffset, offset);
+                // Wrapping and bidi can reposition the current line. Rebuild it and
+                // everything below it, painting completed lines as one opaque band.
+                int line = ResultText.GetLineIndexFromCharacterIndex(Math.Max(0, Math.Min(activeOffset, ResultText.Text.Length) - 1));
+                if (line > 0)
+                {
+                    first = Math.Max(0, ResultText.GetCharacterIndexFromLineIndex(line));
+                    var bounds = ResultText.GetRectFromCharacterIndex(first);
+                    if (bounds.IsEmpty) first = 0;
+                    else opaqueHeight = Math.Clamp(bounds.Top, 0, target.ActualHeight);
+                }
+            }
+            (int Offset, Rect Leading, Rect Trailing)[] rects;
+            _buildingReveal = true;
+            try
+            {
+                rects = ResultCharacterRects(first)
+                    .TakeWhile(character => character.Leading.IsEmpty || character.Leading.Top < viewportHeight).ToArray();
+            }
+            finally { _buildingReveal = false; }
+            if (version != _resultRevealVersion) return;
+            int freshCount = rects.Count(character => (previous == null || !previous.ContainsKey(character.Offset)) &&
+                (!append || character.Offset >= visiblePrefixLength || target.Opacity == 0));
+            double interval = Math.Min(14, 200d / Math.Max(1, freshCount));
             using (var context = drawing.Open())
             {
                 context.DrawRectangle(Brushes.Transparent, null, new Rect(target.RenderSize));
-                foreach (var (leading, trailing) in ResultCharacterRects())
+                if (opaqueHeight > 0)
+                    context.DrawRectangle(Brushes.Black, null, new Rect(0, 0, target.ActualWidth, opaqueHeight));
+                foreach (var (offset, leading, trailing) in rects)
                 {
                     // Caret queries can finish a pending layout and trigger cancellation.
                     if (version != _resultRevealVersion) return;
                     if (leading.IsEmpty || trailing.IsEmpty) continue;
                     if (leading.Top >= viewportHeight) break;
-                    var brush = new SolidColorBrush(Colors.Black) { Opacity = 0 };
-                    brushes.Add(brush);
+                    SolidColorBrush brush = Brushes.Black;
+                    if (previous != null && previous.TryGetValue(offset, out var existing))
+                    {
+                        characters[offset] = existing;
+                        brush = existing.Brush;
+                    }
+                    else if (!append || offset >= visiblePrefixLength || target.Opacity == 0)
+                    {
+                        brush = new SolidColorBrush(Colors.Black) { Opacity = 0 };
+                        characters[offset] = new CharacterReveal(brush, elapsed + added++ * interval);
+                    }
                     double left = Math.Min(leading.Left, trailing.Left);
                     double right = Math.Max(leading.Left, trailing.Left);
                     if (right > left)
                         context.DrawRectangle(brush, null, new Rect(left, leading.Top, right - left, leading.Height));
                 }
             }
-            if (brushes.Count == 0) { StopResultReveal(); return; }
-            _resultRevealBrushes = brushes;
-            _resultRevealCompleted = 0;
-            _resultRevealInterval = Math.Min(14, 1200d / brushes.Count);
+            if (characters.Count == 0) { StopResultReveal(); return; }
+            _resultRevealCharacters = characters;
             target.OpacityMask = new DrawingBrush(drawing)
             {
                 ViewboxUnits = BrushMappingMode.Absolute,
                 Viewbox = new Rect(target.RenderSize),
-                Stretch = Stretch.Fill
+                ViewportUnits = BrushMappingMode.Absolute,
+                Viewport = new Rect(target.RenderSize),
+                Stretch = Stretch.None
             };
             target.Opacity = 1;
-            double duration = (brushes.Count - 1) * _resultRevealInterval + CharacterFadeMilliseconds;
-            var reveal = new DoubleAnimation(0, duration, TimeSpan.FromMilliseconds(duration)) { FillBehavior = FillBehavior.Stop };
+            double end = characters.Values.Max(character => character.Start) + CharacterFadeMilliseconds;
+            if (end <= elapsed) { StopResultReveal(); return; }
+            var reveal = new DoubleAnimation(elapsed, end, TimeSpan.FromMilliseconds(end - elapsed)) { FillBehavior = FillBehavior.HoldEnd };
             Timeline.SetDesiredFrameRate(reveal, Math.Min(60, AnimationConfig.TargetFps));
             reveal.Completed += (_, _) => { if (version == _resultRevealVersion) StopResultReveal(); };
-            BeginAnimation(ResultRevealTimeProperty, reveal);
-        }));
+            if (ResultRevealClockFactory is { } createClock)
+                ApplyAnimationClock(ResultRevealTimeProperty, createClock(reveal));
+            else BeginAnimation(ResultRevealTimeProperty, reveal);
+        }
     }
 
-    private IEnumerable<(Rect Leading, Rect Trailing)> ResultCharacterRects()
+    private IEnumerable<(int Offset, Rect Leading, Rect Trailing)> ResultCharacterRects(int first)
     {
         if (MarkdownResult.Visibility == Visibility.Visible)
         {
+            int runOffset = 0;
             var cursor = MarkdownResult.Document.ContentStart;
             while (cursor != null && cursor.CompareTo(MarkdownResult.Document.ContentEnd) < 0)
             {
                 if (cursor.GetPointerContext(LogicalDirection.Forward) == TextPointerContext.Text)
                 {
                     string text = cursor.GetTextInRun(LogicalDirection.Forward);
-                    int[] starts = StringInfo.ParseCombiningCharacters(text);
-                    for (int i = 0; i < starts.Length; i++)
+                    for (int i = 0, end; i < text.Length; i = end)
                     {
-                        if (char.IsWhiteSpace(text, starts[i])) continue;
-                        int end = i + 1 < starts.Length ? starts[i + 1] : text.Length;
-                        yield return (cursor.GetPositionAtOffset(starts[i])!.GetCharacterRect(LogicalDirection.Forward),
+                        end = i + StringInfo.GetNextTextElementLength(text.AsSpan(i));
+                        if (char.IsWhiteSpace(text, i)) continue;
+                        yield return (runOffset + i, cursor.GetPositionAtOffset(i)!.GetCharacterRect(LogicalDirection.Forward),
                             cursor.GetPositionAtOffset(end)!.GetCharacterRect(LogicalDirection.Backward));
                     }
+                    runOffset += text.Length;
                 }
                 cursor = cursor.GetNextContextPosition(LogicalDirection.Forward);
             }
             yield break;
         }
-        int[] plainStarts = StringInfo.ParseCombiningCharacters(ResultText.Text);
-        for (int i = 0; i < plainStarts.Length; i++)
+        string plain = ResultText.Text;
+        for (int i = first, end; i < plain.Length; i = end)
         {
-            if (char.IsWhiteSpace(ResultText.Text, plainStarts[i])) continue;
-            int end = i + 1 < plainStarts.Length ? plainStarts[i + 1] : ResultText.Text.Length;
-            yield return (ResultText.GetRectFromCharacterIndex(plainStarts[i]),
+            end = i + StringInfo.GetNextTextElementLength(plain.AsSpan(i));
+            if (char.IsWhiteSpace(plain, i)) continue;
+            yield return (i, ResultText.GetRectFromCharacterIndex(i),
                 ResultText.GetRectFromCharacterIndex(end - 1, trailingEdge: true));
         }
     }
 
     private void UpdateCharacterFades(double elapsed)
     {
-        var brushes = _resultRevealBrushes;
-        if (brushes == null || _resultRevealCompleted >= brushes.Count) return;
-        int cap = brushes.Count - _resultRevealCompleted;
-        Span<double> opacities = cap <= 512 ? stackalloc double[cap] : new double[cap];
-        if (vn_translation_compute_character_fades(
-            elapsed, _resultRevealInterval, CharacterFadeMilliseconds, brushes.Count, _resultRevealCompleted,
-            opacities, cap, out int startIndex, out int endIndex, out int newCompleted) != 0)
-            return;
-        for (int i = startIndex; i < endIndex; i++)
-            brushes[i].Opacity = opacities[i - startIndex];
-        _resultRevealCompleted = newCompleted;
+        if (_resultRevealCharacters == null) return;
+        foreach (var character in _resultRevealCharacters.Values)
+        {
+            double progress = Math.Clamp((elapsed - character.Start) / CharacterFadeMilliseconds, 0, 1);
+            // Never dim an existing glyph when a new animation clock is attached.
+            if (progress > character.Brush.Opacity) character.Brush.Opacity = progress;
+        }
+    }
+
+    private void ResultRevealLayoutChanged()
+    {
+        if (!_buildingReveal && _resultRevealCharacters != null && _resultRevealStart == null)
+            QueueResultReveal(ResultText.Text.Length, preserveProgress: true);
     }
 
     private void StopResultReveal(bool revealImmediately = true)
@@ -137,7 +212,8 @@ public partial class TranslationWindow
         ++_resultRevealVersion;
         _resultRevealStart?.Abort();
         _resultRevealStart = null;
-        _resultRevealBrushes = null;
+        _resultRevealCharacters = null;
+        _resultRevealClock.Reset();
         BeginAnimation(ResultRevealTimeProperty, null);
         SetValue(ResultRevealTimeProperty, 0d);
         foreach (FrameworkElement target in new FrameworkElement[] { ResultText, MarkdownResult })

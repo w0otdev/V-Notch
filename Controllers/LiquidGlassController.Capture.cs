@@ -67,6 +67,7 @@ public sealed partial class LiquidGlassController : IDisposable
         bool invisibleMode = WindowAnimationPolicy.InvisibleMode;
         if (gpuMode && invisibleMode)
         {
+            _compositePublication = 0;
             var gpuDims = ComputeFrameDimensions(region, p, true, false, displayW, displayH);
             _outScale = gpuDims.OutScale;
             return ProcessDesktopGpuFrame(p, region, gpuDims, generation, blurSigma, refreshVersion);
@@ -76,7 +77,10 @@ public sealed partial class LiquidGlassController : IDisposable
             var gpuDims = ComputeFrameDimensions(region, p, true, false, displayW, displayH);
             _outScale = gpuDims.OutScale;
             if (ProcessDesktopGpuFrame(p, region, gpuDims, generation, blurSigma, refreshVersion, exactWindows: true))
+            {
+                _compositePublication = 0;
                 return false;
+            }
         }
         // Keep the plain material (or Ghost-mode BitBlt) until Magnifier has a usable crop.
         // IsReady only means initialization succeeded; promoting it blindly every
@@ -231,10 +235,10 @@ public sealed partial class LiquidGlassController : IDisposable
             var captureParams = new BackdropCaptureParams(
                 dims.SrcX, dims.SrcY, dims.SrcW, dims.SrcH,
                 dims.PhysSrcW, dims.PhysSrcH, region.Y, ctx.DisplayH, ctx.UseMag, screenDc);
-            if (!CaptureBackdrop(captureParams, out bool isSyntheticBackdrop))
+            if (!CaptureBackdrop(captureParams))
                 return false;
 
-            if (!isSyntheticBackdrop && !ctx.GpuMode && (_dbgFrameCount & 3) == 0)
+            if (!ctx.GpuMode && (_dbgFrameCount & 3) == 0)
             {
                 UpdateBackdropOptics(
                     dims.SrcW, dims.SrcH,
@@ -257,15 +261,14 @@ public sealed partial class LiquidGlassController : IDisposable
         }
     }
 
-    private bool CaptureBackdrop(BackdropCaptureParams cp, out bool isSyntheticBackdrop)
+    private bool CaptureBackdrop(BackdropCaptureParams cp)
     {
-        isSyntheticBackdrop = false;
         // Retain last presented frame on missed Magnifier frames to avoid geometry
         // jumps from fallback mixing; persistent failures cleanly disable Magnifier.
         if (cp.UseMag)
             return TryMagnifierCapture(cp);
 
-        return BitBltCapture(cp, out isSyntheticBackdrop);
+        return BitBltCapture(cp);
     }
 
     private bool TryMagnifierCapture(BackdropCaptureParams cp)
@@ -275,6 +278,7 @@ public sealed partial class LiquidGlassController : IDisposable
 
         if (mag.CaptureInto(cp.SrcX, cp.SrcY, cp.SrcW, cp.SrcH, _dibBits, out _, out _))
         {
+            _compositePublication = 0;
             _magFailStreak = 0;
             return true;
         }
@@ -288,18 +292,26 @@ public sealed partial class LiquidGlassController : IDisposable
                 _exactBitBltCapture = SetWindowDisplayAffinitySafe(WDA_EXCLUDEFROMCAPTURE);
             }
             RuntimeLog.Log(LogCategory, $"[{_logTag}] Magnifier failing repeatedly ({mag.GetDebugStatus(cp.SrcX, cp.SrcY, cp.SrcW, cp.SrcH)}); falling back to BitBlt (exactBitBlt={_exactBitBltCapture}).");
-            return BitBltCapture(cp, out _);
+            return BitBltCapture(cp);
         }
         return false;
     }
 
-    internal Func<int, int, int, int, IntPtr, bool> CompositeBackdropCapture { get; set; } =
-        MagnifierCaptureSource.TryCompositeDesktop;
+    internal Func<int, int, int, int, IntPtr, bool> CompositeBackdropCapture { get; set; }
+    private ulong _compositePublication;
+    private bool CaptureCompositeFrame(int x, int y, int width, int height, IntPtr destination)
+    {
+        // A moving background can arrive just after our capture deadline.
+        // Geometry changes, cold starts and settled backgrounds take the latest strip immediately.
+        int waitMs = _gpuMode && !_animating && !ForceRefreshNeeded && _hasVisibleFrame &&
+            Environment.TickCount64 - _lastPresentTicks < 250
+            ? (int)Math.Clamp(Volatile.Read(ref _activeIntervalMs), 1, 8) : 0;
+        return MagnifierCaptureSource.TryCompositeDesktop(x, y, width, height, destination, ref _compositePublication, waitMs);
+    }
     private bool _usingCompositeBackdrop;
 
-    private bool BitBltCapture(BackdropCaptureParams cp, out bool isSyntheticBackdrop)
+    private bool BitBltCapture(BackdropCaptureParams cp)
     {
-        isSyntheticBackdrop = false;
         if (!WindowAnimationPolicy.InvisibleMode)
             _exactBitBltCapture = false;
         if (!_exactBitBltCapture && !_magReady && WindowAnimationPolicy.InvisibleMode)
@@ -320,14 +332,11 @@ public sealed partial class LiquidGlassController : IDisposable
                 }
                 return true;
             }
-            // A transient miss must not upload a synthetic grey/black frame over
-            // an initialized presentation surface. Keep that surface until the
-            // next complete capture; the plain material is only for cold start.
-            if (Volatile.Read(ref _hasVisibleFrame)) return false;
-            isSyntheticBackdrop = true;
-            return FillUnavailableBackdrop(cp.SrcW, cp.SrcH);
+            // Leave the host material (or last presented frame) in place.
+            return false;
         }
 
+        _compositePublication = 0;
         IntPtr screenDc = cp.ScreenDc;
         bool release = false;
         if (screenDc == IntPtr.Zero)
@@ -344,14 +353,6 @@ public sealed partial class LiquidGlassController : IDisposable
             if (release && screenDc != IntPtr.Zero)
                 ReleaseScreenDc(screenDc);
         }
-    }
-
-    private unsafe bool FillUnavailableBackdrop(int width, int height)
-    {
-        if (_dibBits == IntPtr.Zero || width <= 0 || height <= 0) return false;
-        uint color = 0xFF000000u | (uint)Volatile.Read(ref _averageBackgroundColorRgb);
-        new Span<uint>((void*)_dibBits, checked(width * height)).Fill(color);
-        return true;
     }
 
 }

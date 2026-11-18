@@ -148,16 +148,4 @@ public static partial class DataProtection
     public static bool IsEncrypted(string? stored) =>
         !string.IsNullOrEmpty(stored) && stored.StartsWith(Prefix, StringComparison.Ordinal);
 
-    public static string? TryProtect(string? plaintext)
-    {
-        if (string.IsNullOrEmpty(plaintext)) return "";
-        try
-        {
-            return Protect(plaintext);
-        }
-        catch
-        {
-            return null;
-        }
-    }
 }

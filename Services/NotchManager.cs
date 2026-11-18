@@ -1,7 +1,6 @@
 using System.Runtime.InteropServices;
 using System.Windows;
 using System.Windows.Forms;
-using VNotch.Controllers;
 using VNotch.Models;
 
 namespace VNotch.Services;
@@ -43,17 +42,15 @@ public sealed partial class NotchManager : IDisposable
 
     internal int GeometryComputeCount { get; private set; }
 
-    public NotchTransitionCoordinator TransitionCoordinator { get; }
     public HoverDetectionService HoverService => _hoverService!;
     public Rect SafeArea => _safeArea;
 
     public event EventHandler<Rect>? SafeAreaChanged;
     public event EventHandler? PositionUpdated;
 
-    public NotchManager(Window window, NotchSettings settings, NotchTransitionCoordinator transitionCoordinator)
+    public NotchManager(Window window, NotchSettings settings)
     {
         _settings = settings;
-        TransitionCoordinator = transitionCoordinator;
         if (window != null)
         {
             _hoverService = new HoverDetectionService(settings.HoverZoneMargin, window);
@@ -61,10 +58,9 @@ public sealed partial class NotchManager : IDisposable
         }
     }
 
-    internal NotchManager(NotchSettings settings, NotchTransitionCoordinator? transitionCoordinator = null)
+    internal NotchManager(NotchSettings settings)
     {
         _settings = settings;
-        TransitionCoordinator = transitionCoordinator!;
     }
 
     public void UpdateSettings(NotchSettings settings)
@@ -121,32 +117,6 @@ public sealed partial class NotchManager : IDisposable
     {
         return MonitorSelection.Resolve(_settings);
     }
-
-    #region Public Controls
-
-    public void Expand(NotchExpandMode mode = NotchExpandMode.Compact)
-    {
-        TransitionCoordinator.RequestView(NotchView.Media, $"NotchManager.Expand({mode})");
-    }
-
-    public void Collapse()
-    {
-        TransitionCoordinator.RequestCollapse("NotchManager.Collapse");
-    }
-
-    public void Hide()
-    {
-        _hoverService?.Stop();
-        TransitionCoordinator.SetEffectivelyVisible(false, "NotchManager.Hide");
-    }
-
-    public void Show()
-    {
-        _hoverService?.Start();
-        TransitionCoordinator.SetEffectivelyVisible(true, "NotchManager.Show");
-    }
-
-    #endregion
 
     public void Dispose()
     {

@@ -29,7 +29,7 @@ public partial class SettingsWindow
     private bool _navPillAnimating;
     private double _navPillTargetY;
     private double _navPillHeight = 30;
-    private long _navPillFrameTimestamp;
+    private AnimationFrameClock _navPillFrameClock;
     private TimeSpan _navPillRenderingTime = TimeSpan.MinValue;
 
     private void StartNavPillMotion(double targetY, double height, bool animate)
@@ -56,7 +56,7 @@ public partial class SettingsWindow
         // Retargeting keeps both edge velocities and the current shape intact.
         if (_navPillAnimating) return;
         _navPillAnimating = true;
-        _navPillFrameTimestamp = Stopwatch.GetTimestamp();
+        _navPillFrameClock.Reset(Stopwatch.GetTimestamp());
         _navPillRenderingTime = TimeSpan.MinValue;
         CompositionTarget.Rendering += RenderNavPillMotion;
     }
@@ -73,10 +73,7 @@ public partial class SettingsWindow
             StopNavPillMotion();
             return;
         }
-        long now = Stopwatch.GetTimestamp();
-        double seconds = Stopwatch.GetElapsedTime(_navPillFrameTimestamp, now).TotalSeconds;
-        if (seconds < 0.9 / AnimationConfig.TargetFps) return;
-        _navPillFrameTimestamp = now;
+        if (!_navPillFrameClock.TryAdvance(Stopwatch.GetTimestamp(), AnimationConfig.TargetFps, out double seconds)) return;
         AdvanceNavPillMotion(seconds);
     }
 

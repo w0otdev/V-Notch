@@ -9,6 +9,53 @@ namespace VNotch.Tests;
 public sealed class InputMonitorServiceTests
 {
     [Fact]
+    public void WindowSubscriptionsAndTheNotchKeepIndependentLifetimes() => SharedStaTestRunner.Run(() =>
+    {
+        using var notch = new HwndSource(new HwndSourceParameters("VNotch primary input test")
+        { Width = 1, Height = 1, WindowStyle = 0 });
+        using var popup = new HwndSource(new HwndSourceParameters("VNotch popup input test")
+        { Width = 1, Height = 1, WindowStyle = 0 });
+        IDisposable? listener = null;
+        int clicks = 0;
+        try
+        {
+            InputMonitorService.Start(notch.Handle);
+            uint openingClick = unchecked((uint)Environment.TickCount);
+            listener = InputMonitorService.Subscribe(popup.Handle, (_, _) => clicks++);
+            InputMonitorService.DispatchClick(default, openingClick);
+            Assert.Equal(0, clicks);
+            InputMonitorService.Stop();
+            Assert.True(InputMonitorService.IsStarted);
+            InputMonitorService.DispatchClick(default, unchecked((uint)Environment.TickCount + 1));
+            Assert.Equal(1, clicks);
+            listener.Dispose();
+            Assert.False(InputMonitorService.IsStarted);
+
+            listener = InputMonitorService.Subscribe(popup.Handle, (_, _) => clicks++);
+            InputMonitorService.Start(notch.Handle);
+            listener.Dispose();
+            Assert.True(InputMonitorService.IsStarted);
+            InputMonitorService.DispatchClick(default, unchecked((uint)Environment.TickCount + 1));
+            Assert.Equal(1, clicks);
+            InputMonitorService.Stop();
+            Assert.False(InputMonitorService.IsStarted);
+        }
+        finally { listener?.Dispose(); InputMonitorService.Stop(); }
+    });
+
+    [Fact]
+    public void DisposingAWindowAlsoReleasesItsInputSubscription() => SharedStaTestRunner.Run(() =>
+    {
+        using var source = new HwndSource(new HwndSourceParameters("VNotch disposed input test")
+        { Width = 1, Height = 1, WindowStyle = 0 });
+        using var listener = InputMonitorService.Subscribe(source.Handle, (_, _) => Assert.Fail("Disposed subscriber received input."));
+        Assert.True(InputMonitorService.IsStarted);
+        source.Dispose();
+        Assert.False(InputMonitorService.IsStarted);
+        InputMonitorService.DispatchClick(default, unchecked((uint)Environment.TickCount + 1));
+    });
+
+    [Fact]
     public void RegistrationCanStopAndRestartWithoutShowingAWindow() => SharedStaTestRunner.Run(() =>
     {
         using var source = new HwndSource(new HwndSourceParameters("VNotch raw input test")

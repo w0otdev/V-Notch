@@ -73,7 +73,7 @@ private:
         ++slot.generation;
     }
     void Trim() {
-        while (slots_.size() > 128 || bytes_ > 8 * 1024 * 1024) {
+        while (slots_.size() > 512 || bytes_ > 8 * 1024 * 1024) {
             auto oldest = std::min_element(slots_.begin(), slots_.end(), [](const auto& a, const auto& b) {
                 return a.second->used < b.second->used;
             });
@@ -90,32 +90,37 @@ struct Walk {
     HANDLE cursor = INVALID_HANDLE_VALUE;
     DirectoryCache::Ticket ticket;
     std::shared_ptr<DirectoryEntries> collected;
+    size_t collectedStringBytes = 0;
     size_t cachedIndex = 0;
+    DirectoryEntry current;
     WIN32_FIND_DATAW data{};
     bool haveFirst = false;
     explicit Walk(const std::wstring& root) { pending.push_back(root); }
     ~Walk() { if (cursor != INVALID_HANDLE_VALUE) FindClose(cursor); }
     bool Done() const noexcept { return cursor == INVALID_HANDLE_VALUE && !ticket.entries && pending.empty(); }
 
-    bool Next(DirectoryEntry& entry) {
+    // The returned entry stays alive until the next Next() call. Cached names
+    // and normalized text are borrowed instead of copied for every query.
+    const DirectoryEntry* Next() {
         if (ticket.entries) {
-            if (cachedIndex < ticket.entries->size()) { entry = (*ticket.entries)[cachedIndex++]; return true; }
+            if (cachedIndex < ticket.entries->size()) return &(*ticket.entries)[cachedIndex++];
             ticket = {};
-            return false;
+            return nullptr;
         }
         if (cursor == INVALID_HANDLE_VALUE) {
-            if (pending.empty()) return false;
+            if (pending.empty()) return nullptr;
             directory = std::move(pending.front()); pending.pop_front();
             ticket = directoryCache.Read(directory);
             cachedIndex = 0;
-            if (ticket.entries) return Next(entry);
+            if (ticket.entries) return Next();
             std::wstring pattern = L"\\\\?\\" + directory;
             if (pattern.back() != L'\\') pattern.push_back(L'\\');
             pattern.push_back(L'*');
             cursor = FindFirstFileExW(pattern.c_str(), FindExInfoBasic, &data, FindExSearchNameMatch,
                 nullptr, FIND_FIRST_EX_LARGE_FETCH);
-            if (cursor == INVALID_HANDLE_VALUE) { ticket = {}; return false; }
+            if (cursor == INVALID_HANDLE_VALUE) { ticket = {}; return nullptr; }
             collected = std::make_shared<DirectoryEntries>();
+            collectedStringBytes = 0;
             haveFirst = true;
         }
         if (!haveFirst && !FindNextFileW(cursor, &data)) {
@@ -123,17 +128,22 @@ struct Walk {
             FindClose(cursor); cursor = INVALID_HANDLE_VALUE;
             if (complete) directoryCache.Publish(ticket, std::move(collected));
             collected.reset(); ticket = {};
-            return false;
+            return nullptr;
         }
         haveFirst = false;
-        entry.name = data.cFileName;
-        entry.normalized = normalize_search({reinterpret_cast<const char16_t*>(entry.name.data()), entry.name.size()});
-        entry.attributes = data.dwFileAttributes;
+        current.name = data.cFileName;
+        current.normalized = normalize_search({reinterpret_cast<const char16_t*>(current.name.data()), current.name.size()});
+        current.attributes = data.dwFileAttributes;
         if (collected) {
-            if (collected->size() < 2048) collected->push_back(entry);
-            else collected.reset(); // Large directories remain streaming and bounded.
+            collected->push_back(current);
+            const auto& saved = collected->back();
+            collectedStringBytes += sizeof(wchar_t) * saved.name.capacity() + sizeof(char16_t) * saved.normalized.capacity();
+            // Bound bytes rather than entry count so ordinary large folders can
+            // be reused while typing. Oversized directories remain streaming.
+            if (sizeof(DirectoryEntries) + collected->capacity() * sizeof(DirectoryEntry) + collectedStringBytes > 4 * 1024 * 1024)
+                collected.reset();
         }
-        return true;
+        return &current;
     }
 };
 }

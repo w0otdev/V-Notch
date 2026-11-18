@@ -213,6 +213,8 @@ public partial class SpotlightWindow
         AiPromptTwo.Content = Loc.Get("spotlight.ai.promptTwo");
         AiStopButton.ToolTip = Loc.Get("spotlight.ai.stop");
         System.Windows.Automation.AutomationProperties.SetName(AiStopButton, Loc.Get("spotlight.ai.stop"));
+        _aiThinkingLabel?.RefreshLocalization();
+        AiActivityLabel.RefreshLocalization();
         RenderAiStatus();
     }
 
@@ -250,7 +252,8 @@ public partial class SpotlightWindow
             _aiStatusKey is "spotlight.ai.configure" or "spotlight.ai.tooLong" or
                 "spotlight.ai.requestTimeout" or "spotlight.ai.timeout" ? "error" : null;
         AiStatus.Text = text;
-        AiStatus.Visibility = string.IsNullOrWhiteSpace(text) ? Visibility.Collapsed : Visibility.Visible;
+        bool showingAgentLabel = _aiRequest != null && _aiThinkingCard == null && AiStatus.Tag is not "error";
+        AiStatus.Visibility = string.IsNullOrWhiteSpace(text) || showingAgentLabel ? Visibility.Collapsed : Visibility.Visible;
         if (AiStatus.Visibility == Visibility.Visible && AiBottomActionRow.Visibility != Visibility.Visible)
         {
             AiBottomActionRow.Visibility = Visibility.Visible;
@@ -334,6 +337,15 @@ public partial class SpotlightWindow
         };
     }
 
+    private System.Text.StringBuilder? _pendingAiResponse;
+
+    private void FlushAiResponse()
+    {
+        if (_pendingAiResponse is { } buffer && _aiHistory.LastOrDefault() is { Role: AssistantRole } last &&
+            buffer.Length != last.Content.Length)
+            _aiHistory[^1] = last with { Content = buffer.ToString() };
+    }
+
     private async Task SendAiAsync()
     {
         await _historyLoadTask;
@@ -387,28 +399,23 @@ public partial class SpotlightWindow
         SetAiStatus("spotlight.ai.waiting", 0);
         progressTimer.Start();
         System.Windows.Controls.RichTextBox? liveView = null;
-        string receivedText = "";
         var streamRenderer = new VNotch.Controls.AiMarkdown.StreamRenderer(uniformBold: true);
         bool revealCaughtUp = false;
         AiUsageSnapshot? receivedUsage = null;
         var revealTimer = new UiScheduledTimer
         { Interval = TimeSpan.FromMilliseconds(110) };
-        void RevealText(bool finish = false)
+        void RevealText()
         {
-            if (!ReferenceEquals(_aiRequest, cts) || liveView == null) return;
+            if (!ReferenceEquals(_aiRequest, cts) || liveView == null || revealCaughtUp) return;
+            FlushAiResponse();
+            string receivedText = _aiHistory[^1].Content;
             revealTimer.Interval = TimeSpan.FromMilliseconds(1000d / Math.Clamp(_settings.SpotlightAiWordsPerSecond, 2, 30));
             bool follow = AiTranscriptScroll.ScrollableHeight - AiTranscriptScroll.VerticalOffset < 32;
-            if (finish || AnimationConfig.ReduceMotion)
-            {
-                liveView.Document = VNotch.Controls.AiMarkdown.Render(receivedText, uniformBold: true);
-                revealCaughtUp = true;
-            }
-            else
-            {
-                int step = Math.Max(1, receivedText.Length / 120);
-                revealCaughtUp = streamRenderer.Advance(receivedText, step, Math.Min(240, revealTimer.Interval.TotalMilliseconds));
-                if (!ReferenceEquals(liveView.Document, streamRenderer.Document)) liveView.Document = streamRenderer.Document;
-            }
+            bool instant = AnimationConfig.ReduceMotion;
+            int step = instant ? int.MaxValue : Math.Max(1, receivedText.Length / 120);
+            revealCaughtUp = streamRenderer.Advance(receivedText, step, instant ? 0 : Math.Min(240, revealTimer.Interval.TotalMilliseconds));
+            if (!ReferenceEquals(liveView.Document, streamRenderer.Document)) liveView.Document = streamRenderer.Document;
+            UpdateAiMetadata();
             if (follow) AiTranscriptScroll.ScrollToEnd();
             ScheduleContentResize();
         }
@@ -418,7 +425,6 @@ public partial class SpotlightWindow
         {
             var history = VNotch.ApplicationServices.ChatSession.RequestContext(_aiHistory);
             var geminiParts = new List<System.Text.Json.JsonElement>();
-            var response = new System.Text.StringBuilder();
             cts.CancelAfter(AiRequestTimeout);
             await foreach (string delta in _aiService.StreamAsync(settings, history, cts.Token, parts => geminiParts.AddRange(parts), usage =>
             {
@@ -434,24 +440,19 @@ public partial class SpotlightWindow
             {
                 if (!ReferenceEquals(_aiRequest, cts) || cts.IsCancellationRequested) return;
                 cts.CancelAfter(AiRequestTimeout); // Timeout means no new text, not total generation time.
-                response.Append(delta);
+                (_pendingAiResponse ??= new()).Append(delta);
                 if (liveView == null)
                 {
                     HideAiThinking();
                     _aiHistory.Add(new SpotlightAiMessage(AssistantRole, "") { IsIncomplete = true });
                     liveView = AddAiMessage(new SpotlightAiMessage(AssistantRole, ""), animate: true);
                     UpdateAiActivity();
+                    SetAiStatus("spotlight.ai.streaming");
                 }
-                string currentResponse = response.ToString();
-                _aiHistory[^1] = new SpotlightAiMessage(AssistantRole, currentResponse) { IsIncomplete = true };
-                receivedText = currentResponse;
                 revealCaughtUp = false;
-                if (AnimationConfig.ReduceMotion) RevealText(finish: true);
-                UpdateAiMetadata();
-                SetAiStatus("spotlight.ai.streaming");
             }
             cts.CancelAfter(Timeout.InfiniteTimeSpan);
-            while (!revealCaughtUp && ReferenceEquals(_aiRequest, cts))
+            while (liveView != null && !revealCaughtUp && ReferenceEquals(_aiRequest, cts))
                 await Task.Delay(32, cts.Token);
             if (!ReferenceEquals(_aiRequest, cts) || cts.IsCancellationRequested) return;
             if (_aiHistory.LastOrDefault()?.Role == AssistantRole)
@@ -499,7 +500,6 @@ public partial class SpotlightWindow
             progressTimer.Dispose();
             revealTimer.Stop();
             revealTimer.Dispose();
-            RevealText(finish: true);
             if (ReferenceEquals(_aiRequest, cts))
             {
                 // A buffered response can finish before queued usage callbacks run.
@@ -510,6 +510,8 @@ public partial class SpotlightWindow
                     _usageIdentity = UsageIdentity(settings);
                     UpdateAiUsage();
                 }
+                FlushAiResponse();
+                _pendingAiResponse = null;
                 _aiRequest = null;
                 _chatSession.EndRequest(cts);
                 SaveAiHistory();
@@ -538,6 +540,8 @@ public partial class SpotlightWindow
         HideAiThinking();
         var cts = _aiRequest;
         if (cts == null) return;
+        FlushAiResponse();
+        _pendingAiResponse = null;
         _aiRequest = null;
         _chatSession.CancelRequest();
         if (_aiHistory.LastOrDefault() is { Role: "user" } pending)

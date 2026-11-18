@@ -8,8 +8,8 @@ public sealed class TranslationModelCatalogTests
     [Fact]
     public void CatalogPinsEveryAssetAndIsolatesModelStorage()
     {
-        Assert.Equal(9, TranslationModelCatalog.All.Length);
-        Assert.Equal(9, TranslationModelCatalog.All.Select(p => p.Id).Distinct().Count());
+        Assert.Equal(10, TranslationModelCatalog.All.Length);
+        Assert.Equal(10, TranslationModelCatalog.All.Select(p => p.Id).Distinct().Count());
         foreach (var model in TranslationModelCatalog.All)
         {
             Assert.Matches("^[a-f0-9]{40}$", model.Revision);
@@ -22,7 +22,7 @@ public sealed class TranslationModelCatalogTests
             Assert.Same(TranslationModelStore.For(model.Id), TranslationModelStore.For(model.Id));
             Assert.EndsWith(model.Id, TranslationModelStore.For(model.Id).Root);
         }
-        Assert.Equal(TranslationModelProfile.QwenInstruct.Id, TranslationModelCatalog.Normalize("obsolete"));
+        Assert.Equal(TranslationModelProfile.Small100.Id, TranslationModelCatalog.Normalize("obsolete"));
         Assert.Equal(3, TranslationModelCatalog.Find("qwen25-14b").Assets.Length);
     }
 

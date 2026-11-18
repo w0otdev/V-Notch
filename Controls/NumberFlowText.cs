@@ -35,6 +35,8 @@ public partial class NumberFlowText : TextBlock
     private List<Glyph> _layout = [];
     private List<Reel> _reels = [];
     private Dictionary<string, Position>? _previous;
+    private Point? _previousOrigin;
+    private Size _layoutSize;
     private string? _fromText;
     private string _lastText = "";
     private bool _pending;
@@ -69,29 +71,51 @@ public partial class NumberFlowText : TextBlock
 
     private void OnLoaded(object sender, RoutedEventArgs e)
     {
-        AnimationConfig.ReduceMotionChanged += OnMotionChanged;
-        SystemParameters.StaticPropertyChanged += OnSystemChanged;
+        MotionListeners.Add(this);
+        LayoutUpdated -= OnLayoutUpdated;
         LayoutUpdated += OnLayoutUpdated;
         _lastText = Text ?? "";
         // Remember the original width and inline formatting before the first edit.
         // Only visible characters are prepared; rolling alphabets stay lazy.
         _layout = BuildLayout(_lastText, "");
+        _layoutSize = RenderSize;
         if (_fromText != null) { _pending = true; QueuePresentation(); }
     }
 
     private void OnUnloaded(object sender, RoutedEventArgs e)
     {
-        AnimationConfig.ReduceMotionChanged -= OnMotionChanged;
-        SystemParameters.StaticPropertyChanged -= OnSystemChanged;
+        MotionListeners.Remove(this);
         LayoutUpdated -= OnLayoutUpdated;
         Finish();
         _layout.Clear();
         _glyphCache.Clear();
     }
 
-    private void OnSystemChanged(object? sender, PropertyChangedEventArgs e)
+    // Rows can be replaced while WPF is broadcasting Loaded. A static event
+    // must not keep a detached row (and its owning window) alive if Unloaded
+    // is missed. The weak table also makes repeated Loaded notifications safe.
+    private static class MotionListeners
     {
-        if (e.PropertyName is nameof(SystemParameters.ClientAreaAnimation) or nameof(SystemParameters.HighContrast)) OnMotionChanged();
+        private static readonly System.Runtime.CompilerServices.ConditionalWeakTable<NumberFlowText, object> Views = new();
+
+        static MotionListeners()
+        {
+            AnimationConfig.ReduceMotionChanged += OnChanged;
+            SystemParameters.StaticPropertyChanged += OnSystemChanged;
+        }
+
+        internal static void Add(NumberFlowText view) => Views.GetValue(view, static _ => new object());
+        internal static void Remove(NumberFlowText view) => Views.Remove(view);
+
+        private static void OnChanged()
+        {
+            foreach (var entry in Views) entry.Key.OnMotionChanged();
+        }
+
+        private static void OnSystemChanged(object? sender, PropertyChangedEventArgs e)
+        {
+            if (e.PropertyName is nameof(SystemParameters.ClientAreaAnimation) or nameof(SystemParameters.HighContrast)) OnChanged();
+        }
     }
 
     private void OnMotionChanged()
@@ -105,7 +129,16 @@ public partial class NumberFlowText : TextBlock
         // Run.Text changes defer the aggregate Text property; observe the settled inline text too.
         if (_pending) { QueuePresentation(); return; }
         string text = Text ?? "";
-        if (text == _lastText) return;
+        if (text == _lastText)
+        {
+            if (_layoutSize != RenderSize)
+            {
+                Finish();
+                _layout = BuildLayout(text, "");
+                _layoutSize = RenderSize;
+            }
+            return;
+        }
         if (CanAnimate && _lastText.Any(char.IsDigit) && text.Any(char.IsDigit))
         {
             _previous = Capture();
@@ -141,6 +174,7 @@ public partial class NumberFlowText : TextBlock
         if (previous == Text || !previous.Any(char.IsDigit)) return;
         _fromText = previous;
         _previous = null;
+        _previousOrigin = null;
         _pending = true;
         QueuePresentation();
     }
@@ -160,13 +194,17 @@ public partial class NumberFlowText : TextBlock
         BeginAnimation(OpacityMaskProperty, null);
         _reels.Clear();
         _previous = null;
+        _previousOrigin = null;
         _fromText = null;
         _pending = false;
+        if (_lastText != Text) _layout.Clear();
+        _lastText = Text ?? "";
         InvalidateVisual();
     }
 
     private Dictionary<string, Position>? Capture()
     {
+        _previousOrigin = PresentationOrigin();
         // Inline edits can notify Text while their formatting is synchronizing.
         // Use the settled layout, never reconstruct it inside that notification.
         if (!IsAnimating && _layout.Count == 0) return null;
@@ -177,6 +215,12 @@ public partial class NumberFlowText : TextBlock
             Lerp(r.From, r.To, progress), new Point(Lerp(r.FromPoint.X, r.Glyph.Bounds.X, progress),
                 Lerp(r.FromPoint.Y, r.Glyph.Bounds.Y, progress)), Lerp(r.FromOpacity, 1, progress),
             Lerp(r.FromWidth, r.Glyph.Bounds.Width, progress)));
+    }
+
+    private Point? PresentationOrigin()
+    {
+        var layer = AdornerLayer.GetAdornerLayer(this);
+        return layer == null ? null : TransformToVisual(layer).Transform(new Point());
     }
 
     private void QueuePresentation()
@@ -204,25 +248,33 @@ public partial class NumberFlowText : TextBlock
                 BuildLayout(_fromText ?? _lastText, "").ToDictionary(g => g.Part.Key,
                     g => new Position(g, g.Part.Digit, g.Bounds.TopLeft, 1, g.Bounds.Width));
             _layout = BuildLayout(text, _fromText ?? _lastText);
-            _lastText = text;
             if (_layout.Count == 0) { Finish(); return; }
+            _layoutSize = RenderSize;
+            _lastText = text;
+            Vector shift = _previous is { Count: > 0 } && _previousOrigin is Point origin &&
+                PresentationOrigin() is Point current ? origin - current : new Vector();
             _reels = _layout.Select(g =>
             {
                 if (!old.TryGetValue(g.Part.Key, out var p))
                     return new Reel(g, g.Part.Digit, g.Part.Digit, g.Bounds.TopLeft, 0, g.Bounds.Width);
                 bool digits = g.Part.Digit >= 0 && p.Glyph.Part.Digit >= 0;
                 double to = digits ? NumberFlowValue.Destination(p.Value, g.Part.Digit, g.Part.Trend, g.Part.Radix) : g.Part.Digit;
-                return new Reel(g, digits ? p.Value : g.Part.Digit, to, p.Point,
+                return new Reel(g, digits ? p.Value : g.Part.Digit, to, p.Point + shift,
                     digits || p.Glyph.Part.Character == g.Part.Character ? p.Opacity : 0, p.Width);
             }).ToList();
             _pending = false;
             _previous = null;
+            _previousOrigin = null;
             _fromText = null;
             _layer = layer;
             _scene = new ReelScene(_reels, _glyphCache);
             if (_adorner == null)
             {
-                _adorner = new NumberAdorner(this) { IsHitTestVisible = false };
+                _adorner = new NumberAdorner(this)
+                {
+                    IsHitTestVisible = false, SnapsToDevicePixels = SnapsToDevicePixels,
+                    UseLayoutRounding = UseLayoutRounding
+                };
                 TextOptions.SetTextRenderingMode(_adorner, TextOptions.GetTextRenderingMode(this));
                 TextOptions.SetTextHintingMode(_adorner, TextOptions.GetTextHintingMode(this));
                 layer.Add(_adorner);

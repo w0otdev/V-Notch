@@ -67,25 +67,6 @@ internal static partial class FullscreenDetector
         }
     }
 
-    internal static bool TryGetWindowBounds(IntPtr hwnd, out RECT rect)
-    {
-        vn_fullscreen_try_get_window_bounds(hwnd, out VnRect nRect, out byte ok);
-        rect = new RECT
-        {
-            Left = nRect.Left,
-            Top = nRect.Top,
-            Right = nRect.Right,
-            Bottom = nRect.Bottom
-        };
-        return ok != 0;
-    }
-
-    internal static bool IsWindowCloaked(IntPtr hwnd)
-    {
-        vn_fullscreen_is_window_cloaked(hwnd, out byte cloaked);
-        return cloaked != 0;
-    }
-
     internal static bool ShouldHideForFullscreen(IntPtr hwnd, IntPtr notchHwnd, bool hideOnExclusive, bool hideOnWindowed)
     {
         vn_fullscreen_should_hide_for_hwnd(
@@ -94,15 +75,6 @@ internal static partial class FullscreenDetector
             hideOnWindowed ? (byte)1 : (byte)0,
             out byte shouldHide);
         return shouldHide != 0;
-    }
-
-    [StructLayout(LayoutKind.Sequential, Pack = 1)]
-    private struct VnRect
-    {
-        public int Left;
-        public int Top;
-        public int Right;
-        public int Bottom;
     }
 
     [LibraryImport("VNotch.Native.dll")]
@@ -120,14 +92,6 @@ internal static partial class FullscreenDetector
     [LibraryImport("VNotch.Native.dll")]
     private static unsafe partial int vn_fullscreen_is_blocked_class_name(
         char* name_ptr, int name_len, out byte out_blocked);
-
-    [LibraryImport("VNotch.Native.dll")]
-    private static partial int vn_fullscreen_try_get_window_bounds(
-        IntPtr hwnd, out VnRect out_rect, out byte out_ok);
-
-    [LibraryImport("VNotch.Native.dll")]
-    private static partial int vn_fullscreen_is_window_cloaked(
-        IntPtr hwnd, out byte out_cloaked);
 
     [LibraryImport("VNotch.Native.dll")]
     private static partial int vn_fullscreen_should_hide_for_hwnd(

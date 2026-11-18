@@ -33,8 +33,8 @@ public sealed class TranslationStartupTests
         window.ShowActivated = false;
         typeof(LiveTranslationController).GetField("_text", BindingFlags.NonPublic | BindingFlags.Instance)!.SetValue(controller, "USD 10");
         window.ShowClipboard("USD 10");
-        window.TranslateButton.RaiseEvent(new System.Windows.RoutedEventArgs(System.Windows.Controls.Button.ClickEvent));
-        await WpfFrameWaiter.UntilAsync(() => window.ResultText.Text.EndsWith(target), "currency result without model", ct);
+        await ((Task)typeof(LiveTranslationController).GetMethod("TranslateAsync", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)!.Invoke(controller, null)!).WaitAsync(ct);
+        Assert.True(window.ResultText.Text.EndsWith(target), $"Currency result: '{window.ResultText.Text}', status: '{window.StatusText.Text}'");
         Assert.Equal(0, engine.Calls);
         Assert.False(engine.Preparing.Task.IsCompleted);
         Assert.Equal("USD → " + target, window.LanguageSummary.Text);
@@ -64,7 +64,7 @@ public sealed class TranslationStartupTests
         window.ShowActivated = false;
         typeof(LiveTranslationController).GetField("_text", BindingFlags.NonPublic | BindingFlags.Instance)!.SetValue(controller, "USD 10");
         window.ShowClipboard("USD 10");
-        window.TranslateButton.RaiseEvent(new System.Windows.RoutedEventArgs(System.Windows.Controls.Button.ClickEvent));
+        _ = typeof(LiveTranslationController).GetMethod("TranslateAsync", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)!.Invoke(controller, null);
         await WpfFrameWaiter.UntilAsync(() => window.ResultText.Text == "USD 10", "local fallback", ct);
         Assert.Equal(1, engine.Calls);
     });
@@ -148,7 +148,7 @@ public sealed class TranslationStartupTests
             window.ShowActivated = false;
             typeof(LiveTranslationController).GetField("_text", BindingFlags.NonPublic | BindingFlags.Instance)!.SetValue(controller, "hello");
             window.ShowClipboard("hello");
-            window.TranslateButton.RaiseEvent(new System.Windows.RoutedEventArgs(System.Windows.Controls.Button.ClickEvent));
+            _ = typeof(LiveTranslationController).GetMethod("TranslateAsync", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)!.Invoke(controller, null);
             await WpfFrameWaiter.UntilAsync(() => window.OutputText == "vi result" && window.CopyButton.IsEnabled, "cached result during model preparation", ct);
             Assert.False(preparation.IsCompleted);
             Assert.Equal(1, engine.Calls);
@@ -157,7 +157,7 @@ public sealed class TranslationStartupTests
     });
 
     [Fact]
-    public void StartupPreparesInstalledModelOffDispatcherWithTranslationDisabled() => SharedStaTestRunner.RunAsync(async ct =>
+    public void ExplicitPreparationRunsOffDispatcherEvenWithTranslationDisabled() => SharedStaTestRunner.RunAsync(async ct =>
     {
         using var fixture = new ModelFixture();
         using var engine = new PreparedEngine { BlockPreparation = true };
@@ -186,6 +186,60 @@ public sealed class TranslationStartupTests
         controller.Dispose();
         await controller.PrepareModelAsync().WaitAsync(ct);
         Assert.False(engine.Preparing.Task.IsCompleted);
+    });
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void EnablingTranslationKeepsWatchersReadyWithoutLoadingTheModel(bool automatic) => SharedStaTestRunner.RunAsync(async ct =>
+    {
+        using var fixture = new ModelFixture();
+        using var engine = new PreparedEngine { BlockPreparation = true };
+        using var controller = new LiveTranslationController(Dispatcher.CurrentDispatcher, () => { }, fixture.Store, engine);
+        Assert.False(fixture.Store.Profile.IsLite);
+        int uiThread = Environment.CurrentManagedThreadId;
+        var settings = new NotchSettings { EnableLiveTranslation = false, AutoLiveTranslation = automatic, TranslationSourceLanguage = "en" };
+        controller.ApplySettings(settings);
+        Assert.False(engine.Preparing.Task.IsCompleted);
+        settings.EnableLiveTranslation = true;
+        controller.ApplySettings(settings);
+        controller.ApplySettings(settings);
+        typeof(LiveTranslationController).GetMethod("ModelChanged", BindingFlags.NonPublic | BindingFlags.Instance)!.Invoke(controller, null);
+        await Dispatcher.CurrentDispatcher.InvokeAsync(() => { }, DispatcherPriority.ApplicationIdle, ct);
+        Assert.False(engine.Preparing.Task.IsCompleted);
+        Assert.Null(typeof(LiveTranslationController).GetField("_preparation", BindingFlags.NonPublic | BindingFlags.Instance)!.GetValue(controller));
+        Assert.NotNull(typeof(LiveTranslationController).GetField("_selectionService", BindingFlags.NonPublic | BindingFlags.Instance)!.GetValue(controller));
+        Assert.NotNull(typeof(LiveTranslationController).GetField("_shiftShortcut", BindingFlags.NonPublic | BindingFlags.Instance)!.GetValue(controller));
+        var preparation = controller.PrepareModelAsync();
+        try
+        {
+            await engine.Preparing.Task.WaitAsync(ct);
+            Assert.NotEqual(uiThread, engine.PreparationThread);
+            Assert.Equal(0, engine.Calls);
+            controller.ApplySettings(settings);
+            Assert.Same(preparation, controller.PrepareModelAsync());
+            await Dispatcher.CurrentDispatcher.InvokeAsync(() => { }, DispatcherPriority.Background, ct);
+            Assert.False(preparation.IsCompleted);
+        }
+        finally { engine.Prepared.TrySetResult(); await preparation.WaitAsync(ct); }
+    });
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void DisablingOrDisposingCancelsBackgroundPreparation(bool dispose) => SharedStaTestRunner.RunAsync(async ct =>
+    {
+        using var fixture = new ModelFixture();
+        using var engine = new PreparedEngine { BlockPreparation = true };
+        using var controller = new LiveTranslationController(Dispatcher.CurrentDispatcher, () => { }, fixture.Store, engine);
+        controller.ApplySettings(new NotchSettings { EnableLiveTranslation = true, TranslationSourceLanguage = "en" });
+        var preparation = controller.PrepareModelAsync();
+        await engine.Preparing.Task.WaitAsync(ct);
+        if (dispose) controller.Dispose();
+        else controller.ApplySettings(new NotchSettings { EnableLiveTranslation = false, TranslationSourceLanguage = "en" });
+        await preparation.WaitAsync(ct);
+        Assert.True(engine.PreparationCancelled);
+        Assert.Equal(0, engine.Calls);
     });
 
     [Theory]
@@ -336,7 +390,7 @@ public sealed class TranslationStartupTests
             // begin on a worker thread, independently of render/animation progress.
             var entrance = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
             typeof(TranslationWindow).GetField("_entranceCompletion", BindingFlags.NonPublic | BindingFlags.Instance)!.SetValue(window, entrance);
-            window.TranslateButton.RaiseEvent(new System.Windows.RoutedEventArgs(System.Windows.Controls.Button.ClickEvent));
+            _ = typeof(LiveTranslationController).GetMethod("TranslateAsync", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)!.Invoke(controller, null);
             Assert.True(engine.Translating.Task.Wait(TimeSpan.FromSeconds(3)));
             Assert.False(entrance.Task.IsCompleted);
             Assert.NotEqual(uiThread, inferenceThread);
@@ -363,7 +417,7 @@ public sealed class TranslationStartupTests
         window.ShowActivated = false;
         typeof(LiveTranslationController).GetField("_text", BindingFlags.NonPublic | BindingFlags.Instance)!.SetValue(controller, "hello");
         window.ShowSelection(new(1, "hello", new System.Windows.Rect(100, 100, 100, 20), IntPtr.Zero, false), true);
-        window.TranslateButton.RaiseEvent(new System.Windows.RoutedEventArgs(System.Windows.Controls.Button.ClickEvent));
+        _ = typeof(LiveTranslationController).GetMethod("TranslateAsync", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)!.Invoke(controller, null);
         Assert.True(window.IsPresentationAnimating);
         Assert.True(engine.Translating.Task.Wait(TimeSpan.FromSeconds(3)));
         if (action == "cancel") window.CancelButton.RaiseEvent(new System.Windows.RoutedEventArgs(System.Windows.Controls.Button.ClickEvent));
@@ -389,7 +443,7 @@ public sealed class TranslationStartupTests
         window.Opacity = 0;
         typeof(LiveTranslationController).GetField("_text", BindingFlags.NonPublic | BindingFlags.Instance)!.SetValue(controller, "hello");
         window.ShowSelection(new(1, "hello", new System.Windows.Rect(100, 100, 100, 20), IntPtr.Zero, false), true);
-        window.TranslateButton.RaiseEvent(new System.Windows.RoutedEventArgs(System.Windows.Controls.Button.ClickEvent));
+        _ = typeof(LiveTranslationController).GetMethod("TranslateAsync", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)!.Invoke(controller, null);
         await engine.Preparing.Task.WaitAsync(ct);
         var preparation = controller.PrepareModelAsync();
         window.Dismiss();
@@ -461,7 +515,7 @@ public sealed class TranslationStartupTests
         window.Opacity = 0;
         typeof(LiveTranslationController).GetField("_text", BindingFlags.NonPublic | BindingFlags.Instance)!.SetValue(controller, "USD 50");
         window.ShowClipboard("USD 50");
-        window.TranslateButton.RaiseEvent(new System.Windows.RoutedEventArgs(System.Windows.Controls.Button.ClickEvent));
+        _ = typeof(LiveTranslationController).GetMethod("TranslateAsync", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)!.Invoke(controller, null);
         await handler.Started.Task.WaitAsync(ct);
         window.SourceCurrencyCombo.SelectedValue = "SGD";
         window.TargetCurrencyCombo.SelectedValue = "EUR";
@@ -470,6 +524,36 @@ public sealed class TranslationStartupTests
         Assert.Equal("500", window.OutputText);
         Assert.True(handler.FirstCancelled);
         Assert.Equal(0, engine.Calls);
+    });
+
+    [Fact]
+    public void OnlyCompletedAnswersReachPopupAndCancellationKeepsLatestResult() => SharedStaTestRunner.RunAsync(async ct =>
+    {
+        using var fixture = new ModelFixture();
+        using var engine = new PreparedEngine { BlockFirstTranslation = true };
+        using var controller = new LiveTranslationController(Dispatcher.CurrentDispatcher, () => { }, fixture.Store, engine);
+        controller.ApplySettings(new NotchSettings { TranslationSourceLanguage = "en", TranslationTargetLanguage = "vi" });
+        var window = (TranslationWindow)typeof(LiveTranslationController).GetMethod("EnsureWindow", BindingFlags.NonPublic | BindingFlags.Instance)!.Invoke(controller, null)!;
+        BackgroundTestWindows.ProtectInput(window);
+        window.Opacity = 0;
+        window.ShowActivated = false;
+        typeof(LiveTranslationController).GetField("_text", BindingFlags.NonPublic | BindingFlags.Instance)!.SetValue(controller, "hello");
+        window.ShowClipboard("hello");
+        await window.WaitForEntranceAsync(ct);
+        _ = typeof(LiveTranslationController).GetMethod("TranslateAsync", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)!.Invoke(controller, null);
+        await engine.Translating.Task.WaitAsync(ct);
+        Assert.Null(engine.Preview);
+        await WpfFrameWaiter.NextAsync(ct);
+        Assert.Empty(window.ResultText.Text);
+        Assert.False(window.CopyButton.IsEnabled);
+        Assert.False(window.ReplaceButton.IsEnabled);
+        window.TargetLanguageCombo.SelectedValue = "de";
+        await WpfFrameWaiter.UntilAsync(() => window.ResultText.Text == "de result" && window.CopyButton.IsEnabled,
+            "the complete latest answer reaches the popup once", ct);
+        await Dispatcher.CurrentDispatcher.InvokeAsync(() => { }, DispatcherPriority.ApplicationIdle, ct);
+        Assert.True(engine.FirstCancelled);
+        Assert.Null(engine.Preview);
+        Assert.Equal("de result", window.ResultText.Text);
     });
 
     private sealed class ChangingCurrencyHandler : System.Net.Http.HttpMessageHandler
@@ -503,7 +587,9 @@ public sealed class TranslationStartupTests
         internal bool Disposed;
         internal bool BlockPreparation;
         internal int PreparationThread;
+        internal bool PreparationCancelled;
         internal Action? OnTranslate;
+        internal Action<string>? Preview;
         internal bool BlockFirstTranslation;
         internal bool FirstCancelled;
         internal TaskCompletionSource Cancelled = new(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -525,7 +611,16 @@ public sealed class TranslationStartupTests
         {
             PreparationThread = Environment.CurrentManagedThreadId;
             Preparing.TrySetResult();
-            if (BlockPreparation) await Prepared.Task.WaitAsync(cancellationToken);
+            if (BlockPreparation)
+            {
+                try { await Prepared.Task.WaitAsync(cancellationToken); }
+                catch (OperationCanceledException) { PreparationCancelled = true; throw; }
+            }
+        }
+        public Task<string> TranslateWithPreviewAsync(string text, string sourceLanguage, string targetLanguage, Action<string>? preview, CancellationToken cancellationToken, TranslationLanguageAnalysis? language = null)
+        {
+            Preview = preview;
+            return TranslateAsync(text, sourceLanguage, targetLanguage, cancellationToken);
         }
         public async Task<string> TranslateAsync(string text, string sourceLanguage, string targetLanguage, CancellationToken cancellationToken)
         {

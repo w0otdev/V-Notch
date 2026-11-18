@@ -224,6 +224,25 @@ size_t try_match_fact_at(std::u16string_view text, size_t pos, bool& out_is_enti
                 {
                     c = ws + 3;
                 }
+                else
+                {
+                    // Preserve common measurement symbols with their quantity. A changed
+                    // or expanded unit requires review rather than a verified literal flag.
+                    constexpr std::u16string_view units[] = {
+                        u"kg", u"mg", u"km", u"cm", u"mm", u"ml", u"mL", u"ms",
+                        u"kW", u"MW", u"°C", u"°F", u"g", u"m", u"L", u"W"
+                    };
+                    for (auto unit : units)
+                    {
+                        const size_t end = ws + unit.size();
+                        if (text.substr(ws, unit.size()) == unit &&
+                            (end == n || !is_regex_word_char(text[end])))
+                        {
+                            c = end;
+                            break;
+                        }
+                    }
+                }
             }
             out_end = c;
             return true;
@@ -346,41 +365,6 @@ void scan_all_facts(std::u16string_view text, std::vector<VnTextFactSpan>& out_s
     }
 }
 
-std::u16string normalize_numeric_fact_local(std::u16string_view fact)
-{
-    auto is_word = [](char16_t c) noexcept
-    {
-        return vn_is_letter_or_digit(c) || c == u'_';
-    };
-    auto is_ascii_dig = [](char16_t c) noexcept
-    {
-        return c >= u'0' && c <= u'9';
-    };
-
-    std::u16string out;
-    out.reserve(fact.size());
-    for (size_t i = 0; i < fact.size(); ++i)
-    {
-        const char16_t c = fact[i];
-        if (c == u'.' || c == u',')
-        {
-            size_t d_before = 0;
-            while (d_before < 4 && i > d_before && is_ascii_dig(fact[i - 1 - d_before]))
-                ++d_before;
-            const bool valid_before = (d_before >= 1 && d_before <= 3) &&
-                                      (i == d_before || !is_word(fact[i - 1 - d_before]));
-            const bool valid_after = (i + 3 < fact.size()) &&
-                                     is_ascii_dig(fact[i + 1]) &&
-                                     is_ascii_dig(fact[i + 2]) &&
-                                     is_ascii_dig(fact[i + 3]) &&
-                                     (i + 4 == fact.size() || !is_ascii_dig(fact[i + 4]));
-            if (valid_before && valid_after)
-                continue;
-        }
-        out.push_back(c);
-    }
-    return out;
-}
 
 }
 
@@ -438,16 +422,19 @@ VN_EXPORT int32_t __stdcall vn_translation_integrity_inspect(
             {
                 const std::u16string_view val = text.substr(
                     static_cast<size_t>(s.offset), static_cast<size_t>(s.trimmed_length));
-                if (s.is_idiomatic_one == 0)
+                if (s.is_numeric != 0 && s.is_idiomatic_one == 0)
                 {
-                    observable.push_back(s.is_numeric != 0 ? normalize_numeric_fact_local(val) : std::u16string(val));
+                    // Without locale evidence, 1.234 can be a decimal or a grouped integer.
+                    // Keep its punctuation; formatting changes can still be reviewed in the UI.
+                    observable.emplace_back(val);
                 }
                 if (s.is_numeric == 0)
                 {
                     prot.push_back(std::u16string(val));
                 }
             }
-            std::sort(observable.begin(), observable.end());
+            // Reordering quantities can attach an unchanged value to a different fact.
+            // Conservatively require review; protected links/codes remain order-independent.
             std::sort(prot.begin(), prot.end());
         };
 
@@ -456,7 +443,7 @@ VN_EXPORT int32_t __stdcall vn_translation_integrity_inspect(
         collect(make_u16_view(source_ptr, source_len), src_obs, src_prot);
         collect(make_u16_view(translated_ptr, translated_len), dst_obs, dst_prot);
 
-        *out_literals_preserved = (src_obs == dst_obs) ? 1 : 0;
+        *out_literals_preserved = (src_obs == dst_obs && src_prot == dst_prot) ? 1 : 0;
         *out_protected_preserved = (src_prot == dst_prot) ? 1 : 0;
         return VN_OK;
     }

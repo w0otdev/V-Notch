@@ -60,5 +60,7 @@ public sealed class PerformanceDebugSnapshot
     // Health & Diagnostics
     public PerformanceHealthLevel HealthLevel { get; init; } = PerformanceHealthLevel.Nominal;
     public string HealthStatusSummary { get; init; } = "Performance Nominal";
+    internal string? HealthStatusKey { get; init; }
+    internal object[] HealthStatusArguments { get; init; } = [];
 }
 

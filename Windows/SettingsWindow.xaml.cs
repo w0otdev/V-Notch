@@ -502,7 +502,7 @@ public partial class SettingsWindow : Window
         LocalizedPresentation.Apply(this);
         ApplySupplementalLocalization();
         string appVersion = GetAppVersion();
-        if (SidebarBuildVersionText != null) SidebarBuildVersionText.Text = $"Build {appVersion}";
+        if (SidebarBuildVersionText != null) SidebarBuildVersionText.Text = Loc.Get("settings.buildVersion", appVersion);
         SearchPlaceholder.Text = Loc.Get("settings.searchPlaceholder");
 
         AppearanceHeader.Text = Loc.Get("settings.appearance");
@@ -607,6 +607,7 @@ public partial class SettingsWindow : Window
         EnableDebugModeCheck.Content = Loc.Get("settings.enableDebugMode");
         EnableDebugModeHint.Text = Loc.Get("settings.enableDebugMode.hint");
         EnableSpotifyLyricsCheck.Content = Loc.Get("settings.enableSpotifyLyrics");
+        EnableSpotifyLyricsHint.Text = Loc.Get("settings.enableSpotifyLyrics.hint");
         LyricsProviderLabel.Text = Loc.Get("settings.lyrics.providers");
         LyricsProviderHint.Text = Loc.Get("settings.lyrics.providers.hint");
         LyricsProviderHint.Tag = Loc.Get("settings.lyrics.provider.amll.desc");

@@ -1,5 +1,6 @@
 using System;
 using System.Runtime.InteropServices;
+using System.Text.RegularExpressions;
 
 namespace VNotch.Services.Translation;
 
@@ -37,7 +38,7 @@ internal static partial class TranslationMeaningIntegrity
         int outCap,
         out int outLen);
 
-    internal static string Instruction(string text, string source, bool enableHumanizer = true)
+    internal static string Instruction(string text, string source, bool enableHumanizer = true, string? sourceHint = null)
     {
         string general = "Preserve facts, proper names, speaker, addressee, tense, negation, uncertainty and sentence type. Keep statements and questions distinct; never invent context. Translate every meaningful span, including mixed-language text, into the target language. ";
         general += "Interpret the complete source expression. Preserve compound meanings and every meaning-bearing modifier. Translate fragments concisely, without expanding a fragment into a personal declaration. Add pronouns only when required by target grammar and supported by the source meaning. ALL CAPS does not change meaning. ";
@@ -49,7 +50,7 @@ internal static partial class TranslationMeaningIntegrity
         {
             general += "Write naturally and idiomatically like a human writer, not an AI chatbot. Match the author's voice, register, emotion and humor using the target language's grammar; avoid stiff wording, fake formality and explanations. ";
         }
-        if (!IsClearStatement(text, source)) return general;
+        if (!IsClearStatement(text, source, sourceHint)) return general;
         return general +
             "This source is a declarative statement, not a question. Use declarative grammar in the translation, without adding a question mark or asking the reader anything. ";
     }
@@ -57,20 +58,20 @@ internal static partial class TranslationMeaningIntegrity
     private static string ResolveSource(string text, string source) =>
         source == "auto" ? TranslationLanguages.Detect(text) ?? "auto" : source;
 
-    internal static bool IsClearStatement(string text, string source)
+    internal static bool IsClearStatement(string text, string source, string? sourceHint = null)
     {
         if (string.IsNullOrEmpty(text)) return false;
-        string resolved = ResolveSource(text, source);
+        string resolved = sourceHint ?? ResolveSource(text, source);
         ReadOnlySpan<char> t = text.AsSpan();
         ReadOnlySpan<char> s = resolved.AsSpan();
         vn_translation_is_clear_statement(t, t.Length, s, s.Length, out byte res);
         return res != 0;
     }
 
-    internal static bool PreservesStatement(string text, string source, string translated)
+    internal static bool PreservesStatement(string text, string source, string translated, string? sourceHint = null)
     {
         if (string.IsNullOrEmpty(text)) return true;
-        string resolved = ResolveSource(text, source);
+        string resolved = sourceHint ?? ResolveSource(text, source);
         ReadOnlySpan<char> t = text.AsSpan();
         ReadOnlySpan<char> s = resolved.AsSpan();
         ReadOnlySpan<char> tr = (translated ?? string.Empty).AsSpan();
@@ -78,10 +79,29 @@ internal static partial class TranslationMeaningIntegrity
         return res != 0;
     }
 
-    internal static string? EnglishStatementSubject(string text, string source, string target)
+    // Targeted checks for observable sentence structure, not general semantic validation.
+    internal static bool PreservesStatementAndSubject(string text, string source, string translated, string target, string? sourceHint = null)
+    {
+        if (!PreservesStatement(text, source, translated, sourceHint)) return false;
+        if (target != "en" || !IsClearStatement(text, source, sourceHint)) return true;
+        string start = translated.TrimStart(' ', '\t', '\r', '\n', '"', '“', '*', '_');
+        if (EnglishQuestionStart().IsMatch(start)) return false;
+        string? expected = EnglishStatementSubject(text, source, target, sourceHint);
+        var subject = EnglishSubjectStart().Match(start);
+        return expected == null || !subject.Success ||
+            string.Equals(subject.Value, expected, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [GeneratedRegex("^(?:am|is|are|was|were|do|does|did|have|has|had|can|could|will|would|should|shall|may|might|must)\\s+(?:I|you|we|they|he|she|it)\\b", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
+    private static partial Regex EnglishQuestionStart();
+
+    [GeneratedRegex("^(?:I|you|we|they|he|she|it)\\b", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
+    private static partial Regex EnglishSubjectStart();
+
+    internal static string? EnglishStatementSubject(string text, string source, string target, string? sourceHint = null)
     {
         if (string.IsNullOrEmpty(text) || target != "en") return null;
-        string resolved = ResolveSource(text, source);
+        string resolved = sourceHint ?? ResolveSource(text, source);
         ReadOnlySpan<char> t = text.AsSpan();
         ReadOnlySpan<char> s = resolved.AsSpan();
         ReadOnlySpan<char> tgt = target.AsSpan();

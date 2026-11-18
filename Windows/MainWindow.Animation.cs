@@ -1082,7 +1082,6 @@ public partial class MainWindow
         }
         if (effectiveTarget != VNotch.Models.NotchView.Media)
         {
-            ClearGlassMediaTint();
             HideMediaBackgroundOverlay();
             SuspendSpotifyCanvasLifecycle();
             if (_isThumbnailExpandAnimating && fromView == VNotch.Models.NotchView.Media)
@@ -2043,11 +2042,6 @@ public partial class MainWindow
         if (_settings.StayBehindWindows && _isDesktopEdgePromoted && !IsDesktopNotchInteractionActive())
         {
             ScheduleDesktopLayerDemotion();
-        }
-
-        if (_currentMediaInfo?.IsAnyMediaPlaying != true)
-        {
-            Task.Run(() => _mediaService.ArtworkService.TrimMemory(compactWorkingSet: true)).SafeFireAndForget("COLLAPSE-TRIM");
         }
     }
 

@@ -38,9 +38,7 @@ internal static partial class SelectionTextReader
         public void Dispose() => Native.Dispose();
     }
 
-    internal static Result? Read(IntPtr window, AutomationElement? eventElement, bool manual, out bool protectedInput,
-        AutomationElement? previousElement = null, AutomationElement? rootElement = null, bool allowOwnProcess = false,
-        NativeSelectionState? previousSelection = null)
+    internal static Result? Read(IntPtr window, AutomationElement? eventElement, bool manual, out bool protectedInput, bool allowOwnProcess = false, NativeSelectionState? previousSelection = null)
     {
         int[]? eventId = null;
         try { eventId = eventElement?.GetRuntimeId(); }

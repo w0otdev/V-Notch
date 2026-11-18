@@ -6,7 +6,7 @@ using VNotch.Services.Translation;
 
 namespace VNotch.Controllers;
 
-internal sealed class LiveTranslationController : IDisposable
+internal sealed partial class LiveTranslationController : IDisposable
 {
     private readonly Dispatcher _dispatcher;
     private readonly Action _manageModel;
@@ -27,6 +27,7 @@ internal sealed class LiveTranslationController : IDisposable
     private string _text = "";
     private bool _disposed;
     private Task? _preparation;
+    private CancellationTokenSource? _preparationCancellation;
     private Task? _idleCleanup;
     private readonly CurrencyRateService _currencyRates;
     private readonly TranslationAppPolicy _appPolicy = new();
@@ -40,7 +41,7 @@ internal sealed class LiveTranslationController : IDisposable
         _getForegroundWindow = getForegroundWindow ?? Win32Interop.GetForegroundWindow;
         _injected = store != null || engine != null;
         _store = store ?? TranslationModelStore.Shared;
-        _service = new(engine ?? new QwenTranslationEngine(_store));
+        _service = new(engine ?? CreateEngine(_store));
         _store.Changed += ModelChanged;
         _idle = new UiScheduledTimer(TimeSpan.FromSeconds(30), DispatcherPriority.Background, (_, _) => { if (_window?.IsPresentationAnimating != true) ScheduleIdleResourceRelease(); }, dispatcher);
         _idle.Stop();
@@ -61,11 +62,12 @@ internal sealed class LiveTranslationController : IDisposable
         {
             changed = true;
             CancelRequest();
+            CancelPreparation();
             _store.Changed -= ModelChanged;
             _service.Dispose();
             Task previousDisposal = _service.Disposal;
             _store = TranslationModelStore.For(modelId);
-            _service = new(new QwenTranslationEngine(_store, previousDisposal: previousDisposal));
+            _service = new(CreateEngine(_store, previousDisposal));
             _preparation = null;
             _store.Changed += ModelChanged;
         }
@@ -95,8 +97,11 @@ internal sealed class LiveTranslationController : IDisposable
 
     private void UpdateWatcher()
     {
+        _service.SetEnabled(_settings.EnableLiveTranslation);
         if (_settings.EnableLiveTranslation)
         {
+            // Enabled means the watcher/shortcut is ready. Load model weights
+            // only for a translation that misses the cache/passthrough paths.
             _idle.Start();
             if (_selectionService == null)
             {
@@ -110,6 +115,7 @@ internal sealed class LiveTranslationController : IDisposable
         }
         else
         {
+            CancelPreparation();
             StopWatcher();
             ScheduleIdleResourceRelease();
         }
@@ -136,17 +142,32 @@ internal sealed class LiveTranslationController : IDisposable
     {
         _dispatcher.VerifyAccess();
         if (_disposed || !_store.IsInstalled) return Task.CompletedTask;
-        // Prepare only for an explicit translation request. Share an in-flight load
-        // across requests and retain idle eviction.
+        // Share preparation between foreground requests. Closing a popup must
+        // not cancel another request that is waiting for the same model.
         _idle.Start();
         if (_preparation?.IsCompleted != false)
-            _preparation = PrepareInBackgroundAsync(_service);
+        {
+            _preparationCancellation = new CancellationTokenSource();
+            _preparation = PrepareInBackgroundAsync(_service, _settings.TranslationSourceLanguage == "auto", _preparationCancellation);
+        }
         return _preparation;
     }
 
-    private static async Task PrepareInBackgroundAsync(LocalTranslationService service)
+    private void CancelPreparation()
     {
-        try { await Task.Run(() => service.PrepareAsync(CancellationToken.None)).ConfigureAwait(false); }
+        try { _preparationCancellation?.Cancel(); } catch (ObjectDisposedException) { }
+        _preparationCancellation = null;
+        _preparation = null;
+    }
+
+    private static async Task PrepareInBackgroundAsync(LocalTranslationService service, bool detectLanguage, CancellationTokenSource lifetime)
+    {
+        using var _ = lifetime;
+        try
+        {
+            await Task.Run(() => Task.WhenAll(service.PrepareAsync(lifetime.Token),
+                detectLanguage ? TranslationLanguages.PrepareAsync(lifetime.Token) : Task.CompletedTask), lifetime.Token).ConfigureAwait(false);
+        }
         catch (Exception)
         {
             // Warm-up is opportunistic. A foreground request reports model errors
@@ -243,6 +264,7 @@ internal sealed class LiveTranslationController : IDisposable
         var window = new TranslationWindow(_settings.TranslationSourceLanguage, _settings.TranslationTargetLanguage);
         window.ConfigureFormatting(_settings.FormatTranslationText);
         window.TranslateRequested += () => _ = TranslateAsync();
+        window.SummarizeRequested += () => _ = SummarizeAsync();
         window.CancelRequested += () => { CancelRequest(); window.SetStatus("translation.cancelled"); };
         window.ReplaceRequested += () => _ = ReplaceAsync();
         window.ManageModelRequested += () => { window.Dismiss(); _manageModel(); };
@@ -285,6 +307,7 @@ internal sealed class LiveTranslationController : IDisposable
             var window = EnsureWindow();
             window.ShowClipboard(_text, _inputWasTruncated);
             if (_text.Length == 0) window.SetStatus("translation.noSelection");
+            else _ = TranslateAsync();
         }
         catch (System.Runtime.InteropServices.COMException)
         {
@@ -311,7 +334,8 @@ internal sealed class LiveTranslationController : IDisposable
         activity.Tick += (_, _) =>
         {
             if (_disposed || version != _requestVersion) { activity.Stop(); return; }
-            window.ShowActivity(convertingCurrency ? TranslationStage.FetchingRates : _service.Stage, (int)elapsed.Elapsed.TotalSeconds);
+            window.ShowActivity(convertingCurrency ? TranslationStage.FetchingRates : _service.Stage, (int)elapsed.Elapsed.TotalSeconds,
+                !convertingCurrency && _service.IsCpuFallback);
         };
         try
         {
@@ -330,6 +354,7 @@ internal sealed class LiveTranslationController : IDisposable
             if (TranslationCurrencies.HasConflictingCurrency(text, source)) throw new TranslationException("translation.currencyAmbiguous");
             var token = request.Token;
             TranslationResult? result = null;
+            TranslationLanguageAnalysis? language = null;
             bool hasPrice = TranslationCurrencies.TryParse(text, source, out var price, _sourceCurrencyOverride);
             bool unresolvedPrice = TranslationCurrencies.HasUnresolvedSymbol(text, source);
             string? currency = _targetCurrencyOverride ?? (TranslationCurrencies.Normalize(_settings.TranslationTargetCurrency) is var choice && choice != "auto"
@@ -352,7 +377,10 @@ internal sealed class LiveTranslationController : IDisposable
             if (result == null && store.IsInstalled)
                 result = service.TryGetCachedResult(text, source, target, token);
             if (result == null)
-                result = await LocalTranslationService.TrySameLanguageAsync(text, source, target, token);
+            {
+                if (source == "auto") language = await TranslationLanguages.AnalyzeAsync(text, token);
+                result = LocalTranslationService.TrySameLanguage(text, source, target, language);
+            }
             if (result == null)
             {
                 token.ThrowIfCancellationRequested();
@@ -362,10 +390,14 @@ internal sealed class LiveTranslationController : IDisposable
                 result = await Task.Run(async () =>
                 {
                     await preparation.WaitAsync(token).ConfigureAwait(false);
-                    return await service.TranslateAfterLanguageCheckAsync(text, source, target, token).ConfigureAwait(false);
+                    // Present the validated answer once. Revealing provisional token
+                    // batches creates a separate fade every few words and cannot form
+                    // one uninterrupted beginning-to-end reveal.
+                    return await service.TranslateAfterLanguageCheckAsync(text, source, target, token,
+                        preview: null, language: language).ConfigureAwait(false);
                 }, token).WaitAsync(token);
             }
-            result = result with { InputTruncated = result.InputTruncated || inputTruncated };
+            result = result with { InputTruncated = result.InputTruncated || inputTruncated, InstantPresentation = service.InstantPresentation };
             await window.WaitForEntranceAsync(token);
             if (!_disposed && version == _requestVersion && window.IsVisible) window.ShowResult(result);
         }
@@ -413,10 +445,13 @@ internal sealed class LiveTranslationController : IDisposable
         _request = null;
     }
 
+    private static ILocalTranslationEngine CreateEngine(TranslationModelStore store, Task? previousDisposal = null) =>
+        store.Profile.IsLite ? new LiteTranslationEngine(store, previousDisposal) : new QwenTranslationEngine(store, previousDisposal: previousDisposal);
+
     public void Dispose()
     {
         if (_disposed) return;
-        _disposed = true; CancelRequest(); StopWatcher(); _idle.Stop();
+        _disposed = true; CancelRequest(); CancelPreparation(); StopWatcher(); _idle.Stop();
         _store.Changed -= ModelChanged;
         _window?.Close(); _window = null;
         _service.Dispose();

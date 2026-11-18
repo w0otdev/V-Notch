@@ -77,8 +77,6 @@ internal static partial class NativeSelectionReader
         return name.ToString();
     }
 
-    internal static bool IsPassword(IntPtr handle) => IsPassword(handle, ClassName(handle));
-
     internal static bool IsPassword(IntPtr handle, string className)
     {
         if (handle == IntPtr.Zero || !IsEditOrCombo(className)) return false;

@@ -10,8 +10,6 @@ internal static unsafe partial class Win32Interop
     public const uint SHGFI_SMALLICON = 0x000000001;
     public const uint SHGFI_USEFILEATTRIBUTES = 0x000000010;
     public const uint FILE_ATTRIBUTE_NORMAL = 0x000000080;
-    public const uint SIIGBF_BIGGERSIZEOK = 0x00000001;
-
     [LibraryImport(NativeDll, EntryPoint = "vn_shell_get_file_info_icon", StringMarshalling = StringMarshalling.Utf16)]
     private static partial int NativeShellGetFileInfoIcon(string path, int pathLength, uint fileAttributes, uint flags, out long icon);
 

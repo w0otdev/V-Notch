@@ -14,6 +14,7 @@ namespace VNotch;
 public partial class SpotlightWindow
 {
     private VNotch.Controls.ThinkingOrb? _aiThinkingOrb;
+    private VNotch.Controls.AgentOrbLabel? _aiThinkingLabel;
     private Border? _aiThinkingCard;
     private LinearGradientBrush? _aiPromptRevealMask;
 
@@ -163,20 +164,22 @@ public partial class SpotlightWindow
         {
             Width = 28,
             Height = 28,
-            State = VNotch.Controls.ThinkingOrbState.Working,
+            RandomizeStates = true,
             Margin = new Thickness(0, 0, 8, 0),
             VerticalAlignment = VerticalAlignment.Center
         };
         row.Children.Add(_aiThinkingOrb);
-        row.Children.Add(new TextBlock
+        _aiThinkingLabel = new Controls.AgentOrbLabel
         {
-            Text = Loc.Get("spotlight.ai.thinking"),
+            Source = _aiThinkingOrb,
             FontFamily = (FontFamily)FindResource("SFProDisplay"),
             FontSize = 12,
             FontWeight = FontWeights.Bold,
             Foreground = Controls.SpotlightChatPalette.Secondary,
+            Height = 28,
             VerticalAlignment = VerticalAlignment.Center
-        });
+        };
+        row.Children.Add(_aiThinkingLabel);
         _aiThinkingCard = new Border
         {
             Background = Brushes.Transparent,
@@ -191,8 +194,14 @@ public partial class SpotlightWindow
 
     private void HideAiThinking()
     {
-        if (_aiThinkingOrb != null) _aiThinkingOrb.IsActive = false;
+        if (_aiThinkingOrb != null)
+        {
+            AiActivityOrb.ContinueAgentFrom(_aiThinkingOrb);
+            _aiThinkingOrb.IsActive = false;
+        }
         _aiThinkingOrb = null;
+        if (_aiThinkingLabel != null) _aiThinkingLabel.Source = null;
+        _aiThinkingLabel = null;
         if (_aiThinkingCard == null) return;
         AiTranscript.Children.Remove(_aiThinkingCard);
         _aiThinkingCard = null;
@@ -331,8 +340,8 @@ public partial class SpotlightWindow
             StopAiActivity();
             return;
         }
-        // One orb at a time: working beside the thinking label, then composing
-        // beside the streaming status until the last word has been revealed.
+        // Carry the same randomized reference motion from waiting to streaming,
+        // keeping one active orb until the last word has been revealed.
         if (_aiThinkingOrb != null) _aiThinkingOrb.IsActive = true;
         bool composing = _aiThinkingCard == null;
         AiActivityOrb.Visibility = composing ? Visibility.Visible : Visibility.Collapsed;

@@ -157,27 +157,6 @@ public sealed partial class AudioMixerView : UserControl, IDisposable
     }
 
 
-    public void Prewarm()
-    {
-        System.Threading.Tasks.Task.Run(() =>
-        {
-            try
-            {
-                var quick = ReadAudioSnapshot(includeIcons: false);
-                Dispatcher.BeginInvoke(new Action(() =>
-                {
-                    if (!_disposed && _lastAudioSnapshot == null)
-                    {
-                        _lastAudioSnapshot = quick;
-                    }
-                }), System.Windows.Threading.DispatcherPriority.Background);
-            }
-            catch (Exception ex)
-            {
-                RuntimeLog.Log("AUDIOMIXER-PREWARM", ex.Message);
-            }
-        });
-    }
     private readonly Dictionary<StackPanel, int> _audioSectionAnimationGenerations = new();
 
     private IVolumeService? _masterVolumeCached;
@@ -260,8 +239,7 @@ public sealed partial class AudioMixerView : UserControl, IDisposable
     private bool _isAudioLoading;
     private int _audioLoadingTransitionVersion;
 
-    internal static bool ShouldDeferAudioSnapshotDuringTransition(
-        bool isAudioView, bool isAnimating, bool hasBuiltUi)
+    internal static bool ShouldDeferAudioSnapshotDuringTransition(bool isAudioView, bool isAnimating)
         => isAudioView && isAnimating;
 
     public void ShowLoading(bool isLoading)
@@ -552,8 +530,7 @@ public sealed partial class AudioMixerView : UserControl, IDisposable
 
             // Keep the loading view during the first transition too. Creating all
             // mixer rows mid-animation blocks layout precisely on a cold open.
-            bool hasBuiltUi = AudioRoot?.Children.Count > 0;
-            if (ShouldDeferAudioSnapshotDuringTransition(_isAudioView, _isAnimating, hasBuiltUi))
+            if (ShouldDeferAudioSnapshotDuringTransition(_isAudioView, _isAnimating))
             {
                 _pendingAudioSnapshot = snap;
                 _pendingAudioAfterBuild = afterBuild;

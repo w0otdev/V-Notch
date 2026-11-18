@@ -27,12 +27,13 @@ public partial class MainWindow
         {
             if (_spotifyCanvasController == null)
             {
+                var (video, videoAlt) = CreateSpotifyCanvasPlayers();
                 var refs = new SpotifyCanvasViewRefs
                 {
                     Background = LyricsCanvasBackground,
                     Viewport = LyricsCanvasViewport,
-                    Video = LyricsCanvasVideo,
-                    VideoAlt = LyricsCanvasVideoAlt,
+                    Video = video,
+                    VideoAlt = videoAlt,
                     BrightnessOverlay = LyricsCanvasBrightnessOverlay,
                     BlurFallbackBackground = LyricsBlurBackground,
                     BlurFallbackImage = LyricsBlurImage
@@ -205,6 +206,9 @@ public partial class MainWindow
         _spotifyCanvasController?.Dispose();
         _spotifyCanvasController = null;
         _spotifyCanvasPresenter = null;
+        for (int i = LyricsCanvasViewport.Children.Count - 1; i >= 0; i--)
+            if (LyricsCanvasViewport.Children[i] is MediaElement)
+                LyricsCanvasViewport.Children.RemoveAt(i);
     }
 
     internal void UpdateSpotifyCanvasPresentationContext()
