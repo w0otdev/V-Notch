@@ -1,6 +1,7 @@
 using System.Diagnostics.CodeAnalysis;
 using System.Windows;
 using System.Windows.Controls;
+using VNotch.Controls;
 using VNotch.Services;
 using VNotch.Windows;
 
@@ -186,25 +187,8 @@ public sealed class SettingsUpdatePresenter : IDisposable
         dialog?.Close();
     }
 
-    public void ShowChangelog()
-    {
-        if (_refs == null) return;
-        try
-        {
-            new ChangelogWindow(_service, _canUseNetwork)
-            {
-                Owner = _refs.Owner,
-                WindowStartupLocation = WindowStartupLocation.CenterOwner
-            }.ShowDialog();
-        }
-        catch (Exception ex)
-        {
-            RuntimeLog.Error("SETTINGS", ex, "Failed to open changelog window");
-            if (_refs != null)
-                MessageBox.Show(_refs.Owner, Loc.Get("settings.changelogOpenFailed", ex.Message), Loc.Get("error.title"),
-                    MessageBoxButton.OK, MessageBoxImage.Error);
-        }
-    }
+    internal Task LoadChangelogAsync(ChangelogView view) =>
+        _refs == null ? Task.CompletedTask : view.LoadAsync(_service, _canUseNetwork, _lifetime.Token);
 
     public void Dispose()
     {

@@ -11,9 +11,9 @@
   <!-- Keep product libraries and standalone uninstaller builds on the same
        release as V-Notch.csproj. Release-pipeline overrides take precedence. -->
   <PropertyGroup Condition="'$(_VNotchIsToolProject)' != 'true'">
-    <Version Condition="'$(Version)' == ''">2.4.1</Version>
-    <AssemblyVersion Condition="'$(AssemblyVersion)' == ''">2.4.1.0</AssemblyVersion>
-    <FileVersion Condition="'$(FileVersion)' == ''">2.4.1.0</FileVersion>
+    <Version Condition="'$(Version)' == ''">2.4.2</Version>
+    <AssemblyVersion Condition="'$(AssemblyVersion)' == ''">2.4.2.0</AssemblyVersion>
+    <FileVersion Condition="'$(FileVersion)' == ''">2.4.2.0</FileVersion>
   </PropertyGroup>
 
   <PropertyGroup Condition="'$(Configuration)' == 'Release' And '$(_VNotchIsToolProject)' != 'true' And '$(TreatWarningsAsErrors)' == ''">

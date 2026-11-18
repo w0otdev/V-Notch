@@ -91,6 +91,15 @@
         "resolved": "1.0.4078.44",
         "contentHash": "TQkHa/aOHUqFHnJIJ/2ZmJ4nLcQJi0Pc0rj9BAs7SP5sT/KtVtb8jFp9uqQL6cKzCRSrwjS/wEPA43NWUOzU+A=="
       },
+      "ReverseMarkdown": {
+        "type": "Direct",
+        "requested": "[6.3.0, )",
+        "resolved": "6.3.0",
+        "contentHash": "h2GwfOpLAkONJa3ARH4VnhrJro7XcqTmI1z0d6LzXVto8Qm/8cmUO3cBm7nkN48rQfSPi2NpEPBKuPzSZr1LMg==",
+        "dependencies": {
+          "AngleSharp": "1.5.2"
+        }
+      },
       "SharpGen.Runtime.COM": {
         "type": "Direct",
         "requested": "[2.4.2-beta, )",
@@ -136,6 +145,11 @@
           "SharpGen.Runtime.COM": "2.4.2-beta",
           "Vortice.Mathematics": "2.1.0"
         }
+      },
+      "AngleSharp": {
+        "type": "Transitive",
+        "resolved": "1.5.2",
+        "contentHash": "LVZ7rrr6GHbhERhTgVDarVygl1e6KwE96pronA90LBOMacDhxR4lB+xYLjn/vlnUu+xbOB2RM9fuCPEx5bdyWA=="
       },
       "CommunityToolkit.HighPerformance": {
         "type": "Transitive",
@@ -228,7 +242,7 @@
       "vnotch.application": {
         "type": "Project",
         "dependencies": {
-          "VNotch.Core": "[1.0.0, )"
+          "VNotch.Core": "[2.4.1, )"
         }
       },
       "vnotch.core": {
@@ -237,7 +251,7 @@
       "vnotch.infrastructure.windows": {
         "type": "Project",
         "dependencies": {
-          "VNotch.Core": "[1.0.0, )"
+          "VNotch.Core": "[2.4.1, )"
         }
       }
     },

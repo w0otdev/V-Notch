@@ -116,6 +116,8 @@ public partial class SettingsWindow : Window
         var firstOpenProbe = System.Diagnostics.Stopwatch.StartNew();
         AccentTheme.Apply(settings.AccentColor);
         InitializeComponent();
+        Changelog.RevealRequested += targets => ApplyProgressiveBlurCascade(targets, 0, -1,
+            isMenuList: false, Math.Min(60, AnimationConfig.TargetFps));
         AddHandler(Mouse.MouseUpEvent, new MouseButtonEventHandler(LivePreview_MouseUp), handledEventsToo: true);
         AddHandler(Keyboard.KeyUpEvent, new KeyEventHandler(LivePreview_KeyUp), handledEventsToo: true);
         FirstOpenProbe?.Invoke($"DEBUG-FIRST-OPEN Settings XAML {firstOpenProbe.Elapsed.TotalMilliseconds:F1} ms");
@@ -428,6 +430,7 @@ public partial class SettingsWindow : Window
         TooltipHelper.SetLocalizedTooltip(CheckUpdateButton, "tooltip.checkUpdates");
         TooltipHelper.SetLocalizedTooltip(DownloadUpdateButton, "tooltip.downloadUpdate");
         TooltipHelper.SetLocalizedTooltip(ViewChangelogButton, "tooltip.viewChangelog");
+        TooltipHelper.SetLocalizedTooltip(ChangelogBackButton, "setup.btn.back");
         TooltipHelper.SetLocalizedTooltip(ReportBugButton, "tooltip.reportBug");
         TooltipHelper.SetLocalizedTooltip(RequestFeatureButton, "tooltip.requestFeature");
         TooltipHelper.SetLocalizedTooltip(DiscussionButton, "tooltip.discussions");
@@ -670,6 +673,8 @@ public partial class SettingsWindow : Window
         _updatePresenter.RefreshCheckStatus(_settings.EnableLocalOnlyMode);
         CurrentVersionText.Text = Loc.Get("settings.currentVersion", GetAppVersion());
         ViewChangelogButton.Content = Loc.Get("settings.btn.changelog");
+        ChangelogHeading.Text = Loc.Get("changelog.title");
+        System.Windows.Automation.AutomationProperties.SetName(ChangelogBackButton, Loc.Get("setup.btn.back"));
         ReportBugLabel.Text = Loc.Get("settings.reportBug");
         ReportBugHint.Text = Loc.Get("settings.reportBug.hint");
         RequestFeatureLabel.Text = Loc.Get("settings.requestFeature");
@@ -1229,8 +1234,31 @@ public partial class SettingsWindow : Window
     private void DownloadUpdate_Click(object sender, RoutedEventArgs e)
         => _updatePresenter.DownloadUpdateAsync().SafeFireAndForget("SETTINGS-UPDATE-DOWNLOAD");
 
-    private void ViewChangelog_Click(object sender, RoutedEventArgs e)
-        => _updatePresenter.ShowChangelog();
+    private async void ViewChangelog_Click(object sender, RoutedEventArgs e)
+    {
+        StopSmoothScroll();
+        SettingsPageWave.Capture(SettingsPane, Orientation.Horizontal, forward: true);
+        SettingsScrollViewer.Visibility = Visibility.Collapsed;
+        ChangelogPage.Visibility = Visibility.Visible;
+        ChangelogBackButton.Focus();
+        await _updatePresenter.LoadChangelogAsync(Changelog);
+    }
+
+    private void ChangelogBack_Click(object sender, RoutedEventArgs e)
+    {
+        HideChangelog(turnBack: true);
+        ViewChangelogButton.Focus();
+    }
+
+    private void HideChangelog(bool turnBack = false)
+    {
+        if (!turnBack) SettingsPageWave.Stop();
+        if (ChangelogPage.Visibility != Visibility.Visible) return;
+        if (turnBack) SettingsPageWave.Capture(SettingsPane, Orientation.Horizontal, forward: false);
+        ResetProgressiveBlurElements(isMenuList: false);
+        ChangelogPage.Visibility = Visibility.Collapsed;
+        SettingsScrollViewer.Visibility = Visibility.Visible;
+    }
 
     private void PanelDonating_IsVisibleChanged(object sender, DependencyPropertyChangedEventArgs e)
         => UpdateAnimatedStarStoryboard();

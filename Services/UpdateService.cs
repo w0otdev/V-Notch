@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.IO;
 using System.Net;
@@ -48,10 +49,13 @@ public sealed partial class UpdateService : IUpdateService, IDisposable
     private readonly string _manifestPublicKey;
     private const int MaxReleaseResponseBytes = 2 * 1024 * 1024;
     private const int MaxReleasePages = 5;
+    private const int HistoryPageSize = 12;
+    private ConcurrentDictionary<int, (DateTime Loaded, ReleaseHistoryPage Page)> _historyPages = new();
     private readonly SemaphoreSlim _checkLock = new(1, 1);
     private string? _latestReleaseEtag;
     private UpdateInfo? _cachedLatestRelease;
     private IReadOnlyList<UpdateInfo>? _cachedAllReleases;
+    private IReadOnlyList<UpdateInfo>? _recentCheckReleases;
     private DateTime _lastAllReleasesCheckUtc = DateTime.MinValue;
     private DateTime _lastCheckUtc = DateTime.MinValue;
     private DateTime _retryAfterUtc = DateTime.MinValue;
@@ -177,14 +181,18 @@ public sealed partial class UpdateService : IUpdateService, IDisposable
         finally { try { if (File.Exists(temp)) File.Delete(temp); } catch (IOException) { /* Ignore temp delete failure */ } }
     }
 
-    private static UpdateInfo ReadRelease(JsonElement release)
+    private static UpdateInfo ReadRelease(JsonElement release, ReverseMarkdown.Converter? feedConverter = null)
     {
         string tag = release.GetProperty("tag_name").GetString() ?? string.Empty;
+        string notes = release.GetProperty("body").GetString() ?? string.Empty;
+        if (feedConverter != null && release.TryGetProperty("body_format", out var format) && format.ValueEquals("html"))
+            notes = feedConverter.Convert(notes).Trim();
         // The release list supplies history only. The update check verifies signed assets separately.
         return new UpdateInfo
         {
-            Version = tag.TrimStart('v', 'V'),
-            ReleaseNotes = release.GetProperty("body").GetString() ?? string.Empty,
+            Version = tag.Length > 1 && tag[0] is 'v' or 'V' && char.IsAsciiDigit(tag[1]) ? tag[1..] : tag,
+            ReleaseTag = tag,
+            ReleaseNotes = notes,
             PublishedAt = release.GetProperty("published_at").GetDateTime(),
             IsPrerelease = (release.TryGetProperty("prerelease", out var pre) && pre.GetBoolean()) ||
                 (TryParseReleaseVersion(tag, out _, out var suffix) && suffix.Length > 0)
@@ -202,19 +210,64 @@ public sealed partial class UpdateService : IUpdateService, IDisposable
         try
         {
             using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(30));
-            var (releases, _) = await FetchReleaseHistoryAsync(null, timeout.Token).ConfigureAwait(false);
-            _cachedAllReleases = releases ?? throw new InvalidDataException("Unconditional release request returned no history.");
+            var releases = new List<UpdateInfo>();
+            var seen = new HashSet<string>(StringComparer.Ordinal);
+            for (int page = 1; ; page++)
+            {
+                var batch = await GetChangelogPageAsync(page, timeout.Token).ConfigureAwait(false);
+                releases.AddRange(batch.Releases.Where(r => seen.Add(r.ReleaseTag ?? r.Version)));
+                if (!batch.HasMore) break;
+            }
+            _cachedAllReleases = releases;
             _lastAllReleasesCheckUtc = DateTime.UtcNow;
             return CloneReleaseList(releases);
         }
         catch (Exception ex)
         {
             RuntimeLog.Error(LogCategory, ex, "Release history unavailable");
-            return _cachedAllReleases != null ? CloneReleaseList(_cachedAllReleases) : Array.Empty<UpdateInfo>();
+            var previous = _cachedAllReleases ?? _recentCheckReleases;
+            return previous != null ? CloneReleaseList(previous) : Array.Empty<UpdateInfo>();
         }
     }
 
     private static readonly string[] CandidateSetupInstallers = [SelfContainedSetupName, SetupName];
+
+    public async Task<ReleaseHistoryPage> GetChangelogPageAsync(int page, CancellationToken token)
+    {
+        ArgumentOutOfRangeException.ThrowIfLessThan(page, 1);
+        token.ThrowIfCancellationRequested();
+        if (_disposed) return new([], false);
+        var pages = Volatile.Read(ref _historyPages);
+        if (pages.TryGetValue(page, out var cached) && DateTime.UtcNow - cached.Loaded < MinRefreshInterval)
+            return new(CloneReleaseList(cached.Page.Releases), cached.Page.HasMore);
+        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(token);
+        timeout.CancelAfter(TimeSpan.FromSeconds(30));
+        ReleaseHistoryPage result;
+        try
+        {
+            result = await ReadApiPageAsync($"per_page={HistoryPageSize}&page={page}", timeout.Token).ConfigureAwait(false);
+        }
+        catch (Exception ex) when (page == 1 && !timeout.IsCancellationRequested && ex is HttpRequestException or JsonException or InvalidDataException)
+        {
+            RuntimeLog.Warn(LogCategory, $"Release index unavailable, using the public feed: {ex.Message}");
+            if (cached.Page != null) return new(CloneReleaseList(cached.Page.Releases), cached.Page.HasMore);
+            try
+            {
+                var (feed, _) = await ReadAtomReleasesAsync(null, timeout.Token).ConfigureAwait(false);
+                result = new(feed ?? [], false);
+            }
+            catch (Exception) when (!timeout.IsCancellationRequested && _recentCheckReleases != null)
+            {
+                return new(CloneReleaseList(_recentCheckReleases), false);
+            }
+        }
+        // New releases can shift every page boundary when the first page refreshes.
+        if (page == 1)
+            Volatile.Write(ref _historyPages, new() { [1] = (DateTime.UtcNow, result) });
+        else
+            pages[page] = (DateTime.UtcNow, result);
+        return new(CloneReleaseList(result.Releases), result.HasMore);
+    }
 
     private static List<UpdateInfo> CloneReleaseList(IReadOnlyList<UpdateInfo> source)
     {
@@ -239,9 +292,7 @@ public sealed partial class UpdateService : IUpdateService, IDisposable
                 await SaveCheckCacheAsync().ConfigureAwait(false);
                 return cached != null ? Clone(cached) : null;
             }
-            _cachedAllReleases = allReleases;
-            _lastAllReleasesCheckUtc = now;
-
+            _recentCheckReleases = allReleases;
             var candidates = new List<(UpdateInfo Release, int Order)>(allReleases.Count);
             for (int i = 0; i < allReleases.Count; i++)
             {
@@ -316,19 +367,7 @@ public sealed partial class UpdateService : IUpdateService, IDisposable
     {
         try
         {
-            using var request = new HttpRequestMessage(HttpMethod.Get, GithubReleaseFeedUri);
-            request.Headers.TryAddWithoutValidation("Accept", "application/atom+xml");
-            if (!string.IsNullOrEmpty(etag)) request.Headers.TryAddWithoutValidation("If-None-Match", etag);
-            using var response = await SendHttpsAsync(request, token).ConfigureAwait(false);
-            if (response.StatusCode == HttpStatusCode.NotModified && etag != null)
-                return (null, etag);
-            if (response.StatusCode is HttpStatusCode.TooManyRequests or HttpStatusCode.Forbidden)
-            {
-                UpdateRetryAfter(response, DateTime.UtcNow);
-                await SaveCheckCacheAsync().ConfigureAwait(false);
-            }
-            response.EnsureSuccessStatusCode();
-            return (await ReadReleaseFeedAsync(response, token).ConfigureAwait(false), response.Headers.ETag?.ToString());
+            return await ReadAtomReleasesAsync(etag, token).ConfigureAwait(false);
         }
         catch (Exception ex) when (!token.IsCancellationRequested && (ex is InvalidDataException ||
             ex is HttpRequestException http && (http.StatusCode is null or HttpStatusCode.NotFound || (int)http.StatusCode >= 500)))
@@ -336,18 +375,43 @@ public sealed partial class UpdateService : IUpdateService, IDisposable
             RuntimeLog.Warn(LogCategory, $"Atom feed unavailable, retrying via the releases API: {ex.Message}");
         }
 
-        using var apiRequest = new HttpRequestMessage(HttpMethod.Get, "https://api.github.com/repos/w0otdev/V-Notch/releases?per_page=10");
-        apiRequest.Headers.TryAddWithoutValidation("Accept", "application/vnd.github+json");
-        using var apiResponse = await SendHttpsAsync(apiRequest, token).ConfigureAwait(false);
-        apiResponse.EnsureSuccessStatusCode();
-        var bytes = await ReadLimitedBytesAsync(apiResponse, MaxReleaseResponseBytes, token).ConfigureAwait(false)
+        var recent = await ReadApiPageAsync("per_page=10", token).ConfigureAwait(false);
+        return (recent.Releases.ToList(), null);
+    }
+
+    private async Task<(List<UpdateInfo>? Releases, string? Etag)> ReadAtomReleasesAsync(string? etag, CancellationToken token)
+    {
+        using var request = new HttpRequestMessage(HttpMethod.Get, GithubReleaseFeedUri);
+        request.Headers.TryAddWithoutValidation("Accept", "application/atom+xml");
+        if (!string.IsNullOrEmpty(etag)) request.Headers.TryAddWithoutValidation("If-None-Match", etag);
+        using var response = await SendHttpsAsync(request, token).ConfigureAwait(false);
+        if (response.StatusCode == HttpStatusCode.NotModified && etag != null) return (null, etag);
+        if (response.StatusCode is HttpStatusCode.TooManyRequests or HttpStatusCode.Forbidden)
+        {
+            UpdateRetryAfter(response, DateTime.UtcNow);
+            await SaveCheckCacheAsync().ConfigureAwait(false);
+        }
+        response.EnsureSuccessStatusCode();
+        return (await ReadReleaseFeedAsync(response, token).ConfigureAwait(false), response.Headers.ETag?.ToString());
+    }
+
+    private async Task<ReleaseHistoryPage> ReadApiPageAsync(string query, CancellationToken token)
+    {
+        var releases = new List<UpdateInfo>();
+        var tags = new HashSet<string>(StringComparer.Ordinal);
+        using var request = new HttpRequestMessage(HttpMethod.Get, $"https://api.github.com/repos/w0otdev/V-Notch/releases?{query}");
+        request.Headers.TryAddWithoutValidation("Accept", "application/vnd.github+json");
+        using var response = await SendHttpsAsync(request, token).ConfigureAwait(false);
+        response.EnsureSuccessStatusCode();
+        var bytes = await ReadLimitedBytesAsync(response, MaxReleaseResponseBytes, token).ConfigureAwait(false)
             ?? throw new InvalidDataException("Release list was empty or exceeded the size limit.");
         using var json = JsonDocument.Parse(bytes);
-        var releases = new List<UpdateInfo>();
         foreach (var release in json.RootElement.EnumerateArray())
-            if (!release.GetProperty("draft").GetBoolean()) releases.Add(ReadRelease(release));
-        if (releases.Count == 0) throw new InvalidDataException("No published releases in the API response.");
-        return (releases, null);
+            if (!release.GetProperty("draft").GetBoolean() && tags.Add(release.GetProperty("tag_name").GetString()!))
+                releases.Add(ReadRelease(release));
+        bool hasMore = response.Headers.TryGetValues("Link", out var links) &&
+            links.Any(link => link.Contains("rel=\"next\"", StringComparison.OrdinalIgnoreCase));
+        return new(releases, hasMore);
     }
 
     private void UpdateRetryAfter(HttpResponseMessage response, DateTime now)
@@ -371,7 +435,13 @@ public sealed partial class UpdateService : IUpdateService, IDisposable
                 throw new InvalidDataException("Invalid release feed.");
             using var json = JsonDocument.Parse(buffer.AsMemory(0, written));
             var releases = new List<UpdateInfo>();
-            foreach (var release in json.RootElement.EnumerateArray()) releases.Add(ReadRelease(release));
+            // The GitHub round-trip flavor can emit raw HTML. WPF consumes Markdown blocks.
+            var config = new ReverseMarkdown.Config { Tags = { Unknown = ReverseMarkdown.Config.UnknownTagsOption.Bypass } };
+            config.Preprocess.RemoveScripts().RemoveStyles().Remove("a.anchor")
+                .ReplaceWithText("input[type=checkbox][checked]", "[x] ")
+                .ReplaceWithText("input[type=checkbox]", "[ ] ");
+            var converter = new ReverseMarkdown.Converter(config);
+            foreach (var release in json.RootElement.EnumerateArray()) releases.Add(ReadRelease(release, converter));
             if (releases.Count == 0) throw new InvalidDataException("Empty release feed.");
             return releases;
         }
@@ -690,5 +760,5 @@ public sealed partial class UpdateService : IUpdateService, IDisposable
         finally { System.Buffers.ArrayPool<byte>.Shared.Return(buffer); }
     }
 
-    private static UpdateInfo Clone(UpdateInfo source) => new() { Version = source.Version, DownloadUrl = source.DownloadUrl, ManifestUrl = source.ManifestUrl, ManifestSignatureUrl = source.ManifestSignatureUrl, InstallerName = source.InstallerName, ReleaseNotes = source.ReleaseNotes, PublishedAt = source.PublishedAt, IsNewerVersion = source.IsNewerVersion, IsPrerelease = source.IsPrerelease };
+    private static UpdateInfo Clone(UpdateInfo source) => new() { Version = source.Version, ReleaseTag = source.ReleaseTag, DownloadUrl = source.DownloadUrl, ManifestUrl = source.ManifestUrl, ManifestSignatureUrl = source.ManifestSignatureUrl, InstallerName = source.InstallerName, ReleaseNotes = source.ReleaseNotes, PublishedAt = source.PublishedAt, IsNewerVersion = source.IsNewerVersion, IsPrerelease = source.IsPrerelease };
 }

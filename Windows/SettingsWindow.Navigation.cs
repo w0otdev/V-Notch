@@ -28,6 +28,7 @@ public partial class SettingsWindow
     private string _activeNav = NavSectionAppearance;
     private string? _hoveredNav;
     private int _lastNavDirection = 1;
+    private SettingsSelectionMotion _navPill = null!;
     private readonly Dictionary<string, StackPanel> _navPanels = new();
     private readonly Dictionary<string, Border> _navButtons = new();
 
@@ -50,8 +51,8 @@ public partial class SettingsWindow
 
     private void InitializeNavigation()
     {
-        IsVisibleChanged -= NavPillVisibilityChanged;
-        IsVisibleChanged += NavPillVisibilityChanged;
+        _navPill = new SettingsSelectionMotion(NavActiveIndicator, NavItemsStack, NavActiveIndicatorScale, NavActiveIndicatorTranslate);
+        IsVisibleChanged += (_, _) => { if (!IsVisible) _navPill.Settle(); };
         IsVisibleChanged -= NavHoverVisibilityChanged;
         IsVisibleChanged += NavHoverVisibilityChanged;
         _navPanels[NavSectionSearching] = PanelSearching;
@@ -149,7 +150,7 @@ public partial class SettingsWindow
         if (NavActiveIndicator == null || NavActiveIndicatorTranslate == null) return;
         animate &= IsLoaded && !AnimationConfig.ReduceMotion && SystemParameters.ClientAreaAnimation;
         var (targetY, targetHeight) = ResolveNavButtonSlot(targetBtn);
-        StartNavPillMotion(targetY, targetHeight, animate);
+        _navPill.MoveTo(targetY, targetHeight, animate);
     }
     private void AnimateNavHoverIndicator(Border? hoveredBtn)
     {
@@ -292,6 +293,7 @@ public partial class SettingsWindow
 
     internal void NavigateToSection(string section)
     {
+        HideChangelog();
         if (section == _activeNav) return;
 
         string previous = _activeNav;

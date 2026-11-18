@@ -88,9 +88,8 @@ public sealed partial class ReleaseFeedIntegrationTests(ITestOutputHelper output
         var entry = doc.RootElement[0];
         Assert.Equal("v2.2.2", entry.GetProperty("tag_name").GetString());
         Assert.Equal("2026-10-31T12:00:00Z", entry.GetProperty("published_at").GetString());
-        Assert.Contains("Valid entry", entry.GetProperty("body").GetString());
-        Assert.Contains("Body text", entry.GetProperty("body").GetString());
-        Assert.DoesNotContain("<p>", entry.GetProperty("body").GetString());
+        Assert.Equal("html", entry.GetProperty("body_format").GetString());
+        Assert.Equal("<h3>Valid entry</h3><p>Body text</p>", entry.GetProperty("body").GetString());
     }
 
     [Fact]
@@ -114,7 +113,15 @@ public sealed partial class ReleaseFeedIntegrationTests(ITestOutputHelper output
                 <id>tag:github.com,2008:Repository/100/v99.1.0</id>
                 <updated>2026-10-31T13:00:00Z</updated>
                 <link rel="alternate" type="text/html" href="https://github.com/w0otdev/V-Notch/releases/tag/v99.1.0"/>
-                <content type="html">&lt;h2&gt;Stable Release&lt;/h2&gt;&lt;p&gt;Signed installer update&lt;/p&gt;</content>
+                <content type="html"><![CDATA[
+                  <h2>Stable Release</h2>
+                  <p>Open <strong>Settings</strong> &amp; choose <code>Translate</code>.</p>
+                  <ol><li>Read <a href="https://example.com/notes">release notes</a></li></ol>
+                  <ul><li><input type="checkbox" disabled checked>Ready</li><li><input type="checkbox" disabled>Pending</li></ul>
+                  <blockquote><p>Keep this setting.</p></blockquote>
+                  <pre><code>example()</code></pre>
+                  <table><thead><tr><th>Version</th></tr></thead><tbody><tr><td>2.4</td></tr></tbody></table>
+                ]]></content>
               </entry>
             </feed>
             """;
@@ -136,7 +143,20 @@ public sealed partial class ReleaseFeedIntegrationTests(ITestOutputHelper output
         var allReleases = await updater.GetAllReleasesAsync();
         Assert.Equal(3, allReleases.Count);
         Assert.Contains(allReleases, r => r.Version == "99.2.0-beta.14.1" && r.IsPrerelease && r.ReleaseNotes.Contains("Pre-release channel change"));
-        Assert.Contains(allReleases, r => r.Version == "99.1.0" && !r.IsPrerelease && r.ReleaseNotes.Contains("Signed installer update"));
+        var stableNotes = Assert.Single(allReleases, r => r.Version == "99.1.0" && !r.IsPrerelease).ReleaseNotes;
+        Assert.Contains("Open **Settings** & choose `Translate`.", stableNotes);
+        Assert.Contains("[release notes](https://example.com/notes)", stableNotes);
+        Assert.Contains("[x] Ready", stableNotes);
+        Assert.Contains("[ ] Pending", stableNotes);
+        var blocks = VNotch.Controls.MarkdownWpfRenderer.Parse(stableNotes);
+        Assert.Collection(blocks,
+            block => Assert.Equal(2, Assert.IsType<Markdig.Syntax.HeadingBlock>(block).Level),
+            block => Assert.IsType<Markdig.Syntax.ParagraphBlock>(block),
+            block => Assert.True(Assert.IsType<Markdig.Syntax.ListBlock>(block).IsOrdered),
+            block => Assert.False(Assert.IsType<Markdig.Syntax.ListBlock>(block).IsOrdered),
+            block => Assert.IsType<Markdig.Syntax.QuoteBlock>(block),
+            block => Assert.IsAssignableFrom<Markdig.Syntax.CodeBlock>(block),
+            block => Assert.IsType<Markdig.Extensions.Tables.Table>(block));
 
         var stableUpdate = await updater.CheckForUpdatesAsync(includePrereleases: false, forceRefresh: true);
         Assert.NotNull(stableUpdate);
@@ -211,7 +231,7 @@ public sealed partial class ReleaseFeedIntegrationTests(ITestOutputHelper output
         Assert.Contains(releases, release => !string.IsNullOrWhiteSpace(release.ReleaseNotes));
         Assert.All(releases, release =>
         {
-            Assert.True(UpdateService.TryParseReleaseVersion(release.Version, out _, out _));
+            Assert.False(string.IsNullOrWhiteSpace(release.ReleaseTag));
             Assert.False(release.IsNewerVersion);
             Assert.Empty(release.DownloadUrl);
         });

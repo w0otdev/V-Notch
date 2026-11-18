@@ -51,7 +51,7 @@ std::vector<uint32_t> RenderFixture(GpuGlass& gpu, Frame frame, const std::vecto
     Require(gpu.pending, "GPU completion query missing");
     Check(gpu.WaitReady(4));
     PresentProbeFrame(gpu, presentation);
-    Require(gpu.nextOutput != outputIndex, "Shared output did not alternate");
+    Require(!gpu.pending && (gpu.crossAdapter.readback || gpu.nextOutput != outputIndex), "Output was not released after presentation");
     if (presentation) {
         // Verify the actual persistent WPF surface, including cleared pixels
         // outside a shrinking frame. Only synthetic fixtures are read back.
@@ -165,7 +165,8 @@ void VerifyLiveCapture(GpuGlass& gpu, Frame& frame, HWND hwnd, bool forceWgc) {
 
 int main(int argc, char** argv) {
     if (argc > 1 && strcmp(argv[1], "--exact-window-host") == 0) return RunExactWindowHost();
-    useUploadedFixtures = argc > 1 && strcmp(argv[1], "--uploaded-backdrop") == 0;
+    const bool ultimate = argc > 1 && strcmp(argv[1], "--ultimate") == 0;
+    useUploadedFixtures = ultimate || (argc > 1 && strcmp(argv[1], "--uploaded-backdrop") == 0);
     HWND hwnd = CreateWindowExW(0, L"STATIC", L"VNotch GPU probe", WS_POPUP, -32000, -32000, 1, 1, nullptr, nullptr, nullptr, nullptr);
     try {
         static_assert(sizeof(Frame) == 536, "Managed/native frame layout changed");
@@ -173,7 +174,10 @@ int main(int argc, char** argv) {
         D3DPRESENT_PARAMETERS present{};
         present.Windowed = TRUE; present.SwapEffect = D3DSWAPEFFECT_DISCARD; present.hDeviceWindow = hwnd;
         ComPtr<IDirect3DDevice9Ex> device9;
-        Check(direct9->CreateDeviceEx(vn_glass_gpu_find_adapter(direct9.Get(), hwnd), D3DDEVTYPE_HAL, hwnd,
+        LUID requested{};
+        const UINT ordinal = ultimate ? vn_glass_gpu_find_preferred_adapter(direct9.Get(), hwnd, &requested)
+                                     : vn_glass_gpu_find_adapter(direct9.Get(), hwnd);
+        Check(direct9->CreateDeviceEx(ordinal, D3DDEVTYPE_HAL, hwnd,
             D3DCREATE_MULTITHREADED | D3DCREATE_FPU_PRESERVE | D3DCREATE_HARDWARE_VERTEXPROCESSING,
             &present, nullptr, &device9));
         if (argc > 1 && strcmp(argv[1], "--wgc-only") == 0) {
@@ -204,11 +208,37 @@ int main(int argc, char** argv) {
             DestroyWindow(hwnd); return 0;
         }
         const auto initBegin = std::chrono::steady_clock::now();
-        GpuGlass gpu; gpu.Initialize(device9.Get(), 128, 96);
+        GpuGlass gpu; gpu.Initialize(device9.Get(), 128, 96, requested);
         printf("First presenter init: %.2f ms (precompiled shaders).\n", std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - initBegin).count());
-        VerifySharedDevice(gpu, device9.Get());
-        VerifyOpaqueWindowShader(gpu);
-        VerifyCameraGpu(gpu, device9.Get());
+        if (ultimate) {
+            ComPtr<IDXGIDevice> dxgiDevice; Check(gpu.device.As(&dxgiDevice));
+            ComPtr<IDXGIAdapter> actual; Check(dxgiDevice->GetAdapter(&actual));
+            DXGI_ADAPTER_DESC render{}; Check(actual->GetDesc(&render));
+            D3DADAPTER_IDENTIFIER9 presentId{}; Check(direct9->GetAdapterIdentifier(ordinal, 0, &presentId));
+            printf("Ultimate shader GPU: %ls; D3D9 presentation GPU: %s\n", render.Description, presentId.Description);
+            Require(SameLuid(render.AdapterLuid, requested), "Ultimate rendered on the wrong physical GPU");
+            ComPtr<IDXCoreAdapterFactory> core;
+            Check(DXCoreCreateAdapterFactory(IID_IDXCoreAdapterFactory, reinterpret_cast<void**>(core.GetAddressOf())));
+            ComPtr<IDXCoreAdapterList> list;
+            Check(core->CreateAdapterList(1, &DXCORE_ADAPTER_ATTRIBUTE_D3D11_GRAPHICS, IID_IDXCoreAdapterList,
+                reinterpret_cast<void**>(list.GetAddressOf())));
+            bool hasDiscrete = false, rendersOnDiscrete = false;
+            for (UINT i = 0; i < list->GetAdapterCount(); ++i) {
+                ComPtr<IDXCoreAdapter> physical;
+                Check(list->GetAdapter(i, IID_IDXCoreAdapter, reinterpret_cast<void**>(physical.GetAddressOf())));
+                bool hardware{}, integrated{};
+                LUID luid{};
+                Check(physical->GetProperty(DXCoreAdapterProperty::IsHardware, &hardware));
+                Check(physical->GetProperty(DXCoreAdapterProperty::IsIntegrated, &integrated));
+                Check(physical->GetProperty(DXCoreAdapterProperty::InstanceLuid, &luid));
+                if (hardware && !integrated) { hasDiscrete = true; rendersOnDiscrete |= SameLuid(luid, render.AdapterLuid); }
+            }
+            Require(!hasDiscrete || rendersOnDiscrete, "Ultimate chose an iGPU with a discrete GPU available");
+        } else {
+            VerifySharedDevice(gpu, device9.Get());
+            VerifyOpaqueWindowShader(gpu);
+            VerifyCameraGpu(gpu, device9.Get());
+        }
         if (argc > 1 && strcmp(argv[1], "--exact-wgc") == 0) { VerifyExactWindows(gpu, hwnd); DestroyWindow(hwnd); return 0; }
         int64_t validationHandle = 0;
         Check(vn_glass_gpu_create(device9.Get(), 128, 96, &validationHandle));

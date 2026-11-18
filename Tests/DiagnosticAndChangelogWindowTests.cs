@@ -5,6 +5,7 @@ using System.Windows.Controls;
 using System.Windows.Documents;
 using System.Windows.Input;
 using System.Windows.Media;
+using VNotch.Controls;
 using VNotch.Models;
 using VNotch.Services;
 using VNotch.Windows;
@@ -180,42 +181,145 @@ public sealed class DiagnosticAndChangelogWindowTests
 
     [Theory]
     [InlineData("2.0.0")]
+    [InlineData("2.0")]
     [InlineData("1.0.0")]
     [InlineData("0.5.0")]
-    public void ChangelogLoadsVersionsBadgesAndSafeMarkdown(string installed) => SharedStaTestRunner.RunAsync(async ct =>
+    public void ChangelogLoadsVersionsBadgesAndSafeMarkdown(string installed) => SharedStaTestRunner.RunAsync(async () =>
     {
         LiquidGlassSpotlightTests.CreateApplicationResources();
-        using var fixture = new ChangelogFixture(installed,
+        var fixture = new ChangelogFixture(installed,
         [
-            new() { Version = "2.0.0", PublishedAt = new DateTime(2026, 1, 2, 0, 0, 0, DateTimeKind.Utc), ReleaseNotes = "# Main\n## Group\n### Detail\n\n- **Fixed** with *care* and `code`\n* More\nPlain [safe](https://example.com) and [blocked](file:///C:/private.txt) end" },
             new() { Version = "1.0.0", PublishedAt = new DateTime(2025, 1, 2, 0, 0, 0, DateTimeKind.Utc), ReleaseNotes = "" },
+            new() { Version = "2.0.0", ReleaseTag = "v2.0.0", PublishedAt = new DateTime(2026, 1, 2, 0, 0, 0, DateTimeKind.Utc), ReleaseNotes = "# Main\n## Group\n### Detail\n\n- **Fixed** with *care* and `code`\n* More\nPlain [safe](https://example.com) and [blocked](file:///C:/private.txt) end" },
             new() { Version = "bad-version", PublishedAt = new DateTime(2024, 1, 2, 0, 0, 0, DateTimeKind.Utc), ReleaseNotes = "Old" }
         ]);
-        var window = fixture.Window;
-        await (Task)Invoke(window, "LoadChangelog")!;
-        var buttons = window.VersionListPanel.Children.OfType<Button>().ToList();
-        Assert.Equal(installed == "0.5.0" ? 4 : 3, buttons.Count);
-        Assert.Equal("2.0.0", buttons[0].Tag);
-        Assert.Equal("bad-version", buttons[^1].Tag);
-        var blocks = Descendants<TextBlock>(window.ChangelogContent).ToList();
+        var view = new ChangelogView();
+        await view.LoadAsync(fixture, () => true);
+        var rows = view.VersionList.Items.Cast<ListBoxItem>().ToList();
+        Assert.Equal(installed == "0.5.0" ? 4 : 3, rows.Count);
+        Assert.Equal("2.0.0", rows[0].Tag);
+        Assert.Equal("bad-version", rows[^1].Tag);
+        var latestRow = Assert.Single(rows, b => Descendants<TextBlock>(b).Any(t => t.Text == Loc.Get("changelog.latest")));
+        Assert.Equal("2.0.0", latestRow.Tag);
+        Assert.Contains(Descendants<TextBlock>(latestRow), t => t.Text == "v2.0.0");
+        var installedRow = Assert.Single(rows, b => Descendants<TextBlock>(b).Any(t => t.Text == Loc.Get("changelog.current")));
+        Assert.Equal(installed == "2.0" ? "2.0.0" : installed, installedRow.Tag);
+        if (installed == "0.5.0") Assert.Equal(2, Descendants<TextBlock>(installedRow).Count());
+        var blocks = Descendants<TextBlock>(view.ChangelogContent).ToList();
         Assert.Contains(blocks, text => text.Inlines.OfType<Bold>().Any());
         Assert.Contains(blocks, text => text.Inlines.OfType<Italic>().Any());
         Assert.Single(blocks.SelectMany(text => text.Inlines.OfType<Hyperlink>()));
         Assert.Contains(blocks, text => new TextRange(text.ContentStart, text.ContentEnd).Text.Contains("blocked"));
-        foreach (var button in buttons)
+        foreach (var row in rows)
         {
-            button.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
-            Assert.Equal(Visibility.Visible, window.ChangelogContent.Visibility);
-            Assert.Contains(Descendants<TextBlock>(window.ChangelogContent), text => text.Text == Loc.Get("changelog.version", button.Tag));
+            view.VersionList.SelectedItem = row;
+            Assert.Equal(Visibility.Visible, view.ChangelogContent.Visibility);
+            Assert.Contains(Descendants<TextBlock>(view.ChangelogContent), text => text.Text == Loc.Get("changelog.version", row.Tag));
         }
-        buttons.Single(button => Equals(button.Tag, "1.0.0")).RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
-        Assert.Contains(Descendants<TextBlock>(window.ChangelogContent), text => text.Text == Loc.Get("changelog.noNotes"));
-        Invoke(window, "PlayEntranceAnimation");
-        await WpfFrameWaiter.UntilAsync(() => Math.Abs(window.MainShell.Opacity - 1) < 1e-6, "changelog entrance", ct);
-        bool closed = false;
-        window.Closed += (_, _) => closed = true;
-        Invoke(window, "CloseButton_Click", window, new RoutedEventArgs());
-        await WpfFrameWaiter.UntilAsync(() => closed, "changelog close", ct);
+        view.VersionList.SelectedItem = rows.Single(row => Equals(row.Tag, "1.0.0"));
+        Assert.Contains(Descendants<TextBlock>(view.ChangelogContent), text => text.Text == Loc.Get("changelog.noNotes"));
+    });
+
+    [Fact]
+    public void ScrollingLoadsOlderChangelogsOnceAndResolvesTheInstalledRow() => SharedStaTestRunner.RunAsync(async ct =>
+    {
+        LiquidGlassSpotlightTests.CreateApplicationResources();
+        var requests = new List<int>();
+        var pending = new TaskCompletionSource<ReleaseHistoryPage>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var recent = Enumerable.Range(1, 12).Select(i => new UpdateInfo { Version = $"2.3.{i}" }).ToList();
+        var fixture = new ChangelogFixture("2.4.2", [])
+        {
+            LoadPage = page =>
+            {
+                requests.Add(page);
+                return page == 1 ? Task.FromResult(new ReleaseHistoryPage(recent, true)) : pending.Task;
+            }
+        };
+        var view = new ChangelogView();
+        var window = new Window { Content = view, Width = 500, Height = 220, ShowInTaskbar = false };
+        try
+        {
+            window.Show();
+            await view.LoadAsync(fixture, () => true, ct);
+            window.UpdateLayout();
+            Assert.Equal(new[] { 1 }, requests);
+            var firstRow = (ListBoxItem)view.VersionList.SelectedItem;
+            Assert.Equal("2.4.2", firstRow.Tag);
+            var existingRow = view.VersionList.Items[1];
+            Assert.True(view.VersionScrollViewer.ScrollableHeight > 0);
+            view.VersionScrollViewer.ScrollToBottom();
+            await view.Dispatcher.InvokeAsync(() => { }, System.Windows.Threading.DispatcherPriority.ApplicationIdle);
+            Assert.Equal(new[] { 1, 2 }, requests);
+            await view.LoadOlderVersionsAsync();
+            Assert.Equal(new[] { 1, 2 }, requests);
+            pending.SetResult(new([recent[0], new() { Version = "2.4.2", ReleaseNotes = "Published notes" }], false));
+            await WpfFrameWaiter.UntilAsync(() => view.OlderVersionsButton.Visibility == Visibility.Collapsed,
+                "the final history page to replace the installed placeholder", ct);
+            var rows = view.VersionList.Items.Cast<ListBoxItem>().ToList();
+            Assert.Equal(13, rows.Count);
+            Assert.Same(existingRow, rows[1]);
+            var published = Assert.Single(rows, r => Equals(r.Tag, "2.4.2"));
+            Assert.Same(published, view.VersionList.SelectedItem);
+            Assert.Contains(Descendants<TextBlock>(published), t => t.Text == Loc.Get("changelog.current"));
+            Assert.Contains(Descendants<TextBlock>(published), t => t.Text == Loc.Get("changelog.latest"));
+            var note = Assert.Single(Descendants<TextBlock>(view.ReleaseNotes));
+            Assert.Equal("Published notes", new TextRange(note.ContentStart, note.ContentEnd).Text.Trim());
+            Assert.Equal(Visibility.Collapsed, view.OlderVersionsButton.Visibility);
+        }
+        finally { window.Close(); }
+    });
+
+    [Fact]
+    public void SelectionMorphContinuesOnOlderRowsWhileAnotherPageArrives() => SharedStaTestRunner.RunAsync(async ct =>
+    {
+        LiquidGlassSpotlightTests.CreateApplicationResources();
+        static UpdateInfo[] Releases(int major) => Enumerable.Range(1, 12)
+            .Select(i => new UpdateInfo { Version = $"{major}.0.{i}" }).ToArray();
+        var thirdPage = new TaskCompletionSource<ReleaseHistoryPage>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var fixture = new ChangelogFixture("3.0.12", [])
+        {
+            LoadPage = page => page switch
+            {
+                1 => Task.FromResult(new ReleaseHistoryPage(Releases(3), true)),
+                2 => Task.FromResult(new ReleaseHistoryPage(Releases(2), true)),
+                3 => thirdPage.Task,
+                _ => throw new InvalidOperationException()
+            }
+        };
+        var view = new ChangelogView();
+        var window = new Window { Content = view, Width = 500, Height = 250, ShowInTaskbar = false };
+        var previousMotion = AnimationConfig.ReduceMotion;
+        var previousSystem = AnimationConfig.ClientAreaAnimationOverride;
+        try
+        {
+            AnimationConfig.SetReduceMotion(false);
+            AnimationConfig.ClientAreaAnimationOverride = true;
+            window.Show();
+            await view.LoadAsync(fixture, () => true, ct);
+            window.UpdateLayout();
+            view.VersionScrollViewer.ScrollToBottom();
+            await WpfFrameWaiter.UntilAsync(() => view.VersionList.Items.Count == 24, "older rows to load", ct);
+            view.VersionScrollViewer.ScrollToBottom();
+            await WpfFrameWaiter.UntilAsync(() => !view.OlderVersionsButton.IsEnabled, "the next page request", ct);
+
+            var older = (ListBoxItem)view.VersionList.Items[22];
+            double target = older.TranslatePoint(new Point(0, 1), view.VersionList).Y;
+            Assert.True(target - view.MarkOffset.Y > view.VersionScrollViewer.ViewportHeight);
+            view.VersionList.SelectedItem = older;
+            Assert.InRange(target - view.MarkOffset.Y, 1, view.VersionScrollViewer.ViewportHeight);
+            thirdPage.SetResult(new(Releases(1), false));
+            await WpfFrameWaiter.UntilAsync(() => view.VersionList.Items.Count == 36 && view.MarkScale.ScaleY > 1.01,
+                "the focus indicator to stretch on the older row after layout", ct);
+            await WpfFrameWaiter.UntilAsync(() => view.MarkScale.ScaleY == 1 && Math.Abs(view.MarkOffset.Y - target) < .01,
+                "the focus indicator to settle on the older row", ct);
+            Assert.Same(older, view.VersionList.SelectedItem);
+        }
+        finally
+        {
+            window.Close();
+            AnimationConfig.ClientAreaAnimationOverride = previousSystem;
+            AnimationConfig.SetReduceMotion(previousMotion);
+        }
     });
 
     [Fact]
@@ -223,27 +327,28 @@ public sealed class DiagnosticAndChangelogWindowTests
     {
         LiquidGlassSpotlightTests.CreateApplicationResources();
         bool online = true;
-        using var fixture = new ChangelogFixture("2.4.1", [], canUseNetwork: () => online);
-        await (Task)Invoke(fixture.Window, "LoadChangelog")!;
-        Assert.Equal(Loc.Get("update.releaseUnavailable"), fixture.Window.ErrorText.Text);
+        var fixture = new ChangelogFixture("2.4.1", []);
+        var view = new ChangelogView();
+        await view.LoadAsync(fixture, () => online);
+        Assert.Equal(Loc.Get("update.releaseUnavailable"), view.ErrorText.Text);
         online = false;
-        await (Task)Invoke(fixture.Window, "LoadChangelog")!;
-        Assert.Equal(Loc.Get("update.localOnly"), fixture.Window.ErrorText.Text);
-        Assert.Equal(Visibility.Visible, fixture.Window.ErrorPanel.Visibility);
-        Assert.Equal(Visibility.Collapsed, fixture.Window.LoadingText.Visibility);
+        await view.LoadAsync(fixture, () => online);
+        Assert.Equal(Loc.Get("update.localOnly"), view.ErrorText.Text);
+        Assert.Equal(Visibility.Visible, view.ErrorPanel.Visibility);
+        Assert.Equal(Visibility.Collapsed, view.NotesSkeleton.Visibility);
     });
 
     [Fact]
-    public void ChangelogFailureShowsErrorAndClearsLoading() => SharedStaTestRunner.RunAsync(async ct =>
+    public void ChangelogFailureShowsErrorAndClearsLoading() => SharedStaTestRunner.RunAsync(async () =>
     {
         LiquidGlassSpotlightTests.CreateApplicationResources();
-        using var fixture = new ChangelogFixture("1.0.0", [], fail: true);
-        await (Task)Invoke(fixture.Window, "LoadChangelog")!;
-        Assert.Equal(Visibility.Visible, fixture.Window.ErrorPanel.Visibility);
-        Assert.Equal(Visibility.Collapsed, fixture.Window.LoadingText.Visibility);
-        Assert.Equal(Visibility.Collapsed, fixture.Window.ChangelogContent.Visibility);
-        Assert.Contains("test failure", fixture.Window.ErrorText.Text);
-        await WpfFrameWaiter.NextAsync(ct);
+        var fixture = new ChangelogFixture("1.0.0", [], fail: true);
+        var view = new ChangelogView();
+        await view.LoadAsync(fixture, () => true);
+        Assert.Equal(Visibility.Visible, view.ErrorPanel.Visibility);
+        Assert.Equal(Visibility.Collapsed, view.NotesSkeleton.Visibility);
+        Assert.Equal(Visibility.Collapsed, view.ChangelogContent.Visibility);
+        Assert.Contains("test failure", view.ErrorText.Text);
     });
 
     private static MouseButtonEventArgs MouseArgs() => new(Mouse.PrimaryDevice, 0, MouseButton.Left) { RoutedEvent = UIElement.MouseLeftButtonDownEvent };
@@ -258,23 +363,23 @@ public sealed class DiagnosticAndChangelogWindowTests
                 foreach (var descendant in Descendants<T>(dependency)) yield return descendant;
         }
     }
-    private sealed class ChangelogFixture : IUpdateService, IDisposable
+    private sealed class ChangelogFixture : IUpdateService
     {
         private readonly IReadOnlyList<UpdateInfo> _releases;
         private readonly bool _fail;
+        internal Func<int, Task<ReleaseHistoryPage>>? LoadPage { get; init; }
         public string CurrentVersion { get; }
         public event EventHandler<UpdateInfo?>? UpdateCheckCompleted { add { /* no-op */ } remove { /* no-op */ } }
         public UpdateInfo? LatestUpdateInfo => null;
-        internal ChangelogWindow Window { get; }
-        internal ChangelogFixture(string installed, IReadOnlyList<UpdateInfo> releases, bool fail = false, Func<bool>? canUseNetwork = null)
+        internal ChangelogFixture(string installed, IReadOnlyList<UpdateInfo> releases, bool fail = false)
         {
             CurrentVersion = installed; _releases = releases; _fail = fail;
-            Window = new ChangelogWindow(this, canUseNetwork);
         }
         public Task<IReadOnlyList<UpdateInfo>> GetAllReleasesAsync() => _fail
             ? Task.FromException<IReadOnlyList<UpdateInfo>>(new InvalidOperationException("test failure")) : Task.FromResult(_releases);
+        public async Task<ReleaseHistoryPage> GetChangelogPageAsync(int page, CancellationToken token) =>
+            LoadPage != null ? await LoadPage(page).WaitAsync(token) : new(await GetAllReleasesAsync(), false);
         public Task<UpdateInfo?> CheckForUpdatesAsync(bool includePrereleases = false, bool forceRefresh = false) => Task.FromResult<UpdateInfo?>(null);
         public Task<bool> DownloadAndInstallUpdateAsync(UpdateInfo updateInfo, IProgress<double>? progress = null, CancellationToken cancellationToken = default) => throw new NotSupportedException();
-        public void Dispose() => Window.Close();
     }
 }

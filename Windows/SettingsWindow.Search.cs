@@ -199,6 +199,7 @@ public partial class SettingsWindow
 
     private bool EnterSearchMode()
     {
+        HideChangelog();
         if (_isSearchMode)
         {
             RefreshSearchRowsIfNeeded();

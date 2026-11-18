@@ -95,7 +95,8 @@ try {
     [IO.File]::WriteAllText((Join-Path $temporary 'update-public-key.pem'), $legacyPem)
     Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'UpdateCompatibility/Program.cs') -Destination $temporary
     Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'UpdateCompatibility/TestSupport.cs') -Destination $temporary
-    @'
+    [xml]$project = Get-Content -LiteralPath (Join-Path $repository 'V-Notch.csproj')
+    [xml]$probe = @'
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <OutputType>Exe</OutputType><UseWPF>true</UseWPF>
@@ -110,21 +111,24 @@ try {
     <Content Include="VNotch.Native.dll" Condition="Exists('VNotch.Native.dll')" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 </Project>
-'@ | Set-Content -LiteralPath (Join-Path $temporary 'Compatibility.csproj')
+'@
+    if ($useCurrentUpdater -or $ClientRef) {
+        [xml]$clientProject = if ($ClientRef) { Read-Legacy 'V-Notch.csproj' } else { $project }
+        $converter = $clientProject.SelectSingleNode("//PackageReference[@Include='ReverseMarkdown']")
+        if ($converter) { $probe.Project.ItemGroup.AppendChild($probe.ImportNode($converter, $true)) | Out-Null }
+    }
     if ($InstalledVersion) {
         # Stamp the real assembly instead of injecting a fake CurrentVersion into the updater.
         # A beta's numeric Windows build can exceed the final release's file version.
         $core = [Version](($InstalledVersion -split '[-+]')[0])
-        [xml]$probe = Get-Content -LiteralPath (Join-Path $temporary 'Compatibility.csproj')
         $informational = $probe.CreateElement('InformationalVersion')
         $informational.InnerText = $InstalledVersion
         $probe.Project.PropertyGroup.AppendChild($informational) | Out-Null
         $fileVersion = $probe.CreateElement('FileVersion')
         $fileVersion.InnerText = "$($core.Major).$($core.Minor).65534.65534"
         $probe.Project.PropertyGroup.AppendChild($fileVersion) | Out-Null
-        $probe.Save((Join-Path $temporary 'Compatibility.csproj'))
     }
-    [xml]$project = Get-Content -LiteralPath (Join-Path $repository 'V-Notch.csproj')
+    $probe.Save((Join-Path $temporary 'Compatibility.csproj'))
     $versions = if ($ReleaseVersion -and $ReleaseVersion.Count -gt 0) {
         @($ReleaseVersion | Where-Object { $_ })
     } else {

@@ -955,6 +955,7 @@ public partial class SettingsWindow
 
     private void UpdatePerformanceDependentControls(bool blurEnabled, bool animate = false)
     {
+        SettingsPageWave.IsEnabled = Changelog.ReleaseWave.IsEnabled = blurEnabled;
         AnimateDependentElement(SubjectBlurRow, blurEnabled, 0.45, animate);
         AnimateDependentElement(BlurBrightnessSlider, blurEnabled, 0.45, animate);
     }

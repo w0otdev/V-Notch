@@ -1412,12 +1412,13 @@
                     </Grid>
                 </Border>
 
-                <Grid Grid.Column="1">
+                <Grid x:Name="SettingsPane" Grid.Column="1">
                     <Grid.RowDefinitions>
                         <RowDefinition Height="Auto"/>
                         <RowDefinition Height="*"/>
                     </Grid.RowDefinitions>
 
+                    <controls:ChangelogBlurWave x:Name="SettingsPageWave" Grid.Row="1" Panel.ZIndex="2"/>
                     <Border Grid.Row="1" IsHitTestVisible="False" VerticalAlignment="Top" Height="8" Panel.ZIndex="1">
                         <Border.Background>
                             <LinearGradientBrush StartPoint="0,0" EndPoint="0,1">
@@ -1435,6 +1436,24 @@
                             </LinearGradientBrush>
                         </Border.Background>
                     </Border>
+
+                    <Grid x:Name="ChangelogPage" Grid.Row="1" Visibility="Collapsed" Margin="20,8,14,16">
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="*"/>
+                        </Grid.RowDefinitions>
+                        <StackPanel Orientation="Horizontal" Margin="0,0,0,12">
+                            <Button x:Name="ChangelogBackButton" Style="{StaticResource CompactIconButton}"
+                                    Click="ChangelogBack_Click">
+                                <Path Data="M9,1 L3,7 L9,13" Stroke="#E8E8ED"
+                                      StrokeThickness="2" StrokeLineJoin="Round"
+                                      StrokeStartLineCap="Round" StrokeEndLineCap="Round"/>
+                            </Button>
+                            <TextBlock x:Name="ChangelogHeading" VerticalAlignment="Center" Margin="10,0,0,0"
+                                       FontSize="18"/>
+                        </StackPanel>
+                        <controls:ChangelogView x:Name="Changelog" Grid.Row="1"/>
+                    </Grid>
 
                     <ScrollViewer x:Name="SettingsScrollViewer"
                                   Grid.Row="1"
@@ -2058,11 +2077,11 @@
                                                 <Border Style="{StaticResource SettingRowBorder}">
                                                     <StackPanel>
                                                         <CheckBox x:Name="UltimateGpuCheck"
-                                                                  Content="Ultimate GPU mode (GPU 0)"
+                                                                  Content="Ultimate GPU mode"
                                                                   Checked="UltimateGpuCheck_Changed"
                                                                   Unchecked="UltimateGpuCheck_Changed"/>
                                                         <TextBlock x:Name="UltimateGpuHint"
-                                                                   Text="Assign the primary high-performance GPU (GPU 0) to Liquid Glass. GPU activity is capped to your Target FPS slider."
+                                                                   Text="Use the high-performance GPU to render Liquid Glass. GPU activity is capped to your Target FPS slider."
                                                                    Style="{StaticResource SettingHintText}"/>
                                                         <TextBlock x:Name="UltimateGpuWarning"
                                                                    Text="Warning: Dedicated GPU mode draws more power. Set Target FPS carefully so the GPU only runs up to your chosen frame limit."

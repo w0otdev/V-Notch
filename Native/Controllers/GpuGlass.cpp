@@ -1,13 +1,15 @@
 #include "vnotch_native.h"
 #include "vnotch_handle_registry.h"
 #include "Graphics/GlassDevice.h"
+#include "Graphics/CrossAdapterGlassOutput.h"
 #include "WindowBackdropCapture.h"
 #include "BackdropLayers.h"
 #include "Graphics/WindowBackdrop.h"
 #include <d3d9.h>
 #include <d3d11.h>
 #include <d3d11_4.h>
-#include <dxgi1_5.h>
+#include <dxgi1_6.h>
+#include <dxcore.h>
 #include <wrl/client.h>
 #include <array>
 #include <memory>
@@ -24,6 +26,8 @@
 
 #pragma comment(lib, "d3d11.lib")
 #pragma comment(lib, "dxgi.lib")
+#pragma comment(lib, "dxcore.lib")
+#pragma comment(lib, "dxguid.lib")
 #pragma comment(lib, "windowsapp.lib")
 
 namespace {
@@ -31,6 +35,31 @@ using Microsoft::WRL::ComPtr;
 namespace Capture = winrt::Windows::Graphics::Capture;
 namespace DirectX = winrt::Windows::Graphics::DirectX;
 void Check(HRESULT hr) { if (FAILED(hr)) throw hr; }
+bool SameLuid(LUID a, LUID b) noexcept { return a.HighPart == b.HighPart && a.LowPart == b.LowPart; }
+LUID HighPerformanceGlassAdapter() noexcept {
+    ComPtr<IDXGIFactory6> factory;
+    if (FAILED(CreateDXGIFactory1(IID_PPV_ARGS(&factory)))) return {};
+    ComPtr<IDXCoreAdapterFactory> core;
+    DXCoreCreateAdapterFactory(IID_IDXCoreAdapterFactory, reinterpret_cast<void**>(core.GetAddressOf()));
+    LUID firstHardware{};
+    for (UINT i = 0; ; ++i) {
+        ComPtr<IDXGIAdapter1> adapter;
+        if (FAILED(factory->EnumAdapterByGpuPreference(i, DXGI_GPU_PREFERENCE_HIGH_PERFORMANCE,
+                IID_PPV_ARGS(&adapter)))) return firstHardware;
+        DXGI_ADAPTER_DESC1 desc{};
+        if (FAILED(adapter->GetDesc1(&desc)) || (desc.Flags & DXGI_ADAPTER_FLAG_SOFTWARE)) continue;
+        if (SameLuid(firstHardware, {})) firstHardware = desc.AdapterLuid;
+        // Windows can still rank its per-process power-saving override first.
+        // Keep the performance order among discrete GPUs and use the first
+        // hardware GPU on systems with no identifiable discrete adapter.
+        ComPtr<IDXCoreAdapter> physical;
+        bool integrated = true;
+        if (core && SUCCEEDED(core->GetAdapterByLuid(desc.AdapterLuid, IID_IDXCoreAdapter,
+                reinterpret_cast<void**>(physical.GetAddressOf()))) &&
+            SUCCEEDED(physical->GetProperty(DXCoreAdapterProperty::IsIntegrated, &integrated)) && !integrated)
+            return desc.AdapterLuid;
+    }
+}
 using namespace vnotch::graphics;
 struct SharedTarget {
     ComPtr<IDirect3DTexture9> texture9;
@@ -78,6 +107,7 @@ public:
     // Three shared targets: D3D9 can still copy one while D3D11 renders another,
     // so a slow consumer no longer drops the next frame (consumerStalls).
     std::array<SharedTarget, 3> output;
+    CrossAdapterGlassOutput crossAdapter;
     std::vector<Target> pyramid;
     std::vector<Target> reconstruction;
     Target resolved;
@@ -112,7 +142,7 @@ public:
     std::vector<DXGI_OUTDUPL_MOVE_RECT> moveRects;
     ULONGLONG smallSince = 0;
 
-    void Initialize(IDirect3DDevice9Ex* device9, int w, int h) {
+    void Initialize(IDirect3DDevice9Ex* device9, int w, int h, LUID renderLuid = {}) {
         presentationDevice = device9;
         width = w; height = h;
         D3DDEVICE_CREATION_PARAMETERS creation{};
@@ -123,32 +153,37 @@ public:
         Check(base9.As(&direct9));
         LUID luid{};
         Check(direct9->GetAdapterLUID(creation.AdapterOrdinal, &luid));
-        ComPtr<IDXGIFactory1> factory;
+        const bool hasPreference = renderLuid.HighPart || renderLuid.LowPart;
+        const bool separateAdapters = hasPreference && !SameLuid(renderLuid, luid);
+        ComPtr<IDXGIFactory4> factory;
         Check(CreateDXGIFactory1(IID_PPV_ARGS(&factory)));
-        for (UINT i = 0; ; ++i) {
-            ComPtr<IDXGIAdapter1> candidate;
-            if (factory->EnumAdapters1(i, &candidate) == DXGI_ERROR_NOT_FOUND) break;
-            DXGI_ADAPTER_DESC1 desc{};
-            Check(candidate->GetDesc1(&desc));
-            if (desc.AdapterLuid.HighPart == luid.HighPart && desc.AdapterLuid.LowPart == luid.LowPart) {
-                adapter = candidate; break;
-            }
-        }
-        if (!adapter) throw DXGI_ERROR_NOT_FOUND;
+        Check(factory->EnumAdapterByLuid(hasPreference ? renderLuid : luid, IID_PPV_ARGS(&adapter)));
         sharedDevice = vnotch::graphics::GlassDevice::Acquire(adapter.Get());
         device = sharedDevice->device; context = sharedDevice->context;
         vertex = sharedDevice->vertex; crop = sharedDevice->crop;
         down = sharedDevice->down; up = sharedDevice->up; resolve = sharedDevice->resolve;
         copy = sharedDevice->copy; refraction = sharedDevice->refraction; upResolve = sharedDevice->upResolve;
         sampler = sharedDevice->sampler; rasterizer = sharedDevice->rasterizer;
-        for (auto& target : output) {
-            HANDLE shared = nullptr; // Legacy shared handles belong to the resource; never CloseHandle.
-            Check(device9->CreateTexture(w, h, 1, D3DUSAGE_RENDERTARGET, D3DFMT_A8R8G8B8,
-                D3DPOOL_DEFAULT, &target.texture9, &shared));
-            Check(target.texture9->GetSurfaceLevel(0, &target.surface));
-            Check(device->OpenSharedResource(shared, IID_PPV_ARGS(&target.texture)));
+        if (separateAdapters) {
+            // One pending frame. D3D9 never reads this D3D11 target directly.
+            auto& target = output.front();
+            D3D11_TEXTURE2D_DESC desc{};
+            desc.Width = w; desc.Height = h; desc.MipLevels = 1; desc.ArraySize = 1;
+            desc.Format = DXGI_FORMAT_B8G8R8A8_UNORM; desc.SampleDesc.Count = 1;
+            desc.BindFlags = D3D11_BIND_RENDER_TARGET;
+            Check(device->CreateTexture2D(&desc, nullptr, &target.texture));
             Check(device->CreateRenderTargetView(target.texture.Get(), nullptr, &target.rtv));
-            Check(device9->CreateQuery(D3DQUERYTYPE_EVENT, &target.consumed));
+            Check(crossAdapter.Initialize(device.Get(), device9, desc));
+        } else {
+            for (auto& target : output) {
+                HANDLE shared = nullptr; // Legacy shared handles belong to the resource; never CloseHandle.
+                Check(device9->CreateTexture(w, h, 1, D3DUSAGE_RENDERTARGET, D3DFMT_A8R8G8B8,
+                    D3DPOOL_DEFAULT, &target.texture9, &shared));
+                Check(target.texture9->GetSurfaceLevel(0, &target.surface));
+                Check(device->OpenSharedResource(shared, IID_PPV_ARGS(&target.texture)));
+                Check(device->CreateRenderTargetView(target.texture.Get(), nullptr, &target.rtv));
+                Check(device9->CreateQuery(D3DQUERYTYPE_EVENT, &target.consumed));
+            }
         }
         D3D11_BUFFER_DESC buffer{};
         buffer.ByteWidth = sizeof(Constants); buffer.Usage = D3D11_USAGE_DEFAULT;
@@ -709,6 +744,7 @@ public:
         target.activeWidth = pendingWidth = f.width; target.activeHeight = pendingHeight = f.height;
         if (f.refract & 1) PrepareLensConstants(data.lens);
         Draw(resolved.Input(f.width, f.height), target.rtv.Get(), f.width, f.height, (f.refract & 1) ? refraction.Get() : copy.Get(), data);
+        if (crossAdapter.readback) crossAdapter.QueueCopy(context.Get(), target.texture.Get(), PresentRegion());
         context->End(completed.Get());
         if (completionFence && completionEvent) Check(fenceContext->Signal(completionFence.Get(), ++fenceValue));
         context->Flush(); pending = true;
@@ -751,15 +787,21 @@ public:
         Check(hr);
         return hr == S_OK && ready ? S_OK : S_FALSE;
     }
+    RECT PresentRegion() const noexcept {
+        // Initialize the entire persistent WPF surface once. Include the old
+        // extent on subsequent transfers to clear pixels when the glass shrinks.
+        if (!presentedWidth || !presentedHeight) return {0, 0, width, height};
+        return {0, 0, std::max(pendingWidth, presentedWidth), std::max(pendingHeight, presentedHeight)};
+    }
     HRESULT PresentReady(IDirect3DSurface9* destination) {
         if (CompletionReady() != S_OK) return S_FALSE;
+        const RECT region = PresentRegion();
+        if (crossAdapter.readback) {
+            HRESULT hr = crossAdapter.Present(context.Get(), presentationDevice.Get(), destination, region);
+            if (hr == S_OK) { presentedWidth = pendingWidth; presentedHeight = pendingHeight; pending = false; }
+            return hr;
+        }
         auto& target = output[nextOutput];
-        // WPF keeps one back buffer throughout the session. Both this transfer
-        // and WPF composition stay on the GPU; no SetBackBuffer churn per frame.
-        RECT region{ 0, 0, std::max(pendingWidth, presentedWidth), std::max(pendingHeight, presentedHeight) };
-        // The persistent D3D9 surface is uninitialized on its first use. Transfer
-        // the fully cleared source once before switching to bounded updates.
-        if (!presentedWidth || !presentedHeight) { region.right = width; region.bottom = height; }
         Check(presentationDevice->StretchRect(target.surface.Get(), &region, destination, &region, D3DTEXF_NONE));
         presentedWidth = pendingWidth; presentedHeight = pendingHeight;
         Check(target.consumed->Issue(D3DISSUE_END));
@@ -774,13 +816,22 @@ public:
 vnotch::HandleRegistry<GpuGlass> pipelines;
 }
 
-VN_EXPORT int32_t __stdcall vn_glass_gpu_create(IDirect3DDevice9Ex* device9, int32_t w, int32_t h, int64_t* handle) noexcept {
+VN_EXPORT int32_t __stdcall vn_glass_gpu_create_on_adapter(IDirect3DDevice9Ex* device9, int32_t w, int32_t h,
+    LUID renderLuid, int64_t* handle, wchar_t* adapterName, uint32_t nameCapacity) noexcept {
     if (!device9 || !handle || w <= 0 || h <= 0 || w > 8192 || h > 8192) return E_INVALIDARG;
     *handle = 0;
     try {
-        auto pipeline = std::make_unique<GpuGlass>(); pipeline->Initialize(device9, w, h);
+        auto pipeline = std::make_unique<GpuGlass>(); pipeline->Initialize(device9, w, h, renderLuid);
+        if (adapterName && nameCapacity) {
+            DXGI_ADAPTER_DESC1 desc{};
+            Check(pipeline->adapter->GetDesc1(&desc));
+            wcsncpy_s(adapterName, nameCapacity, desc.Description, _TRUNCATE);
+        }
         *handle = pipelines.Add(std::move(pipeline)); return S_OK;
     } catch (HRESULT hr) { return hr; } catch (...) { return E_FAIL; }
+}
+VN_EXPORT int32_t __stdcall vn_glass_gpu_create(IDirect3DDevice9Ex* device9, int32_t w, int32_t h, int64_t* handle) noexcept {
+    return vn_glass_gpu_create_on_adapter(device9, w, h, {}, handle, nullptr, 0);
 }
 VN_EXPORT int32_t __stdcall vn_glass_gpu_render(int64_t handle, const Frame* frame) noexcept {
     auto pipeline = pipelines.Acquire(handle);
@@ -847,6 +898,19 @@ VN_EXPORT uint32_t __stdcall vn_glass_gpu_find_adapter(IDirect3D9Ex* direct9, HW
     for (UINT i = 0; i < direct9->GetAdapterCount(); ++i)
         if (direct9->GetAdapterMonitor(i) == monitor) return i;
     return 0;
+}
+VN_EXPORT uint32_t __stdcall vn_glass_gpu_find_preferred_adapter(IDirect3D9Ex* direct9, HWND hwnd, LUID* renderLuid) noexcept {
+    const UINT monitorAdapter = vn_glass_gpu_find_adapter(direct9, hwnd);
+    if (!renderLuid) return monitorAdapter;
+    *renderLuid = HighPerformanceGlassAdapter();
+    if (!direct9 || SameLuid(*renderLuid, {})) return monitorAdapter;
+    // DXGI and D3D9 ordinals are unrelated. Prefer a local shared surface
+    // even if the monitor is connected to the other GPU.
+    LUID luid{};
+    if (SUCCEEDED(direct9->GetAdapterLUID(monitorAdapter, &luid)) && SameLuid(luid, *renderLuid)) return monitorAdapter;
+    for (UINT j = 0; j < direct9->GetAdapterCount(); ++j)
+        if (SUCCEEDED(direct9->GetAdapterLUID(j, &luid)) && SameLuid(luid, *renderLuid)) return j;
+    return monitorAdapter;
 }
 VN_EXPORT int32_t __stdcall vn_glass_gpu_capture_status(int64_t handle) noexcept {
     auto pipeline = pipelines.Acquire(handle);
