@@ -253,35 +253,53 @@ class WindowCaptureCache final {
             texture->GetDesc(&source_desc);
             if (static_cast<UINT>(crop.right) > source_desc.Width || static_cast<UINT>(crop.bottom) > source_desc.Height) return false;
 
+            // Cache a padded crop. While the notch resizes, `hit` grows every
+            // frame; a static window (e.g. MyDockFinder's top bar) sends no new
+            // WGC frame, so an exact-crop cache could not serve the wider strip
+            // and the layer dropped out until the next frame. Same pixels, 1:1.
+            constexpr LONG kCachePad = 192;
+            const RECT cache{
+                std::max<LONG>(0, crop.left - kCachePad), std::max<LONG>(0, crop.top - kCachePad),
+                std::min<LONG>(static_cast<LONG>(source_desc.Width), crop.right + kCachePad),
+                std::min<LONG>(static_cast<LONG>(source_desc.Height), crop.bottom + kCachePad)};
+            const int cache_w = cache.right - cache.left, cache_h = cache.bottom - cache.top;
+
             D3D11_TEXTURE2D_DESC staging_desc{};
             if (entry.staging) entry.staging->GetDesc(&staging_desc);
-            if (staging_desc.Width != static_cast<UINT>(width) || staging_desc.Height != static_cast<UINT>(height)) {
+            // Grow-only staging: a resizing hit must not reallocate every frame.
+            if (staging_desc.Width < static_cast<UINT>(cache_w) || staging_desc.Height < static_cast<UINT>(cache_h)) {
                 entry.staging.Reset();
+                const UINT grow_w = std::max<UINT>(staging_desc.Width, static_cast<UINT>(cache_w));
+                const UINT grow_h = std::max<UINT>(staging_desc.Height, static_cast<UINT>(cache_h));
                 staging_desc = {};
-                staging_desc.Width = width; staging_desc.Height = height;
+                staging_desc.Width = grow_w; staging_desc.Height = grow_h;
                 staging_desc.MipLevels = staging_desc.ArraySize = staging_desc.SampleDesc.Count = 1;
                 staging_desc.Format = DXGI_FORMAT_B8G8R8A8_UNORM;
                 staging_desc.Usage = D3D11_USAGE_STAGING; staging_desc.CPUAccessFlags = D3D11_CPU_ACCESS_READ;
                 winrt::check_hresult(device->CreateTexture2D(&staging_desc, nullptr, &entry.staging));
             }
-            // Copy only the intersecting crop. Keep the frame checked out until
+            // Copy only the padded crop. Keep the frame checked out until
             // Map completes the GPU copy, so the pool cannot recycle its surface
             // while CopySubresourceRegion is still queued on the GPU.
-            const D3D11_BOX box{static_cast<UINT>(crop.left), static_cast<UINT>(crop.top), 0,
-                static_cast<UINT>(crop.right), static_cast<UINT>(crop.bottom), 1};
+            const D3D11_BOX box{static_cast<UINT>(cache.left), static_cast<UINT>(cache.top), 0,
+                static_cast<UINT>(cache.right), static_cast<UINT>(cache.bottom), 1};
             context->CopySubresourceRegion(entry.staging.Get(), 0, 0, 0, 0, texture.Get(), 0, &box);
             D3D11_MAPPED_SUBRESOURCE mapped{};
             winrt::check_hresult(context->Map(entry.staging.Get(), 0, D3D11_MAP_READ, 0, &mapped));
             struct Unmap { ID3D11DeviceContext* context; ID3D11Texture2D* texture; ~Unmap() { context->Unmap(texture, 0); } } unmap{context.Get(), entry.staging.Get()};
             // A cleared/empty WGC surface is not an opaque black image. Validate
             // alpha before replacing the cache, and keep genuine dark content.
-            if (HasVisiblePixels(mapped, width, height)) {
-                entry.pixels.resize(static_cast<size_t>(width) * height);
-                for (int row = 0; row < height; ++row)
-                    std::memcpy(entry.pixels.data() + static_cast<size_t>(row) * width,
-                        static_cast<const uint8_t*>(mapped.pData) + static_cast<size_t>(row) * mapped.RowPitch, static_cast<size_t>(width) * 4);
+            // Judge the requested crop only, as before; padding may be empty.
+            D3D11_MAPPED_SUBRESOURCE crop_view = mapped;
+            crop_view.pData = static_cast<uint8_t*>(mapped.pData) +
+                static_cast<size_t>(crop.top - cache.top) * mapped.RowPitch + static_cast<size_t>(crop.left - cache.left) * 4;
+            if (HasVisiblePixels(crop_view, width, height)) {
+                entry.pixels.resize(static_cast<size_t>(cache_w) * cache_h);
+                for (int row = 0; row < cache_h; ++row)
+                    std::memcpy(entry.pixels.data() + static_cast<size_t>(row) * cache_w,
+                        static_cast<const uint8_t*>(mapped.pData) + static_cast<size_t>(row) * mapped.RowPitch, static_cast<size_t>(cache_w) * 4);
                 if (debug) ++debug_info[9];
-                entry.copied = crop;
+                entry.copied = cache;
                 entry.copied_frame = true;
                 if (out_fresh) *out_fresh = true;
             }

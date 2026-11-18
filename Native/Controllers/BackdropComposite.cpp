@@ -154,6 +154,20 @@ bool TrackLiveCapture(Scratch& scratch, HWND hwnd, bool captured) {
     return captured;
 }
 
+// An unredirected tool overlay that WGC captured recently is real, visible
+// content (e.g. MyDockFinder's top bar), not an invisible shell ghost. If its
+// frame is momentarily missing, keep the last complete strip instead of
+// composing without it, which made the bar blink in and out.
+bool WasLiveCapture(const Scratch& scratch, HWND hwnd) noexcept {
+    for (const auto& entry : scratch.live_windows)
+        if (entry.hwnd == hwnd) return true;
+    return false;
+}
+
+bool MayOmitFailedLayer(const Scratch& scratch, HWND hwnd) noexcept {
+    return IsUnredirectedToolOverlay(GetWindowLongPtrW(hwnd, GWL_EXSTYLE)) && !WasLiveCapture(scratch, hwnd);
+}
+
 constexpr bool Contains(const RECT& outer, const RECT& inner) noexcept {
     return inner.left >= outer.left && inner.top >= outer.top && inner.right <= outer.right && inner.bottom <= outer.bottom;
 }
@@ -579,7 +593,7 @@ bool Compose(Scratch& scratch, const RECT& area, std::vector<uint32_t>& out, Com
         if (state.count > 0 && Contains(state.layers[0].visible, area)) {
             bool top_opaque = false;
             const bool captured = CompositeWindowLayer(scratch, screen, dc, area, width, state.layers[0], metrics, &top_opaque);
-            if (!captured && !IsUnredirectedToolOverlay(GetWindowLongPtrW(state.layers[0].hwnd, GWL_EXSTYLE))) return false;
+            if (!captured && !MayOmitFailedLayer(scratch, state.layers[0].hwnd)) return false;
             if (captured && top_opaque) {
                 metrics.static_only = false;
                 covered = true;
@@ -590,21 +604,40 @@ bool Compose(Scratch& scratch, const RECT& area, std::vector<uint32_t>& out, Com
         if (!covered) {
             // PaintDesktop rebuilds the wallpaper even when applications cover
             // it. Retain the same bounded static lifetime as a desktop-only strip.
+            // Paint a padded area and serve sub-rects from it: while the notch
+            // animates, `area` changes every frame and repainting each time made
+            // this the slowest step. Same wallpaper pixels, copied 1:1.
             const ULONGLONG now = GetTickCount64();
-            if (scratch.wallpaper.bits && EqualRect(&scratch.wallpaper_area, &area) &&
-                now - scratch.wallpaper_tick < kWallpaperTtlMs) {
-                std::memcpy(scratch.target.bits, scratch.wallpaper.bits, static_cast<size_t>(width) * height * 4);
-                ok = true;
-            } else {
-                // PaintDesktop treats DC coordinates as screen coordinates.
-                SetViewportOrgEx(dc, -area.left, -area.top, nullptr);
-                ok = PaintDesktop(dc) != FALSE;
-                SetViewportOrgEx(dc, 0, 0, nullptr);
-                GdiFlush();
-                if (ok && scratch.wallpaper.Ensure(screen, width, height)) {
-                    std::memcpy(scratch.wallpaper.bits, scratch.target.bits, static_cast<size_t>(width) * height * 4);
-                    scratch.wallpaper_area = area; scratch.wallpaper_tick = now;
+            const bool cached = scratch.wallpaper.bits && Contains(scratch.wallpaper_area, area) &&
+                now - scratch.wallpaper_tick < kWallpaperTtlMs;
+            ok = true;
+            if (!cached) {
+                constexpr LONG kWallpaperPad = 160;
+                const LONG vx = GetSystemMetrics(SM_XVIRTUALSCREEN), vy = GetSystemMetrics(SM_YVIRTUALSCREEN);
+                const LONG vr = vx + GetSystemMetrics(SM_CXVIRTUALSCREEN), vb = vy + GetSystemMetrics(SM_CYVIRTUALSCREEN);
+                RECT padded{ std::max(vx, area.left - kWallpaperPad), std::max(vy, area.top - kWallpaperPad),
+                    std::min(vr, area.right + kWallpaperPad), std::min(vb, area.bottom + kWallpaperPad) };
+                // The virtual screen always contains `area`; keep it if metrics disagree.
+                if (!Contains(padded, area)) padded = area;
+                const int pw = padded.right - padded.left, ph = padded.bottom - padded.top;
+                ok = scratch.wallpaper.Ensure(screen, pw, ph);
+                if (ok) {
+                    // PaintDesktop treats DC coordinates as screen coordinates.
+                    SetViewportOrgEx(scratch.wallpaper.dc, -padded.left, -padded.top, nullptr);
+                    ok = PaintDesktop(scratch.wallpaper.dc) != FALSE;
+                    SetViewportOrgEx(scratch.wallpaper.dc, 0, 0, nullptr);
+                    GdiFlush();
                 }
+                if (ok) { scratch.wallpaper_area = padded; scratch.wallpaper_tick = now; }
+                else scratch.wallpaper_area = {};
+            }
+            if (ok) {
+                const int ox = area.left - scratch.wallpaper_area.left, oy = area.top - scratch.wallpaper_area.top;
+                const auto* src = static_cast<const uint8_t*>(scratch.wallpaper.bits);
+                auto* dst = static_cast<uint8_t*>(scratch.target.bits);
+                const size_t srcStride = static_cast<size_t>(scratch.wallpaper.width) * 4, rowBytes = static_cast<size_t>(width) * 4;
+                for (int row = 0; row < height; ++row)
+                    std::memcpy(dst + row * rowBytes, src + (static_cast<size_t>(oy) + row) * srcStride + static_cast<size_t>(ox) * 4, rowBytes);
             }
 
             if (!ok) return false;
@@ -619,7 +652,7 @@ bool Compose(Scratch& scratch, const RECT& area, std::vector<uint32_t>& out, Com
                 if (CompositeWindowLayer(scratch, screen, dc, area, width, state.layers[i], metrics)) {
                     metrics.static_only = false;
                     ok = true;
-                } else if (!IsUnredirectedToolOverlay(GetWindowLongPtrW(state.layers[i].hwnd, GWL_EXSTYLE))) {
+                } else if (!MayOmitFailedLayer(scratch, state.layers[i].hwnd)) {
                     // Wallpaper or lower windows are not a valid replacement
                     // for an opaque window whose capture is temporarily missing.
                     return false;

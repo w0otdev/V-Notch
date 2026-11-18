@@ -22,6 +22,25 @@ internal sealed partial class D3DImageFramePresenter
             Lens[register * 4] = float.IsFinite(scalar) ? scalar : 0;
         }
 
+        public readonly float Get(int register)
+        {
+            fixed (float* lens = Lens)
+                return lens[register * 4];
+        }
+
+        // Second component of a register; only the native D3D11 shader reads it.
+        public void SetY(int register, double value)
+        {
+            float scalar = (float)value;
+            Lens[register * 4 + 1] = float.IsFinite(scalar) ? scalar : 0;
+        }
+
+        public readonly float GetY(int register)
+        {
+            fixed (float* lens = Lens)
+                return lens[register * 4 + 1];
+        }
+
         public readonly bool LensEquals(in GpuFrame other)
         {
             fixed (float* a = Lens, b = other.Lens)

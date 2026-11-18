@@ -157,7 +157,10 @@ float3 notchDistanceField(
         float dX = qx - r;
         float dY = qy - r;
         sdf = max(dX, dY);
-        float2 w = exp(float2(dX - sdf, dY - sdf) * 0.35);
+        // exp(0) == 1 for the larger axis, so only the smaller one needs exp():
+        // identical weights, one transcendental fewer on most interior pixels.
+        float e = exp(-abs(dX - dY) * 0.35);
+        float2 w = dX >= dY ? float2(1.0, e) : float2(e, 1.0);
         d = float2(w.x, w.y * (py < 0.0 ? -1.0 : 1.0));
     }
 
@@ -202,6 +205,16 @@ float3 sampleBlurredSource(float2 sourcePixel, float2 rcpSourceSize, float radiu
     return sum;
 }
 
+// Plain backdrop for the animation bleed band, with the same tone adjustments
+// as the glass body so the band reads as glass, not as a flat fill.
+float3 bleedBackdrop(float2 basePixel, float2 rcpSourceSize)
+{
+    float3 c = sampleSource(basePixel, rcpSourceSize);
+    float lum = luminance(c);
+    c = float3(lum, lum, lum) + (c - float3(lum, lum, lum)) * max(satFactor, 0.0);
+    return saturate(c + brightAdd);
+}
+
 float4 main(float2 uv : TEXCOORD) : COLOR
 {
     float2 sourceSize = max(float2(srcW, srcH), float2(1.0, 1.0));
@@ -211,8 +224,25 @@ float4 main(float2 uv : TEXCOORD) : COLOR
     if (geometryValid < 0.5)
         return tex2D(input, saturate(uv));
 
-    float npx = uv.x * srcW;
-    float npy = uv.y * srcH;
+    // GPU path only: while the notch animates, the lens is drawn `bleed` pixels
+    // in from the frame origin and the surrounding pixels carry the plain
+    // backdrop at full alpha. WPF shifts the frame back and its live clip cuts
+    // the shape, so late frames never reveal the dark shadow layer behind them.
+    // bleed == 0 (always in the WPF effect) keeps the original output exactly.
+#ifdef GLASS_BLEED
+    float bleed = max(GLASS_BLEED, 0.0);
+#else
+    float bleed = 0.0;
+#endif
+    // GPU path only: optical rim width in pixels (from the ZRadius setting, as the
+    // CPU renderer uses). 0 keeps the legacy notch-radius scaling (WPF effect).
+#ifdef GLASS_RIM
+    float rimCap = max(GLASS_RIM, 0.0);
+#else
+    float rimCap = 0.0;
+#endif
+    float npx = uv.x * srcW - bleed;
+    float npy = uv.y * srcH - bleed;
 
     float2 localPos = float2(npx - notchW * 0.5, npy - notchH * 0.5);
     float2 halfSize = max(notchSize * 0.5, float2(0.5, 0.5));
@@ -220,7 +250,7 @@ float4 main(float2 uv : TEXCOORD) : COLOR
     // Fast Bounding Box Pre-Cull:
     // Any pixel outside the notch boundary + 1.5px antialias padding has alpha = 0.
     // Early exit immediately bypasses all SDF, pow(), refraction, glow, and sampling logic!
-    if (abs(localPos.x) > halfSize.x + 1.5 || abs(localPos.y) > halfSize.y + 1.5)
+    if (abs(localPos.x) > halfSize.x + 1.5 + bleed || abs(localPos.y) > halfSize.y + 1.5 + bleed)
     {
         return float4(0.0, 0.0, 0.0, 0.0);
     }
@@ -239,7 +269,17 @@ float4 main(float2 uv : TEXCOORD) : COLOR
     float bend   = max(edgeBend, 0.05);
 
     // Compute SDF and normal
-    float3 field = notchDistanceField(localPos, halfSize, topCornerR, bottomCornerR, nSquircle);
+    float2 fieldPos = localPos;
+    float2 fieldHalf = halfSize;
+    if (rimCap > 0.0 && topCornerR < 0.5)
+    {
+        // Square top corners: the notch hangs from the screen edge, so the top is
+        // not a glass edge. Push it out of the field so no lens runs along it.
+        float lift = rimCap * 4.0 + 2.0;
+        fieldPos.y += lift * 0.5;
+        fieldHalf.y += lift * 0.5;
+    }
+    float3 field = notchDistanceField(fieldPos, fieldHalf, topCornerR, bottomCornerR, nSquircle);
     float insidePixels = field.x;
     float2 inwardNormal = field.yz;
 
@@ -247,6 +287,8 @@ float4 main(float2 uv : TEXCOORD) : COLOR
     float alpha = saturate(insidePixels + 0.5);
     if (alpha <= 0.0)
     {
+        if (bleed > 0.0)
+            return float4(bleedBackdrop(basePixel, rcpSourceSize), 1.0);
         return float4(0.0, 0.0, 0.0, 0.0);
     }
 
@@ -255,7 +297,10 @@ float4 main(float2 uv : TEXCOORD) : COLOR
 
     // Optical Rim & Normalized depth [0, 1] from edge to center
     float notchRadius = min(halfSize.x, halfSize.y);
-    float distNorm = saturate(insidePixels / max(notchRadius, 1.0));
+    // A fixed-pixel rim keeps the band as thin on an expanded panel as on the
+    // collapsed notch, instead of growing with the panel's half-height.
+    float rimRadius = rimCap > 0.0 ? min(notchRadius, rimCap) : notchRadius;
+    float distNorm = saturate(insidePixels / max(rimRadius, 1.0));
     float oneMinusDist = 1.0 - distNorm;
 
     // -----------------------------------------------------------------
@@ -302,6 +347,15 @@ float4 main(float2 uv : TEXCOORD) : COLOR
     // OverShifted displacement vector mapping background coordinates
     float2 samplePNorm = pNorm * refractFactor;
     float2 displacement = (samplePNorm - pNorm) * halfSize * bend;
+    if (rimCap > 0.0)
+    {
+        // The zoom-toward-centre offset grows with the distance from the centre,
+        // so a wide panel pulled content from hundreds of pixels away into its
+        // edge. Cap the lever arm at the collapsed notch's proportion
+        // (half-width = 6.5 rim widths), which leaves the collapsed notch as is.
+        float2 leverMax = float2(rimRadius, rimRadius) * 6.5;
+        displacement = (refractFactor - 1.0) * clamp(localPos, -leverMax, leverMax) * bend;
+    }
 
     // Organic glass surface wave distortion (driven by u_glowEdge0)
     float distortAmt = clamp(u_glowEdge0, 0.0, 2.0);
@@ -447,5 +501,7 @@ float4 main(float2 uv : TEXCOORD) : COLOR
     col = float3(origLum, origLum, origLum) + (col - float3(origLum, origLum, origLum)) * max(satFactor, 0.0);
     col += brightAdd;
 
+    if (bleed > 0.0)
+        return float4(lerp(bleedBackdrop(basePixel, rcpSourceSize), saturate(col), alpha), 1.0);
     return float4(saturate(col) * alpha, alpha);
 }

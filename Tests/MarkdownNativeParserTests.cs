@@ -184,15 +184,18 @@ public class MarkdownNativeParserTests
             Assert.Single(termsLinks);
             Assert.Equal(Uri.UriSchemeHttps, termsLinks[0].NavigateUri.Scheme);
 
-            string adversarial = new string('*', 50_000) + " " + new string('[', 50_000);
+            string delimiters = new string('*', 50_000) + " " + new string('[', 50_000);
+            string adversarial = delimiters + " **end**";
+            var textBlock = new TextBlock { Text = "Terms " };
             var sw = Stopwatch.StartNew();
-            var tb = new TextBlock();
-            TermsOfServicePage.AddFormattedInlines(tb, adversarial);
-            Assert.NotEmpty(tb.Inlines);
-
-            ChangelogWindow.PopulateInlineMarkdown(tb, adversarial);
+            TermsOfServicePage.AddFormattedInlines(textBlock, adversarial);
             sw.Stop();
-            Assert.NotEmpty(tb.Inlines);
+            Assert.Equal("Terms " + delimiters + " end", new TextRange(textBlock.ContentStart, textBlock.ContentEnd).Text);
+
+            sw.Start();
+            ChangelogWindow.PopulateInlineMarkdown(textBlock, adversarial);
+            sw.Stop();
+            Assert.Equal(delimiters + " end", new TextRange(textBlock.ContentStart, textBlock.ContentEnd).Text);
             Assert.True(sw.ElapsedMilliseconds < 500, $"Expected fast linear parse, took {sw.ElapsedMilliseconds}ms");
         });
     }

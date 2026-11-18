@@ -12,6 +12,54 @@ public sealed partial class LiquidGlassController
     private bool _gpuLensUpdateQueued;
     internal bool UsesNativeRefraction { get; private set; }
 
+    /// <summary>
+    /// Max edge bleed (physical px) drawn around the lens while animating. The host
+    /// must offset the presented frame by the bleed stored in PresentedGpuFrame.
+    /// </summary>
+    internal int GpuEdgeBleedPx { get; set; }
+
+    private System.Windows.Media.TranslateTransform? _presentedFrameAlign;
+
+    // Native refraction bakes the lens screen position into each frame at render
+    // time, but WPF shows that frame 1-2 UI frames later. While the host resizes,
+    // that variable lag made the backdrop jitter sideways. Shift the presented
+    // frame by the drift (minus its edge bleed) so the desktop stays screen-locked.
+    // screenLeft/Top: live lens origin in physical px; dipScale: physical px per
+    // local DIP of the host image (DPI times any ancestor scale). UI thread only.
+    internal void AlignPresentedFrame(double screenLeft, double screenTop, double dipScaleX, double dipScaleY)
+    {
+        if (!UsesNativeRefraction || PresentedGpuFrame is not { } frame ||
+            !(dipScaleX > 0) || !(dipScaleY > 0) || !double.IsFinite(screenLeft) || !double.IsFinite(screenTop))
+        {
+            ResetPresentedFrameAlignment();
+            return;
+        }
+        // Whole physical pixels keep the D3DImage unresampled (no subpixel blur).
+        double driftX = Math.Round(frame.X + frame.Get(4) - screenLeft);
+        double driftY = Math.Round(frame.Y + frame.Get(5) - screenTop);
+        // A frame from before a reset or monitor move must never slide the glass away.
+        if (!double.IsFinite(driftX) || !double.IsFinite(driftY) || Math.Abs(driftX) > 96 || Math.Abs(driftY) > 96)
+            driftX = driftY = 0;
+        // Frames rendered with edge bleed draw the lens `bleed` px in from the origin.
+        double bleed = Math.Clamp((double)frame.GetY(2), 0, 128);
+        double tx = (driftX - bleed) / dipScaleX;
+        double ty = (driftY - bleed) / dipScaleY;
+        if (tx == 0 && ty == 0 && _presentedFrameAlign == null) return;
+        _presentedFrameAlign ??= new System.Windows.Media.TranslateTransform();
+        if (!ReferenceEquals(_host.RenderTransform, _presentedFrameAlign)) _host.RenderTransform = _presentedFrameAlign;
+        if (_presentedFrameAlign.X != tx) _presentedFrameAlign.X = tx;
+        if (_presentedFrameAlign.Y != ty) _presentedFrameAlign.Y = ty;
+    }
+
+    internal void ResetPresentedFrameAlignment()
+    {
+        // Only undo our own transform; the CPU presenter owns its own one.
+        if (_presentedFrameAlign == null) return;
+        if (ReferenceEquals(_host.RenderTransform, _presentedFrameAlign)) _host.RenderTransform = null;
+        _presentedFrameAlign.X = 0;
+        _presentedFrameAlign.Y = 0;
+    }
+
     internal void EnableNativeRefraction() => UsesNativeRefraction = true;
 
     // Snapshot dependency properties on the UI thread; the capture worker never
@@ -107,6 +155,15 @@ public sealed partial class LiquidGlassController
         frame.Set(18, 0); // Dual-Kawase already blurred the source.
         frame.Set(19, g.Chroma); frame.Set(20, g.SatFactor); frame.Set(21, g.BrightAdd);
         frame.Set(30, g.EdgeBend); frame.Set(31, g.BevelMode);
+        // Edge bleed only while the notch moves, and only for hosts that shift the
+        // presented frame back (GpuEdgeBleedPx > 0). At rest the output is unchanged.
+        int bleed = GpuEdgeBleedPx > 0 && (_captureFullSurface || _animating)
+            ? Math.Clamp(Math.Min(GpuEdgeBleedPx, dims.Margin), 0, 128)
+            : 0;
+        frame.SetY(2, bleed);
+        // Same rim width as the CPU renderer: ZRadius in physical px, at most the
+        // notch half-size, so expanded panels keep a thin edge lens.
+        frame.SetY(3, ComputeRimWidth(p.ZRadius, dims.OutScale, dims.MinHalf));
         bool forceRefresh = (frame.Refract & 2) != 0;
         bool hasPixelBuffer = backdropPixels != IntPtr.Zero;
         if (hasPixelBuffer)
@@ -117,6 +174,9 @@ public sealed partial class LiquidGlassController
             {
                 return false;
             }
+            // Same pixels as the last submitted pixel frame: native skips its own
+            // full-frame rehash (it still verifies its texture holds that frame).
+            if (sourceUnchanged && _hasUploadedGpuFrame) frame.Refract |= 4;
         }
         bool accepted = presenter.CaptureGpuFrame(in frame, g, generation, out bool submitted, backdropPixels,
                 checked(dims.SrcW * 4), checked(dims.SrcW * dims.SrcH * 4), exactWindows);

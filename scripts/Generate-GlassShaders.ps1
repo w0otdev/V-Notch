@@ -72,7 +72,7 @@ $header = [Text.StringBuilder]::new()
 [void]$header.AppendLine('// Generated shader bytecode. Do not edit; see Generate-GlassShaders.ps1.')
 [void]$header.AppendLine('#pragma once')
 [void]$header.AppendLine('namespace vnotch::graphics::shaders {')
-foreach ($entry in @('fullscreenVs', 'cropPs', 'downPs', 'upPs', 'resolvePs', 'copyPs', 'refractPs', 'opaqueWindowPs')) {
+foreach ($entry in @('fullscreenVs', 'cropPs', 'downPs', 'upPs', 'upResolvePs', 'resolvePs', 'copyPs', 'refractPs', 'opaqueWindowPs')) {
     $profile = if ($entry -eq 'fullscreenVs') { 'vs_4_0' } else { 'ps_4_0' }
     $bytes = [VNotch.Build.GlassShaderCompiler]::Compile($shader, $entry, $profile)
     [void]$header.AppendLine("inline constexpr unsigned char $entry[] = {")

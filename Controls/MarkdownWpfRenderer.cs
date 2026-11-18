@@ -9,6 +9,7 @@ using System.Windows.Navigation;
 using Markdig;
 using Markdig.Extensions.Tables;
 using Markdig.Extensions.TaskLists;
+using Markdig.Parsers.Inlines;
 using Markdig.Syntax;
 using Markdig.Syntax.Inlines;
 using VNotch.Services;
@@ -153,15 +154,28 @@ internal sealed class MarkdownPanelOptions
 
 internal static class MarkdownWpfRenderer
 {
-    internal static readonly MarkdownPipeline Pipeline = new MarkdownPipelineBuilder()
-        .UsePipeTables()
-        .UseEmphasisExtras()
-        .UseTaskLists()
-        .UseAutoLinks()
-        .Build();
+    internal static readonly MarkdownPipeline Pipeline = CreatePipeline(bracketedLinks: true);
+    private static readonly MarkdownPipeline PipelineWithoutBracketedLinks = CreatePipeline(bracketedLinks: false);
 
-    internal static MarkdownDocument Parse(string markdown) =>
-        Markdown.Parse(markdown ?? string.Empty, Pipeline);
+    private static MarkdownPipeline CreatePipeline(bool bracketedLinks)
+    {
+        var builder = new MarkdownPipelineBuilder().UsePipeTables().UseEmphasisExtras();
+        if (bracketedLinks)
+            builder.UseTaskLists();
+        else
+            builder.InlineParsers.TryRemove<LinkInlineParser>();
+
+        return builder.UseAutoLinks().Build();
+    }
+
+    internal static MarkdownDocument Parse(string markdown)
+    {
+        markdown ??= string.Empty;
+        // Without a closing bracket, every link opener is literal. Let the literal
+        // parser consume them together before Markdig builds a nested delimiter tree.
+        var pipeline = markdown.Contains('[') && !markdown.Contains(']') ? PipelineWithoutBracketedLinks : Pipeline;
+        return Markdown.Parse(markdown, pipeline);
+    }
 
     internal static FlowDocument RenderFlowDocument(string markdown, MarkdownFlowOptions? options = null) =>
         RenderFlowDocument(Parse(markdown), options);

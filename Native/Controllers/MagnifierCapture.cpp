@@ -125,6 +125,31 @@ public:
 
     CaptureRequest active;
     CaptureRequest requested;
+    // Pump-thread only: when the consumer's crop last changed.
+    CaptureRequest last_request;
+    ULONGLONG last_request_change = 0;
+
+    // While the notch animates, the crop moves every frame. Retargeting the
+    // Magnifier source invalidates the frame and stalls the next capture (up to
+    // 12 ms), so capture a padded area and serve sub-crops from it. Crops are
+    // copied 1:1 from the same desktop pixels, so the output is unchanged.
+    static constexpr ULONGLONG kSettleMs = 400;
+    static bool ContainsRequest(const CaptureRequest& outer, const CaptureRequest& inner) noexcept {
+        return outer.width > 0 && outer.height > 0 &&
+            inner.x >= outer.x && inner.y >= outer.y &&
+            static_cast<int64_t>(inner.x) + inner.width <= static_cast<int64_t>(outer.x) + outer.width &&
+            static_cast<int64_t>(inner.y) + inner.height <= static_cast<int64_t>(outer.y) + outer.height;
+    }
+    static CaptureRequest PadRequest(const CaptureRequest& r, int32_t pad) noexcept {
+        const int vx = GetSystemMetrics(SM_XVIRTUALSCREEN), vy = GetSystemMetrics(SM_YVIRTUALSCREEN);
+        const int vr = vx + GetSystemMetrics(SM_CXVIRTUALSCREEN), vb = vy + GetSystemMetrics(SM_CYVIRTUALSCREEN);
+        const int left = std::max(vx, r.x - pad), top = std::max(vy, r.y - pad);
+        const int right = std::min(vr, r.x + r.width + pad), bottom = std::min(vb, r.y + r.height + pad);
+        return { left, top, std::max(1, right - left), std::max(1, bottom - top) };
+    }
+    static int32_t MovingPad(const CaptureRequest& r) noexcept {
+        return std::clamp(std::max(r.width, r.height) / 5, 96, 192);
+    }
 
     SRWLOCK frame_lock = SRWLOCK_INIT;
     std::vector<uint8_t> completed;
@@ -400,23 +425,34 @@ public:
                     CaptureRequest req;
                     { ScopedLock guard(&frame_lock); req = requested; }
                     if (req.width > 0 && req.height > 0) {
-                        const bool changed = memcmp(&active, &req, sizeof(req)) != 0;
+                        const ULONGLONG now = GetTickCount64();
+                        if (memcmp(&last_request, &req, sizeof(req)) != 0) {
+                            last_request = req;
+                            last_request_change = now;
+                        }
+                        const bool inside = ContainsRequest(active, req);
+                        // Once the crop rests, shrink back to the exact crop so idle
+                        // captures stay as small as before.
+                        const CaptureRequest exact = PadRequest(req, 0);
+                        const bool settle = inside && now - last_request_change >= kSettleMs &&
+                            memcmp(&active, &exact, sizeof(exact)) != 0;
+                        const bool changed = !inside || settle;
                         if (changed) {
                             ScopedLock guard(&frame_lock);
                             has_completed = false;
                         }
-                        active = req;
+                        if (changed) active = settle ? exact : PadRequest(req, MovingPad(req));
                         if (changed) {
-                            SetWindowPos(host, nullptr, req.x, req.y, req.width, req.height, SWP_NOACTIVATE | SWP_NOZORDER | SWP_NOREDRAW);
-                            SetWindowPos(mag, nullptr, 0, 0, req.width, req.height, SWP_NOACTIVATE | SWP_NOZORDER | SWP_NOREDRAW);
-                            if (req.width != mag_w || req.height != mag_h) {
-                                mag_w = req.width;
-                                mag_h = req.height;
-                                MoveWindow(host, req.x, req.y, mag_w, mag_h, FALSE);
+                            SetWindowPos(host, nullptr, active.x, active.y, active.width, active.height, SWP_NOACTIVATE | SWP_NOZORDER | SWP_NOREDRAW);
+                            SetWindowPos(mag, nullptr, 0, 0, active.width, active.height, SWP_NOACTIVATE | SWP_NOZORDER | SWP_NOREDRAW);
+                            if (active.width != mag_w || active.height != mag_h) {
+                                mag_w = active.width;
+                                mag_h = active.height;
+                                MoveWindow(host, active.x, active.y, mag_w, mag_h, FALSE);
                                 MoveWindow(mag, 0, 0, mag_w, mag_h, FALSE);
                             }
                         }
-                        const RECT rect{req.x, req.y, req.x + req.width, req.y + req.height};
+                        const RECT rect{active.x, active.y, active.x + active.width, active.y + active.height};
                         if (!api.set_window_source(mag, rect)) {
                             source_fail_count.fetch_add(1);
                         } else {
