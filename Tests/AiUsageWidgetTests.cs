@@ -468,6 +468,7 @@ public sealed class AiUsageWidgetTests
         Assert.Equal(Visibility.Visible, aiusageView.Visibility);
         Assert.Equal(Visibility.Collapsed, calendarStrip.Visibility);
         Assert.Equal(Visibility.Collapsed, greeting.Visibility);
+        aiusageView.Measure(new Size(130, double.PositiveInfinity));
         Assert.False(string.IsNullOrWhiteSpace(((FrameworkElement)((StackPanel)aiusageView.Content).Children[0]).ToolTip?.ToString()));
     });
 

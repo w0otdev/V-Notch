@@ -6,6 +6,12 @@
 V-Notch includes third-party components and assets listed below. Their licenses
 apply to those components and assets.
 
+## 7-Zip installer extraction module
+
+Installers built with 7-Zip use its console self-extraction module, copyright
+Igor Pavlov, under the GNU LGPL. The corresponding distribution notice ships
+in `licenses/7-Zip.txt`. [7-Zip source releases](https://www.7-zip.org/download.html)
+
 ## YOLOX-Nano ONNX model
 
 `Models/yolox_nano.onnx` is the unmodified YOLOX-Nano asset published by

@@ -48,7 +48,7 @@ public sealed class AiUsageNotchView : UserControl
             if (_isPreview == value) return;
             _isPreview = value;
             _rootGrid.Margin = value ? new Thickness(0, 4, 0, 4) : new Thickness(10, 26, 10, 12);
-            Present();
+            if (IsVisible) Present();
         }
     }
 
@@ -66,7 +66,6 @@ public sealed class AiUsageNotchView : UserControl
         Unloaded += OnUnloaded;
         IsVisibleChanged += OnIsVisibleChanged;
         SizeChanged += (_, _) => LayoutPreviewPanes();
-        PresentWithEntrance();
     }
 
     private void OnLoaded(object sender, RoutedEventArgs e)
@@ -76,7 +75,7 @@ public sealed class AiUsageNotchView : UserControl
         AiAccountUsageMonitor.Shared.Updated += OnMonitorUpdated;
         Loc.LanguageChanged += OnLanguageChanged;
         AiUsageAppearance.Changed += OnLanguageChanged;
-        PresentWithEntrance();
+        if (IsVisible) PresentWithEntrance();
     }
 
     private void OnUnloaded(object sender, RoutedEventArgs e)
@@ -90,7 +89,7 @@ public sealed class AiUsageNotchView : UserControl
 
     private void OnIsVisibleChanged(object sender, DependencyPropertyChangedEventArgs e)
     {
-        if (IsVisible)
+        if (_subscribed && IsVisible)
         {
             PresentWithEntrance();
         }
@@ -121,7 +120,7 @@ public sealed class AiUsageNotchView : UserControl
     {
         // Hidden views skip monitor updates. Build the latest snapshot before
         // the shell measures its destination, rather than after it is revealed.
-        if (!IsVisible) Present();
+        if (!IsVisible || _rootGrid.Children.Count == 0) Present();
     }
 
     private void PresentWithEntrance() => Present(AiAccountUsageMonitor.Shared.Codex, AiAccountUsageMonitor.Shared.Claude, reveal: !_isPreview);

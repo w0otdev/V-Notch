@@ -149,6 +149,8 @@ public sealed class AiSubscriptionCustomizationTests
             AiUsageAppearance.Apply(new NotchSettings { AiUsageShowCodex = false, AiUsageShowClaude = false });
             var widget = new AiUsageStatWidget();
             var root = Assert.IsType<StackPanel>(widget.Content);
+            Assert.Empty(root.Children);
+            widget.Measure(new Size(130, double.PositiveInfinity));
             Assert.Equal(Loc.Get("aiUsage.chooseProviders"), Assert.IsAssignableFrom<TextBlock>(Assert.Single(root.Children.Cast<UIElement>())).Text);
         }
         finally { AiUsageAppearance.Apply(original); }

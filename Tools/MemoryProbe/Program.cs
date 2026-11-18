@@ -8,6 +8,7 @@ using Microsoft.Extensions.DependencyInjection;
 using VNotch;
 using VNotch.Controllers;
 using VNotch.Models;
+using VNotch.Modules;
 using VNotch.Services;
 using VNotch.Services.Clipboard;
 
@@ -88,6 +89,10 @@ internal static class Program
         {
             window.Show();
             await (Task)InvokeStatic("VNotch.Services.ServicePrewarmer", "Prewarm", provider)!;
+            var backgroundModules = new NotchModuleBase[] {
+                provider.GetRequiredService<BatteryModule>(), provider.GetRequiredService<BluetoothModule>(),
+                provider.GetRequiredService<WeatherModule>(), provider.GetRequiredService<PrivacyIndicatorModule>()
+            };
             for (int second = 0; second < duration; second++)
             {
                 if (exercise && second is 40 or 55 or 70 or 85)
@@ -97,6 +102,8 @@ internal static class Program
                     coordinator.RequestView(second is 40 or 70 ? NotchView.Media : NotchView.Compact, "memory-probe");
                 }
                 var media = typeof(MainWindow).GetField("_currentMediaInfo", Private)!.GetValue(window) as MediaInfo;
+                if (fullServices && second >= 30 && backgroundModules.FirstOrDefault(module => !module.IsRunning) is { } stopped)
+                    throw new InvalidOperationException($"{stopped.ModuleName} stopped during full-service measurement.");
                 samples.Add(new
                 {
                     Memory = ProcessMemory.Read(process, watch.Elapsed.TotalSeconds, second < 30 ? "warmup" : "steady"),

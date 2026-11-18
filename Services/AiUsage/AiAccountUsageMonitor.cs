@@ -63,17 +63,14 @@ internal sealed class AiAccountUsageMonitor : IAsyncDisposable
         try
         {
             token.ThrowIfCancellationRequested();
-            await RefreshCoreAsync(token, wait: true).ConfigureAwait(false);
+            await RefreshCoreAsync(token, token, wait: true).ConfigureAwait(false);
             using var timer = new PeriodicTimer(TimeSpan.FromSeconds(30));
-            while (await timer.WaitForNextTickAsync(token).ConfigureAwait(false)) await RefreshCoreAsync(token, wait: true).ConfigureAwait(false);
+            while (await timer.WaitForNextTickAsync(token).ConfigureAwait(false)) await RefreshCoreAsync(token, token, wait: true).ConfigureAwait(false);
         }
         catch (OperationCanceledException) { }
     }
 
-    internal Task RefreshAsync(CancellationToken token = default, bool forceCodex = false) =>
-        RefreshCoreAsync(token, wait: false, forceCodex);
-
-    private async Task RefreshCoreAsync(CancellationToken token, bool wait, bool forceCodex = false)
+    internal async Task RefreshAsync(CancellationToken token = default, bool forceCodex = false)
     {
         CancellationToken lifetime;
         lock (_gate)
@@ -82,12 +79,30 @@ internal sealed class AiAccountUsageMonitor : IAsyncDisposable
             lifetime = _lifetime.Token;
         }
         using var linked = CancellationTokenSource.CreateLinkedTokenSource(token, lifetime);
-        if (wait) await _refresh.WaitAsync(linked.Token).ConfigureAwait(false);
-        else if (!await _refresh.WaitAsync(0, linked.Token).ConfigureAwait(false)) return;
+        await RefreshCoreAsync(lifetime, linked.Token, wait: false, forceCodex).ConfigureAwait(false);
+    }
+
+    private async Task RefreshCoreAsync(CancellationToken lifetime, CancellationToken token, bool wait, bool forceCodex = false)
+    {
+        if (wait) await _refresh.WaitAsync(token).ConfigureAwait(false);
+        else if (!await _refresh.WaitAsync(0, token).ConfigureAwait(false)) return;
         try
         {
             (bool Enabled, bool Codex, bool Claude, bool Blocked, string Path) options;
-            lock (_gate) options = _options;
+            bool readCodex;
+            lock (_gate)
+            {
+                if (_disposed || lifetime != _lifetime?.Token || token.IsCancellationRequested) return;
+                options = _options;
+                DateTimeOffset now = _utcNow();
+                readCodex = options.Codex && !options.Blocked &&
+                    (now >= _nextCodexRead || (forceCodex && now >= _nextManualCodexRead));
+                if (readCodex)
+                {
+                    _nextCodexRead = now.AddMinutes(2);
+                    _nextManualCodexRead = now.AddSeconds(10);
+                }
+            }
             AiAccountUsage? claude = null, codex = null;
             // Claude's bridge is local; it is safe to read even when online requests are blocked.
             if (options.Claude)
@@ -96,16 +111,11 @@ internal sealed class AiAccountUsageMonitor : IAsyncDisposable
                 catch (Exception ex) when (ex is System.IO.IOException or UnauthorizedAccessException or System.Text.Json.JsonException or InvalidOperationException)
                 { claude = new("Claude", AiUsageState.Unavailable); }
             }
-            DateTimeOffset now = _utcNow();
-            if (options.Codex && !options.Blocked &&
-                (now >= _nextCodexRead || (forceCodex && now >= _nextManualCodexRead)))
+            if (readCodex)
             {
-                // Manual refresh can see a changed account/allowance without waiting two minutes.
-                // Keep a short cooldown and the same lock so repeated clicks cannot overlap reads.
-                _nextCodexRead = now.AddMinutes(2);
-                _nextManualCodexRead = now.AddSeconds(10);
-                try { codex = await _codex.ReadAsync(options.Path, linked.Token).ConfigureAwait(false); }
-                catch (OperationCanceledException) when (!linked.IsCancellationRequested) { codex = new("Codex", AiUsageState.Unavailable); }
+                token.ThrowIfCancellationRequested();
+                try { codex = await _codex.ReadAsync(options.Path, token).ConfigureAwait(false); }
+                catch (OperationCanceledException) when (!token.IsCancellationRequested) { codex = new("Codex", AiUsageState.Unavailable); }
                 catch (Exception ex) when (ex is System.IO.IOException or System.ComponentModel.Win32Exception or
                     UnauthorizedAccessException or System.Text.Json.JsonException or InvalidOperationException or System.Net.Http.HttpRequestException)
                 { codex = new("Codex", AiUsageState.Unavailable); }
@@ -113,7 +123,7 @@ internal sealed class AiAccountUsageMonitor : IAsyncDisposable
             List<AiQuotaAlert> alerts = [];
             lock (_gate)
             {
-                if (linked.IsCancellationRequested || _disposed || options != _options) return;
+                if (_disposed || lifetime != _lifetime?.Token || token.IsCancellationRequested) return;
                 if (claude != null)
                 {
                     Claude = claude;

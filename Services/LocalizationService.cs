@@ -618,55 +618,35 @@ public static partial class Loc
     internal static FrozenDictionary<string, string[]> BuildTranslationIndex(
         IReadOnlyList<FrozenDictionary<string, string>> tables)
     {
-        var keysByText = new Dictionary<string, List<string>>(StringComparer.OrdinalIgnoreCase);
-        for (int t = 0; t < tables.Count; t++)
+        var translationsByKey = new Dictionary<string, List<string>>(StringComparer.Ordinal);
+        foreach (var table in tables)
         {
-            foreach (var (key, value) in tables[t])
+            foreach (var (key, value) in table)
             {
                 if (string.IsNullOrWhiteSpace(value)) continue;
-                if (!keysByText.TryGetValue(value, out var keys))
+                if (!translationsByKey.TryGetValue(key, out var translations))
                 {
-                    keys = new List<string>();
-                    keysByText[value] = keys;
+                    translations = new List<string>();
+                    translationsByKey.Add(key, translations);
                 }
-                keys.Add(key);
+                if (!translations.Contains(value, StringComparer.OrdinalIgnoreCase))
+                    translations.Add(value);
             }
         }
 
-        var result = new Dictionary<string, string[]>(keysByText.Count, StringComparer.OrdinalIgnoreCase);
-        foreach (var (text, keys) in keysByText)
+        // All labels for one key share a translation array. Only a label used
+        // by multiple keys needs a combined array, in ordinal key order.
+        var result = new Dictionary<string, string[]>(StringComparer.OrdinalIgnoreCase);
+        foreach (var entry in translationsByKey.OrderBy(pair => pair.Key, StringComparer.Ordinal))
         {
-            keys.Sort(StringComparer.Ordinal);
-            var translations = new List<string>();
-            string? previousKey = null;
-            for (int k = 0; k < keys.Count; k++)
+            var group = entry.Value.ToArray();
+            foreach (string text in group)
             {
-                string key = keys[k];
-                if (string.Equals(key, previousKey, StringComparison.Ordinal)) continue;
-                previousKey = key;
-
-                for (int t = 0; t < tables.Count; t++)
+                if (!result.TryAdd(text, group))
                 {
-                    if (!tables[t].TryGetValue(key, out string? candidate) || string.IsNullOrWhiteSpace(candidate))
-                    {
-                        continue;
-                    }
-                    bool exists = false;
-                    for (int i = 0; i < translations.Count; i++)
-                    {
-                        if (string.Equals(translations[i], candidate, StringComparison.OrdinalIgnoreCase))
-                        {
-                            exists = true;
-                            break;
-                        }
-                    }
-                    if (!exists)
-                    {
-                        translations.Add(candidate);
-                    }
+                    result[text] = result[text].Union(group, StringComparer.OrdinalIgnoreCase).ToArray();
                 }
             }
-            result[text] = translations.ToArray();
         }
 
         return result.ToFrozenDictionary(StringComparer.OrdinalIgnoreCase);

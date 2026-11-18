@@ -222,11 +222,34 @@ public sealed class AiAccountUsageTests
     [Fact]
     public async Task RapidSettingsChangesCannotPublishAnOldAccountOrLoseTheMonitorLoop()
     {
-        var reader = new FakeCodex();
-        await using var monitor = new AiAccountUsageMonitor(reader);
-        for (int i = 0; i < 30; i++) monitor.ApplySettings(new() { EnableAiUsageMonitoring = i % 2 == 0 });
-        monitor.ApplySettings(new() { EnableAiUsageMonitoring = true });
-        await Eventually(() => monitor.Codex.State == AiUsageState.Ready);
+        var timeout = TimeSpan.FromSeconds(15);
+        var entered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var published = new TaskCompletionSource<AiUsageState>(TaskCreationOptions.RunContinuationsAsynchronously);
+        using var release = new ManualResetEventSlim();
+        var reader = new FakeCodex(token => Task.FromResult(new AiAccountUsage("Codex",
+            token.IsCancellationRequested ? AiUsageState.Unavailable : AiUsageState.Ready)));
+        await using var monitor = new AiAccountUsageMonitor(reader, () =>
+        {
+            if (entered.TrySetResult()) release.Wait();
+            return new("Claude", AiUsageState.Waiting);
+        }, () => Now);
+
+        var enabled = new NotchSettings { EnableAiUsageMonitoring = true };
+        monitor.ApplySettings(enabled);
+        try
+        {
+            // Hold the first refresh between reading its settings and fetching Codex.
+            await entered.Task.WaitAsync(timeout);
+            for (int i = 0; i < 15; i++)
+            {
+                monitor.ApplySettings(new());
+                monitor.ApplySettings(enabled);
+            }
+            monitor.Updated += (_, _) => published.TrySetResult(monitor.Codex.State);
+        }
+        finally { release.Set(); }
+
+        Assert.Equal(AiUsageState.Ready, await published.Task.WaitAsync(timeout));
         int reads = reader.Reads;
         await monitor.RefreshAsync();
         Assert.Equal(reads, reader.Reads);

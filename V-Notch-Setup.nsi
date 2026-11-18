@@ -46,8 +46,12 @@ Name "${APP_NAME} ${APP_VERSION}"
 OutFile "installers\V-Notch-Setup.exe"
 InstallDir "$LOCALAPPDATA\Programs\${APP_NAME}"
 RequestExecutionLevel user
-SetCompressor /SOLID lzma
-SetCompressorDictSize 96
+!ifdef PACKED_PAYLOAD
+    SetCompressor zlib
+!else
+    SetCompressor /SOLID lzma
+    SetCompressorDictSize 96
+!endif
 
 ; Keep extraction visible: a large payload can take several seconds before the
 ; WPF wizard starts, especially during updates or on slower disks/AV scanners.
@@ -71,12 +75,29 @@ Section "Install"
     ; the installed V-Notch.exe is still running and locked, so writing directly to
     ; $INSTDIR here can make the silent bootstrapper fail before the WPF setup opens.
     InitPluginsDir
+    !ifdef PACKED_PAYLOAD
+    SetOutPath "$PLUGINSDIR"
+    SetCompress off
+    File /oname=extract-payload.exe "${PACKED_PAYLOAD}"
+    SetCompress auto
+    DetailPrint "Extracting V-Notch..."
+    nsExec::Exec '"$PLUGINSDIR\extract-payload.exe" -y "-o$PLUGINSDIR\payload"'
+    Pop $0
+    Delete "$PLUGINSDIR\extract-payload.exe"
+    ${If} $0 != "0"
+        SetErrorLevel 1
+        MessageBox MB_OK|MB_ICONSTOP "Could not extract the V-Notch installation files."
+        Abort
+    ${EndIf}
+    SetOutPath "$PLUGINSDIR\payload"
+    !else
     SetOutPath "$PLUGINSDIR\payload"
     ; Keep the shared single-file host/runtime within the compression window:
     ; the small uninstaller comes before the larger application bundle.
     File "${APP_BUILD_DIR}\uninstall.exe"
     File "${APP_BUILD_DIR}\${APP_EXE}"
     File /r /x "uninstall.exe" /x "${APP_EXE}" "${APP_BUILD_DIR}\*"
+    !endif
 
     ; Check and install .NET 8 Desktop Runtime if needed
     !ifndef SELF_CONTAINED

@@ -1,5 +1,6 @@
 using System.Windows;
 using System.Windows.Threading;
+using VNotch.Controls;
 using VNotch.Models;
 using VNotch.Services;
 using VNotch.Services.AiUsage;
@@ -9,6 +10,7 @@ namespace VNotch;
 public partial class MainWindow
 {
     private bool _aiUsageLayoutQueued;
+    private AiUsageNotchView? _aiUsageView;
     private readonly List<AiQuotaAlert> _pendingAiQuotaAlerts = [];
     private UiScheduledTimer? _aiQuotaNotificationTimer;
     private AiQuotaAlert? _aiQuotaPreview;
@@ -77,11 +79,22 @@ public partial class MainWindow
 
     private double MeasureAiUsageViewHeight()
     {
-        AiUsageViewControl.PrepareForDisplay();
+        if (_aiUsageView == null)
+        {
+            _aiUsageView = new AiUsageNotchView();
+            _aiUsageView.ContentSizeChanged += ScheduleAiUsageLayout;
+            _aiUsageView.OpenSettingsRequested += () =>
+            {
+                OpenAppSettings();
+                _activeSettingsWindow?.NavigateToAiUsage();
+            };
+            AiUsageContent.Children.Add(_aiUsageView);
+        }
+        _aiUsageView.PrepareForDisplay();
         double contentWidth = Math.Max(0, AiUsageViewWidth - AiUsageContent.Margin.Left - AiUsageContent.Margin.Right);
-        AiUsageViewControl.Measure(new Size(contentWidth, double.PositiveInfinity));
+        _aiUsageView.Measure(new Size(contentWidth, double.PositiveInfinity));
         return Math.Ceiling(Math.Max(_expandedHeight,
-            AiUsageViewControl.DesiredSize.Height + AiUsageContent.Margin.Top + AiUsageContent.Margin.Bottom));
+            _aiUsageView.DesiredSize.Height + AiUsageContent.Margin.Top + AiUsageContent.Margin.Bottom));
     }
 
     private void FitAiUsageView()

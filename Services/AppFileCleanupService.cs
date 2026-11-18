@@ -52,7 +52,7 @@ public sealed partial class AppFileCleanupService : IDisposable, IAsyncDisposabl
         lock (_gate)
         {
             ObjectDisposedException.ThrowIf(_disposed, this);
-            _worker ??= Task.Run(RunAsync, _stop.Token);
+            _worker ??= RunAsync();
         }
     }
 

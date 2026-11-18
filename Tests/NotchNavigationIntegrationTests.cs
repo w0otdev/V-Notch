@@ -50,9 +50,8 @@ public sealed class NotchNavigationIntegrationTests
                 Assert.True(coordinator.RequestView(NotchView.Media, "AiPreflightSource"));
                 await WpfFrameWaiter.UntilAsync(() => !coordinator.IsTransitionActive && !IsAnimating(window), "media source", ct);
             }
-            Assert.False(window.AiUsageViewControl.IsVisible);
-            // Simulate the snapshot arriving while the AI tab is hidden.
-            window.AiUsageViewControl.Present(new("Codex", AiUsageState.Loading), new("Claude", AiUsageState.Disabled));
+            Assert.Empty(window.AiUsageContent.Children.OfType<Controls.AiUsageNotchView>());
+            // Monitoring can publish a snapshot before the panel exists.
             DateTimeOffset now = DateTimeOffset.UtcNow;
             var codex = new AiAccountUsage("Codex", AiUsageState.Ready, now,
                 [new("aiUsage.primary", 90, 300, now.AddMinutes(137)), new("aiUsage.secondary", 33, 10080, now.AddDays(3))], "plus");
@@ -110,6 +109,7 @@ public sealed class NotchNavigationIntegrationTests
             await StartAsync(window, ct);
             var coordinator = Field<NotchTransitionCoordinator>(window, "_transitionCoordinator");
             Assert.False(window.SettingsButton.IsHitTestVisible);
+            Assert.Equal(0, VisualTreeHelper.GetChildrenCount(window.WhiteNoiseWidget));
             var views = new[] { NotchView.Media, NotchView.Secondary, NotchView.Timer, NotchView.AudioMixer, NotchView.Camera, NotchView.AiUsage };
             bool capturedHeader = false;
             async Task Navigate(NotchView view)
@@ -141,6 +141,8 @@ public sealed class NotchNavigationIntegrationTests
                     var hit = window.NotchContent.InputHitTest(new Point(bounds.Left + bounds.Width / 2, bounds.Top + bounds.Height / 2)) as DependencyObject;
                     while (hit != null && !ReferenceEquals(hit, window.SettingsButton)) hit = VisualTreeHelper.GetParent(hit);
                     Assert.Same(window.SettingsButton, hit);
+                    if (view == NotchView.Timer)
+                        Assert.IsType<Controls.WhiteNoiseStrip>(VisualTreeHelper.GetChild(window.WhiteNoiseWidget, 0));
                     if (view == NotchView.Secondary)
                     {
                         var tray = window.ClipboardTrayView;
