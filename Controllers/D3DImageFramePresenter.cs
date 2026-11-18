@@ -612,6 +612,9 @@ internal sealed partial class D3DImageFramePresenter : IDisposable
             _pendingForcePresent = false;
             _pendingDirtyRows = default;
             _presentedTag = _uploadTag;
+            // Keep the lens snapshot paired with the pixels WPF just received.
+            // The live UI lens may already describe a later animation frame.
+            if (_useGpuCapture) PresentedGpuFrame = _pendingGpuFrame;
             SubmittedGpuRenderMs = LastGpuRenderMs;
             SubmittedGpuWaitMs = LastGpuWaitMs;
             return true;
@@ -680,6 +683,7 @@ internal sealed partial class D3DImageFramePresenter : IDisposable
         lock (_surfaceSync)
         {
             _acceptingFrames = false;
+            PresentedGpuFrame = null;
             if (_gpuHandle != null) NativeGpuReset(_gpuHandle);
             DisposeWebcamGpu();
             _pendingFrame = false;

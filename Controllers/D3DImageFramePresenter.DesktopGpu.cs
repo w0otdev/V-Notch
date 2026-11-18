@@ -75,6 +75,8 @@ internal sealed partial class D3DImageFramePresenter
     private readonly bool _useGpuCapture;
     private GpuHandle? _gpuHandle;
     private bool _hasGpuBackBuffer;
+    private GpuFrame _pendingGpuFrame;
+    internal GpuFrame? PresentedGpuFrame { get; private set; }
     private double _appliedCaptureIntervalMs;
     private string _lastCaptureRoute = "waiting";
     internal double LastGpuRenderMs { get; private set; }
@@ -163,6 +165,7 @@ internal sealed partial class D3DImageFramePresenter
                 _frameWidth = frame.Width;
                 _frameHeight = frame.Height;
                 _uploadTag = tag;
+                _pendingGpuFrame = frame;
                 _lastUploadTicks = renderStarted;
                 _pendingFrame = true;
                 _pendingForcePresent = true;

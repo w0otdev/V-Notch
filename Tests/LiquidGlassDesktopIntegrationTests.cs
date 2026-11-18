@@ -265,15 +265,16 @@ public sealed class LiquidGlassDesktopIntegrationTests
             var d3d = Assert.IsType<D3DImage>(surface);
             var copy = ImageSourceSnapshot.Capture(d3d, d3d.PixelWidth, d3d.PixelHeight);
             Assert.NotNull(copy);
-            int sx = Math.Clamp((int)(effect.NotchW / 2), 0, copy.PixelWidth - 1);
-            int sy = Math.Clamp((int)(effect.NotchH / 2), 0, copy.PixelHeight - 1);
+            var lens = PresentedLens(controller);
+            int sx = Math.Clamp((int)(lens.Width / 2), 0, copy.PixelWidth - 1);
+            int sy = Math.Clamp((int)(lens.Height / 2), 0, copy.PixelHeight - 1);
             var sample = new byte[4];
             copy.CopyPixels(new Int32Rect(sx, sy, 1, 1), sample, 4, 0);
             Assert.True(sample[0] is >= 110 and <= 145 &&
                 sample[1] is >= 175 and <= 205 && sample[2] is >= 20 and <= 45,
-                $"cycle={cycle} frame={frame} pixel={sample[2]},{sample[1]},{sample[0]} " +
-                $"screen={controller.LastPresentedCaptureOriginX + sx},{controller.LastPresentedCaptureOriginY + sy} " +
-                $"source={copy.PixelWidth}x{copy.PixelHeight} offset={effect.OffX},{effect.OffY}");
+                $"cycle={cycle} frame={frame} pixel={sample[2]},{sample[1]},{sample[0]},{sample[3]} " +
+                $"screen={lens.X + sx},{lens.Y + sy} " +
+                $"source={copy.PixelWidth}x{copy.PixelHeight} lens={lens} live={effect.NotchW}x{effect.NotchH}");
             if (frame == 8)
             {
                 window.HideSpotlight();
@@ -308,9 +309,9 @@ public sealed class LiquidGlassDesktopIntegrationTests
     {
         await WpfFrameWaiter.UntilAsync(() => double.IsNaN(window.Shell.Height), "glass presentation or transition completion", cancellationToken);
         Assert.Null(window.GlassBackdropImage.Effect);
-        var effect = GetNativeLens(window);
-        int physicalX = controller.LastPresentedCaptureOriginX + (int)(effect.OffX + effect.NotchW / 2);
-        int physicalY = controller.LastPresentedCaptureOriginY + (int)(effect.OffY + effect.NotchH / 2);
+        var lens = PresentedLens(controller);
+        double physicalX = lens.X + lens.Width / 2;
+        double physicalY = lens.Y + lens.Height / 2;
         var panel = new Canvas();
         var marker = new Border { Width = 48, Height = 48, Background = Brushes.Red };
         var bgOrigin = background.PointToScreen(new Point());
@@ -319,9 +320,9 @@ public sealed class LiquidGlassDesktopIntegrationTests
         Canvas.SetTop(marker, (physicalY - bgOrigin.Y) / dpi - 24);
         panel.Children.Add(marker);
         background.Content = panel;
-        await WpfFrameWaiter.UntilAsync(() => ReadCenterPixel(window)[2] > 220, "glass presentation or transition completion", cancellationToken);
+        await WpfFrameWaiter.UntilAsync(() => ReadCenterPixel(window, controller)[2] > 220, "glass presentation or transition completion", cancellationToken);
         background.Content = null;
-        await WpfFrameWaiter.UntilAsync(() => ReadCenterPixel(window)[1] > 175, "glass presentation or transition completion", cancellationToken);
+        await WpfFrameWaiter.UntilAsync(() => ReadCenterPixel(window, controller)[1] > 175, "glass presentation or transition completion", cancellationToken);
     }
 
     [DesktopTheory]
@@ -416,13 +417,22 @@ public sealed class LiquidGlassDesktopIntegrationTests
         return pixel;
     }
 
-    private static byte[] ReadCenterPixel(SpotlightWindow window)
+    private static unsafe Rect PresentedLens(LiquidGlassController controller)
     {
-        var effect = GetNativeLens(window);
+        // GPU capture can lag the morph. Sampling the current dependency-property
+        // size can hit transparent padding outside the last completed lens.
+        var frame = Assert.IsType<D3DImageFramePresenter.GpuFrame>(controller.PresentedGpuFrame);
+        return new Rect(frame.X + frame.Lens[4 * 4], frame.Y + frame.Lens[5 * 4],
+            frame.Lens[2 * 4], frame.Lens[3 * 4]);
+    }
+
+    private static byte[] ReadCenterPixel(SpotlightWindow window, LiquidGlassController controller)
+    {
+        var lens = PresentedLens(controller);
         var source = Assert.IsType<D3DImage>(window.GlassBackdropImage.Source);
         var copy = ImageSourceSnapshot.Capture(source, source.PixelWidth, source.PixelHeight);
-        int x = Math.Clamp((int)(effect.NotchW / 2), 0, copy.PixelWidth - 1);
-        int y = Math.Clamp((int)(effect.NotchH / 2), 0, copy.PixelHeight - 1);
+        int x = Math.Clamp((int)(lens.Width / 2), 0, copy.PixelWidth - 1);
+        int y = Math.Clamp((int)(lens.Height / 2), 0, copy.PixelHeight - 1);
         var pixel = new byte[4];
         copy.CopyPixels(new Int32Rect(x, y, 1, 1), pixel, 4, 0);
         return pixel;

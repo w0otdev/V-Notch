@@ -114,7 +114,9 @@ public sealed class TranslationOutsideClickTests
         finally { window.Close(); AnimationConfig.SetReduceMotion(previous); }
     });
 
+    // A Rendering callback can run in the same TickCount tick as Show/ShowSelection.
+    // Unspecified timestamps represent a subsequent click, not the opening click.
     private static void Click(Point point, uint? timestamp = null) => InputMonitorService.DispatchClick(
         new InputMonitorService.POINT { x = (int)point.X, y = (int)point.Y },
-        timestamp ?? unchecked((uint)Environment.TickCount));
+        timestamp ?? unchecked((uint)Environment.TickCount + 1));
 }

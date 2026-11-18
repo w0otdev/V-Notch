@@ -199,6 +199,7 @@ public sealed partial class LiquidGlassController : IDisposable
     }
 
     public ImageSource? ImageSource => _d3dPresenter?.ImageSource;
+    internal D3DImageFramePresenter.GpuFrame? PresentedGpuFrame => _d3dPresenter?.PresentedGpuFrame;
 
     // Morphing windows can reveal pixels beyond the previous frame's small
     // bounds before capture catches up. Fill a stable envelope for those hosts.
