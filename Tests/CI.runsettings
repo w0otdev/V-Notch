@@ -13,7 +13,12 @@
             <EnableStaticNativeInstrumentation>false</EnableStaticNativeInstrumentation>
             <EnableDynamicNativeInstrumentation>false</EnableDynamicNativeInstrumentation>
             <ModulePaths>
-              <Include><ModulePath>.*V-Notch\.dll$</ModulePath></Include>
+                            <Include>
+                <ModulePath>.*\\V-Notch\.dll$</ModulePath>
+                <ModulePath>.*\\VNotch\.Core\.dll$</ModulePath>
+                <ModulePath>.*\\VNotch\.Application\.dll$</ModulePath>
+                <ModulePath>.*\\VNotch\.Infrastructure\.Windows\.dll$</ModulePath>
+              </Include>
             </ModulePaths>
             <Attributes>
               <Exclude><Attribute>^System\.Diagnostics\.CodeAnalysis\.ExcludeFromCodeCoverageAttribute$</Attribute></Exclude>

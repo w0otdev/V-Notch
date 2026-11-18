@@ -113,6 +113,11 @@ try {
     [xml]$settings = '<RunSettings><RunConfiguration><TestCaseFilter /><EnvironmentVariables><VNOTCH_TEST_DIAGNOSTICS_DIRECTORY /></EnvironmentVariables></RunConfiguration></RunSettings>'
     $settings.RunSettings.RunConfiguration.TestCaseFilter = $fullFilter
     $settings.RunSettings.RunConfiguration.EnvironmentVariables.VNOTCH_TEST_DIAGNOSTICS_DIRECTORY = $resolvedResults
+    if ($CollectCoverage) {
+        # Coverlet cannot resolve WPF metadata in V-Notch.dll and silently drops it; use the Microsoft collector config.
+        [xml]$ci = Get-Content -LiteralPath (Join-Path $repoRoot 'Tests/CI.runsettings') -Raw
+        $settings.RunSettings.AppendChild($settings.ImportNode($ci.RunSettings.DataCollectionRunSettings, $true)) | Out-Null
+    }
     $settings.Save($settingsFile)
     $argsList = [System.Collections.Generic.List[string]]::new()
     $argsList.Add('--configuration')
@@ -135,7 +140,7 @@ try {
     $argsList.Add('console;verbosity=minimal')
     if ($CollectCoverage) {
         $argsList.Add('--collect')
-        $argsList.Add('XPlat Code Coverage')
+        $argsList.Add('Code Coverage')
     }
 
     & dotnet test $resolvedProject @argsList
