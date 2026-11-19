@@ -194,6 +194,27 @@ public sealed class CurrencyConversionTests
         await Assert.ThrowsAsync<TranslationException>(() => service.ConvertAsync(new(1m, "USD"), "VND", default).WaitAsync(TimeSpan.FromSeconds(3)));
     }
 
+    [Theory]
+    [InlineData("Base")]
+    [InlineData("Quote")]
+    public async Task IncompleteCachedPairFallsBackToProvider(string missingField)
+    {
+        using var fixture = new Fixture();
+        Directory.CreateDirectory(fixture.CacheRoot);
+        var row = new Dictionary<string, object>
+        {
+            ["Base"] = "USD", ["Quote"] = "VND", ["Rate"] = 12500,
+            ["Date"] = "2026-10-11", ["Checked"] = "2026-10-11"
+        };
+        row.Remove(missingField);
+        await File.WriteAllTextAsync(Path.Combine(fixture.CacheRoot, "USD-VND.json"),
+            System.Text.Json.JsonSerializer.Serialize(row));
+
+        Assert.Equal(25000m, (await fixture.Service.ConvertAsync(new(1m, "USD"), "VND", default)).Amount);
+        Assert.Equal(25000m, (await fixture.NewService().ConvertAsync(new(1m, "USD"), "VND", default)).Amount);
+        Assert.Equal(1, fixture.Calls);
+    }
+
     private sealed class BlockingHandler(TaskCompletionSource started) : HttpMessageHandler
     {
         protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
@@ -207,6 +228,7 @@ public sealed class CurrencyConversionTests
     private sealed class Fixture : IDisposable
     {
         private readonly string _root = Path.Combine(Path.GetTempPath(), "vnotch-fx-tests-" + Guid.NewGuid().ToString("N"));
+        internal string CacheRoot => _root;
         internal DateTimeOffset Now = new(2026, 10, 11, 12, 0, 0, TimeSpan.Zero);
         internal readonly NetworkPrivacy Privacy = new();
         internal readonly HttpClient Client;

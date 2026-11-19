@@ -11,9 +11,9 @@ public partial class MainWindow
 {
     private CalendarPresenter? _calendarPresenter;
 
-    internal void InitializeCalendarPresenter()
+    internal CalendarPresenter InitializeCalendarPresenter()
     {
-        if (_calendarPresenter != null) return;
+        if (_calendarPresenter != null) return _calendarPresenter;
 
         var refs = new CalendarViewRefs
         {
@@ -48,7 +48,7 @@ public partial class MainWindow
             }
         };
 
-        _calendarPresenter = new CalendarPresenter(_calendarModule, new DispatcherService(Dispatcher), refs);
+        return _calendarPresenter = new CalendarPresenter(_calendarModule, new DispatcherService(Dispatcher), refs);
     }
 
     internal void DisposeCalendarPresenter()

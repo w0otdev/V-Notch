@@ -60,7 +60,7 @@ public sealed class SpotlightNotchLocaleThumbnailTests
     }
 
     [Fact]
-    public void GetExcludedFoldersSnapshot_CachesSnapshotAndInvalidatesOnChange()
+    public async Task GetExcludedFoldersSnapshot_CachesSnapshotAndInvalidatesOnChange()
     {
         string tempRoot = Path.Combine(Path.GetTempPath(), "vnotch-prefs-test-" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(tempRoot);
@@ -69,34 +69,22 @@ public sealed class SpotlightNotchLocaleThumbnailTests
             string prefsPath = Path.Combine(tempRoot, "prefs.json");
             var prefs = new SpotlightPreferences(prefsPath);
 
-            int probeCount = 0;
-            prefs.DirectoryExistsProbe = _ =>
-            {
-                probeCount++;
-                return true;
-            };
+            var empty = prefs.GetExcludedFoldersSnapshot();
+            Assert.Empty(empty);
+            Assert.Same(empty, prefs.GetExcludedFoldersSnapshot());
 
-            for (int i = 0; i < 10; i++)
-            {
-                _ = prefs.GetExcludedFoldersSnapshot();
-            }
-            Assert.Equal(1, probeCount);
+            string folder = Path.Combine(tempRoot, "offline");
+            prefs.AddExcludedFolder(folder);
+            var added = prefs.GetExcludedFoldersSnapshot();
+            Assert.Equal(folder, Assert.Single(added));
+            Assert.Same(added, prefs.GetExcludedFoldersSnapshot());
 
-            prefs.AddExcludedFolder(@"C:\Secret");
-            for (int i = 0; i < 10; i++)
-            {
-                string[] snapshot = prefs.GetExcludedFoldersSnapshot();
-                Assert.Single(snapshot);
-            }
-            Assert.Equal(2, probeCount);
-
-            Assert.True(prefs.RemoveExcludedFolder(@"C:\Secret"));
-            for (int i = 0; i < 10; i++)
-            {
-                string[] snapshot = prefs.GetExcludedFoldersSnapshot();
-                Assert.Empty(snapshot);
-            }
-            Assert.Equal(3, probeCount);
+            Assert.True(prefs.RemoveExcludedFolder(folder));
+            var removed = prefs.GetExcludedFoldersSnapshot();
+            Assert.Empty(removed);
+            Assert.Same(removed, prefs.GetExcludedFoldersSnapshot());
+            Assert.Equal(folder, Assert.Single(added));
+            await prefs.FlushAsync();
         }
         finally
         {

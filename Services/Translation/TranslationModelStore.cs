@@ -240,30 +240,76 @@ internal sealed partial class TranslationModelStore
     internal async Task ImportAsync(string folder, CancellationToken ct)
     {
         await Gate.WaitAsync(ct).ConfigureAwait(false);
-        using var cleanupLease = AppFileCleanupService.Protect(Root);
         try
         {
-            // Accept only the pinned files, irrespective of filenames supplied by a manifest.
-            foreach (var asset in Assets)
-            {
-                string source = Path.Combine(folder, asset.Name);
-                await VerifyAssetAsync(source, asset, ct).ConfigureAwait(false);
-            }
-            Directory.CreateDirectory(Root);
-            _verifiedState = null;
-            Replacing?.Invoke();
-            File.Delete(Path.Combine(Root, "verified.txt"));
-            foreach (var asset in Assets)
-            {
-                string destination = Path.Combine(Root, asset.Name);
-                string source = Path.GetFullPath(Path.Combine(folder, asset.Name));
-                if (source.Equals(destination, StringComparison.OrdinalIgnoreCase)) continue;
-                await InstallAsync(source, destination, asset, ct).ConfigureAwait(false);
-            }
-            await File.WriteAllTextAsync(Path.Combine(Root, "verified.txt"), Profile.Revision, ct).ConfigureAwait(false);
+            using var cleanupLease = AppFileCleanupService.Protect(Root);
+            await ImportPinnedAssetsAsync(folder, ct).ConfigureAwait(false);
             await TryEnsureVulkanRuntimeAsync(ct).ConfigureAwait(false);
         }
         finally { Gate.Release(); Changed?.Invoke(); }
+    }
+
+    private async Task ImportPinnedAssetsAsync(string folder, CancellationToken ct)
+    {
+        // A working installation already contains these exact, immutable assets.
+        // Validate the user's selection without replacing files held by the engine.
+        if (IsInstalled)
+        {
+            bool verified = true;
+            try { await VerifyAsync(ct).ConfigureAwait(false); }
+            catch (TranslationException) { verified = false; }
+            if (verified)
+            {
+                foreach (var asset in Assets)
+                    await VerifyAssetAsync(Path.Combine(folder, asset.Name), asset, ct).ConfigureAwait(false);
+                return;
+            }
+        }
+
+        Directory.CreateDirectory(Root);
+        string marker = Path.Combine(Root, "verified.txt");
+        string stagedMarker = marker + ".install.part";
+        var staged = new List<(string Temporary, string Destination)>();
+        try
+        {
+            foreach (var asset in Assets)
+            {
+                string source = Path.GetFullPath(Path.Combine(folder, asset.Name));
+                string destination = AssetPath(asset);
+                if (source.Equals(destination, StringComparison.OrdinalIgnoreCase))
+                {
+                    await VerifyAssetAsync(source, asset, ct).ConfigureAwait(false);
+                    continue;
+                }
+
+                var input = new FileInfo(source);
+                if (!input.Exists || input.Length != asset.Size) throw new TranslationException("translation.modelInvalid");
+                string temporary = destination + ".install.part";
+                staged.Add((temporary, destination));
+                await CopyFileAsync(source, temporary, ct).ConfigureAwait(false);
+                await VerifyAssetAsync(temporary, asset, ct).ConfigureAwait(false);
+            }
+
+            await File.WriteAllTextAsync(stagedMarker, Profile.Revision, ct).ConfigureAwait(false);
+            ct.ThrowIfCancellationRequested();
+            Replacing?.Invoke();
+            _verifiedState = null;
+            File.Delete(marker);
+            foreach (var file in staged)
+                File.Move(file.Temporary, file.Destination, true);
+            File.Move(stagedMarker, marker);
+        }
+        finally
+        {
+            foreach (var file in staged) DeleteImportTemporary(file.Temporary);
+            DeleteImportTemporary(stagedMarker);
+        }
+    }
+
+    private static void DeleteImportTemporary(string path)
+    {
+        try { File.Delete(path); }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { /* Best-effort cleanup. */ }
     }
 
     internal async Task TryEnsureVulkanRuntimeAsync(CancellationToken ct)
@@ -321,22 +367,6 @@ internal sealed partial class TranslationModelStore
             }
         }
         finally { Gate.Release(); Changed?.Invoke(); }
-    }
-
-    private static async Task InstallAsync(string source, string destination, Asset asset, CancellationToken ct)
-    {
-        string temporary = destination + ".install.part";
-        try
-        {
-            await CopyFileAsync(source, temporary, ct).ConfigureAwait(false);
-            await VerifyAssetAsync(temporary, asset, ct).ConfigureAwait(false);
-            File.Move(temporary, destination, true);
-        }
-        finally
-        {
-            try { File.Delete(temporary); }
-            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { /* Best-effort cleanup of temporary install file. */ }
-        }
     }
 
     private static async Task CopyFileAsync(string source, string destination, CancellationToken ct)

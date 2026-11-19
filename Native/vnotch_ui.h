@@ -225,6 +225,8 @@ VN_EXPORT int32_t __stdcall vn_ai_usage_compute_window_visual(
     int64_t updated_at_utc_ticks,
     int64_t now_utc_ticks,
     VnAiQuotaWindowVisualOut* out_visual) noexcept;
+VN_EXPORT int32_t __stdcall vn_calendar_get_geometry(
+    int32_t* total_days, double* cell_width, double* highlight_diameter) noexcept;
 VN_EXPORT int32_t __stdcall vn_ai_usage_compute_card_summary(
     int32_t state,
     int32_t window_count,

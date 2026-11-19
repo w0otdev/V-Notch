@@ -53,7 +53,15 @@ internal sealed partial class CurrencyRateService
             DateOnly today = DateOnly.FromDateTime(_now().DateTime);
             string key = price.Currency + "-" + target;
             if (!_rates.TryGetValue(key, out var rate)) rate = await ReadCacheAsync(key, ct).ConfigureAwait(false);
-            if (rate != null && !Valid(rate, price.Currency, target, today)) rate = null;
+            if (rate != null)
+            {
+                if (Valid(rate, price.Currency, target, today)) _rates[key] = rate;
+                else
+                {
+                    _rates.Remove(key);
+                    rate = null;
+                }
+            }
             if (rate?.Checked == today) return Convert(price, target, rate, false);
             if (_privacy.IsAllowed(NetworkFeature.CurrencyRates) && (!_retryAfter.TryGetValue(key, out var retry) || retry <= _now()))
             {
@@ -86,6 +94,7 @@ internal sealed partial class CurrencyRateService
 
     private static bool Valid(CurrencyRate rate, string source, string target, DateOnly today)
     {
+        if (string.IsNullOrEmpty(rate.Base) || string.IsNullOrEmpty(rate.Quote)) return false;
         byte inBounds = rate.Rate > 0 && rate.Rate <= 1_000_000_000m ? (byte)1 : (byte)0;
         return vn_currency_rate_validate(
             rate.Base.AsSpan(), rate.Base.Length,
@@ -108,9 +117,7 @@ internal sealed partial class CurrencyRateService
         {
             var file = new FileInfo(Path.Combine(_root, key + ".json"));
             if (!file.Exists || file.Length > 16384) return null;
-            var rate = JsonSerializer.Deserialize<CurrencyRate>(await File.ReadAllTextAsync(file.FullName, ct).ConfigureAwait(false));
-            if (rate != null) _rates[key] = rate;
-            return rate;
+            return JsonSerializer.Deserialize<CurrencyRate>(await File.ReadAllTextAsync(file.FullName, ct).ConfigureAwait(false));
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or JsonException) { return null; }
     }
