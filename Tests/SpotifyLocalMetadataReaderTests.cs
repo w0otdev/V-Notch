@@ -31,7 +31,7 @@ public sealed class SpotifyLocalMetadataReaderTests
         int reads = 0;
         var reader = new SpotifyLocalMetadataReader(() => Interlocked.Increment(ref reads) == 1
             ? new("Previous song", "Previous singer")
-            : new("Song", "Singer, Collaborator"));
+            : new("Song", "Singer, Collaborator"), readBudget: TimeSpan.FromSeconds(5));
 
         Assert.Equal("Singer, Collaborator", await reader.TryGetArtistsAsync("Song", "Singer", default));
         int completedReads = reads;

@@ -1370,6 +1370,8 @@ public sealed class SettingsWindowControlTests
     public void CascadeWithoutTailBlurPreservesOpacityAndReleasesEveryClock(bool menu) => SharedStaTestRunner.RunAsync(async ct =>
     {
         bool previous = AnimationConfig.ReduceMotion;
+        var previousSystemMotion = AnimationConfig.ClientAreaAnimationOverride;
+        AnimationConfig.ClientAreaAnimationOverride = true;
         AnimationConfig.SetReduceMotion(false);
         try
         {
@@ -1380,6 +1382,7 @@ public sealed class SettingsWindowControlTests
                 IsEnabled = index != 7
             }).ToArray();
             fixture.Window.ApplyProgressiveBlurCascade(items, 0, menu ? -1 : 1, menu, 60);
+            Assert.All(items, item => Assert.True(item.HasAnimatedProperties));
             Assert.All(items, item => Assert.Null(item.Effect));
             await WpfFrameWaiter.UntilAsync(() => items.All(item => !item.HasAnimatedProperties &&
                 !item.RenderTransform.HasAnimatedProperties && item.Effect == null), "cascade releases motion clocks without blur", ct);
@@ -1388,7 +1391,11 @@ public sealed class SettingsWindowControlTests
             fixture.Window.ResetProgressiveBlurElements(menu);
             Assert.All(items, item => Assert.Equal(0, ((TranslateTransform)item.RenderTransform).Y));
         }
-        finally { AnimationConfig.SetReduceMotion(previous); }
+        finally
+        {
+            AnimationConfig.ClientAreaAnimationOverride = previousSystemMotion;
+            AnimationConfig.SetReduceMotion(previous);
+        }
     });
 
     [Theory]
