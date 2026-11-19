@@ -1222,8 +1222,14 @@ public sealed class SettingsWindowControlTests
             var bottom = window.EnableDebugModeCheck;
             Assert.True(bottom.TranslatePoint(new Point(), window.SettingsScrollViewer).Y > window.SettingsScrollViewer.ViewportHeight);
             Assert.False(bottom.HasAnimatedProperties);
-            bottom.BringIntoView();
+            var wheel = new MouseWheelEventArgs(Mouse.PrimaryDevice, 0,
+                -(int)Math.Ceiling(window.SettingsScrollViewer.ScrollableHeight))
+                { RoutedEvent = Mouse.PreviewMouseWheelEvent };
+            window.SettingsScrollViewer.RaiseEvent(wheel);
+            Assert.True(wheel.Handled);
             await WpfFrameWaiter.UntilAsync(() => bottom.Opacity is > 0 and < 1, "a newly scrolled-in control to reveal", ct);
+            await WpfFrameWaiter.UntilAsync(() => !Field<bool>(window, "_isScrollAnimating"),
+                "wheel scroll during reveal to settle", ct);
             await WpfFrameWaiter.UntilAsync(() => !bottom.HasAnimatedProperties && bottom.Opacity == 1, "the control to settle", ct);
             window.SettingsScrollViewer.ScrollToTop();
             window.UpdateLayout();

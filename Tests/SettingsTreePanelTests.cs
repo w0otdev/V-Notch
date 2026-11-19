@@ -75,6 +75,13 @@ public sealed class SettingsTreePanelTests
         int straight = ConnectorPixel(8, top + 45);
         Assert.InRange(straight, 50, 60);
         Assert.InRange((int)ConnectorPixel(8, top + 51), straight - 5, straight + 5);
+        first.Opacity = .4;
+        tree.RefreshConnectors();
+        int beforeFork = ConnectorPixel(8, top + 8);
+        Assert.InRange(beforeFork, 40, 50);
+        for (int y = 12; y <= 18; y++)
+            Assert.InRange((int)ConnectorPixel(8, top + y), beforeFork - 3, beforeFork + 3);
+        first.Opacity = 1;
         last.RenderTransform = Transform.Identity;
 
         last.Opacity = 0;

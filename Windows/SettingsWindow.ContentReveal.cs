@@ -11,6 +11,8 @@ public partial class SettingsWindow
     private readonly HashSet<UIElement> _revealedComponents = new();
     private readonly List<UIElement> _visibleRevealBatch = new();
     private int _firstBatchDelay;
+    private double _nextRevealAbove, _nextRevealBelow;
+    private bool _waitingForRevealLayout;
 
     private void AnimateActivePanel(string section, int baseDelayMs = 0)
     {
@@ -20,18 +22,24 @@ public partial class SettingsWindow
 
         _revealingPage = page;
         _firstBatchDelay = baseDelayMs;
-        page.LayoutUpdated += RevealViewportAfterLayout;
+        page.SizeChanged += RevealPageResized;
         RevealVisibleComponents();
     }
 
     private void StopComponentReveal()
     {
-        if (_revealingPage != null) _revealingPage.LayoutUpdated -= RevealViewportAfterLayout;
+        if (_revealingPage != null)
+        {
+            _revealingPage.SizeChanged -= RevealPageResized;
+            _revealingPage.LayoutUpdated -= RevealViewportAfterLayout;
+        }
+        _waitingForRevealLayout = false;
         _revealingPage = null;
         _revealedComponents.Clear();
     }
 
     private void RevealViewportAfterLayout(object? sender, EventArgs e) => RevealVisibleComponents();
+    private void RevealPageResized(object sender, SizeChangedEventArgs e) => RevealVisibleComponents();
 
     private void RevealSettingsRows(Panel group)
     {
@@ -42,11 +50,19 @@ public partial class SettingsWindow
 
     private void RevealVisibleComponents()
     {
-        if (_revealingPage is not { IsVisible: true, IsArrangeValid: true } page ||
-            !SettingsScrollViewer.IsArrangeValid || SettingsScrollViewer.ViewportHeight <= 0 ||
-            !SettingsScrollViewer.IsAncestorOf(page)) return;
+        if (_revealingPage is not { IsVisible: true } page || !SettingsScrollViewer.IsAncestorOf(page)) return;
+        if (!page.IsArrangeValid || !SettingsScrollViewer.IsArrangeValid || SettingsScrollViewer.ViewportHeight <= 0)
+        {
+            if (!_waitingForRevealLayout) page.LayoutUpdated += RevealViewportAfterLayout;
+            _waitingForRevealLayout = true;
+            return;
+        }
+        if (_waitingForRevealLayout) page.LayoutUpdated -= RevealViewportAfterLayout;
+        _waitingForRevealLayout = false;
 
         _visibleRevealBatch.Clear();
+        _nextRevealAbove = double.NegativeInfinity;
+        _nextRevealBelow = double.PositiveInfinity;
         CollectVisibleComponents(page, new Rect(SettingsScrollViewer.RenderSize));
         if (_visibleRevealBatch.Count == 0) return;
         ApplyProgressiveBlurCascade(_visibleRevealBatch, _firstBatchDelay, direction: -1, isMenuList: false,
@@ -59,7 +75,16 @@ public partial class SettingsWindow
         if (!element.IsVisible || element.RenderSize.Width <= 0 || element.RenderSize.Height <= 0 ||
             _revealedComponents.Contains(element)) return;
         var bounds = element.TransformToAncestor(SettingsScrollViewer).TransformBounds(new Rect(element.RenderSize));
-        if (!bounds.IntersectsWith(viewport)) return;
+        if (!bounds.IntersectsWith(viewport))
+        {
+            // Between these offsets scrolling cannot expose another component.
+            double offset = SettingsScrollViewer.VerticalOffset;
+            if (bounds.Top > viewport.Bottom)
+                _nextRevealBelow = Math.Min(_nextRevealBelow, offset + bounds.Top - viewport.Bottom);
+            else if (bounds.Bottom < viewport.Top)
+                _nextRevealAbove = Math.Max(_nextRevealAbove, offset + bounds.Bottom - viewport.Top);
+            return;
+        }
 
         // Traverse authored layout, including trees and disabled groups. Widgets keep
         // their own templates so a button, slider or combo box moves as one control.

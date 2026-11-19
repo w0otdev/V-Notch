@@ -488,7 +488,7 @@ public partial class SettingsWindow
             // opacity on the same ticks as the reveal, including its final frame.
             clock.CurrentTimeInvalidated += (_, _) =>
             {
-                foreach (var tree in trees) tree.InvalidateVisual();
+                foreach (var tree in trees) tree.RefreshConnectors();
             };
         }
         for (int i = 0; i < targets.Count; i++)
