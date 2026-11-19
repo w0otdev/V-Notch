@@ -6,6 +6,28 @@
              xmlns:fonts="clr-namespace:VNotch.Services"
              FontFamily="{fonts:AppFont Fallbacks='Nirmala UI, Segoe UI'}" FontWeight="Bold">
     <UserControl.Resources>
+        <SolidColorBrush x:Key="StableVersionBrush" Color="#80E6A5"/>
+        <SolidColorBrush x:Key="PrereleaseVersionBrush" Color="#FFD464"/>
+        <SolidColorBrush x:Key="LatestBadgeInk" Color="#E4CCFF"/>
+        <SolidColorBrush x:Key="LatestBadgeFill" Color="#442969"/>
+        <SolidColorBrush x:Key="CurrentBadgeInk" Color="#BCEBFF"/>
+        <SolidColorBrush x:Key="CurrentBadgeFill" Color="#153E59"/>
+        <Style x:Key="StableVersionLabel" TargetType="TextBlock">
+            <Setter Property="Foreground" Value="{StaticResource StableVersionBrush}"/>
+            <Style.Triggers>
+                <DataTrigger Binding="{Binding IsSelected, RelativeSource={RelativeSource AncestorType=ListBoxItem}}" Value="True">
+                    <Setter Property="Foreground" Value="#103D25"/>
+                </DataTrigger>
+            </Style.Triggers>
+        </Style>
+        <Style x:Key="PrereleaseVersionLabel" TargetType="TextBlock">
+            <Setter Property="Foreground" Value="{StaticResource PrereleaseVersionBrush}"/>
+            <Style.Triggers>
+                <DataTrigger Binding="{Binding IsSelected, RelativeSource={RelativeSource AncestorType=ListBoxItem}}" Value="True">
+                    <Setter Property="Foreground" Value="#493300"/>
+                </DataTrigger>
+            </Style.Triggers>
+        </Style>
         <Style x:Key="SkeletonBar" TargetType="Border">
             <Setter Property="Height" Value="9"/>
             <Setter Property="CornerRadius" Value="4"/>

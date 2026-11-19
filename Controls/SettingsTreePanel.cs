@@ -18,7 +18,7 @@ public sealed class SettingsTreePanel : StackPanel
 
     private static Pen CreateConnectorPen()
     {
-        var pen = new Pen(new SolidColorBrush(Color.FromArgb(112, 255, 255, 255)), 2)
+        var pen = new Pen(Brushes.White, 2)
         {
             StartLineCap = PenLineCap.Round,
             EndLineCap = PenLineCap.Round
@@ -42,39 +42,51 @@ public sealed class SettingsTreePanel : StackPanel
         const double trunkX = -20;
         const double branchX = -6;
         const double radius = 8;
-        double lastAnchor = double.NaN;
-        var geometry = new StreamGeometry();
-        using (var context = geometry.Open())
+        double trunkStart = 0;
+        double previousOpacity = 1;
+        // Composite the connector ink once, including where branches meet the trunk.
+        drawingContext.PushOpacity(112 / 255d);
+        foreach (UIElement item in Children)
         {
-            foreach (UIElement item in Children)
-            {
-                // Standalone notes belong to the preceding setting, not a new branch.
-                if (item is not FrameworkElement child || child is TextBlock ||
-                    child.Visibility != Visibility.Visible || child.RenderSize.Height <= 0)
-                    continue;
+            // Standalone notes belong to the preceding setting, not a new branch.
+            if (item is not FrameworkElement child || child is TextBlock ||
+                child.Visibility != Visibility.Visible || child.RenderSize.Height <= 0)
+                continue;
 
-                double anchor = GetHeaderAnchor(child);
-                lastAnchor = anchor;
-                context.BeginFigure(new Point(trunkX, anchor - radius), false, false);
+            var header = FindHeaderElement(child);
+            double anchor = header.TranslatePoint(new Point(0, header.RenderSize.Height / 2), this).Y;
+            double opacity = 1;
+            for (DependencyObject? node = header; node != null && node != this; node = VisualTreeHelper.GetParent(node))
+                if (node is UIElement layer) opacity *= layer.Opacity;
+
+            double bend = Math.Max(0, anchor - radius);
+            double start = trunkStart;
+            if (bend > start && previousOpacity < opacity)
+            {
+                drawingContext.PushOpacity(Math.Min(previousOpacity, opacity));
+                drawingContext.DrawLine(ConnectorPen, new Point(trunkX, trunkStart), new Point(trunkX, bend));
+                drawingContext.Pop();
+                start = bend;
+            }
+            trunkStart = bend;
+            previousOpacity = opacity;
+            if (opacity <= 0) continue;
+            var geometry = new StreamGeometry();
+            using (var context = geometry.Open())
+            {
+                context.BeginFigure(new Point(trunkX, Math.Min(start, bend)), false, false);
+                if (bend > start) context.LineTo(new Point(trunkX, bend), true, true);
                 context.QuadraticBezierTo(new Point(trunkX, anchor),
                     new Point(trunkX + radius, anchor), true, false);
                 context.LineTo(new Point(branchX, anchor), true, false);
             }
 
-            if (!double.IsNaN(lastAnchor))
-            {
-                context.BeginFigure(new Point(trunkX, 0), false, false);
-                context.LineTo(new Point(trunkX, Math.Max(0, lastAnchor - radius)), true, false);
-            }
+            geometry.Freeze();
+            drawingContext.PushOpacity(opacity);
+            drawingContext.DrawGeometry(null, ConnectorPen, geometry);
+            drawingContext.Pop();
         }
-        geometry.Freeze();
-        drawingContext.DrawGeometry(null, ConnectorPen, geometry);
-    }
-
-    private double GetHeaderAnchor(FrameworkElement child)
-    {
-        var header = FindHeaderElement(child);
-        return header.TranslatePoint(new Point(0, header.RenderSize.Height / 2), this).Y;
+        drawingContext.Pop();
     }
 
     private static FrameworkElement FindHeaderElement(FrameworkElement element)

@@ -1196,6 +1196,62 @@ public sealed class SettingsWindowControlTests
     });
 
     [Fact]
+    public void SettingsContentRevealsAcrossPagesAndExpandedGroups() => SharedStaTestRunner.RunAsync(async ct =>
+    {
+        bool previous = AnimationConfig.ReduceMotion;
+        var systemMotion = AnimationConfig.ClientAreaAnimationOverride;
+        try
+        {
+            AnimationConfig.SetReduceMotion(false);
+            AnimationConfig.ClientAreaAnimationOverride = true;
+            using var fixture = new Fixture();
+            var window = fixture.Window;
+            window.Show();
+            await window.Dispatcher.InvokeAsync(() => { }, System.Windows.Threading.DispatcherPriority.ApplicationIdle);
+            window.NavigateToSection("FileTray");
+            Assert.True(window.SettingsPageWave.IsVisible);
+            window.UpdateLayout();
+            await WpfFrameWaiter.UntilAsync(() => window.TrayAdvancedTitle.Opacity is > .05 and < 1 &&
+                window.TrayAdvancedHint.Opacity < window.TrayAdvancedTitle.Opacity &&
+                window.TrayTextCheck.Opacity < window.TrayAdvancedTitle.Opacity, "individual components in one settings tree", ct);
+            Assert.True(window.TrayTextCheck.HasAnimatedProperties);
+            Assert.False(window.TrayTextRow.HasAnimatedProperties);
+
+            window.NavigateToSection("Advanced");
+            window.UpdateLayout();
+            var bottom = window.EnableDebugModeCheck;
+            Assert.True(bottom.TranslatePoint(new Point(), window.SettingsScrollViewer).Y > window.SettingsScrollViewer.ViewportHeight);
+            Assert.False(bottom.HasAnimatedProperties);
+            bottom.BringIntoView();
+            await WpfFrameWaiter.UntilAsync(() => bottom.Opacity is > 0 and < 1, "a newly scrolled-in control to reveal", ct);
+            await WpfFrameWaiter.UntilAsync(() => !bottom.HasAnimatedProperties && bottom.Opacity == 1, "the control to settle", ct);
+            window.SettingsScrollViewer.ScrollToTop();
+            window.UpdateLayout();
+            bottom.BringIntoView();
+            window.UpdateLayout();
+            Assert.False(bottom.HasAnimatedProperties);
+
+            window.NavigateToTranslation();
+            window.TranslationAdvancedExpander.IsExpanded = true;
+            window.UpdateLayout();
+            window.TranslationCustomPromptLabel.BringIntoView();
+            await WpfFrameWaiter.UntilAsync(() => window.TranslationCustomPromptLabel.Opacity is > 0 and < 1,
+                "expanded options to reveal", ct);
+            AnimationConfig.SetReduceMotion(true);
+            Assert.Equal(1, window.TranslationCustomPromptLabel.Opacity);
+            Assert.False(window.TranslationCustomPromptLabel.HasAnimatedProperties);
+            window.NavigateToSection("FileTray");
+            Assert.False(window.SettingsPageWave.IsVisible);
+            Assert.Equal(1, window.TrayTextCheck.Opacity);
+        }
+        finally
+        {
+            AnimationConfig.ClientAreaAnimationOverride = systemMotion;
+            AnimationConfig.SetReduceMotion(previous);
+        }
+    });
+
+    [Fact]
     public void SidebarSelectionMovesAndStretchesBeforeSettlingAndCanReverseMidFlight() => SharedStaTestRunner.RunAsync(async ct =>
     {
         bool previous = AnimationConfig.ReduceMotion;
@@ -1542,11 +1598,12 @@ public sealed class SettingsWindowControlTests
         var list = window.Changelog.VersionList;
         var firstRow = (ListBoxItem)list.Items[0];
         firstRow.Focus();
-        firstRow.RaiseEvent(new KeyEventArgs(Keyboard.PrimaryDevice, PresentationSource.FromVisual(list)!, 0, Key.Down)
-            { RoutedEvent = Keyboard.PreviewKeyDownEvent });
+        var down = new KeyEventArgs(Keyboard.PrimaryDevice, PresentationSource.FromVisual(list)!, 0, Key.Down)
+            { RoutedEvent = Keyboard.PreviewKeyDownEvent };
+        firstRow.RaiseEvent(down);
+        Assert.True(down.Handled);
         Assert.Equal(1, list.SelectedIndex);
-        var selectedRow = (ListBoxItem)list.SelectedItem;
-        Assert.All(((StackPanel)selectedRow.Content).Children.OfType<TextBlock>(), label => Assert.Equal(selectedRow.Foreground, label.Foreground));
+        Assert.Equal("1.0.0", ((ListBoxItem)list.SelectedItem).Tag);
 
         window.ChangelogBackButton.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
         Assert.True(window.ViewChangelogButton.IsVisible);
@@ -1603,7 +1660,8 @@ public sealed class SettingsWindowControlTests
         {
             Releases = Enumerable.Range(1, 12).Select(i => new UpdateInfo
             {
-                Version = $"2.0.{i}", ReleaseNotes = "## Changes\n\nFirst change\n\nSecond change"
+                Version = $"2.0.{i}",
+                ReleaseNotes = string.Join("\n\n", Enumerable.Range(1, 36).Select(n => $"Change {n}"))
             }).ToArray()
         });
         bool previousMotion = AnimationConfig.ReduceMotion;
@@ -1634,6 +1692,12 @@ public sealed class SettingsWindowControlTests
 
             await WpfFrameWaiter.UntilAsync(() => view.SelectionMark.IsVisible &&
                 OpacityInTrack(labels) is > .01 and < .95, "the selected row mid-reveal", ct);
+            var lowerRows = view.VersionList.Items.Cast<ListBoxItem>().Skip(8).ToArray();
+            var lowerNotes = view.ReleaseNotes.Children.Cast<UIElement>().Skip(8).ToArray();
+            Assert.NotEmpty(lowerRows);
+            Assert.NotEmpty(lowerNotes);
+            Assert.All(lowerRows, row => Assert.Equal(0, row.Opacity));
+            Assert.All(lowerNotes, note => Assert.Equal(0, note.Opacity));
             Assert.False(view.VersionList.IsKeyboardFocusWithin);
             Assert.Same(window.FindResource("AccentBrush"), view.SelectionMark.Background);
             Assert.Same(window.FindResource("AccentForegroundBrush"), selected.Foreground);
@@ -1647,10 +1711,15 @@ public sealed class SettingsWindowControlTests
                 Math.Abs(view.MarkOffset.Y - neighbor.TranslatePoint(new Point(0, 1), view.VersionList).Y) < .01,
                 "the indicator to settle on the interrupted row", ct);
             Assert.Equal(1, OpacityInTrack(view.SelectionMark));
+            Assert.All(lowerRows, row => Assert.Equal(1, row.Opacity));
+            await WpfFrameWaiter.UntilAsync(() => view.ReleaseNotes.Children.Cast<UIElement>()
+                .All(note => !note.HasAnimatedProperties && note.Opacity == 1), "all release notes to finish revealing", ct);
 
-            view.VersionList.SelectedIndex = view.VersionList.Items.Count - 1;
-            var last = (ListBoxItem)view.VersionList.SelectedItem;
-            last.BringIntoView();
+            neighbor.Focus();
+            neighbor.RaiseEvent(new KeyEventArgs(Keyboard.PrimaryDevice, PresentationSource.FromVisual(neighbor)!, 0, Key.End)
+                { RoutedEvent = Keyboard.PreviewKeyDownEvent });
+            var last = (ListBoxItem)view.VersionList.Items[^1];
+            Assert.Same(last, view.VersionList.SelectedItem);
             window.UpdateLayout();
             Assert.True(view.VersionScrollViewer.VerticalOffset > 0);
             await WpfFrameWaiter.UntilAsync(() => view.MarkScale.ScaleY == 1 &&

@@ -58,35 +58,26 @@ try {
         }
     }
 
-    # Deterministic largest-first greedy assignment keeps every shard balanced in test count.
-    $sortedClasses = $classCounts.GetEnumerator() |
-        Sort-Object @{ Expression = { $_.Value }; Descending = $true }, @{ Expression = { $_.Key }; Descending = $false }
-
-    $buckets = @()
-    $bucketLoads = [int[]]::new($TotalShards)
-    for ($i = 0; $i -lt $TotalShards; $i++) {
-        $buckets += ,([System.Collections.Generic.List[string]]::new())
-    }
-
-    foreach ($entry in $sortedClasses) {
-        $minShard = 0
-        for ($i = 1; $i -lt $TotalShards; $i++) {
-            if ($bucketLoads[$i] -lt $bucketLoads[$minShard]) {
-                $minShard = $i
+    # Runners discover tests independently. A difference in discovered row counts
+    # must never move a class onto a different shard.
+    $selectedClasses = [System.Collections.Generic.List[string]]::new()
+    $selectedTestCount = 0
+    $sha256 = [System.Security.Cryptography.SHA256]::Create()
+    try {
+        foreach ($className in ($classCounts.Keys | Sort-Object)) {
+            $hash = $sha256.ComputeHash([Text.Encoding]::UTF8.GetBytes($className))
+            $owner = [BitConverter]::ToUInt32($hash, 0) % $TotalShards
+            if ($owner -eq $ShardIndex) {
+                $selectedClasses.Add($className)
+                $selectedTestCount += $classCounts[$className]
             }
         }
-        $buckets[$minShard].Add($entry.Key)
-        $bucketLoads[$minShard] += $entry.Value
+    } finally {
+        $sha256.Dispose()
     }
 
-    $assignedTotal = ($buckets | ForEach-Object { $_.Count } | Measure-Object -Sum).Sum
-    if ($assignedTotal -ne $classCounts.Count) {
-        throw "Shard partitioning mismatch: assigned $assignedTotal of $($classCounts.Count) classes."
-    }
-
-    $selectedClasses = $buckets[$ShardIndex]
     Write-Host ("Shard {0}/{1}: {2} test classes, ~{3} test methods (of {4} total)." -f `
-        ($ShardIndex + 1), $TotalShards, $selectedClasses.Count, $bucketLoads[$ShardIndex], $rawTests.Count)
+        ($ShardIndex + 1), $TotalShards, $selectedClasses.Count, $selectedTestCount, $rawTests.Count)
 
     if ($selectedClasses.Count -eq 0) {
         Write-Host 'No test classes assigned to this shard.'

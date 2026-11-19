@@ -68,6 +68,7 @@ public partial class SettingsWindow
     private void SettingsScrollViewer_ScrollChanged(object sender, ScrollChangedEventArgs e)
     {
         UpdateAiUsageStickyPreview();
+        if (e.OriginalSource == SettingsScrollViewer) RevealVisibleComponents();
     }
 
     private void SettingsScrollViewer_PreviewMouseWheel(object sender, MouseWheelEventArgs e)

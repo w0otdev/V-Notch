@@ -1466,7 +1466,7 @@
                         <Grid x:Name="ContentHost">
 
                             <StackPanel x:Name="PanelSearching" Visibility="Collapsed">
-                                <Border x:Name="SearchingCard" Opacity="0">
+                                <Border x:Name="SearchingCard">
                                     <Border.Style>
                                         <Style TargetType="Border" BasedOn="{StaticResource CardBorderStyle}">
                                             <Style.Triggers>
@@ -1479,7 +1479,7 @@
                                         </Style>
                                     </Border.Style>
                                     <Border.RenderTransform>
-                                        <TranslateTransform x:Name="SearchingCardTranslate" Y="12"/>
+                                        <TranslateTransform x:Name="SearchingCardTranslate"/>
                                     </Border.RenderTransform>
                                     <StackPanel>
                                         <TextBlock x:Name="SearchingHeader" Text="Search mode" Style="{StaticResource SectionHeader}" Visibility="Collapsed"/>
@@ -1517,9 +1517,9 @@
                             </StackPanel>
 
                             <StackPanel x:Name="PanelAppearance" Visibility="Visible">
-                                <Border x:Name="AppearanceCard" Style="{StaticResource CardBorderStyle}" Opacity="0">
+                                <Border x:Name="AppearanceCard" Style="{StaticResource CardBorderStyle}">
                                     <Border.RenderTransform>
-                                        <TranslateTransform x:Name="AppearanceCardTranslate" Y="12"/>
+                                        <TranslateTransform x:Name="AppearanceCardTranslate"/>
                                     </Border.RenderTransform>
                                     <StackPanel>
                                         <TextBlock x:Name="AppearanceHeader" Text="APPEARANCE" Style="{StaticResource SectionHeader}" Visibility="Collapsed"/>
@@ -1783,9 +1783,9 @@
                             </StackPanel>
 
                             <StackPanel x:Name="PanelBehavior" Visibility="Collapsed">
-                                <Border x:Name="BehaviorCard" Style="{StaticResource CardBorderStyle}" Opacity="0">
+                                <Border x:Name="BehaviorCard" Style="{StaticResource CardBorderStyle}">
                                     <Border.RenderTransform>
-                                        <TranslateTransform x:Name="BehaviorCardTranslate" Y="12"/>
+                                        <TranslateTransform x:Name="BehaviorCardTranslate"/>
                                     </Border.RenderTransform>
                                     <StackPanel>
                                         <TextBlock x:Name="BehaviorHeader" Text="BEHAVIOR" Style="{StaticResource SectionHeader}" Visibility="Collapsed"/>
@@ -2014,9 +2014,9 @@
                             </StackPanel>
 
                             <StackPanel x:Name="PanelSkins" Visibility="Collapsed">
-                                <Border x:Name="SkinCard" Style="{StaticResource CardBorderStyle}" Opacity="0">
+                                <Border x:Name="SkinCard" Style="{StaticResource CardBorderStyle}">
                                     <Border.RenderTransform>
-                                        <TranslateTransform x:Name="SkinCardTranslate" Y="12"/>
+                                        <TranslateTransform x:Name="SkinCardTranslate"/>
                                     </Border.RenderTransform>
                                     <StackPanel>
                                         <TextBlock x:Name="SkinHeader" Text="NOTCH SKINS" Style="{StaticResource SectionHeader}" Visibility="Collapsed"/>
@@ -2190,9 +2190,9 @@
                             </StackPanel>
 
                             <StackPanel x:Name="PanelDevices" Visibility="Collapsed">
-                                <Border x:Name="DisplayCard" Style="{StaticResource CardBorderStyle}" Opacity="0">
+                                <Border x:Name="DisplayCard" Style="{StaticResource CardBorderStyle}">
                                     <Border.RenderTransform>
-                                        <TranslateTransform x:Name="DisplayCardTranslate" Y="12"/>
+                                        <TranslateTransform x:Name="DisplayCardTranslate"/>
                                     </Border.RenderTransform>
                                     <StackPanel>
                                         <TextBlock x:Name="DisplayHeader" Text="DEVICES" Style="{StaticResource SectionHeader}" Visibility="Collapsed"/>
@@ -2237,9 +2237,9 @@
                             </StackPanel>
 
                             <StackPanel x:Name="PanelSystem" Visibility="Collapsed">
-                                <Border x:Name="SystemCard" Style="{StaticResource CardBorderStyle}" Margin="0,0,0,10" Opacity="0">
+                                <Border x:Name="SystemCard" Style="{StaticResource CardBorderStyle}" Margin="0,0,0,10">
                                     <Border.RenderTransform>
-                                        <TranslateTransform x:Name="SystemCardTranslate" Y="12"/>
+                                        <TranslateTransform x:Name="SystemCardTranslate"/>
                                     </Border.RenderTransform>
                                     <StackPanel>
                                         <TextBlock x:Name="SystemHeader" Text="SYSTEM" Style="{StaticResource SectionHeader}" Visibility="Collapsed"/>
@@ -2284,9 +2284,9 @@
                                     </StackPanel>
                                 </Border>
 
-                                <Border x:Name="BackupCard" Style="{StaticResource CardBorderStyle}" Opacity="0">
+                                <Border x:Name="BackupCard" Style="{StaticResource CardBorderStyle}">
                                     <Border.RenderTransform>
-                                        <TranslateTransform x:Name="BackupCardTranslate" Y="12"/>
+                                        <TranslateTransform x:Name="BackupCardTranslate"/>
                                     </Border.RenderTransform>
                                     <StackPanel>
                                         <TextBlock x:Name="BackupHeader" Text="SETTINGS BACKUP &amp; TRANSFER" Style="{StaticResource SettingTitleText}" Margin="0,8,0,14"/>
@@ -2350,9 +2350,9 @@
                             </StackPanel>
 
                             <StackPanel x:Name="PanelPrivacy" Visibility="Collapsed">
-                                <Border x:Name="PrivacyCard" Style="{StaticResource CardBorderStyle}" Opacity="0">
+                                <Border x:Name="PrivacyCard" Style="{StaticResource CardBorderStyle}">
                                     <Border.RenderTransform>
-                                        <TranslateTransform x:Name="PrivacyCardTranslate" Y="12"/>
+                                        <TranslateTransform x:Name="PrivacyCardTranslate"/>
                                     </Border.RenderTransform>
                                     <StackPanel>
                                         <TextBlock x:Name="PrivacyHeader" Text="PRIVACY &amp; LOCAL-ONLY" Style="{StaticResource SectionHeader}" Visibility="Collapsed"/>
@@ -2509,9 +2509,9 @@
                             </StackPanel>
 
                             <StackPanel x:Name="PanelSpotlight" Visibility="Collapsed">
-                                <Border x:Name="SpotlightCard" Style="{StaticResource CardBorderStyle}" Opacity="0">
+                                <Border x:Name="SpotlightCard" Style="{StaticResource CardBorderStyle}">
                                     <Border.RenderTransform>
-                                        <TranslateTransform x:Name="SpotlightCardTranslate" Y="12"/>
+                                        <TranslateTransform x:Name="SpotlightCardTranslate"/>
                                     </Border.RenderTransform>
                                     <StackPanel>
                                         <TextBlock x:Name="SpotlightHeader" Text="SPOTLIGHT" Style="{StaticResource SectionHeader}" Visibility="Collapsed"/>
@@ -2571,8 +2571,8 @@
                             </StackPanel>
 
                             <StackPanel x:Name="PanelTranslation" Visibility="Collapsed">
-                                <Border x:Name="TranslationCard" Style="{StaticResource CardBorderStyle}" Opacity="0">
-                                    <Border.RenderTransform><TranslateTransform x:Name="TranslationCardTranslate" Y="12"/></Border.RenderTransform>
+                                <Border x:Name="TranslationCard" Style="{StaticResource CardBorderStyle}">
+                                    <Border.RenderTransform><TranslateTransform x:Name="TranslationCardTranslate"/></Border.RenderTransform>
                                     <StackPanel>
                                         <!-- 1. Enable Live Translation & Quick Guide -->
                                         <Border Style="{StaticResource SettingRowBorder}">
@@ -2778,9 +2778,9 @@
                             </StackPanel>
 
                             <StackPanel x:Name="PanelAiUsage" Visibility="Collapsed" Loaded="AiUsageSettings_Loaded" Unloaded="AiUsageSettings_Unloaded" IsVisibleChanged="AiUsagePanel_IsVisibleChanged" TextElement.FontFamily="{fonts:AppFont}" TextElement.FontWeight="Bold">
-                                <Border x:Name="AiUsageCard" Style="{StaticResource CardBorderStyle}" Opacity="0">
+                                <Border x:Name="AiUsageCard" Style="{StaticResource CardBorderStyle}">
                                     <Border.RenderTransform>
-                                        <TranslateTransform x:Name="AiUsageCardTranslate" Y="12"/>
+                                        <TranslateTransform x:Name="AiUsageCardTranslate"/>
                                     </Border.RenderTransform>
                                     <Border.Resources>
                                         <Style x:Key="AiUsageChoiceStyle" TargetType="RadioButton">
@@ -3039,8 +3039,8 @@
                             </StackPanel>
 
                             <StackPanel x:Name="PanelFileTray" Visibility="Collapsed">
-                                <Border x:Name="FileTrayCard" Style="{StaticResource CardBorderStyle}" Opacity="0">
-                                    <Border.RenderTransform><TranslateTransform x:Name="FileTrayCardTranslate" Y="12"/></Border.RenderTransform>
+                                <Border x:Name="FileTrayCard" Style="{StaticResource CardBorderStyle}">
+                                    <Border.RenderTransform><TranslateTransform x:Name="FileTrayCardTranslate"/></Border.RenderTransform>
                                     <StackPanel>
                                 <Border Style="{StaticResource SettingRowBorder}" Margin="0,0,0,12">
                                     <StackPanel>
@@ -3083,9 +3083,9 @@
                             </StackPanel>
 
                             <StackPanel x:Name="PanelAdvanced" Visibility="Collapsed">
-                                <Border x:Name="AdvancedCard" Style="{StaticResource CardBorderStyle}" Opacity="0">
+                                <Border x:Name="AdvancedCard" Style="{StaticResource CardBorderStyle}">
                                     <Border.RenderTransform>
-                                        <TranslateTransform x:Name="AdvancedCardTranslate" Y="12"/>
+                                        <TranslateTransform x:Name="AdvancedCardTranslate"/>
                                     </Border.RenderTransform>
                                     <StackPanel>
                                         <TextBlock x:Name="AdvancedHeader" Text="ADVANCED" Style="{StaticResource SectionHeader}" Visibility="Collapsed"/>
@@ -3446,9 +3446,9 @@
                             </StackPanel>
 
                             <StackPanel x:Name="PanelPerformance" Visibility="Collapsed">
-                                <Border x:Name="PerformanceCard" Style="{StaticResource CardBorderStyle}" Margin="0,0,0,6" Opacity="0">
+                                <Border x:Name="PerformanceCard" Style="{StaticResource CardBorderStyle}" Margin="0,0,0,6">
                                     <Border.RenderTransform>
-                                        <TranslateTransform x:Name="PerformanceCardTranslate" Y="12"/>
+                                        <TranslateTransform x:Name="PerformanceCardTranslate"/>
                                     </Border.RenderTransform>
                                     <StackPanel>
                                         <TextBlock x:Name="PerformanceHeader" Text="PERFORMANCE" Style="{StaticResource SectionHeader}" Visibility="Collapsed"/>
@@ -3598,9 +3598,9 @@
                             </StackPanel>
 
                             <StackPanel x:Name="PanelDonating" Visibility="Collapsed" IsVisibleChanged="PanelDonating_IsVisibleChanged">
-                                <Border x:Name="DonatingCard" Style="{StaticResource CardBorderStyle}" Margin="0,0,0,6" Opacity="0">
+                                <Border x:Name="DonatingCard" Style="{StaticResource CardBorderStyle}" Margin="0,0,0,6">
                                     <Border.RenderTransform>
-                                        <TranslateTransform x:Name="DonatingCardTranslate" Y="12"/>
+                                        <TranslateTransform x:Name="DonatingCardTranslate"/>
                                     </Border.RenderTransform>
                                     <StackPanel>
                                         <TextBlock x:Name="DonatingHeader" Text="DONATING" Style="{StaticResource SectionHeader}" Visibility="Collapsed"/>
@@ -3954,9 +3954,9 @@
                             </StackPanel>
 
                             <StackPanel x:Name="PanelUpdates" Visibility="Collapsed">
-                                <Border x:Name="UpdatesCard" Style="{StaticResource CardBorderStyle}" Margin="0,0,0,6" Opacity="0">
+                                <Border x:Name="UpdatesCard" Style="{StaticResource CardBorderStyle}" Margin="0,0,0,6">
                                     <Border.RenderTransform>
-                                        <TranslateTransform x:Name="UpdatesCardTranslate" Y="12"/>
+                                        <TranslateTransform x:Name="UpdatesCardTranslate"/>
                                     </Border.RenderTransform>
                                     <StackPanel>
                                         <TextBlock x:Name="UpdatesHeader" Text="UPDATES &amp; REPORT BUG" Style="{StaticResource SectionHeader}" Visibility="Collapsed"/>

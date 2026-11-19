@@ -162,7 +162,7 @@ public partial class ChangelogView : UserControl
         }
 
         var entries = _releases.Values.ToList();
-        bool numberedCurrent = UpdateService.TryParseReleaseVersion(currentVersion, out _, out _);
+        bool numberedCurrent = UpdateService.TryParseReleaseVersion(currentVersion, out _, out var currentPrerelease);
         var current = entries.Find(e => e.Version == currentVersion) ?? (numberedCurrent
             ? entries.Find(e => e.Numbered && UpdateService.CompareVersions(e.Version, currentVersion) == 0) : null);
         bool selectPublished = false;
@@ -171,6 +171,7 @@ public partial class ChangelogView : UserControl
             current = _installedOnly ??= new ChangelogEntry
             {
                 Version = currentVersion, Label = currentVersion, Numbered = numberedCurrent,
+                Prerelease = numberedCurrent && currentPrerelease.Length != 0,
                 Content = Loc.Get("changelog.currentInstalled")
             };
             entries.Add(current);
@@ -218,29 +219,20 @@ public partial class ChangelogView : UserControl
     private static void UpdateRow(ListBoxItem row, ChangelogEntry entry)
     {
         var labels = new StackPanel();
-        labels.Children.Add(new TextBlock { Text = entry.Label, FontSize = 13, TextWrapping = TextWrapping.Wrap });
+        var version = new TextBlock { Text = entry.Label, FontSize = 13, TextWrapping = TextWrapping.Wrap };
+        version.SetResourceReference(StyleProperty, entry.Prerelease ? "PrereleaseVersionLabel" : "StableVersionLabel");
+        labels.Children.Add(version);
+        var spoken = new List<string> { entry.Label };
         string? date = entry.Date?.ToString("d", Loc.GetCulture());
         if (date != null)
-            labels.Children.Add(new TextBlock { Text = date, FontSize = 11, Opacity = .77 });
-
-        var statuses = new List<string>(2);
-        if (entry.IsLatest) statuses.Add(Loc.Get("changelog.latest"));
-        if (entry.IsCurrent) statuses.Add(Loc.Get("changelog.current"));
-        if (statuses.Count > 0)
         {
-            var statusLine = new WrapPanel { Margin = new Thickness(0, 2, 0, 0) };
-            foreach (var status in statuses)
-                statusLine.Children.Add(new TextBlock
-                {
-                    Text = status, FontSize = 10, Opacity = .85, Margin = new Thickness(0, 0, 6, 0)
-                });
-            labels.Children.Add(statusLine);
+            labels.Children.Add(new TextBlock { Text = date, FontSize = 11, Opacity = .77 });
+            spoken.Add(date);
         }
+        if (entry.IsLatest || entry.IsCurrent)
+            labels.Children.Add(CreateStatusBadges(entry, compact: true, spoken));
 
         row.Content = labels;
-        var spoken = new List<string> { entry.Label };
-        if (date != null) spoken.Add(date);
-        spoken.AddRange(statuses);
         System.Windows.Automation.AutomationProperties.SetName(row, string.Join(", ", spoken));
     }
 
@@ -289,8 +281,15 @@ public partial class ChangelogView : UserControl
     {
         var targets = new List<UIElement> { ReleaseHeader };
         if (includeVersionRows) targets.Add(VersionsText);
-        targets.AddRange(ReleaseNotes.Children.Cast<UIElement>().Take(8));
-        if (includeVersionRows) targets.AddRange(VersionList.Items.Cast<ListBoxItem>().Take(8));
+        int rowCount = includeVersionRows ? VersionList.Items.Count : 0;
+        int noteCount = ReleaseNotes.Children.Count;
+        for (int i = 0; i < Math.Max(rowCount, noteCount); i++)
+        {
+            if (i < noteCount) targets.Add(ReleaseNotes.Children[i]);
+            if (i < rowCount) targets.Add((ListBoxItem)VersionList.Items[i]);
+            if (i == rowCount - 1 && OlderVersionsButton.Visibility == Visibility.Visible)
+                targets.Add(OlderVersionsButton);
+        }
         RevealRequested?.Invoke(targets);
     }
 
@@ -313,14 +312,7 @@ public partial class ChangelogView : UserControl
         var origin = new Point(0, 1) + VisualTreeHelper.GetOffset(row);
         double target = host.TranslatePoint(origin, VersionList).Y;
         double height = Math.Max(24, row.ActualHeight - 2);
-        double travel = target - MarkOffset.Y;
         SelectionMark.Visibility = Visibility.Visible;
-        if (animate && VersionScrollViewer.ViewportHeight > 0 && Math.Abs(travel) > VersionScrollViewer.ViewportHeight)
-        {
-            // For a jump across screens, enter from the direction of the previous selection.
-            double approach = Math.Min(height, VersionScrollViewer.ViewportHeight);
-            _selectionMotion.MoveTo(target - Math.CopySign(approach, travel), height, animate: false);
-        }
         _selectionMotion.MoveTo(target, height, animate);
     }
 
@@ -341,9 +333,9 @@ public partial class ChangelogView : UserControl
         {
             Text = Loc.Get("changelog.version", entry.Version),
             FontSize = 24,
-            FontWeight = FontWeights.Bold,
-            Foreground = VNotch.Services.UiPalette.PrimaryBrush
+            FontWeight = FontWeights.Bold
         };
+        versionTitle.SetResourceReference(TextBlock.ForegroundProperty, entry.Prerelease ? "PrereleaseVersionBrush" : "StableVersionBrush");
         ReleaseHeader.Children.Add(versionTitle);
 
         if (entry.Date is { } date) ReleaseHeader.Children.Add(new TextBlock
@@ -355,46 +347,31 @@ public partial class ChangelogView : UserControl
         });
 
         if (entry.IsLatest || entry.IsCurrent)
-        {
-            var badgeStack = new WrapPanel
-            {
-                Orientation = Orientation.Horizontal,
-                Margin = new Thickness(0, 8, 0, 0)
-            };
-
-            if (entry.IsLatest)
-            {
-                var latestBadge = CreateBadge(Loc.Get("changelog.latest"));
-                badgeStack.Children.Add(latestBadge);
-            }
-
-            if (entry.IsCurrent)
-            {
-                var currentBadge = CreateBadge(Loc.Get("changelog.current"));
-                badgeStack.Children.Add(currentBadge);
-                if (entry.IsLatest) currentBadge.Margin = new Thickness(8, 0, 0, 0);
-            }
-
-            ReleaseHeader.Children.Add(badgeStack);
-        }
-
+            ReleaseHeader.Children.Add(CreateStatusBadges(entry, compact: false));
     }
 
-    private static Border CreateBadge(string text)
+    private static WrapPanel CreateStatusBadges(ChangelogEntry entry, bool compact, List<string>? spoken = null)
     {
-        return new Border
+        var panel = new WrapPanel { Margin = new Thickness(0, compact ? 2 : 8, 0, 0) };
+        if (entry.IsLatest) AddBadge("changelog.latest", "LatestBadgeInk", "LatestBadgeFill");
+        if (entry.IsCurrent) AddBadge("changelog.current", "CurrentBadgeInk", "CurrentBadgeFill");
+        return panel;
+
+        void AddBadge(string labelKey, string inkKey, string fillKey)
         {
-            Background = new SolidColorBrush(Color.FromArgb(28, 255, 255, 255)),
-            CornerRadius = new CornerRadius(8),
-            Padding = new Thickness(7, 2, 7, 2),
-            Child = new TextBlock
+            string text = Loc.Get(labelKey);
+            spoken?.Add(text);
+            var label = new TextBlock { Text = text, FontSize = 10, FontWeight = FontWeights.Bold, TextWrapping = TextWrapping.Wrap };
+            label.SetResourceReference(TextBlock.ForegroundProperty, inkKey);
+            var badge = new Border
             {
-                Text = text,
-                FontSize = 10,
-                FontWeight = FontWeights.Bold,
-                Foreground = UiPalette.SecondaryBrush
-            }
-        };
+                Child = label, CornerRadius = new CornerRadius(8),
+                Padding = compact ? new Thickness(4, 1, 4, 1) : new Thickness(7, 2, 7, 2),
+                Margin = new Thickness(0, 0, compact ? 3 : 6, 0)
+            };
+            badge.SetResourceReference(Border.BackgroundProperty, fillKey);
+            panel.Children.Add(badge);
+        }
     }
 
     private static readonly MarkdownPanelOptions ChangelogMarkdownOptions = CreateChangelogMarkdownOptions();

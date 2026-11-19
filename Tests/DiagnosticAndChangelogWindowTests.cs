@@ -221,6 +221,66 @@ public sealed class DiagnosticAndChangelogWindowTests
     });
 
     [Fact]
+    public void ChangelogColorsFollowTheReleaseAndKeepBothStatusesDistinct() => SharedStaTestRunner.RunAsync(async () =>
+    {
+        LiquidGlassSpotlightTests.CreateApplicationResources();
+        var view = new ChangelogView();
+        var window = new BackgroundWindow { Content = view, Width = 600, Height = 480 };
+        var releases = new UpdateInfo[]
+        {
+            new() { Version = "2.4.2" },
+            new() { Version = "2.3.0-beta2" },
+            new() { Version = "2.2.0", IsPrerelease = true }
+        };
+        static TextBlock Title(ListBoxItem row) => (TextBlock)((StackPanel)row.Content).Children[0];
+        try
+        {
+            window.Show();
+            await view.LoadAsync(new ChangelogFixture("2.4.2", releases), () => true);
+            window.UpdateLayout();
+            var stable = (ListBoxItem)view.VersionList.SelectedItem;
+            var beta = (ListBoxItem)view.VersionList.Items[1];
+            var flagged = (ListBoxItem)view.VersionList.Items[2];
+            Assert.Same(view.FindResource("StableVersionBrush"), ((TextBlock)view.ReleaseHeader.Children[0]).Foreground);
+            Assert.Same(view.FindResource("PrereleaseVersionBrush"), Title(beta).Foreground);
+            Assert.Same(Title(beta).Foreground, Title(flagged).Foreground);
+            var selectedStable = ((SolidColorBrush)Title(stable).Foreground).Color;
+
+            foreach (var (name, ink, fill) in new[]
+            {
+                ("changelog.latest", "LatestBadgeInk", "LatestBadgeFill"),
+                ("changelog.current", "CurrentBadgeInk", "CurrentBadgeFill")
+            })
+            {
+                foreach (var host in new FrameworkElement[] { stable, view.ReleaseHeader })
+                {
+                    var text = Assert.Single(Descendants<TextBlock>(host), t => t.Text == Loc.Get(name));
+                    Assert.Same(view.FindResource(ink), text.Foreground);
+                    Assert.Same(view.FindResource(fill), ((Border)text.Parent).Background);
+                }
+            }
+            view.VersionList.SelectedItem = beta;
+            window.UpdateLayout();
+            Assert.Same(view.FindResource("StableVersionBrush"), Title(stable).Foreground);
+            Assert.Same(Title(flagged).Foreground, ((TextBlock)view.ReleaseHeader.Children[0]).Foreground);
+            var selectedBeta = ((SolidColorBrush)Title(beta).Foreground).Color;
+            Assert.NotEqual(selectedStable, selectedBeta);
+            Assert.All(AccentTheme.Swatches, swatch =>
+            {
+                Assert.True(DynamicIslandColorExtractor.GetContrastRatio(selectedStable, swatch.Color) >= 4.5);
+                Assert.True(DynamicIslandColorExtractor.GetContrastRatio(selectedBeta, swatch.Color) >= 4.5);
+            });
+
+            await view.LoadAsync(new ChangelogFixture("2.1.0-beta-1", releases), () => true);
+            window.UpdateLayout();
+            var installedBeta = (ListBoxItem)view.VersionList.Items[^1];
+            Assert.Equal("2.1.0-beta-1", installedBeta.Tag);
+            Assert.Same(view.FindResource("PrereleaseVersionBrush"), Title(installedBeta).Foreground);
+        }
+        finally { window.Close(); }
+    });
+
+    [Fact]
     public void ScrollingLoadsOlderChangelogsOnceAndResolvesTheInstalledRow() => SharedStaTestRunner.RunAsync(async ct =>
     {
         LiquidGlassSpotlightTests.CreateApplicationResources();
@@ -304,12 +364,14 @@ public sealed class DiagnosticAndChangelogWindowTests
 
             var older = (ListBoxItem)view.VersionList.Items[22];
             double target = older.TranslatePoint(new Point(0, 1), view.VersionList).Y;
+            double startCenter = view.MarkOffset.Y + view.SelectionMark.Height / 2;
             Assert.True(target - view.MarkOffset.Y > view.VersionScrollViewer.ViewportHeight);
             view.VersionList.SelectedItem = older;
-            Assert.InRange(target - view.MarkOffset.Y, 1, view.VersionScrollViewer.ViewportHeight);
+            Assert.Equal(startCenter, view.MarkOffset.Y + view.SelectionMark.Height / 2, precision: 3);
             thirdPage.SetResult(new(Releases(1), false));
-            await WpfFrameWaiter.UntilAsync(() => view.VersionList.Items.Count == 36 && view.MarkScale.ScaleY > 1.01,
-                "the focus indicator to stretch on the older row after layout", ct);
+            await WpfFrameWaiter.UntilAsync(() => view.VersionList.Items.Count == 36 && view.MarkScale.ScaleY > 1.01 &&
+                view.MarkOffset.Y > startCenter && view.MarkOffset.Y < target,
+                "the focus indicator to travel between rows while the next page loads", ct);
             await WpfFrameWaiter.UntilAsync(() => view.MarkScale.ScaleY == 1 && Math.Abs(view.MarkOffset.Y - target) < .01,
                 "the focus indicator to settle on the older row", ct);
             Assert.Same(older, view.VersionList.SelectedItem);

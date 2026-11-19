@@ -116,8 +116,8 @@ public partial class SettingsWindow : Window
         var firstOpenProbe = System.Diagnostics.Stopwatch.StartNew();
         AccentTheme.Apply(settings.AccentColor);
         InitializeComponent();
-        Changelog.RevealRequested += targets => ApplyProgressiveBlurCascade(targets, 0, -1,
-            isMenuList: false, Math.Min(60, AnimationConfig.TargetFps));
+        Changelog.RevealRequested += targets => RevealSettingsContent(targets);
+        ContentHost.AddHandler(Expander.ExpandedEvent, new RoutedEventHandler(SettingsGroup_Expanded));
         AddHandler(Mouse.MouseUpEvent, new MouseButtonEventHandler(LivePreview_MouseUp), handledEventsToo: true);
         AddHandler(Keyboard.KeyUpEvent, new KeyEventHandler(LivePreview_KeyUp), handledEventsToo: true);
         FirstOpenProbe?.Invoke($"DEBUG-FIRST-OPEN Settings XAML {firstOpenProbe.Elapsed.TotalMilliseconds:F1} ms");
@@ -1238,6 +1238,7 @@ public partial class SettingsWindow : Window
     {
         StopSmoothScroll();
         SettingsPageWave.Capture(SettingsPane, Orientation.Horizontal, forward: true);
+        ResetProgressiveBlurElements(isMenuList: false);
         SettingsScrollViewer.Visibility = Visibility.Collapsed;
         ChangelogPage.Visibility = Visibility.Visible;
         ChangelogBackButton.Focus();
@@ -1252,12 +1253,12 @@ public partial class SettingsWindow : Window
 
     private void HideChangelog(bool turnBack = false)
     {
-        if (!turnBack) SettingsPageWave.Stop();
         if (ChangelogPage.Visibility != Visibility.Visible) return;
         if (turnBack) SettingsPageWave.Capture(SettingsPane, Orientation.Horizontal, forward: false);
         ResetProgressiveBlurElements(isMenuList: false);
         ChangelogPage.Visibility = Visibility.Collapsed;
         SettingsScrollViewer.Visibility = Visibility.Visible;
+        if (turnBack) AnimateActivePanel(_activeNav);
     }
 
     private void PanelDonating_IsVisibleChanged(object sender, DependencyPropertyChangedEventArgs e)
