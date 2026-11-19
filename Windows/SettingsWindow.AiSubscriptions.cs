@@ -22,7 +22,7 @@ public partial class SettingsWindow
     private string _aiUsageCodexColor = "#00D491";
     private string _aiUsageClaudeColor = "#D97757";
 
-    private void LoadAiUsageCustomization(NotchSettings settings)
+    internal void LoadAiUsageCustomization(NotchSettings settings)
     {
         if (!_aiUsageCustomizationReady) AiUsageTypography.Apply(AiUsageCard);
         _updatingAiUsageCustomization = true;
@@ -199,7 +199,7 @@ public partial class SettingsWindow
         AiUsagePreviewCardBorder.BeginAnimation(SolidColorBrush.ColorProperty, anim, HandoffBehavior.SnapshotAndReplace);
     }
 
-    private void AiUsageCustomize_Changed(object sender, RoutedEventArgs e)
+    internal void AiUsageCustomize_Changed(object sender, RoutedEventArgs e)
     {
         if (_isLoadingSettings || _updatingAiUsageCustomization) return;
         RunWithAiUsageScrollAnchor(sender as FrameworkElement, () =>
@@ -210,7 +210,7 @@ public partial class SettingsWindow
     }
     private void AiUsageCustomizationSlider_Changed(object sender, RoutedPropertyChangedEventArgs<double> e)
         => PublishAiUsageCustomization(sender as FrameworkElement);
-    private void AiUsageResetAppearance_Click(object sender, RoutedEventArgs e)
+    internal void AiUsageResetAppearance_Click(object sender, RoutedEventArgs e)
     {
         RunWithAiUsageScrollAnchor(sender as FrameworkElement, () =>
         {
@@ -228,7 +228,7 @@ public partial class SettingsWindow
     }
 
     // No TextChanged validation: editing is quiet; only leaving the field commits it.
-    private void AiUsageColor_Blur(object sender, KeyboardFocusChangedEventArgs e)
+    internal void AiUsageColor_Blur(object sender, KeyboardFocusChangedEventArgs e)
     {
         if (_isLoadingSettings || !_aiUsageCustomizationReady || sender is not TextBox input || !input.IsEnabled || AiUsageCustomColorsChoice.IsChecked != true) return;
         bool codex = ReferenceEquals(input, AiUsageCodexColorInput);

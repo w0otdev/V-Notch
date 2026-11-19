@@ -15,7 +15,6 @@ namespace VNotch.Services;
 
 public sealed partial class MediaDetectionService : IMediaDetectionService, IAsyncDisposable
 {
-#pragma warning disable S3776
     private bool TryResolvePinnedSession(
         GlobalSystemMediaTransportControlsSessionManager sessionManager,
         PinnedSession pinned,
@@ -36,62 +35,78 @@ public sealed partial class MediaDetectionService : IMediaDetectionService, IAsy
 
         if (match != null)
         {
-            // Remember competing sessions so a later rebuild cannot bind the
-            // pin to a different tab that was already playing alongside it.
-            HashSet<string>? others = null;
-            for (int i = 0; i < sessions.Count; i++)
-            {
-                string key = BuildSessionInstanceKey(sessions[i]);
-                if (key == pinned.Key || pinned.OtherSessionKeys.Contains(key))
-                    continue;
-                others ??= new HashSet<string>(pinned.OtherSessionKeys, StringComparer.Ordinal);
-                others.Add(key);
-            }
-            if (others != null)
-                Interlocked.CompareExchange(ref _pinnedSession, pinned with { OtherSessionKeys = others }, pinned);
+            RememberCompetingSessions(sessions, pinned);
             _pinReconnect.Reset();
             resolvedSession = match;
             return true;
         }
 
-        if (_keepPinnedOnTrackChange)
+        if (_keepPinnedOnTrackChange && TryReconnectPinnedSession(sessions, pinned) is { } rebound)
         {
-            // Some players replace their SMTC session on every track. Retain
-            // the source preference and reconnect only to one unambiguous new
-            // session from that application, never to a known competing tab.
-            GlobalSystemMediaTransportControlsSession? replacement = null;
-            int replacementCount = 0;
-            for (int i = 0; i < sessions.Count; i++)
-            {
-                var candidate = sessions[i];
-                if (!string.Equals(candidate.SourceAppUserModelId, pinned.SourceAppId, StringComparison.OrdinalIgnoreCase) ||
-                    pinned.OtherSessionKeys.Contains(BuildSessionInstanceKey(candidate)))
-                {
-                    continue;
-                }
-                replacement = candidate;
-                if (++replacementCount > 1)
-                    break;
-            }
-
-            if (replacementCount == 1 && replacement != null)
-            {
-                var rebound = pinned with
-                {
-                    Key = BuildSessionInstanceKey(replacement),
-                    PreviousKey = pinned.Key,
-                    Session = replacement
-                };
-                if (ReferenceEquals(Interlocked.CompareExchange(ref _pinnedSession, rebound, pinned), pinned))
-                {
-                    _pinReconnect.Reset();
-                    RuntimeLog.Info("MEDIA-PIN", "Reconnected pinned source after its media session was replaced.");
-                    resolvedSession = replacement;
-                    return true;
-                }
-            }
+            resolvedSession = rebound;
+            return true;
         }
 
+        return ObserveMissingPin(pinned);
+    }
+
+    private void RememberCompetingSessions(IReadOnlyList<GlobalSystemMediaTransportControlsSession> sessions, PinnedSession pinned)
+    {
+        // Remember competing sessions so a later rebuild cannot bind the
+        // pin to a different tab that was already playing alongside it.
+        HashSet<string>? others = null;
+        for (int i = 0; i < sessions.Count; i++)
+        {
+            string key = BuildSessionInstanceKey(sessions[i]);
+            if (key == pinned.Key || pinned.OtherSessionKeys.Contains(key))
+                continue;
+            others ??= new HashSet<string>(pinned.OtherSessionKeys, StringComparer.Ordinal);
+            others.Add(key);
+        }
+        if (others != null)
+            Interlocked.CompareExchange(ref _pinnedSession, pinned with { OtherSessionKeys = others }, pinned);
+    }
+
+    private GlobalSystemMediaTransportControlsSession? TryReconnectPinnedSession(IReadOnlyList<GlobalSystemMediaTransportControlsSession> sessions, PinnedSession pinned)
+    {
+        // Some players replace their SMTC session on every track. Retain
+        // the source preference and reconnect only to one unambiguous new
+        // session from that application, never to a known competing tab.
+        GlobalSystemMediaTransportControlsSession? replacement = null;
+        int replacementCount = 0;
+        for (int i = 0; i < sessions.Count; i++)
+        {
+            var candidate = sessions[i];
+            if (!string.Equals(candidate.SourceAppUserModelId, pinned.SourceAppId, StringComparison.OrdinalIgnoreCase) ||
+                pinned.OtherSessionKeys.Contains(BuildSessionInstanceKey(candidate)))
+            {
+                continue;
+            }
+            replacement = candidate;
+            if (++replacementCount > 1)
+                break;
+        }
+
+        if (replacementCount == 1 && replacement != null)
+        {
+            var rebound = pinned with
+            {
+                Key = BuildSessionInstanceKey(replacement),
+                PreviousKey = pinned.Key,
+                Session = replacement
+            };
+            if (ReferenceEquals(Interlocked.CompareExchange(ref _pinnedSession, rebound, pinned), pinned))
+            {
+                _pinReconnect.Reset();
+                RuntimeLog.Info("MEDIA-PIN", "Reconnected pinned source after its media session was replaced.");
+                return replacement;
+            }
+        }
+        return null;
+    }
+
+    private bool ObserveMissingPin(PinnedSession pinned)
+    {
         // Session lists can briefly be empty during track changes. Keep the
         // pinned snapshot until absence is confirmed, never select a rival.
         lock (_lifecycleLock)
@@ -261,7 +276,7 @@ public sealed partial class MediaDetectionService : IMediaDetectionService, IAsy
         });
     }
 
-    private async Task<(GlobalSystemMediaTransportControlsSession? session, string? spotifyGroundTruth, GlobalSystemMediaTransportControlsSessionMediaProperties? mediaProperties)> ResolveActiveSessionAsync(bool forceRefresh)
+    internal async Task<(GlobalSystemMediaTransportControlsSession? session, string? spotifyGroundTruth, GlobalSystemMediaTransportControlsSessionMediaProperties? mediaProperties)> ResolveActiveSessionAsync(bool forceRefresh)
     {
         // Stop clears the shared reference while this scan can be awaiting
         // metadata. Retain the manager for the lifetime of this scan.

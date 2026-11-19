@@ -1,3 +1,4 @@
+using VNotch.Models;
 using VNotch.Controls;
 using VNotch.ViewModels;
 using Xunit;

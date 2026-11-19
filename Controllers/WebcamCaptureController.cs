@@ -118,7 +118,6 @@ public sealed class WebcamCaptureController : IDisposable
             return ++_fadeToken;
     }
 
-#pragma warning disable S3776 // Asynchronous UWP MediaCapture pipeline initialization involves multi-stage validation and cancellation checks
     public async Task<string?> StartAsync(string? deviceId, Func<bool> isContextValid)
     {
 
@@ -135,159 +134,11 @@ public sealed class WebcamCaptureController : IDisposable
             fadeToken = ++_fadeToken;
         }
 
-        bool StillValid()
-        {
-            lock (_lifecycleLock)
-            {
-                if (fadeToken != _fadeToken || !_isActive)
-                    return false;
-            }
-
-            return isContextValid();
-        }
+        bool StillValid() => IsCaptureCurrent(fadeToken) && isContextValid();
 
         try
         {
-            var (mediaCapture, frameReader, errorMsg) = await Task.Run(async () =>
-            {
-                MediaCapture? capture = null;
-                try
-                {
-                    Task priorTeardown;
-                    lock (_teardownLock)
-                        priorTeardown = _teardownTask;
-                    await priorTeardown.ConfigureAwait(false);
-                    if (!StillValid())
-                        return ((MediaCapture?)null, (MediaFrameReader?)null, (string?)null);
-
-                    var groups = await MediaFrameSourceGroup.FindAllAsync();
-                    MediaFrameSourceGroup? group = null;
-
-                    if (!string.IsNullOrEmpty(deviceId))
-                    {
-                        group = groups.FirstOrDefault(g => g.Id == deviceId &&
-                            g.SourceInfos.Any(s => s.SourceKind == MediaFrameSourceKind.Color));
-                    }
-
-                    group ??= groups.FirstOrDefault(g =>
-                        g.SourceInfos.Any(s => s.SourceKind == MediaFrameSourceKind.Color));
-
-                    if (group == null)
-                        return ((MediaCapture?)null, (MediaFrameReader?)null, "Cannot detect camera device");
-
-                    capture = new MediaCapture();
-                    bool ownsStart;
-                    lock (_lifecycleLock)
-                    {
-                        ownsStart = fadeToken == _fadeToken && _isActive;
-                        if (ownsStart)
-                        {
-                            _initializingMediaCapture = capture;
-                        }
-                    }
-                    if (!ownsStart)
-                    {
-                        capture.Dispose();
-                        return ((MediaCapture?)null, (MediaFrameReader?)null, (string?)null);
-                    }
-
-                    var initSettings = new MediaCaptureInitializationSettings
-                    {
-                        SourceGroup = group,
-                        MemoryPreference = MediaCaptureMemoryPreference.Auto,
-                        StreamingCaptureMode = StreamingCaptureMode.Video
-                    };
-
-                    await capture.InitializeAsync(initSettings);
-                    if (!StillValid())
-                    {
-                        lock (_lifecycleLock)
-                        {
-                            if (ReferenceEquals(_initializingMediaCapture, capture))
-                            {
-                                _initializingMediaCapture = null;
-                            }
-                        }
-                        capture.Dispose();
-                        return ((MediaCapture?)null, (MediaFrameReader?)null, (string?)null);
-                    }
-
-                    var colorSource = capture.FrameSources.Values.FirstOrDefault(s => s.Info.SourceKind == MediaFrameSourceKind.Color);
-                    if (colorSource == null)
-                    {
-                        lock (_lifecycleLock)
-                        {
-                            if (ReferenceEquals(_initializingMediaCapture, capture))
-                            {
-                                _initializingMediaCapture = null;
-                            }
-                        }
-                        capture.Dispose();
-                        return ((MediaCapture?)null, (MediaFrameReader?)null, "Cannot detect color source");
-                    }
-
-                    const uint MaxPreviewWidth = 640;
-                    const uint MaxPreviewHeight = 480;
-
-                    MediaFrameReader reader;
-                    try
-                    {
-                        var currentFormat = colorSource.CurrentFormat?.VideoFormat;
-                        if (currentFormat != null && (currentFormat.Width > MaxPreviewWidth || currentFormat.Height > MaxPreviewHeight))
-                        {
-                            double scale = Math.Min((double)MaxPreviewWidth / currentFormat.Width, (double)MaxPreviewHeight / currentFormat.Height);
-                            uint targetWidth = Math.Max(1, (uint)Math.Round(currentFormat.Width * scale));
-                            uint targetHeight = Math.Max(1, (uint)Math.Round(currentFormat.Height * scale));
-                            // Ensure even dimensions
-                            targetWidth = (targetWidth + 1) & ~1u;
-                            targetHeight = (targetHeight + 1) & ~1u;
-
-                            var targetSize = new BitmapSize { Width = targetWidth, Height = targetHeight };
-                            reader = await capture.CreateFrameReaderAsync(colorSource, MediaEncodingSubtypes.Bgra8, targetSize);
-                        }
-                        else
-                        {
-                            reader = await capture.CreateFrameReaderAsync(colorSource, MediaEncodingSubtypes.Bgra8);
-                        }
-                    }
-                    catch (Exception ex)
-                    {
-                        RuntimeLog.Warn("CAMERA", $"CreateFrameReaderAsync with preview size failed, falling back to default: {ex.Message}");
-                        reader = await capture.CreateFrameReaderAsync(colorSource, MediaEncodingSubtypes.Bgra8);
-                    }
-
-                    lock (_lifecycleLock)
-                    {
-                        if (ReferenceEquals(_initializingMediaCapture, capture))
-                        {
-                            _initializingMediaCapture = null;
-                        }
-                    }
-                    return (capture, reader, (string?)null);
-                }
-                catch (Exception ex)
-                {
-                    if (capture != null)
-                    {
-                        lock (_lifecycleLock)
-                        {
-                            if (ReferenceEquals(_initializingMediaCapture, capture))
-                            {
-                                _initializingMediaCapture = null;
-                            }
-                        }
-                        try
-                        {
-                            capture.Dispose();
-                        }
-                        catch (Exception)
-                        {
-                            // Ignore errors during capture disposal on initialization failure.
-                        }
-                    }
-                    return ((MediaCapture?)null, (MediaFrameReader?)null, ex.Message);
-                }
-            });
+            var (mediaCapture, frameReader, errorMsg) = await Task.Run(() => OpenCaptureAsync(deviceId, fadeToken, StillValid));
 
             if (!StillValid())
             {
@@ -329,18 +180,7 @@ public sealed class WebcamCaptureController : IDisposable
 
             if (!StillValid())
             {
-                frameReader.FrameArrived -= OnFrameArrived;
-                lock (_lifecycleLock)
-                {
-                    if (ReferenceEquals(_frameReader, frameReader))
-                    {
-                        _frameReader = null;
-                    }
-                    if (ReferenceEquals(_mediaCapture, mediaCapture))
-                    {
-                        _mediaCapture = null;
-                    }
-                }
+                DetachObsoleteReader(frameReader, mediaCapture);
                 await DisposeResourcesAsync(frameReader, mediaCapture);
             }
 
@@ -359,7 +199,27 @@ public sealed class WebcamCaptureController : IDisposable
             }
         }
     }
-#pragma warning restore S3776
+
+    private bool IsCaptureCurrent(int fadeToken)
+    {
+        lock (_lifecycleLock) return fadeToken == _fadeToken && _isActive;
+    }
+
+    private void DetachObsoleteReader(MediaFrameReader frameReader, MediaCapture mediaCapture)
+    {
+        frameReader.FrameArrived -= OnFrameArrived;
+        lock (_lifecycleLock)
+        {
+            if (ReferenceEquals(_frameReader, frameReader))
+            {
+                _frameReader = null;
+            }
+            if (ReferenceEquals(_mediaCapture, mediaCapture))
+            {
+                _mediaCapture = null;
+            }
+        }
+    }
 
     public (MediaFrameReader? reader, MediaCapture? capture, MediaCapture? initializing) DetachForSafeStop()
     {
@@ -626,4 +486,136 @@ public sealed class WebcamCaptureController : IDisposable
             _ = DisposeResourcesAsync(null, initializing);
         }
     }
+
+    private void ReleaseInitializingCapture(MediaCapture capture)
+    {
+        lock (_lifecycleLock)
+        {
+            if (ReferenceEquals(_initializingMediaCapture, capture)) _initializingMediaCapture = null;
+        }
+    }
+
+    private async Task<(MediaCapture?, MediaFrameReader?, string?)> OpenCaptureAsync(string? deviceId, int fadeToken, Func<bool> stillValid)
+    {
+        MediaCapture? capture = null;
+        try
+        {
+            Task priorTeardown;
+            lock (_teardownLock)
+                priorTeardown = _teardownTask;
+            await priorTeardown.ConfigureAwait(false);
+            if (!stillValid())
+                return ((MediaCapture?)null, (MediaFrameReader?)null, (string?)null);
+
+            var groups = await MediaFrameSourceGroup.FindAllAsync();
+            MediaFrameSourceGroup? group = null;
+
+            if (!string.IsNullOrEmpty(deviceId))
+            {
+                group = groups.FirstOrDefault(g => g.Id == deviceId &&
+                    g.SourceInfos.Any(s => s.SourceKind == MediaFrameSourceKind.Color));
+            }
+
+            group ??= groups.FirstOrDefault(g =>
+                g.SourceInfos.Any(s => s.SourceKind == MediaFrameSourceKind.Color));
+
+            if (group == null)
+                return ((MediaCapture?)null, (MediaFrameReader?)null, "Cannot detect camera device");
+
+            capture = new MediaCapture();
+            bool ownsStart;
+            lock (_lifecycleLock)
+            {
+                ownsStart = fadeToken == _fadeToken && _isActive;
+                if (ownsStart)
+                {
+                    _initializingMediaCapture = capture;
+                }
+            }
+            if (!ownsStart)
+            {
+                capture.Dispose();
+                return ((MediaCapture?)null, (MediaFrameReader?)null, (string?)null);
+            }
+
+            var initSettings = new MediaCaptureInitializationSettings
+            {
+                SourceGroup = group,
+                MemoryPreference = MediaCaptureMemoryPreference.Auto,
+                StreamingCaptureMode = StreamingCaptureMode.Video
+            };
+
+            await capture.InitializeAsync(initSettings);
+            if (!stillValid())
+            {
+                ReleaseInitializingCapture(capture);
+                capture.Dispose();
+                return ((MediaCapture?)null, (MediaFrameReader?)null, (string?)null);
+            }
+
+            var colorSource = capture.FrameSources.Values.FirstOrDefault(s => s.Info.SourceKind == MediaFrameSourceKind.Color);
+            if (colorSource == null)
+            {
+                ReleaseInitializingCapture(capture);
+                capture.Dispose();
+                return ((MediaCapture?)null, (MediaFrameReader?)null, "Cannot detect color source");
+            }
+
+            var reader = await CreatePreviewReaderAsync(capture, colorSource);
+
+            ReleaseInitializingCapture(capture);
+            return (capture, reader, (string?)null);
+        }
+        catch (Exception ex)
+        {
+            if (capture != null)
+            {
+                ReleaseInitializingCapture(capture);
+                try
+                {
+                    capture.Dispose();
+                }
+                catch (Exception)
+                {
+                    // Ignore errors during capture disposal on initialization failure.
+                }
+            }
+            return ((MediaCapture?)null, (MediaFrameReader?)null, ex.Message);
+        }
+    }
+
+    private static async Task<MediaFrameReader> CreatePreviewReaderAsync(MediaCapture capture, MediaFrameSource colorSource)
+    {
+        const uint MaxPreviewWidth = 640;
+        const uint MaxPreviewHeight = 480;
+
+        MediaFrameReader reader;
+        try
+        {
+            var currentFormat = colorSource.CurrentFormat?.VideoFormat;
+            if (currentFormat != null && (currentFormat.Width > MaxPreviewWidth || currentFormat.Height > MaxPreviewHeight))
+            {
+                double scale = Math.Min((double)MaxPreviewWidth / currentFormat.Width, (double)MaxPreviewHeight / currentFormat.Height);
+                uint targetWidth = Math.Max(1, (uint)Math.Round(currentFormat.Width * scale));
+                uint targetHeight = Math.Max(1, (uint)Math.Round(currentFormat.Height * scale));
+                // Ensure even dimensions
+                targetWidth = (targetWidth + 1) & ~1u;
+                targetHeight = (targetHeight + 1) & ~1u;
+
+                var targetSize = new BitmapSize { Width = targetWidth, Height = targetHeight };
+                reader = await capture.CreateFrameReaderAsync(colorSource, MediaEncodingSubtypes.Bgra8, targetSize);
+            }
+            else
+            {
+                reader = await capture.CreateFrameReaderAsync(colorSource, MediaEncodingSubtypes.Bgra8);
+            }
+        }
+        catch (Exception ex)
+        {
+            RuntimeLog.Warn("CAMERA", $"CreateFrameReaderAsync with preview size failed, falling back to default: {ex.Message}");
+            reader = await capture.CreateFrameReaderAsync(colorSource, MediaEncodingSubtypes.Bgra8);
+        }
+        return reader;
+    }
+
 }

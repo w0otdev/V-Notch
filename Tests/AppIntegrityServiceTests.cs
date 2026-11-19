@@ -159,4 +159,30 @@ public sealed class AppIntegrityServiceTests
             Assert.NotNull(dialog);
         });
     }
+
+    [Fact]
+    public void ShowIntegrityAlert_UsesInjectedPromptSeamWithoutWindowDependency()
+    {
+        var previous = AppIntegrityService.IntegrityAlertPrompt;
+        string? capturedTitle = null;
+        string? capturedMessage = null;
+        try
+        {
+            AppIntegrityService.IntegrityAlertPrompt = (title, message) =>
+            {
+                capturedTitle = title;
+                capturedMessage = message;
+                return false;
+            };
+
+            AppIntegrityService.ShowIntegrityAlert("Integrity Check", "Tampered binary");
+
+            Assert.Equal("Integrity Check", capturedTitle);
+            Assert.Equal("Tampered binary", capturedMessage);
+        }
+        finally
+        {
+            AppIntegrityService.IntegrityAlertPrompt = previous;
+        }
+    }
 }

@@ -1,4 +1,3 @@
-using System.Reflection;
 using System.Windows.Media;
 using NAudio.Wave;
 using VNotch.Controls;
@@ -9,8 +8,6 @@ namespace VNotch.Tests;
 [Collection("Localization")]
 public sealed class MusicVisualizerAudioPipelineTests
 {
-    private const BindingFlags Private = BindingFlags.Static | BindingFlags.NonPublic;
-
     [Theory]
     [InlineData(60)]
     [InlineData(200)]
@@ -22,17 +19,17 @@ public sealed class MusicVisualizerAudioPipelineTests
         var format = WaveFormat.CreateIeeeFloatWaveFormat(44100, 2);
         byte[] pcm = Tone(frequency, .5f, 32768, 2);
         Process(pcm, pcm.Length, format);
-        float[] first = Get<float[]>("_publishedTargets").ToArray();
+        float[] first = MusicVisualizer.PublishedTargets.ToArray();
         Assert.Contains(first, value => value > .05f);
         Assert.All(first, value => Assert.InRange(value, 0, 1));
-        Assert.True(Get<long>("_publishedFrameTicks") > 0);
-        Assert.True(Get<float>("_latestRmsNormalized") > 0);
-        Assert.InRange(Get<float>("_publishedBeatAccent"), 0, 1);
-        Invoke("ResetAudioState");
-        Assert.All(Get<float[]>("_publishedTargets"), value => Assert.Equal(0, value));
-        Assert.Equal(0, Get<long>("_publishedFrameTicks"));
+        Assert.True(MusicVisualizer.PublishedFrameTicks > 0);
+        Assert.True(MusicVisualizer.LatestRmsNormalized > 0);
+        Assert.InRange(MusicVisualizer.PublishedBeatAccent, 0, 1);
+        MusicVisualizer.ResetAudioState();
+        Assert.All(MusicVisualizer.PublishedTargets, value => Assert.Equal(0, value));
+        Assert.Equal(0, MusicVisualizer.PublishedFrameTicks);
         Process(new byte[pcm.Length], pcm.Length, format);
-        Assert.All(Get<float[]>("_publishedTargets"), value => Assert.Equal(0, value));
+        Assert.All(MusicVisualizer.PublishedTargets, value => Assert.Equal(0, value));
     }));
 
     [Fact]
@@ -41,12 +38,12 @@ public sealed class MusicVisualizerAudioPipelineTests
         var format = WaveFormat.CreateIeeeFloatWaveFormat(44100, 2);
         byte[] pcm = Tone(1000, .5f, 8192, 2, invertRight: true);
         Process(pcm, pcm.Length + 100, format);
-        Assert.All(Get<float[]>("_publishedTargets"), value => Assert.Equal(0, value));
-        int position = Get<int>("_fftInputPos");
+        Assert.All(MusicVisualizer.PublishedTargets, value => Assert.Equal(0, value));
+        int position = MusicVisualizer.FftInputPosition;
         Process(new byte[7], 7, format);
-        Assert.Equal(position, Get<int>("_fftInputPos"));
+        Assert.Equal(position, MusicVisualizer.FftInputPosition);
         Process(pcm, -10, format);
-        Assert.Equal(position, Get<int>("_fftInputPos"));
+        Assert.Equal(position, MusicVisualizer.FftInputPosition);
     }));
 
     [Theory]
@@ -86,24 +83,21 @@ public sealed class MusicVisualizerAudioPipelineTests
         byte[] pcm = Tone(1000, .4f, 8192, 1);
         Process(pcm, pcm.Length, format);
         var visualizer = new MusicVisualizer { TrackId = "Fixture track" };
-        object?[] freshness = [false, 0d];
-        float[] levels = (float[])typeof(MusicVisualizer).GetMethod("GetLatestDisplayLevels", BindingFlags.Instance | BindingFlags.NonPublic)!.Invoke(visualizer, freshness)!;
-        Assert.True((bool)freshness[0]!);
+        float[] levels = visualizer.GetLatestDisplayLevels(out bool hasFreshAudio, out _);
+        Assert.True(hasFreshAudio);
         Assert.Contains(levels, value => value > 0);
-        typeof(MusicVisualizer).GetField("_state", BindingFlags.Instance | BindingFlags.NonPublic)!.SetValue(visualizer, VisualizerState.Playing);
-        var update = typeof(MusicVisualizer).GetMethod("UpdateAnimation", BindingFlags.Instance | BindingFlags.NonPublic)!;
-        for (int i = 0; i < 120; i++) update.Invoke(visualizer, [.016, i * .016]);
-        double[] heights = (double[])typeof(MusicVisualizer).GetField("_currentHeights", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(visualizer)!;
+        visualizer.State = VisualizerState.Playing;
+        for (int i = 0; i < 120; i++) visualizer.UpdateAnimation(.016, i * .016);
+        double[] heights = visualizer.CurrentHeights.ToArray();
         Assert.All(heights, value => Assert.True(double.IsFinite(value) && value >= .08 && value <= 1));
         Assert.True(heights.Max() > .08);
         visualizer.SetCopiedFeedback(true);
-        Assert.False((bool)typeof(MusicVisualizer).GetField("_copiedFeedback", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(visualizer)!);
+        Assert.False(visualizer.IsCopiedFeedbackActive);
         visualizer.SetCopiedFeedback(false);
-        Assert.False((bool)typeof(MusicVisualizer).GetField("_copiedFeedback", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(visualizer)!);
-        typeof(MusicVisualizer).GetField("_publishedFrameTicks", Private)!.SetValue(null, DateTime.UtcNow.AddSeconds(-5).Ticks);
-        freshness = [false, 0d];
-        typeof(MusicVisualizer).GetMethod("GetLatestDisplayLevels", BindingFlags.Instance | BindingFlags.NonPublic)!.Invoke(visualizer, freshness);
-        Assert.False((bool)freshness[0]!);
+        Assert.False(visualizer.IsCopiedFeedbackActive);
+        MusicVisualizer.PublishedFrameTicks = DateTime.UtcNow.AddSeconds(-5).Ticks;
+        visualizer.GetLatestDisplayLevels(out hasFreshAudio, out _);
+        Assert.False(hasFreshAudio);
     }));
 
     [Fact]
@@ -111,46 +105,43 @@ public sealed class MusicVisualizerAudioPipelineTests
     {
         var visualizer = new MusicVisualizer { TrackId = "Fixture paused track", Width = 80, Height = 40 };
         var host = new BackgroundWindow { Width = 100, Height = 60, Content = visualizer };
-        const BindingFlags instance = BindingFlags.Instance | BindingFlags.NonPublic;
         try
         {
             host.Show();
             await WpfFrameWaiter.UntilAsync(() => visualizer.IsLoaded, "visualizer host loaded", ct);
             visualizer.SetCopiedFeedback(true);
-            await WpfFrameWaiter.UntilAsync(() => Math.Abs((double)typeof(MusicVisualizer).GetField("_checkMix", instance)!.GetValue(visualizer)! - 1) < 1e-6, "copied visualizer morph", ct);
-            Assert.True((bool)typeof(MusicVisualizer).GetField("_copiedFeedback", instance)!.GetValue(visualizer)!);
-            await WpfFrameWaiter.UntilAsync(() => !(bool)typeof(MusicVisualizer).GetField("_isRenderingActive", instance)!.GetValue(visualizer)!, "settled copied feedback releases rendering", ct);
+            await WpfFrameWaiter.UntilAsync(() => Math.Abs(visualizer.CheckMix - 1) < 1e-6, "copied visualizer morph", ct);
+            Assert.True(visualizer.IsCopiedFeedbackActive);
+            await WpfFrameWaiter.UntilAsync(() => !visualizer.IsRenderingActive, "settled copied feedback releases rendering", ct);
             visualizer.SetCopiedFeedback(false);
-            await WpfFrameWaiter.UntilAsync(() => (double)typeof(MusicVisualizer).GetField("_iconMix", instance)!.GetValue(visualizer)! == 0, "return to paused bars", ct);
+            await WpfFrameWaiter.UntilAsync(() => visualizer.IconMix == 0, "return to paused bars", ct);
         }
         finally { host.Close(); }
         await WpfFrameWaiter.NextAsync(ct);
-        Assert.False((bool)typeof(MusicVisualizer).GetField("_isRenderingActive", instance)!.GetValue(visualizer)!);
-        Assert.False((bool)typeof(MusicVisualizer).GetField("_holdsCaptureLease", instance)!.GetValue(visualizer)!);
+        Assert.False(visualizer.IsRenderingActive);
+        Assert.False(visualizer.HoldsCaptureLease);
     });
 
     [Fact]
     public void HiddenLoadedVisualizerReleasesItsLeaseAndCannotAcquireFromPlaybackChanges() => SharedStaTestRunner.RunAsync(async ct =>
     {
-        const BindingFlags instance = BindingFlags.Instance | BindingFlags.NonPublic;
         var visualizer = new MusicVisualizer { TrackId = "Fixture paused track", Width = 80, Height = 40 };
         var host = new BackgroundWindow { Width = 100, Height = 60, Content = visualizer };
-        var holdsLease = typeof(MusicVisualizer).GetField("_holdsCaptureLease", instance)!;
         try
         {
             host.Show();
             await WpfFrameWaiter.UntilAsync(() => visualizer.IsLoaded, "visualizer host loaded", ct);
             // A lease alone does not start the driver, so this exercises the
             // lifecycle without opening an audio device in the regression test.
-            typeof(MusicVisualizer).GetMethod("AcquireCaptureLease", instance)!.Invoke(visualizer, null);
-            Assert.True((bool)holdsLease.GetValue(visualizer)!);
+            visualizer.AcquireCaptureLease();
+            Assert.True(visualizer.HoldsCaptureLease);
             visualizer.Visibility = System.Windows.Visibility.Collapsed;
             Assert.True(visualizer.IsLoaded);
-            Assert.False((bool)holdsLease.GetValue(visualizer)!);
-            Assert.False((bool)typeof(MusicVisualizer).GetField("_isRenderingActive", instance)!.GetValue(visualizer)!);
+            Assert.False(visualizer.HoldsCaptureLease);
+            Assert.False(visualizer.IsRenderingActive);
             visualizer.IsPlaying = true;
             visualizer.IsBuffering = true;
-            Assert.False((bool)holdsLease.GetValue(visualizer)!);
+            Assert.False(visualizer.HoldsCaptureLease);
             visualizer.IsBuffering = false;
             visualizer.IsPlaying = false;
         }
@@ -159,11 +150,11 @@ public sealed class MusicVisualizerAudioPipelineTests
 
     private static void WithAudioState(Action action)
     {
-        lock (Get<object>("_lockObj"))
+        lock (MusicVisualizer.AudioStateLock)
         {
-            Invoke("ResetAudioState");
+            MusicVisualizer.ResetAudioState();
             try { action(); }
-            finally { Invoke("ResetAudioState"); }
+            finally { MusicVisualizer.ResetAudioState(); }
         }
     }
     private static byte[] Tone(double frequency, float amplitude, int samples, int channels, bool invertRight = false)
@@ -177,7 +168,6 @@ public sealed class MusicVisualizerAudioPipelineTests
         }
         return buffer;
     }
-    private static T Get<T>(string name) => (T)typeof(MusicVisualizer).GetField(name, Private)!.GetValue(null)!;
     // The product code takes the decoded format fields; tests describe formats with NAudio types.
     private static void Process(byte[] buffer, int bytes, WaveFormat format)
     {
@@ -185,6 +175,4 @@ public sealed class MusicVisualizerAudioPipelineTests
             (format is WaveFormatExtensible extensible && extensible.SubFormat == NAudio.Dmo.AudioMediaSubtypes.MEDIASUBTYPE_IEEE_FLOAT);
         MusicVisualizer.ProcessAudioBuffer(buffer, bytes, format.Channels, format.BitsPerSample, isFloat);
     }
-
-    private static object? Invoke(string name, params object?[] arguments) => typeof(MusicVisualizer).GetMethod(name, Private)!.Invoke(null, arguments);
 }

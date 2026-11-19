@@ -171,14 +171,105 @@ internal sealed partial class SpotlightAiService
             throw ProviderError((int)response.StatusCode);
         using var stream = await response.Content.ReadAsStreamAsync(token).ConfigureAwait(false);
         using var reader = new StreamReader(stream);
-        var data = new StringBuilder();
-        var lineBuilder = new StringBuilder();
-        bool received = false;
-        bool completed = false;
-        int total = 0;
-        int totalResponseChars = 0;
+        var events = new StreamEvents(settings, usage, onGeminiParts, onUsage);
+        var lines = new StreamLines(events);
+        char[] rentedBuffer = ArrayPool<char>.Shared.Rent(4096);
+        try
+        {
+            while (!events.Completed)
+            {
+                int count = await ReadStreamChunkAsync(reader, rentedBuffer, token).ConfigureAwait(false);
+                if (count == 0)
+                {
+                    foreach (var delta in lines.Finish()) yield return delta;
+                    break;
+                }
+                foreach (var delta in lines.Process(rentedBuffer, count)) yield return delta;
+            }
+        }
+        finally
+        {
+            ArrayPool<char>.Shared.Return(rentedBuffer);
+        }
+        if (!events.Received) throw new SpotlightAiException("spotlight.ai.emptyError");
+        if (!events.Completed) throw new SpotlightAiException("spotlight.ai.networkError");
+    }
 
-        string? FlushEventPayload()
+    private async Task<int> ReadStreamChunkAsync(StreamReader reader, char[] buffer, CancellationToken token)
+    {
+        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(token);
+        timeout.CancelAfter(StreamReadIdleTimeout);
+        try
+        {
+            return await reader.ReadAsync(buffer.AsMemory(), timeout.Token).AsTask().WaitAsync(timeout.Token).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException) when (!token.IsCancellationRequested)
+        {
+            throw new TimeoutException("AI stream stalled waiting for data.");
+        }
+    }
+
+    private sealed class StreamLines(StreamEvents events)
+    {
+        private readonly StringBuilder partialLine = new();
+        private int responseChars;
+
+        internal IEnumerable<string> Process(char[] buffer, int count)
+        {
+            int offset = 0;
+            while (offset < count && !events.Completed)
+            {
+                int newline = Array.IndexOf(buffer, '\n', offset, count - offset);
+                int length = (newline < 0 ? count : newline) - offset;
+                if (responseChars + partialLine.Length + length > MaxStreamResponseChars)
+                    throw new InvalidOperationException("AI stream response exceeded maximum allowed size.");
+                if (newline < 0)
+                {
+                    partialLine.Append(buffer, offset, length);
+                    yield break;
+                }
+                string? delta = ConsumeLine(buffer, offset, length);
+                offset = newline + 1;
+                if (delta != null) yield return delta;
+            }
+        }
+
+        private string? ConsumeLine(char[] buffer, int offset, int length)
+        {
+            if (partialLine.Length == 0) return Dispatch(buffer.AsSpan(offset, length));
+            partialLine.Append(buffer, offset, length);
+            return FlushPartialLine();
+        }
+
+        private string? Dispatch(ReadOnlySpan<char> line)
+        {
+            if (!line.IsEmpty && line[^1] == '\r') line = line[..^1];
+            responseChars += line.Length;
+            return events.ProcessLineSpan(line);
+        }
+
+        private string? FlushPartialLine()
+        {
+            string line = partialLine.ToString();
+            partialLine.Clear();
+            return Dispatch(line.AsSpan());
+        }
+
+        internal IEnumerable<string> Finish()
+        {
+            if (partialLine.Length > 0 && !events.Completed && FlushPartialLine() is { } delta) yield return delta;
+            if (!events.Completed && events.FlushEventPayload() is { } finalDelta) yield return finalDelta;
+        }
+    }
+
+    private sealed class StreamEvents(NotchSettings settings, AiUsageSnapshot usage, Action<JsonElement[]>? onGeminiParts, Action<AiUsageSnapshot>? onUsage)
+    {
+        private readonly StringBuilder data = new();
+        private int total;
+        internal bool Received { get; private set; }
+        internal bool Completed { get; private set; }
+
+        internal string? FlushEventPayload()
         {
             if (data.Length == 0) return null;
 
@@ -186,39 +277,11 @@ internal sealed partial class SpotlightAiService
             data.Clear();
             string provider = settings.SpotlightAiProvider ?? string.Empty;
 
-            if (onGeminiParts == null || provider != "Gemini")
-            {
-                Span<char> fastDeltaBuf = stackalloc char[4096];
-                if (vn_spotlight_ai_extract_json_delta(
-                    payload.AsSpan(), payload.Length,
-                    provider.AsSpan(), provider.Length,
-                    fastDeltaBuf, fastDeltaBuf.Length,
-                    out int fastDeltaLen,
-                    out byte fastStatus,
-                    out byte fastCompleted) == 0)
-                {
-                    if (fastStatus == 1)
-                    {
-                        completed = true;
-                        return null;
-                    }
-                    if (fastStatus == 2)
-                    {
-                        if (fastCompleted != 0)
-                            completed = true;
-                        onUsage?.Invoke(usage);
-                        if (fastDeltaLen <= 0) return null;
-                        total += fastDeltaLen;
-                        if (total > 200000) throw new SpotlightAiException("spotlight.ai.tooLong");
-                        received = true;
-                        return new string(fastDeltaBuf[..fastDeltaLen]);
-                    }
-                }
-            }
+            if (TryReadNativeDelta(payload, provider, out var fastDelta)) return fastDelta;
 
             if (payload == "[DONE]")
             {
-                completed = true;
+                Completed = true;
                 return null;
             }
 
@@ -234,55 +297,72 @@ internal sealed partial class SpotlightAiService
                     root.TryGetProperty("candidates", out candidates) &&
                     candidates.ValueKind == JsonValueKind.Array;
 
-                if (hasGeminiCandidates)
-                {
-                    foreach (var c in candidates.EnumerateArray())
-                    {
-                        if (c.TryGetProperty("finishReason", out var reason) && reason.GetString() == "STOP")
-                        {
-                            completed = true;
-                            break;
-                        }
-                    }
-                }
+                if (hasGeminiCandidates) ReadGeminiCompletion(candidates);
 
                 usage = usage.Read(root, provider);
                 onUsage?.Invoke(usage);
                 if (root.TryGetProperty("error", out var error))
                     throw StreamError(error);
 
-                if (hasGeminiCandidates && onGeminiParts != null && candidates.GetArrayLength() > 0 &&
-                    candidates[0].TryGetProperty("content", out var content) &&
-                    content.TryGetProperty("parts", out var parts) && parts.ValueKind == JsonValueKind.Array)
-                {
-                    int partCount = parts.GetArrayLength();
-                    var clonedParts = new JsonElement[partCount];
-                    int partIdx = 0;
-                    foreach (var part in parts.EnumerateArray())
-                        clonedParts[partIdx++] = part.Clone();
-                    onGeminiParts.Invoke(clonedParts);
-                }
+                if (hasGeminiCandidates) ReportGeminiParts(candidates);
 
-                string delta = ReadDelta(root, provider);
-                string? yielded = null;
-                if (delta.Length > 0)
-                {
-                    total += delta.Length;
-                    if (total > 200000) throw new SpotlightAiException("spotlight.ai.tooLong");
-                    received = true;
-                    yielded = delta;
-                }
+                string? yielded = RecordDelta(ReadDelta(root, provider));
 
                 if (provider == "Claude" &&
                     root.TryGetProperty("type", out var eventType) && eventType.GetString() == "message_stop")
                 {
-                    completed = true;
+                    Completed = true;
                 }
                 return yielded;
             }
         }
 
-        string? ProcessLineSpan(ReadOnlySpan<char> line)
+        private bool TryReadNativeDelta(string payload, string provider, out string? delta)
+        {
+            delta = null;
+            if (provider == "Gemini" && onGeminiParts != null) return false;
+            Span<char> buffer = stackalloc char[4096];
+            if (vn_spotlight_ai_extract_json_delta(payload.AsSpan(), payload.Length, provider.AsSpan(), provider.Length,
+                buffer, buffer.Length, out int length, out byte status, out byte completed) != 0) return false;
+            if (status == 1) { Completed = true; return true; }
+            if (status != 2) return false;
+            if (completed != 0) Completed = true;
+            onUsage?.Invoke(usage);
+            if (length > 0) delta = RecordDelta(new string(buffer[..length]));
+            return true;
+        }
+
+        private string? RecordDelta(string delta)
+        {
+            if (delta.Length == 0) return null;
+            total += delta.Length;
+            if (total > 200000) throw new SpotlightAiException("spotlight.ai.tooLong");
+            Received = true;
+            return delta;
+        }
+
+        private void ReadGeminiCompletion(JsonElement candidates)
+        {
+            foreach (var candidate in candidates.EnumerateArray())
+            {
+                if (!candidate.TryGetProperty("finishReason", out var reason) || reason.GetString() != "STOP") continue;
+                Completed = true;
+                return;
+            }
+        }
+
+        private void ReportGeminiParts(JsonElement candidates)
+        {
+            if (onGeminiParts == null || candidates.GetArrayLength() == 0 ||
+                !candidates[0].TryGetProperty("content", out var content) ||
+                !content.TryGetProperty("parts", out var parts) || parts.ValueKind != JsonValueKind.Array) return;
+            var clonedParts = new JsonElement[parts.GetArrayLength()];
+            int index = 0;
+            foreach (var part in parts.EnumerateArray()) clonedParts[index++] = part.Clone();
+            onGeminiParts(clonedParts);
+        }
+
+        internal string? ProcessLineSpan(ReadOnlySpan<char> line)
         {
             if (line.IsEmpty)
                 return FlushEventPayload();
@@ -298,100 +378,6 @@ internal sealed partial class SpotlightAiService
             }
             return null;
         }
-
-        string? ProcessBufferSlice(char[] buffer, int start, int length)
-        {
-            ReadOnlySpan<char> lineSpan = buffer.AsSpan(start, length);
-            if (!lineSpan.IsEmpty && lineSpan[^1] == '\r')
-                lineSpan = lineSpan[..^1];
-            totalResponseChars += lineSpan.Length;
-            return ProcessLineSpan(lineSpan);
-        }
-
-        char[] rentedBuffer = ArrayPool<char>.Shared.Rent(4096);
-        try
-        {
-            while (!completed)
-            {
-                int charsRead;
-                using (var readCts = CancellationTokenSource.CreateLinkedTokenSource(token))
-                {
-                    readCts.CancelAfter(StreamReadIdleTimeout);
-                    try
-                    {
-                        charsRead = await reader.ReadAsync(rentedBuffer.AsMemory(), readCts.Token).AsTask().WaitAsync(readCts.Token).ConfigureAwait(false);
-                    }
-                    catch (OperationCanceledException) when (!token.IsCancellationRequested)
-                    {
-                        throw new TimeoutException("AI stream stalled waiting for data.");
-                    }
-                }
-
-                int offset = 0;
-                while (offset < charsRead && !completed)
-                {
-                    int remainingLen = charsRead - offset;
-                    int newlinePos = Array.IndexOf(rentedBuffer, '\n', offset, remainingLen);
-                    int sliceLen = newlinePos >= 0 ? (newlinePos - offset) : remainingLen;
-
-                    if (lineBuilder.Length + sliceLen > MaxStreamResponseChars ||
-                        totalResponseChars + lineBuilder.Length + sliceLen > MaxStreamResponseChars)
-                    {
-                        throw new InvalidOperationException("AI stream response exceeded maximum allowed size.");
-                    }
-
-                    if (newlinePos < 0)
-                    {
-                        lineBuilder.Append(rentedBuffer, offset, sliceLen);
-                        break;
-                    }
-
-                    string? delta;
-                    if (lineBuilder.Length == 0)
-                    {
-                        delta = ProcessBufferSlice(rentedBuffer, offset, sliceLen);
-                        offset += sliceLen + 1;
-                    }
-                    else
-                    {
-                        lineBuilder.Append(rentedBuffer, offset, sliceLen);
-                        offset += sliceLen + 1;
-                        if (lineBuilder.Length > 0 && lineBuilder[^1] == '\r')
-                            lineBuilder.Length--;
-                        totalResponseChars += lineBuilder.Length;
-                        string line = lineBuilder.ToString();
-                        lineBuilder.Clear();
-                        delta = ProcessLineSpan(line.AsSpan());
-                    }
-
-                    if (delta != null)
-                        yield return delta;
-                }
-
-                if (charsRead == 0)
-                {
-                    if (lineBuilder.Length > 0 && !completed)
-                    {
-                        if (lineBuilder[^1] == '\r')
-                            lineBuilder.Length--;
-                        totalResponseChars += lineBuilder.Length;
-                        string lastLine = lineBuilder.ToString();
-                        lineBuilder.Clear();
-                        if (ProcessLineSpan(lastLine.AsSpan()) is { } delta)
-                            yield return delta;
-                    }
-                    if (!completed && FlushEventPayload() is { } finalDelta)
-                        yield return finalDelta;
-                    break;
-                }
-            }
-        }
-        finally
-        {
-            ArrayPool<char>.Shared.Return(rentedBuffer);
-        }
-        if (!received) throw new SpotlightAiException("spotlight.ai.emptyError");
-        if (!completed) throw new SpotlightAiException("spotlight.ai.networkError");
     }
 
     private async Task<HttpResponseMessage> OpenStreamAsync(NotchSettings settings,

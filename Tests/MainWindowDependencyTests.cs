@@ -54,7 +54,7 @@ public sealed class MainWindowDependencyTests
             Assert.Equal(0, media.DisposeCount);
             Assert.Equal(0, spotlight.DisposeCount);
             Assert.Equal(0, moduleHost.DisposeCount);
-            Assert.Null(viewModel.IsExpandedCheck);
+            Assert.Null(viewModel.Progress.IsExpandedCheck);
             Assert.Null(coordinator.CanInitiateTransition);
             media.RaiseMediaChanged(new MediaInfo { CurrentTrack = "Still running", IsAnyMediaPlaying = true });
             Assert.Equal(1, mediaUpdates);

@@ -9,6 +9,7 @@ namespace VNotch;
 
 public partial class SettingsWindow
 {
+    internal Dictionary<string, (TextBlock Label, TextBox Input)> TranslationAdvancedInputs => _translationAdvancedInputs;
     private readonly Dictionary<string, (TextBlock Label, TextBox Input)> _translationAdvancedInputs = new();
     private readonly Dictionary<string, TextBlock> _translationAdvancedGroups = new();
     private static readonly string[] TranslationAdvancedNames =

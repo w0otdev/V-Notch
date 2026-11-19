@@ -127,6 +127,26 @@ public sealed partial class MediaDetectionService : IMediaDetectionService, IAsy
     internal Task? ProcessingTask => _processingTask;
     internal Task? HeartbeatTask => _heartbeatTask;
     internal Task? StagedRefreshTask => _stagedRefreshTask;
+    internal SemaphoreSlim UpdateLock => _updateLock;
+    internal MediaTimelineSimulator Timeline => _timelineSimulator;
+    internal MediaPinReconnectWindow PinReconnect => _pinReconnect;
+    internal CancellationTokenSource? ThumbnailCancellation => _thumbCts;
+    internal void SetSessionManagerForTest(GlobalSystemMediaTransportControlsSessionManager manager) => _sessionManager = manager;
+    internal GlobalSystemMediaTransportControlsSession? ActiveDisplaySession => _activeDisplaySession;
+
+    internal void SetRunningWorkerForTest(Task? worker, CancellationTokenSource? lifetime)
+    {
+        _bgCts = lifetime;
+        _processingTask = worker;
+        _state = ServiceLifecycleState.Running;
+    }
+
+    internal void SetRecentBrowserMediaForTest(DateTime observedAt)
+    {
+        _lastSource = "Browser";
+        _emptyMetadataStartTime = observedAt;
+    }
+
     internal bool IsRunning => _state == ServiceLifecycleState.Running;
     internal bool IsStarting => _state == ServiceLifecycleState.Starting;
     internal bool IsStopped => _state == ServiceLifecycleState.Stopped;
@@ -755,7 +775,7 @@ public sealed partial class MediaDetectionService : IMediaDetectionService, IAsy
 
     #endregion
 
-    private async Task UpdateMediaInfoAsync(bool forceRefresh, CancellationToken ct)
+    internal async Task UpdateMediaInfoAsync(bool forceRefresh, CancellationToken ct)
     {
         await _updateLock.WaitAsync(ct).ConfigureAwait(false);
 

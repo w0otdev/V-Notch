@@ -14,6 +14,7 @@ public partial class SettingsWindow
 {
     internal event Action? TranslationPreviewRequested;
     private CancellationTokenSource? _translationDownload;
+    internal TranslationModelStore TranslationStore => _translationStore;
     private TranslationModelStore _translationStore = TranslationModelStore.Shared;
     private bool _translationInitialized, _translationWindowClosed;
     private bool _translationWaiting;
@@ -122,7 +123,7 @@ public partial class SettingsWindow
         if (_translationDownload == null) RefreshTranslationModelStatus();
     }
 
-    private void TranslationModelChanged()
+    internal void TranslationModelChanged()
     {
         // This operation refreshes its own outcome. A queued store notification
         // must not overwrite a connection error with the generic missing-model label.

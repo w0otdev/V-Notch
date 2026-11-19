@@ -1,12 +1,27 @@
 using System;
 using System.Runtime.InteropServices;
+using VNotch.Interop;
 
 namespace VNotch.Presenters;
 
 public static partial class CalendarScrollMath
 {
-    public const int TotalDays = 11;
-    public const double CellWidth = 30.0;
+    public static int TotalDays { get; }
+    public static int TodayIndex => TotalDays / 2;
+    public static double CellWidth { get; }
+    public static double HighlightDiameter { get; }
+
+    static CalendarScrollMath()
+    {
+        NativeResult.RequireSuccess(vn_calendar_get_geometry(out int days, out double width, out double diameter),
+            nameof(vn_calendar_get_geometry));
+        TotalDays = days;
+        CellWidth = width;
+        HighlightDiameter = diameter;
+    }
+
+    [LibraryImport("VNotch.Native.dll")]
+    private static partial int vn_calendar_get_geometry(out int totalDays, out double cellWidth, out double highlightDiameter);
 
     public static int ClampIndex(int idx)
     {

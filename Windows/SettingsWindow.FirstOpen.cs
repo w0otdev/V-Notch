@@ -17,6 +17,7 @@ public partial class SettingsWindow
         Shown
     }
 
+    internal bool HasCompletedFirstShow => _firstShowState == FirstShowState.Shown;
     private FirstShowState _firstShowState;
     private bool _backgroundInitializationStarted;
 

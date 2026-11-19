@@ -3,7 +3,7 @@ using System.Reflection;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 
-namespace VNotch.Services.Interop;
+namespace VNotch.Interop;
 
 // One resolver gates all host imports, including legacy declarations in partial services.
 // Registration is cheap: the DLL is loaded and checked only on its first actual import.
@@ -53,9 +53,9 @@ internal static class NativeAbi
 
     internal static void Validate(Info info)
     {
-        if (info.Size != Marshal.SizeOf<Info>() || info.Major != 1 ||
+        if (info.Size != Marshal.SizeOf<Info>() || info.Major != 1 || info.Minor < 1 ||
             info.PointerSize != (uint)IntPtr.Size || info.RegistryHandleVersion != 1 || info.StatusVersion != 1)
             throw new BadImageFormatException(
-                $"Incompatible VNotch.Native.dll ABI {info.Major}.{info.Minor} (size={info.Size}, pointer={info.PointerSize}, handles={info.RegistryHandleVersion}, status={info.StatusVersion}). Expected ABI 1.x; rebuild or reinstall the matching library.");
+                $"Incompatible VNotch.Native.dll ABI {info.Major}.{info.Minor} (size={info.Size}, pointer={info.PointerSize}, handles={info.RegistryHandleVersion}, status={info.StatusVersion}). Expected ABI 1.1 or a later 1.x release; rebuild or reinstall the matching library.");
     }
 }

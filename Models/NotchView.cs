@@ -10,3 +10,15 @@ public enum NotchView
     Camera,
     AiUsage
 }
+
+public enum NotchShapeState
+{
+    Collapsed,
+    Expanding,
+    Expanded,
+    Collapsing,
+    MusicExpanding,
+    MusicExpanded,
+    MusicCollapsing,
+    Hidden
+}

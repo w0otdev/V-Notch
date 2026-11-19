@@ -87,7 +87,7 @@ public sealed class MainWindowLyricsPresentationTests
         };
         Set(window, "_currentMediaInfo", info);
         Field<VNotch.Controllers.NotchTransitionCoordinator>(window, "_transitionCoordinator").ForceState(
-            NotchView.Media, VNotch.Controllers.NotchShapeState.Expanded, "progressive lyrics test");
+            NotchView.Media, VNotch.Models.NotchShapeState.Expanded, "progressive lyrics test");
         window.ExpandedContent.Visibility = Visibility.Visible;
         var pending = (Task)Invoke(window, "FetchLyricsForTrack", info)!;
         await WpfFrameWaiter.UntilAsync(() => Field<List<LyricLine>?>(window, "_currentLyrics") is { Count: > 0 }, "line lyrics preview", ct);
@@ -120,7 +120,7 @@ public sealed class MainWindowLyricsPresentationTests
         Field<LyricsService>(window, "_lyricsService").Dispose();
         Set(window, "_lyricsService", new LyricsService(client, client));
         Field<VNotch.Controllers.NotchTransitionCoordinator>(window, "_transitionCoordinator").ForceState(
-            NotchView.Media, VNotch.Controllers.NotchShapeState.Expanded, "Spotify Web test");
+            NotchView.Media, VNotch.Models.NotchShapeState.Expanded, "Spotify Web test");
         window.ExpandedContent.Visibility = Visibility.Visible;
         var info = new MediaInfo
         {
@@ -300,7 +300,7 @@ public sealed class MainWindowLyricsPresentationTests
         settings.EnableLocalOnlyMode = false;
         settings.EnableYouTubeSubtitles = true;
         Field<VNotch.Controllers.NotchTransitionCoordinator>(window, "_transitionCoordinator").ForceState(
-            NotchView.Media, VNotch.Controllers.NotchShapeState.Expanded, "subtitle negative cache test");
+            NotchView.Media, VNotch.Models.NotchShapeState.Expanded, "subtitle negative cache test");
         Set(window, "_subtitleRequestKey", "yt:dQw4w9WgXcQ");
         var info = new MediaInfo { CurrentTrack = "Track", MediaSource = "YouTube", YouTubeVideoId = "dQw4w9WgXcQ" };
         for (int i = 0; i < 5; i++)
@@ -332,7 +332,7 @@ public sealed class MainWindowLyricsPresentationTests
         settings.ExpandedWidget = "clock";
         settings.EnableBlurEffects = true;
         Field<VNotch.Controllers.NotchTransitionCoordinator>(window, "_transitionCoordinator").ForceState(
-            VNotch.Models.NotchView.Media, VNotch.Controllers.NotchShapeState.Expanded, "lyrics test");
+            VNotch.Models.NotchView.Media, VNotch.Models.NotchShapeState.Expanded, "lyrics test");
         Set(window, "_isLyricsActive", true);
         Invoke(window, "FadeInLyricsBlurBackgroundIfActive", true);
         Assert.Equal(Visibility.Visible, window.LyricsBlurBackground.Visibility);

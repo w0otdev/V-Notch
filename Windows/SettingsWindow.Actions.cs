@@ -25,7 +25,7 @@ public partial class SettingsWindow
 {
     #region Button Handlers
 
-    private void Reset_Click(object sender, RoutedEventArgs e)
+    internal void Reset_Click(object sender, RoutedEventArgs e)
     {
         try
         {
@@ -112,7 +112,7 @@ public partial class SettingsWindow
 
     private bool _hasRevertedLivePreview;
 
-    private void Cancel_Click(object sender, RoutedEventArgs e)
+    internal void Cancel_Click(object sender, RoutedEventArgs e)
     {
         RevertLivePreviewIfNeeded();
         CloseWithAnimation();
@@ -127,7 +127,7 @@ public partial class SettingsWindow
         base.OnClosing(e);
     }
 
-    private bool HasUncommittedLivePreview()
+    internal bool HasUncommittedLivePreview()
     {
         var baseline = _editSession.Baseline;
         return (_hasAiUsageAppearancePreview && AiUsageAppearance.Current != AiUsageAppearance.From(baseline))
@@ -136,7 +136,7 @@ public partial class SettingsWindow
             || !string.Equals(Loc.CurrentLanguage, baseline.Language, StringComparison.OrdinalIgnoreCase);
     }
 
-    private void RevertLivePreviewIfNeeded()
+    internal void RevertLivePreviewIfNeeded()
     {
         _livePreviewDebounce?.Stop();
         _hasRevertedLivePreview = true;
@@ -257,7 +257,7 @@ public partial class SettingsWindow
         return count;
     }
 
-    private static int DeleteExplicitCacheFiles(string appData, string baseDir)
+    internal static int DeleteExplicitCacheFiles(string appData, string baseDir)
     {
         int count = 0;
         var filesToDelete = new[]
@@ -285,11 +285,13 @@ public partial class SettingsWindow
         return count;
     }
 
-    private async void Apply_Click(object sender, RoutedEventArgs e)
+    internal async void Apply_Click(object sender, RoutedEventArgs e)
     {
         await ApplyWithoutClosingAsync();
     }
 
+    internal bool IsSaving => _isSaving;
+    internal bool IsClosing => _isClosing;
     private bool _isSaving;
 
     internal Task<bool> ApplyAndCloseAsync(Action<Exception>? showError = null) =>
@@ -321,8 +323,8 @@ public partial class SettingsWindow
         finally { _isSaving = false; }
     }
 
-    private async void Save_Click(object sender, RoutedEventArgs e) => await ApplyAndCloseAsync();
-    private void CloseWithAnimation()
+    internal async void Save_Click(object sender, RoutedEventArgs e) => await ApplyAndCloseAsync();
+    internal void CloseWithAnimation()
     {
         if (_isClosing) return;
         _isClosing = true;
@@ -450,33 +452,7 @@ public partial class SettingsWindow
             Left = targetLeft;
         }
 
-        if (Math.Abs(currentTranslateY) >= 0.5)
-        {
-            var resetTranslateY = new DoubleAnimation(currentTranslateY, 0.0, totalDur)
-            {
-                EasingFunction = easeInStrong
-            };
-            Timeline.SetDesiredFrameRate(resetTranslateY, fps);
-            ShellTranslate.BeginAnimation(TranslateTransform.YProperty, resetTranslateY);
-        }
-        else
-        {
-            ShellTranslate.Y = 0.0;
-        }
-
-        if (Math.Abs(currentTranslateX) >= 0.5)
-        {
-            var resetTranslateX = new DoubleAnimation(currentTranslateX, 0.0, totalDur)
-            {
-                EasingFunction = easeInStrong
-            };
-            Timeline.SetDesiredFrameRate(resetTranslateX, fps);
-            ShellTranslate.BeginAnimation(TranslateTransform.XProperty, resetTranslateX);
-        }
-        else
-        {
-            ShellTranslate.X = 0.0;
-        }
+        ResetExitTranslation(currentTranslateX, currentTranslateY, totalDur, easeInStrong, fps);
 
         squishX.Completed += (s, e) =>
         {
@@ -733,4 +709,36 @@ public partial class SettingsWindow
     }
 
     #endregion
+
+    private void ResetExitTranslation(double currentTranslateX, double currentTranslateY, TimeSpan totalDur, IEasingFunction easeInStrong, int fps)
+    {
+        if (Math.Abs(currentTranslateY) >= 0.5)
+        {
+            var resetTranslateY = new DoubleAnimation(currentTranslateY, 0.0, totalDur)
+            {
+                EasingFunction = easeInStrong
+            };
+            Timeline.SetDesiredFrameRate(resetTranslateY, fps);
+            ShellTranslate.BeginAnimation(TranslateTransform.YProperty, resetTranslateY);
+        }
+        else
+        {
+            ShellTranslate.Y = 0.0;
+        }
+
+        if (Math.Abs(currentTranslateX) >= 0.5)
+        {
+            var resetTranslateX = new DoubleAnimation(currentTranslateX, 0.0, totalDur)
+            {
+                EasingFunction = easeInStrong
+            };
+            Timeline.SetDesiredFrameRate(resetTranslateX, fps);
+            ShellTranslate.BeginAnimation(TranslateTransform.XProperty, resetTranslateX);
+        }
+        else
+        {
+            ShellTranslate.X = 0.0;
+        }
+    }
+
 }

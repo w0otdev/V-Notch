@@ -15,11 +15,9 @@ namespace VNotch.Services;
 
 public sealed partial class MediaDetectionService : IMediaDetectionService, IAsyncDisposable
 {
-#pragma warning disable S3776
-    private void StartThumbnailFetchIfNeeded(MediaInfo info, bool isNewTrackForThumbnail)
+    internal void StartThumbnailFetchIfNeeded(MediaInfo info, bool isNewTrackForThumbnail)
     {
-        bool forceFetchForTrackChange = isNewTrackForThumbnail;
-        if (forceFetchForTrackChange)
+        if (isNewTrackForThumbnail)
         {
             _windowTitleScanner.InvalidateUrlCaches();
             ClearMismatchCache();
@@ -27,39 +25,57 @@ public sealed partial class MediaDetectionService : IMediaDetectionService, IAsy
             _soundCloudArtworkAttemptCount = 0;
         }
 
+        bool thumbnailIsNullOrPlaceholder = info.Thumbnail == null || IsLikelySoundCloudPlaceholderThumbnail(info.Thumbnail);
+        var sourcePlan = ClassifyArtworkSources(info, isNewTrackForThumbnail, thumbnailIsNullOrPlaceholder);
+        bool needsFetch = ResolveNeedsArtworkFetch(info, isNewTrackForThumbnail, sourcePlan.IsPotentialYouTube, sourcePlan.IsPotentialSoundCloud);
+
+        if (sourcePlan.IsPotentialYouTube && !string.IsNullOrEmpty(info.CurrentTrack) && needsFetch)
+        {
+            string youTubeTrackIdentity = $"{BuildTrackIdentity(info.CurrentTrack, "")}|{info.SourceAppId}|{info.SessionInstanceKey}";
+            TryScheduleYouTubeArtworkFetch(info, isNewTrackForThumbnail, youTubeTrackIdentity, needsFetch);
+            return;
+        }
+
+        if (sourcePlan.IsPotentialSoundCloud && !sourcePlan.IsPotentialYouTube && !string.IsNullOrEmpty(info.CurrentTrack))
+        {
+            string trackIdentity = BuildTrackIdentity(info.CurrentTrack, info.CurrentArtist);
+            bool requireStrongMatch = info.Platform != MediaPlatform.SoundCloud;
+            TryScheduleTrackArtworkFetch(
+                info, MediaPlatform.SoundCloud, trackIdentity, thumbnailIsNullOrPlaceholder,
+                (token, track, artist, sourceApp, sessionKey, thumbGen, fetchGen, cts) =>
+                    FetchSoundCloudThumbnailAsync(info, token, track, artist, sourceApp, sessionKey, thumbGen, fetchGen, requireStrongMatch, cts));
+            return;
+        }
+
+        if (info.Platform == MediaPlatform.Spotify && !string.IsNullOrEmpty(info.CurrentTrack))
+        {
+            string trackIdentity = BuildTrackIdentity(info.CurrentTrack, info.CurrentArtist);
+            TryScheduleTrackArtworkFetch(
+                info, MediaPlatform.Spotify, trackIdentity, thumbnailIsNullOrPlaceholder,
+                (token, track, artist, sourceApp, sessionKey, thumbGen, fetchGen, cts) =>
+                    FetchSpotifyThumbnailAsync(info, token, track, artist, sourceApp, sessionKey, thumbGen, fetchGen, cts));
+            return;
+        }
+
+        CancelAndResetThumbnailFetches();
+    }
+
+    private ThumbnailSourcePlan ClassifyArtworkSources(MediaInfo info, bool forceFetchForTrackChange, bool thumbnailIsNullOrPlaceholder)
+    {
         bool hasSoundCloudSessionOverride = !string.IsNullOrEmpty(info.SourceAppId) &&
                                             TryGetSessionSourceOverride(info, out var sourceOverride) &&
                                             MediaPlatformExtensions.ParsePlatform(sourceOverride) == MediaPlatform.SoundCloud;
 
-        bool thumbnailIsNullOrPlaceholder = info.Thumbnail == null || IsLikelySoundCloudPlaceholderThumbnail(info.Thumbnail);
         bool canNeedBrowserUrlProbe = forceFetchForTrackChange ||
                                       thumbnailIsNullOrPlaceholder ||
                                       info.Thumbnail!.PixelWidth < 200;
         bool browserHasYouTubeTabOpen = false;
         if (info.Platform == MediaPlatform.Browser && !hasSoundCloudSessionOverride && canNeedBrowserUrlProbe)
         {
-            try
-            {
-                var browserUrl = _windowTitleScanner.TryGetMediaUrlFromAnyBrowser();
-                if (!string.IsNullOrEmpty(browserUrl))
-                {
-                    if (browserUrl.Contains("youtube.com/", StringComparison.OrdinalIgnoreCase) ||
-                        browserUrl.Contains("youtu.be/", StringComparison.OrdinalIgnoreCase))
-                    {
-                        browserHasYouTubeTabOpen = true;
-                    }
-                    else if (!string.IsNullOrEmpty(SoundCloudMatching.ExtractTrackUrl(browserUrl)))
-                    {
-                        hasSoundCloudSessionOverride = true;
-                    }
-                }
-            }
-            catch (Exception ex)
-            {
-                RuntimeLog.Debug("MEDIA-URL", $"URL scan ignored: {ex.Message}");
-            }
+            ProbeBrowserMediaSource(ref browserHasYouTubeTabOpen, ref hasSoundCloudSessionOverride);
         }
-        var sourcePlan = ThumbnailFetchPlanner.ClassifySources(new ThumbnailSourceInputs
+
+        return ThumbnailFetchPlanner.ClassifySources(new ThumbnailSourceInputs
         {
             PlatformIsYouTube = info.Platform == MediaPlatform.YouTube,
             PlatformIsBrowser = info.Platform == MediaPlatform.Browser,
@@ -71,18 +87,40 @@ public sealed partial class MediaDetectionService : IMediaDetectionService, IAsy
             HasTrack = !string.IsNullOrEmpty(info.CurrentTrack),
             ThumbnailIsNullOrPlaceholder = thumbnailIsNullOrPlaceholder,
         });
-        bool isPotentialYouTube = sourcePlan.IsPotentialYouTube;
-        bool isPotentialSoundCloud = sourcePlan.IsPotentialSoundCloud;
+    }
 
-        string youTubeTrackIdentity = isPotentialYouTube
-            ? $"{BuildTrackIdentity(info.CurrentTrack, "")}|{info.SourceAppId}|{info.SessionInstanceKey}"
-            : "";
-        string soundCloudTrackIdentity = isPotentialSoundCloud
-            ? BuildTrackIdentity(info.CurrentTrack, info.CurrentArtist)
-            : "";
+    private void ProbeBrowserMediaSource(ref bool browserHasYouTubeTabOpen, ref bool hasSoundCloudSessionOverride)
+    {
+        try
+        {
+            var browserUrl = _windowTitleScanner.TryGetMediaUrlFromAnyBrowser();
+            if (string.IsNullOrEmpty(browserUrl)) return;
 
+            if (browserUrl.Contains("youtube.com/", StringComparison.OrdinalIgnoreCase) ||
+                browserUrl.Contains("youtu.be/", StringComparison.OrdinalIgnoreCase))
+            {
+                browserHasYouTubeTabOpen = true;
+            }
+            else if (!string.IsNullOrEmpty(SoundCloudMatching.ExtractTrackUrl(browserUrl)))
+            {
+                hasSoundCloudSessionOverride = true;
+            }
+        }
+        catch (Exception ex)
+        {
+            RuntimeLog.Debug("MEDIA-URL", $"URL scan ignored: {ex.Message}");
+        }
+    }
+
+    private bool ResolveNeedsArtworkFetch(
+        MediaInfo info,
+        bool forceFetchForTrackChange,
+        bool isPotentialYouTube,
+        bool isPotentialSoundCloud)
+    {
         bool needsFetch = forceFetchForTrackChange || (info.Thumbnail == null || info.Thumbnail.PixelWidth < 120);
-        if (_timelineSimulator.IsThrottled && _timelineSimulator.RecoveredThumbnail != null && !forceFetchForTrackChange) needsFetch = false;
+        if (_timelineSimulator.IsThrottled && _timelineSimulator.RecoveredThumbnail != null && !forceFetchForTrackChange)
+            needsFetch = false;
 
         // The player's artwork identifies the playing upload; a title search can
         // return a different recording or music video with the same song name.
@@ -100,189 +138,143 @@ public sealed partial class MediaDetectionService : IMediaDetectionService, IAsy
             _timelineSimulator.RecoveredThumbnail = CachedThumbnail;
         }
 
-        if (needsFetch && info.Thumbnail != null &&
-            !IsLikelySoundCloudPlaceholderThumbnail(info.Thumbnail) && (info.Thumbnail.PixelWidth >= 200 || IsLikelySoundCloudArtworkCandidate(info.Thumbnail)))
+        if (!needsFetch || info.Thumbnail == null ||
+            IsLikelySoundCloudPlaceholderThumbnail(info.Thumbnail) ||
+            (info.Thumbnail.PixelWidth < 200 && !IsLikelySoundCloudArtworkCandidate(info.Thumbnail)))
         {
-            double thumbAspect = (double)info.Thumbnail.PixelWidth / info.Thumbnail.PixelHeight;
-            bool isNearSquare = thumbAspect >= 0.85 && thumbAspect <= 1.15;
-            bool isTopicChannel = !string.IsNullOrEmpty(info.CurrentArtist) &&
-                                  info.CurrentArtist.EndsWith(" - Topic", StringComparison.OrdinalIgnoreCase);
-
-            if (isNearSquare || isTopicChannel)
-            {
-                needsFetch = false;
-                string thumbnailSource = isPotentialSoundCloud && !isPotentialYouTube
-                    ? SoundCloudPlatformName
-                    : info.MediaSource ?? YouTubePlatformName;
-                if (!ReferenceEquals(info.Thumbnail, _lastInitialCroppedThumbnail))
-                {
-                    RuntimeLog.Debug(MediaThumbCropLogTag,
-                        $"path=initial-smtc track='{info.CurrentTrack}' artist='{info.CurrentArtist}' source='{info.MediaSource}' thumb={info.Thumbnail.PixelWidth}x{info.Thumbnail.PixelHeight} aspect={thumbAspect:F2} isNearSquare={isNearSquare} isTopicChannel={isTopicChannel}");
-                    var cropped = CropToSquare(info.Thumbnail, thumbnailSource, forceCenterCrop: isTopicChannel) ?? info.Thumbnail;
-                    info.Thumbnail = cropped;
-                    CachedThumbnail = cropped;
-                    _timelineSimulator.RecoveredThumbnail = cropped;
-                }
-                _cachedThumbnailSource = isPotentialYouTube ? YouTubePlatformName : thumbnailSource;
-            }
+            return needsFetch;
         }
 
-        if (isPotentialYouTube && !string.IsNullOrEmpty(info.CurrentTrack) && needsFetch)
+        double thumbAspect = (double)info.Thumbnail.PixelWidth / info.Thumbnail.PixelHeight;
+        bool isNearSquare = thumbAspect >= 0.85 && thumbAspect <= 1.15;
+        bool isTopicChannel = !string.IsNullOrEmpty(info.CurrentArtist) &&
+                              info.CurrentArtist.EndsWith(" - Topic", StringComparison.OrdinalIgnoreCase);
+
+        if (!isNearSquare && !isTopicChannel) return true;
+
+        string thumbnailSource = isPotentialSoundCloud && !isPotentialYouTube
+            ? SoundCloudPlatformName
+            : info.MediaSource ?? YouTubePlatformName;
+        if (!ReferenceEquals(info.Thumbnail, _lastInitialCroppedThumbnail))
         {
-            bool sameTrackFetchRunning =
-                Volatile.Read(ref _youTubeFetchInFlight) == 1 &&
-                string.Equals(_youTubeFetchIdentity, youTubeTrackIdentity, StringComparison.Ordinal);
-            bool shouldStartYouTubeFetch = ThumbnailFetchPlanner.ShouldStartYouTubeFetch(new YouTubeFetchInputs
+            RuntimeLog.Debug(MediaThumbCropLogTag,
+                $"path=initial-smtc track='{info.CurrentTrack}' artist='{info.CurrentArtist}' source='{info.MediaSource}' thumb={info.Thumbnail.PixelWidth}x{info.Thumbnail.PixelHeight} aspect={thumbAspect:F2} isNearSquare={isNearSquare} isTopicChannel={isTopicChannel}");
+            var cropped = CropToSquare(info.Thumbnail, thumbnailSource, forceCenterCrop: isTopicChannel) ?? info.Thumbnail;
+            info.Thumbnail = cropped;
+            CachedThumbnail = cropped;
+            _timelineSimulator.RecoveredThumbnail = cropped;
+        }
+        _cachedThumbnailSource = isPotentialYouTube ? YouTubePlatformName : thumbnailSource;
+        return false;
+    }
+
+    private void TryScheduleYouTubeArtworkFetch(
+        MediaInfo info,
+        bool forceFetchForTrackChange,
+        string youTubeTrackIdentity,
+        bool needsFetch)
+    {
+        bool sameTrackFetchRunning =
+            Volatile.Read(ref _youTubeFetchInFlight) == 1 &&
+            string.Equals(_youTubeFetchIdentity, youTubeTrackIdentity, StringComparison.Ordinal);
+        bool shouldStart = ThumbnailFetchPlanner.ShouldStartYouTubeFetch(new YouTubeFetchInputs
+        {
+            IsNewTrack = forceFetchForTrackChange,
+            SameTrackFetchRunning = sameTrackFetchRunning,
+            NeedsBetterThumbnail = needsFetch,
+            RetryIntervalElapsed =
+                (DateTime.UtcNow - _lastYouTubeThumbnailAttemptTimeUtc) >= YouTubeThumbnailRetryInterval,
+        });
+        if (!shouldStart) return;
+
+        _lastYouTubeThumbnailAttemptTimeUtc = DateTime.UtcNow;
+        var cts = CreateAndReplaceThumbnailCts();
+        var token = cts.Token;
+        int fetchGeneration = Interlocked.Increment(ref _youTubeFetchGeneration);
+        _youTubeFetchIdentity = youTubeTrackIdentity;
+        Interlocked.Exchange(ref _youTubeFetchInFlight, 1);
+
+        Interlocked.Increment(ref _soundCloudFetchGeneration);
+        _soundCloudFetchIdentity = "";
+        Interlocked.Exchange(ref _soundCloudFetchInFlight, 0);
+
+        string trackDuringFetch = info.CurrentTrack;
+        string artistDuringFetch = info.CurrentArtist;
+        string sourceAppDuringFetch = info.SourceAppId ?? "";
+        string sessionKeyDuringFetch = info.SessionInstanceKey ?? "";
+        int generationAtStart = Volatile.Read(ref _thumbnailFetchGeneration);
+        bool isBrowserIcon = info.Thumbnail != null && info.Platform == MediaPlatform.Browser;
+        bool needsBetterThumb = forceFetchForTrackChange || info.Thumbnail == null || info.Thumbnail.PixelWidth < 120 || isBrowserIcon;
+
+        _ = Task.Run(() => FetchYouTubeThumbnailAsync(
+            info, token, forceFetchForTrackChange, trackDuringFetch, artistDuringFetch,
+            sourceAppDuringFetch, sessionKeyDuringFetch, generationAtStart,
+            fetchGeneration, needsBetterThumb, cts), token);
+    }
+
+    private void TryScheduleTrackArtworkFetch(
+        MediaInfo info,
+        MediaPlatform expectedPlatform,
+        string trackIdentity,
+        bool thumbnailIsNullOrPlaceholder,
+        Func<CancellationToken, string, string, string, string, int, int, CancellationTokenSource, Task> fetchAsync)
+    {
+        bool isNewTrack = !string.IsNullOrEmpty(trackIdentity) &&
+                          !string.Equals(trackIdentity, _lastSoundCloudArtworkIdentity, StringComparison.Ordinal);
+        if (isNewTrack)
+            _soundCloudArtworkAttemptCount = 0;
+
+        bool sameTrackFetchRunning =
+            Volatile.Read(ref _soundCloudFetchInFlight) == 1 &&
+            string.Equals(_soundCloudFetchIdentity, trackIdentity, StringComparison.Ordinal);
+        bool hasMismatchedThumbSource = MediaPlatformExtensions.ParsePlatform(_cachedThumbnailSource) != expectedPlatform;
+
+        bool shouldStart =
+            (thumbnailIsNullOrPlaceholder || hasMismatchedThumbSource) &&
+            _soundCloudArtworkAttemptCount < MaxSoundCloudArtworkAttemptsPerTrack &&
+            ThumbnailFetchPlanner.ShouldStartSoundCloudFetch(new SoundCloudFetchInputs
             {
-                IsNewTrack = forceFetchForTrackChange,
+                IsNewSoundCloudTrack = isNewTrack,
                 SameTrackFetchRunning = sameTrackFetchRunning,
-                NeedsBetterThumbnail = needsFetch,
-                RetryIntervalElapsed =
-                    (DateTime.UtcNow - _lastYouTubeThumbnailAttemptTimeUtc) >= YouTubeThumbnailRetryInterval,
+                ThumbnailIsNullOrPlaceholder = thumbnailIsNullOrPlaceholder,
+                HasMismatchedThumbSource = hasMismatchedThumbSource,
+                RetryIntervalElapsed = (DateTime.UtcNow - _lastSoundCloudArtworkAttemptTimeUtc) >= SoundCloudArtworkRetryInterval,
             });
+        if (!shouldStart) return;
 
-            if (!shouldStartYouTubeFetch)
-                return;
+        _soundCloudArtworkAttemptCount++;
+        _lastSoundCloudArtworkAttemptTimeUtc = DateTime.UtcNow;
+        _lastSoundCloudArtworkIdentity = trackIdentity;
+        var cts = CreateAndReplaceThumbnailCts();
+        var token = cts.Token;
+        int fetchGeneration = Interlocked.Increment(ref _soundCloudFetchGeneration);
+        _soundCloudFetchIdentity = trackIdentity;
+        Interlocked.Exchange(ref _soundCloudFetchInFlight, 1);
 
-            _lastYouTubeThumbnailAttemptTimeUtc = DateTime.UtcNow;
-            var cts = CreateAndReplaceThumbnailCts();
-            var token = cts.Token;
-            int fetchGeneration = Interlocked.Increment(ref _youTubeFetchGeneration);
-            _youTubeFetchIdentity = youTubeTrackIdentity;
-            Interlocked.Exchange(ref _youTubeFetchInFlight, 1);
+        Interlocked.Increment(ref _youTubeFetchGeneration);
+        _youTubeFetchIdentity = "";
+        Interlocked.Exchange(ref _youTubeFetchInFlight, 0);
 
-            Interlocked.Increment(ref _soundCloudFetchGeneration);
-            _soundCloudFetchIdentity = "";
-            Interlocked.Exchange(ref _soundCloudFetchInFlight, 0);
-            bool shouldForceThumbFetch = forceFetchForTrackChange;
+        string trackDuringFetch = info.CurrentTrack;
+        string artistDuringFetch = info.CurrentArtist;
+        string sourceAppDuringFetch = info.SourceAppId ?? "";
+        string sessionKeyDuringFetch = info.SessionInstanceKey ?? "";
+        int thumbGenAtStart = Volatile.Read(ref _thumbnailFetchGeneration);
 
-            string trackDuringFetch = info.CurrentTrack;
-            string artistDuringFetch = info.CurrentArtist;
-            string sourceAppDuringFetch = info.SourceAppId ?? "";
-            string sessionKeyDuringFetch = info.SessionInstanceKey ?? "";
-            int generationAtStart = Volatile.Read(ref _thumbnailFetchGeneration);
+        _ = Task.Run(() => fetchAsync(
+            token, trackDuringFetch, artistDuringFetch, sourceAppDuringFetch,
+            sessionKeyDuringFetch, thumbGenAtStart, fetchGeneration, cts), token);
+    }
 
-            bool isBrowserIcon = info.Thumbnail != null && info.Platform == MediaPlatform.Browser;
-            bool needsBetterThumb = shouldForceThumbFetch || info.Thumbnail == null || info.Thumbnail.PixelWidth < 120 || isBrowserIcon;
-
-            _ = Task.Run(() => FetchYouTubeThumbnailAsync(
-                info, token, shouldForceThumbFetch, trackDuringFetch, artistDuringFetch,
-                sourceAppDuringFetch, sessionKeyDuringFetch, generationAtStart,
-                fetchGeneration, needsBetterThumb, cts), token);
-        }
-        else if (isPotentialSoundCloud && !isPotentialYouTube && !string.IsNullOrEmpty(info.CurrentTrack))
-        {
-            bool isNewSoundCloudTrack = !string.IsNullOrEmpty(soundCloudTrackIdentity) &&
-                                        !string.Equals(soundCloudTrackIdentity, _lastSoundCloudArtworkIdentity, StringComparison.Ordinal);
-            if (isNewSoundCloudTrack)
-            {
-                _soundCloudArtworkAttemptCount = 0;
-            }
-
-            bool sameTrackFetchRunning =
-                Volatile.Read(ref _soundCloudFetchInFlight) == 1 &&
-                string.Equals(_soundCloudFetchIdentity, soundCloudTrackIdentity, StringComparison.Ordinal);
-            bool hasMismatchedThumbSource = MediaPlatformExtensions.ParsePlatform(_cachedThumbnailSource) != MediaPlatform.SoundCloud;
-
-            bool shouldStartSoundCloudFetch =
-                (thumbnailIsNullOrPlaceholder || hasMismatchedThumbSource) &&
-                _soundCloudArtworkAttemptCount < MaxSoundCloudArtworkAttemptsPerTrack &&
-                ThumbnailFetchPlanner.ShouldStartSoundCloudFetch(new SoundCloudFetchInputs
-                {
-                    IsNewSoundCloudTrack = isNewSoundCloudTrack,
-                    SameTrackFetchRunning = sameTrackFetchRunning,
-                    ThumbnailIsNullOrPlaceholder = thumbnailIsNullOrPlaceholder,
-                    HasMismatchedThumbSource = hasMismatchedThumbSource,
-                    RetryIntervalElapsed = (DateTime.UtcNow - _lastSoundCloudArtworkAttemptTimeUtc) >= SoundCloudArtworkRetryInterval,
-                });
-
-            if (shouldStartSoundCloudFetch)
-            {
-                _soundCloudArtworkAttemptCount++;
-                _lastSoundCloudArtworkAttemptTimeUtc = DateTime.UtcNow;
-                _lastSoundCloudArtworkIdentity = soundCloudTrackIdentity;
-                var cts = CreateAndReplaceThumbnailCts();
-                var token = cts.Token;
-                int fetchGeneration = Interlocked.Increment(ref _soundCloudFetchGeneration);
-                _soundCloudFetchIdentity = soundCloudTrackIdentity;
-                Interlocked.Exchange(ref _soundCloudFetchInFlight, 1);
-
-                Interlocked.Increment(ref _youTubeFetchGeneration);
-                _youTubeFetchIdentity = "";
-                Interlocked.Exchange(ref _youTubeFetchInFlight, 0);
-
-                string trackDuringFetch = info.CurrentTrack;
-                string artistDuringFetch = info.CurrentArtist;
-                string sourceAppDuringFetch = info.SourceAppId ?? "";
-                string sessionKeyDuringFetch = info.SessionInstanceKey ?? "";
-                int thumbGenAtStart = Volatile.Read(ref _thumbnailFetchGeneration);
-
-                bool requireStrongMatch = info.Platform != MediaPlatform.SoundCloud;
-
-                _ = Task.Run(() => FetchSoundCloudThumbnailAsync(info, token, trackDuringFetch, artistDuringFetch, sourceAppDuringFetch, sessionKeyDuringFetch, thumbGenAtStart, fetchGeneration, requireStrongMatch, cts), token);
-            }
-        }
-        else if (info.Platform == MediaPlatform.Spotify && !string.IsNullOrEmpty(info.CurrentTrack))
-        {
-            string spotifyTrackIdentity = BuildTrackIdentity(info.CurrentTrack, info.CurrentArtist);
-            bool isNewSpotifyTrack = !string.IsNullOrEmpty(spotifyTrackIdentity) &&
-                                     !string.Equals(spotifyTrackIdentity, _lastSoundCloudArtworkIdentity, StringComparison.Ordinal);
-            if (isNewSpotifyTrack)
-            {
-                _soundCloudArtworkAttemptCount = 0;
-            }
-
-            bool sameTrackFetchRunning =
-                Volatile.Read(ref _soundCloudFetchInFlight) == 1 &&
-                string.Equals(_soundCloudFetchIdentity, spotifyTrackIdentity, StringComparison.Ordinal);
-            bool hasMismatchedThumbSource = MediaPlatformExtensions.ParsePlatform(_cachedThumbnailSource) != MediaPlatform.Spotify;
-
-            bool shouldStartSpotifyFetch =
-                (thumbnailIsNullOrPlaceholder || hasMismatchedThumbSource) &&
-                _soundCloudArtworkAttemptCount < MaxSoundCloudArtworkAttemptsPerTrack &&
-                ThumbnailFetchPlanner.ShouldStartSoundCloudFetch(new SoundCloudFetchInputs
-                {
-                    IsNewSoundCloudTrack = isNewSpotifyTrack,
-                    SameTrackFetchRunning = sameTrackFetchRunning,
-                    ThumbnailIsNullOrPlaceholder = thumbnailIsNullOrPlaceholder,
-                    HasMismatchedThumbSource = hasMismatchedThumbSource,
-                    RetryIntervalElapsed = (DateTime.UtcNow - _lastSoundCloudArtworkAttemptTimeUtc) >= SoundCloudArtworkRetryInterval,
-                });
-
-            if (shouldStartSpotifyFetch)
-            {
-                _soundCloudArtworkAttemptCount++;
-                _lastSoundCloudArtworkAttemptTimeUtc = DateTime.UtcNow;
-                _lastSoundCloudArtworkIdentity = spotifyTrackIdentity;
-                var cts = CreateAndReplaceThumbnailCts();
-                var token = cts.Token;
-                int fetchGeneration = Interlocked.Increment(ref _soundCloudFetchGeneration);
-                _soundCloudFetchIdentity = spotifyTrackIdentity;
-                Interlocked.Exchange(ref _soundCloudFetchInFlight, 1);
-
-                Interlocked.Increment(ref _youTubeFetchGeneration);
-                _youTubeFetchIdentity = "";
-                Interlocked.Exchange(ref _youTubeFetchInFlight, 0);
-
-                string trackDuringFetch = info.CurrentTrack;
-                string artistDuringFetch = info.CurrentArtist;
-                string sourceAppDuringFetch = info.SourceAppId ?? "";
-                string sessionKeyDuringFetch = info.SessionInstanceKey ?? "";
-                int thumbGenAtStart = Volatile.Read(ref _thumbnailFetchGeneration);
-
-                _ = Task.Run(() => FetchSpotifyThumbnailAsync(info, token, trackDuringFetch, artistDuringFetch, sourceAppDuringFetch, sessionKeyDuringFetch, thumbGenAtStart, fetchGeneration, cts), token);
-            }
-        }
-        else
-        {
-            CancelAndClearThumbnailCts();
-            Interlocked.Increment(ref _youTubeFetchGeneration);
-            _youTubeFetchIdentity = "";
-            Interlocked.Exchange(ref _youTubeFetchInFlight, 0);
-            Interlocked.Increment(ref _soundCloudFetchGeneration);
-            _soundCloudFetchIdentity = "";
-            Interlocked.Exchange(ref _soundCloudFetchInFlight, 0);
-        }
+    private void CancelAndResetThumbnailFetches()
+    {
+        CancelAndClearThumbnailCts();
+        Interlocked.Increment(ref _youTubeFetchGeneration);
+        _youTubeFetchIdentity = "";
+        Interlocked.Exchange(ref _youTubeFetchInFlight, 0);
+        Interlocked.Increment(ref _soundCloudFetchGeneration);
+        _soundCloudFetchIdentity = "";
+        Interlocked.Exchange(ref _soundCloudFetchInFlight, 0);
     }
 
     private CancellationTokenSource CreateAndReplaceThumbnailCts()

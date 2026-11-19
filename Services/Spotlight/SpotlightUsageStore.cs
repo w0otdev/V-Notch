@@ -41,6 +41,9 @@ internal sealed partial class SpotlightUsageStore : IAsyncDisposable, IDisposabl
     private readonly Func<DateTime> _utcNow;
     private readonly Action<string> _persistSnapshot;
     private Dictionary<string, UsageEntry>? _entries;
+    // Launches made before the on-disk baseline becomes readable. Bounded by
+    // the same retention policy as normal history and never persisted on their own.
+    private Dictionary<string, UsageEntry>? _deferredEntries;
     private long _changeVersion;
     private bool _saveWorkerRunning;
     private Task _saveWorker = Task.CompletedTask;
@@ -81,12 +84,13 @@ internal sealed partial class SpotlightUsageStore : IAsyncDisposable, IDisposabl
             var entries = LoadEntries();
             entries.TryGetValue(item.Id, out UsageEntry? existing);
             string normalizedQuery = SettingsSearchMatcher.Normalize(query);
+            if (normalizedQuery.Length > 256) normalizedQuery = normalizedQuery[..256];
             var queries = existing?.Queries != null ? new List<string>(existing.Queries) : new List<string>();
             if (normalizedQuery.Length > 0)
             {
                 foreach (var entry in entries.Values) entry.Queries?.Remove(normalizedQuery);
                 queries.Remove(normalizedQuery);
-                queries.Insert(0, normalizedQuery.Length > 256 ? normalizedQuery[..256] : normalizedQuery);
+                queries.Insert(0, normalizedQuery);
                 if (queries.Count > 20) queries.RemoveRange(20, queries.Count - 20);
             }
             entries[item.Id] = new UsageEntry
@@ -101,65 +105,70 @@ internal sealed partial class SpotlightUsageStore : IAsyncDisposable, IDisposabl
                 LastLaunchedUtc = _utcNow()
             };
 
-            if (entries.Count > MaxEntries)
-            {
-                var allPairs = new KeyValuePair<string, UsageEntry>[entries.Count];
-                int idx = 0;
-                foreach (var pair in entries)
-                    allPairs[idx++] = pair;
-
-                Array.Sort(allPairs, s_oldestAscComparison);
-                int toRemove = entries.Count - MaxEntries;
-                for (int i = 0; i < toRemove; i++)
-                {
-                    entries.Remove(allPairs[i].Key);
-                }
-            }
-
+            TrimEntries(entries);
             _changeVersion++;
-            if (!_saveWorkerRunning)
-            {
-                _saveWorkerRunning = true;
-                _saveWorker = Task.Run(SaveLoop);
-            }
+            StartSaveWorker();
         }
+    }
+
+    private static void TrimEntries(Dictionary<string, UsageEntry> entries)
+    {
+        if (entries.Count <= MaxEntries) return;
+        var oldest = entries.ToArray();
+        Array.Sort(oldest, s_oldestAscComparison);
+        for (int i = 0; i < oldest.Length - MaxEntries; i++)
+            entries.Remove(oldest[i].Key);
+    }
+
+    private void StartSaveWorker()
+    {
+        if (_saveWorkerRunning) return;
+        _saveWorkerRunning = true;
+        _saveWorker = Task.Run(SaveLoop);
     }
 
     public void ClearHistory()
     {
         lock (_gate)
         {
-            _entries = new Dictionary<string, UsageEntry>(StringComparer.Ordinal);
-            _changeVersion++;
             try
             {
-                if (File.Exists(_path))
-                {
-                    File.Delete(_path);
-                }
+                File.Delete(_path);
             }
+            catch (DirectoryNotFoundException) { /* No history directory yet. */ }
             catch (Exception ex)
             {
                 RuntimeLog.Warn(LogTag, $"Failed to delete history file: {ex.Message}");
                 throw;
             }
+            _entries = new(StringComparer.Ordinal);
+            _deferredEntries = null;
+            _changeVersion++;
         }
     }
 
     // Captures the current worker so tests can deterministically wait until all
     // changes that were pending at this point have reached stable storage.
-    internal Task WaitForPendingSavesAsync()
+    internal async Task WaitForPendingSavesAsync()
     {
+        Task pending;
         lock (_gate)
         {
-            return _saveWorker;
+            if (_deferredEntries is { Count: > 0 }) StartSaveWorker();
+            pending = _saveWorker;
+        }
+        await pending.ConfigureAwait(false);
+        lock (_gate)
+        {
+            if (_deferredEntries is { Count: > 0 })
+                throw new IOException("Spotlight launch history is still unavailable. Pending launches can be retried.");
         }
     }
 
     public async ValueTask DisposeAsync()
     {
-        await WaitForPendingSavesAsync().ConfigureAwait(false);
-        await Preferences.FlushAsync().ConfigureAwait(false);
+        try { await WaitForPendingSavesAsync().ConfigureAwait(false); }
+        finally { await Preferences.FlushAsync().ConfigureAwait(false); }
     }
 
     public void Dispose() => DisposeAsync().AsTask().GetAwaiter().GetResult();
@@ -297,21 +306,65 @@ internal sealed partial class SpotlightUsageStore : IAsyncDisposable, IDisposabl
 
         try
         {
-            if (File.Exists(_path))
-            {
-                _entries = JsonSerializer.Deserialize<Dictionary<string, UsageEntry>>(
-                    File.ReadAllText(_path)) ?? new Dictionary<string, UsageEntry>();
-            }
+            _entries = JsonSerializer.Deserialize<Dictionary<string, UsageEntry>>(File.ReadAllText(_path)) ?? new();
         }
-        catch (Exception ex)
+        catch (Exception ex) when (ex is FileNotFoundException or DirectoryNotFoundException or JsonException)
         {
-            RuntimeLog.Error(LogTag, ex, $"Failed to read {_path}");
+            _entries = new(StringComparer.Ordinal);
         }
-        return _entries ??= new Dictionary<string, UsageEntry>();
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            if (_deferredEntries == null) RuntimeLog.Error(LogTag, ex, $"Could not read {_path}; deferring saves");
+            return _deferredEntries ??= new(StringComparer.Ordinal);
+        }
+
+        if (_deferredEntries is { Count: > 0 } pending)
+        {
+            MergeDeferredLaunches(_entries, pending);
+            StartSaveWorker();
+        }
+        _deferredEntries = null;
+        return _entries;
     }
 
-    private void SaveLoop()
+    private static void MergeDeferredLaunches(Dictionary<string, UsageEntry> history, Dictionary<string, UsageEntry> pending)
     {
+        // A remembered query belongs to the most recently launched item that used it.
+        var reassigned = pending.Values.SelectMany(entry => entry.Queries).ToHashSet(StringComparer.Ordinal);
+        foreach (var entry in history.Values) entry?.Queries?.RemoveAll(reassigned.Contains);
+
+        foreach (var (id, recent) in pending)
+        {
+            if (history.TryGetValue(id, out var previous) && previous != null)
+            {
+                recent.Count += previous.Count;
+                if (previous.Queries != null)
+                    recent.Queries.AddRange(previous.Queries.Take(20 - recent.Queries.Count));
+            }
+            history[id] = recent;
+        }
+        TrimEntries(history);
+    }
+
+    private async Task SaveLoop()
+    {
+        // Give short sharing violations time to clear even if Spotlight is idle.
+        // A longer outage retains the bounded overlay for the next lookup, launch or flush.
+        for (int attempt = 0; ; attempt++)
+        {
+            lock (_gate)
+            {
+                LoadEntries();
+                if (_entries != null) break;
+                if (attempt == 3)
+                {
+                    _saveWorkerRunning = false;
+                    return;
+                }
+            }
+            await Task.Delay(TimeSpan.FromMilliseconds(100 << attempt)).ConfigureAwait(false);
+        }
+
         while (true)
         {
             long version;
@@ -321,10 +374,9 @@ internal sealed partial class SpotlightUsageStore : IAsyncDisposable, IDisposabl
             lock (_gate)
             {
                 version = _changeVersion;
-                var entries = LoadEntries();
                 try
                 {
-                    json = JsonSerializer.Serialize(entries);
+                    json = JsonSerializer.Serialize(_entries);
                 }
                 catch (Exception ex)
                 {

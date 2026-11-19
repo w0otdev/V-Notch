@@ -59,7 +59,7 @@ public sealed partial class LiquidGlassController : IDisposable
 
     private long _lastBackdropWakeTicks;
 
-    private bool ExecuteWorkerFrame(int generation, Stopwatch clock, ref double nextFrameAtMs, ref double lastCaptureAtMs)
+    internal bool ExecuteWorkerFrame(int generation, Stopwatch clock, ref double nextFrameAtMs, ref double lastCaptureAtMs)
     {
         double frameStart = clock.Elapsed.TotalMilliseconds;
         RefreshDisplayCadence();
@@ -450,6 +450,16 @@ public sealed partial class LiquidGlassController : IDisposable
         {
             // Best effort wait; ignore interruption
         }
+    }
+
+    internal int RenderTimerPeriodRequested => Volatile.Read(ref _renderTimerPeriodRequested);
+    internal WaitHandle WorkerWake => _idleWakeEvent;
+    internal void ResetWorkerWake() => _idleWakeEvent.Reset();
+    internal void SetWaitingForPresentation(bool waiting) => _waitingForGpuPresentation = waiting;
+    internal void ConfigureGpuForTest(bool enabled, D3DImageFramePresenter? presenter = null)
+    {
+        _gpuMode = enabled;
+        _d3dPresenter = presenter;
     }
 
     internal void SetActiveForTest(bool active) => _isActive = active;

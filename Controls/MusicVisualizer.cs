@@ -106,8 +106,11 @@ namespace VNotch.Controls
         private DateTime _lastCaptureRetryUtc = DateTime.MinValue;
         private bool _isRenderingActive;
         private bool _holdsCaptureLease;
+        internal bool IsRenderingActive => _isRenderingActive;
+        internal bool HoldsCaptureLease => _holdsCaptureLease;
 
         private readonly double[] _currentHeights = new double[BarCount];
+        internal ReadOnlySpan<double> CurrentHeights => _currentHeights;
         private readonly double[] _sortedHeights = new double[BarCount];
         private readonly double[] _drawHeights = new double[BarCount];
         private readonly double[] _smoothedHeights = new double[BarCount];
@@ -119,14 +122,18 @@ namespace VNotch.Controls
         private DpiScale? _cachedDpi;
         private double _currentOpacity = 0.2;
         private VisualizerState _state = VisualizerState.Idle;
+        internal VisualizerState State { get => _state; set => _state = value; }
         private const double PlaybackFeedbackSeconds = 1.5;
         private double _feedbackUntil;
         private double _iconMix;
+        internal double IconMix => _iconMix;
         private double _iconVelocity;
         private double _playMix;
         private double _playVelocity;
         private bool _copiedFeedback;
+        internal bool IsCopiedFeedbackActive => _copiedFeedback;
         private double _checkMix;
+        internal double CheckMix => _checkMix;
         private double _checkVelocity;
 
         public void SetCopiedFeedback(bool copied)
@@ -341,7 +348,7 @@ namespace VNotch.Controls
             }
         }
 
-        private bool UpdateAnimation(double dt, double totalSec)
+        internal bool UpdateAnimation(double dt, double totalSec)
         {
             string sid = TrackId ?? string.Empty;
             EnsureHashCache(sid);
@@ -387,7 +394,7 @@ namespace VNotch.Controls
         private static bool _captureUpdateRequested;
         private static bool _captureRestartRequested;
 
-        private static void RequestCaptureUpdate(bool restart = false)
+        internal static void RequestCaptureUpdate(bool restart = false)
         {
             lock (_captureRequestLock)
             {
@@ -465,7 +472,7 @@ namespace VNotch.Controls
         }
 
 #pragma warning disable S2696 // Multi-instance visualizers coordinate a single shared loopback audio capture lease
-        private void AcquireCaptureLease()
+        internal void AcquireCaptureLease()
         {
             // This instance flag is owned by the WPF dispatcher. The audio
             // callback only touches shared capture state. Do not wait behind
@@ -475,7 +482,7 @@ namespace VNotch.Controls
             System.Threading.Interlocked.Increment(ref _captureLeaseCount);
         }
 
-        private void ReleaseCaptureLease()
+        internal void ReleaseCaptureLease()
         {
             if (!_holdsCaptureLease) return;
             _holdsCaptureLease = false;
@@ -712,6 +719,8 @@ namespace VNotch.Controls
         private static VNotch.Services.NativeLoopbackCapture? _capture;
         private static DateTime _captureStartedUtc;
         private static readonly object _lockObj = new object();
+        internal static int CaptureLeaseCount => Volatile.Read(ref _captureLeaseCount);
+        internal static object AudioStateLock => _lockObj;
         private static int _captureLeaseCount;
         private static string _audioDeviceId = string.Empty;
         private const int FftLength = 512;
@@ -720,6 +729,7 @@ namespace VNotch.Controls
 
         private static readonly float[] _fftInputBuffer = new float[FftLength];
         private static int _fftInputPos = 0;
+        internal static int FftInputPosition => _fftInputPos;
         private static readonly VNotch.Services.SpectrumComplex[] _fftData = new VNotch.Services.SpectrumComplex[FftLength];
         private static readonly VNotch.Services.VisualizerSpectrumBands _spectrumBands = new(FftLength);
 
@@ -729,12 +739,16 @@ namespace VNotch.Controls
         private static int _rmsSampleCount;
         private static int _rmsWindowSamples = 882;
         private static float _latestRmsNormalized;
+        internal static float LatestRmsNormalized => _latestRmsNormalized;
         private static int _sampleRate = 44100;
 
         private static readonly object _outputLock = new object();
         private static readonly float[] _publishedTargets = new float[BarCount];
+        internal static float[] PublishedTargets => _publishedTargets;
         private static float _publishedBeatAccent;
+        internal static float PublishedBeatAccent => _publishedBeatAccent;
         private static long _publishedFrameTicks;
+        internal static long PublishedFrameTicks { get => _publishedFrameTicks; set => _publishedFrameTicks = value; }
 
         static MusicVisualizer()
         {
@@ -849,7 +863,7 @@ namespace VNotch.Controls
 
         }
 
-        private static void ResetAudioState()
+        internal static void ResetAudioState()
         {
             Array.Clear(_fftInputBuffer, 0, _fftInputBuffer.Length);
             Array.Clear(_displayTargets, 0, _displayTargets.Length);
@@ -943,7 +957,7 @@ namespace VNotch.Controls
             }
         }
 
-        private float[] GetLatestDisplayLevels(out bool hasFreshAudio, out double beatAccent)
+        internal float[] GetLatestDisplayLevels(out bool hasFreshAudio, out double beatAccent)
         {
             lock (_outputLock)
             {

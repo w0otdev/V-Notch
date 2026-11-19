@@ -1,3 +1,4 @@
+using VNotch.Models;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
@@ -17,13 +18,10 @@ public sealed class AccentControlCoverageTests
         int previousKind = WhiteNoiseService.PlayingKind;
         WhiteNoiseService.SetPlayingKindForTest(0);
         var strip = new WhiteNoiseStrip();
-        var window = new Window { Content = strip };
+        var window = new BackgroundWindow { Content = strip, Width = 640, Height = 120 };
         try
         {
             window.Show();
-            await Task.Delay(50, ct);
-            window.Measure(new Size(640, 120));
-            window.Arrange(new Rect(0, 0, 640, 120));
             window.UpdateLayout();
 
             static TextBlock GetChipLabel(Grid chipRoot)
@@ -36,8 +34,10 @@ public sealed class AccentControlCoverageTests
             var chip0 = Assert.IsType<Grid>(strip.ChipHost.Children[0]);
             var chip1 = Assert.IsType<Grid>(strip.ChipHost.Children[1]);
             var chip2 = Assert.IsType<Grid>(strip.ChipHost.Children[2]);
-            double initialX = strip.ChipSelectionOffset.X;
-            Assert.Equal(1.0, strip.ChipSelection.Opacity, 3);
+            double initialX = chip0.TranslatePoint(new Point(), strip.ChipTrack).X;
+            await WpfFrameWaiter.UntilAsync(
+                () => strip.ChipSelection.Opacity == 1 && Math.Abs(strip.ChipSelectionOffset.X - initialX) < 0.01,
+                "the selection to align with the first white noise chip", ct);
             Assert.True(strip.ChipSelection.Width > 0);
 
             foreach (string id in new[] { "purple", "green", "orange", "default" })
@@ -50,10 +50,13 @@ public sealed class AccentControlCoverageTests
                 Assert.Equal(swatch.Strong, Assert.IsType<SolidColorBrush>(GetChipLabel(chip1).Foreground).Color);
             }
 
+            double targetX = chip2.TranslatePoint(new Point(), strip.ChipTrack).X;
+            Assert.NotEqual(initialX, targetX);
             WhiteNoiseService.SetPlayingKindForTest(2);
             strip.RefreshForTest();
-            await Task.Delay(320, ct);
-            Assert.True(strip.ChipSelectionOffset.X > initialX);
+            await WpfFrameWaiter.UntilAsync(
+                () => Math.Abs(strip.ChipSelectionOffset.X - targetX) < 0.01,
+                "the selection to align with the third white noise chip", ct);
             Assert.Equal(AccentTheme.ForegroundColor, Assert.IsType<SolidColorBrush>(GetChipLabel(chip2).Foreground).Color);
         }
         finally

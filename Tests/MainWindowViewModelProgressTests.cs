@@ -23,7 +23,7 @@ public class ShellViewModelProgressTests
             new FakeBatteryService(),
             new FakeDispatcherService());
 
-        _vm.IsExpandedCheck = () => true;
+        _vm.Progress.IsExpandedCheck = () => true;
     }
 
     private static MediaInfo Timeline(
@@ -61,7 +61,7 @@ public class ShellViewModelProgressTests
 
         _media.RaiseMediaChanged(info);
 
-        Assert.Equal("0:30", _vm.CurrentTimeText);
+        Assert.Equal("0:30", _vm.Progress.CurrentTimeText);
     }
 
     [Fact]
@@ -72,7 +72,7 @@ public class ShellViewModelProgressTests
 
         _media.RaiseMediaChanged(info);
 
-        Assert.Equal("10:00", _vm.CurrentTimeText);
+        Assert.Equal("10:00", _vm.Progress.CurrentTimeText);
     }
 
     [Fact]
@@ -83,7 +83,7 @@ public class ShellViewModelProgressTests
 
         _media.RaiseMediaChanged(info);
 
-        Assert.Equal("10:00", _vm.CurrentTimeText);
+        Assert.Equal("10:00", _vm.Progress.CurrentTimeText);
     }
 
     [Fact]
@@ -94,7 +94,7 @@ public class ShellViewModelProgressTests
 
         _media.RaiseMediaChanged(info);
 
-        Assert.Equal("1:00:00", _vm.CurrentTimeText);
+        Assert.Equal("1:00:00", _vm.Progress.CurrentTimeText);
     }
 
     [Fact]
@@ -105,8 +105,8 @@ public class ShellViewModelProgressTests
 
         _media.RaiseMediaChanged(info);
 
-        Assert.Equal(1.0, _vm.ProgressRatio, 3);
-        Assert.Equal("0:10", _vm.CurrentTimeText);
+        Assert.Equal(1.0, _vm.Progress.Position, 3);
+        Assert.Equal("0:10", _vm.Progress.CurrentTimeText);
     }
 
     [Fact]
@@ -117,8 +117,8 @@ public class ShellViewModelProgressTests
 
         _media.RaiseMediaChanged(info);
 
-        Assert.Equal(0.0, _vm.ProgressRatio, 3);
-        Assert.Equal("0:00", _vm.CurrentTimeText);
+        Assert.Equal(0.0, _vm.Progress.Position, 3);
+        Assert.Equal("0:00", _vm.Progress.CurrentTimeText);
     }
 
     [Fact]
@@ -129,7 +129,7 @@ public class ShellViewModelProgressTests
 
         _media.RaiseMediaChanged(info);
 
-        Assert.Equal("1:30", _vm.RemainingTimeText);
+        Assert.Equal("1:30", _vm.Progress.RemainingTimeText);
     }
 
     [Fact]
@@ -140,7 +140,7 @@ public class ShellViewModelProgressTests
 
         _media.RaiseMediaChanged(info);
 
-        Assert.Equal("1:01:01", _vm.RemainingTimeText);
+        Assert.Equal("1:01:01", _vm.Progress.RemainingTimeText);
     }
 
     [Fact]
@@ -162,9 +162,9 @@ public class ShellViewModelProgressTests
 
         _media.RaiseMediaChanged(info);
 
-        Assert.Equal("", _vm.CurrentTimeText);
-        Assert.Equal("LIVE", _vm.RemainingTimeText);
-        Assert.Equal(0.0, _vm.ProgressRatio, 3);
+        Assert.Equal("", _vm.Progress.CurrentTimeText);
+        Assert.Equal("LIVE", _vm.Progress.RemainingTimeText);
+        Assert.Equal(0.0, _vm.Progress.Position, 3);
     }
 
     [Fact]
@@ -172,16 +172,16 @@ public class ShellViewModelProgressTests
     {
         _media.RaiseMediaChanged(Timeline("Spotify", 100, positionSeconds: 10, playing: false,
             lastUpdated: DateTimeOffset.Now));
-        Assert.Equal("0:10", _vm.CurrentTimeText);
+        Assert.Equal("0:10", _vm.Progress.CurrentTimeText);
 
-        await _vm.SeekToPosition(TimeSpan.FromSeconds(50));
+        await _vm.Progress.SeekToPosition(TimeSpan.FromSeconds(50));
         Assert.Equal(TimeSpan.FromSeconds(50), _media.LastSeek);
-        Assert.Equal("0:50", _vm.CurrentTimeText);
+        Assert.Equal("0:50", _vm.Progress.CurrentTimeText);
 
         _media.RaiseMediaChanged(Timeline("Spotify", 100, positionSeconds: 10, playing: false,
             lastUpdated: DateTimeOffset.Now));
 
-        Assert.Equal("0:50", _vm.CurrentTimeText);
+        Assert.Equal("0:50", _vm.Progress.CurrentTimeText);
     }
 
     [Fact]
@@ -190,15 +190,15 @@ public class ShellViewModelProgressTests
         _media.RaiseMediaChanged(Timeline("Spotify", 100, positionSeconds: 10, playing: false,
             lastUpdated: DateTimeOffset.Now));
 
-        await _vm.SeekToPosition(TimeSpan.FromSeconds(50));
-        Assert.Equal("0:50", _vm.CurrentTimeText);
+        await _vm.Progress.SeekToPosition(TimeSpan.FromSeconds(50));
+        Assert.Equal("0:50", _vm.Progress.CurrentTimeText);
 
         await Task.Delay(2600);
 
         _media.RaiseMediaChanged(Timeline("Spotify", 100, positionSeconds: 10, playing: false,
             lastUpdated: DateTimeOffset.Now));
 
-        Assert.Equal("0:10", _vm.CurrentTimeText);
+        Assert.Equal("0:10", _vm.Progress.CurrentTimeText);
     }
 
     [Fact]
@@ -207,14 +207,14 @@ public class ShellViewModelProgressTests
         _media.RaiseMediaChanged(Timeline("Spotify", 100, positionSeconds: 10, playing: false,
             lastUpdated: DateTimeOffset.Now));
 
-        await _vm.SeekRelative(20);
+        await _vm.Progress.SeekRelative(20);
 
         Assert.Equal(TimeSpan.FromSeconds(30), _media.LastSeekAbsolute);
-        Assert.Equal("0:30", _vm.CurrentTimeText);
+        Assert.Equal("0:30", _vm.Progress.CurrentTimeText);
 
         _media.RaiseMediaChanged(Timeline("Spotify", 100, positionSeconds: 10, playing: false,
             lastUpdated: DateTimeOffset.Now));
-        Assert.Equal("0:30", _vm.CurrentTimeText);
+        Assert.Equal("0:30", _vm.Progress.CurrentTimeText);
     }
 
     [Fact]
@@ -223,10 +223,10 @@ public class ShellViewModelProgressTests
         _media.RaiseMediaChanged(Timeline("Spotify", 100, positionSeconds: 90, playing: false,
             lastUpdated: DateTimeOffset.Now));
 
-        await _vm.SeekRelative(1000);
+        await _vm.Progress.SeekRelative(1000);
         Assert.Equal(TimeSpan.FromSeconds(100), _media.LastSeekAbsolute);
 
-        await _vm.SeekRelative(-5000);
+        await _vm.Progress.SeekRelative(-5000);
         Assert.Equal(TimeSpan.Zero, _media.LastSeekAbsolute);
     }
 
@@ -236,20 +236,20 @@ public class ShellViewModelProgressTests
         _media.RaiseMediaChanged(Timeline("Spotify", 100, positionSeconds: 20, playing: false,
             lastUpdated: DateTimeOffset.Now));
 
-        _vm.StartDraggingProgress();
-        _vm.UpdateDragPosition(0.75);
-        Assert.Equal(0.75, _vm.ProgressRatio, 3);
-        Assert.Equal("1:15", _vm.CurrentTimeText);
+        _vm.Progress.StartDragging();
+        _vm.Progress.UpdateDragPosition(0.75);
+        Assert.Equal(0.75, _vm.Progress.Position, 3);
+        Assert.Equal("1:15", _vm.Progress.CurrentTimeText);
 
         _media.RaiseMediaChanged(Timeline("Spotify", 100, positionSeconds: 90, playing: false,
             lastUpdated: DateTimeOffset.Now));
-        Assert.Equal(0.75, _vm.ProgressRatio, 3);
-        Assert.Equal("1:15", _vm.CurrentTimeText);
+        Assert.Equal(0.75, _vm.Progress.Position, 3);
+        Assert.Equal("1:15", _vm.Progress.CurrentTimeText);
 
-        _vm.RenderProgressBar();
-        Assert.Equal(0.75, _vm.ProgressRatio, 3);
+        _vm.Progress.Render();
+        Assert.Equal(0.75, _vm.Progress.Position, 3);
 
-        _vm.StopDraggingProgress();
+        _vm.Progress.StopDragging();
     }
 
     [Fact]
@@ -258,15 +258,15 @@ public class ShellViewModelProgressTests
         _media.RaiseMediaChanged(Timeline("Spotify", 100, positionSeconds: 0, playing: false,
             lastUpdated: DateTimeOffset.Now));
 
-        _vm.StartDraggingProgress();
+        _vm.Progress.StartDragging();
 
-        _vm.UpdateDragPosition(1.5);
-        Assert.Equal(1.0, _vm.ProgressRatio, 3);
+        _vm.Progress.UpdateDragPosition(1.5);
+        Assert.Equal(1.0, _vm.Progress.Position, 3);
 
-        _vm.UpdateDragPosition(-0.5);
-        Assert.Equal(0.0, _vm.ProgressRatio, 3);
+        _vm.Progress.UpdateDragPosition(-0.5);
+        Assert.Equal(0.0, _vm.Progress.Position, 3);
 
-        _vm.StopDraggingProgress();
+        _vm.Progress.StopDragging();
     }
 
     [Fact]
@@ -275,45 +275,45 @@ public class ShellViewModelProgressTests
         _media.RaiseMediaChanged(Timeline("Spotify", 100, positionSeconds: 0, playing: false,
             lastUpdated: DateTimeOffset.Now));
 
-        Assert.Equal(TimeSpan.FromSeconds(50), _vm.GetDragSeekPosition(0.5));
-        Assert.Equal(TimeSpan.FromSeconds(100), _vm.GetDragSeekPosition(1.5));
-        Assert.Equal(TimeSpan.Zero, _vm.GetDragSeekPosition(-0.5));
+        Assert.Equal(TimeSpan.FromSeconds(50), _vm.Progress.GetDragSeekPosition(0.5));
+        Assert.Equal(TimeSpan.FromSeconds(100), _vm.Progress.GetDragSeekPosition(1.5));
+        Assert.Equal(TimeSpan.Zero, _vm.Progress.GetDragSeekPosition(-0.5));
     }
 
     [Fact]
     public void SetVolumeFromRatio_MidRange_SetsVolumeAndIcon()
     {
-        _vm.SetVolumeFromRatio(0.5f);
+        _vm.AudioMixer.SetVolume(0.5f);
 
-        Assert.Equal(0.5f, _vm.CurrentVolume);
+        Assert.Equal(0.5f, _vm.AudioMixer.CurrentVolume);
         Assert.Equal(0.5f, _volume.LastSetVolume);
-        Assert.Equal("\uE994", _vm.VolumeIconText);
+        Assert.Equal("\uE994", _vm.AudioMixer.IconText);
     }
 
     [Fact]
     public void SetVolumeFromRatio_ClampsAboveOne()
     {
-        _vm.SetVolumeFromRatio(1.5f);
+        _vm.AudioMixer.SetVolume(1.5f);
 
-        Assert.Equal(1.0f, _vm.CurrentVolume);
-        Assert.Equal("\uE995", _vm.VolumeIconText);
+        Assert.Equal(1.0f, _vm.AudioMixer.CurrentVolume);
+        Assert.Equal("\uE995", _vm.AudioMixer.IconText);
     }
 
     [Fact]
     public void SetVolumeFromRatio_ClampsBelowZero_ShowsMutedIcon()
     {
-        _vm.SetVolumeFromRatio(-0.5f);
+        _vm.AudioMixer.SetVolume(-0.5f);
 
-        Assert.Equal(0f, _vm.CurrentVolume);
-        Assert.Equal("\uE74F", _vm.VolumeIconText);
+        Assert.Equal(0f, _vm.AudioMixer.CurrentVolume);
+        Assert.Equal("\uE74F", _vm.AudioMixer.IconText);
     }
 
     [Fact]
     public void SetVolumeFromRatio_LowRange_ShowsLowIcon()
     {
-        _vm.SetVolumeFromRatio(0.1f);
+        _vm.AudioMixer.SetVolume(0.1f);
 
-        Assert.Equal("\uE993", _vm.VolumeIconText);
+        Assert.Equal("\uE993", _vm.AudioMixer.IconText);
     }
 
     [Fact]
@@ -333,7 +333,7 @@ public class ShellViewModelProgressTests
     [Fact]
     public void FeatureState_IsOwnedByChildViewModels()
     {
-        _vm.SetVolumeFromRatio(0.5f);
+        _vm.AudioMixer.SetVolume(0.5f);
         _media.RaiseMediaChanged(Timeline("Spotify", 100, positionSeconds: 25, playing: false));
 
         Assert.Equal(0.5f, _vm.AudioMixer.CurrentVolume);

@@ -27,6 +27,29 @@ public sealed class CalculatorProviderTests
     }
 
     [Theory]
+    [InlineData("vi-VN", "2,5")]
+    [InlineData("en-US", "2.5")]
+    [InlineData("sv-SE", "2,5")]
+    public void CopiedResultCanBeUsedInAnotherExpression(string locale, string expected)
+    {
+        var original = CultureInfo.CurrentCulture;
+        try
+        {
+            CultureInfo.CurrentCulture = CultureInfo.GetCultureInfo(locale);
+            Assert.True(CalculatorProvider.TryEvaluate("5/2", out var first));
+            Assert.Equal(expected, first!.Target);
+            Assert.True(CalculatorProvider.TryEvaluate(first.Target + "*2", out var second));
+            Assert.Equal("5", second!.Target);
+            Assert.True(CalculatorProvider.TryEvaluate("2.5*2", out _));
+            Assert.True(CalculatorProvider.TryEvaluate("0-2.5", out var negative));
+            Assert.True(CalculatorProvider.TryEvaluate(negative!.Target + "*2", out var twice));
+            Assert.Equal((-5).ToString(CultureInfo.CurrentCulture), twice!.Target);
+            Assert.False(CalculatorProvider.TryEvaluate("1,2.3+4", out _));
+        }
+        finally { CultureInfo.CurrentCulture = original; }
+    }
+
+    [Theory]
     [InlineData("")]
     [InlineData("notepad")]
     [InlineData("2024")]

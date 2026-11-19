@@ -1,12 +1,14 @@
 using System.Windows;
 using Microsoft.Extensions.DependencyInjection;
 using VNotch.Modules;
+using VNotch.Models;
+using VNotch.Services;
 using VNotch.Services.Spotlight;
 using VNotch.Services.Spotlight.Providers;
 using VNotch.ViewModels;
 using VNotch.Windows;
 
-namespace VNotch.Services;
+namespace VNotch;
 
 /// <summary>Registers the application composition without constructing a WPF Application.</summary>
 public static class ServiceConfigurator
@@ -51,6 +53,7 @@ public static class ServiceConfigurator
         services.AddSingleton<Controllers.ISpotlightController>(sp =>
             new Controllers.SpotlightController(() => sp.GetRequiredService<SpotlightWindow>()));
         services.AddSingleton<Controllers.NotchTransitionCoordinator>();
+        services.AddSingleton<INotchNavigation>(sp => sp.GetRequiredService<Controllers.NotchTransitionCoordinator>());
         // This is the application state owner used by both the running window and unit tests.
         services.AddSingleton<ShellViewModel>();
 

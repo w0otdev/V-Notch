@@ -1,3 +1,4 @@
+using VNotch.Models;
 using System.Runtime.InteropServices;
 
 namespace VNotch.Services;
@@ -175,54 +176,6 @@ public static partial class PlatformDetector
             if (rc == -2 && outLen > cap) { char[] larger = new char[outLen]; fixed (char* pL = larger) rc = vn_platform_normalize_for_loose_match(pIn, value.Length, pL, outLen, out outLen); return rc == 0 && outLen > 0 ? new string(larger, 0, outLen) : string.Empty; }
             if (rc != 0) outLen = 0;
             return outLen > 0 ? new string(buf.Slice(0, outLen)) : string.Empty;
-        }
-    }
-}
-
-public enum MediaPlatform
-{
-    Unknown,
-    Spotify,
-    YouTube,
-    SoundCloud,
-    AppleMusic,
-    Browser,
-    Instagram = 8, // Preserve existing platform IDs; 6 and 7 are retired.
-    Twitter,
-    Twitch,
-    Discord,
-    Netflix,
-    Tidal,
-    Deezer,
-    Bandcamp,
-    Bilibili,
-    Vimeo
-}
-
-public static partial class MediaPlatformExtensions
-{
-    [LibraryImport("VNotch.Native.dll")]
-    private static unsafe partial int vn_platform_parse(char* valPtr, int valLen, out int outPlatform);
-
-    [LibraryImport("VNotch.Native.dll")]
-    private static unsafe partial int vn_platform_to_display_string(int platform, char* outBuf, int outCap, out int outLen);
-
-    public static unsafe string ToDisplayString(this MediaPlatform platform)
-    {
-        char* buf = stackalloc char[32];
-        _ = vn_platform_to_display_string((int)platform, buf, 32, out int len);
-        return len > 0 ? new string(buf, 0, len) : string.Empty;
-    }
-
-    public static unsafe MediaPlatform ParsePlatform(string? value)
-    {
-        if (string.IsNullOrEmpty(value))
-            return MediaPlatform.Unknown;
-
-        fixed (char* ptr = value)
-        {
-            _ = vn_platform_parse(ptr, value.Length, out int p);
-            return (MediaPlatform)p;
         }
     }
 }

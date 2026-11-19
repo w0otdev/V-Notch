@@ -21,6 +21,7 @@ public partial class TranslationWindow : Window
     private int _motionVersion;
     private DispatcherOperation? _presentationOperation;
     private TaskCompletionSource? _entranceCompletion;
+    internal void SetEntranceGateForTest(TaskCompletionSource completion) => _entranceCompletion = completion;
     private TranslationResult? _deferredResult;
     private string? _deferredStatus, _deferredActivity;
     private bool _placementDirty;

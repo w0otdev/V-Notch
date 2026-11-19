@@ -49,7 +49,8 @@ public static partial class InputMonitorService
     private static HwndSource? _inputWindow;
     private static int _generation;
     internal static bool IsStarted => _source != null;
-    internal static int InputThreadId { get; private set; }
+    internal static Dispatcher? InputDispatcher => _inputDispatcher;
+    internal static Action? InitializeWorkerThread { private get; set; }
 
     public static event EventHandler<POINT>? MouseActionTriggered;
 
@@ -91,9 +92,10 @@ public static partial class InputMonitorService
         var ready = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
         var thread = new Thread(() =>
         {
-            var dispatcher = Dispatcher.CurrentDispatcher;
             try
             {
+                InitializeWorkerThread?.Invoke();
+                var dispatcher = Dispatcher.CurrentDispatcher;
                 using var input = new HwndSource(new HwndSourceParameters("VNotch input worker")
                 { ParentWindow = new IntPtr(-3), Width = 0, Height = 0, WindowStyle = 0 });
                 input.AddHook((IntPtr hwnd, int message, IntPtr wp, IntPtr lp, ref bool handled) =>
@@ -120,7 +122,6 @@ public static partial class InputMonitorService
                 }
                 _inputDispatcher = dispatcher;
                 _inputWindow = input;
-                InputThreadId = Environment.CurrentManagedThreadId;
                 ready.TrySetResult(true);
                 Dispatcher.Run();
             }

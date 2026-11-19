@@ -126,6 +126,39 @@ public sealed class SpotlightUsageStoreTests : IDisposable
         Assert.True(reloaded.GetBoost("app:one") > 0);
     }
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task LockedFirstReadPreservesAndMergesLaunches(bool launchWhileLocked)
+    {
+        var first = Item("app:one", @"shell:AppsFolder\One!App");
+        var second = Item("app:two", @"shell:AppsFolder\Two!App");
+        await using (var seed = CreateStore()) seed.RecordLaunch(first, "original");
+
+        await using (var store = CreateStore())
+        {
+            using (File.Open(_path, FileMode.Open, FileAccess.ReadWrite, FileShare.None))
+            {
+                Assert.Equal(0, store.GetBoost(first.Id));
+                if (launchWhileLocked)
+                {
+                    store.RecordLaunch(first, "extra");
+                    store.RecordLaunch(second, "original");
+                    await Assert.ThrowsAsync<IOException>(store.WaitForPendingSavesAsync);
+                }
+            }
+            if (!launchWhileLocked) store.RecordLaunch(second, "original");
+        }
+
+        using var doc = JsonDocument.Parse(await File.ReadAllTextAsync(_path));
+        var one = doc.RootElement.GetProperty(first.Id);
+        Assert.Equal(launchWhileLocked ? 2 : 1, one.GetProperty("Count").GetInt32());
+        Assert.Equal(launchWhileLocked ? new[] { "extra" } : Array.Empty<string>(),
+            one.GetProperty("Queries").Deserialize<string[]>());
+        var two = doc.RootElement.GetProperty(second.Id);
+        Assert.Equal("original", Assert.Single(two.GetProperty("Queries").Deserialize<string[]>()!));
+    }
+
     [Fact]
     public async Task RecordLaunch_CoalescesOverlappingSavesAndPersistsNewestSnapshot()
     {

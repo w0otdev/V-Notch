@@ -381,7 +381,7 @@ public sealed class SpotlightSearchPresentationTests
         Assert.DoesNotContain(stale, vm.Results);
         Assert.Same(vm.Results[0], vm.SelectedResult);
         Assert.Equal(Visibility.Visible, window.FailureBar.Visibility);
-        Assert.Contains(stale.DisplayTitle, window.FailureText.Text);
+        Assert.Contains(new SpotlightResultPresentation(stale).DisplayTitle, window.FailureText.Text);
         var timer = Field<UiScheduledTimer>(window, "_failureTimer");
         Invoke(window, "ShowSpotlightMessage", "replacement failure");
         Assert.False(timer.IsEnabled);

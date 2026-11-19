@@ -163,7 +163,7 @@ public sealed partial class LiquidGlassController : IDisposable
         Interlocked.Increment(ref _refreshVersion);
     }
 
-    private void OnD3DFramePresented(GpuGeometry geom)
+    internal void OnD3DFramePresented(GpuGeometry geom)
     {
         if (!_isActive) return;
         _hasVisibleFrame = true;

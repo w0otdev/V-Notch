@@ -37,25 +37,11 @@ internal sealed partial class SpotlightPreferences
     private readonly string _path;
     private State? _state;
     private volatile string[]? _excludedFoldersSnapshot;
-    private Func<string, bool> _directoryExistsProbe = Directory.Exists;
     private string? _pendingSave;
     private bool _saving;
     private Task _saveTask = Task.CompletedTask;
 
     internal SpotlightPreferences(string path) => _path = path;
-
-    internal Func<string, bool> DirectoryExistsProbe
-    {
-        get => _directoryExistsProbe;
-        set
-        {
-            lock (_gate)
-            {
-                _directoryExistsProbe = value ?? Directory.Exists;
-                _excludedFoldersSnapshot = null;
-            }
-        }
-    }
 
     internal sealed class AppPreference
     {
@@ -266,19 +252,6 @@ internal sealed partial class SpotlightPreferences
         {
             if (_excludedFoldersSnapshot != null) return _excludedFoldersSnapshot;
             var folders = Data.ExcludedFolders;
-            var probe = _directoryExistsProbe;
-            if (probe != Directory.Exists)
-            {
-                if (folders.Count == 0)
-                {
-                    _ = probe(_path);
-                }
-                else
-                {
-                    for (int i = 0; i < folders.Count; i++)
-                        _ = probe(folders[i]);
-                }
-            }
             _excludedFoldersSnapshot = folders.Count == 0 ? Array.Empty<string>() : folders.ToArray();
             return _excludedFoldersSnapshot;
         }

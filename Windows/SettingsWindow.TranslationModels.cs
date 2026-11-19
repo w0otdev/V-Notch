@@ -8,6 +8,7 @@ namespace VNotch;
 
 public partial class SettingsWindow
 {
+    internal TranslationHardware? TranslationHardwareSnapshot { get => _translationHardware; set => _translationHardware = value; }
     private TranslationHardware? _translationHardware;
     private bool _translationHardwareStarted, _translationModelLoading;
     private sealed record ModelChoice(string Id, string Name, string Group, bool IsRecommended, string RecommendedLabel)
@@ -73,7 +74,7 @@ public partial class SettingsWindow
         PushLivePreview();
     }
 
-    private void RefreshTranslationModelDetails()
+    internal void RefreshTranslationModelDetails()
     {
         var model = _translationStore.Profile;
         TranslationModelTitle.Text = Loc.Get("translation.modelTitle");

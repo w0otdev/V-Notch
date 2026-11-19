@@ -34,6 +34,18 @@ internal sealed partial class LiveTranslationController : IDisposable
     private string? _sourceCurrencyOverride, _targetCurrencyOverride;
     private bool _inputWasTruncated;
 
+    internal LocalTranslationService Service => _service;
+    internal string InputText { get => _text; set => _text = value; }
+    internal bool HasActivePreparation => _preparation != null;
+    internal bool HasSelectionWatcher => _selectionService != null;
+    internal bool HasShiftShortcut => _shiftShortcut != null;
+
+    internal void AttachSelectionServiceForTest(TranslationSelectionService service, bool enableLiveTranslation = true)
+    {
+        _selectionService = service;
+        _settings.EnableLiveTranslation = enableLiveTranslation;
+    }
+
     internal LiveTranslationController(Dispatcher dispatcher, Action manageModel, TranslationModelStore? store = null, ILocalTranslationEngine? engine = null, Func<IntPtr>? getForegroundWindow = null, CurrencyRateService? currencyRates = null, Action<string, string>? saveLanguages = null)
     {
         _dispatcher = dispatcher; _manageModel = manageModel; _saveLanguages = saveLanguages;
@@ -86,7 +98,7 @@ internal sealed partial class LiveTranslationController : IDisposable
         if (!changed && languagesChanged && _window?.IsVisible == true && _text.Length > 0) _ = TranslateAsync();
     }
 
-    private void ModelChanged()
+    internal void ModelChanged()
     {
         if (!_disposed && !_dispatcher.HasShutdownStarted) _dispatcher.BeginInvoke(() =>
         {
@@ -192,7 +204,7 @@ internal sealed partial class LiveTranslationController : IDisposable
     private void ManualTranslationRequested(TranslationSelection? selection)
         => PresentSelection(selection, true);
 
-    private void ManualSelectionUnavailable(IntPtr foreground, long captureVersion)
+    internal void ManualSelectionUnavailable(IntPtr foreground, long captureVersion)
     {
         if (_disposed || _dispatcher.HasShutdownStarted) return;
         _dispatcher.BeginInvoke(() =>
@@ -207,7 +219,7 @@ internal sealed partial class LiveTranslationController : IDisposable
         });
     }
 
-    private void PresentSelection(TranslationSelection? selection, bool manual, Func<bool>? isCurrent = null)
+    internal void PresentSelection(TranslationSelection? selection, bool manual, Func<bool>? isCurrent = null)
     {
         if (_disposed || _dispatcher.HasShutdownStarted) return;
         _dispatcher.BeginInvoke(() =>
@@ -258,7 +270,7 @@ internal sealed partial class LiveTranslationController : IDisposable
         }, DispatcherPriority.Background);
     }
 
-    private TranslationWindow EnsureWindow()
+    internal TranslationWindow EnsureWindow()
     {
         if (_window != null) return _window;
         var window = new TranslationWindow(_settings.TranslationSourceLanguage, _settings.TranslationTargetLanguage);
@@ -319,7 +331,7 @@ internal sealed partial class LiveTranslationController : IDisposable
         }
     }
 
-    private async Task TranslateAsync()
+    internal async Task TranslateAsync()
     {
         if (_disposed || _window == null) return;
         CancelRequest();

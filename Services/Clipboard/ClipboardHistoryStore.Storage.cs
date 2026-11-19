@@ -76,10 +76,17 @@ public sealed partial class ClipboardHistoryStore : IDisposable, IAsyncDisposabl
         }
         finally
         {
-            if (File.Exists(temp))
-            {
-                try { File.Delete(temp); } catch { }
-            }
+            TryDeleteTempFile(temp);
+        }
+    }
+
+    private static void TryDeleteTempFile(string tempPath)
+    {
+        if (!File.Exists(tempPath)) return;
+        try { File.Delete(tempPath); }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            RuntimeLog.Debug("CLIPBOARD-STORE", $"Ignored temp file cleanup failure: {ex.Message}");
         }
     }
     private void WriteEntry(ClipboardEntry entry) => WriteDocument(Path.Combine(EntryDirectory(entry), "entry.json"), entry, entry.IsPersonal);

@@ -75,6 +75,7 @@ public sealed partial class ClipboardTray
     private double _categoryPressOffset;
     private double _categoryScrollTarget;
     private bool _categoryDragging;
+    internal bool IsCategoryScrolling => _categoryScrollActive;
     private bool _categoryScrollActive;
     private AnimationFrameClock _categoryFrameClock;
     private readonly TranslateTransform _categoryElasticTransform = new();
@@ -124,7 +125,7 @@ public sealed partial class ClipboardTray
         };
     }
 
-    private void Category_Wheel(object sender, MouseWheelEventArgs e)
+    internal void Category_Wheel(object sender, MouseWheelEventArgs e)
     {
         if (_categoryReordering) { e.Handled = true; return; }
         e.Handled = true;

@@ -28,6 +28,7 @@ internal sealed partial class SettingsSelectionMotion(Border indicator, Framewor
         double height, double seconds, byte reducedMotion, out NavPillVisual visual, out byte settled);
 
     private NavPillSpringState _state;
+    internal (double TopVelocity, double BottomVelocity) Velocity => (_state.TopVelocity, _state.BottomVelocity);
     internal bool IsMoving { get; private set; }
     private double _targetY;
     private double _height = 30;

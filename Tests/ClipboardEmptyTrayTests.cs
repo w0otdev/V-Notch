@@ -1,5 +1,4 @@
 using System.IO;
-using System.Reflection;
 using System.Security;
 using System.Windows;
 using System.Windows.Automation;
@@ -143,15 +142,15 @@ public sealed class ClipboardEmptyTrayTests
         Assert.True(await store.UnlockPersonalAsync(pin, create: true));
         await store.MovePersonalAsync(personal.Id, true);
         tray.Attach(controller);
-        Invoke(tray, "SelectCategory", "Text");
+        tray.SelectCategory("Text");
         ((TextBox)tray.FindName("SearchBox")).Text = "no matching items";
-        await (Task)Invoke(tray, "RefreshAsync")!;
+        await tray.RefreshAsync();
         Assert.Empty(((ListBox)tray.FindName("Cards")).Items);
         var button = (Button)tray.FindName("EmptyTrayButton");
         Assert.Equal(Visibility.Visible, button.Visibility);
         Assert.Equal(Loc.Get("clipboard.emptyTray"), AutomationProperties.GetName(button));
 
-        var pending = (Task)Invoke(tray, "ConfirmEmptyTrayAsync")!;
+        var pending = tray.ConfirmEmptyTrayAsync();
         Assert.False(pending.IsCompleted);
         Assert.Equal(Loc.Get("clipboard.emptyTrayConfirm", 2), ((TextBlock)tray.FindName("DeleteConfirmationText")).Text);
         Assert.NotNull(store.GetEntry(plain.Id));
@@ -161,7 +160,8 @@ public sealed class ClipboardEmptyTrayTests
         Assert.Equal(Loc.Get("clipboard.emptyTrayConfirm", 2), ((TextBlock)tray.FindName("DeleteConfirmationText")).Text);
         Assert.Equal(Loc.Get("clipboard.emptyTray"), ((Button)tray.FindName("ConfirmDeleteButton")).Content);
         if (action == "BeginExit") tray.BeginExit();
-        else Invoke(tray, action, null, new RoutedEventArgs());
+        else (action == "ConfirmDelete_Click" ? tray.ConfirmDeleteButton : tray.CancelDeleteButton)
+            .RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
         await pending;
         Assert.Equal(deletes, store.GetEntry(plain.Id) == null);
         Assert.Equal(deletes, store.GetEntry(link.Id) == null);
@@ -195,7 +195,7 @@ public sealed class ClipboardEmptyTrayTests
 
             tray.Attach(controller);
             window.Show();
-            await (Task)Invoke(tray, "RefreshAsync")!;
+            await tray.RefreshAsync();
             window.UpdateLayout();
             await Dispatcher.Yield(DispatcherPriority.ApplicationIdle);
 
@@ -212,24 +212,22 @@ public sealed class ClipboardEmptyTrayTests
             window.UpdateLayout();
             Assert.Contains(FindImages(container), img => ReferenceEquals(img.Source, dummyBitmap));
 
-            var selectionField = typeof(ClipboardTray).GetField("_selection", BindingFlags.Instance | BindingFlags.NonPublic)!;
-            var selection = selectionField.GetValue(tray)!;
-            selection.GetType().GetMethod("Select", BindingFlags.Instance | BindingFlags.NonPublic)!
-                .Invoke(selection, new object?[] { (System.Collections.Generic.IList<VNotch.ViewModels.ClipboardCardViewModel>)cardsBox.ItemsSource, Array.Empty<VNotch.ViewModels.ClipboardCardViewModel>(), cardVm, false, false, false });
-            typeof(ClipboardTray).GetField("_lastOpenedMenuCard", BindingFlags.Instance | BindingFlags.NonPublic)!.SetValue(tray, cardVm);
-            typeof(ClipboardTray).GetField("_lastClosedMenuCard", BindingFlags.Instance | BindingFlags.NonPublic)!.SetValue(tray, cardVm);
+            tray.Selection.Select(tray.ResultCards, [], cardVm, false, false, false);
+            var menu = new ContextMenu();
+            tray.MenuHistory.Opened(menu, container, cardVm);
+            tray.MenuHistory.Closed(menu, container, cardVm);
 
             await store.DeleteAsync(fileEntry.Id);
-            await (Task)Invoke(tray, "RefreshAsync")!;
+            await tray.RefreshAsync();
             window.UpdateLayout();
 
             Assert.False(Directory.Exists(exportDir));
             Assert.Null(cardVm.Image);
             Assert.Null(cardVm.FileIcon);
             Assert.Null(cardVm.SourceIcon);
-            Assert.Null(selection.GetType().GetProperty("Anchor", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(selection));
-            Assert.Null(typeof(ClipboardTray).GetField("_lastOpenedMenuCard", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(tray));
-            Assert.Null(typeof(ClipboardTray).GetField("_lastClosedMenuCard", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(tray));
+            Assert.Null(tray.Selection.Anchor);
+            Assert.Null(tray.MenuHistory.OpenCard);
+            Assert.Null(tray.MenuHistory.ClosedCard);
             foreach (var image in FindImages(container))
             {
                 Assert.NotSame(dummyBitmap, image.Source);
@@ -249,9 +247,6 @@ public sealed class ClipboardEmptyTrayTests
             foreach (var nested in FindImages(child)) yield return nested;
         }
     }
-
-    private static object? Invoke(object target, string name, params object?[] args)
-        => target.GetType().GetMethod(name, BindingFlags.Instance | BindingFlags.NonPublic)!.Invoke(target, args);
 
     private static SecureString Pin()
     {

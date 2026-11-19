@@ -29,6 +29,7 @@
         Deactivated="Window_Deactivated"
         AutomationProperties.Name="V-Notch Spotlight">
     <Window.Resources>
+        <controls:SpotlightResultConverter x:Key="ResultPresentation" />
         <fonts:AppFont x:Key="SFProDisplay" Fallbacks="Segoe UI, Arial" />
         <fonts:AppFont x:Key="SFProText" Fallbacks="Segoe UI, Arial" />
         <controls:SpotlightHotkeyConverter x:Key="HotkeyConverter"/>
@@ -1079,7 +1080,7 @@
                             <ListBox.ItemTemplate>
                                 <DataTemplate>
                                     <Grid MinHeight="38"
-                                          AutomationProperties.Name="{Binding DisplayTitle}"
+                                          AutomationProperties.Name="{Binding Converter={StaticResource ResultPresentation}, ConverterParameter=DisplayTitle}"
                                           ToolTip="{Binding Target}"
                                           AutomationProperties.HelpText="{Binding Subtitle}">
                                         <Grid.ColumnDefinitions>
@@ -1099,12 +1100,12 @@
                                             <Viewbox Width="22" Height="22" Stretch="Uniform"
                                                      HorizontalAlignment="Center" VerticalAlignment="Center">
                                                 <Canvas Width="24" Height="24">
-                                                    <Path x:Name="SolidSystemIcon" Data="{Binding SolidIcon}"
+                                                    <Path x:Name="SolidSystemIcon" Data="{Binding Converter={StaticResource ResultPresentation}, ConverterParameter=SolidIcon}"
                                                           Stretch="None" Fill="#AAAAAA"/>
                                                 </Canvas>
                                             </Viewbox>
                                             <TextBlock x:Name="FallbackGlyph"
-                                                       Text="{Binding Glyph}"
+                                                       Text="{Binding Converter={StaticResource ResultPresentation}, ConverterParameter=Glyph}"
                                                        FontFamily="{StaticResource IconFont}"
                                                        FontSize="20"
                                                        FontWeight="Normal"
@@ -1130,7 +1131,7 @@
                                         <StackPanel Grid.Column="1"
                                                     Margin="4,0,16,0"
                                                     VerticalAlignment="Center">
-                                            <TextBlock controls:HighlightedText.Text="{Binding DisplayTitle}"
+                                            <TextBlock controls:HighlightedText.Text="{Binding Converter={StaticResource ResultPresentation}, ConverterParameter=DisplayTitle}"
                                                        controls:HighlightedText.Query="{Binding DataContext.Query, RelativeSource={RelativeSource AncestorType=Window}}"
                                                        FontFamily="{StaticResource SFProDisplay}"
                                                        FontSize="15"
@@ -1138,7 +1139,7 @@
                                                        Foreground="{StaticResource TitleTextBrush}"
                                                        TextTrimming="CharacterEllipsis"/>
                                             <TextBlock x:Name="SubtitleText"
-                                                       Text="{Binding DisplaySubtitle}"
+                                                       Text="{Binding Converter={StaticResource ResultPresentation}, ConverterParameter=DisplaySubtitle}"
                                                        Margin="0,2,0,0"
                                                        FontFamily="{StaticResource SFProDisplay}"
                                                        FontSize="11.5"
@@ -1162,13 +1163,13 @@
                                         <DataTrigger Binding="{Binding IsShortcut}" Value="True">
                                             <Setter TargetName="ShortcutArrow" Property="Visibility" Value="Visible"/>
                                         </DataTrigger>
-                                        <DataTrigger Binding="{Binding SolidIcon}" Value="{x:Null}">
+                                        <DataTrigger Binding="{Binding Converter={StaticResource ResultPresentation}, ConverterParameter=SolidIcon}" Value="{x:Null}">
                                             <Setter TargetName="SolidSystemIcon" Property="Visibility" Value="Collapsed"/>
                                         </DataTrigger>
                                         <MultiDataTrigger>
                                             <MultiDataTrigger.Conditions>
                                                 <Condition Binding="{Binding Icon}" Value="{x:Null}"/>
-                                                <Condition Binding="{Binding SolidIcon}" Value="{x:Null}"/>
+                                                <Condition Binding="{Binding Converter={StaticResource ResultPresentation}, ConverterParameter=SolidIcon}" Value="{x:Null}"/>
                                             </MultiDataTrigger.Conditions>
                                             <Setter TargetName="FallbackGlyph" Property="Visibility" Value="Visible"/>
                                         </MultiDataTrigger>

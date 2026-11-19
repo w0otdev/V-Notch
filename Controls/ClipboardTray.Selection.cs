@@ -84,6 +84,7 @@ public sealed partial class ClipboardTray
     }
     private Point? _selectionStart;
     private Point? _pendingLassoStart;
+    internal ClipboardSelectionModel<ClipboardCardViewModel> Selection => _selection;
     private readonly ClipboardSelectionModel<ClipboardCardViewModel> _selection = new();
     private readonly HashSet<ListBoxItem> _selectionContainers = [];
     private Point _selectionPointer;

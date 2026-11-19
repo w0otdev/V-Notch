@@ -27,6 +27,7 @@ public partial class MainWindow : Window
 
     private readonly ISettingsService _settingsService;
     private readonly NotchManager _notchManager;
+    internal NotchManager NotchManager => _notchManager;
     private readonly IMediaDetectionService _mediaService;
     private readonly IUpdateService? _updateService;
     private readonly ShellViewModel _viewModel;
@@ -41,6 +42,7 @@ public partial class MainWindow : Window
     private NotchSettings _settings;
 
     private readonly NotchShellState _shellState = new();
+    internal NotchShellState ShellState => _shellState;
     private const string CollapseBlockedLogTag = "COLLAPSE-BLOCKED";
     private const string CollapseTriggerLogTag = "COLLAPSE-TRIGGER";
 
@@ -88,6 +90,7 @@ public partial class MainWindow : Window
 
     // Greeting, hover and in-view effects also animate without navigation.
     private bool _isVisualAnimationActive;
+    internal bool IsAnimating { get => _isAnimating; set => _isAnimating = value; }
     private bool _isAnimating
     {
         get => _isVisualAnimationActive || _transitionCoordinator.IsTransitionActive;
@@ -160,6 +163,7 @@ public partial class MainWindow : Window
     private int _debugDragStartFixedY;
 
     private readonly VNotch.Controllers.CompactPillArbiter _compactPillArbiter = new();
+    internal VNotch.Controllers.NotchTransitionCoordinator TransitionCoordinator => _transitionCoordinator;
     private readonly VNotch.Controllers.NotchTransitionCoordinator _transitionCoordinator;
     private readonly bool _ownsTransitionCoordinator;
     private readonly Func<NotchView, string, bool> _canInitiateTransition;
@@ -212,7 +216,7 @@ public partial class MainWindow : Window
 
     #endregion
 
-#pragma warning disable S107, S3776 // WPF Main window composition root accepts injected modules and sets up initial UI event wiring
+#pragma warning disable S107 // WPF Main window composition root accepts injected modules and sets up initial UI event wiring
     public MainWindow(
         ISettingsService settingsService,
         IMediaDetectionService mediaService,
@@ -250,13 +254,7 @@ public partial class MainWindow : Window
         Language = System.Windows.Markup.XmlLanguage.GetLanguage(Loc.GetCulture().IetfLanguageTag);
         _ownsTransitionCoordinator = transitionCoordinator == null;
         _transitionCoordinator = transitionCoordinator ?? new VNotch.Controllers.NotchTransitionCoordinator();
-        _canInitiateTransition = (target, reason) =>
-        {
-
-            if (_isGreetingActive) return false;
-            if (_isDebugViewLocked && target == VNotch.Models.NotchView.Compact) return false;
-            return true;
-        };
+        _canInitiateTransition = CanStartViewTransition;
         _transitionCoordinator.CanInitiateTransition = _canInitiateTransition;
         _transitionCoordinator.StateChanged += OnCoordinatorStateChanged;
         _transitionCoordinator.TransitionRequested += OnTransitionRequested;
@@ -292,11 +290,7 @@ public partial class MainWindow : Window
             WhiteNoiseService.OnTimerCompleted();
             OnCountdownCompleted();
         };
-        CountdownWidget.KeyboardInputRequested += enabled =>
-        {
-            if (enabled) EnableKeyboardInput();
-            else DisableKeyboardInput();
-        };
+        CountdownWidget.KeyboardInputRequested += SetCountdownKeyboardInput;
         AudioContent.Attach(_viewModel.AudioMixer,
             audioMixerFactory ?? (() => throw new InvalidOperationException("Audio mixer was not supplied by the composition root.")),
             volumeFactory ?? (() => throw new InvalidOperationException("Volume service was not supplied by the composition root.")),
@@ -308,25 +302,15 @@ public partial class MainWindow : Window
             _volumeSynced = false;
         };
         _isExpandedCheck = () => _isExpanded || _isMusicExpanded;
-        _viewModel.IsExpandedCheck = _isExpandedCheck;
+        _viewModel.Progress.IsExpandedCheck = _isExpandedCheck;
         _viewModel.MediaInfoUpdated += ViewModel_MediaInfoUpdated;
         AnimationPrimitives.ApplyFpsToTree(this);
         _settingsService = settingsService;
         _settings = _settingsService.Load();
+        SettingsPreparation = new(Dispatcher, () => _settings, CreateSettingsWindow,
+            () => spotlightController.IsHotkeyRegistered, () => _cleanedUp, () => _isAnimating);
         UpdateInvisibleTrayVisibility();
-        if (string.IsNullOrEmpty(_settings.MonitorDeviceId))
-        {
-            var monitors = MonitorSelection.GetChoices();
-            var preferred = monitors.FirstOrDefault(m => m.Index == _settings.MonitorIndex)
-                ?? monitors.FirstOrDefault(m => m.Screen?.Primary == true)
-                ?? monitors.FirstOrDefault();
-            if (preferred != null)
-            {
-                _settings.MonitorDeviceId = preferred.Id;
-                _settings.MonitorIndex = preferred.Index;
-                _settingsService.SaveAsync(_settings).SafeFireAndForget("SETTINGS-SAVE");
-            }
-        }
+        ResolveSettingsMonitor();
         _notchManager = new NotchManager(this, _settings);
         _mediaService = mediaService;
         _updateService = updateService;
@@ -434,73 +418,19 @@ public partial class MainWindow : Window
         {
             Interval = TimeSpan.FromMilliseconds(_settings.HoverCollapseDelay)
         };
-        _hoverCollapseTimer.Tick += (s, e) =>
-        {
-            _hoverCollapseTimer.Stop();
-            if (IsScreenCaptureActive) return;
-            if (IsKeyboardFocusWithin) return;
-            _hoverCollapseTimer.Interval = TimeSpan.FromMilliseconds(_settings.HoverCollapseDelay);
-
-            if (_isDebugViewLocked || _isSecondaryView || _spotlightMorphSessionActive || _spotlightMorphOwnsNotchVisibility) return;
-            if (_isExpanded && !NotchWrapper.IsMouseOver)
-            {
-                if (DateTime.UtcNow < _suppressHoverCollapseUntilUtc)
-                {
-                    double remaining = (_suppressHoverCollapseUntilUtc - DateTime.UtcNow).TotalMilliseconds;
-                    _hoverCollapseTimer.Interval = TimeSpan.FromMilliseconds(remaining + 50);
-                    _hoverCollapseTimer.Start();
-                    return;
-                }
-
-                if (IsCursorInsideNotchVisual())
-                {
-                    RuntimeLog.Log(CollapseBlockedLogTag,
-                        $"HoverCollapseTimer: cursor is inside notch visual — suppressing");
-                    return;
-                }
-
-                RuntimeLog.Log(CollapseTriggerLogTag,
-                    $"HoverCollapseTimer fired: isExpanded={_isExpanded} isMouseOver={NotchWrapper.IsMouseOver} " +
-                    $"isSecondary={_isSecondaryView} isMusicExpanded={_isMusicExpanded}");
-                CollapseNotch();
-            }
-        };
+        _hoverCollapseTimer.Tick += OnHoverCollapseTick;
 
         _hoverThumbnailDelayTimer = new UiScheduledTimer
         {
             Interval = TimeSpan.FromMilliseconds(_settings.HoverExpandDelay)
         };
-        _hoverThumbnailDelayTimer.Tick += (s, e) =>
-        {
-            _hoverThumbnailDelayTimer.Stop();
-
-            if (IsScreenCaptureActive) return;
-            if (IsCountdownCompletionVisualActive || _isVolumeIndicatorActive) return;
-
-            if (_settings.EnableHoverExpand && !_isExpanded && !_isAnimating)
-            {
-                ExpandNotch();
-            }
-            else if (!_settings.EnableHoverExpand && IsCursorInsideCompactThumbnailExitZone())
-            {
-                SetCompactThumbnailHover(true);
-            }
-        };
+        _hoverThumbnailDelayTimer.Tick += OnHoverThumbnailDelayTick;
 
         _compactThumbnailHoverLeaveTimer = new UiScheduledTimer
         {
             Interval = TimeSpan.FromMilliseconds(140)
         };
-        _compactThumbnailHoverLeaveTimer.Tick += (s, e) =>
-        {
-            if (!_isExpanded && !_isAnimating && (_isMusicCompactMode) && IsCursorInsideCompactThumbnailExitZone())
-            {
-                return;
-            }
-
-            _compactThumbnailHoverLeaveTimer.Stop();
-            SetCompactThumbnailHover(false);
-        };
+        _compactThumbnailHoverLeaveTimer.Tick += OnCompactThumbnailLeaveTick;
 
         _notchManager.HoverService.HoverEnter += HoverService_HoverEnter;
         _notchManager.HoverService.HoverLeave += HoverService_HoverLeave;
@@ -515,7 +445,94 @@ public partial class MainWindow : Window
         InitializeBluetoothNotificationController();
         InitializeIdleAutoHide();
     }
-#pragma warning restore S107, S3776
+#pragma warning restore S107
+
+    private void OnHoverCollapseTick(object? sender, EventArgs e)
+    {
+        _hoverCollapseTimer.Stop();
+        if (IsScreenCaptureActive) return;
+        if (IsKeyboardFocusWithin) return;
+        _hoverCollapseTimer.Interval = TimeSpan.FromMilliseconds(_settings.HoverCollapseDelay);
+
+        if (_isDebugViewLocked || _isSecondaryView || _spotlightMorphSessionActive || _spotlightMorphOwnsNotchVisibility) return;
+        if (_isExpanded && !NotchWrapper.IsMouseOver)
+        {
+            if (DateTime.UtcNow < _suppressHoverCollapseUntilUtc)
+            {
+                double remaining = (_suppressHoverCollapseUntilUtc - DateTime.UtcNow).TotalMilliseconds;
+                _hoverCollapseTimer.Interval = TimeSpan.FromMilliseconds(remaining + 50);
+                _hoverCollapseTimer.Start();
+                return;
+            }
+
+            if (IsCursorInsideNotchVisual())
+            {
+                RuntimeLog.Log(CollapseBlockedLogTag,
+                    $"HoverCollapseTimer: cursor is inside notch visual — suppressing");
+                return;
+            }
+
+            RuntimeLog.Log(CollapseTriggerLogTag,
+                $"HoverCollapseTimer fired: isExpanded={_isExpanded} isMouseOver={NotchWrapper.IsMouseOver} " +
+                $"isSecondary={_isSecondaryView} isMusicExpanded={_isMusicExpanded}");
+            CollapseNotch();
+        }
+    }
+
+    private void OnHoverThumbnailDelayTick(object? sender, EventArgs e)
+    {
+        _hoverThumbnailDelayTimer.Stop();
+
+        if (IsScreenCaptureActive) return;
+        if (IsCountdownCompletionVisualActive || _isVolumeIndicatorActive) return;
+
+        if (_settings.EnableHoverExpand && !_isExpanded && !_isAnimating)
+        {
+            ExpandNotch();
+        }
+        else if (!_settings.EnableHoverExpand && IsCursorInsideCompactThumbnailExitZone())
+        {
+            SetCompactThumbnailHover(true);
+        }
+    }
+
+    private void OnCompactThumbnailLeaveTick(object? sender, EventArgs e)
+    {
+        if (!_isExpanded && !_isAnimating && (_isMusicCompactMode) && IsCursorInsideCompactThumbnailExitZone())
+        {
+            return;
+        }
+
+        _compactThumbnailHoverLeaveTimer.Stop();
+        SetCompactThumbnailHover(false);
+    }
+
+    private bool CanStartViewTransition(NotchView target, string reason) =>
+        !_isGreetingActive && !(_isDebugViewLocked && target == NotchView.Compact);
+
+    private void SetCountdownKeyboardInput(bool enabled)
+    {
+        if (enabled) EnableKeyboardInput();
+        else DisableKeyboardInput();
+    }
+
+    private void ResolveSettingsMonitor()
+    {
+        if (string.IsNullOrEmpty(_settings.MonitorDeviceId))
+        {
+            var monitors = MonitorSelection.GetChoices();
+            var preferred = monitors.FirstOrDefault(m => m.Index == _settings.MonitorIndex)
+                ?? monitors.FirstOrDefault(m => m.Screen?.Primary == true)
+                ?? monitors.FirstOrDefault();
+            if (preferred != null)
+            {
+                _settings.MonitorDeviceId = preferred.Id;
+                _settings.MonitorIndex = preferred.Index;
+                _settingsService.SaveAsync(_settings).SafeFireAndForget("SETTINGS-SAVE");
+            }
+        }
+    }
+
 
     #region Window Lifecycle
 
@@ -588,6 +605,7 @@ public partial class MainWindow : Window
         }), DispatcherPriority.ContextIdle);
     }
 
+    internal bool PostAppearInitializationStarted => _postAppearInitializationStarted;
     private bool _postAppearInitializationStarted;
 
     private void SchedulePostAppearInitialization()
@@ -689,7 +707,7 @@ public partial class MainWindow : Window
     {
         if (_cleanedUp) return;
         _cleanedUp = true;
-        DiscardPreparedSettingsWindow();
+        SettingsPreparation.Close();
         StopLiquidGlass();
         _moduleHost.StopAll();
         DisposeGreetingLifecycle();
@@ -701,7 +719,7 @@ public partial class MainWindow : Window
         _notchManager.HoverService.MousePositionChanged -= HoverService_MousePositionChangedForDesktopReveal;
         _viewModel.Media.PlayPauseToggled -= OnViewModelPlayPauseToggled;
         _viewModel.MediaInfoUpdated -= ViewModel_MediaInfoUpdated;
-        if (_viewModel.IsExpandedCheck == _isExpandedCheck) _viewModel.IsExpandedCheck = null;
+        if (_viewModel.Progress.IsExpandedCheck == _isExpandedCheck) _viewModel.Progress.IsExpandedCheck = null;
         _batteryModule.BatteryUpdated -= BatteryModule_BatteryUpdated;
         _bluetoothModule.DeviceConnected -= BluetoothModule_DeviceConnected;
         _bluetoothModule.DeviceDisconnected -= BluetoothModule_DeviceDisconnected;
@@ -791,7 +809,7 @@ public partial class MainWindow : Window
         if (_ownsTransitionCoordinator) _transitionCoordinator.Dispose();
     }
 
-    private void OnCoordinatorStateChanged(object? sender, VNotch.Controllers.NotchTransitionSnapshot snapshot)
+    private void OnCoordinatorStateChanged(object? sender, VNotch.Models.NotchTransitionSnapshot snapshot)
     {
         if (Dispatcher.CheckAccess())
         {
@@ -803,11 +821,11 @@ public partial class MainWindow : Window
         }
     }
 
-    private void ApplyCoordinatorSnapshot(VNotch.Controllers.NotchTransitionSnapshot snapshot)
+    private void ApplyCoordinatorSnapshot(VNotch.Models.NotchTransitionSnapshot snapshot)
     {
         if (_cleanedUp || snapshot != _transitionCoordinator.Snapshot) return;
         if (snapshot.TargetView == VNotch.Models.NotchView.Compact
-            || snapshot.ShapeState is VNotch.Controllers.NotchShapeState.Collapsed or VNotch.Controllers.NotchShapeState.Hidden)
+            || snapshot.ShapeState is VNotch.Models.NotchShapeState.Collapsed or VNotch.Models.NotchShapeState.Hidden)
             HideSharedSettingsButton();
         if (snapshot.TargetView == VNotch.Models.NotchView.Compact) ResetClipboardDropFeedback();
         _isCameraView = snapshot.CurrentView == VNotch.Models.NotchView.Camera;
@@ -874,10 +892,10 @@ public partial class MainWindow : Window
         // An interrupted shell animation must resume from its rendered geometry,
         // even when the requested view matches the last completed view.
         bool requiresExpansion = args.FromView == VNotch.Models.NotchView.Compact ||
-            args.FromShape is VNotch.Controllers.NotchShapeState.Expanding
-                or VNotch.Controllers.NotchShapeState.Collapsing
-                or VNotch.Controllers.NotchShapeState.MusicExpanding
-                or VNotch.Controllers.NotchShapeState.MusicCollapsing;
+            args.FromShape is VNotch.Models.NotchShapeState.Expanding
+                or VNotch.Models.NotchShapeState.Collapsing
+                or VNotch.Models.NotchShapeState.MusicExpanding
+                or VNotch.Models.NotchShapeState.MusicCollapsing;
         if (args.TargetView != VNotch.Models.NotchView.Camera && IsCameraPreviewLifecycleActive)
             StopCameraPreviewForViewTransition();
         else if (args.TargetView == VNotch.Models.NotchView.Camera && _pendingCameraPreviewVisualTeardown)
@@ -1020,7 +1038,7 @@ public partial class MainWindow : Window
     private double NotchVisibilitySlideDistance =>
         (NotchBorder.ActualHeight > 0 ? NotchBorder.ActualHeight : _collapsedHeight) + 10;
 
-    private void ApplyNotchVisibilityState()
+    internal void ApplyNotchVisibilityState()
     {
         if (NotchContainer == null) return;
 
@@ -1667,7 +1685,6 @@ public partial class MainWindow : Window
 
     private const double DynamicIslandTopMargin = 8.0;
 
-#pragma warning disable S3776 // Synchronizes visual margins, transforms, and visibility for Dynamic Island layout mode
     private void ApplyDynamicIslandLayout(bool animateTransition = false)
     {
         bool islandMode = _settings.EnableDynamicIslandMode;
@@ -1759,7 +1776,6 @@ public partial class MainWindow : Window
             chargingContent.Margin = islandMode ? new Thickness(0) : new Thickness(0, 0, 0, 4);
         }
     }
-#pragma warning restore S3776
 
     #endregion
 
@@ -2107,7 +2123,7 @@ public partial class MainWindow : Window
         OpenAppSettings();
     }
 
-    private void TraySettingsTargeted(object sender, RoutedEventArgs e) => ScheduleSettingsFirstOpenPreparation();
+    private void TraySettingsTargeted(object sender, RoutedEventArgs e) => SettingsPreparation.Schedule();
 
     private void Settings_Click(object sender, MouseButtonEventArgs e)
     {
@@ -2120,7 +2136,7 @@ public partial class MainWindow : Window
 
     private void SettingsButton_MouseEnter(object sender, MouseEventArgs e)
     {
-        ScheduleSettingsFirstOpenPreparation();
+        SettingsPreparation.Schedule();
         SettingsButton.CacheMode = null;
         AnimateSettingsHover(true);
     }
@@ -2199,7 +2215,7 @@ public partial class MainWindow : Window
 
     private void BatteryModule_BatteryUpdated(object? sender, BatteryInfo battery)
     {
-        _viewModel.UpdateBatteryInfo(battery);
+        _viewModel.Secondary.UpdateBattery(battery);
         HandleBatteryUpdate(battery);
     }
 

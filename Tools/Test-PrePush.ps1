@@ -13,6 +13,7 @@ $repoRoot = Split-Path $PSScriptRoot -Parent
 # Keep the complete validation graph (including native intermediates) separate,
 # and use the same paths for restore, build, and --no-build test execution.
 $validationArtifacts = Join-Path $repoRoot 'artifacts/pre-push'
+$validationLock = $null
 $validationArguments = @(
     "-p:ArtifactsPath=$validationArtifacts",
     "-p:VNotchNativeArtifactPath=$(Join-Path $validationArtifacts 'native/VNotch.Native.dll')",
@@ -125,6 +126,25 @@ try {
         $_ -like '*.csproj' -or $_ -like '*packages.lock.json' -or $_ -like 'Directory.*.props' -or $_ -eq 'global.json'
     }).Count -gt 0)
 
+    # Keep ownership through --no-build tests, which load DLLs from this directory.
+    # The OS releases the handle even if a hook is interrupted.
+    [void][IO.Directory]::CreateDirectory($validationArtifacts)
+    $lockPath = Join-Path $validationArtifacts '.validation.lock'
+    $reportedWait = $false
+    while ($null -eq $validationLock) {
+        try {
+            $validationLock = [IO.File]::Open($lockPath, 'OpenOrCreate', 'ReadWrite', 'None')
+        } catch [IO.IOException] {
+            # EAGAIN on Unix, sharing/lock violation on Windows.
+            if (($_.Exception.HResult -band 0xffff) -notin 11, 32, 33) { throw }
+            if (-not $reportedWait) {
+                Write-Host 'Waiting for the other pre-push check to finish...'
+                $reportedWait = $true
+            }
+            Start-Sleep -Milliseconds 500
+        }
+    }
+
     if ($needsLockedRestore) {
         Invoke-Step 'Restore solution (--locked-mode)' {
             & dotnet restore V-Notch.sln --locked-mode -nologo -v:q @validationArguments
@@ -132,6 +152,15 @@ try {
     }
 
     if (-not $SkipBuild) {
+        # A standalone dotnet test can also be using this checkout's cached build.
+        $testBin = (Join-Path $validationArtifacts 'bin/VNotch.Tests') + [IO.Path]::DirectorySeparatorChar
+        foreach ($testHostProcess in @(Get-Process -Name testhost -ErrorAction SilentlyContinue)) {
+            $testHostPath = $testHostProcess.Path
+            if ($testHostPath -and $testHostPath.StartsWith($testBin, [StringComparison]::OrdinalIgnoreCase)) {
+                Write-Host "Waiting for testhost ($($testHostProcess.Id)) to release the pre-push build..."
+                $testHostProcess.WaitForExit()
+            }
+        }
         Invoke-Step 'Build Release including native library (-warnaserror)' {
             # Local checks do not download a verified native artifact like CI.
             # Build the DLL from this checkout so managed imports and native ABI
@@ -191,5 +220,6 @@ try {
 
     Write-Host ("Pre-push checks passed in {0:F1}s." -f $stopwatch.Elapsed.TotalSeconds) -ForegroundColor Green
 } finally {
+    if ($null -ne $validationLock) { $validationLock.Dispose() }
     Pop-Location
 }

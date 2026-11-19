@@ -25,10 +25,15 @@ public partial class SettingsWindow
 {
     #region Navigation
 
+    internal string ActiveSection => _activeNav;
     private string _activeNav = NavSectionAppearance;
+    internal string? HoveredSection => _hoveredNav;
     private string? _hoveredNav;
     private int _lastNavDirection = 1;
+    internal SettingsNavHoverMotion NavHover { get; private set; } = null!;
+    internal SettingsSelectionMotion SelectionMotion => _navPill;
     private SettingsSelectionMotion _navPill = null!;
+    internal Dictionary<string, StackPanel> NavigationPanels => _navPanels;
     private readonly Dictionary<string, StackPanel> _navPanels = new();
     private readonly Dictionary<string, Border> _navButtons = new();
 
@@ -51,6 +56,7 @@ public partial class SettingsWindow
 
     private void InitializeNavigation()
     {
+        NavHover = new(NavHoverIndicatorTranslate, NavHoverIndicator, NavActiveHoverOverlay, () => IsVisible && !_isClosing);
         _navPill = new SettingsSelectionMotion(NavActiveIndicator, NavItemsStack, NavActiveIndicatorScale, NavActiveIndicatorTranslate);
         IsVisibleChanged += (_, _) =>
         {
@@ -169,17 +175,17 @@ public partial class SettingsWindow
 
         bool animate = IsVisible && !AnimationConfig.ReduceMotion && SystemParameters.ClientAreaAnimation;
         bool activeHovered = hoveredBtn?.Tag is string activeTag && activeTag == _activeNav;
-        double targetY = _navHoverTargetY;
+        double targetY = NavHover.TargetY;
         if (hoveredBtn != null)
         {
             var slot = ResolveNavButtonSlot(hoveredBtn);
             targetY = slot.Y;
             NavHoverIndicator.Height = slot.Height;
         }
-        StartNavHoverMotion(targetY, hoveredBtn != null && !activeHovered, activeHovered, animate);
+        NavHover.MoveTo(targetY, hoveredBtn != null && !activeHovered, activeHovered, animate);
     }
 
-    private void NavItemsHost_MouseLeave(object sender, MouseEventArgs e)
+    internal void NavItemsHost_MouseLeave(object sender, MouseEventArgs e)
     {
         if (_hoveredNav != null && _navButtons.TryGetValue(_hoveredNav, out var previous))
         {
@@ -190,7 +196,7 @@ public partial class SettingsWindow
         AnimateNavHoverIndicator(null);
     }
 
-    private void NavButton_MouseEnter(object sender, MouseEventArgs e)
+    internal void NavButton_MouseEnter(object sender, MouseEventArgs e)
     {
         if (sender is not Border btn || btn.Tag is not string section) return;
         if (_isSearchMode && section != NavSectionSearching) return;
@@ -273,7 +279,7 @@ public partial class SettingsWindow
         }
     }
 
-    private static void ApplyNavIconBrush(UIElement element, Brush targetBrush, bool useAccent = false)
+    internal static void ApplyNavIconBrush(UIElement element, Brush targetBrush, bool useAccent = false)
     {
         if (element is Viewbox vb)
         {

@@ -85,7 +85,8 @@ public sealed partial class ClipboardHistoryStore : IDisposable, IAsyncDisposabl
             }
             catch
             {
-                try { if (!Directory.Exists(sourceDir) && Directory.Exists(backup)) Directory.Move(backup, sourceDir); } catch { }
+                try { if (!Directory.Exists(sourceDir) && Directory.Exists(backup)) Directory.Move(backup, sourceDir); }
+                catch (Exception rollbackEx) { RuntimeLog.Error("CLIPBOARD-STORE", rollbackEx, "Failed to restore clipboard entry backup after move failure"); }
                 if (hadDestination && !Directory.Exists(destination) && Directory.Exists(previous))
                     Directory.Move(previous, destination);
                 throw;

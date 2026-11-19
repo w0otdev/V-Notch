@@ -1,7 +1,6 @@
 using System.Collections;
 using System.Collections.ObjectModel;
 using System.IO;
-using System.Reflection;
 using System.Security;
 using System.Security.Cryptography;
 using System.Text;
@@ -30,7 +29,7 @@ public sealed class ClipboardTrayRegressionTests
     {
         using var tray = new ClipboardTray();
         var original = new ClipboardCardViewModel(new ClipboardEntry { Title = "before" });
-        var cards = Field<ObservableCollection<ClipboardCardViewModel>>(tray, "_cards");
+        var cards = tray.ResultCards;
         cards.Add(original);
         var list = (ListBox)tray.FindName("Cards");
         var window = new BackgroundWindow { Content = tray, Width = 780, Height = 300 };
@@ -42,7 +41,7 @@ public sealed class ClipboardTrayRegressionTests
             var container = list.ItemContainerGenerator.ContainerFromItem(original);
             int replacements = 0;
             cards.CollectionChanged += (_, e) => { if (e.Action == System.Collections.Specialized.NotifyCollectionChangedAction.Replace) replacements++; };
-            Invoke(tray, "ReconcilePreparedCards", (object)new[] { original.Entry with { Title = "after", IsPinned = true } }, null);
+            tray.ReconcilePreparedCards(new[] { original.Entry with { Title = "after", IsPinned = true } }, null);
             await Dispatcher.Yield(DispatcherPriority.ApplicationIdle);
             Assert.Same(original, Assert.Single(cards));
             Assert.Same(original, list.SelectedItem);
@@ -101,9 +100,9 @@ public sealed class ClipboardTrayRegressionTests
             var categories = (ItemsControl)tray.FindName("CategoryPanel");
             var buttons = Descendants(categories).OfType<Button>().ToArray();
             Assert.Equal(16, buttons.Length);
-            SetField(tray, "_categoryCounts", new Dictionary<string, int> { ["Images"] = 42 });
-            SetField(tray, "_category", "Images");
-            Invoke(tray, "RebuildCategories");
+            tray.CategoryCounts = new Dictionary<string, int> { ["Images"] = 42 };
+            tray.SelectedCategory = "Images";
+            tray.RebuildCategories();
             await Dispatcher.Yield(DispatcherPriority.ApplicationIdle);
             Assert.Equal(buttons, Descendants(categories).OfType<Button>());
             var imageCategory = Assert.Single(categories.Items.Cast<ClipboardCategoryViewModel>(), category => category.Name == "Images");
@@ -111,12 +110,12 @@ public sealed class ClipboardTrayRegressionTests
             var imageButton = buttons.Single(button => Equals(button.Tag, "Images"));
             Assert.Equal(((SolidColorBrush)tray.FindResource("AccentBrush")).Color, ((SolidColorBrush)imageButton.Background).Color);
             Assert.Equal(((SolidColorBrush)tray.FindResource("AccentForegroundBrush")).Color, ((SolidColorBrush)imageButton.Foreground).Color);
-            Invoke(tray, "Category_Wheel", tray, new MouseWheelEventArgs(Mouse.PrimaryDevice, Environment.TickCount, -120)
+            tray.Category_Wheel(tray, new MouseWheelEventArgs(Mouse.PrimaryDevice, Environment.TickCount, -120)
             { RoutedEvent = UIElement.PreviewMouseWheelEvent });
-            Assert.True(Field<bool>(tray, "_categoryScrollActive"));
+            Assert.True(tray.IsCategoryScrolling);
             window.Content = null;
             await Dispatcher.Yield(DispatcherPriority.ApplicationIdle);
-            Assert.False(Field<bool>(tray, "_categoryScrollActive"));
+            Assert.False(tray.IsCategoryScrolling);
         }
         finally { window.Close(); }
     });
@@ -128,7 +127,7 @@ public sealed class ClipboardTrayRegressionTests
         using var store = new ClipboardHistoryStore(root);
         using var controller = new ClipboardHistoryController(Dispatcher.CurrentDispatcher, store);
         using var tray = new ClipboardTray();
-        var slots = Field<SemaphoreSlim>(tray, "_thumbnailSlots");
+        var slots = tray.ThumbnailSlots;
         await slots.WaitAsync(); await slots.WaitAsync();
         var window = new BackgroundWindow { Content = tray, Width = 780, Height = 300 };
         try
@@ -136,31 +135,30 @@ public sealed class ClipboardTrayRegressionTests
             await store.InitializeAsync();
             var entry = (await store.ImportAsync(new ClipboardCapture { ImagePng = TestImage() })).Entry!;
             tray.Attach(controller);
-            Field<UiScheduledTimer>(tray, "_searchTimer").Stop();
-            SetField(tray, "_queryDirty", false);
-            Field<ObservableCollection<ClipboardCardViewModel>>(tray, "_cards").Add(new ClipboardCardViewModel(entry));
+            tray.CancelPendingQuery();
+            tray.ResultCards.Add(new ClipboardCardViewModel(entry));
             window.Show();
             await Dispatcher.Yield(DispatcherPriority.ApplicationIdle);
-            var loads = Field<IDictionary>(tray, "_thumbnailLoads");
+            var loads = tray.ThumbnailLoads;
             var element = Assert.Single(loads.Keys.Cast<FrameworkElement>());
             var firstLoad = loads[element]!;
-            var firstToken = LoadToken(firstLoad);
+            var firstToken = firstLoad.Cancellation.Token;
             element.DataContext = new ClipboardCardViewModel(entry);
             Assert.True(firstToken.IsCancellationRequested);
             // Replacement loads are coalesced after the current layout/input pass.
             await Dispatcher.Yield(DispatcherPriority.ApplicationIdle);
             var replacementLoad = loads[element]!;
-            var replacementToken = LoadToken(replacementLoad);
-            await LoadCompletion(firstLoad).WaitAsync(TimeSpan.FromSeconds(5));
+            var replacementToken = replacementLoad.Cancellation.Token;
+            await firstLoad.Completion.WaitAsync(TimeSpan.FromSeconds(5));
             Assert.Same(replacementLoad, loads[element]); // Old cleanup must not remove the recycled card's load.
             Assert.False(replacementToken.IsCancellationRequested);
             window.Content = null;
             await Dispatcher.Yield(DispatcherPriority.ApplicationIdle);
-            await LoadCompletion(replacementLoad).WaitAsync(TimeSpan.FromSeconds(5));
+            await replacementLoad.Completion.WaitAsync(TimeSpan.FromSeconds(5));
             Assert.True(replacementToken.IsCancellationRequested);
             Assert.Empty(loads.Keys.Cast<object>());
             Assert.Equal(0, slots.CurrentCount); // Canceled waiters never acquired a decode slot.
-            Assert.Empty(Field<HashSet<FrameworkElement>>(tray, "_realizedCardElements"));
+            Assert.Empty(tray.RealizedCardElements);
         }
         finally
         {
@@ -182,7 +180,7 @@ public sealed class ClipboardTrayRegressionTests
         using var entered = new ManualResetEventSlim();
         using var release = new ManualResetEventSlim();
         var window = new BackgroundWindow { Content = tray, Width = 780, Height = 300 };
-        var slots = Field<SemaphoreSlim>(tray, "_thumbnailSlots");
+        var slots = tray.ThumbnailSlots;
         await slots.WaitAsync(); // Leave one slot for the real thumbnail request.
         Task? blocker = null;
         Task? completion = null;
@@ -195,14 +193,14 @@ public sealed class ClipboardTrayRegressionTests
             blocker = store.ImportAsync(new ClipboardCapture { Text = "block image read" });
             Assert.True(await Task.Run(() => entered.Wait(TimeSpan.FromSeconds(5))));
             tray.Attach(controller);
-            Field<UiScheduledTimer>(tray, "_searchTimer").Stop(); SetField(tray, "_queryDirty", false);
-            Field<ObservableCollection<ClipboardCardViewModel>>(tray, "_cards").Add(new ClipboardCardViewModel(entry));
+            tray.CancelPendingQuery();
+            tray.ResultCards.Add(new ClipboardCardViewModel(entry));
             window.Show();
             await Dispatcher.Yield(DispatcherPriority.ApplicationIdle);
-            var loads = Field<IDictionary>(tray, "_thumbnailLoads");
-            var load = Assert.Single(loads.Values.Cast<object>());
-            var token = LoadToken(load);
-            completion = LoadCompletion(load);
+            var loads = tray.ThumbnailLoads;
+            var load = Assert.Single(loads.Values);
+            var token = load.Cancellation.Token;
+            completion = load.Completion;
             Assert.Equal(0, slots.CurrentCount);
             window.Content = null;
             await Dispatcher.Yield(DispatcherPriority.ApplicationIdle);
@@ -232,7 +230,7 @@ public sealed class ClipboardTrayRegressionTests
     public void CollectionMotionWaitsForTheNormalLayoutPass() => SharedStaTestRunner.RunAsync(async () =>
     {
         using var tray = new ClipboardTray();
-        var cards = Field<ObservableCollection<ClipboardCardViewModel>>(tray, "_cards");
+        var cards = tray.ResultCards;
         var first = new ClipboardCardViewModel(new ClipboardEntry { Id = Guid.NewGuid() });
         var second = new ClipboardCardViewModel(new ClipboardEntry { Id = Guid.NewGuid() });
         cards.Add(first); cards.Add(second);
@@ -241,18 +239,18 @@ public sealed class ClipboardTrayRegressionTests
         {
             window.Show();
             await Dispatcher.Yield(DispatcherPriority.ApplicationIdle);
-            SetField(tray, "_animateResults", false);
-            var positions = (Dictionary<Guid, double>)Invoke(tray, "CaptureCardPositions")!;
+            tray.AnimateResults = false;
+            var positions = tray.CaptureCardPositions();
             Assert.Equal(2, positions.Count);
-            Invoke(tray, "ReconcilePreparedCards", (object)new[] { second.Entry, first.Entry }, null);
+            tray.ReconcilePreparedCards(new[] { second.Entry, first.Entry }, null);
             var list = (ListBox)tray.FindName("Cards");
             var panel = Descendants(list).OfType<VirtualizingStackPanel>().Single();
             Assert.False(panel.IsMeasureValid);
-            Invoke(tray, "AnimateCardPositions", positions);
+            tray.AnimateCardPositions(positions);
             Assert.False(panel.IsMeasureValid);
             await Dispatcher.Yield(DispatcherPriority.ApplicationIdle);
             Assert.True(panel.IsMeasureValid);
-            Assert.Null(Field<object?>(tray, "_pendingCardPositions"));
+            Assert.Null(tray.PendingCardPositions);
         }
         finally { window.Close(); }
     });
@@ -261,7 +259,7 @@ public sealed class ClipboardTrayRegressionTests
     public void UiTaskBoundaryHandlesUnexpectedExceptions() => SharedStaTestRunner.RunAsync(async () =>
     {
         using var tray = new ClipboardTray();
-        await (Task)Invoke(tray, "SafeAsync", (Func<Task>)(() => throw new ArgumentException("test")))!;
+        await tray.SafeAsync((Func<Task>)(() => throw new ArgumentException("test")));
         Assert.Equal(Loc.Get("clipboard.error"), ((TextBlock)tray.FindName("StatusText")).Text);
     });
 
@@ -278,7 +276,7 @@ public sealed class ClipboardTrayRegressionTests
             {
                 var drawing = new DrawingGroup();
                 using (var context = drawing.Open())
-                    typeof(TrayIcon).GetMethod("OnRender", BindingFlags.Instance | BindingFlags.NonPublic)!.Invoke(icon, [context]);
+                    icon.DrawIcon(context);
                 return GeometryDrawings(drawing).Single();
             }
             var first = Draw(); var second = Draw();
@@ -309,10 +307,10 @@ public sealed class ClipboardTrayRegressionTests
                 var icon = new TrayIcon { Kind = kind, Width = size, Height = size, Foreground = Brushes.White };
                 icon.Measure(new Size(size, size));
                 icon.Arrange(new Rect(0, 0, size, size));
-                typeof(TrayIcon).GetField("_viewport", BindingFlags.Instance | BindingFlags.NonPublic)!.SetValue(icon, null);
+                icon.InvalidateViewport();
                 var visual = new DrawingVisual();
                 using (var dc = visual.RenderOpen())
-                    typeof(TrayIcon).GetMethod("OnRender", BindingFlags.Instance | BindingFlags.NonPublic)!.Invoke(icon, [dc]);
+                    icon.DrawIcon(dc);
                 Assert.False(visual.ContentBounds.IsEmpty);
                 var bitmap = new System.Windows.Media.Imaging.RenderTargetBitmap((int)size, (int)size, 96, 96, PixelFormats.Pbgra32);
                 bitmap.Render(visual);
@@ -443,14 +441,14 @@ public sealed class ClipboardTrayRegressionTests
             tray.Attach(controller);
             var box = (PasswordBox)tray.FindName("PasscodeBox");
             box.Password = "123456";
-            await (Task)Invoke(tray, "UnlockPersonalAsync")!;
-            var firstPin = Field<SecureString>(tray, "_newPin");
+            await tray.UnlockPersonalAsync();
+            var firstPin = tray.PendingPin;
             box.Password = "654321";
-            await (Task)Invoke(tray, "UnlockPersonalAsync")!;
-            Assert.Same(firstPin, Field<SecureString>(tray, "_newPin"));
+            await tray.UnlockPersonalAsync();
+            Assert.Same(firstPin, tray.PendingPin);
             Assert.Equal(Loc.Get("clipboard.confirmRetry"), ((TextBlock)tray.FindName("LockHint")).Text);
-            Invoke(tray, "PinBack_Click", tray, new RoutedEventArgs());
-            Assert.Null(Field<SecureString?>(tray, "_newPin"));
+            tray.PinBack_Click(tray, new RoutedEventArgs());
+            Assert.Null(tray.PendingPin);
             Assert.Equal(Loc.Get("clipboard.createStep"), ((TextBlock)tray.FindName("LockHint")).Text);
         }
         finally { if (Directory.Exists(root)) Directory.Delete(root, true); }
@@ -460,7 +458,7 @@ public sealed class ClipboardTrayRegressionTests
     public void ResetRequiresExplicitTokenAndCloseClearsConsent() => SharedStaTestRunner.Run(() =>
     {
         using var tray = new ClipboardTray();
-        Invoke(tray, "ForgotPin_Click", tray, new RoutedEventArgs());
+        tray.ForgotPin_Click(tray, new RoutedEventArgs());
         var box = (TextBox)tray.FindName("ResetConfirmationBox");
         var button = (Button)tray.FindName("ResetPersonalButton");
         Assert.False(button.IsEnabled);
@@ -468,7 +466,7 @@ public sealed class ClipboardTrayRegressionTests
         Assert.False(button.IsEnabled);
         box.Text = "DELETE";
         Assert.True(button.IsEnabled);
-        Invoke(tray, "CloseDetails");
+        tray.CloseDetails();
         Assert.Empty(box.Text);
         Assert.False(button.IsEnabled);
     });
@@ -480,7 +478,7 @@ public sealed class ClipboardTrayRegressionTests
     {
         Loc.SetLanguage(language);
         using var tray = new ClipboardTray();
-        Invoke(tray, "ForgotPin_Click", tray, new RoutedEventArgs());
+        tray.ForgotPin_Click(tray, new RoutedEventArgs());
         tray.Measure(new Size(400, 340));
         tray.Arrange(new Rect(0, 0, 400, 340));
         tray.UpdateLayout();
@@ -502,8 +500,7 @@ public sealed class ClipboardTrayRegressionTests
     [InlineData(0, 0, 0)]
     public void DragEdgeScrollingHasDirectionAndStopsOutsideViewport(double x, double width, double speed)
     {
-        var method = typeof(ClipboardTray).GetMethod("CategoryDropSpeed", BindingFlags.Static | BindingFlags.NonPublic)!;
-        Assert.Equal(speed, (double)method.Invoke(null, new object[] { x, width })!);
+        Assert.Equal(speed, ClipboardTray.CategoryDropSpeed(x, width));
     }
 
     [Fact]
@@ -529,13 +526,13 @@ public sealed class ClipboardTrayRegressionTests
         using var tray = new ClipboardTray();
         try
         {
-            SetField(tray, "_category", "Personal");
-            Invoke(tray, "UpdateCategoryLockState");
-            Invoke(tray, "ForgotPin_Click", tray, new RoutedEventArgs());
+            tray.SelectedCategory = "Personal";
+            tray.UpdateCategoryLockState();
+            tray.ForgotPin_Click(tray, new RoutedEventArgs());
             var confirmation = (TextBox)tray.FindName("ResetConfirmationBox");
             confirmation.Text = "DELETE";
-            SetField(tray, "_deleteConfirmationOpen", true);
-            SetField(tray, "_deleteConfirmationCount", 3);
+            tray.DeleteConfirmationOpen = true;
+            tray.DeleteConfirmationCount = 3;
             Loc.SetLanguage("vi");
             tray.ApplyLocalization();
 
@@ -551,7 +548,7 @@ public sealed class ClipboardTrayRegressionTests
             Assert.Equal("Riêng tư", personal.Label);
             Assert.True(personal.IsSelected);
 
-            Invoke(tray, "ShowInfo", "clipboard.info");
+            tray.ShowInfo("clipboard.info");
             Loc.SetLanguage("ja");
             tray.ApplyLocalization();
             Assert.Equal(Loc.Get("clipboard.info"), ((TextBox)tray.FindName("DetailText")).Text);
@@ -568,15 +565,6 @@ public sealed class ClipboardTrayRegressionTests
 
     private static byte[] TestImage() => File.ReadAllBytes(Path.Combine(AppContext.BaseDirectory, "Fixtures", "white-mat-artwork.png"));
 
-    private static CancellationToken LoadToken(object load) =>
-        ((CancellationTokenSource)load.GetType().GetProperty("Cancellation")!.GetValue(load)!).Token;
-    private static Task LoadCompletion(object load) => (Task)load.GetType().GetProperty("Completion")!.GetValue(load)!;
-    private static object? Invoke(ClipboardTray tray, string method, params object?[] args) =>
-        typeof(ClipboardTray).GetMethod(method, BindingFlags.Instance | BindingFlags.NonPublic)!.Invoke(tray, args);
-    private static T Field<T>(ClipboardTray tray, string name) =>
-        (T)typeof(ClipboardTray).GetField(name, BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(tray)!;
-    private static void SetField(ClipboardTray tray, string name, object value) =>
-        typeof(ClipboardTray).GetField(name, BindingFlags.Instance | BindingFlags.NonPublic)!.SetValue(tray, value);
     private static IEnumerable<DependencyObject> Descendants(DependencyObject root)
     {
         for (int i = 0; i < VisualTreeHelper.GetChildrenCount(root); i++)

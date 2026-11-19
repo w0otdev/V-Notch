@@ -42,11 +42,20 @@ internal sealed partial class CalculatorProvider : ISpotlightProvider
         if (string.IsNullOrWhiteSpace(query)) return false;
 
         string expression = query.Trim();
-        ReadOnlySpan<char> span = expression.AsSpan();
+        var culture = CultureInfo.CurrentCulture;
+        // The native grammar uses an ASCII decimal point and minus sign;
+        // grouping separators are never stripped from calculator input.
+        var numberFormat = culture.NumberFormat;
+        string canonical = expression;
+        if (numberFormat.NumberDecimalSeparator != ".")
+            canonical = canonical.Replace(numberFormat.NumberDecimalSeparator, ".", StringComparison.Ordinal);
+        if (numberFormat.NegativeSign.Length > 0 && numberFormat.NegativeSign != "-")
+            canonical = canonical.Replace(numberFormat.NegativeSign, "-", StringComparison.Ordinal);
+        ReadOnlySpan<char> span = canonical;
         vn_calculator_try_evaluate(span, span.Length, out double value, out byte valid);
         if (valid == 0) return false;
 
-        string display = value.ToString("0.##########", CultureInfo.CurrentCulture);
+        string display = value.ToString("0.##########", culture);
         item = new SpotlightSearchItem(
             $"calc:{expression}",
             SpotlightResultKind.Calculation,

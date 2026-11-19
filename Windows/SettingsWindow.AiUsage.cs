@@ -170,7 +170,7 @@ public partial class SettingsWindow
         UpdateAiUsageStatusSummary();
     }
 
-    private void AiUsageCodexAuto_Click(object sender, RoutedEventArgs e)
+    internal void AiUsageCodexAuto_Click(object sender, RoutedEventArgs e)
     {
         _settings.CodexUsageExecutable = "";
         AiUsageCodexBrowseButton.ToolTip = null;

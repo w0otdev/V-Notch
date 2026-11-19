@@ -56,6 +56,13 @@ public sealed partial class ClipboardTray : UserControl, IDisposable
         return items;
     }
     private ClipboardCategoryViewModel[] _categoryItems = CreateDefaultCategoryItems();
+    internal ClipboardCardCollection ResultCards => _cards;
+    internal void CancelPendingQuery()
+    {
+        _queryDirty = false;
+        _searchTimer.Stop();
+    }
+
     private readonly ClipboardCardCollection _cards = [];
     private readonly UiScheduledTimer _searchTimer;
     private readonly UiScheduledTimer _ageTimer;
@@ -63,8 +70,10 @@ public sealed partial class ClipboardTray : UserControl, IDisposable
     private readonly Queue<(ClipboardCapture Capture, long Size)> _approvals = new();
     private ClipboardHistoryController? _controller;
     private CancellationTokenSource? _searchCancellation;
+    internal string SelectedCategory { get => _category; set => _category = value; }
     private string _category = "All";
     public string CurrentCategory => _category;
+    internal SecureString? PendingPin => _newPin;
     private SecureString? _newPin;
     private Guid? _moveToPersonal;
     private Point? _dragStart;
@@ -72,9 +81,12 @@ public sealed partial class ClipboardTray : UserControl, IDisposable
     private bool _disposed;
     private int _refreshVersion;
     private readonly HashSet<ContextMenu> _openMenus = [];
+    internal SemaphoreSlim ThumbnailSlots => _thumbnailSlots;
     private readonly SemaphoreSlim _thumbnailSlots = new(2, 2);
+    internal IReadOnlyDictionary<string, int> CategoryCounts { get => _categoryCounts; set => _categoryCounts = value; }
     private IReadOnlyDictionary<string, int> _categoryCounts = new Dictionary<string, int>();
     private long _menuInteractionUntil;
+    internal bool DeleteConfirmationOpen { get => _deleteConfirmationOpen; set => _deleteConfirmationOpen = value; }
     private bool _deleteConfirmationOpen;
     public bool IsContextMenuOpen => _deleteConfirmationOpen || _labelEditorOpen || _openMenus.Count != 0 || Environment.TickCount64 < _menuInteractionUntil;
 
@@ -328,7 +340,7 @@ public sealed partial class ClipboardTray : UserControl, IDisposable
         _searchTimer.Stop();
         _searchTimer.Start();
     }
-    private async Task RefreshAsync()
+    internal async Task RefreshAsync()
     {
         if (_controller == null || _disposed) return;
         if (IsVisible && IsEntranceWorkDeferred)
@@ -456,7 +468,7 @@ public sealed partial class ClipboardTray : UserControl, IDisposable
 
 
 
-    private Task<Dictionary<Guid, bool>> PrepareCardMaskingAsync(IReadOnlyList<ClipboardEntry> entries, CancellationToken cancellation)
+    internal Task<Dictionary<Guid, bool>> PrepareCardMaskingAsync(IReadOnlyList<ClipboardEntry> entries, CancellationToken cancellation)
     {
         // Reuse results for unchanged text/source metadata. Copy only values to
         // the worker; view models and WPF bindings remain on the dispatcher.
@@ -488,7 +500,7 @@ public sealed partial class ClipboardTray : UserControl, IDisposable
         }, cancellation);
     }
 
-    private void ReconcilePreparedCards(IReadOnlyList<ClipboardEntry> entries, IReadOnlyDictionary<Guid, bool>? masking)
+    internal void ReconcilePreparedCards(IReadOnlyList<ClipboardEntry> entries, IReadOnlyDictionary<Guid, bool>? masking)
     {
         bool? MaskFor(ClipboardEntry entry) => masking != null && masking.TryGetValue(entry.Id, out bool masked) ? masked : null;
         var existingById = _cards.ById;
@@ -630,7 +642,7 @@ public sealed partial class ClipboardTray : UserControl, IDisposable
         return false;
     }
 
-    private void RebuildCategories()
+    internal void RebuildCategories()
     {
         SynchronizeLabels();
         foreach (var category in _categoryItems)
@@ -659,7 +671,7 @@ public sealed partial class ClipboardTray : UserControl, IDisposable
         if (CachedBrushes.Count < MaxCachedBrushes) CachedBrushes.TryAdd(value, brush);
         return brush;
     }
-    private void SelectCategory(string category)
+    internal void SelectCategory(string category)
     {
         _pendingSelectAll = null;
         if (category != "Personal")
@@ -725,19 +737,7 @@ public sealed partial class ClipboardTray : UserControl, IDisposable
             _dragStart = null;
             _copyOnRelease = false;
         }
-        if (ReferenceEquals(_lastOpenedMenuCard, card))
-        {
-            _lastOpenedMenuCard = null;
-            _lastOpenedMenuTarget = null;
-            _lastOpenedMenu = null;
-        }
-        if (ReferenceEquals(_lastClosedMenuCard, card))
-        {
-            _lastClosedMenuCard = null;
-            _lastClosedMenuTarget = null;
-            _lastClosedMenu = null;
-            _lastClosedMenuTime = 0;
-        }
+        MenuHistory.Forget(card);
         if (ReferenceEquals(_detailCard, card) || _groupEntryId == card.Entry.Id)
             CloseDetails();
     }
@@ -750,7 +750,7 @@ public sealed partial class ClipboardTray : UserControl, IDisposable
         _cards.Clear();
     }
 
-    private bool UpdateCategoryLockState()
+    internal bool UpdateCategoryLockState()
     {
         bool locked = _category == "Personal" && _controller?.Store.IsPersonalUnlocked != true;
         if (locked) ShowTransientLayer(LockPanel);
@@ -832,7 +832,7 @@ public sealed partial class ClipboardTray : UserControl, IDisposable
         }
     }
 
-    private async void Unlock_Click(object sender, RoutedEventArgs e) => await SafeAsync(UnlockPersonalAsync);
+    internal async void Unlock_Click(object sender, RoutedEventArgs e) => await SafeAsync(UnlockPersonalAsync);
 
     private void ClearPendingPin()
     {
@@ -840,7 +840,7 @@ public sealed partial class ClipboardTray : UserControl, IDisposable
         _newPin = null;
     }
 
-    private async Task UnlockPersonalAsync()
+    internal async Task UnlockPersonalAsync()
     {
         if (_controller == null || !UnlockButton.IsEnabled || _disposed) return;
         using var pin = PasscodeBox.SecurePassword;
@@ -912,7 +912,7 @@ public sealed partial class ClipboardTray : UserControl, IDisposable
         LockHint.Text = Loc.Get(!create ? "clipboard.enterPin" : createStepKey);
         PinBackButton.Visibility = create && _newPin != null ? Visibility.Visible : Visibility.Collapsed;
     }
-    private void PinBack_Click(object sender, RoutedEventArgs e)
+    internal void PinBack_Click(object sender, RoutedEventArgs e)
     {
         ClearPendingPin();
         PasscodeBox.Clear();
@@ -1133,13 +1133,7 @@ public sealed partial class ClipboardTray : UserControl, IDisposable
         catch (Exception ex) when (IsContentError(ex) || ex is System.Runtime.InteropServices.ExternalException)
         { StatusChanged(Loc.Get("clipboard.error")); }
     }
-    private long _lastClosedMenuTime;
-    private object? _lastClosedMenuTarget;
-    private ContextMenu? _lastClosedMenu;
-    private object? _lastClosedMenuCard;
-    private FrameworkElement? _lastOpenedMenuTarget;
-    private object? _lastOpenedMenuCard;
-    private ContextMenu? _lastOpenedMenu;
+    internal ClipboardMenuHistory MenuHistory { get; } = new();
 
     private static FrameworkElement? FindCardVisual(DependencyObject? element)
     {
@@ -1198,26 +1192,12 @@ public sealed partial class ClipboardTray : UserControl, IDisposable
         if (menu.IsOpen || _openMenus.Contains(menu))
         {
             menu.IsOpen = false;
-            _lastClosedMenuTarget = card;
-            _lastClosedMenuCard = card.DataContext;
-            _lastClosedMenu = menu;
-            _lastClosedMenuTime = Environment.TickCount64;
+            MenuHistory.Closed(menu, card, card.DataContext);
             if (card.DataContext is ClipboardCardViewModel cardVm) cardVm.IsMenuOpen = false;
             return;
         }
 
-        bool wasJustClosed = Environment.TickCount64 - _lastClosedMenuTime < 450;
-        if (wasJustClosed && (ReferenceEquals(_lastClosedMenu, menu) ||
-                              ReferenceEquals(_lastClosedMenuCard, card.DataContext) ||
-                              ReferenceEquals(_lastClosedMenuTarget, card) ||
-                              ReferenceEquals(_lastClosedMenuTarget, button)))
-        {
-            _lastClosedMenuTarget = null;
-            _lastClosedMenuCard = null;
-            _lastClosedMenu = null;
-            _lastClosedMenuTime = 0;
-            return;
-        }
+        if (MenuHistory.ConsumeRecentClose(menu, card, button)) return;
 
         OpenCardMenu(card, menu, button);
     }
@@ -1252,9 +1232,7 @@ public sealed partial class ClipboardTray : UserControl, IDisposable
         if (menu.Parent is System.Windows.Controls.Primitives.Popup popup)
             popup.PopupAnimation = System.Windows.Controls.Primitives.PopupAnimation.None;
         _menuInteractionUntil = Environment.TickCount64 + 350;
-        _lastOpenedMenu = menu;
-        _lastOpenedMenuTarget = menu.PlacementTarget as FrameworkElement ?? (sender as FrameworkElement);
-        _lastOpenedMenuCard = card;
+        MenuHistory.Opened(menu, menu.PlacementTarget as FrameworkElement ?? sender as FrameworkElement, card);
         menu.Opened -= MenuOpened;
         menu.Closed -= MenuClosed;
         menu.Opened += MenuOpened;
@@ -1335,7 +1313,7 @@ public sealed partial class ClipboardTray : UserControl, IDisposable
         var menu = (ContextMenu)sender;
         if ((menu.PlacementTarget as FrameworkElement)?.DataContext is ClipboardCardViewModel cardVm)
             cardVm.IsMenuOpen = true;
-        else if (_lastOpenedMenuCard is ClipboardCardViewModel lastCard)
+        else if (MenuHistory.OpenCard is ClipboardCardViewModel lastCard)
             lastCard.IsMenuOpen = true;
         bool fresh = _openMenus.Add(menu);
         menu.ApplyTemplate();
@@ -1369,15 +1347,15 @@ public sealed partial class ClipboardTray : UserControl, IDisposable
         var card = target?.DataContext as ClipboardCardViewModel;
         // A previous popup can finish its native fade after hover opens another
         // card's menu. Only clear state belonging to the popup that actually closed.
-        if (ReferenceEquals(_lastOpenedMenu, menu))
+        if (ReferenceEquals(MenuHistory.OpenMenu, menu))
         {
-            target ??= _lastOpenedMenuTarget;
-            card ??= _lastOpenedMenuCard as ClipboardCardViewModel;
+            target ??= MenuHistory.OpenTarget;
+            card ??= MenuHistory.OpenCard as ClipboardCardViewModel;
         }
-        if (ReferenceEquals(_lastClosedMenu, menu))
+        if (ReferenceEquals(MenuHistory.ClosedMenu, menu))
         {
-            target ??= _lastClosedMenuTarget as FrameworkElement;
-            card ??= _lastClosedMenuCard as ClipboardCardViewModel;
+            target ??= MenuHistory.ClosedTarget as FrameworkElement;
+            card ??= MenuHistory.ClosedCard as ClipboardCardViewModel;
         }
         if (card != null) card.IsMenuOpen = false;
         if (menu.Template?.FindName("MenuSurface", menu) is FrameworkElement surface) CancelMenuEntrance(surface);
@@ -1387,10 +1365,7 @@ public sealed partial class ClipboardTray : UserControl, IDisposable
         _openMenus.Remove(menu);
         menu.Items.Clear();
         _menuInteractionUntil = Environment.TickCount64 + 250;
-        _lastClosedMenuTarget = target;
-        _lastClosedMenuCard = card;
-        _lastClosedMenu = menu;
-        _lastClosedMenuTime = Environment.TickCount64;
+        MenuHistory.Closed(menu, target as FrameworkElement, card);
     }
 
     private ClipboardCardViewModel? _detailCard;
@@ -1484,7 +1459,7 @@ public sealed partial class ClipboardTray : UserControl, IDisposable
         };
         menu.Items.Add(item);
     }
-    private async Task SafeAsync(Func<Task> action)
+    internal async Task SafeAsync(Func<Task> action)
     {
         try { await action(); }
         catch (OperationCanceledException) { /* Intentionally ignored. */ }
@@ -1567,7 +1542,7 @@ public sealed partial class ClipboardTray : UserControl, IDisposable
         _approvals.TryDequeue(out _);
         ShowApproval();
     }
-    private void CloseDetail_Click(object sender, RoutedEventArgs e) => _ = SafeAsync(DismissDetailsAsync);
+    internal void CloseDetail_Click(object sender, RoutedEventArgs e) => _ = SafeAsync(DismissDetailsAsync);
     private async void RevealDetail_Click(object sender, RoutedEventArgs e)
     {
         if (_detailCard is not { } card || _controller == null) return;
@@ -1604,7 +1579,7 @@ public sealed partial class ClipboardTray : UserControl, IDisposable
         if (version == _detailDismissVersion && !_disposed) CloseDetails();
     }
 
-    private void CloseDetails()
+    internal void CloseDetails()
     {
         ++_detailDismissVersion;
         _detailCard = null;
@@ -1624,7 +1599,7 @@ public sealed partial class ClipboardTray : UserControl, IDisposable
         DetailText.Clear();
         if (refreshGroups && _queryDirty && !_disposed) QueueRefresh();
     }
-    private void ForgotPin_Click(object sender, RoutedEventArgs e)
+    internal void ForgotPin_Click(object sender, RoutedEventArgs e)
     {
         CloseDetails();
         _detailLocalizationKey = "clipboard.resetConfirm";
@@ -1638,7 +1613,7 @@ public sealed partial class ClipboardTray : UserControl, IDisposable
     { if (ResetPersonalButton != null) ResetPersonalButton.IsEnabled = IsResetConfirmed(); }
     private bool IsResetConfirmed() => ResetConfirmationBox.Text.Trim() == "DELETE";
 
-    private async void ResetPersonal_Click(object sender, RoutedEventArgs e) => await SafeAsync(ResetPersonalAsync);
+    internal async void ResetPersonal_Click(object sender, RoutedEventArgs e) => await SafeAsync(ResetPersonalAsync);
     private async Task ResetPersonalAsync()
     {
         if (_controller == null || ResetConfirmationPanel.Visibility != Visibility.Visible || !IsResetConfirmed()) return;
@@ -1674,9 +1649,9 @@ public sealed partial class ClipboardTray : UserControl, IDisposable
         PauseButton.ToolTip = label;
         System.Windows.Automation.AutomationProperties.SetName(PauseButton, label);
     }
-    private void Keyboard_Click(object sender, RoutedEventArgs e) => ShowInfo("clipboard.shortcuts");
-    private void Info_Click(object sender, RoutedEventArgs e) => ShowInfo("clipboard.info");
-    private void ShowInfo(string key)
+    internal void Keyboard_Click(object sender, RoutedEventArgs e) => ShowInfo("clipboard.shortcuts");
+    internal void Info_Click(object sender, RoutedEventArgs e) => ShowInfo("clipboard.info");
+    internal void ShowInfo(string key)
     {
         CloseDetails();
         _detailLocalizationKey = key;

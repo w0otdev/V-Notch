@@ -1,4 +1,4 @@
-using System.Reflection;
+using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Media.Animation;
@@ -19,8 +19,7 @@ public sealed class CalendarInteractionSequenceTests
         await using var fixture = new GreetingAcceptanceTests.MainWindowFixture("en", false,
             s => { s.EnableLocalOnlyMode = true; s.ExpandedWidget = "aiusage"; },
             services => services.AddSingleton<IMediaDetectionService>(new FakeMediaDetectionService()));
-        fixture.Window.InitializeCalendarPresenter();
-        var presenter = (CalendarPresenter)typeof(MainWindow).GetField("_calendarPresenter", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(fixture.Window)!;
+        var presenter = fixture.Window.InitializeCalendarPresenter();
         var scale = fixture.Window.CalendarWidgetScale;
         var offset = fixture.Window.CalendarWidgetTranslate;
         scale.BeginAnimation(ScaleTransform.ScaleXProperty, new DoubleAnimation(1.035, TimeSpan.FromMilliseconds(350)));
@@ -39,6 +38,31 @@ public sealed class CalendarInteractionSequenceTests
         Assert.Equal(0, offset.Y);
     });
 
+    [Fact]
+    public void RenderedCellsAndHighlightMatchScrollGeometry() => SharedStaTestRunner.RunAsync(async () =>
+    {
+        await using var fixture = new GreetingAcceptanceTests.MainWindowFixture("en", false,
+            s => { s.EnableLocalOnlyMode = true; s.ExpandedWidget = "calendar"; },
+            services => services.AddSingleton<IMediaDetectionService>(new FakeMediaDetectionService()));
+        var window = fixture.Window;
+        window.InitializeCalendarPresenter().UpdateCalendarInfo();
+        Assert.Equal(CalendarScrollMath.TotalDays, window.WeekNumbers.Children.Count);
+        Assert.Equal(CalendarScrollMath.TotalDays, window.WeekDaysPanel.Children.Count);
+        Assert.Equal(CalendarScrollMath.HighlightDiameter, window.CalendarMainHighlight.Width);
+        Assert.Equal(CalendarScrollMath.HighlightDiameter, window.CalendarMainHighlight.Height);
+        for (int i = 0; i < CalendarScrollMath.TotalDays; i++)
+        {
+            var day = Assert.IsType<TextBlock>(window.WeekDaysPanel.Children[i]);
+            var cell = Assert.IsType<Border>(window.WeekNumbers.Children[i]);
+            Assert.False(string.IsNullOrWhiteSpace(day.Text));
+            Assert.Equal(day.Width, cell.Width + cell.Margin.Left + cell.Margin.Right);
+            Assert.Equal(i * day.Width + cell.Margin.Left, CalendarScrollMath.GetHighlightXForIndex(i));
+            Assert.Equal(i, CalendarScrollMath.GetCenterIndexFromStripX(CalendarScrollMath.GetStripXForIndex(i)));
+        }
+        Assert.Equal(CalendarScrollMath.TodayIndex,
+            CalendarScrollMath.GetCenterIndexFromStripX(window.CalendarStripTranslate.X));
+    });
+
     [Theory]
     [InlineData(120, 4)]
     [InlineData(-120, 6)]
@@ -49,8 +73,7 @@ public sealed class CalendarInteractionSequenceTests
         await using var fixture = new GreetingAcceptanceTests.MainWindowFixture("en", false,
             s => { s.EnableLocalOnlyMode = true; s.ExpandedWidget = "calendar"; },
             services => services.AddSingleton<IMediaDetectionService>(new FakeMediaDetectionService()));
-        fixture.Window.InitializeCalendarPresenter();
-        var presenter = (CalendarPresenter)typeof(MainWindow).GetField("_calendarPresenter", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(fixture.Window)!;
+        var presenter = fixture.Window.InitializeCalendarPresenter();
         presenter.UpdateCalendarInfo();
         var args = new MouseWheelEventArgs(Mouse.PrimaryDevice, 0, delta) { RoutedEvent = Mouse.MouseWheelEvent };
         presenter.HandleMouseWheel(args);

@@ -137,6 +137,38 @@ public sealed class TranslationDownloadTests
         }
     }
 
+    [Fact]
+    public async Task ReimportKeepsVerifiedInstallationUsableAcrossFailureAndRetry()
+    {
+        using var fixture = new DownloadFixture((_, _) => throw new InvalidOperationException("Import must stay offline."));
+        string folder = Directory.CreateTempSubdirectory("vnotch-reimport-").FullName;
+        string source = Path.Combine(folder, "model.gguf");
+        try
+        {
+            await File.WriteAllBytesAsync(source, DownloadFixture.Payload);
+            await fixture.Store.ImportAsync(folder, default);
+            File.SetAttributes(fixture.Final, FileAttributes.ReadOnly);
+            int replacements = 0;
+            fixture.Store.Replacing += () => replacements++;
+
+            await File.WriteAllBytesAsync(source, [1, 2, 3]);
+            await Assert.ThrowsAsync<TranslationException>(() => fixture.Store.ImportAsync(folder, default));
+            Assert.True(fixture.Store.IsInstalled);
+            await fixture.Store.VerifyAsync(default);
+
+            await File.WriteAllBytesAsync(source, DownloadFixture.Payload);
+            await fixture.Store.ImportAsync(folder, default);
+            Assert.True(fixture.Store.IsInstalled);
+            Assert.Equal(0, replacements);
+            Assert.Equal(DownloadFixture.Payload, await File.ReadAllBytesAsync(fixture.Final));
+        }
+        finally
+        {
+            if (File.Exists(fixture.Final)) File.SetAttributes(fixture.Final, FileAttributes.Normal);
+            Directory.Delete(folder, recursive: true);
+        }
+    }
+
     private sealed class Recorder : IProgress<TranslationDownloadProgress>
     {
         internal List<TranslationDownloadProgress> States { get; } = [];

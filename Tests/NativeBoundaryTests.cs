@@ -1,9 +1,10 @@
+using VNotch.Models;
 using System.Runtime.InteropServices;
 using System.IO;
 using System.Reflection;
 using VNotch.Controllers;
 using VNotch.Services;
-using VNotch.Services.Interop;
+using VNotch.Interop;
 using Xunit;
 
 namespace VNotch.Tests;
@@ -45,6 +46,9 @@ public sealed partial class NativeBoundaryTests
         NativeAbi.Validate(info);
         Assert.Equal(24, sizeof(NativeAbi.Info));
         Assert.Equal(1u, info.Major);
+        var oldDescriptor = info;
+        oldDescriptor.Minor = 0;
+        Assert.Throws<BadImageFormatException>(() => NativeAbi.Validate(oldDescriptor));
         info.Minor = 100; // Additive releases retain this fixed descriptor and existing exports.
         NativeAbi.Validate(info);
     }
@@ -57,7 +61,7 @@ public sealed partial class NativeBoundaryTests
     [InlineData(24, 1, 8, 1, 2)]
     public void IncompatibleDescriptorsFailBeforeAnyFeatureCall(uint size, uint major, uint pointer, uint handles, uint status) =>
         Assert.Throws<BadImageFormatException>(() => NativeAbi.Validate(new NativeAbi.Info
-        { Size = size, Major = major, PointerSize = pointer, RegistryHandleVersion = handles, StatusVersion = status }));
+        { Size = size, Major = major, Minor = 1, PointerSize = pointer, RegistryHandleVersion = handles, StatusVersion = status }));
 
     [Theory]
     [InlineData(-1, "InvalidArgument")]

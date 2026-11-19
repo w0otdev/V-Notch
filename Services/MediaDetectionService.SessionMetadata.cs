@@ -15,7 +15,7 @@ namespace VNotch.Services;
 
 public sealed partial class MediaDetectionService : IMediaDetectionService, IAsyncDisposable
 {
-    private async Task<bool> TryGetMediaSessionInfoAsync(MediaInfo info, bool forceRefresh, Func<List<string>> windowTitleFactory)
+    internal async Task<bool> TryGetMediaSessionInfoAsync(MediaInfo info, bool forceRefresh, Func<List<string>> windowTitleFactory)
     {
         if (_sessionManager == null) return false;
         _isNewTrackThisUpdate = false;
@@ -230,7 +230,7 @@ public sealed partial class MediaDetectionService : IMediaDetectionService, IAsy
         return decision;
     }
 
-    private void SwitchActiveDisplaySessionIfNeeded(GlobalSystemMediaTransportControlsSession session)
+    internal void SwitchActiveDisplaySessionIfNeeded(GlobalSystemMediaTransportControlsSession session)
     {
         if (AreSameSession(_activeDisplaySession, session)) return;
 
@@ -301,7 +301,6 @@ public sealed partial class MediaDetectionService : IMediaDetectionService, IAsy
         _stableArtist = r.stableArtist;
     }
 
-#pragma warning disable S3776
     private static void ApplySpotifyGroundTruthCorrection(MediaInfo info, string? spotifyGroundTruth, ref GlobalSystemMediaTransportControlsSessionMediaProperties? mediaProperties)
     {
         bool isStaleSMTC = false;
@@ -474,7 +473,6 @@ public sealed partial class MediaDetectionService : IMediaDetectionService, IAsy
         catch { info.IsPlaying = info.IsAnyMediaPlaying; }
     }
 
-#pragma warning disable S3776
     private static bool HasSpotifyWebCaptionMatch(List<string> windowTitles, string track, string artist)
     {
         for (int i = 0; i < windowTitles.Count; i++)

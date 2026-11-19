@@ -12,10 +12,10 @@ namespace VNotch;
 
 public partial class MainWindow
 {
-    private void OpenAppSettings(bool showTranslation = false)
+    internal void OpenAppSettings(bool showTranslation = false)
     {
         if (IsGreetingInteractionBlocked) return;
-        if (_activeSettingsWindow is { IsVisible: true } activeSettings)
+        if (SettingsPreparation.Active is { IsVisible: true } activeSettings)
         {
             if (showTranslation) activeSettings.NavigateToTranslation();
             if (activeSettings.WindowState == WindowState.Minimized)
@@ -24,8 +24,8 @@ public partial class MainWindow
             return;
         }
 
-        var settingsWindow = TakeSettingsWindow();
-        _activeSettingsWindow = settingsWindow;
+        var settingsWindow = SettingsPreparation.Take();
+        SettingsPreparation.Active = settingsWindow;
 
         settingsWindow.UpdateDetected += (_, updateInfo) =>
         {
@@ -43,9 +43,9 @@ public partial class MainWindow
 
         settingsWindow.Closed += (_, _) =>
         {
-            if (ReferenceEquals(_activeSettingsWindow, settingsWindow))
+            if (ReferenceEquals(SettingsPreparation.Active, settingsWindow))
             {
-                _activeSettingsWindow = null;
+                SettingsPreparation.Active = null;
             }
             PlayNotchReturnBounce();
             ScheduleDesktopLayerDemotionIfIdle();
@@ -212,10 +212,17 @@ public partial class MainWindow
         return false;
     }
 
-#pragma warning disable S3776 // Synchronizes multiple WPF visual tree elements with application configuration
     private void ApplySettings(bool animatePulse = false) => ApplySettings(null, animatePulse);
 
     private void ApplySettings(NotchSettings? oldSettings, bool animatePulse = false)
+    {
+        ApplyCoreBehaviorSettings(oldSettings);
+        ApplyLayoutSettings(oldSettings, animatePulse);
+        ApplyVisualSurfaceSettings(oldSettings);
+        ApplySyncedTextAndMediaBackgroundSettings(oldSettings);
+    }
+
+    private void ApplyCoreBehaviorSettings(NotchSettings? oldSettings)
     {
         AccentTheme.Apply(_settings.AccentColor);
         InteractionSounds.Configure(_settings.EnableInteractionSounds, _settings.InteractionSoundVolume);
@@ -223,6 +230,7 @@ public partial class MainWindow
         if (oldSettings == null || oldSettings.EnablePrivacyIndicators != _settings.EnablePrivacyIndicators)
             ApplyPrivacyIndicatorSettings();
         _mediaService.KeepPinnedOnTrackChange = _settings.KeepMediaPinnedOnTrackChange;
+
         if (oldSettings == null || oldSettings.AnimationFps != _settings.AnimationFps ||
             oldSettings.AutoAnimationFps != _settings.AutoAnimationFps)
         {
@@ -231,19 +239,13 @@ public partial class MainWindow
         }
 
         if (oldSettings == null || !string.Equals(oldSettings.VisualizerAudioDeviceId, _settings.VisualizerAudioDeviceId, StringComparison.Ordinal))
-        {
             VNotch.Controls.MusicVisualizer.ConfigureAudioDevice(_settings.VisualizerAudioDeviceId);
-        }
 
         if (oldSettings == null || oldSettings.EnableBlurEffects != _settings.EnableBlurEffects)
-        {
             ApplyPerformanceSettings();
-        }
 
         if (oldSettings == null || !string.Equals(oldSettings.ProcessPriority, _settings.ProcessPriority, StringComparison.Ordinal))
-        {
             App.ApplyProcessPriority(_settings.ProcessPriority);
-        }
 
         if (oldSettings == null || oldSettings.StayBehindWindows != _settings.StayBehindWindows)
         {
@@ -256,22 +258,23 @@ public partial class MainWindow
         }
 
         if (oldSettings == null || !string.Equals(oldSettings.ExpandedWidget, _settings.ExpandedWidget, StringComparison.Ordinal))
-        {
             ApplyExpandedWidgetMode(animateResize: oldSettings != null);
-        }
 
-        if (oldSettings == null || oldSettings.HideCamera != _settings.HideCamera || !string.Equals(oldSettings.NavTabOrder, _settings.NavTabOrder, StringComparison.Ordinal) || !string.Equals(oldSettings.VisibleNavTabs, _settings.VisibleNavTabs, StringComparison.Ordinal))
+        if (oldSettings == null || oldSettings.HideCamera != _settings.HideCamera
+            || !string.Equals(oldSettings.NavTabOrder, _settings.NavTabOrder, StringComparison.Ordinal)
+            || !string.Equals(oldSettings.VisibleNavTabs, _settings.VisibleNavTabs, StringComparison.Ordinal))
         {
             ApplyNavTabOrderAndVisibility();
         }
 
-
-
         if (oldSettings == null || !string.Equals(oldSettings.ClockPageStyle, _settings.ClockPageStyle, StringComparison.Ordinal))
-        {
             ApplyClockPageStyle();
-        }
 
+        ApplyInteractionAndFullscreenSettings(oldSettings);
+    }
+
+    private void ApplyInteractionAndFullscreenSettings(NotchSettings? oldSettings)
+    {
         if (oldSettings == null
             || oldSettings.HoverCollapseDelay != _settings.HoverCollapseDelay
             || oldSettings.HoverExpandDelay != _settings.HoverExpandDelay
@@ -279,11 +282,8 @@ public partial class MainWindow
         {
             _hoverCollapseTimer.Interval = TimeSpan.FromMilliseconds(_settings.HoverCollapseDelay);
             _hoverThumbnailDelayTimer.Interval = TimeSpan.FromMilliseconds(_settings.HoverExpandDelay);
-
             if (_settings.DisableMouseLeaveAutoClose)
-            {
                 _hoverCollapseTimer.Stop();
-            }
         }
 
         if (oldSettings == null
@@ -294,9 +294,7 @@ public partial class MainWindow
         }
 
         if (oldSettings == null || oldSettings.EnableDebugMode != _settings.EnableDebugMode)
-        {
             ToggleDebugMode(_settings.EnableDebugMode);
-        }
 
         if (oldSettings == null
             || !string.Equals(oldSettings.SubtitlePriority, _settings.SubtitlePriority, StringComparison.Ordinal)
@@ -312,7 +310,10 @@ public partial class MainWindow
         {
             UpdateFullscreenAutoHideState(OverlayWindowController.GetForegroundWindowHandle(), force: true);
         }
+    }
 
+    private void ApplyLayoutSettings(NotchSettings? oldSettings, bool animatePulse)
+    {
         bool layoutChanged = oldSettings == null
             || oldSettings.Width != _settings.Width
             || oldSettings.Height != _settings.Height
@@ -320,158 +321,149 @@ public partial class MainWindow
             || oldSettings.DynamicIslandHeight != _settings.DynamicIslandHeight
             || oldSettings.CornerRadius != _settings.CornerRadius
             || oldSettings.EnableDynamicIslandMode != _settings.EnableDynamicIslandMode;
+        if (!layoutChanged) return;
 
-        if (layoutChanged)
+        _collapsedWidth = GetCollapsedWidth();
+        _collapsedHeight = GetCollapsedHeight();
+        _expandedHeight = _settings.EnableDynamicIslandMode ? 154 : 147;
+        _cornerRadiusCollapsed = GetCollapsedCornerRadius();
+        _cachedThumbnailExpandTarget = null;
+
+        bool willModeTransition = _modeTransitionPending
+                                  && !_isExpanded && !_isAnimating
+                                  && NotchBorder.ActualWidth > 0 && NotchBorder.ActualHeight > 0;
+        _modeTransitionPending = false;
+
+        ApplyDynamicIslandLayout(animateTransition: willModeTransition);
+
+        if (!_isExpanded && !_isAnimating)
+            ApplyCollapsedLayoutUpdate(willModeTransition, animatePulse);
+
+        if (_hwnd != IntPtr.Zero)
+            _overlayWindow.ReassertBounds();
+    }
+
+    private void ApplyCollapsedLayoutUpdate(bool willModeTransition, bool animatePulse)
+    {
+        double currentRadius = NotchBorder.CornerRadius.BottomLeft;
+        CurrentCornerRadius = currentRadius > 0 ? currentRadius : _cornerRadiusCollapsed;
+
+        NotchBorder.BeginAnimation(WidthProperty, null);
+        NotchBorder.BeginAnimation(HeightProperty, null);
+        this.BeginAnimation(CurrentCornerRadiusProperty, null);
+
+        bool isFirstLayout = NotchBorder.ActualWidth <= 0 || NotchBorder.ActualHeight <= 0;
+        int fps = VNotch.Services.AnimationConfig.TargetFps;
+
+        if (isFirstLayout)
         {
-            _collapsedWidth = GetCollapsedWidth();
-            _collapsedHeight = GetCollapsedHeight();
-            _expandedHeight = _settings.EnableDynamicIslandMode ? 154 : 147;
-            _cornerRadiusCollapsed = GetCollapsedCornerRadius();
-            _cachedThumbnailExpandTarget = null;
-
-            bool willModeTransition = _modeTransitionPending
-                                      && !_isExpanded && !_isAnimating
-                                      && NotchBorder.ActualWidth > 0 && NotchBorder.ActualHeight > 0;
-            _modeTransitionPending = false;
-
-            ApplyDynamicIslandLayout(animateTransition: willModeTransition);
-
-            if (!_isExpanded && !_isAnimating)
-            {
-                double currentRadius = NotchBorder.CornerRadius.BottomLeft;
-                if (currentRadius > 0)
-                    CurrentCornerRadius = currentRadius;
-                else
-                    CurrentCornerRadius = _cornerRadiusCollapsed;
-
-                NotchBorder.BeginAnimation(WidthProperty, null);
-                NotchBorder.BeginAnimation(HeightProperty, null);
-                this.BeginAnimation(CurrentCornerRadiusProperty, null);
-
-                bool isFirstLayout = NotchBorder.ActualWidth <= 0 || NotchBorder.ActualHeight <= 0;
-                int fps = VNotch.Services.AnimationConfig.TargetFps;
-
-                if (isFirstLayout)
-                {
-                    ApplyCollapsedLayoutDirect();
-                }
-                else if (willModeTransition)
-                {
-                    AnimateModeTransition(fps);
-                }
-                else if (_isModeTransitioning)
-                {
-                    // Mode transition in flight, maintain current animated dimensions
-                }
-                else if (animatePulse && (Math.Abs(NotchBorder.ActualWidth - _collapsedWidth) > 0.5 ||
-                                          Math.Abs(NotchBorder.ActualHeight - _collapsedHeight) > 0.5 ||
-                                          Math.Abs(_cornerRadiusCollapsed - currentRadius) > 0.5))
-                {
-                    var dur = _dur200;
-                    var easing = _easeExpOut6;
-
-                    var widthAnim = new DoubleAnimation(NotchBorder.ActualWidth > 0 ? NotchBorder.ActualWidth : _collapsedWidth, _collapsedWidth, dur)
-                    {
-                        EasingFunction = easing,
-                        FillBehavior = FillBehavior.Stop
-                    };
-                    Timeline.SetDesiredFrameRate(widthAnim, fps);
-                    widthAnim.Completed += (s, e) =>
-                    {
-                        NotchBorder.BeginAnimation(WidthProperty, null);
-                        NotchBorder.Width = _collapsedWidth;
-                    };
-
-                    var heightAnim = new DoubleAnimation(NotchBorder.ActualHeight > 0 ? NotchBorder.ActualHeight : _collapsedHeight, _collapsedHeight, dur)
-                    {
-                        EasingFunction = easing,
-                        FillBehavior = FillBehavior.Stop
-                    };
-                    Timeline.SetDesiredFrameRate(heightAnim, fps);
-                    heightAnim.Completed += (s, e) =>
-                    {
-                        NotchBorder.BeginAnimation(HeightProperty, null);
-                        NotchBorder.Height = _collapsedHeight;
-                    };
-
-                    NotchBorder.BeginAnimation(WidthProperty, widthAnim);
-                    NotchBorder.BeginAnimation(HeightProperty, heightAnim);
-
-                    double targetRadius = _cornerRadiusCollapsed;
-                    if (Math.Abs(targetRadius - currentRadius) > 0.5)
-                    {
-                        CurrentCornerRadius = currentRadius;
-                        var radiusAnim = new DoubleAnimation(currentRadius, targetRadius, dur)
-                        {
-                            EasingFunction = easing
-                        };
-                        Timeline.SetDesiredFrameRate(radiusAnim, fps);
-                        this.BeginAnimation(CurrentCornerRadiusProperty, radiusAnim);
-                    }
-                    else
-                    {
-                        var cr = MakeNotchCornerRadius(_cornerRadiusCollapsed);
-                        NotchBorder.CornerRadius = cr;
-                        InnerClipBorder.CornerRadius = cr;
-                        NotchBackground.CornerRadius = cr;
-                        NotchBorderShadow.CornerRadius = cr;
-                        // removed MediaBackground CornerRadius
-                        // removed MediaBackground2 CornerRadius
-                        _glassMaterialPresenter.SyncCornerRadius(cr);
-                        CurrentCornerRadius = _cornerRadiusCollapsed;
-                    }
-                }
-                else
-                {
-                    ApplyCollapsedLayoutDirect();
-                }
-
-                UpdateNotchClip();
-                UpdateMediaBackgroundFootprint();
-
-                if (animatePulse)
-                {
-                    NotchScale.BeginAnimation(ScaleTransform.ScaleXProperty, null);
-                    NotchScale.BeginAnimation(ScaleTransform.ScaleYProperty, null);
-                    NotchShadowScale.BeginAnimation(ScaleTransform.ScaleXProperty, null);
-                    NotchShadowScale.BeginAnimation(ScaleTransform.ScaleYProperty, null);
-
-                    var pulse = new DoubleAnimationUsingKeyFrames();
-                    pulse.KeyFrames.Add(new EasingDoubleKeyFrame(1.04,
-                        KeyTime.FromTimeSpan(TimeSpan.FromMilliseconds(80)),
-                        _easeQuadOut));
-                    pulse.KeyFrames.Add(new EasingDoubleKeyFrame(1.0,
-                        KeyTime.FromTimeSpan(TimeSpan.FromMilliseconds(300)),
-                        _easeSoftSpring));
-                    Timeline.SetDesiredFrameRate(pulse, fps);
-
-                    NotchScale.BeginAnimation(ScaleTransform.ScaleXProperty, pulse);
-                    NotchScale.BeginAnimation(ScaleTransform.ScaleYProperty, pulse);
-                    NotchShadowScale.BeginAnimation(ScaleTransform.ScaleXProperty, pulse);
-                    NotchShadowScale.BeginAnimation(ScaleTransform.ScaleYProperty, pulse);
-                }
-            }
-
-            if (_hwnd != IntPtr.Zero)
-            {
-                _overlayWindow.ReassertBounds();
-            }
+            ApplyCollapsedLayoutDirect();
+        }
+        else if (willModeTransition)
+        {
+            AnimateModeTransition(fps);
+        }
+        else if (_isModeTransitioning)
+        {
+            // Mode transition in flight, maintain current animated dimensions
+        }
+        else if (animatePulse && (Math.Abs(NotchBorder.ActualWidth - _collapsedWidth) > 0.5
+                                  || Math.Abs(NotchBorder.ActualHeight - _collapsedHeight) > 0.5
+                                  || Math.Abs(_cornerRadiusCollapsed - currentRadius) > 0.5))
+        {
+            AnimateCollapsedResize(currentRadius, fps);
+        }
+        else
+        {
+            ApplyCollapsedLayoutDirect();
         }
 
+        UpdateNotchClip();
+        UpdateMediaBackgroundFootprint();
+
+        if (animatePulse)
+            PlayNotchLayoutPulse(fps);
+    }
+
+    private void AnimateCollapsedResize(double currentRadius, int fps)
+    {
+        var dur = _dur200;
+        var easing = _easeExpOut6;
+
+        var widthAnim = new DoubleAnimation(NotchBorder.ActualWidth > 0 ? NotchBorder.ActualWidth : _collapsedWidth, _collapsedWidth, dur)
+        {
+            EasingFunction = easing,
+            FillBehavior = FillBehavior.Stop
+        };
+        Timeline.SetDesiredFrameRate(widthAnim, fps);
+        widthAnim.Completed += (_, _) =>
+        {
+            NotchBorder.BeginAnimation(WidthProperty, null);
+            NotchBorder.Width = _collapsedWidth;
+        };
+
+        var heightAnim = new DoubleAnimation(NotchBorder.ActualHeight > 0 ? NotchBorder.ActualHeight : _collapsedHeight, _collapsedHeight, dur)
+        {
+            EasingFunction = easing,
+            FillBehavior = FillBehavior.Stop
+        };
+        Timeline.SetDesiredFrameRate(heightAnim, fps);
+        heightAnim.Completed += (_, _) =>
+        {
+            NotchBorder.BeginAnimation(HeightProperty, null);
+            NotchBorder.Height = _collapsedHeight;
+        };
+
+        NotchBorder.BeginAnimation(WidthProperty, widthAnim);
+        NotchBorder.BeginAnimation(HeightProperty, heightAnim);
+
+        double targetRadius = _cornerRadiusCollapsed;
+        if (Math.Abs(targetRadius - currentRadius) > 0.5)
+        {
+            CurrentCornerRadius = currentRadius;
+            var radiusAnim = new DoubleAnimation(currentRadius, targetRadius, dur) { EasingFunction = easing };
+            Timeline.SetDesiredFrameRate(radiusAnim, fps);
+            this.BeginAnimation(CurrentCornerRadiusProperty, radiusAnim);
+            return;
+        }
+
+        var cr = MakeNotchCornerRadius(_cornerRadiusCollapsed);
+        NotchBorder.CornerRadius = cr;
+        InnerClipBorder.CornerRadius = cr;
+        NotchBackground.CornerRadius = cr;
+        NotchBorderShadow.CornerRadius = cr;
+        _glassMaterialPresenter.SyncCornerRadius(cr);
+        CurrentCornerRadius = _cornerRadiusCollapsed;
+    }
+
+    private void PlayNotchLayoutPulse(int fps)
+    {
+        NotchScale.BeginAnimation(ScaleTransform.ScaleXProperty, null);
+        NotchScale.BeginAnimation(ScaleTransform.ScaleYProperty, null);
+        NotchShadowScale.BeginAnimation(ScaleTransform.ScaleXProperty, null);
+        NotchShadowScale.BeginAnimation(ScaleTransform.ScaleYProperty, null);
+
+        var pulse = new DoubleAnimationUsingKeyFrames();
+        pulse.KeyFrames.Add(new EasingDoubleKeyFrame(1.04, KeyTime.FromTimeSpan(TimeSpan.FromMilliseconds(80)), _easeQuadOut));
+        pulse.KeyFrames.Add(new EasingDoubleKeyFrame(1.0, KeyTime.FromTimeSpan(TimeSpan.FromMilliseconds(300)), _easeSoftSpring));
+        Timeline.SetDesiredFrameRate(pulse, fps);
+
+        NotchScale.BeginAnimation(ScaleTransform.ScaleXProperty, pulse);
+        NotchScale.BeginAnimation(ScaleTransform.ScaleYProperty, pulse);
+        NotchShadowScale.BeginAnimation(ScaleTransform.ScaleXProperty, pulse);
+        NotchShadowScale.BeginAnimation(ScaleTransform.ScaleYProperty, pulse);
+    }
+
+    private void ApplyVisualSurfaceSettings(NotchSettings? oldSettings)
+    {
         if (oldSettings == null || Math.Abs(oldSettings.Opacity - _settings.Opacity) > 0.001)
-        {
             ApplyAppearanceOpacity();
-        }
 
         if (oldSettings == null || oldSettings.EnableShadow != _settings.EnableShadow)
-        {
             ApplyNotchShadowSetting();
-        }
 
         if (oldSettings == null || oldSettings.BrightenDarkLyricsBackground != _settings.BrightenDarkLyricsBackground)
-        {
             AnimateLyricsBlurImageSwitch(_currentMediaInfo?.Thumbnail);
-        }
 
         if (oldSettings == null || Math.Abs(oldSettings.MediaBlurDarkOverlay - _settings.MediaBlurDarkOverlay) > 0.001)
         {
@@ -484,10 +476,11 @@ public partial class MainWindow
         }
 
         if (oldSettings == null || Math.Abs(oldSettings.SpotifyCanvasBrightness - _settings.SpotifyCanvasBrightness) > 0.001)
-        {
             ApplySpotifyCanvasBrightness();
-        }
+    }
 
+    private void ApplySyncedTextAndMediaBackgroundSettings(NotchSettings? oldSettings)
+    {
         bool lyricsOrderChanged = oldSettings != null && oldSettings.LyricsProviderPriority != _settings.LyricsProviderPriority;
         if (lyricsOrderChanged && _syncedTextSource == SyncedTextSource.SpotifyLyrics)
         {
@@ -495,6 +488,7 @@ public partial class MainWindow
             _lyricsService.Reset();
             _lyricsTrackKey = "";
         }
+
         if (oldSettings == null || oldSettings.EnableSpotifyLyrics != _settings.EnableSpotifyLyrics || lyricsOrderChanged)
         {
             _lyricsPrefetchKey = null;
@@ -528,9 +522,7 @@ public partial class MainWindow
                     HideLyricsWidget();
                 }
             }
-            else if (_currentMediaInfo != null
-                     && IsCurrentTrackYouTube(_currentMediaInfo)
-                     && !_isLyricsActive)
+            else if (_currentMediaInfo != null && IsCurrentTrackYouTube(_currentMediaInfo) && !_isLyricsActive)
             {
                 _lyricsTrackKey = "";
                 FetchSubtitlesForTrack(_currentMediaInfo, force: true).SafeFireAndForget("SUBTITLES");
@@ -539,25 +531,16 @@ public partial class MainWindow
 
         bool smartCropChanged = oldSettings == null || oldSettings.EnableSmartCrop != _settings.EnableSmartCrop;
         if (smartCropChanged)
-        {
             _mediaService.ArtworkService.ConfigureSmartCrop(_settings.EnableSmartCrop);
-        }
 
         bool mediaArtBgChanged = oldSettings == null || oldSettings.ShowMediaArtBackground != _settings.ShowMediaArtBackground;
         if (mediaArtBgChanged && !_settings.ShowMediaArtBackground)
-        {
             HideMediaBackground();
-        }
 
         if (_currentMediaInfo != null && !_isExpanded && (smartCropChanged || (mediaArtBgChanged && _settings.ShowMediaArtBackground)))
-        {
             UpdateMediaBackground(_currentMediaInfo, forceRefresh: true);
-        }
 
         if (oldSettings == null || IsLiquidGlassConfigChanged(oldSettings, _settings))
-        {
             ApplyLiquidGlassSkin();
-        }
     }
-#pragma warning restore S3776
 }

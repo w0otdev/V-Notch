@@ -1,5 +1,4 @@
 using System.Diagnostics;
-using System.Reflection;
 using System.Windows;
 using Microsoft.Extensions.DependencyInjection;
 using VNotch.Controllers;
@@ -105,23 +104,22 @@ public sealed class IdleAutoHideControllerTests
             s => { s.EnableIdleAutoHide = true; s.IdleAutoHideDelay = 100; s.EnableLocalOnlyMode = true; },
             services => services.AddSingleton<IMediaDetectionService>(new FakeMediaDetectionService()));
         var window = fixture.Window;
-        const BindingFlags flags = BindingFlags.Instance | BindingFlags.NonPublic;
-        var shell = (NotchShellState)typeof(MainWindow).GetField("_shellState", flags)!.GetValue(window)!;
-        var controller = (IdleAutoHideController)typeof(MainWindow).GetField("_idleAutoHide", flags)!.GetValue(window)!;
+        var shell = window.ShellState;
+        var controller = window.IdleAutoHide!;
         controller.Timer.Stop();
         shell.IsHiddenByIdle = true;
-        typeof(MainWindow).GetMethod("ApplyNotchVisibilityState", flags)!.Invoke(window, null);
+        window.ApplyNotchVisibilityState();
         window.NotchContainer.Visibility = Visibility.Collapsed;
 
         for (int update = 0; update < 3; update++)
         {
-            typeof(MainWindow).GetMethod("ApplyMediaUpdate", flags)!.Invoke(window, [new MediaInfo
+            window.ApplyMediaUpdate(new MediaInfo
             {
                 MediaSource = "Browser",
                 SourceAppId = "firefox.exe",
                 CurrentTrack = track,
                 IsThumbnailOnlyUpdate = thumbnailOnly
-            }]);
+            });
             Assert.True(shell.IsHiddenByIdle);
             Assert.Equal(Visibility.Collapsed, window.NotchContainer.Visibility);
         }
@@ -136,22 +134,21 @@ public sealed class IdleAutoHideControllerTests
             s => { s.EnableIdleAutoHide = true; s.IdleAutoHideDelay = 100; s.EnableLocalOnlyMode = true; },
             services => services.AddSingleton<IMediaDetectionService>(new FakeMediaDetectionService()));
         var window = fixture.Window;
-        const BindingFlags flags = BindingFlags.Instance | BindingFlags.NonPublic;
-        var shell = (NotchShellState)typeof(MainWindow).GetField("_shellState", flags)!.GetValue(window)!;
-        var controller = (IdleAutoHideController)typeof(MainWindow).GetField("_idleAutoHide", flags)!.GetValue(window)!;
+        var shell = window.ShellState;
+        var controller = window.IdleAutoHide!;
         controller.Timer.Stop();
         shell.IsHiddenByIdle = true;
-        typeof(MainWindow).GetMethod("ApplyNotchVisibilityState", flags)!.Invoke(window, null);
+        window.ApplyNotchVisibilityState();
         window.NotchContainer.Visibility = Visibility.Collapsed;
 
-        typeof(MainWindow).GetMethod("ApplyMediaUpdate", flags)!.Invoke(window, [new MediaInfo
+        window.ApplyMediaUpdate(new MediaInfo
         {
             MediaSource = "Browser",
             SourceAppId = "firefox.exe",
             CurrentTrack = "Browser video",
             IsAnyMediaPlaying = true,
             IsPlaying = playing
-        }]);
+        });
         Assert.False(shell.IsHiddenByIdle);
         Assert.Equal(Visibility.Visible, window.NotchContainer.Visibility);
     });
@@ -163,16 +160,14 @@ public sealed class IdleAutoHideControllerTests
             s => { s.EnableIdleAutoHide = true; s.IdleAutoHideDelay = 100; s.EnableLocalOnlyMode = true; },
             services => services.AddSingleton<IMediaDetectionService>(new FakeMediaDetectionService()));
         var window = fixture.Window;
-        const BindingFlags flags = BindingFlags.Instance | BindingFlags.NonPublic;
-        var shell = (NotchShellState)typeof(MainWindow).GetField("_shellState", flags)!.GetValue(window)!;
-        var controller = (IdleAutoHideController)typeof(MainWindow).GetField("_idleAutoHide", flags)!.GetValue(window)!;
+        var shell = window.ShellState;
+        var controller = window.IdleAutoHide!;
         controller.Timer.Stop();
         controller.EvaluateIdleState(0);
         for (int tick = 20; tick < 100; tick += 20)
         {
             controller.EvaluateIdleState(tick);
-            typeof(MainWindow).GetMethod("ApplyMediaUpdate", flags)!.Invoke(window,
-                [new MediaInfo { MediaSource = "Browser", SourceAppId = "firefox.exe" }]);
+            window.ApplyMediaUpdate(new MediaInfo { MediaSource = "Browser", SourceAppId = "firefox.exe" });
         }
         controller.EvaluateIdleState(100);
         Assert.True(shell.IsHiddenByIdle);
@@ -188,17 +183,16 @@ public sealed class IdleAutoHideControllerTests
         using var fixture = new GreetingAcceptanceTests.MainWindowFixture("en", false,
             s => { s.EnableIdleAutoHide = true; s.IdleAutoHideDelay = 100; s.EnableLocalOnlyMode = true; });
         var window = fixture.Window;
-        const BindingFlags flags = BindingFlags.Instance | BindingFlags.NonPublic;
-        var shell = (NotchShellState)typeof(MainWindow).GetField("_shellState", flags)!.GetValue(window)!;
-        var manager = (NotchManager)typeof(MainWindow).GetField("_notchManager", flags)!.GetValue(window)!;
-        var controller = (IdleAutoHideController)typeof(MainWindow).GetField("_idleAutoHide", flags)!.GetValue(window)!;
+        var shell = window.ShellState;
+        var manager = window.NotchManager;
+        var controller = window.IdleAutoHide!;
         manager.HoverService.UpdateNotchBounds(-2000, -1000, 300, 40);
         manager.HoverService.ResetHoverState();
-        typeof(MainWindow).GetMethod("ApplyIdleAutoHideSettings", flags)!.Invoke(window, null);
+        window.ApplyIdleAutoHideSettings();
         controller.Timer.Stop();
         shell.IsHiddenByIdle = true;
         shell.IsHiddenByFullscreen = fullscreen;
-        typeof(MainWindow).GetMethod("ApplyNotchVisibilityState", flags)!.Invoke(window, null);
+        window.ApplyNotchVisibilityState();
         window.NotchContainer.Visibility = Visibility.Collapsed;
         window.NotchContainerTranslate.Y = -50;
 

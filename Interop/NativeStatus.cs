@@ -1,4 +1,4 @@
-namespace VNotch.Services.Interop;
+namespace VNotch.Interop;
 
 // Mirrors Native/vnotch_abi.h; never use this table for HRESULT-returning APIs.
 internal enum NativeStatus

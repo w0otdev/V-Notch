@@ -1,9 +1,7 @@
 using System.Diagnostics.CodeAnalysis;
 using System.Windows;
 using System.Windows.Controls;
-using VNotch.Controls;
 using VNotch.Services;
-using VNotch.Windows;
 
 namespace VNotch.Presenters;
 
@@ -187,8 +185,8 @@ public sealed class SettingsUpdatePresenter : IDisposable
         dialog?.Close();
     }
 
-    internal Task LoadChangelogAsync(ChangelogView view) =>
-        _refs == null ? Task.CompletedTask : view.LoadAsync(_service, _canUseNetwork, _lifetime.Token);
+    internal Task LoadChangelogAsync(Func<IUpdateService, Func<bool>, CancellationToken, Task> loadAsync) =>
+        _refs == null ? Task.CompletedTask : loadAsync(_service, _canUseNetwork, _lifetime.Token);
 
     public void Dispose()
     {

@@ -4,7 +4,7 @@ using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using VNotch.Models;
 
-namespace VNotch.Controls;
+namespace VNotch.Services;
 
 public enum TrayAppIconKind { Notes, Finder, Safari, Chrome, Photos, Colors, Figma, Terminal, Document, Pdf, Archive, Audio, Video, Folder }
 

@@ -2,6 +2,7 @@
  xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
  xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:flow="clr-namespace:VNotch.Controls"
+ xmlns:models="clr-namespace:VNotch.Models"
  xmlns:vm="clr-namespace:VNotch.ViewModels"
  xmlns:local="clr-namespace:VNotch.Controls"
  xmlns:primitives="clr-namespace:System.Windows.Controls.Primitives;assembly=PresentationFramework"
@@ -14,9 +15,9 @@
  <UserControl.Resources>
   <!-- The surface supplies entrance motion; the native popup supplies dismissal. -->
   <x:Static x:Key="{x:Static SystemParameters.MenuPopupAnimationKey}" Member="primitives:PopupAnimation.None"/>
-  <SolidColorBrush x:Key="TraySurfaceBase" Color="{x:Static local:ClipboardTrayTokens.SurfaceBase}"/>
-  <SolidColorBrush x:Key="TraySurfaceElevated" Color="{x:Static local:ClipboardTrayTokens.SurfaceElevated}"/>
-  <SolidColorBrush x:Key="TraySurfaceOverlay" Color="{x:Static local:ClipboardTrayTokens.SurfaceOverlay}"/>
+  <SolidColorBrush x:Key="TraySurfaceBase" Color="{x:Static models:ClipboardTrayTokens.SurfaceBase}"/>
+  <SolidColorBrush x:Key="TraySurfaceElevated" Color="{x:Static models:ClipboardTrayTokens.SurfaceElevated}"/>
+  <SolidColorBrush x:Key="TraySurfaceOverlay" Color="{x:Static models:ClipboardTrayTokens.SurfaceOverlay}"/>
   <SolidColorBrush x:Key="TrayDestructive" Color="#FF453A"/>
   <SolidColorBrush x:Key="TrayMutedForeground" Color="#8E8E93"/>
   <CornerRadius x:Key="TrayRadiusSmall">8</CornerRadius>

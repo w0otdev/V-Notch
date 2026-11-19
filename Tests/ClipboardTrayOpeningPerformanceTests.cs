@@ -1,6 +1,5 @@
 using System.Diagnostics;
 using System.IO;
-using System.Reflection;
 using System.Text.Json;
 using System.Windows;
 using System.Windows.Controls;
@@ -20,21 +19,17 @@ namespace VNotch.Tests;
 [Collection("Localization")]
 public sealed class ClipboardTrayOpeningPerformanceTests(ITestOutputHelper output)
 {
-    private const BindingFlags Private = BindingFlags.Instance | BindingFlags.NonPublic;
-
     [Fact]
     public void PreparedMaskingProtectsNewAndRecycledCardsAndReusesUnchangedResults() => SharedStaTestRunner.RunAsync(async ct =>
     {
         using var tray = new ClipboardTray();
         var ordinary = new ClipboardEntry { Title = "Project document", Preview = "Project document" };
         var secret = new ClipboardEntry { Title = "password: synthetic-value", Preview = "password: synthetic-value" };
-        var prepare = typeof(ClipboardTray).GetMethod("PrepareCardMaskingAsync", Private)!;
-        var reconcile = typeof(ClipboardTray).GetMethod("ReconcilePreparedCards", Private)!;
-        var cards = (IReadOnlyList<VNotch.ViewModels.ClipboardCardViewModel>)typeof(ClipboardTray).GetField("_cards", Private)!.GetValue(tray)!;
+        var cards = tray.ResultCards;
         async Task Publish(ClipboardEntry[] entries)
         {
-            var masking = await (Task<Dictionary<Guid, bool>>)prepare.Invoke(tray, [entries, ct])!;
-            reconcile.Invoke(tray, [entries, masking]);
+            var masking = await tray.PrepareCardMaskingAsync(entries, ct);
+            tray.ReconcilePreparedCards(entries, masking);
         }
         await Publish([ordinary, secret]);
         var ordinaryCard = cards[0];
@@ -47,7 +42,7 @@ public sealed class ClipboardTrayOpeningPerformanceTests(ITestOutputHelper outpu
         Assert.Equal(VNotch.Services.Clipboard.ClipboardSensitiveData.Mask, secretCard.Title);
         // Pinning has no effect on classification and needs no new worker scan.
         var pinned = ordinary with { IsPinned = true };
-        var cached = (Task<Dictionary<Guid, bool>>)prepare.Invoke(tray, [new[] { pinned, secret }, ct])!;
+        var cached = tray.PrepareCardMaskingAsync(new[] { pinned, secret }, ct);
         Assert.True(cached.IsCompletedSuccessfully);
         Assert.False((await cached)[ordinary.Id]);
         await Publish([pinned with { SourceApp = "Bitwarden" }, secret with { Title = ordinary.Title, Preview = ordinary.Preview }]);
@@ -77,7 +72,7 @@ public sealed class ClipboardTrayOpeningPerformanceTests(ITestOutputHelper outpu
                 services => services.AddSingleton<IMediaDetectionService>(new FakeMediaDetectionService()));
             var window = fixture.Window;
             var tray = window.ClipboardTrayView;
-            var coordinator = (NotchTransitionCoordinator)typeof(MainWindow).GetField("_transitionCoordinator", Private)!.GetValue(window)!;
+            var coordinator = window.TransitionCoordinator;
             window.Show();
             await WpfFrameWaiter.NextAsync(ct);
             // Warm the template and animation path before comparing repeated openings.
@@ -90,12 +85,10 @@ public sealed class ClipboardTrayOpeningPerformanceTests(ITestOutputHelper outpu
             {
                 var entries = Enumerable.Range(0, count).Select(i => new ClipboardEntry
                 { Title = $"Project document {i}.pdf", Preview = "Project document", Kind = ClipboardKind.File }).ToArray();
-                var preparation = (Task<Dictionary<Guid, bool>>)typeof(ClipboardTray)
-                    .GetMethod("PrepareCardMaskingAsync", Private)!.Invoke(tray, [entries, ct])!;
+                var preparation = tray.PrepareCardMaskingAsync(entries, ct);
                 var masking = await preparation;
-                typeof(ClipboardTray).GetMethod("ReconcilePreparedCards", Private)!.Invoke(tray, [entries, masking]);
-                typeof(ClipboardTray).GetField("_queryDirty", Private)!.SetValue(tray, false);
-                ((UiScheduledTimer)typeof(ClipboardTray).GetField("_searchTimer", Private)!.GetValue(tray)!).Stop();
+                tray.ReconcilePreparedCards(entries, masking);
+                tray.CancelPendingQuery();
                 AnimationConfig.SetReduceMotion(count > 8);
                 int runs = count == 8 ? 2 : 1;
                 for (int run = 0; run < runs; run++)

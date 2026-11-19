@@ -86,7 +86,7 @@ public partial class MainWindow
             _aiUsageView.OpenSettingsRequested += () =>
             {
                 OpenAppSettings();
-                _activeSettingsWindow?.NavigateToAiUsage();
+                SettingsPreparation.Active?.NavigateToAiUsage();
             };
             AiUsageContent.Children.Add(_aiUsageView);
         }

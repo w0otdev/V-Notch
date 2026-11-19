@@ -8,6 +8,7 @@ namespace VNotch.Controls;
 public sealed partial class ClipboardTray
 {
     // Shared realization state belongs to the view lifecycle, independent of selection or thumbnail work.
+    internal HashSet<FrameworkElement> RealizedCardElements => _realizedCardElements;
     private readonly HashSet<FrameworkElement> _realizedCardElements = [];
 
     private void Card_Loaded(object sender, RoutedEventArgs e)

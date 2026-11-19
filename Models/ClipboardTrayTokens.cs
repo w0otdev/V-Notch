@@ -1,6 +1,6 @@
 using System.Windows.Media;
 
-namespace VNotch.Controls;
+namespace VNotch.Models;
 
 /// <summary>Semantic surface colors shared by tray resources and card view models.</summary>
 public static class ClipboardTrayTokens
