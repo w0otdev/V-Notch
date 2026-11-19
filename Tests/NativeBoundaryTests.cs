@@ -1,9 +1,10 @@
+using VNotch.Models;
 using System.Runtime.InteropServices;
 using System.IO;
 using System.Reflection;
 using VNotch.Controllers;
 using VNotch.Services;
-using VNotch.Services.Interop;
+using VNotch.Interop;
 using Xunit;
 
 namespace VNotch.Tests;

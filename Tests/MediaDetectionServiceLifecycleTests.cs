@@ -72,14 +72,11 @@ public class MediaDetectionServiceLifecycleTests
     public async Task TimedOutWorkerCanStillReleaseItsUpdateLock(bool stopFirst)
     {
         var service = CreateTestService(null);
-        const System.Reflection.BindingFlags flags = System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic;
-        var updateLock = (SemaphoreSlim)typeof(MediaDetectionService).GetField("_updateLock", flags)!.GetValue(service)!;
+        var updateLock = service.UpdateLock;
         await updateLock.WaitAsync();
         var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var worker = Task.Run(async () => { await release.Task; updateLock.Release(); });
-        typeof(MediaDetectionService).GetField("_processingTask", flags)!.SetValue(service, worker);
-        var state = typeof(MediaDetectionService).GetField("_state", flags)!;
-        state.SetValue(service, Enum.Parse(state.FieldType, "Running"));
+        service.SetRunningWorkerForTest(worker, null);
         try
         {
             if (stopFirst) await service.StopAsync();
@@ -95,17 +92,12 @@ public class MediaDetectionServiceLifecycleTests
     {
         using var cts = new CancellationTokenSource();
         using var service = CreateTestService(null, new DummyWindowTitleScanner(() => cts.Cancel()));
-        const System.Reflection.BindingFlags flags = System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic;
         // An empty session list only falls back to captions after recent browser
         // media. Model that state so the cancellation occurs inside the scan.
-        typeof(MediaDetectionService).GetField("_lastSource", flags)!.SetValue(service, "Browser");
-        typeof(MediaDetectionService).GetField("_emptyMetadataStartTime", flags)!.SetValue(service, DateTime.UtcNow);
+        service.SetRecentBrowserMediaForTest(DateTime.UtcNow);
         bool published = false;
         service.MediaChanged += (_, _) => published = true;
-        var update = typeof(MediaDetectionService).GetMethod("UpdateMediaInfoAsync",
-            System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!
-            .CreateDelegate<Func<bool, CancellationToken, Task>>(service);
-        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => update(true, cts.Token));
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => service.UpdateMediaInfoAsync(true, cts.Token));
         Assert.False(published);
     }
 
@@ -115,18 +107,14 @@ public class MediaDetectionServiceLifecycleTests
     public async Task UpdateWaitsForContendedLockUntilCancellation(bool forceRefresh)
     {
         using var service = CreateTestService(null);
-        var updateLock = (SemaphoreSlim)typeof(MediaDetectionService).GetField("_updateLock",
-            System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!.GetValue(service)!;
-        var update = typeof(MediaDetectionService).GetMethod("UpdateMediaInfoAsync",
-            System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!
-            .CreateDelegate<Func<bool, CancellationToken, Task>>(service);
+        var updateLock = service.UpdateLock;
         using var cts = new CancellationTokenSource();
         await updateLock.WaitAsync();
         try
         {
-            var pending = update(forceRefresh, cts.Token);
-            var observation = Task.Delay(650);
-            Assert.Same(observation, await Task.WhenAny(pending, observation));
+            var pending = service.UpdateMediaInfoAsync(forceRefresh, cts.Token);
+            // UpdateMediaInfoAsync reaches the semaphore before its first yield.
+            Assert.False(pending.IsCompleted);
             await cts.CancelAsync();
             await Assert.ThrowsAnyAsync<OperationCanceledException>(() => pending);
         }
@@ -141,8 +129,7 @@ public class MediaDetectionServiceLifecycleTests
     public void LiveTimelineRecovery_DoesNotSimulateOrReuseRecoveredDuration(double durationSeconds, bool indeterminate)
     {
         using var service = CreateTestService(null);
-        const System.Reflection.BindingFlags flags = System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic;
-        var simulator = (MediaTimelineSimulator)typeof(MediaDetectionService).GetField("_timelineSimulator", flags)!.GetValue(service)!;
+        var simulator = service.Timeline;
         simulator.RecoveredDuration = TimeSpan.FromMinutes(3);
         simulator.EnterThrottledMode();
         var info = new MediaInfo
@@ -155,8 +142,8 @@ public class MediaDetectionServiceLifecycleTests
             Position = TimeSpan.Zero
         };
 
-        typeof(MediaDetectionService).GetMethod("ApplyVideoTimelineRecovery", flags)!
-            .Invoke(service, new object?[] { info, new List<string>() });
+        List<string>? titles = [];
+        service.ApplyVideoTimelineRecovery(info, ref titles);
 
         Assert.Equal(TimeSpan.Zero, info.Position);
         Assert.Equal(TimeSpan.FromSeconds(durationSeconds), info.Duration);
@@ -248,9 +235,7 @@ public class MediaDetectionServiceLifecycleTests
         await using var service = CreateTestService(_ => Task.FromResult<GlobalSystemMediaTransportControlsSessionManager?>(null));
         service.Start();
         await service.InitTask!;
-        var reconnect = (MediaPinReconnectWindow)typeof(MediaDetectionService)
-            .GetField("_pinReconnect", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!
-            .GetValue(service)!;
+        var reconnect = service.PinReconnect;
         reconnect.Start();
         Assert.True(reconnect.IsWaiting);
         await service.StopAsync();
@@ -455,7 +440,6 @@ public class MediaDetectionServiceLifecycleTests
     [Fact]
     public async Task StopAsync_WhileDownloadImageAsyncPending_CancelsThumbnailTokenImmediately()
     {
-        const System.Reflection.BindingFlags flags = System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic;
         var downloadStarted = new TaskCompletionSource<CancellationToken>(TaskCreationOptions.RunContinuationsAsynchronously);
         var workerRelease = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
 
@@ -473,10 +457,7 @@ public class MediaDetectionServiceLifecycleTests
             _ => Task.FromResult<GlobalSystemMediaTransportControlsSessionManager?>(null));
 
         using var bgCts = new CancellationTokenSource();
-        typeof(MediaDetectionService).GetField("_bgCts", flags)!.SetValue(service, bgCts);
-        var stateField = typeof(MediaDetectionService).GetField("_state", flags)!;
-        stateField.SetValue(service, Enum.Parse(stateField.FieldType, "Running"));
-        typeof(MediaDetectionService).GetField("_processingTask", flags)!.SetValue(service, workerRelease.Task);
+        service.SetRunningWorkerForTest(workerRelease.Task, bgCts);
 
         var info = new MediaInfo
         {
@@ -490,10 +471,8 @@ public class MediaDetectionServiceLifecycleTests
             IsAnyMediaPlaying = true
         };
 
-        typeof(MediaDetectionService).GetMethod("CommitPublishedState", flags)!
-            .Invoke(service, new object?[] { info, info.GetSignature() });
-        typeof(MediaDetectionService).GetMethod("StartThumbnailFetchIfNeeded", flags)!
-            .Invoke(service, new object?[] { info, false });
+        service.CommitPublishedState(info, info.GetSignature());
+        service.StartThumbnailFetchIfNeeded(info, false);
 
         var downloadToken = await downloadStarted.Task.WaitAsync(TimeSpan.FromSeconds(5));
         Assert.False(downloadToken.IsCancellationRequested);
@@ -515,13 +494,12 @@ public class MediaDetectionServiceLifecycleTests
         }
 
         await stopTask.WaitAsync(TimeSpan.FromSeconds(5));
-        Assert.Null(typeof(MediaDetectionService).GetField("_thumbCts", flags)!.GetValue(service));
+        Assert.Null(service.ThumbnailCancellation);
     }
 
     [Fact]
     public async Task ThumbnailFetch_WhenCompletedNormally_ClearsAndDisposesThumbCts()
     {
-        const System.Reflection.BindingFlags flags = System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic;
         var downloadStarted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var allowDownloadComplete = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var testBitmap = CreateTestBitmap(480, 360);
@@ -540,9 +518,7 @@ public class MediaDetectionServiceLifecycleTests
             _ => Task.FromResult<GlobalSystemMediaTransportControlsSessionManager?>(null));
 
         using var bgCts = new CancellationTokenSource();
-        typeof(MediaDetectionService).GetField("_bgCts", flags)!.SetValue(service, bgCts);
-        var stateField = typeof(MediaDetectionService).GetField("_state", flags)!;
-        stateField.SetValue(service, Enum.Parse(stateField.FieldType, "Running"));
+        service.SetRunningWorkerForTest(null, bgCts);
 
         var info = new MediaInfo
         {
@@ -556,22 +532,19 @@ public class MediaDetectionServiceLifecycleTests
             IsAnyMediaPlaying = true
         };
 
-        typeof(MediaDetectionService).GetMethod("CommitPublishedState", flags)!
-            .Invoke(service, new object?[] { info, info.GetSignature() });
-        typeof(MediaDetectionService).GetMethod("StartThumbnailFetchIfNeeded", flags)!
-            .Invoke(service, new object?[] { info, false });
+        service.CommitPublishedState(info, info.GetSignature());
+        service.StartThumbnailFetchIfNeeded(info, false);
 
         await downloadStarted.Task.WaitAsync(TimeSpan.FromSeconds(5));
 
-        var thumbCtsField = typeof(MediaDetectionService).GetField("_thumbCts", flags)!;
-        var capturedCts = (CancellationTokenSource?)thumbCtsField.GetValue(service);
+        var capturedCts = service.ThumbnailCancellation;
         Assert.NotNull(capturedCts);
 
         allowDownloadComplete.TrySetResult();
 
-        Assert.True(SpinWait.SpinUntil(() => thumbCtsField.GetValue(service) == null, TimeSpan.FromSeconds(5)),
+        Assert.True(SpinWait.SpinUntil(() => service.ThumbnailCancellation == null, TimeSpan.FromSeconds(5)),
             "Expected _thumbCts to be cleared after thumbnail fetch completes normally.");
-        Assert.Null(thumbCtsField.GetValue(service));
+        Assert.Null(service.ThumbnailCancellation);
         Assert.Throws<ObjectDisposedException>(() => _ = capturedCts!.Token);
     }
 
@@ -580,7 +553,6 @@ public class MediaDetectionServiceLifecycleTests
     [InlineData(false)]
     public async Task ResolveActiveSessionAsync_WhenNonCurrentActiveDisplaySessionDisappearsOrIsIgnored_UnsubscribesEventsAndDetaches(bool sessionDisappears)
     {
-        const System.Reflection.BindingFlags flags = System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic;
         var fakeSession = new FakeSmtcEnv.FakeSmtcSession("Music.UI.exe", "Active Track", "Active Artist");
         var sessions = new List<GlobalSystemMediaTransportControlsSession> { fakeSession.Session };
         var manager = FakeSmtcEnv.CreateManager(
@@ -588,13 +560,11 @@ public class MediaDetectionServiceLifecycleTests
             getSessions: () => sessions.ToArray());
 
         await using var service = CreateTestService(_ => Task.FromResult<GlobalSystemMediaTransportControlsSessionManager?>(manager));
-        typeof(MediaDetectionService).GetField("_sessionManager", flags)!.SetValue(service, manager);
+        service.SetSessionManagerForTest(manager);
 
-        typeof(MediaDetectionService).GetMethod("SwitchActiveDisplaySessionIfNeeded", flags)!
-            .Invoke(service, new object?[] { fakeSession.Session });
+        service.SwitchActiveDisplaySessionIfNeeded(fakeSession.Session);
 
-        var activeDisplayField = typeof(MediaDetectionService).GetField("_activeDisplaySession", flags)!;
-        Assert.NotNull(activeDisplayField.GetValue(service));
+        Assert.NotNull(service.ActiveDisplaySession);
         Assert.Equal(1, fakeSession.TimelineActiveSubscriptions);
         Assert.Equal(1, fakeSession.PlaybackActiveSubscriptions);
         Assert.Equal(1, fakeSession.MediaPropertiesActiveSubscriptions);
@@ -608,11 +578,10 @@ public class MediaDetectionServiceLifecycleTests
             fakeSession.SourceAppId = "V-Notch.exe";
         }
 
-        var resolveTask = (Task)typeof(MediaDetectionService).GetMethod("ResolveActiveSessionAsync", flags)!
-            .Invoke(service, new object?[] { false })!;
+        var resolveTask = service.ResolveActiveSessionAsync(false);
         await resolveTask;
 
-        Assert.Null(activeDisplayField.GetValue(service));
+        Assert.Null(service.ActiveDisplaySession);
         Assert.Equal(0, fakeSession.TimelineActiveSubscriptions);
         Assert.Equal(0, fakeSession.PlaybackActiveSubscriptions);
         Assert.Equal(0, fakeSession.MediaPropertiesActiveSubscriptions);
@@ -624,7 +593,6 @@ public class MediaDetectionServiceLifecycleTests
     [Fact]
     public async Task TryGetMediaSessionInfoAsync_WhenResolveActiveSessionAsyncFetchesMediaProperties_CallsTryGetMediaPropertiesAsyncOnlyOnce()
     {
-        const System.Reflection.BindingFlags flags = System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic;
         var fakeSession = new FakeSmtcEnv.FakeSmtcSession("Music.UI.exe", "Single Fetch Track", "Single Fetch Artist");
         var sessions = new List<GlobalSystemMediaTransportControlsSession> { fakeSession.Session };
         var manager = FakeSmtcEnv.CreateManager(
@@ -632,13 +600,12 @@ public class MediaDetectionServiceLifecycleTests
             getSessions: () => sessions.ToArray());
 
         await using var service = CreateTestService(_ => Task.FromResult<GlobalSystemMediaTransportControlsSessionManager?>(manager));
-        typeof(MediaDetectionService).GetField("_sessionManager", flags)!.SetValue(service, manager);
+        service.SetSessionManagerForTest(manager);
 
-        var tryGetMethod = typeof(MediaDetectionService).GetMethod("TryGetMediaSessionInfoAsync", flags)!;
 
         // Cycle 1: Initial full session scan (forceRefresh: true)
         var firstInfo = new MediaInfo();
-        await (Task<bool>)tryGetMethod.Invoke(service, new object?[] { firstInfo, true, (Func<List<string>>)(() => new List<string>()) })!;
+        await service.TryGetMediaSessionInfoAsync(firstInfo, true, static () => []);
 
         Assert.Equal("Single Fetch Track", firstInfo.CurrentTrack);
         Assert.Equal("Single Fetch Artist", firstInfo.CurrentArtist);
@@ -647,7 +614,7 @@ public class MediaDetectionServiceLifecycleTests
         // Cycle 2: Active display session fast path (forceRefresh: false)
         fakeSession.ResetTryGetMediaPropertiesCalls();
         var secondInfo = new MediaInfo();
-        await (Task<bool>)tryGetMethod.Invoke(service, new object?[] { secondInfo, false, (Func<List<string>>)(() => new List<string>()) })!;
+        await service.TryGetMediaSessionInfoAsync(secondInfo, false, static () => []);
 
         Assert.Equal("Single Fetch Track", secondInfo.CurrentTrack);
         Assert.Equal("Single Fetch Artist", secondInfo.CurrentArtist);

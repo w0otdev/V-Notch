@@ -3,7 +3,6 @@ using System.IO;
 using System.Runtime.InteropServices;
 using System.Security.Cryptography;
 using System.Windows;
-using VNotch.Windows;
 
 namespace VNotch.Services;
 
@@ -223,37 +222,45 @@ public static partial class AppIntegrityService
     }
 
     /// <summary>
+    /// Optional UI prompt hook registered by the shell so integrity alerts can render a styled dialog
+    /// without coupling <see cref="AppIntegrityService"/> to WPF window types.
+    /// </summary>
+    public static Func<string, string, bool>? IntegrityAlertPrompt { get; set; }
+
+    /// <summary>
     /// Displays a user-facing security alert with an option to open the official releases repository.
     /// </summary>
     public static void ShowIntegrityAlert(string title, string message)
     {
-        Application.Current?.Dispatcher.Invoke(() =>
+        Action show = () =>
         {
-            try
+            var prompt = IntegrityAlertPrompt;
+            if (prompt != null)
             {
-                var options = new ConfirmationDialog.DialogOptions(
-                    Title: title,
-                    ConfirmText: Loc.Get("integrity.openOfficialRepo"),
-                    CancelText: Loc.Get("integrity.ignore"),
-                    Icon: ConfirmationDialog.DialogIcon.Warning,
-                    Style: ConfirmationDialog.DialogStyle.Danger);
+                try
+                {
+                    if (prompt(title, message))
+                    {
+                        OpenOfficialRepo();
+                    }
+                    return;
+                }
+                catch (Exception ex)
+                {
+                    RuntimeLog.Error(LogCategory, ex, "Failed to show IntegrityAlertPrompt, falling back to MessageBox");
+                }
+            }
 
-                bool openRepo = ConfirmationDialog.Show(Application.Current.MainWindow, message, options);
-                if (openRepo)
-                {
-                    OpenOfficialRepo();
-                }
-            }
-            catch (Exception ex)
+            var result = MessageBox.Show(message, title, MessageBoxButton.OKCancel, MessageBoxImage.Warning);
+            if (result == MessageBoxResult.OK)
             {
-                RuntimeLog.Error(LogCategory, ex, "Failed to show ConfirmationDialog, falling back to MessageBox");
-                var result = MessageBox.Show(message, title, MessageBoxButton.OKCancel, MessageBoxImage.Warning);
-                if (result == MessageBoxResult.OK)
-                {
-                    OpenOfficialRepo();
-                }
+                OpenOfficialRepo();
             }
-        });
+        };
+
+        var dispatcher = Application.Current?.Dispatcher;
+        if (dispatcher != null) dispatcher.Invoke(show);
+        else if (IntegrityAlertPrompt != null) show();
     }
 
     private static void OpenOfficialRepo()

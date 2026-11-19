@@ -70,6 +70,7 @@ public partial class SettingsWindow
         out int outMatchCount);
 
     private UiScheduledTimer? _searchDebounce;
+    internal bool IsSearchMode => _isSearchMode;
     private bool _isSearchMode;
     private readonly List<SearchRowEntry> _searchRows = new();
     private SearchRowEntry[][] _rowsByParent = [];
@@ -150,7 +151,7 @@ public partial class SettingsWindow
         }
     }
 
-    private void ExecuteSearch(string query)
+    internal void ExecuteSearch(string query)
     {
         if (string.IsNullOrWhiteSpace(query)) return;
 
@@ -191,7 +192,7 @@ public partial class SettingsWindow
         }
     }
 
-    private void SearchingClearButton_Click(object sender, RoutedEventArgs e)
+    internal void SearchingClearButton_Click(object sender, RoutedEventArgs e)
     {
         SettingsSearchBox.Clear();
         SettingsSearchBox.Focus();
@@ -237,7 +238,7 @@ public partial class SettingsWindow
         SyncNavIndicators(animate: true);
     }
 
-    private void ExitSearchMode()
+    internal void ExitSearchMode()
     {
         if (_isSearchMode)
         {
@@ -581,6 +582,8 @@ public partial class SettingsWindow
             }
         }
     }
+
+    internal string IndexedSearchText(Border row) => _searchRows.Single(entry => ReferenceEquals(entry.Row, row)).NormalizedSearchText;
 
     private sealed class SearchRowEntry
     {

@@ -105,7 +105,8 @@ public partial class SettingsWindow
                     CollectVisibleComponents(container, viewport);
             return;
         }
-        if (element is Panel and not Canvas or Border { Child: not null } or ContentPresenter or ListBoxItem)
+        // Reveal framed images as one visual so the background and the image share a clock.
+        if (element is Panel and not Canvas or Border { Child: not null and not Image } or ContentPresenter or ListBoxItem)
         {
             int count = VisualTreeHelper.GetChildrenCount(element);
             for (int i = 0; i < count; i++)

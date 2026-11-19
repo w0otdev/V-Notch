@@ -29,7 +29,16 @@ public partial class SettingsWindow
     private Point _settingsNavDragStartPoint;
     private bool _isSettingsNavRowDragging = false;
     private bool _hasCapturedSettingsNavMouse = false;
+    internal void BeginSettingsNavDragForTest(FrameworkElement row, int slot)
+    {
+        _settingsNavDragRow = row;
+        _isSettingsNavRowDragging = true;
+        _settingsNavInitialSlot = slot;
+        _settingsNavTargetSlot = slot;
+    }
+
     private int _settingsNavInitialSlot = -1;
+    internal int DragTargetSlot => _settingsNavTargetSlot;
     private int _settingsNavTargetSlot = -1;
     private double _settingsNavRowPitch = 44.0;
     private readonly Dictionary<FrameworkElement, double> _settingsNavNeighborOffsets = new();
@@ -398,7 +407,7 @@ public partial class SettingsWindow
         Mouse.OverrideCursor = Cursors.SizeNS;
     }
 
-    private void UpdateSettingsNavNeighborDisplacements()
+    internal void UpdateSettingsNavNeighborDisplacements()
     {
         if (_settingsNavDragRow == null || NavTabsSettingsContainer == null) return;
 
@@ -484,7 +493,7 @@ public partial class SettingsWindow
         }
     }
 
-    private void EndSettingsNavRowDrag()
+    internal void EndSettingsNavRowDrag()
     {
         var row = _settingsNavDragRow;
         if (row == null) return;

@@ -328,7 +328,8 @@ public sealed class MinifyLocaleJsonTask : Task
       $(MSBuildThisFileDirectory)Native\Services\SmartCropInference.cpp;
       $(MSBuildThisFileDirectory)Native\Services\AnimationMath.cpp;
       $(MSBuildThisFileDirectory)Native\Controls\UiMotionAndParticles.cpp;
-      $(MSBuildThisFileDirectory)Native\Services\Clipboard\ClipboardSensitiveData.cpp" />
+      $(MSBuildThisFileDirectory)Native\Services\Clipboard\ClipboardSensitiveData.cpp;
+      $(MSBuildThisFileDirectory)Native\Services\Clipboard\ClipboardJwtValidation.cpp" />
     <_VNotchNativeColdBaselineSources Include="$(MSBuildThisFileDirectory)Native\**\*.cpp" Exclude="$(MSBuildThisFileDirectory)Native\**\*.avx2.cpp;$(MSBuildThisFileDirectory)Native\Services\Translation\LiteTranslationRuntime.cpp" />
     <_VNotchNativeColdBaselineSources Remove="@(_VNotchNativeHotBaselineSources)" />
   </ItemGroup>

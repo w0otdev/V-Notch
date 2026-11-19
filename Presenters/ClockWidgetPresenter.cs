@@ -132,7 +132,6 @@ public sealed class ClockWidgetPresenter : IDisposable
         string.Equals(_host.Settings.ExpandedWidget, "aiusage", StringComparison.OrdinalIgnoreCase);
     private bool IsNonCalendarWidgetMode => IsAnyClockWidgetMode || IsWeatherWidgetMode || IsSystemMonitorWidgetMode || IsAiUsageWidgetMode;
 
-#pragma warning disable S3776 // Synchronizes visibility and alignments across all expanded widget modes
     public void ApplyExpandedWidgetMode()
     {
         if (_refs.ClockWidget == null || _refs.CalendarStripContainer == null) return;
@@ -145,23 +144,16 @@ public sealed class ClockWidgetPresenter : IDisposable
         bool useCalendar = !IsNoWidgetMode && !IsNonCalendarWidgetMode;
         _refs.CalendarWidget.Visibility = IsNoWidgetMode || _host.IsLyricsActive ? Visibility.Collapsed : Visibility.Visible;
 
-        _refs.ClockWidget.Visibility = useAnalogClock ? Visibility.Visible : Visibility.Collapsed;
-        if (_refs.WordClockWidget != null)
-            _refs.WordClockWidget.Visibility = useWordClock ? Visibility.Visible : Visibility.Collapsed;
-        if (_refs.DigitalClockWidget != null)
-            _refs.DigitalClockWidget.Visibility = useDigitalClock ? Visibility.Visible : Visibility.Collapsed;
-        if (_refs.WeatherWidgetContent != null)
-            _refs.WeatherWidgetContent.Visibility = useWeather ? Visibility.Visible : Visibility.Collapsed;
-        if (_refs.SystemMonitorWidgetContent != null)
-            _refs.SystemMonitorWidgetContent.Visibility = useSystemMonitor ? Visibility.Visible : Visibility.Collapsed;
-        if (_refs.AiUsageWidgetContent != null)
-            _refs.AiUsageWidgetContent.Visibility = IsAiUsageWidgetMode ? Visibility.Visible : Visibility.Collapsed;
-        _refs.CalendarStripContainer.Visibility = useCalendar ? Visibility.Visible : Visibility.Collapsed;
+        SetWidgetVisible(_refs.ClockWidget, useAnalogClock);
+        SetWidgetVisible(_refs.WordClockWidget, useWordClock);
+        SetWidgetVisible(_refs.DigitalClockWidget, useDigitalClock);
+        SetWidgetVisible(_refs.WeatherWidgetContent, useWeather);
+        SetWidgetVisible(_refs.SystemMonitorWidgetContent, useSystemMonitor);
+        SetWidgetVisible(_refs.AiUsageWidgetContent, IsAiUsageWidgetMode);
+        SetWidgetVisible(_refs.CalendarStripContainer, useCalendar);
 
-        if (_refs.MonthText != null)
-            _refs.MonthText.Visibility = (IsNoWidgetMode || useWeather || useSystemMonitor || IsAiUsageWidgetMode) ? Visibility.Collapsed : Visibility.Visible;
-        if (_refs.DayText != null)
-            _refs.DayText.Visibility = (useWordClock || useDigitalClock) ? Visibility.Visible : Visibility.Collapsed;
+        SetWidgetVisible(_refs.MonthText, !((IsNoWidgetMode || useWeather || useSystemMonitor || IsAiUsageWidgetMode)));
+        SetWidgetVisible(_refs.DayText, (useWordClock || useDigitalClock));
 
         if (_refs.EventText != null && _refs.GreetingSection is FrameworkElement greetingSection)
         {
@@ -181,7 +173,11 @@ public sealed class ClockWidgetPresenter : IDisposable
 
         UpdateGreetingVisibilityForWidget();
     }
-#pragma warning restore S3776
+
+    private static void SetWidgetVisible(UIElement? widget, bool visible)
+    {
+        if (widget != null) widget.Visibility = visible ? Visibility.Visible : Visibility.Collapsed;
+    }
 
     private void UpdateGreetingVisibilityForWidget()
     {

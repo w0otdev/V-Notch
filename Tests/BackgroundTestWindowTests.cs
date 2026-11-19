@@ -145,6 +145,8 @@ public sealed class BackgroundTestWindowTests
         Assert.True(condition(), "Background window animation did not complete.");
     }
 
+    internal static string CurrentDesktopName() => DesktopName(GetThreadDesktop(GetCurrentThreadId()));
+
     private static string DesktopName(IntPtr desktop)
     {
         var name = new StringBuilder(256);

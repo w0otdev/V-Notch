@@ -8,10 +8,6 @@
     <UserControl.Resources>
         <SolidColorBrush x:Key="StableVersionBrush" Color="#80E6A5"/>
         <SolidColorBrush x:Key="PrereleaseVersionBrush" Color="#FFD464"/>
-        <SolidColorBrush x:Key="LatestBadgeInk" Color="#E4CCFF"/>
-        <SolidColorBrush x:Key="LatestBadgeFill" Color="#442969"/>
-        <SolidColorBrush x:Key="CurrentBadgeInk" Color="#BCEBFF"/>
-        <SolidColorBrush x:Key="CurrentBadgeFill" Color="#153E59"/>
         <Style x:Key="StableVersionLabel" TargetType="TextBlock">
             <Setter Property="Foreground" Value="{StaticResource StableVersionBrush}"/>
             <Style.Triggers>

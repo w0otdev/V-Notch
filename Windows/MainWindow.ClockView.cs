@@ -121,12 +121,12 @@ public partial class MainWindow : IClockWidgetHost
     void IClockWidgetHost.OpenWeatherSettings()
     {
         OpenAppSettings();
-        _activeSettingsWindow?.NavigateToSection(!_settings.EnableWeather ? "System" : "Privacy");
+        SettingsPreparation.Active?.NavigateToSection(!_settings.EnableWeather ? "System" : "Privacy");
     }
     void IClockWidgetHost.OpenAiUsageSettings()
     {
         OpenAppSettings();
-        _activeSettingsWindow?.NavigateToAiUsage();
+        SettingsPreparation.Active?.NavigateToAiUsage();
     }
 
     IntPtr IClockWidgetHost.Hwnd => _hwnd;

@@ -41,7 +41,7 @@ public partial class SpotlightPreferencesDialog : Window
         else
         {
             AppCard.Visibility = Visibility.Visible;
-            AppTitle.Text = item.DisplayTitle;
+            AppTitle.Text = new SpotlightResultPresentation(item).DisplayTitle;
             AppTitle.ToolTip = item.Title;
             AppKind.Text = Loc.Get("spotlight.kind.application");
             AppIcon.Source = item.Icon;

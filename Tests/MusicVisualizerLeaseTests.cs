@@ -1,4 +1,3 @@
-using System.Reflection;
 using VNotch.Controls;
 using Xunit;
 
@@ -12,20 +11,13 @@ public sealed class MusicVisualizerLeaseTests
     {
         SharedStaTestRunner.Run(() =>
         {
-            const BindingFlags instanceFlags = BindingFlags.Instance | BindingFlags.NonPublic;
-            const BindingFlags staticFlags = BindingFlags.Static | BindingFlags.NonPublic;
             var visualizer = new MusicVisualizer();
-            var acquire = typeof(MusicVisualizer).GetMethod("AcquireCaptureLease", instanceFlags)!.CreateDelegate<Action>(visualizer);
-            var release = typeof(MusicVisualizer).GetMethod("ReleaseCaptureLease", instanceFlags)!.CreateDelegate<Action>(visualizer);
-            var captureLock = typeof(MusicVisualizer).GetField("_lockObj", staticFlags)!.GetValue(null)!;
-            var request = typeof(MusicVisualizer).GetMethod("RequestCaptureUpdate", staticFlags)!.CreateDelegate<Action<bool>>();
-            var count = typeof(MusicVisualizer).GetField("_captureLeaseCount", staticFlags)!;
-            int initialCount = (int)count.GetValue(null)!;
+            int initialCount = MusicVisualizer.CaptureLeaseCount;
             using var entered = new ManualResetEventSlim();
             using var allowExit = new ManualResetEventSlim();
             Task worker = Task.Run(() =>
             {
-                lock (captureLock)
+                lock (MusicVisualizer.AudioStateLock)
                 {
                     entered.Set();
                     if (!allowExit.Wait(TimeSpan.FromSeconds(3)))
@@ -35,18 +27,18 @@ public sealed class MusicVisualizerLeaseTests
             try
             {
                 Assert.True(entered.Wait(TimeSpan.FromSeconds(3)));
-                acquire();
-                request(false);
-                Assert.Equal(initialCount + 1, (int)count.GetValue(null)!);
-                release();
-                Assert.Equal(initialCount, (int)count.GetValue(null)!);
+                visualizer.AcquireCaptureLease();
+                MusicVisualizer.RequestCaptureUpdate(false);
+                Assert.Equal(initialCount + 1, MusicVisualizer.CaptureLeaseCount);
+                visualizer.ReleaseCaptureLease();
+                Assert.Equal(initialCount, MusicVisualizer.CaptureLeaseCount);
                 Assert.False(worker.IsCompleted);
             }
             finally
             {
                 allowExit.Set();
                 try { worker.GetAwaiter().GetResult(); }
-                finally { release(); }
+                finally { visualizer.ReleaseCaptureLease(); }
             }
         });
     }
@@ -56,20 +48,14 @@ public sealed class MusicVisualizerLeaseTests
     {
         SharedStaTestRunner.Run(() =>
         {
-            const BindingFlags instanceFlags = BindingFlags.Instance | BindingFlags.NonPublic;
-            const BindingFlags staticFlags = BindingFlags.Static | BindingFlags.NonPublic;
             var visualizer = new MusicVisualizer();
-            var acquire = typeof(MusicVisualizer).GetMethod("AcquireCaptureLease", instanceFlags)!.CreateDelegate<Action>(visualizer);
-            var release = typeof(MusicVisualizer).GetMethod("ReleaseCaptureLease", instanceFlags)!.CreateDelegate<Action>(visualizer);
-            var count = typeof(MusicVisualizer).GetField("_captureLeaseCount", staticFlags)!;
-            var captureLock = typeof(MusicVisualizer).GetField("_lockObj", staticFlags)!.GetValue(null)!;
-            int initialCount = (int)count.GetValue(null)!;
-            acquire();
+            int initialCount = MusicVisualizer.CaptureLeaseCount;
+            visualizer.AcquireCaptureLease();
             using var entered = new ManualResetEventSlim();
             using var allowExit = new ManualResetEventSlim();
             Task worker = Task.Run(() =>
             {
-                lock (captureLock)
+                lock (MusicVisualizer.AudioStateLock)
                 {
                     entered.Set();
                     if (!allowExit.Wait(TimeSpan.FromSeconds(3)))
@@ -79,17 +65,17 @@ public sealed class MusicVisualizerLeaseTests
             try
             {
                 Assert.True(entered.Wait(TimeSpan.FromSeconds(3)));
-                for (int frame = 0; frame < 240; frame++) acquire();
+                for (int frame = 0; frame < 240; frame++) visualizer.AcquireCaptureLease();
                 Assert.False(worker.IsCompleted);
-                Assert.Equal(initialCount + 1, (int)count.GetValue(null)!);
+                Assert.Equal(initialCount + 1, MusicVisualizer.CaptureLeaseCount);
             }
             finally
             {
                 allowExit.Set();
                 try { worker.GetAwaiter().GetResult(); }
-                finally { release(); }
+                finally { visualizer.ReleaseCaptureLease(); }
             }
-            Assert.Equal(initialCount, (int)count.GetValue(null)!);
+            Assert.Equal(initialCount, MusicVisualizer.CaptureLeaseCount);
         });
     }
 }

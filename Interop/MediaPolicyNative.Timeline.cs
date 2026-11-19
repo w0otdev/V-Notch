@@ -1,6 +1,6 @@
 using System.Runtime.InteropServices;
 
-namespace VNotch.Services.Interop;
+namespace VNotch.Interop;
 
 internal static partial class MediaPolicyNative
 {

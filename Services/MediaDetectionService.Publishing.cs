@@ -190,7 +190,7 @@ public sealed partial class MediaDetectionService : IMediaDetectionService, IAsy
         return r.debounce;
     }
 
-    private void CommitPublishedState(MediaInfo info, string currentSignature)
+    internal void CommitPublishedState(MediaInfo info, string currentSignature)
     {
         _lastPublishedInfo = info.Clone();
         _lastPublishedSignature = currentSignature;

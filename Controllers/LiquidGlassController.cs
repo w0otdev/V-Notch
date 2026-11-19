@@ -221,10 +221,11 @@ public sealed partial class LiquidGlassController : IDisposable
     private int _disposed;
     private long _refreshVersion;
     private long _renderedRefreshVersion;
-    private bool ForceRefreshNeeded => Volatile.Read(ref _refreshVersion) != Volatile.Read(ref _renderedRefreshVersion);
+    internal long RefreshVersion => Volatile.Read(ref _refreshVersion);
+    internal bool ForceRefreshNeeded => Volatile.Read(ref _refreshVersion) != Volatile.Read(ref _renderedRefreshVersion);
 
     // A completed frame acknowledges only requests captured before it started.
-    private void CompleteRefresh(long version) => Volatile.Write(ref _renderedRefreshVersion, version);
+    internal void CompleteRefresh(long version) => Volatile.Write(ref _renderedRefreshVersion, version);
 
     private readonly object _sync = new();
     private GlassParams _params = GlassParams.Default;
@@ -731,7 +732,7 @@ public sealed partial class LiquidGlassController : IDisposable
         catch { /* shutting down */ }
     }
 
-    private void RequestRenderTimerPeriod()
+    internal void RequestRenderTimerPeriod()
     {
         if (Interlocked.Exchange(ref _renderTimerPeriodRequested, 1) != 0)
             return;
@@ -752,7 +753,7 @@ public sealed partial class LiquidGlassController : IDisposable
         }
     }
 
-    private void ReleaseRenderTimerPeriod()
+    internal void ReleaseRenderTimerPeriod()
     {
         if (Interlocked.Exchange(ref _renderTimerPeriodRequested, 0) == 0)
             return;

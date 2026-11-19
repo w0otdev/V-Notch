@@ -1,15 +1,9 @@
+using VNotch.Models;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
 
 namespace VNotch.Controls;
-
-public enum TrayIconKind
-{
-    All, Pin, Links, Text, Code, Images, Colors, Files, Work, Ideas, Email,
-    Shopping, Receipts, Personal, Important, Archive, Search, Lock, Unlock,
-    Arrow, Keyboard, Pause, Resume, Info, Delete, Copy, More, Add, SelectAll
-}
 
 /// <summary>macOS-style vector symbols on a consistent 16-point coordinate grid.</summary>
 public sealed class TrayIcon : Control
@@ -40,6 +34,8 @@ public sealed class TrayIcon : Control
         UpdateViewport();
     }
 
+    internal void InvalidateViewport() => _viewport = null;
+
     private void UpdateViewport()
     {
         double scale = Math.Min(RenderSize.Width, RenderSize.Height) / 16;
@@ -51,6 +47,11 @@ public sealed class TrayIcon : Control
     protected override void OnRender(DrawingContext drawingContext)
     {
         base.OnRender(drawingContext);
+        DrawIcon(drawingContext);
+    }
+
+    internal void DrawIcon(DrawingContext drawingContext)
+    {
         if (RenderSize.Width <= 0 || RenderSize.Height <= 0) return;
         // WPF can render before delivering the deferred SizeChanged notification.
         double scale = Math.Min(RenderSize.Width, RenderSize.Height) / 16;

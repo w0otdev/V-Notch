@@ -1,5 +1,4 @@
 using System.IO;
-using System.Reflection;
 using System.Security.Cryptography;
 using System.Windows.Threading;
 using VNotch.Controllers;
@@ -12,6 +11,15 @@ namespace VNotch.Tests;
 [Collection("Localization")]
 public sealed class TranslationStartupTests
 {
+    private static TranslationWindow OpenHiddenWindow(LiveTranslationController controller, bool showActivated = false)
+    {
+        var window = controller.EnsureWindow();
+        BackgroundTestWindows.ProtectInput(window);
+        window.Opacity = 0;
+        if (!showActivated) window.ShowActivated = false;
+        return window;
+    }
+
     [Theory]
     [InlineData("auto", "VND")]
     [InlineData("JPY", "JPY")]
@@ -27,21 +35,19 @@ public sealed class TranslationStartupTests
             () => new DateTimeOffset(2026, 10, 11, 12, 0, 0, TimeSpan.Zero));
         using var controller = new LiveTranslationController(Dispatcher.CurrentDispatcher, () => { }, fixture.Store, engine, currencyRates: rates);
         controller.ApplySettings(new NotchSettings { TranslationTargetLanguage = "vi", TranslationTargetCurrency = choice });
-        var window = (TranslationWindow)typeof(LiveTranslationController).GetMethod("EnsureWindow", BindingFlags.NonPublic | BindingFlags.Instance)!.Invoke(controller, null)!;
-        BackgroundTestWindows.ProtectInput(window);
-        window.Opacity = 0;
-        window.ShowActivated = false;
-        typeof(LiveTranslationController).GetField("_text", BindingFlags.NonPublic | BindingFlags.Instance)!.SetValue(controller, "USD 10");
+        var window = OpenHiddenWindow(controller);
+        controller.InputText = "USD 10";
         window.ShowClipboard("USD 10");
-        await ((Task)typeof(LiveTranslationController).GetMethod("TranslateAsync", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)!.Invoke(controller, null)!).WaitAsync(ct);
+        await controller.TranslateAsync().WaitAsync(ct);
+
         Assert.True(window.ResultText.Text.EndsWith(target), $"Currency result: '{window.ResultText.Text}', status: '{window.StatusText.Text}'");
-        Assert.Equal(0, engine.Calls);
-        Assert.False(engine.Preparing.Task.IsCompleted);
+        Assert.True(engine.Calls == 0, $"Expected currency conversion to bypass local model, got {engine.Calls} calls.");
+        Assert.False(engine.Preparing.Task.IsCompleted, "Currency conversion must not start model preparation.");
         Assert.Equal("USD → " + target, window.LanguageSummary.Text);
         Assert.Contains("2026-10-11", window.StatusText.Text);
         Assert.Contains("Frankfurter", window.StatusText.Text);
-        Assert.True(window.CopyButton.IsEnabled);
-        Assert.False(window.ReplaceButton.IsEnabled);
+        Assert.True(window.CopyButton.IsEnabled, "CopyButton should be enabled for converted currency result.");
+        Assert.False(window.ReplaceButton.IsEnabled, "ReplaceButton should stay disabled for clipboard-opened currency conversion.");
     });
 
     [Theory]
@@ -58,13 +64,10 @@ public sealed class TranslationStartupTests
         var rates = new CurrencyRateService(client, privacy, System.IO.Path.Combine(System.IO.Path.GetDirectoryName(fixture.Path)!, "rates"));
         using var controller = new LiveTranslationController(Dispatcher.CurrentDispatcher, () => { }, fixture.Store, engine, currencyRates: rates);
         controller.ApplySettings(new NotchSettings { TranslationSourceLanguage = "en", TranslationTargetLanguage = target });
-        var window = (TranslationWindow)typeof(LiveTranslationController).GetMethod("EnsureWindow", BindingFlags.NonPublic | BindingFlags.Instance)!.Invoke(controller, null)!;
-        BackgroundTestWindows.ProtectInput(window);
-        window.Opacity = 0;
-        window.ShowActivated = false;
-        typeof(LiveTranslationController).GetField("_text", BindingFlags.NonPublic | BindingFlags.Instance)!.SetValue(controller, "USD 10");
+        var window = OpenHiddenWindow(controller);
+        controller.InputText = "USD 10";
         window.ShowClipboard("USD 10");
-        _ = typeof(LiveTranslationController).GetMethod("TranslateAsync", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)!.Invoke(controller, null);
+        _ = controller.TranslateAsync();
         await WpfFrameWaiter.UntilAsync(() => window.ResultText.Text == "USD 10", "local fallback", ct);
         Assert.Equal(1, engine.Calls);
     });
@@ -136,21 +139,17 @@ public sealed class TranslationStartupTests
         using var engine = new PreparedEngine { BlockPreparation = true };
         using var controller = new LiveTranslationController(Dispatcher.CurrentDispatcher, () => { }, fixture.Store, engine);
         controller.ApplySettings(new NotchSettings { TranslationSourceLanguage = "en", TranslationTargetLanguage = "vi", EnableCurrencyConversion = false });
-        var service = (LocalTranslationService)typeof(LiveTranslationController).GetField("_service", BindingFlags.NonPublic | BindingFlags.Instance)!.GetValue(controller)!;
-        await service.TranslateAsync("hello", "en", "vi", ct);
+        await controller.Service.TranslateAsync("hello", "en", "vi", ct);
         var preparation = controller.PrepareModelAsync();
         await engine.Preparing.Task.WaitAsync(ct);
         try
         {
-            var window = (TranslationWindow)typeof(LiveTranslationController).GetMethod("EnsureWindow", BindingFlags.NonPublic | BindingFlags.Instance)!.Invoke(controller, null)!;
-            BackgroundTestWindows.ProtectInput(window);
-            window.Opacity = 0;
-            window.ShowActivated = false;
-            typeof(LiveTranslationController).GetField("_text", BindingFlags.NonPublic | BindingFlags.Instance)!.SetValue(controller, "hello");
+            var window = OpenHiddenWindow(controller);
+            controller.InputText = "hello";
             window.ShowClipboard("hello");
-            _ = typeof(LiveTranslationController).GetMethod("TranslateAsync", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)!.Invoke(controller, null);
+            _ = controller.TranslateAsync();
             await WpfFrameWaiter.UntilAsync(() => window.OutputText == "vi result" && window.CopyButton.IsEnabled, "cached result during model preparation", ct);
-            Assert.False(preparation.IsCompleted);
+            Assert.False(preparation.IsCompleted, "Cached response should present before background preparation completes.");
             Assert.Equal(1, engine.Calls);
         }
         finally { engine.Prepared.TrySetResult(); await preparation.WaitAsync(ct); }
@@ -204,12 +203,12 @@ public sealed class TranslationStartupTests
         settings.EnableLiveTranslation = true;
         controller.ApplySettings(settings);
         controller.ApplySettings(settings);
-        typeof(LiveTranslationController).GetMethod("ModelChanged", BindingFlags.NonPublic | BindingFlags.Instance)!.Invoke(controller, null);
+        controller.ModelChanged();
         await Dispatcher.CurrentDispatcher.InvokeAsync(() => { }, DispatcherPriority.ApplicationIdle, ct);
-        Assert.False(engine.Preparing.Task.IsCompleted);
-        Assert.Null(typeof(LiveTranslationController).GetField("_preparation", BindingFlags.NonPublic | BindingFlags.Instance)!.GetValue(controller));
-        Assert.NotNull(typeof(LiveTranslationController).GetField("_selectionService", BindingFlags.NonPublic | BindingFlags.Instance)!.GetValue(controller));
-        Assert.NotNull(typeof(LiveTranslationController).GetField("_shiftShortcut", BindingFlags.NonPublic | BindingFlags.Instance)!.GetValue(controller));
+        Assert.False(engine.Preparing.Task.IsCompleted, "Enabling watchers must not eagerly start model preparation.");
+        Assert.False(controller.HasActivePreparation, "Preparation task should remain unstarted until translation or explicit warmup.");
+        Assert.True(controller.HasSelectionWatcher, "Selection watcher should be active when live translation is enabled.");
+        Assert.True(controller.HasShiftShortcut, "Shift shortcut should be active when live translation is enabled.");
         var preparation = controller.PrepareModelAsync();
         try
         {
@@ -252,17 +251,9 @@ public sealed class TranslationStartupTests
         var foreground = new IntPtr(42);
         using var controller = new LiveTranslationController(Dispatcher.CurrentDispatcher, () => { }, fixture.Store, engine, () => foreground);
         controller.ApplySettings(new NotchSettings());
-        typeof(LiveTranslationController).GetField("_selectionService", BindingFlags.NonPublic | BindingFlags.Instance)!
-            .SetValue(controller, new TranslationSelectionService());
-        ((NotchSettings)typeof(LiveTranslationController).GetField("_settings", BindingFlags.NonPublic | BindingFlags.Instance)!
-            .GetValue(controller)!).EnableLiveTranslation = true;
-        var window = (TranslationWindow)typeof(LiveTranslationController).GetMethod("EnsureWindow", BindingFlags.NonPublic | BindingFlags.Instance)!
-            .Invoke(controller, null)!;
-        BackgroundTestWindows.ProtectInput(window);
-        window.Opacity = 0;
-        window.ShowActivated = false;
-        typeof(LiveTranslationController).GetMethod("ManualSelectionUnavailable", BindingFlags.NonPublic | BindingFlags.Instance)!
-            .Invoke(controller, [foreground, 0L]);
+        controller.AttachSelectionServiceForTest(new TranslationSelectionService());
+        var window = OpenHiddenWindow(controller);
+        controller.ManualSelectionUnavailable(foreground, 0L);
         if (focusChanged) foreground = new IntPtr(43);
         await Dispatcher.CurrentDispatcher.InvokeAsync(() => { }, DispatcherPriority.ApplicationIdle, ct);
         Assert.Equal(!focusChanged, window.IsVisible);
@@ -281,35 +272,27 @@ public sealed class TranslationStartupTests
         using var controller = new LiveTranslationController(Dispatcher.CurrentDispatcher, () => { }, fixture.Store, engine, () => foreground);
         controller.ApplySettings(new NotchSettings { TranslationSourceLanguage = "en", TranslationTargetLanguage = "vi" });
         // Inject an unwired watcher so real desktop selection events cannot steer this fixture.
-        typeof(LiveTranslationController).GetField("_selectionService", BindingFlags.NonPublic | BindingFlags.Instance)!
-            .SetValue(controller, new TranslationSelectionService());
-        ((NotchSettings)typeof(LiveTranslationController).GetField("_settings", BindingFlags.NonPublic | BindingFlags.Instance)!
-            .GetValue(controller)!).EnableLiveTranslation = true;
-        var window = (TranslationWindow)typeof(LiveTranslationController).GetMethod("EnsureWindow", BindingFlags.NonPublic | BindingFlags.Instance)!
-            .Invoke(controller, null)!;
-        BackgroundTestWindows.ProtectInput(window);
-        window.Opacity = 0;
-        window.ShowActivated = false;
+        controller.AttachSelectionServiceForTest(new TranslationSelectionService());
+        var window = OpenHiddenWindow(controller);
         var selection = new TranslationSelection(1, "hello", new System.Windows.Rect(100, 100, 100, 20), foreground, false);
-        var present = typeof(LiveTranslationController).GetMethod("PresentSelection", BindingFlags.NonPublic | BindingFlags.Instance)!;
-        present.Invoke(controller, [selection, true, null]);
+        controller.PresentSelection(selection, true);
         await WpfFrameWaiter.UntilAsync(() => window.ResultText.Text == "vi result" && !window.IsPresentationAnimating, "manual translation settles", ct);
         for (int i = 2; i < 14; i++)
         {
-            present.Invoke(controller, [selection with { Id = i }, true, null]);
-            present.Invoke(controller, [selection with { Id = i }, false, null]);
-            present.Invoke(controller, [null, false, null]);
+            controller.PresentSelection(selection with { Id = i }, true);
+            controller.PresentSelection(selection with { Id = i }, false);
+            controller.PresentSelection(null, false);
         }
         await Dispatcher.CurrentDispatcher.InvokeAsync(() => { }, DispatcherPriority.ApplicationIdle, ct);
-        Assert.True(window.IsVisible);
-        Assert.False(window.IsPresentationAnimating);
+        Assert.True(window.IsVisible, "Popup should stay visible across repeated snapshots.");
+        Assert.False(window.IsPresentationAnimating, "Duplicate snapshots must not restart entrance animation.");
         Assert.Equal("hello", window.OriginalText.Text);
         Assert.Equal("vi result", window.ResultText.Text);
         Assert.Equal(1, engine.Calls);
 
         window.Dismiss();
         await WpfFrameWaiter.UntilAsync(() => !window.IsVisible, "explicit dismissal finishes", ct);
-        present.Invoke(controller, [selection, true, null]);
+        controller.PresentSelection(selection, true);
         await WpfFrameWaiter.UntilAsync(() => window.IsVisible && window.ResultText.Text == "vi result", "a new deliberate request reopens", ct);
     });
 
@@ -323,11 +306,8 @@ public sealed class TranslationStartupTests
         using var controller = new LiveTranslationController(Dispatcher.CurrentDispatcher, () => { }, fixture.Store, engine);
         var settings = new NotchSettings { TranslationSourceLanguage = "en", TranslationTargetLanguage = "vi", AutoLiveTranslation = false };
         controller.ApplySettings(settings);
-        var window = (TranslationWindow)typeof(LiveTranslationController).GetMethod("EnsureWindow", BindingFlags.NonPublic | BindingFlags.Instance)!.Invoke(controller, null)!;
-        BackgroundTestWindows.ProtectInput(window);
-        window.Opacity = 0;
-        window.ShowActivated = false;
-        typeof(LiveTranslationController).GetField("_text", BindingFlags.NonPublic | BindingFlags.Instance)!.SetValue(controller, "hello");
+        var window = OpenHiddenWindow(controller);
+        controller.InputText = "hello";
         window.ShowClipboard("hello");
         if (throughSettings)
         {
@@ -350,11 +330,8 @@ public sealed class TranslationStartupTests
         using var engine = new PreparedEngine { BlockFirstTranslation = true };
         using var controller = new LiveTranslationController(Dispatcher.CurrentDispatcher, () => { }, fixture.Store, engine);
         controller.ApplySettings(new NotchSettings { TranslationSourceLanguage = "en", TranslationTargetLanguage = "vi" });
-        var window = (TranslationWindow)typeof(LiveTranslationController).GetMethod("EnsureWindow", BindingFlags.NonPublic | BindingFlags.Instance)!.Invoke(controller, null)!;
-        BackgroundTestWindows.ProtectInput(window);
-        window.Opacity = 0;
-        window.ShowActivated = false;
-        typeof(LiveTranslationController).GetField("_text", BindingFlags.NonPublic | BindingFlags.Instance)!.SetValue(controller, "hello");
+        var window = OpenHiddenWindow(controller);
+        controller.InputText = "hello";
         window.ShowClipboard("hello");
         window.TargetLanguageCombo.SelectedValue = "fr";
         await engine.Translating.Task.WaitAsync(ct);
@@ -376,23 +353,20 @@ public sealed class TranslationStartupTests
         using var engine = new PreparedEngine();
         using var controller = new LiveTranslationController(Dispatcher.CurrentDispatcher, () => { }, fixture.Store, engine);
         controller.ApplySettings(new NotchSettings { TranslationSourceLanguage = "en", TranslationTargetLanguage = "vi" });
-        var window = (TranslationWindow)typeof(LiveTranslationController).GetMethod("EnsureWindow", BindingFlags.NonPublic | BindingFlags.Instance)!.Invoke(controller, null)!;
-        BackgroundTestWindows.ProtectInput(window);
-        window.Opacity = 0;
-        window.ShowActivated = false;
+        var window = OpenHiddenWindow(controller);
         int uiThread = Environment.CurrentManagedThreadId, inferenceThread = uiThread;
         engine.OnTranslate = () => inferenceThread = Environment.CurrentManagedThreadId;
         try
         {
-            typeof(LiveTranslationController).GetField("_text", BindingFlags.NonPublic | BindingFlags.Instance)!.SetValue(controller, "hello");
+            controller.InputText = "hello";
             window.ShowSelection(new(1, "hello", new System.Windows.Rect(100, 100, 100, 20), IntPtr.Zero, false), true);
             // Hold the entrance gate without pumping WPF. Translation must still
             // begin on a worker thread, independently of render/animation progress.
             var entrance = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-            typeof(TranslationWindow).GetField("_entranceCompletion", BindingFlags.NonPublic | BindingFlags.Instance)!.SetValue(window, entrance);
-            _ = typeof(LiveTranslationController).GetMethod("TranslateAsync", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)!.Invoke(controller, null);
-            Assert.True(engine.Translating.Task.Wait(TimeSpan.FromSeconds(3)));
-            Assert.False(entrance.Task.IsCompleted);
+            window.SetEntranceGateForTest(entrance);
+            _ = controller.TranslateAsync();
+            Assert.True(engine.Translating.Task.Wait(TimeSpan.FromSeconds(3)), "Inference should start on a worker thread while entrance gate is held.");
+            Assert.False(entrance.Task.IsCompleted, "Entrance gate should remain incomplete until manually released.");
             Assert.NotEqual(uiThread, inferenceThread);
             entrance.TrySetResult();
             await WpfFrameWaiter.UntilAsync(() => window.ResultText.Text == "vi result", "translation overlaps entrance", ct);
@@ -411,13 +385,10 @@ public sealed class TranslationStartupTests
         using var fixture = new ModelFixture();
         using var engine = new PreparedEngine { BlockFirstTranslation = true };
         using var controller = new LiveTranslationController(Dispatcher.CurrentDispatcher, () => { }, fixture.Store, engine);
-        var window = (TranslationWindow)typeof(LiveTranslationController).GetMethod("EnsureWindow", BindingFlags.NonPublic | BindingFlags.Instance)!.Invoke(controller, null)!;
-        BackgroundTestWindows.ProtectInput(window);
-        window.Opacity = 0;
-        window.ShowActivated = false;
-        typeof(LiveTranslationController).GetField("_text", BindingFlags.NonPublic | BindingFlags.Instance)!.SetValue(controller, "hello");
+        var window = OpenHiddenWindow(controller);
+        controller.InputText = "hello";
         window.ShowSelection(new(1, "hello", new System.Windows.Rect(100, 100, 100, 20), IntPtr.Zero, false), true);
-        _ = typeof(LiveTranslationController).GetMethod("TranslateAsync", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)!.Invoke(controller, null);
+        _ = controller.TranslateAsync();
         Assert.True(window.IsPresentationAnimating);
         Assert.True(engine.Translating.Task.Wait(TimeSpan.FromSeconds(3)));
         if (action == "cancel") window.CancelButton.RaiseEvent(new System.Windows.RoutedEventArgs(System.Windows.Controls.Button.ClickEvent));
@@ -438,12 +409,10 @@ public sealed class TranslationStartupTests
         using var fixture = new ModelFixture();
         using var engine = new PreparedEngine { BlockPreparation = true };
         using var controller = new LiveTranslationController(Dispatcher.CurrentDispatcher, () => { }, fixture.Store, engine);
-        var window = (TranslationWindow)typeof(LiveTranslationController).GetMethod("EnsureWindow", BindingFlags.NonPublic | BindingFlags.Instance)!.Invoke(controller, null)!;
-        BackgroundTestWindows.ProtectInput(window);
-        window.Opacity = 0;
-        typeof(LiveTranslationController).GetField("_text", BindingFlags.NonPublic | BindingFlags.Instance)!.SetValue(controller, "hello");
+        var window = OpenHiddenWindow(controller, showActivated: true);
+        controller.InputText = "hello";
         window.ShowSelection(new(1, "hello", new System.Windows.Rect(100, 100, 100, 20), IntPtr.Zero, false), true);
-        _ = typeof(LiveTranslationController).GetMethod("TranslateAsync", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)!.Invoke(controller, null);
+        _ = controller.TranslateAsync();
         await engine.Preparing.Task.WaitAsync(ct);
         var preparation = controller.PrepareModelAsync();
         window.Dismiss();
@@ -510,12 +479,10 @@ public sealed class TranslationStartupTests
             () => new DateTimeOffset(2026, 10, 11, 12, 0, 0, TimeSpan.Zero));
         using var controller = new LiveTranslationController(Dispatcher.CurrentDispatcher, () => { }, fixture.Store, engine, currencyRates: rates);
         controller.ApplySettings(new NotchSettings { TranslationTargetCurrency = "VND" });
-        var window = (TranslationWindow)typeof(LiveTranslationController).GetMethod("EnsureWindow", BindingFlags.NonPublic | BindingFlags.Instance)!.Invoke(controller, null)!;
-        BackgroundTestWindows.ProtectInput(window);
-        window.Opacity = 0;
-        typeof(LiveTranslationController).GetField("_text", BindingFlags.NonPublic | BindingFlags.Instance)!.SetValue(controller, "USD 50");
+        var window = OpenHiddenWindow(controller, showActivated: true);
+        controller.InputText = "USD 50";
         window.ShowClipboard("USD 50");
-        _ = typeof(LiveTranslationController).GetMethod("TranslateAsync", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)!.Invoke(controller, null);
+        _ = controller.TranslateAsync();
         await handler.Started.Task.WaitAsync(ct);
         window.SourceCurrencyCombo.SelectedValue = "SGD";
         window.TargetCurrencyCombo.SelectedValue = "EUR";
@@ -533,14 +500,11 @@ public sealed class TranslationStartupTests
         using var engine = new PreparedEngine { BlockFirstTranslation = true };
         using var controller = new LiveTranslationController(Dispatcher.CurrentDispatcher, () => { }, fixture.Store, engine);
         controller.ApplySettings(new NotchSettings { TranslationSourceLanguage = "en", TranslationTargetLanguage = "vi" });
-        var window = (TranslationWindow)typeof(LiveTranslationController).GetMethod("EnsureWindow", BindingFlags.NonPublic | BindingFlags.Instance)!.Invoke(controller, null)!;
-        BackgroundTestWindows.ProtectInput(window);
-        window.Opacity = 0;
-        window.ShowActivated = false;
-        typeof(LiveTranslationController).GetField("_text", BindingFlags.NonPublic | BindingFlags.Instance)!.SetValue(controller, "hello");
+        var window = OpenHiddenWindow(controller);
+        controller.InputText = "hello";
         window.ShowClipboard("hello");
         await window.WaitForEntranceAsync(ct);
-        _ = typeof(LiveTranslationController).GetMethod("TranslateAsync", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)!.Invoke(controller, null);
+        _ = controller.TranslateAsync();
         await engine.Translating.Task.WaitAsync(ct);
         Assert.Null(engine.Preview);
         await WpfFrameWaiter.NextAsync(ct);

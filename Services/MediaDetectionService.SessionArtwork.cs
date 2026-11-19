@@ -15,7 +15,6 @@ namespace VNotch.Services;
 
 public sealed partial class MediaDetectionService : IMediaDetectionService, IAsyncDisposable
 {
-#pragma warning disable S3776
     private async Task ApplySessionThumbnailWithRefreshAsync(
         MediaInfo info,
         GlobalSystemMediaTransportControlsSession? session,

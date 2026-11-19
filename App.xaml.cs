@@ -143,6 +143,7 @@ public partial class App : Application
             WindowAnimationPolicy.SetShadowEnabled(mainSettings.EnableShadow);
             LocalizedPresentation.Initialize();
             Loc.SetLanguage(mainSettings.Language);
+            AppIntegrityService.IntegrityAlertPrompt = ShowIntegrityConfirmationDialog;
             AnimationConfig.Configure(mainSettings.AnimationFps, mainSettings.AutoAnimationFps);
 
 #if DEBUG
@@ -522,5 +523,16 @@ public partial class App : Application
     internal static void ApplyProcessPriority(string priority)
     {
         ProcessPriorityPolicy.Apply(priority);
+    }
+
+    private static bool ShowIntegrityConfirmationDialog(string title, string message)
+    {
+        var options = new ConfirmationDialog.DialogOptions(
+            Title: title,
+            ConfirmText: Loc.Get("integrity.openOfficialRepo"),
+            CancelText: Loc.Get("integrity.ignore"),
+            Icon: ConfirmationDialog.DialogIcon.Warning,
+            Style: ConfirmationDialog.DialogStyle.Danger);
+        return ConfirmationDialog.Show(Current?.MainWindow, message, options);
     }
 }

@@ -1,7 +1,6 @@
 using System.ComponentModel;
 using System.IO;
 using System.Windows.Media;
-using VNotch.Services;
 
 namespace VNotch.Models;
 
@@ -30,49 +29,6 @@ public sealed record SpotlightSearchItem(
 
     public double Score { get; init; }
 
-    // Keep the real title/target for matching, launching and copying paths.
-    public string DisplayTitle
-    {
-        get
-        {
-            var entry = Services.Spotlight.SpotlightSystemCatalog.Find(Target);
-            if (entry?.Kind == Kind) return ResolveSystemLabel($"spotlight.system.{entry.Key}", entry.Keywords);
-            if (Kind is not (SpotlightResultKind.Application or SpotlightResultKind.File)) return Title;
-            string extension = Path.GetExtension(Target);
-            return extension.Length > 0 && Title.Length > extension.Length
-                && Title.EndsWith(extension, StringComparison.OrdinalIgnoreCase)
-                ? Title[..^extension.Length] : Title;
-        }
-    }
-
-    public string DisplaySubtitle
-    {
-        get
-        {
-            var entry = Services.Spotlight.SpotlightSystemCatalog.Find(Target);
-            if (entry?.Kind == Kind)
-            {
-                return entry.Kind switch
-                {
-                    SpotlightResultKind.Settings => ResolveSystemLabel("spotlight.system.settings", "Windows Settings"),
-                    SpotlightResultKind.SystemAction => ResolveSystemLabel("spotlight.system.actions", "System actions"),
-                    _ => ResolveSystemLabel("spotlight.system.tools", "Windows tools")
-                };
-            }
-            if (!Path.IsPathFullyQualified(Subtitle)) return Subtitle;
-            return Kind == SpotlightResultKind.Application ? Loc.Get("spotlight.kind.application")
-                : Path.GetDirectoryName(Target) ?? Subtitle;
-        }
-    }
-
-    private static string ResolveSystemLabel(string key, string fallbackKeywords)
-    {
-        string text = Loc.Get(key);
-        if (!string.IsNullOrWhiteSpace(text) && text != key) return text;
-        int sep = fallbackKeywords.IndexOf(';');
-        return sep >= 0 ? fallbackKeywords[..sep] : fallbackKeywords;
-    }
-
     private ImageSource? _icon;
     public ImageSource? Icon
     {
@@ -95,38 +51,9 @@ public sealed record SpotlightSearchItem(
             if (_isPinned == value) return;
             _isPinned = value;
             PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(IsPinned)));
-            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(SectionTitle)));
         }
     }
-
-    public string SectionTitle
-    {
-        get
-        {
-            if (IsPinned) return Loc.Get("spotlight.section.pinned");
-            return IsRecent
-        ? Loc.Get("spotlight.section.recents")
-        : Loc.Get(Kind switch
-        {
-            SpotlightResultKind.Application => "spotlight.section.apps",
-            SpotlightResultKind.Calculation => "spotlight.section.calculator",
-            SpotlightResultKind.Settings => "spotlight.system.settings",
-            SpotlightResultKind.SystemAction => "spotlight.system.actions",
-            _ => "spotlight.section.files"
-        });
-        }
-    }
-
-    public Geometry? SolidIcon => Services.Spotlight.SpotlightSolidIcons.Get(this);
 
     public bool IsShortcut => Kind == SpotlightResultKind.Application
         && string.Equals(Path.GetExtension(Target), ".lnk", StringComparison.OrdinalIgnoreCase);
-
-    public string Glyph => Services.Spotlight.SpotlightSystemCatalog.Find(Target)?.Glyph ?? (Kind switch
-    {
-        SpotlightResultKind.Application => "\uE71D",
-        SpotlightResultKind.Folder => "\uE8B7",
-        SpotlightResultKind.Calculation => "\uE8EF",
-        _ => "\uE8A5"
-    });
 }

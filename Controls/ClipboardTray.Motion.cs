@@ -55,8 +55,11 @@ public sealed partial class ClipboardTray
         out double outOffsetX,
         out byte outShouldAnimate);
 
+    internal bool AnimateResults { get => _animateResults; set => _animateResults = value; }
     private bool _animateResults = true;
     private int _motionVersion;
+    internal bool IsLeaving => _trayLeaving;
+    internal int EntranceStaggerVersion => _entranceStaggerVersion;
     private bool _trayLeaving;
     private bool _entranceWasHidden = true;
     private int _entranceStaggerVersion;
@@ -120,7 +123,9 @@ public sealed partial class ClipboardTray
             AnimateLayer(EmptyText, true, 0, true, MotionStandard, 4);
     }
 
-    public void BeginEntrance()
+    public void BeginEntrance() => BeginEntrance(null);
+
+    internal void BeginEntrance(Action? searchEntranceCompleted)
     {
         bool reversing = _trayLeaving && !_entranceWasHidden && IsVisible && Opacity > 0.01;
         _entranceWasHidden = false;
@@ -133,7 +138,7 @@ public sealed partial class ClipboardTray
 
         // Fluid, organic Apple waterfall fade:
         // Header components land first with subtle upward drift.
-        AnimateLayer(SearchSurface, true, 0, !reversing, 300, 6);
+        AnimateLayer(SearchSurface, true, 0, !reversing, 300, 6, searchEntranceCompleted);
         if (ToolbarSurface.Visibility == Visibility.Visible) AnimateLayer(ToolbarSurface, true, 20, !reversing, 300, 6);
         // Category pill track slides in right after the header.
         AnimateLayer(CategoryScroll, true, 40, !reversing, 320, 8);
@@ -241,7 +246,7 @@ public sealed partial class ClipboardTray
         });
     }
 
-    private static void AnimateLayer(FrameworkElement element, bool entering, int delay, bool fresh = false, int customDuration = 0, double driftY = 6, Action? completed = null)
+    internal static void AnimateLayer(FrameworkElement element, bool entering, int delay, bool fresh = false, int customDuration = 0, double driftY = 6, Action? completed = null)
     {
         // PIN entry responds immediately; exits retain the panel until the fade finishes.
         bool personalLock = element.Name == "LockPanel";
@@ -389,6 +394,7 @@ public sealed partial class ClipboardTray
     }
 
     private readonly HashSet<Guid> _arrivingCards = [];
+    internal Dictionary<Guid, double>? PendingCardPositions => _pendingCardPositions;
     private Dictionary<Guid, double>? _pendingCardPositions;
     private Dictionary<Guid, (double X, Transform Motion)>? _capturedCardLayouts;
     private Dictionary<Guid, (double X, Transform Motion)>? _pendingCardLayouts;
@@ -403,7 +409,7 @@ public sealed partial class ClipboardTray
         catch (InvalidOperationException) { return false; }
     }
 
-    private Dictionary<Guid, double> CaptureCardPositions()
+    internal Dictionary<Guid, double> CaptureCardPositions()
     {
         var positions = new Dictionary<Guid, double>();
         _capturedCardLayouts = null;
@@ -421,7 +427,7 @@ public sealed partial class ClipboardTray
         return positions;
     }
 
-    private void AnimateCardPositions(Dictionary<Guid, double> positions)
+    internal void AnimateCardPositions(Dictionary<Guid, double> positions)
     {
         var layouts = _capturedCardLayouts;
         CancelCardPositionAnimation();

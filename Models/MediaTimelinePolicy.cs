@@ -1,6 +1,6 @@
-using VNotch.Services.Interop;
+using VNotch.Interop;
 
-namespace VNotch.Services;
+namespace VNotch.Models;
 
 internal static class MediaTimelinePolicy
 {

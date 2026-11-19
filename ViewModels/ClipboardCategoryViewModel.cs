@@ -1,5 +1,5 @@
+using VNotch.Models;
 using CommunityToolkit.Mvvm.ComponentModel;
-using VNotch.Controls;
 using VNotch.Services;
 
 namespace VNotch.ViewModels;

@@ -142,7 +142,8 @@ public sealed partial class MediaSessionVolumeService : IDisposable
                 }
                 catch
                 {
-                    try { simpleVolume.Dispose(); } catch { }
+                    try { simpleVolume.Dispose(); }
+                    catch (Exception disposeEx) { RuntimeLog.Debug("MEDIA-VOLUME", $"Ignored dispose failure after volume error: {disposeEx.Message}"); }
                     throw;
                 }
             }

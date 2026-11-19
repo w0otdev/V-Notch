@@ -63,11 +63,10 @@ public partial class SettingsWindow
         return ease;
     }
 
-    private void PlayEntranceAnimation()
+    internal void PlayEntranceAnimation()
     {
         var easeOut = EntranceEaseOut;
         var easeOutStrong = EntranceEaseOutStrong;
-        var itemEase = EntranceEaseOut;
         int fps = Math.Min(60, VNotch.Services.AnimationConfig.TargetFps);
 
         var totalDur = TimeSpan.FromMilliseconds(640);
@@ -167,49 +166,7 @@ public partial class SettingsWindow
         {
             if (_isClosing) return;
 
-            void AttachEntranceShadow()
-            {
-                if (_isClosing) return;
-                MainShell.Effect = null;
-                if (!(EnableShadowCheck?.IsChecked ?? _settings.EnableShadow))
-                {
-                    if (MainShellShadow != null) MainShellShadow.Effect = null;
-                    return;
-                }
-                if (_isClosing) return;
-                if (Mouse.LeftButton == MouseButtonState.Pressed)
-                {
-                    PreviewMouseLeftButtonUp += OnMouseReleasedBeforeShadow;
-                    return;
-                }
-
-                var shadow = new System.Windows.Media.Effects.DropShadowEffect
-                {
-                    Color = System.Windows.Media.Colors.Black,
-                    BlurRadius = 30,
-                    ShadowDepth = 0,
-                    Opacity = 0.0
-                };
-                if (MainShellShadow != null)
-                    MainShellShadow.Effect = shadow;
-
-                var shadowFade = new DoubleAnimation(0.0, 0.42, TimeSpan.FromMilliseconds(180))
-                {
-                    EasingFunction = easeOut
-                };
-                Timeline.SetDesiredFrameRate(shadowFade, fps);
-
-                shadow.BeginAnimation(System.Windows.Media.Effects.DropShadowEffect.OpacityProperty, shadowFade);
-            }
-
-            void OnMouseReleasedBeforeShadow(object sender, MouseButtonEventArgs args)
-            {
-                PreviewMouseLeftButtonUp -= OnMouseReleasedBeforeShadow;
-                if (_isClosing) return;
-                Dispatcher.BeginInvoke(DispatcherPriority.ApplicationIdle, new Action(AttachEntranceShadow));
-            }
-
-            Dispatcher.BeginInvoke(DispatcherPriority.ApplicationIdle, new Action(AttachEntranceShadow));
+            Dispatcher.BeginInvoke(DispatcherPriority.ApplicationIdle, new Action(() => AttachEntranceShadow(fps)));
         };
 
         ShellScale.BeginAnimation(ScaleTransform.ScaleXProperty, expandX);
@@ -217,53 +174,49 @@ public partial class SettingsWindow
         this.BeginAnimation(ShellCornerRadiusProperty, cornerAnim);
         ShellTranslate.BeginAnimation(TranslateTransform.YProperty, moveY);
 
-        // Entrance: cascade top → bottom (Header → Social → Nav → Card → Footer)
-        // Items slide in from -10px (above) to 0 — opposite of the close direction.
-        int contentDelay = 180;
-        AnimateEntranceItem(SettingsHeader, HeaderTranslate, contentDelay);
+        AnimateEntranceContent(fps);
+    }
 
-        int socialDelay = contentDelay + 50;
-        AnimateSocialIcon(SocialWebsite, SocialWebsiteTranslate, socialDelay);
-        AnimateSocialIcon(SocialGitHub, SocialGitHubTranslate, socialDelay + 40);
-        AnimateSocialIcon(SocialFacebook, SocialFacebookTranslate, socialDelay + 80);
-        AnimateSocialIcon(SocialDiscord, SocialDiscordTranslate, socialDelay + 120);
-
-        AnimateEntranceItem(NavPanel, NavPanelTranslate, contentDelay + 40, applyBlur: false);
-        AnimateSidebarMenuProgressiveBlur(contentDelay + 55, fps);
-
-        if (SettingsScrollViewer.IsVisible && _revealingPage == null)
-            AnimateActivePanel(_activeNav, baseDelayMs: 200);
-
-        AnimateEntranceItem(FooterBar, FooterTranslate, contentDelay + 120, applyBlur: true);
-
-        void AnimateSocialIcon(UIElement element, TranslateTransform translate, int delayMs)
+    private void AttachEntranceShadow(int fps)
+    {
+        if (_isClosing) return;
+        MainShell.Effect = null;
+        if (!(EnableShadowCheck?.IsChecked ?? _settings.EnableShadow))
         {
-            element.Opacity = 0;
-            translate.Y = -6;
-            var fade = CreateAnimation(0, 1, 280, itemEase);
-            fade.BeginTime = TimeSpan.FromMilliseconds(delayMs);
-            element.BeginAnimation(OpacityProperty, fade);
-
-            // Slide in from above (-6px → 0)
-            var slide = CreateAnimation(-6, 0, 320, itemEase);
-            slide.BeginTime = TimeSpan.FromMilliseconds(delayMs);
-            translate.BeginAnimation(TranslateTransform.YProperty, slide);
+            if (MainShellShadow != null) MainShellShadow.Effect = null;
+            return;
+        }
+        if (_isClosing) return;
+        if (Mouse.LeftButton == MouseButtonState.Pressed)
+        {
+            PreviewMouseLeftButtonUp += OnMouseReleasedBeforeShadow;
+            return;
         }
 
-        void AnimateEntranceItem(UIElement element, TranslateTransform translate, int delayMs, bool applyBlur = true)
+        var shadow = new System.Windows.Media.Effects.DropShadowEffect
         {
-            element.Opacity = 0;
-            translate.Y = -10;
-            var fade = CreateAnimation(0, 1, 440, itemEase);
-            fade.BeginTime = TimeSpan.FromMilliseconds(delayMs);
-            element.BeginAnimation(OpacityProperty, fade);
+            Color = System.Windows.Media.Colors.Black,
+            BlurRadius = 30,
+            ShadowDepth = 0,
+            Opacity = 0.0
+        };
+        if (MainShellShadow != null)
+            MainShellShadow.Effect = shadow;
 
-            // Slide in from above (-10px -> 0) to match the top-down cascade direction
-            var slide = CreateAnimation(-10, 0, 500, itemEase);
-            slide.BeginTime = TimeSpan.FromMilliseconds(delayMs);
-            translate.BeginAnimation(TranslateTransform.YProperty, slide);
-            element.Effect = null;
-        }
+        var shadowFade = new DoubleAnimation(0.0, 0.42, TimeSpan.FromMilliseconds(180))
+        {
+            EasingFunction = EntranceEaseOut
+        };
+        Timeline.SetDesiredFrameRate(shadowFade, fps);
+
+        shadow.BeginAnimation(System.Windows.Media.Effects.DropShadowEffect.OpacityProperty, shadowFade);
+    }
+
+    private void OnMouseReleasedBeforeShadow(object sender, MouseButtonEventArgs args)
+    {
+        PreviewMouseLeftButtonUp -= OnMouseReleasedBeforeShadow;
+        if (_isClosing) return;
+        Dispatcher.BeginInvoke(DispatcherPriority.ApplicationIdle, new Action(() => AttachEntranceShadow(Math.Min(60, AnimationConfig.TargetFps))));
     }
 
     internal void ApplyWindowShadow(bool enabled)
@@ -373,18 +326,19 @@ public partial class SettingsWindow
         element.BeginAnimation(OpacityProperty, fade);
     }
 
-    private void RevealSettingsContent(IReadOnlyList<UIElement> items, int baseDelayMs = 0) =>
-        ApplyProgressiveBlurCascade(items, baseDelayMs, direction: -1, isMenuList: false, Math.Min(60, AnimationConfig.TargetFps));
+    private void RevealSettingsContent(IReadOnlyList<UIElement> notes, IReadOnlyList<UIElement>? versions) =>
+        ApplyProgressiveBlurCascade(notes, 0, direction: -1, isMenuList: false, Math.Min(60, AnimationConfig.TargetFps), parallelColumn: versions);
 
     internal unsafe void ApplyProgressiveBlurCascade(
         IReadOnlyList<UIElement> items,
         int baseDelayMs,
         int direction,
         bool isMenuList,
-        int fps, bool appendComponents = false)
+        int fps, bool appendComponents = false, IReadOnlyList<UIElement>? parallelColumn = null)
     {
         if (!appendComponents) ResetProgressiveBlurElements(isMenuList);
-        if (items.Count == 0) return;
+        int stepsPerColumn = Math.Max(items.Count, parallelColumn?.Count ?? 0);
+        if (stepsPerColumn == 0) return;
 
         if (AnimationConfig.ReduceMotion || !AnimationConfig.ClientAreaAnimation)
         {
@@ -392,11 +346,13 @@ public partial class SettingsWindow
             {
                 items[i].BeginAnimation(OpacityProperty, null);
             }
+            if (parallelColumn != null)
+                foreach (var item in parallelColumn) item.BeginAnimation(OpacityProperty, null);
             return;
         }
 
         const int MaxCascadeItems = 32;
-        int count = Math.Min(items.Count, MaxCascadeItems);
+        int count = Math.Min(stepsPerColumn, MaxCascadeItems);
         VnProgressiveBlurStep* steps = stackalloc VnProgressiveBlurStep[MaxCascadeItems];
         if (vn_ui_compute_progressive_blur_cascade(
                 count,
@@ -419,9 +375,11 @@ public partial class SettingsWindow
         var trees = new HashSet<SettingsTreePanel>();
 
         // Remaining rows share the last step so long pages finish on time.
-        for (int i = 0; i < items.Count; i++)
+        int totalItems = items.Count + (parallelColumn?.Count ?? 0);
+        for (int index = 0; index < totalItems; index++)
         {
-            UIElement el = items[i];
+            int i = index < items.Count ? index : index - items.Count;
+            UIElement el = index < items.Count ? items[i] : parallelColumn![i];
             if (appendComponents)
                 for (var parent = VisualTreeHelper.GetParent(el); parent != null; parent = VisualTreeHelper.GetParent(parent))
                     if (parent is SettingsTreePanel tree) trees.Add(tree);
@@ -523,4 +481,57 @@ public partial class SettingsWindow
     }
 
     #endregion
+
+    private void AnimateEntranceContent(int fps)
+    {
+        var itemEase = EntranceEaseOut;
+        // Entrance: cascade top → bottom (Header → Social → Nav → Card → Footer)
+        // Items slide in from -10px (above) to 0 — opposite of the close direction.
+        int contentDelay = 180;
+        AnimateEntranceItem(SettingsHeader, HeaderTranslate, contentDelay);
+
+        int socialDelay = contentDelay + 50;
+        AnimateSocialIcon(SocialWebsite, SocialWebsiteTranslate, socialDelay);
+        AnimateSocialIcon(SocialGitHub, SocialGitHubTranslate, socialDelay + 40);
+        AnimateSocialIcon(SocialFacebook, SocialFacebookTranslate, socialDelay + 80);
+        AnimateSocialIcon(SocialDiscord, SocialDiscordTranslate, socialDelay + 120);
+
+        AnimateEntranceItem(NavPanel, NavPanelTranslate, contentDelay + 40, applyBlur: false);
+        AnimateSidebarMenuProgressiveBlur(contentDelay + 55, fps);
+
+        if (SettingsScrollViewer.IsVisible && _revealingPage == null)
+            AnimateActivePanel(_activeNav, baseDelayMs: 200);
+
+        AnimateEntranceItem(FooterBar, FooterTranslate, contentDelay + 120, applyBlur: true);
+
+        void AnimateSocialIcon(UIElement element, TranslateTransform translate, int delayMs)
+        {
+            element.Opacity = 0;
+            translate.Y = -6;
+            var fade = CreateAnimation(0, 1, 280, itemEase);
+            fade.BeginTime = TimeSpan.FromMilliseconds(delayMs);
+            element.BeginAnimation(OpacityProperty, fade);
+
+            // Slide in from above (-6px → 0)
+            var slide = CreateAnimation(-6, 0, 320, itemEase);
+            slide.BeginTime = TimeSpan.FromMilliseconds(delayMs);
+            translate.BeginAnimation(TranslateTransform.YProperty, slide);
+        }
+
+        void AnimateEntranceItem(UIElement element, TranslateTransform translate, int delayMs, bool applyBlur = true)
+        {
+            element.Opacity = 0;
+            translate.Y = -10;
+            var fade = CreateAnimation(0, 1, 440, itemEase);
+            fade.BeginTime = TimeSpan.FromMilliseconds(delayMs);
+            element.BeginAnimation(OpacityProperty, fade);
+
+            // Slide in from above (-10px -> 0) to match the top-down cascade direction
+            var slide = CreateAnimation(-10, 0, 500, itemEase);
+            slide.BeginTime = TimeSpan.FromMilliseconds(delayMs);
+            translate.BeginAnimation(TranslateTransform.YProperty, slide);
+            element.Effect = null;
+        }
+    }
+
 }

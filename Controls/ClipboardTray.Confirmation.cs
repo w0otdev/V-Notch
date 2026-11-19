@@ -10,12 +10,13 @@ namespace VNotch.Controls;
 public sealed partial class ClipboardTray
 {
     private TaskCompletionSource<bool>? _deleteDecision;
+    internal int DeleteConfirmationCount { get => _deleteConfirmationCount; set => _deleteConfirmationCount = value; }
     private int _deleteConfirmationCount;
     private bool _emptyTrayConfirmation;
 
-    private async void EmptyTray_Click(object sender, RoutedEventArgs e) => await SafeAsync(ConfirmEmptyTrayAsync);
+    internal async void EmptyTray_Click(object sender, RoutedEventArgs e) => await SafeAsync(ConfirmEmptyTrayAsync);
 
-    private Task ConfirmEmptyTrayAsync()
+    internal Task ConfirmEmptyTrayAsync()
     {
         var ids = _controller?.Store.Snapshot()
             .Where(entry => !entry.IsPinned && !entry.IsPersonal && !entry.IsArchived)

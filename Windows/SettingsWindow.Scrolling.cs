@@ -40,7 +40,9 @@ public partial class SettingsWindow
         out byte outSettled);
 
     private double _scrollVelocity;
+    internal double ScrollTarget => _scrollTarget;
     private double _scrollTarget;
+    internal bool IsScrollAnimating => _isScrollAnimating;
     private bool _isScrollAnimating;
     private long _lastScrollTickTimestamp;
     private const double ScrollFriction = 0.82;
@@ -76,7 +78,7 @@ public partial class SettingsWindow
             RevealVisibleComponents();
     }
 
-    private void SettingsScrollViewer_PreviewMouseWheel(object sender, MouseWheelEventArgs e)
+    internal void SettingsScrollViewer_PreviewMouseWheel(object sender, MouseWheelEventArgs e)
     {
         if (IsAnyComboBoxDropDownOpen())
         {

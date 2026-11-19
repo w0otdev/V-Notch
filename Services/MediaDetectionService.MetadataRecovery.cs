@@ -15,7 +15,6 @@ namespace VNotch.Services;
 
 public sealed partial class MediaDetectionService : IMediaDetectionService, IAsyncDisposable
 {
-#pragma warning disable S3776
     private MediaWindowTitle? FindMediaWindowTitle(bool recovery, List<string>? titles)
     {
         if (titles != null)
@@ -30,56 +29,62 @@ public sealed partial class MediaDetectionService : IMediaDetectionService, IAsy
 
     private void ApplyWindowTitleFallback(MediaInfo info, ref List<string>? windowTitles)
     {
-        bool needsFallback = !info.IsAnyMediaPlaying || (string.IsNullOrEmpty(info.CurrentTrack) && info.Platform == MediaPlatform.Browser) || info.Platform == MediaPlatform.Browser || string.IsNullOrEmpty(info.MediaSource);
+        bool needsFallback = !info.IsAnyMediaPlaying || info.Platform == MediaPlatform.Browser || string.IsNullOrEmpty(info.MediaSource);
 
         bool recentlyHadMedia = !info.IsAnyMediaPlaying &&
-                                (MediaPlatformExtensions.ParsePlatform(_lastSource) == MediaPlatform.YouTube || MediaPlatformExtensions.ParsePlatform(_lastSource) == MediaPlatform.Browser || MediaPlatformExtensions.ParsePlatform(_lastSource) == MediaPlatform.SoundCloud) &&
+                                MediaPlatformExtensions.ParsePlatform(_lastSource) is (MediaPlatform.YouTube or MediaPlatform.Browser or MediaPlatform.SoundCloud) &&
                                 _emptyMetadataStartTime != DateTime.MinValue &&
                                 (DateTime.UtcNow - _emptyMetadataStartTime).TotalSeconds < 6.0;
 
-        if (needsFallback && (info.IsAnyMediaPlaying || recentlyHadMedia))
-        {
-            if (info.Platform != MediaPlatform.Spotify)
-            {
-                var wTitle = _spotifyWindowTitle();
-                if (!string.IsNullOrEmpty(wTitle))
-                {
-                    info.IsSpotifyRunning = true;
-                    info.IsSpotifyPlaying = true;
-                    info.IsAnyMediaPlaying = true;
-                    info.IsPlaying = true;
-                    info.MediaSource = MediaPlatform.Spotify.ToDisplayString();
-                    ParseSpotifyTitle(wTitle, info);
-                    ApplyCachedSpotifyArtists(info);
-                    if (!string.IsNullOrEmpty(info.CurrentArtist)) _stableArtist = info.CurrentArtist;
-                }
-            }
+        if (!needsFallback || !(info.IsAnyMediaPlaying || recentlyHadMedia)) return;
+        ApplySpotifyWindowFallback(info);
+        ApplyBrowserCaptionFallback(info, windowTitles);
+    }
 
-            if (string.IsNullOrEmpty(info.CurrentTrack) &&
-                MediaMetadataRecoveryPolicy.CanUseBrowserWindowTitleFallback(info.IsSpotifyPlaying, info.MediaSource) &&
-                FindMediaWindowTitle(false, windowTitles) is { } match)
+    private void ApplySpotifyWindowFallback(MediaInfo info)
+    {
+        if (info.Platform != MediaPlatform.Spotify)
+        {
+            var wTitle = _spotifyWindowTitle();
+            if (!string.IsNullOrEmpty(wTitle))
             {
+                info.IsSpotifyRunning = true;
+                info.IsSpotifyPlaying = true;
                 info.IsAnyMediaPlaying = true;
-                info.CurrentTrack = match.Track;
-                info.CurrentArtist = match.Artist;
-                if (match.Platform == MediaPlatform.YouTube)
-                {
-                    info.MediaSource = YouTubePlatformName;
-                    info.YouTubeTitle = match.ExtractedTitle;
-                    if (!string.IsNullOrEmpty(_stableArtist) && (DateTime.UtcNow - _lastSourceConfirmedTime).TotalSeconds < 15.0)
-                        info.CurrentArtist = _stableArtist;
-                }
-                else
-                {
-                    MediaSourceClassifier.SetPlatformRunning(info, MediaPlatform.SoundCloud);
-                    SetSessionSourceOverride(info, SoundCloudPlatformName);
-                }
+                info.IsPlaying = true;
+                info.MediaSource = MediaPlatform.Spotify.ToDisplayString();
+                ParseSpotifyTitle(wTitle, info);
+                ApplyCachedSpotifyArtists(info);
+                if (!string.IsNullOrEmpty(info.CurrentArtist)) _stableArtist = info.CurrentArtist;
             }
         }
     }
 
-#pragma warning disable S3776
-    private void ApplyVideoTimelineRecovery(MediaInfo info, ref List<string>? windowTitles)
+    private void ApplyBrowserCaptionFallback(MediaInfo info, List<string>? windowTitles)
+    {
+        if (string.IsNullOrEmpty(info.CurrentTrack) &&
+            MediaMetadataRecoveryPolicy.CanUseBrowserWindowTitleFallback(info.IsSpotifyPlaying, info.MediaSource) &&
+            FindMediaWindowTitle(false, windowTitles) is { } match)
+        {
+            info.IsAnyMediaPlaying = true;
+            info.CurrentTrack = match.Track;
+            info.CurrentArtist = match.Artist;
+            if (match.Platform == MediaPlatform.YouTube)
+            {
+                info.MediaSource = YouTubePlatformName;
+                info.YouTubeTitle = match.ExtractedTitle;
+                if (!string.IsNullOrEmpty(_stableArtist) && (DateTime.UtcNow - _lastSourceConfirmedTime).TotalSeconds < 15.0)
+                    info.CurrentArtist = _stableArtist;
+            }
+            else
+            {
+                MediaSourceClassifier.SetPlatformRunning(info, MediaPlatform.SoundCloud);
+                SetSessionSourceOverride(info, SoundCloudPlatformName);
+            }
+        }
+    }
+
+    internal void ApplyVideoTimelineRecovery(MediaInfo info, ref List<string>? windowTitles)
     {
         if (info.IsTimelineIndeterminate)
         {
@@ -98,11 +103,33 @@ public sealed partial class MediaDetectionService : IMediaDetectionService, IAsy
             return;
         }
 
+        if (!ObserveStalledTimeline(info, out bool positionStuck, out bool atEndStuck)) return;
+
+        if (!string.IsNullOrEmpty(info.CurrentTrack) && IsLikelyYouTube(info))
+        {
+            info.MediaSource = MediaPlatform.YouTube.ToDisplayString();
+            info.IsYouTubeRunning = true;
+            _timelineSimulator.ApplySimulatedTimeline(info, atEndStuck);
+            return;
+        }
+
+        if (FindMediaWindowTitle(true, windowTitles) is { } match && TryRecoverWindowTimeline(info, match, positionStuck))
+            return;
+
+        if (_timelineSimulator.IsThrottled)
+        {
+            _timelineSimulator.TryExitThrottleIfStalled(TimeSpan.FromSeconds(3.5));
+            if (!_timelineSimulator.IsThrottled) _throttledStaleSmtcTrack = "";
+        }
+    }
+
+    private bool ObserveStalledTimeline(MediaInfo info, out bool positionStuck, out bool atEndStuck)
+    {
         _timelineSimulator.UpdateObservedPosition(info.Position);
 
         double progress = info.Duration.TotalSeconds > 0 ? info.Position.TotalSeconds / info.Duration.TotalSeconds : 0;
-        bool positionStuck = _timelineSimulator.IsPositionStuck(TimeSpan.FromSeconds(1.5));
-        bool atEndStuck = MediaTimelineSimulator.IsAtEndStuck(progress, _lastMetadataChangeTime, TimeSpan.FromSeconds(1.2));
+        positionStuck = _timelineSimulator.IsPositionStuck(TimeSpan.FromSeconds(1.5));
+        atEndStuck = MediaTimelineSimulator.IsAtEndStuck(progress, _lastMetadataChangeTime, TimeSpan.FromSeconds(1.2));
 
         if (progress >= 1.0 && info.Duration.TotalSeconds > 0 && _timelineSimulator.IsThrottled)
         {
@@ -118,64 +145,52 @@ public sealed partial class MediaDetectionService : IMediaDetectionService, IAsy
                 _timelineSimulator.TryExitThrottleIfPositionResumed(TimeSpan.FromMilliseconds(500));
                 if (!_timelineSimulator.IsThrottled) _throttledStaleSmtcTrack = "";
             }
-            return;
+            return false;
         }
+        return true;
+    }
 
-        if (!string.IsNullOrEmpty(info.CurrentTrack) && IsLikelyYouTube(info))
+    private bool TryRecoverWindowTimeline(MediaInfo info, MediaWindowTitle match, bool positionStuck)
+    {
+        string extractedTitle = match.ExtractedTitle;
+        string trackName = match.Track;
+        string artistName = match.Artist;
+
+        bool isSameSplitTitle = !string.IsNullOrEmpty(_lastTrackName) &&
+            (string.Equals(trackName, _lastTrackName, StringComparison.OrdinalIgnoreCase) ||
+             string.Equals(extractedTitle, _lastTrackName, StringComparison.OrdinalIgnoreCase));
+        bool isNewTrack = !isSameSplitTitle &&
+            (string.IsNullOrEmpty(_lastTrackName) ||
+             PublishedTrackMatcher.IsNewTrackForThumbnail(BuildTrackIdentity(_lastTrackName, ""), trackName) ||
+             !string.Equals(trackName, _lastTrackName, StringComparison.OrdinalIgnoreCase));
+
+        if (isNewTrack)
         {
-            info.MediaSource = MediaPlatform.YouTube.ToDisplayString();
-            info.IsYouTubeRunning = true;
-            _timelineSimulator.ApplySimulatedTimeline(info, atEndStuck);
-            return;
+            _throttledStaleSmtcTrack = info.CurrentTrack;
+            ApplyThrottledYouTubeTrackMetadata(info, trackName, artistName);
+            _timelineSimulator.ResetRecoveredData();
+            info.Duration = TimeSpan.Zero;
+            info.Position = TimeSpan.FromSeconds(1.5);
+            info.LastUpdated = DateTimeOffset.Now;
+            ApplyTimelineAvailability(info, true, true, false, TimeSpan.Zero, DateTime.UtcNow);
+            return true;
         }
 
-        if (FindMediaWindowTitle(true, windowTitles) is { } match)
+        if (positionStuck || _timelineSimulator.IsThrottled)
         {
-            string extractedTitle = match.ExtractedTitle;
-            string trackName = match.Track;
-            string artistName = match.Artist;
+            ApplyThrottledYouTubeTrackMetadata(info, trackName, artistName);
+            info.Duration = _timelineSimulator.RecoveredDuration.TotalSeconds > 0
+                ? _timelineSimulator.RecoveredDuration
+                : TimeSpan.Zero;
+            if (_timelineSimulator.RecoveredThumbnail != null)
+                info.Thumbnail = _timelineSimulator.RecoveredThumbnail;
 
-            bool isSameSplitTitle = !string.IsNullOrEmpty(_lastTrackName) &&
-                (string.Equals(trackName, _lastTrackName, StringComparison.OrdinalIgnoreCase) ||
-                 string.Equals(extractedTitle, _lastTrackName, StringComparison.OrdinalIgnoreCase));
-            bool isNewTrack = !isSameSplitTitle &&
-                (string.IsNullOrEmpty(_lastTrackName) ||
-                 PublishedTrackMatcher.IsNewTrackForThumbnail(BuildTrackIdentity(_lastTrackName, ""), trackName) ||
-                 !string.Equals(trackName, _lastTrackName, StringComparison.OrdinalIgnoreCase));
-
-            if (isNewTrack)
-            {
-                _throttledStaleSmtcTrack = info.CurrentTrack;
-                ApplyThrottledYouTubeTrackMetadata(info, trackName, artistName);
-                _timelineSimulator.ResetRecoveredData();
-                info.Duration = TimeSpan.Zero;
-                info.Position = TimeSpan.FromSeconds(1.5);
-                info.LastUpdated = DateTimeOffset.Now;
-                ApplyTimelineAvailability(info, true, true, false, TimeSpan.Zero, DateTime.UtcNow);
-                return;
-            }
-
-            if (positionStuck || _timelineSimulator.IsThrottled)
-            {
-                ApplyThrottledYouTubeTrackMetadata(info, trackName, artistName);
-                info.Duration = _timelineSimulator.RecoveredDuration.TotalSeconds > 0
-                    ? _timelineSimulator.RecoveredDuration
-                    : TimeSpan.Zero;
-                if (_timelineSimulator.RecoveredThumbnail != null)
-                    info.Thumbnail = _timelineSimulator.RecoveredThumbnail;
-
-                info.Position = DateTime.UtcNow - _lastMetadataChangeTime;
-                info.LastUpdated = DateTimeOffset.Now;
-                ApplyTimelineAvailability(info, true, false, false, info.Duration, DateTime.UtcNow);
-                return;
-            }
+            info.Position = DateTime.UtcNow - _lastMetadataChangeTime;
+            info.LastUpdated = DateTimeOffset.Now;
+            ApplyTimelineAvailability(info, true, false, false, info.Duration, DateTime.UtcNow);
+            return true;
         }
-
-        if (_timelineSimulator.IsThrottled)
-        {
-            _timelineSimulator.TryExitThrottleIfStalled(TimeSpan.FromSeconds(3.5));
-            if (!_timelineSimulator.IsThrottled) _throttledStaleSmtcTrack = "";
-        }
+        return false;
     }
 
     private void ApplyThrottledYouTubeTrackMetadata(MediaInfo info, string trackName, string artistName)

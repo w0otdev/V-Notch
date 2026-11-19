@@ -107,7 +107,11 @@ public sealed partial class ClipboardHistoryStore : IDisposable, IAsyncDisposabl
                 try
                 {
                     File.Move(temp, keyPath, overwrite: false);
-                    try { File.SetAttributes(keyPath, FileAttributes.Hidden); } catch { }
+                    try { File.SetAttributes(keyPath, FileAttributes.Hidden); }
+                    catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+                    {
+                        RuntimeLog.Debug("CLIPBOARD-STORE", $"Ignored hidden attribute failure on blob key: {ex.Message}");
+                    }
                     _publicBlobKey = created;
                     created = [];
                     return _publicBlobKey;
@@ -135,7 +139,7 @@ public sealed partial class ClipboardHistoryStore : IDisposable, IAsyncDisposabl
             finally
             {
                 if (created.Length > 0) CryptographicOperations.ZeroMemory(created);
-                if (File.Exists(temp)) { try { File.Delete(temp); } catch { } }
+                TryDeleteTempFile(temp);
             }
         }
     }
@@ -194,7 +198,7 @@ public sealed partial class ClipboardHistoryStore : IDisposable, IAsyncDisposabl
                 CryptographicOperations.ZeroMemory(cipherBuf);
                 ArrayPool<byte>.Shared.Return(cipherBuf);
             }
-            if (File.Exists(temp)) { try { File.Delete(temp); } catch { } }
+            TryDeleteTempFile(temp);
         }
     }
 
@@ -217,7 +221,7 @@ public sealed partial class ClipboardHistoryStore : IDisposable, IAsyncDisposabl
         }
         finally
         {
-            if (File.Exists(temp)) { try { File.Delete(temp); } catch { } }
+            TryDeleteTempFile(temp);
         }
     }
 

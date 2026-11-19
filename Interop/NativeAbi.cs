@@ -3,7 +3,7 @@ using System.Reflection;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 
-namespace VNotch.Services.Interop;
+namespace VNotch.Interop;
 
 // One resolver gates all host imports, including legacy declarations in partial services.
 // Registration is cheap: the DLL is loaded and checked only on its first actual import.

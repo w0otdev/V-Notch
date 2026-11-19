@@ -246,17 +246,14 @@ public sealed class DiagnosticAndChangelogWindowTests
             Assert.Same(Title(beta).Foreground, Title(flagged).Foreground);
             var selectedStable = ((SolidColorBrush)Title(stable).Foreground).Color;
 
-            foreach (var (name, ink, fill) in new[]
-            {
-                ("changelog.latest", "LatestBadgeInk", "LatestBadgeFill"),
-                ("changelog.current", "CurrentBadgeInk", "CurrentBadgeFill")
-            })
+            foreach (var name in new[] { "changelog.latest", "changelog.current" })
             {
                 foreach (var host in new FrameworkElement[] { stable, view.ReleaseHeader })
                 {
                     var text = Assert.Single(Descendants<TextBlock>(host), t => t.Text == Loc.Get(name));
-                    Assert.Same(view.FindResource(ink), text.Foreground);
-                    Assert.Same(view.FindResource(fill), ((Border)text.Parent).Background);
+                    var title = host == stable ? Title(stable) : (TextBlock)view.ReleaseHeader.Children[0];
+                    Assert.Same(title.Foreground, text.Foreground);
+                    Assert.Same(text.Foreground, ((Border)text.Parent).BorderBrush);
                 }
             }
             view.VersionList.SelectedItem = beta;

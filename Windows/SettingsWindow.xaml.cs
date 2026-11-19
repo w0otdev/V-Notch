@@ -86,11 +86,13 @@ public partial class SettingsWindow : Window
     private const string LocKeyExpandDelay = "settings.expandDelay";
     private const string LocKeyAnimationFps = "settings.animationFps";
 
+    internal NotchSettings EditedSettings => _settings;
     private NotchSettings _settings;
     private readonly SettingsEditSession _editSession;
     private readonly ISettingsApplicationService _settingsAppService;
     private readonly SettingsUpdatePresenter _updatePresenter;
     private bool _isLoadingSettings = true;
+    internal UiScheduledTimer? PreviewDebounce => _livePreviewDebounce;
     private UiScheduledTimer? _livePreviewDebounce;
     private bool _isSpotlightHotkeyRegistered;
     private int _lastAppliedFps;
@@ -116,7 +118,7 @@ public partial class SettingsWindow : Window
         var firstOpenProbe = System.Diagnostics.Stopwatch.StartNew();
         AccentTheme.Apply(settings.AccentColor);
         InitializeComponent();
-        Changelog.RevealRequested += targets => RevealSettingsContent(targets);
+        Changelog.RevealRequested += RevealSettingsContent;
         ContentHost.AddHandler(Expander.ExpandedEvent, new RoutedEventHandler(SettingsGroup_Expanded));
         AddHandler(Mouse.MouseUpEvent, new MouseButtonEventHandler(LivePreview_MouseUp), handledEventsToo: true);
         AddHandler(Keyboard.KeyUpEvent, new KeyEventHandler(LivePreview_KeyUp), handledEventsToo: true);
@@ -492,18 +494,30 @@ public partial class SettingsWindow : Window
         TooltipHelper.SetLocalizedTooltip(GlassPresetCombo, "tooltip.glassPresetCombo");
     }
 
-    private void ApplyLocalization()
+    internal void ApplyLocalization()
     {
         InvalidateSearchIndex();
         PopulateBatterySources();
         LocalizeAccentColor();
         LocalizeTrayAdvanced();
+        LocalizedPresentation.Apply(this);
+        ApplySupplementalLocalization();
+
+        ApplyLocalizationHeadersAndNav();
+        ApplyLocalizationPrivacySection();
+        ApplyLocalizationAppearanceAndMediaSection();
+        ApplyLocalizationBehaviorUpdatesAndDevicesSection();
+        ApplyLocalizationSystemPerformanceAndDonatingSection();
+
+        ApplySupplementalLocalization();
+    }
+
+    private void ApplyLocalizationHeadersAndNav()
+    {
         HideCameraCheck.Content = Loc.Get("settings.hideCamera");
         HideCameraHint.Text = Loc.Get("settings.hideCamera.hint");
         ClipboardHotkeyLabel.Text = Loc.Get("settings.clipboardHotkey");
         ClipboardHotkeyHint.Text = _clipboardHotkeyError?.Invoke() ?? Loc.Get("settings.clipboardHotkey.hint");
-        LocalizedPresentation.Apply(this);
-        ApplySupplementalLocalization();
         string appVersion = GetAppVersion();
         if (SidebarBuildVersionText != null) SidebarBuildVersionText.Text = Loc.Get("settings.buildVersion", appVersion);
         SearchPlaceholder.Text = Loc.Get("settings.searchPlaceholder");
@@ -546,7 +560,10 @@ public partial class SettingsWindow : Window
         NavPerformanceText.Text = Loc.Get("settings.nav.performance");
         NavDonatingText.Text = Loc.Get("settings.nav.donating");
         NavUpdatesText.Text = Loc.Get("settings.nav.updates");
+    }
 
+    private void ApplyLocalizationPrivacySection()
+    {
         PrivacyHeader.Text = Loc.Get("settings.header.privacy");
         LocalOnlyModeCheck.Content = Loc.Get("settings.privacy.localOnly");
         LocalOnlyBadgeText.Text = Loc.Get("settings.privacy.localOnly.badge");
@@ -572,7 +589,10 @@ public partial class SettingsWindow : Window
         EnableSpotlightHistoryHint.Text = Loc.Get("settings.privacy.spotlightHistory.hint");
         ClearSpotlightHistoryButton.Content = Loc.Get("settings.privacy.clearSpotlight");
         ClearLogButton.Content = Loc.Get("settings.privacy.clearLog");
+    }
 
+    private void ApplyLocalizationAppearanceAndMediaSection()
+    {
         NavTabsLabel.Text = Loc.Get("settings.navTabs");
         NavTabsHint.Text = Loc.Get("settings.navTabs.hint");
         ResetTabOrderButton.Content = Loc.Get("settings.tab.reset");
@@ -649,7 +669,10 @@ public partial class SettingsWindow : Window
         DynamicIslandModeHint.Text = Loc.Get("settings.dynamicIslandMode.hint");
         EnableShadowCheck.Content = Loc.Get("settings.enableShadow");
         EnableShadowHint.Text = Loc.Get("settings.enableShadow.hint");
+    }
 
+    private void ApplyLocalizationBehaviorUpdatesAndDevicesSection()
+    {
         HoverExpandCheck.Content = Loc.Get("settings.hoverExpand");
         HoverExpandHint.Text = Loc.Get("settings.hoverExpand.hint");
         ExpandDelayLabel.Text = Loc.Get(LocKeyExpandDelay);
@@ -693,18 +716,17 @@ public partial class SettingsWindow : Window
         VisualizerAudioLabel.Text = Loc.Get("settings.visualizerAudio");
         VisualizerAudioHint.Text = Loc.Get("settings.visualizerAudio.hint");
         if (IsLoaded)
-        {
             Dispatcher.BeginInvoke(new Action(() => LoadVisualizerAudioDevices().SafeFireAndForget("SETTINGS-VIS-AUDIO")), DispatcherPriority.Background);
-        }
         else
-        {
             SetVisualizerAudioDevicePlaceholder();
-        }
 
         ResetButton.Content = Loc.Get("settings.btn.reset");
         ApplyButton.Content = Loc.Get("settings.btn.apply");
         SaveButton.Content = Loc.Get("settings.btn.save");
+    }
 
+    private void ApplyLocalizationSystemPerformanceAndDonatingSection()
+    {
         HelloGreetingCheck.Content = Loc.Get("settings.helloGreeting");
         HelloGreetingHint.Text = Loc.Get("settings.helloGreeting.hint");
         AutoStartCheck.Content = Loc.Get("settings.autoStart");
@@ -763,8 +785,6 @@ public partial class SettingsWindow : Window
         OtherProjectsSubtext.Text = Loc.Get("settings.donating.otherProjects.subtitle");
         ProjectVertexDesc.Text = Loc.Get("settings.donating.otherProjects.vertex.desc");
         ProjectScrollVDesc.Text = Loc.Get("settings.donating.otherProjects.scrollv.desc");
-
-        ApplySupplementalLocalization();
     }
 
     internal void SetSpotlightHotkeyStatus(bool isRegistered)
@@ -924,7 +944,7 @@ public partial class SettingsWindow : Window
         AnimateSettingsOpacity(element, enabled ? 1.0 : disabledOpacity, animate);
     }
 
-    private void AnimateCollapsibleRow(FrameworkElement? element, bool visible, bool animate = false)
+    internal void AnimateCollapsibleRow(FrameworkElement? element, bool visible, bool animate = false)
     {
         if (element == null) return;
 
@@ -1242,7 +1262,7 @@ public partial class SettingsWindow : Window
         SettingsScrollViewer.Visibility = Visibility.Collapsed;
         ChangelogPage.Visibility = Visibility.Visible;
         ChangelogBackButton.Focus();
-        await _updatePresenter.LoadChangelogAsync(Changelog);
+        await _updatePresenter.LoadChangelogAsync(Changelog.LoadAsync);
     }
 
     private void ChangelogBack_Click(object sender, RoutedEventArgs e)

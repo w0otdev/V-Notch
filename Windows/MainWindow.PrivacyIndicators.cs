@@ -34,7 +34,7 @@ public partial class MainWindow
            isBluetoothNotificationVisible || isClipboardPeekActive;
 
     private bool IsCompactPillForPrivacyIndicator =>
-        _transitionCoordinator.ShapeState == VNotch.Controllers.NotchShapeState.Collapsed &&
+        _transitionCoordinator.ShapeState == VNotch.Models.NotchShapeState.Collapsed &&
         !_isAnimating &&
         !_isGreetingActive &&
         !_isAppNotificationBannerVisible;

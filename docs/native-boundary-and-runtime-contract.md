@@ -9,14 +9,14 @@ its extension headers retain existing declarations and packing for compatibility
 
 | Domain | Native ownership | Managed boundary / consumer |
 | --- | --- | --- |
-| Media policy | `Native/Services/BrowserMediaTransitionPolicy.cpp`, `MediaTimelinePolicy.cpp` | `Services/Interop/MediaPolicyNative.*`; pure policy facades |
+| Media policy | `Native/Services/BrowserMediaTransitionPolicy.cpp`, `MediaTimelinePolicy.cpp` | `Interop/MediaPolicyNative.*`; pure policy facades |
 | Glass | `Native/Controllers/GpuGlass*`, capture and blur modules | `D3DImageFramePresenter`, `LiquidGlassController`; HRESULT contract |
 | Clipboard | `Native/Services/Clipboard/*` | `Services/Clipboard/Native*`; handle/arena ownership |
 | UI math | `Native/Controls/*`, animation/layout services | Existing control/presenter adapters; migration remains |
 | Inference | `Native/Services/SmartCropInference.cpp` | `SmartThumbnailCropService`; serialized session lifetime |
 | Translation | Native translation policy plus LLama runtime | `Services/Translation/*`; separate LLama runtime contract |
 
-New media policy imports belong in `Services/Interop/MediaPolicyNative.*`, not in
+New media policy imports belong in `Interop/MediaPolicyNative.*`, not in
 UI classes or the policy facades. Native boundary tests prohibit imports and
 mutable fields in the two migrated facades. Other existing import owners remain
 legacy adapters; this guard does not yet cover the whole repository.

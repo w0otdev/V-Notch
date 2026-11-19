@@ -600,7 +600,7 @@ public partial class SettingsWindow
         PushLivePreview();
     }
 
-    private void ApplyLiquidGlassLocalization()
+    internal void ApplyLiquidGlassLocalization()
     {
         if (SkinLabel == null) return;
 

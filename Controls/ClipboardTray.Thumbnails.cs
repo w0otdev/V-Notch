@@ -11,10 +11,11 @@ namespace VNotch.Controls;
 
 public sealed partial class ClipboardTray
 {
-    private sealed record ThumbnailLoad(ClipboardCardViewModel Card, CancellationTokenSource Cancellation)
+    internal sealed record ThumbnailLoad(ClipboardCardViewModel Card, CancellationTokenSource Cancellation)
     {
         public Task Completion { get; set; } = Task.CompletedTask;
     }
+    internal Dictionary<FrameworkElement, ThumbnailLoad> ThumbnailLoads => _thumbnailLoads;
     private readonly Dictionary<FrameworkElement, ThumbnailLoad> _thumbnailLoads = [];
     // Remember unsuccessful lookups too. Missing icons/corrupt images must not
     // enqueue disk/decode work on every pixel of scrolling.

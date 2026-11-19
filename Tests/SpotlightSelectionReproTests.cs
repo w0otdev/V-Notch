@@ -13,6 +13,13 @@ namespace VNotch.Tests;
 [Collection(SpotlightWindowAnimationCollection.Name)]
 public sealed class SpotlightSelectionReproTests
 {
+    private sealed class SectionConverter : IValueConverter
+    {
+        public object Convert(object value, Type targetType, object parameter, System.Globalization.CultureInfo culture) =>
+            new SpotlightResultPresentation((SpotlightSearchItem)value).SectionTitle;
+        public object ConvertBack(object value, Type targetType, object parameter, System.Globalization.CultureInfo culture) => throw new NotSupportedException();
+    }
+
     [Fact]
     public void ArrowNavigation_MovesSelection_AndSurvivesDeferredPublish()
     {
@@ -38,7 +45,7 @@ public sealed class SpotlightSelectionReproTests
                 new Binding(nameof(viewModel.SelectedResult)) { Mode = BindingMode.TwoWay });
             var view = CollectionViewSource.GetDefaultView(viewModel.Results);
             view.GroupDescriptions.Add(
-                new PropertyGroupDescription(nameof(SpotlightSearchItem.SectionTitle)));
+                new PropertyGroupDescription(null, new SectionConverter()));
 
             Task search = viewModel.SearchAsync("app");
             PumpUntil(() => viewModel.Results.Count > 0, "instant results never published");

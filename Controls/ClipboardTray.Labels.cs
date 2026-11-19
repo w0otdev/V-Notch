@@ -1,3 +1,4 @@
+using VNotch.Models;
 using System.Runtime.InteropServices;
 using System.Windows;
 using System.Windows.Controls;
@@ -159,7 +160,7 @@ public sealed partial class ClipboardTray
     }
 
     private void SelectAll_Click(object sender, RoutedEventArgs e) => SelectAllTrayItems(null);
-    private async void DeleteSelected_Click(object sender, RoutedEventArgs e) => await SafeAsync(() => ConfirmDeleteAsync(SelectedCards()));
+    internal async void DeleteSelected_Click(object sender, RoutedEventArgs e) => await SafeAsync(() => ConfirmDeleteAsync(SelectedCards()));
 
     private void AddLabel_Click(object sender, RoutedEventArgs e)
     {

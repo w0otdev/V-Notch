@@ -21,7 +21,7 @@ public partial class ChangelogView : UserControl
     private int _selectedIndex = -1;
     private bool _animateWhenRowIsReady;
     private readonly SettingsSelectionMotion _selectionMotion;
-    internal event Action<IReadOnlyList<UIElement>>? RevealRequested;
+    internal event Action<IReadOnlyList<UIElement>, IReadOnlyList<UIElement>?>? RevealRequested;
 
     public ChangelogView()
     {
@@ -42,7 +42,7 @@ public partial class ChangelogView : UserControl
     {
         if (!AnimationConfig.ReduceMotion) return;
         _selectionMotion.Settle();
-        RevealRequested?.Invoke(Array.Empty<UIElement>());
+        RevealRequested?.Invoke(Array.Empty<UIElement>(), null);
     }
 
     internal async Task LoadAsync(IUpdateService updateService, Func<bool> canUseNetwork, CancellationToken lifetime = default)
@@ -279,18 +279,16 @@ public partial class ChangelogView : UserControl
 
     private void RevealRelease(bool includeVersionRows)
     {
-        var targets = new List<UIElement> { ReleaseHeader };
-        if (includeVersionRows) targets.Add(VersionsText);
-        int rowCount = includeVersionRows ? VersionList.Items.Count : 0;
-        int noteCount = ReleaseNotes.Children.Count;
-        for (int i = 0; i < Math.Max(rowCount, noteCount); i++)
+        var notes = new List<UIElement> { ReleaseHeader };
+        notes.AddRange(ReleaseNotes.Children.Cast<UIElement>());
+        List<UIElement>? versions = null;
+        if (includeVersionRows)
         {
-            if (i < noteCount) targets.Add(ReleaseNotes.Children[i]);
-            if (i < rowCount) targets.Add((ListBoxItem)VersionList.Items[i]);
-            if (i == rowCount - 1 && OlderVersionsButton.Visibility == Visibility.Visible)
-                targets.Add(OlderVersionsButton);
+            versions = new() { VersionsText };
+            versions.AddRange(VersionList.Items.Cast<ListBoxItem>());
+            if (OlderVersionsButton.Visibility == Visibility.Visible) versions.Add(OlderVersionsButton);
         }
-        RevealRequested?.Invoke(targets);
+        RevealRequested?.Invoke(notes, versions);
     }
 
     private void VersionList_SizeChanged(object sender, SizeChangedEventArgs e)
@@ -353,23 +351,27 @@ public partial class ChangelogView : UserControl
     private static WrapPanel CreateStatusBadges(ChangelogEntry entry, bool compact, List<string>? spoken = null)
     {
         var panel = new WrapPanel { Margin = new Thickness(0, compact ? 2 : 8, 0, 0) };
-        if (entry.IsLatest) AddBadge("changelog.latest", "LatestBadgeInk", "LatestBadgeFill");
-        if (entry.IsCurrent) AddBadge("changelog.current", "CurrentBadgeInk", "CurrentBadgeFill");
+        if (entry.IsLatest) AddBadge("changelog.latest");
+        if (entry.IsCurrent) AddBadge("changelog.current");
         return panel;
 
-        void AddBadge(string labelKey, string inkKey, string fillKey)
+        void AddBadge(string labelKey)
         {
             string text = Loc.Get(labelKey);
             spoken?.Add(text);
             var label = new TextBlock { Text = text, FontSize = 10, FontWeight = FontWeights.Bold, TextWrapping = TextWrapping.Wrap };
-            label.SetResourceReference(TextBlock.ForegroundProperty, inkKey);
+            if (compact)
+                label.SetResourceReference(StyleProperty, entry.Prerelease ? "PrereleaseVersionLabel" : "StableVersionLabel");
+            else
+                label.SetResourceReference(TextBlock.ForegroundProperty, entry.Prerelease ? "PrereleaseVersionBrush" : "StableVersionBrush");
             var badge = new Border
             {
                 Child = label, CornerRadius = new CornerRadius(8),
                 Padding = compact ? new Thickness(4, 1, 4, 1) : new Thickness(7, 2, 7, 2),
                 Margin = new Thickness(0, 0, compact ? 3 : 6, 0)
             };
-            badge.SetResourceReference(Border.BackgroundProperty, fillKey);
+            badge.BorderThickness = new Thickness(1);
+            badge.SetBinding(Border.BorderBrushProperty, new System.Windows.Data.Binding(nameof(TextBlock.Foreground)) { Source = label });
             panel.Children.Add(badge);
         }
     }

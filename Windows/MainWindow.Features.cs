@@ -2,6 +2,7 @@ namespace VNotch;
 
 public partial class MainWindow
 {
+    internal bool CoreModulesStarted => _coreModulesStarted;
     private bool _coreModulesStarted;
 
     private void StartCoreModules()

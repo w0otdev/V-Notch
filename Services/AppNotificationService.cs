@@ -504,12 +504,14 @@ public sealed partial class AppNotificationService : IDisposable
 
         var cts = _cts;
         _cts = null;
-        try { cts?.Cancel(); } catch { }
+        try { cts?.Cancel(); }
+        catch (ObjectDisposedException) { /* CTS already disposed during concurrent shutdown. */ }
         cts?.Dispose();
 
         if (_listener != null && _notificationChangedSubscribed)
         {
-            try { _listener.NotificationChanged -= OnListenerNotificationChanged; } catch { }
+            try { _listener.NotificationChanged -= OnListenerNotificationChanged; }
+            catch (Exception ex) { RuntimeLog.Debug("APP-NOTIFY", $"Listener unsubscribe ignored during dispose: {ex.Message}"); }
             _notificationChangedSubscribed = false;
         }
         _listener = null;

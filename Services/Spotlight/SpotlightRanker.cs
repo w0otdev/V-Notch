@@ -23,10 +23,11 @@ internal static partial class SpotlightRanker
     {
         if (string.IsNullOrWhiteSpace(query)) return 0;
 
-        ReadOnlySpan<char> dt = (item.DisplayTitle ?? string.Empty).AsSpan();
+        var presentation = new SpotlightResultPresentation(item);
+        ReadOnlySpan<char> dt = (presentation.DisplayTitle ?? string.Empty).AsSpan();
         ReadOnlySpan<char> rt = (item.Title ?? string.Empty).AsSpan();
         ReadOnlySpan<char> sub = (item.Subtitle ?? string.Empty).AsSpan();
-        ReadOnlySpan<char> dsub = (item.DisplaySubtitle ?? string.Empty).AsSpan();
+        ReadOnlySpan<char> dsub = (presentation.DisplaySubtitle ?? string.Empty).AsSpan();
         ReadOnlySpan<char> tgt = (item.Target ?? string.Empty).AsSpan();
         ReadOnlySpan<char> q = query.AsSpan();
 

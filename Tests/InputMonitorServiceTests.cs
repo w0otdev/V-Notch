@@ -64,7 +64,9 @@ public sealed class InputMonitorServiceTests
         {
             InputMonitorService.Start(source.Handle);
             Assert.True(InputMonitorService.IsStarted);
-            Assert.NotEqual(Environment.CurrentManagedThreadId, InputMonitorService.InputThreadId);
+            var worker = Assert.IsType<System.Windows.Threading.Dispatcher>(InputMonitorService.InputDispatcher);
+            Assert.False(worker.CheckAccess());
+            Assert.Equal(BackgroundTestWindowTests.CurrentDesktopName(), worker.Invoke(BackgroundTestWindowTests.CurrentDesktopName));
             InputMonitorService.Start(source.Handle);
             InputMonitorService.Stop();
             Assert.False(InputMonitorService.IsStarted);

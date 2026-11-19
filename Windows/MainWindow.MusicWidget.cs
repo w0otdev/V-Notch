@@ -14,7 +14,7 @@ public partial class MainWindow
 {
     #region Expanded Music Player Animations
 
-    private bool _isMusicExpanded => _transitionCoordinator.ShapeState == VNotch.Controllers.NotchShapeState.MusicExpanded;
+    private bool _isMusicExpanded => _transitionCoordinator.ShapeState == VNotch.Models.NotchShapeState.MusicExpanded;
 
     private double GetMediaWidgetLayoutX()
     {

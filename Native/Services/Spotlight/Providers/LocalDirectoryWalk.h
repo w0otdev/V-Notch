@@ -21,6 +21,7 @@ public:
     struct Slot {
         std::wstring path;
         platform::DirectoryChangeStamp changes;
+        // shortcut: uses std::shared_ptr for lock-free cross-thread snapshot reads; replace with generation-indexed arena if cache contention grows.
         std::shared_ptr<const DirectoryEntries> entries;
         uint64_t generation = 0;
         ULONGLONG used = 0;

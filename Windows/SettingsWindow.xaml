@@ -3778,13 +3778,13 @@
                                                                Style="{StaticResource SettingTitleText}"
                                                                TextAlignment="Center"
                                                                HorizontalAlignment="Center"/>
-                                                    <Border Width="160"
+                                                    <Border x:Name="DonationQrFrame" Width="160"
                                                             Height="160"
                                                             Background="White"
                                                             CornerRadius="12"
                                                             Padding="8"
                                                             Margin="0,6,0,0">
-                                                        <Image Source="pack://application:,,,/Assets/QR.PNG"
+                                                        <Image Source="/V-Notch;component/Assets/QR.PNG"
                                                                Stretch="Uniform"
                                                                RenderOptions.BitmapScalingMode="HighQuality"/>
                                                     </Border>

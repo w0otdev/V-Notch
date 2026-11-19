@@ -52,6 +52,7 @@ internal sealed partial class D3DImageFramePresenter : IDisposable
     private int _lastDirtyWidth;
     private int _lastDirtyHeight;
     private bool _pendingFrame;
+    internal void SetPendingFrameForTest(bool pending) => Volatile.Write(ref _pendingFrame, pending);
     internal bool HasPendingFrame => Volatile.Read(ref _pendingFrame);
     private bool _presentQueued;
     private int _retryScheduled;
@@ -851,7 +852,7 @@ internal sealed partial class D3DImageFramePresenter : IDisposable
             if (locked)
             {
                 try { _image.Unlock(); }
-                catch (Exception) { }
+                catch (Exception ex) { RuntimeLog.Debug("D3D-PRESENTER", $"Unlock ignored while detaching backbuffer: {ex.Message}"); }
             }
         }
     }

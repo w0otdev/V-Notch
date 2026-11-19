@@ -15,7 +15,7 @@ namespace VNotch.Services;
 
 public sealed partial class MediaDetectionService : IMediaDetectionService, IAsyncDisposable
 {
-#pragma warning disable S107, S3776
+#pragma warning disable S107
     private async Task FetchSoundCloudThumbnailAsync(MediaInfo info, CancellationToken token, string trackDuringFetch, string artistDuringFetch, string sourceAppDuringFetch, string sessionKeyDuringFetch, int thumbGenAtStart, int fetchGeneration, bool requireStrongMatch, CancellationTokenSource? ownedCts = null)
     {
         int lifecycleGenAtStart = Volatile.Read(ref _lifecycleGeneration);
@@ -33,30 +33,7 @@ public sealed partial class MediaDetectionService : IMediaDetectionService, IAsy
             if (!IsCurrentSoundCloudFetch())
                 return;
 
-            string? artworkUrl = null;
-            string? browserSoundCloudUrl = TryExtractSoundCloudUrlFromAnyBrowser();
-            if (!string.IsNullOrEmpty(browserSoundCloudUrl))
-            {
-                artworkUrl = await TryGetSoundCloudArtworkFromUrlAsync(browserSoundCloudUrl, trackDuringFetch, artistDuringFetch, token);
-            }
-
-            if ((string.IsNullOrEmpty(artworkUrl) || IsLikelySoundCloudPlaceholderArtworkUrl(artworkUrl)) &&
-                IsCurrentSoundCloudFetch())
-            {
-                artworkUrl = await TryGetSoundCloudArtworkUrlAsync(trackDuringFetch, artistDuringFetch, requireStrongMatch, token);
-            }
-
-            if ((string.IsNullOrEmpty(artworkUrl) || IsLikelySoundCloudPlaceholderArtworkUrl(artworkUrl)) &&
-                string.IsNullOrEmpty(browserSoundCloudUrl) &&
-                IsCurrentSoundCloudFetch())
-            {
-                _windowTitleScanner.InvalidateUrlCaches();
-                browserSoundCloudUrl = TryExtractSoundCloudUrlFromAnyBrowser();
-                if (!string.IsNullOrEmpty(browserSoundCloudUrl))
-                {
-                    artworkUrl = await TryGetSoundCloudArtworkFromUrlAsync(browserSoundCloudUrl, trackDuringFetch, artistDuringFetch, token);
-                }
-            }
+            string? artworkUrl = await ResolveSoundCloudArtworkUrlAsync(trackDuringFetch, artistDuringFetch, requireStrongMatch, token, IsCurrentSoundCloudFetch);
 
             if (string.IsNullOrEmpty(artworkUrl) ||
                 IsLikelySoundCloudPlaceholderArtworkUrl(artworkUrl) ||
@@ -94,40 +71,7 @@ public sealed partial class MediaDetectionService : IMediaDetectionService, IAsy
                     return;
                 }
 
-                _timelineSimulator.RecoveredThumbnail = frameBitmap;
-                CachedThumbnail = frameBitmap;
-                _cachedThumbnailSource = MediaPlatform.SoundCloud.ToDisplayString();
-                if (info.Platform == MediaPlatform.Browser)
-                {
-                    MediaSourceClassifier.SetPlatformRunning(info, MediaPlatform.SoundCloud);
-                    SetSessionSourceOverride(info, MediaPlatform.SoundCloud.ToDisplayString());
-
-                    string currentTrackIdentity = BuildTrackIdentity(info.CurrentTrack, info.CurrentArtist);
-                    string currentTrackOnlyIdentity = BuildTrackIdentity(info.CurrentTrack, "");
-                    if (!string.IsNullOrEmpty(currentTrackIdentity))
-                    {
-                        _sourceCache.SetBoth(currentTrackIdentity, currentTrackOnlyIdentity, MediaPlatform.SoundCloud.ToDisplayString());
-                        _sourceCache.QueueSave();
-                    }
-                }
-                info.Thumbnail = frameBitmap;
-
-                var target = _lastPublishedInfo ?? info;
-                target.Thumbnail = frameBitmap;
-                if (info.Platform == MediaPlatform.SoundCloud && target.Platform == MediaPlatform.Browser)
-                {
-                    MediaSourceClassifier.SetPlatformRunning(target, MediaPlatform.SoundCloud);
-                }
-
-                _lastPublishedInfo = target.Clone();
-                string sig = _lastPublishedInfo.GetSignature();
-                _lastPublishedSignature = sig;
-                _lastTrackSignature = sig;
-                _lastPublishedTrackIdentity = BuildTrackIdentity(_lastPublishedInfo.CurrentTrack, _lastPublishedInfo.CurrentArtist);
-                _lastPublishedTrackOnlyIdentity = BuildTrackIdentity(_lastPublishedInfo.CurrentTrack, "");
-
-                publishedSnapshot = _lastPublishedInfo.Clone();
-                publishedSnapshot.IsThumbnailOnlyUpdate = true;
+                publishedSnapshot = CommitSoundCloudThumbnail(info, frameBitmap);
             }
             finally
             {
@@ -154,4 +98,72 @@ public sealed partial class MediaDetectionService : IMediaDetectionService, IAsy
         }
     }
 
+    private async Task<string?> ResolveSoundCloudArtworkUrlAsync(string trackDuringFetch, string artistDuringFetch,
+        bool requireStrongMatch, CancellationToken token, Func<bool> isCurrent)
+    {
+        string? artworkUrl = null;
+        string? browserSoundCloudUrl = TryExtractSoundCloudUrlFromAnyBrowser();
+        if (!string.IsNullOrEmpty(browserSoundCloudUrl))
+        {
+            artworkUrl = await TryGetSoundCloudArtworkFromUrlAsync(browserSoundCloudUrl, trackDuringFetch, artistDuringFetch, token);
+        }
+
+        if ((string.IsNullOrEmpty(artworkUrl) || IsLikelySoundCloudPlaceholderArtworkUrl(artworkUrl)) &&
+            isCurrent())
+        {
+            artworkUrl = await TryGetSoundCloudArtworkUrlAsync(trackDuringFetch, artistDuringFetch, requireStrongMatch, token);
+        }
+
+        if ((string.IsNullOrEmpty(artworkUrl) || IsLikelySoundCloudPlaceholderArtworkUrl(artworkUrl)) &&
+            string.IsNullOrEmpty(browserSoundCloudUrl) &&
+            isCurrent())
+        {
+            _windowTitleScanner.InvalidateUrlCaches();
+            browserSoundCloudUrl = TryExtractSoundCloudUrlFromAnyBrowser();
+            if (!string.IsNullOrEmpty(browserSoundCloudUrl))
+            {
+                artworkUrl = await TryGetSoundCloudArtworkFromUrlAsync(browserSoundCloudUrl, trackDuringFetch, artistDuringFetch, token);
+            }
+        }
+        return artworkUrl;
+    }
+
+    private MediaInfo CommitSoundCloudThumbnail(MediaInfo info, BitmapSource frameBitmap)
+    {
+        _timelineSimulator.RecoveredThumbnail = frameBitmap;
+        CachedThumbnail = frameBitmap;
+        _cachedThumbnailSource = MediaPlatform.SoundCloud.ToDisplayString();
+        if (info.Platform == MediaPlatform.Browser)
+        {
+            MediaSourceClassifier.SetPlatformRunning(info, MediaPlatform.SoundCloud);
+            SetSessionSourceOverride(info, MediaPlatform.SoundCloud.ToDisplayString());
+
+            string currentTrackIdentity = BuildTrackIdentity(info.CurrentTrack, info.CurrentArtist);
+            string currentTrackOnlyIdentity = BuildTrackIdentity(info.CurrentTrack, "");
+            if (!string.IsNullOrEmpty(currentTrackIdentity))
+            {
+                _sourceCache.SetBoth(currentTrackIdentity, currentTrackOnlyIdentity, MediaPlatform.SoundCloud.ToDisplayString());
+                _sourceCache.QueueSave();
+            }
+        }
+        info.Thumbnail = frameBitmap;
+
+        var target = _lastPublishedInfo ?? info;
+        target.Thumbnail = frameBitmap;
+        if (info.Platform == MediaPlatform.SoundCloud && target.Platform == MediaPlatform.Browser)
+        {
+            MediaSourceClassifier.SetPlatformRunning(target, MediaPlatform.SoundCloud);
+        }
+
+        _lastPublishedInfo = target.Clone();
+        string sig = _lastPublishedInfo.GetSignature();
+        _lastPublishedSignature = sig;
+        _lastTrackSignature = sig;
+        _lastPublishedTrackIdentity = BuildTrackIdentity(_lastPublishedInfo.CurrentTrack, _lastPublishedInfo.CurrentArtist);
+        _lastPublishedTrackOnlyIdentity = BuildTrackIdentity(_lastPublishedInfo.CurrentTrack, "");
+
+        var publishedSnapshot = _lastPublishedInfo.Clone();
+        publishedSnapshot.IsThumbnailOnlyUpdate = true;
+        return publishedSnapshot;
+    }
 }

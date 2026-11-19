@@ -1,6 +1,5 @@
 using System;
 using System.Linq;
-using System.Reflection;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Windows;
@@ -119,7 +118,7 @@ public class SettingsWindowDecouplingTests
                 window.SettingsChanged += (_, settings) => received = settings;
                 window.ApplyPreview(snapshot);
                 Assert.True(received!.EnableInteractionSounds);
-                typeof(SettingsWindow).GetMethod("RevertLivePreviewIfNeeded", BindingFlags.Instance | BindingFlags.NonPublic)!.Invoke(window, null);
+                window.RevertLivePreviewIfNeeded();
                 Assert.False(received.EnableInteractionSounds);
                 Assert.Equal(.35, received.InteractionSoundVolume);
             }
@@ -259,12 +258,12 @@ public class SettingsWindowDecouplingTests
         {
             var pending = window.ApplyAndCloseAsync(ex => throw new Xunit.Sdk.XunitException(ex.ToString()));
             Assert.False(pending.IsCompleted);
-            Assert.False((bool)typeof(SettingsWindow).GetField("_isClosing", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(window)!);
+            Assert.False(window.IsClosing);
             Assert.False(await window.ApplyAndCloseAsync());
             Assert.Equal(1, service.ApplyCount);
             complete.SetResult();
             Assert.True(await pending);
-            Assert.True((bool)typeof(SettingsWindow).GetField("_isClosing", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(window)!);
+            Assert.True(window.IsClosing);
         }
         finally { complete.TrySetResult(); window.Close(); }
         if (Application.Current != null) Assert.DoesNotContain(window, Application.Current.Windows.OfType<SettingsWindow>());
@@ -335,15 +334,15 @@ public class SettingsWindowDecouplingTests
             window.ApplyButton.RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Primitives.ButtonBase.ClickEvent));
             Assert.Equal(1, service.ApplyCount);
             complete.SetResult();
-            await WpfFrameWaiter.UntilAsync(() => !(bool)typeof(SettingsWindow).GetField("_isSaving", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(window)!,
+            await WpfFrameWaiter.UntilAsync(() => !window.IsSaving,
                 "Apply finishes saving", ct);
             Assert.Equal(320, service.AppliedSettings!.Width);
-            Assert.False((bool)typeof(SettingsWindow).GetField("_isClosing", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(window)!);
+            Assert.False(window.IsClosing);
             window.WidthSlider.Value = 400;
             window.ApplyPreview(window.ReadSettingsFromUi());
             NotchSettings? reverted = null;
             window.SettingsChanged += (_, settings) => reverted = settings;
-            typeof(SettingsWindow).GetMethod("RevertLivePreviewIfNeeded", BindingFlags.Instance | BindingFlags.NonPublic)!.Invoke(window, null);
+            window.RevertLivePreviewIfNeeded();
             Assert.Equal(320, reverted!.Width);
         }
         finally { complete.TrySetResult(); window.Close(); }
@@ -361,7 +360,7 @@ public class SettingsWindowDecouplingTests
             window.WidthSlider.Value = 360;
             window.SaveButton.RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Primitives.ButtonBase.ClickEvent));
             Assert.Equal(360, service.AppliedSettings!.Width);
-            Assert.True((bool)typeof(SettingsWindow).GetField("_isClosing", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(window)!);
+            Assert.True(window.IsClosing);
         }
         finally { window.Close(); }
         if (Application.Current != null) Assert.DoesNotContain(window, Application.Current.Windows.OfType<SettingsWindow>());
@@ -380,7 +379,7 @@ public class SettingsWindowDecouplingTests
             Exception? reported = null;
             Assert.False(await window.ApplyAndCloseAsync(ex => reported = ex));
             Assert.Same(failure, reported);
-            Assert.False((bool)typeof(SettingsWindow).GetField("_isClosing", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(window)!);
+            Assert.False(window.IsClosing);
             Assert.Null(service.AppliedSettings);
             fail = false;
             Assert.True(await window.ApplyAndCloseAsync(ex => throw new Xunit.Sdk.XunitException(ex.ToString())));

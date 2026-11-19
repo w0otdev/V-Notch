@@ -18,6 +18,9 @@ internal static class BackgroundTestWindows
         EnsureApplicationResources();
         if (_initialized) return;
         if (DesktopTestMode.Enabled) { _initialized = true; return; }
+        // The raw-input HWND is created on a separate STA. It must not subscribe
+        // to physical clicks from the user's desktop during background tests.
+        VNotch.Services.InputMonitorService.InitializeWorkerThread = VNotch.TestSupport.BackgroundTestDesktop.AttachCurrentThread;
         // Run before any test action constructs a production window. This metadata exists
         // only in the testhost process; the application assembly stays unchanged.
         foreach (var windowType in typeof(MainWindow).Assembly.GetTypes()

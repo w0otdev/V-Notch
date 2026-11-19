@@ -1,3 +1,4 @@
+using VNotch.Models;
 using VNotch.Services;
 using Xunit;
 

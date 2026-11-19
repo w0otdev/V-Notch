@@ -4,36 +4,6 @@ using VNotch.Services;
 
 namespace VNotch.Controllers;
 
-public enum NotchShapeState
-{
-    Collapsed,
-    Expanding,
-    Expanded,
-    Collapsing,
-    MusicExpanding,
-    MusicExpanded,
-    MusicCollapsing,
-    Hidden
-}
-
-public enum DisplayOwnership
-{
-    Notch,
-    Spotlight
-}
-
-public sealed record NotchTransitionSnapshot(
-    NotchView CurrentView,
-    NotchView TargetView,
-    NotchShapeState ShapeState,
-    long ActiveTransitionId,
-    bool IsTransitionActive,
-    DisplayOwnership Ownership,
-    NotchView ViewToRestoreOnSpotlightClose,
-    bool HasPendingCountdownCompletion,
-    bool IsEffectivelyVisible
-);
-
 public sealed class TransitionRequestEventArgs : EventArgs
 {
     public long TransitionId { get; }
@@ -64,7 +34,7 @@ public sealed class TransitionRequestEventArgs : EventArgs
 /// Quản lý tập trung toàn bộ trạng thái điều hướng notch, phiên chuyển cảnh và quyền hiển thị.
 /// Nguồn chân lý duy nhất cho Navigation State theo Workstream A (implement.md).
 /// </summary>
-public sealed class NotchTransitionCoordinator : IDisposable
+public sealed class NotchTransitionCoordinator : INotchNavigation, IDisposable
 {
     private const string LogTag = "NOTCH-COORDINATOR";
 

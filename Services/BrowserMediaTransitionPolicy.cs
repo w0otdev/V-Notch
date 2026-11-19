@@ -1,4 +1,5 @@
-using VNotch.Services.Interop;
+using VNotch.Models;
+using VNotch.Interop;
 
 namespace VNotch.Services;
 
@@ -29,8 +30,3 @@ internal static class BrowserMediaTransitionPolicy
         MediaPolicyNative.ShouldCarryYouTubeSource(isBrowserSession, currentBrowserPlatformHint,
             lastSource, stableSource, isCompletingAdTransition);
 }
-
-internal readonly record struct BrowserAdTransitionDecision(
-    bool ShouldHold,
-    DateTime TransitionStartedUtc,
-    bool WasTransitionActive);

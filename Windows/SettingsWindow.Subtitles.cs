@@ -36,7 +36,7 @@ public partial class SettingsWindow
     private Point _subtitleDragStart;
     private bool _subtitleIsDragging;
 
-    private void LoadSubtitlePriority()
+    internal void LoadSubtitlePriority()
     {
         _subtitleItems.Clear();
 
@@ -209,7 +209,7 @@ public partial class SettingsWindow
         return _subtitleItems.Count - 1;
     }
 
-    private string GetSubtitlePriorityString()
+    internal string GetSubtitlePriorityString()
     {
         return string.Join(",", _subtitleItems.Select(i => i.Key));
     }
