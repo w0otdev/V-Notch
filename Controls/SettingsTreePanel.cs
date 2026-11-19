@@ -8,6 +8,7 @@ namespace VNotch.Controls;
 public sealed class SettingsTreePanel : StackPanel
 {
     private static readonly Pen ConnectorPen = CreateConnectorPen();
+    private readonly DrawingGroup _connectors = new();
 
     static SettingsTreePanel()
     {
@@ -18,7 +19,7 @@ public sealed class SettingsTreePanel : StackPanel
 
     private static Pen CreateConnectorPen()
     {
-        var pen = new Pen(new SolidColorBrush(Color.FromArgb(112, 255, 255, 255)), 2)
+        var pen = new Pen(Brushes.White, 2)
         {
             StartLineCap = PenLineCap.Round,
             EndLineCap = PenLineCap.Round
@@ -38,12 +39,26 @@ public sealed class SettingsTreePanel : StackPanel
     protected override void OnRender(DrawingContext drawingContext)
     {
         base.OnRender(drawingContext);
+        RefreshConnectors();
+        drawingContext.DrawDrawing(_connectors);
+    }
 
+    // Update the retained drawing without invalidating WPF layout on every
+    // animation tick. Layout changes still go through OnRender normally.
+    internal void RefreshConnectors()
+    {
+        using var drawingContext = _connectors.Open();
         const double trunkX = -20;
         const double branchX = -6;
         const double radius = 8;
-        double lastAnchor = double.NaN;
+        double height = Math.Max(1, RenderSize.Height);
+        var mask = new LinearGradientBrush
+        {
+            MappingMode = BrushMappingMode.Absolute,
+            StartPoint = new Point(), EndPoint = new Point(0, height)
+        };
         var geometry = new StreamGeometry();
+        double previousAnchor = 0, previousOpacity = 0, lastBend = 0;
         using (var context = geometry.Open())
         {
             foreach (UIElement item in Children)
@@ -53,28 +68,45 @@ public sealed class SettingsTreePanel : StackPanel
                     child.Visibility != Visibility.Visible || child.RenderSize.Height <= 0)
                     continue;
 
-                double anchor = GetHeaderAnchor(child);
-                lastAnchor = anchor;
-                context.BeginFigure(new Point(trunkX, anchor - radius), false, false);
-                context.QuadraticBezierTo(new Point(trunkX, anchor),
-                    new Point(trunkX + radius, anchor), true, false);
+                var header = FindHeaderElement(child);
+                double anchor = header.TranslatePoint(new Point(0, header.RenderSize.Height / 2), this).Y;
+                double opacity = 1;
+                for (DependencyObject? node = header; node != null && node != this; node = VisualTreeHelper.GetParent(node))
+                    if (node is UIElement layer) opacity *= layer.Opacity;
+
+                double bend = Math.Max(0, anchor - radius);
+                if (mask.GradientStops.Count > 0)
+                {
+                    double transition = Math.Clamp((bend - previousAnchor) / 2, 0, radius);
+                    double between = Math.Min(previousOpacity, opacity);
+                    AddStop(previousAnchor + transition, between);
+                    AddStop(bend - transition, between);
+                }
+                AddStop(bend, opacity);
+                AddStop(anchor, opacity);
+                previousAnchor = anchor;
+                previousOpacity = opacity;
+                lastBend = bend;
+                context.BeginFigure(new Point(trunkX, bend), false, false);
+                context.QuadraticBezierTo(new Point(trunkX, anchor), new Point(trunkX + radius, anchor), true, false);
                 context.LineTo(new Point(branchX, anchor), true, false);
             }
-
-            if (!double.IsNaN(lastAnchor))
+            if (lastBend > 0)
             {
                 context.BeginFigure(new Point(trunkX, 0), false, false);
-                context.LineTo(new Point(trunkX, Math.Max(0, lastAnchor - radius)), true, false);
+                context.LineTo(new Point(trunkX, lastBend), true, false);
             }
         }
+        if (mask.GradientStops.Count == 0) return;
         geometry.Freeze();
+        mask.Freeze();
+        // Apply reveal opacity once to the whole silhouette, even at a fork.
+        drawingContext.PushOpacityMask(mask);
         drawingContext.DrawGeometry(null, ConnectorPen, geometry);
-    }
+        drawingContext.Pop();
 
-    private double GetHeaderAnchor(FrameworkElement child)
-    {
-        var header = FindHeaderElement(child);
-        return header.TranslatePoint(new Point(0, header.RenderSize.Height / 2), this).Y;
+        void AddStop(double y, double opacity) => mask.GradientStops.Add(new GradientStop(
+            Color.FromArgb((byte)Math.Round(112 * opacity), 255, 255, 255), Math.Clamp(y / height, 0, 1)));
     }
 
     private static FrameworkElement FindHeaderElement(FrameworkElement element)

@@ -47,8 +47,9 @@ public partial class SettingsWindow
         int outCap,
         out int outWritten);
 
-    private readonly List<UIElement> _activeBlurredElements = new();
-    private readonly List<UIElement> _activeMenuBlurredElements = new();
+    private readonly Dictionary<UIElement, TranslateTransform?> _activeBlurredElements = new();
+    private readonly Dictionary<UIElement, TranslateTransform?> _activeMenuBlurredElements = new();
+    private readonly System.Runtime.CompilerServices.ConditionalWeakTable<UIElement, TranslateTransform> _componentSlides = new();
     private int _progressiveContentBlurVersion;
     private int _progressiveMenuBlurVersion;
 
@@ -230,8 +231,8 @@ public partial class SettingsWindow
         AnimateEntranceItem(NavPanel, NavPanelTranslate, contentDelay + 40, applyBlur: false);
         AnimateSidebarMenuProgressiveBlur(contentDelay + 55, fps);
 
-        // Pass entranceDirection so the card slides in from above on first open
-        AnimateActivePanel(_activeNav, entranceDirection: true);
+        if (SettingsScrollViewer.IsVisible && _revealingPage == null)
+            AnimateActivePanel(_activeNav, baseDelayMs: 200);
 
         AnimateEntranceItem(FooterBar, FooterTranslate, contentDelay + 120, applyBlur: true);
 
@@ -333,19 +334,21 @@ public partial class SettingsWindow
 
     internal void ResetProgressiveBlurElements(bool isMenuList)
     {
-        var list = isMenuList ? _activeMenuBlurredElements : _activeBlurredElements;
-        for (int i = 0; i < list.Count; i++)
+        if (isMenuList) _progressiveMenuBlurVersion++;
+        else
         {
-            var el = list[i];
+            _progressiveContentBlurVersion++;
+            StopComponentReveal();
+        }
+        var list = isMenuList ? _activeMenuBlurredElements : _activeBlurredElements;
+        foreach (var (el, translate) in list)
+        {
             el.BeginAnimation(OpacityProperty, null);
-            if (el.Effect is BlurEffect blur && !blur.IsFrozen)
+            if (translate != null)
             {
-                blur.BeginAnimation(BlurEffect.RadiusProperty, null);
+                translate.BeginAnimation(TranslateTransform.YProperty, null);
+                translate.Y = 0;
             }
-            el.Effect = null;
-            var tt = EnsureElementTranslateTransform(el);
-            tt.BeginAnimation(TranslateTransform.YProperty, null);
-            tt.Y = 0;
         }
         list.Clear();
     }
@@ -370,22 +373,24 @@ public partial class SettingsWindow
         element.BeginAnimation(OpacityProperty, fade);
     }
 
+    private void RevealSettingsContent(IReadOnlyList<UIElement> items, int baseDelayMs = 0) =>
+        ApplyProgressiveBlurCascade(items, baseDelayMs, direction: -1, isMenuList: false, Math.Min(60, AnimationConfig.TargetFps));
+
     internal unsafe void ApplyProgressiveBlurCascade(
         IReadOnlyList<UIElement> items,
         int baseDelayMs,
         int direction,
         bool isMenuList,
-        int fps)
+        int fps, bool appendComponents = false)
     {
-        ResetProgressiveBlurElements(isMenuList);
+        if (!appendComponents) ResetProgressiveBlurElements(isMenuList);
         if (items.Count == 0) return;
 
-        if (VNotch.Services.AnimationConfig.ReduceMotion)
+        if (AnimationConfig.ReduceMotion || !AnimationConfig.ClientAreaAnimation)
         {
             for (int i = 0; i < items.Count; i++)
             {
                 items[i].BeginAnimation(OpacityProperty, null);
-                items[i].Effect = null;
             }
             return;
         }
@@ -405,25 +410,36 @@ public partial class SettingsWindow
             return;
         }
 
-        int version = isMenuList ? ++_progressiveMenuBlurVersion : ++_progressiveContentBlurVersion;
+        int version = isMenuList ? _progressiveMenuBlurVersion : _progressiveContentBlurVersion;
         var trackedList = isMenuList ? _activeMenuBlurredElements : _activeBlurredElements;
         var ease = EntranceEaseOut;
+        var batch = new ParallelTimeline();
+        Timeline.SetDesiredFrameRate(batch, fps);
+        var targets = new List<(DependencyObject Target, DependencyProperty Property)>();
+        var trees = new HashSet<SettingsTreePanel>();
 
-        for (int i = 0; i < written; i++)
+        // Remaining rows share the last step so long pages finish on time.
+        for (int i = 0; i < items.Count; i++)
         {
             UIElement el = items[i];
-            VnProgressiveBlurStep step = steps[i];
+            if (appendComponents)
+                for (var parent = VisualTreeHelper.GetParent(el); parent != null; parent = VisualTreeHelper.GetParent(parent))
+                    if (parent is SettingsTreePanel tree) trees.Add(tree);
+            VnProgressiveBlurStep step = steps[Math.Min(i, written - 1)];
             double targetOpacity = ResolveElementRestingOpacity(el);
-            trackedList.Add(el);
-
-            var translate = EnsureElementTranslateTransform(el);
+            var translate = appendComponents ? GetComponentSlide(el) : EnsureElementTranslateTransform(el);
+            trackedList.Add(el, translate);
             el.BeginAnimation(OpacityProperty, null);
-            translate.BeginAnimation(TranslateTransform.YProperty, null);
-            translate.Y = step.StartTranslateY;
+            if (translate != null)
+            {
+                translate.BeginAnimation(TranslateTransform.YProperty, null);
+                translate.Y = step.StartTranslateY;
+            }
 
-            el.Effect = null;
-
-            var delay = TimeSpan.FromMilliseconds(step.DelayMs);
+            double delayMs = appendComponents && items.Count > written
+                ? baseDelayMs + (steps[written - 1].DelayMs - baseDelayMs) * (i / (items.Count - 1.0))
+                : step.DelayMs;
+            var delay = TimeSpan.FromMilliseconds(delayMs);
             // Keep the underlying opacity owned by its binding/style. A local value
             // would pin disabled feature groups at their old dimmed state.
             // The initial keyframes hold the start value throughout the stagger delay.
@@ -441,30 +457,58 @@ public partial class SettingsWindow
                 EasingFunction = ease
             };
 
-            Timeline.SetDesiredFrameRate(fadeAnim, fps);
-            Timeline.SetDesiredFrameRate(slideAnim, fps);
 
-            Timeline completion = step.SlideDurationMs >= step.FadeDurationMs ? slideAnim : fadeAnim;
+            Timeline completion = translate != null && step.SlideDurationMs >= step.FadeDurationMs ? slideAnim : fadeAnim;
             completion.Completed += (_, _) =>
             {
                 int currentVer = isMenuList ? _progressiveMenuBlurVersion : _progressiveContentBlurVersion;
                 if (version != currentVer) return;
 
                 el.BeginAnimation(OpacityProperty, null);
-                translate.BeginAnimation(TranslateTransform.YProperty, null);
-                translate.Y = 0.0;
-                el.Effect = null;
+                if (translate != null)
+                {
+                    translate.BeginAnimation(TranslateTransform.YProperty, null);
+                    translate.Y = 0;
+                }
+                trackedList.Remove(el);
             };
 
-            el.BeginAnimation(OpacityProperty, fadeAnim);
-            translate.BeginAnimation(TranslateTransform.YProperty, slideAnim);
+            batch.Children.Add(fadeAnim);
+            targets.Add((el, OpacityProperty));
+            if (translate != null)
+            {
+                batch.Children.Add(slideAnim);
+                targets.Add((translate, TranslateTransform.YProperty));
+            }
         }
-
-        for (int i = written; i < items.Count; i++)
+        var clock = (ClockGroup)batch.CreateClock();
+        if (trees.Count > 0)
         {
-            items[i].BeginAnimation(OpacityProperty, null);
-            items[i].Effect = null;
+            // The connectors are parent-drawn. Sample the live label position and
+            // opacity on the same ticks as the reveal, including its final frame.
+            clock.CurrentTimeInvalidated += (_, _) =>
+            {
+                foreach (var tree in trees) tree.RefreshConnectors();
+            };
         }
+        for (int i = 0; i < targets.Count; i++)
+        {
+            var (target, property) = targets[i];
+            var child = (AnimationClock)clock.Children[i];
+            if (target is UIElement element) element.ApplyAnimationClock(property, child);
+            else ((TranslateTransform)target).ApplyAnimationClock(property, child);
+        }
+    }
+
+    private TranslateTransform? GetComponentSlide(UIElement component)
+    {
+        if (_componentSlides.TryGetValue(component, out var owned) && ReferenceEquals(component.RenderTransform, owned))
+            return owned;
+        // A live preview or icon can own its transform. Fade it in place.
+        if (component.RenderTransform != Transform.Identity) return null;
+        var slide = _componentSlides.GetOrCreateValue(component);
+        component.SetCurrentValue(RenderTransformProperty, slide);
+        return slide;
     }
 
     private static DoubleAnimation CreateAnimation(double from, double to, int durationMs, IEasingFunction easing)

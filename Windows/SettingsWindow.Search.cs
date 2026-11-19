@@ -199,10 +199,14 @@ public partial class SettingsWindow
 
     private bool EnterSearchMode()
     {
+        bool leavingChangelog = ChangelogPage.IsVisible;
+        if (!_isSearchMode || leavingChangelog)
+            SettingsPageWave.Capture(SettingsPane, Orientation.Vertical, forward: false);
+        HideChangelog();
         if (_isSearchMode)
         {
             RefreshSearchRowsIfNeeded();
-            return false;
+            return leavingChangelog;
         }
 
         _isSearchMode = true;
@@ -235,6 +239,11 @@ public partial class SettingsWindow
 
     private void ExitSearchMode()
     {
+        if (_isSearchMode)
+        {
+            SettingsPageWave.Capture(SettingsPane, Orientation.Vertical, forward: true);
+            HideChangelog();
+        }
         RestoreSearchRows();
         SearchResultsStack.Children.Clear();
         SearchingEmptyState.Visibility = Visibility.Collapsed;

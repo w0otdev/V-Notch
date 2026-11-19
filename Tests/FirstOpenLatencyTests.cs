@@ -188,8 +188,11 @@ public sealed class FirstOpenLatencyTests(ITestOutputHelper output)
             await window.Dispatcher.InvokeAsync(static () => { }, DispatcherPriority.ApplicationIdle);
             Assert.Null(typeof(MainWindow).GetField("_preparedSettingsWindow", Private)!.GetValue(window));
             Assert.Null(afterEntrance);
-            // Opening the tray menu is an actual Settings entry point.
             typeof(MainWindow).GetMethod("TrayContextMenu_Opened", Private)!.Invoke(window, [window, new RoutedEventArgs()]);
+            await window.Dispatcher.InvokeAsync(static () => { }, DispatcherPriority.ApplicationIdle);
+            Assert.Null(afterEntrance);
+            window.MenuSettings.RaiseEvent(new System.Windows.Input.MouseEventArgs(
+                System.Windows.Input.Mouse.PrimaryDevice, Environment.TickCount) { RoutedEvent = UIElement.MouseEnterEvent });
             await WpfFrameWaiter.UntilAsync(() =>
                 typeof(MainWindow).GetField("_preparedSettingsWindow", Private)!.GetValue(window) is SettingsWindow { IsLoaded: true, IsVisible: false },
                 "deferred settings preparation completes", ct);

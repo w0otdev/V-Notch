@@ -1,4 +1,4 @@
-param([switch]$LiveCapture, [switch]$WindowsGraphicsCapture, [switch]$CaptureOnly)
+param([switch]$LiveCapture, [switch]$WindowsGraphicsCapture, [switch]$CaptureOnly, [switch]$Ultimate)
 $ErrorActionPreference = 'Stop'
 $repoRoot = Split-Path -Parent $PSScriptRoot
 $probeDir = Join-Path $repoRoot 'obj/GlassGpuProbe'
@@ -14,7 +14,8 @@ $obj = Join-Path $probeDir 'GlassGpuProbe.obj'
 $build = 'call "' + $vcvars + '" >nul && cl.exe /nologo /std:c++latest /EHsc /W4 /O2 /MT /I"' + (Join-Path $repoRoot 'Native') + '" /I"' + $probeDir + '" /Fo"' + $obj + '" /Fe"' + $exe + '" "' + $source + '"'
 & $env:ComSpec /d /c $build
 if ($LASTEXITCODE -ne 0) { throw 'GPU probe compilation failed.' }
-if ($CaptureOnly) { & $exe '--wgc-only' }
+if ($Ultimate) { & $exe '--ultimate' }
+elseif ($CaptureOnly) { & $exe '--wgc-only' }
 elseif ($WindowsGraphicsCapture) { & $exe '--wgc' }
 elseif ($LiveCapture) { & $exe '--live' } else { & $exe }
 if ($LASTEXITCODE -ne 0) { throw 'GPU probe failed.' }

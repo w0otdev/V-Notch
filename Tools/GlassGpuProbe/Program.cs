@@ -83,6 +83,34 @@ internal static class Program
         try
         {
             if (!glass.SetGpuMode(true, _ => { }, ex => failure = ex)) throw new InvalidOperationException("GPU initialization failed.");
+            int switchIndex = Array.IndexOf(args, "--switch-adapters");
+            if (switchIndex >= 0)
+            {
+                string? expectedUltimate = args.ElementAtOrDefault(switchIndex + 1);
+                string? initialGpu = null;
+                const System.Reflection.BindingFlags flags = System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance;
+                glass.Start();
+                foreach (bool ultimate in new[] { false, true, false })
+                {
+                    if (!glass.SetGpuMode(true, _ => { }, ex => failure = ex, ultimateGpu: ultimate))
+                        throw new InvalidOperationException("GPU mode switch failed.");
+                    glass.ForceRefresh();
+                    long deadline = Environment.TickCount64 + 5000;
+                    while (!glass.HasPresentedFrame && failure == null && Environment.TickCount64 < deadline)
+                        BenchmarkProbe.Pump(10);
+                    if (failure != null) throw failure;
+                    if (!glass.HasPresentedFrame || glass.ImageSource is not D3DImage)
+                        throw new TimeoutException("No GPU frame after switching adapters.");
+                    var presenter = typeof(LiquidGlassController).GetField("_d3dPresenter", flags)!.GetValue(glass)!;
+                    var gpu = (string)presenter.GetType().GetField("_renderAdapterName", flags)!.GetValue(presenter)!;
+                    initialGpu ??= gpu;
+                    string? expected = ultimate ? expectedUltimate : initialGpu;
+                    Console.WriteLine($"Ultimate={ultimate}: renderGpu={gpu}");
+                    if (expected != null && !string.Equals(expected, gpu, StringComparison.OrdinalIgnoreCase))
+                        throw new InvalidOperationException($"Expected {expected} to render the frame, got {gpu}.");
+                }
+                return 0;
+            }
             // Production starts capture before lazy GPU resource creation.
             for (int cycle = 0; cycle < 3; ++cycle)
             {

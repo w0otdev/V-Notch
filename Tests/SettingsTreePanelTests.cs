@@ -66,6 +66,32 @@ public sealed class SettingsTreePanelTests
         Assert.Equal(320, first.TranslatePoint(new Point(first.ActualWidth, 0), host).X);
         Assert.True(ConnectorPixel(8, top + 30) > 0);
 
+        // A half-revealed final row should have no bright dot where its straight
+        // stroke meets the elbow, even at a fractional animation offset.
+        last.Opacity = .5;
+        last.RenderTransform = new TranslateTransform(0, -.5);
+        tree.InvalidateVisual();
+        Layout();
+        int straight = ConnectorPixel(8, top + 45);
+        Assert.InRange(straight, 50, 60);
+        Assert.InRange((int)ConnectorPixel(8, top + 51), straight - 5, straight + 5);
+        first.Opacity = .4;
+        tree.RefreshConnectors();
+        int beforeFork = ConnectorPixel(8, top + 8);
+        Assert.InRange(beforeFork, 40, 50);
+        for (int y = 12; y <= 18; y++)
+            Assert.InRange((int)ConnectorPixel(8, top + y), beforeFork - 3, beforeFork + 3);
+        first.Opacity = 1;
+        last.RenderTransform = Transform.Identity;
+
+        last.Opacity = 0;
+        tree.InvalidateVisual();
+        Layout();
+        Assert.Equal(0, ConnectorPixel(8, top + 30));
+        Assert.Equal(0, ConnectorPixel(20, top + 60));
+        Assert.True(ConnectorPixel(20, top + 20) > 0);
+        last.Opacity = 1;
+
         last.Visibility = Visibility.Collapsed;
         Layout();
         Assert.Equal(0, ConnectorPixel(8, top + 30));

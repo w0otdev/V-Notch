@@ -286,15 +286,6 @@ public partial class MainWindow : Window
         MediaPlayback.Attach(_viewModel.Media, mediaService);
         _viewModel.Media.PlayPauseToggled += OnViewModelPlayPauseToggled;
         MediaPlayback.BufferingChanged += value => MusicViz.IsBuffering = value;
-        if (AiUsageViewControl != null)
-        {
-            AiUsageViewControl.ContentSizeChanged += ScheduleAiUsageLayout;
-            AiUsageViewControl.OpenSettingsRequested += () =>
-            {
-                OpenAppSettings();
-                _activeSettingsWindow?.NavigateToAiUsage();
-            };
-        }
         CountdownWidget.Attach(_viewModel.Timer);
         CountdownWidget.Completed += (_, _) =>
         {
@@ -423,6 +414,8 @@ public partial class MainWindow : Window
         _overlayWindow.TargetScreen = () => MonitorSelection.Resolve(_settings);
         _overlayWindow.IsZOrderSuspended = isTopmostSuspended;
         _overlayWindow.IsPointInteractive = IsPointInteractive;
+        // Size the layered HWND before Show allocates its first rendering surface.
+        _overlayWindow.SetInitialSize(OverlaySurfaceWidth, _expandedHeight);
 
         _lyricsTimer = new UiScheduledTimer(DispatcherPriority.Background)
         {
@@ -1243,8 +1236,12 @@ public partial class MainWindow : Window
 
     private void PositionAtTop()
     {
-        double notchSurfaceWidth = Math.Max(ClipboardTrayWidth, Math.Max(Math.Max(_expandedWidth, _clockViewWidth), _audioViewWidth));
-        _overlayWindow.PositionAtTop(notchSurfaceWidth, MaxExpandedNotchHeight);
+        // Compact needs the same room as after a collapse. Taller views grow
+        // their host before their entrance animation.
+        double height = _isExpanded || _isAnimating ? MaxExpandedNotchHeight : _expandedHeight;
+        if (_isAppNotificationBannerVisible || _isAppNotificationBannerExiting)
+            height = Math.Max(height, _appNotificationBaseHeight);
+        _overlayWindow.PositionAtTop(OverlaySurfaceWidth, height);
 
         // Initialize the global hover/top-edge bounds at startup as well as after
         _notchManager.UpdatePosition();
@@ -1254,6 +1251,9 @@ public partial class MainWindow : Window
             UpdateFullscreenAutoHideState(OverlayWindowController.GetForegroundWindowHandle(), force: true);
         }
     }
+
+    private double OverlaySurfaceWidth =>
+        Math.Max(ClipboardTrayWidth, Math.Max(Math.Max(_expandedWidth, _clockViewWidth), _audioViewWidth));
 
     private void ResetPosition()
     {
@@ -2107,6 +2107,8 @@ public partial class MainWindow : Window
         OpenAppSettings();
     }
 
+    private void TraySettingsTargeted(object sender, RoutedEventArgs e) => ScheduleSettingsFirstOpenPreparation();
+
     private void Settings_Click(object sender, MouseButtonEventArgs e)
     {
         e.Handled = true;
@@ -2333,7 +2335,6 @@ public partial class MainWindow : Window
             return;
         }
         _isTrayMenuOpen = true;
-        ScheduleSettingsFirstOpenPreparation();
         MenuInvisibleText.Text = Loc.Get(_settings.InvisibleMode ? "settings.privacy.invisible.disable" : "settings.privacy.invisible.enable");
         MenuInvisible.IsChecked = _settings.InvisibleMode;
         MenuToggleText.Text = Loc.Get(_isNotchVisible ? "tray.hide" : "tray.show");

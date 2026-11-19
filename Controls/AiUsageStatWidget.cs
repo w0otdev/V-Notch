@@ -88,7 +88,7 @@ public sealed partial class AiUsageStatWidget : UserControl
             if (!IsPreview) AiAccountUsageMonitor.Shared.Updated += OnUpdated;
             Loc.LanguageChanged += OnLanguageChanged;
             AiUsageAppearance.Changed += OnAppearanceChanged;
-            PresentWithEntrance();
+            if (IsVisible) PresentWithEntrance();
         };
         Unloaded += (_, _) =>
         {
@@ -99,10 +99,17 @@ public sealed partial class AiUsageStatWidget : UserControl
         };
         IsVisibleChanged += (_, _) =>
         {
-            if (IsVisible) PresentWithEntrance();
+            if (_subscribed && IsVisible) PresentWithEntrance();
             else if (IsPreview) _hasPresentedAppearance = false;
         };
-        Present();
+    }
+
+    protected override Size MeasureOverride(Size constraint)
+    {
+        // Hosts can measure offscreen before revealing the widget. Collapsed
+        // widgets skip measure and never allocate provider rows.
+        if (_root.Children.Count == 0) Present();
+        return base.MeasureOverride(constraint);
     }
 
     private void OnLanguageChanged() => OnUpdated(this, EventArgs.Empty);

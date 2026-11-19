@@ -6,6 +6,12 @@
 V-Notch includes third-party components and assets listed below. Their licenses
 apply to those components and assets.
 
+## 7-Zip installer extraction module
+
+Installers built with 7-Zip use its console self-extraction module, copyright
+Igor Pavlov, under the GNU LGPL. The corresponding distribution notice ships
+in `licenses/7-Zip.txt`. [7-Zip source releases](https://www.7-zip.org/download.html)
+
 ## YOLOX-Nano ONNX model
 
 `Models/yolox_nano.onnx` is the unmodified YOLOX-Nano asset published by
@@ -70,6 +76,8 @@ OpenAI, Gemini and DeepSeek remain trademarks of their respective owners.
 | LLamaSharp 0.27.0 | MIT | <https://github.com/SciSharp/LLamaSharp/tree/v0.27.0> |
 | LLamaSharp.Backend.Cpu / LLamaSharp.Backend.Vulkan.Windows 0.27.0 | MIT core; included native dependency notices in `Assets/Translation/Licenses/` | <https://github.com/SciSharp/LLamaSharp/tree/v0.27.0> |
 | Markdig 0.41.3 | BSD-2-Clause | <https://github.com/xoofx/markdig> |
+| ReverseMarkdown 6.3.0 | MIT | <https://www.nuget.org/packages/ReverseMarkdown/6.3.0> |
+| AngleSharp 1.5.2 | MIT | <https://www.nuget.org/packages/AngleSharp/1.5.2> |
 | Microsoft.Extensions.DependencyInjection 8.0.1 | MIT | <https://dot.net/> |
 | Microsoft.ML.OnnxRuntime.DirectML 1.24.4 | MIT | <https://github.com/microsoft/onnxruntime> |
 | Microsoft.AI.DirectML 1.15.4 | Microsoft Software License; bundled terms in `licenses/DirectML-1.15.4.txt` | <https://github.com/microsoft/DirectML> |
@@ -106,6 +114,58 @@ Canvas is experimental, off by default and requires explicit in-app acknowledgem
 This document is a factual inventory and risk notice, not legal advice or a substitute for third-party licenses.
 
 ## Complete licenses and copyright notices for added components
+
+### Release notes formatting
+
+ReverseMarkdown 6.3.0 and AngleSharp 1.5.2 convert release feed HTML to Markdown.
+
+#### ReverseMarkdown
+
+The MIT License (MIT)
+
+Copyright (c) 2015 Babu Annamalai
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+
+#### AngleSharp
+
+The MIT License (MIT)
+
+Copyright (c) 2013 - 2026 AngleSharp
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
 
 ### Offline translation runtime and optional model
 

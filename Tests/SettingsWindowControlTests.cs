@@ -2,8 +2,10 @@ using System.Reflection;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
+using System.Windows.Documents;
 using System.Windows.Input;
 using System.Windows.Media;
+using VNotch.Controls;
 using VNotch.Models;
 using VNotch.Services;
 using VNotch.Services.AiUsage;
@@ -209,7 +211,7 @@ public sealed class SettingsWindowControlTests
         window.NavigateToAiUsage();
         await window.Dispatcher.InvokeAsync(() => { }, System.Windows.Threading.DispatcherPriority.ApplicationIdle);
         var card = Assert.IsType<Border>(window.FindName("AiUsageCard"));
-        AssertAiSubscriptionFont(card);
+        AssertSfProBold(card);
         Assert.DoesNotContain(AiSettingsVisuals(card), node => node is ComboBox or Expander);
         var choices = AiSettingsVisuals(card).OfType<RadioButton>().ToArray();
         Assert.Equal(8, choices.Length);
@@ -255,14 +257,14 @@ public sealed class SettingsWindowControlTests
         }
     }
 
-    private static void AssertAiSubscriptionFont(DependencyObject root)
+    private static void AssertSfProBold(DependencyObject root)
     {
-        if (root is TextBlock { Text.Length: > 0 } text)
+        if (root is TextBlock text && (text.Text.Length > 0 || text.Inlines.Count > 0))
         {
             Assert.True(text.FontWeight == FontWeights.Bold, $"{text.Name} '{text.Text}' uses {text.FontWeight} ({text.FontFamily.Source})");
             Assert.Contains("SF Pro Display", text.FontFamily.Source, StringComparison.OrdinalIgnoreCase);
         }
-        for (int i = 0; i < VisualTreeHelper.GetChildrenCount(root); i++) AssertAiSubscriptionFont(VisualTreeHelper.GetChild(root, i));
+        for (int i = 0; i < VisualTreeHelper.GetChildrenCount(root); i++) AssertSfProBold(VisualTreeHelper.GetChild(root, i));
     }
 
     [Fact]
@@ -1173,7 +1175,7 @@ public sealed class SettingsWindowControlTests
                 Invoke(window, "NavigateToSection", section);
                 if (!reducedMotion && sectionIdx == 1 && window.IsLoaded && SystemParameters.ClientAreaAnimation)
                 {
-                    Assert.True(Field<bool>(window, "_navPillAnimating"));
+                    Assert.True(Field<SettingsSelectionMotion>(window, "_navPill").IsMoving);
                 }
                 await WpfFrameWaiter.UntilAsync(() => panels[section].Visibility == Visibility.Visible && panels.Values.Count(panel => panel.Visibility == Visibility.Visible) == 1, "settings section navigation", ct);
                 Assert.Equal(section, Field<string>(window, "_activeNav"));
@@ -1191,6 +1193,68 @@ public sealed class SettingsWindowControlTests
             Assert.Equal(latest, Field<string>(window, "_activeNav"));
         }
         finally { AnimationConfig.SetReduceMotion(previous); }
+    });
+
+    [Fact]
+    public void SettingsContentRevealsAcrossPagesAndExpandedGroups() => SharedStaTestRunner.RunAsync(async ct =>
+    {
+        bool previous = AnimationConfig.ReduceMotion;
+        var systemMotion = AnimationConfig.ClientAreaAnimationOverride;
+        try
+        {
+            AnimationConfig.SetReduceMotion(false);
+            AnimationConfig.ClientAreaAnimationOverride = true;
+            using var fixture = new Fixture();
+            var window = fixture.Window;
+            window.Show();
+            await window.Dispatcher.InvokeAsync(() => { }, System.Windows.Threading.DispatcherPriority.ApplicationIdle);
+            window.NavigateToSection("FileTray");
+            Assert.True(window.SettingsPageWave.IsVisible);
+            window.UpdateLayout();
+            await WpfFrameWaiter.UntilAsync(() => window.TrayAdvancedTitle.Opacity is > .05 and < 1 &&
+                window.TrayAdvancedHint.Opacity < window.TrayAdvancedTitle.Opacity &&
+                window.TrayTextCheck.Opacity < window.TrayAdvancedTitle.Opacity, "individual components in one settings tree", ct);
+            Assert.True(window.TrayTextCheck.HasAnimatedProperties);
+            Assert.False(window.TrayTextRow.HasAnimatedProperties);
+
+            window.NavigateToSection("Advanced");
+            window.UpdateLayout();
+            var bottom = window.EnableDebugModeCheck;
+            Assert.True(bottom.TranslatePoint(new Point(), window.SettingsScrollViewer).Y > window.SettingsScrollViewer.ViewportHeight);
+            Assert.False(bottom.HasAnimatedProperties);
+            var wheel = new MouseWheelEventArgs(Mouse.PrimaryDevice, 0,
+                -(int)Math.Ceiling(window.SettingsScrollViewer.ScrollableHeight))
+                { RoutedEvent = Mouse.PreviewMouseWheelEvent };
+            window.SettingsScrollViewer.RaiseEvent(wheel);
+            Assert.True(wheel.Handled);
+            await WpfFrameWaiter.UntilAsync(() => bottom.Opacity is > 0 and < 1, "a newly scrolled-in control to reveal", ct);
+            await WpfFrameWaiter.UntilAsync(() => !Field<bool>(window, "_isScrollAnimating"),
+                "wheel scroll during reveal to settle", ct);
+            await WpfFrameWaiter.UntilAsync(() => !bottom.HasAnimatedProperties && bottom.Opacity == 1, "the control to settle", ct);
+            window.SettingsScrollViewer.ScrollToTop();
+            window.UpdateLayout();
+            bottom.BringIntoView();
+            window.UpdateLayout();
+            Assert.False(bottom.HasAnimatedProperties);
+
+            window.NavigateToTranslation();
+            window.TranslationAdvancedExpander.IsExpanded = true;
+            window.UpdateLayout();
+            window.TranslationCustomPromptLabel.BringIntoView();
+            await WpfFrameWaiter.UntilAsync(() => window.TranslationCustomPromptLabel.Opacity is > 0 and < 1,
+                "expanded options to reveal", ct);
+            AnimationConfig.SetReduceMotion(true);
+            Assert.Equal(1, window.TranslationCustomPromptLabel.Opacity);
+            Assert.False(window.TranslationCustomPromptLabel.HasAnimatedProperties);
+            window.NavigateToSection("FileTray");
+            Assert.False(window.SettingsPageWave.IsVisible);
+            Assert.Equal(1, window.TrayTextCheck.Opacity);
+        }
+        finally
+        {
+            AnimationConfig.ClientAreaAnimationOverride = systemMotion;
+            AnimationConfig.SetReduceMotion(previous);
+        }
     });
 
     [Fact]
@@ -1215,10 +1279,11 @@ public sealed class SettingsWindowControlTests
             double start = window.NavActiveIndicator.TranslatePoint(new Point(0, 0), window.NavItemsStack).Y;
             double target = window.NavPrivacy.TranslatePoint(new Point(0, 0), window.NavItemsStack).Y;
             window.NavigateToSection("Privacy");
-            Invoke(window, "AdvanceNavPillMotion", .08);
+            var pill = Field<SettingsSelectionMotion>(window, "_navPill");
+            pill.Advance(.08);
             double between = window.NavActiveIndicator.TranslatePoint(new Point(0, 0), window.NavItemsStack).Y;
             double stretched = window.NavActiveIndicatorScale.ScaleY;
-            var state = Field<object>(window, "_navPillState");
+            var state = typeof(SettingsSelectionMotion).GetField("_state", Private)!.GetValue(pill)!;
             double topVelocity = (double)state.GetType().GetField("TopVelocity")!.GetValue(state)!;
             double bottomVelocity = (double)state.GetType().GetField("BottomVelocity")!.GetValue(state)!;
             Assert.InRange(between, start + .1, target - .1);
@@ -1228,10 +1293,10 @@ public sealed class SettingsWindowControlTests
             window.NavigateToSection("Appearance");
             Assert.Equal(between, window.NavActiveIndicator.TranslatePoint(new Point(0, 0), window.NavItemsStack).Y, 3);
             Assert.Equal(stretched, window.NavActiveIndicatorScale.ScaleY, 3);
-            var retargeted = Field<object>(window, "_navPillState");
+            var retargeted = typeof(SettingsSelectionMotion).GetField("_state", Private)!.GetValue(pill)!;
             Assert.Equal(topVelocity, (double)retargeted.GetType().GetField("TopVelocity")!.GetValue(retargeted)!);
             Assert.Equal(bottomVelocity, (double)retargeted.GetType().GetField("BottomVelocity")!.GetValue(retargeted)!);
-            await WpfFrameWaiter.UntilAsync(() => !Field<bool>(window, "_navPillAnimating"),
+            await WpfFrameWaiter.UntilAsync(() => !pill.IsMoving,
                 "reversed sidebar selection settles and detaches its frame handler", ct);
             Assert.Equal(window.NavAppearance.TranslatePoint(new Point(0, 0), window.NavItemsStack).Y,
                 window.NavActiveIndicatorTranslate.Y, 3);
@@ -1257,7 +1322,7 @@ public sealed class SettingsWindowControlTests
                     }
                     for (int step = 0; step < 36; step++, frame++)
                     {
-                        Invoke(window, "AdvanceNavPillMotion", .016);
+                        pill.Advance(.016);
                         var bitmap = new System.Windows.Media.Imaging.RenderTargetBitmap(
                             (int)Math.Ceiling(window.NavItemsHost.ActualWidth * 2),
                             (int)Math.Ceiling(window.NavItemsHost.ActualHeight * 2), 192, 192, PixelFormats.Pbgra32);
@@ -1288,7 +1353,7 @@ public sealed class SettingsWindowControlTests
             window.NavigateToSection("System");
             AnimationConfig.SetReduceMotion(true);
             window.SyncNavIndicators(animate: false);
-            Assert.False(Field<bool>(window, "_navPillAnimating"));
+            Assert.False(Field<SettingsSelectionMotion>(window, "_navPill").IsMoving);
             Assert.False(window.NavActiveIndicatorTranslate.HasAnimatedProperties);
             Assert.False(window.NavActiveIndicatorScale.HasAnimatedProperties);
             Assert.Equal(System.Windows.Controls.Primitives.LayoutInformation.GetLayoutSlot(window.NavSystem).Y + window.NavSystem.Margin.Top,
@@ -1305,6 +1370,8 @@ public sealed class SettingsWindowControlTests
     public void CascadeWithoutTailBlurPreservesOpacityAndReleasesEveryClock(bool menu) => SharedStaTestRunner.RunAsync(async ct =>
     {
         bool previous = AnimationConfig.ReduceMotion;
+        var previousSystemMotion = AnimationConfig.ClientAreaAnimationOverride;
+        AnimationConfig.ClientAreaAnimationOverride = true;
         AnimationConfig.SetReduceMotion(false);
         try
         {
@@ -1315,6 +1382,7 @@ public sealed class SettingsWindowControlTests
                 IsEnabled = index != 7
             }).ToArray();
             fixture.Window.ApplyProgressiveBlurCascade(items, 0, menu ? -1 : 1, menu, 60);
+            Assert.All(items, item => Assert.True(item.HasAnimatedProperties));
             Assert.All(items, item => Assert.Null(item.Effect));
             await WpfFrameWaiter.UntilAsync(() => items.All(item => !item.HasAnimatedProperties &&
                 !item.RenderTransform.HasAnimatedProperties && item.Effect == null), "cascade releases motion clocks without blur", ct);
@@ -1323,7 +1391,11 @@ public sealed class SettingsWindowControlTests
             fixture.Window.ResetProgressiveBlurElements(menu);
             Assert.All(items, item => Assert.Equal(0, ((TranslateTransform)item.RenderTransform).Y));
         }
-        finally { AnimationConfig.SetReduceMotion(previous); }
+        finally
+        {
+            AnimationConfig.ClientAreaAnimationOverride = previousSystemMotion;
+            AnimationConfig.SetReduceMotion(previous);
+        }
     });
 
     [Theory]
@@ -1511,9 +1583,231 @@ public sealed class SettingsWindowControlTests
         Assert.False(window.IncludePrereleaseUpdatesCheck.IsEnabled);
     });
 
+    [Fact]
+    public void ChangelogOpensAndNavigatesWithinSettings() => SharedStaTestRunner.RunAsync(async () =>
+    {
+        var updates = new PrereleasePreferenceUpdateService
+        {
+            Releases = [new() { Version = "2.0.0", PublishedAt = new DateTime(2026, 1, 2), ReleaseNotes = "### Changes\n- Notes with *emphasis*, a [link](https://example.com) and `code`.\n\n```txt\nexample\n```" }]
+        };
+        using var fixture = new Fixture(updates);
+        var window = fixture.Window;
+        window.Show();
+        await window.Dispatcher.InvokeAsync(() => { }, System.Windows.Threading.DispatcherPriority.ApplicationIdle);
+        window.NavigateToSection("Updates");
+
+        void OpenChangelog() => window.ViewChangelogButton.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+        OpenChangelog();
+        window.UpdateLayout();
+        Assert.Same(window, Window.GetWindow(window.Changelog));
+        Assert.Empty(window.OwnedWindows);
+        Assert.True(window.Changelog.ChangelogContent.IsVisible);
+        Assert.True(window.Changelog.ContentScrollViewer.ViewportHeight > 0);
+        AssertSfProBold(window.ChangelogPage);
+        Assert.True(window.NavUpdates.IsVisible);
+        Assert.False(window.SettingsScrollViewer.IsVisible);
+        Assert.Equal(2, window.Changelog.VersionList.Items.Count);
+
+        var list = window.Changelog.VersionList;
+        var firstRow = (ListBoxItem)list.Items[0];
+        firstRow.Focus();
+        var down = new KeyEventArgs(Keyboard.PrimaryDevice, PresentationSource.FromVisual(list)!, 0, Key.Down)
+            { RoutedEvent = Keyboard.PreviewKeyDownEvent };
+        firstRow.RaiseEvent(down);
+        Assert.True(down.Handled);
+        Assert.Equal(1, list.SelectedIndex);
+        Assert.Equal("1.0.0", ((ListBoxItem)list.SelectedItem).Tag);
+
+        window.ChangelogBackButton.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+        Assert.True(window.ViewChangelogButton.IsVisible);
+        OpenChangelog();
+        Assert.Equal(2, window.Changelog.VersionList.Items.Count);
+        window.NavigateToSection("Appearance");
+        Assert.True(window.PanelAppearance.IsVisible);
+        Assert.False(window.Changelog.IsVisible);
+        window.NavigateToSection("Updates");
+        Assert.True(window.ViewChangelogButton.IsVisible);
+        OpenChangelog();
+        Invoke(window, "ExecuteSearch", "volume");
+        Assert.True(window.PanelSearching.IsVisible);
+        Assert.False(window.Changelog.IsVisible);
+    });
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public void ChangelogSkeletonTracksPendingHistoryInBothPanes(bool succeeds) => SharedStaTestRunner.RunAsync(async ct =>
+    {
+        var pending = new TaskCompletionSource<IReadOnlyList<UpdateInfo>>(TaskCreationOptions.RunContinuationsAsynchronously);
+        using var fixture = new Fixture(new PrereleasePreferenceUpdateService { PendingHistory = pending.Task });
+        var window = fixture.Window;
+        window.Show();
+        window.NavigateToSection("Updates");
+        void OpenChangelog() => window.ViewChangelogButton.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+        OpenChangelog();
+        var view = window.Changelog;
+        await WpfFrameWaiter.UntilAsync(() => view.VersionSkeleton.IsVisible && view.NotesSkeleton.IsVisible &&
+            !window.SettingsPageWave.IsVisible, "both changelog loading placeholders to appear", ct);
+        Assert.Empty(view.VersionList.Items);
+        Assert.False(view.ChangelogContent.IsVisible);
+        Assert.False(view.ErrorPanel.IsVisible);
+        window.ChangelogBackButton.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+        Assert.False(view.NotesSkeleton.IsVisible);
+        OpenChangelog();
+        Assert.True(view.VersionSkeleton.IsVisible);
+        Assert.True(view.NotesSkeleton.IsVisible);
+
+        if (succeeds) pending.SetResult([new() { Version = "1.0.0", ReleaseNotes = "Release notes" }]);
+        else pending.SetException(new InvalidOperationException("History unavailable"));
+        await WpfFrameWaiter.UntilAsync(() => !view.NotesSkeleton.IsVisible && !view.VersionSkeleton.IsVisible,
+            "both changelog placeholders to give way to the result", ct);
+        Assert.Equal(succeeds, view.ChangelogContent.IsVisible);
+        Assert.Equal(!succeeds, view.ErrorPanel.IsVisible);
+        Assert.Equal(succeeds ? 1 : 0, view.VersionList.Items.Count);
+    });
+
+    [Fact]
+    public void ChangelogRowChromeRevealsWithItsLabels() => SharedStaTestRunner.RunAsync(async ct =>
+    {
+        using var fixture = new Fixture(new PrereleasePreferenceUpdateService
+        {
+            Releases = Enumerable.Range(1, 12).Select(i => new UpdateInfo
+            {
+                Version = $"2.0.{i}",
+                ReleaseNotes = string.Join("\n\n", Enumerable.Range(1, 36).Select(n => $"Change {n}"))
+            }).ToArray()
+        });
+        bool previousMotion = AnimationConfig.ReduceMotion;
+        var previousSystem = AnimationConfig.ClientAreaAnimationOverride;
+        try
+        {
+            AnimationConfig.SetReduceMotion(false);
+            AnimationConfig.ClientAreaAnimationOverride = true;
+            var window = fixture.Window;
+            window.Show();
+            window.NavigateToSection("Updates");
+            window.ViewChangelogButton.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+            window.UpdateLayout();
+            var view = window.Changelog;
+            var track = VisualTreeHelper.GetParent(view.VersionList);
+            var selected = (ListBoxItem)view.VersionList.SelectedItem;
+            var labels = (FrameworkElement)selected.Content;
+            var neighbor = (ListBoxItem)view.VersionList.Items[1];
+            var hoverSurface = (Border)neighbor.Template.FindName("VersionRow", neighbor);
+
+            double OpacityInTrack(UIElement element)
+            {
+                double opacity = 1;
+                for (DependencyObject visual = element; visual != track; visual = VisualTreeHelper.GetParent(visual))
+                    if (visual is UIElement layer) opacity *= layer.Opacity;
+                return opacity;
+            }
+
+            await WpfFrameWaiter.UntilAsync(() => view.SelectionMark.IsVisible &&
+                OpacityInTrack(labels) is > .01 and < .95, "the selected row mid-reveal", ct);
+            var lowerRows = view.VersionList.Items.Cast<ListBoxItem>().Skip(8).ToArray();
+            var lowerNotes = view.ReleaseNotes.Children.Cast<UIElement>().Skip(8).ToArray();
+            Assert.NotEmpty(lowerRows);
+            Assert.NotEmpty(lowerNotes);
+            Assert.All(lowerRows, row => Assert.Equal(0, row.Opacity));
+            Assert.All(lowerNotes, note => Assert.Equal(0, note.Opacity));
+            Assert.False(view.VersionList.IsKeyboardFocusWithin);
+            Assert.Same(window.FindResource("AccentBrush"), view.SelectionMark.Background);
+            Assert.Same(window.FindResource("AccentForegroundBrush"), selected.Foreground);
+            Assert.Equal(OpacityInTrack(labels), OpacityInTrack(view.SelectionMark), precision: 3);
+            Assert.Equal(OpacityInTrack((UIElement)neighbor.Content), OpacityInTrack(hoverSurface), precision: 3);
+            double labelTop = labels.TranslatePoint(new Point(0, 1 - selected.Padding.Top), view.VersionList).Y;
+            Assert.Equal(labelTop, view.SelectionMark.TranslatePoint(new Point(), view.VersionList).Y, precision: 3);
+
+            view.VersionList.SelectedIndex = 1;
+            await WpfFrameWaiter.UntilAsync(() => !view.ReleaseWave.IsVisible && view.MarkScale.ScaleY == 1 &&
+                Math.Abs(view.MarkOffset.Y - neighbor.TranslatePoint(new Point(0, 1), view.VersionList).Y) < .01,
+                "the indicator to settle on the interrupted row", ct);
+            Assert.Equal(1, OpacityInTrack(view.SelectionMark));
+            Assert.All(lowerRows, row => Assert.Equal(1, row.Opacity));
+            await WpfFrameWaiter.UntilAsync(() => view.ReleaseNotes.Children.Cast<UIElement>()
+                .All(note => !note.HasAnimatedProperties && note.Opacity == 1), "all release notes to finish revealing", ct);
+
+            neighbor.Focus();
+            neighbor.RaiseEvent(new KeyEventArgs(Keyboard.PrimaryDevice, PresentationSource.FromVisual(neighbor)!, 0, Key.End)
+                { RoutedEvent = Keyboard.PreviewKeyDownEvent });
+            var last = (ListBoxItem)view.VersionList.Items[^1];
+            Assert.Same(last, view.VersionList.SelectedItem);
+            window.UpdateLayout();
+            Assert.True(view.VersionScrollViewer.VerticalOffset > 0);
+            await WpfFrameWaiter.UntilAsync(() => view.MarkScale.ScaleY == 1 &&
+                Math.Abs(last.TranslatePoint(new Point(0, 1), view.VersionScrollViewer).Y -
+                    view.SelectionMark.TranslatePoint(new Point(), view.VersionScrollViewer).Y) < .01,
+                "the selection to settle on the scrolled row", ct);
+        }
+        finally
+        {
+            AnimationConfig.SetReduceMotion(previousMotion);
+            AnimationConfig.ClientAreaAnimationOverride = previousSystem;
+        }
+    });
+
+    [Fact]
+    public void ChangelogSelectionCanInterruptMotionAndHonorReducedMotion() => SharedStaTestRunner.RunAsync(async ct =>
+    {
+        using var fixture = new Fixture(new PrereleasePreferenceUpdateService
+        {
+            Releases = [new() { Version = "2.0.0", ReleaseNotes = "Latest notes" }]
+        });
+        var window = fixture.Window;
+        bool previousMotion = AnimationConfig.ReduceMotion;
+        bool? previousSystemMotion = AnimationConfig.ClientAreaAnimationOverride;
+        try
+        {
+            AnimationConfig.SetReduceMotion(false);
+            AnimationConfig.ClientAreaAnimationOverride = true;
+            window.Show();
+            window.NavigateToSection("Updates");
+            window.ViewChangelogButton.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+            var view = window.Changelog;
+            await WpfFrameWaiter.UntilAsync(() => view.SelectionMark.IsVisible && view.MarkOffset.Y > 0 &&
+                !window.SettingsPageWave.IsVisible, "the opening wave to finish", ct);
+            double first = view.MarkOffset.Y;
+            view.VersionList.SelectedIndex = 1;
+            double second = ((ListBoxItem)view.VersionList.SelectedItem).TranslatePoint(new Point(0, 1), view.VersionList).Y;
+            Assert.True(second > first);
+            Assert.True(view.ReleaseHeader.HasAnimatedProperties);
+            await WpfFrameWaiter.UntilAsync(() => view.ReleaseWave.IsVisible && view.ReleaseWave.Progress is > 0 and < 1 &&
+                view.MarkScale.ScaleY > 1.02 && view.MarkScale.ScaleX < 1,
+                "the version pill to stretch during the blur wave", ct);
+            view.VersionList.SelectedIndex = 0;
+            await WpfFrameWaiter.UntilAsync(() => !view.ReleaseWave.IsVisible && view.MarkScale.ScaleY == 1 &&
+                view.ReleaseHeader.Opacity >= .999,
+                "the wave, retargeted selection and reveal to settle", ct);
+            Assert.Equal(first, view.MarkOffset.Y, precision: 3);
+            var paragraph = Assert.IsType<TextBlock>(view.ReleaseNotes.Children[0]);
+            Assert.Equal("Latest notes", new TextRange(paragraph.ContentStart, paragraph.ContentEnd).Text);
+
+            window.EnableBlurEffectsCheck.IsChecked = false;
+            view.VersionList.SelectedIndex = 1;
+            Assert.False(view.ReleaseWave.IsVisible);
+            window.EnableBlurEffectsCheck.IsChecked = true;
+            AnimationConfig.SetReduceMotion(true);
+            view.VersionList.SelectedIndex = 0;
+            Assert.Equal(first, view.MarkOffset.Y, precision: 3);
+            Assert.False(view.ReleaseWave.IsVisible);
+            Assert.Equal(1, view.ReleaseNotes.Opacity);
+            window.ChangelogBackButton.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+            Assert.False(window.SettingsPageWave.IsVisible);
+            Assert.True(window.ViewChangelogButton.IsVisible);
+        }
+        finally
+        {
+            AnimationConfig.ClientAreaAnimationOverride = previousSystemMotion;
+            AnimationConfig.SetReduceMotion(previousMotion);
+        }
+    });
+
     private sealed class PrereleasePreferenceUpdateService : IUpdateService
     {
         public bool IncludePrereleases { get; private set; }
+        public IReadOnlyList<UpdateInfo> Releases { get; init; } = [];
+        public Task<IReadOnlyList<UpdateInfo>>? PendingHistory { get; init; }
         public string CurrentVersion => "1.0.0";
         public UpdateInfo? LatestUpdateInfo => null;
         public event EventHandler<UpdateInfo?>? UpdateCheckCompleted { add { /* no-op */ } remove { /* no-op */ } }
@@ -1522,7 +1816,7 @@ public sealed class SettingsWindowControlTests
             IncludePrereleases = includePrereleases;
             return Task.FromResult<UpdateInfo?>(null);
         }
-        public Task<IReadOnlyList<UpdateInfo>> GetAllReleasesAsync() => Task.FromResult<IReadOnlyList<UpdateInfo>>([]);
+        public Task<IReadOnlyList<UpdateInfo>> GetAllReleasesAsync() => PendingHistory ?? Task.FromResult(Releases);
         public Task<bool> DownloadAndInstallUpdateAsync(UpdateInfo updateInfo, IProgress<double>? progress = null, CancellationToken cancellationToken = default) => Task.FromResult(false);
     }
 

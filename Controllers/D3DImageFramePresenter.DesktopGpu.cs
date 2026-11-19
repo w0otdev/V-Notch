@@ -58,8 +58,9 @@ internal sealed partial class D3DImageFramePresenter
         protected override bool ReleaseHandle() { NativeGpuDestroy(handle.ToInt64()); return true; }
     }
 
-    [LibraryImport("VNotch.Native.dll", EntryPoint = "vn_glass_gpu_create")]
-    private static partial int NativeGpuCreate(IntPtr device, int width, int height, out long handle);
+    [LibraryImport("VNotch.Native.dll", EntryPoint = "vn_glass_gpu_create_on_adapter", StringMarshalling = StringMarshalling.Utf16)]
+    private static partial int NativeGpuCreate(IntPtr device, int width, int height, long renderLuid, out long handle,
+        Span<char> adapterName, uint nameCapacity);
     [LibraryImport("VNotch.Native.dll", EntryPoint = "vn_glass_gpu_render")]
     private static partial int NativeGpuRender(GpuHandle handle, in GpuFrame frame);
     [LibraryImport("VNotch.Native.dll", EntryPoint = "vn_glass_gpu_render_windows")]
@@ -78,6 +79,8 @@ internal sealed partial class D3DImageFramePresenter
     private static partial void NativeGpuReset(GpuHandle handle);
     [LibraryImport("VNotch.Native.dll", EntryPoint = "vn_glass_gpu_find_adapter")]
     private static partial uint NativeGpuFindAdapter(IntPtr direct3D, IntPtr hwnd);
+    [LibraryImport("VNotch.Native.dll", EntryPoint = "vn_glass_gpu_find_preferred_adapter")]
+    private static partial uint NativeGpuFindPreferredAdapter(IntPtr direct3D, IntPtr hwnd, out long renderLuid);
     [LibraryImport("VNotch.Native.dll", EntryPoint = "vn_glass_gpu_capture_status")]
     private static partial int NativeGpuCaptureStatus(GpuHandle handle);
     [LibraryImport("VNotch.Native.dll", EntryPoint = "vn_glass_gpu_capture_backend")]
@@ -100,6 +103,7 @@ internal sealed partial class D3DImageFramePresenter
     internal GpuFrame? PresentedGpuFrame { get; private set; }
     private double _appliedCaptureIntervalMs;
     private string _lastCaptureRoute = "waiting";
+    private string _renderAdapterName = "waiting";
     internal double LastGpuRenderMs { get; private set; }
     internal double LastGpuWaitMs { get; private set; }
     internal double SubmittedGpuRenderMs { get; private set; }
@@ -135,7 +139,7 @@ internal sealed partial class D3DImageFramePresenter
         get
         {
             lock (_surfaceSync)
-                return $"route={_lastCaptureRoute} backend={(_gpuHandle == null ? "waiting" : NativeGpuCaptureBackend(_gpuHandle) switch { 1 => "DXGI", 2 => "WGC", _ => "waiting" })} " +
+                return $"renderGpu={_renderAdapterName} route={_lastCaptureRoute} backend={(_gpuHandle == null ? "waiting" : NativeGpuCaptureBackend(_gpuHandle) switch { 1 => "DXGI", 2 => "WGC", _ => "waiting" })} " +
                     $"capture=0x{(_gpuHandle == null ? 1 : NativeGpuCaptureStatus(_gpuHandle)):X8} " +
                     $"borderless=0x{(_gpuHandle == null ? 1 : NativeGpuBorderlessStatus(_gpuHandle)):X8} " +
                     $"fence=0x{(_gpuHandle == null ? 1 : NativeGpuFenceStatus(_gpuHandle)):X8} " +
@@ -148,8 +152,11 @@ internal sealed partial class D3DImageFramePresenter
         lock (_surfaceSync)
         {
             if (_gpuHandle != null) return;
-            Marshal.ThrowExceptionForHR(NativeGpuCreate(_device!.NativePointer, _surfaceWidth, _surfaceHeight, out long handle));
+            Span<char> name = stackalloc char[128]; // DXGI_ADAPTER_DESC1.Description
+            Marshal.ThrowExceptionForHR(NativeGpuCreate(_device!.NativePointer, _surfaceWidth, _surfaceHeight,
+                _glassRenderLuid, out long handle, name, (uint)name.Length));
             _gpuHandle = new GpuHandle(handle);
+            _renderAdapterName = name[..name.IndexOf('\0')].ToString();
             _renderSurface = _device.CreateRenderTarget((uint)_surfaceWidth, (uint)_surfaceHeight,
                 Format.A8R8G8B8, MultisampleType.None, 0, lockable: false);
             _lastDirtyWidth = _surfaceWidth;

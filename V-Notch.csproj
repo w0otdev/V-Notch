@@ -41,9 +41,9 @@
          reflection, COM interop or CPU/GPU translation backends. -->
     <EnableCompressionInSingleFile Condition="'$(Configuration)' == 'Release' And '$(SelfContained)' == 'true'">true</EnableCompressionInSingleFile>
     <PublishReferencesDocumentationFiles>false</PublishReferencesDocumentationFiles>
-    <Version>2.4.1</Version>
-    <AssemblyVersion>2.4.1.0</AssemblyVersion>
-    <FileVersion>2.4.1.0</FileVersion>
+    <Version>2.4.2</Version>
+    <AssemblyVersion>2.4.2.0</AssemblyVersion>
+    <FileVersion>2.4.2.0</FileVersion>
     <Authors>w0otdev, viper1aa</Authors>
     <Company>V-Notch</Company>
     <Product>V-Notch</Product>
@@ -71,6 +71,7 @@
     <PackageReference Include="LLamaSharp" Version="0.27.0" />
     <PackageReference Include="LLamaSharp.Backend.Cpu" Version="0.27.0" />
     <PackageReference Include="Markdig" Version="0.41.3" />
+    <PackageReference Include="ReverseMarkdown" Version="6.3.0" />
     <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="8.0.1" />
     <PackageReference Include="Microsoft.ML.OnnxRuntime.DirectML" Version="1.24.4" GeneratePathProperty="true" ExcludeAssets="compile;runtime" />
     <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.4078.44" />

@@ -70,6 +70,7 @@ internal sealed partial class D3DImageFramePresenter : IDisposable
     private bool _pendingForcePresent;
     private readonly bool _ultimateGpuMode;
     private uint _adapterIndex;
+    private long _glassRenderLuid;
 
     internal bool IsUltimateGpuMode => _ultimateGpuMode;
     internal uint AdapterIndex => _adapterIndex;
@@ -181,9 +182,13 @@ internal sealed partial class D3DImageFramePresenter : IDisposable
             PresentationInterval = PresentInterval.Immediate
         };
 
-        uint preferredAdapter = _useGpuCapture
-            ? NativeGpuFindAdapter(_direct3D.NativePointer, _hwnd)
-            : _ultimateGpuMode ? SelectBestHardwareAdapter(_direct3D) : 0u;
+        uint preferredAdapter;
+        if (_useGpuCapture && _ultimateGpuMode)
+            preferredAdapter = NativeGpuFindPreferredAdapter(_direct3D.NativePointer, _hwnd, out _glassRenderLuid);
+        else if (_useGpuCapture)
+            preferredAdapter = NativeGpuFindAdapter(_direct3D.NativePointer, _hwnd);
+        else
+            preferredAdapter = _ultimateGpuMode ? SelectBestHardwareAdapter(_direct3D) : 0u;
         const CreateFlags deviceFlags =
             CreateFlags.Multithreaded |
             CreateFlags.FpuPreserve |

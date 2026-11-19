@@ -244,13 +244,46 @@ if (-not (Test-Path "installers")) {
     New-Item -ItemType Directory -Path "installers" | Out-Null
 }
 
-# Read the UTF-8 source explicitly; ANSI decoding turns the copyright sign into mojibake.
-if ($SelfContained) {
-    $nsisOut = Invoke-CapturedNative { & $NsisPath "/V2" "/INPUTCHARSET" "UTF8" "/DSELF_CONTAINED" "/DAPP_VERSION_FULL=$installerVersion" "/DAPP_VERSION=$ReleaseVersion" "V-Notch-Setup.nsi" }
-} else {
-    $nsisOut = Invoke-CapturedNative { & $NsisPath "/V2" "/INPUTCHARSET" "UTF8" "/DAPP_VERSION_FULL=$installerVersion" "/DAPP_VERSION=$ReleaseVersion" "V-Notch-Setup.nsi" }
+$nsisArguments = @('/V2', '/INPUTCHARSET', 'UTF8', "/DAPP_VERSION_FULL=$installerVersion", "/DAPP_VERSION=$ReleaseVersion")
+if ($SelfContained) { $nsisArguments += '/DSELF_CONTAINED' }
+
+# The BCJ2 filter and solid LZMA2 compress the native code with a 16 MiB
+# dictionary. The console extraction module also works on offline Windows 10.
+$programFilesRoot = if ($env:ProgramW6432) { $env:ProgramW6432 } else { $env:ProgramFiles }
+$sevenZipDir = Join-Path $programFilesRoot '7-Zip'
+$sevenZip = Join-Path $sevenZipDir '7z.exe'
+$extractor = Join-Path $sevenZipDir '7zCon.sfx'
+$license = Join-Path $sevenZipDir 'License.txt'
+$packedPayload = $null
+try {
+    if ((Test-Path -LiteralPath $sevenZip) -and (Test-Path -LiteralPath $extractor) -and (Test-Path -LiteralPath $license)) {
+        $packedPayload = Join-Path ([IO.Path]::GetTempPath()) ("vnotch-payload-{0}.exe" -f [guid]::NewGuid())
+        Copy-Item -LiteralPath $license -Destination (Join-Path $publishDir 'licenses/7-Zip.txt')
+        Push-Location $publishDir
+        try {
+            & $sevenZip a -t7z "-sfx$extractor" -mx=9 -mf=BCJ2 -m0=LZMA2:d=16m -ms=on -mmt=2 -bso0 $packedPayload '.\*'
+            if ($LASTEXITCODE -ne 0) { throw '7-Zip payload compression failed.' }
+        } finally {
+            Pop-Location
+        }
+        if ($CertificateThumbprint) {
+            & (Join-Path $scriptDir 'Sign-ReleaseBinary.ps1') -Path $packedPayload -CertificateThumbprint $CertificateThumbprint
+        } elseif ($CertificatePath) {
+            & $signtool.Source sign /fd SHA256 /f $CertificatePath /p $CertificatePassword /tr "http://timestamp.digicert.com" /td SHA256 $packedPayload
+            if ($LASTEXITCODE -ne 0) { throw 'Authenticode signing of the extraction module failed.' }
+        }
+        $nsisArguments += "/DPACKED_PAYLOAD=$packedPayload"
+    } else {
+        Write-TreeItem 'Using NSIS compression. Install 7-Zip for a smaller setup executable.'
+    }
+    $nsisOut = Invoke-CapturedNative { & $NsisPath @nsisArguments 'V-Notch-Setup.nsi' }
+    $nsisExitCode = $LASTEXITCODE
+} finally {
+    if ($packedPayload -and (Test-Path -LiteralPath $packedPayload)) {
+        Remove-Item -LiteralPath $packedPayload -Force
+    }
 }
-if ($LASTEXITCODE -ne 0) {
+if ($nsisExitCode -ne 0) {
     foreach ($l in @($nsisOut | ForEach-Object { "$_" } | Where-Object { $_.Trim() })) {
         Write-TreeItem $l.Trim() -State "Error"
     }
@@ -258,7 +291,8 @@ if ($LASTEXITCODE -ne 0) {
     Write-Host "  $gBotLeft$lineRule`n" -ForegroundColor DarkCyan
     exit 1
 }
-Write-TreeItem "Built installers\V-Notch-Setup.exe." -State "Success"
+$installerMiB = (Get-Item -LiteralPath 'installers\V-Notch-Setup.exe').Length / 1MB
+Write-TreeItem ("Built installers\V-Notch-Setup.exe ({0:N2} MiB)." -f $installerMiB) -State "Success"
 
 # Step 4: Signing & Checksums
 Write-TreeSpacer

@@ -194,7 +194,8 @@ public sealed class AppFileCleanupTests : IDisposable
     {
         var service = new AppFileCleanupService();
         service.Start(); service.Start();
-        await service.DisposeAsync().AsTask().WaitAsync(TimeSpan.FromSeconds(2));
+        // Allow for a busy coverage runner while still requiring cancellation of the 30-second delay.
+        await service.DisposeAsync().AsTask().WaitAsync(TimeSpan.FromSeconds(15));
         ((IDisposable)service).Dispose();
         Assert.Throws<ObjectDisposedException>(service.Start);
     }

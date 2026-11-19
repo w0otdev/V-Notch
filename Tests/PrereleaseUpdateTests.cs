@@ -28,6 +28,8 @@ public sealed class PrereleaseUpdateTests
         using var client = new HttpClient(new Handler(request =>
         {
             requests++;
+            if (request.RequestUri!.Host == "api.github.com")
+                return new HttpResponseMessage(HttpStatusCode.TooManyRequests);
             Assert.Equal("/w0otdev/V-Notch/releases.atom", request.RequestUri!.AbsolutePath);
             return new(HttpStatusCode.OK) { Content = new StringContent("""
                 <feed xmlns="http://www.w3.org/2005/Atom"><entry>
@@ -47,7 +49,41 @@ public sealed class PrereleaseUpdateTests
         Assert.False(releases[0].IsNewerVersion); // History cannot authorize an installer.
         Assert.Empty(releases[0].DownloadUrl);
         Assert.Equal(2, (await service.GetAllReleasesAsync()).Count);
-        Assert.Equal(1, requests);
+        Assert.Equal(2, requests);
+    }
+
+    [Fact]
+    public async Task ChangelogReadsEveryApiPageAndKeepsPublishedTagsAndNotes()
+    {
+        var pages = new List<string>();
+        using var client = new HttpClient(new Handler(request =>
+        {
+            var uri = request.RequestUri!;
+            Assert.Equal("api.github.com", uri.Host);
+            pages.Add(uri.Query);
+            const string latest = """{"tag_name":"v2.4","body":"## Latest","draft":false,"published_at":"2026-11-16T06:13:27Z"}""";
+            const string older = """{"tag_name":"nightly","body":"Nightly notes","prerelease":true,"draft":false,"published_at":"2026-10-01T00:00:00Z"}""";
+            if (pages.Count == 1)
+            {
+                var first = new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent($"[{latest},{{\"draft\":true}}]") };
+                first.Headers.TryAddWithoutValidation("Link", "<https://api.github.com/repos/w0otdev/V-Notch/releases?per_page=12&page=2>; rel=\"next\"");
+                return first;
+            }
+            return new(HttpStatusCode.OK) { Content = new StringContent($"[{latest},{older}]") };
+        }));
+        using var service = new UpdateService(client, new UpdateSecurityPolicy());
+        var firstPage = await service.GetChangelogPageAsync(1, CancellationToken.None);
+        Assert.True(firstPage.HasMore);
+        Assert.Single(firstPage.Releases);
+        Assert.Single(pages);
+        firstPage.Releases[0].ReleaseNotes = "Mutated by a caller";
+        Assert.Equal("## Latest", (await service.GetChangelogPageAsync(1, CancellationToken.None)).Releases[0].ReleaseNotes);
+        Assert.Single(pages);
+        var releases = await service.GetAllReleasesAsync();
+        Assert.Equal(new[] { "?per_page=12&page=1", "?per_page=12&page=2" }, pages);
+        Assert.Collection(releases,
+            latest => { Assert.Equal("v2.4", latest.ReleaseTag); Assert.Equal("2.4", latest.Version); Assert.Equal("## Latest", latest.ReleaseNotes); },
+            older => { Assert.Equal("nightly", older.ReleaseTag); Assert.True(older.IsPrerelease); });
     }
 
     [Theory]

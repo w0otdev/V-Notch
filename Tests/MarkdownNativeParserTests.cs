@@ -175,8 +175,14 @@ public class MarkdownNativeParserTests
             Assert.True(termsPanel.Children.Count >= 12);
 
             var changelogPanel = new StackPanel();
-            ChangelogWindow.RenderMarkdownContent(changelogPanel, doc);
+            ChangelogView.RenderMarkdownContent(changelogPanel, doc);
             Assert.True(changelogPanel.Children.Count >= 12);
+
+            var imageBlock = new TextBlock();
+            ChangelogView.PopulateInlineMarkdown(imageBlock,
+                "![Screenshot](https://example.com/shot.png) [![Preview](https://example.com/thumb.png)](https://example.com/gallery)");
+            Assert.Equal(new[] { "https://example.com/shot.png", "https://example.com/gallery" },
+                EnumerateHyperlinks(imageBlock.Inlines).Select(link => link.NavigateUri.AbsoluteUri));
 
             var httpCheckBlock = new TextBlock();
             TermsOfServicePage.AddFormattedInlines(httpCheckBlock, "[Insecure](http://example.com) and [Secure](https://example.com)");
@@ -193,7 +199,7 @@ public class MarkdownNativeParserTests
             Assert.Equal("Terms " + delimiters + " end", new TextRange(textBlock.ContentStart, textBlock.ContentEnd).Text);
 
             sw.Start();
-            ChangelogWindow.PopulateInlineMarkdown(textBlock, adversarial);
+            ChangelogView.PopulateInlineMarkdown(textBlock, adversarial);
             sw.Stop();
             Assert.Equal(delimiters + " end", new TextRange(textBlock.ContentStart, textBlock.ContentEnd).Text);
             Assert.True(sw.ElapsedMilliseconds < 500, $"Expected fast linear parse, took {sw.ElapsedMilliseconds}ms");

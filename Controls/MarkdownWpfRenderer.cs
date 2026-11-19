@@ -99,12 +99,14 @@ internal sealed class MarkdownPanelOptions
 
     public FontFamily? BodyFont { get; init; }
     public FontFamily CodeBlockFont { get; init; } = DefaultCodeFont;
+    public FontWeight CodeBlockFontWeight { get; init; } = FontWeights.Normal;
     public FontFamily InlineCodeFont { get; init; } = DefaultCodeFont;
     public double BodyFontSize { get; init; } = 13;
     public double BodyLineHeight { get; init; } = 20;
     public FontWeight BodyFontWeight { get; init; } = FontWeights.Normal;
     public Thickness ParagraphMargin { get; init; } = new(0, 4, 0, 4);
     public bool SoftBreakAsSpace { get; init; }
+    public bool LinkImages { get; init; }
 
     public Brush BodyForeground { get; init; } = DefaultBodyBrush;
     public Brush HeadingForeground { get; init; } = DefaultHeadingBrush;
@@ -669,7 +671,7 @@ internal static class MarkdownWpfRenderer
             Text = code.Lines.ToString().TrimEnd('\r', '\n'),
             FontFamily = opt.CodeBlockFont,
             FontSize = 12.5,
-            FontWeight = FontWeights.Normal,
+            FontWeight = opt.CodeBlockFontWeight,
             Foreground = opt.CodeBlockForeground,
             TextWrapping = TextWrapping.Wrap
         };
@@ -1027,7 +1029,8 @@ internal static class MarkdownWpfRenderer
                     break;
 
                 case LinkInline link:
-                    if (!link.IsImage && TryResolveSafeUri(link.Url, opt.HttpsOnlyLinks, out var safeUri))
+                    bool linkImage = opt.LinkImages && link.Parent?.ContainsParentOfType<LinkInline>() != true;
+                    if ((!link.IsImage || linkImage) && TryResolveSafeUri(link.Url, opt.HttpsOnlyLinks, out var safeUri))
                     {
                         var hyperlink = CreateSafeHyperlink(inlineChild: null, safeUri, opt.LinkForeground, opt.UnderlineLinks);
                         AddPanelInlines(hyperlink.Inlines, link, opt, skipLeadingTaskList: false);
