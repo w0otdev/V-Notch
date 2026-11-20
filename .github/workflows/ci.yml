@@ -242,7 +242,20 @@ jobs:
         env:
           # .NET's default crash collector does not capture native exceptions.
           VSTEST_DUMP_FORCEPROCDUMP: '1'
-        run: pwsh -NoProfile -File Tools/Invoke-TestShard.ps1 -ShardIndex ${{ matrix.shard }} -TotalShards 4 -ResultsDirectory TestResults/Coverage -CollectCoverage -BaseFilter 'Category!=DesktopIntegration&Category!=Performance'
+        run: pwsh -NoProfile -File Tools/Invoke-TestShard.ps1 -ShardIndex ${{ matrix.shard }} -TotalShards 4 -ResultsDirectory TestResults/Coverage -CollectCoverage -BaseFilter 'Category!=DesktopIntegration&Category!=Performance&Category!=ArchitectureScale'
+
+      - name: Check performance budgets without coverage instrumentation
+        if: matrix.shard == 0
+        # Measure latency and allocations without instrumentation; keep the original budgets.
+        run: dotnet test Tests/VNotch.Tests.csproj --configuration Release --no-build --no-restore --filter 'Category=Performance' --blame-hang-timeout 60s --logger 'console;verbosity=normal'
+
+      - name: Check architecture scale without coverage instrumentation
+        if: matrix.shard == 1
+        env:
+          # .NET's default crash collector does not capture native exceptions.
+          VSTEST_DUMP_FORCEPROCDUMP: '1'
+        # Measure storage and UI scale latency/allocations without coverage instrumentation overhead.
+        run: dotnet test Tests/VNotch.Tests.csproj --configuration Release --no-build --no-restore --filter 'Category=ArchitectureScale' --results-directory TestResults/Coverage --blame-hang-timeout 180s --blame-crash-dump-type mini --logger 'console;verbosity=normal'
 
       - name: Retain shard crash diagnostics
         if: ${{ !cancelled() }}
@@ -258,11 +271,6 @@ jobs:
           if-no-files-found: ignore
           retention-days: 7
 
-      - name: Check performance budgets without coverage instrumentation
-        if: matrix.shard == 0
-        # Measure latency and allocations without instrumentation; keep the original budgets.
-        run: dotnet test Tests/VNotch.Tests.csproj --configuration Release --no-build --no-restore --filter 'Category=Performance' --blame-hang-timeout 60s --logger 'console;verbosity=normal'
-
       - name: Upload shard coverage
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
@@ -272,7 +280,7 @@ jobs:
           retention-days: 1
 
       - name: Retain architecture scale evidence
-        if: ${{ !cancelled() }}
+        if: ${{ !cancelled() && matrix.shard == 1 }}
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: architecture-scale-shard-${{ matrix.shard }}
