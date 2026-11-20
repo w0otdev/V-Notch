@@ -1,5 +1,6 @@
 #include "vnotch_native.h"
 #include "vnotch_handle_registry.h"
+#include <mutex>
 #include <d3d9.h>
 #include <d3d11_4.h>
 #include <wrl/client.h>
@@ -46,6 +47,7 @@ inline void Retire(std::unique_ptr<FrameLease> frame) noexcept {
     }
 }
 class SurfaceCopy final {
+    std::mutex gate;
     ComPtr<IDirect3DDevice9Ex> presentation;
     ComPtr<IDirect3DTexture9> target9;
     ComPtr<IDirect3DSurface9> surface9;
@@ -63,6 +65,7 @@ public:
     // S_OK: owns owner.Close(). S_FALSE: busy, caller closes/drops. Failure:
     // unsupported device/format, caller retains ownership and uses CPU fallback.
     HRESULT Submit(IUnknown* input, IUnknown* owner) {
+        std::lock_guard lock(gate);
         if (frame) return S_FALSE;
         if (consuming) {
             const HRESULT hr = consumed->GetData(nullptr, 0, D3DGETDATA_FLUSH);
@@ -105,6 +108,7 @@ public:
         return S_OK;
     }
     HRESULT Present(IDirect3DSurface9* destination) {
+        std::lock_guard lock(gate);
         if (!frame) return S_FALSE;
         const HRESULT hr = frame->Poll();
         if (hr == S_FALSE) return hr;

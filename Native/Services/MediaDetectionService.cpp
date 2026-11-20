@@ -317,6 +317,10 @@ BOOL CALLBACK EnumSpotifyWindowsProc(HWND hwnd, LPARAM lparam) noexcept {
 template <typename TAsyncOp>
 bool WaitWinRtAsync(TAsyncOp* op, DWORD timeout_ms = 3000) noexcept {
     if (!op) return false;
+    APTTYPE apartment;
+    APTTYPEQUALIFIER qualifier;
+    if (SUCCEEDED(CoGetApartmentType(&apartment, &qualifier)) &&
+        (apartment == APTTYPE_STA || apartment == APTTYPE_MAINSTA)) return false;
     vnotch::com::ComPtr<ABI::Windows::Foundation::IAsyncInfo> info;
     if (FAILED(op->QueryInterface(__uuidof(ABI::Windows::Foundation::IAsyncInfo), reinterpret_cast<void**>(info.Put()))) || !info.ptr) {
         return false;
@@ -371,7 +375,7 @@ VN_EXPORT int32_t __stdcall vn_media_detection_build_session_instance_key(
     char16_t* out_buf,
     int32_t out_cap,
     int32_t* out_len) noexcept {
-    if (!unk_ptr || !out_buf || out_cap <= 0 || !out_len || source_app_len < 0) return VN_ERR_INVALID_ARG;
+    if (!unk_ptr || !out_buf || out_cap <= 0 || !out_len || source_app_len < 0 || (!source_app && source_app_len > 0)) return VN_ERR_INVALID_ARG;
 
     auto* unk = reinterpret_cast<IUnknown*>(unk_ptr);
     vnotch::com::ComPtr<IUnknown> identity;
@@ -394,6 +398,7 @@ VN_EXPORT int32_t __stdcall vn_media_detection_build_session_instance_key(
         }
     }
 
+    if (source_app_len > INT32_MAX - 1 - hex_len) return VN_ERR_INVALID_ARG;
     const int32_t required = source_app_len + 1 + hex_len;
     *out_len = required;
     if (out_cap < required) return VN_ERR_BUFFER_TOO_SMALL;
@@ -429,7 +434,7 @@ VN_EXPORT int32_t __stdcall vn_media_detection_extract_youtube_video_id(
     char16_t* out_buf,
     int32_t out_cap,
     int32_t* out_len) noexcept {
-    if (!out_buf || out_cap <= 0 || !out_len || url_len < 0) return VN_ERR_INVALID_ARG;
+    if (!out_buf || out_cap <= 0 || !out_len || (url_len < 0 || (!url && url_len > 0))) return VN_ERR_INVALID_ARG;
     std::u16string_view sv(url ? url : u"", static_cast<size_t>(url_len));
     *out_len = vnotch::services::MediaDetectionService::ExtractYouTubeVideoId(sv, out_buf, out_cap);
     return VN_OK;
@@ -471,7 +476,7 @@ extern "C" int32_t __stdcall vn_media_detection_parse_youtube_window_title(
     char16_t* out_artist,
     int32_t artist_cap,
     int32_t* out_artist_len) noexcept {
-    if (!out_track || track_cap < 0 || !out_track_len || !out_artist || artist_cap < 0 || !out_artist_len || extracted_title_len < 0) {
+    if (!out_track || track_cap < 0 || !out_track_len || !out_artist || artist_cap < 0 || !out_artist_len || (extracted_title_len < 0 || (!extracted_title && extracted_title_len > 0))) {
         return VN_ERR_INVALID_ARG;
     }
     std::u16string_view sv(extracted_title ? extracted_title : u"", static_cast<size_t>(extracted_title_len));
@@ -495,7 +500,7 @@ VN_EXPORT int32_t __stdcall vn_media_detection_evaluate_spotify_secondary_correc
     int32_t* out_artist_len,
     uint8_t* out_corrected) noexcept {
     if (!out_track || track_cap < 0 || !out_track_len || !out_artist || artist_cap < 0 || !out_artist_len || !out_corrected ||
-        ground_truth_len < 0 || current_track_len < 0 || current_artist_len < 0) {
+        (ground_truth_len < 0 || (!ground_truth && ground_truth_len > 0)) || (current_track_len < 0 || (!current_track && current_track_len > 0)) || (current_artist_len < 0 || (!current_artist && current_artist_len > 0))) {
         return VN_ERR_INVALID_ARG;
     }
     std::u16string_view gt_sv(ground_truth ? ground_truth : u"", static_cast<size_t>(ground_truth_len));

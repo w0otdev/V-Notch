@@ -26,7 +26,11 @@ struct GpuQuery {
         counter = nullptr;
         next_retry = 0;
         buffer.clear();
-        buffer.shrink_to_fit();
+        std::vector<uint64_t>().swap(buffer);
+    }
+    void retry() noexcept {
+        reset();
+        next_retry = GetTickCount64() + 5000;
     }
     void sample(VnSystemMetricsSnapshot& result) {
         if (!query) {
@@ -44,10 +48,7 @@ struct GpuQuery {
         }
         const auto collection = PdhCollectQueryData(query);
         if (collection != ERROR_SUCCESS) {
-            if (collection != PDH_NO_DATA) {
-                reset();
-                next_retry = GetTickCount64() + 5000;
-            }
+            retry();
             return;
         }
         constexpr DWORD format = PDH_FMT_DOUBLE | PDH_FMT_NOCAP100;
@@ -59,13 +60,13 @@ struct GpuQuery {
             // The size from a failed nonzero-buffer call is not reliable (PDH contract).
             bytes = 0;
             status = PdhGetFormattedCounterArrayW(counter, format, &bytes, &count, nullptr);
-            if (status != PDH_MORE_DATA || bytes == 0 || bytes > 16 * 1024 * 1024) return;
+            if (status != PDH_MORE_DATA || bytes == 0 || bytes > 16 * 1024 * 1024) { retry(); return; }
             buffer.resize((bytes + sizeof(uint64_t) - 1) / sizeof(uint64_t));
             bytes = static_cast<DWORD>(buffer.size() * sizeof(uint64_t));
             status = PdhGetFormattedCounterArrayW(counter, format, &bytes, &count,
                 reinterpret_cast<PDH_FMT_COUNTERVALUE_ITEM_W*>(buffer.data()));
         }
-        if (status != ERROR_SUCCESS) return;
+        if (status != ERROR_SUCCESS || count == 0) { retry(); return; }
         wchar_t prefix[32]{};
         swprintf_s(prefix, L"pid_%lu_", GetCurrentProcessId());
         const auto prefix_length = wcslen(prefix);

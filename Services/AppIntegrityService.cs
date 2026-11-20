@@ -82,25 +82,21 @@ public static partial class AppIntegrityService
         try
         {
             string zoneIdentifierPath = $"{filePath}:Zone.Identifier";
-            if (!File.Exists(zoneIdentifierPath))
-            {
-                // No Mark of the Web stream present (e.g. unblocked, local build, or non-NTFS).
-                return (true, null);
-            }
-
-            string content = File.ReadAllText(zoneIdentifierPath);
+            string content;
+            try { content = File.ReadAllText(zoneIdentifierPath); }
+            catch (FileNotFoundException) { return (true, null); }
             var (hostUrl, referrerUrl) = ParseZoneIdentifier(content);
 
-            if (!string.IsNullOrWhiteSpace(hostUrl) && !IsTrustedDownloadDomain(hostUrl))
-            {
+            bool repositoryReferrer = Uri.TryCreate(referrerUrl, UriKind.Absolute, out var referrer) &&
+                referrer.Scheme == Uri.UriSchemeHttps && IsTrustedDownloadDomain(referrerUrl!);
+            bool knownHost = Uri.TryCreate(hostUrl, UriKind.Absolute, out var host) &&
+                IsTrustedDownloadDomain(hostUrl!) && host.Scheme == Uri.UriSchemeHttps;
+            if (!string.IsNullOrWhiteSpace(hostUrl) && !IsTrustedDownloadDomain(hostUrl) &&
+                !(repositoryReferrer && host != null && IsTrustedReleaseRedirect(host)))
                 return (false, hostUrl);
-            }
-
-            if (!string.IsNullOrWhiteSpace(referrerUrl) && !IsTrustedDownloadDomain(referrerUrl))
-            {
+            if (!string.IsNullOrWhiteSpace(referrerUrl) && !IsTrustedDownloadDomain(referrerUrl) &&
+                !(knownHost && referrer == new Uri("https://github.com/")))
                 return (false, referrerUrl);
-            }
-
             return (true, null);
         }
         catch (Exception ex)

@@ -149,7 +149,12 @@ private:
             try {
                 if (!winrt::Windows::Foundation::Metadata::ApiInformation::IsPropertyPresent(
                     L"Windows.Graphics.Capture.GraphicsCaptureSession", L"IsBorderRequired")) return;
-                (void)wc::GraphicsCaptureAccess::RequestAccessAsync(wc::GraphicsCaptureAccessKind::Borderless).get();
+                wc::GraphicsCaptureAccess::RequestAccessAsync(wc::GraphicsCaptureAccessKind::Borderless)
+                    .Completed([](auto const& access, auto status) noexcept {
+                        if (status == winrt::Windows::Foundation::AsyncStatus::Completed) {
+                            try { (void)access.GetResults(); } catch (...) {}
+                        }
+                    });
             } catch (...) { }
         });
     }

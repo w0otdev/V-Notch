@@ -259,9 +259,10 @@ VN_EXPORT int32_t vn_youtube_parse_utf8(const uint8_t* bytes, int32_t length, in
         else if (kind == 5) captions(root, *result);
         else if (kind == 6) json3(root, *result);
         else metadata(root, kind, {expected ? expected : u"", static_cast<size_t>(expected_length)}, *result);
-        *rows = result->rows.data(); *count = static_cast<int32_t>(result->rows.size());
-        *characters = result->characters.data(); *has_collection = result->has_collection ? 1 : 0;
+        auto* published = result.get();
         *handle = responses.Add(std::move(result));
+        *rows = published->rows.data(); *count = static_cast<int32_t>(published->rows.size());
+        *characters = published->characters.data(); *has_collection = published->has_collection ? 1 : 0;
         return VN_OK;
     } catch (...) { return VN_ERR_FAIL; }
 }

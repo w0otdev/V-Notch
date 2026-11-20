@@ -58,7 +58,6 @@ struct Capture {
     int64_t context = 0;
     SRWLOCK stop_lock = SRWLOCK_INIT;
     std::atomic<bool> stopping{false};
-    std::atomic<bool> self_delete{false};
 
     Capture() noexcept {
         stop_event = CreateEventW(nullptr, TRUE, FALSE, nullptr);
@@ -68,6 +67,7 @@ struct Capture {
     Capture& operator=(const Capture&) = delete;
     ~Capture() {
         Stop();
+        if (thread) CloseHandle(thread); // Last lease released by the worker itself.
         if (stop_event) CloseHandle(stop_event);
         if (data_event) CloseHandle(data_event);
     }
@@ -150,23 +150,17 @@ struct Capture {
         if (mmcss) AvRevertMmThreadCharacteristics(mmcss);
     }
 
-    static DWORD WINAPI Main(LPVOID param) noexcept {
-        auto* self = static_cast<Capture*>(param);
-        self->Run();
-        if (self->self_delete.load(std::memory_order_acquire)) {
-            if (self->client.ptr) self->client.ptr->Stop();
-            if (self->thread) {
-                CloseHandle(self->thread);
-                self->thread = nullptr;
-            }
-            delete self;
-        }
-        return 0;
-    }
+    static DWORD WINAPI Main(LPVOID param) noexcept;
 };
 
 // Exports that read a capture hold a lease, so a concurrent vn_loopback_stop cannot free it underneath them.
 vnotch::HandleRegistry<Capture> g_captures;
+
+DWORD WINAPI Capture::Main(LPVOID param) noexcept {
+    std::unique_ptr<decltype(g_captures)::Lease> worker(static_cast<decltype(g_captures)::Lease*>(param));
+    (*worker)->Run();
+    return 0;
+}
 
 // Selected endpoint when it is active, otherwise the default render endpoint.
 HRESULT ResolveDevice(IMMDeviceEnumerator* enumerator, const std::wstring& requested, ComPtr<IMMDevice>& out) {
@@ -274,13 +268,19 @@ static int32_t StartCapture(
             *out_hresult = static_cast<int32_t>(hr);
             return VN_ERR_FAIL;
         }
-        capture->thread = CreateThread(nullptr, 0, lb::Capture::Main, capture.get(), 0, &capture->thread_id);
-        if (!capture->thread) {
+        auto worker = std::make_unique<decltype(lb::g_captures)::Lease>();
+        const auto handle = lb::g_captures.Add(std::move(capture));
+        auto owner = lb::g_captures.Acquire(handle);
+        *worker = lb::g_captures.Acquire(handle);
+        auto* argument = worker.release();
+        owner->thread = CreateThread(nullptr, 0, lb::Capture::Main, argument, 0, &owner->thread_id);
+        if (!owner->thread) {
             *out_hresult = static_cast<int32_t>(HRESULT_FROM_WIN32(GetLastError()));
+            delete argument;
+            lb::g_captures.Remove(handle);
             return VN_ERR_FAIL;
         }
-
-        *out_handle = lb::g_captures.Add(std::move(capture));
+        *out_handle = handle;
         return VN_OK;
     } catch (...) {
         return VN_ERR_FAIL;
@@ -302,27 +302,10 @@ VN_EXPORT int32_t __stdcall vn_loopback_start_levels(
 // Stops and releases the capture. Safe from any thread, including callbacks.
 VN_EXPORT int32_t __stdcall vn_loopback_stop(int64_t handle) noexcept {
     if (handle <= 0) return VN_ERR_INVALID_ARG;
-    {
-        // Stop and join the worker while holding a lease so no callback is still in flight when this returns,
-        // even if another export holds a concurrent read lease on the capture.
-        auto lease = lb::g_captures.Acquire(handle);
-        if (!lease) return VN_OK;  // already stopped
-        if (GetCurrentThreadId() != lease->thread_id) {
-            lease->Stop();
-        } else {
-            lease->self_delete.store(true, std::memory_order_release);
-            lease->stopping.store(true, std::memory_order_release);
-            if (lease->stop_event) SetEvent(lease->stop_event);
-        }
-    }
-    std::unique_ptr<lb::Capture> capture;
-    if (!lb::g_captures.Remove(handle, &capture) || !capture) return VN_OK;
-    if (capture->self_delete.load(std::memory_order_acquire) || GetCurrentThreadId() == capture->thread_id) {
-        capture->self_delete.store(true, std::memory_order_release);
-        capture.release();
-        return VN_OK;
-    }
-    capture.reset();
+    auto lease = lb::g_captures.Acquire(handle);
+    if (!lease) return VN_OK;
+    lease->Stop();
+    lb::g_captures.Remove(handle);
     return VN_OK;
 }
 

@@ -293,7 +293,7 @@ extern "C" VN_EXPORT int32_t __stdcall vn_morph_settings_icon_sample_contour(
         !out_sampled_xy || !out_center_x || !out_center_y || !out_min_x || !out_bbox_area)
         return VN_ERR_INVALID_ARG;
 
-    if (out_cap_doubles < sample_count * 2)
+    if (out_cap_doubles < sample_count * 2LL)
         return VN_ERR_BUFFER_TOO_SMALL;
 
     // shortcut: stack contour buffer caps at 2048 flattened vertices per figure, upgrade if complex SVG paths exceed 2048 segments
@@ -416,7 +416,7 @@ extern "C" VN_EXPORT int32_t __stdcall vn_morph_settings_icon_compute_points(
     if (sample_count <= 0 || !out_xy || !out_point_count)
         return VN_ERR_INVALID_ARG;
 
-    if (out_cap_doubles < sample_count * 2)
+    if (out_cap_doubles < sample_count * 2LL)
         return VN_ERR_BUFFER_TOO_SMALL;
 
     if (from_xy != nullptr || to_xy != nullptr)
@@ -556,7 +556,7 @@ extern "C" VN_EXPORT int32_t __stdcall vn_visualizer_step_bars(
     if (bar_count <= 0)
         return VN_ERR_INVALID_ARG;
 
-    if (out_bar_rects_xywh && out_rects_cap_doubles < bar_count * 4)
+    if (out_bar_rects_xywh && out_rects_cap_doubles < bar_count * 4LL)
         return VN_ERR_BUFFER_TOO_SMALL;
 
     uint8_t settled = 1u;
@@ -631,7 +631,7 @@ extern "C" VN_EXPORT int32_t __stdcall vn_visualizer_compute_morph_quads(
     if (!bar_rects_xywh || bar_count <= 0 || !out_quad_points_xy)
         return VN_ERR_INVALID_ARG;
 
-    if (out_cap_doubles < bar_count * 8)
+    if (out_cap_doubles < bar_count * 8LL)
         return VN_ERR_BUFFER_TOO_SMALL;
 
     const double size = std::min(width, height);

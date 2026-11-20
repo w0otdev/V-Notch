@@ -57,6 +57,28 @@ public sealed class SpotifyCanvasCacheTests
         Assert.False(cache.Contains("key127"));
     }
 
+    [Fact]
+    public async Task EvictedLocalFileIsNotReturnedFromMemory()
+    {
+        using var directory = new TempFolder();
+        using var http = new HttpClient(new OfflineHandler());
+        using var service = new SpotifyCanvasService(http);
+        var uri = new Uri(System.IO.Path.Combine(directory.Path, "canvas.mp4"));
+        System.IO.File.WriteAllBytes(uri.LocalPath, [1]);
+        Store.Invoke(service, ["track|artist|5", uri]);
+        Task<Uri?> Fetch() => service.FetchCanvasAsync("track", "artist", TimeSpan.FromSeconds(5), "cookie");
+        Assert.Equal(uri, await Fetch());
+        System.IO.File.Delete(uri.LocalPath);
+        Assert.Null(await Fetch());
+        Assert.Empty(Cache(service));
+    }
+
+    private sealed class OfflineHandler : HttpMessageHandler
+    {
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken token) =>
+            Task.FromResult(new HttpResponseMessage(System.Net.HttpStatusCode.ServiceUnavailable));
+    }
+
     private static void Put(SpotifyCanvasService service, string key) => Store.Invoke(service, [key, Canvas]);
     private static IDictionary Cache(SpotifyCanvasService service) => (IDictionary)typeof(SpotifyCanvasService).GetField("_cache", Private)!.GetValue(service)!;
 }

@@ -63,6 +63,12 @@ public partial class SetupWindow : Window
     private bool _isWelcomePage = true;
     private bool _isTransitioning;
     private bool _isInstalling;
+    protected override void OnClosing(System.ComponentModel.CancelEventArgs e)
+    {
+        base.OnClosing(e);
+        if (_isInstalling) e.Cancel = true;
+    }
+
     private bool _installationSucceeded;
     private bool _hasInstallFailed;
     private bool _isShowingCancelSetupPage;
@@ -265,7 +271,7 @@ public partial class SetupWindow : Window
     private void TitleBar_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
     {
         if (e.ChangedButton == MouseButton.Left)
-            DragMove();
+            this.TryDragMove();
     }
 
     private void Window_SizeChanged(object sender, SizeChangedEventArgs e)

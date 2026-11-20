@@ -1,5 +1,6 @@
 #pragma once
 #include "GlassFrame.h"
+#include "GlassDevice.h"
 #include "../Controllers/WindowBackdropCapture.h"
 #include "../Controllers/BackdropLayers.h"
 
@@ -12,6 +13,7 @@ class WindowBackdrop final {
     using Cache = vnotch::controllers::backdrop::capture::WindowCaptureCache;
     using Layers = vnotch::controllers::backdrop::EnumState;
     struct State {
+        std::shared_ptr<GlassDevice> adapter;
         Cache cache;
         ComPtr<ID3D11Device> device;
         ComPtr<ID3D11DeviceContext> context;
@@ -25,6 +27,7 @@ class WindowBackdrop final {
             return hr;
         }
     };
+    std::shared_ptr<GlassDevice> adapter;
     std::unique_ptr<State> state;
     Target front, back;
     Layers frontLayers{}, pendingLayers{};
@@ -57,6 +60,7 @@ class WindowBackdrop final {
         return true;
     }
 public:
+    explicit WindowBackdrop(std::shared_ptr<GlassDevice> shared) : adapter(std::move(shared)) {}
     void Supersede() noexcept {
         valid = false;
         pendingCurrent = false;
@@ -71,19 +75,27 @@ public:
     }
     ~WindowBackdrop() {
         if (!state || !state->pending) return;
-        uint64_t samples = 0;
-        if (state->Poll(samples) != S_FALSE) return;
+        {
+            std::lock_guard lock(adapter->commands);
+            uint64_t samples = 0;
+            if (state->Poll(samples) != S_FALSE) return;
+            state->context->Flush();
+        }
         auto* pending = state.release();
         if (!TrySubmitThreadpoolCallback([](PTP_CALLBACK_INSTANCE, void* pointer) noexcept {
             std::unique_ptr<State> owner(static_cast<State*>(pointer));
+            const auto deadline = GetTickCount64() + 500;
             uint64_t samples = 0;
-            while (owner->Poll(samples) == S_FALSE) Sleep(1);
-        }, pending, nullptr)) {
-            state.reset(pending);
-            while (state->Poll(samples) == S_FALSE) Sleep(1);
-        }
+            do {
+                {
+                    std::lock_guard lock(owner->adapter->commands);
+                    if (owner->Poll(samples) != S_FALSE) break;
+                }
+                Sleep(1);
+            } while (GetTickCount64() < deadline);
+        }, pending, nullptr)) delete pending;
     }
-    // Only the capture worker can wait on validation, outside the adapter lock.
+    // The pipeline state lock keeps the backdrop alive while other pipelines use the adapter.
     template<class MakeTarget, class DrawWindow>
     HRESULT Capture(const Frame& frame, ID3D11Device* device, ID3D11DeviceContext* context, HANDLE frameWake,
         std::unique_lock<std::recursive_mutex>& commands, MakeTarget makeTarget, DrawWindow drawWindow, Target& result, bool& changed) {
@@ -116,7 +128,7 @@ public:
         ineligibleSince = 0;
         if (ready) {
             if (!state) {
-                auto next = std::make_unique<State>(); next->device = device; next->context = context;
+                auto next = std::make_unique<State>(); next->adapter = adapter; next->device = device; next->context = context;
                 next->cache.BindDevice(device);
                 next->cache.SetFrameWakeEvent(frameWake);
                 if (SUCCEEDED(next->context.As(&next->context3)))

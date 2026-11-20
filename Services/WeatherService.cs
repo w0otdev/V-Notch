@@ -266,16 +266,15 @@ public sealed partial class WeatherService : IWeatherService, IDisposable
 
     private static (double high, double low) ExtractDailyTemperatures(JsonElement root, double fallbackTemp)
     {
-        double high = fallbackTemp;
-        double low = fallbackTemp;
-        if (root.TryGetProperty("daily", out var daily))
-        {
-            if (daily.TryGetProperty("temperature_2m_max", out var maxArr) && maxArr.GetArrayLength() > 0)
-                high = maxArr[0].GetDouble();
-            if (daily.TryGetProperty("temperature_2m_min", out var minArr) && minArr.GetArrayLength() > 0)
-                low = minArr[0].GetDouble();
-        }
-        return (high, low);
+        if (!root.TryGetProperty("daily", out var daily) || daily.ValueKind != JsonValueKind.Object)
+            return (fallbackTemp, fallbackTemp);
+
+        double ReadFirst(string key) =>
+            daily.TryGetProperty(key, out var values) && values.ValueKind == JsonValueKind.Array &&
+            values.GetArrayLength() > 0 && values[0].ValueKind == JsonValueKind.Number &&
+            values[0].TryGetDouble(out var value) && double.IsFinite(value) ? value : fallbackTemp;
+
+        return (ReadFirst("temperature_2m_max"), ReadFirst("temperature_2m_min"));
     }
 
     private async Task<(double lat, double lon, string city)?> ResolveCityCoordinatesAsync(string city, CancellationToken token)

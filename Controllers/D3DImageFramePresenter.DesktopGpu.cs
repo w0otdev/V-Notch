@@ -155,10 +155,16 @@ internal sealed partial class D3DImageFramePresenter
             Span<char> name = stackalloc char[128]; // DXGI_ADAPTER_DESC1.Description
             Marshal.ThrowExceptionForHR(NativeGpuCreate(_device!.NativePointer, _surfaceWidth, _surfaceHeight,
                 _glassRenderLuid, out long handle, name, (uint)name.Length));
-            _gpuHandle = new GpuHandle(handle);
-            _renderAdapterName = name[..name.IndexOf('\0')].ToString();
-            _renderSurface = _device.CreateRenderTarget((uint)_surfaceWidth, (uint)_surfaceHeight,
-                Format.A8R8G8B8, MultisampleType.None, 0, lockable: false);
+            var nextHandle = new GpuHandle(handle);
+            try
+            {
+                int end = name.IndexOf('\0');
+                _renderAdapterName = (end < 0 ? name : name[..end]).ToString();
+                _renderSurface = _device.CreateRenderTarget((uint)_surfaceWidth, (uint)_surfaceHeight,
+                    Format.A8R8G8B8, MultisampleType.None, 0, lockable: false);
+                Volatile.Write(ref _gpuHandle, nextHandle);
+            }
+            catch { nextHandle.Dispose(); throw; }
             _lastDirtyWidth = _surfaceWidth;
             _lastDirtyHeight = _surfaceHeight;
         }

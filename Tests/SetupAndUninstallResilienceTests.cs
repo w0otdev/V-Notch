@@ -226,22 +226,25 @@ public class SetupAndUninstallResilienceTests
         }
     }
 
-    [Fact]
-    public void ExecuteUninstallCleanupSteps_ContinuesRemainingStepsWhenIndividualStepsThrow()
+    [Theory]
+    [InlineData(false, false)]
+    [InlineData(true, false)]
+    [InlineData(true, true)]
+    public void UninstallRequiresValidDirectoryAndStoppedProcesses(bool valid, bool stopped)
     {
         var executedSteps = new List<string>();
 
-        SetupOperations.ExecuteUninstallCleanupSteps(
+        bool success = SetupOperations.ExecuteUninstallCleanupSteps(
             @"C:\Users\Test\AppData\Local\Programs\V-Notch",
             validateCleanupStartInfo: () =>
             {
                 executedSteps.Add("validate");
-                throw new InvalidOperationException("Simulated start info failure");
+                if (!valid) throw new InvalidOperationException("Simulated start info failure");
             },
             stopRunningInstances: () =>
             {
                 executedSteps.Add("stop");
-                throw new Win32Exception("Simulated process stop failure");
+                if (!stopped) throw new Win32Exception("Simulated process stop failure");
             },
             removeStartup: () =>
             {
@@ -268,8 +271,9 @@ public class SetupAndUninstallResilienceTests
                 executedSteps.Add("schedule:" + Path.GetFileName(dir));
             });
 
-        Assert.Equal(
-            ["validate", "stop", "startup", "registry", "shortcuts", "appdata:V-Notch", "schedule:V-Notch"],
+        Assert.Equal(valid && stopped, success);
+        Assert.Equal<string>(
+            !valid ? ["validate"] : !stopped ? ["validate", "stop"] : ["validate", "stop", "startup", "registry", "shortcuts", "appdata:V-Notch", "schedule:V-Notch"],
             executedSteps);
     }
 

@@ -37,6 +37,30 @@ public sealed class UpdateFeedFallbackTests
         Assert.Equal(requests, fixture.Requests.Count);
     }
 
+    [Fact]
+    public async Task MalformedPreferredManifestFallsBackToSignedSetup()
+    {
+        using var fixture = new Fixture("99.2.0");
+        fixture.Sign("99.2.0", UpdateService.SelfContainedSetupName, emptyPayload: true);
+        fixture.Sign("99.2.0", UpdateService.SetupName);
+        using var service = fixture.Service();
+        var update = await service.CheckForUpdatesAsync();
+        Assert.NotNull(update);
+        Assert.Equal(UpdateService.SetupName, update.InstallerName);
+        Assert.True(update.IsNewerVersion);
+    }
+
+    [Fact]
+    public async Task SignedAssetsPublishedAfterTheFeedAreDiscoveredOnRefresh()
+    {
+        using var fixture = new Fixture("99.2.0", "99.1.0") { FeedEtag = new("\"unchanged\"") };
+        fixture.Sign("99.1.0", UpdateService.SetupName);
+        using var service = fixture.Service();
+        Assert.Equal("99.1.0", (await service.CheckForUpdatesAsync())?.Version);
+        fixture.Sign("99.2.0", UpdateService.SetupName);
+        Assert.Equal("99.2.0", (await service.CheckForUpdatesAsync(forceRefresh: true))?.Version);
+    }
+
     [Theory]
     [InlineData("missing")]
     [InlineData("signature")]
@@ -189,6 +213,7 @@ public sealed class UpdateFeedFallbackTests
         internal string[] Versions = versions;
         internal bool FeedUnavailable, ApiUnavailable;
         internal string? ApiReleases;
+        internal System.Net.Http.Headers.EntityTagHeaderValue? FeedEtag;
 
         internal UpdateService Service(string? cache = null)
         {
@@ -199,12 +224,12 @@ public sealed class UpdateFeedFallbackTests
 
         private readonly Handler _clientHandler = new();
 
-        internal void Sign(string version, string installer, SignedUpdateManifest? manifest = null, bool corruptSignature = false)
+        internal void Sign(string version, string installer, SignedUpdateManifest? manifest = null, bool corruptSignature = false, bool emptyPayload = false)
         {
             byte[] payload = JsonSerializer.SerializeToUtf8Bytes(manifest ?? new(1, version, installer, 123, new string('A', 64)));
             byte[] signature = _key.SignData(payload, HashAlgorithmName.SHA256, DSASignatureFormat.IeeeP1363FixedFieldConcatenation);
             if (corruptSignature) signature[0] ^= 1;
-            _assets[Asset(version, installer) + SignedUpdateManifest.ManifestSuffix] = payload;
+            _assets[Asset(version, installer) + SignedUpdateManifest.ManifestSuffix] = emptyPayload ? [] : payload;
             _assets[Asset(version, installer) + SignedUpdateManifest.SignatureSuffix] = signature;
         }
 
@@ -218,10 +243,13 @@ public sealed class UpdateFeedFallbackTests
                 if (ApiReleases != null) return new(HttpStatusCode.OK) { Content = new StringContent(ApiReleases) };
                 return new(HttpStatusCode.Forbidden) { Headers = { RetryAfter = new(TimeSpan.FromHours(1)) } };
             }
+            if (url.EndsWith("/releases.atom") && FeedEtag != null && request.Headers.IfNoneMatch.Contains(FeedEtag))
+                return new(HttpStatusCode.NotModified);
             Assert.False(request.Headers.Contains("If-None-Match"));
             if (url.EndsWith("/releases.atom"))
                 return FeedUnavailable ? new(HttpStatusCode.ServiceUnavailable) : new(HttpStatusCode.OK)
                 {
+                    Headers = { ETag = FeedEtag },
                     Content = new StringContent("<feed xmlns=\"http://www.w3.org/2005/Atom\">" + string.Concat(Versions.Select(version =>
                         $"<entry><id>tag:github.com,2008:Repository/123/v{version}</id><updated>2026-10-31T00:00:00Z</updated><content>Fixture release</content></entry>")) + "</feed>")
                 };

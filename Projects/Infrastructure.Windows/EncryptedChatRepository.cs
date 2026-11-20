@@ -43,7 +43,7 @@ public sealed class EncryptedChatRepository : IChatRepository
                 cancellation.ThrowIfCancellationRequested();
                 Initialize();
                 return action();
-            }, CancellationToken.None, TaskContinuationOptions.None, TaskScheduler.Default);
+            }, cancellation, TaskContinuationOptions.LazyCancellation, TaskScheduler.Default);
             _pending = task;
             return task;
         }

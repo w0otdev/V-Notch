@@ -44,7 +44,7 @@ internal static class SafeFileDeletion
     internal static bool IsBlockedReparseTag(uint reparseTag) =>
         reparseTag <= 1 || (reparseTag & ReparseTagNameSurrogateBit) != 0;
 
-    private static bool HasBlockedReparsePoint(string current)
+    internal static bool HasBlockedReparsePoint(string current)
     {
         string trimmed = Path.TrimEndingDirectorySeparator(current);
         string? root = Path.GetPathRoot(current);
@@ -79,11 +79,24 @@ internal static class SafeFileDeletion
             second.StartsWith(first + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase);
     }
 
+    private static bool IsRedirectedAppDataPath(string full)
+    {
+        // Only app-owned descendants of the configured Windows profile locations.
+        foreach (string root in new[] { AppPaths.RoamingAppDataRoot, AppPaths.LocalAppDataRoot, AppPaths.LegacyLocalAppDataRoot })
+        {
+            if (!root.StartsWith(@"\\", StringComparison.Ordinal) || root.StartsWith(@"\\?\", StringComparison.Ordinal) ||
+                root.StartsWith(@"\\.\", StringComparison.Ordinal)) continue;
+            if (full.Equals(root, StringComparison.OrdinalIgnoreCase) ||
+                full.StartsWith(root + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase)) return true;
+        }
+        return false;
+    }
+
     internal static void ValidatePath(string path)
     {
         string full = Path.GetFullPath(path);
         string trimmedFull = Path.TrimEndingDirectorySeparator(full);
-        if (!Path.IsPathFullyQualified(path) || full.StartsWith(@"\\", StringComparison.Ordinal) ||
+        if (!Path.IsPathFullyQualified(path) || (full.StartsWith(@"\\", StringComparison.Ordinal) && !IsRedirectedAppDataPath(full)) ||
             string.Equals(trimmedFull, Path.TrimEndingDirectorySeparator(Path.GetPathRoot(full)!), StringComparison.OrdinalIgnoreCase))
             throw new IOException("Refusing deletion at an unsafe path.");
         for (string? current = trimmedFull; current != null; current = Path.GetDirectoryName(current))

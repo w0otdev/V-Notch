@@ -32,9 +32,18 @@ struct Bounds {
     }
 };
 struct Selection {
-    Ptr<IUIAutomation> api;
-    Ptr<IUIAutomationElement> element;
-    Ptr<IUIAutomationTextRange> range;
+    Ptr<IGlobalInterfaceTable> table;
+    DWORD apiCookie{}, elementCookie{}, rangeCookie{};
+    ~Selection() {
+        for (DWORD cookie : {rangeCookie, elementCookie, apiCookie})
+            if (cookie) table->RevokeInterfaceFromGlobal(cookie);
+    }
+    template<class T> Ptr<T> resolve(DWORD cookie) const {
+        Ptr<T> value;
+        if (cookie && FAILED(table->GetInterfaceFromGlobal(cookie, IID_PPV_ARGS(value.GetAddressOf()))))
+            throw E_NOINTERFACE;
+        return value;
+    }
     HWND window = nullptr;
     Text text;
     Bounds bounds;
@@ -165,7 +174,13 @@ struct Reader {
     std::unique_ptr<Selection> finish(IUIAutomationElement* element, Text text, Bounds rectangle, IUIAutomationTextRange* range = nullptr, bool editable = false) {
         if (text.empty()) return {};
         auto result = std::make_unique<Selection>();
-        result->api = api; result->element = element; result->range = range; result->window = window;
+        if (FAILED(CoCreateInstance(CLSID_StdGlobalInterfaceTable, nullptr, CLSCTX_INPROC_SERVER,
+            IID_PPV_ARGS(result->table.GetAddressOf()))) ||
+            FAILED(result->table->RegisterInterfaceInGlobal(api.Get(), __uuidof(IUIAutomation), &result->apiCookie)) ||
+            FAILED(result->table->RegisterInterfaceInGlobal(element, __uuidof(IUIAutomationElement), &result->elementCookie)) ||
+            (range && FAILED(result->table->RegisterInterfaceInGlobal(range, __uuidof(IUIAutomationTextRange), &result->rangeCookie))))
+            throw E_NOINTERFACE;
+        result->window = window;
         result->text = std::move(text); result->bounds = rectangle; result->editable = editable;
         result->truncated = result->text.size() > static_cast<size_t>(limit);
         return result;
@@ -352,11 +367,12 @@ VN_EXPORT int32_t vn_selection_read(intptr_t hwnd, const int32_t* event_id, int3
         POINT point{}; GetCursorPos(&point);
         auto previous = selections.Acquire(previous_handle);
         Reader reader(window, pid, point, manual != 0, limit);
-        if (!reader.initialize(previous ? previous->api.Get() : nullptr)) return VN_ERR_FAIL;
+        if (!reader.initialize(previous ? previous->resolve<IUIAutomation>(previous->apiCookie).Get() : nullptr)) return VN_ERR_FAIL;
         bool protected_value = false;
         auto result = reader.scan(event_id, event_id_length, reinterpret_cast<HWND>(focus_hwnd), protected_value);
         *protected_input = protected_value ? 1 : 0;
         if (!result) return VN_OK;
+        if (result->text.size() > static_cast<size_t>(capacity)) return VN_ERR_BUFFER_TOO_SMALL;
         std::copy(result->text.begin(), result->text.end(), text); *length = static_cast<int32_t>(result->text.size());
         rectangle[0] = result->bounds.x; rectangle[1] = result->bounds.y; rectangle[2] = result->bounds.width; rectangle[3] = result->bounds.height;
         *editable = result->editable ? 1 : 0; *truncated = result->truncated ? 1 : 0;
@@ -376,7 +392,7 @@ VN_EXPORT int32_t vn_selection_same(int64_t first, int64_t second, uint8_t* equa
         auto a = selections.Acquire(first), b = selections.Acquire(second);
         if (!a || !b || a->window != b->window) return VN_OK;
         BOOL same = FALSE;
-        if (SUCCEEDED(a->api->CompareElements(a->element.Get(), b->element.Get(), &same)) && same && same_range(a->range.Get(), b->range.Get())) *equal = 1;
+        if (SUCCEEDED(a->resolve<IUIAutomation>(a->apiCookie)->CompareElements(a->resolve<IUIAutomationElement>(a->elementCookie).Get(), b->resolve<IUIAutomationElement>(b->elementCookie).Get(), &same)) && same && same_range(a->resolve<IUIAutomationTextRange>(a->rangeCookie).Get(), b->resolve<IUIAutomationTextRange>(b->rangeCookie).Get())) *equal = 1;
         return VN_OK;
     } catch (...) { return VN_ERR_FAIL; }
 }
@@ -391,25 +407,27 @@ VN_EXPORT int32_t vn_selection_prepare_replace(int64_t handle, const char16_t* e
     try {
         vnotch::ComScope com;
         auto state = selections.Acquire(handle);
-        if (!state || !state->editable || !state->element || !state->range) return VN_OK;
+        if (!state || !state->editable || !state->rangeCookie) return VN_OK;
+        auto element = state->resolve<IUIAutomationElement>(state->elementCookie);
+        auto range = state->resolve<IUIAutomationTextRange>(state->rangeCookie);
         auto foreground = GetForegroundWindow(); DWORD pid = 0; GetWindowThreadProcessId(foreground, &pid);
         if (foreground != state->window && pid != GetCurrentProcessId()) return VN_OK;
         for (const int key : {VK_SHIFT, VK_CONTROL, VK_MENU, VK_LWIN, VK_RWIN}) if (GetAsyncKeyState(key) & 0x8000) return VN_OK;
         Variant is_password;
-        if (FAILED(state->element->GetCurrentPropertyValue(UIA_IsPasswordPropertyId, &is_password.value)) ||
-            is_password.value.vt != VT_BOOL || is_password.value.boolVal != VARIANT_FALSE || readonly_range(state->range.Get())) return VN_OK;
+        if (FAILED(element->GetCurrentPropertyValue(UIA_IsPasswordPropertyId, &is_password.value)) ||
+            is_password.value.vt != VT_BOOL || is_password.value.boolVal != VARIANT_FALSE || readonly_range(range.Get())) return VN_OK;
         Ptr<IUIAutomationTextPattern> pattern;
-        if (FAILED(state->element->GetCurrentPatternAs(UIA_TextPatternId, IID_PPV_ARGS(pattern.GetAddressOf()))) || !pattern) return VN_OK;
+        if (FAILED(element->GetCurrentPatternAs(UIA_TextPatternId, IID_PPV_ARGS(pattern.GetAddressOf()))) || !pattern) return VN_OK;
         auto validate = [&]() {
             Ptr<IUIAutomationTextRangeArray> ranges; pattern->GetSelection(ranges.GetAddressOf());
             int count = 0; if (ranges) ranges->get_Length(&count);
             Ptr<IUIAutomationTextRange> current; if (count == 1) ranges->GetElement(0, current.GetAddressOf());
-            return current && same_range(state->range.Get(), current.Get()) &&
+            return current && same_range(range.Get(), current.Get()) &&
                 range_text(current.Get(), expected_length + 1) == std::u16string_view(expected, expected_length);
         };
-        if (!validate() || !SetForegroundWindow(state->window) || FAILED(state->element->SetFocus()) || GetForegroundWindow() != state->window || !validate()) return VN_OK;
+        if (!validate() || !SetForegroundWindow(state->window) || FAILED(element->SetFocus()) || GetForegroundWindow() != state->window || !validate()) return VN_OK;
         Ptr<IUIAutomationValuePattern> value;
-        state->element->GetCurrentPatternAs(UIA_ValuePatternId, IID_PPV_ARGS(value.GetAddressOf()));
+        element->GetCurrentPatternAs(UIA_ValuePatternId, IID_PPV_ARGS(value.GetAddressOf()));
         BOOL readonly = TRUE;
         if (value && SUCCEEDED(value->get_CurrentIsReadOnly(&readonly)) && !readonly) {
             Ptr<IUIAutomationTextRange> document; pattern->get_DocumentRange(document.GetAddressOf());
@@ -418,7 +436,7 @@ VN_EXPORT int32_t vn_selection_prepare_replace(int64_t handle, const char16_t* e
             if (original.size() <= 20000 && SUCCEEDED(value->get_CurrentValue(&current_value.value)) && current_value.value &&
                 original == std::u16string_view(reinterpret_cast<const char16_t*>(current_value.value), SysStringLen(current_value.value))) {
                 Ptr<IUIAutomationTextRange> prefix; if (document) document->Clone(prefix.GetAddressOf());
-                if (prefix && SUCCEEDED(prefix->MoveEndpointByRange(TextPatternRangeEndpoint_End, state->range.Get(), TextPatternRangeEndpoint_Start))) {
+                if (prefix && SUCCEEDED(prefix->MoveEndpointByRange(TextPatternRangeEndpoint_End, range.Get(), TextPatternRangeEndpoint_Start))) {
                     const auto offset = range_text(prefix.Get(), 20001).size();
                     if (offset <= original.size() && static_cast<size_t>(expected_length) <= original.size() - offset &&
                         original.compare(offset, expected_length, expected, expected_length) == 0) {
@@ -433,7 +451,7 @@ VN_EXPORT int32_t vn_selection_prepare_replace(int64_t handle, const char16_t* e
                 }
             }
         }
-        if (!cancelled() && validate() && SUCCEEDED(state->range->Select()) && GetForegroundWindow() == state->window) *outcome = 2;
+        if (!cancelled() && validate() && SUCCEEDED(range->Select()) && GetForegroundWindow() == state->window) *outcome = 2;
         return VN_OK;
     } catch (...) { return VN_ERR_FAIL; }
 }

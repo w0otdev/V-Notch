@@ -917,6 +917,7 @@ namespace bd = vnotch::controllers::backdrop;
 
 // [DEBUG-glass-freshness]
 VN_EXPORT int32_t __stdcall vn_backdrop_freshness_debug(intptr_t hwnd, int32_t* values) noexcept {
+    if (!values) return E_POINTER;
     bd::capture::debug_target = hwnd;
     for (int i = 0; i < 28; ++i) values[i] = bd::capture::debug_info[i].load();
     return 0;

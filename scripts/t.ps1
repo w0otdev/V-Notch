@@ -21,9 +21,10 @@ try {
     $nativeDll = Join-Path $repoRoot "bin\$Configuration\net8.0-windows10.0.19041.0\win-x64\VNotch.Native.dll"
 
     $changedFiles = @(
-        git diff --name-only HEAD 2>$null
-        git diff --name-only --cached 2>$null
-        git ls-files --others --exclude-standard 2>$null
+        git -c core.safecrlf=false diff --name-only HEAD
+        if ($LASTEXITCODE -ne 0) { throw "Could not list changed files." }
+        git ls-files --others --exclude-standard
+        if ($LASTEXITCODE -ne 0) { throw "Could not list untracked files." }
     ) | Where-Object { -not [string]::IsNullOrWhiteSpace($_) } | Select-Object -Unique
 
     $nativeDirty = $false
@@ -117,6 +118,7 @@ try {
         if (-not [string]::IsNullOrWhiteSpace($ResultsDirectory)) {
             $testArgs += @("--results-directory", $ResultsDirectory, "--logger", "trx;LogFileName=unit-tests.trx")
         }
+        $testArgs += @("--", "RunConfiguration.TreatNoTestsAsError=true")
         & dotnet @testArgs
         if ($LASTEXITCODE -ne 0) {
             throw "Unit tests failed with exit code $LASTEXITCODE"
@@ -138,11 +140,11 @@ try {
             },
             @{
                 Name   = "Shard-3 (Notch, Media, Tray, Battery & Calendar)"
-                Filter = "$baseFilter&(FullyQualifiedName~Notch|FullyQualifiedName~Media|FullyQualifiedName~Tray|FullyQualifiedName~Battery|FullyQualifiedName~Calendar|FullyQualifiedName~Snip|FullyQualifiedName~SpeedTest)&FullyQualifiedName!~MainWindow&FullyQualifiedName!~Greeting&FullyQualifiedName!~Settings&FullyQualifiedName!~Clipboard&FullyQualifiedName!~Spotlight"
+                Filter = "$baseFilter&(FullyQualifiedName~.Notch|FullyQualifiedName~Media|FullyQualifiedName~Tray|FullyQualifiedName~Battery|FullyQualifiedName~Calendar|FullyQualifiedName~Snip|FullyQualifiedName~SpeedTest)&FullyQualifiedName!~MainWindow&FullyQualifiedName!~Greeting&FullyQualifiedName!~Settings&FullyQualifiedName!~Clipboard&FullyQualifiedName!~Spotlight"
             },
             @{
                 Name   = "Shard-4 (Remaining Core, Services & Controls)"
-                Filter = "$baseFilter&FullyQualifiedName!~MainWindow&FullyQualifiedName!~Greeting&FullyQualifiedName!~Settings&FullyQualifiedName!~Clipboard&FullyQualifiedName!~Spotlight&FullyQualifiedName!~Notch&FullyQualifiedName!~Media&FullyQualifiedName!~Tray&FullyQualifiedName!~Battery&FullyQualifiedName!~Calendar&FullyQualifiedName!~Snip&FullyQualifiedName!~SpeedTest"
+                Filter = "$baseFilter&FullyQualifiedName!~MainWindow&FullyQualifiedName!~Greeting&FullyQualifiedName!~Settings&FullyQualifiedName!~Clipboard&FullyQualifiedName!~Spotlight&FullyQualifiedName!~.Notch&FullyQualifiedName!~Media&FullyQualifiedName!~Tray&FullyQualifiedName!~Battery&FullyQualifiedName!~Calendar&FullyQualifiedName!~Snip&FullyQualifiedName!~SpeedTest"
             }
         )
     }
@@ -158,19 +160,19 @@ try {
             },
             @{
                 Name   = "Shard-3 (Notch & Media)"
-                Filter = "$baseFilter&(FullyQualifiedName~Notch|FullyQualifiedName~Media)&FullyQualifiedName!~MainWindow&FullyQualifiedName!~Greeting&FullyQualifiedName!~Settings&FullyQualifiedName!~Clipboard"
+                Filter = "$baseFilter&(FullyQualifiedName~.Notch|FullyQualifiedName~Media)&FullyQualifiedName!~MainWindow&FullyQualifiedName!~Greeting&FullyQualifiedName!~Settings&FullyQualifiedName!~Clipboard"
             },
             @{
                 Name   = "Shard-4 (Spotlight, Tray, Battery & Calendar)"
-                Filter = "$baseFilter&(FullyQualifiedName~Spotlight|FullyQualifiedName~Tray|FullyQualifiedName~Battery|FullyQualifiedName~Calendar|FullyQualifiedName~Snip|FullyQualifiedName~SpeedTest)&FullyQualifiedName!~MainWindow&FullyQualifiedName!~Greeting&FullyQualifiedName!~Settings&FullyQualifiedName!~Clipboard&FullyQualifiedName!~Notch&FullyQualifiedName!~Media"
+                Filter = "$baseFilter&(FullyQualifiedName~Spotlight|FullyQualifiedName~Tray|FullyQualifiedName~Battery|FullyQualifiedName~Calendar|FullyQualifiedName~Snip|FullyQualifiedName~SpeedTest)&FullyQualifiedName!~MainWindow&FullyQualifiedName!~Greeting&FullyQualifiedName!~Settings&FullyQualifiedName!~Clipboard&FullyQualifiedName!~.Notch&FullyQualifiedName!~Media"
             },
             @{
                 Name   = "Shard-5 (Pomodoro, Notes, Controls, Audio & Native)"
-                Filter = "$baseFilter&(FullyQualifiedName~Pomodoro|FullyQualifiedName~Notes|FullyQualifiedName~QuickNotes|FullyQualifiedName~Control|FullyQualifiedName~Audio|FullyQualifiedName~Native|FullyQualifiedName~Todo|FullyQualifiedName~Converter|FullyQualifiedName~ColorPicker)&FullyQualifiedName!~MainWindow&FullyQualifiedName!~Greeting&FullyQualifiedName!~Settings&FullyQualifiedName!~Clipboard&FullyQualifiedName!~Notch&FullyQualifiedName!~Media&FullyQualifiedName!~Spotlight&FullyQualifiedName!~Tray&FullyQualifiedName!~Battery&FullyQualifiedName!~Calendar&FullyQualifiedName!~Snip&FullyQualifiedName!~SpeedTest"
+                Filter = "$baseFilter&(FullyQualifiedName~Pomodoro|FullyQualifiedName~Notes|FullyQualifiedName~QuickNotes|FullyQualifiedName~Control|FullyQualifiedName~Audio|FullyQualifiedName~Native|FullyQualifiedName~Todo|FullyQualifiedName~Converter|FullyQualifiedName~ColorPicker)&FullyQualifiedName!~MainWindow&FullyQualifiedName!~Greeting&FullyQualifiedName!~Settings&FullyQualifiedName!~Clipboard&FullyQualifiedName!~.Notch&FullyQualifiedName!~Media&FullyQualifiedName!~Spotlight&FullyQualifiedName!~Tray&FullyQualifiedName!~Battery&FullyQualifiedName!~Calendar&FullyQualifiedName!~Snip&FullyQualifiedName!~SpeedTest"
             },
             @{
                 Name   = "Shard-6 (Remaining Core & Services)"
-                Filter = "$baseFilter&FullyQualifiedName!~MainWindow&FullyQualifiedName!~Greeting&FullyQualifiedName!~Settings&FullyQualifiedName!~Clipboard&FullyQualifiedName!~Notch&FullyQualifiedName!~Media&FullyQualifiedName!~Spotlight&FullyQualifiedName!~Tray&FullyQualifiedName!~Battery&FullyQualifiedName!~Calendar&FullyQualifiedName!~Snip&FullyQualifiedName!~SpeedTest&FullyQualifiedName!~Pomodoro&FullyQualifiedName!~Notes&FullyQualifiedName!~QuickNotes&FullyQualifiedName!~Control&FullyQualifiedName!~Audio&FullyQualifiedName!~Native&FullyQualifiedName!~Todo&FullyQualifiedName!~Converter&FullyQualifiedName!~ColorPicker"
+                Filter = "$baseFilter&FullyQualifiedName!~MainWindow&FullyQualifiedName!~Greeting&FullyQualifiedName!~Settings&FullyQualifiedName!~Clipboard&FullyQualifiedName!~.Notch&FullyQualifiedName!~Media&FullyQualifiedName!~Spotlight&FullyQualifiedName!~Tray&FullyQualifiedName!~Battery&FullyQualifiedName!~Calendar&FullyQualifiedName!~Snip&FullyQualifiedName!~SpeedTest&FullyQualifiedName!~Pomodoro&FullyQualifiedName!~Notes&FullyQualifiedName!~QuickNotes&FullyQualifiedName!~Control&FullyQualifiedName!~Audio&FullyQualifiedName!~Native&FullyQualifiedName!~Todo&FullyQualifiedName!~Converter&FullyQualifiedName!~ColorPicker"
             }
         )
     }
@@ -192,6 +194,7 @@ try {
             if (-not [string]::IsNullOrWhiteSpace($resDir)) {
                 $tArgs += @("--results-directory", $resDir, "--logger", "trx;LogFileName=unit-tests-shard-$idx.trx")
             }
+            $tArgs += @("--", "RunConfiguration.TreatNoTestsAsError=true")
             $out = & dotnet @tArgs 2>&1
             $code = $LASTEXITCODE
             [PSCustomObject]@{

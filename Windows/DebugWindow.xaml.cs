@@ -262,7 +262,7 @@ public partial class DebugWindow : Window
                 {
                     return;
                 }
-                parent = VisualTreeHelper.GetParent(parent);
+                parent = WindowInteraction.Parent(parent);
             }
         }
 

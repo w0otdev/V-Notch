@@ -447,6 +447,7 @@ public sealed class ClipboardHistoryController : IDisposable, IAsyncDisposable
         if (paths.Count > 0) { var files = new StringCollection(); files.AddRange(paths.ToArray()); data.SetFileDropList(files); }
         if (singleText != null) SetTextFormats(data, singleText);
         else if (texts.Count > 0) data.SetData(DataFormats.UnicodeText, string.Join(Environment.NewLine + Environment.NewLine, texts));
+        ObjectDisposedException.ThrowIf(_disposed, this);
         if (personal || sensitive) SetPrivacyClipboardMarkers(data);
         return (data, personal);
     }
@@ -488,6 +489,7 @@ public sealed class ClipboardHistoryController : IDisposable, IAsyncDisposable
         await _clipboardWriteGate.WaitAsync();
         try
         {
+            ObjectDisposedException.ThrowIf(_disposed, this);
             _isWritingClipboard = true;
             await ClipboardRetry.RunAsync(() =>
             {
@@ -706,8 +708,9 @@ public sealed class ClipboardHistoryController : IDisposable, IAsyncDisposable
         try { await _consumer.ConfigureAwait(false); }
         finally
         {
-            _clipboardWriteGate.Dispose();
-            await Store.DisposeAsync().ConfigureAwait(false);
+            await _clipboardWriteGate.WaitAsync().ConfigureAwait(false);
+            try { await Store.DisposeAsync().ConfigureAwait(false); }
+            finally { _clipboardWriteGate.Release(); }
         }
     }
 }

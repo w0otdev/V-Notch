@@ -185,7 +185,7 @@ struct Context {
         return full;
     }
 
-    void EnsureKey(bool allow_create) {
+    void EnsureKey(bool allow_create, bool retry_empty = true) {
         if (key.value) return;
         const std::wstring path = root + L"\\.history-key.dpapi";
         Handle file;
@@ -219,9 +219,9 @@ struct Context {
             const uint64_t size = FileSize(file.value);
             if (size == 0) {
                 // A crash before DPAPI key publication cannot have committed an encrypted record.
-                Require(allow_create && !HasEncryptedRecords());
+                Require(retry_empty && allow_create && !HasEncryptedRecords());
                 file.Close(); Require(DeleteFileW(path.c_str()));
-                EnsureKey(true); return;
+                EnsureKey(true, false); return;
             }
             Require(size <= 65536);
             std::vector<uint8_t> bytes(static_cast<size_t>(size)); DWORD read = 0;

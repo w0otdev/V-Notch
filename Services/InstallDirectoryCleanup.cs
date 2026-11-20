@@ -131,6 +131,18 @@ internal static partial class InstallDirectoryCleanup
             private static extern SafeFileHandle CreateFile(string path, uint access, uint share, IntPtr security, uint creation, uint flags, IntPtr template);
             [DllImport("kernel32.dll", SetLastError = true)]
             private static extern bool SetFileInformationByHandle(SafeFileHandle file, int kind, ref byte delete, uint size);
+            [StructLayout(LayoutKind.Sequential)]
+            private struct AttributeTag { public uint Attributes, Tag; }
+            [DllImport("kernel32.dll", SetLastError = true)]
+            private static extern bool GetFileInformationByHandleEx(SafeFileHandle file, int kind, out AttributeTag info, uint size);
+            public static bool BlockedLink(string path) {
+                if ((File.GetAttributes(path) & FileAttributes.ReparsePoint) == 0) return false;
+                using (var handle = CreateFile(path, 0x80, 7, IntPtr.Zero, 3, 0x02200000, IntPtr.Zero)) {
+                    AttributeTag tag;
+                    return handle.IsInvalid || !GetFileInformationByHandleEx(handle, 9, out tag, 8) ||
+                        tag.Tag <= 1 || (tag.Tag & 0x20000000) != 0;
+                }
+            }
             public static bool DeleteIfUnchanged(string path, string expected) {
                 using (var handle = CreateFile(path, 0x80010000, 1, IntPtr.Zero, 3, 0x00200000, IntPtr.Zero)) {
                     if (handle.IsInvalid) {
@@ -155,13 +167,13 @@ internal static partial class InstallDirectoryCleanup
             if (-not [IO.Directory]::Exists($directory)) { exit 0 }
             $ancestor = [IO.DirectoryInfo]::new($directory)
             while ($null -ne $ancestor) {
-                if (($ancestor.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) { exit 1 }
+                if ([VNotchOwnedFile]::BlockedLink($ancestor.FullName)) { exit 1 }
                 $ancestor = $ancestor.Parent
             }
             try {
                 $manifest = [IO.Path]::Combine($directory, 'installed-files.json')
                 if (-not [IO.File]::Exists($manifest)) { exit 0 }
-                if (([IO.File]::GetAttributes($manifest) -band [IO.FileAttributes]::ReparsePoint) -ne 0) { exit 1 }
+                if ([VNotchOwnedFile]::BlockedLink($manifest)) { exit 1 }
                 if ([IO.FileInfo]::new($manifest).Length -gt 16777216) { exit 1 }
                 $data = ConvertFrom-Json -InputObject ([IO.File]::ReadAllText($manifest))
                 if ($data -is [array] -or $data -is [string]) { exit 0 }
@@ -177,7 +189,7 @@ internal static partial class InstallDirectoryCleanup
                     if (-not $target.StartsWith($directory + [IO.Path]::DirectorySeparatorChar, [StringComparison]::OrdinalIgnoreCase)) { exit 1 }
                     $ancestor = [IO.FileInfo]::new($target)
                     while ($null -ne $ancestor) {
-                        if ($ancestor.Exists -and ($ancestor.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) { exit 1 }
+                        if ($ancestor.Exists -and [VNotchOwnedFile]::BlockedLink($ancestor.FullName)) { exit 1 }
                         if ($ancestor -is [IO.FileInfo]) { $ancestor = $ancestor.Directory } else { $ancestor = $ancestor.Parent }
                     }
                     $targets.Add([pscustomobject]@{ Path = $target; Hash = $entry.Sha256 })
@@ -189,13 +201,13 @@ internal static partial class InstallDirectoryCleanup
                 foreach ($logName in @('vnotch-debug.log', 'vnotch-debug.log.old', 'vnotch-crash.log', 'vnotch-crash.log.old')) {
                     $logPath = [IO.Path]::Combine($directory, $logName)
                     if ([IO.File]::Exists($logPath)) {
-                        if (([IO.File]::GetAttributes($logPath) -band [IO.FileAttributes]::ReparsePoint) -ne 0) { exit 1 }
+                        if ([VNotchOwnedFile]::BlockedLink($logPath)) { exit 1 }
                         [IO.File]::Delete($logPath)
                     }
                 }
                 foreach ($pattern in @('vnotch-debug.log*', 'vnotch-crash.log*')) {
                     foreach ($logPath in [IO.Directory]::GetFiles($directory, $pattern, [IO.SearchOption]::TopDirectoryOnly)) {
-                        if (([IO.File]::GetAttributes($logPath) -band [IO.FileAttributes]::ReparsePoint) -ne 0) { exit 1 }
+                        if ([VNotchOwnedFile]::BlockedLink($logPath)) { exit 1 }
                         [IO.File]::Delete($logPath)
                     }
                 }
@@ -236,7 +248,8 @@ internal static partial class InstallDirectoryCleanup
 
         for (var ancestor = new DirectoryInfo(fullPath); ancestor != null; ancestor = ancestor.Parent)
         {
-            if (ancestor.Exists && (ancestor.Attributes & FileAttributes.ReparsePoint) != 0)
+            if (ancestor.Exists && (ancestor.Attributes & FileAttributes.ReparsePoint) != 0 &&
+                SafeFileDeletion.HasBlockedReparsePoint(ancestor.FullName))
                 throw new ArgumentException("Cleanup cannot traverse directory links.", nameof(directory));
         }
         return fullPath;

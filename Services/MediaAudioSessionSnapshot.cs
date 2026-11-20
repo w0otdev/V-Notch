@@ -50,10 +50,13 @@ internal static unsafe partial class WindowsMediaAudioSessions
     private static partial int NativeGetString(long snapshot, int index, int kind, char* buffer, int capacity, out int length);
 
     [LibraryImport(NativeDll, EntryPoint = "vn_audio_session_read_peak")]
-    private static partial int NativeReadPeak(long snapshot, int index, out float peak);
+    private static partial int NativeReadPeak(SnapshotOwner snapshot, int index, out float peak);
 
     [LibraryImport(NativeDll, EntryPoint = "vn_audio_session_open_volume")]
     internal static partial int NativeOpenVolume(long snapshot, int index, out long volume);
+
+    [LibraryImport(NativeDll, EntryPoint = "vn_audio_session_open_volume")]
+    private static partial int NativeOpenOwnedVolume(SnapshotOwner snapshot, int index, out long volume);
 
     [LibraryImport(NativeDll, EntryPoint = "vn_audio_volume_get")]
     internal static partial int NativeVolumeGet(long volume, out float scalar, out byte muted, out int hresult);
@@ -70,6 +73,17 @@ internal static unsafe partial class WindowsMediaAudioSessions
     [LibraryImport(NativeDll, EntryPoint = "vn_audio_volume_get_state")]
     private static partial int NativeVolumeGetState(long volume, out int state);
 
+    private sealed class SnapshotOwner() : Microsoft.Win32.SafeHandles.SafeHandleZeroOrMinusOneIsInvalid(true)
+    {
+        internal static SnapshotOwner Create(long value)
+        {
+            var owner = new SnapshotOwner();
+            owner.SetHandle((nint)value);
+            return owner;
+        }
+        protected override bool ReleaseHandle() => NativeClose(handle.ToInt64()) == 0;
+    }
+
     internal static MediaAudioSessions Read() => Read(false);
 
     internal static MediaAudioSessions ReadAllEndpoints() => Read(true);
@@ -82,6 +96,7 @@ internal static unsafe partial class WindowsMediaAudioSessions
         if (status != 0)
             Marshal.ThrowExceptionForHR(hresult < 0 ? hresult : EFail);
 
+        var owner = SnapshotOwner.Create(snapshot);
         try
         {
             var snapshots = new List<MediaAudioSessionSnapshot>(count);
@@ -92,15 +107,15 @@ internal static unsafe partial class WindowsMediaAudioSessions
                 if (NativeGetState(snapshot, index, out int state) != 0) continue;
                 snapshots.Add(new(processId, ReadString(snapshot, index, 0), ReadString(snapshot, index, 1),
                     ReadString(snapshot, index, 2), isSystemSounds != 0,
-                    () => NativeReadPeak(snapshot, index, out float peak) == 0 ? peak : 0f,
-                    () => OpenVolume(snapshot, index), state));
+                    () => NativeReadPeak(owner, index, out float peak) == 0 ? peak : 0f,
+                    () => OpenVolume(owner, index), state));
             }
 
-            return new MediaAudioSessions(snapshots, () => NativeClose(snapshot));
+            return new MediaAudioSessions(snapshots, owner.Dispose);
         }
         catch
         {
-            NativeClose(snapshot);
+            owner.Dispose();
             throw;
         }
     }
@@ -116,9 +131,9 @@ internal static unsafe partial class WindowsMediaAudioSessions
             return NativeGetString(snapshot, index, kind, pinned, length, out int written) == 0 ? new string(pinned, 0, written) : string.Empty;
     }
 
-    private static IMediaAudioVolume OpenVolume(long snapshot, int index)
+    private static IMediaAudioVolume OpenVolume(SnapshotOwner snapshot, int index)
     {
-        if (NativeOpenVolume(snapshot, index, out long volume) != 0) throw new InvalidOperationException("The audio session has no volume control.");
+        if (NativeOpenOwnedVolume(snapshot, index, out long volume) != 0) throw new InvalidOperationException("The audio session has no volume control.");
         return new VolumeLease(volume);
     }
 

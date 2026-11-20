@@ -146,7 +146,7 @@ public sealed class SystemMonitorPresenter : IDisposable
         if (bar?.Parent is not FrameworkElement track) return;
 
         double trackWidth = track.ActualWidth;
-        if (double.IsNaN(trackWidth) || trackWidth <= 0) return;
+        if (!double.IsFinite(percent) || !double.IsFinite(trackWidth) || trackWidth <= 0) return;
 
         double clamped = Math.Clamp(percent, 0, 100);
         double target = trackWidth * (clamped / 100.0);

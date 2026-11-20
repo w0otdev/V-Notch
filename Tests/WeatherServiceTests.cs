@@ -75,6 +75,25 @@ public sealed class WeatherServiceTests
         Assert.True(weather.IsDay);
     }
 
+    [Theory]
+    [InlineData("null", 30, 30)]
+    [InlineData("""{"temperature_2m_max":[null],"temperature_2m_min":[24]}""", 30, 24)]
+    [InlineData("""{"temperature_2m_max":[35],"temperature_2m_min":[]}""", 35, 30)]
+    public async Task IncompleteDailyForecastKeepsCurrentWeather(string daily, int high, int low)
+    {
+        var handler = new StubHandler(request => new HttpResponseMessage(HttpStatusCode.OK)
+        {
+            Content = new StringContent(request.RequestUri!.Host == "geocoding-api.open-meteo.com"
+                ? """{"results":[{"name":"Hanoi","latitude":21,"longitude":105}]}"""
+                : $$"""{"current":{"temperature_2m":30,"weather_code":2},"daily":{{daily}}}""")
+        });
+        using var client = new HttpClient(handler);
+        using var service = new WeatherService(client);
+        var weather = await service.GetCurrentWeatherAsync("Hanoi");
+        Assert.NotNull(weather);
+        Assert.Equal((30, high, low), (weather.Temperature, weather.High, weather.Low));
+    }
+
     [Fact]
     public async Task SubZeroTemperatures_AreRoundedAndPreservedProperly()
     {

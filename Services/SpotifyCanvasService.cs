@@ -68,7 +68,8 @@ public sealed partial class SpotifyCanvasService : IDisposable
         string cacheKey = BuildCacheKey(trackName, artistName, duration);
         if (_cache.TryGetValue(cacheKey, out var cached))
         {
-            if (cached.ExpiresAtUtc > DateTimeOffset.UtcNow)
+            if (cached.ExpiresAtUtc > DateTimeOffset.UtcNow &&
+                (!cached.CanvasUri.IsFile || System.IO.File.Exists(cached.CanvasUri.LocalPath)))
                 return cached.CanvasUri;
 
             ((ICollection<KeyValuePair<string, CacheEntry>>)_cache).Remove(new(cacheKey, cached));

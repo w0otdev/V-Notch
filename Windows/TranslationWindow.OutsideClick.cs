@@ -51,7 +51,7 @@ public partial class TranslationWindow
 
     private ContextMenu? FindOwnedContextMenu(DependencyObject element)
     {
-        if (element is ContextMenu { IsOpen: true } menu && Window.GetWindow(menu.PlacementTarget) == this) return menu;
+        if (element is ContextMenu { IsOpen: true, PlacementTarget: { } target } menu && Window.GetWindow(target) == this) return menu;
         for (int i = 0; i < VisualTreeHelper.GetChildrenCount(element); i++)
             if (FindOwnedContextMenu(VisualTreeHelper.GetChild(element, i)) is { } child) return child;
         return null;

@@ -49,9 +49,9 @@ public sealed class AppIntegrityServiceTests
     [Theory]
     [InlineData("https://github.com/w0otdev/V-Notch/releases/download/v1.9.0/V-Notch-Setup.exe", true)]
     [InlineData("https://www.github.com/w0otdev/V-Notch/releases", true)]
-    [InlineData("https://objects.githubusercontent.com/github-production-release-asset-2e65be/12345", true)]
+    [InlineData("https://objects.githubusercontent.com/github-production-release-asset-2e65be/12345", false)]
     [InlineData("https://raw.githubusercontent.com/w0otdev/V-Notch/main/README.md", true)]
-    [InlineData("https://release-assets.githubusercontent.com/github-production-release-asset/12345", true)]
+    [InlineData("https://release-assets.githubusercontent.com/github-production-release-asset/12345", false)]
     [InlineData("https://github-production-release-asset-2e65be.s3.amazonaws.com/12345/abc", false)]
     [InlineData("about:internet", true)]
     [InlineData("http://localhost:8080/setup.exe", false)]
@@ -117,6 +117,22 @@ public sealed class AppIntegrityServiceTests
         var (isTrusted, untrustedUrl) = AppIntegrityService.CheckDownloadOrigin(@"C:\NonExistent\Path\Fake.exe");
         Assert.True(isTrusted);
         Assert.Null(untrustedUrl);
+    }
+
+    [Theory]
+    [InlineData("https://github.com/w0otdev/V-Notch/releases/download/v2/setup.exe", "https://github.com/", true)]
+    [InlineData("https://release-assets.githubusercontent.com/asset", "https://github.com/w0otdev/V-Notch/releases", true)]
+    [InlineData("https://release-assets.githubusercontent.com/asset", "https://github.com/other/repo/releases", false)]
+    [InlineData("https://objects.githubusercontent.com/asset", "", false)]
+    public void CheckDownloadOrigin_RequiresRepositoryEvidence(string host, string referrer, bool trusted)
+    {
+        string path = Path.GetTempFileName();
+        try
+        {
+            File.WriteAllText(path + ":Zone.Identifier", $"[ZoneTransfer]\r\nZoneId=3\r\nHostUrl={host}\r\nReferrerUrl={referrer}");
+            Assert.Equal(trusted, AppIntegrityService.CheckDownloadOrigin(path).IsTrusted);
+        }
+        finally { File.Delete(path); }
     }
 
     [Fact]

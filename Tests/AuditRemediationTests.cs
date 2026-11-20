@@ -70,7 +70,7 @@ public sealed class AuditRemediationTests : IDisposable
     }
 
     [Fact]
-    public async Task FailedCredentialDecryptionCannotBeOverwrittenByAnAutomaticSave()
+    public async Task FailedCredentialDecryptionPreservesOriginalInBackupAcrossAutomaticSaves()
     {
         string path = Path.Combine(_root, "settings.json");
         string original = JsonSerializer.Serialize(new { SettingsVersion = SettingsMigrator.CurrentVersion, YouTubeApiKey = "enc:invalid", EnableLocalOnlyMode = true, Width = 500 });
@@ -79,10 +79,12 @@ public sealed class AuditRemediationTests : IDisposable
         var loaded = settings.Load();
         Assert.True(loaded.EnableLocalOnlyMode);
         Assert.Equal(500, loaded.Width);
-        await Assert.ThrowsAsync<CryptographicException>(() => settings.SaveAsync(loaded));
-        Assert.Equal(original, await File.ReadAllTextAsync(path));
-        await File.WriteAllTextAsync(path, JsonSerializer.Serialize(new NotchSettings { SettingsVersion = SettingsMigrator.CurrentVersion }));
-        await settings.SaveAsync(settings.Load());
+        await settings.SaveAsync(loaded);
+        string backup = Assert.Single(Directory.GetFiles(_root, "settings.corrupt-*.json"));
+        Assert.Equal(original, await File.ReadAllTextAsync(backup));
+        var saved = settings.Load();
+        Assert.True(saved.EnableLocalOnlyMode);
+        Assert.True(string.IsNullOrEmpty(saved.YouTubeApiKey));
     }
 
     [Fact]

@@ -658,7 +658,11 @@ internal static unsafe partial class Win32Interop
         {
             int slot = Interlocked.Exchange(ref _slot, -1);
             if (slot < 0) return;
-            NativeWinEventHookUninstall(slot);
+            if (NativeWinEventHookUninstall(slot) != 0)
+            {
+                Volatile.Write(ref _slot, slot);
+                return;
+            }
             if (_self.IsAllocated) _self.Free();
         }
 

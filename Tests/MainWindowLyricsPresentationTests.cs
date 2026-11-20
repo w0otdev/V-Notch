@@ -15,6 +15,27 @@ public sealed class MainWindowLyricsPresentationTests
 {
     private const BindingFlags Private = BindingFlags.Instance | BindingFlags.NonPublic;
 
+    [Theory]
+    [InlineData("StartTitleShimmer", "StopTitleShimmer", "_titleShimmerStoryboard")]
+    [InlineData("StartLyricsSearchShimmer", "StopLyricsSearchShimmer", "_lyricsSearchShimmerStoryboard")]
+    public void StoppingShimmerRemovesItsStoryboardFromTheWindow(string start, string stop, string field) =>
+        SharedStaTestRunner.Run(() =>
+        {
+            using var fixture = CreateFixture();
+            var window = fixture.Window;
+            bool previous = AnimationConfig.ReduceMotion;
+            try
+            {
+                AnimationConfig.SetReduceMotion(false);
+                Invoke(window, start);
+                var storyboard = Field<Storyboard>(window, field);
+                _ = storyboard.GetCurrentState(window);
+                Invoke(window, stop);
+                Assert.Throws<InvalidOperationException>(() => storyboard.GetCurrentState(window));
+            }
+            finally { AnimationConfig.SetReduceMotion(previous); }
+        });
+
     [Fact]
     public void SpotifyPrefetchWarmsTheSelectedSourceWithoutChangingCollapsedUi() => SharedStaTestRunner.Run(() =>
     {

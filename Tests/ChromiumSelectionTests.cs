@@ -1,4 +1,5 @@
 using System.IO;
+using System.Diagnostics;
 using System.Text.Json;
 using System.Windows;
 using System.Windows.Automation;
@@ -29,7 +30,7 @@ public sealed class ChromiumSelectionTests
             environment = await CoreWebView2Environment.CreateAsync(null, profile);
             environment.BrowserProcessExited += (_, _) => browserExited.TrySetResult();
             await view.EnsureCoreWebView2Async(environment);
-            var loaded = new TaskCompletionSource();
+            var loaded = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
             view.NavigationCompleted += (_, e) => { if (e.IsSuccess) loaded.TrySetResult(); else loaded.TrySetException(new InvalidOperationException(e.WebErrorStatus.ToString())); };
             view.NavigateToString("""
                 <!doctype html><meta charset="utf-8"><title>Selection fixture</title>
@@ -49,62 +50,10 @@ public sealed class ChromiumSelectionTests
                 """);
             await loaded.Task.WaitAsync(TimeSpan.FromSeconds(10));
             var hwnd = new WindowInteropHelper(window).Handle;
-            string expected = JsonSerializer.Deserialize<string>(await view.ExecuteScriptAsync("selectMessages()"))!;
-            TranslationSelection? cold = null;
-            // Exercise the production shortcut's bounded retries without a warm
-            // accessibility tree, event element, focus, or cursor inside the view.
-            await TranslationSelectionService.CaptureManualAsync(() => true, () =>
-            {
-                using var result = SelectionTextReader.Read(hwnd, null, true, out _, allowOwnProcess: true);
-                return result == null ? null : new TranslationSelection(1, result.Text, result.Bounds, hwnd, false);
-            }, selection => cold = selection);
-            Assert.NotNull(cold);
-            Assert.Equal(expected.Replace("\r\n", "\n"), cold.Text.Replace("\r\n", "\n"));
-            var root = AutomationElement.FromHandle(hwnd);
-            AutomationElement? leaf = null;
-            for (int attempt = 0; attempt < 20 && leaf == null; attempt++)
-            {
-                leaf = root.FindFirst(TreeScope.Descendants, new PropertyCondition(AutomationElement.NameProperty, "selected Tiếng Việt"));
-                if (leaf == null) await Task.Delay(100);
-            }
-            Assert.True(leaf != null, string.Join(" | ", root.FindAll(TreeScope.Descendants, System.Windows.Automation.Condition.TrueCondition)
-                .Cast<AutomationElement>().Select(e => $"{e.Current.ControlType.ProgrammaticName}: {e.Current.Name}")));
-            await Task.Delay(150);
-            foreach (bool manual in new[] { false, true })
-            foreach (var seed in new[] { leaf, null })
-            {
-                using var result = SelectionTextReader.Read(hwnd, seed, manual, out bool protectedInput, allowOwnProcess: true);
-                Assert.False(protectedInput);
-                Assert.NotNull(result);
-                Assert.Equal(expected.Replace("\r\n", "\n"), result.Text.Replace("\r\n", "\n"));
-            }
-            await view.ExecuteScriptAsync("getSelection().removeAllRanges()");
-            await Task.Delay(100);
-            using var empty = SelectionTextReader.Read(hwnd, leaf, true, out _, allowOwnProcess: true);
-            Assert.Null(empty);
-
-            await view.ExecuteScriptAsync("""
-                const draft = document.getElementById('draft'); draft.focus();
-                const caret = document.createRange(); caret.setStart(draft.firstChild, 4); caret.collapse(true);
-                getSelection().removeAllRanges(); getSelection().addRange(caret);
-                """);
-            await Task.Delay(100);
-            using var caretOnly = SelectionTextReader.Read(hwnd, null, true, out _, allowOwnProcess: true);
-            Assert.Null(caretOnly);
-
-            await view.ExecuteScriptAsync("""
-                const selected = document.createRange(); selected.setStart(draft.firstChild, 2); selected.setEnd(draft.firstChild, 10);
-                getSelection().removeAllRanges(); getSelection().addRange(selected);
-                """);
-            await Task.Delay(100);
-            using var draftSelection = SelectionTextReader.Read(hwnd, null, true, out _, allowOwnProcess: true);
-            Assert.NotNull(draftSelection);
-            Assert.Equal("selected", draftSelection.Text);
-
-            await view.ExecuteScriptAsync("document.body.innerHTML = '<p>New channel without a selection</p>'");
-            await Task.Delay(100);
-            using var changedChannel = SelectionTextReader.Read(hwnd, null, true, out _, allowOwnProcess: true, previousSelection: draftSelection.Native);
-            Assert.Null(changedChannel);
+            // WebView2 and the WPF automation provider both need this dispatcher
+            // to pump messages while the UIA client is making cross-process calls.
+            Task<string> Script(string source) => window.Dispatcher.InvokeAsync(() => view.ExecuteScriptAsync(source)).Task.Unwrap();
+            await Task.Run(() => VerifySelectionsAsync(hwnd, Script));
         }
         finally
         {
@@ -120,6 +69,71 @@ public sealed class ChromiumSelectionTests
             catch (UnauthorizedAccessException) { }
         }
     });
+
+    private static async Task VerifySelectionsAsync(IntPtr hwnd, Func<string, Task<string>> script)
+    {
+        string expected = JsonSerializer.Deserialize<string>(await script("selectMessages()"))!.Replace("\r\n", "\n");
+        Assert.False(string.IsNullOrWhiteSpace(expected));
+        TranslationSelection? cold = null;
+        // Use the production shortcut's retry budget, with no pre-warmed UIA tree.
+        await TranslationSelectionService.CaptureManualAsync(() => true, () =>
+        {
+            using var result = SelectionTextReader.Read(hwnd, null, true, out _, allowOwnProcess: true);
+            return result == null ? null : new TranslationSelection(1, result.Text, result.Bounds, hwnd, false);
+        }, selection => cold = selection);
+        Assert.NotNull(cold);
+        Assert.Equal(expected, cold.Text.Replace("\r\n", "\n"));
+
+        var root = AutomationElement.FromHandle(hwnd);
+        var condition = new PropertyCondition(AutomationElement.NameProperty, "selected Tiếng Việt");
+        var timeout = Stopwatch.StartNew();
+        AutomationElement? leaf;
+        while ((leaf = root.FindFirst(TreeScope.Descendants, condition)) == null && timeout.Elapsed < TimeSpan.FromSeconds(3))
+            await Task.Delay(50);
+        Assert.NotNull(leaf);
+        foreach (bool manual in new[] { false, true })
+        foreach (var seed in new[] { leaf, null })
+        {
+            using var result = SelectionTextReader.Read(hwnd, seed, manual, out bool protectedInput, allowOwnProcess: true);
+            Assert.False(protectedInput);
+            Assert.NotNull(result);
+            Assert.Equal(expected, result.Text.Replace("\r\n", "\n"));
+        }
+
+        await script("getSelection().removeAllRanges()");
+        using var empty = await WaitForSelectionAsync(hwnd, leaf, null);
+        await script("""
+            const draft = document.getElementById('draft'); draft.focus();
+            const caret = document.createRange(); caret.setStart(draft.firstChild, 4); caret.collapse(true);
+            getSelection().removeAllRanges(); getSelection().addRange(caret);
+            """);
+        using var caretOnly = await WaitForSelectionAsync(hwnd, null, null);
+        await script("""
+            const selected = document.createRange(); selected.setStart(draft.firstChild, 2); selected.setEnd(draft.firstChild, 10);
+            getSelection().removeAllRanges(); getSelection().addRange(selected);
+            """);
+        using var draftSelection = await WaitForSelectionAsync(hwnd, null, "selected");
+        Assert.NotNull(draftSelection);
+        await script("document.body.innerHTML = '<p>New channel without a selection</p>'");
+        using var changedChannel = await WaitForSelectionAsync(hwnd, null, null, draftSelection.Native);
+    }
+
+    private static async Task<SelectionTextReader.Result?> WaitForSelectionAsync(IntPtr hwnd, AutomationElement? seed,
+        string? expected, NativeSelectionState? previous = null)
+    {
+        // Executing JavaScript changes the DOM before Chromium publishes the new UIA snapshot.
+        var timeout = Stopwatch.StartNew();
+        while (true)
+        {
+            var result = SelectionTextReader.Read(hwnd, seed, true, out bool protectedInput, allowOwnProcess: true, previousSelection: previous);
+            string? actual = result?.Text;
+            if (!protectedInput && actual == expected) return result;
+            result?.Dispose();
+            Assert.False(protectedInput);
+            if (timeout.Elapsed >= TimeSpan.FromSeconds(3)) Assert.Equal(expected, actual);
+            await Task.Delay(50);
+        }
+    }
 
     private static void RunChromiumAsync(Func<Task> action)
     {

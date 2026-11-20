@@ -284,7 +284,7 @@ internal sealed partial class CubicBezierEase : EasingFunctionBase
     private volatile Curve? _curve;
 
     [System.Runtime.InteropServices.LibraryImport("VNotch.Native.dll")]
-    private static partial void vn_bezier_samples(double p1, double p2, Span<double> values, int intervals);
+    private static partial void vn_bezier_samples(double p1, double p2, Span<double> values, int intervals, int capacity);
 
     private static double[] SamplesFor(double p1, double p2)
     {
@@ -295,7 +295,7 @@ internal sealed partial class CubicBezierEase : EasingFunctionBase
         return Samples.GetOrAdd(key, static pair =>
     {
         var samples = new double[Intervals + 1];
-        vn_bezier_samples(pair.Item1, pair.Item2, samples, Intervals);
+        vn_bezier_samples(pair.Item1, pair.Item2, samples, Intervals, samples.Length);
         return samples;
         });
     }

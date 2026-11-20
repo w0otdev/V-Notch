@@ -224,10 +224,4 @@ public sealed class PerformanceAuditRegressionTests
         protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken) => Task.FromResult(send(request));
     }
 
-    private sealed class TempFolder : IDisposable
-    {
-        public string Path { get; } = System.IO.Path.Combine(System.IO.Path.GetTempPath(), "vnotch-perf-" + Guid.NewGuid().ToString("N"));
-        public TempFolder() => Directory.CreateDirectory(Path);
-        public void Dispose() => Directory.Delete(Path, recursive: true);
-    }
 }

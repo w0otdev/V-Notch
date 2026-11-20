@@ -191,7 +191,8 @@ internal sealed unsafe partial class NativeLoopbackCapture : IDisposable
     public void Dispose()
     {
         long handle = Interlocked.Exchange(ref _handle, 0);
-        if (handle != 0) NativeStop(handle);
+        if (handle == 0) return;
+        NativeStop(handle);
         if (_self.IsAllocated) _self.Free();
     }
 }

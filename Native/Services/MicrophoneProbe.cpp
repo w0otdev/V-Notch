@@ -1,7 +1,7 @@
 #include "../vnotch_common.h"
 #include "../vnotch_com.h"
 #include "../vnotch_handle_registry.h"
-#include <mmdeviceapi.h>
+#include "CoreAudioNotification.h"
 #include <audiopolicy.h>
 #include <endpointvolume.h>
 #include <algorithm>
@@ -32,34 +32,6 @@ struct MeterEntry {
     DWORD process_id = 0;
 };
 
-// Any endpoint topology change invalidates the cached meters. The reference count never frees the sink.
-class NotificationClient final : public IMMNotificationClient {
-public:
-    InvalidatedCallback callback = nullptr;
-    int64_t context = 0;
-
-    HRESULT STDMETHODCALLTYPE QueryInterface(REFIID iid, void** object) override {
-        if (!object) return E_POINTER;
-        if (iid == __uuidof(IUnknown) || iid == __uuidof(IMMNotificationClient)) {
-            *object = static_cast<IMMNotificationClient*>(this);
-            return S_OK;
-        }
-        *object = nullptr;
-        return E_NOINTERFACE;
-    }
-    ULONG STDMETHODCALLTYPE AddRef() override { return 2; }
-    ULONG STDMETHODCALLTYPE Release() override { return 1; }
-    HRESULT STDMETHODCALLTYPE OnDeviceStateChanged(LPCWSTR, DWORD) override { Notify(); return S_OK; }
-    HRESULT STDMETHODCALLTYPE OnDeviceAdded(LPCWSTR) override { Notify(); return S_OK; }
-    HRESULT STDMETHODCALLTYPE OnDeviceRemoved(LPCWSTR) override { Notify(); return S_OK; }
-    HRESULT STDMETHODCALLTYPE OnDefaultDeviceChanged(EDataFlow, ERole, LPCWSTR) override { Notify(); return S_OK; }
-    HRESULT STDMETHODCALLTYPE OnPropertyValueChanged(LPCWSTR, const PROPERTYKEY) override { return S_OK; }
-
-private:
-    void Notify() noexcept {
-        if (callback) callback(context);
-    }
-};
 
 struct ProbeLockGuard {
     SRWLOCK* lock;
@@ -70,12 +42,16 @@ struct ProbeLockGuard {
 struct Probe {
     SRWLOCK lock = SRWLOCK_INIT;
     ComPtr<IMMDeviceEnumerator> enumerator;
-    NotificationClient client;
+    ComPtr<EndpointNotification> client;
     bool registered = false;
     std::vector<std::unique_ptr<MeterEntry>> entries;
 
     ~Probe() {
-        if (registered && enumerator.ptr) enumerator.ptr->UnregisterEndpointNotificationCallback(&client);
+        if (client.ptr) client.ptr->Disconnect();
+        if (registered && FAILED(enumerator.ptr->UnregisterEndpointNotificationCallback(client.ptr))) {
+            // Core Audio borrows the registration reference until unregister succeeds.
+            client.ptr = nullptr;
+        }
     }
 };
 
@@ -167,9 +143,8 @@ VN_EXPORT int32_t __stdcall vn_mic_probe_create(mp::InvalidatedCallback callback
         auto probe = std::make_unique<mp::Probe>();
         HRESULT hr = CoCreateInstance(__uuidof(MMDeviceEnumerator), nullptr, CLSCTX_ALL, IID_PPV_ARGS(probe->enumerator.Put()));
         if (SUCCEEDED(hr)) {
-            probe->client.callback = callback;
-            probe->client.context = context;
-            hr = probe->enumerator.ptr->RegisterEndpointNotificationCallback(&probe->client);
+            probe->client.ptr = new vnotch::services::EndpointNotification(callback, context, true);
+            hr = probe->enumerator.ptr->RegisterEndpointNotificationCallback(probe->client.ptr);
             probe->registered = SUCCEEDED(hr);
         }
         *out_hresult = static_cast<int32_t>(hr);
@@ -183,6 +158,8 @@ VN_EXPORT int32_t __stdcall vn_mic_probe_create(mp::InvalidatedCallback callback
 
 VN_EXPORT int32_t __stdcall vn_mic_probe_destroy(int64_t handle) noexcept {
     if (handle <= 0) return VN_ERR_INVALID_ARG;
+    auto owner = mp::g_probes.Acquire(handle);
+    if (owner) owner->client.ptr->Disconnect();
     mp::g_probes.Remove(handle);
     return VN_OK;
 }

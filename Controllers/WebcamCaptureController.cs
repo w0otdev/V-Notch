@@ -25,6 +25,7 @@ public sealed class WebcamCaptureController : IDisposable
     private bool _isActive;
     private bool _starting;
     private bool _stopping;
+    private TaskCompletionSource? _stopCompletion;
 
     private int _fadeToken;
     private static readonly object _teardownLock = new();
@@ -122,16 +123,24 @@ public sealed class WebcamCaptureController : IDisposable
     {
 
         int fadeToken;
-        lock (_lifecycleLock)
+        while (true)
         {
-            if (_isActive && _frameReader != null) return null;
-            if (_starting || _stopping) return null;
-
-            _starting = true;
-            _isActive = true;
-            _lastFrameTimestamp = 0;
-
-            fadeToken = ++_fadeToken;
+            Task stop;
+            lock (_lifecycleLock)
+            {
+                if (_stopCompletion == null)
+                {
+                    if (_starting || (_isActive && _frameReader != null)) return null;
+                    _starting = true;
+                    _isActive = true;
+                    _lastFrameTimestamp = 0;
+                    fadeToken = ++_fadeToken;
+                    break;
+                }
+                stop = _stopCompletion.Task;
+            }
+            await stop;
+            if (!isContextValid()) return null;
         }
 
         bool StillValid() => IsCaptureCurrent(fadeToken) && isContextValid();
@@ -231,6 +240,8 @@ public sealed class WebcamCaptureController : IDisposable
             _isActive = false;
             _starting = false;
             _stopping = false;
+            _stopCompletion?.TrySetResult();
+            _stopCompletion = null;
             _fadeToken++;
 
             initializingCapture = _initializingMediaCapture;
@@ -261,6 +272,7 @@ public sealed class WebcamCaptureController : IDisposable
             if (_stopping) return false;
 
             _stopping = true;
+            _stopCompletion = new(TaskCreationOptions.RunContinuationsAsynchronously);
             _starting = false;
             _isActive = false;
             fadeToken = ++_fadeToken;
@@ -303,6 +315,8 @@ public sealed class WebcamCaptureController : IDisposable
             if (fadeToken == _fadeToken)
             {
                 _stopping = false;
+                _stopCompletion?.TrySetResult();
+                _stopCompletion = null;
             }
         }
     }

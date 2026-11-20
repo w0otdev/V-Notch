@@ -170,6 +170,7 @@ public sealed partial class ZOrderManager : IDisposable
 
     public void Start()
     {
+        if (!_dispatcher.CheckAccess()) { _dispatcher.Invoke(Start); return; }
         if (_disposed) return;
         if (_foregroundHook == null)
         {
@@ -184,6 +185,7 @@ public sealed partial class ZOrderManager : IDisposable
 
     public void Stop()
     {
+        if (!_dispatcher.CheckAccess()) { _dispatcher.Invoke(Stop); return; }
         var cancellation = Interlocked.Exchange(ref _burstCancellation, null);
         cancellation?.Cancel();
         cancellation?.Dispose();
@@ -191,8 +193,8 @@ public sealed partial class ZOrderManager : IDisposable
         var foregroundHook = _foregroundHook;
         if (foregroundHook != null)
         {
-            _foregroundHook = null;
             foregroundHook.Dispose();
+            if (!foregroundHook.IsInstalled) _foregroundHook = null;
         }
     }
 

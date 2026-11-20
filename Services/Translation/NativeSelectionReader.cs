@@ -53,8 +53,6 @@ internal static partial class NativeSelectionReader
     private const uint LbGetText = 0x0189;
     private const uint LbGetTextLen = 0x018A;
     private const uint LbGetCount = 0x018B;
-    private const uint SciGetSelectionStart = 2143;
-    private const uint SciGetSelectionEnd = 2145;
     private const uint SciGetSelText = 2161;
     private const uint WmGetText = 0x000D;
     private const uint EmGetSelText = 0x043E;
@@ -158,6 +156,12 @@ internal static partial class NativeSelectionReader
     {
         if (control == IntPtr.Zero || !IsSupportedNativeControl(className) || IsPassword(control, className)) return null;
 
+        uint thread = GetWindowThreadProcessId(control, out uint pid);
+        bool sameThread = thread != 0 && thread == GetCurrentThreadId();
+        // Pointer-only retrieval messages have no output capacity. Query and copy
+        // on the owning thread, or let the existing UI Automation reader supply the selection.
+        if (!sameThread && (pid == Environment.ProcessId || IsListBox(className) || IsScintilla(className))) return null;
+
         if (IsListBox(className))
             return ReadListBoxControl(control);
 
@@ -167,15 +171,15 @@ internal static partial class NativeSelectionReader
         bool isCombo = IsComboBox(className);
         uint selMsg = isCombo ? CbGetEditSel : EmGetSel;
         if (SendMessageSelectionTimeout(control, selMsg, out int start, out int end, 2, 100, out var selection) == IntPtr.Zero)
-            return isCombo ? ReadComboBoxSelectedItem(control) : null;
+            return isCombo && sameThread ? ReadComboBoxSelectedItem(control) : null;
 
         if (vn_native_selection_resolve_range(start, end, selection.ToInt64(), out start, out end, out byte validRange) != 0 || validRange == 0)
-            return isCombo ? ReadComboBoxSelectedItem(control) : null;
+            return isCombo && sameThread ? ReadComboBoxSelectedItem(control) : null;
 
         bool isRichEdit = className.Contains("RichEdit", StringComparison.OrdinalIgnoreCase);
         int selectionLength = end - start;
 
-        if (isRichEdit && selectionLength <= TranslationInput.MaxCharacters + 1)
+        if (isRichEdit && sameThread && selectionLength <= TranslationInput.MaxCharacters + 1)
         {
             GetWindowThreadProcessId(control, out uint controlPid);
             if (controlPid == Environment.ProcessId)
@@ -192,7 +196,7 @@ internal static partial class NativeSelectionReader
 
         // Allocate extra headroom for RichEdit where WM_GETTEXT expands '\r' into "\r\n"
         int capturedEnd = Math.Min(end, start + TranslationInput.MaxCharacters + 1);
-        if (capturedEnd > 65536) return null;
+        if (start > 65536 || capturedEnd > 65536) return null;
 
         int bufferCapacity = isRichEdit ? Math.Min(65536, capturedEnd * 2 + 64) : capturedEnd + 1;
         var buffer = new StringBuilder(bufferCapacity);
@@ -215,16 +219,10 @@ internal static partial class NativeSelectionReader
 
     private static string? ReadScintillaControl(IntPtr control)
     {
-        if (SendMessageTimeout(control, SciGetSelectionStart, IntPtr.Zero, IntPtr.Zero, 2, 100, out var startRes) == IntPtr.Zero ||
-            SendMessageTimeout(control, SciGetSelectionEnd, IntPtr.Zero, IntPtr.Zero, 2, 100, out var endRes) == IntPtr.Zero)
-            return null;
-        long start = startRes.ToInt64(), end = endRes.ToInt64();
-        if (end <= start || start < 0 || end > 65536) return null;
-
-        GetWindowThreadProcessId(control, out uint controlPid);
-        if (controlPid == Environment.ProcessId && end - start <= 8192)
+        if (SendMessageTimeout(control, SciGetSelText, IntPtr.Zero, IntPtr.Zero, 2, 100, out var required) != IntPtr.Zero &&
+            required.ToInt64() is > 1 and <= 65536)
         {
-            byte[] utf8 = new byte[(int)(end - start) + 4];
+            byte[] utf8 = new byte[required.ToInt64()];
             unsafe
             {
                 fixed (byte* ptr = utf8)

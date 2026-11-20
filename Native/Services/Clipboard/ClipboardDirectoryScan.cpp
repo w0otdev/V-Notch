@@ -64,8 +64,10 @@ VN_EXPORT int32_t vn_clipboard_directory_scan(const char16_t* root, int32_t leng
                 if (child.data.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) pending.push_back(std::move(path));
             }
         }
-        *rows = result->rows.data(); *count = static_cast<int32_t>(result->rows.size()); *text = result->text.data();
-        *handle = scans.Add(std::move(result)); return VN_OK;
+        auto* published = result.get();
+        *handle = scans.Add(std::move(result));
+        *rows = published->rows.data(); *count = static_cast<int32_t>(published->rows.size()); *text = published->text.data();
+        return VN_OK;
     } catch (...) { return VN_ERR_FAIL; }
 }
 VN_EXPORT int32_t vn_clipboard_directory_scan_close(int64_t handle) noexcept { return scans.Remove(handle) ? VN_OK : VN_ERR_INVALID_ARG; }

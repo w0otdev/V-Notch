@@ -259,6 +259,7 @@ internal sealed partial class WindowsSearchProvider : ISpotlightProvider
             if (hr < 0) throw new COMException(Marshal.GetExceptionForHR(hr)?.Message, hr);
             foreach (var row in rows[..count])
             {
+                if (row.Name == 0 || row.Path == 0) continue;
                 var item = ReadSearchItem(Marshal.PtrToStringBSTR(row.Name),
                     NormalizeResultPath(Marshal.PtrToStringBSTR(row.Path)), row.Folder != 0);
                 if (item != null) results.Add(item);

@@ -560,7 +560,8 @@ private:
                     ok = false;
                     return false;
                 }
-                if (cval.text() == u"STOP")
+                const auto reason = cval.text();
+                if (!reason.empty() && reason != u"FINISH_REASON_UNSPECIFIED")
                 {
                     out_completed = true;
                 }

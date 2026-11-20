@@ -211,7 +211,6 @@ public sealed partial class SettingsService : ISettingsService, IAsyncDisposable
 
     private readonly Task _worker;
     private readonly object _inProcessSaveGate = new();
-    private bool _lastSaveSucceeded;
     private int _disposeSignaled;
     private volatile bool _disposed;
     private volatile bool _settingsLoadFailed;
@@ -229,7 +228,7 @@ public sealed partial class SettingsService : ISettingsService, IAsyncDisposable
                     {
                         try
                         {
-                            lock (_inProcessSaveGate) { ExecuteSave(op.Snapshot, op.KeepExistingBackup); if (!_lastSaveSucceeded) throw new TimeoutException("Timed out waiting for the settings lock."); }
+                            lock (_inProcessSaveGate) { ExecuteSave(op.Snapshot, op.KeepExistingBackup); }
                             op.Tcs.TrySetResult();
                         }
                         catch (Exception ex)
@@ -275,7 +274,7 @@ public sealed partial class SettingsService : ISettingsService, IAsyncDisposable
 
     private readonly string _mutexName;
 
-    private static string CreateMutexName(string settingsPath) =>
+    internal static string CreateMutexName(string settingsPath) =>
         @"Local\VNotch_Settings_" + Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(
             System.Text.Encoding.UTF8.GetBytes(Path.GetFullPath(settingsPath).ToUpperInvariant())));
 
@@ -330,7 +329,7 @@ public sealed partial class SettingsService : ISettingsService, IAsyncDisposable
         {
             _settingsLoadFailed = false;
             var fresh = new NotchSettings { SettingsVersion = SettingsMigrator.CurrentVersion };
-            Save(fresh);
+            SaveDefaultsOnLoad(fresh);
             return fresh;
         }
 
@@ -355,19 +354,18 @@ public sealed partial class SettingsService : ISettingsService, IAsyncDisposable
             bool isForwardVersion = settings.SettingsVersion > SettingsMigrator.CurrentVersion;
             bool migrationSaved = true;
 
-            if ((!isForwardVersion && migrated) || normalized)
+            if (!isForwardVersion && (migrated || normalized))
             {
                 RuntimeLog.Log(
                     LogCategoryLoad,
                     $"Migrated/normalized settings to version {SettingsMigrator.CurrentVersion}");
                 try
                 {
-                    bool savedOk; lock (_inProcessSaveGate) { Save(settings, keepExistingBackup: true); savedOk = _lastSaveSucceeded; }
-                    if (!savedOk) migrationSaved = false;
-                    if (migrated && savedOk)
+                    Save(settings, keepExistingBackup: true);
+                    if (migrated)
                         RemovePlaintextKeySettingsFiles();
                 }
-                catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+                catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or TimeoutException)
                 {
                     // A locked/read-only file must not discard settings that were
                     // successfully loaded. Retry the migration on the next Load.
@@ -395,23 +393,39 @@ public sealed partial class SettingsService : ISettingsService, IAsyncDisposable
                 return defaults;
             }
             _settingsLoadFailed = false;
-            Save(defaults);
+            SaveDefaultsOnLoad(defaults);
             return defaults;
         }
-        catch (System.Security.Cryptography.CryptographicException)
+        catch (System.Security.Cryptography.CryptographicException ex)
         {
-            _settingsLoadFailed = true;
-            // A legacy key could not be protected. Do not touch the existing file.
-            RuntimeLog.Error(LogCategoryLoad, "DPAPI encryption failed; legacy settings were left unchanged.");
             DispatchSaveWarning(Loc.Get("error.apiKeyEncrypt"));
             try
             {
-                var recovered = ImportSettingsFromString(raw).Settings;
+                var document = JsonNode.Parse(raw)!.AsObject();
+                bool removed = false;
+                foreach (var key in ProtectedCredentialKeys)
+                {
+                    if (document[key] is not JsonValue field || !field.TryGetValue<string>(out var value) ||
+                        !DataProtection.IsEncrypted(value)) continue;
+                    try { _ = DataProtection.Unprotect(value); }
+                    catch (System.Security.Cryptography.CryptographicException) { removed |= document.Remove(key); }
+                }
+                if (!removed)
+                {
+                    // Protection of a plaintext legacy credential failed. Preserve it for a later migration.
+                    _settingsLoadFailed = true;
+                    return ImportSettingsFromString(raw).Settings;
+                }
+                var (recovered, _) = SettingsMigrator.Migrate(document.ToJsonString());
+                NormalizeSettings(recovered);
+                _settingsLoadFailed = QuarantineCorruptFile(raw, ex) == "<backup-failed>";
+                if (!_settingsLoadFailed) SaveDefaultsOnLoad(recovered, keepExistingBackup: false);
                 WindowTitleScanner.UpdateInspectionAllowed(recovered.EnableBrowserUrlInspection);
                 return recovered;
             }
             catch (Exception recoveryError) when (recoveryError is JsonException or InvalidOperationException or System.Security.Cryptography.CryptographicException)
             {
+                _settingsLoadFailed = true;
                 return new NotchSettings { SettingsVersion = SettingsMigrator.CurrentVersion, EnableLocalOnlyMode = true, EnableBrowserUrlInspection = false };
             }
         }
@@ -421,6 +435,15 @@ public sealed partial class SettingsService : ISettingsService, IAsyncDisposable
             RuntimeLog.Log(LogCategoryLoad, $"Unexpected error while loading settings: {ex}");
             _settingsLoadFailed = true;
             return new NotchSettings { SettingsVersion = SettingsMigrator.CurrentVersion, EnableBrowserUrlInspection = false };
+        }
+    }
+
+    private void SaveDefaultsOnLoad(NotchSettings defaults, bool keepExistingBackup = true)
+    {
+        try { Save(defaults, keepExistingBackup); }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or TimeoutException)
+        {
+            RuntimeLog.Warn(LogCategoryLoad, $"Could not persist default settings: {ex.Message}");
         }
     }
 
@@ -515,7 +538,7 @@ public sealed partial class SettingsService : ISettingsService, IAsyncDisposable
         if (_settingsLoadFailed)
             throw new System.Security.Cryptography.CryptographicException("Reload settings successfully before overwriting data that could not be read or backed up.");
         // Serialize the replace and backup transaction across service instances/processes.
-        _lastSaveSucceeded = false; using var mutex = new Mutex(false, _mutexName);
+        using var mutex = new Mutex(false, _mutexName);
         bool acquired;
         try { acquired = mutex.WaitOne(SaveMutexTimeout); }
         catch (AbandonedMutexException) { acquired = true; /* The previous writer exited; this thread owns the mutex. */ }
@@ -523,10 +546,10 @@ public sealed partial class SettingsService : ISettingsService, IAsyncDisposable
         if (!acquired)
         {
             RuntimeLog.Error(LogCategorySave, $"Timed out after {SaveMutexTimeout.TotalSeconds:0}s waiting for the settings lock; save skipped.");
-            return;
+            throw new TimeoutException("Timed out waiting for the settings lock.");
         }
 
-        try { ExecuteSaveCore(settings, keepExistingBackup); _lastSaveSucceeded = true; }
+        try { ExecuteSaveCore(settings, keepExistingBackup); }
         finally { mutex.ReleaseMutex(); }
     }
 
@@ -595,16 +618,8 @@ public sealed partial class SettingsService : ISettingsService, IAsyncDisposable
             return;
         }
 
-        if (System.Windows.Application.Current?.Dispatcher != null &&
-            !System.Windows.Application.Current.Dispatcher.HasShutdownStarted &&
-            !System.Windows.Application.Current.Dispatcher.CheckAccess())
-        {
-            System.Windows.Application.Current.Dispatcher.BeginInvoke(() => _apiKeySaveWarning(message));
-        }
-        else
-        {
-            _apiKeySaveWarning(message);
-        }
+        if (System.Windows.Application.Current?.Dispatcher is { HasShutdownStarted: false } dispatcher)
+            dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.ApplicationIdle, () => _apiKeySaveWarning(message));
     }
 
     private static void ShowApiKeySaveWarning(string message) =>
@@ -1032,8 +1047,22 @@ public sealed partial class SettingsService : ISettingsService, IAsyncDisposable
             var timestamp = DateTime.Now.ToString("yyyyMMdd-HHmmss", System.Globalization.CultureInfo.InvariantCulture);
             var backupPath = Path.Combine(_appFolder, $"settings.corrupt-{timestamp}-{Guid.NewGuid():N}.json");
             SafeFileDeletion.ValidatePath(backupPath);
+            string backup = SensitiveDataScrubber.Scrub(rawContents);
+            if (reason is System.Security.Cryptography.CryptographicException)
+            {
+                // Keep the ciphertext recoverable on the original Windows profile. Other
+                // secrets (including legacy plaintext credentials) remain redacted.
+                var original = JsonNode.Parse(rawContents)!.AsObject();
+                var sanitized = JsonNode.Parse(backup)!.AsObject();
+                foreach (string key in ProtectedCredentialKeys)
+                {
+                    if (original[key] is JsonValue field && field.TryGetValue<string>(out var value) &&
+                        DataProtection.IsEncrypted(value)) sanitized[key] = value;
+                }
+                backup = sanitized.ToJsonString();
+            }
             using (var file = new FileStream(backupPath, FileMode.CreateNew, FileAccess.Write))
-            using (var writer = new StreamWriter(file)) writer.Write(SensitiveDataScrubber.Scrub(rawContents));
+            using (var writer = new StreamWriter(file)) writer.Write(backup);
             return backupPath;
         }
         catch (Exception ex)

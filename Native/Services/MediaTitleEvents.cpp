@@ -186,6 +186,7 @@ struct TitleWatch {
             CloseHandle(thread);
         }
         if (ready) CloseHandle(ready);
+        if (signal) CloseHandle(signal);
     }
 
     MediaExeKind GetProcessMediaKind(DWORD process_id) noexcept {
@@ -423,7 +424,8 @@ VN_EXPORT int32_t __stdcall vn_media_title_watch_create(HANDLE signal, int64_t* 
     *handle = 0;
     try {
         auto watch = std::make_unique<TitleWatch>();
-        watch->signal = signal;
+        if (!DuplicateHandle(GetCurrentProcess(), signal, GetCurrentProcess(), &watch->signal,
+            EVENT_MODIFY_STATE, FALSE, 0)) return VN_ERR_FAIL;
         watch->ready = CreateEventW(nullptr, TRUE, FALSE, nullptr);
         if (!watch->ready) return VN_ERR_FAIL;
         watch->thread = CreateThread(nullptr, 0, TitleWatch::Main, watch.get(), 0, &watch->thread_id);

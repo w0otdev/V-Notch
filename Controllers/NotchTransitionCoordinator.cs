@@ -239,6 +239,13 @@ public sealed class NotchTransitionCoordinator : INotchNavigation, IDisposable
 
         lock (_lock)
         {
+            if (_isTransitionActive)
+            {
+                ++_activeTransitionId;
+                _isTransitionActive = false;
+                _currentView = _targetView;
+                _shapeState = _stableShape = _targetStableShape;
+            }
             _viewToRestoreOnSpotlightClose = _currentView;
             _shapeToRestoreOnSpotlightClose = _stableShape;
 

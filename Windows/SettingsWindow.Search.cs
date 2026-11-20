@@ -310,7 +310,7 @@ public partial class SettingsWindow
         _rowsByParent = _searchRows.GroupBy(row => row.OriginalParent)
             .Select(group => group.OrderBy(row => row.OriginalIndex).ToArray()).ToArray();
         foreach (var row in _searchRows)
-            ObserveSearchRow(row);
+            ObserveSearchInputs(row.Row, row);
         foreach (var button in _navButtons.Values)
             ObserveSearchInputs(button, null);
         RebuildNativeSearchArena();

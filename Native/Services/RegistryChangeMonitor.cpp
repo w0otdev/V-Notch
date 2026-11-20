@@ -20,6 +20,7 @@ struct RegistryWatch {
         }
         if (key) RegCloseKey(key);
         if (event) CloseHandle(event);
+        if (signal) CloseHandle(signal);
     }
     bool Arm() noexcept {
         AcquireSRWLockExclusive(&arm_gate);
@@ -51,7 +52,8 @@ VN_EXPORT int32_t __stdcall vn_registry_watch_create(HKEY hive, const wchar_t* p
         auto watch = std::make_unique<RegistryWatch>();
         const std::wstring terminated(path, length);
         if (RegOpenKeyExW(hive, terminated.c_str(), 0, KEY_NOTIFY, &watch->key) != ERROR_SUCCESS) return VN_ERR_FAIL;
-        watch->signal = signal;
+        if (!DuplicateHandle(GetCurrentProcess(), signal, GetCurrentProcess(), &watch->signal,
+            EVENT_MODIFY_STATE, FALSE, 0)) return VN_ERR_FAIL;
         watch->event = CreateEventW(nullptr, FALSE, FALSE, nullptr);
         watch->wait = CreateThreadpoolWait(RegistryWatch::Changed, watch.get(), nullptr);
         if (!watch->event || !watch->wait || !watch->Arm()) return VN_ERR_FAIL;

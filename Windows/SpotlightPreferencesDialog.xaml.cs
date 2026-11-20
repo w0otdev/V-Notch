@@ -100,6 +100,6 @@ public partial class SpotlightPreferencesDialog : Window
     private void Header_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
     {
         // Button handles its own mouse-down, so only unhandled header clicks drag.
-        if (e.ButtonState == MouseButtonState.Pressed) DragMove();
+        if (e.ButtonState == MouseButtonState.Pressed) this.TryDragMove();
     }
 }

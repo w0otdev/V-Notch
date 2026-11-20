@@ -65,6 +65,30 @@ public sealed class SettingsServiceAsyncTests : IDisposable
     }
 
     [Fact]
+    public void SynchronousSaveReportsLockTimeoutAndCanRetry()
+    {
+        using var directory = new TempFolder();
+        string path = Path.Combine(directory.Path, "settings.json");
+        using var service = new SettingsService(path);
+        var settings = new NotchSettings { Width = 450 };
+        service.Save(settings);
+        string initial = File.ReadAllText(path);
+        settings.Width = 500;
+        using var mutex = new Mutex(true, SettingsService.CreateMutexName(path));
+        try
+        {
+            // Keep the mutex on this thread for the duration of the other writer's call.
+            var writer = Task.Factory.StartNew(() => service.Save(settings), CancellationToken.None,
+                TaskCreationOptions.LongRunning, TaskScheduler.Default);
+            Assert.Throws<TimeoutException>(() => writer.GetAwaiter().GetResult());
+            Assert.Equal(initial, File.ReadAllText(path));
+        }
+        finally { mutex.ReleaseMutex(); }
+        service.Save(settings);
+        Assert.Equal(500, service.Load().Width);
+    }
+
+    [Fact]
     public async Task DisposeAsync_DrainsEnqueuedSaves_AndCompletesWorker()
     {
         var tempFile = Path.Combine(Path.GetTempPath(), $"vnotch_dispose_{Guid.NewGuid():N}.json");

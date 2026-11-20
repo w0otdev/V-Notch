@@ -9,7 +9,11 @@ internal sealed partial class NativeWindowTitleMonitor : IDisposable
     private readonly object _sync = new();
     private readonly AutoResetEvent _signal = new(false);
     private readonly RegisteredWaitHandle? _wait;
-    private long _handle;
+    private WatchHandle? _handle;
+    private sealed class WatchHandle() : Microsoft.Win32.SafeHandles.SafeHandleZeroOrMinusOneIsInvalid(true)
+    {
+        protected override bool ReleaseHandle() => vn_media_title_watch_close(handle.ToInt64()) == 0;
+    }
     private string? _lastSourceApp;
     private long _lastResolveTicks;
     private bool _hookActive;
@@ -17,11 +21,11 @@ internal sealed partial class NativeWindowTitleMonitor : IDisposable
     internal bool IsActive => Volatile.Read(ref _hookActive);
 
     [LibraryImport("VNotch.Native.dll")]
-    private static partial int vn_media_title_watch_create(nint signal, out long handle);
+    private static partial int vn_media_title_watch_create(Microsoft.Win32.SafeHandles.SafeWaitHandle signal, out WatchHandle handle);
 
     [LibraryImport("VNotch.Native.dll", StringMarshalling = StringMarshalling.Utf16)]
     private static partial int vn_media_title_watch_set_source(
-        long handle,
+        WatchHandle handle,
         ReadOnlySpan<char> sourceApp,
         int sourceAppLen,
         out byte outActive);
@@ -31,7 +35,7 @@ internal sealed partial class NativeWindowTitleMonitor : IDisposable
 
     internal NativeWindowTitleMonitor(Action changed)
     {
-        if (vn_media_title_watch_create(_signal.SafeWaitHandle.DangerousGetHandle(), out _handle) == 0)
+        if (vn_media_title_watch_create(_signal.SafeWaitHandle, out _handle) == 0)
             _wait = ThreadPool.RegisterWaitForSingleObject(_signal, static (state, _) => ((Action)state!).Invoke(),
                 changed, Timeout.Infinite, false);
     }
@@ -41,7 +45,7 @@ internal sealed partial class NativeWindowTitleMonitor : IDisposable
         lock (_sync)
         {
             changed = false;
-            if (_handle == 0) return false;
+            if (_handle == null || _handle.IsInvalid) return false;
 
             string normalized = sourceApp ?? string.Empty;
             long now = Environment.TickCount64;
@@ -62,14 +66,14 @@ internal sealed partial class NativeWindowTitleMonitor : IDisposable
 
     public void Dispose()
     {
-        long handle;
+        WatchHandle? handle;
         lock (_sync)
         {
             handle = _handle;
-            _handle = 0;
+            _handle = null;
             Volatile.Write(ref _hookActive, false);
         }
-        if (handle != 0) vn_media_title_watch_close(handle);
+        handle?.Dispose();
         _wait?.Unregister(null);
         _signal.Dispose();
     }

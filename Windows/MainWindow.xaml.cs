@@ -93,7 +93,8 @@ public partial class MainWindow : Window
     internal bool IsAnimating { get => _isAnimating; set => _isAnimating = value; }
     private bool _isAnimating
     {
-        get => _isVisualAnimationActive || _transitionCoordinator.IsTransitionActive;
+        get => _isVisualAnimationActive || _transitionCoordinator.IsTransitionActive ||
+            _clockResizeGeneration == _viewTransitionGeneration;
         set
         {
             _isVisualAnimationActive = value;

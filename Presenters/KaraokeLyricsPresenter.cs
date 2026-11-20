@@ -45,6 +45,13 @@ internal sealed partial class KaraokeLyricsPresenter
         Clear();
         block.Text = line.Text;
         if (line.Words is not { Length: > 0 } words) return;
+        int nextOffset = 0;
+        foreach (var word in words)
+        {
+            if (word.Start < TimeSpan.Zero || word.End < word.Start || word.Offset < nextOffset ||
+                word.Length < 0 || word.Offset > line.Text.Length - word.Length) return;
+            nextOffset = word.Offset + word.Length;
+        }
         _words = words;
         _starts = new double[words.Length];
         _ends = new double[words.Length];

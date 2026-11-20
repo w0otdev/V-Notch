@@ -140,7 +140,7 @@ public partial class TranslationWindow
     private void PopupDragStarted(object sender, MouseButtonEventArgs e)
     {
         // The close button retains its normal click; only the title and its empty space drag.
-        for (var node = e.OriginalSource as DependencyObject; node != null && node != TranslationDragHandle; node = VisualTreeHelper.GetParent(node))
+        for (var node = e.OriginalSource as DependencyObject; node != null && node != TranslationDragHandle; node = WindowInteraction.Parent(node))
             if (node is System.Windows.Controls.Primitives.ButtonBase) return;
         if (!BeginPopupDrag(PointerScreenPosition())) return;
         TranslationDragHandle.CaptureMouse();

@@ -667,9 +667,10 @@ public sealed partial class LiquidGlassController : IDisposable
 
     public void Dispose()
     {
+        if (Interlocked.Exchange(ref _disposed, 1) != 0) return;
         ReleaseGpuLens();
         Stop(retainGpuResources: false);
-        if (Interlocked.Exchange(ref _disposed, 1) == 0 && _worker == null)
+        if (Volatile.Read(ref _worker) == null)
         {
             ReleaseRenderTimerPeriod();
             DisposeWaitableTimer();

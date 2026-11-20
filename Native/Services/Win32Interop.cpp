@@ -571,10 +571,11 @@ VN_EXPORT int32_t __stdcall vn_win32_win_event_hook_uninstall(int32_t slot_index
     AcquireSRWLockExclusive(&svc::win32::g_event_lock);
     svc::win32::EventSlot& slot = svc::win32::g_event_slots[slot_index];
     HWINEVENTHOOK hook = slot.hook.load();
-    slot.callback.store(nullptr, std::memory_order_release);
-    int32_t result = VN_OK;
-    if (hook != nullptr) result = w32::Status(UnhookWinEvent(hook));
-    slot.hook.store(nullptr, std::memory_order_release);
+    const int32_t result = hook ? w32::Status(UnhookWinEvent(hook)) : VN_OK;
+    if (result == VN_OK) {
+        slot.callback.store(nullptr, std::memory_order_release);
+        slot.hook.store(nullptr, std::memory_order_release);
+    }
     ReleaseSRWLockExclusive(&svc::win32::g_event_lock);
     return result;
 }

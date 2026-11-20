@@ -155,6 +155,29 @@ public sealed class DataProtectionSettingsTests : IDisposable
     }
 
     [Fact]
+    public void Load_InvalidCredentialKeepsOtherPreferencesAndAllowsSubsequentSaves()
+    {
+        string path = Path.Combine(_directory, "settings.json");
+        File.WriteAllText(path, JsonSerializer.Serialize(new
+        {
+            SettingsVersion = SettingsMigrator.CurrentVersion,
+            Width = 533,
+            YouTubeApiKey = "enc:invalid-base64",
+            SpotifySpDc = DataProtection.Protect("valid-cookie")
+        }));
+        using var service = new SettingsService(path, _ => { });
+        var recovered = service.Load();
+        Assert.Equal(533, recovered.Width);
+        Assert.True(string.IsNullOrEmpty(recovered.YouTubeApiKey));
+        Assert.Equal("valid-cookie", recovered.SpotifySpDc);
+        Assert.Single(Directory.GetFiles(_directory, "settings.corrupt-*.json"));
+        recovered.Width = 540;
+        service.Save(recovered);
+        using var reloaded = new SettingsService(path, _ => { });
+        Assert.Equal(540, reloaded.Load().Width);
+    }
+
+    [Fact]
     public void Load_CorruptSettings_QuarantinesFileAndRestoresDefaults()
     {
         var path = Path.Combine(_directory, "settings.json");
@@ -366,7 +389,9 @@ public sealed class DataProtectionSettingsTests : IDisposable
         string original = JsonSerializer.Serialize(new
         {
             SettingsVersion = futureVersion,
-            Width = 312,
+            Width = 4100,
+            LiquidGlass = new { FutureOptic = 7 },
+            ProcessPriority = "RealTime",
             FutureFeatureFlag = true,
             FutureProfileName = "next-gen"
         });
@@ -384,13 +409,15 @@ public sealed class DataProtectionSettingsTests : IDisposable
         using var service = new SettingsService(path, _ => { });
         var loaded = service.Load();
         Assert.Equal(futureVersion, loaded.SettingsVersion);
-        Assert.Equal(312, loaded.Width);
+        Assert.Equal(4000, loaded.Width);
+        Assert.Equal("Normal", loaded.ProcessPriority);
         Assert.Equal(original, File.ReadAllText(path));
 
         service.Save(loaded);
         using var savedDoc = JsonDocument.Parse(File.ReadAllText(path));
         Assert.Equal(futureVersion, savedDoc.RootElement.GetProperty("SettingsVersion").GetInt32());
         Assert.True(savedDoc.RootElement.GetProperty("FutureFeatureFlag").GetBoolean());
+        Assert.Equal(7, savedDoc.RootElement.GetProperty("LiquidGlass").GetProperty("FutureOptic").GetInt32());
         Assert.Equal("next-gen", savedDoc.RootElement.GetProperty("FutureProfileName").GetString());
     }
 

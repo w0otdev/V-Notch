@@ -666,6 +666,7 @@ public sealed class ClockWidgetPresenter : IDisposable
     {
         if (_disposed) return;
         _disposed = true;
+        _host.IsAnimating = false;
         ++_expandedWidgetSwitchVersion;
         _refs.CalendarWidget.LostMouseCapture -= OnCalendarWidgetLostMouseCapture;
         if (_refs.AiUsageWidgetContent is VNotch.Controls.AiUsageStatWidget usage)

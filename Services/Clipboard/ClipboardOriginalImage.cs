@@ -16,11 +16,12 @@ internal static class ClipboardOriginalImage
     internal static Task<BitmapSource> DecodeAsync(Stream input, CancellationToken cancellation = default) => Task.Run<BitmapSource>(() =>
     {
         cancellation.ThrowIfCancellationRequested();
-        var bitmap = new BitmapImage();
-        bitmap.BeginInit();
-        bitmap.CacheOption = BitmapCacheOption.OnLoad;
-        bitmap.StreamSource = input;
-        bitmap.EndInit();
+        var decoder = BitmapDecoder.Create(input, BitmapCreateOptions.DelayCreation, BitmapCacheOption.OnDemand);
+        var frame = decoder.Frames[0];
+        if ((long)frame.PixelWidth * frame.PixelHeight > 32_000_000)
+            throw new FileFormatException("Clipboard image exceeds the 32 megapixel limit.");
+        cancellation.ThrowIfCancellationRequested();
+        var bitmap = new CachedBitmap(frame, BitmapCreateOptions.PreservePixelFormat, BitmapCacheOption.OnLoad);
         bitmap.Freeze();
         cancellation.ThrowIfCancellationRequested();
         return bitmap;
