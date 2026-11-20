@@ -333,7 +333,6 @@ if (-not $buildScope.Native -and -not $buildScope.Managed) {
                 "build", $csprojPath, "-nologo", "-v:q", "-clp:NoSummary", "-m:2",
                 "-p:NativeFastCompile=true", "-p:RunAnalyzers=false",
                 "-p:EnforceCodeStyleInBuild=false", "-p:EnableNETAnalyzers=false",
-                "-p:BuildProjectReferences=false",
                 "-p:CreateHardLinksForCopyFilesToOutputDirectoryIfPossible=true",
                 "-p:CreateHardLinksForCopyLocalIfPossible=true"
             )
