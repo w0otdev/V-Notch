@@ -2,6 +2,7 @@
 param([string]$Solution = 'V-Notch.sln', [string]$OutputPath = 'artifacts/package-audit.json')
 
 $ErrorActionPreference = 'Stop'
+& (Join-Path $PSScriptRoot 'Assert-SentencePieceAudit.ps1')
 if ($PSVersionTable.PSVersion.Major -ge 7) {
     $PSNativeCommandUseErrorActionPreference = $false
 }

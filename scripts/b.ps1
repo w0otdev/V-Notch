@@ -48,6 +48,8 @@ if ($TestedNativeArtifactDirectory) {
     & (Join-Path $repoRoot 'Tools/Assert-NativeArtifact.ps1') -ArtifactDirectory $TestedNativeArtifactDirectory
     $nativeBinary = [IO.Path]::GetFullPath((Join-Path $TestedNativeArtifactDirectory 'VNotch.Native.dll'))
     $nativeArguments = @('-p:SkipNativeCompile=true', "-p:VNotchNativeArtifactPath=$nativeBinary")
+    # The tested artifact contains the main DLL. Stage the pinned Lite runtime separately.
+    & (Join-Path $scriptDir 'Build-TranslationRuntime.ps1') -Root $repoRoot
 }
 if ($RequireAuthenticode -and -not $CertificateThumbprint) {
     throw 'A trusted certificate thumbprint is required for a public release.'
