@@ -34,6 +34,13 @@ FetchContent_MakeAvailable(protoc_tool)
 set(SPM_PROTOC_EXECUTABLE "${protoc_tool_SOURCE_DIR}/bin/protoc.exe")
 set(SPM_ENABLE_LITE OFF CACHE BOOL "" FORCE) # V-Notch uses SentencePieceProcessor with protobuf models.
 add_subdirectory("${SPM_SOURCE}" sentencepiece EXCLUDE_FROM_ALL)
+if(CMAKE_CXX_COMPILER_ID STREQUAL "MSVC")
+    # Protobuf 36.2: RepeatedString's lambda returns for both Utf8Type values,
+    # but MSVC emits C4715 for each instantiation of its exhaustive switch.
+    get_target_property(protobuf_dir libprotobuf-lite SOURCE_DIR)
+    set_property(SOURCE "${protobuf_dir}/src/google/protobuf/generated_message_tctable_lite.cc"
+        TARGET_DIRECTORY libprotobuf-lite APPEND PROPERTY COMPILE_OPTIONS /wd4715)
+endif()
 # The public processor header exposes absl::Status and absl::Span.
 target_link_libraries(sentencepiece-static INTERFACE absl::status)
 

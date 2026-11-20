@@ -76,7 +76,7 @@ $importCommand = Join-Path $cache 'import.cmd'
 & cmd.exe /d /c $importCommand
 if ($LASTEXITCODE -ne 0) { throw 'Could not create the CTranslate2 import library.' }
 $build = Join-Path $cache "build-$spmKey"
-& $cmake -S (Join-Path $Root 'Tools/TranslationRuntime') -B $build -G 'Visual Studio 17 2022' -A x64 "-DCT2_SOURCE=$ct2" "-DSPM_SOURCE=$spm" "-DCT2_IMPORT_LIB=$lib" "-DRUNTIME_OUTPUT=$OutputDirectory" '-DCMAKE_POLICY_VERSION_MINIMUM=3.5'
+& $cmake -S (Join-Path $Root 'Tools/TranslationRuntime') -B $build -G 'Visual Studio 17 2022' -A x64 "-DCT2_SOURCE=$ct2" "-DSPM_SOURCE=$spm" "-DCT2_IMPORT_LIB=$lib" "-DRUNTIME_OUTPUT=$OutputDirectory"
 if ($LASTEXITCODE -ne 0) { throw 'Translation runtime configuration failed.' }
 & $cmake --build $build --config Release --target VNotchTranslation --parallel $Jobs
 if ($LASTEXITCODE -ne 0) { throw 'Translation runtime compilation failed.' }
