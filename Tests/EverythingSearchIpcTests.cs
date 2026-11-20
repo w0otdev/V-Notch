@@ -74,8 +74,7 @@ public sealed class EverythingSearchIpcTests
     public void IncrementalSearchKeepsAuthoritativeEmptyIndexResultsAndFallsBackAfterFailure(bool dropReplies) => SharedStaTestRunner.RunAsync(async ct =>
     {
         EnsureApplication();
-        string root = Path.Combine(AppContext.BaseDirectory, "spotlight-index-tests", Guid.NewGuid().ToString("N"));
-        Directory.CreateDirectory(root);
+        string root = SearchFixtureDirectory.Create();
         try
         {
             string path = Path.Combine(root, "authoritative-report.txt");

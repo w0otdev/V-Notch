@@ -10,9 +10,7 @@ namespace VNotch.Tests;
 
 public sealed class LocalFileSearchProviderTests : IDisposable
 {
-    private readonly string _root = Path.Combine(AppContext.BaseDirectory, "local-search-tests", Guid.NewGuid().ToString("N"));
-
-    public LocalFileSearchProviderTests() => Directory.CreateDirectory(_root);
+    private readonly string _root = SearchFixtureDirectory.Create();
 
     private string FileAt(string relative)
     {
@@ -54,6 +52,21 @@ public sealed class LocalFileSearchProviderTests : IDisposable
         var provider = new LocalFileSearchProvider([_root]);
         var results = await provider.SearchAsync("bao cao", 1, CancellationToken.None);
         Assert.Equal(exact, Assert.Single(results).Target);
+    }
+
+    [Fact]
+    public async Task DefaultVisibilityHidesLocalAppDataFromOrdinaryQueries()
+    {
+        string root = SearchFixtureDirectory.Create(Environment.SpecialFolder.LocalApplicationData);
+        try
+        {
+            string file = Path.Combine(root, "private-report.txt");
+            File.WriteAllText(file, "fixture");
+            var provider = new LocalFileSearchProvider([root]);
+            Assert.Empty(await provider.SearchAsync("private-report", 10, CancellationToken.None));
+            Assert.Equal(file, Assert.Single(await provider.SearchAsync(file, 10, CancellationToken.None)).Target);
+        }
+        finally { Directory.Delete(root, recursive: true); }
     }
 
     [Fact]
@@ -236,11 +249,7 @@ public sealed class LocalFileSearchProviderTests : IDisposable
 
     public void Dispose()
     {
-        string parent = Path.GetDirectoryName(Path.GetFullPath(_root))!;
-        if (parent == Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "local-search-tests")))
-        {
-            try { Directory.Delete(_root, recursive: true); }
-            catch (IOException) { /* An asynchronous preference save may still be finishing. */ }
-        }
+        try { Directory.Delete(_root, recursive: true); }
+        catch (IOException) { /* An asynchronous preference save may still be finishing. */ }
     }
 }

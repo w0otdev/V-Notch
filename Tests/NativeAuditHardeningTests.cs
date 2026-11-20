@@ -765,8 +765,7 @@ public sealed partial class NativeAuditHardeningTests
     [Fact]
     public void Finding07_LocalFileSearchRun_ReusedHandle_DoesNotAccumulateStaleResults()
     {
-        string tempDir = Path.Combine(AppContext.BaseDirectory, "local-search-tests", Guid.NewGuid().ToString("N"));
-        Directory.CreateDirectory(tempDir);
+        string tempDir = SearchFixtureDirectory.Create();
         long handle = 0;
 
         try

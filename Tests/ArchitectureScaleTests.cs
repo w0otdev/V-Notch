@@ -22,8 +22,7 @@ public sealed class ArchitectureScaleTests(ITestOutputHelper output)
     [InlineData(1000)]
     public async Task EncryptedStorageQueriesAndFileRecallAtOneAndTenTimes(int count)
     {
-        // The provider intentionally excludes the user's temporary directory from ordinary file searches.
-        string root = Directory.CreateDirectory(Path.Combine(AppContext.BaseDirectory, "architecture-scale-fixtures", Guid.NewGuid().ToString("N"))).FullName;
+        string root = SearchFixtureDirectory.Create();
         try
         {
             var repository = new EncryptedChatRepository(Path.Combine(root, "chats"), DataProtection.Protect, DataProtection.Unprotect, () => []);
@@ -93,7 +92,7 @@ public sealed class ArchitectureScaleTests(ITestOutputHelper output)
                 limitations = "Synthetic local disk; warm OS cache; managed allocations only; no live provider load or GPU measurement. Cold startup is one sample."
             }, new JsonSerializerOptions { WriteIndented = true });
             output.WriteLine(json);
-            string results = Environment.GetEnvironmentVariable("VNOTCH_SCALE_RESULTS") ?? Path.Combine(FindRoot(), "artifacts", "architecture-scale");
+            string results = Environment.GetEnvironmentVariable("VNOTCH_SCALE_RESULTS") ?? DefaultResultsDirectory();
             Directory.CreateDirectory(results);
             await File.WriteAllTextAsync(Path.Combine(results, $"scale-{count}.json"), json);
         }
@@ -116,10 +115,10 @@ public sealed class ArchitectureScaleTests(ITestOutputHelper output)
         return new(Percentile(milliseconds), (long)Percentile(allocations));
     }
     private static double Percentile(List<double> values) => values.Order().ElementAt((int)Math.Ceiling(values.Count * .95) - 1);
-    private static string FindRoot()
+    private static string DefaultResultsDirectory()
     {
         var directory = new DirectoryInfo(AppContext.BaseDirectory);
         while (directory != null && !File.Exists(Path.Combine(directory.FullName, "V-Notch.sln"))) directory = directory.Parent;
-        return directory?.FullName ?? throw new DirectoryNotFoundException("Repository root not found.");
+        return Path.Combine(directory?.FullName ?? AppContext.BaseDirectory, "artifacts", "architecture-scale");
     }
 }
