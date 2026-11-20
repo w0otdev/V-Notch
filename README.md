@@ -13,7 +13,7 @@
     <img src="https://img.shields.io/github/v/release/w0otdev/V-Notch?style=for-the-badge&color=ffffff&labelColor=eeeeee&logo=github&logoColor=111111" alt="Latest Release">
   </a>
   <img src="https://img.shields.io/badge/Windows-10%20%7C%2011-ffffff?style=for-the-badge&labelColor=eeeeee&logo=windows&logoColor=111111" alt="Windows 10 / 11">
-  <img src="https://img.shields.io/badge/.NET-8.0%20%7C%2010.0-ffffff?style=for-the-badge&labelColor=eeeeee&logo=dotnet&logoColor=111111" alt=".NET 8 / 10">
+  <img src="https://img.shields.io/badge/.NET-10.0-ffffff?style=for-the-badge&labelColor=eeeeee&logo=dotnet&logoColor=111111" alt=".NET 10">
   <a href="LICENSE">
     <img src="https://img.shields.io/github/license/w0otdev/V-Notch?style=for-the-badge&color=ffffff&labelColor=eeeeee" alt="License">
   </a>
@@ -174,7 +174,7 @@ In **Settings → Appearance**, enable account-limit tracking and choose **AI ac
 
 ## Installation
 
-V-Notch runs on 64-bit Windows 10 build 19041 or later, or Windows 11. It requires [.NET 8 Desktop Runtime](https://dotnet.microsoft.com/download/dotnet/8.0) or [.NET 10 Desktop Runtime](https://dotnet.microsoft.com/download/dotnet/10.0). The self-contained installer includes the runtime. A dedicated GPU is recommended for Liquid Glass at 60-120 FPS.
+V-Notch runs on 64-bit Windows 10 build 19041 or later, or Windows 11. It requires [.NET 10 Desktop Runtime](https://dotnet.microsoft.com/download/dotnet/10.0). The self-contained installer includes the runtime. A dedicated GPU is recommended for Liquid Glass at 60-120 FPS.
 
 1. Download `V-Notch-Setup.exe` from [Releases](https://github.com/w0otdev/V-Notch/releases). Use `V-Notch-Setup-SelfContained.exe` to skip the .NET install.
 2. Run the installer.

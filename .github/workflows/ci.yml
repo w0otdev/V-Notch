@@ -315,6 +315,16 @@ jobs:
         shell: pwsh
         run: ./Tools/Assert-ModelAssets.ps1
 
+      - name: Exercise x64 Desktop Runtime detection
+        shell: pwsh
+        run: |
+          $compiler = ./scripts/Initialize-Nsis.ps1 -CacheDirectory .cache/nsis -DestinationDirectory "$env:RUNNER_TEMP/nsis-detector"
+          $probe = Join-Path $env:RUNNER_TEMP 'desktop-detector.exe'
+          & $compiler /V2 "/DTEST_EXE=$probe" "/DTEST_ID=$([guid]::NewGuid())" Tests/DesktopRuntimeDetection.nsi
+          if ($LASTEXITCODE) { throw 'Could not compile Desktop Runtime detection tests.' }
+          $result = Start-Process -FilePath $probe -Wait -PassThru
+          if ($result.ExitCode) { throw "Desktop Runtime detector failed fixture $($result.ExitCode)." }
+
       - name: Validate all locale keys and format placeholders
         run: python Tools/validate_locales.py
 

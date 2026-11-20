@@ -1,6 +1,6 @@
 [CmdletBinding()]
 param(
-    [string]$TestAssemblyDirectory = (Join-Path $PSScriptRoot '../Tests/bin/Release/net8.0-windows10.0.19041.0/win-x64')
+    [string]$TestAssemblyDirectory = (Join-Path $PSScriptRoot '../Tests/bin/Release/net10.0-windows10.0.19041.0/win-x64')
 )
 $ErrorActionPreference = 'Stop'
 

@@ -295,7 +295,7 @@ jobs:
           set -euo pipefail
           cat release-assets/*.sha256 > release-assets/checksums.txt
           python .github/scripts/release_version.py --notes "$RELEASE_VERSION" > release-notes.md
-          printf '\nRelease %s from commit `%s`.\n\n- `V-Notch-Setup.exe` (requires [.NET 8 Desktop Runtime](https://dotnet.microsoft.com/download/dotnet/8.0))\n- `V-Notch-Setup-SelfContained.exe` (runtime bundled)\n- Signed update manifests and SHA256 checksums are attached.\n' "$RELEASE_VERSION" "$HEAD_SHA" >> release-notes.md
+          printf '\nRelease %s from commit `%s`.\n\n- `V-Notch-Setup.exe` (requires [.NET 10 Desktop Runtime](https://dotnet.microsoft.com/download/dotnet/10.0))\n- `V-Notch-Setup-SelfContained.exe` (runtime bundled)\n- Signed update manifests and SHA256 checksums are attached.\n' "$RELEASE_VERSION" "$HEAD_SHA" >> release-notes.md
           if [ "$IS_PRERELEASE" = 'true' ]; then
             printf '\nBeta testing build. Enable pre-release updates in Settings to receive these builds.\nBuild: %s\n' "$INFORMATIONAL_VERSION" >> release-notes.md
             gh release create "$RELEASE_TAG" release-assets/* \

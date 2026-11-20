@@ -100,7 +100,7 @@ try {
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <OutputType>Exe</OutputType><UseWPF>true</UseWPF>
-    <TargetFramework>net8.0-windows10.0.19041.0</TargetFramework>
+    <TargetFramework>net10.0-windows10.0.19041.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings><Nullable>enable</Nullable>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <AssemblyVersion>1.9.3.0</AssemblyVersion>
@@ -137,7 +137,7 @@ try {
     $probeProject = Join-Path $temporary 'Compatibility.csproj'
     & dotnet build $probeProject -c Debug -nologo -v:q
     if ($LASTEXITCODE -ne 0) { throw 'The update compatibility probe build failed.' }
-    $probeDll = Join-Path $temporary 'bin/Debug/net8.0-windows10.0.19041.0/Compatibility.dll'
+    $probeDll = Join-Path $temporary 'bin/Debug/net10.0-windows10.0.19041.0/Compatibility.dll'
     foreach ($version in $versions) {
         $arguments = @('exec', $probeDll, $version)
         if ($AssetsDirectory) { $arguments += (Resolve-Path -LiteralPath $AssetsDirectory).Path }

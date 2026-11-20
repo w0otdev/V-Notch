@@ -1,7 +1,7 @@
 # Build V-Notch Installer
 # This script builds the Release version and creates the NSIS installer
 #
-# By default it produces a framework-dependent build (needs .NET 8 Desktop Runtime).
+# By default it produces a framework-dependent build (needs .NET 10 Desktop Runtime).
 # Use -SelfContained to bundle the runtime so the app runs on a clean machine
 # without installing .NET separately (larger installer).
 [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSAvoidUsingPlainTextForPassword', 'CertificatePassword')]
@@ -127,7 +127,7 @@ $versionArguments = @(
     "-p:PackageManifestVersion=$installerVersion"
 )
 
-$modeText  = if ($SelfContained) { "Self-Contained (win-x64)" } else { "Framework-Dependent (.NET 8)" }
+$modeText  = if ($SelfContained) { "Self-Contained (win-x64)" } else { "Framework-Dependent (.NET 10)" }
 $modeColor = if ($SelfContained) { "Magenta" } else { "Green" }
 
 Write-Host ""
@@ -158,10 +158,10 @@ Write-TreeSpacer
 Write-TreeStep "2/4" "Publish V-Notch & Uninstaller"
 $pubSw = [System.Diagnostics.Stopwatch]::StartNew()
 if ($SelfContained) {
-    # Self-contained: bundles the .NET runtime, runs without installing .NET 8.
+    # Self-contained: bundles the .NET runtime, runs without installing .NET 10.
     $pubOut = Invoke-CapturedNative { & dotnet publish .\V-Notch.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=false -p:DebugType=none -p:DebugSymbols=false -nologo -v:q -o $publishDir @restoreArguments @versionArguments @nativeArguments }
 } else {
-    # Framework-dependent single file - requires .NET 8 runtime.
+    # Framework-dependent single file - requires .NET 10 runtime.
     $pubOut = Invoke-CapturedNative { & dotnet publish .\V-Notch.csproj -c Release -r win-x64 --self-contained false -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=false -p:DebugType=none -p:DebugSymbols=false -nologo -v:q -o $publishDir @restoreArguments @versionArguments @nativeArguments }
 }
 if ($LASTEXITCODE -ne 0) {

@@ -4,7 +4,7 @@ param(
 )
 
 $repoRoot = Split-Path $PSScriptRoot -Parent
-$appPath = Join-Path $repoRoot 'bin\Debug\net8.0-windows10.0.19041.0\win-x64\V-Notch.exe'
+$appPath = Join-Path $repoRoot 'bin\Debug\net10.0-windows10.0.19041.0\win-x64\V-Notch.exe'
 if (-not (Test-Path -LiteralPath $appPath)) { throw 'Build and start the updated V-Notch app first.' }
 $outputDirectory = Split-Path $appPath -Parent
 $assemblyPath = Join-Path $outputDirectory 'V-Notch.dll'

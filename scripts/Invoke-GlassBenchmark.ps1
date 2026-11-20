@@ -6,7 +6,7 @@ $ErrorActionPreference = 'Stop'
 $benchmarkRepo = Split-Path -Parent $PSScriptRoot
 $benchmarkArtifacts = Join-Path $benchmarkRepo 'artifacts'
 New-Item -ItemType Directory -Force -Path $benchmarkArtifacts | Out-Null
-$benchmarkProbe = Join-Path $benchmarkRepo 'Tools/GlassGpuProbe/bin/Release/net8.0-windows10.0.19041.0/win-x64/WpfProbe.exe'
+$benchmarkProbe = Join-Path $benchmarkRepo 'Tools/GlassGpuProbe/bin/Release/net10.0-windows10.0.19041.0/win-x64/WpfProbe.exe'
 function Invoke-Probe([string[]]$Arguments, [string]$Log) {
     & $benchmarkProbe @Arguments *> (Join-Path $benchmarkArtifacts $Log)
     if ($LASTEXITCODE -ne 0) { throw "Benchmark failed; inspect artifacts/$Log" }
