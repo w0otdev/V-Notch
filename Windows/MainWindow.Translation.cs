@@ -1,4 +1,5 @@
 using VNotch.Controllers;
+using VNotch.Services;
 
 namespace VNotch;
 
@@ -14,7 +15,7 @@ public partial class MainWindow
             {
                 _settings.TranslationSourceLanguage = source;
                 _settings.TranslationTargetLanguage = target;
-                _settingsService.Save(_settings);
+                _settingsService.SaveAsync(_settings).SafeFireAndForget("SETTINGS-SAVE");
             });
         _liveTranslation.ApplySettings(_settings);
     }

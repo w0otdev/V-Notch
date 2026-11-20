@@ -53,11 +53,13 @@ public sealed class ChromiumSelectionTests
             TranslationSelection? cold = null;
             // Exercise the production shortcut's bounded retries without a warm
             // accessibility tree, event element, focus, or cursor inside the view.
-            await TranslationSelectionService.CaptureManualAsync(() => true, () =>
+            // The shortcut reads UIA on a worker. Keep the WebView hosting dispatcher
+            // available to answer provider requests during cold tree initialization.
+            await Task.Run(() => TranslationSelectionService.CaptureManualAsync(() => true, () =>
             {
                 using var result = SelectionTextReader.Read(hwnd, null, true, out _, allowOwnProcess: true);
                 return result == null ? null : new TranslationSelection(1, result.Text, result.Bounds, hwnd, false);
-            }, selection => cold = selection);
+            }, selection => cold = selection));
             Assert.NotNull(cold);
             Assert.Equal(expected.Replace("\r\n", "\n"), cold.Text.Replace("\r\n", "\n"));
             var root = AutomationElement.FromHandle(hwnd);

@@ -77,11 +77,10 @@ bool TryParseColonDuration(std::wstring_view s, int64_t* out_ticks) noexcept
 bool TryParseUnitDuration(std::wstring_view s, int64_t* out_ticks) noexcept
 {
     double total_seconds = 0.0;
-    bool any_match = false;
     size_t i = 0;
     while (i < s.size())
     {
-        while (i < s.size() && (s[i] < L'0' || s[i] > L'9'))
+        while (i < s.size() && IsAsciiWhitespace(s[i]))
         {
             ++i;
         }
@@ -96,7 +95,7 @@ bool TryParseUnitDuration(std::wstring_view s, int64_t* out_ticks) noexcept
         }
         if (i < s.size() && s[i] == L'.')
         {
-            const size_t dot_pos = i++;
+            ++i;
             const size_t frac_start = i;
             while (i < s.size() && s[i] >= L'0' && s[i] <= L'9')
             {
@@ -104,7 +103,7 @@ bool TryParseUnitDuration(std::wstring_view s, int64_t* out_ticks) noexcept
             }
             if (i == frac_start)
             {
-                i = dot_pos;
+                return false;
             }
         }
         const std::wstring_view num_sv = s.substr(num_start, i - num_start);
@@ -114,21 +113,17 @@ bool TryParseUnitDuration(std::wstring_view s, int64_t* out_ticks) noexcept
         }
         if (i >= s.size())
         {
-            break;
+            return false;
         }
-        const double mult = UnitSecondsMultiplier(ToLowerAscii(s[i]));
-        if (mult > 0.0)
+        const double mult = UnitSecondsMultiplier(ToLowerAscii(s[i++]));
+        double val = 0.0;
+        if (mult == 0.0 || !TryParseDoubleStrict(num_sv, &val))
         {
-            double val = 0.0;
-            if (TryParseDoubleStrict(num_sv, &val) && std::isfinite(val))
-            {
-                any_match = true;
-                total_seconds += val * mult;
-            }
-            ++i;
+            return false;
         }
+        total_seconds += val * mult;
     }
-    return any_match && TryTicksFromSeconds(total_seconds, out_ticks);
+    return TryTicksFromSeconds(total_seconds, out_ticks);
 }
 
 

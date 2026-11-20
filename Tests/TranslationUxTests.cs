@@ -63,6 +63,10 @@ public sealed class TranslationUxTests
         var result = await service.TranslateAsync(text, "auto", "vi", default);
         Assert.Equal(new string('漢', 512), result.Text);
         Assert.True(result.InputTruncated);
+        var exact = await service.TranslateAsync(text[..512], "auto", "vi", default);
+        Assert.True(exact.IsCached);
+        Assert.False(exact.InputTruncated);
+        Assert.True((await service.TranslateAsync(text, "auto", "vi", default)).InputTruncated);
         Assert.Equal(1, engine.Calls);
     }
 

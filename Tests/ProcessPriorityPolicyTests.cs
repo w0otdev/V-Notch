@@ -24,7 +24,7 @@ public sealed class ProcessPriorityPolicyTests
         string path = Path.Combine(Path.GetTempPath(), $"vnotch-priority-{Guid.NewGuid():N}.json");
         try
         {
-            await File.WriteAllTextAsync(path, "{\"SettingsVersion\": 999, \"ProcessPriority\": \"RealTime\"}");
+            await File.WriteAllTextAsync(path, $$"""{"SettingsVersion": {{SettingsMigrator.CurrentVersion - 1}}, "ProcessPriority": "RealTime"}""");
             await using var service = new SettingsService(path);
             Assert.Equal("Normal", service.Load().ProcessPriority);
             Assert.DoesNotContain("RealTime", await File.ReadAllTextAsync(path));

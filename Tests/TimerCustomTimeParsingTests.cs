@@ -15,6 +15,10 @@ public class TimerCustomTimeParsingTests
     [InlineData("99999999999999999999d")]
     [InlineData("0")]
     [InlineData("-5")]
+    [InlineData("-5m")]
+    [InlineData("1h -2m")]
+    [InlineData("1h 5")]
+    [InlineData("junk5m")]
     [InlineData("0:00")]
     public void TryParseCustomTime_RejectsUnrepresentableOrNonPositive(string input)
     {
@@ -49,6 +53,8 @@ public class TimerCustomTimeParsingTests
     [InlineData("1:02:03", 3723)]
     [InlineData("1h 30m", 5400)]
     [InlineData("45s", 45)]
+    [InlineData(".5h", 1800)]
+    [InlineData("1H30m", 5400)]
     public void TryParseCustomTime_ValidInputs(string input, double expectedSeconds)
     {
         var vm = new TimerViewModel();

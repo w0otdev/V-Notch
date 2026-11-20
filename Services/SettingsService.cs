@@ -211,7 +211,6 @@ public sealed partial class SettingsService : ISettingsService, IAsyncDisposable
 
     private readonly Task _worker;
     private readonly object _inProcessSaveGate = new();
-    private bool _lastSaveSucceeded;
     private int _disposeSignaled;
     private volatile bool _disposed;
     private volatile bool _settingsLoadFailed;
@@ -229,7 +228,7 @@ public sealed partial class SettingsService : ISettingsService, IAsyncDisposable
                     {
                         try
                         {
-                            lock (_inProcessSaveGate) { ExecuteSave(op.Snapshot, op.KeepExistingBackup); if (!_lastSaveSucceeded) throw new TimeoutException("Timed out waiting for the settings lock."); }
+                            lock (_inProcessSaveGate) { ExecuteSave(op.Snapshot, op.KeepExistingBackup); }
                             op.Tcs.TrySetResult();
                         }
                         catch (Exception ex)
@@ -275,7 +274,7 @@ public sealed partial class SettingsService : ISettingsService, IAsyncDisposable
 
     private readonly string _mutexName;
 
-    private static string CreateMutexName(string settingsPath) =>
+    internal static string CreateMutexName(string settingsPath) =>
         @"Local\VNotch_Settings_" + Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(
             System.Text.Encoding.UTF8.GetBytes(Path.GetFullPath(settingsPath).ToUpperInvariant())));
 
@@ -330,7 +329,7 @@ public sealed partial class SettingsService : ISettingsService, IAsyncDisposable
         {
             _settingsLoadFailed = false;
             var fresh = new NotchSettings { SettingsVersion = SettingsMigrator.CurrentVersion };
-            Save(fresh);
+            SaveDefaultsOnLoad(fresh);
             return fresh;
         }
 
@@ -355,19 +354,18 @@ public sealed partial class SettingsService : ISettingsService, IAsyncDisposable
             bool isForwardVersion = settings.SettingsVersion > SettingsMigrator.CurrentVersion;
             bool migrationSaved = true;
 
-            if ((!isForwardVersion && migrated) || normalized)
+            if (!isForwardVersion && (migrated || normalized))
             {
                 RuntimeLog.Log(
                     LogCategoryLoad,
                     $"Migrated/normalized settings to version {SettingsMigrator.CurrentVersion}");
                 try
                 {
-                    bool savedOk; lock (_inProcessSaveGate) { Save(settings, keepExistingBackup: true); savedOk = _lastSaveSucceeded; }
-                    if (!savedOk) migrationSaved = false;
-                    if (migrated && savedOk)
+                    Save(settings, keepExistingBackup: true);
+                    if (migrated)
                         RemovePlaintextKeySettingsFiles();
                 }
-                catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+                catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or TimeoutException)
                 {
                     // A locked/read-only file must not discard settings that were
                     // successfully loaded. Retry the migration on the next Load.
@@ -395,7 +393,7 @@ public sealed partial class SettingsService : ISettingsService, IAsyncDisposable
                 return defaults;
             }
             _settingsLoadFailed = false;
-            Save(defaults);
+            SaveDefaultsOnLoad(defaults);
             return defaults;
         }
         catch (System.Security.Cryptography.CryptographicException)
@@ -422,6 +420,12 @@ public sealed partial class SettingsService : ISettingsService, IAsyncDisposable
             _settingsLoadFailed = true;
             return new NotchSettings { SettingsVersion = SettingsMigrator.CurrentVersion, EnableBrowserUrlInspection = false };
         }
+    }
+
+    private void SaveDefaultsOnLoad(NotchSettings defaults)
+    {
+        try { Save(defaults); }
+        catch (TimeoutException) { /* Another writer holds the lock. Load will retry from disk. */ }
     }
 
     public void Save(NotchSettings settings)
@@ -515,7 +519,7 @@ public sealed partial class SettingsService : ISettingsService, IAsyncDisposable
         if (_settingsLoadFailed)
             throw new System.Security.Cryptography.CryptographicException("Reload settings successfully before overwriting data that could not be read or backed up.");
         // Serialize the replace and backup transaction across service instances/processes.
-        _lastSaveSucceeded = false; using var mutex = new Mutex(false, _mutexName);
+        using var mutex = new Mutex(false, _mutexName);
         bool acquired;
         try { acquired = mutex.WaitOne(SaveMutexTimeout); }
         catch (AbandonedMutexException) { acquired = true; /* The previous writer exited; this thread owns the mutex. */ }
@@ -523,10 +527,10 @@ public sealed partial class SettingsService : ISettingsService, IAsyncDisposable
         if (!acquired)
         {
             RuntimeLog.Error(LogCategorySave, $"Timed out after {SaveMutexTimeout.TotalSeconds:0}s waiting for the settings lock; save skipped.");
-            return;
+            throw new TimeoutException("Timed out waiting for the settings lock.");
         }
 
-        try { ExecuteSaveCore(settings, keepExistingBackup); _lastSaveSucceeded = true; }
+        try { ExecuteSaveCore(settings, keepExistingBackup); }
         finally { mutex.ReleaseMutex(); }
     }
 

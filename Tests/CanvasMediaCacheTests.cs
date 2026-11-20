@@ -36,6 +36,23 @@ public sealed class CanvasMediaCacheTests
         }
     }
 
+    [Fact]
+    public async Task UnwritableTempFileDoesNotBlockTheNextDownload()
+    {
+        using var directory = new TempFolder();
+        using var client = new HttpClient(new Handler());
+        var cache = new CanvasMediaCache(client, directory.Path);
+        var remote = new Uri("https://canvaz.scdn.co/retry.mp4");
+        string path = (await cache.GetAsync(remote, default)).LocalPath;
+        File.Move(path, path + ".tmp");
+        File.SetAttributes(path + ".tmp", FileAttributes.ReadOnly);
+        try { await Assert.ThrowsAsync<UnauthorizedAccessException>(() => cache.GetAsync(remote, default)); }
+        finally { File.SetAttributes(path + ".tmp", FileAttributes.Normal); }
+
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+        Assert.True(File.Exists((await cache.GetAsync(remote, timeout.Token)).LocalPath));
+    }
+
     private sealed class Handler : HttpMessageHandler
     {
         internal int Requests;

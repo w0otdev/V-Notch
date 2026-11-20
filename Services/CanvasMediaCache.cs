@@ -15,8 +15,8 @@ internal sealed class CanvasMediaCache(HttpClient client, string root)
     internal async Task<Uri> GetAsync(Uri remote, CancellationToken cancellationToken)
     {
         string name = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(remote.AbsoluteUri))) + ".mp4";
-        await _gate.WaitAsync(cancellationToken).ConfigureAwait(false);
         string path = Path.Combine(root, name), temporary = path + ".tmp";
+        await _gate.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
             Directory.CreateDirectory(root);
@@ -60,8 +60,9 @@ internal sealed class CanvasMediaCache(HttpClient client, string root)
         }
         finally
         {
-            try { File.Delete(temporary); } catch (IOException) { /* Retry replaces an interrupted download. */ }
-            _gate.Release();
+            try { File.Delete(temporary); }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { /* Best effort after a failed download. */ }
+            finally { _gate.Release(); }
         }
     }
 }

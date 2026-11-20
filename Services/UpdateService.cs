@@ -34,7 +34,7 @@ public sealed partial class UpdateService : IUpdateService, IDisposable
         out int outCmp);
 
     private const string LogCategory = "UPDATER";
-    private const int CacheSchemaVersion = 2;
+    private const int CacheSchemaVersion = 3;
     private static readonly Uri GithubReleaseFeedUri = new("https://github.com/w0otdev/V-Notch/releases.atom");
 
     [LibraryImport("VNotch.Native.dll", EntryPoint = "vn_update_parse_atom", StringMarshalling = StringMarshalling.Utf16)]
@@ -147,7 +147,7 @@ public sealed partial class UpdateService : IUpdateService, IDisposable
             var now = DateTime.UtcNow;
             if (cache == null || cache.LastCheckUtc > now || cache.RetryAfterUtc > now.AddDays(1)) return;
             _lastCheckUtc = cache.LastCheckUtc;
-            _retryAfterUtc = cache.SchemaVersion == CacheSchemaVersion ? cache.RetryAfterUtc : DateTime.MinValue;
+            _retryAfterUtc = cache.SchemaVersion is 2 or CacheSchemaVersion ? cache.RetryAfterUtc : DateTime.MinValue;
             _cachedIncludesPrereleases = cache.IncludesPrereleases;
             bool isNewer = cache.Release != null &&
                 TryParseReleaseVersion(cache.Release.Version, out _, out _) &&
@@ -334,7 +334,7 @@ public sealed partial class UpdateService : IUpdateService, IDisposable
                             update = candidate;
                             break;
                         }
-                        catch (Exception ex) when (ex is HttpRequestException or IOException or CryptographicException or JsonException)
+                        catch (Exception ex) when (ex is HttpRequestException or IOException or InvalidDataException or CryptographicException or JsonException)
                         {
                             RuntimeLog.Warn(LogCategory, $"Public feed update metadata unavailable for {release.Version}/{installer}: {ex.Message}");
                         }
@@ -342,10 +342,12 @@ public sealed partial class UpdateService : IUpdateService, IDisposable
                     if (update != null) break;
                 }
             }
+            // The feed validator covers tags, not the separately published signed assets.
+            // A lower-ranked fallback must be re-probed even if the feed is unchanged.
+            _latestReleaseEtag = update != null && update.Version == candidates[0].Release.Version ? etag : null;
             if (update == null && cached?.IsNewerVersion == true) update = Clone(cached);
             _lastCheckUtc = DateTime.UtcNow;
             _retryAfterUtc = DateTime.MinValue;
-            _latestReleaseEtag = update != null ? etag : null;
             Volatile.Write(ref _cachedLatestRelease, update);
             await SaveCheckCacheAsync().ConfigureAwait(false);
             return update != null ? Clone(update) : null;

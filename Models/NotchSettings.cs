@@ -326,7 +326,7 @@ public partial class NotchSettings : IJsonOnDeserialized
         return clone;
     }
 
-    private static bool ExtensionDataEquals(
+    internal static bool ExtensionDataEquals(
         Dictionary<string, JsonElement>? left,
         Dictionary<string, JsonElement>? right)
     {
@@ -460,7 +460,16 @@ public partial class LiquidGlassConfig
     // the adapter driving the window's monitor, including in this mode.
     public bool UseUltimateGpu { get; set; } = false;
 
-    public LiquidGlassConfig Clone() => (LiquidGlassConfig)MemberwiseClone();
+    [JsonExtensionData]
+    public Dictionary<string, JsonElement>? ExtensionData { get; set; }
+
+    public LiquidGlassConfig Clone()
+    {
+        var clone = (LiquidGlassConfig)MemberwiseClone();
+        if (ExtensionData != null)
+            clone.ExtensionData = new Dictionary<string, JsonElement>(ExtensionData, StringComparer.Ordinal);
+        return clone;
+    }
 
     private VnLiquidGlassScalars ToNative() => new()
     {
@@ -506,6 +515,7 @@ public partial class LiquidGlassConfig
 
         var left = ToNative();
         var right = other.ToNative();
-        return vn_liquid_glass_config_equals(ref left, ref right, out byte equal) == 0 && equal != 0;
+        return vn_liquid_glass_config_equals(ref left, ref right, out byte equal) == 0 && equal != 0 &&
+            NotchSettings.ExtensionDataEquals(ExtensionData, other.ExtensionData);
     }
 }

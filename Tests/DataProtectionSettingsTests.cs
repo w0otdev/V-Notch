@@ -366,7 +366,9 @@ public sealed class DataProtectionSettingsTests : IDisposable
         string original = JsonSerializer.Serialize(new
         {
             SettingsVersion = futureVersion,
-            Width = 312,
+            Width = 4100,
+            LiquidGlass = new { FutureOptic = 7 },
+            ProcessPriority = "RealTime",
             FutureFeatureFlag = true,
             FutureProfileName = "next-gen"
         });
@@ -384,13 +386,15 @@ public sealed class DataProtectionSettingsTests : IDisposable
         using var service = new SettingsService(path, _ => { });
         var loaded = service.Load();
         Assert.Equal(futureVersion, loaded.SettingsVersion);
-        Assert.Equal(312, loaded.Width);
+        Assert.Equal(4000, loaded.Width);
+        Assert.Equal("Normal", loaded.ProcessPriority);
         Assert.Equal(original, File.ReadAllText(path));
 
         service.Save(loaded);
         using var savedDoc = JsonDocument.Parse(File.ReadAllText(path));
         Assert.Equal(futureVersion, savedDoc.RootElement.GetProperty("SettingsVersion").GetInt32());
         Assert.True(savedDoc.RootElement.GetProperty("FutureFeatureFlag").GetBoolean());
+        Assert.Equal(7, savedDoc.RootElement.GetProperty("LiquidGlass").GetProperty("FutureOptic").GetInt32());
         Assert.Equal("next-gen", savedDoc.RootElement.GetProperty("FutureProfileName").GetString());
     }
 
