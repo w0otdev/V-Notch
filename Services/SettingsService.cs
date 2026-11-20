@@ -396,20 +396,36 @@ public sealed partial class SettingsService : ISettingsService, IAsyncDisposable
             SaveDefaultsOnLoad(defaults);
             return defaults;
         }
-        catch (System.Security.Cryptography.CryptographicException)
+        catch (System.Security.Cryptography.CryptographicException ex)
         {
-            _settingsLoadFailed = true;
-            // A legacy key could not be protected. Do not touch the existing file.
-            RuntimeLog.Error(LogCategoryLoad, "DPAPI encryption failed; legacy settings were left unchanged.");
             DispatchSaveWarning(Loc.Get("error.apiKeyEncrypt"));
             try
             {
-                var recovered = ImportSettingsFromString(raw).Settings;
+                var document = JsonNode.Parse(raw)!.AsObject();
+                bool removed = false;
+                foreach (var key in ProtectedCredentialKeys)
+                {
+                    if (document[key] is not JsonValue field || !field.TryGetValue<string>(out var value) ||
+                        !DataProtection.IsEncrypted(value)) continue;
+                    try { _ = DataProtection.Unprotect(value); }
+                    catch (System.Security.Cryptography.CryptographicException) { removed |= document.Remove(key); }
+                }
+                if (!removed)
+                {
+                    // Protection of a plaintext legacy credential failed. Preserve it for a later migration.
+                    _settingsLoadFailed = true;
+                    return ImportSettingsFromString(raw).Settings;
+                }
+                var (recovered, _) = SettingsMigrator.Migrate(document.ToJsonString());
+                NormalizeSettings(recovered);
+                _settingsLoadFailed = QuarantineCorruptFile(raw, ex) == "<backup-failed>";
+                if (!_settingsLoadFailed) SaveDefaultsOnLoad(recovered, keepExistingBackup: false);
                 WindowTitleScanner.UpdateInspectionAllowed(recovered.EnableBrowserUrlInspection);
                 return recovered;
             }
             catch (Exception recoveryError) when (recoveryError is JsonException or InvalidOperationException or System.Security.Cryptography.CryptographicException)
             {
+                _settingsLoadFailed = true;
                 return new NotchSettings { SettingsVersion = SettingsMigrator.CurrentVersion, EnableLocalOnlyMode = true, EnableBrowserUrlInspection = false };
             }
         }
@@ -422,10 +438,13 @@ public sealed partial class SettingsService : ISettingsService, IAsyncDisposable
         }
     }
 
-    private void SaveDefaultsOnLoad(NotchSettings defaults)
+    private void SaveDefaultsOnLoad(NotchSettings defaults, bool keepExistingBackup = true)
     {
-        try { Save(defaults); }
-        catch (TimeoutException) { /* Another writer holds the lock. Load will retry from disk. */ }
+        try { Save(defaults, keepExistingBackup); }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or TimeoutException)
+        {
+            RuntimeLog.Warn(LogCategoryLoad, $"Could not persist default settings: {ex.Message}");
+        }
     }
 
     public void Save(NotchSettings settings)
@@ -599,16 +618,8 @@ public sealed partial class SettingsService : ISettingsService, IAsyncDisposable
             return;
         }
 
-        if (System.Windows.Application.Current?.Dispatcher != null &&
-            !System.Windows.Application.Current.Dispatcher.HasShutdownStarted &&
-            !System.Windows.Application.Current.Dispatcher.CheckAccess())
-        {
-            System.Windows.Application.Current.Dispatcher.BeginInvoke(() => _apiKeySaveWarning(message));
-        }
-        else
-        {
-            _apiKeySaveWarning(message);
-        }
+        if (System.Windows.Application.Current?.Dispatcher is { HasShutdownStarted: false } dispatcher)
+            dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.ApplicationIdle, () => _apiKeySaveWarning(message));
     }
 
     private static void ShowApiKeySaveWarning(string message) =>
@@ -1036,8 +1047,22 @@ public sealed partial class SettingsService : ISettingsService, IAsyncDisposable
             var timestamp = DateTime.Now.ToString("yyyyMMdd-HHmmss", System.Globalization.CultureInfo.InvariantCulture);
             var backupPath = Path.Combine(_appFolder, $"settings.corrupt-{timestamp}-{Guid.NewGuid():N}.json");
             SafeFileDeletion.ValidatePath(backupPath);
+            string backup = SensitiveDataScrubber.Scrub(rawContents);
+            if (reason is System.Security.Cryptography.CryptographicException)
+            {
+                // Keep the ciphertext recoverable on the original Windows profile. Other
+                // secrets (including legacy plaintext credentials) remain redacted.
+                var original = JsonNode.Parse(rawContents)!.AsObject();
+                var sanitized = JsonNode.Parse(backup)!.AsObject();
+                foreach (string key in ProtectedCredentialKeys)
+                {
+                    if (original[key] is JsonValue field && field.TryGetValue<string>(out var value) &&
+                        DataProtection.IsEncrypted(value)) sanitized[key] = value;
+                }
+                backup = sanitized.ToJsonString();
+            }
             using (var file = new FileStream(backupPath, FileMode.CreateNew, FileAccess.Write))
-            using (var writer = new StreamWriter(file)) writer.Write(SensitiveDataScrubber.Scrub(rawContents));
+            using (var writer = new StreamWriter(file)) writer.Write(backup);
             return backupPath;
         }
         catch (Exception ex)

@@ -17,37 +17,37 @@ public sealed partial class MagnifierCaptureSource : IDisposable
     private const string NativeDll = "VNotch.Native.dll";
 
     [LibraryImport(NativeDll, EntryPoint = "vn_magcap_create")]
-    private static partial int NativeCreate(out int handle);
+    private static partial int NativeCreate(out long handle);
 
     [LibraryImport(NativeDll, EntryPoint = "vn_magcap_initialize")]
-    private static partial int NativeInitialize(int handle, long excludeHwnd, out byte ready, out int stage);
+    private static partial int NativeInitialize(long handle, long excludeHwnd, out byte ready, out int stage);
 
     [LibraryImport(NativeDll, EntryPoint = "vn_magcap_stop")]
-    private static partial int NativeStop(int handle, out byte exited);
+    private static partial int NativeStop(long handle, out byte exited);
 
     [LibraryImport(NativeDll, EntryPoint = "vn_magcap_destroy")]
-    private static partial int NativeDestroy(int handle, out byte released);
+    private static partial int NativeDestroy(long handle, out byte released);
 
     [LibraryImport(NativeDll, EntryPoint = "vn_magcap_set_capture_enabled")]
-    private static partial int NativeSetCaptureEnabled(int handle, byte enabled);
+    private static partial int NativeSetCaptureEnabled(long handle, byte enabled);
 
     [LibraryImport(NativeDll, EntryPoint = "vn_magcap_get_state")]
-    private static partial int NativeGetState(int handle, out byte ready, out byte running);
+    private static partial int NativeGetState(long handle, out byte ready, out byte running);
 
     [LibraryImport(NativeDll, EntryPoint = "vn_magcap_add_exclude")]
-    private static partial int NativeAddExclude(int handle, long hwnd);
+    private static partial int NativeAddExclude(long handle, long hwnd);
 
     [LibraryImport(NativeDll, EntryPoint = "vn_magcap_remove_exclude")]
-    private static partial int NativeRemoveExclude(int handle, long hwnd);
+    private static partial int NativeRemoveExclude(long handle, long hwnd);
 
     [LibraryImport(NativeDll, EntryPoint = "vn_magcap_capture_into")]
-    private static partial int NativeCaptureInto(int handle, int x, int y, int width, int height, IntPtr destination, out byte ok);
+    private static partial int NativeCaptureInto(long handle, int x, int y, int width, int height, IntPtr destination, out byte ok);
 
     [LibraryImport(NativeDll, EntryPoint = "vn_magcap_has_usable_frame")]
-    private static partial int NativeHasUsableFrame(int handle, int x, int y, int width, int height, out byte usable);
+    private static partial int NativeHasUsableFrame(long handle, int x, int y, int width, int height, out byte usable);
 
     [LibraryImport(NativeDll, EntryPoint = "vn_magcap_debug_status")]
-    private static unsafe partial int NativeDebugStatus(int handle, int x, int y, int width, int height, char* buffer, int capacity, out int length);
+    private static unsafe partial int NativeDebugStatus(long handle, int x, int y, int width, int height, char* buffer, int capacity, out int length);
 
     [LibraryImport(NativeDll, EntryPoint = "vn_magcap_is_complete_frame")]
     private static partial int NativeIsCompleteFrame(
@@ -55,7 +55,7 @@ public sealed partial class MagnifierCaptureSource : IDisposable
 
     [LibraryImport(NativeDll, EntryPoint = "vn_magcap_test_install_frame")]
     private static unsafe partial int NativeTestInstallFrame(
-        int handle, byte ready, byte running, int width, int height, byte* pixels, int pixelBytes, long frameAgeMs);
+        long handle, byte ready, byte running, int width, int height, byte* pixels, int pixelBytes, long frameAgeMs);
 
     [LibraryImport(NativeDll, EntryPoint = "vn_backdrop_composite_frame")]
     private static partial int NativeBackdropComposite(int x, int y, int width, int height, IntPtr destination,
@@ -192,7 +192,7 @@ public sealed partial class MagnifierCaptureSource : IDisposable
         NativeIsCompleteFrame(requestedWidth, requestedHeight, receivedWidth, receivedHeight, receivedStride, bufferLength, out byte complete) == 0 &&
         complete != 0;
 
-    private int _handle;
+    private long _handle;
     private int _disposed;
     private readonly object _providerLock = new();
     private readonly List<Func<IntPtr>> _dynamicExcludeProviders = new();
@@ -200,7 +200,7 @@ public sealed partial class MagnifierCaptureSource : IDisposable
 
     public MagnifierCaptureSource()
     {
-        if (NativeCreate(out int handle) == 0) _handle = handle;
+        if (NativeCreate(out long handle) == 0) _handle = handle;
     }
 
     public bool IsReady => _handle > 0 && NativeGetState(_handle, out byte ready, out _) == 0 && ready != 0;
@@ -332,8 +332,9 @@ public sealed partial class MagnifierCaptureSource : IDisposable
     public void Dispose()
     {
         if (Interlocked.Exchange(ref _disposed, 1) != 0) return;
-        if (_handle <= 0) return;
-        if (NativeDestroy(_handle, out byte released) == 0 && released != 0) return;
+        long handle = Interlocked.Exchange(ref _handle, 0);
+        if (handle <= 0) return;
+        if (NativeDestroy(handle, out byte released) == 0 && released != 0) return;
         // The pump thread may still call into the callback. The native object is kept alive rather than crash.
         RuntimeLog.Log(LogTag, "Magnifier pump stop exceeded 500ms; native cleanup continues after the pump exits.");
     }

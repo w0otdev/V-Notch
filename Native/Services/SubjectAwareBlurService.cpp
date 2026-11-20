@@ -126,6 +126,21 @@ VN_EXPORT int32_t __stdcall vn_subject_blur_process_bgra32(
         bg_radius < 0 || bg_radius > 256 || sub_radius < 0 || sub_radius > 256)
         return VN_ERR_INVALID_ARG;
 
+    // The blur kernels consume tightly packed BGRA. Preserve callers' row padding.
+    if (stride != w * 4) {
+        try {
+            const int row_bytes = w * 4;
+            std::vector<uint8_t> packed(static_cast<size_t>(row_bytes) * h);
+            for (int y = 0; y < h; ++y)
+                std::memcpy(packed.data() + y * row_bytes, background + y * stride, row_bytes);
+            const int result = vn_subject_blur_process_bgra32(packed.data(), subject_layer, scratch, w, h, row_bytes,
+                center_x, center_y, sub_w, sub_h, bg_radius, sub_radius, bg_darken, sub_brighten);
+            if (result == VN_OK)
+                for (int y = 0; y < h; ++y)
+                    std::memcpy(background + y * stride, packed.data() + y * row_bytes, row_bytes);
+            return result;
+        } catch (...) { return VN_ERR_FAIL; }
+    }
     const int32_t buf_len = stride * h;
     std::memcpy(subject_layer, background, static_cast<size_t>(buf_len));
 

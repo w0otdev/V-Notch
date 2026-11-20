@@ -75,6 +75,7 @@ struct SharedTarget {
 // also keep resources alive if shutdown races an in-flight P/Invoke.
 class GpuGlass {
 public:
+    std::mutex stateMutex;
     std::shared_ptr<vnotch::graphics::GlassDevice> sharedDevice;
     ComPtr<ID3D11Device> device;
     ComPtr<IDirect3DDevice9Ex> presentationDevice;
@@ -554,7 +555,7 @@ public:
         std::unique_lock commandLock(sharedDevice->commands);
         if (pending) return S_FALSE;
         if (!usingUploadedBackdrop) { ResetCapture(); usingUploadedBackdrop = true; }
-        if (!windowBackdrop) windowBackdrop = std::make_unique<WindowBackdrop>();
+        if (!windowBackdrop) windowBackdrop = std::make_unique<WindowBackdrop>(sharedDevice);
         Target composed;
         bool changed = false;
         const HRESULT captured = windowBackdrop->Capture(f, device.Get(), context.Get(), windowFrameWake.get(), commandLock,
@@ -797,6 +798,7 @@ public:
         if (CompletionReady() != S_OK) return S_FALSE;
         const RECT region = PresentRegion();
         if (crossAdapter.readback) {
+            std::lock_guard commands(sharedDevice->commands);
             HRESULT hr = crossAdapter.Present(context.Get(), presentationDevice.Get(), destination, region);
             if (hr == S_OK) { presentedWidth = pendingWidth; presentedHeight = pendingHeight; pending = false; }
             return hr;
@@ -814,6 +816,19 @@ public:
     }
 };
 vnotch::HandleRegistry<GpuGlass> pipelines;
+
+// Readouts, presentation and reset all share this pipeline's mutable state.
+// The adapter lock separately protects D3D11 commands across pipelines.
+class LockedPipeline {
+    decltype(pipelines)::Lease lease;
+    std::unique_lock<std::mutex> lock;
+public:
+    explicit LockedPipeline(int64_t handle) : lease(pipelines.Acquire(handle)) {
+        if (lease) lock = std::unique_lock(lease->stateMutex);
+    }
+    explicit operator bool() const noexcept { return static_cast<bool>(lease); }
+    GpuGlass* operator->() const noexcept { return lease.get(); }
+};
 }
 
 VN_EXPORT int32_t __stdcall vn_glass_gpu_create_on_adapter(IDirect3DDevice9Ex* device9, int32_t w, int32_t h,
@@ -834,7 +849,7 @@ VN_EXPORT int32_t __stdcall vn_glass_gpu_create(IDirect3DDevice9Ex* device9, int
     return vn_glass_gpu_create_on_adapter(device9, w, h, {}, handle, nullptr, 0);
 }
 VN_EXPORT int32_t __stdcall vn_glass_gpu_render(int64_t handle, const Frame* frame) noexcept {
-    auto pipeline = pipelines.Acquire(handle);
+    LockedPipeline pipeline(handle);
     if (!pipeline || !frame || frame->width <= 0 || frame->height <= 0 ||
         frame->width > pipeline->width || frame->height > pipeline->height ||
         !std::isfinite(frame->blur) || frame->blur < 0 || frame->blur > 60)
@@ -850,7 +865,7 @@ VN_EXPORT uint32_t __stdcall vn_glass_gpu_wait_backdrop(int64_t handle, HANDLE i
     return WaitForMultipleObjects(ARRAYSIZE(events), events, FALSE, timeoutMs);
 }
 VN_EXPORT int32_t __stdcall vn_glass_gpu_render_windows(int64_t handle, const Frame* frame) noexcept {
-    auto pipeline = pipelines.Acquire(handle);
+    LockedPipeline pipeline(handle);
     if (!pipeline || !frame || frame->width <= 0 || frame->height <= 0 ||
         frame->width > pipeline->width || frame->height > pipeline->height ||
         !std::isfinite(frame->blur) || frame->blur < 0 || frame->blur > 60) return E_INVALIDARG;
@@ -861,7 +876,7 @@ VN_EXPORT int32_t __stdcall vn_glass_gpu_render_windows(int64_t handle, const Fr
 // list. Upload that crop while keeping blur, refraction and presentation on GPU.
 VN_EXPORT int32_t __stdcall vn_glass_gpu_render_pixels(int64_t handle, const Frame* frame,
     const uint8_t* pixels, int32_t length, int32_t stride) noexcept {
-    auto pipeline = pipelines.Acquire(handle);
+    LockedPipeline pipeline(handle);
     if (!pipeline || !frame || !pixels || frame->width <= 0 || frame->height <= 0 ||
         frame->width > pipeline->width || frame->height > pipeline->height ||
         !std::isfinite(frame->blur) || frame->blur < 0 || frame->blur > 60 ||
@@ -874,18 +889,19 @@ VN_EXPORT int32_t __stdcall vn_glass_gpu_render_pixels(int64_t handle, const Fra
 }
 VN_EXPORT void __stdcall vn_glass_gpu_destroy(int64_t handle) noexcept { pipelines.Remove(handle); }
 VN_EXPORT int32_t __stdcall vn_glass_gpu_wait_ready(int64_t handle, uint32_t timeoutMs) noexcept {
-    auto pipeline = pipelines.Acquire(handle);
+    LockedPipeline pipeline(handle);
     if (!pipeline || timeoutMs > 8) return E_INVALIDARG;
     try { return pipeline->WaitReady(timeoutMs); } catch (HRESULT hr) { return hr; } catch (...) { return E_FAIL; }
 }
 VN_EXPORT int32_t __stdcall vn_glass_gpu_present_ready(int64_t handle, IDirect3DSurface9* destination) noexcept {
-    auto pipeline = pipelines.Acquire(handle);
+    LockedPipeline pipeline(handle);
     if (!pipeline || !destination) return E_INVALIDARG;
     try { return pipeline->PresentReady(destination); } catch (HRESULT hr) { return hr; } catch (...) { return E_FAIL; }
 }
 VN_EXPORT void __stdcall vn_glass_gpu_reset(int64_t handle) noexcept {
-    auto pipeline = pipelines.Acquire(handle);
+    LockedPipeline pipeline(handle);
     if (pipeline) {
+        std::lock_guard lock(pipeline->sharedDevice->commands);
         pipeline->pending = false; pipeline->ResetCapture();
         pipeline->pyramid.clear(); pipeline->reconstruction.clear(); pipeline->resolved = {};
         pipeline->workWidth = pipeline->workHeight = 0; pipeline->smallSince = 0;
@@ -913,33 +929,33 @@ VN_EXPORT uint32_t __stdcall vn_glass_gpu_find_preferred_adapter(IDirect3D9Ex* d
     return monitorAdapter;
 }
 VN_EXPORT int32_t __stdcall vn_glass_gpu_capture_status(int64_t handle) noexcept {
-    auto pipeline = pipelines.Acquire(handle);
+    LockedPipeline pipeline(handle);
     return pipeline ? pipeline->captureResult : E_HANDLE;
 }
 VN_EXPORT int32_t __stdcall vn_glass_gpu_capture_backend(int64_t handle) noexcept {
-    auto pipeline = pipelines.Acquire(handle);
+    LockedPipeline pipeline(handle);
     return !pipeline ? 0 : pipeline->framePool ? 2 : pipeline->duplication ? 1 : 0;
 }
 VN_EXPORT int32_t __stdcall vn_glass_gpu_borderless_status(int64_t handle) noexcept {
-    auto pipeline = pipelines.Acquire(handle);
+    LockedPipeline pipeline(handle);
     return pipeline ? pipeline->borderlessResult : E_HANDLE;
 }
 VN_EXPORT int32_t __stdcall vn_glass_gpu_fence_status(int64_t handle) noexcept {
-    auto pipeline = pipelines.Acquire(handle);
+    LockedPipeline pipeline(handle);
     return pipeline ? pipeline->fenceResult : E_HANDLE;
 }
 VN_EXPORT int32_t __stdcall vn_glass_gpu_set_interval(int64_t handle, double intervalMs) noexcept {
-    auto pipeline = pipelines.Acquire(handle);
+    LockedPipeline pipeline(handle);
     if (!pipeline || !std::isfinite(intervalMs) || intervalMs <= 0) return E_INVALIDARG;
     try { pipeline->SetCaptureInterval(intervalMs); return S_OK; }
     catch (...) { return winrt::to_hresult(); }
 }
 VN_EXPORT uint64_t __stdcall vn_glass_gpu_take_capture_count(int64_t handle) noexcept {
-    auto pipeline = pipelines.Acquire(handle);
+    LockedPipeline pipeline(handle);
     if (!pipeline) return 0;
     return std::exchange(pipeline->captureFrames, uint64_t{0});
 }
 VN_EXPORT uint64_t __stdcall vn_glass_gpu_consumer_stalls(int64_t handle) noexcept {
-    auto pipeline = pipelines.Acquire(handle);
+    LockedPipeline pipeline(handle);
     return pipeline ? pipeline->consumerStalls : 0;
 }

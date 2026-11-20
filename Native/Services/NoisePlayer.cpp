@@ -190,7 +190,10 @@ struct PlayerState {
     std::atomic<float> wantVolume{0.3f};
     std::atomic<float> fadeOutSeconds{0.25f};
 
-    ~PlayerState() noexcept {
+    std::atomic<bool> shuttingDown{false};
+
+    void Shutdown() noexcept {
+        shuttingDown = true;
         fadeOutSeconds.store(0.05f, std::memory_order_relaxed);
         wantOn.store(false, std::memory_order_release);
         std::thread toJoin;
@@ -207,7 +210,8 @@ struct PlayerState {
     }
 };
 
-PlayerState g;
+// Process-lifetime storage avoids joining a worker under the DLL loader lock.
+PlayerState& g = *new PlayerState();
 
 void FillBuffer(std::vector<int16_t>& out, Voice& left, Voice& right, int32_t kind,
                 float norm, float& gain, float& volume, bool& silent) noexcept {
@@ -302,6 +306,7 @@ int32_t RunPlayer() noexcept {
         int32_t silentBuffers = 0;
 
         for (;;) {
+            if (g.shuttingDown.load()) return 0;
             WaitForSingleObject(session.event, 100);
             for (int32_t i = 0; i < kBufferCount; ++i) {
                 const size_t index = static_cast<size_t>(i);
@@ -360,6 +365,7 @@ VN_EXPORT int32_t __stdcall vn_noise_play(int32_t kind, float volume) noexcept {
     if (kind < 0 || kind >= kKindCount) return VN_ERR_INVALID_ARG;
     try {
         std::lock_guard lock(g.mutex);
+        if (g.shuttingDown.load()) return VN_ERR_FAIL;
         g.wantKind = kind;
         g.wantVolume = std::clamp(volume, 0.0f, 1.0f);
         g.fadeOutSeconds = 0.25f;
@@ -385,6 +391,8 @@ VN_EXPORT int32_t __stdcall vn_noise_set_volume(float volume) noexcept {
     g.wantVolume = std::clamp(volume, 0.0f, 1.0f);
     return VN_OK;
 }
+
+VN_EXPORT void __stdcall vn_noise_shutdown() noexcept { g.Shutdown(); }
 
 VN_EXPORT int32_t __stdcall vn_noise_stop_fade(float seconds) noexcept {
     g.fadeOutSeconds = std::clamp(seconds, 0.05f, 10.0f);

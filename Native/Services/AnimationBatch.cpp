@@ -3,9 +3,9 @@
 
 #include "vnotch_simd_kernels.h"
 
-VN_EXPORT void vn_bezier_samples(double p1, double p2, double* values, int intervals) noexcept
+VN_EXPORT void vn_bezier_samples(double p1, double p2, double* values, int intervals, int capacity) noexcept
 {
-    if (!values || intervals <= 0) return;
+    if (!values || intervals <= 0 || intervals >= capacity) return;
     if (vnotch::cpu::SupportsX64V3()) {
         vnotch::kernels::avx2::BezierSamples(p1, p2, values, intervals);
         return;

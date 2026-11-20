@@ -27,6 +27,9 @@ internal static partial class WhiteNoiseService
 
     internal const float DefaultVolume = 0.3f;
     private const float TimerEndFadeSeconds = 3f;
+    [LibraryImport("VNotch.Native.dll", EntryPoint = "vn_noise_shutdown")]
+    internal static partial void Shutdown();
+
     private const int NoneKind = -1;
 
     [LibraryImport("VNotch.Native.dll")]

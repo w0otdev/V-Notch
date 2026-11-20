@@ -424,12 +424,10 @@ internal static class SetupOperations
             return;
         }
 
-        ExecuteUninstallCleanupSteps(installDirectory);
-
-        Application.Current.Shutdown(0);
+        Application.Current.Shutdown(ExecuteUninstallCleanupSteps(installDirectory) ? 0 : 2);
     }
 
-    internal static void ExecuteUninstallCleanupSteps(
+    internal static bool ExecuteUninstallCleanupSteps(
         string installDirectory,
         Action? validateCleanupStartInfo = null,
         Action? stopRunningInstances = null,
@@ -439,10 +437,10 @@ internal static class SetupOperations
         Action<string>? removeAppData = null,
         Action<string>? scheduleDirectoryCleanup = null)
     {
-        TryUninstallStep("validate install directory cleanup",
-            validateCleanupStartInfo ?? (() => InstallDirectoryCleanup.CreateStartInfo(installDirectory, Environment.ProcessId)));
-        TryUninstallStep("stop running instances",
-            stopRunningInstances ?? (() => StopOtherRunningInstancesAsync().GetAwaiter().GetResult()));
+        if (!TryUninstallStep("validate install directory cleanup",
+            validateCleanupStartInfo ?? (() => InstallDirectoryCleanup.CreateStartInfo(installDirectory, Environment.ProcessId)))) return false;
+        if (!TryUninstallStep("stop running instances",
+            stopRunningInstances ?? (() => StopOtherRunningInstancesAsync().GetAwaiter().GetResult()))) return false;
         TryUninstallStep("remove startup registration",
             removeStartup ?? RemoveStartupRegistration);
         TryUninstallStep("remove uninstall registration",
@@ -451,20 +449,22 @@ internal static class SetupOperations
             removeShortcuts ?? RemoveShortcuts);
         TryUninstallStep("remove app data",
             () => (removeAppData ?? RemoveAppData)(installDirectory));
-        TryUninstallStep("schedule install directory cleanup",
+        return TryUninstallStep("schedule install directory cleanup",
             () => (scheduleDirectoryCleanup ?? InstallDirectoryCleanup.Schedule)(installDirectory));
     }
 
-    private static void TryUninstallStep(string stepName, Action action)
+    private static bool TryUninstallStep(string stepName, Action action)
     {
         try
         {
             action();
+            return true;
         }
         catch (Exception ex)
         {
             RuntimeLog.Warn("SETUP", $"Uninstall step '{stepName}' failed: {ex.Message}");
             Debug.WriteLine($"[Setup] Could not {stepName}: {ex.Message}");
+            return false;
         }
     }
 

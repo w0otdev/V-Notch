@@ -155,6 +155,29 @@ public sealed class DataProtectionSettingsTests : IDisposable
     }
 
     [Fact]
+    public void Load_InvalidCredentialKeepsOtherPreferencesAndAllowsSubsequentSaves()
+    {
+        string path = Path.Combine(_directory, "settings.json");
+        File.WriteAllText(path, JsonSerializer.Serialize(new
+        {
+            SettingsVersion = SettingsMigrator.CurrentVersion,
+            Width = 533,
+            YouTubeApiKey = "enc:invalid-base64",
+            SpotifySpDc = DataProtection.Protect("valid-cookie")
+        }));
+        using var service = new SettingsService(path, _ => { });
+        var recovered = service.Load();
+        Assert.Equal(533, recovered.Width);
+        Assert.True(string.IsNullOrEmpty(recovered.YouTubeApiKey));
+        Assert.Equal("valid-cookie", recovered.SpotifySpDc);
+        Assert.Single(Directory.GetFiles(_directory, "settings.corrupt-*.json"));
+        recovered.Width = 540;
+        service.Save(recovered);
+        using var reloaded = new SettingsService(path, _ => { });
+        Assert.Equal(540, reloaded.Load().Width);
+    }
+
+    [Fact]
     public void Load_CorruptSettings_QuarantinesFileAndRestoresDefaults()
     {
         var path = Path.Combine(_directory, "settings.json");

@@ -402,7 +402,7 @@ internal sealed partial class D3DImageFramePresenter : IDisposable
 
     private void EnsureResources()
     {
-        if (_useGpuCapture && Volatile.Read(ref _gpuHandle) != null) return;
+        if (_useGpuCapture && Volatile.Read(ref _gpuHandle) != null && Volatile.Read(ref _renderSurface) != null) return;
         if (Volatile.Read(ref _uploadSurface) != null && Volatile.Read(ref _renderSurface) != null)
             return;
 

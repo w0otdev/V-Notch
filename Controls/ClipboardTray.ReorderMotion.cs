@@ -96,8 +96,9 @@ public sealed partial class ClipboardTray
             beforeOriginX = CategorySlotOrigin(_categoryItems[beforeIndex]).X;
         else
         {
+            if (_categoryItems.Length == 0) return;
             var last = _categoryItems[^1];
-            var lastButton = CategoryButton(last)!;
+            if (CategoryButton(last) is not { } lastButton) return;
             lastOriginX = CategorySlotOrigin(last).X;
             lastWidth = lastButton.ActualWidth;
             lastMarginRight = lastButton.Margin.Right;

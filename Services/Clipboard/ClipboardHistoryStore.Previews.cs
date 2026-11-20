@@ -21,7 +21,7 @@ public sealed partial class ClipboardHistoryStore
         cancellation.ThrowIfCancellationRequested();
         var entry = Find(id);
         bool cacheable = !entry.IsPersonal && !entry.IsSensitive;
-        if (cacheable && _imagePreviews.TryGetValue(id, out var cached) && (cached.Target == target || cached.Target == default))
+        if (cacheable && _imagePreviews.TryGetValue(id, out var cached) && (cached.Target == target))
         {
             _imagePreviews[id] = cached with { LastAccess = ++_imagePreviewAccess };
             return cached.Image;
@@ -55,7 +55,7 @@ public sealed partial class ClipboardHistoryStore
             long budget = target != default ? 2 * ImagePreviewBudget : ImagePreviewBudget;
             while (_imagePreviews.Count > 0 && (_imagePreviews.Count >= ImagePreviewLimit || _imagePreviewBytes + bytes > budget))
                 RemoveImagePreview(_imagePreviews.MinBy(pair => pair.Value.LastAccess).Key);
-            if (bytes <= ImagePreviewBudget)
+            if (bytes <= budget)
             {
                 _imagePreviews[id] = new ImagePreview(image, bytes, ++_imagePreviewAccess, target);
                 _imagePreviewBytes += bytes;

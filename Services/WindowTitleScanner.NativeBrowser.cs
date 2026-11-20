@@ -48,10 +48,11 @@ public sealed partial class WindowTitleScanner
         Span<NativeBrowserTab> tabs = stackalloc NativeBrowserTab[256];
         Span<char> text = stackalloc char[16384];
         int status = vn_wtscanner_scan_browser(hwnd, 0, out var result, tabs, tabs.Length, text, text.Length, out int required);
-        if (status == -2 && required > 0)
+        for (int retry = 0; status == -2 && retry < 4; retry++)
         {
-            text = new char[required];
-            status = vn_wtscanner_scan_browser(hwnd, 0, out result, tabs, tabs.Length, text, text.Length, out _);
+            if (result.TabCount > tabs.Length) tabs = new NativeBrowserTab[result.TabCount];
+            if (required > text.Length) text = new char[required];
+            status = vn_wtscanner_scan_browser(hwnd, 0, out result, tabs, tabs.Length, text, text.Length, out required);
         }
         if (status != 0) throw new InvalidOperationException($"Native browser snapshot failed ({status}).");
         var snapshots = new BrowserTabSnapshot[result.TabCount];

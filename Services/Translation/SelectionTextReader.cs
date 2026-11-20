@@ -55,7 +55,7 @@ internal static partial class SelectionTextReader
         if (nonempty.Length == 0) return null;
         string text = string.Join("\n", nonempty);
         // One extra character signals truncation without reading an unbounded UIA range.
-        return text[..Math.Min(text.Length, TranslationInput.MaxCharacters + 1)];
+        return TranslationInput.Prefix(text, TranslationInput.MaxCharacters + 1);
     }
 
     internal static string SanitizeSelectionPart(string? part)

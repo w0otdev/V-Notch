@@ -369,14 +369,14 @@ public sealed partial class MediaArtworkService : IMediaArtworkService, IDisposa
     {
         try
         {
-            if (stream == null || !stream.CanRead || stream.Size == 0)
+            if (stream == null || !stream.CanRead)
             {
                 return null;
             }
 
-            if (stream.Size > MaxArtworkDownloadSizeBytes)
+            ulong size = stream.Size;
+            if (size == 0 || size > MaxArtworkDownloadSizeBytes)
             {
-                RuntimeLog.Log(ArtworkLogTag, $"ConvertToWpfBitmapAsync rejected stream: Size {stream.Size} exceeds limit of {MaxArtworkDownloadSizeBytes} bytes");
                 return null;
             }
 
@@ -392,25 +392,25 @@ public sealed partial class MediaArtworkService : IMediaArtworkService, IDisposa
                 // Some WinRT stream implementations may not support Position or Seek(0).
             }
 
-            int requestedBytes = (int)stream.Size;
+            int requestedBytes = (int)size;
             byte[] buffer = ArrayPool<byte>.Shared.Rent(requestedBytes);
             try
             {
-                int bytesToRead;
-                using (var reader = new DataReader(stream))
+                int offset = 0;
+                using var reader = new DataReader(stream);
+                try
                 {
-                    uint loaded = await reader.LoadAsync((uint)requestedBytes).AsTask(ct);
-                    if (loaded == 0)
+                    while (offset < requestedBytes)
                     {
-                        return null;
+                        uint loaded = await reader.LoadAsync((uint)(requestedBytes - offset)).AsTask(ct);
+                        // A provider can report an estimated size. Decode only the bytes it actually returned.
+                        if (loaded == 0) break;
+                        reader.ReadBuffer(loaded).CopyTo(0, buffer, offset, (int)loaded);
+                        offset += (int)loaded;
                     }
-
-                    bytesToRead = (int)Math.Min(loaded, (uint)buffer.Length);
-                    IBuffer dataBuffer = reader.ReadBuffer((uint)bytesToRead);
-                    dataBuffer.CopyTo(0, buffer, 0, bytesToRead);
                 }
-
-                return await DecodeImageAsync(buffer, ct, bytesToRead);
+                finally { reader.DetachStream(); }
+                return offset == 0 ? null : await DecodeImageAsync(buffer, ct, offset);
             }
             finally
             {

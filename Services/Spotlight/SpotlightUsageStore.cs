@@ -168,7 +168,11 @@ internal sealed partial class SpotlightUsageStore : IAsyncDisposable, IDisposabl
     public async ValueTask DisposeAsync()
     {
         try { await WaitForPendingSavesAsync().ConfigureAwait(false); }
-        finally { await Preferences.FlushAsync().ConfigureAwait(false); }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or AggregateException)
+        { RuntimeLog.Warn(LogTag, $"Could not flush launch history: {ex.Message}"); }
+        try { await Preferences.FlushAsync().ConfigureAwait(false); }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or AggregateException)
+        { RuntimeLog.Warn(LogTag, $"Could not flush preferences: {ex.Message}"); }
     }
 
     public void Dispose() => DisposeAsync().AsTask().GetAwaiter().GetResult();

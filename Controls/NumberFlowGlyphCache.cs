@@ -42,7 +42,7 @@ internal sealed class NumberFlowGlyphCache
         text.Typography.SlashedZero = style.SlashedZero;
         text.Measure(new Size(double.PositiveInfinity, double.PositiveInfinity));
         text.Arrange(new Rect(text.DesiredSize));
-        var drawing = VisualTreeHelper.GetDrawing(text);
+        var drawing = VisualTreeHelper.GetDrawing(text) ?? new DrawingGroup();
         if (cacheable) drawing.Freeze();
         image = new Image(drawing, text.DesiredSize.Width, text.DesiredSize.Height, text.BaselineOffset);
         if (cacheable)

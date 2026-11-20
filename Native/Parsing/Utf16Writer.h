@@ -11,7 +11,7 @@ struct Utf16Writer
     void Append(std::u16string_view sv) noexcept
     {
         if (overflow || sv.empty()) return;
-        if (sv.size() > static_cast<size_t>(cap - len))
+        if (!buf || len < 0 || len > cap || sv.size() > static_cast<size_t>(cap - len))
         {
             overflow = true;
             return;
@@ -23,7 +23,7 @@ struct Utf16Writer
     void AppendChar(char16_t ch) noexcept
     {
         if (overflow) return;
-        if (len >= cap)
+        if (!buf || len < 0 || len >= cap)
         {
             overflow = true;
             return;

@@ -46,7 +46,7 @@ VN_EXPORT int32_t __stdcall vn_clipboard_image_preview_sized(const wchar_t* path
         if (target_width > 0 && target_height > 0) {
             const double scale = std::max(static_cast<double>(target_width) / width,
                                           static_cast<double>(target_height) / height);
-            edge = static_cast<UINT>(std::min<double>(PreviewEdge, std::ceil(scale * std::max(width, height))));
+            edge = static_cast<UINT>(std::min<double>(std::clamp(std::max(target_width, target_height), static_cast<int>(PreviewEdge), 4096), std::ceil(scale * std::max(width, height))));
         }
         UINT out_width, out_height;
         if (width >= height) {

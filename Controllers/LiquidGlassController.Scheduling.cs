@@ -210,9 +210,9 @@ public sealed partial class LiquidGlassController : IDisposable
         ReleaseRenderTimerPeriod();
         DisposeWaitableTimer();
         _sourceBlurBuffer = _sourceBlurTmp = Array.Empty<byte>();
+        Volatile.Write(ref _worker, null);
         if (Volatile.Read(ref _disposed) != 0)
         {
-            _worker = null;
             try { _idleWakeEvent.Dispose(); }
             catch { /* best-effort handle cleanup */ }
             return;
@@ -221,14 +221,12 @@ public sealed partial class LiquidGlassController : IDisposable
         {
             _dispatcher.BeginInvoke(DispatcherPriority.Send, (Action)(() =>
             {
-                _worker = null;
                 StartWorkerIfNeeded();
             }));
         }
         catch
         {
-            // Ignored if dispatcher is shutting down
-            _worker = null;
+            // Dispatcher shutdown does not need a replacement worker.
         }
     }
 

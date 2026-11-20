@@ -213,9 +213,18 @@ public sealed partial class BluetoothMonitorService : IDisposable
         }
     }
 
-    private static void Watcher_Stopped(DeviceWatcher sender, object args)
+    private void Watcher_Stopped(DeviceWatcher sender, object args)
     {
-        RuntimeLog.Log(LogTag, "DeviceWatcher stopped");
+        if (_dispatcher.HasShutdownStarted) return;
+        _dispatcher.BeginInvoke(() =>
+        {
+            lock (_deviceChangeLock)
+            {
+                if (_disposed || !ReferenceEquals(sender, _watcher)) return;
+                Stop();
+                Start();
+            }
+        });
     }
 
     private static BluetoothDeviceInfo? CreateDeviceInfo(DeviceInformation device)

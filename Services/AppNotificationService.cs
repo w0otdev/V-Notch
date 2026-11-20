@@ -94,11 +94,13 @@ public sealed partial class AppNotificationService : IDisposable
         out int outLen);
 
     private readonly Func<bool> _isEnabledCheck;
+    private readonly object _listenerGate = new();
+    private CancellationToken _listenerToken;
     private CancellationTokenSource? _cts;
     private UserNotificationListener? _listener;
     private bool _notificationChangedSubscribed;
     private int _pollGate;
-    private bool _disposed;
+    private volatile bool _disposed;
 
     public event Action<AppNotificationInfo>? NotificationReceived;
 
@@ -240,6 +242,12 @@ public sealed partial class AppNotificationService : IDisposable
             pathBuf, pathBuf.Length,
             out int pathLen);
 
+        if (rc == -2 && pathLen is > 260 and < 32768)
+        {
+            pathBuf = new ushort[pathLen];
+            rc = vn_appnotify_resolve_app_icon_source(MemoryMarshal.Cast<char, ushort>(idSpan), idSpan.Length,
+                MemoryMarshal.Cast<char, ushort>(nameSpan), nameSpan.Length, pathBuf, pathBuf.Length, out pathLen);
+        }
         if (rc != 0 || pathLen <= 0)
         {
             return null;
@@ -281,9 +289,13 @@ public sealed partial class AppNotificationService : IDisposable
 
     public void Start()
     {
-        if (_disposed || _cts != null) return;
-        _cts = new CancellationTokenSource();
-        _ = RunListenerLoopAsync(_cts.Token);
+        lock (_listenerGate)
+        {
+            if (_disposed || _cts != null) return;
+            _cts = new CancellationTokenSource();
+            _listenerToken = _cts.Token;
+            _ = RunListenerLoopAsync(_listenerToken);
+        }
     }
 
     private async Task RunListenerLoopAsync(CancellationToken ct)
@@ -298,13 +310,17 @@ public sealed partial class AppNotificationService : IDisposable
                 return;
             }
 
-            _listener = listener;
             await SeedInitialNotificationsAsync(listener, ct);
 
             try
             {
-                listener.NotificationChanged += OnListenerNotificationChanged;
-                _notificationChangedSubscribed = true;
+                lock (_listenerGate)
+                {
+                    if (_disposed) return;
+                    listener.NotificationChanged += OnListenerNotificationChanged;
+                    _listener = listener;
+                    _notificationChangedSubscribed = true;
+                }
             }
             catch
             {
@@ -335,7 +351,7 @@ public sealed partial class AppNotificationService : IDisposable
             return;
         }
 
-        var token = _cts?.Token ?? CancellationToken.None;
+        var token = _listenerToken;
         _ = PollNotificationsAsync(sender, token);
     }
 
@@ -499,21 +515,21 @@ public sealed partial class AppNotificationService : IDisposable
 
     public void Dispose()
     {
-        if (_disposed) return;
-        _disposed = true;
-
-        var cts = _cts;
-        _cts = null;
-        try { cts?.Cancel(); }
-        catch (ObjectDisposedException) { /* CTS already disposed during concurrent shutdown. */ }
-        cts?.Dispose();
-
-        if (_listener != null && _notificationChangedSubscribed)
+        CancellationTokenSource? cts;
+        lock (_listenerGate)
         {
-            try { _listener.NotificationChanged -= OnListenerNotificationChanged; }
-            catch (Exception ex) { RuntimeLog.Debug("APP-NOTIFY", $"Listener unsubscribe ignored during dispose: {ex.Message}"); }
-            _notificationChangedSubscribed = false;
+            if (_disposed) return;
+            _disposed = true;
+            if (_listener != null && _notificationChangedSubscribed)
+            {
+                try { _listener.NotificationChanged -= OnListenerNotificationChanged; }
+                catch (Exception ex) { RuntimeLog.Debug("APP-NOTIFY", $"Listener unsubscribe failed: {ex.Message}"); }
+            }
+            _listener = null;
+            cts = _cts;
+            _cts = null;
         }
-        _listener = null;
+        try { cts?.Cancel(); }
+        finally { cts?.Dispose(); }
     }
 }

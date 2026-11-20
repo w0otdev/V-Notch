@@ -163,13 +163,14 @@ public partial class ProgressViewModel : ObservableObject
     public void UpdateDragPosition(double ratio)
     {
         if (CurrentMediaInfo?.CanSeekTimeline != true || _lastKnownDuration <= TimeSpan.Zero) return;
+        if (!double.IsFinite(ratio)) return;
         Position = Math.Clamp(ratio, 0, 1);
         CurrentTimeText = FormatCachedTime(TimeSpan.FromSeconds(_lastKnownDuration.TotalSeconds * Position),
             ref _formattedPositionSecond, ref _formattedPosition);
     }
 
     public TimeSpan GetDragSeekPosition(double ratio) =>
-        CurrentMediaInfo?.CanSeekTimeline == true
+        double.IsFinite(ratio) && CurrentMediaInfo?.CanSeekTimeline == true
             ? TimeSpan.FromSeconds(_lastKnownDuration.TotalSeconds * Math.Clamp(ratio, 0, 1))
             : TimeSpan.Zero;
 

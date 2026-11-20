@@ -345,7 +345,8 @@ internal sealed partial class SpotlightAiService
         {
             foreach (var candidate in candidates.EnumerateArray())
             {
-                if (!candidate.TryGetProperty("finishReason", out var reason) || reason.GetString() != "STOP") continue;
+                if (!candidate.TryGetProperty("finishReason", out var reason) || reason.ValueKind != JsonValueKind.String ||
+                    reason.GetString() is null or "" or "FINISH_REASON_UNSPECIFIED") continue;
                 Completed = true;
                 return;
             }

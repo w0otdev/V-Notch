@@ -81,7 +81,7 @@ public static partial class InputMonitorService
     {
         var source = _primarySource is { IsDisposed: false } ? _primarySource
             : Subscriptions.Select(subscription => subscription.Source).FirstOrDefault(candidate => !candidate.IsDisposed);
-        if (ReferenceEquals(source, _source)) return;
+        if (ReferenceEquals(source, _source) && (source == null || _inputDispatcher != null)) return;
         StopCore();
         if (source != null) StartCore(source);
     }
@@ -123,7 +123,13 @@ public static partial class InputMonitorService
                 _inputDispatcher = dispatcher;
                 _inputWindow = input;
                 ready.TrySetResult(true);
-                Dispatcher.Run();
+                try { Dispatcher.Run(); }
+                finally
+                {
+                    if (!dispatcher.HasShutdownStarted) dispatcher.InvokeShutdown();
+                    Interlocked.CompareExchange(ref _inputDispatcher, null, dispatcher);
+                    Interlocked.CompareExchange(ref _inputWindow, null, input);
+                }
             }
             catch (Exception ex)
             {
@@ -153,7 +159,7 @@ public static partial class InputMonitorService
         _source = null;
         var dispatcher = _inputDispatcher;
         _inputDispatcher = null;
-        if (dispatcher == null || dispatcher.HasShutdownStarted) return;
+        if (dispatcher == null || !dispatcher.Thread.IsAlive || dispatcher.HasShutdownStarted) return;
         // Unregister before another Start can register its window. No thread join
         // or hardware callback is needed on the WPF dispatcher.
         dispatcher.Invoke(() =>

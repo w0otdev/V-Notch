@@ -32,7 +32,7 @@ public sealed class MainWindowCameraPresentationTests
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
-    public void SyntheticFramesReuseBitmapGrowOnResolutionChangesAndDiscardStaleTokens(bool blur) => SharedStaTestRunner.RunAsync(async ct =>
+    public void SyntheticFramesMatchResolutionAndDiscardStaleTokens(bool blur) => SharedStaTestRunner.RunAsync(async ct =>
     {
         await using var fixture = CreateFixture(blur);
         var window = fixture.Window;
@@ -44,7 +44,7 @@ public sealed class MainWindowCameraPresentationTests
         byte[] firstPixels = Pixels(4, 3, 70);
         Invoke(window, "OnCameraFrameAvailable", firstPixels, 4, 3, camera.FadeToken);
         Invoke(window, "OnCameraFrameAvailable", Pixels(2, 2, 99), 2, 2, camera.FadeToken);
-        await WpfFrameWaiter.UntilAsync(() => !Field<bool>(window, "_cameraFrameDispatchPending"), "first camera frame", ct);
+        await WpfFrameWaiter.UntilAsync(() => Field<int>(window, "_cameraFrameDispatchPending") == 0, "first camera frame", ct);
         var first = Assert.IsType<WriteableBitmap>(window.CameraPreviewImage.Source);
         Assert.Equal(4, first.PixelWidth);
         Assert.Equal(firstPixels, CopyPixels(first));
@@ -53,20 +53,26 @@ public sealed class MainWindowCameraPresentationTests
         Assert.Equal(1, window.CameraPreviewImage.Opacity, 5);
         Assert.Equal(0, window.CameraPreviewBlur.Radius);
         Invoke(window, "OnCameraFrameAvailable", Pixels(2, 2, 42), 2, 2, camera.FadeToken);
-        await WpfFrameWaiter.UntilAsync(() => !Field<bool>(window, "_cameraFrameDispatchPending"), "smaller camera frame", ct);
-        Assert.Same(first, window.CameraPreviewImage.Source);
-        Assert.Equal(42, CopyPixels(first)[0]);
+        await WpfFrameWaiter.UntilAsync(() => Field<int>(window, "_cameraFrameDispatchPending") == 0, "smaller camera frame", ct);
+        var smaller = Assert.IsType<WriteableBitmap>(window.CameraPreviewImage.Source);
+        Assert.Equal((2, 2), (smaller.PixelWidth, smaller.PixelHeight));
+        Assert.Equal(Pixels(2, 2, 42), CopyPixels(smaller));
+        Invoke(window, "OnCameraFrameAvailable", Pixels(2, 2, 44), 2, 2, camera.FadeToken);
+        await WpfFrameWaiter.UntilAsync(() => Field<int>(window, "_cameraFrameDispatchPending") == 0, "same size frame", ct);
+        Assert.Same(smaller, window.CameraPreviewImage.Source);
+        Assert.Equal(Pixels(2, 2, 44), CopyPixels(smaller));
         Invoke(window, "OnCameraFrameAvailable", Pixels(5, 2, 13), 5, 2, camera.FadeToken);
-        await WpfFrameWaiter.UntilAsync(() => !Field<bool>(window, "_cameraFrameDispatchPending"), "larger camera frame", ct);
+        await WpfFrameWaiter.UntilAsync(() => Field<int>(window, "_cameraFrameDispatchPending") == 0, "larger camera frame", ct);
         var grown = Assert.IsType<WriteableBitmap>(window.CameraPreviewImage.Source);
         Assert.NotSame(first, grown);
         Assert.Equal(5, grown.PixelWidth);
-        Assert.Equal(3, grown.PixelHeight);
+        Assert.Equal(2, grown.PixelHeight);
         Invoke(window, "OnCameraFrameAvailable", Pixels(5, 3, 88), 5, 3, camera.FadeToken - 1);
-        await WpfFrameWaiter.UntilAsync(() => !Field<bool>(window, "_cameraFrameDispatchPending"), "stale camera frame discarded", ct);
+        await WpfFrameWaiter.UntilAsync(() => Field<int>(window, "_cameraFrameDispatchPending") == 0, "stale camera frame discarded", ct);
         Assert.Equal(13, CopyPixels(grown)[0]);
         Invoke(window, "OnCameraFrameAvailable", Array.Empty<byte>(), 1, 1, camera.FadeToken);
-        await WpfFrameWaiter.UntilAsync(() => !Field<bool>(window, "_cameraFrameDispatchPending"), "invalid camera frame released", ct);
+        await WpfFrameWaiter.UntilAsync(() => Field<int>(window, "_cameraFrameDispatchPending") == 0, "invalid camera frame released", ct);
+        Assert.Same(grown, window.CameraPreviewImage.Source);
         await (Task)Invoke(window, "StopCameraPreview")!;
         await WpfFrameWaiter.UntilAsync(() => window.CameraPreviewImage.Source == null, "preview stopped", ct);
         Assert.False(camera.IsLifecycleActive);
@@ -89,7 +95,7 @@ public sealed class MainWindowCameraPresentationTests
         typeof(WebcamCaptureController).GetField("_isActive", Private)!.SetValue(camera, true);
         Invoke(window, "PrimeCameraPreviewMorphIn");
         Invoke(window, "OnCameraFrameAvailable", Pixels(4, 3, 55), 4, 3, camera.FadeToken);
-        await WpfFrameWaiter.UntilAsync(() => !Field<bool>(window, "_cameraFrameDispatchPending"), "camera frame received", ct);
+        await WpfFrameWaiter.UntilAsync(() => Field<int>(window, "_cameraFrameDispatchPending") == 0, "camera frame received", ct);
         Assert.NotNull(window.CameraPreviewImage.Source);
         Assert.True(camera.IsLifecycleActive);
 

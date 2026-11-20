@@ -15,11 +15,10 @@ internal static partial class AgentOrbGeometry
     {
         int count = state switch
         {
-            ThinkingOrbState.Searching => Searching(dots, seconds * Mix(2.665, 2.015)),
             ThinkingOrbState.Listening => Listening(dots, seconds * Mix(3.998, 4.388)),
             ThinkingOrbState.Solving => Solving(dots, seconds * Mix(1.95, 1.82)),
             ThinkingOrbState.Shaping => Shaping(dots, seconds * Mix(2.08, 2.405)),
-            _ => throw new ArgumentOutOfRangeException(nameof(state))
+            _ => Searching(dots, seconds * Mix(2.665, 2.015))
         };
         // Stable insertion sort preserves the reference painter order at equal depths.
         for (int i = 1; i < count; i++)

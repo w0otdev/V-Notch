@@ -106,7 +106,7 @@ public:
         {
             return IsOfficialRepositoryPath(abs_path);
         }
-        return IsReleaseAssetHost(host);
+        return false;
     }
 
     static void ParseZoneIdentifier(

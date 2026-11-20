@@ -175,6 +175,8 @@ bool IsSelfNotification(std::u16string_view app_id, std::u16string_view app_name
 int32_t CopyToCallerBuffer(std::u16string_view src, wchar_t* dst, int32_t cap) noexcept {
     if (!dst || cap <= 0) return 0;
     int32_t to_copy = static_cast<int32_t>(std::min(src.size(), static_cast<size_t>(cap)));
+    if (static_cast<size_t>(to_copy) < src.size() && to_copy > 0 &&
+        IS_HIGH_SURROGATE(src[to_copy - 1]) && IS_LOW_SURROGATE(src[to_copy])) --to_copy;
     for (int32_t i = 0; i < to_copy; ++i) {
         dst[i] = static_cast<wchar_t>(src[static_cast<size_t>(i)]);
     }
@@ -212,8 +214,11 @@ bool IsGenericHostProcess(std::u16string_view stem_or_path_lower) noexcept {
     return false;
 }
 
+// Long-path-aware Win32 APIs accept up to 32K UTF-16 code units.
+constexpr DWORD IconPathCapacity = 32768;
+
 bool IsExistingRegularLocalFile(const std::u16string& path) noexcept {
-    if (path.size() < 3 || path.size() >= MAX_PATH) return false;
+    if (path.size() < 3 || path.size() >= IconPathCapacity) return false;
     char16_t c0 = path[0];
     bool is_drive = (c0 >= u'A' && c0 <= u'Z') || (c0 >= u'a' && c0 <= u'z');
     if (!is_drive || path[1] != u':' || (path[2] != u'\\' && path[2] != u'/')) {
@@ -270,10 +275,10 @@ std::u16string NormalizeIconCandidatePath(std::u16string_view raw) {
     }
 
     if (unescaped.find(u'%') != std::u16string::npos) {
-        wchar_t expanded_buf[MAX_PATH]{};
+        wchar_t expanded_buf[IconPathCapacity];
         DWORD exp_len = ::ExpandEnvironmentStringsW(
-            reinterpret_cast<const wchar_t*>(unescaped.c_str()), expanded_buf, MAX_PATH);
-        if (exp_len > 0 && exp_len < MAX_PATH) {
+            reinterpret_cast<const wchar_t*>(unescaped.c_str()), expanded_buf, IconPathCapacity);
+        if (exp_len > 0 && exp_len < IconPathCapacity) {
             unescaped.assign(reinterpret_cast<const char16_t*>(expanded_buf), static_cast<size_t>(exp_len - 1));
         }
     }
@@ -293,7 +298,7 @@ std::u16string TryResolveRegistryAumidIcon(std::u16string_view app_id) {
 
     const HKEY roots[2] = { HKEY_CURRENT_USER, HKEY_LOCAL_MACHINE };
     for (HKEY root : roots) {
-        wchar_t val_buf[MAX_PATH]{};
+        wchar_t val_buf[IconPathCapacity];
         DWORD byte_size = sizeof(val_buf);
         LSTATUS st = ::RegGetValueW(
             root,
@@ -355,8 +360,8 @@ std::u16string TryResolveProcessSnapshotIcon(const WindowMatchContext& ctx) {
 
             HANDLE hproc = ::OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, FALSE, pe.th32ProcessID);
             if (!hproc) continue;
-            wchar_t path_buf[MAX_PATH]{};
-            DWORD path_len = MAX_PATH;
+            wchar_t path_buf[IconPathCapacity];
+            DWORD path_len = IconPathCapacity;
             bool ok = ::QueryFullProcessImageNameW(hproc, 0, path_buf, &path_len) && path_len > 0;
             ::CloseHandle(hproc);
             if (!ok) continue;
@@ -382,9 +387,9 @@ std::u16string TryResolveStartMenuShortcutIcon(std::u16string_view app_name, std
 
     std::u16string_view names[2] = { vnotch::trim_view(app_name), vnotch::trim_view(app_token) };
     for (const wchar_t* env_root : env_roots) {
-        wchar_t root_buf[MAX_PATH]{};
-        DWORD exp_len = ::ExpandEnvironmentStringsW(env_root, root_buf, MAX_PATH);
-        if (exp_len == 0 || exp_len >= MAX_PATH) continue;
+        wchar_t root_buf[IconPathCapacity];
+        DWORD exp_len = ::ExpandEnvironmentStringsW(env_root, root_buf, IconPathCapacity);
+        if (exp_len == 0 || exp_len >= IconPathCapacity) continue;
         std::u16string base_dir(reinterpret_cast<const char16_t*>(root_buf), static_cast<size_t>(exp_len - 1));
 
         for (std::u16string_view name : names) {
@@ -437,8 +442,8 @@ BOOL CALLBACK EnumWindowsForAppActivate(HWND hwnd, LPARAM lparam) noexcept {
     std::u16string proc_full_path;
     HANDLE hproc = ::OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, FALSE, pid);
     if (hproc) {
-        wchar_t path_buf[MAX_PATH]{};
-        DWORD path_len = MAX_PATH;
+        wchar_t path_buf[IconPathCapacity];
+        DWORD path_len = IconPathCapacity;
         if (::QueryFullProcessImageNameW(hproc, 0, path_buf, &path_len) && path_len > 0) {
             proc_full_path.assign(reinterpret_cast<const char16_t*>(path_buf), static_cast<size_t>(path_len));
             std::u16string_view full_sv(proc_full_path);
@@ -818,6 +823,10 @@ VN_EXPORT int32_t __stdcall vn_appnotify_resolve_app_icon_source(
         }
 
         if (!resolved.empty()) {
+            if (resolved.size() > static_cast<size_t>(path_cap)) {
+                *out_path_len = static_cast<int32_t>(resolved.size());
+                return VN_ERR_BUFFER_TOO_SMALL;
+            }
             *out_path_len = vnotch::services::CopyToCallerBuffer(resolved, out_path_buf, path_cap);
         }
         return VN_OK;

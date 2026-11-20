@@ -13,7 +13,8 @@ VN_EXPORT int32_t vn_clipboard_directory_scan_close(int64_t) noexcept;
 VN_EXPORT int32_t vn_clipboard_stream_copy(intptr_t, intptr_t, int32_t (*)(intptr_t, uint8_t*, int32_t),
     int32_t (*)(intptr_t, const uint8_t*, int32_t), intptr_t, int64_t, int64_t*, int32_t*) noexcept;
 // A mapped ciphertext file produces authenticated native plaintext; close zeroes it.
-VN_EXPORT int32_t vn_clipboard_vault_open_image(intptr_t, const uint8_t*, int32_t, int64_t*, uint8_t**, int32_t*) noexcept;
+VN_EXPORT int32_t vn_clipboard_vault_load_image(intptr_t, const uint8_t*, int32_t, int64_t*, int32_t*) noexcept;
+VN_EXPORT int32_t vn_clipboard_vault_read_image(int64_t, int32_t, uint8_t*, int32_t) noexcept;
 VN_EXPORT int32_t vn_clipboard_vault_close_image(int64_t) noexcept;
 VN_EXPORT int32_t __stdcall vn_clipboard_store_filter_entries_batch(const VnClipboardSearchEntry*, int32_t,
     const VnClipboardSearchSlice*, int32_t, const VnClipboardSearchLabel*, int32_t, const char16_t*, int32_t,

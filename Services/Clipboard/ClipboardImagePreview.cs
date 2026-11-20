@@ -64,7 +64,8 @@ internal static partial class ClipboardImagePreview
     private static unsafe BitmapSource DecodeCore(string? path, ReadOnlySpan<byte> encoded, bool isPersonal, CancellationToken cancellation, PixelTarget target = default)
     {
         cancellation.ThrowIfCancellationRequested();
-        byte[] pixels = ArrayPool<byte>.Shared.Rent(PreviewEdge * PreviewEdge * 4);
+        int edge = Math.Clamp(Math.Max(target.Width, target.Height), PreviewEdge, 4096);
+        byte[] pixels = ArrayPool<byte>.Shared.Rent(checked(edge * edge * 4));
         try
         {
             PreviewInfo info;

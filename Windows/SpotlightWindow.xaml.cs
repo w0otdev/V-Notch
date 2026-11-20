@@ -510,6 +510,11 @@ public partial class SpotlightWindow : Window
         _lastDismissedQuery = SearchBox.Text;
         _lastDismissedAtUtc = DateTime.UtcNow;
         _isClosing = true;
+        if (IsLiquidGlassEnabled)
+        {
+            CompositionTarget.Rendering -= OnLiquidGlassFrameUpdate;
+            CompositionTarget.Rendering += OnLiquidGlassFrameUpdate;
+        }
         InvalidateLaunchAttempt();
         CancelSearchDebounce();
         _viewModel.CancelPendingSearch();

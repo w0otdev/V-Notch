@@ -28,6 +28,7 @@ public sealed class SpotifyCanvasPresenter : ISpotifyCanvasPresenter
     private SpotifyCanvasPresentationOptions? _options;
     private bool _disposed;
     private bool _isSwapping;
+    private long _swapGeneration;
 
     public event EventHandler? MediaOpened;
     public event EventHandler? MediaEnded;
@@ -76,6 +77,15 @@ public sealed class SpotifyCanvasPresenter : ISpotifyCanvasPresenter
     {
         _loopTimer.Stop();
         _crossfadeTimer.Stop();
+        ++_swapGeneration;
+        if (_isSwapping && _standbyVideo != null)
+        {
+            _standbyVideo.BeginAnimation(UIElement.OpacityProperty, null);
+            _standbyVideo.Opacity = 0;
+            Panel.SetZIndex(_standbyVideo, 0);
+            _activeVideo.Opacity = 1;
+            Panel.SetZIndex(_activeVideo, 1);
+        }
         _isSwapping = false;
     }
 
@@ -137,6 +147,7 @@ public sealed class SpotifyCanvasPresenter : ISpotifyCanvasPresenter
         try
         {
             _shouldPlay = autoPlay;
+            if (_sourceVersion != sourceVersion && _isSwapping) StopLoopMonitoring();
             _sourceVersion = sourceVersion;
 
             // Preserve current frame and fade on repeated Canvas requests instead of
@@ -689,7 +700,7 @@ public sealed class SpotifyCanvasPresenter : ISpotifyCanvasPresenter
 
         var outgoing = _activeVideo;
         var incoming = _standbyVideo;
-        long version = _sourceVersion;
+        long version = _swapGeneration;
 
         try
         {
@@ -704,7 +715,7 @@ public sealed class SpotifyCanvasPresenter : ISpotifyCanvasPresenter
 
             fadeIn.Completed += (_, _) =>
             {
-                if (_disposed || _sourceVersion != version) return;
+                if (_disposed || !_isSwapping || _swapGeneration != version) return;
 
                 try
                 {

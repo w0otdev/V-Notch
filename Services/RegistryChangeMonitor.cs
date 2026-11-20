@@ -11,12 +11,20 @@ internal sealed partial class RegistryChangeMonitor : IDisposable
     private readonly Func<long>? _tickCount;
     private readonly AutoResetEvent _changed = new(false);
     private readonly RegisteredWaitHandle? _wait;
-    private long _handle, _nextRetry;
+    private readonly object _sync = new();
+    private bool _disposed;
+    private long _nextRetry;
+    private WatchHandle? _handle;
+    private sealed class WatchHandle() : Microsoft.Win32.SafeHandles.SafeHandleZeroOrMinusOneIsInvalid(true)
+    {
+        protected override bool ReleaseHandle() => vn_registry_watch_close(handle.ToInt64()) == 0;
+    }
 
     [LibraryImport("VNotch.Native.dll", StringMarshalling = StringMarshalling.Utf16)]
-    private static partial int vn_registry_watch_create(nint hive, string path, int length, nint signal, out long handle);
+    private static partial int vn_registry_watch_create(Microsoft.Win32.SafeHandles.SafeRegistryHandle hive, string path, int length,
+        Microsoft.Win32.SafeHandles.SafeWaitHandle signal, out WatchHandle handle);
     [LibraryImport("VNotch.Native.dll")]
-    private static partial int vn_registry_watch_consume(long handle, out byte changed);
+    private static partial int vn_registry_watch_consume(WatchHandle handle, out byte changed);
     [LibraryImport("VNotch.Native.dll")]
     private static partial int vn_registry_watch_close(long handle);
 
@@ -30,37 +38,31 @@ internal sealed partial class RegistryChangeMonitor : IDisposable
 
     internal bool ConsumeChange()
     {
+        lock (_sync) return !_disposed && ConsumeChangeLocked();
+    }
+
+    private bool ConsumeChangeLocked()
+    {
         long now = _tickCount?.Invoke() ?? Environment.TickCount64;
-        if (_handle == 0 && now < _nextRetry) return false;
-        if (_handle == 0)
-        {
-            bool hiveRef = false, eventRef = false;
-            var hiveHandle = _hive.Handle;
-            var eventHandle = _changed.SafeWaitHandle;
-            try
-            {
-                hiveHandle.DangerousAddRef(ref hiveRef);
-                eventHandle.DangerousAddRef(ref eventRef);
-                vn_registry_watch_create(hiveHandle.DangerousGetHandle(), _path, _path.Length,
-                    eventHandle.DangerousGetHandle(), out _handle);
-            }
-            finally
-            {
-                if (eventRef) eventHandle.DangerousRelease();
-                if (hiveRef) hiveHandle.DangerousRelease();
-            }
-        }
-        if (_handle != 0 && vn_registry_watch_consume(_handle, out byte changed) == 0) return changed != 0;
-        if (_handle != 0) vn_registry_watch_close(_handle);
-        _handle = 0;
+        if (_handle == null && now < _nextRetry) return false;
+        if (_handle == null)
+            vn_registry_watch_create(_hive.Handle, _path, _path.Length, _changed.SafeWaitHandle, out _handle);
+        if (!_handle.IsInvalid && vn_registry_watch_consume(_handle, out byte changed) == 0) return changed != 0;
+        _handle.Dispose();
+        _handle = null;
         _nextRetry = now + 30_000;
         return true;
     }
 
     public void Dispose()
     {
-        if (_handle != 0) vn_registry_watch_close(_handle);
-        _handle = 0;
+        lock (_sync)
+        {
+            if (_disposed) return;
+            _disposed = true;
+            _handle?.Dispose();
+            _handle = null;
+        }
         _wait?.Unregister(null);
         _changed.Dispose();
     }

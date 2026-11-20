@@ -154,7 +154,7 @@ public sealed partial class ClipboardHistoryStore : IDisposable, IAsyncDisposabl
                 || ClipboardSensitiveData.IsSensitive(capture.Text, capture.SourceApp, capture.SourceExecutable)
                 || ClipboardSensitiveData.IsSensitive(capture.Html, capture.SourceApp, capture.SourceExecutable)
                 || ClipboardSensitiveData.IsSensitive(capture.Rtf, capture.SourceApp, capture.SourceExecutable);
-            string preview = title.Length > 1024 ? title[..1024] : title;
+            string preview = VNotch.Services.Translation.TranslationInput.Prefix(title, 1024);
             if (kind == ClipboardKind.Color && ClipboardClassifier.TryExtractHexColor(capture.Text, out string hex))
                 preview = hex;
             // A failed copy may already have fed bytes into the streaming hash.
@@ -169,7 +169,7 @@ public sealed partial class ClipboardHistoryStore : IDisposable, IAsyncDisposabl
                 duplicate = FindProbableDuplicateImage(staging, capture);
             if (duplicate != null)
                 return CommitDuplicateImport(duplicate, capture, kind, sensitive, preview, files.Count, failedCount, batchChild);
-            string displayTitle = title.Length > 120 ? title[..120] : title;
+            string displayTitle = VNotch.Services.Translation.TranslationInput.Prefix(title, 120);
             var entry = new ClipboardEntry
             {
                 IsSensitive = sensitive,

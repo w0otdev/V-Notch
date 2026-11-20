@@ -2,7 +2,7 @@
 #include "../vnotch_com.h"
 #include "../vnotch_handle_registry.h"
 #include <objbase.h>
-#include <mmdeviceapi.h>
+#include "CoreAudioNotification.h"
 #include <endpointvolume.h>
 #include <atomic>
 #include <cstdint>
@@ -22,41 +22,18 @@ using vnotch::com::ComPtr;
 using vnotch::com::EnsureMta;
 using vnotch::com::Guard;
 
-// Notification sink owned by its Source; the reference count never frees it.
-class NotificationClient final : public IMMNotificationClient {
-public:
-    DeviceChangedCallback callback = nullptr;
-    int64_t context = 0;
-
-    HRESULT STDMETHODCALLTYPE QueryInterface(REFIID iid, void** object) override {
-        if (!object) return E_POINTER;
-        if (iid == __uuidof(IUnknown) || iid == __uuidof(IMMNotificationClient)) {
-            *object = static_cast<IMMNotificationClient*>(this);
-            return S_OK;
-        }
-        *object = nullptr;
-        return E_NOINTERFACE;
-    }
-    ULONG STDMETHODCALLTYPE AddRef() override { return 2; }
-    ULONG STDMETHODCALLTYPE Release() override { return 1; }
-    HRESULT STDMETHODCALLTYPE OnDeviceStateChanged(LPCWSTR, DWORD) override { return S_OK; }
-    HRESULT STDMETHODCALLTYPE OnDeviceAdded(LPCWSTR) override { return S_OK; }
-    HRESULT STDMETHODCALLTYPE OnDeviceRemoved(LPCWSTR) override { return S_OK; }
-    HRESULT STDMETHODCALLTYPE OnPropertyValueChanged(LPCWSTR, const PROPERTYKEY) override { return S_OK; }
-    HRESULT STDMETHODCALLTYPE OnDefaultDeviceChanged(EDataFlow flow, ERole role, LPCWSTR) override {
-        // Only the render/multimedia default drives the volume control.
-        if (flow == eRender && role == eMultimedia && callback) callback(context);
-        return S_OK;
-    }
-};
 
 struct Source {
     ComPtr<IMMDeviceEnumerator> enumerator;
-    NotificationClient client;
+    ComPtr<EndpointNotification> client;
     bool registered = false;
 
     ~Source() {
-        if (registered && enumerator.ptr) enumerator.ptr->UnregisterEndpointNotificationCallback(&client);
+        if (client.ptr) client.ptr->Disconnect();
+        if (registered && FAILED(enumerator.ptr->UnregisterEndpointNotificationCallback(client.ptr))) {
+            // Core Audio borrows the registration reference until unregister succeeds.
+            client.ptr = nullptr;
+        }
     }
 };
 
@@ -87,9 +64,8 @@ VN_EXPORT int32_t __stdcall vn_volume_source_create(ca::DeviceChangedCallback ca
         auto source = std::make_unique<ca::Source>();
         HRESULT hr = CoCreateInstance(__uuidof(MMDeviceEnumerator), nullptr, CLSCTX_ALL, IID_PPV_ARGS(source->enumerator.Put()));
         if (SUCCEEDED(hr)) {
-            source->client.callback = callback;
-            source->client.context = context;
-            hr = source->enumerator.ptr->RegisterEndpointNotificationCallback(&source->client);
+            source->client.ptr = new vnotch::services::EndpointNotification(callback, context, false);
+            hr = source->enumerator.ptr->RegisterEndpointNotificationCallback(source->client.ptr);
             source->registered = SUCCEEDED(hr);
         }
         *out_hresult = static_cast<int32_t>(hr);
@@ -103,6 +79,8 @@ VN_EXPORT int32_t __stdcall vn_volume_source_create(ca::DeviceChangedCallback ca
 
 VN_EXPORT int32_t __stdcall vn_volume_source_destroy(int64_t handle) noexcept {
     if (handle <= 0) return VN_ERR_INVALID_ARG;
+    auto owner = ca::g_sources.Acquire(handle);
+    if (owner) owner->client.ptr->Disconnect();
     ca::g_sources.Remove(handle);
     return VN_OK;
 }

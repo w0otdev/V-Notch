@@ -118,6 +118,7 @@ public partial class App : Application
             {
                 using var earlySettings = new SettingsService();
                 var loadedSettings = earlySettings.Load();
+                NetworkPrivacy.Current.Apply(loadedSettings);
                 AccentTheme.Apply(loadedSettings.AccentColor);
                 WindowAnimationPolicy.SetInvisibleMode(loadedSettings.InvisibleMode);
                 WindowAnimationPolicy.SetShadowEnabled(loadedSettings.EnableShadow);
@@ -409,7 +410,7 @@ public partial class App : Application
     protected override void OnExit(ExitEventArgs e)
     {
         InteractionSounds.Shutdown();
-        try { WhiteNoiseService.Pause(); } catch { /* Best-effort pause during shutdown. */ }
+        try { WhiteNoiseService.Shutdown(); } catch { /* Best-effort pause during shutdown. */ }
         try
         {
             if (!_servicesDisposed && Services is IDisposable disposable)
@@ -440,11 +441,7 @@ public partial class App : Application
         var exePath = Environment.ProcessPath;
         if (string.IsNullOrEmpty(exePath)) return;
 
-        if (app != null)
-        {
-            app._guard?.Dispose();
-            app._guard = null;
-        }
+        if (app?.IsShutdownRequested == true) return;
 
         try
         {
@@ -457,42 +454,23 @@ public partial class App : Application
             using var process = Process.Start(startInfo);
             if (process == null)
             {
-                ReacquireSingleInstanceGuard(app);
                 return;
             }
         }
         catch (Exception ex)
         {
             RuntimeLog.Error("APP", ex, "Restart failed");
-            ReacquireSingleInstanceGuard(app);
             return;
         }
 
         RequestShutdownAsync().SafeFireAndForget("APP-RESTART");
     }
 
-    private static void ReacquireSingleInstanceGuard(App? app)
-    {
-        if (app == null || app._guard != null) return;
-        try
-        {
-            var guard = new SingleInstanceGuard(MutexName);
-            if (guard.TryAcquire())
-                app._guard = guard;
-            else
-                guard.Dispose();
-        }
-        catch (Exception ex)
-        {
-            RuntimeLog.Warn("APP", $"Could not re-acquire single-instance mutex after failed restart: {ex.Message}");
-        }
-    }
-
     private static bool IsRecoverableException(Exception ex)
     {
         return ex is RecoverableAnimationException
             or RecoverableMediaException
-            or System.Runtime.InteropServices.COMException;
+            or System.Runtime.InteropServices.COMException { HResult: not unchecked((int)0x88980406) };
     }
 
     private static string? TryGetArgumentValue(string[] args, string argumentName)

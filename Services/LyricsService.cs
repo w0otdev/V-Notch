@@ -128,31 +128,32 @@ internal sealed partial class LyricsService : IDisposable
         string order = providerOrder == null ? $"{LyricsProviderOrder.Amll},{LyricsProviderOrder.Legacy}" : string.Join(',', LyricsProviderOrder.Normalize(providerOrder));
         var key = new FetchKey(trackName, artistName, durationSeconds, order, NormalizeSpotifyTrackId(spotifyTrackId) ?? "", providerOrder != null);
         FetchOperation operation;
+        LyricsResult? replay = null;
+        bool start = false;
         lock (_fetchLock)
         {
             if (_disposed) return Task.FromResult<LyricsResult?>(null);
             if (_activeFetch?.Key == key)
             {
-                _activeFetch.OnLyricsAvailable += onLyricsAvailable;
-                // A collapsed prefetch may already have found line lyrics while
-                // searching for words. Replay them when the lyrics view joins.
-                if (_activeFetch.AvailableResult is { } available)
-                    NotifyLyricsAvailable(onLyricsAvailable, available);
-                return _activeFetch.Completion.Task;
+                operation = _activeFetch;
+                operation.OnLyricsAvailable += onLyricsAvailable;
+                replay = operation.AvailableResult;
             }
-
-            CancelActiveFetchLocked();
-            if (_cache.TryGetValue(key, out var cached))
+            else
             {
-                _cache[key] = (cached.Result, ++_cacheAccess);
-                return Task.FromResult<LyricsResult?>(cached.Result);
+                CancelActiveFetchLocked();
+                if (_cache.TryGetValue(key, out var cached))
+                {
+                    _cache[key] = (cached.Result, ++_cacheAccess);
+                    return Task.FromResult<LyricsResult?>(cached.Result);
+                }
+                operation = new FetchOperation(key) { OnLyricsAvailable = onLyricsAvailable };
+                _activeFetch = operation;
+                start = true;
             }
-
-            operation = new FetchOperation(key) { OnLyricsAvailable = onLyricsAvailable };
-            _activeFetch = operation;
         }
-
-        _ = CompleteFetchAsync(operation);
+        if (replay != null) NotifyLyricsAvailable(onLyricsAvailable, replay);
+        if (start) _ = CompleteFetchAsync(operation);
         return operation.Completion.Task;
     }
 

@@ -142,7 +142,7 @@ public:
         uint8_t* out_buf,
         int32_t out_cap,
         int32_t* out_bytes) noexcept {
-        if (!out_bytes) return VN_ERR_INVALID_ARG;
+        if (!out_bytes || query.size() > (INT32_MAX - kQueryHeaderBytes) / sizeof(char16_t) - 1) return VN_ERR_INVALID_ARG;
         const int32_t string_bytes = static_cast<int32_t>((query.size() + 1) * sizeof(char16_t));
         const int32_t total_bytes = kQueryHeaderBytes + string_bytes;
         *out_bytes = total_bytes;

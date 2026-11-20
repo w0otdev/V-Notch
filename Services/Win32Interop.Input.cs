@@ -70,7 +70,13 @@ internal static unsafe partial class Win32Interop
     public static IntPtr SendMessageTextTimeout(
         IntPtr hwnd, uint message, IntPtr wParam, StringBuilder text, uint flags, uint timeout, out IntPtr result)
     {
-        int capacity = Math.Max(2, text.Capacity + 1);
+        // WM_GETTEXT takes a capacity. Index/selection messages do not, so
+        // their two-step callers must own the target thread through the copy.
+        if (message == 0x000D) wParam = (IntPtr)Math.Clamp(wParam.ToInt64(), 0, text.Capacity);
+        else if (message is not (0x0148 or 0x0189 or 0x043E) ||
+            GetWindowThreadProcessId(hwnd, out _) != GetCurrentThreadId())
+            throw new ArgumentException("This text retrieval requires the owning thread.", nameof(message));
+        int capacity = Math.Max(2, checked(text.Capacity + 1));
         char[] rented = ArrayPool<char>.Shared.Rent(capacity);
         try
         {

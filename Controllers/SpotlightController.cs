@@ -271,12 +271,7 @@ internal sealed partial class SpotlightController : ISpotlightController, IAsync
         }
     }
 
-    public void Dispose()
-    {
-        var window = _window;
-        DisposeCore();
-        window?.FlushPersistenceAsync().GetAwaiter().GetResult();
-    }
+    public void Dispose() => DisposeAsync().AsTask().GetAwaiter().GetResult();
 
     private void DisposeCore()
     {
@@ -289,6 +284,9 @@ internal sealed partial class SpotlightController : ISpotlightController, IAsync
     {
         var window = _window;
         DisposeCore();
-        if (window != null) await window.FlushPersistenceAsync().ConfigureAwait(false);
+        if (window == null) return;
+        try { await window.FlushPersistenceAsync().ConfigureAwait(false); }
+        catch (Exception ex) when (ex is System.IO.IOException or UnauthorizedAccessException or AggregateException)
+        { RuntimeLog.Warn("SPOTLIGHT", $"Could not flush window preferences: {ex.Message}"); }
     }
 }

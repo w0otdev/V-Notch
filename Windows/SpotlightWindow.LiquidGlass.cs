@@ -724,6 +724,7 @@ public partial class SpotlightWindow
 
     protected override void OnDpiChanged(DpiScale oldDpi, DpiScale newDpi)
     {
+        _glassScreenGeometry?.Invalidate();
         base.OnDpiChanged(oldDpi, newDpi);
         if (_liquidGlass == null) return;
         _lastAppliedDpiScale = -1;
@@ -784,6 +785,8 @@ public partial class SpotlightWindow
     private void OnLiquidGlassFrameUpdate(object? sender, EventArgs e)
     {
         SyncLiveGlassFrame(updateDynamicFresnel: true);
+        if (!_entranceActive && !_isClosing && !_preparingGlassEntrance)
+            CompositionTarget.Rendering -= OnLiquidGlassFrameUpdate;
     }
 
     private void AnimateGlassReadability(bool opened, bool animate = true)

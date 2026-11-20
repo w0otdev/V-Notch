@@ -33,11 +33,16 @@ public partial class NotchSettings : IJsonOnDeserialized
 
     public string AccentColor { get; set; } = "default";
 
-    public int Width { get; set; } = 230;
-    public int DynamicIslandWidth { get; set; } = 220;
-    public int DynamicIslandHeight { get; set; } = 40;
-    public int Height { get; set; } = 34;
-    public int CornerRadius { get; set; } = 8;
+    private int _width = 230;
+    public int Width { get => _width; set => _width = ClampInt(value, 1, 8192); }
+    private int _dynamicIslandWidth = 220;
+    public int DynamicIslandWidth { get => _dynamicIslandWidth; set => _dynamicIslandWidth = ClampInt(value, 1, 8192); }
+    private int _dynamicIslandHeight = 40;
+    public int DynamicIslandHeight { get => _dynamicIslandHeight; set => _dynamicIslandHeight = ClampInt(value, 1, 8192); }
+    private int _height = 34;
+    public int Height { get => _height; set => _height = ClampInt(value, 1, 8192); }
+    private int _cornerRadius = 8;
+    public int CornerRadius { get => _cornerRadius; set => _cornerRadius = ClampInt(value, 0, 4096); }
     public double Opacity { get; set; } = 1.0;
     public double MediaBlurBrightnessBoost { get; set; } = 2.0;
     public double MediaBlurDarkOverlay { get; set; } = 0.0;
