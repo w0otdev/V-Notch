@@ -3,6 +3,7 @@ using System.ComponentModel;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
+using System.Windows.Threading;
 using VNotch.Controls;
 
 namespace VNotch;
@@ -10,97 +11,139 @@ namespace VNotch;
 public partial class SettingsWindow
 {
     private readonly HashSet<SearchRowEntry> _dirtySearchRows = [];
-    private readonly HashSet<DependencyObject> _observedSearchInputs = [];
-    private readonly List<Action> _detachSearchObservers = [];
+    private readonly Dictionary<FrameworkElement, SearchInputObserver> _searchObservers = [];
     private bool _updatingSearchPresentation;
 
     private void InvalidateSearchIndex() => _dirtySearchRows.UnionWith(_searchRows);
 
-    private void ObserveSearchRow(SearchRowEntry row)
+    private void ObserveSearchInputs(FrameworkElement root, SearchRowEntry? row)
     {
-        ObserveSearchInputs(row.Row, row);
-        RoutedEventHandler loaded = (_, _) => ObserveSearchInputs(row.Row, row);
-        row.Row.Loaded += loaded;
-        _detachSearchObservers.Add(() => row.Row.Loaded -= loaded);
-    }
-
-    // Search text is independent of the query. Watch the inputs once instead of
-    // traversing every Settings panel and normalizing every row on each keypress.
-    private void ObserveSearchInputs(DependencyObject input, SearchRowEntry? row)
-    {
-        if (_observedSearchInputs.Add(input))
+        if (!_searchObservers.TryGetValue(root, out var observer))
         {
-            void Changed(object? sender, EventArgs e)
-            {
-                if (_updatingSearchPresentation) return;
-                if (row == null) InvalidateSearchIndex();
-                else _dirtySearchRows.Add(row);
-            }
-
-            void Watch(DependencyProperty property)
-            {
-                var descriptor = DependencyPropertyDescriptor.FromProperty(property, input.GetType());
-                if (descriptor == null) return;
-                descriptor.AddValueChanged(input, Changed);
-                _detachSearchObservers.Add(() => descriptor.RemoveValueChanged(input, Changed));
-            }
-
-            if (input is TextBlock) Watch(TextBlock.TextProperty);
-            if (input is ContentControl) Watch(ContentControl.ContentProperty);
-            if (input is ElasticSlider)
-            {
-                Watch(ElasticSlider.LabelProperty);
-                Watch(ElasticSlider.DescriptionProperty);
-                Watch(ElasticSlider.UnitProperty);
-            }
-            if (input is UIElement)
-            {
-                var visibility = DependencyPropertyDescriptor.FromProperty(UIElement.VisibilityProperty, input.GetType());
-                EventHandler visibilityChanged = (_, _) =>
-                {
-                    if (_updatingSearchPresentation) return;
-                    if (row != null && ReferenceEquals(input, row.Row))
-                        row.OriginalVisibility = row.Row.Visibility;
-                    Changed(input, EventArgs.Empty);
-                };
-                visibility.AddValueChanged(input, visibilityChanged);
-                _detachSearchObservers.Add(() => visibility.RemoveValueChanged(input, visibilityChanged));
-            }
-            if (input is ItemsControl items)
-            {
-                NotifyCollectionChangedEventHandler collectionChanged = (_, _) =>
-                {
-                    Changed(input, EventArgs.Empty);
-                    ObserveSearchItemInputs(items, row);
-                };
-                ((INotifyCollectionChanged)items.Items).CollectionChanged += collectionChanged;
-                _detachSearchObservers.Add(() => ((INotifyCollectionChanged)items.Items).CollectionChanged -= collectionChanged);
-            }
-            // Newly realized templates may contribute text that was absent when
-            // a collapsed section was first indexed.
-            if (row != null) _dirtySearchRows.Add(row);
+            observer = new SearchInputObserver(this, root, row);
+            _searchObservers.Add(root, observer);
         }
-
-        if (input is ItemsControl itemsControl) ObserveSearchItemInputs(itemsControl, row);
-        if (input is not Visual) return;
-        int count = VisualTreeHelper.GetChildrenCount(input);
-        for (int i = 0; i < count; i++)
-            ObserveSearchInputs(VisualTreeHelper.GetChild(input, i), row);
-    }
-
-    private void ObserveSearchItemInputs(ItemsControl items, SearchRowEntry? row)
-    {
-        foreach (var item in items.Items)
-            if (item is DependencyObject dependencyObject)
-                ObserveSearchInputs(dependencyObject, row);
+        observer.Refresh();
     }
 
     private void DetachSearchObservers()
     {
-        foreach (var detach in _detachSearchObservers) detach();
-        _detachSearchObservers.Clear();
-        _observedSearchInputs.Clear();
+        foreach (var observer in _searchObservers.Values) observer.Dispose();
+        _searchObservers.Clear();
         _dirtySearchRows.Clear();
+    }
+
+    private sealed class SearchInputObserver : IDisposable
+    {
+        private readonly SettingsWindow _window;
+        private readonly FrameworkElement _root;
+        private readonly SearchRowEntry? _row;
+        private HashSet<DependencyObject> _observed = [];
+        private HashSet<DependencyObject> _current = [];
+        private DispatcherOperation? _pendingRefresh;
+
+        internal SearchInputObserver(SettingsWindow window, FrameworkElement root, SearchRowEntry? row)
+        {
+            _window = window;
+            _root = root;
+            _row = row;
+            root.Loaded += OnLoaded;
+        }
+
+        private void OnLoaded(object sender, RoutedEventArgs e) => Refresh();
+
+        internal void Refresh()
+        {
+            CollectInputs(_root, _current);
+            if (!_observed.SetEquals(_current))
+            {
+                foreach (var input in _observed)
+                    if (!_current.Contains(input)) Watch(input, false);
+                foreach (var input in _current)
+                    if (!_observed.Contains(input)) Watch(input, true);
+                (_observed, _current) = (_current, _observed);
+                MarkDirty();
+            }
+            _current.Clear();
+        }
+
+        private static void CollectInputs(DependencyObject input, HashSet<DependencyObject> inputs)
+        {
+            if (!inputs.Add(input)) return;
+            if (input is ItemsControl items)
+                foreach (var item in items.Items)
+                    if (item is DependencyObject child) CollectInputs(child, inputs);
+
+            if (input is not Visual) return;
+            int count = VisualTreeHelper.GetChildrenCount(input);
+            for (int i = 0; i < count; i++)
+                CollectInputs(VisualTreeHelper.GetChild(input, i), inputs);
+        }
+
+        private void Watch(DependencyObject input, bool attach)
+        {
+            void Observe(DependencyProperty property, EventHandler handler)
+            {
+                var descriptor = DependencyPropertyDescriptor.FromProperty(property, input.GetType());
+                if (attach) descriptor?.AddValueChanged(input, handler);
+                else descriptor?.RemoveValueChanged(input, handler);
+            }
+
+            if (input is TextBlock) Observe(TextBlock.TextProperty, OnTextChanged);
+            if (input is ContentControl) Observe(ContentControl.ContentProperty, OnContentChanged);
+            if (input is ElasticSlider)
+            {
+                Observe(ElasticSlider.LabelProperty, OnTextChanged);
+                Observe(ElasticSlider.DescriptionProperty, OnTextChanged);
+                Observe(ElasticSlider.UnitProperty, OnTextChanged);
+            }
+            if (input is UIElement) Observe(UIElement.VisibilityProperty, OnVisibilityChanged);
+            if (input is ItemsControl items)
+            {
+                var collection = (INotifyCollectionChanged)items.Items;
+                if (attach) collection.CollectionChanged += OnContentChanged;
+                else collection.CollectionChanged -= OnContentChanged;
+            }
+        }
+
+        private void MarkDirty()
+        {
+            if (_row == null) _window.InvalidateSearchIndex();
+            else _window._dirtySearchRows.Add(_row);
+        }
+
+        private void OnTextChanged(object? sender, EventArgs e)
+        {
+            if (!_window._updatingSearchPresentation) MarkDirty();
+        }
+
+        private void OnVisibilityChanged(object? sender, EventArgs e)
+        {
+            if (_window._updatingSearchPresentation) return;
+            if (_row != null && ReferenceEquals(sender, _row.Row))
+                _row.OriginalVisibility = _row.Row.Visibility;
+            MarkDirty();
+        }
+
+        private void OnContentChanged(object? sender, EventArgs e)
+        {
+            OnTextChanged(sender, e);
+            // WPF can still expose the old visual children during a collection reset.
+            // Reconcile once after layout, even if the user never searches again.
+            _pendingRefresh ??= _root.Dispatcher.InvokeAsync(() =>
+            {
+                _pendingRefresh = null;
+                Refresh();
+            }, DispatcherPriority.Loaded);
+        }
+
+        public void Dispose()
+        {
+            _root.Loaded -= OnLoaded;
+            _pendingRefresh?.Abort();
+            foreach (var input in _observed) Watch(input, false);
+            _observed.Clear();
+        }
     }
 
     private void RestoreRowsExcept(HashSet<Border>? desired)

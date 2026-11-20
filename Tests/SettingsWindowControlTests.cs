@@ -2265,6 +2265,29 @@ public sealed class SettingsWindowControlTests
     });
 
     [Fact]
+    public void SettingsSearchReleasesReplacedDropdownItemsWhileTheWindowIsOpen() => SharedStaTestRunner.RunAsync(async () =>
+    {
+        using var fixture = new Fixture();
+        var window = fixture.Window;
+        window.ExecuteSearch("clock");
+        var combo = window.WidgetCombo;
+        var retired = combo.Items.Cast<ComboBoxItem>().Select(item => new WeakReference(item)).ToArray();
+        Assert.NotEmpty(retired);
+        window.RepopulateWidgetComboPreservingSelection();
+        await window.Dispatcher.InvokeAsync(() => { }, System.Windows.Threading.DispatcherPriority.ApplicationIdle);
+        GC.Collect();
+        GC.WaitForPendingFinalizers();
+        GC.Collect();
+        Assert.All(retired, item => Assert.False(item.IsAlive));
+
+        window.ExecuteSearch("newwidgetlabel");
+        Assert.Empty(window.SearchResultsStack.Children);
+        ((ComboBoxItem)combo.Items[0]).Content = "newwidgetlabel";
+        window.ExecuteSearch("newwidgetlabel");
+        Assert.NotEmpty(window.SearchResultsStack.Children);
+    });
+
+    [Fact]
     public void SearchDiffRestoresSourceOrderAndTracksAuthoredVisibilityAndItems() => SharedStaTestRunner.Run(() =>
     {
         using var fixture = new Fixture();

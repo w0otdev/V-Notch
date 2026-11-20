@@ -644,7 +644,7 @@ public partial class MainWindow
 
     private void StopLyricsSearchShimmer()
     {
-        _lyricsSearchShimmerStoryboard?.Stop(this);
+        _lyricsSearchShimmerStoryboard?.Remove(this);
         _lyricsSearchShimmerStoryboard = null;
     }
 

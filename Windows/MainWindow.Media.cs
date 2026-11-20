@@ -1167,7 +1167,7 @@ public partial class MainWindow
         if (!_isShimmerActive) return;
         _isShimmerActive = false;
 
-        _titleShimmerStoryboard?.Stop(this);
+        _titleShimmerStoryboard?.Remove(this);
         _titleShimmerStoryboard = null;
 
         if (TryFindResource("TrackTitleGradient") is Brush normalBrush)
