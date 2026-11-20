@@ -153,6 +153,12 @@ jobs:
         with:
           global-json-file: global.json
       - run: dotnet restore V-Notch.csproj --locked-mode -nologo -v:q
+      - name: Configure translation chunk tests
+        run: cmake -S Tools/TranslationRuntime -B artifacts/chunk-tests -A x64 -DVNOTCH_CHUNK_TESTS_ONLY=ON
+      - name: Build translation chunk tests
+        run: cmake --build artifacts/chunk-tests --config Release --target VNotchTranslationChunkTests
+      - name: Run translation chunk tests
+        run: ctest --test-dir artifacts/chunk-tests -C Release --output-on-failure --no-tests=error
       - name: Compile native source and record provenance
         shell: pwsh
         run: ./Tools/New-NativeArtifact.ps1
