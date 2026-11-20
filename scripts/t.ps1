@@ -18,7 +18,7 @@ Push-Location $repoRoot
 
 try {
     $testProject = Join-Path $repoRoot "Tests\VNotch.Tests.csproj"
-    $nativeDll = Join-Path $repoRoot "bin\$Configuration\net8.0-windows10.0.19041.0\win-x64\VNotch.Native.dll"
+    $nativeDll = Join-Path $repoRoot "bin\$Configuration\net10.0-windows10.0.19041.0\win-x64\VNotch.Native.dll"
 
     $changedFiles = @(
         git -c core.safecrlf=false diff --name-only HEAD

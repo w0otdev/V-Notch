@@ -20,9 +20,9 @@ $env:Path = ($env:Path -split ";" | Where-Object { $_ -ne "C:\Program Files\Git\
 $repoRoot    = Split-Path $PSScriptRoot -Parent
 $processName   = "V-Notch"
 $csprojPath    = Join-Path $repoRoot "V-Notch.csproj"
-$objPath       = Join-Path $repoRoot "obj\Debug\net8.0-windows10.0.19041.0\win-x64"
+$objPath       = Join-Path $repoRoot "obj\Debug\net10.0-windows10.0.19041.0\win-x64"
 $nativeObjPath = Join-Path $repoRoot "obj\native"
-$binPath       = Join-Path $repoRoot "bin\Debug\net8.0-windows10.0.19041.0\win-x64"
+$binPath       = Join-Path $repoRoot "bin\Debug\net10.0-windows10.0.19041.0\win-x64"
 $exePath       = [IO.Path]::GetFullPath((Join-Path $binPath "V-Notch.exe"))
 $nativeDllPath = Join-Path $binPath "VNotch.Native.dll"
 
@@ -333,7 +333,6 @@ if (-not $buildScope.Native -and -not $buildScope.Managed) {
                 "build", $csprojPath, "-nologo", "-v:q", "-clp:NoSummary", "-m:2",
                 "-p:NativeFastCompile=true", "-p:RunAnalyzers=false",
                 "-p:EnforceCodeStyleInBuild=false", "-p:EnableNETAnalyzers=false",
-                "-p:BuildProjectReferences=false",
                 "-p:CreateHardLinksForCopyFilesToOutputDirectoryIfPossible=true",
                 "-p:CreateHardLinksForCopyLocalIfPossible=true"
             )

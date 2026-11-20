@@ -239,10 +239,10 @@ try {
     # --- STEP 1: Build Verification & Live Process Telemetry -----------------
     Write-TreeStep "1/4" "Build Check (Release) & Live Process Telemetry"
 
-    $testDllPath = Join-Path $repoRoot "Tests\bin\Release\net8.0-windows10.0.19041.0\win-x64\VNotch.Tests.dll"
-    $appExePath  = Join-Path $repoRoot "bin\Release\net8.0-windows10.0.19041.0\win-x64\V-Notch.exe"
+    $testDllPath = Join-Path $repoRoot "Tests\bin\Release\net10.0-windows10.0.19041.0\win-x64\VNotch.Tests.dll"
+    $appExePath  = Join-Path $repoRoot "bin\Release\net10.0-windows10.0.19041.0\win-x64\V-Notch.exe"
     if (-not (Test-Path -LiteralPath $appExePath)) {
-        $appExePath = Join-Path $repoRoot "Tests\bin\Release\net8.0-windows10.0.19041.0\win-x64\V-Notch.exe"
+        $appExePath = Join-Path $repoRoot "Tests\bin\Release\net10.0-windows10.0.19041.0\win-x64\V-Notch.exe"
     }
 
     if (-not $SkipBuild) {
@@ -263,7 +263,7 @@ try {
         Write-TreeItem "Using existing up-to-date Release binaries (-SkipBuild)." -State "Info"
     }
     if (-not (Test-Path -LiteralPath $appExePath)) {
-        $appExePath = Join-Path $repoRoot "Tests\bin\Release\net8.0-windows10.0.19041.0\win-x64\V-Notch.exe"
+        $appExePath = Join-Path $repoRoot "Tests\bin\Release\net10.0-windows10.0.19041.0\win-x64\V-Notch.exe"
     }
 
     $liveMetrics = [ordered]@{
@@ -855,7 +855,7 @@ try {
     <div class="header">
         <div class="header-title">
             <h1>V-NOTCH PERFORMANCE BENCHMARK REPORT</h1>
-            <p>Release v$appVersion ($gitBranch @ $gitCommit) | C++26 Native-First &amp; WPF (.NET 8)</p>
+            <p>Release v$appVersion ($gitBranch @ $gitCommit) | C++26 Native-First &amp; WPF (.NET 10)</p>
         </div>
         <div class="header-meta">
             <div><strong>Generated:</strong> $reportTimestamp</div>

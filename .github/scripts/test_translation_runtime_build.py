@@ -15,6 +15,7 @@ POWERSHELL_CORE = shutil.which("pwsh")
 INPUTS = (
     "scripts/Build-TranslationRuntime.ps1",
     "Tools/TranslationRuntime/CMakeLists.txt",
+    "Tools/TranslationRuntime/sentencepiece.json",
     "Native/Services/Translation/LiteTranslationRuntime.cpp",
     "Native/Services/Translation/LiteTranslationAbi.h",
     "Native/Services/Translation/LiteTranslationChunks.h",

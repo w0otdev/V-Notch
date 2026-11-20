@@ -153,6 +153,12 @@ jobs:
         with:
           global-json-file: global.json
       - run: dotnet restore V-Notch.csproj --locked-mode -nologo -v:q
+      - name: Configure translation chunk tests
+        run: cmake -S Tools/TranslationRuntime -B artifacts/chunk-tests -A x64 -DVNOTCH_CHUNK_TESTS_ONLY=ON
+      - name: Build translation chunk tests
+        run: cmake --build artifacts/chunk-tests --config Release --target VNotchTranslationChunkTests
+      - name: Run translation chunk tests
+        run: ctest --test-dir artifacts/chunk-tests -C Release --output-on-failure --no-tests=error
       - name: Compile native source and record provenance
         shell: pwsh
         run: ./Tools/New-NativeArtifact.ps1
@@ -236,7 +242,20 @@ jobs:
         env:
           # .NET's default crash collector does not capture native exceptions.
           VSTEST_DUMP_FORCEPROCDUMP: '1'
-        run: pwsh -NoProfile -File Tools/Invoke-TestShard.ps1 -ShardIndex ${{ matrix.shard }} -TotalShards 4 -ResultsDirectory TestResults/Coverage -CollectCoverage -BaseFilter 'Category!=DesktopIntegration&Category!=Performance'
+        run: pwsh -NoProfile -File Tools/Invoke-TestShard.ps1 -ShardIndex ${{ matrix.shard }} -TotalShards 4 -ResultsDirectory TestResults/Coverage -CollectCoverage -BaseFilter 'Category!=DesktopIntegration&Category!=Performance&Category!=ArchitectureScale'
+
+      - name: Check performance budgets without coverage instrumentation
+        if: matrix.shard == 0
+        # Measure latency and allocations without instrumentation; keep the original budgets.
+        run: dotnet test Tests/VNotch.Tests.csproj --configuration Release --no-build --no-restore --filter 'Category=Performance' --blame-hang-timeout 60s --logger 'console;verbosity=normal'
+
+      - name: Check architecture scale without coverage instrumentation
+        if: matrix.shard == 1
+        env:
+          # .NET's default crash collector does not capture native exceptions.
+          VSTEST_DUMP_FORCEPROCDUMP: '1'
+        # Measure storage and UI scale latency/allocations without coverage instrumentation overhead.
+        run: dotnet test Tests/VNotch.Tests.csproj --configuration Release --no-build --no-restore --filter 'Category=ArchitectureScale' --results-directory TestResults/Coverage --blame-hang-timeout 180s --blame-crash-dump-type mini --logger 'console;verbosity=normal'
 
       - name: Retain shard crash diagnostics
         if: ${{ !cancelled() }}
@@ -252,11 +271,6 @@ jobs:
           if-no-files-found: ignore
           retention-days: 7
 
-      - name: Check performance budgets without coverage instrumentation
-        if: matrix.shard == 0
-        # Measure latency and allocations without instrumentation; keep the original budgets.
-        run: dotnet test Tests/VNotch.Tests.csproj --configuration Release --no-build --no-restore --filter 'Category=Performance' --blame-hang-timeout 60s --logger 'console;verbosity=normal'
-
       - name: Upload shard coverage
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
@@ -266,7 +280,7 @@ jobs:
           retention-days: 1
 
       - name: Retain architecture scale evidence
-        if: ${{ !cancelled() }}
+        if: ${{ !cancelled() && matrix.shard == 1 }}
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: architecture-scale-shard-${{ matrix.shard }}
@@ -308,6 +322,16 @@ jobs:
       - name: Verify model provenance and distribution allowlist
         shell: pwsh
         run: ./Tools/Assert-ModelAssets.ps1
+
+      - name: Exercise x64 Desktop Runtime detection
+        shell: pwsh
+        run: |
+          $compiler = ./scripts/Initialize-Nsis.ps1 -CacheDirectory .cache/nsis -DestinationDirectory "$env:RUNNER_TEMP/nsis-detector"
+          $probe = Join-Path $env:RUNNER_TEMP 'desktop-detector.exe'
+          & $compiler /V2 "/DTEST_EXE=$probe" "/DTEST_ID=$([guid]::NewGuid())" Tests/DesktopRuntimeDetection.nsi
+          if ($LASTEXITCODE) { throw 'Could not compile Desktop Runtime detection tests.' }
+          $result = Start-Process -FilePath $probe -Wait -PassThru
+          if ($result.ExitCode) { throw "Desktop Runtime detector failed fixture $($result.ExitCode)." }
 
       - name: Validate all locale keys and format placeholders
         run: python Tools/validate_locales.py

@@ -5,7 +5,7 @@ working-tree sources. It does not rebuild or launch V-Notch, change settings,
 or use the real clipboard history. Scratch documents, runtime DLLs, source
 snapshots and all observations stay in the output directory.
 
-Requires Windows x64, PowerShell 7, .NET 8 SDK, Python 3 (standard library only),
+Requires Windows x64, PowerShell 7, .NET 10 SDK, Python 3 (standard library only),
 and MSVC 2022 C++ tools/Windows SDK. Restore the application's pinned ONNX Runtime
 DirectML 1.24.4 and DirectML 1.15.4 packages first. The script finds vcvars64 from
 `obj/native/vcvars64.cache`; pass `-VcVars64Path` if that cache is unavailable.

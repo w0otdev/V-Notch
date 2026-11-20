@@ -46,7 +46,8 @@ The [INT8 conversion](https://huggingface.co/solavr/small100-ctranslate2-int8) i
 ## Reproducible runtime build
 
 A normal Windows build runs `scripts/Build-TranslationRuntime.ps1`. It fetches pinned, SHA-256-verified
-CTranslate2 4.9.0 headers and its official Windows wheel, and SentencePiece 0.2.0 source. It links only
+CTranslate2 4.9.0 headers and its official Windows wheel, and SentencePiece 0.2.3 source. CMake also
+checks the Abseil, Protobuf, protoc and FlatBuffers archive hashes. It links only
 the native CTranslate2 DLL (Python is neither required nor shipped) and statically links SentencePiece.
 Visual Studio 2022 C++ x64 tools and CMake are required. The first build needs network access; subsequent
 builds reuse `.cache/opus-runtime` and an input signature. `-p:SkipTranslationRuntime=true` skips rebuilding.
