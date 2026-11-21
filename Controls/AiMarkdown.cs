@@ -1,4 +1,3 @@
-using System.Buffers;
 using System.Runtime.InteropServices;
 using System.Windows;
 using System.Windows.Documents;
@@ -120,91 +119,5 @@ internal static partial class AiMarkdown
             : CreateAiFlowOptions(font, normalBody, uniformBold);
 
         return MarkdownWpfRenderer.RenderFlowDocument(GetOrParseDocument(markdown), options);
-    }
-
-    // Parse first, then trim the formatted document: Markdown delimiters never become printed text.
-    internal static FlowDocument RenderWords(string markdown, int wordLimit, out int shown,
-        out bool caughtUp, double fadeMilliseconds, List<double>? revealTimes = null, double nowMilliseconds = 0,
-        bool uniformBold = false)
-    {
-        // Temporarily close common unfinished spans while the next network chunk is pending.
-        // These closers are presentation-only and never change the saved response.
-        markdown = CloseSpans(markdown);
-        var doc = Render(markdown, uniformBold: uniformBold);
-        shown = 0;
-        TextPointer? lastStart = null;
-        TextPointer? cutoff = null;
-        var fadingWords = new List<(TextPointer Start, TextPointer End, double Progress)>();
-        var cursor = doc.ContentStart;
-        caughtUp = true;
-        Span<VnMarkdownWordSlice> stackWordSlices = stackalloc VnMarkdownWordSlice[128];
-
-        while (cursor != null && cursor.CompareTo(doc.ContentEnd) < 0)
-        {
-            if (cursor.GetPointerContext(LogicalDirection.Forward) == TextPointerContext.Text)
-            {
-                string text = cursor.GetTextInRun(LogicalDirection.Forward);
-                ReadOnlySpan<char> textSpan = text.AsSpan();
-                VnMarkdownWordSlice[]? rentedSlices = null;
-                Span<VnMarkdownWordSlice> wordSlices = stackWordSlices;
-                int rc = vn_markdown_scan_word_spans(textSpan, textSpan.Length, wordSlices, wordSlices.Length, out int wordCount);
-                if (rc == -2 && wordCount > wordSlices.Length)
-                {
-                    rentedSlices = ArrayPool<VnMarkdownWordSlice>.Shared.Rent(wordCount);
-                    wordSlices = rentedSlices.AsSpan(0, wordCount);
-                    vn_markdown_scan_word_spans(textSpan, textSpan.Length, wordSlices, wordSlices.Length, out wordCount);
-                }
-
-                try
-                {
-                    for (int i = 0; i < wordCount; i++)
-                    {
-                        var word = wordSlices[i];
-                        if (shown == wordLimit) { caughtUp = false; break; }
-                        lastStart = cursor.GetPositionAtOffset(word.Start);
-                        cutoff = cursor.GetPositionAtOffset(word.Start + word.Length);
-                        if (revealTimes != null)
-                        {
-                            if (shown >= revealTimes.Count) revealTimes.Add(nowMilliseconds);
-                            double progress = Math.Clamp((nowMilliseconds - revealTimes[shown]) / fadeMilliseconds, 0, 1);
-                            if (progress < 1 && lastStart != null && cutoff != null)
-                                fadingWords.Add((lastStart, cutoff, progress));
-                        }
-                        shown++;
-                    }
-                }
-                finally
-                {
-                    if (rentedSlices != null)
-                    {
-                        ArrayPool<VnMarkdownWordSlice>.Shared.Return(rentedSlices);
-                    }
-                }
-                if (!caughtUp) break;
-            }
-            cursor = cursor.GetNextContextPosition(LogicalDirection.Forward);
-        }
-        if (cutoff != null && lastStart != null)
-        {
-            if (!caughtUp) new TextRange(cutoff, doc.ContentEnd).Text = "";
-            if (revealTimes == null) fadingWords.Add((lastStart, cutoff, 0));
-            // Rebuilt documents resume each word's own fade instead of restarting or dropping it.
-            foreach (var word in fadingWords)
-            {
-                var range = new TextRange(word.Start, word.End);
-                var foreground = range.GetPropertyValue(TextElement.ForegroundProperty) as SolidColorBrush;
-                // Explicit inline boundaries prevent WPF from merging same-colored
-                // words into a shared Run and fading the whole sentence.
-                var ink = new SolidColorBrush(foreground?.Color ?? VNotch.Services.UiPalette.PrimaryColor)
-                { Opacity = 1 };
-                _ = new Span(word.Start, word.End) { Foreground = ink };
-                ink.BeginAnimation(Brush.OpacityProperty,
-                    new System.Windows.Media.Animation.DoubleAnimation(word.Progress, 1,
-                        TimeSpan.FromMilliseconds(fadeMilliseconds * (1 - word.Progress)))
-                    { FillBehavior = System.Windows.Media.Animation.FillBehavior.Stop });
-            }
-        }
-
-        return doc;
     }
 }

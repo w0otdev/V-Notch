@@ -91,7 +91,7 @@ internal static partial class SpotlightSystemCatalog
 
     private static string GetLabel(string key, string fallback)
     {
-        string text = Loc.Get(key) ?? string.Empty;
+        string text = Loc.Get(key);
         ReadOnlySpan<char> tSpan = text.AsSpan();
         ReadOnlySpan<char> kSpan = key.AsSpan();
         vn_spotlight_system_catalog_should_use_fallback(tSpan, tSpan.Length, kSpan, kSpan.Length, out byte useFallback);

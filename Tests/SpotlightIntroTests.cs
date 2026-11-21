@@ -61,13 +61,17 @@ public sealed class SpotlightIntroTests
         try
         {
             AnimationConfig.SetReduceMotion(true);
-            var settings = new NotchSettings { HasSeenSpotlightIntro = hasSeenIntro };
+            var legacy = System.Text.Json.JsonSerializer.Serialize(new { HasSeenSpotlightIntro = hasSeenIntro, Language = "en" });
+            var settings = System.Text.Json.JsonSerializer.Deserialize<NotchSettings>(legacy)!;
+            string saved = System.Text.Json.JsonSerializer.Serialize(settings);
+            Assert.DoesNotContain("HasSeenSpotlightIntro", saved);
+            settings = System.Text.Json.JsonSerializer.Deserialize<NotchSettings>(saved)!;
+            Assert.Equal("en", settings.Language);
             using var fixture = new SpotlightWindowFixture(settings);
             var window = fixture.Window;
             window.ShowSpotlight();
             AssertCompactSearch(window);
             window.HideSpotlight();
-            settings.HasSeenSpotlightIntro = !hasSeenIntro;
             settings.Language = "vi";
             window.ApplySettings(settings);
             window.ShowSpotlight();

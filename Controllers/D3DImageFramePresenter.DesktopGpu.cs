@@ -96,7 +96,6 @@ internal sealed partial class D3DImageFramePresenter
     [LibraryImport("VNotch.Native.dll", EntryPoint = "vn_glass_gpu_consumer_stalls")]
     private static partial ulong NativeGpuConsumerStalls(GpuHandle handle);
 
-    private readonly bool _useGpuCapture;
     private GpuHandle? _gpuHandle;
     private bool _hasGpuBackBuffer;
     private GpuFrame _pendingGpuFrame;
@@ -217,7 +216,6 @@ internal sealed partial class D3DImageFramePresenter
                 _lastUploadTicks = renderStarted;
                 _pendingFrame = true;
                 _pendingForcePresent = true;
-                _pendingDirtyRows = new GlassDirtyRows(0, frame.Height);
                 submitted = true;
                 schedule = !_presentQueued;
                 _presentQueued = true;

@@ -68,13 +68,13 @@ public sealed partial class LiquidGlassController : IDisposable
         if (gpuMode && invisibleMode)
         {
             _compositePublication = 0;
-            var gpuDims = ComputeFrameDimensions(region, p, true, false, displayW, displayH);
+            var gpuDims = ComputeFrameDimensions(region, p, true, displayW, displayH);
             _outScale = gpuDims.OutScale;
             return ProcessDesktopGpuFrame(p, region, gpuDims, generation, blurSigma, refreshVersion);
         }
         if (gpuMode && !invisibleMode)
         {
-            var gpuDims = ComputeFrameDimensions(region, p, true, false, displayW, displayH);
+            var gpuDims = ComputeFrameDimensions(region, p, true, displayW, displayH);
             _outScale = gpuDims.OutScale;
             if (ProcessDesktopGpuFrame(p, region, gpuDims, generation, blurSigma, refreshVersion, exactWindows: true))
             {
@@ -96,12 +96,12 @@ public sealed partial class LiquidGlassController : IDisposable
                 // subsequent frames too, before that new frame becomes stale.
                 _magnifierProbeUntilTicks = now + 100;
             }
-            var probe = ComputeFrameDimensions(region, p, gpuMode, true, displayW, displayH);
+            var probe = ComputeFrameDimensions(region, p, gpuMode, displayW, displayH);
             if (TryRestoreMagnifier(probe.SrcX, probe.SrcY, probe.PhysSrcW, probe.PhysSrcH))
                 _magnifierProbeUntilTicks = 0;
         }
         bool useMag = !_exactBitBltCapture && _magReady && _mag != null;
-        var dims = ComputeFrameDimensions(region, p, gpuMode, useMag, displayW, displayH);
+        var dims = ComputeFrameDimensions(region, p, gpuMode, displayW, displayH);
         _outScale = dims.OutScale;
 
         bool mapsChanged = false;
@@ -132,11 +132,8 @@ public sealed partial class LiquidGlassController : IDisposable
     }
 
     private FrameDimensions ComputeFrameDimensions(
-#pragma warning disable S1172
-        CaptureRegion region, GlassParams p, bool gpuMode, bool useMag, int displayW, int displayH)
-#pragma warning restore S1172
+        CaptureRegion region, GlassParams p, bool gpuMode, int displayW, int displayH)
     {
-        _ = useMag;
         // A GPU-native lens renders the active crop; pooled capacity handles growth.
         // Full-surface capture remains for the legacy presentation path.
         bool fullSurface = gpuMode && CaptureFullSurface && !UsesNativeRefraction;

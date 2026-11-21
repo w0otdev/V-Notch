@@ -61,23 +61,6 @@ internal static partial class MediaWindowActivator
         IntPtr hwnd, out byte outActivated);
 
     [LibraryImport("VNotch.Native.dll")]
-    private static partial int vn_mediaactivator_normalize_title(
-        ReadOnlySpan<ushort> val, int valLen,
-        Span<ushort> outBuf, int outCap, out int outLen);
-
-    [LibraryImport("VNotch.Native.dll")]
-    private static partial int vn_mediaactivator_score_tab_item(
-        ReadOnlySpan<ushort> tabTitle, int tabTitleLen,
-        ReadOnlySpan<ushort> tabHelp, int tabHelpLen,
-        ReadOnlySpan<ushort> track, int trackLen,
-        ReadOnlySpan<ushort> artist, int artistLen,
-        ReadOnlySpan<ushort> ytTitle, int ytTitleLen,
-        ReadOnlySpan<ushort> ytVideoId, int ytVideoIdLen,
-        ReadOnlySpan<ushort> mediaSrc, int mediaSrcLen,
-        int platform,
-        out int outScore);
-
-    [LibraryImport("VNotch.Native.dll")]
     private static partial int vn_mediaactivator_score_window(
         ReadOnlySpan<ushort> title, int titleLen,
         ReadOnlySpan<ushort> procName, int procLen,
@@ -328,29 +311,6 @@ internal static partial class MediaWindowActivator
         return true;
     }
 
-    private static int ScoreTabItem(string tabTitle, string tabHelp, MediaInfo info)
-    {
-        ReadOnlySpan<ushort> tTitle = MemoryMarshal.Cast<char, ushort>(tabTitle != null ? tabTitle.AsSpan() : ReadOnlySpan<char>.Empty);
-        ReadOnlySpan<ushort> tHelp = MemoryMarshal.Cast<char, ushort>(tabHelp != null ? tabHelp.AsSpan() : ReadOnlySpan<char>.Empty);
-        ReadOnlySpan<ushort> track = MemoryMarshal.Cast<char, ushort>(info.CurrentTrack != null ? info.CurrentTrack.AsSpan() : ReadOnlySpan<char>.Empty);
-        ReadOnlySpan<ushort> artist = MemoryMarshal.Cast<char, ushort>(info.CurrentArtist != null ? info.CurrentArtist.AsSpan() : ReadOnlySpan<char>.Empty);
-        ReadOnlySpan<ushort> ytTitle = MemoryMarshal.Cast<char, ushort>(info.YouTubeTitle != null ? info.YouTubeTitle.AsSpan() : ReadOnlySpan<char>.Empty);
-        ReadOnlySpan<ushort> ytVid = MemoryMarshal.Cast<char, ushort>(info.YouTubeVideoId != null ? info.YouTubeVideoId.AsSpan() : ReadOnlySpan<char>.Empty);
-        ReadOnlySpan<ushort> mSrc = MemoryMarshal.Cast<char, ushort>(info.MediaSource != null ? info.MediaSource.AsSpan() : ReadOnlySpan<char>.Empty);
-
-        vn_mediaactivator_score_tab_item(
-            tTitle, tTitle.Length,
-            tHelp, tHelp.Length,
-            track, track.Length,
-            artist, artist.Length,
-            ytTitle, ytTitle.Length,
-            ytVid, ytVid.Length,
-            mSrc, mSrc.Length,
-            (int)info.Platform,
-            out int score);
-        return score;
-    }
-
     public static IEnumerable<string> GetProcessCandidates(MediaInfo info)
     {
         var candidates = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
@@ -492,21 +452,5 @@ internal static partial class MediaWindowActivator
             PipDetector.IsPipTitle(title ?? string.Empty) ? (byte)1 : (byte)0,
             out int score);
         return score;
-    }
-
-    private static string NormalizeTitle(string? value)
-    {
-        if (string.IsNullOrWhiteSpace(value)) return string.Empty;
-        ReadOnlySpan<ushort> sp = MemoryMarshal.Cast<char, ushort>(value.AsSpan());
-        Span<char> buf = stackalloc char[256];
-        int rc = vn_mediaactivator_normalize_title(sp, sp.Length, MemoryMarshal.Cast<char, ushort>(buf), buf.Length, out int outLen);
-        if (rc == 0) return outLen > 0 ? new string(buf[..outLen]) : string.Empty;
-        if (rc == -2 && outLen > 0)
-        {
-            char[] arr = new char[outLen];
-            if (vn_mediaactivator_normalize_title(sp, sp.Length, MemoryMarshal.Cast<char, ushort>(arr.AsSpan()), arr.Length, out int actual) == 0)
-                return new string(arr, 0, actual);
-        }
-        return string.Empty;
     }
 }

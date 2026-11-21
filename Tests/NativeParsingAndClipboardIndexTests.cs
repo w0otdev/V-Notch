@@ -20,21 +20,19 @@ public sealed class NativeParsingAndClipboardIndexTests
             <t:p begin="1s" end="3s">Duet</t:p><t:p begin="4s" end="5s">Last</t:p>
             </t:body></t:tt>
             """;
-        var managed = LyricsService.ParseAmllTtml(xml)!;
         var utf8 = NativeLyricParser.Parse(Encoding.UTF8.GetBytes(xml), 0);
-        Assert.Equal(new[] { "🎵& Đây", "Duet", "Last" }, managed.Lines.Select(line => line.Text));
-        Assert.Equal(managed.Lines.Select(line => (line.Time, line.Text)), utf8.Select(line => (line.Time, line.Text)));
-        Assert.Equal(new[] { 0, 4 }, managed.Lines[0].Words!.Select(word => word.Offset));
-        Assert.Equal(new[] { 3, 3 }, managed.Lines[0].Words!.Select(word => word.Length));
+        Assert.Equal(new[] { "🎵& Đây", "Duet", "Last" }, utf8.Select(line => line.Text));
+        Assert.Equal(new[] { 0, 4 }, utf8[0].Words!.Select(word => word.Offset));
+        Assert.Equal(new[] { 3, 3 }, utf8[0].Words!.Select(word => word.Length));
     }
 
     [Fact]
     public void XmlRejectsBrokenDocumentsAndDeepNestingWithoutPartialResults()
     {
-        Assert.Throws<XmlException>(() => LyricsService.ParseAmllTtml("<tt xmlns='http://www.w3.org/ns/ttml'><body><p begin='1s' end='2s'>valid</p><broken></body></tt>"));
-        Assert.Empty(YouTubeSubtitleService.ParseXml("<transcript><text start='1'>valid</text><broken></transcript>"));
+        Assert.Throws<XmlException>(() => NativeLyricParser.Parse(Encoding.UTF8.GetBytes("<tt xmlns='http://www.w3.org/ns/ttml'><body><p begin='1s' end='2s'>valid</p><broken></body></tt>"), 0));
+        Assert.Empty(YouTubeSubtitleService.ParseCaptionResponse(System.Text.Encoding.UTF8.GetBytes("<transcript><text start='1'>valid</text><broken></transcript>")));
         string deep = string.Concat(Enumerable.Repeat("<x>", 1000)) + string.Concat(Enumerable.Repeat("</x>", 1000));
-        Assert.Empty(YouTubeSubtitleService.ParseXml(deep));
+        Assert.Empty(YouTubeSubtitleService.ParseCaptionResponse(System.Text.Encoding.UTF8.GetBytes(deep)));
     }
 
     [Theory]

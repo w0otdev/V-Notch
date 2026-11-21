@@ -8,18 +8,6 @@ using VNotch.Services;
 
 namespace VNotch.Controls;
 
-public sealed class TrayCopiedOpacityConverter : System.Windows.Data.IValueConverter
-{
-    public object Convert(object value, Type targetType, object parameter, System.Globalization.CultureInfo culture) => value is true ? 1d : 0d;
-    public object ConvertBack(object value, Type targetType, object parameter, System.Globalization.CultureInfo culture) => System.Windows.Data.Binding.DoNothing;
-}
-
-public sealed class TrayCopiedBlurConverter : System.Windows.Data.IValueConverter
-{
-    public object Convert(object value, Type targetType, object parameter, System.Globalization.CultureInfo culture) => value is true ? 16d : 0d;
-    public object ConvertBack(object value, Type targetType, object parameter, System.Globalization.CultureInfo culture) => System.Windows.Data.Binding.DoNothing;
-}
-
 // Animate presentation brushes without replacing the bindings that own state.
 public static class TrayMotion
 {

@@ -222,9 +222,6 @@ VN_EXPORT int32_t __stdcall vn_elastic_slider_eval_mouse(
 VN_EXPORT int32_t __stdcall vn_highlighted_text_fill_mask(
     const wchar_t* text_ptr, int32_t text_len, const wchar_t* query_ptr, int32_t query_len,
     uint8_t* out_mask, int32_t mask_cap, uint8_t* out_matched) noexcept;
-VN_EXPORT int32_t __stdcall vn_translation_compute_character_fades(
-    double elapsed, double interval, double fade_ms, int32_t brush_count, int32_t completed_index,
-    double* out_opacities, int32_t opacity_cap, int32_t* out_start_index, int32_t* out_end_index, int32_t* out_new_completed) noexcept;
 VN_EXPORT int32_t __stdcall vn_translation_compute_popup_limits(
     double work_height, double dpi_scale_y, double* out_max_height, double* out_panel_max_height) noexcept;
 VN_EXPORT int32_t __stdcall vn_translation_compute_viewport_height(

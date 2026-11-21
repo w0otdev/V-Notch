@@ -358,7 +358,9 @@ public sealed class NotchNavigationIntegrationTests
         var window = fixture.Window;
         await StartAsync(window, ct);
         window.SetDebugViewState("MediaExpanded");
-        await WpfFrameWaiter.UntilAsync(() => !IsAnimating(window), "initial media expansion", ct);
+        // The media width can keep animating after the view transition completes.
+        bool MediaSettled() => !IsAnimating(window) && !Field<bool>(window, "_isMediaWidthAnimating");
+        await WpfFrameWaiter.UntilAsync(MediaSettled, "initial media expansion and resize", ct);
         double expandedWidth = window.NotchBorder.Width;
         window.SetDebugViewState("CollapsedNotch");
         await WpfFrameWaiter.UntilAsync(() => window.NotchBorder.Width < expandedWidth - 10, "partway through collapse", ct);
@@ -369,7 +371,7 @@ public sealed class NotchNavigationIntegrationTests
         ExecutePendingTransition(window);
         Assert.Equal(opacity, window.ExpandedContent.Opacity, 6);
         Assert.Equal(y, window.ExpandedContent.RenderTransform.Value.OffsetY, 6);
-        await WpfFrameWaiter.UntilAsync(() => !IsAnimating(window), "reversed media expansion", ct);
+        await WpfFrameWaiter.UntilAsync(MediaSettled, "reversed media expansion and resize", ct);
         Assert.Equal(NotchView.Media, coordinator.CurrentView);
         Assert.Equal(expandedWidth, window.NotchBorder.Width, 2);
         Assert.Equal(Visibility.Visible, window.ExpandedContent.Visibility);

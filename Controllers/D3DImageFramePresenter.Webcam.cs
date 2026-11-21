@@ -58,7 +58,6 @@ internal sealed partial class D3DImageFramePresenter
                 transferred = true;
                 _webcamGpuFrame = true;
                 _frameWidth = _surfaceWidth; _frameHeight = _surfaceHeight;
-                _pendingDirtyRows = new GlassDirtyRows(0, _frameHeight);
                 _pendingFrame = true;
                 _lastUploadTicks = Stopwatch.GetTimestamp();
                 if (_presentQueued) return SurfaceFrameResult.Transferred;
@@ -124,7 +123,6 @@ internal sealed partial class D3DImageFramePresenter
                 finally { _uploadSurface.UnlockRect(); }
                 _frameWidth = _surfaceWidth;
                 _frameHeight = _surfaceHeight;
-                _pendingDirtyRows = new GlassDirtyRows(0, _frameHeight);
                 _pendingFrame = true;
                 _lastUploadTicks = Stopwatch.GetTimestamp();
                 if (_presentQueued) return true;

@@ -41,7 +41,7 @@ public sealed class SmartCropArtworkRegressionTests
     [Theory]
     [InlineData(512, 288)]
     [InlineData(320, 180)]
-    public void ExplicitObjectDetectionWorksAtDecodedThumbnailSizes(int width, int height) => SharedStaTestRunner.RunAsync(async ct =>
+    public void ExplicitObjectDetectionWorksAtDecodedThumbnailSizes(int width, int height) => SharedStaTestRunner.Run(() =>
     {
         var source = CreateArtwork(width, height);
         var person = new Detection
@@ -52,7 +52,7 @@ public sealed class SmartCropArtworkRegressionTests
         };
         using var service = new SmartThumbnailCropService();
         SeedDetection(service, source, person);
-        var crop = await service.GetSmartCropRectAsync(source, height, true, ct);
+        var crop = service.GetSmartCropRect(source, height, true);
         Assert.True(crop.HasValue);
         Assert.True(crop.Value.X <= person.X1);
         Assert.True(crop.Value.X + crop.Value.Width >= person.X2,

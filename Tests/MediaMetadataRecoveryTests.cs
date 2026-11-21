@@ -366,7 +366,7 @@ public sealed class MediaMetadataRecoveryTests
         var completion = new TaskCompletionSource<string?>(TaskCreationOptions.RunContinuationsAsynchronously);
         var metadata = new SpotifyMetadata(completion.Task);
         using var fixture = new Fixture("", metadata);
-        var viewModel = new VNotch.ViewModels.MediaViewModel(new FakeMediaDetectionService(), _ => Task.CompletedTask);
+        var viewModel = new VNotch.ViewModels.MediaViewModel(new FakeMediaDetectionService());
         var info = new MediaInfo { CurrentTrack = "New", CurrentArtist = "Singer", MediaSource = "Spotify", SourceAppId = "Spotify.exe", SessionInstanceKey = "new-session", IsPlaying = true, Position = TimeSpan.FromSeconds(3) };
         await (Task)Invoke(fixture.Service, "ResolveSpotifyArtistsBeforePublishAsync", info, CancellationToken.None)!;
         viewModel.Update(info);
@@ -444,7 +444,7 @@ public sealed class MediaMetadataRecoveryTests
             return result;
         }
         public Task<YouTubeLookupResult?> TryGetYouTubeVideoInfoFromUrlAsync(string url, CancellationToken ct = default) => Task.FromResult<YouTubeLookupResult?>(null);
-        public Task<YouTubeLookupResult?> TryGetYouTubeVideoIdWithInfoAsync(string title, string artist = "", CancellationToken ct = default) => Task.FromResult<YouTubeLookupResult?>(null);
+        public Task<YouTubeLookupResult?> TryGetYouTubeVideoIdWithInfoAsync(string title, CancellationToken ct = default) => Task.FromResult<YouTubeLookupResult?>(null);
         public Task<YouTubeLookupResult?> TrySearchYouTubeByTitleAsync(string title, string artist = "", CancellationToken ct = default) => Task.FromResult<YouTubeLookupResult?>(null);
         public Task<string?> TryGetSoundCloudArtworkUrlAsync(string title, string artist = "", bool requireStrongMatch = false, CancellationToken ct = default) => Task.FromResult<string?>(null);
         public Task<string?> TryGetSoundCloudArtworkFromUrlAsync(string soundCloudUrl, CancellationToken ct = default) => Task.FromResult<string?>(null);

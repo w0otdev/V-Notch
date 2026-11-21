@@ -63,7 +63,7 @@ public sealed class YouTubeProgressTransitionTests
         Assert.Equal("", model.CurrentTimeText);
         Assert.False(model.HasTimeline);
         Assert.False(model.IsSeekEnabled);
-        await model.SeekRelative(10);
+        await model.SeekToPosition(TimeSpan.FromSeconds(10));
         Assert.Null(media.LastSeek);
 
         var ready = pending.Clone();

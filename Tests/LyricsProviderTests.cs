@@ -52,17 +52,15 @@ public sealed partial class LyricsProviderTests
     [Fact]
     public void NetEaseQqAndKugouSelectExactStudioVersionAndRejectWrongEditions()
     {
-        using var neDoc = JsonDocument.Parse(NetEaseSearchJson);
-        Assert.Equal(3336179095L, LyricsService.SelectBestNetEaseSongId(neDoc.RootElement, "Thu Đợi", "Wren Evans, itsnk", 310));
-        Assert.Equal(1001L, LyricsService.SelectBestNetEaseSongId(neDoc.RootElement, "Thu Đợi (Live)", "Wren Evans", 310));
-        Assert.Equal(0L, LyricsService.SelectBestNetEaseSongId(neDoc.RootElement, "Thu Đợi", "Wren Evans", 190));
+        Assert.Equal(3336179095L, NativeCatalogParser.Select(NetEaseSearchJson, 3, "Thu Đợi", "Wren Evans, itsnk", 310000L).Id);
+        Assert.Equal(1001L, NativeCatalogParser.Select(NetEaseSearchJson, 3, "Thu Đợi (Live)", "Wren Evans", 310000L).Id);
+        Assert.Equal(0L, NativeCatalogParser.Select(NetEaseSearchJson, 3, "Thu Đợi", "Wren Evans", 190000L).Id);
 
-        using var qqDoc = JsonDocument.Parse(QqSearchJson);
-        Assert.Equal("000VlkAi0PFHFH", LyricsService.SelectBestQqMusicSongMid(qqDoc.RootElement, "Từng Quen", "Wren Evans, itsnk", 175));
-        Assert.Null(LyricsService.SelectBestQqMusicSongMid(qqDoc.RootElement, "Từng Quen", "Wren Evans", 240));
+        Assert.Equal("000VlkAi0PFHFH", NativeCatalogParser.Select(QqSearchJson, 5, "Từng Quen", "Wren Evans, itsnk", 175000L).Text);
+        Assert.Null(NativeCatalogParser.Select(QqSearchJson, 5, "Từng Quen", "Wren Evans", 240000L).Text);
 
-        using var kgDoc = JsonDocument.Parse(KugouSearchJson);
-        Assert.Equal(("54532139", "k_exact"), LyricsService.SelectBestKugouCandidate(kgDoc.RootElement, "Faded", "Alan Walker", 212));
+        var kugou = NativeCatalogParser.Select(KugouSearchJson, 4, "Faded", "Alan Walker", 212000L);
+        Assert.Equal(("54532139", "k_exact"), (kugou.Text, kugou.Key));
     }
 
     [Fact]

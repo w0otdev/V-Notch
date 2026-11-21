@@ -61,7 +61,6 @@ public sealed class NotchTransitionCoordinator : INotchNavigation, IDisposable
 
     public event EventHandler<NotchTransitionSnapshot>? StateChanged;
     public event EventHandler<TransitionRequestEventArgs>? TransitionRequested;
-    public event EventHandler? CountdownCompletionDisplayRequested;
 
     public NotchTransitionSnapshot Snapshot
     {
@@ -296,7 +295,6 @@ public sealed class NotchTransitionCoordinator : INotchNavigation, IDisposable
 
         if (showDeferredCountdown)
         {
-            CountdownCompletionDisplayRequested?.Invoke(this, EventArgs.Empty);
             RequestView(NotchView.Timer, "CountdownCompletion");
         }
         else if (restoreView.HasValue)

@@ -28,14 +28,11 @@ internal static partial class DynamicIslandColorExtractor
     }
 
     private static readonly ConditionalWeakTable<BitmapSource, BoxedPalette> _paletteCache = new();
-    private sealed record CroppedPalette(Int32Rect Crop, Palette Palette);
-    private static readonly ConditionalWeakTable<BitmapSource, CroppedPalette> _croppedPaletteCache = new();
     private static readonly ConditionalWeakTable<BitmapSource, BoxedDim> _dimCache = new();
 
     internal static void ClearCache()
     {
         _paletteCache.Clear();
-        _croppedPaletteCache.Clear();
         _dimCache.Clear();
     }
 
@@ -118,39 +115,6 @@ internal static partial class DynamicIslandColorExtractor
 
         _paletteCache.AddOrUpdate(bitmap, new BoxedPalette(palette));
         return palette;
-    }
-
-    public static Palette GetDynamicIslandPalette(BitmapSource bitmap, Rect smartCropBbox)
-    {
-        if (bitmap == null || !bitmap.CheckAccess())
-            return GetDynamicIslandPalette(bitmap!);
-        _ = TryFreezeBitmap(bitmap);
-
-        Int32Rect? cropRect = GetClampedCropRect(smartCropBbox, bitmap.PixelWidth, bitmap.PixelHeight);
-        if (cropRect is not Int32Rect crop)
-            return GetDynamicIslandPalette(bitmap);
-
-        if (_croppedPaletteCache.TryGetValue(bitmap, out var cached) && cached.Crop == crop)
-            return cached.Palette;
-
-        var cropped = new CroppedBitmap(bitmap, crop);
-        _ = TryFreezeBitmap(cropped);
-        Palette palette = GetDynamicIslandPalette(cropped);
-        _croppedPaletteCache.AddOrUpdate(bitmap, new CroppedPalette(crop, palette));
-        return palette;
-    }
-
-    internal static Int32Rect? GetClampedCropRect(Rect bounds, int pixelWidth, int pixelHeight)
-    {
-        if (bounds.IsEmpty)
-            return null;
-
-        vn_dicolor_get_clamped_crop_rect(
-            bounds.Left, bounds.Top, bounds.Right, bounds.Bottom, 0,
-            pixelWidth, pixelHeight,
-            out int x, out int y, out int w, out int h, out byte valid);
-
-        return valid != 0 ? new Int32Rect(x, y, w, h) : null;
     }
 
     public static double GetAdaptiveBlurOpacity(double luminance, double brightnessBoost = 1.0)
@@ -268,32 +232,6 @@ internal static partial class DynamicIslandColorExtractor
 
     #endregion
 
-    #region HSV / HSL / contrast helpers
-
-    public static (double H, double S, double L) ToHsl(Color c)
-    {
-        vn_dicolor_to_hsl(c.R, c.G, c.B, out double h, out double s, out double l);
-        return (h, s, l);
-    }
-
-    public static Color HslToColor(double h, double s, double l)
-    {
-        vn_dicolor_hsl_to_color(h, s, l, out byte r, out byte g, out byte b);
-        return Color.FromRgb(r, g, b);
-    }
-
-    public static double GetRelativeLuminance(Color c)
-    {
-        vn_dicolor_get_relative_luminance(c.R, c.G, c.B, out double lum);
-        return lum;
-    }
-
-    public static double GetContrastRatio(Color a, Color b)
-    {
-        vn_dicolor_get_contrast_ratio(a.R, a.G, a.B, b.R, b.G, b.B, out double ratio);
-        return ratio;
-    }
-
     public static Color EnsureTextOnDarkBackground(Color color, Color background, double minRatio)
     {
         vn_dicolor_ensure_text_on_dark_bg(
@@ -303,18 +241,6 @@ internal static partial class DynamicIslandColorExtractor
             out byte r, out byte g, out byte b);
         return Color.FromRgb(r, g, b);
     }
-
-    public static Color EnsureContrast(Color sub, Color main, double minRatio)
-    {
-        vn_dicolor_ensure_contrast(
-            sub.R, sub.G, sub.B,
-            main.R, main.G, main.B,
-            minRatio,
-            out byte r, out byte g, out byte b);
-        return Color.FromRgb(r, g, b);
-    }
-
-    #endregion
 
     [StructLayout(LayoutKind.Sequential, Pack = 1)]
     private struct VnPaletteResult
@@ -340,12 +266,6 @@ internal static partial class DynamicIslandColorExtractor
     }
 
     [LibraryImport("VNotch.Native.dll")]
-    private static partial int vn_dicolor_get_clamped_crop_rect(
-        double left, double top, double right, double bottom, byte is_empty,
-        int pixel_width, int pixel_height,
-        out int out_x, out int out_y, out int out_w, out int out_h, out byte out_valid);
-
-    [LibraryImport("VNotch.Native.dll")]
     private static partial int vn_dicolor_get_adaptive_blur_opacity(
         double luminance, double brightness_boost, out double out_opacity);
 
@@ -358,28 +278,8 @@ internal static partial class DynamicIslandColorExtractor
         byte* pixels, int width, int height, int stride, out VnPaletteResult out_res);
 
     [LibraryImport("VNotch.Native.dll")]
-    private static partial int vn_dicolor_to_hsl(
-        byte r, byte g, byte b, out double out_h, out double out_s, out double out_l);
-
-    [LibraryImport("VNotch.Native.dll")]
-    private static partial int vn_dicolor_hsl_to_color(
-        double h, double s, double l, out byte out_r, out byte out_g, out byte out_b);
-
-    [LibraryImport("VNotch.Native.dll")]
-    private static partial int vn_dicolor_get_relative_luminance(
-        byte r, byte g, byte b, out double out_lum);
-
-    [LibraryImport("VNotch.Native.dll")]
-    private static partial int vn_dicolor_get_contrast_ratio(
-        byte r1, byte g1, byte b1, byte r2, byte g2, byte b2, out double out_ratio);
-
-    [LibraryImport("VNotch.Native.dll")]
     private static partial int vn_dicolor_ensure_text_on_dark_bg(
         byte cr, byte cg, byte cb, byte br, byte bg, byte bb, double min_ratio,
         out byte out_r, out byte out_g, out byte out_b);
 
-    [LibraryImport("VNotch.Native.dll")]
-    private static partial int vn_dicolor_ensure_contrast(
-        byte sr, byte sg, byte sb, byte mr, byte mg, byte mb, double min_ratio,
-        out byte out_r, out byte out_g, out byte out_b);
 }

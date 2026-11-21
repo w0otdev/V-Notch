@@ -70,7 +70,7 @@ internal static partial class TranslationNativeRuntime
         {
             if (_loaded && _handle != IntPtr.Zero && _library != null) return _library;
             if (TryLoadOnDemandVulkan(out string? loaded)) return loaded!;
-            foreach (string path in Candidates(AppContext.BaseDirectory, Avx.IsSupported, Avx2.IsSupported, Avx512F.IsSupported))
+            foreach (string path in Candidates(AppContext.BaseDirectory, Avx2.IsSupported, Avx512F.IsSupported))
             {
                 if (TryLoadLibrary(path, out loaded)) return loaded!;
             }
@@ -165,7 +165,7 @@ internal static partial class TranslationNativeRuntime
         if (baseHandle == IntPtr.Zero) return IntPtr.Zero;
         try
         {
-            foreach (string candidate in Candidates(appRoot, avx2, avx2, false).Skip(1))
+            foreach (string candidate in Candidates(appRoot, avx2, false).Skip(1))
             {
                 var cpuHandle = load(Path.Combine(Path.GetDirectoryName(candidate)!, "ggml-cpu.dll"));
                 if (cpuHandle == IntPtr.Zero) continue;
@@ -186,9 +186,8 @@ internal static partial class TranslationNativeRuntime
         }
     }
 
-    internal static IEnumerable<string> Candidates(string root, bool avx, bool avx2, bool avx512)
+    internal static IEnumerable<string> Candidates(string root, bool avx2, bool avx512)
     {
-        _ = avx;
         string native = Path.Combine(Path.GetFullPath(root), "runtimes", "win-x64", "native");
         yield return Path.Combine(native, "vulkan", "llama.dll");
         if (avx2 || avx512) yield return Path.Combine(native, "avx2", "llama.dll");

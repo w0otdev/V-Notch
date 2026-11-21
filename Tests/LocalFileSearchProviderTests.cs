@@ -182,8 +182,8 @@ public sealed class LocalFileSearchProviderTests : IDisposable
         usage.Preferences.SetExcludedFolders([Path.GetDirectoryName(hidden)!]);
         var service = new SpotlightSearchService([provider], usage);
         Assert.True(service.IsWindowsSearchAvailable);
-        Assert.Empty(await service.SearchInstantAsync("search-report", 10, CancellationToken.None));
-        Assert.Equal(visible, Assert.Single(await service.SearchDeferredAsync("search-report", 10, CancellationToken.None)).Target);
+        Assert.False(provider.IsInstant);
+        Assert.Equal(visible, Assert.Single(await service.SearchAsync("search-report", 10, CancellationToken.None)).Target);
     }
 
     [Fact]

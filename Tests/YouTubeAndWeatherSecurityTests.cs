@@ -3,7 +3,6 @@ using System.IO;
 using System.Net;
 using System.Net.Http;
 using System.Text;
-using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 using VNotch.Services;
@@ -19,37 +18,21 @@ public class YouTubeAndWeatherSecurityTests
     [InlineData("https://www.youtube.com:8443/api/timedtext")]
     [InlineData("https://user@www.youtube.com/api/timedtext")]
     [InlineData("https://notyoutube.com/api/timedtext")]
-    public void ParseCaptionTrackFromJson_RejectsUntrustedBaseUrls(string untrustedUrl)
+    public void CaptionTrack_RejectsUntrustedBaseUrls(string untrustedUrl)
     {
-        string json = JsonSerializer.Serialize(new
-        {
-            baseUrl = untrustedUrl,
-            languageCode = "en",
-            vssId = ".en",
-            name = new { simpleText = "English" }
-        });
-
-        using var doc = JsonDocument.Parse(json);
-        var track = YouTubeSubtitleService.ParseCaptionTrackFromJson(doc.RootElement);
+        var item = new YouTubeMetadataParsing.ParsedItem(untrustedUrl, "en", "English", ".en", "", 0, 0);
+        var track = YouTubeSubtitleService.CreateCaptionTrack(item, null);
 
         Assert.False(YouTubeSubtitleService.IsAllowedCaptionBaseUrl(untrustedUrl));
         Assert.Null(track);
     }
 
     [Fact]
-    public void ParseCaptionTrackFromJson_AcceptsValidYouTubeTimedTextUrl()
+    public void CaptionTrack_AcceptsValidYouTubeTimedTextUrl()
     {
         const string validUrl = "https://www.youtube.com/api/timedtext?v=abc";
-        string json = JsonSerializer.Serialize(new
-        {
-            baseUrl = validUrl,
-            languageCode = "en",
-            vssId = ".en",
-            name = new { simpleText = "English" }
-        });
-
-        using var doc = JsonDocument.Parse(json);
-        var track = YouTubeSubtitleService.ParseCaptionTrackFromJson(doc.RootElement);
+        var item = new YouTubeMetadataParsing.ParsedItem(validUrl, "en", "English", ".en", "", 0, 0);
+        var track = YouTubeSubtitleService.CreateCaptionTrack(item, null);
 
         Assert.True(YouTubeSubtitleService.IsAllowedCaptionBaseUrl(validUrl));
         Assert.NotNull(track);
@@ -64,7 +47,7 @@ public class YouTubeAndWeatherSecurityTests
             "<!DOCTYPE foo [<!ENTITY xxe \"test\">]>" +
             "<transcript><text start=\"0\" dur=\"1\">&xxe;</text></transcript>";
 
-        var lines = YouTubeSubtitleService.ParseTimedTextXml(maliciousXml);
+        var lines = YouTubeSubtitleService.ParseCaptionResponse(System.Text.Encoding.UTF8.GetBytes(maliciousXml));
 
         Assert.NotNull(lines);
         Assert.Empty(lines);

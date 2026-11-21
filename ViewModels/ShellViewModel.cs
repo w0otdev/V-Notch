@@ -33,7 +33,7 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
         _dispatcher = dispatcher;
         _coordinator = coordinator;
         Progress = new(mediaService);
-        Media = new(mediaService, Progress.SeekRelative);
+        Media = new(mediaService);
         Secondary = new(batteryService);
         AudioMixer = new(volumeService);
         _mediaUpdates = new(dispatcher.BeginInvokeBackground, ApplyMediaUpdate);
@@ -59,7 +59,6 @@ public sealed partial class ShellViewModel : ObservableObject, IDisposable
     {
         _mediaService.Start();
         Secondary.UpdateBattery();
-        Secondary.UpdateCalendar();
     }
 
     private void OnMediaChanged(object? sender, MediaInfo info) => _mediaUpdates.Enqueue(info);

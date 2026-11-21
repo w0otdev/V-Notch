@@ -52,12 +52,6 @@ internal sealed partial class LyricsService
         }
     }
 
-    internal static LyricsResult? ParseAmllTtml(string xml)
-    {
-        if (string.IsNullOrWhiteSpace(xml) || xml.Length > MaxLyricsResponseBytes) return null;
-        return AmllResult(NativeLyricParser.ParseXml(xml, amll: true));
-    }
-
     private static LyricsResult? AmllResult(List<LyricLine> lines) =>
         lines.Count == 0 ? null : new(lines, LyricsProviderOrder.Amll);
 }

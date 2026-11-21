@@ -12,7 +12,7 @@ public interface IMediaDetectionService : IDisposable
 
     bool ToggleSessionPin(MediaInfo info);
 
-    Task<YouTubeLookupResult?> TryGetYouTubeVideoIdWithInfoAsync(string title, string artist = "", CancellationToken ct = default);
+    Task<YouTubeLookupResult?> TryGetYouTubeVideoIdWithInfoAsync(string title, CancellationToken ct = default);
 
     event EventHandler<MediaInfo>? MediaChanged;
 

@@ -1561,7 +1561,6 @@
                                                     <flow:NumberFlowText Grid.Column="1" Style="{StaticResource ValueText}" Visibility="Collapsed">
                                                         <Run x:Name="DynamicIslandWidthValue" Text="260"/><Run Text=" px"/>
                                                     </flow:NumberFlowText>
-                                                    <TextBlock x:Name="DynamicIslandWidthHint" Visibility="Collapsed"/>
                                                     <controls:ElasticSlider x:Name="DynamicIslandWidthSlider"
                                                             Label="Dynamic Island Length" Unit=" px"
                                                             Description="Adjust the floating pill length used by Dynamic Island mode."
@@ -1580,7 +1579,6 @@
                                                     <flow:NumberFlowText Grid.Column="1" Style="{StaticResource ValueText}" Visibility="Collapsed">
                                                         <Run x:Name="DynamicIslandHeightValue" Text="40"/><Run Text=" px"/>
                                                     </flow:NumberFlowText>
-                                                    <TextBlock x:Name="DynamicIslandHeightHint" Visibility="Collapsed"/>
                                                     <controls:ElasticSlider x:Name="DynamicIslandHeightSlider"
                                                             Label="Dynamic Island Width" Unit=" px"
                                                             Description="Adjust the floating pill width/thickness used by Dynamic Island mode."
@@ -1600,7 +1598,6 @@
                                                 <flow:NumberFlowText Grid.Column="1" Style="{StaticResource ValueText}" Visibility="Collapsed">
                                                     <Run x:Name="WidthValue" Text="360"/><Run Text=" px"/>
                                                 </flow:NumberFlowText>
-                                                <TextBlock x:Name="WidthHint" Visibility="Collapsed"/>
                                                 <controls:ElasticSlider x:Name="WidthSlider"
                                                         Label="Width" Unit=" px"
                                                         Description="How wide the compact notch should sit on screen."
@@ -1619,7 +1616,6 @@
                                                 <flow:NumberFlowText Grid.Column="1" Style="{StaticResource ValueText}" Visibility="Collapsed">
                                                     <Run x:Name="HeightValue" Text="32"/><Run Text=" px"/>
                                                 </flow:NumberFlowText>
-                                                <TextBlock x:Name="HeightHint" Visibility="Collapsed"/>
                                                 <controls:ElasticSlider x:Name="HeightSlider"
                                                         Label="Height" Unit=" px"
                                                         Description="Controls the compact profile thickness."
@@ -1638,7 +1634,6 @@
                                                 <flow:NumberFlowText Grid.Column="1" Style="{StaticResource ValueText}" Visibility="Collapsed">
                                                     <Run x:Name="RadiusValue" Text="16"/><Run Text=" px"/>
                                                 </flow:NumberFlowText>
-                                                <TextBlock x:Name="RadiusHint" Visibility="Collapsed"/>
                                                 <controls:ElasticSlider x:Name="RadiusSlider"
                                                         Label="Corner Radius" Unit=" px"
                                                         Description="Sharper for utility, softer for an island-like feel."
@@ -1658,7 +1653,6 @@
                                                 <flow:NumberFlowText Grid.Column="1" Style="{StaticResource ValueText}" Visibility="Collapsed">
                                                     <Run x:Name="OpacityValue" Text="100"/><Run Text=" %"/>
                                                 </flow:NumberFlowText>
-                                                <TextBlock x:Name="OpacityHint" Visibility="Collapsed"/>
                                                 <controls:ElasticSlider x:Name="OpacitySlider"
                                                         Label="Opacity" Unit="%"
                                                         Description="Blend the notch into the desktop or keep it crisp and solid."
@@ -1765,7 +1759,6 @@
                                                 <flow:NumberFlowText Grid.Column="1" Style="{StaticResource ValueText}" Visibility="Collapsed">
                                                     <Run x:Name="BlurBrightnessValue" Text="140"/><Run Text=" %"/>
                                                 </flow:NumberFlowText>
-                                                <TextBlock x:Name="BlurHint" Visibility="Collapsed"/>
                                                 <controls:ElasticSlider x:Name="BlurBrightnessSlider"
                                                         Label="Blur Brightness" Unit="%"
                                                         Description="Brighten the expanded media blur without changing the notch body opacity."
@@ -1873,7 +1866,6 @@
                                                     <flow:NumberFlowText Grid.Column="1" Style="{StaticResource ValueText}" Visibility="Collapsed">
                                                         <Run x:Name="HoverDelayValue" Text="100"/><Run Text=" ms"/>
                                                     </flow:NumberFlowText>
-                                                    <TextBlock x:Name="ExpandDelayHint" Visibility="Collapsed"/>
                                                     <controls:ElasticSlider x:Name="HoverDelaySlider"
                                                             Label="Expand Delay" Unit=" ms"
                                                             Description="Delay before hover opens the notch."
@@ -3499,7 +3491,6 @@
                                                 <flow:NumberFlowText Grid.Column="1" Style="{StaticResource ValueText}" Visibility="Collapsed">
                                                     <Run x:Name="AnimationFpsValue" Text="120"/><Run Text=" FPS"/>
                                                 </flow:NumberFlowText>
-                                                <TextBlock x:Name="AnimationFpsHint" Visibility="Collapsed"/>
                                                 <CheckBox x:Name="AutoAnimationFpsCheck"
                                                           Content="Auto FPS — match monitor refresh rate"
                                                           Margin="0,0,0,8"

@@ -23,7 +23,7 @@ public sealed class SpotlightMemoryOptimizationTests
         AnimationConfig.SetReduceMotion(true);
         try
         {
-            using var fixture = new SpotlightWindowFixture(new NotchSettings { NotchStyle = "Solid", HasSeenSpotlightIntro = true });
+            using var fixture = new SpotlightWindowFixture(new NotchSettings { NotchStyle = "Solid" });
             var window = fixture.Window;
             window.ShowSpotlight();
             Invoke(window, "ToggleAiMode");
@@ -69,7 +69,7 @@ public sealed class SpotlightMemoryOptimizationTests
         AnimationConfig.SetReduceMotion(true);
         try
         {
-            using var fixture = new SpotlightWindowFixture(new NotchSettings { NotchStyle = "Solid", HasSeenSpotlightIntro = true });
+            using var fixture = new SpotlightWindowFixture(new NotchSettings { NotchStyle = "Solid" });
             var window = fixture.Window;
             window.ShowSpotlight();
             Field<List<SpotlightAiMessage>>(window, "_aiHistory").Add(new("assistant", "**Still here**"));

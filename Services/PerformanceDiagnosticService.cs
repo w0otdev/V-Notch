@@ -120,17 +120,6 @@ public sealed partial class PerformanceDiagnosticService
     private DateTime _lastHealthAlertTime = DateTime.MinValue;
     private readonly long _serviceStartTicks = Stopwatch.GetTimestamp();
 
-    public PerformanceHealthLevel CurrentHealthLevel
-    {
-        get
-        {
-            lock (_lock)
-            {
-                return _currentHealthLevel;
-            }
-        }
-    }
-
     public string CurrentHealthSummary
     {
         get

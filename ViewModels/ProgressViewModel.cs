@@ -14,7 +14,6 @@ public partial class ProgressViewModel : ObservableObject
     private TimeSpan _lastKnownPosition;
     private TimeSpan _lastKnownDuration;
     private DateTime _seekDebounceUntil = DateTime.MinValue;
-    private bool _isDragging;
     private string _lastSignature = "";
     private long _formattedPositionSecond = long.MinValue;
     private long _formattedDurationSecond = long.MinValue;
@@ -46,26 +45,16 @@ public partial class ProgressViewModel : ObservableObject
     private MediaInfo? _currentMediaInfo;
 
     public Func<bool>? IsExpandedCheck { get; set; }
-    public event EventHandler? SessionTransitioned;
-    private string _lastSessionId = "";
 
     public ProgressViewModel(IMediaDetectionService mediaService) => _mediaService = mediaService;
 
     public void Update(MediaInfo info)
     {
-        bool sessionChanged = !string.IsNullOrEmpty(info.SourceAppId) && info.SourceAppId != _lastSessionId;
-        if (sessionChanged)
-        {
-            _lastSessionId = info.SourceAppId;
-            SessionTransitioned?.Invoke(this, EventArgs.Empty);
-        }
-
         CurrentMediaInfo = info;
         bool show = info.IsAnyMediaPlaying && (info.HasTimeline || info.IsTimelineIndeterminate);
         if (!show)
         {
             IsPlaying = false;
-            _lastSessionId = "";
             IsIndeterminate = false;
             IsSeekEnabled = false;
             HasTimeline = true;
@@ -78,7 +67,6 @@ public partial class ProgressViewModel : ObservableObject
 
         if (info.IsTimelineIndeterminate)
         {
-            _isDragging = false;
             _seekDebounceUntil = DateTime.MinValue;
             _lastKnownDuration = _lastKnownPosition = TimeSpan.Zero;
             HasTimeline = false;
@@ -94,7 +82,6 @@ public partial class ProgressViewModel : ObservableObject
         HasTimeline = true;
         IsSeekEnabled = info.CanSeekTimeline;
         if (timelineModeChanged) _seekDebounceUntil = DateTime.MinValue;
-        if (_isDragging) return;
         string signature = $"{info.SourceAppId}|{info.MediaSource}|{info.CurrentTrack}|{info.CurrentArtist}";
         var nowUtc = DateTime.UtcNow;
         if (signature != _lastSignature)
@@ -123,7 +110,7 @@ public partial class ProgressViewModel : ObservableObject
 
     public void Render()
     {
-        if (_isDragging || CurrentMediaInfo == null) return;
+        if (CurrentMediaInfo == null) return;
         if (IsIndeterminate)
         {
             CurrentTimeText = "";
@@ -157,23 +144,6 @@ public partial class ProgressViewModel : ObservableObject
         RemainingTimeText = FormatCachedTime(_lastKnownDuration, ref _formattedDurationSecond, ref _formattedDuration);
     }
 
-    public void StartDragging() => _isDragging = true;
-    public void StopDragging() => _isDragging = false;
-
-    public void UpdateDragPosition(double ratio)
-    {
-        if (CurrentMediaInfo?.CanSeekTimeline != true || _lastKnownDuration <= TimeSpan.Zero) return;
-        if (!double.IsFinite(ratio)) return;
-        Position = Math.Clamp(ratio, 0, 1);
-        CurrentTimeText = FormatCachedTime(TimeSpan.FromSeconds(_lastKnownDuration.TotalSeconds * Position),
-            ref _formattedPositionSecond, ref _formattedPosition);
-    }
-
-    public TimeSpan GetDragSeekPosition(double ratio) =>
-        double.IsFinite(ratio) && CurrentMediaInfo?.CanSeekTimeline == true
-            ? TimeSpan.FromSeconds(_lastKnownDuration.TotalSeconds * Math.Clamp(ratio, 0, 1))
-            : TimeSpan.Zero;
-
     public async Task SeekToPosition(TimeSpan position)
     {
         if (CurrentMediaInfo?.CanSeekTimeline != true || _lastKnownDuration <= TimeSpan.Zero) return;
@@ -185,36 +155,6 @@ public partial class ProgressViewModel : ObservableObject
         try { await _mediaService.SeekAsync(position); }
         catch (Exception ex) { RuntimeLog.Error("VM-SEEK", ex.ToString()); }
     }
-
-    public async Task SeekRelative(double seconds)
-    {
-        if (CurrentMediaInfo?.CanSeekTimeline != true || _lastKnownDuration <= TimeSpan.Zero) return;
-        var nowUtc = DateTime.UtcNow;
-        long elapsedTicks = (nowUtc - _lastMediaUpdate).Ticks;
-        byte isWebOrYouTube = CurrentMediaInfo.Platform is MediaPlatform.YouTube or MediaPlatform.Browser ? (byte)1 : (byte)0;
-        vn_progress_interpolate_ticks(
-            _lastKnownPosition.Ticks,
-            _lastKnownDuration.Ticks,
-            elapsedTicks,
-            CurrentMediaInfo.PlaybackRate,
-            IsPlaying ? (byte)1 : (byte)0,
-            CurrentMediaInfo.IsThrottled ? (byte)1 : (byte)0,
-            isWebOrYouTube,
-            out long currentTicks,
-            out _);
-
-        var current = TimeSpan.FromTicks(currentTicks);
-        var target = TimeSpan.FromTicks(Math.Clamp((current + TimeSpan.FromSeconds(seconds)).Ticks, 0, _lastKnownDuration.Ticks));
-        _lastKnownPosition = target;
-        _lastMediaUpdate = nowUtc;
-        _seekDebounceUntil = nowUtc.AddSeconds(2.5);
-        if (IsExpandedCheck?.Invoke() == true) Render();
-        try { await _mediaService.SeekToAbsoluteAsync(target); }
-        catch (Exception ex) { RuntimeLog.Error("VM-SEEK-RELATIVE", ex.ToString()); }
-    }
-
-    public bool ShouldShow => CurrentMediaInfo?.IsAnyMediaPlaying == true &&
-        (CurrentMediaInfo.HasTimeline || CurrentMediaInfo.IsTimelineIndeterminate);
 
     private static string FormatCachedTime(TimeSpan time, ref long cachedSecond, ref string cachedText)
     {

@@ -25,7 +25,7 @@ public sealed class ArchitectureUiScaleTests
         try
         {
             var repository = new PagedRepository(count);
-            var settings = new NotchSettings { HasSeenSpotlightIntro = true, SpotlightAiProvider = "OpenAI" };
+            var settings = new NotchSettings { SpotlightAiProvider = "OpenAI" };
             SpotlightAiService.Configure(settings, "OpenAI", "test-key", "test");
             using var fixture = new SpotlightWindowFixture(settings, saveChatHistory: true, chatStore: repository);
             var window = fixture.Window;
@@ -74,7 +74,7 @@ public sealed class ArchitectureUiScaleTests
     [Fact]
     public void UnsavedConversationCanPageOlderMessages() => SharedStaTestRunner.RunAsync(async () =>
     {
-        using var fixture = new SpotlightWindowFixture(new NotchSettings { HasSeenSpotlightIntro = true });
+        using var fixture = new SpotlightWindowFixture(new NotchSettings());
         var window = fixture.Window;
         Invoke(window, "ToggleAiMode");
         var messages = Field<List<SpotlightAiMessage>>(window, "_aiHistory");
@@ -91,7 +91,7 @@ public sealed class ArchitectureUiScaleTests
     public void LateOlderPageCannotReplaceLatestTranscript() => SharedStaTestRunner.RunAsync(async () =>
     {
         var repository = new PagedRepository(100);
-        using var fixture = new SpotlightWindowFixture(new NotchSettings { HasSeenSpotlightIntro = true }, saveChatHistory: true, chatStore: repository);
+        using var fixture = new SpotlightWindowFixture(new NotchSettings(), saveChatHistory: true, chatStore: repository);
         var window = fixture.Window;
         await Field<Task>(window, "_historyLoadTask");
         repository.ReadBarrier = new(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -107,7 +107,7 @@ public sealed class ArchitectureUiScaleTests
     public void LateHistoryOpenCannotReplaceANewConversation() => SharedStaTestRunner.RunAsync(async () =>
     {
         var repository = new PagedRepository(100);
-        using var fixture = new SpotlightWindowFixture(new NotchSettings { HasSeenSpotlightIntro = true }, saveChatHistory: true, chatStore: repository);
+        using var fixture = new SpotlightWindowFixture(new NotchSettings(), saveChatHistory: true, chatStore: repository);
         var window = fixture.Window;
         await Field<Task>(window, "_historyLoadTask");
         window.ShowSpotlight();
@@ -135,7 +135,7 @@ public sealed class ArchitectureUiScaleTests
     public void OnlySuccessfullyPersistedMessagesLeaveMemory(bool failSave) => SharedStaTestRunner.RunAsync(async () =>
     {
         var repository = new PagedRepository(100) { FailSave = failSave };
-        using var fixture = new SpotlightWindowFixture(new NotchSettings { HasSeenSpotlightIntro = true }, saveChatHistory: true, chatStore: repository);
+        using var fixture = new SpotlightWindowFixture(new NotchSettings(), saveChatHistory: true, chatStore: repository);
         var window = fixture.Window;
         await Field<Task>(window, "_historyLoadTask");
         var messages = Field<List<SpotlightAiMessage>>(window, "_aiHistory");

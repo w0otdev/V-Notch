@@ -35,12 +35,8 @@ public sealed class CountdownController : IDisposable
     private bool _disposed;
 
     public event EventHandler<CountdownCompletedEventArgs>? Completed;
-    public event EventHandler<long>? RunStarted;
-    public event EventHandler<long>? RunPaused;
-    public event EventHandler<long>? RunReset;
     public event EventHandler? Tick;
 
-    public long ActiveRunId => _activeRunId;
     public bool IsRunning => _viewModel.IsRunning;
     public TimeSpan Duration => _viewModel.Duration;
     public TimeSpan Remaining => _viewModel.Remaining;
@@ -65,7 +61,6 @@ public sealed class CountdownController : IDisposable
         StartTicker();
 
         RuntimeLog.Log(LogTag, $"Countdown run #{runId} started ({_viewModel.Duration})");
-        RunStarted?.Invoke(this, runId);
     }
 
     public void Pause()
@@ -78,7 +73,6 @@ public sealed class CountdownController : IDisposable
 
         long runId = _activeRunId;
         RuntimeLog.Log(LogTag, $"Countdown run #{runId} paused (Remaining: {_viewModel.Remaining})");
-        RunPaused?.Invoke(this, runId);
 
         if (completed && !_hasFiredCompletedForRun)
         {
@@ -96,7 +90,6 @@ public sealed class CountdownController : IDisposable
         StartTicker();
 
         RuntimeLog.Log(LogTag, $"Countdown run #{_activeRunId} resumed");
-        RunStarted?.Invoke(this, _activeRunId);
     }
 
     public void Reset()
@@ -104,13 +97,12 @@ public sealed class CountdownController : IDisposable
         if (_disposed) return;
 
         StopTicker();
-        long runId = ++_activeRunId;
+        ++_activeRunId;
         _hasFiredCompletedForRun = false;
         _viewModel.Reset();
         _tracker.ResetCountdownTimestamp();
 
         RuntimeLog.Log(LogTag, $"Countdown reset (Duration: {_viewModel.Duration})");
-        RunReset?.Invoke(this, runId);
     }
 
     public bool AdjustDuration(int direction)

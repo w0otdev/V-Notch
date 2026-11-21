@@ -337,7 +337,6 @@ public sealed partial class LiquidGlassController : IDisposable
             var stats = presenter.TakeStatistics();
             RuntimeLog.Log(LogCategory,
                 $"[{_logTag}] GPU capture={presenter.TakeCaptureCount() * 1000.0 / sinceLastLog:F1} fps submit={stats.Frames * 1000.0 / sinceLastLog:F1} fps " +
-                $"transfer={stats.Bytes / 1048576.0 / (sinceLastLog / 1000.0):F2} MiB/s " +
                 $"upload-to-submit={stats.MeanQueueMs:F2} ms (excludes capture/display latency); {presenter.CaptureStatus}");
         }
         _dbgFrameCount = 0;

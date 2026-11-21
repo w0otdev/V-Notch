@@ -38,8 +38,6 @@ public sealed partial class LiquidGlassController : IDisposable
         Volatile.Write(ref _backgroundLightX1000, (int)Math.Round(optics.LightX * 1000.0));
         Volatile.Write(ref _backgroundLightY1000, (int)Math.Round(optics.LightY * 1000.0));
         Volatile.Write(ref _backgroundContrast1000, (int)Math.Round(optics.Contrast * 1000.0));
-        AverageBackgroundBrightnessInt = (int)Math.Round(
-            0.299 * optics.Red + 0.587 * optics.Green + 0.114 * optics.Blue);
         Volatile.Write(ref _outsideBackdropColorRgb, optics.OutsideRgb);
     }
 

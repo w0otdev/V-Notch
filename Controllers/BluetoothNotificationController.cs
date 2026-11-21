@@ -31,7 +31,6 @@ public sealed class BluetoothNotificationController : IDisposable
     private readonly object _stateGate = new();
     private readonly Func<double, Action, IDisposable> _scheduleDismiss;
     private bool _isVisible;
-    private bool _currentConnected = true;
     private IDisposable? _dismissTimer;
     private long _dismissGeneration;
     private bool _disposed;
@@ -49,15 +48,6 @@ public sealed class BluetoothNotificationController : IDisposable
         {
             lock (_stateGate)
                 return _isVisible;
-        }
-    }
-
-    public bool CurrentConnected
-    {
-        get
-        {
-            lock (_stateGate)
-                return _currentConnected;
         }
     }
 
@@ -103,7 +93,6 @@ public sealed class BluetoothNotificationController : IDisposable
         lock (_stateGate)
         {
             if (_disposed) return false;
-            _currentConnected = connected;
             _isVisible = true;
             StartDismissTimerLocked();
 

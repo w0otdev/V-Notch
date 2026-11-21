@@ -13,8 +13,7 @@ public sealed class ClipboardCategoryOrderTests
         using var fixture = new Fixture();
         using var store = new ClipboardHistoryStore(fixture.Root);
         await store.InitializeAsync();
-        var label = await store.AddLabelAsync("Project");
-        await store.MoveLabelAsync(label.Id, -int.MaxValue);
+        await store.AddLabelAsync("Project");
         var labels = store.GetLabels().Select(item => item.Id).ToList();
         labels.Insert(labels.IndexOf("Important"), "Personal");
         Assert.Equal(new[] { "All", "Pin", "Links", "Text", "Code", "Images", "Colors", "Files" }

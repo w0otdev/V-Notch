@@ -34,19 +34,49 @@ public sealed partial class SmartCropInferenceAndFramingTests
         int imgWidth, int imgHeight, int cropSize,
         out VnCropRect outRect, out byte outFound);
 
+    [LibraryImport("VNotch.Native.dll")]
+    private static unsafe partial int vn_smartcrop_get_portrait_crop_rect(
+        Detection* face, int width, int height, out VnCropRect outRect);
+
     [Fact]
-    public void BundledModelRunsOfflineAndReusesInferenceUntilItsIdleSessionIsReleased() => SharedStaTestRunner.RunAsync(async ct =>
+    public unsafe void PortraitFramingLeavesHairAndUpperTorsoSpace()
+    {
+        var face = new Detection { X1 = 1160, Y1 = 211, X2 = 1443, Y2 = 656 };
+        Assert.Equal(0, vn_smartcrop_get_portrait_crop_rect(&face, 2080, 1121, out var crop));
+
+        Assert.True(crop.Y < 62); // Top of the hair in the reported portrait.
+        Assert.True(crop.Y + crop.Height > 900); // Include shoulders and upper torso.
+        Assert.True(crop.X > 800); // Leave the title artwork outside the frame.
+        Assert.True(crop.X + crop.Width > 1650); // Preserve the back of the hair.
+        Assert.Equal(crop.Width, crop.Height);
+    }
+
+    [Theory]
+    [InlineData(0, 0, 100, 120)]
+    [InlineData(500, 180, 600, 300)]
+    public unsafe void PortraitFramingStaysInsideImage(float x1, float y1, float x2, float y2)
+    {
+        var face = new Detection { X1 = x1, Y1 = y1, X2 = x2, Y2 = y2 };
+        Assert.Equal(0, vn_smartcrop_get_portrait_crop_rect(&face, 600, 300, out var crop));
+
+        Assert.InRange(crop.X, 0, 600 - crop.Width);
+        Assert.InRange(crop.Y, 0, 300 - crop.Height);
+        Assert.Equal(crop.Width, crop.Height);
+    }
+
+    [Fact]
+    public void BundledModelRunsOfflineAndReusesInferenceUntilItsIdleSessionIsReleased() => SharedStaTestRunner.Run(() =>
     {
         using var service = new SmartThumbnailCropService();
         Assert.True(service.TryInitialize());
         var image = new BitmapImage(new Uri(Path.Combine(AppContext.BaseDirectory, "Fixtures", "white-mat-artwork.png")));
         image.Freeze();
-        var first = await service.GetSmartCropRectAsync(image, 256, useObjectDetection: true, ct);
+        var first = service.GetSmartCropRect(image, 256, useObjectDetection: true);
         Assert.True(first.HasValue);
         AssertCrop(first.Value, image.PixelWidth, image.PixelHeight);
         object session = Get<object>(service, "_cachedSession");
         Assert.NotNull(session);
-        Assert.Equal(first, await service.GetSmartCropRectAsync(image, 256, useObjectDetection: true, ct));
+        Assert.Equal(first, service.GetSmartCropRect(image, 256, useObjectDetection: true));
         Assert.Same(session, Get<object>(service, "_cachedSession"));
         _ = service.GetDominantSubjectBounds(image);
         Assert.Same(session, Get<object>(service, "_cachedSession"));
@@ -58,7 +88,7 @@ public sealed partial class SmartCropInferenceAndFramingTests
         service.Dispose();
         Assert.False(service.TryInitialize());
         Assert.Null(service.GetDominantSubjectBounds(image));
-        Assert.Null(await service.GetSmartCropRectAsync(image, 256, true, ct));
+        Assert.Null(service.GetSmartCropRect(image, 256, true));
     });
 
     [Theory]

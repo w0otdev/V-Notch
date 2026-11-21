@@ -880,7 +880,7 @@ public class MediaDetectionServiceLifecycleTests
         public Task<YouTubeLookupResult?> TryGetYouTubeVideoInfoFromUrlAsync(string url, CancellationToken ct = default)
             => Task.FromResult<YouTubeLookupResult?>(null);
 
-        public Task<YouTubeLookupResult?> TryGetYouTubeVideoIdWithInfoAsync(string title, string artist = "", CancellationToken ct = default)
+        public Task<YouTubeLookupResult?> TryGetYouTubeVideoIdWithInfoAsync(string title, CancellationToken ct = default)
             => Task.FromResult<YouTubeLookupResult?>(null);
 
         public Task<YouTubeLookupResult?> TrySearchYouTubeByTitleAsync(string title, string artist = "", CancellationToken ct = default)

@@ -88,23 +88,19 @@ public sealed class WpfTestInfrastructureTests
             Height = 1,
             WindowStyle = 0
         });
-        using var presenter = new D3DImageFramePresenter(Dispatcher.CurrentDispatcher, source.Handle, 1, 1);
+        using var presenter = new D3DImageFramePresenter(Dispatcher.CurrentDispatcher, source.Handle, 1, 1, webcam: true);
+        presenter.PrepareResources();
         presenter.BeginSession(1);
         var presented = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         presenter.FramePresented += _ => presented.TrySetResult();
-        IntPtr pixels = System.Runtime.InteropServices.Marshal.AllocHGlobal(4);
-        try
-        {
-            System.Runtime.InteropServices.Marshal.WriteInt32(pixels, unchecked((int)0xff20c080));
-            Assert.True(presenter.UploadFrame(pixels, 1, 1, 4, 1, out bool uploaded));
-            Assert.True(uploaded);
-            await presented.Task.WaitAsync(TimeSpan.FromSeconds(30), cancellationToken);
-            var d3d = Assert.IsType<D3DImage>(presenter.ImageSource);
-            var snapshot = ImageSourceSnapshot.Capture(d3d, d3d.PixelWidth, d3d.PixelHeight);
-            var actual = new byte[4];
-            snapshot.CopyPixels(actual, 4, 0);
-            Assert.Equal(new byte[] { 128, 192, 32, 255 }, actual);
-        }
-        finally { System.Runtime.InteropServices.Marshal.FreeHGlobal(pixels); }
+        byte[] pixels = [128, 192, 32, 255];
+        using var bitmap = SoftwareBitmap.CreateCopyFromBuffer(pixels.AsBuffer(), BitmapPixelFormat.Bgra8, 1, 1, BitmapAlphaMode.Ignore);
+        Assert.True(presenter.UploadWebcam(bitmap, 1));
+        await presented.Task.WaitAsync(TimeSpan.FromSeconds(30), cancellationToken);
+        var d3d = Assert.IsType<D3DImage>(presenter.ImageSource);
+        var snapshot = ImageSourceSnapshot.Capture(d3d, d3d.PixelWidth, d3d.PixelHeight);
+        var actual = new byte[4];
+        snapshot.CopyPixels(actual, 4, 0);
+        Assert.Equal(pixels, actual);
     });
 }

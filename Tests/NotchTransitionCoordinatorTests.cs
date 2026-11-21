@@ -71,19 +71,16 @@ public class NotchTransitionCoordinatorTests
 
         Assert.Equal(DisplayOwnership.Spotlight, coordinator.Ownership);
 
-        bool displayRequested = false;
-        coordinator.CountdownCompletionDisplayRequested += (_, _) => displayRequested = true;
-
         // Countdown completes while Spotlight owns display
         coordinator.NotifyCountdownCompleted();
 
-        Assert.False(displayRequested);
+        Assert.NotEqual(NotchView.Timer, coordinator.TargetView);
         Assert.True(coordinator.Snapshot.HasPendingCountdownCompletion);
 
         // Spotlight closes and completes handoff
         coordinator.CompleteSpotlightHandoff(sessionId);
 
-        Assert.True(displayRequested);
+        Assert.Equal(NotchView.Timer, coordinator.TargetView);
         Assert.Equal(DisplayOwnership.Notch, coordinator.Ownership);
         Assert.False(coordinator.Snapshot.HasPendingCountdownCompletion);
     }

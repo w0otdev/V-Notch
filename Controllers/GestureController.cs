@@ -9,7 +9,6 @@ public sealed partial class GestureController
     private bool _isTracking;
     private Point _startPoint;
     private double _accumulatedX;
-    private double _accumulatedY;
     private DateTime _lastSwipeTime = DateTime.MinValue;
     private DateTime _lastTapTime = DateTime.MinValue;
     private bool _gestureTriggered;
@@ -24,7 +23,6 @@ public sealed partial class GestureController
         _isTracking = true;
         _startPoint = position;
         _accumulatedX = 0;
-        _accumulatedY = 0;
         _gestureTriggered = false;
     }
 
@@ -37,7 +35,7 @@ public sealed partial class GestureController
             _startPoint.X, _startPoint.Y,
             currentPosition.X, currentPosition.Y,
             elapsedMs,
-            out _accumulatedX, out _accumulatedY,
+            out _accumulatedX, out _,
             out int gestureKind);
 
         if (gestureKind == 0) return false;
@@ -96,8 +94,6 @@ public sealed partial class GestureController
     public bool GestureTriggered => _gestureTriggered;
 
     public double AccumulatedX => _accumulatedX;
-
-    public double AccumulatedY => _accumulatedY;
 
     [LibraryImport("VNotch.Native.dll")]
     private static partial int vn_gesture_evaluate_move(

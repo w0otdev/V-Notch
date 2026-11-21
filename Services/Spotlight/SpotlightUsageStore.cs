@@ -24,8 +24,6 @@ internal sealed partial class SpotlightUsageStore : IAsyncDisposable, IDisposabl
 
     private static readonly string s_startMenuPath = Environment.GetFolderPath(Environment.SpecialFolder.StartMenu);
     private static readonly string s_commonStartMenuPath = Environment.GetFolderPath(Environment.SpecialFolder.CommonStartMenu);
-    private static readonly Comparison<KeyValuePair<string, UsageEntry>> s_recentDescComparison =
-        static (a, b) => b.Value.LastLaunchedUtc.CompareTo(a.Value.LastLaunchedUtc);
     private static readonly Comparison<KeyValuePair<string, UsageEntry>> s_oldestAscComparison =
         static (a, b) => a.Value.LastLaunchedUtc.CompareTo(b.Value.LastLaunchedUtc);
 
@@ -177,12 +175,6 @@ internal sealed partial class SpotlightUsageStore : IAsyncDisposable, IDisposabl
 
     public void Dispose() => DisposeAsync().AsTask().GetAwaiter().GetResult();
 
-    public double GetBoost(string id, string query = "")
-    {
-        if (!Enabled) return 0;
-        return GetBoostNormalized(id, SettingsSearchMatcher.Normalize(query));
-    }
-
     internal double GetBoostNormalized(string id, string normalizedQuery)
     {
         if (!Enabled) return 0;
@@ -238,44 +230,6 @@ internal sealed partial class SpotlightUsageStore : IAsyncDisposable, IDisposabl
             {
                 output.Add(item);
             }
-        }
-
-        return output.Count == 0 ? Array.Empty<SpotlightSearchItem>() : output;
-    }
-
-    public IReadOnlyList<SpotlightSearchItem> GetRecentItems(int limit, bool loadIconsSynchronously = false)
-    {
-        if (!Enabled || limit <= 0) return Array.Empty<SpotlightSearchItem>();
-
-        KeyValuePair<string, UsageEntry>[] snapshot;
-        lock (_gate)
-        {
-            var entries = LoadEntries();
-            if (entries.Count == 0) return Array.Empty<SpotlightSearchItem>();
-            snapshot = new KeyValuePair<string, UsageEntry>[entries.Count];
-            int idx = 0;
-            foreach (var pair in entries)
-                snapshot[idx++] = pair;
-        }
-
-        Array.Sort(snapshot, s_recentDescComparison);
-
-        var output = new List<SpotlightSearchItem>(Math.Min(limit, snapshot.Length));
-        for (int i = 0; i < snapshot.Length && output.Count < limit; i++)
-        {
-            var pair = snapshot[i];
-            var item = new SpotlightSearchItem(
-                pair.Key, pair.Value.Kind, pair.Value.Title, pair.Value.Subtitle,
-                pair.Value.Target, pair.Value.IconPath)
-            {
-                IsRecent = true
-            };
-
-            if (Preferences.IsExcluded(item.Target) || !SpotlightLauncher.IsValidTarget(item)) continue;
-
-            if (!ShouldShowHistoryItem(item, string.Empty)) continue;
-
-            output.Add(loadIconsSynchronously ? SpotlightSearchService.LoadIcon(item) : item);
         }
 
         return output.Count == 0 ? Array.Empty<SpotlightSearchItem>() : output;

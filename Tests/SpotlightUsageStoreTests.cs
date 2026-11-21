@@ -51,12 +51,12 @@ public sealed class SpotlightUsageStoreTests : IDisposable
         var store = CreateStore();
         var item = Item("app:one", "shell:AppsFolder\\One!App");
 
-        Assert.Equal(0, store.GetBoost("app:one"));
+        Assert.Equal(0, store.GetBoostNormalized("app:one", string.Empty));
 
         store.RecordLaunch(item);
-        double once = store.GetBoost("app:one");
+        double once = store.GetBoostNormalized("app:one", string.Empty);
         store.RecordLaunch(item);
-        double twice = store.GetBoost("app:one");
+        double twice = store.GetBoostNormalized("app:one", string.Empty);
 
         Assert.True(once > 0);
         Assert.True(twice > once);
@@ -69,36 +69,14 @@ public sealed class SpotlightUsageStoreTests : IDisposable
         var item = Item("app:one", "shell:AppsFolder\\One!App");
         for (int i = 0; i < 10_000; i++) store.RecordLaunch(item);
 
-        double fresh = store.GetBoost("app:one");
+        double fresh = store.GetBoostNormalized("app:one", string.Empty);
         // The cap keeps habitual items below a full ranking tier (tiers are
         // spaced 50-100 apart in SpotlightRanker).
         Assert.InRange(fresh, 1, 125);
 
         _now = _now.AddDays(45);
-        double aged = store.GetBoost("app:one");
+        double aged = store.GetBoostNormalized("app:one", string.Empty);
         Assert.True(aged < fresh);
-    }
-
-    [Fact]
-    public void GetRecentItems_ReturnsNewestFirstDropsStaleTargetsAndHonorsLimit()
-    {
-        string liveFile = Path.Combine(_directory, "live.txt");
-        File.WriteAllText(liveFile, "x");
-        var store = CreateStore();
-
-        store.RecordLaunch(Item("file:gone", Path.Combine(_directory, "missing.txt"), SpotlightResultKind.File));
-        _now = _now.AddMinutes(1);
-        store.RecordLaunch(Item("file:live", liveFile, SpotlightResultKind.File));
-        _now = _now.AddMinutes(1);
-        store.RecordLaunch(Item("app:one", "shell:AppsFolder\\One!App"));
-
-        var recents = store.GetRecentItems(10);
-
-        Assert.Equal(["app:one", "file:live"], recents.Select(item => item.Id));
-        Assert.All(recents, item => Assert.True(item.IsRecent));
-
-        Assert.Single(store.GetRecentItems(1));
-        Assert.Empty(store.GetRecentItems(0));
     }
 
     [Fact]
@@ -123,7 +101,7 @@ public sealed class SpotlightUsageStoreTests : IDisposable
         }, TimeSpan.FromSeconds(5)));
 
         var reloaded = CreateStore();
-        Assert.True(reloaded.GetBoost("app:one") > 0);
+        Assert.True(reloaded.GetBoostNormalized("app:one", string.Empty) > 0);
     }
 
     [Theory]
@@ -139,7 +117,7 @@ public sealed class SpotlightUsageStoreTests : IDisposable
         {
             using (File.Open(_path, FileMode.Open, FileAccess.ReadWrite, FileShare.None))
             {
-                Assert.Equal(0, store.GetBoost(first.Id));
+                Assert.Equal(0, store.GetBoostNormalized(first.Id, string.Empty));
                 if (launchWhileLocked)
                 {
                     store.RecordLaunch(first, "extra");
@@ -241,8 +219,7 @@ public sealed class SpotlightUsageStoreTests : IDisposable
         File.WriteAllText(_path, "{not json");
         var store = CreateStore();
 
-        Assert.Equal(0, store.GetBoost("app:one"));
-        Assert.Empty(store.GetRecentItems(5));
+        Assert.Equal(0, store.GetBoostNormalized("app:one", string.Empty));
     }
 
     [Fact]
@@ -250,7 +227,7 @@ public sealed class SpotlightUsageStoreTests : IDisposable
     {
         var store = CreateStore();
         store.RecordLaunch(Item("calc:1+1", "2", SpotlightResultKind.Calculation));
-        Assert.Equal(0, store.GetBoost("calc:1+1"));
+        Assert.Equal(0, store.GetBoostNormalized("calc:1+1", string.Empty));
 
         for (int i = 0; i < 150; i++)
         {
@@ -259,7 +236,7 @@ public sealed class SpotlightUsageStoreTests : IDisposable
         }
 
         // The oldest entries fall off; the newest survive.
-        Assert.Equal(0, store.GetBoost("app:0"));
-        Assert.True(store.GetBoost("app:149") > 0);
+        Assert.Equal(0, store.GetBoostNormalized("app:0", string.Empty));
+        Assert.True(store.GetBoostNormalized("app:149", string.Empty) > 0);
     }
 }

@@ -15,15 +15,12 @@
  <UserControl.Resources>
   <!-- The surface supplies entrance motion; the native popup supplies dismissal. -->
   <x:Static x:Key="{x:Static SystemParameters.MenuPopupAnimationKey}" Member="primitives:PopupAnimation.None"/>
-  <SolidColorBrush x:Key="TraySurfaceBase" Color="{x:Static models:ClipboardTrayTokens.SurfaceBase}"/>
-  <SolidColorBrush x:Key="TraySurfaceElevated" Color="{x:Static models:ClipboardTrayTokens.SurfaceElevated}"/>
   <SolidColorBrush x:Key="TraySurfaceOverlay" Color="{x:Static models:ClipboardTrayTokens.SurfaceOverlay}"/>
   <SolidColorBrush x:Key="TrayDestructive" Color="#FF453A"/>
   <SolidColorBrush x:Key="TrayMutedForeground" Color="#8E8E93"/>
   <CornerRadius x:Key="TrayRadiusSmall">8</CornerRadius>
   <CornerRadius x:Key="TrayRadiusMedium">12</CornerRadius>
   <CornerRadius x:Key="TrayRadiusLarge">12</CornerRadius>
-  <CornerRadius x:Key="TrayRadiusCardFooter">0,0,12,12</CornerRadius>
   <SolidColorBrush x:Key="TrayMenuSurfaceBrush" Color="#000000"/>
   <LinearGradientBrush x:Key="TrayMenuRim" StartPoint="0,0" EndPoint="0,1">
    <GradientStop Color="#38FFFFFF" Offset="0"/>
@@ -121,9 +118,6 @@
    <Setter Property="BorderThickness" Value="1"/>
    <Setter Property="Padding" Value="8,4"/>
   </Style>
-  <BooleanToVisibilityConverter x:Key="BoolVisibility"/>
-  <local:TrayCopiedOpacityConverter x:Key="BoolOpacity"/>
-  <local:TrayCopiedBlurConverter x:Key="BoolBlur"/>
 
   <!-- Base Glass Button -->
   <Style x:Key="TrayButton" TargetType="Button">

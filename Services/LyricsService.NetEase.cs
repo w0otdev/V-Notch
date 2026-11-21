@@ -196,18 +196,6 @@ internal sealed partial class LyricsService
         }
     }
 
-    internal static long SelectBestNetEaseSongId(JsonElement root, string targetTrack, string targetArtist, int targetDurationSeconds) =>
-        NativeCatalogParser.Select(root.GetRawText(), 3, targetTrack, targetArtist, targetDurationSeconds * 1000L).Id;
-
-    internal static (string? Id, string? AccessKey) SelectBestKugouCandidate(JsonElement root, string targetTrack, string targetArtist, int targetDurationSeconds)
-    {
-        var selected = NativeCatalogParser.Select(root.GetRawText(), 4, targetTrack, targetArtist, targetDurationSeconds * 1000L);
-        return (selected.Text, selected.Key);
-    }
-
-    internal static string? SelectBestQqMusicSongMid(JsonElement root, string targetTrack, string targetArtist, int targetDurationSeconds) =>
-        NativeCatalogParser.Select(root.GetRawText(), 5, targetTrack, targetArtist, targetDurationSeconds * 1000L).Text;
-
     internal static LyricsResult? ParseNetEaseLyricResult(JsonElement root)
     {
         if (root.ValueKind != JsonValueKind.Object) return null;

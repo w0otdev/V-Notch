@@ -46,7 +46,7 @@ public sealed class MediaPlaybackViewTests
     {
         Loc.SetLanguage("en");
         var media = new FakeMediaDetectionService();
-        var viewModel = new MediaViewModel(media, _ => Task.CompletedTask);
+        var viewModel = new MediaViewModel(media);
         using var view = new MediaPlaybackView();
         view.Attach(viewModel, media);
         view.PlayPauseButton.InvokeAction();

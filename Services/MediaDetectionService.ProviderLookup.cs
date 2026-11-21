@@ -15,8 +15,8 @@ namespace VNotch.Services;
 
 public sealed partial class MediaDetectionService : IMediaDetectionService, IAsyncDisposable
 {
-    public Task<YouTubeLookupResult?> TryGetYouTubeVideoIdWithInfoAsync(string title, string artist = "", CancellationToken ct = default)
-        => _metadataLookup.TryGetYouTubeVideoIdWithInfoAsync(title, artist, ct);
+    public Task<YouTubeLookupResult?> TryGetYouTubeVideoIdWithInfoAsync(string title, CancellationToken ct = default)
+        => _metadataLookup.TryGetYouTubeVideoIdWithInfoAsync(title, ct);
 
     private bool TryGetCachedMismatchVideoId(string videoId)
         => _videoIds.IsMismatch(videoId);

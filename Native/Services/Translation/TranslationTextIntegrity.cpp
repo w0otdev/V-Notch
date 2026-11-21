@@ -11,11 +11,6 @@ namespace vnotch::services
             {
                 return vnotch::is_unicode_letter_or_digit(c) || c == u'_';
             }
-        
-            static bool is_digit_char(char16_t c) noexcept
-            {
-                return vnotch::is_ascii_digit(c);
-            }
 
         static int32_t vn_translation_has_unresolved_placeholder_impl(const char16_t* source_ptr, int32_t source_len,
     const char16_t* translated_ptr, int32_t translated_len,

@@ -11,11 +11,11 @@ public sealed class TranslationNativeRuntimeTests
     public void CandidatesAreAbsoluteAndStayInsideBundledRuntime()
     {
         string root = Path.Combine(Path.GetTempPath(), "VNotchRuntimeTest");
-        var paths = TranslationNativeRuntime.Candidates(root, true, true, false).ToArray();
+        var paths = TranslationNativeRuntime.Candidates(root, true, false).ToArray();
         Assert.Equal(new[] { "vulkan", "avx2", "noavx" }, paths.Select(p => new DirectoryInfo(Path.GetDirectoryName(p)!).Name));
         Assert.All(paths, p => Assert.StartsWith(Path.Combine(root, "runtimes", "win-x64", "native"), p));
         Assert.All(paths, p => Assert.True(Path.IsPathFullyQualified(p)));
-        Assert.Equal(2, TranslationNativeRuntime.Candidates(root, false, false, false).Count());
+        Assert.Equal(2, TranslationNativeRuntime.Candidates(root, false, false).Count());
     }
 
     [Theory]

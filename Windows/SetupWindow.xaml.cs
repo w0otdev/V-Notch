@@ -31,7 +31,6 @@ internal static class SetupFonts
         return VNotch.Services.AppFonts.Get("Nirmala UI, Segoe UI");
     });
 
-    public static string SfProDisplay => VNotch.Services.AppFonts.Location + VNotch.Services.AppFonts.BuildFontSpec("Nirmala UI, Segoe UI")[2..];
     public static FontFamily SFProDisplayFont => _sfProDisplayFont.Value;
 }
 
@@ -77,7 +76,6 @@ public partial class SetupWindow : Window
     internal int CurrentPageIndex => _currentPageIndex;
     internal bool IsShowingCancelSetupPage => _isShowingCancelSetupPage;
     internal DirectoryPage DirectoryStepPage => _directoryPage;
-    internal TermsOfServicePage TermsStepPage => _termsPage;
     internal InstallProgressPage InstallProgressStepPage => _installProgressPage;
     public int ResultExitCode { get; private set; } = 1;
 

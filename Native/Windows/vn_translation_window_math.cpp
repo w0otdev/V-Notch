@@ -1,48 +1,5 @@
 #include "../vnotch_native.h"
 
-VN_EXPORT int32_t __stdcall vn_translation_compute_character_fades(
-    double elapsed,
-    double interval,
-    double fade_ms,
-    int32_t brush_count,
-    int32_t completed_index,
-    double* out_opacities,
-    int32_t opacity_cap,
-    int32_t* out_start_index,
-    int32_t* out_end_index,
-    int32_t* out_new_completed) noexcept
-{
-    if (!out_start_index || !out_end_index || !out_new_completed ||
-        brush_count < 0 || completed_index < 0 || opacity_cap < 0 ||
-        interval <= 0.0 || fade_ms <= 0.0 ||
-        !std::isfinite(elapsed) || !std::isfinite(interval) || !std::isfinite(fade_ms))
-    {
-        return VN_ERR_INVALID_ARG;
-    }
-
-    const int32_t active_end = std::min(brush_count, static_cast<int32_t>(elapsed / interval) + 1);
-    const int32_t count = active_end > completed_index ? (active_end - completed_index) : 0;
-    if (count > 0 && !out_opacities)
-        return VN_ERR_INVALID_ARG;
-    if (count > opacity_cap)
-        return VN_ERR_BUFFER_TOO_SMALL;
-
-    int32_t new_completed = completed_index;
-    for (int32_t i = completed_index; i < active_end; ++i)
-    {
-        const double progress = std::clamp((elapsed - static_cast<double>(i) * interval) / fade_ms, 0.0, 1.0);
-        const double inv = 1.0 - progress;
-        out_opacities[i - completed_index] = 1.0 - inv * inv;
-        if (std::abs(progress - 1.0) < 1e-6)
-            new_completed = i + 1;
-    }
-
-    *out_start_index = completed_index;
-    *out_end_index = active_end > completed_index ? active_end : completed_index;
-    *out_new_completed = new_completed;
-    return VN_OK;
-}
-
 VN_EXPORT int32_t __stdcall vn_translation_compute_popup_limits(
     double work_height,
     double dpi_scale_y,

@@ -264,8 +264,8 @@ public sealed class DiagnosticAndChangelogWindowTests
             Assert.NotEqual(selectedStable, selectedBeta);
             Assert.All(AccentTheme.Swatches, swatch =>
             {
-                Assert.True(DynamicIslandColorExtractor.GetContrastRatio(selectedStable, swatch.Color) >= 4.5);
-                Assert.True(DynamicIslandColorExtractor.GetContrastRatio(selectedBeta, swatch.Color) >= 4.5);
+                Assert.True(ContrastSearchTests.GetContrastRatio(selectedStable, swatch.Color) >= 4.5);
+                Assert.True(ContrastSearchTests.GetContrastRatio(selectedBeta, swatch.Color) >= 4.5);
             });
 
             await view.LoadAsync(new ChangelogFixture("2.1.0-beta-1", releases), () => true);

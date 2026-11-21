@@ -1,4 +1,5 @@
 using System.IO;
+using System.Runtime.InteropServices;
 using System.Net.Http;
 using System.Text;
 using System.Text.Json;
@@ -9,7 +10,7 @@ using Xunit;
 
 namespace VNotch.Tests;
 
-public sealed class ServiceOptimizationTests
+public sealed partial class ServiceOptimizationTests
 {
     [Fact]
     public void ReciprocalMatchesDivisionForEverySupportedChannelSum()
@@ -17,7 +18,7 @@ public sealed class ServiceOptimizationTests
         for (int radius = 1; radius <= 32; radius++)
         {
             int window = radius * 2 + 1;
-            uint reciprocal = FastBlurService.GetWindowReciprocal(window);
+            uint reciprocal = GetWindowReciprocal(window);
             for (int sum = 0; sum <= 255 * window; sum++)
                 Assert.Equal(sum / window, (int)(((uint)sum * reciprocal) >> 24));
         }
@@ -33,7 +34,7 @@ public sealed class ServiceOptimizationTests
         byte[] pixels = Enumerable.Range(0, 1024).Select(i => (byte)(i / 4)).ToArray();
         byte[] expected = (byte[])pixels.Clone();
         BaselineFastBlurService.DarkenPixels(expected, expected.Length, factor);
-        FastBlurService.DarkenPixels(pixels, pixels.Length, factor);
+        DarkenPixels(pixels, pixels.Length, factor);
         Assert.Equal(expected, pixels);
     }
 
@@ -54,7 +55,7 @@ public sealed class ServiceOptimizationTests
         new Random(42).NextBytes(pixels);
         byte[] expected = (byte[])pixels.Clone();
         BaselineFastBlurService.DarkenPixels(expected, pixelCount * 4, factor);
-        FastBlurService.DarkenPixels(pixels, pixelCount * 4, factor);
+        DarkenPixels(pixels, pixelCount * 4, factor);
         Assert.Equal(expected, pixels);
     }
 
@@ -65,12 +66,12 @@ public sealed class ServiceOptimizationTests
     {
         byte[] input = new byte[width * 31 * 4], scratch = new byte[input.Length];
         Array.Fill(input, (byte)255);
-        for (int i = 0; i < 10; i++) { FastBlurService.BoxBlurHorizontal(input, scratch, width, 31, 20); FastBlurService.BoxBlurVertical(scratch, input, width, 31, 20); }
+        for (int i = 0; i < 10; i++) { BoxBlurHorizontal(input, scratch, width, 31, 20); BoxBlurVertical(scratch, input, width, 31, 20); }
         long before = GC.GetAllocatedBytesForCurrentThread();
         for (int i = 0; i < 10; i++)
         {
-            FastBlurService.BoxBlurHorizontal(input, scratch, width, 31, 20);
-            FastBlurService.BoxBlurVertical(scratch, input, width, 31, 20);
+            BoxBlurHorizontal(input, scratch, width, 31, 20);
+            BoxBlurVertical(scratch, input, width, 31, 20);
         }
         long allocated = GC.GetAllocatedBytesForCurrentThread() - before;
         Assert.Equal(0, allocated);
@@ -96,10 +97,10 @@ public sealed class ServiceOptimizationTests
             for (int pass = 0; pass < 2; pass++)
             {
                 BaselineFastBlurService.BoxBlurHorizontal(expected, expectedTemp, width, height, radius);
-                FastBlurService.BoxBlurHorizontal(actual, actualTemp, width, height, radius);
+                BoxBlurHorizontal(actual, actualTemp, width, height, radius);
                 Assert.Equal(expectedTemp, actualTemp);
                 BaselineFastBlurService.BoxBlurVertical(expectedTemp, expected, width, height, radius);
-                FastBlurService.BoxBlurVertical(actualTemp, actual, width, height, radius);
+                BoxBlurVertical(actualTemp, actual, width, height, radius);
                 Assert.Equal(expected, actual);
             }
         }
@@ -213,5 +214,50 @@ public sealed class ServiceOptimizationTests
     {
         protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken) =>
             Task.FromResult(new HttpResponseMessage { Content = new StreamContent(new SlowStream()) });
+    }
+
+    [LibraryImport("VNotch.Native.dll")]
+    private static partial int vn_fast_blur_get_window_reciprocal(int window, out uint outReciprocal);
+
+    [LibraryImport("VNotch.Native.dll")]
+    private static unsafe partial int vn_fast_blur_darken_pixels(byte* pixels, int length, float factor);
+
+    [LibraryImport("VNotch.Native.dll")]
+    private static unsafe partial int vn_fast_blur_box_horizontal(byte* source, byte* target, int w, int h, int radius);
+
+    [LibraryImport("VNotch.Native.dll")]
+    private static unsafe partial int vn_fast_blur_box_vertical(byte* source, byte* target, int w, int h, int radius);
+
+    private static unsafe void DarkenPixels(byte[] pixels, int length, float factor = 0.96f)
+    {
+        if (pixels == null || length <= 0) return;
+        fixed (byte* p = pixels)
+        {
+            _ = vn_fast_blur_darken_pixels(p, Math.Min(pixels.Length, length), factor);
+        }
+    }
+
+    private static unsafe void BoxBlurHorizontal(byte[] source, byte[] target, int w, int h, int radius)
+    {
+        fixed (byte* pSrc = source)
+        fixed (byte* pDst = target)
+        {
+            _ = vn_fast_blur_box_horizontal(pSrc, pDst, w, h, radius);
+        }
+    }
+
+    private static uint GetWindowReciprocal(int window)
+    {
+        _ = vn_fast_blur_get_window_reciprocal(window, out uint rec);
+        return rec;
+    }
+
+    private static unsafe void BoxBlurVertical(byte[] source, byte[] target, int w, int h, int radius)
+    {
+        fixed (byte* pSrc = source)
+        fixed (byte* pDst = target)
+        {
+            _ = vn_fast_blur_box_vertical(pSrc, pDst, w, h, radius);
+        }
     }
 }

@@ -11,7 +11,6 @@ public partial class MediaViewModel : ObservableObject
     private readonly IMediaDetectionService _service;
 
     private DateTime _lastAction = DateTime.MinValue;
-    private string _lastAnimatedSignature = "";
 
     [ObservableProperty]
     private bool _isPlaying = true;
@@ -21,9 +20,6 @@ public partial class MediaViewModel : ObservableObject
 
     [ObservableProperty]
     private string _artist = Loc.Get("media.unknownArtist");
-
-    [ObservableProperty]
-    private string _sourceName = Loc.Get("media.nowPlaying");
 
     [ObservableProperty]
     private string _sourceIcon = "";
@@ -40,16 +36,9 @@ public partial class MediaViewModel : ObservableObject
     [ObservableProperty]
     private bool _isPictureInPicture;
 
-    public event EventHandler<MediaInfo>? NewTrackDetected;
     public event EventHandler<bool>? PlayPauseToggled;
-    public event EventHandler? NextTrackTriggered;
-    public event EventHandler? PreviousTrackTriggered;
 
-    public MediaViewModel(IMediaDetectionService service, Func<double, Task> seekRelative)
-    {
-        _service = service;
-        _ = seekRelative;
-    }
+    public MediaViewModel(IMediaDetectionService service) => _service = service;
 
     public void Update(MediaInfo info)
     {
@@ -59,7 +48,6 @@ public partial class MediaViewModel : ObservableObject
         SourceIcon = hasTrack ? info.MediaSource ?? "" : "";
         if (hasTrack)
         {
-            SourceName = !string.IsNullOrEmpty(info.MediaSource) ? info.MediaSource : Loc.Get("media.nowPlaying");
             Title = info.IsMetadataPending ? "…" : info.CurrentTrack;
             bool hasArtist = !string.IsNullOrEmpty(info.CurrentArtist) &&
                 MediaPlatformExtensions.ParsePlatform(info.CurrentArtist) is not (MediaPlatform.YouTube or MediaPlatform.Browser or MediaPlatform.Spotify);
@@ -70,31 +58,17 @@ public partial class MediaViewModel : ObservableObject
         {
             Title = Loc.Get("media.noMedia");
             Artist = Loc.Get("media.unknownArtist");
-            SourceName = Loc.Get("media.nowPlaying");
         }
 
-        string signature = info.GetSignature();
-        if (info.IsMetadataPending)
+        if (info.IsMetadataPending || !hasTrack)
         {
-            _lastAnimatedSignature = "";
             Thumbnail = null;
             HasThumbnail = false;
         }
-        else if (hasTrack && info.HasThumbnail && info.Thumbnail != null)
+        else if (info.HasThumbnail && info.Thumbnail != null)
         {
             Thumbnail = info.Thumbnail;
             HasThumbnail = true;
-            if (signature != _lastAnimatedSignature)
-            {
-                _lastAnimatedSignature = signature;
-                NewTrackDetected?.Invoke(this, info);
-            }
-        }
-        else if (!hasTrack)
-        {
-            _lastAnimatedSignature = "";
-            Thumbnail = null;
-            HasThumbnail = false;
         }
 
         if ((DateTime.UtcNow - _lastAction).TotalMilliseconds > 1200 && IsPlaying != info.IsPlaying)
@@ -123,7 +97,6 @@ public partial class MediaViewModel : ObservableObject
     private async Task NextTrack()
     {
         if (!BeginAction()) return;
-        NextTrackTriggered?.Invoke(this, EventArgs.Empty);
         await _service.NextTrackAsync();
     }
 
@@ -131,7 +104,6 @@ public partial class MediaViewModel : ObservableObject
     private async Task PreviousTrack()
     {
         if (!BeginAction()) return;
-        PreviousTrackTriggered?.Invoke(this, EventArgs.Empty);
         await _service.PreviousTrackAsync();
     }
 

@@ -315,32 +315,6 @@ inline bool json_try_get_property(JsonSpan obj, std::u16string_view target_key, 
     return found;
 }
 
-inline bool json_try_get_double(JsonSpan val, double& out)
-{
-    if (val.kind != JsonKind::Number || val.raw.empty()) return false;
-    char stack_buf[128];
-    std::string heap_buf;
-    char* buf = stack_buf;
-    const size_t len = val.raw.size();
-    if (len > sizeof(stack_buf))
-    {
-        heap_buf.resize(len);
-        buf = heap_buf.data();
-    }
-    for (size_t i = 0; i < len; ++i)
-    {
-        if (val.raw[i] >= 0x80u) return false;
-        buf[i] = static_cast<char>(val.raw[i]);
-    }
-    double parsed = 0.0;
-    const auto [ptr, ec] = std::from_chars(buf, buf + len, parsed);
-    if (ec != std::errc{} || ptr != buf + len || !std::isfinite(parsed))
-        return false;
-    if (parsed == 0.0) parsed = 0.0;
-    out = parsed;
-    return true;
-}
-
 inline bool json_try_get_int64(JsonSpan val, int64_t& out) noexcept
 {
     if (val.kind != JsonKind::Number || val.raw.empty() || val.raw.size() >= 32)
@@ -356,15 +330,6 @@ inline bool json_try_get_int64(JsonSpan val, int64_t& out) noexcept
     const auto [ptr, ec] = std::from_chars(buf, buf + val.raw.size(), parsed);
     if (ec != std::errc{} || ptr != buf + val.raw.size()) return false;
     out = parsed;
-    return true;
-}
-
-inline bool json_try_get_int32(JsonSpan val, int32_t& out) noexcept
-{
-    int64_t v = 0;
-    if (!json_try_get_int64(val, v)) return false;
-    if (v < INT32_MIN || v > INT32_MAX) return false;
-    out = static_cast<int32_t>(v);
     return true;
 }
 
