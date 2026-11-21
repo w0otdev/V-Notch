@@ -103,17 +103,30 @@ try {
         exit 0
     }
 
-    if (Get-Command python -ErrorAction SilentlyContinue) {
-        Invoke-Step 'Validate locales (Tools/validate_locales.py)' {
-            & python Tools/validate_locales.py
+    $configuredPython = & git config --get vnotch.python
+    $candidates = if ($configuredPython) { $configuredPython } else { 'python', 'python3', 'py' }
+    $python = $null
+    foreach ($candidate in $candidates) {
+        $command = Get-Command -Name $candidate -ErrorAction SilentlyContinue
+        if (-not $command) { continue }
+        $pythonArgs = @()
+        if ($candidate -eq 'py') { $pythonArgs = @('-3') }
+        # Windows Store aliases can resolve successfully and still exit 9009.
+        try {
+            & $command @pythonArgs -c 'import sys; sys.exit(sys.version_info.major != 3)' 2>$null
+            if ($LASTEXITCODE -eq 0) { $python = $command; break }
+        } catch { continue }
+    }
+    if (-not $python) {
+        throw 'A working Python 3 is required. Install it on PATH or run git config --local vnotch.python "<path to python executable>".'
+    }
+    Invoke-Step 'Validate locales (Tools/validate_locales.py)' {
+        & $python @pythonArgs Tools/validate_locales.py
+    }
+    if ($Full -or (@($changed | Where-Object { $_ -like '.github/*' }).Count -gt 0)) {
+        Invoke-Step 'Run pipeline gate Python tests' {
+            & $python @pythonArgs -m unittest discover -s .github/scripts -p 'test_*.py'
         }
-        if ($Full -or (@($changed | Where-Object { $_ -like '.github/*' }).Count -gt 0)) {
-            Invoke-Step 'Run pipeline gate Python tests' {
-                & python -m unittest discover -s .github/scripts -p 'test_*.py'
-            }
-        }
-    } else {
-        Write-Warning 'python not found on PATH; skipping validate_locales.py.'
     }
 
     if ($Full -or (@($changed | Where-Object { $_ -like 'Models/*' -or $_ -eq 'Tools/Assert-ModelAssets.ps1' }).Count -gt 0)) {
