@@ -28,12 +28,12 @@ if ($installer.Name -cnotin @('V-Notch-Setup.exe', 'V-Notch-Setup-SelfContained.
 }
 $parsedVersion = $null
 $identifier = '(?:0|[1-9][0-9]*|[0-9]*[A-Za-z-][0-9A-Za-z-]*)'
-$versionPattern = "^(?<core>[0-9]+\.[0-9]+(?:\.[0-9]+){0,2})(?:-(?<prerelease>$identifier(?:\.$identifier)*))?(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?`$"
+$versionPattern = "^(?<core>[0-9]+\.[0-9]+(?:\.[0-9]+){0,2})(?:-$identifier(?:\.$identifier)*)?(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?`$"
 if ($Version -cnotmatch $versionPattern -or -not [Version]::TryParse($Matches['core'], [ref]$parsedVersion)) {
     throw 'Invalid release version.'
 }
 if ($installer.Length -le 0 -or $installer.Length -gt 500MB) { throw 'Invalid installer size.' }
-if ($RequireAuthenticode -or -not $Matches['prerelease']) {
+if ($RequireAuthenticode) {
     & (Join-Path $PSScriptRoot 'Assert-InstallerSignatures.ps1') -InstallerPath $installer.FullName
 }
 $privatePem = if ($PrivateKeyPath) { [IO.File]::ReadAllText([IO.Path]::GetFullPath($PrivateKeyPath)) } elseif ($env:VNOTCH_UPDATE_SIGNING_KEY_PEM) { $env:VNOTCH_UPDATE_SIGNING_KEY_PEM } else { $env:VNOTCH_UPDATE_SIGNING_PRIVATE_KEY_PEM }

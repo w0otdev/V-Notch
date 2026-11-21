@@ -147,8 +147,17 @@ try {
     Remove-Item -LiteralPath (Join-Path $modelDirectory 'yolo11n.onnx')
     [IO.File]::WriteAllBytes((Join-Path $modelDirectory 'yolox_nano.onnx'), [byte[]](0, 1, 2))
     Expect-Failure { & $modelScript -RootDirectory $modelRoot } 'checksum or length'
-    Expect-Failure { & (Join-Path $repository 'scripts/b.ps1') -RequireAuthenticode } 'thumbprint is required'
-    Expect-Failure { & (Join-Path $repository 'scripts/b.ps1') -ReleaseVersion '2.5.0' } 'stable installer requires an Authenticode certificate'
+    $buildScript = Join-Path $repository 'scripts/b.ps1'
+    $savedThumbprint = $env:VNOTCH_CODE_SIGNING_THUMBPRINT
+    try {
+        $env:VNOTCH_CODE_SIGNING_THUMBPRINT = $null
+        Expect-Failure { & $buildScript -RequireAuthenticode } 'thumbprint is required'
+        $env:VNOTCH_CODE_SIGNING_THUMBPRINT = '00 ' * 20
+        Expect-Failure { & $buildScript } 'configured release certificate was not found'
+        Expect-Failure { & $buildScript -CertificateThumbprint 'invalid' } '40 hexadecimal characters'
+    } finally {
+        $env:VNOTCH_CODE_SIGNING_THUMBPRINT = $savedThumbprint
+    }
 
     $signDirectory = Join-Path $temporary 'manifest-signing'
     New-Item -ItemType Directory -Path $signDirectory | Out-Null
@@ -177,7 +186,7 @@ try {
     foreach ($installerName in @('V-Notch-Setup.exe', 'V-Notch-Setup-SelfContained.exe')) {
         $dummyInstaller = Join-Path $signDirectory $installerName
         [IO.File]::WriteAllBytes($dummyInstaller, [Text.Encoding]::ASCII.GetBytes("MZ-$installerName"))
-        & $signScript -InstallerPath $dummyInstaller -Version '2.0.1-beta.1' -PrivateKeyPath $privateKeyFile -PublicKeyPath $publicKeyFile | Out-Null
+        & $signScript -InstallerPath $dummyInstaller -Version '2.0.1' -PrivateKeyPath $privateKeyFile -PublicKeyPath $publicKeyFile | Out-Null
         $sidecarText = [IO.File]::ReadAllText("$dummyInstaller.sha256")
         if (-not $sidecarText.EndsWith("`n")) {
             throw "Expected .sha256 sidecar for $installerName to end with a trailing newline."
