@@ -186,6 +186,10 @@ V-Notch runs on 64-bit Windows 10 build 19041 or later, or Windows 11. It requir
 
 The `Release Installer` workflow runs automatically via `workflow_run` after `CI` succeeds on `main` (or `master` and `v*` release branches). For `main` pushes, it publishes a beta release tag `v<version>-beta.<run>.<attempt>` containing both `V-Notch-Setup.exe` (framework-dependent) and `V-Notch-Setup-SelfContained.exe` (self-contained), plus `.sha256`, `.manifest.json`, `.sig`, and `checksums.txt`.
 
+Stable and beta installers published by GitHub Actions require a publicly trusted Authenticode code-signing certificate. Configure `VNOTCH_CODE_SIGNING_PFX_BASE64`, `VNOTCH_CODE_SIGNING_PASSWORD`, and `VNOTCH_CODE_SIGNING_THUMBPRINT` in the GitHub `code-signing` environment. Both the build job and the update-manifest job extract `VNotch.Native.dll` from each installer and verify that the installer and DLL have valid, timestamped signatures from the same certificate.
+
+For a local stable build, install the Windows SDK signing tools and 7-Zip, then run `.\scripts\b.ps1 -CertificateThumbprint <thumbprint>` with the certificate in the current user's Personal store. For an unsigned local test build, pass a prerelease version such as `-ReleaseVersion 2.5.0-dev.1`.
+
 </details>
 
 <details>

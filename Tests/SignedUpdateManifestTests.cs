@@ -208,9 +208,12 @@ public sealed class SignedUpdateManifestTests
     }
 
     [Theory]
-    [InlineData("99.0.0")]
-    [InlineData("99.0.0-beta.2")]
-    public async Task ReleaseSigningScript_ProducesManifestAcceptedByUpdater_AndLegacyChecksum(string version)
+    [InlineData("99.0.0", false, false)]
+    [InlineData("99.0.0+build.unsigned-fixture", false, false)]
+    [InlineData("99.0.0-beta.2", true, false)]
+    [InlineData("99.0.0-beta.2", false, true)]
+    public async Task ReleaseSigningScript_OnlySignsUnsignedInstallerForLocalPrerelease(
+        string version, bool requireAuthenticode, bool shouldSign)
     {
         var root = new DirectoryInfo(AppContext.BaseDirectory);
         while (root != null && !File.Exists(Path.Combine(root.FullName, "V-Notch.csproj"))) root = root.Parent;
@@ -236,6 +239,7 @@ public sealed class SignedUpdateManifestTests
             foreach (string argument in new[] { "-NoProfile", "-File", Path.Combine(root.FullName, "scripts", "Sign-UpdateManifest.ps1"),
                 "-InstallerPath", installerPath, "-Version", version, "-PrivateKeyPath", privatePath, "-PublicKeyPath", publicPath })
                 start.ArgumentList.Add(argument);
+            if (requireAuthenticode) start.ArgumentList.Add("-RequireAuthenticode");
             using var process = Process.Start(start)!;
             var output = process.StandardOutput.ReadToEndAsync();
             var error = process.StandardError.ReadToEndAsync();
@@ -243,6 +247,13 @@ public sealed class SignedUpdateManifestTests
             try { await process.WaitForExitAsync(timeout.Token); }
             catch { process.Kill(entireProcessTree: true); throw; }
             await Task.WhenAll(output, error);
+            if (!shouldSign)
+            {
+                Assert.NotEqual(0, process.ExitCode);
+                Assert.Contains("Authenticode signature is required", await error);
+                Assert.False(File.Exists(installerPath + SignedUpdateManifest.SignatureSuffix));
+                return;
+            }
             Assert.True(process.ExitCode == 0, $"Signing script failed (exit {process.ExitCode}): {await error}{await output}");
             var verified = SignedUpdateManifest.Verify(
                 await File.ReadAllBytesAsync(installerPath + SignedUpdateManifest.ManifestSuffix),

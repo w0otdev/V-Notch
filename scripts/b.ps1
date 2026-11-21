@@ -13,7 +13,7 @@ param(
     [string]$WindowsVersion = '',
     [string]$InformationalVersion = '',
     [string]$TestedNativeArtifactDirectory = '',
-    # Optional code-signing certificate. In CI, pass these from protected secrets.
+    # Stable installers require a code-signing certificate.
     [string]$CertificatePath = '',
     [string]$CertificatePassword = '',
     [string]$CertificateThumbprint = '',
@@ -110,6 +110,9 @@ $assemblyVersion = $installerVersion
 if (-not $ReleaseVersion) { $ReleaseVersion = $projectVersion }
 if ($ReleaseVersion -cnotmatch '^[0-9]+\.[0-9]+\.[0-9]+(?:\.[0-9]+)?(?:-[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?$') {
     throw 'Invalid release version.'
+}
+if (-not $ReleaseVersion.Contains('-') -and -not ($CertificateThumbprint -or $CertificatePath)) {
+    throw 'A stable installer requires an Authenticode certificate. Supply -CertificateThumbprint or -CertificatePath, or use a prerelease version for an unsigned test build.'
 }
 if ($WindowsVersion) { $installerVersion = $WindowsVersion }
 if ($installerVersion -notmatch '^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$' -or
@@ -310,7 +313,10 @@ if ($CertificateThumbprint) {
     if ($LASTEXITCODE -ne 0) { Write-TreeItem "Authenticode signing failed!" -State "Error"; exit 1 }
     Write-TreeItem "Installer Authenticode signature applied." -State "Success"
 } else {
-    Write-TreeItem "No Authenticode certificate (optional)." -State "Info"
+    Write-TreeItem "Unsigned prerelease installer." -State "Info"
+}
+if ($CertificateThumbprint -or $CertificatePath) {
+    & (Join-Path $scriptDir 'Assert-InstallerSignatures.ps1') -InstallerPath 'installers\V-Notch-Setup.exe' -CertificateThumbprint $CertificateThumbprint
 }
 
 $checksum = $null
