@@ -14,6 +14,7 @@ New-Item -ItemType Directory -Path $CacheDirectory -Force | Out-Null
 if (-not (Test-Path -LiteralPath $archive)) {
     $partial = "$archive.partial"
     try {
+        Add-Type -AssemblyName System.Net.Http
         $client = [System.Net.Http.HttpClient]::new()
         try {
             $client.Timeout = [TimeSpan]::FromSeconds(60)
@@ -34,8 +35,7 @@ if (-not (Test-Path -LiteralPath $archive)) {
 if ((Get-FileHash -LiteralPath $archive -Algorithm SHA256).Hash -ne $expectedHash) {
     throw 'Cached NSIS archive checksum mismatch. Remove the invalid cache entry.'
 }
-[IO.Compression.ZipFile]::ExtractToDirectory(
-    [IO.Path]::GetFullPath($archive), [IO.Path]::GetFullPath($DestinationDirectory), $true)
+Expand-Archive -LiteralPath $archive -DestinationPath $DestinationDirectory -Force
 $compiler = Join-Path $DestinationDirectory "nsis-$version/makensis.exe"
 if (-not (Test-Path -LiteralPath $compiler -PathType Leaf)) { throw 'NSIS compiler is missing.' }
 $actualVersion = & $compiler /VERSION

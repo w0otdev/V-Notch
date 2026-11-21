@@ -188,7 +188,9 @@ The `Release Installer` workflow runs automatically via `workflow_run` after `CI
 
 Stable and beta installers published by GitHub Actions require a publicly trusted Authenticode code-signing certificate. Configure `VNOTCH_CODE_SIGNING_PFX_BASE64`, `VNOTCH_CODE_SIGNING_PASSWORD`, and `VNOTCH_CODE_SIGNING_THUMBPRINT` in the GitHub `code-signing` environment. Both the build job and the update-manifest job extract `VNotch.Native.dll` from each installer and verify that the installer and DLL have valid, timestamped signatures from the same certificate.
 
-For a local stable build, install the Windows SDK signing tools and 7-Zip, then run `.\scripts\b.ps1 -CertificateThumbprint <thumbprint>` with the certificate in the current user's Personal store. For an unsigned local test build, pass a prerelease version such as `-ReleaseVersion 2.5.0-dev.1`.
+From `scripts`, run `./b` to build the stable version in `V-Notch.csproj`. The output is `installers\V-Notch-Setup.exe`. The builder uses the installed NSIS compiler or downloads the same checksum-verified version used by CI. For signed update manifests, keep the existing key at `..\VNotchReleaseKeys\update-2026-09-private.pem` relative to the repository root, or set `VNOTCH_UPDATE_SIGNING_KEY_PEM_PATH` to its location.
+
+Authenticode is optional for local builds. Windows Smart App Control can block an unsigned `VNotch.Native.dll` even when the update manifest is signed. To sign the Windows binaries locally, configure `VNOTCH_CODE_SIGNING_THUMBPRINT` for a publisher certificate in the current user's Personal store, or pass `-CertificatePath`.
 
 </details>
 

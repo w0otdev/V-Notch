@@ -13,7 +13,7 @@ param(
     [string]$WindowsVersion = '',
     [string]$InformationalVersion = '',
     [string]$TestedNativeArtifactDirectory = '',
-    # Stable installers require a code-signing certificate.
+    # Optional locally. The GitHub release workflow requires a pinned signer.
     [string]$CertificatePath = '',
     [string]$CertificatePassword = '',
     [string]$CertificateThumbprint = '',
@@ -40,6 +40,23 @@ $scriptDir = $PSScriptRoot
 if (-not $scriptDir) { $scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Definition }
 $repoRoot = Split-Path $scriptDir -Parent
 
+# Use the pinned publisher for a plain ./b. An explicit PFX selects its own signer.
+if (-not $PSBoundParameters.ContainsKey('CertificateThumbprint') -and -not $CertificatePath) {
+    $CertificateThumbprint = $env:VNOTCH_CODE_SIGNING_THUMBPRINT
+}
+if ($CertificateThumbprint) {
+    $CertificateThumbprint = $CertificateThumbprint -replace '\s', ''
+    if ($CertificateThumbprint -notmatch '^[0-9A-Fa-f]{40}$') {
+        throw 'The release certificate thumbprint must contain 40 hexadecimal characters.'
+    }
+    if (-not (Test-Path -LiteralPath "Cert:\CurrentUser\My\$CertificateThumbprint")) {
+        throw 'The configured release certificate was not found in the current user Personal store (Cert:\CurrentUser\My).'
+    }
+}
+if ($RequireAuthenticode -and -not $CertificateThumbprint) {
+    throw 'A trusted certificate thumbprint is required for a public release.'
+}
+
 # Capture the conditional output as an array: a single string splats into
 # individual characters when passed to a native command such as dotnet.
 $restoreArguments = @(if ($LockedRestore) { '-p:RestoreLockedMode=true' })
@@ -50,9 +67,6 @@ if ($TestedNativeArtifactDirectory) {
     $nativeArguments = @('-p:SkipNativeCompile=true', "-p:VNotchNativeArtifactPath=$nativeBinary")
     # The tested artifact contains the main DLL. Stage the pinned Lite runtime separately.
     & (Join-Path $scriptDir 'Build-TranslationRuntime.ps1') -Root $repoRoot
-}
-if ($RequireAuthenticode -and -not $CertificateThumbprint) {
-    throw 'A trusted certificate thumbprint is required for a public release.'
 }
 
 # Runtime Unicode Box-Drawing & Status Glyphs (7-bit ASCII source safe for PS 5.1 & PS 7)
@@ -110,9 +124,6 @@ $assemblyVersion = $installerVersion
 if (-not $ReleaseVersion) { $ReleaseVersion = $projectVersion }
 if ($ReleaseVersion -cnotmatch '^[0-9]+\.[0-9]+\.[0-9]+(?:\.[0-9]+)?(?:-[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?$') {
     throw 'Invalid release version.'
-}
-if (-not $ReleaseVersion.Contains('-') -and -not ($CertificateThumbprint -or $CertificatePath)) {
-    throw 'A stable installer requires an Authenticode certificate. Supply -CertificateThumbprint or -CertificatePath, or use a prerelease version for an unsigned test build.'
 }
 if ($WindowsVersion) { $installerVersion = $WindowsVersion }
 if ($installerVersion -notmatch '^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$' -or
@@ -236,6 +247,10 @@ if (-not $NsisPath) {
     if (-not (Test-Path -LiteralPath $NsisPath)) {
         $NsisPath = "C:\Program Files\NSIS\makensis.exe"
     }
+    if (-not (Test-Path -LiteralPath $NsisPath)) {
+        $nsisCache = Join-Path $repoRoot '.cache/nsis'
+        $NsisPath = & (Join-Path $scriptDir 'Initialize-Nsis.ps1') -CacheDirectory $nsisCache -DestinationDirectory (Join-Path $nsisCache 'portable')
+    }
 }
 
 if (-not (Test-Path $NsisPath)) {
@@ -281,6 +296,10 @@ try {
     } else {
         Write-TreeItem 'Using NSIS compression. Install 7-Zip for a smaller setup executable.'
     }
+    # A new installer invalidates the previous update metadata even if signing fails.
+    foreach ($sidecar in 'installers\V-Notch-Setup.exe.manifest.sig', 'installers\V-Notch-Setup.exe.manifest.json') {
+        if (Test-Path -LiteralPath $sidecar) { Remove-Item -LiteralPath $sidecar }
+    }
     $nsisOut = Invoke-CapturedNative { & $NsisPath @nsisArguments 'V-Notch-Setup.nsi' }
     $nsisExitCode = $LASTEXITCODE
 } finally {
@@ -313,7 +332,7 @@ if ($CertificateThumbprint) {
     if ($LASTEXITCODE -ne 0) { Write-TreeItem "Authenticode signing failed!" -State "Error"; exit 1 }
     Write-TreeItem "Installer Authenticode signature applied." -State "Success"
 } else {
-    Write-TreeItem "Unsigned prerelease installer." -State "Info"
+    Write-TreeItem "Built without Authenticode. Windows Smart App Control may block VNotch.Native.dll." -State "Warn"
 }
 if ($CertificateThumbprint -or $CertificatePath) {
     & (Join-Path $scriptDir 'Assert-InstallerSignatures.ps1') -InstallerPath 'installers\V-Notch-Setup.exe' -CertificateThumbprint $CertificateThumbprint
@@ -347,29 +366,21 @@ $foundKey = $privateKeyCandidates | Where-Object { $_ -and (Test-Path $_) } | Se
 
 if ($foundKey -or $env:VNOTCH_UPDATE_SIGNING_KEY_PEM -or $env:VNOTCH_UPDATE_SIGNING_PRIVATE_KEY_PEM) {
     $signScript = Join-Path $scriptDir "Sign-UpdateManifest.ps1"
-    $pwshCmd = Get-Command pwsh.exe -ErrorAction SilentlyContinue
-    $keyArg = if ($foundKey) { "-PrivateKeyPath '$foundKey'" } else { "" }
     try {
-        if ($PSVersionTable.PSVersion.Major -ge 7) {
-            $signParams = @{
-                InstallerPath = "installers\V-Notch-Setup.exe"
-                Version = $ReleaseVersion
-            }
-            if ($foundKey) { $signParams["PrivateKeyPath"] = $foundKey }
-            & $signScript @signParams | Out-Null
-        } elseif ($pwshCmd) {
-            & $pwshCmd.Source -NoProfile -ExecutionPolicy Bypass -Command "& '$signScript' -InstallerPath 'installers\V-Notch-Setup.exe' -Version '$ReleaseVersion' $keyArg" | Out-Null
-            if ($LASTEXITCODE -ne 0) {
-                throw "Sign-UpdateManifest.ps1 failed with exit code $LASTEXITCODE."
-            }
-        } else {
-            throw "PowerShell 7 (pwsh) is required to sign the ECDSA update manifest when VNOTCH_UPDATE_SIGNING_PRIVATE_KEY_PEM is set."
+        $signParams = @{
+            InstallerPath = "installers\V-Notch-Setup.exe"
+            Version = $ReleaseVersion
+            RequireAuthenticode = $RequireAuthenticode
         }
+        if ($foundKey) { $signParams["PrivateKeyPath"] = $foundKey }
+        & $signScript @signParams | Out-Null
         Write-TreeItem "Signed ECDSA update manifest." -State "Success"
     } catch {
         Write-TreeItem "Could not sign update manifest: $_" -State "Error"
         throw
     }
+} else {
+    Write-TreeItem "Update manifest skipped (no update-signing key configured)." -State "Info"
 }
 
 if ($env:GITHUB_ACTIONS -ne 'true') {

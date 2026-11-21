@@ -208,11 +208,12 @@ public sealed class SignedUpdateManifestTests
     }
 
     [Theory]
-    [InlineData("99.0.0", false, false)]
-    [InlineData("99.0.0+build.unsigned-fixture", false, false)]
+    [InlineData("99.0.0", false, true)]
+    [InlineData("99.0.0+build.unsigned-fixture", false, true)]
+    [InlineData("99.0.0", true, false)]
     [InlineData("99.0.0-beta.2", true, false)]
     [InlineData("99.0.0-beta.2", false, true)]
-    public async Task ReleaseSigningScript_OnlySignsUnsignedInstallerForLocalPrerelease(
+    public async Task ReleaseSigningScript_EnforcesAuthenticodeWhenRequested(
         string version, bool requireAuthenticode, bool shouldSign)
     {
         var root = new DirectoryInfo(AppContext.BaseDirectory);
