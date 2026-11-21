@@ -11,129 +11,20 @@ namespace VNotch.Tests;
 public sealed class DynamicIslandCropPaletteTests
 {
     [Fact]
-    public void CropPaletteUsesTheSelectedPixelsWithoutChangingTheWholeImageCache()
-    {
-        SharedStaTestRunner.Run(() =>
-        {
-            var source = CreateTwoColorArtwork();
-            var whole = DynamicIslandColorExtractor.GetDynamicIslandPalette(source);
-            var red = DynamicIslandColorExtractor.GetDynamicIslandPalette(source, new Rect(0, 0, 40, 40));
-            var blue = DynamicIslandColorExtractor.GetDynamicIslandPalette(source, new Rect(40, 0, 40, 40));
-            Assert.True(red.Main.R > 200 && red.Main.B < 40);
-            Assert.True(blue.Main.B > 200 && blue.Main.R < 40);
-            Assert.Equal(whole, DynamicIslandColorExtractor.GetDynamicIslandPalette(source));
-            Assert.Equal(blue, DynamicIslandColorExtractor.GetDynamicIslandPalette(source, new Rect(40, 0, 40, 40)));
-        });
-    }
-
-    [Fact]
-    public void CropBoundsAreClampedAndInvalidBoundsFallBackToTheWholeArtwork()
-    {
-        SharedStaTestRunner.Run(() =>
-        {
-            var source = CreateTwoColorArtwork();
-            var blue = DynamicIslandColorExtractor.GetDynamicIslandPalette(source, new Rect(40, -5, 100, 60));
-            Assert.True(blue.Main.B > 200 && blue.Main.R < 40);
-            var whole = DynamicIslandColorExtractor.GetDynamicIslandPalette(source);
-            foreach (var bounds in new[] { Rect.Empty, new Rect(90, 0, 10, 10), new Rect(0, 0, 0, 0), new Rect(double.NaN, 0, 10, 10) })
-                Assert.Equal(whole, DynamicIslandColorExtractor.GetDynamicIslandPalette(source, bounds));
-        });
-    }
-
-    [Fact]
-    public void CropPaletteClampsSubpixelNoiseAtImageEdges()
-    {
-        SharedStaTestRunner.Run(() =>
-        {
-            var source = CreateTwoColorArtwork();
-            var blue = DynamicIslandColorExtractor.GetDynamicIslandPalette(source, new Rect(40, 0, 40, 40));
-            var noisyBounds = new Rect(40, -1e-16, Math.BitIncrement(40d), Math.BitIncrement(40d));
-
-            Assert.Equal(blue, DynamicIslandColorExtractor.GetDynamicIslandPalette(source, noisyBounds));
-            Assert.Equal(new Int32Rect(40, 0, 40, 40),
-                DynamicIslandColorExtractor.GetClampedCropRect(noisyBounds, 80, 40));
-        });
-    }
-
-    [Fact]
-    public void CropRectKeepsFractionalEdgeIntersectionsInsideTheBitmap()
-    {
-        SharedStaTestRunner.Run(() =>
-        {
-            var source = CreateTwoColorArtwork();
-            var bounds = new Rect(Math.BitDecrement(80d), Math.BitDecrement(40d), 1, 1);
-            var crop = DynamicIslandColorExtractor.GetClampedCropRect(bounds, 80, 40);
-
-            Assert.Equal(new Int32Rect(79, 39, 1, 1), crop);
-            var cropped = new CroppedBitmap(source, crop!.Value);
-            Assert.Equal(1, cropped.PixelWidth);
-            Assert.Equal(1, cropped.PixelHeight);
-        });
-    }
-
-    [Theory]
-    [InlineData(0, 40)]
-    [InlineData(80, 0)]
-    [InlineData(-1, 40)]
-    public void CropRectRejectsInvalidImageDimensions(int width, int height)
-    {
-        Assert.Null(DynamicIslandColorExtractor.GetClampedCropRect(new Rect(0, 0, 1, 1), width, height));
-    }
-
-    [Fact]
-    public void CropRectRejectsNonFiniteAndNonIntersectingBounds()
-    {
-        foreach (var bounds in new[]
-        {
-            Rect.Empty,
-            new Rect(0, 0, 0, 0),
-            new Rect(80, 0, 1, 1),
-            new Rect(double.NaN, 0, 10, 10),
-            new Rect(0, double.NaN, 10, 10),
-            new Rect(0, 0, double.PositiveInfinity, 10),
-            new Rect(0, 0, 10, double.PositiveInfinity),
-            new Rect(double.MaxValue, 0, double.MaxValue, 10)
-        })
-            Assert.Null(DynamicIslandColorExtractor.GetClampedCropRect(bounds, 80, 40));
-    }
-
-    [Fact]
-    public void CropPaletteFreezesAnAccessibleSourceBeforeSharingIt()
-    {
-        SharedStaTestRunner.Run(() =>
-        {
-            var source = CreateTwoColorArtwork(freeze: false);
-            Assert.False(source.IsFrozen);
-            var bounds = new Rect(40, 0, 40, 40);
-            var palette = DynamicIslandColorExtractor.GetDynamicIslandPalette(source, bounds);
-
-            Assert.True(source.IsFrozen);
-            Assert.True(palette.Main.B > 200 && palette.Main.R < 40);
-            Assert.Equal(palette, Task.Run(() => DynamicIslandColorExtractor.GetDynamicIslandPalette(source, bounds))
-                .WaitAsync(TimeSpan.FromSeconds(5)).GetAwaiter().GetResult());
-        });
-    }
-
-    [Fact]
     public void ForeignMutableSourceReturnsAnUncachedFallbackWithoutBlockingItsOwner()
     {
         SharedStaTestRunner.Run(() =>
         {
             var source = CreateTwoColorArtwork(freeze: false);
             var fallback = DynamicIslandColorExtractor.GetDynamicIslandPalette(null!);
-            var bounds = new Rect(40, 0, 40, 40);
 
             // The owner deliberately waits here: a synchronous Dispatcher.Invoke would deadlock.
-            Assert.Equal(fallback, Task.Run(() => DynamicIslandColorExtractor.GetDynamicIslandPalette(source, bounds))
-                .WaitAsync(TimeSpan.FromSeconds(5)).GetAwaiter().GetResult());
             Assert.Equal(fallback, Task.Run(() => DynamicIslandColorExtractor.GetDynamicIslandPalette(source))
                 .WaitAsync(TimeSpan.FromSeconds(5)).GetAwaiter().GetResult());
             Assert.False(source.IsFrozen);
 
             var whole = DynamicIslandColorExtractor.GetDynamicIslandPalette(source);
             Assert.NotEqual(fallback, whole);
-            var cropped = DynamicIslandColorExtractor.GetDynamicIslandPalette(source, bounds);
-            Assert.True(cropped.Main.B > 200 && cropped.Main.R < 40);
         });
     }
 
@@ -156,19 +47,6 @@ public sealed class DynamicIslandCropPaletteTests
     }
 
     [Fact]
-    public void FrozenSourceCanBeCroppedDirectlyOnAWorker()
-    {
-        SharedStaTestRunner.Run(() =>
-        {
-            var source = CreateTwoColorArtwork();
-            var palette = Task.Run(() => DynamicIslandColorExtractor.GetDynamicIslandPalette(
-                source, new Rect(40, 0, 40, 40))).WaitAsync(TimeSpan.FromSeconds(5)).GetAwaiter().GetResult();
-
-            Assert.True(palette.Main.B > 200 && palette.Main.R < 40);
-        });
-    }
-
-    [Fact]
     public void NonFreezableSourceIsAnalyzedOnItsOwner()
     {
         SharedStaTestRunner.Run(() =>
@@ -185,8 +63,6 @@ public sealed class DynamicIslandCropPaletteTests
 
             Assert.True(pending.IsCompletedSuccessfully);
             Assert.Equal(expected, pending.GetAwaiter().GetResult());
-            var crop = DynamicIslandColorExtractor.GetDynamicIslandPalette(source, new Rect(40, 0, 40, 40));
-            Assert.True(crop.Main.B > 200 && crop.Main.R < 40);
             Assert.False(source.IsFrozen);
         });
     }
@@ -200,7 +76,7 @@ public sealed class DynamicIslandCropPaletteTests
             var whole = DynamicIslandColorExtractor.GetDynamicIslandPalette(source);
             Assert.True(whole.Main.R > 200 && whole.Main.B < 40);
 
-            var pureBlue = DynamicIslandColorExtractor.GetDynamicIslandPalette(source, new Rect(40, 0, 40, 40));
+            var pureBlue = DynamicIslandColorExtractor.GetDynamicIslandPalette(new CroppedBitmap(source, new Int32Rect(40, 0, 40, 40)));
             Assert.True(pureBlue.Main.B > 200 && pureBlue.Main.R < 40);
             Assert.True(pureBlue.Sub.B >= 220 && pureBlue.Sub.B > pureBlue.Sub.G && pureBlue.Sub.G > pureBlue.Sub.R && pureBlue.Sub.G >= 100, $"Expected vibrant readable blue sub color instead of washed-out gray or dark indigo, got ({pureBlue.Sub.R},{pureBlue.Sub.G},{pureBlue.Sub.B})");
         });

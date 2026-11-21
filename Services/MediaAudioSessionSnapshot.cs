@@ -53,9 +53,6 @@ internal static unsafe partial class WindowsMediaAudioSessions
     private static partial int NativeReadPeak(SnapshotOwner snapshot, int index, out float peak);
 
     [LibraryImport(NativeDll, EntryPoint = "vn_audio_session_open_volume")]
-    internal static partial int NativeOpenVolume(long snapshot, int index, out long volume);
-
-    [LibraryImport(NativeDll, EntryPoint = "vn_audio_session_open_volume")]
     private static partial int NativeOpenOwnedVolume(SnapshotOwner snapshot, int index, out long volume);
 
     [LibraryImport(NativeDll, EntryPoint = "vn_audio_volume_get")]

@@ -531,7 +531,7 @@ public sealed class MediaThumbnailPipelineTests
         info.Duration = TimeSpan.FromSeconds(120);
         fixture.PublishIdentity(info);
         var pending = new TaskCompletionSource<YouTubeLookupResult?>(TaskCreationOptions.RunContinuationsAsynchronously);
-        fixture.Metadata.Lookup = (_, _, _) => pending.Task;
+        fixture.Metadata.Lookup = (_, _) => pending.Task;
         using var request = CancellationTokenSource.CreateLinkedTokenSource(ct);
         var fetch = FetchYouTube(fixture.Service, info, request.Token);
         Assert.Equal(1, fixture.Metadata.TrackCalls);
@@ -774,7 +774,7 @@ public sealed class MediaThumbnailPipelineTests
         var info = fixture.Track("YouTube");
         fixture.PublishIdentity(info);
         var previous = new TaskCompletionSource<YouTubeLookupResult?>(TaskCreationOptions.RunContinuationsAsynchronously);
-        fixture.Metadata.Lookup = (title, _, _) => title == info.CurrentTrack ? previous.Task : Task.FromResult<YouTubeLookupResult?>(Result(title));
+        fixture.Metadata.Lookup = (title, _) => title == info.CurrentTrack ? previous.Task : Task.FromResult<YouTubeLookupResult?>(Result(title));
         fixture.Artwork.Image = Bitmap(640, 360);
         Invoke(fixture.Service, "StartThumbnailFetchIfNeeded", info, true);
         await WpfFrameWaiter.UntilAsync(() => fixture.Metadata.TrackCalls == 1, "first artwork lookup", ct);
@@ -1145,9 +1145,9 @@ public sealed class MediaThumbnailPipelineTests
         public YouTubeLookupResult? UrlResult, TrackResult, SearchResult;
         public string? SoundCloudUrl, SoundCloudSearch;
         public int TrackCalls, SearchCalls, SoundCloudSearchCalls;
-        public Func<string, string, CancellationToken, Task<YouTubeLookupResult?>>? Lookup;
+        public Func<string, CancellationToken, Task<YouTubeLookupResult?>>? Lookup;
         public Task<YouTubeLookupResult?> TryGetYouTubeVideoInfoFromUrlAsync(string url, CancellationToken ct = default) => Task.FromResult(UrlResult);
-        public Task<YouTubeLookupResult?> TryGetYouTubeVideoIdWithInfoAsync(string title, string artist = "", CancellationToken ct = default) { Interlocked.Increment(ref TrackCalls); return Lookup?.Invoke(title, artist, ct) ?? Task.FromResult(TrackResult); }
+        public Task<YouTubeLookupResult?> TryGetYouTubeVideoIdWithInfoAsync(string title, CancellationToken ct = default) { Interlocked.Increment(ref TrackCalls); return Lookup?.Invoke(title, ct) ?? Task.FromResult(TrackResult); }
         public Task<YouTubeLookupResult?> TrySearchYouTubeByTitleAsync(string title, string artist = "", CancellationToken ct = default) { SearchCalls++; return Task.FromResult(SearchResult); }
         public Task<string?> TryGetSoundCloudArtworkFromUrlAsync(string soundCloudUrl, CancellationToken ct = default) => Task.FromResult(SoundCloudUrl);
         public Task<string?> TryGetSoundCloudArtworkUrlAsync(string title, string artist = "", bool requireStrongMatch = false, CancellationToken ct = default) { SoundCloudSearchCalls++; Assert.True(requireStrongMatch); return Task.FromResult(SoundCloudSearch); }

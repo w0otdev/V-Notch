@@ -195,20 +195,6 @@ public sealed class MainWindowAnimationHelperTests
         Assert.Equal(-6, window.SettingsTranslate.Y);
     });
 
-    [Theory]
-    [InlineData(true)]
-    [InlineData(false)]
-    public void SettingsEjectAndAbsorbFeedbackReturnsToCollapsedGeometry(bool eject) => SharedStaTestRunner.RunAsync(async ct =>
-    {
-        await using var fixture = CreateFixture();
-        var window = fixture.Window;
-        if (eject) window.PlaySettingsEjectAnimation(); else window.PlaySettingsAbsorbAnimation();
-        await WpfFrameWaiter.UntilAsync(() => window.NotchBorder.Width > 302, "settings feedback opens pill", ct);
-        await WpfFrameWaiter.UntilAsync(() => Math.Abs(window.NotchBorder.Width - 300) < 1e-6 && Math.Abs(window.NotchBorder.Height - 40) < 1e-6 && Math.Abs(window.NotchScale.ScaleY - 1) < 1e-6, "settings feedback restores pill", ct);
-        Assert.Equal(1, window.NotchShadowScale.ScaleY);
-        Assert.Equal(window.NotchBorder.CornerRadius, window.NotchBorderShadow.CornerRadius);
-    });
-
     private static GreetingAcceptanceTests.MainWindowFixture CreateFixture()
     {
         var fixture = new GreetingAcceptanceTests.MainWindowFixture("en", greeting: false,

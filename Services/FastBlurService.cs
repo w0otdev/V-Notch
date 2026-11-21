@@ -11,18 +11,6 @@ namespace VNotch.Services;
 public static partial class FastBlurService
 {
     [LibraryImport("VNotch.Native.dll")]
-    private static partial int vn_fast_blur_get_window_reciprocal(int window, out uint outReciprocal);
-
-    [LibraryImport("VNotch.Native.dll")]
-    private static unsafe partial int vn_fast_blur_darken_pixels(byte* pixels, int length, float factor);
-
-    [LibraryImport("VNotch.Native.dll")]
-    private static unsafe partial int vn_fast_blur_box_horizontal(byte* source, byte* target, int w, int h, int radius);
-
-    [LibraryImport("VNotch.Native.dll")]
-    private static unsafe partial int vn_fast_blur_box_vertical(byte* source, byte* target, int w, int h, int radius);
-
-    [LibraryImport("VNotch.Native.dll")]
     private static unsafe partial int vn_fast_blur_process_bgra32(
         byte* pixels, byte* scratch, int w, int h, int radius, int passes, float darkenFactor);
 
@@ -94,36 +82,4 @@ public static partial class FastBlurService
         }).ConfigureAwait(false);
     }
 
-    internal static unsafe void DarkenPixels(byte[] pixels, int length, float factor = 0.96f)
-    {
-        if (pixels == null || length <= 0) return;
-        fixed (byte* p = pixels)
-        {
-            _ = vn_fast_blur_darken_pixels(p, Math.Min(pixels.Length, length), factor);
-        }
-    }
-
-    internal static unsafe void BoxBlurHorizontal(byte[] source, byte[] target, int w, int h, int radius)
-    {
-        fixed (byte* pSrc = source)
-        fixed (byte* pDst = target)
-        {
-            _ = vn_fast_blur_box_horizontal(pSrc, pDst, w, h, radius);
-        }
-    }
-
-    internal static uint GetWindowReciprocal(int window)
-    {
-        _ = vn_fast_blur_get_window_reciprocal(window, out uint rec);
-        return rec;
-    }
-
-    internal static unsafe void BoxBlurVertical(byte[] source, byte[] target, int w, int h, int radius)
-    {
-        fixed (byte* pSrc = source)
-        fixed (byte* pDst = target)
-        {
-            _ = vn_fast_blur_box_vertical(pSrc, pDst, w, h, radius);
-        }
-    }
 }

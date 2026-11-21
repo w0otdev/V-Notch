@@ -858,84 +858,19 @@ public partial class MainWindow
 
     #endregion
 
-    #region Settings Absorb Animation
-    private void ResetNotchScaleAndSizeAnimations()
-    {
-        NotchScale.BeginAnimation(ScaleTransform.ScaleXProperty, null);
-        NotchScale.BeginAnimation(ScaleTransform.ScaleYProperty, null);
-        NotchShadowScale.BeginAnimation(ScaleTransform.ScaleXProperty, null);
-        NotchShadowScale.BeginAnimation(ScaleTransform.ScaleYProperty, null);
-        NotchBorder.BeginAnimation(WidthProperty, null);
-        NotchBorder.BeginAnimation(HeightProperty, null);
-    }
-
     private DoubleAnimationUsingKeyFrames MakeTwoStageSpringPulse(
         double peakValue,
         TimeSpan peakKeyTime,
         double restValue,
         TimeSpan restKeyTime,
-        int fps,
-        TimeSpan? beginTime = null)
+        int fps)
     {
         var anim = new DoubleAnimationUsingKeyFrames();
-        if (beginTime.HasValue) anim.BeginTime = beginTime.Value;
         anim.KeyFrames.Add(new EasingDoubleKeyFrame(peakValue, KeyTime.FromTimeSpan(peakKeyTime), _easeQuadOut));
         anim.KeyFrames.Add(new EasingDoubleKeyFrame(restValue, KeyTime.FromTimeSpan(restKeyTime), _easeSoftSpring));
         Timeline.SetDesiredFrameRate(anim, fps);
         return anim;
     }
-
-    public void PlaySettingsEjectAnimation()
-    {
-        if (_isExpanded || _isAnimating) return;
-
-        int fps = VNotch.Services.AnimationConfig.TargetFps;
-        ResetNotchScaleAndSizeAnimations();
-
-        var ejectDur = TimeSpan.FromMilliseconds(150);
-        var settleTime = ejectDur + TimeSpan.FromMilliseconds(600);
-
-        double currentWidth = _collapsedWidth;
-        double currentHeight = _collapsedHeight;
-
-        var widthAnim = MakeTwoStageSpringPulse(currentWidth + 40, ejectDur, currentWidth, settleTime, fps);
-        var heightAnim = MakeTwoStageSpringPulse(currentHeight + 8, ejectDur, currentHeight, settleTime, fps);
-        var scaleY = MakeTwoStageSpringPulse(1.15, ejectDur, 1.0, settleTime, fps);
-
-        NotchBorder.BeginAnimation(WidthProperty, widthAnim);
-        NotchBorder.BeginAnimation(HeightProperty, heightAnim);
-        NotchScale.BeginAnimation(ScaleTransform.ScaleYProperty, scaleY);
-        NotchShadowScale.BeginAnimation(ScaleTransform.ScaleYProperty, scaleY);
-    }
-
-    public void PlaySettingsAbsorbAnimation()
-    {
-        if (_isExpanded || _isAnimating) return;
-
-        int fps = VNotch.Services.AnimationConfig.TargetFps;
-        ResetNotchScaleAndSizeAnimations();
-
-        var absorbDelay = TimeSpan.FromMilliseconds(480);
-        var openDur = TimeSpan.FromMilliseconds(200);
-        var settleTime = openDur + TimeSpan.FromMilliseconds(700);
-
-        double currentWidth = _collapsedWidth;
-        double currentHeight = _collapsedHeight;
-        double currentRadius = _cornerRadiusCollapsed;
-
-        var widthAnim = MakeTwoStageSpringPulse(currentWidth + 60, openDur, currentWidth, settleTime, fps, absorbDelay);
-        var heightAnim = MakeTwoStageSpringPulse(currentHeight + 10, openDur, currentHeight, settleTime, fps, absorbDelay);
-        var radiusAnim = MakeTwoStageSpringPulse(currentRadius + 6, openDur, currentRadius, settleTime, fps, absorbDelay);
-        var scaleY = MakeTwoStageSpringPulse(1.12, openDur, 1.0, settleTime, fps, absorbDelay);
-
-        NotchBorder.BeginAnimation(WidthProperty, widthAnim);
-        NotchBorder.BeginAnimation(HeightProperty, heightAnim);
-        NotchScale.BeginAnimation(ScaleTransform.ScaleYProperty, scaleY);
-        NotchShadowScale.BeginAnimation(ScaleTransform.ScaleYProperty, scaleY);
-        this.BeginAnimation(CurrentCornerRadiusProperty, radiusAnim);
-    }
-
-    #endregion
 
     #region Apple-Style Collapse Fade Out
 

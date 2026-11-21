@@ -178,7 +178,7 @@ public sealed partial class MediaMetadataLookupService : IMediaMetadataLookupSer
         }
     }
 
-    public async Task<YouTubeLookupResult?> TryGetYouTubeVideoIdWithInfoAsync(string title, string artist = "", CancellationToken ct = default)
+    public async Task<YouTubeLookupResult?> TryGetYouTubeVideoIdWithInfoAsync(string title, CancellationToken ct = default)
     {
         if (!_artworkAllowed())
             return null;

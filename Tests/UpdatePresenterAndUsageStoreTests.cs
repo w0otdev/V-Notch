@@ -119,8 +119,7 @@ public sealed class UpdatePresenterAndUsageStoreTests : IDisposable
         Assert.Empty(afterEmptyOnDisk);
 
         await using var reloaded = new SpotlightUsageStore(_usagePath, () => _now);
-        Assert.Equal(0, reloaded.GetBoost("app:one"));
-        Assert.Empty(reloaded.GetRecentItems(10));
+        Assert.Equal(0, reloaded.GetBoostNormalized("app:one", string.Empty));
     }
 
     private sealed class FakeUpdateService(UpdateInfo? nextUpdate) : IUpdateService

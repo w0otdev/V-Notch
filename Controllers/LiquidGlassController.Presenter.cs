@@ -92,8 +92,7 @@ public sealed partial class LiquidGlassController : IDisposable
                 hwnd,
                 _maxRegionW + GpuSamplingMarginLimit * 2,
                 _maxRegionH + GpuSamplingMarginLimit * 2,
-                ultimateGpuMode: _ultimateGpuMode,
-                useGpuCapture: true);
+                ultimateGpuMode: _ultimateGpuMode);
             _d3dPresenter.SetFrameIntervalMs(Volatile.Read(ref _activeIntervalMs));
             _d3dPresenter.FramePresented += OnD3DFramePresented;
             _d3dPresenter.RefreshRequested += ForceRefresh;

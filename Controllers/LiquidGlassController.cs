@@ -320,7 +320,6 @@ public sealed partial class LiquidGlassController : IDisposable
             }
         }
     }
-    public double ActiveIntervalMs => Volatile.Read(ref _activeIntervalMs);
 
     public bool ShouldThrottleFrameUpdate(ref long lastTick, bool force = false)
     {
@@ -335,13 +334,6 @@ public sealed partial class LiquidGlassController : IDisposable
         lastTick = now;
         return false;
     }
-    private int _averageBackgroundBrightnessInt = 128;
-    public int AverageBackgroundBrightnessInt
-    {
-        get => Volatile.Read(ref _averageBackgroundBrightnessInt);
-        set => Volatile.Write(ref _averageBackgroundBrightnessInt, value);
-    }
-    public double AverageBackgroundBrightness => AverageBackgroundBrightnessInt / 255.0;
     private int _averageBackgroundColorRgb = 0x808080;
     private int _outsideBackdropColorRgb = 0x808080;
     private int _backgroundLightX1000;

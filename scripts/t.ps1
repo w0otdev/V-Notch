@@ -140,11 +140,11 @@ try {
             },
             @{
                 Name   = "Shard-3 (Notch, Media, Tray, Battery & Calendar)"
-                Filter = "$baseFilter&(FullyQualifiedName~.Notch|FullyQualifiedName~Media|FullyQualifiedName~Tray|FullyQualifiedName~Battery|FullyQualifiedName~Calendar|FullyQualifiedName~Snip|FullyQualifiedName~SpeedTest)&FullyQualifiedName!~MainWindow&FullyQualifiedName!~Greeting&FullyQualifiedName!~Settings&FullyQualifiedName!~Clipboard&FullyQualifiedName!~Spotlight"
+                Filter = "$baseFilter&(FullyQualifiedName~.Notch|FullyQualifiedName~Media|FullyQualifiedName~Tray|FullyQualifiedName~Battery|FullyQualifiedName~Calendar|FullyQualifiedName~Snip)&FullyQualifiedName!~MainWindow&FullyQualifiedName!~Greeting&FullyQualifiedName!~Settings&FullyQualifiedName!~Clipboard&FullyQualifiedName!~Spotlight"
             },
             @{
                 Name   = "Shard-4 (Remaining Core, Services & Controls)"
-                Filter = "$baseFilter&FullyQualifiedName!~MainWindow&FullyQualifiedName!~Greeting&FullyQualifiedName!~Settings&FullyQualifiedName!~Clipboard&FullyQualifiedName!~Spotlight&FullyQualifiedName!~.Notch&FullyQualifiedName!~Media&FullyQualifiedName!~Tray&FullyQualifiedName!~Battery&FullyQualifiedName!~Calendar&FullyQualifiedName!~Snip&FullyQualifiedName!~SpeedTest"
+                Filter = "$baseFilter&FullyQualifiedName!~MainWindow&FullyQualifiedName!~Greeting&FullyQualifiedName!~Settings&FullyQualifiedName!~Clipboard&FullyQualifiedName!~Spotlight&FullyQualifiedName!~.Notch&FullyQualifiedName!~Media&FullyQualifiedName!~Tray&FullyQualifiedName!~Battery&FullyQualifiedName!~Calendar&FullyQualifiedName!~Snip"
             }
         )
     }
@@ -164,15 +164,15 @@ try {
             },
             @{
                 Name   = "Shard-4 (Spotlight, Tray, Battery & Calendar)"
-                Filter = "$baseFilter&(FullyQualifiedName~Spotlight|FullyQualifiedName~Tray|FullyQualifiedName~Battery|FullyQualifiedName~Calendar|FullyQualifiedName~Snip|FullyQualifiedName~SpeedTest)&FullyQualifiedName!~MainWindow&FullyQualifiedName!~Greeting&FullyQualifiedName!~Settings&FullyQualifiedName!~Clipboard&FullyQualifiedName!~.Notch&FullyQualifiedName!~Media"
+                Filter = "$baseFilter&(FullyQualifiedName~Spotlight|FullyQualifiedName~Tray|FullyQualifiedName~Battery|FullyQualifiedName~Calendar|FullyQualifiedName~Snip)&FullyQualifiedName!~MainWindow&FullyQualifiedName!~Greeting&FullyQualifiedName!~Settings&FullyQualifiedName!~Clipboard&FullyQualifiedName!~.Notch&FullyQualifiedName!~Media"
             },
             @{
-                Name   = "Shard-5 (Pomodoro, Notes, Controls, Audio & Native)"
-                Filter = "$baseFilter&(FullyQualifiedName~Pomodoro|FullyQualifiedName~Notes|FullyQualifiedName~QuickNotes|FullyQualifiedName~Control|FullyQualifiedName~Audio|FullyQualifiedName~Native|FullyQualifiedName~Todo|FullyQualifiedName~Converter|FullyQualifiedName~ColorPicker)&FullyQualifiedName!~MainWindow&FullyQualifiedName!~Greeting&FullyQualifiedName!~Settings&FullyQualifiedName!~Clipboard&FullyQualifiedName!~.Notch&FullyQualifiedName!~Media&FullyQualifiedName!~Spotlight&FullyQualifiedName!~Tray&FullyQualifiedName!~Battery&FullyQualifiedName!~Calendar&FullyQualifiedName!~Snip&FullyQualifiedName!~SpeedTest"
+                Name   = "Shard-5 (Notes, Controls, Audio & Native)"
+                Filter = "$baseFilter&(FullyQualifiedName~Notes|FullyQualifiedName~Control|FullyQualifiedName~Audio|FullyQualifiedName~Native|FullyQualifiedName~Todo|FullyQualifiedName~Converter)&FullyQualifiedName!~MainWindow&FullyQualifiedName!~Greeting&FullyQualifiedName!~Settings&FullyQualifiedName!~Clipboard&FullyQualifiedName!~.Notch&FullyQualifiedName!~Media&FullyQualifiedName!~Spotlight&FullyQualifiedName!~Tray&FullyQualifiedName!~Battery&FullyQualifiedName!~Calendar&FullyQualifiedName!~Snip"
             },
             @{
                 Name   = "Shard-6 (Remaining Core & Services)"
-                Filter = "$baseFilter&FullyQualifiedName!~MainWindow&FullyQualifiedName!~Greeting&FullyQualifiedName!~Settings&FullyQualifiedName!~Clipboard&FullyQualifiedName!~.Notch&FullyQualifiedName!~Media&FullyQualifiedName!~Spotlight&FullyQualifiedName!~Tray&FullyQualifiedName!~Battery&FullyQualifiedName!~Calendar&FullyQualifiedName!~Snip&FullyQualifiedName!~SpeedTest&FullyQualifiedName!~Pomodoro&FullyQualifiedName!~Notes&FullyQualifiedName!~QuickNotes&FullyQualifiedName!~Control&FullyQualifiedName!~Audio&FullyQualifiedName!~Native&FullyQualifiedName!~Todo&FullyQualifiedName!~Converter&FullyQualifiedName!~ColorPicker"
+                Filter = "$baseFilter&FullyQualifiedName!~MainWindow&FullyQualifiedName!~Greeting&FullyQualifiedName!~Settings&FullyQualifiedName!~Clipboard&FullyQualifiedName!~.Notch&FullyQualifiedName!~Media&FullyQualifiedName!~Spotlight&FullyQualifiedName!~Tray&FullyQualifiedName!~Battery&FullyQualifiedName!~Calendar&FullyQualifiedName!~Snip&FullyQualifiedName!~Notes&FullyQualifiedName!~Control&FullyQualifiedName!~Audio&FullyQualifiedName!~Native&FullyQualifiedName!~Todo&FullyQualifiedName!~Converter"
             }
         )
     }

@@ -41,8 +41,6 @@ internal sealed partial class SpotlightSearchService
     internal static readonly Comparison<SpotlightSearchItem> s_scoreAndTitleComparison = CompareScoreAndTitle;
 
     private readonly ISpotlightProvider[] _providers;
-    private readonly ISpotlightProvider[] _instantProviders;
-    private readonly ISpotlightProvider[] _deferredProviders;
     private readonly SpotlightUsageStore? _usage;
 
     public bool IsWindowsSearchAvailable => _providers.Any(p => p.FileRole != FileSearchRole.None && p.IsAvailable);
@@ -51,24 +49,10 @@ internal sealed partial class SpotlightSearchService
     {
         _providers = providers.ToArray();
         _usage = usage;
-        _instantProviders = _providers.Where(p => p.IsInstant).ToArray();
-        _deferredProviders = _providers.Where(p => !p.IsInstant).ToArray();
         foreach (var provider in _providers)
             provider.ConfigureExclusions(usage == null ? null : path => usage.Preferences.IsExcluded(path),
                 usage == null ? null : () => usage.Preferences.GetExcludedFolders());
     }
-
-    internal Task<IReadOnlyList<SpotlightSearchItem>> SearchInstantAsync(
-        string query,
-        int limit,
-        CancellationToken cancellationToken) =>
-        SearchProvidersCoreAsync(_instantProviders, query, limit, cancellationToken);
-
-    internal Task<IReadOnlyList<SpotlightSearchItem>> SearchDeferredAsync(
-        string query,
-        int limit,
-        CancellationToken cancellationToken) =>
-        SearchProvidersCoreAsync(_deferredProviders, query, limit, cancellationToken);
 
     public Task<IReadOnlyList<SpotlightSearchItem>> SearchAsync(
         string query,

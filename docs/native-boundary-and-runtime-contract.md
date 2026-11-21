@@ -2,10 +2,11 @@
 
 ## Scope and ownership
 
-The DLL remains one deployment unit. ABI **1.1** versions the existing surface;
-this does not claim to have split the implementation or migrated every import.
-`Native/vnotch_abi.h` is the small version/status contract. `vnotch_native.h` and
-its extension headers retain existing declarations and packing for compatibility.
+The host and DLL ship together using ABI **2.0**. The version descriptor lives in
+`Native/vnotch_abi.h`. ABI 2 retires `vn_backdrop_composite`,
+`vn_translation_compute_character_fades`, and
+`vn_translation_selection_can_preserve_recent_snapshot`. External clients that
+use these exports require the 1.x DLL.
 
 | Domain | Native ownership | Managed boundary / consumer |
 | --- | --- | --- |
@@ -33,9 +34,9 @@ module remains loaded for the lifetime of its imports/handles. OS and third-part
 DLLs retain their existing resolution. Tests/tools in other assemblies do not
 inherit the host's resolver.
 
-The host requires minor version 1 for the shared calendar geometry export.
-Keep the v1 descriptor fixed. Additive exports increment the minor version; a
-host that needs a later minor must increase its minimum-version check. Changes
+The host requires major version 2. The descriptor layout stays fixed. Additive
+exports increment the minor version. A host that needs a later minor must
+increase its minimum-version check. Changes
 to signatures, field offsets, ownership or meaning require a new major and a
 coordinated host update. An ABI number is a maintained compatibility promise,
 not automatic verification of every function signature. The existing export

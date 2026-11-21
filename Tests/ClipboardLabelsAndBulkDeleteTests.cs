@@ -29,9 +29,6 @@ public sealed class ClipboardLabelsAndBulkDeleteTests
             for (int i = 0; i < 24; i++) await store.AddLabelAsync($"Nhãn dự án {i}");
             labels = store.GetLabels().ToArray();
             var last = labels[^1];
-            await store.MoveLabelAsync(last.Id, -int.MaxValue);
-            labels = store.GetLabels().ToArray();
-            Assert.Equal(last.Id, labels[0].Id);
             Assert.Equal(30, labels.Length);
             var entries = new List<Guid>();
             for (int i = 0; i < 16; i++)

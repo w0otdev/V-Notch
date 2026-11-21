@@ -113,7 +113,7 @@ public sealed class BrowserYouTubeResourceRegressionTests(ITestOutputHelper outp
         int subtitleHttpCalls = 0;
         var fakeMedia = new FakeMediaDetectionService
         {
-            LookupYouTubeVideoId = (_, _, _) =>
+            LookupYouTubeVideoId = (_, _) =>
             {
                 Interlocked.Increment(ref lookupCalls);
                 return Task.FromResult<YouTubeLookupResult?>(new YouTubeLookupResult { Id = "dQw4w9WgXcQ" });
@@ -538,7 +538,7 @@ public sealed class BrowserYouTubeResourceRegressionTests(ITestOutputHelper outp
     private sealed class NoopMetadataLookup : IMediaMetadataLookupService
     {
         public Task<YouTubeLookupResult?> TryGetYouTubeVideoInfoFromUrlAsync(string url, CancellationToken ct = default) => Task.FromResult<YouTubeLookupResult?>(null);
-        public Task<YouTubeLookupResult?> TryGetYouTubeVideoIdWithInfoAsync(string title, string artist = "", CancellationToken ct = default) => Task.FromResult<YouTubeLookupResult?>(null);
+        public Task<YouTubeLookupResult?> TryGetYouTubeVideoIdWithInfoAsync(string title, CancellationToken ct = default) => Task.FromResult<YouTubeLookupResult?>(null);
         public Task<YouTubeLookupResult?> TrySearchYouTubeByTitleAsync(string title, string artist = "", CancellationToken ct = default) => Task.FromResult<YouTubeLookupResult?>(null);
         public Task<string?> TryGetSoundCloudArtworkFromUrlAsync(string soundCloudUrl, CancellationToken ct = default) => Task.FromResult<string?>(null);
         public Task<string?> TryGetSoundCloudArtworkUrlAsync(string title, string artist = "", bool requireStrongMatch = false, CancellationToken ct = default) => Task.FromResult<string?>(null);

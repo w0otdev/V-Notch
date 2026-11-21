@@ -39,13 +39,6 @@ public sealed class ProgressViewModelPerformanceTests
         model.Render();
         Assert.Equal("0:15", model.CurrentTimeText);
         Assert.Equal("2:00", model.RemainingTimeText);
-
-        model.StartDragging();
-        model.UpdateDragPosition(0.5);
-        Assert.Equal("1:00", model.CurrentTimeText);
-        model.StopDragging();
-        model.Render();
-        Assert.Equal("0:15", model.CurrentTimeText);
     }
 
     [Fact]

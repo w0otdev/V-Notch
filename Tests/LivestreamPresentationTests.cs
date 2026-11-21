@@ -75,7 +75,7 @@ public sealed class LivestreamPresentationTests
     public void IndeterminateWithPositiveDurationRejectsMouseAndProgrammaticSeek() => SharedStaTestRunner.RunAsync(async () =>
     {
         var media = new FakeMediaDetectionService();
-        var model = new MediaViewModel(media, _ => Task.CompletedTask);
+        var model = new MediaViewModel(media);
         using var view = new MediaPlaybackView();
         view.Attach(model, media);
         view.UpdateProgressTracking(LiveInfo(7200, true));

@@ -27,31 +27,6 @@ public sealed partial class SmartThumbnailCropTests
         for (int i = 0; i < outCount; i++) result.Add(outPtr[i]);
         return result;
     }
-    [Fact]
-    public void PortraitFramingLeavesHairAndUpperTorsoSpace()
-    {
-        var face = new Detection { X1 = 1160, Y1 = 211, X2 = 1443, Y2 = 656 };
-        var crop = SmartThumbnailCropService.GetPortraitCropRect(face, 2080, 1121);
-
-        Assert.True(crop.Y < 62); // Top of the hair in the reported portrait.
-        Assert.True(crop.Y + crop.Height > 900); // Include shoulders and upper torso.
-        Assert.True(crop.X > 800); // Leave the title artwork outside the frame.
-        Assert.True(crop.X + crop.Width > 1650); // Preserve the back of the hair.
-        Assert.Equal(crop.Width, crop.Height);
-    }
-
-    [Theory]
-    [InlineData(0, 0, 100, 120)]
-    [InlineData(500, 180, 600, 300)]
-    public void PortraitFramingStaysInsideImage(float x1, float y1, float x2, float y2)
-    {
-        var face = new Detection { X1 = x1, Y1 = y1, X2 = x2, Y2 = y2 };
-        var crop = SmartThumbnailCropService.GetPortraitCropRect(face, 600, 300);
-
-        Assert.InRange(crop.X, 0, 600 - crop.Width);
-        Assert.InRange(crop.Y, 0, 300 - crop.Height);
-        Assert.Equal(crop.Width, crop.Height);
-    }
 
     [Fact]
     public void NmsKeepsOverlappingSubjectsOfDifferentClasses()

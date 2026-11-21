@@ -45,20 +45,20 @@ public sealed partial class NativeBoundaryTests
         Assert.Equal((int)NativeStatus.Ok, vn_abi_query((uint)sizeof(NativeAbi.Info), &info));
         NativeAbi.Validate(info);
         Assert.Equal(24, sizeof(NativeAbi.Info));
-        Assert.Equal(1u, info.Major);
+        Assert.Equal(2u, info.Major);
         var oldDescriptor = info;
-        oldDescriptor.Minor = 0;
+        oldDescriptor.Major = 1;
         Assert.Throws<BadImageFormatException>(() => NativeAbi.Validate(oldDescriptor));
         info.Minor = 100; // Additive releases retain this fixed descriptor and existing exports.
         NativeAbi.Validate(info);
     }
 
     [Theory]
-    [InlineData(20, 1, 8, 1, 1)]
-    [InlineData(24, 2, 8, 1, 1)]
-    [InlineData(24, 1, 4, 1, 1)]
-    [InlineData(24, 1, 8, 2, 1)]
-    [InlineData(24, 1, 8, 1, 2)]
+    [InlineData(20, 2, 8, 1, 1)]
+    [InlineData(24, 1, 8, 1, 1)]
+    [InlineData(24, 2, 4, 1, 1)]
+    [InlineData(24, 2, 8, 2, 1)]
+    [InlineData(24, 2, 8, 1, 2)]
     public void IncompatibleDescriptorsFailBeforeAnyFeatureCall(uint size, uint major, uint pointer, uint handles, uint status) =>
         Assert.Throws<BadImageFormatException>(() => NativeAbi.Validate(new NativeAbi.Info
         { Size = size, Major = major, Minor = 1, PointerSize = pointer, RegistryHandleVersion = handles, StatusVersion = status }));

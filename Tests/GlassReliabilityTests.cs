@@ -69,7 +69,7 @@ public sealed class GlassReliabilityTests
         { CaptureFullSurface = true };
         var compute = typeof(LiquidGlassController).GetMethod("ComputeFrameDimensions", BindingFlags.Instance | BindingFlags.NonPublic)!;
         object Dimensions(LiquidGlassController.CaptureRegion region) => compute.Invoke(controller,
-            new object[] { region, LiquidGlassController.GlassParams.Default, true, true, region.Width, region.Height })!;
+            new object[] { region, LiquidGlassController.GlassParams.Default, true, region.Width, region.Height })!;
         int Value(object dimensions, string name) => (int)dimensions.GetType().GetProperty(name)!.GetValue(dimensions)!;
         var collapsed = Dimensions(new LiquidGlassController.CaptureRegion(center - 50, desktopTop + 100, 100, 50));
         var expanded = Dimensions(new LiquidGlassController.CaptureRegion(center - 300, desktopTop + 100, 600, 200));
@@ -78,20 +78,6 @@ public sealed class GlassReliabilityTests
         Assert.True(left <= center - 300);
         Assert.True(left + Value(collapsed, "SrcW") >= center + 300);
     });
-
-    [Theory]
-    [InlineData(0, 0, 0, 100)]
-    [InlineData(80, 20, 0, 100)]
-    [InlineData(-10, 20, 0, 20)]
-    [InlineData(100, 120, 0, 100)]
-    [InlineData(20, 120, 20, 100)]
-    public void DirtyRowsAlwaysProduceValidSurfaceRect(int top, int bottom, int expectedTop, int expectedBottom)
-    {
-        var rows = D3DImageFramePresenter.NormalizeDirtyRows(new GlassDirtyRows(top, bottom), 100, false);
-        Assert.Equal(new GlassDirtyRows(expectedTop, expectedBottom), rows);
-        Assert.False(rows.IsEmpty);
-        Assert.Equal(new GlassDirtyRows(0, 100), D3DImageFramePresenter.NormalizeDirtyRows(rows, 100, true));
-    }
 
     [Fact]
     public void VisibleCapturePolicySurvivesWorkerFramesAndLiveToggle() => SharedStaTestRunner.Run(() =>

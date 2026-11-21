@@ -346,7 +346,6 @@ public sealed class SpotlightAiPresentationTests
         }));
         var settings = Settings();
         settings.SpotlightAiWordsPerSecond = 30;
-        settings.HasSeenSpotlightIntro = true;
         using var fixture = new SpotlightWindowFixture(settings, new SpotlightAiService(client));
         var window = fixture.Window;
         window.ShowSpotlight();

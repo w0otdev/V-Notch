@@ -43,7 +43,6 @@ public sealed class SpotifyCanvasController : IDisposable
     public string CurrentTrackKey => _currentTrackKey;
     public Uri? CurrentUri => _currentUri;
     public long CurrentRequestId => _activeRequestId;
-    public bool IsSurfaceVisible => _isSurfaceVisible;
     public bool IsLookupCompleted => _lookupCompleted;
     public bool HasPendingFetch => _fetchCts != null;
     internal Task? InFlightTask => _inFlightTask;

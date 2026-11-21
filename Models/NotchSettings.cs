@@ -217,7 +217,6 @@ public partial class NotchSettings : IJsonOnDeserialized
     public string ProcessPriority { get; set; } = "Normal";
     public int GpuPreference { get; set; } = 0;
 
-    public bool HasSeenSpotlightIntro { get; set; } = false;
     public bool HasSeenCpp26Notice { get; set; } = false;
 
     public bool EnableLocalOnlyMode { get; set; } = false;

@@ -633,7 +633,7 @@ public partial class SettingsWindow
         GlassEdgeBendSlider.Label = Loc.Get("settings.glass.edgeBend");
         GlassChromSlider.Label = Loc.Get("settings.glass.chrom");
         GlassEdgeHighlightSlider.Label = Loc.Get("settings.glass.edgeHighlight");
-        GlassTouchLightSlider.Label = Loc.Get("settings.glass.touchLight") ?? "Touch Light";
+        GlassTouchLightSlider.Label = Loc.Get("settings.glass.touchLight");
         GlassSpecularSlider.Label = Loc.Get("settings.glass.specular");
         GlassFresnelSlider.Label = Loc.Get("settings.glass.fresnel");
         GlassDistortionSlider.Label = Loc.Get("settings.glass.distortion");

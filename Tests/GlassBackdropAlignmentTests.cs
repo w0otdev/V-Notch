@@ -31,7 +31,7 @@ public sealed class GlassBackdropAlignmentTests
             new LiquidGlassController.CaptureRegion(0, 0, 300, 80)
         })
         {
-            var dims = compute.Invoke(controller, [region, parameters, true, true, region.Width, region.Height])!;
+            var dims = compute.Invoke(controller, [region, parameters, true, region.Width, region.Height])!;
             var g = (LiquidGlassController.GpuGeometry)geometry.Invoke(controller, [parameters, region, dims])!;
             // An arbitrary feature must sample its own desktop coordinate before
             // applying the optical displacement, including a retained capture origin.

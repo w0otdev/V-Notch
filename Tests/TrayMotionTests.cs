@@ -123,14 +123,14 @@ public sealed class TrayMotionTests
     [Fact]
     public void CopyFeedbackKeepsItsBindingAcrossRepeatedChanges() => SharedStaTestRunner.Run(() =>
     {
-        var source = new CheckBox();
+        var source = new Border { Opacity = 0 };
         var surface = new Border { IsHitTestVisible = false };
         BindingOperations.SetBinding(surface, TrayMotion.OpacityProperty,
-            new Binding(nameof(CheckBox.IsChecked)) { Source = source, Converter = new TrayCopiedOpacityConverter() });
+            new Binding(nameof(Border.Opacity)) { Source = source });
         Assert.Equal(0, surface.Opacity);
-        source.IsChecked = true;
+        source.Opacity = 1;
         Assert.Equal(1, surface.Opacity);
-        source.IsChecked = false;
+        source.Opacity = 0;
         Assert.Equal(0, surface.Opacity);
         Assert.True(BindingOperations.IsDataBound(surface, TrayMotion.OpacityProperty));
         Assert.False(surface.IsHitTestVisible);
@@ -139,14 +139,14 @@ public sealed class TrayMotionTests
     [Fact]
     public void CopyFeedbackKeepsItsBlurBindingAcrossRepeatedChanges() => SharedStaTestRunner.Run(() =>
     {
-        var source = new CheckBox();
+        var source = new Border { Width = 0 };
         var surface = new Border();
         BindingOperations.SetBinding(surface, TrayMotion.BlurRadiusProperty,
-            new Binding(nameof(CheckBox.IsChecked)) { Source = source, Converter = new TrayCopiedBlurConverter() });
+            new Binding(nameof(Border.Width)) { Source = source });
         Assert.Equal(0, TrayMotion.GetBlurRadius(surface));
-        source.IsChecked = true;
+        source.Width = 16;
         Assert.Equal(16, TrayMotion.GetBlurRadius(surface));
-        source.IsChecked = false;
+        source.Width = 0;
         Assert.Equal(0, TrayMotion.GetBlurRadius(surface));
         Assert.True(BindingOperations.IsDataBound(surface, TrayMotion.BlurRadiusProperty));
     });

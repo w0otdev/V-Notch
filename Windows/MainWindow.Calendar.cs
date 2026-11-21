@@ -79,7 +79,6 @@ public partial class MainWindow
     {
         EnsureCalendarFeatureLoaded();
         EnsureActiveExpandedWidgetFeatureLoaded();
-        _viewModel.Secondary.UpdateCalendar();
         _calendarPresenter?.UpdateCalendarInfo();
     }
 

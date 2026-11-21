@@ -1077,8 +1077,3 @@ VN_EXPORT int32_t __stdcall vn_backdrop_composite_frame(
         return VN_ERR_FAIL;
     }
 }
-
-VN_EXPORT int32_t __stdcall vn_backdrop_composite(
-    int32_t x, int32_t y, int32_t width, int32_t height, void* destination, uint8_t* out_ok) noexcept {
-    return vn_backdrop_composite_frame(x, y, width, height, destination, nullptr, 0, out_ok);
-}

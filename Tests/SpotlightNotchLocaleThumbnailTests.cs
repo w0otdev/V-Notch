@@ -49,9 +49,6 @@ public sealed class SpotlightNotchLocaleThumbnailTests
 
             var remembered = store.GetRememberedItems("doc");
             Assert.Empty(remembered);
-
-            var recent = store.GetRecentItems(10);
-            Assert.Empty(recent);
         }
         finally
         {

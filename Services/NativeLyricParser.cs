@@ -20,9 +20,6 @@ internal static partial class NativeLyricParser
     private static partial int vn_lyrics_parse_enhanced(ReadOnlySpan<char> text, int length, long time,
         Span<char> clean, int capacity, out int written, Span<Word> words, int wordCapacity, out int count);
 
-    internal static List<LyricLine> ParseXml(string xml, bool amll) =>
-        Parse(MemoryMarshal.AsBytes(xml.AsSpan()), amll ? 0 : 1, utf16: true);
-
     internal static unsafe List<LyricLine> Parse(ReadOnlySpan<byte> bytes, int kind, bool utf16 = false)
     {
         if (bytes.IsEmpty) return new();

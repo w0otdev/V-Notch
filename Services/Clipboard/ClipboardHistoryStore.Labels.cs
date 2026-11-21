@@ -64,18 +64,4 @@ public sealed partial class ClipboardHistoryStore
         return label;
     }
 
-    public Task MoveLabelAsync(string id, int offset) => Run(() =>
-    {
-        var labels = _labels.ToList();
-        int oldIndex = labels.FindIndex(label => label.Id == id);
-        if (oldIndex < 0) return false;
-        int newIndex = (int)Math.Clamp((long)oldIndex + offset, 0, labels.Count - 1);
-        if (oldIndex == newIndex) return false;
-        var label = labels[oldIndex];
-        labels.RemoveAt(oldIndex);
-        labels.Insert(newIndex, label);
-        SaveLabels(labels.ToArray());
-        return true;
-    });
-
 }

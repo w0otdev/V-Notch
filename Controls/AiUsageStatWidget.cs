@@ -29,9 +29,7 @@ public sealed partial class AiUsageStatWidget : UserControl
     private bool _subscribed;
     private bool _hasPresentedAppearance;
     private AiUsageAppearance _lastPreviewAppearance = AiUsageAppearance.Current;
-    private string _previewTooltipSummary = string.Empty;
     public bool IsPreview { get; set; }
-    internal string PreviewTooltipSummary => _previewTooltipSummary;
     public event Action? OpenDetailsRequested;
 
     private readonly record struct PreviewTransition(
@@ -156,7 +154,6 @@ public sealed partial class AiUsageStatWidget : UserControl
         _motion.BeginPresentation(reveal);
         _numberFlow.Capture(_root);
         _root.Children.Clear();
-        _previewTooltipSummary = string.Empty;
         // Reserve breathing room inside the widget without growing its host column.
         _root.Margin = new Thickness(0, 0, 0, appearance.Compact ? 8 : 10);
         AiAccountUsage first = appearance.ClaudeFirst ? claude : codex;
@@ -194,7 +191,6 @@ public sealed partial class AiUsageStatWidget : UserControl
             RecordPercents(nextPercents, first, shortWin, longWin, now);
             bool isNew = snapshot != null && !snapshot.BlockBounds.ContainsKey(first.Provider);
             _root.Children.Add(CreateBlock(first, shortWin, longWin, setup, now, showSecond ? interBlockSpacing : 0, singleAccount, isNew, build));
-            if (IsPreview) _previewTooltipSummary = BuildSummaryText(first, shortWin, longWin, setup, now, includeWeekly: false, includeFooter: false);
         }
         if (showSecond)
         {
@@ -202,8 +198,6 @@ public sealed partial class AiUsageStatWidget : UserControl
             RecordPercents(nextPercents, second, shortWin, longWin, now);
             bool isNew = snapshot != null && !snapshot.BlockBounds.ContainsKey(second.Provider);
             _root.Children.Add(CreateBlock(second, shortWin, longWin, setup, now, 0, singleAccount, isNew, build));
-            if (IsPreview && string.IsNullOrEmpty(_previewTooltipSummary))
-                _previewTooltipSummary = BuildSummaryText(second, shortWin, longWin, setup, now, includeWeekly: false, includeFooter: false);
         }
         if (!showFirst && !showSecond)
         {
@@ -537,11 +531,8 @@ public sealed partial class AiUsageStatWidget : UserControl
         return (percent.ToString("0.#", Loc.GetCulture()) + "%", fill, percent);
     }
 
-    private static string BuildToolTip(AiAccountUsage usage, AiQuotaWindow? shortWin, AiQuotaWindow? longWin, ClaudeBridgeSetupStatus claudeSetup, DateTimeOffset now) =>
-        BuildSummaryText(usage, shortWin, longWin, claudeSetup, now, includeWeekly: true, includeFooter: true);
-
-    private static string BuildSummaryText(AiAccountUsage usage, AiQuotaWindow? shortWin, AiQuotaWindow? longWin,
-        ClaudeBridgeSetupStatus claudeSetup, DateTimeOffset now, bool includeWeekly, bool includeFooter)
+    private static string BuildToolTip(AiAccountUsage usage, AiQuotaWindow? shortWin, AiQuotaWindow? longWin,
+        ClaudeBridgeSetupStatus claudeSetup, DateTimeOffset now)
     {
         var appearance = AiUsageAppearance.Current;
         string head = !appearance.ShowPlan || string.IsNullOrWhiteSpace(usage.Plan) ? usage.Provider : usage.Provider + " · " + AiUsageTypography.PlanName(usage.Plan);
@@ -552,11 +543,11 @@ public sealed partial class AiUsageStatWidget : UserControl
         var lines = new List<string> { head };
         var culture = Loc.GetCulture();
         AddWindow(shortWin);
-        if (includeWeekly && appearance.ShowWeekly) AddWindow(longWin);
-        if (includeFooter && usage.UpdatedAt is { } updated)
+        if (appearance.ShowWeekly) AddWindow(longWin);
+        if (usage.UpdatedAt is { } updated)
             lines.Add(Loc.Get("aiUsage.updated", updated.ToLocalTime().ToString("g", culture)));
-        if (includeFooter && usage.IsStale(now)) lines.Add(Loc.Get("aiUsage.stale"));
-        if (includeFooter) lines.Add(Loc.Get("aiUsage.details"));
+        if (usage.IsStale(now)) lines.Add(Loc.Get("aiUsage.stale"));
+        lines.Add(Loc.Get("aiUsage.details"));
         return string.Join("\n", lines);
 
         void AddWindow(AiQuotaWindow? window)

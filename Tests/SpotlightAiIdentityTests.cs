@@ -130,7 +130,7 @@ public sealed class SpotlightAiIdentityTests
 
     private static NotchSettings Settings(string provider, string model)
     {
-        var settings = new NotchSettings { SpotlightAiProvider = provider, HasSeenSpotlightIntro = true };
+        var settings = new NotchSettings { SpotlightAiProvider = provider };
         SpotlightAiService.Configure(settings, provider, "local-test-key", model);
         return settings;
     }

@@ -1,11 +1,12 @@
 using System.Reflection;
+using System.Runtime.InteropServices;
 using VNotch.Models;
 using VNotch.Services;
 using Xunit;
 
 namespace VNotch.Tests;
 
-public sealed class MediaWindowMatchingTests
+public sealed partial class MediaWindowMatchingTests
 {
     private const BindingFlags Private = BindingFlags.NonPublic | BindingFlags.Static;
 
@@ -91,8 +92,8 @@ public sealed class MediaWindowMatchingTests
     public void PlatformLabelsHelpMatchTabsWithoutOverridingExactTrackMatches(string source, string label, int windowScore)
     {
         var info = new MediaInfo { MediaSource = source };
-        Assert.Equal(50, Invoke<int>("ScoreTabItem", label, "", info));
-        Assert.Equal(0, Invoke<int>("ScoreTabItem", "unrelated tab", "", info));
+        Assert.Equal(50, ScoreTabItem(label, "", info));
+        Assert.Equal(0, ScoreTabItem("unrelated tab", "", info));
         Assert.Equal(windowScore, Invoke<int>("ScoreWindow", label, "native", info));
     }
 
@@ -107,14 +108,14 @@ public sealed class MediaWindowMatchingTests
             YouTubeTitle = "Fixture Video",
             YouTubeVideoId = "aBc123XYZ90"
         };
-        Assert.Equal(610, Invoke<int>("ScoreTabItem", "fixture song fixture artist fixture video youtube", "https://youtube.com/watch?v=abc123xyz90", info));
-        Assert.Equal(200, Invoke<int>("ScoreTabItem", "other", "https://example.org/abc123xyz90", info));
-        Assert.Equal(0, Invoke<int>("ScoreTabItem", "", "", info));
+        Assert.Equal(610, ScoreTabItem("fixture song fixture artist fixture video youtube", "https://youtube.com/watch?v=abc123xyz90", info));
+        Assert.Equal(200, ScoreTabItem("other", "https://example.org/abc123xyz90", info));
+        Assert.Equal(0, ScoreTabItem("", "", info));
         info.CurrentArtist = "YouTube";
         info.CurrentTrack = "ab";
         info.YouTubeTitle = "cd";
         info.YouTubeVideoId = null;
-        Assert.Equal(50, Invoke<int>("ScoreTabItem", "ab cd youtube", "", info));
+        Assert.Equal(50, ScoreTabItem("ab cd youtube", "", info));
     }
 
     [Fact]
@@ -123,9 +124,9 @@ public sealed class MediaWindowMatchingTests
         var info = new MediaInfo { MediaSource = "YouTube", CurrentTrack = "Fixture  Song - YouTube", CurrentArtist = "Fixture Artist" };
         Assert.Equal(405, Invoke<int>("ScoreWindow", "Fixture Song Fixture Artist - YouTube - Google Chrome", "chrome", info));
         Assert.Equal(380, Invoke<int>("ScoreWindow", "Fixture Song Fixture Artist - YouTube - Google Chrome", "native", info));
-        Assert.Equal("song title - microsoft edge", Invoke<string>("NormalizeTitle", "  SONG\t TITLE  - Microsoft Edge"));
-        Assert.Equal("", Invoke<string>("NormalizeTitle", (object?)null));
-        Assert.Equal("", Invoke<string>("NormalizeTitle", " \t "));
+        Assert.Equal("song title - microsoft edge", NormalizeTitle("  SONG\t TITLE  - Microsoft Edge"));
+        Assert.Equal("", NormalizeTitle(null));
+        Assert.Equal("", NormalizeTitle(" \t "));
         Assert.Equal(0, Invoke<int>("ScoreWindow", "unrelated", "native", new MediaInfo()));
         Assert.False(MediaWindowActivator.TryActivateWindow(IntPtr.Zero));
         Assert.False(MediaWindowActivator.TryGoBackInMediaTab(new MediaInfo { CurrentTrack = "ab" }));
@@ -150,6 +151,63 @@ public sealed class MediaWindowMatchingTests
     {
         var info = new MediaInfo { MediaSource = "YouTube", CurrentTrack = "Fixture Song - YouTube" };
         Assert.Equal(310, Invoke<int>("ScoreWindow", "Fixture Song - YouTube - " + browser, "custom", info));
+    }
+
+    [LibraryImport("VNotch.Native.dll")]
+    private static partial int vn_mediaactivator_normalize_title(
+        ReadOnlySpan<ushort> val, int valLen,
+        Span<ushort> outBuf, int outCap, out int outLen);
+
+    [LibraryImport("VNotch.Native.dll")]
+    private static partial int vn_mediaactivator_score_tab_item(
+        ReadOnlySpan<ushort> tabTitle, int tabTitleLen,
+        ReadOnlySpan<ushort> tabHelp, int tabHelpLen,
+        ReadOnlySpan<ushort> track, int trackLen,
+        ReadOnlySpan<ushort> artist, int artistLen,
+        ReadOnlySpan<ushort> ytTitle, int ytTitleLen,
+        ReadOnlySpan<ushort> ytVideoId, int ytVideoIdLen,
+        ReadOnlySpan<ushort> mediaSrc, int mediaSrcLen,
+        int platform,
+        out int outScore);
+
+
+    private static int ScoreTabItem(string tabTitle, string tabHelp, MediaInfo info)
+    {
+        ReadOnlySpan<ushort> tTitle = MemoryMarshal.Cast<char, ushort>(tabTitle != null ? tabTitle.AsSpan() : ReadOnlySpan<char>.Empty);
+        ReadOnlySpan<ushort> tHelp = MemoryMarshal.Cast<char, ushort>(tabHelp != null ? tabHelp.AsSpan() : ReadOnlySpan<char>.Empty);
+        ReadOnlySpan<ushort> track = MemoryMarshal.Cast<char, ushort>(info.CurrentTrack != null ? info.CurrentTrack.AsSpan() : ReadOnlySpan<char>.Empty);
+        ReadOnlySpan<ushort> artist = MemoryMarshal.Cast<char, ushort>(info.CurrentArtist != null ? info.CurrentArtist.AsSpan() : ReadOnlySpan<char>.Empty);
+        ReadOnlySpan<ushort> ytTitle = MemoryMarshal.Cast<char, ushort>(info.YouTubeTitle != null ? info.YouTubeTitle.AsSpan() : ReadOnlySpan<char>.Empty);
+        ReadOnlySpan<ushort> ytVid = MemoryMarshal.Cast<char, ushort>(info.YouTubeVideoId != null ? info.YouTubeVideoId.AsSpan() : ReadOnlySpan<char>.Empty);
+        ReadOnlySpan<ushort> mSrc = MemoryMarshal.Cast<char, ushort>(info.MediaSource != null ? info.MediaSource.AsSpan() : ReadOnlySpan<char>.Empty);
+
+        vn_mediaactivator_score_tab_item(
+            tTitle, tTitle.Length,
+            tHelp, tHelp.Length,
+            track, track.Length,
+            artist, artist.Length,
+            ytTitle, ytTitle.Length,
+            ytVid, ytVid.Length,
+            mSrc, mSrc.Length,
+            (int)info.Platform,
+            out int score);
+        return score;
+    }
+
+    private static string NormalizeTitle(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value)) return string.Empty;
+        ReadOnlySpan<ushort> sp = MemoryMarshal.Cast<char, ushort>(value.AsSpan());
+        Span<char> buf = stackalloc char[256];
+        int rc = vn_mediaactivator_normalize_title(sp, sp.Length, MemoryMarshal.Cast<char, ushort>(buf), buf.Length, out int outLen);
+        if (rc == 0) return outLen > 0 ? new string(buf[..outLen]) : string.Empty;
+        if (rc == -2 && outLen > 0)
+        {
+            char[] arr = new char[outLen];
+            if (vn_mediaactivator_normalize_title(sp, sp.Length, MemoryMarshal.Cast<char, ushort>(arr.AsSpan()), arr.Length, out int actual) == 0)
+                return new string(arr, 0, actual);
+        }
+        return string.Empty;
     }
 
     private static T Invoke<T>(string method, params object?[] arguments) =>

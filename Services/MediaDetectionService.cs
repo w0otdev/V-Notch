@@ -126,7 +126,6 @@ public sealed partial class MediaDetectionService : IMediaDetectionService, IAsy
     internal Task? InitTask => _initTask;
     internal Task? ProcessingTask => _processingTask;
     internal Task? HeartbeatTask => _heartbeatTask;
-    internal Task? StagedRefreshTask => _stagedRefreshTask;
     internal SemaphoreSlim UpdateLock => _updateLock;
     internal MediaTimelineSimulator Timeline => _timelineSimulator;
     internal MediaPinReconnectWindow PinReconnect => _pinReconnect;

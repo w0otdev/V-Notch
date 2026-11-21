@@ -69,7 +69,7 @@ internal static unsafe partial class Program
         var environment = JsonDocument.Parse(File.ReadAllText(Path.Combine(_work, "environment.json"))).RootElement.Clone();
         File.WriteAllText(Path.Combine(_work, _resultFile), JsonSerializer.Serialize(new {
             Timestamp = DateTimeOffset.UtcNow.ToOffset(TimeSpan.FromHours(7)).ToString("O"), Environment = environment,
-            Method = "Release .NET8; tiered JIT disabled; interleaved rotated variant order; preallocated native buffers; microkernel batches target 8 ms, 41 samples; inference uses 3 rotated rounds x 21 samples with independent sessions; disk writes include Flush(true) or native durability barriers.",
+            Method = "Release .NET 10; tiered JIT disabled; interleaved rotated variant order; preallocated native buffers; microkernel batches target 8 ms, 41 samples; inference uses 3 rotated rounds x 21 samples with independent sessions; disk writes include Flush(true) or native durability barriers.",
             NativeAvx2 = System.Runtime.Intrinsics.X86.Avx2.IsSupported, Measurements = Results, Details
         }, Json));
     }

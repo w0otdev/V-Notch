@@ -23,10 +23,9 @@ public sealed class AmllLyricsTests
     [Fact]
     public void TtmlPreservesAbsoluteSyllableTimesSpacesAndUtf16Offsets()
     {
-        var result = LyricsService.ParseAmllTtml(Ttml)!;
-        Assert.Equal(LyricsProviderOrder.Amll, result.Provider);
-        Assert.Equal(2, result.Lines.Count);
-        var line = result.Lines[0];
+        var result = NativeLyricParser.Parse(Encoding.UTF8.GetBytes(Ttml), 0);
+        Assert.Equal(2, result.Count);
+        var line = result[0];
         Assert.Equal("Đi qua đây🎵", line.Text);
         Assert.Equal(TimeSpan.FromMilliseconds(1200), line.Time);
         Assert.Equal(new[] {
@@ -34,7 +33,7 @@ public sealed class AmllLyricsTests
             new LyricWord(TimeSpan.FromMilliseconds(1700), TimeSpan.FromMilliseconds(2100), 3, 3),
             new LyricWord(TimeSpan.FromMilliseconds(2300), TimeSpan.FromMilliseconds(3100), 7, 5)
         }, line.Words);
-        Assert.Null(result.Lines[1].Words);
+        Assert.Null(result[1].Words);
     }
 
     [Theory]
@@ -44,8 +43,8 @@ public sealed class AmllLyricsTests
     [InlineData("15.8s", 15800)]
     public void TtmlAcceptsAmllClockAndSecondsFormats(string begin, int ms)
     {
-        var result = LyricsService.ParseAmllTtml($"<tt xmlns=\"http://www.w3.org/ns/ttml\"><body><p begin=\"{begin}\" end=\"100s\">Line</p></body></tt>");
-        Assert.Equal(TimeSpan.FromMilliseconds(ms), Assert.Single(result!.Lines).Time);
+        var result = NativeLyricParser.Parse(Encoding.UTF8.GetBytes($"<tt xmlns=\"http://www.w3.org/ns/ttml\"><body><p begin=\"{begin}\" end=\"100s\">Line</p></body></tt>"), 0);
+        Assert.Equal(TimeSpan.FromMilliseconds(ms), Assert.Single(result).Time);
     }
 
     [Theory]
@@ -56,14 +55,14 @@ public sealed class AmllLyricsTests
     public void InvalidWordTimingKeepsTheUsableLine(string timing)
     {
         string xml = $"<tt xmlns=\"http://www.w3.org/ns/ttml\"><body><p begin=\"1s\" end=\"3s\"><span {timing}>Hello</span></p></body></tt>";
-        var line = Assert.Single(LyricsService.ParseAmllTtml(xml)!.Lines);
+        var line = Assert.Single(NativeLyricParser.Parse(Encoding.UTF8.GetBytes(xml), 0));
         Assert.Equal("Hello", line.Text);
         Assert.Null(line.Words);
     }
 
     [Fact]
     public void XmlExternalEntitiesAreRejected()
-        => Assert.Throws<XmlException>(() => LyricsService.ParseAmllTtml("<!DOCTYPE tt [<!ENTITY x SYSTEM 'file:///not-read'>]><tt>&x;</tt>"));
+        => Assert.Throws<XmlException>(() => NativeLyricParser.Parse(Encoding.UTF8.GetBytes("<!DOCTYPE tt [<!ENTITY x SYSTEM 'file:///not-read'>]><tt>&x;</tt>"), 0));
 
     [Theory]
     [InlineData(TrackId)]

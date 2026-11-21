@@ -62,7 +62,6 @@ public partial class MainWindow
         }
 
         int generation = (int)transitionId;
-        _viewTransitionGeneration = generation;
         _isTimerView = true;
         _isSecondaryView = false;
         _isAudioView = false;
@@ -339,7 +338,6 @@ public partial class MainWindow
         }
 
         int generation = (int)transitionId;
-        _viewTransitionGeneration = generation;
         CountdownWidget.CancelEditing();
         _isTimerView = false;
         _isAnimating = true;
@@ -558,7 +556,6 @@ public partial class MainWindow
     private void AnimateCountdownCompletionToClockView(long? transitionId = null)
     {
         int generation = (int)(transitionId ?? _transitionCoordinator.ActiveTransitionId);
-        _viewTransitionGeneration = generation;
 
         if (_isAudioView)
         {
@@ -1198,7 +1195,6 @@ public partial class MainWindow
 
     private void AnimateCountdownDismissCollapse(long transitionId)
     {
-        _viewTransitionGeneration = (int)transitionId;
         _isTimerView = false;
         _isSecondaryView = false;
 

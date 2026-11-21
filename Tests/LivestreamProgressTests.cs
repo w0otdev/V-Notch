@@ -120,8 +120,6 @@ public sealed class LivestreamProgressTests
         Assert.Equal("LIVE", model.RemainingTimeText);
         Assert.Equal("", model.CurrentTimeText);
         Assert.Equal(0, model.Position);
-        Assert.Equal(TimeSpan.Zero, model.GetDragSeekPosition(.5));
-        await model.SeekRelative(10);
         await model.SeekToPosition(TimeSpan.FromMinutes(1));
         Assert.Null(media.LastSeek);
     }

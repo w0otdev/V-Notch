@@ -41,7 +41,7 @@ public sealed class SpotlightChatAccessibilityTests
         AnimationConfig.SetReduceMotion(true);
         try
         {
-            using var fixture = new SpotlightWindowFixture(new NotchSettings { HasSeenSpotlightIntro = true }, saveChatHistory: true);
+            using var fixture = new SpotlightWindowFixture(new NotchSettings(), saveChatHistory: true);
             var window = fixture.Window;
             window.ShowSpotlight();
             var searchSelectionBrush = window.SearchBox.SelectionBrush;
@@ -155,7 +155,7 @@ public sealed class SpotlightChatAccessibilityTests
     {
         bool previous = AnimationConfig.ReduceMotion;
         AnimationConfig.SetReduceMotion(true);
-        using var fixture = new SpotlightWindowFixture(new NotchSettings { HasSeenSpotlightIntro = true });
+        using var fixture = new SpotlightWindowFixture(new NotchSettings());
         var window = fixture.Window;
         string[] accentKeys = ["AccentBrush", "AccentBrushStrong", "AccentChatBubbleBrush", "AccentForegroundBrush",
             "AccentHoverBrush", "AccentSubtleBrush", "AccentNavHoverBrush", "AccentNavHoverBorderBrush"];
@@ -216,7 +216,7 @@ public sealed class SpotlightChatAccessibilityTests
         try
         {
             AnimationConfig.SetReduceMotion(reducedMotion);
-            using var fixture = new SpotlightWindowFixture(new NotchSettings { HasSeenSpotlightIntro = true });
+            using var fixture = new SpotlightWindowFixture(new NotchSettings());
             var window = fixture.Window;
             window.ShowSpotlight();
             Invoke(window, "ToggleAiMode");

@@ -112,12 +112,12 @@ public sealed class PrivacySettingsTests
 
             store.RecordLaunch(item);
             await store.WaitForPendingSavesAsync();
-            Assert.True(store.GetBoost("app:test") > 0);
+            Assert.True(store.GetBoostNormalized("app:test", string.Empty) > 0);
 
             store.ClearHistory();
             await store.WaitForPendingSavesAsync();
 
-            Assert.Equal(0, store.GetBoost("app:test"));
+            Assert.Equal(0, store.GetBoostNormalized("app:test", string.Empty));
             Assert.False(File.Exists(usagePath));
         }
         finally

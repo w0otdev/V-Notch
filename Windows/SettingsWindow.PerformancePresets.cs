@@ -42,16 +42,6 @@ public partial class SettingsWindow
         public bool IsActive { get; set; }
     }
 
-    internal string? PerformanceBackupFilePathOverride
-    {
-        get => _perfPresetSession.BackupFilePathOverride;
-        set => _perfPresetSession.BackupFilePathOverride = value;
-    }
-
-    internal bool HasPerformanceUserBackup => _perfPresetSession.HasUserBackup;
-
-    internal int ActivePerformancePresetSelection => _perfPresetSession.ResolveActiveSelection(_settings);
-
     private void CaptureProcessStartupPerformanceBaseline(NotchSettings startupSettings)
     {
         _processStartupPriority = ProcessPriorityPolicy.Normalize(startupSettings.ProcessPriority);

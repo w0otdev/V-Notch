@@ -1173,7 +1173,6 @@ public partial class MainWindow
             return;
         }
         int generation = (int)transitionId;
-        _viewTransitionGeneration = generation;
         _isAnimating = true;
 
         var effectiveTarget = targetView ?? VNotch.Models.NotchView.Media;
@@ -2042,7 +2041,6 @@ public partial class MainWindow
             return;
         }
         int generation = (int)transitionId;
-        _viewTransitionGeneration = generation;
         _isAnimating = true;
 
         double expandedOpacity = ExpandedContent.Visibility == Visibility.Visible ? ExpandedContent.Opacity : 0;

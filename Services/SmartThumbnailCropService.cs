@@ -5,7 +5,6 @@ using System.IO;
 using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
-using System.Runtime.InteropServices.WindowsRuntime;
 using System.Windows;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
@@ -87,11 +86,6 @@ public sealed partial class SmartThumbnailCropService : IDisposable
         out VnSubjectBounds outBounds, out byte outFound);
 
     [LibraryImport("VNotch.Native.dll")]
-    private static partial int vn_smartcrop_get_portrait_crop_rect(
-        in Detection face, int width, int height,
-        out VnCropRect outRect);
-
-    [LibraryImport("VNotch.Native.dll")]
     private static partial int vn_smartcrop_get_single_person_crop_rect(
         in Detection person, int imgWidth, int imgHeight, int targetSize,
         out VnCropRect outRect);
@@ -115,11 +109,6 @@ public sealed partial class SmartThumbnailCropService : IDisposable
         out VnCropRect outRect);
 
     [LibraryImport("VNotch.Native.dll")]
-    private static partial int vn_smartcrop_select_single_prominent_person(
-        ReadOnlySpan<Detection> detections, int count,
-        out Detection outPerson, out byte outFound);
-
-    [LibraryImport("VNotch.Native.dll")]
     private static partial int vn_smartcrop_translate_crop_detections(
         ReadOnlySpan<Detection> src, int srcCount,
         int cropX, int cropY, int cropWidth, int cropHeight,
@@ -131,12 +120,6 @@ public sealed partial class SmartThumbnailCropService : IDisposable
         Span<Detection> outCandidates, int cap,
         out int outPersonCount, out int outObjectCount,
         out int outKeptCount, out byte outIsPersonMode);
-
-    [LibraryImport("VNotch.Native.dll")]
-    private static partial int vn_smartcrop_select_portrait_face(
-        ReadOnlySpan<VnCropRect> faceBoxes, int faceCount,
-        double scale, in Detection person,
-        out Detection outBestFace, out byte outFound);
 
     [LibraryImport("VNotch.Native.dll")]
     private static partial int vn_smartcrop_compute_saliency_subject_bounds(
@@ -278,9 +261,6 @@ public sealed partial class SmartThumbnailCropService : IDisposable
         }
     }
 
-    public Int32Rect? GetSmartCropRect(BitmapSource source, int targetSquareSize, bool useObjectDetection = false) =>
-        GetCpuCropRect(source, targetSquareSize, useObjectDetection);
-
     internal static Int32Rect? Analyze(BitmapSource source, int targetSquareSize = 120)
     {
         if (source == null || targetSquareSize <= 0) return null;
@@ -309,7 +289,7 @@ public sealed partial class SmartThumbnailCropService : IDisposable
         }
     }
 
-    private Int32Rect? GetCpuCropRect(BitmapSource source, int targetSquareSize, bool useObjectDetection)
+    public Int32Rect? GetSmartCropRect(BitmapSource source, int targetSquareSize, bool useObjectDetection = false)
     {
         if (source == null || targetSquareSize <= 0) return null;
         int width = source.PixelWidth;
@@ -337,49 +317,6 @@ public sealed partial class SmartThumbnailCropService : IDisposable
             }
             return rect;
         }
-    }
-
-    /// <summary>Runs CPU inference off the caller's dispatcher and awaits optional WinRT face framing.</summary>
-    public async Task<Int32Rect?> GetSmartCropRectAsync(BitmapSource source, int targetSquareSize,
-        bool useObjectDetection = false, CancellationToken cancellationToken = default)
-    {
-        cancellationToken.ThrowIfCancellationRequested();
-        if (source == null || targetSquareSize <= 0) return null;
-        BitmapSource bitmap = source;
-        if (!bitmap.IsFrozen)
-        {
-            bitmap = source.CloneCurrentValue();
-            bitmap.Freeze();
-        }
-        return await Task.Run(async () =>
-        {
-            var fallback = GetCpuCropRect(bitmap, targetSquareSize, useObjectDetection);
-            cancellationToken.ThrowIfCancellationRequested();
-            int width = bitmap.PixelWidth, height = bitmap.PixelHeight;
-            if (!fallback.HasValue || !useObjectDetection || targetSquareSize <= 96) return fallback;
-            Detection[] detections;
-            lock (_lock)
-            {
-                if (_disposed) return null;
-                var fingerprint = _fingerprintCache.GetValue(bitmap,
-                    static value => new FingerprintHolder(ArtworkFingerprint.Create(value))).Value;
-                if (!_inferenceCache.TryGetValue(fingerprint, out var cached)) return fallback;
-                detections = cached.Detections;
-            }
-            if (!TrySelectSingleProminentPerson(detections, out var person)) return fallback;
-            return await TryGetPortraitCropAsync(bitmap, person, width, height, cancellationToken)
-                .ConfigureAwait(false) ?? fallback;
-        }, cancellationToken).ConfigureAwait(false);
-    }
-
-    private static bool TrySelectSingleProminentPerson(ReadOnlySpan<Detection> detections, out Detection person)
-    {
-        if (vn_smartcrop_select_single_prominent_person(detections, detections.Length, out person, out byte found) != 0 || found == 0)
-        {
-            person = default;
-            return false;
-        }
-        return true;
     }
 
     private Int32Rect? ComputeSmartCropRectCore(BitmapSource source, int targetSquareSize)
@@ -619,72 +556,6 @@ public sealed partial class SmartThumbnailCropService : IDisposable
         return persons.Length == 1
             ? GetSinglePersonCropRect(persons[0], imgWidth, imgHeight, targetSize)
             : GetGroupPersonCropRect(persons, imgWidth, imgHeight, targetSize);
-    }
-
-    private async Task<Int32Rect?> TryGetPortraitCropAsync(BitmapSource source, Detection person, int width, int height, CancellationToken cancellationToken)
-    {
-        if (!global::Windows.Media.FaceAnalysis.FaceDetector.IsSupported) return null;
-        try
-        {
-            double scale = Math.Min(1, 640.0 / Math.Max(width, height));
-            var resized = new TransformedBitmap(source, new ScaleTransform(scale, scale));
-            resized.Freeze();
-            var gray = new FormatConvertedBitmap(resized, PixelFormats.Gray8, null, 0);
-            gray.Freeze();
-            int length = gray.PixelWidth * gray.PixelHeight;
-            byte[] pixels = ArrayPool<byte>.Shared.Rent(length);
-            try
-            {
-                gray.CopyPixels(pixels, gray.PixelWidth, 0);
-                using var bitmap = new global::Windows.Graphics.Imaging.SoftwareBitmap(
-                    global::Windows.Graphics.Imaging.BitmapPixelFormat.Gray8, gray.PixelWidth, gray.PixelHeight);
-                bitmap.CopyFromBuffer(pixels.AsBuffer(0, length));
-                var detector = await global::Windows.Media.FaceAnalysis.FaceDetector.CreateAsync().AsTask(cancellationToken).ConfigureAwait(false);
-                var faces = await detector.DetectFacesAsync(bitmap).AsTask(cancellationToken).ConfigureAwait(false);
-                return SelectPortraitCrop(faces, scale, in person, width, height);
-            }
-            finally
-            {
-                ArrayPool<byte>.Shared.Return(pixels);
-            }
-        }
-        catch (Exception ex)
-        {
-            RuntimeLog.Debug(LogCategory, () => $"Face framing unavailable: {ex.Message}");
-            return null;
-        }
-    }
-
-    private static Int32Rect? SelectPortraitCrop(
-        System.Collections.Generic.IList<global::Windows.Media.FaceAnalysis.DetectedFace> faces,
-        double scale,
-        in Detection person,
-        int width,
-        int height)
-    {
-        int faceCount = faces.Count;
-        if (faceCount == 0) return null;
-        Span<VnCropRect> faceBoxes = faceCount <= 32 ? stackalloc VnCropRect[faceCount] : new VnCropRect[faceCount];
-        for (int i = 0; i < faceCount; i++)
-        {
-            var box = faces[i].FaceBox;
-            faceBoxes[i] = new VnCropRect
-            {
-                X = (int)box.X,
-                Y = (int)box.Y,
-                Width = (int)box.Width,
-                Height = (int)box.Height
-            };
-        }
-        return vn_smartcrop_select_portrait_face(faceBoxes, faceCount, scale, in person, out var detected, out byte foundFace) == 0 && foundFace != 0
-            ? GetPortraitCropRect(detected, width, height)
-            : null;
-    }
-
-    internal static Int32Rect GetPortraitCropRect(Detection face, int width, int height)
-    {
-        vn_smartcrop_get_portrait_crop_rect(in face, width, height, out var rect);
-        return rect.ToRect();
     }
 
     internal static Int32Rect GetSinglePersonCropRect(Detection p, int imgWidth, int imgHeight, int targetSize)

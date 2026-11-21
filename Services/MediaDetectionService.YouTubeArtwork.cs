@@ -283,7 +283,7 @@ public sealed partial class MediaDetectionService : IMediaDetectionService, IAsy
         {
             if (string.IsNullOrEmpty(videoId))
             {
-                var result = await owner.TryGetYouTubeVideoIdWithInfoAsync(trackDuringFetch, artistDuringFetch, token);
+                var result = await owner.TryGetYouTubeVideoIdWithInfoAsync(trackDuringFetch, token);
                 if (!IsCurrentFetch())
                     return false;
 

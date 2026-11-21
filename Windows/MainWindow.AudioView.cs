@@ -73,7 +73,6 @@ public partial class MainWindow
     private void SwitchToAudioViewCore(long transitionId, bool fromSecondary, bool fromTimer)
     {
         int generation = (int)transitionId;
-        _viewTransitionGeneration = generation;
         CountdownWidget.CancelEditing();
 
         FrameworkElement outgoing;
@@ -200,7 +199,6 @@ public partial class MainWindow
         }
 
         int generation = (int)transitionId;
-        _viewTransitionGeneration = generation;
         _isAudioView = false;
         StopAudioPoll();
         AudioContent.ReleaseSessionCache();
@@ -255,7 +253,6 @@ public partial class MainWindow
         }
 
         int generation = (int)transitionId;
-        _viewTransitionGeneration = generation;
         _isAudioView = false;
         StopAudioPoll();
         AudioContent.ReleaseSessionCache();

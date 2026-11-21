@@ -1,6 +1,3 @@
-using System;
-using System.Globalization;
-using System.Threading.Tasks;
 using VNotch.Models;
 using VNotch.Services;
 using VNotch.ViewModels;
@@ -32,40 +29,16 @@ public class LocalizationAndViewModelCultureTests
     };
 
     [Fact]
-    public void SecondaryViewModel_UpdateCalendar_UsesActiveLocalizedCulture()
-    {
-        string previousLanguage = Loc.CurrentLanguage;
-        try
-        {
-            Loc.SetLanguage("vi");
-            var vm = new SecondaryViewModel(null!);
-            var sampleDate = new DateTime(2026, 3, 15);
-
-            vm.UpdateCalendar(sampleDate);
-
-            var viCulture = CultureInfo.GetCultureInfo("vi-VN");
-            string expectedMonth = sampleDate.ToString("MMM", viCulture).ToUpper(viCulture);
-            Assert.Equal(expectedMonth, vm.CalendarMonth);
-            Assert.Equal("15", vm.CalendarDay);
-        }
-        finally
-        {
-            Loc.SetLanguage(previousLanguage);
-        }
-    }
-
-    [Fact]
     public void MediaViewModel_UsesLocalizedStringsForEmptyAndActiveMediaStates()
     {
         string previousLanguage = Loc.CurrentLanguage;
         try
         {
             Loc.SetLanguage("vi");
-            var vm = new MediaViewModel(null!, static _ => Task.CompletedTask);
+            var vm = new MediaViewModel(null!);
 
             Assert.Equal(Loc.Get("media.noMedia"), vm.Title);
             Assert.Equal(Loc.Get("media.unknownArtist"), vm.Artist);
-            Assert.Equal(Loc.Get("media.nowPlaying"), vm.SourceName);
 
             vm.Update(new MediaInfo
             {
@@ -77,13 +50,11 @@ public class LocalizationAndViewModelCultureTests
 
             Assert.Equal("Sample Track", vm.Title);
             Assert.Equal(Loc.Get("media.unknownArtist"), vm.Artist);
-            Assert.Equal(Loc.Get("media.nowPlaying"), vm.SourceName);
 
             vm.Update(new MediaInfo());
 
             Assert.Equal(Loc.Get("media.noMedia"), vm.Title);
             Assert.Equal(Loc.Get("media.unknownArtist"), vm.Artist);
-            Assert.Equal(Loc.Get("media.nowPlaying"), vm.SourceName);
         }
         finally
         {

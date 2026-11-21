@@ -58,8 +58,6 @@ internal sealed partial class D3DImageFramePresenter : IDisposable
     private int _retryScheduled;
     private readonly DispatcherTimer _retryTimer;
     private readonly Action _presentAction;
-    private GlassDirtyRows _pendingDirtyRows;
-    private long _transferredBytes;
     private long _submittedFrames;
     private double _lastQueueMs;
     internal long ImageBusyRetries { get; private set; }
@@ -70,11 +68,7 @@ internal sealed partial class D3DImageFramePresenter : IDisposable
     private double _frameIntervalMs = 1000.0 / 60.0;
     private bool _pendingForcePresent;
     private readonly bool _ultimateGpuMode;
-    private uint _adapterIndex;
     private long _glassRenderLuid;
-
-    internal bool IsUltimateGpuMode => _ultimateGpuMode;
-    internal uint AdapterIndex => _adapterIndex;
 
     internal void SetFrameIntervalMs(double intervalMs)
     {
@@ -90,11 +84,11 @@ internal sealed partial class D3DImageFramePresenter : IDisposable
         }
     }
 
-    internal (long Bytes, long Frames, double MeanQueueMs) TakeStatistics()
+    internal (long Frames, double MeanQueueMs) TakeStatistics()
     {
         long frames = Interlocked.Exchange(ref _submittedFrames, 0);
         long ticks = Interlocked.Exchange(ref _queueTicks, 0);
-        return (Interlocked.Exchange(ref _transferredBytes, 0), frames,
+        return (frames,
             frames == 0 ? 0 : ticks * 1000.0 / Stopwatch.Frequency / frames);
     }
     private bool _disposed;
@@ -118,7 +112,6 @@ internal sealed partial class D3DImageFramePresenter : IDisposable
         int surfaceHeight,
         ID3DFrameTarget? frameTarget = null,
         bool ultimateGpuMode = false,
-        bool useGpuCapture = false,
         bool webcam = false)
     {
         _image = frameTarget ?? new D3DFrameTarget();
@@ -136,7 +129,6 @@ internal sealed partial class D3DImageFramePresenter : IDisposable
         _surfaceWidth = surfaceWidth;
         _surfaceHeight = surfaceHeight;
         _ultimateGpuMode = ultimateGpuMode;
-        _useGpuCapture = useGpuCapture;
         _webcam = webcam;
         _presentAction = PresentPendingFrame;
         // CompositionTarget.Rendering already retries at the display cadence.
@@ -184,9 +176,9 @@ internal sealed partial class D3DImageFramePresenter : IDisposable
         };
 
         uint preferredAdapter;
-        if (_useGpuCapture && _ultimateGpuMode)
+        if (!_webcam && _ultimateGpuMode)
             preferredAdapter = NativeGpuFindPreferredAdapter(_direct3D.NativePointer, _hwnd, out _glassRenderLuid);
-        else if (_useGpuCapture)
+        else if (!_webcam)
             preferredAdapter = NativeGpuFindAdapter(_direct3D.NativePointer, _hwnd);
         else
             preferredAdapter = _ultimateGpuMode ? SelectBestHardwareAdapter(_direct3D) : 0u;
@@ -205,7 +197,6 @@ internal sealed partial class D3DImageFramePresenter : IDisposable
                     _hwnd,
                     deviceFlags,
                     present);
-                _adapterIndex = preferredAdapter;
             }
             catch
             {
@@ -221,7 +212,6 @@ internal sealed partial class D3DImageFramePresenter : IDisposable
                 _hwnd,
                 deviceFlags,
                 present);
-            _adapterIndex = 0u;
         }
     }
 
@@ -302,107 +292,9 @@ internal sealed partial class D3DImageFramePresenter : IDisposable
         }
     }
 
-#pragma warning disable S107 // High performance D3D presentation pipeline requires individual frame parameters
-    public bool UploadFrame(IntPtr source, int width, int height, int sourceStride,
-        int generation, out bool uploaded, LiquidGlassController.GpuGeometry tag = default, bool forcePresent = false)
-#pragma warning restore S107
-    {
-        uploaded = false;
-        if (_disposed || _failed || source == IntPtr.Zero || width <= 0 || height <= 0)
-            return false;
-        if (width > _surfaceWidth || height > _surfaceHeight)
-            return false;
-
-        int rowBytes = checked(width * 4);
-        if (sourceStride < rowBytes)
-            return false;
-
-        try
-        {
-            lock (_surfaceSync)
-            {
-                if (!_acceptingFrames || generation != _sessionGeneration) return true;
-            }
-            EnsureResources();
-
-            bool shouldSchedule = false;
-            lock (_surfaceSync)
-            {
-                // Stop/Start may run while this worker waits for the dispatcher.
-                // An old capture must never enter a reused presentation surface.
-                if (!_acceptingFrames || generation != _sessionGeneration) return true;
-                if (_disposed || _uploadSurface == null)
-                    return false;
-
-                LockedRectangle locked = _uploadSurface.LockRect(LockFlags.None);
-                try
-                {
-                    GlassDirtyRows dirtyRows;
-                    if (_frameWidth != width || _frameHeight != height)
-                    {
-                        // Initialize every pixel when the capture extent changes.
-                        CopyRows(source, sourceStride, locked.DataPointer, locked.Pitch, rowBytes, height);
-                        dirtyRows = new GlassDirtyRows(0, height);
-                    }
-                    else
-                    {
-                        dirtyRows = GlassUploadDelta.CopyChangedRows(source, sourceStride, locked.DataPointer,
-                            locked.Pitch, rowBytes, height);
-                    }
-                    if (dirtyRows.IsEmpty && !forcePresent)
-                    {
-                        // Pending pixels already represent this frame. Leave their
-                        // scheduling/tag intact until WPF consumes them.
-                        return true;
-                    }
-                    // Geometry changes/explicit recovery still submit a frame; only
-                    // expand to full height when no specific dirty rows were detected.
-                    if (dirtyRows.IsEmpty && forcePresent) dirtyRows = new GlassDirtyRows(0, height);
-                    _pendingDirtyRows = _pendingDirtyRows.Union(dirtyRows);
-                }
-                finally
-                {
-                    _uploadSurface.UnlockRect();
-                }
-
-                _frameWidth = width;
-                _frameHeight = height;
-                _uploadTag = tag;
-                _lastUploadTicks = Stopwatch.GetTimestamp();
-                if (forcePresent) _pendingForcePresent = true;
-
-                // Consume newest complete capture directly to prevent dispatcher queues
-                // from growing behind the live desktop when the UI thread is busy.
-                _pendingFrame = true;
-                uploaded = true;
-                if (!_presentQueued)
-                {
-                    _presentQueued = true;
-                    shouldSchedule = true;
-                }
-            }
-
-            if (uploaded)
-                RequestRenderingHook();
-            if (shouldSchedule)
-                SchedulePresent();
-
-            return true;
-        }
-        catch (Exception ex)
-        {
-            lock (_surfaceSync)
-            {
-                if (!_acceptingFrames || generation != _sessionGeneration) return true;
-            }
-            ReportFailure(ex);
-            return false;
-        }
-    }
-
     private void EnsureResources()
     {
-        if (_useGpuCapture && Volatile.Read(ref _gpuHandle) != null && Volatile.Read(ref _renderSurface) != null) return;
+        if (!_webcam && Volatile.Read(ref _gpuHandle) != null && Volatile.Read(ref _renderSurface) != null) return;
         if (Volatile.Read(ref _uploadSurface) != null && Volatile.Read(ref _renderSurface) != null)
             return;
 
@@ -422,7 +314,7 @@ internal sealed partial class D3DImageFramePresenter : IDisposable
         if (_disposed || _device == null)
             throw new ObjectDisposedException(nameof(D3DImageFramePresenter));
 
-        if (_useGpuCapture) { CreateGpuResources(); return; }
+        if (!_webcam) { CreateGpuResources(); return; }
 
         if (Volatile.Read(ref _uploadSurface) != null && Volatile.Read(ref _renderSurface) != null)
             return;
@@ -431,36 +323,9 @@ internal sealed partial class D3DImageFramePresenter : IDisposable
         IDirect3DSurface9? nextRender = null;
         try
         {
-            if (_webcam)
-            {
-                // Write only to the detached target. WPF owns the front target until
-                // the next successful back-buffer swap under the image lock.
-                nextUpload = CreateWebcamTarget();
-                nextRender = CreateWebcamTarget();
-            }
-            else
-            {
-                nextUpload = _device.CreateOffscreenPlainSurface(
-                    (uint)_surfaceWidth,
-                    (uint)_surfaceHeight,
-                    Format.X8R8G8B8,
-                    Pool.SystemMemory);
-                nextRender = _device.CreateRenderTarget(
-                    (uint)_surfaceWidth,
-                    (uint)_surfaceHeight,
-                    Format.X8R8G8B8,
-                    MultisampleType.None,
-                    0,
-                    lockable: false);
-                // A partial first capture must not expose uninitialized pixels in
-                // the fixed-size texture around it. Initialize once, not per frame.
-                LockedRectangle initial = nextUpload.LockRect(LockFlags.None);
-                try { ClearSurface(initial.DataPointer, initial.Pitch, _surfaceHeight); }
-                finally { nextUpload.UnlockRect(); }
-                _device.UpdateSurface(nextUpload,
-                    new Vortice.Direct3D9.Rect(0, 0, _surfaceWidth, _surfaceHeight),
-                    nextRender, new Int2(0, 0));
-            }
+            // Swap the detached webcam target under the WPF image lock.
+            nextUpload = CreateWebcamTarget();
+            nextRender = CreateWebcamTarget();
         }
         catch
         {
@@ -484,7 +349,6 @@ internal sealed partial class D3DImageFramePresenter : IDisposable
             _lastDirtyWidth = _surfaceWidth;
             _lastDirtyHeight = _surfaceHeight;
             _pendingFrame = false;
-            _pendingDirtyRows = default;
             _presentQueued = false;
 
             // Attach target only after initial population; it remains the D3DImage
@@ -556,15 +420,15 @@ internal sealed partial class D3DImageFramePresenter : IDisposable
             return false;
         if (frameWidth <= 0 || frameHeight <= 0)
             return false;
-        return _useGpuCapture || (_renderSurface != null && _uploadSurface != null);
+        return !_webcam || (_renderSurface != null && _uploadSurface != null);
     }
 
     private bool TryLockAndPresentSurface(int frameWidth, int frameHeight)
     {
         // WPF D3DImage.LockImpl increments its lock count even on timeout.
         // Every non-throwing TryLock needs Unlock; false only forbids writes.
-        // Bound GPU handoff to 1 ms; retain nonblocking CPU uploads.
-        bool imageWritable = _image.TryLock(_useGpuCapture ? OneMsLockDuration : ZeroLockDuration);
+        // Bound GPU handoff to 1 ms; keep webcam presentation nonblocking.
+        bool imageWritable = _image.TryLock(_webcam ? ZeroLockDuration : OneMsLockDuration);
         try
         {
             if (!imageWritable)
@@ -573,27 +437,14 @@ internal sealed partial class D3DImageFramePresenter : IDisposable
                 ScheduleRetry();
                 return false;
             }
-            if (_useGpuCapture && !TakeReadyGpuSurface())
+            if (!_webcam && !TakeReadyGpuSurface())
                 return false;
-
-            // Transfer full visible region on resize/recovery; otherwise transfer
-            // only rows modified since the last successful present.
-            bool fullDirty = frameWidth != _lastDirtyWidth || frameHeight != _lastDirtyHeight;
-            var dirtyRows = NormalizeDirtyRows(_pendingDirtyRows, frameHeight, fullDirty);
-            int dirtyTop = dirtyRows.Top;
-            int dirtyBottom = dirtyRows.Bottom;
 
             if (_webcam)
             {
                 if (!TakeReadyWebcamSurface()) return false;
                 (_renderSurface, _uploadSurface) = (_uploadSurface, _renderSurface);
                 _hasWebcamBackBuffer = true;
-            }
-            else if (!_useGpuCapture)
-            {
-                var frameRect = new Vortice.Direct3D9.Rect(0, dirtyTop, frameWidth, dirtyBottom);
-                _device!.UpdateSurface(_uploadSurface!, frameRect, _renderSurface!, new Int2(0, dirtyTop));
-                Interlocked.Add(ref _transferredBytes, (long)frameWidth * (dirtyBottom - dirtyTop) * 4);
             }
 
             if (!ReferenceEquals(_attachedSurface, _renderSurface))
@@ -602,25 +453,22 @@ internal sealed partial class D3DImageFramePresenter : IDisposable
                     D3DResourceType.IDirect3DSurface9,
                     _renderSurface!.NativePointer,
                     enableSoftwareFallback: true);
-                if (_useGpuCapture) _attachedSurface?.Dispose();
+                if (!_webcam) _attachedSurface?.Dispose();
                 _attachedSurface = _renderSurface;
             }
 
             int dirtyWidth = Math.Max(frameWidth, _lastDirtyWidth);
             int dirtyHeight = Math.Max(frameHeight, _lastDirtyHeight);
-            _image.AddDirtyRect(fullDirty
-                ? new Int32Rect(0, 0, dirtyWidth, dirtyHeight)
-                : new Int32Rect(0, dirtyTop, frameWidth, dirtyBottom - dirtyTop));
+            _image.AddDirtyRect(new Int32Rect(0, 0, dirtyWidth, dirtyHeight));
             _lastDirtyWidth = frameWidth;
             _lastDirtyHeight = frameHeight;
 
             _pendingFrame = false;
             _pendingForcePresent = false;
-            _pendingDirtyRows = default;
             _presentedTag = _uploadTag;
             // Keep the lens snapshot paired with the pixels WPF just received.
             // The live UI lens may already describe a later animation frame.
-            if (_useGpuCapture) PresentedGpuFrame = _pendingGpuFrame;
+            if (!_webcam) PresentedGpuFrame = _pendingGpuFrame;
             SubmittedGpuRenderMs = LastGpuRenderMs;
             SubmittedGpuWaitMs = LastGpuWaitMs;
             return true;
@@ -652,15 +500,6 @@ internal sealed partial class D3DImageFramePresenter : IDisposable
         _retryTimer.Start();
     }
 
-    internal static GlassDirtyRows NormalizeDirtyRows(GlassDirtyRows rows, int frameHeight, bool fullDirty)
-    {
-        if (frameHeight <= 0) throw new ArgumentOutOfRangeException(nameof(frameHeight));
-        int top = Math.Clamp(rows.Top, 0, frameHeight);
-        int bottom = Math.Clamp(rows.Bottom, 0, frameHeight);
-        // Invalid/empty metadata must not lose a frame or disable the presenter.
-        return fullDirty || bottom <= top ? new GlassDirtyRows(0, frameHeight) : new GlassDirtyRows(top, bottom);
-    }
-
     internal void PrepareResources() => EnsureResources();
 
     internal void BeginSession(int generation)
@@ -673,7 +512,6 @@ internal sealed partial class D3DImageFramePresenter : IDisposable
             _acceptingFrames = true;
             Interlocked.Exchange(ref _queueTicks, 0);
             Interlocked.Exchange(ref _submittedFrames, 0);
-            Interlocked.Exchange(ref _transferredBytes, 0);
         }
     }
 
@@ -694,7 +532,6 @@ internal sealed partial class D3DImageFramePresenter : IDisposable
             DisposeWebcamGpu();
             _pendingFrame = false;
             _pendingForcePresent = false;
-            _pendingDirtyRows = default;
             _presentQueued = false;
             Volatile.Write(ref _lastSubmitTicks, 0);
             // Keep allocations, but require a fresh capture before displaying
@@ -815,7 +652,6 @@ internal sealed partial class D3DImageFramePresenter : IDisposable
         _frameHeight = 0;
         _pendingFrame = false;
         _pendingForcePresent = false;
-        _pendingDirtyRows = default;
         _presentQueued = false;
 
         _device?.Dispose();
@@ -861,7 +697,7 @@ internal sealed partial class D3DImageFramePresenter : IDisposable
     {
         // A retry can run before D3D11 completes the first frame. Do not attach
         // the freshly allocated D3D9 target until its GPU copy has initialized it.
-        if ((_useGpuCapture && !_hasGpuBackBuffer) || (_webcam && !_hasWebcamBackBuffer)) return;
+        if (_webcam ? !_hasWebcamBackBuffer : !_hasGpuBackBuffer) return;
         var surface = _attachedSurface ?? _renderSurface;
         if (surface == null || !_image.IsFrontBufferAvailable)
             return;
@@ -910,41 +746,6 @@ internal sealed partial class D3DImageFramePresenter : IDisposable
         else
             _dispatcher.BeginInvoke(DispatcherPriority.Send, () => Failed?.Invoke(ex));
     }
-
-#pragma warning disable S6640 // Pointer-based row blitting is required for high-performance frame presentation
-    private static unsafe void ClearSurface(IntPtr pixels, int pitch, int height)
-    {
-        new Span<byte>((void*)pixels, checked(pitch * height)).Clear();
-    }
-
-    private static unsafe void CopyRows(
-        IntPtr source,
-        int sourceStride,
-        IntPtr destination,
-        int destinationStride,
-        int rowBytes,
-        int height)
-    {
-        byte* src = (byte*)source;
-        byte* dst = (byte*)destination;
-
-        if (sourceStride == destinationStride && destinationStride == rowBytes)
-        {
-            long total = (long)rowBytes * height;
-            Buffer.MemoryCopy(src, dst, total, total);
-            return;
-        }
-
-        for (int y = 0; y < height; y++)
-        {
-            Buffer.MemoryCopy(
-                src + y * sourceStride,
-                dst + y * destinationStride,
-                destinationStride,
-                rowBytes);
-        }
-    }
-#pragma warning restore S6640
 
     public void Dispose()
     {
