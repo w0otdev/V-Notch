@@ -52,6 +52,8 @@ public partial class NotchSettings : IJsonOnDeserialized
     public int AnimationFps { get; set; } = 240;
     public bool AutoAnimationFps { get; set; } = true;
 
+    public bool AllowNotchDragging { get; set; }
+    public NotchPosition? CustomNotchPosition { get; set; }
     public int MonitorIndex { get; set; } = 0;
     public string MonitorDeviceId { get; set; } = "";
 

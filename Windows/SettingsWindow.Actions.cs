@@ -577,6 +577,7 @@ public partial class SettingsWindow
         if (VisualizerAudioCombo.SelectedItem is AudioDeviceItem selectedAudioDevice)
             snapshot.VisualizerAudioDeviceId = selectedAudioDevice.Id;
         snapshot.AutoStart = AutoStartCheck.IsChecked ?? false;
+        snapshot.AllowNotchDragging = AllowNotchDraggingCheck.IsChecked == true;
         snapshot.StayBehindWindows = StayBehindWindowsCheck.IsChecked ?? false;
         snapshot.EnableHelloGreeting = HelloGreetingCheck.IsChecked ?? true;
         snapshot.EnableSpotlight = EnableSpotlightCheck.IsChecked ?? true;

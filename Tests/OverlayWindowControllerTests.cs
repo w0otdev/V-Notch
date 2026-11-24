@@ -178,6 +178,20 @@ public class OverlayWindowControllerTests
     }
 
     [Fact]
+    public void CustomPositionKeepsTheNotchReachableWhenItsSizeOrMonitorChanges()
+    {
+        var leftMonitor = new System.Drawing.Rectangle(-1920, -120, 1920, 1080);
+        var anchor = new System.Drawing.Point(-120, 920);
+        var position = Models.NotchPosition.FromAnchor(leftMonitor, anchor);
+        Assert.Equal(anchor, position.Resolve(leftMonitor, 240, 40));
+        Assert.Equal(new System.Drawing.Point(-300, 760), position.Resolve(leftMonitor, 600, 200));
+        Assert.Equal(anchor, position.Resolve(leftMonitor, 240, 40));
+
+        var smallerMonitor = new System.Drawing.Rectangle(0, 0, 1280, 720);
+        Assert.Equal(new System.Drawing.Point(1160, 680), position.Resolve(smallerMonitor, 240, 40));
+    }
+
+    [Fact]
     public void TryApplyDesktopLayerZOrder_RefreshesExplorerAnchorAfterFailure()
     {
         var staleAnchor = new IntPtr(1);

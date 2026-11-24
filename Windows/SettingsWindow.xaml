@@ -1813,6 +1813,15 @@
 
                                         <Border Style="{StaticResource SettingRowBorder}">
                                             <StackPanel>
+                                                <CheckBox x:Name="AllowNotchDraggingCheck" Content="Drag to move the notch"
+                                                          Checked="NotchDragging_Changed" Unchecked="NotchDragging_Changed"/>
+                                                <TextBlock x:Name="AllowNotchDraggingHint" Style="{StaticResource SettingHintText}"
+                                                           Margin="0,4,0,0" TextWrapping="Wrap"/>
+                                            </StackPanel>
+                                        </Border>
+
+                                        <Border Style="{StaticResource SettingRowBorder}">
+                                            <StackPanel>
                                                 <CheckBox x:Name="StayBehindWindowsCheck" Content="Stay behind other windows"/>
                                                 <TextBlock x:Name="StayBehindWindowsHint"
                                                            Text="Keep V-Notch on the desktop so maximized apps and browser tab controls are never covered."

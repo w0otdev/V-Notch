@@ -2,6 +2,7 @@ using System.Runtime.InteropServices;
 using System.Windows;
 using System.Windows.Interop;
 using VNotch.Services;
+using VNotch.Models;
 using static VNotch.Services.Win32Interop;
 
 namespace VNotch.Controllers;
@@ -20,6 +21,8 @@ public sealed class OverlayWindowController : IDisposable
     private readonly Action _onClipboardUpdated;
     private HwndSource? _source;
     private bool _displayUpdatePending;
+    private System.Drawing.Rectangle _screenBounds;
+    private double _placementScale;
     public Func<System.Windows.Forms.Screen>? TargetScreen { get; set; }
     public Func<bool>? IsZOrderSuspended { get; set; }
 
@@ -78,7 +81,10 @@ public sealed class OverlayWindowController : IDisposable
         if (enabled) _window.Activate();
     }
 
-    public void PositionAtTop(double surfaceWidth, double expandedHeight)
+    public void PositionAtTop(double surfaceWidth, double expandedHeight) =>
+        PositionOnScreen(surfaceWidth, expandedHeight, null, default);
+
+    internal void PositionOnScreen(double surfaceWidth, double expandedHeight, NotchPosition? position, Size notchSize)
     {
         var screen = TargetScreen?.Invoke() ?? System.Windows.Forms.Screen.FromHandle(_state.Hwnd);
         double dpiScale = MonitorSelection.GetScale(screen);
@@ -96,6 +102,9 @@ public sealed class OverlayWindowController : IDisposable
         _state.FixedY = screen.Bounds.Top;
         _state.WindowWidth = bounds.Width;
         _state.WindowHeight = bounds.Height;
+        _screenBounds = screen.Bounds;
+        _placementScale = dpiScale;
+        if (position != null) SetCustomOrigin(position, notchSize);
         _state.HasFixedBounds = true;
         // WM_SIZE synchronizes both WPF dimensions after the single native resize.
         if (_state.Hwnd == IntPtr.Zero)
@@ -108,6 +117,25 @@ public sealed class OverlayWindowController : IDisposable
         // when Explorer rebuilds WorkerW/Progman windows during sign-in.
         ApplyFixedBounds();
         ApplyPreferredZOrder();
+    }
+
+    private void SetCustomOrigin(NotchPosition position, Size notchSize)
+    {
+        var anchor = position.Resolve(_screenBounds,
+            (int)Math.Ceiling(notchSize.Width * _placementScale),
+            (int)Math.Ceiling(notchSize.Height * _placementScale));
+        _state.FixedX = anchor.X - _state.WindowWidth / 2;
+        _state.FixedY = anchor.Y;
+    }
+
+    internal bool FitCustomPosition(NotchPosition position, Size notchSize)
+    {
+        if (!_state.HasFixedBounds || _screenBounds.IsEmpty) return false;
+        var previous = (_state.FixedX, _state.FixedY);
+        SetCustomOrigin(position, notchSize);
+        if (previous == (_state.FixedX, _state.FixedY)) return false;
+        ApplyFixedBounds();
+        return true;
     }
 
     public void SetInitialSize(double surfaceWidth, double notchHeight)

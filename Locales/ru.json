@@ -565,6 +565,8 @@
   "settings.spotlightAi.provider": "Провайдер",
   "settings.spotlightAi.speed": "Скорость появления текста",
   "settings.spotlightAi.speedUnit": " слов/с",
+  "settings.allowNotchDragging": "Перемещение выреза мышью",
+  "settings.allowNotchDragging.hint": "Перетащите вырез за свободную область. Отключите эту настройку, чтобы закрепить его положение.",
   "settings.stayBehindWindows": "Оставаться под другими окнами",
   "settings.stayBehindWindows.hint": "Закрепляет шторку на уровне рабочего стола, чтобы она никогда не перекрывала вкладки браузеров и развёрнутые окна.",
   "settings.subtitle": "",

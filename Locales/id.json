@@ -565,6 +565,8 @@
   "settings.spotlightAi.provider": "Penyedia",
   "settings.spotlightAi.speed": "Kecepatan teks",
   "settings.spotlightAi.speedUnit": " kata/dtk",
+  "settings.allowNotchDragging": "Seret untuk memindahkan notch",
+  "settings.allowNotchDragging.hint": "Seret area kosong pada notch untuk memindahkannya. Nonaktifkan opsi ini untuk mengunci posisinya.",
   "settings.stayBehindWindows": "Tetap di belakang jendela lain",
   "settings.stayBehindWindows.hint": "Pertahankan V-Notch di desktop agar tidak menutupi aplikasi yang dimaksimalkan atau tombol tab browser.",
   "settings.subtitle": "",

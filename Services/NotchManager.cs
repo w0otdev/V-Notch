@@ -37,6 +37,8 @@ public sealed partial class NotchManager : IDisposable
     private readonly HoverDetectionService? _hoverService;
 
     private Screen? _currentScreen;
+    private VnNotchGeometryOut _geometry;
+    internal Func<System.Drawing.Point?>? GetAnchor { get; set; }
     private Rect _safeArea;
     private bool _disposed;
 
@@ -65,9 +67,13 @@ public sealed partial class NotchManager : IDisposable
 
     public void UpdateSettings(NotchSettings settings)
     {
-        _settings = settings;
         AnimationConfig.Configure(settings.AnimationFps, settings.AutoAnimationFps);
+        UpdatePosition(settings);
+    }
 
+    internal void UpdatePosition(NotchSettings settings)
+    {
+        _settings = settings;
         UpdatePosition();
     }
 
@@ -77,12 +83,26 @@ public sealed partial class NotchManager : IDisposable
 
         AnimationConfig.Refresh(_currentScreen.DeviceName);
 
-        ComputeGeometry(_currentScreen, out var geom);
+        ComputeGeometry(_currentScreen, out _geometry);
+        RefreshAnchor();
+        PositionUpdated?.Invoke(this, EventArgs.Empty);
+    }
+
+    internal void RefreshAnchor()
+    {
+        var geom = _geometry;
+        if (GetAnchor?.Invoke() is { } anchor)
+        {
+            double dx = anchor.X - geom.NotchWidth / 2 - geom.NotchLeft;
+            double dy = anchor.Y - geom.NotchTop;
+            geom.NotchLeft += dx;
+            geom.SafeLeft += dx;
+            geom.NotchTop += dy;
+            geom.SafeTop += dy;
+        }
         _hoverService?.UpdateNotchBounds(geom.NotchLeft, geom.NotchTop, geom.NotchWidth, geom.NotchHeight);
 
         ApplySafeArea(in geom);
-
-        PositionUpdated?.Invoke(this, EventArgs.Empty);
     }
 
     private void ComputeGeometry(Screen screen, out VnNotchGeometryOut geom)

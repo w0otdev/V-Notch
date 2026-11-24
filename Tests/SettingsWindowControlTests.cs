@@ -695,6 +695,7 @@ public sealed class SettingsWindowControlTests
     [InlineData("DisableMouseLeaveAutoCloseCheck", nameof(NotchSettings.DisableMouseLeaveAutoClose))]
     [InlineData("KeepMediaPinnedCheck", nameof(NotchSettings.KeepMediaPinnedOnTrackChange))]
     [InlineData("ReopenLastViewCheck", nameof(NotchSettings.ReopenLastViewOnExpand))]
+    [InlineData("AllowNotchDraggingCheck", nameof(NotchSettings.AllowNotchDragging))]
     [InlineData("StayBehindWindowsCheck", nameof(NotchSettings.StayBehindWindows))]
     [InlineData("HelloGreetingCheck", nameof(NotchSettings.EnableHelloGreeting))]
     [InlineData("HideOnExclusiveFullscreenCheck", nameof(NotchSettings.HideOnExclusiveFullscreen))]
@@ -736,6 +737,7 @@ public sealed class SettingsWindowControlTests
             nameof(NotchSettings.DisableMouseLeaveAutoClose) => settings.DisableMouseLeaveAutoClose,
             nameof(NotchSettings.KeepMediaPinnedOnTrackChange) => settings.KeepMediaPinnedOnTrackChange,
             nameof(NotchSettings.ReopenLastViewOnExpand) => settings.ReopenLastViewOnExpand,
+            nameof(NotchSettings.AllowNotchDragging) => settings.AllowNotchDragging,
             nameof(NotchSettings.StayBehindWindows) => settings.StayBehindWindows,
             nameof(NotchSettings.EnableHelloGreeting) => settings.EnableHelloGreeting,
             nameof(NotchSettings.HideOnExclusiveFullscreen) => settings.HideOnExclusiveFullscreen,

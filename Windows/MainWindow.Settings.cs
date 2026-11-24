@@ -141,9 +141,9 @@ public partial class MainWindow
             _notchManager.UpdateSettings(_settings);
         }
 
-        if (monitorChanged)
+        if (monitorChanged || oldSettings.CustomNotchPosition != newSettings.CustomNotchPosition)
         {
-            PositionAtTop();
+            ApplyNotchPlacement();
         }
 
         // Forward every settings snapshot. SpotlightController owns change detection,

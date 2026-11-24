@@ -565,6 +565,8 @@
   "settings.spotlightAi.provider": "Sağlayıcı",
   "settings.spotlightAi.speed": "Metin gösterim hızı",
   "settings.spotlightAi.speedUnit": " kelime/sn",
+  "settings.allowNotchDragging": "Çentiği sürükleyerek taşı",
+  "settings.allowNotchDragging.hint": "Çentiği taşımak için boş bir alanını sürükleyin. Konumunu sabitlemek için bu seçeneği kapatın.",
   "settings.stayBehindWindows": "Diğer pencerelerin arkasında kal",
   "settings.stayBehindWindows.hint": "V-Notch’u masaüstünde tutarak büyütülmüş uygulamaları veya tarayıcı sekme düğmelerini kapatmasını önler.",
   "settings.subtitle": "",

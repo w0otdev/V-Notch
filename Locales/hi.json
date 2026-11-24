@@ -565,6 +565,8 @@
   "settings.spotlightAi.provider": "प्रदाता",
   "settings.spotlightAi.speed": "टेक्स्ट दिखने की गति",
   "settings.spotlightAi.speedUnit": " शब्द/सेकंड",
+  "settings.allowNotchDragging": "नॉच को खींचकर खिसकाएँ",
+  "settings.allowNotchDragging.hint": "नॉच को खिसकाने के लिए उसका खाली हिस्सा खींचें। उसकी जगह तय रखने के लिए यह विकल्प बंद करें।",
   "settings.stayBehindWindows": "दूसरी विंडो के पीछे रखें",
   "settings.stayBehindWindows.hint": "V-Notch को डेस्कटॉप पर रखें, ताकि बड़े किए गए ऐप और ब्राउज़र टैब के बटन न ढकें।",
   "settings.subtitle": "",

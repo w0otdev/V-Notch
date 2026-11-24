@@ -565,6 +565,8 @@
   "settings.spotlightAi.provider": "服务商",
   "settings.spotlightAi.speed": "文字显示速度",
   "settings.spotlightAi.speedUnit": " 词/秒",
+  "settings.allowNotchDragging": "拖动以移动刘海",
+  "settings.allowNotchDragging.hint": "拖动刘海的空白区域即可移动。关闭此选项可锁定位置。",
   "settings.stayBehindWindows": "置于普通窗口底层",
   "settings.stayBehindWindows.hint": "使刘海依附在桌面上，不会遮挡最大化的应用程序或浏览器顶部标签栏。",
   "settings.subtitle": "",
