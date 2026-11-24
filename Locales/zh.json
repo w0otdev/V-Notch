@@ -999,6 +999,7 @@
   "clipboard.archive": "归档",
   "clipboard.unarchive": "从归档恢复",
   "clipboard.delete": "删除",
+  "clipboard.approvalQueueFull": "待批准队列已满，此项未保存。",
   "clipboard.largeFile": "保存 {1} 的本地副本？\n总大小：{0:N1} MB（超过 50 MB）。",
   "clipboard.dropHint": "拖放文件或图片至此处以快速固定",
   "clipboard.categoryOnlyImages": "此标签页仅接受图片！",

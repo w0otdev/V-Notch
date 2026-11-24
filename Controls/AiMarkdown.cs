@@ -49,12 +49,6 @@ internal static partial class AiMarkdown
     private static readonly MarkdownFlowOptions CachedNormalOptions = CreateAiFlowOptions(FallbackBodyFont, normalBody: true);
     private static readonly MarkdownFlowOptions CachedBoldOptions = CreateAiFlowOptions(FallbackBodyFont, normalBody: false, uniformBold: true);
 
-    [ThreadStatic]
-    private static string? _cachedMarkdownText;
-
-    [ThreadStatic]
-    private static MarkdownDocument? _cachedMarkdownDoc;
-
     internal static int ScanWordSpans(
         ReadOnlySpan<char> text,
         Span<VnMarkdownWordSlice> outSpans,
@@ -87,17 +81,6 @@ internal static partial class AiMarkdown
         };
     }
 
-    private static MarkdownDocument GetOrParseDocument(string markdown)
-    {
-        if (string.Equals(_cachedMarkdownText, markdown, StringComparison.Ordinal) && _cachedMarkdownDoc != null)
-            return _cachedMarkdownDoc;
-
-        var parsed = MarkdownWpfRenderer.Parse(markdown);
-        _cachedMarkdownText = markdown;
-        _cachedMarkdownDoc = parsed;
-        return parsed;
-    }
-
     internal static string ToPlainTextPreview(string markdown)
     {
         if (string.IsNullOrWhiteSpace(markdown)) return string.Empty;
@@ -108,7 +91,9 @@ internal static partial class AiMarkdown
     }
 
     internal static FlowDocument Render(string markdown, FontFamily? fontFamily = null, bool normalBody = false,
-        bool uniformBold = false)
+        bool uniformBold = false) => RenderParsed(MarkdownWpfRenderer.Parse(markdown), fontFamily, normalBody, uniformBold);
+
+    private static FlowDocument RenderParsed(MarkdownDocument document, FontFamily? fontFamily, bool normalBody, bool uniformBold)
     {
         var font = fontFamily
             ?? (FontFamily?)Application.Current?.TryFindResource("SFProDisplay")
@@ -118,6 +103,6 @@ internal static partial class AiMarkdown
             ? (uniformBold ? CachedBoldOptions : normalBody ? CachedNormalOptions : CachedMediumOptions)
             : CreateAiFlowOptions(font, normalBody, uniformBold);
 
-        return MarkdownWpfRenderer.RenderFlowDocument(GetOrParseDocument(markdown), options);
+        return MarkdownWpfRenderer.RenderFlowDocument(document, options);
     }
 }

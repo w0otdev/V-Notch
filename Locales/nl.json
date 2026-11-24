@@ -999,6 +999,7 @@
   "clipboard.archive": "Archiveren",
   "clipboard.unarchive": "Uit Archief herstellen",
   "clipboard.delete": "Verwijderen",
+  "clipboard.approvalQueueFull": "De wachtrij voor goedkeuring is vol. Dit item is niet opgeslagen.",
   "clipboard.largeFile": "Een lokale kopie van {1} opslaan?\nTotale grootte: {0:N1} MB (meer dan 50 MB).",
   "clipboard.dropHint": "Sleep bestanden of afbeeldingen hierheen om snel vast te pinnen",
   "clipboard.categoryOnlyImages": "Dit tabblad accepteert alleen afbeeldingen!",

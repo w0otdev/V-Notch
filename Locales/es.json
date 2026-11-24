@@ -999,6 +999,7 @@
   "clipboard.archive": "Archivar",
   "clipboard.unarchive": "Restaurar desde Archivo",
   "clipboard.delete": "Eliminar",
+  "clipboard.approvalQueueFull": "La cola de aprobación está llena. Este elemento no se ha guardado.",
   "clipboard.largeFile": "¿Guardar una copia local de {1}?\nTamaño total: {0:N1} MB (más de 50 MB).",
   "clipboard.dropHint": "Arrastra archivos o imágenes aquí para fijarlos rápidamente",
   "clipboard.categoryOnlyImages": "¡Esta pestaña solo acepta imágenes!",

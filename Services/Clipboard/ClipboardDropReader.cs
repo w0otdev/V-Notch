@@ -297,7 +297,7 @@ internal static partial class ClipboardDropReader
         {
             using var output = new MemoryStream();
             CopyBounded(stream, output);
-            byte[] bytes = output.ToArray();
+            ReadOnlySpan<byte> bytes = output.GetBuffer().AsSpan(0, checked((int)output.Length));
             bool unicode = format == DataFormats.UnicodeText || bytes.Length > 1 && bytes[1] == 0;
             return (unicode ? System.Text.Encoding.Unicode : System.Text.Encoding.UTF8).GetString(bytes).Trim('\0', '\uFEFF');
         }

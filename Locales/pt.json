@@ -999,6 +999,7 @@
   "clipboard.archive": "Arquivar",
   "clipboard.unarchive": "Restaurar do Arquivo",
   "clipboard.delete": "Excluir",
+  "clipboard.approvalQueueFull": "A fila de aprovação está cheia. Este item não foi salvo.",
   "clipboard.largeFile": "Salvar uma cópia local de {1}?\nTamanho total: {0:N1} MB (mais de 50 MB).",
   "clipboard.dropHint": "Arraste e solte arquivos ou imagens aqui para fixar rapidamente",
   "clipboard.categoryOnlyImages": "Esta aba só aceita imagens!",

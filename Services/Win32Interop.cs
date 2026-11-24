@@ -574,15 +574,15 @@ internal static unsafe partial class Win32Interop
         internal bool Install()
         {
             if (_slot >= 0) return true;
-            _self = GCHandle.Alloc(this);
+            using var pending = new PendingCallbackHandle(this);
             delegate* unmanaged[Stdcall]<long, KeyboardHookEvent*, int> callback = &OnKey;
-            if (NativeKeyboardHookInstall((nint)callback, GCHandle.ToIntPtr(_self), out int slot, out int lastError) != 0)
+            if (NativeKeyboardHookInstall((nint)callback, pending.Context, out int slot, out int lastError) != 0)
             {
                 InstallationError = lastError;
-                _self.Free();
                 return false;
             }
 
+            _self = pending.Transfer();
             Volatile.Write(ref _slot, slot);
             return true;
         }
@@ -642,14 +642,12 @@ internal static unsafe partial class Win32Interop
         internal bool Install()
         {
             if (_slot >= 0) return true;
-            _self = GCHandle.Alloc(this);
+            using var pending = new PendingCallbackHandle(this);
             delegate* unmanaged[Stdcall]<long, uint, long, void> callback = &OnEvent;
-            if (NativeWinEventHookInstall(eventMin, eventMax, (nint)callback, GCHandle.ToIntPtr(_self), out int slot) != 0)
-            {
-                _self.Free();
+            if (NativeWinEventHookInstall(eventMin, eventMax, (nint)callback, pending.Context, out int slot) != 0)
                 return false;
-            }
 
+            _self = pending.Transfer();
             Volatile.Write(ref _slot, slot);
             return true;
         }

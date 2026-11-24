@@ -68,6 +68,8 @@ public sealed partial class ClipboardTray : UserControl, IDisposable
     private readonly UiScheduledTimer _ageTimer;
     private readonly CancellationTokenSource _contentLifetime = new();
     private readonly Queue<(ClipboardCapture Capture, long Size)> _approvals = new();
+    internal const int MaxPendingApprovals = 4;
+    internal const long MaxApprovalPayloadBytes = 192L * 1024 * 1024;
     private ClipboardHistoryController? _controller;
     private CancellationTokenSource? _searchCancellation;
     internal string SelectedCategory { get => _category; set => _category = value; }
@@ -226,6 +228,15 @@ public sealed partial class ClipboardTray : UserControl, IDisposable
 
     public void Attach(ClipboardHistoryController controller)
     {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        ArgumentNullException.ThrowIfNull(controller);
+        if (ReferenceEquals(_controller, controller)) return;
+        if (_controller != null)
+        {
+            DetachController();
+            HidePrivateContent();
+            ReleaseAllCards();
+        }
         _controller = controller;
         controller.Store.Changed += StoreChanged;
         controller.ApprovalRequired += RequestApproval;
@@ -235,6 +246,17 @@ public sealed partial class ClipboardTray : UserControl, IDisposable
         RebuildCategories();
         QueueRefresh();
         ScheduleCacheRelease();
+    }
+
+    private void DetachController()
+    {
+        if (_controller == null) return;
+        _controller.Store.Changed -= StoreChanged;
+        _controller.ApprovalRequired -= RequestApproval;
+        _controller.StatusChanged -= StatusChanged;
+        _controller.PersonalLocked -= HidePrivateContent;
+        _controller.ImportProgress -= OnImportProgress;
+        _controller = null;
     }
     public void ApplyLocalization()
     {
@@ -369,6 +391,7 @@ public sealed partial class ClipboardTray : UserControl, IDisposable
         {
             var page = await _controller.Store.SearchPageAsync(SearchBox.Text, _category, 0,
                 _pendingSelectAll != null ? int.MaxValue : 100, cancellation);
+            if (version != _refreshVersion || cancellation.IsCancellationRequested || _disposed) return;
             var entries = page.Entries;
             var counts = _controller.Store.GetCategoryCounts();
             // Regex construction and matching belong to the query worker, not
@@ -842,7 +865,8 @@ public sealed partial class ClipboardTray : UserControl, IDisposable
 
     internal async Task UnlockPersonalAsync()
     {
-        if (_controller == null || !UnlockButton.IsEnabled || _disposed) return;
+        var controller = _controller;
+        if (controller == null || !UnlockButton.IsEnabled || _disposed) return;
         using var pin = PasscodeBox.SecurePassword;
         PasscodeBox.Clear();
         if (!ClipboardPasscode.IsValid(pin))
@@ -852,7 +876,7 @@ public sealed partial class ClipboardTray : UserControl, IDisposable
             PasscodeBox.Focus();
             return;
         }
-        bool create = !_controller.Store.HasPersonalPasscode;
+        bool create = !controller.Store.HasPersonalPasscode;
         if (create && _newPin == null)
         {
             _newPin = pin.Copy();
@@ -872,9 +896,10 @@ public sealed partial class ClipboardTray : UserControl, IDisposable
         int version = _refreshVersion;
         try
         {
-            var result = await _controller.Store.UnlockPersonalWithResultAsync(pin, create);
+            var result = await controller.Store.UnlockPersonalWithResultAsync(pin, create);
             if (!result.Succeeded)
             {
+                if (_disposed || controller != _controller) return;
                 LockHint.Text = result.Status == ClipboardUnlockStatus.RateLimited
                     ? Loc.Get("clipboard.pinRetryAfter", Math.Max(1, (int)Math.Ceiling((result.RetryAfterUtc - DateTime.UtcNow).TotalSeconds)))
                     : Loc.Get("clipboard.wrongPin");
@@ -884,14 +909,15 @@ public sealed partial class ClipboardTray : UserControl, IDisposable
             }
             if (_disposed || !IsLoaded || !IsVisible || _category != "Personal" || version != _refreshVersion)
             {
-                await _controller.LockPersonalAsync();
+                await controller.LockPersonalAsync();
                 return;
             }
             if (_moveToPersonal is Guid id)
             {
                 _moveToPersonal = null;
-                await _controller.Store.MovePersonalAsync(id, true);
+                await controller.Store.MovePersonalAsync(id, true);
             }
+            if (_disposed || controller != _controller) return;
             await CompletePersonalDropAsync();
             RebuildCategories();
             await RefreshAsync();
@@ -1476,8 +1502,28 @@ public sealed partial class ClipboardTray : UserControl, IDisposable
 
     private void RequestApproval(ClipboardCapture capture, long size)
     {
+        if (_disposed) return;
+        if (!HasPendingPayloadRoom(CapturePayloadBytes(capture))) return;
         _approvals.Enqueue((capture, size));
         ShowApproval();
+    }
+
+    private bool HasPendingPayloadRoom(long bytes)
+    {
+        if (_approvals.Count + _pendingBrowserDrops.Count < MaxPendingApprovals &&
+            bytes + _approvals.Sum(p => CapturePayloadBytes(p.Capture)) + _pendingBrowserDrops.Sum(DropPayloadBytes) <= MaxApprovalPayloadBytes)
+            return true;
+        StatusChanged(Loc.Get("clipboard.approvalQueueFull"));
+        return false;
+    }
+
+    private static long CapturePayloadBytes(ClipboardCapture capture)
+    {
+        long chars = (long)capture.Text.Length + capture.Html.Length + capture.Rtf.Length +
+            capture.SourceApp.Length + capture.SourceExecutable.Length + (capture.TargetCategory?.Length ?? 0) +
+            (capture.ImagePixelFingerprint?.Length ?? 0);
+        foreach (string path in capture.FilePaths) chars += path.Length;
+        return (capture.ImagePng?.LongLength ?? 0) + chars * sizeof(char) + (long)capture.FilePaths.Length * IntPtr.Size;
     }
     private void ShowApproval()
     {
@@ -1716,17 +1762,9 @@ public sealed partial class ClipboardTray : UserControl, IDisposable
         _searchTimer.Stop();
         _searchTimer.Dispose();
         CancelSearch();
-        if (_controller != null)
-        {
-            _controller.Store.Changed -= StoreChanged;
-            _controller.ApprovalRequired -= RequestApproval;
-            _controller.StatusChanged -= StatusChanged;
-            _controller.PersonalLocked -= HidePrivateContent;
-            _controller.ImportProgress -= OnImportProgress;
-        }
+        DetachController();
         HidePrivateContent();
         ReleaseAllCards();
-        _approvals.Clear();
         CloseAllOpenMenus();
         _openMenus.Clear();
         TrayDropBorder?.BeginAnimation(System.Windows.Shapes.Shape.StrokeDashOffsetProperty, null);

@@ -999,6 +999,7 @@
   "clipboard.archive": "Archiwizuj",
   "clipboard.unarchive": "Przywróć z Archiwum",
   "clipboard.delete": "Usuń",
+  "clipboard.approvalQueueFull": "Kolejka zatwierdzeń jest pełna. Ten element nie został zapisany.",
   "clipboard.largeFile": "Zapisać lokalną kopię {1}?\nŁączny rozmiar: {0:N1} MB (ponad 50 MB).",
   "clipboard.dropHint": "Przeciągnij i upuść pliki lub obrazy tutaj, aby szybko przypiąć",
   "clipboard.categoryOnlyImages": "Ta karta akceptuje tylko obrazy!",

@@ -264,6 +264,38 @@ public sealed class ClipboardCrashRegressionTests
         Assert.Empty(Directory.GetDirectories(Path.Combine(fixture.History, "staging")));
     }
 
+    [Fact]
+    public async Task ConcurrentDisposalAfterDispatcherShutdownDrainsConsumerAndReader()
+    {
+        using var fixture = new Fixture();
+        var initialized = new TaskCompletionSource<ClipboardHistoryController>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var ui = new Thread(() =>
+        {
+            try
+            {
+                var dispatcher = Dispatcher.CurrentDispatcher;
+                var controller = new ClipboardHistoryController(dispatcher, new ClipboardHistoryStore(fixture.History));
+                _ = Reader(controller).Value.GetAwaiter().GetResult();
+                dispatcher.InvokeShutdown();
+                initialized.SetResult(controller);
+            }
+            catch (Exception ex) { initialized.SetException(ex); }
+        }) { IsBackground = true };
+        ui.SetApartmentState(ApartmentState.STA);
+        ui.Start();
+        var owner = await initialized.Task.WaitAsync(TimeSpan.FromSeconds(10));
+        var reader = await Reader(owner).Value;
+        await Task.WhenAll(Enumerable.Range(0, 8).Select(_ => Task.Run(() => owner.DisposeAsync().AsTask())))
+            .WaitAsync(TimeSpan.FromSeconds(10));
+        Assert.True(reader.Thread.Join(TimeSpan.FromSeconds(2)));
+        Assert.True(reader.HasShutdownFinished);
+        var consumer = (Task)typeof(ClipboardHistoryController).GetField("_consumer", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(owner)!;
+        Assert.True(consumer.IsCompletedSuccessfully);
+
+        static Lazy<Task<Dispatcher>> Reader(ClipboardHistoryController controller) =>
+            (Lazy<Task<Dispatcher>>)typeof(ClipboardHistoryController).GetField("_clipboardReader", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(controller)!;
+    }
+
     private static bool ContainsVisualPoint(FrameworkElement visual, Point point)
         => (bool)typeof(ClipboardTray).GetMethod("ContainsVisualPoint", BindingFlags.Static | BindingFlags.NonPublic)!.Invoke(null, [visual, point])!;
 

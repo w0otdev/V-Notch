@@ -367,7 +367,7 @@ internal static class SetupOperations
             return;
         }
 
-        Process.Start(new ProcessStartInfo(installedExePath)
+        using var launched = Process.Start(new ProcessStartInfo(installedExePath)
         {
             UseShellExecute = true,
             WorkingDirectory = installDirectory

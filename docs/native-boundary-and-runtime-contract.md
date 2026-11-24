@@ -2,7 +2,9 @@
 
 ## Scope and ownership
 
-The host and DLL ship together using ABI **2.0**. The version descriptor lives in
+The host and DLL ship together using ABI **2.1**. This minor version adds the
+batched application ranker and bounded Markdown reveal scan. The host requires
+these exports. The version descriptor lives in
 `Native/vnotch_abi.h`. ABI 2 retires `vn_backdrop_composite`,
 `vn_translation_compute_character_fades`, and
 `vn_translation_selection_can_preserve_recent_snapshot`. External clients that

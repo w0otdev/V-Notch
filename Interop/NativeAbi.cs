@@ -53,9 +53,9 @@ internal static class NativeAbi
 
     internal static void Validate(Info info)
     {
-        if (info.Size != Marshal.SizeOf<Info>() || info.Major != 2 ||
+        if (info.Size != Marshal.SizeOf<Info>() || info.Major != 2 || info.Minor < 1 ||
             info.PointerSize != (uint)IntPtr.Size || info.RegistryHandleVersion != 1 || info.StatusVersion != 1)
             throw new BadImageFormatException(
-                $"Incompatible VNotch.Native.dll ABI {info.Major}.{info.Minor} (size={info.Size}, pointer={info.PointerSize}, handles={info.RegistryHandleVersion}, status={info.StatusVersion}). Expected ABI 2.x; rebuild or reinstall the matching library.");
+                $"Incompatible VNotch.Native.dll ABI {info.Major}.{info.Minor} (size={info.Size}, pointer={info.PointerSize}, handles={info.RegistryHandleVersion}, status={info.StatusVersion}). Expected ABI 2.1 or a later 2.x; rebuild or reinstall the matching library.");
     }
 }

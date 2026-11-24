@@ -62,18 +62,8 @@ internal sealed unsafe partial class NativeLoopbackCapture : IDisposable
         Action onStopped, out int hresult)
     {
         var capture = new NativeLoopbackCapture(onLevels, onStopped);
-        capture._self = GCHandle.Alloc(capture);
         delegate* unmanaged[Stdcall]<long, float*, float, void> levels = &OnNativeLevels;
-        delegate* unmanaged[Stdcall]<long, int, void> stopped = &OnNativeStopped;
-        string requested = requestedDeviceId ?? string.Empty;
-        if (NativeStartLevels(requested, requested.Length, (nint)levels, (nint)stopped,
-            GCHandle.ToIntPtr(capture._self), out long handle, out VnLoopbackFormat format, out hresult) != 0)
-        { capture._self.Free(); return null; }
-        capture._handle = handle;
-        capture.SampleRate = format.SampleRate; capture.Channels = format.Channels;
-        capture.BitsPerSample = format.BitsPerSample; capture.IsFloat = format.IsFloat != 0;
-        capture.DeviceId = capture.ReadDeviceId(out _);
-        return capture;
+        return capture.StartCore(requestedDeviceId, (nint)levels, analyzed: true, out hresult);
     }
 
     [UnmanagedCallersOnly(CallConvs = [typeof(System.Runtime.CompilerServices.CallConvStdcall)])]
@@ -105,24 +95,37 @@ internal sealed unsafe partial class NativeLoopbackCapture : IDisposable
     internal static NativeLoopbackCapture? Start(string requestedDeviceId, Action<byte[], int> onData, Action onStopped, out int hresult)
     {
         var capture = new NativeLoopbackCapture(onData, onStopped);
-        capture._self = GCHandle.Alloc(capture);
         delegate* unmanaged[Stdcall]<long, byte*, int, void> data = &OnNativeData;
+        return capture.StartCore(requestedDeviceId, (nint)data, analyzed: false, out hresult);
+    }
+
+    private NativeLoopbackCapture? StartCore(string requestedDeviceId, nint callback, bool analyzed, out int hresult)
+    {
+        using var pending = new PendingCallbackHandle(this);
         delegate* unmanaged[Stdcall]<long, int, void> stopped = &OnNativeStopped;
         string requested = requestedDeviceId ?? string.Empty;
-        if (NativeStart(requested, requested.Length, (nint)data, (nint)stopped, GCHandle.ToIntPtr(capture._self),
-                out long handle, out VnLoopbackFormat format, out hresult) != 0)
+        int status = analyzed
+            ? NativeStartLevels(requested, requested.Length, callback, (nint)stopped, pending.Context,
+                out long handle, out VnLoopbackFormat format, out hresult)
+            : NativeStart(requested, requested.Length, callback, (nint)stopped, pending.Context,
+                out handle, out format, out hresult);
+        if (status != 0) return null;
+        _handle = handle;
+        _self = pending.Transfer();
+        try
         {
-            capture._self.Free();
-            return null;
+            SampleRate = format.SampleRate;
+            Channels = format.Channels;
+            BitsPerSample = format.BitsPerSample;
+            IsFloat = format.IsFloat != 0;
+            DeviceId = ReadDeviceId(out _);
+            return this;
         }
-
-        capture._handle = handle;
-        capture.SampleRate = format.SampleRate;
-        capture.Channels = format.Channels;
-        capture.BitsPerSample = format.BitsPerSample;
-        capture.IsFloat = format.IsFloat != 0;
-        capture.DeviceId = capture.ReadDeviceId(out _);
-        return capture;
+        catch
+        {
+            Dispose();
+            throw;
+        }
     }
 
     /// <summary>True while the captured endpoint is still active.</summary>

@@ -1009,15 +1009,15 @@ public sealed partial class PrivacyIndicatorService : IDisposable
         private void EnsureProbeLocked()
         {
             if (_probeHandle != 0) return;
-            _self = GCHandle.Alloc(this);
+            using var pending = new PendingCallbackHandle(this);
             delegate* unmanaged[Stdcall]<long, void> callback = &OnNativeInvalidated;
-            if (NativeCreate((nint)callback, GCHandle.ToIntPtr(_self), out long handle, out int hresult) != 0)
+            if (NativeCreate((nint)callback, pending.Context, out long handle, out int hresult) != 0)
             {
                 RuntimeLog.Warn("PRIVACY-MIC", $"Failed to register endpoint notification callback: 0x{hresult:X8}");
-                _self.Free();
                 return;
             }
 
+            _self = pending.Transfer();
             _probeHandle = handle;
         }
 

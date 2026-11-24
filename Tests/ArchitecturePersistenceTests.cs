@@ -48,6 +48,22 @@ public sealed class ArchitecturePersistenceTests : IDisposable
     }
 
     [Fact]
+    public async Task IdleRepositoryReleasesLastLoadedConversation()
+    {
+        var original = Chat(4);
+        var repository = Repository();
+        await repository.SaveChatAsync(original);
+        var weak = await Task.Run(() => LoadWeak(repository, original.Id));
+        // A completed continuation can still be unwinding on the pool thread.
+        Assert.True(SpinWait.SpinUntil(() => { GC.Collect(); return !weak.IsAlive; }, TimeSpan.FromSeconds(2)));
+        GC.KeepAlive(repository);
+    }
+
+    [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.NoInlining)]
+    private static WeakReference LoadWeak(EncryptedChatRepository repository, string id)
+        => new(repository.LoadAsync(id).GetAwaiter().GetResult()!);
+
+    [Fact]
     public async Task FailedMigrationRetriesAndDoesNotCommitAnEmptyStore()
     {
         int attempts = 0;

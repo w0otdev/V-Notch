@@ -179,7 +179,7 @@ public sealed class AuditRemediationTests : IDisposable
         var first = await provider.WarmupAsync();
         Assert.Same(first, await provider.WarmupAsync());
         now = now.AddMinutes(31);
-        Assert.NotEqual(first[0].Id, (await provider.WarmupAsync())[0].Id);
+        Assert.NotEqual(first.Apps[0].Id, (await provider.WarmupAsync()).Apps[0].Id);
     }
 
     [Fact]

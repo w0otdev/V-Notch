@@ -226,11 +226,10 @@ internal sealed partial class ClipboardVault : IDisposable
     internal void TransformFile(Stream input, Stream output, bool encrypt)
     {
         using var cipher = new AesGcm(Key, TagSize);
-        byte[] buffer = new byte[ChunkSize];
-        byte[] transformed = new byte[ChunkSize];
-        byte[] nonce = new byte[12];
-        byte[] tag = new byte[TagSize];
-        Span<byte> header = stackalloc byte[16];
+        Span<byte> nonce = stackalloc byte[12];
+        Span<byte> tag = stackalloc byte[TagSize];
+        Span<byte> associated = stackalloc byte[24];
+        Span<byte> header = associated[..16];
         long length;
         if (encrypt)
         {
@@ -242,14 +241,11 @@ internal sealed partial class ClipboardVault : IDisposable
         }
         else
         {
-            input.ReadExactly(header);
-            if (!header[..4].SequenceEqual("VNC1"u8)) throw new CryptographicException("Invalid encrypted attachment.");
-            length = BinaryPrimitives.ReadInt64LittleEndian(header[8..]);
-            if (vn_clipboard_vault_validate_encrypted_attachment_length(length, input.Length, ChunkSize, out byte validLen) != 0 || validLen == 0)
-                throw new CryptographicException("Invalid encrypted attachment length.");
+            length = ReadAttachmentHeader(input, header);
         }
-        Span<byte> associated = stackalloc byte[24];
-        header.CopyTo(associated);
+        int capacity = (int)Math.Min(length, ChunkSize);
+        byte[] buffer = new byte[capacity];
+        byte[] transformed = new byte[capacity];
         try
         {
             long position = 0;
@@ -266,8 +262,7 @@ internal sealed partial class ClipboardVault : IDisposable
                 }
                 else
                 {
-                    input.ReadExactly(nonce); input.ReadExactly(tag); input.ReadExactly(buffer.AsSpan(0, count));
-                    cipher.Decrypt(nonce, buffer.AsSpan(0, count), tag, transformed.AsSpan(0, count), associated);
+                    DecryptAttachmentChunk(input, cipher, associated, buffer.AsSpan(0, count), transformed.AsSpan(0, count));
                     output.Write(transformed, 0, count);
                 }
                 position += count;
@@ -275,6 +270,27 @@ internal sealed partial class ClipboardVault : IDisposable
             output.Flush();
         }
         finally { CryptographicOperations.ZeroMemory(buffer); CryptographicOperations.ZeroMemory(transformed); }
+    }
+
+    private static long ReadAttachmentHeader(Stream input, Span<byte> header)
+    {
+        input.ReadExactly(header);
+        if (!header[..4].SequenceEqual("VNC1"u8)) throw new CryptographicException("Invalid encrypted attachment.");
+        long length = BinaryPrimitives.ReadInt64LittleEndian(header[8..]);
+        if (vn_clipboard_vault_validate_encrypted_attachment_length(length, input.Length, ChunkSize, out byte valid) != 0 || valid == 0)
+            throw new CryptographicException("Invalid encrypted attachment length.");
+        return length;
+    }
+
+    private static void DecryptAttachmentChunk(Stream input, AesGcm cipher, ReadOnlySpan<byte> associated,
+        Span<byte> ciphertext, Span<byte> plaintext)
+    {
+        Span<byte> nonce = stackalloc byte[12];
+        Span<byte> tag = stackalloc byte[TagSize];
+        input.ReadExactly(nonce);
+        input.ReadExactly(tag);
+        input.ReadExactly(ciphertext);
+        cipher.Decrypt(nonce, ciphertext, tag, plaintext, associated);
     }
 
     internal static void AtomicWrite(string path, byte[] bytes)

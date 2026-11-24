@@ -999,6 +999,7 @@
   "clipboard.archive": "Archivia",
   "clipboard.unarchive": "Ripristina dall’archivio",
   "clipboard.delete": "Elimina",
+  "clipboard.approvalQueueFull": "La coda delle approvazioni è piena. Questo elemento non è stato salvato.",
   "clipboard.largeFile": "Salvare una copia locale di {1}?\nDimensione totale: {0:N1} MB (oltre 50 MB).",
   "clipboard.dropHint": "Trascina e rilascia file o immagini qui per fissarli rapidamente",
   "clipboard.categoryOnlyImages": "Questa scheda accetta solo immagini!",

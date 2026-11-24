@@ -999,6 +999,7 @@
   "clipboard.archive": "أرشفة",
   "clipboard.unarchive": "استعادة من الأرشيف",
   "clipboard.delete": "حذف",
+  "clipboard.approvalQueueFull": "قائمة الموافقة ممتلئة. لم يُحفظ هذا العنصر.",
   "clipboard.largeFile": "هل تريد حفظ نسخة محلية من {1}؟\nالحجم الإجمالي: {0:N1} MB (أكثر من 50 MB).",
   "clipboard.dropHint": "اسحب الملفات أو الصور وأفلتها هنا للتثبيت السريع",
   "clipboard.categoryOnlyImages": "تنسيق الصور فقط مدعوم في علامة التبويب هذه!",

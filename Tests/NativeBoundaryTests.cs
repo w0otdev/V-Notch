@@ -46,7 +46,11 @@ public sealed partial class NativeBoundaryTests
         NativeAbi.Validate(info);
         Assert.Equal(24, sizeof(NativeAbi.Info));
         Assert.Equal(2u, info.Major);
+        Assert.True(info.Minor >= 1);
         var oldDescriptor = info;
+        oldDescriptor.Minor = 0;
+        Assert.Throws<BadImageFormatException>(() => NativeAbi.Validate(oldDescriptor));
+        oldDescriptor = info;
         oldDescriptor.Major = 1;
         Assert.Throws<BadImageFormatException>(() => NativeAbi.Validate(oldDescriptor));
         info.Minor = 100; // Additive releases retain this fixed descriptor and existing exports.

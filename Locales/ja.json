@@ -999,6 +999,7 @@
   "clipboard.archive": "アーカイブ",
   "clipboard.unarchive": "アーカイブから復元",
   "clipboard.delete": "削除",
+  "clipboard.approvalQueueFull": "承認待ちの上限に達したため、この項目は保存されませんでした。",
   "clipboard.largeFile": "{1}のローカルコピーを保存しますか？\n合計サイズ：{0:N1} MB（50 MB超）。",
   "clipboard.dropHint": "ファイルや画像をここにドラッグ＆ドロップしてすばやく固定",
   "clipboard.categoryOnlyImages": "このタブは画像のみを受け付けます！",

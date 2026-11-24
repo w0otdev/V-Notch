@@ -201,14 +201,12 @@ public sealed partial class VolumeService : IVolumeService
         {
             if (_source == 0)
             {
-                _self = GCHandle.Alloc(this);
+                using var pending = new PendingCallbackHandle(this);
                 delegate* unmanaged[Stdcall]<long, void> callback = &OnDeviceChanged;
-                if (vn_volume_source_create((nint)callback, GCHandle.ToIntPtr(_self), out long source, out int createHr) != 0)
-                {
-                    _self.Free();
+                if (vn_volume_source_create((nint)callback, pending.Context, out long source, out int createHr) != 0)
                     Marshal.ThrowExceptionForHR(createHr < 0 ? createHr : EFail);
-                }
 
+                _self = pending.Transfer();
                 _source = source;
             }
 
