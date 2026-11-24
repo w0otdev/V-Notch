@@ -499,6 +499,7 @@
                   MouseLeftButtonDown="NotchBorder_MouseLeftButtonDown"
                   MouseMove="NotchWrapper_MouseMove"
                   MouseLeftButtonUp="NotchWrapper_MouseLeftButtonUp"
+                  LostMouseCapture="NotchWrapper_LostMoveCapture"
                   MouseEnter="NotchWrapper_MouseEnter"
                   MouseLeave="NotchWrapper_MouseLeave"
                   MouseWheel="NotchWrapper_MouseWheel"

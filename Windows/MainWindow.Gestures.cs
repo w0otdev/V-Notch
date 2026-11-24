@@ -5,6 +5,7 @@ using System.Windows.Media;
 using System.Windows.Media.Animation;
 using VNotch.Controllers;
 using VNotch.Services;
+using VNotch.Models;
 using static VNotch.Services.AnimationPrimitives;
 
 namespace VNotch;
@@ -114,7 +115,7 @@ public partial class MainWindow
 
         if (e.ChangedButton != MouseButton.Middle) return;
         if (!_settings.EnableGestureControls) return;
-        if (_isDraggingVolumeIndicator || _isDraggingNotchDebug) return;
+        if (_isDraggingVolumeIndicator || _isDraggingNotch) return;
         if (_spotlightMorphSessionActive || _spotlightMorphOwnsNotchVisibility) return;
 
         e.Handled = true;
@@ -132,24 +133,9 @@ public partial class MainWindow
 
     private void NotchWrapper_MouseMove(object sender, MouseEventArgs e)
     {
-        if (_isDraggingNotchDebug && e.LeftButton == MouseButtonState.Pressed)
+        if (_isDraggingNotch && e.LeftButton == MouseButtonState.Pressed)
         {
-            Win32Interop.GetCursorPos(out var pt);
-            int dx = pt.X - (int)_debugDragStartMouse.X;
-            int dy = pt.Y - (int)_debugDragStartMouse.Y;
-
-            if (!_hasActuallyDragged && (Math.Abs(dx) > 3 || Math.Abs(dy) > 3))
-            {
-                _hasActuallyDragged = true;
-            }
-
-            if (_hasActuallyDragged)
-            {
-                _fixedX = _debugDragStartFixedX + dx;
-                _fixedY = _debugDragStartFixedY + dy;
-                _overlayWindow.MoveFixedPosition(_fixedX, _fixedY);
-                _liquidGlass?.SetLiveRegion(GetGlassCaptureRegion());
-            }
+            UpdateNotchDrag(NotchWrapper.PointToScreen(e.GetPosition(NotchWrapper)));
 
             e.Handled = true;
             return;
@@ -158,14 +144,41 @@ public partial class MainWindow
         NotchBorder_GestureMouseMove(sender, e);
     }
 
+    private void BeginNotchDrag(Point screenPoint)
+    {
+        _isDraggingNotch = true;
+        _hasActuallyDragged = false;
+        _notchDragStartMouse = screenPoint;
+        _notchDragStartFixedX = _fixedX;
+        _notchDragStartFixedY = _fixedY;
+    }
+
+    internal void UpdateNotchDrag(Point screenPoint)
+    {
+        int dx = (int)Math.Round(screenPoint.X - _notchDragStartMouse.X);
+        int dy = (int)Math.Round(screenPoint.Y - _notchDragStartMouse.Y);
+        if (!_hasActuallyDragged && Math.Abs(dx) <= 3 && Math.Abs(dy) <= 3) return;
+        _hasActuallyDragged = true;
+        _overlayWindow.MoveFixedPosition(_notchDragStartFixedX + dx, _notchDragStartFixedY + dy);
+        _notchManager.RefreshAnchor();
+        _liquidGlass?.SetLiveRegion(GetGlassCaptureRegion());
+    }
+
     private void NotchWrapper_MouseLeftButtonUp(object sender, MouseButtonEventArgs e)
     {
-        if (_isDraggingNotchDebug)
+        if (_isDraggingNotch)
         {
-            _isDraggingNotchDebug = false;
+            _isDraggingNotch = false;
             NotchWrapper.ReleaseMouseCapture();
 
-            if (!_hasActuallyDragged)
+            if (_hasActuallyDragged && _settings.AllowNotchDragging)
+            {
+                var anchor = NotchAnchor;
+                var screen = System.Windows.Forms.Screen.FromPoint(anchor);
+                var monitor = MonitorSelection.GetChoices().FirstOrDefault(choice => choice.Screen?.DeviceName == screen.DeviceName);
+                StoreNotchPosition(NotchPosition.FromAnchor(screen.Bounds, anchor), monitor);
+            }
+            else if (!_hasActuallyDragged)
             {
                 // User just clicked without dragging -> toggle/open notch normally
                 ToggleNotchFromClick(e.ClickCount);
@@ -176,6 +189,52 @@ public partial class MainWindow
         }
 
         NotchBorder_GestureMouseUp(sender, e);
+    }
+
+    private System.Drawing.Point NotchAnchor => new(_fixedX + _windowWidth / 2, _fixedY);
+
+    private Size VisibleNotchSize => new(
+        NotchBorder.ActualWidth > 0 ? NotchBorder.ActualWidth : _collapsedWidth,
+        (NotchBorder.ActualHeight > 0 ? NotchBorder.ActualHeight : _collapsedHeight)
+            + (_settings.EnableDynamicIslandMode ? DynamicIslandTopMargin : 0));
+
+    private void NotchBorder_PositionSizeChanged(object sender, SizeChangedEventArgs e)
+    {
+        if (!_cleanedUp && !_isDraggingNotch && _settings.CustomNotchPosition is { } position &&
+            _overlayWindow.FitCustomPosition(position, VisibleNotchSize))
+        {
+            _notchManager.RefreshAnchor();
+            _liquidGlass?.SetLiveRegion(GetGlassCaptureRegion());
+        }
+    }
+
+    private void NotchWrapper_LostMoveCapture(object sender, MouseEventArgs e) => CancelUncapturedNotchDrag();
+
+    private void CancelUncapturedNotchDrag()
+    {
+        if (!_isDraggingNotch || NotchWrapper.IsMouseCaptured) return;
+        _isDraggingNotch = false;
+        if (!_cleanedUp && _hasActuallyDragged && _settings.AllowNotchDragging) ApplyNotchPlacement();
+    }
+
+    private void StoreNotchPosition(NotchPosition? position, MonitorSelection.Choice? monitor)
+    {
+        if (SettingsPreparation.Active is { } editor)
+        {
+            editor.PreviewNotchPosition(position, monitor);
+        }
+        else
+        {
+            _settings.CustomNotchPosition = position;
+            if (monitor != null)
+            {
+                _settings.MonitorIndex = monitor.Index;
+                _settings.MonitorDeviceId = monitor.Id;
+            }
+            ApplyNotchPlacement();
+            _settingsService.SaveAsync(_settings).SafeFireAndForget("SETTINGS-SAVE");
+        }
+        _liquidGlass?.SetLiveRegion(GetGlassCaptureRegion());
     }
 
     private bool TryBeginGesture(MouseButtonEventArgs e)

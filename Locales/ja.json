@@ -565,6 +565,8 @@
   "settings.spotlightAi.provider": "プロバイダー",
   "settings.spotlightAi.speed": "文字の表示速度",
   "settings.spotlightAi.speedUnit": " 単語/秒",
+  "settings.allowNotchDragging": "ドラッグでノッチを移動",
+  "settings.allowNotchDragging.hint": "ノッチの何もない部分をドラッグして移動します。オフにすると位置が固定されます。",
   "settings.stayBehindWindows": "他のウィンドウの背後に表示",
   "settings.stayBehindWindows.hint": "V-Notch をデスクトップ上に表示し、最大化したアプリやブラウザーのタブ操作に重ならないようにします。",
   "settings.subtitle": "",

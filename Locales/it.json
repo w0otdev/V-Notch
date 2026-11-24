@@ -565,6 +565,8 @@
   "settings.spotlightAi.provider": "Provider",
   "settings.spotlightAi.speed": "Velocità del testo",
   "settings.spotlightAi.speedUnit": " parole/s",
+  "settings.allowNotchDragging": "Trascina per spostare la tacca",
+  "settings.allowNotchDragging.hint": "Trascina un’area vuota della tacca per spostarla. Disattiva questa opzione per bloccarne la posizione.",
   "settings.stayBehindWindows": "Rimani dietro le altre finestre",
   "settings.stayBehindWindows.hint": "Mantiene V-Notch sul desktop per non coprire le app ingrandite né i controlli delle schede del browser.",
   "settings.subtitle": "",

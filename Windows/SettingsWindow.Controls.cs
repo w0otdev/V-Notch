@@ -967,6 +967,20 @@ public partial class SettingsWindow
         PushLivePreview();
     }
 
+    private void NotchDragging_Changed(object sender, RoutedEventArgs e) => PushLivePreview();
+
+    internal void PreviewNotchPosition(NotchPosition? position, MonitorSelection.Choice? monitor)
+    {
+        _settings.CustomNotchPosition = position;
+        if (monitor != null)
+        {
+            _settings.MonitorDeviceId = monitor.Id;
+            _settings.MonitorIndex = monitor.Index;
+            RefreshMonitorChoices(preserveSelection: false);
+        }
+        ApplyPreview(ReadSettingsFromUi());
+    }
+
     private void HoverExpandCheck_Changed(object sender, RoutedEventArgs e)
     {
         bool enabled = HoverExpandCheck.IsChecked ?? false;

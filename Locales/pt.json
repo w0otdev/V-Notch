@@ -565,6 +565,8 @@
   "settings.spotlightAi.provider": "Provedor",
   "settings.spotlightAi.speed": "Velocidade do texto",
   "settings.spotlightAi.speedUnit": " palavras/s",
+  "settings.allowNotchDragging": "Arrastar para mover o notch",
+  "settings.allowNotchDragging.hint": "Arraste uma área vazia do notch para movê-lo. Desative esta opção para fixar a posição.",
   "settings.stayBehindWindows": "Permanecer atrás de outras janelas",
   "settings.stayBehindWindows.hint": "Mantém o V-Notch na área de trabalho para não cobrir aplicativos maximizados nem os controles das abas do navegador.",
   "settings.subtitle": "",

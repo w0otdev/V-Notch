@@ -62,6 +62,7 @@ public sealed partial class NativeMigrationContractTests(ITestOutputHelper outpu
     });
 
     [Fact]
+    [Trait("Category", "Performance")]
     public void RecorderPollingDoesNotAllocateOnTheManagedHeap()
     {
         var probe = new ScreenRecordingProbe();

@@ -565,6 +565,8 @@
   "settings.spotlightAi.provider": "Fournisseur",
   "settings.spotlightAi.speed": "Vitesse du texte",
   "settings.spotlightAi.speedUnit": " mots/s",
+  "settings.allowNotchDragging": "Déplacer l’encoche par glisser-déposer",
+  "settings.allowNotchDragging.hint": "Faites glisser une zone vide de l’encoche pour la déplacer. Désactivez cette option pour fixer sa position.",
   "settings.stayBehindWindows": "Rester derrière les autres fenêtres",
   "settings.stayBehindWindows.hint": "Garde V-Notch sur le bureau afin de ne pas couvrir les applications maximisées ni les onglets du navigateur.",
   "settings.subtitle": "",

@@ -322,6 +322,7 @@ public partial class SettingsWindow : Window
         SetVisualizerAudioDevicePlaceholder();
 
         AutoStartCheck.IsChecked = _settingsAppService.IsAutoStartEnabled();
+        AllowNotchDraggingCheck.IsChecked = _settings.AllowNotchDragging;
         StayBehindWindowsCheck.IsChecked = _settings.StayBehindWindows;
         HelloGreetingCheck.IsChecked = _settings.EnableHelloGreeting;
         HideOnExclusiveFullscreenCheck.IsChecked = _settings.HideOnExclusiveFullscreen;
@@ -735,6 +736,8 @@ public partial class SettingsWindow : Window
         InteractionSoundsHint.Text = Loc.Get("settings.interactionSounds.hint");
         InteractionSoundVolumeSlider.Label = Loc.Get("settings.interactionSoundVolume");
         InteractionSoundVolumeSlider.Description = Loc.Get("settings.interactionSoundVolume.hint");
+        AllowNotchDraggingCheck.Content = Loc.Get("settings.allowNotchDragging");
+        AllowNotchDraggingHint.Text = Loc.Get("settings.allowNotchDragging.hint");
         StayBehindWindowsCheck.Content = Loc.Get("settings.stayBehindWindows");
         StayBehindWindowsHint.Text = Loc.Get("settings.stayBehindWindows.hint");
         HideOnExclusiveFullscreenCheck.Content = Loc.Get("settings.hideExclusiveFs");

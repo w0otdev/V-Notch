@@ -565,6 +565,8 @@
   "settings.spotlightAi.provider": "Dostawca",
   "settings.spotlightAi.speed": "Szybkość tekstu",
   "settings.spotlightAi.speedUnit": " słów/s",
+  "settings.allowNotchDragging": "Przeciągnij, aby przesunąć wcięcie",
+  "settings.allowNotchDragging.hint": "Przeciągnij pusty obszar wcięcia, aby je przesunąć. Wyłącz tę opcję, aby zablokować położenie.",
   "settings.stayBehindWindows": "Pozostawaj za innymi oknami",
   "settings.stayBehindWindows.hint": "Utrzymuje V-Notch na pulpicie, aby nie zasłaniał zmaksymalizowanych aplikacji ani przycisków kart przeglądarki.",
   "settings.subtitle": "",

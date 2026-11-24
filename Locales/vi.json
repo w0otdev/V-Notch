@@ -567,6 +567,8 @@
   "settings.spotlightAi.provider": "Nhà cung cấp",
   "settings.spotlightAi.speed": "Tốc độ hiện chữ",
   "settings.spotlightAi.speedUnit": " từ/giây",
+  "settings.allowNotchDragging": "Kéo để di chuyển notch",
+  "settings.allowNotchDragging.hint": "Kéo vùng trống của notch để di chuyển. Tắt tùy chọn này để khóa vị trí.",
   "settings.stayBehindWindows": "Luôn nằm sau các cửa sổ khác",
   "settings.stayBehindWindows.hint": "Giữ V-Notch trên màn hình nền (desktop) để không che khuất cửa sổ ứng dụng phóng to hoặc các tab trình duyệt.",
   "settings.subtitle": "",

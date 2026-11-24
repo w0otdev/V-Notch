@@ -567,6 +567,8 @@
   "settings.spotlightAi.provider": "Provider",
   "settings.spotlightAi.speed": "Text reveal speed",
   "settings.spotlightAi.speedUnit": " words/s",
+  "settings.allowNotchDragging": "Drag to move the notch",
+  "settings.allowNotchDragging.hint": "Drag an empty area of the notch to move it. Turn this off to lock its position.",
   "settings.stayBehindWindows": "Stay behind other windows",
   "settings.stayBehindWindows.hint": "Keep V-Notch on the desktop so maximized apps and browser tab controls are never covered.",
   "settings.subtitle": "",

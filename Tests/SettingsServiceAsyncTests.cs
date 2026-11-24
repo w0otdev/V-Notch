@@ -44,6 +44,7 @@ public sealed class SettingsServiceAsyncTests : IDisposable
 
         var settings = new NotchSettings
         {
+            CustomNotchPosition = new NotchPosition(0.2, 0.8),
             Width = 420,
             Height = 55,
             Language = "vi"
@@ -59,6 +60,7 @@ public sealed class SettingsServiceAsyncTests : IDisposable
         Assert.True(File.Exists(_tempFile));
 
         var loaded = _service.Load();
+        Assert.Equal(settings.CustomNotchPosition, loaded.CustomNotchPosition);
         Assert.Equal(420, loaded.Width);
         Assert.Equal(55, loaded.Height);
         Assert.Equal("vi", loaded.Language);

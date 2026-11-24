@@ -565,6 +565,8 @@
   "settings.spotlightAi.provider": "제공업체",
   "settings.spotlightAi.speed": "텍스트 표시 속도",
   "settings.spotlightAi.speedUnit": " 단어/초",
+  "settings.allowNotchDragging": "드래그하여 노치 이동",
+  "settings.allowNotchDragging.hint": "노치의 빈 영역을 드래그하여 이동하세요. 이 옵션을 끄면 위치가 고정됩니다.",
   "settings.stayBehindWindows": "다른 창 뒤에 위치",
   "settings.stayBehindWindows.hint": "V-Notch를 바탕화면에 표시하여 최대화된 앱이나 브라우저 탭을 가리지 않도록 합니다.",
   "settings.subtitle": "",

@@ -565,6 +565,8 @@
   "settings.spotlightAi.provider": "المزوّد",
   "settings.spotlightAi.speed": "سرعة ظهور النص",
   "settings.spotlightAi.speedUnit": " كلمة/ثانية",
+  "settings.allowNotchDragging": "اسحب لتحريك النتوء",
+  "settings.allowNotchDragging.hint": "اسحب مساحة فارغة من النتوء لتحريكه. أوقف هذا الخيار لتثبيت موضعه.",
   "settings.stayBehindWindows": "البقاء خلف النوافذ الأخرى",
   "settings.stayBehindWindows.hint": "إبقاء V-Notch على سطح المكتب حتى لا يغطي التطبيقات المكبّرة أو أزرار تبويبات المتصفح.",
   "settings.subtitle": "",

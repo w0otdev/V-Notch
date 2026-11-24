@@ -565,6 +565,8 @@
   "settings.spotlightAi.provider": "Anbieter",
   "settings.spotlightAi.speed": "Textgeschwindigkeit",
   "settings.spotlightAi.speedUnit": " Wörter/s",
+  "settings.allowNotchDragging": "Notch durch Ziehen verschieben",
+  "settings.allowNotchDragging.hint": "Ziehe an einer freien Stelle der Notch, um sie zu verschieben. Schalte die Option aus, um die Position zu fixieren.",
   "settings.stayBehindWindows": "Hinter anderen Fenstern bleiben",
   "settings.stayBehindWindows.hint": "V-Notch auf dem Desktop belassen, damit maximierte Apps und Browser-Tab-Steuerelemente nicht verdeckt werden.",
   "settings.subtitle": "",

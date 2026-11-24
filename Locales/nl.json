@@ -565,6 +565,8 @@
   "settings.spotlightAi.provider": "Aanbieder",
   "settings.spotlightAi.speed": "Tekstsnelheid",
   "settings.spotlightAi.speedUnit": " woorden/s",
+  "settings.allowNotchDragging": "Sleep om de notch te verplaatsen",
+  "settings.allowNotchDragging.hint": "Sleep een leeg deel van de notch om deze te verplaatsen. Schakel dit uit om de positie vast te zetten.",
   "settings.stayBehindWindows": "Achter andere vensters blijven",
   "settings.stayBehindWindows.hint": "Houdt V-Notch op het bureaublad zodat gemaximaliseerde apps en de tabbladknoppen van je browser niet worden bedekt.",
   "settings.subtitle": "",

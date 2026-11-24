@@ -153,6 +153,7 @@ public sealed class ClipboardTrayLazyLoadTests
             foreach (var path in paths) File.WriteAllText(path, Path.GetFileName(path));
             var store = new ClipboardHistoryStore(Path.Combine(fixture.FullName, "store"));
             await using var controller = new ClipboardHistoryController(Dispatcher.CurrentDispatcher, store);
+            await store.InitializeAsync();
             await store.ImportAsync(new ClipboardCapture { FilePaths = paths, SeparateFiles = true });
             using var tray = new ClipboardTray();
             tray.Attach(controller);

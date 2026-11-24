@@ -144,13 +144,7 @@ public partial class MainWindow
         }
     }
 
-    internal void ResetNotchPosition()
-    {
-        _overlayWindow.ResetToCenteredTop(_windowWidth, _windowHeight);
-        _fixedX = _shellState.FixedX;
-        _fixedY = _shellState.FixedY;
-        _liquidGlass?.SetLiveRegion(GetGlassCaptureRegion());
-    }
+    internal void ResetNotchPosition() => ResetPosition();
 
     private void UpdateRefreshRate()
     {
